@@ -11,7 +11,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { mkdirSync, rmdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 var contractVersion = "toolkit-2";
-var schemaVersion = "4";
+var schemaVersion = "5";
 var operationReference = "REFERENCES operations(id) DEFERRABLE INITIALLY DEFERRED";
 var tables = `
 CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL) STRICT;
@@ -215,6 +215,14 @@ CREATE TABLE journal_entries (
 	operation_id TEXT NOT NULL ${operationReference}
 ) STRICT;
 `;
+var addedTables = [
+  `CREATE TABLE plan_rules (
+	plan_id TEXT NOT NULL REFERENCES plan_requests(plan_id),
+	origin TEXT NOT NULL,
+	body TEXT NOT NULL,
+	operation_id TEXT NOT NULL ${operationReference}
+) STRICT;`
+];
 var views = `
 CREATE VIEW latest_plans AS
 	SELECT p.* FROM plan_revisions p
@@ -262,12 +270,23 @@ var triggersOf = (ddl) => tableNamesOf(ddl).map(
 CREATE TRIGGER ${table}_delete BEFORE DELETE ON ${table}
 	BEGIN SELECT RAISE(ABORT, 'Rows of ${table} are immutable'); END;`
 ).join("\n");
+function setSchemaVersion(db, version2) {
+  db.exec("DROP TRIGGER meta_update");
+  db.prepare("UPDATE meta SET value = ? WHERE key = 'schemaVersion'").run(version2);
+  db.exec(updateTrigger("meta"));
+}
 function addExplorationTables(db) {
   db.exec(explorationTables);
   db.exec(triggersOf(explorationTables));
-  db.exec("DROP TRIGGER meta_update");
-  db.exec("UPDATE meta SET value = '4' WHERE key = 'schemaVersion'");
-  db.exec(updateTrigger("meta"));
+  setSchemaVersion(db, "4");
+}
+function addMissingTables(db) {
+  for (const ddl of addedTables) {
+    const [name] = tableNamesOf(ddl);
+    if (db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(name)) continue;
+    db.exec(ddl);
+    db.exec(triggersOf(ddl));
+  }
 }
 function completed(subject, data = {}) {
   return { status: "completed", subject, reasons: [], data };
@@ -307,8 +326,10 @@ function openStore(workspace) {
       insert.run("contractVersion", contractVersion);
       insert.run("schemaVersion", schemaVersion);
     }
-    const version2 = db.prepare("SELECT value FROM meta WHERE key = 'schemaVersion'").get();
-    if (version2?.value === "3") addExplorationTables(db);
+    const version2 = String(db.prepare("SELECT value FROM meta WHERE key = 'schemaVersion'").get()?.value);
+    if (version2 === "3") addExplorationTables(db);
+    if (version2 === "3" || version2 === "4") setSchemaVersion(db, schemaVersion);
+    if (["3", "4", schemaVersion].includes(version2)) addMissingTables(db);
     db.exec("COMMIT");
   } catch (error) {
     if (db.isTransaction) db.exec("ROLLBACK");
@@ -10295,6 +10316,118 @@ function decideClaim(store, actor, input) {
   });
 }
 
+// plugin/src/rules.ts
+import { readFileSync as readFileSync3, realpathSync as realpathSync3, statSync as statSync3 } from "node:fs";
+import { resolve as resolve2, sep as sep2 } from "node:path";
+var maxSourceCharacters = 4e4;
+var ruleId = /^R[1-9][0-9]{0,3}$/;
+function storedRules(store, planId) {
+  const row3 = one(
+    store,
+    "SELECT origin, body FROM plan_rules WHERE plan_id = ? ORDER BY rowid DESC LIMIT 1",
+    planId
+  );
+  return row3 ? { rules: JSON.parse(row3.body), origin: row3.origin } : null;
+}
+function planRules(store, planId) {
+  const latest = one(store, "SELECT body FROM latest_plans WHERE plan_id = ?", planId);
+  const plain = (items) => items.map(({ id: id2, text, source }) => ({ id: id2, text, source }));
+  if (latest) return { rules: plain(JSON.parse(latest.body).requirements), origin: "revision" };
+  const { request } = planRequest(store, planId);
+  if (request.requirements?.length) return { rules: plain(request.requirements), origin: "request" };
+  return storedRules(store, planId) ?? { rules: [], origin: null };
+}
+function explorationRules(store, explorationId) {
+  const row3 = one(
+    store,
+    "SELECT plan_id, charter FROM explorations WHERE exploration_id = ?",
+    explorationId
+  );
+  if (!row3) return [];
+  const given = JSON.parse(row3.charter).requirements;
+  if (given.length) return given;
+  return (storedRules(store, row3.plan_id)?.rules ?? []).map(({ id: id2, text }) => ({ id: id2, text }));
+}
+function sourceText(store, name) {
+  try {
+    const path = realpathSync3(resolve2(store.workspace, name.split("#")[0]));
+    if (!path.startsWith(realpathSync3(store.workspace) + sep2) || !statSync3(path).isFile()) return null;
+    const text = readFileSync3(path, "utf8");
+    return text.length > maxSourceCharacters ? `${text.slice(0, maxSourceCharacters)}
+(The rest of the file is left out.)` : text;
+  } catch {
+    return null;
+  }
+}
+function ruleSources(store, planId) {
+  const { request } = planRequest(store, planId);
+  return (request.context?.sources ?? []).map((name) => ({ name, text: sourceText(store, name) }));
+}
+function rulesNeeded(store, planId) {
+  return !planRules(store, planId).rules.length && ruleSources(store, planId).some((source) => source.text !== null);
+}
+function checkedRules(reply, sources) {
+  if (!reply) return { rules: [], refusals: ["The reply has no JSON array of rules."] };
+  const rules = [];
+  const refusals = [];
+  for (const [index2, raw] of reply.entries()) {
+    const item = raw && typeof raw === "object" ? raw : {};
+    const text = typeof item.text === "string" ? item.text.trim() : "";
+    const source = typeof item.source === "string" ? item.source.trim() : "";
+    const problem = typeof item.id !== "string" || !ruleId.test(item.id) ? `"id" must be R1, R2, and so on` : rules.some((rule) => rule.id === item.id) ? `the ID ${item.id} is in use` : !text ? `"text" is missing` : !sources.some((name) => source.startsWith(name)) ? `"source" must start with one of: ${sources.join(", ")}` : void 0;
+    if (problem) refusals.push(`[${index2}] ${problem}.`);
+    else rules.push({ id: item.id, text, source });
+  }
+  if (!rules.length && !refusals.length) refusals.push("The reply has no rule.");
+  return { rules, refusals };
+}
+function saveRules(store, operationId, planId, rules, origin) {
+  execute(
+    store,
+    "INSERT INTO plan_rules (plan_id, origin, body, operation_id) VALUES (?, ?, ?, ?)",
+    planId,
+    origin,
+    canonical(rules),
+    operationId
+  );
+}
+function patchRules(store, operationId, planId, patch) {
+  requireWellFormed(
+    !one(store, "SELECT 1 FROM plan_revisions WHERE plan_id = ?", planId),
+    `Name the plan revision: ${planId}@<revision>`
+  );
+  const stored = storedRules(store, planId);
+  requireCondition(
+    stored,
+    `Plan ${planId} has no revision and no derived rules. There is nothing to edit.`,
+    `Run checkmate test ${planId} to derive the rules from the sources.`
+  );
+  requireWellFormed(
+    !patch.tests && !patch.gaps,
+    `Plan ${planId} has no revision. A patch of its derived rules has only "requirements".`
+  );
+  const rules = patchList(stored.rules, patch.requirements, "rule", (item, id2, change) => {
+    requireWellFormed(!change.metadata, `A derived rule has no metadata: ${id2}`);
+    return item ? { ...item, ...change } : { id: id2, ...newFields(`rule ${id2}`, change, ["text", "source"]) };
+  });
+  requireWellFormed(rules.length, `Keep at least one rule of plan ${planId}.`);
+  saveRules(store, operationId, planId, rules, "corrected");
+  return {
+    reply: {
+      status: "completed",
+      subject: planId,
+      reasons: [],
+      data: { planId, edit: "rules", origin: "corrected", rules: rules.map((rule) => rule.id) }
+    },
+    subjects: [`plan:${planId}`, "inbox"]
+  };
+}
+function rulesLine(store, planId) {
+  const { rules, origin } = planRules(store, planId);
+  if (origin !== "derived" && origin !== "corrected") return null;
+  return `${rules.length} rules were derived from the sources${origin === "corrected" ? " and corrected" : ""}. Correct them with checkmate plan edit ${planId} --patch.`;
+}
+
 // plugin/src/plans.ts
 var decisionKinds = ["clarify", "accept_assumption", "defer"];
 var partialModes = ["wait_for_resolution", "ready_only"];
@@ -10463,6 +10596,8 @@ function patchPlan(store, actor, input) {
     store,
     { actor, command: "plan edit", subject: input.reference, input },
     (operationId, _at, writer) => {
+      if (!input.reference.includes("@"))
+        return patchRules(store, operationId, input.reference, validate("plan-patch", input.patch));
       const base = editableRevision(store, input.reference, input.expectSha256);
       const patch = validate("plan-patch", input.patch);
       const candidate = patchedCandidate(base.plan, patch);
@@ -11444,8 +11579,8 @@ function diffPlan(store, input) {
 }
 
 // plugin/src/runs.ts
-import { mkdirSync as mkdirSync2, readFileSync as readFileSync3, realpathSync as realpathSync3, rmSync as rmSync2, statSync as statSync3 } from "node:fs";
-import { basename, extname, isAbsolute as isAbsolute2, join as join4, resolve as resolve2, sep as sep2 } from "node:path";
+import { mkdirSync as mkdirSync2, readFileSync as readFileSync4, realpathSync as realpathSync4, rmSync as rmSync2, statSync as statSync4 } from "node:fs";
+import { basename, extname, isAbsolute as isAbsolute2, join as join4, resolve as resolve3, sep as sep3 } from "node:path";
 import { randomUUID } from "node:crypto";
 var maxEvidenceBytes2 = 32 * 1024 * 1024;
 var assertionResults = ["passed", "failed", "inconclusive", "not_checked"];
@@ -11691,18 +11826,18 @@ function readEvidence(store, runId, spec) {
   let root;
   let real;
   try {
-    root = realpathSync3(join4(store.workspace, directory2));
+    root = realpathSync4(join4(store.workspace, directory2));
   } catch {
     throw new Error(`Evidence directory ${directory2} does not exist`);
   }
-  const path = resolve2(store.workspace, name);
+  const path = resolve3(store.workspace, name);
   try {
-    real = realpathSync3(path);
+    real = realpathSync4(path);
   } catch {
     throw new Refusal("malformed", `Evidence file not found: ${name}`, `Save the file in ${directory2} first.`);
   }
-  requireWellFormed(real.startsWith(root + sep2), `Evidence file must be inside ${directory2}: ${name}`);
-  const stats = statSync3(real);
+  requireWellFormed(real.startsWith(root + sep3), `Evidence file must be inside ${directory2}: ${name}`);
+  const stats = statSync4(real);
   requireWellFormed(stats.isFile(), `Evidence must be a file: ${name}`);
   requireWellFormed(stats.size <= maxEvidenceBytes2, `Evidence file exceeds 32 MiB: ${name}`);
   const extension = extname(name).toLowerCase();
@@ -11711,7 +11846,7 @@ function readEvidence(store, runId, spec) {
     name: basename(name),
     kind: match ? match[2] : kindByExtension[extension] ?? "observation",
     mediaType: mediaTypes[extension] ?? "application/octet-stream",
-    bytes: readFileSync3(real)
+    bytes: readFileSync4(real)
   };
 }
 function storeEvidence(store, runId, testId, assertionId, files2, operationId) {
@@ -12304,11 +12439,9 @@ function latestRevision(store, planId) {
 }
 function charterOf(store, planId, scope, change, knownState = null) {
   const { request, target } = planRequest(store, planId);
-  const latest = latestRevision(store, planId);
-  const requirements = latest?.plan.requirements ?? request.requirements ?? [];
   return {
     goal: request.objective,
-    requirements: requirements.map(({ id: id2, text }) => ({ id: id2, text })),
+    requirements: planRules(store, planId).rules.map(({ id: id2, text }) => ({ id: id2, text })),
     sources: request.context?.sources ?? [],
     instructions: request.context?.instructions ?? null,
     capabilities: target.profile.capabilities,
@@ -12486,7 +12619,8 @@ function explorationEvents(store, explorationId) {
 }
 function exploration(store, explorationId) {
   const row3 = explorationRow(store, explorationId);
-  return { ...row3, charter: JSON.parse(row3.charter) };
+  const charter = JSON.parse(row3.charter);
+  return { ...row3, charter: { ...charter, requirements: explorationRules(store, explorationId) } };
 }
 
 // plugin/src/levels.ts
@@ -13130,6 +13264,30 @@ function recorderPrompt(build, record, saved = [], answer) {
   ].join("\n");
   return answer ? withoutName(text) : text;
 }
+var ruleObject = '{"id": "R1", "text": "<the rule, in one sentence>", "source": "<the source file>#<the place in it>"}';
+function rulesPrompt(goal, sources, answer) {
+  const text = [
+    "Write the rules of the change that the sources below describe. Do not test.",
+    "A rule is one sentence that a tester can check on the application: an action or an input, and the correct result. Write one rule for each requirement, limit, and case that the sources state. Do not add a rule that the sources do not state.",
+    "Number the rules R1, R2, and so on, in the order of the sources. The place is a heading or a line of the source file.",
+    `${replyText("rules", answer)} Each rule: ${ruleObject}`,
+    "",
+    `Goal: ${goal}`,
+    ...sources.flatMap((source) => [
+      "",
+      `Source ${source.name}:`,
+      source.text ?? "(The record cannot read this source. Do not cite it.)"
+    ])
+  ].join("\n");
+  return answer ? withoutName(text) : text;
+}
+function rulesRepairPrompt(refusals, answer) {
+  return [
+    answer ? "These rules of your file were refused:" : "Checkmate refused these rules of your reply:",
+    ...refusals.map((refusal) => `- ${refusal}`),
+    replyText("all the rules again, corrected", answer)
+  ].join("\n");
+}
 function followBrief(questions, workFolder2, seconds) {
   return [
     "The owner of the product answered these questions:",
@@ -13286,10 +13444,10 @@ function verifierBrief(items, entries, operations, dataPrefix, answer) {
 
 // plugin/src/recorder.ts
 import { randomUUID as randomUUID2 } from "node:crypto";
-import { existsSync as existsSync2, mkdirSync as mkdirSync4, readFileSync as readFileSync4, rmSync as rmSync3, writeFileSync as writeFileSync2 } from "node:fs";
+import { existsSync as existsSync2, mkdirSync as mkdirSync4, readFileSync as readFileSync5, rmSync as rmSync3, writeFileSync as writeFileSync2 } from "node:fs";
 import { join as join6 } from "node:path";
 var defaultRecorderTimeout = 600;
-var reservedExplorers = ["merge", "verify"];
+var reservedExplorers = ["rules", "merge", "verify"];
 function explorerActor(explorer) {
   return `qa:${explorer}`;
 }
@@ -13354,7 +13512,7 @@ function running(pid) {
 }
 function lockHolder(path) {
   try {
-    return Number(readFileSync4(path, "utf8"));
+    return Number(readFileSync5(path, "utf8"));
   } catch {
     return void 0;
   }
@@ -13395,7 +13553,7 @@ function recordTask(store, explorationId, explorer, answer) {
 }
 function readText(path) {
   try {
-    return readFileSync4(path, "utf8");
+    return readFileSync5(path, "utf8");
   } catch {
     return void 0;
   }
@@ -13589,7 +13747,7 @@ function recordLocked(store, operation, input, plan, env, cwd, started) {
 
 // plugin/src/change.ts
 import { spawnSync as spawnSync3 } from "node:child_process";
-import { relative as relative2, resolve as resolve3 } from "node:path";
+import { relative as relative2, resolve as resolve4 } from "node:path";
 var refHint = "Give --since a commit, a branch, or a tag of the repository. Give --repo <dir> when the code is in a subfolder. Or give the changed files with --scope.";
 function git(cwd, args) {
   const out = spawnSync3("git", args, { cwd, encoding: "utf8" });
@@ -13608,7 +13766,7 @@ function changeOf(workspace, input) {
     "Give the base of the change with --since."
   );
   if (!input.since) return null;
-  const repository = resolve3(workspace, input.repo ?? ".");
+  const repository = resolve4(workspace, input.repo ?? ".");
   const head = commit(repository, "HEAD");
   const until = input.until ?? git(repository, ["rev-parse", "--short", "HEAD"]);
   const range = rangeArgs(input.since, input.until);
@@ -13624,7 +13782,7 @@ function changeOf(workspace, input) {
 }
 function changedFiles(workspace, change) {
   const diff = spawnSync3("git", ["diff", "--name-only", ...change.range, "--"], {
-    cwd: resolve3(workspace, change.repo),
+    cwd: resolve4(workspace, change.repo),
     encoding: "utf8"
   });
   if (diff.status !== 0)
@@ -13646,7 +13804,7 @@ function upstreamBase(repository) {
 // plugin/src/explorers.ts
 import { spawn as spawn2 } from "node:child_process";
 import { randomUUID as randomUUID3 } from "node:crypto";
-import { existsSync as existsSync3, mkdirSync as mkdirSync5, openSync, readdirSync as readdirSync2, readFileSync as readFileSync5, renameSync, rmdirSync as rmdirSync2, rmSync as rmSync4 } from "node:fs";
+import { existsSync as existsSync3, mkdirSync as mkdirSync5, openSync, readdirSync as readdirSync2, readFileSync as readFileSync6, renameSync, rmdirSync as rmdirSync2, rmSync as rmSync4 } from "node:fs";
 import { join as join7 } from "node:path";
 var defaultExplorerTimeout = 1800;
 var pollMilliseconds = 500;
@@ -13731,7 +13889,7 @@ function keepWorkFiles(store, actor, explorationId, explorer, phase) {
   const folder = join7(store.workspace, workFolder(explorationId, explorer));
   const files2 = keptFiles.flatMap((name) => {
     const path = join7(folder, name);
-    return existsSync3(path) ? [{ name, bytes: readFileSync5(path) }] : [];
+    return existsSync3(path) ? [{ name, bytes: readFileSync6(path) }] : [];
   });
   if (!files2.length) return;
   const input = { explorer, phase, files: files2.map((file) => file.name) };
@@ -14005,6 +14163,50 @@ function mergeReports(store, actor, explorationId, launch, env, after = 0) {
     }
   });
 }
+function deriveRules(store, actor, explorationId, launch, env) {
+  const opened = exploration(store, explorationId);
+  if (!rulesNeeded(store, opened.plan_id)) return;
+  const sources = ruleSources(store, opened.plan_id);
+  const names2 = sources.map((source) => source.name);
+  const session = randomUUID3();
+  const call = (args, prompt) => callClaude(
+    requireClaude(env),
+    childArgs(launch.context, args),
+    prompt,
+    store.workspace,
+    childEnv(env),
+    defaultRecorderTimeout
+  );
+  const calls = [call(["--session-id", session], rulesPrompt(opened.charter.goal, sources))];
+  const first = checkedRules(replyArray(calls[0].result), names2);
+  let checked = first;
+  if (!calls[0].failure && first.refusals.length) {
+    calls.push(call(["--resume", session], rulesRepairPrompt(first.refusals)));
+    const again = checkedRules(replyArray(calls[1].result), names2);
+    if (again.rules.length) checked = again;
+  }
+  const failure = calls.find((item2) => item2.failure)?.failure;
+  const item = {
+    step: "rules",
+    explorer: null,
+    status: checked.rules.length ? "completed" : failure?.[0] ?? "operational_error",
+    detail: {
+      session,
+      calls: calls.length,
+      rules: checked.rules.length,
+      refused: checked.refusals.length,
+      ...checked.rules.length ? {} : { reason: failure?.[1] ?? checked.refusals.join(" ") },
+      ...calls.some(authenticationFailed) ? { hint: authenticationHint } : {},
+      ...costOf(calls)
+    }
+  };
+  write(store, { actor, command: "explore rules", subject: explorationId, input: item }, (operationId, at) => {
+    if (checked.rules.length && rulesNeeded(store, opened.plan_id))
+      saveRules(store, operationId, opened.plan_id, checked.rules, "derived");
+    addEvent(store, explorationId, item, operationId, at);
+    return { reply: completed(explorationId), subjects: [`exploration:${explorationId}`, `plan:${opened.plan_id}`] };
+  });
+}
 function verifiedEntries(reply, ids2) {
   return (reply ?? []).flatMap((raw) => {
     const item = raw;
@@ -14088,6 +14290,7 @@ async function driveExploration(workspace, explorationId, env) {
     const launch = startOf(explorationEvents(store, explorationId));
     if (!launch) throw new Refusal("prohibited", `Exploration ${explorationId} has no start.`);
     if (launch.explorers) {
+      deriveRules(store, actor, explorationId, launch, env);
       const ended = await launchExplorers(store, actor, explorationId, launch, env);
       recordExplorers(
         store,
@@ -14901,7 +15104,7 @@ function foundEntries(store, planId, explorationId, limit, claims, questions) {
 }
 var overlaid = ["needs_plan", "ready_to_run", "nothing_to_run", "needs_retest", "passed", "accepted"];
 function planStatus(store, planId) {
-  const status = loopStatus(store, planId);
+  const status = { ...loopStatus(store, planId), rules: rulesLine(store, planId) };
   const follows = status.explorations.flatMap((item) => {
     const count = followCount(store, item.explorationId);
     return count ? [
@@ -16476,7 +16679,7 @@ function exportExploration(store, explorationId, format2) {
 // plugin/src/ui/server.ts
 import { createServer } from "node:http";
 import { randomBytes as randomBytes2, timingSafeEqual } from "node:crypto";
-import { existsSync as existsSync5, readFileSync as readFileSync6 } from "node:fs";
+import { existsSync as existsSync5, readFileSync as readFileSync7 } from "node:fs";
 import { fileURLToPath as fileURLToPath2 } from "node:url";
 
 // plugin/src/ui/html.ts
@@ -21029,12 +21232,12 @@ function directory(candidates, file) {
 function assets() {
   const files2 = directory(["./assets/", "../src/ui/assets/", "../plugin/src/ui/assets/"], "style.css");
   const fonts = `${files2}fonts/`;
-  const read = (name) => readFileSync6(files2 + name);
+  const read = (name) => readFileSync7(files2 + name);
   return {
     "/assets/style.css": { type: "text/css; charset=utf-8", body: read("style.css") },
     "/assets/client.js": { type: "text/javascript; charset=utf-8", body: read("client.js") },
     "/assets/favicon.svg": { type: "image/svg+xml", body: read("favicon.svg") },
-    font: (name) => readFileSync6(`${fonts}${name}.woff2`)
+    font: (name) => readFileSync7(`${fonts}${name}.woff2`)
   };
 }
 function securityHeaders() {
@@ -21069,7 +21272,7 @@ function cookie(name, value2, maxAge = 60 * 60 * 24 * 365) {
   return `${name}=${encodeURIComponent(value2)}; Path=/; Max-Age=${maxAge}; HttpOnly; SameSite=Strict`;
 }
 function readForm(req) {
-  return new Promise((resolve6, reject) => {
+  return new Promise((resolve7, reject) => {
     const chunks = [];
     let length = 0;
     req.on("data", (chunk) => {
@@ -21078,7 +21281,7 @@ function readForm(req) {
     });
     req.on(
       "end",
-      () => resolve6(length > maxForm ? null : new URLSearchParams(Buffer.concat(chunks).toString("utf8")))
+      () => resolve7(length > maxForm ? null : new URLSearchParams(Buffer.concat(chunks).toString("utf8")))
     );
     req.on("error", reject);
   });
@@ -21925,9 +22128,9 @@ data: ${matched.join(",") || "*"}
   const server = createServer((req, res) => {
     void handle(req, res);
   });
-  await new Promise((resolve6, reject) => {
+  await new Promise((resolve7, reject) => {
     server.once("error", reject);
-    server.listen(options2.port ?? 0, "127.0.0.1", () => resolve6());
+    server.listen(options2.port ?? 0, "127.0.0.1", () => resolve7());
   });
   const address = server.address();
   port = typeof address === "object" && address ? address.port : 0;
@@ -21940,8 +22143,8 @@ data: ${matched.join(",") || "*"}
       clearInterval(heartbeat);
       for (const client of clients) client.res.end();
       clients.clear();
-      await new Promise((resolve6) => {
-        server.close(() => resolve6());
+      await new Promise((resolve7) => {
+        server.close(() => resolve7());
         server.closeAllConnections();
       });
       closeStore(watch);
@@ -21951,11 +22154,12 @@ data: ${matched.join(",") || "*"}
 }
 
 // plugin/src/agents.ts
-import { mkdirSync as mkdirSync6, readFileSync as readFileSync7, rmSync as rmSync5, writeFileSync as writeFileSync3 } from "node:fs";
+import { mkdirSync as mkdirSync6, readFileSync as readFileSync8, rmSync as rmSync5, writeFileSync as writeFileSync3 } from "node:fs";
 import { dirname, join as join11 } from "node:path";
 var testerAgent = "checkmate:tester";
 var clerkAgent = "checkmate:clerk";
-var doneSteps = ["study", "test", "record", "follow", "merge", "verify"];
+var doneSteps = ["study", "test", "record", "follow", "rules", "merge", "verify"];
+var clerkNames = ["rules", "merge", "verify"];
 var isStep = (item) => item.step !== "bind" && item.step !== "started";
 var ownerOf = (item) => item.explorer ?? item.detail.name;
 function agentOf(events, name) {
@@ -22071,6 +22275,28 @@ ${followEntriesText(answer)}`,
 Your shell does not keep settings between commands. Start each shell command with export PLAYWRIGHT_CLI_SESSION=qa-${explorationId}-${explorer}; so that your browser is your own.`
   );
 }
+function rulesAction(store, explorationId, round, phase) {
+  const folder = `${workFolder(explorationId)}/rules`;
+  const answer = `${folder}/answer.json`;
+  const own = phase.events.filter((item) => ownerOf(item) === "rules");
+  const action = (file, text) => ({
+    action: round === "rules" ? "start" : "message",
+    explorer: null,
+    name: "rules",
+    step: "rules",
+    to: round === "rules" ? clerkAgent : agentOf(own, "rules"),
+    task: `${folder}/${file}`,
+    answer,
+    text,
+    extra: { round }
+  });
+  if (round === "repair") {
+    const last = own.findLast((item) => item.step === "rules-round");
+    return action("task-repair.md", rulesRepairPrompt(last.detail.refusals, answer));
+  }
+  const opened = exploration(store, explorationId);
+  return action("task.md", rulesPrompt(opened.charter.goal, ruleSources(store, opened.plan_id), answer));
+}
 function mergeAction(store, explorationId, round, phase) {
   const folder = `${workFolder(explorationId)}/merge`;
   const answer = `${folder}/answer.json`;
@@ -22122,14 +22348,14 @@ function verifyAction(store, explorationId, round, phase) {
   });
 }
 function promptOf2(action) {
-  return action.name === "merge" ? `Read ${action.task} and write your answer to ${action.answer}.` : `Read ${action.task} and do what it says.`;
+  return action.name === "merge" || action.name === "rules" ? `Read ${action.task} and write your answer to ${action.answer}.` : `Read ${action.task} and do what it says.`;
 }
 function descriptionOf(explorationId, action) {
   return `${explorationId} ${action.name} ${action.step}`;
 }
 var replyLimit = "Keep all details in your files. Reply in three lines at most: what you did, the most important finding or blocker, and the number of questions or defects.";
 function replyLineOf(name, step) {
-  return name === "merge" || name === "verify" ? `${name} done` : `tester ${name} ${step} done`;
+  return clerkNames.includes(name) ? `${name} done` : `tester ${name} ${step} done`;
 }
 function lineOf(explorationId, action) {
   const description = action.action === "start" ? ` description="${descriptionOf(explorationId, action)}"` : "";
@@ -22203,8 +22429,10 @@ End your reply with this line: ${replyLineOf(action.name, action.step)}`
     }
   );
 }
-function addOutcome(store, actor, explorationId, item) {
+function addOutcome(store, actor, explorationId, item, also = () => {
+}) {
   return write(store, { actor, command: "explore done", subject: explorationId, input: item }, (operationId, at) => {
+    also(operationId);
     addEvent(store, explorationId, item, operationId, at);
     return {
       reply: completed(explorationId, {
@@ -22320,6 +22548,14 @@ function nextActions(store, actor, explorationId) {
   clearPause(store, actor, explorationId, events);
   const phase = phaseOf2(events);
   if (!phase) return answerNext(store, actor, explorationId, [], "finished");
+  if (!phase.follow) {
+    const owned = phase.events.filter((item) => ownerOf(item) === "rules" && item.explorer === null);
+    const planId = explorationRow(store, explorationId).plan_id;
+    const rules = stageDue(owned, "rules", () => launch.explorers > 0 && rulesNeeded(store, planId));
+    if (rules === "running") return answerNext(store, actor, explorationId, [], "wait");
+    if (rules !== "settled")
+      return answerNext(store, actor, explorationId, [rulesAction(store, explorationId, rules, phase)], "wait");
+  }
   const testers = phase.follow ? followTesters(events, launch).flatMap((item) => item.skipped ? [] : [item.explorer]) : explorerNames(launch.explorers);
   const steps = testers.map((explorer) => ({
     explorer,
@@ -22357,10 +22593,46 @@ function nextActions(store, actor, explorationId) {
 }
 function readText2(store, path) {
   try {
-    return readFileSync7(join11(store.workspace, path), "utf8");
+    return readFileSync8(join11(store.workspace, path), "utf8");
   } catch {
     return void 0;
   }
+}
+function rulesDone(store, actor, explorationId, own, base, failed) {
+  const round = own.at(-1).detail.round;
+  const plan = explorationRow(store, explorationId).plan_id;
+  const names2 = ruleSources(store, plan).map((source) => source.name);
+  const answer = `${workFolder(explorationId)}/rules/answer.json`;
+  const checked = failed ? { rules: [], refusals: [] } : checkedRules(replyArray(readText2(store, answer)), names2);
+  if (!failed && round === "rules" && checked.refusals.length)
+    return addOutcome(store, actor, explorationId, {
+      step: "rules-round",
+      explorer: null,
+      status: "started",
+      detail: { name: "rules", ...base, round: "repair", refusals: checked.refusals, rules: checked.rules }
+    });
+  const earlier = own.findLast((item) => item.step === "rules-round")?.detail.rules;
+  const rules = checked.rules.length ? checked.rules : earlier ?? [];
+  return addOutcome(
+    store,
+    actor,
+    explorationId,
+    {
+      step: "rules",
+      explorer: null,
+      status: rules.length ? "completed" : "operational_error",
+      detail: {
+        name: "rules",
+        ...base,
+        rules: rules.length,
+        refused: checked.refusals.length,
+        ...rules.length ? {} : { reason: failed ?? checked.refusals.join(" ") }
+      }
+    },
+    (operationId) => {
+      if (rules.length && rulesNeeded(store, plan)) saveRules(store, operationId, plan, rules, "derived");
+    }
+  );
 }
 function mergeDone(store, actor, explorationId, own, base, failed, after) {
   const round = own.at(-1).detail.round;
@@ -22440,7 +22712,7 @@ function recordDone(store, actor, explorationId, explorer, own, base, failed, ph
 }
 function checkReplyLine(explorationId, name, step, given) {
   const line = given?.trim();
-  const match = line ? /^(?:tester (\S+) (\S+)|(merge|verify)) done$/.exec(line) : null;
+  const match = line ? /^(?:tester (\S+) (\S+)|(rules|merge|verify)) done$/.exec(line) : null;
   if (!match) return;
   const [named, namedStep] = match[3] ? [match[3], match[3]] : [match[1], match[2]];
   requireCondition(
@@ -22478,7 +22750,7 @@ function stepDone(store, actor, input) {
   const last = own.at(-1);
   checkReplyLine(explorationId, name, step, input.replyLine);
   if (input.agent) checkBinding(events, explorationId, name, input.agent);
-  const tester = name !== "merge" && name !== "verify";
+  const tester = !clerkNames.includes(name);
   if (tester && input.agent && last && last.step !== "action" && lastStep(own, name) === step)
     return addOutcome(store, actor, explorationId, {
       step: "bind",
@@ -22492,13 +22764,14 @@ function stepDone(store, actor, input) {
     `No ${step} step of ${name} runs in exploration ${explorationId}.`,
     running3.length ? `The steps that run: ${running3.join(", ")}. Correct the name or the step, and run explore done again.` : `Run checkmate explore next ${explorationId}, and carry out its actions.`
   );
-  const agent = input.agent ?? agentOf(name === "merge" || name === "verify" ? own : events, name);
+  const agent = input.agent ?? agentOf(tester ? events : own, name);
   requireWellFormed(agent || failed, "Give --agent with the agent ID that the Agent tool returned.");
   const base = {
     ...agent ? { agent } : {},
     activity: input.activity ?? (failed ? `${step} failed: ${failed}` : `${step} ended`),
     ...failed ? { reason: failed } : {}
   };
+  if (name === "rules") return rulesDone(store, actor, explorationId, own, base, failed);
   if (name === "merge") return mergeDone(store, actor, explorationId, own, base, failed, phase.follow?.after ?? 0);
   if (name === "verify") return verifyDone(store, actor, explorationId, own, base, failed);
   if (step === "record") return recordDone(store, actor, explorationId, name, own, base, failed, phase);
@@ -22520,7 +22793,7 @@ function stepDone(store, actor, input) {
 
 // plugin/src/modes.ts
 import { spawnSync as spawnSync4 } from "node:child_process";
-import { resolve as resolve4 } from "node:path";
+import { resolve as resolve5 } from "node:path";
 var testModes = ["exploratory", "regression", "auto"];
 var storedTestsNone = "none, the testers retest the earlier findings";
 function hasRequest(store, planId) {
@@ -22609,7 +22882,7 @@ function runTest(store, actor, given, env) {
   const input = { ...given, build };
   if (!hasRequest(store, input.planId)) openRequest(store, actor, input, env, assumed);
   const mode = input.mode && input.mode !== "auto" ? input.mode : autoMode(store, input.planId);
-  const base = input.since ? void 0 : upstreamBase(resolve4(store.workspace, input.repo ?? "."));
+  const base = input.since ? void 0 : upstreamBase(resolve5(store.workspace, input.repo ?? "."));
   if (!input.since)
     assumed.push(
       base ? `since=${base} (the default branch of origin, behind the checked-out commit)` : "since=none (no diff is given: no --since, and no default branch of origin behind the checked-out commit)"
@@ -22795,8 +23068,8 @@ function harvestExploration(store, actor, input) {
 }
 
 // plugin/src/cli.ts
-import { mkdirSync as mkdirSync7, readFileSync as readFileSync8, writeFileSync as writeFileSync4 } from "node:fs";
-import { dirname as dirname2, resolve as resolve5 } from "node:path";
+import { mkdirSync as mkdirSync7, readFileSync as readFileSync9, writeFileSync as writeFileSync4 } from "node:fs";
+import { dirname as dirname2, resolve as resolve6 } from "node:path";
 import { constants as constants2 } from "node:sqlite";
 var testFields2 = [
   "title",
@@ -23026,6 +23299,7 @@ var commands = {
         },
         lines: [
           ...status.why.map((line) => ["why", line]),
+          ...status.rules ? [["rules", status.rules]] : [],
           ...status.next.map((line) => ["next", line]),
           ...status.openRuns.map((run2) => [
             run2.runId,
@@ -24374,7 +24648,7 @@ function printPlan(reply) {
   };
 }
 function writeOutput(store, out, content) {
-  const path = resolve5(store.workspace, out);
+  const path = resolve6(store.workspace, out);
   mkdirSync7(dirname2(path), { recursive: true });
   try {
     writeFileSync4(path, content, { flag: "wx" });
@@ -24534,7 +24808,7 @@ function commandHelp(argv) {
   return { ...refused("invalid_request", "checkmate", unknownCommand(words4)), data: { usage: [] } };
 }
 function version() {
-  return JSON.parse(readFileSync8(new URL("../.claude-plugin/plugin.json", import.meta.url), "utf8")).version;
+  return JSON.parse(readFileSync9(new URL("../.claude-plugin/plugin.json", import.meta.url), "utf8")).version;
 }
 function readJson(text) {
   requireWellFormed(
@@ -24574,7 +24848,7 @@ function run(argv, io) {
   }
   const command = commands[name];
   const subject = command.positionals.length && name !== "query" ? String(args[command.positionals[0]]) : name;
-  const workspace = resolve5(io.cwd, value(args, "workspace") ?? ".");
+  const workspace = resolve6(io.cwd, value(args, "workspace") ?? ".");
   let store;
   try {
     store = command.readOnly ? openReadOnlyStore(workspace) : openStore(workspace);
@@ -24616,7 +24890,7 @@ function uiOptions(tokens, cwd) {
     port === void 0 || /^[0-9]+$/.test(values.port) && port <= 65535,
     `Invalid --port: ${values.port}. Use 0 to 65535.`
   );
-  return { workspace: resolve5(cwd, values.workspace ?? "."), port };
+  return { workspace: resolve6(cwd, values.workspace ?? "."), port };
 }
 async function serveUi(tokens) {
   const json = tokens.includes("--json");
@@ -24646,7 +24920,7 @@ async function main(argv) {
   const outcome = run(argv, {
     cwd: process.cwd(),
     env: process.env,
-    stdin: () => readFileSync8(0, "utf8")
+    stdin: () => readFileSync9(0, "utf8")
   });
   process.stdout.write(outcome.output + "\n");
   process.exitCode = outcome.code;

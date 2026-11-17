@@ -39,6 +39,7 @@ import {
 } from './runs.ts'
 import type { RunRow } from './runs.ts'
 import { findInstance, instanceList } from './targets.ts'
+import { rulesLine } from './rules.ts'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 
@@ -639,7 +640,7 @@ function foundEntries(
 const overlaid: LoopState[] = ['needs_plan', 'ready_to_run', 'nothing_to_run', 'needs_retest', 'passed', 'accepted']
 
 export function planStatus(store: Store, planId: string) {
-	const status = loopStatus(store, planId)
+	const status = { ...loopStatus(store, planId), rules: rulesLine(store, planId) }
 	const follows = status.explorations.flatMap((item) => {
 		const count = followCount(store, item.explorationId)
 		return count

@@ -5,6 +5,7 @@ import { all, canonical, completed, execute, one, write } from './store.ts'
 import { requireChoice, requireIdentifier, requireText, unusedId } from './contracts.ts'
 import { planRequest, planTools } from './plans.ts'
 import { runInstance } from './targets.ts'
+import { explorationRules, planRules } from './rules.ts'
 import type { Claim } from './journal.ts'
 import { explorationRow, journal, planClaims, planQuestions } from './journal.ts'
 import { mkdirSync, writeFileSync } from 'node:fs'
@@ -48,11 +49,9 @@ export function charterOf(
 	knownState: string | null = null
 ): Charter {
 	const { request, target } = planRequest(store, planId)
-	const latest = latestRevision(store, planId)
-	const requirements = latest?.plan.requirements ?? request.requirements ?? []
 	return {
 		goal: request.objective,
-		requirements: requirements.map(({ id, text }) => ({ id, text })),
+		requirements: planRules(store, planId).rules.map(({ id, text }) => ({ id, text })),
 		sources: request.context?.sources ?? [],
 		instructions: request.context?.instructions ?? null,
 		capabilities: target.profile.capabilities,
@@ -277,5 +276,6 @@ export function explorationEvents(store: Store, explorationId: string): Explorat
 
 export function exploration(store: Store, explorationId: string) {
 	const row = explorationRow(store, explorationId)
-	return { ...row, charter: JSON.parse(row.charter) as Charter }
+	const charter = JSON.parse(row.charter) as Charter
+	return { ...row, charter: { ...charter, requirements: explorationRules(store, explorationId) } }
 }

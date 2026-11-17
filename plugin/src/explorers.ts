@@ -27,9 +27,12 @@ import {
 	mergeAgainPrompt,
 	mergerPrompt,
 	repairPrompt,
+	rulesPrompt,
+	rulesRepairPrompt,
 	verifierBrief,
 	verifierRepairPrompt,
 } from './briefs.ts'
+import { checkedRules, ruleSources, rulesNeeded, saveRules } from './rules.ts'
 import { findInstance, targetRevision } from './targets.ts'
 import { changeOf, changedFiles } from './change.ts'
 import {
@@ -482,6 +485,52 @@ function mergeReports(store: Store, actor: string, explorationId: string, launch
 	})
 }
 
+function deriveRules(store: Store, actor: string, explorationId: string, launch: Launch, env: Env) {
+	const opened = exploration(store, explorationId)
+	if (!rulesNeeded(store, opened.plan_id)) return
+	const sources = ruleSources(store, opened.plan_id)
+	const names = sources.map((source) => source.name)
+	const session = randomUUID()
+	const call = (args: string[], prompt: string) =>
+		callClaude(
+			requireClaude(env),
+			childArgs(launch.context, args),
+			prompt,
+			store.workspace,
+			childEnv(env),
+			defaultRecorderTimeout
+		)
+	const calls = [call(['--session-id', session], rulesPrompt(opened.charter.goal, sources))]
+	const first = checkedRules(replyArray(calls[0].result), names)
+	let checked = first
+	if (!calls[0].failure && first.refusals.length) {
+		calls.push(call(['--resume', session], rulesRepairPrompt(first.refusals)))
+		const again = checkedRules(replyArray(calls[1].result), names)
+		if (again.rules.length) checked = again
+	}
+	const failure = calls.find((item) => item.failure)?.failure
+	const item = {
+		step: 'rules',
+		explorer: null,
+		status: checked.rules.length ? 'completed' : (failure?.[0] ?? 'operational_error'),
+		detail: {
+			session,
+			calls: calls.length,
+			rules: checked.rules.length,
+			refused: checked.refusals.length,
+			...(checked.rules.length ? {} : { reason: failure?.[1] ?? checked.refusals.join(' ') }),
+			...(calls.some(authenticationFailed) ? { hint: authenticationHint } : {}),
+			...costOf(calls),
+		},
+	}
+	write(store, { actor, command: 'explore rules', subject: explorationId, input: item }, (operationId, at) => {
+		if (checked.rules.length && rulesNeeded(store, opened.plan_id))
+			saveRules(store, operationId, opened.plan_id, checked.rules, 'derived')
+		addEvent(store, explorationId, item, operationId, at)
+		return { reply: completed(explorationId), subjects: [`exploration:${explorationId}`, `plan:${opened.plan_id}`] }
+	})
+}
+
 export function verifiedEntries(reply: unknown[] | undefined, ids: Set<string>) {
 	return (reply ?? []).flatMap((raw) => {
 		const item = raw as { id?: unknown; seen?: unknown; saw?: unknown } | null
@@ -577,6 +626,7 @@ export async function driveExploration(workspace: string, explorationId: string,
 		const launch = startOf(explorationEvents(store, explorationId))
 		if (!launch) throw new Refusal('prohibited', `Exploration ${explorationId} has no start.`)
 		if (launch.explorers) {
+			deriveRules(store, actor, explorationId, launch, env)
 			const ended = await launchExplorers(store, actor, explorationId, launch, env)
 			recordExplorers(
 				store,

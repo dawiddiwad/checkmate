@@ -1,6 +1,7 @@
 import type { Gap, Plan, PlanCandidate, PlanDelta, PlanPatch, PlanRequest, Profile, Result } from './types.ts'
 import type { Change, Reply, Store } from './store.ts'
 import { answerQuestion } from './journal.ts'
+import { patchRules } from './rules.ts'
 import { operationAllowed } from './targets.ts'
 import { all, canonical, completed, digest, execute, one, ulid, write } from './store.ts'
 import type { PlanDraft, Test } from './contracts.ts'
@@ -259,6 +260,8 @@ export function patchPlan(
 		store,
 		{ actor, command: 'plan edit', subject: input.reference, input },
 		(operationId, _at, writer) => {
+			if (!input.reference.includes('@'))
+				return patchRules(store, operationId, input.reference, validate('plan-patch', input.patch))
 			const base = editableRevision(store, input.reference, input.expectSha256)
 			const patch = validate('plan-patch', input.patch)
 			const candidate = patchedCandidate(base.plan, patch)
@@ -545,7 +548,7 @@ function patchedCandidate(plan: Plan, patch: PlanPatch): Required<PlanCandidate>
 	}
 }
 
-function patchList<T extends { id: string }, C extends object>(
+export function patchList<T extends { id: string }, C extends object>(
 	items: T[],
 	changes: Record<string, C | null> | undefined,
 	name: string,
@@ -563,7 +566,7 @@ function patchList<T extends { id: string }, C extends object>(
 	return result
 }
 
-function newFields<C extends object>(name: string, change: C, required: string[], defaults: Partial<C> = {}) {
+export function newFields<C extends object>(name: string, change: C, required: string[], defaults: Partial<C> = {}) {
 	const missing = required.filter((field) => !(field in change))
 	requireWellFormed(!missing.length, `New ${name} needs ${missing.join(', ')}`)
 	return { ...defaults, ...change } as Required<C>

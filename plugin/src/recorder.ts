@@ -28,7 +28,7 @@ export type RecordInput = {
 }
 
 export const defaultRecorderTimeout = 600
-const reservedExplorers = ['merge', 'verify']
+const reservedExplorers = ['rules', 'merge', 'verify']
 
 export function explorerActor(explorer: string) {
 	return `qa:${explorer}`

@@ -13,6 +13,10 @@ const after = (flag) => (args.includes(flag) ? args[args.indexOf(flag) + 1] : un
 const resumed = after('--resume')
 const role = args.includes('--fork-session')
 	? 'recorder'
+	: /^Write the rules /.test(prompt)
+		? 'rules'
+	: /^Checkmate refused these rules /.test(prompt)
+		? 'rules-repair'
 	: resumed && /^Now test /.test(prompt)
 		? 'tester'
 		: resumed && /^The owner of the product answered /.test(prompt)
@@ -59,7 +63,10 @@ else {
 `
 
 export type FakeReplies = Partial<
-	Record<'recorder' | 'repair' | 'explorer' | 'tester' | 'follower' | 'merger' | 'verifier', unknown>
+	Record<
+		'recorder' | 'repair' | 'explorer' | 'tester' | 'follower' | 'merger' | 'verifier' | 'rules' | 'rules-repair',
+		unknown
+	>
 >
 
 export function fakeClaude(t: TestContext, replies: FakeReplies = {}) {

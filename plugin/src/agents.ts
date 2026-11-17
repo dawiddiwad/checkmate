@@ -13,9 +13,13 @@ import {
 	mergeAgainPrompt,
 	mergerPrompt,
 	repairPrompt,
+	rulesPrompt,
+	rulesRepairPrompt,
 	verifierBrief,
 	verifierRepairPrompt,
 } from './briefs.ts'
+import type { Rule } from './rules.ts'
+import { checkedRules, ruleSources, rulesNeeded, saveRules } from './rules.ts'
 import {
 	entryValues,
 	explorerNames,
@@ -38,7 +42,8 @@ import { dirname, join } from 'node:path'
 
 export const testerAgent = 'checkmate:tester'
 export const clerkAgent = 'checkmate:clerk'
-export const doneSteps = ['study', 'test', 'record', 'follow', 'merge', 'verify'] as const
+export const doneSteps = ['study', 'test', 'record', 'follow', 'rules', 'merge', 'verify'] as const
+const clerkNames = ['rules', 'merge', 'verify']
 
 type FollowPlan = {
 	answers: string[]
@@ -198,6 +203,29 @@ function testerAction(store: Store, explorationId: string, explorer: string, due
 	)
 }
 
+function rulesAction(store: Store, explorationId: string, round: string, phase: Phase): Action {
+	const folder = `${workFolder(explorationId)}/rules`
+	const answer = `${folder}/answer.json`
+	const own = phase.events.filter((item) => ownerOf(item) === 'rules')
+	const action = (file: string, text: string): Action => ({
+		action: round === 'rules' ? 'start' : 'message',
+		explorer: null,
+		name: 'rules',
+		step: 'rules',
+		to: round === 'rules' ? clerkAgent : agentOf(own, 'rules')!,
+		task: `${folder}/${file}`,
+		answer,
+		text,
+		extra: { round },
+	})
+	if (round === 'repair') {
+		const last = own.findLast((item) => item.step === 'rules-round')!
+		return action('task-repair.md', rulesRepairPrompt(last.detail.refusals as string[], answer))
+	}
+	const opened = exploration(store, explorationId)
+	return action('task.md', rulesPrompt(opened.charter.goal, ruleSources(store, opened.plan_id), answer))
+}
+
 function mergeAction(store: Store, explorationId: string, round: string, phase: Phase): Action {
 	const folder = `${workFolder(explorationId)}/merge`
 	const answer = `${folder}/answer.json`
@@ -251,7 +279,7 @@ function verifyAction(store: Store, explorationId: string, round: string, phase:
 }
 
 function promptOf(action: Action) {
-	return action.name === 'merge'
+	return action.name === 'merge' || action.name === 'rules'
 		? `Read ${action.task} and write your answer to ${action.answer}.`
 		: `Read ${action.task} and do what it says.`
 }
@@ -264,7 +292,7 @@ export const replyLimit =
 	'Keep all details in your files. Reply in three lines at most: what you did, the most important finding or blocker, and the number of questions or defects.'
 
 function replyLineOf(name: string, step: string) {
-	return name === 'merge' || name === 'verify' ? `${name} done` : `tester ${name} ${step} done`
+	return clerkNames.includes(name) ? `${name} done` : `tester ${name} ${step} done`
 }
 
 function lineOf(explorationId: string, action: Action) {
@@ -354,9 +382,11 @@ function addOutcome(
 	store: Store,
 	actor: string | undefined,
 	explorationId: string,
-	item: Omit<ExplorationEvent, 'at'>
+	item: Omit<ExplorationEvent, 'at'>,
+	also: (operationId: string) => void = () => {}
 ) {
 	return write(store, { actor, command: 'explore done', subject: explorationId, input: item }, (operationId, at) => {
+		also(operationId)
 		addEvent(store, explorationId, item, operationId, at)
 		return {
 			reply: completed(explorationId, {
@@ -485,6 +515,14 @@ export function nextActions(store: Store, actor: string | undefined, exploration
 	clearPause(store, actor, explorationId, events)
 	const phase = phaseOf(events)
 	if (!phase) return answerNext(store, actor, explorationId, [], 'finished')
+	if (!phase.follow) {
+		const owned = phase.events.filter((item) => ownerOf(item) === 'rules' && item.explorer === null)
+		const planId = explorationRow(store, explorationId).plan_id
+		const rules = stageDue(owned, 'rules', () => launch.explorers > 0 && rulesNeeded(store, planId))
+		if (rules === 'running') return answerNext(store, actor, explorationId, [], 'wait')
+		if (rules !== 'settled')
+			return answerNext(store, actor, explorationId, [rulesAction(store, explorationId, rules, phase)], 'wait')
+	}
 	const testers = phase.follow
 		? followTesters(events, launch).flatMap((item) => (item.skipped ? [] : [item.explorer]))
 		: explorerNames(launch.explorers)
@@ -531,6 +569,50 @@ function readText(store: Store, path: string) {
 	} catch {
 		return undefined
 	}
+}
+
+function rulesDone(
+	store: Store,
+	actor: string | undefined,
+	explorationId: string,
+	own: ExplorationEvent[],
+	base: Record<string, unknown>,
+	failed: string | undefined
+) {
+	const round = own.at(-1)!.detail.round as string
+	const plan = explorationRow(store, explorationId).plan_id
+	const names = ruleSources(store, plan).map((source) => source.name)
+	const answer = `${workFolder(explorationId)}/rules/answer.json`
+	const checked = failed ? { rules: [], refusals: [] } : checkedRules(replyArray(readText(store, answer)), names)
+	if (!failed && round === 'rules' && checked.refusals.length)
+		return addOutcome(store, actor, explorationId, {
+			step: 'rules-round',
+			explorer: null,
+			status: 'started',
+			detail: { name: 'rules', ...base, round: 'repair', refusals: checked.refusals, rules: checked.rules },
+		})
+	const earlier = own.findLast((item) => item.step === 'rules-round')?.detail.rules as Rule[] | undefined
+	const rules = checked.rules.length ? checked.rules : (earlier ?? [])
+	return addOutcome(
+		store,
+		actor,
+		explorationId,
+		{
+			step: 'rules',
+			explorer: null,
+			status: rules.length ? 'completed' : 'operational_error',
+			detail: {
+				name: 'rules',
+				...base,
+				rules: rules.length,
+				refused: checked.refusals.length,
+				...(rules.length ? {} : { reason: failed ?? checked.refusals.join(' ') }),
+			},
+		},
+		(operationId) => {
+			if (rules.length && rulesNeeded(store, plan)) saveRules(store, operationId, plan, rules, 'derived')
+		}
+	)
 }
 
 function mergeDone(
@@ -645,7 +727,7 @@ function recordDone(
 
 function checkReplyLine(explorationId: string, name: string, step: string, given: string | undefined) {
 	const line = given?.trim()
-	const match = line ? /^(?:tester (\S+) (\S+)|(merge|verify)) done$/.exec(line) : null
+	const match = line ? /^(?:tester (\S+) (\S+)|(rules|merge|verify)) done$/.exec(line) : null
 	if (!match) return
 	const [named, namedStep] = match[3] ? [match[3], match[3]] : [match[1], match[2]]
 	requireCondition(
@@ -688,7 +770,7 @@ export function stepDone(store: Store, actor: string | undefined, input: DoneInp
 	const last = own.at(-1)
 	checkReplyLine(explorationId, name, step, input.replyLine)
 	if (input.agent) checkBinding(events, explorationId, name, input.agent)
-	const tester = name !== 'merge' && name !== 'verify'
+	const tester = !clerkNames.includes(name)
 	if (tester && input.agent && last && last.step !== 'action' && lastStep(own, name) === step)
 		return addOutcome(store, actor, explorationId, {
 			step: 'bind',
@@ -704,13 +786,14 @@ export function stepDone(store: Store, actor: string | undefined, input: DoneInp
 			? `The steps that run: ${running.join(', ')}. Correct the name or the step, and run explore done again.`
 			: `Run checkmate explore next ${explorationId}, and carry out its actions.`
 	)
-	const agent = input.agent ?? agentOf(name === 'merge' || name === 'verify' ? own : events, name)
+	const agent = input.agent ?? agentOf(tester ? events : own, name)
 	requireWellFormed(agent || failed, 'Give --agent with the agent ID that the Agent tool returned.')
 	const base = {
 		...(agent ? { agent } : {}),
 		activity: input.activity ?? (failed ? `${step} failed: ${failed}` : `${step} ended`),
 		...(failed ? { reason: failed } : {}),
 	}
+	if (name === 'rules') return rulesDone(store, actor, explorationId, own, base, failed)
 	if (name === 'merge') return mergeDone(store, actor, explorationId, own, base, failed, phase!.follow?.after ?? 0)
 	if (name === 'verify') return verifyDone(store, actor, explorationId, own, base, failed)
 	if (step === 'record') return recordDone(store, actor, explorationId, name, own, base, failed, phase!)

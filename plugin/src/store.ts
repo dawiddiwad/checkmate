@@ -19,7 +19,7 @@ export type Store = { db: DatabaseSync; workspace: string; path: string }
 export type Operation = { actor: string | undefined; command: string; subject: string; input: unknown }
 
 export const contractVersion = 'toolkit-2'
-const schemaVersion = '4'
+const schemaVersion = '5'
 
 const operationReference = 'REFERENCES operations(id) DEFERRABLE INITIALLY DEFERRED'
 const tables = `
@@ -224,6 +224,14 @@ CREATE TABLE journal_entries (
 	operation_id TEXT NOT NULL ${operationReference}
 ) STRICT;
 `
+const addedTables = [
+	`CREATE TABLE plan_rules (
+	plan_id TEXT NOT NULL REFERENCES plan_requests(plan_id),
+	origin TEXT NOT NULL,
+	body TEXT NOT NULL,
+	operation_id TEXT NOT NULL ${operationReference}
+) STRICT;`,
+]
 const views = `
 CREATE VIEW latest_plans AS
 	SELECT p.* FROM plan_revisions p
@@ -277,12 +285,25 @@ CREATE TRIGGER ${table}_delete BEFORE DELETE ON ${table}
 		)
 		.join('\n')
 
+function setSchemaVersion(db: DatabaseSync, version: string) {
+	db.exec('DROP TRIGGER meta_update')
+	db.prepare("UPDATE meta SET value = ? WHERE key = 'schemaVersion'").run(version)
+	db.exec(updateTrigger('meta'))
+}
+
 function addExplorationTables(db: DatabaseSync) {
 	db.exec(explorationTables)
 	db.exec(triggersOf(explorationTables))
-	db.exec('DROP TRIGGER meta_update')
-	db.exec("UPDATE meta SET value = '4' WHERE key = 'schemaVersion'")
-	db.exec(updateTrigger('meta'))
+	setSchemaVersion(db, '4')
+}
+
+function addMissingTables(db: DatabaseSync) {
+	for (const ddl of addedTables) {
+		const [name] = tableNamesOf(ddl)
+		if (db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(name)) continue
+		db.exec(ddl)
+		db.exec(triggersOf(ddl))
+	}
 }
 
 export function completed(subject: string, data: Record<string, unknown> = {}): Reply {
@@ -328,8 +349,10 @@ export function openStore(workspace: string): Store {
 			insert.run('contractVersion', contractVersion)
 			insert.run('schemaVersion', schemaVersion)
 		}
-		const version = db.prepare("SELECT value FROM meta WHERE key = 'schemaVersion'").get()
-		if (version?.value === '3') addExplorationTables(db)
+		const version = String(db.prepare("SELECT value FROM meta WHERE key = 'schemaVersion'").get()?.value)
+		if (version === '3') addExplorationTables(db)
+		if (version === '3' || version === '4') setSchemaVersion(db, schemaVersion)
+		if (['3', '4', schemaVersion].includes(version)) addMissingTables(db)
 		db.exec('COMMIT')
 	} catch (error) {
 		if (db.isTransaction) db.exec('ROLLBACK')

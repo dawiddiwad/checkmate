@@ -369,6 +369,7 @@ const commands: Record<string, Command> = {
 				},
 				lines: [
 					...status.why.map((line) => ['why', line]),
+					...(status.rules ? [['rules', status.rules]] : []),
 					...status.next.map((line) => ['next', line]),
 					...status.openRuns.map((run) => [
 						run.runId,

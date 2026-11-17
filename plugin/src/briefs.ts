@@ -144,6 +144,34 @@ export function recorderPrompt(build: string, record: string, saved: string[] = 
 	return answer ? withoutName(text) : text
 }
 
+const ruleObject =
+	'{"id": "R1", "text": "<the rule, in one sentence>", "source": "<the source file>#<the place in it>"}'
+
+export function rulesPrompt(goal: string, sources: Array<{ name: string; text: string | null }>, answer?: string) {
+	const text = [
+		'Write the rules of the change that the sources below describe. Do not test.',
+		'A rule is one sentence that a tester can check on the application: an action or an input, and the correct result. Write one rule for each requirement, limit, and case that the sources state. Do not add a rule that the sources do not state.',
+		'Number the rules R1, R2, and so on, in the order of the sources. The place is a heading or a line of the source file.',
+		`${replyText('rules', answer)} Each rule: ${ruleObject}`,
+		'',
+		`Goal: ${goal}`,
+		...sources.flatMap((source) => [
+			'',
+			`Source ${source.name}:`,
+			source.text ?? '(The record cannot read this source. Do not cite it.)',
+		]),
+	].join('\n')
+	return answer ? withoutName(text) : text
+}
+
+export function rulesRepairPrompt(refusals: string[], answer?: string) {
+	return [
+		answer ? 'These rules of your file were refused:' : 'Checkmate refused these rules of your reply:',
+		...refusals.map((refusal) => `- ${refusal}`),
+		replyText('all the rules again, corrected', answer),
+	].join('\n')
+}
+
 export function followBrief(
 	questions: Array<{ question: string; answer: string }>,
 	workFolder: string,

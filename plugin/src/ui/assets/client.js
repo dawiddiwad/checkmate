@@ -833,7 +833,15 @@ document.addEventListener('submit', (event) => {
 function optionsNow() {
 	if (level === 'detail') return [...drawer.querySelectorAll('.sp-dhead [data-option]')]
 	const row = level === 'list' ? current('list') : null
-	return row && !row.classList.contains('many') ? [...row.querySelectorAll('[data-option]')] : []
+	if (row?.classList.contains('many')) return detailOptions(row)
+	return row ? [...row.querySelectorAll('[data-option]')] : []
+}
+
+function detailOptions(row) {
+	const detail = document.querySelector(
+		`[data-region="exploration-detail"][data-key="detail:${CSS.escape(row.dataset.key)}"]`
+	)
+	return detail ? [...detail.querySelectorAll('[data-option]')] : []
 }
 
 function nextKey(row) {
@@ -909,7 +917,7 @@ function choose(n) {
 	}
 	if (level === 'nav' && review) return chooseBuild(n)
 	const options = optionsNow()
-	if (level === 'list' && current('list')?.classList.contains('many'))
+	if (level === 'list' && current('list')?.classList.contains('many') && !options.length)
 		return tell('The options do not fit in the row. Open the row to see them.')
 	if (!options.length) return tell('No options here.')
 	const option = options[n - 1]

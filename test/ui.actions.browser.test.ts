@@ -447,3 +447,40 @@ test('an empty rules field is refused inside the dialog, at the field, with the 
 		['Read']
 	)
 })
+
+test(
+	'a row that cannot show its options lists them in the detail, and the number keys act there',
+	{ skip },
+	async (t) => {
+		const { page, url, ui, pids } = await setup(t, sleeping)
+		await page.setViewportSize({ width: 400, height: 800 })
+		const started = await postAs(ui, human, '/plans/checkout/test', { build: 'b1', level: 'smoke', rules: 'Read' })
+		assert.equal(started.status, 303)
+		await waitFor('the test turn sleeps', () => pids('x-1').children.length === 2)
+		await page.goto(url('/explorations/x-1'))
+		await page.locator('[data-live]', { hasText: 'Live' }).waitFor()
+		const crowd = () =>
+			page.evaluate(() => {
+				for (const label of document.querySelectorAll('.sp-c-opts .sp-btn > span'))
+					label.textContent += ' with a very long label'.repeat(60)
+				window.dispatchEvent(new Event('resize'))
+			})
+		const many = () => page.locator('[data-row].hl').evaluate((row) => row.classList.contains('many'))
+		await page.keyboard.press('ArrowRight')
+		await page.waitForFunction(() => document.activeElement?.matches('[data-row].hl'))
+		await crowd()
+		assert(await many())
+		const options = page.locator('[data-region="exploration-detail"] [data-option]')
+		assert.deepEqual(await options.evaluateAll((items) => items.map((item) => item.getAttribute('aria-label'))), [
+			'1: Stop tester a1',
+		])
+		await page.keyboard.press('1')
+		await page.locator('dialog[data-act-dialog^="stop-x-1-a"][open]').waitFor()
+		await page.keyboard.press('Escape')
+		await page.goto(url('/explorations/x-1'))
+		const overview = page.locator('[data-region="exploration-detail"] [data-option]')
+		assert.deepEqual(await overview.evaluateAll((items) => items.map((item) => item.getAttribute('aria-label'))), [
+			'1: Stop the test',
+		])
+	}
+)

@@ -15,7 +15,16 @@ import { ago, duration, html, join, pill, pillClass, plural, time, words } from 
 import { evidenceList, shownAsText, viewLink } from './evidence.ts'
 import { failureOf, money, optionsBox, phases, runsOf } from './activity.ts'
 import type { Run } from './activity.ts'
-import { stopButton, stopDialog, stopTesterDialog, testButton, testDialog, testerStopOption } from './actions.ts'
+import {
+	stopButton,
+	stopDialog,
+	stopOption,
+	stopTesterDialog,
+	testAgainOption,
+	testButton,
+	testDialog,
+	testerStopOption,
+} from './actions.ts'
 
 type Live = ReturnType<typeof explorationLive>
 type Question = Live['questions'][number]
@@ -543,14 +552,14 @@ function savedFiles(store: Store, live: Live, item: LiveExplorer) {
 	)
 }
 
-function summaryDetail(store: Store, live: Live, crumbs: Html) {
+function summaryDetail(store: Store, live: Live, crumbs: Html, options: Html | '') {
 	const merged = live.state === 'completed' || live.claims.length + live.questions.length > 0
 	const files = live.explorers.flatMap((item) =>
 		fileOpeners(live, item).map((file) => html`<li>${item.explorer}: ${viewLink(file.opener, file.label)}</li>`)
 	)
 	return html`${crumbs}
 		<h2 class="q-h">Overview</h2>
-		${rawSection(store, live, live.unmerged)}
+		${options} ${rawSection(store, live, live.unmerged)}
 		<section aria-labelledby="claims-title">
 			<h3 class="lab" id="claims-title">Claims <span class="n">${live.claims.length}</span></h3>
 			${merged ? claimLinks(live.planId, live.claims) : html`<p class="none">The claims show when the exploration is completed.</p>`}
@@ -668,10 +677,38 @@ function phaseStrip(run: Run) {
 	</span>`
 }
 
-function runActions(context: Context, live: Live, run: Run, others: Listed[], workspaceBuild: string) {
+function runChoices(live: Live, others: Listed[]) {
 	const busy = others.some((item) => item.running) || live.running
-	const stoppable = live.running && live.path !== 'session'
-	const again = !busy && ['failed', 'stopped', 'interrupted'].includes(live.state)
+	return {
+		stoppable: live.running && live.path !== 'session',
+		again: !busy && ['failed', 'stopped', 'interrupted'].includes(live.state),
+	}
+}
+
+function runOptions(live: Live, run: Run, others: Listed[]) {
+	const { stoppable, again } = runChoices(live, others)
+	const items: Array<{ option: Html; help: string }> = [
+		...(stoppable ? [{ option: stopOption(live.explorationId, 1), help: 'Ends all testers of this test.' }] : []),
+		...(again
+			? [
+					{
+						option: testAgainOption({ ...run, planId: live.planId }, stoppable ? 2 : 1),
+						help: 'Opens the start dialog with the same build, level, and range.',
+					},
+				]
+			: []),
+	]
+	if (!items.length) return ''
+	return html`<section aria-labelledby="run-options-title" data-key="options:run">
+		<h3 class="lab" id="run-options-title">Options</h3>
+		<ul class="sp-optlist">
+			${items.map((item) => html`<li>${item.option}<span class="help">${item.help}</span></li>`)}
+		</ul>
+	</section>`
+}
+
+function runActions(context: Context, live: Live, run: Run, others: Listed[], workspaceBuild: string) {
+	const { stoppable, again } = runChoices(live, others)
 	const testers = live.explorers.filter((item) => stoppableTester(live, item))
 	const subject = { explorationId: live.explorationId, planId: live.planId, build: live.build }
 	const values = {
@@ -707,12 +744,12 @@ export function explorationPage(
 	const label = explorer ? explorer.explorer : phase ? phase.phase : null
 	const review = reviewOf(store, live.planId)
 	const title = live.running ? 'Testers now' : 'Testers'
+	const others = review.explorations.filter((item) => item.explorationId !== explorationId).reverse()
 	const detail = explorer
 		? explorerDetail(store, live, explorer, html``)
 		: phase
 			? phaseDetail(live, phase, html``)
-			: summaryDetail(store, live, html``)
-	const others = review.explorations.filter((item) => item.explorationId !== explorationId).reverse()
+			: summaryDetail(store, live, html``, runOptions(live, run, others))
 	return {
 		viewer: true,
 		title: label ? `${explorationId} · ${label}` : `${title} · ${explorationId}`,

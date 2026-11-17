@@ -183,20 +183,20 @@ export function stopButton(explorationId: string, label = 'Stop the test…') {
 	return actionButton(`stop-${explorationId}`, label)
 }
 
-export function stopOption(explorationId: string) {
+export function stopOption(explorationId: string, n = 1) {
 	return html`<button
 		type="button"
 		class="sp-btn"
 		data-option
 		data-act="stop-${explorationId}"
-		aria-label="1: Stop the test"
+		aria-label="${n}: Stop the test"
 		title="Stop the test"
 	>
-		<kbd aria-hidden="true">1</kbd><span>Stop…</span>
+		<kbd aria-hidden="true">${n}</kbd><span>Stop…</span>
 	</button>`
 }
 
-export function testAgainOption(run: Again) {
+export function testAgainOption(run: Again, n = 1) {
 	const values = JSON.stringify({
 		build: run.build,
 		level: run.level ?? 'normal',
@@ -212,10 +212,10 @@ export function testAgainOption(run: Again) {
 		data-action="/plans/${run.planId}/test"
 		data-title="Test a build of ${run.planId}"
 		data-fill="${values}"
-		aria-label="1: Test again"
+		aria-label="${n}: Test again"
 		title="Test again"
 	>
-		<kbd aria-hidden="true">1</kbd><span>Test again</span>
+		<kbd aria-hidden="true">${n}</kbd><span>Test again</span>
 	</button>`
 }
 

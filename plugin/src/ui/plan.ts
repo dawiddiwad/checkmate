@@ -160,7 +160,7 @@ function gapRow(detail: Detail, gap: Gap) {
 
 function gapsList(detail: Detail) {
 	const gaps = detail.plan.gaps
-	if (!gaps.length) return html`<p class="empty-line">No gaps.</p>`
+	if (!gaps.length) return html`<p class="none">No gap. The plan has no open question.</p>`
 	const open = gaps.filter((gap) => gap.status === 'open')
 	const closed = gaps.filter((gap) => gap.status !== 'open')
 	return html`<ul class="gaps">
@@ -169,7 +169,10 @@ function gapsList(detail: Detail) {
 }
 
 function runsTable(detail: Detail) {
-	if (!detail.runs.length) return html`<p class="empty-line">No run uses this plan yet.</p>`
+	if (!detail.runs.length)
+		return html`<p class="none">
+			No run uses this plan yet. Approve the plan, then run <code>/checkmate:test</code>.
+		</p>`
 	return html`<div class="scroll">
 		<table>
 			<thead>
@@ -236,8 +239,7 @@ function requirementsTable(plan: Plan) {
 }
 
 function decisionsList(plan: Plan) {
-	if (!plan.decisions.length && !plan.assumptions.length)
-		return html`<p class="empty-line">No decision applied yet.</p>`
+	if (!plan.decisions.length && !plan.assumptions.length) return html`<p class="none">No decision applied yet.</p>`
 	return html`<ul class="records">
 			${plan.decisions.map(
 				(decision) =>
@@ -795,7 +797,7 @@ export function gapPage(
 					${
 						tests.length
 							? html`<div class="stack">${tests.map((test) => testCard(detail, test))}</div>`
-							: html`<p class="empty-line">No test names this gap.</p>`
+							: html`<p class="none">No test names this gap.</p>`
 					}
 				</section>
 			</div>

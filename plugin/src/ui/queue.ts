@@ -118,7 +118,7 @@ function exploring(waiting: Waiting, filters: QueueFilters) {
 		(item) =>
 			html`<li data-key="running:${item.explorationId}">
 				<a href="/explorations/${item.explorationId}"
-					>${item.paused ? pill('stopped', 'paused') : pill('running')}
+					>${item.paused ? pill('paused') : pill('running')}
 					<span class="mono">${item.planId} · ${item.explorationId}</span></a
 				>
 				<span class="muted"

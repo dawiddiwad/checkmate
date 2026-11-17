@@ -118,7 +118,7 @@ function entryPointsTable(entryPoints: EntryPoint[]) {
 }
 
 function toolsTable(profile: Profile) {
-	if (!profile.tools.length) return html`<p class="empty-line">No tools.</p>`
+	if (!profile.tools.length) return html`<p class="none">No tools.</p>`
 	return html`<div class="scroll">
 		<table>
 			<thead>
@@ -196,7 +196,7 @@ function profileFacts(profile: Profile) {
 
 function historyList(store: Store, targetId: string, shown: number) {
 	const revisions = targetHistory(store, targetId).reverse()
-	if (!revisions.length) return html`<p class="empty-line">No profile yet.</p>`
+	if (!revisions.length) return html`<p class="none">No profile yet.</p>`
 	return html`<ol class="history">
 		${revisions.map(
 			(item) =>
@@ -264,7 +264,7 @@ function retireControl(context: Context, targetId: string, instance: InstanceRec
 }
 
 function instancesTable(context: Context, targetId: string, instances: InstanceRecord[], retire: RetireState) {
-	if (!instances.length) return html`<p class="empty-line">No instance yet. Add one to start runs.</p>`
+	if (!instances.length) return html`<p class="none">No instance yet. Add one to start runs.</p>`
 	return html`<div class="scroll">
 		<table>
 			<thead>

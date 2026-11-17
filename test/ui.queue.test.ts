@@ -389,3 +389,14 @@ test('the evidence of a claim opens from its own address', async (t) => {
 		/href="\/explorations\/x-1\/claims\/a1\/D1\/evidence\/0"/
 	)
 })
+
+test('one state has one pill on every page', async (t) => {
+	const { call } = await start(t)
+	const paused = '<span class="st warn"><span aria-hidden="true">‖</span> paused</span>'
+	assert((await call('/')).body.includes(paused))
+	assert((await call('/explorations/x-10')).body.includes(paused))
+	const waiting = '<span class="st acc"><span aria-hidden="true">○</span> awaiting acceptance</span>'
+	assert((await call('/runs')).body.includes(waiting))
+	assert((await call('/runs/run-7')).body.includes(waiting))
+	assert.doesNotMatch((await call('/runs/run-7?item=cleanup')).body, /\d{4}-\d{2}-\d{2} \d{2}:\d{2} ·/)
+})

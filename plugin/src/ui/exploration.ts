@@ -29,7 +29,7 @@ function claimRow(planId: string, claim: Claim) {
 }
 
 export function claimsTable(planId: string, claims: Claim[]) {
-	if (!claims.length) return html`<p class="empty-line">No claim.</p>`
+	if (!claims.length) return html`<p class="none">No claim. Claims show here when an explorer reports a defect.</p>`
 	return html`<div class="scroll">
 		<table>
 			<thead>
@@ -49,7 +49,7 @@ export function claimsTable(planId: string, claims: Claim[]) {
 }
 
 function claimLinks(planId: string, claims: Claim[]) {
-	if (!claims.length) return html`<p class="none">No claim.</p>`
+	if (!claims.length) return html`<p class="none">No claim. Claims show here when an explorer reports a defect.</p>`
 	return html`<ul class="items">
 		${claims.map(
 			(claim) =>
@@ -68,7 +68,7 @@ function claimLinks(planId: string, claims: Claim[]) {
 }
 
 export function questionsList(planId: string, questions: Question[]) {
-	if (!questions.length) return html`<p class="empty-line">No question.</p>`
+	if (!questions.length) return html`<p class="none">No question. Questions show here when an explorer asks one.</p>`
 	return html`<ul class="items">
 		${questions.map(
 			(question) =>
@@ -148,7 +148,7 @@ export function explorationBanners(explorations: Listed[]) {
 
 export function explorationsTable(explorations: Listed[]) {
 	if (!explorations.length)
-		return html`<p class="empty-line">No exploration yet. Start one with <code>checkmate test</code>.</p>`
+		return html`<p class="none">No exploration yet. Start one with <code>checkmate test</code>.</p>`
 	return html`<div class="scroll">
 		<table>
 			<thead>
@@ -316,7 +316,7 @@ function explorationList(live: Live, selected: string) {
 			<p class="sub">${live.goal}</p>
 		</div>
 		<p class="q-facts">
-			<span data-region="exploration-state">${pill(live.state)}</span>
+			<span data-region="exploration-state">${pill(live.running && live.paused ? 'paused' : live.state)}</span>
 			<a href="/plans/${live.planId}">${live.planId}</a> · build <code>${live.build}</code> · ${live.instanceId} ·
 			${live.level ?? 'no level'} · started ${time(live.startedAt)}
 		</p>

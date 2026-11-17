@@ -106,6 +106,8 @@ const statusLook: Record<string, [string, Tone]> = {
 	unresolved: ['?', 'warn'],
 	answered: ['✓', 'pass'],
 	requested: ['○', 'acc'],
+	paused: ['‖', 'warn'],
+	waiting: ['○', 'acc'],
 }
 
 const labels: Record<string, string> = {

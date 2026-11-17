@@ -16577,7 +16577,9 @@ var statusLook = {
   suspected: ["?", "warn"],
   unresolved: ["?", "warn"],
   answered: ["\u2713", "pass"],
-  requested: ["\u25CB", "acc"]
+  requested: ["\u25CB", "acc"],
+  paused: ["\u2016", "warn"],
+  waiting: ["\u25CB", "acc"]
 };
 var labels = {
   given: "given to the session"
@@ -17170,7 +17172,7 @@ function claimRow(planId, claim) {
 	</tr>`;
 }
 function claimsTable(planId, claims) {
-  if (!claims.length) return html2`<p class="empty-line">No claim.</p>`;
+  if (!claims.length) return html2`<p class="none">No claim. Claims show here when an explorer reports a defect.</p>`;
   return html2`<div class="scroll">
 		<table>
 			<thead>
@@ -17189,7 +17191,7 @@ function claimsTable(planId, claims) {
 	</div>`;
 }
 function claimLinks(planId, claims) {
-  if (!claims.length) return html2`<p class="none">No claim.</p>`;
+  if (!claims.length) return html2`<p class="none">No claim. Claims show here when an explorer reports a defect.</p>`;
   return html2`<ul class="items">
 		${claims.map(
     (claim) => html2`<li data-key="claim:${claim.id}">
@@ -17206,7 +17208,7 @@ function claimLinks(planId, claims) {
 	</ul>`;
 }
 function questionsList(planId, questions) {
-  if (!questions.length) return html2`<p class="empty-line">No question.</p>`;
+  if (!questions.length) return html2`<p class="none">No question. Questions show here when an explorer asks one.</p>`;
   return html2`<ul class="items">
 		${questions.map(
     (question) => html2`<li data-key="question:${question.id}">
@@ -17268,7 +17270,7 @@ function explorationBanners(explorations) {
 }
 function explorationsTable(explorations) {
   if (!explorations.length)
-    return html2`<p class="empty-line">No exploration yet. Start one with <code>checkmate test</code>.</p>`;
+    return html2`<p class="none">No exploration yet. Start one with <code>checkmate test</code>.</p>`;
   return html2`<div class="scroll">
 		<table>
 			<thead>
@@ -17404,7 +17406,7 @@ function explorationList(live, selected) {
 			<p class="sub">${live.goal}</p>
 		</div>
 		<p class="q-facts">
-			<span data-region="exploration-state">${pill(live.state)}</span>
+			<span data-region="exploration-state">${pill(live.running && live.paused ? "paused" : live.state)}</span>
 			<a href="/plans/${live.planId}">${live.planId}</a> · build <code>${live.build}</code> · ${live.instanceId} ·
 			${live.level ?? "no level"} · started ${time(live.startedAt)}
 		</p>
@@ -18757,7 +18759,7 @@ function gapRow(detail2, gap) {
 }
 function gapsList(detail2) {
   const gaps = detail2.plan.gaps;
-  if (!gaps.length) return html2`<p class="empty-line">No gaps.</p>`;
+  if (!gaps.length) return html2`<p class="none">No gap. The plan has no open question.</p>`;
   const open = gaps.filter((gap) => gap.status === "open");
   const closed = gaps.filter((gap) => gap.status !== "open");
   return html2`<ul class="gaps">
@@ -18765,7 +18767,10 @@ function gapsList(detail2) {
 	</ul>`;
 }
 function runsTable(detail2) {
-  if (!detail2.runs.length) return html2`<p class="empty-line">No run uses this plan yet.</p>`;
+  if (!detail2.runs.length)
+    return html2`<p class="none">
+			No run uses this plan yet. Approve the plan, then run <code>/checkmate:test</code>.
+		</p>`;
   return html2`<div class="scroll">
 		<table>
 			<thead>
@@ -18829,8 +18834,7 @@ function requirementsTable(plan) {
 	</div>`;
 }
 function decisionsList(plan) {
-  if (!plan.decisions.length && !plan.assumptions.length)
-    return html2`<p class="empty-line">No decision applied yet.</p>`;
+  if (!plan.decisions.length && !plan.assumptions.length) return html2`<p class="none">No decision applied yet.</p>`;
   return html2`<ul class="records">
 			${plan.decisions.map(
     (decision) => html2`<li>
@@ -19299,7 +19303,7 @@ function gapPage(store, context, planId, revision, gapId, state = null) {
 							</section>` : ""}
 				<section aria-labelledby="gap-tests">
 					<h2 id="gap-tests">Affected tests <span class="n">${tests.length}</span></h2>
-					${tests.length ? html2`<div class="stack">${tests.map((test) => testCard(detail2, test))}</div>` : html2`<p class="empty-line">No test names this gap.</p>`}
+					${tests.length ? html2`<div class="stack">${tests.map((test) => testCard(detail2, test))}</div>` : html2`<p class="none">No test names this gap.</p>`}
 				</section>
 			</div>
 			${side(panel)}
@@ -19393,7 +19397,7 @@ function assertionRow(store, detail2, test, assertion) {
 function testState(test, detail2) {
   if (test.outcome) return pill(test.outcome);
   if (detail2.state === "finalized") return pill("not_run");
-  return test.assertions.some((assertion) => assertion.result) ? pill("started", "running") : pill("pending", "waiting");
+  return test.assertions.some((assertion) => assertion.result) ? pill("running") : pill("waiting");
 }
 function testCard2(store, detail2, test) {
   const passed = test.assertions.filter((assertion) => assertion.result === "passed").length;
@@ -19519,7 +19523,7 @@ function gapCard(store, context, detail2, gap, adoptError) {
 }
 function coverage(store, detail2) {
   const result = detail2.result;
-  if (!result) return html2`<p class="empty-line">Coverage is known when the run finishes.</p>`;
+  if (!result) return html2`<p class="none">Coverage is known when the run finishes.</p>`;
   const plan = planDetail(store, detail2.planId, detail2.revision).plan;
   const requirements = new Map(plan.requirements.map((item) => [item.id, item]));
   return html2`<div class="scroll">
@@ -19565,7 +19569,7 @@ function cleanup(detail2) {
 			<dd>
 				<ul class="plain">
 					${detail2.attempts.map(
-    (attempt) => html2`<li>Attempt ${attempt.attempt} · ${clock(attempt.startedAt)} · ${attempt.actor}</li>`
+    (attempt) => html2`<li>Attempt ${attempt.attempt} · ${time(attempt.startedAt)} · ${attempt.actor}</li>`
   )}
 				</ul>
 			</dd>
@@ -19660,13 +19664,6 @@ function decisionPanel(store, context, detail2, state, extra = null) {
     state ?? emptyState()
   );
 }
-function runBadge(detail2) {
-  const acceptance = detail2.result?.acceptance;
-  if (!acceptance) return pill("started", "in progress");
-  if (acceptance === "approved") return pill("approved", "accepted");
-  if (acceptance === "pending") return pill("pending", "awaiting acceptance");
-  return pill(acceptance);
-}
 function runRow2(runId, key, selected, top, tags, title) {
   return html2`<li>
 		<a
@@ -19753,7 +19750,7 @@ function runList2(detail2, selected) {
 			</p>
 		</div>
 		<p class="q-facts" data-region="state">
-			${runBadge(detail2)} started
+			${runStatus2({ state: detail2.state, acceptance: detail2.result?.acceptance ?? null })} started
 			${time(detail2.startedAt)}${result ? html2` · finished ${time(result.finishedAt)}` : ""}
 		</p>
 		<ul class="q-items">
@@ -19915,7 +19912,7 @@ function exploring(waiting, filters) {
   const running3 = waiting.running.filter(shown).map(
     (item) => html2`<li data-key="running:${item.explorationId}">
 				<a href="/explorations/${item.explorationId}"
-					>${item.paused ? pill("stopped", "paused") : pill("running")}
+					>${item.paused ? pill("paused") : pill("running")}
 					<span class="mono">${item.planId} · ${item.explorationId}</span></a
 				>
 				<span class="muted"
@@ -20564,7 +20561,7 @@ function entryPointsTable(entryPoints) {
 	</div>`;
 }
 function toolsTable(profile) {
-  if (!profile.tools.length) return html2`<p class="empty-line">No tools.</p>`;
+  if (!profile.tools.length) return html2`<p class="none">No tools.</p>`;
   return html2`<div class="scroll">
 		<table>
 			<thead>
@@ -20635,7 +20632,7 @@ function profileFacts(profile) {
 }
 function historyList(store, targetId, shown) {
   const revisions = targetHistory(store, targetId).reverse();
-  if (!revisions.length) return html2`<p class="empty-line">No profile yet.</p>`;
+  if (!revisions.length) return html2`<p class="none">No profile yet.</p>`;
   return html2`<ol class="history">
 		${revisions.map(
     (item) => html2`<li class="${item.revision === shown ? "current" : ""}">
@@ -20697,7 +20694,7 @@ function retireControl(context, targetId, instance, retire) {
 	</details>`;
 }
 function instancesTable(context, targetId, instances, retire) {
-  if (!instances.length) return html2`<p class="empty-line">No instance yet. Add one to start runs.</p>`;
+  if (!instances.length) return html2`<p class="none">No instance yet. Add one to start runs.</p>`;
   return html2`<div class="scroll">
 		<table>
 			<thead>

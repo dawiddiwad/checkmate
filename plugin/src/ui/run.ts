@@ -4,12 +4,12 @@ import type { Context, Page } from './layout.ts'
 import type { FormState } from './forms.ts'
 import { evidenceBytes, planDetail, runDetail } from '../views.ts'
 import { decisionToken, planRevision, planRunGaps } from '../plans.ts'
-import { clock, hasMetadata, html, icon, join, metadataList, pill, plural, short, time, words } from './html.ts'
+import { hasMetadata, html, icon, join, metadataList, pill, plural, short, time, words } from './html.ts'
 import { crumbBar, downloads, listAndItem } from './layout.ts'
 import type { EvidenceFile } from './evidence.ts'
 import { emptyState, recordPanel, returnFields, verdictPanel } from './forms.ts'
 import { evidenceList, shownAsText } from './evidence.ts'
-import { counts } from './lists.ts'
+import { counts, runStatus } from './lists.ts'
 
 type Detail = ReturnType<typeof runDetail>
 type Evidence = Detail['tests'][number]['evidence'][number]
@@ -99,9 +99,7 @@ function assertionRow(store: Store, detail: Detail, test: RunTest, assertion: As
 function testState(test: RunTest, detail: Detail) {
 	if (test.outcome) return pill(test.outcome)
 	if (detail.state === 'finalized') return pill('not_run')
-	return test.assertions.some((assertion) => assertion.result)
-		? pill('started', 'running')
-		: pill('pending', 'waiting')
+	return test.assertions.some((assertion) => assertion.result) ? pill('running') : pill('waiting')
 }
 
 function testCard(store: Store, detail: Detail, test: RunTest) {
@@ -258,7 +256,7 @@ function gapCard(
 
 function coverage(store: Store, detail: Detail) {
 	const result = detail.result
-	if (!result) return html`<p class="empty-line">Coverage is known when the run finishes.</p>`
+	if (!result) return html`<p class="none">Coverage is known when the run finishes.</p>`
 	const plan = planDetail(store, detail.planId, detail.revision).plan
 	const requirements = new Map(plan.requirements.map((item) => [item.id, item]))
 	return html`<div class="scroll">
@@ -311,7 +309,7 @@ function cleanup(detail: Detail) {
 				<ul class="plain">
 					${detail.attempts.map(
 						(attempt) =>
-							html`<li>Attempt ${attempt.attempt} · ${clock(attempt.startedAt)} · ${attempt.actor}</li>`
+							html`<li>Attempt ${attempt.attempt} · ${time(attempt.startedAt)} · ${attempt.actor}</li>`
 					)}
 				</ul>
 			</dd>
@@ -421,14 +419,6 @@ export function decisionPanel(
 	)
 }
 
-export function runBadge(detail: { state: string; result: { acceptance: string } | null }) {
-	const acceptance = detail.result?.acceptance
-	if (!acceptance) return pill('started', 'in progress')
-	if (acceptance === 'approved') return pill('approved', 'accepted')
-	if (acceptance === 'pending') return pill('pending', 'awaiting acceptance')
-	return pill(acceptance)
-}
-
 function runRow(
 	runId: string,
 	key: string,
@@ -525,7 +515,7 @@ function runList(detail: Detail, selected: string) {
 			</p>
 		</div>
 		<p class="q-facts" data-region="state">
-			${runBadge(detail)} started
+			${runStatus({ state: detail.state, acceptance: detail.result?.acceptance ?? null })} started
 			${time(detail.startedAt)}${result ? html` · finished ${time(result.finishedAt)}` : ''}
 		</p>
 		<ul class="q-items">

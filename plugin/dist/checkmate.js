@@ -19855,12 +19855,13 @@ function testersEnd(review, testers) {
     return html2`<span
 			class="sp-ncount${running3.paused ? " att" : ""}"
 			title="${review.phase ?? running3.state}, since ${running3.startedAt}"
-			>${review.phase ?? words(running3.state)} ·
-			<span data-since="${running3.startedAt}">${duration(Date.now() - Date.parse(running3.startedAt))}</span></span
+			>${age(running3.startedAt)}</span
 		>`;
-  if (["stopped", "interrupted", "failed"].includes(testers.state))
-    return html2`<span class="sp-ncount att">${words(testers.state)}</span>`;
   return count(testers.explorers ?? 0, false);
+}
+function testersLabel(review, testers) {
+  if (review.running) return review.phase ? `Testers now \xB7 ${review.phase}` : "Testers now";
+  return ["stopped", "interrupted", "failed"].includes(testers.state) ? `Testers \xB7 ${words(testers.state)}` : "Testers";
 }
 function navigator(review, current, exploration2 = null) {
   const { planId } = review;
@@ -19873,7 +19874,7 @@ function navigator(review, current, exploration2 = null) {
     "testers",
     `/explorations/${testers.explorationId}`,
     "",
-    review.running ? "Testers now" : "Testers",
+    testersLabel(review, testers),
     testersEnd(review, testers),
     { look: "link" }
   ) : "";

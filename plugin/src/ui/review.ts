@@ -7,7 +7,7 @@ import { planRequest } from '../plans.ts'
 import { oracleStates } from '../journal.ts'
 import { followCount } from '../explorers.ts'
 import { mergedClaims, mergedQuestions, needsYou, planDetail, planExplorations, planHasRevision } from '../views.ts'
-import { duration, glyph, html, plural, words } from './html.ts'
+import { age, glyph, html, plural, words } from './html.ts'
 import { crumbBar } from './layout.ts'
 import { defaultBuild } from '../modes.ts'
 import { explorationEvents } from '../explorations.ts'
@@ -570,12 +570,16 @@ function testersEnd(review: Review, testers: Review['explorations'][number]) {
 		return html`<span
 			class="sp-ncount${running.paused ? ' att' : ''}"
 			title="${review.phase ?? running.state}, since ${running.startedAt}"
-			>${review.phase ?? words(running.state)} ·
-			<span data-since="${running.startedAt}">${duration(Date.now() - Date.parse(running.startedAt))}</span></span
+			>${age(running.startedAt)}</span
 		>`
-	if (['stopped', 'interrupted', 'failed'].includes(testers.state))
-		return html`<span class="sp-ncount att">${words(testers.state)}</span>`
 	return count(testers.explorers ?? 0, false)
+}
+
+function testersLabel(review: Review, testers: Review['explorations'][number]) {
+	if (review.running) return review.phase ? `Testers now · ${review.phase}` : 'Testers now'
+	return ['stopped', 'interrupted', 'failed'].includes(testers.state)
+		? `Testers · ${words(testers.state)}`
+		: 'Testers'
 }
 
 export function navigator(review: Review, current: string, exploration: string | null = null) {
@@ -590,7 +594,7 @@ export function navigator(review: Review, current: string, exploration: string |
 				'testers',
 				`/explorations/${testers.explorationId}`,
 				'',
-				review.running ? 'Testers now' : 'Testers',
+				testersLabel(review, testers),
 				testersEnd(review, testers),
 				{ look: 'link' }
 			)

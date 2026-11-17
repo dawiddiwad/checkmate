@@ -121,7 +121,7 @@ test('a person starts, watches, and stops a test with the keys alone', { skip },
 	assert.match((await page.locator('[data-key="plan:checkout"]').textContent()) ?? '', /stopped/)
 	assert.doesNotMatch((await page.locator('[data-key="plan:checkout"]').textContent()) ?? '', /Testing/)
 	await page.goto(url('/plans/checkout'))
-	assert.match((await page.locator('.sp-nav [data-target="testers"]').textContent()) ?? '', /Testers\s*stopped/)
+	assert.match((await page.locator('.sp-nav [data-target="testers"]').textContent()) ?? '', /Testers · stopped/)
 })
 
 test('a person starts a test, stops one tester, and stops the test with the pointer', { skip }, async (t) => {

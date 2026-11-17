@@ -214,6 +214,7 @@ test('a run whose supervisor dies shows as interrupted, and no place says runnin
 	await waitFor('the test turn sleeps', () => pids('x-1').children.length === 2)
 	await page.locator('.sp-strip').waitFor()
 	assert.match((await page.locator('.statusbar').textContent()) ?? '', /1 running/)
+	assert.match(await page.locator('.statusbar [data-region="activity-link"]').innerText(), /^Activity · 1 running$/i)
 	process.kill(pids('x-1').supervisor!, 'SIGKILL')
 	await page.getByText('The run was interrupted: the supervisor stopped before the end.').waitFor()
 	assert.equal(state(read, 'x-1'), 'interrupted')

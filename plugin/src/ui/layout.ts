@@ -114,7 +114,7 @@ function statusBar(context: Context, page: Page) {
 					href="/activity"
 					data-region="activity-link"
 					${page.section === 'activity' ? html`aria-current="page"` : ''}
-					>Activity${context.running ? html`<span class="sb-long"> · ${context.running} running</span>` : ''}</a
+					>${html`<span>Activity${context.running ? html`<span class="sb-long"> · ${context.running} running</span>` : ''}</span>`}</a
 				>
 				${statusLink(page, 'runs', '/runs', 'Runs')} ${statusLink(page, 'log', '/log', 'Log')}
 				${statusLink(page, 'settings', '/settings', 'Settings')}</span

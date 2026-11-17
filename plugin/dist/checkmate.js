@@ -16938,6 +16938,13 @@ function heading(title, sub = null, extra = "") {
 		${extra}
 	</div>`;
 }
+function emptyNotice(what, next, extra = "") {
+  return html2`<div class="empty">
+		<p class="empty-title">${what}</p>
+		<p class="empty-next">${next}</p>
+		${extra}
+	</div>`;
+}
 function banner(tone2, content) {
   return html2`<div class="banner ${tone2}" role="${tone2 === "info" ? "status" : "alert"}">${content}</div>`;
 }
@@ -18159,10 +18166,10 @@ function listRegion(spec, state, total, rows) {
 		${total ? html2`<ul class="q-items l-rows">
 							${rows}
 						</ul>
-						${pager(spec, state, total)}` : html2`<div class="empty">
-						<p class="empty-title">No ${spec.noun} matches these filters.</p>
-						<p><a href="${spec.path}" data-list-clear>Clear the filters</a></p>
-					</div>`}
+						${pager(spec, state, total)}` : state.q || Object.keys(state.filters).length ? emptyNotice(
+    `No ${spec.noun} matches these filters.`,
+    html2`<a href="${spec.path}" data-list-clear>Clear the filters</a>`
+  ) : emptyNotice(spec.none[0], spec.none[1])}
 	</div>`;
 }
 var planShows2 = [
@@ -18191,6 +18198,7 @@ function plansSpec() {
     path: "/plans",
     region: "plans",
     noun: "plan",
+    none: ["No plan yet.", html2`To make one, run <code>/checkmate:test</code> in Claude Code.`],
     search: "Search plans",
     columns: [
       { label: "Plan", sort: "plan" },
@@ -18279,6 +18287,7 @@ function runsSpec(store) {
     path: "/runs",
     region: "runs",
     noun: "run",
+    none: ["No run yet.", html2`Approve a plan, then run <code>/checkmate:test</code> in Claude Code.`],
     search: "Search runs",
     columns: [
       { label: "Run", sort: "run" },
@@ -18354,6 +18363,7 @@ function logSpec(store) {
     path: "/log",
     region: "log",
     noun: "operation",
+    none: ["No operation yet.", "Each change to the record shows here."],
     search: "Search the log",
     columns: [
       { label: "Time", sort: "time", first: "desc" },
@@ -18601,6 +18611,23 @@ function crumbs(item, filters) {
 		<a class="btn small ghost" href="${claimAddress(item)}">Open full page</a>
 	</div>`;
 }
+function noClaim(total, shown, filtered, list2) {
+  if (!total && !filtered)
+    return emptyNotice(
+      "No claim yet.",
+      html2`Claims show here when an explorer reports a defect. To start, run <code>/checkmate:test</code> in
+				Claude Code.`
+    );
+  if (!shown)
+    return emptyNotice(
+      "No claim matches these filters.",
+      html2`<a href="/claims" data-queue-back>Clear the filters</a>`
+    );
+  return emptyNotice(
+    filtered ? "This claim does not match the filters." : "No claim to show.",
+    html2`<a href="${list2}" data-queue-back>Back to the list</a>`
+  );
+}
 var shownLimit = 50;
 function nextKey(shown, item) {
   const index2 = shown.indexOf(item);
@@ -18649,9 +18676,7 @@ function claimsPage(store, context, params, refusal = null, bulk = null, now = D
   ) : ""}
 		${shown.length ? html2`<ul class="q-items">
 						${shown.slice(0, limit).map((entry) => row(entry, filters, key))}
-					</ul>` : html2`<p class="none">
-						No claim matches these filters. <a href="/claims" data-queue-back>Clear the filters</a>
-					</p>`}
+					</ul>` : ""}
 		${shown.length > limit ? html2`<p class="q-more">
 						<a
 							class="btn small"
@@ -18672,12 +18697,7 @@ function claimsPage(store, context, params, refusal = null, bulk = null, now = D
     key,
     back: claimsHref(filters, filters.state ? nextKey(shown, item) : key),
     state: refusal?.state ?? emptyState()
-  }) : html2`<div class="empty">
-						<p class="empty-title">
-							${asked ? "This claim does not match the filters." : "No claim to show."}
-						</p>
-						<p><a href="${claimsHref(filters)}" data-queue-back>Back to the list</a></p>
-					</div>`;
+  }) : noClaim(rows.length, shown.length, filtered, claimsHref(filters));
   return {
     title: item ? `${item.planId} \xB7 ${item.id} \xB7 Claims` : "Claims",
     section: "claims",
@@ -18688,7 +18708,7 @@ function claimsPage(store, context, params, refusal = null, bulk = null, now = D
       list: list2,
       detail: pane,
       selected: key ?? "",
-      open: Boolean(asked) && params.get("view") !== "list"
+      open: Boolean(asked) && params.get("view") !== "list" || !shown.length
     })
   };
 }
@@ -19215,13 +19235,13 @@ function planPage(store, context, planId, revision, state = null, allHistory = f
   };
 }
 function storedTestsEmpty(planId, completed2) {
-  return html2`<div class="empty" data-key="no-tests">
-		<p class="empty-title">No stored tests yet.</p>
-		<p>
-			A stored test comes from the claims of a completed exploration. To store them, run
-			<code>checkmate harvest ${completed2 ?? "<explorationId>"}</code>. To write a plan with tests, run
-			<code>/checkmate:plan ${planId}</code>.
-		</p>
+  return html2`<div data-key="no-tests">
+		${emptyNotice(
+    "No stored tests yet.",
+    html2`A stored test comes from the claims of a completed exploration. To store them, run
+				<code>checkmate harvest ${completed2 ?? "<explorationId>"}</code>. To write a plan with tests, run
+				<code>/checkmate:plan ${planId}</code>.`
+  )}
 	</div>`;
 }
 function requestPage(store, planId) {
@@ -20153,26 +20173,25 @@ function approvalDetail(store, context, item, filters, back, state) {
 }
 function gone(filters, state = emptyState()) {
   return html2`<div
-		class="empty"
 		data-decided-message="This item does not wait for you now. Somebody decided it. Your text is kept."
 	>
 		${messages(state)}
-		<p class="empty-title">This item does not wait for you now.</p>
-		<p>Somebody decided it, or a filter hides it.</p>
-		${keptText(state)}
-		<p><a href="${queueHref(filters)}" data-queue-back>Back to the list</a></p>
+		${emptyNotice(
+    "This item does not wait for you now.",
+    html2`Somebody decided it, or a filter hides it.
+				<a href="${queueHref(filters)}" data-queue-back>Back to the list</a>`,
+    keptText(state)
+  )}
 	</div>`;
 }
 function nothing(waiting, filters) {
-  const filtered = filters.plan || filters.q;
-  return html2`<div class="empty">
-		<p class="empty-title">${filtered ? "No item matches these filters." : "Nothing waits for you."}</p>
-		${filtered ? html2`<p><a href="/" data-queue-back>Clear the filters</a></p>` : html2`<p>
-						${waiting.running.length ? `${plural(waiting.running.length, "exploration")} running. ` : ""}New
-						questions, claims, and approvals show here by themselves. To start, run
-						<code>/checkmate:test</code> in Claude Code.
-					</p>`}
-	</div>`;
+  if (filters.plan || filters.q)
+    return emptyNotice("No item matches these filters.", html2`<a href="/" data-queue-back>Clear the filters</a>`);
+  return emptyNotice(
+    "Nothing waits for you.",
+    html2`${waiting.running.length ? `${plural(waiting.running.length, "exploration")} running. ` : ""}New questions,
+			claims, and approvals show here by themselves. To start, run <code>/checkmate:test</code> in Claude Code.`
+  );
 }
 function detail(store, context, waiting, item, filters, back, state) {
   if (!item) return nothing(waiting, filters);
@@ -20644,10 +20663,7 @@ function targetsPage(store) {
 									${rows}
 								</tbody>
 							</table>
-						</div>` : html2`<div class="empty">
-							<p class="empty-title">No target yet.</p>
-							<p>Record one with <code>checkmate target open</code>.</p>
-						</div>`}
+						</div>` : emptyNotice("No target yet.", html2`Record one with <code>checkmate target open</code>.`)}
 		</div>`;
   return settingsPage("/settings/targets", "Targets", ["*"], body);
 }

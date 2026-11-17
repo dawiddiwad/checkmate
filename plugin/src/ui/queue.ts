@@ -8,7 +8,7 @@ import { html, pill, plural, time } from './html.ts'
 import { actorField, emptyState, hidden, keptText, messages, returnFields, sourceAndReason } from './forms.ts'
 import { counts } from './lists.ts'
 import { approvalPanel } from './plan.ts'
-import { listAndItem } from './layout.ts'
+import { emptyNotice, listAndItem } from './layout.ts'
 import type { BulkState, Picked } from './bulk.ts'
 import { bulkBar, bulkPanel, pickBox } from './bulk.ts'
 import { decisionPanel } from './run.ts'
@@ -339,31 +339,26 @@ function approvalDetail(
 
 function gone(filters: QueueFilters, state: FormState = emptyState()) {
 	return html`<div
-		class="empty"
 		data-decided-message="This item does not wait for you now. Somebody decided it. Your text is kept."
 	>
 		${messages(state)}
-		<p class="empty-title">This item does not wait for you now.</p>
-		<p>Somebody decided it, or a filter hides it.</p>
-		${keptText(state)}
-		<p><a href="${queueHref(filters)}" data-queue-back>Back to the list</a></p>
+		${emptyNotice(
+			'This item does not wait for you now.',
+			html`Somebody decided it, or a filter hides it.
+				<a href="${queueHref(filters)}" data-queue-back>Back to the list</a>`,
+			keptText(state)
+		)}
 	</div>`
 }
 
 function nothing(waiting: Waiting, filters: QueueFilters) {
-	const filtered = filters.plan || filters.q
-	return html`<div class="empty">
-		<p class="empty-title">${filtered ? 'No item matches these filters.' : 'Nothing waits for you.'}</p>
-		${
-			filtered
-				? html`<p><a href="/" data-queue-back>Clear the filters</a></p>`
-				: html`<p>
-						${waiting.running.length ? `${plural(waiting.running.length, 'exploration')} running. ` : ''}New
-						questions, claims, and approvals show here by themselves. To start, run
-						<code>/checkmate:test</code> in Claude Code.
-					</p>`
-		}
-	</div>`
+	if (filters.plan || filters.q)
+		return emptyNotice('No item matches these filters.', html`<a href="/" data-queue-back>Clear the filters</a>`)
+	return emptyNotice(
+		'Nothing waits for you.',
+		html`${waiting.running.length ? `${plural(waiting.running.length, 'exploration')} running. ` : ''}New questions,
+			claims, and approvals show here by themselves. To start, run <code>/checkmate:test</code> in Claude Code.`
+	)
 }
 
 function detail(

@@ -16,7 +16,7 @@ import {
 import { decisionToken, planRequest, planRunGaps } from '../plans.ts'
 import { gapsAffecting } from '../contracts.ts'
 import { hasMetadata, html, join, metadataList, pill, plural, short, time, words } from './html.ts'
-import { banner, downloads, heading } from './layout.ts'
+import { banner, downloads, emptyNotice, heading } from './layout.ts'
 import { emptyState, gapPanel, recordPanel, verdictPanel } from './forms.ts'
 import { counts, loopState, runStatus } from './lists.ts'
 import { claimsTable, explorationBanners, explorationsTable, questionsList } from './exploration.ts'
@@ -642,13 +642,13 @@ export function planPage(
 }
 
 function storedTestsEmpty(planId: string, completed: string | undefined) {
-	return html`<div class="empty" data-key="no-tests">
-		<p class="empty-title">No stored tests yet.</p>
-		<p>
-			A stored test comes from the claims of a completed exploration. To store them, run
-			<code>checkmate harvest ${completed ?? '<explorationId>'}</code>. To write a plan with tests, run
-			<code>/checkmate:plan ${planId}</code>.
-		</p>
+	return html`<div data-key="no-tests">
+		${emptyNotice(
+			'No stored tests yet.',
+			html`A stored test comes from the claims of a completed exploration. To store them, run
+				<code>checkmate harvest ${completed ?? '<explorationId>'}</code>. To write a plan with tests, run
+				<code>/checkmate:plan ${planId}</code>.`
+		)}
 	</div>`
 }
 

@@ -4,7 +4,7 @@ import type { Page } from './layout.ts'
 import type { ListPage, ListQuery } from '../views.ts'
 import { operationLog, pagedOperations, pagedPlans, pagedRuns, planList, runList } from '../views.ts'
 import { html, join, pill, plural, time, words } from './html.ts'
-import { heading } from './layout.ts'
+import { emptyNotice, heading } from './layout.ts'
 
 export function loopState(loop: { state: string; waitsOn: string }) {
 	const role = loop.waitsOn === 'qa' ? 'QA' : loop.waitsOn
@@ -51,6 +51,7 @@ export type ListSpec = {
 	sort: string
 	direction: Direction
 	filters: Filter[]
+	none: [string, Html | string]
 }
 
 export type ListState = {
@@ -201,10 +202,12 @@ function listRegion(spec: ListSpec, state: ListState, total: number, rows: Html[
 							${rows}
 						</ul>
 						${pager(spec, state, total)}`
-				: html`<div class="empty">
-						<p class="empty-title">No ${spec.noun} matches these filters.</p>
-						<p><a href="${spec.path}" data-list-clear>Clear the filters</a></p>
-					</div>`
+				: state.q || Object.keys(state.filters).length
+					? emptyNotice(
+							`No ${spec.noun} matches these filters.`,
+							html`<a href="${spec.path}" data-list-clear>Clear the filters</a>`
+						)
+					: emptyNotice(spec.none[0], spec.none[1])
 		}
 	</div>`
 }
@@ -238,6 +241,7 @@ export function plansSpec(): ListSpec {
 		path: '/plans',
 		region: 'plans',
 		noun: 'plan',
+		none: ['No plan yet.', html`To make one, run <code>/checkmate:test</code> in Claude Code.`],
 		search: 'Search plans',
 		columns: [
 			{ label: 'Plan', sort: 'plan' },
@@ -344,6 +348,7 @@ export function runsSpec(store: Store): ListSpec {
 		path: '/runs',
 		region: 'runs',
 		noun: 'run',
+		none: ['No run yet.', html`Approve a plan, then run <code>/checkmate:test</code> in Claude Code.`],
 		search: 'Search runs',
 		columns: [
 			{ label: 'Run', sort: 'run' },
@@ -426,6 +431,7 @@ export function logSpec(store: Store): ListSpec {
 		path: '/log',
 		region: 'log',
 		noun: 'operation',
+		none: ['No operation yet.', 'Each change to the record shows here.'],
 		search: 'Search the log',
 		columns: [
 			{ label: 'Time', sort: 'time', first: 'desc' },

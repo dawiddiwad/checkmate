@@ -5,7 +5,7 @@ import type { Context, Page } from './layout.ts'
 import type { EntryPoint, InstanceRecord } from '../targets.ts'
 import { instanceList, targetHistory, targetList, targetRequest, targetRevision } from '../targets.ts'
 import { html, join, pill, plural, short, time } from './html.ts'
-import { banner, heading } from './layout.ts'
+import { banner, emptyNotice, heading } from './layout.ts'
 
 export type InstanceForm = { values: Record<string, string>; error: string | null }
 export type RetireState = { instanceId: string; error: string } | null
@@ -84,10 +84,7 @@ export function targetsPage(store: Store): Page {
 								</tbody>
 							</table>
 						</div>`
-					: html`<div class="empty">
-							<p class="empty-title">No target yet.</p>
-							<p>Record one with <code>checkmate target open</code>.</p>
-						</div>`
+					: emptyNotice('No target yet.', html`Record one with <code>checkmate target open</code>.`)
 			}
 		</div>`
 	return settingsPage('/settings/targets', 'Targets', ['*'], body)

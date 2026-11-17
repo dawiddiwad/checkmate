@@ -238,6 +238,31 @@ test('an empty workspace says once that nothing waits and how to start', async (
 	assert.doesNotMatch(await (await fetch(new URL('/claims', ui.url))).text(), /Select rows with x or the boxes/)
 })
 
+test('each empty page says what is empty and gives one next step', async (t) => {
+	const workspace = directory(t)
+	const ui = await startUi({ workspace, defaultActor: 'qa-lead' })
+	t.after(() => ui.close())
+	const empty = async (path: string) => {
+		const body = await (await fetch(new URL(path, ui.url))).text()
+		const found = [
+			...body.matchAll(
+				/<div class="empty"[^>]*>\s*<p class="empty-title">([^<]+)<\/p>\s*<p class="empty-next">/g
+			),
+		]
+		assert.equal(found.length, 1, path)
+		assert.equal(body.match(/class="empty-title"/g)?.length, 1, path)
+		return found[0][1]
+	}
+	assert.equal(await empty('/'), 'Nothing waits for you.')
+	assert.equal(await empty('/claims'), 'No claim yet.')
+	assert.equal(await empty('/claims?q=lamp'), 'No claim matches these filters.')
+	assert.equal(await empty('/plans'), 'No plan yet.')
+	assert.equal(await empty('/plans?q=lamp'), 'No plan matches these filters.')
+	assert.equal(await empty('/runs'), 'No run yet.')
+	assert.equal(await empty('/log?actor=nobody'), 'No operation matches these filters.')
+	assert.equal(await empty('/settings/targets'), 'No target yet.')
+})
+
 test('several questions take one answer and several claims one decision after a confirm step', async (t) => {
 	const { call, read } = await start(t)
 	const items = read(needsYou).items

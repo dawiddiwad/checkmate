@@ -5,7 +5,7 @@ import type { FormState } from './forms.ts'
 import type { Claim } from '../journal.ts'
 import { claimsAcross } from '../views.ts'
 import { html, pill, plural, time } from './html.ts'
-import { banner, listAndItem } from './layout.ts'
+import { banner, emptyNotice, listAndItem } from './layout.ts'
 import type { BulkState, Picked } from './bulk.ts'
 import { bulkBar, bulkPanel, pickBox } from './bulk.ts'
 import { actorField, emptyState, hidden, keptText, messages, recordPanel, returnFields } from './forms.ts'
@@ -235,6 +235,24 @@ function crumbs(item: Row, filters: ClaimFilters) {
 	</div>`
 }
 
+function noClaim(total: number, shown: number, filtered: boolean, list: string) {
+	if (!total && !filtered)
+		return emptyNotice(
+			'No claim yet.',
+			html`Claims show here when an explorer reports a defect. To start, run <code>/checkmate:test</code> in
+				Claude Code.`
+		)
+	if (!shown)
+		return emptyNotice(
+			'No claim matches these filters.',
+			html`<a href="/claims" data-queue-back>Clear the filters</a>`
+		)
+	return emptyNotice(
+		filtered ? 'This claim does not match the filters.' : 'No claim to show.',
+		html`<a href="${list}" data-queue-back>Back to the list</a>`
+	)
+}
+
 const shownLimit = 50
 
 function nextKey(shown: Row[], item: Row) {
@@ -305,9 +323,7 @@ export function claimsPage(
 				? html`<ul class="q-items">
 						${shown.slice(0, limit).map((entry) => row(entry, filters, key))}
 					</ul>`
-				: html`<p class="none">
-						No claim matches these filters. <a href="/claims" data-queue-back>Clear the filters</a>
-					</p>`
+				: ''
 		}
 		${
 			shown.length > limit
@@ -338,12 +354,7 @@ export function claimsPage(
 						back: claimsHref(filters, filters.state ? nextKey(shown, item) : key),
 						state: refusal?.state ?? emptyState(),
 					})
-				: html`<div class="empty">
-						<p class="empty-title">
-							${asked ? 'This claim does not match the filters.' : 'No claim to show.'}
-						</p>
-						<p><a href="${claimsHref(filters)}" data-queue-back>Back to the list</a></p>
-					</div>`
+				: noClaim(rows.length, shown.length, filtered, claimsHref(filters))
 	return {
 		title: item ? `${item.planId} · ${item.id} · Claims` : 'Claims',
 		section: 'claims',
@@ -354,7 +365,7 @@ export function claimsPage(
 			list,
 			detail: pane,
 			selected: key ?? '',
-			open: Boolean(asked) && params.get('view') !== 'list',
+			open: (Boolean(asked) && params.get('view') !== 'list') || !shown.length,
 		}),
 	}
 }

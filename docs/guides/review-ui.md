@@ -22,6 +22,8 @@ The command prints `completed ui url=<url>`. Open that URL in a browser on the s
 
 ## Pages
 
+When a page or a list has nothing to show, it says what is empty and gives the one next step, for example `Clear the filters`.
+
 ### Needs you
 
 The start page. It shows the items that wait for your decision in a list on the left, and the selected item on the right. The most urgent item is first, and the page selects it when it opens. The list has these groups, in this order:

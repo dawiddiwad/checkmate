@@ -237,6 +237,14 @@ export function heading(title: Html | string, sub: Html | string | null = null, 
 	</div>`
 }
 
+export function emptyNotice(what: string, next: Html | string, extra: Html | '' = '') {
+	return html`<div class="empty">
+		<p class="empty-title">${what}</p>
+		<p class="empty-next">${next}</p>
+		${extra}
+	</div>`
+}
+
 export function banner(tone: 'warn' | 'info' | 'fail', content: Html | string) {
 	return html`<div class="banner ${tone}" role="${tone === 'info' ? 'status' : 'alert'}">${content}</div>`
 }

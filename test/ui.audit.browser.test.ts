@@ -788,6 +788,73 @@ test(
 			'dialog[data-confirm]',
 			hidden('dialog[data-confirm]')
 		)
+		const actions = async (
+			name: string,
+			start: string,
+			reach: () => Promise<unknown>,
+			open: string,
+			dialog: string
+		) => {
+			await page.goto(url(start))
+			await page.waitForFunction(() => document.activeElement?.matches('.hl[data-row], [data-nav]'))
+			await reach()
+			const address = page.url()
+			for (let round = 0; round < 20; round++) {
+				await page.keyboard.press(open)
+				await page
+					.locator(dialog)
+					.waitFor({ timeout: 3000 })
+					.catch(() => assert.fail(`${name} did not open in round ${round}`))
+				await page.waitForFunction(() => window.history.state?.layer === 'act', null, { timeout: 3000 })
+				for (let step = 0; step < 3 && (await page.locator(dialog).isVisible()); step++)
+					await page.keyboard.press('Escape')
+				await page.locator(dialog).waitFor({ state: 'hidden', timeout: 3000 })
+				await page.waitForFunction(() => !window.history.state?.layer, null, { timeout: 3000 })
+				assert.equal(page.url(), address, `${name} round ${round}`)
+			}
+		}
+		const toButton =
+			(label: string, right = 0) =>
+			async () => {
+				for (let step = 0; step < 12; step++) {
+					const now = await page.evaluate(() => document.activeElement?.textContent?.trim())
+					if (now?.startsWith(label)) break
+					await page.keyboard.press(step === 0 && right ? 'ArrowRight' : 'ArrowUp')
+				}
+			}
+		await actions(
+			'Test build',
+			'/plans/coupons?view=needs&focus=list',
+			toButton('Test build…'),
+			'Enter',
+			'dialog[data-act-dialog="test"]'
+		)
+		await actions(
+			'Test the answers',
+			'/plans/search?view=needs&focus=list',
+			async () => {
+				await toButton('Test build…')()
+				await page.keyboard.press('ArrowRight')
+			},
+			'Enter',
+			'dialog[data-act-dialog="follow"]'
+		)
+		await actions(
+			'Stop the test',
+			'/explorations/x-14',
+			toButton('Stop the test…'),
+			'Enter',
+			'dialog[data-act-dialog="stop-x-14"]'
+		)
+		await actions(
+			'Stop tester',
+			'/explorations/x-14',
+			async () => {
+				await page.locator('[data-key="explorer:a1"]').focus()
+			},
+			'1',
+			'dialog[data-act-dialog="stop-x-14-a1"]'
+		)
 		await page.goto(url('/plans/coupons?view=needs&focus=list'))
 		await row()
 		const start = page.url()

@@ -513,7 +513,7 @@ function processRuns(store: Store) {
 	for (const explorer of ['a1', 'a2'])
 		event(store, 'x-14', { step: 'turn', explorer, detail: { turn: 'test', session: `session-${explorer}` } })
 	minutesAgo(3 * day)
-	open('search', 'x-15', 'fixture-build-4', 'local')
+	open('account', 'x-15', 'fixture-build-4', 'local')
 	event(store, 'x-15', { step: 'supervisor', detail: { pid: gone } })
 	launched(store, 'x-15', 'a1')
 	minutesAgo(3 * day - 6)
@@ -530,6 +530,19 @@ function processRuns(store: Store) {
 	open('account', 'x-17', 'fixture-build-2', 'local')
 	event(store, 'x-17', { step: 'supervisor', detail: { pid: gone } })
 	launched(store, 'x-17', 'a1')
+	minutesAgo(2 * 60)
+	open('search', 'x-18', 'fixture-build-5', 'local')
+	event(store, 'x-18', { step: 'supervisor', detail: { pid: process.pid } })
+	launched(store, 'x-18', 'a1')
+	ended(store, 'x-18', 'a1', [{ kind: 'question', id: 'Q1', question: 'Does the search ignore case?' }])
+	done(store, 'x-18')
+	answerGap(store, human, {
+		planId: 'search',
+		gapId: 'a1/Q1',
+		kind: 'defer',
+		value: 'Decide later.',
+		rationale: 'The owner has not decided yet.',
+	})
 }
 
 function paused(store: Store) {

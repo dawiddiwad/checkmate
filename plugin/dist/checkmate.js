@@ -21009,7 +21009,7 @@ var routes = {
   claim: new RegExp(`^/explorations/(${id})/claims/(${id}/${id})$`),
   claimEvidence: new RegExp(`^/explorations/(${id})/claims/(${id}/${id})/evidence/([0-9]{1,3})$`),
   entryEvidence: new RegExp(`^/explorations/(${id})/entries/(${id}/${id})/evidence/([0-9]{1,3})$`),
-  font: /^\/assets\/fonts\/(inter|space-grotesk|jetbrains-mono|outfit|manrope)\.woff2$/
+  font: /^\/assets\/fonts\/(inter|space-grotesk|jetbrains-mono|outfit|manrope|plus-jakarta-sans)\.woff2$/
 };
 var contentSecurityPolicy = "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; form-action 'self'";
 var inlineImages2 = ["image/png", "image/jpeg", "image/webp", "image/gif"];
@@ -21020,7 +21020,7 @@ var documentTypes = {
   junit: "application/xml; charset=utf-8"
 };
 var themes = ["system", "light", "dark"];
-var skins = ["a", "b"];
+var skins = ["a", "b", "c"];
 var maxForm = 256 * 1024;
 function directory(candidates, file) {
   for (const candidate of candidates) {
@@ -21040,6 +21040,7 @@ function assets() {
     "/assets/skins.css": { type: "text/css; charset=utf-8", body: read("skins.css") },
     "/assets/skin-a.css": { type: "text/css; charset=utf-8", body: read("skin-a.css") },
     "/assets/skin-b.css": { type: "text/css; charset=utf-8", body: read("skin-b.css") },
+    "/assets/skin-c.css": { type: "text/css; charset=utf-8", body: read("skin-c.css") },
     font: (name) => readFileSync6(`${fonts}${name}.woff2`)
   };
 }

@@ -3,7 +3,7 @@ import { html } from './html.ts'
 import { viewer } from './evidence.ts'
 
 export type Theme = 'system' | 'light' | 'dark'
-export type Skin = 'a' | 'b'
+export type Skin = 'a' | 'b' | 'c'
 export type Section = 'inbox' | 'claims' | 'plans' | 'runs' | 'log' | 'settings' | null
 
 export type Context = {

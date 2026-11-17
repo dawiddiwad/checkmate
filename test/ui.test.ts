@@ -1278,6 +1278,6 @@ test('a skin from the query shows for the visit and the default stays without on
 	assert.match(later.body, /data-skin="a"/)
 	const unknown = await call(ui, '/runs?skin=z', { headers: { Cookie: 'checkmate_skin=a' } })
 	assert.doesNotMatch(unknown.body, /data-skin/)
-	for (const file of ['skins.css', 'skin-a.css', 'skin-b.css', 'fonts/outfit.woff2'])
+	for (const file of ['skins.css', 'skin-a.css', 'skin-b.css', 'skin-c.css', 'fonts/outfit.woff2'])
 		assert.equal((await call(ui, `/assets/${file}`)).status, 200, file)
 })

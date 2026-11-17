@@ -32,9 +32,17 @@ export async function stop() {
 	rmSync(template, { recursive: true, force: true })
 }
 
-export async function open(t: TestContext, options: BrowserContextOptions = {}) {
-	const workspace = copied(t, template)
-	const ui = await startUi({ workspace })
+export function open(t: TestContext, options: BrowserContextOptions = {}, env?: Record<string, string | undefined>) {
+	return openIn(t, copied(t, template), options, env)
+}
+
+export async function openIn(
+	t: TestContext,
+	workspace: string,
+	options: BrowserContextOptions = {},
+	env?: Record<string, string | undefined>
+) {
+	const ui = await startUi({ workspace, env })
 	const context = await browser!.newContext({ viewport: { width: 1280, height: 900 }, ...options })
 	context.setDefaultTimeout(5000)
 	await context.addCookies([{ name: 'checkmate_actor', value: human, url: ui.url }])
@@ -47,7 +55,7 @@ export async function open(t: TestContext, options: BrowserContextOptions = {}) 
 	const page = await context.newPage()
 	t.after(() => assert.deepEqual(errors, [], 'the page threw an error'))
 	const url = (path: string) => new URL(path, ui.url).href
-	return { workspace, ui, page, url }
+	return { workspace, ui, page, url, context }
 }
 
 export function checkmate(workspace: string, args: string[]) {

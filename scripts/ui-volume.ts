@@ -517,7 +517,10 @@ function processRuns(store: Store) {
 	event(store, 'x-15', { step: 'supervisor', detail: { pid: gone } })
 	launched(store, 'x-15', 'a1')
 	minutesAgo(3 * day - 6)
-	event(store, 'x-15', { step: 'stop', detail: { actor: 'ana', reason: 'The build is the wrong one.', was: 'testing' } })
+	event(store, 'x-15', {
+		step: 'stop',
+		detail: { actor: 'ana', reason: 'The build is the wrong one.', was: 'testing' },
+	})
 	minutesAgo(2 * day)
 	open('account', 'x-16', 'fixture-build-1', 'local')
 	event(store, 'x-16', { step: 'supervisor', detail: { pid: gone } })

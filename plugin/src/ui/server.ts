@@ -24,7 +24,9 @@ import { decideClaim, explorationRow, handOffClaims } from '../journal.ts'
 import { claimPage, explorationPage, explorerFile, explorerFilePage, questionPage } from './exploration.ts'
 import { acceptResult, rejectResult } from '../runs.ts'
 import { addInstance, retireInstance, targetRequest } from '../targets.ts'
-import { startExploration, startFollow, stopExploration, unusedAnswers } from '../explorers.ts'
+import { explorationState, startExploration, startFollow, stopExploration, unusedAnswers } from '../explorers.ts'
+import { explorationEvents } from '../explorations.ts'
+import { all } from '../store.ts'
 import { autoMode, defaultBuild } from '../modes.ts'
 import { upstreamBase } from '../change.ts'
 import { levelNames } from '../levels.ts'
@@ -273,6 +275,20 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		cursor = changes[changes.length - 1].rowid
 		for (const client of clients) for (const change of changes) deliver(client, change)
 	}, 250)
+	const watchedStates = () =>
+		all<{ exploration_id: string }>(
+			watch,
+			"SELECT DISTINCT exploration_id FROM exploration_events e WHERE step = 'supervisor' AND NOT EXISTS (SELECT 1 FROM exploration_events d WHERE d.exploration_id = e.exploration_id AND d.rowid > e.rowid AND d.step IN ('done', 'followed', 'stop'))"
+		)
+			.map((row) => `${row.exploration_id}:${explorationState(explorationEvents(watch, row.exploration_id))}`)
+			.join(',')
+	let supervisors = watchedStates()
+	const supervisorWatch = setInterval(() => {
+		const current = watchedStates()
+		if (current === supervisors) return
+		supervisors = current
+		for (const client of clients) client.res.write('data: *\n\n')
+	}, 1000)
 	const heartbeat = setInterval(() => {
 		for (const client of clients) client.res.write(': heartbeat\n\n')
 	}, 15_000)
@@ -1376,6 +1392,7 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 			closed = true
 			clearInterval(poll)
 			clearInterval(heartbeat)
+			clearInterval(supervisorWatch)
 			for (const client of clients) client.res.end()
 			clients.clear()
 			await new Promise<void>((resolve) => {

@@ -702,7 +702,7 @@ function enterList() {
 		chosenBuild = null
 		applyBuild()
 	}
-	if (!startRow()) return tell('Nothing here.')
+	if (!startRow()) return enterActions() || tell('Nothing here.')
 	window.history.pushState({ level: 'list' }, '', location.pathname + location.search)
 	level = 'list'
 	settle()
@@ -1522,6 +1522,7 @@ window.addEventListener('resize', () => {
 })
 
 let actFrom = null
+let actLast = null
 
 function actDialog() {
 	return document.querySelector('dialog[data-act-dialog][open]')
@@ -1594,12 +1595,14 @@ function actKey(event, dialog) {
 	const key = event.key
 	if (key === 'Escape') {
 		event.preventDefault()
-		return typing ? target.blur() : dialog.close('no')
+		if (!typing) return dialog.close('no')
+		actLast = target
+		return target.blur()
 	}
 	if (key === 'ArrowUp' || key === 'ArrowDown') {
 		event.preventDefault()
 		const stops = actStops(dialog)
-		const at = stops.indexOf(target)
+		const at = stops.indexOf(stops.includes(target) ? target : actLast)
 		const next = at < 0 ? 0 : at + (key === 'ArrowDown' ? 1 : -1)
 		return stops[Math.max(0, Math.min(stops.length - 1, next))].focus()
 	}
@@ -2003,7 +2006,7 @@ function normalize(text) {
 }
 
 function dirty(region) {
-if (region.querySelector('dialog[open]')) return true
+	if (region.querySelector('dialog[open]')) return true
 	if (region.querySelector('form[data-confirming]')) return true
 	for (const field of region.querySelectorAll('textarea, input, select')) {
 		if (field.type === 'hidden' || field.matches('[data-pick-box]')) continue

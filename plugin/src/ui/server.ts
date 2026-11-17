@@ -388,7 +388,12 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		if (target) {
 			const revision = searchParams.get('revision')
 			const number = revision && /^[1-9][0-9]{0,8}$/.test(revision) ? Number(revision) : null
-			return render(request, targetPage(store, shown, target[1], number))
+			const kept = keptInstance(request)
+			return render(
+				request,
+				targetPage(store, shown, target[1], number, kept),
+				kept ? [cookie('checkmate_instance', '', 0)] : []
+			)
 		}
 		const latest = routes.latestPlan.exec(pathname)
 		if (latest) {
@@ -484,6 +489,15 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		const typed = form.get('actor')?.trim() ?? ''
 		const actor = typed || request.cookies.checkmate_actor?.trim() || fallbackActor
 		return { actor, cookies: typed ? [cookie('checkmate_actor', typed)] : [] }
+	}
+
+	function keptInstance(request: Request): InstanceForm | null {
+		try {
+			const kept = JSON.parse(request.cookies.checkmate_instance ?? '')
+			return typeof kept?.error === 'string' && typeof kept.values === 'object' ? kept : null
+		} catch {
+			return null
+		}
 	}
 
 	function values(form: URLSearchParams, names: string[]) {
@@ -952,16 +966,24 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 			]),
 			error: null,
 		}
-		const page = () => targetPage(store, context(request), targetId, null, state)
+		const again = () => {
+			const kept = JSON.stringify(state)
+			if (kept.length > 3000)
+				return refuse(request, () => targetPage(store, context(request), targetId, null, state), cookies)
+			redirect(request.res, `/settings/targets/${targetId}#add-instance`, [
+				...cookies,
+				cookie('checkmate_instance', kept, 60),
+			])
+		}
 		const instanceId = state.values.instanceId.trim()
 		if (!actor) state.error = 'Enter your name. Checkmate records it with the instance.'
 		else if (!instanceId) state.error = 'Enter an instance ID.'
-		if (state.error) return refuse(request, page, cookies)
+		if (state.error) return again()
 		try {
 			addInstance(store, actor, { targetId, instanceId, instance: instanceFromForm(entryPoints, form) })
 		} catch (error) {
 			state.error = plainMessage(error)
-			return refuse(request, page, cookies)
+			return again()
 		}
 		redirect(request.res, `/settings/targets/${targetId}#instance-${instanceId}`, [
 			...cookies,

@@ -894,13 +894,32 @@ test('the Add instance form records the actor and the Retire button needs its co
 	const csrf = field(page, 'csrf')
 	assert.match(page, /id="instance-actor" name="actor"/)
 	const form = { csrf, instanceId: 'uat', 'entry.web': 'not a url', environment: 'UAT', references: 'a\nb' }
-	const nameless = await call(ui, '/settings/targets/shop-local/instances', { form })
-	assert.equal(nameless.status, 422)
-	assert.match(nameless.body, /Enter your name/)
-	const invalid = await call(ui, '/settings/targets/shop-local/instances', { form, headers: actorCookie })
-	assert.equal(invalid.status, 422)
-	assert.match(invalid.body, /Entry point web needs a valid URL/)
-	assert.match(invalid.body, /name="instanceId"[\s\S]*?value="uat"/)
+	const back = async (reply: Reply, cookie = '') => {
+		assert.equal(reply.status, 303)
+		assert.equal(reply.headers.location, '/settings/targets/shop-local#add-instance')
+		const kept = [reply.headers['set-cookie'] ?? []].flat().map((line) => line.split(';')[0])
+		const shown = await call(ui, reply.headers.location!, { headers: { Cookie: [cookie, ...kept].join('; ') } })
+		assert.match(String(shown.headers['set-cookie']), /checkmate_instance=; .*Max-Age=0/)
+		return shown.body
+	}
+	const nameless = await back(await call(ui, '/settings/targets/shop-local/instances', { form }))
+	assert.match(nameless, /Enter your name/)
+	const invalid = await back(
+		await call(ui, '/settings/targets/shop-local/instances', { form, headers: actorCookie }),
+		actorCookie.Cookie
+	)
+	assert.match(invalid, /Entry point web needs a valid URL/)
+	assert.match(invalid, /name="instanceId"[\s\S]*?value="uat"/)
+	const taken = await back(
+		await call(ui, '/settings/targets/shop-local/instances', {
+			form: { ...form, instanceId: 'staging', 'entry.web': 'https://other.shop.example' },
+			headers: actorCookie,
+		}),
+		actorCookie.Cookie
+	)
+	assert.match(taken, /class="form-error" role="alert">[^<]*staging/)
+	assert.match(taken, /name="entry.web"[\s\S]*?value="https:\/\/other.shop.example"/)
+	assert.doesNotMatch((await call(ui, '/settings/targets/shop-local')).body, /class="form-error"/)
 	const added = await call(ui, '/settings/targets/shop-local/instances', {
 		form: { ...form, 'entry.web': 'https://uat.shop.example' },
 		headers: actorCookie,
@@ -959,10 +978,12 @@ test('instance values are escaped in the table and the form; a javascript: URL e
 		form: { csrf, instanceId: 'x"><script>', 'entry.web': '"><script>alert(3)</script>' },
 		headers: actorCookie,
 	})
-	assert.equal(refused.status, 422)
-	assert(!refused.body.includes('<script>alert(3)'), 'raw script in the form')
-	assert.match(refused.body, /value="&quot;&gt;&lt;script&gt;alert\(3\)&lt;\/script&gt;"/)
-	assert.match(refused.body, /value="x&quot;&gt;&lt;script&gt;"/)
+	assert.equal(refused.status, 303)
+	const kept = [refused.headers['set-cookie'] ?? []].flat().map((line) => line.split(';')[0])
+	const shown = (await call(ui, refused.headers.location!, { headers: { Cookie: kept.join('; ') } })).body
+	assert(!shown.includes('<script>alert(3)'), 'raw script in the form')
+	assert.match(shown, /value="&quot;&gt;&lt;script&gt;alert\(3\)&lt;\/script&gt;"/)
+	assert.match(shown, /value="x&quot;&gt;&lt;script&gt;"/)
 })
 
 test('a retire of an unknown instance shows a visible error; each Retire control names its instance', async (t) => {

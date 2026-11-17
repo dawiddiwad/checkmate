@@ -157,7 +157,7 @@ The button with the gear icon at the right of the top bar opens Settings. The fi
 
 A target page shows the entry points, the instances, the tools, the profile with the authentication references, and the revision history. Open an older revision from the history.
 
-- **Add instance.** Give an instance ID and a value for each entry point. The environment and the references are optional. Write one reference on each line. Adding an instance needs no new revision and no approval.
+- **Add instance.** Give an instance ID and a value for each entry point. The environment and the references are optional. Write one reference on each line. Adding an instance needs no new revision and no approval. When the UI refuses the instance, for example because the ID is in use, the form shows the reason and keeps your values. A reload of the page does not send the form again.
 - **Retire.** Click `Retire` on the instance row, then `Confirm retire`. No new run can start on a retired instance. Its runs stay as they are.
 
 Each change records your name and shows in the Log, as with the command `target instance add` or `target instance retire`.

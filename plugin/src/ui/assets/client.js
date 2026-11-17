@@ -709,6 +709,11 @@ function hideExtra(row) {
 
 function choose(n) {
 	if (sending) return
+	const selection = bulkOptions()
+	if (selection.length && (level === 'list' || level === 'nav')) {
+		const option = selection[n - 1]
+		return option ? option.click() : tell(`The options go from 1 to ${selection.length}.`)
+	}
 	if (level === 'nav' && review) return chooseBuild(n)
 	const options = optionsNow()
 	if (!options.length) return tell('No options here.')
@@ -726,6 +731,7 @@ function pick(row, on = !picks.has(row.dataset.key)) {
 }
 
 function applyPicks() {
+	showBulk()
 	for (const row of document.querySelectorAll('[data-row][data-pick]')) {
 		const on = picks.has(row.dataset.key)
 		row.classList.toggle('sel', on)
@@ -751,6 +757,295 @@ function toggleSelect() {
 	anchor = null
 	rangeBase = null
 	showHints()
+}
+
+const bulkBar = document.querySelector('[data-bulk]')
+const confirmDialog = document.querySelector('[data-confirm]')
+const findDialog = document.querySelector('[data-find]')
+
+function picked(kind) {
+	return [...picks]
+		.map((key) => document.querySelector(`[data-row][data-key="${CSS.escape(key)}"][data-pick]`)?.dataset.pick)
+		.filter((pick) => pick?.startsWith(`${kind}:`))
+}
+
+function plural(count, one, many = `${one}s`) {
+	return `${count} ${count === 1 ? one : many}`
+}
+
+function bulkOptions() {
+	if (!bulkBar || !picks.size) return []
+	return [...bulkBar.querySelectorAll('[data-bulk-action]')].filter((button) => !button.hidden)
+}
+
+function showBulk() {
+	if (!bulkBar) return
+	bulkBar.hidden = !picks.size
+	if (!picks.size) return
+	const findings = picked('claim').length
+	const questions = picked('question').length + picked('gap').length
+	const defects = picked('defect').length
+	const labels = {
+		accept: findings ? `Accept ${plural(findings, 'finding')} as defects` : null,
+		right: questions ? `${plural(questions, 'question')} right as built` : null,
+		defer: questions ? `Defer ${plural(questions, 'question')}` : null,
+		handoff: defects ? `Hand over ${plural(defects, 'defect')}` : null,
+		clear: 'Clear the selection',
+	}
+	bulkBar.querySelector('[data-bulk-count]').textContent = `${picks.size} selected`
+	let n = 0
+	for (const button of bulkBar.querySelectorAll('[data-bulk-action]')) {
+		const label = labels[button.dataset.bulkAction]
+		button.hidden = !label
+		if (!label) continue
+		button.querySelector('span').textContent = label
+		button.querySelector('kbd').textContent = String(++n)
+	}
+}
+
+function ask({ title, text, field = null }) {
+	return new Promise((resolve) => {
+		confirmDialog.querySelector('[data-confirm-title]').textContent = title
+		confirmDialog.querySelector('[data-confirm-text]').textContent = text
+		const box = confirmDialog.querySelector('[data-confirm-field]')
+		const input = box.querySelector('input')
+		box.hidden = !field
+		input.value = ''
+		input.required = Boolean(field)
+		if (field) box.querySelector('label').textContent = field
+		confirmDialog.returnValue = ''
+		confirmDialog.showModal()
+		if (field) input.focus()
+		else confirmDialog.querySelector('[data-confirm-yes]').focus()
+		confirmDialog.addEventListener(
+			'close',
+			() => resolve(confirmDialog.returnValue === 'yes' ? { value: input.value.trim() } : null),
+			{ once: true }
+		)
+	})
+}
+
+function confirmKey(event) {
+	const typing = event.target.matches?.('input')
+	if (event.key === 'Escape' || (event.key === 'ArrowLeft' && !typing)) {
+		event.preventDefault()
+		confirmDialog.close('no')
+	} else if (event.key === 'Enter' || (event.key === '1' && !typing)) {
+		event.preventDefault()
+		const input = confirmDialog.querySelector('[data-confirm-field]:not([hidden]) input')
+		if (input && !input.value.trim()) return input.focus()
+		confirmDialog.close('yes')
+	}
+}
+
+async function post(action, fields) {
+	const data = new URLSearchParams()
+	for (const [name, value] of fields) data.append(name, value)
+	let response = await fetch(action, { method: 'POST', body: data })
+	if (response.status === 403 && (await renewToken())) {
+		data.set('csrf', document.querySelector('input[name="csrf"]').value)
+		response = await fetch(action, { method: 'POST', body: data })
+	}
+	if (response.ok && response.redirected) return null
+	const fresh = new DOMParser().parseFromString(await response.text(), 'text/html')
+	return (
+		fresh.querySelector('[role="alert"]')?.textContent?.trim() ||
+		'Checkmate refused the action. Nothing is recorded.'
+	)
+}
+
+function csrf() {
+	return document.querySelector('input[name="csrf"]')?.value ?? bulkBar?.dataset.csrf ?? ''
+}
+
+function keepUndo(claims, to) {
+	try {
+		window.sessionStorage.setItem(
+			'checkmate-undo',
+			JSON.stringify({ plan: review?.dataset.plan, claims, to, until: Date.now() + 8000 })
+		)
+	} catch {}
+}
+
+async function bulk(action) {
+	const back = location.pathname + location.search
+	const findings = picked('claim')
+	const questions = [...picked('question'), ...picked('gap')]
+	const defects = picked('defect')
+	if (action === 'clear') {
+		clearPicks()
+		return tell('The selection is cleared.')
+	}
+	const plans = {
+		accept: [findings, 'Accept as defects', `Accept ${plural(findings.length, 'finding')} as defects?`],
+		right: [questions, 'Right as built', `Record ${plural(questions.length, 'question')} as right as built?`],
+		defer: [questions, 'Defer', `Defer ${plural(questions.length, 'question')}?`],
+		handoff: [defects, 'Hand over', `Hand over ${plural(defects.length, 'defect')}?`],
+	}
+	const [keys, title, text] = plans[action]
+	const answer = await ask({ title, text, field: action === 'handoff' ? 'To whom?' : null })
+	if (!answer) return tell('Nothing is recorded. The selection stays.')
+	tell('Sending…')
+	let refused
+	if (action === 'handoff') {
+		const claims = keys.map((key) => key.split(':').slice(2).join(':'))
+		refused = await post(`/plans/${review.dataset.plan}/handoff`, [
+			['csrf', csrf()],
+			['return', back],
+			['to', answer.value],
+			...claims.map((claim) => ['claim', claim]),
+		])
+		if (!refused) keepUndo(claims, answer.value)
+	} else {
+		const fields =
+			action === 'accept'
+				? [
+						['what', 'claims'],
+						['verdict', 'approved'],
+					]
+				: action === 'right'
+					? [
+							['what', 'questions'],
+							['kind', 'accept_assumption'],
+							['value', 'Right as built.'],
+						]
+					: [
+							['what', 'questions'],
+							['kind', 'defer'],
+						]
+		refused = await post('/bulk', [
+			['csrf', csrf()],
+			['return', back],
+			['confirmed', '1'],
+			...fields,
+			...keys.map((key) => ['pick', key]),
+		])
+	}
+	if (refused) return tell(refused)
+	clearPicks()
+	location.reload()
+}
+
+function showUndo() {
+	let kept = null
+	try {
+		kept = JSON.parse(window.sessionStorage.getItem('checkmate-undo') ?? 'null')
+	} catch {}
+	if (!kept || kept.until < Date.now() || kept.plan !== review?.dataset.plan) return
+	const note = document.createElement('div')
+	note.className = 'toast'
+	note.setAttribute('role', 'status')
+	note.dataset.undo = ''
+	note.innerHTML =
+		'<span></span><button type="button" class="sp-btn" data-undo-button><kbd>0</kbd><span>Undo</span></button>'
+	note.querySelector('span').textContent = `Handed ${plural(kept.claims.length, 'defect')} over to ${kept.to}`
+	document.querySelector('[data-toast]')?.remove()
+	body.append(note)
+	setTimeout(() => {
+		note.remove()
+		try {
+			window.sessionStorage.removeItem('checkmate-undo')
+		} catch {}
+	}, kept.until - Date.now())
+}
+
+async function undo() {
+	const note = document.querySelector('[data-undo]')
+	if (!note) return
+	let kept = null
+	try {
+		kept = JSON.parse(window.sessionStorage.getItem('checkmate-undo') ?? 'null')
+		window.sessionStorage.removeItem('checkmate-undo')
+	} catch {}
+	note.remove()
+	if (!kept) return
+	const refused = await post(`/plans/${kept.plan}/handoff`, [
+		['csrf', csrf()],
+		['return', location.pathname + location.search],
+		['undo', '1'],
+		...kept.claims.map((claim) => ['claim', claim]),
+	])
+	if (refused) return tell(refused)
+	location.reload()
+}
+
+let findTimer = null
+let findTicket = 0
+
+function findLinks() {
+	return [...findDialog.querySelectorAll('[data-find-results] a')]
+}
+
+function findMark(link) {
+	for (const each of findLinks()) each.setAttribute('aria-selected', each === link ? 'true' : 'false')
+	link?.scrollIntoView({ block: 'nearest' })
+}
+
+async function findNow() {
+	const ticket = ++findTicket
+	const query = findDialog.querySelector('[data-find-input]').value
+	try {
+		const response = await fetch(`/find?q=${encodeURIComponent(query)}`, { cache: 'no-store' })
+		const found = await response.json()
+		if (ticket !== findTicket) return
+		const list = findDialog.querySelector('[data-find-results]')
+		list.replaceChildren(
+			...found.results.map((entry) => {
+				const item = document.createElement('li')
+				item.setAttribute('role', 'none')
+				const link = document.createElement('a')
+				link.href = entry.href
+				link.setAttribute('role', 'option')
+				link.tabIndex = -1
+				const kind = document.createElement('span')
+				kind.className = 'sp-pill'
+				kind.textContent = entry.kind
+				const id = document.createElement('span')
+				id.className = 'k'
+				id.textContent = entry.id
+				const title = document.createElement('span')
+				title.className = 't'
+				title.textContent = entry.title
+				title.title = entry.title
+				link.append(kind, id, title)
+				item.append(link)
+				return item
+			})
+		)
+		findDialog.querySelector('[data-find-none]').hidden = found.results.length > 0
+		const more = findDialog.querySelector('[data-find-more]')
+		more.hidden = !found.more
+		more.textContent = `${plural(found.more, 'more result')}. Type more words to narrow the list.`
+		findMark(findLinks()[0])
+	} catch {}
+}
+
+function openFind() {
+	if (document.querySelector('dialog[open]')) return
+	findDialog.showModal()
+	const input = findDialog.querySelector('[data-find-input]')
+	input.focus()
+	input.select()
+	findNow()
+}
+
+findDialog.querySelector('[data-find-input]').addEventListener('input', () => {
+	clearTimeout(findTimer)
+	findTimer = setTimeout(findNow, 120)
+})
+
+function findKey(event) {
+	const links = findLinks()
+	const at = links.findIndex((link) => link.getAttribute('aria-selected') === 'true')
+	if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+		event.preventDefault()
+		const next = links[Math.min(links.length - 1, Math.max(0, at + (event.key === 'ArrowDown' ? 1 : -1)))]
+		return findMark(next)
+	}
+	if (event.key === 'Enter') {
+		event.preventDefault()
+		if (links[at]) location.assign(links[at].href)
+	}
 }
 
 const keysDialog = document.querySelector('[data-keys]')
@@ -804,10 +1099,13 @@ const keyTable = [
 	},
 	{
 		caps: ['1', '2', '3', '…', '9'],
-		help: 'Choose an option of the highlighted record. The options are numbered from left to right as shown. On a rule or an area in the navigator, choose a build column; the same number again shows all builds.',
+		help: 'Choose an option of the highlighted record. The options are numbered from left to right as shown. When records are selected, the numbers act on the selection, and an action on more than one record asks first. On a rule or an area in the navigator, choose a build column; the same number again shows all builds.',
 		test: (event) => /^[1-9]$/.test(event.key),
 		run: (event) => choose(Number(event.key)),
 		hint: () => {
+			const selection = bulkOptions().length
+			if (selection && (level === 'list' || level === 'nav'))
+				return [selection === 1 ? '1' : `1–${selection}`, 'selection']
 			if (level === 'nav' && canChoose(current('nav')?.dataset.target)) {
 				const count = current('nav').querySelectorAll('[data-mark]').length
 				return count ? [count === 1 ? '1' : `1–${count}`, 'builds'] : null
@@ -830,6 +1128,22 @@ const keyTable = [
 		test: (event) => arrows(event) && event.shiftKey,
 		run: (event) => extend(down(event)),
 		hint: () => null,
+	},
+	{
+		cap: '0',
+		caps: ['0'],
+		help: 'Undo the last hand-over while its note shows. At other times 0 does nothing.',
+		test: (event) => event.key === '0',
+		run: undo,
+		hint: () => (document.querySelector('[data-undo]') ? 'undo' : null),
+	},
+	{
+		cap: '/',
+		caps: ['/', 'Ctrl+K'],
+		help: 'Find a plan, a defect, or a question. In the find bar, ↑ and ↓ move in the results, Enter opens one, ← and → move the caret, and Esc closes it.',
+		test: (event) => event.key === '/' || ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k'),
+		run: openFind,
+		hint: () => 'find',
 	},
 	{
 		cap: '?',
@@ -918,8 +1232,10 @@ document.addEventListener('keydown', (event) => {
 		if (event.key === 'Escape' && closeViewer()) event.preventDefault()
 		return
 	}
+	if (confirmDialog.open) return confirmKey(event)
+	if (findDialog.open) return findKey(event)
 	if (keysDialog.open) {
-		if (event.key === '?') {
+		if (event.key === '?' || event.key === 'ArrowLeft') {
 			event.preventDefault()
 			keysDialog.close()
 		}
@@ -928,6 +1244,10 @@ document.addEventListener('keydown', (event) => {
 	if (event.defaultPrevented || event.altKey) return
 	const target = event.target
 	if (event.key === 'Enter' && (event.ctrlKey || event.metaKey) && sendKey(event)) return
+	if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
+		event.preventDefault()
+		return openFind()
+	}
 	if (typingIn(target)) return fieldKey(event)
 	if (event.ctrlKey || event.metaKey) return
 	const menu = document.querySelector('details[data-menu][open]')
@@ -965,6 +1285,10 @@ document.addEventListener('click', (event) => {
 	if (event.target.matches?.('[data-viewer-image]')) zoomViewer(viewerScale === 0 ? 'actual' : 'fit')
 	if (event.target.closest('[data-viewer-close]') || event.target.matches?.('[data-viewer]')) closeViewer()
 	if (event.target.closest('[data-keys-open]')) openKeys()
+	if (event.target.closest('[data-find-open]')) openFind()
+	const bulkButton = event.target.closest('[data-bulk-action]')
+	if (bulkButton) bulk(bulkButton.dataset.bulkAction)
+	if (event.target.closest('[data-undo-button]')) undo()
 	if (event.target.closest('[data-keys-close]')) keysDialog.close()
 	for (const menu of document.querySelectorAll('details[data-menu][open]'))
 		if (!menu.contains(event.target)) menu.open = false
@@ -1089,7 +1413,16 @@ async function send(form, submitter) {
 	try {
 		let response = await post()
 		if (response.status === 403 && (await renewToken())) response = await post()
-		if (response.redirected && response.ok) return location.assign(response.url)
+		if (response.redirected && response.ok) {
+			if (form.action.endsWith('/handoff') && !form.querySelector('[name="undo"]'))
+				keepUndo(
+					form.querySelectorAll('[name="claim"]').length
+						? [...form.querySelectorAll('[name="claim"]')].map((field) => field.value)
+						: [],
+					form.querySelector('[name="to"]')?.value ?? ''
+				)
+			return location.assign(response.url)
+		}
 		sending = false
 		window.HTMLFormElement.prototype.submit.call(form)
 	} catch {
@@ -1434,6 +1767,7 @@ function placeMenu(menu) {
 	const list = menu.querySelector('.menu-list')
 	if (!list) return
 	list.style.left = '0px'
+	list.style.right = 'auto'
 	const edge = 8
 	const box = menu.getBoundingClientRect()
 	const width = list.offsetWidth
@@ -1506,6 +1840,8 @@ if (!CSS.supports('field-sizing', 'content')) {
 }
 
 document.querySelector('[data-keys-open]').hidden = false
+document.querySelector('[data-find-open]').hidden = false
+showUndo()
 if (review && chosenBuild) applyBuild()
 syncRationale()
 syncSource()

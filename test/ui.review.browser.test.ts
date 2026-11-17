@@ -462,3 +462,108 @@ test('a decision from another tab after the page loaded is refused and names the
 	await page.keyboard.press('1')
 	await page.getByText(`${key.slice(2)} was accepted by qa-lead.`).waitFor()
 })
+
+test(
+	'numbers act on a selection, an action on several records asks first, and cancel keeps the selection',
+	{ skip },
+	async (t) => {
+		const { page, url, workspace } = await open(t)
+		await page.goto(url('/plans/coupons?view=needs&focus=list'))
+		await page.waitForFunction(() => document.activeElement?.matches('[data-row]'))
+		await page.keyboard.press('Shift+ArrowDown')
+		const keys = await page
+			.locator('[data-panel="needs"] [data-row].sel')
+			.evaluateAll((rows) => rows.map((row) => (row as HTMLElement).dataset.key!))
+		assert.deepEqual(keys.length, 2)
+		const bar = page.locator('[data-bulk]')
+		await bar.getByText('2 selected').waitFor()
+		assert.deepEqual(await bar.locator('[data-bulk-action]:visible kbd').allTextContents(), ['1', '2'])
+		assert.equal(
+			(await bar.locator('[data-bulk-action]:visible').last().textContent())?.trim(),
+			'2Clear the selection'
+		)
+		await page.keyboard.press('1')
+		const dialog = page.getByRole('dialog', { name: 'Accept as defects' })
+		await dialog.getByText('Accept 2 findings as defects?').waitFor()
+		await page.keyboard.press('Escape')
+		await dialog.waitFor({ state: 'hidden' })
+		assert.equal(await page.locator('[data-panel="needs"] [data-row].sel').count(), 2)
+		await page.keyboard.press('1')
+		await dialog.waitFor()
+		await page.keyboard.press('Enter')
+		await page.getByRole('status').filter({ hasText: 'Accepted 2 claims' }).waitFor()
+		assert.equal(await page.locator('[data-panel="needs"] [data-row].sel').count(), 0)
+		const claims = read(workspace, (store) => mergedClaims(store, 'coupons'))
+		for (const key of keys) assert.equal(claims.find((claim) => `c:${claim.id}` === key)!.state, 'accepted', key)
+	}
+)
+
+test('a hand-over shows a 0 Undo note, and 0 undoes it while the note shows', { skip }, async (t) => {
+	const { page, url, workspace } = await open(t)
+	await page.goto(url('/plans/coupons?view=all&at=c%3Ak1%2FD1&focus=list'))
+	await page.waitForFunction(() => document.activeElement?.getAttribute('data-key') === 'c:k1/D1')
+	await page.keyboard.press('0')
+	await page.keyboard.press('1')
+	await page.locator('[data-extra="handoff"]:not([hidden]) textarea').waitFor()
+	await page.keyboard.type('the payments team')
+	await page.keyboard.press('Enter')
+	const note = page.locator('[data-undo]')
+	await note.getByText('Handed 1 defect over to the payments team').waitFor()
+	const handed = () =>
+		read(workspace, (store) => mergedClaims(store, 'coupons').find((item) => item.id === 'k1/D1')!.handoff)
+	assert.equal(handed()?.to, 'the payments team')
+	await page.waitForFunction(() => document.activeElement?.matches('[data-row]'))
+	await page.keyboard.press('0')
+	await page.getByRole('status').filter({ hasText: 'k1/D1 not handed over' }).waitFor()
+	assert.equal(handed(), null)
+})
+
+test(
+	'the find bar moves with Up and Down, keeps Left and Right for the caret, and names how many more results exist',
+	{ skip },
+	async (t) => {
+		const { page, url } = await open(t)
+		await page.goto(url('/plans/coupons'))
+		await page.waitForFunction(() => document.activeElement?.matches('[data-nav]'))
+		await page.keyboard.press('/')
+		const find = page.getByRole('dialog', { name: 'Find' })
+		await find.waitFor()
+		await find.getByText(/\d+ more results\./).waitFor()
+		await page.keyboard.type('coupons stack')
+		await find.locator('[data-find-results] a', { hasText: 'Two coupons stack on one order' }).first().waitFor()
+		await page.keyboard.press('ArrowLeft')
+		await page.keyboard.press('ArrowRight')
+		assert(await find.isVisible())
+		await page.keyboard.press('Control+k')
+		assert.equal(await page.locator('dialog[open]').count(), 1)
+		const first = await find.locator('[aria-selected="true"]').getAttribute('href')
+		await page.keyboard.press('ArrowDown')
+		const second = await find.locator('[aria-selected="true"]').getAttribute('href')
+		assert.notEqual(first, second)
+		await page.keyboard.press('ArrowUp')
+		await page.keyboard.press('Enter')
+		await page.waitForURL((address) => address.pathname + address.search === first)
+		await page.locator('[data-drawer]').waitFor()
+		await page.keyboard.press('Control+k')
+		await find.waitFor()
+		await page.keyboard.press('Escape')
+		await find.waitFor({ state: 'hidden' })
+	}
+)
+
+test('the key list and the status bar hints come from one table', { skip }, async (t) => {
+	const { page, url } = await open(t)
+	await page.goto(url('/plans/coupons?view=needs&focus=list'))
+	await page.waitForFunction(() => document.activeElement?.matches('[data-row]'))
+	const hints = await page.locator('[data-hints] .sb-k kbd').allTextContents()
+	await page.keyboard.press('?')
+	const help = await page.locator('[data-keys] th kbd').allTextContents()
+	const caps = help.join(' ')
+	for (const hint of hints)
+		assert(hint.match(/^1–\d$/) ? caps.includes('1') : caps.includes(hint) || hint === '↑↓', hint)
+	assert(help.includes('0'))
+	assert(help.includes('Ctrl+K'))
+	await page.keyboard.press('Tab')
+	await page.keyboard.press('Tab')
+	assert.equal(await page.evaluate(() => Boolean(document.activeElement?.closest('[data-keys]'))), true)
+})

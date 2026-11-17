@@ -407,7 +407,7 @@ export function extraOf(context: Context, review: Review, item: Item) {
 }
 
 export function itemRow(context: Context, review: Review, item: Item, id: string, view: string) {
-	const pickable = ['finding', 'question', 'gap'].includes(item.kind)
+	const pickable = ['finding', 'question', 'gap', 'defect'].includes(item.kind)
 	const dim = ['answered', 'rejected'].includes(item.kind)
 	const options = optionsOf(context, review, item)
 	const extra = extraOf(context, review, item)
@@ -443,6 +443,7 @@ export function itemRow(context: Context, review: Review, item: Item, id: string
 export function pickKey(review: Review, item: Item) {
 	if (item.kind === 'finding') return `claim:${review.planId}:${item.id}`
 	if (item.kind === 'gap') return `gap:${review.planId}:${item.id}`
+	if (item.kind === 'defect') return `defect:${review.planId}:${item.id}`
 	return `question:${review.planId}:${item.id}`
 }
 
@@ -871,7 +872,25 @@ export function reviewPage(
 			>
 				${panels}
 			</div>
-			${record}`,
+			${record}
+			<div
+				class="sp-bulk"
+				data-bulk
+				data-plan="${planId}"
+				data-csrf="${context.csrf}"
+				role="group"
+				aria-label="Selection"
+				hidden
+			>
+				<span class="sp-path" data-bulk-count aria-live="polite"></span>
+				<button type="button" class="sp-btn" data-bulk-action="accept"><kbd></kbd><span></span></button>
+				<button type="button" class="sp-btn" data-bulk-action="right"><kbd></kbd><span></span></button>
+				<button type="button" class="sp-btn" data-bulk-action="defer"><kbd></kbd><span></span></button>
+				<button type="button" class="sp-btn" data-bulk-action="handoff"><kbd></kbd><span></span></button>
+				<button type="button" class="sp-btn" data-bulk-action="clear">
+					<kbd></kbd><span>Clear the selection</span>
+				</button>
+			</div>`,
 	}
 }
 

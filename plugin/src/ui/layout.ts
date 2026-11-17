@@ -121,9 +121,24 @@ const dialogs = html`<dialog class="sp-keys" data-keys aria-labelledby="keys-tit
 		<input type="search" data-find-input aria-label="Find a plan, a defect, or a question" autocomplete="off" />
 		<ul role="listbox" aria-label="Results" data-find-results></ul>
 		<p class="sp-find-none" data-find-none hidden>Nothing matches.</p>
+		<p class="sp-find-none" data-find-more hidden></p>
 		<div class="sp-foot">
 			<span><kbd>↑</kbd><kbd>↓</kbd>Choose</span><span><kbd>Enter</kbd>Go</span><span><kbd>Esc</kbd>Close</span>
 		</div>
+	</dialog>
+	<dialog class="sp-confirm" data-confirm aria-labelledby="confirm-title">
+		<div class="sp-dh"><h2 id="confirm-title" class="sp-path" data-confirm-title></h2></div>
+		<form method="dialog" class="sp-form sp-confirm-b" data-confirm-form>
+			<p class="sp-sub" data-confirm-text></p>
+			<div data-confirm-field hidden>
+				<label for="confirm-input" data-confirm-label></label>
+				<input id="confirm-input" autocomplete="off" />
+			</div>
+			<div class="btns">
+				<button class="sp-btn pri" value="yes" data-confirm-yes><kbd>Enter</kbd><span>Confirm</span></button>
+				<button class="sp-btn" value="no" data-confirm-no><kbd>Esc</kbd><span>Cancel</span></button>
+			</div>
+		</form>
 	</dialog>`
 
 export function parentOf(page: Page) {

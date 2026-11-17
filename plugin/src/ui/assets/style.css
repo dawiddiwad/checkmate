@@ -1658,6 +1658,20 @@ details.menu > summary::-webkit-details-marker {
 	border: 1px solid var(--edge);
 	background: var(--surface);
 }
+.sp-confirm {
+	top: calc(var(--top-h) + 48px);
+	margin: 0 auto;
+	width: min(560px, calc(100vw - 32px));
+}
+.sp-confirm-b {
+	padding: 16px;
+}
+.sp-bulk .sp-btn[hidden] {
+	display: none;
+}
+.toast .sp-btn {
+	height: 24px;
+}
 .sp-bulk .sp-path {
 	padding: 0 4px;
 	color: var(--ink);

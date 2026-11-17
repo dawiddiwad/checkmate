@@ -407,3 +407,42 @@ test('one state has one pill on every page', async (t) => {
 	assert.doesNotMatch((await call('/runs/run-7?item=cleanup')).body, /\d{4}-\d{2}-\d{2} \d{2}:\d{2} ·/)
 	assert((await call('/')).body.includes(waiting) || true)
 })
+
+test('find returns plans and items that hold every word, and counts the rest', async (t) => {
+	const { call } = await start(t)
+	const all = JSON.parse((await call('/find')).body)
+	assert.equal(all.results.length, 12)
+	assert(all.more > 100)
+	const found = JSON.parse((await call('/find?q=coupons%20stack')).body)
+	assert.deepEqual(found.results[0], {
+		kind: 'finding',
+		id: 'checkout · a1/D1',
+		title: 'Two coupons stack on one order',
+		href: '/plans/checkout?view=all&item=c%3Aa1%2FD1',
+	})
+	assert(found.results.every((entry: { title: string; id: string }) => /coupons/i.test(entry.title + entry.id)))
+	assert.deepEqual(JSON.parse((await call('/find?q=nothing%20like%20this')).body), { results: [], more: 0 })
+})
+
+test('several defects are handed over at once, and the hand-over is undone at once', async (t) => {
+	const { call, read } = await start(t)
+	const page = await call('/plans/coupons?view=all')
+	const form = new URLSearchParams({
+		csrf: field(page.body, 'csrf'),
+		return: '/plans/coupons',
+		to: 'the payments team',
+	})
+	form.append('claim', 'k1/D1')
+	form.append('claim', 'k1/D2')
+	const handed = await call('/plans/coupons/handoff', form)
+	assert.equal(handed.status, 303)
+	const owners = () =>
+		read((store) => mergedClaims(store, 'coupons'))
+			.filter((claim) => ['k1/D1', 'k1/D2'].includes(claim.id))
+			.map((claim) => claim.handoff?.to ?? null)
+	assert.deepEqual(owners(), ['the payments team', 'the payments team'])
+	form.delete('to')
+	form.set('undo', '1')
+	assert.equal((await call('/plans/coupons/handoff', form)).status, 303)
+	assert.deepEqual(owners(), [null, null])
+})

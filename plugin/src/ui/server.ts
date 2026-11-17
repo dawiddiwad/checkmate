@@ -35,6 +35,7 @@ import {
 	evidenceBytes,
 	operationLog,
 	planDetail,
+	planList,
 	runDetail,
 } from '../views.ts'
 import { defaultActor } from '../actor.ts'
@@ -45,7 +46,7 @@ import { heading, layout } from './layout.ts'
 import { emptyState } from './forms.ts'
 import { logPage, runsPage } from './lists.ts'
 import { homePage } from './home.ts'
-import { reviewPage } from './review.ts'
+import { reviewOf, reviewPage } from './review.ts'
 import { gapPage, planHistoryList, planPage, requestPage } from './plan.ts'
 import { candidateFromForm, candidateJson, editPage, ownChanges, removedTests } from './edit.ts'
 import type { AdoptError } from './run.ts'
@@ -372,6 +373,16 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 				'Cache-Control': 'public, max-age=31536000, immutable',
 			})
 		if (pathname === '/events') return events(request)
+		if (pathname === '/find')
+			return send(
+				request.res,
+				200,
+				'application/json; charset=utf-8',
+				JSON.stringify(find(searchParams.get('q') ?? '')),
+				{
+					'Cache-Control': 'no-store',
+				}
+			)
 		const evidence = routes.evidence.exec(pathname)
 		if (evidence) return serveEvidence(request, evidence[1])
 		const shown = context(request)
@@ -736,6 +747,29 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		return `/plans/${planOfExploration(explorationId)}?view=${encodeURIComponent(view)}&item=${encodeURIComponent(key)}`
 	}
 
+	function find(query: string) {
+		const words = query.toLowerCase().split(/\s+/).filter(Boolean)
+		const matches = (text: string) => words.every((word) => text.toLowerCase().includes(word))
+		const found = planList(store).flatMap((plan) => {
+			const review = reviewOf(store, plan.planId)
+			const head = {
+				kind: 'plan',
+				id: plan.planId,
+				title: review.objective,
+				href: `/plans/${plan.planId}`,
+			}
+			const items = review.items.map((item) => ({
+				kind: item.kind,
+				id: `${plan.planId} · ${item.id}`,
+				title: item.title,
+				href: `/plans/${plan.planId}?view=all&item=${encodeURIComponent(item.key)}`,
+			}))
+			return [head, ...items].filter((entry) => matches(`${entry.id} ${entry.title} ${entry.kind}`))
+		})
+		const shown = 12
+		return { results: found.slice(0, shown), more: Math.max(0, found.length - shown) }
+	}
+
 	function oldItem(params: URLSearchParams, view = 'needs') {
 		const [kind, planId, ...rest] = (params.get('item') ?? '').split(':')
 		const id = rest.join(':')
@@ -750,21 +784,22 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 
 	function handOver(request: Request, form: URLSearchParams, planId: string) {
 		const { actor, cookies } = actorFrom(request, form)
-		const claimId = form.get('claim') ?? ''
+		const claimIds = form.getAll('claim')
+		const named = claimIds.length === 1 ? claimIds[0] : plural(claimIds.length, 'defect')
 		const undo = form.get('undo') === '1'
 		const to = form.get('to')?.trim() ?? ''
 		const back = safeBack(form.get('return') ?? `/plans/${planId}`)
 		const fail = (message: string) =>
 			redirect(request.res, back, [...cookies, cookie('checkmate_toast', message, 60)])
-		if (!undo && !to) return fail(`Name who takes ${claimId}. Nothing is recorded.`)
+		if (!undo && !to) return fail(`Name who takes ${named}. Nothing is recorded.`)
 		try {
-			handOffClaims(store, actor, { planId, claimIds: [claimId], ...(undo ? {} : { to }), undo })
+			handOffClaims(store, actor, { planId, claimIds, ...(undo ? {} : { to }), undo })
 		} catch (error) {
 			return fail(`${plainMessage(error)} Nothing is recorded.`)
 		}
 		redirect(request.res, back, [
 			...cookies,
-			cookie('checkmate_toast', undo ? `${claimId} is not handed over` : `Handed ${claimId} over to ${to}`, 60),
+			cookie('checkmate_toast', undo ? `${named} not handed over` : `Handed ${named} over to ${to}`, 60),
 		])
 	}
 

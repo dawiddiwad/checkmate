@@ -17446,9 +17446,24 @@ var dialogs = html2`<dialog class="sp-keys" data-keys aria-labelledby="keys-titl
 		<input type="search" data-find-input aria-label="Find a plan, a defect, or a question" autocomplete="off" />
 		<ul role="listbox" aria-label="Results" data-find-results></ul>
 		<p class="sp-find-none" data-find-none hidden>Nothing matches.</p>
+		<p class="sp-find-none" data-find-more hidden></p>
 		<div class="sp-foot">
 			<span><kbd>↑</kbd><kbd>↓</kbd>Choose</span><span><kbd>Enter</kbd>Go</span><span><kbd>Esc</kbd>Close</span>
 		</div>
+	</dialog>
+	<dialog class="sp-confirm" data-confirm aria-labelledby="confirm-title">
+		<div class="sp-dh"><h2 id="confirm-title" class="sp-path" data-confirm-title></h2></div>
+		<form method="dialog" class="sp-form sp-confirm-b" data-confirm-form>
+			<p class="sp-sub" data-confirm-text></p>
+			<div data-confirm-field hidden>
+				<label for="confirm-input" data-confirm-label></label>
+				<input id="confirm-input" autocomplete="off" />
+			</div>
+			<div class="btns">
+				<button class="sp-btn pri" value="yes" data-confirm-yes><kbd>Enter</kbd><span>Confirm</span></button>
+				<button class="sp-btn" value="no" data-confirm-no><kbd>Esc</kbd><span>Cancel</span></button>
+			</div>
+		</form>
 	</dialog>`;
 function parentOf(page) {
   if (page.back !== void 0) return page.back;
@@ -18537,7 +18552,7 @@ function extraOf(context, review, item) {
   return "";
 }
 function itemRow(context, review, item, id2, view) {
-  const pickable = ["finding", "question", "gap"].includes(item.kind);
+  const pickable = ["finding", "question", "gap", "defect"].includes(item.kind);
   const dim = ["answered", "rejected"].includes(item.kind);
   const options2 = optionsOf(context, review, item);
   const extra = extraOf(context, review, item);
@@ -18568,6 +18583,7 @@ function itemRow(context, review, item, id2, view) {
 function pickKey(review, item) {
   if (item.kind === "finding") return `claim:${review.planId}:${item.id}`;
   if (item.kind === "gap") return `gap:${review.planId}:${item.id}`;
+  if (item.kind === "defect") return `defect:${review.planId}:${item.id}`;
   return `question:${review.planId}:${item.id}`;
 }
 function listOf(context, review, view, groups, label) {
@@ -18934,7 +18950,25 @@ function reviewPage(store, context, planId, params, refusal = null, notice = nul
 			>
 				${panels}
 			</div>
-			${record}`
+			${record}
+			<div
+				class="sp-bulk"
+				data-bulk
+				data-plan="${planId}"
+				data-csrf="${context.csrf}"
+				role="group"
+				aria-label="Selection"
+				hidden
+			>
+				<span class="sp-path" data-bulk-count aria-live="polite"></span>
+				<button type="button" class="sp-btn" data-bulk-action="accept"><kbd></kbd><span></span></button>
+				<button type="button" class="sp-btn" data-bulk-action="right"><kbd></kbd><span></span></button>
+				<button type="button" class="sp-btn" data-bulk-action="defer"><kbd></kbd><span></span></button>
+				<button type="button" class="sp-btn" data-bulk-action="handoff"><kbd></kbd><span></span></button>
+				<button type="button" class="sp-btn" data-bulk-action="clear">
+					<kbd></kbd><span>Clear the selection</span>
+				</button>
+			</div>`
   };
 }
 
@@ -22257,6 +22291,16 @@ data: ${matched.join(",") || "*"}
         "Cache-Control": "public, max-age=31536000, immutable"
       });
     if (pathname === "/events") return events(request);
+    if (pathname === "/find")
+      return send(
+        request.res,
+        200,
+        "application/json; charset=utf-8",
+        JSON.stringify(find(searchParams.get("q") ?? "")),
+        {
+          "Cache-Control": "no-store"
+        }
+      );
     const evidence2 = routes.evidence.exec(pathname);
     if (evidence2) return serveEvidence(request, evidence2[1]);
     const shown2 = context(request);
@@ -22595,6 +22639,28 @@ data: ${matched.join(",") || "*"}
     const view = params.get("view") ?? "all";
     return `/plans/${planOfExploration(explorationId)}?view=${encodeURIComponent(view)}&item=${encodeURIComponent(key)}`;
   }
+  function find(query) {
+    const words4 = query.toLowerCase().split(/\s+/).filter(Boolean);
+    const matches = (text) => words4.every((word) => text.toLowerCase().includes(word));
+    const found = planList(store).flatMap((plan) => {
+      const review = reviewOf(store, plan.planId);
+      const head = {
+        kind: "plan",
+        id: plan.planId,
+        title: review.objective,
+        href: `/plans/${plan.planId}`
+      };
+      const items = review.items.map((item) => ({
+        kind: item.kind,
+        id: `${plan.planId} \xB7 ${item.id}`,
+        title: item.title,
+        href: `/plans/${plan.planId}?view=all&item=${encodeURIComponent(item.key)}`
+      }));
+      return [head, ...items].filter((entry) => matches(`${entry.id} ${entry.title} ${entry.kind}`));
+    });
+    const shown2 = 12;
+    return { results: found.slice(0, shown2), more: Math.max(0, found.length - shown2) };
+  }
   function oldItem(params, view = "needs") {
     const [kind, planId, ...rest] = (params.get("item") ?? "").split(":");
     const id2 = rest.join(":");
@@ -22608,20 +22674,21 @@ data: ${matched.join(",") || "*"}
   }
   function handOver(request, form, planId) {
     const { actor, cookies } = actorFrom(request, form);
-    const claimId = form.get("claim") ?? "";
+    const claimIds = form.getAll("claim");
+    const named = claimIds.length === 1 ? claimIds[0] : plural(claimIds.length, "defect");
     const undo = form.get("undo") === "1";
     const to = form.get("to")?.trim() ?? "";
     const back = safeBack(form.get("return") ?? `/plans/${planId}`);
     const fail = (message) => redirect(request.res, back, [...cookies, cookie("checkmate_toast", message, 60)]);
-    if (!undo && !to) return fail(`Name who takes ${claimId}. Nothing is recorded.`);
+    if (!undo && !to) return fail(`Name who takes ${named}. Nothing is recorded.`);
     try {
-      handOffClaims(store, actor, { planId, claimIds: [claimId], ...undo ? {} : { to }, undo });
+      handOffClaims(store, actor, { planId, claimIds, ...undo ? {} : { to }, undo });
     } catch (error) {
       return fail(`${plainMessage(error)} Nothing is recorded.`);
     }
     redirect(request.res, back, [
       ...cookies,
-      cookie("checkmate_toast", undo ? `${claimId} is not handed over` : `Handed ${claimId} over to ${to}`, 60)
+      cookie("checkmate_toast", undo ? `${named} not handed over` : `Handed ${named} over to ${to}`, 60)
     ]);
   }
   function planOfExploration(explorationId) {

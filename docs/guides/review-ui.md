@@ -63,6 +63,14 @@ Each row shows a box for the selection, a badge, the ID, the title, and a short 
 
 After a decision, the next item that waits for you takes the highlight. The address keeps the view and the row, for example `/plans/checkout?view=all&at=c:a1/D1&focus=list`, so a reload or a copied link shows the same place.
 
+### Act on several records
+
+Select rows with their boxes, with `Space`, or with `Shift` `↑` `↓`. A bar at the bottom shows the number of selected rows and the actions that apply to them, numbered: `Accept <n> findings as defects`, `<n> questions right as built`, `Defer <n> questions`, `Hand over <n> defects`, and `Clear the selection` last. While rows are selected, the number keys act on the selection. Each action on more than one record asks first and names the count. `Enter` or `1` confirms. `Esc` or `←` cancels and keeps the selection. The selection clears when the action is complete. A hand-over shows a note with `0 Undo` for some seconds. Press `0` or click `Undo` to remove the hand-over. The other decisions have no undo in Checkmate.
+
+### Find
+
+`/`, `Ctrl` `K`, or `Find` in the status bar opens the find bar. Type words to find plans, claims, and questions of all plans that contain each word. The bar shows the first 12 results and the number of other results. `↑` and `↓` move in the results, `Enter` opens one, `←` and `→` move the caret, and `Esc` closes the bar.
+
 ### A record
 
 Open a row to show its record at the right of the list. The record shows the same options as the row, and:
@@ -151,6 +159,8 @@ One table drives the keys, the hints in the status bar, and the list that `?` sh
 | `1` … `9`       | Choose an option of the highlighted record, numbered from left to right as shown. On a rule or an area, choose a build column. |
 | `Space`         | Select or clear the highlighted record.                                                                                        |
 | `Shift` `↑` `↓` | Select the records on the way from the highlighted record. `Shift` `↑` after `Shift` `↓` makes the range smaller.              |
+| `0`             | Undo the last hand-over while its note shows. At other times `0` does nothing.                                                 |
+| `/` `Ctrl` `K`  | Find a plan, a defect, or a question.                                                                                          |
 | `?`             | Show the keys.                                                                                                                 |
 
 In a text field, typing types. `Enter` sends a one-line answer, a reason, or a name. `Shift` `Enter` starts a new line. `Ctrl` `Enter` sends a larger form, for example a decision on the plan page. `Esc` leaves the field and keeps the text. A number key acts on the row that has the highlight when you press it.

@@ -27,9 +27,9 @@ Each page has the same four parts:
 - The top bar: `Checkmate` opens the home page. At the right are the live state, your name, and the switch for light and dark.
 - The navigator, at the left on the pages of a plan.
 - The centre: the list or the page.
-- The status bar, at the bottom. It shows the path to where you are, for example `Plans › checkout › Needs you › a1/D1`, the buttons `Find`, `Keys`, `Runs`, `Log`, and `Settings`, and the keys that work where you are. On a narrow window, `More` holds `Runs`, `Log`, and `Settings`. When items wait for you, `<n> need you` shows first.
+- The status bar, at the bottom. It shows the path to where you are, for example `Plans › checkout › Needs you › a1/D1`, the buttons `Find`, `Keys`, `Runs`, `Log`, and `Settings`, and the keys that work where you are. On a narrow window, `More` holds `Runs`, `Log`, and `Settings`. On a window of 600 pixels or less, `More` also holds `Find`. When items wait for you, `<n> need you · all plans` shows first. It counts the items of all plans. When the keys do not fit, the status bar removes the least important keys first. `? Keys` always shows.
 
-On a window of 900 pixels or less, the navigator is one row of chips above the list. On a window of 760 pixels or less, the options of the highlighted row show on a second line, a record covers the list, and each button is at least 40 pixels high. The status bar keeps the last level of the path, `Find`, `Keys`, and `More`.
+On a window of 900 pixels or less, the navigator is one row of chips above the list. On a window of 760 pixels or less, each row has two lines: the badge, the ID, and the title, then the short note. On the highlighted row, its options replace the note. The rows do not change height when the highlight moves. On a window of 760 pixels or less, a record covers the list, and each button is at least 40 pixels high. The status bar keeps the last level of the path, `Find`, `Keys`, and `More`.
 
 The UI follows the light or dark setting of the system. The switch in the top bar overrides it, and the UI keeps your choice in a cookie.
 
@@ -39,7 +39,7 @@ When a page or a list has nothing to show, it says what is empty and gives the o
 
 ### Plans
 
-The home page, `/`. It shows one row for each plan: the plan ID, the [loop state](../reference/commands.md#loop-states) and the role that it waits on, the latest build, the objective, one sentence about the latest build, a small map of the rules against the last two builds, and the counts of defects, findings to look at, open questions, and defects handed over. Option `1` opens the step that waits for you, for example `Answer 4 blocking questions`. Click a row, or press `→` or `Enter`, to open the plan.
+The home page, `/`. It shows one row for each plan: the plan ID, the [loop state](../reference/commands.md#loop-states) and the role that it waits on, the latest build, the objective, one sentence about the latest build, a small map of the rules against the last two builds, and the counts of defects, findings to look at, open questions, and defects handed over. Option `1` opens the step that waits for you, for example `Answer 4 blocking questions`. The plans that wait for you are first, and the plan with the most recent activity is first among them. The other plans follow. Click a row, or press `→` or `Enter`, to open the plan. When you go back from a plan, the home page highlights that plan.
 
 The old addresses `/plans`, `/inbox`, and `/claims` open the home page. `/claims?plan=<planId>` opens `All items` of the plan. An old link `/?item=<item>` opens the item in its plan.
 
@@ -60,10 +60,10 @@ The centre shows the items of the highlighted row. The items are in groups: `Is 
 Each row shows a box for the selection, a badge, the ID, the title, and a short note, for example `Returned · ×3`. The highlighted row also shows its options, numbered from left to right:
 
 - A finding: `1 Yes, a defect` accepts it at once. `2 No` opens a field for the reason. A reject needs a reason.
-- A question or a gap: `1 Right` records that the build is right as it is (`accept_assumption`, with the text of what the build does). `2 Different` opens a field for how it should be (`clarify`). `3 Later` defers it.
+- A question or a gap: `1 Right` records that the build is right as it is (`accept_assumption`, with the text of what the build does). `2 Different` opens a field for how it should be (`clarify`). `3 Later` defers it. A deferred question shows `Deferred`.
 - A defect: `1 Hand over` opens a field for the name of the person or team that takes it. `1 Undo hand-over` removes the hand-over.
 
-After a decision, the next item that waits for you takes the highlight. The address keeps the view and the row, for example `/plans/checkout?view=all&at=c:a1/D1&focus=list`, so a reload or a copied link shows the same place.
+After a decision, the next item that waits for you takes the highlight. The address keeps the view and the row, for example `/plans/checkout?view=all&at=c:a1/D1&focus=list`, so a reload or a copied link shows the same place. When somebody decides the highlighted item in another session, the item goes from the list, the next row takes the highlight, and the status bar says, for example, `k1/Q8 was answered in another session`.
 
 ### Act on several records
 
@@ -71,7 +71,7 @@ Select rows with their boxes, with `Space`, or with `Shift` `↑` `↓`. A bar a
 
 ### Find
 
-`/`, `Ctrl` `K`, or `Find` in the status bar opens the find bar. Type words to find plans, claims, and questions of all plans that contain each word. The bar shows the first 12 results and the number of other results. `↑` and `↓` move in the results, `Enter` opens one, `←` and `→` move the caret, and `Esc` closes the bar.
+`/`, `Ctrl` `K`, or `Find` in the status bar opens the find bar. Type words to find plans, claims, and questions of all plans that contain each word. The bar shows the first 12 results and the number of other results. `↑` and `↓` move in the results, `Enter` opens the highlighted result and does nothing while the query is empty, `←` and `→` move the caret, and `Esc` closes the bar.
 
 ### A record
 
@@ -147,23 +147,23 @@ Each decision records an actor. The UI fills in the same default as the commands
 
 ## Live updates
 
-Each page updates when another process writes to the record, for example a delegated worker. The top bar shows `Live` while the connection is open. A form with your typed text is never replaced. When somebody decides the item that you have open, a notice shows above the form at once, and your text stays. When the UI starts again, the page connects again by itself and gets a new form token, so you can send the form without loading the page again. Without JavaScript, the pages still work, and a reload shows the current state.
+Each page updates when another process writes to the record, for example a delegated worker. The top bar shows `Live` while the connection is open. A form with your typed text is never replaced. When somebody decides the item that you have open, a notice shows above the form at once, and your text stays. When the UI starts again, the page connects again by itself and gets a new form token, so you can send the form without loading the page again. Without JavaScript, the pages still work, and a reload shows the current state. Click the title of a row to open its record.
 
 ## Keyboard
 
 One table drives the keys, the hints in the status bar, and the list that `?` shows. The UI has no letter keys.
 
-| Key             | Action                                                                                                                         |
-| --------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| `↑` `↓`         | Move the highlight through the rows where you are: the plans, the navigator, the records, the files.                           |
-| `→` `Enter`     | Go one step deeper: open the plan, enter the list, open the record, view the file. An area of rules opens.                     |
-| `←` `Esc`       | Go one step back. An area closes. `Esc` first clears a selection.                                                              |
-| `1` … `9`       | Choose an option of the highlighted record, numbered from left to right as shown. On a rule or an area, choose a build column. |
-| `Space`         | Select or clear the highlighted record.                                                                                        |
-| `Shift` `↑` `↓` | Select the records on the way from the highlighted record. `Shift` `↑` after `Shift` `↓` makes the range smaller.              |
-| `0`             | Undo the last hand-over while its note shows. At other times `0` does nothing.                                                 |
-| `/` `Ctrl` `K`  | Find a plan, a defect, or a question.                                                                                          |
-| `?`             | Show the keys.                                                                                                                 |
+| Key             | Action                                                                                                                                        |
+| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `↑` `↓`         | Move the highlight through the rows where you are: the plans, the navigator, the records, the files. On a page without rows, scroll the page. |
+| `→` `Enter`     | Go one step deeper: open the plan, enter the list, open the record, view the file. An area of rules opens.                                    |
+| `←` `Esc`       | Go one step back. An area closes. `Esc` first clears a selection.                                                                             |
+| `1` … `9`       | Choose an option of the highlighted record, numbered from left to right as shown. On a rule or an area, choose a build column.                |
+| `Space`         | Select or clear the highlighted record. On a page without records, scroll the page.                                                           |
+| `Shift` `↑` `↓` | Select the records on the way from the highlighted record. `Shift` `↑` after `Shift` `↓` makes the range smaller.                             |
+| `0`             | Undo the last hand-over while its note shows. At other times `0` does nothing.                                                                |
+| `/` `Ctrl` `K`  | Find a plan, a defect, or a question.                                                                                                         |
+| `?`             | Show the keys.                                                                                                                                |
 
 In a text field, typing types. `Enter` sends a one-line answer, a reason, or a name. `Shift` `Enter` starts a new line. `Ctrl` `Enter` sends a larger form, for example a decision on the plan page. `Esc` leaves the field and keeps the text. A number key acts on the row that has the highlight when you press it.
 

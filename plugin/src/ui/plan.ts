@@ -480,6 +480,7 @@ function chips(found: PlanContext, extra: Array<[string, string, number]>) {
 	const deciding = found.waiting.filter((item) => item.kind === 'claim').length
 	const open = found.questions.filter((question) => question.answer === null)
 	const blocking = open.filter((question) => question.blocking).length
+	const blockingPill = html` <span class="st fail" data-status="blocking">${blocking} blocking</span>`
 	const items: Array<[string, Html | string]> = [
 		[
 			'claims',
@@ -487,11 +488,7 @@ function chips(found: PlanContext, extra: Array<[string, string, number]>) {
 				<b>${found.claims.length}</b
 				>${deciding ? html` <span class="st warn">${deciding} to decide</span>` : ''}`,
 		],
-		[
-			'questions',
-			html`Questions
-				<b>${open.length}</b> open${blocking ? html` <span class="st fail">${blocking} blocking</span>` : ''}`,
-		],
+		['questions', html`Questions <b>${open.length}</b> open${blocking ? blockingPill : ''}`],
 		['explorations', html`Explorations <b>${found.explorations.length}</b>`],
 		...extra.map(([id, label, count]): [string, Html] => [id, html`${label} <b>${count}</b>`]),
 	]

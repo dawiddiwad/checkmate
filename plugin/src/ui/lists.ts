@@ -29,7 +29,7 @@ export function counts(values: Record<string, number>) {
 	return html`<span class="counts"
 		>${shown.map(
 			(key) =>
-				html`<span class="st ${countLook[key][1]}" title="${values[key]} ${words(key)}"
+				html`<span class="st ${countLook[key][1]}" data-status="${key}" title="${values[key]} ${words(key)}"
 					><span aria-hidden="true">${countLook[key][0]}</span> ${values[key]}<span class="sr-only">
 						${words(key)}</span
 					></span

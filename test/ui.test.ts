@@ -642,7 +642,7 @@ test('the plan list and the plan page show the loop state and who it waits on', 
 	const checkout = (await call(ui, '/plans/checkout@2')).body
 	assert.match(
 		checkout,
-		/<div class="next-line" data-region="next">\s*<span class="loop"\s*><span class="st warn"><span aria-hidden="true">\?<\/span> needs answers<\/span> <span class="muted small">waits on oracle<\/span>/
+		/<div class="next-line" data-region="next">\s*<span class="loop"\s*><span class="st warn" data-status="needs_answers"><span aria-hidden="true">\?<\/span> needs answers<\/span> <span class="muted small">waits on oracle<\/span>/
 	)
 })
 

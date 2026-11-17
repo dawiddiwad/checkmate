@@ -120,7 +120,8 @@ export function words(status: string) {
 
 export function pill(status: string, label: string = labels[status] ?? words(status)) {
 	const [icon, tone] = statusLook[status] ?? ['·', 'muted']
-	return html`<span class="st ${tone}"><span aria-hidden="true">${icon}</span> ${label}</span>`
+	const hook = html`data-status="${status}"`
+	return html`<span class="st ${tone}" ${hook}><span aria-hidden="true">${icon}</span> ${label}</span>`
 }
 
 export function icon(status: string | null) {

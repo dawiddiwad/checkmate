@@ -16589,7 +16589,8 @@ function words(status) {
 }
 function pill(status, label = labels[status] ?? words(status)) {
   const [icon2, tone2] = statusLook[status] ?? ["\xB7", "muted"];
-  return html2`<span class="st ${tone2}"><span aria-hidden="true">${icon2}</span> ${label}</span>`;
+  const hook = html2`data-status="${status}"`;
+  return html2`<span class="st ${tone2}" ${hook}><span aria-hidden="true">${icon2}</span> ${label}</span>`;
 }
 function icon(status) {
   const [symbol, tone2] = status ? statusLook[status] ?? ["\xB7", "muted"] : ["\xB7", "muted"];
@@ -18034,7 +18035,7 @@ function counts(values) {
   if (!shown.length) return html2`<span class="muted">no outcomes yet</span>`;
   return html2`<span class="counts"
 		>${shown.map(
-    (key) => html2`<span class="st ${countLook[key][1]}" title="${values[key]} ${words(key)}"
+    (key) => html2`<span class="st ${countLook[key][1]}" data-status="${key}" title="${values[key]} ${words(key)}"
 					><span aria-hidden="true">${countLook[key][0]}</span> ${values[key]}<span class="sr-only">
 						${words(key)}</span
 					></span
@@ -19091,6 +19092,7 @@ function chips(found, extra) {
   const deciding = found.waiting.filter((item) => item.kind === "claim").length;
   const open = found.questions.filter((question) => question.answer === null);
   const blocking = open.filter((question) => question.blocking).length;
+  const blockingPill = html2` <span class="st fail" data-status="blocking">${blocking} blocking</span>`;
   const items = [
     [
       "claims",
@@ -19098,11 +19100,7 @@ function chips(found, extra) {
 				<b>${found.claims.length}</b
 				>${deciding ? html2` <span class="st warn">${deciding} to decide</span>` : ""}`
     ],
-    [
-      "questions",
-      html2`Questions
-				<b>${open.length}</b> open${blocking ? html2` <span class="st fail">${blocking} blocking</span>` : ""}`
-    ],
+    ["questions", html2`Questions <b>${open.length}</b> open${blocking ? blockingPill : ""}`],
     ["explorations", html2`Explorations <b>${found.explorations.length}</b>`],
     ...extra.map(([id2, label, count]) => [id2, html2`${label} <b>${count}</b>`])
   ];

@@ -209,7 +209,10 @@ test('the queue follows its filters and records the same default source for each
 	assert.match((await call('/?plan=checkout')).body, /data-key="running:x-9"/)
 	const result = (await call('/?item=run%3Arun-7')).body
 	assert.doesNotMatch(result, /\[object Object\]/)
-	assert.match(result, /coverage\s*<span class="st warn"><span aria-hidden="true">◐<\/span> partial<\/span>/)
+	assert.match(
+		result,
+		/coverage\s*<span class="st warn" data-status="partial"><span aria-hidden="true">◐<\/span> partial<\/span>/
+	)
 	const question = login.find((item) => item.kind === 'question')!
 	const form = await call(`/?item=${encodeURIComponent(question.key)}`)
 	assert.match(form.body, /<kbd aria-hidden="true">c<\/kbd>/)
@@ -421,10 +424,11 @@ test('the evidence of a claim opens from its own address', async (t) => {
 
 test('one state has one pill on every page', async (t) => {
 	const { call } = await start(t)
-	const paused = '<span class="st warn"><span aria-hidden="true">‖</span> paused</span>'
+	const paused = '<span class="st warn" data-status="paused"><span aria-hidden="true">‖</span> paused</span>'
 	assert((await call('/')).body.includes(paused))
 	assert((await call('/explorations/x-10')).body.includes(paused))
-	const waiting = '<span class="st acc"><span aria-hidden="true">○</span> awaiting acceptance</span>'
+	const waiting =
+		'<span class="st acc" data-status="pending"><span aria-hidden="true">○</span> awaiting acceptance</span>'
 	assert((await call('/runs')).body.includes(waiting))
 	assert((await call('/runs/run-7')).body.includes(waiting))
 	assert.doesNotMatch((await call('/runs/run-7?item=cleanup')).body, /\d{4}-\d{2}-\d{2} \d{2}:\d{2} ·/)

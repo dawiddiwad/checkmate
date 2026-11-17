@@ -146,6 +146,7 @@ export type PlanCandidate = {
 		id: string
 		text: string
 		source: string
+		area?: string
 		metadata?: Record<string, string | number | boolean>
 	}>
 	tests: Array<{
@@ -199,6 +200,7 @@ export type PlanPatch = {
 		{
 			text?: string
 			source?: string
+			area?: string
 			metadata?: Record<string, string | number | boolean>
 		} | null
 	>
@@ -240,6 +242,7 @@ export type PlanRequest = {
 		id: string
 		text: string
 		source: string
+		area?: string
 		metadata?: Record<string, string | number | boolean>
 	}>
 	sourceContext?: Array<{
@@ -275,6 +278,7 @@ export type Plan = {
 		id: string
 		text: string
 		source: string
+		area?: string
 		metadata?: Record<string, string | number | boolean>
 	}>
 	tests: Array<{

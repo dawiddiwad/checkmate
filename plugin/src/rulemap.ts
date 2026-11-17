@@ -1,14 +1,26 @@
 import type { Store } from './store.ts'
 import type { Claim, Row } from './journal.ts'
 import { buildOrder, journal, planClaims, planQuestions, shortName } from './journal.ts'
-import { outsideRule, planRules } from './rules.ts'
+import { defaultArea, outsideRule, planRules } from './rules.ts'
+import type { Rule } from './rules.ts'
 import { fileName, mediaTypeOf, mergedEntries } from './views.ts'
 
 export type ClaimBuildState = 'new' | 'still_present' | 'fixed' | 'returned' | 'not_retested'
 export type CellStatus = 'failed' | 'question' | 'passed' | 'not_checked'
+const severities = ['critical', 'high', 'medium', 'low'] as const
+export type Severity = (typeof severities)[number]
+export type AreaCell = {
+	build: string
+	status: CellStatus
+	severities: Record<Severity, number>
+	criteria: { right: number; wrong: number }
+	claims: number
+	questions: number
+	changes: Record<ClaimBuildState, number>
+}
+export type RuleArea = { label: string; ruleIds: string[]; cells: AreaCell[] }
 type Question = ReturnType<typeof planQuestions>[number]
 
-const severities = ['critical', 'high', 'medium', 'low'] as const
 const presentStates: ClaimBuildState[] = ['new', 'still_present', 'returned']
 
 export function claimBuildStates(claim: Claim, builds: string[]) {
@@ -35,6 +47,55 @@ function planRecord(store: Store, planId: string) {
 	const keep = mergedEntries(store, planId)
 	const state = journal(store, planId, undefined, keep)
 	return { state, claims: planClaims(store, planId, keep), questions: planQuestions(store, planId, keep) }
+}
+
+const worstFirst: CellStatus[] = ['failed', 'question', 'passed', 'not_checked']
+const buildStates: ClaimBuildState[] = ['new', 'still_present', 'fixed', 'returned', 'not_retested']
+
+type RuleCell = {
+	status: CellStatus
+	severities: Record<Severity, number>
+	criteria: { right: number; wrong: number }
+	claims: unknown[]
+	questions: unknown[]
+	changes: Record<ClaimBuildState, string[]>
+}
+
+function sumCells(build: string, cells: RuleCell[]): AreaCell {
+	const total = (count: (cell: RuleCell) => number) => cells.reduce((sum, cell) => sum + count(cell), 0)
+	return {
+		build,
+		status: worstFirst.find((status) => cells.some((cell) => cell.status === status))!,
+		severities: Object.fromEntries(
+			severities.map((severity) => [severity, total((cell) => cell.severities[severity])])
+		) as Record<Severity, number>,
+		criteria: { right: total((cell) => cell.criteria.right), wrong: total((cell) => cell.criteria.wrong) },
+		claims: total((cell) => cell.claims.length),
+		questions: total((cell) => cell.questions.length),
+		changes: Object.fromEntries(
+			buildStates.map((state) => [state, total((cell) => cell.changes[state].length)])
+		) as Record<ClaimBuildState, number>,
+	}
+}
+
+function ruleAreas(rules: Rule[], builds: string[], cellOf: (rule: string, build: string) => RuleCell): RuleArea[] {
+	const areas = new Map<string, { label: string; rules: Rule[] }>()
+	for (const rule of rules) {
+		const label = rule.area ?? defaultArea
+		const key = label.toLowerCase()
+		if (!areas.has(key)) areas.set(key, { label, rules: [] })
+		areas.get(key)!.rules.push(rule)
+	}
+	return [...areas.values()].map((area) => ({
+		label: area.label,
+		ruleIds: area.rules.map((rule) => rule.id),
+		cells: builds.map((build) =>
+			sumCells(
+				build,
+				area.rules.map((rule) => cellOf(rule.id, build))
+			)
+		),
+	}))
 }
 
 export function ruleMap(store: Store, planId: string) {
@@ -94,6 +155,7 @@ export function ruleMap(store: Store, planId: string) {
 		planId,
 		rulesOrigin: stored.origin,
 		builds: buildOrder(store, planId).filter((item) => builds.includes(item.build)),
+		areas: ruleAreas(stored.rules, builds, cellOf),
 		rows: rules.map((rule) => {
 			const cells = builds.map((build) => cellOf(rule.id, build))
 			return {

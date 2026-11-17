@@ -6,11 +6,14 @@ import { newFields, patchList, planRequest } from './plans.ts'
 import { readFileSync, realpathSync, statSync } from 'node:fs'
 import { resolve, sep } from 'node:path'
 
-export type Rule = { id: string; text: string; source: string }
+export type Rule = { id: string; text: string; source: string; area?: string }
 export type RuleOrigin = 'revision' | 'request' | 'derived' | 'corrected'
 export type RuleSource = { name: string; text: string | null }
 
 export const outsideRule = 'outside'
+export const defaultArea = 'Rules'
+const maxAreaCharacters = 40
+const maxAreas = 9
 const maxSourceCharacters = 40000
 const ruleId = /^R[1-9][0-9]{0,3}$/
 
@@ -25,7 +28,8 @@ export function storedRules(store: Store, planId: string) {
 
 export function planRules(store: Store, planId: string): { rules: Rule[]; origin: RuleOrigin | null } {
 	const latest = one<{ body: string }>(store, 'SELECT body FROM latest_plans WHERE plan_id = ?', planId)
-	const plain = (items: Plan['requirements']) => items.map(({ id, text, source }) => ({ id, text, source }))
+	const plain = (items: Plan['requirements']) =>
+		items.map(({ id, text, source, area }) => ({ id, text, source, ...(area ? { area } : {}) }))
 	if (latest) return { rules: plain((JSON.parse(latest.body) as Plan).requirements), origin: 'revision' }
 	const { request } = planRequest(store, planId)
 	if (request.requirements?.length) return { rules: plain(request.requirements), origin: 'request' }
@@ -70,10 +74,12 @@ export function checkedRules(reply: unknown[] | undefined, sources: string[]) {
 	if (!reply) return { rules: [], refusals: ['The reply has no JSON array of rules.'] }
 	const rules: Rule[] = []
 	const refusals: string[] = []
+	const areas = new Map<string, string>()
 	for (const [index, raw] of reply.entries()) {
 		const item = (raw && typeof raw === 'object' ? raw : {}) as Partial<Record<keyof Rule, unknown>>
 		const text = typeof item.text === 'string' ? item.text.trim() : ''
 		const source = typeof item.source === 'string' ? item.source.trim() : ''
+		const area = typeof item.area === 'string' ? item.area.trim() : ''
 		const problem =
 			typeof item.id !== 'string' || !ruleId.test(item.id)
 				? `"id" must be R1, R2, and so on`
@@ -83,10 +89,21 @@ export function checkedRules(reply: unknown[] | undefined, sources: string[]) {
 						? `"text" is missing`
 						: !sources.some((name) => source.startsWith(name))
 							? `"source" must start with one of: ${sources.join(', ')}`
-							: undefined
-		if (problem) refusals.push(`[${index}] ${problem}.`)
-		else rules.push({ id: item.id as string, text, source })
+							: !area
+								? `"area" is missing`
+								: area.length > maxAreaCharacters
+									? `"area" must have at most ${maxAreaCharacters} characters`
+									: undefined
+		if (problem) {
+			refusals.push(`[${index}] ${problem}.`)
+			continue
+		}
+		const key = area.toLowerCase()
+		if (!areas.has(key)) areas.set(key, area)
+		rules.push({ id: item.id as string, text, source, area: areas.get(key)! })
 	}
+	if (areas.size > maxAreas)
+		refusals.push(`The rules have ${areas.size} areas. Use at most ${maxAreas} areas for the plan.`)
 	if (!rules.length && !refusals.length) refusals.push('The reply has no rule.')
 	return { rules, refusals }
 }

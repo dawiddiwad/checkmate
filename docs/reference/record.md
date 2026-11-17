@@ -117,6 +117,8 @@ The rules of a plan come from the latest revision, else from the request, else f
 
 The read models in `plugin/src/rulemap.ts` give the review UI the rule map of a plan: one row for each rule and one for `outside`, and one cell for each build. A cell is `failed` when an open claim of the rule is new, still present, or returned on that build, or when a criterion of that build says `wrong`. Else it is `question` when an open question of the rule was asked on that build. Else it is `passed` when a criterion of that build says `ok`. Else it is `not_checked`. The state of a claim on a build is `new` on its first build, then `still_present`, `fixed`, `returned` (present again after a fix), or `not_retested`. `not_retested` never counts as fixed or as still present.
 
+The rule map also has `areas`. An area groups the rules that have the same `area`, without regard to case, and it uses the first spelling. A rule without `area` is in the area `Rules`. The areas are in the order of the first rule of each. An area has its `label`, its `ruleIds`, and one cell for each build. The cell of an area has the worst `status` of its rules (`failed`, then `question`, then `passed`, then `not_checked`). It also has the sums of `severities`, `criteria`, `claims`, `questions`, and `changes` of its rules. The row of `outside` is in no area.
+
 ## Review UI
 
 The UI is a `node:http` server in the plugin. It has no npm dependencies and loads nothing from the internet.

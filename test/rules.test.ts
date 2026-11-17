@@ -4,6 +4,7 @@ import type { TestContext } from 'node:test'
 import { mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { run } from '../plugin/src/cli.ts'
+import { checkedRules } from '../plugin/src/rules.ts'
 import { closeStore } from '../plugin/src/store.ts'
 import { actor, directory, plan, store, target } from './support.ts'
 import { fakeClaude } from './claude.ts'
@@ -12,8 +13,8 @@ import type { FakeReplies } from './claude.ts'
 const allow = ['--allow', 'Read', '--allow', 'Bash']
 const ticket = '# Cart\n\n## Discount\n\n5 or more items get 10% off.\n\n## Limit\n\nA cart holds at most 20 items.\n'
 const derived = [
-	{ id: 'R1', text: '5 or more items get 10% off.', source: 'ticket.md#Discount' },
-	{ id: 'R2', text: 'A cart holds at most 20 items.', source: 'ticket.md#Limit' },
+	{ id: 'R1', text: '5 or more items get 10% off.', source: 'ticket.md#Discount', area: 'Discount' },
+	{ id: 'R2', text: 'A cart holds at most 20 items.', source: 'ticket.md#Limit', area: 'Limit' },
 ]
 
 function setup(
@@ -65,6 +66,11 @@ test('the first test of a plan without rules derives them once from the sources,
 	const [rules, explorer] = calls
 	assert.match(rules.prompt, /^Write the rules of the change that the sources below describe\. Do not test\.\n/)
 	assert.match(rules.prompt, /Use no tool\./)
+	assert.match(
+		rules.prompt,
+		/\nSort the rules into areas\. Use at most nine areas for one plan\. Put each rule in exactly one area\. Rules that test one feature or one page share an area\. An area name is a plain noun phrase of one to three words, taken from the words of the sources/
+	)
+	assert.match(rules.prompt, /"area": "<the area of the rule>"/)
 	assert(rules.prompt.endsWith(`Goal: Check the cart.\n\nSource ticket.md:\n${ticket}`), rules.prompt)
 	assert(rules.args.includes('--session-id'))
 	assert(!rules.args.includes('--allowedTools'))
@@ -114,7 +120,7 @@ test('the oracle corrects derived rules with plan edit, and later charters use t
 
 test('refused rules get one repair round, and a plan with rules or without a readable source skips the step', (t) => {
 	const { testBuild, stored, called } = setup(t, {
-		rules: [{ id: 'R1', text: 'Discount.', source: 'wiki.md#x' }],
+		rules: [{ id: 'R1', text: 'Discount.', source: 'wiki.md#x', area: 'Discount' }],
 		'rules-repair': derived,
 	})
 	testBuild('b1', ['--source', 'ticket.md', '--objective', 'Check the cart.', '--target', 'checkout-local'])
@@ -169,7 +175,7 @@ test('on the session path a clerk derives the rules before the testers study', (
 	assert.match(task, /Write only one JSON array of rules to \.checkmate\/work\/x-1\/rules\/answer\.json/)
 	assert.match(task, /End your reply with this line: rules done\n$/)
 	assert.deepEqual(lines(), ['wait'])
-	put([{ id: 'R1', text: '', source: 'ticket.md' }])
+	put([{ id: 'R1', text: '', source: 'ticket.md', area: 'Discount' }])
 	const done = (extra: string[] = []) =>
 		command(['explore', 'done', 'x-1', 'rules', 'rules', '--reply-line', 'rules done', ...extra])
 	assert.equal(done(['--agent', 'clerk-1']).code, 0)
@@ -190,4 +196,77 @@ test('on the session path a clerk derives the rules before the testers study', (
 	)
 	const rows = command(['query', 'SELECT origin FROM plan_rules']).body.rows
 	assert.deepEqual(rows, [{ origin: 'derived' }])
+})
+
+const names = ['ticket.md']
+const rule = (id: string, area?: unknown) => ({ id, text: `Rule ${id}.`, source: 'ticket.md#x', area })
+
+test('a rule needs an area of 1 to 40 characters', () => {
+	const refused = checkedRules([rule('R1'), rule('R2', '  '), rule('R3', 4), rule('R4', 'x'.repeat(41))], names)
+	assert.deepEqual(refused.rules, [])
+	assert.deepEqual(refused.refusals, [
+		'[0] "area" is missing.',
+		'[1] "area" is missing.',
+		'[2] "area" is missing.',
+		'[3] "area" must have at most 40 characters.',
+	])
+	assert.equal(checkedRules([rule('R1', 'x'.repeat(40))], names).refusals.length, 0)
+})
+
+test('areas are compared without case, trimmed, and keep the first spelling', () => {
+	const checked = checkedRules(
+		[rule('R1', ' Approval '), rule('R2', 'API'), rule('R3', 'approval'), rule('R4', 'api')],
+		names
+	)
+	assert.deepEqual(checked.refusals, [])
+	assert.deepEqual(
+		checked.rules.map((item) => item.area),
+		['Approval', 'API', 'Approval', 'API']
+	)
+})
+
+test('a reply with more than nine distinct areas is refused, and nine areas are accepted', () => {
+	const nine = Array.from({ length: 12 }, (_, index) => rule(`R${index + 1}`, `Area ${Math.min(index + 1, 9)}`))
+	assert.deepEqual(checkedRules(nine, names).refusals, [])
+	const ten = Array.from({ length: 12 }, (_, index) => rule(`R${index + 1}`, `Area ${Math.min(index + 1, 10)}`))
+	assert.deepEqual(checkedRules(ten, names).refusals, ['The rules have 10 areas. Use at most 9 areas for the plan.'])
+	const same = Array.from({ length: 12 }, (_, index) => rule(`R${index + 1}`, index % 2 ? 'Cart' : 'cart'))
+	assert.deepEqual(checkedRules(same, names).refusals, [])
+})
+
+test('the repair round of a reply with too many areas names the count', (t) => {
+	const many = Array.from({ length: 10 }, (_, index) => ({
+		id: `R${index + 1}`,
+		text: `Rule ${index + 1}.`,
+		source: 'ticket.md#Limit',
+		area: `Area ${index + 1}`,
+	}))
+	const { testBuild, stored, called } = setup(t, { rules: many, 'rules-repair': derived })
+	testBuild('b1', ['--source', 'ticket.md', '--objective', 'Check the cart.', '--target', 'checkout-local'])
+	assert.match(called()[1].prompt, /^Checkmate refused these rules of your reply:\n- The rules have 10 areas\./)
+	assert.equal(stored().length, 1)
+	assert.deepEqual(
+		(JSON.parse(stored()[0].body) as Array<{ area: string }>).map((item) => item.area),
+		['Discount', 'Limit']
+	)
+})
+
+test('the oracle can give a derived rule an area', (t) => {
+	const { command, testBuild } = setup(t)
+	testBuild('b1', ['--source', 'ticket.md', '--objective', 'Check the cart.', '--target', 'checkout-local'])
+	const edit = command(
+		['plan', 'edit', 'cart', '--patch'],
+		JSON.stringify({ requirements: { R2: { area: 'Cart limit' } } })
+	)
+	assert.equal(edit.code, 0, edit.output)
+	const rows = command(['query', 'SELECT body FROM plan_rules ORDER BY rowid']).body.rows as Array<{ body: string }>
+	assert.deepEqual(
+		(JSON.parse(rows.at(-1)!.body) as Array<{ area: string }>).map((item) => item.area),
+		['Discount', 'Cart limit']
+	)
+	const tooLong = command(
+		['plan', 'edit', 'cart', '--patch'],
+		JSON.stringify({ requirements: { R2: { area: 'x'.repeat(41) } } })
+	)
+	assert.equal(tooLong.code, 1)
 })

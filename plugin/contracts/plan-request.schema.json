@@ -24,6 +24,11 @@
 						"type": "string",
 						"minLength": 1
 					},
+					"area": {
+						"type": "string",
+						"minLength": 1,
+						"maxLength": 40
+					},
 					"metadata": {
 						"$ref": "plan.schema.json#/definitions/metadata"
 					}

@@ -157,13 +157,14 @@ export function recorderPrompt(
 }
 
 const ruleObject =
-	'{"id": "R1", "text": "<the rule, in one sentence>", "source": "<the source file>#<the place in it>"}'
+	'{"id": "R1", "text": "<the rule, in one sentence>", "source": "<the source file>#<the place in it>", "area": "<the area of the rule>"}'
 
 export function rulesPrompt(goal: string, sources: Array<{ name: string; text: string | null }>, answer?: string) {
 	const text = [
 		'Write the rules of the change that the sources below describe. Do not test.',
 		'A rule is one sentence that a tester can check on the application: an action or an input, and the correct result. Write one rule for each requirement, limit, and case that the sources state. Do not add a rule that the sources do not state.',
 		'Number the rules R1, R2, and so on, in the order of the sources. The place is a heading or a line of the source file.',
+		'Sort the rules into areas. Use at most nine areas for one plan. Put each rule in exactly one area. Rules that test one feature or one page share an area. An area name is a plain noun phrase of one to three words, taken from the words of the sources, for example "Approval" or "Notifications". Keep the numbers and the order of the rules.',
 		`${replyText('rules', answer)} Each rule: ${ruleObject}`,
 		'',
 		`Goal: ${goal}`,

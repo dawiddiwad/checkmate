@@ -213,7 +213,7 @@ Output: line 1 has `mode=`, `level=`, `explorers=`, `model=`, `verifier=`, `path
 
 ### Derived rules
 
-A plan request from `--source` only has no rules. Before the first testers of such a plan start, a clerk reads the sources and writes numbered rules: `R1`, `R2`, and so on, one sentence each, with the source file and the place in it. Checkmate gives the clerk the text of each source file in the workspace. Checkmate checks the rules: each ID is `R<n>` and is unique, each rule has text, and each source starts with a source of the request. It refuses the reply with the reasons one time, and the clerk sends all the rules again. Checkmate then stores the valid rules on the plan, with the origin `derived`.
+A plan request from `--source` only has no rules. Before the first testers of such a plan start, a clerk reads the sources and writes numbered rules: `R1`, `R2`, and so on, one sentence each, with the source file and the place in it, and a short area. An area is a name of one to three words, for example `Approval`. The clerk uses at most nine areas for one plan and puts each rule in one area. Checkmate gives the clerk the text of each source file in the workspace. Checkmate checks the rules: each ID is `R<n>` and is unique, each rule has text, each source starts with a source of the request, and each rule has an area of 1 to 40 characters. Areas that differ only in case are one area, with the first spelling. A reply with more than nine areas is refused too. It refuses the reply with the reasons one time, and the clerk sends all the rules again. Checkmate then stores the valid rules on the plan, with the origin `derived`.
 
 - On the process path, the step is one call with no tool rules before the explorers, and one more call for the repair.
 - On the session path, the step is one more action of `explore next` for the clerk agent: `start rules rules agent=checkmate:clerk`. Read [Session path](#session-path).
@@ -221,7 +221,7 @@ A plan request from `--source` only has no rules. Before the first testers of su
 - When the step fails, the testers start without rules.
 - The charter of the exploration and the briefs of the testers list the rules. The recorder ties its entries to them.
 - `status` prints one line: `<n> rules were derived from the sources. Correct them with checkmate plan edit <planId> --patch.`
-- To correct the rules, send a patch with only `requirements` to `checkmate plan edit <planId> --patch`, without a revision. Checkmate stores the corrected rules with the origin `corrected`. A later revision of the plan replaces the derived rules.
+- To correct the rules, send a patch with only `requirements` to `checkmate plan edit <planId> --patch`, without a revision. Checkmate stores the corrected rules with the origin `corrected`. A later revision of the plan replaces the derived rules. A patch can set `area` of a rule. A rule without an area, for example in a store of an earlier version, is in the area `Rules`. The briefs of the testers do not show areas.
 
 ## Explore
 

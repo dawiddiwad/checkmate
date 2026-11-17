@@ -5,7 +5,7 @@ import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { buildOrder, handOffClaims, journal, mostFrequent, planQuestions } from '../plugin/src/journal.ts'
 import { claimDetails, ruleMap } from '../plugin/src/rulemap.ts'
-import { plan, store, target } from './support.ts'
+import { plan, planRequest, store, target } from './support.ts'
 import { done, entries, openTest } from './explorations.ts'
 
 test('builds keep the order in which a plan first tested them, not the order of the entries', (t) => {
@@ -24,10 +24,10 @@ test('builds keep the order in which a plan first tested them, not the order of 
 	assert.deepEqual(journal(opened, 'checkout').builds, ['b1', 'b2'])
 })
 
-function seeded(t: TestContext) {
+function seeded(t: TestContext, request = planRequest()) {
 	const opened = store(t)
 	target(opened)
-	plan(opened)
+	plan(opened, 'checkout', undefined, request)
 	mkdirSync(join(opened.workspace, 'evidence'))
 	writeFileSync(join(opened.workspace, 'evidence', 'cart.png'), 'png')
 	openTest(opened, 'checkout', 'x-1', 'b1')
@@ -109,6 +109,56 @@ test('the rule map gives each rule a status on each build, with defects by sever
 	assert.deepEqual(map.unlinked, { claims: ['a1/D3'], questions: [] })
 })
 
+test('the rule map groups rules into areas in order of first rule, with the worst status of each build', (t) => {
+	const request = planRequest()
+	const areas = ['Checkout', 'checkout', 'Refunds']
+	const opened = seeded(t, {
+		...request,
+		requirements: request.requirements!.map((rule, index) => ({ ...rule, area: areas[index] })),
+	})
+	const map = ruleMap(opened, 'checkout')
+	assert.deepEqual(
+		map.areas.map((area) => [area.label, area.ruleIds]),
+		[
+			['Checkout', ['R1', 'R2']],
+			['Refunds', ['R3']],
+		]
+	)
+	assert.deepEqual(
+		map.areas.map((area) => area.cells.map((cell) => cell.status)),
+		[
+			['failed', 'passed', 'failed'],
+			['failed', 'failed', 'not_checked'],
+		]
+	)
+	const row = (rule: string) => map.rows.find((item) => item.rule.id === rule)!
+	const [first] = map.areas
+	assert.deepEqual(first.cells[0].severities, { critical: 0, high: 1, medium: 1, low: 0 })
+	assert.deepEqual(first.cells[0].claims, row('R1').cells[0].claims.length + row('R2').cells[0].claims.length)
+	assert.deepEqual(first.cells[0].criteria, { right: 1, wrong: 0 })
+	assert.deepEqual(first.cells[1].changes, { new: 0, still_present: 0, fixed: 1, returned: 0, not_retested: 1 })
+	assert.deepEqual(
+		map.rows.map((item) => item.rule.id),
+		['R1', 'R2', 'R3', 'outside']
+	)
+	assert.deepEqual(
+		map.areas.flatMap((area) => area.cells.map((cell) => cell.build)),
+		['b1', 'b2', 'b3', 'b1', 'b2', 'b3']
+	)
+})
+
+test('rules without an area make one area named Rules', (t) => {
+	const map = ruleMap(seeded(t), 'checkout')
+	assert.deepEqual(
+		map.areas.map((area) => [area.label, area.ruleIds]),
+		[['Rules', ['R1', 'R2', 'R3']]]
+	)
+	assert.deepEqual(
+		map.areas[0].cells.map((cell) => cell.status),
+		['failed', 'failed', 'failed']
+	)
+})
+
 test('an open question makes a cell a question, and a rule without a record is not checked, never passed', (t) => {
 	const opened = store(t)
 	target(opened)
@@ -123,6 +173,7 @@ test('an open question makes a cell a question, and a rule without a record is n
 	const map = ruleMap(opened, 'checkout')
 	const status = (rule: string) => map.rows.find((item) => item.rule.id === rule)!.cells[0]
 	assert.equal(status('R3').status, 'question')
+	assert.equal(map.areas[0].cells[0].status, 'question')
 	assert.deepEqual(status('R3').questions, [
 		{ id: 'a1/Q1', question: 'Which orders qualify for refunds?', label: null },
 	])

@@ -125,7 +125,7 @@ For requirements or plan tools, send JSON on standard input:
 | `context`       | No       | `sources`: where the requirements come from. `instructions`: how to read them.               |
 | `tools`         | No       | A string selects a profile tool. An object `{ "name", "kind", "purpose" }` adds a plan tool. |
 
-A requirement can have [`metadata`](#metadata).
+A requirement can have an `area` of 1 to 40 characters, a short name that groups the rules in the review UI, for example `"Approval"`. A requirement without `area` is in the area `Rules`. A requirement can have [`metadata`](#metadata).
 
 - A request needs `requirements` or one or more `context.sources`.
 - Give the existing product documentation as a source too, for example `docs/checkout.md`. The planner plans [regression tests](#metadata) from the existing rules in it.

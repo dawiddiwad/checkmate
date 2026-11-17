@@ -240,7 +240,15 @@ test('the merge joins questions that ask the same thing, one answer answers each
 	const context = setup(t)
 	context.reply({
 		recorder: {
-			[first]: [stacks, { kind: 'question', id: 'Q1', question: 'How is the discount rounded?' }],
+			[first]: [
+				stacks,
+				{
+					kind: 'question',
+					id: 'Q1',
+					question: 'How is the discount rounded?',
+					actual: 'The total shows 45.005.',
+				},
+			],
 			[second]: [
 				{ ...stacks, title: 'Two coupons stack' },
 				{ kind: 'question', id: 'Q1', question: 'Which step rounds the discount?' },
@@ -249,23 +257,49 @@ test('the merge joins questions that ask the same thing, one answer answers each
 		},
 		merger: [
 			{ kind: 'issue', title: 'Coupons stack', severity: 'high', reports: ['a1/D1', 'a2/D1'] },
-			{ kind: 'topic', question: 'Which step rounds the discount, and how?', members: ['a1/Q1', 'a2/Q1'] },
+			{
+				kind: 'topic',
+				question: 'Which step rounds the discount, and how?',
+				label: 'Rounding',
+				members: ['a1/Q1', 'a2/Q1'],
+			},
 		],
 	})
-	const { command } = context
+	const { command, called } = context
 	command(['explore', 'open', 'checkout', '--build', 'b1'])
 	command(['record', 'x-1', '--explorer', 'a1', '--session', first])
 	command(['record', 'x-1', '--explorer', 'a2', '--session', second])
 	command(['explore', 'finish', 'x-1', '--level', 'smoke'])
 	assert.equal(command(['explore', 'wait', 'x-1', '--timeout', '60']).code, 0)
+	const merger = called().find((call) => call.role === 'merger')
+	assert.match(merger.prompt, /one topic when one answer answers both\. Give each topic a label\./)
+	assert.match(merger.prompt, /label: The topic in one to three words, for example Rounding\./)
 	const questions = command(['explore', 'show', 'x-1']).body.questions
 	assert.deepEqual(
-		questions.map((item: { id: string; members: string[] }) => [item.id, item.members]),
+		questions.map((item: { id: string; members: string[]; label: string | null; actual: string | null }) => [
+			item.id,
+			item.members,
+			item.label,
+			item.actual,
+		]),
 		[
-			['merge/T1', ['a1/Q1', 'a2/Q1']],
-			['a2/Q2', ['a2/Q2']],
+			['merge/T1', ['a1/Q1', 'a2/Q1'], 'Rounding', 'The total shows 45.005.'],
+			['a2/Q2', ['a2/Q2'], null, null],
 		]
 	)
+	const long = run(['explore', 'log', 'x-1', '--workspace', context.workspace, '--json'], {
+		cwd: context.workspace,
+		env: { CHECKMATE_ACTOR: 'qa:merge' },
+		stdin: () =>
+			JSON.stringify({
+				kind: 'topic',
+				question: 'Can a zero coupon apply?',
+				label: 'Zero coupon value rules',
+				members: ['a1/Q1', 'a2/Q2'],
+			}),
+	})
+	assert.equal(long.code, 1)
+	assert.match(long.output, /label/)
 	assert.deepEqual(
 		command(['inbox']).body.gaps.map((gap: { gapId: string }) => gap.gapId),
 		['a2/Q2', 'merge/T1']

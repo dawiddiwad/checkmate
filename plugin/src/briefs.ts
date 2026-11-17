@@ -318,7 +318,7 @@ export function mergerPrompt(
 	const text = [
 		`Merge the reports of independent testers of build ${build}. Do not test.`,
 		'Two defect reports are one defect when they have the same trigger and the same wrong result. Do not combine two reports with different expected results or different triggers. A report that is in no issue stays its own defect.',
-		'Two questions are one topic when one answer answers both. A question that is in no topic stays its own question.',
+		'Two questions are one topic when one answer answers both. Give each topic a label. A question that is in no topic stays its own question.',
 		`${replyText('issue and topic entries', answer, ', one for each defect that two or more reports describe and one for each question that two or more questions ask')} ${answer ? 'Write' : 'Reply'} [] when nothing is the same.`,
 		'',
 		entryText(['issue', 'topic'], () => true),

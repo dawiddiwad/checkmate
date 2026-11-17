@@ -21,6 +21,12 @@
 			"type": "string",
 			"minLength": 1
 		},
+		"label": {
+			"description": "The topic in one to three words, for example Rounding.",
+			"type": "string",
+			"pattern": "^\\S+( \\S+){0,2}$",
+			"maxLength": 40
+		},
 		"members": {
 			"description": "The full IDs of the question entries that ask it, for example a1/Q2.",
 			"type": "array",
@@ -37,6 +43,7 @@
 		{
 			"kind": "topic",
 			"question": "Which step rounds the discount, and to how many decimals?",
+			"label": "Rounding",
 			"members": ["a1/Q1", "a2/Q3", "a3/Q2"]
 		}
 	]

@@ -24,6 +24,11 @@
 			"type": "string",
 			"minLength": 1
 		},
+		"actual": {
+			"description": "What the build does now, in one sentence.",
+			"type": "string",
+			"minLength": 1
+		},
 		"about": {
 			"$ref": "journal-entry.schema.json#/definitions/about"
 		},

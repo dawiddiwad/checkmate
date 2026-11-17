@@ -49,6 +49,7 @@ export type Entry = {
 	members?: string[]
 	blocking?: boolean
 	note?: string
+	label?: string
 	confirms?: string
 	refutes?: string
 }
@@ -789,6 +790,8 @@ export function planQuestions(store: Store, planId: string, keep?: (row: Row) =>
 			explorationId: head.explorationId,
 			at: head.at,
 			question: head.question!,
+			label: head.kind === 'topic' ? (head.label ?? null) : null,
+			actual: found.map((entry) => entry.actual).find(Boolean) ?? null,
 			members,
 			blocking: found.some((entry) => entry.blocking === true),
 			about: head.about ?? null,

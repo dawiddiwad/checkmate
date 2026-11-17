@@ -115,6 +115,7 @@ export type JournalQuestion = {
 	supersedes?: string
 	rule?: string
 	question: string
+	actual?: string
 	about?: string
 	blocking?: boolean
 }
@@ -125,6 +126,7 @@ export type JournalTopic = {
 	build?: string
 	supersedes?: string
 	question: string
+	label?: string
 	members: Array<string>
 }
 

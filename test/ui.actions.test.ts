@@ -412,3 +412,26 @@ test('the rules are a setting of the workspace: Settings keeps them, and the dia
 	assert.equal(none.status, 403)
 	assert.match((await call(ui, '/settings/claude')).body, /value="Read Bash Edit"/)
 })
+
+test('the phase of a run follows the turns of the testers in the strip, the banner, and the navigator', async (t) => {
+	const { ui, workspace } = await fixture(t, {})
+	const opened = openStore(workspace)
+	openTest(opened, 'checkout', 'x-1', 'b1')
+	launched(opened, 'x-1', 'a1')
+	launched(opened, 'x-1', 'a2')
+	closeStore(opened)
+	const lit = (page: string) => /data-phase="([a-z]+)"[^>]*>|aria-current="step" data-phase="([a-z]+)"/.exec(page)
+	const phase = (page: string) => /aria-current="step" data-phase="([a-z]+)"/.exec(page)![1]
+	const study = (await call(ui, '/explorations/x-1')).body
+	assert(lit(study))
+	assert.equal(phase(study), 'study')
+	assert.match(study, /Phase: study\./)
+	assert.match(study, /Testers now · study/)
+	const again = openStore(workspace)
+	event(again, 'x-1', { step: 'turn', explorer: 'a1', detail: { session: 'session-a1', turn: 'test' } })
+	closeStore(again)
+	const test = (await call(ui, '/explorations/x-1')).body
+	assert.equal(phase(test), 'test')
+	assert.match(test, /Phase: test\./)
+	assert.match(test, /Testers now · test/)
+})

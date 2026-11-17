@@ -265,7 +265,7 @@ function stateLine(store: Store, live: Live, run: Run) {
 	if (live.running)
 		return banner(
 			'info',
-			html`Exploration ${live.explorationId} is running. Phase: ${live.phase}. This page updates by itself.`
+			html`Exploration ${live.explorationId} is running. Phase: ${run.phase ?? live.phase}. This page updates by itself.`
 		)
 	if (live.state === 'failed') return banner('fail', html`<span data-key="run-ended">${failedLine(run, live)}</span>`)
 	if (live.state === 'stopped')

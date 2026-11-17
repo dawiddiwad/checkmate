@@ -253,7 +253,7 @@ test(
 		await page.keyboard.press('Escape')
 		await page.keyboard.press('Escape')
 		await page.locator('dialog[open]').waitFor({ state: 'detached' })
-		assert.equal(await focusedKey(page), 'run:x-1')
+		await page.waitForFunction(() => document.activeElement?.getAttribute('data-key') === 'run:x-1')
 		await page.keyboard.press('1')
 		await page.locator('dialog[open]').waitFor()
 		await page.goBack()

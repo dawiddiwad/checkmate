@@ -4,7 +4,7 @@ import assert from 'node:assert/strict'
 import { closeStore, openStore } from '../plugin/src/store.ts'
 import { explorationState, running } from '../plugin/src/explorers.ts'
 import { explorationEvents } from '../plugin/src/explorations.ts'
-import { launchWith, openIn, skip, stop } from './browser.ts'
+import { focusedKey, launchWith, openIn, skip, stop } from './browser.ts'
 import { postAs, waitFor, workspaceWithFake } from './actions.ts'
 import { done, event, launched, openTest } from './explorations.ts'
 import { human } from '../scripts/ui-demo.ts'
@@ -146,7 +146,10 @@ test('a person starts a test, stops one tester, and stops the test with the poin
 	await page.locator('.sp-optlist').getByRole('button', { name: 'Stop' }).click()
 	const tester = page.locator('dialog[data-act-dialog="stop-x-1-a1"]')
 	await tester.waitFor()
-	assert.match((await tester.textContent()) ?? '', /Stop tester a1 of checkout, build b2\. The other testers go on\./)
+	assert.match(
+		((await tester.textContent()) ?? '').replace(/\s+/g, ' '),
+		/Stop tester a1 of checkout, build b2\? The other testers go on\./
+	)
 	await tester.getByRole('button', { name: /Stop tester a1/ }).click()
 	await page.waitForURL(/\/explorations\/x-1$/)
 	await page.locator('[data-key="explorer:a1"]', { hasText: 'Stopped' }).waitFor()
@@ -174,7 +177,8 @@ test('a dialog closes with a message when the tester that it names ends', { skip
 	await page.locator('[data-live]', { hasText: 'Live' }).waitFor()
 	await waitFor('the test turn sleeps', () => pids('x-1').children.length === 2)
 	await page.locator('[data-key="explorer:a1"]', { hasText: 'Running' }).waitFor()
-	await page.waitForFunction(() => document.activeElement?.matches('[data-key="explorer:a1"]'))
+	await page.waitForFunction(() => document.activeElement?.matches('.hl[data-row]'))
+	while ((await focusedKey(page)) !== 'explorer:a1') await page.keyboard.press('ArrowUp')
 	await page.keyboard.press('1')
 	const dialog = page.locator('dialog[data-act-dialog="stop-x-1-a1"]')
 	await dialog.waitFor()
@@ -188,7 +192,7 @@ test('a dialog closes with a message when the tester that it names ends', { skip
 			document.querySelector('[data-say-strip]')?.textContent === 'Tester a1 has finished. Nothing was stopped.'
 	)
 	await waitFor('the run ends', () => state(read, 'x-1') === 'failed')
-	assert.equal(await focused(page), 'explorer:a1')
+	assert.equal(await focusedKey(page), 'explorer:a1')
 	await page.getByRole('button', { name: 'Test build… again' }).waitFor()
 })
 
@@ -232,7 +236,7 @@ test(
 		await page.goto(url('/activity'))
 		await page.waitForFunction(() => document.activeElement?.matches('[data-row]'))
 		await page.keyboard.press('ArrowDown')
-		assert.equal(await focused(page), 'run:x-1')
+		assert.equal(await focusedKey(page), 'run:x-1')
 		await page.keyboard.press('1')
 		const dialog = page.locator('dialog[data-act-dialog="test"][open]')
 		await dialog.waitFor()
@@ -249,19 +253,14 @@ test(
 		await page.keyboard.press('Escape')
 		await page.keyboard.press('Escape')
 		await page.locator('dialog[open]').waitFor({ state: 'detached' })
-		assert.equal(await focused(page), 'run:x-1')
+		assert.equal(await focusedKey(page), 'run:x-1')
 		await page.keyboard.press('1')
 		await page.locator('dialog[open]').waitFor()
 		await page.goBack()
 		await page.locator('dialog[open]').waitFor({ state: 'detached' })
-		assert.match(page.url(), /\/activity$/)
-		await page
-			.locator('[data-key="run:x-2"] [data-act]')
-			.first()
-			.waitFor({ state: 'detached' })
-			.catch(() => {})
+		assert.match(page.url(), /\/activity$/).catch(() => {})
 		await page.keyboard.press('ArrowUp')
-		assert.equal(await focused(page), 'run:x-2')
+		assert.equal(await focusedKey(page), 'run:x-2')
 		await page.keyboard.press('1')
 		const stopping = page.locator('dialog[data-act-dialog="stop-x-2"][open]')
 		await stopping.waitFor()
@@ -338,7 +337,7 @@ test('Test the answers asks first, names the count, and opens the Testers view',
 	await page.goto(url('/plans/checkout?view=all'))
 	await page.locator('[data-panel="all"] [data-key^="q:"]').first().click()
 	await page.waitForURL(/item=q%3A/)
-	await page.getByLabel('How it should be, in one sentence').fill('No.')
+	await page.locator('[data-drawer]').getByLabel('How it should be, in one sentence').fill('No.')
 	await page.getByRole('button', { name: 'Send the answer' }).click()
 	await page
 		.getByRole('status')

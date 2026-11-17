@@ -1663,9 +1663,12 @@ function fitOptions(row) {
 	if (!opts) return
 	row.classList.remove('many')
 	const absolute = window.getComputedStyle(opts).position === 'absolute'
+	opts.style.width = 'max-content'
+	const need = opts.offsetWidth
+	opts.style.removeProperty('width')
 	const title = row.querySelector(':scope > .sp-c-title')
-	const room = row.clientWidth - 24 - (title?.offsetLeft ?? 0) - 80
-	row.classList.toggle('many', absolute ? opts.scrollWidth > room : opts.scrollWidth > opts.clientWidth + 1)
+	const room = absolute ? row.clientWidth - 24 - (title?.offsetLeft ?? 0) - 80 : opts.clientWidth
+	row.classList.toggle('many', need > room + 1)
 }
 
 document.addEventListener('click', (event) => {

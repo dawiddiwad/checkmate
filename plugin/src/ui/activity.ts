@@ -292,7 +292,7 @@ export function optionsBox(items: Html[]) {
 
 function row(run: Run, n: number, now: number) {
 	const items = options(run)
-	const title = `${run.follow ? 'Follow-up' : 'Test'} ${run.build}${run.level && !run.follow ? ` · ${run.level}` : ''}${sentence(run) ? ` · ${sentence(run)}` : ''}`
+	const title = `${run.planId} · ${run.follow ? 'Follow-up' : 'Test'} ${run.build}${run.level && !run.follow ? ` · ${run.level}` : ''}${sentence(run) ? ` · ${sentence(run)}` : ''}`
 	const label = run.follow ? `${run.explorationId} follow-up` : run.explorationId
 	return html`<div
 		class="sp-row"
@@ -307,7 +307,7 @@ function row(run: Run, n: number, now: number) {
 	>
 		<span class="sp-c-cb"></span>
 		<span class="sp-c-tag">${pill(run.state)}</span>
-		<span class="sp-c-id" title="${run.planId}">${run.planId}</span>
+		<span class="sp-c-id" title="${run.explorationId}">${run.explorationId}</span>
 		<span class="sp-c-title ell" title="${title}">${title}</span>
 		<span class="sp-c-meta ell" title="${metaText(run, now)}">${join(meta(run, now), ' · ')}</span>
 		${optionsBox(items)}

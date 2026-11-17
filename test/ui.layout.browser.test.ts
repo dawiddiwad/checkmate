@@ -40,6 +40,16 @@ const pages = [
 	'/plans/basket/request',
 	'/plans/checkout@2/gaps/G2',
 	'/actor',
+	'/activity',
+	'/activity?size=25&page=1',
+	'/explorations/x-14',
+	'/explorations/x-14?item=explorer%3Aa1',
+	'/explorations/x-15',
+	'/explorations/x-17',
+	'/explorations/x-16',
+	'/settings/claude',
+	'/plans/login',
+	'/plans/account',
 ]
 
 function measure(narrow: boolean) {
@@ -462,3 +472,98 @@ test('a status message is read in full at every width, and the key hints make ro
 		assert.deepEqual(await page.evaluate(covered), [], `${width}: the message covers the panes`)
 	}
 })
+
+for (const path of ['/activity', '/explorations/x-14']) {
+	test(`no row of ${path} moves when the highlight moves, at every width`, { skip }, async (t) => {
+		const { page, url } = await open(t)
+		for (const width of widths) {
+			await page.setViewportSize({ width, height: 900 })
+			await page.goto(url(path))
+			await page.waitForFunction(() => document.activeElement?.matches('.hl[data-row]'))
+			const boxes = () =>
+				page.evaluate(() => {
+					const list = document.querySelector('[data-list]')!.getBoundingClientRect()
+					return [...document.querySelectorAll('[data-list] [data-row]')].map((row) => {
+						const box = row.getBoundingClientRect()
+						return `${(box.top - list.top).toFixed(1)}:${box.height.toFixed(1)}`
+					})
+				})
+			const first = await boxes()
+			const rows = first.length
+			for (let step = 0; step < rows + 1; step++) {
+				await page.keyboard.press('ArrowDown')
+				assert.deepEqual(await boxes(), first, `${path} at ${width} after ${step + 1} steps`)
+			}
+		}
+	})
+}
+
+test('a row whose options do not all fit shows the number of options and no sideways scroll', { skip }, async (t) => {
+	const { page, url } = await open(t)
+	for (const width of [1440, 900, 400]) {
+		await page.setViewportSize({ width, height: 900 })
+		await page.goto(url('/activity'))
+		await page.waitForFunction(() => document.activeElement?.matches('.hl[data-row]'))
+		await page.evaluate(() => {
+			for (const label of document.querySelectorAll('.sp-c-opts .sp-btn > span'))
+				label.textContent += ' with a very long label'.repeat(60)
+			window.dispatchEvent(new Event('resize'))
+		})
+		for (let step = 0; step < 12 && !(await page.locator('.hl[data-row] [data-option]').count()); step++)
+			await page.keyboard.press('ArrowDown')
+		const shown = await page.evaluate(() => {
+			const row = document.querySelector('.hl[data-row]') as HTMLElement
+			const more = row.querySelector('.sp-c-more') as HTMLElement
+			const buttons = [...row.querySelectorAll('[data-option]')].filter(
+				(button) => (button as HTMLElement).offsetWidth > 0
+			)
+			return {
+				many: row.classList.contains('many'),
+				more: more.offsetWidth > 0 ? more.textContent!.replace(/\s+/g, ' ').trim() : null,
+				buttons: buttons.length,
+				overflow: row.scrollWidth > row.clientWidth + 1,
+				page: document.documentElement.scrollWidth > window.innerWidth,
+				inside: more.getBoundingClientRect().right <= row.getBoundingClientRect().right + 0.5,
+			}
+		})
+		assert.deepEqual(
+			shown,
+			{ many: true, more: '1 option', buttons: 0, overflow: false, page: false, inside: true },
+			`${width}`
+		)
+		await page.keyboard.press('1')
+		await page.waitForFunction(() =>
+			[...document.querySelectorAll('[data-say], [data-say-strip]')].some((element) =>
+				/Open the row to see them/.test(element.textContent ?? '')
+			)
+		)
+		assert.equal(await page.locator('dialog[open]').count(), 0)
+	}
+})
+
+for (const colorScheme of ['dark', 'light'] as const)
+	test(
+		`the action dialogs line up and meet the contrast and tap rules in the ${colorScheme} theme`,
+		{ skip },
+		async (t) => {
+			const { page, url } = await open(t)
+			const dialogs: Array<[string, string]> = [
+				['/plans/coupons', '[data-panel]:not([hidden]) [data-act="test"]'],
+				['/plans/search', '[data-panel]:not([hidden]) [data-act="follow"]'],
+				['/explorations/x-14', '[data-act="stop-x-14"]'],
+			]
+			for (const width of [1440, 900, 400])
+				for (const [path, opener] of dialogs) {
+					await page.setViewportSize({ width, height: 900 })
+					await page.emulateMedia({ colorScheme, reducedMotion: 'reduce' })
+					await page.goto(url(path))
+					await page.evaluate(() => document.fonts.ready)
+					await page.locator(opener).first().click()
+					await page.locator('dialog[open]').waitFor()
+					const problems = await page.evaluate(measure, width <= 760)
+					assert.deepEqual(problems, [], `${path} dialog at ${width} in ${colorScheme}`)
+					const box = await page.locator('dialog[open]').boundingBox()
+					assert(box && box.x >= 0 && box.x + box.width <= width + 0.5, `${path} dialog fits ${width}`)
+				}
+		}
+	)

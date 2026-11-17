@@ -122,7 +122,8 @@ function statusBar(context: Context, page: Page) {
 				<summary class="sb-btn">More</summary>
 				<div class="menu-list">
 					<button type="button" data-find-open>Find</button
-					><a href="/activity" data-region="activity-menu">Activity${context.running ? ` · ${context.running} running` : ''}</a
+					><a href="/activity" data-region="activity-menu"
+						>Activity${context.running ? ` · ${context.running} running` : ''}</a
 					><a href="/runs">Runs</a><a href="/log">Log</a><a href="/settings">Settings</a>
 				</div>
 			</details>

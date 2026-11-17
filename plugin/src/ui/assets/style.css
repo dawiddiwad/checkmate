@@ -3131,7 +3131,17 @@ main a:active {
 }
 
 .sp-list.activity {
-	grid-template-columns: 0 16px 120px 100px minmax(0, 1fr) 280px 0;
+	grid-template-columns: 0 16px 120px 80px minmax(0, 1fr) 280px 0;
+}
+@container main (max-width: 975px) {
+	.sp-list.activity {
+		grid-template-columns: 0 16px 120px 80px minmax(0, 1fr) 0;
+	}
+}
+@container main (max-width: 559px) {
+	.sp-list.activity {
+		grid-template-columns: 0 16px 120px minmax(0, 1fr) 0;
+	}
 }
 .sp-c-more {
 	display: none;

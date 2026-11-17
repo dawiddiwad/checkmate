@@ -34,8 +34,10 @@ export type JournalCriterion = {
 	id?: string
 	build?: string
 	supersedes?: string
+	rule?: string
 	text: string
 	source?: string
+	verdict?: 'ok' | 'wrong'
 	area?: string
 }
 
@@ -44,6 +46,7 @@ export type JournalDefect = {
 	id?: string
 	build: string
 	supersedes?: string
+	rule?: string
 	title: string
 	expected: string
 	actual: string
@@ -110,6 +113,7 @@ export type JournalQuestion = {
 	id?: string
 	build?: string
 	supersedes?: string
+	rule?: string
 	question: string
 	about?: string
 	blocking?: boolean

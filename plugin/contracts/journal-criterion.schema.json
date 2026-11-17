@@ -16,6 +16,9 @@
 		"supersedes": {
 			"$ref": "journal-entry.schema.json#/definitions/supersedes"
 		},
+		"rule": {
+			"$ref": "journal-entry.schema.json#/definitions/rule"
+		},
 		"text": {
 			"description": "The rule.",
 			"type": "string",
@@ -25,6 +28,10 @@
 			"description": "Where the rule comes from, for example ticket.md#AC2 or a question ID.",
 			"type": "string",
 			"minLength": 1
+		},
+		"verdict": {
+			"description": "ok when the result is correct. wrong when it is not.",
+			"enum": ["ok", "wrong"]
 		},
 		"area": {
 			"$ref": "journal-entry.schema.json#/definitions/area"

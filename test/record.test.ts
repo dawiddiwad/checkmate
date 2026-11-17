@@ -93,7 +93,22 @@ test('record forks the test session, and Checkmate logs the reply as the explore
 		...noPrompts,
 	])
 	assert(!call.args.some((arg: string) => /allowedTools|disallowedTools|--tools|Bash|Edit/.test(arg)), 'no tool list')
-	assert.equal(call.prompt, recorderPrompt('b1', 'No criterion, defect, or question yet.'))
+	assert.equal(
+		call.prompt,
+		recorderPrompt('b1', 'No criterion, defect, or question yet.', [], undefined, [
+			{ id: 'R1', text: 'A standard order for a 400 PLN item has a total of 400 PLN.' },
+			{ id: 'R2', text: 'A 40 percent promotion applies; stacking is unspecified.' },
+			{ id: 'R3', text: 'Refund eligibility is unspecified.' },
+		])
+	)
+	assert.match(
+		call.prompt,
+		/\nFor each rule of the plan that the session checked, log one criterion with its "rule" and "verdict"\. Give each defect and question its "rule", or outside\.\n/
+	)
+	assert.match(
+		call.prompt,
+		/\nThe rules of the plan:\nR1: A standard order for a 400 PLN item has a total of 400 PLN\.\nR2: /
+	)
 	assert.deepEqual(call.env, ['CHECKMATE_RECORDER'])
 	const saved = entries()
 	assert.deepEqual(
@@ -105,6 +120,30 @@ test('record forks the test session, and Checkmate logs the reply as the explore
 	)
 	const body = JSON.parse(saved[1].body)
 	assert.deepEqual([body.build, body.evidence[0].path], ['b1', 'evidence/total.txt'])
+})
+
+test('the recorder ties criteria, defects, and questions to a plan rule, and an unknown rule ID becomes outside', (t) => {
+	const { record, reply, entries } = setup(t)
+	reply({
+		recorder: [
+			{ kind: 'criterion', rule: 'R1', text: 'A 400 PLN order totals 400 PLN.', verdict: 'ok' },
+			{ ...defect, rule: 'R9' },
+			{ kind: 'question', rule: 'outside', question: 'Is a gift card a payment?' },
+			{ kind: 'question', question: 'Does the promotion stack?' },
+		],
+	})
+	const recorded = record()
+	assert.equal(recorded.code, 0, JSON.stringify(recorded.body))
+	assert.deepEqual([recorded.body.saved, recorded.body.refused, recorded.body.unknownRules], [4, 0, ['R9']])
+	assert.deepEqual(
+		entries().map((row) => [JSON.parse(row.body).rule, JSON.parse(row.body).verdict]),
+		[
+			['R1', 'ok'],
+			['outside', undefined],
+			['outside', undefined],
+			[undefined, undefined],
+		]
+	)
 })
 
 test('record repairs refused entries once, and the next record does not repeat what the record holds', (t) => {

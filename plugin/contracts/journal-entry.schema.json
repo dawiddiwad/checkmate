@@ -24,8 +24,10 @@
 			{
 				"kind": "criterion",
 				"id": "C1",
+				"rule": "R2",
 				"text": "5 or more items get 10% off.",
-				"source": "ticket.md#AC2"
+				"source": "ticket.md#AC2",
+				"verdict": "wrong"
 			},
 			{
 				"kind": "observation",
@@ -40,6 +42,7 @@
 			{
 				"kind": "defect",
 				"id": "D1",
+				"rule": "R2",
 				"title": "No discount at 5 items",
 				"expected": "45.00 (AC2)",
 				"actual": "Total 50.00",
@@ -65,6 +68,11 @@
 		},
 		"supersedes": {
 			"description": "The ID of an earlier entry of the same kind. This entry replaces it and keeps its ID.",
+			"type": "string",
+			"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+		},
+		"rule": {
+			"description": "The ID of the plan rule, for example R2, or outside.",
 			"type": "string",
 			"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
 		},

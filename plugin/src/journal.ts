@@ -2,6 +2,7 @@ import type { Store } from './store.ts'
 import { all, canonical, completed, digest, execute, one, saveBlob, write } from './store.ts'
 import { Refusal, requireCondition, requireWellFormed, schemaProblems, unusedId } from './contracts.ts'
 import { recordApproval } from './plans.ts'
+import { explorationRules, outsideRule } from './rules.ts'
 import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from 'node:fs'
 import { isAbsolute, join, relative, resolve, sep } from 'node:path'
 
@@ -23,6 +24,7 @@ export type Entry = {
 	build?: string
 	supersedes?: string
 	about?: string
+	rule?: string
 	area?: string
 	text?: string
 	source?: string
@@ -54,6 +56,7 @@ export type Row = Entry & { seq: number; actor: string; at: string; ref: string;
 export type Journal = ReturnType<typeof journal>
 type Fix = Record<string, unknown>
 type Recorded = { replyIds: Set<string>; dropped: string[] }
+type Rules = { ids: Set<string>; unknown: string[] }
 export type ExplorationRow = {
 	exploration_id: string
 	plan_id: string
@@ -357,6 +360,7 @@ function checkedEntry(
 	state: Journal,
 	actor: string,
 	cwd: string,
+	rules: Rules,
 	missing?: string[],
 	recorded?: Recorded
 ): Entry {
@@ -390,6 +394,10 @@ function checkedEntry(
 		)
 	}
 	const entry = draft as Omit<Entry, 'evidence'> & { evidence?: string | string[] }
+	if (entry.rule !== undefined && entry.rule !== outsideRule && !rules.ids.has(entry.rule)) {
+		rules.unknown.push(entry.rule)
+		entry.rule = outsideRule
+	}
 	const known = lookup(state, actor)
 	const used = [...known.keys()]
 	if (entry.supersedes !== undefined) {
@@ -523,9 +531,10 @@ export function logEntries(
 		cwd?: string
 		missingEvidence?: string[]
 		droppedReferences?: string[]
+		unknownRules?: string[]
 	}
 ) {
-	const { cwd, missingEvidence, droppedReferences, ...logged } = input
+	const { cwd, missingEvidence, droppedReferences, unknownRules, ...logged } = input
 	const operation = { actor, command: 'log', subject: input.explorationId, input: logged }
 	return write(store, operation, (operationId, _, actor) => {
 		const exploration = explorationRow(store, input.explorationId)
@@ -534,6 +543,10 @@ export function logEntries(
 		const saved: Saved[] = []
 		const refused: Refused[] = []
 		const recorded = droppedReferences && { replyIds: replyIds(list), dropped: droppedReferences }
+		const rules = {
+			ids: new Set(explorationRules(store, exploration.exploration_id).map((rule) => rule.id)),
+			unknown: unknownRules ?? [],
+		}
 		for (const [index, raw] of list.entries()) {
 			const state = journal(store, exploration.plan_id, actor)
 			let entry: Entry
@@ -546,6 +559,7 @@ export function logEntries(
 					state,
 					actor,
 					cwd ?? store.workspace,
+					rules,
 					missingEvidence,
 					recorded
 				)
@@ -564,7 +578,11 @@ export function logEntries(
 				[...new Set(refused.flatMap((item) => item.hint ?? []))].join(' ')
 			)
 		return {
-			reply: completed(exploration.exploration_id, { saved, refused }),
+			reply: completed(exploration.exploration_id, {
+				saved,
+				refused,
+				...(rules.unknown.length ? { unknownRules: rules.unknown } : {}),
+			}),
 			subjects: [`exploration:${exploration.exploration_id}`, `plan:${exploration.plan_id}`],
 		}
 	})

@@ -116,7 +116,13 @@ function replyText(what: string, answer?: string, which = '') {
 		: `Reply with only one JSON array of ${what}${which}, and nothing else. Use no tool.`
 }
 
-export function recorderPrompt(build: string, record: string, saved: string[] = [], answer?: string) {
+export function recorderPrompt(
+	build: string,
+	record: string,
+	saved: string[] = [],
+	answer?: string,
+	rules: Array<{ id: string; text: string }> = []
+) {
 	const text = [
 		`Now write the record of this test session for the QA record of the team (build ${build}).`,
 		'Record what you did and found, your questions for the product owner, and the answers that you received. Do not test again for the record, and do not change the files of the project. Do not repeat what the record already holds.',
@@ -124,6 +130,11 @@ export function recorderPrompt(build: string, record: string, saved: string[] = 
 		'Number the new entries freely, for example N1, O1, D1. Use an ID of the record only to point at an entry of the record.',
 		'Evidence is the path of a file that already exists, as the tester saved it, from the directory of the session, or the text that you saw.',
 		'When the session retested a defect of an earlier build, log a verdict with the ID of that defect: fixed or not_fixed.',
+		...(rules.length
+			? [
+					'For each rule of the plan that the session checked, log one criterion with its "rule" and "verdict". Give each defect and question its "rule", or outside.',
+				]
+			: []),
 		'',
 		'The entries:',
 		entryText(),
@@ -131,6 +142,7 @@ export function recorderPrompt(build: string, record: string, saved: string[] = 
 		'Example of a reply:',
 		JSON.stringify(entrySchema.examples[0]),
 		'',
+		...(rules.length ? ['The rules of the plan:', ...rules.map((rule) => `${rule.id}: ${rule.text}`), ''] : []),
 		'The record already holds:',
 		record,
 		...(saved.length

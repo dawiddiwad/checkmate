@@ -16,6 +16,9 @@
 		"supersedes": {
 			"$ref": "journal-entry.schema.json#/definitions/supersedes"
 		},
+		"rule": {
+			"$ref": "journal-entry.schema.json#/definitions/rule"
+		},
 		"question": {
 			"description": "The question.",
 			"type": "string",

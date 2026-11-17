@@ -118,6 +118,7 @@ test('a session run gives the actions of each step until it is finished, and the
 		/\nWrite only one JSON array of the new entries to \.checkmate\/work\/x-1\/a1\/entries\.json, and nothing else\.\n/
 	)
 	assert.doesNotMatch(record, /Use no tool/)
+	assert.match(record, /\nThe rules of the plan:\nR1: A standard order for a 400 PLN item has a total of 400 PLN\.\n/)
 	assert.doesNotMatch(clean(record), /checkmate/i)
 	put(`${work('a1')}/entries.json`, [stacks, question])
 	put(`${work('a2')}/entries.json`, [stacks])

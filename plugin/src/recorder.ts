@@ -6,6 +6,7 @@ import { recorderPrompt, repairPrompt } from './briefs.ts'
 import { bareOf, explorationRow, freshIds, journal, logEntries, recordText, refusalText } from './journal.ts'
 import type { Entry, Refused } from './journal.ts'
 import { addEvent, explorationEvents, workFolder } from './explorations.ts'
+import { explorationRules } from './rules.ts'
 import {
 	authenticationFailed,
 	authenticationHint,
@@ -81,6 +82,7 @@ function logReply(
 	entries: unknown[],
 	missing: string[],
 	dropped: string[],
+	unknownRules: string[],
 	cwd: string
 ) {
 	try {
@@ -90,6 +92,7 @@ function logReply(
 			cwd,
 			missingEvidence: missing,
 			droppedReferences: dropped,
+			unknownRules,
 		})
 		return (reply.data.refused as Refused[]).map(refusalText)
 	} catch (error) {
@@ -145,7 +148,7 @@ function releaseLock(path: string) {
 
 function promptOf(
 	store: Store,
-	exploration: { plan_id: string; build: string },
+	exploration: { exploration_id: string; plan_id: string; build: string },
 	actor: string,
 	earlier: Entry[],
 	answer?: string
@@ -154,7 +157,8 @@ function promptOf(
 		exploration.build,
 		recordText(store, exploration.plan_id, actor, exploration.build),
 		earlier.map((entry) => `${bareOf(entry.id)} ${entry.kind}: ${entryTitle(entry)}`),
-		answer
+		answer,
+		explorationRules(store, exploration.exploration_id)
 	)
 }
 
@@ -164,7 +168,14 @@ export function recordTask(store: Store, explorationId: string, explorer: string
 	return promptOf(store, exploration, actor, savedEntries(store, exploration.plan_id, explorationId, actor), answer)
 }
 
-export type Carried = { given: boolean; repeated: number; refusals: string[]; missing: string[]; dropped: string[] }
+export type Carried = {
+	given: boolean
+	repeated: number
+	refusals: string[]
+	missing: string[]
+	dropped: string[]
+	unknownRules?: string[]
+}
 export type AnswerInput = {
 	explorationId: string
 	explorer: string
@@ -190,17 +201,28 @@ export function recordAnswer(store: Store, input: AnswerInput) {
 	const carried = input.carried ?? { given: false, repeated: 0, refusals: [], missing: [], dropped: [] }
 	const missing = [...carried.missing]
 	const dropped = [...carried.dropped]
+	const unknownRules = [...(carried.unknownRules ?? [])]
 	const work = join(store.workspace, workFolder(exploration.exploration_id, input.explorer))
 	const given = input.failed ? undefined : replyArray(readText(join(store.workspace, input.answer)))
 	const fresh = given && newEntries(given, earlier)
 	const repeated = input.round > 1 ? carried.repeated : given && fresh ? given.length - fresh.length : 0
 	const logged = fresh?.length
-		? logReply(store, actor, exploration.exploration_id, exploration.plan_id, fresh, missing, dropped, work)
+		? logReply(
+				store,
+				actor,
+				exploration.exploration_id,
+				exploration.plan_id,
+				fresh,
+				missing,
+				dropped,
+				unknownRules,
+				work
+			)
 		: []
 	const refusals = input.round > 1 && !given ? carried.refusals : logged
 	const first = input.round > 1 ? carried.given : Boolean(given)
 	if (input.round === 1 && refusals.length)
-		return { repair: true, carried: { given: first, repeated, refusals, missing, dropped } }
+		return { repair: true, carried: { given: first, repeated, refusals, missing, dropped, unknownRules } }
 	const added = addedEntries(store, exploration.exploration_id, actor, input.after)
 	const saved = Object.values(added).reduce((total, count) => total + count, 0)
 	const status: Status = input.failed || (!saved && !repeated) ? 'operational_error' : 'completed'
@@ -225,6 +247,7 @@ export function recordAnswer(store: Store, input: AnswerInput) {
 			...(missing.length ? { missingEvidence: missing } : {}),
 			referencesDropped: dropped.length,
 			...(dropped.length ? { droppedReferences: dropped } : {}),
+			...(unknownRules.length ? { unknownRules } : {}),
 			reasons,
 		},
 	}
@@ -315,10 +338,21 @@ function recordLocked(
 	]
 	const missing: string[] = []
 	const dropped: string[] = []
+	const unknownRules: string[] = []
 	const work = join(store.workspace, workFolder(exploration.exploration_id, plan.explorer))
 	const evidenceCwd = existsSync(work) ? work : cwd
 	const log = (entries: unknown[]) =>
-		logReply(store, actor, exploration.exploration_id, exploration.plan_id, entries, missing, dropped, evidenceCwd)
+		logReply(
+			store,
+			actor,
+			exploration.exploration_id,
+			exploration.plan_id,
+			entries,
+			missing,
+			dropped,
+			unknownRules,
+			evidenceCwd
+		)
 	const given = replyArray(calls[0].result)
 	const first = given && newEntries(given, earlier)
 	const repeated = given && first ? given.length - first.length : 0
@@ -365,6 +399,7 @@ function recordLocked(
 		...(missing.length ? { missingEvidence: missing } : {}),
 		referencesDropped: dropped.length,
 		...(dropped.length ? { droppedReferences: dropped } : {}),
+		...(unknownRules.length ? { unknownRules } : {}),
 		...sum(calls, 'costUsd'),
 		...sum(calls, 'durationMs'),
 	}

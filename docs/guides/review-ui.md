@@ -188,22 +188,22 @@ Each page updates when another process writes to the record, for example a deleg
 
 ## Keyboard
 
-| Key             | Action                                                                                                         |
-| --------------- | -------------------------------------------------------------------------------------------------------------- |
-| `/`             | Focus the search field.                                                                                        |
-| `j` `k`         | Move down and up in a list. On `Needs you`, select the next item.                                              |
-| `Enter`         | Open the selected item. On `Needs you`, go to the form of the item.                                            |
-| `a`             | On a claim: accept it as a defect at once. On a plan or a result: approve or accept, then write the rationale. |
-| `r`             | On a claim, a plan, or a result: reject. Write the reason, then press `Ctrl` `Enter`.                          |
-| `c` `s`         | On a question: choose Clarify or Accept assumption, then write the answer.                                     |
-| `d`             | On a question: defer it at once.                                                                               |
-| `x`             | Select the row, or clear it, to decide several items at once.                                                  |
-| `Shift` `x`     | Select all rows from the last selected row to this row.                                                        |
-| `Ctrl` `Enter`  | Send the form of the item.                                                                                     |
-| `g` `i`         | Go to `Needs you`.                                                                                             |
-| `Esc`           | Close the evidence viewer or menu.                                                                             |
-| `+` `-` `0` `w` | In the evidence viewer: zoom in, zoom out, fit the image, or wrap the lines of a text.                         |
-| `?`             | Show the shortcuts.                                                                                            |
+| Key             | Action                                                                                                          |
+| --------------- | --------------------------------------------------------------------------------------------------------------- |
+| `/`             | Focus the search field.                                                                                         |
+| `j` `k`         | Move down and up in a list. On `Needs you`, select the next item.                                               |
+| `Enter`         | Open the selected item. On `Needs you`, go to the form of the item.                                             |
+| `a`             | On a claim: accept it as a defect at once. On a plan or a result: approve or accept, then write the rationale.  |
+| `r`             | On a claim, a plan, or a result: reject. Write the reason, then press `Ctrl` `Enter`.                           |
+| `c` `s`         | On a question: choose Clarify or Accept assumption, then write the answer.                                      |
+| `d`             | On a question: defer it at once.                                                                                |
+| `x`             | Select the row, or clear it, to decide several items at once.                                                   |
+| `Shift` `x`     | Select all rows from the last selected row to this row.                                                         |
+| `Ctrl` `Enter`  | Send the form of the item. When a necessary field is empty, a message shows below it and the cursor goes to it. |
+| `g` `i`         | Go to `Needs you`.                                                                                              |
+| `Esc`           | Close the evidence viewer or menu.                                                                              |
+| `+` `-` `0` `w` | In the evidence viewer: zoom in, zoom out, fit the image, or wrap the lines of a text.                          |
+| `?`             | Show the shortcuts.                                                                                             |
 
 ## Next
 

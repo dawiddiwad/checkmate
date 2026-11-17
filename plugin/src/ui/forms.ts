@@ -38,7 +38,14 @@ export function actorField(context: Context, state: FormState) {
 	if (context.actor) return ''
 	return html`<div class="field-group">
 		<label class="lab" for="actor">Your name</label>
-		<input id="actor" name="actor" required autocomplete="name" value="${state.values.actor ?? ''}" />
+		<input
+			id="actor"
+			name="actor"
+			required
+			autocomplete="name"
+			value="${state.values.actor ?? ''}"
+			data-missing="Enter your name. Checkmate records it with your decision."
+		/>
 		<p class="help">Checkmate asks once, keeps it in a cookie, and records it with each decision.</p>
 	</div>`
 }
@@ -57,10 +64,22 @@ export function keptText(state: FormState) {
 	</div>`
 }
 
-export function rationaleField(state: FormState, placeholder: string) {
+export function rationaleField(
+	state: FormState,
+	placeholder: string,
+	missing = 'Write a rationale. Checkmate records it with your decision.'
+) {
 	return html`<div class="field-group">
 		<label class="lab" for="rationale">Rationale</label>
-		<textarea id="rationale" name="rationale" rows="4" required data-rationale placeholder="${placeholder}">
+		<textarea
+			id="rationale"
+			name="rationale"
+			rows="4"
+			required
+			data-rationale
+			placeholder="${placeholder}"
+			data-missing="${missing}"
+		>
 ${state.values.rationale ?? ''}</textarea>
 	</div>`
 }
@@ -192,7 +211,8 @@ export function gapPanel(context: Context, form: GapForm, state: FormState) {
 			${kinds.map((kind) => html`<p class="help kind-help" data-kind="${kind.value}">${kind.help}</p>`)}
 			<div class="field-group">
 				<label class="lab" for="value">Answer</label>
-				<textarea id="value" name="value" rows="3" required>${state.values.value ?? ''}</textarea>
+				<textarea id="value" name="value" rows="3" required data-missing="Write the answer.">
+${state.values.value ?? ''}</textarea>
 			</div>
 			<div class="field-group source-field">
 				<label class="lab" for="source">Source <span class="req">required for Clarify</span></label>
@@ -202,10 +222,12 @@ export function gapPanel(context: Context, form: GapForm, state: FormState) {
 					value="${state.values.source ?? ''}"
 					placeholder="oracle://refund-policy#window"
 					data-source
+					data-missing="A clarification needs a source. Name where the answer comes from."
 				/>
 				<p class="help">Where the answer comes from: a document, a ticket, or a person.</p>
 			</div>
-			${rationaleField(state, 'Why is this the right answer?')} ${actorField(context, state)}
+			${rationaleField(state, 'Why is this the right answer?', 'Write a rationale. Checkmate records it with your answer.')}
+			${actorField(context, state)}
 			<div class="btns">
 				<button class="btn primary" data-needs-rationale>Record answer</button>
 				<a class="btn" href="${form.cancel}">Cancel</a>

@@ -16966,7 +16966,14 @@ function actorField(context, state) {
   if (context.actor) return "";
   return html2`<div class="field-group">
 		<label class="lab" for="actor">Your name</label>
-		<input id="actor" name="actor" required autocomplete="name" value="${state.values.actor ?? ""}" />
+		<input
+			id="actor"
+			name="actor"
+			required
+			autocomplete="name"
+			value="${state.values.actor ?? ""}"
+			data-missing="Enter your name. Checkmate records it with your decision."
+		/>
 		<p class="help">Checkmate asks once, keeps it in a cookie, and records it with each decision.</p>
 	</div>`;
 }
@@ -16982,10 +16989,18 @@ function keptText(state) {
 		<blockquote>${typed}</blockquote>
 	</div>`;
 }
-function rationaleField(state, placeholder2) {
+function rationaleField(state, placeholder2, missing = "Write a rationale. Checkmate records it with your decision.") {
   return html2`<div class="field-group">
 		<label class="lab" for="rationale">Rationale</label>
-		<textarea id="rationale" name="rationale" rows="4" required data-rationale placeholder="${placeholder2}">
+		<textarea
+			id="rationale"
+			name="rationale"
+			rows="4"
+			required
+			data-rationale
+			placeholder="${placeholder2}"
+			data-missing="${missing}"
+		>
 ${state.values.rationale ?? ""}</textarea>
 	</div>`;
 }
@@ -17100,7 +17115,8 @@ function gapPanel(context, form, state) {
 			${kinds.map((kind) => html2`<p class="help kind-help" data-kind="${kind.value}">${kind.help}</p>`)}
 			<div class="field-group">
 				<label class="lab" for="value">Answer</label>
-				<textarea id="value" name="value" rows="3" required>${state.values.value ?? ""}</textarea>
+				<textarea id="value" name="value" rows="3" required data-missing="Write the answer.">
+${state.values.value ?? ""}</textarea>
 			</div>
 			<div class="field-group source-field">
 				<label class="lab" for="source">Source <span class="req">required for Clarify</span></label>
@@ -17110,10 +17126,12 @@ function gapPanel(context, form, state) {
 					value="${state.values.source ?? ""}"
 					placeholder="oracle://refund-policy#window"
 					data-source
+					data-missing="A clarification needs a source. Name where the answer comes from."
 				/>
 				<p class="help">Where the answer comes from: a document, a ticket, or a person.</p>
 			</div>
-			${rationaleField(state, "Why is this the right answer?")} ${actorField(context, state)}
+			${rationaleField(state, "Why is this the right answer?", "Write a rationale. Checkmate records it with your answer.")}
+			${actorField(context, state)}
 			<div class="btns">
 				<button class="btn primary" data-needs-rationale>Record answer</button>
 				<a class="btn" href="${form.cancel}">Cancel</a>
@@ -17890,7 +17908,8 @@ function questionForm(context, picked, back, state) {
 			</div>
 		</fieldset>
 		<label class="lab" for="bulk-value">Answer <span class="req">not needed to defer</span></label>
-		<textarea id="bulk-value" name="value" rows="2">${values.value ?? ""}</textarea>
+		<textarea id="bulk-value" name="value" rows="2" data-missing="Write the answer. Only Defer needs no answer.">
+${values.value ?? ""}</textarea>
 		<details class="more" ${values.source || values.rationale ? html2`open` : ""}>
 			<summary>Add source and reason</summary>
 			<label class="lab" for="bulk-source">Source</label>
@@ -20054,7 +20073,13 @@ function questionDetail(store, context, item, filters, back, state) {
 				</fieldset>
 				${kinds2.map((kind) => html2`<p class="help kind-help" data-kind="${kind.value}">${kind.help}</p>`)}
 				<label class="sr-only" for="value">Answer</label>
-				<textarea id="value" name="value" rows="2" placeholder="Type the answer">
+				<textarea
+					id="value"
+					name="value"
+					rows="2"
+					placeholder="Type the answer"
+					data-missing="Write the answer."
+				>
 ${state.values.value ?? ""}</textarea>
 				${sourceAndReason(context, state, "Reason")} ${actorField(context, state)}
 				<div class="btns">

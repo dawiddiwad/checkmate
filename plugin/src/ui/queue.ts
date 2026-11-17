@@ -256,7 +256,13 @@ function questionDetail(
 				</fieldset>
 				${kinds.map((kind) => html`<p class="help kind-help" data-kind="${kind.value}">${kind.help}</p>`)}
 				<label class="sr-only" for="value">Answer</label>
-				<textarea id="value" name="value" rows="2" placeholder="Type the answer">
+				<textarea
+					id="value"
+					name="value"
+					rows="2"
+					placeholder="Type the answer"
+					data-missing="Write the answer."
+				>
 ${state.values.value ?? ''}</textarea>
 				${sourceAndReason(context, state, 'Reason')} ${actorField(context, state)}
 				<div class="btns">

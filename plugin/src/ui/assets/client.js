@@ -57,6 +57,44 @@ function confirmStop(form) {
 	rationale.focus()
 }
 
+function fieldError(field, text) {
+	let message = field.form.querySelector('[data-field-error]')
+	if (!message) {
+		message = document.createElement('p')
+		message.className = 'form-error'
+		message.setAttribute('role', 'alert')
+		message.dataset.fieldError = ''
+	}
+	if (message.previousElementSibling !== field) field.after(message)
+	message.textContent = text
+	field.focus()
+}
+
+document.addEventListener(
+	'invalid',
+	(event) => {
+		const field = event.target
+		event.preventDefault()
+		const first = [...field.form.elements].find((element) => element.willValidate && !element.validity.valid)
+		if (first === field) fieldError(field, field.dataset.missing || field.validationMessage)
+	},
+	true
+)
+
+function sendKey(event) {
+	if (event.key !== 'Enter' || !(event.ctrlKey || event.metaKey)) return
+	const form = event.target.closest?.('[data-region="queue-detail"] form, form[data-verdict-form]')
+	if (!form) return
+	event.preventDefault()
+	if (!form.reportValidity()) return
+	const submitter = sendChoice(form)
+	if (form.matches('[data-verdict-form]') && !form.dataset.confirming && !submitter)
+		return void form.querySelector('[data-choose] button')?.focus()
+	form.requestSubmit(submitter ?? undefined)
+}
+
+document.addEventListener('keydown', sendKey)
+
 function syncRemoval(area) {
 	const field = area.form.querySelector('[data-removal]')
 	let tests
@@ -75,6 +113,7 @@ function syncRemoval(area) {
 document.addEventListener('input', (event) => {
 	const form = event.target.closest?.('form')
 	if (form) syncRationale(form.parentElement ?? document)
+	if (event.target.nextElementSibling?.matches('[data-field-error]')) event.target.nextElementSibling.remove()
 	if (event.target.name === 'json' && form?.dataset.testIds !== undefined) syncRemoval(event.target)
 })
 
@@ -1033,16 +1072,7 @@ function rejectWithoutReason(form, submitter) {
 	if (!form.matches('[data-quick-claim], [data-bulk-claims]') || submitter?.value !== 'rejected') return false
 	const reason = form.querySelector('#rationale, #bulk-reason')
 	if (reason.value.trim()) return false
-	let message = form.querySelector('[data-reason-error]')
-	if (!message) {
-		message = document.createElement('p')
-		message.className = 'form-error'
-		message.setAttribute('role', 'alert')
-		message.dataset.reasonError = ''
-		reason.after(message)
-	}
-	message.textContent = 'Write a short reason for the reject.'
-	reason.focus()
+	fieldError(reason, 'Write a short reason for the reject.')
 	return true
 }
 
@@ -1178,16 +1208,6 @@ if (queue) {
 		if (!form || event.target.type !== 'search') return
 		clearTimeout(queueTimer)
 		queueTimer = setTimeout(() => queueGo(queueFilterUrl(form), 'replace', null), 250)
-	})
-	document.addEventListener('keydown', (event) => {
-		if (event.key !== 'Enter' || !(event.ctrlKey || event.metaKey)) return
-		const form = event.target.closest?.('[data-region="queue-detail"] form')
-		if (!form) return
-		event.preventDefault()
-		const submitter = sendChoice(form)
-		if (form.matches('[data-verdict-form]') && !form.dataset.confirming && !submitter)
-			return void form.querySelector('[data-choose] button')?.focus()
-		if (form.reportValidity()) form.requestSubmit(submitter ?? undefined)
 	})
 	let queueAddress = location.pathname + location.search
 	window.addEventListener('popstate', () => {

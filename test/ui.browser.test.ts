@@ -190,3 +190,28 @@ test('the JSON editor shows the reason field when the JSON removes a test', { sk
 		'The refund flow moves to the next release.'
 	)
 })
+
+test('Ctrl+Enter with an empty field shows an inline message and focuses the field', { skip }, async (t) => {
+	const { page, url } = await open(t)
+	const message = page.locator('.form-error[role="alert"]')
+	const focused = () => page.evaluate(() => document.activeElement?.id)
+	await page.goto(url('/?item=plan%3Asearch%401'))
+	await page.keyboard.press('r')
+	assert.equal(await focused(), 'rationale')
+	await page.keyboard.press('Control+Enter')
+	await message.filter({ hasText: 'Write a rationale. Checkmate records it with your decision.' }).waitFor()
+	assert.equal(await focused(), 'rationale')
+	await page.keyboard.type('The tests miss the empty state.')
+	await message.waitFor({ state: 'detached' })
+	for (const path of ['/plans/search@1', '/runs/run-7?item=summary']) {
+		await page.goto(url(path))
+		await page.locator('#rationale').focus()
+		await page.keyboard.press('Control+Enter')
+		await message.filter({ hasText: 'Write a rationale.' }).waitFor()
+		assert.equal(await focused(), 'rationale', path)
+	}
+	await page.goto(url('/?item=gap%3Acheckout%3AG2'))
+	await page.getByRole('button', { name: 'Record answer' }).click()
+	await message.filter({ hasText: 'Write the answer.' }).waitFor()
+	assert.equal(await focused(), 'value')
+})

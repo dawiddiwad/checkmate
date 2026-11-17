@@ -167,7 +167,8 @@ function questionForm(context: Context, picked: Picked[], back: string, state: B
 			</div>
 		</fieldset>
 		<label class="lab" for="bulk-value">Answer <span class="req">not needed to defer</span></label>
-		<textarea id="bulk-value" name="value" rows="2">${values.value ?? ''}</textarea>
+		<textarea id="bulk-value" name="value" rows="2" data-missing="Write the answer. Only Defer needs no answer.">
+${values.value ?? ''}</textarea>
 		<details class="more" ${values.source || values.rationale ? html`open` : ''}>
 			<summary>Add source and reason</summary>
 			<label class="lab" for="bulk-source">Source</label>

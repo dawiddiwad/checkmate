@@ -271,6 +271,9 @@ export function claimsPage(
 		? (shown.find((entry) => claimKey(entry.planId, entry.id) === asked) ?? null)
 		: (shown[0] ?? null)
 	const key = item ? claimKey(item.planId, item.id) : null
+	const index = item ? shown.indexOf(item) : 0
+	const rest = [...shown.slice(index), ...shown.slice(0, index).reverse()]
+	const done = rest.find((entry) => !filters.picks.includes(claimKey(entry.planId, entry.id)))
 	const filtered = names.some((name) => filters[name])
 	const limit = Math.max(shownLimit, Number(filters.limit) || 0)
 	const list = html`<div class="q-head">
@@ -316,7 +319,13 @@ export function claimsPage(
 		}`
 	const pane =
 		picked.length || bulk
-			? bulkPanel(context, picked, claimsHref({ ...filters, picks: [] }, key), bulk)
+			? bulkPanel(
+					context,
+					picked,
+					claimsHref({ ...filters, picks: [] }, key),
+					bulk,
+					claimsHref({ ...filters, picks: [] }, done ? claimKey(done.planId, done.id) : null)
+				)
 			: item
 				? claimPane(store, context, item.planId, item, crumbs(item, filters), {
 						key: key!,

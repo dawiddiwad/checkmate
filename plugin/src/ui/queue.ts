@@ -413,6 +413,8 @@ export function queuePage(
 	const index = item ? shown.indexOf(item) : -1
 	const next = shown[index + 1] ?? shown[index - 1] ?? null
 	const back = queueHref(filters, next?.key ?? null)
+	const rest = [...shown.slice(Math.max(index, 0)), ...shown.slice(0, Math.max(index, 0)).reverse()]
+	const done = rest.find((entry) => !filters.picks.includes(entry.key)) ?? null
 	const urgent = shown.filter((entry) => entry.group !== 'questions').length
 	const sub = !shown.length
 		? ''
@@ -446,7 +448,13 @@ export function queuePage(
 		)}`
 	const pane =
 		picked.length || bulk
-			? bulkPanel(context, picked, queueHref({ ...filters, picks: [] }, item?.key ?? null), bulk)
+			? bulkPanel(
+					context,
+					picked,
+					queueHref({ ...filters, picks: [] }, item?.key ?? null),
+					bulk,
+					queueHref({ ...filters, picks: [] }, done?.key ?? null)
+				)
 			: asked && !item
 				? gone(filters, refusal?.state)
 				: detail(store, context, waiting, item, filters, back, refusal?.state ?? emptyState())

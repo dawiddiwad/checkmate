@@ -52,10 +52,10 @@ Each question, gap, and claim without a decision has a box at the left of its ro
 
 When you select an item, the right side shows the selected items:
 
-- For the questions: choose `Defer`, `Clarify`, or `Accept assumption`, and write one answer for all. `Defer` needs no answer. Click `Review`.
+- For the questions: the kind of answer is `Clarify` by default, as for one question. Press `c`, `s`, or `d`, or click `Clarify`, `Accept assumption`, or `Defer` to change it. Write one answer for all. `Defer` needs no answer. Click `Review`.
 - For the claims: write one reason, then click `Accept` or `Reject`. A reject needs a reason.
 
-The confirm step says exactly what the UI will record: the kind of answer or the decision, the answer, the source, the reason, your name, and each item. Click the confirm button or press `Ctrl` `Enter`. The UI records one decision for each item, as separate entries in the log. When an item does not wait for a decision any more, the UI records nothing and tells you which item. `Clear the selection` goes back to the list.
+The confirm step says exactly what the UI will record: the kind of answer or the decision, the answer, the source, the reason, your name, and each item. Click the confirm button or press `Ctrl` `Enter`. The UI records one decision for each item, as separate entries in the log. Then the list selects the next item that you did not select, and puts the focus on its row. When an item does not wait for a decision any more, the UI records nothing and tells you which item. `Clear the selection` goes back to the list.
 
 `/claims` has the same boxes for the claims that have no decision.
 

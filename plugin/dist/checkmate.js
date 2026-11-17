@@ -17776,12 +17776,13 @@ function defaultActor(workspace, env) {
 
 // plugin/src/ui/bulk.ts
 var kindLabels = {
-  defer: "Defer",
   clarify: "Clarify",
-  accept_assumption: "Accept assumption"
+  accept_assumption: "Accept assumption",
+  defer: "Defer"
 };
+var kindKeys = { clarify: "c", accept_assumption: "s", defer: "d" };
 function answerDefaults(values, actor) {
-  const kind = values.kind || "defer";
+  const kind = values.kind || "clarify";
   return {
     kind,
     value: values.value?.trim() || (kind === "defer" ? "Deferred in the review UI." : ""),
@@ -17855,7 +17856,7 @@ function carried(picked, what, back) {
 }
 function questionForm(context, picked, back, state) {
   const values = state?.what === "questions" ? state.values : {};
-  const kind = values.kind || "defer";
+  const kind = values.kind || "clarify";
   if (state?.what === "questions" && state.confirm) {
     const answer = answerDefaults(values, context.actor ?? values.actor ?? "");
     return html2`<form method="post" action="/bulk" class="decision-form" data-bulk-confirm>
@@ -17896,14 +17897,16 @@ function questionForm(context, picked, back, state) {
 		<fieldset class="seg-field">
 			<legend class="lab">One answer for ${plural(picked.length, "question")}</legend>
 			<div class="seg">
-				${["defer", "clarify", "accept_assumption"].map(
+				${Object.keys(kindLabels).map(
     (value2) => html2`<input
 								type="radio"
 								id="bulk-kind-${value2}"
 								name="kind"
 								value="${value2}"
 								${kind === value2 ? html2`checked` : ""}
-							/><label for="bulk-kind-${value2}">${kindLabels[value2]}</label>`
+							/><label for="bulk-kind-${value2}"
+								>${kindLabels[value2]} <kbd aria-hidden="true">${kindKeys[value2]}</kbd></label
+							>`
   )}
 			</div>
 		</fieldset>
@@ -17970,7 +17973,7 @@ ${values.rationale ?? ""}</textarea>
 		</div>
 	</form>`;
 }
-function bulkPanel(context, picked, back, state) {
+function bulkPanel(context, picked, back, state, done = back) {
   const questions = picked.filter((item) => item.kind !== "claim");
   const claims = picked.filter((item) => item.kind === "claim");
   return html2`<div class="q-crumbs">
@@ -17987,12 +17990,12 @@ function bulkPanel(context, picked, back, state) {
 		${questions.length ? html2`<section class="panel decision" aria-labelledby="bulk-questions" data-region="decision">
 						<h3 class="lab" id="bulk-questions">${plural(questions.length, "question")}</h3>
 						${state?.confirm && state.what === "questions" ? "" : pickedList(questions)}
-						${questionForm(context, questions, back, state)}
+						${questionForm(context, questions, done, state)}
 					</section>` : ""}
 		${claims.length ? html2`<section class="panel decision" aria-labelledby="bulk-claims" data-region="decision">
 						<h3 class="lab" id="bulk-claims">${plural(claims.length, "claim")}</h3>
 						${state?.confirm && state.what === "claims" ? "" : pickedList(claims)}
-						${claimForm(context, claims, back, state)}
+						${claimForm(context, claims, done, state)}
 					</section>` : ""}`;
 }
 
@@ -18614,6 +18617,9 @@ function claimsPage(store, context, params, refusal = null, bulk = null, now = D
   const asked = refusal?.key ?? params.get("item");
   const item = asked ? shown.find((entry) => claimKey(entry.planId, entry.id) === asked) ?? null : shown[0] ?? null;
   const key = item ? claimKey(item.planId, item.id) : null;
+  const index2 = item ? shown.indexOf(item) : 0;
+  const rest = [...shown.slice(index2), ...shown.slice(0, index2).reverse()];
+  const done = rest.find((entry) => !filters.picks.includes(claimKey(entry.planId, entry.id)));
   const filtered = names.some((name) => filters[name]);
   const limit = Math.max(shownLimit, Number(filters.limit) || 0);
   const list2 = html2`<div class="q-head">
@@ -18649,7 +18655,13 @@ function claimsPage(store, context, params, refusal = null, bulk = null, now = D
 						>
 						<span class="muted">${limit} of ${shown.length} shown</span>
 					</p>` : ""}`;
-  const pane = picked.length || bulk ? bulkPanel(context, picked, claimsHref({ ...filters, picks: [] }, key), bulk) : item ? claimPane(store, context, item.planId, item, crumbs(item, filters), {
+  const pane = picked.length || bulk ? bulkPanel(
+    context,
+    picked,
+    claimsHref({ ...filters, picks: [] }, key),
+    bulk,
+    claimsHref({ ...filters, picks: [] }, done ? claimKey(done.planId, done.id) : null)
+  ) : item ? claimPane(store, context, item.planId, item, crumbs(item, filters), {
     key,
     back: claimsHref(filters, filters.state ? nextKey(shown, item) : key),
     state: refusal?.state ?? emptyState()
@@ -20185,6 +20197,8 @@ function queuePage(store, context, params, refusal = null, bulk = null) {
   const index2 = item ? shown.indexOf(item) : -1;
   const next = shown[index2 + 1] ?? shown[index2 - 1] ?? null;
   const back = queueHref(filters, next?.key ?? null);
+  const rest = [...shown.slice(Math.max(index2, 0)), ...shown.slice(0, Math.max(index2, 0)).reverse()];
+  const done = rest.find((entry) => !filters.picks.includes(entry.key)) ?? null;
   const urgent = shown.filter((entry) => entry.group !== "questions").length;
   const sub = !shown.length ? "" : urgent ? `${plural(urgent, "item")} ${urgent === 1 ? "needs" : "need"} your decision. The most urgent is first.` : "No decision waits for you. The questions that do not block are below.";
   const list2 = html2`<div class="q-head">
@@ -20212,7 +20226,13 @@ function queuePage(store, context, params, refusal = null, bulk = null) {
       item?.key ?? null
     )
   )}`;
-  const pane = picked.length || bulk ? bulkPanel(context, picked, queueHref({ ...filters, picks: [] }, item?.key ?? null), bulk) : asked && !item ? gone(filters, refusal?.state) : detail(store, context, waiting, item, filters, back, refusal?.state ?? emptyState());
+  const pane = picked.length || bulk ? bulkPanel(
+    context,
+    picked,
+    queueHref({ ...filters, picks: [] }, item?.key ?? null),
+    bulk,
+    queueHref({ ...filters, picks: [] }, done?.key ?? null)
+  ) : asked && !item ? gone(filters, refusal?.state) : detail(store, context, waiting, item, filters, back, refusal?.state ?? emptyState());
   return {
     title: item ? `${item.planId} \xB7 ${item.id} \xB7 Needs you` : "Needs you",
     section: "inbox",

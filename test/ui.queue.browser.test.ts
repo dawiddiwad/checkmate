@@ -475,10 +475,17 @@ test('x and shift x select several items, and one confirm records them all', { s
 	await page.keyboard.press('j')
 	await page.keyboard.press('Shift+X')
 	await page.locator('.q-detail', { hasText: '3 items selected' }).waitFor()
+	assert(await page.getByLabel(/^Clarify/).isChecked())
+	await page.keyboard.press('d')
+	assert(await page.getByLabel(/^Defer/).isChecked())
 	await page.getByRole('button', { name: 'Review 3 answers' }).click()
 	await page.locator('.q-detail', { hasText: 'This records Defer for 3 questions' }).waitFor()
 	await page.keyboard.press('Control+Enter')
 	await page.getByRole('status').filter({ hasText: 'Deferred 3 questions' }).waitFor()
+	const next = await focusedKey(page)
+	assert(next, 'no row has the focus')
+	assert.equal(next, await selected(page))
+	assert(!items.slice(0, 3).some((item) => item.key === next))
 	for (const item of items.slice(0, 3))
 		assert.equal(
 			needsYou(store).items.some((entry) => entry.key === item.key),
@@ -501,6 +508,7 @@ test('x and shift x select several items, and one confirm records them all', { s
 	await page.locator('.q-detail', { hasText: 'This records Reject for 3 claims' }).waitFor()
 	await page.getByRole('button', { name: 'Reject 3 claims' }).click()
 	await page.getByRole('status').filter({ hasText: 'Rejected 3 claims' }).waitFor()
+	assert.equal(await focusedKey(page), await selected(page))
 	assert.equal(loads, 2)
 })
 

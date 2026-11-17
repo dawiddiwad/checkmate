@@ -930,6 +930,13 @@ function clearDrafts(key) {
 }
 
 function queueKind(event, value, send) {
+	const bulk = queueDetail().querySelector(`[data-bulk-questions] #bulk-kind-${value}`)
+	if (bulk) {
+		event.preventDefault()
+		bulk.checked = true
+		syncSource()
+		return true
+	}
 	const input = queueDetail().querySelector(`[data-quick-form] #kind-${value}`)
 	if (!input) return false
 	event.preventDefault()

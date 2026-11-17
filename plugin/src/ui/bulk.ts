@@ -20,13 +20,14 @@ export type BulkState = {
 }
 
 const kindLabels: Record<string, string> = {
-	defer: 'Defer',
 	clarify: 'Clarify',
 	accept_assumption: 'Accept assumption',
+	defer: 'Defer',
 }
+const kindKeys: Record<string, string> = { clarify: 'c', accept_assumption: 's', defer: 'd' }
 
 export function answerDefaults(values: Record<string, string>, actor: string) {
-	const kind = values.kind || 'defer'
+	const kind = values.kind || 'clarify'
 	return {
 		kind,
 		value: values.value?.trim() || (kind === 'defer' ? 'Deferred in the review UI.' : ''),
@@ -113,7 +114,7 @@ function carried(picked: Picked[], what: BulkState['what'], back: string) {
 
 function questionForm(context: Context, picked: Picked[], back: string, state: BulkState | null) {
 	const values = state?.what === 'questions' ? state.values : {}
-	const kind = values.kind || 'defer'
+	const kind = values.kind || 'clarify'
 	if (state?.what === 'questions' && state.confirm) {
 		const answer = answerDefaults(values, context.actor ?? values.actor ?? '')
 		return html`<form method="post" action="/bulk" class="decision-form" data-bulk-confirm>
@@ -154,7 +155,7 @@ function questionForm(context: Context, picked: Picked[], back: string, state: B
 		<fieldset class="seg-field">
 			<legend class="lab">One answer for ${plural(picked.length, 'question')}</legend>
 			<div class="seg">
-				${['defer', 'clarify', 'accept_assumption'].map(
+				${Object.keys(kindLabels).map(
 					(value) =>
 						html`<input
 								type="radio"
@@ -162,7 +163,9 @@ function questionForm(context: Context, picked: Picked[], back: string, state: B
 								name="kind"
 								value="${value}"
 								${kind === value ? html`checked` : ''}
-							/><label for="bulk-kind-${value}">${kindLabels[value]}</label>`
+							/><label for="bulk-kind-${value}"
+								>${kindLabels[value]} <kbd aria-hidden="true">${kindKeys[value]}</kbd></label
+							>`
 				)}
 			</div>
 		</fieldset>
@@ -231,7 +234,13 @@ ${values.rationale ?? ''}</textarea>
 	</form>`
 }
 
-export function bulkPanel(context: Context, picked: Picked[], back: string, state: BulkState | null): Html {
+export function bulkPanel(
+	context: Context,
+	picked: Picked[],
+	back: string,
+	state: BulkState | null,
+	done = back
+): Html {
 	const questions = picked.filter((item) => item.kind !== 'claim')
 	const claims = picked.filter((item) => item.kind === 'claim')
 	return html`<div class="q-crumbs">
@@ -250,7 +259,7 @@ export function bulkPanel(context: Context, picked: Picked[], back: string, stat
 				? html`<section class="panel decision" aria-labelledby="bulk-questions" data-region="decision">
 						<h3 class="lab" id="bulk-questions">${plural(questions.length, 'question')}</h3>
 						${state?.confirm && state.what === 'questions' ? '' : pickedList(questions)}
-						${questionForm(context, questions, back, state)}
+						${questionForm(context, questions, done, state)}
 					</section>`
 				: ''
 		}
@@ -259,7 +268,7 @@ export function bulkPanel(context: Context, picked: Picked[], back: string, stat
 				? html`<section class="panel decision" aria-labelledby="bulk-claims" data-region="decision">
 						<h3 class="lab" id="bulk-claims">${plural(claims.length, 'claim')}</h3>
 						${state?.confirm && state.what === 'claims' ? '' : pickedList(claims)}
-						${claimForm(context, claims, back, state)}
+						${claimForm(context, claims, done, state)}
 					</section>`
 				: ''
 		}`

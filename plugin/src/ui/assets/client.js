@@ -240,6 +240,7 @@ document.addEventListener('change', (event) => {
 
 const say = document.querySelector('[data-say]')
 let sayTimer = null
+let gone = null
 
 function tell(text) {
 	say.textContent = text
@@ -737,6 +738,11 @@ function hideExtra(row) {
 
 function choose(n) {
 	if (sending) return
+	if (gone && level === 'list') {
+		const text = `Nothing is recorded. ${gone} ${current('list')?.dataset.label ?? 'The next row'} has the highlight now.`
+		gone = null
+		return tell(text)
+	}
 	const selection = bulkOptions()
 	if (selection.length && (level === 'list' || level === 'nav')) {
 		const option = selection[n - 1]
@@ -1343,6 +1349,7 @@ document.addEventListener('keydown', (event) => {
 	if (!entry) return
 	event.preventDefault()
 	say.textContent = ''
+	if (!/^[1-9]$/.test(event.key)) gone = null
 	entry.run(event)
 })
 
@@ -1650,8 +1657,10 @@ function replaceRegion(region, fresh, previous) {
 					.map((key) => rows.find((row) => row.dataset.key === key))
 					.find(Boolean)
 				mark(next ?? rows[0], 'list')
-				if (rowKey)
-					tell(`${rowLabel} ${rowKey.startsWith('c:') ? 'was decided' : 'was answered'} in another session.`)
+				if (rowKey) {
+					gone = `${rowLabel} ${rowKey.startsWith('c:') ? 'was decided' : 'was answered'} in another session.`
+					tell(gone)
+				}
 			}
 			remember()
 		}
@@ -1677,6 +1686,7 @@ async function refresh() {
 		const response = await fetch(location.pathname + location.search, { cache: 'no-store' })
 		if (!response.ok) return
 		const fresh = new DOMParser().parseFromString(await response.text(), 'text/html')
+		if (sending) return void (again = true)
 		const messages = []
 		for (const region of [...document.querySelectorAll('[data-region]')]) {
 			const name = region.dataset.region

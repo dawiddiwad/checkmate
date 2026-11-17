@@ -453,6 +453,9 @@ test('a decision from another tab after the page loaded is refused and names the
 	await page.goto(url('/plans/coupons?view=needs&focus=list'))
 	await page.waitForFunction(() => document.activeElement?.matches('[data-row]'))
 	const key = (await highlighted(page)).key!
+	const accepted = () =>
+		read(workspace, (store) => mergedClaims(store, 'coupons').filter((claim) => claim.state === 'accepted').length)
+	const before = accepted()
 	read(workspace, (store) =>
 		decideClaim(store, 'qa-lead', {
 			planId: 'coupons',
@@ -462,7 +465,98 @@ test('a decision from another tab after the page loaded is refused and names the
 		})
 	)
 	await page.keyboard.press('1')
+	const id = key.slice(2)
+	await page
+		.getByText(
+			new RegExp(
+				`^(${id} was accepted by qa-lead\\.|Nothing is recorded\\. ${id} was decided in another session\\.)`
+			)
+		)
+		.waitFor()
+	assert.equal(accepted(), before + 1)
+})
+
+function within(promise: Promise<void>, what: string) {
+	return Promise.race([
+		promise,
+		new Promise<void>((_, fail) => setTimeout(() => fail(new Error(`${what} did not happen`)), 5000)),
+	])
+}
+
+test('a live update that lands while a decision is sent does not lose the refusal', { skip }, async (t) => {
+	const { page, url, workspace } = await open(t)
+	let releaseRefresh = () => {}
+	let releasePost = () => {}
+	let held = false
+	let posted = false
+	const refreshHeld = new Promise<void>((done) =>
+		page.route('**/plans/coupons?**', async (route) => {
+			if (held || route.request().resourceType() !== 'fetch') return route.continue()
+			held = true
+			done()
+			await new Promise<void>((release) => (releaseRefresh = release))
+			await route.continue()
+		})
+	)
+	const postHeld = new Promise<void>((done) =>
+		page.route('**/claims/**', async (route) => {
+			if (posted || route.request().method() !== 'POST') return route.continue()
+			posted = true
+			done()
+			await new Promise<void>((release) => (releasePost = release))
+			await route.continue()
+		})
+	)
+	await page.goto(url('/plans/coupons?view=needs&focus=list'))
+	await page.locator('[data-live]', { hasText: 'Live' }).waitFor()
+	await page.waitForFunction(() => document.activeElement?.matches('[data-row]'))
+	const key = (await highlighted(page)).key!
+	read(workspace, (store) =>
+		decideClaim(store, 'qa-lead', {
+			planId: 'coupons',
+			claimId: key.slice(2),
+			verdict: 'approved',
+			rationale: 'Elsewhere.',
+		})
+	)
+	await within(refreshHeld, 'the live refresh')
+	await page.keyboard.press('1')
+	await within(postHeld, 'the decision request')
+	releaseRefresh()
+	await page.waitForTimeout(300)
+	releasePost()
 	await page.getByText(`${key.slice(2)} was accepted by qa-lead.`).waitFor()
+})
+
+test('a number key after a live update moved the highlight records nothing and says why', { skip }, async (t) => {
+	const { page, url, workspace } = await open(t)
+	await page.goto(url('/plans/coupons?view=needs&focus=list'))
+	await page.locator('[data-live]', { hasText: 'Live' }).waitFor()
+	await page.waitForFunction(() => document.activeElement?.matches('[data-row]'))
+	const key = (await highlighted(page)).key!
+	read(workspace, (store) =>
+		decideClaim(store, 'qa-lead', {
+			planId: 'coupons',
+			claimId: key.slice(2),
+			verdict: 'approved',
+			rationale: 'Elsewhere.',
+		})
+	)
+	await page.getByText(`${key.slice(2)} was decided in another session.`).waitFor()
+	const next = (await highlighted(page)).key!
+	assert.notEqual(next, key)
+	await page.keyboard.press('1')
+	await page.getByText(`Nothing is recorded. ${key.slice(2)} was decided in another session.`).waitFor()
+	assert.equal(await page.locator('.toast').count(), 0)
+	const state = () =>
+		read(workspace, (store) => mergedClaims(store, 'coupons').find((claim) => `c:${claim.id}` === next)!.state)
+	assert.equal(state(), 'suspected')
+	await page.keyboard.press('1')
+	await page
+		.getByRole('status')
+		.filter({ hasText: `Accepted coupons · ${next.slice(2)}` })
+		.waitFor()
+	assert.equal(state(), 'accepted')
 })
 
 test(

@@ -258,7 +258,7 @@ test(
 		await page.locator('dialog[open]').waitFor()
 		await page.goBack()
 		await page.locator('dialog[open]').waitFor({ state: 'detached' })
-		assert.match(page.url(), /\/activity$/).catch(() => {})
+		assert.match(page.url(), /\/activity$/)
 		await page.keyboard.press('ArrowUp')
 		assert.equal(await focusedKey(page), 'run:x-2')
 		await page.keyboard.press('1')

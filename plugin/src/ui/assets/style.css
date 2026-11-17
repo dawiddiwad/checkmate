@@ -999,10 +999,10 @@ summary.asr-row:focus-visible {
 }
 
 .evidence {
-	display: flex;
-	flex-wrap: wrap;
-	gap: 10px;
-	align-items: flex-start;
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+	gap: 12px;
+	align-items: start;
 }
 .ev {
 	margin: 0;
@@ -1018,17 +1018,20 @@ summary.asr-row:focus-visible {
 	flex-wrap: wrap;
 	align-items: baseline;
 }
-.ev-image > a {
+.ev-image > a,
+.ev-text pre,
+.ev-none .ev-note {
 	display: block;
-	width: 176px;
-	height: 110px;
+	box-sizing: border-box;
+	width: 100%;
+	height: 140px;
+	margin: 0;
 	border: 1px solid var(--line);
 	border-radius: 7px;
-	overflow: hidden;
 	background: var(--surface);
 }
-.ev-image {
-	width: 176px;
+.ev-image > a {
+	overflow: hidden;
 }
 .ev-image img {
 	width: 100%;
@@ -1036,21 +1039,25 @@ summary.asr-row:focus-visible {
 	object-fit: cover;
 	display: block;
 }
-.ev-text {
-	flex: 1 1 100%;
+.ev-note {
+	display: grid;
+	place-items: center;
+	height: 100%;
+	padding: 8px 12px;
+	color: var(--muted);
+	font-size: 13px;
+	text-align: center;
 }
-.ev-text figcaption {
-	margin: 0 0 4px;
+.ev-none .ev-note {
+	display: grid;
+}
+.ev-note[hidden] {
+	display: none;
 }
 .ev-text pre {
-	margin: 0;
 	font-size: 12px;
 	line-height: 1.5;
-	background: var(--surface);
-	border: 1px solid var(--line);
-	border-radius: 7px;
 	padding: 10px 12px;
-	max-height: 240px;
 	overflow: auto;
 	white-space: pre-wrap;
 	overflow-wrap: anywhere;
@@ -2299,11 +2306,6 @@ main:has(> .queue) {
 	margin: 0;
 	padding-left: 22px;
 }
-.q-detail .evidence {
-	display: grid;
-	grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-	gap: 10px;
-}
 .q-detail .decision {
 	max-width: 760px;
 }
@@ -2648,4 +2650,8 @@ body:has(.queue) .foot {
 	margin: 0;
 	font-weight: 400;
 	color: var(--muted);
+}
+.ev-image .ev-note {
+	color: var(--muted);
+	text-decoration: none;
 }

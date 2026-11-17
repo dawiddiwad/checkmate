@@ -52,6 +52,11 @@ export function viewLink(opener: Opener, content: Html | string, label = `View $
 }
 
 export function evidenceItem(file: EvidenceFile) {
+	if (file.size === 0)
+		return html`<figure class="ev ev-none">
+			<p class="ev-note">Empty file</p>
+			${caption(file)}
+		</figure>`
 	if (file.href && imageTypes.includes(file.mediaType))
 		return html`<figure class="ev ev-image">
 			<a
@@ -61,12 +66,14 @@ export function evidenceItem(file: EvidenceFile) {
 				data-src="${file.href}"
 				aria-label="View ${file.name}"
 			>
-				<img src="${file.href}" alt="Evidence ${file.name}" loading="lazy" />
+				<img src="${file.href}" alt="Evidence ${file.name}" loading="lazy" data-ev-image />
+				<span class="ev-note" hidden>This image cannot be shown.</span>
 			</a>
 			${caption(file)}
 		</figure>`
 	if (file.text && (!file.href || shownAsText(file.mediaType, file.size)))
 		return html`<figure class="ev ev-text">
+			<pre tabindex="0" data-view-source>${file.text()}</pre>
 			${caption(
 				file,
 				file.href
@@ -78,11 +85,11 @@ export function evidenceItem(file: EvidenceFile) {
 						)
 					: ''
 			)}
-			<pre tabindex="0" data-view-source>${file.text()}</pre>
 		</figure>`
-	return html`<a class="chip" href="${file.href}" download="${file.name}" aria-label="Download ${file.name}"
-		>↓ ${file.name} · ${size(file.size)}</a
-	>`
+	return html`<figure class="ev ev-none">
+		<p class="ev-note">No preview for this file type.</p>
+		${caption(file)}
+	</figure>`
 }
 
 export function evidenceList(files: EvidenceFile[], none: Html | string = '') {

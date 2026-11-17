@@ -381,3 +381,26 @@ test('the evidence viewer fits at 390px and names a file that it cannot show', {
 	await page.keyboard.press('Escape')
 	await viewer.waitFor({ state: 'hidden' })
 })
+
+test('an empty file and a damaged image get a note and Download in tiles of one size', { skip }, async (t) => {
+	const { page, url, workspace } = await open(t)
+	seedOddFiles(workspace)
+	await page.goto(url('/runs/run-8?item=test%3AT1'))
+	await page.locator('[data-key="T1.A2"] summary').click()
+	const tiles = page.locator('[data-key="T1.A2"] figure.ev')
+	const empty = tiles.filter({ hasText: 'empty.txt' })
+	await empty.getByText('Empty file').waitFor()
+	assert.equal(await empty.getByRole('link', { name: 'Download empty.txt' }).count(), 1)
+	const broken = tiles.filter({ hasText: brokenName })
+	await broken.getByText('This image cannot be shown.').waitFor()
+	assert.equal(await broken.getByRole('link', { name: `Download ${brokenName}` }).count(), 1)
+	assert.equal(await broken.locator('img:visible').count(), 0)
+	const boxes = await tiles.evaluateAll((figures) =>
+		figures.map((figure) => {
+			const box = figure.firstElementChild!.getBoundingClientRect()
+			return `${Math.round(box.width)}x${Math.round(box.height)}`
+		})
+	)
+	assert(boxes.length >= 2, JSON.stringify(boxes))
+	assert.equal(new Set(boxes).size, 1, JSON.stringify(boxes))
+})

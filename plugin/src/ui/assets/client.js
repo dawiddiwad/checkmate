@@ -689,6 +689,22 @@ document.addEventListener(
 
 window.addEventListener('resize', () => document.querySelectorAll('details[data-menu][open]').forEach(placeMenu))
 
+function brokenImage(image) {
+	image.hidden = true
+	image.nextElementSibling.hidden = false
+}
+
+document.addEventListener(
+	'error',
+	(event) => {
+		if (event.target.matches?.('[data-ev-image]')) brokenImage(event.target)
+	},
+	true
+)
+
+for (const image of document.querySelectorAll('[data-ev-image]'))
+	if (image.complete && !image.naturalWidth) brokenImage(image)
+
 function openTarget() {
 	if (!location.hash) return
 	const target = document.getElementById(decodeURIComponent(location.hash.slice(1)))

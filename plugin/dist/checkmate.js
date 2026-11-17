@@ -16673,6 +16673,11 @@ function viewLink(opener, content, label = `View ${opener.name}`, extra = "") {
 	>`;
 }
 function evidenceItem(file) {
+  if (file.size === 0)
+    return html2`<figure class="ev ev-none">
+			<p class="ev-note">Empty file</p>
+			${caption(file)}
+		</figure>`;
   if (file.href && imageTypes.includes(file.mediaType))
     return html2`<figure class="ev ev-image">
 			<a
@@ -16682,12 +16687,14 @@ function evidenceItem(file) {
 				data-src="${file.href}"
 				aria-label="View ${file.name}"
 			>
-				<img src="${file.href}" alt="Evidence ${file.name}" loading="lazy" />
+				<img src="${file.href}" alt="Evidence ${file.name}" loading="lazy" data-ev-image />
+				<span class="ev-note" hidden>This image cannot be shown.</span>
 			</a>
 			${caption(file)}
 		</figure>`;
   if (file.text && (!file.href || shownAsText(file.mediaType, file.size)))
     return html2`<figure class="ev ev-text">
+			<pre tabindex="0" data-view-source>${file.text()}</pre>
 			${caption(
       file,
       file.href ? viewLink(
@@ -16697,11 +16704,11 @@ function evidenceItem(file) {
         "ev-act"
       ) : ""
     )}
-			<pre tabindex="0" data-view-source>${file.text()}</pre>
 		</figure>`;
-  return html2`<a class="chip" href="${file.href}" download="${file.name}" aria-label="Download ${file.name}"
-		>↓ ${file.name} · ${size(file.size)}</a
-	>`;
+  return html2`<figure class="ev ev-none">
+		<p class="ev-note">No preview for this file type.</p>
+		${caption(file)}
+	</figure>`;
 }
 function evidenceList(files2, none4 = "") {
   if (!files2.length) return none4 ? html2`<p class="none">${none4}</p>` : "";

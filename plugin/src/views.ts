@@ -2,7 +2,7 @@ import type { Plan, Result } from './types.ts'
 import type { Store } from './store.ts'
 import type { ExplorationEvent } from './explorations.ts'
 import type { Evidence, Row } from './journal.ts'
-import { explorationStatus, followCount, startOf, stopOf } from './explorers.ts'
+import { explorationStatus, followCount, running as alive, startOf, stopOf, stopPending } from './explorers.ts'
 import { exploration, explorationEvents } from './explorations.ts'
 import { factoryStates, isTester, journal, oracleStates, planClaims, planQuestions, shortName } from './journal.ts'
 import { all, canonical, digest, one } from './store.ts'
@@ -493,7 +493,9 @@ function explorerLive(
 	const state = inFollow
 		? (followTurn?.status ?? (running ? 'running' : stopped))
 		: stoppedBy
-			? 'stopped'
+			? stopPending(events, stoppedBy.explorer)
+				? 'stopping'
+				: 'stopped'
 			: (end?.status ?? (launch ? (running ? 'running' : 'stopped') : null))
 	const pause = events.findLast((event) => event.step === 'pause' || event.step === 'resume')
 	const pausedAt = running && !endedAt && pause?.step === 'pause' ? pause.at : null
@@ -599,6 +601,11 @@ export function explorationLive(store: Store, explorationId: string, now = Date.
 		state: status.state,
 		running,
 		phase: phaseOf[status.state] ?? null,
+		stopping: stopPending(events),
+		stuck: events
+			.filter((event) => event.step === 'stop-end')
+			.flatMap((event) => event.detail.left as number[])
+			.filter(alive),
 		reason: ended ? status.reason : null,
 		follow: status.follow,
 		followReason: status.followReason,

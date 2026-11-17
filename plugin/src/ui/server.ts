@@ -24,7 +24,15 @@ import { decideClaim, explorationRow, handOffClaims } from '../journal.ts'
 import { claimPage, explorationPage, explorerFile, explorerFilePage, questionPage } from './exploration.ts'
 import { acceptResult, rejectResult } from '../runs.ts'
 import { addInstance, retireInstance, targetRequest } from '../targets.ts'
-import { explorationState, startExploration, startFollow, stopExploration, unusedAnswers } from '../explorers.ts'
+import {
+	explorationState,
+	recordStop,
+	stopPending,
+	startEnding,
+	startExploration,
+	startFollow,
+	unusedAnswers,
+} from '../explorers.ts'
 import { explorationEvents } from '../explorations.ts'
 import { all } from '../store.ts'
 import { autoMode, defaultBuild } from '../modes.ts'
@@ -899,6 +907,10 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		return planExplorations(store, planId).find((item) => item.running)
 	}
 
+	function stoppingOf(planId: string) {
+		return planExplorations(store, planId).find((item) => stopPending(explorationEvents(store, item.explorationId)))
+	}
+
 	function inProgress(planId: string, running: { explorationId: string }) {
 		return html`A test of ${planId} is in progress: ${running.explorationId}.
 			<a href="/explorations/${running.explorationId}">Open ${running.explorationId}</a> to watch or stop it.`
@@ -918,6 +930,11 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		if (until && !typedSince) return refuse('Until needs Since. Fill in Since, or leave Until empty.', 'until')
 		const running = runningOf(planId)
 		if (running) return refuse(inProgress(planId, running))
+		const stopping = stoppingOf(planId)
+		if (stopping)
+			return refuse(
+				`A stop of ${stopping.explorationId} is in progress. Wait until it ends, then start the test.`
+			)
 		try {
 			const since = typedSince ?? upstreamBase(resolve(store.workspace, repo ?? '.'))
 			const started = startExploration(
@@ -974,22 +991,18 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		const refuse = (message: Html | string) => actionRefusal(request, back, message)
 		if (!actor) return refuse('Enter your name. Checkmate records it with the stop.')
 		try {
-			const reply = stopExploration(store, actor, {
+			recordStop(store, actor, {
 				explorationId,
 				explorer,
 				reason: form.get('reason')?.trim() || undefined,
+				background: true,
 			})
-			const left = (reply.data.left as number[]) ?? []
-			const note = reply.data.note ? ` ${reply.data.note}` : ''
-			const flash = left.length
-				? `Stopped ${explorer ?? explorationId}, but ${left.length === 1 ? 'process' : 'processes'} ${left.join(', ')} ${left.length === 1 ? 'is' : 'are'} still alive. End ${left.length === 1 ? 'it' : 'them'} by hand.`
-				: explorer
-					? `Stopped tester ${explorer} of ${explorationId}`
-					: `Stopped ${explorationId}.${note}`
-			redirect(request.res, back, [...cookies, cookie('checkmate_toast', flash, 60)])
+			startEnding(store, explorationId, actor, explorer, env)
 		} catch (error) {
-			refuse(engineText(error))
+			return refuse(engineText(error))
 		}
+		const flash = explorer ? `Stopping tester ${explorer} of ${explorationId}…` : `Stopping ${explorationId}…`
+		redirect(request.res, back, [...cookies, cookie('checkmate_toast', flash, 60)])
 	}
 
 	function saveRules(request: Request, form: URLSearchParams) {

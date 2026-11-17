@@ -83,6 +83,7 @@ import { defaultRecorderTimeout, recordSession } from './recorder.ts'
 import { checkClaudeArgs } from './sessions.ts'
 import {
 	driveExploration,
+	endInBackground,
 	driveFollow,
 	explorationReport,
 	explorationStatus,
@@ -2151,6 +2152,8 @@ export async function serveUi(tokens: string[]) {
 
 export async function main(argv: string[]) {
 	if (argv[0] === 'ui' && !argv.includes('--help')) return serveUi(argv.slice(1))
+	if (argv[0] === 'explore' && argv[1] === 'end' && argv[3] === '--workspace')
+		return endInBackground(argv[4], argv[2], argv[5] === '--explorer' ? argv[6] : undefined, process.env)
 	if (argv[0] === 'explore' && argv[1] === 'drive' && argv[3] === '--workspace')
 		return argv[5] === '--follow'
 			? driveFollow(argv[4], argv[2], process.env)

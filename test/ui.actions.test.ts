@@ -133,8 +133,10 @@ test('a start runs the testers, a second start is refused, and a stop leaves no 
 	const stopped = await post('/explorations/x-1/stop', { reason: 'wrong build' })
 	assert.equal(stopped.status, 303)
 	assert.equal(stopped.headers.location, '/explorations/x-1')
-	assert(!running(supervisor))
-	assert(children.every((pid) => !running(pid)))
+	await waitFor('the processes end', () => !running(supervisor!) && children.every((pid) => !running(pid)))
+	await waitFor('the end is recorded', () =>
+		read((reading) => explorationEvents(reading, 'x-1').some((item) => item.step === 'stop-end'))
+	)
 	assert.equal(
 		read((reading) => [explorationStatus(reading, 'x-1').state, explorationStatus(reading, 'x-1').reason]).join(
 			'|'
@@ -164,6 +166,7 @@ test('a stop of one tester ends only its process, and the run goes on', async (t
 	const first = read((reading) => explorationEvents(reading, 'x-1').find((item) => item.step === 'child')!.explorer!)
 	const stopped = await post(`/explorations/x-1/explorers/${first}/stop`, { reason: 'stuck' })
 	assert.equal(stopped.status, 303)
+	await waitFor('the tester ends', () => !running(children[0]))
 	assert(!running(children[0]) && running(children[1]) && running(supervisor))
 	assert.equal(
 		read((reading) => explorationStatus(reading, 'x-1').state),
@@ -173,7 +176,7 @@ test('a stop of one tester ends only its process, and the run goes on', async (t
 	assert.equal(missing.status, 422)
 	assert.match(missing.body, /has no running tester named a9\./)
 	assert.equal((await post('/explorations/x-1/stop')).status, 303)
-	assert(!running(supervisor) && children.every((pid) => !running(pid)))
+	await waitFor('the processes end', () => !running(supervisor!) && children.every((pid) => !running(pid)))
 })
 
 test('the refusals of the engine come back as plain sentences', async (t) => {
@@ -513,4 +516,43 @@ test('a tester row says in plain words where the tester is, and gives the age of
 		row(later, 'a2'),
 		/study: wrote plan\.md\. 1 file in the work folder\. · <span class="age"><time[^>]*>just now</
 	)
+})
+
+test('a stop of testers that ignore SIGTERM does not hold the server, and the view says Stopping until they end', async (t) => {
+	const { ui, post, pids, read } = await fixture(t, { explorer: '!stubborn' })
+	assert.equal((await post('/plans/checkout/test', { build: 'b1', level: 'normal', rules: 'Read' })).status, 303)
+	const { supervisor, children } = await waitFor('two testers run', () => {
+		const found = pids('x-1')
+		return found.supervisor && found.children.length === 2 ? found : undefined
+	})
+	t.after(() => {
+		for (const pid of [supervisor!, ...children]) if (running(pid)) process.kill(-pid, 'SIGKILL')
+	})
+	const began = Date.now()
+	const stopped = await post('/explorations/x-1/stop', { reason: 'wrong build' })
+	assert.equal(stopped.status, 303)
+	assert(Date.now() - began < 500, 'the POST answers at once')
+	const other = Date.now()
+	const page = await call(ui, '/activity')
+	assert.equal(page.status, 200)
+	assert(Date.now() - other < 500, 'another page answers while the stop runs')
+	assert(
+		children.some((pid) => running(pid)),
+		'the testers are still alive'
+	)
+	const view = (await call(ui, '/explorations/x-1')).body
+	assert.match(view, /<strong>Stopping x-1…<\/strong>/)
+	assert.match(view, /data-status="stopping"/)
+	assert.doesNotMatch(view, /Test build… again/)
+	const second = await post('/plans/checkout/test', { build: 'b2', level: 'normal', rules: 'Read' })
+	assert.equal(second.status, 422)
+	assert.match(second.body, /A stop of x-1 is in progress/)
+	await waitFor('the end is recorded', () =>
+		read((reading) => explorationEvents(reading, 'x-1').some((item) => item.step === 'stop-end'))
+	)
+	assert(!running(supervisor!) && children.every((pid) => !running(pid)))
+	const ended = (await call(ui, '/explorations/x-1')).body
+	assert.match(ended, new RegExp(`<strong>Stopped by ${actor}</strong\\s*>: wrong build`))
+	assert.doesNotMatch(ended, /Stopping x-1/)
+	assert.match(ended, /Test build… again/)
 })

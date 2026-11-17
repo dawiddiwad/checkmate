@@ -264,6 +264,25 @@ function failedLine(run: Run, live: Live) {
 }
 
 function stateLine(store: Store, live: Live, run: Run) {
+	if (live.stuck.length)
+		return banner(
+			'fail',
+			html`<span data-key="stop-stuck"
+				><strong
+					>Stopped, but ${live.stuck.length === 1 ? 'process' : 'processes'} ${live.stuck.join(', ')}
+					${live.stuck.length === 1 ? 'is' : 'are'} still alive.</strong
+				>
+				End ${live.stuck.length === 1 ? 'it' : 'them'} by hand.</span
+			>`
+		)
+	if (live.stopping)
+		return banner(
+			'info',
+			html`<span data-key="stopping"
+				><strong>Stopping ${live.explorationId}…</strong> The testers end now. This page shows the result when
+				they have ended.</span
+			>`
+		)
 	if (live.running && live.paused)
 		return banner(
 			'warn',
@@ -327,6 +346,7 @@ function testerState(live: Live, item: LiveExplorer) {
 		failed: 'red',
 		operational_error: 'red',
 		interrupted: 'amber',
+		stopping: 'amber',
 		stopped: 'amber',
 	}
 	const label: Record<string, string> = {
@@ -337,6 +357,7 @@ function testerState(live: Live, item: LiveExplorer) {
 		failed: 'Failed',
 		operational_error: 'Failed',
 		interrupted: 'Interrupted',
+		stopping: 'Stopping…',
 		stopped: 'Stopped',
 	}
 	return html`<span class="sp-pill ${look[item.state] ?? ''}"
@@ -681,7 +702,7 @@ function runChoices(live: Live, others: Listed[]) {
 	const busy = others.some((item) => item.running) || live.running
 	return {
 		stoppable: live.running && live.path !== 'session',
-		again: !busy && ['failed', 'stopped', 'interrupted'].includes(live.state),
+		again: !busy && !live.stopping && ['failed', 'stopped', 'interrupted'].includes(live.state),
 	}
 }
 
@@ -776,7 +797,7 @@ export function explorationPage(
 					</p>
 				</div>
 				<div class="sp-pills" data-region="exploration-state">
-					${pill(live.running && live.paused ? 'paused' : live.state)}
+					${live.stopping ? pill('stopping', 'Stopping…') : pill(live.running && live.paused ? 'paused' : live.state)}
 					${
 						live.running && run.phase
 							? html`${phaseStrip(run)}

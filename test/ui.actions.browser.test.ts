@@ -238,7 +238,7 @@ test(
 	'a second start is refused inside the dialog, which stays open and keeps focus on the field',
 	{ skip },
 	async (t) => {
-		const { page, url, ui, pids } = await setup(t, sleeping)
+		const { page, url, ui, pids, read } = await setup(t, sleeping)
 		assert.equal(
 			(await postAs(ui, human, '/plans/checkout/test', { build: 'b1', level: 'smoke', rules: 'Read Bash' }))
 				.status,
@@ -246,6 +246,9 @@ test(
 		)
 		await waitFor('the test turn sleeps', () => pids('x-1').children.length === 2)
 		assert.equal((await postAs(ui, human, '/explorations/x-1/stop', { reason: 'first' })).status, 303)
+		await waitFor('the stop ends', () =>
+			read((reading) => explorationEvents(reading, 'x-1').some((item) => item.step === 'stop-end'))
+		)
 		assert.equal(
 			(await postAs(ui, human, '/plans/checkout/test', { build: 'b2', level: 'smoke', rules: 'Read Bash' }))
 				.status,

@@ -53,7 +53,10 @@ if (reply === '!model') {
 	process.stderr.write('Error: unknown model ' + after('--model') + '\\n')
 	process.exit(1)
 }
-if (reply === '!sleep') setTimeout(() => {}, 60000)
+if (reply === '!stubborn') {
+	process.on('SIGTERM', () => {})
+	setTimeout(() => {}, 60000)
+} else if (reply === '!sleep') setTimeout(() => {}, 60000)
 else {
 	const result = typeof reply === 'string' ? reply : JSON.stringify(reply ?? 'Done.')
 	process.stdout.write(

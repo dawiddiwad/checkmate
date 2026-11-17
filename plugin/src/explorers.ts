@@ -1003,12 +1003,13 @@ function endProcesses(all: number[]) {
 	return pids.filter(running)
 }
 
-export function stopExploration(store: Store, actor: string | undefined, input: StopInput): Reply {
+export type StopRecord = { background?: boolean }
+
+export function recordStop(store: Store, actor: string | undefined, input: StopInput & StopRecord): Reply {
 	const id = input.explorationId
 	const reason = input.reason?.trim() ?? ''
 	const explorer = input.explorer
-	const was = { state: '', pids: [] as number[], supervisor: null as number | null }
-	const reply = write(store, { actor, command: 'explore stop', subject: id, input }, (operationId, at, who) => {
+	return write(store, { actor, command: 'explore stop', subject: id, input }, (operationId, at, who) => {
 		const row = explorationRow(store, id)
 		const events = explorationEvents(store, id)
 		const state = explorationState(events)
@@ -1043,15 +1044,11 @@ export function stopExploration(store: Store, actor: string | undefined, input: 
 				step: 'stop',
 				explorer: explorer ?? null,
 				status: 'completed',
-				detail: { actor: who, reason, was: state },
+				detail: { actor: who, reason, was: state, ...(input.background ? { ending: true } : {}) },
 			},
 			operationId,
 			at
 		)
-		was.state = state
-		was.pids = childPids(events, explorer)
-		was.supervisor =
-			(events.findLast((item) => item.step === 'supervisor')?.detail.pid as number | undefined) ?? null
 		return {
 			reply: completed(id, {
 				explorationId: id,
@@ -1064,9 +1061,77 @@ export function stopExploration(store: Store, actor: string | undefined, input: 
 			subjects: [`exploration:${id}`, `plan:${row.plan_id}`],
 		}
 	})
-	const targets = explorer === undefined && was.supervisor !== null ? [was.supervisor] : []
-	const left = [...endProcesses(targets), ...endProcesses(was.pids.filter(running))]
-	if (explorer === undefined) keepBrowserFolder(store, id)
+}
+
+function stoppedProcesses(events: ExplorationEvent[], explorer?: string) {
+	const supervisor =
+		explorer === undefined ? (events.findLast((item) => item.step === 'supervisor')?.detail.pid as number) : null
+	return { supervisor: typeof supervisor === 'number' ? [supervisor] : [], children: childPids(events, explorer) }
+}
+
+export function stopPending(events: ExplorationEvent[], explorer: string | null = null) {
+	const stop = events.findLast((item) => item.step === 'stop' && item.explorer === explorer)
+	if (!stop?.detail.ending) return false
+	const end = events.findLast((item) => item.step === 'stop-end' && item.explorer === explorer)
+	if (end) return false
+	const { supervisor, children } = stoppedProcesses(events, explorer ?? undefined)
+	return [...supervisor, ...children].some(running)
+}
+
+export function endStopped(store: Store, explorationId: string, explorer?: string) {
+	const events = explorationEvents(store, explorationId)
+	const { supervisor, children } = stoppedProcesses(events, explorer)
+	const left = [...endProcesses(supervisor), ...endProcesses(children.filter(running))]
+	if (explorer === undefined) keepBrowserFolder(store, explorationId)
+	return left
+}
+
+export function endInBackground(workspace: string, explorationId: string, explorer: string | undefined, env: Env) {
+	const store = openStore(workspace)
+	try {
+		const left = endStopped(store, explorationId, explorer)
+		event(store, env.CHECKMATE_ACTOR ?? 'checkmate', explorationId, {
+			step: 'stop-end',
+			explorer: explorer ?? null,
+			status: left.length ? 'operational_error' : 'completed',
+			detail: { left },
+		})
+	} finally {
+		closeStore(store)
+	}
+}
+
+export function startEnding(
+	store: Store,
+	explorationId: string,
+	actor: string,
+	explorer: string | undefined,
+	env: Env
+) {
+	const folder = join(store.workspace, '.checkmate', 'tmp')
+	mkdirSync(folder, { recursive: true })
+	const log = openSync(join(folder, `explore-${explorationId}.log`), 'a')
+	const child = spawn(
+		process.execPath,
+		[
+			checkmateScript(),
+			'explore',
+			'end',
+			explorationId,
+			'--workspace',
+			store.workspace,
+			...(explorer ? ['--explorer', explorer] : []),
+		],
+		{ cwd: store.workspace, env: { ...env, CHECKMATE_ACTOR: actor }, detached: true, stdio: ['ignore', log, log] }
+	)
+	child.unref()
+}
+
+export function stopExploration(store: Store, actor: string | undefined, input: StopInput): Reply {
+	const id = input.explorationId
+	const explorer = input.explorer
+	const reply = recordStop(store, actor, input)
+	const left = endStopped(store, id, explorer)
 	const kept = explorer === undefined && existsSync(join(store.workspace, workFolder(id))) ? workFolder(id) : null
 	const row = explorationRow(store, id)
 	return {

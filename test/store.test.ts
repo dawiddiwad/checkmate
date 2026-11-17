@@ -51,6 +51,7 @@ test('opening a workspace creates the schema, WAL mode, and the version rows', (
 		'run_gaps',
 		'runs',
 		'target_requests',
+		'workspace_settings',
 	])
 	assert.equal(opened.db.prepare('PRAGMA journal_mode').get()!.journal_mode, 'wal')
 	assert.equal(opened.db.prepare('PRAGMA foreign_keys').get()!.foreign_keys, 1)

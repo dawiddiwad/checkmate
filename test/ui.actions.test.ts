@@ -66,7 +66,12 @@ test('every action route refuses a foreign origin and a missing token, and recor
 	openTest(opened, 'checkout', 'x-1', 'b1')
 	launched(opened, 'x-1', 'a1')
 	closeStore(opened)
-	const form = { csrf: token((await call(ui, '/plans/checkout')).body), build: 'b2', level: 'smoke' }
+	const form = {
+		csrf: token((await call(ui, '/plans/checkout')).body),
+		build: 'b2',
+		level: 'smoke',
+		rules: 'Read Bash',
+	}
 	const origin = `http://127.0.0.1:${new URL(ui.url).port}`
 	for (const path of [
 		'/plans/checkout/test',
@@ -96,7 +101,7 @@ test('every action route refuses a foreign origin and a missing token, and recor
 
 test('a start runs the testers, a second start is refused, and a stop leaves no process alive', async (t) => {
 	const { ui, post, pids, read, as } = await fixture(t, { explorer: '!sleep' })
-	const started = await post('/plans/checkout/test', { build: 'b1', level: 'smoke' })
+	const started = await post('/plans/checkout/test', { build: 'b1', level: 'smoke', rules: 'Read Bash' })
 	assert.equal(started.status, 303)
 	assert.equal(started.headers.location, '/explorations/x-1')
 	const { supervisor, children } = await waitFor('the tester sleeps', () => {
@@ -111,7 +116,7 @@ test('a start runs the testers, a second start is refused, and a stop leaves no 
 		assert.equal(explorationEvents(reading, 'x-1').find((item) => item.step === 'start')!.detail.level, 'smoke')
 	)
 
-	const again = await post('/plans/checkout/test', { build: 'b2', level: 'smoke' })
+	const again = await post('/plans/checkout/test', { build: 'b2', level: 'smoke', rules: 'Read Bash' })
 	assert.equal(again.status, 422)
 	assert.match(again.body, /A test of checkout is in progress: x-1\./)
 	assert.match(again.body, /href="\/explorations\/x-1"/)
@@ -147,7 +152,7 @@ test('a start runs the testers, a second start is refused, and a stop leaves no 
 
 test('a stop of one tester ends only its process, and the run goes on', async (t) => {
 	const { post, pids, read } = await fixture(t, { explorer: '!sleep' })
-	assert.equal((await post('/plans/checkout/test', { build: 'b1', level: 'normal' })).status, 303)
+	assert.equal((await post('/plans/checkout/test', { build: 'b1', level: 'normal', rules: 'Read Bash' })).status, 303)
 	const { supervisor, children } = await waitFor('two testers sleep', () => {
 		const found = pids('x-1')
 		return found.supervisor && found.children.length === 2 ? found : undefined
@@ -182,17 +187,20 @@ test('the refusals of the engine come back as plain sentences', async (t) => {
 	const follow = await post('/plans/checkout/follow', { exploration: 'x-1' })
 	assert.equal(follow.status, 422)
 	assert.match(follow.body, /Exploration x-1 has no answer that a follow-up has not used\./)
-	assert.match((await post('/plans/checkout/test', { build: '', level: 'smoke' })).body, /Write the build name\./)
 	assert.match(
-		(await post('/plans/checkout/test', { build: 'b', level: 'huge' })).body,
+		(await post('/plans/checkout/test', { build: '', level: 'smoke', rules: 'Read Bash' })).body,
+		/Write the build name\./
+	)
+	assert.match(
+		(await post('/plans/checkout/test', { build: 'b', level: 'huge', rules: 'Read Bash' })).body,
 		/Choose the level smoke, normal, or deep\./
 	)
 	assert.match(
-		(await post('/plans/checkout/test', { build: 'b', level: 'smoke', until: 'HEAD' })).body,
+		(await post('/plans/checkout/test', { build: 'b', level: 'smoke', rules: 'Read Bash', until: 'HEAD' })).body,
 		/Until needs Since\./
 	)
 	assert.equal((await call(ui, '/plans/nothing', undefined)).status, 404)
-	assert.equal((await post('/plans/nothing/test', { build: 'b', level: 'smoke' })).status, 404)
+	assert.equal((await post('/plans/nothing/test', { build: 'b', level: 'smoke', rules: 'Read Bash' })).status, 404)
 })
 
 test('a start without claude on PATH says so and gives the next step', async (t) => {
@@ -203,7 +211,12 @@ test('a start without claude on PATH says so and gives the next step', async (t)
 	closeStore(opened)
 	const ui = await startUi({ workspace, env: { PATH: '' } })
 	t.after(() => ui.close())
-	const form = { csrf: token((await call(ui, '/plans/checkout')).body), build: 'b1', level: 'smoke' }
+	const form = {
+		csrf: token((await call(ui, '/plans/checkout')).body),
+		build: 'b1',
+		level: 'smoke',
+		rules: 'Read Bash',
+	}
 	const refused = await call(ui, '/plans/checkout/test', form, { Cookie: `checkmate_actor=${actor}` })
 	assert.equal(refused.status, 422)
 	assert.match(refused.body, /Claude Code was not found: no claude program is on PATH\. Install Claude Code/)
@@ -218,7 +231,7 @@ test('Test the answers starts the follow-up, and the answers count once', async 
 		recorder: [stacks, { kind: 'question', id: 'Q1', question: 'Can a coupon apply to a sale item?' }],
 		merger: [],
 	})
-	assert.equal((await post('/plans/checkout/test', { build: 'b1', level: 'smoke' })).status, 303)
+	assert.equal((await post('/plans/checkout/test', { build: 'b1', level: 'smoke', rules: 'Read Bash' })).status, 303)
 	await waitFor('the run completes', () => read((reading) => explorationStatus(reading, 'x-1').state === 'completed'))
 	assert.doesNotMatch((await call(ui, '/plans/checkout')).body, /Test the answers/)
 	const asked = read((reading) => reading.db.prepare('SELECT 1').get())
@@ -304,4 +317,98 @@ test('a tester that ended with no record and a run that failed show as failed, n
 	const home = (await call(ui, '/')).body
 	assert.match(home, /data-status="stopped"/)
 	assert.doesNotMatch(home, /Testing<\/span>/)
+})
+
+test('the tester rules of a start come from the form, and an empty field shows the refusal of the engine', async (t) => {
+	const { post, read, called, reply, ui } = await fixture(t, {
+		explorer: 'Studied.',
+		tester: 'Tested.',
+		recorder: [{ kind: 'question', id: 'Q1', question: 'Can a coupon apply to a sale item?' }],
+		merger: [],
+	})
+	const empty = await post('/plans/checkout/test', { build: 'b1', level: 'smoke', rules: '  ' })
+	assert.equal(empty.status, 422)
+	assert.match(empty.body, /data-field="rules"/)
+	assert.match(empty.body, /Give the tool rules of the explorers and the verifier with --allow/)
+	const missing = await post('/plans/checkout/test', { build: 'b1', level: 'smoke' })
+	assert.equal(missing.status, 422)
+	assert.match(missing.body, /data-field="rules"/)
+	assert.equal(
+		read((reading) => reading.db.prepare('SELECT COUNT(*) AS n FROM explorations').get()!.n),
+		0
+	)
+	const started = await post('/plans/checkout/test', {
+		build: 'b1',
+		level: 'smoke',
+		rules: 'Read  Bash(git log:*) Grep',
+	})
+	assert.equal(started.status, 303)
+	await waitFor('the run ends', () => read((reading) => explorationStatus(reading, 'x-1').state === 'completed'))
+	read((reading) =>
+		assert.deepEqual(explorationEvents(reading, 'x-1').find((item) => item.step === 'start')!.detail.allow, [
+			'Read',
+			'Bash(git log:*)',
+			'Grep',
+		])
+	)
+	const rulesOf = (role: string) =>
+		called()
+			.filter((item) => item.role === role)
+			.map((item) => item.args.filter((arg: string, at: number) => item.args[at - 1] === '--allowedTools'))
+	assert.deepEqual(rulesOf('explorer')[0], ['Read', 'Bash(git log:*)', 'Grep'])
+	const question = (await call(ui, '/plans/checkout?view=all')).body.match(/data-key="q:([^"]+)"/)![1]
+	assert.equal(
+		(
+			await post(`/explorations/x-1/questions/${question}`, {
+				kind: 'defer',
+				value: 'No.',
+				rationale: 'Rule.',
+				return: '/',
+				item: `q:${question}`,
+			})
+		).status,
+		303
+	)
+	reply({ follower: 'Tested the answers.', recorder: [stacks], merger: [] })
+	assert.equal((await post('/plans/checkout/follow', { exploration: 'x-1' })).status, 303)
+	await waitFor('the follow-up ends', () =>
+		read((reading) => explorationStatus(reading, 'x-1').follow === 'completed')
+	)
+	assert.deepEqual(rulesOf('follower')[0], ['Read', 'Bash(git log:*)', 'Grep'])
+})
+
+test('the rules are a setting of the workspace: Settings keeps them, and the dialog starts from them', async (t) => {
+	const { ui, post, read } = await fixture(t, {})
+	const settings = (await call(ui, '/settings/claude')).body
+	assert.match(settings, /Tool rules of testers/)
+	assert.match(settings, /A rule lets a tester use a tool without asking you/)
+	assert.match(settings, /name="rules"[^>]*value="Read Bash"/)
+	assert.match((await call(ui, '/plans/checkout')).body, /name="rules"[\s\S]*?value="Read Bash"/)
+	assert.match((await call(ui, '/plans/checkout')).body, /Testers may use without asking/)
+	const empty = await post('/settings/claude', { rules: ' ' })
+	assert.equal(empty.status, 422)
+	assert.match(empty.body, /Give at least one tool rule/)
+	assert.match(empty.body, /The engine needs at least one rule today/)
+	const saved = await post('/settings/claude', { rules: 'Read Bash Edit' })
+	assert.equal(saved.status, 303)
+	assert.match((await call(ui, '/plans/checkout')).body, /name="rules"[\s\S]*?value="Read Bash Edit"/)
+	assert.match((await call(ui, '/settings/claude')).body, /value="Read Bash Edit"/)
+	read((reading) =>
+		assert.equal(
+			reading.db
+				.prepare("SELECT command FROM operations WHERE command = 'setting set' AND status = 'completed'")
+				.all().length,
+			1
+		)
+	)
+	const foreign = await call(
+		ui,
+		'/settings/claude',
+		{ csrf: token((await call(ui, '/settings/claude')).body), rules: 'Bash' },
+		{ Cookie: `checkmate_actor=${actor}`, Origin: 'http://evil.test' }
+	)
+	assert.equal(foreign.status, 403)
+	const none = await call(ui, '/settings/claude', { csrf: '', rules: 'Bash' }, { Cookie: `checkmate_actor=${actor}` })
+	assert.equal(none.status, 403)
+	assert.match((await call(ui, '/settings/claude')).body, /value="Read Bash Edit"/)
 })

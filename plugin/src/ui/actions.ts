@@ -71,6 +71,20 @@ export function testDialog(context: Context, planId: string | null, values: Test
 						>`
 				)}
 			</fieldset>
+			<label for="act-test-rules">Testers may use without asking</label>
+			<input
+				id="act-test-rules"
+				name="rules"
+				value="${context.testerRules}"
+				maxlength="400"
+				autocomplete="off"
+				aria-describedby="act-test-rules-help"
+				data-stop
+			/>
+			<p class="help" id="act-test-rules-help">
+				One tool rule for each word, as in <code>--allow</code>, for example <code>Read Bash</code>. A tester
+				cannot answer a permission prompt.
+			</p>
 			<details class="sp-more" data-more>
 				<summary data-stop>More</summary>
 				${field('act-test-since', 'Since (git ref)', 'since', shown.since)}

@@ -260,6 +260,14 @@ const addedTables = [
 ) STRICT;`,
 		fill: '',
 	},
+	{
+		ddl: `CREATE TABLE workspace_settings (
+	name TEXT NOT NULL,
+	value TEXT NOT NULL,
+	operation_id TEXT NOT NULL ${operationReference}
+) STRICT;`,
+		fill: '',
+	},
 ]
 const views = `
 CREATE VIEW latest_plans AS

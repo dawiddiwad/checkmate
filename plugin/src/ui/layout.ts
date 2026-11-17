@@ -15,6 +15,7 @@ export type Context = {
 	running: number
 	cursor: number
 	workspace: string
+	testerRules: string
 }
 
 export type Page = {

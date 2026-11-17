@@ -12,6 +12,7 @@ import { html, join, pill, plural, short, time } from './html.ts'
 import { banner, emptyNotice, heading } from './layout.ts'
 
 export type InstanceForm = { values: Record<string, string>; error: string | null; field?: string | null }
+export type RulesForm = { value: string; error: string }
 export type RetireState = { instanceId: string; error: string } | null
 
 const settingsPages = [
@@ -476,7 +477,7 @@ function claudeProgram(env: Env) {
 	}
 }
 
-export function claudePage(env: Env): Page {
+export function claudePage(context: Context, env: Env, form: RulesForm | null = null): Page {
 	const body = html`${heading('Claude Code', 'The program that runs the testers. Checkmate makes no call to it on this page.')}
 		<section class="panel" aria-labelledby="claude-program">
 			<h2 class="lab" id="claude-program">Program</h2>
@@ -485,6 +486,32 @@ export function claudePage(env: Env): Page {
 				Claude Code keeps the login, the permissions, and the tools. Checkmate starts <code>claude</code> and
 				does not read or copy a credential.
 			</p>
+		</section>
+		<section class="panel" aria-labelledby="claude-rules">
+			<h2 class="lab" id="claude-rules">Tool rules of testers</h2>
+			<p class="help">
+				A rule lets a tester use a tool without asking you, for example <code>Read</code> or <code>Bash</code>.
+				The engine needs at least one rule today. A test that you start in the UI shows these rules, and you can
+				change them there.
+			</p>
+			<form method="post" action="/settings/claude" class="decision-form">
+				<input type="hidden" name="csrf" value="${context.csrf}" />
+				<div class="field-group">
+					<label class="lab" for="tester-rules">Tool rules of testers</label>
+					<input
+						id="tester-rules"
+						name="rules"
+						maxlength="400"
+						autocomplete="off"
+						value="${form?.value ?? context.testerRules}"
+						aria-describedby="tester-rules-help"
+						${form ? html`autofocus` : ''}
+					/>
+					<p class="help" id="tester-rules-help">One rule for each word, as in <code>--allow</code>.</p>
+					${form ? html`<p class="form-error" role="alert" data-field="rules">${form.error}</p>` : ''}
+				</div>
+				<div class="btns"><button class="btn primary">Save the rules</button></div>
+			</form>
 		</section>
 		<section class="panel" aria-labelledby="claude-model">
 			<h2 class="lab" id="claude-model">Model of the testers</h2>

@@ -1681,14 +1681,26 @@ document.addEventListener('click', (event) => {
 	if (event.target.closest('[data-act-cancel]')) actDialog()?.close('no')
 })
 
+function refuseAt(form, message) {
+	const field = form.elements[message.dataset.field ?? '']
+	message.dataset.refusal = ''
+	if (!field) {
+		form.querySelector('[data-act-error]').replaceChildren(message)
+		return firstField(form).focus()
+	}
+	field.closest('details')?.setAttribute('open', '')
+	field.after(message)
+	field.focus()
+}
+
 document.addEventListener('submit', async (event) => {
 	const form = event.target
 	if (!form.matches('[data-act-form]')) return
 	event.preventDefault()
 	if (form.dataset.sending) return
 	form.dataset.sending = '1'
-	const slot = form.querySelector('[data-act-error]')
-	slot.replaceChildren()
+	form.querySelector('[data-act-error]').replaceChildren()
+	for (const old of form.querySelectorAll('[data-refusal]')) old.remove()
 	const send = () => fetch(form.action, { method: 'POST', body: new URLSearchParams(new FormData(form)) })
 	const alertText = (message) => {
 		const text = document.createElement('p')
@@ -1703,16 +1715,17 @@ document.addEventListener('submit', async (event) => {
 		if (response.redirected && response.ok) return location.replace(response.url)
 		const fresh = new DOMParser().parseFromString(await response.text(), 'text/html')
 		const alert = fresh.querySelector('main [role="alert"]')
-		slot.replaceChildren(
+		refuseAt(
+			form,
 			alert ? document.importNode(alert, true) : alertText('Checkmate refused the action. Nothing is done.')
 		)
 	} catch {
-		slot.replaceChildren(
+		refuseAt(
+			form,
 			alertText('Checkmate did not answer. Nothing is done. Start the UI again if it stopped, then try again.')
 		)
 	}
 	delete form.dataset.sending
-	firstField(form).focus()
 })
 
 document.addEventListener(

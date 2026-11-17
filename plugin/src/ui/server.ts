@@ -30,6 +30,7 @@ import { all } from '../store.ts'
 import { autoMode, defaultBuild } from '../modes.ts'
 import { upstreamBase } from '../change.ts'
 import { levelNames } from '../levels.ts'
+import { ruleTokens, saveTesterRules, testerRulesText } from '../settings.ts'
 import { planRequest } from '../plans.ts'
 import type { Env } from '../sessions.ts'
 import { resolve } from 'node:path'
@@ -68,7 +69,6 @@ import { claudePage, instanceFromForm, targetPage, targetsPage } from './setting
 
 export type UiOptions = { workspace: string; port?: number; defaultActor?: string; env?: Env }
 
-const testerRules = ['Read', 'Bash']
 export type Ui = { url: string; close(): Promise<void> }
 
 type Request = { req: IncomingMessage; res: ServerResponse; url: URL; cookies: Record<string, string> }
@@ -311,6 +311,7 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 			running: runningCount(store),
 			cursor: latestRowid(store),
 			workspace: options.workspace,
+			testerRules: testerRulesText(store),
 		}
 	}
 
@@ -447,7 +448,7 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		if (pathname === '/log') return render(request, logPage(store, searchParams))
 		if (pathname === '/activity')
 			return render(request, activityPage(store, shown, searchParams, { build: defaultBuild(store.workspace) }))
-		if (pathname === '/settings/claude') return render(request, claudePage(env))
+		if (pathname === '/settings/claude') return render(request, claudePage(shown, env))
 		if (pathname === '/actor') return render(request, actorPage(shown, safeBack(searchParams.get('back'))))
 		if (pathname === '/settings') return redirect(request.res, '/settings/targets')
 		if (pathname === '/settings/targets') return render(request, targetsPage(store))
@@ -874,7 +875,7 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		])
 	}
 
-	function actionRefusal(request: Request, back: string, message: Html | string) {
+	function actionRefusal(request: Request, back: string, message: Html | string, field = '') {
 		render(request, {
 			title: 'Nothing was done',
 			section: 'home',
@@ -882,7 +883,7 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 			status: 422,
 			back,
 			body: html`${heading('Nothing was done')}
-				<p class="form-error" role="alert">${message}</p>
+				<p class="form-error" role="alert" ${field ? html`data-field="${field}"` : ''}>${message}</p>
 				<p class="actions"><a class="btn primary" href="${back}">Go back</a></p>`,
 		})
 	}
@@ -910,11 +911,11 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		const build = form.get('build')?.trim() ?? ''
 		const level = form.get('level')?.trim() || 'normal'
 		const [typedSince, until, repo] = ['since', 'until', 'repo'].map((name) => form.get(name)?.trim() || undefined)
-		const refuse = (message: Html | string) => actionRefusal(request, back, message)
+		const refuse = (message: Html | string, field = '') => actionRefusal(request, back, message, field)
 		if (!actor) return refuse('Enter your name. Checkmate records it with the test.')
-		if (!build) return refuse('Write the build name.')
+		if (!build) return refuse('Write the build name.', 'build')
 		if (!(levelNames as string[]).includes(level)) return refuse('Choose the level smoke, normal, or deep.')
-		if (until && !typedSince) return refuse('Until needs Since. Fill in Since, or leave Until empty.')
+		if (until && !typedSince) return refuse('Until needs Since. Fill in Since, or leave Until empty.', 'until')
 		const running = runningOf(planId)
 		if (running) return refuse(inProgress(planId, running))
 		try {
@@ -930,7 +931,7 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 					until,
 					repo,
 					mode: autoMode(store, planId),
-					allow: testerRules,
+					allow: ruleTokens(form.get('rules') ?? ''),
 					claudeArgs: [],
 				},
 				env
@@ -940,7 +941,8 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 				cookie('checkmate_toast', `Started ${started.subject} on build ${build}`, 60),
 			])
 		} catch (error) {
-			refuse(engineText(error))
+			const text = engineText(error)
+			refuse(text, /tool rules/.test(text) ? 'rules' : '')
 		}
 	}
 
@@ -988,6 +990,22 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		} catch (error) {
 			refuse(engineText(error))
 		}
+	}
+
+	function saveRules(request: Request, form: URLSearchParams) {
+		const { actor, cookies } = actorFrom(request, form)
+		const typed = form.get('rules') ?? ''
+		const page = (error: string) => () => claudePage(context(request), env, { value: typed, error })
+		if (!actor) return refuse(request, page('Enter your name. Checkmate records it with the setting.'), cookies)
+		try {
+			saveTesterRules(store, actor, typed)
+		} catch (error) {
+			return refuse(request, page(engineText(error)), cookies)
+		}
+		redirect(request.res, '/settings/claude', [
+			...cookies,
+			cookie('checkmate_toast', 'Saved the tool rules of testers', 60),
+		])
 	}
 
 	function planOfExploration(explorationId: string) {
@@ -1317,6 +1335,7 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 			return redirect(request.res, safeBack(form.get('back')), [cookie('checkmate_actor', name)])
 		}
 		if (pathname === '/bulk') return bulk(request, form)
+		if (pathname === '/settings/claude') return saveRules(request, form)
 		const handoff = routes.handoff.exec(pathname)
 		if (handoff) return handOver(request, form, handoff[1])
 		const starting = routes.startTest.exec(pathname)

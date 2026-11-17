@@ -55,6 +55,10 @@ test('a person starts, watches, and stops a test with the keys alone', { skip },
 	await page.keyboard.press('1')
 	assert.equal(await page.evaluate(() => (document.activeElement as HTMLInputElement).value), 'smoke')
 	await page.keyboard.press('ArrowDown')
+	assert.equal(await focused(page), 'act-test-rules')
+	assert.equal(await page.locator('#act-test-rules').inputValue(), 'Read Bash')
+	assert.equal(await page.locator('label[for="act-test-rules"]').textContent(), 'Testers may use without asking')
+	await page.keyboard.press('ArrowDown')
 	assert.equal(await focused(page), 'More')
 	await page.keyboard.press('ArrowRight')
 	await page.keyboard.press('ArrowDown')
@@ -229,10 +233,18 @@ test(
 	{ skip },
 	async (t) => {
 		const { page, url, ui, pids } = await setup(t, sleeping)
-		assert.equal((await postAs(ui, human, '/plans/checkout/test', { build: 'b1', level: 'smoke' })).status, 303)
+		assert.equal(
+			(await postAs(ui, human, '/plans/checkout/test', { build: 'b1', level: 'smoke', rules: 'Read Bash' }))
+				.status,
+			303
+		)
 		await waitFor('the test turn sleeps', () => pids('x-1').children.length === 2)
 		assert.equal((await postAs(ui, human, '/explorations/x-1/stop', { reason: 'first' })).status, 303)
-		assert.equal((await postAs(ui, human, '/plans/checkout/test', { build: 'b2', level: 'smoke' })).status, 303)
+		assert.equal(
+			(await postAs(ui, human, '/plans/checkout/test', { build: 'b2', level: 'smoke', rules: 'Read Bash' }))
+				.status,
+			303
+		)
 		await page.goto(url('/activity'))
 		await page.waitForFunction(() => document.activeElement?.matches('[data-row]'))
 		await page.keyboard.press('ArrowDown')
@@ -332,7 +344,10 @@ test('Test the answers asks first, names the count, and opens the Testers view',
 		merger: [],
 		follower: 'Tested the answers.',
 	})
-	assert.equal((await postAs(ui, human, '/plans/checkout/test', { build: 'b1', level: 'smoke' })).status, 303)
+	assert.equal(
+		(await postAs(ui, human, '/plans/checkout/test', { build: 'b1', level: 'smoke', rules: 'Read Bash' })).status,
+		303
+	)
 	await waitFor('the run completes', () => state(read, 'x-1') === 'completed')
 	await page.goto(url('/plans/checkout?view=all'))
 	await page.locator('[data-panel="all"] [data-key^="q:"]').first().click()
@@ -397,4 +412,32 @@ test('a live update keeps the focus on the action that has it', { skip }, async 
 				?.old
 	)
 	assert.equal(await focused(page), 'Test build…')
+})
+
+test('an empty rules field is refused inside the dialog, at the field, with the focus there', { skip }, async (t) => {
+	const { page, url, read } = await setup(t, sleeping)
+	await page.goto(url('/plans/checkout'))
+	await page.getByRole('button', { name: 'Test build…' }).click()
+	const dialog = page.locator('dialog[data-act-dialog="test"]')
+	await dialog.waitFor()
+	await page.locator('#act-test-build').fill('b1')
+	await page.locator('#act-test-rules').fill('')
+	await page.keyboard.press('Enter')
+	const message = dialog.locator('#act-test-rules + [role="alert"], #act-test-rules-help + [role="alert"]')
+	await message.waitFor()
+	assert.match((await message.textContent())!, /Give the tool rules of the explorers and the verifier/)
+	assert.equal(await focused(page), 'act-test-rules')
+	assert(await dialog.evaluate((element: HTMLDialogElement) => element.open))
+	assert.equal(await page.locator('#act-test-build').inputValue(), 'b1')
+	assert.equal(
+		read((reading) => reading.db.prepare('SELECT COUNT(*) AS n FROM explorations').get()!.n),
+		0
+	)
+	await page.locator('#act-test-rules').fill('Read')
+	await page.keyboard.press('Enter')
+	await page.waitForURL(/\/explorations\/x-1$/)
+	assert.deepEqual(
+		read((reading) => explorationEvents(reading, 'x-1').find((item) => item.step === 'start')!.detail.allow),
+		['Read']
+	)
 })

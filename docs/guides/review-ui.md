@@ -27,7 +27,7 @@ Each page has the same four parts:
 - The top bar: `Checkmate` opens the home page. At the right are the live state, your name, and the switch for light and dark.
 - The navigator, at the left on the pages of a plan.
 - The centre: the list or the page.
-- The status bar, at the bottom. It shows the path to where you are, for example `Plans › checkout › Needs you › a1/D1`, the buttons `Find`, `Keys`, `Runs`, `Log`, and `Settings`, and the keys that work where you are. On a narrow window, `More` holds `Runs`, `Log`, and `Settings`. On a window of 600 pixels or less, `More` also holds `Find`. When items wait for you, `<n> need you · all plans` shows first. It counts the items of all plans. When the keys do not fit, the status bar removes the least important keys first. `? Keys` always shows. A message in the status bar comes before the keys: the keys make room for it, and a message that still does not fit shows in full in a strip above the status bar.
+- The status bar, at the bottom. It shows the path to where you are, for example `Plans › checkout › Needs you › a1/D1`, the buttons `Find`, `Keys`, `Activity`, `Runs`, `Log`, and `Settings`, and the keys that work where you are. `Activity` shows `Activity · <n> running` while <n> tests run. On a narrow window, `More` holds `Activity`, `Runs`, `Log`, and `Settings`. On a window of 600 pixels or less, `More` also holds `Find`. When items wait for you, `<n> need you · all plans` shows first. It counts the items of all plans. When the keys do not fit, the status bar removes the least important keys first. `? Keys` always shows. A message in the status bar comes before the keys: the keys make room for it, and a message that still does not fit shows in full in a strip above the status bar.
 
 On a window of 900 pixels or less, the navigator is one row of chips. The row stays under the top bar when you scroll, and each mark shows its build, for example `B1`. On a window of 760 pixels or less, each row has two lines: the badge, the ID, and the title, then the short note. On the highlighted row, its options replace the note. The rows do not change height when the highlight moves. On a window of 760 pixels or less, a record covers the list, and each button is at least 40 pixels high. The status bar keeps the last level of the path, `Find`, `Keys`, and `More`.
 
@@ -39,7 +39,7 @@ When a page or a list has nothing to show, it says what is empty and gives the o
 
 ### Plans
 
-The home page, `/`. It shows one row for each plan: the plan ID, the [loop state](../reference/commands.md#loop-states) and the role that it waits on, the latest build, the objective, one sentence about the latest build, a small map of the rules against the last two builds, and the counts of defects, findings to look at, open questions, and defects handed over. Option `1` opens the step that waits for you, for example `Answer 4 blocking questions`. The plans that wait for you are first, and the plan with the most recent activity is first among them. The other plans follow. Click a row, or press `→` or `Enter`, to open the plan. When you go back from a plan, the home page highlights that plan.
+The home page, `/`. It shows one row for each plan: the plan ID, the [loop state](../reference/commands.md#loop-states) and the role that it waits on, the latest build, the objective, one sentence about the latest build, a small map of the rules against the last two builds, and the counts of defects, findings to look at, open questions, and defects handed over. Option `1` opens the step that waits for you, for example `Answer 4 blocking questions`. A plan with a test in progress shows `Testing`, the step, and the time since the start. A plan whose last test was stopped or interrupted shows `stopped` or `interrupted`. The row `Testers now` of the navigator shows the same step and time. The plans that wait for you are first, and the plan with the most recent activity is first among them. The other plans follow. Click a row, or press `→` or `Enter`, to open the plan. When you go back from a plan, the home page highlights that plan.
 
 The old addresses `/plans`, `/inbox`, and `/claims` open the home page. `/claims?plan=<planId>` opens `All items` of the plan. An old link `/?item=<item>` opens the item in its plan.
 
@@ -90,16 +90,49 @@ Open a file of a claim to show the evidence viewer. It lists the files at the le
 
 The run page and the testers view show evidence as tiles. Click a tile to open it in a viewer. `Esc` closes the viewer.
 
+### Start a test
+
+`Test build…` is in the action row of each view of a plan. The row shows an action only when the action applies. `Test build…` does not show while a test of the plan runs.
+
+1. Choose `Test build…`. A dialog opens.
+2. Write the build name. The field has the name that `checkmate test` gives when you give no `--build`: the short git commit, or the date and time in UTC.
+3. Choose the level: `smoke`, `normal`, or `deep`. `normal` is the first choice. Press `1`, `2`, or `3` to choose a level.
+4. Open `More` to give `Since`, `Until`, and `Repository folder`. Without `Since`, the UI uses the default branch of `origin`, as `checkmate test` does.
+5. Press `Enter`. The Testers view of the new test opens.
+
+The UI starts the testers as new Claude Code processes with the tool rules `Read` and `Bash`. The test runs without the UI: closing the UI does not stop it. The UI starts a test only when no test of the plan is in progress. When one is in progress, the dialog stays open, names the running test, and links to it.
+
+When the engine refuses the start, the dialog shows the reason in a sentence and keeps your text. For example, when `claude` is not on `PATH`, the dialog says so and gives the next step.
+
+`Test the answers (<n>)…` shows when the last test of the plan is completed and <n> answers of the product owner are not tested yet. A dialog names the count. Press `Enter` or `1` to start the follow-up.
+
+### Activity
+
+`/activity` lists every test and follow-up of all plans, one row each. Runs in progress come first. The other runs follow, newest first. A row shows the state, the run ID, the plan, the build, the level, the person who started it, the time, the duration, the cost when Claude Code reported it, and one line about the outcome: the counts of defects and questions, or the reason that it failed or stopped. `→` opens the Testers view of the run.
+
+- `1 Stop…` shows on a run in progress. A dialog asks first.
+- `1 Test again` shows on a failed, stopped, or interrupted run. The `Test build…` dialog opens with the same build, level, `Since`, `Until`, and folder.
+
+A row shows its numbered options only when all of them fit in the row. When they do not fit, the row shows `→ <n> options`, and the number keys do nothing in the list. Open the row to see each option on its own line.
+
+`Activity` is also in the find bar. The list pages like `Log`: `↓` on the last row opens the next page.
+
 ### Testers
 
 `/explorations/<explorationId>` is the live view of one session. It updates by itself while the session runs. It shows:
 
-- The state of the session, its build, instance, level, and phases.
+- The state of the session, its build, instance, level, and phases. While the session runs, a strip shows the steps `study`, `test`, `record`, `merge`, and `check`. Only the step that runs now is lit. Checkmate reads the step from the events of the session. The time since the start counts up, and the cost so far shows when Claude Code reported it.
 - One row for each tester, with its state (`Given to the session`, `Running`, `Paused`, `Finished`, or `Failed`), its last activity line, its step, and the time in that state. The time counts up while the tester runs.
 - `After the testers`: `record`, `merge`, `verify`, and `follow-up`, with their states and reasons.
 - The other sessions of the plan.
 
-Below the list is the overview of the session, or the tester or phase that you open: `Not merged yet`, the merged claims and questions, the saved files, and `Download report`. A paused session waits for you in the Claude Code session, not in the UI. A failed session shows its reason, the kept work folder `.checkmate/work/<explorationId>`, and the log. `Not merged yet` items are the raw questions and defects of single testers. They can change before the session is completed. `Needs you` does not show them.
+Below the list is the overview of the session, or the tester or phase that you open: `Not merged yet`, the merged claims and questions, the saved files, and `Download report`. A paused session waits for you in the Claude Code session, not in the UI.
+
+`Stop the test…` is in the action row while the session runs as processes. A dialog names the plan and the build, and has an optional reason. A tester that runs has `Stop` as its last option. Both ask first. A stop ends the supervisor and the Claude Code processes of the test. It keeps the record and the work folder. The dialog closes with a message when the test or the tester ends before you confirm.
+
+A stopped session shows `Stopped by <name>`, the reason, and the work folder where reports that were not recorded stay. When the supervisor dies without a stop, the session shows `The run was interrupted: the supervisor stopped before the end.` Both give `Test build… again`. A session of the Claude Code session path cannot stop here. Stop its testers in the session.
+
+A failed session says why and what to do next: `claude` was not found, Claude Code is not signed in, a tester did not end in time, or another reason with its text. A failed session shows its reason, the kept work folder `.checkmate/work/<explorationId>`, and the log. `Not merged yet` items are the raw questions and defects of single testers. They can change before the session is completed. `Needs you` does not show them.
 
 ### Plan
 
@@ -117,7 +150,9 @@ The run list and the operation log. They page, sort, and filter. The address kee
 
 ### Settings
 
-`Settings` in the status bar opens `Targets`. A target page shows the entry points, the instances, the tools, the profile, and the revision history.
+`Settings` in the status bar opens `Targets`. `Claude Code` shows the path of `claude`, or says that no `claude` is on `PATH`. It also shows the default model alias of each test level. The page makes no call to Claude Code. The host wins: a test that you start from a shell with `--claude-arg --model --claude-arg <model>` uses that model. A test that you start in the UI uses the alias of its level.
+
+`Targets`. A target page shows the entry points, the instances, the tools, the profile, and the revision history.
 
 - **Add instance.** Give an instance ID and a value for each entry point. Adding an instance needs no new revision and no approval.
 - **Retire.** Click `Retire` on the instance row, then `Confirm retire`. No new run can start on a retired instance.
@@ -153,21 +188,25 @@ Each page updates when another process writes to the record, for example a deleg
 
 One table drives the keys, the hints in the status bar, and the list that `?` shows. The UI has no letter keys.
 
-| Key             | Action                                                                                                                                        |
-| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| `↑` `↓`         | Move the highlight through the rows where you are: the plans, the navigator, the records, the files. On a page without rows, scroll the page. |
-| `→` `Enter`     | Go one step deeper: open the plan, enter the list, open the record, view the file. An area of rules opens.                                    |
-| `←` `Esc`       | Go one step back. An area closes. `Esc` first clears a selection.                                                                             |
-| `1` … `9`       | Choose an option of the highlighted record, numbered from left to right as shown. On a rule or an area, choose a build column.                |
-| `Space`         | Select or clear the highlighted record. On a page without records, scroll the page.                                                           |
-| `Shift` `↑` `↓` | Select the records on the way from the highlighted record. `Shift` `↑` after `Shift` `↓` makes the range smaller.                             |
-| `0`             | Undo the last hand-over while its note shows. At other times `0` does nothing.                                                                |
-| `/` `Ctrl` `K`  | Find a plan, a defect, or a question.                                                                                                         |
-| `?`             | Show the keys.                                                                                                                                |
+| Key             | Action                                                                                                                                                                                          |
+| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `↑` `↓`         | Move the highlight through the rows where you are: the plans, the navigator, the records, the files. On a page without rows, scroll the page.                                                   |
+| `→` `Enter`     | Go one step deeper: open the plan, enter the list, open the record, view the file. An area of rules opens.                                                                                      |
+| `←` `Esc`       | Go one step back. An area closes. `Esc` first clears a selection.                                                                                                                               |
+| `1` … `9`       | Choose an option of the highlighted record, numbered from left to right as shown. On a rule or an area, choose a build column. In a dialog, choose the level or a button that shows its number. |
+| `Space`         | Select or clear the highlighted record. On a page without records, scroll the page.                                                                                                             |
+| `Shift` `↑` `↓` | Select the records on the way from the highlighted record. `Shift` `↑` after `Shift` `↓` makes the range smaller.                                                                               |
+| `0`             | Undo the last hand-over while its note shows. At other times `0` does nothing.                                                                                                                  |
+| `/` `Ctrl` `K`  | Find a plan, a defect, or a question.                                                                                                                                                           |
+| `?`             | Show the keys.                                                                                                                                                                                  |
 
 In a text field, typing types. `Enter` sends a one-line answer, a reason, or a name. `Shift` `Enter` starts a new line. `Ctrl` `Enter` sends a larger form, for example a decision on the plan page. `Esc` leaves the field and keeps the text. A number key acts on the row that has the highlight when you press it.
 
 Typed text is not lost. When you leave a record or a page with text in a field, the browser keeps the text as a draft. When you come back, the field shows the text and the note `Draft kept.` The plan editor asks before it goes back with changes that are not saved: `Keep editing` or `Leave and lose the changes`. A save without changes records no revision.
+
+`↑` on the first row of a list moves to its action row, for example `Test build…`. `→` and `←` move between the actions, `Enter` chooses one, and `↓` or `Esc` returns to the list. When a list has no row, `→` on its name in the navigator moves to the action row.
+
+In a dialog with fields, `↑` and `↓` move between the fields and the buttons. `Esc` leaves a field and keeps the text. `Esc` again closes the dialog. `Enter` sends. A refusal shows inside the dialog, and the focus stays on the field. When you close the dialog, the focus returns to where it came from. `Back` in the browser closes the dialog.
 
 In a list with pages, for example `Log`, `↓` on the last row opens the next page, and `↑` on the first row opens the previous page. The status bar shows the page, for example `Log · page 2 of 7`. `←` goes to the first page.
 

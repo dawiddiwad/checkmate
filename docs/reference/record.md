@@ -88,12 +88,34 @@ The plan history, `plan diff`, and the log together show who changed what, when,
 | `explorations`         | Explorations: plan, target revision, instance, build, mode, and charter.      |
 | `exploration_events`   | The steps of an exploration: launch, end, record, merge, and verify.          |
 | `journal_entries`      | The entries that the recorders, the merger, and the verifier log.             |
+| `plan_rules`           | The derived rules of a plan, and each correction. The latest row applies.     |
+| `plan_builds`          | The time when an exploration or a run of a plan first tested each build.      |
+| `handoffs`             | Each hand-over of a claim and each undo, with the actor, time, and target.    |
 
 The views `latest_plans`, `plan_tests`, and `plan_gaps` read inside the plan snapshots. `plan_tests` and `plan_gaps` have one row for each revision. Use them with `checkmate query`:
 
 ```sh
 checkmate query "select plan_id, revision, gap_id, status from plan_gaps where status = 'open'"
 ```
+
+## Entries of an exploration
+
+The JSON Schemas `plugin/contracts/journal-*.schema.json` define the entries. Each field below is optional. An older entry does not have it. A missing field means unknown, never passed.
+
+| Entry       | Field     | Holds                                                                                           |
+| ----------- | --------- | ----------------------------------------------------------------------------------------------- |
+| `criterion` | `rule`    | The ID of the plan rule that the session checked, or `outside`.                                 |
+| `criterion` | `verdict` | `ok` when the behaviour was right, `wrong` when it was not.                                     |
+| `defect`    | `rule`    | The ID of the plan rule that the defect concerns, or `outside` for behaviour outside the rules. |
+| `question`  | `rule`    | The ID of the plan rule that the question concerns, or `outside`.                               |
+| `question`  | `actual`  | What the build does now, in one sentence.                                                       |
+| `topic`     | `label`   | The topic of the merged questions in one to three words.                                        |
+
+Checkmate checks each `rule` against the rules of the charter. It changes an unknown ID to `outside` and counts it. The rule of a claim is the most frequent `rule` of its reports. With a tie, it is the rule of the first report. The rule of a merged question comes from its members in the same way.
+
+The rules of a plan come from the latest revision, else from the request, else from the [derived rules](commands.md#derived-rules). The builds of a plan are in the order of `plan_builds`.
+
+The read models in `plugin/src/rulemap.ts` give the review UI the rule map of a plan: one row for each rule and one for `outside`, and one cell for each build. A cell is `failed` when an open claim of the rule is new, still present, or returned on that build, or when a criterion of that build says `wrong`. Else it is `question` when an open question of the rule was asked on that build. Else it is `passed` when a criterion of that build says `ok`. Else it is `not_checked`. The state of a claim on a build is `new` on its first build, then `still_present`, `fixed`, `returned` (present again after a fix), or `not_retested`. `not_retested` never counts as fixed or as still present.
 
 ## Review UI
 

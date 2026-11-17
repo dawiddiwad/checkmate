@@ -47,7 +47,8 @@ Run `checkmate target list`. When it shows no target:
    - When the application needs a login, add `--instructions "<how a tester signs in>"`. Do not write a secret value.
 
 3. When the command refuses, read the `reason:` lines and the `hint:` line. Correct the command and run it again.
-4. A later build never needs a decision before the test. Start the test at once, also when the plan has no stored tests. Offer `harvest` only in the final report, as an option.
+4. When the plan has no rules, the first `next` gives a `rules` action: the clerk derives the rules from the sources before the testers start.
+5. A later build never needs a decision before the test. Start the test at once, also when the plan has no stored tests. Offer `harvest` only in the final report, as an option.
 
 ## Loop
 

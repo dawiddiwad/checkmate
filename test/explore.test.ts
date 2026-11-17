@@ -6,9 +6,10 @@ import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from
 import { join } from 'node:path'
 import { run } from '../plugin/src/cli.ts'
 import { closeStore, completed, openStore, write } from '../plugin/src/store.ts'
-import { addEvent } from '../plugin/src/explorations.ts'
+import { addEvent, explorationEvents } from '../plugin/src/explorations.ts'
 import { explorerBrief } from '../plugin/src/briefs.ts'
-import { driveExploration, launchPlan, startOf } from '../plugin/src/explorers.ts'
+import { activityLine, driveExploration, launchPlan, startOf } from '../plugin/src/explorers.ts'
+import { explorationLive } from '../plugin/src/views.ts'
 import { levelNames, testLevels } from '../plugin/src/levels.ts'
 import { authenticationHint, workDenyRules } from '../plugin/src/sessions.ts'
 import { actor, directory, plan, root, store, target } from './support.ts'
@@ -171,6 +172,29 @@ test('explore start launches the explorers of the level in a clean context, then
 			[name, 'plan.md', `explorer of qa-x-1-${name}\n`],
 			[name, 'report.md', `tester of qa-x-1-${name}\n`],
 		])
+	)
+})
+
+test('on the process path each change in the work folder of an explorer becomes its activity line', (t) => {
+	const { start, wait, workspace } = setup(t)
+	assert.equal(start(['--level', 'smoke']).code, 0)
+	assert.equal(wait().code, 0)
+	const opened = openStore(workspace)
+	t.after(() => closeStore(opened))
+	const lines = explorationEvents(opened, 'x-1')
+		.filter((item) => item.step === 'activity')
+		.map((item) => [item.explorer, item.detail.activity])
+	assert.deepEqual(lines, [
+		['a1', 'study: wrote plan.md. 1 file in the work folder.'],
+		['a1', 'test: wrote report.md. 2 files in the work folder.'],
+	])
+	assert.equal(
+		explorationLive(opened, 'x-1').explorers[0].activity,
+		'test: wrote report.md. 2 files in the work folder.'
+	)
+	assert.equal(
+		activityLine('test', ['a', 'b', 'c', 'd', 'e'], 9),
+		'test: wrote a, b, c and 2 more. 9 files in the work folder.'
 	)
 })
 

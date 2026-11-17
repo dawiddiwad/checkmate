@@ -52,7 +52,17 @@ import {
 } from './sessions.ts'
 import { spawn } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import { existsSync, mkdirSync, openSync, readdirSync, readFileSync, renameSync, rmdirSync, rmSync } from 'node:fs'
+import {
+	existsSync,
+	mkdirSync,
+	openSync,
+	readdirSync,
+	readFileSync,
+	renameSync,
+	rmdirSync,
+	rmSync,
+	statSync,
+} from 'node:fs'
 import { join } from 'node:path'
 
 export type StartInput = OpenInput & {
@@ -85,6 +95,7 @@ export type Launch = {
 
 export const defaultExplorerTimeout = 1800
 const pollMilliseconds = 500
+const activityMilliseconds = 5000
 export const mergerActor = 'qa:merge'
 export const verifierActor = 'qa:verify'
 
@@ -319,6 +330,52 @@ export function entryValues(store: Store, explorationId: string) {
 	return profile.entryPoints.map((entry) => ({ ...entry, value: instance.entries[entry.name] ?? '' }))
 }
 
+function workFiles(folder: string) {
+	try {
+		return new Map(
+			readdirSync(folder, { withFileTypes: true })
+				.filter((item) => item.isFile())
+				.map((item) => [item.name, statSync(join(folder, item.name)).size])
+		)
+	} catch {
+		return new Map<string, number>()
+	}
+}
+
+export function activityLine(turn: string, changed: string[], count: number) {
+	const named =
+		changed.length > 3 ? `${changed.slice(0, 3).join(', ')} and ${changed.length - 3} more` : changed.join(', ')
+	return `${turn}: wrote ${named}. ${count} ${count === 1 ? 'file' : 'files'} in the work folder.`
+}
+
+function watchWork(store: Store, actor: string, explorationId: string, explorer: string, turn: string) {
+	const folder = join(store.workspace, workFolder(explorationId, explorer))
+	let known = workFiles(folder)
+	const check = () => {
+		const now = workFiles(folder)
+		const changed = [...now].filter(([name, size]) => known.get(name) !== size).map(([name]) => name)
+		known = now
+		if (changed.length)
+			event(store, actor, explorationId, {
+				step: 'activity',
+				explorer,
+				status: 'started',
+				detail: { turn, activity: activityLine(turn, changed, now.size) },
+			})
+	}
+	const timer = setInterval(check, activityMilliseconds)
+	return {
+		next: (name: string) => {
+			check()
+			turn = name
+		},
+		stop: () => {
+			clearInterval(timer)
+			check()
+		},
+	}
+}
+
 async function launchExplorers(store: Store, actor: string, explorationId: string, launch: Launch, env: Env) {
 	const opened = exploration(store, explorationId)
 	const entries = entryValues(store, explorationId)
@@ -346,7 +403,9 @@ async function launchExplorers(store: Store, actor: string, explorationId: strin
 				childEnv(env, extraEnv),
 				launch.timeoutSeconds
 			)
+		const watch = watchWork(store, actor, explorationId, explorer, 'study')
 		const study = await turn(['--session-id', session], brief.study)
+		watch.next('test')
 		if (!study.failure)
 			event(store, actor, explorationId, {
 				step: 'turn',
@@ -355,6 +414,7 @@ async function launchExplorers(store: Store, actor: string, explorationId: strin
 				detail: { session, turn: 'test' },
 			})
 		const calls = study.failure ? [study] : [study, await turn(['--resume', session], brief.test)]
+		watch.stop()
 		return { explorer, session, calls }
 	})
 	const ended = await Promise.all(runs)
@@ -819,6 +879,7 @@ export async function driveFollow(workspace: string, explorationId: string, env:
 				.filter((item) => !item.skipped)
 				.map(async ({ explorer, session }) => {
 					const { folder, deny, extraEnv } = explorerWork(store, explorationId, explorer, count)
+					const watch = watchWork(store, actor, explorationId, explorer, 'follow-up')
 					const call = await launchClaude(
 						claude,
 						childArgs({ ...plan.context, deny }, ['--resume', session, ...allowed]),
@@ -827,6 +888,7 @@ export async function driveFollow(workspace: string, explorationId: string, env:
 						childEnv(env, extraEnv),
 						plan.timeoutSeconds
 					)
+					watch.stop()
 					return { explorer, session, call }
 				})
 		)

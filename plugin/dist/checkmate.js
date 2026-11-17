@@ -14089,10 +14089,21 @@ function upstreamBase(repository) {
 // plugin/src/explorers.ts
 import { spawn as spawn2 } from "node:child_process";
 import { randomUUID as randomUUID3 } from "node:crypto";
-import { existsSync as existsSync3, mkdirSync as mkdirSync5, openSync, readdirSync as readdirSync2, readFileSync as readFileSync6, renameSync, rmdirSync as rmdirSync2, rmSync as rmSync4 } from "node:fs";
+import {
+  existsSync as existsSync3,
+  mkdirSync as mkdirSync5,
+  openSync,
+  readdirSync as readdirSync2,
+  readFileSync as readFileSync6,
+  renameSync,
+  rmdirSync as rmdirSync2,
+  rmSync as rmSync4,
+  statSync as statSync5
+} from "node:fs";
 import { join as join7 } from "node:path";
 var defaultExplorerTimeout = 1800;
 var pollMilliseconds = 500;
+var activityMilliseconds = 5e3;
 var mergerActor = "qa:merge";
 var verifierActor = "qa:verify";
 function hostModel(claudeArgs) {
@@ -14298,6 +14309,46 @@ function entryValues(store, explorationId) {
   const instance = findInstance(store, opened.target_id, opened.instance_id);
   return profile.entryPoints.map((entry) => ({ ...entry, value: instance.entries[entry.name] ?? "" }));
 }
+function workFiles(folder) {
+  try {
+    return new Map(
+      readdirSync2(folder, { withFileTypes: true }).filter((item) => item.isFile()).map((item) => [item.name, statSync5(join7(folder, item.name)).size])
+    );
+  } catch {
+    return /* @__PURE__ */ new Map();
+  }
+}
+function activityLine(turn, changed, count) {
+  const named = changed.length > 3 ? `${changed.slice(0, 3).join(", ")} and ${changed.length - 3} more` : changed.join(", ");
+  return `${turn}: wrote ${named}. ${count} ${count === 1 ? "file" : "files"} in the work folder.`;
+}
+function watchWork(store, actor, explorationId, explorer, turn) {
+  const folder = join7(store.workspace, workFolder(explorationId, explorer));
+  let known = workFiles(folder);
+  const check = () => {
+    const now = workFiles(folder);
+    const changed = [...now].filter(([name, size2]) => known.get(name) !== size2).map(([name]) => name);
+    known = now;
+    if (changed.length)
+      event(store, actor, explorationId, {
+        step: "activity",
+        explorer,
+        status: "started",
+        detail: { turn, activity: activityLine(turn, changed, now.size) }
+      });
+  };
+  const timer = setInterval(check, activityMilliseconds);
+  return {
+    next: (name) => {
+      check();
+      turn = name;
+    },
+    stop: () => {
+      clearInterval(timer);
+      check();
+    }
+  };
+}
 async function launchExplorers(store, actor, explorationId, launch, env) {
   const opened = exploration(store, explorationId);
   const entries = entryValues(store, explorationId);
@@ -14324,7 +14375,9 @@ async function launchExplorers(store, actor, explorationId, launch, env) {
       childEnv(env, extraEnv),
       launch.timeoutSeconds
     );
+    const watch = watchWork(store, actor, explorationId, explorer, "study");
     const study = await turn(["--session-id", session], brief.study);
+    watch.next("test");
     if (!study.failure)
       event(store, actor, explorationId, {
         step: "turn",
@@ -14333,6 +14386,7 @@ async function launchExplorers(store, actor, explorationId, launch, env) {
         detail: { session, turn: "test" }
       });
     const calls = study.failure ? [study] : [study, await turn(["--resume", session], brief.test)];
+    watch.stop();
     return { explorer, session, calls };
   });
   const ended = await Promise.all(runs);
@@ -14731,6 +14785,7 @@ async function driveFollow(workspace, explorationId, env) {
     const ended = await Promise.all(
       sessions.filter((item) => !item.skipped).map(async ({ explorer, session }) => {
         const { folder, deny, extraEnv } = explorerWork(store, explorationId, explorer, count);
+        const watch = watchWork(store, actor, explorationId, explorer, "follow-up");
         const call = await launchClaude(
           claude,
           childArgs({ ...plan.context, deny }, ["--resume", session, ...allowed]),
@@ -14739,6 +14794,7 @@ async function driveFollow(workspace, explorationId, env) {
           childEnv(env, extraEnv),
           plan.timeoutSeconds
         );
+        watch.stop();
         return { explorer, session, call };
       })
     );

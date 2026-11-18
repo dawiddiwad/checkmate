@@ -24772,6 +24772,7 @@ data: ${matched.join(",") || "*"}
         candidate = JSON.parse(state.json);
       } catch (error) {
         state.error = `The JSON is not valid: ${plainMessage(error)}`;
+        state.field = "json";
       }
     } else {
       state.candidate = candidateFromForm(base, form);

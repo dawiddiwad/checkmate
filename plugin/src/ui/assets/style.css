@@ -3260,6 +3260,10 @@ main a:active {
 	width: 1px;
 	height: 1px;
 }
+.sp-copy-text {
+	font: 400 12px/18px var(--font-mono);
+	resize: vertical;
+}
 .sp-act summary:hover {
 	color: var(--ink);
 }

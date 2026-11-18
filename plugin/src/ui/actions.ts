@@ -100,6 +100,70 @@ export function testDialog(context: Context, planId: string | null, values: Test
 	)
 }
 
+export function ruleDialog(kind: 'edit' | 'add', context: Context, planId: string, areas: string[]) {
+	const id = `rule-${kind}`
+	return shell(
+		id,
+		kind === 'edit' ? 'Edit the rule' : `Add a rule to ${planId}`,
+		'The rules of this plan changed. Nothing was done.',
+		`/plans/${planId}/rules`,
+		context,
+		html`<label for="act-${id}-text">Text</label>
+			<input id="act-${id}-text" name="text" maxlength="400" autocomplete="off" required data-stop />
+			<fieldset class="sp-seg" role="radiogroup" aria-label="Area">
+				<legend>Area</legend>
+				${areas.map(
+					(area, index) =>
+						html`<label class="sp-seg-o" title="${area}"
+							><input
+								type="radio"
+								name="area"
+								value="${area}"
+								data-stop
+								data-key-n="${index + 1}"
+								${index === 0 ? html`checked` : ''}
+							/><kbd>${index + 1}</kbd><span class="ell">${area}</span></label
+						>`
+				)}
+			</fieldset>
+			<label for="act-${id}-new">Or a new area</label>
+			<input id="act-${id}-new" name="newArea" maxlength="40" autocomplete="off" data-stop />
+			${
+				kind === 'add'
+					? html`<label for="act-${id}-source">Source (optional)</label>
+							<input id="act-${id}-source" name="source" maxlength="200" autocomplete="off" data-stop />`
+					: ''
+			}
+			<div class="btns">
+				<button class="sp-btn pri" data-stop><kbd>Enter</kbd><span>Save the rule</span></button>
+				<button class="sp-btn" type="button" data-act-cancel data-stop>
+					<kbd>Esc</kbd><span>Cancel</span>
+				</button>
+			</div>`
+	)
+}
+
+export function copyDialog() {
+	return html`<dialog
+		class="sp-confirm sp-act"
+		data-act-dialog="copy"
+		data-gone="The text is not copied."
+		aria-labelledby="act-copy-title"
+	>
+		<div class="sp-dh"><h2 id="act-copy-title" class="sp-path" data-copy-title>Copy the text</h2></div>
+		<div class="sp-form sp-confirm-b">
+			<p class="sp-sub">Checkmate cannot use the clipboard here: copy the selected text with Ctrl+C or Cmd+C.</p>
+			<label for="act-copy-text">Text for the developer</label>
+			<textarea id="act-copy-text" class="sp-copy-text" rows="12" readonly data-stop data-copy-text></textarea>
+			<div class="btns">
+				<button class="sp-btn pri" type="button" data-act-cancel data-stop>
+					<kbd>Esc</kbd><span>Close</span>
+				</button>
+			</div>
+		</div>
+	</dialog>`
+}
+
 export function followDialog(context: Context, planId: string, subject: Subject, count: number) {
 	const answers = `${count} ${count === 1 ? 'answer' : 'answers'}`
 	return shell(

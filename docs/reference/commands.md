@@ -126,7 +126,7 @@ The run commands are in [Runs and evidence](runs.md). The payloads are in [Paylo
   run-1/F1	checkout@2	build-1	local	defect	high	T2	component=pricing; jiraKey=SHOP-142	Promotion stacks with loyalty
   ```
 
-- **log.** A subject is `target:<targetId>`, `plan:<planId>`, `run:<runId>`, or `inbox`. The last field of each line is the row ID of the operation. `--json` gives it as `rowid`. A decision with a rationale (`gap answer`, `plan approve`, `plan reject`, `result accept`, `result reject`) has the rationale before the row ID. `--after <rowid>` lists only the operations after that row ID, oldest first. To read the next page, give the last row ID that you read.
+- **log.** A subject is `target:<targetId>`, `plan:<planId>`, `run:<runId>`, or `inbox`. The last field of each line is the row ID of the operation. `--json` gives it as `rowid`, and gives `via`: the ID of the request that made the write (for example `R3`), or `null`. A decision with a rationale (`gap answer`, `plan approve`, `plan reject`, `result accept`, `result reject`) has the rationale before the row ID. `--after <rowid>` lists only the operations after that row ID, oldest first. To read the next page, give the last row ID that you read.
 
 ## Loop states
 
@@ -224,7 +224,7 @@ A plan request from `--source` only has no rules. Before the first testers of su
 - When the step fails, the testers start without rules.
 - The charter of the exploration and the briefs of the testers list the rules. The recorder ties its entries to them.
 - `status` prints one line: `<n> rules were derived from the sources. Correct them with checkmate plan edit <planId> --patch.`
-- To correct the rules, send a patch with only `requirements` to `checkmate plan edit <planId> --patch`, without a revision. Checkmate stores the corrected rules with the origin `corrected`. A later revision of the plan replaces the derived rules. A patch can set `area` of a rule. A rule without an area, for example in a store of an earlier version, is in the area `Rules`. The briefs of the testers do not show areas.
+- To correct the rules, send a patch with only `requirements` to `checkmate plan edit <planId> --patch`, without a revision. Checkmate stores the corrected rules with the origin `corrected`. A later revision of the plan replaces the derived rules. A patch can set `area` of a rule. A patch refuses a rule without text and a plan with more than 9 areas. The review UI calls the same code: its dialogs in `Rules of the plan` edit, add, and remove derived rules with this patch. A rule without an area, for example in a store of an earlier version, is in the area `Rules`. The briefs of the testers do not show areas.
 
 ## Explore
 

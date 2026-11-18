@@ -69,5 +69,6 @@ export {
 	pagedRuns,
 	pagedOperations,
 } from './views.ts'
+export { developerText } from './developer.ts'
 export { renderPlan, renderRun, runReport, exportPlan, exportRun } from './render.ts'
 export { run, main, formatReply } from './cli.ts'

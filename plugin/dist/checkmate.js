@@ -10111,6 +10111,15 @@ function patchRules(store, operationId, planId, patch) {
     return item ? { ...item, ...change } : { id: id2, ...newFields(`rule ${id2}`, change, ["text", "source"]) };
   });
   requireWellFormed(rules.length, `Keep at least one rule of plan ${planId}.`);
+  const areas = /* @__PURE__ */ new Set();
+  for (const rule of rules) {
+    requireWellFormed(rule.text.trim(), `The rule ${rule.id} needs text.`);
+    areas.add((rule.area ?? defaultArea).toLowerCase());
+  }
+  requireWellFormed(
+    areas.size <= maxAreas,
+    `The rules have ${areas.size} areas. Use at most ${maxAreas} areas for the plan.`
+  );
   saveRules(store, operationId, planId, rules, "corrected");
   return {
     reply: {
@@ -18384,8 +18393,8 @@ function html2(strings, ...values) {
   for (let i = 0; i < values.length; i++) text += piece(values[i]) + strings[i + 1];
   return { html: text };
 }
-function join10(items, separator) {
-  return html2`${items.flatMap((item, i) => i ? [separator, item] : [item])}`;
+function join10(items, separator2) {
+  return html2`${items.flatMap((item, i) => i ? [separator2, item] : [item])}`;
 }
 var statusLook = {
   passed: ["\u2713", "pass"],
@@ -19135,6 +19144,13 @@ function returnFields(item, back) {
 }
 
 // plugin/src/rulemap.ts
+var buildStateWords = {
+  new: "new",
+  still_present: "still present",
+  fixed: "fixed",
+  returned: "present again",
+  not_retested: "not tested again"
+};
 var severities = ["critical", "high", "medium", "low"];
 var presentStates = ["new", "still_present", "returned"];
 function claimBuildStates(claim, builds) {
@@ -19195,6 +19211,8 @@ function ruleMap(store, planId) {
   const claims = record.claims.filter((claim) => claim.state !== "rejected");
   const builds = state.builds;
   const stored = planRules(store, planId);
+  const known = new Set(stored.rules.map((rule) => rule.id));
+  const ruleOf = (rule) => rule && !known.has(rule) ? outsideRule : rule;
   const rules = [
     ...stored.rules,
     { id: outsideRule, text: "Behaviour outside the rules of the plan.", source: null }
@@ -19204,12 +19222,12 @@ function ruleMap(store, planId) {
   );
   const criteria = state.team.filter((entry) => entry.kind === "criterion" && entry.rule !== void 0);
   const cellOf = (rule, build) => {
-    const own = claims.filter((claim) => claim.rule === rule && states.get(claim.id).has(build));
+    const own = claims.filter((claim) => ruleOf(claim.rule) === rule && states.get(claim.id).has(build));
     const present = own.filter((claim) => presentStates.includes(states.get(claim.id).get(build)));
     const asked2 = questions.filter(
-      (question) => question.rule === rule && question.answer === null && question.builds.includes(build)
+      (question) => ruleOf(question.rule) === rule && question.answer === null && question.builds.includes(build)
     );
-    const checked = criteria.filter((entry) => entry.rule === rule && entry.build === build);
+    const checked = criteria.filter((entry) => ruleOf(entry.rule) === rule && entry.build === build);
     const wrong = checked.filter((entry) => entry.verdict === "wrong").length;
     const right = checked.filter((entry) => entry.verdict === "ok").length;
     const status = present.length || wrong ? "failed" : asked2.length ? "question" : right ? "passed" : "not_checked";
@@ -20461,6 +20479,63 @@ function testDialog(context, planId, values, fallbackBuild = "") {
 			</div>`
   );
 }
+function ruleDialog(kind, context, planId, areas) {
+  const id2 = `rule-${kind}`;
+  return shell(
+    id2,
+    kind === "edit" ? "Edit the rule" : `Add a rule to ${planId}`,
+    "The rules of this plan changed. Nothing was done.",
+    `/plans/${planId}/rules`,
+    context,
+    html2`<label for="act-${id2}-text">Text</label>
+			<input id="act-${id2}-text" name="text" maxlength="400" autocomplete="off" required data-stop />
+			<fieldset class="sp-seg" role="radiogroup" aria-label="Area">
+				<legend>Area</legend>
+				${areas.map(
+      (area2, index2) => html2`<label class="sp-seg-o" title="${area2}"
+							><input
+								type="radio"
+								name="area"
+								value="${area2}"
+								data-stop
+								data-key-n="${index2 + 1}"
+								${index2 === 0 ? html2`checked` : ""}
+							/><kbd>${index2 + 1}</kbd><span class="ell">${area2}</span></label
+						>`
+    )}
+			</fieldset>
+			<label for="act-${id2}-new">Or a new area</label>
+			<input id="act-${id2}-new" name="newArea" maxlength="40" autocomplete="off" data-stop />
+			${kind === "add" ? html2`<label for="act-${id2}-source">Source (optional)</label>
+							<input id="act-${id2}-source" name="source" maxlength="200" autocomplete="off" data-stop />` : ""}
+			<div class="btns">
+				<button class="sp-btn pri" data-stop><kbd>Enter</kbd><span>Save the rule</span></button>
+				<button class="sp-btn" type="button" data-act-cancel data-stop>
+					<kbd>Esc</kbd><span>Cancel</span>
+				</button>
+			</div>`
+  );
+}
+function copyDialog() {
+  return html2`<dialog
+		class="sp-confirm sp-act"
+		data-act-dialog="copy"
+		data-gone="The text is not copied."
+		aria-labelledby="act-copy-title"
+	>
+		<div class="sp-dh"><h2 id="act-copy-title" class="sp-path" data-copy-title>Copy the text</h2></div>
+		<div class="sp-form sp-confirm-b">
+			<p class="sp-sub">Checkmate cannot use the clipboard here: copy the selected text with Ctrl+C or Cmd+C.</p>
+			<label for="act-copy-text">Text for the developer</label>
+			<textarea id="act-copy-text" class="sp-copy-text" rows="12" readonly data-stop data-copy-text></textarea>
+			<div class="btns">
+				<button class="sp-btn pri" type="button" data-act-cancel data-stop>
+					<kbd>Esc</kbd><span>Close</span>
+				</button>
+			</div>
+		</div>
+	</dialog>`;
+}
 function followDialog(context, planId, subject, count2) {
   const answers = `${count2} ${count2 === 1 ? "answer" : "answers"}`;
   return shell(
@@ -20828,9 +20903,9 @@ function row(run2, n, now) {
 		${optionsBox(items)}
 	</div>`;
 }
-function join11(items, separator) {
+function join11(items, separator2) {
   const shown2 = items.filter((item) => item !== null);
-  return html2`${shown2.map((item, index2) => index2 ? html2`${separator}${item}` : item)}`;
+  return html2`${shown2.map((item, index2) => index2 ? html2`${separator2}${item}` : item)}`;
 }
 function requestRow(request, n, now) {
   const start = Date.parse(request.startedAt ?? request.askedAt);
@@ -20914,17 +20989,10 @@ function activityPage(store, context, params, defaults) {
 }
 
 // plugin/src/ui/records.ts
-var changeWords = {
-  new: "new",
-  still_present: "still present",
-  fixed: "fixed",
-  returned: "present again",
-  not_retested: "not tested again"
-};
 function acrossBuilds(review, item) {
   const builds = item.detail?.builds ?? [];
   if (!builds.length) return null;
-  return builds.map((on) => `${changeWords[on.state] ?? words(on.state)} in build ${buildLabel(review, on.build)}`).join(", ").replace(/^./, (first) => first.toUpperCase());
+  return builds.map((on) => `${buildStateWords[on.state] ?? words(on.state)} in build ${buildLabel(review, on.build)}`).join(", ").replace(/^./, (first) => first.toUpperCase());
 }
 function ruleText2(review, rule) {
   if (rule === null || rule === outside) return "Outside the rules of the plan.";
@@ -21129,7 +21197,7 @@ function recordDrawer(store, context, review, item, view, refusal) {
 			<section class="sp-dhead" tabindex="-1" data-sub data-label="${item.id}">
 				<div class="sp-pills">
 					${itemTag(item)}
-					${item.detail && item.kind !== "rejected" ? html2`<span class="sp-pill">${changeWords[item.detail.builds.at(-1)?.state ?? ""] ?? ""}</span>` : ""}
+					${item.detail && item.kind !== "rejected" ? html2`<span class="sp-pill">${buildStateWords[item.detail.builds.at(-1)?.state ?? ""] ?? ""}</span>` : ""}
 					${item.claim?.handoff ? html2`<span class="sp-pill green">Handed over</span>` : ""}
 					<span class="sp-c-id">${item.id}</span>
 					${when ? html2`<span class="sp-c-id">${time(when)}</span>` : ""}
@@ -21331,12 +21399,13 @@ function reviewOf(store, planId) {
     (question) => questionItem(question, waits.has(`question:${question.id}`))
   );
   const others = waiting.filter((item) => ["gap", "plan", "result"].includes(item.kind));
+  const known = new Set(map.rows.map((row3) => row3.rule.id));
   const items = [
     ...openPermissions(store, planId).map(permissionItem),
     ...claims,
     ...questions,
     ...others.map((item) => waitingItem(planId, item))
-  ];
+  ].map((item) => item.rule !== null && !known.has(item.rule) ? { ...item, rule: outside } : item);
   const { request, target } = planRequest(store, planId);
   const explorations = planExplorations(store, planId);
   const latest = planHasRevision(store, planId) ? planDetail(store, planId) : null;
@@ -21491,14 +21560,24 @@ function optionsOf(context, review, item) {
       reveal(2, "No", "reject", item, "No, reject the finding")
     ];
   if (item.kind === "defect")
-    return item.claim?.handoff ? [
-      html2`<form method="post" action="/plans/${review.planId}/handoff" class="sp-opt">
+    return [
+      item.claim?.handoff ? html2`<form method="post" action="/plans/${review.planId}/handoff" class="sp-opt">
 						${hiddenFields2(context, item, [
         ["claim", item.id],
         ["undo", "1"]
       ])}${optionButton(1, "Undo hand-over", "Undo the hand-over")}
-					</form>`
-    ] : [reveal(1, "Hand over", "handoff", item, "Mark as handed over")];
+					</form>` : reveal(1, "Hand over", "handoff", item, "Mark as handed over"),
+      html2`<button
+				type="button"
+				class="sp-btn"
+				data-option
+				data-copy="${item.id}"
+				aria-label="2: Copy for the developer"
+				title="Copy the defect as text for the developer"
+			>
+				<kbd aria-hidden="true">2</kbd><span>Copy for the developer</span>
+			</button>`
+    ];
   if (item.kind === "question" || item.kind === "gap" || item.kind === "deferred") {
     const fields = item.kind === "gap" ? [["sha", review.sha]] : [];
     const later = optionForm(context, item, 3, "Later", [...fields, ["kind", "defer"]], "Decide later");
@@ -21552,7 +21631,7 @@ function itemRow(context, review, item, id2, view) {
   const list2 = reviewHref(review.planId, view, `&at=${encodeURIComponent(item.key)}&focus=list`);
   const opened = asked2 ? requestHref(asked2, list2) : here;
   const listed = optionsOf(context, review, item);
-  const options3 = asked2 ? rowOptions(context, asked2, list2) : listed.length ? html2`<div class="sp-c-opts" aria-label="Options">${listed}</div>` : "";
+  const options3 = asked2 ? rowOptions(context, asked2, list2) : listed.length ? optionsBox(listed) : "";
   const extra = extraOf(context, review, item);
   return html2`<div
 		class="sp-row${dim ? " dim" : ""}"
@@ -21841,7 +21920,7 @@ function viewHead(review, view) {
   if (view === "rules") {
     const origin = review.map.rulesOrigin;
     return {
-      sub: origin === "derived" || origin === "corrected" ? `The tester derived these rules from the sources${origin === "corrected" ? ", and they were corrected" : ""}. Correct them with checkmate plan edit ${review.planId} --patch.` : origin ? "The rules come from the plan. Edit them in the plan editor." : "This plan has no rules yet.",
+      sub: origin === "derived" || origin === "corrected" ? `The tester derived these rules from the sources${origin === "corrected" ? ", and they were corrected" : ""}. Edit them here, or with checkmate plan edit ${review.planId} --patch.` : origin ? "The rules come from the plan. Edit them in the plan editor." : "This plan has no rules yet.",
       pills: html2``
     };
   }
@@ -21867,9 +21946,51 @@ function viewHead(review, view) {
   }
   return { sub: "", pills: html2`` };
 }
-function rulesList(review) {
+function ruleButtons(context, review, rule, count2, numbered) {
+  const cited = review.items.filter((item) => item.rule === rule.id).length;
+  const area2 = review.areas.find((each) => each.rules.includes(rule.id))?.label ?? "";
+  const fill = JSON.stringify({ text: rule.text, area: area2, newArea: "" });
+  const ends = cited ? `${plural(cited, "item")} ${cited === 1 ? "cites it. It moves" : "cite it. They move"} to Outside the rules.` : "No item cites it.";
+  const key = (n) => numbered ? html2`<kbd aria-hidden="true">${n}</kbd>` : "";
+  const option = numbered ? html2`data-option` : "";
+  return [
+    html2`<button
+			type="button"
+			class="sp-btn"
+			${option}
+			data-act="rule-edit"
+			data-action="/plans/${review.planId}/rules/${rule.id}"
+			data-title="Edit rule ${rule.id}"
+			data-fill="${fill}"
+			aria-label="${numbered ? "1: " : ""}Edit rule ${rule.id}"
+			title="Edit the text and the area of ${rule.id}"
+		>
+			${key(1)}<span>${numbered ? "Edit\u2026" : `Edit ${rule.id}\u2026`}</span>
+		</button>`,
+    html2`<form method="post" action="/plans/${review.planId}/rules/${rule.id}/remove" class="sp-opt">
+			<input type="hidden" name="csrf" value="${context.csrf}" />
+			<button
+				class="sp-btn"
+				${option}
+				data-ask-title="Remove rule ${rule.id}?"
+				data-ask-text="${ends} The plan keeps the other ${plural(count2 - 1, "rule")}."
+				data-ask-yes="Remove ${rule.id}"
+				aria-label="${numbered ? "2: " : ""}Remove rule ${rule.id}"
+				title="${count2 === 1 ? "Keep at least one rule." : `Remove ${rule.id} from the rules of the plan`}"
+				${count2 === 1 ? html2`disabled` : ""}
+			>
+				${key(2)}<span>${numbered ? "Remove\u2026" : `Remove ${rule.id}\u2026`}</span>
+			</button>
+		</form>`
+  ];
+}
+function ruleEditable(review) {
+  return !review.revision && ["derived", "corrected"].includes(review.map.rulesOrigin ?? "");
+}
+function rulesList(context, review) {
   const rows2 = review.map.rows.filter((row3) => row3.rule.id !== outside);
   if (!rows2.length) return html2`<p class="sp-empty">This plan has no rules yet.</p>`;
+  const editable = ruleEditable(review);
   return html2`<div class="sp-list wide-title" role="listbox" aria-label="Rules of the plan" data-list>
 		<div class="sp-gh" role="presentation">Rules <span>${rows2.length}</span></div>
 		${rows2.map(
@@ -21887,8 +22008,9 @@ function rulesList(review) {
 					<span class="sp-c-cb"></span>
 					<span class="sp-c-tag"><span class="sp-pill">Rule</span></span>
 					<span class="sp-c-id">${row3.rule.id}</span>
-					<span class="sp-c-title ell">${row3.rule.text}</span>
-					<span class="sp-c-meta ell">${row3.rule.source ?? ""}</span>
+					<span class="sp-c-title ell" title="${row3.rule.text}">${row3.rule.text}</span>
+					<span class="sp-c-meta ell" title="${row3.rule.source ?? ""}">${row3.rule.source ?? ""}</span>
+					${editable ? optionsBox(ruleButtons(context, review, row3.rule, rows2.length, true)) : ""}
 				</div>`
   )}
 	</div>`;
@@ -21911,7 +22033,14 @@ function panel(context, review, view, current) {
   const edit = view === "rules" && review.revision ? html2`<a class="sp-btn" href="/plans/${review.planId}@${review.revision}/edit"
 					><span>Edit the rules</span></a
 				>` : "";
-  const tools = html2`${edit}${review.running ? "" : testButton(review.planId)}${review.answers ? actionButton("follow", `Test the answers (${review.answers.count})\u2026`) : ""}`;
+  const add = view === "rules" && ruleEditable(review) ? actionButton(
+    "rule-add",
+    "Add a rule\u2026",
+    html2`data-action="/plans/${review.planId}/rules" data-title="Add a rule to ${review.planId}"`
+  ) : "";
+  const rule = view.startsWith("rule:") ? review.map.rows.find((row3) => row3.rule.id === view.slice(5)) : void 0;
+  const own = rule && rule.rule.id !== outside && ruleEditable(review) ? ruleButtons(context, review, rule.rule, review.map.rows.length - 1, false) : "";
+  const tools = html2`${edit}${add}${own}${review.running ? "" : testButton(review.planId)}${review.answers ? actionButton("follow", `Test the answers (${review.answers.count})\u2026`) : ""}`;
   return html2`<section
 		class="sp-panel"
 		data-panel="${view}"
@@ -21930,7 +22059,7 @@ function panel(context, review, view, current) {
 			${canChoose(view) ? html2`<p class="sp-sub att" data-build-note></p>` : ""}
 		</div>
 		<div class="sp-tools" data-actions>${tools}</div>
-		${view === "rules" ? rulesList(review) : listOf(context, review, view, groups, title)}
+		${view === "rules" ? rulesList(context, review) : listOf(context, review, view, groups, title)}
 	</section>`;
 }
 function reviewPage(store, context, planId, params, refusal = null, notice = null) {
@@ -21976,6 +22105,18 @@ function reviewPage(store, context, planId, params, refusal = null, notice = nul
 			<div data-region="plan-actions">
 				${review.running ? "" : testDialog(context, planId, { build: "", level: "normal", since: "", until: "", repo: "" }, defaultBuild(store.workspace))}
 				${review.answers ? followDialog(context, planId, { ...review.answers, planId }, review.answers.count) : ""}
+				${ruleEditable(review) ? html2`${ruleDialog(
+      "edit",
+      context,
+      planId,
+      review.areas.map((area2) => area2.label)
+    )}${ruleDialog(
+      "add",
+      context,
+      planId,
+      review.areas.map((area2) => area2.label)
+    )}` : ""}
+				${review.items.some((item2) => item2.kind === "defect") ? copyDialog() : ""}
 			</div>
 			<div
 				class="sp-bulk"
@@ -21991,6 +22132,7 @@ function reviewPage(store, context, planId, params, refusal = null, notice = nul
 				<button type="button" class="sp-btn" data-bulk-action="right"><kbd></kbd><span></span></button>
 				<button type="button" class="sp-btn" data-bulk-action="defer"><kbd></kbd><span></span></button>
 				<button type="button" class="sp-btn" data-bulk-action="handoff"><kbd></kbd><span></span></button>
+				<button type="button" class="sp-btn" data-bulk-action="copy"><kbd></kbd><span></span></button>
 				<button type="button" class="sp-btn" data-bulk-action="allow"><kbd></kbd><span></span></button>
 				<button type="button" class="sp-btn" data-bulk-action="deny"><kbd></kbd><span></span></button>
 				<button type="button" class="sp-btn" data-bulk-action="clear">
@@ -22871,6 +23013,37 @@ function saveRequestModel(store, actor, text) {
     store.db.prepare("INSERT INTO workspace_settings (name, value, operation_id) VALUES (?, ?, ?)").run("requestModel", model, operationId);
     return { reply: completed("requestModel", { model }), subjects: ["settings"] };
   });
+}
+
+// plugin/src/developer.ts
+var separator = `
+
+${"-".repeat(40)}
+
+`;
+function developerText(store, planId, claimIds) {
+  const claims = mergedClaims(store, planId);
+  const details = claimDetails(store, planId);
+  const rules = planRules(store, planId).rules;
+  const texts = claimIds.map((claimId) => {
+    const claim = claims.find((item) => item.id === claimId);
+    requireCondition(claim, `Unknown defect ${claimId} of plan ${planId}.`);
+    const detail = details.find((item) => item.id === claimId);
+    const rule = rules.find((item) => item.id === claim.rule);
+    const steps = [claim.steps ?? []].flat();
+    const files2 = [...new Set(detail.evidence.flatMap((item) => item.name ? [item.name] : []))];
+    return [
+      claim.title,
+      `Severity: ${claim.severity}`,
+      `Rule: ${rule ? `${rule.id} ${rule.text}` : claim.rule === outsideRule || !claim.rule ? "Outside the rules of the plan." : `${claim.rule} is not a rule of the plan now.`}`,
+      ...steps.length ? ["Steps:", ...steps.map((step, index2) => `${index2 + 1}. ${step}`)] : ["Steps: none recorded"],
+      `Expected: ${claim.expected}`,
+      `Actual: ${claim.actual}`,
+      `State: ${detail.builds.map((on) => `${on.build} ${buildStateWords[on.state]}`).join("; ") || "not tested on a build"}`,
+      `Evidence: ${files2.join(", ") || "none"}`
+    ].join("\n");
+  });
+  return texts.join(separator);
 }
 
 // plugin/src/ui/server.ts
@@ -25898,6 +26071,10 @@ var routes = {
   latestPlan: new RegExp(`^/plans/(${id})$`),
   request: new RegExp(`^/plans/(${id})/request$`),
   handoff: new RegExp(`^/plans/(${id})/handoff$`),
+  rules: new RegExp(`^/plans/(${id})/rules$`),
+  rule: new RegExp(`^/plans/(${id})/rules/(R[1-9][0-9]{0,3})$`),
+  removeRule: new RegExp(`^/plans/(${id})/rules/(R[1-9][0-9]{0,3})/remove$`),
+  defectText: new RegExp(`^/plans/(${id})/defects\\.txt$`),
   startTest: new RegExp(`^/plans/(${id})/test$`),
   startFollow: new RegExp(`^/plans/(${id})/follow$`),
   permit: new RegExp(`^/permissions/(${id})/(P[1-9][0-9]{0,8})$`),
@@ -26260,6 +26437,15 @@ data: ${matched.join(",") || "*"}
     }
     const latest = routes.latestPlan.exec(pathname);
     if (latest) return render(request, reviewPage(store, shown2, latest[1], searchParams));
+    const defectText = routes.defectText.exec(pathname);
+    if (defectText)
+      return send(
+        request.res,
+        200,
+        "text/plain; charset=utf-8",
+        developerText(store, defectText[1], searchParams.getAll("claim")),
+        { "Cache-Control": "no-store" }
+      );
     const requested = routes.request.exec(pathname);
     if (requested) return render(request, requestPage(store, requested[1]));
     const plan = routes.plan.exec(pathname);
@@ -26692,6 +26878,68 @@ data: ${matched.join(",") || "*"}
   function inProgress(planId, running3) {
     return html2`A test of ${planId} is in progress: ${running3.explorationId}.
 			<a href="/explorations/${running3.explorationId}">Open ${running3.explorationId}</a> to watch or stop it.`;
+  }
+  function ruleChange(request, form, planId, change) {
+    const back = reviewHref(planId, "rules");
+    const { origin } = planRules(store, planId);
+    const refuse3 = (message, field4 = "") => actionRefusal(request, back, message, field4);
+    if (origin !== "derived" && origin !== "corrected")
+      return refuse3(`The rules of ${planId} do not come from the sources. Edit them in the plan editor.`);
+    try {
+      change();
+    } catch (error) {
+      const text = engineText(error);
+      refuse3(
+        text,
+        /area/i.test(text) ? form.get("newArea") ? "newArea" : "area" : /text/i.test(text) ? "text" : ""
+      );
+    }
+  }
+  function changeRule(request, form, planId, ruleId2) {
+    const back = reviewHref(planId, "rules");
+    const { actor, cookies } = actorFrom(request, form);
+    const refuse3 = (message, field4 = "") => actionRefusal(request, back, message, field4);
+    const text = form.get("text")?.trim() ?? "";
+    const area2 = form.get("newArea")?.trim() || form.get("area")?.trim() || "";
+    if (!actor) return refuse3("Enter your name. Checkmate records it with the rule.");
+    if (!text) return refuse3("Write the text of the rule.", "text");
+    if (!area2) return refuse3("Name the area of the rule.", "area");
+    if (area2.length > maxAreaCharacters)
+      return refuse3(`The area has more than ${maxAreaCharacters} characters.`, "newArea");
+    const { rules } = planRules(store, planId);
+    if (ruleId2 && !rules.some((rule) => rule.id === ruleId2))
+      return refuse3(`${planId} has no rule ${ruleId2} now. Nothing is changed.`);
+    const id2 = ruleId2 ?? unusedId(
+      "R",
+      rules.map((rule) => rule.id)
+    );
+    const source = form.get("source")?.trim() || "Added in the review UI.";
+    ruleChange(request, form, planId, () => {
+      patchPlan(store, actor, {
+        reference: planId,
+        patch: { requirements: { [id2]: ruleId2 ? { text, area: area2 } : { text, area: area2, source } } }
+      });
+      redirect(request.res, back, [
+        ...cookies,
+        cookie("checkmate_toast", `${ruleId2 ? "Changed" : "Added"} rule ${id2}`, 60)
+      ]);
+    });
+  }
+  function removeRule(request, form, planId, ruleId2) {
+    const back = reviewHref(planId, "rules");
+    const { actor, cookies } = actorFrom(request, form);
+    if (!actor) return actionRefusal(request, back, "Enter your name. Checkmate records it with the rule.");
+    const cited = [...mergedClaims(store, planId), ...mergedQuestions(store, planId)].filter(
+      (item) => item.rule === ruleId2
+    ).length;
+    ruleChange(request, form, planId, () => {
+      patchPlan(store, actor, { reference: planId, patch: { requirements: { [ruleId2]: null } } });
+      const outside2 = cited ? ` ${plural(cited, "item")} that cited it ${cited === 1 ? "shows" : "show"} under Outside the rules.` : "";
+      redirect(request.res, back, [
+        ...cookies,
+        cookie("checkmate_toast", `Removed rule ${ruleId2}.${outside2}`, 60)
+      ]);
+    });
   }
   function startTest(request, form, planId) {
     const back = `/plans/${planId}`;
@@ -27441,6 +27689,12 @@ data: ${matched.join(",") || "*"}
     if (pathname === "/new") return startChange(request, form);
     const handoff = routes.handoff.exec(pathname);
     if (handoff) return handOver(request, form, handoff[1]);
+    const adding = routes.rules.exec(pathname);
+    if (adding) return changeRule(request, form, adding[1], null);
+    const editing = routes.rule.exec(pathname);
+    if (editing) return changeRule(request, form, editing[1], editing[2]);
+    const removing = routes.removeRule.exec(pathname);
+    if (removing) return removeRule(request, form, removing[1], removing[2]);
     const starting = routes.startTest.exec(pathname);
     if (starting) return startTest(request, form, starting[1]);
     const following = routes.startFollow.exec(pathname);

@@ -999,6 +999,7 @@ function showBulk() {
 		right: questions ? `${plural(questions, 'question')} right as built` : null,
 		defer: questions ? `Defer ${plural(questions, 'question')}` : null,
 		handoff: defects ? `Hand over ${plural(defects, 'defect')}` : null,
+		copy: defects ? `Copy ${plural(defects, 'defect')} for the developer` : null,
 		allow: requests ? `Allow once (${requests})` : null,
 		deny: requests ? `Deny… (${requests})` : null,
 		clear: 'Clear the selection',
@@ -1113,6 +1114,56 @@ async function bulkRequests(action) {
 	location.reload()
 }
 
+function showToast(text) {
+	document.querySelector('[data-toast]')?.remove()
+	const note = document.createElement('div')
+	note.className = 'toast'
+	note.setAttribute('role', 'status')
+	note.dataset.toast = ''
+	note.textContent = text
+	body.append(note)
+	dockRoom()
+	setTimeout(() => {
+		note.remove()
+		dockRoom()
+	}, 6000)
+}
+
+function showCopy(text, count) {
+	const dialog = document.querySelector('dialog[data-act-dialog="copy"]')
+	if (!dialog || document.querySelector('dialog[open]')) return tell('Checkmate could not copy the text.')
+	dialog.querySelector('[data-copy-title]').textContent = `Copy ${count}`
+	const field = dialog.querySelector('[data-copy-text]')
+	field.value = text
+	actFrom = document.activeElement
+	pushLayer('act')
+	dialog.showModal()
+	field.focus()
+	field.select()
+	showHints()
+}
+
+async function copyDefects(claims) {
+	const query = claims.map((claim) => `claim=${encodeURIComponent(claim)}`).join('&')
+	let text
+	try {
+		const response = await fetch(`/plans/${encodeURIComponent(review.dataset.plan)}/defects.txt?${query}`, {
+			cache: 'no-store',
+		})
+		if (!response.ok) return tell('Checkmate could not make the text. Nothing is copied.')
+		text = await response.text()
+	} catch {
+		return tell('Checkmate did not answer. Nothing is copied.')
+	}
+	const count = plural(claims.length, 'defect')
+	try {
+		await window.navigator.clipboard.writeText(text)
+		showToast(`Copied ${count}`)
+	} catch {
+		showCopy(text, count)
+	}
+}
+
 async function bulk(action) {
 	const back = location.pathname + location.search
 	const findings = picked('claim')
@@ -1124,6 +1175,7 @@ async function bulk(action) {
 		return tell('The selection is cleared.')
 	}
 	if (action === 'allow' || action === 'deny') return bulkRequests(action)
+	if (action === 'copy') return copyDefects(defects.map((key) => key.split(':').slice(2).join(':')))
 	const plans = {
 		accept: [findings, 'Accept as defects', `Accept ${plural(findings.length, 'finding')} as defects?`],
 		right: [questions, 'Right as built', `Record ${plural(questions.length, 'question')} as right as built?`],
@@ -1684,7 +1736,11 @@ function actDialog() {
 }
 
 function actButtons() {
-	return [...(panel() ?? document).querySelectorAll('[data-actions] button[data-act]')].filter(shown)
+	return [
+		...(panel() ?? document).querySelectorAll(
+			'[data-actions] button[data-act], [data-actions] button[data-ask-title]'
+		),
+	].filter(shown)
 }
 
 function fillAct(form, values) {
@@ -1999,6 +2055,8 @@ document.addEventListener('click', (event) => {
 	if (event.target.closest('[data-find-open]')) openFind()
 	const bulkButton = event.target.closest('[data-bulk-action]')
 	if (bulkButton) bulk(bulkButton.dataset.bulkAction)
+	const copy = event.target.closest('[data-copy]')
+	if (copy) copyDefects([copy.dataset.copy])
 	if (event.target.closest('[data-undo-button]')) undo()
 	if (event.target.closest('[data-keys-close]')) keysDialog.close()
 	for (const menu of document.querySelectorAll('details[data-menu][open]'))

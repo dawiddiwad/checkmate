@@ -53,7 +53,7 @@ The old addresses `/plans`, `/inbox`, and `/claims` open the home page. `/claims
 - `Needs you`: the items that wait for your decision. The count is orange when an item blocks testing.
 - `All items`: the claims, questions, and gaps of the plan.
 - The areas of the rules. Each area shows one mark for each of the last three builds: `✓` right, `✗` wrong, `?` uncertain, empty for not tested, and `●` for the build that is under test now. An area opens to show its rules, with the same marks. A rule without an area is in the area `Rules`.
-- `Outside the rules`: items that concern no rule of the plan.
+- `Outside the rules`: items that concern no rule of the plan, and items that cite a rule that the plan does not have now (for example a rule that you removed).
 - One row for each build, `B1`, `B2`, and so on, in the order in which the plan tested them.
 - `Rules of the plan`, then `Plan @<revision>` (or `Plan request` for a plan without a revision).
 
@@ -63,13 +63,34 @@ Each row shows a box for the selection, a badge, the ID, the title, and a short 
 
 - A finding: `1 Yes, a defect` accepts it at once. `2 No` opens a field for the reason. A reject needs a reason.
 - A question or a gap: `1 Right` records that the build is right as it is (`accept_assumption`, with the text of what the build does). `2 Different` opens a field for how it should be (`clarify`). `3 Later` defers it. A deferred question shows `Deferred` and keeps `1 Right` and `2 Different`, so you can answer it later.
-- A defect: `1 Hand over` opens a field for the name of the person or team that takes it. `1 Undo hand-over` removes the hand-over.
+- A defect: `1 Hand over` opens a field for the name of the person or team that takes it. `1 Undo hand-over` removes the hand-over. `2 Copy for the developer` copies the defect as text. Read [Copy for the developer](#copy-for-the-developer).
+- A rule in `Rules of the plan`, when the tester derived the rules: `1 Edit…` and `2 Remove…`. Read [Rules of the plan](#rules-of-the-plan).
 
 After a decision, the next item that waits for you takes the highlight. When you decide inside a record, the next record that waits opens. A hand-over keeps the highlight on its record. The address keeps the view and the row, for example `/plans/checkout?view=all&at=c:a1/D1&focus=list`, so a reload or a copied link shows the same place. When somebody decides the highlighted item in another session, the item goes from the list, the next row takes the highlight, and the status bar says, for example, `k1/Q8 was answered in another session`. The next number key records nothing and says so, because you did not choose the new row. Press the number again to act on it.
 
 ### Act on several records
 
-Select rows with their boxes, with `Space`, or with `Shift` `↑` `↓`. A strip directly above the status bar shows the number of selected rows and the actions that apply to them, numbered: `Accept <n> findings as defects`, `<n> questions right as built`, `Defer <n> questions`, `Hand over <n> defects`, and `Clear the selection` last. While rows are selected, the number keys act on the selection. Each action on more than one record asks first and names the count. `Enter` or `1` confirms. `Esc` or `←` cancels and keeps the selection. The selection clears when the action is complete. The strip and the notes after an action never cover a row: while they show, the navigator and the list end above them. A hand-over shows a note with `0 Undo` for some seconds. Press `0` or click `Undo` to remove the hand-over. The other decisions have no undo in Checkmate.
+Select rows with their boxes, with `Space`, or with `Shift` `↑` `↓`. A strip directly above the status bar shows the number of selected rows and the actions that apply to them, numbered: `Accept <n> findings as defects`, `<n> questions right as built`, `Defer <n> questions`, `Hand over <n> defects`, `Copy <n> defects for the developer`, and `Clear the selection` last. While rows are selected, the number keys act on the selection. Each action on more than one record asks first and names the count. `Enter` or `1` confirms. `Esc` or `←` cancels and keeps the selection. The selection clears when the action is complete. The strip and the notes after an action never cover a row: while they show, the navigator and the list end above them. A hand-over shows a note with `0 Undo` for some seconds. A copy shows the toast `Copied <n> defects` and keeps the selection. Press `0` or click `Undo` to remove the hand-over. The other decisions have no undo in Checkmate.
+
+### Rules of the plan
+
+`Rules of the plan` lists the rules. The rules come from one of three places. The tester derived them from the sources, or you corrected them: you edit them in this view, as described here. They come from the request of the plan, or from a revision of the plan: this view has no edit, and a plan with a revision has `Edit the rules`, which opens the plan editor.
+
+For derived rules, each rule row has two options, and `Add a rule…` is in the actions above the list. A rule view has `Edit <ID>…` and `Remove <ID>…` in its actions too, so that a pointer reaches them.
+
+- `1 Edit…` opens a dialog with the text of the rule and its area. The area is a choice of the areas that the plan has now, numbered from `1`. Type a name in `Or a new area` to use another area. `Enter` saves. A plan can have 9 areas, and an area name can have 40 characters. A refusal shows in the dialog at its field, and nothing changes.
+- `2 Remove…` asks first, and names the items that cite the rule. `Enter` or `1` confirms. A plan keeps at least one rule, so the option is not available for the last rule.
+- `Add a rule…` opens a dialog with the text, the area (as above), and the source. The source is optional. Without it, the source is `Added in the review UI.` The new rule has the next free ID, for example `R7`.
+
+Each change is a `plan edit <planId> --patch` with only `requirements`: the UI and the command use the same code. The stored rules get the origin `corrected`. After a change, the navigator, the area marks, and the counts show the new rules.
+
+A removed rule does not change the entries that cite it. The record keeps the rule ID of each defect and question. The review shows an item that cites a rule that the plan does not have as an item of `Outside the rules`, as Checkmate does for a new entry that cites an unknown rule. Add the rule again with the same ID to bring the items back.
+
+### Copy for the developer
+
+`2 Copy for the developer` on a defect, and `Copy <n> defects for the developer` for a selection of defects, put plain text on the clipboard. Each defect has the title, the severity, the rule that it breaks (the ID and the text), the steps, the expected result, the actual result, the state on each build, and the names of the evidence files. Several defects have a line of dashes between them. A toast says `Copied 3 defects`. The action changes no record, asks nothing, and keeps the selection.
+
+The page gets the text from `/plans/<planId>/defects.txt?claim=<claimId>` (one `claim` for each defect), and the same function, `developerText` in `plugin/src/developer.ts`, can serve a command or an agent. The page writes the text with the clipboard of the browser, on your click or key. When the browser has no clipboard, or does not allow it, a panel shows the text, selected, with the sentence to copy it with `Ctrl` `C` or `Cmd` `C`. `Esc` closes the panel.
 
 ### Find
 

@@ -6,6 +6,13 @@ import type { Rule } from './rules.ts'
 import { fileName, mediaTypeOf, mergedEntries } from './views.ts'
 
 export type ClaimBuildState = 'new' | 'still_present' | 'fixed' | 'returned' | 'not_retested'
+export const buildStateWords: Record<string, string> = {
+	new: 'new',
+	still_present: 'still present',
+	fixed: 'fixed',
+	returned: 'present again',
+	not_retested: 'not tested again',
+}
 export type CellStatus = 'failed' | 'question' | 'passed' | 'not_checked'
 const severities = ['critical', 'high', 'medium', 'low'] as const
 export type Severity = (typeof severities)[number]
@@ -104,6 +111,8 @@ export function ruleMap(store: Store, planId: string) {
 	const claims = record.claims.filter((claim) => claim.state !== 'rejected')
 	const builds = state.builds
 	const stored = planRules(store, planId)
+	const known = new Set(stored.rules.map((rule) => rule.id))
+	const ruleOf = (rule: string | null | undefined) => (rule && !known.has(rule) ? outsideRule : rule)
 	const rules = [
 		...stored.rules,
 		{ id: outsideRule, text: 'Behaviour outside the rules of the plan.', source: null as string | null },
@@ -113,12 +122,12 @@ export function ruleMap(store: Store, planId: string) {
 	)
 	const criteria = state.team.filter((entry) => entry.kind === 'criterion' && entry.rule !== undefined)
 	const cellOf = (rule: string, build: string) => {
-		const own = claims.filter((claim) => claim.rule === rule && states.get(claim.id)!.has(build))
+		const own = claims.filter((claim) => ruleOf(claim.rule) === rule && states.get(claim.id)!.has(build))
 		const present = own.filter((claim) => presentStates.includes(states.get(claim.id)!.get(build)!))
 		const asked = questions.filter(
-			(question) => question.rule === rule && question.answer === null && question.builds.includes(build)
+			(question) => ruleOf(question.rule) === rule && question.answer === null && question.builds.includes(build)
 		)
-		const checked = criteria.filter((entry) => entry.rule === rule && entry.build === build)
+		const checked = criteria.filter((entry) => ruleOf(entry.rule) === rule && entry.build === build)
 		const wrong = checked.filter((entry) => entry.verdict === 'wrong').length
 		const right = checked.filter((entry) => entry.verdict === 'ok').length
 		const status: CellStatus =

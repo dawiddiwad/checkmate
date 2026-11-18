@@ -16,6 +16,7 @@ import {
 	decisionToken,
 	editPlan,
 	latestApproval,
+	patchPlan,
 	planCandidate,
 	rejectPlan,
 } from '../plans.ts'
@@ -59,8 +60,9 @@ import type { Env } from '../sessions.ts'
 import type { StopDelays } from '../sessions.ts'
 import { liveUi, removeUiFile, requireClaude, writeUiFile } from '../sessions.ts'
 import { launchPlan } from '../explorers.ts'
-import { ticketFile } from '../rules.ts'
-import { requireIdentifier } from '../contracts.ts'
+import { maxAreaCharacters, planRules, ticketFile } from '../rules.ts'
+import { requireIdentifier, unusedId } from '../contracts.ts'
+import { developerText } from '../developer.ts'
 import { resolve } from 'node:path'
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import {
@@ -89,7 +91,7 @@ import { logPage, runsPage } from './lists.ts'
 import { homePage } from './home.ts'
 import { assumedRows, firstRunPage, newChangePage } from './start.ts'
 import { activityPage, claudeMissing, runningCount } from './activity.ts'
-import { reviewOf, reviewPage } from './review.ts'
+import { reviewHref, reviewOf, reviewPage } from './review.ts'
 import { gapPage, planHistoryList, planPage, requestPage } from './plan.ts'
 import { candidateFromForm, candidateJson, editPage, emptyField, ownChanges, removedTests } from './edit.ts'
 import type { AdoptError } from './run.ts'
@@ -122,6 +124,10 @@ const routes = {
 	latestPlan: new RegExp(`^/plans/(${id})$`),
 	request: new RegExp(`^/plans/(${id})/request$`),
 	handoff: new RegExp(`^/plans/(${id})/handoff$`),
+	rules: new RegExp(`^/plans/(${id})/rules$`),
+	rule: new RegExp(`^/plans/(${id})/rules/(R[1-9][0-9]{0,3})$`),
+	removeRule: new RegExp(`^/plans/(${id})/rules/(R[1-9][0-9]{0,3})/remove$`),
+	defectText: new RegExp(`^/plans/(${id})/defects\\.txt$`),
 	startTest: new RegExp(`^/plans/(${id})/test$`),
 	startFollow: new RegExp(`^/plans/(${id})/follow$`),
 	permit: new RegExp(`^/permissions/(${id})/(P[1-9][0-9]{0,8})$`),
@@ -535,6 +541,15 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		}
 		const latest = routes.latestPlan.exec(pathname)
 		if (latest) return render(request, reviewPage(store, shown, latest[1], searchParams))
+		const defectText = routes.defectText.exec(pathname)
+		if (defectText)
+			return send(
+				request.res,
+				200,
+				'text/plain; charset=utf-8',
+				developerText(store, defectText[1], searchParams.getAll('claim')),
+				{ 'Cache-Control': 'no-store' }
+			)
 		const requested = routes.request.exec(pathname)
 		if (requested) return render(request, requestPage(store, requested[1]))
 		const plan = routes.plan.exec(pathname)
@@ -1005,6 +1020,75 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 	function inProgress(planId: string, running: { explorationId: string }) {
 		return html`A test of ${planId} is in progress: ${running.explorationId}.
 			<a href="/explorations/${running.explorationId}">Open ${running.explorationId}</a> to watch or stop it.`
+	}
+
+	function ruleChange(request: Request, form: URLSearchParams, planId: string, change: () => void) {
+		const back = reviewHref(planId, 'rules')
+		const { origin } = planRules(store, planId)
+		const refuse = (message: string, field = '') => actionRefusal(request, back, message, field)
+		if (origin !== 'derived' && origin !== 'corrected')
+			return refuse(`The rules of ${planId} do not come from the sources. Edit them in the plan editor.`)
+		try {
+			change()
+		} catch (error) {
+			const text = engineText(error)
+			refuse(
+				text,
+				/area/i.test(text) ? (form.get('newArea') ? 'newArea' : 'area') : /text/i.test(text) ? 'text' : ''
+			)
+		}
+	}
+
+	function changeRule(request: Request, form: URLSearchParams, planId: string, ruleId: string | null) {
+		const back = reviewHref(planId, 'rules')
+		const { actor, cookies } = actorFrom(request, form)
+		const refuse = (message: string, field = '') => actionRefusal(request, back, message, field)
+		const text = form.get('text')?.trim() ?? ''
+		const area = form.get('newArea')?.trim() || form.get('area')?.trim() || ''
+		if (!actor) return refuse('Enter your name. Checkmate records it with the rule.')
+		if (!text) return refuse('Write the text of the rule.', 'text')
+		if (!area) return refuse('Name the area of the rule.', 'area')
+		if (area.length > maxAreaCharacters)
+			return refuse(`The area has more than ${maxAreaCharacters} characters.`, 'newArea')
+		const { rules } = planRules(store, planId)
+		if (ruleId && !rules.some((rule) => rule.id === ruleId))
+			return refuse(`${planId} has no rule ${ruleId} now. Nothing is changed.`)
+		const id =
+			ruleId ??
+			unusedId(
+				'R',
+				rules.map((rule) => rule.id)
+			)
+		const source = form.get('source')?.trim() || 'Added in the review UI.'
+		ruleChange(request, form, planId, () => {
+			patchPlan(store, actor, {
+				reference: planId,
+				patch: { requirements: { [id]: ruleId ? { text, area } : { text, area, source } } },
+			})
+			redirect(request.res, back, [
+				...cookies,
+				cookie('checkmate_toast', `${ruleId ? 'Changed' : 'Added'} rule ${id}`, 60),
+			])
+		})
+	}
+
+	function removeRule(request: Request, form: URLSearchParams, planId: string, ruleId: string) {
+		const back = reviewHref(planId, 'rules')
+		const { actor, cookies } = actorFrom(request, form)
+		if (!actor) return actionRefusal(request, back, 'Enter your name. Checkmate records it with the rule.')
+		const cited = [...mergedClaims(store, planId), ...mergedQuestions(store, planId)].filter(
+			(item) => item.rule === ruleId
+		).length
+		ruleChange(request, form, planId, () => {
+			patchPlan(store, actor, { reference: planId, patch: { requirements: { [ruleId]: null } } })
+			const outside = cited
+				? ` ${plural(cited, 'item')} that cited it ${cited === 1 ? 'shows' : 'show'} under Outside the rules.`
+				: ''
+			redirect(request.res, back, [
+				...cookies,
+				cookie('checkmate_toast', `Removed rule ${ruleId}.${outside}`, 60),
+			])
+		})
 	}
 
 	function startTest(request: Request, form: URLSearchParams, planId: string) {
@@ -1822,6 +1906,12 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		if (pathname === '/new') return startChange(request, form)
 		const handoff = routes.handoff.exec(pathname)
 		if (handoff) return handOver(request, form, handoff[1])
+		const adding = routes.rules.exec(pathname)
+		if (adding) return changeRule(request, form, adding[1], null)
+		const editing = routes.rule.exec(pathname)
+		if (editing) return changeRule(request, form, editing[1], editing[2])
+		const removing = routes.removeRule.exec(pathname)
+		if (removing) return removeRule(request, form, removing[1], removing[2])
 		const starting = routes.startTest.exec(pathname)
 		if (starting) return startTest(request, form, starting[1])
 		const following = routes.startFollow.exec(pathname)

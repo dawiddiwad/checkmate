@@ -15,7 +15,8 @@ import { askBadge, askTitle, requestHref, requestName, rowOptions, waitsFor } fr
 import { defaultBuild } from '../modes.ts'
 import { explorationEvents } from '../explorations.ts'
 import { phaseOf } from './activity.ts'
-import { followDialog, testButton, testDialog, actionButton } from './actions.ts'
+import { copyDialog, followDialog, ruleDialog, testButton, testDialog, actionButton } from './actions.ts'
+import { optionsBox } from './activity.ts'
 import type { Refusal } from './records.ts'
 import { evidenceViewer, recordDrawer } from './records.ts'
 
@@ -221,12 +222,13 @@ export function reviewOf(store: Store, planId: string) {
 		questionItem(question, waits.has(`question:${question.id}`))
 	)
 	const others = waiting.filter((item) => ['gap', 'plan', 'result'].includes(item.kind))
+	const known = new Set(map.rows.map((row) => row.rule.id))
 	const items = [
 		...openPermissions(store, planId).map(permissionItem),
 		...claims,
 		...questions,
 		...others.map((item) => waitingItem(planId, item)),
-	]
+	].map((item) => (item.rule !== null && !known.has(item.rule) ? { ...item, rule: outside } : item))
 	const { request, target } = planRequest(store, planId)
 	const explorations = planExplorations(store, planId)
 	const latest = planHasRevision(store, planId) ? planDetail(store, planId) : null
@@ -408,16 +410,26 @@ export function optionsOf(context: Context, review: Review, item: Item): Html[] 
 			reveal(2, 'No', 'reject', item, 'No, reject the finding'),
 		]
 	if (item.kind === 'defect')
-		return item.claim?.handoff
-			? [
-					html`<form method="post" action="/plans/${review.planId}/handoff" class="sp-opt">
+		return [
+			item.claim?.handoff
+				? html`<form method="post" action="/plans/${review.planId}/handoff" class="sp-opt">
 						${hiddenFields(context, item, [
 							['claim', item.id],
 							['undo', '1'],
 						])}${optionButton(1, 'Undo hand-over', 'Undo the hand-over')}
-					</form>`,
-				]
-			: [reveal(1, 'Hand over', 'handoff', item, 'Mark as handed over')]
+					</form>`
+				: reveal(1, 'Hand over', 'handoff', item, 'Mark as handed over'),
+			html`<button
+				type="button"
+				class="sp-btn"
+				data-option
+				data-copy="${item.id}"
+				aria-label="2: Copy for the developer"
+				title="Copy the defect as text for the developer"
+			>
+				<kbd aria-hidden="true">2</kbd><span>Copy for the developer</span>
+			</button>`,
+		]
 	if (item.kind === 'question' || item.kind === 'gap' || item.kind === 'deferred') {
 		const fields: Array<[string, string]> = item.kind === 'gap' ? [['sha', review.sha]] : []
 		const later = optionForm(context, item, 3, 'Later', [...fields, ['kind', 'defer']], 'Decide later')
@@ -474,11 +486,7 @@ export function itemRow(context: Context, review: Review, item: Item, id: string
 	const list = reviewHref(review.planId, view, `&at=${encodeURIComponent(item.key)}&focus=list`)
 	const opened = asked ? requestHref(asked, list) : here
 	const listed = optionsOf(context, review, item)
-	const options = asked
-		? rowOptions(context, asked, list)
-		: listed.length
-			? html`<div class="sp-c-opts" aria-label="Options">${listed}</div>`
-			: ''
+	const options = asked ? rowOptions(context, asked, list) : listed.length ? optionsBox(listed) : ''
 	const extra = extraOf(context, review, item)
 	return html`<div
 		class="sp-row${dim ? ' dim' : ''}"
@@ -822,7 +830,7 @@ function viewHead(review: Review, view: string) {
 		return {
 			sub:
 				origin === 'derived' || origin === 'corrected'
-					? `The tester derived these rules from the sources${origin === 'corrected' ? ', and they were corrected' : ''}. Correct them with checkmate plan edit ${review.planId} --patch.`
+					? `The tester derived these rules from the sources${origin === 'corrected' ? ', and they were corrected' : ''}. Edit them here, or with checkmate plan edit ${review.planId} --patch.`
 					: origin
 						? 'The rules come from the plan. Edit them in the plan editor.'
 						: 'This plan has no rules yet.',
@@ -852,9 +860,55 @@ function viewHead(review: Review, view: string) {
 	return { sub: '', pills: html`` }
 }
 
-function rulesList(review: Review) {
+function ruleButtons(context: Context, review: Review, rule: Rule, count: number, numbered: boolean) {
+	const cited = review.items.filter((item) => item.rule === rule.id).length
+	const area = review.areas.find((each) => each.rules.includes(rule.id))?.label ?? ''
+	const fill = JSON.stringify({ text: rule.text, area, newArea: '' })
+	const ends = cited
+		? `${plural(cited, 'item')} ${cited === 1 ? 'cites it. It moves' : 'cite it. They move'} to Outside the rules.`
+		: 'No item cites it.'
+	const key = (n: number) => (numbered ? html`<kbd aria-hidden="true">${n}</kbd>` : '')
+	const option = numbered ? html`data-option` : ''
+	return [
+		html`<button
+			type="button"
+			class="sp-btn"
+			${option}
+			data-act="rule-edit"
+			data-action="/plans/${review.planId}/rules/${rule.id}"
+			data-title="Edit rule ${rule.id}"
+			data-fill="${fill}"
+			aria-label="${numbered ? '1: ' : ''}Edit rule ${rule.id}"
+			title="Edit the text and the area of ${rule.id}"
+		>
+			${key(1)}<span>${numbered ? 'Edit…' : `Edit ${rule.id}…`}</span>
+		</button>`,
+		html`<form method="post" action="/plans/${review.planId}/rules/${rule.id}/remove" class="sp-opt">
+			<input type="hidden" name="csrf" value="${context.csrf}" />
+			<button
+				class="sp-btn"
+				${option}
+				data-ask-title="Remove rule ${rule.id}?"
+				data-ask-text="${ends} The plan keeps the other ${plural(count - 1, 'rule')}."
+				data-ask-yes="Remove ${rule.id}"
+				aria-label="${numbered ? '2: ' : ''}Remove rule ${rule.id}"
+				title="${count === 1 ? 'Keep at least one rule.' : `Remove ${rule.id} from the rules of the plan`}"
+				${count === 1 ? html`disabled` : ''}
+			>
+				${key(2)}<span>${numbered ? 'Remove…' : `Remove ${rule.id}…`}</span>
+			</button>
+		</form>`,
+	]
+}
+
+function ruleEditable(review: Review) {
+	return !review.revision && ['derived', 'corrected'].includes(review.map.rulesOrigin ?? '')
+}
+
+function rulesList(context: Context, review: Review) {
 	const rows = review.map.rows.filter((row) => row.rule.id !== outside)
 	if (!rows.length) return html`<p class="sp-empty">This plan has no rules yet.</p>`
+	const editable = ruleEditable(review)
 	return html`<div class="sp-list wide-title" role="listbox" aria-label="Rules of the plan" data-list>
 		<div class="sp-gh" role="presentation">Rules <span>${rows.length}</span></div>
 		${rows.map(
@@ -873,8 +927,9 @@ function rulesList(review: Review) {
 					<span class="sp-c-cb"></span>
 					<span class="sp-c-tag"><span class="sp-pill">Rule</span></span>
 					<span class="sp-c-id">${row.rule.id}</span>
-					<span class="sp-c-title ell">${row.rule.text}</span>
-					<span class="sp-c-meta ell">${row.rule.source ?? ''}</span>
+					<span class="sp-c-title ell" title="${row.rule.text}">${row.rule.text}</span>
+					<span class="sp-c-meta ell" title="${row.rule.source ?? ''}">${row.rule.source ?? ''}</span>
+					${editable ? optionsBox(ruleButtons(context, review, row.rule, rows.length, true)) : ''}
 				</div>`
 		)}
 	</div>`
@@ -902,7 +957,20 @@ function panel(context: Context, review: Review, view: string, current: string) 
 					><span>Edit the rules</span></a
 				>`
 			: ''
-	const tools = html`${edit}${review.running ? '' : testButton(review.planId)}${
+	const add =
+		view === 'rules' && ruleEditable(review)
+			? actionButton(
+					'rule-add',
+					'Add a rule…',
+					html`data-action="/plans/${review.planId}/rules" data-title="Add a rule to ${review.planId}"`
+				)
+			: ''
+	const rule = view.startsWith('rule:') ? review.map.rows.find((row) => row.rule.id === view.slice(5)) : undefined
+	const own =
+		rule && rule.rule.id !== outside && ruleEditable(review)
+			? ruleButtons(context, review, rule.rule, review.map.rows.length - 1, false)
+			: ''
+	const tools = html`${edit}${add}${own}${review.running ? '' : testButton(review.planId)}${
 		review.answers ? actionButton('follow', `Test the answers (${review.answers.count})…`) : ''
 	}`
 	return html`<section
@@ -927,7 +995,7 @@ function panel(context: Context, review: Review, view: string, current: string) 
 			${canChoose(view) ? html`<p class="sp-sub att" data-build-note></p>` : ''}
 		</div>
 		<div class="sp-tools" data-actions>${tools}</div>
-		${view === 'rules' ? rulesList(review) : listOf(context, review, view, groups, title)}
+		${view === 'rules' ? rulesList(context, review) : listOf(context, review, view, groups, title)}
 	</section>`
 }
 
@@ -987,6 +1055,22 @@ export function reviewPage(
 			<div data-region="plan-actions">
 				${review.running ? '' : testDialog(context, planId, { build: '', level: 'normal', since: '', until: '', repo: '' }, defaultBuild(store.workspace))}
 				${review.answers ? followDialog(context, planId, { ...review.answers, planId }, review.answers.count) : ''}
+				${
+					ruleEditable(review)
+						? html`${ruleDialog(
+								'edit',
+								context,
+								planId,
+								review.areas.map((area) => area.label)
+							)}${ruleDialog(
+								'add',
+								context,
+								planId,
+								review.areas.map((area) => area.label)
+							)}`
+						: ''
+				}
+				${review.items.some((item) => item.kind === 'defect') ? copyDialog() : ''}
 			</div>
 			<div
 				class="sp-bulk"
@@ -1002,6 +1086,7 @@ export function reviewPage(
 				<button type="button" class="sp-btn" data-bulk-action="right"><kbd></kbd><span></span></button>
 				<button type="button" class="sp-btn" data-bulk-action="defer"><kbd></kbd><span></span></button>
 				<button type="button" class="sp-btn" data-bulk-action="handoff"><kbd></kbd><span></span></button>
+				<button type="button" class="sp-btn" data-bulk-action="copy"><kbd></kbd><span></span></button>
 				<button type="button" class="sp-btn" data-bulk-action="allow"><kbd></kbd><span></span></button>
 				<button type="button" class="sp-btn" data-bulk-action="deny"><kbd></kbd><span></span></button>
 				<button type="button" class="sp-btn" data-bulk-action="clear">

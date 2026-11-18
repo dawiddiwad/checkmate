@@ -9,23 +9,16 @@ import { banner } from './layout.ts'
 import { keptText } from './forms.ts'
 import { imageTypes, shownAsText, size } from './evidence.ts'
 import { claimEvidenceFiles } from './exploration.ts'
+import { buildStateWords } from '../rulemap.ts'
 import { buildLabel, itemTag, optionsOf, outside, reviewHref } from './review.ts'
 
 export type Refusal = { key: string; state: FormState }
-
-const changeWords: Record<string, string> = {
-	new: 'new',
-	still_present: 'still present',
-	fixed: 'fixed',
-	returned: 'present again',
-	not_retested: 'not tested again',
-}
 
 function acrossBuilds(review: Review, item: Item) {
 	const builds = item.detail?.builds ?? []
 	if (!builds.length) return null
 	return builds
-		.map((on) => `${changeWords[on.state] ?? words(on.state)} in build ${buildLabel(review, on.build)}`)
+		.map((on) => `${buildStateWords[on.state] ?? words(on.state)} in build ${buildLabel(review, on.build)}`)
 		.join(', ')
 		.replace(/^./, (first) => first.toUpperCase())
 }
@@ -304,7 +297,7 @@ export function recordDrawer(
 			<section class="sp-dhead" tabindex="-1" data-sub data-label="${item.id}">
 				<div class="sp-pills">
 					${itemTag(item)}
-					${item.detail && item.kind !== 'rejected' ? html`<span class="sp-pill">${changeWords[item.detail.builds.at(-1)?.state ?? ''] ?? ''}</span>` : ''}
+					${item.detail && item.kind !== 'rejected' ? html`<span class="sp-pill">${buildStateWords[item.detail.builds.at(-1)?.state ?? ''] ?? ''}</span>` : ''}
 					${item.claim?.handoff ? html`<span class="sp-pill green">Handed over</span>` : ''}
 					<span class="sp-c-id">${item.id}</span>
 					${when ? html`<span class="sp-c-id">${time(when)}</span>` : ''}

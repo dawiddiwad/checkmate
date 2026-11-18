@@ -12,7 +12,7 @@ export type RuleSource = { name: string; text: string | null }
 
 export const outsideRule = 'outside'
 export const defaultArea = 'Rules'
-const maxAreaCharacters = 40
+export const maxAreaCharacters = 40
 const maxAreas = 9
 const maxSourceCharacters = 40000
 const ruleId = /^R[1-9][0-9]{0,3}$/
@@ -173,6 +173,15 @@ export function patchRules(store: Store, operationId: string, planId: string, pa
 		return item ? { ...item, ...change } : { id, ...newFields(`rule ${id}`, change, ['text', 'source']) }
 	}) as Rule[]
 	requireWellFormed(rules.length, `Keep at least one rule of plan ${planId}.`)
+	const areas = new Set<string>()
+	for (const rule of rules) {
+		requireWellFormed(rule.text.trim(), `The rule ${rule.id} needs text.`)
+		areas.add((rule.area ?? defaultArea).toLowerCase())
+	}
+	requireWellFormed(
+		areas.size <= maxAreas,
+		`The rules have ${areas.size} areas. Use at most ${maxAreas} areas for the plan.`
+	)
 	saveRules(store, operationId, planId, rules, 'corrected')
 	return {
 		reply: {

@@ -4,7 +4,7 @@ import { addEvent } from './explorations.ts'
 import { requireChoice, requireCondition, requireWellFormed } from './contracts.ts'
 import { explorerActor } from './recorder.ts'
 
-export const permissionDecisions = ['allow', 'allow-kind', 'always', 'deny', 'stop'] as const
+export const permissionDecisions = ['allow', 'allow-kind', 'allow-tool', 'always', 'deny', 'stop'] as const
 export type PermissionChoice = (typeof permissionDecisions)[number]
 export type Suggestion = Record<string, unknown>
 export type RuleOfSuggestion = { toolName: string; ruleContent?: string }
@@ -31,7 +31,13 @@ export type Permission = {
 	rule: string | null
 	decision: PermissionDecision | null
 }
-export type ForceRule = { rule: string; setBy: string; at: string; requestId: string }
+export type ForceRule = {
+	rule: string
+	kind: 'allow-kind' | 'allow-tool'
+	setBy: string
+	at: string
+	requestId: string
+}
 export type ClosedCause = 'timeout' | 'ui-stopped' | 'stopped' | 'disconnected'
 export type PermissionRequestInput = {
 	explorationId: string
@@ -161,8 +167,16 @@ export function openPermissions(store: Store, planId?: string) {
 
 export function permissionRules(store: Store, explorationId: string): ForceRule[] {
 	return explorationPermissions(store, explorationId).flatMap((item) =>
-		item.decision?.kind === 'allow-kind' && item.decision.rule
-			? [{ rule: item.decision.rule, setBy: item.decision.by, at: item.decision.at, requestId: item.id }]
+		(item.decision?.kind === 'allow-kind' || item.decision?.kind === 'allow-tool') && item.decision.rule
+			? [
+					{
+						rule: item.decision.rule,
+						kind: item.decision.kind,
+						setBy: item.decision.by,
+						at: item.decision.at,
+						requestId: item.id,
+					},
+				]
 			: []
 	)
 }
@@ -212,9 +226,11 @@ function addDecision(
 	)
 }
 
-function ruleInForce(store: Store, explorationId: string, suggestions: Suggestion[]) {
+function ruleInForce(store: Store, explorationId: string, tool: string, suggestions: Suggestion[]) {
 	const wanted = kindRule(suggestions)
-	return wanted ? permissionRules(store, explorationId).find((item) => item.rule === wanted) : undefined
+	return permissionRules(store, explorationId).find((item) =>
+		item.kind === 'allow-tool' ? item.rule === tool : item.rule === wanted
+	)
 }
 
 export function requestPermission(store: Store, input: PermissionRequestInput) {
@@ -249,7 +265,7 @@ export function requestPermission(store: Store, input: PermissionRequestInput) {
 			operationId,
 			at
 		)
-		const force = ruleInForce(store, input.explorationId, input.suggestions)
+		const force = ruleInForce(store, input.explorationId, input.tool, input.suggestions)
 		if (force)
 			addDecision(
 				store,
@@ -257,7 +273,7 @@ export function requestPermission(store: Store, input: PermissionRequestInput) {
 				'rule',
 				{
 					by: 'rule',
-					text: `allowed by rule ${force.rule}, set by ${force.setBy}`,
+					text: `allowed by rule ${force.kind === 'allow-tool' ? `every ${force.rule} call` : force.rule}, set by ${force.setBy}`,
 					rule: force.rule,
 					setBy: force.setBy,
 				},
@@ -301,11 +317,17 @@ export function decidePermission(
 		const texts: Record<PermissionChoice, string> = {
 			allow: 'allowed once',
 			'allow-kind': `allowed for this test: ${request.rule}`,
+			'allow-tool': `allowed for this test: every ${request.tool} call`,
 			always: `allowed always in this project: ${request.rule}`,
 			deny: `denied: ${reason}`,
 			stop: `stopped the ${request.tester ? 'tester' : 'run'}${reason ? `: ${reason}` : ''}`,
 		}
-		const rule = choice === 'allow-kind' || choice === 'always' ? request.rule : null
+		const rule =
+			choice === 'allow-tool'
+				? request.tool
+				: choice === 'allow-kind' || choice === 'always'
+					? request.rule
+					: null
 		addDecision(
 			store,
 			request,
@@ -363,6 +385,14 @@ export function permissionAnswer(request: Permission, decision: PermissionDecisi
 		}
 		return decisionBody({ behavior: 'allow', updatedPermissions: [update] })
 	}
+	const forTool = (decision.kind === 'allow-tool' || decision.kind === 'rule') && decision.rule === request.tool
+	if (forTool)
+		return decisionBody({
+			behavior: 'allow',
+			updatedPermissions: [
+				{ type: 'addRules', rules: [{ toolName: request.tool }], behavior: 'allow', destination: 'session' },
+			],
+		})
 	if (decision.kind === 'allow') return decisionBody({ behavior: 'allow' })
 	if (decision.kind === 'allow-kind' || decision.kind === 'rule') return withRule('session')
 	if (decision.kind === 'always') return withRule('localSettings')

@@ -124,7 +124,7 @@ const waitOpen = (f: Fixture, count: number) =>
 const requests = (f: Fixture) => f.read((reading) => explorationPermissions(reading, 'x-1'))
 
 async function decide(f: Fixture, id: string, form: Record<string, string>, headers = as) {
-	const csrf = token((await call(f.ui, '/permissions', undefined, headers)).body)
+	const csrf = token((await call(f.ui, '/activity', undefined, headers)).body)
 	return call(f.ui, `/permissions/x-1/${id}`, { csrf, ...form }, headers)
 }
 
@@ -292,6 +292,59 @@ test('allow for this test answers with the rule at destination session, and the 
 	await different
 })
 
+test('allow every call of a tool answers with the tool rule, and a later request for the tool of any tester is answered at once', async (t) => {
+	const f = await fixture(t)
+	const first = permission(f, 'a1', ask)
+	await waitOpen(f, 1)
+	assert.equal((await decide(f, 'P1', { decision: 'allow-tool' })).status, 303)
+	const toolRule = '{"type":"addRules","rules":[{"toolName":"Bash"}],"behavior":"allow","destination":"session"}'
+	assert.equal((await first).body, wrap(`{"behavior":"allow","updatedPermissions":[${toolRule}]}`))
+	const rules = f.read((reading) => permissionRules(reading, 'x-1'))
+	assert.deepEqual(
+		rules.map((item) => [item.rule, item.kind, item.setBy, item.requestId]),
+		[['Bash', 'allow-tool', actor, 'P1']]
+	)
+	const second = await permission(f, 'a2', { ...ask, tool_input: { command: 'rm -rf build' } })
+	assert.equal(second.body, wrap(`{"behavior":"allow","updatedPermissions":[${toolRule}]}`))
+	const withSuggestion = await permission(f, 'merge', asking)
+	assert.equal(withSuggestion.body, second.body)
+	assert.equal(open(f).length, 0)
+	const [, again, last] = await requests(f)
+	assert.deepEqual(
+		[again.decision?.kind, again.decision?.rule, again.decision?.text],
+		['rule', 'Bash', `allowed by rule every Bash call, set by ${actor}`]
+	)
+	assert.equal(last.decision?.kind, 'rule')
+	const other = permission(f, 'a2', { ...ask, tool_name: 'Write', tool_input: { file_path: '/tmp/x', content: 'y' } })
+	await waitOpen(f, 1)
+	assert.equal(open(f)[0].tool, 'Write')
+	await decide(f, 'P4', { decision: 'allow' })
+	await other
+	assert.equal(f.read((reading) => permissionRules(reading, 'x-1')).length, 1)
+})
+
+test('a tool rule of one exploration does not answer a request of another exploration', async (t) => {
+	const f = await fixture(t)
+	const reading = openStore(f.workspace)
+	openExploration(reading, 'checkmate', { planId: 'checkout', build: 'b2', explorationId: 'x-2' })
+	launched(reading, 'x-2', 'a1')
+	closeStore(reading)
+	const first = permission(f, 'a1', ask)
+	await waitOpen(f, 1)
+	await decide(f, 'P1', { decision: 'allow-tool' })
+	await first
+	const elsewhere = permission(f, 'a1', ask, 'x-2')
+	await waitFor('the request of x-2', () => open(f).length === 1)
+	assert.equal(open(f)[0].explorationId, 'x-2')
+	await call(
+		f.ui,
+		'/permissions/x-2/P1',
+		{ csrf: token((await call(f.ui, '/activity', undefined, as)).body), decision: 'allow' },
+		as
+	)
+	await elsewhere
+})
+
 test('always allow answers at destination localSettings and sets no rule on the exploration', async (t) => {
 	const f = await fixture(t)
 	const first = permission(f, 'a1')
@@ -443,7 +496,7 @@ test('the CLI answers a request like the browser does, and it needs a live UI', 
 		})
 	const asked = permission(f, 'a1')
 	await waitOpen(f, 1)
-	assert.match(permit('P1').output, /Give one of --allow, --allow-kind, --always, --deny, --stop/)
+	assert.match(permit('P1').output, /Give one of --allow, --allow-kind, --allow-tool, --always, --deny, --stop/)
 	assert.match(permit('P1', '--allow', '--deny').output, /Give one of/)
 	const noReason = permit('P1', '--deny')
 	assert.equal(noReason.code, 1)
@@ -472,8 +525,22 @@ test('the CLI answers a request like the browser does, and it needs a live UI', 
 	assert.equal((await stopped).body, wrap('{"behavior":"deny","message":"Wrong site.","interrupt":true}'))
 	const events = f.read((reading) => explorationEvents(reading, 'x-1'))
 	assert.equal(events.find((item) => item.step === 'stop')?.explorer, 'a2')
+	const tooled = permission(f, 'a1', { ...ask, tool_name: 'Read', tool_input: { file_path: '/tmp/a' } })
+	await waitOpen(f, 1)
+	const tool = permit('P3', '--allow-tool')
+	assert.equal(tool.code, 0, tool.output)
+	assert.equal(JSON.parse(tool.output).decision, 'allow-tool')
+	assert.match((await tooled).body, /"rules":\[\{"toolName":"Read"\}\]/)
+	assert.match(
+		run(['explore', 'permissions', 'x-1', '--workspace', f.workspace], {
+			cwd: f.workspace,
+			env: {},
+			stdin: () => '',
+		}).output,
+		/P3\tallowed for this test: every Read call, by factory/
+	)
 	await f.ui.close()
-	const without = permit('P3', '--allow')
+	const without = permit('P4', '--allow')
 	assert.equal(without.code, 1)
 	assert.match(without.output, /No UI server runs for this folder/)
 })

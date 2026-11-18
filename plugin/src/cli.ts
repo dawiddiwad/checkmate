@@ -1450,6 +1450,7 @@ const commands: Record<string, Command> = {
 		flags: {
 			allow: 'switch',
 			'allow-kind': 'switch',
+			'allow-tool': 'switch',
 			always: 'switch',
 			deny: 'switch',
 			stop: 'switch',
@@ -1459,7 +1460,7 @@ const commands: Record<string, Command> = {
 		check: (args) =>
 			requireWellFormed(
 				permissionDecisions.filter((name) => args[name] === true).length === 1,
-				'Give one of --allow, --allow-kind, --always, --deny, --stop.'
+				'Give one of --allow, --allow-kind, --allow-tool, --always, --deny, --stop.'
 			),
 		run: (store, args, { actor }) => {
 			requireCondition(

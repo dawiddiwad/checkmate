@@ -5,11 +5,14 @@ import { one, write } from './store.ts'
 import { requireCondition, unusedId } from './contracts.ts'
 import { explorationRow, journal, planClaims } from './journal.ts'
 import { planCandidate, planRequest, planRevision, storeEdit, storeRevision } from './plans.ts'
+import type { Rule } from './rules.ts'
+import { outsideRule, planRules, saveRules, storedRules } from './rules.ts'
 
 type Candidate = Required<PlanCandidate>
 type Draft = {
 	from: string
 	title: string
+	rule: string | undefined
 	requirement: string
 	source: string
 	action: string
@@ -45,6 +48,7 @@ function drafts(store: Store, explorationId: string, observations: boolean): Dra
 			return {
 				from: claim.id,
 				title: claim.title,
+				rule: claim.rule ?? undefined,
 				requirement: criterion?.text ?? claim.expected,
 				source: criterion?.source ?? `exploration:${explorationId}/${claim.id}`,
 				action: stepsText(claim.steps ?? undefined, claim.title),
@@ -61,6 +65,7 @@ function drafts(store: Store, explorationId: string, observations: boolean): Dra
 					const criterion = linkedCriterion(entry, criteria)
 					return {
 						from: entry.id,
+						rule: criterion?.rule,
 						title: `Observed: ${entry.about ?? entry.saw}`.slice(0, 200),
 						requirement: criterion?.text ?? entry.saw!,
 						source: criterion?.source ?? `exploration:${explorationId}/${entry.id}`,
@@ -82,6 +87,7 @@ function capabilityOf(via: string | undefined, capabilities: string[]) {
 
 function harvested(
 	base: Candidate,
+	rules: Rule[],
 	items: Draft[],
 	explorationId: string,
 	build: string,
@@ -92,9 +98,18 @@ function harvested(
 	const fresh = items.filter((item) => !known.has(`${explorationId}/${item.from}`))
 	const requirements = [...base.requirements]
 	const tests = [...base.tests]
-	const added: string[] = []
+	const added: Array<{ test: string; rule: string }> = []
 	for (const item of fresh) {
-		let requirement = requirements.find((entry) => entry.text === item.requirement)
+		const named = item.rule === outsideRule ? undefined : rules.find((rule) => rule.id === item.rule)
+		const cited =
+			named ??
+			requirements.find((entry) => entry.text === item.requirement) ??
+			rules.find((rule) => rule.text === item.requirement)
+		let requirement = requirements.find((entry) => entry.id === cited?.id)
+		if (!requirement && cited) {
+			requirement = { ...cited }
+			requirements.push(requirement)
+		}
 		if (!requirement) {
 			requirement = {
 				id: unusedId(
@@ -130,7 +145,7 @@ function harvested(
 				build,
 			},
 		})
-		added.push(id)
+		added.push({ test: id, rule: requirement.id })
 	}
 	return { candidate: { ...base, requirements, tests }, added, skipped: items.length - fresh.length }
 }
@@ -154,6 +169,7 @@ export function harvestExploration(
 		const base: Candidate = latest ? planCandidate(latest.plan) : { requirements: [], tests: [], gaps: [] }
 		const result = harvested(
 			base,
+			planRules(store, row.plan_id).rules,
 			items,
 			row.exploration_id,
 			row.build,
@@ -184,14 +200,23 @@ export function harvestExploration(
 					},
 					operationId
 				)
+		const stored = storedRules(store, row.plan_id)
+		if (!latest && stored && stored.origin !== 'harvested')
+			saveRules(store, operationId, row.plan_id, stored.rules, 'harvested')
+		const { plan } = planRevision(store, row.plan_id)
+		const stocked = new Set(plan.tests.flatMap((item) => item.requirementIds))
+		const rules = planRules(store, row.plan_id).rules
 		return {
 			reply: {
 				...change.reply,
 				data: {
 					...change.reply.data,
 					explorationId: row.exploration_id,
-					tests: result.added,
+					tests: result.added.map((item) => item.test),
+					attached: result.added,
 					skipped: result.skipped,
+					rules: rules.length,
+					rulesWithTests: rules.filter((rule) => stocked.has(rule.id)).length,
 				},
 			},
 			subjects: [...change.subjects, `exploration:${row.exploration_id}`],

@@ -1147,7 +1147,15 @@ const commands: Record<string, Command> = {
 				observations: args.observations === true,
 			}),
 		print: (reply) => ({
-			facts: { tests: reply.data.tests, skipped: reply.data.skipped || undefined, edit: reply.data.edit },
+			facts: {
+				tests: reply.data.tests,
+				attached: (reply.data.attached as Array<{ test: string; rule: string }>).map(
+					(item) => `${item.test}:${item.rule}`
+				),
+				rules_with_tests: `${reply.data.rulesWithTests}/${reply.data.rules}`,
+				skipped: reply.data.skipped || undefined,
+				edit: reply.data.edit,
+			},
 		}),
 	},
 	setup: {

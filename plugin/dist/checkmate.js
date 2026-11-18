@@ -9992,12 +9992,25 @@ function storedRules(store, planId) {
   );
   return row3 ? { rules: JSON.parse(row3.body), origin: row3.origin } : null;
 }
+function plainRules(items) {
+  return items.map(({ id: id2, text, source, area: area2 }) => ({ id: id2, text, source, ...area2 ? { area: area2 } : {} }));
+}
+function withHeldRules(derived, held) {
+  const known = new Set(derived.map((rule) => rule.id));
+  return [
+    ...derived.map((rule) => held.find((item) => item.id === rule.id) ?? rule),
+    ...held.filter((rule) => !known.has(rule.id))
+  ];
+}
 function planRules(store, planId) {
   const latest = one(store, "SELECT body FROM latest_plans WHERE plan_id = ?", planId);
-  const plain = (items) => items.map(({ id: id2, text, source, area: area2 }) => ({ id: id2, text, source, ...area2 ? { area: area2 } : {} }));
-  if (latest) return { rules: plain(JSON.parse(latest.body).requirements), origin: "revision" };
+  if (latest) {
+    const held = plainRules(JSON.parse(latest.body).requirements);
+    const stored = storedRules(store, planId);
+    return stored?.origin === "harvested" ? { rules: withHeldRules(stored.rules, held), origin: "harvested" } : { rules: held, origin: "revision" };
+  }
   const { request } = planRequest(store, planId);
-  if (request.requirements?.length) return { rules: plain(request.requirements), origin: "request" };
+  if (request.requirements?.length) return { rules: plainRules(request.requirements), origin: "request" };
   return storedRules(store, planId) ?? { rules: [], origin: null };
 }
 function explorationRules(store, explorationId) {
@@ -10091,12 +10104,29 @@ function saveRules(store, operationId, planId, rules, origin) {
     operationId
   );
 }
-function patchRules(store, operationId, planId, patch) {
-  requireWellFormed(
-    !one(store, "SELECT 1 FROM plan_revisions WHERE plan_id = ?", planId),
-    `Name the plan revision: ${planId}@<revision>`
+function heldRules(store, planId) {
+  const latest = one(
+    store,
+    "SELECT revision, body FROM latest_plans WHERE plan_id = ?",
+    planId
   );
+  if (!latest) return null;
+  const rules = plainRules(JSON.parse(latest.body).requirements);
+  return { revision: latest.revision, rules, ids: new Set(rules.map((rule) => rule.id)) };
+}
+function requireHeldRules(store, plan, patch) {
+  const stored = storedRules(store, plan.planId);
+  if (stored?.origin !== "harvested") return;
+  for (const id2 of Object.keys(patch.requirements ?? {}))
+    requireWellFormed(
+      plan.requirements.some((rule) => rule.id === id2) || !stored.rules.some((rule) => rule.id === id2),
+      `Rule ${id2} has no stored test, so it is not in revision ${plan.revision}. Correct it with checkmate plan edit ${plan.planId} --patch.`
+    );
+}
+function patchRules(store, operationId, planId, patch) {
+  const held = heldRules(store, planId);
   const stored = storedRules(store, planId);
+  requireWellFormed(!held || stored?.origin === "harvested", `Name the plan revision: ${planId}@<revision>`);
   requireCondition(
     stored,
     `Plan ${planId} has no revision and no derived rules. There is nothing to edit.`,
@@ -10104,35 +10134,43 @@ function patchRules(store, operationId, planId, patch) {
   );
   requireWellFormed(
     !patch.tests && !patch.gaps,
-    `Plan ${planId} has no revision. A patch of its derived rules has only "requirements".`
+    `A patch of the derived rules of plan ${planId} has only "requirements".`
   );
+  for (const id2 of Object.keys(patch.requirements ?? {}))
+    requireWellFormed(
+      !held?.ids.has(id2),
+      `Rule ${id2} has a stored test, so it belongs to revision ${held?.revision}. Correct it with checkmate plan edit ${planId}@${held?.revision} --patch.`
+    );
   const rules = patchList(stored.rules, patch.requirements, "rule", (item, id2, change) => {
     requireWellFormed(!change.metadata, `A derived rule has no metadata: ${id2}`);
     return item ? { ...item, ...change } : { id: id2, ...newFields(`rule ${id2}`, change, ["text", "source"]) };
   });
   requireWellFormed(rules.length, `Keep at least one rule of plan ${planId}.`);
   const areas = /* @__PURE__ */ new Set();
-  for (const rule of rules) {
-    requireWellFormed(rule.text.trim(), `The rule ${rule.id} needs text.`);
+  for (const rule of rules) requireWellFormed(rule.text.trim(), `The rule ${rule.id} needs text.`);
+  for (const rule of held ? withHeldRules(rules, held.rules) : rules)
     areas.add((rule.area ?? defaultArea).toLowerCase());
-  }
   requireWellFormed(
     areas.size <= maxAreas,
     `The rules have ${areas.size} areas. Use at most ${maxAreas} areas for the plan.`
   );
-  saveRules(store, operationId, planId, rules, "corrected");
+  const origin = stored.origin === "harvested" ? "harvested" : "corrected";
+  saveRules(store, operationId, planId, rules, origin);
   return {
     reply: {
       status: "completed",
       subject: planId,
       reasons: [],
-      data: { planId, edit: "rules", origin: "corrected", rules: rules.map((rule) => rule.id) }
+      data: { planId, edit: "rules", origin, rules: rules.map((rule) => rule.id) }
     },
     subjects: [`plan:${planId}`, "inbox"]
   };
 }
 function rulesLine(store, planId) {
   const { rules, origin } = planRules(store, planId);
+  const held = heldRules(store, planId);
+  if (origin === "harvested" && held)
+    return `${rules.length} rules were derived from the sources. ${rules.filter((rule) => held.ids.has(rule.id)).length} have a stored test and belong to revision ${held.revision}. Correct the others with checkmate plan edit ${planId} --patch.`;
   if (origin !== "derived" && origin !== "corrected") return null;
   return `${rules.length} rules were derived from the sources${origin === "corrected" ? " and corrected" : ""}. Correct them with checkmate plan edit ${planId} --patch.`;
 }
@@ -11181,6 +11219,7 @@ function patchPlan(store, actor, input) {
         return patchRules(store, operationId, input.reference, validate("plan-patch", input.patch));
       const base = editableRevision(store, input.reference, input.expectSha256);
       const patch = validate("plan-patch", input.patch);
+      requireHeldRules(store, base.plan, patch);
       const candidate = patchedCandidate(base.plan, patch);
       return storeEditedPlan(store, operationId, base, candidate, writer, input.rationale);
     }
@@ -28451,6 +28490,7 @@ function drafts(store, explorationId, observations) {
     return {
       from: claim.id,
       title: claim.title,
+      rule: claim.rule ?? void 0,
       requirement: criterion?.text ?? claim.expected,
       source: criterion?.source ?? `exploration:${explorationId}/${claim.id}`,
       action: stepsText(claim.steps ?? void 0, claim.title),
@@ -28464,6 +28504,7 @@ function drafts(store, explorationId, observations) {
     const criterion = linkedCriterion(entry, criteria);
     return {
       from: entry.id,
+      rule: criterion?.rule,
       title: `Observed: ${entry.about ?? entry.saw}`.slice(0, 200),
       requirement: criterion?.text ?? entry.saw,
       source: criterion?.source ?? `exploration:${explorationId}/${entry.id}`,
@@ -28480,14 +28521,20 @@ function capabilityOf(via, capabilities) {
   const wanted = via === "ui" ? "browser" : via === "api" ? "http" : void 0;
   return wanted && capabilities.includes(wanted) ? wanted : capabilities[0];
 }
-function harvested(base, items, explorationId, build, capabilities, operations) {
+function harvested(base, rules, items, explorationId, build, capabilities, operations) {
   const known = new Set(base.tests.map((test) => test.metadata?.harvestedFrom).filter(Boolean));
   const fresh = items.filter((item) => !known.has(`${explorationId}/${item.from}`));
   const requirements = [...base.requirements];
   const tests = [...base.tests];
   const added = [];
   for (const item of fresh) {
-    let requirement = requirements.find((entry) => entry.text === item.requirement);
+    const named = item.rule === outsideRule ? void 0 : rules.find((rule) => rule.id === item.rule);
+    const cited = named ?? requirements.find((entry) => entry.text === item.requirement) ?? rules.find((rule) => rule.text === item.requirement);
+    let requirement = requirements.find((entry) => entry.id === cited?.id);
+    if (!requirement && cited) {
+      requirement = { ...cited };
+      requirements.push(requirement);
+    }
     if (!requirement) {
       requirement = {
         id: unusedId(
@@ -28523,7 +28570,7 @@ function harvested(base, items, explorationId, build, capabilities, operations) 
         build
       }
     });
-    added.push(id2);
+    added.push({ test: id2, rule: requirement.id });
   }
   return { candidate: { ...base, requirements, tests }, added, skipped: items.length - fresh.length };
 }
@@ -28542,6 +28589,7 @@ function harvestExploration(store, actor, input) {
     const base = latest ? planCandidate(latest.plan) : { requirements: [], tests: [], gaps: [] };
     const result = harvested(
       base,
+      planRules(store, row3.plan_id).rules,
       items,
       row3.exploration_id,
       row3.build,
@@ -28570,14 +28618,23 @@ function harvestExploration(store, actor, input) {
       },
       operationId
     );
+    const stored = storedRules(store, row3.plan_id);
+    if (!latest && stored && stored.origin !== "harvested")
+      saveRules(store, operationId, row3.plan_id, stored.rules, "harvested");
+    const { plan } = planRevision(store, row3.plan_id);
+    const stocked = new Set(plan.tests.flatMap((item) => item.requirementIds));
+    const rules = planRules(store, row3.plan_id).rules;
     return {
       reply: {
         ...change.reply,
         data: {
           ...change.reply.data,
           explorationId: row3.exploration_id,
-          tests: result.added,
-          skipped: result.skipped
+          tests: result.added.map((item) => item.test),
+          attached: result.added,
+          skipped: result.skipped,
+          rules: rules.length,
+          rulesWithTests: rules.filter((rule) => stocked.has(rule.id)).length
         }
       },
       subjects: [...change.subjects, `exploration:${row3.exploration_id}`]
@@ -29536,7 +29593,15 @@ var commands = {
       observations: args.observations === true
     }),
     print: (reply) => ({
-      facts: { tests: reply.data.tests, skipped: reply.data.skipped || void 0, edit: reply.data.edit }
+      facts: {
+        tests: reply.data.tests,
+        attached: reply.data.attached.map(
+          (item) => `${item.test}:${item.rule}`
+        ),
+        rules_with_tests: `${reply.data.rulesWithTests}/${reply.data.rules}`,
+        skipped: reply.data.skipped || void 0,
+        edit: reply.data.edit
+      }
     })
   },
   setup: {

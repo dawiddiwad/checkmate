@@ -166,6 +166,18 @@ A stopped session shows `Stopped by <name>`, the reason, and the work folder whe
 
 A failed session says why and what to do next: `claude` was not found, Claude Code is not signed in, a tester did not end in time, or another reason with its text. A failed session shows its reason, the kept work folder `.checkmate/work/<explorationId>`, and the log. `Not merged yet` items are the raw questions and defects of single testers. They can change before the session is completed. `Needs you` does not show them.
 
+### Permission requests
+
+While the UI runs, a tester that needs a permission asks you. Without the UI, or when the hook is blocked, a tester behaves as before: Claude Code denies the call.
+
+1. Look at the status bar. It shows `N permissions` when requests wait.
+2. Click it. `/permissions` has one row for each open request: who asks, the tool, and the first line of the input.
+3. Click one answer: `Allow once`, `Allow <rule> for this test`, `Always allow <rule> in this project`, `Deny` (write the reason first), or `Stop` (the tester, or the run). The two rule answers show only when Claude Code suggests a rule.
+
+A rule for this test answers the same request of every other tester of the run at once. The record shows `allowed by rule <rule>, set by <name>`. `Always allow` lets Claude Code write the rule in its own settings file for the project. Checkmate writes no settings file. A request with no answer in 10 minutes closes, and the call is denied. A request also closes when the tester or the run stops, and when the UI stops. The same answers are in `checkmate explore permit`. Each request and each answer is an event of the exploration, so the record shows who decided what.
+
+The `/permissions` page is a plain list. A later version replaces it.
+
 ### Plan
 
 `Plan @<revision>` opens the plan document, `/plans/<planId>@<revision>`. It shows the approval, the loop state, the one next step, and the sections `Overview`, `Claims`, `Questions`, `Explorations`, `Tests`, `Runs`, and `History`. A section opens by itself when it needs you. Approve or reject the revision in the panel. `Export` downloads the plan as HTML, Markdown, or JSON. A plan without a revision shows its request at `/plans/<planId>/request`.
@@ -184,7 +196,7 @@ The run list and the operation log. They page, sort, and filter. The address kee
 
 `Settings` in the status bar opens `Targets`. `Claude Code` shows the path of `claude`, or says that no `claude` is on `PATH`. It also shows the default model alias of each test level. The page makes no call to Claude Code. The host wins: a test that you start from a shell with `--claude-arg --model --claude-arg <model>` uses that model. A test that you start in the UI uses the alias of its level.
 
-`Tool rules of testers` has the rules that the `Test build…` dialog and the new-change form start with. A rule lets a tester use a tool without asking you, for example `Read` or `Bash`. Write one rule for each word. The engine needs at least one rule today. Checkmate keeps the setting in the record, with the name and the time of the change, and the Log shows it as `setting set`.
+`Tool rules of testers` has the rules that the `Test build…` dialog and the new-change form start with. A rule lets a tester use a tool without asking you, for example `Read` or `Bash`. Write one rule for each word. The engine needs at least one rule today. Checkmate keeps the setting in the record, with the name and the time of the change, and the Log shows it as `setting set`. The page also says whether testers that start now can ask you for a permission in the UI. They can when `.checkmate/ui.json` names a UI that runs.
 
 `Targets`. A target page shows the entry points, the instances, the tools, the profile, and the revision history.
 

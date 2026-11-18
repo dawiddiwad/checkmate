@@ -12,6 +12,7 @@ The database is `<workspace>/.checkmate/checkmate.db`. The workspace is the curr
 
 - Any command creates `.checkmate/` and the schema when they are missing. `checkmate init` only creates them.
 - `.checkmate/tmp/` holds binary evidence and browser output for a short time. `run finish` removes `.checkmate/tmp/<runId>/`, and `target save` removes `.checkmate/tmp/setup-<targetId>/`.
+- `.checkmate/ui.json` exists while the review UI runs. It holds `port`, `pid`, and `hookToken`, and has mode 0600. The UI writes it when it starts and removes it when it closes. A file whose `pid` is not alive is stale: the next UI replaces it, and the commands ignore it. `hookToken` is 32 random bytes in hex, new for each start. Do not commit or share the file.
 - `.checkmate/work/<explorationId>/` holds the files of the explorers while an exploration runs. Checkmate removes it when the exploration or a follow-up completes.
 - Add `.checkmate/` to `.gitignore`. To keep a plan or a report in Git, export it with `checkmate export`.
 
@@ -64,40 +65,56 @@ The plan history, `plan diff`, and the log together show who changed what, when,
 
 ## Tables
 
-| Table                  | Holds                                                                         |
-| ---------------------- | ----------------------------------------------------------------------------- |
-| `meta`                 | The contract version and the schema version.                                  |
-| `operations`           | The operation log.                                                            |
-| `target_requests`      | Setup requests from `target open`.                                            |
-| `profiles`             | Target profile revisions.                                                     |
-| `instances`            | Instances of a target with their entry values. One row for each add.          |
-| `instance_retirements` | One row for each retired instance.                                            |
-| `plan_requests`        | Plan requests from `plan open`.                                               |
-| `plan_revisions`       | Plan revisions as JSON snapshots.                                             |
-| `decisions`            | Gap answers, and the revision that applied each one.                          |
-| `approvals`            | Verdicts on plan revisions and results, with the digest of the subject.       |
-| `runs`                 | Runs: plan revision, target revision, instance, build, selection, and policy. |
-| `run_attempts`         | One row for each start and resume of a run.                                   |
-| `assertion_results`    | One row for each assertion result.                                            |
-| `outcomes`             | One row for each closed test.                                                 |
-| `evidence`             | Evidence rows: test, assertion, kind, name, media type, and digest.           |
-| `blobs`                | Evidence bytes, keyed by SHA-256. Equal bytes are stored once.                |
-| `findings`             | Defects and potential issues.                                                 |
-| `run_gaps`             | Gaps that a run found.                                                        |
-| `results`              | Finished runs as JSON snapshots.                                              |
-| `explorations`         | Explorations: plan, target revision, instance, build, mode, and charter.      |
-| `exploration_events`   | The steps of an exploration: launch, end, record, merge, and verify.          |
-| `journal_entries`      | The entries that the recorders, the merger, and the verifier log.             |
-| `plan_rules`           | The derived rules of a plan, and each correction. The latest row applies.     |
-| `plan_builds`          | The time when an exploration or a run of a plan first tested each build.      |
-| `handoffs`             | Each hand-over of a claim and each undo, with the actor, time, and target.    |
-| `workspace_settings`   | The settings of the workspace, one row for each save. The latest row applies. |
+| Table                  | Holds                                                                                                            |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `meta`                 | The contract version and the schema version.                                                                     |
+| `operations`           | The operation log.                                                                                               |
+| `target_requests`      | Setup requests from `target open`.                                                                               |
+| `profiles`             | Target profile revisions.                                                                                        |
+| `instances`            | Instances of a target with their entry values. One row for each add.                                             |
+| `instance_retirements` | One row for each retired instance.                                                                               |
+| `plan_requests`        | Plan requests from `plan open`.                                                                                  |
+| `plan_revisions`       | Plan revisions as JSON snapshots.                                                                                |
+| `decisions`            | Gap answers, and the revision that applied each one.                                                             |
+| `approvals`            | Verdicts on plan revisions and results, with the digest of the subject.                                          |
+| `runs`                 | Runs: plan revision, target revision, instance, build, selection, and policy.                                    |
+| `run_attempts`         | One row for each start and resume of a run.                                                                      |
+| `assertion_results`    | One row for each assertion result.                                                                               |
+| `outcomes`             | One row for each closed test.                                                                                    |
+| `evidence`             | Evidence rows: test, assertion, kind, name, media type, and digest.                                              |
+| `blobs`                | Evidence bytes, keyed by SHA-256. Equal bytes are stored once.                                                   |
+| `findings`             | Defects and potential issues.                                                                                    |
+| `run_gaps`             | Gaps that a run found.                                                                                           |
+| `results`              | Finished runs as JSON snapshots.                                                                                 |
+| `explorations`         | Explorations: plan, target revision, instance, build, mode, and charter.                                         |
+| `exploration_events`   | The steps of an exploration: launch, end, record, merge, verify, and the permission requests with their answers. |
+| `journal_entries`      | The entries that the recorders, the merger, and the verifier log.                                                |
+| `plan_rules`           | The derived rules of a plan, and each correction. The latest row applies.                                        |
+| `plan_builds`          | The time when an exploration or a run of a plan first tested each build.                                         |
+| `handoffs`             | Each hand-over of a claim and each undo, with the actor, time, and target.                                       |
+| `workspace_settings`   | The settings of the workspace, one row for each save. The latest row applies.                                    |
 
 The views `latest_plans`, `plan_tests`, and `plan_gaps` read inside the plan snapshots. `plan_tests` and `plan_gaps` have one row for each revision. Use them with `checkmate query`:
 
 ```sh
 checkmate query "select plan_id, revision, gap_id, status from plan_gaps where status = 'open'"
 ```
+
+## Permission requests and activity lines
+
+When the review UI runs, the sessions of a run can ask a person for a permission. The UI records each request and each answer as an event in `exploration_events`. Both events carry `explorer` only when the asker is a tester.
+
+| Step                  | Status                                                               | Detail                                                                                                                                        |
+| --------------------- | -------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `permission`          | `open`                                                               | `id` (`P1`, `P2`, and so on for each exploration), `who`, `tool`, `input` (long text is cut), `suggestions` (the list that Claude Code gave). |
+| `permission-decision` | `allow`, `allow-kind`, `always`, `deny`, `stop`, `rule`, or `closed` | `id`, `who`, `by` (the actor, `rule`, or `checkmate`), `text`, and when they apply `reason`, `rule`, `setBy`, and `cause`.                    |
+| `activity`            | `started`                                                            | `activity`: one line, at most 120 characters, for example `Bash: curl -s http://127.0.0.1:4173/api/notes`.                                    |
+
+A request has at most one `permission-decision`. A request without one is open. `cause` of a `closed` decision is `timeout` (`no answer in 10 minutes`), `ui-stopped` (`closed, the UI stopped`), `stopped` (the tester or the run stopped), or `disconnected` (the tester did not wait any more). A UI that starts closes the requests that an earlier UI left open. The rule of `allow-kind` is the text of the suggested rules, for example `Bash(npm view *)`. The rules that apply to an exploration are the `allow-kind` decisions of its requests.
+
+The activity line comes from the `PreToolUse` hook. It has the tool and the first line of the main input, cut at a newline. The value of a token, password, key, or authorization argument is `…`. The UI keeps the last line of each tester in memory and writes it at most once in 2 seconds. The Testers view shows the last activity line of a tester with its age.
+
+The read models are in `plugin/src/permissions.ts`: `openPermissions(store, planId?)`, `explorationPermissions(store, explorationId)`, `permissionRules(store, explorationId)`, and `decidePermission(store, actor, input, stop)`.
 
 ## Entries of an exploration
 

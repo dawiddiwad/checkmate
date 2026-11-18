@@ -10114,6 +10114,15 @@ function heldRules(store, planId) {
   const rules = plainRules(JSON.parse(latest.body).requirements);
   return { revision: latest.revision, rules, ids: new Set(rules.map((rule) => rule.id)) };
 }
+function storedTestCounts(store, planId) {
+  const latest = one(store, "SELECT body FROM latest_plans WHERE plan_id = ?", planId);
+  const counts2 = /* @__PURE__ */ new Map();
+  const tests = latest ? JSON.parse(latest.body).tests : [];
+  for (const test of tests)
+    if (test.metadata?.origin === "harvest")
+      for (const id2 of test.requirementIds) counts2.set(id2, (counts2.get(id2) ?? 0) + 1);
+  return counts2;
+}
 function requireHeldRules(store, plan, patch) {
   const stored = storedRules(store, plan.planId);
   if (stored?.origin !== "harvested") return;
@@ -18889,6 +18898,9 @@ function parentOf(page) {
   const links = page.crumbs?.filter(([, href]) => href) ?? [];
   return links.at(-1)?.[1] ?? null;
 }
+function cut(text) {
+  return text.length > 120 ? `${text.slice(0, 119)}\u2026` : text;
+}
 function layout(context, page) {
   const theme = context.theme === "system" ? "" : html2` data-theme="${context.theme}"`;
   const back = parentOf(page);
@@ -18924,7 +18936,7 @@ function layout(context, page) {
 				</div>
 				${statusBar(context, page)}
 				<div class="sp-saystrip" role="status" data-say-strip hidden></div>
-				${context.toast ? html2`<div class="toast" role="status" data-toast>${context.toast}</div>` : ""}
+				${context.toast ? html2`<div class="toast" role="status" data-toast title="${context.toast}">${cut(context.toast)}</div>` : ""}
 				<div class="sr-only" aria-live="polite" data-announcer></div>
 				${dialogs} ${page.viewer ? viewer : ""}
 			</body>
@@ -19250,6 +19262,7 @@ function ruleMap(store, planId) {
   const claims = record.claims.filter((claim) => claim.state !== "rejected");
   const builds = state.builds;
   const stored = planRules(store, planId);
+  const storedTests = storedTestCounts(store, planId);
   const known = new Set(stored.rules.map((rule) => rule.id));
   const ruleOf = (rule) => rule && !known.has(rule) ? outsideRule : rule;
   const rules = [
@@ -19307,6 +19320,7 @@ function ruleMap(store, planId) {
       const cells = builds.map((build) => cellOf(rule.id, build));
       return {
         rule,
+        storedTests: storedTests.get(rule.id) ?? 0,
         cells: cells.map((cell3, index2) => ({ ...cell3, before: index2 ? cells[index2 - 1].status : null }))
       };
     }),
@@ -19398,6 +19412,197 @@ function claimDetails(store, planId) {
       builds: claimBuildStates(claim, state.builds),
       uncertain: uncertainty(claim, reports, questions),
       evidence: claimEvidenceList(reports)
+    };
+  });
+}
+
+// plugin/src/harvest.ts
+var harvestedStates = ["observed", "confirmed", "accepted"];
+function stepsText(steps, fallback) {
+  const text = [steps ?? []].flat().join(" ").trim();
+  return text || fallback;
+}
+function linkedCriterion(entry, criteria) {
+  const ids2 = [...entry?.links ?? [], ...(entry?.about ?? "").split(/[\s,;]+/)];
+  return ids2.map((id2) => criteria.get(id2)).find(Boolean);
+}
+function drafts(store, explorationId, observations) {
+  const row3 = explorationRow(store, explorationId);
+  const state = journal(store, row3.plan_id);
+  const own = state.team.filter((entry) => entry.explorationId === explorationId);
+  const byId = new Map(state.team.map((entry) => [entry.id, entry]));
+  const criteria = new Map(state.team.filter((entry) => entry.kind === "criterion").map((entry) => [entry.id, entry]));
+  const fromClaims = planClaims(store, row3.plan_id).filter((claim) => claim.explorationId === explorationId && harvestedStates.includes(claim.state)).map((claim) => {
+    const report = byId.get(claim.reports[0]);
+    const criterion = linkedCriterion(report, criteria);
+    return {
+      from: claim.id,
+      title: claim.title,
+      rule: claim.rule ?? void 0,
+      requirement: criterion?.text ?? claim.expected,
+      source: criterion?.source ?? `exploration:${explorationId}/${claim.id}`,
+      action: stepsText(claim.steps ?? void 0, claim.title),
+      check: claim.expected,
+      deterministic: false,
+      via: report?.via,
+      basis: "claim"
+    };
+  });
+  const fromObservations = observations ? own.filter((entry) => entry.kind === "observation" && entry.verdict === "ok" && entry.steps).map((entry) => {
+    const criterion = linkedCriterion(entry, criteria);
+    return {
+      from: entry.id,
+      rule: criterion?.rule,
+      title: `Observed: ${entry.about ?? entry.saw}`.slice(0, 200),
+      requirement: criterion?.text ?? entry.saw,
+      source: criterion?.source ?? `exploration:${explorationId}/${entry.id}`,
+      action: stepsText(entry.steps, entry.saw),
+      check: entry.value !== void 0 ? `The result is ${entry.value}.` : entry.saw,
+      deterministic: entry.value !== void 0,
+      via: entry.via,
+      basis: "observed"
+    };
+  }) : [];
+  return [...fromClaims, ...fromObservations];
+}
+function harvestedSources(tests) {
+  return new Set(tests.map((test) => test.metadata?.harvestedFrom).filter(Boolean));
+}
+function notHarvested(items, known, explorationId) {
+  return items.filter((item) => !known.has(`${explorationId}/${item.from}`));
+}
+function storableDefects(store, planId) {
+  const latest = one(store, "SELECT 1 FROM plan_revisions WHERE plan_id = ?", planId) ? planRevision(store, planId) : null;
+  const known = harvestedSources(latest?.plan.tests ?? []);
+  return all(
+    store,
+    "SELECT exploration_id FROM explorations WHERE plan_id = ? ORDER BY rowid",
+    planId
+  ).map(({ exploration_id }) => ({
+    explorationId: exploration_id,
+    claims: notHarvested(drafts(store, exploration_id, false), known, exploration_id).map((item) => item.from)
+  })).filter((item) => item.claims.length);
+}
+function capabilityOf(via, capabilities) {
+  const wanted = via === "ui" ? "browser" : via === "api" ? "http" : void 0;
+  return wanted && capabilities.includes(wanted) ? wanted : capabilities[0];
+}
+function harvested(base, rules, items, explorationId, build, capabilities, operations) {
+  const fresh = notHarvested(items, harvestedSources(base.tests), explorationId);
+  const requirements = [...base.requirements];
+  const tests = [...base.tests];
+  const added = [];
+  for (const item of fresh) {
+    const named = item.rule === outsideRule ? void 0 : rules.find((rule) => rule.id === item.rule);
+    const cited = named ?? requirements.find((entry) => entry.text === item.requirement) ?? rules.find((rule) => rule.text === item.requirement);
+    let requirement = requirements.find((entry) => entry.id === cited?.id);
+    if (!requirement && cited) {
+      requirement = { ...cited };
+      requirements.push(requirement);
+    }
+    if (!requirement) {
+      requirement = {
+        id: unusedId(
+          "HR",
+          requirements.map((entry) => entry.id)
+        ),
+        text: item.requirement,
+        source: item.source
+      };
+      requirements.push(requirement);
+    }
+    const id2 = unusedId(
+      "H",
+      tests.map((test) => test.id)
+    );
+    tests.push({
+      id: id2,
+      title: item.title.slice(0, 200),
+      requirementIds: [requirement.id],
+      capability: capabilityOf(item.via, capabilities),
+      operations,
+      dependsOn: [],
+      preconditions: [`Make new test data that starts with qa-<runId>-${id2}.`],
+      action: item.action,
+      assertions: [
+        { id: "A1", check: item.check, checkKind: item.deterministic ? "deterministic" : "agent_observation" }
+      ],
+      metadata: {
+        type: "regression",
+        origin: "harvest",
+        basis: item.basis,
+        harvestedFrom: `${explorationId}/${item.from}`,
+        build
+      }
+    });
+    added.push({ test: id2, rule: requirement.id });
+  }
+  return { candidate: { ...base, requirements, tests }, added, skipped: items.length - fresh.length };
+}
+function harvestExploration(store, actor, input) {
+  return write(store, { actor, command: "harvest", subject: input.explorationId, input }, (operationId) => {
+    const row3 = explorationRow(store, input.explorationId);
+    const { request, target } = planRequest(store, row3.plan_id);
+    const items = drafts(store, row3.exploration_id, input.observations);
+    requireCondition(
+      items.length,
+      `Exploration ${row3.exploration_id} has nothing to harvest: no claim that is observed, confirmed, or accepted${input.observations ? ", and no observation with verdict ok and steps" : ""}.`,
+      input.observations ? void 0 : "Add --observations to harvest the observations with verdict ok and steps."
+    );
+    const hasRevision = one(store, "SELECT 1 FROM plan_revisions WHERE plan_id = ?", row3.plan_id);
+    const latest = hasRevision ? planRevision(store, row3.plan_id) : null;
+    const base = latest ? planCandidate(latest.plan) : { requirements: [], tests: [], gaps: [] };
+    const result = harvested(
+      base,
+      planRules(store, row3.plan_id).rules,
+      items,
+      row3.exploration_id,
+      row3.build,
+      target.profile.capabilities,
+      target.profile.allowedOperations
+    );
+    requireCondition(
+      result.added.length,
+      `Each item of ${row3.exploration_id} is harvested already into ${row3.plan_id}.`,
+      `Run checkmate plan show ${row3.plan_id} to read the harvested tests.`
+    );
+    const change = latest ? storeEdit(store, operationId, latest, result.candidate) : storeRevision(
+      store,
+      {
+        contractVersion: "toolkit-2",
+        planId: row3.plan_id,
+        revision: 1,
+        previousRevision: null,
+        target: { targetId: target.profile.targetId, revision: target.revision, sha256: target.sha256 },
+        objective: request.objective,
+        requirements: result.candidate.requirements,
+        tests: result.candidate.tests,
+        gaps: [],
+        assumptions: [],
+        decisions: []
+      },
+      operationId
+    );
+    const stored = storedRules(store, row3.plan_id);
+    if (!latest && stored && stored.origin !== "harvested")
+      saveRules(store, operationId, row3.plan_id, stored.rules, "harvested");
+    const { plan } = planRevision(store, row3.plan_id);
+    const stocked = new Set(plan.tests.flatMap((item) => item.requirementIds));
+    const rules = planRules(store, row3.plan_id).rules;
+    return {
+      reply: {
+        ...change.reply,
+        data: {
+          ...change.reply.data,
+          explorationId: row3.exploration_id,
+          tests: result.added.map((item) => item.test),
+          attached: result.added,
+          skipped: result.skipped,
+          rules: rules.length,
+          rulesWithTests: rules.filter((rule) => stocked.has(rule.id)).length
+        }
+      },
+      subjects: [...change.subjects, `exploration:${row3.exploration_id}`]
     };
   });
 }
@@ -19831,7 +20036,7 @@ function optionOf(context, item, from, choice2, n) {
 		</button>
 	</form>`;
 }
-function cut(text) {
+function cut2(text) {
   const lines2 = text.split("\n");
   const more = lines2.length - shownLines;
   return more > 0 ? `${lines2.slice(0, shownLines).join("\n")}
@@ -19851,7 +20056,7 @@ function asked(item) {
 			<pre class="sp-code" tabindex="0">${text}</pre>`;
   if (typeof input.command === "string") return block("Command", input.command);
   if (typeof path === "string") {
-    const body = item.tool === "Write" && typeof input.content === "string" ? block("Content", cut(input.content)) : item.tool === "Edit" || item.tool === "MultiEdit" || item.tool === "NotebookEdit" ? block("Change", cut(edits(input))) : "";
+    const body = item.tool === "Write" && typeof input.content === "string" ? block("Content", cut2(input.content)) : item.tool === "Edit" || item.tool === "MultiEdit" || item.tool === "NotebookEdit" ? block("Change", cut2(edits(input))) : "";
     return html2`<p class="sp-lbl">File</p>
 			<pre class="sp-code" tabindex="0">${path}</pre>
 			${body}`;
@@ -20597,6 +20802,31 @@ function followDialog(context, planId, subject, count2) {
 			</div>`
   );
 }
+function storeDialog(context, planId, count2, approval) {
+  return shell(
+    "store",
+    `Store ${plural(count2, "defect")} as tests`,
+    "The defects of this plan changed. Nothing was stored.",
+    `/plans/${planId}/harvest`,
+    context,
+    html2`<input type="hidden" name="view" value="all" />
+			<input type="hidden" name="count" value="${count2}" />
+			<p class="sp-sub">
+				Checkmate stores each defect as a test of this plan and attaches it to the rule that the defect cites.
+				The rules, areas and marks of the plan stay the same. A defect with no rule gets a new rule HRn. Later
+				tests of this plan may run the stored
+				tests.${approval ? " The stored tests wait for the approval of the plan." : ""}
+			</p>
+			<div class="btns">
+				<button class="sp-btn pri" data-stop data-key-n="1">
+					<kbd>1</kbd><span>Store ${plural(count2, "test")}</span>
+				</button>
+				<button class="sp-btn" type="button" data-act-cancel data-stop data-key-n="2">
+					<kbd>2</kbd><span>Cancel</span>
+				</button>
+			</div>`
+  );
+}
 function stopDialog(context, subject) {
   return shell(
     `stop-${subject.explorationId}`,
@@ -20647,6 +20877,13 @@ function testButton(planId, label = "Test build\u2026", values = {}) {
     label,
     html2`data-action="/plans/${planId}/test" data-title="Test a build of ${planId}"
 		data-fill="${JSON.stringify(values)}"`
+  );
+}
+function storeButton(planId, count2, view) {
+  return actionButton(
+    "store",
+    `Store ${plural(count2, "defect")} as tests\u2026`,
+    html2`data-action="/plans/${planId}/harvest" data-fill="${JSON.stringify({ view })}"`
   );
 }
 function stopButton(explorationId, label = "Stop the test\u2026") {
@@ -21463,7 +21700,9 @@ function reviewOf(store, planId) {
     areas: areasOf(map),
     items,
     explorations,
-    running: running3
+    running: running3,
+    storable: storableDefects(store, planId).reduce((sum2, item) => sum2 + item.claims.length, 0),
+    approvalRequired: approvalPolicy(target.profile).plan === "required"
   };
 }
 function buildLabel(review, build) {
@@ -21958,8 +22197,11 @@ function viewHead(review, view) {
   if (view === "all") return { sub: `${verdict.head} ${verdict.tail}`, pills: html2`` };
   if (view === "rules") {
     const origin = review.map.rulesOrigin;
+    const rows2 = review.map.rows.filter((row3) => row3.rule.id !== outside);
+    const stored = rows2.filter((row3) => row3.storedTests).length;
+    const edit = origin === "harvested" ? `The tester derived these rules from the sources. Edit the rules that have no stored test here, or with checkmate plan edit ${review.planId} --patch. Edit the others in the plan editor.` : origin === "derived" || origin === "corrected" ? `The tester derived these rules from the sources${origin === "corrected" ? ", and they were corrected" : ""}. Edit them here, or with checkmate plan edit ${review.planId} --patch.` : origin ? "The rules come from the plan. Edit them in the plan editor." : "This plan has no rules yet.";
     return {
-      sub: origin === "derived" || origin === "corrected" ? `The tester derived these rules from the sources${origin === "corrected" ? ", and they were corrected" : ""}. Edit them here, or with checkmate plan edit ${review.planId} --patch.` : origin ? "The rules come from the plan. Edit them in the plan editor." : "This plan has no rules yet.",
+      sub: stored ? `${stored} of ${rows2.length} rules have a stored test. ${edit}` : edit,
       pills: html2``
     };
   }
@@ -21972,7 +22214,7 @@ function viewHead(review, view) {
         return html2`<span class="sp-pill ${color}" title="${cell3.build}"
 					>${buildLabel(review, cell3.build)}: ${label}</span
 				>`;
-      })}`
+      })}${row3?.storedTests ? html2`<span class="sp-pill" title="${storedNote(review, row3.rule.id)}">${plural(row3.storedTests, "stored test")}</span>` : ""}`
     };
   }
   if (view.startsWith("area:")) {
@@ -21985,7 +22227,22 @@ function viewHead(review, view) {
   }
   return { sub: "", pills: html2`` };
 }
+function storedNote(review, ruleId2) {
+  return `${ruleId2} has a stored test, so it belongs to revision ${review.revision}. Edit it in the plan editor.`;
+}
 function ruleButtons(context, review, rule, count2, numbered) {
+  if (review.map.rows.find((row3) => row3.rule.id === rule.id)?.storedTests)
+    return [
+      html2`<a
+				class="sp-btn"
+				${numbered ? html2`data-option` : ""}
+				href="/plans/${review.planId}@${review.revision}/edit"
+				aria-label="${numbered ? "1: " : ""}Edit ${rule.id} in the plan editor"
+				title="${storedNote(review, rule.id)}"
+			>
+				${numbered ? html2`<kbd aria-hidden="true">1</kbd>` : ""}<span>Edit in the plan editor</span>
+			</a>`
+    ];
   const cited = review.items.filter((item) => item.rule === rule.id).length;
   const area2 = review.areas.find((each) => each.rules.includes(rule.id))?.label ?? "";
   const fill = JSON.stringify({ text: rule.text, area: area2, newArea: "" });
@@ -22024,7 +22281,12 @@ function ruleButtons(context, review, rule, count2, numbered) {
   ];
 }
 function ruleEditable(review) {
-  return !review.revision && ["derived", "corrected"].includes(review.map.rulesOrigin ?? "");
+  return ["derived", "corrected", "harvested"].includes(review.map.rulesOrigin ?? "");
+}
+function ruleMeta(row3) {
+  const source = row3.rule.source ?? "";
+  if (!row3.storedTests) return source;
+  return `${plural(row3.storedTests, "stored test")} \xB7 ${source}`;
 }
 function rulesList(context, review) {
   const rows2 = review.map.rows.filter((row3) => row3.rule.id !== outside);
@@ -22048,7 +22310,7 @@ function rulesList(context, review) {
 					<span class="sp-c-tag"><span class="sp-pill">Rule</span></span>
 					<span class="sp-c-id">${row3.rule.id}</span>
 					<span class="sp-c-title ell" title="${row3.rule.text}">${row3.rule.text}</span>
-					<span class="sp-c-meta ell" title="${row3.rule.source ?? ""}">${row3.rule.source ?? ""}</span>
+					<span class="sp-c-meta ell" title="${ruleMeta(row3)}">${ruleMeta(row3)}</span>
 					${editable ? optionsBox(ruleButtons(context, review, row3.rule, rows2.length, true)) : ""}
 				</div>`
   )}
@@ -22079,7 +22341,8 @@ function panel(context, review, view, current) {
   ) : "";
   const rule = view.startsWith("rule:") ? review.map.rows.find((row3) => row3.rule.id === view.slice(5)) : void 0;
   const own = rule && rule.rule.id !== outside && ruleEditable(review) ? ruleButtons(context, review, rule.rule, review.map.rows.length - 1, false) : "";
-  const tools = html2`${edit}${add}${own}${review.running ? "" : testButton(review.planId)}${review.answers ? actionButton("follow", `Test the answers (${review.answers.count})\u2026`) : ""}`;
+  const store = (view === "all" || view === "rules") && review.storable ? storeButton(review.planId, review.storable, view) : "";
+  const tools = html2`${edit}${add}${own}${review.running ? "" : testButton(review.planId)}${review.answers ? actionButton("follow", `Test the answers (${review.answers.count})\u2026`) : ""}${store}`;
   return html2`<section
 		class="sp-panel"
 		data-panel="${view}"
@@ -22155,6 +22418,7 @@ function reviewPage(store, context, planId, params, refusal = null, notice = nul
       planId,
       review.areas.map((area2) => area2.label)
     )}` : ""}
+				${review.storable ? storeDialog(context, planId, review.storable, review.approvalRequired) : ""}
 				${review.items.some((item2) => item2.kind === "defect") ? copyDialog() : ""}
 			</div>
 			<div
@@ -26116,6 +26380,7 @@ var routes = {
   defectText: new RegExp(`^/plans/(${id})/defects\\.txt$`),
   startTest: new RegExp(`^/plans/(${id})/test$`),
   startFollow: new RegExp(`^/plans/(${id})/follow$`),
+  harvest: new RegExp(`^/plans/(${id})/harvest$`),
   permit: new RegExp(`^/permissions/(${id})/(P[1-9][0-9]{0,8})$`),
   requestPage: /^\/requests\/(R[1-9][0-9]{0,8})$/,
   stopRequest: /^\/requests\/(R[1-9][0-9]{0,8})\/stop$/,
@@ -26922,7 +27187,7 @@ data: ${matched.join(",") || "*"}
     const back = reviewHref(planId, "rules");
     const { origin } = planRules(store, planId);
     const refuse3 = (message, field4 = "") => actionRefusal(request, back, message, field4);
-    if (origin !== "derived" && origin !== "corrected")
+    if (origin !== "derived" && origin !== "corrected" && origin !== "harvested")
       return refuse3(`The rules of ${planId} do not come from the sources. Edit them in the plan editor.`);
     try {
       change();
@@ -27046,6 +27311,37 @@ data: ${matched.join(",") || "*"}
     } catch (error) {
       refuse3(engineText(error));
     }
+  }
+  function storeDefects(request, form, planId) {
+    const view = form.get("view") === "rules" ? "rules" : "all";
+    const { actor, cookies } = actorFrom(request, form);
+    const refuse3 = (message) => actionRefusal(request, reviewHref(planId, view), message);
+    if (!actor) return refuse3("Enter your name. Checkmate records it with the tests.");
+    const attached = [];
+    try {
+      const storable = storableDefects(store, planId);
+      requireCondition(
+        storable.length,
+        `Every defect of ${planId} is stored as a test already. Nothing is left to store.`
+      );
+      const count2 = storable.reduce((sum2, item) => sum2 + item.claims.length, 0);
+      requireCondition(
+        !form.get("count") || form.get("count") === String(count2),
+        `${plural(count2, "defect")} can be stored now, not ${form.get("count")}. Nothing is stored. Close this dialog and read the count again.`
+      );
+      for (const { explorationId } of storable) {
+        const reply = harvestExploration(store, actor, { explorationId, observations: false });
+        attached.push(...reply.data.attached);
+      }
+    } catch (error) {
+      const stored = attached.length ? ` ${plural(attached.length, "test")} stored before this refusal.` : "";
+      return refuse3(`${engineText(error)}${stored}`);
+    }
+    const list2 = attached.map((item) => `${item.test} \u2192 ${item.rule}`).join(", ");
+    redirect(request.res, reviewHref(planId, view), [
+      ...cookies,
+      cookie("checkmate_toast", `Stored ${plural(attached.length, "defect")} as tests: ${list2}`, 60)
+    ]);
   }
   function stopRun(request, form, explorationId, explorer) {
     const back = `/explorations/${explorationId}`;
@@ -27738,6 +28034,8 @@ data: ${matched.join(",") || "*"}
     if (starting) return startTest(request, form, starting[1]);
     const following = routes.startFollow.exec(pathname);
     if (following) return startAnswers(request, form, following[1]);
+    const harvesting = routes.harvest.exec(pathname);
+    if (harvesting) return storeDefects(request, form, harvesting[1]);
     if (routes.permitMany.test(pathname)) return permitMany(request, form);
     const permitting = routes.permit.exec(pathname);
     if (permitting) return permit(request, form, permitting[1], permitting[2]);
@@ -28466,180 +28764,6 @@ function stepDone(store, actor, input) {
   const reply = addOutcome(store, actor, explorationId, { ...item, explorer: name2 });
   if (failed2) keepWorkFiles(store, actor, explorationId, name2, phase.name);
   return reply;
-}
-
-// plugin/src/harvest.ts
-var harvestedStates = ["observed", "confirmed", "accepted"];
-function stepsText(steps, fallback) {
-  const text = [steps ?? []].flat().join(" ").trim();
-  return text || fallback;
-}
-function linkedCriterion(entry, criteria) {
-  const ids2 = [...entry?.links ?? [], ...(entry?.about ?? "").split(/[\s,;]+/)];
-  return ids2.map((id2) => criteria.get(id2)).find(Boolean);
-}
-function drafts(store, explorationId, observations) {
-  const row3 = explorationRow(store, explorationId);
-  const state = journal(store, row3.plan_id);
-  const own = state.team.filter((entry) => entry.explorationId === explorationId);
-  const byId = new Map(state.team.map((entry) => [entry.id, entry]));
-  const criteria = new Map(state.team.filter((entry) => entry.kind === "criterion").map((entry) => [entry.id, entry]));
-  const fromClaims = planClaims(store, row3.plan_id).filter((claim) => claim.explorationId === explorationId && harvestedStates.includes(claim.state)).map((claim) => {
-    const report = byId.get(claim.reports[0]);
-    const criterion = linkedCriterion(report, criteria);
-    return {
-      from: claim.id,
-      title: claim.title,
-      rule: claim.rule ?? void 0,
-      requirement: criterion?.text ?? claim.expected,
-      source: criterion?.source ?? `exploration:${explorationId}/${claim.id}`,
-      action: stepsText(claim.steps ?? void 0, claim.title),
-      check: claim.expected,
-      deterministic: false,
-      via: report?.via,
-      basis: "claim"
-    };
-  });
-  const fromObservations = observations ? own.filter((entry) => entry.kind === "observation" && entry.verdict === "ok" && entry.steps).map((entry) => {
-    const criterion = linkedCriterion(entry, criteria);
-    return {
-      from: entry.id,
-      rule: criterion?.rule,
-      title: `Observed: ${entry.about ?? entry.saw}`.slice(0, 200),
-      requirement: criterion?.text ?? entry.saw,
-      source: criterion?.source ?? `exploration:${explorationId}/${entry.id}`,
-      action: stepsText(entry.steps, entry.saw),
-      check: entry.value !== void 0 ? `The result is ${entry.value}.` : entry.saw,
-      deterministic: entry.value !== void 0,
-      via: entry.via,
-      basis: "observed"
-    };
-  }) : [];
-  return [...fromClaims, ...fromObservations];
-}
-function capabilityOf(via, capabilities) {
-  const wanted = via === "ui" ? "browser" : via === "api" ? "http" : void 0;
-  return wanted && capabilities.includes(wanted) ? wanted : capabilities[0];
-}
-function harvested(base, rules, items, explorationId, build, capabilities, operations) {
-  const known = new Set(base.tests.map((test) => test.metadata?.harvestedFrom).filter(Boolean));
-  const fresh = items.filter((item) => !known.has(`${explorationId}/${item.from}`));
-  const requirements = [...base.requirements];
-  const tests = [...base.tests];
-  const added = [];
-  for (const item of fresh) {
-    const named = item.rule === outsideRule ? void 0 : rules.find((rule) => rule.id === item.rule);
-    const cited = named ?? requirements.find((entry) => entry.text === item.requirement) ?? rules.find((rule) => rule.text === item.requirement);
-    let requirement = requirements.find((entry) => entry.id === cited?.id);
-    if (!requirement && cited) {
-      requirement = { ...cited };
-      requirements.push(requirement);
-    }
-    if (!requirement) {
-      requirement = {
-        id: unusedId(
-          "HR",
-          requirements.map((entry) => entry.id)
-        ),
-        text: item.requirement,
-        source: item.source
-      };
-      requirements.push(requirement);
-    }
-    const id2 = unusedId(
-      "H",
-      tests.map((test) => test.id)
-    );
-    tests.push({
-      id: id2,
-      title: item.title.slice(0, 200),
-      requirementIds: [requirement.id],
-      capability: capabilityOf(item.via, capabilities),
-      operations,
-      dependsOn: [],
-      preconditions: [`Make new test data that starts with qa-<runId>-${id2}.`],
-      action: item.action,
-      assertions: [
-        { id: "A1", check: item.check, checkKind: item.deterministic ? "deterministic" : "agent_observation" }
-      ],
-      metadata: {
-        type: "regression",
-        origin: "harvest",
-        basis: item.basis,
-        harvestedFrom: `${explorationId}/${item.from}`,
-        build
-      }
-    });
-    added.push({ test: id2, rule: requirement.id });
-  }
-  return { candidate: { ...base, requirements, tests }, added, skipped: items.length - fresh.length };
-}
-function harvestExploration(store, actor, input) {
-  return write(store, { actor, command: "harvest", subject: input.explorationId, input }, (operationId) => {
-    const row3 = explorationRow(store, input.explorationId);
-    const { request, target } = planRequest(store, row3.plan_id);
-    const items = drafts(store, row3.exploration_id, input.observations);
-    requireCondition(
-      items.length,
-      `Exploration ${row3.exploration_id} has nothing to harvest: no claim that is observed, confirmed, or accepted${input.observations ? ", and no observation with verdict ok and steps" : ""}.`,
-      input.observations ? void 0 : "Add --observations to harvest the observations with verdict ok and steps."
-    );
-    const hasRevision = one(store, "SELECT 1 FROM plan_revisions WHERE plan_id = ?", row3.plan_id);
-    const latest = hasRevision ? planRevision(store, row3.plan_id) : null;
-    const base = latest ? planCandidate(latest.plan) : { requirements: [], tests: [], gaps: [] };
-    const result = harvested(
-      base,
-      planRules(store, row3.plan_id).rules,
-      items,
-      row3.exploration_id,
-      row3.build,
-      target.profile.capabilities,
-      target.profile.allowedOperations
-    );
-    requireCondition(
-      result.added.length,
-      `Each item of ${row3.exploration_id} is harvested already into ${row3.plan_id}.`,
-      `Run checkmate plan show ${row3.plan_id} to read the harvested tests.`
-    );
-    const change = latest ? storeEdit(store, operationId, latest, result.candidate) : storeRevision(
-      store,
-      {
-        contractVersion: "toolkit-2",
-        planId: row3.plan_id,
-        revision: 1,
-        previousRevision: null,
-        target: { targetId: target.profile.targetId, revision: target.revision, sha256: target.sha256 },
-        objective: request.objective,
-        requirements: result.candidate.requirements,
-        tests: result.candidate.tests,
-        gaps: [],
-        assumptions: [],
-        decisions: []
-      },
-      operationId
-    );
-    const stored = storedRules(store, row3.plan_id);
-    if (!latest && stored && stored.origin !== "harvested")
-      saveRules(store, operationId, row3.plan_id, stored.rules, "harvested");
-    const { plan } = planRevision(store, row3.plan_id);
-    const stocked = new Set(plan.tests.flatMap((item) => item.requirementIds));
-    const rules = planRules(store, row3.plan_id).rules;
-    return {
-      reply: {
-        ...change.reply,
-        data: {
-          ...change.reply.data,
-          explorationId: row3.exploration_id,
-          tests: result.added.map((item) => item.test),
-          attached: result.added,
-          skipped: result.skipped,
-          rules: rules.length,
-          rulesWithTests: rules.filter((rule) => stocked.has(rule.id)).length
-        }
-      },
-      subjects: [...change.subjects, `exploration:${row3.exploration_id}`]
-    };
-  });
 }
 
 // plugin/src/cli.ts

@@ -432,7 +432,7 @@ function remember() {
 
 const zones = { nav: '[data-nav]', list: '[data-row]', detail: '[data-sub]', viewer: '[data-vfile]' }
 
-function mark(row, where = level) {
+function highlight(row, where = level) {
 	for (const other of document.querySelectorAll(zones[where])) {
 		other.classList.toggle('hl', other === row)
 		other.tabIndex = other === row ? 0 : -1
@@ -440,6 +440,11 @@ function mark(row, where = level) {
 	if (!row) return
 	fitOptions(row)
 	padTitle(row)
+}
+
+function mark(row, where = level) {
+	highlight(row, where)
+	if (!row) return
 	row.focus({ preventScroll: true })
 	reveal(row)
 }
@@ -2381,13 +2386,16 @@ function replaceRegion(region, fresh, previous) {
 		if (level === 'nav') mark(navRows().find((row) => row.dataset.target === navKey) ?? navRows()[0], 'nav')
 	}
 	const onRow = review || document.activeElement === body || focusedKey === rowKey
-	if (level === 'list' && rowKey && onRow && !current('list')) {
+	const lost = level === 'list' && rowKey && !current('list')
+	const refocus = lost && onRow
+	const place = refocus ? mark : highlight
+	if (lost) {
 		const rows = listRows()
 		const kept = rows.find((row) => keyOf(row) === rowKey)
 		if (kept) {
 			const shift = kept.getBoundingClientRect().top - rowTop
 			if (Math.abs(shift) > 1) window.scrollBy(0, shift)
-			mark(kept, 'list')
+			place(kept, 'list')
 			if ((kept.dataset.ask ?? '') !== rowAsk) {
 				gone = `The request of ${rowLabel} changed.`
 				tell(gone)
@@ -2397,7 +2405,7 @@ function replaceRegion(region, fresh, previous) {
 			const next = [...order.slice(at + 1), ...order.slice(0, at).reverse()]
 				.map((key) => rows.find((row) => keyOf(row) === key))
 				.find(Boolean)
-			mark(next ?? rows[0], 'list')
+			place(next ?? rows[0], 'list')
 			if (review) {
 				const what = rowKey.startsWith('c:')
 					? 'was decided in another session'
@@ -2409,8 +2417,10 @@ function replaceRegion(region, fresh, previous) {
 			}
 		}
 		if (review) remember()
-	} else if (!review && focusedId && document.getElementById(focusedId)) document.getElementById(focusedId).focus()
-	else if (!review && focusedKey) {
+	}
+	if (!refocus && !review && focusedId && document.getElementById(focusedId))
+		document.getElementById(focusedId).focus()
+	else if (!refocus && !review && focusedKey) {
 		const owner = document.querySelector(`[data-key="${CSS.escape(focusedKey)}"]`)
 		const target = owner?.matches('[data-row]') ? owner : owner?.querySelector('a, summary')
 		target?.focus({ preventScroll: true })

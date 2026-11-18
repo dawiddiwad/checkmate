@@ -8,6 +8,7 @@ import { focusedKey, launchWith, openIn, browserTest, stop } from './browser.ts'
 import { endProcessesIn, postAs, waitFor, workspaceWithFake } from './actions.ts'
 import { done, event, launched, openTest, report } from './explorations.ts'
 import { human } from '../scripts/ui-demo.ts'
+import { watchRefreshes } from './refresh.ts'
 
 test.before(() => launchWith(() => {}))
 test.after(stop)
@@ -291,6 +292,39 @@ test(
 		await page.waitForURL(/\/explorations\/x-2$/)
 	}
 )
+
+test('a refresh that lands while a dialog is open keeps the highlight on its row', browserTest, async (t) => {
+	const { page, url, ui, pids, read } = await setup(t, sleeping)
+	const started = (build: string) =>
+		postAs(ui, human, '/plans/checkout/test', { build, level: 'smoke', rules: 'Read Bash' })
+	assert.equal((await started('b1')).status, 303)
+	await waitFor('the test turn sleeps', () => pids('x-1').children.length === 2)
+	assert.equal((await postAs(ui, human, '/explorations/x-1/stop', { reason: 'first' })).status, 303)
+	await waitFor('the stop ends', () =>
+		read((reading) => explorationEvents(reading, 'x-1').some((item) => item.step === 'stop-end'))
+	)
+	assert.equal((await started('b2')).status, 303)
+	await waitFor('the second test sleeps', () => pids('x-2').children.length === 2)
+	const watched = await watchRefreshes(page)
+	await page.goto(url('/activity'))
+	await page.locator('[data-live]', { hasText: 'Live' }).waitFor()
+	await page.waitForFunction(() => document.activeElement?.matches('[data-row]'))
+	await page.keyboard.press('ArrowDown')
+	assert.equal(await focusedKey(page), 'run:x-1')
+	await page.locator('.hl [data-act="test"]').waitFor()
+	await page.keyboard.press('1')
+	await page.locator('dialog[data-act-dialog="test"][open]').waitFor()
+	watched.hold()
+	assert.equal((await postAs(ui, human, '/explorations/x-2/stop', { reason: 'second' })).status, 303)
+	await watched.arrived()
+	await watched.release()
+	assert.equal(await page.locator('.hl[data-row]').getAttribute('data-key'), 'run:x-1')
+	await page.keyboard.press('Escape')
+	await page.keyboard.press('Escape')
+	await page.locator('dialog[open]').waitFor({ state: 'detached' })
+	await page.keyboard.press('1')
+	await page.locator('dialog[data-act-dialog="test"][open]').waitFor()
+})
 
 test(
 	'the failure of a run says what went wrong and what to do next, in the view and in Activity',

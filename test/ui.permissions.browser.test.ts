@@ -57,19 +57,37 @@ test(
 	browserTest,
 	async (t) => {
 		const { page, url, ask, workspace } = await prepare(t)
+		const watched = await watchRefreshes(page)
 		await page.goto(url('/plans/coupons?view=needs&focus=list'))
+		await page.locator('[data-live]', { hasText: 'Live' }).waitFor()
 		await page.waitForFunction(() => document.activeElement?.matches('[data-row]'))
 		await page.keyboard.press('ArrowDown')
 		await page.keyboard.press('ArrowDown')
 		const key = await focusedKey(page)
-		const top = await page.locator('.hl[data-row]').evaluate((row) => row.getBoundingClientRect().top)
+		const topOf = () => page.evaluate(() => document.querySelector('.hl[data-row]')!.getBoundingClientRect().top)
+		const top = await topOf()
+		await page.evaluate(() => {
+			const probe = window as unknown as { tops: number[] }
+			probe.tops = []
+			const frame = () => {
+				probe.tops.push(document.querySelector('.hl[data-row]')?.getBoundingClientRect().top ?? -1)
+				requestAnimationFrame(frame)
+			}
+			frame()
+		})
 		assert.equal(await page.locator('[data-region="permissions-link"]').isHidden(), true)
+		watched.hold()
 		const first = ask('a1')
+		await watched.arrived()
+		await watched.release()
 		await page.locator('[data-panel="needs"] [data-key="perm:x-31/P1"]').waitFor()
 		assert.equal((await count(page))?.trim(), '1 permission')
 		assert.equal(await focusedKey(page), key)
-		const after = await page.locator('.hl[data-row]').evaluate((row) => row.getBoundingClientRect().top)
-		assert(Math.abs(after - top) < 2, `the highlighted row moved from ${top} to ${after}`)
+		const frames = await page.evaluate(() => (window as unknown as { tops: number[] }).tops)
+		assert(
+			frames.every((each) => Math.abs(each - top) < 2),
+			`the highlighted row was at ${top} and then at ${[...new Set(frames.map(Math.round))]}`
+		)
 		const second = ask('a2')
 		await page.locator('[data-panel="needs"] [data-key="perm:x-31/P2"]').waitFor()
 		assert.equal((await count(page))?.trim(), '2 permissions')

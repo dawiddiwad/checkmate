@@ -527,3 +527,41 @@ test(
 		])
 	}
 )
+
+test('a banner that appears above the highlighted row does not move the row on screen', browserTest, async (t) => {
+	const { page, url, ui, pids } = await setup(t, sleeping)
+	await page.setViewportSize({ width: 1280, height: 360 })
+	assert.equal(
+		(await postAs(ui, human, '/plans/checkout/test', { build: 'b1', level: 'smoke', rules: 'Read Bash' })).status,
+		303
+	)
+	await waitFor('the test turn sleeps', () => pids('x-1').children.length === 2)
+	const watched = await watchRefreshes(page)
+	await page.goto(url('/explorations/x-1'))
+	await page.locator('[data-live]', { hasText: 'Live' }).waitFor()
+	await page.locator('[data-key="explorer:a1"]', { hasText: 'Running' }).waitFor()
+	await page.waitForFunction(() => document.activeElement?.matches('.hl[data-row]'))
+	for (let step = 0; step < 12; step++) await page.keyboard.press('ArrowDown')
+	await page.waitForFunction(() => window.scrollY > 0)
+	const topOf = () => page.evaluate(() => document.querySelector('.hl[data-row]')!.getBoundingClientRect().top)
+	const before = await topOf()
+	await page.evaluate(() => {
+		const probe = window as unknown as { tops: number[] }
+		probe.tops = []
+		const frame = () => {
+			probe.tops.push(document.querySelector('.hl[data-row]')?.getBoundingClientRect().top ?? -1)
+			requestAnimationFrame(frame)
+		}
+		frame()
+	})
+	watched.hold()
+	assert.equal((await postAs(ui, human, '/explorations/x-1/stop', { reason: 'first' })).status, 303)
+	await watched.arrived()
+	await watched.release()
+	await page.getByText(`Stopped by ${human}`).waitFor()
+	const tops = await page.evaluate(() => (window as unknown as { tops: number[] }).tops)
+	assert(
+		tops.every((top) => Math.abs(top - before) <= 1),
+		`the highlighted row was at ${before} and then at ${[...new Set(tops.map(Math.round))]}`
+	)
+})

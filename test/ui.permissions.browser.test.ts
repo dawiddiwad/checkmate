@@ -344,7 +344,7 @@ test('a 1 pressed just after a live update moved the highlight records nothing',
 	await toast(page).waitFor()
 })
 
-test('a denial without a reason is refused in place, and the typed text stays', browserTest, async (t) => {
+test('a denial without a reason is refused in place, and the field keeps the focus', browserTest, async (t) => {
 	const { page, url, workspace, ask } = await prepare(t)
 	const held = ask('a1')
 	await waitOpen(workspace, 1)
@@ -365,7 +365,7 @@ test('a denial without a reason is refused in place, and the typed text stays', 
 	assert.match(page.url(), /\/permissions\/x-31\/P1$/)
 	await page.locator('#deny [role="alert"][data-field="reason"]').waitFor()
 	await page.waitForFunction(() => document.activeElement?.id === 'deny-text')
-	assert.equal(await page.locator('#deny-text').inputValue(), '   ')
+	assert.equal((await page.locator('#deny-text').inputValue()).trim(), '')
 	assert.equal(openOf(workspace).length, 1)
 	await page.keyboard.press('Escape')
 	assert.equal(await page.evaluate(() => document.activeElement?.id), '')

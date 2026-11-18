@@ -9,6 +9,7 @@ import { openExploration } from '../plugin/src/explorations.ts'
 import { seedVolume } from '../scripts/ui-volume.ts'
 import { launchWith, open, browserTest, stop, focusedKey } from './browser.ts'
 import { event, launch as launchEvent, launched } from './explorations.ts'
+import { watchRefreshes } from './refresh.ts'
 import {
 	allOf,
 	asking,
@@ -346,6 +347,7 @@ test('a 1 pressed just after a live update moved the highlight records nothing',
 
 test('a denial without a reason is refused in place, and the field keeps the focus', browserTest, async (t) => {
 	const { page, url, workspace, ask } = await prepare(t)
+	const watched = await watchRefreshes(page)
 	const held = ask('a1')
 	await waitOpen(workspace, 1)
 	await page.goto(url('/permissions/x-31/P1'))
@@ -365,14 +367,22 @@ test('a denial without a reason is refused in place, and the field keeps the foc
 	assert.match(page.url(), /\/permissions\/x-31\/P1$/)
 	await page.locator('#deny [role="alert"][data-field="reason"]').waitFor()
 	await page.waitForFunction(() => document.activeElement?.id === 'deny-text')
-	assert.equal((await page.locator('#deny-text').inputValue()).trim(), '')
+	assert.equal(await page.locator('#deny-text').inputValue(), '   ')
 	assert.equal(openOf(workspace).length, 1)
+	watched.hold()
+	const second = ask('a2')
+	await watched.arrived()
+	await watched.release()
+	await page.locator('#deny [role="alert"][data-field="reason"]').waitFor()
+	assert.equal(await page.locator('#deny-text').inputValue(), '   ')
+	assert.equal(await page.evaluate(() => document.activeElement?.id), 'deny-text')
 	await page.keyboard.press('Escape')
 	assert.equal(await page.evaluate(() => document.activeElement?.id), '')
 	await page.locator('#deny-text').fill('Not today.')
 	await page.keyboard.press('Control+Enter')
 	assert.equal((await held).body, plainBody('{"behavior":"deny","message":"Not today."}'))
-	await page.waitForURL(url('/activity'))
+	await page.waitForURL(url('/permissions/x-31/P2'))
+	void second
 })
 
 test('after an answer the next request opens in the record, with no new history entry', browserTest, async (t) => {

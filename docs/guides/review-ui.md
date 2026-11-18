@@ -297,7 +297,7 @@ Each decision records an actor. The UI fills in the same default as the commands
 
 ## Live updates
 
-Each page updates when another process writes to the record, for example a delegated worker. The top bar shows `Live` while the connection is open. A form with your typed text is never replaced. When somebody decides the item that you have open, a notice shows above the form at once, and your text stays. When the UI starts again, the page connects again by itself and gets a new form token, so you can send the form without loading the page again. Without JavaScript, the pages still work, and a reload shows the current state. Click the title of a row to open its record.
+Each page updates when another process writes to the record, for example a delegated worker. The top bar shows `Live` while the connection is open. A form with your typed text, a field that has the focus, an open dialog, and a form that shows a refusal are never replaced. A key that you press while an update is on its way acts on the row that has the highlight when you press it. When somebody decides the item that you have open, a notice shows above the form at once, and your text stays. When the UI starts again, the page connects again by itself and gets a new form token, so you can send the form without loading the page again. Without JavaScript, the pages still work, and a reload shows the current state. Click the title of a row to open its record.
 
 ## Keyboard
 

@@ -80,6 +80,31 @@ test('a saved file of a tester is a target of 40 px at 760, 600, and 400', brows
 	assert.match((await page.locator('a[data-view]', { hasText: 'plan.md' }).first().textContent()) ?? '', /plan\.md/)
 })
 
+test(
+	'each level of the path in the status bar has its full text as the title, also when it is cut',
+	browserTest,
+	async (t) => {
+		const { page, url } = await open(t)
+		for (const width of [760, 600, 400])
+			for (const path of [pages[1], pages[2], '/activity?size=25&page=1']) {
+				await page.setViewportSize({ width, height: 700 })
+				await page.goto(url(path))
+				await page.locator('[data-live]', { hasText: 'Live' }).waitFor()
+				const levels = await page.evaluate(() =>
+					[...document.querySelectorAll('.sb-where li:not([data-more-path])')].map((item) => [
+						item.textContent!.trim(),
+						(item as HTMLElement).title,
+					])
+				)
+				assert(levels.length > 0, `${path} at ${width}`)
+				for (const [text, title] of levels) assert.equal(title, text, `${path} at ${width}`)
+				const more = await page.locator('.sb-where [data-more-path]').count()
+				if (more)
+					assert.match((await page.locator('.sb-where [data-more-path]').getAttribute('title')) ?? '', /›/)
+			}
+	}
+)
+
 const longCommand =
 	`cd /home/user/projects/checkmate-demo/a/very/long/absolute/path/to/the/application/under/test && ${'curl -sS -i -X POST -H "Content-Type: application/json" -d \'{"name":"x"}\' http://127.0.0.1:9911/api/notes?page=1 && '.repeat(3)}echo done`.slice(
 		0,

@@ -392,6 +392,7 @@ function fitPath() {
 	for (const item of list.children) item.hidden = false
 	list.querySelector('[data-more-path]')?.remove()
 	const items = [...list.children]
+	for (const item of items) item.title = item.textContent.trim()
 	const keep = window.matchMedia('(max-width: 760px)').matches ? 1 : 2
 	let cut = 0
 	while (list.scrollWidth > list.clientWidth && items.length - cut > keep) items[cut++].hidden = true

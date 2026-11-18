@@ -497,7 +497,11 @@ function running(store: Store) {
 	])
 }
 
-export const seededProcesses: ChildProcess[] = []
+const seededProcesses: ChildProcess[] = []
+
+export function endSeededProcesses() {
+	for (const seeded of seededProcesses.splice(0)) seeded.kill('SIGKILL')
+}
 
 function processRuns(store: Store) {
 	const gone = spawnSync(process.execPath, ['-e', '']).pid!

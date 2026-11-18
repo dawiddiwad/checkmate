@@ -5,7 +5,7 @@ import { closeStore, openStore } from '../plugin/src/store.ts'
 import { explorationState, running } from '../plugin/src/explorers.ts'
 import { explorationEvents } from '../plugin/src/explorations.ts'
 import { focusedKey, launchWith, openIn, browserTest, stop } from './browser.ts'
-import { postAs, waitFor, workspaceWithFake } from './actions.ts'
+import { endProcessesIn, postAs, waitFor, workspaceWithFake } from './actions.ts'
 import { done, event, launched, openTest, report } from './explorations.ts'
 import { human } from '../scripts/ui-demo.ts'
 
@@ -23,15 +23,12 @@ const focused = (page: Page) =>
 
 async function setup(t: Parameters<typeof workspaceWithFake>[0], replies: Parameters<typeof workspaceWithFake>[1]) {
 	const base = workspaceWithFake(t, replies)
+	t.after(() => endProcessesIn(base.workspace))
 	const opened = await openIn(t, base.workspace, {}, base.env)
-	const processesOf = (explorationId: string) => {
-		const { supervisor, children } = base.pids(explorationId)
+	const alive = () => {
+		const { supervisor, children } = base.pids('x-1')
 		return [supervisor, ...children].filter((pid): pid is number => pid !== undefined)
 	}
-	const alive = () => processesOf('x-1')
-	t.after(() => {
-		for (const pid of ['x-1', 'x-2'].flatMap(processesOf)) if (running(pid)) process.kill(-pid, 'SIGKILL')
-	})
 	return { ...base, ...opened, alive }
 }
 

@@ -8,7 +8,7 @@ import { promisify } from 'node:util'
 import { chromium } from 'playwright-core'
 import { startUi } from '../plugin/src/ui/server.ts'
 import { human, seedDemo } from '../scripts/ui-demo.ts'
-import { seededProcesses } from '../scripts/ui-volume.ts'
+import { endSeededProcesses } from '../scripts/ui-volume.ts'
 import { closeStore, openStore, planDetail } from '../plugin/src/index.ts'
 import { copied, directory, root } from './support.ts'
 
@@ -37,7 +37,7 @@ function bounded(work: Promise<unknown> | undefined) {
 
 export async function stop() {
 	await bounded(browser?.close())
-	for (const seeded of seededProcesses.splice(0)) seeded.kill('SIGKILL')
+	endSeededProcesses()
 	rmSync(template, { recursive: true, force: true })
 }
 

@@ -1,6 +1,6 @@
 import type { TestContext } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdirSync, realpathSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readdirSync, realpathSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { request } from 'node:http'
 import { setTimeout as pause } from 'node:timers/promises'
@@ -99,3 +99,15 @@ export function call(
 }
 
 export const token = (page: string) => /name="csrf" value="([0-9a-f]+)"/.exec(page)![1]
+
+export function endProcessesIn(workspace: string) {
+	for (const entry of readdirSync('/proc').filter((name) => /^[0-9]+$/.test(name))) {
+		try {
+			if (realpathSync(`/proc/${entry}/cwd`) !== workspace) continue
+			process.kill(-Number(entry), 'SIGKILL')
+		} catch {}
+		try {
+			process.kill(Number(entry), 'SIGKILL')
+		} catch {}
+	}
+}

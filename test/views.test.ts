@@ -19,7 +19,7 @@ import {
 	runList,
 } from '../plugin/src/views.ts'
 import { addInstance } from '../plugin/src/targets.ts'
-import { seedVolume } from '../scripts/ui-volume.ts'
+import { endSeededProcesses, seedVolume } from '../scripts/ui-volume.ts'
 import {
 	accept,
 	actor,
@@ -644,6 +644,7 @@ test('the inbox lists an earlier run of a retest chain while status waits for it
 test('needs you puts blocking questions first, then claims by severity, approvals, and other questions', (t) => {
 	const workspace = directory(t)
 	seedVolume(workspace)
+	t.after(endSeededProcesses)
 	const opened = store(t, workspace)
 	const waiting = needsYou(opened)
 	const groups = waiting.items.map((item) => item.group)

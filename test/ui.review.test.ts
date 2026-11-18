@@ -7,12 +7,15 @@ import { startUi } from '../plugin/src/ui/server.ts'
 import { closeStore, openStore } from '../plugin/src/index.ts'
 import { mergedClaims, mergedQuestions, needsYou, operationLog } from '../plugin/src/views.ts'
 import { journal } from '../plugin/src/journal.ts'
-import { seedVolume } from '../scripts/ui-volume.ts'
+import { endSeededProcesses, seedVolume } from '../scripts/ui-volume.ts'
 import { copied, directory } from './support.ts'
 
 const template = directory()
 test.before(() => seedVolume(template))
-test.after(() => rmSync(template, { recursive: true, force: true }))
+test.after(() => {
+	endSeededProcesses()
+	rmSync(template, { recursive: true, force: true })
+})
 
 type Reply = { status: number; location: string | undefined; body: string }
 

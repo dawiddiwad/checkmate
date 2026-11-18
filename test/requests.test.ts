@@ -491,3 +491,16 @@ test('opening a reply marks it read, and the status bar counts unread replies', 
 	assert.match(after, /href="\/requests\/R1"[^>]*data-region="replies-link"[^>]*>1 reply</)
 	assert.match((await call(f.ui, '/requests')).body, /Earlier\s*<span>1<\/span>/)
 })
+
+test('Activity lists requests next to runs with their state and cost', async (t) => {
+	const f = await serverOf(t, { request: { result: 'Done.', cost: 0.31 } })
+	const id = await f.ask('why does D3 fail?')
+	await f.state(id, 'answered')
+	const page = (await call(f.ui, '/activity')).body
+	const row = /<div[^>]*data-key="request:R1"[\s\S]*?<\/div>\s*(?=<div|<\/div>)/.exec(page)?.[0] ?? ''
+	assert.match(row, /data-href="\/requests\/R1"/)
+	assert.match(row, /data-status="answered"/)
+	assert.match(row, /Request · why does D3 fail\?/)
+	assert.match(row, /\$0\.31/)
+	assert.match(page, /Showing 1–1 of 1 entry/)
+})

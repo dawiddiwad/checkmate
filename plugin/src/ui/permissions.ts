@@ -34,8 +34,8 @@ export function asksFor(item: Permission) {
 
 export function askerPath(item: Pick<Permission, 'askerId' | 'fromRequest'>) {
 	return item.fromRequest
-		? { label: 'Request', href: `/requests/${item.askerId}` }
-		: { label: 'Run', href: `/explorations/${item.askerId}` }
+		? { label: 'Request', href: `/requests/${item.askerId}`, fallback: `/requests/${item.askerId}` }
+		: { label: 'Run', href: `/explorations/${item.askerId}`, fallback: '/activity' }
 }
 
 const things: Record<string, string> = {
@@ -317,7 +317,7 @@ export function permissionPage(
 	if (!item) return null
 	const { from } = view
 	const asker = askerPath(item)
-	const back = from ?? asker.href
+	const back = from ?? asker.fallback
 	const moves = item.decision && !view.history
 	const next = nextOpen(store, item)
 	const after = next ? requestHref(next, from) : back

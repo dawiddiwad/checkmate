@@ -7,6 +7,7 @@ import { decideClaim } from '../plugin/src/journal.ts'
 import { answerGap } from '../plugin/src/plans.ts'
 import { launchWith, open, browserTest, stop } from './browser.ts'
 import { asking, bash, openOf, seedHistory, waitOpen } from './permissions.ts'
+import { addRequestActivity, askRequest, recordRequestEvent, setRequestState } from '../plugin/src/requests.ts'
 
 test.before(() => launchWith(seedVolume))
 
@@ -383,6 +384,73 @@ test(
 		assert(details.lines <= 3, `the folder takes ${details.lines} lines`)
 	}
 )
+
+function seedRequests(workspace: string) {
+	const reading = openStore(workspace)
+	try {
+		const context = { planId: 'coupons', record: { kind: 'defect', id: 'k1/D1' } }
+		const long = 'checkout/'.repeat(30)
+		const running = askRequest(reading, 'qa-lead', { text: `why does D3 fail? ${long}`, context })
+		setRequestState(reading, running, 'running')
+		for (const line of ['Read: src/checkout/total.ts', `Bash: node ${long}${long}`, 'Grep: express fee'])
+			addRequestActivity(reading, running, line)
+		const answered = askRequest(reading, 'qa-lead', {
+			text: 'hand over all high defects\nto the cart team',
+			context,
+		})
+		setRequestState(reading, answered, 'answered', {
+			reply: `Handed over 2 defects to the cart team. ${long}\n\n- k1/D1 (high)\n- k1/D2 (high)\n\nD9 stays, it is medium.`,
+			costUsd: 0.31,
+			denials: ['Bash: rm -rf build', `Write: ${long}`],
+			changes: [
+				{
+					text: 'handed over coupons/k1/D1, coupons/k1/D2',
+					command: 'claim handoff',
+					subject: 'coupons',
+					at: '2026-11-18T10:00:00.000Z',
+					href: '/plans/coupons',
+				},
+				{
+					text: 'answered coupons/Q4',
+					command: 'gap answer',
+					subject: 'coupons',
+					at: '2026-11-18T10:00:01.000Z',
+					href: '/plans/coupons',
+				},
+			],
+		})
+		const failed = askRequest(reading, 'qa-lead', { text: 'explain D10', context: { planId: null, record: null } })
+		setRequestState(reading, failed, 'failed', {
+			reason: [
+				'claude ended without a reply.',
+				...Array.from({ length: 20 }, (_, i) => `stack line ${i + 1} ${long}`),
+			].join('\n'),
+		})
+		const unread = askRequest(reading, 'qa-lead', { text: 'and D4?', context })
+		setRequestState(reading, unread, 'answered', { reply: 'D4 passes.', costUsd: 0.04, changes: [] })
+		recordRequestEvent(
+			reading,
+			running,
+			{ step: 'session', status: 'started', detail: { sessionId: 's' } },
+			{ subjects: [] }
+		)
+	} finally {
+		closeStore(reading)
+	}
+}
+
+for (const colorScheme of ['dark', 'light'] as const)
+	test(
+		`the request page and the replies list line up at 1440, 900, and 400 in the ${colorScheme} theme`,
+		{ ...browserTest, timeout: 120_000 },
+		async (t) => {
+			const { page, url, workspace } = await open(t)
+			seedRequests(workspace)
+			const paths = ['/requests', '/requests/R1', '/requests/R2', '/requests/R3', '/requests', '/activity']
+			for (const width of [1440, 900, 400])
+				for (const path of paths) await check(page, url(path), width, colorScheme)
+		}
+	)
 
 const widths = [1440, 1240, 1100, 900, 760, 600, 400]
 

@@ -10,7 +10,7 @@ import { currentConversation, conversationSize } from '../requests.ts'
 import { ago, duration, html, pill, plural, time } from './html.ts'
 import { crumbBar, emptyNotice, heading } from './layout.ts'
 import { listHref, listState, pageTrail, pager } from './lists.ts'
-import { failureOf } from './activity.ts'
+import { failureOf, money } from './activity.ts'
 import { requestHref } from './permissions.ts'
 
 const kinds: Record<string, string> = { c: 'defect', q: 'question', g: 'gap' }
@@ -50,10 +50,6 @@ export function screenContext(store: Store, address: string): RequestContext {
 
 function firstLine(text: string | null) {
 	return (text ?? '').trim().split('\n')[0]
-}
-
-export function money(costUsd: number) {
-	return `$${costUsd.toFixed(2)}`
 }
 
 function blocks(text: string) {

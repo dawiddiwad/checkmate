@@ -18719,11 +18719,11 @@ function statusBar(context, page) {
 		<span class="sb-links">
 			<a
 				class="sb-btn"
-				href="/requests/${context.requests.running ?? ""}"
+				href="${context.requests.running ? `/requests/${context.requests.running}` : "/requests"}"
 				title="The request that runs now"
 				data-region="request-link"
 				${context.requests.running ? "" : html2`hidden`}
-				>Request ${context.requests.running ?? ""} · running</a
+				>${context.requests.running ? html2`<span>Request ${context.requests.running}<span class="sb-long"> · running</span></span>` : ""}</a
 			>
 			<a
 				class="sb-btn att"
@@ -18737,9 +18737,10 @@ function statusBar(context, page) {
 				class="sb-btn att"
 				href="${context.requests.unread === 1 ? `/requests/${context.requests.firstUnread}` : "/requests"}"
 				title="Replies to your requests that you did not read"
+				aria-label="${context.requests.unread} ${context.requests.unread === 1 ? "reply" : "replies"} not read"
 				data-region="replies-link"
 				${context.requests.unread ? "" : html2`hidden`}
-				>${context.requests.unread} ${context.requests.unread === 1 ? "reply" : "replies"}</a
+				>${context.requests.unread ? html2`<span>${context.requests.unread}<span class="sb-long"> ${context.requests.unread === 1 ? "reply" : "replies"}</span></span>` : ""}</a
 			>
 			<a
 				class="sb-btn att"
@@ -18799,7 +18800,8 @@ var dialogs = html2`<dialog class="sp-keys" data-keys aria-labelledby="keys-titl
 		<p class="sp-find-none" data-find-asking role="status" hidden></p>
 		<p class="sp-find-none" data-find-error role="alert" hidden></p>
 		<div class="sp-foot">
-			<span><kbd>${glyph("\u2191")}</kbd><kbd>${glyph("\u2193")}</kbd>Choose</span><span><kbd>Enter</kbd>Go</span
+			<span><kbd>${glyph("\u2191")}</kbd><kbd>${glyph("\u2193")}</kbd>Choose</span
+			><span><kbd>Enter</kbd><span data-find-enter>Go</span></span
 			><span><kbd>Esc</kbd>Close</span>
 		</div>
 		<p class="sp-find-note" data-find-note>
@@ -19572,7 +19574,7 @@ function asksFor(item) {
   return line ? `${verb}: ${line}` : verb;
 }
 function askerPath(item) {
-  return item.fromRequest ? { label: "Request", href: `/requests/${item.askerId}` } : { label: "Run", href: `/explorations/${item.askerId}` };
+  return item.fromRequest ? { label: "Request", href: `/requests/${item.askerId}`, fallback: `/requests/${item.askerId}` } : { label: "Run", href: `/explorations/${item.askerId}`, fallback: "/activity" };
 }
 var things = {
   Bash: "run a command",
@@ -19790,7 +19792,7 @@ function permissionPage(store, context, askerId, requestId, view, refusal) {
   if (!item) return null;
   const { from } = view;
   const asker = askerPath(item);
-  const back = from ?? asker.href;
+  const back = from ?? asker.fallback;
   const moves = item.decision && !view.history;
   const next = nextOpen(store, item);
   const after = next ? requestHref(next, from) : back;
@@ -20729,7 +20731,7 @@ var spec = {
   sort: "started",
   direction: "desc",
   filters: [],
-  none: ["No run yet.", "Start one with Test build\u2026 in a plan."]
+  none: ["No run or request yet.", "Start a test with Test build\u2026 in a plan, or press / and ask Checkmate."]
 };
 function sentence(run2) {
   return run2.outcome;
@@ -20792,35 +20794,79 @@ function join11(items, separator) {
   const shown2 = items.filter((item) => item !== null);
   return html2`${shown2.map((item, index2) => index2 ? html2`${separator}${item}` : item)}`;
 }
+function requestRow(request, n, now) {
+  const start = Date.parse(request.startedAt ?? request.askedAt);
+  const end = request.endedAt ? Date.parse(request.endedAt) : now;
+  const spent = isEnded(request) ? duration(Math.max(0, end - start)) : null;
+  const meta2 = [
+    request.asker,
+    time(request.askedAt),
+    request.state === "running" ? html2`<span data-since="${request.startedAt}">${duration(Math.max(0, now - start))}</span>` : spent,
+    request.costUsd === null ? null : money(request.costUsd)
+  ];
+  const metaText2 = [request.asker, request.askedAt, spent, request.costUsd === null ? null : money(request.costUsd)].filter(Boolean).join(" \xB7 ");
+  const title = `Request \xB7 ${request.text.trim().split("\n")[0]}`;
+  return html2`<div
+		class="sp-row"
+		role="option"
+		aria-selected="false"
+		tabindex="-1"
+		id="request-row-${n}"
+		data-row
+		data-key="request:${request.id}"
+		data-href="/requests/${request.id}"
+		data-label="${request.id}"
+	>
+		<span class="sp-c-cb"></span>
+		<span class="sp-c-tag">${pill(request.state)}</span>
+		<span class="sp-c-id" title="${request.id}">${request.id}</span>
+		<span class="sp-c-title ell" title="${title}">${title}</span>
+		<span class="sp-c-meta ell" title="${metaText2}">${join11(meta2, " \xB7 ")}</span>
+	</div>`;
+}
 function activityPage(store, context, params, defaults) {
   const state = listState(params, spec);
   const runs = allRuns(store);
-  const lastPage = Math.max(1, Math.ceil(runs.length / state.size));
+  const entries = [
+    ...runs.map((run2) => ({
+      at: run2.startedAt,
+      running: run2.running,
+      render: (n2, now2) => row(run2, n2, now2),
+      run: run2
+    })),
+    ...allRequests(store).map((request) => ({
+      at: request.askedAt,
+      running: request.state === "running" || request.state === "waiting",
+      render: (n2, now2) => requestRow(request, n2, now2),
+      run: null
+    }))
+  ].sort((a, b) => Number(b.running) - Number(a.running) || b.at.localeCompare(a.at));
+  const lastPage = Math.max(1, Math.ceil(entries.length / state.size));
   const shown2 = { ...state, page: Math.min(state.page, lastPage) };
-  const page = { rows: runs.slice((shown2.page - 1) * shown2.size, shown2.page * shown2.size) };
+  const page = { rows: entries.slice((shown2.page - 1) * shown2.size, shown2.page * shown2.size) };
   const now = Date.now();
-  const running3 = page.rows.filter((run2) => run2.running);
-  const earlier = page.rows.filter((run2) => !run2.running);
+  const running3 = page.rows.filter((entry) => entry.running);
+  const earlier = page.rows.filter((entry) => !entry.running);
   let n = 0;
   const group = (label, items) => items.length ? html2`<div class="sp-gh" role="presentation">${label} <span>${items.length}</span></div>
-					${items.map((run2) => row(run2, n++, now))}` : "";
-  const total = runs.length;
+					${items.map((entry) => entry.render(n++, now))}` : "";
+  const total = entries.length;
   const first = total ? (shown2.page - 1) * shown2.size + 1 : 0;
   const last = Math.min(total, shown2.page * shown2.size);
   const dialogs2 = html2`${testDialog(context, null, { build: "", level: "normal", since: "", until: "", repo: "" }, defaults.build)}
-	${page.rows.filter((run2) => run2.stoppable).map((run2) => stopDialog(context, run2))}`;
+	${page.rows.flatMap((entry) => entry.run?.stoppable ? [stopDialog(context, entry.run)] : [])}`;
   return {
     title: "Activity",
     section: "activity",
     subjects: ["*"],
     address: listHref(spec, shown2),
     ...pageTrail(spec, shown2, total, "Activity"),
-    body: html2`${heading("Activity", "Every test and follow-up of every plan. Open a run to watch it, or test again.")}
+    body: html2`${heading("Activity", "Every test and follow-up of every plan, and every request. Open one to watch it, or test again.")}
 			<div data-region="activity" data-list-region>
 				<p class="list-count" data-list-count role="status">
-					${total ? `Showing ${first}\u2013${last} of ${plural(total, "run")}` : ""}
+					${total ? `Showing ${first}\u2013${last} of ${plural(total, "entry", "entries")}` : ""}
 				</p>
-				${total ? html2`<div class="sp-list activity" role="listbox" aria-label="Runs" data-list>
+				${total ? html2`<div class="sp-list activity" role="listbox" aria-label="Runs and requests" data-list>
 									${group("Running now", running3)}${group("Earlier", earlier)}
 								</div>
 								${pager(spec, shown2, total)}` : emptyNotice(spec.none[0], spec.none[1])}
@@ -24805,9 +24851,6 @@ function screenContext(store, address) {
 function firstLine(text) {
   return (text ?? "").trim().split("\n")[0];
 }
-function money2(costUsd) {
-  return `$${costUsd.toFixed(2)}`;
-}
 function blocks(text) {
   return text.replace(/\r\n?/g, "\n").trim().split(/\n{2,}/).map((block) => {
     const lines2 = block.split("\n");
@@ -24978,7 +25021,7 @@ function requestPage2(store, context, requestId) {
 						</section>` : ""}
 			${request.state === "stopped" || request.state === "interrupted" ? html2`<p class="banner info" role="status" data-key="state">${request.reason ?? ""}</p>` : ""}
 			${ended ? html2`<p class="help" data-key="took">
-							${request.costUsd === null ? "" : `Cost ${money2(request.costUsd)}. `}Took
+							${request.costUsd === null ? "" : `Cost ${money(request.costUsd)}. `}Took
 							${elapsed(request, now)}.
 						</p>` : ""}
 			${ended && request.denials.length ? html2`<p class="help" data-key="denials">
@@ -25015,7 +25058,7 @@ var spec2 = {
 };
 function row2(request, n) {
   const reply = request.state === "answered" ? firstLine(request.reply) : firstLine(request.reason) || "";
-  const meta2 = [request.asker, request.askedAt, request.costUsd === null ? null : money2(request.costUsd)].filter(Boolean).join(" \xB7 ");
+  const meta2 = [request.asker, request.askedAt, request.costUsd === null ? null : money(request.costUsd)].filter(Boolean).join(" \xB7 ");
   const title = `${firstLine(request.text)}${reply ? ` \xB7 ${reply}` : ""}`;
   return html2`<div
 		class="sp-row"
@@ -25035,7 +25078,7 @@ function row2(request, n) {
 ${reply}` : ""}">${title}</span>
 		<span class="sp-c-meta ell" title="${meta2}"
 			>${request.asker} ·
-			${time(request.askedAt)}${request.costUsd === null ? "" : ` \xB7 ${money2(request.costUsd)}`}</span
+			${time(request.askedAt)}${request.costUsd === null ? "" : ` \xB7 ${money(request.costUsd)}`}</span
 		>
 	</div>`;
 }
@@ -26526,9 +26569,9 @@ data: ${matched.join(",") || "*"}
     });
     const pages = [
       { kind: "page", id: "Activity", title: "Tests and follow-ups of all plans", href: "/activity" },
-      { kind: "page", id: "Replies", title: "Requests that you asked and their replies", href: "/requests" },
       { kind: "page", id: "New change", title: "Give a ticket and start the first test", href: "/new" },
-      { kind: "page", id: "New target", title: "Set up the application to test", href: "/setup" }
+      { kind: "page", id: "New target", title: "Set up the application to test", href: "/setup" },
+      { kind: "page", id: "Replies", title: "Requests that you asked and their replies", href: "/requests" }
     ].filter((entry) => matches(`${entry.id} ${entry.title} ${entry.kind}`));
     const all2 = [...pages, ...found];
     const shown2 = 12;

@@ -13,6 +13,8 @@ import { duration, glyph, html, pill, plural, time } from './html.ts'
 import { emptyNotice, heading } from './layout.ts'
 import { listHref, listState, pageTrail, pager } from './lists.ts'
 import { stopDialog, stopOption, testDialog, testAgainOption } from './actions.ts'
+import type { RequestRecord } from '../requests.ts'
+import { allRequests, isEnded } from '../requests.ts'
 
 const liveStates = ['starting', 'testing', 'recording', 'verifying', 'following']
 
@@ -249,7 +251,7 @@ const spec: ListSpec = {
 	sort: 'started',
 	direction: 'desc',
 	filters: [],
-	none: ['No run yet.', 'Start one with Test build… in a plan.'],
+	none: ['No run or request yet.', 'Start a test with Test build… in a plan, or press / and ask Checkmate.'],
 }
 
 function sentence(run: Run) {
@@ -322,6 +324,43 @@ function join(items: Array<Html | string | null>, separator: string): Html {
 	return html`${shown.map((item, index) => (index ? html`${separator}${item}` : item))}`
 }
 
+function requestRow(request: RequestRecord, n: number, now: number) {
+	const start = Date.parse(request.startedAt ?? request.askedAt)
+	const end = request.endedAt ? Date.parse(request.endedAt) : now
+	const spent = isEnded(request) ? duration(Math.max(0, end - start)) : null
+	const meta = [
+		request.asker,
+		time(request.askedAt),
+		request.state === 'running'
+			? html`<span data-since="${request.startedAt}">${duration(Math.max(0, now - start))}</span>`
+			: spent,
+		request.costUsd === null ? null : money(request.costUsd),
+	]
+	const metaText = [request.asker, request.askedAt, spent, request.costUsd === null ? null : money(request.costUsd)]
+		.filter(Boolean)
+		.join(' · ')
+	const title = `Request · ${request.text.trim().split('\n')[0]}`
+	return html`<div
+		class="sp-row"
+		role="option"
+		aria-selected="false"
+		tabindex="-1"
+		id="request-row-${n}"
+		data-row
+		data-key="request:${request.id}"
+		data-href="/requests/${request.id}"
+		data-label="${request.id}"
+	>
+		<span class="sp-c-cb"></span>
+		<span class="sp-c-tag">${pill(request.state)}</span>
+		<span class="sp-c-id" title="${request.id}">${request.id}</span>
+		<span class="sp-c-title ell" title="${title}">${title}</span>
+		<span class="sp-c-meta ell" title="${metaText}">${join(meta, ' · ')}</span>
+	</div>`
+}
+
+type Entry = { at: string; running: boolean; render: (n: number, now: number) => Html; run: Run | null }
+
 export function activityPage(
 	store: Store,
 	context: Context,
@@ -330,37 +369,51 @@ export function activityPage(
 ): Page {
 	const state = listState(params, spec)
 	const runs = allRuns(store)
-	const lastPage = Math.max(1, Math.ceil(runs.length / state.size))
+	const entries: Entry[] = [
+		...runs.map((run): Entry => ({
+			at: run.startedAt,
+			running: run.running,
+			render: (n, now) => row(run, n, now),
+			run,
+		})),
+		...allRequests(store).map((request): Entry => ({
+			at: request.askedAt,
+			running: request.state === 'running' || request.state === 'waiting',
+			render: (n, now) => requestRow(request, n, now),
+			run: null,
+		})),
+	].sort((a, b) => Number(b.running) - Number(a.running) || b.at.localeCompare(a.at))
+	const lastPage = Math.max(1, Math.ceil(entries.length / state.size))
 	const shown = { ...state, page: Math.min(state.page, lastPage) }
-	const page = { rows: runs.slice((shown.page - 1) * shown.size, shown.page * shown.size) }
+	const page = { rows: entries.slice((shown.page - 1) * shown.size, shown.page * shown.size) }
 	const now = Date.now()
-	const running = page.rows.filter((run) => run.running)
-	const earlier = page.rows.filter((run) => !run.running)
+	const running = page.rows.filter((entry) => entry.running)
+	const earlier = page.rows.filter((entry) => !entry.running)
 	let n = 0
-	const group = (label: string, items: Run[]) =>
+	const group = (label: string, items: Entry[]) =>
 		items.length
 			? html`<div class="sp-gh" role="presentation">${label} <span>${items.length}</span></div>
-					${items.map((run) => row(run, n++, now))}`
+					${items.map((entry) => entry.render(n++, now))}`
 			: ''
-	const total = runs.length
+	const total = entries.length
 	const first = total ? (shown.page - 1) * shown.size + 1 : 0
 	const last = Math.min(total, shown.page * shown.size)
 	const dialogs = html`${testDialog(context, null, { build: '', level: 'normal', since: '', until: '', repo: '' }, defaults.build)}
-	${page.rows.filter((run) => run.stoppable).map((run) => stopDialog(context, run))}`
+	${page.rows.flatMap((entry) => (entry.run?.stoppable ? [stopDialog(context, entry.run)] : []))}`
 	return {
 		title: 'Activity',
 		section: 'activity',
 		subjects: ['*'],
 		address: listHref(spec, shown),
 		...pageTrail(spec, shown, total, 'Activity'),
-		body: html`${heading('Activity', 'Every test and follow-up of every plan. Open a run to watch it, or test again.')}
+		body: html`${heading('Activity', 'Every test and follow-up of every plan, and every request. Open one to watch it, or test again.')}
 			<div data-region="activity" data-list-region>
 				<p class="list-count" data-list-count role="status">
-					${total ? `Showing ${first}–${last} of ${plural(total, 'run')}` : ''}
+					${total ? `Showing ${first}–${last} of ${plural(total, 'entry', 'entries')}` : ''}
 				</p>
 				${
 					total
-						? html`<div class="sp-list activity" role="listbox" aria-label="Runs" data-list>
+						? html`<div class="sp-list activity" role="listbox" aria-label="Runs and requests" data-list>
 									${group('Running now', running)}${group('Earlier', earlier)}
 								</div>
 								${pager(spec, shown, total)}`

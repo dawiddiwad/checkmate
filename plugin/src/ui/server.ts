@@ -932,9 +932,9 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		})
 		const pages = [
 			{ kind: 'page', id: 'Activity', title: 'Tests and follow-ups of all plans', href: '/activity' },
-			{ kind: 'page', id: 'Replies', title: 'Requests that you asked and their replies', href: '/requests' },
 			{ kind: 'page', id: 'New change', title: 'Give a ticket and start the first test', href: '/new' },
 			{ kind: 'page', id: 'New target', title: 'Set up the application to test', href: '/setup' },
+			{ kind: 'page', id: 'Replies', title: 'Requests that you asked and their replies', href: '/requests' },
 		].filter((entry) => matches(`${entry.id} ${entry.title} ${entry.kind}`))
 		const all = [...pages, ...found]
 		const shown = 12

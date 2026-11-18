@@ -99,11 +99,11 @@ function statusBar(context: Context, page: Page) {
 		<span class="sb-links">
 			<a
 				class="sb-btn"
-				href="/requests/${context.requests.running ?? ''}"
+				href="${context.requests.running ? `/requests/${context.requests.running}` : '/requests'}"
 				title="The request that runs now"
 				data-region="request-link"
 				${context.requests.running ? '' : html`hidden`}
-				>Request ${context.requests.running ?? ''} · running</a
+				>${context.requests.running ? html`<span>Request ${context.requests.running}<span class="sb-long"> · running</span></span>` : ''}</a
 			>
 			<a
 				class="sb-btn att"
@@ -117,9 +117,10 @@ function statusBar(context: Context, page: Page) {
 				class="sb-btn att"
 				href="${context.requests.unread === 1 ? `/requests/${context.requests.firstUnread}` : '/requests'}"
 				title="Replies to your requests that you did not read"
+				aria-label="${context.requests.unread} ${context.requests.unread === 1 ? 'reply' : 'replies'} not read"
 				data-region="replies-link"
 				${context.requests.unread ? '' : html`hidden`}
-				>${context.requests.unread} ${context.requests.unread === 1 ? 'reply' : 'replies'}</a
+				>${context.requests.unread ? html`<span>${context.requests.unread}<span class="sb-long"> ${context.requests.unread === 1 ? 'reply' : 'replies'}</span></span>` : ''}</a
 			>
 			<a
 				class="sb-btn att"
@@ -180,7 +181,8 @@ const dialogs = html`<dialog class="sp-keys" data-keys aria-labelledby="keys-tit
 		<p class="sp-find-none" data-find-asking role="status" hidden></p>
 		<p class="sp-find-none" data-find-error role="alert" hidden></p>
 		<div class="sp-foot">
-			<span><kbd>${glyph('↑')}</kbd><kbd>${glyph('↓')}</kbd>Choose</span><span><kbd>Enter</kbd>Go</span
+			<span><kbd>${glyph('↑')}</kbd><kbd>${glyph('↓')}</kbd>Choose</span
+			><span><kbd>Enter</kbd><span data-find-enter>Go</span></span
 			><span><kbd>Esc</kbd>Close</span>
 		</div>
 		<p class="sp-find-note" data-find-note>

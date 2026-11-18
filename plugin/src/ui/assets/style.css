@@ -3011,6 +3011,12 @@ details.fold[open] > summary::before {
 	.brand > span:last-child {
 		display: none;
 	}
+	.sb-links {
+		gap: 4px;
+	}
+	.sb-links .sb-btn {
+		padding: 0 6px;
+	}
 	.sb-all {
 		position: absolute;
 		width: 1px;
@@ -3369,6 +3375,68 @@ main a:active {
 		align-items: center;
 	}
 	.sp-asks a {
+		min-height: 40px;
+	}
+}
+.sp-find-note {
+	margin: 0;
+	padding: 8px 16px 12px;
+	border-top: 1px solid var(--hair);
+	font: 400 12px/16px var(--font-body);
+	color: var(--muted);
+}
+.sp-find-none[role='alert'] {
+	color: var(--ink);
+	font-weight: 600;
+}
+.sp-reply {
+	max-width: 72ch;
+	font: 400 14px/22px var(--font-body);
+	overflow-wrap: anywhere;
+}
+.sp-reply p,
+.sp-reply ul,
+.sp-reply ol {
+	margin: 0 0 12px;
+}
+.sp-reply ul,
+.sp-reply ol {
+	padding-left: 24px;
+}
+.sp-asked {
+	margin: 0;
+	white-space: pre-wrap;
+}
+.sp-activity {
+	margin: 0;
+	padding: 0;
+	list-style: none;
+	border: 1px solid var(--hair);
+	background: var(--surface-2);
+	font: 400 13px/20px var(--font-mono);
+}
+.sp-activity li {
+	padding: 4px 12px;
+}
+.sp-activity li + li {
+	border-top: 1px solid var(--hair);
+}
+.sp-changes {
+	margin: 0;
+	padding-left: 24px;
+	font: 400 14px/22px var(--font-body);
+}
+@media (max-width: 760px) {
+	.sp-find li a {
+		height: 40px;
+	}
+}
+@media (max-width: 760px) {
+	.sp-changes a,
+	.sp-record .help a,
+	.sp-record .banner a {
+		display: inline-flex;
+		align-items: center;
 		min-height: 40px;
 	}
 }

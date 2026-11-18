@@ -27,7 +27,7 @@ Each page has the same four parts:
 - The top bar: `Checkmate` opens the home page. At the right are the live state, your name, and the switch for light and dark.
 - The navigator, at the left on the pages of a plan.
 - The centre: the list or the page.
-- The status bar, at the bottom. It shows the path to where you are, for example `Plans › checkout › Needs you › a1/D1`, the buttons `Find`, `Keys`, `Activity`, `Runs`, `Log`, and `Settings`, and the keys that work where you are. `Activity` shows `Activity · <n> running` while <n> tests run. On a narrow window, `More` holds `Activity`, `Runs`, `Log`, and `Settings`. On a window of 600 pixels or less, `More` also holds `Find`. When tester requests wait, `<n> permissions` shows first. When items wait for you, `<n> need you · all plans` follows it. It counts the items of all plans. When the keys do not fit, the status bar removes the least important keys first. `? Keys` always shows. A message in the status bar comes before the keys: the keys make room for it, and a message that still does not fit shows in full in a strip above the status bar.
+- The status bar, at the bottom. It shows the path to where you are, for example `Plans › checkout › Needs you › a1/D1`, the buttons `Find`, `Keys`, `Activity`, `Runs`, `Log`, and `Settings`, and the keys that work where you are. `Activity` shows `Activity · <n> running` while <n> tests run. On a narrow window, `More` holds `Activity`, `Runs`, `Log`, and `Settings`. On a window of 600 pixels or less, `More` also holds `Find`. While a request runs, `Request R3 · running` shows first. When tester or request permission requests wait, `<n> permissions` follows it. When replies are not read, `<n> reply` or `<n> replies` follows that. When items wait for you, `<n> need you · all plans` comes next. It counts the items of all plans. When the keys do not fit, the status bar removes the least important keys first. `? Keys` always shows. A message in the status bar comes before the keys: the keys make room for it, and a message that still does not fit shows in full in a strip above the status bar.
 
 On a window of 900 pixels or less, the navigator is one row of chips. The row stays under the top bar when you scroll, and each mark shows its build, for example `B1`. On a window of 760 pixels or less, each row has two lines: the badge, the ID, and the title, then the short note. On the highlighted row, its options replace the note. The rows do not change height when the highlight moves. On a window of 760 pixels or less, a record covers the list, and each button is at least 40 pixels high. The status bar keeps the last level of the path, `Find`, `Keys`, and `More`.
 
@@ -73,7 +73,7 @@ Select rows with their boxes, with `Space`, or with `Shift` `↑` `↓`. A strip
 
 ### Find
 
-`/`, `Ctrl` `K`, or `Find` in the status bar opens the find bar. Type words to find plans, claims, and questions of all plans that contain each word. The bar shows the first 12 results and the number of other results. `↑` and `↓` move in the results, `Enter` opens the highlighted result and does nothing while the query is empty, `←` and `→` move the caret, and `Esc` closes the bar.
+`/`, `Ctrl` `K`, or `Find` in the status bar opens the find bar. Type words to find plans, claims, and questions of all plans that contain each word. The bar shows the first 12 results and the number of other results. `↑` and `↓` move in the results, `Enter` opens the highlighted result and does nothing while the query is empty, `←` and `→` move the caret, and `Esc` closes the bar. When the text has a word, the last row is `Ask Checkmate: <text>`. It is the highlighted row when nothing matches. See [Requests](#requests).
 
 ### A record
 
@@ -181,7 +181,7 @@ Open requests show in these places:
 
 `→` or `Enter` on a request row opens the request record. A row has up to six options, so it shows `1 Allow once` and `→ more`. Press `1` to allow the request once without opening it. When the highlight moved because of a live update, `1` records nothing and says so. Press `1` again to act on the new row.
 
-**The request record.** `/permissions/<exploration>/<request>` shows what the tester asks, in full: the tool, the command or the path, for `Write` and `Edit` the first 40 lines of the content or of the change, the folder, who asks, since when, the run, and the plan. The options follow, one on each line and numbered. The destructive option is last. An option that does not apply is not shown, and the numbers have no gap.
+**The request record.** `/permissions/<exploration>/<request>` has one short heading, for example `Tester a1 asks to run a command`, `Tester a2 asks to write a file`, or `The recorder of a1 asks to read a file`. Under it is what the tester asks, in full, once: the command or the path, and for `Write` and `Edit` the first 40 lines of the content or of the change. The options follow directly, one on each line and numbered. So options 1 and 2 are in view on a window of 1440 by 900 pixels, also for a long command. The destructive option is last. An option that does not apply is not shown, and the numbers have no gap. Each option, also `Deny…`, is a button with its number. After the options, the details show in a list of two columns: the tool, the folder, who asks, since when, the run, and the plan. The folder breaks only at a `/`.
 
 1. `Allow once`. Answers yes. Checkmate stores no rule.
 2. `Allow this command for this test`. Shows only when Claude Code suggests a rule. Answers yes, and answers every later request with the same rule, from any tester of the run. Checkmate stores the rule in the record of the run.
@@ -202,6 +202,26 @@ A rule for this test answers the same request of every other tester of the run a
 
 `/permissions` opens the first open request, or `Activity` when none is open.
 
+A request of the find bar asks in the same way. Its record says `Request R3 asks to run a command`. The options are the same six. `for this test` reads `for this conversation`. A rule lasts for the later requests of the same conversation, and ends when you start a new conversation. `Stop the request…` stops the request. A request has no `Run` in its details: it shows `Request` with a link.
+
+### Requests
+
+A request is a free-form task for Claude Code, for example `why does D3 fail?` or `hand over all high defects`. Press `/`, type the text, and choose the last row, `Ask Checkmate: <text>`. `Enter` sends it. The bar shows `Asking… R3`, and `Enter` does nothing more until you close the bar. `Esc` closes the bar, and the request goes on. The find bar says that asking starts Claude Code on this computer.
+
+The request runs in your own Claude Code, in the workspace folder. It has your login, your settings, and all your tools. Checkmate removes no tool and sets no model, unless you set `Model for requests` in Settings. A tool that needs an approval asks you in the UI, as a tester does. The request also gets the Checkmate plugin of the UI, and a short instruction: the reply shows in a narrow pane, and records change with the `checkmate` command. The text of the request, and one line with the plan and the record that were on screen, go to Claude Code. Nothing that you type goes on a command line.
+
+One request runs at a time. A second request waits and starts when the first ends. All requests of a workspace share one conversation, so a later request knows the earlier ones. `New conversation` starts a new one.
+
+- **The request page.** `/requests/<R>` shows your question and its context. While the request runs, it shows the lines of activity as they come, the newest last, the time that passed, and `1 Stop the request…`. A dialog asks first. When a permission request of the request is open, the page says `This request waits for you: a permission request` and links to it. When the request ended, the page shows the reply as plain paragraphs and lists, the cost, the time it took, the records that the request changed (each is a link), and the tool calls that Claude Code denied. The options are `1 Ask a follow-up` (the find bar, in ask mode), `2 Ask again` (the same text, a new request), and `3 New conversation`. A request that failed shows the reason and `1 Ask again`. Opening a reply marks it read. Text from the model is always shown as text, never as HTML.
+- **Replies.** `/requests` lists the requests. The requests that you did not read come first, then the others, newest first. A row has the state, the ID, the first line of the question, the first line of the reply, who asked, when, and the cost. `→` opens the request. `←` and Back return to the list. The list pages like `Log`.
+- **The status bar.** `Request R3 · running` opens the running request. `1 reply` opens the reply, and `<n> replies` opens the list.
+- **Activity.** The list shows requests next to the runs, with their state and cost.
+- **Stop.** `Stop the request…` sends `SIGINT` to Claude Code. After 5 seconds it sends `SIGTERM`, and after 1.5 more seconds `SIGKILL`. The state is `stopped`, and the conversation goes on with the next request. When the UI stops, the running request ends in the same way with the state `interrupted`. A request that waits when the UI stops is `interrupted` too.
+
+The states are `waiting`, `running`, `answered`, `failed`, `stopped`, and `interrupted`. A request fails when Claude Code is not found, is not signed in, prints a line that is not JSON, or ends without a reply. The page gives the sentence and the last 20 lines of the messages of Claude Code.
+
+Each change that the request makes has the actor `<your name> via request R3`. The Log shows it. When the request ends, the page lists the changes of that actor, for example `handed over a1/D1, a1/D2` and `answered a1/Q4`.
+
 ### Plan
 
 `Plan @<revision>` opens the plan document, `/plans/<planId>@<revision>`. It shows the approval, the loop state, the one next step, and the sections `Overview`, `Claims`, `Questions`, `Explorations`, `Tests`, `Runs`, and `History`. A section opens by itself when it needs you. Approve or reject the revision in the panel. `Export` downloads the plan as HTML, Markdown, or JSON. A plan without a revision shows its request at `/plans/<planId>/request`.
@@ -219,6 +239,8 @@ The run list and the operation log. They page, sort, and filter. The address kee
 ### Settings
 
 `Settings` in the status bar opens `Targets`. `Claude Code` shows the path of `claude`, or says that no `claude` is on `PATH`. It also shows the default model alias of each test level. The page makes no call to Claude Code. The host wins: a test that you start from a shell with `--claude-arg --model --claude-arg <model>` uses that model. A test that you start in the UI uses the alias of its level.
+
+`Requests` has `Model for requests`, an alias or an ID that Claude Code gets with `--model`. Empty means the model that Claude Code chooses by itself, and is the default. It also says when the conversation started and how many requests it has, and has `New conversation`.
 
 `Tool rules of testers` has the rules that the `Test build…` dialog and the new-change form start with. A rule lets a tester use a tool without asking you, for example `Read` or `Bash`. Write one rule for each word. The engine needs at least one rule today. Checkmate keeps the setting in the record, with the name and the time of the change, and the Log shows it as `setting set`. With the rule `Bash`, testers run commands without asking. Without it, each command asks you in the UI, and a tester waits up to 10 minutes for the answer. The page also says whether testers that start now can ask you for a permission in the UI. They can when `.checkmate/ui.json` names a UI that runs.
 
@@ -267,7 +289,7 @@ One table drives the keys, the hints in the status bar, and the list that `?` sh
 | `Space`         | Select or clear the highlighted record. On a page without records, scroll the page.                                                                                                             |
 | `Shift` `↑` `↓` | Select the records on the way from the highlighted record. `Shift` `↑` after `Shift` `↓` makes the range smaller.                                                                               |
 | `0`             | Undo the last hand-over while its note shows. At other times `0` does nothing.                                                                                                                  |
-| `/` `Ctrl` `K`  | Find a plan, a defect, or a question.                                                                                                                                                           |
+| `/` `Ctrl` `K`  | Find a plan, a defect, or a question, or ask Checkmate.                                                                                                                                         |
 | `?`             | Show the keys.                                                                                                                                                                                  |
 
 In a text field, typing types. `Enter` sends a one-line answer, a reason, or a name. `Shift` `Enter` starts a new line. `Ctrl` `Enter` sends a larger form, for example a decision on the plan page. `Esc` leaves the field and keeps the text. A number key acts on the row that has the highlight when you press it.

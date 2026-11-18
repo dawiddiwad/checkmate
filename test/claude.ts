@@ -123,7 +123,7 @@ async function streamRequest(reply) {
 		process.on('SIGINT', () => {})
 		process.on('SIGTERM', () => {})
 	}
-	if (reply === '!hang' || reply === '!ignore-interrupt' || reply === '!stubborn') {
+	if (spec.hang || reply === '!hang' || reply === '!ignore-interrupt' || reply === '!stubborn') {
 		appendFileSync(process.env.FAKE_CLAUDE_ANSWERS, 'hanging\\n')
 		await new Promise((resolve) => setTimeout(resolve, 60000))
 	}

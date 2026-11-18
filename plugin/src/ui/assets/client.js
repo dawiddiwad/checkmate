@@ -257,7 +257,7 @@ function tell(text) {
 }
 
 const review = document.querySelector('[data-review]')
-const drawer = document.querySelector('[data-drawer]')
+let drawer = document.querySelector('[data-drawer]')
 const viewerPane = document.querySelector('[data-viewer-pane]')
 const address = new URL(location.href)
 let level = viewerPane
@@ -1229,6 +1229,8 @@ async function undo() {
 
 let findTimer = null
 let findTicket = 0
+let findMode = 'find'
+let findAsking = null
 
 function findLinks() {
 	return [...findDialog.querySelectorAll('[data-find-results] a')]
@@ -1237,40 +1239,73 @@ function findLinks() {
 function findMark(link) {
 	for (const each of findLinks()) each.setAttribute('aria-selected', each === link ? 'true' : 'false')
 	link?.scrollIntoView({ block: 'nearest' })
+	findDialog.querySelector('[data-find-enter]').textContent = link?.matches('[data-find-ask]') ? 'Ask' : 'Go'
+}
+
+function askRow(query) {
+	const item = document.createElement('li')
+	item.setAttribute('role', 'none')
+	const link = document.createElement('a')
+	link.href = '/requests'
+	link.dataset.findAsk = ''
+	link.setAttribute('role', 'option')
+	link.tabIndex = -1
+	const kind = document.createElement('span')
+	kind.className = 'sp-pill'
+	kind.textContent = 'ask'
+	const title = document.createElement('span')
+	title.className = 't'
+	title.textContent = `Ask Checkmate: ${query}`
+	title.title = query
+	link.append(kind, title)
+	item.append(link)
+	return item
+}
+
+function findResults(results, query) {
+	const list = findDialog.querySelector('[data-find-results]')
+	list.replaceChildren(
+		...results.map((entry) => {
+			const item = document.createElement('li')
+			item.setAttribute('role', 'none')
+			const link = document.createElement('a')
+			link.href = entry.href
+			link.setAttribute('role', 'option')
+			link.tabIndex = -1
+			const kind = document.createElement('span')
+			kind.className = 'sp-pill'
+			kind.textContent = entry.kind
+			const id = document.createElement('span')
+			id.className = 'k'
+			id.textContent = entry.id
+			const title = document.createElement('span')
+			title.className = 't'
+			title.textContent = entry.title
+			title.title = entry.title
+			link.append(kind, id, title)
+			item.append(link)
+			return item
+		}),
+		...(query ? [askRow(query)] : [])
+	)
 }
 
 async function findNow() {
 	const ticket = ++findTicket
-	const query = findDialog.querySelector('[data-find-input]').value
+	const query = findDialog.querySelector('[data-find-input]').value.trim()
+	if (findAsking) return
+	if (findMode === 'ask') {
+		findResults([], query)
+		findDialog.querySelector('[data-find-none]').hidden = true
+		findDialog.querySelector('[data-find-more]').hidden = true
+		return findMark(findLinks()[0])
+	}
 	try {
 		const response = await fetch(`/find?q=${encodeURIComponent(query)}`, { cache: 'no-store' })
 		const found = await response.json()
-		if (ticket !== findTicket) return
-		const list = findDialog.querySelector('[data-find-results]')
-		list.replaceChildren(
-			...found.results.map((entry) => {
-				const item = document.createElement('li')
-				item.setAttribute('role', 'none')
-				const link = document.createElement('a')
-				link.href = entry.href
-				link.setAttribute('role', 'option')
-				link.tabIndex = -1
-				const kind = document.createElement('span')
-				kind.className = 'sp-pill'
-				kind.textContent = entry.kind
-				const id = document.createElement('span')
-				id.className = 'k'
-				id.textContent = entry.id
-				const title = document.createElement('span')
-				title.className = 't'
-				title.textContent = entry.title
-				title.title = entry.title
-				link.append(kind, id, title)
-				item.append(link)
-				return item
-			})
-		)
-		findDialog.querySelector('[data-find-none]').hidden = found.results.length > 0
+		if (ticket !== findTicket || findAsking) return
+		findResults(found.results, query)
+		findDialog.querySelector('[data-find-none]').hidden = found.results.length > 0 || !query
 		const more = findDialog.querySelector('[data-find-more]')
 		more.hidden = !found.more
 		more.textContent = `${plural(found.more, 'more result')}. Type more words to narrow the list.`
@@ -1278,19 +1313,81 @@ async function findNow() {
 	} catch {}
 }
 
-function openFind() {
+function openFind(mode = 'find') {
 	if (document.querySelector('dialog[open]')) return
+	findMode = mode
+	findAsking = null
+	findDialog.dataset.mode = mode
+	findDialog.querySelector('[data-find-asking]').hidden = true
+	findDialog.querySelector('[data-find-error]').hidden = true
+	findDialog.querySelector('[data-find-results]').hidden = false
+	const input = findDialog.querySelector('[data-find-input]')
+	input.readOnly = false
+	input.placeholder = mode === 'ask' ? 'Ask a follow-up' : ''
+	input.setAttribute(
+		'aria-label',
+		mode === 'ask' ? 'Ask a follow-up' : 'Find a plan, a defect, or a question. Or type a request.'
+	)
 	pushLayer('find')
 	findDialog.showModal()
-	const input = findDialog.querySelector('[data-find-input]')
 	input.focus()
 	input.select()
 	findNow()
 }
 
+async function askNow() {
+	const input = findDialog.querySelector('[data-find-input]')
+	const text = input.value.trim()
+	if (!text || findAsking) return
+	findAsking = 'sending'
+	const error = findDialog.querySelector('[data-find-error]')
+	error.hidden = true
+	const send = () =>
+		fetch('/requests', {
+			method: 'POST',
+			body: new URLSearchParams({ csrf: csrf(), text, screen: location.pathname + location.search }),
+		})
+	try {
+		let response = await send()
+		if (response.status === 403 && (await renewToken())) response = await send()
+		const id =
+			response.ok && response.redirected ? /^\/requests\/(R\d+)$/.exec(new URL(response.url).pathname) : null
+		if (!id) {
+			const fresh = new DOMParser().parseFromString(await response.text(), 'text/html')
+			throw new Error(
+				fresh.querySelector('[role="alert"]')?.textContent?.trim() ||
+					'Checkmate refused the request. Nothing is sent.'
+			)
+		}
+		findAsking = id[1]
+		input.readOnly = true
+		findDialog.querySelector('[data-find-results]').hidden = true
+		findDialog.querySelector('[data-find-none]').hidden = true
+		findDialog.querySelector('[data-find-more]').hidden = true
+		findDialog.querySelector('[data-find-asking]').hidden = false
+		findDialog.querySelector('[data-find-asking]').textContent = `Asking… ${id[1]}`
+	} catch (problem) {
+		findAsking = null
+		error.textContent = problem.message
+		error.hidden = false
+	}
+}
+
 findDialog.querySelector('[data-find-input]').addEventListener('input', () => {
 	clearTimeout(findTimer)
 	findTimer = setTimeout(findNow, 120)
+})
+
+findDialog.addEventListener('click', (event) => {
+	if (!event.target.closest('[data-find-ask]') || !plainClick(event)) return
+	event.preventDefault()
+	askNow()
+})
+
+document.addEventListener('click', (event) => {
+	if (!event.target.closest('[data-ask-follow]') || !plainClick(event)) return
+	event.preventDefault()
+	openFind('ask')
 })
 
 function findKey(event) {
@@ -1303,8 +1400,11 @@ function findKey(event) {
 	}
 	if (event.key === 'Enter') {
 		event.preventDefault()
+		if (findAsking) return
 		const query = findDialog.querySelector('[data-find-input]').value.trim()
-		if (query && links[at]) location.assign(links[at].href)
+		if (!query || !links[at]) return
+		if (links[at].matches('[data-find-ask]')) return askNow()
+		location.assign(links[at].href)
 	}
 }
 
@@ -1454,9 +1554,9 @@ const keyTable = [
 	{
 		cap: '/',
 		caps: ['/', 'Ctrl+K'],
-		help: 'Find a plan, a defect, or a question. In the find bar, Up and Down move in the results, Enter opens one, Left and Right move the caret, and Esc closes it.',
+		help: 'Find a plan, a defect, or a question, or ask Checkmate. In the find bar, Up and Down move in the results, Enter opens one, Left and Right move the caret, and Esc closes it.',
 		test: (event) => event.key === '/' || ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k'),
-		run: openFind,
+		run: () => openFind(),
 		hint: () => 'find',
 	},
 	{
@@ -2037,8 +2137,10 @@ async function send(form, submitter) {
 				form
 					.closest('[data-drawer]')
 					?.matches('[data-region="permission-record"], [data-region="request-record"]')
-			)
+			) {
+				window.history.replaceState(null, '', location.href)
 				return location.replace(response.url)
+			}
 			return location.assign(response.url)
 		}
 		sending = false
@@ -2192,7 +2294,9 @@ function replaceRegion(region, fresh, previous) {
 	const opened = new Map(
 		[...region.querySelectorAll('details[data-open-key]')].map((details) => [details.dataset.openKey, details.open])
 	)
-	const focusedKey = document.activeElement?.closest?.('[data-key]')?.dataset.key ?? null
+	const focusedKey = region.contains(document.activeElement)
+		? (document.activeElement?.closest?.('[data-key]')?.dataset.key ?? null)
+		: null
 	const focusedId = region.contains(document.activeElement) ? document.activeElement.id : null
 	const view = currentView()
 	const navKey = current('nav')?.dataset.target
@@ -2208,8 +2312,10 @@ function replaceRegion(region, fresh, previous) {
 	for (const details of next.querySelectorAll('details[data-open-key]'))
 		if (opened.has(details.dataset.openKey)) details.open = opened.get(details.dataset.openKey)
 	const scrolled = region.scrollTop
+	const detailMarked = level === 'detail' && region.matches('[data-drawer]')
 	region.replaceWith(next)
 	next.scrollTop = scrolled
+	if (next.matches('[data-drawer]')) drawer = next
 	if (review) {
 		for (const area of document.querySelectorAll('[data-nav][aria-expanded]'))
 			expand(area, areas.includes(area.dataset.label))
@@ -2252,6 +2358,7 @@ function replaceRegion(region, fresh, previous) {
 		target?.focus({ preventScroll: true })
 	}
 	if (actFocus) document.querySelector(`[data-actions] button[data-act="${CSS.escape(actFocus)}"]`)?.focus()
+	if (detailMarked && next.matches('[data-drawer]')) mark(rowsAt('detail')[0], 'detail')
 	const messages = markChanged(before, next)
 	syncRationale(next)
 	syncSource(next)

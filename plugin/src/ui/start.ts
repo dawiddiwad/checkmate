@@ -58,6 +58,23 @@ function shell(context: Context, action: string, body: Html, submit: string) {
 	</form>`
 }
 
+const assumedLabels: Record<string, string> = {
+	instance: 'Instance',
+	'entry point': 'Entry point',
+	capabilities: 'Capabilities',
+	operations: 'Operations',
+	reset: 'Reset',
+	authentication: 'Authentication',
+}
+
+export function assumedRows(lines: string[]) {
+	return lines.map((line) => {
+		const at = line.indexOf('=')
+		const name = line.slice(0, at)
+		return [assumedLabels[name] ?? name, line.slice(at + 1)]
+	})
+}
+
 export function firstRunPage(context: Context, onHome: boolean, back = '/'): Page {
 	const body = html`${field(
 			'setup-url',
@@ -71,7 +88,7 @@ export function firstRunPage(context: Context, onHome: boolean, back = '/'): Pag
 			<p class="help">Checkmate sets up the target from this address. Change the name or the environment here.</p>
 			${field('setup-target', 'target', 'Target name', 'Letters, digits, _ or -.', html`data-setup-field`)}
 			${field('setup-environment', 'environment', 'Environment (optional)', 'For example staging. A name that starts with prod is a production instance.', html`data-setup-field`)}
-			<ul class="plain" data-assumed-list></ul>
+			<dl class="facts" data-assumed-list></dl>
 		</div>
 		${choice(
 			'operations',

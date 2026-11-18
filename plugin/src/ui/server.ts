@@ -85,7 +85,7 @@ import { heading, layout } from './layout.ts'
 import { emptyState } from './forms.ts'
 import { logPage, runsPage } from './lists.ts'
 import { homePage } from './home.ts'
-import { firstRunPage, newChangePage } from './start.ts'
+import { assumedRows, firstRunPage, newChangePage } from './start.ts'
 import { activityPage, claudeMissing, runningCount } from './activity.ts'
 import { reviewOf, reviewPage } from './review.ts'
 import { gapPage, planHistoryList, planPage, requestPage } from './plan.ts'
@@ -1235,7 +1235,7 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 				address: new URL(url).host,
 				local: choice.local,
 				targetId: planned.targetId,
-				assumed: planned.assumed.filter((line) => !line.startsWith('target=')),
+				assumed: assumedRows(planned.assumed.filter((line) => !line.startsWith('target='))),
 			})
 		} catch (error) {
 			reply({ error: plainMessage(error) })

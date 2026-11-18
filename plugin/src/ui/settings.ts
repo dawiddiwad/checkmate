@@ -494,6 +494,10 @@ export function claudePage(context: Context, env: Env, form: RulesForm | null = 
 				The engine needs at least one rule today. A test that you start in the UI shows these rules, and you can
 				change them there.
 			</p>
+			<p class="help" data-key="permission-bash">
+				With the rule <code>Bash</code>, testers run commands without asking. Without it, each command asks you
+				here, and a tester waits up to 10 minutes for the answer.
+			</p>
 			<p class="help" data-region="permission-hook">
 				${
 					liveUi(context.workspace)

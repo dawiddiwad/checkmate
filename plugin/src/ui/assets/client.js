@@ -2707,10 +2707,12 @@ if (setupUrl) {
 		assumed.hidden = false
 		if (!target.dataset.touched) target.value = reply.targetId
 		list.replaceChildren(
-			...reply.assumed.map((line) => {
-				const item = document.createElement('li')
-				item.textContent = line
-				return item
+			...reply.assumed.flatMap(([label, value]) => {
+				const term = document.createElement('dt')
+				term.textContent = label
+				const detail = document.createElement('dd')
+				detail.textContent = value
+				return [term, detail]
 			})
 		)
 		pageForm.dataset.nonlocal = reply.local ? '' : reply.address

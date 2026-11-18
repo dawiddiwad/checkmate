@@ -3290,15 +3290,10 @@ main a:active {
 .setup-assumed h2 {
 	margin: 0 0 4px;
 }
-.setup-assumed ul {
-	display: flex;
-	flex-direction: column;
-	gap: 4px;
+.setup-assumed dl {
 	margin: 0;
 	padding: 0;
-	list-style: none;
 	font: 400 14px/20px var(--font-body);
-	color: var(--muted);
 }
 .start-form .sp-seg {
 	margin: 0 0 8px;

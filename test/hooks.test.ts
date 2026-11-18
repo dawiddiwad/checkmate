@@ -656,6 +656,10 @@ test('the status bar counts open requests, /permissions opens the first one, and
 	assert.match(record, /Stop tester a1…/)
 	const settings = (await call(f.ui, '/settings/claude')).body
 	assert.match(settings, /Testers that start now can ask you in this UI/)
+	assert.match(
+		settings,
+		/With the rule <code>Bash<\/code>, testers run commands without asking\. Without it, each command asks you\s+here, and a tester waits up to 10 minutes for the answer\./
+	)
 	await decide(f, 'P1', { decision: 'allow' })
 	await asked
 })

@@ -587,7 +587,7 @@ for (const colorScheme of ['dark', 'light'] as const)
 					await page.goto(url('/setup'))
 					await page.evaluate(() => document.fonts.ready)
 					await page.locator('#setup-url').fill(address)
-					await page.locator('[data-assumed]:not([hidden]) [data-assumed-list] li').first().waitFor()
+					await page.locator('[data-assumed]:not([hidden]) [data-assumed-list] dt').first().waitFor()
 					const problems = await page.evaluate(measure, width <= 760)
 					assert.deepEqual(problems, [], `${address} at ${width} in ${colorScheme}`)
 				}

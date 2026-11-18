@@ -113,15 +113,17 @@ test('the assumptions come from the engine, and the address decides what is loca
 	assert.equal(local.address, 'localhost:3000')
 	assert.equal(local.targetId, 'localhost-3000')
 	assert.deepEqual(
-		local.assumed.map((line: string) => line.split('=')[0]),
-		['instance', 'entry point', 'capabilities', 'operations', 'reset', 'authentication']
+		local.assumed.map(([label]: string[]) => label),
+		['Instance', 'Entry point', 'Capabilities', 'Operations', 'Reset', 'Authentication']
 	)
 	const named = JSON.parse(
 		(await post('/setup/assumed', { url: 'http://shop.example.com', target: 'mine', operations: 'no' })).body
 	)
 	assert.equal(named.local, false)
 	assert.equal(named.targetId, 'mine')
-	assert(named.assumed.every((line: string) => !/^operations=any_test_operation/.test(line)))
+	assert(
+		named.assumed.every(([label, value]: string[]) => label !== 'Operations' || !/^any_test_operation/.test(value))
+	)
 	assert.match(JSON.parse((await post('/setup/assumed', { url: 'localhost' })).body).error, /Give a full address/)
 })
 

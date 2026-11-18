@@ -69,12 +69,13 @@ test('a person sets up the first target with the keys alone', browserTest, async
 	assert.equal(await focused(page), 'setup-url')
 	assert(await page.locator('[data-assumed]').isHidden())
 	await page.keyboard.type(app)
-	await page.locator('[data-assumed]:not([hidden]) [data-assumed-list] li').first().waitFor()
-	const lines = await page.locator('[data-assumed-list] li').allTextContents()
-	assert.deepEqual(
-		lines.map((line) => line.split('=')[0]),
-		['instance', 'entry point', 'capabilities', 'operations', 'reset', 'authentication']
-	)
+	await page.locator('[data-assumed]:not([hidden]) [data-assumed-list] dt').first().waitFor()
+	const lines = await page.locator('[data-assumed-list] dt').allTextContents()
+	assert.deepEqual(lines, ['Instance', 'Entry point', 'Capabilities', 'Operations', 'Reset', 'Authentication'])
+	const values = await page.locator('[data-assumed-list] dd').allTextContents()
+	assert.equal(values[0], 'local')
+	assert.match(values[2], /^(browser,)?http \((playwright-cli is on PATH|no browser tool on PATH)\)$/)
+	assert.equal(values[4], 'none')
 	assert.equal(await field(page, 'target').inputValue(), app.replace('http://', '').replace(/[.:]/g, '-'))
 	assert.equal(await field(page, 'operations').first().isChecked(), true)
 	await page.keyboard.press('ArrowDown')

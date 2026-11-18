@@ -1,7 +1,7 @@
 import type { Store } from './store.ts'
 import type { Claim, Row } from './journal.ts'
 import { buildOrder, journal, planClaims, planQuestions, shortName } from './journal.ts'
-import { defaultArea, outsideRule, planRules } from './rules.ts'
+import { defaultArea, outsideRule, planRules, storedTestCounts } from './rules.ts'
 import type { Rule } from './rules.ts'
 import { fileName, mediaTypeOf, mergedEntries } from './views.ts'
 
@@ -111,6 +111,7 @@ export function ruleMap(store: Store, planId: string) {
 	const claims = record.claims.filter((claim) => claim.state !== 'rejected')
 	const builds = state.builds
 	const stored = planRules(store, planId)
+	const storedTests = storedTestCounts(store, planId)
 	const known = new Set(stored.rules.map((rule) => rule.id))
 	const ruleOf = (rule: string | null | undefined) => (rule && !known.has(rule) ? outsideRule : rule)
 	const rules = [
@@ -169,6 +170,7 @@ export function ruleMap(store: Store, planId: string) {
 			const cells = builds.map((build) => cellOf(rule.id, build))
 			return {
 				rule,
+				storedTests: storedTests.get(rule.id) ?? 0,
 				cells: cells.map((cell, index) => ({ ...cell, before: index ? cells[index - 1].status : null })),
 			}
 		}),

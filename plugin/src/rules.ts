@@ -180,6 +180,16 @@ function heldRules(store: Store, planId: string) {
 	return { revision: latest.revision, rules, ids: new Set(rules.map((rule) => rule.id)) }
 }
 
+export function storedTestCounts(store: Store, planId: string) {
+	const latest = one<{ body: string }>(store, 'SELECT body FROM latest_plans WHERE plan_id = ?', planId)
+	const counts = new Map<string, number>()
+	const tests = latest ? (JSON.parse(latest.body) as Plan).tests : []
+	for (const test of tests)
+		if (test.metadata?.origin === 'harvest')
+			for (const id of test.requirementIds) counts.set(id, (counts.get(id) ?? 0) + 1)
+	return counts
+}
+
 export function requireHeldRules(store: Store, plan: Plan, patch: PlanPatch) {
 	const stored = storedRules(store, plan.planId)
 	if (stored?.origin !== 'harvested') return

@@ -1,7 +1,7 @@
 import type { Store } from './store.ts'
 import type { Plan, PlanCandidate } from './types.ts'
 import type { Row } from './journal.ts'
-import { one, write } from './store.ts'
+import { all, one, write } from './store.ts'
 import { requireCondition, unusedId } from './contracts.ts'
 import { explorationRow, journal, planClaims } from './journal.ts'
 import { planCandidate, planRequest, planRevision, storeEdit, storeRevision } from './plans.ts'
@@ -80,6 +80,31 @@ function drafts(store: Store, explorationId: string, observations: boolean): Dra
 	return [...fromClaims, ...fromObservations]
 }
 
+function harvestedSources(tests: Array<{ metadata?: Record<string, unknown> }>) {
+	return new Set(tests.map((test) => test.metadata?.harvestedFrom).filter(Boolean))
+}
+
+function notHarvested(items: Draft[], known: Set<unknown>, explorationId: string) {
+	return items.filter((item) => !known.has(`${explorationId}/${item.from}`))
+}
+
+export function storableDefects(store: Store, planId: string) {
+	const latest = one(store, 'SELECT 1 FROM plan_revisions WHERE plan_id = ?', planId)
+		? planRevision(store, planId)
+		: null
+	const known = harvestedSources(latest?.plan.tests ?? [])
+	return all<{ exploration_id: string }>(
+		store,
+		'SELECT exploration_id FROM explorations WHERE plan_id = ? ORDER BY rowid',
+		planId
+	)
+		.map(({ exploration_id }) => ({
+			explorationId: exploration_id,
+			claims: notHarvested(drafts(store, exploration_id, false), known, exploration_id).map((item) => item.from),
+		}))
+		.filter((item) => item.claims.length)
+}
+
 function capabilityOf(via: string | undefined, capabilities: string[]) {
 	const wanted = via === 'ui' ? 'browser' : via === 'api' ? 'http' : undefined
 	return wanted && capabilities.includes(wanted) ? wanted : capabilities[0]
@@ -94,8 +119,7 @@ function harvested(
 	capabilities: string[],
 	operations: string[]
 ) {
-	const known = new Set(base.tests.map((test) => test.metadata?.harvestedFrom).filter(Boolean))
-	const fresh = items.filter((item) => !known.has(`${explorationId}/${item.from}`))
+	const fresh = notHarvested(items, harvestedSources(base.tests), explorationId)
 	const requirements = [...base.requirements]
 	const tests = [...base.tests]
 	const added: Array<{ test: string; rule: string }> = []

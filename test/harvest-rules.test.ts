@@ -4,7 +4,7 @@ import type { TestContext } from 'node:test'
 import { realpathSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { run } from '../plugin/src/cli.ts'
-import { harvestExploration } from '../plugin/src/harvest.ts'
+import { harvestExploration, storableDefects } from '../plugin/src/harvest.ts'
 import { openPlan, patchPlan, planRevision } from '../plugin/src/plans.ts'
 import { ruleMap } from '../plugin/src/rulemap.ts'
 import { explorationRules, planRules, rulesNeeded, saveRules } from '../plugin/src/rules.ts'
@@ -59,7 +59,8 @@ function seeded(t: TestContext) {
 	return opened
 }
 
-const rowsOf = (map: ReturnType<typeof ruleMap>, ids: string[]) => map.rows.filter((row) => ids.includes(row.rule.id))
+const rowsOf = (map: ReturnType<typeof ruleMap>, ids: string[]) =>
+	map.rows.filter((row) => ids.includes(row.rule.id)).map(({ rule, cells }) => ({ rule, cells }))
 const original = derived.map((rule) => rule.id).filter((id) => id !== 'R9')
 
 test('harvest keeps the derived rules, their areas, and the map, and attaches each test to the rule it cites', (t) => {
@@ -88,6 +89,16 @@ test('harvest keeps the derived rules, their areas, and the map, and attaches ea
 	assert.deepEqual(rowsOf(map, original), rowsOf(before.map, original))
 	assert.deepEqual(map.areas.slice(0, 3), before.map.areas)
 	assert.deepEqual(map.rows.at(-1)!.rule.id, 'outside')
+	assert.deepEqual(
+		map.rows.filter((row) => row.storedTests).map((row) => [row.rule.id, row.storedTests]),
+		[
+			['R2', 1],
+			['R4', 1],
+			['R7', 1],
+			['HR1', 1],
+			['HR2', 1],
+		]
+	)
 	assert.deepEqual(
 		map.rows.find((row) => row.rule.id === 'outside')!.cells,
 		before.map.rows.find((row) => row.rule.id === 'outside')!.cells
@@ -262,4 +273,13 @@ test('harvest prints the rule of each test and how many rules have a stored test
 	})
 	assert.equal(outcome.code, 0, outcome.output)
 	assert.match(outcome.output, / attached=H1:R2,H2:R7,H3:HR1,H4:HR2 rules_with_tests=4\/13$/)
+})
+
+test('the defects to store are the claims that a harvest without observations would store', (t) => {
+	const opened = seeded(t)
+	const storable = storableDefects(opened, 'cart')
+	assert.deepEqual(storable, [{ explorationId: 'x-1', claims: ['a1/D1', 'a1/D2', 'a1/D3', 'a1/D4'] }])
+	const stored = harvestExploration(opened, actor, { explorationId: 'x-1', observations: false })
+	assert.equal((stored.data.tests as string[]).length, storable[0].claims.length)
+	assert.deepEqual(storableDefects(opened, 'cart'), [])
 })

@@ -58,7 +58,7 @@ import { isUnread, markRequestRead, requestOf, requestStatus, staleRequests } fr
 import { planRequest } from '../plans.ts'
 import type { Env } from '../sessions.ts'
 import type { StopDelays } from '../sessions.ts'
-import { liveUi, removeUiFile, requireClaude, writeUiFile } from '../sessions.ts'
+import { liveUi, removeUiFile, requireClaude, workspaceHookToken, writeUiFile } from '../sessions.ts'
 import { launchPlan } from '../explorers.ts'
 import { maxAreaCharacters, planRules, ticketFile } from '../rules.ts'
 import { requireCondition, requireIdentifier, unusedId } from '../contracts.ts'
@@ -108,6 +108,7 @@ import { repliesPage, requestPage as requestRecordPage, screenContext } from './
 export type UiOptions = HookOptions & {
 	workspace: string
 	port?: number
+	newHookToken?: boolean
 	defaultActor?: string
 	env?: Env
 	stopDelays?: StopDelays
@@ -300,7 +301,7 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 	const store = openStore(options.workspace)
 	const watch = openReadOnlyStore(options.workspace)
 	const csrf = randomBytes(24).toString('hex')
-	const hookToken = randomBytes(32).toString('hex')
+	const hookToken = workspaceHookToken(options.workspace, options.newHookToken)
 	const hooks = createHooks(store, hookToken, options)
 	const env = options.env ?? process.env
 	const requester = createRequester(store, {
@@ -2031,7 +2032,7 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 			closed = true
 			await requester.close()
 			hooks.close()
-			removeUiFile(options.workspace, hookToken)
+			removeUiFile(options.workspace, port)
 			clearInterval(poll)
 			clearInterval(heartbeat)
 			clearInterval(supervisorWatch)

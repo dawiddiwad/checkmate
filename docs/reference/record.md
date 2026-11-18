@@ -12,7 +12,8 @@ The database is `<workspace>/.checkmate/checkmate.db`. The workspace is the curr
 
 - Any command creates `.checkmate/` and the schema when they are missing. `checkmate init` only creates them.
 - `.checkmate/tmp/` holds binary evidence and browser output for a short time. `run finish` removes `.checkmate/tmp/<runId>/`, and `target save` removes `.checkmate/tmp/setup-<targetId>/`.
-- `.checkmate/ui.json` exists while the review UI runs. It holds `port`, `pid`, and `hookToken`, and has mode 0600. The UI writes it when it starts and removes it when it closes. A file whose `pid` is not alive is stale: the next UI replaces it, and the commands ignore it. `hookToken` is 32 random bytes in hex, new for each start. Do not commit or share the file.
+- `.checkmate/ui.json` exists while the review UI runs. It holds `port`, `pid`, and `hookToken`, and has mode 0600. The UI writes it when it starts and removes it when it closes. A file whose `pid` is not alive is stale: the next UI replaces it, and the commands ignore it. Do not commit or share the file.
+- `.checkmate/hook-token` holds the hook token: 32 random bytes in hex. It has mode 0600. The first UI of the workspace makes it. The UI does not remove it when it stops, and each later UI reuses it. `checkmate ui --new-hook-token` makes a new one. Do not commit or share the file.
 - `.checkmate/work/<explorationId>/` holds the files of the explorers while an exploration runs. Checkmate removes it when the exploration or a follow-up completes.
 - Add `.checkmate/` to `.gitignore`. To keep a plan or a report in Git, export it with `checkmate export`.
 

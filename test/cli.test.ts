@@ -5,6 +5,7 @@ import { execFileSync, spawn } from 'node:child_process'
 import { userInfo } from 'node:os'
 import { join } from 'node:path'
 import { closeStore } from '../plugin/src/store.ts'
+import { uiOptions } from '../plugin/src/cli.ts'
 import { answerGap, rejectPlan } from '../plugin/src/plans.ts'
 import { beginRun, closeTest, finishRun, rejectResult } from '../plugin/src/runs.ts'
 import {
@@ -538,7 +539,10 @@ test('--version and --help need no workspace', () => {
 	assert.deepEqual(json('/nonexistent', ['target', 'instance', 'retire', '--help']).body.usage, [
 		'checkmate target instance retire <targetId> <instanceId> [--actor <name>]',
 	])
-	assert.deepEqual(cli('/nonexistent', ['ui', '--help']).lines, ['completed ui', 'checkmate ui [--port <value>]'])
+	assert.deepEqual(cli('/nonexistent', ['ui', '--help']).lines, [
+		'completed ui',
+		'checkmate ui [--port <value>] [--new-hook-token]',
+	])
 	assert.equal(cli('/nonexistent', ['nope', '--help']).lines[0], 'invalid_request checkmate refusal=malformed')
 })
 
@@ -985,4 +989,9 @@ test('a refusal says if the request is malformed or prohibited, and its hint giv
 	}
 	assert.equal(cli(workspace, ['run', 'finding', 'run-1'], recorded).code, 0)
 	assert.equal(json(workspace, finish).body.status, 'completed')
+})
+
+test('ui takes --new-hook-token as a flag without a value, and by default it does not renew the token', () => {
+	assert.equal(uiOptions(['--new-hook-token', '--port', '4000'], '/w').newHookToken, true)
+	assert.equal(uiOptions(['--port', '4000'], '/w').newHookToken, false)
 })

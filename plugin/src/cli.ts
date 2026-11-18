@@ -2080,7 +2080,7 @@ function usage(name: string) {
 	].join(' ')
 }
 
-const uiUsage = 'Usage: checkmate ui [--port <value>]'
+const uiUsage = 'Usage: checkmate ui [--port <value>] [--new-hook-token]'
 
 function help() {
 	return [
@@ -2174,11 +2174,16 @@ export function run(argv: string[], io: Io): Outcome {
 	}
 }
 
-function uiOptions(tokens: string[], cwd: string) {
+export function uiOptions(tokens: string[], cwd: string) {
 	const values: Record<string, string> = {}
+	let newHookToken = false
 	for (let i = 0; i < tokens.length; i++) {
 		const token = tokens[i]
 		if (token === '--json') continue
+		if (token === '--new-hook-token') {
+			newHookToken = true
+			continue
+		}
 		const flag = token.startsWith('--') ? token.slice(2) : ''
 		if (!['workspace', 'port'].includes(flag))
 			throw new Refusal('malformed', `Unknown argument ${token} for ui`, uiUsage)
@@ -2193,7 +2198,7 @@ function uiOptions(tokens: string[], cwd: string) {
 		port === undefined || (/^[0-9]+$/.test(values.port) && port <= 65535),
 		`Invalid --port: ${values.port}. Use 0 to 65535.`
 	)
-	return { workspace: resolve(cwd, values.workspace ?? '.'), port }
+	return { workspace: resolve(cwd, values.workspace ?? '.'), port, newHookToken }
 }
 
 export async function serveUi(tokens: string[]) {

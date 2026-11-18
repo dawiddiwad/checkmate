@@ -4,6 +4,7 @@ import type { TestContext } from 'node:test'
 import { spawn } from 'node:child_process'
 import { request } from 'node:http'
 import { existsSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { setTimeout as pause } from 'node:timers/promises'
 import { run } from '../plugin/src/cli.ts'
 import { closeStore, openStore } from '../plugin/src/store.ts'
@@ -143,6 +144,39 @@ test('the UI server writes ui.json with mode 0600, replaces a stale file, and re
 	assert.deepEqual(liveUi(workspace), file)
 	await f.ui.close()
 	assert.equal(existsSync(uiFilePath(workspace)), false)
+})
+
+test('the hook token belongs to the workspace: a held request, a stop, and a start on the same port keep the token', async (t) => {
+	const workspace = workspaceOf(t)
+	const first = await serverOf(t, workspace)
+	const tokenFile = join(workspace, '.checkmate', 'hook-token')
+	assert.equal(readFileSync(tokenFile, 'utf8'), first.hookToken)
+	assert.equal(statSync(tokenFile).mode & 0o777, 0o600)
+	const held = permission(first, 'a1')
+	await waitOpen(first, 1)
+	const port = Number(new URL(first.ui.url).port)
+	await first.ui.close()
+	assert.deepEqual([(await held).status, (await held).body], [200, ''])
+	assert.equal(existsSync(uiFilePath(workspace)), false)
+	assert.equal(readFileSync(tokenFile, 'utf8'), first.hookToken)
+	const second = await serverOf(t, workspace, { port })
+	assert.equal(second.hookToken, first.hookToken)
+	const reply = await hookCall(second, '/hooks/activity/x-1/a1', { hook_event_name: 'PreToolUse', tool_name: 'Bash' })
+	assert.deepEqual([reply.status, reply.body], [200, ''])
+	const stale = await hookCall(second, '/hooks/activity/x-1/a1', {}, { Authorization: 'Bearer wrong' })
+	assert.equal(stale.status, 403)
+})
+
+test('a new hook token replaces the stored token and the old token is refused', async (t) => {
+	const workspace = workspaceOf(t)
+	const first = await serverOf(t, workspace)
+	await first.ui.close()
+	const second = await serverOf(t, workspace, { newHookToken: true })
+	assert.notEqual(second.hookToken, first.hookToken)
+	assert.match(second.hookToken, /^[0-9a-f]{64}$/)
+	assert.equal(readFileSync(join(workspace, '.checkmate', 'hook-token'), 'utf8'), second.hookToken)
+	const old = await hookCall(second, '/hooks/activity/x-1/a1', {}, { Authorization: `Bearer ${first.hookToken}` })
+	assert.equal(old.status, 403)
 })
 
 test('a server that closes does not remove the file of a newer server', async (t) => {

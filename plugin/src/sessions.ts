@@ -1,4 +1,5 @@
 import { Refusal } from './contracts.ts'
+import { randomBytes } from 'node:crypto'
 import type { ChildProcess } from 'node:child_process'
 import { spawn, spawnSync } from 'node:child_process'
 import {
@@ -166,8 +167,26 @@ export function writeUiFile(workspace: string, file: UiFile) {
 	chmodSync(uiFilePath(workspace), 0o600)
 }
 
-export function removeUiFile(workspace: string, hookToken: string) {
-	if (readUiFile(workspace)?.hookToken === hookToken) rmSync(uiFilePath(workspace), { force: true })
+export function removeUiFile(workspace: string, port: number) {
+	if (readUiFile(workspace)?.port === port) rmSync(uiFilePath(workspace), { force: true })
+}
+
+export function hookTokenPath(workspace: string) {
+	return join(workspace, '.checkmate', 'hook-token')
+}
+
+export function workspaceHookToken(workspace: string, renew = false) {
+	if (!renew) {
+		try {
+			const stored = readFileSync(hookTokenPath(workspace), 'utf8').trim()
+			if (/^[0-9a-f]{64}$/.test(stored)) return stored
+		} catch {}
+	}
+	const made = randomBytes(32).toString('hex')
+	mkdirSync(join(workspace, '.checkmate'), { recursive: true })
+	writeFileSync(hookTokenPath(workspace), made, { mode: 0o600 })
+	chmodSync(hookTokenPath(workspace), 0o600)
+	return made
 }
 
 export function childHook(workspace: string, explorationId: string, who: string): ChildHook | undefined {

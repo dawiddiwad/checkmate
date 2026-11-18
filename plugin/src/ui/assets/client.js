@@ -275,7 +275,7 @@ let sending = false
 let chosenBuild = address.searchParams.get('build')
 
 function shown(element) {
-	return !element.hidden && !element.closest('[hidden]')
+	return !element.hidden && !element.closest('[hidden], details:not([open], [data-menu]) > :not(summary)')
 }
 
 function navRows() {
@@ -649,8 +649,8 @@ function step(by) {
 	if (!rows.length) return
 	const index = rows.indexOf(current())
 	const next = index < 0 ? 0 : index + by
-	const turn =
-		!review && level === 'list' && document.querySelector(`[data-list-region] a[rel="${by > 0 ? 'next' : 'prev'}"]`)
+	const region = !review && level === 'list' ? current()?.closest('[data-list-region]') : null
+	const turn = region?.querySelector(`a[rel="${by > 0 ? 'next' : 'prev'}"]`)
 	if ((next < 0 || next >= rows.length) && turn) return void location.assign(turn.href + (by > 0 ? '' : '#last'))
 	if (next < 0 && level === 'list' && enterActions()) return
 	if (next < 0 || next >= rows.length) return tell(by > 0 ? 'This is the last row.' : 'This is the first row.')
@@ -832,7 +832,7 @@ document.addEventListener('submit', (event) => {
 })
 
 function optionsNow() {
-	if (level === 'detail') return [...drawer.querySelectorAll('.sp-dhead [data-option]')]
+	if (level === 'detail') return [...drawer.querySelectorAll('.sp-dhead [data-option], .sp-options [data-option]')]
 	const row = level === 'list' ? current('list') : null
 	if (row?.classList.contains('many')) return detailOptions(row)
 	return row ? [...row.querySelectorAll('[data-option]')] : []
@@ -893,6 +893,8 @@ function showExtra(row, field) {
 function focusField(field) {
 	const area = drawer?.querySelector(`#${CSS.escape(field)}-text`)
 	if (!area) return tell('This option has no field here.')
+	const extra = area.closest('[data-extra]')
+	if (extra) extra.hidden = false
 	area.scrollIntoView({ block: 'nearest' })
 	area.focus()
 	area.setSelectionRange(area.value.length, area.value.length)
@@ -991,11 +993,14 @@ function showBulk() {
 	const findings = picked('claim').length
 	const questions = picked('question').length + picked('gap').length
 	const defects = picked('defect').length
+	const requests = picked('permission').length
 	const labels = {
 		accept: findings ? `Accept ${plural(findings, 'finding')} as defects` : null,
 		right: questions ? `${plural(questions, 'question')} right as built` : null,
 		defer: questions ? `Defer ${plural(questions, 'question')}` : null,
 		handoff: defects ? `Hand over ${plural(defects, 'defect')}` : null,
+		allow: requests ? `Allow once (${requests})` : null,
+		deny: requests ? `Deny… (${requests})` : null,
 		clear: 'Clear the selection',
 	}
 	bulkBar.querySelector('[data-bulk-count]').textContent = `${picks.size} selected`
@@ -1077,6 +1082,37 @@ function keepUndo(claims, to) {
 	} catch {}
 }
 
+async function bulkRequests(action) {
+	const keys = picked('permission')
+	const count = plural(keys.length, 'request')
+	const answer = await ask(
+		action === 'allow'
+			? {
+					title: 'Allow once',
+					text: `Allow ${count} once? Each tester gets yes for its own call. Checkmate stores no rule.`,
+					yes: `Allow once (${keys.length})`,
+				}
+			: {
+					title: 'Deny',
+					text: `Deny ${count}? Each tester gets your reason.`,
+					field: 'Reason for the testers',
+					yes: `Deny (${keys.length})`,
+				}
+	)
+	if (!answer) return tell('Nothing is recorded. The selection stays.')
+	tell('Sending…')
+	const refused = await post('/permissions/bulk', [
+		['csrf', csrf()],
+		['return', location.pathname + location.search],
+		['decision', action],
+		['reason', answer.value ?? ''],
+		...keys.map((key) => ['pick', key]),
+	])
+	if (refused) return tell(refused)
+	clearPicks()
+	location.reload()
+}
+
 async function bulk(action) {
 	const back = location.pathname + location.search
 	const findings = picked('claim')
@@ -1087,6 +1123,7 @@ async function bulk(action) {
 		if (current('list')) mark(current('list'), 'list')
 		return tell('The selection is cleared.')
 	}
+	if (action === 'allow' || action === 'deny') return bulkRequests(action)
 	const plans = {
 		accept: [findings, 'Accept as defects', `Accept ${plural(findings.length, 'finding')} as defects?`],
 		right: [questions, 'Right as built', `Record ${plural(questions.length, 'question')} as right as built?`],
@@ -1358,7 +1395,7 @@ const keyTable = [
 			if (level === 'nav') return row.getAttribute('aria-expanded') === 'false' ? 'expand' : 'enter list'
 			if (level === 'detail') return row.dataset.href ? 'view' : null
 			if (level === 'viewer') return null
-			if (row.classList.contains('many')) return 'options'
+			if (row.classList.contains('many') || row.querySelector(':scope > .asks')) return 'options'
 			return row.dataset.href ? 'open' : null
 		},
 	},
@@ -1796,6 +1833,7 @@ document.addEventListener('keydown', (event) => {
 		return
 	}
 	if (confirmDialog.open) return confirmKey(event)
+	if (!modifierKeys.includes(event.key) && moveOn()) return event.preventDefault()
 	if (actDialog()) return actKey(event, actDialog())
 	if (findDialog.open) return findKey(event)
 	if (pageForm && !keysDialog.open && pageFormKey(event)) return
@@ -1995,6 +2033,8 @@ async function send(form, submitter) {
 						: [],
 					form.querySelector('[name="to"]')?.value ?? ''
 				)
+			if (form.closest('[data-drawer]')?.matches('[data-region="permission-record"]'))
+				return location.replace(response.url)
 			return location.assign(response.url)
 		}
 		sending = false
@@ -2003,6 +2043,38 @@ async function send(form, submitter) {
 		sendFailed(form)
 	}
 }
+
+document.addEventListener('click', async (event) => {
+	const button = event.target.closest('[data-ask-title]')
+	if (!button || sending) return
+	event.preventDefault()
+	const answer = await ask({
+		title: button.dataset.askTitle,
+		text: button.dataset.askText,
+		yes: button.dataset.askYes,
+	})
+	if (!answer) return tell('Nothing is recorded.')
+	button.form.requestSubmit(button)
+})
+
+const modifierKeys = ['Shift', 'Control', 'Alt', 'Meta']
+let movingOn = null
+
+function moveOn() {
+	const moving = document.querySelector('[data-moves-on]')
+	if (!moving) return false
+	clearTimeout(movingOn)
+	movingOn = null
+	location.replace(moving.dataset.next)
+	return true
+}
+
+function watchMoveOn() {
+	if (movingOn || !document.querySelector('[data-moves-on]')) return
+	movingOn = setTimeout(moveOn, 2000)
+}
+
+watchMoveOn()
 
 document.addEventListener('submit', (event) => {
 	if (event.defaultPrevented) return
@@ -2123,6 +2195,7 @@ function replaceRegion(region, fresh, previous) {
 	const keyOf = (row) => row?.closest('[data-key]')?.dataset.key
 	const rowKey = keyOf(current('list'))
 	const rowLabel = current('list')?.dataset.label
+	const rowAsk = current('list')?.dataset.ask ?? ''
 	const order = listRows().map(keyOf)
 	const areas = [...document.querySelectorAll('[data-nav][aria-expanded="true"]')].map((row) => row.dataset.label)
 	const actFocus = document.activeElement?.closest?.('[data-actions]') ? document.activeElement.dataset.act : null
@@ -2142,15 +2215,25 @@ function replaceRegion(region, fresh, previous) {
 	if (level === 'list' && rowKey && onRow && !current('list')) {
 		const rows = listRows()
 		const kept = rows.find((row) => keyOf(row) === rowKey)
-		if (kept) mark(kept, 'list')
-		else {
+		if (kept) {
+			mark(kept, 'list')
+			if ((kept.dataset.ask ?? '') !== rowAsk) {
+				gone = `The request of ${rowLabel} changed.`
+				tell(gone)
+			}
+		} else {
 			const at = order.indexOf(rowKey)
 			const next = [...order.slice(at + 1), ...order.slice(0, at).reverse()]
 				.map((key) => rows.find((row) => keyOf(row) === key))
 				.find(Boolean)
 			mark(next ?? rows[0], 'list')
 			if (review) {
-				gone = `${rowLabel} ${rowKey.startsWith('c:') ? 'was decided' : 'was answered'} in another session.`
+				const what = rowKey.startsWith('c:')
+					? 'was decided in another session'
+					: rowKey.startsWith('perm:')
+						? 'was answered or closed'
+						: 'was answered in another session'
+				gone = `${rowLabel} ${what}.`
 				tell(gone)
 			}
 		}
@@ -2203,6 +2286,7 @@ async function refresh() {
 		if (!review) document.title = fresh.title
 		if (messages.length) announce(messages.join('. '))
 		showHints()
+		watchMoveOn()
 	} catch {
 	} finally {
 		refreshing = false

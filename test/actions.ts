@@ -67,7 +67,7 @@ type Reply = { status: number; headers: Record<string, unknown>; body: string }
 export function call(
 	ui: { url: string },
 	path: string,
-	form?: Record<string, string>,
+	form?: Record<string, string> | string[][],
 	headers: Record<string, string> = {}
 ) {
 	const body = form ? new URLSearchParams(form).toString() : undefined

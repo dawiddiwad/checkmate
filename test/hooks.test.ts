@@ -385,16 +385,20 @@ test('a request that has an answer refuses a second one with a plain sentence', 
 	await decide(f, 'P1', { decision: 'allow' })
 	await asked
 	const again = await decide(f, 'P1', { decision: 'deny', reason: 'Too late.' })
-	assert.equal(again.status, 422)
-	assert.match(
-		again.body,
-		/Permission request P1 of x-1 has an answer already: allowed once, by tester\. Nothing changed\./
+	assert.equal(again.status, 303)
+	assert.equal(again.headers.location, '/permissions/x-1/P1')
+	const record = (await call(f.ui, '/permissions/x-1/P1?view=history', undefined, as)).body
+	assert.match(record, /Answered[\s\S]*allowed once, by tester/)
+	assert.doesNotMatch(record, /data-option/)
+	assert.deepEqual(
+		(await requests(f)).map((item) => item.decision?.kind),
+		['allow']
 	)
 	const unknown = await decide(f, 'P7', { decision: 'allow' })
 	assert.equal(unknown.status, 422)
 	assert.match(unknown.body, /has no permission request P7/)
 	const noName = await call(f.ui, '/permissions/x-1/P1', {
-		csrf: token((await call(f.ui, '/permissions')).body),
+		csrf: token((await call(f.ui, '/activity')).body),
 		decision: 'allow',
 	})
 	assert.equal(noName.status, 422)
@@ -411,7 +415,15 @@ test('without an answer in time the response is empty and the request is closed'
 	assert.equal(request.decision?.text, 'no answer in 10 minutes')
 	assert.equal(open(f).length, 0)
 	const late = await decide(f, 'P1', { decision: 'allow' })
-	assert.match(late.body, /has an answer already: no answer in 10 minutes/)
+	assert.equal(late.status, 303)
+	assert.match(
+		(await call(f.ui, '/permissions/x-1/P1?view=history', undefined, as)).body,
+		/Closed[\s\S]*no answer in 10 minutes[\s\S]*Claude Code denied the call/
+	)
+	assert.deepEqual(
+		(await requests(f)).map((item) => item.decision?.kind),
+		['closed']
+	)
 })
 
 test('closing the server answers each held response with an empty body and records the close', async (t) => {
@@ -606,28 +618,125 @@ test('an activity call becomes the live line of the tester, at most once in the 
 	assert.equal(lines().length, 3)
 })
 
-test('the status bar counts open requests and the permissions page lists them with the actions', async (t) => {
+test('the status bar counts open requests, /permissions opens the first one, and the record lists the options', async (t) => {
 	const f = await fixture(t)
-	assert.match((await call(f.ui, '/permissions')).body, /Nothing waits for you/)
+	const empty = await call(f.ui, '/permissions')
+	assert.equal(empty.status, 303)
+	assert.equal(empty.headers.location, '/activity')
 	assert.match((await call(f.ui, '/')).body, /data-region="permissions-link"\s+hidden/)
-	const asked = permission(f, 'a1')
+	const asked = permission(f, 'a1', { ...asking, cwd: '/work/app' })
 	await waitOpen(f, 1)
-	const page = (await call(f.ui, '/permissions', undefined, as)).body
+	const page = (await call(f.ui, '/activity', undefined, as)).body
 	assert.match(page, /data-region="permissions-link"\s*>1 permission</)
-	assert.match(page, /data-permission="x-1\/P1"/)
-	assert.match(page, /<td>a1<\/td>\s*<td class="mono">Bash<\/td>\s*<td class="mono">npm view left-pad<\/td>/)
-	const order = ['allow', 'allow-kind', 'always', 'deny', 'stop'].map((name) =>
-		page.indexOf(`name="decision" value="${name}"`)
+	const first = await call(f.ui, '/permissions', undefined, { ...as, Referer: new URL('/log?q=x', f.ui.url).href })
+	assert.equal(first.status, 303)
+	assert.equal(first.headers.location, '/permissions/x-1/P1?from=%2Flog%3Fq%3Dx')
+	const record = (await call(f.ui, '/permissions/x-1/P1', undefined, as)).body
+	assert.match(record, /Tester a1 asks to run: npm view left-pad/)
+	assert.match(record, /<pre class="sp-code" tabindex="0">npm view left-pad<\/pre>/)
+	assert.match(record, /<code>\/work\/app<\/code>/)
+	const order = [
+		'value="allow"',
+		'value="allow-kind"',
+		'value="allow-tool"',
+		'value="always"',
+		'data-reveal="deny"',
+		'value="stop"',
+	].map((name) => record.indexOf(name, record.indexOf('class="sp-optlist asks"')))
+	assert(
+		order.every((position) => position > 0),
+		JSON.stringify(order)
 	)
 	assert.deepEqual(
 		order,
 		[...order].sort((a, b) => a - b)
 	)
-	assert(order.every((position) => position > 0))
+	assert.match(record, /<code>Bash\(npm view \*\)<\/code>[\s\S]*\.claude\/settings\.local\.json/)
+	assert.match(record, /Allow every Bash call for this test/)
+	assert.match(record, /Stop tester a1…/)
 	const settings = (await call(f.ui, '/settings/claude')).body
 	assert.match(settings, /Testers that start now can ask you in this UI/)
 	await decide(f, 'P1', { decision: 'allow' })
 	await asked
+})
+
+test('after an answer the next open request opens, and the last answer returns to where the person came from', async (t) => {
+	const f = await fixture(t)
+	const first = permission(f, 'a1', ask)
+	const second = permission(f, 'a2', ask)
+	await waitOpen(f, 2)
+	const csrf = token((await call(f.ui, '/activity', undefined, as)).body)
+	const one = await call(f.ui, '/permissions/x-1/P1', { csrf, decision: 'allow', from: '/log' }, as)
+	assert.equal(one.headers.location, '/permissions/x-1/P2?from=%2Flog')
+	assert.match(String(one.headers['set-cookie']), /Answered%20x-1%2FP1%3A%20allowed%20once%2C%20by%20tester/)
+	const two = await call(f.ui, '/permissions/x-1/P2', { csrf, decision: 'allow', from: '/log' }, as)
+	assert.equal(two.headers.location, '/log')
+	await first
+	await second
+	const outside = await call(f.ui, '/permissions/x-1/P2', { csrf, decision: 'allow', from: 'http://evil.test/' }, as)
+	assert.equal(outside.headers.location, '/permissions/x-1/P2')
+	const away = await call(f.ui, '/permissions/x-1/P2?from=%2F%2Fevil.test', undefined, as)
+	assert.match(away.body, /data-moves-on data-next="\/activity"/)
+	assert.match(away.body, /data-back="\/activity"/)
+})
+
+test('a denial without a reason shows the record again with the refusal at the field, and a bulk answer skips answered requests', async (t) => {
+	const f = await fixture(t)
+	const first = permission(f, 'a1', ask)
+	const second = permission(f, 'a2', ask)
+	const third = permission(f, 'a1', ask)
+	await waitOpen(f, 3)
+	const csrf = token((await call(f.ui, '/activity', undefined, as)).body)
+	const empty = await call(f.ui, '/permissions/x-1/P1', { csrf, decision: 'deny', reason: '  ', from: '/log' }, as)
+	assert.equal(empty.status, 422)
+	assert.match(empty.body, /<p class="form-error" role="alert" data-field="reason">A denial needs a reason\./)
+	assert.equal(open(f).length, 3)
+	const plain = (name: string) => `permission:checkout:x-1/${name}`
+	const none = await call(f.ui, '/permissions/bulk', { csrf, decision: 'allow', return: '/log' }, as)
+	assert.equal(none.status, 422)
+	assert.match(none.body, /Select at least one request/)
+	const noReason = await call(
+		f.ui,
+		'/permissions/bulk',
+		[
+			['csrf', csrf],
+			['decision', 'deny'],
+			['return', '/log'],
+			['pick', plain('P1')],
+		],
+		as
+	)
+	assert.match(noReason.body, /A denial needs a reason/)
+	assert.equal(open(f).length, 3)
+	await decide(f, 'P3', { decision: 'allow' })
+	await third
+	const bulk = await call(
+		f.ui,
+		'/permissions/bulk',
+		[
+			['csrf', csrf],
+			['decision', 'deny'],
+			['reason', 'Not now.'],
+			['return', '/plans/checkout'],
+			['pick', plain('P1')],
+			['pick', plain('P2')],
+			['pick', plain('P3')],
+		],
+		as
+	)
+	assert.equal(bulk.status, 303)
+	assert.equal(bulk.headers.location, '/plans/checkout')
+	assert.match(
+		String(bulk.headers['set-cookie']),
+		/Denied%3A%202%20requests\.%201%20request%20had%20an%20answer%20already/
+	)
+	assert.equal((await first).body, wrap('{"behavior":"deny","message":"Not now."}'))
+	assert.equal((await second).body, wrap('{"behavior":"deny","message":"Not now."}'))
+	assert.deepEqual(
+		(await requests(f)).map((item) => item.decision?.kind),
+		['deny', 'deny', 'allow']
+	)
+	assert.equal(open(f).length, 0)
 })
 
 test('Settings says when testers started now cannot ask', async (t) => {

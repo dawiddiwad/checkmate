@@ -7,6 +7,7 @@ import { exploration, explorationEvents } from './explorations.ts'
 import { factoryStates, isTester, journal, oracleStates, planClaims, planQuestions, shortName } from './journal.ts'
 import { all, canonical, digest, one } from './store.ts'
 import { requireChoice, requireCondition } from './contracts.ts'
+import { openPermissions } from './permissions.ts'
 import {
 	approvalState,
 	dependencyBlock,
@@ -1633,11 +1634,11 @@ export function pagedOperations(
 
 const severityOrder = ['critical', 'high', 'medium', 'low']
 
-export type QueueGroup = 'blocking' | 'claims' | 'approvals' | 'questions'
+export type QueueGroup = 'permissions' | 'blocking' | 'claims' | 'approvals' | 'questions'
 export type QueueItem = {
 	key: string
 	group: QueueGroup
-	kind: 'question' | 'gap' | 'claim' | 'plan' | 'result'
+	kind: 'question' | 'gap' | 'claim' | 'plan' | 'result' | 'permission'
 	planId: string
 	id: string
 	title: string
@@ -1710,7 +1711,22 @@ export function needsYou(store: Store) {
 		revision: result.revision,
 	}))
 	const gaps = waiting.gaps.map(asked)
+	const permissions = openPermissions(store).map((item): QueueItem => ({
+		key: `permission:${item.planId}:${item.explorationId}/${item.id}`,
+		group: 'permissions',
+		kind: 'permission',
+		planId: item.planId,
+		id: `${item.explorationId}/${item.id}`,
+		title: `${item.who} asks to use ${item.tool}`,
+		since: item.at,
+		severity: null,
+		state: 'open',
+		explorationId: item.explorationId,
+		runId: null,
+		revision: null,
+	}))
 	const items = [
+		...permissions,
 		...gaps.filter((item) => item.group === 'blocking'),
 		...claims,
 		...plans,

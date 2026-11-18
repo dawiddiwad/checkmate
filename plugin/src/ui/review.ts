@@ -3,12 +3,15 @@ import type { Html } from './html.ts'
 import type { Context, Page } from './layout.ts'
 import type { CellStatus, ClaimBuildState } from '../rulemap.ts'
 import { claimDetails, ruleMap } from '../rulemap.ts'
+import type { Permission } from '../permissions.ts'
+import { openPermissions } from '../permissions.ts'
 import { planRequest } from '../plans.ts'
 import { oracleStates } from '../journal.ts'
 import { followCount } from '../explorers.ts'
 import { mergedClaims, mergedQuestions, needsYou, planDetail, planExplorations, planHasRevision } from '../views.ts'
 import { age, glyph, html, plural, words } from './html.ts'
 import { crumbBar } from './layout.ts'
+import { askBadge, askTitle, requestHref, requestName, rowOptions, waitsFor } from './permissions.ts'
 import { defaultBuild } from '../modes.ts'
 import { explorationEvents } from '../explorations.ts'
 import { phaseOf } from './activity.ts'
@@ -23,7 +26,8 @@ type Detail = ReturnType<typeof claimDetails>[number]
 type QuestionRow = ReturnType<typeof mergedQuestions>[number]
 type Waiting = ReturnType<typeof needsYou>['items'][number]
 
-export type Kind = 'finding' | 'defect' | 'rejected' | 'question' | 'answered' | 'deferred' | 'gap' | 'approval'
+export type Kind =
+	'permission' | 'finding' | 'defect' | 'rejected' | 'question' | 'answered' | 'deferred' | 'gap' | 'approval'
 
 export type Item = {
 	key: string
@@ -42,6 +46,7 @@ export type Item = {
 	detail: Detail | null
 	question: QuestionRow | null
 	waiting: Waiting | null
+	permission: Permission | null
 }
 
 export type Area = { label: string; rules: string[]; cells: CellStatus[] }
@@ -107,6 +112,7 @@ function claimItem(planId: string, claim: ClaimRow, detail: Detail | null, needs
 		detail,
 		question: null,
 		waiting: null,
+		permission: null,
 	}
 }
 
@@ -134,6 +140,7 @@ function questionItem(question: QuestionRow, needs: boolean): Item {
 		detail: null,
 		question,
 		waiting: null,
+		permission: null,
 	}
 }
 
@@ -156,6 +163,7 @@ function waitingItem(planId: string, waiting: Waiting): Item {
 			detail: null,
 			question: null,
 			waiting,
+			permission: null,
 		}
 	const plan = waiting.kind === 'plan'
 	return {
@@ -175,6 +183,29 @@ function waitingItem(planId: string, waiting: Waiting): Item {
 		detail: null,
 		question: null,
 		waiting,
+		permission: null,
+	}
+}
+
+function permissionItem(item: Permission): Item {
+	return {
+		key: `perm:${requestName(item)}`,
+		kind: 'permission',
+		id: requestName(item),
+		title: askTitle(item),
+		rule: null,
+		builds: [],
+		needs: true,
+		blocking: false,
+		severity: null,
+		topic: null,
+		href: requestHref(item, null),
+		meta: '',
+		claim: null,
+		detail: null,
+		question: null,
+		waiting: null,
+		permission: item,
 	}
 }
 
@@ -190,7 +221,12 @@ export function reviewOf(store: Store, planId: string) {
 		questionItem(question, waits.has(`question:${question.id}`))
 	)
 	const others = waiting.filter((item) => ['gap', 'plan', 'result'].includes(item.kind))
-	const items = [...claims, ...questions, ...others.map((item) => waitingItem(planId, item))]
+	const items = [
+		...openPermissions(store, planId).map(permissionItem),
+		...claims,
+		...questions,
+		...others.map((item) => waitingItem(planId, item)),
+	]
 	const { request, target } = planRequest(store, planId)
 	const explorations = planExplorations(store, planId)
 	const latest = planHasRevision(store, planId) ? planDetail(store, planId) : null
@@ -218,7 +254,7 @@ export function buildLabel(review: Review, build: string) {
 }
 
 export function itemsOf(review: Review, view: string) {
-	const { items } = review
+	const items = review.items.filter((item) => item.kind !== 'permission' || view === 'needs')
 	if (view === 'needs') return items.filter((item) => item.needs)
 	if (view === 'all') return items
 	if (view.startsWith('rule:')) {
@@ -242,6 +278,10 @@ function groupsOf(items: Item[]): Group[] {
 	const bySeverity = (a: Item, b: Item) =>
 		severityOrder.indexOf(a.severity ?? '') - severityOrder.indexOf(b.severity ?? '')
 	return [
+		of(
+			'Permission requests',
+			items.filter((item) => item.kind === 'permission')
+		),
 		of('Is this a defect?', items.filter((item) => item.kind === 'finding').sort(bySeverity)),
 		of(
 			'Questions that block testing',
@@ -305,6 +345,7 @@ const tags: Record<string, [string, string]> = {
 }
 
 export function itemTag(item: Item) {
+	if (item.permission) return askBadge()
 	if (item.blocking) return html`<span class="sp-pill red"><span class="dot" aria-hidden="true"></span>Blocks</span>`
 	const [label, color] = tags[item.kind === 'defect' ? (item.severity ?? 'low') : item.kind] ?? tags.low
 	return html`<span class="sp-pill ${color}">${label}</span>`
@@ -426,9 +467,18 @@ export function extraOf(context: Context, review: Review, item: Item) {
 }
 
 export function itemRow(context: Context, review: Review, item: Item, id: string, view: string) {
-	const pickable = ['finding', 'question', 'gap', 'defect'].includes(item.kind)
+	const asked = item.permission
+	const pickable = ['finding', 'question', 'gap', 'defect', 'permission'].includes(item.kind)
 	const dim = ['answered', 'deferred', 'rejected'].includes(item.kind)
-	const options = optionsOf(context, review, item)
+	const here = reviewHref(review.planId, view, `&item=${encodeURIComponent(item.key)}`)
+	const list = reviewHref(review.planId, view, `&at=${encodeURIComponent(item.key)}&focus=list`)
+	const opened = asked ? requestHref(asked, list) : here
+	const listed = optionsOf(context, review, item)
+	const options = asked
+		? rowOptions(context, asked, list)
+		: listed.length
+			? html`<div class="sp-c-opts" aria-label="Options">${listed}</div>`
+			: ''
 	const extra = extraOf(context, review, item)
 	return html`<div
 		class="sp-row${dim ? ' dim' : ''}"
@@ -438,7 +488,7 @@ export function itemRow(context: Context, review: Review, item: Item, id: string
 		id="${id}"
 		data-row
 		data-key="${item.key}"
-		data-href="${reviewHref(review.planId, view, `&item=${encodeURIComponent(item.key)}`)}"
+		data-href="${opened}"
 		data-label="${item.id}"
 		data-builds="${item.builds.join(' ')}"
 		${item.needs ? html`data-needs` : ''}
@@ -453,19 +503,18 @@ export function itemRow(context: Context, review: Review, item: Item, id: string
 		}
 		<span class="sp-c-tag">${itemTag(item)}</span>
 		<span class="sp-c-id" title="${item.id}">${item.id}</span>
-		<a
-			class="sp-c-title ell"
-			title="${item.title}"
-			tabindex="-1"
-			href="${reviewHref(review.planId, view, `&item=${encodeURIComponent(item.key)}`)}"
-			>${item.title}</a
-		>
-		<span class="sp-c-meta ell" title="${item.meta}">${item.meta}</span>
-		${options.length ? html`<div class="sp-c-opts" aria-label="Options">${options}</div>` : ''} ${extra}
+		<a class="sp-c-title ell" title="${item.title}" tabindex="-1" href="${opened}">${item.title}</a>
+		${
+			asked
+				? html`<span class="sp-c-meta ell">${waitsFor(asked)}</span>`
+				: html`<span class="sp-c-meta ell" title="${item.meta}">${item.meta}</span>`
+		}
+		${options} ${extra}
 	</div>`
 }
 
 export function pickKey(review: Review, item: Item) {
+	if (item.kind === 'permission') return `permission:${review.planId}:${item.id}`
 	if (item.kind === 'finding') return `claim:${review.planId}:${item.id}`
 	if (item.kind === 'gap') return `gap:${review.planId}:${item.id}`
 	if (item.kind === 'defect') return `defect:${review.planId}:${item.id}`
@@ -896,7 +945,7 @@ export function reviewPage(
 	const current = views.includes(asked) ? asked : 'needs'
 	const title = viewTitle(review, current)
 	const key = refusal?.key ?? params.get('item')
-	const item = key ? (review.items.find((each) => each.key === key) ?? null) : null
+	const item = key ? (review.items.find((each) => each.key === key && each.kind !== 'permission') ?? null) : null
 	const file = params.get('file')
 	const record = item
 		? file !== null && /^[0-9]{1,3}$/.test(file) && item.claim
@@ -953,6 +1002,8 @@ export function reviewPage(
 				<button type="button" class="sp-btn" data-bulk-action="right"><kbd></kbd><span></span></button>
 				<button type="button" class="sp-btn" data-bulk-action="defer"><kbd></kbd><span></span></button>
 				<button type="button" class="sp-btn" data-bulk-action="handoff"><kbd></kbd><span></span></button>
+				<button type="button" class="sp-btn" data-bulk-action="allow"><kbd></kbd><span></span></button>
+				<button type="button" class="sp-btn" data-bulk-action="deny"><kbd></kbd><span></span></button>
 				<button type="button" class="sp-btn" data-bulk-action="clear">
 					<kbd></kbd><span>Clear the selection</span>
 				</button>

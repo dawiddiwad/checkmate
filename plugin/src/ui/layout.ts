@@ -98,6 +98,14 @@ function statusBar(context: Context, page: Page) {
 		<span class="sb-links">
 			<a
 				class="sb-btn att"
+				href="/permissions"
+				title="Permission requests of testers that wait for you"
+				data-region="permissions-link"
+				${context.permissions ? '' : html`hidden`}
+				>${context.permissions} ${context.permissions === 1 ? 'permission' : 'permissions'}</a
+			>
+			<a
+				class="sb-btn att"
 				href="/"
 				title="Items that wait for you in all plans"
 				data-region="nav-count"
@@ -106,14 +114,6 @@ function statusBar(context: Context, page: Page) {
 					>${waiting}<span class="sb-long"> ${waiting === 1 ? 'needs' : 'need'} you</span
 					><span class="sb-all"> · all plans</span></span
 				></a
-			>
-			<a
-				class="sb-btn att"
-				href="/permissions"
-				title="Permission requests of testers that wait for you"
-				data-region="permissions-link"
-				${context.permissions ? '' : html`hidden`}
-				>${context.permissions} ${context.permissions === 1 ? 'permission' : 'permissions'}</a
 			>
 			<button class="sb-btn" type="button" data-find-open hidden>Find</button>
 			<button class="sb-btn" type="button" data-keys-open hidden>Keys</button>

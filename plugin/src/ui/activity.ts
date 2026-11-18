@@ -5,6 +5,7 @@ import type { Context, Page } from './layout.ts'
 import type { ListSpec } from './lists.ts'
 import { all } from '../store.ts'
 import { explorationEvents } from '../explorations.ts'
+import { explorationPermissions } from '../permissions.ts'
 import { explorationState, explorationStatus, startOf } from '../explorers.ts'
 import { authenticationHint } from '../sessions.ts'
 import { mergedClaims, mergedQuestions } from '../views.ts'
@@ -120,6 +121,8 @@ export function runsOf(store: Store, explorationId: string, counts: Map<string, 
 	const stop = events.findLast((item) => item.step === 'stop' && item.explorer === null)
 	const done = events.find((item) => item.step === 'done')
 	const [claims, questions] = counts.get(`${status.planId}:${explorationId}`) ?? [0, 0]
+	const waiting = explorationPermissions(store, explorationId).filter((item) => !item.decision).length
+	const waits = waiting ? `waits for you: ${plural(waiting, 'permission request')}` : ''
 	const failure = status.state === 'failed' ? failureOf(status.reason, status.doneHint, events) : null
 	const outcomes: Record<string, string> = {
 		completed: `${plural(claims, 'defect')}, ${plural(questions, 'question')}`,
@@ -155,7 +158,7 @@ export function runsOf(store: Store, explorationId: string, counts: Map<string, 
 		startedAt: startAt,
 		endedAt: done?.at ?? stop?.at ?? (status.state === 'interrupted' ? (events.at(-1)?.at ?? null) : null),
 		costUsd: costOf(firstFollow === -1 ? events : events.slice(0, firstFollow)),
-		outcome: testing ? '' : (outcomes[status.state === 'following' ? 'completed' : status.state] ?? ''),
+		outcome: testing ? waits : (outcomes[status.state === 'following' ? 'completed' : status.state] ?? ''),
 		failure,
 		stoppable: testing && status.path !== 'session',
 	}
@@ -183,7 +186,7 @@ export function runsOf(store: Store, explorationId: string, counts: Map<string, 
 			failed: trouble ? `${trouble.cause} ${trouble.next}` : '',
 			stopped: status.followReason ?? 'Stopped.',
 			interrupted: 'The run was interrupted: the supervisor stopped before the end.',
-			following: '',
+			following: waits,
 		}
 		return {
 			...base,

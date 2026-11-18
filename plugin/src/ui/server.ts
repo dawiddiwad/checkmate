@@ -37,7 +37,7 @@ import {
 	targetRevision,
 	urlReachable,
 } from '../targets.ts'
-import { closeOpenPermissions, decidePermission, openPermissions } from '../permissions.ts'
+import { closeOpenPermissions, decidePermission, openPermissions, permissionOf } from '../permissions.ts'
 import {
 	explorationState,
 	recordStop,
@@ -96,7 +96,7 @@ import type { InstanceForm } from './settings.ts'
 import { claudePage, instanceFromForm, targetPage, targetsPage } from './settings.ts'
 import type { HookOptions } from './hooks.ts'
 import { createHooks, sameSecret } from './hooks.ts'
-import { permissionsPage } from './permissions.ts'
+import { emptyRecord, nextOpen, permissionPage, requestHref } from './permissions.ts'
 
 export type UiOptions = HookOptions & { workspace: string; port?: number; defaultActor?: string; env?: Env }
 
@@ -115,6 +115,7 @@ const routes = {
 	startTest: new RegExp(`^/plans/(${id})/test$`),
 	startFollow: new RegExp(`^/plans/(${id})/follow$`),
 	permit: new RegExp(`^/permissions/(${id})/(P[1-9][0-9]{0,8})$`),
+	permitMany: /^\/permissions\/bulk$/,
 	stopRun: new RegExp(`^/explorations/(${id})/stop$`),
 	stopTester: new RegExp(`^/explorations/(${id})/explorers/(${id})/stop$`),
 	gap: new RegExp(`^/plans/(${id})@([1-9][0-9]{0,8})/gaps/(${id})$`),
@@ -357,7 +358,8 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		const shown = context(request)
 		const cookies = [...extraCookies]
 		if (shown.toast) cookies.push(cookie('checkmate_toast', '', 0))
-		send(request.res, page.status ?? 200, 'text/html; charset=utf-8', layout(shown, page).html, {
+		const subjects = [...page.subjects, 'permissions']
+		send(request.res, page.status ?? 200, 'text/html; charset=utf-8', layout(shown, { ...page, subjects }).html, {
 			'Set-Cookie': cookies,
 			Vary: 'Cookie',
 		})
@@ -489,7 +491,9 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		if (pathname === '/log') return render(request, logPage(store, searchParams))
 		if (pathname === '/activity')
 			return render(request, activityPage(store, shown, searchParams, { build: defaultBuild(store.workspace) }))
-		if (pathname === '/permissions') return render(request, permissionsPage(store, shown))
+		if (pathname === '/permissions') return firstRequest(request)
+		const asked = routes.permit.exec(pathname)
+		if (asked) return permissionRecord(request, asked[1], asked[2])
 		if (pathname === '/settings/claude') return render(request, claudePage(shown, env))
 		if (pathname === '/actor') return render(request, actorPage(shown, safeBack(searchParams.get('back'))))
 		if (pathname === '/settings') return redirect(request.res, '/settings/targets')
@@ -1067,10 +1071,59 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		redirect(request.res, back, [...cookies, cookie('checkmate_toast', flash, 60)])
 	}
 
+	function sameSiteFrom(value: string | null) {
+		return value && safeBack(value) === value ? value : null
+	}
+
+	function refererPath(request: Request) {
+		const referer = request.req.headers.referer
+		if (!referer || !URL.canParse(referer)) return null
+		const from = new URL(referer)
+		return from.host === request.req.headers.host && from.pathname !== '/permissions'
+			? sameSiteFrom(from.pathname + from.search)
+			: null
+	}
+
+	function firstRequest(request: Request) {
+		const first = nextOpen(store, null)
+		redirect(request.res, first ? requestHref(first, refererPath(request)) : '/activity')
+	}
+
+	function permissionRecord(request: Request, explorationId: string, requestId: string) {
+		const { searchParams } = request.url
+		const view = { from: sameSiteFrom(searchParams.get('from')), history: searchParams.get('view') === 'history' }
+		render(
+			request,
+			permissionPage(store, context(request), explorationId, requestId, view, null) ??
+				emptyRecord(explorationId, requestId)
+		)
+	}
+
 	function permit(request: Request, form: URLSearchParams, explorationId: string, requestId: string) {
-		const back = '/permissions'
 		const { actor, cookies } = actorFrom(request, form)
-		const refuse = (message: Html | string) => actionRefusal(request, back, message)
+		const from = sameSiteFrom(form.get('from'))
+		const returnTo = form.get('return') ? safeBack(form.get('return')) : null
+		const name = `${explorationId}/${requestId}`
+		const refuse = (message: Html | string) => {
+			const found = permissionOf(store, explorationId, requestId)
+			const page =
+				found && !found.decision
+					? permissionPage(
+							store,
+							context(request),
+							explorationId,
+							requestId,
+							{ from, history: false },
+							{
+								error: String(message),
+								reason: form.get('reason') ?? '',
+								field: form.get('decision') === 'deny' && !form.get('reason')?.trim() ? 'reason' : null,
+							}
+						)
+					: null
+			if (page) return render(request, page)
+			actionRefusal(request, returnTo ?? from ?? '/activity', message)
+		}
 		if (!actor) return refuse('Enter your name. Checkmate records it with the answer.')
 		try {
 			decidePermission(
@@ -1088,13 +1141,55 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 				}
 			)
 		} catch (error) {
-			return refuse(engineText(error))
+			const found = permissionOf(store, explorationId, requestId)
+			if (!found?.decision) return refuse(engineText(error))
+			const flash = `${name} has an answer already: ${found.decision.text}. Nothing is recorded.`
+			return redirect(
+				request.res,
+				returnTo ?? requestHref(found, from),
+				returnTo ? [...cookies, cookie('checkmate_toast', flash, 60)] : cookies
+			)
 		} finally {
 			hooks.release()
 		}
+		const answered = permissionOf(store, explorationId, requestId)!
+		const next = returnTo ? null : nextOpen(store, answered)
+		const where = returnTo ?? (next ? requestHref(next, from) : (from ?? '/activity'))
+		redirect(request.res, where, [
+			...cookies,
+			cookie('checkmate_toast', `Answered ${name}: ${answered.decision!.text}`, 60),
+		])
+	}
+
+	function permitMany(request: Request, form: URLSearchParams) {
+		const { actor, cookies } = actorFrom(request, form)
+		const back = safeBack(form.get('return'))
+		const refuse = (message: string) => actionRefusal(request, back, message)
+		const decision = form.get('decision')
+		const reason = form.get('reason')?.trim() ?? ''
+		const named = form.getAll('pick').map((pick) => /^permission:[^:]+:(.+)\/(P[1-9][0-9]{0,8})$/.exec(pick))
+		if (!actor) return refuse('Enter your name. Checkmate records it with the answers.')
+		if (decision !== 'allow' && decision !== 'deny') return refuse('Choose Allow once or Deny.')
+		if (decision === 'deny' && !reason) return refuse('A denial needs a reason. Write it, then deny again.')
+		if (!named.length || named.includes(null)) return refuse('Select at least one request.')
+		const answered: string[] = []
+		const gone: string[] = []
+		for (const found of named) {
+			const [, explorationId, requestId] = found!
+			try {
+				decidePermission(store, actor, { explorationId, requestId, decision, reason }, () => {})
+				answered.push(`${explorationId}/${requestId}`)
+			} catch {
+				gone.push(`${explorationId}/${requestId}`)
+			}
+		}
+		hooks.release()
+		if (!answered.length) return refuse(`${gone.join(', ')} had an answer already, or closed. Nothing is recorded.`)
+		const verb = decision === 'allow' ? 'Allowed once' : 'Denied'
+		const rest = gone.length ? ` ${plural(gone.length, 'request')} had an answer already.` : ''
 		redirect(request.res, back, [
 			...cookies,
-			cookie('checkmate_toast', `Answered ${requestId} of ${explorationId}`, 60),
+			cookie('checkmate_toast', `${verb}: ${plural(answered.length, 'request')}.${rest}`, 60),
 		])
 	}
 
@@ -1612,6 +1707,7 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		if (starting) return startTest(request, form, starting[1])
 		const following = routes.startFollow.exec(pathname)
 		if (following) return startAnswers(request, form, following[1])
+		if (routes.permitMany.test(pathname)) return permitMany(request, form)
 		const permitting = routes.permit.exec(pathname)
 		if (permitting) return permit(request, form, permitting[1], permitting[2])
 		const stopping = routes.stopRun.exec(pathname)

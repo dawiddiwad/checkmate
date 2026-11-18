@@ -5,7 +5,9 @@ import type { EvidenceFile } from './evidence.ts'
 import type { FormState } from './forms.ts'
 import type { Claim } from '../journal.ts'
 import { explorationReport } from '../explorers.ts'
+import type { Permission } from '../permissions.ts'
 import { explorationEvents } from '../explorations.ts'
+import { explorationPermissions, permissionRules } from '../permissions.ts'
 import { defaultBuild } from '../modes.ts'
 import { claimEvidence, entryEvidence, explorationLive, planExplorations } from '../views.ts'
 import { actorField, emptyState, gapPanel, hidden, keptText, messages, rationaleField, recordPanel } from './forms.ts'
@@ -13,6 +15,7 @@ import { banner, crumbBar, downloads, heading } from './layout.ts'
 import { navigator, reviewOf } from './review.ts'
 import { ago, duration, html, join, pill, pillClass, plural, time, words } from './html.ts'
 import { evidenceList, shownAsText, viewLink } from './evidence.ts'
+import { askingPill, asksFor, permissionHistory, requestHref, rowOptions, rulesLines, waitsFor } from './permissions.ts'
 import { failureOf, money, optionsBox, phases, runsOf } from './activity.ts'
 import type { Run } from './activity.ts'
 import {
@@ -396,7 +399,8 @@ function spRow(
 	meta: Html | string,
 	n: string,
 	metaText = '',
-	opts: Html | '' = ''
+	opts: Html | '' = '',
+	ask = ''
 ) {
 	return html`<div
 		class="sp-row"
@@ -408,6 +412,7 @@ function spRow(
 		data-key="${key}"
 		data-href="${href}"
 		data-label="${label}"
+		${ask ? html`data-ask="${ask}"` : ''}
 	>
 		<span class="sp-c-cb"></span>
 		<span class="sp-c-tag">${tag}</span>
@@ -418,20 +423,43 @@ function spRow(
 	</div>`
 }
 
+function stepAsks(open: Permission[]) {
+	return open
+		.filter((item) => !item.tester)
+		.map(
+			(item) =>
+				html`<p class="help" data-key="step-asks-${item.id}">
+					<a href="${requestHref(item, null)}">Step ${item.who} asks to ${asksFor(item)}</a>
+				</p>`
+		)
+}
+
+function historyFrom(explorationId: string, params: URLSearchParams) {
+	const page = params.get('requests')
+	return page
+		? `/explorations/${explorationId}?requests=${encodeURIComponent(page)}`
+		: `/explorations/${explorationId}`
+}
+
 function stoppableTester(live: Live, item: LiveExplorer) {
 	return live.running && live.state !== 'following' && live.path !== 'session' && item.state === 'running'
 }
 
-function explorationList(live: Live, others: Listed[]) {
+function explorationList(context: Context, live: Live, others: Listed[], asking: Map<string, Permission>) {
 	const explorers = live.explorers.map((item, index) => {
 		const raw = rawCount(live, item.explorer)
+		const asked = asking.get(item.explorer)
+		const here = `/explorations/${live.explorationId}`
+		const from = `${here}?at=${encodeURIComponent(`explorer:${item.explorer}`)}`
 		return spRow(
 			`explorer:${item.explorer}`,
-			explorationHref(live.explorationId, `explorer:${item.explorer}`),
+			asked ? requestHref(asked, from) : explorationHref(live.explorationId, `explorer:${item.explorer}`),
 			item.explorer,
-			testerState(live, item),
-			testerLine(item),
-			html`${item.turn ?? ''}${item.turn && item.elapsedMs !== null ? ' · ' : ''}${inState(item)}${raw ? ` · ${raw} not merged` : ''}`,
+			asked ? askingPill() : testerState(live, item),
+			asked ? `Asks to ${asksFor(asked)}` : testerLine(item),
+			asked
+				? waitsFor(asked)
+				: html`${item.turn ?? ''}${item.turn && item.elapsedMs !== null ? ' · ' : ''}${inState(item)}${raw ? ` · ${raw} not merged` : ''}`,
 			`tester-${index}`,
 			[
 				item.turn,
@@ -444,7 +472,12 @@ function explorationList(live: Live, others: Listed[]) {
 			]
 				.filter(Boolean)
 				.join(' · '),
-			stoppableTester(live, item) ? optionsBox([testerStopOption(live.explorationId, item.explorer, 1)]) : ''
+			asked
+				? rowOptions(context, asked, from)
+				: stoppableTester(live, item)
+					? optionsBox([testerStopOption(live.explorationId, item.explorer, 1)])
+					: '',
+			asked ? `${asked.explorationId}/${asked.id}` : ''
 		)
 	})
 	const phases = live.phases.map((row, index) =>
@@ -778,6 +811,9 @@ export function explorationPage(
 	const review = reviewOf(store, live.planId)
 	const title = live.running ? 'Testers now' : 'Testers'
 	const others = review.explorations.filter((item) => item.explorationId !== explorationId).reverse()
+	const permissions = explorationPermissions(store, explorationId)
+	const open = permissions.filter((item) => !item.decision)
+	const asking = new Map(open.flatMap((item) => (item.tester ? [[item.tester, item] as const] : [])))
 	const detail = explorer
 		? explorerDetail(store, live, explorer, html``)
 		: phase
@@ -827,7 +863,9 @@ export function explorationPage(
 					${run.costUsd === null ? '' : html`<span class="sp-pill" title="Cost so far, as Claude Code reports it">${money(run.costUsd)}</span>`}
 				</div>
 			</div>
-			<div data-region="exploration-banner">${stateLine(store, live, run)}${strayLines(live)}</div>
+			<div data-region="exploration-banner">
+				${stateLine(store, live, run)}${strayLines(live)}${stepAsks(open)}${rulesLines(permissionRules(store, explorationId))}
+			</div>
 			${runActions(
 				context,
 				live,
@@ -835,7 +873,10 @@ export function explorationPage(
 				review.explorations.filter((item) => item.explorationId !== explorationId),
 				defaultBuild(store.workspace)
 			)}
-			<div data-region="exploration-list">${explorationList(live, others)}</div>
+			<div data-region="exploration-list">${explorationList(context, live, others, asking)}</div>
+			<div data-region="permission-history">
+				${permissionHistory(store, explorationId, params, historyFrom(explorationId, params))}
+			</div>
 			<section
 				class="sp-detail"
 				aria-label="${label ?? 'Overview'}"

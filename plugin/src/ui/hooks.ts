@@ -162,7 +162,8 @@ export function createHooks(store: Store, token: string, options: HookOptions = 
 			? (body.permission_suggestions.filter((item) => item && typeof item === 'object') as Suggestion[])
 			: []
 		try {
-			const made = requestPermission(store, { explorationId, who, tool: body.tool_name, input, suggestions })
+			const cwd = typeof body.cwd === 'string' && body.cwd ? body.cwd : undefined
+			const made = requestPermission(store, { explorationId, who, tool: body.tool_name, input, suggestions, cwd })
 			if (!made.byRule) return hold(explorationId, made.id, res)
 			const request = permissionOf(store, explorationId, made.id)!
 			answer(res, permissionAnswer(request, request.decision!))

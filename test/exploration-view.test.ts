@@ -291,7 +291,7 @@ test('the plan page names a running exploration and links its live view, and sho
 	assert.doesNotMatch(inboxPage, /Can a coupon apply|Two coupons stack/)
 	const live = await call(url, '/explorations/x-1')
 	assert.equal(live.status, 200)
-	assert.match(live.body, /data-subjects="exploration:x-1,plan:checkout"/)
+	assert.match(live.body, /data-subjects="exploration:x-1,plan:checkout,permissions"/)
 	assert.match(live.body, /Exploration x-1 is running\. Phase: test\./)
 	for (const key of ['explorer:a1', 'explorer:a2', 'phase:record', 'phase:follow-up', 'raw:a1/Q1', 'raw:a1/D1'])
 		assert(keyed(live.body, key), key)

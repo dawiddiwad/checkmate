@@ -27,6 +27,7 @@ export type Permission = {
 	tool: string
 	input: unknown
 	suggestions: Suggestion[]
+	cwd: string | null
 	at: string
 	rule: string | null
 	decision: PermissionDecision | null
@@ -45,6 +46,7 @@ export type PermissionRequestInput = {
 	tool: string
 	input: unknown
 	suggestions: Suggestion[]
+	cwd?: string
 }
 
 export const closedText: Record<ClosedCause, string> = {
@@ -144,6 +146,7 @@ function permissionsOf(list: Row[]) {
 				tool: detail.tool as string,
 				input: detail.input,
 				suggestions,
+				cwd: (detail.cwd as string | null | undefined) ?? null,
 				at: row.at,
 				rule: kindRule(suggestions),
 				decision: null,
@@ -260,6 +263,7 @@ export function requestPermission(store: Store, input: PermissionRequestInput) {
 					tool: input.tool,
 					input: shortened(input.input),
 					suggestions: input.suggestions,
+					...(input.cwd ? { cwd: input.cwd } : {}),
 				},
 			},
 			operationId,
@@ -282,7 +286,7 @@ export function requestPermission(store: Store, input: PermissionRequestInput) {
 			)
 		return {
 			reply: completed(input.explorationId, { id, byRule: Boolean(force) }),
-			subjects: [`exploration:${input.explorationId}`],
+			subjects: [`exploration:${input.explorationId}`, 'permissions'],
 		}
 	}).data as { id: string; byRule: boolean }
 }
@@ -338,7 +342,7 @@ export function decidePermission(
 		)
 		return {
 			reply: completed(request.explorationId, { requestId: request.id, decision: choice, who: request.tester }),
-			subjects: [`exploration:${request.explorationId}`, `plan:${request.planId}`],
+			subjects: [`exploration:${request.explorationId}`, `plan:${request.planId}`, 'permissions'],
 		}
 	})
 	if (choice === 'stop') stop((reply.data.who as string | null) ?? undefined, reason)
@@ -360,7 +364,7 @@ export function closePermission(store: Store, explorationId: string, requestId: 
 			addDecision(store, request, 'closed', { by: 'checkmate', text: closedText[cause], cause }, operationId, at)
 			return {
 				reply: completed(explorationId, { closed: true }),
-				subjects: [`exploration:${explorationId}`, `plan:${request.planId}`],
+				subjects: [`exploration:${explorationId}`, `plan:${request.planId}`, 'permissions'],
 			}
 		}
 	).data.closed as boolean

@@ -1,7 +1,7 @@
 import type { Gap, Plan, PlanCandidate, PlanDelta, PlanPatch, PlanRequest, Profile, Result } from './types.ts'
 import type { Change, Reply, Store } from './store.ts'
 import { answerQuestion } from './journal.ts'
-import { patchRules } from './rules.ts'
+import { patchRules, requireHeldRules } from './rules.ts'
 import { operationAllowed } from './targets.ts'
 import { all, canonical, completed, digest, execute, one, ulid, write } from './store.ts'
 import type { PlanDraft, Test } from './contracts.ts'
@@ -264,6 +264,7 @@ export function patchPlan(
 				return patchRules(store, operationId, input.reference, validate('plan-patch', input.patch))
 			const base = editableRevision(store, input.reference, input.expectSha256)
 			const patch = validate('plan-patch', input.patch)
+			requireHeldRules(store, base.plan, patch)
 			const candidate = patchedCandidate(base.plan, patch)
 			return storeEditedPlan(store, operationId, base, candidate, writer, input.rationale)
 		}

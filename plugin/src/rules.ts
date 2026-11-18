@@ -7,7 +7,7 @@ import { readFileSync, realpathSync, statSync } from 'node:fs'
 import { resolve, sep } from 'node:path'
 
 export type Rule = { id: string; text: string; source: string; area?: string }
-export type RuleOrigin = 'revision' | 'request' | 'derived' | 'corrected'
+export type RuleOrigin = 'revision' | 'request' | 'derived' | 'corrected' | 'harvested'
 export type RuleSource = { name: string; text: string | null }
 
 export const outsideRule = 'outside'
@@ -18,7 +18,7 @@ const maxSourceCharacters = 40000
 const ruleId = /^R[1-9][0-9]{0,3}$/
 
 export function storedRules(store: Store, planId: string) {
-	const row = one<{ origin: 'derived' | 'corrected'; body: string }>(
+	const row = one<{ origin: 'derived' | 'corrected' | 'harvested'; body: string }>(
 		store,
 		'SELECT origin, body FROM plan_rules WHERE plan_id = ? ORDER BY rowid DESC LIMIT 1',
 		planId
@@ -26,13 +26,29 @@ export function storedRules(store: Store, planId: string) {
 	return row ? { rules: JSON.parse(row.body) as Rule[], origin: row.origin } : null
 }
 
+function plainRules(items: Plan['requirements']): Rule[] {
+	return items.map(({ id, text, source, area }) => ({ id, text, source, ...(area ? { area } : {}) }))
+}
+
+function withHeldRules(derived: Rule[], held: Rule[]) {
+	const known = new Set(derived.map((rule) => rule.id))
+	return [
+		...derived.map((rule) => held.find((item) => item.id === rule.id) ?? rule),
+		...held.filter((rule) => !known.has(rule.id)),
+	]
+}
+
 export function planRules(store: Store, planId: string): { rules: Rule[]; origin: RuleOrigin | null } {
 	const latest = one<{ body: string }>(store, 'SELECT body FROM latest_plans WHERE plan_id = ?', planId)
-	const plain = (items: Plan['requirements']) =>
-		items.map(({ id, text, source, area }) => ({ id, text, source, ...(area ? { area } : {}) }))
-	if (latest) return { rules: plain((JSON.parse(latest.body) as Plan).requirements), origin: 'revision' }
+	if (latest) {
+		const held = plainRules((JSON.parse(latest.body) as Plan).requirements)
+		const stored = storedRules(store, planId)
+		return stored?.origin === 'harvested'
+			? { rules: withHeldRules(stored.rules, held), origin: 'harvested' }
+			: { rules: held, origin: 'revision' }
+	}
 	const { request } = planRequest(store, planId)
-	if (request.requirements?.length) return { rules: plain(request.requirements), origin: 'request' }
+	if (request.requirements?.length) return { rules: plainRules(request.requirements), origin: 'request' }
 	return storedRules(store, planId) ?? { rules: [], origin: null }
 }
 
@@ -141,7 +157,7 @@ export function saveRules(
 	operationId: string,
 	planId: string,
 	rules: Rule[],
-	origin: 'derived' | 'corrected'
+	origin: 'derived' | 'corrected' | 'harvested'
 ) {
 	execute(
 		store,
@@ -153,12 +169,31 @@ export function saveRules(
 	)
 }
 
-export function patchRules(store: Store, operationId: string, planId: string, patch: PlanPatch) {
-	requireWellFormed(
-		!one(store, 'SELECT 1 FROM plan_revisions WHERE plan_id = ?', planId),
-		`Name the plan revision: ${planId}@<revision>`
+function heldRules(store: Store, planId: string) {
+	const latest = one<{ revision: number; body: string }>(
+		store,
+		'SELECT revision, body FROM latest_plans WHERE plan_id = ?',
+		planId
 	)
+	if (!latest) return null
+	const rules = plainRules((JSON.parse(latest.body) as Plan).requirements)
+	return { revision: latest.revision, rules, ids: new Set(rules.map((rule) => rule.id)) }
+}
+
+export function requireHeldRules(store: Store, plan: Plan, patch: PlanPatch) {
+	const stored = storedRules(store, plan.planId)
+	if (stored?.origin !== 'harvested') return
+	for (const id of Object.keys(patch.requirements ?? {}))
+		requireWellFormed(
+			plan.requirements.some((rule) => rule.id === id) || !stored.rules.some((rule) => rule.id === id),
+			`Rule ${id} has no stored test, so it is not in revision ${plan.revision}. Correct it with checkmate plan edit ${plan.planId} --patch.`
+		)
+}
+
+export function patchRules(store: Store, operationId: string, planId: string, patch: PlanPatch) {
+	const held = heldRules(store, planId)
 	const stored = storedRules(store, planId)
+	requireWellFormed(!held || stored?.origin === 'harvested', `Name the plan revision: ${planId}@<revision>`)
 	requireCondition(
 		stored,
 		`Plan ${planId} has no revision and no derived rules. There is nothing to edit.`,
@@ -166,29 +201,34 @@ export function patchRules(store: Store, operationId: string, planId: string, pa
 	)
 	requireWellFormed(
 		!patch.tests && !patch.gaps,
-		`Plan ${planId} has no revision. A patch of its derived rules has only "requirements".`
+		`A patch of the derived rules of plan ${planId} has only "requirements".`
 	)
+	for (const id of Object.keys(patch.requirements ?? {}))
+		requireWellFormed(
+			!held?.ids.has(id),
+			`Rule ${id} has a stored test, so it belongs to revision ${held?.revision}. Correct it with checkmate plan edit ${planId}@${held?.revision} --patch.`
+		)
 	const rules = patchList(stored.rules, patch.requirements, 'rule', (item, id, change) => {
 		requireWellFormed(!change.metadata, `A derived rule has no metadata: ${id}`)
 		return item ? { ...item, ...change } : { id, ...newFields(`rule ${id}`, change, ['text', 'source']) }
 	}) as Rule[]
 	requireWellFormed(rules.length, `Keep at least one rule of plan ${planId}.`)
 	const areas = new Set<string>()
-	for (const rule of rules) {
-		requireWellFormed(rule.text.trim(), `The rule ${rule.id} needs text.`)
+	for (const rule of rules) requireWellFormed(rule.text.trim(), `The rule ${rule.id} needs text.`)
+	for (const rule of held ? withHeldRules(rules, held.rules) : rules)
 		areas.add((rule.area ?? defaultArea).toLowerCase())
-	}
 	requireWellFormed(
 		areas.size <= maxAreas,
 		`The rules have ${areas.size} areas. Use at most ${maxAreas} areas for the plan.`
 	)
-	saveRules(store, operationId, planId, rules, 'corrected')
+	const origin = stored.origin === 'harvested' ? 'harvested' : 'corrected'
+	saveRules(store, operationId, planId, rules, origin)
 	return {
 		reply: {
 			status: 'completed' as const,
 			subject: planId,
 			reasons: [],
-			data: { planId, edit: 'rules', origin: 'corrected', rules: rules.map((rule) => rule.id) },
+			data: { planId, edit: 'rules', origin, rules: rules.map((rule) => rule.id) },
 		},
 		subjects: [`plan:${planId}`, 'inbox'],
 	}
@@ -196,6 +236,9 @@ export function patchRules(store: Store, operationId: string, planId: string, pa
 
 export function rulesLine(store: Store, planId: string) {
 	const { rules, origin } = planRules(store, planId)
+	const held = heldRules(store, planId)
+	if (origin === 'harvested' && held)
+		return `${rules.length} rules were derived from the sources. ${rules.filter((rule) => held.ids.has(rule.id)).length} have a stored test and belong to revision ${held.revision}. Correct the others with checkmate plan edit ${planId} --patch.`
 	if (origin !== 'derived' && origin !== 'corrected') return null
 	return `${rules.length} rules were derived from the sources${origin === 'corrected' ? ' and corrected' : ''}. Correct them with checkmate plan edit ${planId} --patch.`
 }

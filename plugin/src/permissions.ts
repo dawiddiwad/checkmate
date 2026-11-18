@@ -53,9 +53,9 @@ export type PermissionRequestInput = {
 
 export const closedText: Record<ClosedCause, string> = {
 	timeout: 'no answer in 10 minutes',
-	'ui-stopped': 'closed, the UI stopped',
-	stopped: 'closed, the tester or the run stopped',
-	disconnected: 'closed, the tester did not wait any more',
+	'ui-stopped': 'the UI stopped',
+	stopped: 'the tester or the run stopped',
+	disconnected: 'the tester did not wait any more',
 }
 
 const maxText = 2000

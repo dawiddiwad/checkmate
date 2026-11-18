@@ -472,8 +472,8 @@ test('closing the server answers each held response with an empty body and recor
 	assert.deepEqual(
 		explorationPermissions(reading, 'x-1').map((item) => [item.decision?.cause, item.decision?.text]),
 		[
-			['ui-stopped', 'closed, the UI stopped'],
-			['ui-stopped', 'closed, the UI stopped'],
+			['ui-stopped', 'the UI stopped'],
+			['ui-stopped', 'the UI stopped'],
 		]
 	)
 })
@@ -492,7 +492,10 @@ test('requests that were open when an earlier server ended show as closed after 
 	const f = await serverOf(t, workspace)
 	assert.equal(open(f).length, 0)
 	const [request] = await requests(f)
-	assert.equal(request.decision?.text, 'closed, the UI stopped')
+	assert.equal(request.decision?.text, 'the UI stopped')
+	const page = (await call(f.ui, '/permissions/x-1/P1?view=history', undefined, as)).body
+	assert.doesNotMatch(page, /closed, the UI stopped/i)
+	assert.match(page, /Closed: the UI stopped\./)
 })
 
 test('a run that is stopped closes its open requests; a stopped tester closes only its own', async (t) => {

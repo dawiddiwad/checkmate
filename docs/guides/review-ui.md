@@ -342,7 +342,7 @@ Typed text is not lost. When you leave a record or a page with text in a field, 
 
 The first-run form and the new-change form follow the same keys. `↑` and `↓` move between the fields and the buttons. In a field with more than one line, `↑` and `↓` first move the caret to the first or the last line. On a choice, press `1` or `2` (or `3`) to choose an option. `Esc` leaves a field and keeps the text. `Esc` again goes back one level. `Enter` in a field of one line sends the form.
 
-In a dialog with fields, `↑` and `↓` move between the fields and the buttons. `Esc` leaves a field and keeps the text. `Esc` again closes the dialog. `Enter` sends. A refusal shows inside the dialog, and the focus stays on the field. When you close the dialog, the focus returns to where it came from. `Back` in the browser closes the dialog.
+In a dialog with fields, `↑` and `↓` move between the fields and the buttons. `Esc` leaves a field and keeps the text. `Esc` again closes the dialog. `Enter` sends. A refusal shows inside the dialog, and the focus stays on the field. The refusal goes away when you change that field. A field that you leave empty shows a sentence of Checkmate at the field, not the message of the browser. When you close the dialog, the focus returns to where it came from. `Back` in the browser closes the dialog.
 
 In a list with pages, for example `Log`, `↓` on the last row opens the next page, and `↑` on the first row opens the previous page. The status bar shows the page, for example `Log · page 2 of 7`. `←` goes to the first page.
 

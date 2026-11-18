@@ -330,3 +330,19 @@ for (const colorScheme of ['dark', 'light'] as const)
 			}
 		}
 	)
+
+test(
+	'an empty rule text shows a sentence of Checkmate at the field, not the bubble of the browser',
+	browserTest,
+	async (t) => {
+		const { page, url, workspace } = await open(t)
+		await page.goto(url('/plans/notes?view=rules'))
+		await page.getByRole('button', { name: 'Add a rule…' }).click()
+		const add = page.locator('dialog[data-act-dialog="rule-add"]')
+		await add.getByRole('button', { name: 'Save the rule' }).click()
+		const message = add.locator('[data-field-error]')
+		await message.waitFor()
+		assert.equal(await message.textContent(), 'Write the text of the rule.')
+		assert.equal(rulesOf(workspace).length, 3)
+	}
+)

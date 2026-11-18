@@ -91,7 +91,14 @@ function syncRemoval(area) {
 	field.querySelector('[data-removal-tests]').textContent = removed.join(', ')
 }
 
+function clearRefusal(field) {
+	if (!field.form || !field.name) return
+	for (const message of field.form.querySelectorAll('[data-refusal]'))
+		if (message.dataset.field === field.name) message.remove()
+}
+
 document.addEventListener('input', (event) => {
+	clearRefusal(event.target)
 	const form = event.target.closest?.('form')
 	if (form) syncRationale(form.parentElement ?? document)
 	if (event.target.nextElementSibling?.matches('[data-field-error]')) event.target.nextElementSibling.remove()
@@ -99,6 +106,7 @@ document.addEventListener('input', (event) => {
 })
 
 document.addEventListener('change', (event) => {
+	clearRefusal(event.target)
 	if (event.target.name === 'kind') syncSource()
 })
 
@@ -1852,6 +1860,7 @@ function actKey(event, dialog) {
 		event.preventDefault()
 		if (choice.matches('input')) {
 			choice.checked = true
+			choice.dispatchEvent(new window.Event('change', { bubbles: true }))
 			choice.focus()
 		} else choice.click()
 	}

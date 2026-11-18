@@ -374,3 +374,28 @@ test('the find bar lists New change and New target', browserTest, async (t) => {
 	await page.keyboard.press('Enter')
 	await page.waitForURL(/\/new$/)
 })
+
+test('a refusal at a field goes away when that field changes, and not before', browserTest, async (t) => {
+	const { page, url } = await setup(t, 'nothing')
+	await page.goto(url('/'))
+	await page.waitForFunction(() => document.activeElement?.matches('#setup-url'))
+	await page.keyboard.type('http://127.0.0.1:1')
+	await page.locator('[data-assumed]:not([hidden])').waitFor()
+	await page.keyboard.press('Enter')
+	await alert(page, 'url').waitFor()
+	await field(page, 'target').fill('shop')
+	assert.equal(await alert(page, 'url').count(), 1)
+	await field(page, 'url').fill('http://127.0.0.1:2')
+	assert.equal(await alert(page, 'url').count(), 0)
+})
+
+test('a refusal of the new change form goes away when its field changes', browserTest, async (t) => {
+	const { page, url } = await setup(t, 'target')
+	await page.goto(url('/new'))
+	await page.getByRole('button', { name: /Start the test/ }).click()
+	await alert(page, 'file').waitFor()
+	await field(page, 'plan').fill('other')
+	assert.equal(await alert(page, 'file').count(), 1)
+	await field(page, 'file').fill('docs/missing.md')
+	assert.equal(await alert(page, 'file').count(), 0)
+})

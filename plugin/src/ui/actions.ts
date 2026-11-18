@@ -44,7 +44,7 @@ function shell(id: string, title: string, gone: string, action: string, context:
 	</dialog>`
 }
 
-function field(id: string, label: string, name: string, value: string, required = false) {
+function field(id: string, label: string, name: string, value: string, missing = '') {
 	return html`<label for="${id}">${label}</label>
 		<input
 			id="${id}"
@@ -52,7 +52,7 @@ function field(id: string, label: string, name: string, value: string, required 
 			value="${value}"
 			maxlength="200"
 			autocomplete="off"
-			${required ? html`required` : ''}
+			${missing ? html`required data-missing="${missing}"` : ''}
 			data-stop
 		/>`
 }
@@ -112,7 +112,7 @@ export function testDialog(
 		planId ? `/plans/${planId}/test` : '/activity',
 		context,
 		html`<p class="sp-sub">Start a test of the plan on this computer. The testers run in the background.</p>
-			${field('act-test-build', 'Build', 'build', shown.build, true)}
+			${field('act-test-build', 'Build', 'build', shown.build, 'Write the build name.')}
 			${instances.map((choice) => instanceField(choice, choice.planId === planId))}
 			<fieldset class="sp-seg" role="radiogroup" aria-label="Level">
 				<legend>Level</legend>
@@ -168,7 +168,15 @@ export function ruleDialog(kind: 'edit' | 'add', context: Context, planId: strin
 		`/plans/${planId}/rules`,
 		context,
 		html`<label for="act-${id}-text">Text</label>
-			<input id="act-${id}-text" name="text" maxlength="400" autocomplete="off" required data-stop />
+			<input
+				id="act-${id}-text"
+				name="text"
+				maxlength="400"
+				autocomplete="off"
+				required
+				data-missing="Write the text of the rule."
+				data-stop
+			/>
 			<fieldset class="sp-seg" role="radiogroup" aria-label="Area">
 				<legend>Area</legend>
 				${areas.map(

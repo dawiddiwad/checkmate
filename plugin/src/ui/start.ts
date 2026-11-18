@@ -105,7 +105,8 @@ export function firstRunPage(context: Context, onHome: boolean, back = '/'): Pag
 			'url',
 			'Address of the application',
 			'The web address that the testers open, for example http://localhost:3000.',
-			html`required autofocus inputmode="url" data-setup-url`
+			html`required autofocus inputmode="url" data-setup-url data-missing="Give the address of the application,
+			for example http://localhost:3000."`
 		)}
 		<div class="setup-assumed" data-assumed hidden>
 			<h2 class="lab">What Checkmate will assume</h2>
@@ -201,7 +202,7 @@ export function newChangePage(context: Context, defaults: NewChangeDefaults, onH
 			</p>
 		</div>
 		${field('change-plan', 'plan', 'Name of the plan', 'Letters, digits, _ or -. Checkmate gives a name from the ticket.', html`data-plan-name`)}
-		${field('change-build', 'build', 'Build', 'The name of the build under test. Checkmate gives the short git commit, or the date and time.', html`required`, defaults.build)}
+		${field('change-build', 'build', 'Build', 'The name of the build under test. Checkmate gives the short git commit, or the date and time.', html`required data-missing="Write the build name."`, defaults.build)}
 		${choice(
 			'level',
 			'Level',

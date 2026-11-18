@@ -1,12 +1,14 @@
 import type { TestContext } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdirSync, readdirSync, realpathSync, writeFileSync } from 'node:fs'
+import { mkdirSync, realpathSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { request } from 'node:http'
 import { setTimeout as pause } from 'node:timers/promises'
 import { closeStore, openStore } from '../plugin/src/store.ts'
 import { explorationEvents } from '../plugin/src/explorations.ts'
 import { directory, plan, root, store, target } from './support.ts'
+
+export { endProcessesIn } from './support.ts'
 import { fakeClaude } from './claude.ts'
 
 export async function waitFor<T>(what: string, look: () => T | undefined | false) {
@@ -99,15 +101,3 @@ export function call(
 }
 
 export const token = (page: string) => /name="csrf" value="([0-9a-f]+)"/.exec(page)![1]
-
-export function endProcessesIn(workspace: string) {
-	for (const entry of readdirSync('/proc').filter((name) => /^[0-9]+$/.test(name))) {
-		try {
-			if (realpathSync(`/proc/${entry}/cwd`) !== workspace) continue
-			process.kill(-Number(entry), 'SIGKILL')
-		} catch {}
-		try {
-			process.kill(Number(entry), 'SIGKILL')
-		} catch {}
-	}
-}

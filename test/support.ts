@@ -2,7 +2,7 @@ import type { TestContext } from 'node:test'
 import type { PlanCandidate, PlanRequest, Profile } from '../plugin/src/types.ts'
 import type { Store } from '../plugin/src/store.ts'
 import assert from 'node:assert/strict'
-import { cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { cpSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -30,9 +30,23 @@ export async function sandbox(t?: TestContext) {
 	return directory(t)
 }
 
+export function endProcessesIn(workspace: string) {
+	for (const entry of readdirSync('/proc').filter((name) => /^[0-9]+$/.test(name))) {
+		try {
+			if (realpathSync(`/proc/${entry}/cwd`) !== workspace) continue
+			process.kill(-Number(entry), 'SIGKILL')
+		} catch {}
+		try {
+			process.kill(Number(entry), 'SIGKILL')
+		} catch {}
+	}
+}
 export function directory(t?: TestContext) {
 	const path = mkdtempSync(join(tmpdir(), 'checkmate-test-'))
-	t?.after(() => rmSync(path, { recursive: true, force: true }))
+	t?.after(() => {
+		endProcessesIn(realpathSync(path))
+		rmSync(path, { recursive: true, force: true })
+	})
 	return path
 }
 

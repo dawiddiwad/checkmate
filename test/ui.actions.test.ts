@@ -325,7 +325,7 @@ test('the tester rules of a start come from the form, and an empty field shows t
 		called()
 			.filter((item) => item.role === role)
 			.map((item) => item.args.filter((arg: string, at: number) => item.args[at - 1] === '--allowedTools'))
-	assert.deepEqual(rulesOf('explorer')[0], ['Read', 'Bash(git log:*)', 'Grep'])
+	assert.deepEqual(rulesOf('explorer')[0], ['Read', 'Bash(git log:*)', 'Grep', 'Edit(/.checkmate/work/x-1/a1/**)'])
 	const question = (await call(ui, '/plans/checkout?view=all')).body.match(/data-key="q:([^"]+)"/)![1]
 	assert.equal(
 		(
@@ -344,7 +344,7 @@ test('the tester rules of a start come from the form, and an empty field shows t
 	await waitFor('the follow-up ends', () =>
 		read((reading) => explorationStatus(reading, 'x-1').follow === 'completed')
 	)
-	assert.deepEqual(rulesOf('follower')[0], ['Read', 'Bash(git log:*)', 'Grep'])
+	assert.deepEqual(rulesOf('follower')[0], ['Read', 'Bash(git log:*)', 'Grep', 'Edit(/.checkmate/work/x-1/a1/**)'])
 })
 
 test('the rules are a setting of the workspace: Settings keeps them, and the dialog starts from them', async (t) => {

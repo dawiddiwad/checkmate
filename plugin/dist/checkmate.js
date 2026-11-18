@@ -14338,7 +14338,7 @@ function upstreamBase(repository) {
 }
 
 // plugin/src/explorers.ts
-import { spawn as spawn2 } from "node:child_process";
+import { spawn as spawn2, spawnSync as spawnSync4 } from "node:child_process";
 import { randomUUID as randomUUID3 } from "node:crypto";
 import {
   existsSync as existsSync3,
@@ -14424,12 +14424,35 @@ function explorerWork(store, explorationId, explorer, count2) {
   const others = explorerNames(count2).filter((name2) => name2 !== explorer);
   return {
     folder,
+    grant: [`Edit(/${folder}/**)`],
     deny: workDenyRules(others.map((name2) => workFolder(explorationId, name2))),
     extraEnv: {
       PLAYWRIGHT_MCP_OUTPUT_DIR: join7(store.workspace, folder),
       PLAYWRIGHT_CLI_SESSION: `qa-${explorationId}-${explorer}`
     }
   };
+}
+var strayIgnored = [".checkmate", ".playwright-cli"];
+function topLevelNames(workspace) {
+  const status = spawnSync4("git", ["status", "--porcelain", "--untracked-files=normal"], {
+    cwd: workspace,
+    encoding: "utf8"
+  });
+  const names = status.status === 0 ? status.stdout.split("\n").filter((line) => line.startsWith("?? ")).map((line) => line.slice(3).replace(/^"|"$/g, "")) : readdirSync2(workspace);
+  return new Set(names.filter((name2) => !strayIgnored.includes(name2.replace(/\/$/, ""))));
+}
+async function watchStray(store, actor, explorationId, explorer, turn, run2) {
+  const before = topLevelNames(store.workspace);
+  const result = await run2();
+  const stray = [...topLevelNames(store.workspace)].filter((name2) => !before.has(name2)).sort();
+  if (stray.length)
+    event(store, actor, explorationId, {
+      step: "stray",
+      explorer,
+      status: "completed",
+      detail: { turn, names: stray }
+    });
+  return result;
 }
 var keptFiles = ["plan.md", "questions.md", "report.md", "follow-up-report.md"];
 function keepWorkFiles(store, actor, explorationId, explorer, phase) {
@@ -14612,10 +14635,10 @@ async function launchExplorers(store, actor, explorationId, launch, env) {
   const opened = exploration(store, explorationId);
   const entries = entryValues(store, explorationId);
   const claude = requireClaude(env);
-  const allowed = launch.allow.flatMap((rule) => ["--allowedTools", rule]);
   const runs = explorerNames(launch.explorers).map(async (explorer) => {
     const session = randomUUID3();
-    const { folder, deny, extraEnv } = explorerWork(store, explorationId, explorer, launch.explorers);
+    const { folder, grant, deny, extraEnv } = explorerWork(store, explorationId, explorer, launch.explorers);
+    const rules = [...launch.allow, ...grant].flatMap((rule) => ["--allowedTools", rule]);
     const brief = explorerBrief(opened.charter, entries, `qa-${explorationId}-${explorer}-`, folder, {
       study: launch.studySeconds,
       test: launch.testSeconds
@@ -14624,22 +14647,29 @@ async function launchExplorers(store, actor, explorationId, launch, env) {
       step: "launch",
       explorer,
       status: "started",
-      detail: { session, context: launch.context, brief }
+      detail: { session, context: launch.context, engineRules: grant, brief }
     });
-    const turn = (own, prompt) => {
+    const turn = (own, prompt, name2) => {
       const hook = childHook(store.workspace, explorationId, explorer);
-      return launchClaude(
-        claude,
-        childArgs({ ...launch.context, deny, hook }, [...own, ...allowed]),
-        prompt,
-        store.workspace,
-        childEnv(env, extraEnv, hook),
-        launch.timeoutSeconds,
-        noteChild(store, actor, explorationId, explorer)
+      return watchStray(
+        store,
+        actor,
+        explorationId,
+        explorer,
+        name2,
+        () => launchClaude(
+          claude,
+          childArgs({ ...launch.context, deny, hook }, [...own, ...rules]),
+          prompt,
+          store.workspace,
+          childEnv(env, extraEnv, hook),
+          launch.timeoutSeconds,
+          noteChild(store, actor, explorationId, explorer)
+        )
       );
     };
     const watch = watchWork(store, actor, explorationId, explorer, "study");
-    const study = await turn(["--session-id", session], brief.study);
+    const study = await turn(["--session-id", session], brief.study, "study");
     watch.next("test");
     if (!study.failure)
       event(store, actor, explorationId, {
@@ -14648,7 +14678,7 @@ async function launchExplorers(store, actor, explorationId, launch, env) {
         status: "started",
         detail: { session, turn: "test" }
       });
-    const calls = study.failure ? [study] : [study, await turn(["--resume", session], brief.test)];
+    const calls = study.failure ? [study] : [study, await turn(["--resume", session], brief.test, "test")];
     watch.stop();
     return { explorer, session, calls };
   });
@@ -15058,20 +15088,27 @@ async function driveFollow(workspace, explorationId, env) {
     const phase = `follow-${events.filter((item) => item.step === "follow").length}`;
     const count2 = startOf(events).explorers;
     const claude = requireClaude(env);
-    const allowed = plan.allow.flatMap((rule) => ["--allowedTools", rule]);
     const ended = await Promise.all(
       sessions.filter((item) => !item.skipped).map(async ({ explorer, session }) => {
-        const { folder, deny, extraEnv } = explorerWork(store, explorationId, explorer, count2);
+        const { folder, grant, deny, extraEnv } = explorerWork(store, explorationId, explorer, count2);
+        const rules = [...plan.allow, ...grant].flatMap((rule) => ["--allowedTools", rule]);
         const watch = watchWork(store, actor, explorationId, explorer, "follow-up");
         const hook = childHook(store.workspace, explorationId, explorer);
-        const call = await launchClaude(
-          claude,
-          childArgs({ ...plan.context, deny, hook }, ["--resume", session, ...allowed]),
-          followBrief(plan.questions, folder, plan.seconds),
-          store.workspace,
-          childEnv(env, extraEnv, hook),
-          plan.timeoutSeconds,
-          noteChild(store, actor, explorationId, explorer)
+        const call = await watchStray(
+          store,
+          actor,
+          explorationId,
+          explorer,
+          "follow-up",
+          () => launchClaude(
+            claude,
+            childArgs({ ...plan.context, deny, hook }, ["--resume", session, ...rules]),
+            followBrief(plan.questions, folder, plan.seconds),
+            store.workspace,
+            childEnv(env, extraEnv, hook),
+            plan.timeoutSeconds,
+            noteChild(store, actor, explorationId, explorer)
+          )
         );
         watch.stop();
         return { explorer, session, call };
@@ -15349,7 +15386,12 @@ function explorationStatus(store, explorationId) {
       saved: record?.detail.saved ?? 0,
       reason: end?.detail.reason ?? record?.detail.reasons ?? null,
       hint: end?.detail.hint ?? null,
-      stderr: end?.detail.stderr ?? []
+      stderr: end?.detail.stderr ?? [],
+      stray: [
+        ...new Set(
+          own.filter((item) => item.step === "stray").flatMap((item) => item.detail.names)
+        )
+      ]
     };
   });
   const done = events.find((item) => item.step === "done");
@@ -15746,6 +15788,7 @@ function sessionExplorerLive(events, item, now) {
     elapsedMs: !last ? null : busy ? span(last.at, pausedAt ? Date.parse(pausedAt) : now) : outcome && outcomeAction ? span(outcomeAction.at, Date.parse(outcome.at)) : null,
     activity: typeof outcome?.detail.activity === "string" && outcomeAction ? `${String(outcomeAction.detail.step)}: ${outcome.detail.activity}` : null,
     activityAt: typeof outcome?.detail.activity === "string" && outcomeAction ? outcome?.at ?? null : null,
+    stray: item.stray,
     recorded: item.recorded,
     saved: item.saved,
     files: state === "given" || state === "running" ? [] : files2
@@ -15785,6 +15828,7 @@ function explorerLive(store, explorationId, events, item, running3, now) {
     elapsedMs: startedAt && until !== null ? Math.max(0, until - Date.parse(startedAt)) : null,
     activity: activity?.detail.activity ?? null,
     activityAt: activity?.at ?? null,
+    stray: item.stray,
     recorded: item.recorded,
     saved: item.saved,
     files: running3 ? [] : files2
@@ -17454,7 +17498,7 @@ import { existsSync as existsSync5, readFileSync as readFileSync7 } from "node:f
 import { fileURLToPath as fileURLToPath2 } from "node:url";
 
 // plugin/src/modes.ts
-import { spawnSync as spawnSync4 } from "node:child_process";
+import { spawnSync as spawnSync5 } from "node:child_process";
 import { resolve as resolve5 } from "node:path";
 var testModes = ["exploratory", "regression", "auto"];
 var storedTestsNone = "none, the testers retest the earlier findings";
@@ -17473,7 +17517,7 @@ function nextRunId(store) {
   );
 }
 function gitBuild(workspace) {
-  const head = spawnSync4("git", ["rev-parse", "--short", "HEAD"], { cwd: workspace, encoding: "utf8" });
+  const head = spawnSync5("git", ["rev-parse", "--short", "HEAD"], { cwd: workspace, encoding: "utf8" });
   return head.status === 0 ? head.stdout.trim() || void 0 : void 0;
 }
 function dateBuild(now = /* @__PURE__ */ new Date()) {
@@ -20607,6 +20651,14 @@ function failedLine(run2, live) {
   return html2`<strong>${run2.failure.cause}</strong> ${run2.failure.next}
 		${run2.failure.detail ? html2`<span class="help">${run2.failure.detail}</span>` : ""} ${dataLine("", live.data)}`;
 }
+function strayLines(live) {
+  return live.explorers.filter((item) => item.stray.length).map(
+    (item) => html2`<p class="help" data-key="stray-${item.explorer}">
+					Tester ${item.explorer} left files outside its work folder: <code>${item.stray.join(", ")}</code>.
+					Checkmate did not touch them.
+				</p>`
+  );
+}
 function stateLine(store, live, run2) {
   if (live.stuck.length)
     return banner(
@@ -21075,7 +21127,7 @@ function explorationPage(store, context, explorationId, params = new URLSearchPa
 					${run2.costUsd === null ? "" : html2`<span class="sp-pill" title="Cost so far, as Claude Code reports it">${money(run2.costUsd)}</span>`}
 				</div>
 			</div>
-			<div data-region="exploration-banner">${stateLine(store, live, run2)}</div>
+			<div data-region="exploration-banner">${stateLine(store, live, run2)}${strayLines(live)}</div>
 			${runActions(
       context,
       live,

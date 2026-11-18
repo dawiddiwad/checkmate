@@ -263,6 +263,18 @@ function failedLine(run: Run, live: Live) {
 		${run.failure.detail ? html`<span class="help">${run.failure.detail}</span>` : ''} ${dataLine('', live.data)}`
 }
 
+function strayLines(live: Live) {
+	return live.explorers
+		.filter((item) => item.stray.length)
+		.map(
+			(item) =>
+				html`<p class="help" data-key="stray-${item.explorer}">
+					Tester ${item.explorer} left files outside its work folder: <code>${item.stray.join(', ')}</code>.
+					Checkmate did not touch them.
+				</p>`
+		)
+}
+
 function stateLine(store: Store, live: Live, run: Run) {
 	if (live.stuck.length)
 		return banner(
@@ -815,7 +827,7 @@ export function explorationPage(
 					${run.costUsd === null ? '' : html`<span class="sp-pill" title="Cost so far, as Claude Code reports it">${money(run.costUsd)}</span>`}
 				</div>
 			</div>
-			<div data-region="exploration-banner">${stateLine(store, live, run)}</div>
+			<div data-region="exploration-banner">${stateLine(store, live, run)}${strayLines(live)}</div>
 			${runActions(
 				context,
 				live,

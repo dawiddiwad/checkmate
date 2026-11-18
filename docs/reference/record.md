@@ -116,6 +116,8 @@ The activity line comes from the `PreToolUse` hook. It has the tool and the firs
 
 The read models are in `plugin/src/permissions.ts`: `openPermissions(store, planId?)`, `explorationPermissions(store, explorationId)`, `permissionRules(store, explorationId)`, and `decidePermission(store, actor, input, stop)`.
 
+The step `stray` (status `completed`) has `turn` and `names`: the top-level entries that a tester left in the workspace outside its work folder during one turn.
+
 ## Entries of an exploration
 
 The JSON Schemas `plugin/contracts/journal-*.schema.json` define the entries. Each field below is optional. An older entry does not have it. A missing field means unknown, never passed.

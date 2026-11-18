@@ -107,7 +107,7 @@ test('explore start launches the explorers of the level in a clean context, then
 			call.prompt,
 			/\nTools you can use: node, playwright-cli\.\nA direct HTTP call is sufficient when it proves the behaviour\. Use the browser when the page itself is what you test\.\n/
 		)
-		assert.deepEqual(call.args.filter((arg: string) => arg === '--allowedTools').length, 2)
+		assert.deepEqual(call.args.filter((arg: string) => arg === '--allowedTools').length, 3)
 		assert.deepEqual(call.env, [])
 		assert.equal(call.cwd, workspace)
 		assert.doesNotMatch(call.prompt.replaceAll('.checkmate/work/', ''), /checkmate|journal|recorder|\brecord\b/i)
@@ -126,7 +126,7 @@ test('explore start launches the explorers of the level in a clean context, then
 		assert.equal(after(call.args, '--settings'), explorerSettings(nameOf(call)))
 		assert.deepEqual(
 			call.args.filter((arg: string, index: number) => call.args[index - 1] === '--allowedTools'),
-			['Read', 'Bash']
+			['Read', 'Bash', `Edit(/.checkmate/work/x-1/${nameOf(call)}/**)`]
 		)
 		assert(!call.args.some((arg: string) => /--tools|disallowed|--session-id|--fork-session/.test(arg)))
 		assert.doesNotMatch(call.prompt.replaceAll('.checkmate/work/', ''), /checkmate|journal|recorder|\brecord\b/i)

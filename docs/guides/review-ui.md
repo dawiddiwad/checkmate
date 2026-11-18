@@ -166,6 +166,8 @@ A stopped session shows `Stopped by <name>`, the reason, and the work folder whe
 
 A failed session says why and what to do next: `claude` was not found, Claude Code is not signed in, a tester did not end in time, or another reason with its text. A failed session shows its reason, the kept work folder `.checkmate/work/<explorationId>`, and the log. `Not merged yet` items are the raw questions and defects of single testers. They can change before the session is completed. `Needs you` does not show them.
 
+A tester can always write in its own work folder. When a tester leaves files outside it, a line under the banner says `Tester a1 left files outside its work folder: <names>. Checkmate did not touch them.` Move or delete them yourself.
+
 ### Permission requests
 
 While the UI runs, a tester that needs a permission asks you. Without the UI, or when the hook is blocked, a tester behaves as before: Claude Code denies the call.

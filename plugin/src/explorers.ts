@@ -53,7 +53,7 @@ import {
 	storeDenyRules,
 	workDenyRules,
 } from './sessions.ts'
-import { spawn } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import {
 	existsSync,
@@ -174,12 +174,51 @@ function explorerWork(store: Store, explorationId: string, explorer: string, cou
 	const others = explorerNames(count).filter((name) => name !== explorer)
 	return {
 		folder,
+		grant: [`Edit(/${folder}/**)`],
 		deny: workDenyRules(others.map((name) => workFolder(explorationId, name))),
 		extraEnv: {
 			PLAYWRIGHT_MCP_OUTPUT_DIR: join(store.workspace, folder),
 			PLAYWRIGHT_CLI_SESSION: `qa-${explorationId}-${explorer}`,
 		},
 	}
+}
+
+const strayIgnored = ['.checkmate', '.playwright-cli']
+
+function topLevelNames(workspace: string) {
+	const status = spawnSync('git', ['status', '--porcelain', '--untracked-files=normal'], {
+		cwd: workspace,
+		encoding: 'utf8',
+	})
+	const names =
+		status.status === 0
+			? status.stdout
+					.split('\n')
+					.filter((line) => line.startsWith('?? '))
+					.map((line) => line.slice(3).replace(/^"|"$/g, ''))
+			: readdirSync(workspace)
+	return new Set(names.filter((name) => !strayIgnored.includes(name.replace(/\/$/, ''))))
+}
+
+async function watchStray<T>(
+	store: Store,
+	actor: string,
+	explorationId: string,
+	explorer: string,
+	turn: string,
+	run: () => Promise<T>
+) {
+	const before = topLevelNames(store.workspace)
+	const result = await run()
+	const stray = [...topLevelNames(store.workspace)].filter((name) => !before.has(name)).sort()
+	if (stray.length)
+		event(store, actor, explorationId, {
+			step: 'stray',
+			explorer,
+			status: 'completed',
+			detail: { turn, names: stray },
+		})
+	return result
 }
 
 const keptFiles = ['plan.md', 'questions.md', 'report.md', 'follow-up-report.md']
@@ -393,10 +432,10 @@ async function launchExplorers(store: Store, actor: string, explorationId: strin
 	const opened = exploration(store, explorationId)
 	const entries = entryValues(store, explorationId)
 	const claude = requireClaude(env)
-	const allowed = launch.allow.flatMap((rule) => ['--allowedTools', rule])
 	const runs = explorerNames(launch.explorers).map(async (explorer) => {
 		const session = randomUUID()
-		const { folder, deny, extraEnv } = explorerWork(store, explorationId, explorer, launch.explorers)
+		const { folder, grant, deny, extraEnv } = explorerWork(store, explorationId, explorer, launch.explorers)
+		const rules = [...launch.allow, ...grant].flatMap((rule) => ['--allowedTools', rule])
 		const brief = explorerBrief(opened.charter, entries, `qa-${explorationId}-${explorer}-`, folder, {
 			study: launch.studySeconds,
 			test: launch.testSeconds,
@@ -405,22 +444,24 @@ async function launchExplorers(store: Store, actor: string, explorationId: strin
 			step: 'launch',
 			explorer,
 			status: 'started',
-			detail: { session, context: launch.context, brief },
+			detail: { session, context: launch.context, engineRules: grant, brief },
 		})
-		const turn = (own: string[], prompt: string) => {
+		const turn = (own: string[], prompt: string, name: string) => {
 			const hook = childHook(store.workspace, explorationId, explorer)
-			return launchClaude(
-				claude,
-				childArgs({ ...launch.context, deny, hook }, [...own, ...allowed]),
-				prompt,
-				store.workspace,
-				childEnv(env, extraEnv, hook),
-				launch.timeoutSeconds,
-				noteChild(store, actor, explorationId, explorer)
+			return watchStray(store, actor, explorationId, explorer, name, () =>
+				launchClaude(
+					claude,
+					childArgs({ ...launch.context, deny, hook }, [...own, ...rules]),
+					prompt,
+					store.workspace,
+					childEnv(env, extraEnv, hook),
+					launch.timeoutSeconds,
+					noteChild(store, actor, explorationId, explorer)
+				)
 			)
 		}
 		const watch = watchWork(store, actor, explorationId, explorer, 'study')
-		const study = await turn(['--session-id', session], brief.study)
+		const study = await turn(['--session-id', session], brief.study, 'study')
 		watch.next('test')
 		if (!study.failure)
 			event(store, actor, explorationId, {
@@ -429,7 +470,7 @@ async function launchExplorers(store: Store, actor: string, explorationId: strin
 				status: 'started',
 				detail: { session, turn: 'test' },
 			})
-		const calls = study.failure ? [study] : [study, await turn(['--resume', session], brief.test)]
+		const calls = study.failure ? [study] : [study, await turn(['--resume', session], brief.test, 'test')]
 		watch.stop()
 		return { explorer, session, calls }
 	})
@@ -900,22 +941,24 @@ export async function driveFollow(workspace: string, explorationId: string, env:
 		const phase = `follow-${events.filter((item) => item.step === 'follow').length}`
 		const count = startOf(events)!.explorers
 		const claude = requireClaude(env)
-		const allowed = plan.allow.flatMap((rule) => ['--allowedTools', rule])
 		const ended = await Promise.all(
 			sessions
 				.filter((item) => !item.skipped)
 				.map(async ({ explorer, session }) => {
-					const { folder, deny, extraEnv } = explorerWork(store, explorationId, explorer, count)
+					const { folder, grant, deny, extraEnv } = explorerWork(store, explorationId, explorer, count)
+					const rules = [...plan.allow, ...grant].flatMap((rule) => ['--allowedTools', rule])
 					const watch = watchWork(store, actor, explorationId, explorer, 'follow-up')
 					const hook = childHook(store.workspace, explorationId, explorer)
-					const call = await launchClaude(
-						claude,
-						childArgs({ ...plan.context, deny, hook }, ['--resume', session, ...allowed]),
-						followBrief(plan.questions, folder, plan.seconds),
-						store.workspace,
-						childEnv(env, extraEnv, hook),
-						plan.timeoutSeconds,
-						noteChild(store, actor, explorationId, explorer)
+					const call = await watchStray(store, actor, explorationId, explorer, 'follow-up', () =>
+						launchClaude(
+							claude,
+							childArgs({ ...plan.context, deny, hook }, ['--resume', session, ...rules]),
+							followBrief(plan.questions, folder, plan.seconds),
+							store.workspace,
+							childEnv(env, extraEnv, hook),
+							plan.timeoutSeconds,
+							noteChild(store, actor, explorationId, explorer)
+						)
 					)
 					watch.stop()
 					return { explorer, session, call }
@@ -1231,6 +1274,11 @@ export function explorationStatus(store: Store, explorationId: string) {
 			reason: (end?.detail.reason ?? record?.detail.reasons ?? null) as unknown,
 			hint: (end?.detail.hint ?? null) as string | null,
 			stderr: (end?.detail.stderr ?? []) as string[],
+			stray: [
+				...new Set(
+					own.filter((item) => item.step === 'stray').flatMap((item) => item.detail.names as string[])
+				),
+			],
 		}
 	})
 	const done = events.find((item) => item.step === 'done')

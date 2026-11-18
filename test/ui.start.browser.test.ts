@@ -125,6 +125,9 @@ test(
 	async (t) => {
 		const { page, url, read } = await setup(t, 'nothing')
 		await page.goto(url('/'))
+		await page.waitForFunction(() =>
+			document.activeElement?.matches('input[type="url"], input[type="text"], input:not([type])')
+		)
 		await page.keyboard.type('http://127.0.0.1:1')
 		await page.locator('[data-assumed]:not([hidden])').waitFor()
 		await page.keyboard.press('Enter')

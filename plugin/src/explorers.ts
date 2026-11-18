@@ -407,9 +407,9 @@ async function launchExplorers(store: Store, actor: string, explorationId: strin
 			status: 'started',
 			detail: { session, context: launch.context, brief },
 		})
-		const hook = childHook(store.workspace, explorationId, explorer)
-		const turn = (own: string[], prompt: string) =>
-			launchClaude(
+		const turn = (own: string[], prompt: string) => {
+			const hook = childHook(store.workspace, explorationId, explorer)
+			return launchClaude(
 				claude,
 				childArgs({ ...launch.context, deny, hook }, [...own, ...allowed]),
 				prompt,
@@ -418,6 +418,7 @@ async function launchExplorers(store: Store, actor: string, explorationId: strin
 				launch.timeoutSeconds,
 				noteChild(store, actor, explorationId, explorer)
 			)
+		}
 		const watch = watchWork(store, actor, explorationId, explorer, 'study')
 		const study = await turn(['--session-id', session], brief.study)
 		watch.next('test')
@@ -517,9 +518,9 @@ function mergeReports(store: Store, actor: string, explorationId: string, launch
 	if (!input) return
 	const session = randomUUID()
 	const claude = requireClaude(env)
-	const hook = childHook(store.workspace, explorationId, 'merge')
-	const call = (args: string[], prompt: string) =>
-		callClaude(
+	const call = (args: string[], prompt: string) => {
+		const hook = childHook(store.workspace, explorationId, 'merge')
+		return callClaude(
 			claude,
 			childArgs({ ...launch.context, hook }, args),
 			prompt,
@@ -527,6 +528,7 @@ function mergeReports(store: Store, actor: string, explorationId: string, launch
 			childEnv(env, {}, hook),
 			defaultRecorderTimeout
 		)
+	}
 	const log = (reply: unknown[] | undefined) => logMerge(store, explorationId, reply)
 	const calls = [
 		call(
@@ -567,9 +569,9 @@ function deriveRules(store: Store, actor: string, explorationId: string, launch:
 	const sources = ruleSources(store, opened.plan_id)
 	const names = sources.map((source) => source.name)
 	const session = randomUUID()
-	const hook = childHook(store.workspace, explorationId, 'rules')
-	const call = (args: string[], prompt: string) =>
-		callClaude(
+	const call = (args: string[], prompt: string) => {
+		const hook = childHook(store.workspace, explorationId, 'rules')
+		return callClaude(
 			requireClaude(env),
 			childArgs({ ...launch.context, hook }, args),
 			prompt,
@@ -577,6 +579,7 @@ function deriveRules(store: Store, actor: string, explorationId: string, launch:
 			childEnv(env, {}, hook),
 			defaultRecorderTimeout
 		)
+	}
 	const calls = [call(['--session-id', session], rulesPrompt(opened.charter.goal, sources))]
 	const first = checkedRules(replyArray(calls[0].result), names)
 	let checked = first
@@ -637,9 +640,9 @@ async function verifyClaims(store: Store, actor: string, explorationId: string, 
 	const session = randomUUID()
 	const brief = verifierBrief(items, input.entries, input.operations, input.dataPrefix)
 	const allowed = launch.allow.flatMap((rule) => ['--allowedTools', rule])
-	const hook = childHook(store.workspace, explorationId, 'verify')
-	const ask = (own: string[], prompt: string) =>
-		launchClaude(
+	const ask = (own: string[], prompt: string) => {
+		const hook = childHook(store.workspace, explorationId, 'verify')
+		return launchClaude(
 			requireClaude(env),
 			childArgs({ ...launch.context, deny: storeDenyRules, hook }, [...own, ...allowed]),
 			prompt,
@@ -648,6 +651,7 @@ async function verifyClaims(store: Store, actor: string, explorationId: string, 
 			launch.timeoutSeconds,
 			noteChild(store, actor, explorationId, null)
 		)
+	}
 	const ids = new Set(items.map((item) => item.id))
 	const calls = [await ask(['--session-id', session], brief)]
 	let observations = calls[0].failure ? [] : verifiedEntries(replyArray(calls[0].result), ids)

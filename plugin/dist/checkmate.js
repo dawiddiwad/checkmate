@@ -14626,16 +14626,18 @@ async function launchExplorers(store, actor, explorationId, launch, env) {
       status: "started",
       detail: { session, context: launch.context, brief }
     });
-    const hook = childHook(store.workspace, explorationId, explorer);
-    const turn = (own, prompt) => launchClaude(
-      claude,
-      childArgs({ ...launch.context, deny, hook }, [...own, ...allowed]),
-      prompt,
-      store.workspace,
-      childEnv(env, extraEnv, hook),
-      launch.timeoutSeconds,
-      noteChild(store, actor, explorationId, explorer)
-    );
+    const turn = (own, prompt) => {
+      const hook = childHook(store.workspace, explorationId, explorer);
+      return launchClaude(
+        claude,
+        childArgs({ ...launch.context, deny, hook }, [...own, ...allowed]),
+        prompt,
+        store.workspace,
+        childEnv(env, extraEnv, hook),
+        launch.timeoutSeconds,
+        noteChild(store, actor, explorationId, explorer)
+      );
+    };
     const watch = watchWork(store, actor, explorationId, explorer, "study");
     const study = await turn(["--session-id", session], brief.study);
     watch.next("test");
@@ -14722,15 +14724,17 @@ function mergeReports(store, actor, explorationId, launch, env, after = 0) {
   if (!input) return;
   const session = randomUUID3();
   const claude = requireClaude(env);
-  const hook = childHook(store.workspace, explorationId, "merge");
-  const call = (args, prompt) => callClaude(
-    claude,
-    childArgs({ ...launch.context, hook }, args),
-    prompt,
-    store.workspace,
-    childEnv(env, {}, hook),
-    defaultRecorderTimeout
-  );
+  const call = (args, prompt) => {
+    const hook = childHook(store.workspace, explorationId, "merge");
+    return callClaude(
+      claude,
+      childArgs({ ...launch.context, hook }, args),
+      prompt,
+      store.workspace,
+      childEnv(env, {}, hook),
+      defaultRecorderTimeout
+    );
+  };
   const log = (reply) => logMerge(store, explorationId, reply);
   const calls = [
     call(
@@ -14770,15 +14774,17 @@ function deriveRules(store, actor, explorationId, launch, env) {
   const sources = ruleSources(store, opened.plan_id);
   const names = sources.map((source) => source.name);
   const session = randomUUID3();
-  const hook = childHook(store.workspace, explorationId, "rules");
-  const call = (args, prompt) => callClaude(
-    requireClaude(env),
-    childArgs({ ...launch.context, hook }, args),
-    prompt,
-    store.workspace,
-    childEnv(env, {}, hook),
-    defaultRecorderTimeout
-  );
+  const call = (args, prompt) => {
+    const hook = childHook(store.workspace, explorationId, "rules");
+    return callClaude(
+      requireClaude(env),
+      childArgs({ ...launch.context, hook }, args),
+      prompt,
+      store.workspace,
+      childEnv(env, {}, hook),
+      defaultRecorderTimeout
+    );
+  };
   const calls = [call(["--session-id", session], rulesPrompt(opened.charter.goal, sources))];
   const first = checkedRules(replyArray(calls[0].result), names);
   let checked = first;
@@ -14836,16 +14842,18 @@ async function verifyClaims(store, actor, explorationId, launch, env, after = 0)
   const session = randomUUID3();
   const brief = verifierBrief(items, input.entries, input.operations, input.dataPrefix);
   const allowed = launch.allow.flatMap((rule) => ["--allowedTools", rule]);
-  const hook = childHook(store.workspace, explorationId, "verify");
-  const ask = (own, prompt) => launchClaude(
-    requireClaude(env),
-    childArgs({ ...launch.context, deny: storeDenyRules, hook }, [...own, ...allowed]),
-    prompt,
-    store.workspace,
-    childEnv(env, {}, hook),
-    launch.timeoutSeconds,
-    noteChild(store, actor, explorationId, null)
-  );
+  const ask = (own, prompt) => {
+    const hook = childHook(store.workspace, explorationId, "verify");
+    return launchClaude(
+      requireClaude(env),
+      childArgs({ ...launch.context, deny: storeDenyRules, hook }, [...own, ...allowed]),
+      prompt,
+      store.workspace,
+      childEnv(env, {}, hook),
+      launch.timeoutSeconds,
+      noteChild(store, actor, explorationId, null)
+    );
+  };
   const ids2 = new Set(items.map((item) => item.id));
   const calls = [await ask(["--session-id", session], brief)];
   let observations = calls[0].failure ? [] : verifiedEntries(replyArray(calls[0].result), ids2);

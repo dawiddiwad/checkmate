@@ -318,7 +318,11 @@ test('a form sent while the UI is stopped keeps the text and says that nothing i
 	await page.locator('[data-drawer] #answer-text').fill('Until the end of the day.')
 	await ui.close()
 	await page.locator('[data-drawer]').getByRole('button', { name: 'Send the answer' }).click()
-	await page.getByText('Checkmate did not answer. Nothing is recorded, and your text is kept.').waitFor()
+	await page
+		.locator('[data-drawer] [role="alert"]', {
+			hasText: 'Checkmate did not answer. Nothing is recorded, and your text is kept.',
+		})
+		.waitFor()
 	assert.equal(await page.locator('#answer-text').inputValue(), 'Until the end of the day.')
 })
 

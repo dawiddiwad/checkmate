@@ -9,6 +9,7 @@ import { mergedClaims, mergedQuestions, runList } from '../plugin/src/views.ts'
 import { seedVolume } from '../scripts/ui-volume.ts'
 import { event } from './explorations.ts'
 import { launchWith, open, browserTest, stop } from './browser.ts'
+import { asking, bash, waitOpen } from './permissions.ts'
 
 test.before(() => launchWith(seedVolume))
 test.after(stop)
@@ -729,7 +730,16 @@ test(
 	'dialogs, the find bar, the key list, and reason fields open and close 20 times in a row on a slow CPU',
 	{ ...browserTest, timeout: 180_000 },
 	async (t) => {
-		const { page, url } = await open(t)
+		const { page, url, workspace, ui } = await open(t)
+		for (const path of ['one', 'two', 'three'])
+			void asking(
+				ui,
+				workspace,
+				'x-14',
+				'a2',
+				bash(`curl -sS http://127.0.0.1:9911/${path}`, `curl -sS ${path} *`)
+			)
+		await waitOpen(workspace, 3)
 		const cdp = await page.context().newCDPSession(page)
 		await cdp.send('Emulation.setCPUThrottlingRate', { rate: 4 })
 		const cycle = async (
@@ -783,6 +793,45 @@ test(
 			['1', 'Escape'],
 			'dialog[data-confirm]',
 			hidden('dialog[data-confirm]')
+		)
+		const requests = async () => {
+			await row()
+			await page.keyboard.press('Shift+ArrowDown')
+			await page.keyboard.press('Shift+ArrowDown')
+			await page.locator('[data-bulk]:not([hidden])').waitFor()
+		}
+		await cycle(
+			'allow selected requests',
+			'/plans/login?view=needs&focus=list&at=perm%3Ax-14%2FP1',
+			requests,
+			['1', 'Escape'],
+			'dialog[data-confirm]',
+			hidden('dialog[data-confirm]')
+		)
+		await cycle(
+			'deny selected requests',
+			'/plans/login?view=needs&focus=list&at=perm%3Ax-14%2FP1',
+			requests,
+			['2', 'Escape'],
+			'dialog[data-confirm]',
+			hidden('dialog[data-confirm]')
+		)
+		const record = () => page.waitForFunction(() => document.activeElement?.matches('[data-sub]'))
+		await cycle(
+			'stop the tester of a request',
+			'/permissions/x-14/P1',
+			record,
+			['6', 'Escape'],
+			'dialog[data-confirm]',
+			hidden('dialog[data-confirm]')
+		)
+		await cycle(
+			'deny reason of a request',
+			'/permissions/x-14/P1',
+			record,
+			['5', 'Escape'],
+			'[data-extra="deny"]:not([hidden])',
+			() => page.waitForFunction(() => document.activeElement?.id !== 'deny-text')
 		)
 		await cycle(
 			'hand-over reason',

@@ -2196,6 +2196,7 @@ function replaceRegion(region, fresh, previous) {
 	const rowKey = keyOf(current('list'))
 	const rowLabel = current('list')?.dataset.label
 	const rowAsk = current('list')?.dataset.ask ?? ''
+	const rowTop = current('list')?.getBoundingClientRect().top ?? 0
 	const order = listRows().map(keyOf)
 	const areas = [...document.querySelectorAll('[data-nav][aria-expanded="true"]')].map((row) => row.dataset.label)
 	const actFocus = document.activeElement?.closest?.('[data-actions]') ? document.activeElement.dataset.act : null
@@ -2216,6 +2217,8 @@ function replaceRegion(region, fresh, previous) {
 		const rows = listRows()
 		const kept = rows.find((row) => keyOf(row) === rowKey)
 		if (kept) {
+			const shift = kept.getBoundingClientRect().top - rowTop
+			if (Math.abs(shift) > 1) window.scrollBy(0, shift)
 			mark(kept, 'list')
 			if ((kept.dataset.ask ?? '') !== rowAsk) {
 				gone = `The request of ${rowLabel} changed.`
@@ -2542,7 +2545,7 @@ openTarget()
 restoreAreas()
 if (location.hash === '#decide' || location.hash === '#answer')
 	window.addEventListener('load', () => window.requestAnimationFrame(focusDecision), { once: true })
-else if (review || listRows().length) settle()
+else if (review || drawer || listRows().length) settle()
 else showHints()
 if (!review && !drawer && !listRows().length)
 	window.addEventListener('load', () => placeAlert() || focusTarget(), { once: true })

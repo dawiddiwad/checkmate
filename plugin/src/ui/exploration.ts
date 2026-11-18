@@ -428,7 +428,7 @@ function stepAsks(open: Permission[]) {
 		.filter((item) => !item.tester)
 		.map(
 			(item) =>
-				html`<p class="help" data-key="step-asks-${item.id}">
+				html`<p class="help sp-asks" data-key="step-asks-${item.id}">
 					<a href="${requestHref(item, null)}">Step ${item.who} asks to ${asksFor(item)}</a>
 				</p>`
 		)

@@ -15473,6 +15473,323 @@ function explorationReport(store, explorationId) {
   };
 }
 
+// plugin/src/permissions.ts
+var permissionDecisions = ["allow", "allow-kind", "allow-tool", "always", "deny", "stop"];
+var closedText = {
+  timeout: "no answer in 10 minutes",
+  "ui-stopped": "closed, the UI stopped",
+  stopped: "closed, the tester or the run stopped",
+  disconnected: "closed, the tester did not wait any more"
+};
+var maxText = 2e3;
+var requestStep = "permission";
+var decisionStep = "permission-decision";
+function rows(store, where, ...parameters) {
+  return all(
+    store,
+    `SELECT e.exploration_id, x.plan_id, e.rowid, e.at, e.step, e.explorer, e.status, e.detail
+		FROM exploration_events e JOIN explorations x ON x.exploration_id = e.exploration_id
+		WHERE e.step IN ('${requestStep}', '${decisionStep}') ${where} ORDER BY e.rowid`,
+    ...parameters
+  );
+}
+function ruleText(rule) {
+  return rule.ruleContent ? `${rule.toolName}(${rule.ruleContent})` : rule.toolName;
+}
+function rulesOf(suggestion) {
+  if (!suggestion || !Array.isArray(suggestion.rules)) return [];
+  return suggestion.rules.flatMap((rule) => {
+    const item = rule;
+    if (typeof item?.toolName !== "string" || !item.toolName) return [];
+    return [
+      {
+        toolName: item.toolName,
+        ...typeof item.ruleContent === "string" ? { ruleContent: item.ruleContent } : {}
+      }
+    ];
+  });
+}
+function kindSuggestion(suggestions) {
+  return suggestions.find((item) => item.type === "addRules" && rulesOf(item).length > 0);
+}
+function kindRule(suggestions) {
+  const found = kindSuggestion(suggestions);
+  return found ? rulesOf(found).map(ruleText).join(", ") : null;
+}
+function shortened(value2) {
+  if (typeof value2 === "string") return value2.length > maxText ? `${value2.slice(0, maxText)}\u2026` : value2;
+  if (Array.isArray(value2)) return value2.map(shortened);
+  if (value2 && typeof value2 === "object")
+    return Object.fromEntries(Object.entries(value2).map(([key, item]) => [key, shortened(item)]));
+  return value2;
+}
+function decisionOf(row2) {
+  const detail = JSON.parse(row2.detail);
+  return {
+    kind: row2.status,
+    by: detail.by ?? "",
+    at: row2.at,
+    text: detail.text ?? "",
+    reason: detail.reason ?? null,
+    rule: detail.rule ?? null,
+    setBy: detail.setBy ?? null,
+    cause: detail.cause ?? null
+  };
+}
+function permissionsOf(list2) {
+  const found = /* @__PURE__ */ new Map();
+  for (const row2 of list2) {
+    const detail = JSON.parse(row2.detail);
+    const key = `${row2.exploration_id}/${detail.id}`;
+    if (row2.step === requestStep) {
+      const suggestions = detail.suggestions;
+      found.set(key, {
+        explorationId: row2.exploration_id,
+        planId: row2.plan_id,
+        id: detail.id,
+        who: detail.who,
+        tester: row2.explorer,
+        tool: detail.tool,
+        input: detail.input,
+        suggestions,
+        cwd: detail.cwd ?? null,
+        at: row2.at,
+        rule: kindRule(suggestions),
+        decision: null
+      });
+    } else {
+      const request = found.get(key);
+      if (request && !request.decision) request.decision = decisionOf(row2);
+    }
+  }
+  return [...found.values()];
+}
+function explorationPermissions(store, explorationId) {
+  return permissionsOf(rows(store, "AND e.exploration_id = ?", explorationId));
+}
+function openPermissions(store, planId) {
+  const list2 = planId === void 0 ? rows(store, "") : rows(store, "AND x.plan_id = ?", planId);
+  return permissionsOf(list2).filter((item) => !item.decision);
+}
+function permissionRules(store, explorationId) {
+  return explorationPermissions(store, explorationId).flatMap(
+    (item) => (item.decision?.kind === "allow-kind" || item.decision?.kind === "allow-tool") && item.decision.rule ? [
+      {
+        rule: item.decision.rule,
+        kind: item.decision.kind,
+        setBy: item.decision.by,
+        at: item.decision.at,
+        requestId: item.id
+      }
+    ] : []
+  );
+}
+function permissionOf(store, explorationId, requestId) {
+  return explorationPermissions(store, explorationId).find((item) => item.id === requestId);
+}
+function findPermission(store, explorationId, requestId) {
+  const found = permissionOf(store, explorationId, requestId);
+  requireCondition(
+    found,
+    `Exploration ${explorationId} has no permission request ${requestId}.`,
+    `Run checkmate explore show ${explorationId}.`
+  );
+  return found;
+}
+function nextRequestId(store, explorationId) {
+  const count2 = one(
+    store,
+    `SELECT count(*) AS count FROM exploration_events WHERE exploration_id = ? AND step = '${requestStep}'`,
+    explorationId
+  ).count;
+  return `P${count2 + 1}`;
+}
+function addDecision(store, request, kind, detail, operationId, at) {
+  addEvent(
+    store,
+    request.explorationId,
+    {
+      step: decisionStep,
+      explorer: request.tester,
+      status: kind,
+      detail: { id: request.id, who: request.who, ...detail }
+    },
+    operationId,
+    at
+  );
+}
+function ruleInForce(store, explorationId, tool, suggestions) {
+  const wanted = kindRule(suggestions);
+  return permissionRules(store, explorationId).find(
+    (item) => item.kind === "allow-tool" ? item.rule === tool : item.rule === wanted
+  );
+}
+function requestPermission(store, input) {
+  const tester = one(
+    store,
+    "SELECT 1 FROM exploration_events WHERE exploration_id = ? AND step = 'launch' AND explorer = ?",
+    input.explorationId,
+    input.who
+  ) === void 0 ? null : input.who;
+  const operation = { actor: explorerActor(input.who), command: "explore permission", subject: input.explorationId };
+  return write(store, { ...operation, input: { who: input.who, tool: input.tool } }, (operationId, at) => {
+    const id2 = nextRequestId(store, input.explorationId);
+    const request = { explorationId: input.explorationId, id: id2, who: input.who, tester };
+    addEvent(
+      store,
+      input.explorationId,
+      {
+        step: requestStep,
+        explorer: tester,
+        status: "open",
+        detail: {
+          id: id2,
+          who: input.who,
+          tool: input.tool,
+          input: shortened(input.input),
+          suggestions: input.suggestions,
+          ...input.cwd ? { cwd: input.cwd } : {}
+        }
+      },
+      operationId,
+      at
+    );
+    const force = ruleInForce(store, input.explorationId, input.tool, input.suggestions);
+    if (force)
+      addDecision(
+        store,
+        request,
+        "rule",
+        {
+          by: "rule",
+          text: `allowed by rule ${force.kind === "allow-tool" ? `every ${force.rule} call` : force.rule}, set by ${force.setBy}`,
+          rule: force.rule,
+          setBy: force.setBy
+        },
+        operationId,
+        at
+      );
+    return {
+      reply: completed(input.explorationId, { id: id2, byRule: Boolean(force) }),
+      subjects: [`exploration:${input.explorationId}`, "permissions"]
+    };
+  }).data;
+}
+function decidePermission(store, actor, input, stop) {
+  const choice2 = requireChoice(input.decision, permissionDecisions, "decision");
+  const reason = input.reason?.trim() ?? "";
+  requireWellFormed(choice2 !== "deny" || reason, "A denial needs a reason.", "Give the reason with --reason <text>.");
+  const operation = {
+    actor,
+    command: "explore permit",
+    subject: input.explorationId,
+    input: { requestId: input.requestId, decision: choice2 }
+  };
+  const reply = write(store, operation, (operationId, at, who) => {
+    const request = findPermission(store, input.explorationId, input.requestId);
+    requireCondition(
+      !request.decision,
+      `Permission request ${request.id} of ${request.explorationId} has an answer already: ${request.decision?.text}. Nothing changed.`
+    );
+    requireCondition(
+      choice2 !== "allow-kind" && choice2 !== "always" || request.rule,
+      `Permission request ${request.id} has no rule that Claude Code can remember. Allow it once, or deny it.`
+    );
+    const texts = {
+      allow: "allowed once",
+      "allow-kind": `allowed for this test: ${request.rule}`,
+      "allow-tool": `allowed for this test: every ${request.tool} call`,
+      always: `allowed always in this project: ${request.rule}`,
+      deny: `denied: ${reason}`,
+      stop: `stopped the ${request.tester ? "tester" : "run"}${reason ? `: ${reason}` : ""}`
+    };
+    const rule = choice2 === "allow-tool" ? request.tool : choice2 === "allow-kind" || choice2 === "always" ? request.rule : null;
+    addDecision(
+      store,
+      request,
+      choice2,
+      { by: who, text: `${texts[choice2]}, by ${who}`, ...reason ? { reason } : {}, ...rule ? { rule } : {} },
+      operationId,
+      at
+    );
+    return {
+      reply: completed(request.explorationId, { requestId: request.id, decision: choice2, who: request.tester }),
+      subjects: [`exploration:${request.explorationId}`, `plan:${request.planId}`, "permissions"]
+    };
+  });
+  if (choice2 === "stop") stop(reply.data.who ?? void 0, reason);
+  return reply;
+}
+function closePermission(store, explorationId, requestId, cause) {
+  return write(
+    store,
+    {
+      actor: "checkmate",
+      command: "explore permission-close",
+      subject: explorationId,
+      input: { requestId, cause }
+    },
+    (operationId, at) => {
+      const request = findPermission(store, explorationId, requestId);
+      if (request.decision) return { reply: completed(explorationId, { closed: false }), subjects: [] };
+      addDecision(store, request, "closed", { by: "checkmate", text: closedText[cause], cause }, operationId, at);
+      return {
+        reply: completed(explorationId, { closed: true }),
+        subjects: [`exploration:${explorationId}`, `plan:${request.planId}`, "permissions"]
+      };
+    }
+  ).data.closed;
+}
+function closeOpenPermissions(store, cause) {
+  for (const item of openPermissions(store)) closePermission(store, item.explorationId, item.id, cause);
+}
+function decisionBody(decision) {
+  return JSON.stringify({ hookSpecificOutput: { hookEventName: "PermissionRequest", decision } });
+}
+function permissionAnswer(request, decision) {
+  const withRule = (destination) => {
+    const suggestion = kindSuggestion(request.suggestions);
+    const update = {
+      type: "addRules",
+      rules: rulesOf(suggestion),
+      ...typeof suggestion.behavior === "string" ? { behavior: suggestion.behavior } : {},
+      destination
+    };
+    return decisionBody({ behavior: "allow", updatedPermissions: [update] });
+  };
+  const forTool = (decision.kind === "allow-tool" || decision.kind === "rule") && decision.rule === request.tool;
+  if (forTool)
+    return decisionBody({
+      behavior: "allow",
+      updatedPermissions: [
+        { type: "addRules", rules: [{ toolName: request.tool }], behavior: "allow", destination: "session" }
+      ]
+    });
+  if (decision.kind === "allow") return decisionBody({ behavior: "allow" });
+  if (decision.kind === "allow-kind" || decision.kind === "rule") return withRule("session");
+  if (decision.kind === "always") return withRule("localSettings");
+  if (decision.kind === "deny") return decisionBody({ behavior: "deny", message: decision.reason });
+  if (decision.kind === "stop")
+    return decisionBody({
+      behavior: "deny",
+      message: decision.reason ?? `Stopped by ${decision.by}.`,
+      interrupt: true
+    });
+  return "";
+}
+function stoppedSince(store, request) {
+  return one(
+    store,
+    `SELECT 1 FROM exploration_events WHERE exploration_id = ? AND step = 'stop'
+			AND (explorer IS NULL OR explorer = ?)
+			AND rowid > (SELECT rowid FROM exploration_events WHERE exploration_id = ? AND step = '${requestStep}' AND json_extract(detail, '$.id') = ?)`,
+    request.explorationId,
+    request.who,
+    request.explorationId,
+    request.id
+  ) !== void 0;
+}
+
 // plugin/src/views.ts
 import { existsSync as existsSync4 } from "node:fs";
 import { join as join8 } from "node:path";
@@ -16729,7 +17046,7 @@ function pagedOperations(store, query = {}) {
 var severityOrder = ["critical", "high", "medium", "low"];
 function needsYou(store) {
   const waiting = inbox(store);
-  const asked = (gap) => ({
+  const asked2 = (gap) => ({
     key: `${gap.explorationId ? "question" : "gap"}:${gap.planId}:${gap.gapId}`,
     group: gap.severity === "blocking" ? "blocking" : "questions",
     kind: gap.explorationId ? "question" : "gap",
@@ -16785,8 +17102,23 @@ function needsYou(store) {
     runId: result.runId,
     revision: result.revision
   }));
-  const gaps = waiting.gaps.map(asked);
+  const gaps = waiting.gaps.map(asked2);
+  const permissions = openPermissions(store).map((item) => ({
+    key: `permission:${item.planId}:${item.explorationId}/${item.id}`,
+    group: "permissions",
+    kind: "permission",
+    planId: item.planId,
+    id: `${item.explorationId}/${item.id}`,
+    title: `${item.who} asks to use ${item.tool}`,
+    since: item.at,
+    severity: null,
+    state: "open",
+    explorationId: item.explorationId,
+    runId: null,
+    revision: null
+  }));
   const items = [
+    ...permissions,
     ...gaps.filter((item) => item.group === "blocking"),
     ...claims,
     ...plans,
@@ -17988,6 +18320,14 @@ function statusBar(context, page) {
 		<span class="sb-links">
 			<a
 				class="sb-btn att"
+				href="/permissions"
+				title="Permission requests of testers that wait for you"
+				data-region="permissions-link"
+				${context.permissions ? "" : html2`hidden`}
+				>${context.permissions} ${context.permissions === 1 ? "permission" : "permissions"}</a
+			>
+			<a
+				class="sb-btn att"
 				href="/"
 				title="Items that wait for you in all plans"
 				data-region="nav-count"
@@ -17996,14 +18336,6 @@ function statusBar(context, page) {
 					>${waiting}<span class="sb-long"> ${waiting === 1 ? "needs" : "need"} you</span
 					><span class="sb-all"> · all plans</span></span
 				></a
-			>
-			<a
-				class="sb-btn att"
-				href="/permissions"
-				title="Permission requests of testers that wait for you"
-				data-region="permissions-link"
-				${context.permissions ? "" : html2`hidden`}
-				>${context.permissions} ${context.permissions === 1 ? "permission" : "permissions"}</a
 			>
 			<button class="sb-btn" type="button" data-find-open hidden>Find</button>
 			<button class="sb-btn" type="button" data-keys-open hidden>Keys</button>
@@ -18433,13 +18765,13 @@ function ruleMap(store, planId) {
   const cellOf = (rule, build) => {
     const own = claims.filter((claim) => claim.rule === rule && states.get(claim.id).has(build));
     const present = own.filter((claim) => presentStates.includes(states.get(claim.id).get(build)));
-    const asked = questions.filter(
+    const asked2 = questions.filter(
       (question) => question.rule === rule && question.answer === null && question.builds.includes(build)
     );
     const checked = criteria.filter((entry) => entry.rule === rule && entry.build === build);
     const wrong = checked.filter((entry) => entry.verdict === "wrong").length;
     const right = checked.filter((entry) => entry.verdict === "ok").length;
-    const status = present.length || wrong ? "failed" : asked.length ? "question" : right ? "passed" : "not_checked";
+    const status = present.length || wrong ? "failed" : asked2.length ? "question" : right ? "passed" : "not_checked";
     const changes = Object.fromEntries(
       ["new", "still_present", "fixed", "returned", "not_retested"].map((name2) => [
         name2,
@@ -18459,7 +18791,7 @@ function ruleMap(store, planId) {
         state: claim.state,
         change: states.get(claim.id).get(build)
       })),
-      questions: asked.map((question) => ({
+      questions: asked2.map((question) => ({
         id: question.id,
         question: question.question,
         label: question.label
@@ -18525,7 +18857,7 @@ function questionOf(questions, ref) {
 }
 function uncertainty(claim, reports, questions) {
   if (claim.decision) return [];
-  const asked = [
+  const asked2 = [
     ...new Set(reports.flatMap((report) => [...report.links ?? [], ...(report.about ?? "").split(/[\s,;]+/)]))
   ].flatMap((ref) => {
     const question = questionOf(questions, ref);
@@ -18539,7 +18871,7 @@ function uncertainty(claim, reports, questions) {
       }
     ] : [],
     ...claim.verified === "refuted" ? [{ reason: "not_reproduced", text: claim.verifierSaw }] : [],
-    ...[...new Set(asked)].map((question) => ({
+    ...[...new Set(asked2)].map((question) => ({
       reason: "open_question",
       text: question.question,
       questionId: question.id
@@ -18570,6 +18902,611 @@ function claimDetails(store, planId) {
       evidence: claimEvidenceList(reports)
     };
   });
+}
+
+// plugin/src/ui/hooks.ts
+import { timingSafeEqual } from "node:crypto";
+var name = "[A-Za-z0-9][A-Za-z0-9_-]{0,95}";
+var route = new RegExp(`^/hooks/(permission|activity)/(${name})/(${name})$`);
+var maxBody = 4 * 1024 * 1024;
+var lineLimit = 120;
+var defaultHoldMilliseconds = 59e4;
+var defaultActivityMilliseconds = 2e3;
+function sameSecret(a, b) {
+  const x = Buffer.from(a);
+  const y = Buffer.from(b);
+  return x.length === y.length && timingSafeEqual(x, y);
+}
+var secrets = [
+  [/(:\/\/)[^\s/@:]+:[^\s/@]+@/g, "$1\u2026@"],
+  [/(authorization:\s*(?:bearer\s+|basic\s+|token\s+)?)[^\s"']+/gi, "$1\u2026"],
+  [/(bearer\s+)[^\s"']+/gi, "$1\u2026"],
+  [/(--?[\w-]*(?:token|password|passwd|secret|api-?key|apikey|auth)[\w-]*(?:=|\s+))[^\s"']+/gi, "$1\u2026"],
+  [/(\b[\w]*(?:token|password|passwd|secret|api_?key|apikey)[\w]*=)[^\s"']+/gi, "$1\u2026"]
+];
+var lineKeys = ["command", "file_path", "notebook_path", "path", "pattern", "url", "query", "description"];
+function relative3(path, cwd) {
+  return typeof cwd === "string" && cwd && path.startsWith(`${cwd}/`) ? path.slice(cwd.length + 1) : path;
+}
+function inputLine(input, cwd) {
+  const fields = input && typeof input === "object" ? input : {};
+  const key = lineKeys.find((item) => typeof fields[item] === "string" && fields[item]);
+  if (!key) return "";
+  const first = fields[key].trim().split("\n")[0];
+  const shown2 = key.endsWith("path") ? relative3(first, cwd) : first;
+  return secrets.reduce((text, [pattern, replacement]) => text.replace(pattern, replacement), shown2);
+}
+function activityLine2(tool, input, cwd) {
+  const shown2 = inputLine(input, cwd);
+  const line = shown2 ? `${tool}: ${shown2}` : tool;
+  return line.length > lineLimit ? `${line.slice(0, lineLimit - 1)}\u2026` : line;
+}
+function readJson(req) {
+  return new Promise((resolve8) => {
+    const chunks = [];
+    let length = 0;
+    req.on("data", (chunk) => {
+      length += chunk.length;
+      if (length <= maxBody) chunks.push(chunk);
+    });
+    req.on("end", () => {
+      try {
+        resolve8(length > maxBody ? null : JSON.parse(Buffer.concat(chunks).toString("utf8")));
+      } catch {
+        resolve8(null);
+      }
+    });
+    req.on("error", () => resolve8(null));
+  });
+}
+function refuse(res) {
+  res.writeHead(403, { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" });
+  res.end("Refused: a hook call needs the hook token and no Origin header.");
+}
+function answer(res, body) {
+  res.writeHead(200, {
+    "Cache-Control": "no-store",
+    ...body ? { "Content-Type": "application/json" } : {},
+    "Content-Length": Buffer.byteLength(body)
+  });
+  res.end(body);
+}
+function createHooks(store, token, options3 = {}) {
+  const holdMilliseconds = options3.holdMilliseconds ?? defaultHoldMilliseconds;
+  const activityMilliseconds2 = options3.activityMilliseconds ?? defaultActivityMilliseconds;
+  const log = options3.log ?? ((line) => process.stderr.write(`checkmate ui: ${line}
+`));
+  const held = /* @__PURE__ */ new Map();
+  const lines2 = /* @__PURE__ */ new Map();
+  function finish2(entry, cause) {
+    held.delete(`${entry.explorationId}/${entry.id}`);
+    clearTimeout(entry.timer);
+    let body = "";
+    try {
+      if (cause) closePermission(store, entry.explorationId, entry.id, cause);
+      const request = permissionOf(store, entry.explorationId, entry.id);
+      if (request?.decision) body = permissionAnswer(request, request.decision);
+    } catch (error) {
+      log(`could not answer ${entry.id} of ${entry.explorationId}: ${error.message}`);
+    }
+    answer(entry.res, body);
+  }
+  function release() {
+    for (const entry of [...held.values()]) {
+      try {
+        const request = permissionOf(store, entry.explorationId, entry.id);
+        if (!request || request.decision) finish2(entry);
+        else if (stoppedSince(store, request)) finish2(entry, "stopped");
+      } catch (error) {
+        log(`could not release ${entry.id} of ${entry.explorationId}: ${error.message}`);
+      }
+    }
+  }
+  function hold(explorationId, id2, res) {
+    const key = `${explorationId}/${id2}`;
+    const entry = {
+      explorationId,
+      id: id2,
+      res,
+      timer: setTimeout(() => finish2(entry, "timeout"), holdMilliseconds)
+    };
+    held.set(key, entry);
+    res.on("close", () => {
+      if (held.get(key) !== entry) return;
+      held.delete(key);
+      clearTimeout(entry.timer);
+      try {
+        closePermission(store, explorationId, id2, "disconnected");
+      } catch (error) {
+        log(`could not close ${id2} of ${explorationId}: ${error.message}`);
+      }
+    });
+  }
+  function permission(explorationId, who, body, res) {
+    const input = body.tool_input;
+    if (typeof body.tool_name !== "string" || !input || typeof input !== "object") {
+      log(`permission call of ${who} in ${explorationId} has no tool_name and tool_input`);
+      return answer(res, "");
+    }
+    const suggestions = Array.isArray(body.permission_suggestions) ? body.permission_suggestions.filter((item) => item && typeof item === "object") : [];
+    try {
+      const cwd = typeof body.cwd === "string" && body.cwd ? body.cwd : void 0;
+      const made = requestPermission(store, { explorationId, who, tool: body.tool_name, input, suggestions, cwd });
+      if (!made.byRule) return hold(explorationId, made.id, res);
+      const request = permissionOf(store, explorationId, made.id);
+      answer(res, permissionAnswer(request, request.decision));
+    } catch (error) {
+      log(`could not record the permission call of ${who} in ${explorationId}: ${error.message}`);
+      answer(res, "");
+    }
+  }
+  function writeLine(explorationId, who, line) {
+    line.timer = void 0;
+    if (!line.dirty) return;
+    line.dirty = false;
+    line.writtenAt = Date.now();
+    const operation = { actor: explorerActor(who), command: "explore activity", subject: explorationId };
+    try {
+      write(store, { ...operation, input: { who } }, (operationId, at) => {
+        addEvent(
+          store,
+          explorationId,
+          { step: "activity", explorer: who, status: "started", detail: { activity: line.text } },
+          operationId,
+          at
+        );
+        return { reply: completed(explorationId), subjects: [`exploration:${explorationId}`] };
+      });
+    } catch (error) {
+      log(`could not record the activity of ${who} in ${explorationId}: ${error.message}`);
+    }
+  }
+  function activity(explorationId, who, body) {
+    if (typeof body.tool_name !== "string")
+      return log(`activity call of ${who} in ${explorationId} has no tool_name`);
+    const tester = one(
+      store,
+      "SELECT 1 FROM exploration_events WHERE exploration_id = ? AND step = 'launch' AND explorer = ?",
+      explorationId,
+      who
+    );
+    if (!tester) return;
+    const key = `${explorationId}/${who}`;
+    const line = lines2.get(key) ?? { text: "", dirty: false, writtenAt: 0 };
+    lines2.set(key, line);
+    line.text = activityLine2(body.tool_name, body.tool_input, body.cwd);
+    line.dirty = true;
+    const wait = line.writtenAt + activityMilliseconds2 - Date.now();
+    if (wait <= 0) writeLine(explorationId, who, line);
+    else line.timer ??= setTimeout(() => writeLine(explorationId, who, line), wait);
+  }
+  return {
+    handles: (pathname) => route.test(pathname),
+    async handle(req, res, pathname) {
+      const [, kind, explorationId, who] = route.exec(pathname);
+      const bearer = req.headers.authorization;
+      if (req.headers.origin !== void 0 || typeof bearer !== "string" || !sameSecret(bearer, `Bearer ${token}`))
+        return refuse(res);
+      const body = await readJson(req);
+      const expected = kind === "permission" ? "PermissionRequest" : "PreToolUse";
+      const known = one(store, "SELECT 1 FROM explorations WHERE exploration_id = ?", explorationId);
+      const valid = body && typeof body === "object" && body.hook_event_name === expected;
+      if (!known || !valid) {
+        log(`${kind} call of ${who} in ${explorationId} is not a ${expected} event of a known exploration`);
+        return answer(res, "");
+      }
+      if (kind === "permission") return permission(explorationId, who, body, res);
+      activity(explorationId, who, body);
+      answer(res, "");
+    },
+    release,
+    close() {
+      for (const entry of [...held.values()]) finish2(entry, "ui-stopped");
+      for (const [key, line] of lines2) {
+        clearTimeout(line.timer);
+        const [explorationId, who] = key.split("/");
+        writeLine(explorationId, who, line);
+      }
+      lines2.clear();
+    }
+  };
+}
+
+// plugin/src/ui/permissions.ts
+var verbs = {
+  Bash: "run",
+  Read: "read",
+  Write: "write",
+  Edit: "edit",
+  MultiEdit: "edit",
+  NotebookEdit: "edit",
+  NotebookRead: "read",
+  Glob: "find files",
+  Grep: "search",
+  WebFetch: "fetch",
+  WebSearch: "search the web"
+};
+var shownLines = 40;
+var historySize = 20;
+function asksFor(item) {
+  const line = inputLine(item.input, item.cwd ?? void 0);
+  const verb = verbs[item.tool] ?? `use ${item.tool}`;
+  return line ? `${verb}: ${line}` : verb;
+}
+function askerName(item) {
+  return `${item.tester ? "Tester" : "Step"} ${item.who}`;
+}
+function askTitle(item) {
+  return `${askerName(item)} asks to ${asksFor(item)}`;
+}
+function requestName(item) {
+  return `${item.explorationId}/${item.id}`;
+}
+function recordPath(item) {
+  return `/permissions/${requestName(item)}`;
+}
+function requestHref(item, from, history = false) {
+  const params = new URLSearchParams();
+  if (from) params.set("from", from);
+  if (history) params.set("view", "history");
+  const query = params.toString();
+  return query ? `${recordPath(item)}?${query}` : recordPath(item);
+}
+function waitsFor(item) {
+  return html2`waits <span data-since="${item.at}">${duration(Math.max(0, Date.now() - Date.parse(item.at)))}</span>`;
+}
+function nextOpen(store, after) {
+  const open = openPermissions(store).filter((item) => !after || requestName(item) !== requestName(after));
+  return open[0] ?? null;
+}
+function choicesOf(item) {
+  const kind = item.tool === "Bash" ? "command" : "kind of call";
+  const run2 = item.explorationId;
+  const rule = item.rule;
+  return [
+    { decision: "allow", label: "Allow once", text: "Answers this request with yes. Checkmate stores no rule." },
+    ...rule ? [
+      {
+        decision: "allow-kind",
+        label: `Allow this ${kind} for this test`,
+        text: html2`Answers yes now and for every later request with the rule <code>${rule}</code>, from
+							any tester of this run. Checkmate stores the rule in the record of run ${run2}. The rule ends
+							with the run.`
+      }
+    ] : [],
+    {
+      decision: "allow-tool",
+      label: `Allow every ${item.tool} call for this test`,
+      text: `Answers yes now and for every later ${item.tool} call of any tester of this run, whatever the input. Checkmate stores the rule in the record of run ${run2}. The rule ends with the run.`
+    },
+    ...rule ? [
+      {
+        decision: "always",
+        label: `Always allow this ${kind} in this project`,
+        text: html2`Answers yes now. Claude Code writes the rule <code>${rule}</code> to
+							<code>.claude/settings.local.json</code> of the project, and the rule stays after this run.
+							Checkmate writes no settings file.`
+      }
+    ] : [],
+    {
+      decision: "deny",
+      label: "Deny\u2026",
+      reveal: "deny",
+      text: "Answers no. You write the reason first, and the tester gets it."
+    },
+    {
+      decision: "stop",
+      label: item.tester ? `Stop tester ${item.who}\u2026` : "Stop the run\u2026",
+      ask: {
+        title: item.tester ? `Stop tester ${item.who}?` : "Stop the run?",
+        text: item.tester ? `Checkmate denies this call and ends tester ${item.who}. The other testers go on.` : `Checkmate denies this call and stops the whole run ${run2}.`,
+        yes: item.tester ? `Stop tester ${item.who}` : "Stop the run"
+      },
+      text: item.tester ? `Answers no and ends tester ${item.who}. The other testers go on. You confirm first.` : `Answers no and stops the whole run ${run2}. You confirm first.`
+    }
+  ];
+}
+function optionCount(item) {
+  return choicesOf(item).length;
+}
+function hidden2(name2, value2) {
+  return html2`<input type="hidden" name="${name2}" value="${value2}" />`;
+}
+function rowOptions(context, item, returnTo) {
+  return html2`<div
+		class="sp-c-opts asks"
+		aria-label="Options"
+		title="${plural(optionCount(item), "option")}. Open the request to see them."
+	>
+		<form method="post" action="${recordPath(item)}" class="sp-opt">
+			${hidden2("csrf", context.csrf)}${hidden2("return", returnTo)}${hidden2("decision", "allow")}
+			<button class="sp-btn" data-option aria-label="1: Allow once" title="Allow once">
+				<kbd aria-hidden="true">1</kbd><span>Allow once</span>
+			</button>
+		</form>
+		<span class="sp-c-more" aria-hidden="true">${glyph("\u2192")} more</span>
+	</div>`;
+}
+function askBadge() {
+  return html2`<span class="sp-pill amber">ASKS</span>`;
+}
+function askingPill() {
+  return html2`<span class="sp-pill amber"><span class="dot" aria-hidden="true"></span>Asks</span>`;
+}
+function optionOf(context, item, from, choice2, n) {
+  const key = html2`<kbd aria-hidden="true">${n}</kbd><span>${choice2.label}</span>`;
+  if (choice2.reveal)
+    return html2`<a
+			class="sp-btn"
+			href="#${choice2.reveal}"
+			data-option
+			data-reveal="${choice2.reveal}"
+			aria-label="${n}: ${choice2.label}"
+			title="${choice2.label}"
+			>${key}</a
+		>`;
+  const ask = choice2.ask ? html2`data-ask-title="${choice2.ask.title}" data-ask-text="${choice2.ask.text}" data-ask-yes="${choice2.ask.yes}"` : "";
+  return html2`<form method="post" action="${recordPath(item)}" class="sp-opt">
+		${hidden2("csrf", context.csrf)}${from ? hidden2("from", from) : ""}${hidden2("decision", choice2.decision)}
+		<button class="sp-btn" data-option ${ask} aria-label="${n}: ${choice2.label}" title="${choice2.label}">
+			${key}
+		</button>
+	</form>`;
+}
+function cut(text) {
+  const lines2 = text.split("\n");
+  const more = lines2.length - shownLines;
+  return more > 0 ? `${lines2.slice(0, shownLines).join("\n")}
+\u2026 ${plural(more, "more line")}` : text;
+}
+function edits(input) {
+  const list2 = Array.isArray(input.edits) ? input.edits : [input];
+  return list2.flatMap((edit) => [
+    ...String(edit.old_string ?? "").split("\n").map((line) => `- ${line}`),
+    ...String(edit.new_string ?? edit.new_source ?? "").split("\n").map((line) => `+ ${line}`)
+  ]).join("\n");
+}
+function asked(item) {
+  const input = item.input && typeof item.input === "object" ? item.input : {};
+  const path = ["file_path", "notebook_path", "path"].map((key) => input[key]).find((value2) => typeof value2 === "string");
+  const block = (label, text) => html2`<p class="sp-lbl">${label}</p>
+			<pre class="sp-code" tabindex="0">${text}</pre>`;
+  if (typeof input.command === "string") return block("Command", input.command);
+  if (typeof path === "string") {
+    const body = item.tool === "Write" && typeof input.content === "string" ? block("Content", cut(input.content)) : item.tool === "Edit" || item.tool === "MultiEdit" || item.tool === "NotebookEdit" ? block("Change", cut(edits(input))) : "";
+    return html2`<p class="sp-lbl">File</p>
+			<pre class="sp-code" tabindex="0">${path}</pre>
+			${body}`;
+  }
+  return block("Input", JSON.stringify(item.input, null, 2));
+}
+function rulesLines(rules) {
+  return rules.map(
+    (rule) => html2`<p class="help" data-key="rule:${rule.requestId}">
+				Allowed for this test:
+				${rule.kind === "allow-tool" ? `every ${rule.rule} call` : html2`<code>${rule.rule}</code>`}, set by
+				${rule.setBy} ${ago(rule.at)}.
+			</p>`
+  );
+}
+function stateOf(item) {
+  const decision = item.decision;
+  if (decision.kind === "closed")
+    return html2`<strong>Closed ${ago(decision.at)}:</strong> ${closedText[decision.cause]}.
+			${decision.cause === "timeout" ? "Claude Code denied the call." : ""}`;
+  if (decision.kind === "rule")
+    return html2`<strong>Answered ${ago(decision.at)} by a rule:</strong> ${decision.text}.`;
+  return html2`<strong>Answered ${ago(decision.at)}:</strong> ${decision.text}.`;
+}
+function stateText(item) {
+  const decision = item.decision;
+  return decision.kind === "closed" ? `Closed: ${closedText[decision.cause]}.` : `Answered: ${decision.text}.`;
+}
+function permissionPage(store, context, explorationId, requestId, view, refusal) {
+  const item = permissionOf(store, explorationId, requestId);
+  if (!item) return null;
+  const { from } = view;
+  const back = from ?? "/activity";
+  const moves = item.decision && !view.history;
+  const next = nextOpen(store, item);
+  const after = next ? requestHref(next, from) : back;
+  const name2 = requestName(item);
+  const rules = permissionRules(store, explorationId);
+  const choices = item.decision ? [] : choicesOf(item);
+  const title = askTitle(item);
+  return {
+    title: `${name2} \xB7 Permission request`,
+    section: "home",
+    subjects: [`exploration:${explorationId}`, `plan:${item.planId}`],
+    crumbs: [
+      ["Plans", "/"],
+      [item.planId, `/plans/${item.planId}`],
+      [explorationId, `/explorations/${explorationId}`],
+      [item.id, null]
+    ],
+    back,
+    status: refusal ? 422 : 200,
+    body: html2`<div
+			class="sp-record"
+			data-region="permission-record"
+			data-drawer
+			data-back="${back}"
+			data-key="record:${name2}"
+			data-decided-message="${item.decision ? stateText(item) : ""}"
+			${moves ? html2`data-moves-on data-next="${after}"` : ""}
+		>
+			${crumbBar([
+      [item.planId, `/plans/${item.planId}`],
+      [explorationId, `/explorations/${explorationId}`]
+    ])}
+			<div data-stale-slot>
+				${refusal && !refusal.field ? html2`<p class="form-error" role="alert">${refusal.error}</p>` : ""}
+			</div>
+			<section class="sp-dhead" tabindex="-1" data-sub data-label="${name2}">
+				<div class="sp-pills">
+					${item.decision ? pill(item.decision.kind === "closed" ? "stopped" : "completed", item.decision.kind === "closed" ? "Closed" : "Answered") : askBadge()}
+					<span class="sp-c-id">${name2}</span>
+					<span class="sp-c-id">${item.decision ? ago(item.at) : waitsFor(item)}</span>
+				</div>
+				<h1 id="record-title" class="sp-ask-title" title="${title}">${title}</h1>
+			</section>
+			${item.decision ? html2`<p class="banner info" role="status" data-key="state">
+							${stateOf(item)}
+							${moves ? html2`This view moves on in 2 seconds. Press any key to move on now.` : html2`This request has no options now.`}
+						</p>` : ""}
+			<section aria-labelledby="asked-title">
+				<h2 class="lab" id="asked-title">What it asks</h2>
+				${asked(item)}
+				<dl class="facts">
+					<div>
+						<dt>Tool</dt>
+						<dd class="mono">${item.tool}</dd>
+					</div>
+					<div>
+						<dt>Asked by</dt>
+						<dd>${askerName(item)}</dd>
+					</div>
+					<div>
+						<dt>Folder</dt>
+						<dd>
+							${item.cwd ? html2`<code>${item.cwd}</code>` : html2`<span class="muted">not recorded</span>`}
+						</dd>
+					</div>
+					<div>
+						<dt>Since</dt>
+						<dd>${time(item.at)}</dd>
+					</div>
+					<div>
+						<dt>Run</dt>
+						<dd><a href="/explorations/${explorationId}">${explorationId}</a></dd>
+					</div>
+					<div>
+						<dt>Plan</dt>
+						<dd><a href="/plans/${item.planId}">${item.planId}</a></dd>
+					</div>
+				</dl>
+			</section>
+			${choices.length ? html2`<section class="sp-options" aria-labelledby="options-title" data-key="options:${name2}">
+							<h2 class="lab" id="options-title">Options</h2>
+							<ol class="sp-optlist asks">
+								${choices.map((choice2, index2) => html2`<li>${optionOf(context, item, from, choice2, index2 + 1)}<span class="help">${choice2.text}</span></li>`)}
+							</ol>
+							<div class="sp-c-extra" data-extra="deny" ${refusal?.field ? "" : html2`hidden`}>
+								<form
+									method="post"
+									action="${recordPath(item)}"
+									class="sp-form"
+									id="deny"
+									data-field-form
+								>
+									${hidden2("csrf", context.csrf)}${from ? hidden2("from", from) : ""}${hidden2("decision", "deny")}
+									<label for="deny-text">Why do you deny it? The tester gets this text.</label>
+									<textarea
+										id="deny-text"
+										name="reason"
+										rows="3"
+										required
+										data-missing="Write the reason first. The tester gets it."
+									>
+${refusal?.reason ?? ""}</textarea>
+									${refusal?.field ? html2`<p class="form-error" role="alert" data-field="reason">${refusal.error}</p>` : ""}
+									<div class="btns">
+										<button class="sp-btn pri"><span>Deny</span></button>
+										<span class="small muted"
+											>Enter sends. Shift+Enter starts a new line. Esc keeps the draft.</span
+										>
+									</div>
+								</form>
+							</div>
+						</section>` : ""}
+			${rules.length ? html2`<section aria-labelledby="rules-title">
+							<h2 class="lab" id="rules-title">Rules of this test</h2>
+							${rulesLines(rules)}
+						</section>` : ""}
+		</div>`
+  };
+}
+function permissionHistory(store, explorationId, params, from) {
+  const all2 = explorationPermissions(store, explorationId).reverse();
+  if (!all2.length) return "";
+  const last = Math.ceil(all2.length / historySize);
+  const asked2 = Number(params.get("requests"));
+  const page = Number.isInteger(asked2) && asked2 >= 1 ? Math.min(asked2, last) : 1;
+  const shown2 = all2.slice((page - 1) * historySize, page * historySize);
+  const link = (target, label, rel) => {
+    const next = new URLSearchParams(params);
+    if (target === 1) next.delete("requests");
+    else next.set("requests", String(target));
+    const query = next.toString();
+    return html2`<a class="btn small" href="/explorations/${explorationId}${query ? `?${query}` : ""}" rel="${rel}"
+			>${label}</a
+		>`;
+  };
+  const decided = (item) => item.decision ? html2`${item.decision.text} · ${time(item.decision.at)}` : html2`open · ${time(item.at)}`;
+  const rows2 = shown2.map(
+    (item, index2) => html2`<div
+				class="sp-row"
+				role="option"
+				aria-selected="false"
+				tabindex="-1"
+				id="request-${index2}"
+				data-row
+				data-key="request:${requestName(item)}"
+				data-href="${requestHref(item, from, true)}"
+				data-label="${requestName(item)}"
+			>
+				<span class="sp-c-cb"></span>
+				<span class="sp-c-tag">${item.decision ? decisionPill(item) : askingPill()}</span>
+				<span class="sp-c-id" title="${requestName(item)}">${requestName(item)}</span>
+				<span class="sp-c-title ell" title="${askTitle(item)}">${askTitle(item)}</span>
+				<span class="sp-c-meta ell" title="${item.decision?.text ?? "open"}">${decided(item)}</span>
+			</div>`
+  );
+  return html2`<details
+		class="fold"
+		data-open-key="section:permission-history"
+		${page > 1 || all2.some((item) => !item.decision) ? html2`open` : ""}
+	>
+		<summary>
+			<h2>Permission requests <span class="n">${all2.length}</span></h2>
+		</summary>
+		<div class="fold-b" data-list-region>
+			<div class="sp-list" role="listbox" aria-label="Permission requests of ${explorationId}" data-list>
+				${rows2}
+			</div>
+			${last > 1 ? html2`<nav class="pager" aria-label="Pages of permission requests">
+							${page > 1 ? link(page - 1, "\u2039 Newer", "prev") : ""}
+							<span class="pager-at">Page ${page} of ${last}</span>
+							${page < last ? link(page + 1, "Older \u203A", "next") : ""}
+						</nav>` : ""}
+		</div>
+	</details>`;
+}
+function decisionPill(item) {
+  const kind = item.decision.kind;
+  const look = {
+    allow: ["Allowed", "green"],
+    "allow-kind": ["Allowed", "green"],
+    "allow-tool": ["Allowed", "green"],
+    always: ["Allowed", "green"],
+    rule: ["By rule", "green"],
+    deny: ["Denied", "red"],
+    stop: ["Stopped", "red"],
+    closed: ["Closed", ""]
+  };
+  const [label, tone2] = look[kind];
+  return html2`<span class="sp-pill ${tone2}">${label}</span>`;
+}
+function emptyRecord(explorationId, requestId) {
+  return {
+    title: "No such request",
+    section: null,
+    subjects: ["inbox"],
+    status: 404,
+    back: "/activity",
+    body: html2`${heading("No such request", `Run ${explorationId} has no permission request ${requestId}.`)}
+			<p class="actions"><a class="btn primary" href="/activity">Activity</a></p>`
+  };
 }
 
 // plugin/src/ui/lists.ts
@@ -19202,6 +20139,8 @@ function runsOf(store, explorationId, counts2) {
   const stop = events.findLast((item) => item.step === "stop" && item.explorer === null);
   const done = events.find((item) => item.step === "done");
   const [claims, questions] = counts2.get(`${status.planId}:${explorationId}`) ?? [0, 0];
+  const waiting = explorationPermissions(store, explorationId).filter((item) => !item.decision).length;
+  const waits = waiting ? `waits for you: ${plural(waiting, "permission request")}` : "";
   const failure = status.state === "failed" ? failureOf(status.reason, status.doneHint, events) : null;
   const outcomes = {
     completed: `${plural(claims, "defect")}, ${plural(questions, "question")}`,
@@ -19237,7 +20176,7 @@ function runsOf(store, explorationId, counts2) {
     startedAt: startAt,
     endedAt: done?.at ?? stop?.at ?? (status.state === "interrupted" ? events.at(-1)?.at ?? null : null),
     costUsd: costOf2(firstFollow === -1 ? events : events.slice(0, firstFollow)),
-    outcome: testing ? "" : outcomes[status.state === "following" ? "completed" : status.state] ?? "",
+    outcome: testing ? waits : outcomes[status.state === "following" ? "completed" : status.state] ?? "",
     failure,
     stoppable: testing && status.path !== "session"
   };
@@ -19254,7 +20193,7 @@ function runsOf(store, explorationId, counts2) {
       failed: trouble ? `${trouble.cause} ${trouble.next}` : "",
       stopped: status.followReason ?? "Stopped.",
       interrupted: "The run was interrupted: the supervisor stopped before the end.",
-      following: ""
+      following: waits
     };
     return {
       ...base,
@@ -19425,7 +20364,7 @@ function acrossBuilds(review, item) {
   if (!builds.length) return null;
   return builds.map((on) => `${changeWords[on.state] ?? words(on.state)} in build ${buildLabel(review, on.build)}`).join(", ").replace(/^./, (first) => first.toUpperCase());
 }
-function ruleText(review, rule) {
+function ruleText2(review, rule) {
   if (rule === null || rule === outside) return "Outside the rules of the plan.";
   const row2 = review.map.rows.find((each) => each.rule.id === rule);
   return row2 ? `${rule} ${row2.rule.text}` : rule;
@@ -19516,7 +20455,7 @@ function claimBody(context, store, review, item, base, back, state) {
 		<div><span class="sp-lbl">Evidence</span>${fileRows(files2, base, null)}</div>
 		${facts([
     ["Across builds", acrossBuilds(review, item)],
-    ["Rule", ruleText(review, item.rule)],
+    ["Rule", ruleText2(review, item.rule)],
     ["Seen by", claim.actors.join(", ")],
     ["State", words(claim.state)],
     ["Decision", decided],
@@ -19562,7 +20501,7 @@ function questionBody(context, review, item, back, state) {
 	</details>`;
   return html2`${question?.actual ? html2`<p class="sp-today"><span class="sp-lbl">What the build does</span>${question.actual}</p>` : ""}
 	${facts([
-    ["Rule", item.kind === "gap" ? null : ruleText(review, item.rule)],
+    ["Rule", item.kind === "gap" ? null : ruleText2(review, item.rule)],
     ["Topic", item.topic],
     ["Asked on", question?.builds.map((build) => `${buildLabel(review, build)} ${build}`).join(", ") ?? null],
     [
@@ -19726,7 +20665,8 @@ function claimItem(planId, claim, detail, needs) {
     claim,
     detail,
     question: null,
-    waiting: null
+    waiting: null,
+    permission: null
   };
 }
 function questionItem(question, needs) {
@@ -19750,7 +20690,8 @@ function questionItem(question, needs) {
     claim: null,
     detail: null,
     question,
-    waiting: null
+    waiting: null,
+    permission: null
   };
 }
 function waitingItem(planId, waiting) {
@@ -19771,7 +20712,8 @@ function waitingItem(planId, waiting) {
       claim: null,
       detail: null,
       question: null,
-      waiting
+      waiting,
+      permission: null
     };
   const plan = waiting.kind === "plan";
   return {
@@ -19790,7 +20732,29 @@ function waitingItem(planId, waiting) {
     claim: null,
     detail: null,
     question: null,
-    waiting
+    waiting,
+    permission: null
+  };
+}
+function permissionItem(item) {
+  return {
+    key: `perm:${requestName(item)}`,
+    kind: "permission",
+    id: requestName(item),
+    title: askTitle(item),
+    rule: null,
+    builds: [],
+    needs: true,
+    blocking: false,
+    severity: null,
+    topic: null,
+    href: requestHref(item, null),
+    meta: "",
+    claim: null,
+    detail: null,
+    question: null,
+    waiting: null,
+    permission: item
   };
 }
 function reviewOf(store, planId) {
@@ -19805,7 +20769,12 @@ function reviewOf(store, planId) {
     (question) => questionItem(question, waits.has(`question:${question.id}`))
   );
   const others = waiting.filter((item) => ["gap", "plan", "result"].includes(item.kind));
-  const items = [...claims, ...questions, ...others.map((item) => waitingItem(planId, item))];
+  const items = [
+    ...openPermissions(store, planId).map(permissionItem),
+    ...claims,
+    ...questions,
+    ...others.map((item) => waitingItem(planId, item))
+  ];
   const { request, target } = planRequest(store, planId);
   const explorations = planExplorations(store, planId);
   const latest = planHasRevision(store, planId) ? planDetail(store, planId) : null;
@@ -19831,7 +20800,7 @@ function buildLabel(review, build) {
   return `B${review.map.builds.findIndex((item) => item.build === build) + 1}`;
 }
 function itemsOf(review, view) {
-  const { items } = review;
+  const items = review.items.filter((item) => item.kind !== "permission" || view === "needs");
   if (view === "needs") return items.filter((item) => item.needs);
   if (view === "all") return items;
   if (view.startsWith("rule:")) {
@@ -19851,6 +20820,10 @@ function groupsOf(items) {
   const topics = [...new Set(items.filter((item) => open(item) && !item.blocking).map((item) => item.topic))];
   const bySeverity = (a, b) => severityOrder2.indexOf(a.severity ?? "") - severityOrder2.indexOf(b.severity ?? "");
   return [
+    of(
+      "Permission requests",
+      items.filter((item) => item.kind === "permission")
+    ),
     of("Is this a defect?", items.filter((item) => item.kind === "finding").sort(bySeverity)),
     of(
       "Questions that block testing",
@@ -19909,6 +20882,7 @@ var tags = {
   low: ["Low", ""]
 };
 function itemTag(item) {
+  if (item.permission) return askBadge();
   if (item.blocking) return html2`<span class="sp-pill red"><span class="dot" aria-hidden="true"></span>Blocks</span>`;
   const [label, color] = tags[item.kind === "defect" ? item.severity ?? "low" : item.kind] ?? tags.low;
   return html2`<span class="sp-pill ${color}">${label}</span>`;
@@ -20009,9 +20983,14 @@ function extraOf(context, review, item) {
   return "";
 }
 function itemRow(context, review, item, id2, view) {
-  const pickable = ["finding", "question", "gap", "defect"].includes(item.kind);
+  const asked2 = item.permission;
+  const pickable = ["finding", "question", "gap", "defect", "permission"].includes(item.kind);
   const dim = ["answered", "deferred", "rejected"].includes(item.kind);
-  const options3 = optionsOf(context, review, item);
+  const here = reviewHref(review.planId, view, `&item=${encodeURIComponent(item.key)}`);
+  const list2 = reviewHref(review.planId, view, `&at=${encodeURIComponent(item.key)}&focus=list`);
+  const opened = asked2 ? requestHref(asked2, list2) : here;
+  const listed = optionsOf(context, review, item);
+  const options3 = asked2 ? rowOptions(context, asked2, list2) : listed.length ? html2`<div class="sp-c-opts" aria-label="Options">${listed}</div>` : "";
   const extra = extraOf(context, review, item);
   return html2`<div
 		class="sp-row${dim ? " dim" : ""}"
@@ -20021,7 +21000,7 @@ function itemRow(context, review, item, id2, view) {
 		id="${id2}"
 		data-row
 		data-key="${item.key}"
-		data-href="${reviewHref(review.planId, view, `&item=${encodeURIComponent(item.key)}`)}"
+		data-href="${opened}"
 		data-label="${item.id}"
 		data-builds="${item.builds.join(" ")}"
 		${item.needs ? html2`data-needs` : ""}
@@ -20032,18 +21011,13 @@ function itemRow(context, review, item, id2, view) {
 					/></label>` : html2`<span class="sp-c-cb"></span>`}
 		<span class="sp-c-tag">${itemTag(item)}</span>
 		<span class="sp-c-id" title="${item.id}">${item.id}</span>
-		<a
-			class="sp-c-title ell"
-			title="${item.title}"
-			tabindex="-1"
-			href="${reviewHref(review.planId, view, `&item=${encodeURIComponent(item.key)}`)}"
-			>${item.title}</a
-		>
-		<span class="sp-c-meta ell" title="${item.meta}">${item.meta}</span>
-		${options3.length ? html2`<div class="sp-c-opts" aria-label="Options">${options3}</div>` : ""} ${extra}
+		<a class="sp-c-title ell" title="${item.title}" tabindex="-1" href="${opened}">${item.title}</a>
+		${asked2 ? html2`<span class="sp-c-meta ell">${waitsFor(asked2)}</span>` : html2`<span class="sp-c-meta ell" title="${item.meta}">${item.meta}</span>`}
+		${options3} ${extra}
 	</div>`;
 }
 function pickKey(review, item) {
+  if (item.kind === "permission") return `permission:${review.planId}:${item.id}`;
   if (item.kind === "finding") return `claim:${review.planId}:${item.id}`;
   if (item.kind === "gap") return `gap:${review.planId}:${item.id}`;
   if (item.kind === "defect") return `defect:${review.planId}:${item.id}`;
@@ -20400,11 +21374,11 @@ function panel(context, review, view, current) {
 function reviewPage(store, context, planId, params, refusal = null, notice = null) {
   const review = reviewOf(store, planId);
   const views2 = viewsOf(review);
-  const asked = params.get("view") ?? "needs";
-  const current = views2.includes(asked) ? asked : "needs";
+  const asked2 = params.get("view") ?? "needs";
+  const current = views2.includes(asked2) ? asked2 : "needs";
   const title = viewTitle(review, current);
   const key = refusal?.key ?? params.get("item");
-  const item = key ? review.items.find((each) => each.key === key) ?? null : null;
+  const item = key ? review.items.find((each) => each.key === key && each.kind !== "permission") ?? null : null;
   const file = params.get("file");
   const record = item ? file !== null && /^[0-9]{1,3}$/.test(file) && item.claim ? evidenceViewer(store, review, item, current, Number(file)) : recordDrawer(store, context, review, item, current, refusal) : "";
   const panels = views2.map((view) => panel(context, review, view, current));
@@ -20455,6 +21429,8 @@ function reviewPage(store, context, planId, params, refusal = null, notice = nul
 				<button type="button" class="sp-btn" data-bulk-action="right"><kbd></kbd><span></span></button>
 				<button type="button" class="sp-btn" data-bulk-action="defer"><kbd></kbd><span></span></button>
 				<button type="button" class="sp-btn" data-bulk-action="handoff"><kbd></kbd><span></span></button>
+				<button type="button" class="sp-btn" data-bulk-action="allow"><kbd></kbd><span></span></button>
+				<button type="button" class="sp-btn" data-bulk-action="deny"><kbd></kbd><span></span></button>
 				<button type="button" class="sp-btn" data-bulk-action="clear">
 					<kbd></kbd><span>Clear the selection</span>
 				</button>
@@ -20767,7 +21743,7 @@ function testerLine(item) {
   if (item.turn === "study") return "In its study turn. The first activity line comes when the turn ends.";
   return `In its ${item.turn ?? "test"} turn. No activity line yet.`;
 }
-function spRow(key, href, label, tag, title, meta2, n, metaText2 = "", opts = "") {
+function spRow(key, href, label, tag, title, meta2, n, metaText2 = "", opts = "", ask = "") {
   return html2`<div
 		class="sp-row"
 		role="option"
@@ -20778,6 +21754,7 @@ function spRow(key, href, label, tag, title, meta2, n, metaText2 = "", opts = ""
 		data-key="${key}"
 		data-href="${href}"
 		data-label="${label}"
+		${ask ? html2`data-ask="${ask}"` : ""}
 	>
 		<span class="sp-c-cb"></span>
 		<span class="sp-c-tag">${tag}</span>
@@ -20787,26 +21764,41 @@ function spRow(key, href, label, tag, title, meta2, n, metaText2 = "", opts = ""
 		${opts}
 	</div>`;
 }
+function stepAsks(open) {
+  return open.filter((item) => !item.tester).map(
+    (item) => html2`<p class="help" data-key="step-asks-${item.id}">
+					<a href="${requestHref(item, null)}">Step ${item.who} asks to ${asksFor(item)}</a>
+				</p>`
+  );
+}
+function historyFrom(explorationId, params) {
+  const page = params.get("requests");
+  return page ? `/explorations/${explorationId}?requests=${encodeURIComponent(page)}` : `/explorations/${explorationId}`;
+}
 function stoppableTester(live, item) {
   return live.running && live.state !== "following" && live.path !== "session" && item.state === "running";
 }
-function explorationList(live, others) {
+function explorationList(context, live, others, asking) {
   const explorers = live.explorers.map((item, index2) => {
     const raw = rawCount(live, item.explorer);
+    const asked2 = asking.get(item.explorer);
+    const here = `/explorations/${live.explorationId}`;
+    const from = `${here}?at=${encodeURIComponent(`explorer:${item.explorer}`)}`;
     return spRow(
       `explorer:${item.explorer}`,
-      explorationHref(live.explorationId, `explorer:${item.explorer}`),
+      asked2 ? requestHref(asked2, from) : explorationHref(live.explorationId, `explorer:${item.explorer}`),
       item.explorer,
-      testerState(live, item),
-      testerLine(item),
-      html2`${item.turn ?? ""}${item.turn && item.elapsedMs !== null ? " \xB7 " : ""}${inState(item)}${raw ? ` \xB7 ${raw} not merged` : ""}`,
+      asked2 ? askingPill() : testerState(live, item),
+      asked2 ? `Asks to ${asksFor(asked2)}` : testerLine(item),
+      asked2 ? waitsFor(asked2) : html2`${item.turn ?? ""}${item.turn && item.elapsedMs !== null ? " \xB7 " : ""}${inState(item)}${raw ? ` \xB7 ${raw} not merged` : ""}`,
       `tester-${index2}`,
       [
         item.turn,
         item.pausedAt ? `paused for ${duration(Date.now() - Date.parse(item.pausedAt))}` : item.elapsedMs !== null ? duration(item.elapsedMs) : null,
         raw ? `${raw} not merged` : null
       ].filter(Boolean).join(" \xB7 "),
-      stoppableTester(live, item) ? optionsBox([testerStopOption(live.explorationId, item.explorer, 1)]) : ""
+      asked2 ? rowOptions(context, asked2, from) : stoppableTester(live, item) ? optionsBox([testerStopOption(live.explorationId, item.explorer, 1)]) : "",
+      asked2 ? `${asked2.explorationId}/${asked2.id}` : ""
     );
   });
   const phases2 = live.phases.map(
@@ -21080,13 +22072,16 @@ function explorationPage(store, context, explorationId, params = new URLSearchPa
   const live = explorationLive(store, explorationId);
   const runs = runsOf(store, explorationId, /* @__PURE__ */ new Map());
   const run2 = runs.find((item) => item.running) ?? runs[0];
-  const asked = params.get("item") ?? "summary";
-  const explorer = live.explorers.find((item) => `explorer:${item.explorer}` === asked);
-  const phase = live.phases.find((row2) => `phase:${row2.phase}` === asked);
+  const asked2 = params.get("item") ?? "summary";
+  const explorer = live.explorers.find((item) => `explorer:${item.explorer}` === asked2);
+  const phase = live.phases.find((row2) => `phase:${row2.phase}` === asked2);
   const label = explorer ? explorer.explorer : phase ? phase.phase : null;
   const review = reviewOf(store, live.planId);
   const title = live.running ? "Testers now" : "Testers";
   const others = review.explorations.filter((item) => item.explorationId !== explorationId).reverse();
+  const permissions = explorationPermissions(store, explorationId);
+  const open = permissions.filter((item) => !item.decision);
+  const asking = new Map(open.flatMap((item) => item.tester ? [[item.tester, item]] : []));
   const detail = explorer ? explorerDetail(store, live, explorer, html2``) : phase ? phaseDetail(live, phase, html2``) : summaryDetail(store, live, html2``, runOptions(live, run2, others));
   return {
     viewer: true,
@@ -21127,7 +22122,9 @@ function explorationPage(store, context, explorationId, params = new URLSearchPa
 					${run2.costUsd === null ? "" : html2`<span class="sp-pill" title="Cost so far, as Claude Code reports it">${money(run2.costUsd)}</span>`}
 				</div>
 			</div>
-			<div data-region="exploration-banner">${stateLine(store, live, run2)}${strayLines(live)}</div>
+			<div data-region="exploration-banner">
+				${stateLine(store, live, run2)}${strayLines(live)}${stepAsks(open)}${rulesLines(permissionRules(store, explorationId))}
+			</div>
 			${runActions(
       context,
       live,
@@ -21135,12 +22132,15 @@ function explorationPage(store, context, explorationId, params = new URLSearchPa
       review.explorations.filter((item) => item.explorationId !== explorationId),
       defaultBuild(store.workspace)
     )}
-			<div data-region="exploration-list">${explorationList(live, others)}</div>
+			<div data-region="exploration-list">${explorationList(context, live, others, asking)}</div>
+			<div data-region="permission-history">
+				${permissionHistory(store, explorationId, params, historyFrom(explorationId, params))}
+			</div>
 			<section
 				class="sp-detail"
 				aria-label="${label ?? "Overview"}"
 				data-region="exploration-detail"
-				data-key="detail:${label ? asked : "summary"}"
+				data-key="detail:${label ? asked2 : "summary"}"
 			>
 				<h2 class="sp-sec">${label ? explorer ? `Tester ${label}` : `Phase ${label}` : "Overview"}</h2>
 				${detail}
@@ -21264,302 +22264,6 @@ function claimPage(store, context, explorationId, claimId, state = null) {
 				${panel2}
 			</div>`
   };
-}
-
-// plugin/src/permissions.ts
-var permissionDecisions = ["allow", "allow-kind", "always", "deny", "stop"];
-var closedText = {
-  timeout: "no answer in 10 minutes",
-  "ui-stopped": "closed, the UI stopped",
-  stopped: "closed, the tester or the run stopped",
-  disconnected: "closed, the tester did not wait any more"
-};
-var maxText = 2e3;
-var requestStep = "permission";
-var decisionStep = "permission-decision";
-function rows(store, where, ...parameters) {
-  return all(
-    store,
-    `SELECT e.exploration_id, x.plan_id, e.rowid, e.at, e.step, e.explorer, e.status, e.detail
-		FROM exploration_events e JOIN explorations x ON x.exploration_id = e.exploration_id
-		WHERE e.step IN ('${requestStep}', '${decisionStep}') ${where} ORDER BY e.rowid`,
-    ...parameters
-  );
-}
-function ruleText2(rule) {
-  return rule.ruleContent ? `${rule.toolName}(${rule.ruleContent})` : rule.toolName;
-}
-function rulesOf(suggestion) {
-  if (!suggestion || !Array.isArray(suggestion.rules)) return [];
-  return suggestion.rules.flatMap((rule) => {
-    const item = rule;
-    if (typeof item?.toolName !== "string" || !item.toolName) return [];
-    return [
-      {
-        toolName: item.toolName,
-        ...typeof item.ruleContent === "string" ? { ruleContent: item.ruleContent } : {}
-      }
-    ];
-  });
-}
-function kindSuggestion(suggestions) {
-  return suggestions.find((item) => item.type === "addRules" && rulesOf(item).length > 0);
-}
-function kindRule(suggestions) {
-  const found = kindSuggestion(suggestions);
-  return found ? rulesOf(found).map(ruleText2).join(", ") : null;
-}
-function shortened(value2) {
-  if (typeof value2 === "string") return value2.length > maxText ? `${value2.slice(0, maxText)}\u2026` : value2;
-  if (Array.isArray(value2)) return value2.map(shortened);
-  if (value2 && typeof value2 === "object")
-    return Object.fromEntries(Object.entries(value2).map(([key, item]) => [key, shortened(item)]));
-  return value2;
-}
-function decisionOf(row2) {
-  const detail = JSON.parse(row2.detail);
-  return {
-    kind: row2.status,
-    by: detail.by ?? "",
-    at: row2.at,
-    text: detail.text ?? "",
-    reason: detail.reason ?? null,
-    rule: detail.rule ?? null,
-    setBy: detail.setBy ?? null,
-    cause: detail.cause ?? null
-  };
-}
-function permissionsOf(list2) {
-  const found = /* @__PURE__ */ new Map();
-  for (const row2 of list2) {
-    const detail = JSON.parse(row2.detail);
-    const key = `${row2.exploration_id}/${detail.id}`;
-    if (row2.step === requestStep) {
-      const suggestions = detail.suggestions;
-      found.set(key, {
-        explorationId: row2.exploration_id,
-        planId: row2.plan_id,
-        id: detail.id,
-        who: detail.who,
-        tester: row2.explorer,
-        tool: detail.tool,
-        input: detail.input,
-        suggestions,
-        at: row2.at,
-        rule: kindRule(suggestions),
-        decision: null
-      });
-    } else {
-      const request = found.get(key);
-      if (request && !request.decision) request.decision = decisionOf(row2);
-    }
-  }
-  return [...found.values()];
-}
-function explorationPermissions(store, explorationId) {
-  return permissionsOf(rows(store, "AND e.exploration_id = ?", explorationId));
-}
-function openPermissions(store, planId) {
-  const list2 = planId === void 0 ? rows(store, "") : rows(store, "AND x.plan_id = ?", planId);
-  return permissionsOf(list2).filter((item) => !item.decision);
-}
-function permissionRules(store, explorationId) {
-  return explorationPermissions(store, explorationId).flatMap(
-    (item) => item.decision?.kind === "allow-kind" && item.decision.rule ? [{ rule: item.decision.rule, setBy: item.decision.by, at: item.decision.at, requestId: item.id }] : []
-  );
-}
-function permissionOf(store, explorationId, requestId) {
-  return explorationPermissions(store, explorationId).find((item) => item.id === requestId);
-}
-function findPermission(store, explorationId, requestId) {
-  const found = permissionOf(store, explorationId, requestId);
-  requireCondition(
-    found,
-    `Exploration ${explorationId} has no permission request ${requestId}.`,
-    `Run checkmate explore show ${explorationId}.`
-  );
-  return found;
-}
-function nextRequestId(store, explorationId) {
-  const count2 = one(
-    store,
-    `SELECT count(*) AS count FROM exploration_events WHERE exploration_id = ? AND step = '${requestStep}'`,
-    explorationId
-  ).count;
-  return `P${count2 + 1}`;
-}
-function addDecision(store, request, kind, detail, operationId, at) {
-  addEvent(
-    store,
-    request.explorationId,
-    {
-      step: decisionStep,
-      explorer: request.tester,
-      status: kind,
-      detail: { id: request.id, who: request.who, ...detail }
-    },
-    operationId,
-    at
-  );
-}
-function ruleInForce(store, explorationId, suggestions) {
-  const wanted = kindRule(suggestions);
-  return wanted ? permissionRules(store, explorationId).find((item) => item.rule === wanted) : void 0;
-}
-function requestPermission(store, input) {
-  const tester = one(
-    store,
-    "SELECT 1 FROM exploration_events WHERE exploration_id = ? AND step = 'launch' AND explorer = ?",
-    input.explorationId,
-    input.who
-  ) === void 0 ? null : input.who;
-  const operation = { actor: explorerActor(input.who), command: "explore permission", subject: input.explorationId };
-  return write(store, { ...operation, input: { who: input.who, tool: input.tool } }, (operationId, at) => {
-    const id2 = nextRequestId(store, input.explorationId);
-    const request = { explorationId: input.explorationId, id: id2, who: input.who, tester };
-    addEvent(
-      store,
-      input.explorationId,
-      {
-        step: requestStep,
-        explorer: tester,
-        status: "open",
-        detail: {
-          id: id2,
-          who: input.who,
-          tool: input.tool,
-          input: shortened(input.input),
-          suggestions: input.suggestions
-        }
-      },
-      operationId,
-      at
-    );
-    const force = ruleInForce(store, input.explorationId, input.suggestions);
-    if (force)
-      addDecision(
-        store,
-        request,
-        "rule",
-        {
-          by: "rule",
-          text: `allowed by rule ${force.rule}, set by ${force.setBy}`,
-          rule: force.rule,
-          setBy: force.setBy
-        },
-        operationId,
-        at
-      );
-    return {
-      reply: completed(input.explorationId, { id: id2, byRule: Boolean(force) }),
-      subjects: [`exploration:${input.explorationId}`]
-    };
-  }).data;
-}
-function decidePermission(store, actor, input, stop) {
-  const choice2 = requireChoice(input.decision, permissionDecisions, "decision");
-  const reason = input.reason?.trim() ?? "";
-  requireWellFormed(choice2 !== "deny" || reason, "A denial needs a reason.", "Give the reason with --reason <text>.");
-  const operation = {
-    actor,
-    command: "explore permit",
-    subject: input.explorationId,
-    input: { requestId: input.requestId, decision: choice2 }
-  };
-  const reply = write(store, operation, (operationId, at, who) => {
-    const request = findPermission(store, input.explorationId, input.requestId);
-    requireCondition(
-      !request.decision,
-      `Permission request ${request.id} of ${request.explorationId} has an answer already: ${request.decision?.text}. Nothing changed.`
-    );
-    requireCondition(
-      choice2 !== "allow-kind" && choice2 !== "always" || request.rule,
-      `Permission request ${request.id} has no rule that Claude Code can remember. Allow it once, or deny it.`
-    );
-    const texts = {
-      allow: "allowed once",
-      "allow-kind": `allowed for this test: ${request.rule}`,
-      always: `allowed always in this project: ${request.rule}`,
-      deny: `denied: ${reason}`,
-      stop: `stopped the ${request.tester ? "tester" : "run"}${reason ? `: ${reason}` : ""}`
-    };
-    const rule = choice2 === "allow-kind" || choice2 === "always" ? request.rule : null;
-    addDecision(
-      store,
-      request,
-      choice2,
-      { by: who, text: `${texts[choice2]}, by ${who}`, ...reason ? { reason } : {}, ...rule ? { rule } : {} },
-      operationId,
-      at
-    );
-    return {
-      reply: completed(request.explorationId, { requestId: request.id, decision: choice2, who: request.tester }),
-      subjects: [`exploration:${request.explorationId}`, `plan:${request.planId}`]
-    };
-  });
-  if (choice2 === "stop") stop(reply.data.who ?? void 0, reason);
-  return reply;
-}
-function closePermission(store, explorationId, requestId, cause) {
-  return write(
-    store,
-    {
-      actor: "checkmate",
-      command: "explore permission-close",
-      subject: explorationId,
-      input: { requestId, cause }
-    },
-    (operationId, at) => {
-      const request = findPermission(store, explorationId, requestId);
-      if (request.decision) return { reply: completed(explorationId, { closed: false }), subjects: [] };
-      addDecision(store, request, "closed", { by: "checkmate", text: closedText[cause], cause }, operationId, at);
-      return {
-        reply: completed(explorationId, { closed: true }),
-        subjects: [`exploration:${explorationId}`, `plan:${request.planId}`]
-      };
-    }
-  ).data.closed;
-}
-function closeOpenPermissions(store, cause) {
-  for (const item of openPermissions(store)) closePermission(store, item.explorationId, item.id, cause);
-}
-function decisionBody(decision) {
-  return JSON.stringify({ hookSpecificOutput: { hookEventName: "PermissionRequest", decision } });
-}
-function permissionAnswer(request, decision) {
-  const withRule = (destination) => {
-    const suggestion = kindSuggestion(request.suggestions);
-    const update = {
-      type: "addRules",
-      rules: rulesOf(suggestion),
-      ...typeof suggestion.behavior === "string" ? { behavior: suggestion.behavior } : {},
-      destination
-    };
-    return decisionBody({ behavior: "allow", updatedPermissions: [update] });
-  };
-  if (decision.kind === "allow") return decisionBody({ behavior: "allow" });
-  if (decision.kind === "allow-kind" || decision.kind === "rule") return withRule("session");
-  if (decision.kind === "always") return withRule("localSettings");
-  if (decision.kind === "deny") return decisionBody({ behavior: "deny", message: decision.reason });
-  if (decision.kind === "stop")
-    return decisionBody({
-      behavior: "deny",
-      message: decision.reason ?? `Stopped by ${decision.by}.`,
-      interrupt: true
-    });
-  return "";
-}
-function stoppedSince(store, request) {
-  return one(
-    store,
-    `SELECT 1 FROM exploration_events WHERE exploration_id = ? AND step = 'stop'
-			AND (explorer IS NULL OR explorer = ?)
-			AND rowid > (SELECT rowid FROM exploration_events WHERE exploration_id = ? AND step = '${requestStep}' AND json_extract(detail, '$.id') = ?)`,
-    request.explorationId,
-    request.who,
-    request.explorationId,
-    request.id
-  ) !== void 0;
 }
 
 // plugin/src/settings.ts
@@ -21862,6 +22566,21 @@ function shell2(context, action2, body, submit) {
 		</div>
 	</form>`;
 }
+var assumedLabels = {
+  instance: "Instance",
+  "entry point": "Entry point",
+  capabilities: "Capabilities",
+  operations: "Operations",
+  reset: "Reset",
+  authentication: "Authentication"
+};
+function assumedRows(lines2) {
+  return lines2.map((line) => {
+    const at = line.indexOf("=");
+    const name2 = line.slice(0, at);
+    return [assumedLabels[name2] ?? name2, line.slice(at + 1)];
+  });
+}
 function firstRunPage(context, onHome, back = "/") {
   const body = html2`${field2(
     "setup-url",
@@ -21875,7 +22594,7 @@ function firstRunPage(context, onHome, back = "/") {
 			<p class="help">Checkmate sets up the target from this address. Change the name or the environment here.</p>
 			${field2("setup-target", "target", "Target name", "Letters, digits, _ or -.", html2`data-setup-field`)}
 			${field2("setup-environment", "environment", "Environment (optional)", "For example staging. A name that starts with prod is a production instance.", html2`data-setup-field`)}
-			<ul class="plain" data-assumed-list></ul>
+			<dl class="facts" data-assumed-list></dl>
 		</div>
 		${choice(
     "operations",
@@ -22230,10 +22949,10 @@ var historyShown = 6;
 function planHistoryList(store, detail, all2) {
   const revisions = planHistory(store, detail.planId).reverse();
   const shown2 = all2 ? revisions : revisions.slice(0, historyShown);
-  const hidden3 = revisions.length - shown2.length;
+  const hidden4 = revisions.length - shown2.length;
   const subject = `${detail.planId}@${detail.revision}`;
   return html2`<div class="history-wrap" data-history>
-		<ol class="history${hidden3 ? " clipped" : ""}">
+		<ol class="history${hidden4 ? " clipped" : ""}">
 			${shown2.map(
     (item, index2) => html2`<li class="${item.revision === detail.revision ? "current" : ""}">
 						<details ${index2 === 0 ? html2`open` : ""} data-open-key="revision:${item.revision}">
@@ -22259,11 +22978,11 @@ function planHistoryList(store, detail, all2) {
 					</li>`
   )}
 		</ol>
-		${hidden3 ? html2`<a
+		${hidden4 ? html2`<a
 						class="history-more"
 						href="/plans/${subject}?history=all#history"
 						data-history-more="/plans/${subject}/history"
-						><span class="btn small">Show full history · ${plural(hidden3, "earlier revision")}</span></a
+						><span class="btn small">Show full history · ${plural(hidden4, "earlier revision")}</span></a
 					>` : ""}
 	</div>`;
 }
@@ -22898,7 +23617,7 @@ function coverageMatrix(candidate) {
 		</table>
 	</div>`;
 }
-function hidden2(context, sha256, mode, orig) {
+function hidden3(context, sha256, mode, orig) {
   return html2`<input type="hidden" name="csrf" value="${context.csrf}" />
 		<input type="hidden" name="sha" value="${sha256}" />
 		<input type="hidden" name="mode" value="${mode}" />
@@ -22991,7 +23710,7 @@ function editPage(store, context, planId, revision, state = null) {
 		<div data-region="edit" data-stale-message="${planId} changed. Review it before you save.">
 			<div data-stale-slot>${notice} ${messages2}</div>
 			<form method="post" action="${path}" class="edit-form" data-edit-form>
-				${hidden2(context, detail.sha256, "form", shown2.orig)}
+				${hidden3(context, detail.sha256, "form", shown2.orig)}
 				<section aria-labelledby="edit-requirements">
 					<h2 id="edit-requirements">
 						Requirements <span class="n">${shown2.candidate.requirements.length}</span>
@@ -23018,7 +23737,7 @@ function editPage(store, context, planId, revision, state = null) {
 					data-edit-form
 					data-test-ids="${detail.plan.tests.map((test) => test.id).join(" ")}"
 				>
-					${hidden2(context, detail.sha256, "json", shown2.orig)}
+					${hidden3(context, detail.sha256, "json", shown2.orig)}
 					<p class="help">
 						Add or remove requirements, tests, assertions, and gaps. The JSON has the fields of a plan
 						candidate:
@@ -23507,13 +24226,13 @@ function summaryDetail2(store, context, detail, state, crumbs) {
 }
 function runPage(store, context, runId, params = new URLSearchParams(), state = null, adoptError = null) {
   const detail = runDetail(store, runId);
-  const asked = adoptError ? `gap:${adoptError.gapId}` : params.get("item") ?? "summary";
-  const test = detail.tests.find((item) => `test:${item.testId}` === asked);
-  const finding = detail.findings.find((item) => `finding:${item.id}` === asked);
-  const gap = detail.newGaps.find((item) => `gap:${item.id}` === asked);
-  const record = asked === "coverage" || asked === "cleanup";
-  const selected = test || finding || gap || record ? asked : "summary";
-  const label = test?.testId ?? finding?.id ?? gap?.id ?? (asked === "coverage" ? "Coverage" : record ? "Cleanup" : null);
+  const asked2 = adoptError ? `gap:${adoptError.gapId}` : params.get("item") ?? "summary";
+  const test = detail.tests.find((item) => `test:${item.testId}` === asked2);
+  const finding = detail.findings.find((item) => `finding:${item.id}` === asked2);
+  const gap = detail.newGaps.find((item) => `gap:${item.id}` === asked2);
+  const record = asked2 === "coverage" || asked2 === "cleanup";
+  const selected = test || finding || gap || record ? asked2 : "summary";
+  const label = test?.testId ?? finding?.id ?? gap?.id ?? (asked2 === "coverage" ? "Coverage" : record ? "Cleanup" : null);
   const list2 = `/runs/${runId}`;
   const crumbs = crumbBar([
     ["Runs", "/runs"],
@@ -23521,9 +24240,9 @@ function runPage(store, context, runId, params = new URLSearchParams(), state = 
     [runId, label ? list2 : null],
     ...label ? [[label, null]] : []
   ]);
-  const pane = test ? html2`${crumbs} ${testCard2(store, detail, test)}` : finding ? html2`${crumbs} ${findingCard(store, detail, finding)}` : gap ? html2`${crumbs} ${gapCard(store, context, detail, gap, adoptError)}` : asked === "coverage" ? html2`${crumbs}
+  const pane = test ? html2`${crumbs} ${testCard2(store, detail, test)}` : finding ? html2`${crumbs} ${findingCard(store, detail, finding)}` : gap ? html2`${crumbs} ${gapCard(store, context, detail, gap, adoptError)}` : asked2 === "coverage" ? html2`${crumbs}
 							<h2 class="q-h">Coverage</h2>
-							${coverage(store, detail)}` : asked === "cleanup" ? html2`${crumbs}
+							${coverage(store, detail)}` : asked2 === "cleanup" ? html2`${crumbs}
 								<h2 class="q-h">Cleanup and attempts</h2>
 								${cleanup(detail)}` : summaryDetail2(store, context, detail, state, crumbs);
   return {
@@ -23972,6 +24691,10 @@ function claudePage(context, env, form = null) {
 				The engine needs at least one rule today. A test that you start in the UI shows these rules, and you can
 				change them there.
 			</p>
+			<p class="help" data-key="permission-bash">
+				With the rule <code>Bash</code>, testers run commands without asking. Without it, each command asks you
+				here, and a tester waits up to 10 minutes for the answer.
+			</p>
 			<p class="help" data-region="permission-hook">
 				${liveUi(context.workspace) ? "Testers that start now can ask you in this UI when a tool needs a permission." : "Testers that start now cannot ask you. The UI of this folder does not run. A tool that needs a permission is denied."}
 			</p>
@@ -24029,276 +24752,6 @@ function claudePage(context, env, form = null) {
   return settingsPage("/settings/claude", "Claude Code", ["*"], body);
 }
 
-// plugin/src/ui/hooks.ts
-import { timingSafeEqual } from "node:crypto";
-var name = "[A-Za-z0-9][A-Za-z0-9_-]{0,95}";
-var route = new RegExp(`^/hooks/(permission|activity)/(${name})/(${name})$`);
-var maxBody = 4 * 1024 * 1024;
-var lineLimit = 120;
-var defaultHoldMilliseconds = 59e4;
-var defaultActivityMilliseconds = 2e3;
-function sameSecret(a, b) {
-  const x = Buffer.from(a);
-  const y = Buffer.from(b);
-  return x.length === y.length && timingSafeEqual(x, y);
-}
-var secrets = [
-  [/(:\/\/)[^\s/@:]+:[^\s/@]+@/g, "$1\u2026@"],
-  [/(authorization:\s*(?:bearer\s+|basic\s+|token\s+)?)[^\s"']+/gi, "$1\u2026"],
-  [/(bearer\s+)[^\s"']+/gi, "$1\u2026"],
-  [/(--?[\w-]*(?:token|password|passwd|secret|api-?key|apikey|auth)[\w-]*(?:=|\s+))[^\s"']+/gi, "$1\u2026"],
-  [/(\b[\w]*(?:token|password|passwd|secret|api_?key|apikey)[\w]*=)[^\s"']+/gi, "$1\u2026"]
-];
-var lineKeys = ["command", "file_path", "notebook_path", "path", "pattern", "url", "query", "description"];
-function relative3(path, cwd) {
-  return typeof cwd === "string" && cwd && path.startsWith(`${cwd}/`) ? path.slice(cwd.length + 1) : path;
-}
-function inputLine(input, cwd) {
-  const fields = input && typeof input === "object" ? input : {};
-  const key = lineKeys.find((item) => typeof fields[item] === "string" && fields[item]);
-  if (!key) return "";
-  const first = fields[key].trim().split("\n")[0];
-  const shown2 = key.endsWith("path") ? relative3(first, cwd) : first;
-  return secrets.reduce((text, [pattern, replacement]) => text.replace(pattern, replacement), shown2);
-}
-function activityLine2(tool, input, cwd) {
-  const shown2 = inputLine(input, cwd);
-  const line = shown2 ? `${tool}: ${shown2}` : tool;
-  return line.length > lineLimit ? `${line.slice(0, lineLimit - 1)}\u2026` : line;
-}
-function readJson(req) {
-  return new Promise((resolve8) => {
-    const chunks = [];
-    let length = 0;
-    req.on("data", (chunk) => {
-      length += chunk.length;
-      if (length <= maxBody) chunks.push(chunk);
-    });
-    req.on("end", () => {
-      try {
-        resolve8(length > maxBody ? null : JSON.parse(Buffer.concat(chunks).toString("utf8")));
-      } catch {
-        resolve8(null);
-      }
-    });
-    req.on("error", () => resolve8(null));
-  });
-}
-function refuse(res) {
-  res.writeHead(403, { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" });
-  res.end("Refused: a hook call needs the hook token and no Origin header.");
-}
-function answer(res, body) {
-  res.writeHead(200, {
-    "Cache-Control": "no-store",
-    ...body ? { "Content-Type": "application/json" } : {},
-    "Content-Length": Buffer.byteLength(body)
-  });
-  res.end(body);
-}
-function createHooks(store, token, options3 = {}) {
-  const holdMilliseconds = options3.holdMilliseconds ?? defaultHoldMilliseconds;
-  const activityMilliseconds2 = options3.activityMilliseconds ?? defaultActivityMilliseconds;
-  const log = options3.log ?? ((line) => process.stderr.write(`checkmate ui: ${line}
-`));
-  const held = /* @__PURE__ */ new Map();
-  const lines2 = /* @__PURE__ */ new Map();
-  function finish2(entry, cause) {
-    held.delete(`${entry.explorationId}/${entry.id}`);
-    clearTimeout(entry.timer);
-    let body = "";
-    try {
-      if (cause) closePermission(store, entry.explorationId, entry.id, cause);
-      const request = permissionOf(store, entry.explorationId, entry.id);
-      if (request?.decision) body = permissionAnswer(request, request.decision);
-    } catch (error) {
-      log(`could not answer ${entry.id} of ${entry.explorationId}: ${error.message}`);
-    }
-    answer(entry.res, body);
-  }
-  function release() {
-    for (const entry of [...held.values()]) {
-      try {
-        const request = permissionOf(store, entry.explorationId, entry.id);
-        if (!request || request.decision) finish2(entry);
-        else if (stoppedSince(store, request)) finish2(entry, "stopped");
-      } catch (error) {
-        log(`could not release ${entry.id} of ${entry.explorationId}: ${error.message}`);
-      }
-    }
-  }
-  function hold(explorationId, id2, res) {
-    const key = `${explorationId}/${id2}`;
-    const entry = {
-      explorationId,
-      id: id2,
-      res,
-      timer: setTimeout(() => finish2(entry, "timeout"), holdMilliseconds)
-    };
-    held.set(key, entry);
-    res.on("close", () => {
-      if (held.get(key) !== entry) return;
-      held.delete(key);
-      clearTimeout(entry.timer);
-      try {
-        closePermission(store, explorationId, id2, "disconnected");
-      } catch (error) {
-        log(`could not close ${id2} of ${explorationId}: ${error.message}`);
-      }
-    });
-  }
-  function permission(explorationId, who, body, res) {
-    const input = body.tool_input;
-    if (typeof body.tool_name !== "string" || !input || typeof input !== "object") {
-      log(`permission call of ${who} in ${explorationId} has no tool_name and tool_input`);
-      return answer(res, "");
-    }
-    const suggestions = Array.isArray(body.permission_suggestions) ? body.permission_suggestions.filter((item) => item && typeof item === "object") : [];
-    try {
-      const made = requestPermission(store, { explorationId, who, tool: body.tool_name, input, suggestions });
-      if (!made.byRule) return hold(explorationId, made.id, res);
-      const request = permissionOf(store, explorationId, made.id);
-      answer(res, permissionAnswer(request, request.decision));
-    } catch (error) {
-      log(`could not record the permission call of ${who} in ${explorationId}: ${error.message}`);
-      answer(res, "");
-    }
-  }
-  function writeLine(explorationId, who, line) {
-    line.timer = void 0;
-    if (!line.dirty) return;
-    line.dirty = false;
-    line.writtenAt = Date.now();
-    const operation = { actor: explorerActor(who), command: "explore activity", subject: explorationId };
-    try {
-      write(store, { ...operation, input: { who } }, (operationId, at) => {
-        addEvent(
-          store,
-          explorationId,
-          { step: "activity", explorer: who, status: "started", detail: { activity: line.text } },
-          operationId,
-          at
-        );
-        return { reply: completed(explorationId), subjects: [`exploration:${explorationId}`] };
-      });
-    } catch (error) {
-      log(`could not record the activity of ${who} in ${explorationId}: ${error.message}`);
-    }
-  }
-  function activity(explorationId, who, body) {
-    if (typeof body.tool_name !== "string")
-      return log(`activity call of ${who} in ${explorationId} has no tool_name`);
-    const tester = one(
-      store,
-      "SELECT 1 FROM exploration_events WHERE exploration_id = ? AND step = 'launch' AND explorer = ?",
-      explorationId,
-      who
-    );
-    if (!tester) return;
-    const key = `${explorationId}/${who}`;
-    const line = lines2.get(key) ?? { text: "", dirty: false, writtenAt: 0 };
-    lines2.set(key, line);
-    line.text = activityLine2(body.tool_name, body.tool_input, body.cwd);
-    line.dirty = true;
-    const wait = line.writtenAt + activityMilliseconds2 - Date.now();
-    if (wait <= 0) writeLine(explorationId, who, line);
-    else line.timer ??= setTimeout(() => writeLine(explorationId, who, line), wait);
-  }
-  return {
-    handles: (pathname) => route.test(pathname),
-    async handle(req, res, pathname) {
-      const [, kind, explorationId, who] = route.exec(pathname);
-      const bearer = req.headers.authorization;
-      if (req.headers.origin !== void 0 || typeof bearer !== "string" || !sameSecret(bearer, `Bearer ${token}`))
-        return refuse(res);
-      const body = await readJson(req);
-      const expected = kind === "permission" ? "PermissionRequest" : "PreToolUse";
-      const known = one(store, "SELECT 1 FROM explorations WHERE exploration_id = ?", explorationId);
-      const valid = body && typeof body === "object" && body.hook_event_name === expected;
-      if (!known || !valid) {
-        log(`${kind} call of ${who} in ${explorationId} is not a ${expected} event of a known exploration`);
-        return answer(res, "");
-      }
-      if (kind === "permission") return permission(explorationId, who, body, res);
-      activity(explorationId, who, body);
-      answer(res, "");
-    },
-    release,
-    close() {
-      for (const entry of [...held.values()]) finish2(entry, "ui-stopped");
-      for (const [key, line] of lines2) {
-        clearTimeout(line.timer);
-        const [explorationId, who] = key.split("/");
-        writeLine(explorationId, who, line);
-      }
-      lines2.clear();
-    }
-  };
-}
-
-// plugin/src/ui/permissions.ts
-function permissionsPage(store, context) {
-  const open = openPermissions(store);
-  const rows2 = open.map((item) => {
-    const action2 = `/permissions/${item.explorationId}/${item.id}`;
-    const shown2 = inputLine(item.input) || JSON.stringify(item.input).slice(0, 120);
-    return html2`<tr data-permission="${item.explorationId}/${item.id}">
-			<td class="mono">${item.explorationId} ${item.id}</td>
-			<td>${item.who}</td>
-			<td class="mono">${item.tool}</td>
-			<td class="mono">${shown2}</td>
-			<td>${ago(item.at)}</td>
-			<td>
-				<form method="post" action="${action2}" class="decision-form">
-					<input type="hidden" name="csrf" value="${context.csrf}" />
-					${context.actor ? "" : html2`<label>Your name <input name="actor" maxlength="64" autocomplete="off" /></label>`}
-					<div class="btns">
-						<button class="btn primary" name="decision" value="allow">Allow once</button>
-						${item.rule ? html2`<button class="btn" name="decision" value="allow-kind">
-											Allow ${item.rule} for this test
-										</button>
-										<button class="btn" name="decision" value="always">
-											Always allow ${item.rule} in this project
-										</button>` : ""}
-						<input name="reason" placeholder="Reason for a denial" maxlength="400" autocomplete="off" />
-						<button class="btn" name="decision" value="deny">Deny</button>
-						<button class="btn" name="decision" value="stop">
-							Stop ${item.tester ? `tester ${item.tester}` : "the run"}
-						</button>
-					</div>
-				</form>
-			</td>
-		</tr>`;
-  });
-  return {
-    title: "Permission requests",
-    section: null,
-    subjects: ["*"],
-    back: "/",
-    body: html2`${heading(
-      "Permission requests",
-      open.length ? `${plural(open.length, "request")} of testers wait for an answer.` : "No request of a tester waits for an answer."
-    )}
-		${open.length ? html2`<div class="scroll">
-						<table>
-							<thead>
-								<tr>
-									<th scope="col">Request</th>
-									<th scope="col">Who</th>
-									<th scope="col">Tool</th>
-									<th scope="col">Input</th>
-									<th scope="col">Asked</th>
-									<th scope="col">Answer</th>
-								</tr>
-							</thead>
-							<tbody>
-								${rows2}
-							</tbody>
-						</table>
-					</div>` : emptyNotice("Nothing waits for you.", "A tester that needs a permission asks here while the UI runs.")}`
-  };
-}
-
 // plugin/src/ui/server.ts
 var id = "[A-Za-z0-9][A-Za-z0-9_-]{0,95}";
 var routes = {
@@ -24309,6 +24762,7 @@ var routes = {
   startTest: new RegExp(`^/plans/(${id})/test$`),
   startFollow: new RegExp(`^/plans/(${id})/follow$`),
   permit: new RegExp(`^/permissions/(${id})/(P[1-9][0-9]{0,8})$`),
+  permitMany: /^\/permissions\/bulk$/,
   stopRun: new RegExp(`^/explorations/(${id})/stop$`),
   stopTester: new RegExp(`^/explorations/(${id})/explorers/(${id})/stop$`),
   gap: new RegExp(`^/plans/(${id})@([1-9][0-9]{0,8})/gaps/(${id})$`),
@@ -24512,7 +24966,8 @@ data: ${matched.join(",") || "*"}
     const shown2 = context(request);
     const cookies = [...extraCookies];
     if (shown2.toast) cookies.push(cookie("checkmate_toast", "", 0));
-    send(request.res, page.status ?? 200, "text/html; charset=utf-8", layout(shown2, page).html, {
+    const subjects = [...page.subjects, "permissions"];
+    send(request.res, page.status ?? 200, "text/html; charset=utf-8", layout(shown2, { ...page, subjects }).html, {
       "Set-Cookie": cookies,
       Vary: "Cookie"
     });
@@ -24632,7 +25087,9 @@ data: ${matched.join(",") || "*"}
     if (pathname === "/log") return render(request, logPage(store, searchParams));
     if (pathname === "/activity")
       return render(request, activityPage(store, shown2, searchParams, { build: defaultBuild(store.workspace) }));
-    if (pathname === "/permissions") return render(request, permissionsPage(store, shown2));
+    if (pathname === "/permissions") return firstRequest(request);
+    const asked2 = routes.permit.exec(pathname);
+    if (asked2) return permissionRecord(request, asked2[1], asked2[2]);
     if (pathname === "/settings/claude") return render(request, claudePage(shown2, env));
     if (pathname === "/actor") return render(request, actorPage(shown2, safeBack(searchParams.get("back"))));
     if (pathname === "/settings") return redirect(request.res, "/settings/targets");
@@ -24858,9 +25315,9 @@ data: ${matched.join(",") || "*"}
     const input = answerInput(form, state, actor);
     const planId = planOfExploration(explorationId);
     const page = () => questionPage(store, context(request), explorationId, questionId, state);
-    const asked = mergedQuestions(store, planId).find((item) => item.id === questionId);
-    if (asked && asked.answer !== null && (asked.decision !== "defer" || input.kind === "defer")) {
-      state.stale = html2`<strong>${questionId} has an answer now: ${asked.answer}</strong> Your answer was not
+    const asked2 = mergedQuestions(store, planId).find((item) => item.id === questionId);
+    if (asked2 && asked2.answer !== null && (asked2.decision !== "defer" || input.kind === "defer")) {
+      state.stale = html2`<strong>${questionId} has an answer now: ${asked2.answer}</strong> Your answer was not
 				recorded. Your text is kept below.`;
       return refuse2(request, inQueue(request, form, page, state), cookies);
     }
@@ -25168,10 +25625,49 @@ data: ${matched.join(",") || "*"}
     const flash = explorer ? `Stopping tester ${explorer} of ${explorationId}\u2026` : `Stopping ${explorationId}\u2026`;
     redirect(request.res, back, [...cookies, cookie("checkmate_toast", flash, 60)]);
   }
+  function sameSiteFrom(value2) {
+    return value2 && safeBack(value2) === value2 ? value2 : null;
+  }
+  function refererPath(request) {
+    const referer = request.req.headers.referer;
+    if (!referer || !URL.canParse(referer)) return null;
+    const from = new URL(referer);
+    return from.host === request.req.headers.host && from.pathname !== "/permissions" ? sameSiteFrom(from.pathname + from.search) : null;
+  }
+  function firstRequest(request) {
+    const first = nextOpen(store, null);
+    redirect(request.res, first ? requestHref(first, refererPath(request)) : "/activity");
+  }
+  function permissionRecord(request, explorationId, requestId) {
+    const { searchParams } = request.url;
+    const view = { from: sameSiteFrom(searchParams.get("from")), history: searchParams.get("view") === "history" };
+    render(
+      request,
+      permissionPage(store, context(request), explorationId, requestId, view, null) ?? emptyRecord(explorationId, requestId)
+    );
+  }
   function permit(request, form, explorationId, requestId) {
-    const back = "/permissions";
     const { actor, cookies } = actorFrom(request, form);
-    const refuse3 = (message) => actionRefusal(request, back, message);
+    const from = sameSiteFrom(form.get("from"));
+    const returnTo = form.get("return") ? safeBack(form.get("return")) : null;
+    const name2 = `${explorationId}/${requestId}`;
+    const refuse3 = (message) => {
+      const found = permissionOf(store, explorationId, requestId);
+      const page = found && !found.decision ? permissionPage(
+        store,
+        context(request),
+        explorationId,
+        requestId,
+        { from, history: false },
+        {
+          error: String(message),
+          reason: form.get("reason") ?? "",
+          field: form.get("decision") === "deny" && !form.get("reason")?.trim() ? "reason" : null
+        }
+      ) : null;
+      if (page) return render(request, page);
+      actionRefusal(request, returnTo ?? from ?? "/activity", message);
+    };
     if (!actor) return refuse3("Enter your name. Checkmate records it with the answer.");
     try {
       decidePermission(
@@ -25189,13 +25685,55 @@ data: ${matched.join(",") || "*"}
         }
       );
     } catch (error) {
-      return refuse3(engineText(error));
+      const found = permissionOf(store, explorationId, requestId);
+      if (!found?.decision) return refuse3(engineText(error));
+      const flash = `${name2} has an answer already: ${found.decision.text}. Nothing is recorded.`;
+      return redirect(
+        request.res,
+        returnTo ?? requestHref(found, from),
+        returnTo ? [...cookies, cookie("checkmate_toast", flash, 60)] : cookies
+      );
     } finally {
       hooks.release();
     }
+    const answered = permissionOf(store, explorationId, requestId);
+    const next = returnTo ? null : nextOpen(store, answered);
+    const where = returnTo ?? (next ? requestHref(next, from) : from ?? "/activity");
+    redirect(request.res, where, [
+      ...cookies,
+      cookie("checkmate_toast", `Answered ${name2}: ${answered.decision.text}`, 60)
+    ]);
+  }
+  function permitMany(request, form) {
+    const { actor, cookies } = actorFrom(request, form);
+    const back = safeBack(form.get("return"));
+    const refuse3 = (message) => actionRefusal(request, back, message);
+    const decision = form.get("decision");
+    const reason = form.get("reason")?.trim() ?? "";
+    const named = form.getAll("pick").map((pick) => /^permission:[^:]+:(.+)\/(P[1-9][0-9]{0,8})$/.exec(pick));
+    if (!actor) return refuse3("Enter your name. Checkmate records it with the answers.");
+    if (decision !== "allow" && decision !== "deny") return refuse3("Choose Allow once or Deny.");
+    if (decision === "deny" && !reason) return refuse3("A denial needs a reason. Write it, then deny again.");
+    if (!named.length || named.includes(null)) return refuse3("Select at least one request.");
+    const answered = [];
+    const gone = [];
+    for (const found of named) {
+      const [, explorationId, requestId] = found;
+      try {
+        decidePermission(store, actor, { explorationId, requestId, decision, reason }, () => {
+        });
+        answered.push(`${explorationId}/${requestId}`);
+      } catch {
+        gone.push(`${explorationId}/${requestId}`);
+      }
+    }
+    hooks.release();
+    if (!answered.length) return refuse3(`${gone.join(", ")} had an answer already, or closed. Nothing is recorded.`);
+    const verb = decision === "allow" ? "Allowed once" : "Denied";
+    const rest = gone.length ? ` ${plural(gone.length, "request")} had an answer already.` : "";
     redirect(request.res, back, [
       ...cookies,
-      cookie("checkmate_toast", `Answered ${requestId} of ${explorationId}`, 60)
+      cookie("checkmate_toast", `${verb}: ${plural(answered.length, "request")}.${rest}`, 60)
     ]);
   }
   function saveRules2(request, form) {
@@ -25237,7 +25775,7 @@ data: ${matched.join(",") || "*"}
         address: new URL(url).host,
         local: choice2.local,
         targetId: planned.targetId,
-        assumed: planned.assumed.filter((line) => !line.startsWith("target="))
+        assumed: assumedRows(planned.assumed.filter((line) => !line.startsWith("target=")))
       });
     } catch (error) {
       reply({ error: plainMessage(error) });
@@ -25673,6 +26211,7 @@ data: ${matched.join(",") || "*"}
     if (starting) return startTest(request, form, starting[1]);
     const following = routes.startFollow.exec(pathname);
     if (following) return startAnswers(request, form, following[1]);
+    if (routes.permitMany.test(pathname)) return permitMany(request, form);
     const permitting = routes.permit.exec(pathname);
     if (permitting) return permit(request, form, permitting[1], permitting[2]);
     const stopping = routes.stopRun.exec(pathname);
@@ -27799,6 +28338,7 @@ var commands = {
     flags: {
       allow: "switch",
       "allow-kind": "switch",
+      "allow-tool": "switch",
       always: "switch",
       deny: "switch",
       stop: "switch",
@@ -27807,7 +28347,7 @@ var commands = {
     write: true,
     check: (args) => requireWellFormed(
       permissionDecisions.filter((name2) => args[name2] === true).length === 1,
-      "Give one of --allow, --allow-kind, --always, --deny, --stop."
+      "Give one of --allow, --allow-kind, --allow-tool, --always, --deny, --stop."
     ),
     run: (store, args, { actor }) => {
       requireCondition(

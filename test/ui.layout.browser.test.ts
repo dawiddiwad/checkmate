@@ -6,6 +6,7 @@ import { closeStore, openStore } from '../plugin/src/index.ts'
 import { decideClaim } from '../plugin/src/journal.ts'
 import { answerGap } from '../plugin/src/plans.ts'
 import { launchWith, open, browserTest, stop } from './browser.ts'
+import { asking, bash, openOf, seedHistory, waitOpen } from './permissions.ts'
 
 test.before(() => launchWith(seedVolume))
 
@@ -276,6 +277,76 @@ for (const colorScheme of ['dark', 'light'] as const)
 			const { page, url } = await open(t)
 			for (const width of [1440, 900, 400])
 				for (const path of pages) await check(page, url(path), width, colorScheme)
+		}
+	)
+
+const longCommand =
+	`cd /home/user/projects/checkmate-demo/a/very/long/absolute/path/to/the/application/under/test && ${'curl -sS -i -X POST -H "Content-Type: application/json" -d \'{"name":"x"}\' http://127.0.0.1:9911/api/notes?page=1 && '.repeat(3)}echo done`.slice(
+		0,
+		400
+	)
+
+const asked = [
+	[
+		'a1',
+		bash(
+			longCommand,
+			'curl -sS *',
+			'/home/user/projects/checkmate-demo/a/very/long/absolute/path/to/the/application'
+		),
+	],
+	[
+		'a2',
+		{
+			tool_name: 'Write',
+			tool_input: {
+				file_path: '/work/app/notes.txt',
+				content: Array.from({ length: 50 }, (_, i) => `line ${i + 1}`).join('\n'),
+			},
+			cwd: '/work/app',
+			permission_suggestions: [],
+		},
+	],
+	[
+		'a1',
+		{
+			tool_name: 'Edit',
+			tool_input: {
+				file_path: '/work/app/src/app.js',
+				old_string: 'const total = 1',
+				new_string: 'const total = 2',
+			},
+			cwd: '/work/app',
+		},
+	],
+	['merge', { tool_name: 'WebFetch', tool_input: { url: 'http://127.0.0.1:9911/', prompt: 'x' }, cwd: '/work/app' }],
+	['a2', bash('npm view left-pad')],
+] as const
+
+for (const colorScheme of ['dark', 'light'] as const)
+	test(
+		`permission requests line up at 1440, 900, and 400 in the ${colorScheme} theme`,
+		{ ...browserTest, timeout: 120_000 },
+		async (t) => {
+			const { page, url, workspace, ui } = await open(t)
+			asked.forEach(([who, body]) => void asking(ui, workspace, 'x-14', who, body))
+			await waitOpen(workspace, asked.length)
+			seedHistory(workspace, 'x-14', 'a1', ['echo one'])
+			seedHistory(workspace, 'x-14', 'a1', ['echo two'], 'dawid', 'allow-tool')
+			assert.equal(openOf(workspace)[0].id, 'P1')
+			const paths = [
+				'/plans/login?view=needs&focus=list',
+				'/explorations/x-14',
+				'/explorations/x-14?requests=1',
+				'/permissions/x-14/P1',
+				'/permissions/x-14/P2',
+				'/permissions/x-14/P3',
+				'/permissions/x-14/P4',
+				'/permissions/x-14/P5',
+				'/permissions/x-14/P6?view=history',
+			]
+			for (const width of [1440, 900, 400])
+				for (const path of paths) await check(page, url(path), width, colorScheme)
 		}
 	)
 

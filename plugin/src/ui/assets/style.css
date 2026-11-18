@@ -3355,8 +3355,12 @@ main a:active {
 	.fold-b .pager .btn {
 		min-height: 40px;
 	}
-	.fold-b .pager .btn {
+	.fold-b .pager .btn,
+	.sp-asks a {
 		display: inline-flex;
 		align-items: center;
+	}
+	.sp-asks a {
+		min-height: 40px;
 	}
 }

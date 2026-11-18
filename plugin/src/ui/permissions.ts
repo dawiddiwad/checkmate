@@ -412,6 +412,7 @@ export function permissionHistory(store: Store, explorationId: string, params: U
 		const next = new URLSearchParams(params)
 		if (target === 1) next.delete('requests')
 		else next.set('requests', String(target))
+		next.set('at', `request:${requestName(all[(target - 1) * historySize])}`)
 		const query = next.toString()
 		return html`<a class="btn small" href="/explorations/${explorationId}${query ? `?${query}` : ''}" rel="${rel}"
 			>${label}</a
@@ -442,7 +443,7 @@ export function permissionHistory(store: Store, explorationId: string, params: U
 	return html`<details
 		class="fold"
 		data-open-key="section:permission-history"
-		${page > 1 || all.some((item) => !item.decision) ? html`open` : ''}
+		${params.has('requests') || all.some((item) => !item.decision) ? html`open` : ''}
 	>
 		<summary>
 			<h2>Permission requests <span class="n">${all.length}</span></h2>

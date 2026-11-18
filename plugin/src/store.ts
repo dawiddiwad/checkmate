@@ -19,7 +19,7 @@ export type Store = { db: DatabaseSync; workspace: string; path: string }
 export type Operation = { actor: string | undefined; command: string; subject: string; input: unknown }
 
 export const contractVersion = 'toolkit-2'
-const schemaVersion = '5'
+const schemaVersion = '6'
 
 const operationReference = 'REFERENCES operations(id) DEFERRABLE INITIALLY DEFERRED'
 const tables = `
@@ -268,6 +268,30 @@ const addedTables = [
 ) STRICT;`,
 		fill: '',
 	},
+
+	{
+		ddl: `CREATE TABLE requests (
+	request_id TEXT PRIMARY KEY,
+	text TEXT NOT NULL,
+	context TEXT NOT NULL,
+	asker TEXT NOT NULL,
+	conversation TEXT NOT NULL,
+	asked_at TEXT NOT NULL,
+	operation_id TEXT NOT NULL ${operationReference}
+) STRICT;`,
+		fill: '',
+	},
+	{
+		ddl: `CREATE TABLE request_events (
+	request_id TEXT NOT NULL REFERENCES requests(request_id),
+	at TEXT NOT NULL,
+	step TEXT NOT NULL,
+	status TEXT NOT NULL,
+	detail TEXT NOT NULL,
+	operation_id TEXT NOT NULL ${operationReference}
+) STRICT;`,
+		fill: '',
+	},
 ]
 const views = `
 CREATE VIEW latest_plans AS
@@ -389,8 +413,8 @@ export function openStore(workspace: string): Store {
 		}
 		const version = String(db.prepare("SELECT value FROM meta WHERE key = 'schemaVersion'").get()?.value)
 		if (version === '3') addExplorationTables(db)
-		if (version === '3' || version === '4') setSchemaVersion(db, schemaVersion)
-		if (['3', '4', schemaVersion].includes(version)) addMissingTables(db)
+		if (['3', '4', '5'].includes(version)) setSchemaVersion(db, schemaVersion)
+		if (['3', '4', '5', schemaVersion].includes(version)) addMissingTables(db)
 		db.exec('COMMIT')
 	} catch (error) {
 		if (db.isTransaction) db.exec('ROLLBACK')

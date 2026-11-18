@@ -78,14 +78,14 @@ export function seedHistory(
 	try {
 		for (const command of commands) {
 			const made = requestPermission(reading, {
-				explorationId,
+				askerId: explorationId,
 				who,
 				tool: 'Bash',
 				input: { command },
 				suggestions: [],
 				cwd: '/work/app',
 			})
-			decidePermission(reading, by, { explorationId, requestId: made.id, decision }, () => {})
+			decidePermission(reading, by, { askerId: explorationId, requestId: made.id, decision }, () => {})
 		}
 	} finally {
 		closeStore(reading)

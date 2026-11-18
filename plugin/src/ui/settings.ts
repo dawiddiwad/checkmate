@@ -4,6 +4,8 @@ import type { Html } from './html.ts'
 import type { Context, Page } from './layout.ts'
 import type { EntryPoint, InstanceRecord } from '../targets.ts'
 import { Refusal } from '../contracts.ts'
+import { requestModelText } from '../settings.ts'
+import { conversationText } from './requests.ts'
 import { testLevels } from '../levels.ts'
 import { liveUi, requireClaude } from '../sessions.ts'
 import type { Env } from '../sessions.ts'
@@ -477,7 +479,13 @@ function claudeProgram(env: Env) {
 	}
 }
 
-export function claudePage(context: Context, env: Env, form: RulesForm | null = null): Page {
+export function claudePage(
+	store: Store,
+	context: Context,
+	env: Env,
+	form: RulesForm | null = null,
+	model: RulesForm | null = null
+): Page {
 	const body = html`${heading('Claude Code', 'The program that runs the testers. Checkmate makes no call to it on this page.')}
 		<section class="panel" aria-labelledby="claude-program">
 			<h2 class="lab" id="claude-program">Program</h2>
@@ -556,6 +564,41 @@ export function claudePage(context: Context, env: Env, form: RulesForm | null = 
 				<code>checkmate test &lt;planId&gt; --claude-arg --model --claude-arg &lt;model&gt;</code>. When the
 				host refuses the model, the test fails and names this override. Checkmate does not try another model.
 			</p>
+		</section>
+		<section class="panel" aria-labelledby="claude-requests">
+			<h2 class="lab" id="claude-requests">Requests</h2>
+			<p class="help">
+				A request that you type in the find bar runs in Claude Code on this computer, in your own session. It
+				has your login, your settings, and all your tools. Claude Code asks you here when a tool needs a
+				permission.
+			</p>
+			<form method="post" action="/settings/claude/model" class="decision-form">
+				<input type="hidden" name="csrf" value="${context.csrf}" />
+				<div class="field-group">
+					<label class="lab" for="request-model">Model for requests</label>
+					<input
+						id="request-model"
+						name="model"
+						maxlength="100"
+						autocomplete="off"
+						value="${model?.value ?? requestModelText(store)}"
+						aria-describedby="request-model-help"
+						${model ? html`autofocus` : ''}
+					/>
+					<p class="help" id="request-model-help">
+						A model alias or ID, for example <code>sonnet</code>. Empty means the model that Claude Code
+						chooses by itself.
+					</p>
+					${model ? html`<p class="form-error" role="alert" data-field="model">${model.error}</p>` : ''}
+				</div>
+				<div class="btns"><button class="btn primary">Save the model</button></div>
+			</form>
+			<p class="help" data-region="conversation">${conversationText(store)}</p>
+			<form method="post" action="/requests/conversation" class="decision-form">
+				<input type="hidden" name="csrf" value="${context.csrf}" />
+				<input type="hidden" name="return" value="/settings/claude" />
+				<div class="btns"><button class="btn">New conversation</button></div>
+			</form>
 		</section>`
 	return settingsPage('/settings/claude', 'Claude Code', ['*'], body)
 }

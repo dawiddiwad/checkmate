@@ -32,6 +32,12 @@ export function asksFor(item: Permission) {
 	return line ? `${verb}: ${line}` : verb
 }
 
+export function askerPath(item: Pick<Permission, 'askerId' | 'fromRequest'>) {
+	return item.fromRequest
+		? { label: 'Request', href: `/requests/${item.askerId}` }
+		: { label: 'Run', href: `/explorations/${item.askerId}` }
+}
+
 const things: Record<string, string> = {
 	Bash: 'run a command',
 	Read: 'read a file',
@@ -47,6 +53,7 @@ const things: Record<string, string> = {
 }
 
 export function askerName(item: Permission) {
+	if (item.fromRequest) return `Request ${item.askerId}`
 	if (item.tester) return `Tester ${item.who}`
 	if (item.who.startsWith('record-')) return `The recorder of ${item.who.slice('record-'.length)}`
 	return `Step ${item.who}`
@@ -64,15 +71,15 @@ function breakAtSlashes(path: string) {
 	return path.split('/').map((part, index) => (index ? html`/<wbr />${part}` : part))
 }
 
-export function requestName(item: Pick<Permission, 'explorationId' | 'id'>) {
-	return `${item.explorationId}/${item.id}`
+export function requestName(item: Pick<Permission, 'askerId' | 'id'>) {
+	return `${item.askerId}/${item.id}`
 }
 
-export function recordPath(item: Pick<Permission, 'explorationId' | 'id'>) {
+export function recordPath(item: Pick<Permission, 'askerId' | 'id'>) {
 	return `/permissions/${requestName(item)}`
 }
 
-export function requestHref(item: Pick<Permission, 'explorationId' | 'id'>, from: string | null, history = false) {
+export function requestHref(item: Pick<Permission, 'askerId' | 'id'>, from: string | null, history = false) {
 	const params = new URLSearchParams()
 	if (from) params.set('from', from)
 	if (history) params.set('view', 'history')
@@ -84,7 +91,7 @@ export function waitsFor(item: Permission) {
 	return html`waits <span data-since="${item.at}">${duration(Math.max(0, Date.now() - Date.parse(item.at)))}</span>`
 }
 
-export function nextOpen(store: Store, after: Pick<Permission, 'explorationId' | 'id'> | null) {
+export function nextOpen(store: Store, after: Pick<Permission, 'askerId' | 'id'> | null) {
 	const open = openPermissions(store).filter((item) => !after || requestName(item) !== requestName(after))
 	return open[0] ?? null
 }
@@ -99,25 +106,29 @@ type Choice = {
 
 function choicesOf(item: Permission): Choice[] {
 	const kind = item.tool === 'Bash' ? 'command' : 'kind of call'
-	const run = item.explorationId
+	const run = item.askerId
 	const rule = item.rule
+	const request = item.fromRequest
+	const scope = request ? 'conversation' : 'test'
+	const everyone = request ? `later requests of this conversation` : `any tester of this run`
+	const where = request ? `request ${run}` : `run ${run}`
+	const ends = request ? 'The rule ends when you start a new conversation.' : 'The rule ends with the run.'
 	return [
 		{ decision: 'allow', label: 'Allow once', text: 'Answers this request with yes. Checkmate stores no rule.' },
 		...(rule
 			? [
 					{
 						decision: 'allow-kind',
-						label: `Allow this ${kind} for this test`,
+						label: `Allow this ${kind} for this ${scope}`,
 						text: html`Answers yes now and for every later request with the rule <code>${rule}</code>, from
-							any tester of this run. Checkmate stores the rule in the record of run ${run}. The rule ends
-							with the run.`,
+							${everyone}. Checkmate stores the rule in the record of ${where}. ${ends}`,
 					},
 				]
 			: []),
 		{
 			decision: 'allow-tool',
-			label: `Allow every ${item.tool} call for this test`,
-			text: `Answers yes now and for every later ${item.tool} call of any tester of this run, whatever the input. Checkmate stores the rule in the record of run ${run}. The rule ends with the run.`,
+			label: `Allow every ${item.tool} call for this ${scope}`,
+			text: `Answers yes now and for every later ${item.tool} call of ${everyone}, whatever the input. Checkmate stores the rule in the record of ${where}. ${ends}`,
 		},
 		...(rule
 			? [
@@ -125,8 +136,8 @@ function choicesOf(item: Permission): Choice[] {
 						decision: 'always',
 						label: `Always allow this ${kind} in this project`,
 						text: html`Answers yes now. Claude Code writes the rule <code>${rule}</code> to
-							<code>.claude/settings.local.json</code> of the project, and the rule stays after this run.
-							Checkmate writes no settings file.`,
+							<code>.claude/settings.local.json</code> of the project, and the rule stays after this
+							${request ? 'conversation' : 'run'}. Checkmate writes no settings file.`,
 					},
 				]
 			: []),
@@ -134,23 +145,39 @@ function choicesOf(item: Permission): Choice[] {
 			decision: 'deny',
 			label: 'Deny…',
 			reveal: 'deny',
-			text: 'Answers no. You write the reason first, and the tester gets it.',
+			text: `Answers no. You write the reason first, and ${request ? 'Claude Code' : 'the tester'} gets it.`,
 		},
-		{
-			decision: 'stop',
-			label: item.tester ? `Stop tester ${item.who}…` : 'Stop the run…',
-			ask: {
-				title: item.tester ? `Stop tester ${item.who}?` : 'Stop the run?',
-				text: item.tester
-					? `Checkmate denies this call and ends tester ${item.who}. The other testers go on.`
-					: `Checkmate denies this call and stops the whole run ${run}.`,
-				yes: item.tester ? `Stop tester ${item.who}` : 'Stop the run',
-			},
-			text: item.tester
-				? `Answers no and ends tester ${item.who}. The other testers go on. You confirm first.`
-				: `Answers no and stops the whole run ${run}. You confirm first.`,
-		},
+		stopChoice(item),
 	]
+}
+
+function stopChoice(item: Permission): Choice {
+	const run = item.askerId
+	if (item.fromRequest)
+		return {
+			decision: 'stop',
+			label: 'Stop the request…',
+			ask: {
+				title: `Stop request ${run}?`,
+				text: `Checkmate denies this call and stops request ${run}. You can ask again.`,
+				yes: 'Stop the request',
+			},
+			text: `Answers no and stops request ${run}. You confirm first.`,
+		}
+	return {
+		decision: 'stop',
+		label: item.tester ? `Stop tester ${item.who}…` : 'Stop the run…',
+		ask: {
+			title: item.tester ? `Stop tester ${item.who}?` : 'Stop the run?',
+			text: item.tester
+				? `Checkmate denies this call and ends tester ${item.who}. The other testers go on.`
+				: `Checkmate denies this call and stops the whole run ${run}.`,
+			yes: item.tester ? `Stop tester ${item.who}` : 'Stop the run',
+		},
+		text: item.tester
+			? `Answers no and ends tester ${item.who}. The other testers go on. You confirm first.`
+			: `Answers no and stops the whole run ${run}. You confirm first.`,
+	}
 }
 
 export function optionCount(item: Permission) {
@@ -252,11 +279,11 @@ function asked(item: Permission) {
 	return block('Input', JSON.stringify(item.input, null, 2))
 }
 
-export function rulesLines(rules: ForceRule[]) {
+export function rulesLines(rules: ForceRule[], scope = 'test') {
 	return rules.map(
 		(rule) =>
 			html`<p class="help" data-key="rule:${rule.requestId}">
-				Allowed for this test:
+				Allowed for this ${scope}:
 				${rule.kind === 'allow-tool' ? `every ${rule.rule} call` : html`<code>${rule.rule}</code>`}, set by
 				${rule.setBy} ${ago(rule.at)}.
 			</p>`
@@ -281,30 +308,34 @@ function stateText(item: Permission) {
 export function permissionPage(
 	store: Store,
 	context: Context,
-	explorationId: string,
+	askerId: string,
 	requestId: string,
 	view: { from: string | null; history: boolean },
 	refusal: PermissionRefusal | null
 ): Page | null {
-	const item = permissionOf(store, explorationId, requestId)
+	const item = permissionOf(store, askerId, requestId)
 	if (!item) return null
 	const { from } = view
-	const back = from ?? '/activity'
+	const asker = askerPath(item)
+	const back = from ?? asker.href
 	const moves = item.decision && !view.history
 	const next = nextOpen(store, item)
 	const after = next ? requestHref(next, from) : back
 	const name = requestName(item)
-	const rules = permissionRules(store, explorationId)
+	const rules = permissionRules(store, askerId)
 	const choices = item.decision ? [] : choicesOf(item)
 	const title = askHeading(item)
 	return {
 		title: `${name} · Permission request`,
 		section: 'home',
-		subjects: [`exploration:${explorationId}`, `plan:${item.planId}`],
+		subjects: [
+			item.fromRequest ? `request:${askerId}` : `exploration:${askerId}`,
+			...(item.planId ? [`plan:${item.planId}`] : []),
+		],
 		crumbs: [
 			['Plans', '/'],
-			[item.planId, `/plans/${item.planId}`],
-			[explorationId, `/explorations/${explorationId}`],
+			...(item.planId ? [[item.planId, `/plans/${item.planId}`] as [string, string]] : []),
+			[askerId, asker.href] as [string, string],
 			[item.id, null],
 		],
 		back,
@@ -318,10 +349,7 @@ export function permissionPage(
 			data-decided-message="${item.decision ? stateText(item) : ''}"
 			${moves ? html`data-moves-on data-next="${after}"` : ''}
 		>
-			${crumbBar([
-				[item.planId, `/plans/${item.planId}`],
-				[explorationId, `/explorations/${explorationId}`],
-			])}
+			${crumbBar([...(item.planId ? [[item.planId, `/plans/${item.planId}`] as [string, string]] : []), [askerId, asker.href]])}
 			<div data-stale-slot>
 				${refusal && !refusal.field ? html`<p class="form-error" role="alert">${refusal.error}</p>` : ''}
 			</div>
@@ -399,17 +427,23 @@ ${refusal?.reason ?? ''}</textarea>
 					<dd>${askerName(item)}</dd>
 					<dt>Since</dt>
 					<dd>${time(item.at)}</dd>
-					<dt>Run</dt>
-					<dd><a href="/explorations/${explorationId}">${explorationId}</a></dd>
-					<dt>Plan</dt>
-					<dd><a href="/plans/${item.planId}">${item.planId}</a></dd>
+					<dt>${asker.label}</dt>
+					<dd><a href="${asker.href}">${askerId}</a></dd>
+					${
+						item.planId
+							? html`<dt>Plan</dt>
+									<dd><a href="/plans/${item.planId}">${item.planId}</a></dd>`
+							: ''
+					}
 				</dl>
 			</section>
 			${
 				rules.length
 					? html`<section aria-labelledby="rules-title">
-							<h2 class="lab" id="rules-title">Rules of this test</h2>
-							${rulesLines(rules)}
+							<h2 class="lab" id="rules-title">
+								Rules of this ${item.fromRequest ? 'conversation' : 'test'}
+							</h2>
+							${rulesLines(rules, item.fromRequest ? 'conversation' : 'test')}
 						</section>`
 					: ''
 			}

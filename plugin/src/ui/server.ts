@@ -52,9 +52,11 @@ import { all } from '../store.ts'
 import { autoMode, defaultBuild, hasRequest, runTest } from '../modes.ts'
 import { upstreamBase } from '../change.ts'
 import { levelNames } from '../levels.ts'
-import { ruleTokens, saveTesterRules, testerRulesText } from '../settings.ts'
+import { ruleTokens, saveRequestModel, saveTesterRules, testerRulesText } from '../settings.ts'
+import { isUnread, markRequestRead, requestOf, requestStatus, staleRequests } from '../requests.ts'
 import { planRequest } from '../plans.ts'
 import type { Env } from '../sessions.ts'
+import type { StopDelays } from '../sessions.ts'
 import { liveUi, removeUiFile, requireClaude, writeUiFile } from '../sessions.ts'
 import { launchPlan } from '../explorers.ts'
 import { ticketFile } from '../rules.ts'
@@ -97,8 +99,16 @@ import { claudePage, instanceFromForm, targetPage, targetsPage } from './setting
 import type { HookOptions } from './hooks.ts'
 import { createHooks, sameSecret } from './hooks.ts'
 import { emptyRecord, nextOpen, permissionPage, requestHref } from './permissions.ts'
+import { createRequester } from './requester.ts'
+import { repliesPage, requestPage as requestRecordPage, screenContext } from './requests.ts'
 
-export type UiOptions = HookOptions & { workspace: string; port?: number; defaultActor?: string; env?: Env }
+export type UiOptions = HookOptions & {
+	workspace: string
+	port?: number
+	defaultActor?: string
+	env?: Env
+	stopDelays?: StopDelays
+}
 
 export type Ui = { url: string; close(): Promise<void> }
 
@@ -115,6 +125,8 @@ const routes = {
 	startTest: new RegExp(`^/plans/(${id})/test$`),
 	startFollow: new RegExp(`^/plans/(${id})/follow$`),
 	permit: new RegExp(`^/permissions/(${id})/(P[1-9][0-9]{0,8})$`),
+	requestPage: /^\/requests\/(R[1-9][0-9]{0,8})$/,
+	stopRequest: /^\/requests\/(R[1-9][0-9]{0,8})\/stop$/,
 	permitMany: /^\/permissions\/bulk$/,
 	stopRun: new RegExp(`^/explorations/(${id})/stop$`),
 	stopTester: new RegExp(`^/explorations/(${id})/explorers/(${id})/stop$`),
@@ -283,6 +295,14 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 	const hookToken = randomBytes(32).toString('hex')
 	const hooks = createHooks(store, hookToken, options)
 	const env = options.env ?? process.env
+	const requester = createRequester(store, {
+		workspace: options.workspace,
+		env,
+		hookPort: () => port,
+		hookToken,
+		delays: options.stopDelays,
+		log: options.log,
+	})
 	const fallbackActor = options.defaultActor ?? defaultActor(options.workspace, process.env) ?? ''
 	const clients = new Set<Client>()
 	let port = 0
@@ -347,6 +367,7 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 					: null,
 			queueCount: needsYou(store).urgent,
 			permissions: openPermissions(store).length,
+			requests: requestStatus(store),
 			running: runningCount(store),
 			cursor: latestRowid(store),
 			workspace: options.workspace,
@@ -358,7 +379,7 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		const shown = context(request)
 		const cookies = [...extraCookies]
 		if (shown.toast) cookies.push(cookie('checkmate_toast', '', 0))
-		const subjects = [...page.subjects, 'permissions']
+		const subjects = [...page.subjects, 'permissions', 'requests']
 		send(request.res, page.status ?? 200, 'text/html; charset=utf-8', layout(shown, { ...page, subjects }).html, {
 			'Set-Cookie': cookies,
 			Vary: 'Cookie',
@@ -494,7 +515,10 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		if (pathname === '/permissions') return firstRequest(request)
 		const asked = routes.permit.exec(pathname)
 		if (asked) return permissionRecord(request, asked[1], asked[2])
-		if (pathname === '/settings/claude') return render(request, claudePage(shown, env))
+		if (pathname === '/settings/claude') return render(request, claudePage(store, shown, env))
+		if (pathname === '/requests') return render(request, repliesPage(store, searchParams))
+		const askedRequest = routes.requestPage.exec(pathname)
+		if (askedRequest) return requestRecord(request, askedRequest[1])
 		if (pathname === '/actor') return render(request, actorPage(shown, safeBack(searchParams.get('back'))))
 		if (pathname === '/settings') return redirect(request.res, '/settings/targets')
 		if (pathname === '/settings/targets') return render(request, targetsPage(store))
@@ -908,6 +932,7 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		})
 		const pages = [
 			{ kind: 'page', id: 'Activity', title: 'Tests and follow-ups of all plans', href: '/activity' },
+			{ kind: 'page', id: 'Replies', title: 'Requests that you asked and their replies', href: '/requests' },
 			{ kind: 'page', id: 'New change', title: 'Give a ticket and start the first test', href: '/new' },
 			{ kind: 'page', id: 'New target', title: 'Set up the application to test', href: '/setup' },
 		].filter((entry) => matches(`${entry.id} ${entry.title} ${entry.kind}`))
@@ -1130,12 +1155,13 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 				store,
 				actor,
 				{
-					explorationId,
+					askerId: explorationId,
 					requestId,
 					decision: form.get('decision') ?? '',
 					reason: form.get('reason') ?? undefined,
 				},
 				(explorer, reason) => {
+					if (requestOf(store, explorationId)) return requester.stop(actor, explorationId, reason)
 					recordStop(store, actor, { explorationId, explorer, reason: reason || undefined, background: true })
 					startEnding(store, explorationId, actor, explorer, env)
 				}
@@ -1177,7 +1203,7 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		for (const found of named) {
 			const [, explorationId, requestId] = found!
 			try {
-				decidePermission(store, actor, { explorationId, requestId, decision, reason }, () => {})
+				decidePermission(store, actor, { askerId: explorationId, requestId, decision, reason }, () => {})
 				answered.push(`${explorationId}/${requestId}`)
 			} catch {
 				gone.push(`${explorationId}/${requestId}`)
@@ -1193,10 +1219,98 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		])
 	}
 
+	function requestRecord(request: Request, requestId: string) {
+		const found = requestOf(store, requestId)
+		const shown = context(request)
+		if (found && isUnread(found) && shown.actor) markRequestRead(store, shown.actor, requestId)
+		const page = found ? requestRecordPage(store, context(request), requestId) : null
+		if (!page) return errorPage(request, 404, 'No such request', `Checkmate has no request ${requestId}.`)
+		render(request, page)
+	}
+
+	function askText(request: Request, form: URLSearchParams) {
+		const { actor, cookies } = actorFrom(request, form)
+		const back = safeBack(form.get('return') ?? '/requests')
+		const refuse = (message: string) => actionRefusal(request, back, message)
+		if (!actor) return refuse('Enter your name. Checkmate records it with the request.')
+		const text = form.get('text')?.trim() ?? ''
+		if (!text) return refuse('Write the request first.')
+		let context
+		try {
+			context = form.has('context')
+				? contextFromData(form.get('context') ?? '')
+				: screenContext(store, form.get('screen') ?? '')
+		} catch {
+			return refuse('The context of the request is not valid.')
+		}
+		let id
+		try {
+			id = requester.ask(actor, text, context)
+		} catch (error) {
+			return refuse(engineText(error))
+		}
+		redirect(request.res, `/requests/${id}`, cookies)
+	}
+
+	function contextFromData(text: string) {
+		const data = JSON.parse(text) as { planId?: unknown; record?: { kind?: unknown; id?: unknown } | null }
+		const planId = typeof data.planId === 'string' && data.planId ? requireIdentifier(data.planId, 'plan ID') : null
+		const record =
+			typeof data.record?.kind === 'string' && typeof data.record.id === 'string'
+				? { kind: data.record.kind.slice(0, 40), id: data.record.id.slice(0, 96) }
+				: null
+		return { planId, record }
+	}
+
+	function stopRequest(request: Request, form: URLSearchParams, requestId: string) {
+		const { actor, cookies } = actorFrom(request, form)
+		const back = `/requests/${requestId}`
+		if (!actor) return actionRefusal(request, back, 'Enter your name. Checkmate records it with the stop.')
+		const found = requestOf(store, requestId)
+		const flash =
+			found?.state === 'running' || found?.state === 'waiting'
+				? `Stopping ${requestId}…`
+				: `${requestId} has ended. Nothing was stopped.`
+		requester.stop(actor, requestId, form.get('reason')?.trim() ?? '')
+		hooks.release()
+		redirect(request.res, back, [...cookies, cookie('checkmate_toast', flash, 60)])
+	}
+
+	function newConversation(request: Request, form: URLSearchParams) {
+		const { actor, cookies } = actorFrom(request, form)
+		const back = safeBack(form.get('return') ?? '/requests')
+		if (!actor) return actionRefusal(request, back, 'Enter your name. Checkmate records it with the change.')
+		requester.newConversation(actor)
+		redirect(request.res, back, [
+			...cookies,
+			cookie('checkmate_toast', 'The next request starts a new conversation.', 60),
+		])
+	}
+
+	function saveModel(request: Request, form: URLSearchParams) {
+		const { actor, cookies } = actorFrom(request, form)
+		const typed = form.get('model') ?? ''
+		const page = (error: string) => () => claudePage(store, context(request), env, null, { value: typed, error })
+		if (!actor) return refuse(request, page('Enter your name. Checkmate records it with the setting.'), cookies)
+		try {
+			saveRequestModel(store, actor, typed)
+		} catch (error) {
+			return refuse(request, page(engineText(error)), cookies)
+		}
+		redirect(request.res, '/settings/claude', [
+			...cookies,
+			cookie(
+				'checkmate_toast',
+				typed.trim() ? 'Saved the model for requests' : 'Requests use the model of Claude Code',
+				60
+			),
+		])
+	}
+
 	function saveRules(request: Request, form: URLSearchParams) {
 		const { actor, cookies } = actorFrom(request, form)
 		const typed = form.get('rules') ?? ''
-		const page = (error: string) => () => claudePage(context(request), env, { value: typed, error })
+		const page = (error: string) => () => claudePage(store, context(request), env, { value: typed, error })
 		if (!actor) return refuse(request, page('Enter your name. Checkmate records it with the setting.'), cookies)
 		try {
 			saveTesterRules(store, actor, typed)
@@ -1698,6 +1812,11 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		}
 		if (pathname === '/bulk') return bulk(request, form)
 		if (pathname === '/settings/claude') return saveRules(request, form)
+		if (pathname === '/settings/claude/model') return saveModel(request, form)
+		if (pathname === '/requests') return askText(request, form)
+		if (pathname === '/requests/conversation') return newConversation(request, form)
+		const stoppingRequest = routes.stopRequest.exec(pathname)
+		if (stoppingRequest) return stopRequest(request, form, stoppingRequest[1])
 		if (pathname === '/setup/assumed') return previewSetup(request, form)
 		if (pathname === '/setup') return await setUp(request, form)
 		if (pathname === '/new') return startChange(request, form)
@@ -1773,7 +1892,10 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 	})
 	const address = server.address()
 	port = typeof address === 'object' && address ? address.port : 0
-	if (!liveUi(options.workspace)) closeOpenPermissions(store, 'ui-stopped')
+	if (!liveUi(options.workspace)) {
+		closeOpenPermissions(store, 'ui-stopped')
+		staleRequests(store)
+	}
 	writeUiFile(options.workspace, { port, pid: process.pid, hookToken })
 
 	return {
@@ -1781,6 +1903,7 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		close: async () => {
 			if (closed) return
 			closed = true
+			await requester.close()
 			hooks.close()
 			removeUiFile(options.workspace, hookToken)
 			clearInterval(poll)

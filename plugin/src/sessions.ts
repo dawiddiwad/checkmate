@@ -175,7 +175,7 @@ export function childHook(workspace: string, explorationId: string, who: string)
 	return ui ? { port: ui.port, token: ui.hookToken, explorationId, who } : undefined
 }
 
-function hookSettings(hook: ChildHook) {
+export function hookSettings(hook: ChildHook) {
 	const base = `http://127.0.0.1:${hook.port}/hooks`
 	const entry = (path: string, timeout: number) => [
 		{
@@ -263,12 +263,12 @@ export function authenticationFailed(call: ClaudeCall) {
 const stderrLines = 10
 const stderrLineLength = 300
 
-export function stderrTail(text: string) {
+export function stderrTail(text: string, count = stderrLines) {
 	return text
 		.split('\n')
 		.map((line) => line.trimEnd())
 		.filter(Boolean)
-		.slice(-stderrLines)
+		.slice(-count)
 		.map((line) => line.slice(0, stderrLineLength))
 }
 
@@ -422,4 +422,101 @@ export function launchClaude(
 			resolvePromise(failure ? { failure } : claudeResult(output, errors, status, signal))
 		})
 	})
+}
+
+export type RequestSession = {
+	sessionId: string
+	resume: boolean
+	hook: ChildHook
+	model: string | null
+	checkmate: string
+}
+
+export const requestHookName = 'request'
+
+export function requestSystemPrompt(checkmate: string) {
+	return [
+		'This request comes from the Checkmate web UI.',
+		'The reply shows in a narrow pane. Answer in plain sentences: first what you found or did, then what changed.',
+		'Put a question to the person in the reply.',
+		`To change a record, use the checkmate command line of this workspace: node ${checkmate} <command>.`,
+	].join(' ')
+}
+
+export function requestArgs(session: RequestSession) {
+	return [
+		'-p',
+		'--output-format',
+		'stream-json',
+		'--verbose',
+		session.resume ? '--resume' : '--session-id',
+		session.sessionId,
+		'--plugin-dir',
+		pluginRoot,
+		'--settings',
+		JSON.stringify(hookSettings(session.hook)),
+		'--append-system-prompt',
+		requestSystemPrompt(session.checkmate),
+		...(session.model ? ['--model', session.model] : []),
+	]
+}
+
+export function requestPrompt(text: string, screen: string | null) {
+	return screen ? `${text}\n\nOn screen: ${screen}` : text
+}
+
+export type StreamEnd = { status: number | null; signal: string | null; stderr: string; error: string | null }
+export type StopDelays = { terminate: number; kill: number }
+export type StreamedClaude = { pid: number | undefined; stop(): void; finished: Promise<StreamEnd> }
+
+export const defaultStopDelays: StopDelays = { terminate: 5000, kill: endGraceMilliseconds }
+
+export function streamClaude(
+	claude: string,
+	args: string[],
+	prompt: string,
+	cwd: string,
+	env: Env,
+	onLine: (line: string) => void,
+	delays: StopDelays = defaultStopDelays
+): StreamedClaude {
+	const child = spawn(claude, args, { cwd, env, stdio: ['pipe', 'pipe', 'pipe'], detached: true })
+	liveChildren.add(child)
+	const timers: NodeJS.Timeout[] = []
+	let errors = ''
+	let pending = ''
+	let spawnError: string | null = null
+	child.stdout.on('data', (bytes: Buffer) => {
+		const lines = (pending + bytes.toString()).split('\n')
+		pending = lines.pop() ?? ''
+		for (const line of lines) if (line.trim()) onLine(line)
+	})
+	child.stderr.on('data', (bytes: Buffer) => {
+		errors = (errors + bytes.toString()).slice(-16384)
+	})
+	child.stdin.on('error', () => {})
+	child.stdin.end(prompt)
+	child.on('error', (error) => {
+		spawnError = `claude failed: ${'code' in error ? String(error.code) : 'unknown'}.`
+	})
+	const finished = new Promise<StreamEnd>((resolvePromise) => {
+		child.on('close', (status, signal) => {
+			liveChildren.delete(child)
+			for (const timer of timers) clearTimeout(timer)
+			if (pending.trim()) onLine(pending)
+			resolvePromise({ status, signal, stderr: errors, error: spawnError })
+		})
+	})
+	return {
+		pid: child.pid,
+		finished,
+		stop() {
+			if (timers.length) return
+			killGroup(child, 'SIGINT')
+			timers.push(
+				setTimeout(() => killGroup(child, 'SIGTERM'), delays.terminate),
+				setTimeout(() => killGroup(child, 'SIGKILL'), delays.terminate + delays.kill)
+			)
+		},
+	}
 }

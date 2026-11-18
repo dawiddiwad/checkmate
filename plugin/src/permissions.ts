@@ -1,6 +1,7 @@
 import type { Reply, Store } from './store.ts'
 import { all, completed, one, write } from './store.ts'
 import { addEvent } from './explorations.ts'
+import { addRequestEvent, isRequestId, requestStopped } from './requests.ts'
 import { requireChoice, requireCondition, requireWellFormed } from './contracts.ts'
 import { explorerActor } from './recorder.ts'
 
@@ -19,8 +20,9 @@ export type PermissionDecision = {
 	cause: ClosedCause | null
 }
 export type Permission = {
-	explorationId: string
-	planId: string
+	askerId: string
+	fromRequest: boolean
+	planId: string | null
 	id: string
 	who: string
 	tester: string | null
@@ -41,7 +43,7 @@ export type ForceRule = {
 }
 export type ClosedCause = 'timeout' | 'ui-stopped' | 'stopped' | 'disconnected'
 export type PermissionRequestInput = {
-	explorationId: string
+	askerId: string
 	who: string
 	tool: string
 	input: unknown
@@ -61,9 +63,9 @@ const requestStep = 'permission'
 const decisionStep = 'permission-decision'
 
 type Row = {
-	exploration_id: string
-	plan_id: string
-	rowid: number
+	asker_id: string
+	from_request: number
+	plan_id: string | null
 	at: string
 	step: string
 	explorer: string | null
@@ -71,14 +73,25 @@ type Row = {
 	detail: string
 }
 
-function rows(store: Store, where: string, ...parameters: string[]) {
-	return all<Row>(
+function rows(store: Store, planId: string | undefined, askerId: string | undefined) {
+	const wanted = `e.step IN ('${requestStep}', '${decisionStep}')`
+	const exploration = all<Row>(
 		store,
-		`SELECT e.exploration_id, x.plan_id, e.rowid, e.at, e.step, e.explorer, e.status, e.detail
+		`SELECT e.exploration_id AS asker_id, 0 AS from_request, x.plan_id, e.at, e.step, e.explorer, e.status, e.detail
 		FROM exploration_events e JOIN explorations x ON x.exploration_id = e.exploration_id
-		WHERE e.step IN ('${requestStep}', '${decisionStep}') ${where} ORDER BY e.rowid`,
-		...parameters
+		WHERE ${wanted} AND (?1 IS NULL OR x.plan_id = ?1) AND (?2 IS NULL OR e.exploration_id = ?2) ORDER BY e.rowid`,
+		planId ?? null,
+		askerId ?? null
 	)
+	const request = all<Row>(
+		store,
+		`SELECT e.request_id AS asker_id, 1 AS from_request, json_extract(r.context, '$.planId') AS plan_id, e.at, e.step, NULL AS explorer, e.status, e.detail
+		FROM request_events e JOIN requests r ON r.request_id = e.request_id
+		WHERE ${wanted} AND (?1 IS NULL OR json_extract(r.context, '$.planId') = ?1) AND (?2 IS NULL OR e.request_id = ?2) ORDER BY e.rowid`,
+		planId ?? null,
+		askerId ?? null
+	)
+	return [...exploration, ...request]
 }
 
 export function ruleText(rule: RuleOfSuggestion) {
@@ -134,11 +147,12 @@ function permissionsOf(list: Row[]) {
 	const found = new Map<string, Permission>()
 	for (const row of list) {
 		const detail = JSON.parse(row.detail) as Record<string, unknown>
-		const key = `${row.exploration_id}/${detail.id}`
+		const key = `${row.asker_id}/${detail.id}`
 		if (row.step === requestStep) {
 			const suggestions = detail.suggestions as Suggestion[]
 			found.set(key, {
-				explorationId: row.exploration_id,
+				askerId: row.asker_id,
+				fromRequest: row.from_request === 1,
 				planId: row.plan_id,
 				id: detail.id as string,
 				who: detail.who as string,
@@ -159,17 +173,31 @@ function permissionsOf(list: Row[]) {
 	return [...found.values()]
 }
 
-export function explorationPermissions(store: Store, explorationId: string) {
-	return permissionsOf(rows(store, 'AND e.exploration_id = ?', explorationId))
+export function explorationPermissions(store: Store, askerId: string) {
+	return permissionsOf(rows(store, undefined, askerId))
 }
 
 export function openPermissions(store: Store, planId?: string) {
-	const list = planId === undefined ? rows(store, '') : rows(store, 'AND x.plan_id = ?', planId)
-	return permissionsOf(list).filter((item) => !item.decision)
+	return permissionsOf(rows(store, planId, undefined)).filter((item) => !item.decision)
 }
 
-export function permissionRules(store: Store, explorationId: string): ForceRule[] {
-	return explorationPermissions(store, explorationId).flatMap((item) =>
+function conversationOf(store: Store, askerId: string) {
+	return one<{ conversation: string }>(store, 'SELECT conversation FROM requests WHERE request_id = ?', askerId)
+		?.conversation
+}
+
+function ruleScope(store: Store, askerId: string) {
+	const conversation = conversationOf(store, askerId)
+	if (!conversation) return explorationPermissions(store, askerId)
+	return all<{ request_id: string }>(
+		store,
+		'SELECT request_id FROM requests WHERE conversation = ?',
+		conversation
+	).flatMap((row) => explorationPermissions(store, row.request_id))
+}
+
+export function permissionRules(store: Store, askerId: string): ForceRule[] {
+	return ruleScope(store, askerId).flatMap((item) =>
 		(item.decision?.kind === 'allow-kind' || item.decision?.kind === 'allow-tool') && item.decision.rule
 			? [
 					{
@@ -177,85 +205,106 @@ export function permissionRules(store: Store, explorationId: string): ForceRule[
 						kind: item.decision.kind,
 						setBy: item.decision.by,
 						at: item.decision.at,
-						requestId: item.id,
+						requestId: item.fromRequest ? `${item.askerId}/${item.id}` : item.id,
 					},
 				]
 			: []
 	)
 }
 
-export function permissionOf(store: Store, explorationId: string, requestId: string) {
-	return explorationPermissions(store, explorationId).find((item) => item.id === requestId)
+export function permissionOf(store: Store, askerId: string, requestId: string) {
+	return explorationPermissions(store, askerId).find((item) => item.id === requestId)
 }
 
-function findPermission(store: Store, explorationId: string, requestId: string) {
-	const found = permissionOf(store, explorationId, requestId)
+function findPermission(store: Store, askerId: string, requestId: string) {
+	const found = permissionOf(store, askerId, requestId)
 	requireCondition(
 		found,
-		`Exploration ${explorationId} has no permission request ${requestId}.`,
-		`Run checkmate explore show ${explorationId}.`
+		`Exploration ${askerId} has no permission request ${requestId}.`,
+		`Run checkmate explore show ${askerId}.`
 	)
 	return found
 }
 
-function nextRequestId(store: Store, explorationId: string) {
+function nextRequestId(store: Store, askerId: string) {
+	const table = isRequestId(store, askerId) ? 'request_events' : 'exploration_events'
+	const column = table === 'request_events' ? 'request_id' : 'exploration_id'
 	const count = one<{ count: number }>(
 		store,
-		`SELECT count(*) AS count FROM exploration_events WHERE exploration_id = ? AND step = '${requestStep}'`,
-		explorationId
+		`SELECT count(*) AS count FROM ${table} WHERE ${column} = ? AND step = '${requestStep}'`,
+		askerId
 	)!.count
 	return `P${count + 1}`
 }
 
+function addAskerEvent(
+	store: Store,
+	request: Pick<Permission, 'askerId' | 'fromRequest' | 'tester'>,
+	event: { step: string; status: string; detail: Record<string, unknown> },
+	operationId: string,
+	at: string
+) {
+	if (request.fromRequest) addRequestEvent(store, request.askerId, event, operationId, at)
+	else addEvent(store, request.askerId, { ...event, explorer: request.tester }, operationId, at)
+}
+
+function subjectsOf(request: Pick<Permission, 'askerId' | 'fromRequest' | 'planId'>) {
+	return [
+		request.fromRequest ? `request:${request.askerId}` : `exploration:${request.askerId}`,
+		...(request.planId ? [`plan:${request.planId}`] : []),
+		'permissions',
+	]
+}
+
 function addDecision(
 	store: Store,
-	request: Pick<Permission, 'explorationId' | 'id' | 'who' | 'tester'>,
+	request: Pick<Permission, 'askerId' | 'fromRequest' | 'id' | 'who' | 'tester'>,
 	kind: PermissionDecision['kind'],
 	detail: Record<string, unknown>,
 	operationId: string,
 	at: string
 ) {
-	addEvent(
+	addAskerEvent(
 		store,
-		request.explorationId,
-		{
-			step: decisionStep,
-			explorer: request.tester,
-			status: kind,
-			detail: { id: request.id, who: request.who, ...detail },
-		},
+		request,
+		{ step: decisionStep, status: kind, detail: { id: request.id, who: request.who, ...detail } },
 		operationId,
 		at
 	)
 }
 
-function ruleInForce(store: Store, explorationId: string, tool: string, suggestions: Suggestion[]) {
+function ruleInForce(store: Store, askerId: string, tool: string, suggestions: Suggestion[]) {
 	const wanted = kindRule(suggestions)
-	return permissionRules(store, explorationId).find((item) =>
+	return permissionRules(store, askerId).find((item) =>
 		item.kind === 'allow-tool' ? item.rule === tool : item.rule === wanted
 	)
 }
 
 export function requestPermission(store: Store, input: PermissionRequestInput) {
+	const fromRequest = isRequestId(store, input.askerId)
 	const tester =
+		fromRequest ||
 		one(
 			store,
 			"SELECT 1 FROM exploration_events WHERE exploration_id = ? AND step = 'launch' AND explorer = ?",
-			input.explorationId,
+			input.askerId,
 			input.who
 		) === undefined
 			? null
 			: input.who
-	const operation = { actor: explorerActor(input.who), command: 'explore permission', subject: input.explorationId }
+	const operation = {
+		actor: fromRequest ? `request:${input.askerId}` : explorerActor(input.who),
+		command: fromRequest ? 'request permission' : 'explore permission',
+		subject: input.askerId,
+	}
 	return write(store, { ...operation, input: { who: input.who, tool: input.tool } }, (operationId, at) => {
-		const id = nextRequestId(store, input.explorationId)
-		const request = { explorationId: input.explorationId, id, who: input.who, tester }
-		addEvent(
+		const id = nextRequestId(store, input.askerId)
+		const request = { askerId: input.askerId, fromRequest, id, who: input.who, tester }
+		addAskerEvent(
 			store,
-			input.explorationId,
+			request,
 			{
 				step: requestStep,
-				explorer: tester,
 				status: 'open',
 				detail: {
 					id,
@@ -269,7 +318,7 @@ export function requestPermission(store: Store, input: PermissionRequestInput) {
 			operationId,
 			at
 		)
-		const force = ruleInForce(store, input.explorationId, input.tool, input.suggestions)
+		const force = ruleInForce(store, input.askerId, input.tool, input.suggestions)
 		if (force)
 			addDecision(
 				store,
@@ -285,13 +334,13 @@ export function requestPermission(store: Store, input: PermissionRequestInput) {
 				at
 			)
 		return {
-			reply: completed(input.explorationId, { id, byRule: Boolean(force) }),
-			subjects: [`exploration:${input.explorationId}`, 'permissions'],
+			reply: completed(input.askerId, { id, byRule: Boolean(force) }),
+			subjects: [fromRequest ? `request:${input.askerId}` : `exploration:${input.askerId}`, 'permissions'],
 		}
 	}).data as { id: string; byRule: boolean }
 }
 
-export type DecideInput = { explorationId: string; requestId: string; decision: string; reason?: string }
+export type DecideInput = { askerId: string; requestId: string; decision: string; reason?: string }
 
 export function decidePermission(
 	store: Store,
@@ -304,27 +353,29 @@ export function decidePermission(
 	requireWellFormed(choice !== 'deny' || reason, 'A denial needs a reason.', 'Give the reason with --reason <text>.')
 	const operation = {
 		actor,
-		command: 'explore permit',
-		subject: input.explorationId,
+		command: isRequestId(store, input.askerId) ? 'request permit' : 'explore permit',
+		subject: input.askerId,
 		input: { requestId: input.requestId, decision: choice },
 	}
 	const reply = write(store, operation, (operationId, at, who) => {
-		const request = findPermission(store, input.explorationId, input.requestId)
+		const request = findPermission(store, input.askerId, input.requestId)
 		requireCondition(
 			!request.decision,
-			`Permission request ${request.id} of ${request.explorationId} has an answer already: ${request.decision?.text}. Nothing changed.`
+			`Permission request ${request.id} of ${request.askerId} has an answer already: ${request.decision?.text}. Nothing changed.`
 		)
 		requireCondition(
 			(choice !== 'allow-kind' && choice !== 'always') || request.rule,
 			`Permission request ${request.id} has no rule that Claude Code can remember. Allow it once, or deny it.`
 		)
+		const scope = request.fromRequest ? 'conversation' : 'test'
+		const stopped = request.fromRequest ? 'request' : request.tester ? 'tester' : 'run'
 		const texts: Record<PermissionChoice, string> = {
 			allow: 'allowed once',
-			'allow-kind': `allowed for this test: ${request.rule}`,
-			'allow-tool': `allowed for this test: every ${request.tool} call`,
+			'allow-kind': `allowed for this ${scope}: ${request.rule}`,
+			'allow-tool': `allowed for this ${scope}: every ${request.tool} call`,
 			always: `allowed always in this project: ${request.rule}`,
 			deny: `denied: ${reason}`,
-			stop: `stopped the ${request.tester ? 'tester' : 'run'}${reason ? `: ${reason}` : ''}`,
+			stop: `stopped the ${stopped}${reason ? `: ${reason}` : ''}`,
 		}
 		const rule =
 			choice === 'allow-tool'
@@ -341,37 +392,37 @@ export function decidePermission(
 			at
 		)
 		return {
-			reply: completed(request.explorationId, { requestId: request.id, decision: choice, who: request.tester }),
-			subjects: [`exploration:${request.explorationId}`, `plan:${request.planId}`, 'permissions'],
+			reply: completed(request.askerId, { requestId: request.id, decision: choice, who: request.tester }),
+			subjects: subjectsOf(request),
 		}
 	})
 	if (choice === 'stop') stop((reply.data.who as string | null) ?? undefined, reason)
 	return reply
 }
 
-export function closePermission(store: Store, explorationId: string, requestId: string, cause: ClosedCause) {
+export function closePermission(store: Store, askerId: string, requestId: string, cause: ClosedCause) {
 	return write(
 		store,
 		{
 			actor: 'checkmate',
 			command: 'explore permission-close',
-			subject: explorationId,
+			subject: askerId,
 			input: { requestId, cause },
 		},
 		(operationId, at) => {
-			const request = findPermission(store, explorationId, requestId)
-			if (request.decision) return { reply: completed(explorationId, { closed: false }), subjects: [] }
+			const request = findPermission(store, askerId, requestId)
+			if (request.decision) return { reply: completed(askerId, { closed: false }), subjects: [] }
 			addDecision(store, request, 'closed', { by: 'checkmate', text: closedText[cause], cause }, operationId, at)
 			return {
-				reply: completed(explorationId, { closed: true }),
-				subjects: [`exploration:${explorationId}`, `plan:${request.planId}`, 'permissions'],
+				reply: completed(askerId, { closed: true }),
+				subjects: subjectsOf(request),
 			}
 		}
 	).data.closed as boolean
 }
 
 export function closeOpenPermissions(store: Store, cause: ClosedCause) {
-	for (const item of openPermissions(store)) closePermission(store, item.explorationId, item.id, cause)
+	for (const item of openPermissions(store)) closePermission(store, item.askerId, item.id, cause)
 }
 
 function decisionBody(decision: Record<string, unknown>) {
@@ -411,15 +462,16 @@ export function permissionAnswer(request: Permission, decision: PermissionDecisi
 }
 
 export function stoppedSince(store: Store, request: Permission) {
+	if (request.fromRequest) return requestStopped(store, request.askerId)
 	return (
 		one(
 			store,
 			`SELECT 1 FROM exploration_events WHERE exploration_id = ? AND step = 'stop'
 			AND (explorer IS NULL OR explorer = ?)
 			AND rowid > (SELECT rowid FROM exploration_events WHERE exploration_id = ? AND step = '${requestStep}' AND json_extract(detail, '$.id') = ?)`,
-			request.explorationId,
+			request.askerId,
 			request.who,
-			request.explorationId,
+			request.askerId,
 			request.id
 		) !== undefined
 	)

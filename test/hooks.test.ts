@@ -18,6 +18,7 @@ import {
 } from '../plugin/src/permissions.ts'
 import { childArgs, childEnv, liveUi, uiFilePath, writeUiFile } from '../plugin/src/sessions.ts'
 import { startUi } from '../plugin/src/ui/server.ts'
+import { askRequest } from '../plugin/src/requests.ts'
 import { activityLine } from '../plugin/src/ui/hooks.ts'
 import { actor, directory, plan, root, store, target } from './support.ts'
 import { event, launched } from './explorations.ts'
@@ -335,7 +336,7 @@ test('a tool rule of one exploration does not answer a request of another explor
 	await first
 	const elsewhere = permission(f, 'a1', ask, 'x-2')
 	await waitFor('the request of x-2', () => open(f).length === 1)
-	assert.equal(open(f)[0].explorationId, 'x-2')
+	assert.equal(open(f)[0].askerId, 'x-2')
 	await call(
 		f.ui,
 		'/permissions/x-2/P1',
@@ -447,7 +448,7 @@ test('requests that were open when an earlier server ended show as closed after 
 	const workspace = workspaceOf(t)
 	const opened = openStore(workspace)
 	requestPermission(opened, {
-		explorationId: 'x-1',
+		askerId: 'x-1',
 		who: 'a1',
 		tool: 'Bash',
 		input: { command: 'ls' },
@@ -916,4 +917,70 @@ test('a tester asks through the hook of its own settings, a person answers in th
 		true
 	)
 	assert.equal(existsSync(`${root}/plugin/src/ui/hooks.ts`), true)
+})
+
+const requestPermissionCall = (f: Fixture, id: string, body: unknown = asking) =>
+	hookCall(f, `/hooks/permission/request/${id}`, body)
+
+function askOf(f: Fixture, context = { planId: 'checkout', record: null as null | { kind: string; id: string } }) {
+	return f.read((reading) => askRequest(reading, 'dawid', { text: 'why does D3 fail?', context }))
+}
+
+test('a request is an asker: its permission request is held, shown by the same record, and answered', async (t) => {
+	const f = await fixture(t)
+	const id = askOf(f)
+	const held = requestPermissionCall(f, id)
+	const [asked] = (await waitOpen(f, 1)) as ReturnType<typeof openPermissions>
+	assert.equal(asked.askerId, id)
+	assert.equal(asked.fromRequest, true)
+	assert.equal(asked.planId, 'checkout')
+	assert.equal(asked.tester, null)
+	const page = (await call(f.ui, `/permissions/${id}/P1`, undefined, as)).body
+	assert.match(page, /<h1[^>]*>Request R1 asks to run a command<\/h1>/)
+	assert.match(page, /Allow this command for this conversation/)
+	assert.match((await call(f.ui, '/activity', undefined, as)).body, /data-region="permissions-link"\s*>1 permission</)
+	const csrf = token((await call(f.ui, '/activity', undefined, as)).body)
+	assert.equal((await call(f.ui, `/permissions/${id}/P1`, { csrf, decision: 'allow' }, as)).status, 303)
+	const reply = await held
+	assert.equal(reply.body, wrap('{"behavior":"allow"}'))
+	assert.equal(open(f).length, 0)
+})
+
+test('a hook call of an unknown request is ignored, and a request has no activity line of its own', async (t) => {
+	const f = await fixture(t)
+	const id = askOf(f)
+	assert.equal((await requestPermissionCall(f, 'R9')).body, '')
+	const before = f.read((reading) => reading.db.prepare('SELECT count(*) AS n FROM operations').get()!.n)
+	const reply = await hookCall(f, `/hooks/activity/request/${id}`, {
+		hook_event_name: 'PreToolUse',
+		tool_name: 'Bash',
+		tool_input: { command: 'ls' },
+	})
+	assert.equal(reply.body, '')
+	assert.equal(
+		f.read((reading) => reading.db.prepare('SELECT count(*) AS n FROM operations').get()!.n),
+		before
+	)
+	assert.equal((await requestPermissionCall(f, id, { ...asking, hook_event_name: 'PreToolUse' })).body, '')
+})
+
+test('a rule of one request is in force for the next request of the conversation only', async (t) => {
+	const f = await fixture(t)
+	const first = askOf(f)
+	const held = requestPermissionCall(f, first)
+	await waitOpen(f, 1)
+	const csrf = token((await call(f.ui, '/activity', undefined, as)).body)
+	await call(f.ui, `/permissions/${first}/P1`, { csrf, decision: 'allow-kind' }, as)
+	assert.equal((await held).body, wrap(`{"behavior":"allow","updatedPermissions":[${rule('session')}]}`))
+	const second = askOf(f)
+	const byRule = await requestPermissionCall(f, second)
+	assert.equal(byRule.body, wrap(`{"behavior":"allow","updatedPermissions":[${rule('session')}]}`))
+	assert.equal(f.read((reading) => explorationPermissions(reading, second))[0].decision?.kind, 'rule')
+	assert.equal(open(f).length, 0)
+	await call(f.ui, '/requests/conversation', { csrf, return: '/requests' }, as)
+	const third = askOf(f)
+	const waiting = requestPermissionCall(f, third)
+	await waitOpen(f, 1)
+	await call(f.ui, `/permissions/${third}/P1`, { csrf, decision: 'deny', reason: 'No.' }, as)
+	assert.equal((await waiting).body, wrap('{"behavior":"deny","message":"No."}'))
 })

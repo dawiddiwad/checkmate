@@ -117,7 +117,7 @@ async function answeredBy(
 	reason?: string
 ) {
 	permissionsOf(workspace, (reading) =>
-		decidePermission(reading, 'ops', { explorationId, requestId, decision, reason }, () => {})
+		decidePermission(reading, 'ops', { askerId: explorationId, requestId, decision, reason }, () => {})
 	)
 }
 

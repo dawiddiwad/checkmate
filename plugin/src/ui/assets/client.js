@@ -2033,7 +2033,11 @@ async function send(form, submitter) {
 						: [],
 					form.querySelector('[name="to"]')?.value ?? ''
 				)
-			if (form.closest('[data-drawer]')?.matches('[data-region="permission-record"]'))
+			if (
+				form
+					.closest('[data-drawer]')
+					?.matches('[data-region="permission-record"], [data-region="request-record"]')
+			)
 				return location.replace(response.url)
 			return location.assign(response.url)
 		}

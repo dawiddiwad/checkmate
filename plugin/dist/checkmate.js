@@ -11,7 +11,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { mkdirSync, rmdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 var contractVersion = "toolkit-2";
-var schemaVersion = "5";
+var schemaVersion = "6";
 var operationReference = "REFERENCES operations(id) DEFERRABLE INITIALLY DEFERRED";
 var tables = `
 CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL) STRICT;
@@ -258,6 +258,29 @@ var addedTables = [
 	operation_id TEXT NOT NULL ${operationReference}
 ) STRICT;`,
     fill: ""
+  },
+  {
+    ddl: `CREATE TABLE requests (
+	request_id TEXT PRIMARY KEY,
+	text TEXT NOT NULL,
+	context TEXT NOT NULL,
+	asker TEXT NOT NULL,
+	conversation TEXT NOT NULL,
+	asked_at TEXT NOT NULL,
+	operation_id TEXT NOT NULL ${operationReference}
+) STRICT;`,
+    fill: ""
+  },
+  {
+    ddl: `CREATE TABLE request_events (
+	request_id TEXT NOT NULL REFERENCES requests(request_id),
+	at TEXT NOT NULL,
+	step TEXT NOT NULL,
+	status TEXT NOT NULL,
+	detail TEXT NOT NULL,
+	operation_id TEXT NOT NULL ${operationReference}
+) STRICT;`,
+    fill: ""
   }
 ];
 var views = `
@@ -366,8 +389,8 @@ function openStore(workspace) {
     }
     const version2 = String(db.prepare("SELECT value FROM meta WHERE key = 'schemaVersion'").get()?.value);
     if (version2 === "3") addExplorationTables(db);
-    if (version2 === "3" || version2 === "4") setSchemaVersion(db, schemaVersion);
-    if (["3", "4", schemaVersion].includes(version2)) addMissingTables(db);
+    if (["3", "4", "5"].includes(version2)) setSchemaVersion(db, schemaVersion);
+    if (["3", "4", "5", schemaVersion].includes(version2)) addMissingTables(db);
     db.exec("COMMIT");
   } catch (error) {
     if (db.isTransaction) db.exec("ROLLBACK");
@@ -384,10 +407,10 @@ function openReadOnlyStore(workspace) {
   return checkedStore(db, workspace, path);
 }
 function checkedStore(db, workspace, path) {
-  const row2 = db.prepare("SELECT value FROM meta WHERE key = 'schemaVersion'").get();
-  if (row2?.value !== schemaVersion) {
+  const row3 = db.prepare("SELECT value FROM meta WHERE key = 'schemaVersion'").get();
+  if (row3?.value !== schemaVersion) {
     db.close();
-    throw new Error(`Database ${path} has schema version ${row2?.value ?? "none"}. Expected ${schemaVersion}.`);
+    throw new Error(`Database ${path} has schema version ${row3?.value ?? "none"}. Expected ${schemaVersion}.`);
   }
   return { db, workspace, path };
 }
@@ -8805,8 +8828,8 @@ function authenticationFailed(call) {
 }
 var stderrLines = 10;
 var stderrLineLength = 300;
-function stderrTail(text) {
-  return text.split("\n").map((line) => line.trimEnd()).filter(Boolean).slice(-stderrLines).map((line) => line.slice(0, stderrLineLength));
+function stderrTail(text, count2 = stderrLines) {
+  return text.split("\n").map((line) => line.trimEnd()).filter(Boolean).slice(-count2).map((line) => line.slice(0, stderrLineLength));
 }
 function excerpt(text) {
   const line = typeof text === "string" ? text.trim().split("\n")[0].slice(0, 200) : "";
@@ -8934,6 +8957,80 @@ function launchClaude(claude, args, prompt, cwd, env, seconds, onStart) {
     });
   });
 }
+var requestHookName = "request";
+function requestSystemPrompt(checkmate) {
+  return [
+    "This request comes from the Checkmate web UI.",
+    "The reply shows in a narrow pane. Answer in plain sentences: first what you found or did, then what changed.",
+    "Put a question to the person in the reply.",
+    `To change a record, use the checkmate command line of this workspace: node ${checkmate} <command>.`
+  ].join(" ");
+}
+function requestArgs(session) {
+  return [
+    "-p",
+    "--output-format",
+    "stream-json",
+    "--verbose",
+    session.resume ? "--resume" : "--session-id",
+    session.sessionId,
+    "--plugin-dir",
+    pluginRoot,
+    "--settings",
+    JSON.stringify(hookSettings(session.hook)),
+    "--append-system-prompt",
+    requestSystemPrompt(session.checkmate),
+    ...session.model ? ["--model", session.model] : []
+  ];
+}
+function requestPrompt(text, screen) {
+  return screen ? `${text}
+
+On screen: ${screen}` : text;
+}
+var defaultStopDelays = { terminate: 5e3, kill: endGraceMilliseconds };
+function streamClaude(claude, args, prompt, cwd, env, onLine, delays = defaultStopDelays) {
+  const child = spawn(claude, args, { cwd, env, stdio: ["pipe", "pipe", "pipe"], detached: true });
+  liveChildren.add(child);
+  const timers = [];
+  let errors = "";
+  let pending = "";
+  let spawnError = null;
+  child.stdout.on("data", (bytes) => {
+    const lines2 = (pending + bytes.toString()).split("\n");
+    pending = lines2.pop() ?? "";
+    for (const line of lines2) if (line.trim()) onLine(line);
+  });
+  child.stderr.on("data", (bytes) => {
+    errors = (errors + bytes.toString()).slice(-16384);
+  });
+  child.stdin.on("error", () => {
+  });
+  child.stdin.end(prompt);
+  child.on("error", (error) => {
+    spawnError = `claude failed: ${"code" in error ? String(error.code) : "unknown"}.`;
+  });
+  const finished = new Promise((resolvePromise) => {
+    child.on("close", (status, signal) => {
+      liveChildren.delete(child);
+      for (const timer of timers) clearTimeout(timer);
+      if (pending.trim()) onLine(pending);
+      resolvePromise({ status, signal, stderr: errors, error: spawnError });
+    });
+  });
+  return {
+    pid: child.pid,
+    finished,
+    stop() {
+      if (timers.length) return;
+      killGroup(child, "SIGINT");
+      timers.push(
+        setTimeout(() => killGroup(child, "SIGTERM"), delays.terminate),
+        setTimeout(() => killGroup(child, "SIGKILL"), delays.terminate + delays.kill)
+      );
+    }
+  };
+}
 
 // plugin/src/targets.ts
 import { spawnSync as spawnSync2 } from "node:child_process";
@@ -9031,9 +9128,9 @@ function toolCheck(tool) {
   };
 }
 function targetRequest(store, targetId) {
-  const row2 = one(store, "SELECT body FROM target_requests WHERE target_id = ?", targetId);
-  requireCondition(row2, `Unknown target: ${targetId}. Run target open first.`);
-  return JSON.parse(row2.body);
+  const row3 = one(store, "SELECT body FROM target_requests WHERE target_id = ?", targetId);
+  requireCondition(row3, `Unknown target: ${targetId}. Run target open first.`);
+  return JSON.parse(row3.body);
 }
 function showTargetRequest(store, targetId) {
   return completed(targetId, { request: targetRequest(store, targetId) });
@@ -9121,14 +9218,14 @@ function save(store, actor, input) {
   });
 }
 function targetRevision(store, targetId, revision = null) {
-  const row2 = one(
+  const row3 = one(
     store,
     revision === null ? "SELECT revision, sha256, body FROM profiles WHERE target_id = ? ORDER BY revision DESC LIMIT 1" : "SELECT revision, sha256, body FROM profiles WHERE target_id = ? AND revision = ?",
     targetId,
     ...revision === null ? [] : [revision]
   );
-  requireCondition(row2, `Unknown target profile: ${targetId}${revision === null ? "" : `@${revision}`}`);
-  return { profile: JSON.parse(row2.body), revision: row2.revision, sha256: row2.sha256 };
+  requireCondition(row3, `Unknown target profile: ${targetId}${revision === null ? "" : `@${revision}`}`);
+  return { profile: JSON.parse(row3.body), revision: row3.revision, sha256: row3.sha256 };
 }
 function showTarget(store, reference, instanceId) {
   const { id: id2, revision } = revisionReference(reference, "target reference");
@@ -9151,14 +9248,14 @@ function targetList(store) {
 				(SELECT 1 FROM instance_retirements x WHERE x.target_id = i.target_id AND x.instance_id = i.instance_id))
 				AS instances
 		FROM target_requests r ORDER BY r.target_id`
-  ).map((row2) => {
-    const request = JSON.parse(row2.body);
+  ).map((row3) => {
+    const request = JSON.parse(row3.body);
     return {
-      targetId: row2.target_id,
-      revision: row2.revision,
+      targetId: row3.target_id,
+      revision: row3.revision,
       capabilities: request.capabilities,
       entryPoints: request.entryPoints.map((entry) => entry.name),
-      activeInstances: row2.instances
+      activeInstances: row3.instances
     };
   });
 }
@@ -9170,15 +9267,15 @@ function targetHistory(store, targetId) {
 		WHERE p.target_id = ? ORDER BY p.revision`,
     targetId
   );
-  return rows2.map((row2, i) => {
-    const profile = JSON.parse(row2.body);
+  return rows2.map((row3, i) => {
+    const profile = JSON.parse(row3.body);
     const before = i ? JSON.parse(rows2[i - 1].body) : null;
     const keys = [.../* @__PURE__ */ new Set([...Object.keys(profile), ...Object.keys(before ?? {})])].sort();
     return {
-      revision: row2.revision,
-      sha256: row2.sha256,
-      at: row2.at,
-      actor: row2.actor,
+      revision: row3.revision,
+      sha256: row3.sha256,
+      at: row3.at,
+      actor: row3.actor,
       changed: before ? keys.filter((key) => key !== "revision" && canonical(profile[key]) !== canonical(before[key])) : []
     };
   });
@@ -9287,7 +9384,7 @@ function retireInstance(store, actor, input) {
       "SELECT r.run_id FROM runs r LEFT JOIN results s ON s.run_id = r.run_id WHERE r.target_id = ? AND r.instance_id = ? AND s.run_id IS NULL ORDER BY r.rowid",
       input.targetId,
       input.instanceId
-    ).map((row2) => row2.run_id);
+    ).map((row3) => row3.run_id);
     return {
       reply: completed(subject, { instanceId: input.instanceId, recorded: true, startedRuns }),
       subjects: [`target:${input.targetId}`]
@@ -9303,18 +9400,18 @@ function retirement(store, targetId, instanceId) {
     instanceId
   );
 }
-function instanceRecord(store, targetId, row2) {
-  const body = JSON.parse(row2.body);
+function instanceRecord(store, targetId, row3) {
+  const body = JSON.parse(row3.body);
   const order = targetRequest(store, targetId).entryPoints.map((entry) => entry.name);
-  const retired = retirement(store, targetId, row2.instance_id);
+  const retired = retirement(store, targetId, row3.instance_id);
   return {
     targetId,
-    instanceId: row2.instance_id,
+    instanceId: row3.instance_id,
     entries: Object.fromEntries(order.map((name2) => [name2, body.entries[name2]])),
     environment: body.environment ?? null,
     references: body.references ?? [],
-    addedAt: row2.at,
-    addedBy: row2.actor,
+    addedAt: row3.at,
+    addedBy: row3.actor,
     retired: retired ? { at: retired.at, actor: retired.actor } : null
   };
 }
@@ -9325,19 +9422,19 @@ function instanceList(store, targetId) {
     `SELECT i.instance_id, i.body, o.at, o.actor FROM instances i JOIN operations o ON o.id = i.operation_id
 		WHERE i.target_id = ? ORDER BY i.rowid`,
     targetId
-  ).map((row2) => instanceRecord(store, targetId, row2));
+  ).map((row3) => instanceRecord(store, targetId, row3));
 }
 function findInstance(store, targetId, instanceId) {
   targetRequest(store, targetId);
-  const row2 = one(
+  const row3 = one(
     store,
     `SELECT i.instance_id, i.body, o.at, o.actor FROM instances i JOIN operations o ON o.id = i.operation_id
 		WHERE i.target_id = ? AND i.instance_id = ?`,
     targetId,
     instanceId
   );
-  requireCondition(row2, `Unknown instance: ${targetId}/${instanceId}. Run target instance list ${targetId}.`);
-  return instanceRecord(store, targetId, row2);
+  requireCondition(row3, `Unknown instance: ${targetId}/${instanceId}. Run target instance list ${targetId}.`);
+  return instanceRecord(store, targetId, row3);
 }
 function runInstance(store, targetId, instanceId) {
   if (instanceId !== void 0) {
@@ -9864,7 +9961,7 @@ function resultCoverage(plan, tests, newGaps) {
   });
   const executed = ["passed", "failed", "error", "inconclusive"];
   return {
-    status: requirements.every((row2) => row2.status === "tested") ? "complete" : tests.some((test) => executed.includes(test.outcome)) ? "partial" : "not_executed",
+    status: requirements.every((row3) => row3.status === "tested") ? "complete" : tests.some((test) => executed.includes(test.outcome)) ? "partial" : "not_executed",
     requirements
   };
 }
@@ -9879,12 +9976,12 @@ var maxAreas = 9;
 var maxSourceCharacters = 4e4;
 var ruleId = /^R[1-9][0-9]{0,3}$/;
 function storedRules(store, planId) {
-  const row2 = one(
+  const row3 = one(
     store,
     "SELECT origin, body FROM plan_rules WHERE plan_id = ? ORDER BY rowid DESC LIMIT 1",
     planId
   );
-  return row2 ? { rules: JSON.parse(row2.body), origin: row2.origin } : null;
+  return row3 ? { rules: JSON.parse(row3.body), origin: row3.origin } : null;
 }
 function planRules(store, planId) {
   const latest = one(store, "SELECT body FROM latest_plans WHERE plan_id = ?", planId);
@@ -9895,15 +9992,15 @@ function planRules(store, planId) {
   return storedRules(store, planId) ?? { rules: [], origin: null };
 }
 function explorationRules(store, explorationId) {
-  const row2 = one(
+  const row3 = one(
     store,
     "SELECT plan_id, charter FROM explorations WHERE exploration_id = ?",
     explorationId
   );
-  if (!row2) return [];
-  const given = JSON.parse(row2.charter).requirements;
+  if (!row3) return [];
+  const given = JSON.parse(row3.charter).requirements;
   if (given.length) return given;
-  return (storedRules(store, row2.plan_id)?.rules ?? []).map(({ id: id2, text }) => ({ id: id2, text }));
+  return (storedRules(store, row3.plan_id)?.rules ?? []).map(({ id: id2, text }) => ({ id: id2, text }));
 }
 function sourceText(store, name2) {
   try {
@@ -10056,8 +10153,8 @@ var isTester = (actor) => actor !== void 0 && actor.startsWith("qa:") && !nonTes
 var refOf = (actor, id2) => `${shortName(actor)}/${id2}`;
 var bareOf = (ref) => ref.slice(ref.lastIndexOf("/") + 1);
 function explorationRow(store, explorationId) {
-  const row2 = one(store, "SELECT * FROM explorations WHERE exploration_id = ?", explorationId);
-  if (!row2) {
+  const row3 = one(store, "SELECT * FROM explorations WHERE exploration_id = ?", explorationId);
+  if (!row3) {
     const ids2 = all(
       store,
       "SELECT exploration_id FROM explorations ORDER BY rowid"
@@ -10068,7 +10165,7 @@ function explorationRow(store, explorationId) {
       "Run checkmate explore list to read the explorations. Start one with checkmate explore <planId> --build <build>."
     );
   }
-  return row2;
+  return row3;
 }
 function withRefs(entry, name2) {
   return {
@@ -10101,7 +10198,7 @@ function buildOrder(store, planId) {
     store,
     "SELECT build, first_tested_at FROM plan_builds WHERE plan_id = ? ORDER BY first_tested_at, rowid",
     planId
-  ).map((row2) => ({ build: row2.build, firstTestedAt: row2.first_tested_at }));
+  ).map((row3) => ({ build: row3.build, firstTestedAt: row3.first_tested_at }));
 }
 function journal(store, planId, viewer2, keep = () => true) {
   const listed = all(
@@ -10111,26 +10208,26 @@ function journal(store, planId, viewer2, keep = () => true) {
 		LEFT JOIN operations o ON o.id = e.operation_id
 		WHERE x.plan_id = ? ORDER BY e.rowid`,
     planId
-  ).map((row2) => {
-    const body = JSON.parse(row2.body);
+  ).map((row3) => {
+    const body = JSON.parse(row3.body);
     return {
       ...body,
-      seq: row2.seq,
-      actor: row2.actor,
-      at: row2.at,
-      ref: refOf(row2.actor, body.id),
-      explorationId: row2.exploration_id
+      seq: row3.seq,
+      actor: row3.actor,
+      at: row3.at,
+      ref: refOf(row3.actor, body.id),
+      explorationId: row3.exploration_id
     };
   });
   const rows2 = listed.filter(keep);
   const latest = /* @__PURE__ */ new Map();
-  for (const row2 of rows2) latest.set(row2.ref, row2);
-  const seen = (row2) => !isTester(viewer2) || row2.actor === viewer2 || !isTester(row2.actor) || sharedKinds.includes(row2.kind);
+  for (const row3 of rows2) latest.set(row3.ref, row3);
+  const seen = (row3) => !isTester(viewer2) || row3.actor === viewer2 || !isTester(row3.actor) || sharedKinds.includes(row3.kind);
   const shown2 = [...latest.values()].filter(seen);
-  const full = (row2, word) => latest.has(word) ? word : latest.has(refOf(row2.actor, word)) ? refOf(row2.actor, word) : word;
-  const team = shown2.map((row2) => ({ ...withRefs(row2, (word) => full(row2, word)), id: row2.ref }));
+  const full = (row3, word) => latest.has(word) ? word : latest.has(refOf(row3.actor, word)) ? refOf(row3.actor, word) : word;
+  const team = shown2.map((row3) => ({ ...withRefs(row3, (word) => full(row3, word)), id: row3.ref }));
   const uses = /* @__PURE__ */ new Map();
-  for (const row2 of shown2) uses.set(row2.id, (uses.get(row2.id) ?? 0) + 1);
+  for (const row3 of shown2) uses.set(row3.id, (uses.get(row3.id) ?? 0) + 1);
   const idOf = (ref) => {
     const target = latest.get(ref);
     return target && seen(target) && uses.get(target.id) === 1 ? target.id : ref;
@@ -10141,7 +10238,7 @@ function journal(store, planId, viewer2, keep = () => true) {
   }));
   const order = buildOrder(store, planId).map((item) => item.build);
   const position = (build) => order.includes(build) ? order.indexOf(build) : order.length;
-  const builds = [...new Set(rows2.filter(seen).flatMap((row2) => row2.build ? [row2.build] : []))].sort(
+  const builds = [...new Set(rows2.filter(seen).flatMap((row3) => row3.build ? [row3.build] : []))].sort(
     (a, b) => position(a) - position(b)
   );
   return { planId, viewer: viewer2, rows: rows2.filter(seen), entries, team, builds };
@@ -10171,7 +10268,7 @@ function insideWorkspace(store, path) {
   return realpathSync3(path).startsWith(realpathSync3(store.workspace) + sep2);
 }
 var skippedFolders = ["node_modules", ".git", ".checkmate"];
-var isEvidenceText = (spec2) => /\s|:\/\//.test(spec2.trim()) || !/[/\\]|\.[A-Za-z][A-Za-z0-9]{0,4}$/.test(spec2);
+var isEvidenceText = (spec3) => /\s|:\/\//.test(spec3.trim()) || !/[/\\]|\.[A-Za-z][A-Za-z0-9]{0,4}$/.test(spec3);
 function folderItems(folder) {
   try {
     return readdirSync(folder, { withFileTypes: true });
@@ -10190,26 +10287,26 @@ function filesEndingWith(folder, segments, above = []) {
     return filesEndingWith(join3(folder, item.name), segments, [...above, item.name]);
   });
 }
-function onlyFileEndingWith(cwd, spec2) {
-  const segments = spec2.split(/[/\\]/).filter((name2) => name2 && name2 !== ".");
-  if (isAbsolute(spec2) || !segments.length || segments.includes("..")) return void 0;
+function onlyFileEndingWith(cwd, spec3) {
+  const segments = spec3.split(/[/\\]/).filter((name2) => name2 && name2 !== ".");
+  if (isAbsolute(spec3) || !segments.length || segments.includes("..")) return void 0;
   const matches = filesEndingWith(cwd, segments);
   return matches.length === 1 ? matches[0] : void 0;
 }
-function evidenceOf(store, spec2, cwd, missing) {
-  const found = [resolve2(cwd, spec2), resolve2(store.workspace, spec2)].find((path) => existsSync(path)) ?? (missing && !isEvidenceText(spec2) ? onlyFileEndingWith(cwd, spec2) : void 0);
+function evidenceOf(store, spec3, cwd, missing) {
+  const found = [resolve2(cwd, spec3), resolve2(store.workspace, spec3)].find((path) => existsSync(path)) ?? (missing && !isEvidenceText(spec3) ? onlyFileEndingWith(cwd, spec3) : void 0);
   if (found && (!missing || insideWorkspace(store, found))) {
     const name2 = relative(store.workspace, found);
     return { path: name2, ...saveBlob(store, evidenceFile(store, name2)) };
   }
-  if (!found && isEvidenceText(spec2)) return { text: spec2 };
+  if (!found && isEvidenceText(spec3)) return { text: spec3 };
   if (missing) {
-    missing.push(spec2);
-    return { text: spec2 };
+    missing.push(spec3);
+    return { text: spec3 };
   }
   throw new Refusal(
     "malformed",
-    `Evidence file not found: ${spec2}`,
+    `Evidence file not found: ${spec3}`,
     "Save the file in the workspace first. Or give the text of what you saw."
   );
 }
@@ -10368,18 +10465,18 @@ function checkedEntry(store, raw, path, build, state, actor, cwd, rules, missing
     }
   } else entry.id = unusedId(prefixes[entry.kind], used);
   const everyone = () => lookup(journal(store, state.planId), actor);
-  const refer = (id2, kinds2, field4, fix) => {
+  const refer = (id2, kinds3, field4, fix) => {
     const own = known.get(id2);
-    const target = own && kinds2.includes(own.kind) ? own : kinds2.includes("defect") ? everyone().get(id2) : own;
-    if (target && kinds2.includes(target.kind)) return storedRef(target, actor);
+    const target = own && kinds3.includes(own.kind) ? own : kinds3.includes("defect") ? everyone().get(id2) : own;
+    if (target && kinds3.includes(target.kind)) return storedRef(target, actor);
     throw new EntryRefusal(
       `${path}.${field4}`,
-      `${path}.${field4} names no ${kinds2.join(" or ")}: ${id2}.`,
-      `Use the ID of an earlier ${kinds2.join(" or ")}.`,
+      `${path}.${field4} names no ${kinds3.join(" or ")}: ${id2}.`,
+      `Use the ID of an earlier ${kinds3.join(" or ")}.`,
       { ...given, [field4]: fix }
     );
   };
-  const idsOf = (kinds2) => state.entries.filter((item) => kinds2.includes(item.kind)).map((item) => item.id).slice(-6).join("|") || `<${kinds2.join(" or ")} ID>`;
+  const idsOf = (kinds3) => state.entries.filter((item) => kinds3.includes(item.kind)).map((item) => item.id).slice(-6).join("|") || `<${kinds3.join(" or ")} ID>`;
   const defectOrIssue = ["defect", "issue"];
   if (recorded) {
     const unknown = (id2) => !known.has(id2) && !recorded.replyIds.has(id2);
@@ -10399,11 +10496,11 @@ function checkedEntry(store, raw, path, build, state, actor, cwd, rules, missing
     entry.refutes = refer(entry.refutes, defectOrIssue, "refutes", idsOf(defectOrIssue));
   if (entry.repeats !== void 0)
     entry.repeats = refer(entry.repeats, ["observation"], "repeats", idsOf(["observation"]));
-  const listed = (field4, kinds2) => {
+  const listed = (field4, kinds3) => {
     const ids2 = entry[field4];
     if (!ids2) return;
-    const fix = ids2.filter((item) => kinds2.includes(known.get(item)?.kind));
-    entry[field4] = ids2.map((item) => refer(item, kinds2, field4, field4 === "links" ? fix : idsOf(kinds2)));
+    const fix = ids2.filter((item) => kinds3.includes(known.get(item)?.kind));
+    entry[field4] = ids2.map((item) => refer(item, kinds3, field4, field4 === "links" ? fix : idsOf(kinds3)));
   };
   listed("links", ["observation", "criterion", "question"]);
   listed("reports", ["defect"]);
@@ -10416,7 +10513,7 @@ function checkedEntry(store, raw, path, build, state, actor, cwd, rules, missing
   const { evidence: evidence2, ...rest } = entry;
   if (evidence2 === void 0) return rest;
   try {
-    return { ...rest, evidence: [evidence2].flat().map((spec2) => evidenceOf(store, spec2, cwd, missing)) };
+    return { ...rest, evidence: [evidence2].flat().map((spec3) => evidenceOf(store, spec3, cwd, missing)) };
   } catch (error) {
     if (!(error instanceof Refusal)) throw error;
     throw new EntryRefusal(`${path}.evidence`, error.message, error.hint ?? "", {
@@ -10564,11 +10661,11 @@ function claimDecisions(store, planId) {
     `${planId}:%`
   );
   const decided = /* @__PURE__ */ new Map();
-  for (const row2 of rows2)
-    decided.set(row2.subject_id.slice(planId.length + 1), {
-      verdict: row2.verdict,
-      actor: row2.actor,
-      rationale: row2.rationale
+  for (const row3 of rows2)
+    decided.set(row3.subject_id.slice(planId.length + 1), {
+      verdict: row3.verdict,
+      actor: row3.actor,
+      rationale: row3.rationale
     });
   return decided;
 }
@@ -10579,9 +10676,9 @@ function claimHandoffs(store, planId) {
     planId
   );
   const handed = /* @__PURE__ */ new Map();
-  for (const row2 of rows2)
-    if (row2.target === null) handed.delete(row2.claim_id);
-    else handed.set(row2.claim_id, { to: row2.target, actor: row2.actor, at: row2.at });
+  for (const row3 of rows2)
+    if (row3.target === null) handed.delete(row3.claim_id);
+    else handed.set(row3.claim_id, { to: row3.target, actor: row3.actor, at: row3.at });
   return handed;
 }
 function claimGroups(state) {
@@ -10810,7 +10907,7 @@ function answerQuestion(store, actor, operationId, input) {
     `Unknown gap or question ${input.questionId} of plan ${input.planId}.`,
     "Run checkmate inbox to read the open gaps and questions with their IDs."
   );
-  const used = state.rows.filter((row2) => row2.actor === actor).map((row2) => row2.id);
+  const used = state.rows.filter((row3) => row3.actor === actor).map((row3) => row3.id);
   const entry = {
     kind: "answer",
     id: unusedId("A", used),
@@ -10947,10 +11044,10 @@ function openPlan(store, actor, input) {
   });
 }
 function planRequest(store, planId) {
-  const row2 = one(store, "SELECT * FROM plan_requests WHERE plan_id = ?", planId);
-  requireCondition(row2, `Unknown plan: ${planId}. Run plan open first.`);
-  const request = JSON.parse(row2.body);
-  return { request, target: targetRevision(store, row2.target_id, row2.target_revision) };
+  const row3 = one(store, "SELECT * FROM plan_requests WHERE plan_id = ?", planId);
+  requireCondition(row3, `Unknown plan: ${planId}. Run plan open first.`);
+  const request = JSON.parse(row3.body);
+  return { request, target: targetRevision(store, row3.target_id, row3.target_revision) };
 }
 function planTools(request, profile) {
   const named = (request.tools ?? []).filter((tool) => typeof tool === "string");
@@ -10973,26 +11070,26 @@ function showPlanRequest(store, planId) {
   });
 }
 function planRevision(store, planId, revision = null) {
-  const row2 = one(
+  const row3 = one(
     store,
     revision === null ? "SELECT body, sha256 FROM latest_plans WHERE plan_id = ?" : "SELECT body, sha256 FROM plan_revisions WHERE plan_id = ? AND revision = ?",
     planId,
     ...revision === null ? [] : [revision]
   );
-  if (!row2) {
+  if (!row3) {
     planRequest(store, planId);
     throw new Error(
       revision === null ? `Plan ${planId} has no revision. Run plan save first.` : `Plan ${planId} has no revision ${revision}`
     );
   }
-  return { plan: JSON.parse(row2.body), sha256: row2.sha256 };
+  return { plan: JSON.parse(row3.body), sha256: row3.sha256 };
 }
 function latestPlans(store) {
   const rows2 = all(
     store,
     "SELECT plan_id, body FROM latest_plans ORDER BY plan_id"
   );
-  return new Map(rows2.map((row2) => [row2.plan_id, JSON.parse(row2.body)]));
+  return new Map(rows2.map((row3) => [row3.plan_id, JSON.parse(row3.body)]));
 }
 function checkedRevision(store, draft) {
   const plan = planCheck(derivePlan(draft));
@@ -11184,7 +11281,7 @@ function planRunGaps(store, planId) {
 		FROM run_gaps g JOIN runs r ON r.run_id = g.run_id JOIN operations o ON o.id = g.operation_id
 		WHERE r.plan_id = ? ORDER BY g.rowid`,
     planId
-  ).map((row2) => ({ runId: row2.run_id, gap: JSON.parse(row2.body), adopted: row2.adopted === 1, at: row2.at }));
+  ).map((row3) => ({ runId: row3.run_id, gap: JSON.parse(row3.body), adopted: row3.adopted === 1, at: row3.at }));
 }
 function editableRevision(store, text, expectSha256) {
   const reference = revisionReference(requireText(text, "plan reference"), "plan reference");
@@ -11469,15 +11566,15 @@ function showPending(store, planId) {
     tests: affectedTests(latest.plan, gapIds)
   });
 }
-function decisionSnapshot(row2) {
+function decisionSnapshot(row3) {
   return {
-    id: row2.id,
-    gapId: row2.gap_id,
-    kind: row2.kind,
-    actor: row2.actor,
-    rationale: row2.rationale,
-    value: row2.value,
-    source: row2.source
+    id: row3.id,
+    gapId: row3.gap_id,
+    kind: row3.kind,
+    actor: row3.actor,
+    rationale: row3.rationale,
+    value: row3.value,
+    source: row3.source
   };
 }
 function revisePlan(store, actor, input) {
@@ -11535,7 +11632,7 @@ function usedAssertionIds(store, planId, testId) {
     "SELECT DISTINCT a.value ->> '$.id' AS id FROM plan_tests t, json_each(t.test, '$.assertions') a WHERE t.plan_id = ? AND t.test_id = ?",
     planId,
     testId
-  ).map((row2) => row2.id);
+  ).map((row3) => row3.id);
 }
 function applyTestChange(test, change, used) {
   if (change.action !== void 0) test.action = change.action;
@@ -11861,7 +11958,7 @@ function finalizedResults(store, planId) {
     store,
     "SELECT s.body FROM results s JOIN runs r ON r.run_id = s.run_id WHERE r.plan_id = ? ORDER BY r.rowid",
     planId
-  ).map((row2) => JSON.parse(row2.body));
+  ).map((row3) => JSON.parse(row3.body));
 }
 function rejectedRuns(store, planId) {
   const rows2 = all(
@@ -11870,14 +11967,14 @@ function rejectedRuns(store, planId) {
     planId
   );
   const policies = /* @__PURE__ */ new Map();
-  const policy = (row2) => {
-    const key = `${row2.target_id}@${row2.target_revision}`;
+  const policy = (row3) => {
+    const key = `${row3.target_id}@${row3.target_revision}`;
     if (!policies.has(key))
-      policies.set(key, approvalPolicy(targetRevision(store, row2.target_id, row2.target_revision).profile).result);
+      policies.set(key, approvalPolicy(targetRevision(store, row3.target_id, row3.target_revision).profile).result);
     return policies.get(key);
   };
-  const rejected = rows2.filter((row2) => approvalState(store, "result", row2.run_id, row2.sha256, policy(row2)).rejected);
-  return new Set(rejected.map((row2) => row2.run_id));
+  const rejected = rows2.filter((row3) => approvalState(store, "result", row3.run_id, row3.sha256, policy(row3)).rejected);
+  return new Set(rejected.map((row3) => row3.run_id));
 }
 function selectedOutcome(result, testId) {
   if (!result.selectedTestIds.includes(testId)) return null;
@@ -11995,10 +12092,10 @@ function planChanges(before, after) {
     (item) => !before.assumptions.some((old) => old.decisionId === item.decisionId)
   ))
     lines2.push(`assumption ${assumption.decisionId}: ${JSON.stringify(assumption.text)}`);
-  for (const row2 of after.coverage) {
-    const old = before.coverage.find((item) => item.requirementId === row2.requirementId);
-    if (old && old.status !== row2.status)
-      lines2.push(`${row2.requirementId} coverage: ${JSON.stringify(old.status)} \u2192 ${JSON.stringify(row2.status)}`);
+  for (const row3 of after.coverage) {
+    const old = before.coverage.find((item) => item.requirementId === row3.requirementId);
+    if (old && old.status !== row3.status)
+      lines2.push(`${row3.requirementId} coverage: ${JSON.stringify(old.status)} \u2192 ${JSON.stringify(row3.status)}`);
   }
   return lines2;
 }
@@ -12085,17 +12182,17 @@ function evidenceDirectory(runId) {
   return `.checkmate/tmp/${runId}/`;
 }
 function runState(store, runId) {
-  const row2 = one(store, "SELECT * FROM runs WHERE run_id = ?", runId);
-  requireCondition(row2, `Unknown run: ${runId}`);
+  const row3 = one(store, "SELECT * FROM runs WHERE run_id = ?", runId);
+  requireCondition(row3, `Unknown run: ${runId}`);
   const plan = one(
     store,
     "SELECT body FROM plan_revisions WHERE plan_id = ? AND revision = ?",
-    row2.plan_id,
-    row2.plan_revision
+    row3.plan_id,
+    row3.plan_revision
   );
   return {
-    row: row2,
-    request: JSON.parse(row2.request),
+    row: row3,
+    request: JSON.parse(row3.request),
     plan: JSON.parse(plan.body),
     finished: Boolean(one(store, "SELECT 1 FROM results WHERE run_id = ?", runId))
   };
@@ -12117,24 +12214,24 @@ function selectedTest(run2, testId) {
   );
   return run2.plan.tests.find((test) => test.id === testId);
 }
-function runClock(store, row2, at = (/* @__PURE__ */ new Date()).toISOString()) {
+function runClock(store, row3, at = (/* @__PURE__ */ new Date()).toISOString()) {
   const attempt = one(
     store,
     "SELECT started_at FROM run_attempts WHERE run_id = ? ORDER BY attempt DESC LIMIT 1",
-    row2.run_id
+    row3.run_id
   );
   const start = Date.parse(attempt.started_at);
   const elapsedSeconds = Math.max(0, Math.floor((Date.parse(at) - start) / 1e3));
   return {
     attemptStartedAt: attempt.started_at,
-    deadline: new Date(start + row2.deadline_seconds * 1e3).toISOString(),
-    deadlineSeconds: row2.deadline_seconds,
+    deadline: new Date(start + row3.deadline_seconds * 1e3).toISOString(),
+    deadlineSeconds: row3.deadline_seconds,
     elapsedSeconds,
-    remainingSeconds: Math.max(0, row2.deadline_seconds - elapsedSeconds)
+    remainingSeconds: Math.max(0, row3.deadline_seconds - elapsedSeconds)
   };
 }
-function refuseEarlyDeadline(store, row2, at) {
-  const clock2 = runClock(store, row2, at);
+function refuseEarlyDeadline(store, row3, at) {
+  const clock2 = runClock(store, row3, at);
   const used = clock2.elapsedSeconds / clock2.deadlineSeconds;
   requireCondition(
     used >= deadlineShare,
@@ -12151,11 +12248,11 @@ function runOutcomes(store, runId) {
 		FROM outcomes o LEFT JOIN operations p ON p.id = o.operation_id WHERE o.run_id = ? ORDER BY o.rowid`,
     runId
   );
-  return new Map(rows2.map((row2) => [row2.test_id, row2]));
+  return new Map(rows2.map((row3) => [row3.test_id, row3]));
 }
 function runAssertions(store, runId) {
   const rows2 = all(store, "SELECT * FROM assertion_results WHERE run_id = ? ORDER BY rowid", runId);
-  return new Map(rows2.map((row2) => [`${row2.test_id}.${row2.assertion_id}`, row2]));
+  return new Map(rows2.map((row3) => [`${row3.test_id}.${row3.assertion_id}`, row3]));
 }
 function runEvidence(store, runId) {
   return all(
@@ -12166,12 +12263,12 @@ function runEvidence(store, runId) {
 }
 function runFindings(store, runId) {
   return all(store, "SELECT body FROM findings WHERE run_id = ? ORDER BY rowid", runId).map(
-    (row2) => JSON.parse(row2.body)
+    (row3) => JSON.parse(row3.body)
   );
 }
 function runGaps(store, runId) {
   return all(store, "SELECT body FROM run_gaps WHERE run_id = ? ORDER BY rowid", runId).map(
-    (row2) => JSON.parse(row2.body)
+    (row3) => JSON.parse(row3.body)
   );
 }
 function beginRun(store, actor, input) {
@@ -12285,9 +12382,9 @@ function textEvidence(input, name2) {
     bytes
   };
 }
-function readEvidence(store, runId, spec2) {
-  const match = /^(.*):(observation|http_exchange|screenshot|trace)$/.exec(spec2);
-  const name2 = match ? match[1] : spec2;
+function readEvidence(store, runId, spec3) {
+  const match = /^(.*):(observation|http_exchange|screenshot|trace)$/.exec(spec3);
+  const name2 = match ? match[1] : spec3;
   requireWellFormed(name2 && !isAbsolute2(name2), `Evidence path must be relative to the workspace: ${name2}`);
   const directory2 = evidenceDirectory(runId);
   let root;
@@ -12345,7 +12442,7 @@ function storeEvidence(store, runId, testId, assertionId, files2, operationId) {
 }
 function evidenceFiles(store, runId, name2, specs = []) {
   const files2 = specs.map(
-    (spec2) => typeof spec2 === "string" ? readEvidence(store, runId, spec2) : textEvidence(spec2, name2)
+    (spec3) => typeof spec3 === "string" ? readEvidence(store, runId, spec3) : textEvidence(spec3, name2)
   );
   const paths = files2.flatMap((file) => file.path ?? []);
   requireWellFormed(new Set(paths).size === paths.length, "An evidence file is listed twice");
@@ -12452,9 +12549,9 @@ function closeTest(store, actor, input) {
         `Assertions without a result: ${missing.map((assertion) => `${test.id}.${assertion.id}`).join(", ")}`,
         `Record each one with checkmate run check ${input.runId} ${test.id} <assertionId> --result <passed|failed|inconclusive|not_checked>. Or close ${test.id} with --outcome error --reason "<why>".`
       );
-      outcome = testOutcome(recorded.map((row2) => row2.result));
-      const unchecked = recorded.filter((row2) => row2.result === "not_checked");
-      reason = outcome === "error" ? `Assertions not checked: ${unchecked.map((row2) => `${test.id}.${row2.assertion_id}`).join(", ")}` : null;
+      outcome = testOutcome(recorded.map((row3) => row3.result));
+      const unchecked = recorded.filter((row3) => row3.result === "not_checked");
+      reason = outcome === "error" ? `Assertions not checked: ${unchecked.map((row3) => `${test.id}.${row3.assertion_id}`).join(", ")}` : null;
     } else {
       outcome = requireChoice(input.outcome, closeOutcomes, "outcome (--outcome)");
       reason = requireText(input.reason, `reason (--reason) for outcome ${outcome}`);
@@ -12532,12 +12629,12 @@ function recordFinding(store, actor, input) {
           test.requirementIds.includes(requirementId),
           `Finding ${finding.id} names requirement ${requirementId}, which test ${test.id} does not cover`
         );
-    const evidence2 = new Map(runEvidence(store, input.runId).map((row2) => [row2.id, row2]));
+    const evidence2 = new Map(runEvidence(store, input.runId).map((row3) => [row3.id, row3]));
     for (const id2 of finding.evidenceIds) {
-      const row2 = evidence2.get(id2);
-      requireWellFormed(row2, `Unknown evidence in finding ${finding.id}: ${id2}`);
+      const row3 = evidence2.get(id2);
+      requireWellFormed(row3, `Unknown evidence in finding ${finding.id}: ${id2}`);
       requireWellFormed(
-        testIds.includes(row2.test_id) && (row2.assertion_id === null || finding.assertionIds.includes(`${row2.test_id}.${row2.assertion_id}`)),
+        testIds.includes(row3.test_id) && (row3.assertion_id === null || finding.assertionIds.includes(`${row3.test_id}.${row3.assertion_id}`)),
         `Evidence ${id2} does not belong to the assertions or tests of finding ${finding.id}`
       );
     }
@@ -12644,14 +12741,14 @@ function finish(store, actor, input) {
     const results = runAssertions(store, input.runId);
     const findings = runFindings(store, input.runId);
     const newGaps = runGaps(store, input.runId);
-    for (const row2 of results.values())
-      if (row2.result === "failed")
+    for (const row3 of results.values())
+      if (row3.result === "failed")
         requireCondition(
           findings.some(
-            (finding) => finding.type === "defect" && finding.assertionIds.includes(`${row2.test_id}.${row2.assertion_id}`)
+            (finding) => finding.type === "defect" && finding.assertionIds.includes(`${row3.test_id}.${row3.assertion_id}`)
           ),
-          `Failed assertion ${row2.test_id}.${row2.assertion_id} needs a defect finding. Record it with run finding.`,
-          defectHint(store, run2, row2, findings)
+          `Failed assertion ${row3.test_id}.${row3.assertion_id} needs a defect finding. Record it with run finding.`,
+          defectHint(store, run2, row3, findings)
         );
     if (completion === "completed") {
       const failures = selected.filter((id2) => outcomes.get(id2).outcome === "error");
@@ -12695,15 +12792,15 @@ function finish(store, actor, input) {
         reason: closed.reason,
         ...closed.cause ? { cause: closed.cause } : {},
         assertions: test.assertions.flatMap((assertion) => {
-          const row2 = results.get(`${test.id}.${assertion.id}`);
-          if (!row2) return [];
+          const row3 = results.get(`${test.id}.${assertion.id}`);
+          if (!row3) return [];
           return {
             assertionId: assertion.id,
             check: assertion.check,
             checkKind: assertion.checkKind,
-            result: row2.result,
-            observed: row2.observed,
-            reason: row2.reason,
+            result: row3.result,
+            observed: row3.observed,
+            reason: row3.reason,
             evidenceIds: evidence2.filter((item) => item.test_id === test.id && item.assertion_id === assertion.id).map((item) => item.id)
           };
         })
@@ -12728,15 +12825,15 @@ function finish(store, actor, input) {
       tests,
       findings,
       newGaps,
-      evidence: evidence2.map((row2) => ({
-        id: row2.id,
-        testId: row2.test_id,
-        assertionId: row2.assertion_id,
-        kind: row2.kind,
-        name: row2.name,
-        mediaType: row2.media_type,
-        sha256: row2.sha256,
-        size: row2.size
+      evidence: evidence2.map((row3) => ({
+        id: row3.id,
+        testId: row3.test_id,
+        assertionId: row3.assertion_id,
+        kind: row3.kind,
+        name: row3.name,
+        mediaType: row3.media_type,
+        sha256: row3.sha256,
+        size: row3.size
       })),
       cleanup: cleanup2,
       coverage: coverage2
@@ -12771,10 +12868,10 @@ function finish(store, actor, input) {
     };
   });
 }
-function defectHint(store, run2, row2, findings) {
-  const reference = `${row2.test_id}.${row2.assertion_id}`;
-  const test = run2.plan.tests.find((item) => item.id === row2.test_id);
-  const evidenceIds = runEvidence(store, run2.row.run_id).filter((item) => item.test_id === row2.test_id && item.assertion_id === row2.assertion_id).map((item) => item.id);
+function defectHint(store, run2, row3, findings) {
+  const reference = `${row3.test_id}.${row3.assertion_id}`;
+  const test = run2.plan.tests.find((item) => item.id === row3.test_id);
+  const evidenceIds = runEvidence(store, run2.row.run_id).filter((item) => item.test_id === row3.test_id && item.assertion_id === row3.assertion_id).map((item) => item.id);
   const finding = {
     id: unusedId(
       "F",
@@ -12786,7 +12883,7 @@ function defectHint(store, run2, row2, findings) {
     requirementIds: test.requirementIds,
     title: "<short title>",
     expected: "<expected result>",
-    observed: row2.observed ?? "<observed result>",
+    observed: row3.observed ?? "<observed result>",
     reproduction: ["<step>"],
     evidenceIds
   };
@@ -12884,8 +12981,8 @@ function decideResult(store, actor, input, verdict) {
   });
 }
 function runResult(store, runId) {
-  const row2 = one(store, "SELECT sha256, body FROM results WHERE run_id = ?", runId);
-  return row2 ? { sha256: row2.sha256, result: JSON.parse(row2.body) } : null;
+  const row3 = one(store, "SELECT sha256, body FROM results WHERE run_id = ?", runId);
+  return row3 ? { sha256: row3.sha256, result: JSON.parse(row3.body) } : null;
 }
 function resultAcceptance(store, run2, sha256) {
   const policy = approvalPolicy(targetRevision(store, run2.target_id, run2.target_revision).profile).result;
@@ -12897,12 +12994,12 @@ import { mkdirSync as mkdirSync4, writeFileSync as writeFileSync2 } from "node:f
 import { join as join5 } from "node:path";
 var explorationModes = ["exploratory", "regression"];
 function latestRevision(store, planId) {
-  const row2 = one(
+  const row3 = one(
     store,
     "SELECT revision, body FROM latest_plans WHERE plan_id = ?",
     planId
   );
-  return row2 ? { revision: row2.revision, plan: JSON.parse(row2.body) } : null;
+  return row3 ? { revision: row3.revision, plan: JSON.parse(row3.body) } : null;
 }
 function charterOf(store, planId, scope, change, knownState = null) {
   const { request, target } = planRequest(store, planId);
@@ -13014,7 +13111,7 @@ function writeKnownState(store, planId, explorationId, build) {
 }
 function nextExplorationId(store) {
   const ids2 = all(store, "SELECT exploration_id FROM explorations").map(
-    (row2) => row2.exploration_id
+    (row3) => row3.exploration_id
   );
   return unusedId("x-", ids2);
 }
@@ -13083,12 +13180,12 @@ function explorationEvents(store, explorationId) {
     store,
     "SELECT at, step, explorer, status, detail FROM exploration_events WHERE exploration_id = ? ORDER BY rowid",
     explorationId
-  ).map((row2) => ({ ...row2, detail: JSON.parse(row2.detail) }));
+  ).map((row3) => ({ ...row3, detail: JSON.parse(row3.detail) }));
 }
 function exploration(store, explorationId) {
-  const row2 = explorationRow(store, explorationId);
-  const charter = JSON.parse(row2.charter);
-  return { ...row2, charter: { ...charter, requirements: explorationRules(store, explorationId) } };
+  const row3 = explorationRow(store, explorationId);
+  const charter = JSON.parse(row3.charter);
+  return { ...row3, charter: { ...charter, requirements: explorationRules(store, explorationId) } };
 }
 
 // plugin/src/levels.ts
@@ -13702,14 +13799,14 @@ function fieldsOf(node, file, prefix) {
     const [items, itemsAt] = field4.items ? resolved(field4.items, at) : [void 0, at];
     const path = `${prefix}${name2}`;
     const type = field4.enum ? field4.enum.join("|") : items ? `${items.properties ? "object" : items.type ?? "entry"}[]` : field4.type ?? "value";
-    const row2 = {
+    const row3 = {
       path,
       type,
       required: Boolean(node.required?.includes(name2)),
       description: field4.description ?? ""
     };
     const nested = items?.properties ? fieldsOf(items, itemsAt, `${path}[].`) : field4.properties ? fieldsOf(field4, at, `${path}.`) : [];
-    return [row2, ...nested];
+    return [row3, ...nested];
   });
 }
 function fieldText(fields, described) {
@@ -13725,14 +13822,14 @@ function kindText(kind, keep, described) {
   const fields = fieldsOf(files[file], file, "").filter((field4) => !commonFields.includes(field4.path) && keep(field4));
   return `Kind ${kind}: ${files[file].description} ${fieldText(fields, described)}`;
 }
-function commonText(kinds2, described) {
+function commonText(kinds3, described) {
   const file = "journal-entry.schema.json";
-  const fields = fieldsOf(files[file], file, "").filter((field4) => field4.path !== "build").map((field4) => field4.path === "kind" ? { ...field4, type: kinds2.join("|") } : field4);
+  const fields = fieldsOf(files[file], file, "").filter((field4) => field4.path !== "build").map((field4) => field4.path === "kind" ? { ...field4, type: kinds3.join("|") } : field4);
   return `${files[file].description} Every entry has: ${fieldText(fields, described)}`;
 }
-function entryText(kinds2 = recordedKinds, keep = (field4) => !teamFields.includes(field4.path)) {
+function entryText(kinds3 = recordedKinds, keep = (field4) => !teamFields.includes(field4.path)) {
   const described = /* @__PURE__ */ new Set();
-  return [commonText(kinds2, described), ...kinds2.map((kind) => kindText(kind, keep, described))].join("\n");
+  return [commonText(kinds3, described), ...kinds3.map((kind) => kindText(kind, keep, described))].join("\n");
 }
 function withoutName(text) {
   return text.replace(/(^|\. )Checkmate\b/gm, "$1The record").replace(/\bCheckmate\b/g, "the record");
@@ -13970,7 +14067,7 @@ function addedEntries(store, explorationId, actor, after) {
     actor,
     after
   );
-  return Object.fromEntries(rows2.map((row2) => [row2.kind, row2.count]));
+  return Object.fromEntries(rows2.map((row3) => [row3.kind, row3.count]));
 }
 function launchContext(store, explorationId, explorer, session) {
   const launch = explorationEvents(store, explorationId).filter((event2) => event2.step === "launch" && event2.explorer === explorer && event2.detail.session === session).at(-1);
@@ -14370,9 +14467,9 @@ function launchPlan(profile, input, env) {
     levelNames,
     "test level (--level)"
   );
-  const row2 = testLevels[level];
-  const explorers = input.explorers ?? profile.explore?.explorers ?? row2.explorers;
-  const testSeconds = input.minutes ? input.minutes * 60 : row2.testSeconds;
+  const row3 = testLevels[level];
+  const explorers = input.explorers ?? profile.explore?.explorers ?? row3.explorers;
+  const testSeconds = input.minutes ? input.minutes * 60 : row3.testSeconds;
   if (input.session) {
     requireWellFormed(
       !input.claudeArgs.length && input.timeoutSeconds === void 0,
@@ -14383,10 +14480,10 @@ function launchPlan(profile, input, env) {
       explorers,
       model: null,
       modelFrom: "agent",
-      verifier: row2.verifier,
+      verifier: row3.verifier,
       context: { hiddenPlugin: null, claudeArgs: [] },
       allow: input.allow,
-      studySeconds: row2.studySeconds,
+      studySeconds: row3.studySeconds,
       testSeconds,
       timeoutSeconds: 0,
       pluginHidden: true,
@@ -14397,21 +14494,21 @@ function launchPlan(profile, input, env) {
   const host = hostModel(claudeArgs);
   const hiddenPlugin = installedPluginId(env);
   requireWellFormed(
-    input.allow.length || explorers === 0 && !row2.verifier,
+    input.allow.length || explorers === 0 && !row3.verifier,
     "Give the tool rules of the explorers and the verifier with --allow, for example --allow Read --allow Bash",
     "The host owns the permissions. An explorer cannot answer a permission prompt."
   );
   return {
     level,
     explorers,
-    model: host ?? row2.model,
+    model: host ?? row3.model,
     modelFrom: host ? "host" : "level",
-    verifier: row2.verifier,
-    context: { hiddenPlugin, claudeArgs: host ? claudeArgs : [...claudeArgs, "--model", row2.model] },
+    verifier: row3.verifier,
+    context: { hiddenPlugin, claudeArgs: host ? claudeArgs : [...claudeArgs, "--model", row3.model] },
     allow: input.allow,
-    studySeconds: row2.studySeconds,
+    studySeconds: row3.studySeconds,
     testSeconds,
-    timeoutSeconds: input.timeoutSeconds ?? Math.max(defaultExplorerTimeout, Math.max(row2.studySeconds, testSeconds) * 3),
+    timeoutSeconds: input.timeoutSeconds ?? Math.max(defaultExplorerTimeout, Math.max(row3.studySeconds, testSeconds) * 3),
     pluginHidden: hiddenPlugin !== null
   };
 }
@@ -14516,8 +14613,8 @@ function startExploration(store, actor, given, env) {
   const reply = write(store, { actor, command: "explore start", subject: input.planId, input }, (operationId, at) => {
     if (!input.session) requireClaude(env);
     const opened = input.explorationId ? finishable(store, input.explorationId) : insertExploration(store, input, operationId, at);
-    const row2 = explorationRow(store, opened.explorationId);
-    const launch = launchPlan(targetRevision(store, row2.target_id, row2.target_revision).profile, input, env);
+    const row3 = explorationRow(store, opened.explorationId);
+    const launch = launchPlan(targetRevision(store, row3.target_id, row3.target_revision).profile, input, env);
     addEvent(
       store,
       opened.explorationId,
@@ -14550,17 +14647,17 @@ function startExploration(store, actor, given, env) {
   return reply;
 }
 function finishable(store, explorationId) {
-  const row2 = explorationRow(store, explorationId);
+  const row3 = explorationRow(store, explorationId);
   requireCondition(
     !startOf(explorationEvents(store, explorationId)),
     `Exploration ${explorationId} has started already.`,
     `Run checkmate explore wait ${explorationId}.`
   );
-  return { explorationId, planId: row2.plan_id, build: row2.build, mode: row2.mode, instanceId: row2.instance_id };
+  return { explorationId, planId: row3.plan_id, build: row3.build, mode: row3.mode, instanceId: row3.instance_id };
 }
 function finishExploration(store, actor, input, env) {
-  const row2 = explorationRow(store, input.explorationId);
-  return startExploration(store, actor, { ...input, planId: row2.plan_id, build: row2.build, explorers: 0 }, env);
+  const row3 = explorationRow(store, input.explorationId);
+  return startExploration(store, actor, { ...input, planId: row3.plan_id, build: row3.build, explorers: 0 }, env);
 }
 function event(store, actor, explorationId, item) {
   write(store, { actor, command: `explore ${item.step}`, subject: explorationId, input: item }, (operationId, at) => {
@@ -14987,9 +15084,9 @@ function usedAnswers(events) {
   return used;
 }
 function unusedAnswers(store, explorationId) {
-  const row2 = explorationRow(store, explorationId);
+  const row3 = explorationRow(store, explorationId);
   const used = usedAnswers(explorationEvents(store, explorationId));
-  return planQuestions(store, row2.plan_id).filter(
+  return planQuestions(store, row3.plan_id).filter(
     (question) => question.explorationId === explorationId && question.answerId && !used.has(question.answerId)
   );
 }
@@ -15003,7 +15100,7 @@ function startFollow(store, actor, input, env) {
   const id2 = input.explorationId;
   let session = false;
   const reply = write(store, { actor, command: "explore follow", subject: id2, input }, (operationId, at) => {
-    const row2 = explorationRow(store, id2);
+    const row3 = explorationRow(store, id2);
     const events = explorationEvents(store, id2);
     session = startOf(events)?.path === "session";
     if (!session) requireClaude(env);
@@ -15011,13 +15108,13 @@ function startFollow(store, actor, input, env) {
     requireCondition(
       followable(events),
       `Exploration ${id2} is ${state}. A follow-up needs a completed exploration.`,
-      ["failed", "stopped", "interrupted", "open"].includes(state) ? `Start a new test: checkmate test ${row2.plan_id} --allow Read --allow Bash` : `Run checkmate explore wait ${id2}. Then run the follow-up again.`
+      ["failed", "stopped", "interrupted", "open"].includes(state) ? `Start a new test: checkmate test ${row3.plan_id} --allow Read --allow Bash` : `Run checkmate explore wait ${id2}. Then run the follow-up again.`
     );
     const answered = unusedAnswers(store, id2);
     requireCondition(
       answered.length,
       `Exploration ${id2} has no answer that a follow-up has not used.`,
-      `Answer a question of the exploration first: checkmate gap answer ${row2.plan_id} <questionId> --kind <kind> --value "<answer>" --source "<source>" --rationale "<why>". Run checkmate explore show ${id2} to read its questions.`
+      `Answer a question of the exploration first: checkmate gap answer ${row3.plan_id} <questionId> --kind <kind> --value "<answer>" --source "<source>" --rationale "<why>". Run checkmate explore show ${id2} to read its questions.`
     );
     const stored = startOf(events);
     const claudeArgs = checkClaudeArgs(input.claudeArgs);
@@ -15042,13 +15139,13 @@ function startFollow(store, actor, input, env) {
     return {
       reply: completed(id2, {
         explorationId: id2,
-        planId: row2.plan_id,
-        build: row2.build,
+        planId: row3.plan_id,
+        build: row3.build,
         answers: plan.answers.length,
         followSeconds: plan.seconds,
         next: [`checkmate explore ${session ? "next" : "wait"} ${id2}`]
       }),
-      subjects: [`exploration:${id2}`, `plan:${row2.plan_id}`]
+      subjects: [`exploration:${id2}`, `plan:${row3.plan_id}`]
     };
   });
   if (!session) startSupervisor(store, reply.subject, actor, env, ["--follow"]);
@@ -15202,7 +15299,7 @@ function recordStop(store, actor, input) {
   const reason = input.reason?.trim() ?? "";
   const explorer = input.explorer;
   return write(store, { actor, command: "explore stop", subject: id2, input }, (operationId, at, who) => {
-    const row2 = explorationRow(store, id2);
+    const row3 = explorationRow(store, id2);
     const events = explorationEvents(store, id2);
     const state = explorationState(events);
     requireCondition(
@@ -15243,13 +15340,13 @@ function recordStop(store, actor, input) {
     return {
       reply: completed(id2, {
         explorationId: id2,
-        planId: row2.plan_id,
+        planId: row3.plan_id,
         explorer: explorer ?? null,
         was: state,
         reason,
         actor: who
       }),
-      subjects: [`exploration:${id2}`, `plan:${row2.plan_id}`]
+      subjects: [`exploration:${id2}`, `plan:${row3.plan_id}`]
     };
   });
 }
@@ -15311,7 +15408,7 @@ function stopExploration(store, actor, input) {
   const reply = recordStop(store, actor, input);
   const left = endStopped(store, id2, explorer);
   const kept = explorer === void 0 && existsSync3(join7(store.workspace, workFolder(id2))) ? workFolder(id2) : null;
-  const row2 = explorationRow(store, id2);
+  const row3 = explorationRow(store, id2);
   return {
     ...reply,
     status: left.length ? "operational_error" : "completed",
@@ -15321,7 +15418,7 @@ function stopExploration(store, actor, input) {
       left,
       workFolder: kept,
       ...kept ? { note: "Reports that were not recorded stay in the work folder." } : {},
-      next: [`checkmate test ${row2.plan_id} --build ${row2.build}`]
+      next: [`checkmate test ${row3.plan_id} --build ${row3.build}`]
     }
   };
 }
@@ -15366,10 +15463,10 @@ function stopReason(events) {
   return `Stopped by ${stop.detail.actor}${reason ? `: ${reason}` : "."}`;
 }
 function explorationStatus(store, explorationId) {
-  const row2 = explorationRow(store, explorationId);
+  const row3 = explorationRow(store, explorationId);
   const events = explorationEvents(store, explorationId);
   const launch = startOf(events);
-  const charter = JSON.parse(row2.charter);
+  const charter = JSON.parse(row3.charter);
   const state = explorationState(events);
   const names = [...new Set(events.flatMap((item) => item.explorer ? [item.explorer] : []))];
   const explorers = names.map((explorer) => {
@@ -15398,11 +15495,11 @@ function explorationStatus(store, explorationId) {
   const followed = events.filter((item) => item.step === "followed").at(-1);
   const follow = followState(events);
   return {
-    explorationId: row2.exploration_id,
-    planId: row2.plan_id,
-    build: row2.build,
-    mode: row2.mode,
-    instanceId: row2.instance_id,
+    explorationId: row3.exploration_id,
+    planId: row3.plan_id,
+    build: row3.build,
+    mode: row3.mode,
+    instanceId: row3.instance_id,
     state,
     path: launch ? launch.path ?? "process" : null,
     paused: ["completed", "failed"].includes(state) ? null : pauseOf(events),
@@ -15421,7 +15518,7 @@ function explorationStatus(store, explorationId) {
     explorers,
     phases: events.filter((item) => ["merge", "verify", "follow", "followed"].includes(item.step)).map((item) => ({ step: item.step, status: item.status, detail: item.detail })),
     doneHint: done?.detail.hint ?? null,
-    workFolder: (["failed", "stopped", "interrupted"].includes(state) || ["failed", "stopped", "interrupted"].includes(follow ?? "")) && existsSync3(join7(store.workspace, workFolder(row2.exploration_id))) ? workFolder(row2.exploration_id) : null,
+    workFolder: (["failed", "stopped", "interrupted"].includes(state) || ["failed", "stopped", "interrupted"].includes(follow ?? "")) && existsSync3(join7(store.workspace, workFolder(row3.exploration_id))) ? workFolder(row3.exploration_id) : null,
     reason: done?.detail.reason ?? (state === "stopped" ? stopReason(events) : state === "interrupted" ? "The supervisor stopped before the end." : null)
   };
 }
@@ -15473,6 +15570,270 @@ function explorationReport(store, explorationId) {
   };
 }
 
+// plugin/src/requests.ts
+import { randomUUID as randomUUID4 } from "node:crypto";
+var maxRequestText = 4e3;
+var requestAuthor = "checkmate";
+var endStates = ["answered", "failed", "stopped", "interrupted"];
+var unreadStates = ["answered", "failed"];
+function screenText(context) {
+  const parts = [
+    ...context.planId ? [`plan ${context.planId}`] : [],
+    ...context.record ? [`${context.record.kind} ${context.record.id}`] : []
+  ];
+  return parts.length ? `${parts.join(", ")}.` : null;
+}
+function requestActor(person, requestId) {
+  return `${person} via request ${requestId}`;
+}
+function isRequestId(store, id2) {
+  return one(store, "SELECT 1 FROM requests WHERE request_id = ?", id2) !== void 0;
+}
+function currentConversation(store) {
+  const row3 = one(
+    store,
+    "SELECT value FROM workspace_settings WHERE name = 'conversation' ORDER BY rowid DESC LIMIT 1"
+  );
+  return row3 ? JSON.parse(row3.value) : null;
+}
+function insertConversation(store, operationId, at) {
+  const conversation = { sessionId: randomUUID4(), startedAt: at };
+  execute(
+    store,
+    "INSERT INTO workspace_settings (name, value, operation_id) VALUES ('conversation', ?, ?)",
+    canonical(conversation),
+    operationId
+  );
+  return conversation;
+}
+function startConversation(store, actor) {
+  return write(store, { actor, command: "request conversation", subject: "conversation", input: null }, (id2, at) => ({
+    reply: completed("conversation", { ...insertConversation(store, id2, at) }),
+    subjects: ["requests", "settings"]
+  }));
+}
+function conversationSize(store, sessionId) {
+  return one(store, "SELECT count(*) AS count FROM requests WHERE conversation = ?", sessionId).count;
+}
+function conversationStarted(store, sessionId) {
+  return one(
+    store,
+    `SELECT 1 FROM request_events e JOIN requests r ON r.request_id = e.request_id
+			WHERE r.conversation = ? AND e.step = 'session'`,
+    sessionId
+  ) !== void 0;
+}
+function addRequestEvent(store, requestId, event2, operationId, at) {
+  execute(
+    store,
+    "INSERT INTO request_events (request_id, at, step, status, detail, operation_id) VALUES (?, ?, ?, ?, ?, ?)",
+    requestId,
+    at,
+    event2.step,
+    event2.status,
+    canonical(event2.detail),
+    operationId
+  );
+}
+function askRequest(store, actor, input) {
+  const text = requireText(input.text, "request text");
+  requireWellFormed(
+    text.length <= maxRequestText,
+    `The request has more than ${maxRequestText} characters.`,
+    "Make the text shorter."
+  );
+  return write(store, { actor, command: "request ask", subject: "requests", input }, (operationId, at, who) => {
+    const requestId = unusedId(
+      "R",
+      all(store, "SELECT request_id FROM requests").map((row3) => row3.request_id)
+    );
+    const conversation = currentConversation(store) ?? insertConversation(store, operationId, at);
+    execute(
+      store,
+      "INSERT INTO requests (request_id, text, context, asker, conversation, asked_at, operation_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      requestId,
+      text,
+      canonical(input.context),
+      who,
+      conversation.sessionId,
+      at,
+      operationId
+    );
+    addRequestEvent(store, requestId, { step: "state", status: "waiting", detail: {} }, operationId, at);
+    return {
+      reply: completed(requestId, { requestId }),
+      subjects: [`request:${requestId}`, "requests"]
+    };
+  }).data.requestId;
+}
+function recordRequestEvent(store, requestId, event2, options3) {
+  return write(
+    store,
+    {
+      actor: options3.actor ?? requestAuthor,
+      command: `request ${event2.step}`,
+      subject: requestId,
+      input: { status: event2.status }
+    },
+    (operationId, at) => {
+      addRequestEvent(store, requestId, event2, operationId, at);
+      return { reply: completed(requestId), subjects: options3.subjects };
+    }
+  );
+}
+function setRequestState(store, requestId, state, detail = {}) {
+  recordRequestEvent(
+    store,
+    requestId,
+    { step: "state", status: state, detail },
+    { subjects: [`request:${requestId}`, "requests"] }
+  );
+}
+function addRequestActivity(store, requestId, line) {
+  recordRequestEvent(
+    store,
+    requestId,
+    { step: "activity", status: "started", detail: { line } },
+    { subjects: [`request:${requestId}`] }
+  );
+}
+function markRequestRead(store, actor, requestId) {
+  return write(store, { actor, command: "request read", subject: requestId, input: null }, (operationId, at) => {
+    addRequestEvent(store, requestId, { step: "read", status: "read", detail: {} }, operationId, at);
+    return { reply: completed(requestId), subjects: [`request:${requestId}`, "requests"] };
+  });
+}
+function requestStopped(store, requestId) {
+  return one(store, "SELECT 1 FROM request_events WHERE request_id = ? AND step = 'stop'", requestId) !== void 0;
+}
+function stopRequestRecord(store, actor, requestId, reason) {
+  return write(store, { actor, command: "request stop", subject: requestId, input: null }, (operationId, at, who) => {
+    addRequestEvent(
+      store,
+      requestId,
+      { step: "stop", status: "stopped", detail: { by: who, ...reason ? { reason } : {} } },
+      operationId,
+      at
+    );
+    return { reply: completed(requestId), subjects: [`request:${requestId}`, "requests", "permissions"] };
+  });
+}
+function recordOf(ask, events) {
+  const states = events.filter((event2) => event2.step === "state");
+  const last = states.at(-1);
+  const session = events.findLast((event2) => event2.step === "session");
+  const finished = endStates.includes(last.status) ? last : null;
+  const detail = finished ? JSON.parse(finished.detail) : {};
+  const listOf2 = (value2) => Array.isArray(value2) ? value2 : [];
+  return {
+    id: ask.request_id,
+    text: ask.text,
+    context: JSON.parse(ask.context),
+    asker: ask.asker,
+    conversation: ask.conversation,
+    askedAt: ask.asked_at,
+    state: last.status,
+    sessionId: session ? JSON.parse(session.detail).sessionId : null,
+    activity: events.filter((event2) => event2.step === "activity").map((event2) => ({ at: event2.at, line: JSON.parse(event2.detail).line })),
+    reply: typeof detail.reply === "string" ? detail.reply : null,
+    costUsd: typeof detail.costUsd === "number" ? detail.costUsd : null,
+    startedAt: states.find((event2) => event2.status === "running")?.at ?? null,
+    endedAt: finished?.at ?? null,
+    reason: typeof detail.reason === "string" ? detail.reason : null,
+    hint: typeof detail.hint === "string" ? detail.hint : null,
+    denials: listOf2(detail.denials),
+    changes: listOf2(detail.changes),
+    read: events.some((event2) => event2.step === "read")
+  };
+}
+function eventsByRequest(store, where, ...parameters) {
+  const found = /* @__PURE__ */ new Map();
+  for (const row3 of all(
+    store,
+    `SELECT request_id, at, step, status, detail FROM request_events WHERE step IN ('state', 'session', 'activity', 'read') ${where} ORDER BY rowid`,
+    ...parameters
+  )) {
+    const list2 = found.get(row3.request_id) ?? [];
+    list2.push(row3);
+    found.set(row3.request_id, list2);
+  }
+  return found;
+}
+function requestOf(store, requestId) {
+  const ask = one(store, "SELECT * FROM requests WHERE request_id = ?", requestId);
+  return ask ? recordOf(ask, eventsByRequest(store, "AND request_id = ?", requestId).get(requestId) ?? []) : null;
+}
+function allRequests(store) {
+  const events = eventsByRequest(store, "");
+  return all(store, "SELECT * FROM requests ORDER BY rowid").map(
+    (ask) => recordOf(ask, events.get(ask.request_id) ?? [])
+  );
+}
+function isUnread(request) {
+  return unreadStates.includes(request.state) && !request.read;
+}
+function isEnded(request) {
+  return endStates.includes(request.state);
+}
+function requestStatus(store) {
+  const requests = allRequests(store);
+  const unread = requests.filter(isUnread);
+  return {
+    running: requests.find((request) => request.state === "running")?.id ?? null,
+    waiting: requests.filter((request) => request.state === "waiting").length,
+    unread: unread.length,
+    firstUnread: unread.at(-1)?.id ?? null
+  };
+}
+function listedRequests(store) {
+  const requests = allRequests(store).reverse();
+  return [...requests.filter(isUnread), ...requests.filter((request) => !isUnread(request))];
+}
+var recordPaths = {
+  plan: "/plans/",
+  run: "/runs/",
+  exploration: "/explorations/",
+  target: "/settings/targets/"
+};
+function describeChange(command, subject, input) {
+  const named = (ids2) => Array.isArray(ids2) ? ids2.map((id2) => `${subject}/${String(id2)}`).join(", ") : subject;
+  if (command === "claim handoff") return `${input.undo ? "took back" : "handed over"} ${named(input.claimIds)}`;
+  if (command === "gap answer") return `answered ${subject}/${String(input.gapId)}`;
+  if (command === "claim accept") return `accepted ${subject}/${String(input.claimId)}`;
+  if (command === "claim reject") return `rejected ${subject}/${String(input.claimId)}`;
+  if (command === "plan edit") return `edited plan ${subject}`;
+  if (command === "plan save") return `saved plan ${subject}`;
+  if (command === "plan revise") return `revised plan ${subject}`;
+  if (command === "plan open") return `opened plan ${subject}`;
+  if (command === "setting set") return `changed the setting ${subject}`;
+  return `${command} ${subject}`;
+}
+function changesOf(store, actor) {
+  return all(
+    store,
+    `SELECT at, command, arguments, subjects, json_extract(response, '$.subject') AS subject
+		FROM operations WHERE actor = ? AND status = 'completed' ORDER BY rowid`,
+    actor
+  ).map((row3) => {
+    const record = JSON.parse(row3.subjects).map((subject2) => /^(plan|run|exploration|target):(.+)$/.exec(subject2)).find((found) => found);
+    const subject = record ? record[2] : row3.subject;
+    return {
+      text: describeChange(row3.command, subject, JSON.parse(row3.arguments)),
+      command: row3.command,
+      subject,
+      at: row3.at,
+      href: record ? `${recordPaths[record[1]]}${subject}` : null
+    };
+  });
+}
+function staleRequests(store) {
+  for (const request of allRequests(store))
+    if (request.state === "running" || request.state === "waiting")
+      setRequestState(store, request.id, "interrupted", {
+        reason: request.state === "running" ? "The UI stopped before the request ended." : "The UI stopped before the request started."
+      });
+}
+
 // plugin/src/permissions.ts
 var permissionDecisions = ["allow", "allow-kind", "allow-tool", "always", "deny", "stop"];
 var closedText = {
@@ -15484,14 +15845,25 @@ var closedText = {
 var maxText = 2e3;
 var requestStep = "permission";
 var decisionStep = "permission-decision";
-function rows(store, where, ...parameters) {
-  return all(
+function rows(store, planId, askerId) {
+  const wanted = `e.step IN ('${requestStep}', '${decisionStep}')`;
+  const exploration2 = all(
     store,
-    `SELECT e.exploration_id, x.plan_id, e.rowid, e.at, e.step, e.explorer, e.status, e.detail
+    `SELECT e.exploration_id AS asker_id, 0 AS from_request, x.plan_id, e.at, e.step, e.explorer, e.status, e.detail
 		FROM exploration_events e JOIN explorations x ON x.exploration_id = e.exploration_id
-		WHERE e.step IN ('${requestStep}', '${decisionStep}') ${where} ORDER BY e.rowid`,
-    ...parameters
+		WHERE ${wanted} AND (?1 IS NULL OR x.plan_id = ?1) AND (?2 IS NULL OR e.exploration_id = ?2) ORDER BY e.rowid`,
+    planId ?? null,
+    askerId ?? null
   );
+  const request = all(
+    store,
+    `SELECT e.request_id AS asker_id, 1 AS from_request, json_extract(r.context, '$.planId') AS plan_id, e.at, e.step, NULL AS explorer, e.status, e.detail
+		FROM request_events e JOIN requests r ON r.request_id = e.request_id
+		WHERE ${wanted} AND (?1 IS NULL OR json_extract(r.context, '$.planId') = ?1) AND (?2 IS NULL OR e.request_id = ?2) ORDER BY e.rowid`,
+    planId ?? null,
+    askerId ?? null
+  );
+  return [...exploration2, ...request];
 }
 function ruleText(rule) {
   return rule.ruleContent ? `${rule.toolName}(${rule.ruleContent})` : rule.toolName;
@@ -15523,12 +15895,12 @@ function shortened(value2) {
     return Object.fromEntries(Object.entries(value2).map(([key, item]) => [key, shortened(item)]));
   return value2;
 }
-function decisionOf(row2) {
-  const detail = JSON.parse(row2.detail);
+function decisionOf(row3) {
+  const detail = JSON.parse(row3.detail);
   return {
-    kind: row2.status,
+    kind: row3.status,
     by: detail.by ?? "",
-    at: row2.at,
+    at: row3.at,
     text: detail.text ?? "",
     reason: detail.reason ?? null,
     rule: detail.rule ?? null,
@@ -15538,109 +15910,133 @@ function decisionOf(row2) {
 }
 function permissionsOf(list2) {
   const found = /* @__PURE__ */ new Map();
-  for (const row2 of list2) {
-    const detail = JSON.parse(row2.detail);
-    const key = `${row2.exploration_id}/${detail.id}`;
-    if (row2.step === requestStep) {
+  for (const row3 of list2) {
+    const detail = JSON.parse(row3.detail);
+    const key = `${row3.asker_id}/${detail.id}`;
+    if (row3.step === requestStep) {
       const suggestions = detail.suggestions;
       found.set(key, {
-        explorationId: row2.exploration_id,
-        planId: row2.plan_id,
+        askerId: row3.asker_id,
+        fromRequest: row3.from_request === 1,
+        planId: row3.plan_id,
         id: detail.id,
         who: detail.who,
-        tester: row2.explorer,
+        tester: row3.explorer,
         tool: detail.tool,
         input: detail.input,
         suggestions,
         cwd: detail.cwd ?? null,
-        at: row2.at,
+        at: row3.at,
         rule: kindRule(suggestions),
         decision: null
       });
     } else {
       const request = found.get(key);
-      if (request && !request.decision) request.decision = decisionOf(row2);
+      if (request && !request.decision) request.decision = decisionOf(row3);
     }
   }
   return [...found.values()];
 }
-function explorationPermissions(store, explorationId) {
-  return permissionsOf(rows(store, "AND e.exploration_id = ?", explorationId));
+function explorationPermissions(store, askerId) {
+  return permissionsOf(rows(store, void 0, askerId));
 }
 function openPermissions(store, planId) {
-  const list2 = planId === void 0 ? rows(store, "") : rows(store, "AND x.plan_id = ?", planId);
-  return permissionsOf(list2).filter((item) => !item.decision);
+  return permissionsOf(rows(store, planId, void 0)).filter((item) => !item.decision);
 }
-function permissionRules(store, explorationId) {
-  return explorationPermissions(store, explorationId).flatMap(
+function conversationOf(store, askerId) {
+  return one(store, "SELECT conversation FROM requests WHERE request_id = ?", askerId)?.conversation;
+}
+function ruleScope(store, askerId) {
+  const conversation = conversationOf(store, askerId);
+  if (!conversation) return explorationPermissions(store, askerId);
+  return all(
+    store,
+    "SELECT request_id FROM requests WHERE conversation = ?",
+    conversation
+  ).flatMap((row3) => explorationPermissions(store, row3.request_id));
+}
+function permissionRules(store, askerId) {
+  return ruleScope(store, askerId).flatMap(
     (item) => (item.decision?.kind === "allow-kind" || item.decision?.kind === "allow-tool") && item.decision.rule ? [
       {
         rule: item.decision.rule,
         kind: item.decision.kind,
         setBy: item.decision.by,
         at: item.decision.at,
-        requestId: item.id
+        requestId: item.fromRequest ? `${item.askerId}/${item.id}` : item.id
       }
     ] : []
   );
 }
-function permissionOf(store, explorationId, requestId) {
-  return explorationPermissions(store, explorationId).find((item) => item.id === requestId);
+function permissionOf(store, askerId, requestId) {
+  return explorationPermissions(store, askerId).find((item) => item.id === requestId);
 }
-function findPermission(store, explorationId, requestId) {
-  const found = permissionOf(store, explorationId, requestId);
+function findPermission(store, askerId, requestId) {
+  const found = permissionOf(store, askerId, requestId);
   requireCondition(
     found,
-    `Exploration ${explorationId} has no permission request ${requestId}.`,
-    `Run checkmate explore show ${explorationId}.`
+    `Exploration ${askerId} has no permission request ${requestId}.`,
+    `Run checkmate explore show ${askerId}.`
   );
   return found;
 }
-function nextRequestId(store, explorationId) {
+function nextRequestId(store, askerId) {
+  const table = isRequestId(store, askerId) ? "request_events" : "exploration_events";
+  const column = table === "request_events" ? "request_id" : "exploration_id";
   const count2 = one(
     store,
-    `SELECT count(*) AS count FROM exploration_events WHERE exploration_id = ? AND step = '${requestStep}'`,
-    explorationId
+    `SELECT count(*) AS count FROM ${table} WHERE ${column} = ? AND step = '${requestStep}'`,
+    askerId
   ).count;
   return `P${count2 + 1}`;
 }
+function addAskerEvent(store, request, event2, operationId, at) {
+  if (request.fromRequest) addRequestEvent(store, request.askerId, event2, operationId, at);
+  else addEvent(store, request.askerId, { ...event2, explorer: request.tester }, operationId, at);
+}
+function subjectsOf(request) {
+  return [
+    request.fromRequest ? `request:${request.askerId}` : `exploration:${request.askerId}`,
+    ...request.planId ? [`plan:${request.planId}`] : [],
+    "permissions"
+  ];
+}
 function addDecision(store, request, kind, detail, operationId, at) {
-  addEvent(
+  addAskerEvent(
     store,
-    request.explorationId,
-    {
-      step: decisionStep,
-      explorer: request.tester,
-      status: kind,
-      detail: { id: request.id, who: request.who, ...detail }
-    },
+    request,
+    { step: decisionStep, status: kind, detail: { id: request.id, who: request.who, ...detail } },
     operationId,
     at
   );
 }
-function ruleInForce(store, explorationId, tool, suggestions) {
+function ruleInForce(store, askerId, tool, suggestions) {
   const wanted = kindRule(suggestions);
-  return permissionRules(store, explorationId).find(
+  return permissionRules(store, askerId).find(
     (item) => item.kind === "allow-tool" ? item.rule === tool : item.rule === wanted
   );
 }
 function requestPermission(store, input) {
-  const tester = one(
+  const fromRequest = isRequestId(store, input.askerId);
+  const tester = fromRequest || one(
     store,
     "SELECT 1 FROM exploration_events WHERE exploration_id = ? AND step = 'launch' AND explorer = ?",
-    input.explorationId,
+    input.askerId,
     input.who
   ) === void 0 ? null : input.who;
-  const operation = { actor: explorerActor(input.who), command: "explore permission", subject: input.explorationId };
+  const operation = {
+    actor: fromRequest ? `request:${input.askerId}` : explorerActor(input.who),
+    command: fromRequest ? "request permission" : "explore permission",
+    subject: input.askerId
+  };
   return write(store, { ...operation, input: { who: input.who, tool: input.tool } }, (operationId, at) => {
-    const id2 = nextRequestId(store, input.explorationId);
-    const request = { explorationId: input.explorationId, id: id2, who: input.who, tester };
-    addEvent(
+    const id2 = nextRequestId(store, input.askerId);
+    const request = { askerId: input.askerId, fromRequest, id: id2, who: input.who, tester };
+    addAskerEvent(
       store,
-      input.explorationId,
+      request,
       {
         step: requestStep,
-        explorer: tester,
         status: "open",
         detail: {
           id: id2,
@@ -15654,7 +16050,7 @@ function requestPermission(store, input) {
       operationId,
       at
     );
-    const force = ruleInForce(store, input.explorationId, input.tool, input.suggestions);
+    const force = ruleInForce(store, input.askerId, input.tool, input.suggestions);
     if (force)
       addDecision(
         store,
@@ -15670,8 +16066,8 @@ function requestPermission(store, input) {
         at
       );
     return {
-      reply: completed(input.explorationId, { id: id2, byRule: Boolean(force) }),
-      subjects: [`exploration:${input.explorationId}`, "permissions"]
+      reply: completed(input.askerId, { id: id2, byRule: Boolean(force) }),
+      subjects: [fromRequest ? `request:${input.askerId}` : `exploration:${input.askerId}`, "permissions"]
     };
   }).data;
 }
@@ -15681,27 +16077,29 @@ function decidePermission(store, actor, input, stop) {
   requireWellFormed(choice2 !== "deny" || reason, "A denial needs a reason.", "Give the reason with --reason <text>.");
   const operation = {
     actor,
-    command: "explore permit",
-    subject: input.explorationId,
+    command: isRequestId(store, input.askerId) ? "request permit" : "explore permit",
+    subject: input.askerId,
     input: { requestId: input.requestId, decision: choice2 }
   };
   const reply = write(store, operation, (operationId, at, who) => {
-    const request = findPermission(store, input.explorationId, input.requestId);
+    const request = findPermission(store, input.askerId, input.requestId);
     requireCondition(
       !request.decision,
-      `Permission request ${request.id} of ${request.explorationId} has an answer already: ${request.decision?.text}. Nothing changed.`
+      `Permission request ${request.id} of ${request.askerId} has an answer already: ${request.decision?.text}. Nothing changed.`
     );
     requireCondition(
       choice2 !== "allow-kind" && choice2 !== "always" || request.rule,
       `Permission request ${request.id} has no rule that Claude Code can remember. Allow it once, or deny it.`
     );
+    const scope = request.fromRequest ? "conversation" : "test";
+    const stopped = request.fromRequest ? "request" : request.tester ? "tester" : "run";
     const texts = {
       allow: "allowed once",
-      "allow-kind": `allowed for this test: ${request.rule}`,
-      "allow-tool": `allowed for this test: every ${request.tool} call`,
+      "allow-kind": `allowed for this ${scope}: ${request.rule}`,
+      "allow-tool": `allowed for this ${scope}: every ${request.tool} call`,
       always: `allowed always in this project: ${request.rule}`,
       deny: `denied: ${reason}`,
-      stop: `stopped the ${request.tester ? "tester" : "run"}${reason ? `: ${reason}` : ""}`
+      stop: `stopped the ${stopped}${reason ? `: ${reason}` : ""}`
     };
     const rule = choice2 === "allow-tool" ? request.tool : choice2 === "allow-kind" || choice2 === "always" ? request.rule : null;
     addDecision(
@@ -15713,35 +16111,35 @@ function decidePermission(store, actor, input, stop) {
       at
     );
     return {
-      reply: completed(request.explorationId, { requestId: request.id, decision: choice2, who: request.tester }),
-      subjects: [`exploration:${request.explorationId}`, `plan:${request.planId}`, "permissions"]
+      reply: completed(request.askerId, { requestId: request.id, decision: choice2, who: request.tester }),
+      subjects: subjectsOf(request)
     };
   });
   if (choice2 === "stop") stop(reply.data.who ?? void 0, reason);
   return reply;
 }
-function closePermission(store, explorationId, requestId, cause) {
+function closePermission(store, askerId, requestId, cause) {
   return write(
     store,
     {
       actor: "checkmate",
       command: "explore permission-close",
-      subject: explorationId,
+      subject: askerId,
       input: { requestId, cause }
     },
     (operationId, at) => {
-      const request = findPermission(store, explorationId, requestId);
-      if (request.decision) return { reply: completed(explorationId, { closed: false }), subjects: [] };
+      const request = findPermission(store, askerId, requestId);
+      if (request.decision) return { reply: completed(askerId, { closed: false }), subjects: [] };
       addDecision(store, request, "closed", { by: "checkmate", text: closedText[cause], cause }, operationId, at);
       return {
-        reply: completed(explorationId, { closed: true }),
-        subjects: [`exploration:${explorationId}`, `plan:${request.planId}`, "permissions"]
+        reply: completed(askerId, { closed: true }),
+        subjects: subjectsOf(request)
       };
     }
   ).data.closed;
 }
 function closeOpenPermissions(store, cause) {
-  for (const item of openPermissions(store)) closePermission(store, item.explorationId, item.id, cause);
+  for (const item of openPermissions(store)) closePermission(store, item.askerId, item.id, cause);
 }
 function decisionBody(decision) {
   return JSON.stringify({ hookSpecificOutput: { hookEventName: "PermissionRequest", decision } });
@@ -15778,14 +16176,15 @@ function permissionAnswer(request, decision) {
   return "";
 }
 function stoppedSince(store, request) {
+  if (request.fromRequest) return requestStopped(store, request.askerId);
   return one(
     store,
     `SELECT 1 FROM exploration_events WHERE exploration_id = ? AND step = 'stop'
 			AND (explorer IS NULL OR explorer = ?)
 			AND rowid > (SELECT rowid FROM exploration_events WHERE exploration_id = ? AND step = '${requestStep}' AND json_extract(detail, '$.id') = ?)`,
-    request.explorationId,
+    request.askerId,
     request.who,
-    request.explorationId,
+    request.askerId,
     request.id
   ) !== void 0;
 }
@@ -15803,7 +16202,7 @@ function latestRevisions(store) {
     store,
     `SELECT p.plan_id, p.revision, p.sha256, p.body, o.at, o.actor FROM latest_plans p
 		JOIN operations o ON o.id = p.operation_id ORDER BY p.plan_id`
-  ).map((row2) => ({ ...row2, plan: JSON.parse(row2.body) }));
+  ).map((row3) => ({ ...row3, plan: JSON.parse(row3.body) }));
 }
 function requestedPlans(store) {
   return all(
@@ -15811,11 +16210,11 @@ function requestedPlans(store) {
     `SELECT r.plan_id, r.target_id, r.target_revision, r.body, o.at FROM plan_requests r
 		JOIN operations o ON o.id = r.operation_id
 		WHERE NOT EXISTS (SELECT 1 FROM plan_revisions p WHERE p.plan_id = r.plan_id) ORDER BY r.plan_id`
-  ).map((row2) => ({
-    planId: row2.plan_id,
-    target: `${row2.target_id}@${row2.target_revision}`,
-    objective: JSON.parse(row2.body).objective,
-    since: row2.at
+  ).map((row3) => ({
+    planId: row3.plan_id,
+    target: `${row3.target_id}@${row3.target_revision}`,
+    objective: JSON.parse(row3.body).objective,
+    since: row3.at
   }));
 }
 function planSummary(plan) {
@@ -15828,23 +16227,23 @@ function inbox(store) {
     all(
       store,
       "SELECT plan_id, gap_id FROM decisions WHERE applied_revision IS NULL"
-    ).map((row2) => `${row2.plan_id}:${row2.gap_id}`)
+    ).map((row3) => `${row3.plan_id}:${row3.gap_id}`)
   );
   const revisions = latestRevisions(store);
-  const gaps = revisions.flatMap((row2) => [
-    ...row2.plan.gaps.filter((gap) => gap.status === "open" && !pending.has(`${row2.plan_id}:${gap.id}`)).map((gap) => ({
-      planId: row2.plan_id,
-      revision: row2.revision,
+  const gaps = revisions.flatMap((row3) => [
+    ...row3.plan.gaps.filter((gap) => gap.status === "open" && !pending.has(`${row3.plan_id}:${gap.id}`)).map((gap) => ({
+      planId: row3.plan_id,
+      revision: row3.revision,
       gapId: gap.id,
       question: gap.question,
       severity: gap.severity,
-      since: row2.at,
+      since: row3.at,
       runId: null,
       explorationId: null
     })),
-    ...planRunGaps(store, row2.plan_id).filter((item) => !item.adopted).map((item) => ({
-      planId: row2.plan_id,
-      revision: row2.revision,
+    ...planRunGaps(store, row3.plan_id).filter((item) => !item.adopted).map((item) => ({
+      planId: row3.plan_id,
+      revision: row3.revision,
       gapId: item.gap.id,
       question: item.gap.question,
       severity: item.gap.severity,
@@ -15880,17 +16279,17 @@ function inbox(store) {
       reason: claim.reason
     }))
   );
-  const plans = revisions.map((row2) => ({ row: row2, approval: approvalLabel(planApproval(store, row2.plan, row2.sha256)) })).filter(({ approval }) => approval === "pending" || approval === "rejected").map(({ row: row2, approval }) => ({
-    planId: row2.plan_id,
-    revision: row2.revision,
-    sha256: row2.sha256,
+  const plans = revisions.map((row3) => ({ row: row3, approval: approvalLabel(planApproval(store, row3.plan, row3.sha256)) })).filter(({ approval }) => approval === "pending" || approval === "rejected").map(({ row: row3, approval }) => ({
+    planId: row3.plan_id,
+    revision: row3.revision,
+    sha256: row3.sha256,
     approval,
-    since: row2.at,
-    summary: `${approval === "rejected" ? "Rejected. Change the plan. " : ""}${planSummary(row2.plan)}`
+    since: row3.at,
+    summary: `${approval === "rejected" ? "Rejected. Change the plan. " : ""}${planSummary(row3.plan)}`
   })).sort(bySince);
-  const results = revisions.flatMap((row2) => {
-    const runs = runList(store, { planId: row2.plan_id });
-    const record = planRecord(store, row2.plan);
+  const results = revisions.flatMap((row3) => {
+    const runs = runList(store, { planId: row3.plan_id });
+    const record = planRecord(store, row3.plan);
     const waited = /* @__PURE__ */ new Set([...record.supplied, ...record.defects.map((item) => item.runId)]);
     return runs.filter((run2) => waited.has(run2.runId) && run2.acceptance === "pending").map((run2) => {
       const result = record.results.find((item) => item.runId === run2.runId);
@@ -15920,28 +16319,28 @@ function testCounts(plan) {
   return { total: plan.tests.length, ready: count2("ready"), blocked: count2("blocked"), deferred: count2("deferred") };
 }
 function planList(store) {
-  const drafted = latestRevisions(store).map((row2) => {
+  const drafted = latestRevisions(store).map((row3) => {
     const open = [
-      ...row2.plan.gaps.filter((gap) => gap.status === "open"),
-      ...planRunGaps(store, row2.plan_id).filter((item) => !item.adopted).map((item) => item.gap)
+      ...row3.plan.gaps.filter((gap) => gap.status === "open"),
+      ...planRunGaps(store, row3.plan_id).filter((item) => !item.adopted).map((item) => item.gap)
     ];
     return {
-      planId: row2.plan_id,
+      planId: row3.plan_id,
       status: "drafted",
-      revision: row2.revision,
-      sha256: row2.sha256,
-      since: row2.at,
+      revision: row3.revision,
+      sha256: row3.sha256,
+      since: row3.at,
       openGaps: open.map((gap) => gap.id),
       openBlockingGaps: open.filter((gap) => gap.severity === "blocking").map((gap) => gap.id),
-      tests: testCounts(row2.plan),
-      approval: approvalLabel(planApproval(store, row2.plan, row2.sha256)),
-      blocked: row2.plan.tests.flatMap(
+      tests: testCounts(row3.plan),
+      approval: approvalLabel(planApproval(store, row3.plan, row3.sha256)),
+      blocked: row3.plan.tests.flatMap(
         (test) => test.dependsOn.filter((dependency) => dependency.includes(":")).flatMap((dependency) => {
           const cause = dependencyBlock(store, dependency, null);
           return cause ? [{ testId: test.id, dependency, cause }] : [];
         })
       ),
-      loop: loopOf(store, row2.plan_id)
+      loop: loopOf(store, row3.plan_id)
     };
   });
   const requested = requestedPlans(store).map((request) => ({
@@ -15967,13 +16366,13 @@ function planDetail(store, planId, revision = null) {
     store,
     "SELECT id, gap_id, kind, value, actor, rationale FROM decisions WHERE plan_id = ? AND applied_revision IS NULL ORDER BY rowid",
     planId
-  ).map((row2) => ({
-    id: row2.id,
-    gapId: row2.gap_id,
-    kind: row2.kind,
-    value: row2.value,
-    actor: row2.actor,
-    rationale: row2.rationale
+  ).map((row3) => ({
+    id: row3.id,
+    gapId: row3.gap_id,
+    kind: row3.kind,
+    value: row3.value,
+    actor: row3.actor,
+    rationale: row3.rationale
   })) : [];
   return {
     planId,
@@ -16005,20 +16404,20 @@ function planHistory(store, planId) {
 		JOIN operations o ON o.id = p.operation_id WHERE p.plan_id = ? ORDER BY p.revision`,
     planId
   );
-  const plans = rows2.map((row2) => JSON.parse(row2.body));
-  return rows2.map((row2, i) => ({
-    revision: row2.revision,
-    sha256: row2.sha256,
-    operationId: row2.operation_id,
-    actor: row2.actor,
-    at: row2.at,
+  const plans = rows2.map((row3) => JSON.parse(row3.body));
+  return rows2.map((row3, i) => ({
+    revision: row3.revision,
+    sha256: row3.sha256,
+    operationId: row3.operation_id,
+    actor: row3.actor,
+    at: row3.at,
     changes: i === 0 ? [] : planChanges(plans[i - 1], plans[i])
   }));
 }
 var roles = ["planner", "oracle", "qa", "factory", "none"];
 function exploredPlans(store) {
   return all(store, "SELECT DISTINCT plan_id FROM explorations ORDER BY plan_id").map(
-    (row2) => row2.plan_id
+    (row3) => row3.plan_id
   );
 }
 var runningExploration = ["starting", "testing", "recording", "verifying", "following"];
@@ -16029,14 +16428,14 @@ function mergedUpTo(events) {
   const ended = events.slice(follow + 1).find((item) => item.step === "followed");
   return ended?.status === "completed" ? Infinity : Number(events[follow].detail.after ?? 0);
 }
-var fromSession = (row2) => row2.actor.startsWith("qa:");
+var fromSession = (row3) => row3.actor.startsWith("qa:");
 function mergedEntries(store, planId) {
   const limits = new Map(
     all(store, "SELECT exploration_id FROM explorations WHERE plan_id = ?", planId).map(
-      (row2) => [row2.exploration_id, mergedUpTo(explorationEvents(store, row2.exploration_id))]
+      (row3) => [row3.exploration_id, mergedUpTo(explorationEvents(store, row3.exploration_id))]
     )
   );
-  return (row2) => !fromSession(row2) || row2.seq <= (limits.get(row2.explorationId) ?? 0);
+  return (row3) => !fromSession(row3) || row3.seq <= (limits.get(row3.explorationId) ?? 0);
 }
 function mergedClaims(store, planId) {
   return planClaims(store, planId, mergedEntries(store, planId));
@@ -16056,8 +16455,8 @@ function planExplorations(store, planId) {
     store,
     "SELECT exploration_id, started_at FROM explorations WHERE plan_id = ? ORDER BY rowid",
     planId
-  ).map((row2) => {
-    const status = explorationStatus(store, row2.exploration_id);
+  ).map((row3) => {
+    const status = explorationStatus(store, row3.exploration_id);
     const ended = ["failed", "stopped", "interrupted"].includes(status.state);
     return {
       explorationId: status.explorationId,
@@ -16067,7 +16466,7 @@ function planExplorations(store, planId) {
       instanceId: status.instanceId,
       level: status.level,
       explorers: status.explorerCount,
-      startedAt: row2.started_at,
+      startedAt: row3.started_at,
       reason: ended ? status.reason : null,
       follow: status.follow,
       followReason: status.followReason,
@@ -16275,8 +16674,8 @@ function loopStatus(store, planId) {
     store,
     "SELECT exploration_id FROM explorations WHERE plan_id = ? ORDER BY rowid",
     planId
-  ).map((row2) => {
-    const status = explorationStatus(store, row2.exploration_id);
+  ).map((row3) => {
+    const status = explorationStatus(store, row3.exploration_id);
     return {
       explorationId: status.explorationId,
       build: status.build,
@@ -16350,7 +16749,7 @@ function loopStatus(store, planId) {
   const fixes = claims.filter((claim) => factoryStates.includes(claim.state));
   const kept = fixes.filter((claim) => !claim.handoff).length;
   const last = explorations.at(-1);
-  const failed = last !== void 0 && ["failed", "stopped", "interrupted"].includes(last.state);
+  const failed2 = last !== void 0 && ["failed", "stopped", "interrupted"].includes(last.state);
   const finished = explorations.filter((item) => item.state === "completed").at(-1);
   const after = [
     ...fixes.length ? [
@@ -16368,7 +16767,7 @@ function loopStatus(store, planId) {
   if (fixes.length)
     return { ...base, ...extra, ...loop("defects_open", "factory", [amount(fixes.length, "open claim")], after) };
   if (base.state === "needs_plan") {
-    const why = !last ? ["No exploration yet"] : failed ? [`${last.explorationId} ${last.state} on build ${last.build}${last.reason ? `: ${last.reason}` : ""}`] : [`${last.explorationId} is ${last.state} on build ${last.build}`];
+    const why = !last ? ["No exploration yet"] : failed2 ? [`${last.explorationId} ${last.state} on build ${last.build}${last.reason ? `: ${last.reason}` : ""}`] : [`${last.explorationId} is ${last.state} on build ${last.build}`];
     return {
       ...base,
       ...extra,
@@ -16376,7 +16775,7 @@ function loopStatus(store, planId) {
         "ready_to_test",
         "qa",
         why,
-        !last || failed ? [`checkmate test ${planId} --allow Read --allow Bash`] : after
+        !last || failed2 ? [`checkmate test ${planId} --allow Read --allow Bash`] : after
       )
     };
   }
@@ -16404,7 +16803,7 @@ function checkStatus(store, planId) {
     store,
     "SELECT id, gap_id, kind FROM decisions WHERE plan_id = ? AND applied_revision IS NULL ORDER BY rowid",
     planId
-  ).map((row2) => ({ id: row2.id, gapId: row2.gap_id, kind: row2.kind }));
+  ).map((row3) => ({ id: row3.id, gapId: row3.gap_id, kind: row3.kind }));
   const gaps = [
     ...plan.gaps.filter((gap) => gap.status === "open" && !pendingDecisions2.some((item) => item.gapId === gap.id)).map((gap) => ({
       gapId: gap.id,
@@ -16458,7 +16857,7 @@ function checkStatus(store, planId) {
       `SELECT r.application_build AS build FROM runs r JOIN results s ON s.run_id = r.run_id
 			WHERE r.plan_id IN (SELECT value FROM json_each(?)) GROUP BY r.application_build ORDER BY max(r.rowid) DESC`,
       JSON.stringify(others)
-    ).map((row2) => row2.build);
+    ).map((row3) => row3.build);
   };
   const bestBuild = (count2) => {
     let best;
@@ -16635,18 +17034,18 @@ function checkStatus(store, planId) {
   };
 }
 function latestRetest(store, planId, record) {
-  const row2 = one(
+  const row3 = one(
     store,
     "SELECT run_id FROM runs WHERE plan_id = ? AND request ->> '$.retestOf' IS NOT NULL ORDER BY rowid DESC LIMIT 1",
     planId
   );
-  if (!row2) return null;
-  const run2 = runState(store, row2.run_id);
-  const verdicts = retestVerdicts(run2, runOutcomes(store, row2.run_id));
+  if (!row3) return null;
+  const run2 = runState(store, row3.run_id);
+  const verdicts = retestVerdicts(run2, runOutcomes(store, row3.run_id));
   const open = verdicts.some(
     (item) => record.defects.some((defect) => defect.runId === item.runId && defect.finding.id === item.findingId)
   );
-  return open || record.results.at(-1)?.runId === row2.run_id ? { runId: row2.run_id, verdicts } : null;
+  return open || record.results.at(-1)?.runId === row3.run_id ? { runId: row3.run_id, verdicts } : null;
 }
 function rejection(store, kind, subject) {
   const decision = latestApproval(store, kind, subject);
@@ -16735,23 +17134,23 @@ function runList(store, filters = {}) {
     filters.build ?? null,
     filters.build ?? null
   );
-  return rows2.map((row2) => ({
-    runId: row2.run_id,
-    planId: row2.plan_id,
-    revision: row2.plan_revision,
-    build: row2.application_build,
-    instanceId: row2.instance_id,
-    startedAt: row2.started_at,
-    state: row2.sha256 ? "finalized" : "started",
-    completion: row2.completion,
-    coverage: row2.coverage,
-    sha256: row2.sha256,
-    acceptance: row2.sha256 ? approvalLabel(resultAcceptance(store, row2, row2.sha256)) : null,
+  return rows2.map((row3) => ({
+    runId: row3.run_id,
+    planId: row3.plan_id,
+    revision: row3.plan_revision,
+    build: row3.application_build,
+    instanceId: row3.instance_id,
+    startedAt: row3.started_at,
+    state: row3.sha256 ? "finalized" : "started",
+    completion: row3.completion,
+    coverage: row3.coverage,
+    sha256: row3.sha256,
+    acceptance: row3.sha256 ? approvalLabel(resultAcceptance(store, row3, row3.sha256)) : null,
     counts: Object.fromEntries(
       all(
         store,
         "SELECT outcome, count(*) AS count FROM outcomes WHERE run_id = ? GROUP BY outcome ORDER BY outcome",
-        row2.run_id
+        row3.run_id
       ).map((count2) => [count2.outcome, count2.count])
     )
   }));
@@ -16760,22 +17159,22 @@ function runDetail(store, runId) {
   const run2 = runState(store, runId);
   const outcomes = runOutcomes(store, runId);
   const results = runAssertions(store, runId);
-  const evidence2 = runEvidence(store, runId).map((row2) => ({
-    id: row2.id,
-    testId: row2.test_id,
-    assertionId: row2.assertion_id,
-    kind: row2.kind,
-    name: row2.name,
-    mediaType: row2.media_type,
-    sha256: row2.sha256,
-    size: row2.size
+  const evidence2 = runEvidence(store, runId).map((row3) => ({
+    id: row3.id,
+    testId: row3.test_id,
+    assertionId: row3.assertion_id,
+    kind: row3.kind,
+    name: row3.name,
+    mediaType: row3.media_type,
+    sha256: row3.sha256,
+    size: row3.size
   }));
   const finished = runResult(store, runId);
   const attempts = all(
     store,
     "SELECT attempt, started_at, actor FROM run_attempts WHERE run_id = ? ORDER BY attempt",
     runId
-  ).map((row2) => ({ attempt: row2.attempt, startedAt: row2.started_at, actor: row2.actor }));
+  ).map((row3) => ({ attempt: row3.attempt, startedAt: row3.started_at, actor: row3.actor }));
   const tests = run2.plan.tests.filter((test) => run2.request.selectedTestIds.includes(test.id)).map((test) => {
     const closed = outcomes.get(test.id);
     return {
@@ -16787,14 +17186,14 @@ function runDetail(store, runId) {
       reason: closed?.reason ?? null,
       evidence: evidence2.filter((item) => item.testId === test.id && item.assertionId === null),
       assertions: test.assertions.map((assertion) => {
-        const row2 = results.get(`${test.id}.${assertion.id}`);
+        const row3 = results.get(`${test.id}.${assertion.id}`);
         return {
           assertionId: assertion.id,
           check: assertion.check,
           checkKind: assertion.checkKind,
-          result: row2?.result ?? null,
-          observed: row2?.observed ?? null,
-          reason: row2?.reason ?? null,
+          result: row3?.result ?? null,
+          observed: row3?.observed ?? null,
+          reason: row3?.reason ?? null,
           evidence: evidence2.filter(
             (item) => item.testId === test.id && item.assertionId === assertion.id
           )
@@ -16844,20 +17243,20 @@ function findingList(store, filters = {}) {
     filters.planId ?? null
   );
   const open = new Set(
-    filters.open ? [...new Set(rows2.map((row2) => row2.plan_id))].flatMap(
+    filters.open ? [...new Set(rows2.map((row3) => row3.plan_id))].flatMap(
       (planId) => openDefects(finalizedResults(store, planId), rejectedRuns(store, planId)).map(
         ({ runId, finding }) => `${runId}/${finding.id}`
       )
     ) : []
   );
-  return rows2.map((row2) => {
-    const finding = JSON.parse(row2.body);
+  return rows2.map((row3) => {
+    const finding = JSON.parse(row3.body);
     return {
-      runId: row2.run_id,
-      planId: row2.plan_id,
-      revision: row2.plan_revision,
-      build: row2.application_build,
-      instanceId: row2.instance_id,
+      runId: row3.run_id,
+      planId: row3.plan_id,
+      revision: row3.plan_revision,
+      build: row3.application_build,
+      instanceId: row3.instance_id,
       testIds: finding.testIds,
       findingId: finding.id,
       type: finding.type,
@@ -16871,7 +17270,7 @@ function findingList(store, filters = {}) {
       evidenceIds: finding.evidenceIds,
       metadata: finding.metadata ?? {}
     };
-  }).filter((row2) => !filters.open || open.has(`${row2.runId}/${row2.findingId}`));
+  }).filter((row3) => !filters.open || open.has(`${row3.runId}/${row3.findingId}`));
 }
 function operationLog(store, filters = {}) {
   const limit = filters.limit ?? 50;
@@ -16887,17 +17286,17 @@ function operationLog(store, filters = {}) {
     limit
   ).map(operationRow);
 }
-function operationRow(row2) {
+function operationRow(row3) {
   return {
-    rowid: row2.rowid,
-    id: row2.id,
-    at: row2.at,
-    actor: row2.actor,
-    command: row2.command,
-    status: row2.status,
-    subjects: JSON.parse(row2.subjects),
-    arguments: JSON.parse(row2.arguments),
-    response: JSON.parse(row2.response)
+    rowid: row3.rowid,
+    id: row3.id,
+    at: row3.at,
+    actor: row3.actor,
+    command: row3.command,
+    status: row3.status,
+    subjects: JSON.parse(row3.subjects),
+    arguments: JSON.parse(row3.arguments),
+    response: JSON.parse(row3.response)
   };
 }
 function changesAfter(store, rowid) {
@@ -16905,26 +17304,26 @@ function changesAfter(store, rowid) {
     store,
     "SELECT rowid, id, subjects FROM operations WHERE rowid > ? ORDER BY rowid",
     rowid
-  ).map((row2) => ({ rowid: row2.rowid, id: row2.id, subjects: JSON.parse(row2.subjects) }));
+  ).map((row3) => ({ rowid: row3.rowid, id: row3.id, subjects: JSON.parse(row3.subjects) }));
 }
 function evidenceBytes(store, id2) {
-  const row2 = one(
+  const row3 = one(
     store,
     "SELECT e.id, e.run_id, e.test_id, e.assertion_id, e.kind, e.name, e.media_type, e.sha256, b.size, b.bytes FROM evidence e JOIN blobs b ON b.sha256 = e.sha256 WHERE e.id = ?",
     id2
   );
-  requireCondition(row2, `Unknown evidence: ${id2}`);
+  requireCondition(row3, `Unknown evidence: ${id2}`);
   return {
-    id: row2.id,
-    runId: row2.run_id,
-    testId: row2.test_id,
-    assertionId: row2.assertion_id,
-    kind: row2.kind,
-    name: row2.name,
-    mediaType: row2.media_type,
-    sha256: row2.sha256,
-    size: row2.size,
-    bytes: row2.bytes
+    id: row3.id,
+    runId: row3.run_id,
+    testId: row3.test_id,
+    assertionId: row3.assertion_id,
+    kind: row3.kind,
+    name: row3.name,
+    mediaType: row3.media_type,
+    sha256: row3.sha256,
+    size: row3.size,
+    bytes: row3.bytes
   };
 }
 var pageSizes = [25, 50, 100];
@@ -16952,13 +17351,13 @@ function filterValue(filters, names) {
 }
 function pageOf(rows2, query, columns2, text) {
   const matched = query.q ? rows2.filter(
-    (row2) => text(row2).some(
+    (row3) => text(row3).some(
       (field4) => String(field4 ?? "").toLowerCase().includes(query.q)
     )
   ) : rows2;
   const key = columns2[query.sort];
   const order = query.direction === "asc" ? 1 : -1;
-  const position = new Map(matched.map((row2, index2) => [row2, index2]));
+  const position = new Map(matched.map((row3, index2) => [row3, index2]));
   const sorted2 = [...matched].sort((a, b) => {
     const x = key(a);
     const y = key(b);
@@ -16977,35 +17376,35 @@ function pageOf(rows2, query, columns2, text) {
   };
 }
 var runStatuses = ["started", "pending", "approved", "rejected", "not_required"];
-function runStatus(row2) {
-  return row2.state === "started" ? "started" : row2.acceptance ?? "finalized";
+function runStatus(row3) {
+  return row3.state === "started" ? "started" : row3.acceptance ?? "finalized";
 }
 function pagedRuns(store, query = {}) {
   const columns2 = {
-    run: (row2) => row2.runId,
-    plan: (row2) => `${row2.planId}@${String(row2.revision).padStart(9, "0")}`,
-    build: (row2) => row2.build,
-    instance: (row2) => row2.instanceId,
-    completion: (row2) => row2.completion,
-    coverage: (row2) => row2.coverage,
-    status: (row2) => runStatus(row2),
-    started: (row2) => row2.startedAt
+    run: (row3) => row3.runId,
+    plan: (row3) => `${row3.planId}@${String(row3.revision).padStart(9, "0")}`,
+    build: (row3) => row3.build,
+    instance: (row3) => row3.instanceId,
+    completion: (row3) => row3.completion,
+    coverage: (row3) => row3.coverage,
+    status: (row3) => runStatus(row3),
+    started: (row3) => row3.startedAt
   };
   const options3 = listQuery(query, Object.keys(columns2), { sort: "started", direction: "desc" });
   const filters = filterValue(query.filters, { plan: null, build: null, status: runStatuses });
   const rows2 = runList(store, { planId: filters.plan, build: filters.build }).filter(
-    (row2) => filters.status === void 0 || runStatus(row2) === filters.status
+    (row3) => filters.status === void 0 || runStatus(row3) === filters.status
   );
-  return pageOf(rows2, options3, columns2, (row2) => [
-    row2.runId,
-    `${row2.planId}@${row2.revision}`,
-    row2.build,
-    row2.instanceId,
-    ...Object.entries(row2.counts).map(([outcome, count2]) => `${count2} ${outcome}`),
-    row2.completion,
-    row2.coverage,
-    runStatus(row2),
-    row2.startedAt
+  return pageOf(rows2, options3, columns2, (row3) => [
+    row3.runId,
+    `${row3.planId}@${row3.revision}`,
+    row3.build,
+    row3.instanceId,
+    ...Object.entries(row3.counts).map(([outcome, count2]) => `${count2} ${outcome}`),
+    row3.completion,
+    row3.coverage,
+    runStatus(row3),
+    row3.startedAt
   ]);
 }
 var logColumns = {
@@ -17104,16 +17503,16 @@ function needsYou(store) {
   }));
   const gaps = waiting.gaps.map(asked2);
   const permissions = openPermissions(store).map((item) => ({
-    key: `permission:${item.planId}:${item.explorationId}/${item.id}`,
+    key: `permission:${item.planId}:${item.askerId}/${item.id}`,
     group: "permissions",
     kind: "permission",
-    planId: item.planId,
-    id: `${item.explorationId}/${item.id}`,
+    planId: item.planId ?? "",
+    id: `${item.askerId}/${item.id}`,
     title: `${item.who} asks to use ${item.tool}`,
     since: item.at,
     severity: null,
     state: "open",
-    explorationId: item.explorationId,
+    explorationId: item.fromRequest ? null : item.askerId,
     runId: null,
     revision: null
   }));
@@ -17157,9 +17556,9 @@ function mediaTypeOf(path) {
 }
 function evidenceOf2(store, item, what) {
   requireCondition(item && "path" in item, `Unknown evidence ${what}`);
-  const row2 = one(store, "SELECT bytes FROM blobs WHERE sha256 = ?", item.sha256);
-  requireCondition(row2, `Unknown evidence ${what}`);
-  return { name: fileName(item.path), mediaType: mediaTypeOf(item.path), size: item.size, bytes: row2.bytes };
+  const row3 = one(store, "SELECT bytes FROM blobs WHERE sha256 = ?", item.sha256);
+  requireCondition(row3, `Unknown evidence ${what}`);
+  return { name: fileName(item.path), mediaType: mediaTypeOf(item.path), size: item.size, bytes: row3.bytes };
 }
 function claimEvidence(store, planId, claimId, index2) {
   const claim = planClaims(store, planId).find((item) => item.id === claimId);
@@ -17178,7 +17577,7 @@ function claimsAcross(store) {
     all(
       store,
       "SELECT exploration_id, started_at FROM explorations"
-    ).map((row2) => [row2.exploration_id, row2.started_at])
+    ).map((row3) => [row3.exploration_id, row3.started_at])
   );
   return exploredPlans(store).flatMap(
     (planId) => mergedClaims(store, planId).map((claim) => ({
@@ -17248,7 +17647,7 @@ function markdown(report) {
         [
           `| ${block.table.map(markdownText).join(" | ")} |`,
           `| ${block.table.map(() => "---").join(" | ")} |`,
-          ...block.rows.map((row2) => `| ${row2.map(markdownText).join(" | ")} |`)
+          ...block.rows.map((row3) => `| ${row3.map(markdownText).join(" | ")} |`)
         ].join("\n")
       );
     else if ("list" in block)
@@ -17338,7 +17737,7 @@ function html(report) {
     else if ("text" in block) parts.push(`<p>${escapeHtml(block.text)}</p>`);
     else if ("table" in block)
       parts.push(
-        `<table><thead><tr>${block.table.map((head) => `<th>${escapeHtml(head)}</th>`).join("")}</tr></thead><tbody>${block.rows.map((row2) => `<tr>${row2.map((value2) => `<td>${cell(value2)}</td>`).join("")}</tr>`).join("")}</tbody></table>`
+        `<table><thead><tr>${block.table.map((head) => `<th>${escapeHtml(head)}</th>`).join("")}</tr></thead><tbody>${block.rows.map((row3) => `<tr>${row3.map((value2) => `<td>${cell(value2)}</td>`).join("")}</tr>`).join("")}</tbody></table>`
       );
     else if ("list" in block) {
       const tag = block.numbered ? "ol" : "ul";
@@ -17369,7 +17768,7 @@ function runDocument(report) {
   const files2 = (ids2) => join9(ids2.map((id2) => `${evidence2.get(id2)?.name ?? id2} (${id2})`));
   const counts2 = outcomeCounts(result.tests.filter((test) => result.selectedTestIds.includes(test.testId)));
   const assertions = result.tests.flatMap((test) => test.assertions);
-  const blocks = [
+  const blocks2 = [
     {
       stats: [
         { label: "Completion", value: result.completion },
@@ -17438,10 +17837,10 @@ function runDocument(report) {
     },
     { heading: "Findings" }
   ];
-  if (!result.findings.length) blocks.push({ text: "No findings." });
+  if (!result.findings.length) blocks2.push({ text: "No findings." });
   for (const finding of result.findings) {
-    blocks.push({ heading: `${finding.id} \xB7 ${finding.type} \xB7 ${finding.severity}: ${finding.title}`, level: 3 });
-    blocks.push({
+    blocks2.push({ heading: `${finding.id} \xB7 ${finding.type} \xB7 ${finding.severity}: ${finding.title}`, level: 3 });
+    blocks2.push({
       table: ["Field", "Value"],
       rows: [
         ["Assertions", join9(finding.assertionIds)],
@@ -17452,12 +17851,12 @@ function runDocument(report) {
         ["Metadata", pairs(finding.metadata)]
       ]
     });
-    blocks.push({ list: finding.reproduction, numbered: true });
+    blocks2.push({ list: finding.reproduction, numbered: true });
   }
-  blocks.push({ heading: "New gaps" });
-  if (!result.newGaps.length) blocks.push({ text: "No new gaps." });
+  blocks2.push({ heading: "New gaps" });
+  if (!result.newGaps.length) blocks2.push({ text: "No new gaps." });
   else
-    blocks.push({
+    blocks2.push({
       table: ["Gap", "Severity", "Question", "Consequence", "Requirements", "Tests"],
       rows: result.newGaps.map((gap) => [
         gap.id,
@@ -17468,10 +17867,10 @@ function runDocument(report) {
         join9(gap.testIds)
       ])
     });
-  blocks.push({ heading: `Plan gaps and decisions (${plan.planId}@${plan.revision})` });
-  if (!plan.gaps.length) blocks.push({ text: "The plan has no gaps." });
+  blocks2.push({ heading: `Plan gaps and decisions (${plan.planId}@${plan.revision})` });
+  if (!plan.gaps.length) blocks2.push({ text: "The plan has no gaps." });
   else
-    blocks.push({
+    blocks2.push({
       table: ["Gap", "Severity", "Status", "Question", "Decision", "Value", "Actor", "Rationale"],
       rows: plan.gaps.map((gap) => {
         const decision = plan.decisions.find((item) => item.id === gap.decisionId);
@@ -17488,13 +17887,13 @@ function runDocument(report) {
       })
     });
   if (plan.assumptions.length)
-    blocks.push({
+    blocks2.push({
       list: plan.assumptions.map((assumption) => `Assumption ${assumption.decisionId}: ${assumption.text}`)
     });
-  blocks.push({ heading: "Evidence" });
-  if (!result.evidence.length) blocks.push({ text: "No evidence." });
+  blocks2.push({ heading: "Evidence" });
+  if (!result.evidence.length) blocks2.push({ text: "No evidence." });
   else {
-    blocks.push({
+    blocks2.push({
       evidence: result.evidence.map((entry) => ({
         label: entry.assertionId ? `${entry.testId}.${entry.assertionId}` : entry.testId,
         name: entry.name,
@@ -17503,7 +17902,7 @@ function runDocument(report) {
         ...report.inline[entry.id]
       }))
     });
-    blocks.push({
+    blocks2.push({
       table: ["Evidence", "Assertion", "Kind", "Name", "Media type", "Size", "SHA-256"],
       rows: result.evidence.map((entry) => [
         entry.id,
@@ -17516,18 +17915,18 @@ function runDocument(report) {
       ])
     });
   }
-  blocks.push(
+  blocks2.push(
     { heading: "Coverage" },
     {
       table: ["Requirement", "Text", "Status", "Tests", "Reason", "Metadata"],
-      rows: result.coverage.requirements.map((row2) => {
-        const requirement = plan.requirements.find((item) => item.id === row2.requirementId);
+      rows: result.coverage.requirements.map((row3) => {
+        const requirement = plan.requirements.find((item) => item.id === row3.requirementId);
         return [
-          row2.requirementId,
+          row3.requirementId,
           requirement?.text ?? none,
-          row2.status,
-          join9(row2.testIds),
-          row2.reason ?? none,
+          row3.status,
+          join9(row3.testIds),
+          row3.reason ?? none,
           pairs(requirement?.metadata)
         ];
       })
@@ -17537,12 +17936,12 @@ function runDocument(report) {
   return {
     title: `Test report: ${result.runId}`,
     note: `${result.plan.planId}@${result.plan.revision} on build ${result.applicationBuild}. Generated from the Checkmate database. Completion, test outcomes, and coverage are separate.`,
-    blocks
+    blocks: blocks2
   };
 }
 function planReport(plan, sha256) {
-  const coverage2 = new Map(plan.coverage.map((row2) => [row2.requirementId, row2.status]));
-  const blocks = [
+  const coverage2 = new Map(plan.coverage.map((row3) => [row3.requirementId, row3.status]));
+  const blocks2 = [
     {
       table: ["Field", "Value"],
       rows: [
@@ -17588,9 +17987,9 @@ function planReport(plan, sha256) {
     },
     { heading: "Gaps" }
   ];
-  if (!plan.gaps.length) blocks.push({ text: "No gaps." });
+  if (!plan.gaps.length) blocks2.push({ text: "No gaps." });
   else
-    blocks.push({
+    blocks2.push({
       table: ["Gap", "Severity", "Status", "Question", "Consequence", "Decision"],
       rows: plan.gaps.map((gap) => [
         gap.id,
@@ -17601,10 +18000,10 @@ function planReport(plan, sha256) {
         gap.decisionId ?? none
       ])
     });
-  blocks.push({ heading: "Decisions" });
-  if (!plan.decisions.length) blocks.push({ text: "No decisions." });
+  blocks2.push({ heading: "Decisions" });
+  if (!plan.decisions.length) blocks2.push({ text: "No decisions." });
   else
-    blocks.push({
+    blocks2.push({
       table: ["Decision", "Gap", "Kind", "Value", "Actor", "Rationale", "Source"],
       rows: plan.decisions.map((decision) => [
         decision.id,
@@ -17616,14 +18015,14 @@ function planReport(plan, sha256) {
         decision.source ?? none
       ])
     });
-  blocks.push({ heading: "Assumptions" });
-  if (!plan.assumptions.length) blocks.push({ text: "No accepted assumptions." });
-  else blocks.push({ list: plan.assumptions.map((assumption) => `${assumption.decisionId}: ${assumption.text}`) });
-  blocks.push({ record: plan });
+  blocks2.push({ heading: "Assumptions" });
+  if (!plan.assumptions.length) blocks2.push({ text: "No accepted assumptions." });
+  else blocks2.push({ list: plan.assumptions.map((assumption) => `${assumption.decisionId}: ${assumption.text}`) });
+  blocks2.push({ record: plan });
   return {
     title: `Test plan: ${plan.planId} revision ${plan.revision}`,
     note: "Generated from the Checkmate database. Record a decision and revise the plan to change it.",
-    blocks
+    blocks: blocks2
   };
 }
 var xmlEntities = {
@@ -17778,7 +18177,7 @@ function testTimes(store, runId) {
     runId
   );
   return Object.fromEntries(
-    rows2.map((row2) => [row2.test_id, Math.max(0, Date.parse(row2.closed) - Date.parse(row2.first)) / 1e3])
+    rows2.map((row3) => [row3.test_id, Math.max(0, Date.parse(row3.closed) - Date.parse(row3.first)) / 1e3])
   );
 }
 function exportRun(store, runId, format2) {
@@ -17845,7 +18244,7 @@ function autoMode(store, planId) {
 function nextRunId(store) {
   return unusedId(
     "run-",
-    all(store, "SELECT run_id FROM runs").map((row2) => row2.run_id)
+    all(store, "SELECT run_id FROM runs").map((row3) => row3.run_id)
   );
 }
 function gitBuild(workspace) {
@@ -17861,7 +18260,7 @@ function defaultBuild(workspace) {
 function chosenTarget(store, actor, input, env, assumed) {
   if (input.target) return input.target;
   const targets = all(store, "SELECT target_id FROM profiles GROUP BY target_id").map(
-    (row2) => row2.target_id
+    (row3) => row3.target_id
   );
   if (targets.length === 1) {
     assumed.push(`target=${targets[0]} (the only target)`);
@@ -18319,12 +18718,28 @@ function statusBar(context, page) {
 		</nav>
 		<span class="sb-links">
 			<a
+				class="sb-btn"
+				href="/requests/${context.requests.running ?? ""}"
+				title="The request that runs now"
+				data-region="request-link"
+				${context.requests.running ? "" : html2`hidden`}
+				>Request ${context.requests.running ?? ""} · running</a
+			>
+			<a
 				class="sb-btn att"
 				href="/permissions"
 				title="Permission requests of testers that wait for you"
 				data-region="permissions-link"
 				${context.permissions ? "" : html2`hidden`}
 				>${context.permissions} ${context.permissions === 1 ? "permission" : "permissions"}</a
+			>
+			<a
+				class="sb-btn att"
+				href="${context.requests.unread === 1 ? `/requests/${context.requests.firstUnread}` : "/requests"}"
+				title="Replies to your requests that you did not read"
+				data-region="replies-link"
+				${context.requests.unread ? "" : html2`hidden`}
+				>${context.requests.unread} ${context.requests.unread === 1 ? "reply" : "replies"}</a
 			>
 			<a
 				class="sb-btn att"
@@ -18371,15 +18786,26 @@ var dialogs = html2`<dialog class="sp-keys" data-keys aria-labelledby="keys-titl
 		</div>
 		<div data-keys-table></div>
 	</dialog>
-	<dialog class="sp-find" data-find aria-label="Find">
-		<input type="search" data-find-input aria-label="Find a plan, a defect, or a question" autocomplete="off" />
+	<dialog class="sp-find" data-find aria-label="Find or ask">
+		<input
+			type="search"
+			data-find-input
+			aria-label="Find a plan, a defect, or a question. Or type a request."
+			autocomplete="off"
+		/>
 		<ul role="listbox" aria-label="Results" data-find-results></ul>
 		<p class="sp-find-none" data-find-none hidden>Nothing matches.</p>
 		<p class="sp-find-none" data-find-more hidden></p>
+		<p class="sp-find-none" data-find-asking role="status" hidden></p>
+		<p class="sp-find-none" data-find-error role="alert" hidden></p>
 		<div class="sp-foot">
 			<span><kbd>${glyph("\u2191")}</kbd><kbd>${glyph("\u2193")}</kbd>Choose</span><span><kbd>Enter</kbd>Go</span
 			><span><kbd>Esc</kbd>Close</span>
 		</div>
+		<p class="sp-find-note" data-find-note>
+			Ask Checkmate starts Claude Code on this computer, in your own session. It can read this workspace and
+			change records.
+		</p>
 	</dialog>
 	<dialog class="sp-confirm" data-confirm aria-labelledby="confirm-title">
 		<div class="sp-dh"><h2 id="confirm-title" class="sp-path" data-confirm-title></h2></div>
@@ -18979,33 +19405,33 @@ function createHooks(store, token, options3 = {}) {
   const held = /* @__PURE__ */ new Map();
   const lines2 = /* @__PURE__ */ new Map();
   function finish2(entry, cause) {
-    held.delete(`${entry.explorationId}/${entry.id}`);
+    held.delete(`${entry.askerId}/${entry.id}`);
     clearTimeout(entry.timer);
     let body = "";
     try {
-      if (cause) closePermission(store, entry.explorationId, entry.id, cause);
-      const request = permissionOf(store, entry.explorationId, entry.id);
+      if (cause) closePermission(store, entry.askerId, entry.id, cause);
+      const request = permissionOf(store, entry.askerId, entry.id);
       if (request?.decision) body = permissionAnswer(request, request.decision);
     } catch (error) {
-      log(`could not answer ${entry.id} of ${entry.explorationId}: ${error.message}`);
+      log(`could not answer ${entry.id} of ${entry.askerId}: ${error.message}`);
     }
     answer(entry.res, body);
   }
   function release() {
     for (const entry of [...held.values()]) {
       try {
-        const request = permissionOf(store, entry.explorationId, entry.id);
+        const request = permissionOf(store, entry.askerId, entry.id);
         if (!request || request.decision) finish2(entry);
         else if (stoppedSince(store, request)) finish2(entry, "stopped");
       } catch (error) {
-        log(`could not release ${entry.id} of ${entry.explorationId}: ${error.message}`);
+        log(`could not release ${entry.id} of ${entry.askerId}: ${error.message}`);
       }
     }
   }
-  function hold(explorationId, id2, res) {
-    const key = `${explorationId}/${id2}`;
+  function hold(askerId, id2, res) {
+    const key = `${askerId}/${id2}`;
     const entry = {
-      explorationId,
+      askerId,
       id: id2,
       res,
       timer: setTimeout(() => finish2(entry, "timeout"), holdMilliseconds)
@@ -19016,27 +19442,34 @@ function createHooks(store, token, options3 = {}) {
       held.delete(key);
       clearTimeout(entry.timer);
       try {
-        closePermission(store, explorationId, id2, "disconnected");
+        closePermission(store, askerId, id2, "disconnected");
       } catch (error) {
-        log(`could not close ${id2} of ${explorationId}: ${error.message}`);
+        log(`could not close ${id2} of ${askerId}: ${error.message}`);
       }
     });
   }
-  function permission(explorationId, who, body, res) {
+  function permission(askerId, who, body, res) {
     const input = body.tool_input;
     if (typeof body.tool_name !== "string" || !input || typeof input !== "object") {
-      log(`permission call of ${who} in ${explorationId} has no tool_name and tool_input`);
+      log(`permission call of ${who} in ${askerId} has no tool_name and tool_input`);
       return answer(res, "");
     }
     const suggestions = Array.isArray(body.permission_suggestions) ? body.permission_suggestions.filter((item) => item && typeof item === "object") : [];
     try {
       const cwd = typeof body.cwd === "string" && body.cwd ? body.cwd : void 0;
-      const made = requestPermission(store, { explorationId, who, tool: body.tool_name, input, suggestions, cwd });
-      if (!made.byRule) return hold(explorationId, made.id, res);
-      const request = permissionOf(store, explorationId, made.id);
+      const made = requestPermission(store, {
+        askerId,
+        who,
+        tool: body.tool_name,
+        input,
+        suggestions,
+        cwd
+      });
+      if (!made.byRule) return hold(askerId, made.id, res);
+      const request = permissionOf(store, askerId, made.id);
       answer(res, permissionAnswer(request, request.decision));
     } catch (error) {
-      log(`could not record the permission call of ${who} in ${explorationId}: ${error.message}`);
+      log(`could not record the permission call of ${who} in ${askerId}: ${error.message}`);
       answer(res, "");
     }
   }
@@ -19083,20 +19516,25 @@ function createHooks(store, token, options3 = {}) {
   return {
     handles: (pathname) => route.test(pathname),
     async handle(req, res, pathname) {
-      const [, kind, explorationId, who] = route.exec(pathname);
+      const [, kind, first, second] = route.exec(pathname);
+      const forRequest = first === requestHookName;
+      const askerId = forRequest ? second : first;
+      const who = second;
       const bearer = req.headers.authorization;
       if (req.headers.origin !== void 0 || typeof bearer !== "string" || !sameSecret(bearer, `Bearer ${token}`))
         return refuse(res);
       const body = await readJson(req);
       const expected = kind === "permission" ? "PermissionRequest" : "PreToolUse";
-      const known = one(store, "SELECT 1 FROM explorations WHERE exploration_id = ?", explorationId);
+      const known = forRequest ? isRequestId(store, second) : one(store, "SELECT 1 FROM explorations WHERE exploration_id = ?", first);
       const valid = body && typeof body === "object" && body.hook_event_name === expected;
       if (!known || !valid) {
-        log(`${kind} call of ${who} in ${explorationId} is not a ${expected} event of a known exploration`);
+        log(
+          `${kind} call of ${who} in ${askerId} is not a ${expected} event of a known ${forRequest ? "request" : "exploration"}`
+        );
         return answer(res, "");
       }
-      if (kind === "permission") return permission(explorationId, who, body, res);
-      activity(explorationId, who, body);
+      if (kind === "permission") return permission(askerId, who, body, res);
+      if (!forRequest) activity(askerId, who, body);
       answer(res, "");
     },
     release,
@@ -19133,6 +19571,9 @@ function asksFor(item) {
   const verb = verbs[item.tool] ?? `use ${item.tool}`;
   return line ? `${verb}: ${line}` : verb;
 }
+function askerPath(item) {
+  return item.fromRequest ? { label: "Request", href: `/requests/${item.askerId}` } : { label: "Run", href: `/explorations/${item.askerId}` };
+}
 var things = {
   Bash: "run a command",
   Read: "read a file",
@@ -19147,6 +19588,7 @@ var things = {
   WebSearch: "search the web"
 };
 function askerName(item) {
+  if (item.fromRequest) return `Request ${item.askerId}`;
   if (item.tester) return `Tester ${item.who}`;
   if (item.who.startsWith("record-")) return `The recorder of ${item.who.slice("record-".length)}`;
   return `Step ${item.who}`;
@@ -19161,7 +19603,7 @@ function breakAtSlashes(path) {
   return path.split("/").map((part, index2) => index2 ? html2`/<wbr />${part}` : part);
 }
 function requestName(item) {
-  return `${item.explorationId}/${item.id}`;
+  return `${item.askerId}/${item.id}`;
 }
 function recordPath(item) {
   return `/permissions/${requestName(item)}`;
@@ -19182,50 +19624,69 @@ function nextOpen(store, after) {
 }
 function choicesOf(item) {
   const kind = item.tool === "Bash" ? "command" : "kind of call";
-  const run2 = item.explorationId;
+  const run2 = item.askerId;
   const rule = item.rule;
+  const request = item.fromRequest;
+  const scope = request ? "conversation" : "test";
+  const everyone = request ? `later requests of this conversation` : `any tester of this run`;
+  const where = request ? `request ${run2}` : `run ${run2}`;
+  const ends = request ? "The rule ends when you start a new conversation." : "The rule ends with the run.";
   return [
     { decision: "allow", label: "Allow once", text: "Answers this request with yes. Checkmate stores no rule." },
     ...rule ? [
       {
         decision: "allow-kind",
-        label: `Allow this ${kind} for this test`,
+        label: `Allow this ${kind} for this ${scope}`,
         text: html2`Answers yes now and for every later request with the rule <code>${rule}</code>, from
-							any tester of this run. Checkmate stores the rule in the record of run ${run2}. The rule ends
-							with the run.`
+							${everyone}. Checkmate stores the rule in the record of ${where}. ${ends}`
       }
     ] : [],
     {
       decision: "allow-tool",
-      label: `Allow every ${item.tool} call for this test`,
-      text: `Answers yes now and for every later ${item.tool} call of any tester of this run, whatever the input. Checkmate stores the rule in the record of run ${run2}. The rule ends with the run.`
+      label: `Allow every ${item.tool} call for this ${scope}`,
+      text: `Answers yes now and for every later ${item.tool} call of ${everyone}, whatever the input. Checkmate stores the rule in the record of ${where}. ${ends}`
     },
     ...rule ? [
       {
         decision: "always",
         label: `Always allow this ${kind} in this project`,
         text: html2`Answers yes now. Claude Code writes the rule <code>${rule}</code> to
-							<code>.claude/settings.local.json</code> of the project, and the rule stays after this run.
-							Checkmate writes no settings file.`
+							<code>.claude/settings.local.json</code> of the project, and the rule stays after this
+							${request ? "conversation" : "run"}. Checkmate writes no settings file.`
       }
     ] : [],
     {
       decision: "deny",
       label: "Deny\u2026",
       reveal: "deny",
-      text: "Answers no. You write the reason first, and the tester gets it."
+      text: `Answers no. You write the reason first, and ${request ? "Claude Code" : "the tester"} gets it.`
     },
-    {
-      decision: "stop",
-      label: item.tester ? `Stop tester ${item.who}\u2026` : "Stop the run\u2026",
-      ask: {
-        title: item.tester ? `Stop tester ${item.who}?` : "Stop the run?",
-        text: item.tester ? `Checkmate denies this call and ends tester ${item.who}. The other testers go on.` : `Checkmate denies this call and stops the whole run ${run2}.`,
-        yes: item.tester ? `Stop tester ${item.who}` : "Stop the run"
-      },
-      text: item.tester ? `Answers no and ends tester ${item.who}. The other testers go on. You confirm first.` : `Answers no and stops the whole run ${run2}. You confirm first.`
-    }
+    stopChoice(item)
   ];
+}
+function stopChoice(item) {
+  const run2 = item.askerId;
+  if (item.fromRequest)
+    return {
+      decision: "stop",
+      label: "Stop the request\u2026",
+      ask: {
+        title: `Stop request ${run2}?`,
+        text: `Checkmate denies this call and stops request ${run2}. You can ask again.`,
+        yes: "Stop the request"
+      },
+      text: `Answers no and stops request ${run2}. You confirm first.`
+    };
+  return {
+    decision: "stop",
+    label: item.tester ? `Stop tester ${item.who}\u2026` : "Stop the run\u2026",
+    ask: {
+      title: item.tester ? `Stop tester ${item.who}?` : "Stop the run?",
+      text: item.tester ? `Checkmate denies this call and ends tester ${item.who}. The other testers go on.` : `Checkmate denies this call and stops the whole run ${run2}.`,
+      yes: item.tester ? `Stop tester ${item.who}` : "Stop the run"
+    },
+    text: item.tester ? `Answers no and ends tester ${item.who}. The other testers go on. You confirm first.` : `Answers no and stops the whole run ${run2}. You confirm first.`
+  };
 }
 function optionCount(item) {
   return choicesOf(item).length;
@@ -19302,10 +19763,10 @@ function asked(item) {
   }
   return block("Input", JSON.stringify(item.input, null, 2));
 }
-function rulesLines(rules) {
+function rulesLines(rules, scope = "test") {
   return rules.map(
     (rule) => html2`<p class="help" data-key="rule:${rule.requestId}">
-				Allowed for this test:
+				Allowed for this ${scope}:
 				${rule.kind === "allow-tool" ? `every ${rule.rule} call` : html2`<code>${rule.rule}</code>`}, set by
 				${rule.setBy} ${ago(rule.at)}.
 			</p>`
@@ -19324,26 +19785,30 @@ function stateText(item) {
   const decision = item.decision;
   return decision.kind === "closed" ? `Closed: ${closedText[decision.cause]}.` : `Answered: ${decision.text}.`;
 }
-function permissionPage(store, context, explorationId, requestId, view, refusal) {
-  const item = permissionOf(store, explorationId, requestId);
+function permissionPage(store, context, askerId, requestId, view, refusal) {
+  const item = permissionOf(store, askerId, requestId);
   if (!item) return null;
   const { from } = view;
-  const back = from ?? "/activity";
+  const asker = askerPath(item);
+  const back = from ?? asker.href;
   const moves = item.decision && !view.history;
   const next = nextOpen(store, item);
   const after = next ? requestHref(next, from) : back;
   const name2 = requestName(item);
-  const rules = permissionRules(store, explorationId);
+  const rules = permissionRules(store, askerId);
   const choices = item.decision ? [] : choicesOf(item);
   const title = askHeading(item);
   return {
     title: `${name2} \xB7 Permission request`,
     section: "home",
-    subjects: [`exploration:${explorationId}`, `plan:${item.planId}`],
+    subjects: [
+      item.fromRequest ? `request:${askerId}` : `exploration:${askerId}`,
+      ...item.planId ? [`plan:${item.planId}`] : []
+    ],
     crumbs: [
       ["Plans", "/"],
-      [item.planId, `/plans/${item.planId}`],
-      [explorationId, `/explorations/${explorationId}`],
+      ...item.planId ? [[item.planId, `/plans/${item.planId}`]] : [],
+      [askerId, asker.href],
       [item.id, null]
     ],
     back,
@@ -19357,10 +19822,7 @@ function permissionPage(store, context, explorationId, requestId, view, refusal)
 			data-decided-message="${item.decision ? stateText(item) : ""}"
 			${moves ? html2`data-moves-on data-next="${after}"` : ""}
 		>
-			${crumbBar([
-      [item.planId, `/plans/${item.planId}`],
-      [explorationId, `/explorations/${explorationId}`]
-    ])}
+			${crumbBar([...item.planId ? [[item.planId, `/plans/${item.planId}`]] : [], [askerId, asker.href]])}
 			<div data-stale-slot>
 				${refusal && !refusal.field ? html2`<p class="form-error" role="alert">${refusal.error}</p>` : ""}
 			</div>
@@ -19426,15 +19888,17 @@ ${refusal?.reason ?? ""}</textarea>
 					<dd>${askerName(item)}</dd>
 					<dt>Since</dt>
 					<dd>${time(item.at)}</dd>
-					<dt>Run</dt>
-					<dd><a href="/explorations/${explorationId}">${explorationId}</a></dd>
-					<dt>Plan</dt>
-					<dd><a href="/plans/${item.planId}">${item.planId}</a></dd>
+					<dt>${asker.label}</dt>
+					<dd><a href="${asker.href}">${askerId}</a></dd>
+					${item.planId ? html2`<dt>Plan</dt>
+									<dd><a href="/plans/${item.planId}">${item.planId}</a></dd>` : ""}
 				</dl>
 			</section>
 			${rules.length ? html2`<section aria-labelledby="rules-title">
-							<h2 class="lab" id="rules-title">Rules of this test</h2>
-							${rulesLines(rules)}
+							<h2 class="lab" id="rules-title">
+								Rules of this ${item.fromRequest ? "conversation" : "test"}
+							</h2>
+							${rulesLines(rules, item.fromRequest ? "conversation" : "test")}
 						</section>` : ""}
 		</div>`
   };
@@ -19553,13 +20017,13 @@ function counts(values) {
 	>`;
 }
 var pageSizes2 = [25, 50, 100];
-function listState(params, spec2) {
+function listState(params, spec3) {
   const size2 = Number(params.get("size"));
   const page = Math.floor(Number(params.get("page")));
   const sort = params.get("sort") ?? "";
   const direction = params.get("dir");
   const filters = {};
-  for (const filter of spec2.filters) {
+  for (const filter of spec3.filters) {
     const value2 = params.get(filter.name)?.trim() ?? "";
     if (!value2) continue;
     if (filter.strict && !filter.choices.some(([choice2]) => choice2 === value2)) continue;
@@ -19569,22 +20033,22 @@ function listState(params, spec2) {
     q: params.get("q")?.trim() ?? "",
     size: pageSizes2.includes(size2) ? size2 : 25,
     page: page > 1 ? page : 1,
-    sort: spec2.columns.some((column) => column.sort === sort) ? sort : spec2.sort,
-    direction: direction === "asc" || direction === "desc" ? direction : spec2.direction,
+    sort: spec3.columns.some((column) => column.sort === sort) ? sort : spec3.sort,
+    direction: direction === "asc" || direction === "desc" ? direction : spec3.direction,
     filters
   };
 }
-function listHref(spec2, state, change = {}) {
+function listHref(spec3, state, change = {}) {
   const next = { ...state, ...change };
   const params = new URLSearchParams();
   if (next.q) params.set("q", next.q);
-  for (const filter of spec2.filters) if (next.filters[filter.name]) params.set(filter.name, next.filters[filter.name]);
+  for (const filter of spec3.filters) if (next.filters[filter.name]) params.set(filter.name, next.filters[filter.name]);
   if (next.size !== 25) params.set("size", String(next.size));
-  if (next.sort !== spec2.sort) params.set("sort", next.sort);
-  if (next.direction !== spec2.direction) params.set("dir", next.direction);
+  if (next.sort !== spec3.sort) params.set("sort", next.sort);
+  if (next.direction !== spec3.direction) params.set("dir", next.direction);
   if (next.page > 1) params.set("page", String(next.page));
   const query = params.toString();
-  return query ? `${spec2.path}?${query}` : spec2.path;
+  return query ? `${spec3.path}?${query}` : spec3.path;
 }
 function listPage(state, load) {
   const query = (page2) => ({
@@ -19609,33 +20073,33 @@ function filterChoices(filter, selected) {
   if (!selected || filter.choices.some(([value2]) => value2 === selected)) return filter.choices;
   return [...filter.choices, [selected, selected]];
 }
-function filterBar(spec2, state) {
-  return html2`<form class="filters" method="get" action="${spec2.path}" role="search" data-list-form>
-		<label class="sr-only" for="q">Search ${spec2.noun}s</label>
+function filterBar(spec3, state) {
+  return html2`<form class="filters" method="get" action="${spec3.path}" role="search" data-list-form>
+		<label class="sr-only" for="q">Search ${spec3.noun}s</label>
 		<input
 			id="q"
 			type="search"
 			name="q"
 			value="${state.q}"
-			placeholder="${spec2.search}"
+			placeholder="${spec3.search}"
 			autocomplete="off"
 			data-search
 		/>
-		${spec2.filters.map(
+		${spec3.filters.map(
     (filter) => html2`<label class="sr-only" for="filter-${filter.name}">${filter.label}</label>
 					<select id="filter-${filter.name}" name="${filter.name}" data-default="">
 						${options(filterChoices(filter, state.filters[filter.name] ?? ""), state.filters[filter.name] ?? "")}
 					</select>`
   )}
 		<label class="sr-only" for="sort">Sort by</label>
-		<select id="sort" name="sort" data-default="${spec2.sort}">
+		<select id="sort" name="sort" data-default="${spec3.sort}">
 			${options(
-    spec2.columns.filter((column) => column.sort).map((column) => [column.sort, `Sort: ${column.label}`]),
+    spec3.columns.filter((column) => column.sort).map((column) => [column.sort, `Sort: ${column.label}`]),
     state.sort
   )}
 		</select>
 		<label class="sr-only" for="dir">Order</label>
-		<select id="dir" name="dir" data-default="${spec2.direction}">
+		<select id="dir" name="dir" data-default="${spec3.direction}">
 			${options(
     [
       ["desc", "Descending"],
@@ -19652,21 +20116,21 @@ function filterBar(spec2, state) {
   )}
 		</select>
 		<button class="btn" data-list-submit>Filter</button>
-		<a class="btn ghost" href="${spec2.path}" data-list-clear>Clear</a>
+		<a class="btn ghost" href="${spec3.path}" data-list-clear>Clear</a>
 	</form>`;
 }
-function pageTrail(spec2, state, total, title) {
+function pageTrail(spec3, state, total, title) {
   const last = Math.max(1, Math.ceil(total / state.size));
   if (last === 1) return { back: "/" };
   return {
-    back: state.page > 1 ? listHref(spec2, state, { page: 1 }) : "/",
+    back: state.page > 1 ? listHref(spec3, state, { page: 1 }) : "/",
     crumbs: [[`${title} \xB7 page ${state.page} of ${last}`, null]]
   };
 }
-function pager(spec2, state, total) {
+function pager(spec3, state, total) {
   const last = Math.max(1, Math.ceil(total / state.size));
   if (last === 1) return "";
-  const link = (page, label, rel) => page === state.page || page < 1 || page > last ? html2`<span class="btn small" aria-disabled="true">${label}</span>` : html2`<a class="btn small" href="${listHref(spec2, state, { page })}" rel="${rel}" data-list-link
+  const link = (page, label, rel) => page === state.page || page < 1 || page > last ? html2`<span class="btn small" aria-disabled="true">${label}</span>` : html2`<a class="btn small" href="${listHref(spec3, state, { page })}" rel="${rel}" data-list-link
 					>${label}</a
 				>`;
   return html2`<nav class="pager" aria-label="Pages">
@@ -19675,19 +20139,19 @@ function pager(spec2, state, total) {
 		${link(state.page + 1, "Next \u203A", "next")} ${link(last, "Last \xBB", "last")}
 	</nav>`;
 }
-function listRegion(spec2, state, total, rows2) {
+function listRegion(spec3, state, total, rows2) {
   const first = total ? (state.page - 1) * state.size + 1 : 0;
   const last = Math.min(total, state.page * state.size);
-  const count2 = total ? `Showing ${first}\u2013${last} of ${plural(total, spec2.noun)}` : "";
-  return html2`<div data-region="${spec2.region}" data-list-region>
+  const count2 = total ? `Showing ${first}\u2013${last} of ${plural(total, spec3.noun)}` : "";
+  return html2`<div data-region="${spec3.region}" data-list-region>
 		<p class="list-count" data-list-count role="status">${count2}</p>
 		${total ? html2`<ul class="q-items l-rows">
 							${rows2}
 						</ul>
-						${pager(spec2, state, total)}` : state.q || Object.keys(state.filters).length ? emptyNotice(
-    `No ${spec2.noun} matches these filters.`,
-    html2`<a href="${spec2.path}" data-list-clear>Clear the filters</a>`
-  ) : emptyNotice(spec2.none[0], spec2.none[1])}
+						${pager(spec3, state, total)}` : state.q || Object.keys(state.filters).length ? emptyNotice(
+    `No ${spec3.noun} matches these filters.`,
+    html2`<a href="${spec3.path}" data-list-clear>Clear the filters</a>`
+  ) : emptyNotice(spec3.none[0], spec3.none[1])}
 	</div>`;
 }
 function listRow(key, href, top, tags2, lines2) {
@@ -19706,11 +20170,11 @@ var runStatuses2 = [
   ["rejected", "Rejected"],
   ["not_required", "No acceptance needed"]
 ];
-function runStatus2(row2) {
-  if (row2.state === "started") return pill("started", "in progress");
-  if (row2.acceptance === "approved") return pill("approved", "accepted");
-  if (row2.acceptance === "pending") return pill("pending", "awaiting acceptance");
-  return pill(row2.acceptance ?? "finalized");
+function runStatus2(row3) {
+  if (row3.state === "started") return pill("started", "in progress");
+  if (row3.acceptance === "approved") return pill("approved", "accepted");
+  if (row3.acceptance === "pending") return pill("pending", "awaiting acceptance");
+  return pill(row3.acceptance ?? "finalized");
 }
 function distinct(values) {
   return [...new Set(values)].sort().map((value2) => [value2, value2]);
@@ -19740,45 +20204,45 @@ function runsSpec(store) {
       {
         name: "plan",
         label: "Plan",
-        choices: [["", "All plans"], ...distinct(planList(store).map((row2) => row2.planId))],
+        choices: [["", "All plans"], ...distinct(planList(store).map((row3) => row3.planId))],
         strict: false
       },
       {
         name: "build",
         label: "Build",
-        choices: [["", "All builds"], ...distinct(runs.map((row2) => row2.build))],
+        choices: [["", "All builds"], ...distinct(runs.map((row3) => row3.build))],
         strict: false
       },
       { name: "status", label: "Status", choices: runStatuses2, strict: true }
     ]
   };
 }
-function runRow(row2) {
+function runRow(row3) {
   return listRow(
-    `run:${row2.runId}`,
-    `/runs/${row2.runId}`,
-    `${row2.runId} \xB7 ${row2.planId}@${row2.revision}`,
-    html2`${runStatus2(row2)} ${time(row2.startedAt)}`,
+    `run:${row3.runId}`,
+    `/runs/${row3.runId}`,
+    `${row3.runId} \xB7 ${row3.planId}@${row3.revision}`,
+    html2`${runStatus2(row3)} ${time(row3.startedAt)}`,
     [
-      html2`${counts(row2.counts)}
+      html2`${counts(row3.counts)}
 				<span class="muted"
-					>· build <code>${row2.build}</code> · ${row2.instanceId} ·
-					${row2.coverage ? `coverage ${words(row2.coverage)}` : "running"}</span
+					>· build <code>${row3.build}</code> · ${row3.instanceId} ·
+					${row3.coverage ? `coverage ${words(row3.coverage)}` : "running"}</span
 				>`
     ]
   );
 }
 function runsPage(store, params) {
-  const spec2 = runsSpec(store);
-  const { page, state } = listPage(listState(params, spec2), (query) => pagedRuns(store, query));
+  const spec3 = runsSpec(store);
+  const { page, state } = listPage(listState(params, spec3), (query) => pagedRuns(store, query));
   return {
     title: "Runs",
     section: "runs",
     subjects: ["*"],
-    address: listHref(spec2, state),
-    ...pageTrail(spec2, state, page.total, "Runs"),
-    body: html2`${heading("Runs", "Every run of every plan.")} ${filterBar(spec2, state)}
-		${listRegion(spec2, state, page.total, page.rows.map(runRow))}`
+    address: listHref(spec3, state),
+    ...pageTrail(spec3, state, page.total, "Runs"),
+    body: html2`${heading("Runs", "Every run of every plan.")} ${filterBar(spec3, state)}
+		${listRegion(spec3, state, page.total, page.rows.map(runRow))}`
   };
 }
 function subjectLink(subject) {
@@ -19815,19 +20279,19 @@ function logSpec(store) {
       {
         name: "subject",
         label: "Subject",
-        choices: [["", "All subjects"], ...distinct(recent.flatMap((row2) => row2.subjects))],
+        choices: [["", "All subjects"], ...distinct(recent.flatMap((row3) => row3.subjects))],
         strict: false
       },
       {
         name: "actor",
         label: "Actor",
-        choices: [["", "All actors"], ...distinct(recent.map((row2) => row2.actor))],
+        choices: [["", "All actors"], ...distinct(recent.map((row3) => row3.actor))],
         strict: false
       },
       {
         name: "command",
         label: "Command",
-        choices: [["", "All commands"], ...distinct(recent.map((row2) => row2.command))],
+        choices: [["", "All commands"], ...distinct(recent.map((row3) => row3.command))],
         strict: false
       },
       {
@@ -19835,38 +20299,38 @@ function logSpec(store) {
         label: "Status",
         choices: [
           ["", "All statuses"],
-          ...distinct(recent.map((row2) => row2.status)).map(([value2]) => [value2, words(value2)])
+          ...distinct(recent.map((row3) => row3.status)).map(([value2]) => [value2, words(value2)])
         ],
         strict: false
       }
     ]
   };
 }
-function logRow(row2) {
+function logRow(row3) {
   return listRow(
-    `op:${row2.rowid}`,
+    `op:${row3.rowid}`,
     null,
-    row2.command,
-    html2`${pill(row2.status === "rejected" ? "rejected_operation" : row2.status, words(row2.status))} ${time(row2.at)}`,
+    row3.command,
+    html2`${pill(row3.status === "rejected" ? "rejected_operation" : row3.status, words(row3.status))} ${time(row3.at)}`,
     [
-      html2`${row2.actor} ·
-			${row2.subjects.length ? join10(row2.subjects.map(subjectLink), " ") : html2`<span class="muted">no subject</span>`}`,
-      ...row2.status === "rejected" ? [html2`<span class="reason">${reasons(row2.response).join(" ")}</span>`] : [],
-      html2`<span class="mono muted">${row2.id}</span>`
+      html2`${row3.actor} ·
+			${row3.subjects.length ? join10(row3.subjects.map(subjectLink), " ") : html2`<span class="muted">no subject</span>`}`,
+      ...row3.status === "rejected" ? [html2`<span class="reason">${reasons(row3.response).join(" ")}</span>`] : [],
+      html2`<span class="mono muted">${row3.id}</span>`
     ]
   );
 }
 function logPage(store, params) {
-  const spec2 = logSpec(store);
-  const { page, state } = listPage(listState(params, spec2), (query) => pagedOperations(store, query));
+  const spec3 = logSpec(store);
+  const { page, state } = listPage(listState(params, spec3), (query) => pagedOperations(store, query));
   return {
     title: "Log",
     section: "log",
     subjects: ["*"],
-    address: listHref(spec2, state),
-    ...pageTrail(spec2, state, page.total, "Log"),
-    body: html2`${heading("Log", "Every write to the workspace.")} ${filterBar(spec2, state)}
-		${listRegion(spec2, state, page.total, page.rows.map(logRow))}`
+    address: listHref(spec3, state),
+    ...pageTrail(spec3, state, page.total, "Log"),
+    body: html2`${heading("Log", "Every write to the workspace.")} ${filterBar(spec3, state)}
+		${listRegion(spec3, state, page.total, page.rows.map(logRow))}`
   };
 }
 
@@ -20229,7 +20693,7 @@ function runsOf(store, explorationId, counts2) {
 }
 function allRuns(store) {
   const counts2 = /* @__PURE__ */ new Map();
-  const plans = all(store, "SELECT DISTINCT plan_id FROM explorations").map((row2) => row2.plan_id);
+  const plans = all(store, "SELECT DISTINCT plan_id FROM explorations").map((row3) => row3.plan_id);
   for (const planId of plans) {
     for (const claim of mergedClaims(store, planId)) {
       const key = `${planId}:${claim.explorationId}`;
@@ -20243,7 +20707,7 @@ function allRuns(store) {
     }
   }
   const ids2 = all(store, "SELECT exploration_id FROM explorations ORDER BY rowid").map(
-    (row2) => row2.exploration_id
+    (row3) => row3.exploration_id
   );
   const runs = ids2.flatMap((id2) => runsOf(store, id2, counts2));
   return [
@@ -20253,7 +20717,7 @@ function allRuns(store) {
 }
 function runningCount(store) {
   return all(store, "SELECT exploration_id FROM explorations").filter(
-    (row2) => isRunning(explorationState(explorationEvents(store, row2.exploration_id)))
+    (row3) => isRunning(explorationState(explorationEvents(store, row3.exploration_id)))
   ).length;
 }
 var spec = {
@@ -20380,8 +20844,8 @@ function acrossBuilds(review, item) {
 }
 function ruleText2(review, rule) {
   if (rule === null || rule === outside) return "Outside the rules of the plan.";
-  const row2 = review.map.rows.find((each) => each.rule.id === rule);
-  return row2 ? `${rule} ${row2.rule.text}` : rule;
+  const row3 = review.map.rows.find((each) => each.rule.id === rule);
+  return row3 ? `${rule} ${row3.rule.text}` : rule;
 }
 function facts(rows2) {
   const shown2 = rows2.filter(([, value2]) => value2);
@@ -20421,15 +20885,15 @@ function hiddenFields(context, item, back, fields) {
 		<input type="hidden" name="item" value="${item.key}" />
 		${fields.map(([name2, value2]) => html2`<input type="hidden" name="${name2}" value="${value2}" />`)}`;
 }
-function textForm(context, item, back, spec2) {
-  return html2`<form method="post" action="${spec2.action}" class="sp-form" id="${spec2.id}" data-field-form>
-		${hiddenFields(context, item, back, spec2.fields)}
-		<label for="${spec2.id}-text">${spec2.label}</label>
-		<textarea id="${spec2.id}-text" name="${spec2.name}" rows="3" required data-missing="${spec2.missing}">
-${spec2.value ?? ""}</textarea>
-		${spec2.more ?? ""}
+function textForm(context, item, back, spec3) {
+  return html2`<form method="post" action="${spec3.action}" class="sp-form" id="${spec3.id}" data-field-form>
+		${hiddenFields(context, item, back, spec3.fields)}
+		<label for="${spec3.id}-text">${spec3.label}</label>
+		<textarea id="${spec3.id}-text" name="${spec3.name}" rows="3" required data-missing="${spec3.missing}">
+${spec3.value ?? ""}</textarea>
+		${spec3.more ?? ""}
 		<div class="btns">
-			<button class="sp-btn pri"><span>${spec2.send}</span></button>
+			<button class="sp-btn pri"><span>${spec3.send}</span></button>
 			<span class="small muted">Enter sends. Shift+Enter starts a new line.</span>
 		</div>
 	</form>`;
@@ -20878,7 +21342,7 @@ function ruleGroups(review, view, items) {
   if (!area2) return [];
   return area2.rules.flatMap((id2) => {
     const own = items.filter((item) => item.rule === id2);
-    const text = review.map.rows.find((row2) => row2.rule.id === id2)?.rule.text ?? "";
+    const text = review.map.rows.find((row3) => row3.rule.id === id2)?.rule.text ?? "";
     return own.length ? [{ label: `${id2} \xB7 ${text}`, items: groupsOf(own).flatMap((group) => group.items) }] : [];
   });
 }
@@ -21139,7 +21603,7 @@ function navigator(review, current, exploration2 = null) {
     { look: "link" }
   ) : "";
   const builds = shown(review);
-  const outsideRow = review.map.rows.find((row2) => row2.rule.id === outside);
+  const outsideRow = review.map.rows.find((row3) => row3.rule.id === outside);
   const ruleRows = review.areas.flatMap((area2) => {
     const open = current === `area:${area2.label}` || current.startsWith("rule:") && area2.rules.includes(current.slice(5));
     return [
@@ -21157,17 +21621,17 @@ function navigator(review, current, exploration2 = null) {
         }
       ),
       ...area2.rules.map((id2) => {
-        const row2 = review.map.rows.find((each) => each.rule.id === id2);
+        const row3 = review.map.rows.find((each) => each.rule.id === id2);
         return navRow(
           review,
           current,
           `rule:${id2}`,
           href(`rule:${id2}`),
           id2,
-          row2.rule.text,
+          row3.rule.text,
           marks(
             review,
-            row2.cells.map((cell3) => cell3.status)
+            row3.cells.map((cell3) => cell3.status)
           ),
           {
             level: 2,
@@ -21298,10 +21762,10 @@ function viewHead(review, view) {
     };
   }
   if (view.startsWith("rule:")) {
-    const row2 = review.map.rows.find((each) => each.rule.id === view.slice(5));
+    const row3 = review.map.rows.find((each) => each.rule.id === view.slice(5));
     return {
-      sub: row2?.rule.text ?? "",
-      pills: html2`${row2?.cells.map((cell3) => {
+      sub: row3?.rule.text ?? "",
+      pills: html2`${row3?.cells.map((cell3) => {
         const [label, color] = cellWords[cell3.status];
         return html2`<span class="sp-pill ${color}" title="${cell3.build}"
 					>${buildLabel(review, cell3.build)}: ${label}</span
@@ -21320,27 +21784,27 @@ function viewHead(review, view) {
   return { sub: "", pills: html2`` };
 }
 function rulesList(review) {
-  const rows2 = review.map.rows.filter((row2) => row2.rule.id !== outside);
+  const rows2 = review.map.rows.filter((row3) => row3.rule.id !== outside);
   if (!rows2.length) return html2`<p class="sp-empty">This plan has no rules yet.</p>`;
   return html2`<div class="sp-list wide-title" role="listbox" aria-label="Rules of the plan" data-list>
 		<div class="sp-gh" role="presentation">Rules <span>${rows2.length}</span></div>
 		${rows2.map(
-    (row2, index2) => html2`<div
+    (row3, index2) => html2`<div
 					class="sp-row"
 					role="option"
 					aria-selected="false"
 					tabindex="-1"
 					id="row-rules-${index2}"
 					data-row
-					data-key="rule:${row2.rule.id}"
-					data-href="${reviewHref(review.planId, `rule:${row2.rule.id}`)}"
-					data-label="${row2.rule.id}"
+					data-key="rule:${row3.rule.id}"
+					data-href="${reviewHref(review.planId, `rule:${row3.rule.id}`)}"
+					data-label="${row3.rule.id}"
 				>
 					<span class="sp-c-cb"></span>
 					<span class="sp-c-tag"><span class="sp-pill">Rule</span></span>
-					<span class="sp-c-id">${row2.rule.id}</span>
-					<span class="sp-c-title ell">${row2.rule.text}</span>
-					<span class="sp-c-meta ell">${row2.rule.source ?? ""}</span>
+					<span class="sp-c-id">${row3.rule.id}</span>
+					<span class="sp-c-title ell">${row3.rule.text}</span>
+					<span class="sp-c-meta ell">${row3.rule.source ?? ""}</span>
 				</div>`
   )}
 	</div>`;
@@ -21350,7 +21814,7 @@ function viewsOf(review) {
     "needs",
     "all",
     ...review.areas.map((area2) => `area:${area2.label}`),
-    ...review.map.rows.map((row2) => `rule:${row2.rule.id}`),
+    ...review.map.rows.map((row3) => `rule:${row3.rule.id}`),
     ...review.map.builds.map((item) => `build:${item.build}`),
     "rules"
   ];
@@ -21812,16 +22276,16 @@ function explorationList(context, live, others, asking) {
         raw ? `${raw} not merged` : null
       ].filter(Boolean).join(" \xB7 "),
       asked2 ? rowOptions(context, asked2, from) : stoppableTester(live, item) ? optionsBox([testerStopOption(live.explorationId, item.explorer, 1)]) : "",
-      asked2 ? `${asked2.explorationId}/${asked2.id}` : ""
+      asked2 ? `${asked2.askerId}/${asked2.id}` : ""
     );
   });
   const phases2 = live.phases.map(
-    (row2, index2) => spRow(
-      `phase:${row2.phase}`,
-      explorationHref(live.explorationId, `phase:${row2.phase}`),
-      row2.phase,
-      pill(row2.state),
-      row2.reason ?? phaseNote(row2.state),
+    (row3, index2) => spRow(
+      `phase:${row3.phase}`,
+      explorationHref(live.explorationId, `phase:${row3.phase}`),
+      row3.phase,
+      pill(row3.state),
+      row3.reason ?? phaseNote(row3.state),
       "",
       `phase-${index2}`
     )
@@ -22012,13 +22476,13 @@ function explorerDetail(store, live, item, crumbs) {
 			${savedFiles(store, live, item)}
 		</section>`;
 }
-function phaseDetail(live, row2, crumbs) {
-  const failed = row2.state === "failed" || row2.state === "stopped";
+function phaseDetail(live, row3, crumbs) {
+  const failed2 = row3.state === "failed" || row3.state === "stopped";
   return html2`${crumbs}
-		<h2 class="q-h">Phase ${row2.phase}</h2>
-		<p class="q-meta">${pill(row2.state)}</p>
-		<p>${row2.reason ?? phaseNote(row2.state)}</p>
-		${failed ? html2`<p class="help">${dataLine(null, live.data)}</p>` : ""}`;
+		<h2 class="q-h">Phase ${row3.phase}</h2>
+		<p class="q-meta">${pill(row3.state)}</p>
+		<p>${row3.reason ?? phaseNote(row3.state)}</p>
+		${failed2 ? html2`<p class="help">${dataLine(null, live.data)}</p>` : ""}`;
 }
 function timeLine(live, run2) {
   const started = html2`started ${ago(run2.startedAt)}`;
@@ -22088,7 +22552,7 @@ function explorationPage(store, context, explorationId, params = new URLSearchPa
   const run2 = runs.find((item) => item.running) ?? runs[0];
   const asked2 = params.get("item") ?? "summary";
   const explorer = live.explorers.find((item) => `explorer:${item.explorer}` === asked2);
-  const phase = live.phases.find((row2) => `phase:${row2.phase}` === asked2);
+  const phase = live.phases.find((row3) => `phase:${row3.phase}` === asked2);
   const label = explorer ? explorer.explorer : phase ? phase.phase : null;
   const review = reviewOf(store, live.planId);
   const title = live.running ? "Testers now" : "Testers";
@@ -22129,8 +22593,8 @@ function explorationPage(store, context, explorationId, params = new URLSearchPa
 										>elapsed
 										${live.running ? html2`<span data-since="${run2.startedAt}">${duration(Date.now() - Date.parse(run2.startedAt))}</span>` : ""}</span
 									>` : live.phases.map(
-      (row2) => html2`<span class="${pillClass(row2.state)}" title="${words(row2.state)}"
-											>${row2.phase}</span
+      (row3) => html2`<span class="${pillClass(row3.state)}" title="${words(row3.state)}"
+											>${row3.phase}</span
 										>`
     )}
 					${run2.costUsd === null ? "" : html2`<span class="sp-pill" title="Cost so far, as Claude Code reports it">${money(run2.costUsd)}</span>`}
@@ -22286,11 +22750,11 @@ function ruleTokens(text) {
   return text.match(/(?:[^\s(]|\([^)]*(?:\)|$))+/g) ?? [];
 }
 function testerRulesText(store) {
-  const row2 = one(
+  const row3 = one(
     store,
     "SELECT value FROM workspace_settings WHERE name = 'testerRules' ORDER BY rowid DESC LIMIT 1"
   );
-  return row2?.value ?? defaultTesterRules;
+  return row3?.value ?? defaultTesterRules;
 }
 function saveTesterRules(store, actor, text) {
   const rules = ruleTokens(text);
@@ -22302,6 +22766,26 @@ function saveTesterRules(store, actor, text) {
     );
     store.db.prepare("INSERT INTO workspace_settings (name, value, operation_id) VALUES (?, ?, ?)").run("testerRules", rules.join(" "), operationId);
     return { reply: completed("testerRules", { rules }), subjects: ["settings"] };
+  });
+}
+var modelPattern = /^[A-Za-z0-9][A-Za-z0-9._:[\]-]{0,99}$/;
+function requestModelText(store) {
+  const row3 = one(
+    store,
+    "SELECT value FROM workspace_settings WHERE name = 'requestModel' ORDER BY rowid DESC LIMIT 1"
+  );
+  return row3?.value ?? "";
+}
+function saveRequestModel(store, actor, text) {
+  const model = text.trim();
+  return write(store, { actor, command: "setting set", subject: "requestModel", input: { model } }, (operationId) => {
+    requireWellFormed(
+      !model || modelPattern.test(model),
+      `${model} is not a model alias or ID.`,
+      "Use letters, digits, and the characters . : [ ] - . Leave the field empty for the model of Claude Code."
+    );
+    store.db.prepare("INSERT INTO workspace_settings (name, value, operation_id) VALUES (?, ?, ?)").run("requestModel", model, operationId);
+    return { reply: completed("requestModel", { model }), subjects: ["settings"] };
   });
 }
 
@@ -22376,12 +22860,12 @@ var marks2 = {
   not_checked: ["", "k-none"]
 };
 function columns(review) {
-  const rules = review.map.rows.filter((row2) => row2.rule.id !== outside);
-  const out = review.map.rows.find((row2) => row2.rule.id === outside);
-  const own = rules.length <= maxColumns ? rules.map((row2) => ({
-    label: row2.rule.id,
-    title: row2.rule.text,
-    cells: row2.cells.map((cell3) => cell3.status)
+  const rules = review.map.rows.filter((row3) => row3.rule.id !== outside);
+  const out = review.map.rows.find((row3) => row3.rule.id === outside);
+  const own = rules.length <= maxColumns ? rules.map((row3) => ({
+    label: row3.rule.id,
+    title: row3.rule.text,
+    cells: row3.cells.map((cell3) => cell3.status)
   })) : review.areas.map((area2) => ({ label: area2.label.slice(0, 2), title: area2.label, cells: area2.cells }));
   return [...own, { label: "Out", title: "Outside the rules", cells: out.cells.map((cell3) => cell3.status) }];
 }
@@ -22909,7 +23393,7 @@ function requirementsTable(plan) {
 			</thead>
 			<tbody>
 				${plan.requirements.map((requirement) => {
-    const coverage2 = plan.coverage.find((row2) => row2.requirementId === requirement.id);
+    const coverage2 = plan.coverage.find((row3) => row3.requirementId === requirement.id);
     return html2`<tr id="${requirement.id}">
 						<td class="mono">${requirement.id}</td>
 						<td>
@@ -22963,10 +23447,10 @@ var historyShown = 6;
 function planHistoryList(store, detail, all2) {
   const revisions = planHistory(store, detail.planId).reverse();
   const shown2 = all2 ? revisions : revisions.slice(0, historyShown);
-  const hidden4 = revisions.length - shown2.length;
+  const hidden5 = revisions.length - shown2.length;
   const subject = `${detail.planId}@${detail.revision}`;
   return html2`<div class="history-wrap" data-history>
-		<ol class="history${hidden4 ? " clipped" : ""}">
+		<ol class="history${hidden5 ? " clipped" : ""}">
 			${shown2.map(
     (item, index2) => html2`<li class="${item.revision === detail.revision ? "current" : ""}">
 						<details ${index2 === 0 ? html2`open` : ""} data-open-key="revision:${item.revision}">
@@ -22992,11 +23476,11 @@ function planHistoryList(store, detail, all2) {
 					</li>`
   )}
 		</ol>
-		${hidden4 ? html2`<a
+		${hidden5 ? html2`<a
 						class="history-more"
 						href="/plans/${subject}?history=all#history"
 						data-history-more="/plans/${subject}/history"
-						><span class="btn small">Show full history · ${plural(hidden4, "earlier revision")}</span></a
+						><span class="btn small">Show full history · ${plural(hidden5, "earlier revision")}</span></a
 					>` : ""}
 	</div>`;
 }
@@ -23991,17 +24475,17 @@ function coverage(store, detail) {
 			</thead>
 			<tbody>
 				${result.coverage.requirements.map(
-    (row2) => html2`<tr>
-							<td class="mono">${row2.requirementId}</td>
+    (row3) => html2`<tr>
+							<td class="mono">${row3.requirementId}</td>
 							<td>
-								${requirements.get(row2.requirementId)?.text ?? ""}
-								${row2.reason ? html2`<div class="muted small">${row2.reason}</div>` : ""}
-								${hasMetadata(requirements.get(row2.requirementId)?.metadata) ? html2`<div class="small">
-												${metadataList(requirements.get(row2.requirementId)?.metadata)}
+								${requirements.get(row3.requirementId)?.text ?? ""}
+								${row3.reason ? html2`<div class="muted small">${row3.reason}</div>` : ""}
+								${hasMetadata(requirements.get(row3.requirementId)?.metadata) ? html2`<div class="small">
+												${metadataList(requirements.get(row3.requirementId)?.metadata)}
 											</div>` : ""}
 							</td>
-							<td class="mono">${row2.testIds.join(", ") || "\u2013"}</td>
-							<td>${pill(row2.status)}</td>
+							<td class="mono">${row3.testIds.join(", ") || "\u2013"}</td>
+							<td>${pill(row3.status)}</td>
 						</tr>`
   )}
 			</tbody>
@@ -24062,7 +24546,7 @@ function inconclusiveList(detail) {
   return html2`<div class="field-group">
 		<p class="lab">Inconclusive · ${rows2.length}</p>
 		<ul class="plist">
-			${rows2.map((row2) => html2`<li>${assertionLink(detail.runId, row2.reference)} ${row2.reason}</li>`)}
+			${rows2.map((row3) => html2`<li>${assertionLink(detail.runId, row3.reference)} ${row3.reason}</li>`)}
 		</ul>
 	</div>`;
 }
@@ -24286,6 +24770,315 @@ function runPage(store, context, runId, params = new URLSearchParams(), state = 
   };
 }
 
+// plugin/src/ui/requests.ts
+var kinds2 = { c: "defect", q: "question", g: "gap" };
+var planPath = /^\/plans\/([A-Za-z0-9][A-Za-z0-9_-]{0,95})(?:@[1-9][0-9]{0,8})?(?:\/|$)/;
+var recordPaths2 = [
+  [/^\/explorations\/([A-Za-z0-9][A-Za-z0-9_-]{0,95})(?:\/|$)/, "run"],
+  [/^\/runs\/([A-Za-z0-9][A-Za-z0-9_-]{0,95})(?:\/|$)/, "run"],
+  [/^\/requests\/(R[1-9][0-9]{0,8})$/, "request"]
+];
+function screenContext(store, address) {
+  let url;
+  try {
+    url = new URL(address, "http://checkmate.local");
+  } catch {
+    return { planId: null, record: null };
+  }
+  const known = (planId2) => planId2 && one(store, "SELECT 1 FROM plan_requests WHERE plan_id = ?", planId2) ? planId2 : null;
+  let planId = known(planPath.exec(url.pathname)?.[1]);
+  let record = null;
+  const key = url.searchParams.get("item") ?? url.searchParams.get("at") ?? "";
+  const [letter, ...rest] = key.split(":");
+  if (planId && kinds2[letter] && rest.length) record = { kind: kinds2[letter], id: rest.join(":").slice(0, 96) };
+  for (const [pattern, kind] of recordPaths2) {
+    const found = pattern.exec(url.pathname);
+    if (!found || record) continue;
+    record = { kind, id: found[1] };
+    if (url.pathname.startsWith("/explorations/"))
+      planId = known(
+        one(store, "SELECT plan_id FROM explorations WHERE exploration_id = ?", found[1])?.plan_id
+      );
+  }
+  return { planId, record };
+}
+function firstLine(text) {
+  return (text ?? "").trim().split("\n")[0];
+}
+function money2(costUsd) {
+  return `$${costUsd.toFixed(2)}`;
+}
+function blocks(text) {
+  return text.replace(/\r\n?/g, "\n").trim().split(/\n{2,}/).map((block) => {
+    const lines2 = block.split("\n");
+    if (lines2.every((line) => /^\s*[-*] /.test(line)))
+      return html2`<ul>
+					${lines2.map((line) => html2`<li>${line.replace(/^\s*[-*] /, "")}</li>`)}
+				</ul>`;
+    if (lines2.every((line) => /^\s*\d+[.)] /.test(line)))
+      return html2`<ol>
+					${lines2.map((line) => html2`<li>${line.replace(/^\s*\d+[.)] /, "")}</li>`)}
+				</ol>`;
+    return html2`<p>${lines2.map((line, index2) => index2 ? html2`<br />${line}` : line)}</p>`;
+  });
+}
+function contextLine(context) {
+  if (!context.planId && !context.record) return "";
+  return html2`<p class="help" data-key="context">
+		On screen:
+		${context.planId ? html2`<a href="/plans/${context.planId}">plan ${context.planId}</a>` : ""}${context.planId && context.record ? ", " : ""}${context.record ? `${context.record.kind} ${context.record.id}` : ""}.
+	</p>`;
+}
+function hidden4(name2, value2) {
+  return html2`<input type="hidden" name="${name2}" value="${value2}" />`;
+}
+function followOption(n) {
+  return html2`<button
+		type="button"
+		class="sp-btn"
+		data-option
+		data-ask-follow
+		aria-label="${n}: Ask a follow-up"
+		title="Ask a follow-up. The conversation goes on."
+	>
+		<kbd aria-hidden="true">${n}</kbd><span>Ask a follow-up</span>
+	</button>`;
+}
+function formOption(context, action2, n, label, hints, fields, ask) {
+  const confirm = ask ? html2`data-ask-title="${ask.title}" data-ask-text="${ask.text}" data-ask-yes="${ask.yes}"` : "";
+  return html2`<form method="post" action="${action2}" class="sp-opt">
+		${hidden4("csrf", context.csrf)}${fields.map(([name2, value2]) => hidden4(name2, value2))}
+		<button class="sp-btn" data-option ${confirm} aria-label="${n}: ${label}" title="${hints}">
+			<kbd aria-hidden="true">${n}</kbd><span>${label}</span>
+		</button>
+	</form>`;
+}
+function stateLabel(request) {
+  return pill(request.state);
+}
+function elapsed(request, now) {
+  const start = Date.parse(request.startedAt ?? request.askedAt);
+  if (!isEnded(request) && request.state === "running")
+    return html2`<span data-since="${request.startedAt}">${duration(Math.max(0, now - start))}</span>`;
+  const end = request.endedAt ? Date.parse(request.endedAt) : now;
+  return duration(Math.max(0, end - start));
+}
+function failureText(request) {
+  const [sentence2, ...lines2] = (request.reason ?? "").split("\n");
+  const known = failureOf(request.reason, request.hint, []);
+  const cause = /No claude executable|Host authentication/.test(request.reason ?? "") || request.hint ? `${known.cause} ${known.next}` : sentence2 || "The request failed. No reason is recorded.";
+  return { cause, lines: lines2, detail: request.hint ? known.detail : null };
+}
+function requestPage2(store, context, requestId) {
+  const request = requestOf(store, requestId);
+  if (!request) return null;
+  const now = Date.now();
+  const open = explorationPermissions(store, requestId).filter((item) => !item.decision);
+  const ended = isEnded(request);
+  const back = "/requests";
+  const asked2 = [
+    ["text", request.text],
+    ["context", JSON.stringify(request.context)]
+  ];
+  const again = formOption(
+    context,
+    "/requests",
+    ended && request.state !== "failed" ? 2 : 1,
+    "Ask again",
+    "Sends the same text as a new request.",
+    [...asked2, ["return", `/requests/${requestId}`]]
+  );
+  const options3 = !ended ? [
+    formOption(
+      context,
+      `/requests/${requestId}/stop`,
+      1,
+      "Stop the request\u2026",
+      "Ends this request. The conversation goes on with the next request.",
+      [],
+      {
+        title: `Stop request ${requestId}?`,
+        text: `Checkmate stops Claude Code. The changes that it made stay. You can ask again.`,
+        yes: "Stop the request"
+      }
+    )
+  ] : request.state === "failed" ? [again] : [
+    followOption(1),
+    again,
+    formOption(
+      context,
+      "/requests/conversation",
+      3,
+      "New conversation",
+      "Claude Code forgets the earlier requests. The next request starts a new conversation.",
+      [["return", `/requests/${requestId}`]]
+    )
+  ];
+  const failure = request.state === "failed" ? failureText(request) : null;
+  return {
+    title: `${requestId} \xB7 Request`,
+    section: null,
+    subjects: [`request:${requestId}`, "requests"],
+    crumbs: [
+      ["Replies", "/requests"],
+      [requestId, null]
+    ],
+    back,
+    body: html2`<div
+			class="sp-record"
+			data-region="request-record"
+			data-drawer
+			data-back="${back}"
+			data-key="request:${requestId}"
+		>
+			${crumbBar([["Replies", "/requests"]])}
+			<section class="sp-dhead" tabindex="-1" data-sub data-label="${requestId}">
+				<div class="sp-pills">
+					${stateLabel(request)}
+					<span class="sp-c-id">${requestId}</span>
+					<span class="sp-c-id">${request.asker}</span>
+					<span class="sp-c-id">${ago(request.askedAt)}</span>
+				</div>
+				<h1 id="record-title" class="sp-ask-title">Request ${requestId}</h1>
+			</section>
+			<section aria-labelledby="asked-title" data-key="asked">
+				<h2 class="lab" id="asked-title">You asked</h2>
+				<p class="sp-reply sp-asked">${request.text}</p>
+				${contextLine(request.context)}
+			</section>
+			${request.state === "waiting" ? html2`<p class="banner info" role="status" data-key="state">
+							This request waits. Another request runs now. It starts when that one ends.
+						</p>` : ""}
+			${open.length ? html2`<p class="banner warn" role="status" data-key="waits">
+							This request waits for you: a permission request.
+							<a href="${requestHref(open[0], `/requests/${requestId}`)}">Answer it</a>
+						</p>` : ""}
+			${request.state === "running" || request.activity.length ? html2`<section aria-labelledby="activity-title">
+							<h2 class="lab" id="activity-title">
+								Activity <span class="n">${request.activity.length}</span>
+							</h2>
+							${request.activity.length ? html2`<ol class="sp-activity" aria-live="polite">
+											${request.activity.map((entry, index2) => html2`<li data-key="line:${index2}" class="ell" title="${entry.line}">${entry.line}</li>`)}
+										</ol>` : html2`<p class="help">Claude Code has used no tool yet.</p>`}
+						</section>` : ""}
+			${request.state === "running" || request.state === "waiting" ? html2`<p class="help" data-key="elapsed">
+							${request.state === "running" ? html2`Running for ${elapsed(request, now)}.` : ""}
+						</p>` : ""}
+			${request.state === "answered" ? html2`<section aria-labelledby="reply-title" data-key="reply">
+							<h2 class="lab" id="reply-title">Reply</h2>
+							<div class="sp-reply">
+								${request.reply?.trim() ? blocks(request.reply) : html2`<p class="muted">The reply has no text.</p>`}
+							</div>
+						</section>` : ""}
+			${failure ? html2`<section aria-labelledby="failed-title" data-key="failure">
+							<h2 class="lab" id="failed-title">What went wrong</h2>
+							<p class="banner fail" role="alert">${failure.cause}</p>
+							${failure.detail ? html2`<p class="help">${failure.detail}</p>` : ""}
+							${failure.lines.length ? html2`<pre class="sp-code" tabindex="0">${failure.lines.join("\n")}</pre>` : ""}
+						</section>` : ""}
+			${request.state === "stopped" || request.state === "interrupted" ? html2`<p class="banner info" role="status" data-key="state">${request.reason ?? ""}</p>` : ""}
+			${ended ? html2`<p class="help" data-key="took">
+							${request.costUsd === null ? "" : `Cost ${money2(request.costUsd)}. `}Took
+							${elapsed(request, now)}.
+						</p>` : ""}
+			${ended && request.denials.length ? html2`<p class="help" data-key="denials">
+							${plural(request.denials.length, "tool call was", "tool calls were")} denied:
+							${request.denials.join(", ")}.
+						</p>` : ""}
+			${ended ? html2`<section aria-labelledby="changes-title" data-key="changes">
+							<h2 class="lab" id="changes-title">
+								Changed <span class="n">${request.changes.length}</span>
+							</h2>
+							${request.changes.length ? html2`<ul class="sp-changes">
+											${request.changes.map((change) => html2`<li>${change.href ? html2`<a href="${change.href}">${change.text}</a>` : change.text} <span class="muted">${time(change.at)}</span></li>`)}
+										</ul>` : html2`<p class="help">The request changed no record.</p>`}
+						</section>` : ""}
+			<section class="sp-options" aria-labelledby="options-title" data-key="options:${requestId}">
+				<h2 class="lab" id="options-title">Options</h2>
+				<ol class="sp-optlist asks">
+					${options3.map((option) => html2`<li>${option}</li>`)}
+				</ol>
+			</section>
+		</div>`
+  };
+}
+var spec2 = {
+  path: "/requests",
+  region: "replies",
+  noun: "request",
+  search: "",
+  columns: [],
+  sort: "",
+  direction: "desc",
+  filters: [],
+  none: ["No request yet.", "Press / and type a request. Choose Ask Checkmate."]
+};
+function row2(request, n) {
+  const reply = request.state === "answered" ? firstLine(request.reply) : firstLine(request.reason) || "";
+  const meta2 = [request.asker, request.askedAt, request.costUsd === null ? null : money2(request.costUsd)].filter(Boolean).join(" \xB7 ");
+  const title = `${firstLine(request.text)}${reply ? ` \xB7 ${reply}` : ""}`;
+  return html2`<div
+		class="sp-row"
+		role="option"
+		aria-selected="false"
+		tabindex="-1"
+		id="reply-${n}"
+		data-row
+		data-key="request:${request.id}"
+		data-href="/requests/${request.id}"
+		data-label="${request.id}"
+	>
+		<span class="sp-c-cb"></span>
+		<span class="sp-c-tag">${stateLabel(request)}</span>
+		<span class="sp-c-id" title="${request.id}">${request.id}</span>
+		<span class="sp-c-title ell" title="${request.text}${reply ? `
+${reply}` : ""}">${title}</span>
+		<span class="sp-c-meta ell" title="${meta2}"
+			>${request.asker} ·
+			${time(request.askedAt)}${request.costUsd === null ? "" : ` \xB7 ${money2(request.costUsd)}`}</span
+		>
+	</div>`;
+}
+function repliesPage(store, params) {
+  const state = listState(params, spec2);
+  const requests = listedRequests(store);
+  const last = Math.max(1, Math.ceil(requests.length / state.size));
+  const shown2 = { ...state, page: Math.min(state.page, last) };
+  const rows2 = requests.slice((shown2.page - 1) * shown2.size, shown2.page * shown2.size);
+  const unread = rows2.filter(isUnread);
+  const earlier = rows2.filter((request) => !isUnread(request));
+  let n = 0;
+  const group = (label, items) => items.length ? html2`<div class="sp-gh" role="presentation">${label} <span>${items.length}</span></div>
+					${items.map((request) => row2(request, n++))}` : "";
+  const total = requests.length;
+  const unreadTotal = requests.filter(isUnread).length;
+  const first = total ? (shown2.page - 1) * shown2.size + 1 : 0;
+  const end = Math.min(total, shown2.page * shown2.size);
+  return {
+    title: "Replies",
+    section: null,
+    subjects: ["requests"],
+    address: listHref(spec2, shown2),
+    ...pageTrail(spec2, shown2, total, "Replies"),
+    body: html2`${heading("Replies", unreadTotal ? `${plural(unreadTotal, "reply", "replies")} not read yet.` : "Every request and its reply.")}
+			<div data-region="replies" data-list-region>
+				<p class="list-count" data-list-count role="status">
+					${total ? `Showing ${first}\u2013${end} of ${plural(total, "request")}` : ""}
+				</p>
+				${total ? html2`<div class="sp-list activity" role="listbox" aria-label="Requests" data-list>
+									${group("Not read", unread)}${group("Earlier", earlier)}
+								</div>
+								${pager(spec2, shown2, total)}` : emptyNotice(spec2.none[0], spec2.none[1])}
+			</div>`
+  };
+}
+function conversationText(store) {
+  const conversation = currentConversation(store);
+  if (!conversation) return "No conversation yet. The next request starts one.";
+  const count2 = conversationSize(store, conversation.sessionId);
+  return html2`Conversation started ${ago(conversation.startedAt)}, ${plural(count2, "request")}.`;
+}
+
 // plugin/src/ui/settings.ts
 var settingsPages = [
   { path: "/settings/targets", label: "Targets" },
@@ -24500,8 +25293,8 @@ function actorInput(context, id2) {
 }
 function retireControl(context, targetId, instance, retire) {
   if (instance.retired) return html2`<span class="muted small">retired by ${instance.retired.actor}</span>`;
-  const failed = retire?.instanceId === instance.instanceId ? retire.error : null;
-  return html2`<details class="retire" ${failed ? html2`open` : ""} data-open-key="retire:${instance.instanceId}">
+  const failed2 = retire?.instanceId === instance.instanceId ? retire.error : null;
+  return html2`<details class="retire" ${failed2 ? html2`open` : ""} data-open-key="retire:${instance.instanceId}">
 		<summary class="btn small" aria-label="Retire ${instance.instanceId}">Retire</summary>
 		<form
 			method="post"
@@ -24511,7 +25304,7 @@ function retireControl(context, targetId, instance, retire) {
 			<input type="hidden" name="csrf" value="${context.csrf}" />
 			<input type="hidden" name="confirmed" value="1" />
 			<p>Retire <code>${instance.instanceId}</code>? No new run can start on it. Its runs stay as they are.</p>
-			${failed ? html2`<p class="form-error" role="alert">${failed}</p>` : ""}
+			${failed2 ? html2`<p class="form-error" role="alert">${failed2}</p>` : ""}
 			${actorInput(context, `retire-actor-${instance.instanceId}`)}
 			<div class="btns"><button class="btn primary">Confirm retire</button></div>
 		</form>
@@ -24688,7 +25481,7 @@ function claudeProgram(env) {
     return html2`<span class="form-error" role="status">${error.message} ${error.hint ?? ""}</span>`;
   }
 }
-function claudePage(context, env, form = null) {
+function claudePage(store, context, env, form = null, model = null) {
   const body = html2`${heading("Claude Code", "The program that runs the testers. Checkmate makes no call to it on this page.")}
 		<section class="panel" aria-labelledby="claude-program">
 			<h2 class="lab" id="claude-program">Program</h2>
@@ -24748,10 +25541,10 @@ function claudePage(context, env, form = null) {
 					</thead>
 					<tbody>
 						${Object.entries(testLevels).map(
-    ([level, row2]) => html2`<tr>
+    ([level, row3]) => html2`<tr>
 									<td class="mono">${level}</td>
-									<td class="mono">${row2.model}</td>
-									<td>${row2.explorers}${row2.verifier ? " and a verifier" : ""}</td>
+									<td class="mono">${row3.model}</td>
+									<td>${row3.explorers}${row3.verifier ? " and a verifier" : ""}</td>
 								</tr>`
   )}
 					</tbody>
@@ -24762,8 +25555,239 @@ function claudePage(context, env, form = null) {
 				<code>checkmate test &lt;planId&gt; --claude-arg --model --claude-arg &lt;model&gt;</code>. When the
 				host refuses the model, the test fails and names this override. Checkmate does not try another model.
 			</p>
+		</section>
+		<section class="panel" aria-labelledby="claude-requests">
+			<h2 class="lab" id="claude-requests">Requests</h2>
+			<p class="help">
+				A request that you type in the find bar runs in Claude Code on this computer, in your own session. It
+				has your login, your settings, and all your tools. Claude Code asks you here when a tool needs a
+				permission.
+			</p>
+			<form method="post" action="/settings/claude/model" class="decision-form">
+				<input type="hidden" name="csrf" value="${context.csrf}" />
+				<div class="field-group">
+					<label class="lab" for="request-model">Model for requests</label>
+					<input
+						id="request-model"
+						name="model"
+						maxlength="100"
+						autocomplete="off"
+						value="${model?.value ?? requestModelText(store)}"
+						aria-describedby="request-model-help"
+						${model ? html2`autofocus` : ""}
+					/>
+					<p class="help" id="request-model-help">
+						A model alias or ID, for example <code>sonnet</code>. Empty means the model that Claude Code
+						chooses by itself.
+					</p>
+					${model ? html2`<p class="form-error" role="alert" data-field="model">${model.error}</p>` : ""}
+				</div>
+				<div class="btns"><button class="btn primary">Save the model</button></div>
+			</form>
+			<p class="help" data-region="conversation">${conversationText(store)}</p>
+			<form method="post" action="/requests/conversation" class="decision-form">
+				<input type="hidden" name="csrf" value="${context.csrf}" />
+				<input type="hidden" name="return" value="/settings/claude" />
+				<div class="btns"><button class="btn">New conversation</button></div>
+			</form>
 		</section>`;
   return settingsPage("/settings/claude", "Claude Code", ["*"], body);
+}
+
+// plugin/src/ui/requester.ts
+var stderrCount = 20;
+function readStreamLine(line) {
+  let value2;
+  try {
+    value2 = JSON.parse(line);
+  } catch {
+    return [{ kind: "broken" }];
+  }
+  if (!value2 || typeof value2 !== "object" || Array.isArray(value2)) return [{ kind: "broken" }];
+  const fields = value2;
+  if (fields.type === "system" && fields.subtype === "init" && typeof fields.session_id === "string")
+    return [{ kind: "session", sessionId: fields.session_id }];
+  if (fields.type === "result") return [{ kind: "result", value: fields }];
+  if (fields.type !== "assistant") return [{ kind: "other" }];
+  const content = fields.message?.content;
+  const tools = (Array.isArray(content) ? content : []).flatMap(
+    (block) => block?.type === "tool_use" && typeof block.name === "string" ? [
+      {
+        kind: "tool",
+        name: block.name,
+        input: block.input,
+        cwd: typeof fields.cwd === "string" ? fields.cwd : void 0
+      }
+    ] : []
+  );
+  return tools.length ? tools : [{ kind: "other" }];
+}
+function failed(reason, hint = null) {
+  return { state: "failed", detail: { reason, ...hint ? { hint } : {} } };
+}
+function denialLines(result, workspace) {
+  const denials = Array.isArray(result.permission_denials) ? result.permission_denials : [];
+  return denials.flatMap(
+    (denial) => typeof denial?.tool_name === "string" ? [activityLine2(denial.tool_name, denial.tool_input, workspace)] : []
+  );
+}
+function createRequester(store, options3) {
+  const log = options3.log ?? ((line) => process.stderr.write(`checkmate ui: ${line}
+`));
+  const delays = options3.delays ?? defaultStopDelays;
+  const queue = [];
+  let running3 = null;
+  let closing = false;
+  function guarded(action2) {
+    try {
+      action2();
+    } catch (error) {
+      log(`could not record a request: ${error.message}`);
+    }
+  }
+  function conclude(run2, end) {
+    const stderr = stderrTail(end?.stderr ?? "", stderrCount);
+    const result = run2.result;
+    const outcome = run2.stopping ? {
+      state: run2.stopping,
+      detail: { reason: run2.reason }
+    } : !end ? failed(run2.reason) : end.error ? failed(end.error) : run2.broken ? failed(["claude printed a line that is not JSON.", ...stderr].join("\n")) : !result ? failed(["claude ended without a reply.", ...stderr].join("\n")) : result.is_error === true ? errorOutcome(result, stderr) : {
+      state: "answered",
+      detail: {
+        reply: typeof result.result === "string" ? result.result : "",
+        ...typeof result.total_cost_usd === "number" ? { costUsd: result.total_cost_usd } : {},
+        denials: denialLines(result, options3.workspace)
+      }
+    };
+    guarded(() => {
+      const changes = changesOf(store, run2.actor);
+      setRequestState(store, run2.id, outcome.state, { ...outcome.detail, changes });
+    });
+  }
+  function errorOutcome(result, stderr) {
+    const text = typeof result.result === "string" ? result.result : "";
+    const call = { failure: ["operational_error", text], result: text, stderr };
+    const authentication = authenticationFailed(call);
+    const first = text.trim().split("\n")[0].slice(0, 200);
+    return failed(
+      ["claude ended with an error" + (first ? `: ${first}` : "."), ...stderr].join("\n"),
+      authentication ? authenticationHint : null
+    );
+  }
+  function read(run2, line) {
+    for (const found of readStreamLine(line)) {
+      if (found.kind === "broken") {
+        run2.broken = true;
+        run2.child?.stop();
+      } else if (found.kind === "session")
+        guarded(
+          () => recordRequestEvent(
+            store,
+            run2.id,
+            { step: "session", status: "started", detail: { sessionId: found.sessionId } },
+            { subjects: [`request:${run2.id}`] }
+          )
+        );
+      else if (found.kind === "tool")
+        guarded(() => addRequestActivity(store, run2.id, activityLine2(found.name, found.input, found.cwd)));
+      else if (found.kind === "result") run2.result = found.value;
+    }
+  }
+  function launch(request) {
+    const run2 = {
+      id: request.id,
+      actor: requestActor(request.asker, request.id),
+      child: null,
+      result: null,
+      broken: false,
+      stopping: null,
+      reason: "",
+      done: Promise.resolve()
+    };
+    running3 = run2;
+    let claude;
+    try {
+      claude = requireClaude(options3.env);
+    } catch (error) {
+      const refusal = error;
+      run2.reason = [refusal.message, refusal.hint].filter(Boolean).join(" ");
+      guarded(() => setRequestState(store, run2.id, "running"));
+      run2.done = Promise.resolve().then(() => finish2(run2, null));
+      return;
+    }
+    const args = requestArgs({
+      sessionId: request.conversation,
+      resume: conversationStarted(store, request.conversation),
+      hook: {
+        port: options3.hookPort(),
+        token: options3.hookToken,
+        explorationId: requestHookName,
+        who: request.id
+      },
+      model: requestModelText(store) || null,
+      checkmate: checkmateScript()
+    });
+    guarded(() => setRequestState(store, run2.id, "running"));
+    const env = { ...options3.env, CHECKMATE_ACTOR: run2.actor, [hookTokenName]: options3.hookToken };
+    const prompt = requestPrompt(request.text, screenText(request.context));
+    run2.child = streamClaude(claude, args, prompt, options3.workspace, env, (line) => read(run2, line), delays);
+    run2.done = run2.child.finished.then((end) => finish2(run2, end));
+  }
+  function finish2(run2, end) {
+    conclude(run2, end);
+    if (running3 === run2) running3 = null;
+    next();
+  }
+  function next() {
+    if (running3 || closing) return;
+    const id2 = queue.shift();
+    if (!id2) return;
+    const request = requestOf(store, id2);
+    if (request?.state === "waiting") launch(request);
+    else next();
+  }
+  return {
+    ask(actor, text, context) {
+      const id2 = askRequest(store, actor, { text, context });
+      queue.push(id2);
+      next();
+      return id2;
+    },
+    stop(actor, requestId, reason) {
+      if (running3?.id === requestId) {
+        if (running3.stopping) return;
+        running3.stopping = "stopped";
+        running3.reason = reason || "Stopped by you.";
+        stopRequestRecord(store, actor, requestId, reason);
+        running3.child?.stop();
+        return;
+      }
+      const at = queue.indexOf(requestId);
+      if (at === -1) return;
+      queue.splice(at, 1);
+      stopRequestRecord(store, actor, requestId, reason);
+      setRequestState(store, requestId, "stopped", { reason: "Stopped before it started.", changes: [] });
+    },
+    newConversation(actor) {
+      startConversation(store, actor);
+    },
+    async close() {
+      closing = true;
+      for (const id2 of queue.splice(0))
+        guarded(
+          () => setRequestState(store, id2, "interrupted", {
+            reason: "The UI stopped before the request started.",
+            changes: []
+          })
+        );
+      const run2 = running3;
+      if (!run2) return;
+      run2.stopping ??= "interrupted";
+      if (run2.stopping === "interrupted") run2.reason = "The UI stopped before the request ended.";
+      run2.child?.stop();
+      await run2.done;
+    }
+  };
 }
 
 // plugin/src/ui/server.ts
@@ -24776,6 +25800,8 @@ var routes = {
   startTest: new RegExp(`^/plans/(${id})/test$`),
   startFollow: new RegExp(`^/plans/(${id})/follow$`),
   permit: new RegExp(`^/permissions/(${id})/(P[1-9][0-9]{0,8})$`),
+  requestPage: /^\/requests\/(R[1-9][0-9]{0,8})$/,
+  stopRequest: /^\/requests\/(R[1-9][0-9]{0,8})\/stop$/,
   permitMany: /^\/permissions\/bulk$/,
   stopRun: new RegExp(`^/explorations/(${id})/stop$`),
   stopTester: new RegExp(`^/explorations/(${id})/explorers/(${id})/stop$`),
@@ -24918,6 +25944,14 @@ async function startUi(options3) {
   const hookToken = randomBytes2(32).toString("hex");
   const hooks = createHooks(store, hookToken, options3);
   const env = options3.env ?? process.env;
+  const requester = createRequester(store, {
+    workspace: options3.workspace,
+    env,
+    hookPort: () => port,
+    hookToken,
+    delays: options3.stopDelays,
+    log: options3.log
+  });
   const fallbackActor = options3.defaultActor ?? defaultActor(options3.workspace, process.env) ?? "";
   const clients = /* @__PURE__ */ new Set();
   let port = 0;
@@ -24949,7 +25983,7 @@ data: ${matched.join(",") || "*"}
   const watchedStates = () => all(
     watch,
     "SELECT DISTINCT exploration_id FROM exploration_events e WHERE step = 'supervisor' AND NOT EXISTS (SELECT 1 FROM exploration_events d WHERE d.exploration_id = e.exploration_id AND d.rowid > e.rowid AND d.step IN ('done', 'followed', 'stop'))"
-  ).map((row2) => `${row2.exploration_id}:${explorationState(explorationEvents(watch, row2.exploration_id))}`).join(",");
+  ).map((row3) => `${row3.exploration_id}:${explorationState(explorationEvents(watch, row3.exploration_id))}`).join(",");
   let supervisors = watchedStates();
   const supervisorWatch = setInterval(() => {
     const current = watchedStates();
@@ -24970,6 +26004,7 @@ data: ${matched.join(",") || "*"}
       toast: (request.req.headers["sec-fetch-mode"] ?? "navigate") === "navigate" || request.req.headers["x-checkmate-queue"] === "1" ? request.cookies.checkmate_toast || null : null,
       queueCount: needsYou(store).urgent,
       permissions: openPermissions(store).length,
+      requests: requestStatus(store),
       running: runningCount(store),
       cursor: latestRowid(store),
       workspace: options3.workspace,
@@ -24980,7 +26015,7 @@ data: ${matched.join(",") || "*"}
     const shown2 = context(request);
     const cookies = [...extraCookies];
     if (shown2.toast) cookies.push(cookie("checkmate_toast", "", 0));
-    const subjects = [...page.subjects, "permissions"];
+    const subjects = [...page.subjects, "permissions", "requests"];
     send(request.res, page.status ?? 200, "text/html; charset=utf-8", layout(shown2, { ...page, subjects }).html, {
       "Set-Cookie": cookies,
       Vary: "Cookie"
@@ -25104,7 +26139,10 @@ data: ${matched.join(",") || "*"}
     if (pathname === "/permissions") return firstRequest(request);
     const asked2 = routes.permit.exec(pathname);
     if (asked2) return permissionRecord(request, asked2[1], asked2[2]);
-    if (pathname === "/settings/claude") return render(request, claudePage(shown2, env));
+    if (pathname === "/settings/claude") return render(request, claudePage(store, shown2, env));
+    if (pathname === "/requests") return render(request, repliesPage(store, searchParams));
+    const askedRequest = routes.requestPage.exec(pathname);
+    if (askedRequest) return requestRecord(request, askedRequest[1]);
     if (pathname === "/actor") return render(request, actorPage(shown2, safeBack(searchParams.get("back"))));
     if (pathname === "/settings") return redirect(request.res, "/settings/targets");
     if (pathname === "/settings/targets") return render(request, targetsPage(store));
@@ -25488,6 +26526,7 @@ data: ${matched.join(",") || "*"}
     });
     const pages = [
       { kind: "page", id: "Activity", title: "Tests and follow-ups of all plans", href: "/activity" },
+      { kind: "page", id: "Replies", title: "Requests that you asked and their replies", href: "/requests" },
       { kind: "page", id: "New change", title: "Give a ticket and start the first test", href: "/new" },
       { kind: "page", id: "New target", title: "Set up the application to test", href: "/setup" }
     ].filter((entry) => matches(`${entry.id} ${entry.title} ${entry.kind}`));
@@ -25688,12 +26727,13 @@ data: ${matched.join(",") || "*"}
         store,
         actor,
         {
-          explorationId,
+          askerId: explorationId,
           requestId,
           decision: form.get("decision") ?? "",
           reason: form.get("reason") ?? void 0
         },
         (explorer, reason) => {
+          if (requestOf(store, explorationId)) return requester.stop(actor, explorationId, reason);
           recordStop(store, actor, { explorationId, explorer, reason: reason || void 0, background: true });
           startEnding(store, explorationId, actor, explorer, env);
         }
@@ -25734,7 +26774,7 @@ data: ${matched.join(",") || "*"}
     for (const found of named) {
       const [, explorationId, requestId] = found;
       try {
-        decidePermission(store, actor, { explorationId, requestId, decision, reason }, () => {
+        decidePermission(store, actor, { askerId: explorationId, requestId, decision, reason }, () => {
         });
         answered.push(`${explorationId}/${requestId}`);
       } catch {
@@ -25750,10 +26790,84 @@ data: ${matched.join(",") || "*"}
       cookie("checkmate_toast", `${verb}: ${plural(answered.length, "request")}.${rest}`, 60)
     ]);
   }
+  function requestRecord(request, requestId) {
+    const found = requestOf(store, requestId);
+    const shown2 = context(request);
+    if (found && isUnread(found) && shown2.actor) markRequestRead(store, shown2.actor, requestId);
+    const page = found ? requestPage2(store, context(request), requestId) : null;
+    if (!page) return errorPage(request, 404, "No such request", `Checkmate has no request ${requestId}.`);
+    render(request, page);
+  }
+  function askText(request, form) {
+    const { actor, cookies } = actorFrom(request, form);
+    const back = safeBack(form.get("return") ?? "/requests");
+    const refuse3 = (message) => actionRefusal(request, back, message);
+    if (!actor) return refuse3("Enter your name. Checkmate records it with the request.");
+    const text = form.get("text")?.trim() ?? "";
+    if (!text) return refuse3("Write the request first.");
+    let context2;
+    try {
+      context2 = form.has("context") ? contextFromData(form.get("context") ?? "") : screenContext(store, form.get("screen") ?? "");
+    } catch {
+      return refuse3("The context of the request is not valid.");
+    }
+    let id2;
+    try {
+      id2 = requester.ask(actor, text, context2);
+    } catch (error) {
+      return refuse3(engineText(error));
+    }
+    redirect(request.res, `/requests/${id2}`, cookies);
+  }
+  function contextFromData(text) {
+    const data = JSON.parse(text);
+    const planId = typeof data.planId === "string" && data.planId ? requireIdentifier(data.planId, "plan ID") : null;
+    const record = typeof data.record?.kind === "string" && typeof data.record.id === "string" ? { kind: data.record.kind.slice(0, 40), id: data.record.id.slice(0, 96) } : null;
+    return { planId, record };
+  }
+  function stopRequest(request, form, requestId) {
+    const { actor, cookies } = actorFrom(request, form);
+    const back = `/requests/${requestId}`;
+    if (!actor) return actionRefusal(request, back, "Enter your name. Checkmate records it with the stop.");
+    const found = requestOf(store, requestId);
+    const flash = found?.state === "running" || found?.state === "waiting" ? `Stopping ${requestId}\u2026` : `${requestId} has ended. Nothing was stopped.`;
+    requester.stop(actor, requestId, form.get("reason")?.trim() ?? "");
+    hooks.release();
+    redirect(request.res, back, [...cookies, cookie("checkmate_toast", flash, 60)]);
+  }
+  function newConversation(request, form) {
+    const { actor, cookies } = actorFrom(request, form);
+    const back = safeBack(form.get("return") ?? "/requests");
+    if (!actor) return actionRefusal(request, back, "Enter your name. Checkmate records it with the change.");
+    requester.newConversation(actor);
+    redirect(request.res, back, [
+      ...cookies,
+      cookie("checkmate_toast", "The next request starts a new conversation.", 60)
+    ]);
+  }
+  function saveModel(request, form) {
+    const { actor, cookies } = actorFrom(request, form);
+    const typed = form.get("model") ?? "";
+    const page = (error) => () => claudePage(store, context(request), env, null, { value: typed, error });
+    if (!actor) return refuse2(request, page("Enter your name. Checkmate records it with the setting."), cookies);
+    try {
+      saveRequestModel(store, actor, typed);
+    } catch (error) {
+      return refuse2(request, page(engineText(error)), cookies);
+    }
+    redirect(request.res, "/settings/claude", [
+      ...cookies,
+      cookie(
+        "checkmate_toast",
+        typed.trim() ? "Saved the model for requests" : "Requests use the model of Claude Code",
+        60
+      )
+    ]);
+  }
   function saveRules2(request, form) {
     const { actor, cookies } = actorFrom(request, form);
     const typed = form.get("rules") ?? "";
-    const page = (error) => () => claudePage(context(request), env, { value: typed, error });
+    const page = (error) => () => claudePage(store, context(request), env, { value: typed, error });
     if (!actor) return refuse2(request, page("Enter your name. Checkmate records it with the setting."), cookies);
     try {
       saveTesterRules(store, actor, typed);
@@ -26216,6 +27330,11 @@ data: ${matched.join(",") || "*"}
     }
     if (pathname === "/bulk") return bulk(request, form);
     if (pathname === "/settings/claude") return saveRules2(request, form);
+    if (pathname === "/settings/claude/model") return saveModel(request, form);
+    if (pathname === "/requests") return askText(request, form);
+    if (pathname === "/requests/conversation") return newConversation(request, form);
+    const stoppingRequest = routes.stopRequest.exec(pathname);
+    if (stoppingRequest) return stopRequest(request, form, stoppingRequest[1]);
     if (pathname === "/setup/assumed") return previewSetup(request, form);
     if (pathname === "/setup") return await setUp(request, form);
     if (pathname === "/new") return startChange(request, form);
@@ -26289,13 +27408,17 @@ data: ${matched.join(",") || "*"}
   });
   const address = server.address();
   port = typeof address === "object" && address ? address.port : 0;
-  if (!liveUi(options3.workspace)) closeOpenPermissions(store, "ui-stopped");
+  if (!liveUi(options3.workspace)) {
+    closeOpenPermissions(store, "ui-stopped");
+    staleRequests(store);
+  }
   writeUiFile(options3.workspace, { port, pid: process.pid, hookToken });
   return {
     url: `http://127.0.0.1:${port}/`,
     close: async () => {
       if (closed) return;
       closed = true;
+      await requester.close();
       hooks.close();
       removeUiFile(options3.workspace, hookToken);
       clearInterval(poll);
@@ -26573,13 +27696,13 @@ End your reply with this line: ${replyLineOf(action2.name, action2.step)}`
       })) : [{ action: word, line: word }];
       const events = explorationEvents(store, explorationId);
       const ended = [...events].reverse().find((item) => ["done", "followed"].includes(item.step));
-      const failed = word === "finished" && ended?.status !== "completed";
+      const failed2 = word === "finished" && ended?.status !== "completed";
       return {
         reply: {
-          status: failed ? "operational_error" : "completed",
+          status: failed2 ? "operational_error" : "completed",
           subject: explorationId,
-          reasons: failed ? [String(ended?.detail.reason ?? `Exploration ${explorationId} failed.`)] : [],
-          ...failed && ended?.detail.hint ? { hint: String(ended.detail.hint) } : actions.length ? {
+          reasons: failed2 ? [String(ended?.detail.reason ?? `Exploration ${explorationId} failed.`)] : [],
+          ...failed2 && ended?.detail.hint ? { hint: String(ended.detail.hint) } : actions.length ? {
             hint: `When you have sent these actions, run checkmate explore started ${explorationId} ${actions.map((action2) => action2.name).join(" ")}.`
           } : {},
           data: { explorationId, actions: lines2 }
@@ -26622,7 +27745,7 @@ function finishPhase(store, actor, explorationId, phase, launch) {
   }
   const events = explorationEvents(store, explorationId);
   const reached = phase.events.filter((item) => item.step === "follow-turn" && item.status === "completed").length;
-  const row2 = explorationRow(store, explorationId);
+  const row3 = explorationRow(store, explorationId);
   addOutcome(store, actor, explorationId, {
     step: "followed",
     explorer: null,
@@ -26636,7 +27759,7 @@ function finishPhase(store, actor, explorationId, phase, launch) {
       ],
       ...recorded ? {} : reached ? { reason: "No explorer session of the follow-up was recorded." } : {
         reason: "No tester of the follow-up could be reached.",
-        hint: `The testers ran in a session that ended. Run checkmate test ${row2.plan_id} --build ${row2.build} --session again. The answers reach the new testers through the known-state file.`
+        hint: `The testers ran in a session that ended. Run checkmate test ${row3.plan_id} --build ${row3.build} --session again. The answers reach the new testers through the known-state file.`
       }
     }
   });
@@ -26758,13 +27881,13 @@ function readText2(store, path) {
     return void 0;
   }
 }
-function rulesDone(store, actor, explorationId, own, base, failed) {
+function rulesDone(store, actor, explorationId, own, base, failed2) {
   const round = own.at(-1).detail.round;
   const plan = explorationRow(store, explorationId).plan_id;
   const names = ruleSources(store, plan).map((source) => source.name);
   const answer2 = `${workFolder(explorationId)}/rules/answer.json`;
-  const checked = failed ? { rules: [], refusals: [] } : checkedRules(replyArray(readText2(store, answer2)), names);
-  if (!failed && round === "rules" && checked.refusals.length)
+  const checked = failed2 ? { rules: [], refusals: [] } : checkedRules(replyArray(readText2(store, answer2)), names);
+  if (!failed2 && round === "rules" && checked.refusals.length)
     return addOutcome(store, actor, explorationId, {
       step: "rules-round",
       explorer: null,
@@ -26786,7 +27909,7 @@ function rulesDone(store, actor, explorationId, own, base, failed) {
         ...base,
         rules: rules.length,
         refused: checked.refusals.length,
-        ...rules.length ? {} : { reason: failed ?? checked.refusals.join(" ") }
+        ...rules.length ? {} : { reason: failed2 ?? checked.refusals.join(" ") }
       }
     },
     (operationId) => {
@@ -26794,56 +27917,56 @@ function rulesDone(store, actor, explorationId, own, base, failed) {
     }
   );
 }
-function mergeDone(store, actor, explorationId, own, base, failed, after) {
+function mergeDone(store, actor, explorationId, own, base, failed2, after) {
   const round = own.at(-1).detail.round;
   const answer2 = `${workFolder(explorationId)}/merge/answer.json`;
-  const refusals = failed ? [] : logMerge(store, explorationId, replyArray(readText2(store, answer2)));
+  const refusals = failed2 ? [] : logMerge(store, explorationId, replyArray(readText2(store, answer2)));
   const outcome = (step, status, detail) => addOutcome(store, actor, explorationId, {
     step,
     explorer: null,
     status,
     detail: { name: "merge", ...base, ...detail }
   });
-  if (!failed && round === "merge" && refusals.length)
+  if (!failed2 && round === "merge" && refusals.length)
     return outcome("merge-round", "started", { round: "repair", refusals });
-  const unplaced = failed || round === "again" ? [] : unplacedReports(store, explorationId, after);
+  const unplaced = failed2 || round === "again" ? [] : unplacedReports(store, explorationId, after);
   if (unplaced.length)
     return outcome("merge-round", "started", { round: "again", unplaced, refused: refusals.length });
   const carried = round === "again" ? own.findLast((item) => item.step === "merge-round").detail.refused : 0;
   const first = own.find((item) => item.step === "action");
-  return outcome("merge", failed ? "operational_error" : "completed", {
+  return outcome("merge", failed2 ? "operational_error" : "completed", {
     reports: first.detail.reports,
     refused: carried + refusals.length
   });
 }
-function verifyDone(store, actor, explorationId, own, base, failed) {
+function verifyDone(store, actor, explorationId, own, base, failed2) {
   const round = own.at(-1).detail.round;
   const first = own.find((item) => item.step === "action");
   const ids2 = new Set(first.detail.ids);
   const answer2 = `${workFolder(explorationId)}/verify/answer.json`;
-  const observations = failed ? [] : verifiedEntries(replyArray(readText2(store, answer2)), ids2);
+  const observations = failed2 ? [] : verifiedEntries(replyArray(readText2(store, answer2)), ids2);
   const outcome = (step, status, detail) => addOutcome(store, actor, explorationId, {
     step,
     explorer: null,
     status,
     detail: { name: "verify", ...base, ...detail }
   });
-  if (!failed && !observations.length && round === "verify")
+  if (!failed2 && !observations.length && round === "verify")
     return outcome("verify-round", "started", { round: "repair" });
   if (observations.length) logEntries(store, verifierActor, { explorationId, entries: observations });
   return outcome(
     "verify",
-    observations.length ? "completed" : failed && round === "verify" ? "operational_error" : "skipped",
+    observations.length ? "completed" : failed2 && round === "verify" ? "operational_error" : "skipped",
     {
       items: ids2.size,
       verified: observations.length,
-      ...observations.length ? {} : failed && round === "verify" ? { reason: failed } : {
-        reason: `The verifier gave no result, also after one repair${failed ? ` (${failed})` : ""}. The claims keep their states.`
+      ...observations.length ? {} : failed2 && round === "verify" ? { reason: failed2 } : {
+        reason: `The verifier gave no result, also after one repair${failed2 ? ` (${failed2})` : ""}. The claims keep their states.`
       }
     }
   );
 }
-function recordDone(store, actor, explorationId, explorer, own, base, failed, phase) {
+function recordDone(store, actor, explorationId, explorer, own, base, failed2, phase) {
   const last = own.at(-1);
   const recorded = recordAnswer(store, {
     explorationId,
@@ -26852,7 +27975,7 @@ function recordDone(store, actor, explorationId, explorer, own, base, failed, ph
     after: last.detail.after,
     round: last.detail.round,
     carried: own.findLast((item) => item.step === "repair")?.detail.carried,
-    failed
+    failed: failed2
   });
   if (recorded.repair)
     return addOutcome(store, actor, explorationId, {
@@ -26901,7 +28024,7 @@ function runningSteps(events) {
   });
 }
 function stepDone(store, actor, input) {
-  const { explorationId, name: name2, step, failed } = input;
+  const { explorationId, name: name2, step, failed: failed2 } = input;
   const events = explorationEvents(store, explorationId);
   sessionLaunch(events, explorationId);
   clearPause(store, actor, explorationId, events);
@@ -26925,29 +28048,29 @@ function stepDone(store, actor, input) {
     running3.length ? `The steps that run: ${running3.join(", ")}. Correct the name or the step, and run explore done again.` : `Run checkmate explore next ${explorationId}, and carry out its actions.`
   );
   const agent = input.agent ?? agentOf(tester ? events : own, name2);
-  requireWellFormed(agent || failed, "Give --agent with the agent ID that the Agent tool returned.");
+  requireWellFormed(agent || failed2, "Give --agent with the agent ID that the Agent tool returned.");
   const base = {
     ...agent ? { agent } : {},
-    activity: input.activity ?? (failed ? `${step} failed: ${failed}` : `${step} ended`),
-    ...failed ? { reason: failed } : {}
+    activity: input.activity ?? (failed2 ? `${step} failed: ${failed2}` : `${step} ended`),
+    ...failed2 ? { reason: failed2 } : {}
   };
-  if (name2 === "rules") return rulesDone(store, actor, explorationId, own, base, failed);
-  if (name2 === "merge") return mergeDone(store, actor, explorationId, own, base, failed, phase.follow?.after ?? 0);
-  if (name2 === "verify") return verifyDone(store, actor, explorationId, own, base, failed);
-  if (step === "record") return recordDone(store, actor, explorationId, name2, own, base, failed, phase);
-  if (step === "follow" && !failed) {
+  if (name2 === "rules") return rulesDone(store, actor, explorationId, own, base, failed2);
+  if (name2 === "merge") return mergeDone(store, actor, explorationId, own, base, failed2, phase.follow?.after ?? 0);
+  if (name2 === "verify") return verifyDone(store, actor, explorationId, own, base, failed2);
+  if (step === "record") return recordDone(store, actor, explorationId, name2, own, base, failed2, phase);
+  if (step === "follow" && !failed2) {
     addOutcome(store, actor, explorationId, {
       step: "follow-turn",
       explorer: name2,
       status: "completed",
       detail: base
     });
-    return recordDone(store, actor, explorationId, name2, own, base, failed, phase);
+    return recordDone(store, actor, explorationId, name2, own, base, failed2, phase);
   }
-  const status = failed ? "operational_error" : "completed";
-  const item = step === "study" && !failed ? { step: "turn", status: "started", detail: { ...base, turn: "test" } } : step === "follow" ? { step: "follow-turn", status, detail: base } : { step: "end", status, detail: { ...base, ...failed ? { turn: step } : {} } };
+  const status = failed2 ? "operational_error" : "completed";
+  const item = step === "study" && !failed2 ? { step: "turn", status: "started", detail: { ...base, turn: "test" } } : step === "follow" ? { step: "follow-turn", status, detail: base } : { step: "end", status, detail: { ...base, ...failed2 ? { turn: step } : {} } };
   const reply = addOutcome(store, actor, explorationId, { ...item, explorer: name2 });
-  if (failed) keepWorkFiles(store, actor, explorationId, name2, phase.name);
+  if (failed2) keepWorkFiles(store, actor, explorationId, name2, phase.name);
   return reply;
 }
 
@@ -26962,12 +28085,12 @@ function linkedCriterion(entry, criteria) {
   return ids2.map((id2) => criteria.get(id2)).find(Boolean);
 }
 function drafts(store, explorationId, observations) {
-  const row2 = explorationRow(store, explorationId);
-  const state = journal(store, row2.plan_id);
+  const row3 = explorationRow(store, explorationId);
+  const state = journal(store, row3.plan_id);
   const own = state.team.filter((entry) => entry.explorationId === explorationId);
   const byId = new Map(state.team.map((entry) => [entry.id, entry]));
   const criteria = new Map(state.team.filter((entry) => entry.kind === "criterion").map((entry) => [entry.id, entry]));
-  const fromClaims = planClaims(store, row2.plan_id).filter((claim) => claim.explorationId === explorationId && harvestedStates.includes(claim.state)).map((claim) => {
+  const fromClaims = planClaims(store, row3.plan_id).filter((claim) => claim.explorationId === explorationId && harvestedStates.includes(claim.state)).map((claim) => {
     const report = byId.get(claim.reports[0]);
     const criterion = linkedCriterion(report, criteria);
     return {
@@ -27051,35 +28174,35 @@ function harvested(base, items, explorationId, build, capabilities, operations) 
 }
 function harvestExploration(store, actor, input) {
   return write(store, { actor, command: "harvest", subject: input.explorationId, input }, (operationId) => {
-    const row2 = explorationRow(store, input.explorationId);
-    const { request, target } = planRequest(store, row2.plan_id);
-    const items = drafts(store, row2.exploration_id, input.observations);
+    const row3 = explorationRow(store, input.explorationId);
+    const { request, target } = planRequest(store, row3.plan_id);
+    const items = drafts(store, row3.exploration_id, input.observations);
     requireCondition(
       items.length,
-      `Exploration ${row2.exploration_id} has nothing to harvest: no claim that is observed, confirmed, or accepted${input.observations ? ", and no observation with verdict ok and steps" : ""}.`,
+      `Exploration ${row3.exploration_id} has nothing to harvest: no claim that is observed, confirmed, or accepted${input.observations ? ", and no observation with verdict ok and steps" : ""}.`,
       input.observations ? void 0 : "Add --observations to harvest the observations with verdict ok and steps."
     );
-    const hasRevision = one(store, "SELECT 1 FROM plan_revisions WHERE plan_id = ?", row2.plan_id);
-    const latest = hasRevision ? planRevision(store, row2.plan_id) : null;
+    const hasRevision = one(store, "SELECT 1 FROM plan_revisions WHERE plan_id = ?", row3.plan_id);
+    const latest = hasRevision ? planRevision(store, row3.plan_id) : null;
     const base = latest ? planCandidate(latest.plan) : { requirements: [], tests: [], gaps: [] };
     const result = harvested(
       base,
       items,
-      row2.exploration_id,
-      row2.build,
+      row3.exploration_id,
+      row3.build,
       target.profile.capabilities,
       target.profile.allowedOperations
     );
     requireCondition(
       result.added.length,
-      `Each item of ${row2.exploration_id} is harvested already into ${row2.plan_id}.`,
-      `Run checkmate plan show ${row2.plan_id} to read the harvested tests.`
+      `Each item of ${row3.exploration_id} is harvested already into ${row3.plan_id}.`,
+      `Run checkmate plan show ${row3.plan_id} to read the harvested tests.`
     );
     const change = latest ? storeEdit(store, operationId, latest, result.candidate) : storeRevision(
       store,
       {
         contractVersion: "toolkit-2",
-        planId: row2.plan_id,
+        planId: row3.plan_id,
         revision: 1,
         previousRevision: null,
         target: { targetId: target.profile.targetId, revision: target.revision, sha256: target.sha256 },
@@ -27097,12 +28220,12 @@ function harvestExploration(store, actor, input) {
         ...change.reply,
         data: {
           ...change.reply.data,
-          explorationId: row2.exploration_id,
+          explorationId: row3.exploration_id,
           tests: result.added,
           skipped: result.skipped
         }
       },
-      subjects: [...change.subjects, `exploration:${row2.exploration_id}`]
+      subjects: [...change.subjects, `exploration:${row3.exploration_id}`]
     };
   });
 }
@@ -27145,21 +28268,21 @@ function optionValue(token, kind, text) {
     );
 }
 function evidence(args, context) {
-  return list(args, "evidence")?.map((spec2) => {
-    const match = /^-(?::(.+))?$/.exec(spec2);
-    return match ? { text: context.text(), kind: match[1] } : spec2;
+  return list(args, "evidence")?.map((spec3) => {
+    const match = /^-(?::(.+))?$/.exec(spec3);
+    return match ? { text: context.text(), kind: match[1] } : spec3;
   });
 }
-function toolSpec(spec2) {
-  const match = /^(.+?):(cli|mcp|skill):(.+)$/.exec(spec2);
-  requireWellFormed(match, `Invalid --tool: ${spec2}. Use <name>:<cli|mcp|skill>:<purpose>.`);
+function toolSpec(spec3) {
+  const match = /^(.+?):(cli|mcp|skill):(.+)$/.exec(spec3);
+  requireWellFormed(match, `Invalid --tool: ${spec3}. Use <name>:<cli|mcp|skill>:<purpose>.`);
   return { name: match[1], kind: match[2], purpose: match[3] };
 }
-function entryPointSpec(spec2) {
-  const match = /^([^:]+):([^:]+):(.+)$/.exec(spec2);
+function entryPointSpec(spec3) {
+  const match = /^([^:]+):([^:]+):(.+)$/.exec(spec3);
   requireWellFormed(
     match && entryPointKinds.includes(match[2]),
-    `Invalid --entry-point: ${spec2}. Use <name>:<url|command|value>:<purpose>.`
+    `Invalid --entry-point: ${spec3}. Use <name>:<url|command|value>:<purpose>.`
   );
   return { name: match[1], kind: match[2], purpose: match[3] };
 }
@@ -28374,7 +29497,7 @@ var commands = {
         store,
         actor,
         {
-          explorationId,
+          askerId: explorationId,
           requestId: value(args, "requestId"),
           decision: permissionDecisions.find((name2) => args[name2] === true),
           reason: value(args, "reason")
@@ -28579,9 +29702,9 @@ var commands = {
       const statement = queryStatement(store, value(args, "sql"));
       const columns2 = statement.columns().map((column) => column.name);
       const rows2 = readOnly(() => statement.all()).map(
-        (row2) => Object.fromEntries(
+        (row3) => Object.fromEntries(
           columns2.map((column) => {
-            const field4 = row2[column];
+            const field4 = row3[column];
             return [column, field4 instanceof Uint8Array ? `<blob ${field4.length} bytes>` : field4];
           })
         )
@@ -28593,7 +29716,7 @@ var commands = {
       const rows2 = reply.data.rows;
       return {
         facts: { rows: rows2.length },
-        lines: [columns2, ...rows2.map((row2) => columns2.map((name2) => row2[name2]))]
+        lines: [columns2, ...rows2.map((row3) => columns2.map((name2) => row3[name2]))]
       };
     }
   }
@@ -28750,7 +29873,7 @@ function printPlan(reply) {
   }
   const detail = reply.data;
   const { plan } = detail;
-  const coverage2 = new Map(plan.coverage.map((row2) => [row2.requirementId, row2.status]));
+  const coverage2 = new Map(plan.coverage.map((row3) => [row3.requirementId, row3.status]));
   return {
     facts: {
       ...facts3,

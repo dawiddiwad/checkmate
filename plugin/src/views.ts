@@ -1712,16 +1712,16 @@ export function needsYou(store: Store) {
 	}))
 	const gaps = waiting.gaps.map(asked)
 	const permissions = openPermissions(store).map((item): QueueItem => ({
-		key: `permission:${item.planId}:${item.explorationId}/${item.id}`,
+		key: `permission:${item.planId}:${item.askerId}/${item.id}`,
 		group: 'permissions',
 		kind: 'permission',
-		planId: item.planId,
-		id: `${item.explorationId}/${item.id}`,
+		planId: item.planId ?? '',
+		id: `${item.askerId}/${item.id}`,
 		title: `${item.who} asks to use ${item.tool}`,
 		since: item.at,
 		severity: null,
 		state: 'open',
-		explorationId: item.explorationId,
+		explorationId: item.fromRequest ? null : item.askerId,
 		runId: null,
 		revision: null,
 	}))

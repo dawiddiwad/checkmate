@@ -46,6 +46,8 @@ test('opening a workspace creates the schema, WAL mode, and the version rows', (
 		'plan_revisions',
 		'plan_rules',
 		'profiles',
+		'request_events',
+		'requests',
 		'results',
 		'run_attempts',
 		'run_gaps',
@@ -62,7 +64,7 @@ test('opening a workspace creates the schema, WAL mode, and the version rows', (
 			.map((row) => ({ ...row })),
 		[
 			{ key: 'contractVersion', value: 'toolkit-2' },
-			{ key: 'schemaVersion', value: '5' },
+			{ key: 'schemaVersion', value: '6' },
 		]
 	)
 	closeStore(opened)
@@ -76,7 +78,7 @@ test('a database with another schema version is refused', (t) => {
 	db.exec('DROP TRIGGER meta_update')
 	db.exec("UPDATE meta SET value = '1' WHERE key = 'schemaVersion'")
 	db.close()
-	assert.throws(() => openStore(workspace), /schema version 1\. Expected 5/)
+	assert.throws(() => openStore(workspace), /schema version 1\. Expected 6/)
 })
 
 test('a database of schema version 3 gets the exploration tables and keeps its rows', (t) => {
@@ -97,12 +99,35 @@ test('a database of schema version 3 gets the exploration tables and keeps its r
 	db.close()
 	const upgraded = openStore(opened.workspace)
 	t.after(() => closeStore(upgraded))
-	assert.equal(upgraded.db.prepare("SELECT value FROM meta WHERE key = 'schemaVersion'").get()!.value, '5')
+	assert.equal(upgraded.db.prepare("SELECT value FROM meta WHERE key = 'schemaVersion'").get()!.value, '6')
 	assert(upgraded.db.prepare("SELECT 1 FROM sqlite_master WHERE name = 'explorations'").get())
 	assert(upgraded.db.prepare("SELECT 1 FROM plan_revisions WHERE plan_id = 'checkout'").get())
-	assert.throws(() => upgraded.db.exec("UPDATE meta SET value = '6'"), /immutable/)
+	assert.throws(() => upgraded.db.exec("UPDATE meta SET value = '7'"), /immutable/)
 	assert(upgraded.db.prepare("SELECT 1 FROM sqlite_master WHERE name = 'journal_entries_delete'").get())
 	assert(upgraded.db.prepare("SELECT 1 FROM sqlite_master WHERE name = 'plan_rules_delete'").get())
+})
+
+test('a database of schema version 5 gets the request tables and keeps its rows', (t) => {
+	const opened = store(t)
+	ready(opened)
+	closeStore(opened)
+	const db = new DatabaseSync(join(opened.workspace, '.checkmate', 'checkmate.db'))
+	for (const table of ['request_events', 'requests']) {
+		db.exec(`DROP TRIGGER ${table}_update`)
+		db.exec(`DROP TRIGGER ${table}_delete`)
+		db.exec(`DROP TABLE ${table}`)
+	}
+	db.exec('DROP TRIGGER meta_update')
+	db.exec("UPDATE meta SET value = '5' WHERE key = 'schemaVersion'")
+	db.exec(
+		"CREATE TRIGGER meta_update BEFORE UPDATE ON meta BEGIN SELECT RAISE(ABORT, 'Rows of meta are immutable'); END"
+	)
+	db.close()
+	const upgraded = openStore(opened.workspace)
+	t.after(() => closeStore(upgraded))
+	assert.equal(upgraded.db.prepare("SELECT value FROM meta WHERE key = 'schemaVersion'").get()!.value, '6')
+	assert(upgraded.db.prepare("SELECT 1 FROM sqlite_master WHERE name = 'request_events_update'").get())
+	assert(upgraded.db.prepare("SELECT 1 FROM plan_revisions WHERE plan_id = 'checkout'").get())
 })
 
 test('a database of schema version 4 gets the added tables and reads as before', (t) => {
@@ -124,7 +149,7 @@ test('a database of schema version 4 gets the added tables and reads as before',
 	db.close()
 	const upgraded = openReadOnlyStore(opened.workspace)
 	t.after(() => closeStore(upgraded))
-	assert.equal(upgraded.db.prepare("SELECT value FROM meta WHERE key = 'schemaVersion'").get()!.value, '5')
+	assert.equal(upgraded.db.prepare("SELECT value FROM meta WHERE key = 'schemaVersion'").get()!.value, '6')
 	assert(upgraded.db.prepare("SELECT 1 FROM sqlite_master WHERE name = 'plan_rules_update'").get())
 	assert.equal(planRevision(upgraded, 'checkout').plan.planId, 'checkout')
 	assert.deepEqual(
@@ -191,6 +216,8 @@ test('triggers refuse updates and deletes on every table', (t) => {
 			operationId
 		)
 		execute(opened, "INSERT INTO workspace_settings VALUES ('testerRules', 'Read Bash', ?)", operationId)
+		execute(opened, "INSERT INTO requests VALUES ('R1', 'why', '{}', 'tester', 'c1', ?, ?)", at, operationId)
+		execute(opened, "INSERT INTO request_events VALUES ('R1', ?, 'state', 'waiting', '{}', ?)", at, operationId)
 		return { reply: { status: 'completed', subject: 'x-1', reasons: [], data: {} }, subjects: [] }
 	})
 	const tables = opened.db

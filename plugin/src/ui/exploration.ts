@@ -477,7 +477,7 @@ function explorationList(context: Context, live: Live, others: Listed[], asking:
 				: stoppableTester(live, item)
 					? optionsBox([testerStopOption(live.explorationId, item.explorer, 1)])
 					: '',
-			asked ? `${asked.explorationId}/${asked.id}` : ''
+			asked ? `${asked.askerId}/${asked.id}` : ''
 		)
 	})
 	const phases = live.phases.map((row, index) =>

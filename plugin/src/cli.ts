@@ -1473,7 +1473,7 @@ const commands: Record<string, Command> = {
 				store,
 				actor,
 				{
-					explorationId,
+					askerId: explorationId,
 					requestId: value(args, 'requestId')!,
 					decision: permissionDecisions.find((name) => args[name] === true)!,
 					reason: value(args, 'reason'),

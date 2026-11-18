@@ -13,6 +13,7 @@ export type Context = {
 	toast: string | null
 	queueCount: number
 	permissions: number
+	requests: { running: string | null; unread: number; firstUnread: string | null }
 	running: number
 	cursor: number
 	workspace: string
@@ -97,12 +98,28 @@ function statusBar(context: Context, page: Page) {
 		</nav>
 		<span class="sb-links">
 			<a
+				class="sb-btn"
+				href="/requests/${context.requests.running ?? ''}"
+				title="The request that runs now"
+				data-region="request-link"
+				${context.requests.running ? '' : html`hidden`}
+				>Request ${context.requests.running ?? ''} · running</a
+			>
+			<a
 				class="sb-btn att"
 				href="/permissions"
 				title="Permission requests of testers that wait for you"
 				data-region="permissions-link"
 				${context.permissions ? '' : html`hidden`}
 				>${context.permissions} ${context.permissions === 1 ? 'permission' : 'permissions'}</a
+			>
+			<a
+				class="sb-btn att"
+				href="${context.requests.unread === 1 ? `/requests/${context.requests.firstUnread}` : '/requests'}"
+				title="Replies to your requests that you did not read"
+				data-region="replies-link"
+				${context.requests.unread ? '' : html`hidden`}
+				>${context.requests.unread} ${context.requests.unread === 1 ? 'reply' : 'replies'}</a
 			>
 			<a
 				class="sb-btn att"
@@ -150,15 +167,26 @@ const dialogs = html`<dialog class="sp-keys" data-keys aria-labelledby="keys-tit
 		</div>
 		<div data-keys-table></div>
 	</dialog>
-	<dialog class="sp-find" data-find aria-label="Find">
-		<input type="search" data-find-input aria-label="Find a plan, a defect, or a question" autocomplete="off" />
+	<dialog class="sp-find" data-find aria-label="Find or ask">
+		<input
+			type="search"
+			data-find-input
+			aria-label="Find a plan, a defect, or a question. Or type a request."
+			autocomplete="off"
+		/>
 		<ul role="listbox" aria-label="Results" data-find-results></ul>
 		<p class="sp-find-none" data-find-none hidden>Nothing matches.</p>
 		<p class="sp-find-none" data-find-more hidden></p>
+		<p class="sp-find-none" data-find-asking role="status" hidden></p>
+		<p class="sp-find-none" data-find-error role="alert" hidden></p>
 		<div class="sp-foot">
 			<span><kbd>${glyph('↑')}</kbd><kbd>${glyph('↓')}</kbd>Choose</span><span><kbd>Enter</kbd>Go</span
 			><span><kbd>Esc</kbd>Close</span>
 		</div>
+		<p class="sp-find-note" data-find-note>
+			Ask Checkmate starts Claude Code on this computer, in your own session. It can read this workspace and
+			change records.
+		</p>
 	</dialog>
 	<dialog class="sp-confirm" data-confirm aria-labelledby="confirm-title">
 		<div class="sp-dh"><h2 id="confirm-title" class="sp-path" data-confirm-title></h2></div>

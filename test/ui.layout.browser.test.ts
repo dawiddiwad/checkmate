@@ -552,3 +552,22 @@ for (const colorScheme of ['dark', 'light'] as const)
 				}
 		}
 	)
+
+test(
+	'messages show in the case that was written, and the labels of buttons stay in capitals',
+	browserTest,
+	async (t) => {
+		const { page, url } = await open(t)
+		await page.goto(url('/plans/coupons?view=all&focus=list'))
+		const cases = await page.evaluate(() => {
+			const say = document.querySelector('[data-say]') as HTMLElement
+			const toast = document.createElement('div')
+			toast.className = 'toast'
+			toast.textContent = 'Started x-19 on build b-normal'
+			document.body.append(toast)
+			const button = document.querySelector('.sb-btn') as HTMLElement
+			return [say, toast, button].map((element) => getComputedStyle(element).textTransform)
+		})
+		assert.deepEqual(cases, ['none', 'none', 'uppercase'])
+	}
+)

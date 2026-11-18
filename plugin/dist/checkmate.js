@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 var __defProp = Object.defineProperty;
 var __export = (target, all2) => {
-  for (var name in all2)
-    __defProp(target, name, { get: all2[name], enumerable: true });
+  for (var name2 in all2)
+    __defProp(target, name2, { get: all2[name2], enumerable: true });
 };
 
 // plugin/src/store.ts
@@ -319,8 +319,8 @@ function addExplorationTables(db) {
 }
 function addMissingTables(db) {
   for (const { ddl, fill } of addedTables) {
-    const [name] = tableNamesOf(ddl);
-    if (db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(name)) continue;
+    const [name2] = tableNamesOf(ddl);
+    if (db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(name2)) continue;
     db.exec(ddl);
     db.exec(triggersOf(ddl));
     if (fill) db.exec(fill);
@@ -332,9 +332,9 @@ function completed(subject, data = {}) {
 function databasePath(workspace) {
   return join(workspace, ".checkmate", "checkmate.db");
 }
-function removeTemporaryDirectory(store, name) {
+function removeTemporaryDirectory(store, name2) {
   const temporary = join(store.workspace, ".checkmate", "tmp");
-  rmSync(join(temporary, name), { recursive: true, force: true });
+  rmSync(join(temporary, name2), { recursive: true, force: true });
   try {
     rmdirSync(temporary);
   } catch {
@@ -8590,10 +8590,23 @@ function He(i, { instancePath: t = "", parentData: _, parentDataProperty: Z, roo
 
 // plugin/src/sessions.ts
 import { spawn, spawnSync } from "node:child_process";
-import { accessSync, constants, readFileSync, realpathSync, statSync } from "node:fs";
+import {
+  accessSync,
+  chmodSync,
+  constants,
+  mkdirSync as mkdirSync2,
+  readFileSync,
+  realpathSync,
+  rmSync as rmSync2,
+  statSync,
+  writeFileSync
+} from "node:fs";
 import { homedir } from "node:os";
 import { delimiter, join as join2 } from "node:path";
 import { fileURLToPath } from "node:url";
+var hookTokenName = "CHECKMATE_HOOK_TOKEN";
+var permissionTimeoutSeconds = 600;
+var activityTimeoutSeconds = 5;
 var storeDenyRules = [
   "Read(./.checkmate/**)",
   "Edit(./.checkmate/**)",
@@ -8671,10 +8684,77 @@ function checkClaudeArgs(claudeArgs) {
   }
   return claudeArgs;
 }
+function uiFilePath(workspace) {
+  return join2(workspace, ".checkmate", "ui.json");
+}
+function zombie(pid) {
+  try {
+    return readFileSync(`/proc/${pid}/stat`, "utf8").split(") ")[1]?.startsWith("Z") === true;
+  } catch {
+    return false;
+  }
+}
+function running(pid) {
+  if (typeof pid !== "number") return false;
+  try {
+    process.kill(pid, 0);
+    return !zombie(pid);
+  } catch (error) {
+    return error.code === "EPERM";
+  }
+}
+function readUiFile(workspace) {
+  try {
+    const file = JSON.parse(readFileSync(uiFilePath(workspace), "utf8"));
+    const valid = Number.isInteger(file.port) && Number.isInteger(file.pid) && typeof file.hookToken === "string" && file.hookToken !== "";
+    return valid ? file : null;
+  } catch {
+    return null;
+  }
+}
+function liveUi(workspace) {
+  const file = readUiFile(workspace);
+  return file && running(file.pid) ? file : null;
+}
+function writeUiFile(workspace, file) {
+  mkdirSync2(join2(workspace, ".checkmate"), { recursive: true });
+  writeFileSync(uiFilePath(workspace), JSON.stringify(file), { mode: 384 });
+  chmodSync(uiFilePath(workspace), 384);
+}
+function removeUiFile(workspace, hookToken) {
+  if (readUiFile(workspace)?.hookToken === hookToken) rmSync2(uiFilePath(workspace), { force: true });
+}
+function childHook(workspace, explorationId, who) {
+  const ui = liveUi(workspace);
+  return ui ? { port: ui.port, token: ui.hookToken, explorationId, who } : void 0;
+}
+function hookSettings(hook) {
+  const base = `http://127.0.0.1:${hook.port}/hooks`;
+  const entry = (path, timeout) => [
+    {
+      hooks: [
+        {
+          type: "http",
+          url: `${base}/${path}/${hook.explorationId}/${hook.who}`,
+          timeout,
+          headers: { Authorization: `Bearer $${hookTokenName}` },
+          allowedEnvVars: [hookTokenName]
+        }
+      ]
+    }
+  ];
+  return {
+    hooks: {
+      PermissionRequest: entry("permission", permissionTimeoutSeconds),
+      PreToolUse: entry("activity", activityTimeoutSeconds)
+    }
+  };
+}
 function childArgs(context, own) {
   const settings = {
     ...context.hiddenPlugin ? { enabledPlugins: { [context.hiddenPlugin]: false } } : {},
-    ...context.deny?.length ? { permissions: { deny: context.deny } } : {}
+    ...context.deny?.length ? { permissions: { deny: context.deny } } : {},
+    ...context.hook ? hookSettings(context.hook) : {}
   };
   return [
     "-p",
@@ -8687,15 +8767,16 @@ function childArgs(context, own) {
     "none"
   ];
 }
-function childEnv(env, extra = {}) {
+function childEnv(env, extra = {}, hook) {
   return {
-    ...Object.fromEntries(Object.entries(env).filter(([name]) => !name.startsWith("CHECKMATE_"))),
-    ...extra
+    ...Object.fromEntries(Object.entries(env).filter(([name2]) => !name2.startsWith("CHECKMATE_"))),
+    ...extra,
+    ...hook ? { [hookTokenName]: hook.token } : {}
   };
 }
-function executableOnPath(name, env) {
+function executableOnPath(name2, env) {
   for (const directory2 of (env.PATH ?? "").split(delimiter).filter(Boolean)) {
-    const path = join2(directory2, name);
+    const path = join2(directory2, name2);
     try {
       accessSync(path, constants.X_OK);
       if (statSync(path).isFile()) return path;
@@ -8908,13 +8989,13 @@ function targetRequestCheck(input) {
     new Set(entryPoints.map((entry) => entry.name)).size === entryPoints.length,
     "Duplicate entry point name"
   );
-  for (const [name, list2] of [
+  for (const [name2, list2] of [
     ["capabilities", input.capabilities],
     ["operations", input.allowedOperations]
   ]) {
-    requireCondition(Array.isArray(list2) && list2.length > 0, `Missing ${name}`);
-    list2.forEach((item) => requireIdentifier(item, name));
-    requireCondition(new Set(list2).size === list2.length, `Duplicate item in ${name}`);
+    requireCondition(Array.isArray(list2) && list2.length > 0, `Missing ${name2}`);
+    list2.forEach((item) => requireIdentifier(item, name2));
+    requireCondition(new Set(list2).size === list2.length, `Duplicate item in ${name2}`);
   }
   const tools = (input.tools ?? []).map((tool) => toolCheck(tool));
   requireCondition(new Set(tools.map((tool) => tool.name)).size === tools.length, "Duplicate tool name");
@@ -8927,20 +9008,20 @@ function targetRequestCheck(input) {
   };
 }
 function entryPointCheck(entry) {
-  const name = requireIdentifier(entry.name, "entry point name");
+  const name2 = requireIdentifier(entry.name, "entry point name");
   return {
-    name,
-    kind: requireChoice(entry.kind, entryPointKinds, `kind of entry point ${name}`),
-    purpose: requireText(entry.purpose, `purpose of entry point ${name}`).trim()
+    name: name2,
+    kind: requireChoice(entry.kind, entryPointKinds, `kind of entry point ${name2}`),
+    purpose: requireText(entry.purpose, `purpose of entry point ${name2}`).trim()
   };
 }
 function toolName(value2) {
-  const name = typeof value2 === "string" ? value2.trim() : value2;
+  const name2 = typeof value2 === "string" ? value2.trim() : value2;
   requireCondition(
-    typeof name === "string" && /^[A-Za-z0-9][A-Za-z0-9_-]{0,95}(:[A-Za-z0-9][A-Za-z0-9_-]{0,95})?$/.test(name),
-    `Invalid tool name: ${String(name)}. Use 1 to 96 letters, digits, _ or -, starting with a letter or digit, with an optional <plugin>: prefix.`
+    typeof name2 === "string" && /^[A-Za-z0-9][A-Za-z0-9_-]{0,95}(:[A-Za-z0-9][A-Za-z0-9_-]{0,95})?$/.test(name2),
+    `Invalid tool name: ${String(name2)}. Use 1 to 96 letters, digits, _ or -, starting with a letter or digit, with an optional <plugin>: prefix.`
   );
-  return name;
+  return name2;
 }
 function toolCheck(tool) {
   return {
@@ -9083,15 +9164,15 @@ function targetList(store) {
 }
 function targetHistory(store, targetId) {
   targetRequest(store, targetId);
-  const rows = all(
+  const rows2 = all(
     store,
     `SELECT p.revision, p.sha256, p.body, o.at, o.actor FROM profiles p JOIN operations o ON o.id = p.operation_id
 		WHERE p.target_id = ? ORDER BY p.revision`,
     targetId
   );
-  return rows.map((row2, i) => {
+  return rows2.map((row2, i) => {
     const profile = JSON.parse(row2.body);
-    const before = i ? JSON.parse(rows[i - 1].body) : null;
+    const before = i ? JSON.parse(rows2[i - 1].body) : null;
     const keys = [.../* @__PURE__ */ new Set([...Object.keys(profile), ...Object.keys(before ?? {})])].sort();
     return {
       revision: row2.revision,
@@ -9106,7 +9187,7 @@ function instanceCheck(entryPoints, value2) {
   const instance = validate("instance", value2);
   const names = Object.keys(instance.entries);
   const missing = entryPoints.filter((entry) => !names.includes(entry.name)).map((entry) => entry.name);
-  const unknown = names.filter((name) => !entryPoints.some((entry) => entry.name === name));
+  const unknown = names.filter((name2) => !entryPoints.some((entry) => entry.name === name2));
   requireCondition(!missing.length, `Missing value for entry point: ${missing.join(", ")}`);
   requireCondition(
     !unknown.length,
@@ -9229,7 +9310,7 @@ function instanceRecord(store, targetId, row2) {
   return {
     targetId,
     instanceId: row2.instance_id,
-    entries: Object.fromEntries(order.map((name) => [name, body.entries[name]])),
+    entries: Object.fromEntries(order.map((name2) => [name2, body.entries[name2]])),
     environment: body.environment ?? null,
     references: body.references ?? [],
     addedAt: row2.at,
@@ -9453,8 +9534,8 @@ function requireWellFormed(condition, message, hint) {
 function same(a, b) {
   return canonical(a) === canonical(b);
 }
-function schemaProblems(name, value2, prefix = name) {
-  const check = validators_exports[name.replace(/-./g, (match) => match[1].toUpperCase())];
+function schemaProblems(name2, value2, prefix = name2) {
+  const check = validators_exports[name2.replace(/-./g, (match) => match[1].toUpperCase())];
   if (check(value2)) return [];
   return unionErrors(check.errors ?? []).filter((error) => error.keyword !== "propertyNames").map((error) => ({
     field: String(
@@ -9465,12 +9546,12 @@ function schemaProblems(name, value2, prefix = name) {
     ...error.keyword === "enum" ? { choices: (error.params.allowedValues ?? []).map(String) } : {}
   }));
 }
-function validate(name, value2) {
-  const errors = schemaProblems(name, value2).map((problem) => problem.text);
+function validate(name2, value2) {
+  const errors = schemaProblems(name2, value2).map((problem) => problem.text);
   requireWellFormed(
     !errors.length,
-    `Invalid ${name}: ${errors.join(", ")}`,
-    `Fix each named field and send the ${name} again. The schema is contracts/${name}.schema.json in the plugin.`
+    `Invalid ${name2}: ${errors.join(", ")}`,
+    `Fix each named field and send the ${name2} again. The schema is contracts/${name2}.schema.json in the plugin.`
   );
   return value2;
 }
@@ -9504,30 +9585,30 @@ function schemaError(path, error) {
 function slugId(text) {
   return text.toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^[^a-z0-9]+/, "").replace(/-+$/, "").slice(0, 96);
 }
-function requireIdentifier(value2, name) {
+function requireIdentifier(value2, name2) {
   requireWellFormed(
     typeof value2 === "string" && identifier.test(value2),
-    `Invalid ${name}: ${String(value2)}. Use 1 to 96 letters, digits, _ or -, starting with a letter or digit.`
+    `Invalid ${name2}: ${String(value2)}. Use 1 to 96 letters, digits, _ or -, starting with a letter or digit.`
   );
   return value2;
 }
-function requireText(value2, name) {
-  requireWellFormed(typeof value2 === "string" && value2.trim().length > 0, `Missing ${name}`);
+function requireText(value2, name2) {
+  requireWellFormed(typeof value2 === "string" && value2.trim().length > 0, `Missing ${name2}`);
   return value2;
 }
-function requireChoice(value2, choices, name) {
+function requireChoice(value2, choices, name2) {
   requireWellFormed(
     choices.includes(value2),
-    `Invalid ${name}: ${String(value2)}. Use one of: ${choices.join(", ")}.`
+    `Invalid ${name2}: ${String(value2)}. Use one of: ${choices.join(", ")}.`
   );
   return value2;
 }
-function revisionReference(text, name) {
+function revisionReference(text, name2) {
   const [id2, revision, ...rest] = text.split("@");
-  requireIdentifier(id2, name);
+  requireIdentifier(id2, name2);
   requireWellFormed(
     !rest.length && (revision === void 0 || /^[1-9][0-9]*$/.test(revision)),
-    `Invalid ${name}: ${text}. Use <id> or <id>@<revision>.`
+    `Invalid ${name2}: ${text}. Use <id> or <id>@<revision>.`
   );
   return { id: id2, revision: revision === void 0 ? null : Number(revision) };
 }
@@ -9543,16 +9624,16 @@ function expectDigest(actual, expected, subject) {
     `${subject} has digest ${actual}, not ${expected}. Read it again before you decide.`
   );
 }
-function index(items, key, name) {
+function index(items, key, name2) {
   const map = /* @__PURE__ */ new Map();
   for (const item of items) {
-    requireWellFormed(!map.has(item[key]), `Duplicate ${name}: ${String(item[key])}`);
+    requireWellFormed(!map.has(item[key]), `Duplicate ${name2}: ${String(item[key])}`);
     map.set(item[key], item);
   }
   return map;
 }
-function references(ids2, map, name) {
-  for (const id2 of ids2) requireWellFormed(map.has(id2), `Unknown ${name}: ${id2}`);
+function references(ids2, map, name2) {
+  for (const id2 of ids2) requireWellFormed(map.has(id2), `Unknown ${name2}: ${id2}`);
 }
 function profileCheck(value2) {
   const profile = validate("profile", value2);
@@ -9824,9 +9905,9 @@ function explorationRules(store, explorationId) {
   if (given.length) return given;
   return (storedRules(store, row2.plan_id)?.rules ?? []).map(({ id: id2, text }) => ({ id: id2, text }));
 }
-function sourceText(store, name) {
+function sourceText(store, name2) {
   try {
-    const path = realpathSync2(resolve(store.workspace, name.split("#")[0]));
+    const path = realpathSync2(resolve(store.workspace, name2.split("#")[0]));
     if (!path.startsWith(realpathSync2(store.workspace) + sep) || !statSync2(path).isFile()) return null;
     const text = readFileSync2(path, "utf8");
     return text.length > maxSourceCharacters ? `${text.slice(0, maxSourceCharacters)}
@@ -9836,13 +9917,13 @@ function sourceText(store, name) {
   }
 }
 function ticketFile(store, typed) {
-  const name = typed.trim();
+  const name2 = typed.trim();
   const workspace = realpathSync2(store.workspace);
   const inside = (path2) => path2.startsWith(workspace + sep);
-  const wanted = resolve(store.workspace, name);
+  const wanted = resolve(store.workspace, name2);
   requireCondition(
     wanted.startsWith(resolve(store.workspace) + sep) || inside(wanted),
-    `The ticket ${name} is outside the workspace.`,
+    `The ticket ${name2} is outside the workspace.`,
     `Give a file inside ${workspace}, or paste the text of the ticket.`
   );
   let path = "";
@@ -9852,20 +9933,20 @@ function ticketFile(store, typed) {
   }
   requireCondition(
     path !== "",
-    `The ticket file ${name} does not exist.`,
+    `The ticket file ${name2} does not exist.`,
     "Check the path, or paste the text of the ticket."
   );
   requireCondition(
     inside(path),
-    `The ticket ${name} is outside the workspace.`,
+    `The ticket ${name2} is outside the workspace.`,
     `Give a file inside ${workspace}, or paste the text of the ticket.`
   );
-  requireCondition(statSync2(path).isFile(), `The ticket ${name} is not a file.`, "Give the path of a file.");
+  requireCondition(statSync2(path).isFile(), `The ticket ${name2} is not a file.`, "Give the path of a file.");
   return path.slice(workspace.length + 1);
 }
 function ruleSources(store, planId) {
   const { request } = planRequest(store, planId);
-  return (request.context?.sources ?? []).map((name) => ({ name, text: sourceText(store, name) }));
+  return (request.context?.sources ?? []).map((name2) => ({ name: name2, text: sourceText(store, name2) }));
 }
 function rulesNeeded(store, planId) {
   return !planRules(store, planId).rules.length && ruleSources(store, planId).some((source) => source.text !== null);
@@ -9880,7 +9961,7 @@ function checkedRules(reply, sources) {
     const text = typeof item.text === "string" ? item.text.trim() : "";
     const source = typeof item.source === "string" ? item.source.trim() : "";
     const area2 = typeof item.area === "string" ? item.area.trim() : "";
-    const problem = typeof item.id !== "string" || !ruleId.test(item.id) ? `"id" must be R1, R2, and so on` : rules.some((rule) => rule.id === item.id) ? `the ID ${item.id} is in use` : !text ? `"text" is missing` : !sources.some((name) => source.startsWith(name)) ? `"source" must start with one of: ${sources.join(", ")}` : !area2 ? `"area" is missing` : area2.length > maxAreaCharacters ? `"area" must have at most ${maxAreaCharacters} characters` : void 0;
+    const problem = typeof item.id !== "string" || !ruleId.test(item.id) ? `"id" must be R1, R2, and so on` : rules.some((rule) => rule.id === item.id) ? `the ID ${item.id} is in use` : !text ? `"text" is missing` : !sources.some((name2) => source.startsWith(name2)) ? `"source" must start with one of: ${sources.join(", ")}` : !area2 ? `"area" is missing` : area2.length > maxAreaCharacters ? `"area" must have at most ${maxAreaCharacters} characters` : void 0;
     if (problem) {
       refusals.push(`[${index2}] ${problem}.`);
       continue;
@@ -9989,20 +10070,20 @@ function explorationRow(store, explorationId) {
   }
   return row2;
 }
-function withRefs(entry, name) {
+function withRefs(entry, name2) {
   return {
     ...entry,
     ...entry.about !== void 0 && {
-      about: entry.about.split(/([\s,;]+)/).map(name).join("")
+      about: entry.about.split(/([\s,;]+)/).map(name2).join("")
     },
-    ...entry.links && { links: entry.links.map(name) },
-    ...entry.reports && { reports: entry.reports.map(name) },
-    ...entry.members && { members: entry.members.map(name) },
-    ...entry.defect !== void 0 && { defect: name(entry.defect) },
-    ...entry.repeats !== void 0 && { repeats: name(entry.repeats) },
-    ...entry.confirms !== void 0 && { confirms: name(entry.confirms) },
-    ...entry.refutes !== void 0 && { refutes: name(entry.refutes) },
-    ...entry.kind === "answer" && { question: name(entry.question) }
+    ...entry.links && { links: entry.links.map(name2) },
+    ...entry.reports && { reports: entry.reports.map(name2) },
+    ...entry.members && { members: entry.members.map(name2) },
+    ...entry.defect !== void 0 && { defect: name2(entry.defect) },
+    ...entry.repeats !== void 0 && { repeats: name2(entry.repeats) },
+    ...entry.confirms !== void 0 && { confirms: name2(entry.confirms) },
+    ...entry.refutes !== void 0 && { refutes: name2(entry.refutes) },
+    ...entry.kind === "answer" && { question: name2(entry.question) }
   };
 }
 function addPlanBuild(store, planId, build, at, operationId) {
@@ -10041,9 +10122,9 @@ function journal(store, planId, viewer2, keep = () => true) {
       explorationId: row2.exploration_id
     };
   });
-  const rows = listed.filter(keep);
+  const rows2 = listed.filter(keep);
   const latest = /* @__PURE__ */ new Map();
-  for (const row2 of rows) latest.set(row2.ref, row2);
+  for (const row2 of rows2) latest.set(row2.ref, row2);
   const seen = (row2) => !isTester(viewer2) || row2.actor === viewer2 || !isTester(row2.actor) || sharedKinds.includes(row2.kind);
   const shown2 = [...latest.values()].filter(seen);
   const full = (row2, word) => latest.has(word) ? word : latest.has(refOf(row2.actor, word)) ? refOf(row2.actor, word) : word;
@@ -10060,10 +10141,10 @@ function journal(store, planId, viewer2, keep = () => true) {
   }));
   const order = buildOrder(store, planId).map((item) => item.build);
   const position = (build) => order.includes(build) ? order.indexOf(build) : order.length;
-  const builds = [...new Set(rows.filter(seen).flatMap((row2) => row2.build ? [row2.build] : []))].sort(
+  const builds = [...new Set(rows2.filter(seen).flatMap((row2) => row2.build ? [row2.build] : []))].sort(
     (a, b) => position(a) - position(b)
   );
-  return { planId, viewer: viewer2, rows: rows.filter(seen), entries, team, builds };
+  return { planId, viewer: viewer2, rows: rows2.filter(seen), entries, team, builds };
 }
 function lookup(state, actor) {
   const keys = /* @__PURE__ */ new Map();
@@ -10074,16 +10155,16 @@ function lookup(state, actor) {
 }
 var storedRef = (target, actor) => target.actor === actor ? bareOf(target.id) : target.id;
 var ofKind = (state, kind) => state.entries.filter((entry) => entry.kind === kind);
-function evidenceFile(store, name) {
-  requireWellFormed(name && !isAbsolute(name), `Evidence path must be relative to the workspace: ${name}`);
-  const real = realpathSync3(resolve2(store.workspace, name));
+function evidenceFile(store, name2) {
+  requireWellFormed(name2 && !isAbsolute(name2), `Evidence path must be relative to the workspace: ${name2}`);
+  const real = realpathSync3(resolve2(store.workspace, name2));
   requireWellFormed(
     real.startsWith(realpathSync3(store.workspace) + sep2),
-    `Evidence file must be inside the workspace: ${name}`
+    `Evidence file must be inside the workspace: ${name2}`
   );
   const stats = statSync3(real);
-  requireWellFormed(stats.isFile(), `Evidence must be a file: ${name}`);
-  requireWellFormed(stats.size <= maxEvidenceBytes, `Evidence file exceeds 32 MiB: ${name}`);
+  requireWellFormed(stats.isFile(), `Evidence must be a file: ${name2}`);
+  requireWellFormed(stats.size <= maxEvidenceBytes, `Evidence file exceeds 32 MiB: ${name2}`);
   return readFileSync3(real);
 }
 function insideWorkspace(store, path) {
@@ -10103,14 +10184,14 @@ function filesEndingWith(folder, segments, above = []) {
     if (item.isFile()) {
       const path = [...above, item.name];
       const tail = path.slice(-segments.length);
-      return tail.length === segments.length && tail.every((name, index2) => name === segments[index2]) ? [join3(folder, item.name)] : [];
+      return tail.length === segments.length && tail.every((name2, index2) => name2 === segments[index2]) ? [join3(folder, item.name)] : [];
     }
     if (!item.isDirectory() || skippedFolders.includes(item.name)) return [];
     return filesEndingWith(join3(folder, item.name), segments, [...above, item.name]);
   });
 }
 function onlyFileEndingWith(cwd, spec2) {
-  const segments = spec2.split(/[/\\]/).filter((name) => name && name !== ".");
+  const segments = spec2.split(/[/\\]/).filter((name2) => name2 && name2 !== ".");
   if (isAbsolute(spec2) || !segments.length || segments.includes("..")) return void 0;
   const matches = filesEndingWith(cwd, segments);
   return matches.length === 1 ? matches[0] : void 0;
@@ -10118,8 +10199,8 @@ function onlyFileEndingWith(cwd, spec2) {
 function evidenceOf(store, spec2, cwd, missing) {
   const found = [resolve2(cwd, spec2), resolve2(store.workspace, spec2)].find((path) => existsSync(path)) ?? (missing && !isEvidenceText(spec2) ? onlyFileEndingWith(cwd, spec2) : void 0);
   if (found && (!missing || insideWorkspace(store, found))) {
-    const name = relative(store.workspace, found);
-    return { path: name, ...saveBlob(store, evidenceFile(store, name)) };
+    const name2 = relative(store.workspace, found);
+    return { path: name2, ...saveBlob(store, evidenceFile(store, name2)) };
   }
   if (!found && isEvidenceText(spec2)) return { text: spec2 };
   if (missing) {
@@ -10433,7 +10514,7 @@ function freshIds(store, planId, actor, entries) {
     renamed.set(entry.id, fresh);
     taken.push(fresh);
   }
-  const name = (word) => renamed.get(word) ?? word;
+  const name2 = (word) => renamed.get(word) ?? word;
   const seen = /* @__PURE__ */ new Set();
   return entries.map((raw) => {
     const entry = raw;
@@ -10441,9 +10522,9 @@ function freshIds(store, planId, actor, entries) {
     const first = typeof entry.id === "string" && entry.supersedes === void 0 && !seen.has(entry.id);
     if (first) seen.add(entry.id);
     return {
-      ...withRefs(entry, name),
-      ...entry.supersedes !== void 0 && { supersedes: name(entry.supersedes) },
-      ...first && { id: name(entry.id) }
+      ...withRefs(entry, name2),
+      ...entry.supersedes !== void 0 && { supersedes: name2(entry.supersedes) },
+      ...first && { id: name2(entry.id) }
     };
   });
 }
@@ -10477,13 +10558,13 @@ function mostFrequent(values) {
 var evidenceScore = (entry) => (entry.evidence?.length ?? 0) * 2 + (entry.steps ? 1 : 0);
 var short = (text) => (text ?? "").length > 120 ? `${(text ?? "").slice(0, 117)}...` : text ?? "";
 function claimDecisions(store, planId) {
-  const rows = all(
+  const rows2 = all(
     store,
     "SELECT subject_id, verdict, actor, rationale FROM approvals WHERE subject_kind = 'claim' AND subject_id LIKE ? ORDER BY rowid",
     `${planId}:%`
   );
   const decided = /* @__PURE__ */ new Map();
-  for (const row2 of rows)
+  for (const row2 of rows2)
     decided.set(row2.subject_id.slice(planId.length + 1), {
       verdict: row2.verdict,
       actor: row2.actor,
@@ -10492,13 +10573,13 @@ function claimDecisions(store, planId) {
   return decided;
 }
 function claimHandoffs(store, planId) {
-  const rows = all(
+  const rows2 = all(
     store,
     "SELECT claim_id, target, actor, at FROM handoffs WHERE plan_id = ? ORDER BY rowid",
     planId
   );
   const handed = /* @__PURE__ */ new Map();
-  for (const row2 of rows)
+  for (const row2 of rows2)
     if (row2.target === null) handed.delete(row2.claim_id);
     else handed.set(row2.claim_id, { to: row2.target, actor: row2.actor, at: row2.at });
   return handed;
@@ -10518,7 +10599,7 @@ function claimList(state, decided = /* @__PURE__ */ new Map(), handed = /* @__PU
     const actors = [...new Set(found.map((defect) => defect.actor))];
     const names = [issue.id, ...reports];
     const checks = state.team.filter(
-      (entry) => entry.kind === "observation" && !actors.includes(entry.actor) && names.some((name) => entry.confirms === name || entry.refutes === name)
+      (entry) => entry.kind === "observation" && !actors.includes(entry.actor) && names.some((name2) => entry.confirms === name2 || entry.refutes === name2)
     ).sort((a, b) => a.seq - b.seq);
     const checkOn = (build) => checks.filter((entry) => entry.build === build).at(-1);
     const confirms = (check) => names.includes(check.confirms ?? "");
@@ -10598,7 +10679,7 @@ function planQuestions(store, planId, keep) {
   return groups.map(({ head, members }) => {
     const names = /* @__PURE__ */ new Set([head.id, ...members]);
     const found = members.map((id2) => questions.get(id2));
-    const answer = answers.filter((entry) => names.has(entry.question)).at(-1);
+    const answer2 = answers.filter((entry) => names.has(entry.question)).at(-1);
     return {
       id: head.id,
       explorationId: head.explorationId,
@@ -10611,9 +10692,9 @@ function planQuestions(store, planId, keep) {
       members,
       blocking: found.some((entry) => entry.blocking === true),
       about: head.about ?? null,
-      answer: answer?.answer ?? null,
-      answerId: answer?.id ?? null,
-      decision: answer?.decision ?? null
+      answer: answer2?.answer ?? null,
+      answerId: answer2?.id ?? null,
+      decision: answer2?.decision ?? null
     };
   });
 }
@@ -10907,11 +10988,11 @@ function planRevision(store, planId, revision = null) {
   return { plan: JSON.parse(row2.body), sha256: row2.sha256 };
 }
 function latestPlans(store) {
-  const rows = all(
+  const rows2 = all(
     store,
     "SELECT plan_id, body FROM latest_plans ORDER BY plan_id"
   );
-  return new Map(rows.map((row2) => [row2.plan_id, JSON.parse(row2.body)]));
+  return new Map(rows2.map((row2) => [row2.plan_id, JSON.parse(row2.body)]));
 }
 function checkedRevision(store, draft) {
   const plan = planCheck(derivePlan(draft));
@@ -11220,21 +11301,21 @@ function patchedCandidate(plan, patch) {
     )
   };
 }
-function patchList(items, changes, name, apply) {
+function patchList(items, changes, name2, apply) {
   const result = [...items];
   for (const [id2, change] of Object.entries(changes ?? {})) {
     const position = result.findIndex((item) => item.id === id2);
     if (change === null) {
-      requireWellFormed(position >= 0, `Cannot remove unknown ${name} ${id2}`);
+      requireWellFormed(position >= 0, `Cannot remove unknown ${name2} ${id2}`);
       result.splice(position, 1);
     } else if (position >= 0) result[position] = apply(result[position], id2, change);
     else result.push(apply(void 0, id2, change));
   }
   return result;
 }
-function newFields(name, change, required, defaults = {}) {
+function newFields(name2, change, required, defaults = {}) {
   const missing = required.filter((field4) => !(field4 in change));
-  requireWellFormed(!missing.length, `New ${name} needs ${missing.join(", ")}`);
+  requireWellFormed(!missing.length, `New ${name2} needs ${missing.join(", ")}`);
   return { ...defaults, ...change };
 }
 function savePlan(store, actor, input) {
@@ -11783,7 +11864,7 @@ function finalizedResults(store, planId) {
   ).map((row2) => JSON.parse(row2.body));
 }
 function rejectedRuns(store, planId) {
-  const rows = all(
+  const rows2 = all(
     store,
     "SELECT r.run_id, r.target_id, r.target_revision, s.sha256 FROM runs r JOIN results s ON s.run_id = r.run_id WHERE r.plan_id = ?",
     planId
@@ -11795,7 +11876,7 @@ function rejectedRuns(store, planId) {
       policies.set(key, approvalPolicy(targetRevision(store, row2.target_id, row2.target_revision).profile).result);
     return policies.get(key);
   };
-  const rejected = rows.filter((row2) => approvalState(store, "result", row2.run_id, row2.sha256, policy(row2)).rejected);
+  const rejected = rows2.filter((row2) => approvalState(store, "result", row2.run_id, row2.sha256, policy(row2)).rejected);
   return new Set(rejected.map((row2) => row2.run_id));
 }
 function selectedOutcome(result, testId) {
@@ -11964,7 +12045,7 @@ function diffPlan(store, input) {
 }
 
 // plugin/src/runs.ts
-import { mkdirSync as mkdirSync2, readFileSync as readFileSync4, realpathSync as realpathSync4, rmSync as rmSync2, statSync as statSync4 } from "node:fs";
+import { mkdirSync as mkdirSync3, readFileSync as readFileSync4, realpathSync as realpathSync4, rmSync as rmSync3, statSync as statSync4 } from "node:fs";
 import { basename, extname, isAbsolute as isAbsolute2, join as join4, resolve as resolve3, sep as sep3 } from "node:path";
 import { randomUUID } from "node:crypto";
 var maxEvidenceBytes2 = 32 * 1024 * 1024;
@@ -12064,17 +12145,17 @@ function currentAttempt(store, runId) {
   return one(store, "SELECT max(attempt) AS attempt FROM run_attempts WHERE run_id = ?", runId).attempt;
 }
 function runOutcomes(store, runId) {
-  const rows = all(
+  const rows2 = all(
     store,
     `SELECT o.*, CASE p.command WHEN 'run close' THEN json_extract(p.arguments, '$.cause') END AS cause
 		FROM outcomes o LEFT JOIN operations p ON p.id = o.operation_id WHERE o.run_id = ? ORDER BY o.rowid`,
     runId
   );
-  return new Map(rows.map((row2) => [row2.test_id, row2]));
+  return new Map(rows2.map((row2) => [row2.test_id, row2]));
 }
 function runAssertions(store, runId) {
-  const rows = all(store, "SELECT * FROM assertion_results WHERE run_id = ? ORDER BY rowid", runId);
-  return new Map(rows.map((row2) => [`${row2.test_id}.${row2.assertion_id}`, row2]));
+  const rows2 = all(store, "SELECT * FROM assertion_results WHERE run_id = ? ORDER BY rowid", runId);
+  return new Map(rows2.map((row2) => [`${row2.test_id}.${row2.assertion_id}`, row2]));
 }
 function runEvidence(store, runId) {
   return all(
@@ -12175,7 +12256,7 @@ function beginRun(store, actor, input) {
     }
   );
   if (reply.status === "completed")
-    mkdirSync2(join4(store.workspace, evidenceDirectory(input.runId)), { recursive: true });
+    mkdirSync3(join4(store.workspace, evidenceDirectory(input.runId)), { recursive: true });
   return reply;
 }
 function plannedTarget(store, text) {
@@ -12183,7 +12264,7 @@ function plannedTarget(store, text) {
   return planRevision(store, reference.id, reference.revision).plan.target.targetId;
 }
 var evidenceKinds = ["observation", "http_exchange", "screenshot", "trace"];
-function textEvidence(input, name) {
+function textEvidence(input, name2) {
   requireWellFormed(
     typeof input.text === "string" && input.text.trim().length > 0,
     "Missing evidence text on standard input"
@@ -12198,7 +12279,7 @@ function textEvidence(input, name) {
   }
   return {
     path: null,
-    name: `${name}.${json ? "json" : "txt"}`,
+    name: `${name2}.${json ? "json" : "txt"}`,
     kind: requireChoice(input.kind ?? "observation", evidenceKinds, "evidence kind"),
     mediaType: json ? "application/json" : "text/plain",
     bytes
@@ -12206,8 +12287,8 @@ function textEvidence(input, name) {
 }
 function readEvidence(store, runId, spec2) {
   const match = /^(.*):(observation|http_exchange|screenshot|trace)$/.exec(spec2);
-  const name = match ? match[1] : spec2;
-  requireWellFormed(name && !isAbsolute2(name), `Evidence path must be relative to the workspace: ${name}`);
+  const name2 = match ? match[1] : spec2;
+  requireWellFormed(name2 && !isAbsolute2(name2), `Evidence path must be relative to the workspace: ${name2}`);
   const directory2 = evidenceDirectory(runId);
   let root;
   let real;
@@ -12216,20 +12297,20 @@ function readEvidence(store, runId, spec2) {
   } catch {
     throw new Error(`Evidence directory ${directory2} does not exist`);
   }
-  const path = resolve3(store.workspace, name);
+  const path = resolve3(store.workspace, name2);
   try {
     real = realpathSync4(path);
   } catch {
-    throw new Refusal("malformed", `Evidence file not found: ${name}`, `Save the file in ${directory2} first.`);
+    throw new Refusal("malformed", `Evidence file not found: ${name2}`, `Save the file in ${directory2} first.`);
   }
-  requireWellFormed(real.startsWith(root + sep3), `Evidence file must be inside ${directory2}: ${name}`);
+  requireWellFormed(real.startsWith(root + sep3), `Evidence file must be inside ${directory2}: ${name2}`);
   const stats = statSync4(real);
-  requireWellFormed(stats.isFile(), `Evidence must be a file: ${name}`);
-  requireWellFormed(stats.size <= maxEvidenceBytes2, `Evidence file exceeds 32 MiB: ${name}`);
-  const extension = extname(name).toLowerCase();
+  requireWellFormed(stats.isFile(), `Evidence must be a file: ${name2}`);
+  requireWellFormed(stats.size <= maxEvidenceBytes2, `Evidence file exceeds 32 MiB: ${name2}`);
+  const extension = extname(name2).toLowerCase();
   return {
     path,
-    name: basename(name),
+    name: basename(name2),
     kind: match ? match[2] : kindByExtension[extension] ?? "observation",
     mediaType: mediaTypes[extension] ?? "application/octet-stream",
     bytes: readFileSync4(real)
@@ -12262,9 +12343,9 @@ function storeEvidence(store, runId, testId, assertionId, files2, operationId) {
     return id2;
   });
 }
-function evidenceFiles(store, runId, name, specs = []) {
+function evidenceFiles(store, runId, name2, specs = []) {
   const files2 = specs.map(
-    (spec2) => typeof spec2 === "string" ? readEvidence(store, runId, spec2) : textEvidence(spec2, name)
+    (spec2) => typeof spec2 === "string" ? readEvidence(store, runId, spec2) : textEvidence(spec2, name2)
   );
   const paths = files2.flatMap((file) => file.path ?? []);
   requireWellFormed(new Set(paths).size === paths.length, "An evidence file is listed twice");
@@ -12272,10 +12353,10 @@ function evidenceFiles(store, runId, name, specs = []) {
   return files2;
 }
 function removeFiles(files2) {
-  for (const file of files2) if (file.path) rmSync2(file.path, { force: true });
+  for (const file of files2) if (file.path) rmSync3(file.path, { force: true });
 }
-function optionalText(value2, name) {
-  return value2 === void 0 ? null : requireText(value2, name);
+function optionalText(value2, name2) {
+  return value2 === void 0 ? null : requireText(value2, name2);
 }
 function requireOpen(store, runId, testId) {
   const closed = runOutcomes(store, runId).get(testId);
@@ -12812,7 +12893,7 @@ function resultAcceptance(store, run2, sha256) {
 }
 
 // plugin/src/explorations.ts
-import { mkdirSync as mkdirSync3, writeFileSync } from "node:fs";
+import { mkdirSync as mkdirSync4, writeFileSync as writeFileSync2 } from "node:fs";
 import { join as join5 } from "node:path";
 var explorationModes = ["exploratory", "regression"];
 function latestRevision(store, planId) {
@@ -12832,7 +12913,7 @@ function charterOf(store, planId, scope, change, knownState = null) {
     instructions: request.context?.instructions ?? null,
     capabilities: target.profile.capabilities,
     operations: target.profile.allowedOperations,
-    tools: planTools(request, target.profile).map(({ name, purpose }) => ({ name, purpose })),
+    tools: planTools(request, target.profile).map(({ name: name2, purpose }) => ({ name: name2, purpose })),
     scope,
     change,
     knownState
@@ -12876,7 +12957,7 @@ function knownStateText(store, planId, build) {
     ""
   ];
   const render = (full2) => {
-    const shortened = newestFirst.length - full2;
+    const shortened2 = newestFirst.length - full2;
     return [
       "# Results of earlier builds",
       "",
@@ -12903,7 +12984,7 @@ function knownStateText(store, planId, build) {
         ...newestFirst.slice(full2).map(
           (claim) => `- ${claim.id}: ${claim.title} (reported fixed on build ${fixedOn(claim)})`
         ),
-        ...shortened ? [`${shortened} older fixed problems are shortened to their title.`] : []
+        ...shortened2 ? [`${shortened2} older fixed problems are shortened to their title.`] : []
       ]) : ["None.", ""],
       "## Areas tested before",
       "",
@@ -12927,8 +13008,8 @@ function writeKnownState(store, planId, explorationId, build) {
   if (!one(store, "SELECT 1 FROM explorations WHERE plan_id = ? AND exploration_id != ?", planId, explorationId))
     return null;
   const path = `${workFolder(explorationId)}/known-state.md`;
-  mkdirSync3(join5(store.workspace, workFolder(explorationId)), { recursive: true });
-  writeFileSync(join5(store.workspace, path), knownStateText(store, planId, build));
+  mkdirSync4(join5(store.workspace, workFolder(explorationId)), { recursive: true });
+  writeFileSync2(join5(store.workspace, path), knownStateText(store, planId, build));
   return path;
 }
 function nextExplorationId(store) {
@@ -13018,8 +13099,8 @@ var testLevels = {
 };
 var levelNames = Object.keys(testLevels);
 var defaultLevel = "normal";
-function storedLevel(name) {
-  return name === "standard" ? "normal" : name;
+function storedLevel(name2) {
+  return name2 === "standard" ? "normal" : name2;
 }
 
 // plugin/contracts/journal-entry.schema.json
@@ -13616,15 +13697,15 @@ function resolved(node, file) {
   return [{ ...inner, ...own }, at];
 }
 function fieldsOf(node, file, prefix) {
-  return Object.entries(node.properties ?? {}).flatMap(([name, child]) => {
+  return Object.entries(node.properties ?? {}).flatMap(([name2, child]) => {
     const [field4, at] = resolved(child, file);
     const [items, itemsAt] = field4.items ? resolved(field4.items, at) : [void 0, at];
-    const path = `${prefix}${name}`;
+    const path = `${prefix}${name2}`;
     const type = field4.enum ? field4.enum.join("|") : items ? `${items.properties ? "object" : items.type ?? "entry"}[]` : field4.type ?? "value";
     const row2 = {
       path,
       type,
-      required: Boolean(node.required?.includes(name)),
+      required: Boolean(node.required?.includes(name2)),
       description: field4.description ?? ""
     };
     const nested = items?.properties ? fieldsOf(items, itemsAt, `${path}[].`) : field4.properties ? fieldsOf(field4, at, `${path}.`) : [];
@@ -13633,10 +13714,10 @@ function fieldsOf(node, file, prefix) {
 }
 function fieldText(fields, described) {
   return fields.map((field4) => {
-    const name = `${field4.path}${field4.type.includes("|") ? ` (${field4.type})` : ""}${field4.required ? " (required)" : ""}`;
-    if (described.has(field4.description)) return `${name}.`;
+    const name2 = `${field4.path}${field4.type.includes("|") ? ` (${field4.type})` : ""}${field4.required ? " (required)" : ""}`;
+    if (described.has(field4.description)) return `${name2}.`;
     described.add(field4.description);
-    return `${name}: ${field4.description}`;
+    return `${name2}: ${field4.description}`;
   }).join(" ");
 }
 function kindText(kind, keep, described) {
@@ -13656,14 +13737,14 @@ function entryText(kinds2 = recordedKinds, keep = (field4) => !teamFields.includ
 function withoutName(text) {
   return text.replace(/(^|\. )Checkmate\b/gm, "$1The record").replace(/\bCheckmate\b/g, "the record");
 }
-function replyText(what, answer, which = "") {
-  return answer ? `Write only one JSON array of ${what} to ${answer}${which}, and nothing else.` : `Reply with only one JSON array of ${what}${which}, and nothing else. Use no tool.`;
+function replyText(what, answer2, which = "") {
+  return answer2 ? `Write only one JSON array of ${what} to ${answer2}${which}, and nothing else.` : `Reply with only one JSON array of ${what}${which}, and nothing else. Use no tool.`;
 }
-function recorderPrompt(build, record, saved = [], answer, rules = []) {
+function recorderPrompt(build, record, saved = [], answer2, rules = []) {
   const text = [
     `Now write the record of this test session for the QA record of the team (build ${build}).`,
     "Record what you did and found, your questions for the product owner, and the answers that you received. Do not test again for the record, and do not change the files of the project. Do not repeat what the record already holds.",
-    replyText("the new entries", answer),
+    replyText("the new entries", answer2),
     "Number the new entries freely, for example N1, O1, D1. Use an ID of the record only to point at an entry of the record.",
     "Evidence is the path of a file that already exists, as the tester saved it, from the directory of the session, or the text that you saw.",
     "When the session retested a defect of an earlier build, log a verdict with the ID of that defect: fixed or not_fixed.",
@@ -13682,20 +13763,20 @@ function recorderPrompt(build, record, saved = [], answer, rules = []) {
     record,
     ...saved.length ? [
       "",
-      `This session was recorded before. The record already holds these entries of the session. ${answer ? "Write" : "Reply with"} only the entries that are not in this list:`,
+      `This session was recorded before. The record already holds these entries of the session. ${answer2 ? "Write" : "Reply with"} only the entries that are not in this list:`,
       ...saved
     ] : []
   ].join("\n");
-  return answer ? withoutName(text) : text;
+  return answer2 ? withoutName(text) : text;
 }
 var ruleObject = '{"id": "R1", "text": "<the rule, in one sentence>", "source": "<the source file>#<the place in it>", "area": "<the area of the rule>"}';
-function rulesPrompt(goal, sources, answer) {
+function rulesPrompt(goal, sources, answer2) {
   const text = [
     "Write the rules of the change that the sources below describe. Do not test.",
     "A rule is one sentence that a tester can check on the application: an action or an input, and the correct result. Write one rule for each requirement, limit, and case that the sources state. Do not add a rule that the sources do not state.",
     "Number the rules R1, R2, and so on, in the order of the sources. The place is a heading or a line of the source file.",
     'Sort the rules into areas. Use at most nine areas for one plan. Put each rule in exactly one area. Rules that test one feature or one page share an area. An area name is a plain noun phrase of one to three words, taken from the words of the sources, for example "Approval" or "Notifications". Keep the numbers and the order of the rules.',
-    `${replyText("rules", answer)} Each rule: ${ruleObject}`,
+    `${replyText("rules", answer2)} Each rule: ${ruleObject}`,
     "",
     `Goal: ${goal}`,
     ...sources.flatMap((source) => [
@@ -13704,13 +13785,13 @@ function rulesPrompt(goal, sources, answer) {
       source.text ?? "(The record cannot read this source. Do not cite it.)"
     ])
   ].join("\n");
-  return answer ? withoutName(text) : text;
+  return answer2 ? withoutName(text) : text;
 }
-function rulesRepairPrompt(refusals, answer) {
+function rulesRepairPrompt(refusals, answer2) {
   return [
-    answer ? "These rules of your file were refused:" : "Checkmate refused these rules of your reply:",
+    answer2 ? "These rules of your file were refused:" : "Checkmate refused these rules of your reply:",
     ...refusals.map((refusal) => `- ${refusal}`),
-    replyText("all the rules again, corrected", answer)
+    replyText("all the rules again, corrected", answer2)
   ].join("\n");
 }
 function followBrief(questions, workFolder2, seconds) {
@@ -13724,16 +13805,16 @@ function followBrief(questions, workFolder2, seconds) {
     `You have ${seconds} seconds for this turn.`
   ].join("\n");
 }
-function followEntriesText(answer) {
-  return `At the end, write the new entries of this turn to ${answer}: only one JSON array, in the same form as your earlier entries file, and nothing else. Do not write an entry again that you wrote before.`;
+function followEntriesText(answer2) {
+  return `At the end, write the new entries of this turn to ${answer2}: only one JSON array, in the same form as your earlier entries file, and nothing else. Do not write an entry again that you wrote before.`;
 }
-function repairPrompt(refusals, answer) {
+function repairPrompt(refusals, answer2) {
   const text = [
-    answer ? "These entries of your file were refused:" : "Checkmate refused these entries of your reply:",
+    answer2 ? "These entries of your file were refused:" : "Checkmate refused these entries of your reply:",
     ...refusals.map((refusal) => `- ${refusal}`),
-    answer ? `Write only one JSON array of the corrected entries to ${answer}, and nothing else. Do not send the saved entries again.` : "Reply with only one JSON array of the corrected entries, and nothing else. Do not send the saved entries again. Use no tool."
+    answer2 ? `Write only one JSON array of the corrected entries to ${answer2}, and nothing else. Do not send the saved entries again.` : "Reply with only one JSON array of the corrected entries, and nothing else. Do not send the saved entries again. Use no tool."
   ].join("\n");
-  return answer ? withoutName(text) : text;
+  return answer2 ? withoutName(text) : text;
 }
 function operationText(operations) {
   if (operations.includes(anyTestOperation)) return anyTestOperationText;
@@ -13800,12 +13881,12 @@ function explorerBrief(charter, entries, dataPrefix, workFolder2, seconds) {
   ];
   return { study: study.join("\n"), test: test.join("\n") };
 }
-function mergerPrompt(build, reports, groups, questions = [], earlier = [], answer) {
+function mergerPrompt(build, reports, groups, questions = [], earlier = [], answer2) {
   const text = [
     `Merge the reports of independent testers of build ${build}. Do not test.`,
     "Two defect reports are one defect when they have the same trigger and the same wrong result. Do not combine two reports with different expected results or different triggers. A report that is in no issue stays its own defect.",
     "Two questions are one topic when one answer answers both. Give each topic a label. A question that is in no topic stays its own question.",
-    `${replyText("issue and topic entries", answer, ", one for each defect that two or more reports describe and one for each question that two or more questions ask")} ${answer ? "Write" : "Reply"} [] when nothing is the same.`,
+    `${replyText("issue and topic entries", answer2, ", one for each defect that two or more reports describe and one for each question that two or more questions ask")} ${answer2 ? "Write" : "Reply"} [] when nothing is the same.`,
     "",
     entryText(["issue", "topic"], () => true),
     "",
@@ -13832,25 +13913,25 @@ function mergerPrompt(build, reports, groups, questions = [], earlier = [], answ
       )
     ] : []
   ].join("\n");
-  return answer ? withoutName(text) : text;
+  return answer2 ? withoutName(text) : text;
 }
-function mergeAgainPrompt(unplaced, answer) {
+function mergeAgainPrompt(unplaced, answer2) {
   return [
     "These reports are in no issue, but they look like other reports or issues:",
     ...unplaced.map(
       (item) => `- ${item.report}: ${item.title} Looks like: ${item.like.map((like) => `${like.id} (${like.title}; ${like.reason})`).join(", ")}`
     ),
-    `For each report that is the same defect as one of them, send an issue entry with all its reports. For an issue of the merger, give "supersedes" with its ID. ${replyText("entries", answer)} ${answer ? "Write" : "Reply"} [] when none is the same.`
+    `For each report that is the same defect as one of them, send an issue entry with all its reports. For an issue of the merger, give "supersedes" with its ID. ${replyText("entries", answer2)} ${answer2 ? "Write" : "Reply"} [] when none is the same.`
   ].join("\n");
 }
 var verifierObject = 'with one object for each problem: {"id": "<the ID of the problem>", "seen": true when you saw the problem again, else false, "saw": "what you saw"}.';
-function verifierReplyText(answer) {
-  return answer ? `write only one JSON array to ${answer}, ${verifierObject}` : `reply with only one JSON array, ${verifierObject}`;
+function verifierReplyText(answer2) {
+  return answer2 ? `write only one JSON array to ${answer2}, ${verifierObject}` : `reply with only one JSON array, ${verifierObject}`;
 }
-function verifierRepairPrompt(answer) {
-  return answer ? `Your file has no JSON array that I can use. Do not test again. Now ${verifierReplyText(answer)}` : `Your reply has no JSON array that I can use. Do not test again. Now ${verifierReplyText()} Use no tool.`;
+function verifierRepairPrompt(answer2) {
+  return answer2 ? `Your file has no JSON array that I can use. Do not test again. Now ${verifierReplyText(answer2)}` : `Your reply has no JSON array that I can use. Do not test again. Now ${verifierReplyText()} Use no tool.`;
 }
-function verifierBrief(items, entries, operations, dataPrefix, answer) {
+function verifierBrief(items, entries, operations, dataPrefix, answer2) {
   return [
     "Reproduce each problem below on the application. Do not test other things.",
     "",
@@ -13865,13 +13946,13 @@ function verifierBrief(items, entries, operations, dataPrefix, answer) {
       (item) => `- ${item.id}: ${item.title} Steps: ${[item.steps ?? "not given"].flat().join(" ")} Expected: ${item.expected} Reported: ${item.actual}`
     ),
     "",
-    `At the end, ${verifierReplyText(answer)}`
+    `At the end, ${verifierReplyText(answer2)}`
   ].join("\n");
 }
 
 // plugin/src/recorder.ts
 import { randomUUID as randomUUID2 } from "node:crypto";
-import { existsSync as existsSync2, mkdirSync as mkdirSync4, readFileSync as readFileSync5, rmSync as rmSync3, writeFileSync as writeFileSync2 } from "node:fs";
+import { existsSync as existsSync2, mkdirSync as mkdirSync5, readFileSync as readFileSync5, rmSync as rmSync4, writeFileSync as writeFileSync3 } from "node:fs";
 import { join as join6 } from "node:path";
 var defaultRecorderTimeout = 600;
 var reservedExplorers = ["rules", "merge", "verify"];
@@ -13882,14 +13963,14 @@ function lastEntry(store) {
   return one(store, "SELECT coalesce(max(rowid), 0) AS seq FROM journal_entries").seq;
 }
 function addedEntries(store, explorationId, actor, after) {
-  const rows = all(
+  const rows2 = all(
     store,
     "SELECT kind, count(*) AS count FROM journal_entries WHERE exploration_id = ? AND actor = ? AND rowid > ? GROUP BY kind ORDER BY min(rowid)",
     explorationId,
     actor,
     after
   );
-  return Object.fromEntries(rows.map((row2) => [row2.kind, row2.count]));
+  return Object.fromEntries(rows2.map((row2) => [row2.kind, row2.count]));
 }
 function launchContext(store, explorationId, explorer, session) {
   const launch = explorationEvents(store, explorationId).filter((event2) => event2.step === "launch" && event2.explorer === explorer && event2.detail.session === session).at(-1);
@@ -13930,7 +14011,7 @@ function sum(calls, key) {
   const values = calls.flatMap((call) => call[key] === void 0 ? [] : [call[key]]);
   return values.length ? { [key]: values.reduce((total, value2) => total + value2, 0) } : {};
 }
-function running(pid) {
+function running2(pid) {
   try {
     process.kill(pid, 0);
     return true;
@@ -13946,17 +14027,17 @@ function lockHolder(path) {
   }
 }
 function takeLock(path, until) {
-  mkdirSync4(join6(path, ".."), { recursive: true });
+  mkdirSync5(join6(path, ".."), { recursive: true });
   for (; ; ) {
     try {
-      writeFileSync2(path, String(process.pid), { flag: "wx" });
+      writeFileSync3(path, String(process.pid), { flag: "wx" });
       return true;
     } catch (error) {
       if (error.code !== "EEXIST") throw error;
     }
     const holder = lockHolder(path);
-    if (holder && !running(holder) && lockHolder(path) === holder) {
-      rmSync3(path, { force: true });
+    if (holder && !running2(holder) && lockHolder(path) === holder) {
+      rmSync4(path, { force: true });
       continue;
     }
     if (Date.now() >= until) return false;
@@ -13964,21 +14045,21 @@ function takeLock(path, until) {
   }
 }
 function releaseLock(path) {
-  if (lockHolder(path) === process.pid) rmSync3(path, { force: true });
+  if (lockHolder(path) === process.pid) rmSync4(path, { force: true });
 }
-function promptOf(store, exploration2, actor, earlier, answer) {
+function promptOf(store, exploration2, actor, earlier, answer2) {
   return recorderPrompt(
     exploration2.build,
     recordText(store, exploration2.plan_id, actor, exploration2.build),
     earlier.map((entry) => `${bareOf(entry.id)} ${entry.kind}: ${entryTitle(entry)}`),
-    answer,
+    answer2,
     explorationRules(store, exploration2.exploration_id)
   );
 }
-function recordTask(store, explorationId, explorer, answer) {
+function recordTask(store, explorationId, explorer, answer2) {
   const exploration2 = explorationRow(store, explorationId);
   const actor = explorerActor(explorer);
-  return promptOf(store, exploration2, actor, savedEntries(store, exploration2.plan_id, explorationId, actor), answer);
+  return promptOf(store, exploration2, actor, savedEntries(store, exploration2.plan_id, explorationId, actor), answer2);
 }
 function readText(path) {
   try {
@@ -14101,14 +14182,16 @@ function recordSession(store, actor, input, env, cwd) {
 }
 function recordLocked(store, operation, input, plan, env, cwd, started) {
   const { exploration: exploration2, actor } = plan;
-  const childEnvironment = childEnv(env, { CHECKMATE_RECORDER: "1" });
+  const hook = childHook(store.workspace, exploration2.exploration_id, `record-${plan.explorer}`);
+  const context = { ...plan.context, hook };
+  const childEnvironment = childEnv(env, { CHECKMATE_RECORDER: "1" }, hook);
   const left = () => input.timeoutSeconds - Math.floor((Date.now() - started) / 1e3);
   const after = lastEntry(store);
   const earlier = savedEntries(store, exploration2.plan_id, exploration2.exploration_id, actor);
   const prompt = promptOf(store, exploration2, actor, earlier);
   const resume = ["--resume", input.session, "--fork-session", "--session-id", plan.recorder];
   const calls = [
-    callClaude(plan.claude, childArgs(plan.context, resume), prompt, cwd, childEnvironment, Math.max(1, left()))
+    callClaude(plan.claude, childArgs(context, resume), prompt, cwd, childEnvironment, Math.max(1, left()))
   ];
   const missing = [];
   const dropped = [];
@@ -14134,7 +14217,7 @@ function recordLocked(store, operation, input, plan, env, cwd, started) {
     calls.push(
       callClaude(
         plan.claude,
-        childArgs(plan.context, ["--resume", plan.recorder]),
+        childArgs(context, ["--resume", plan.recorder]),
         repairPrompt(refusals),
         cwd,
         childEnvironment,
@@ -14259,13 +14342,13 @@ import { spawn as spawn2 } from "node:child_process";
 import { randomUUID as randomUUID3 } from "node:crypto";
 import {
   existsSync as existsSync3,
-  mkdirSync as mkdirSync5,
+  mkdirSync as mkdirSync6,
   openSync,
   readdirSync as readdirSync2,
   readFileSync as readFileSync6,
   renameSync,
   rmdirSync as rmdirSync2,
-  rmSync as rmSync4,
+  rmSync as rmSync5,
   statSync as statSync5
 } from "node:fs";
 import { join as join7 } from "node:path";
@@ -14337,11 +14420,11 @@ function explorerNames(count2) {
 }
 function explorerWork(store, explorationId, explorer, count2) {
   const folder = workFolder(explorationId, explorer);
-  mkdirSync5(join7(store.workspace, folder), { recursive: true });
-  const others = explorerNames(count2).filter((name) => name !== explorer);
+  mkdirSync6(join7(store.workspace, folder), { recursive: true });
+  const others = explorerNames(count2).filter((name2) => name2 !== explorer);
   return {
     folder,
-    deny: workDenyRules(others.map((name) => workFolder(explorationId, name))),
+    deny: workDenyRules(others.map((name2) => workFolder(explorationId, name2))),
     extraEnv: {
       PLAYWRIGHT_MCP_OUTPUT_DIR: join7(store.workspace, folder),
       PLAYWRIGHT_CLI_SESSION: `qa-${explorationId}-${explorer}`
@@ -14351,14 +14434,14 @@ function explorerWork(store, explorationId, explorer, count2) {
 var keptFiles = ["plan.md", "questions.md", "report.md", "follow-up-report.md"];
 function keepWorkFiles(store, actor, explorationId, explorer, phase) {
   const folder = join7(store.workspace, workFolder(explorationId, explorer));
-  const files2 = keptFiles.flatMap((name) => {
-    const path = join7(folder, name);
-    return existsSync3(path) ? [{ name, bytes: readFileSync6(path) }] : [];
+  const files2 = keptFiles.flatMap((name2) => {
+    const path = join7(folder, name2);
+    return existsSync3(path) ? [{ name: name2, bytes: readFileSync6(path) }] : [];
   });
   if (!files2.length) return;
   const input = { explorer, phase, files: files2.map((file) => file.name) };
   write(store, { actor, command: "explore files", subject: explorationId, input }, (operationId, at) => {
-    const saved = files2.map(({ name, bytes }) => ({ name, ...saveBlob(store, bytes) }));
+    const saved = files2.map(({ name: name2, bytes }) => ({ name: name2, ...saveBlob(store, bytes) }));
     addEvent(
       store,
       explorationId,
@@ -14377,20 +14460,20 @@ function keepBrowserFolder(store, explorationId) {
   const from = join7(store.workspace, browserFolder);
   if (startOf(explorationEvents(store, explorationId))?.browserFolder !== false || !existsSync3(from)) return;
   const to = join7(store.workspace, workFolder(explorationId), browserFolder);
-  mkdirSync5(join7(to, ".."), { recursive: true });
-  rmSync4(to, { recursive: true, force: true });
+  mkdirSync6(join7(to, ".."), { recursive: true });
+  rmSync5(to, { recursive: true, force: true });
   renameSync(from, to);
 }
 function removeWork(store, explorationId) {
   keepBrowserFolder(store, explorationId);
-  rmSync4(join7(store.workspace, workFolder(explorationId)), { recursive: true, force: true });
-  rmSync4(join7(store.workspace, ".checkmate", "tmp", `explore-${explorationId}.log`), { force: true });
+  rmSync5(join7(store.workspace, workFolder(explorationId)), { recursive: true, force: true });
+  rmSync5(join7(store.workspace, ".checkmate", "tmp", `explore-${explorationId}.log`), { force: true });
   removeIfEmpty(join7(store.workspace, ".checkmate", "work"));
   removeIfEmpty(join7(store.workspace, ".checkmate", "tmp"));
 }
 function startSupervisor(store, explorationId, actor, env, extra = []) {
   const folder = join7(store.workspace, ".checkmate", "tmp");
-  mkdirSync5(folder, { recursive: true });
+  mkdirSync6(folder, { recursive: true });
   const log = openSync(join7(folder, `explore-${explorationId}.log`), "a");
   const child = spawn2(
     process.execPath,
@@ -14503,7 +14586,7 @@ function watchWork(store, actor, explorationId, explorer, turn) {
   let known = workFiles(folder);
   const check = () => {
     const now = workFiles(folder);
-    const changed = [...now].filter(([name, size2]) => known.get(name) !== size2).map(([name]) => name);
+    const changed = [...now].filter(([name2, size2]) => known.get(name2) !== size2).map(([name2]) => name2);
     known = now;
     if (changed.length)
       event(store, actor, explorationId, {
@@ -14515,9 +14598,9 @@ function watchWork(store, actor, explorationId, explorer, turn) {
   };
   const timer = setInterval(check, activityMilliseconds);
   return {
-    next: (name) => {
+    next: (name2) => {
       check();
-      turn = name;
+      turn = name2;
     },
     stop: () => {
       clearInterval(timer);
@@ -14543,12 +14626,13 @@ async function launchExplorers(store, actor, explorationId, launch, env) {
       status: "started",
       detail: { session, context: launch.context, brief }
     });
+    const hook = childHook(store.workspace, explorationId, explorer);
     const turn = (own, prompt) => launchClaude(
       claude,
-      childArgs({ ...launch.context, deny }, [...own, ...allowed]),
+      childArgs({ ...launch.context, deny, hook }, [...own, ...allowed]),
       prompt,
       store.workspace,
-      childEnv(env, extraEnv),
+      childEnv(env, extraEnv, hook),
       launch.timeoutSeconds,
       noteChild(store, actor, explorationId, explorer)
     );
@@ -14638,12 +14722,13 @@ function mergeReports(store, actor, explorationId, launch, env, after = 0) {
   if (!input) return;
   const session = randomUUID3();
   const claude = requireClaude(env);
+  const hook = childHook(store.workspace, explorationId, "merge");
   const call = (args, prompt) => callClaude(
     claude,
-    childArgs(launch.context, args),
+    childArgs({ ...launch.context, hook }, args),
     prompt,
     store.workspace,
-    childEnv(env),
+    childEnv(env, {}, hook),
     defaultRecorderTimeout
   );
   const log = (reply) => logMerge(store, explorationId, reply);
@@ -14685,12 +14770,13 @@ function deriveRules(store, actor, explorationId, launch, env) {
   const sources = ruleSources(store, opened.plan_id);
   const names = sources.map((source) => source.name);
   const session = randomUUID3();
+  const hook = childHook(store.workspace, explorationId, "rules");
   const call = (args, prompt) => callClaude(
     requireClaude(env),
-    childArgs(launch.context, args),
+    childArgs({ ...launch.context, hook }, args),
     prompt,
     store.workspace,
-    childEnv(env),
+    childEnv(env, {}, hook),
     defaultRecorderTimeout
   );
   const calls = [call(["--session-id", session], rulesPrompt(opened.charter.goal, sources))];
@@ -14750,12 +14836,13 @@ async function verifyClaims(store, actor, explorationId, launch, env, after = 0)
   const session = randomUUID3();
   const brief = verifierBrief(items, input.entries, input.operations, input.dataPrefix);
   const allowed = launch.allow.flatMap((rule) => ["--allowedTools", rule]);
+  const hook = childHook(store.workspace, explorationId, "verify");
   const ask = (own, prompt) => launchClaude(
     requireClaude(env),
-    childArgs({ ...launch.context, deny: storeDenyRules }, [...own, ...allowed]),
+    childArgs({ ...launch.context, deny: storeDenyRules, hook }, [...own, ...allowed]),
     prompt,
     store.workspace,
-    childEnv(env),
+    childEnv(env, {}, hook),
     launch.timeoutSeconds,
     noteChild(store, actor, explorationId, null)
   );
@@ -14968,12 +15055,13 @@ async function driveFollow(workspace, explorationId, env) {
       sessions.filter((item) => !item.skipped).map(async ({ explorer, session }) => {
         const { folder, deny, extraEnv } = explorerWork(store, explorationId, explorer, count2);
         const watch = watchWork(store, actor, explorationId, explorer, "follow-up");
+        const hook = childHook(store.workspace, explorationId, explorer);
         const call = await launchClaude(
           claude,
-          childArgs({ ...plan.context, deny }, ["--resume", session, ...allowed]),
+          childArgs({ ...plan.context, deny, hook }, ["--resume", session, ...allowed]),
           followBrief(plan.questions, folder, plan.seconds),
           store.workspace,
-          childEnv(env, extraEnv),
+          childEnv(env, extraEnv, hook),
           plan.timeoutSeconds,
           noteChild(store, actor, explorationId, explorer)
         );
@@ -15056,13 +15144,13 @@ function childPids(events, explorer) {
   return explorer === void 0 ? [...new Set(pids)] : pids.slice(-1);
 }
 function endProcesses(all2) {
-  const pids = all2.filter(running2);
+  const pids = all2.filter(running);
   for (const pid of pids) endGroup(pid, "SIGTERM");
-  if (!waitUntil(() => !pids.some(running2), stopWaitMilliseconds)) {
-    for (const pid of pids.filter(running2)) endGroup(pid, "SIGKILL");
-    waitUntil(() => !pids.some(running2), killWaitMilliseconds);
+  if (!waitUntil(() => !pids.some(running), stopWaitMilliseconds)) {
+    for (const pid of pids.filter(running)) endGroup(pid, "SIGKILL");
+    waitUntil(() => !pids.some(running), killWaitMilliseconds);
   }
-  return pids.filter(running2);
+  return pids.filter(running);
 }
 function recordStop(store, actor, input) {
   const id2 = input.explorationId;
@@ -15130,12 +15218,12 @@ function stopPending(events, explorer = null) {
   const end = events.findLast((item) => item.step === "stop-end" && item.explorer === explorer);
   if (end) return false;
   const { supervisor, children } = stoppedProcesses(events, explorer ?? void 0);
-  return [...supervisor, ...children].some(running2);
+  return [...supervisor, ...children].some(running);
 }
 function endStopped(store, explorationId, explorer) {
   const events = explorationEvents(store, explorationId);
   const { supervisor, children } = stoppedProcesses(events, explorer);
-  const left = [...endProcesses(supervisor), ...endProcesses(children.filter(running2))];
+  const left = [...endProcesses(supervisor), ...endProcesses(children.filter(running))];
   if (explorer === void 0) keepBrowserFolder(store, explorationId);
   return left;
 }
@@ -15155,7 +15243,7 @@ function endInBackground(workspace, explorationId, explorer, env) {
 }
 function startEnding(store, explorationId, actor, explorer, env) {
   const folder = join7(store.workspace, ".checkmate", "tmp");
-  mkdirSync5(folder, { recursive: true });
+  mkdirSync6(folder, { recursive: true });
   const log = openSync(join7(folder, `explore-${explorationId}.log`), "a");
   const child = spawn2(
     process.execPath,
@@ -15192,22 +15280,6 @@ function stopExploration(store, actor, input) {
     }
   };
 }
-function zombie(pid) {
-  try {
-    return readFileSync6(`/proc/${pid}/stat`, "utf8").split(") ")[1]?.startsWith("Z") === true;
-  } catch {
-    return false;
-  }
-}
-function running2(pid) {
-  if (typeof pid !== "number") return false;
-  try {
-    process.kill(pid, 0);
-    return !zombie(pid);
-  } catch (error) {
-    return error.code === "EPERM";
-  }
-}
 function followState(events) {
   const follow = events.findLastIndex((item) => item.step === "follow");
   if (follow === -1) return null;
@@ -15216,7 +15288,7 @@ function followState(events) {
   if (ended) return ended.status === "completed" ? "completed" : "failed";
   if (stopOf(events)) return "stopped";
   const supervisor = later.find((item) => item.step === "supervisor");
-  return supervisor && !running2(supervisor.detail.pid) ? "interrupted" : "running";
+  return supervisor && !running(supervisor.detail.pid) ? "interrupted" : "running";
 }
 function stopOf(events) {
   const follow = events.findLastIndex((item) => item.step === "follow");
@@ -15235,7 +15307,7 @@ function explorationState(events) {
   if (done) return done.status === "completed" ? "completed" : "failed";
   const supervisor = events.find((item) => item.step === "supervisor");
   if (stopOf(events)) return "stopped";
-  if (supervisor && !running2(supervisor.detail.pid)) return "interrupted";
+  if (supervisor && !running(supervisor.detail.pid)) return "interrupted";
   if (!events.some((item) => item.step === "start")) return "open";
   if (!supervisor && startOf(events)?.path !== "session") return "starting";
   if (events.some((item) => item.step === "merge")) return "verifying";
@@ -15560,14 +15632,14 @@ function planDetail(store, planId, revision = null) {
 }
 function planHistory(store, planId) {
   planRevision(store, planId);
-  const rows = all(
+  const rows2 = all(
     store,
     `SELECT p.plan_id, p.revision, p.sha256, p.body, p.operation_id, o.at, o.actor FROM plan_revisions p
 		JOIN operations o ON o.id = p.operation_id WHERE p.plan_id = ? ORDER BY p.revision`,
     planId
   );
-  const plans = rows.map((row2) => JSON.parse(row2.body));
-  return rows.map((row2, i) => ({
+  const plans = rows2.map((row2) => JSON.parse(row2.body));
+  return rows2.map((row2, i) => ({
     revision: row2.revision,
     sha256: row2.sha256,
     operationId: row2.operation_id,
@@ -15775,7 +15847,7 @@ function explorationLive(store, explorationId, now = Date.now()) {
     running: running3,
     phase: phaseOf[status.state] ?? null,
     stopping: stopPending(events),
-    stuck: events.filter((event2) => event2.step === "stop-end").flatMap((event2) => event2.detail.left).filter(running2),
+    stuck: events.filter((event2) => event2.step === "stop-end").flatMap((event2) => event2.detail.left).filter(running),
     reason: ended ? status.reason : null,
     follow: status.follow,
     followReason: status.followReason,
@@ -16065,7 +16137,7 @@ function checkStatus(store, planId) {
         [rejection(store, "plan", subject)],
         [`checkmate plan edit ${subject} --patch`]
       );
-    const answer = [
+    const answer2 = [
       `checkmate gap answer ${planId} <gapId> --kind <kind> --value "<answer>" --source "<source>" --rationale "<why>"`
     ];
     if (approval === "pending")
@@ -16073,7 +16145,7 @@ function checkStatus(store, planId) {
         "needs_answers",
         "oracle",
         [amount(gaps.length, "open gap"), `${subject} waits for approval`],
-        answer
+        answer2
       ) : loop(
         "needs_approval",
         "oracle",
@@ -16096,11 +16168,11 @@ function checkStatus(store, planId) {
         "needs_answers",
         "oracle",
         [`No test is ready. ${amount(blocking.length, "open blocking gap")}`],
-        answer
+        answer2
       ) : nothingToRun(null, selection.leftOut);
     }
     if (blocking.length)
-      return loop("needs_answers", "oracle", [amount(blocking.length, "open blocking gap")], answer);
+      return loop("needs_answers", "oracle", [amount(blocking.length, "open blocking gap")], answer2);
     if (defects.length) {
       const defective = runs.filter((run2) => defects.some((defect) => defect.runId === run2.runId));
       return loop(
@@ -16114,7 +16186,7 @@ function checkStatus(store, planId) {
         )
       );
     }
-    if (gaps.length) return loop("needs_answers", "oracle", [amount(gaps.length, "open gap")], answer);
+    if (gaps.length) return loop("needs_answers", "oracle", [amount(gaps.length, "open gap")], answer2);
     if (!ready.length) return nothingToRun(finished.build, readySelection(store, plan, finished.build).leftOut);
     const causes = /* @__PURE__ */ new Set();
     const reasons2 = new Map(
@@ -16285,7 +16357,7 @@ function loop(state, waitsOn, why, next) {
   return { state, waitsOn, why, next, stage: loopStages[state] ?? "none" };
 }
 function runList(store, filters = {}) {
-  const rows = all(
+  const rows2 = all(
     store,
     `SELECT r.*, s.completion, s.coverage, s.sha256 FROM runs r LEFT JOIN results s ON s.run_id = r.run_id
 		WHERE (? IS NULL OR r.plan_id = ?) AND (? IS NULL OR r.application_build = ?) ORDER BY r.rowid`,
@@ -16294,7 +16366,7 @@ function runList(store, filters = {}) {
     filters.build ?? null,
     filters.build ?? null
   );
-  return rows.map((row2) => ({
+  return rows2.map((row2) => ({
     runId: row2.run_id,
     planId: row2.plan_id,
     revision: row2.plan_revision,
@@ -16395,7 +16467,7 @@ function runDetail(store, runId) {
 }
 function findingList(store, filters = {}) {
   if (filters.planId !== void 0) planRequest(store, filters.planId);
-  const rows = all(
+  const rows2 = all(
     store,
     `SELECT r.*, f.body FROM findings f JOIN runs r ON r.run_id = f.run_id
 		WHERE (? IS NULL OR r.plan_id = ?) ORDER BY f.rowid`,
@@ -16403,13 +16475,13 @@ function findingList(store, filters = {}) {
     filters.planId ?? null
   );
   const open = new Set(
-    filters.open ? [...new Set(rows.map((row2) => row2.plan_id))].flatMap(
+    filters.open ? [...new Set(rows2.map((row2) => row2.plan_id))].flatMap(
       (planId) => openDefects(finalizedResults(store, planId), rejectedRuns(store, planId)).map(
         ({ runId, finding }) => `${runId}/${finding.id}`
       )
     ) : []
   );
-  return rows.map((row2) => {
+  return rows2.map((row2) => {
     const finding = JSON.parse(row2.body);
     return {
       runId: row2.run_id,
@@ -16500,21 +16572,21 @@ function listQuery(query, columns2, defaults) {
 }
 function filterValue(filters, names) {
   const values = {};
-  for (const [name, value2] of Object.entries(filters ?? {})) {
+  for (const [name2, value2] of Object.entries(filters ?? {})) {
     if (value2 === void 0 || value2 === "") continue;
-    requireCondition(name in names, `Unknown filter: ${name}. Use: ${Object.keys(names).join(", ")}.`);
-    const choices = names[name];
-    if (choices) requireChoice(value2, choices, `${name} filter`);
-    values[name] = value2;
+    requireCondition(name2 in names, `Unknown filter: ${name2}. Use: ${Object.keys(names).join(", ")}.`);
+    const choices = names[name2];
+    if (choices) requireChoice(value2, choices, `${name2} filter`);
+    values[name2] = value2;
   }
   return values;
 }
-function pageOf(rows, query, columns2, text) {
-  const matched = query.q ? rows.filter(
+function pageOf(rows2, query, columns2, text) {
+  const matched = query.q ? rows2.filter(
     (row2) => text(row2).some(
       (field4) => String(field4 ?? "").toLowerCase().includes(query.q)
     )
-  ) : rows;
+  ) : rows2;
   const key = columns2[query.sort];
   const order = query.direction === "asc" ? 1 : -1;
   const position = new Map(matched.map((row2, index2) => [row2, index2]));
@@ -16552,10 +16624,10 @@ function pagedRuns(store, query = {}) {
   };
   const options3 = listQuery(query, Object.keys(columns2), { sort: "started", direction: "desc" });
   const filters = filterValue(query.filters, { plan: null, build: null, status: runStatuses });
-  const rows = runList(store, { planId: filters.plan, build: filters.build }).filter(
+  const rows2 = runList(store, { planId: filters.plan, build: filters.build }).filter(
     (row2) => filters.status === void 0 || runStatus(row2) === filters.status
   );
-  return pageOf(rows, options3, columns2, (row2) => [
+  return pageOf(rows2, options3, columns2, (row2) => [
     row2.runId,
     `${row2.planId}@${row2.revision}`,
     row2.build,
@@ -16590,11 +16662,11 @@ function pagedOperations(store, query = {}) {
   };
   const total = store.db.prepare(`SELECT count(*) AS total FROM operations ${where}`).get(parameters).total;
   const direction = options3.direction === "asc" ? "ASC" : "DESC";
-  const rows = store.db.prepare(
+  const rows2 = store.db.prepare(
     `SELECT rowid, * FROM operations ${where} ORDER BY ${logColumns[options3.sort]} ${direction}, rowid ${direction} LIMIT :limit OFFSET :offset`
   ).all({ ...parameters, limit: options3.limit, offset: options3.offset });
   return {
-    rows: rows.map(operationRow),
+    rows: rows2.map(operationRow),
     total,
     limit: options3.limit,
     offset: options3.offset,
@@ -17192,13 +17264,13 @@ function xmlText(value2) {
 function xmlAttribute(value2) {
   return xml(value2, /[&<>"'\n\r\t]/g);
 }
-function xmlTag(name, attributes, content = null) {
+function xmlTag(name2, attributes, content = null) {
   const fields = Object.entries(attributes).map(([key, value2]) => ` ${key}="${xmlAttribute(String(value2))}"`).join("");
-  return content === null ? `<${name}${fields}/>` : `<${name}${fields}>${content}</${name}>`;
+  return content === null ? `<${name2}${fields}/>` : `<${name2}${fields}>${content}</${name2}>`;
 }
 function xmlProperties(values) {
   if (!values.length) return "";
-  return `<properties>${values.map(([name, value2]) => xmlTag("property", { name, value: String(value2) })).join("")}</properties>`;
+  return `<properties>${values.map(([name2, value2]) => xmlTag("property", { name: name2, value: String(value2) })).join("")}</properties>`;
 }
 function junitStatus(report, test) {
   const unpassed = test.assertions.find((assertion) => assertion.result !== "passed");
@@ -17314,7 +17386,7 @@ function runReport(store, runId) {
   };
 }
 function testTimes(store, runId) {
-  const rows = all(
+  const rows2 = all(
     store,
     `SELECT o.test_id, coalesce(min(a.recorded_at), o.recorded_at) AS first, o.recorded_at AS closed
 		FROM outcomes o LEFT JOIN assertion_results a ON a.run_id = o.run_id AND a.test_id = o.test_id
@@ -17322,7 +17394,7 @@ function testTimes(store, runId) {
     runId
   );
   return Object.fromEntries(
-    rows.map((row2) => [row2.test_id, Math.max(0, Date.parse(row2.closed) - Date.parse(row2.first)) / 1e3])
+    rows2.map((row2) => [row2.test_id, Math.max(0, Date.parse(row2.closed) - Date.parse(row2.first)) / 1e3])
   );
 }
 function exportRun(store, runId, format2) {
@@ -17369,7 +17441,7 @@ function exportExploration(store, explorationId, format2) {
 
 // plugin/src/ui/server.ts
 import { createServer } from "node:http";
-import { randomBytes as randomBytes2, timingSafeEqual } from "node:crypto";
+import { randomBytes as randomBytes2 } from "node:crypto";
 import { existsSync as existsSync5, readFileSync as readFileSync7 } from "node:fs";
 import { fileURLToPath as fileURLToPath2 } from "node:url";
 
@@ -17634,8 +17706,8 @@ var glyphNames = {
   "\u25BE": "open"
 };
 function glyph(symbol) {
-  const name = glyphNames[symbol];
-  return name ? html2`<span class="glyph g-${name}" aria-hidden="true"></span>` : html2`${symbol}`;
+  const name2 = glyphNames[symbol];
+  return name2 ? html2`<span class="glyph g-${name2}" aria-hidden="true"></span>` : html2`${symbol}`;
 }
 function pill(status, label = labels[status] ?? words(status)) {
   const [icon2] = statusLook[status] ?? ["\xB7", "muted"];
@@ -17872,6 +17944,14 @@ function statusBar(context, page) {
 					>${waiting}<span class="sb-long"> ${waiting === 1 ? "needs" : "need"} you</span
 					><span class="sb-all"> · all plans</span></span
 				></a
+			>
+			<a
+				class="sb-btn att"
+				href="/permissions"
+				title="Permission requests of testers that wait for you"
+				data-region="permissions-link"
+				${context.permissions ? "" : html2`hidden`}
+				>${context.permissions} ${context.permissions === 1 ? "permission" : "permissions"}</a
 			>
 			<button class="sb-btn" type="button" data-find-open hidden>Find</button>
 			<button class="sb-btn" type="button" data-keys-open hidden>Keys</button>
@@ -18309,9 +18389,9 @@ function ruleMap(store, planId) {
     const right = checked.filter((entry) => entry.verdict === "ok").length;
     const status = present.length || wrong ? "failed" : asked.length ? "question" : right ? "passed" : "not_checked";
     const changes = Object.fromEntries(
-      ["new", "still_present", "fixed", "returned", "not_retested"].map((name) => [
-        name,
-        own.filter((claim) => states.get(claim.id).get(build) === name).map((claim) => claim.id)
+      ["new", "still_present", "fixed", "returned", "not_retested"].map((name2) => [
+        name2,
+        own.filter((claim) => states.get(claim.id).get(build) === name2).map((claim) => claim.id)
       ])
     );
     return {
@@ -18592,14 +18672,14 @@ function pager(spec2, state, total) {
 		${link(state.page + 1, "Next \u203A", "next")} ${link(last, "Last \xBB", "last")}
 	</nav>`;
 }
-function listRegion(spec2, state, total, rows) {
+function listRegion(spec2, state, total, rows2) {
   const first = total ? (state.page - 1) * state.size + 1 : 0;
   const last = Math.min(total, state.page * state.size);
   const count2 = total ? `Showing ${first}\u2013${last} of ${plural(total, spec2.noun)}` : "";
   return html2`<div data-region="${spec2.region}" data-list-region>
 		<p class="list-count" data-list-count role="status">${count2}</p>
 		${total ? html2`<ul class="q-items l-rows">
-							${rows}
+							${rows2}
 						</ul>
 						${pager(spec2, state, total)}` : state.q || Object.keys(state.filters).length ? emptyNotice(
     `No ${spec2.noun} matches these filters.`,
@@ -18808,11 +18888,11 @@ function shell(id2, title, gone, action2, context, body) {
 		</form>
 	</dialog>`;
 }
-function field(id2, label, name, value2, required = false) {
+function field(id2, label, name2, value2, required = false) {
   return html2`<label for="${id2}">${label}</label>
 		<input
 			id="${id2}"
-			name="${name}"
+			name="${name2}"
 			value="${value2}"
 			maxlength="200"
 			autocomplete="off"
@@ -19053,13 +19133,13 @@ function failureOf(reason, hint, events) {
   };
 }
 function actorOf(store, explorationId, step) {
-  const rows = all(
+  const rows2 = all(
     store,
     "SELECT e.at, o.actor FROM exploration_events e JOIN operations o ON o.id = e.operation_id WHERE e.exploration_id = ? AND e.step = ? ORDER BY e.rowid",
     explorationId,
     step
   );
-  return rows;
+  return rows2;
 }
 function runsOf(store, explorationId, counts2) {
   const status = explorationStatus(store, explorationId);
@@ -19298,8 +19378,8 @@ function ruleText(review, rule) {
   const row2 = review.map.rows.find((each) => each.rule.id === rule);
   return row2 ? `${rule} ${row2.rule.text}` : rule;
 }
-function facts(rows) {
-  const shown2 = rows.filter(([, value2]) => value2);
+function facts(rows2) {
+  const shown2 = rows2.filter(([, value2]) => value2);
   if (!shown2.length) return "";
   return html2`<dl class="sp-facts">
 		${shown2.map(
@@ -19334,7 +19414,7 @@ function hiddenFields(context, item, back, fields) {
   return html2`<input type="hidden" name="csrf" value="${context.csrf}" />
 		<input type="hidden" name="return" value="${back}" data-return />
 		<input type="hidden" name="item" value="${item.key}" />
-		${fields.map(([name, value2]) => html2`<input type="hidden" name="${name}" value="${value2}" />`)}`;
+		${fields.map(([name2, value2]) => html2`<input type="hidden" name="${name2}" value="${value2}" />`)}`;
 }
 function textForm(context, item, back, spec2) {
   return html2`<form method="post" action="${spec2.action}" class="sp-form" id="${spec2.id}" data-field-form>
@@ -19785,31 +19865,31 @@ function hiddenFields2(context, item, extra = []) {
   return html2`<input type="hidden" name="csrf" value="${context.csrf}" />
 		<input type="hidden" name="return" value="${context.path}" data-return />
 		<input type="hidden" name="item" value="${item.key}" />
-		${extra.map(([name, value2]) => html2`<input type="hidden" name="${name}" value="${value2}" />`)}`;
+		${extra.map(([name2, value2]) => html2`<input type="hidden" name="${name2}" value="${value2}" />`)}`;
 }
 function action(item) {
   if (item.claim) return `/explorations/${item.claim.explorationId}/claims/${item.claim.id}`;
   if (item.question) return `/explorations/${item.question.explorationId}/questions/${item.question.id}`;
   return item.href;
 }
-function optionButton(n, label, name = label) {
-  return html2`<button class="sp-btn" data-option aria-label="${n}: ${name}" title="${name}">
+function optionButton(n, label, name2 = label) {
+  return html2`<button class="sp-btn" data-option aria-label="${n}: ${name2}" title="${name2}">
 		<kbd aria-hidden="true">${n}</kbd><span>${label}</span>
 	</button>`;
 }
-function optionForm(context, item, n, label, fields, name = label) {
+function optionForm(context, item, n, label, fields, name2 = label) {
   return html2`<form method="post" action="${action(item)}" class="sp-opt">
-		${hiddenFields2(context, item, fields)}${optionButton(n, label, name)}
+		${hiddenFields2(context, item, fields)}${optionButton(n, label, name2)}
 	</form>`;
 }
-function reveal(n, label, field4, item, name = label) {
+function reveal(n, label, field4, item, name2 = label) {
   return html2`<a
 		class="sp-btn"
 		href="${item.href}#${field4}"
 		data-option
 		data-reveal="${field4}"
-		aria-label="${n}: ${name}"
-		title="${name}"
+		aria-label="${n}: ${name2}"
+		title="${name2}"
 		><kbd aria-hidden="true">${n}</kbd><span>${label}</span></a
 	>`;
 }
@@ -19854,11 +19934,11 @@ function optionsOf(context, review, item) {
   return [];
 }
 function extraOf(context, review, item) {
-  const form = (field4, label, name, fields, url = action(item)) => html2`<div class="sp-c-extra" data-extra="${field4}" hidden>
+  const form = (field4, label, name2, fields, url = action(item)) => html2`<div class="sp-c-extra" data-extra="${field4}" hidden>
 			<form method="post" action="${url}" class="sp-form" data-field-form>
 				${hiddenFields2(context, item, fields)}
 				<label for="${field4}-${item.key}">${label}</label>
-				<textarea id="${field4}-${item.key}" name="${name}" rows="2" required></textarea>
+				<textarea id="${field4}-${item.key}" name="${name2}" rows="2" required></textarea>
 				<div class="btns">
 					<button class="sp-btn pri"><span>Send</span></button>
 					<span class="small">Enter sends. Shift+Enter starts a new line. Esc keeps the draft.</span>
@@ -19943,8 +20023,8 @@ var cellMarks = {
 };
 function markOf(review, status, build) {
   const testing = review.running?.build === build && status === "not_checked";
-  const [symbol, look, name] = testing ? ["\u25CF", "k-run", "under test now"] : cellMarks[status];
-  const label = `${buildLabel(review, build)} ${name}`;
+  const [symbol, look, name2] = testing ? ["\u25CF", "k-run", "under test now"] : cellMarks[status];
+  const label = `${buildLabel(review, build)} ${name2}`;
   return html2`<span
 		class="sp-mk ${look}"
 		role="img"
@@ -20200,11 +20280,11 @@ function viewHead(review, view) {
   return { sub: "", pills: html2`` };
 }
 function rulesList(review) {
-  const rows = review.map.rows.filter((row2) => row2.rule.id !== outside);
-  if (!rows.length) return html2`<p class="sp-empty">This plan has no rules yet.</p>`;
+  const rows2 = review.map.rows.filter((row2) => row2.rule.id !== outside);
+  if (!rows2.length) return html2`<p class="sp-empty">This plan has no rules yet.</p>`;
   return html2`<div class="sp-list wide-title" role="listbox" aria-label="Rules of the plan" data-list>
-		<div class="sp-gh" role="presentation">Rules <span>${rows.length}</span></div>
-		${rows.map(
+		<div class="sp-gh" role="presentation">Rules <span>${rows2.length}</span></div>
+		${rows2.map(
     (row2, index2) => html2`<div
 					class="sp-row"
 					role="option"
@@ -21007,29 +21087,29 @@ function explorationPage(store, context, explorationId, params = new URLSearchPa
 			</section>`
   };
 }
-function explorerFile(store, explorationId, explorer, phase, name) {
+function explorerFile(store, explorationId, explorer, phase, name2) {
   const file = explorationReport(store, explorationId).files.find(
-    (item) => item.explorer === explorer && item.phase === phase && item.name === name
+    (item) => item.explorer === explorer && item.phase === phase && item.name === name2
   );
-  if (!file) throw new Error(`Unknown file ${name} of ${explorer} in ${explorationId}`);
+  if (!file) throw new Error(`Unknown file ${name2} of ${explorer} in ${explorationId}`);
   return file;
 }
-function explorerFilePage(store, explorationId, explorer, phase, name) {
-  const file = explorerFile(store, explorationId, explorer, phase, name);
+function explorerFilePage(store, explorationId, explorer, phase, name2) {
+  const file = explorerFile(store, explorationId, explorer, phase, name2);
   return {
-    title: `${explorationId} \xB7 ${explorer} \xB7 ${name}`,
+    title: `${explorationId} \xB7 ${explorer} \xB7 ${name2}`,
     section: "home",
     crumbs: [
       ["Plans", "/plans"],
       [explorationId, `/explorations/${explorationId}`],
-      [`${explorer} \xB7 ${name}`, null]
+      [`${explorer} \xB7 ${name2}`, null]
     ],
     subjects: [`exploration:${explorationId}`],
-    body: html2`${heading(html2`${explorationId} · ${explorer} · ${name}`, `Saved in the record after the ${phase} turn.`)}
+    body: html2`${heading(html2`${explorationId} · ${explorer} · ${name2}`, `Saved in the record after the ${phase} turn.`)}
 			<p>
 				<a href="/explorations/${explorationId}">Exploration ${explorationId}</a> · ${plural(file.size, "byte")}
 			</p>
-			<section class="panel" aria-label="${name}"><pre class="report">${file.text}</pre></section>`
+			<section class="panel" aria-label="${name2}"><pre class="report">${file.text}</pre></section>`
   };
 }
 function questionPage(store, context, explorationId, questionId, state = null) {
@@ -21126,6 +21206,302 @@ function claimPage(store, context, explorationId, claimId, state = null) {
   };
 }
 
+// plugin/src/permissions.ts
+var permissionDecisions = ["allow", "allow-kind", "always", "deny", "stop"];
+var closedText = {
+  timeout: "no answer in 10 minutes",
+  "ui-stopped": "closed, the UI stopped",
+  stopped: "closed, the tester or the run stopped",
+  disconnected: "closed, the tester did not wait any more"
+};
+var maxText = 2e3;
+var requestStep = "permission";
+var decisionStep = "permission-decision";
+function rows(store, where, ...parameters) {
+  return all(
+    store,
+    `SELECT e.exploration_id, x.plan_id, e.rowid, e.at, e.step, e.explorer, e.status, e.detail
+		FROM exploration_events e JOIN explorations x ON x.exploration_id = e.exploration_id
+		WHERE e.step IN ('${requestStep}', '${decisionStep}') ${where} ORDER BY e.rowid`,
+    ...parameters
+  );
+}
+function ruleText2(rule) {
+  return rule.ruleContent ? `${rule.toolName}(${rule.ruleContent})` : rule.toolName;
+}
+function rulesOf(suggestion) {
+  if (!suggestion || !Array.isArray(suggestion.rules)) return [];
+  return suggestion.rules.flatMap((rule) => {
+    const item = rule;
+    if (typeof item?.toolName !== "string" || !item.toolName) return [];
+    return [
+      {
+        toolName: item.toolName,
+        ...typeof item.ruleContent === "string" ? { ruleContent: item.ruleContent } : {}
+      }
+    ];
+  });
+}
+function kindSuggestion(suggestions) {
+  return suggestions.find((item) => item.type === "addRules" && rulesOf(item).length > 0);
+}
+function kindRule(suggestions) {
+  const found = kindSuggestion(suggestions);
+  return found ? rulesOf(found).map(ruleText2).join(", ") : null;
+}
+function shortened(value2) {
+  if (typeof value2 === "string") return value2.length > maxText ? `${value2.slice(0, maxText)}\u2026` : value2;
+  if (Array.isArray(value2)) return value2.map(shortened);
+  if (value2 && typeof value2 === "object")
+    return Object.fromEntries(Object.entries(value2).map(([key, item]) => [key, shortened(item)]));
+  return value2;
+}
+function decisionOf(row2) {
+  const detail = JSON.parse(row2.detail);
+  return {
+    kind: row2.status,
+    by: detail.by ?? "",
+    at: row2.at,
+    text: detail.text ?? "",
+    reason: detail.reason ?? null,
+    rule: detail.rule ?? null,
+    setBy: detail.setBy ?? null,
+    cause: detail.cause ?? null
+  };
+}
+function permissionsOf(list2) {
+  const found = /* @__PURE__ */ new Map();
+  for (const row2 of list2) {
+    const detail = JSON.parse(row2.detail);
+    const key = `${row2.exploration_id}/${detail.id}`;
+    if (row2.step === requestStep) {
+      const suggestions = detail.suggestions;
+      found.set(key, {
+        explorationId: row2.exploration_id,
+        planId: row2.plan_id,
+        id: detail.id,
+        who: detail.who,
+        tester: row2.explorer,
+        tool: detail.tool,
+        input: detail.input,
+        suggestions,
+        at: row2.at,
+        rule: kindRule(suggestions),
+        decision: null
+      });
+    } else {
+      const request = found.get(key);
+      if (request && !request.decision) request.decision = decisionOf(row2);
+    }
+  }
+  return [...found.values()];
+}
+function explorationPermissions(store, explorationId) {
+  return permissionsOf(rows(store, "AND e.exploration_id = ?", explorationId));
+}
+function openPermissions(store, planId) {
+  const list2 = planId === void 0 ? rows(store, "") : rows(store, "AND x.plan_id = ?", planId);
+  return permissionsOf(list2).filter((item) => !item.decision);
+}
+function permissionRules(store, explorationId) {
+  return explorationPermissions(store, explorationId).flatMap(
+    (item) => item.decision?.kind === "allow-kind" && item.decision.rule ? [{ rule: item.decision.rule, setBy: item.decision.by, at: item.decision.at, requestId: item.id }] : []
+  );
+}
+function permissionOf(store, explorationId, requestId) {
+  return explorationPermissions(store, explorationId).find((item) => item.id === requestId);
+}
+function findPermission(store, explorationId, requestId) {
+  const found = permissionOf(store, explorationId, requestId);
+  requireCondition(
+    found,
+    `Exploration ${explorationId} has no permission request ${requestId}.`,
+    `Run checkmate explore show ${explorationId}.`
+  );
+  return found;
+}
+function nextRequestId(store, explorationId) {
+  const count2 = one(
+    store,
+    `SELECT count(*) AS count FROM exploration_events WHERE exploration_id = ? AND step = '${requestStep}'`,
+    explorationId
+  ).count;
+  return `P${count2 + 1}`;
+}
+function addDecision(store, request, kind, detail, operationId, at) {
+  addEvent(
+    store,
+    request.explorationId,
+    {
+      step: decisionStep,
+      explorer: request.tester,
+      status: kind,
+      detail: { id: request.id, who: request.who, ...detail }
+    },
+    operationId,
+    at
+  );
+}
+function ruleInForce(store, explorationId, suggestions) {
+  const wanted = kindRule(suggestions);
+  return wanted ? permissionRules(store, explorationId).find((item) => item.rule === wanted) : void 0;
+}
+function requestPermission(store, input) {
+  const tester = one(
+    store,
+    "SELECT 1 FROM exploration_events WHERE exploration_id = ? AND step = 'launch' AND explorer = ?",
+    input.explorationId,
+    input.who
+  ) === void 0 ? null : input.who;
+  const operation = { actor: explorerActor(input.who), command: "explore permission", subject: input.explorationId };
+  return write(store, { ...operation, input: { who: input.who, tool: input.tool } }, (operationId, at) => {
+    const id2 = nextRequestId(store, input.explorationId);
+    const request = { explorationId: input.explorationId, id: id2, who: input.who, tester };
+    addEvent(
+      store,
+      input.explorationId,
+      {
+        step: requestStep,
+        explorer: tester,
+        status: "open",
+        detail: {
+          id: id2,
+          who: input.who,
+          tool: input.tool,
+          input: shortened(input.input),
+          suggestions: input.suggestions
+        }
+      },
+      operationId,
+      at
+    );
+    const force = ruleInForce(store, input.explorationId, input.suggestions);
+    if (force)
+      addDecision(
+        store,
+        request,
+        "rule",
+        {
+          by: "rule",
+          text: `allowed by rule ${force.rule}, set by ${force.setBy}`,
+          rule: force.rule,
+          setBy: force.setBy
+        },
+        operationId,
+        at
+      );
+    return {
+      reply: completed(input.explorationId, { id: id2, byRule: Boolean(force) }),
+      subjects: [`exploration:${input.explorationId}`]
+    };
+  }).data;
+}
+function decidePermission(store, actor, input, stop) {
+  const choice2 = requireChoice(input.decision, permissionDecisions, "decision");
+  const reason = input.reason?.trim() ?? "";
+  requireWellFormed(choice2 !== "deny" || reason, "A denial needs a reason.", "Give the reason with --reason <text>.");
+  const operation = {
+    actor,
+    command: "explore permit",
+    subject: input.explorationId,
+    input: { requestId: input.requestId, decision: choice2 }
+  };
+  const reply = write(store, operation, (operationId, at, who) => {
+    const request = findPermission(store, input.explorationId, input.requestId);
+    requireCondition(
+      !request.decision,
+      `Permission request ${request.id} of ${request.explorationId} has an answer already: ${request.decision?.text}. Nothing changed.`
+    );
+    requireCondition(
+      choice2 !== "allow-kind" && choice2 !== "always" || request.rule,
+      `Permission request ${request.id} has no rule that Claude Code can remember. Allow it once, or deny it.`
+    );
+    const texts = {
+      allow: "allowed once",
+      "allow-kind": `allowed for this test: ${request.rule}`,
+      always: `allowed always in this project: ${request.rule}`,
+      deny: `denied: ${reason}`,
+      stop: `stopped the ${request.tester ? "tester" : "run"}${reason ? `: ${reason}` : ""}`
+    };
+    const rule = choice2 === "allow-kind" || choice2 === "always" ? request.rule : null;
+    addDecision(
+      store,
+      request,
+      choice2,
+      { by: who, text: `${texts[choice2]}, by ${who}`, ...reason ? { reason } : {}, ...rule ? { rule } : {} },
+      operationId,
+      at
+    );
+    return {
+      reply: completed(request.explorationId, { requestId: request.id, decision: choice2, who: request.tester }),
+      subjects: [`exploration:${request.explorationId}`, `plan:${request.planId}`]
+    };
+  });
+  if (choice2 === "stop") stop(reply.data.who ?? void 0, reason);
+  return reply;
+}
+function closePermission(store, explorationId, requestId, cause) {
+  return write(
+    store,
+    {
+      actor: "checkmate",
+      command: "explore permission-close",
+      subject: explorationId,
+      input: { requestId, cause }
+    },
+    (operationId, at) => {
+      const request = findPermission(store, explorationId, requestId);
+      if (request.decision) return { reply: completed(explorationId, { closed: false }), subjects: [] };
+      addDecision(store, request, "closed", { by: "checkmate", text: closedText[cause], cause }, operationId, at);
+      return {
+        reply: completed(explorationId, { closed: true }),
+        subjects: [`exploration:${explorationId}`, `plan:${request.planId}`]
+      };
+    }
+  ).data.closed;
+}
+function closeOpenPermissions(store, cause) {
+  for (const item of openPermissions(store)) closePermission(store, item.explorationId, item.id, cause);
+}
+function decisionBody(decision) {
+  return JSON.stringify({ hookSpecificOutput: { hookEventName: "PermissionRequest", decision } });
+}
+function permissionAnswer(request, decision) {
+  const withRule = (destination) => {
+    const suggestion = kindSuggestion(request.suggestions);
+    const update = {
+      type: "addRules",
+      rules: rulesOf(suggestion),
+      ...typeof suggestion.behavior === "string" ? { behavior: suggestion.behavior } : {},
+      destination
+    };
+    return decisionBody({ behavior: "allow", updatedPermissions: [update] });
+  };
+  if (decision.kind === "allow") return decisionBody({ behavior: "allow" });
+  if (decision.kind === "allow-kind" || decision.kind === "rule") return withRule("session");
+  if (decision.kind === "always") return withRule("localSettings");
+  if (decision.kind === "deny") return decisionBody({ behavior: "deny", message: decision.reason });
+  if (decision.kind === "stop")
+    return decisionBody({
+      behavior: "deny",
+      message: decision.reason ?? `Stopped by ${decision.by}.`,
+      interrupt: true
+    });
+  return "";
+}
+function stoppedSince(store, request) {
+  return one(
+    store,
+    `SELECT 1 FROM exploration_events WHERE exploration_id = ? AND step = 'stop'
+			AND (explorer IS NULL OR explorer = ?)
+			AND rowid > (SELECT rowid FROM exploration_events WHERE exploration_id = ? AND step = '${requestStep}' AND json_extract(detail, '$.id') = ?)`,
+    request.explorationId,
+    request.who,
+    request.explorationId,
+    request.id
+  ) !== void 0;
+}
+
 // plugin/src/settings.ts
 var defaultTesterRules = "Read Bash";
 function ruleTokens(text) {
@@ -21153,7 +21529,7 @@ function saveTesterRules(store, actor, text) {
 
 // plugin/src/ui/server.ts
 import { resolve as resolve6 } from "node:path";
-import { mkdirSync as mkdirSync6, rmSync as rmSync5, writeFileSync as writeFileSync3 } from "node:fs";
+import { mkdirSync as mkdirSync7, rmSync as rmSync6, writeFileSync as writeFileSync4 } from "node:fs";
 
 // plugin/src/actor.ts
 import { execFileSync } from "node:child_process";
@@ -21162,13 +21538,13 @@ function defaultActor(workspace, env) {
   const named = env.CHECKMATE_ACTOR?.trim();
   if (named) return named;
   try {
-    const name = execFileSync("git", ["config", "user.name"], {
+    const name2 = execFileSync("git", ["config", "user.name"], {
       cwd: workspace,
       env,
       encoding: "utf8",
       stdio: ["ignore", "pipe", "ignore"]
     }).trim();
-    if (name) return name;
+    if (name2) return name2;
   } catch {
   }
   try {
@@ -21203,9 +21579,9 @@ function claimDefaults(values) {
 function bulkProblem(what, values, actor) {
   if (!actor) return "Enter your name. Checkmate records it with each decision.";
   if (what === "questions") {
-    const answer = answerDefaults(values, actor);
-    if (!kindLabels[answer.kind]) return "Choose Defer, Clarify, or Accept assumption.";
-    if (!answer.value) return "Write the answer. Only Defer needs no answer.";
+    const answer2 = answerDefaults(values, actor);
+    if (!kindLabels[answer2.kind]) return "Choose Defer, Clarify, or Accept assumption.";
+    if (!answer2.value) return "Write the answer. Only Defer needs no answer.";
     return null;
   }
   if (values.verdict !== "approved" && values.verdict !== "rejected") return "Choose Accept or Reject.";
@@ -21314,7 +21690,7 @@ function tile(review, loop2, index2) {
 		${miniMap(review)}
 		<div class="sp-nums">
 			${nums.map(
-    ([value2, name, hot]) => html2`<div><b class="${hot ? "att" : ""}">${value2}</b><span>${name}</span></div>`
+    ([value2, name2, hot]) => html2`<div><b class="${hot ? "att" : ""}">${value2}</b><span>${name2}</span></div>`
   )}
 		</div>
 		<div class="sp-ct-opts">
@@ -21385,12 +21761,12 @@ var levelNotes2 = {
   normal: "2 testers and a verifier",
   deep: "3 testers and a verifier"
 };
-function field2(id2, name, label, help2, extra = "", value2 = "") {
+function field2(id2, name2, label, help2, extra = "", value2 = "") {
   return html2`<div class="field-group">
 		<label class="lab" for="${id2}">${label}</label>
 		<input
 			id="${id2}"
-			name="${name}"
+			name="${name2}"
 			value="${value2}"
 			maxlength="400"
 			autocomplete="off"
@@ -21400,14 +21776,14 @@ function field2(id2, name, label, help2, extra = "", value2 = "") {
 		<p class="help" id="${id2}-help">${help2}</p>
 	</div>`;
 }
-function choice(name, label, options3, checked) {
-  return html2`<fieldset class="sp-seg" role="radiogroup" data-choice="${name}">
+function choice(name2, label, options3, checked) {
+  return html2`<fieldset class="sp-seg" role="radiogroup" data-choice="${name2}">
 		<legend class="lab">${label}</legend>
 		${options3.map(
     ([value2, text, note], index2) => html2`<label class="sp-seg-o" title="${note}"
 					><input
 						type="radio"
-						name="${name}"
+						name="${name2}"
 						value="${value2}"
 						${value2 === checked ? html2`checked` : ""}
 					/><kbd>${index2 + 1}</kbd><span>${text}</span></label
@@ -21557,8 +21933,8 @@ function testLink(planId, revision, reference) {
 function ids(values, link) {
   return values.length ? join10(values.map(link), ", ") : html2`<span class="muted">none</span>`;
 }
-function facts2(rows) {
-  const shown2 = rows.filter(([, value2]) => value2 !== false);
+function facts2(rows2) {
+  const shown2 = rows2.filter(([, value2]) => value2 !== false);
   return html2`<dl class="facts">
 		${shown2.map(
     ([label, value2]) => html2`<div>
@@ -22274,7 +22650,7 @@ function checkKind(value2, fallback) {
   return value2 === "deterministic" || value2 === "agent_observation" ? value2 : fallback;
 }
 function candidateFromForm(base, form) {
-  const text = (name, fallback) => (form.get(name) ?? fallback).trim();
+  const text = (name2, fallback) => (form.get(name2) ?? fallback).trim();
   const covered = new Set(form.getAll("cover"));
   return {
     requirements: base.requirements.map((requirement, i) => ({
@@ -22313,7 +22689,7 @@ function emptyField(base, form) {
       ...test.assertions.map((assertion, j) => [`t${i}.a${j}.check`, `${assertion.id}`])
     ])
   ];
-  const found = fields.find(([name]) => form.has(name) && !form.get(name).trim());
+  const found = fields.find(([name2]) => form.has(name2) && !form.get(name2).trim());
   return found ? { name: found[0], label: found[1] } : null;
 }
 function candidateJson(candidate) {
@@ -22364,17 +22740,17 @@ function removalField(state) {
 		<textarea id="removal" name="rationale" rows="2" aria-describedby="removal-help">${state.rationale}</textarea>
 	</div>`;
 }
-function field3(label, name, value2, help2 = "") {
+function field3(label, name2, value2, help2 = "") {
   return html2`<div class="field-group">
-		<label class="lab" for="${name}">${label}</label>
-		<input id="${name}" name="${name}" value="${value2}" />
+		<label class="lab" for="${name2}">${label}</label>
+		<input id="${name2}" name="${name2}" value="${value2}" />
 		${help2 ? html2`<p class="help">${help2}</p>` : ""}
 	</div>`;
 }
-function area(label, name, value2, rows, help2 = "") {
+function area(label, name2, value2, rows2, help2 = "") {
   return html2`<div class="field-group">
-		<label class="lab" for="${name}">${label}</label>
-		<textarea id="${name}" name="${name}" rows="${rows}">${value2}</textarea>
+		<label class="lab" for="${name2}">${label}</label>
+		<textarea id="${name2}" name="${name2}" rows="${rows2}">${value2}</textarea>
 		${help2 ? html2`<p class="help">${help2}</p>` : ""}
 	</div>`;
 }
@@ -22883,17 +23259,17 @@ function cleanup(detail) {
 	</dl>`;
 }
 function inconclusiveList(detail) {
-  const rows = detail.tests.flatMap(
+  const rows2 = detail.tests.flatMap(
     (test) => test.assertions.filter((assertion) => assertion.result === "inconclusive").map((assertion) => ({
       reference: `${test.testId}.${assertion.assertionId}`,
       reason: assertion.reason ?? ""
     }))
   );
-  if (!rows.length) return "";
+  if (!rows2.length) return "";
   return html2`<div class="field-group">
-		<p class="lab">Inconclusive · ${rows.length}</p>
+		<p class="lab">Inconclusive · ${rows2.length}</p>
 		<ul class="plist">
-			${rows.map((row2) => html2`<li>${assertionLink(detail.runId, row2.reference)} ${row2.reason}</li>`)}
+			${rows2.map((row2) => html2`<li>${assertionLink(detail.runId, row2.reference)} ${row2.reason}</li>`)}
 		</ul>
 	</div>`;
 }
@@ -22967,10 +23343,10 @@ function runRow2(runId, key, selected, label, tag, title, meta2 = "") {
 		<span class="sp-c-meta ell" title="${typeof meta2 === "string" ? meta2 : ""}">${meta2}</span>
 	</div>`;
 }
-function runGroup(title, rows) {
-  if (!rows.length) return "";
-  return html2`<div class="sp-gh" role="presentation">${title} <span>${rows.length}</span></div>
-		${rows}`;
+function runGroup(title, rows2) {
+  if (!rows2.length) return "";
+  return html2`<div class="sp-gh" role="presentation">${title} <span>${rows2.length}</span></div>
+		${rows2}`;
 }
 function passedCount(test) {
   const passed = test.assertions.filter((assertion) => assertion.result === "passed").length;
@@ -23039,14 +23415,14 @@ function runList2(detail, selected) {
 		</div>`;
 }
 function openChecks(detail) {
-  const rows = detail.tests.flatMap(
+  const rows2 = detail.tests.flatMap(
     (test) => test.assertions.filter((assertion) => assertion.result && assertion.result !== "passed").map((assertion) => ({ test, assertion }))
   );
-  if (!rows.length) return "";
+  if (!rows2.length) return "";
   return html2`<section aria-labelledby="open-checks">
-		<h3 class="lab" id="open-checks">Not passed <span class="n">${rows.length}</span></h3>
+		<h3 class="lab" id="open-checks">Not passed <span class="n">${rows2.length}</span></h3>
 		<ul class="plist">
-			${rows.map(
+			${rows2.map(
     ({ test, assertion }) => html2`<li>
 						${icon(assertion.result)}
 						${assertionLink(detail.runId, `${test.testId}.${assertion.assertionId}`)}
@@ -23161,7 +23537,7 @@ function words3(items) {
 }
 function targetsPage(store) {
   const targets = targetList(store);
-  const rows = targets.map(
+  const rows2 = targets.map(
     (target) => html2`<tr data-key="target:${target.targetId}" data-nav-row>
 				<td>
 					<a class="mono" href="/settings/targets/${target.targetId}" data-nav-item>${target.targetId}</a>
@@ -23186,7 +23562,7 @@ function targetsPage(store) {
 									</tr>
 								</thead>
 								<tbody>
-									${rows}
+									${rows2}
 								</tbody>
 							</table>
 						</div>` : emptyNotice("No target yet.", html2`Record one with <code>checkmate target open</code>.`)}
@@ -23308,8 +23684,8 @@ function historyList(store, targetId, shown2) {
 function entryList2(instance) {
   return html2`<dl class="entries">
 		${Object.entries(instance.entries).map(
-    ([name, value2]) => html2`<div>
-					<dt class="mono">${name}</dt>
+    ([name2, value2]) => html2`<div>
+					<dt class="mono">${name2}</dt>
 					<dd>
 						<code
 							>${join10(
@@ -23380,7 +23756,7 @@ function instancesTable(context, targetId, instances, retire) {
 	</div>`;
 }
 function addForm(context, targetId, entryPoints, form) {
-  const value2 = (name) => form?.values[name] ?? "";
+  const value2 = (name2) => form?.values[name2] ?? "";
   return html2`<section
 		class="panel decision"
 		aria-labelledby="add-instance"
@@ -23536,6 +23912,9 @@ function claudePage(context, env, form = null) {
 				The engine needs at least one rule today. A test that you start in the UI shows these rules, and you can
 				change them there.
 			</p>
+			<p class="help" data-region="permission-hook">
+				${liveUi(context.workspace) ? "Testers that start now can ask you in this UI when a tool needs a permission." : "Testers that start now cannot ask you. The UI of this folder does not run. A tool that needs a permission is denied."}
+			</p>
 			<form method="post" action="/settings/claude" class="decision-form">
 				<input type="hidden" name="csrf" value="${context.csrf}" />
 				<div class="field-group">
@@ -23590,6 +23969,276 @@ function claudePage(context, env, form = null) {
   return settingsPage("/settings/claude", "Claude Code", ["*"], body);
 }
 
+// plugin/src/ui/hooks.ts
+import { timingSafeEqual } from "node:crypto";
+var name = "[A-Za-z0-9][A-Za-z0-9_-]{0,95}";
+var route = new RegExp(`^/hooks/(permission|activity)/(${name})/(${name})$`);
+var maxBody = 4 * 1024 * 1024;
+var lineLimit = 120;
+var defaultHoldMilliseconds = 59e4;
+var defaultActivityMilliseconds = 2e3;
+function sameSecret(a, b) {
+  const x = Buffer.from(a);
+  const y = Buffer.from(b);
+  return x.length === y.length && timingSafeEqual(x, y);
+}
+var secrets = [
+  [/(:\/\/)[^\s/@:]+:[^\s/@]+@/g, "$1\u2026@"],
+  [/(authorization:\s*(?:bearer\s+|basic\s+|token\s+)?)[^\s"']+/gi, "$1\u2026"],
+  [/(bearer\s+)[^\s"']+/gi, "$1\u2026"],
+  [/(--?[\w-]*(?:token|password|passwd|secret|api-?key|apikey|auth)[\w-]*(?:=|\s+))[^\s"']+/gi, "$1\u2026"],
+  [/(\b[\w]*(?:token|password|passwd|secret|api_?key|apikey)[\w]*=)[^\s"']+/gi, "$1\u2026"]
+];
+var lineKeys = ["command", "file_path", "notebook_path", "path", "pattern", "url", "query", "description"];
+function relative3(path, cwd) {
+  return typeof cwd === "string" && cwd && path.startsWith(`${cwd}/`) ? path.slice(cwd.length + 1) : path;
+}
+function inputLine(input, cwd) {
+  const fields = input && typeof input === "object" ? input : {};
+  const key = lineKeys.find((item) => typeof fields[item] === "string" && fields[item]);
+  if (!key) return "";
+  const first = fields[key].trim().split("\n")[0];
+  const shown2 = key.endsWith("path") ? relative3(first, cwd) : first;
+  return secrets.reduce((text, [pattern, replacement]) => text.replace(pattern, replacement), shown2);
+}
+function activityLine2(tool, input, cwd) {
+  const shown2 = inputLine(input, cwd);
+  const line = shown2 ? `${tool}: ${shown2}` : tool;
+  return line.length > lineLimit ? `${line.slice(0, lineLimit - 1)}\u2026` : line;
+}
+function readJson(req) {
+  return new Promise((resolve8) => {
+    const chunks = [];
+    let length = 0;
+    req.on("data", (chunk) => {
+      length += chunk.length;
+      if (length <= maxBody) chunks.push(chunk);
+    });
+    req.on("end", () => {
+      try {
+        resolve8(length > maxBody ? null : JSON.parse(Buffer.concat(chunks).toString("utf8")));
+      } catch {
+        resolve8(null);
+      }
+    });
+    req.on("error", () => resolve8(null));
+  });
+}
+function refuse(res) {
+  res.writeHead(403, { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" });
+  res.end("Refused: a hook call needs the hook token and no Origin header.");
+}
+function answer(res, body) {
+  res.writeHead(200, {
+    "Cache-Control": "no-store",
+    ...body ? { "Content-Type": "application/json" } : {},
+    "Content-Length": Buffer.byteLength(body)
+  });
+  res.end(body);
+}
+function createHooks(store, token, options3 = {}) {
+  const holdMilliseconds = options3.holdMilliseconds ?? defaultHoldMilliseconds;
+  const activityMilliseconds2 = options3.activityMilliseconds ?? defaultActivityMilliseconds;
+  const log = options3.log ?? ((line) => process.stderr.write(`checkmate ui: ${line}
+`));
+  const held = /* @__PURE__ */ new Map();
+  const lines2 = /* @__PURE__ */ new Map();
+  function finish2(entry, cause) {
+    held.delete(`${entry.explorationId}/${entry.id}`);
+    clearTimeout(entry.timer);
+    let body = "";
+    try {
+      if (cause) closePermission(store, entry.explorationId, entry.id, cause);
+      const request = permissionOf(store, entry.explorationId, entry.id);
+      if (request?.decision) body = permissionAnswer(request, request.decision);
+    } catch (error) {
+      log(`could not answer ${entry.id} of ${entry.explorationId}: ${error.message}`);
+    }
+    answer(entry.res, body);
+  }
+  function release() {
+    for (const entry of [...held.values()]) {
+      try {
+        const request = permissionOf(store, entry.explorationId, entry.id);
+        if (!request || request.decision) finish2(entry);
+        else if (stoppedSince(store, request)) finish2(entry, "stopped");
+      } catch (error) {
+        log(`could not release ${entry.id} of ${entry.explorationId}: ${error.message}`);
+      }
+    }
+  }
+  function hold(explorationId, id2, res) {
+    const key = `${explorationId}/${id2}`;
+    const entry = {
+      explorationId,
+      id: id2,
+      res,
+      timer: setTimeout(() => finish2(entry, "timeout"), holdMilliseconds)
+    };
+    held.set(key, entry);
+    res.on("close", () => {
+      if (held.get(key) !== entry) return;
+      held.delete(key);
+      clearTimeout(entry.timer);
+      try {
+        closePermission(store, explorationId, id2, "disconnected");
+      } catch (error) {
+        log(`could not close ${id2} of ${explorationId}: ${error.message}`);
+      }
+    });
+  }
+  function permission(explorationId, who, body, res) {
+    const input = body.tool_input;
+    if (typeof body.tool_name !== "string" || !input || typeof input !== "object") {
+      log(`permission call of ${who} in ${explorationId} has no tool_name and tool_input`);
+      return answer(res, "");
+    }
+    const suggestions = Array.isArray(body.permission_suggestions) ? body.permission_suggestions.filter((item) => item && typeof item === "object") : [];
+    try {
+      const made = requestPermission(store, { explorationId, who, tool: body.tool_name, input, suggestions });
+      if (!made.byRule) return hold(explorationId, made.id, res);
+      const request = permissionOf(store, explorationId, made.id);
+      answer(res, permissionAnswer(request, request.decision));
+    } catch (error) {
+      log(`could not record the permission call of ${who} in ${explorationId}: ${error.message}`);
+      answer(res, "");
+    }
+  }
+  function writeLine(explorationId, who, line) {
+    line.timer = void 0;
+    if (!line.dirty) return;
+    line.dirty = false;
+    line.writtenAt = Date.now();
+    const operation = { actor: explorerActor(who), command: "explore activity", subject: explorationId };
+    try {
+      write(store, { ...operation, input: { who } }, (operationId, at) => {
+        addEvent(
+          store,
+          explorationId,
+          { step: "activity", explorer: who, status: "started", detail: { activity: line.text } },
+          operationId,
+          at
+        );
+        return { reply: completed(explorationId), subjects: [`exploration:${explorationId}`] };
+      });
+    } catch (error) {
+      log(`could not record the activity of ${who} in ${explorationId}: ${error.message}`);
+    }
+  }
+  function activity(explorationId, who, body) {
+    if (typeof body.tool_name !== "string")
+      return log(`activity call of ${who} in ${explorationId} has no tool_name`);
+    const tester = one(
+      store,
+      "SELECT 1 FROM exploration_events WHERE exploration_id = ? AND step = 'launch' AND explorer = ?",
+      explorationId,
+      who
+    );
+    if (!tester) return;
+    const key = `${explorationId}/${who}`;
+    const line = lines2.get(key) ?? { text: "", dirty: false, writtenAt: 0 };
+    lines2.set(key, line);
+    line.text = activityLine2(body.tool_name, body.tool_input, body.cwd);
+    line.dirty = true;
+    const wait = line.writtenAt + activityMilliseconds2 - Date.now();
+    if (wait <= 0) writeLine(explorationId, who, line);
+    else line.timer ??= setTimeout(() => writeLine(explorationId, who, line), wait);
+  }
+  return {
+    handles: (pathname) => route.test(pathname),
+    async handle(req, res, pathname) {
+      const [, kind, explorationId, who] = route.exec(pathname);
+      const bearer = req.headers.authorization;
+      if (req.headers.origin !== void 0 || typeof bearer !== "string" || !sameSecret(bearer, `Bearer ${token}`))
+        return refuse(res);
+      const body = await readJson(req);
+      const expected = kind === "permission" ? "PermissionRequest" : "PreToolUse";
+      const known = one(store, "SELECT 1 FROM explorations WHERE exploration_id = ?", explorationId);
+      const valid = body && typeof body === "object" && body.hook_event_name === expected;
+      if (!known || !valid) {
+        log(`${kind} call of ${who} in ${explorationId} is not a ${expected} event of a known exploration`);
+        return answer(res, "");
+      }
+      if (kind === "permission") return permission(explorationId, who, body, res);
+      activity(explorationId, who, body);
+      answer(res, "");
+    },
+    release,
+    close() {
+      for (const entry of [...held.values()]) finish2(entry, "ui-stopped");
+      for (const [key, line] of lines2) {
+        clearTimeout(line.timer);
+        const [explorationId, who] = key.split("/");
+        writeLine(explorationId, who, line);
+      }
+      lines2.clear();
+    }
+  };
+}
+
+// plugin/src/ui/permissions.ts
+function permissionsPage(store, context) {
+  const open = openPermissions(store);
+  const rows2 = open.map((item) => {
+    const action2 = `/permissions/${item.explorationId}/${item.id}`;
+    const shown2 = inputLine(item.input) || JSON.stringify(item.input).slice(0, 120);
+    return html2`<tr data-permission="${item.explorationId}/${item.id}">
+			<td class="mono">${item.explorationId} ${item.id}</td>
+			<td>${item.who}</td>
+			<td class="mono">${item.tool}</td>
+			<td class="mono">${shown2}</td>
+			<td>${ago(item.at)}</td>
+			<td>
+				<form method="post" action="${action2}" class="decision-form">
+					<input type="hidden" name="csrf" value="${context.csrf}" />
+					${context.actor ? "" : html2`<label>Your name <input name="actor" maxlength="64" autocomplete="off" /></label>`}
+					<div class="btns">
+						<button class="btn primary" name="decision" value="allow">Allow once</button>
+						${item.rule ? html2`<button class="btn" name="decision" value="allow-kind">
+											Allow ${item.rule} for this test
+										</button>
+										<button class="btn" name="decision" value="always">
+											Always allow ${item.rule} in this project
+										</button>` : ""}
+						<input name="reason" placeholder="Reason for a denial" maxlength="400" autocomplete="off" />
+						<button class="btn" name="decision" value="deny">Deny</button>
+						<button class="btn" name="decision" value="stop">
+							Stop ${item.tester ? `tester ${item.tester}` : "the run"}
+						</button>
+					</div>
+				</form>
+			</td>
+		</tr>`;
+  });
+  return {
+    title: "Permission requests",
+    section: null,
+    subjects: ["*"],
+    back: "/",
+    body: html2`${heading(
+      "Permission requests",
+      open.length ? `${plural(open.length, "request")} of testers wait for an answer.` : "No request of a tester waits for an answer."
+    )}
+		${open.length ? html2`<div class="scroll">
+						<table>
+							<thead>
+								<tr>
+									<th scope="col">Request</th>
+									<th scope="col">Who</th>
+									<th scope="col">Tool</th>
+									<th scope="col">Input</th>
+									<th scope="col">Asked</th>
+									<th scope="col">Answer</th>
+								</tr>
+							</thead>
+							<tbody>
+								${rows2}
+							</tbody>
+						</table>
+					</div>` : emptyNotice("Nothing waits for you.", "A tester that needs a permission asks here while the UI runs.")}`
+  };
+}
+
 // plugin/src/ui/server.ts
 var id = "[A-Za-z0-9][A-Za-z0-9_-]{0,95}";
 var routes = {
@@ -23599,6 +24248,7 @@ var routes = {
   handoff: new RegExp(`^/plans/(${id})/handoff$`),
   startTest: new RegExp(`^/plans/(${id})/test$`),
   startFollow: new RegExp(`^/plans/(${id})/follow$`),
+  permit: new RegExp(`^/permissions/(${id})/(P[1-9][0-9]{0,8})$`),
   stopRun: new RegExp(`^/explorations/(${id})/stop$`),
   stopTester: new RegExp(`^/explorations/(${id})/explorers/(${id})/stop$`),
   gap: new RegExp(`^/plans/(${id})@([1-9][0-9]{0,8})/gaps/(${id})$`),
@@ -23641,12 +24291,12 @@ function directory(candidates, file) {
 function assets() {
   const files2 = directory(["./assets/", "../src/ui/assets/", "../plugin/src/ui/assets/"], "style.css");
   const fonts = `${files2}fonts/`;
-  const read = (name) => readFileSync7(files2 + name);
+  const read = (name2) => readFileSync7(files2 + name2);
   return {
     "/assets/style.css": { type: "text/css; charset=utf-8", body: read("style.css") },
     "/assets/client.js": { type: "text/javascript; charset=utf-8", body: read("client.js") },
     "/assets/favicon.svg": { type: "image/svg+xml", body: read("favicon.svg") },
-    font: (name) => readFileSync7(`${fonts}${name}.woff2`)
+    font: (name2) => readFileSync7(`${fonts}${name2}.woff2`)
   };
 }
 function securityHeaders() {
@@ -23677,8 +24327,8 @@ function parseCookies(header2) {
   }
   return cookies;
 }
-function cookie(name, value2, maxAge = 60 * 60 * 24 * 365) {
-  return `${name}=${encodeURIComponent(value2)}; Path=/; Max-Age=${maxAge}; HttpOnly; SameSite=Strict`;
+function cookie(name2, value2, maxAge = 60 * 60 * 24 * 365) {
+  return `${name2}=${encodeURIComponent(value2)}; Path=/; Max-Age=${maxAge}; HttpOnly; SameSite=Strict`;
 }
 function readForm(req) {
   return new Promise((resolve8, reject) => {
@@ -23694,11 +24344,6 @@ function readForm(req) {
     );
     req.on("error", reject);
   });
-}
-function same2(a, b) {
-  const x = Buffer.from(a);
-  const y = Buffer.from(b);
-  return x.length === y.length && timingSafeEqual(x, y);
 }
 function hostOf(address) {
   try {
@@ -23716,9 +24361,9 @@ function safeBack(value2) {
     return "/";
   }
 }
-function attachmentName(name) {
-  const plain = name.replace(/[^A-Za-z0-9._-]/g, "_");
-  return `filename="${plain}"; filename*=UTF-8''${encodeURIComponent(name)}`;
+function attachmentName(name2) {
+  const plain = name2.replace(/[^A-Za-z0-9._-]/g, "_");
+  return `filename="${plain}"; filename*=UTF-8''${encodeURIComponent(name2)}`;
 }
 function notFoundError(message) {
   return /^Unknown|has no revision|not found/i.test(message);
@@ -23742,6 +24387,8 @@ async function startUi(options3) {
   const store = openStore(options3.workspace);
   const watch = openReadOnlyStore(options3.workspace);
   const csrf = randomBytes2(24).toString("hex");
+  const hookToken = randomBytes2(32).toString("hex");
+  const hooks = createHooks(store, hookToken, options3);
   const env = options3.env ?? process.env;
   const fallbackActor = options3.defaultActor ?? defaultActor(options3.workspace, process.env) ?? "";
   const clients = /* @__PURE__ */ new Set();
@@ -23765,6 +24412,7 @@ data: ${matched.join(",") || "*"}
     const current = dataVersion();
     if (current === version2) return;
     version2 = current;
+    hooks.release();
     const changes = changesAfter(watch, cursor);
     if (!changes.length) return;
     cursor = changes[changes.length - 1].rowid;
@@ -23793,6 +24441,7 @@ data: ${matched.join(",") || "*"}
       theme,
       toast: (request.req.headers["sec-fetch-mode"] ?? "navigate") === "navigate" || request.req.headers["x-checkmate-queue"] === "1" ? request.cookies.checkmate_toast || null : null,
       queueCount: needsYou(store).urgent,
+      permissions: openPermissions(store).length,
       running: runningCount(store),
       cursor: latestRowid(store),
       workspace: options3.workspace,
@@ -23862,9 +24511,9 @@ data: ${matched.join(",") || "*"}
       "Cache-Control": "private, max-age=31536000, immutable"
     });
   }
-  function download2(request, body, format2, name) {
+  function download2(request, body, format2, name2) {
     send(request.res, 200, documentTypes[format2], body, {
-      "Content-Disposition": `attachment; ${attachmentName(name)}`
+      "Content-Disposition": `attachment; ${attachmentName(name2)}`
     });
   }
   function events(request) {
@@ -23923,6 +24572,7 @@ data: ${matched.join(",") || "*"}
     if (pathname === "/log") return render(request, logPage(store, searchParams));
     if (pathname === "/activity")
       return render(request, activityPage(store, shown2, searchParams, { build: defaultBuild(store.workspace) }));
+    if (pathname === "/permissions") return render(request, permissionsPage(store, shown2));
     if (pathname === "/settings/claude") return render(request, claudePage(shown2, env));
     if (pathname === "/actor") return render(request, actorPage(shown2, safeBack(searchParams.get("back"))));
     if (pathname === "/settings") return redirect(request.res, "/settings/targets");
@@ -23971,16 +24621,16 @@ data: ${matched.join(",") || "*"}
           "Report not ready",
           `${runId} is in progress. The report is ready when it finishes.`
         );
-      const name = format2 === "junit" ? `${runId}-junit.xml` : `${runId}-report.${format2}`;
-      return download2(request, exportRun(store, runId, format2), format2, name);
+      const name2 = format2 === "junit" ? `${runId}-junit.xml` : `${runId}-report.${format2}`;
+      return download2(request, exportRun(store, runId, format2), format2, name2);
     }
     const exploration2 = routes.exploration.exec(pathname);
     if (exploration2) return render(request, explorationPage(store, shown2, exploration2[1], searchParams));
     const file = routes.explorerFile.exec(pathname);
     if (file && searchParams.has("download")) {
-      const [, explorationId, explorer, phase, name] = file;
-      const saved = explorerFile(store, explorationId, explorer, phase, name);
-      return download2(request, saved.text, "md", `${explorationId}-${explorer}-${name}`);
+      const [, explorationId, explorer, phase, name2] = file;
+      const saved = explorerFile(store, explorationId, explorer, phase, name2);
+      return download2(request, saved.text, "md", `${explorationId}-${explorer}-${name2}`);
     }
     if (file) return render(request, explorerFilePage(store, file[1], file[2], file[3], file[4]));
     const explorationExport = routes.explorationExport.exec(pathname);
@@ -24067,13 +24717,13 @@ data: ${matched.join(",") || "*"}
     }
   }
   function values(form, names) {
-    return Object.fromEntries(names.map((name) => [name, form.get(name) ?? ""]));
+    return Object.fromEntries(names.map((name2) => [name2, form.get(name2) ?? ""]));
   }
-  function refuse(request, page, cookies = []) {
+  function refuse2(request, page, cookies = []) {
     const shown2 = page();
     render(request, { ...shown2, status: shown2.status ?? 422 }, cookies);
   }
-  function answer(request, form, planId, revision, gapId) {
+  function answer2(request, form, planId, revision, gapId) {
     const state = {
       ...emptyState(),
       values: values(form, ["kind", "value", "source", "rationale", "actor"])
@@ -24087,7 +24737,7 @@ data: ${matched.join(",") || "*"}
       state
     );
     state.error = answerProblem(input, actor);
-    if (state.error) return refuse(request, page, cookies);
+    if (state.error) return refuse2(request, page, cookies);
     try {
       answerGap(store, actor, {
         planId,
@@ -24107,7 +24757,7 @@ data: ${matched.join(",") || "*"}
 						>Review revision ${latest.latestRevision}</a
 					>, then send again.`;
       else state.error = plainMessage(error);
-      return refuse(request, page, cookies);
+      return refuse2(request, page, cookies);
     }
     const next = nextItem(`${input.kind === "defer" ? "Deferred" : "Answered"} ${planId} \xB7 ${gapId}`, cookies, form);
     redirect(request.res, next.location, next.cookies);
@@ -24152,10 +24802,10 @@ data: ${matched.join(",") || "*"}
     if (asked && asked.answer !== null && (asked.decision !== "defer" || input.kind === "defer")) {
       state.stale = html2`<strong>${questionId} has an answer now: ${asked.answer}</strong> Your answer was not
 				recorded. Your text is kept below.`;
-      return refuse(request, inQueue(request, form, page, state), cookies);
+      return refuse2(request, inQueue(request, form, page, state), cookies);
     }
     state.error = answerProblem(input, actor);
-    if (state.error) return refuse(request, inQueue(request, form, page, state), cookies);
+    if (state.error) return refuse2(request, inQueue(request, form, page, state), cookies);
     try {
       answerGap(store, actor, {
         planId,
@@ -24167,7 +24817,7 @@ data: ${matched.join(",") || "*"}
       });
     } catch (error) {
       state.error = plainMessage(error);
-      return refuse(request, inQueue(request, form, page, state), cookies);
+      return refuse2(request, inQueue(request, form, page, state), cookies);
     }
     const next = nextItem(
       `${input.kind === "defer" ? "Deferred" : "Answered"} ${planId} \xB7 ${questionId}`,
@@ -24189,27 +24839,27 @@ data: ${matched.join(",") || "*"}
     );
     if (verdict !== "approved" && verdict !== "rejected") {
       state.error = "Choose Accept as a defect or Reject.";
-      return refuse(request, page, cookies);
+      return refuse2(request, page, cookies);
     }
     const decided = mergedClaims(store, planId).find((item) => item.id === claimId)?.decision;
     if (decided) {
       const verdict2 = decided.verdict === "approved" ? "accepted" : "rejected";
       const what = `${claimId} was ${verdict2} by ${decided.actor}.`;
       state.stale = html2`<strong>${what}</strong> Your decision was not recorded. Your text is kept below.`;
-      return refuse(request, page, cookies);
+      return refuse2(request, page, cookies);
     }
     const typed = state.values.rationale.trim();
     const quick = form.get("return") !== null;
     if (quick && verdict === "rejected" && !typed) {
       state.error = "Write a short reason for the reject.";
-      return refuse(request, page, cookies);
+      return refuse2(request, page, cookies);
     }
     const rationale = typed || (quick ? "Accepted in the review UI. No reason was given." : "");
     try {
       decideClaim(store, actor, { planId, claimId, verdict, rationale });
     } catch (error) {
       state.error = plainMessage(error);
-      return refuse(request, page, cookies);
+      return refuse2(request, page, cookies);
     }
     const next = nextItem(
       `${verdict === "approved" ? "Accepted" : "Rejected"} ${planId} \xB7 ${claimId}`,
@@ -24254,7 +24904,7 @@ data: ${matched.join(",") || "*"}
     else state.error = bulkProblem(what, state.values, actor);
     if (!state.error && form.get("confirmed") !== "1")
       state.error = `Confirm the action for ${plural(picks.length, "item")}. Nothing is recorded.`;
-    if (state.error) return refuse(request, page, cookies);
+    if (state.error) return refuse2(request, page, cookies);
     const items = found.map((item) => item);
     if (what === "claims") {
       const decision = claimDefaults(state.values);
@@ -24268,18 +24918,18 @@ data: ${matched.join(",") || "*"}
       const flash2 = `${decision.verdict === "approved" ? "Accepted" : "Rejected"} ${plural(items.length, "claim")}`;
       return redirect(request.res, back, [...cookies, cookie("checkmate_toast", flash2, 60)]);
     }
-    const answer2 = answerDefaults(state.values, actor);
+    const answer3 = answerDefaults(state.values, actor);
     for (const item of items)
       answerGap(store, actor, {
         planId: item.planId,
         gapId: item.id,
-        kind: answer2.kind,
-        value: answer2.value,
-        source: answer2.source,
-        rationale: answer2.rationale,
+        kind: answer3.kind,
+        value: answer3.value,
+        source: answer3.source,
+        rationale: answer3.rationale,
         ...item.explorationId ? {} : { expectSha256: planDetail(store, item.planId).sha256 }
       });
-    const flash = `${answer2.kind === "defer" ? "Deferred" : "Answered"} ${plural(items.length, "question")}`;
+    const flash = `${answer3.kind === "defer" ? "Deferred" : "Answered"} ${plural(items.length, "question")}`;
     redirect(request.res, back, [...cookies, cookie("checkmate_toast", flash, 60)]);
   }
   function recordHref(explorationId, key, params) {
@@ -24378,17 +25028,17 @@ data: ${matched.join(",") || "*"}
     planRequest(store, planId);
     const build = form.get("build")?.trim() ?? "";
     const level = form.get("level")?.trim() || "normal";
-    const [typedSince, until, repo] = ["since", "until", "repo"].map((name) => form.get(name)?.trim() || void 0);
-    const refuse2 = (message, field4 = "") => actionRefusal(request, back, message, field4);
-    if (!actor) return refuse2("Enter your name. Checkmate records it with the test.");
-    if (!build) return refuse2("Write the build name.", "build");
-    if (!levelNames.includes(level)) return refuse2("Choose the level smoke, normal, or deep.");
-    if (until && !typedSince) return refuse2("Until needs Since. Fill in Since, or leave Until empty.", "until");
+    const [typedSince, until, repo] = ["since", "until", "repo"].map((name2) => form.get(name2)?.trim() || void 0);
+    const refuse3 = (message, field4 = "") => actionRefusal(request, back, message, field4);
+    if (!actor) return refuse3("Enter your name. Checkmate records it with the test.");
+    if (!build) return refuse3("Write the build name.", "build");
+    if (!levelNames.includes(level)) return refuse3("Choose the level smoke, normal, or deep.");
+    if (until && !typedSince) return refuse3("Until needs Since. Fill in Since, or leave Until empty.", "until");
     const running3 = runningOf(planId);
-    if (running3) return refuse2(inProgress(planId, running3));
+    if (running3) return refuse3(inProgress(planId, running3));
     const stopping = stoppingOf(planId);
     if (stopping)
-      return refuse2(
+      return refuse3(
         `A stop of ${stopping.explorationId} is in progress. Wait until it ends, then start the test.`
       );
     try {
@@ -24415,19 +25065,19 @@ data: ${matched.join(",") || "*"}
       ]);
     } catch (error) {
       const text = engineText(error);
-      refuse2(text, /tool rules/.test(text) ? "rules" : "");
+      refuse3(text, /tool rules/.test(text) ? "rules" : "");
     }
   }
   function startAnswers(request, form, planId) {
     const back = `/plans/${planId}`;
     const { actor, cookies } = actorFrom(request, form);
-    const refuse2 = (message) => actionRefusal(request, back, message);
+    const refuse3 = (message) => actionRefusal(request, back, message);
     const explorationId = form.get("exploration") ?? "";
-    if (!actor) return refuse2("Enter your name. Checkmate records it with the test.");
+    if (!actor) return refuse3("Enter your name. Checkmate records it with the test.");
     if (planOfExploration(explorationId) !== planId)
-      return refuse2(`${explorationId} is not an exploration of ${planId}.`);
+      return refuse3(`${explorationId} is not an exploration of ${planId}.`);
     const running3 = runningOf(planId);
-    if (running3) return refuse2(inProgress(planId, running3));
+    if (running3) return refuse3(inProgress(planId, running3));
     try {
       const answers = unusedAnswers(store, explorationId).length;
       startFollow(store, actor, { explorationId, allow: [], claudeArgs: [] }, env);
@@ -24436,14 +25086,14 @@ data: ${matched.join(",") || "*"}
         cookie("checkmate_toast", `Testing ${plural(answers, "answer")} of ${explorationId}`, 60)
       ]);
     } catch (error) {
-      refuse2(engineText(error));
+      refuse3(engineText(error));
     }
   }
   function stopRun(request, form, explorationId, explorer) {
     const back = `/explorations/${explorationId}`;
     const { actor, cookies } = actorFrom(request, form);
-    const refuse2 = (message) => actionRefusal(request, back, message);
-    if (!actor) return refuse2("Enter your name. Checkmate records it with the stop.");
+    const refuse3 = (message) => actionRefusal(request, back, message);
+    if (!actor) return refuse3("Enter your name. Checkmate records it with the stop.");
     try {
       recordStop(store, actor, {
         explorationId,
@@ -24453,20 +25103,50 @@ data: ${matched.join(",") || "*"}
       });
       startEnding(store, explorationId, actor, explorer, env);
     } catch (error) {
-      return refuse2(engineText(error));
+      return refuse3(engineText(error));
     }
     const flash = explorer ? `Stopping tester ${explorer} of ${explorationId}\u2026` : `Stopping ${explorationId}\u2026`;
     redirect(request.res, back, [...cookies, cookie("checkmate_toast", flash, 60)]);
+  }
+  function permit(request, form, explorationId, requestId) {
+    const back = "/permissions";
+    const { actor, cookies } = actorFrom(request, form);
+    const refuse3 = (message) => actionRefusal(request, back, message);
+    if (!actor) return refuse3("Enter your name. Checkmate records it with the answer.");
+    try {
+      decidePermission(
+        store,
+        actor,
+        {
+          explorationId,
+          requestId,
+          decision: form.get("decision") ?? "",
+          reason: form.get("reason") ?? void 0
+        },
+        (explorer, reason) => {
+          recordStop(store, actor, { explorationId, explorer, reason: reason || void 0, background: true });
+          startEnding(store, explorationId, actor, explorer, env);
+        }
+      );
+    } catch (error) {
+      return refuse3(engineText(error));
+    } finally {
+      hooks.release();
+    }
+    redirect(request.res, back, [
+      ...cookies,
+      cookie("checkmate_toast", `Answered ${requestId} of ${explorationId}`, 60)
+    ]);
   }
   function saveRules2(request, form) {
     const { actor, cookies } = actorFrom(request, form);
     const typed = form.get("rules") ?? "";
     const page = (error) => () => claudePage(context(request), env, { value: typed, error });
-    if (!actor) return refuse(request, page("Enter your name. Checkmate records it with the setting."), cookies);
+    if (!actor) return refuse2(request, page("Enter your name. Checkmate records it with the setting."), cookies);
     try {
       saveTesterRules(store, actor, typed);
     } catch (error) {
-      return refuse(request, page(engineText(error)), cookies);
+      return refuse2(request, page(engineText(error)), cookies);
     }
     redirect(request.res, "/settings/claude", [
       ...cookies,
@@ -24506,19 +25186,19 @@ data: ${matched.join(",") || "*"}
   async function setUp(request, form) {
     const back = "/setup";
     const { actor, cookies } = actorFrom(request, form);
-    const refuse2 = (message, field4 = "") => actionRefusal(request, back, message, field4);
+    const refuse3 = (message, field4 = "") => actionRefusal(request, back, message, field4);
     const url = (form.get("url") ?? "").trim();
-    if (!actor) return refuse2("Enter your name. Checkmate records it with the target.");
+    if (!actor) return refuse3("Enter your name. Checkmate records it with the target.");
     if (!/^https?:\/\/[^\s/]+/i.test(url))
-      return refuse2("Give the address of the application, for example http://localhost:3000.", "url");
+      return refuse3("Give the address of the application, for example http://localhost:3000.", "url");
     const choice2 = setupChoice(form, url);
     if (!choice2.chosen)
-      return refuse2(
+      return refuse3(
         `${new URL(url).host} is not a local address. Choose whether testers may change data there.`,
         "operations"
       );
     if (!choice2.local && form.get("confirmed") !== "1")
-      return refuse2(`Confirm that Checkmate may test ${new URL(url).host}, an address that is not local.`, "url");
+      return refuse3(`Confirm that Checkmate may test ${new URL(url).host}, an address that is not local.`, "url");
     const typedTarget = form.get("target")?.trim() || void 0;
     const environment = form.get("environment")?.trim() || void 0;
     try {
@@ -24532,14 +25212,14 @@ data: ${matched.join(",") || "*"}
         env,
         answered: true
       });
-      if (reply.status !== "completed") return refuse2(reply.reasons.join(" "), "target");
+      if (reply.status !== "completed") return refuse3(reply.reasons.join(" "), "target");
       redirect(request.res, `/new?target=${encodeURIComponent(String(reply.data.targetId))}`, [
         ...cookies,
         cookie("checkmate_toast", `Set up target ${reply.data.targetId}`, 60)
       ]);
     } catch (error) {
       const text = engineText(error);
-      refuse2(
+      refuse3(
         text,
         /target name/.test(text) ? "target" : /production/.test(text) ? "environment" : /did not answer/.test(text) ? "url" : ""
       );
@@ -24548,53 +25228,53 @@ data: ${matched.join(",") || "*"}
   function startChange(request, form) {
     const back = "/new";
     const { actor, cookies } = actorFrom(request, form);
-    const refuse2 = (message, field4 = "") => actionRefusal(request, back, message, field4);
+    const refuse3 = (message, field4 = "") => actionRefusal(request, back, message, field4);
     const text = form.get("text") ?? "";
     const typedFile = form.get("file")?.trim() ?? "";
     const planId = form.get("plan")?.trim() ?? "";
     const targetId = form.get("target")?.trim() ?? "";
     const build = form.get("build")?.trim() ?? "";
     const level = form.get("level")?.trim() || "normal";
-    const [since, until, repo] = ["since", "until", "repo"].map((name) => form.get(name)?.trim() || void 0);
+    const [since, until, repo] = ["since", "until", "repo"].map((name2) => form.get(name2)?.trim() || void 0);
     const allow = ruleTokens(form.get("rules") ?? "");
-    if (!actor) return refuse2("Enter your name. Checkmate records it with the plan and the test.");
+    if (!actor) return refuse3("Enter your name. Checkmate records it with the plan and the test.");
     if (!typedFile && !text.trim())
-      return refuse2("Give the ticket: the path of a file in the workspace, or the pasted text.", "file");
-    if (typedFile && text.trim()) return refuse2("Give the file or the pasted text, not both.", "text");
+      return refuse3("Give the ticket: the path of a file in the workspace, or the pasted text.", "file");
+    if (typedFile && text.trim()) return refuse3("Give the file or the pasted text, not both.", "text");
     let source = "";
     try {
       if (typedFile) source = ticketFile(store, typedFile);
     } catch (error) {
-      return refuse2(engineText(error), "file");
+      return refuse3(engineText(error), "file");
     }
-    if (!planId) return refuse2("Write the name of the plan.", "plan");
+    if (!planId) return refuse3("Write the name of the plan.", "plan");
     try {
       requireIdentifier(planId, "plan ID");
     } catch (error) {
-      return refuse2(engineText(error), "plan");
+      return refuse3(engineText(error), "plan");
     }
     if (hasRequest(store, planId))
-      return refuse2(`A plan ${planId} exists already. Give another name, or test it from its page.`, "plan");
+      return refuse3(`A plan ${planId} exists already. Give another name, or test it from its page.`, "plan");
     if (!targetList(store).some((item) => item.targetId === targetId))
-      return refuse2("Choose a target, or set one up.", "target");
-    if (!build) return refuse2("Write the build name.", "build");
-    if (!levelNames.includes(level)) return refuse2("Choose the level smoke, normal, or deep.");
-    if (until && !since) return refuse2("Until needs Since. Fill in Since, or leave Until empty.", "until");
+      return refuse3("Choose a target, or set one up.", "target");
+    if (!build) return refuse3("Write the build name.", "build");
+    if (!levelNames.includes(level)) return refuse3("Choose the level smoke, normal, or deep.");
+    if (until && !since) return refuse3("Until needs Since. Fill in Since, or leave Until empty.", "until");
     const address2 = instanceList(store, targetId).find((instance) => !instance.retired)?.entries.web;
     if (address2 && URL.canParse(address2) && !isLocalAddress(address2) && form.get("confirmed") !== "1")
-      return refuse2(`Confirm that Checkmate may test ${hostOf(address2)}, an address that is not local.`, "target");
+      return refuse3(`Confirm that Checkmate may test ${hostOf(address2)}, an address that is not local.`, "target");
     try {
       requireClaude(env);
       launchPlan(targetRevision(store, targetId).profile, { planId, build, allow, claudeArgs: [], level }, env);
     } catch (error) {
       const message = engineText(error);
-      return refuse2(message, /tool rules/.test(message) ? "rules" : "");
+      return refuse3(message, /tool rules/.test(message) ? "rules" : "");
     }
     const kept = text.trim() ? `.checkmate/sources/${planId}.md` : "";
     try {
       if (kept) {
-        mkdirSync6(resolve6(store.workspace, ".checkmate", "sources"), { recursive: true });
-        writeFileSync3(resolve6(store.workspace, kept), text.endsWith("\n") ? text : `${text}
+        mkdirSync7(resolve6(store.workspace, ".checkmate", "sources"), { recursive: true });
+        writeFileSync4(resolve6(store.workspace, kept), text.endsWith("\n") ? text : `${text}
 `);
       }
       const started = runTest(
@@ -24619,8 +25299,8 @@ data: ${matched.join(",") || "*"}
         cookie("checkmate_toast", `Started ${started.subject} on build ${build}`, 60)
       ]);
     } catch (error) {
-      if (kept && !hasRequest(store, planId)) rmSync5(resolve6(store.workspace, kept), { force: true });
-      refuse2(engineText(error));
+      if (kept && !hasRequest(store, planId)) rmSync6(resolve6(store.workspace, kept), { force: true });
+      refuse3(engineText(error));
     }
   }
   function planOfExploration(explorationId) {
@@ -24636,16 +25316,16 @@ data: ${matched.join(",") || "*"}
     const sha = form.get("sha") ?? "";
     const token = form.get("decision") ?? "";
     state.stale = staleCheck(sha, token);
-    if (state.stale) return refuse(request, view, cookies);
-    if (form.get("back")) return refuse(request, () => ({ ...view(), status: 200 }), cookies);
+    if (state.stale) return refuse2(request, view, cookies);
+    if (form.get("back")) return refuse2(request, () => ({ ...view(), status: 200 }), cookies);
     if (!choices.includes(state.values.verdict)) state.error = "Choose a decision.";
     else if (!actor) state.error = "Enter your name. Checkmate records it with your decision.";
     else if (!state.values.rationale.trim())
       state.error = "Write a rationale. Checkmate records it with your decision.";
-    if (state.error) return refuse(request, view, cookies);
+    if (state.error) return refuse2(request, view, cookies);
     if (form.get("confirmed") !== "1") {
       state.confirm = true;
-      return refuse(request, () => ({ ...view(), status: 200 }), cookies);
+      return refuse2(request, () => ({ ...view(), status: 200 }), cookies);
     }
     let flash;
     try {
@@ -24653,7 +25333,7 @@ data: ${matched.join(",") || "*"}
     } catch (error) {
       state.stale = staleCheck(sha, token);
       if (!state.stale) state.error = plainMessage(error);
-      return refuse(request, view, cookies);
+      return refuse2(request, view, cookies);
     }
     const next = nextItem(flash, cookies, form);
     redirect(request.res, next.location, next.cookies);
@@ -24720,7 +25400,7 @@ data: ${matched.join(",") || "*"}
     const planId = runDetail(store, runId).planId;
     const sha = form.get("sha") ?? "";
     const page = (message) => () => runPage(store, context(request), runId, void 0, null, { gapId, message });
-    if (!actor) return refuse(request, page("Enter your name. Checkmate records it with the change."), cookies);
+    if (!actor) return refuse2(request, page("Enter your name. Checkmate records it with the change."), cookies);
     const latest = planDetail(store, planId);
     let adopted;
     try {
@@ -24733,7 +25413,7 @@ data: ${matched.join(",") || "*"}
     } catch (error) {
       const message = latest.sha256 === sha ? plainMessage(error) : html2`<strong>${planId} changed after you opened this page.</strong> ${gapId} was not brought into
 							the plan. Review the plan, then send again.`;
-      return refuse(request, page(message), cookies);
+      return refuse2(request, page(message), cookies);
     }
     redirect(request.res, `/runs/${runId}?item=${encodeURIComponent(`gap:${gapId}`)}`, [
       ...cookies,
@@ -24792,7 +25472,7 @@ data: ${matched.join(",") || "*"}
     if (!actor) state.error ??= "Enter your name. Checkmate records it with the edit.";
     if (state.removed.length && !rationale)
       state.error ??= `The edit removes ${state.removed.join(", ")}. Write the reason in Reason for removal.`;
-    if (state.error) return refuse(request, page, cookies);
+    if (state.error) return refuse2(request, page, cookies);
     let saved;
     try {
       saved = editPlan(store, actor, {
@@ -24805,7 +25485,7 @@ data: ${matched.join(",") || "*"}
       const latest = planDetail(store, planId);
       if (latest.latestRevision === revision && latest.sha256 === sha) {
         state.error = plainMessage(error);
-        return refuse(request, page, cookies);
+        return refuse2(request, page, cookies);
       }
       const fresh = planCandidate(latest.plan);
       state.unsaved = ownChanges(form, fresh);
@@ -24816,7 +25496,7 @@ data: ${matched.join(",") || "*"}
       state.stale = html2`<strong>${planId} changed after you opened the editor.</strong> Your edits were not
 				saved. The editor shows ${planId}@${latest.latestRevision} as it is now. Your changes are listed above
 				it.`;
-      return refuse(
+      return refuse2(
         request,
         () => editPage(store, context(request), planId, latest.latestRevision, state),
         cookies
@@ -24842,7 +25522,7 @@ data: ${matched.join(",") || "*"}
     const again = () => {
       const kept = JSON.stringify(state);
       if (kept.length > 3e3)
-        return refuse(request, () => targetPage(store, context(request), targetId, null, state), cookies);
+        return refuse2(request, () => targetPage(store, context(request), targetId, null, state), cookies);
       redirect(request.res, `/settings/targets/${targetId}#add-instance`, [
         ...cookies,
         cookie("checkmate_instance", kept, 60)
@@ -24871,12 +25551,12 @@ data: ${matched.join(",") || "*"}
     const { actor, cookies } = actorFrom(request, form);
     const page = (error) => () => targetPage(store, context(request), targetId, null, null, { instanceId, error });
     if (form.get("confirmed") !== "1")
-      return refuse(request, page("Confirm that you want to retire the instance."), cookies);
-    if (!actor) return refuse(request, page("Enter your name. Checkmate records it with the change."), cookies);
+      return refuse2(request, page("Confirm that you want to retire the instance."), cookies);
+    if (!actor) return refuse2(request, page("Enter your name. Checkmate records it with the change."), cookies);
     try {
       retireInstance(store, actor, { targetId, instanceId });
     } catch (error) {
-      return refuse(request, page(plainMessage(error)), cookies);
+      return refuse2(request, page(plainMessage(error)), cookies);
     }
     redirect(request.res, `/settings/targets/${targetId}#instance-${instanceId}`, [
       ...cookies,
@@ -24900,7 +25580,7 @@ data: ${matched.join(",") || "*"}
         "Form too large",
         "The form has more than 256 KiB of text. Checkmate did not record it. Go back, make the text shorter, then send the form again."
       );
-    if (!same2(form.get("csrf") ?? "", csrf))
+    if (!sameSecret(form.get("csrf") ?? "", csrf))
       return errorPage(
         request,
         403,
@@ -24915,12 +25595,12 @@ data: ${matched.join(",") || "*"}
       ]);
     }
     if (pathname === "/actor") {
-      const name = form.get("actor")?.trim() ?? "";
-      if (!name)
+      const name2 = form.get("actor")?.trim() ?? "";
+      if (!name2)
         return errorPage(request, 422, "Your name", "Enter a name. Checkmate records it with each decision.");
-      if (name.length > actorLimit)
+      if (name2.length > actorLimit)
         return errorPage(request, 422, "Your name", `Use a name of ${actorLimit} characters or fewer.`);
-      return redirect(request.res, safeBack(form.get("back")), [cookie("checkmate_actor", name)]);
+      return redirect(request.res, safeBack(form.get("back")), [cookie("checkmate_actor", name2)]);
     }
     if (pathname === "/bulk") return bulk(request, form);
     if (pathname === "/settings/claude") return saveRules2(request, form);
@@ -24933,6 +25613,8 @@ data: ${matched.join(",") || "*"}
     if (starting) return startTest(request, form, starting[1]);
     const following = routes.startFollow.exec(pathname);
     if (following) return startAnswers(request, form, following[1]);
+    const permitting = routes.permit.exec(pathname);
+    if (permitting) return permit(request, form, permitting[1], permitting[2]);
     const stopping = routes.stopRun.exec(pathname);
     if (stopping) return stopRun(request, form, stopping[1]);
     const stoppingTester = routes.stopTester.exec(pathname);
@@ -24944,7 +25626,7 @@ data: ${matched.join(",") || "*"}
     const claim = routes.claim.exec(pathname);
     if (claim) return decideExplorationClaim(request, form, claim[1], claim[2]);
     const gap = routes.gap.exec(pathname);
-    if (gap) return answer(request, form, gap[1], Number(gap[2]), gap[3]);
+    if (gap) return answer2(request, form, gap[1], Number(gap[2]), gap[3]);
     const plan = routes.plan.exec(pathname);
     if (plan) return decidePlan2(request, form, plan[1], Number(plan[2]));
     const run2 = routes.run.exec(pathname);
@@ -24973,6 +25655,8 @@ data: ${matched.join(",") || "*"}
       cookies: parseCookies(req.headers.cookie)
     };
     try {
+      if (req.method === "POST" && hooks.handles(request.url.pathname))
+        return await hooks.handle(req, res, request.url.pathname);
       if (req.method === "GET" || req.method === "HEAD") return get(request);
       if (req.method === "POST") return await post(request);
       send(res, 405, "text/plain; charset=utf-8", "Method not allowed.", { Allow: "GET, POST" });
@@ -24992,11 +25676,15 @@ data: ${matched.join(",") || "*"}
   });
   const address = server.address();
   port = typeof address === "object" && address ? address.port : 0;
+  if (!liveUi(options3.workspace)) closeOpenPermissions(store, "ui-stopped");
+  writeUiFile(options3.workspace, { port, pid: process.pid, hookToken });
   return {
     url: `http://127.0.0.1:${port}/`,
     close: async () => {
       if (closed) return;
       closed = true;
+      hooks.close();
+      removeUiFile(options3.workspace, hookToken);
       clearInterval(poll);
       clearInterval(heartbeat);
       clearInterval(supervisorWatch);
@@ -25013,7 +25701,7 @@ data: ${matched.join(",") || "*"}
 }
 
 // plugin/src/agents.ts
-import { mkdirSync as mkdirSync7, readFileSync as readFileSync8, rmSync as rmSync6, writeFileSync as writeFileSync4 } from "node:fs";
+import { mkdirSync as mkdirSync8, readFileSync as readFileSync8, rmSync as rmSync7, writeFileSync as writeFileSync5 } from "node:fs";
 import { dirname, join as join12 } from "node:path";
 var testerAgent = "checkmate:tester";
 var clerkAgent = "checkmate:clerk";
@@ -25021,8 +25709,8 @@ var doneSteps = ["study", "test", "record", "follow", "rules", "merge", "verify"
 var clerkNames = ["rules", "merge", "verify"];
 var isStep = (item) => item.step !== "bind" && item.step !== "started";
 var ownerOf = (item) => item.explorer ?? item.detail.name;
-function agentOf(events, name) {
-  return events.findLast((item) => ownerOf(item) === name && typeof item.detail.agent === "string")?.detail.agent;
+function agentOf(events, name2) {
+  return events.findLast((item) => ownerOf(item) === name2 && typeof item.detail.agent === "string")?.detail.agent;
 }
 function sessionLaunch(events, explorationId) {
   const launch = startOf(events);
@@ -25072,7 +25760,7 @@ function testerAction(store, explorationId, explorer, due, phase) {
   const folder = workFolder(explorationId, explorer);
   const own = phase.events.filter((item) => item.explorer === explorer);
   const agent = agentOf(explorationEvents(store, explorationId), explorer);
-  const answer = `${folder}/entries.json`;
+  const answer2 = `${folder}/entries.json`;
   const action2 = (step, file, text, extra, answered = false) => ({
     action: step === "study" ? "start" : "message",
     explorer,
@@ -25080,7 +25768,7 @@ function testerAction(store, explorationId, explorer, due, phase) {
     step,
     to: step === "study" ? testerAgent : agent,
     task: `${folder}/${file}`,
-    ...answered ? { answer } : {},
+    ...answered ? { answer: answer2 } : {},
     text,
     extra
   });
@@ -25090,7 +25778,7 @@ function testerAction(store, explorationId, explorer, due, phase) {
       "task-follow.md",
       `${followBrief(phase.follow.questions, folder, phase.follow.seconds)}
 
-${followEntriesText(answer)}`,
+${followEntriesText(answer2)}`,
       { round: 1, after: lastEntry(store) },
       true
     );
@@ -25098,7 +25786,7 @@ ${followEntriesText(answer)}`,
     return action2(
       "record",
       "task-record.md",
-      recordTask(store, explorationId, explorer, answer),
+      recordTask(store, explorationId, explorer, answer2),
       { round: 1, after: lastEntry(store) },
       true
     );
@@ -25108,7 +25796,7 @@ ${followEntriesText(answer)}`,
     return action2(
       "record",
       "task-repair.md",
-      repairPrompt(repair.refusals, answer),
+      repairPrompt(repair.refusals, answer2),
       { round: 2, after: first.detail.after },
       true
     );
@@ -25136,7 +25824,7 @@ Your shell does not keep settings between commands. Start each shell command wit
 }
 function rulesAction(store, explorationId, round, phase) {
   const folder = `${workFolder(explorationId)}/rules`;
-  const answer = `${folder}/answer.json`;
+  const answer2 = `${folder}/answer.json`;
   const own = phase.events.filter((item) => ownerOf(item) === "rules");
   const action2 = (file, text) => ({
     action: round === "rules" ? "start" : "message",
@@ -25145,20 +25833,20 @@ function rulesAction(store, explorationId, round, phase) {
     step: "rules",
     to: round === "rules" ? clerkAgent : agentOf(own, "rules"),
     task: `${folder}/${file}`,
-    answer,
+    answer: answer2,
     text,
     extra: { round }
   });
   if (round === "repair") {
     const last = own.findLast((item) => item.step === "rules-round");
-    return action2("task-repair.md", rulesRepairPrompt(last.detail.refusals, answer));
+    return action2("task-repair.md", rulesRepairPrompt(last.detail.refusals, answer2));
   }
   const opened = exploration(store, explorationId);
-  return action2("task.md", rulesPrompt(opened.charter.goal, ruleSources(store, opened.plan_id), answer));
+  return action2("task.md", rulesPrompt(opened.charter.goal, ruleSources(store, opened.plan_id), answer2));
 }
 function mergeAction(store, explorationId, round, phase) {
   const folder = `${workFolder(explorationId)}/merge`;
-  const answer = `${folder}/answer.json`;
+  const answer2 = `${folder}/answer.json`;
   const own = phase.events.filter((item) => ownerOf(item) === "merge");
   const last = own.findLast((item) => item.step === "merge-round");
   const action2 = (file, text, extra) => ({
@@ -25168,26 +25856,26 @@ function mergeAction(store, explorationId, round, phase) {
     step: "merge",
     to: round === "merge" ? clerkAgent : agentOf(own, "merge"),
     task: `${folder}/${file}`,
-    answer,
+    answer: answer2,
     text,
     extra: { round, ...extra }
   });
-  if (round === "repair") return action2("task-repair.md", repairPrompt(last.detail.refusals, answer));
+  if (round === "repair") return action2("task-repair.md", repairPrompt(last.detail.refusals, answer2));
   if (round === "again")
     return action2(
       "task-again.md",
-      mergeAgainPrompt(last.detail.unplaced, answer)
+      mergeAgainPrompt(last.detail.unplaced, answer2)
     );
   const input = mergeInput(store, explorationId, phase.follow?.after ?? 0);
   return action2(
     "task.md",
-    mergerPrompt(input.build, input.defects, input.groups, input.questions, input.earlier, answer),
+    mergerPrompt(input.build, input.defects, input.groups, input.questions, input.earlier, answer2),
     { reports: input.count }
   );
 }
 function verifyAction(store, explorationId, round, phase) {
   const folder = `${workFolder(explorationId)}/verify`;
-  const answer = `${folder}/answer.json`;
+  const answer2 = `${folder}/answer.json`;
   const own = phase.events.filter((item) => ownerOf(item) === "verify");
   const action2 = (file, text, extra) => ({
     action: round === "verify" ? "start" : "message",
@@ -25196,13 +25884,13 @@ function verifyAction(store, explorationId, round, phase) {
     step: "verify",
     to: round === "verify" ? testerAgent : agentOf(own, "verify"),
     task: `${folder}/${file}`,
-    answer,
+    answer: answer2,
     text,
     extra: { round, ...extra }
   });
-  if (round === "repair") return action2("task-repair.md", verifierRepairPrompt(answer));
+  if (round === "repair") return action2("task-repair.md", verifierRepairPrompt(answer2));
   const input = verifyInput(store, explorationId, phase.follow?.after ?? 0);
-  return action2("task.md", verifierBrief(input.items, input.entries, input.operations, input.dataPrefix, answer), {
+  return action2("task.md", verifierBrief(input.items, input.entries, input.operations, input.dataPrefix, answer2), {
     ids: input.items.map((item) => item.id)
   });
 }
@@ -25213,8 +25901,8 @@ function descriptionOf(explorationId, action2) {
   return `${explorationId} ${action2.name} ${action2.step}`;
 }
 var replyLimit = "Keep all details in your files. Reply in three lines at most: what you did, the most important finding or blocker, and the number of questions or defects.";
-function replyLineOf(name, step) {
-  return clerkNames.includes(name) ? `${name} done` : `tester ${name} ${step} done`;
+function replyLineOf(name2, step) {
+  return clerkNames.includes(name2) ? `${name2} done` : `tester ${name2} ${step} done`;
 }
 function lineOf(explorationId, action2) {
   const description = action2.action === "start" ? ` description="${descriptionOf(explorationId, action2)}"` : "";
@@ -25222,8 +25910,8 @@ function lineOf(explorationId, action2) {
 }
 function writeFile(store, path, text) {
   const full = join12(store.workspace, path);
-  mkdirSync7(dirname(full), { recursive: true });
-  writeFileSync4(full, text.endsWith("\n") ? text : `${text}
+  mkdirSync8(dirname(full), { recursive: true });
+  writeFileSync5(full, text.endsWith("\n") ? text : `${text}
 `);
 }
 function answerNext(store, actor, explorationId, actions, word) {
@@ -25240,7 +25928,7 @@ function answerNext(store, actor, explorationId, actions, word) {
 ${replyLimit}
 End your reply with this line: ${replyLineOf(action2.name, action2.step)}`
         );
-        if (action2.answer) rmSync6(join12(store.workspace, action2.answer), { force: true });
+        if (action2.answer) rmSync7(join12(store.workspace, action2.answer), { force: true });
         addEvent(
           store,
           explorationId,
@@ -25365,11 +26053,11 @@ function stepsStarted(store, actor, explorationId, names) {
   sessionLaunch(events, explorationId);
   clearPause(store, actor, explorationId, events);
   const phase = phaseOf3(events);
-  const given = (name) => {
-    const last = (phase?.events ?? []).filter((item) => ownerOf(item) === name && item.step !== "bind").at(-1);
+  const given = (name2) => {
+    const last = (phase?.events ?? []).filter((item) => ownerOf(item) === name2 && item.step !== "bind").at(-1);
     return last?.step === "action" ? last : void 0;
   };
-  const wrong = names.filter((name) => !given(name));
+  const wrong = names.filter((name2) => !given(name2));
   requireCondition(
     !wrong.length,
     `No given step waits to start for ${wrong.join(", ")} in exploration ${explorationId}.`,
@@ -25379,8 +26067,8 @@ function stepsStarted(store, actor, explorationId, names) {
     store,
     { actor, command: "explore started", subject: explorationId, input: { explorationId, names } },
     (operationId, at) => {
-      for (const name of names) {
-        const action2 = given(name);
+      for (const name2 of names) {
+        const action2 = given(name2);
         addEvent(
           store,
           explorationId,
@@ -25388,7 +26076,7 @@ function stepsStarted(store, actor, explorationId, names) {
             step: "started",
             explorer: action2.explorer,
             status: "started",
-            detail: { name, step: action2.detail.step }
+            detail: { name: name2, step: action2.detail.step }
           },
           operationId,
           at
@@ -25433,7 +26121,7 @@ function nextActions(store, actor, explorationId) {
     );
   const after = phase.follow?.after ?? 0;
   if (phase.events.some((item) => item.step === "record" && item.status === "completed")) {
-    const owned = (name) => phase.events.filter((item) => ownerOf(item) === name && item.explorer === null);
+    const owned = (name2) => phase.events.filter((item) => ownerOf(item) === name2 && item.explorer === null);
     const merge = stageDue(owned("merge"), "merge", () => mergeInput(store, explorationId, after) !== null);
     if (merge === "running") return answerNext(store, actor, explorationId, [], "wait");
     if (merge !== "settled")
@@ -25461,8 +26149,8 @@ function rulesDone(store, actor, explorationId, own, base, failed) {
   const round = own.at(-1).detail.round;
   const plan = explorationRow(store, explorationId).plan_id;
   const names = ruleSources(store, plan).map((source) => source.name);
-  const answer = `${workFolder(explorationId)}/rules/answer.json`;
-  const checked = failed ? { rules: [], refusals: [] } : checkedRules(replyArray(readText2(store, answer)), names);
+  const answer2 = `${workFolder(explorationId)}/rules/answer.json`;
+  const checked = failed ? { rules: [], refusals: [] } : checkedRules(replyArray(readText2(store, answer2)), names);
   if (!failed && round === "rules" && checked.refusals.length)
     return addOutcome(store, actor, explorationId, {
       step: "rules-round",
@@ -25495,8 +26183,8 @@ function rulesDone(store, actor, explorationId, own, base, failed) {
 }
 function mergeDone(store, actor, explorationId, own, base, failed, after) {
   const round = own.at(-1).detail.round;
-  const answer = `${workFolder(explorationId)}/merge/answer.json`;
-  const refusals = failed ? [] : logMerge(store, explorationId, replyArray(readText2(store, answer)));
+  const answer2 = `${workFolder(explorationId)}/merge/answer.json`;
+  const refusals = failed ? [] : logMerge(store, explorationId, replyArray(readText2(store, answer2)));
   const outcome = (step, status, detail) => addOutcome(store, actor, explorationId, {
     step,
     explorer: null,
@@ -25519,8 +26207,8 @@ function verifyDone(store, actor, explorationId, own, base, failed) {
   const round = own.at(-1).detail.round;
   const first = own.find((item) => item.step === "action");
   const ids2 = new Set(first.detail.ids);
-  const answer = `${workFolder(explorationId)}/verify/answer.json`;
-  const observations = failed ? [] : verifiedEntries(replyArray(readText2(store, answer)), ids2);
+  const answer2 = `${workFolder(explorationId)}/verify/answer.json`;
+  const observations = failed ? [] : verifiedEntries(replyArray(readText2(store, answer2)), ids2);
   const outcome = (step, status, detail) => addOutcome(store, actor, explorationId, {
     step,
     explorer: null,
@@ -25569,27 +26257,27 @@ function recordDone(store, actor, explorationId, explorer, own, base, failed, ph
   keepWorkFiles(store, actor, explorationId, explorer, phase.name);
   return reply;
 }
-function checkReplyLine(explorationId, name, step, given) {
+function checkReplyLine(explorationId, name2, step, given) {
   const line = given?.trim();
   const match = line ? /^(?:tester (\S+) (\S+)|(rules|merge|verify)) done$/.exec(line) : null;
   if (!match) return;
   const [named, namedStep] = match[3] ? [match[3], match[3]] : [match[1], match[2]];
   requireCondition(
-    named === name && (Boolean(match[3]) || namedStep === step),
-    `The reply line "${line}" names ${named} ${namedStep}, not ${name} ${step}.`,
-    `Record this reply for ${named}: checkmate explore done ${explorationId} ${named} ${namedStep} --agent <the agent ID of this reply> --reply-line "${line}". Then record the reply of ${name}.`
+    named === name2 && (Boolean(match[3]) || namedStep === step),
+    `The reply line "${line}" names ${named} ${namedStep}, not ${name2} ${step}.`,
+    `Record this reply for ${named}: checkmate explore done ${explorationId} ${named} ${namedStep} --agent <the agent ID of this reply> --reply-line "${line}". Then record the reply of ${name2}.`
   );
 }
-function lastStep(events, name) {
-  return events.findLast((item) => ownerOf(item) === name && item.step === "action")?.detail.step;
+function lastStep(events, name2) {
+  return events.findLast((item) => ownerOf(item) === name2 && item.step === "action")?.detail.step;
 }
-function checkBinding(events, explorationId, name, agent) {
+function checkBinding(events, explorationId, name2, agent) {
   const owners = [...new Set(events.flatMap((item) => ownerOf(item) ? [ownerOf(item)] : []))];
-  const other = owners.find((owner) => owner !== name && agentOf(events, owner) === agent);
+  const other = owners.find((owner) => owner !== name2 && agentOf(events, owner) === agent);
   requireCondition(
     !other,
-    `Agent ${agent} is bound to ${other} in exploration ${explorationId}, not to ${name}.`,
-    `Give the agent ID of ${name}: the description and the last line of its reply name it. When ${other} has the wrong agent ID, correct it first: checkmate explore done ${explorationId} ${other} ${lastStep(events, other)} --agent <the agent ID of ${other}>.`
+    `Agent ${agent} is bound to ${other} in exploration ${explorationId}, not to ${name2}.`,
+    `Give the agent ID of ${name2}: the description and the last line of its reply name it. When ${other} has the wrong agent ID, correct it first: checkmate explore done ${explorationId} ${other} ${lastStep(events, other)} --agent <the agent ID of ${other}>.`
   );
 }
 function runningSteps(events) {
@@ -25600,53 +26288,53 @@ function runningSteps(events) {
   });
 }
 function stepDone(store, actor, input) {
-  const { explorationId, name, step, failed } = input;
+  const { explorationId, name: name2, step, failed } = input;
   const events = explorationEvents(store, explorationId);
   sessionLaunch(events, explorationId);
   clearPause(store, actor, explorationId, events);
   const phase = phaseOf3(events);
-  const own = (phase?.events ?? []).filter((item2) => ownerOf(item2) === name && isStep(item2));
+  const own = (phase?.events ?? []).filter((item2) => ownerOf(item2) === name2 && isStep(item2));
   const last = own.at(-1);
-  checkReplyLine(explorationId, name, step, input.replyLine);
-  if (input.agent) checkBinding(events, explorationId, name, input.agent);
-  const tester = !clerkNames.includes(name);
-  if (tester && input.agent && last && last.step !== "action" && lastStep(own, name) === step)
+  checkReplyLine(explorationId, name2, step, input.replyLine);
+  if (input.agent) checkBinding(events, explorationId, name2, input.agent);
+  const tester = !clerkNames.includes(name2);
+  if (tester && input.agent && last && last.step !== "action" && lastStep(own, name2) === step)
     return addOutcome(store, actor, explorationId, {
       step: "bind",
-      explorer: name,
+      explorer: name2,
       status: "completed",
       detail: { agent: input.agent, step, ...input.activity ? { activity: input.activity } : {} }
     });
   const running3 = runningSteps(phase?.events ?? []);
   requireCondition(
     last?.step === "action" && last.detail.step === step,
-    `No ${step} step of ${name} runs in exploration ${explorationId}.`,
+    `No ${step} step of ${name2} runs in exploration ${explorationId}.`,
     running3.length ? `The steps that run: ${running3.join(", ")}. Correct the name or the step, and run explore done again.` : `Run checkmate explore next ${explorationId}, and carry out its actions.`
   );
-  const agent = input.agent ?? agentOf(tester ? events : own, name);
+  const agent = input.agent ?? agentOf(tester ? events : own, name2);
   requireWellFormed(agent || failed, "Give --agent with the agent ID that the Agent tool returned.");
   const base = {
     ...agent ? { agent } : {},
     activity: input.activity ?? (failed ? `${step} failed: ${failed}` : `${step} ended`),
     ...failed ? { reason: failed } : {}
   };
-  if (name === "rules") return rulesDone(store, actor, explorationId, own, base, failed);
-  if (name === "merge") return mergeDone(store, actor, explorationId, own, base, failed, phase.follow?.after ?? 0);
-  if (name === "verify") return verifyDone(store, actor, explorationId, own, base, failed);
-  if (step === "record") return recordDone(store, actor, explorationId, name, own, base, failed, phase);
+  if (name2 === "rules") return rulesDone(store, actor, explorationId, own, base, failed);
+  if (name2 === "merge") return mergeDone(store, actor, explorationId, own, base, failed, phase.follow?.after ?? 0);
+  if (name2 === "verify") return verifyDone(store, actor, explorationId, own, base, failed);
+  if (step === "record") return recordDone(store, actor, explorationId, name2, own, base, failed, phase);
   if (step === "follow" && !failed) {
     addOutcome(store, actor, explorationId, {
       step: "follow-turn",
-      explorer: name,
+      explorer: name2,
       status: "completed",
       detail: base
     });
-    return recordDone(store, actor, explorationId, name, own, base, failed, phase);
+    return recordDone(store, actor, explorationId, name2, own, base, failed, phase);
   }
   const status = failed ? "operational_error" : "completed";
   const item = step === "study" && !failed ? { step: "turn", status: "started", detail: { ...base, turn: "test" } } : step === "follow" ? { step: "follow-turn", status, detail: base } : { step: "end", status, detail: { ...base, ...failed ? { turn: step } : {} } };
-  const reply = addOutcome(store, actor, explorationId, { ...item, explorer: name });
-  if (failed) keepWorkFiles(store, actor, explorationId, name, phase.name);
+  const reply = addOutcome(store, actor, explorationId, { ...item, explorer: name2 });
+  if (failed) keepWorkFiles(store, actor, explorationId, name2, phase.name);
   return reply;
 }
 
@@ -25807,7 +26495,7 @@ function harvestExploration(store, actor, input) {
 }
 
 // plugin/src/cli.ts
-import { mkdirSync as mkdirSync8, readFileSync as readFileSync9, writeFileSync as writeFileSync5 } from "node:fs";
+import { mkdirSync as mkdirSync9, readFileSync as readFileSync9, writeFileSync as writeFileSync6 } from "node:fs";
 import { dirname as dirname2, resolve as resolve7 } from "node:path";
 import { constants as constants2 } from "node:sqlite";
 var testFields2 = [
@@ -25822,16 +26510,16 @@ var testFields2 = [
   "action",
   "assertions"
 ];
-function value(args, name) {
-  const found = args[name];
+function value(args, name2) {
+  const found = args[name2];
   return typeof found === "string" ? found : void 0;
 }
-function list(args, name) {
-  const found = args[name];
+function list(args, name2) {
+  const found = args[name2];
   return Array.isArray(found) ? found : void 0;
 }
-function integer(args, name) {
-  const text = value(args, name);
+function integer(args, name2) {
+  const text = value(args, name2);
   return text === void 0 ? void 0 : Number(text);
 }
 function optionValue(token, kind, text) {
@@ -25877,9 +26565,9 @@ function instanceInput(args, stdin) {
   for (const entry of entries) {
     const at = entry.indexOf("=");
     requireWellFormed(at > 0, `Invalid --entry: ${entry}. Use <entryPoint>=<value>.`);
-    const name = entry.slice(0, at);
-    requireWellFormed(!(name in values), `Entry point ${name} is given twice`);
-    values[name] = entry.slice(at + 1);
+    const name2 = entry.slice(0, at);
+    requireWellFormed(!(name2 in values), `Entry point ${name2} is given twice`);
+    values[name2] = entry.slice(at + 1);
   }
   return {
     entries: values,
@@ -25889,7 +26577,7 @@ function instanceInput(args, stdin) {
 }
 function instanceLines(instance) {
   return [
-    ...Object.entries(instance.entries).map(([name, entry]) => ["entry", name, entry]),
+    ...Object.entries(instance.entries).map(([name2, entry]) => ["entry", name2, entry]),
     ...instance.environment ? [["environment", instance.environment]] : [],
     ...instance.references.map((reference) => ["reference", reference])
   ];
@@ -26191,9 +26879,9 @@ var commands = {
     }),
     print: (reply) => ({
       facts: { recorded: reply.data.recorded },
-      lines: Object.entries(reply.data.entries).map(([name, entry]) => [
+      lines: Object.entries(reply.data.entries).map(([name2, entry]) => [
         "entry",
-        name,
+        name2,
         entry
       ])
     })
@@ -26226,7 +26914,7 @@ var commands = {
         instance.retired ? "retired" : "active",
         instance.environment ?? "-",
         {
-          preformatted: Object.entries(instance.entries).map(([name, entry]) => `${name}=${/[\s,="\\]/.test(entry) ? JSON.stringify(entry) : entry}`).join(",")
+          preformatted: Object.entries(instance.entries).map(([name2, entry]) => `${name2}=${/[\s,="\\]/.test(entry) ? JSON.stringify(entry) : entry}`).join(",")
         }
       ])
     })
@@ -27046,6 +27734,60 @@ var commands = {
       ]
     })
   },
+  "explore permit": {
+    positionals: ["explorationId", "requestId"],
+    flags: {
+      allow: "switch",
+      "allow-kind": "switch",
+      always: "switch",
+      deny: "switch",
+      stop: "switch",
+      reason: "value"
+    },
+    write: true,
+    check: (args) => requireWellFormed(
+      permissionDecisions.filter((name2) => args[name2] === true).length === 1,
+      "Give one of --allow, --allow-kind, --always, --deny, --stop."
+    ),
+    run: (store, args, { actor }) => {
+      requireCondition(
+        liveUi(store.workspace),
+        "No UI server runs for this folder, so no tester waits for an answer. Nothing changed.",
+        "Run checkmate ui in this folder."
+      );
+      const explorationId = value(args, "explorationId");
+      return decidePermission(
+        store,
+        actor,
+        {
+          explorationId,
+          requestId: value(args, "requestId"),
+          decision: permissionDecisions.find((name2) => args[name2] === true),
+          reason: value(args, "reason")
+        },
+        (explorer, reason) => stopExploration(store, actor, { explorationId, explorer, reason: reason || void 0 })
+      );
+    },
+    print: (reply) => ({ facts: { request: reply.data.requestId, decision: reply.data.decision } })
+  },
+  "explore permissions": {
+    positionals: ["explorationId"],
+    readOnly: true,
+    run: (store, args) => {
+      const explorationId = value(args, "explorationId");
+      return completed(explorationId, { permissions: explorationPermissions(store, explorationId) });
+    },
+    print: (reply) => ({
+      lines: reply.data.permissions.map((item) => [
+        item.id,
+        item.decision ? item.decision.text : "open",
+        item.who,
+        item.tool,
+        inputLine(item.input),
+        ...item.rule ? [`rule=${item.rule}`] : []
+      ])
+    })
+  },
   "explore show": {
     positionals: ["explorationId"],
     readOnly: true,
@@ -27103,8 +27845,8 @@ var commands = {
     positionals: [],
     run: () => completed("levels", { levels: testLevels }),
     print: (reply) => ({
-      lines: Object.entries(reply.data.levels).map(([name, level]) => [
-        name,
+      lines: Object.entries(reply.data.levels).map(([name2, level]) => [
+        name2,
         `explorers=${level.explorers}`,
         `model=${level.model}`,
         `verifier=${level.verifier}`,
@@ -27222,7 +27964,7 @@ var commands = {
     run: (store, args) => {
       const statement = queryStatement(store, value(args, "sql"));
       const columns2 = statement.columns().map((column) => column.name);
-      const rows = readOnly(() => statement.all()).map(
+      const rows2 = readOnly(() => statement.all()).map(
         (row2) => Object.fromEntries(
           columns2.map((column) => {
             const field4 = row2[column];
@@ -27230,14 +27972,14 @@ var commands = {
           })
         )
       );
-      return completed("query", { columns: columns2, rows });
+      return completed("query", { columns: columns2, rows: rows2 });
     },
     print: (reply) => {
       const columns2 = reply.data.columns;
-      const rows = reply.data.rows;
+      const rows2 = reply.data.rows;
       return {
-        facts: { rows: rows.length },
-        lines: [columns2, ...rows.map((row2) => columns2.map((name) => row2[name]))]
+        facts: { rows: rows2.length },
+        lines: [columns2, ...rows2.map((row2) => columns2.map((name2) => row2[name2]))]
       };
     }
   }
@@ -27266,7 +28008,7 @@ function readOnly(read) {
 }
 function queryStatement(store, sql) {
   store.db.setAuthorizer(
-    (action2, name, argument) => action2 === constants2.SQLITE_PRAGMA && argument !== null && !readPragmas.includes(name) ? constants2.SQLITE_DENY : constants2.SQLITE_OK
+    (action2, name2, argument) => action2 === constants2.SQLITE_PRAGMA && argument !== null && !readPragmas.includes(name2) ? constants2.SQLITE_DENY : constants2.SQLITE_OK
   );
   const statement = readOnly(() => store.db.prepare(sql));
   requireCondition(statement.columns().length > 0, readOnlyReason);
@@ -27425,9 +28167,9 @@ function printPlan(reply) {
 }
 function writeOutput(store, out, content) {
   const path = resolve7(store.workspace, out);
-  mkdirSync8(dirname2(path), { recursive: true });
+  mkdirSync9(dirname2(path), { recursive: true });
   try {
-    writeFileSync5(path, content, { flag: "wx" });
+    writeFileSync6(path, content, { flag: "wx" });
   } catch (error) {
     if (error instanceof Error && "code" in error && error.code === "EEXIST")
       throw new Error(`Output file exists: ${out}. Choose a new path.`, { cause: error });
@@ -27480,10 +28222,10 @@ function commandName(argv) {
 function unknownCommand(words4) {
   const groups = words4.map((_, i) => {
     const prefix = words4.slice(0, words4.length - i).join(" ");
-    return Object.keys(commands).filter((name) => name.startsWith(`${prefix} `));
+    return Object.keys(commands).filter((name2) => name2.startsWith(`${prefix} `));
   });
   const names = groups.find((group) => group.length) ?? [
-    .../* @__PURE__ */ new Set([...Object.keys(commands).map((name) => name.split(" ")[0]), "ui"])
+    .../* @__PURE__ */ new Set([...Object.keys(commands).map((name2) => name2.split(" ")[0]), "ui"])
   ];
   return new Refusal(
     "malformed",
@@ -27491,14 +28233,14 @@ function unknownCommand(words4) {
     `Use one of: ${names.join(", ")}. Run checkmate --help for the usage of each command.`
   );
 }
-function parse(name, tokens) {
-  const command = commands[name];
+function parse(name2, tokens) {
+  const command = commands[name2];
   const flags = {
     ...globalFlags,
     ...command.flags,
     ...command.write ? { actor: "value" } : {}
   };
-  const wrong = (message) => new Refusal("malformed", message, usage(name));
+  const wrong = (message) => new Refusal("malformed", message, usage(name2));
   const args = {};
   const positionals = [];
   for (let i = 0; i < tokens.length; i++) {
@@ -27509,7 +28251,7 @@ function parse(name, tokens) {
     }
     const flag = token.slice(2);
     const kind = flags[flag];
-    if (!kind) throw wrong(`Unknown option ${token} for ${name}`);
+    if (!kind) throw wrong(`Unknown option ${token} for ${name2}`);
     if (kind === "switch") {
       args[flag] = true;
       continue;
@@ -27533,7 +28275,7 @@ function parse(name, tokens) {
   }
   if (positionals.length !== command.positionals.length)
     throw wrong(
-      `${name} needs ${command.positionals.length} argument(s), not ${positionals.length}: ${command.positionals.map((positional) => `<${positional}>`).join(" ") || "none"}`
+      `${name2} needs ${command.positionals.length} argument(s), not ${positionals.length}: ${command.positionals.map((positional) => `<${positional}>`).join(" ") || "none"}`
     );
   for (const flag of command.required ?? []) if (!(flag in args)) throw wrong(`Missing --${flag}`);
   command.positionals.forEach((positional, i) => {
@@ -27547,15 +28289,15 @@ function placeholder(kind) {
   if (typeof kind === "object") return "n";
   return kind === "list" ? "a,b" : "value";
 }
-function usage(name) {
-  const command = commands[name];
+function usage(name2) {
+  const command = commands[name2];
   const flags = Object.entries(command.flags ?? {}).map(([flag, kind]) => {
     const text = kind === "switch" ? `--${flag}` : `--${flag} <${placeholder(kind)}>`;
     return command.required?.includes(flag) ? text : `[${text}]`;
   });
   return [
     "Usage: checkmate",
-    name,
+    name2,
     ...command.positionals.map((positional) => `<${positional}>`),
     ...flags,
     ...command.write ? ["[--actor <name>]"] : [],
@@ -27565,7 +28307,7 @@ function usage(name) {
 var uiUsage = "Usage: checkmate ui [--port <value>]";
 function help() {
   return [
-    ...Object.keys(commands).map((name) => usage(name).replace("Usage: ", "")),
+    ...Object.keys(commands).map((name2) => usage(name2).replace("Usage: ", "")),
     uiUsage.replace("Usage: ", ""),
     "Options for every command: --workspace <path>, --json"
   ].join("\n");
@@ -27578,15 +28320,15 @@ function commandHelp(argv) {
   for (let count2 = words4.length; count2 > 0; count2--) {
     const prefix = words4.slice(0, count2).join(" ");
     if (prefix === "ui") return completed("ui", { usage: [uiUsage.replace("Usage: ", "")] });
-    const names = Object.keys(commands).filter((name) => name === prefix || name.startsWith(`${prefix} `));
-    if (names.length) return completed(prefix, { usage: names.map((name) => usage(name).replace("Usage: ", "")) });
+    const names = Object.keys(commands).filter((name2) => name2 === prefix || name2.startsWith(`${prefix} `));
+    if (names.length) return completed(prefix, { usage: names.map((name2) => usage(name2).replace("Usage: ", "")) });
   }
   return { ...refused("invalid_request", "checkmate", unknownCommand(words4)), data: { usage: [] } };
 }
 function version() {
   return JSON.parse(readFileSync9(new URL("../.claude-plugin/plugin.json", import.meta.url), "utf8")).version;
 }
-function readJson(text) {
+function readJson2(text) {
   requireWellFormed(
     text.trim().length > 0,
     "Missing JSON payload on standard input",
@@ -27614,16 +28356,16 @@ function run(argv, io) {
       output: format(reply, json, (help2) => ({ lines: help2.data.usage.map((line) => [line]) }))
     };
   }
-  let name = "checkmate";
+  let name2 = "checkmate";
   let args;
   try {
-    name = commandName(argv);
-    args = parse(name, argv.slice(name.split(" ").length));
+    name2 = commandName(argv);
+    args = parse(name2, argv.slice(name2.split(" ").length));
   } catch (error) {
-    return { code: 1, output: format(refused("invalid_request", name, error), json) };
+    return { code: 1, output: format(refused("invalid_request", name2, error), json) };
   }
-  const command = commands[name];
-  const subject = command.positionals.length && name !== "query" ? String(args[command.positionals[0]]) : name;
+  const command = commands[name2];
+  const subject = command.positionals.length && name2 !== "query" ? String(args[command.positionals[0]]) : name2;
   const workspace = resolve7(io.cwd, value(args, "workspace") ?? ".");
   let store;
   try {
@@ -27631,7 +28373,7 @@ function run(argv, io) {
     const actor = command.write ? value(args, "actor") ?? defaultActor(workspace, io.env) : void 0;
     const reply = command.run(store, args, {
       actor,
-      stdin: () => readJson(io.stdin()),
+      stdin: () => readJson2(io.stdin()),
       text: io.stdin,
       cwd: io.cwd,
       env: io.env

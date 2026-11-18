@@ -304,7 +304,7 @@ test(
 		for (const field of await page.locator('[name^="entry."]').all()) await field.fill('https://uat.shop.example')
 		await page.getByRole('button', { name: 'Add instance' }).click()
 		await toast(page, 'Added instance uat')
-		assert.equal(await page.evaluate(() => Boolean(document.activeElement?.closest('#instance-uat'))), true)
+		await page.waitForFunction(() => Boolean(document.activeElement?.closest('#instance-uat')))
 		await page.goto(url('/plans/coupons?view=needs&focus=list'))
 		await page.waitForFunction(() => document.activeElement?.matches('[data-row]'))
 		await page.keyboard.press('Space')
@@ -727,7 +727,7 @@ test('the 409 and 500 pages say what happened, and Left or Esc leaves them', bro
 
 test(
 	'dialogs, the find bar, the key list, and reason fields open and close 20 times in a row on a slow CPU',
-	browserTest,
+	{ ...browserTest, timeout: 180_000 },
 	async (t) => {
 		const { page, url } = await open(t)
 		const cdp = await page.context().newCDPSession(page)

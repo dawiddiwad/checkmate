@@ -250,13 +250,13 @@ test('a defect is handed over and the hand-over is undone from the plan', async 
 	assert.equal(claim().handoff, null)
 })
 
-test('an empty workspace says once that nothing waits and how to start', async (t) => {
+test('an empty workspace is the first-run form, and a workspace with a target and no plan is the new-change form', async (t) => {
 	const workspace = directory(t)
 	const ui = await startUi({ workspace, defaultActor: 'qa-lead' })
 	t.after(() => ui.close())
 	const body = await (await fetch(ui.url)).text()
-	assert.equal(body.match(/No plan yet\./g)?.length, 1)
-	assert.match(body, /<code>\/checkmate:test the change in ticket\.md<\/code>/)
+	assert.match(body, /<h1>Set up the application<\/h1>/)
+	assert.match(body, /name="url"/)
 	assert.doesNotMatch(body, /data-key="plan:/)
 })
 
@@ -270,7 +270,6 @@ test('each empty page says what is empty and gives one next step', async (t) => 
 		assert.equal(found.length, 1, path)
 		return found[0][1]
 	}
-	assert.equal(await empty('/'), 'No plan yet.')
 	assert.equal(await empty('/runs'), 'No run yet.')
 	assert.equal(await empty('/log?actor=nobody'), 'No operation matches these filters.')
 	assert.equal(await empty('/settings/targets'), 'No target yet.')

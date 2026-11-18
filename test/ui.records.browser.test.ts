@@ -220,7 +220,8 @@ test('Home lists the plans that need you first and returns to the plan you left'
 	const plans = await page
 		.locator('[data-row]')
 		.evaluateAll((rows) => rows.map((row) => (row as HTMLElement).dataset.key))
-	assert.equal(plans.at(-1), 'plan:account')
+	assert.equal(plans.at(-1), 'new:change')
+	assert.equal(plans.at(-2), 'plan:account')
 	assert.equal(await page.evaluate(() => document.activeElement?.getAttribute('data-key')), plans[0])
 	const coupons = plans.indexOf('plan:coupons')
 	for (let step = 0; step < coupons; step++) await page.keyboard.press('ArrowDown')
@@ -335,6 +336,7 @@ test('the plan editor saves and refuses by keys only', { skip }, async (t) => {
 	await page.keyboard.press('Control+Enter')
 	await page.getByText(/The JSON is not valid/).waitFor()
 	await page.keyboard.press('Escape')
+	await page.waitForFunction(() => document.activeElement?.tagName !== 'TEXTAREA')
 	await page.keyboard.press('Escape')
 	await page.waitForURL(/\/plans\/search@1$/)
 })

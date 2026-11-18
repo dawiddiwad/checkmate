@@ -122,6 +122,7 @@ test(
 		called()
 		await page.keyboard.press('3')
 		await page.locator('[data-toast]').waitFor()
+		await page.locator('[data-live]', { hasText: 'Live' }).waitFor()
 		await page.keyboard.press('/')
 		await page.keyboard.type('after the new start')
 		await page.locator('[data-find-ask][aria-selected="true"]').waitFor()

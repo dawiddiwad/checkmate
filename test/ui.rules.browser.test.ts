@@ -366,3 +366,57 @@ test(
 		assert.equal(rulesOf(workspace).length, 3)
 	}
 )
+
+const arrowDownKey = async (page: Page) => {
+	await page.keyboard.press('ArrowDown')
+	return focusedKey(page)
+}
+
+test('after a save the highlight and the keys are on the rule that was edited', browserTest, async (t) => {
+	const { page, url } = await open(t)
+	await onFirstRule(page, url)
+	await page.keyboard.press('ArrowDown')
+	assert.equal(await focusedKey(page), 'rule:R2')
+	await page.keyboard.press('1')
+	const edit = page.locator('dialog[data-act-dialog="rule-edit"]')
+	await edit.waitFor()
+	await page.keyboard.press('Control+A')
+	await page.keyboard.type('A deleted note leaves the list.')
+	await page.keyboard.press('Enter')
+	await toast(page, 'Changed rule R2')
+	await page.waitForFunction(() => document.activeElement?.getAttribute('data-key') === 'rule:R2')
+	assert.equal(await arrowDownKey(page), 'rule:R3')
+})
+
+test(
+	'after Add a rule the new rule has the highlight, and after Remove the row that takes its place',
+	browserTest,
+	async (t) => {
+		const { page, url } = await open(t)
+		await onFirstRule(page, url)
+		await page.keyboard.press('ArrowUp')
+		await page.keyboard.press('Enter')
+		const add = page.locator('dialog[data-act-dialog="rule-add"]')
+		await add.waitFor()
+		await page.keyboard.type('A note can be pinned.')
+		await page.keyboard.press('Enter')
+		await toast(page, 'Added rule R4')
+		await page.waitForFunction(() => document.activeElement?.getAttribute('data-key') === 'rule:R4')
+		await page.keyboard.press('ArrowUp')
+		assert.equal(await focusedKey(page), 'rule:R3')
+		await page.keyboard.press('ArrowUp')
+		assert.equal(await focusedKey(page), 'rule:R2')
+		await page.keyboard.press('2')
+		await page.locator('dialog[data-confirm][open]').waitFor()
+		await page.keyboard.press('Enter')
+		await toast(page, 'Removed rule R2')
+		await page.waitForFunction(() => document.activeElement?.getAttribute('data-key') === 'rule:R3')
+		await page.keyboard.press('ArrowDown')
+		assert.equal(await focusedKey(page), 'rule:R4')
+		await page.keyboard.press('2')
+		await page.locator('dialog[data-confirm][open]').waitFor()
+		await page.keyboard.press('Enter')
+		await toast(page, 'Removed rule R4')
+		await page.waitForFunction(() => document.activeElement?.getAttribute('data-key') === 'rule:R3')
+	}
+)

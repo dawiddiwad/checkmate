@@ -90,9 +90,9 @@ The command `checkmate harvest` stores a whole exploration. For this reason, the
 
 For derived rules, each rule row has two options, and `Add a rule…` is in the actions above the list. A rule view has `Edit <ID>…` and `Remove <ID>…` in its actions too, so that a pointer reaches them.
 
-- `1 Edit…` opens a dialog with the text of the rule and its area. The area is a choice of the areas that the plan has now, numbered from `1`. Type a name in `Or a new area` to use another area. `Enter` saves. A plan can have 9 areas, and an area name can have 40 characters. The field takes a longer name, and the dialog refuses it at the field with the limit. Checkmate does not cut the name. A refusal shows in the dialog at its field, and nothing changes.
-- `2 Remove…` asks first, and names the items that cite the rule. `Enter` or `1` confirms. A plan keeps at least one rule, so the option is not available for the last rule.
-- `Add a rule…` opens a dialog with the text, the area (as above), and the source. The source is optional. Without it, the source is `Added in the review UI.` The new rule has the next free ID, for example `R7`.
+- `1 Edit…` opens a dialog with the text of the rule and its area. The area is a choice of the areas that the plan has now, numbered from `1`. Type a name in `Or a new area` to use another area. `Enter` saves, and the page loads again with the highlight and the keys on that rule. A plan can have 9 areas, and an area name can have 40 characters. The field takes a longer name, and the dialog refuses it at the field with the limit. Checkmate does not cut the name. A refusal shows in the dialog at its field, and nothing changes.
+- `2 Remove…` asks first, and names the items that cite the rule. `Enter` or `1` confirms. The highlight then goes to the row that takes its place: the next rule, or the one before when the rule was the last. A plan keeps at least one rule, so the option is not available for the last rule.
+- `Add a rule…` opens a dialog with the text, the area (as above), and the source. The source is optional. Without it, the source is `Added in the review UI.` The new rule has the next free ID, for example `R7`. After the save, the highlight is on the new rule.
 
 A rule shows how many stored tests it has, for example `1 stored test`, in its row and in its view. The header shows how many rules have one, for example `4 of 13 rules have a stored test`, when the plan has any.
 

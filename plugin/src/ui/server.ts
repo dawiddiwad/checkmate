@@ -60,7 +60,8 @@ import type { Env } from '../sessions.ts'
 import type { StopDelays } from '../sessions.ts'
 import { liveUi, removeUiFile, requireClaude, workspaceHookToken, writeUiFile } from '../sessions.ts'
 import { launchPlan } from '../explorers.ts'
-import { maxAreaCharacters, planRules, ticketFile } from '../rules.ts'
+import { maxAreaCharacters, outsideRule, planRules, ticketFile } from '../rules.ts'
+import { ruleMap } from '../rulemap.ts'
 import { requireCondition, requireIdentifier, unusedId } from '../contracts.ts'
 import { harvestExploration, storableDefects } from '../harvest.ts'
 import { developerText } from '../developer.ts'
@@ -1029,6 +1030,10 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 			<a href="/explorations/${running.explorationId}">Open ${running.explorationId}</a> to watch or stop it.`
 	}
 
+	function ruleHref(planId: string, ruleId: string | undefined) {
+		return reviewHref(planId, 'rules', ruleId ? `&at=${encodeURIComponent(`rule:${ruleId}`)}&focus=list` : '')
+	}
+
 	function ruleChange(request: Request, form: URLSearchParams, planId: string, change: () => void) {
 		const back = reviewHref(planId, 'rules')
 		const { origin } = planRules(store, planId)
@@ -1072,7 +1077,7 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 				reference: planId,
 				patch: { requirements: { [id]: ruleId ? { text, area } : { text, area, source } } },
 			})
-			redirect(request.res, back, [
+			redirect(request.res, ruleHref(planId, id), [
 				...cookies,
 				cookie('checkmate_toast', `${ruleId ? 'Changed' : 'Added'} rule ${id}`, 60),
 			])
@@ -1086,12 +1091,17 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		const cited = [...mergedClaims(store, planId), ...mergedQuestions(store, planId)].filter(
 			(item) => item.rule === ruleId
 		).length
+		const listed = ruleMap(store, planId)
+			.rows.map((row) => row.rule.id)
+			.filter((id) => id !== outsideRule)
+		const at = listed.indexOf(ruleId)
+		const next = listed[at + 1] ?? listed[at - 1]
 		ruleChange(request, form, planId, () => {
 			patchPlan(store, actor, { reference: planId, patch: { requirements: { [ruleId]: null } } })
 			const outside = cited
 				? ` ${plural(cited, 'item')} that cited it ${cited === 1 ? 'shows' : 'show'} under Outside the rules.`
 				: ''
-			redirect(request.res, back, [
+			redirect(request.res, ruleHref(planId, next), [
 				...cookies,
 				cookie('checkmate_toast', `Removed rule ${ruleId}.${outside}`, 60),
 			])

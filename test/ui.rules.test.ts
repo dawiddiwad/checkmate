@@ -44,7 +44,7 @@ test('a derived rule changes its text and its area through the same patch as the
 	const { post, rules } = await fixture(t)
 	const changed = await post('/plans/notes/rules/R1', { text: 'A note keeps its title.', area: 'Saving' })
 	assert.equal(changed.status, 303)
-	assert.equal(changed.headers.location, '/plans/notes?view=rules')
+	assert.equal(changed.headers.location, '/plans/notes?view=rules&at=rule%3AR1&focus=list')
 	assert.match(toast(changed), /Changed rule R1/)
 	assert.deepEqual(rules().rules[0], {
 		id: 'R1',

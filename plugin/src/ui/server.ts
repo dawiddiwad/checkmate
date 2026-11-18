@@ -1174,6 +1174,11 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 				storable.length,
 				`Every defect of ${planId} is stored as a test already. Nothing is left to store.`
 			)
+			const count = storable.reduce((sum, item) => sum + item.claims.length, 0)
+			requireCondition(
+				!form.get('count') || form.get('count') === String(count),
+				`${plural(count, 'defect')} can be stored now, not ${form.get('count')}. Nothing is stored. Close this dialog and read the count again.`
+			)
 			for (const { explorationId } of storable) {
 				const reply = harvestExploration(store, actor, { explorationId, observations: false })
 				attached.push(...(reply.data.attached as typeof attached))

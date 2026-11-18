@@ -72,9 +72,21 @@ After a decision, the next item that waits for you takes the highlight. When you
 
 Select rows with their boxes, with `Space`, or with `Shift` `↑` `↓`. A strip directly above the status bar shows the number of selected rows and the actions that apply to them, numbered: `Accept <n> findings as defects`, `<n> questions right as built`, `Defer <n> questions`, `Hand over <n> defects`, `Copy <n> defects for the developer`, and `Clear the selection` last. While rows are selected, the number keys act on the selection. Each action on more than one record asks first and names the count. `Enter` or `1` confirms. `Esc` or `←` cancels and keeps the selection. The selection clears when the action is complete. The strip and the notes after an action never cover a row: while they show, the navigator and the list end above them. A hand-over shows a note with `0 Undo` for some seconds. A copy shows the toast `Copied <n> defects` and keeps the selection. Press `0` or click `Undo` to remove the hand-over. The other decisions have no undo in Checkmate.
 
+### Store defects as tests
+
+`Store <n> defects as tests…` is in the actions of `All items` and of `Rules of the plan`. It shows only when the plan has defects to store. A defect to store is a claim in the state observed, confirmed, or accepted that is not stored as a test yet. `<n>` is their number. The count comes from the same code as the command `checkmate harvest`, so the two always agree.
+
+The action asks first. The dialog names the count and says what happens: Checkmate stores each defect as a test of this plan and attaches it to the rule that the defect cites. The rules, areas, and marks of the plan stay the same. A defect that cites no rule, the outside rule, or a removed rule gets a new rule `HR1`, `HR2`, and so on. When the plan has an approval policy, the dialog adds that the stored tests wait for the approval of the plan. `Enter` or `1` stores. `Esc` or `2` cancels.
+
+The page calls `harvest` once for each exploration that has defects to store. Each reply shows in one toast, for example `Stored 3 defects as tests: H1 → R2, H2 → R7, H3 → HR1`. A long toast is cut, and its title has the full text. A refusal of the engine shows in the dialog, and the dialog stays open. When the count changed after you opened the dialog, the dialog refuses and stores nothing. Close it, read the new count, and try again.
+
+After a store, the navigator, the marks, and the counts of the rules stay the same. These things change: each new rule `HR<n>` is in the area `Rules`. A new revision of the plan exists, so `Plan @<revision>` replaces `Plan request`. When the plan has an approval policy, the revision is an approval that waits for you, and `Needs you` and `All items` show it. The `Tests` section of the plan lists the new tests, and each test shows the rule that it is attached to.
+
+The command `checkmate harvest` stores a whole exploration. For this reason, the review UI has no action to store a selection of defects.
+
 ### Rules of the plan
 
-`Rules of the plan` lists the rules. The rules come from one of three places. The tester derived them from the sources, or you corrected them: you edit them in this view, as described here. They come from the request of the plan, or from a revision of the plan: this view has no edit, and a plan with a revision has `Edit the rules`, which opens the plan editor.
+`Rules of the plan` lists the rules. The rules come from one of four places. The tester derived them from the sources, or you corrected them: you edit them in this view, as described here. They come from the request of the plan, or from a revision of the plan: this view has no edit, and a plan with a revision has `Edit the rules`, which opens the plan editor. After a store, the rules have the origin `harvested`, as the next paragraphs say.
 
 For derived rules, each rule row has two options, and `Add a rule…` is in the actions above the list. A rule view has `Edit <ID>…` and `Remove <ID>…` in its actions too, so that a pointer reaches them.
 
@@ -82,7 +94,11 @@ For derived rules, each rule row has two options, and `Add a rule…` is in the 
 - `2 Remove…` asks first, and names the items that cite the rule. `Enter` or `1` confirms. A plan keeps at least one rule, so the option is not available for the last rule.
 - `Add a rule…` opens a dialog with the text, the area (as above), and the source. The source is optional. Without it, the source is `Added in the review UI.` The new rule has the next free ID, for example `R7`.
 
-Each change is a `plan edit <planId> --patch` with only `requirements`: the UI and the command use the same code. The stored rules get the origin `corrected`. After a change, the navigator, the area marks, and the counts show the new rules.
+A rule shows how many stored tests it has, for example `1 stored test`, in its row and in its view. The header shows how many rules have one, for example `4 of 13 rules have a stored test`, when the plan has any.
+
+After a store, the rules have the origin `harvested`. A rule without a stored test keeps `1 Edit…` and `2 Remove…`, and `Add a rule…` stays. A rule with a stored test belongs to the revision of the plan. Its row has one option, `1 Edit in the plan editor`, which opens the editor of the revision. When the rule gets a stored test after you opened its dialog, the dialog shows the refusal of the engine, and nothing changes. A rule `HR<n>` always has a stored test.
+
+Each change is a `plan edit <planId> --patch` with only `requirements`: the UI and the command use the same code. The stored rules get the origin `corrected`. Rules with the origin `harvested` keep it. After a change, the navigator, the area marks, and the counts show the new rules.
 
 A removed rule does not change the entries that cite it. The record keeps the rule ID of each defect and question. The review shows an item that cites a rule that the plan does not have as an item of `Outside the rules`, as Checkmate does for a new entry that cites an unknown rule. Add the rule again with the same ID to bring the items back.
 

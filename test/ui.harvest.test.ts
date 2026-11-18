@@ -200,3 +200,13 @@ test('the store route refuses a foreign origin and a missing token, and stores n
 	assert.equal(missing.status, 403)
 	assert.equal(operations(read), 0)
 })
+
+test('a store refuses when the count that the dialog showed is not the count now', async (t) => {
+	const { post, read } = await fixture(t)
+	const refused = await post('/plans/notes/harvest', { count: '3' })
+	assert.equal(refused.status, 422)
+	assert.match(refused.body, /4 defects can be stored now, not 3\. Nothing is stored\./)
+	assert.equal(operations(read), 0)
+	const stored = await post('/plans/notes/harvest', { count: '4' })
+	assert.equal(stored.status, 303)
+})

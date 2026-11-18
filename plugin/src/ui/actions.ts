@@ -195,6 +195,7 @@ export function storeDialog(context: Context, planId: string, count: number, app
 		`/plans/${planId}/harvest`,
 		context,
 		html`<input type="hidden" name="view" value="all" />
+			<input type="hidden" name="count" value="${count}" />
 			<p class="sp-sub">
 				Checkmate stores each defect as a test of this plan and attaches it to the rule that the defect cites.
 				The rules, areas and marks of the plan stay the same. A defect with no rule gets a new rule HRn. Later

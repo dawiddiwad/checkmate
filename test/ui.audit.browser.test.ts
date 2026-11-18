@@ -917,6 +917,16 @@ test(
 			'dialog[data-act-dialog="follow"]'
 		)
 		await actions(
+			'Store defects as tests',
+			'/plans/coupons?view=all&focus=list',
+			async () => {
+				await toButton('Test build…')()
+				await page.keyboard.press('ArrowRight')
+			},
+			'Enter',
+			'dialog[data-act-dialog="store"]'
+		)
+		await actions(
 			'Stop the test',
 			'/explorations/x-14',
 			toButton('Stop the test…'),

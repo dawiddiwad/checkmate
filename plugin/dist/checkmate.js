@@ -250,6 +250,14 @@ var addedTables = [
 	operation_id TEXT NOT NULL ${operationReference}
 ) STRICT;`,
     fill: ""
+  },
+  {
+    ddl: `CREATE TABLE workspace_settings (
+	name TEXT NOT NULL,
+	value TEXT NOT NULL,
+	operation_id TEXT NOT NULL ${operationReference}
+) STRICT;`,
+    fill: ""
   }
 ];
 var views = `
@@ -8849,6 +8857,8 @@ function launchClaude(claude, args, prompt, cwd, env, seconds, onStart) {
 // plugin/src/targets.ts
 import { spawnSync as spawnSync2 } from "node:child_process";
 var anyTestOperation = "any_test_operation";
+var readOnlyOperation = "read_only";
+var readOnlyOperationText = "You can only read. Do not create, change, or delete data in the application.";
 var anyTestOperationText = "You can do any action that the application offers to a test user, on test data, in this instance.";
 function operationAllowed(profile, operation) {
   return profile.allowedOperations.includes(operation) || profile.allowedOperations.includes(anyTestOperation);
@@ -9269,14 +9279,18 @@ function runInstance(store, targetId, instanceId) {
   return active[0];
 }
 function urlTargetId(url) {
-  let host = "";
-  try {
-    const parsed = new URL(url);
-    host = [parsed.hostname, parsed.port].filter(Boolean).join("-");
-  } catch {
-  }
-  const name = host.toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^[^a-z0-9]+/, "").replace(/-+$/, "").slice(0, 96);
-  return name || "app";
+  const parsed = URL.canParse(url) ? new URL(url) : null;
+  const host = parsed ? [parsed.hostname, parsed.port].filter(Boolean).join("-") : "";
+  return slugId(host) || "app";
+}
+function isLocalAddress(url) {
+  if (!URL.canParse(url)) return false;
+  const host = new URL(url).hostname.replace(/^\[|\]$/g, "").toLowerCase();
+  if (host === "localhost" || host.endsWith(".localhost") || host === "::1") return true;
+  const octets = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(host)?.slice(1).map(Number);
+  if (!octets || octets.some((octet) => octet > 255)) return false;
+  const [first, second] = octets;
+  return first === 127 || first === 10 || first === 192 && second === 168 || first === 172 && second >= 16 && second <= 31;
 }
 function toolVersion(path) {
   const run2 = spawnSync2(path, ["--version"], { encoding: "utf8", timeout: 5e3 });
@@ -9296,19 +9310,47 @@ function urlAnswers(url) {
   );
   return check.status === 0;
 }
-function setupTarget(store, actor, input) {
+async function urlReachable(url) {
+  if (!/^https?:\/\//i.test(url)) return true;
+  try {
+    const response = await fetch(url, { signal: AbortSignal.timeout(5e3) });
+    return response.status < 500;
+  } catch {
+    return false;
+  }
+}
+function requireAnswer(answered, url) {
+  requireCondition(
+    answered,
+    `The application did not answer at ${url}.`,
+    "Start the application, or check the address. Then set up the target again."
+  );
+}
+function setupAssumptions(input) {
   const assumed = [];
   const url = requireText(input.url, "application URL (--url)");
   const targetId = input.targetId ?? urlTargetId(url);
   if (!input.targetId) assumed.push(`target=${targetId} (the host of the URL)`);
   const instanceId = input.instanceId ?? "local";
   if (!input.instanceId) assumed.push("instance=local");
+  const browser = executableOnPath("playwright-cli", input.env);
+  const capabilities = browser ? ["browser", "http"] : ["http"];
+  assumed.push(
+    "entry point=web (url)",
+    `capabilities=${capabilities.join(",")} (${browser ? "playwright-cli is on PATH" : "no browser tool on PATH"})`
+  );
+  const allowedOperations = input.operations?.length ? input.operations : [anyTestOperation];
+  if (!input.operations?.length) assumed.push(`operations=${anyTestOperation}: ${anyTestOperationText}`);
+  assumed.push("reset=none", "authentication=none");
+  return { url, targetId, instanceId, browser, capabilities, allowedOperations, assumed };
+}
+function setupTarget(store, actor, input) {
+  const { url, targetId, instanceId, browser, capabilities, allowedOperations, assumed } = setupAssumptions(input);
   requireCondition(
     input.operations?.length || !isProduction(instanceId, input.environment),
     `Instance ${instanceId} is a production instance. ${anyTestOperation} is not permitted on it.`,
     productionHint
   );
-  const browser = executableOnPath("playwright-cli", input.env);
   const tools = [
     {
       name: "node",
@@ -9327,14 +9369,6 @@ function setupTarget(store, actor, input) {
       }
     ] : []
   ];
-  const capabilities = browser ? ["browser", "http"] : ["http"];
-  assumed.push(
-    "entry point=web (url)",
-    `capabilities=${capabilities.join(",")} (${browser ? "playwright-cli is on PATH" : "no browser tool on PATH"})`
-  );
-  const allowedOperations = input.operations?.length ? input.operations : [anyTestOperation];
-  if (!input.operations?.length) assumed.push(`operations=${anyTestOperation}: ${anyTestOperationText}`);
-  assumed.push("reset=none", "authentication=none");
   const entryPoints = [{ name: "web", kind: "url", purpose: "The application." }];
   const known = one(store, "SELECT 1 FROM target_requests WHERE target_id = ?", targetId);
   if (!known) openTarget(store, actor, { targetId, entryPoints, capabilities, allowedOperations, tools: [] });
@@ -9344,7 +9378,7 @@ function setupTarget(store, actor, input) {
     "SELECT revision FROM profiles WHERE target_id = ? ORDER BY revision DESC LIMIT 1",
     targetId
   );
-  const reachable = saved ? true : urlAnswers(url);
+  const reachable = saved ? true : input.answered ?? urlAnswers(url);
   if (!reachable) assumed.push(`ready=false (${url} did not answer)`);
   if (!saved)
     saveTarget(store, actor, {
@@ -9466,6 +9500,9 @@ function schemaError(path, error) {
   if (error.keyword === "enum") return `${path} must be one of: ${error.params.allowedValues?.join(", ")}`;
   if (error.propertyName !== void 0) return `${path} field name "${error.propertyName}" ${error.message}`;
   return `${path} ${error.message}`;
+}
+function slugId(text) {
+  return text.toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^[^a-z0-9]+/, "").replace(/-+$/, "").slice(0, 96);
 }
 function requireIdentifier(value2, name) {
   requireWellFormed(
@@ -9798,6 +9835,34 @@ function sourceText(store, name) {
     return null;
   }
 }
+function ticketFile(store, typed) {
+  const name = typed.trim();
+  const workspace = realpathSync2(store.workspace);
+  const inside = (path2) => path2.startsWith(workspace + sep);
+  const wanted = resolve(store.workspace, name);
+  requireCondition(
+    wanted.startsWith(resolve(store.workspace) + sep) || inside(wanted),
+    `The ticket ${name} is outside the workspace.`,
+    `Give a file inside ${workspace}, or paste the text of the ticket.`
+  );
+  let path = "";
+  try {
+    path = realpathSync2(wanted);
+  } catch {
+  }
+  requireCondition(
+    path !== "",
+    `The ticket file ${name} does not exist.`,
+    "Check the path, or paste the text of the ticket."
+  );
+  requireCondition(
+    inside(path),
+    `The ticket ${name} is outside the workspace.`,
+    `Give a file inside ${workspace}, or paste the text of the ticket.`
+  );
+  requireCondition(statSync2(path).isFile(), `The ticket ${name} is not a file.`, "Give the path of a file.");
+  return path.slice(workspace.length + 1);
+}
 function ruleSources(store, planId) {
   const { request } = planRequest(store, planId);
   return (request.context?.sources ?? []).map((name) => ({ name, text: sourceText(store, name) }));
@@ -10078,9 +10143,9 @@ var Unreadable = class {
 var EntryRefusal = class extends Refusal {
   field;
   fix;
-  constructor(field3, message, hint, fix) {
+  constructor(field4, message, hint, fix) {
     super("malformed", message, hint);
-    this.field = field3;
+    this.field = field4;
     this.fix = fix;
   }
 };
@@ -10222,15 +10287,15 @@ function checkedEntry(store, raw, path, build, state, actor, cwd, rules, missing
     }
   } else entry.id = unusedId(prefixes[entry.kind], used);
   const everyone = () => lookup(journal(store, state.planId), actor);
-  const refer = (id2, kinds2, field3, fix) => {
+  const refer = (id2, kinds2, field4, fix) => {
     const own = known.get(id2);
     const target = own && kinds2.includes(own.kind) ? own : kinds2.includes("defect") ? everyone().get(id2) : own;
     if (target && kinds2.includes(target.kind)) return storedRef(target, actor);
     throw new EntryRefusal(
-      `${path}.${field3}`,
-      `${path}.${field3} names no ${kinds2.join(" or ")}: ${id2}.`,
+      `${path}.${field4}`,
+      `${path}.${field4} names no ${kinds2.join(" or ")}: ${id2}.`,
       `Use the ID of an earlier ${kinds2.join(" or ")}.`,
-      { ...given, [field3]: fix }
+      { ...given, [field4]: fix }
     );
   };
   const idsOf = (kinds2) => state.entries.filter((item) => kinds2.includes(item.kind)).map((item) => item.id).slice(-6).join("|") || `<${kinds2.join(" or ")} ID>`;
@@ -10253,11 +10318,11 @@ function checkedEntry(store, raw, path, build, state, actor, cwd, rules, missing
     entry.refutes = refer(entry.refutes, defectOrIssue, "refutes", idsOf(defectOrIssue));
   if (entry.repeats !== void 0)
     entry.repeats = refer(entry.repeats, ["observation"], "repeats", idsOf(["observation"]));
-  const listed = (field3, kinds2) => {
-    const ids2 = entry[field3];
+  const listed = (field4, kinds2) => {
+    const ids2 = entry[field4];
     if (!ids2) return;
     const fix = ids2.filter((item) => kinds2.includes(known.get(item)?.kind));
-    entry[field3] = ids2.map((item) => refer(item, kinds2, field3, field3 === "links" ? fix : idsOf(kinds2)));
+    entry[field4] = ids2.map((item) => refer(item, kinds2, field4, field4 === "links" ? fix : idsOf(kinds2)));
   };
   listed("links", ["observation", "criterion", "question"]);
   listed("reports", ["defect"]);
@@ -11168,7 +11233,7 @@ function patchList(items, changes, name, apply) {
   return result;
 }
 function newFields(name, change, required, defaults = {}) {
-  const missing = required.filter((field3) => !(field3 in change));
+  const missing = required.filter((field4) => !(field4 in change));
   requireWellFormed(!missing.length, `New ${name} needs ${missing.join(", ")}`);
   return { ...defaults, ...change };
 }
@@ -13552,39 +13617,39 @@ function resolved(node, file) {
 }
 function fieldsOf(node, file, prefix) {
   return Object.entries(node.properties ?? {}).flatMap(([name, child]) => {
-    const [field3, at] = resolved(child, file);
-    const [items, itemsAt] = field3.items ? resolved(field3.items, at) : [void 0, at];
+    const [field4, at] = resolved(child, file);
+    const [items, itemsAt] = field4.items ? resolved(field4.items, at) : [void 0, at];
     const path = `${prefix}${name}`;
-    const type = field3.enum ? field3.enum.join("|") : items ? `${items.properties ? "object" : items.type ?? "entry"}[]` : field3.type ?? "value";
+    const type = field4.enum ? field4.enum.join("|") : items ? `${items.properties ? "object" : items.type ?? "entry"}[]` : field4.type ?? "value";
     const row2 = {
       path,
       type,
       required: Boolean(node.required?.includes(name)),
-      description: field3.description ?? ""
+      description: field4.description ?? ""
     };
-    const nested = items?.properties ? fieldsOf(items, itemsAt, `${path}[].`) : field3.properties ? fieldsOf(field3, at, `${path}.`) : [];
+    const nested = items?.properties ? fieldsOf(items, itemsAt, `${path}[].`) : field4.properties ? fieldsOf(field4, at, `${path}.`) : [];
     return [row2, ...nested];
   });
 }
 function fieldText(fields, described) {
-  return fields.map((field3) => {
-    const name = `${field3.path}${field3.type.includes("|") ? ` (${field3.type})` : ""}${field3.required ? " (required)" : ""}`;
-    if (described.has(field3.description)) return `${name}.`;
-    described.add(field3.description);
-    return `${name}: ${field3.description}`;
+  return fields.map((field4) => {
+    const name = `${field4.path}${field4.type.includes("|") ? ` (${field4.type})` : ""}${field4.required ? " (required)" : ""}`;
+    if (described.has(field4.description)) return `${name}.`;
+    described.add(field4.description);
+    return `${name}: ${field4.description}`;
   }).join(" ");
 }
 function kindText(kind, keep, described) {
   const file = `journal-${kind}.schema.json`;
-  const fields = fieldsOf(files[file], file, "").filter((field3) => !commonFields.includes(field3.path) && keep(field3));
+  const fields = fieldsOf(files[file], file, "").filter((field4) => !commonFields.includes(field4.path) && keep(field4));
   return `Kind ${kind}: ${files[file].description} ${fieldText(fields, described)}`;
 }
 function commonText(kinds2, described) {
   const file = "journal-entry.schema.json";
-  const fields = fieldsOf(files[file], file, "").filter((field3) => field3.path !== "build").map((field3) => field3.path === "kind" ? { ...field3, type: kinds2.join("|") } : field3);
+  const fields = fieldsOf(files[file], file, "").filter((field4) => field4.path !== "build").map((field4) => field4.path === "kind" ? { ...field4, type: kinds2.join("|") } : field4);
   return `${files[file].description} Every entry has: ${fieldText(fields, described)}`;
 }
-function entryText(kinds2 = recordedKinds, keep = (field3) => !teamFields.includes(field3.path)) {
+function entryText(kinds2 = recordedKinds, keep = (field4) => !teamFields.includes(field4.path)) {
   const described = /* @__PURE__ */ new Set();
   return [commonText(kinds2, described), ...kinds2.map((kind) => kindText(kind, keep, described))].join("\n");
 }
@@ -13671,7 +13736,9 @@ function repairPrompt(refusals, answer) {
   return answer ? withoutName(text) : text;
 }
 function operationText(operations) {
-  return operations.includes(anyTestOperation) ? anyTestOperationText : `You can: ${operations.join(", ")}.`;
+  if (operations.includes(anyTestOperation)) return anyTestOperationText;
+  if (operations.length === 1 && operations[0] === readOnlyOperation) return readOnlyOperationText;
+  return `You can: ${operations.join(", ")}.`;
 }
 function entryPointLine(entry) {
   if (entry.kind === "command")
@@ -14997,13 +15064,12 @@ function endProcesses(all2) {
   }
   return pids.filter(running2);
 }
-function stopExploration(store, actor, input) {
+function recordStop(store, actor, input) {
   const id2 = input.explorationId;
   const reason = input.reason?.trim() ?? "";
   const explorer = input.explorer;
-  const was = { state: "", pids: [], supervisor: null };
-  const reply = write(store, { actor, command: "explore stop", subject: id2, input }, (operationId, at, who) => {
-    const row3 = explorationRow(store, id2);
+  return write(store, { actor, command: "explore stop", subject: id2, input }, (operationId, at, who) => {
+    const row2 = explorationRow(store, id2);
     const events = explorationEvents(store, id2);
     const state = explorationState(events);
     requireCondition(
@@ -15036,29 +15102,81 @@ function stopExploration(store, actor, input) {
         step: "stop",
         explorer: explorer ?? null,
         status: "completed",
-        detail: { actor: who, reason, was: state }
+        detail: { actor: who, reason, was: state, ...input.background ? { ending: true } : {} }
       },
       operationId,
       at
     );
-    was.state = state;
-    was.pids = childPids(events, explorer);
-    was.supervisor = events.findLast((item) => item.step === "supervisor")?.detail.pid ?? null;
     return {
       reply: completed(id2, {
         explorationId: id2,
-        planId: row3.plan_id,
+        planId: row2.plan_id,
         explorer: explorer ?? null,
         was: state,
         reason,
         actor: who
       }),
-      subjects: [`exploration:${id2}`, `plan:${row3.plan_id}`]
+      subjects: [`exploration:${id2}`, `plan:${row2.plan_id}`]
     };
   });
-  const targets = explorer === void 0 && was.supervisor !== null ? [was.supervisor] : [];
-  const left = [...endProcesses(targets), ...endProcesses(was.pids.filter(running2))];
-  if (explorer === void 0) keepBrowserFolder(store, id2);
+}
+function stoppedProcesses(events, explorer) {
+  const supervisor = explorer === void 0 ? events.findLast((item) => item.step === "supervisor")?.detail.pid : null;
+  return { supervisor: typeof supervisor === "number" ? [supervisor] : [], children: childPids(events, explorer) };
+}
+function stopPending(events, explorer = null) {
+  const stop = events.findLast((item) => item.step === "stop" && item.explorer === explorer);
+  if (!stop?.detail.ending) return false;
+  const end = events.findLast((item) => item.step === "stop-end" && item.explorer === explorer);
+  if (end) return false;
+  const { supervisor, children } = stoppedProcesses(events, explorer ?? void 0);
+  return [...supervisor, ...children].some(running2);
+}
+function endStopped(store, explorationId, explorer) {
+  const events = explorationEvents(store, explorationId);
+  const { supervisor, children } = stoppedProcesses(events, explorer);
+  const left = [...endProcesses(supervisor), ...endProcesses(children.filter(running2))];
+  if (explorer === void 0) keepBrowserFolder(store, explorationId);
+  return left;
+}
+function endInBackground(workspace, explorationId, explorer, env) {
+  const store = openStore(workspace);
+  try {
+    const left = endStopped(store, explorationId, explorer);
+    event(store, env.CHECKMATE_ACTOR ?? "checkmate", explorationId, {
+      step: "stop-end",
+      explorer: explorer ?? null,
+      status: left.length ? "operational_error" : "completed",
+      detail: { left }
+    });
+  } finally {
+    closeStore(store);
+  }
+}
+function startEnding(store, explorationId, actor, explorer, env) {
+  const folder = join7(store.workspace, ".checkmate", "tmp");
+  mkdirSync5(folder, { recursive: true });
+  const log = openSync(join7(folder, `explore-${explorationId}.log`), "a");
+  const child = spawn2(
+    process.execPath,
+    [
+      checkmateScript(),
+      "explore",
+      "end",
+      explorationId,
+      "--workspace",
+      store.workspace,
+      ...explorer ? ["--explorer", explorer] : []
+    ],
+    { cwd: store.workspace, env: { ...env, CHECKMATE_ACTOR: actor }, detached: true, stdio: ["ignore", log, log] }
+  );
+  child.unref();
+}
+function stopExploration(store, actor, input) {
+  const id2 = input.explorationId;
+  const explorer = input.explorer;
+  const reply = recordStop(store, actor, input);
+  const left = endStopped(store, id2, explorer);
   const kept = explorer === void 0 && existsSync3(join7(store.workspace, workFolder(id2))) ? workFolder(id2) : null;
   const row2 = explorationRow(store, id2);
   return {
@@ -15547,6 +15665,7 @@ function sessionExplorerLive(events, item, now) {
     pausedAt,
     elapsedMs: !last ? null : busy ? span(last.at, pausedAt ? Date.parse(pausedAt) : now) : outcome && outcomeAction ? span(outcomeAction.at, Date.parse(outcome.at)) : null,
     activity: typeof outcome?.detail.activity === "string" && outcomeAction ? `${String(outcomeAction.detail.step)}: ${outcome.detail.activity}` : null,
+    activityAt: typeof outcome?.detail.activity === "string" && outcomeAction ? outcome?.at ?? null : null,
     recorded: item.recorded,
     saved: item.saved,
     files: state === "given" || state === "running" ? [] : files2
@@ -15557,16 +15676,16 @@ function explorerLive(store, explorationId, events, item, running3, now) {
   const own = events.filter((event2) => event2.explorer === item.explorer);
   const launch = own.find((event2) => event2.step === "launch" || event2.step === "action");
   const end = own.findLast((event2) => event2.step === "end");
-  const stoppedBy = own.find((event2) => event2.step === "stop");
   const follow = events.findLastIndex((event2) => event2.step === "follow");
   const followed = events.slice(follow + 1);
+  const stoppedBy = own.find((event2) => event2.step === "stop") ?? (end?.status === "completed" || follow !== -1 ? void 0 : stopOf(events));
   const followTurn = followed.find((event2) => event2.explorer === item.explorer && event2.step === "follow-turn");
   const inFollow = follow !== -1 && item.session !== null;
   const turn = inFollow ? "follow-up" : end ? String(end.detail.turn ?? "test") : launch ? String(own.findLast((event2) => event2.step === "turn")?.detail.turn ?? "study") : null;
   const startedAt = inFollow ? events[follow].at : launch?.at ?? null;
   const endedAt = inFollow ? followTurn?.at ?? null : stoppedBy?.at ?? end?.at ?? null;
   const stopped = followed.some((event2) => event2.step === "followed") ? "skipped" : "stopped";
-  const state = inFollow ? followTurn?.status ?? (running3 ? "running" : stopped) : stoppedBy ? "stopped" : end?.status ?? (launch ? running3 ? "running" : "stopped" : null);
+  const state = inFollow ? followTurn?.status ?? (running3 ? "running" : stopped) : stoppedBy ? stopPending(events, stoppedBy.explorer) ? "stopping" : "stopped" : end?.status ?? (launch ? running3 ? "running" : "stopped" : null);
   const pause = events.findLast((event2) => event2.step === "pause" || event2.step === "resume");
   const pausedAt = running3 && !endedAt && pause?.step === "pause" ? pause.at : null;
   const until = endedAt ? Date.parse(endedAt) : pausedAt ? Date.parse(pausedAt) : running3 ? now : null;
@@ -15585,6 +15704,7 @@ function explorerLive(store, explorationId, events, item, running3, now) {
     pausedAt,
     elapsedMs: startedAt && until !== null ? Math.max(0, until - Date.parse(startedAt)) : null,
     activity: activity?.detail.activity ?? null,
+    activityAt: activity?.at ?? null,
     recorded: item.recorded,
     saved: item.saved,
     files: running3 ? [] : files2
@@ -15654,6 +15774,8 @@ function explorationLive(store, explorationId, now = Date.now()) {
     state: status.state,
     running: running3,
     phase: phaseOf[status.state] ?? null,
+    stopping: stopPending(events),
+    stuck: events.filter((event2) => event2.step === "stop-end").flatMap((event2) => event2.detail.left).filter(running2),
     reason: ended ? status.reason : null,
     follow: status.follow,
     followReason: status.followReason,
@@ -16390,7 +16512,7 @@ function filterValue(filters, names) {
 function pageOf(rows, query, columns2, text) {
   const matched = query.q ? rows.filter(
     (row2) => text(row2).some(
-      (field3) => String(field3 ?? "").toLowerCase().includes(query.q)
+      (field4) => String(field4 ?? "").toLowerCase().includes(query.q)
     )
   ) : rows;
   const key = columns2[query.sort];
@@ -17548,6 +17670,10 @@ function clock(iso) {
 function time(iso, text = age(iso)) {
   return html2`<time datetime="${iso}" title="${clock(iso)}">${text}</time>`;
 }
+function ago(iso, now = Date.now()) {
+  const text = age(iso, now);
+  return time(iso, text === "now" ? "just now" : `${text} ago`);
+}
 function hasMetadata(values) {
   return Object.keys(values ?? {}).length > 0;
 }
@@ -17755,7 +17881,7 @@ function statusBar(context, page) {
 					href="/activity"
 					data-region="activity-link"
 					${page.section === "activity" ? html2`aria-current="page"` : ""}
-					>Activity${context.running ? html2`<span class="sb-long"> · ${context.running} running</span>` : ""}</a
+					>${html2`<span>Activity${context.running ? html2`<span class="sb-long"> · ${context.running} running</span>` : ""}</span>`}</a
 				>
 				${statusLink(page, "runs", "/runs", "Runs")} ${statusLink(page, "log", "/log", "Log")}
 				${statusLink(page, "settings", "/settings", "Settings")}</span
@@ -17951,33 +18077,33 @@ ${state.values.rationale ?? ""}</textarea>
 	</div>`;
 }
 function confirmStep(context, verdict, state) {
-  const choice = state.values.verdict === verdict.reject.value ? verdict.reject : verdict.approve;
+  const choice2 = state.values.verdict === verdict.reject.value ? verdict.reject : verdict.approve;
   return html2`<form method="post" action="${verdict.action}" class="decision-form">
 		${hidden(context, verdict.sha256, verdict.token)} ${verdict.extra ?? ""}
-		<input type="hidden" name="verdict" value="${choice.value}" />
+		<input type="hidden" name="verdict" value="${choice2.value}" />
 		<input type="hidden" name="rationale" value="${state.values.rationale ?? ""}" />
 		${context.actor ? "" : html2`<input type="hidden" name="actor" value="${state.values.actor ?? ""}" />`}
 		<div class="confirm-box">
 			<p class="lab">Confirm</p>
-			<p>${choice.summary}</p>
+			<p>${choice2.summary}</p>
 			<blockquote>${state.values.rationale ?? ""}</blockquote>
 		</div>
 		<div class="btns">
-			<button class="btn primary" name="confirmed" value="1">${choice.confirm}</button>
+			<button class="btn primary" name="confirmed" value="1">${choice2.confirm}</button>
 			<button class="btn" name="back" value="1" formnovalidate>Back</button>
 		</div>
 	</form>`;
 }
 function chooseStep(context, verdict, state) {
-  const button = (choice, primary) => html2`<button
+  const button = (choice2, primary) => html2`<button
 			class="btn${primary ? " primary" : ""}"
 			name="verdict"
-			value="${choice.value}"
+			value="${choice2.value}"
 			data-needs-rationale
-			data-confirm-label="${choice.confirm}"
-			data-summary="${choice.summary}"
+			data-confirm-label="${choice2.confirm}"
+			data-summary="${choice2.summary}"
 		>
-			${choice.label}
+			${choice2.label}
 		</button>`;
   return html2`<form method="post" action="${verdict.action}" class="decision-form" data-verdict-form>
 		${hidden(context, verdict.sha256, verdict.token)} ${verdict.extra ?? ""} ${actorField(context, state)}
@@ -18353,7 +18479,7 @@ function listState(params, spec2) {
   for (const filter of spec2.filters) {
     const value2 = params.get(filter.name)?.trim() ?? "";
     if (!value2) continue;
-    if (filter.strict && !filter.choices.some(([choice]) => choice === value2)) continue;
+    if (filter.strict && !filter.choices.some(([choice2]) => choice2 === value2)) continue;
     filters[filter.name] = value2;
   }
   return {
@@ -18720,6 +18846,20 @@ function testDialog(context, planId, values, fallbackBuild = "") {
 						>`
     )}
 			</fieldset>
+			<label for="act-test-rules">Testers may use without asking</label>
+			<input
+				id="act-test-rules"
+				name="rules"
+				value="${context.testerRules}"
+				maxlength="400"
+				autocomplete="off"
+				aria-describedby="act-test-rules-help"
+				data-stop
+			/>
+			<p class="help" id="act-test-rules-help">
+				One tool rule for each word, as in <code>--allow</code>, for example <code>Read Bash</code>. A tester
+				cannot answer a permission prompt.
+			</p>
 			<details class="sp-more" data-more>
 				<summary data-stop>More</summary>
 				${field("act-test-since", "Since (git ref)", "since", shown2.since)}
@@ -18811,19 +18951,19 @@ function testButton(planId, label = "Test build\u2026", values = {}) {
 function stopButton(explorationId, label = "Stop the test\u2026") {
   return actionButton(`stop-${explorationId}`, label);
 }
-function stopOption(explorationId) {
+function stopOption(explorationId, n = 1) {
   return html2`<button
 		type="button"
 		class="sp-btn"
 		data-option
 		data-act="stop-${explorationId}"
-		aria-label="1: Stop the test"
+		aria-label="${n}: Stop the test"
 		title="Stop the test"
 	>
-		<kbd aria-hidden="true">1</kbd><span>Stop…</span>
+		<kbd aria-hidden="true">${n}</kbd><span>Stop…</span>
 	</button>`;
 }
-function testAgainOption(run2) {
+function testAgainOption(run2, n = 1) {
   const values = JSON.stringify({
     build: run2.build,
     level: run2.level ?? "normal",
@@ -18839,10 +18979,10 @@ function testAgainOption(run2) {
 		data-action="/plans/${run2.planId}/test"
 		data-title="Test a build of ${run2.planId}"
 		data-fill="${values}"
-		aria-label="1: Test again"
+		aria-label="${n}: Test again"
 		title="Test again"
 	>
-		<kbd aria-hidden="true">1</kbd><span>Test again</span>
+		<kbd aria-hidden="true">${n}</kbd><span>Test again</span>
 	</button>`;
 }
 function testerStopOption(explorationId, explorer, n) {
@@ -19662,12 +19802,12 @@ function optionForm(context, item, n, label, fields, name = label) {
 		${hiddenFields2(context, item, fields)}${optionButton(n, label, name)}
 	</form>`;
 }
-function reveal(n, label, field3, item, name = label) {
+function reveal(n, label, field4, item, name = label) {
   return html2`<a
 		class="sp-btn"
-		href="${item.href}#${field3}"
+		href="${item.href}#${field4}"
 		data-option
-		data-reveal="${field3}"
+		data-reveal="${field4}"
 		aria-label="${n}: ${name}"
 		title="${name}"
 		><kbd aria-hidden="true">${n}</kbd><span>${label}</span></a
@@ -19714,11 +19854,11 @@ function optionsOf(context, review, item) {
   return [];
 }
 function extraOf(context, review, item) {
-  const form = (field3, label, name, fields, url = action(item)) => html2`<div class="sp-c-extra" data-extra="${field3}" hidden>
+  const form = (field4, label, name, fields, url = action(item)) => html2`<div class="sp-c-extra" data-extra="${field4}" hidden>
 			<form method="post" action="${url}" class="sp-form" data-field-form>
 				${hiddenFields2(context, item, fields)}
-				<label for="${field3}-${item.key}">${label}</label>
-				<textarea id="${field3}-${item.key}" name="${name}" rows="2" required></textarea>
+				<label for="${field4}-${item.key}">${label}</label>
+				<textarea id="${field4}-${item.key}" name="${name}" rows="2" required></textarea>
 				<div class="btns">
 					<button class="sp-btn pri"><span>Send</span></button>
 					<span class="small">Enter sends. Shift+Enter starts a new line. Esc keeps the draft.</span>
@@ -20380,6 +20520,25 @@ function failedLine(run2, live) {
 		${run2.failure.detail ? html2`<span class="help">${run2.failure.detail}</span>` : ""} ${dataLine("", live.data)}`;
 }
 function stateLine(store, live, run2) {
+  if (live.stuck.length)
+    return banner(
+      "fail",
+      html2`<span data-key="stop-stuck"
+				><strong
+					>Stopped, but ${live.stuck.length === 1 ? "process" : "processes"} ${live.stuck.join(", ")}
+					${live.stuck.length === 1 ? "is" : "are"} still alive.</strong
+				>
+				End ${live.stuck.length === 1 ? "it" : "them"} by hand.</span
+			>`
+    );
+  if (live.stopping)
+    return banner(
+      "info",
+      html2`<span data-key="stopping"
+				><strong>Stopping ${live.explorationId}…</strong> The testers end now. This page shows the result when
+				they have ended.</span
+			>`
+    );
   if (live.running && live.paused)
     return banner(
       "warn",
@@ -20390,7 +20549,8 @@ function stateLine(store, live, run2) {
   if (live.running)
     return banner(
       "info",
-      html2`Exploration ${live.explorationId} is running. Phase: ${live.phase}. This page updates by itself.`
+      html2`Exploration ${live.explorationId} is running. Phase: ${run2.phase ?? live.phase}. This page updates by
+			itself.`
     );
   if (live.state === "failed") return banner("fail", html2`<span data-key="run-ended">${failedLine(run2, live)}</span>`);
   if (live.state === "stopped")
@@ -20436,18 +20596,36 @@ function testerState(live, item) {
     given: "blue",
     running: "blue",
     ended: "green",
+    completed: "green",
     failed: "red",
+    operational_error: "red",
+    interrupted: "amber",
+    stopping: "amber",
     stopped: "amber"
   };
   const label = {
     given: "Given to the session",
     running: "Running",
     ended: "Finished",
-    failed: "Failed"
+    completed: "Finished",
+    failed: "Failed",
+    operational_error: "Failed",
+    interrupted: "Interrupted",
+    stopping: "Stopping\u2026",
+    stopped: "Stopped"
   };
   return html2`<span class="sp-pill ${look[item.state] ?? ""}"
 		>${item.state === "running" ? html2`<span class="dot" aria-hidden="true"></span>` : ""}${label[item.state] ?? item.state}</span
 	>`;
+}
+function testerLine(item) {
+  const busy = item.state === "running" || item.state === "given";
+  if (item.activity && item.activityAt)
+    return html2`${item.activity} · <span class="age">${ago(item.activityAt)}</span>`;
+  if (item.activity) return item.activity;
+  if (!busy) return "No activity line in the record.";
+  if (item.turn === "study") return "In its study turn. The first activity line comes when the turn ends.";
+  return `In its ${item.turn ?? "test"} turn. No activity line yet.`;
 }
 function spRow(key, href, label, tag, title, meta2, n, metaText2 = "", opts = "") {
   return html2`<div
@@ -20480,7 +20658,7 @@ function explorationList(live, others) {
       explorationHref(live.explorationId, `explorer:${item.explorer}`),
       item.explorer,
       testerState(live, item),
-      item.activity ?? (item.state === "running" || item.state === "given" ? "No activity yet." : "No activity line in the record."),
+      testerLine(item),
       html2`${item.turn ?? ""}${item.turn && item.elapsedMs !== null ? " \xB7 " : ""}${inState(item)}${raw ? ` \xB7 ${raw} not merged` : ""}`,
       `tester-${index2}`,
       [
@@ -20609,14 +20787,14 @@ function savedFiles(store, live, item) {
     })
   );
 }
-function summaryDetail(store, live, crumbs) {
+function summaryDetail(store, live, crumbs, options3) {
   const merged = live.state === "completed" || live.claims.length + live.questions.length > 0;
   const files2 = live.explorers.flatMap(
     (item) => fileOpeners(live, item).map((file) => html2`<li>${item.explorer}: ${viewLink(file.opener, file.label)}</li>`)
   );
   return html2`${crumbs}
 		<h2 class="q-h">Overview</h2>
-		${rawSection(store, live, live.unmerged)}
+		${options3} ${rawSection(store, live, live.unmerged)}
 		<section aria-labelledby="claims-title">
 			<h3 class="lab" id="claims-title">Claims <span class="n">${live.claims.length}</span></h3>
 			${merged ? claimLinks(live.planId, live.claims) : html2`<p class="none">The claims show when the exploration is completed.</p>`}
@@ -20696,6 +20874,12 @@ function phaseDetail(live, row2, crumbs) {
 		<p>${row2.reason ?? phaseNote(row2.state)}</p>
 		${failed ? html2`<p class="help">${dataLine(null, live.data)}</p>` : ""}`;
 }
+function timeLine(live, run2) {
+  const started = html2`started ${ago(run2.startedAt)}`;
+  if (live.running || !run2.endedAt) return started;
+  const took = duration(Date.parse(run2.endedAt) - Date.parse(run2.startedAt));
+  return html2`${started}, ended ${ago(run2.endedAt)}, took ${took}`;
+}
 function phaseStrip(run2) {
   return html2`<span class="sp-strip" role="list" aria-label="Phase of the test">
 		${phases.map(
@@ -20705,10 +20889,34 @@ function phaseStrip(run2) {
   )}
 	</span>`;
 }
-function runActions(context, live, run2, others, workspaceBuild) {
+function runChoices(live, others) {
   const busy = others.some((item) => item.running) || live.running;
-  const stoppable = live.running && live.path !== "session";
-  const again = !busy && ["failed", "stopped", "interrupted"].includes(live.state);
+  return {
+    stoppable: live.running && live.path !== "session",
+    again: !busy && !live.stopping && ["failed", "stopped", "interrupted"].includes(live.state)
+  };
+}
+function runOptions(live, run2, others) {
+  const { stoppable, again } = runChoices(live, others);
+  const items = [
+    ...stoppable ? [{ option: stopOption(live.explorationId, 1), help: "Ends all testers of this test." }] : [],
+    ...again ? [
+      {
+        option: testAgainOption({ ...run2, planId: live.planId }, stoppable ? 2 : 1),
+        help: "Opens the start dialog with the same build, level, and range."
+      }
+    ] : []
+  ];
+  if (!items.length) return "";
+  return html2`<section aria-labelledby="run-options-title" data-key="options:run">
+		<h3 class="lab" id="run-options-title">Options</h3>
+		<ul class="sp-optlist">
+			${items.map((item) => html2`<li>${item.option}<span class="help">${item.help}</span></li>`)}
+		</ul>
+	</section>`;
+}
+function runActions(context, live, run2, others, workspaceBuild) {
+  const { stoppable, again } = runChoices(live, others);
   const testers = live.explorers.filter((item) => stoppableTester(live, item));
   const subject = { explorationId: live.explorationId, planId: live.planId, build: live.build };
   const values = {
@@ -20738,8 +20946,8 @@ function explorationPage(store, context, explorationId, params = new URLSearchPa
   const label = explorer ? explorer.explorer : phase ? phase.phase : null;
   const review = reviewOf(store, live.planId);
   const title = live.running ? "Testers now" : "Testers";
-  const detail = explorer ? explorerDetail(store, live, explorer, html2``) : phase ? phaseDetail(live, phase, html2``) : summaryDetail(store, live, html2``);
   const others = review.explorations.filter((item) => item.explorationId !== explorationId).reverse();
+  const detail = explorer ? explorerDetail(store, live, explorer, html2``) : phase ? phaseDetail(live, phase, html2``) : summaryDetail(store, live, html2``, runOptions(live, run2, others));
   return {
     viewer: true,
     title: label ? `${explorationId} \xB7 ${label}` : `${title} \xB7 ${explorationId}`,
@@ -20754,17 +20962,19 @@ function explorationPage(store, context, explorationId, params = new URLSearchPa
     back: label ? `/explorations/${explorationId}` : `/plans/${live.planId}?nav=testers`,
     nav: navigator(review, "testers", explorationId),
     body: html2`<div class="sp-ch">
-				${crumbBar([
+				<div data-region="exploration-head">
+					${crumbBar([
       [live.planId, `/plans/${live.planId}`],
       [review.target, null]
     ])}
-				<h1>${title}</h1>
-				<p class="sp-sub">
-					Session ${explorationId} on build ${live.build} · ${live.instanceId} · ${live.level ?? "no level"} ·
-					started ${time(live.startedAt)}. ${live.goal}
-				</p>
+					<h1>${title}</h1>
+					<p class="sp-sub">
+						Session ${explorationId} on build ${live.build} · ${live.instanceId} ·
+						${live.level ?? "no level"} · ${timeLine(live, run2)}. ${live.goal}
+					</p>
+				</div>
 				<div class="sp-pills" data-region="exploration-state">
-					${pill(live.running && live.paused ? "paused" : live.state)}
+					${live.stopping ? pill("stopping", "Stopping\u2026") : pill(live.running && live.paused ? "paused" : live.state)}
 					${live.running && run2.phase ? html2`${phaseStrip(run2)}
 									<span class="sp-pill" title="Time since the start"
 										>elapsed
@@ -20916,8 +21126,34 @@ function claimPage(store, context, explorationId, claimId, state = null) {
   };
 }
 
+// plugin/src/settings.ts
+var defaultTesterRules = "Read Bash";
+function ruleTokens(text) {
+  return text.match(/(?:[^\s(]|\([^)]*(?:\)|$))+/g) ?? [];
+}
+function testerRulesText(store) {
+  const row2 = one(
+    store,
+    "SELECT value FROM workspace_settings WHERE name = 'testerRules' ORDER BY rowid DESC LIMIT 1"
+  );
+  return row2?.value ?? defaultTesterRules;
+}
+function saveTesterRules(store, actor, text) {
+  const rules = ruleTokens(text);
+  return write(store, { actor, command: "setting set", subject: "testerRules", input: { rules } }, (operationId) => {
+    requireWellFormed(
+      rules.length,
+      "Give at least one tool rule, for example Read Bash.",
+      "The engine needs at least one rule today. A tester cannot answer a permission prompt."
+    );
+    store.db.prepare("INSERT INTO workspace_settings (name, value, operation_id) VALUES (?, ?, ?)").run("testerRules", rules.join(" "), operationId);
+    return { reply: completed("testerRules", { rules }), subjects: ["settings"] };
+  });
+}
+
 // plugin/src/ui/server.ts
 import { resolve as resolve6 } from "node:path";
+import { mkdirSync as mkdirSync6, rmSync as rmSync5, writeFileSync as writeFileSync3 } from "node:fs";
 
 // plugin/src/actor.ts
 import { execFileSync } from "node:child_process";
@@ -21086,6 +21322,28 @@ function tile(review, loop2, index2) {
 		</div>
 	</div>`;
 }
+function newChangeRow(index2) {
+  return html2`<div
+		class="sp-ct sp-ct-new"
+		role="option"
+		aria-selected="false"
+		tabindex="-1"
+		id="plan-${index2}"
+		data-row
+		data-key="new:change"
+		data-href="/new"
+		data-label="New change"
+		aria-labelledby="plan-${index2}-title"
+	>
+		<div class="sp-ct-main">
+			<h2 class="sp-ct-title ell" id="plan-${index2}-title">New change</h2>
+			<p class="sp-ct-verdict">Give a ticket. Checkmate makes a plan and starts the first test.</p>
+		</div>
+		<div class="sp-ct-opts">
+			<a class="sp-btn" href="/new" data-option><kbd>1</kbd><span>New change</span></a>
+		</div>
+	</div>`;
+}
 function homePage(store) {
   const latest = (review, since) => [since, ...review.explorations.map((item) => item.startedAt)].sort().at(-1);
   const listed = planList(store).map((plan) => {
@@ -21099,7 +21357,7 @@ function homePage(store) {
   const reviews = listed.map((each) => each.review);
   const blocking = reviews.reduce((sum2, review) => sum2 + verdictLine(review).blocking, 0);
   const body = plans.length ? html2`<div class="sp-home" role="listbox" aria-label="Plans" data-list>
-				${reviews.map((review, index2) => tile(review, plans[index2].loop, index2))}
+				${reviews.map((review, index2) => tile(review, plans[index2].loop, index2))}${newChangeRow(reviews.length)}
 			</div>` : emptyNotice(
     "No plan yet.",
     html2`Ask Claude Code to test a change, for example <code>/checkmate:test the change in ticket.md</code>.
@@ -21117,6 +21375,176 @@ function homePage(store) {
       plans.length ? `${plural(plans.length, "plan")}. ${plural(blocking, "question")} ${blocking === 1 ? "blocks" : "block"} testing. Each tile shows the rules of the plan against its last builds.` : null
     )}
 			${body}
+		</div>`
+  };
+}
+
+// plugin/src/ui/start.ts
+var levelNotes2 = {
+  smoke: "1 tester, no verifier",
+  normal: "2 testers and a verifier",
+  deep: "3 testers and a verifier"
+};
+function field2(id2, name, label, help2, extra = "", value2 = "") {
+  return html2`<div class="field-group">
+		<label class="lab" for="${id2}">${label}</label>
+		<input
+			id="${id2}"
+			name="${name}"
+			value="${value2}"
+			maxlength="400"
+			autocomplete="off"
+			aria-describedby="${id2}-help"
+			${extra}
+		/>
+		<p class="help" id="${id2}-help">${help2}</p>
+	</div>`;
+}
+function choice(name, label, options3, checked) {
+  return html2`<fieldset class="sp-seg" role="radiogroup" data-choice="${name}">
+		<legend class="lab">${label}</legend>
+		${options3.map(
+    ([value2, text, note], index2) => html2`<label class="sp-seg-o" title="${note}"
+					><input
+						type="radio"
+						name="${name}"
+						value="${value2}"
+						${value2 === checked ? html2`checked` : ""}
+					/><kbd>${index2 + 1}</kbd><span>${text}</span></label
+				>`
+  )}
+	</fieldset>`;
+}
+function shell2(context, action2, body, submit) {
+  return html2`<form method="post" action="${action2}" class="panel narrow start-form" data-act-form data-page-form>
+		<input type="hidden" name="csrf" value="${context.csrf}" />
+		<div data-act-error aria-live="polite"></div>
+		${body}
+		<div class="btns">
+			<button class="sp-btn pri"><kbd>Enter</kbd><span>${submit}</span></button>
+			<a class="sp-btn" href="/" data-page-cancel><kbd>Esc</kbd><span>Cancel</span></a>
+		</div>
+	</form>`;
+}
+function firstRunPage(context, onHome, back = "/") {
+  const body = html2`${field2(
+    "setup-url",
+    "url",
+    "Address of the application",
+    "The web address that the testers open, for example http://localhost:3000.",
+    html2`required autofocus inputmode="url" data-setup-url`
+  )}
+		<div class="setup-assumed" data-assumed hidden>
+			<h2 class="lab">What Checkmate will assume</h2>
+			<p class="help">Checkmate sets up the target from this address. Change the name or the environment here.</p>
+			${field2("setup-target", "target", "Target name", "Letters, digits, _ or -.", html2`data-setup-field`)}
+			${field2("setup-environment", "environment", "Environment (optional)", "For example staging. A name that starts with prod is a production instance.", html2`data-setup-field`)}
+			<ul class="plain" data-assumed-list></ul>
+		</div>
+		${choice(
+    "operations",
+    "Testers may change data",
+    [
+      ["yes", "Yes", "Testers may do any action that the application offers to a test user."],
+      ["no", "No", "Testers only read."]
+    ],
+    ""
+  )}
+		<p class="help" data-operations-help>Type the address first.</p>
+		<input type="hidden" name="confirmed" value="" />`;
+  return {
+    title: "New target",
+    section: "home",
+    subjects: ["inbox", "settings"],
+    crumbs: onHome ? [["Plans", null]] : [
+      ["Plans", "/"],
+      ["New target", null]
+    ],
+    back: onHome ? null : back,
+    body: html2`<div>
+			${heading(onHome ? "Set up the application" : "New target", onHome ? "Checkmate has no target yet. Give the address of the application to test." : "Give the address of the application to test.")}
+			${shell2(context, "/setup", body, "Set up the target")}
+		</div>`
+  };
+}
+function newChangePage(context, defaults, onHome) {
+  const chosen = defaults.targets.find((target) => target.targetId === defaults.target) ?? defaults.targets[0];
+  const targets = defaults.targets.length > 1 ? html2`<div class="field-group">
+					<label class="lab" for="change-target">Target</label>
+					<select id="change-target" name="target" aria-describedby="change-target-help" data-new-target>
+						${defaults.targets.map(
+    (target) => html2`<option
+									value="${target.targetId}"
+									${target.targetId === chosen.targetId ? html2`selected` : ""}
+									${target.address ? html2`data-address="${target.address}"` : ""}
+									${target.local ? "" : html2`data-nonlocal`}
+								>
+									${target.targetId}
+								</option>`
+  )}
+					</select>
+					<p class="help" id="change-target-help">
+						The application to test. <a href="/setup" data-new-target-link>New target</a>
+					</p>
+				</div>` : html2`<input
+						type="hidden"
+						name="target"
+						value="${chosen.targetId}"
+						${chosen.local ? "" : html2`data-nonlocal data-address="${chosen.address ?? ""}"`}
+					/>
+					<p class="help" data-new-target-note>
+						Target <strong>${chosen.targetId}</strong>. <a href="/setup" data-new-target-link>New target</a>
+					</p>`;
+  const body = html2`${targets}
+		${field2(
+    "change-file",
+    "file",
+    "Ticket file",
+    "The path of a file inside the workspace, for example docs/ticket.md. Or paste the ticket below.",
+    html2`data-ticket-file autofocus`,
+    ""
+  )}
+		<div class="field-group">
+			<label class="lab" for="change-text">Ticket text</label>
+			<textarea
+				id="change-text"
+				name="text"
+				rows="6"
+				aria-describedby="change-text-help"
+				data-ticket-text
+			></textarea>
+			<p class="help" id="change-text-help">
+				Paste the ticket when you have no file. Checkmate keeps it in <code>.checkmate/sources/</code>.
+			</p>
+		</div>
+		${field2("change-plan", "plan", "Name of the plan", "Letters, digits, _ or -. Checkmate gives a name from the ticket.", html2`data-plan-name`)}
+		${field2("change-build", "build", "Build", "The name of the build under test. Checkmate gives the short git commit, or the date and time.", html2`required`, defaults.build)}
+		${choice(
+    "level",
+    "Level",
+    levelNames.map((level) => [level, level, levelNotes2[level]]),
+    "normal"
+  )}
+		${field2("change-rules", "rules", "Testers may use without asking", "One tool rule for each word, as in --allow, for example Read Bash. A tester cannot answer a permission prompt.", "", context.testerRules)}
+		<details class="sp-more" data-more>
+			<summary>More</summary>
+			${field2("change-since", "since", "Since (git ref)", "Without it, Checkmate uses the default branch of origin.")}
+			${field2("change-until", "until", "Until (git ref)", "Needs Since.")}
+			${field2("change-repo", "repo", "Repository folder", "A folder inside the workspace. Without it, the workspace.")}
+		</details>
+		<input type="hidden" name="confirmed" value="" />`;
+  return {
+    title: "New change",
+    section: "home",
+    subjects: ["inbox", "settings"],
+    crumbs: onHome ? [["Plans", null]] : [
+      ["Plans", "/"],
+      ["New change", null]
+    ],
+    back: onHome ? null : "/",
+    body: html2`<div>
+			${heading("New change", "Give the ticket of a change. Checkmate makes a plan from it and starts the first test.")}
+			${shell2(context, "/new", body, "Start the test")}
 		</div>`
   };
 }
@@ -21936,7 +22364,7 @@ function removalField(state) {
 		<textarea id="removal" name="rationale" rows="2" aria-describedby="removal-help">${state.rationale}</textarea>
 	</div>`;
 }
-function field2(label, name, value2, help2 = "") {
+function field3(label, name, value2, help2 = "") {
   return html2`<div class="field-group">
 		<label class="lab" for="${name}">${label}</label>
 		<input id="${name}" name="${name}" value="${value2}" />
@@ -21954,18 +22382,18 @@ function requirementFields(requirement, i) {
   return html2`<fieldset class="edit-card" id="edit-${requirement.id}">
 		<legend class="mono">${requirement.id}</legend>
 		${area("Text", `r${i}.text`, requirement.text, 2)}
-		${field2("Source", `r${i}.source`, requirement.source, "Where the requirement comes from.")}
+		${field3("Source", `r${i}.source`, requirement.source, "Where the requirement comes from.")}
 	</fieldset>`;
 }
 function testFields(test, i) {
   return html2`<fieldset class="edit-card" id="edit-${test.id}">
 		<legend><span class="mono">${test.id}</span> ${test.title}</legend>
-		${field2("Title", `t${i}.title`, test.title)}
+		${field3("Title", `t${i}.title`, test.title)}
 		<div class="edit-row">
-			${field2("Capability", `t${i}.capability`, test.capability)}
-			${field2("Operations", `t${i}.operations`, test.operations.join(", "), "Separate with commas.")}
+			${field3("Capability", `t${i}.capability`, test.capability)}
+			${field3("Operations", `t${i}.operations`, test.operations.join(", "), "Separate with commas.")}
 		</div>
-		${field2(
+		${field3(
     "Depends on",
     `t${i}.dependsOn`,
     test.dependsOn.join(", "),
@@ -23091,7 +23519,7 @@ function claudeProgram(env) {
     return html2`<span class="form-error" role="status">${error.message} ${error.hint ?? ""}</span>`;
   }
 }
-function claudePage(env) {
+function claudePage(context, env, form = null) {
   const body = html2`${heading("Claude Code", "The program that runs the testers. Checkmate makes no call to it on this page.")}
 		<section class="panel" aria-labelledby="claude-program">
 			<h2 class="lab" id="claude-program">Program</h2>
@@ -23100,6 +23528,32 @@ function claudePage(env) {
 				Claude Code keeps the login, the permissions, and the tools. Checkmate starts <code>claude</code> and
 				does not read or copy a credential.
 			</p>
+		</section>
+		<section class="panel" aria-labelledby="claude-rules">
+			<h2 class="lab" id="claude-rules">Tool rules of testers</h2>
+			<p class="help">
+				A rule lets a tester use a tool without asking you, for example <code>Read</code> or <code>Bash</code>.
+				The engine needs at least one rule today. A test that you start in the UI shows these rules, and you can
+				change them there.
+			</p>
+			<form method="post" action="/settings/claude" class="decision-form">
+				<input type="hidden" name="csrf" value="${context.csrf}" />
+				<div class="field-group">
+					<label class="lab" for="tester-rules">Tool rules of testers</label>
+					<input
+						id="tester-rules"
+						name="rules"
+						maxlength="400"
+						autocomplete="off"
+						value="${form?.value ?? context.testerRules}"
+						aria-describedby="tester-rules-help"
+						${form ? html2`autofocus` : ""}
+					/>
+					<p class="help" id="tester-rules-help">One rule for each word, as in <code>--allow</code>.</p>
+					${form ? html2`<p class="form-error" role="alert" data-field="rules">${form.error}</p>` : ""}
+				</div>
+				<div class="btns"><button class="btn primary">Save the rules</button></div>
+			</form>
 		</section>
 		<section class="panel" aria-labelledby="claude-model">
 			<h2 class="lab" id="claude-model">Model of the testers</h2>
@@ -23137,7 +23591,6 @@ function claudePage(env) {
 }
 
 // plugin/src/ui/server.ts
-var testerRules = ["Read", "Bash"];
 var id = "[A-Za-z0-9][A-Za-z0-9_-]{0,95}";
 var routes = {
   plan: new RegExp(`^/plans/(${id})@([1-9][0-9]{0,8})$`),
@@ -23247,6 +23700,13 @@ function same2(a, b) {
   const y = Buffer.from(b);
   return x.length === y.length && timingSafeEqual(x, y);
 }
+function hostOf(address) {
+  try {
+    return new URL(address).host || address;
+  } catch {
+    return address;
+  }
+}
 function safeBack(value2) {
   if (!value2) return "/";
   try {
@@ -23335,7 +23795,8 @@ data: ${matched.join(",") || "*"}
       queueCount: needsYou(store).urgent,
       running: runningCount(store),
       cursor: latestRowid(store),
-      workspace: options3.workspace
+      workspace: options3.workspace,
+      testerRules: testerRulesText(store)
     };
   }
   function render(request, page, extraCookies = []) {
@@ -23452,14 +23913,17 @@ data: ${matched.join(",") || "*"}
     if (evidence2) return serveEvidence(request, evidence2[1]);
     const shown2 = context(request);
     if (pathname === "/" && searchParams.has("item")) return redirect(request.res, oldItem(searchParams));
-    if (pathname === "/") return render(request, homePage(store));
+    if (pathname === "/") return render(request, startOfHome(shown2));
+    if (pathname === "/setup") return render(request, firstRunPage(shown2, false, cameFrom(request)));
+    if (pathname === "/new")
+      return render(request, newChangePage(shown2, changeDefaults(searchParams.get("target")), false));
     if (pathname === "/inbox" || pathname === "/plans") return redirect(request.res, "/");
     if (pathname === "/claims") return redirect(request.res, oldItem(searchParams, "all"));
     if (pathname === "/runs") return render(request, runsPage(store, searchParams));
     if (pathname === "/log") return render(request, logPage(store, searchParams));
     if (pathname === "/activity")
       return render(request, activityPage(store, shown2, searchParams, { build: defaultBuild(store.workspace) }));
-    if (pathname === "/settings/claude") return render(request, claudePage(env));
+    if (pathname === "/settings/claude") return render(request, claudePage(shown2, env));
     if (pathname === "/actor") return render(request, actorPage(shown2, safeBack(searchParams.get("back"))));
     if (pathname === "/settings") return redirect(request.res, "/settings/targets");
     if (pathname === "/settings/targets") return render(request, targetsPage(store));
@@ -23542,6 +24006,28 @@ data: ${matched.join(",") || "*"}
     const run2 = routes.run.exec(pathname);
     if (run2) return render(request, runPage(store, shown2, run2[1], searchParams));
     return errorPage(request, 404, "Page not found", `Checkmate has no page at ${pathname}. Start from Needs you.`);
+  }
+  function changeDefaults(target) {
+    const targets = targetList(store).map((item) => {
+      const address2 = instanceList(store, item.targetId).find((instance) => !instance.retired)?.entries.web ?? null;
+      return {
+        targetId: item.targetId,
+        address: address2 ? hostOf(address2) : null,
+        local: address2 ? !URL.canParse(address2) || isLocalAddress(address2) : true
+      };
+    });
+    return { build: defaultBuild(store.workspace), target: target ?? "", targets };
+  }
+  function startOfHome(shown2) {
+    if (!targetList(store).length) return firstRunPage(shown2, true);
+    if (!planList(store).length) return newChangePage(shown2, changeDefaults(null), true);
+    return homePage(store);
+  }
+  function cameFrom(request) {
+    const referer = request.req.headers.referer;
+    if (!referer || !URL.canParse(referer)) return "/";
+    const from = new URL(referer);
+    return from.host === request.req.headers.host && from.pathname === "/new" ? `/new${from.search}` : "/";
   }
   function actorPage(shown2, back) {
     return {
@@ -23820,7 +24306,9 @@ data: ${matched.join(",") || "*"}
       return [head, ...items].filter((entry) => matches(`${entry.id} ${entry.title} ${entry.kind}`));
     });
     const pages = [
-      { kind: "page", id: "Activity", title: "Tests and follow-ups of all plans", href: "/activity" }
+      { kind: "page", id: "Activity", title: "Tests and follow-ups of all plans", href: "/activity" },
+      { kind: "page", id: "New change", title: "Give a ticket and start the first test", href: "/new" },
+      { kind: "page", id: "New target", title: "Set up the application to test", href: "/setup" }
     ].filter((entry) => matches(`${entry.id} ${entry.title} ${entry.kind}`));
     const all2 = [...pages, ...found];
     const shown2 = 12;
@@ -23856,7 +24344,7 @@ data: ${matched.join(",") || "*"}
       cookie("checkmate_toast", undo ? `${named} not handed over` : `Handed ${named} over to ${to}`, 60)
     ]);
   }
-  function actionRefusal(request, back, message) {
+  function actionRefusal(request, back, message, field4 = "") {
     render(request, {
       title: "Nothing was done",
       section: "home",
@@ -23864,7 +24352,7 @@ data: ${matched.join(",") || "*"}
       status: 422,
       back,
       body: html2`${heading("Nothing was done")}
-				<p class="form-error" role="alert">${message}</p>
+				<p class="form-error" role="alert" ${field4 ? html2`data-field="${field4}"` : ""}>${message}</p>
 				<p class="actions"><a class="btn primary" href="${back}">Go back</a></p>`
     });
   }
@@ -23877,6 +24365,9 @@ data: ${matched.join(",") || "*"}
   function runningOf(planId) {
     return planExplorations(store, planId).find((item) => item.running);
   }
+  function stoppingOf(planId) {
+    return planExplorations(store, planId).find((item) => stopPending(explorationEvents(store, item.explorationId)));
+  }
   function inProgress(planId, running3) {
     return html2`A test of ${planId} is in progress: ${running3.explorationId}.
 			<a href="/explorations/${running3.explorationId}">Open ${running3.explorationId}</a> to watch or stop it.`;
@@ -23888,13 +24379,18 @@ data: ${matched.join(",") || "*"}
     const build = form.get("build")?.trim() ?? "";
     const level = form.get("level")?.trim() || "normal";
     const [typedSince, until, repo] = ["since", "until", "repo"].map((name) => form.get(name)?.trim() || void 0);
-    const refuse2 = (message) => actionRefusal(request, back, message);
+    const refuse2 = (message, field4 = "") => actionRefusal(request, back, message, field4);
     if (!actor) return refuse2("Enter your name. Checkmate records it with the test.");
-    if (!build) return refuse2("Write the build name.");
+    if (!build) return refuse2("Write the build name.", "build");
     if (!levelNames.includes(level)) return refuse2("Choose the level smoke, normal, or deep.");
-    if (until && !typedSince) return refuse2("Until needs Since. Fill in Since, or leave Until empty.");
+    if (until && !typedSince) return refuse2("Until needs Since. Fill in Since, or leave Until empty.", "until");
     const running3 = runningOf(planId);
     if (running3) return refuse2(inProgress(planId, running3));
+    const stopping = stoppingOf(planId);
+    if (stopping)
+      return refuse2(
+        `A stop of ${stopping.explorationId} is in progress. Wait until it ends, then start the test.`
+      );
     try {
       const since = typedSince ?? upstreamBase(resolve6(store.workspace, repo ?? "."));
       const started = startExploration(
@@ -23908,7 +24404,7 @@ data: ${matched.join(",") || "*"}
           until,
           repo,
           mode: autoMode(store, planId),
-          allow: testerRules,
+          allow: ruleTokens(form.get("rules") ?? ""),
           claudeArgs: []
         },
         env
@@ -23918,7 +24414,8 @@ data: ${matched.join(",") || "*"}
         cookie("checkmate_toast", `Started ${started.subject} on build ${build}`, 60)
       ]);
     } catch (error) {
-      refuse2(engineText(error));
+      const text = engineText(error);
+      refuse2(text, /tool rules/.test(text) ? "rules" : "");
     }
   }
   function startAnswers(request, form, planId) {
@@ -23948,16 +24445,181 @@ data: ${matched.join(",") || "*"}
     const refuse2 = (message) => actionRefusal(request, back, message);
     if (!actor) return refuse2("Enter your name. Checkmate records it with the stop.");
     try {
-      const reply = stopExploration(store, actor, {
+      recordStop(store, actor, {
         explorationId,
         explorer,
-        reason: form.get("reason")?.trim() || void 0
+        reason: form.get("reason")?.trim() || void 0,
+        background: true
       });
-      const left = reply.data.left ?? [];
-      const note = reply.data.note ? ` ${reply.data.note}` : "";
-      const flash = left.length ? `Stopped ${explorer ?? explorationId}, but ${left.length === 1 ? "process" : "processes"} ${left.join(", ")} ${left.length === 1 ? "is" : "are"} still alive. End ${left.length === 1 ? "it" : "them"} by hand.` : explorer ? `Stopped tester ${explorer} of ${explorationId}` : `Stopped ${explorationId}.${note}`;
-      redirect(request.res, back, [...cookies, cookie("checkmate_toast", flash, 60)]);
+      startEnding(store, explorationId, actor, explorer, env);
     } catch (error) {
+      return refuse2(engineText(error));
+    }
+    const flash = explorer ? `Stopping tester ${explorer} of ${explorationId}\u2026` : `Stopping ${explorationId}\u2026`;
+    redirect(request.res, back, [...cookies, cookie("checkmate_toast", flash, 60)]);
+  }
+  function saveRules2(request, form) {
+    const { actor, cookies } = actorFrom(request, form);
+    const typed = form.get("rules") ?? "";
+    const page = (error) => () => claudePage(context(request), env, { value: typed, error });
+    if (!actor) return refuse(request, page("Enter your name. Checkmate records it with the setting."), cookies);
+    try {
+      saveTesterRules(store, actor, typed);
+    } catch (error) {
+      return refuse(request, page(engineText(error)), cookies);
+    }
+    redirect(request.res, "/settings/claude", [
+      ...cookies,
+      cookie("checkmate_toast", "Saved the tool rules of testers", 60)
+    ]);
+  }
+  function setupChoice(form, url) {
+    const typed = form.get("operations") ?? "";
+    const local = isLocalAddress(url);
+    const yes = typed === "yes" || typed === "" && local;
+    return { yes, chosen: typed === "yes" || typed === "no" || local, local };
+  }
+  function previewSetup(request, form) {
+    const url = (form.get("url") ?? "").trim();
+    const reply = (body) => send(request.res, 200, "application/json; charset=utf-8", JSON.stringify(body));
+    if (!/^https?:\/\/[^\s/]+/i.test(url))
+      return reply({ error: "Give a full address, for example http://localhost:3000." });
+    try {
+      const choice2 = setupChoice(form, url);
+      const planned = setupAssumptions({
+        url,
+        targetId: form.get("target")?.trim() || void 0,
+        environment: form.get("environment")?.trim() || void 0,
+        operations: choice2.yes ? void 0 : [readOnlyOperation],
+        env
+      });
+      reply({
+        address: new URL(url).host,
+        local: choice2.local,
+        targetId: planned.targetId,
+        assumed: planned.assumed.filter((line) => !line.startsWith("target="))
+      });
+    } catch (error) {
+      reply({ error: plainMessage(error) });
+    }
+  }
+  async function setUp(request, form) {
+    const back = "/setup";
+    const { actor, cookies } = actorFrom(request, form);
+    const refuse2 = (message, field4 = "") => actionRefusal(request, back, message, field4);
+    const url = (form.get("url") ?? "").trim();
+    if (!actor) return refuse2("Enter your name. Checkmate records it with the target.");
+    if (!/^https?:\/\/[^\s/]+/i.test(url))
+      return refuse2("Give the address of the application, for example http://localhost:3000.", "url");
+    const choice2 = setupChoice(form, url);
+    if (!choice2.chosen)
+      return refuse2(
+        `${new URL(url).host} is not a local address. Choose whether testers may change data there.`,
+        "operations"
+      );
+    if (!choice2.local && form.get("confirmed") !== "1")
+      return refuse2(`Confirm that Checkmate may test ${new URL(url).host}, an address that is not local.`, "url");
+    const typedTarget = form.get("target")?.trim() || void 0;
+    const environment = form.get("environment")?.trim() || void 0;
+    try {
+      if (typedTarget) requireIdentifier(typedTarget, "target name");
+      requireAnswer(await urlReachable(url), url);
+      const reply = setupTarget(store, actor, {
+        url,
+        targetId: typedTarget,
+        environment,
+        operations: choice2.yes ? void 0 : [readOnlyOperation],
+        env,
+        answered: true
+      });
+      if (reply.status !== "completed") return refuse2(reply.reasons.join(" "), "target");
+      redirect(request.res, `/new?target=${encodeURIComponent(String(reply.data.targetId))}`, [
+        ...cookies,
+        cookie("checkmate_toast", `Set up target ${reply.data.targetId}`, 60)
+      ]);
+    } catch (error) {
+      const text = engineText(error);
+      refuse2(
+        text,
+        /target name/.test(text) ? "target" : /production/.test(text) ? "environment" : /did not answer/.test(text) ? "url" : ""
+      );
+    }
+  }
+  function startChange(request, form) {
+    const back = "/new";
+    const { actor, cookies } = actorFrom(request, form);
+    const refuse2 = (message, field4 = "") => actionRefusal(request, back, message, field4);
+    const text = form.get("text") ?? "";
+    const typedFile = form.get("file")?.trim() ?? "";
+    const planId = form.get("plan")?.trim() ?? "";
+    const targetId = form.get("target")?.trim() ?? "";
+    const build = form.get("build")?.trim() ?? "";
+    const level = form.get("level")?.trim() || "normal";
+    const [since, until, repo] = ["since", "until", "repo"].map((name) => form.get(name)?.trim() || void 0);
+    const allow = ruleTokens(form.get("rules") ?? "");
+    if (!actor) return refuse2("Enter your name. Checkmate records it with the plan and the test.");
+    if (!typedFile && !text.trim())
+      return refuse2("Give the ticket: the path of a file in the workspace, or the pasted text.", "file");
+    if (typedFile && text.trim()) return refuse2("Give the file or the pasted text, not both.", "text");
+    let source = "";
+    try {
+      if (typedFile) source = ticketFile(store, typedFile);
+    } catch (error) {
+      return refuse2(engineText(error), "file");
+    }
+    if (!planId) return refuse2("Write the name of the plan.", "plan");
+    try {
+      requireIdentifier(planId, "plan ID");
+    } catch (error) {
+      return refuse2(engineText(error), "plan");
+    }
+    if (hasRequest(store, planId))
+      return refuse2(`A plan ${planId} exists already. Give another name, or test it from its page.`, "plan");
+    if (!targetList(store).some((item) => item.targetId === targetId))
+      return refuse2("Choose a target, or set one up.", "target");
+    if (!build) return refuse2("Write the build name.", "build");
+    if (!levelNames.includes(level)) return refuse2("Choose the level smoke, normal, or deep.");
+    if (until && !since) return refuse2("Until needs Since. Fill in Since, or leave Until empty.", "until");
+    const address2 = instanceList(store, targetId).find((instance) => !instance.retired)?.entries.web;
+    if (address2 && URL.canParse(address2) && !isLocalAddress(address2) && form.get("confirmed") !== "1")
+      return refuse2(`Confirm that Checkmate may test ${hostOf(address2)}, an address that is not local.`, "target");
+    try {
+      requireClaude(env);
+      launchPlan(targetRevision(store, targetId).profile, { planId, build, allow, claudeArgs: [], level }, env);
+    } catch (error) {
+      const message = engineText(error);
+      return refuse2(message, /tool rules/.test(message) ? "rules" : "");
+    }
+    const kept = text.trim() ? `.checkmate/sources/${planId}.md` : "";
+    try {
+      if (kept) {
+        mkdirSync6(resolve6(store.workspace, ".checkmate", "sources"), { recursive: true });
+        writeFileSync3(resolve6(store.workspace, kept), text.endsWith("\n") ? text : `${text}
+`);
+      }
+      const started = runTest(
+        store,
+        actor,
+        {
+          planId,
+          target: targetId,
+          sources: [kept || source],
+          build,
+          level,
+          since,
+          until,
+          repo,
+          allow,
+          claudeArgs: []
+        },
+        env
+      );
+      redirect(request.res, `/explorations/${started.subject}`, [
+        ...cookies,
+        cookie("checkmate_toast", `Started ${started.subject} on build ${build}`, 60)
+      ]);
+    } catch (error) {
+      if (kept && !hasRequest(store, planId)) rmSync5(resolve6(store.workspace, kept), { force: true });
       refuse2(engineText(error));
     }
   }
@@ -24260,6 +24922,10 @@ data: ${matched.join(",") || "*"}
       return redirect(request.res, safeBack(form.get("back")), [cookie("checkmate_actor", name)]);
     }
     if (pathname === "/bulk") return bulk(request, form);
+    if (pathname === "/settings/claude") return saveRules2(request, form);
+    if (pathname === "/setup/assumed") return previewSetup(request, form);
+    if (pathname === "/setup") return await setUp(request, form);
+    if (pathname === "/new") return startChange(request, form);
     const handoff = routes.handoff.exec(pathname);
     if (handoff) return handOver(request, form, handoff[1]);
     const starting = routes.startTest.exec(pathname);
@@ -24346,7 +25012,7 @@ data: ${matched.join(",") || "*"}
 }
 
 // plugin/src/agents.ts
-import { mkdirSync as mkdirSync6, readFileSync as readFileSync8, rmSync as rmSync5, writeFileSync as writeFileSync3 } from "node:fs";
+import { mkdirSync as mkdirSync7, readFileSync as readFileSync8, rmSync as rmSync6, writeFileSync as writeFileSync4 } from "node:fs";
 import { dirname, join as join12 } from "node:path";
 var testerAgent = "checkmate:tester";
 var clerkAgent = "checkmate:clerk";
@@ -24555,8 +25221,8 @@ function lineOf(explorationId, action2) {
 }
 function writeFile(store, path, text) {
   const full = join12(store.workspace, path);
-  mkdirSync6(dirname(full), { recursive: true });
-  writeFileSync3(full, text.endsWith("\n") ? text : `${text}
+  mkdirSync7(dirname(full), { recursive: true });
+  writeFileSync4(full, text.endsWith("\n") ? text : `${text}
 `);
 }
 function answerNext(store, actor, explorationId, actions, word) {
@@ -24573,7 +25239,7 @@ function answerNext(store, actor, explorationId, actions, word) {
 ${replyLimit}
 End your reply with this line: ${replyLineOf(action2.name, action2.step)}`
         );
-        if (action2.answer) rmSync5(join12(store.workspace, action2.answer), { force: true });
+        if (action2.answer) rmSync6(join12(store.workspace, action2.answer), { force: true });
         addEvent(
           store,
           explorationId,
@@ -25140,7 +25806,7 @@ function harvestExploration(store, actor, input) {
 }
 
 // plugin/src/cli.ts
-import { mkdirSync as mkdirSync7, readFileSync as readFileSync9, writeFileSync as writeFileSync4 } from "node:fs";
+import { mkdirSync as mkdirSync8, readFileSync as readFileSync9, writeFileSync as writeFileSync5 } from "node:fs";
 import { dirname as dirname2, resolve as resolve7 } from "node:path";
 import { constants as constants2 } from "node:sqlite";
 var testFields2 = [
@@ -26012,7 +26678,7 @@ var commands = {
         finding.type,
         finding.severity,
         finding.testIds,
-        Object.entries(finding.metadata).map(([key, field3]) => `${key}=${field3}`).join("; ") || null,
+        Object.entries(finding.metadata).map(([key, field4]) => `${key}=${field4}`).join("; ") || null,
         finding.title
       ])
     })
@@ -26558,8 +27224,8 @@ var commands = {
       const rows = readOnly(() => statement.all()).map(
         (row2) => Object.fromEntries(
           columns2.map((column) => {
-            const field3 = row2[column];
-            return [column, field3 instanceof Uint8Array ? `<blob ${field3.length} bytes>` : field3];
+            const field4 = row2[column];
+            return [column, field4 instanceof Uint8Array ? `<blob ${field4.length} bytes>` : field4];
           })
         )
       );
@@ -26673,14 +27339,14 @@ function showPlan(store, args) {
       `Unknown test in ${subject}: ${test}`,
       `Use one of: ${detail.plan.tests.map((item) => item.id).join(", ")}.`
     );
-  for (const field3 of fields ?? [])
-    requireWellFormed(testFields2.includes(field3), `Unknown field: ${field3}. Use: ${testFields2.join(", ")}`);
+  for (const field4 of fields ?? [])
+    requireWellFormed(testFields2.includes(field4), `Unknown field: ${field4}. Use: ${testFields2.join(", ")}`);
   const picked = detail.plan.tests.filter((test) => !tests || tests.includes(test.id)).map(
     (test) => Object.fromEntries([
       ["id", test.id],
-      ...(fields ?? ["readiness", "capability", "title"]).map((field3) => [
-        field3,
-        test[field3]
+      ...(fields ?? ["readiness", "capability", "title"]).map((field4) => [
+        field4,
+        test[field4]
       ])
     ])
   );
@@ -26716,7 +27382,7 @@ function printPlan(reply) {
     return {
       facts: facts3,
       lines: tests.flatMap((test) => [
-        [test.id, ...fields.filter((field3) => field3 !== "assertions").map((field3) => test[field3])],
+        [test.id, ...fields.filter((field4) => field4 !== "assertions").map((field4) => test[field4])],
         ...fields.includes("assertions") ? test.assertions.map((assertion) => [
           `${test.id}.${assertion.id}`,
           assertion.checkKind,
@@ -26758,9 +27424,9 @@ function printPlan(reply) {
 }
 function writeOutput(store, out, content) {
   const path = resolve7(store.workspace, out);
-  mkdirSync7(dirname2(path), { recursive: true });
+  mkdirSync8(dirname2(path), { recursive: true });
   try {
-    writeFileSync4(path, content, { flag: "wx" });
+    writeFileSync5(path, content, { flag: "wx" });
   } catch (error) {
     if (error instanceof Error && "code" in error && error.code === "EEXIST")
       throw new Error(`Output file exists: ${out}. Choose a new path.`, { cause: error });
@@ -26768,15 +27434,15 @@ function writeOutput(store, out, content) {
   }
   return out;
 }
-function cell2(field3) {
-  if (field3 === null || field3 === void 0) return "-";
-  if (Array.isArray(field3)) return field3.length ? field3.map(cell2).join(",") : "-";
-  if (typeof field3 === "object" && "preformatted" in field3) return String(field3.preformatted);
-  if (typeof field3 === "object") return JSON.stringify(field3);
-  return String(field3).replace(/\\/g, "\\\\").replace(/\t/g, "\\t").replace(/\r/g, "\\r").replace(/\n/g, "\\n");
+function cell2(field4) {
+  if (field4 === null || field4 === void 0) return "-";
+  if (Array.isArray(field4)) return field4.length ? field4.map(cell2).join(",") : "-";
+  if (typeof field4 === "object" && "preformatted" in field4) return String(field4.preformatted);
+  if (typeof field4 === "object") return JSON.stringify(field4);
+  return String(field4).replace(/\\/g, "\\\\").replace(/\t/g, "\\t").replace(/\r/g, "\\r").replace(/\n/g, "\\n");
 }
 function compact(reply, printed) {
-  const facts3 = Object.entries(printed.facts ?? {}).filter(([, field3]) => field3 !== void 0).map(([key, field3]) => `${key}=${cell2(field3)}`);
+  const facts3 = Object.entries(printed.facts ?? {}).filter(([, field4]) => field4 !== void 0).map(([key, field4]) => `${key}=${cell2(field4)}`);
   const warnings = reply.data.warnings ?? [];
   return [
     [reply.status, reply.subject, ...reply.refusal ? [`refusal=${reply.refusal}`] : [], ...facts3].join(" "),
@@ -27024,6 +27690,8 @@ async function serveUi(tokens) {
 }
 async function main(argv) {
   if (argv[0] === "ui" && !argv.includes("--help")) return serveUi(argv.slice(1));
+  if (argv[0] === "explore" && argv[1] === "end" && argv[3] === "--workspace")
+    return endInBackground(argv[4], argv[2], argv[5] === "--explorer" ? argv[6] : void 0, process.env);
   if (argv[0] === "explore" && argv[1] === "drive" && argv[3] === "--workspace")
     return argv[5] === "--follow" ? driveFollow(argv[4], argv[2], process.env) : driveExploration(argv[4], argv[2], process.env);
   const outcome = run(argv, {

@@ -52,12 +52,41 @@ function relative(path: string, cwd: unknown) {
 	return typeof cwd === 'string' && cwd && path.startsWith(`${cwd}/`) ? path.slice(cwd.length + 1) : path
 }
 
+const leadingDirectory = /^cd\s+(?:"[^"]*"|'[^']*'|\S+)\s*(?:&&|;)\s*/
+const leadingAssignment = /^([A-Za-z_]\w*)=("[^"]*"|'[^']*'|[^\s;&]*)\s*(?:&&|;)?\s*/
+const checkmateValue = /^(?:node\s+)?\S*checkmate(?:\.js)?$/
+const checkmateStart = /^(?:node\s+)?\S*checkmate(?:\.js)?(?=\s|$)/
+const variableStart = /^"?\$\{?(\w+)\}?"?(?=\s|$)/
+
+function commandLine(command: string, cwd: unknown) {
+	const variables = new Map<string, string>()
+	let rest = command
+	for (;;) {
+		const directory = leadingDirectory.exec(rest)
+		const assignment = directory ? null : leadingAssignment.exec(rest)
+		const found = directory ?? assignment
+		if (!found) break
+		if (assignment) variables.set(assignment[1], assignment[2].replace(/^(["'])(.*)\1$/, '$2').trim())
+		rest = rest.slice(found[0].length)
+	}
+	if (!rest) return command
+	const named = variableStart.exec(rest)
+	const call = named && checkmateValue.test(variables.get(named[1]) ?? '') ? named : checkmateStart.exec(rest)
+	if (call) rest = `checkmate${rest.slice(call[0].length)}`
+	if (typeof cwd !== 'string' || !cwd) return rest
+	return rest
+		.replaceAll(`${cwd}/`, './')
+		.split(' ')
+		.map((word) => (word === cwd ? '.' : word))
+		.join(' ')
+}
+
 export function inputLine(input: unknown, cwd?: unknown) {
 	const fields = input && typeof input === 'object' ? (input as Record<string, unknown>) : {}
 	const key = lineKeys.find((item) => typeof fields[item] === 'string' && fields[item])
 	if (!key) return ''
 	const first = (fields[key] as string).trim().split('\n')[0]
-	const shown = key.endsWith('path') ? relative(first, cwd) : first
+	const shown = key.endsWith('path') ? relative(first, cwd) : key === 'command' ? commandLine(first, cwd) : first
 	return secrets.reduce((text, [pattern, replacement]) => text.replace(pattern, replacement), shown)
 }
 

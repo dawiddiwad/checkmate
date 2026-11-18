@@ -579,7 +579,36 @@ test('the line of an activity call is one short line without secrets', () => {
 		],
 		['Bash', { command: 'tool --password hunter2 --name a' }, 'Bash: tool --password … --name a'],
 		['Bash', { command: 'tool --api-key=abc --name a' }, 'Bash: tool --api-key=… --name a'],
-		['Bash', { command: 'API_TOKEN=abc node run.js' }, 'Bash: API_TOKEN=… node run.js'],
+		['Bash', { command: 'API_TOKEN=abc node run.js' }, 'Bash: node run.js'],
+		['Bash', { command: 'tool --token=abc' }, 'Bash: tool --token=…'],
+		[
+			'Bash',
+			{ command: 'CM="node /very/long/path/plugin/dist/checkmate.js"; $CM claim list notes' },
+			'Bash: checkmate claim list notes',
+		],
+		[
+			'Bash',
+			{ command: 'CM=/very/long/path/dist/checkmate.js && "${CM}" claim handoff notes --actor "from the UI"' },
+			'Bash: checkmate claim handoff notes --actor "from the UI"',
+		],
+		[
+			'Bash',
+			{ command: 'node /very/long/path/plugin/dist/checkmate.js log --limit 3' },
+			'Bash: checkmate log --limit 3',
+		],
+		[
+			'Bash',
+			{ command: 'cd /very/long/path && curl -s http://127.0.0.1:4173/api/notes' },
+			'Bash: curl -s http://127.0.0.1:4173/api/notes',
+		],
+		[
+			'Bash',
+			{ command: 'cd /work/app; ls /work/app/src /work/app /work/application' },
+			'Bash: ls ./src . /work/application',
+		],
+		['Bash', { command: 'cd /work/app' }, 'Bash: cd .'],
+		['Bash', { command: 'curl -s http://x' }, 'Bash: curl -s http://x'],
+		['Bash', { command: '$CM claim list notes' }, 'Bash: $CM claim list notes'],
 		['Bash', { command: 'curl http://user:secret@host/x' }, 'Bash: curl http://…@host/x'],
 	]
 	for (const [tool, input, line] of cases) assert.equal(activityLine(tool, input, cwd), line)

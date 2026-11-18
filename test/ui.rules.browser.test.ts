@@ -346,3 +346,23 @@ test(
 		assert.equal(rulesOf(workspace).length, 3)
 	}
 )
+
+test(
+	'an area name that is too long is refused at the field with the limit, and nothing is stored',
+	browserTest,
+	async (t) => {
+		const { page, url, workspace } = await open(t)
+		await page.goto(url('/plans/notes?view=rules'))
+		await page.getByRole('button', { name: 'Add a rule…' }).click()
+		const add = page.locator('dialog[data-act-dialog="rule-add"]')
+		await add.locator('input[name="text"]').fill('A note can be pinned.')
+		const name = 'A'.repeat(54)
+		await add.locator('input[name="newArea"]').fill(name)
+		assert.equal(await add.locator('input[name="newArea"]').inputValue(), name)
+		await add.getByRole('button', { name: 'Save the rule' }).click()
+		const message = add.locator('[data-refusal][data-field="newArea"]')
+		await message.waitFor()
+		assert.match((await message.textContent()) ?? '', /more than 40 characters/)
+		assert.equal(rulesOf(workspace).length, 3)
+	}
+)

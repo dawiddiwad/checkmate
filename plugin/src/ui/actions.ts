@@ -194,7 +194,7 @@ export function ruleDialog(kind: 'edit' | 'add', context: Context, planId: strin
 				)}
 			</fieldset>
 			<label for="act-${id}-new">Or a new area</label>
-			<input id="act-${id}-new" name="newArea" maxlength="40" autocomplete="off" data-stop />
+			<input id="act-${id}-new" name="newArea" autocomplete="off" data-stop />
 			${
 				kind === 'add'
 					? html`<label for="act-${id}-source">Source (optional)</label>

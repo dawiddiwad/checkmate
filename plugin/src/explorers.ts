@@ -146,7 +146,7 @@ export function launchPlan(profile: Profile, input: StartInput, env: Env): Launc
 	requireWellFormed(
 		input.allow.length || (explorers === 0 && !row.verifier),
 		'Give the tool rules of the explorers and the verifier with --allow, for example --allow Read --allow Bash',
-		'The host owns the permissions. An explorer cannot answer a permission prompt.'
+		'The host owns the permissions. Without the review UI, an explorer cannot answer a permission prompt.'
 	)
 	return {
 		level,
@@ -883,7 +883,7 @@ export function startFollow(store: Store, actor: string | undefined, input: Foll
 		requireWellFormed(
 			plan.allow.length || session,
 			'Give the tool rules of the explorers with --allow, for example --allow Read --allow Bash',
-			'The host owns the permissions. An explorer cannot answer a permission prompt.'
+			'The host owns the permissions. Without the review UI, an explorer cannot answer a permission prompt.'
 		)
 		addEvent(store, id, { step: 'follow', explorer: null, status: 'started', detail: plan }, operationId, at)
 		return {

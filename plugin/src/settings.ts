@@ -22,7 +22,7 @@ export function saveTesterRules(store: Store, actor: string | undefined, text: s
 		requireWellFormed(
 			rules.length,
 			'Give at least one tool rule, for example Read Bash.',
-			'The engine needs at least one rule today. A tester cannot answer a permission prompt.'
+			'The engine needs at least one rule today. With the rule, a tester does not ask you. Without it, each call asks you in the review UI.'
 		)
 		store.db
 			.prepare('INSERT INTO workspace_settings (name, value, operation_id) VALUES (?, ?, ?)')

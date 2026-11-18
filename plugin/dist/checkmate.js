@@ -14580,7 +14580,7 @@ function launchPlan(profile, input, env) {
   requireWellFormed(
     input.allow.length || explorers === 0 && !row3.verifier,
     "Give the tool rules of the explorers and the verifier with --allow, for example --allow Read --allow Bash",
-    "The host owns the permissions. An explorer cannot answer a permission prompt."
+    "The host owns the permissions. Without the review UI, an explorer cannot answer a permission prompt."
   );
   return {
     level,
@@ -15217,7 +15217,7 @@ function startFollow(store, actor, input, env) {
     requireWellFormed(
       plan.allow.length || session,
       "Give the tool rules of the explorers with --allow, for example --allow Read --allow Bash",
-      "The host owns the permissions. An explorer cannot answer a permission prompt."
+      "The host owns the permissions. Without the review UI, an explorer cannot answer a permission prompt."
     );
     addEvent(store, id2, { step: "follow", explorer: null, status: "started", detail: plan }, operationId, at);
     return {
@@ -23373,7 +23373,7 @@ function saveTesterRules(store, actor, text) {
     requireWellFormed(
       rules.length,
       "Give at least one tool rule, for example Read Bash.",
-      "The engine needs at least one rule today. A tester cannot answer a permission prompt."
+      "The engine needs at least one rule today. With the rule, a tester does not ask you. Without it, each call asks you in the review UI."
     );
     store.db.prepare("INSERT INTO workspace_settings (name, value, operation_id) VALUES (?, ?, ?)").run("testerRules", rules.join(" "), operationId);
     return { reply: completed("testerRules", { rules }), subjects: ["settings"] };

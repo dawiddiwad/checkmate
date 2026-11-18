@@ -270,6 +270,7 @@ function explorationLines(reply: Reply): Printed {
 				`ended=${item.ended ?? '-'}`,
 				`recorded=${item.recorded ?? '-'}`,
 				`saved=${item.saved}`,
+				...(item.ended === 'stopped' ? [`reason=${item.reason}`] : []),
 			]),
 			...(status.paused ? [['paused', status.paused, 'waits_on=oracle']] : []),
 			...status.explorers.flatMap((item) => item.stderr.map((line) => [item.explorer, 'stderr', line])),

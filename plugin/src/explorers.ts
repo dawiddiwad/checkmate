@@ -1242,11 +1242,14 @@ export function explorationState(events: ExplorationEvent[]) {
 	return 'testing'
 }
 
-function stopReason(events: ExplorationEvent[]) {
-	const stop = stopOf(events)
-	if (!stop) return null
+function stopText(stop: ExplorationEvent) {
 	const reason = stop.detail.reason
 	return `Stopped by ${stop.detail.actor}${reason ? `: ${reason}` : '.'}`
+}
+
+function stopReason(events: ExplorationEvent[]) {
+	const stop = stopOf(events)
+	return stop ? stopText(stop) : null
 }
 
 export function explorationStatus(store: Store, explorationId: string) {
@@ -1261,6 +1264,8 @@ export function explorationStatus(store: Store, explorationId: string) {
 		const last = (step: string) => own.filter((item) => item.step === step).at(-1)
 		const end = last('end')
 		const record = last('record')
+		const stop =
+			own.find((item) => item.step === 'stop') ?? (end?.status === 'completed' ? undefined : stopOf(events))
 		return {
 			explorer,
 			actor: explorerActor(explorer),
@@ -1268,10 +1273,10 @@ export function explorationStatus(store: Store, explorationId: string) {
 				record?.detail.session ??
 				own.findLast((item) => item.detail.agent)?.detail.agent ??
 				null) as string | null,
-			ended: end?.status ?? null,
+			ended: stop ? 'stopped' : (end?.status ?? null),
 			recorded: record?.status ?? null,
 			saved: (record?.detail.saved ?? 0) as number,
-			reason: (end?.detail.reason ?? record?.detail.reasons ?? null) as unknown,
+			reason: (end?.detail.reason ?? record?.detail.reasons ?? (stop ? stopText(stop) : null)) as unknown,
 			hint: (end?.detail.hint ?? null) as string | null,
 			stderr: (end?.detail.stderr ?? []) as string[],
 			stray: [

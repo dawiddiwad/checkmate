@@ -296,7 +296,7 @@ When the host refuses the model, the launch of that explorer fails. `explore wai
 
 ### explore status and explore wait
 
-`explore status <explorationId>` prints the state, the level, the number of explorers, the model and where it came from (`level` or `host`), the verifier choice, the refs of the change (`since`, `until`), the seconds of the study turn and of the test turn (`studySeconds`, `testSeconds`), and one line for each explorer: its session, its end, its record, and the number of saved entries. When a launch failed, one `stderr` line follows for each of the last 10 lines of the error output, also in `explore show`.
+`explore status <explorationId>` prints the state, the level, the number of explorers, the model and where it came from (`level` or `host`), the verifier choice, the refs of the change (`since`, `until`), the seconds of the study turn and of the test turn (`studySeconds`, `testSeconds`), and one line for each explorer: its session, its end, its record, and the number of saved entries. A tester that a person stopped, alone or with the run, shows `ended=stopped` and `reason=Stopped by <name>: <reason>`, as the review UI shows `Stopped`. When a launch failed, one `stderr` line follows for each of the last 10 lines of the error output, also in `explore show`.
 
 | State         | Meaning                                                             |
 | ------------- | ------------------------------------------------------------------- |

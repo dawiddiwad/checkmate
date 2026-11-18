@@ -15,7 +15,7 @@ import {
 	stopExploration,
 } from '../plugin/src/explorers.ts'
 import { lastEntry } from '../plugin/src/recorder.ts'
-import { actor, directory, plan, root, store, target } from './support.ts'
+import { actor, cli, directory, plan, root, store, target } from './support.ts'
 import { fakeClaude } from './claude.ts'
 import { coupon, done, ended, entries, event, launch, launched, openTest } from './explorations.ts'
 
@@ -105,6 +105,24 @@ test('the state is stopped after a stop, interrupted when the supervisor died, a
 	assert.equal(explorationStatus(opened, 'x-2').reason, 'Stopped by ana: wrong build')
 	event(opened, 'x-1', { step: 'stop', detail: { actor: 'ana', reason: '', was: 'testing' } })
 	assert.equal(explorationStatus(opened, 'x-1').reason, 'Stopped by ana.')
+})
+
+test('explore status prints ended=stopped and the reason for a tester that a person stopped', (t) => {
+	const opened = seeded(t)
+	openTest(opened, 'checkout', 'x-1', 'b1')
+	launched(opened, 'x-1', 'a1')
+	launched(opened, 'x-1', 'a2')
+	event(opened, 'x-1', { step: 'stop', explorer: 'a1', detail: { actor: 'ana', reason: 'stuck', was: 'testing' } })
+	event(opened, 'x-1', { step: 'end', explorer: 'a1', status: 'operational_error', detail: {} })
+	const lines = cli(opened.workspace, ['explore', 'status', 'x-1']).lines
+	assert.match(
+		lines.find((line) => line.startsWith('a1\t'))!,
+		/\tended=stopped\t.*\treason=Stopped by ana: stuck$/
+	)
+	assert.match(
+		lines.find((line) => line.startsWith('a2\t'))!,
+		/\tended=-\t/
+	)
 })
 
 test('a stop of a follow-up leaves the exploration completed and the follow-up stopped', (t) => {
@@ -217,6 +235,10 @@ test('a stop ends the supervisor and the child processes, keeps the record, and 
 	closeStore(reading)
 	const status = command(['explore', 'status', 'x-1']).body
 	assert.deepEqual([status.state, status.reason], ['stopped', `Stopped by ${actor}: wrong build`])
+	assert.deepEqual(
+		status.explorers.map((item: { ended: string; reason: unknown }) => [item.ended, item.reason]),
+		[['stopped', `Stopped by ${actor}: wrong build`]]
+	)
 
 	const again = command(['explore', 'stop', 'x-1'])
 	assert.notEqual(again.code, 0)
@@ -255,7 +277,15 @@ test('a stop of one tester ends only its child process, and the run goes on', (t
 	assert.equal(stopped.code, 0, JSON.stringify(stopped.body))
 	assert(!alive(children[0]))
 	assert(alive(children[1]) && alive(supervisor))
-	assert.equal(command(['explore', 'status', 'x-1']).body.state, 'testing')
+	const middle = command(['explore', 'status', 'x-1']).body
+	assert.equal(middle.state, 'testing')
+	assert.deepEqual(
+		middle.explorers.map((item: { explorer: string; ended: string | null }) => [item.explorer, item.ended]),
+		[
+			[first, 'stopped'],
+			[events('x-1').filter((item) => item.step === 'child')[1].explorer, null],
+		]
+	)
 	assert.equal(command(['explore', 'stop', 'x-1']).code, 0)
 	assert(!alive(supervisor) && children.every((pid) => !alive(pid)))
 })

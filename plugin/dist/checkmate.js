@@ -19437,6 +19437,7 @@ function permissionHistory(store, explorationId, params, from) {
     const next = new URLSearchParams(params);
     if (target === 1) next.delete("requests");
     else next.set("requests", String(target));
+    next.set("at", `request:${requestName(all2[(target - 1) * historySize])}`);
     const query = next.toString();
     return html2`<a class="btn small" href="/explorations/${explorationId}${query ? `?${query}` : ""}" rel="${rel}"
 			>${label}</a
@@ -19465,7 +19466,7 @@ function permissionHistory(store, explorationId, params, from) {
   return html2`<details
 		class="fold"
 		data-open-key="section:permission-history"
-		${page > 1 || all2.some((item) => !item.decision) ? html2`open` : ""}
+		${params.has("requests") || all2.some((item) => !item.decision) ? html2`open` : ""}
 	>
 		<summary>
 			<h2>Permission requests <span class="n">${all2.length}</span></h2>
@@ -21766,7 +21767,7 @@ function spRow(key, href, label, tag, title, meta2, n, metaText2 = "", opts = ""
 }
 function stepAsks(open) {
   return open.filter((item) => !item.tester).map(
-    (item) => html2`<p class="help" data-key="step-asks-${item.id}">
+    (item) => html2`<p class="help sp-asks" data-key="step-asks-${item.id}">
 					<a href="${requestHref(item, null)}">Step ${item.who} asks to ${asksFor(item)}</a>
 				</p>`
   );

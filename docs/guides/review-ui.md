@@ -27,7 +27,7 @@ Each page has the same four parts:
 - The top bar: `Checkmate` opens the home page. At the right are the live state, your name, and the switch for light and dark.
 - The navigator, at the left on the pages of a plan.
 - The centre: the list or the page.
-- The status bar, at the bottom. It shows the path to where you are, for example `Plans › checkout › Needs you › a1/D1`, the buttons `Find`, `Keys`, `Activity`, `Runs`, `Log`, and `Settings`, and the keys that work where you are. `Activity` shows `Activity · <n> running` while <n> tests run. On a narrow window, `More` holds `Activity`, `Runs`, `Log`, and `Settings`. On a window of 600 pixels or less, `More` also holds `Find`. When items wait for you, `<n> need you · all plans` shows first. It counts the items of all plans. When the keys do not fit, the status bar removes the least important keys first. `? Keys` always shows. A message in the status bar comes before the keys: the keys make room for it, and a message that still does not fit shows in full in a strip above the status bar.
+- The status bar, at the bottom. It shows the path to where you are, for example `Plans › checkout › Needs you › a1/D1`, the buttons `Find`, `Keys`, `Activity`, `Runs`, `Log`, and `Settings`, and the keys that work where you are. `Activity` shows `Activity · <n> running` while <n> tests run. On a narrow window, `More` holds `Activity`, `Runs`, `Log`, and `Settings`. On a window of 600 pixels or less, `More` also holds `Find`. When tester requests wait, `<n> permissions` shows first. When items wait for you, `<n> need you · all plans` follows it. It counts the items of all plans. When the keys do not fit, the status bar removes the least important keys first. `? Keys` always shows. A message in the status bar comes before the keys: the keys make room for it, and a message that still does not fit shows in full in a strip above the status bar.
 
 On a window of 900 pixels or less, the navigator is one row of chips. The row stays under the top bar when you scroll, and each mark shows its build, for example `B1`. On a window of 760 pixels or less, each row has two lines: the badge, the ID, and the title, then the short note. On the highlighted row, its options replace the note. The rows do not change height when the highlight moves. On a window of 760 pixels or less, a record covers the list, and each button is at least 40 pixels high. The status bar keeps the last level of the path, `Find`, `Keys`, and `More`.
 
@@ -100,7 +100,7 @@ The find bar lists `New change` (`/new`) and `New target` (`/setup`).
 
 - The target name. It comes from the host of the address. You can change it.
 - The environment. It is empty. You can fill it in. A name that starts with `prod` makes a production instance.
-- The instance `local`, the entry point `web`, the capabilities, the operations, `reset=none`, and `authentication=none`, each as one line of text.
+- A list of the instance, the entry point, the capabilities, the operations, the reset, and the authentication. Each has a plain label and the value as the engine gives it, for example `Capabilities` and `http (no browser tool on PATH)`.
 
 `Testers may change data` is the choice `--operations`. `Yes` lets the testers do any action that the application offers to a test user. `No` limits the testers to reading. For a local address (`localhost`, a loopback address, or a private range) the choice starts as `Yes`. For another address the choice has no start value. Choose `Yes` or `No`. When you set up a target on an address that is not local, a dialog asks once more and names the address.
 
@@ -128,7 +128,7 @@ A form keeps your text as a draft. It stays when you press `Esc`, reload the pag
 1. Choose `Test build…`. A dialog opens.
 2. Write the build name. The field has the name that `checkmate test` gives when you give no `--build`: the short git commit, or the date and time in UTC.
 3. Choose the level: `smoke`, `normal`, or `deep`. `normal` is the first choice. Press `1`, `2`, or `3` to choose a level.
-4. Check `Testers may use without asking`. The field has the tool rules of the testers, one rule for each word, as in `checkmate test --allow`, for example `Read Bash`. It starts with the rules of the workspace setting `Tool rules of testers` (see [Settings](#settings)). The engine needs at least one rule today. A tester cannot answer a permission prompt, so a tool without a rule is not usable.
+4. Check `Testers may use without asking`. The field has the tool rules of the testers, one rule for each word, as in `checkmate test --allow`, for example `Read Bash`. It starts with the rules of the workspace setting `Tool rules of testers` (see [Settings](#settings)). The engine needs at least one rule today. A tool without a rule asks you in the UI, if the UI runs.
 5. Open `More` to give `Since`, `Until`, and `Repository folder`. Without `Since`, the UI uses the default branch of `origin`, as `checkmate test` does.
 6. Press `Enter`. The Testers view of the new test opens.
 
@@ -170,15 +170,37 @@ A tester can always write in its own work folder. When a tester leaves files out
 
 ### Permission requests
 
-While the UI runs, a tester that needs a permission asks you. Without the UI, or when the hook is blocked, a tester behaves as before: Claude Code denies the call.
+While the UI runs, a tester that needs a permission asks you. The tester waits for your answer for up to 10 minutes. Without the UI, or when the hook is blocked, a tester behaves as before: Claude Code denies the call.
 
-1. Look at the status bar. It shows `N permissions` when requests wait.
-2. Click it. `/permissions` has one row for each open request: who asks, the tool, and the first line of the input.
-3. Click one answer: `Allow once`, `Allow <rule> for this test`, `Always allow <rule> in this project`, `Deny` (write the reason first), or `Stop` (the tester, or the run). The two rule answers show only when Claude Code suggests a rule.
+Open requests show in these places:
 
-A rule for this test answers the same request of every other tester of the run at once. The record shows `allowed by rule <rule>, set by <name>`. `Always allow` lets Claude Code write the rule in its own settings file for the project. Checkmate writes no settings file. A request with no answer in 10 minutes closes, and the call is denied. A request also closes when the tester or the run stops, and when the UI stops. The same answers are in `checkmate explore permit`. Each request and each answer is an event of the exploration, so the record shows who decided what.
+- The status bar shows `1 permission` or `<n> permissions` on every page, before `<n> need you`. It updates by itself. Click it to open the first open request.
+- `Needs you` of the plan has the first group, `Permission requests`, above `Is this a defect?`. Each row has the badge `ASKS`, the ID (`x-1/P3`), who asks and the first line of what it asks, and how long it waits. The group shows the oldest request first. A new request joins at the end of the group. The highlight stays on its record. The rows count in `Needs you` and in `<n> need you · all plans`.
+- In the Testers view, the row of a tester that asks has the state `Asks`. Its first line says what it asks. A step that is not a tester shows a link under the banner.
+- `Activity` says `waits for you: <n> permission requests` on the run.
 
-The `/permissions` page is a plain list. A later version replaces it.
+`→` or `Enter` on a request row opens the request record. A row has up to six options, so it shows `1 Allow once` and `→ more`. Press `1` to allow the request once without opening it. When the highlight moved because of a live update, `1` records nothing and says so. Press `1` again to act on the new row.
+
+**The request record.** `/permissions/<exploration>/<request>` shows what the tester asks, in full: the tool, the command or the path, for `Write` and `Edit` the first 40 lines of the content or of the change, the folder, who asks, since when, the run, and the plan. The options follow, one on each line and numbered. The destructive option is last. An option that does not apply is not shown, and the numbers have no gap.
+
+1. `Allow once`. Answers yes. Checkmate stores no rule.
+2. `Allow this command for this test`. Shows only when Claude Code suggests a rule. Answers yes, and answers every later request with the same rule, from any tester of the run. Checkmate stores the rule in the record of the run.
+3. `Allow every <Tool> call for this test`. Answers yes, and answers every later call of the same tool in the run. Checkmate stores the rule in the record of the run.
+4. `Always allow this command in this project`. Shows only when Claude Code suggests a rule. Claude Code writes the rule to `.claude/settings.local.json`. Checkmate writes no settings file.
+5. `Deny…`. Opens a field for the reason. The reason is required, and the tester gets it.
+6. `Stop tester <name>…`. For a step that is not a tester, `Stop the run…`. A dialog asks first.
+
+The number keys act in the record. The rules of the run show under the options, for example `Allowed for this test: every Bash call, set by dawid 2 min ago`, and in the Testers view under the banner.
+
+After an answer, the next open request opens in the same view. When no request is open, you return to where you came from, and a message names the answer. When another session or a rule answered the request, or when it closed (time-out, tester stopped, UI restarted), the record says so in plain words and has no options. It moves on after 2 seconds, or at any key.
+
+**Many requests.** Select rows with their boxes, `Space`, or `Shift` `↑` `↓`. The strip offers `Allow once (<n>)` and `Deny… (<n>)`. Each asks first and names the count. Deny asks for one reason for all. A bulk answer makes no rule. A request that has an answer already is skipped, and the message says so.
+
+**History.** The Testers view of a run has the fold `Permission requests (<n>)`. It lists each request and its answer, who answered, and when, newest first, 20 for each page. `↓` on the last row opens the next page. `Enter` opens the record, which does not move on.
+
+A rule for this test answers the same request of every other tester of the run at once. The record shows `allowed by rule <rule>, set by <name>`. A rule of one run does not apply to another run. A request with no answer in 10 minutes closes, and the call is denied. A request also closes when the tester or the run stops, and when the UI stops. The same answers are in `checkmate explore permit`. Each request and each answer is an event of the exploration, so the record shows who decided what.
+
+`/permissions` opens the first open request, or `Activity` when none is open.
 
 ### Plan
 
@@ -198,7 +220,7 @@ The run list and the operation log. They page, sort, and filter. The address kee
 
 `Settings` in the status bar opens `Targets`. `Claude Code` shows the path of `claude`, or says that no `claude` is on `PATH`. It also shows the default model alias of each test level. The page makes no call to Claude Code. The host wins: a test that you start from a shell with `--claude-arg --model --claude-arg <model>` uses that model. A test that you start in the UI uses the alias of its level.
 
-`Tool rules of testers` has the rules that the `Test build…` dialog and the new-change form start with. A rule lets a tester use a tool without asking you, for example `Read` or `Bash`. Write one rule for each word. The engine needs at least one rule today. Checkmate keeps the setting in the record, with the name and the time of the change, and the Log shows it as `setting set`. The page also says whether testers that start now can ask you for a permission in the UI. They can when `.checkmate/ui.json` names a UI that runs.
+`Tool rules of testers` has the rules that the `Test build…` dialog and the new-change form start with. A rule lets a tester use a tool without asking you, for example `Read` or `Bash`. Write one rule for each word. The engine needs at least one rule today. Checkmate keeps the setting in the record, with the name and the time of the change, and the Log shows it as `setting set`. With the rule `Bash`, testers run commands without asking. Without it, each command asks you in the UI, and a tester waits up to 10 minutes for the answer. The page also says whether testers that start now can ask you for a permission in the UI. They can when `.checkmate/ui.json` names a UI that runs.
 
 `Targets`. A target page shows the entry points, the instances, the tools, the profile, and the revision history.
 

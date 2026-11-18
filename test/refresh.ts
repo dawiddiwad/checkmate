@@ -30,7 +30,11 @@ export async function watchRefreshes(page: Page) {
 	})
 	await page.route('**/*', (route) => {
 		const request = route.request()
-		if (!holding || request.resourceType() !== 'fetch' || request.method() !== 'GET') return route.continue()
+		const address = new URL(request.url())
+		const here = new URL(page.url())
+		const refresh = address.pathname + address.search === here.pathname + here.search
+		if (!holding || !refresh || request.resourceType() !== 'fetch' || request.method() !== 'GET')
+			return route.continue()
 		held.push(route)
 		arrival()
 	})

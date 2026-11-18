@@ -32,12 +32,36 @@ export function asksFor(item: Permission) {
 	return line ? `${verb}: ${line}` : verb
 }
 
+const things: Record<string, string> = {
+	Bash: 'run a command',
+	Read: 'read a file',
+	Write: 'write a file',
+	Edit: 'edit a file',
+	MultiEdit: 'edit a file',
+	NotebookEdit: 'edit a notebook',
+	NotebookRead: 'read a notebook',
+	Glob: 'find files',
+	Grep: 'search files',
+	WebFetch: 'fetch a web page',
+	WebSearch: 'search the web',
+}
+
 export function askerName(item: Permission) {
-	return `${item.tester ? 'Tester' : 'Step'} ${item.who}`
+	if (item.tester) return `Tester ${item.who}`
+	if (item.who.startsWith('record-')) return `The recorder of ${item.who.slice('record-'.length)}`
+	return `Step ${item.who}`
 }
 
 export function askTitle(item: Permission) {
 	return `${askerName(item)} asks to ${asksFor(item)}`
+}
+
+export function askHeading(item: Permission) {
+	return `${askerName(item)} asks to ${things[item.tool] ?? `use ${item.tool}`}`
+}
+
+function breakAtSlashes(path: string) {
+	return path.split('/').map((part, index) => (index ? html`/<wbr />${part}` : part))
 }
 
 export function requestName(item: Pick<Permission, 'explorationId' | 'id'>) {
@@ -164,15 +188,16 @@ export function askingPill() {
 function optionOf(context: Context, item: Permission, from: string | null, choice: Choice, n: number) {
 	const key = html`<kbd aria-hidden="true">${n}</kbd><span>${choice.label}</span>`
 	if (choice.reveal)
-		return html`<a
+		return html`<button
+			type="button"
 			class="sp-btn"
-			href="#${choice.reveal}"
 			data-option
 			data-reveal="${choice.reveal}"
 			aria-label="${n}: ${choice.label}"
 			title="${choice.label}"
-			>${key}</a
-		>`
+		>
+			${key}
+		</button>`
 	const ask = choice.ask
 		? html`data-ask-title="${choice.ask.title}" data-ask-text="${choice.ask.text}" data-ask-yes="${choice.ask.yes}"`
 		: ''
@@ -271,7 +296,7 @@ export function permissionPage(
 	const name = requestName(item)
 	const rules = permissionRules(store, explorationId)
 	const choices = item.decision ? [] : choicesOf(item)
-	const title = askTitle(item)
+	const title = askHeading(item)
 	return {
 		title: `${name} · Permission request`,
 		section: 'home',
@@ -323,34 +348,6 @@ export function permissionPage(
 			<section aria-labelledby="asked-title">
 				<h2 class="lab" id="asked-title">What it asks</h2>
 				${asked(item)}
-				<dl class="facts">
-					<div>
-						<dt>Tool</dt>
-						<dd class="mono">${item.tool}</dd>
-					</div>
-					<div>
-						<dt>Asked by</dt>
-						<dd>${askerName(item)}</dd>
-					</div>
-					<div>
-						<dt>Folder</dt>
-						<dd>
-							${item.cwd ? html`<code>${item.cwd}</code>` : html`<span class="muted">not recorded</span>`}
-						</dd>
-					</div>
-					<div>
-						<dt>Since</dt>
-						<dd>${time(item.at)}</dd>
-					</div>
-					<div>
-						<dt>Run</dt>
-						<dd><a href="/explorations/${explorationId}">${explorationId}</a></dd>
-					</div>
-					<div>
-						<dt>Plan</dt>
-						<dd><a href="/plans/${item.planId}">${item.planId}</a></dd>
-					</div>
-				</dl>
 			</section>
 			${
 				choices.length
@@ -389,6 +386,25 @@ ${refusal?.reason ?? ''}</textarea>
 						</section>`
 					: ''
 			}
+			<section aria-labelledby="details-title">
+				<h2 class="lab" id="details-title">Details</h2>
+				<dl class="facts">
+					<dt>Tool</dt>
+					<dd class="mono">${item.tool}</dd>
+					<dt>Folder</dt>
+					<dd class="path">
+						${item.cwd ? html`<code>${breakAtSlashes(item.cwd)}</code>` : html`<span class="muted">not recorded</span>`}
+					</dd>
+					<dt>Asked by</dt>
+					<dd>${askerName(item)}</dd>
+					<dt>Since</dt>
+					<dd>${time(item.at)}</dd>
+					<dt>Run</dt>
+					<dd><a href="/explorations/${explorationId}">${explorationId}</a></dd>
+					<dt>Plan</dt>
+					<dd><a href="/plans/${item.planId}">${item.planId}</a></dd>
+				</dl>
+			</section>
 			${
 				rules.length
 					? html`<section aria-labelledby="rules-title">

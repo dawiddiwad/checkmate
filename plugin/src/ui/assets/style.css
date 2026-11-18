@@ -872,6 +872,14 @@ tbody tr:hover {
 	min-width: 0;
 	overflow-wrap: anywhere;
 }
+.facts dd.path {
+	overflow-wrap: break-word;
+	word-break: normal;
+}
+.facts dd.path code {
+	overflow-wrap: inherit;
+	word-break: inherit;
+}
 .tag {
 	display: inline-flex;
 	align-items: center;

@@ -350,6 +350,40 @@ for (const colorScheme of ['dark', 'light'] as const)
 		}
 	)
 
+test(
+	'options 1 and 2 of a long command are fully visible at 1440 by 900, and the folder breaks at slashes',
+	browserTest,
+	async (t) => {
+		const { page, url, workspace, ui } = await open(t, { viewport: { width: 1440, height: 900 } })
+		void asking(ui, workspace, 'x-14', 'a1', asked[0][1])
+		await waitOpen(workspace, 1)
+		await page.goto(url('/permissions/x-14/P1'))
+		await page.evaluate(() => document.fonts.ready)
+		const placed = await page.evaluate(() => {
+			const bottom = (index: number) => {
+				const item = document.querySelectorAll('.sp-optlist li')[index].getBoundingClientRect()
+				return item.bottom
+			}
+			return {
+				first: bottom(0),
+				second: bottom(1),
+				room: document.querySelector('.statusbar')!.getBoundingClientRect().top,
+			}
+		})
+		assert(
+			placed.second <= placed.room,
+			`option 2 ends at ${placed.second}, the status bar starts at ${placed.room}`
+		)
+		assert((await page.locator('.sp-ask-title').innerText()).length < 60)
+		const details = await page.evaluate(() => {
+			const folder = document.querySelector('dd.path')!.getBoundingClientRect()
+			const label = document.querySelector('.facts dt')!.getBoundingClientRect()
+			return { lines: Math.round(folder.height / 20), sameRow: Math.abs(folder.top - label.top) < 24 }
+		})
+		assert(details.lines <= 3, `the folder takes ${details.lines} lines`)
+	}
+)
+
 const widths = [1440, 1240, 1100, 900, 760, 600, 400]
 
 test('no row moves when the highlight moves through 20 rows, at every width', browserTest, async (t) => {

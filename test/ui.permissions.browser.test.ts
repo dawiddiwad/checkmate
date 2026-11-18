@@ -222,6 +222,10 @@ test('a request without a suggestion has four options, numbered one to four', br
 			.evaluateAll((list) => list.map((item) => item.textContent?.replace(/\s+/g, ' ').trim())),
 		['1Allow once', '2Allow every Bash call for this test', '3Deny…', '4Stop tester a1…']
 	)
+	assert.deepEqual(
+		await page.getByRole('button', { name: /^\d: / }).evaluateAll((list) => list.map((item) => item.ariaLabel)),
+		['1: Allow once', '2: Allow every Bash call for this test', '3: Deny…', '4: Stop tester a1…']
+	)
 	await page.keyboard.press('5')
 	assert.deepEqual(openOf(workspace).length, 1)
 	await page.keyboard.press('4')

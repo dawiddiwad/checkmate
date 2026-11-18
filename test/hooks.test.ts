@@ -632,9 +632,9 @@ test('the status bar counts open requests, /permissions opens the first one, and
 	assert.equal(first.status, 303)
 	assert.equal(first.headers.location, '/permissions/x-1/P1?from=%2Flog%3Fq%3Dx')
 	const record = (await call(f.ui, '/permissions/x-1/P1', undefined, as)).body
-	assert.match(record, /Tester a1 asks to run: npm view left-pad/)
+	assert.match(record, /<h1[^>]*>Tester a1 asks to run a command<\/h1>/)
 	assert.match(record, /<pre class="sp-code" tabindex="0">npm view left-pad<\/pre>/)
-	assert.match(record, /<code>\/work\/app<\/code>/)
+	assert.match(record, /<code>\/<wbr \/>work\/<wbr \/>app<\/code>/)
 	const order = [
 		'value="allow"',
 		'value="allow-kind"',

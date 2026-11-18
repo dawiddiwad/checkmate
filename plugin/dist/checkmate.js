@@ -19133,11 +19133,32 @@ function asksFor(item) {
   const verb = verbs[item.tool] ?? `use ${item.tool}`;
   return line ? `${verb}: ${line}` : verb;
 }
+var things = {
+  Bash: "run a command",
+  Read: "read a file",
+  Write: "write a file",
+  Edit: "edit a file",
+  MultiEdit: "edit a file",
+  NotebookEdit: "edit a notebook",
+  NotebookRead: "read a notebook",
+  Glob: "find files",
+  Grep: "search files",
+  WebFetch: "fetch a web page",
+  WebSearch: "search the web"
+};
 function askerName(item) {
-  return `${item.tester ? "Tester" : "Step"} ${item.who}`;
+  if (item.tester) return `Tester ${item.who}`;
+  if (item.who.startsWith("record-")) return `The recorder of ${item.who.slice("record-".length)}`;
+  return `Step ${item.who}`;
 }
 function askTitle(item) {
   return `${askerName(item)} asks to ${asksFor(item)}`;
+}
+function askHeading(item) {
+  return `${askerName(item)} asks to ${things[item.tool] ?? `use ${item.tool}`}`;
+}
+function breakAtSlashes(path) {
+  return path.split("/").map((part, index2) => index2 ? html2`/<wbr />${part}` : part);
 }
 function requestName(item) {
   return `${item.explorationId}/${item.id}`;
@@ -19236,15 +19257,16 @@ function askingPill() {
 function optionOf(context, item, from, choice2, n) {
   const key = html2`<kbd aria-hidden="true">${n}</kbd><span>${choice2.label}</span>`;
   if (choice2.reveal)
-    return html2`<a
+    return html2`<button
+			type="button"
 			class="sp-btn"
-			href="#${choice2.reveal}"
 			data-option
 			data-reveal="${choice2.reveal}"
 			aria-label="${n}: ${choice2.label}"
 			title="${choice2.label}"
-			>${key}</a
-		>`;
+		>
+			${key}
+		</button>`;
   const ask = choice2.ask ? html2`data-ask-title="${choice2.ask.title}" data-ask-text="${choice2.ask.text}" data-ask-yes="${choice2.ask.yes}"` : "";
   return html2`<form method="post" action="${recordPath(item)}" class="sp-opt">
 		${hidden2("csrf", context.csrf)}${from ? hidden2("from", from) : ""}${hidden2("decision", choice2.decision)}
@@ -19313,7 +19335,7 @@ function permissionPage(store, context, explorationId, requestId, view, refusal)
   const name2 = requestName(item);
   const rules = permissionRules(store, explorationId);
   const choices = item.decision ? [] : choicesOf(item);
-  const title = askTitle(item);
+  const title = askHeading(item);
   return {
     title: `${name2} \xB7 Permission request`,
     section: "home",
@@ -19357,34 +19379,6 @@ function permissionPage(store, context, explorationId, requestId, view, refusal)
 			<section aria-labelledby="asked-title">
 				<h2 class="lab" id="asked-title">What it asks</h2>
 				${asked(item)}
-				<dl class="facts">
-					<div>
-						<dt>Tool</dt>
-						<dd class="mono">${item.tool}</dd>
-					</div>
-					<div>
-						<dt>Asked by</dt>
-						<dd>${askerName(item)}</dd>
-					</div>
-					<div>
-						<dt>Folder</dt>
-						<dd>
-							${item.cwd ? html2`<code>${item.cwd}</code>` : html2`<span class="muted">not recorded</span>`}
-						</dd>
-					</div>
-					<div>
-						<dt>Since</dt>
-						<dd>${time(item.at)}</dd>
-					</div>
-					<div>
-						<dt>Run</dt>
-						<dd><a href="/explorations/${explorationId}">${explorationId}</a></dd>
-					</div>
-					<div>
-						<dt>Plan</dt>
-						<dd><a href="/plans/${item.planId}">${item.planId}</a></dd>
-					</div>
-				</dl>
 			</section>
 			${choices.length ? html2`<section class="sp-options" aria-labelledby="options-title" data-key="options:${name2}">
 							<h2 class="lab" id="options-title">Options</h2>
@@ -19419,6 +19413,25 @@ ${refusal?.reason ?? ""}</textarea>
 								</form>
 							</div>
 						</section>` : ""}
+			<section aria-labelledby="details-title">
+				<h2 class="lab" id="details-title">Details</h2>
+				<dl class="facts">
+					<dt>Tool</dt>
+					<dd class="mono">${item.tool}</dd>
+					<dt>Folder</dt>
+					<dd class="path">
+						${item.cwd ? html2`<code>${breakAtSlashes(item.cwd)}</code>` : html2`<span class="muted">not recorded</span>`}
+					</dd>
+					<dt>Asked by</dt>
+					<dd>${askerName(item)}</dd>
+					<dt>Since</dt>
+					<dd>${time(item.at)}</dd>
+					<dt>Run</dt>
+					<dd><a href="/explorations/${explorationId}">${explorationId}</a></dd>
+					<dt>Plan</dt>
+					<dd><a href="/plans/${item.planId}">${item.planId}</a></dd>
+				</dl>
+			</section>
 			${rules.length ? html2`<section aria-labelledby="rules-title">
 							<h2 class="lab" id="rules-title">Rules of this test</h2>
 							${rulesLines(rules)}

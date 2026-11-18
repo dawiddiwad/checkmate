@@ -96,7 +96,7 @@ For derived rules, each rule row has two options, and `Add a rule…` is in the 
 
 A rule shows how many stored tests it has, for example `1 stored test`, in its row and in its view. The header shows how many rules have one, for example `4 of 13 rules have a stored test`, when the plan has any.
 
-After a store, the rules have the origin `harvested`. A rule without a stored test keeps `1 Edit…` and `2 Remove…`, and `Add a rule…` stays. A rule with a stored test belongs to the revision of the plan. Its row has one option, `1 Edit in the plan editor`, which opens the editor of the revision. When the rule gets a stored test after you opened its dialog, the dialog shows the refusal of the engine, and nothing changes. A rule `HR<n>` always has a stored test.
+After a store, the rules have the origin `harvested`. This holds also for a plan whose rules come from its request and that has no revision before the store: the plan keeps the rules of the request that have no stored test, in the order of the request, and the rules with a stored test belong to the revision. A rule without a stored test keeps `1 Edit…` and `2 Remove…`, and `Add a rule…` stays. A rule with a stored test belongs to the revision of the plan. Its row has one option, `1 Edit in the plan editor`, which opens the editor of the revision. When the rule gets a stored test after you opened its dialog, the dialog shows the refusal of the engine, and nothing changes. A rule `HR<n>` always has a stored test.
 
 Each change is a `plan edit <planId> --patch` with only `requirements`: the UI and the command use the same code. The stored rules get the origin `corrected`. Rules with the origin `harvested` keep it. After a change, the navigator, the area marks, and the counts show the new rules.
 

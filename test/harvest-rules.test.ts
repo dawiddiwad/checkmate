@@ -283,3 +283,36 @@ test('the defects to store are the claims that a harvest without observations wo
 	assert.equal((stored.data.tests as string[]).length, storable[0].claims.length)
 	assert.deepEqual(storableDefects(opened, 'cart'), [])
 })
+
+test('harvest keeps the rules of a request that has no revision, in the order of the request', (t) => {
+	const opened = store(t)
+	target(opened)
+	const requirements = [
+		{ id: 'R1', text: 'Rule one.', source: 'brief#one', area: 'Discount' },
+		{ id: 'R2', text: 'Rule two.', source: 'brief#two', area: 'Limit' },
+		{ id: 'R3', text: 'Rule three.', source: 'brief#three', area: 'Limit' },
+		{ id: 'R4', text: 'Rule four.', source: 'brief#four' },
+	]
+	openPlan(opened, actor, {
+		planId: 'cart',
+		target: 'checkout-local@1',
+		request: { objective: 'Test the cart.', requirements, context: { sources: [] } },
+	})
+	openTest(opened, 'cart', 'x-1', 'b1')
+	entries(opened, 'x-1', 'a1', [finding('D1', 'R3'), finding('D2', 'R2'), finding('D3', 'outside')])
+	done(opened, 'x-1')
+	const reply = harvestExploration(opened, actor, { explorationId: 'x-1', observations: false })
+	assert.equal(reply.status, 'completed')
+	const after = planRules(opened, 'cart')
+	assert.equal(after.origin, 'harvested')
+	assert.deepEqual(
+		after.rules.map((rule) => rule.id),
+		['R1', 'R2', 'R3', 'R4', 'HR1']
+	)
+	assert.deepEqual(after.rules.slice(0, 4), requirements)
+	assert.deepEqual(
+		planRevision(opened, 'cart').plan.requirements.map((rule) => rule.id),
+		['R3', 'R2', 'HR1']
+	)
+	assert.deepEqual([reply.data.rules, reply.data.rulesWithTests], [5, 3])
+})

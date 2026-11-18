@@ -6,7 +6,7 @@ import { requireCondition, unusedId } from './contracts.ts'
 import { explorationRow, journal, planClaims } from './journal.ts'
 import { planCandidate, planRequest, planRevision, storeEdit, storeRevision } from './plans.ts'
 import type { Rule } from './rules.ts'
-import { outsideRule, planRules, saveRules, storedRules } from './rules.ts'
+import { outsideRule, planRules, saveRules } from './rules.ts'
 
 type Candidate = Required<PlanCandidate>
 type Draft = {
@@ -191,9 +191,10 @@ export function harvestExploration(
 		const hasRevision = one(store, 'SELECT 1 FROM plan_revisions WHERE plan_id = ?', row.plan_id)
 		const latest = hasRevision ? planRevision(store, row.plan_id) : null
 		const base: Candidate = latest ? planCandidate(latest.plan) : { requirements: [], tests: [], gaps: [] }
+		const before = planRules(store, row.plan_id)
 		const result = harvested(
 			base,
-			planRules(store, row.plan_id).rules,
+			before.rules,
 			items,
 			row.exploration_id,
 			row.build,
@@ -224,9 +225,8 @@ export function harvestExploration(
 					},
 					operationId
 				)
-		const stored = storedRules(store, row.plan_id)
-		if (!latest && stored && stored.origin !== 'harvested')
-			saveRules(store, operationId, row.plan_id, stored.rules, 'harvested')
+		if (!latest && before.rules.length && before.origin !== 'harvested')
+			saveRules(store, operationId, row.plan_id, before.rules, 'harvested')
 		const { plan } = planRevision(store, row.plan_id)
 		const stocked = new Set(plan.tests.flatMap((item) => item.requirementIds))
 		const rules = planRules(store, row.plan_id).rules

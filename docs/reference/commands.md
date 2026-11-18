@@ -628,7 +628,7 @@ checkmate delegate <setup|plan|revise|execute> <subject> --allow <rule>... [--ti
 checkmate ui [--workspace <path>] [--port <n>]
 ```
 
-Prints `completed ui url=<url>` and serves the review UI on `127.0.0.1` until SIGINT or SIGTERM. The default port is a free port. The UI writes only when a human submits a form. The Settings button in the top bar opens Settings, with the targets and their instances. Read [Review in the browser](../guides/review-ui.md).
+Prints `completed ui url=<url>` and serves the review UI on `127.0.0.1` until SIGINT or SIGTERM. The default port is a free port. The UI writes only when a human submits a form. The Settings button in the top bar opens Settings, with the targets and their instances and the tool rules of the testers. The UI can set up a target and start the first test of a new change: it calls the functions of `setup` and `test`. Read [Review in the browser](../guides/review-ui.md).
 
 ## Environment variables
 

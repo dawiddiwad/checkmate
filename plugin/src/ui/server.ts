@@ -477,7 +477,7 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		const shown = context(request)
 		if (pathname === '/' && searchParams.has('item')) return redirect(request.res, oldItem(searchParams))
 		if (pathname === '/') return render(request, startOfHome(shown))
-		if (pathname === '/setup') return render(request, firstRunPage(shown, false))
+		if (pathname === '/setup') return render(request, firstRunPage(shown, false, cameFrom(request)))
 		if (pathname === '/new')
 			return render(request, newChangePage(shown, changeDefaults(searchParams.get('target')), false))
 		if (pathname === '/inbox' || pathname === '/plans') return redirect(request.res, '/')
@@ -588,6 +588,13 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		if (!targetList(store).length) return firstRunPage(shown, true)
 		if (!planList(store).length) return newChangePage(shown, changeDefaults(null), true)
 		return homePage(store)
+	}
+
+	function cameFrom(request: Request) {
+		const referer = request.req.headers.referer
+		if (!referer || !URL.canParse(referer)) return '/'
+		const from = new URL(referer)
+		return from.host === request.req.headers.host && from.pathname === '/new' ? `/new${from.search}` : '/'
 	}
 
 	function actorPage(shown: Context, back: string): Page {

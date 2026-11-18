@@ -41,6 +41,8 @@ When a page or a list has nothing to show, it says what is empty and gives the o
 
 The home page, `/`. It shows one row for each plan: the plan ID, the [loop state](../reference/commands.md#loop-states) and the role that it waits on, the latest build, the objective, one sentence about the latest build, a small map of the rules against the last two builds, and the counts of defects, findings to look at, open questions, and defects handed over. Option `1` opens the step that waits for you, for example `Answer 4 blocking questions`. A plan with a test in progress shows `Testing`, the step, and the time since the start. A plan whose last test was stopped or interrupted shows `stopped` or `interrupted`. The row `Testers now` of the navigator shows the same step and time. The plans that wait for you are first, and the plan with the most recent activity is first among them. The other plans follow. Click a row, or press `→` or `Enter`, to open the plan. When you go back from a plan, the home page highlights that plan.
 
+The row `New change` is after the plans. It opens the new-change form. When the record has no target, the home page is the first-run form. When the record has a target and no plan, the home page is the new-change form. See [Start from nothing](#start-from-nothing).
+
 The old addresses `/plans`, `/inbox`, and `/claims` open the home page. `/claims?plan=<planId>` opens `All items` of the plan. An old link `/?item=<item>` opens the item in its plan.
 
 ### A plan
@@ -90,6 +92,35 @@ Open a file of a claim to show the evidence viewer. It lists the files at the le
 
 The run page and the testers view show evidence as tiles. Click a tile to open it in a viewer. `Esc` closes the viewer.
 
+### Start from nothing
+
+The find bar lists `New change` (`/new`) and `New target` (`/setup`).
+
+**First run.** The first-run form has one field that you must fill in: the address of the application, for example `http://localhost:3000`. Type the address. Below it, the form shows what Checkmate assumes, as `checkmate setup` reports it:
+
+- The target name. It comes from the host of the address. You can change it.
+- The environment. It is empty. You can fill it in. A name that starts with `prod` makes a production instance.
+- The instance `local`, the entry point `web`, the capabilities, the operations, `reset=none`, and `authentication=none`, each as one line of text.
+
+`Testers may change data` is the choice `--operations`. `Yes` lets the testers do any action that the application offers to a test user. `No` limits the testers to reading. For a local address (`localhost`, a loopback address, or a private range) the choice starts as `Yes`. For another address the choice has no start value. Choose `Yes` or `No`. When you set up a target on an address that is not local, a dialog asks once more and names the address.
+
+Press `Enter` to set up the target. The new-change form opens. When the application does not answer, the form shows the sentence of the engine at the address field, and keeps your text. The form sets up the target with the same function as `checkmate setup`.
+
+`New target` in the new-change form opens the same form. `Esc` goes back to the new-change form and keeps your draft.
+
+**New change.** The form has these fields:
+
+- `Ticket file`: the path of a file inside the workspace. The form refuses a path outside the workspace, a file that does not exist, and a folder.
+- `Ticket text`: the text of the ticket, when you have no file. Fill in the file or the text, not both. Checkmate saves the text in `.checkmate/sources/<plan>.md` and gives that path to the plan as its source. Checkmate creates no file outside `.checkmate/`.
+- `Name of the plan`. Checkmate gives a name from the file name, or from the first line of the text, as the product makes the ID of a target. You can change it. The form refuses a name of a plan that exists.
+- `Target`. The form shows the choice only when the record has more than one target.
+- `Build`, `Level`, and `Testers may use without asking`, as in the `Test build…` dialog.
+- `More`: `Since`, `Until`, and `Repository folder`.
+
+Press `Enter` to make the plan and start the test with the same function as `checkmate test <plan> --source <file>`. The Testers view of the new test opens. Each refusal shows at its field, and the form keeps your text. When the target is on an address that is not local, a dialog asks first.
+
+A form keeps your text as a draft. It stays when you press `Esc`, reload the page, or leave for `New target`.
+
 ### Start a test
 
 `Test build…` is in the action row of each view of a plan. The row shows an action only when the action applies. `Test build…` does not show while a test of the plan runs.
@@ -97,12 +128,13 @@ The run page and the testers view show evidence as tiles. Click a tile to open i
 1. Choose `Test build…`. A dialog opens.
 2. Write the build name. The field has the name that `checkmate test` gives when you give no `--build`: the short git commit, or the date and time in UTC.
 3. Choose the level: `smoke`, `normal`, or `deep`. `normal` is the first choice. Press `1`, `2`, or `3` to choose a level.
-4. Open `More` to give `Since`, `Until`, and `Repository folder`. Without `Since`, the UI uses the default branch of `origin`, as `checkmate test` does.
-5. Press `Enter`. The Testers view of the new test opens.
+4. Check `Testers may use without asking`. The field has the tool rules of the testers, one rule for each word, as in `checkmate test --allow`, for example `Read Bash`. It starts with the rules of the workspace setting `Tool rules of testers` (see [Settings](#settings)). The engine needs at least one rule today. A tester cannot answer a permission prompt, so a tool without a rule is not usable.
+5. Open `More` to give `Since`, `Until`, and `Repository folder`. Without `Since`, the UI uses the default branch of `origin`, as `checkmate test` does.
+6. Press `Enter`. The Testers view of the new test opens.
 
-The UI starts the testers as new Claude Code processes with the tool rules `Read` and `Bash`. The test runs without the UI: closing the UI does not stop it. The UI starts a test only when no test of the plan is in progress. When one is in progress, the dialog stays open, names the running test, and links to it.
+The UI starts the testers as new Claude Code processes with the rules of the field. The follow-up of a test uses the rules of that test. The test runs without the UI: closing the UI does not stop it. The UI starts a test only when no test of the plan is in progress. When one is in progress, the dialog stays open, names the running test, and links to it.
 
-When the engine refuses the start, the dialog shows the reason in a sentence and keeps your text. For example, when `claude` is not on `PATH`, the dialog says so and gives the next step.
+When the engine refuses the start, the dialog shows the reason in a sentence at the field, and keeps your text. An empty rules field shows the refusal of the engine at that field. For example, when `claude` is not on `PATH`, the dialog says so and gives the next step.
 
 `Test the answers (<n>)…` shows when the last test of the plan is completed and <n> answers of the product owner are not tested yet. A dialog names the count. Press `Enter` or `1` to start the follow-up.
 
@@ -113,7 +145,7 @@ When the engine refuses the start, the dialog shows the reason in a sentence and
 - `1 Stop…` shows on a run in progress. A dialog asks first.
 - `1 Test again` shows on a failed, stopped, or interrupted run. The `Test build…` dialog opens with the same build, level, `Since`, `Until`, and folder.
 
-A row shows its numbered options only when all of them fit in the row. When they do not fit, the row shows `→ <n> options`, and the number keys do nothing in the list. Open the row to see each option on its own line.
+A row shows its numbered options only when all of them fit in the row. When they do not fit, the row shows `→ <n> options`, and the number keys do nothing in the list. Open the row. The detail view lists each option on its own line, numbered, and the number keys act there. In the Testers view, the overview of a run lists `Stop…` or `Test again`, and the detail of a tester lists `Stop`.
 
 `Activity` is also in the find bar. The list pages like `Log`: `↓` on the last row opens the next page.
 
@@ -121,14 +153,14 @@ A row shows its numbered options only when all of them fit in the row. When they
 
 `/explorations/<explorationId>` is the live view of one session. It updates by itself while the session runs. It shows:
 
-- The state of the session, its build, instance, level, and phases. While the session runs, a strip shows the steps `study`, `test`, `record`, `merge`, and `check`. Only the step that runs now is lit. Checkmate reads the step from the events of the session. The time since the start counts up, and the cost so far shows when Claude Code reported it.
-- One row for each tester, with its state (`Given to the session`, `Running`, `Paused`, `Finished`, or `Failed`), its last activity line, its step, and the time in that state. The time counts up while the tester runs.
+- The state of the session, its build, instance, level, and phases. While the session runs, a strip shows the steps `study`, `test`, `record`, `merge`, and `check`. Only the step that runs now is lit. Checkmate reads the step from the events of the testers: `study` while each running tester is in its study turn, and `test` from the first tester in its test turn. The banner names the same step. The header says when the session started, for example `started just now` or `started 1 min ago`. On a session that is over, it also says when the session ended and how long it took. The title is `Testers now` while the session runs, and `Testers` after it. The time since the start counts up, and the cost so far shows when Claude Code reported it.
+- One row for each tester, with its state (`Given to the session`, `Running`, `Paused`, `Finished`, `Failed`, `Stopping…`, or `Stopped`), its first line, its step, and the time in that state. The time counts up while the tester runs. The first line is the last activity line with its age, for example `… · 2 min ago`. Checkmate does not invent activity. While a tester has no activity line, the line says where the tester is, for example `In its study turn. The first activity line comes when the turn ends.`
 - `After the testers`: `record`, `merge`, `verify`, and `follow-up`, with their states and reasons.
 - The other sessions of the plan.
 
 Below the list is the overview of the session, or the tester or phase that you open: `Not merged yet`, the merged claims and questions, the saved files, and `Download report`. A paused session waits for you in the Claude Code session, not in the UI.
 
-`Stop the test…` is in the action row while the session runs as processes. A dialog names the plan and the build, and has an optional reason. A tester that runs has `Stop` as its last option. Both ask first. A stop ends the supervisor and the Claude Code processes of the test. It keeps the record and the work folder. The dialog closes with a message when the test or the tester ends before you confirm.
+`Stop the test…` is in the action row while the session runs as processes. A dialog names the plan and the build, and has an optional reason. A tester that runs has `Stop` as its last option. Both ask first. A stop ends the supervisor and the Claude Code processes of the test. It keeps the record and the work folder. The UI answers at once: the view shows `Stopping…` while the processes end, and no other page waits. A background process ends the processes. The view shows `Stopped` when they have ended, or names the processes that are still alive. While a stop runs, a new test of the plan does not start. The dialog closes with a message when the test or the tester ends before you confirm.
 
 A stopped session shows `Stopped by <name>`, the reason, and the work folder where reports that were not recorded stay. When the supervisor dies without a stop, the session shows `The run was interrupted: the supervisor stopped before the end.` Both give `Test build… again`. A session of the Claude Code session path cannot stop here. Stop its testers in the session.
 
@@ -151,6 +183,8 @@ The run list and the operation log. They page, sort, and filter. The address kee
 ### Settings
 
 `Settings` in the status bar opens `Targets`. `Claude Code` shows the path of `claude`, or says that no `claude` is on `PATH`. It also shows the default model alias of each test level. The page makes no call to Claude Code. The host wins: a test that you start from a shell with `--claude-arg --model --claude-arg <model>` uses that model. A test that you start in the UI uses the alias of its level.
+
+`Tool rules of testers` has the rules that the `Test build…` dialog and the new-change form start with. A rule lets a tester use a tool without asking you, for example `Read` or `Bash`. Write one rule for each word. The engine needs at least one rule today. Checkmate keeps the setting in the record, with the name and the time of the change, and the Log shows it as `setting set`.
 
 `Targets`. A target page shows the entry points, the instances, the tools, the profile, and the revision history.
 
@@ -205,6 +239,8 @@ In a text field, typing types. `Enter` sends a one-line answer, a reason, or a n
 Typed text is not lost. When you leave a record or a page with text in a field, the browser keeps the text as a draft. When you come back, the field shows the text and the note `Draft kept.` The plan editor asks before it goes back with changes that are not saved: `Keep editing` or `Leave and lose the changes`. A save without changes records no revision.
 
 `↑` on the first row of a list moves to its action row, for example `Test build…`. `→` and `←` move between the actions, `Enter` chooses one, and `↓` or `Esc` returns to the list. When a list has no row, `→` on its name in the navigator moves to the action row.
+
+The first-run form and the new-change form follow the same keys. `↑` and `↓` move between the fields and the buttons. In a field with more than one line, `↑` and `↓` first move the caret to the first or the last line. On a choice, press `1` or `2` (or `3`) to choose an option. `Esc` leaves a field and keeps the text. `Esc` again goes back one level. `Enter` in a field of one line sends the form.
 
 In a dialog with fields, `↑` and `↓` move between the fields and the buttons. `Esc` leaves a field and keeps the text. `Esc` again closes the dialog. `Enter` sends. A refusal shows inside the dialog, and the focus stays on the field. When you close the dialog, the focus returns to where it came from. `Back` in the browser closes the dialog.
 

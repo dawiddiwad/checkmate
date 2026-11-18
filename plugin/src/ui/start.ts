@@ -58,7 +58,7 @@ function shell(context: Context, action: string, body: Html, submit: string) {
 	</form>`
 }
 
-export function firstRunPage(context: Context, onHome: boolean): Page {
+export function firstRunPage(context: Context, onHome: boolean, back = '/'): Page {
 	const body = html`${field(
 			'setup-url',
 			'url',
@@ -94,7 +94,7 @@ export function firstRunPage(context: Context, onHome: boolean): Page {
 					['Plans', '/'],
 					['New target', null],
 				],
-		back: onHome ? null : '/',
+		back: onHome ? null : back,
 		body: html`<div>
 			${heading(onHome ? 'Set up the application' : 'New target', onHome ? 'Checkmate has no target yet. Give the address of the application to test.' : 'Give the address of the application to test.')}
 			${shell(context, '/setup', body, 'Set up the target')}
@@ -140,7 +140,7 @@ export function newChangePage(context: Context, defaults: NewChangeDefaults, onH
 			'file',
 			'Ticket file',
 			'The path of a file inside the workspace, for example docs/ticket.md. Or paste the ticket below.',
-			html`data-ticket-file`,
+			html`data-ticket-file autofocus`,
 			''
 		)}
 		<div class="field-group">

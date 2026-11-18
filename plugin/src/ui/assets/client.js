@@ -1691,14 +1691,15 @@ document.addEventListener('click', (event) => {
 })
 
 function refuseAt(form, message) {
-	const field = form.elements[message.dataset.field ?? '']
+	const named = form.elements[message.dataset.field ?? '']
+	const field = named?.tagName ? named : named?.[0]
 	message.dataset.refusal = ''
 	if (!field) {
 		form.querySelector('[data-act-error]').replaceChildren(message)
 		return firstField(form).focus()
 	}
 	field.closest('details')?.setAttribute('open', '')
-	field.after(message)
+	;(field.closest('fieldset') ?? field).after(message)
 	field.focus()
 }
 
@@ -2528,7 +2529,8 @@ function pageFormKey(event) {
 		event.preventDefault()
 		const next = stops[Math.max(0, Math.min(stops.length - 1, to))]
 		next.focus()
-		if (next.select && next.tagName === 'INPUT') next.setSelectionRange(next.value.length, next.value.length)
+		if (next.matches('input[type="text"], input:not([type])'))
+			next.setSelectionRange(next.value.length, next.value.length)
 		showHints()
 		return true
 	}

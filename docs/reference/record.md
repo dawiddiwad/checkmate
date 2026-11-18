@@ -91,6 +91,7 @@ The plan history, `plan diff`, and the log together show who changed what, when,
 | `plan_rules`           | The derived rules of a plan, and each correction. The latest row applies.     |
 | `plan_builds`          | The time when an exploration or a run of a plan first tested each build.      |
 | `handoffs`             | Each hand-over of a claim and each undo, with the actor, time, and target.    |
+| `workspace_settings`   | The settings of the workspace, one row for each save. The latest row applies. |
 
 The views `latest_plans`, `plan_tests`, and `plan_gaps` read inside the plan snapshots. `plan_tests` and `plan_gaps` have one row for each revision. Use them with `checkmate query`:
 
@@ -129,6 +130,10 @@ The UI is a `node:http` server in the plugin. It has no npm dependencies and loa
 - Each decision form also sends a token of the latest approval row of its subject. A new decision on the subject after the page loaded refuses the action, also a replay of the same form. The UI finds a stale page before it calls the core function, so this refusal adds no row to the operation log. A refusal inside the core function adds a `rejected` row, as for the CLI.
 - The `back` and `return` values of a form are paths on the UI only. The UI uses `/` for other values.
 - A hand-over in the UI calls the same core function as `checkmate claim handoff`.
+- The setting `testerRules` is a row of `workspace_settings`. Its default is `Read Bash`. The UI saves it from Settings, Claude Code, with the command `setting set`. The `Test build…` dialog and the new-change form start with it. The engine needs at least one rule today.
+- A pasted ticket is a file `.checkmate/sources/<planId>.md`. The plan request names it as a source. The UI creates no other file outside `.checkmate/`.
+- The routes that change the record are POST routes: `/setup/assumed` (reads only, for the assumptions of the first-run form), `/setup` (calls `setupTarget`), and `/new` (calls `runTest`, the function of `checkmate test`). Each checks the origin and the token.
+- A stop in the UI records the stop and starts `checkmate explore end <explorationId> --workspace <path>` as a background process. It ends the processes and records the event `stop-end` with the processes that are still alive.
 - The evidence of a claim has the address `/explorations/<explorationId>/claims/<claimId>/evidence/<n>`. The UI reads the bytes from the record, not from the disk.
 - Each action calls the same core function as the CLI command. The UI has no write path of its own.
 - Pages send a Content Security Policy that allows only resources from the UI itself.

@@ -623,7 +623,9 @@ function savedFiles(store: Store, live: Live, item: LiveExplorer) {
 function summaryDetail(store: Store, live: Live, crumbs: Html, options: Html | '') {
 	const merged = live.state === 'completed' || live.claims.length + live.questions.length > 0
 	const files = live.explorers.flatMap((item) =>
-		fileOpeners(live, item).map((file) => html`<li>${item.explorer}: ${viewLink(file.opener, file.label)}</li>`)
+		fileOpeners(live, item).map(
+			(file) => html`<li>${item.explorer}: ${viewLink(file.opener, file.label, undefined, 'tap')}</li>`
+		)
 	)
 	return html`${crumbs}
 		<h2 class="q-h">Overview</h2>

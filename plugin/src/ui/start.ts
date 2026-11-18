@@ -164,7 +164,7 @@ export function newChangePage(context: Context, defaults: NewChangeDefaults, onH
 						)}
 					</select>
 					<p class="help" id="change-target-help">
-						The application to test. <a href="/setup" data-new-target-link>New target</a>
+						The application to test. <a class="tap" href="/setup" data-new-target-link>New target</a>
 					</p>
 				</div>`
 			: html`<input
@@ -174,7 +174,8 @@ export function newChangePage(context: Context, defaults: NewChangeDefaults, onH
 						${chosen.local ? '' : html`data-nonlocal data-address="${chosen.address ?? ''}"`}
 					/>
 					<p class="help" data-new-target-note>
-						Target <strong>${chosen.targetId}</strong>. <a href="/setup" data-new-target-link>New target</a>
+						Target <strong>${chosen.targetId}</strong>.
+						<a class="tap" href="/setup" data-new-target-link>New target</a>
 					</p>`
 	const instances = defaults.targets
 		.filter((target) => target.instances.length)

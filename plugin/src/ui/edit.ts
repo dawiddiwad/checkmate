@@ -271,7 +271,7 @@ function actorLine(context: Context, state: EditState, path: string, mode: strin
 	if (context.actor)
 		return html`<p class="help">
 			Saving as <strong>${context.actor}</strong>.
-			<a href="/actor?back=${encodeURIComponent(path)}">Change name</a>
+			<a class="tap" href="/actor?back=${encodeURIComponent(path)}">Change name</a>
 		</p>`
 	return html`<div class="field-group">
 		<label class="lab" for="actor-${mode}">Your name</label>

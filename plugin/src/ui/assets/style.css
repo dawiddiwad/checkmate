@@ -2832,6 +2832,7 @@ details.fold[open] > summary::before {
 		height: 40px;
 		margin-left: -12px;
 	}
+	.tap,
 	.brand,
 	.who .actor,
 	.settings-nav .nav a,

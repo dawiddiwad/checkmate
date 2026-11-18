@@ -194,23 +194,31 @@ export function measure(narrow: boolean) {
 				target.matches('.sp-c-title, .skip')
 			)
 				continue
-			const prose = [...(target.parentElement?.childNodes ?? [])].some(
-				(node) => node.nodeType === 3 && node.textContent!.trim().length > 2
-			)
-			if (target.matches('a') && prose) continue
-			const box = (target.matches('[type=checkbox], [type=radio]') && target.closest('label')) || target
+			const siblings = [...(target.parentElement?.childNodes ?? [])]
+			const words = (nodes: ChildNode[]) =>
+				nodes.some((node) => node.nodeType === 3 && node.textContent!.trim().length > 2)
+			const at = siblings.indexOf(target)
+			if (target.matches('a') && words(siblings.slice(0, at)) && words(siblings.slice(at + 1))) continue
+			target.scrollIntoView({ block: 'center', inline: 'center' })
+			const spot = target.getBoundingClientRect()
+			const hit = document.elementFromPoint(spot.left + spot.width / 2, spot.top + spot.height / 2)
+			const label = hit?.closest('label') as HTMLLabelElement | null
+			const inLabel = label?.control === target
+			if (!hit || !(target.contains(hit) || inLabel)) continue
+			const box = target.matches('[type=checkbox], [type=radio]') && inLabel ? label! : target
 			const { width, height } = box.getBoundingClientRect()
-			if (width < 39.5 || height < 39.5) problems.push(`${name(target)} is ${width}x${height} px`)
+			if (width < 39.5 || height < 39.5)
+				problems.push(`${name(target)} "${target.textContent!.trim().slice(0, 30)}" is ${width}x${height} px`)
 		}
 	return problems
 }
 
-export async function check(page: Page, path: string, width: number, colorScheme: 'light' | 'dark') {
+export async function check(page: Page, path: string, width: number, colorScheme: 'light' | 'dark', only = /./) {
 	await page.setViewportSize({ width, height: 900 })
 	await page.emulateMedia({ colorScheme, reducedMotion: 'reduce' })
 	await page.goto(path)
 	await page.evaluate(() => document.fonts.ready)
 	await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))))
-	const problems = await page.evaluate(measure, width <= 760)
+	const problems = (await page.evaluate(measure, width <= 760)).filter((problem) => only.test(problem))
 	assert.deepEqual(problems, [], `${path} at ${width} in ${colorScheme}`)
 }

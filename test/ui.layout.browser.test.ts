@@ -5,6 +5,7 @@ import { closeStore, openStore } from '../plugin/src/index.ts'
 import { decideClaim } from '../plugin/src/journal.ts'
 import { answerGap } from '../plugin/src/plans.ts'
 import { launchWith, open, browserTest, stop } from './browser.ts'
+import { files } from './explorations.ts'
 import { check, measure } from './layout.ts'
 import { asking, bash, openOf, seedHistory, waitOpen } from './permissions.ts'
 import { addRequestActivity, askRequest, recordRequestEvent, setRequestState } from '../plugin/src/requests.ts'
@@ -66,6 +67,18 @@ for (const colorScheme of ['dark', 'light'] as const)
 				for (const path of pages) await check(page, url(path), width, colorScheme)
 		}
 	)
+
+test('what a finger hits is at least 40 px at 760, 600, and 400', browserTest, async (t) => {
+	const { page, url } = await open(t)
+	for (const width of [760, 600, 400]) for (const path of pages) await check(page, url(path), width, 'light', / px$/)
+})
+
+test('a saved file of a tester is a target of 40 px at 760, 600, and 400', browserTest, async (t) => {
+	const { page, url, workspace } = await open(t)
+	read(workspace, (store) => files(store, 'x-9', 'a1', 'test', { 'plan.md': 'The plan.\n' }))
+	for (const width of [760, 600, 400]) await check(page, url('/explorations/x-9'), width, 'light', / px$/)
+	assert.match((await page.locator('a[data-view]', { hasText: 'plan.md' }).first().textContent()) ?? '', /plan\.md/)
+})
 
 const longCommand =
 	`cd /home/user/projects/checkmate-demo/a/very/long/absolute/path/to/the/application/under/test && ${'curl -sS -i -X POST -H "Content-Type: application/json" -d \'{"name":"x"}\' http://127.0.0.1:9911/api/notes?page=1 && '.repeat(3)}echo done`.slice(

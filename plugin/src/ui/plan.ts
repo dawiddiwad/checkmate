@@ -512,7 +512,7 @@ function claimsFold(planId: string, found: PlanContext) {
 		deciding,
 		html`<p class="help">
 				The merged claims of completed explorations.
-				<a href="/plans/${planId}?view=all">Open them in All items</a>.
+				<a class="tap" href="/plans/${planId}?view=all">Open them in All items</a>.
 			</p>
 			${claimsTable(planId, found.claims)}`,
 		'claims'

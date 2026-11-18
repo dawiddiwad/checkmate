@@ -2276,6 +2276,7 @@ document.addEventListener('submit', (event) => {
 
 window.addEventListener('pageshow', () => {
 	sending = false
+	leaving = false
 })
 
 window.addEventListener('popstate', () => {
@@ -2454,8 +2455,16 @@ function replaceRegion(region, fresh, previous) {
 
 let refreshing = false
 let again = false
+let leaving = false
+
+window.navigation?.addEventListener('navigate', (event) => {
+	if (event.destination.sameDocument) return
+	leaving = true
+	setTimeout(() => (leaving = false), 5000)
+})
 
 async function refresh() {
+	if (leaving) return
 	if (refreshing || sending) return void (again = true)
 	refreshing = true
 	try {
@@ -2463,6 +2472,7 @@ async function refresh() {
 		if (!response.ok) return
 		const fresh = new DOMParser().parseFromString(await response.text(), 'text/html')
 		if (sending) return void (again = true)
+		if (leaving) return
 		const messages = []
 		for (const region of [...document.querySelectorAll('[data-region]')]) {
 			const name = region.dataset.region

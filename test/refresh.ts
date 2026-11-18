@@ -1,20 +1,32 @@
 import type { Page, Route } from 'playwright-core'
 
-type Counted = { refreshed: number }
-
 export async function watchRefreshes(page: Page) {
 	const held: Route[] = []
 	let holding = false
 	let arrival = () => {}
+	let read = 0
+	let replaced = 0
+	let reading: Array<{ count: number; done: () => void }> = []
 	await page.addInitScript(() => {
-		const counted = window as unknown as Counted
-		counted.refreshed = 0
-		const read = Response.prototype.text
+		const text = Response.prototype.text
 		Response.prototype.text = async function () {
-			const body = await read.call(this)
-			setTimeout(() => (counted.refreshed += 1))
+			const body = await text.call(this)
+			setTimeout(() => console.log('refresh-read'))
 			return body
 		}
+		new MutationObserver((list) => {
+			const gone = list.some((one) =>
+				[...one.removedNodes].some((node) => node instanceof Element && node.matches('[data-region]'))
+			)
+			if (gone) console.log('region-replaced')
+		}).observe(document, { subtree: true, childList: true })
+	})
+	page.on('console', (message) => {
+		if (message.text() === 'region-replaced') replaced += 1
+		if (message.text() !== 'refresh-read') return
+		read += 1
+		for (const each of reading.filter((one) => one.count <= read)) each.done()
+		reading = reading.filter((one) => one.count > read)
 	})
 	await page.route('**/*', (route) => {
 		const request = route.request()
@@ -29,15 +41,14 @@ export async function watchRefreshes(page: Page) {
 		arrived() {
 			return held.length ? Promise.resolve() : new Promise<void>((resolve) => (arrival = resolve))
 		},
+		replaced: () => replaced,
 		async release() {
 			holding = false
 			const routes = held.splice(0)
-			const before = await page.evaluate(() => (window as unknown as Counted).refreshed)
+			const count = read + routes.length
+			const answered = new Promise<void>((done) => reading.push({ count, done }))
 			await Promise.all(routes.map((route) => route.continue()))
-			await page.waitForFunction(
-				(wanted) => (window as unknown as Counted).refreshed >= wanted,
-				before + routes.length
-			)
+			await answered
 		},
 	}
 }

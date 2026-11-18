@@ -158,3 +158,53 @@ test('a refresh never closes or re-creates the find bar, the key panel, or a dia
 			.catch(() => assert.fail(`${name} did not give the focus back to the row`))
 	}
 })
+
+test('a refresh that arrives while a decision is sent is dropped', browserTest, async (t) => {
+	const { page, url, workspace } = await open(t)
+	const watched = await watchedList(page, url)
+	let letPostGo = () => {}
+	const posting = new Promise<void>((done) =>
+		page.route('**/claims/**', async (route) => {
+			if (route.request().method() !== 'POST') return route.continue()
+			done()
+			await new Promise<void>((release) => (letPostGo = release))
+			await route.continue()
+		})
+	)
+	watched.hold()
+	decideElsewhere(workspace, 'k1/D12')
+	await watched.arrived()
+	await page.keyboard.press('1')
+	await posting
+	await watched.release()
+	assert.equal(await page.locator('[data-panel="needs"] [data-key="c:k1/D12"]').count(), 1)
+	letPostGo()
+	await page.getByRole('status').filter({ hasText: 'Accepted coupons · k1/D10' }).waitFor()
+})
+
+test('a refresh that arrives while the page leaves is dropped', browserTest, async (t) => {
+	const { page, url, workspace } = await open(t)
+	const watched = await watchedList(page, url)
+	let letPageGo = () => {}
+	const leaving = new Promise<void>((done) =>
+		page.route(
+			(address) => address.searchParams.has('item'),
+			async (route) => {
+				if (route.request().resourceType() !== 'document') return route.continue()
+				done()
+				await new Promise<void>((release) => (letPageGo = release))
+				await route.continue()
+			}
+		)
+	)
+	watched.hold()
+	deferElsewhere(workspace, 'k1/Q10')
+	await watched.arrived()
+	await page.keyboard.press('ArrowRight')
+	await leaving
+	const before = watched.replaced()
+	await watched.release()
+	assert.equal(watched.replaced(), before)
+	letPageGo()
+	await page.waitForURL(/item=/)
+})

@@ -82,3 +82,79 @@ test('a key pressed while a refresh is held acts on the row that had the highlig
 	assert.equal(stateOf(workspace, 'k1/D12'), 'accepted')
 	assert.equal(stateOf(workspace, 'k1/D10'), 'suspected')
 })
+
+test('a refresh never closes or re-creates the find bar, the key panel, or a dialog', browserTest, async (t) => {
+	const { page, url, workspace } = await open(t)
+	const watched = await watchedList(page, url)
+	const flows: Array<[string, string, string, () => Promise<unknown>, string, string]> = [
+		[
+			'find bar',
+			'[data-find]',
+			'[data-find-input]',
+			() => page.keyboard.press('/'),
+			'k1/Q10',
+			'[data-key="c:k1/D10"]',
+		],
+		[
+			'key panel',
+			'[data-keys]',
+			'[data-keys] button',
+			() => page.keyboard.press('?'),
+			'k1/Q9',
+			'[data-key="c:k1/D10"]',
+		],
+		[
+			'dialog',
+			'dialog[data-act-dialog="test"]',
+			'dialog[data-act-dialog="test"] input[name="build"]',
+			() => page.locator('[data-panel]:not([hidden]) [data-act="test"]').click(),
+			'k1/Q8',
+			'[data-act="test"]',
+		],
+	]
+	for (const [name, dialog, field, opener, gapId, back] of flows) {
+		await opener()
+		await page.locator(`${dialog}[open]`).waitFor()
+		await page.locator(field).focus()
+		if (name !== 'key panel') {
+			await page.keyboard.press('Control+A')
+			await page.keyboard.type('cou')
+		}
+		await page.locator(dialog).evaluate((element) => Object.assign(element, { kept: true }))
+		watched.hold()
+		deferElsewhere(workspace, gapId)
+		await watched.arrived()
+		if (name !== 'key panel') await page.keyboard.type('p')
+		await watched.release()
+		const state = await page.evaluate(
+			([dialogSelector, fieldSelector]) => {
+				const element = document.querySelector(dialogSelector) as HTMLDialogElement & { kept?: boolean }
+				const input = document.querySelector(fieldSelector) as HTMLInputElement
+				return {
+					open: element.open,
+					kept: element.kept === true,
+					focused: document.activeElement === input,
+					value: input.value,
+					caret: input.selectionStart,
+				}
+			},
+			[dialog, field]
+		)
+		const typed = name === 'key panel' ? {} : { value: 'coup', caret: 4 }
+		assert.deepEqual(
+			{ open: state.open, kept: state.kept, focused: state.focused },
+			{ open: true, kept: true, focused: true },
+			name
+		)
+		if (name !== 'key panel') assert.deepEqual({ value: state.value, caret: state.caret }, typed, name)
+		for (let step = 0; step < 3 && (await page.locator(`${dialog}[open]`).count()); step++)
+			await page.keyboard.press('Escape')
+		await page.locator(`${dialog}[open]`).waitFor({ state: 'detached' })
+		await page
+			.waitForFunction(() => !window.history.state?.layer)
+			.catch(() => assert.fail(`${name} left a history layer`))
+		await page
+			.waitForFunction((wanted) => document.activeElement?.matches(wanted), back)
+			.catch(() => assert.fail(`${name} did not give the focus back to the row`))
+	}
+})

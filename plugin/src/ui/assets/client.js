@@ -1951,6 +1951,18 @@ document.addEventListener(
 	true
 )
 
+function dialogHadFocus(dialog) {
+	return dialog.matches?.('dialog') && (document.activeElement === body || dialog.contains(document.activeElement))
+}
+
+document.addEventListener(
+	'close',
+	(event) => {
+		if (dialogHadFocus(event.target)) current()?.focus({ preventScroll: true })
+	},
+	true
+)
+
 function typingIn(target) {
 	return target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)
 }

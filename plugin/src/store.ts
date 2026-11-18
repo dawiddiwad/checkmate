@@ -15,11 +15,11 @@ export type Reply = {
 	data: Record<string, unknown>
 }
 export type Change = { reply: Reply; subjects: string[] }
-export type Store = { db: DatabaseSync; workspace: string; path: string }
+export type Store = { db: DatabaseSync; workspace: string; path: string; via?: string }
 export type Operation = { actor: string | undefined; command: string; subject: string; input: unknown }
 
 export const contractVersion = 'toolkit-2'
-const schemaVersion = '6'
+const schemaVersion = '7'
 
 const operationReference = 'REFERENCES operations(id) DEFERRABLE INITIALLY DEFERRED'
 const tables = `
@@ -32,7 +32,8 @@ CREATE TABLE operations (
 	arguments TEXT NOT NULL,
 	status TEXT NOT NULL,
 	response TEXT NOT NULL,
-	subjects TEXT NOT NULL
+	subjects TEXT NOT NULL,
+	via TEXT
 ) STRICT;
 CREATE TABLE blobs (sha256 TEXT PRIMARY KEY, size INTEGER NOT NULL, bytes BLOB NOT NULL) STRICT;
 CREATE TABLE target_requests (
@@ -358,6 +359,11 @@ function addExplorationTables(db: DatabaseSync) {
 	setSchemaVersion(db, '4')
 }
 
+function addViaColumn(db: DatabaseSync) {
+	if (!db.prepare("SELECT 1 FROM pragma_table_info('operations') WHERE name = 'via'").get())
+		db.exec('ALTER TABLE operations ADD COLUMN via TEXT')
+}
+
 function addMissingTables(db: DatabaseSync) {
 	for (const { ddl, fill } of addedTables) {
 		const [name] = tableNamesOf(ddl)
@@ -413,8 +419,11 @@ export function openStore(workspace: string): Store {
 		}
 		const version = String(db.prepare("SELECT value FROM meta WHERE key = 'schemaVersion'").get()?.value)
 		if (version === '3') addExplorationTables(db)
-		if (['3', '4', '5'].includes(version)) setSchemaVersion(db, schemaVersion)
-		if (['3', '4', '5', schemaVersion].includes(version)) addMissingTables(db)
+		if (['3', '4', '5', '6'].includes(version)) setSchemaVersion(db, schemaVersion)
+		if (['3', '4', '5', '6', schemaVersion].includes(version)) {
+			addMissingTables(db)
+			addViaColumn(db)
+		}
 		db.exec('COMMIT')
 	} catch (error) {
 		if (db.isTransaction) db.exec('ROLLBACK')
@@ -496,7 +505,7 @@ function recordOperation(
 ) {
 	execute(
 		store,
-		'INSERT INTO operations (id, at, actor, command, arguments, status, response, subjects) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+		'INSERT INTO operations (id, at, actor, command, arguments, status, response, subjects, via) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
 		operation.id,
 		operation.at,
 		operation.actor,
@@ -504,7 +513,8 @@ function recordOperation(
 		canonical(operation.input ?? null),
 		reply.status,
 		canonical(reply),
-		canonical(subjects)
+		canonical(subjects),
+		store.via ?? null
 	)
 }
 

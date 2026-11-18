@@ -123,7 +123,7 @@ async function streamRequest(reply) {
 		process.on('SIGINT', () => {})
 		process.on('SIGTERM', () => {})
 	}
-	if (spec.hang || reply === '!hang' || reply === '!ignore-interrupt' || reply === '!stubborn') {
+	if (reply === '!hang' || reply === '!ignore-interrupt' || reply === '!stubborn') {
 		appendFileSync(process.env.FAKE_CLAUDE_ANSWERS, 'hanging\\n')
 		await new Promise((resolve) => setTimeout(resolve, 60000))
 	}
@@ -135,6 +135,10 @@ async function streamRequest(reply) {
 	for (const argv of spec.run ?? []) {
 		const done = require('node:child_process').spawnSync(process.execPath, [process.env.FAKE_CHECKMATE_CLI, ...argv, '--workspace', process.cwd()], { encoding: 'utf8', env: process.env })
 		appendFileSync(process.env.FAKE_CLAUDE_ANSWERS, 'ran ' + argv.join(' ') + ' ' + done.status + '\\n')
+	}
+	if (spec.hang) {
+		appendFileSync(process.env.FAKE_CLAUDE_ANSWERS, 'hanging\\n')
+		await new Promise((resolve) => setTimeout(resolve, 60000))
 	}
 	if (spec.noResult) return
 	emit({ type: 'result', subtype: spec.isError ? 'error_during_execution' : 'success', is_error: Boolean(spec.isError), result: spec.result ?? 'Done.', session_id: session, total_cost_usd: spec.cost ?? 0.06, duration_ms: 1000, permission_denials: denials })

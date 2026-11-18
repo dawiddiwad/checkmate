@@ -49,7 +49,7 @@ export function screenText(context: RequestContext) {
 		...(context.planId ? [`plan ${context.planId}`] : []),
 		...(context.record ? [`${context.record.kind} ${context.record.id}`] : []),
 	]
-	return parts.length ? `${parts.join(', ')}.` : null
+	return parts.length ? parts.join(' and ') : null
 }
 
 export function requestActor(person: string, requestId: string) {
@@ -326,12 +326,16 @@ function describeChange(command: string, subject: string, input: Record<string, 
 	return `${command} ${subject}`
 }
 
-export function changesOf(store: Store, actor: string): RequestChange[] {
+export function operationCountOf(store: Store, requestId: string) {
+	return one<{ count: number }>(store, 'SELECT count(*) AS count FROM operations WHERE via = ?', requestId)!.count
+}
+
+export function changesOf(store: Store, requestId: string): RequestChange[] {
 	return all<ChangeRow>(
 		store,
 		`SELECT at, command, arguments, subjects, json_extract(response, '$.subject') AS subject
-		FROM operations WHERE actor = ? AND status = 'completed' ORDER BY rowid`,
-		actor
+		FROM operations WHERE via = ? AND status = 'completed' ORDER BY rowid`,
+		requestId
 	).map((row) => {
 		const record = (JSON.parse(row.subjects) as string[])
 			.map((subject) => /^(plan|run|exploration|target):(.+)$/.exec(subject))

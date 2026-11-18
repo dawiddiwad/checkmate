@@ -398,13 +398,15 @@ export function logSpec(store: Store): ListSpec {
 type LogRow = ReturnType<typeof pagedOperations>['rows'][number]
 
 function logRow(row: LogRow) {
+	const suffix = ` via request ${row.via}`
+	const person = row.via && row.actor.endsWith(suffix) ? row.actor.slice(0, -suffix.length) : row.actor
 	return listRow(
 		`op:${row.rowid}`,
 		null,
 		row.command,
 		html`${pill(row.status === 'rejected' ? 'rejected_operation' : row.status, words(row.status))} ${time(row.at)}`,
 		[
-			html`${row.actor} ·
+			html`${person}${row.via ? html` <a href="/requests/${row.via}">via request ${row.via}</a>` : ''} ·
 			${row.subjects.length ? join(row.subjects.map(subjectLink), ' ') : html`<span class="muted">no subject</span>`}`,
 			...(row.status === 'rejected'
 				? [html`<span class="reason">${reasons(row.response).join(' ')}</span>`]

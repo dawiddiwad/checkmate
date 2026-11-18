@@ -2,6 +2,7 @@ import type { Store } from '../store.ts'
 import type { ClaudeCall, Env, StopDelays, StreamedClaude } from '../sessions.ts'
 import type { RequestContext, RequestRecord } from '../requests.ts'
 import { Refusal } from '../contracts.ts'
+import { requestVariable } from '../actor.ts'
 import {
 	authenticationFailed,
 	authenticationHint,
@@ -151,7 +152,7 @@ export function createRequester(store: Store, options: RequesterOptions): Reques
 										},
 									}
 		guarded(() => {
-			const changes = changesOf(store, run.actor)
+			const changes = changesOf(store, run.id)
 			setRequestState(store, run.id, outcome.state, { ...outcome.detail, changes })
 		})
 	}
@@ -182,7 +183,13 @@ export function createRequester(store: Store, options: RequesterOptions): Reques
 					)
 				)
 			else if (found.kind === 'tool')
-				guarded(() => addRequestActivity(store, run.id, activityLine(found.name, found.input, found.cwd)))
+				guarded(() =>
+					addRequestActivity(
+						store,
+						run.id,
+						activityLine(found.name, found.input, found.cwd ?? options.workspace)
+					)
+				)
 			else if (found.kind === 'result') run.result = found.value
 		}
 	}
@@ -222,7 +229,12 @@ export function createRequester(store: Store, options: RequesterOptions): Reques
 			checkmate: checkmateScript(),
 		})
 		guarded(() => setRequestState(store, run.id, 'running'))
-		const env = { ...options.env, CHECKMATE_ACTOR: run.actor, [hookTokenName]: options.hookToken }
+		const env = {
+			...options.env,
+			CHECKMATE_ACTOR: run.actor,
+			[requestVariable]: request.id,
+			[hookTokenName]: options.hookToken,
+		}
 		const prompt = requestPrompt(request.text, screenText(request.context))
 		run.child = streamClaude(claude, args, prompt, options.workspace, env, (line) => read(run, line), delays)
 		run.done = run.child.finished.then((end) => finish(run, end))

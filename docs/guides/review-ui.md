@@ -208,7 +208,7 @@ A request of the find bar asks in the same way. Its record says `Request R3 asks
 
 A request is a free-form task for Claude Code, for example `why does D3 fail?` or `hand over all high defects`. Press `/`, type the text, and choose the last row, `Ask Checkmate: <text>`. `Enter` sends it. The bar shows `Asking… R3`, and `Enter` does nothing more until you close the bar. `Esc` closes the bar, and the request goes on. The find bar says that asking starts Claude Code on this computer.
 
-The request runs in your own Claude Code, in the workspace folder. It has your login, your settings, and all your tools. Checkmate removes no tool and sets no model, unless you set `Model for requests` in Settings. A tool that needs an approval asks you in the UI, as a tester does. The request also gets the Checkmate plugin of the UI, and a short instruction: the reply shows in a narrow pane, and records change with the `checkmate` command. The text of the request, and one line with the plan and the record that were on screen, go to Claude Code. Nothing that you type goes on a command line.
+The request runs in your own Claude Code, in the workspace folder. It has your login, your settings, and all your tools. Checkmate removes no tool and sets no model, unless you set `Model for requests` in Settings. A tool that needs an approval asks you in the UI, as a tester does. The request also gets the Checkmate plugin of the UI, and a short instruction: the reply shows in a narrow pane, and records change with the `checkmate` command. The text of the request goes to Claude Code. When a plan or a record was on screen, one more line follows it: `For context only: the person had plan checkout and question a1/Q1 on screen. Use this only when the request refers to it.` Nothing that you type goes on a command line.
 
 One request runs at a time. A second request waits and starts when the first ends. All requests of a workspace share one conversation, so a later request knows the earlier ones. `New conversation` starts a new one.
 
@@ -220,7 +220,9 @@ One request runs at a time. A second request waits and starts when the first end
 
 The states are `waiting`, `running`, `answered`, `failed`, `stopped`, and `interrupted`. A request fails when Claude Code is not found, is not signed in, prints a line that is not JSON, or ends without a reply. The page gives the sentence and the last 20 lines of the messages of Claude Code.
 
-Each change that the request makes has the actor `<your name> via request R3`. The Log shows it. When the request ends, the page lists the changes of that actor, for example `handed over a1/D1, a1/D2` and `answered a1/Q4`.
+Checkmate sets `CHECKMATE_REQUEST=R3` for Claude Code. Each write of the `checkmate` command stores `R3` in `operations.via`, also when the session gives its own `--actor`. Without `--actor`, the actor is `<your name> via request R3`. The Log shows `via request R3` on these rows, and the link opens the request. While the request runs, the page says `Changes show when the request ends.` When the request ends, the page lists the operations with `via` `R3`, for example `handed over a1/D1, a1/D2` and `answered a1/Q4`. The page says `The request changed no record.` only when the Log has no operation with `via` `R3`. A request that you stop shows its lines of activity and the changes that it made before the stop.
+
+An activity line of a request or a tester shows the tool and the first line of its main input, at most 120 characters. For a shell command, the line drops a leading `cd <path> &&` or `cd <path>;` and the leading variable assignments. A command that runs the Checkmate command line, also through a variable, shows as `checkmate <arguments>`. The path of the workspace shows as `.`. Checkmate masks secrets. The permission record shows the full command.
 
 ### Plan
 

@@ -75,7 +75,7 @@ import {
 } from './views.ts'
 import { exportExploration, exportPlan, exportRun, explorationFormats, formats, runFormats } from './render.ts'
 import { startUi } from './ui/server.ts'
-import { defaultActor } from './actor.ts'
+import { defaultActor, requestOfEnv } from './actor.ts'
 import { explorationModes, openExploration } from './explorations.ts'
 import type { Claim } from './journal.ts'
 import { decideClaim, handOffClaims, logEntries, planClaims, readEntries } from './journal.ts'
@@ -2143,6 +2143,7 @@ export function run(argv: string[], io: Io): Outcome {
 	let store: Store | undefined
 	try {
 		store = command.readOnly ? openReadOnlyStore(workspace) : openStore(workspace)
+		store.via = requestOfEnv(io.env)
 		const actor = command.write ? (value(args, 'actor') ?? defaultActor(workspace, io.env)) : undefined
 		const reply = command.run(store, args, {
 			actor,

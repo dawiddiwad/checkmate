@@ -4,7 +4,7 @@ import type { Context, Page } from './layout.ts'
 import type { ListSpec } from './lists.ts'
 import type { RequestContext, RequestRecord } from '../requests.ts'
 import { one } from '../store.ts'
-import { listedRequests, requestOf, isEnded, isUnread } from '../requests.ts'
+import { listedRequests, operationCountOf, requestOf, isEnded, isUnread } from '../requests.ts'
 import { explorationPermissions } from '../permissions.ts'
 import { currentConversation, conversationSize } from '../requests.ts'
 import { ago, duration, html, pill, plural, time } from './html.ts'
@@ -186,6 +186,7 @@ export function requestPage(store: Store, context: Context, requestId: string): 
 					),
 				]
 	const failure = request.state === 'failed' ? failureText(request) : null
+	const tried = ended && !request.changes.length ? operationCountOf(store, requestId) : 0
 	return {
 		title: `${requestId} · Request`,
 		section: null,
@@ -307,10 +308,17 @@ export function requestPage(store: Store, context: Context, requestId: string): 
 									? html`<ul class="sp-changes">
 											${request.changes.map((change) => html`<li>${change.href ? html`<a href="${change.href}">${change.text}</a>` : change.text} <span class="muted">${time(change.at)}</span></li>`)}
 										</ul>`
-									: html`<p class="help">The request changed no record.</p>`
+									: tried
+										? html`<p class="help">
+												The Log has ${plural(tried, 'write')} of the request. The request has no
+												completed change.
+											</p>`
+										: html`<p class="help">The request changed no record.</p>`
 							}
 						</section>`
-					: ''
+					: request.state === 'running'
+						? html`<p class="help" data-key="changes">Changes show when the request ends.</p>`
+						: ''
 			}
 			<section class="sp-options" aria-labelledby="options-title" data-key="options:${requestId}">
 				<h2 class="lab" id="options-title">Options</h2>

@@ -24,7 +24,7 @@ The database is `<workspace>/.checkmate/checkmate.db`. The workspace is the curr
 - Retiring an instance adds a row to `instance_retirements`. The instance row does not change.
 - A plan revision, a profile, and a result are canonical JSON snapshots. The digest is the SHA-256 of that text. A digest detects change. It does not authenticate the actor.
 - The database uses WAL mode, a busy timeout of 30 seconds, and foreign keys. `CHECKMATE_BUSY_TIMEOUT_MS` changes the busy timeout. The CLI, a delegated worker, and the review UI can use it at the same time. One command writes at a time. Every command waits for the lock, also a read such as `log`, `status`, or `inbox`. A command that cannot get the lock in 30 seconds gives `operational_error` and changes nothing. One host writes to one database.
-- The schema version is 4. Checkmate adds the exploration tables to a database of version 3 when it opens it. Checkmate refuses a database with another version.
+- The schema version is 7. Checkmate upgrades a database of version 3, 4, 5, or 6 when it opens it: it adds the missing tables and the column `operations.via`. Checkmate refuses a database with another version.
 
 ## Actor
 
@@ -68,7 +68,7 @@ The plan history, `plan diff`, and the log together show who changed what, when,
 | Table                  | Holds                                                                                                            |
 | ---------------------- | ---------------------------------------------------------------------------------------------------------------- |
 | `meta`                 | The contract version and the schema version.                                                                     |
-| `operations`           | The operation log.                                                                                               |
+| `operations`           | The operation log. `via` has the ID of the request (for example `R3`) that made the write, or `NULL`.            |
 | `target_requests`      | Setup requests from `target open`.                                                                               |
 | `profiles`             | Target profile revisions.                                                                                        |
 | `instances`            | Instances of a target with their entry values. One row for each add.                                             |
@@ -134,7 +134,7 @@ The read models are in `plugin/src/permissions.ts`: `openPermissions(store, plan
 | `permission`          | `open`                                                                  | As in `exploration_events`. `who` is the request ID.                                                              |
 | `permission-decision` | The same values as in `exploration_events`                              | As in `exploration_events`.                                                                                       |
 
-Each item of `changes` has `text` (for example `handed over a1/D1, a1/D2`), `command`, `subject`, `at`, and `href`. The UI finds the changes in the operation log: the operations of the actor `<name> via request R3` with the status `completed`. The read models are in `plugin/src/requests.ts`.
+Each item of `changes` has `text` (for example `handed over a1/D1, a1/D2`), `command`, `subject`, `at`, and `href`. The UI finds the changes in the operation log: the operations with `via` `R3` and the status `completed`, whatever their actor. The read models are in `plugin/src/requests.ts`.
 
 The step `stray` (status `completed`) has `turn` and `names`: the top-level entries that a tester left in the workspace outside its work folder during one turn.
 

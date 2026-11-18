@@ -11,7 +11,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { mkdirSync, rmdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 var contractVersion = "toolkit-2";
-var schemaVersion = "6";
+var schemaVersion = "7";
 var operationReference = "REFERENCES operations(id) DEFERRABLE INITIALLY DEFERRED";
 var tables = `
 CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL) STRICT;
@@ -23,7 +23,8 @@ CREATE TABLE operations (
 	arguments TEXT NOT NULL,
 	status TEXT NOT NULL,
 	response TEXT NOT NULL,
-	subjects TEXT NOT NULL
+	subjects TEXT NOT NULL,
+	via TEXT
 ) STRICT;
 CREATE TABLE blobs (sha256 TEXT PRIMARY KEY, size INTEGER NOT NULL, bytes BLOB NOT NULL) STRICT;
 CREATE TABLE target_requests (
@@ -340,6 +341,10 @@ function addExplorationTables(db) {
   db.exec(triggersOf(explorationTables));
   setSchemaVersion(db, "4");
 }
+function addViaColumn(db) {
+  if (!db.prepare("SELECT 1 FROM pragma_table_info('operations') WHERE name = 'via'").get())
+    db.exec("ALTER TABLE operations ADD COLUMN via TEXT");
+}
 function addMissingTables(db) {
   for (const { ddl, fill } of addedTables) {
     const [name2] = tableNamesOf(ddl);
@@ -389,8 +394,11 @@ function openStore(workspace) {
     }
     const version2 = String(db.prepare("SELECT value FROM meta WHERE key = 'schemaVersion'").get()?.value);
     if (version2 === "3") addExplorationTables(db);
-    if (["3", "4", "5"].includes(version2)) setSchemaVersion(db, schemaVersion);
-    if (["3", "4", "5", schemaVersion].includes(version2)) addMissingTables(db);
+    if (["3", "4", "5", "6"].includes(version2)) setSchemaVersion(db, schemaVersion);
+    if (["3", "4", "5", "6", schemaVersion].includes(version2)) {
+      addMissingTables(db);
+      addViaColumn(db);
+    }
     db.exec("COMMIT");
   } catch (error) {
     if (db.isTransaction) db.exec("ROLLBACK");
@@ -455,7 +463,7 @@ function write(store, operation, change) {
 function recordOperation(store, operation, reply, subjects) {
   execute(
     store,
-    "INSERT INTO operations (id, at, actor, command, arguments, status, response, subjects) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+    "INSERT INTO operations (id, at, actor, command, arguments, status, response, subjects, via) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
     operation.id,
     operation.at,
     operation.actor,
@@ -463,7 +471,8 @@ function recordOperation(store, operation, reply, subjects) {
     canonical(operation.input ?? null),
     reply.status,
     canonical(reply),
-    canonical(subjects)
+    canonical(subjects),
+    store.via ?? null
   );
 }
 function canonical(value2) {
@@ -8986,7 +8995,7 @@ function requestArgs(session) {
 function requestPrompt(text, screen) {
   return screen ? `${text}
 
-On screen: ${screen}` : text;
+For context only: the person had ${screen} on screen. Use this only when the request refers to it.` : text;
 }
 var defaultStopDelays = { terminate: 5e3, kill: endGraceMilliseconds };
 function streamClaude(claude, args, prompt, cwd, env, onLine, delays = defaultStopDelays) {
@@ -15581,7 +15590,7 @@ function screenText(context) {
     ...context.planId ? [`plan ${context.planId}`] : [],
     ...context.record ? [`${context.record.kind} ${context.record.id}`] : []
   ];
-  return parts.length ? `${parts.join(", ")}.` : null;
+  return parts.length ? parts.join(" and ") : null;
 }
 function requestActor(person, requestId) {
   return `${person} via request ${requestId}`;
@@ -15808,12 +15817,15 @@ function describeChange(command, subject, input) {
   if (command === "setting set") return `changed the setting ${subject}`;
   return `${command} ${subject}`;
 }
-function changesOf(store, actor) {
+function operationCountOf(store, requestId) {
+  return one(store, "SELECT count(*) AS count FROM operations WHERE via = ?", requestId).count;
+}
+function changesOf(store, requestId) {
   return all(
     store,
     `SELECT at, command, arguments, subjects, json_extract(response, '$.subject') AS subject
-		FROM operations WHERE actor = ? AND status = 'completed' ORDER BY rowid`,
-    actor
+		FROM operations WHERE via = ? AND status = 'completed' ORDER BY rowid`,
+    requestId
   ).map((row3) => {
     const record = JSON.parse(row3.subjects).map((subject2) => /^(plan|run|exploration|target):(.+)$/.exec(subject2)).find((found) => found);
     const subject = record ? record[2] : row3.subject;
@@ -17292,6 +17304,7 @@ function operationRow(row3) {
     id: row3.id,
     at: row3.at,
     actor: row3.actor,
+    via: row3.via,
     command: row3.command,
     status: row3.status,
     subjects: JSON.parse(row3.subjects),
@@ -17420,7 +17433,7 @@ function pagedOperations(store, query = {}) {
 		AND (:actor IS NULL OR actor = :actor) AND (:command IS NULL OR command = :command)
 		AND (:status IS NULL OR status = :status)
 		AND (:q = '' OR instr(lower(at || ' ' || actor || ' ' || command || ' ' || status || ' ' || subjects || ' ' || id
-			|| ' ' || coalesce(response ->> '$.reasons', '')), :q) > 0)`;
+			|| ' ' || coalesce(via, '') || ' ' || coalesce(response ->> '$.reasons', '')), :q) > 0)`;
   const parameters = {
     subject: filters.subject ?? null,
     actor: filters.actor ?? null,
@@ -19356,12 +19369,35 @@ var lineKeys = ["command", "file_path", "notebook_path", "path", "pattern", "url
 function relative3(path, cwd) {
   return typeof cwd === "string" && cwd && path.startsWith(`${cwd}/`) ? path.slice(cwd.length + 1) : path;
 }
+var leadingDirectory = /^cd\s+(?:"[^"]*"|'[^']*'|\S+)\s*(?:&&|;)\s*/;
+var leadingAssignment = /^([A-Za-z_]\w*)=("[^"]*"|'[^']*'|[^\s;&]*)\s*(?:&&|;)?\s*/;
+var checkmateValue = /^(?:node\s+)?\S*checkmate(?:\.js)?$/;
+var checkmateStart = /^(?:node\s+)?\S*checkmate(?:\.js)?(?=\s|$)/;
+var variableStart = /^"?\$\{?(\w+)\}?"?(?=\s|$)/;
+function commandLine(command, cwd) {
+  const variables = /* @__PURE__ */ new Map();
+  let rest = command;
+  for (; ; ) {
+    const directory2 = leadingDirectory.exec(rest);
+    const assignment = directory2 ? null : leadingAssignment.exec(rest);
+    const found = directory2 ?? assignment;
+    if (!found) break;
+    if (assignment) variables.set(assignment[1], assignment[2].replace(/^(["'])(.*)\1$/, "$2").trim());
+    rest = rest.slice(found[0].length);
+  }
+  if (!rest) return command;
+  const named = variableStart.exec(rest);
+  const call = named && checkmateValue.test(variables.get(named[1]) ?? "") ? named : checkmateStart.exec(rest);
+  if (call) rest = `checkmate${rest.slice(call[0].length)}`;
+  if (typeof cwd !== "string" || !cwd) return rest;
+  return rest.replaceAll(`${cwd}/`, "./").split(" ").map((word) => word === cwd ? "." : word).join(" ");
+}
 function inputLine(input, cwd) {
   const fields = input && typeof input === "object" ? input : {};
   const key = lineKeys.find((item) => typeof fields[item] === "string" && fields[item]);
   if (!key) return "";
   const first = fields[key].trim().split("\n")[0];
-  const shown2 = key.endsWith("path") ? relative3(first, cwd) : first;
+  const shown2 = key.endsWith("path") ? relative3(first, cwd) : key === "command" ? commandLine(first, cwd) : first;
   return secrets.reduce((text, [pattern, replacement]) => text.replace(pattern, replacement), shown2);
 }
 function activityLine2(tool, input, cwd) {
@@ -20309,13 +20345,15 @@ function logSpec(store) {
   };
 }
 function logRow(row3) {
+  const suffix = ` via request ${row3.via}`;
+  const person = row3.via && row3.actor.endsWith(suffix) ? row3.actor.slice(0, -suffix.length) : row3.actor;
   return listRow(
     `op:${row3.rowid}`,
     null,
     row3.command,
     html2`${pill(row3.status === "rejected" ? "rejected_operation" : row3.status, words(row3.status))} ${time(row3.at)}`,
     [
-      html2`${row3.actor} ·
+      html2`${person}${row3.via ? html2` <a href="/requests/${row3.via}">via request ${row3.via}</a>` : ""} ·
 			${row3.subjects.length ? join10(row3.subjects.map(subjectLink), " ") : html2`<span class="muted">no subject</span>`}`,
       ...row3.status === "rejected" ? [html2`<span class="reason">${reasons(row3.response).join(" ")}</span>`] : [],
       html2`<span class="mono muted">${row3.id}</span>`
@@ -22842,6 +22880,11 @@ import { mkdirSync as mkdirSync7, rmSync as rmSync6, writeFileSync as writeFileS
 // plugin/src/actor.ts
 import { execFileSync } from "node:child_process";
 import { userInfo } from "node:os";
+var requestVariable = "CHECKMATE_REQUEST";
+function requestOfEnv(env) {
+  const named = env[requestVariable]?.trim();
+  return named && /^R[1-9][0-9]{0,8}$/.test(named) ? named : void 0;
+}
 function defaultActor(workspace, env) {
   const named = env.CHECKMATE_ACTOR?.trim();
   if (named) return named;
@@ -24958,6 +25001,7 @@ function requestPage2(store, context, requestId) {
     )
   ];
   const failure = request.state === "failed" ? failureText(request) : null;
+  const tried = ended && !request.changes.length ? operationCountOf(store, requestId) : 0;
   return {
     title: `${requestId} \xB7 Request`,
     section: null,
@@ -25034,8 +25078,11 @@ function requestPage2(store, context, requestId) {
 							</h2>
 							${request.changes.length ? html2`<ul class="sp-changes">
 											${request.changes.map((change) => html2`<li>${change.href ? html2`<a href="${change.href}">${change.text}</a>` : change.text} <span class="muted">${time(change.at)}</span></li>`)}
-										</ul>` : html2`<p class="help">The request changed no record.</p>`}
-						</section>` : ""}
+										</ul>` : tried ? html2`<p class="help">
+												The Log has ${plural(tried, "write")} of the request. The request has no
+												completed change.
+											</p>` : html2`<p class="help">The request changed no record.</p>`}
+						</section>` : request.state === "running" ? html2`<p class="help" data-key="changes">Changes show when the request ends.</p>` : ""}
 			<section class="sp-options" aria-labelledby="options-title" data-key="options:${requestId}">
 				<h2 class="lab" id="options-title">Options</h2>
 				<ol class="sp-optlist asks">
@@ -25703,7 +25750,7 @@ function createRequester(store, options3) {
       }
     };
     guarded(() => {
-      const changes = changesOf(store, run2.actor);
+      const changes = changesOf(store, run2.id);
       setRequestState(store, run2.id, outcome.state, { ...outcome.detail, changes });
     });
   }
@@ -25732,7 +25779,13 @@ function createRequester(store, options3) {
           )
         );
       else if (found.kind === "tool")
-        guarded(() => addRequestActivity(store, run2.id, activityLine2(found.name, found.input, found.cwd)));
+        guarded(
+          () => addRequestActivity(
+            store,
+            run2.id,
+            activityLine2(found.name, found.input, found.cwd ?? options3.workspace)
+          )
+        );
       else if (found.kind === "result") run2.result = found.value;
     }
   }
@@ -25771,7 +25824,12 @@ function createRequester(store, options3) {
       checkmate: checkmateScript()
     });
     guarded(() => setRequestState(store, run2.id, "running"));
-    const env = { ...options3.env, CHECKMATE_ACTOR: run2.actor, [hookTokenName]: options3.hookToken };
+    const env = {
+      ...options3.env,
+      CHECKMATE_ACTOR: run2.actor,
+      [requestVariable]: request.id,
+      [hookTokenName]: options3.hookToken
+    };
     const prompt = requestPrompt(request.text, screenText(request.context));
     run2.child = streamClaude(claude, args, prompt, options3.workspace, env, (line) => read(run2, line), delays);
     run2.done = run2.child.finished.then((end) => finish2(run2, end));
@@ -30150,6 +30208,7 @@ function run(argv, io) {
   let store;
   try {
     store = command.readOnly ? openReadOnlyStore(workspace) : openStore(workspace);
+    store.via = requestOfEnv(io.env);
     const actor = command.write ? value(args, "actor") ?? defaultActor(workspace, io.env) : void 0;
     const reply = command.run(store, args, {
       actor,

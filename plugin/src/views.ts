@@ -1364,6 +1364,7 @@ type OperationRow = {
 	status: string
 	response: string
 	subjects: string
+	via: string | null
 }
 
 export function operationLog(store: Store, filters: { subject?: string; limit?: number; after?: number } = {}) {
@@ -1387,6 +1388,7 @@ function operationRow(row: OperationRow) {
 		id: row.id,
 		at: row.at,
 		actor: row.actor,
+		via: row.via,
 		command: row.command,
 		status: row.status,
 		subjects: JSON.parse(row.subjects) as string[],
@@ -1605,7 +1607,7 @@ export function pagedOperations(
 		AND (:actor IS NULL OR actor = :actor) AND (:command IS NULL OR command = :command)
 		AND (:status IS NULL OR status = :status)
 		AND (:q = '' OR instr(lower(at || ' ' || actor || ' ' || command || ' ' || status || ' ' || subjects || ' ' || id
-			|| ' ' || coalesce(response ->> '$.reasons', '')), :q) > 0)`
+			|| ' ' || coalesce(via, '') || ' ' || coalesce(response ->> '$.reasons', '')), :q) > 0)`
 	const parameters = {
 		subject: filters.subject ?? null,
 		actor: filters.actor ?? null,

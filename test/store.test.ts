@@ -64,7 +64,7 @@ test('opening a workspace creates the schema, WAL mode, and the version rows', (
 			.map((row) => ({ ...row })),
 		[
 			{ key: 'contractVersion', value: 'toolkit-2' },
-			{ key: 'schemaVersion', value: '6' },
+			{ key: 'schemaVersion', value: '7' },
 		]
 	)
 	closeStore(opened)
@@ -78,7 +78,7 @@ test('a database with another schema version is refused', (t) => {
 	db.exec('DROP TRIGGER meta_update')
 	db.exec("UPDATE meta SET value = '1' WHERE key = 'schemaVersion'")
 	db.close()
-	assert.throws(() => openStore(workspace), /schema version 1\. Expected 6/)
+	assert.throws(() => openStore(workspace), /schema version 1\. Expected 7/)
 })
 
 test('a database of schema version 3 gets the exploration tables and keeps its rows', (t) => {
@@ -99,10 +99,10 @@ test('a database of schema version 3 gets the exploration tables and keeps its r
 	db.close()
 	const upgraded = openStore(opened.workspace)
 	t.after(() => closeStore(upgraded))
-	assert.equal(upgraded.db.prepare("SELECT value FROM meta WHERE key = 'schemaVersion'").get()!.value, '6')
+	assert.equal(upgraded.db.prepare("SELECT value FROM meta WHERE key = 'schemaVersion'").get()!.value, '7')
 	assert(upgraded.db.prepare("SELECT 1 FROM sqlite_master WHERE name = 'explorations'").get())
 	assert(upgraded.db.prepare("SELECT 1 FROM plan_revisions WHERE plan_id = 'checkout'").get())
-	assert.throws(() => upgraded.db.exec("UPDATE meta SET value = '7'"), /immutable/)
+	assert.throws(() => upgraded.db.exec("UPDATE meta SET value = '8'"), /immutable/)
 	assert(upgraded.db.prepare("SELECT 1 FROM sqlite_master WHERE name = 'journal_entries_delete'").get())
 	assert(upgraded.db.prepare("SELECT 1 FROM sqlite_master WHERE name = 'plan_rules_delete'").get())
 })
@@ -125,9 +125,29 @@ test('a database of schema version 5 gets the request tables and keeps its rows'
 	db.close()
 	const upgraded = openStore(opened.workspace)
 	t.after(() => closeStore(upgraded))
-	assert.equal(upgraded.db.prepare("SELECT value FROM meta WHERE key = 'schemaVersion'").get()!.value, '6')
+	assert.equal(upgraded.db.prepare("SELECT value FROM meta WHERE key = 'schemaVersion'").get()!.value, '7')
 	assert(upgraded.db.prepare("SELECT 1 FROM sqlite_master WHERE name = 'request_events_update'").get())
 	assert(upgraded.db.prepare("SELECT 1 FROM plan_revisions WHERE plan_id = 'checkout'").get())
+})
+
+test('a database of schema version 6 gets the via column and keeps its rows', (t) => {
+	const opened = store(t)
+	ready(opened)
+	closeStore(opened)
+	const db = new DatabaseSync(join(opened.workspace, '.checkmate', 'checkmate.db'))
+	db.exec('ALTER TABLE operations DROP COLUMN via')
+	db.exec('DROP TRIGGER meta_update')
+	db.exec("UPDATE meta SET value = '6' WHERE key = 'schemaVersion'")
+	db.exec(
+		"CREATE TRIGGER meta_update BEFORE UPDATE ON meta BEGIN SELECT RAISE(ABORT, 'Rows of meta are immutable'); END"
+	)
+	db.close()
+	const upgraded = openStore(opened.workspace)
+	t.after(() => closeStore(upgraded))
+	assert.equal(upgraded.db.prepare("SELECT value FROM meta WHERE key = 'schemaVersion'").get()!.value, '7')
+	assert(upgraded.db.prepare("SELECT 1 FROM pragma_table_info('operations') WHERE name = 'via'").get())
+	assert(upgraded.db.prepare("SELECT 1 FROM plan_revisions WHERE plan_id = 'checkout'").get())
+	assert.equal(upgraded.db.prepare('SELECT count(*) AS n FROM operations WHERE via IS NOT NULL').get()!.n, 0)
 })
 
 test('a database of schema version 4 gets the added tables and reads as before', (t) => {
@@ -149,7 +169,7 @@ test('a database of schema version 4 gets the added tables and reads as before',
 	db.close()
 	const upgraded = openReadOnlyStore(opened.workspace)
 	t.after(() => closeStore(upgraded))
-	assert.equal(upgraded.db.prepare("SELECT value FROM meta WHERE key = 'schemaVersion'").get()!.value, '6')
+	assert.equal(upgraded.db.prepare("SELECT value FROM meta WHERE key = 'schemaVersion'").get()!.value, '7')
 	assert(upgraded.db.prepare("SELECT 1 FROM sqlite_master WHERE name = 'plan_rules_update'").get())
 	assert.equal(planRevision(upgraded, 'checkout').plan.planId, 'checkout')
 	assert.deepEqual(

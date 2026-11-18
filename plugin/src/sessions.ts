@@ -462,7 +462,9 @@ export function requestArgs(session: RequestSession) {
 }
 
 export function requestPrompt(text: string, screen: string | null) {
-	return screen ? `${text}\n\nOn screen: ${screen}` : text
+	return screen
+		? `${text}\n\nFor context only: the person had ${screen} on screen. Use this only when the request refers to it.`
+		: text
 }
 
 export type StreamEnd = { status: number | null; signal: string | null; stderr: string; error: string | null }

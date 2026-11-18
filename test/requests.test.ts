@@ -142,9 +142,12 @@ test('the first request starts claude with a fixed argument list, and a later on
 	const [one] = f.called()
 	assert.deepEqual(one.args, common('R1', false))
 	assert.equal(one.cwd, f.workspace)
-	assert.equal(one.prompt, 'why does D3 fail?\n\nOn screen: plan checkout.')
+	assert.equal(
+		one.prompt,
+		'why does D3 fail?\n\nFor context only: the person had plan checkout on screen. Use this only when the request refers to it.'
+	)
 	assert.equal(one.actor, 'qa-lead via request R1')
-	assert(one.env.includes('CHECKMATE_ACTOR') && one.env.includes('CHECKMATE_HOOK_TOKEN'))
+	assert(['CHECKMATE_ACTOR', 'CHECKMATE_HOOK_TOKEN', 'CHECKMATE_REQUEST'].every((name) => one.env.includes(name)))
 	const second = await f.ask('and D4?')
 	await f.state(second, 'answered')
 	const [two] = f.called()
@@ -346,15 +349,86 @@ test('the store changes of a request are listed with the request, attributed by 
 			.map((line) => line.slice(-1)),
 		['0', '0']
 	)
-	const actors = f.read((reading) =>
-		reading.db
-			.prepare("SELECT DISTINCT actor FROM operations WHERE command = 'gap answer' AND actor LIKE '%request%'")
-			.all()
+	const operations = f.read((reading) =>
+		reading.db.prepare("SELECT DISTINCT actor, via FROM operations WHERE command = 'gap answer'").all()
 	)
 	assert.deepEqual(
-		actors.map((row) => row.actor),
-		['qa-lead via request R1']
+		operations.map((row) => ({ ...row })),
+		[{ actor: 'qa-lead via request R1', via: 'R1' }]
 	)
+})
+
+test('a change made with another --actor is still a change of the request', async (t) => {
+	const f = await serverOf(t, {
+		request: {
+			result: 'Answered G1.',
+			run: [
+				[
+					'gap',
+					'answer',
+					'checkout',
+					'G1',
+					'--kind',
+					'defer',
+					'--value',
+					'Out of scope.',
+					'--rationale',
+					'Asked in the UI.',
+					'--actor',
+					'other',
+				],
+			],
+		},
+	})
+	const id = await f.ask('answer G1')
+	const done = await f.state(id, 'answered')
+	assert.deepEqual(
+		done.changes.map((change) => change.text),
+		['answered checkout/G1']
+	)
+	const stored = f.read((reading) =>
+		reading.db.prepare("SELECT actor, via FROM operations WHERE command = 'gap answer'").all()
+	)
+	assert.deepEqual(
+		stored.map((row) => ({ ...row })),
+		[{ actor: 'other', via: id }]
+	)
+	const page = await call(f.ui, `/requests/${id}`)
+	assert(page.body.includes('answered checkout/G1'))
+	assert(!page.body.includes('changed no record'))
+	const log = await call(f.ui, '/log')
+	assert(log.body.includes(`href="/requests/${id}">via request ${id}`))
+})
+
+test('a request without a write says that it changed no record', async (t) => {
+	const f = await serverOf(t, { request: { result: 'Nothing to do.' } })
+	const id = await f.ask('look')
+	await f.state(id, 'answered')
+	const page = await call(f.ui, `/requests/${id}`)
+	assert(page.body.includes('The request changed no record.'))
+})
+
+test('a stopped request shows its activity and the changes that it made, and a running one says when changes show', async (t) => {
+	const f = await serverOf(t, {
+		request: {
+			tools: [{ name: 'Bash', input: { command: 'checkmate gap answer checkout G1' } }],
+			run: [['gap', 'answer', 'checkout', 'G1', '--kind', 'defer', '--value', 'Out.', '--rationale', 'UI.']],
+			hang: true,
+		},
+	})
+	const id = await f.ask('answer G1')
+	await waitFor('the child hangs', () => f.answers().includes('hanging'))
+	await waitFor('the activity shows', () => f.request(id)?.activity.length === 1)
+	const running = await call(f.ui, `/requests/${id}`)
+	assert(running.body.includes('Changes show when the request ends.'))
+	assert(!running.body.includes('changed no record'))
+	await f.post(`/requests/${id}/stop`, {})
+	await f.state(id, 'stopped')
+	const page = await call(f.ui, `/requests/${id}`)
+	assert(page.body.includes('Stopped by you.'))
+	assert(page.body.includes('Bash: checkmate gap answer checkout G1'))
+	assert(page.body.includes('answered checkout/G1'))
+	assert(!page.body.includes('changed no record'))
 })
 
 test('each failure gives its sentence', async (t) => {

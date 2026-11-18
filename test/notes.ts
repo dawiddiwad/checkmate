@@ -1,6 +1,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { openPlan } from '../plugin/src/plans.ts'
+import type { Profile } from '../plugin/src/types.ts'
+import { openPlan, patchPlan } from '../plugin/src/plans.ts'
 import { saveRules } from '../plugin/src/rules.ts'
 import { closeStore, completed, openStore, write } from '../plugin/src/store.ts'
 import { done, ended, launched, openTest } from './explorations.ts'
@@ -19,10 +20,10 @@ function evidence(workspace: string, name: string, text: string) {
 	return join(folder, name)
 }
 
-export function seedNotes(workspace: string) {
+export function seedNotes(workspace: string, overrides: Partial<Profile> = {}) {
 	const store = openStore(workspace)
 	try {
-		target(store)
+		target(store, overrides)
 		openPlan(store, actor, {
 			planId: 'notes',
 			target: 'checkout-local@1',
@@ -62,4 +63,42 @@ export function seedNotes(workspace: string) {
 	} finally {
 		closeStore(store)
 	}
+}
+
+export function seedStorable(workspace: string, overrides: Partial<Profile> = {}) {
+	seedNotes(workspace, overrides)
+	const store = openStore(workspace)
+	try {
+		patchPlan(store, actor, {
+			reference: 'notes',
+			patch: { requirements: { R4: { text: 'A note can be pinned.', source: 'notes.md#pin', area: 'Saving' } } },
+		})
+		addExploration(store, 'x-3', 'b3', 'D4')
+	} finally {
+		closeStore(store)
+	}
+}
+
+export function addExploration(
+	store: ReturnType<typeof openStore>,
+	explorationId: string,
+	build: string,
+	id: string,
+	rule?: string
+) {
+	openTest(store, 'notes', explorationId, build, 'local')
+	launched(store, explorationId, 'k1')
+	ended(store, explorationId, 'k1', [
+		{
+			kind: 'defect',
+			id,
+			...(rule ? { rule } : {}),
+			severity: 'low',
+			title: `A pinned note is lost (${id})`,
+			expected: 'A pinned note stays.',
+			actual: 'A pinned note is lost.',
+			steps: ['Open the notes.', `Pin a note for ${id}.`],
+		},
+	])
+	done(store, explorationId)
 }

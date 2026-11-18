@@ -61,7 +61,8 @@ import type { StopDelays } from '../sessions.ts'
 import { liveUi, removeUiFile, requireClaude, writeUiFile } from '../sessions.ts'
 import { launchPlan } from '../explorers.ts'
 import { maxAreaCharacters, planRules, ticketFile } from '../rules.ts'
-import { requireIdentifier, unusedId } from '../contracts.ts'
+import { requireCondition, requireIdentifier, unusedId } from '../contracts.ts'
+import { harvestExploration, storableDefects } from '../harvest.ts'
 import { developerText } from '../developer.ts'
 import { resolve } from 'node:path'
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
@@ -130,6 +131,7 @@ const routes = {
 	defectText: new RegExp(`^/plans/(${id})/defects\\.txt$`),
 	startTest: new RegExp(`^/plans/(${id})/test$`),
 	startFollow: new RegExp(`^/plans/(${id})/follow$`),
+	harvest: new RegExp(`^/plans/(${id})/harvest$`),
 	permit: new RegExp(`^/permissions/(${id})/(P[1-9][0-9]{0,8})$`),
 	requestPage: /^\/requests\/(R[1-9][0-9]{0,8})$/,
 	stopRequest: /^\/requests\/(R[1-9][0-9]{0,8})\/stop$/,
@@ -1026,7 +1028,7 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		const back = reviewHref(planId, 'rules')
 		const { origin } = planRules(store, planId)
 		const refuse = (message: string, field = '') => actionRefusal(request, back, message, field)
-		if (origin !== 'derived' && origin !== 'corrected')
+		if (origin !== 'derived' && origin !== 'corrected' && origin !== 'harvested')
 			return refuse(`The rules of ${planId} do not come from the sources. Edit them in the plan editor.`)
 		try {
 			change()
@@ -1158,6 +1160,33 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		} catch (error) {
 			refuse(engineText(error))
 		}
+	}
+
+	function storeDefects(request: Request, form: URLSearchParams, planId: string) {
+		const view = form.get('view') === 'rules' ? 'rules' : 'all'
+		const { actor, cookies } = actorFrom(request, form)
+		const refuse = (message: string) => actionRefusal(request, reviewHref(planId, view), message)
+		if (!actor) return refuse('Enter your name. Checkmate records it with the tests.')
+		const attached: Array<{ test: string; rule: string }> = []
+		try {
+			const storable = storableDefects(store, planId)
+			requireCondition(
+				storable.length,
+				`Every defect of ${planId} is stored as a test already. Nothing is left to store.`
+			)
+			for (const { explorationId } of storable) {
+				const reply = harvestExploration(store, actor, { explorationId, observations: false })
+				attached.push(...(reply.data.attached as typeof attached))
+			}
+		} catch (error) {
+			const stored = attached.length ? ` ${plural(attached.length, 'test')} stored before this refusal.` : ''
+			return refuse(`${engineText(error)}${stored}`)
+		}
+		const list = attached.map((item) => `${item.test} → ${item.rule}`).join(', ')
+		redirect(request.res, reviewHref(planId, view), [
+			...cookies,
+			cookie('checkmate_toast', `Stored ${plural(attached.length, 'defect')} as tests: ${list}`, 60),
+		])
 	}
 
 	function stopRun(request: Request, form: URLSearchParams, explorationId: string, explorer?: string) {
@@ -1916,6 +1945,8 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		if (starting) return startTest(request, form, starting[1])
 		const following = routes.startFollow.exec(pathname)
 		if (following) return startAnswers(request, form, following[1])
+		const harvesting = routes.harvest.exec(pathname)
+		if (harvesting) return storeDefects(request, form, harvesting[1])
 		if (routes.permitMany.test(pathname)) return permitMany(request, form)
 		const permitting = routes.permit.exec(pathname)
 		if (permitting) return permit(request, form, permitting[1], permitting[2])

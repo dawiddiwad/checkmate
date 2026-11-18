@@ -211,6 +211,10 @@ export function parentOf(page: Page) {
 	return links.at(-1)?.[1] ?? null
 }
 
+function cut(text: string) {
+	return text.length > 120 ? `${text.slice(0, 119)}…` : text
+}
+
 export function layout(context: Context, page: Page) {
 	const theme = context.theme === 'system' ? '' : html` data-theme="${context.theme}"`
 	const back = parentOf(page)
@@ -246,7 +250,7 @@ export function layout(context: Context, page: Page) {
 				</div>
 				${statusBar(context, page)}
 				<div class="sp-saystrip" role="status" data-say-strip hidden></div>
-				${context.toast ? html`<div class="toast" role="status" data-toast>${context.toast}</div>` : ''}
+				${context.toast ? html`<div class="toast" role="status" data-toast title="${context.toast}">${cut(context.toast)}</div>` : ''}
 				<div class="sr-only" aria-live="polite" data-announcer></div>
 				${dialogs} ${page.viewer ? viewer : ''}
 			</body>

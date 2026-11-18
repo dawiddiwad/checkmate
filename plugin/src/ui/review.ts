@@ -6,6 +6,8 @@ import { claimDetails, ruleMap } from '../rulemap.ts'
 import type { Permission } from '../permissions.ts'
 import { openPermissions } from '../permissions.ts'
 import { planRequest } from '../plans.ts'
+import { approvalPolicy } from '../contracts.ts'
+import { storableDefects } from '../harvest.ts'
 import { oracleStates } from '../journal.ts'
 import { followCount } from '../explorers.ts'
 import { mergedClaims, mergedQuestions, needsYou, planDetail, planExplorations, planHasRevision } from '../views.ts'
@@ -15,7 +17,16 @@ import { askBadge, askTitle, requestHref, requestName, rowOptions, waitsFor } fr
 import { defaultBuild } from '../modes.ts'
 import { explorationEvents } from '../explorations.ts'
 import { phaseOf } from './activity.ts'
-import { copyDialog, followDialog, ruleDialog, testButton, testDialog, actionButton } from './actions.ts'
+import {
+	copyDialog,
+	followDialog,
+	ruleDialog,
+	storeButton,
+	storeDialog,
+	testButton,
+	testDialog,
+	actionButton,
+} from './actions.ts'
 import { optionsBox } from './activity.ts'
 import type { Refusal } from './records.ts'
 import { evidenceViewer, recordDrawer } from './records.ts'
@@ -248,6 +259,8 @@ export function reviewOf(store: Store, planId: string) {
 		items,
 		explorations,
 		running,
+		storable: storableDefects(store, planId).reduce((sum, item) => sum + item.claims.length, 0),
+		approvalRequired: approvalPolicy(target.profile).plan === 'required',
 	}
 }
 
@@ -827,13 +840,18 @@ function viewHead(review: Review, view: string) {
 	if (view === 'all') return { sub: `${verdict.head} ${verdict.tail}`, pills: html`` }
 	if (view === 'rules') {
 		const origin = review.map.rulesOrigin
-		return {
-			sub:
-				origin === 'derived' || origin === 'corrected'
+		const rows = review.map.rows.filter((row) => row.rule.id !== outside)
+		const stored = rows.filter((row) => row.storedTests).length
+		const edit =
+			origin === 'harvested'
+				? `The tester derived these rules from the sources. Edit the rules that have no stored test here, or with checkmate plan edit ${review.planId} --patch. Edit the others in the plan editor.`
+				: origin === 'derived' || origin === 'corrected'
 					? `The tester derived these rules from the sources${origin === 'corrected' ? ', and they were corrected' : ''}. Edit them here, or with checkmate plan edit ${review.planId} --patch.`
 					: origin
 						? 'The rules come from the plan. Edit them in the plan editor.'
-						: 'This plan has no rules yet.',
+						: 'This plan has no rules yet.'
+		return {
+			sub: stored ? `${stored} of ${rows.length} rules have a stored test. ${edit}` : edit,
 			pills: html``,
 		}
 	}
@@ -846,7 +864,7 @@ function viewHead(review: Review, view: string) {
 				return html`<span class="sp-pill ${color}" title="${cell.build}"
 					>${buildLabel(review, cell.build)}: ${label}</span
 				>`
-			})}`,
+			})}${row?.storedTests ? html`<span class="sp-pill" title="${storedNote(review, row.rule.id)}">${plural(row.storedTests, 'stored test')}</span>` : ''}`,
 		}
 	}
 	if (view.startsWith('area:')) {
@@ -860,7 +878,23 @@ function viewHead(review: Review, view: string) {
 	return { sub: '', pills: html`` }
 }
 
+function storedNote(review: Review, ruleId: string) {
+	return `${ruleId} has a stored test, so it belongs to revision ${review.revision}. Edit it in the plan editor.`
+}
+
 function ruleButtons(context: Context, review: Review, rule: Rule, count: number, numbered: boolean) {
+	if (review.map.rows.find((row) => row.rule.id === rule.id)?.storedTests)
+		return [
+			html`<a
+				class="sp-btn"
+				${numbered ? html`data-option` : ''}
+				href="/plans/${review.planId}@${review.revision}/edit"
+				aria-label="${numbered ? '1: ' : ''}Edit ${rule.id} in the plan editor"
+				title="${storedNote(review, rule.id)}"
+			>
+				${numbered ? html`<kbd aria-hidden="true">1</kbd>` : ''}<span>Edit in the plan editor</span>
+			</a>`,
+		]
 	const cited = review.items.filter((item) => item.rule === rule.id).length
 	const area = review.areas.find((each) => each.rules.includes(rule.id))?.label ?? ''
 	const fill = JSON.stringify({ text: rule.text, area, newArea: '' })
@@ -902,7 +936,13 @@ function ruleButtons(context: Context, review: Review, rule: Rule, count: number
 }
 
 function ruleEditable(review: Review) {
-	return !review.revision && ['derived', 'corrected'].includes(review.map.rulesOrigin ?? '')
+	return ['derived', 'corrected', 'harvested'].includes(review.map.rulesOrigin ?? '')
+}
+
+function ruleMeta(row: Review['map']['rows'][number]) {
+	const source = row.rule.source ?? ''
+	if (!row.storedTests) return source
+	return `${plural(row.storedTests, 'stored test')} · ${source}`
 }
 
 function rulesList(context: Context, review: Review) {
@@ -928,7 +968,7 @@ function rulesList(context: Context, review: Review) {
 					<span class="sp-c-tag"><span class="sp-pill">Rule</span></span>
 					<span class="sp-c-id">${row.rule.id}</span>
 					<span class="sp-c-title ell" title="${row.rule.text}">${row.rule.text}</span>
-					<span class="sp-c-meta ell" title="${row.rule.source ?? ''}">${row.rule.source ?? ''}</span>
+					<span class="sp-c-meta ell" title="${ruleMeta(row)}">${ruleMeta(row)}</span>
 					${editable ? optionsBox(ruleButtons(context, review, row.rule, rows.length, true)) : ''}
 				</div>`
 		)}
@@ -970,9 +1010,11 @@ function panel(context: Context, review: Review, view: string, current: string) 
 		rule && rule.rule.id !== outside && ruleEditable(review)
 			? ruleButtons(context, review, rule.rule, review.map.rows.length - 1, false)
 			: ''
+	const store =
+		(view === 'all' || view === 'rules') && review.storable ? storeButton(review.planId, review.storable, view) : ''
 	const tools = html`${edit}${add}${own}${review.running ? '' : testButton(review.planId)}${
 		review.answers ? actionButton('follow', `Test the answers (${review.answers.count})…`) : ''
-	}`
+	}${store}`
 	return html`<section
 		class="sp-panel"
 		data-panel="${view}"
@@ -1070,6 +1112,7 @@ export function reviewPage(
 							)}`
 						: ''
 				}
+				${review.storable ? storeDialog(context, planId, review.storable, review.approvalRequired) : ''}
 				${review.items.some((item) => item.kind === 'defect') ? copyDialog() : ''}
 			</div>
 			<div

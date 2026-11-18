@@ -1,7 +1,7 @@
 import type { Html } from './html.ts'
 import type { Context } from './layout.ts'
 import { levelNames } from '../levels.ts'
-import { html } from './html.ts'
+import { html, plural } from './html.ts'
 
 export type TestValues = { build: string; level: string; since: string; until: string; repo: string }
 
@@ -187,6 +187,31 @@ export function followDialog(context: Context, planId: string, subject: Subject,
 	)
 }
 
+export function storeDialog(context: Context, planId: string, count: number, approval: boolean) {
+	return shell(
+		'store',
+		`Store ${plural(count, 'defect')} as tests`,
+		'The defects of this plan changed. Nothing was stored.',
+		`/plans/${planId}/harvest`,
+		context,
+		html`<input type="hidden" name="view" value="all" />
+			<p class="sp-sub">
+				Checkmate stores each defect as a test of this plan and attaches it to the rule that the defect cites.
+				The rules, areas and marks of the plan stay the same. A defect with no rule gets a new rule HRn. Later
+				tests of this plan may run the stored
+				tests.${approval ? ' The stored tests wait for the approval of the plan.' : ''}
+			</p>
+			<div class="btns">
+				<button class="sp-btn pri" data-stop data-key-n="1">
+					<kbd>1</kbd><span>Store ${plural(count, 'test')}</span>
+				</button>
+				<button class="sp-btn" type="button" data-act-cancel data-stop data-key-n="2">
+					<kbd>2</kbd><span>Cancel</span>
+				</button>
+			</div>`
+	)
+}
+
 export function stopDialog(context: Context, subject: Subject) {
 	return shell(
 		`stop-${subject.explorationId}`,
@@ -240,6 +265,14 @@ export function testButton(planId: string, label = 'Test build…', values: Part
 		label,
 		html`data-action="/plans/${planId}/test" data-title="Test a build of ${planId}"
 		data-fill="${JSON.stringify(values)}"`
+	)
+}
+
+export function storeButton(planId: string, count: number, view: string) {
+	return actionButton(
+		'store',
+		`Store ${plural(count, 'defect')} as tests…`,
+		html`data-action="/plans/${planId}/harvest" data-fill="${JSON.stringify({ view })}"`
 	)
 }
 

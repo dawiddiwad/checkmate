@@ -257,6 +257,7 @@ test(
 		await page.waitForFunction(() => document.activeElement?.matches('[data-row]'))
 		await page.keyboard.press('ArrowDown')
 		assert.equal(await focusedKey(page), 'run:x-1')
+		await page.locator('.hl [data-act="test"]').waitFor()
 		await page.keyboard.press('1')
 		const dialog = page.locator('dialog[data-act-dialog="test"][open]')
 		await dialog.waitFor()

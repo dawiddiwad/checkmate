@@ -146,6 +146,9 @@ test(
 	async (t) => {
 		const { page, url, read } = await setup(t, 'nothing')
 		await page.goto(url('/'))
+		await page.waitForFunction(() =>
+			document.activeElement?.matches('input[type="url"], input[type="text"], input:not([type])')
+		)
 		await page.keyboard.type('http://shop.example.invalid')
 		await page.locator('[data-assumed]:not([hidden])').waitFor()
 		assert.equal(await page.locator('input[name="operations"]:checked').count(), 0)

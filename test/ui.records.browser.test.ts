@@ -335,6 +335,7 @@ test('the plan editor saves and refuses by keys only', { skip }, async (t) => {
 	await page.keyboard.type('{ not json')
 	await page.keyboard.press('Control+Enter')
 	await page.getByText(/The JSON is not valid/).waitFor()
+	await page.waitForFunction(() => document.activeElement?.id === 'json')
 	await page.keyboard.press('Escape')
 	await page.waitForFunction(() => document.activeElement?.tagName !== 'TEXTAREA')
 	await page.keyboard.press('Escape')

@@ -5,7 +5,7 @@ import type { Context, Page } from './layout.ts'
 import type { EntryPoint, InstanceRecord } from '../targets.ts'
 import { Refusal } from '../contracts.ts'
 import { testLevels } from '../levels.ts'
-import { requireClaude } from '../sessions.ts'
+import { liveUi, requireClaude } from '../sessions.ts'
 import type { Env } from '../sessions.ts'
 import { instanceList, targetHistory, targetList, targetRequest, targetRevision } from '../targets.ts'
 import { html, join, pill, plural, short, time } from './html.ts'
@@ -493,6 +493,13 @@ export function claudePage(context: Context, env: Env, form: RulesForm | null = 
 				A rule lets a tester use a tool without asking you, for example <code>Read</code> or <code>Bash</code>.
 				The engine needs at least one rule today. A test that you start in the UI shows these rules, and you can
 				change them there.
+			</p>
+			<p class="help" data-region="permission-hook">
+				${
+					liveUi(context.workspace)
+						? 'Testers that start now can ask you in this UI when a tool needs a permission.'
+						: 'Testers that start now cannot ask you. The UI of this folder does not run. A tool that needs a permission is denied.'
+				}
 			</p>
 			<form method="post" action="/settings/claude" class="decision-form">
 				<input type="hidden" name="csrf" value="${context.csrf}" />

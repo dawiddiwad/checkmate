@@ -43,11 +43,13 @@ import {
 	authenticationHint,
 	callClaude,
 	childEnv,
+	childHook,
 	exitOnSignal,
 	installedPluginId,
 	replyArray,
 	launchClaude,
 	requireClaude,
+	running,
 	storeDenyRules,
 	workDenyRules,
 } from './sessions.ts'
@@ -94,6 +96,7 @@ export type Launch = {
 	browserFolder?: boolean
 }
 
+export { running }
 export const defaultExplorerTimeout = 1800
 const pollMilliseconds = 500
 const activityMilliseconds = 5000
@@ -404,13 +407,14 @@ async function launchExplorers(store: Store, actor: string, explorationId: strin
 			status: 'started',
 			detail: { session, context: launch.context, brief },
 		})
+		const hook = childHook(store.workspace, explorationId, explorer)
 		const turn = (own: string[], prompt: string) =>
 			launchClaude(
 				claude,
-				childArgs({ ...launch.context, deny }, [...own, ...allowed]),
+				childArgs({ ...launch.context, deny, hook }, [...own, ...allowed]),
 				prompt,
 				store.workspace,
-				childEnv(env, extraEnv),
+				childEnv(env, extraEnv, hook),
 				launch.timeoutSeconds,
 				noteChild(store, actor, explorationId, explorer)
 			)
@@ -513,13 +517,14 @@ function mergeReports(store: Store, actor: string, explorationId: string, launch
 	if (!input) return
 	const session = randomUUID()
 	const claude = requireClaude(env)
+	const hook = childHook(store.workspace, explorationId, 'merge')
 	const call = (args: string[], prompt: string) =>
 		callClaude(
 			claude,
-			childArgs(launch.context, args),
+			childArgs({ ...launch.context, hook }, args),
 			prompt,
 			store.workspace,
-			childEnv(env),
+			childEnv(env, {}, hook),
 			defaultRecorderTimeout
 		)
 	const log = (reply: unknown[] | undefined) => logMerge(store, explorationId, reply)
@@ -562,13 +567,14 @@ function deriveRules(store: Store, actor: string, explorationId: string, launch:
 	const sources = ruleSources(store, opened.plan_id)
 	const names = sources.map((source) => source.name)
 	const session = randomUUID()
+	const hook = childHook(store.workspace, explorationId, 'rules')
 	const call = (args: string[], prompt: string) =>
 		callClaude(
 			requireClaude(env),
-			childArgs(launch.context, args),
+			childArgs({ ...launch.context, hook }, args),
 			prompt,
 			store.workspace,
-			childEnv(env),
+			childEnv(env, {}, hook),
 			defaultRecorderTimeout
 		)
 	const calls = [call(['--session-id', session], rulesPrompt(opened.charter.goal, sources))]
@@ -631,13 +637,14 @@ async function verifyClaims(store: Store, actor: string, explorationId: string, 
 	const session = randomUUID()
 	const brief = verifierBrief(items, input.entries, input.operations, input.dataPrefix)
 	const allowed = launch.allow.flatMap((rule) => ['--allowedTools', rule])
+	const hook = childHook(store.workspace, explorationId, 'verify')
 	const ask = (own: string[], prompt: string) =>
 		launchClaude(
 			requireClaude(env),
-			childArgs({ ...launch.context, deny: storeDenyRules }, [...own, ...allowed]),
+			childArgs({ ...launch.context, deny: storeDenyRules, hook }, [...own, ...allowed]),
 			prompt,
 			store.workspace,
-			childEnv(env),
+			childEnv(env, {}, hook),
 			launch.timeoutSeconds,
 			noteChild(store, actor, explorationId, null)
 		)
@@ -896,12 +903,13 @@ export async function driveFollow(workspace: string, explorationId: string, env:
 				.map(async ({ explorer, session }) => {
 					const { folder, deny, extraEnv } = explorerWork(store, explorationId, explorer, count)
 					const watch = watchWork(store, actor, explorationId, explorer, 'follow-up')
+					const hook = childHook(store.workspace, explorationId, explorer)
 					const call = await launchClaude(
 						claude,
-						childArgs({ ...plan.context, deny }, ['--resume', session, ...allowed]),
+						childArgs({ ...plan.context, deny, hook }, ['--resume', session, ...allowed]),
 						followBrief(plan.questions, folder, plan.seconds),
 						store.workspace,
-						childEnv(env, extraEnv),
+						childEnv(env, extraEnv, hook),
 						plan.timeoutSeconds,
 						noteChild(store, actor, explorationId, explorer)
 					)
@@ -1145,24 +1153,6 @@ export function stopExploration(store: Store, actor: string | undefined, input: 
 			...(kept ? { note: 'Reports that were not recorded stay in the work folder.' } : {}),
 			next: [`checkmate test ${row.plan_id} --build ${row.build}`],
 		},
-	}
-}
-
-function zombie(pid: number) {
-	try {
-		return readFileSync(`/proc/${pid}/stat`, 'utf8').split(') ')[1]?.startsWith('Z') === true
-	} catch {
-		return false
-	}
-}
-
-export function running(pid: unknown) {
-	if (typeof pid !== 'number') return false
-	try {
-		process.kill(pid, 0)
-		return !zombie(pid)
-	} catch (error) {
-		return (error as NodeJS.ErrnoException).code === 'EPERM'
 	}
 }
 

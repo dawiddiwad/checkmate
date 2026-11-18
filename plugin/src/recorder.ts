@@ -13,6 +13,7 @@ import {
 	callClaude,
 	childArgs,
 	childEnv,
+	childHook,
 	replyArray,
 	requireClaude,
 } from './sessions.ts'
@@ -327,14 +328,16 @@ function recordLocked(
 	started: number
 ): Reply {
 	const { exploration, actor } = plan
-	const childEnvironment = childEnv(env, { CHECKMATE_RECORDER: '1' })
+	const hook = childHook(store.workspace, exploration.exploration_id, `record-${plan.explorer}`)
+	const context = { ...plan.context, hook }
+	const childEnvironment = childEnv(env, { CHECKMATE_RECORDER: '1' }, hook)
 	const left = () => input.timeoutSeconds - Math.floor((Date.now() - started) / 1000)
 	const after = lastEntry(store)
 	const earlier = savedEntries(store, exploration.plan_id, exploration.exploration_id, actor)
 	const prompt = promptOf(store, exploration, actor, earlier)
 	const resume = ['--resume', input.session, '--fork-session', '--session-id', plan.recorder]
 	const calls = [
-		callClaude(plan.claude, childArgs(plan.context, resume), prompt, cwd, childEnvironment, Math.max(1, left())),
+		callClaude(plan.claude, childArgs(context, resume), prompt, cwd, childEnvironment, Math.max(1, left())),
 	]
 	const missing: string[] = []
 	const dropped: string[] = []
@@ -361,7 +364,7 @@ function recordLocked(
 		calls.push(
 			callClaude(
 				plan.claude,
-				childArgs(plan.context, ['--resume', plan.recorder]),
+				childArgs(context, ['--resume', plan.recorder]),
 				repairPrompt(refusals),
 				cwd,
 				childEnvironment,

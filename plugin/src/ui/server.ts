@@ -4,7 +4,7 @@ import type { Context, Page, Theme } from './layout.ts'
 import type { FormState } from './forms.ts'
 import type { EditState } from './edit.ts'
 import { createServer } from 'node:http'
-import { randomBytes, timingSafeEqual } from 'node:crypto'
+import { randomBytes } from 'node:crypto'
 import { existsSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { closeStore, openReadOnlyStore, openStore } from '../store.ts'
@@ -37,6 +37,7 @@ import {
 	targetRevision,
 	urlReachable,
 } from '../targets.ts'
+import { closeOpenPermissions, decidePermission, openPermissions } from '../permissions.ts'
 import {
 	explorationState,
 	recordStop,
@@ -54,7 +55,7 @@ import { levelNames } from '../levels.ts'
 import { ruleTokens, saveTesterRules, testerRulesText } from '../settings.ts'
 import { planRequest } from '../plans.ts'
 import type { Env } from '../sessions.ts'
-import { requireClaude } from '../sessions.ts'
+import { liveUi, removeUiFile, requireClaude, writeUiFile } from '../sessions.ts'
 import { launchPlan } from '../explorers.ts'
 import { ticketFile } from '../rules.ts'
 import { requireIdentifier } from '../contracts.ts'
@@ -93,8 +94,11 @@ import type { AdoptError } from './run.ts'
 import { runPage } from './run.ts'
 import type { InstanceForm } from './settings.ts'
 import { claudePage, instanceFromForm, targetPage, targetsPage } from './settings.ts'
+import type { HookOptions } from './hooks.ts'
+import { createHooks, sameSecret } from './hooks.ts'
+import { permissionsPage } from './permissions.ts'
 
-export type UiOptions = { workspace: string; port?: number; defaultActor?: string; env?: Env }
+export type UiOptions = HookOptions & { workspace: string; port?: number; defaultActor?: string; env?: Env }
 
 export type Ui = { url: string; close(): Promise<void> }
 
@@ -110,6 +114,7 @@ const routes = {
 	handoff: new RegExp(`^/plans/(${id})/handoff$`),
 	startTest: new RegExp(`^/plans/(${id})/test$`),
 	startFollow: new RegExp(`^/plans/(${id})/follow$`),
+	permit: new RegExp(`^/permissions/(${id})/(P[1-9][0-9]{0,8})$`),
 	stopRun: new RegExp(`^/explorations/(${id})/stop$`),
 	stopTester: new RegExp(`^/explorations/(${id})/explorers/(${id})/stop$`),
 	gap: new RegExp(`^/plans/(${id})@([1-9][0-9]{0,8})/gaps/(${id})$`),
@@ -220,12 +225,6 @@ function readForm(req: IncomingMessage): Promise<URLSearchParams | null> {
 	})
 }
 
-function same(a: string, b: string) {
-	const x = Buffer.from(a)
-	const y = Buffer.from(b)
-	return x.length === y.length && timingSafeEqual(x, y)
-}
-
 function hostOf(address: string) {
 	try {
 		return new URL(address).host || address
@@ -280,6 +279,8 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 	const store = openStore(options.workspace)
 	const watch = openReadOnlyStore(options.workspace)
 	const csrf = randomBytes(24).toString('hex')
+	const hookToken = randomBytes(32).toString('hex')
+	const hooks = createHooks(store, hookToken, options)
 	const env = options.env ?? process.env
 	const fallbackActor = options.defaultActor ?? defaultActor(options.workspace, process.env) ?? ''
 	const clients = new Set<Client>()
@@ -305,6 +306,7 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		const current = dataVersion()
 		if (current === version) return
 		version = current
+		hooks.release()
 		const changes = changesAfter(watch, cursor)
 		if (!changes.length) return
 		cursor = changes[changes.length - 1].rowid
@@ -343,6 +345,7 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 					? request.cookies.checkmate_toast || null
 					: null,
 			queueCount: needsYou(store).urgent,
+			permissions: openPermissions(store).length,
 			running: runningCount(store),
 			cursor: latestRowid(store),
 			workspace: options.workspace,
@@ -486,6 +489,7 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		if (pathname === '/log') return render(request, logPage(store, searchParams))
 		if (pathname === '/activity')
 			return render(request, activityPage(store, shown, searchParams, { build: defaultBuild(store.workspace) }))
+		if (pathname === '/permissions') return render(request, permissionsPage(store, shown))
 		if (pathname === '/settings/claude') return render(request, claudePage(shown, env))
 		if (pathname === '/actor') return render(request, actorPage(shown, safeBack(searchParams.get('back'))))
 		if (pathname === '/settings') return redirect(request.res, '/settings/targets')
@@ -1063,6 +1067,37 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		redirect(request.res, back, [...cookies, cookie('checkmate_toast', flash, 60)])
 	}
 
+	function permit(request: Request, form: URLSearchParams, explorationId: string, requestId: string) {
+		const back = '/permissions'
+		const { actor, cookies } = actorFrom(request, form)
+		const refuse = (message: Html | string) => actionRefusal(request, back, message)
+		if (!actor) return refuse('Enter your name. Checkmate records it with the answer.')
+		try {
+			decidePermission(
+				store,
+				actor,
+				{
+					explorationId,
+					requestId,
+					decision: form.get('decision') ?? '',
+					reason: form.get('reason') ?? undefined,
+				},
+				(explorer, reason) => {
+					recordStop(store, actor, { explorationId, explorer, reason: reason || undefined, background: true })
+					startEnding(store, explorationId, actor, explorer, env)
+				}
+			)
+		} catch (error) {
+			return refuse(engineText(error))
+		} finally {
+			hooks.release()
+		}
+		redirect(request.res, back, [
+			...cookies,
+			cookie('checkmate_toast', `Answered ${requestId} of ${explorationId}`, 60),
+		])
+	}
+
 	function saveRules(request: Request, form: URLSearchParams) {
 		const { actor, cookies } = actorFrom(request, form)
 		const typed = form.get('rules') ?? ''
@@ -1544,7 +1579,7 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 				'Form too large',
 				'The form has more than 256 KiB of text. Checkmate did not record it. Go back, make the text shorter, then send the form again.'
 			)
-		if (!same(form.get('csrf') ?? '', csrf))
+		if (!sameSecret(form.get('csrf') ?? '', csrf))
 			return errorPage(
 				request,
 				403,
@@ -1577,6 +1612,8 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		if (starting) return startTest(request, form, starting[1])
 		const following = routes.startFollow.exec(pathname)
 		if (following) return startAnswers(request, form, following[1])
+		const permitting = routes.permit.exec(pathname)
+		if (permitting) return permit(request, form, permitting[1], permitting[2])
 		const stopping = routes.stopRun.exec(pathname)
 		if (stopping) return stopRun(request, form, stopping[1])
 		const stoppingTester = routes.stopTester.exec(pathname)
@@ -1618,6 +1655,8 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 			cookies: parseCookies(req.headers.cookie),
 		}
 		try {
+			if (req.method === 'POST' && hooks.handles(request.url.pathname))
+				return await hooks.handle(req, res, request.url.pathname)
 			if (req.method === 'GET' || req.method === 'HEAD') return get(request)
 			if (req.method === 'POST') return await post(request)
 			send(res, 405, 'text/plain; charset=utf-8', 'Method not allowed.', { Allow: 'GET, POST' })
@@ -1638,12 +1677,16 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 	})
 	const address = server.address()
 	port = typeof address === 'object' && address ? address.port : 0
+	if (!liveUi(options.workspace)) closeOpenPermissions(store, 'ui-stopped')
+	writeUiFile(options.workspace, { port, pid: process.pid, hookToken })
 
 	return {
 		url: `http://127.0.0.1:${port}/`,
 		close: async () => {
 			if (closed) return
 			closed = true
+			hooks.close()
+			removeUiFile(options.workspace, hookToken)
 			clearInterval(poll)
 			clearInterval(heartbeat)
 			clearInterval(supervisorWatch)

@@ -1,13 +1,29 @@
 import { Refusal } from './contracts.ts'
 import type { ChildProcess } from 'node:child_process'
 import { spawn, spawnSync } from 'node:child_process'
-import { accessSync, constants, readFileSync, realpathSync, statSync } from 'node:fs'
+import {
+	accessSync,
+	chmodSync,
+	constants,
+	mkdirSync,
+	readFileSync,
+	realpathSync,
+	rmSync,
+	statSync,
+	writeFileSync,
+} from 'node:fs'
 import { homedir } from 'node:os'
 import { delimiter, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 export type Env = Record<string, string | undefined>
-export type ChildContext = { hiddenPlugin: string | null; claudeArgs: string[]; deny?: string[] }
+export type ChildHook = { port: number; token: string; explorationId: string; who: string }
+export type ChildContext = { hiddenPlugin: string | null; claudeArgs: string[]; deny?: string[]; hook?: ChildHook }
+export type UiFile = { port: number; pid: number; hookToken: string }
+
+export const hookTokenName = 'CHECKMATE_HOOK_TOKEN'
+const permissionTimeoutSeconds = 600
+const activityTimeoutSeconds = 5
 
 export const storeDenyRules = [
 	'Read(./.checkmate/**)',
@@ -103,10 +119,90 @@ export function checkClaudeArgs(claudeArgs: string[]) {
 	return claudeArgs
 }
 
+export function uiFilePath(workspace: string) {
+	return join(workspace, '.checkmate', 'ui.json')
+}
+
+function zombie(pid: number) {
+	try {
+		return readFileSync(`/proc/${pid}/stat`, 'utf8').split(') ')[1]?.startsWith('Z') === true
+	} catch {
+		return false
+	}
+}
+
+export function running(pid: unknown) {
+	if (typeof pid !== 'number') return false
+	try {
+		process.kill(pid, 0)
+		return !zombie(pid)
+	} catch (error) {
+		return (error as NodeJS.ErrnoException).code === 'EPERM'
+	}
+}
+
+function readUiFile(workspace: string): UiFile | null {
+	try {
+		const file = JSON.parse(readFileSync(uiFilePath(workspace), 'utf8')) as Partial<UiFile>
+		const valid =
+			Number.isInteger(file.port) &&
+			Number.isInteger(file.pid) &&
+			typeof file.hookToken === 'string' &&
+			file.hookToken !== ''
+		return valid ? (file as UiFile) : null
+	} catch {
+		return null
+	}
+}
+
+export function liveUi(workspace: string) {
+	const file = readUiFile(workspace)
+	return file && running(file.pid) ? file : null
+}
+
+export function writeUiFile(workspace: string, file: UiFile) {
+	mkdirSync(join(workspace, '.checkmate'), { recursive: true })
+	writeFileSync(uiFilePath(workspace), JSON.stringify(file), { mode: 0o600 })
+	chmodSync(uiFilePath(workspace), 0o600)
+}
+
+export function removeUiFile(workspace: string, hookToken: string) {
+	if (readUiFile(workspace)?.hookToken === hookToken) rmSync(uiFilePath(workspace), { force: true })
+}
+
+export function childHook(workspace: string, explorationId: string, who: string): ChildHook | undefined {
+	const ui = liveUi(workspace)
+	return ui ? { port: ui.port, token: ui.hookToken, explorationId, who } : undefined
+}
+
+function hookSettings(hook: ChildHook) {
+	const base = `http://127.0.0.1:${hook.port}/hooks`
+	const entry = (path: string, timeout: number) => [
+		{
+			hooks: [
+				{
+					type: 'http',
+					url: `${base}/${path}/${hook.explorationId}/${hook.who}`,
+					timeout,
+					headers: { Authorization: `Bearer $${hookTokenName}` },
+					allowedEnvVars: [hookTokenName],
+				},
+			],
+		},
+	]
+	return {
+		hooks: {
+			PermissionRequest: entry('permission', permissionTimeoutSeconds),
+			PreToolUse: entry('activity', activityTimeoutSeconds),
+		},
+	}
+}
+
 export function childArgs(context: ChildContext, own: string[]) {
 	const settings = {
 		...(context.hiddenPlugin ? { enabledPlugins: { [context.hiddenPlugin]: false } } : {}),
 		...(context.deny?.length ? { permissions: { deny: context.deny } } : {}),
+		...(context.hook ? hookSettings(context.hook) : {}),
 	}
 	return [
 		'-p',
@@ -120,10 +216,11 @@ export function childArgs(context: ChildContext, own: string[]) {
 	]
 }
 
-export function childEnv(env: Env, extra: Env = {}) {
+export function childEnv(env: Env, extra: Env = {}, hook?: ChildHook) {
 	return {
 		...Object.fromEntries(Object.entries(env).filter(([name]) => !name.startsWith('CHECKMATE_'))),
 		...extra,
+		...(hook ? { [hookTokenName]: hook.token } : {}),
 	}
 }
 

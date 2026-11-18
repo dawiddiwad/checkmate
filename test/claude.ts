@@ -57,11 +57,31 @@ if (reply === '!stubborn') {
 	process.on('SIGTERM', () => {})
 	setTimeout(() => {}, 60000)
 } else if (reply === '!sleep') setTimeout(() => {}, 60000)
-else {
-	const result = typeof reply === 'string' ? reply : JSON.stringify(reply ?? 'Done.')
+else if (reply === '!ask') askHooks().then(() => finish('Done.'))
+else finish(typeof reply === 'string' ? reply : JSON.stringify(reply ?? 'Done.'))
+function finish(result) {
 	process.stdout.write(
 		JSON.stringify({ type: 'result', subtype: 'success', is_error: false, result, session_id: session, total_cost_usd: 0.25, duration_ms: 1000 })
 	)
+}
+async function askHooks() {
+	const settings = JSON.parse(after('--settings') ?? '{}')
+	const hooks = settings.hooks
+	if (!hooks) return appendFileSync(process.env.FAKE_CLAUDE_ANSWERS, 'no hook\\n')
+	const post = async (hook, body) => {
+		const authorization = hook.headers.Authorization.replace('$CHECKMATE_HOOK_TOKEN', process.env.CHECKMATE_HOOK_TOKEN)
+		const response = await fetch(hook.url, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json', Authorization: authorization },
+			body: JSON.stringify({ session_id: session, cwd: process.cwd(), permission_mode: 'default', ...body }),
+		})
+		return response.text()
+	}
+	const tool = { tool_name: 'Bash', tool_input: { command: 'npm view left-pad' } }
+	await post(hooks.PreToolUse[0].hooks[0], { hook_event_name: 'PreToolUse', ...tool })
+	const suggestions = [{ type: 'addRules', rules: [{ toolName: 'Bash', ruleContent: 'npm view *' }], behavior: 'allow', destination: 'localSettings' }]
+	const answer = await post(hooks.PermissionRequest[0].hooks[0], { hook_event_name: 'PermissionRequest', ...tool, permission_suggestions: suggestions })
+	appendFileSync(process.env.FAKE_CLAUDE_ANSWERS, answer + '\\n')
 }
 `
 
@@ -81,7 +101,9 @@ export function fakeClaude(t: TestContext, replies: FakeReplies = {}) {
 	const answers = join(directory(t), 'replies.json')
 	const reply = (next: FakeReplies) => writeFileSync(answers, JSON.stringify(next))
 	reply(replies)
+	const answered = join(directory(t), 'answers.txt')
 	const env: Record<string, string> = {
+		FAKE_CLAUDE_ANSWERS: answered,
 		PATH: `${bin}${delimiter}${process.env.PATH}`,
 		CLAUDE_CONFIG_DIR: config,
 		FAKE_CLAUDE_CALL: call,
@@ -92,5 +114,6 @@ export function fakeClaude(t: TestContext, replies: FakeReplies = {}) {
 		rmSync(call, { force: true })
 		return lines.map((line) => JSON.parse(line))
 	}
-	return { env, config, reply, called }
+	const heard = () => (existsSync(answered) ? readFileSync(answered, 'utf8').trim().split('\n') : [])
+	return { env, config, reply, called, answers: heard }
 }

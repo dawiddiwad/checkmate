@@ -80,7 +80,9 @@ import { explorationModes, openExploration } from './explorations.ts'
 import type { Claim } from './journal.ts'
 import { decideClaim, handOffClaims, logEntries, planClaims, readEntries } from './journal.ts'
 import { defaultRecorderTimeout, recordSession } from './recorder.ts'
-import { checkClaudeArgs } from './sessions.ts'
+import { checkClaudeArgs, liveUi } from './sessions.ts'
+import { decidePermission, explorationPermissions, permissionDecisions } from './permissions.ts'
+import { inputLine } from './ui/hooks.ts'
 import {
 	driveExploration,
 	endInBackground,
@@ -1441,6 +1443,62 @@ const commands: Record<string, Command> = {
 				...((reply.data.left as number[]) ?? []).map((pid) => ['alive', pid]),
 				...(reply.data.next as string[]).map((line) => ['next', line]),
 			],
+		}),
+	},
+	'explore permit': {
+		positionals: ['explorationId', 'requestId'],
+		flags: {
+			allow: 'switch',
+			'allow-kind': 'switch',
+			always: 'switch',
+			deny: 'switch',
+			stop: 'switch',
+			reason: 'value',
+		},
+		write: true,
+		check: (args) =>
+			requireWellFormed(
+				permissionDecisions.filter((name) => args[name] === true).length === 1,
+				'Give one of --allow, --allow-kind, --always, --deny, --stop.'
+			),
+		run: (store, args, { actor }) => {
+			requireCondition(
+				liveUi(store.workspace),
+				'No UI server runs for this folder, so no tester waits for an answer. Nothing changed.',
+				'Run checkmate ui in this folder.'
+			)
+			const explorationId = value(args, 'explorationId')!
+			return decidePermission(
+				store,
+				actor,
+				{
+					explorationId,
+					requestId: value(args, 'requestId')!,
+					decision: permissionDecisions.find((name) => args[name] === true)!,
+					reason: value(args, 'reason'),
+				},
+				(explorer, reason) =>
+					stopExploration(store, actor, { explorationId, explorer, reason: reason || undefined })
+			)
+		},
+		print: (reply) => ({ facts: { request: reply.data.requestId, decision: reply.data.decision } }),
+	},
+	'explore permissions': {
+		positionals: ['explorationId'],
+		readOnly: true,
+		run: (store, args) => {
+			const explorationId = value(args, 'explorationId')!
+			return completed(explorationId, { permissions: explorationPermissions(store, explorationId) })
+		},
+		print: (reply) => ({
+			lines: (reply.data.permissions as ReturnType<typeof explorationPermissions>).map((item) => [
+				item.id,
+				item.decision ? item.decision.text : 'open',
+				item.who,
+				item.tool,
+				inputLine(item.input),
+				...(item.rule ? [`rule=${item.rule}`] : []),
+			]),
 		}),
 	},
 	'explore show': {

@@ -23,6 +23,7 @@ app-docs
 # Local run state
 .checkmate/checkmate.db*
 .checkmate/tmp/
+.checkmate/ui.json
 plugin/evals/results/
 .playwright/
 

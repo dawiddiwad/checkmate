@@ -3440,3 +3440,8 @@ main a:active {
 		min-height: 40px;
 	}
 }
+@media (max-width: 1000px) {
+	.sb-running {
+		display: none;
+	}
+}

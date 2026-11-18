@@ -18723,7 +18723,7 @@ function statusBar(context, page) {
 				title="The request that runs now"
 				data-region="request-link"
 				${context.requests.running ? "" : html2`hidden`}
-				>${context.requests.running ? html2`<span>Request ${context.requests.running}<span class="sb-long"> · running</span></span>` : ""}</a
+				>${context.requests.running ? html2`<span>Request ${context.requests.running}<span class="sb-long sb-running"> · running</span></span>` : ""}</a
 			>
 			<a
 				class="sb-btn att"

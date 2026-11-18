@@ -482,13 +482,19 @@ test('opening a reply marks it read, and the status bar counts unread replies', 
 	await f.state(one, 'answered')
 	const two = await f.ask('two')
 	await f.state(two, 'answered')
-	assert.match((await call(f.ui, '/activity')).body, /data-region="replies-link"[^>]*>2 replies</)
+	assert.match(
+		(await call(f.ui, '/activity')).body,
+		/data-region="replies-link"[^>]*><span>2<span class="sb-long"> replies<\/span><\/span>/
+	)
 	const list = (await call(f.ui, '/requests')).body
 	assert.match(list, /Not read\s*<span>2<\/span>/)
 	assert(list.indexOf('data-key="request:R2"') < list.indexOf('data-key="request:R1"'))
 	await call(f.ui, '/requests/R2')
 	const after = (await call(f.ui, '/activity')).body
-	assert.match(after, /href="\/requests\/R1"[^>]*data-region="replies-link"[^>]*>1 reply</)
+	assert.match(
+		after,
+		/href="\/requests\/R1"[^>]*data-region="replies-link"[^>]*><span>1<span class="sb-long"> reply<\/span><\/span>/
+	)
 	assert.match((await call(f.ui, '/requests')).body, /Earlier\s*<span>1<\/span>/)
 })
 

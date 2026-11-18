@@ -7,7 +7,7 @@ import { existsSync, readFileSync, realpathSync, statSync, writeFileSync } from 
 import { join } from 'node:path'
 import { setTimeout as pause } from 'node:timers/promises'
 import { run } from '../plugin/src/cli.ts'
-import { closeStore, openStore } from '../plugin/src/store.ts'
+import { all, closeStore, openStore } from '../plugin/src/store.ts'
 import { explorationEvents, openExploration } from '../plugin/src/explorations.ts'
 import { recordStop } from '../plugin/src/explorers.ts'
 import { explorationLive } from '../plugin/src/views.ts'
@@ -19,7 +19,7 @@ import {
 } from '../plugin/src/permissions.ts'
 import { childArgs, childEnv, liveUi, uiFilePath, writeUiFile } from '../plugin/src/sessions.ts'
 import { startUi } from '../plugin/src/ui/server.ts'
-import { askRequest } from '../plugin/src/requests.ts'
+import { askRequest, stopRequestRecord } from '../plugin/src/requests.ts'
 import { activityLine } from '../plugin/src/ui/hooks.ts'
 import { actor, directory, plan, root, store, target } from './support.ts'
 import { event, launched } from './explorations.ts'
@@ -1010,6 +1010,40 @@ test('a request is an asker: its permission request is held, shown by the same r
 	const reply = await held
 	assert.equal(reply.body, wrap('{"behavior":"allow"}'))
 	assert.equal(open(f).length, 0)
+})
+
+test('a permission call of a run or a request that has ended gets an empty 200 and records nothing', async (t) => {
+	const f = await fixture(t)
+	const opened = openStore(f.workspace)
+	t.after(() => closeStore(opened))
+	for (const [id, status] of [
+		['x-2', 'failed'],
+		['x-3', 'completed'],
+	]) {
+		openExploration(opened, 'checkmate', { planId: 'checkout', build: 'b1', explorationId: id })
+		event(opened, id, { step: 'start', detail: { level: 'smoke', explorers: 1, model: 'm', modelFrom: 'host' } })
+		event(opened, id, { step: 'done', status })
+	}
+	openExploration(opened, 'checkmate', { planId: 'checkout', build: 'b1', explorationId: 'x-4' })
+	event(opened, 'x-4', { step: 'start', detail: { level: 'smoke', explorers: 1, model: 'm', modelFrom: 'host' } })
+	recordStop(opened, actor, { explorationId: 'x-4', reason: 'enough' })
+	for (const id of ['x-2', 'x-3', 'x-4']) {
+		const reply = await permission(f, 'a1', asking, id)
+		assert.deepEqual([reply.status, reply.body], [200, ''], id)
+	}
+	const ask = askOf(f)
+	stopRequestRecord(opened, actor, ask, 'enough')
+	const reply = await requestPermissionCall(f, ask)
+	assert.deepEqual([reply.status, reply.body], [200, ''])
+	assert.equal(open(f).length, 0)
+	assert.equal(
+		f.read((reading) => all(reading, "SELECT 1 FROM exploration_events WHERE step LIKE 'permission%'")).length,
+		0
+	)
+	assert.equal(
+		f.read((reading) => all(reading, "SELECT 1 FROM request_events WHERE step LIKE 'permission%'")).length,
+		0
+	)
 })
 
 test('a hook call of an unknown request is ignored, and a request has no activity line of its own', async (t) => {

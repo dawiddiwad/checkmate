@@ -4,9 +4,10 @@ import type { ClosedCause, Suggestion } from '../permissions.ts'
 import { timingSafeEqual } from 'node:crypto'
 import { requestHookName } from '../sessions.ts'
 import { completed, one, write } from '../store.ts'
-import { addEvent } from '../explorations.ts'
+import { addEvent, explorationEvents } from '../explorations.ts'
+import { explorationState } from '../explorers.ts'
 import { explorerActor } from '../recorder.ts'
-import { isRequestId } from '../requests.ts'
+import { isEnded, isRequestId, requestOf, requestStopped } from '../requests.ts'
 import { closePermission, permissionAnswer, permissionOf, requestPermission, stoppedSince } from '../permissions.ts'
 
 export type HookOptions = {
@@ -29,6 +30,7 @@ const name = '[A-Za-z0-9][A-Za-z0-9_-]{0,95}'
 const route = new RegExp(`^/hooks/(permission|activity)/(${name})/(${name})$`)
 const maxBody = 4 * 1024 * 1024
 const lineLimit = 120
+const endedStates = ['completed', 'failed', 'stopped', 'interrupted']
 export const defaultHoldMilliseconds = 590_000
 export const defaultActivityMilliseconds = 2000
 
@@ -253,6 +255,11 @@ export function createHooks(store: Store, token: string, options: HookOptions = 
 		else line.timer ??= setTimeout(() => writeLine(explorationId, who, line), wait)
 	}
 
+	function askerEnded(forRequest: boolean, askerId: string) {
+		if (forRequest) return requestStopped(store, askerId) || isEnded(requestOf(store, askerId)!)
+		return endedStates.includes(explorationState(explorationEvents(store, askerId)))
+	}
+
 	return {
 		handles: (pathname) => route.test(pathname),
 		async handle(req, res, pathname) {
@@ -280,6 +287,7 @@ export function createHooks(store: Store, token: string, options: HookOptions = 
 				)
 				return answer(res, '')
 			}
+			if (kind === 'permission' && askerEnded(forRequest, askerId)) return answer(res, '')
 			if (kind === 'permission') return permission(askerId, who, body as Record<string, unknown>, res)
 			if (!forRequest) activity(askerId, who, body as Record<string, unknown>)
 			answer(res, '')

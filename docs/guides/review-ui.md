@@ -235,7 +235,7 @@ After an answer, the next open request opens in the same view. When no request i
 
 **History.** The Testers view of a run has the fold `Permission requests (<n>)`. It lists each request and its answer, who answered, and when, newest first, 20 for each page. `↓` on the last row opens the next page. `Enter` opens the record, which does not move on.
 
-A rule for this test answers the same request of every other tester of the run at once. The record shows `allowed by rule <rule>, set by <name>`. A rule of one run does not apply to another run. A request with no answer in 10 minutes closes, and the call is denied. A request also closes when the tester or the run stops, and when the UI stops. The same answers are in `checkmate explore permit`. Each request and each answer is an event of the exploration, so the record shows who decided what.
+A rule for this test answers the same request of every other tester of the run at once. The record shows `allowed by rule <rule>, set by <name>`. A rule of one run does not apply to another run. A request with no answer in 10 minutes closes, and the call is denied. A request also closes when the tester or the run stops, and when the UI stops. A request of a run or of a request that has ended gets an empty answer and does not show: Claude Code denies the call. The same answers are in `checkmate explore permit`. Each request and each answer is an event of the exploration, so the record shows who decided what.
 
 `/permissions` opens the first open request, or `Activity` when none is open.
 

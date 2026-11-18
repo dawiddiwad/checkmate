@@ -5,7 +5,7 @@ import { seedVolume } from '../scripts/ui-volume.ts'
 import { closeStore, openStore } from '../plugin/src/index.ts'
 import { decideClaim } from '../plugin/src/journal.ts'
 import { answerGap } from '../plugin/src/plans.ts'
-import { launchWith, open, skip, stop } from './browser.ts'
+import { launchWith, open, browserTest, stop } from './browser.ts'
 
 test.before(() => launchWith(seedVolume))
 
@@ -271,7 +271,7 @@ async function check(page: Page, path: string, width: number, colorScheme: 'ligh
 for (const colorScheme of ['dark', 'light'] as const)
 	test(
 		`rows, marks, keys, and colours line up at 1440, 900, and 400 in the ${colorScheme} theme`,
-		{ skip },
+		browserTest,
 		async (t) => {
 			const { page, url } = await open(t)
 			for (const width of [1440, 900, 400])
@@ -281,7 +281,7 @@ for (const colorScheme of ['dark', 'light'] as const)
 
 const widths = [1440, 1240, 1100, 900, 760, 600, 400]
 
-test('no row moves when the highlight moves through 20 rows, at every width', { skip }, async (t) => {
+test('no row moves when the highlight moves through 20 rows, at every width', browserTest, async (t) => {
 	const { page, url } = await open(t)
 	for (const width of widths) {
 		await page.setViewportSize({ width, height: 900 })
@@ -303,7 +303,7 @@ test('no row moves when the highlight moves through 20 rows, at every width', { 
 	}
 })
 
-test('the status bar buttons keep their place, and the hints fit, at every width', { skip }, async (t) => {
+test('the status bar buttons keep their place, and the hints fit, at every width', browserTest, async (t) => {
 	const { page, url } = await open(t)
 	for (const width of widths) {
 		await page.setViewportSize({ width, height: 800 })
@@ -326,7 +326,7 @@ test('the status bar buttons keep their place, and the hints fit, at every width
 	}
 })
 
-test('the options of the highlighted row stay inside the row with the fallback font', { skip }, async (t) => {
+test('the options of the highlighted row stay inside the row with the fallback font', browserTest, async (t) => {
 	const { page, url } = await open(t)
 	await page.route('**/assets/fonts/*.woff2', (route) => route.abort())
 	for (const width of [1440, 1100, 760, 400])
@@ -370,7 +370,7 @@ const docks = [
 	[400, 700],
 ] as const
 
-test('the selection strip covers no part of either pane, at every size', { skip }, async (t) => {
+test('the selection strip covers no part of either pane, at every size', browserTest, async (t) => {
 	const { page, url } = await open(t)
 	for (const [width, height] of docks) {
 		await page.setViewportSize({ width, height })
@@ -386,7 +386,7 @@ test('the selection strip covers no part of either pane, at every size', { skip 
 	}
 })
 
-test('the toast covers no part of either pane, at every size', { skip }, async (t) => {
+test('the toast covers no part of either pane, at every size', browserTest, async (t) => {
 	const { page, url } = await open(t)
 	for (const [width, height] of docks) {
 		await page.setViewportSize({ width, height })
@@ -408,7 +408,7 @@ test('the toast covers no part of either pane, at every size', { skip }, async (
 	}
 })
 
-test('a status message is read in full at every width, and the key hints make room for it', { skip }, async (t) => {
+test('a status message is read in full at every width, and the key hints make room for it', browserTest, async (t) => {
 	const { page, url, workspace } = await open(t)
 	const items: Array<[number, string, string]> = [
 		[1440, 'c', 'k1/D10'],
@@ -476,7 +476,7 @@ test('a status message is read in full at every width, and the key hints make ro
 })
 
 for (const path of ['/activity', '/explorations/x-14']) {
-	test(`no row of ${path} moves when the highlight moves, at every width`, { skip }, async (t) => {
+	test(`no row of ${path} moves when the highlight moves, at every width`, browserTest, async (t) => {
 		const { page, url } = await open(t)
 		for (const width of widths) {
 			await page.setViewportSize({ width, height: 900 })
@@ -500,53 +500,57 @@ for (const path of ['/activity', '/explorations/x-14']) {
 	})
 }
 
-test('a row whose options do not all fit shows the number of options and no sideways scroll', { skip }, async (t) => {
-	const { page, url } = await open(t)
-	for (const width of [1440, 900, 400]) {
-		await page.setViewportSize({ width, height: 900 })
-		await page.goto(url('/activity'))
-		await page.waitForFunction(() => document.activeElement?.matches('.hl[data-row]'))
-		await page.evaluate(() => {
-			for (const label of document.querySelectorAll('.sp-c-opts .sp-btn > span'))
-				label.textContent += ' with a very long label'.repeat(60)
-			window.dispatchEvent(new Event('resize'))
-		})
-		for (let step = 0; step < 12 && !(await page.locator('.hl[data-row] [data-option]').count()); step++)
-			await page.keyboard.press('ArrowDown')
-		const shown = await page.evaluate(() => {
-			const row = document.querySelector('.hl[data-row]') as HTMLElement
-			const more = row.querySelector('.sp-c-more') as HTMLElement
-			const buttons = [...row.querySelectorAll('[data-option]')].filter(
-				(button) => (button as HTMLElement).offsetWidth > 0
+test(
+	'a row whose options do not all fit shows the number of options and no sideways scroll',
+	browserTest,
+	async (t) => {
+		const { page, url } = await open(t)
+		for (const width of [1440, 900, 400]) {
+			await page.setViewportSize({ width, height: 900 })
+			await page.goto(url('/activity'))
+			await page.waitForFunction(() => document.activeElement?.matches('.hl[data-row]'))
+			await page.evaluate(() => {
+				for (const label of document.querySelectorAll('.sp-c-opts .sp-btn > span'))
+					label.textContent += ' with a very long label'.repeat(60)
+				window.dispatchEvent(new Event('resize'))
+			})
+			for (let step = 0; step < 12 && !(await page.locator('.hl[data-row] [data-option]').count()); step++)
+				await page.keyboard.press('ArrowDown')
+			const shown = await page.evaluate(() => {
+				const row = document.querySelector('.hl[data-row]') as HTMLElement
+				const more = row.querySelector('.sp-c-more') as HTMLElement
+				const buttons = [...row.querySelectorAll('[data-option]')].filter(
+					(button) => (button as HTMLElement).offsetWidth > 0
+				)
+				return {
+					many: row.classList.contains('many'),
+					more: more.offsetWidth > 0 ? more.textContent!.replace(/\s+/g, ' ').trim() : null,
+					buttons: buttons.length,
+					overflow: row.scrollWidth > row.clientWidth + 1,
+					page: document.documentElement.scrollWidth > window.innerWidth,
+					inside: more.getBoundingClientRect().right <= row.getBoundingClientRect().right + 0.5,
+				}
+			})
+			assert.deepEqual(
+				shown,
+				{ many: true, more: '1 option', buttons: 0, overflow: false, page: false, inside: true },
+				`${width}`
 			)
-			return {
-				many: row.classList.contains('many'),
-				more: more.offsetWidth > 0 ? more.textContent!.replace(/\s+/g, ' ').trim() : null,
-				buttons: buttons.length,
-				overflow: row.scrollWidth > row.clientWidth + 1,
-				page: document.documentElement.scrollWidth > window.innerWidth,
-				inside: more.getBoundingClientRect().right <= row.getBoundingClientRect().right + 0.5,
-			}
-		})
-		assert.deepEqual(
-			shown,
-			{ many: true, more: '1 option', buttons: 0, overflow: false, page: false, inside: true },
-			`${width}`
-		)
-		await page.keyboard.press('1')
-		await page.waitForFunction(() =>
-			[...document.querySelectorAll('[data-say], [data-say-strip]')].some((element) =>
-				/Open the row to see them/.test(element.textContent ?? '')
+			await page.keyboard.press('1')
+			await page.waitForFunction(() =>
+				[...document.querySelectorAll('[data-say], [data-say-strip]')].some((element) =>
+					/Open the row to see them/.test(element.textContent ?? '')
+				)
 			)
-		)
-		assert.equal(await page.locator('dialog[open]').count(), 0)
+			assert.equal(await page.locator('dialog[open]').count(), 0)
+		}
 	}
-})
+)
 
 for (const colorScheme of ['dark', 'light'] as const)
 	test(
 		`the action dialogs line up and meet the contrast and tap rules in the ${colorScheme} theme`,
-		{ skip },
+		browserTest,
 		async (t) => {
 			const { page, url } = await open(t)
 			const dialogs: Array<[string, string]> = [
@@ -573,7 +577,7 @@ for (const colorScheme of ['dark', 'light'] as const)
 for (const colorScheme of ['dark', 'light'] as const)
 	test(
 		`the first-run form with its assumptions lines up at 1440, 900, and 400 in the ${colorScheme} theme`,
-		{ skip },
+		browserTest,
 		async (t) => {
 			const { page, url } = await open(t)
 			for (const width of [1440, 900, 400])

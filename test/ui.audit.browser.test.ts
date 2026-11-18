@@ -8,7 +8,7 @@ import { answerGap } from '../plugin/src/plans.ts'
 import { mergedClaims, mergedQuestions, runList } from '../plugin/src/views.ts'
 import { seedVolume } from '../scripts/ui-volume.ts'
 import { event } from './explorations.ts'
-import { launchWith, open, skip, stop } from './browser.ts'
+import { launchWith, open, browserTest, stop } from './browser.ts'
 
 test.before(() => launchWith(seedVolume))
 test.after(stop)
@@ -31,22 +31,26 @@ const toast = (page: Page, text: string | RegExp) => page.locator('.toast').filt
 const live = (page: Page) => page.locator('[data-live]', { hasText: 'Live' }).waitFor()
 const overlap = (a: DOMRect, b: DOMRect) => Math.max(0, Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top))
 
-test('a plan page has one h1, the plan name as a heading, and no navigator row is a heading', { skip }, async (t) => {
-	const { page, url } = await open(t)
-	await page.goto(url('/plans/coupons?view=needs&focus=list'))
-	const headings = () =>
-		page.evaluate(() => ({
-			h1: [...document.querySelectorAll('h1')].map((heading) => heading.textContent!.trim()),
-			plan: [...document.querySelectorAll('h2')].some(
-				(heading) => heading.textContent!.trim() === 'Plan coupons'
-			),
-			navigator: document.querySelectorAll('[data-nav] :is(h1, h2, h3), [data-nav]:is(h1, h2, h3)').length,
-		}))
-	assert.deepEqual(await headings(), { h1: ['Needs you'], plan: true, navigator: 0 })
-	await page.keyboard.press('ArrowLeft')
-	await page.keyboard.press('ArrowDown')
-	assert.deepEqual((await headings()).h1, ['All items'])
-})
+test(
+	'a plan page has one h1, the plan name as a heading, and no navigator row is a heading',
+	browserTest,
+	async (t) => {
+		const { page, url } = await open(t)
+		await page.goto(url('/plans/coupons?view=needs&focus=list'))
+		const headings = () =>
+			page.evaluate(() => ({
+				h1: [...document.querySelectorAll('h1')].map((heading) => heading.textContent!.trim()),
+				plan: [...document.querySelectorAll('h2')].some(
+					(heading) => heading.textContent!.trim() === 'Plan coupons'
+				),
+				navigator: document.querySelectorAll('[data-nav] :is(h1, h2, h3), [data-nav]:is(h1, h2, h3)').length,
+			}))
+		assert.deepEqual(await headings(), { h1: ['Needs you'], plan: true, navigator: 0 })
+		await page.keyboard.press('ArrowLeft')
+		await page.keyboard.press('ArrowDown')
+		assert.deepEqual((await headings()).h1, ['All items'])
+	}
+)
 
 for (const [width, height] of [
 	[900, 900],
@@ -54,7 +58,7 @@ for (const [width, height] of [
 	[760, 900],
 	[400, 900],
 ] as const)
-	test(`a growing selection strip never covers the highlighted row at ${width}x${height}`, { skip }, async (t) => {
+	test(`a growing selection strip never covers the highlighted row at ${width}x${height}`, browserTest, async (t) => {
 		const { page, url } = await open(t, { viewport: { width, height } })
 		await page.goto(url('/plans/coupons?view=all&focus=list&at=c%3Ak1%2FD7'))
 		await page.waitForFunction(() => document.activeElement?.matches('[data-row]'))
@@ -71,7 +75,7 @@ for (const [width, height] of [
 		assert.equal(covered, 0)
 	})
 
-test('the toast gives way to a tall selection strip, and the strip shows its count', { skip }, async (t) => {
+test('the toast gives way to a tall selection strip, and the strip shows its count', browserTest, async (t) => {
 	const { page, url } = await open(t, { viewport: { width: 400, height: 500 } })
 	await page.goto(url('/plans/coupons?view=all&focus=list&at=q%3Ak1%2FQ8'))
 	await page.waitForFunction(() => document.activeElement?.matches('[data-row]'))
@@ -92,7 +96,7 @@ test('the toast gives way to a tall selection strip, and the strip shows its cou
 	assert.ok(await page.locator('[data-bulk]').getByText('3 selected').isVisible())
 })
 
-test('Right on a tester opens it and keeps the highlight on that tester', { skip }, async (t) => {
+test('Right on a tester opens it and keeps the highlight on that tester', browserTest, async (t) => {
 	const { page, url } = await open(t)
 	await page.goto(url('/explorations/x-1'))
 	await page.waitForFunction(() => document.activeElement?.matches('[data-row]'))
@@ -107,7 +111,7 @@ test('Right on a tester opens it and keeps the highlight on that tester', { skip
 
 test(
 	'a live update keeps the highlight on the same row on the testers, run, runs, and log pages',
-	{ skip },
+	browserTest,
 	async (t) => {
 		const { page, url, workspace } = await open(t)
 		const poke = () =>
@@ -143,7 +147,7 @@ test(
 	}
 )
 
-test('forced colours show the highlight in system colours and draw the key glyphs', { skip }, async (t) => {
+test('forced colours show the highlight in system colours and draw the key glyphs', browserTest, async (t) => {
 	const { page, url } = await open(t, { forcedColors: 'active' })
 	await page.goto(url('/plans/coupons?view=all&focus=list&at=c%3Ak1%2FD10'))
 	await page.waitForFunction(() => document.activeElement?.matches('[data-row]'))
@@ -158,7 +162,7 @@ test('forced colours show the highlight in system colours and draw the key glyph
 	assert.notEqual(look.glyph, 'rgba(0, 0, 0, 0)')
 })
 
-test('a printed record shows the record alone in dark text on white', { skip }, async (t) => {
+test('a printed record shows the record alone in dark text on white', browserTest, async (t) => {
 	const { page, url } = await open(t, { colorScheme: 'dark' })
 	await page.goto(url('/plans/coupons?view=all&item=c%3Ak1%2FD4'))
 	await page.emulateMedia({ media: 'print' })
@@ -176,7 +180,7 @@ test('a printed record shows the record alone in dark text on white', { skip }, 
 	assert.ok(printed.files.some((file) => file.includes('k1-D4.png')))
 })
 
-test('a long name is refused, and a name at the limit stays inside the top bar', { skip }, async (t) => {
+test('a long name is refused, and a name at the limit stays inside the top bar', browserTest, async (t) => {
 	const { page, url } = await open(t)
 	await page.goto(url('/actor?back=%2F'))
 	assert.equal(await page.locator('#actor-name').getAttribute('maxlength'), '64')
@@ -196,7 +200,7 @@ test('a long name is refused, and a name at the limit stays inside the top bar',
 	assert.ok(top.title!.startsWith('n'.repeat(64)))
 })
 
-test('saving the editor without a change records no revision', { skip }, async (t) => {
+test('saving the editor without a change records no revision', browserTest, async (t) => {
 	const { page, url, workspace } = await open(t)
 	const before = read(workspace, (store) => planDetail(store, 'account').latestRevision)
 	await page.goto(url('/plans/account@7/edit'))
@@ -209,7 +213,7 @@ test('saving the editor without a change records no revision', { skip }, async (
 	assert.match(page.url(), /\/plans\/account@7$/)
 })
 
-test('an empty field gets one plain sentence next to it, and the focus', { skip }, async (t) => {
+test('an empty field gets one plain sentence next to it, and the focus', browserTest, async (t) => {
 	const { page, url } = await open(t)
 	await page.goto(url('/plans/account@7/edit'))
 	const field = page.locator('[name="r0.text"]')
@@ -240,7 +244,7 @@ test('an empty field gets one plain sentence next to it, and the focus', { skip 
 	assert.doesNotMatch(await page.content(), /must NOT have|instance\/entries/)
 })
 
-test('typed text survives Esc and Left, and the editor asks before it drops changes', { skip }, async (t) => {
+test('typed text survives Esc and Left, and the editor asks before it drops changes', browserTest, async (t) => {
 	const { page, url } = await open(t)
 	await page.goto(url('/plans/coupons?view=needs&item=c%3Ak1%2FD12'))
 	await page.keyboard.press('2')
@@ -268,7 +272,7 @@ test('typed text survives Esc and Left, and the editor asks before it drops chan
 	await page.waitForURL(/\/plans\/account@7$/)
 })
 
-test('the address follows the editor to the newer revision after a save conflict', { skip }, async (t) => {
+test('the address follows the editor to the newer revision after a save conflict', browserTest, async (t) => {
 	const { page, url } = await open(t)
 	await page.goto(url('/plans/account@7/edit'))
 	const other = await page.context().newPage()
@@ -282,30 +286,34 @@ test('the address follows the editor to the newer revision after a save conflict
 	await page.waitForURL(/\/plans\/account@8\/edit$/)
 })
 
-test('Esc closes the retire confirmation first, and focus lands on what an action concerned', { skip }, async (t) => {
-	const { page, url } = await open(t)
-	await page.goto(url('/settings/targets/shop-local'))
-	await page.locator('#instance-local summary').focus()
-	await page.keyboard.press('Enter')
-	await page.keyboard.press('Escape')
-	assert.match(page.url(), /\/settings\/targets\/shop-local/)
-	assert.equal(
-		await page.locator('#instance-local details').evaluate((details) => (details as HTMLDetailsElement).open),
-		false
-	)
-	await page.locator('#instance-id').fill('uat')
-	for (const field of await page.locator('[name^="entry."]').all()) await field.fill('https://uat.shop.example')
-	await page.getByRole('button', { name: 'Add instance' }).click()
-	await toast(page, 'Added instance uat')
-	assert.equal(await page.evaluate(() => Boolean(document.activeElement?.closest('#instance-uat'))), true)
-	await page.goto(url('/plans/coupons?view=needs&focus=list'))
-	await page.waitForFunction(() => document.activeElement?.matches('[data-row]'))
-	await page.keyboard.press('Space')
-	await page.getByRole('button', { name: /Clear the selection/ }).click()
-	assert.equal(await page.evaluate(() => document.activeElement?.matches('[data-row].hl')), true)
-})
+test(
+	'Esc closes the retire confirmation first, and focus lands on what an action concerned',
+	browserTest,
+	async (t) => {
+		const { page, url } = await open(t)
+		await page.goto(url('/settings/targets/shop-local'))
+		await page.locator('#instance-local summary').focus()
+		await page.keyboard.press('Enter')
+		await page.keyboard.press('Escape')
+		assert.match(page.url(), /\/settings\/targets\/shop-local/)
+		assert.equal(
+			await page.locator('#instance-local details').evaluate((details) => (details as HTMLDetailsElement).open),
+			false
+		)
+		await page.locator('#instance-id').fill('uat')
+		for (const field of await page.locator('[name^="entry."]').all()) await field.fill('https://uat.shop.example')
+		await page.getByRole('button', { name: 'Add instance' }).click()
+		await toast(page, 'Added instance uat')
+		assert.equal(await page.evaluate(() => Boolean(document.activeElement?.closest('#instance-uat'))), true)
+		await page.goto(url('/plans/coupons?view=needs&focus=list'))
+		await page.waitForFunction(() => document.activeElement?.matches('[data-row]'))
+		await page.keyboard.press('Space')
+		await page.getByRole('button', { name: /Clear the selection/ }).click()
+		assert.equal(await page.evaluate(() => document.activeElement?.matches('[data-row].hl')), true)
+	}
+)
 
-test('plan sections show their open state, Right opens one and Left closes it', { skip }, async (t) => {
+test('plan sections show their open state, Right opens one and Left closes it', browserTest, async (t) => {
 	const { page, url } = await open(t)
 	await page.goto(url('/plans/checkout@2'))
 	const id = await page.locator('details.fold:not([open]) > summary h2').first().getAttribute('id')
@@ -320,7 +328,7 @@ test('plan sections show their open state, Right opens one and Left closes it', 
 	assert.match(page.url(), /checkout@2$/)
 })
 
-test('the coverage boxes have a 24 px hit area, and the requirement column reads left', { skip }, async (t) => {
+test('the coverage boxes have a 24 px hit area, and the requirement column reads left', browserTest, async (t) => {
 	const { page, url } = await open(t)
 	await page.goto(url('/plans/account@7/edit'))
 	const box = await page
@@ -336,7 +344,7 @@ test('the coverage boxes have a 24 px hit area, and the requirement column reads
 	assert.deepEqual(box.slice(1), ['left', 'left', 'none'])
 })
 
-test('no page scrolls sideways at 320 px', { skip }, async (t) => {
+test('no page scrolls sideways at 320 px', browserTest, async (t) => {
 	const { page, url } = await open(t, { viewport: { width: 320, height: 640 } })
 	for (const path of [
 		'/',
@@ -359,7 +367,7 @@ test('no page scrolls sideways at 320 px', { skip }, async (t) => {
 
 test(
 	'Up and Down cross the pages of a list, the status bar names the page, and Left goes to page 1',
-	{ skip },
+	browserTest,
 	async (t) => {
 		const { page, url } = await open(t)
 		await page.goto(url('/log?page=2'))
@@ -418,7 +426,7 @@ async function states(page: Page, selector: string) {
 	return { rest, hover, pressed }
 }
 
-test('a real pointer shows hover and pressed states on every kind of control', { skip }, async (t) => {
+test('a real pointer shows hover and pressed states on every kind of control', browserTest, async (t) => {
 	const { page, url } = await open(t)
 	const cases: Array<[string, string, boolean]> = [
 		['/plans/account@7/edit', '[data-edit-form] button.primary', true],
@@ -443,7 +451,7 @@ test('a real pointer shows hover and pressed states on every kind of control', {
 	}
 })
 
-test('Esc from the testers view returns to the Testers row of the plan', { skip }, async (t) => {
+test('Esc from the testers view returns to the Testers row of the plan', browserTest, async (t) => {
 	const { page, url } = await open(t)
 	await page.goto(url('/explorations/x-9'))
 	await page.waitForFunction(() => document.activeElement?.matches('[data-row]'))
@@ -454,7 +462,7 @@ test('Esc from the testers view returns to the Testers row of the plan', { skip 
 
 test(
 	'a decision inside a record opens the next record that waits, and a hand-over keeps its record',
-	{ skip },
+	browserTest,
 	async (t) => {
 		const { page, url, workspace } = await open(t)
 		await page.goto(url('/plans/coupons?view=needs&item=c%3Ak1%2FD10'))
@@ -477,7 +485,7 @@ test(
 	}
 )
 
-test('a deferred question keeps Right and Different and can be answered', { skip }, async (t) => {
+test('a deferred question keeps Right and Different and can be answered', browserTest, async (t) => {
 	const { page, url, workspace } = await open(t)
 	await page.goto(url('/plans/coupons?view=needs&focus=list&at=q%3Ak1%2FQ4'))
 	await page.waitForFunction(() => document.activeElement?.getAttribute('data-key') === 'q:k1/Q4')
@@ -498,7 +506,7 @@ test('a deferred question keeps Right and Different and can be answered', { skip
 	)
 })
 
-test('a rejected finding is labelled Rejected only', { skip }, async (t) => {
+test('a rejected finding is labelled Rejected only', browserTest, async (t) => {
 	const { page, url } = await open(t)
 	await page.goto(url('/plans/coupons?view=all&item=c%3Ak1%2FD8'))
 	assert.deepEqual(
@@ -507,7 +515,7 @@ test('a rejected finding is labelled Rejected only', { skip }, async (t) => {
 	)
 })
 
-test('the toast of a decision shows even right after a hand-over', { skip }, async (t) => {
+test('the toast of a decision shows even right after a hand-over', browserTest, async (t) => {
 	const { page, url } = await open(t)
 	await page.goto(url('/plans/coupons?view=all&focus=list&at=c%3Ak1%2FD9'))
 	await page.waitForFunction(() => document.activeElement?.getAttribute('data-key') === 'c:k1/D9')
@@ -525,7 +533,7 @@ for (const [scale, width, height] of [
 	[3, 480, 300],
 	[4, 360, 225],
 ] as const)
-	test(`at device scale ${scale} the top of the highlighted row stays in view`, { skip }, async (t) => {
+	test(`at device scale ${scale} the top of the highlighted row stays in view`, browserTest, async (t) => {
 		const { page, url } = await open(t, { viewport: { width, height }, deviceScaleFactor: scale })
 		for (const path of ['/', '/plans/coupons?view=needs&focus=list']) {
 			await page.goto(url(path))
@@ -543,7 +551,7 @@ for (const [scale, width, height] of [
 		}
 	})
 
-test('Back closes the find bar, the key list, a dialog, or an open area, and nothing else', { skip }, async (t) => {
+test('Back closes the find bar, the key list, a dialog, or an open area, and nothing else', browserTest, async (t) => {
 	const { page, url } = await open(t)
 	await page.goto(url('/plans/coupons?view=needs&focus=list'))
 	await page.waitForFunction(() => document.activeElement?.matches('[data-row]'))
@@ -583,14 +591,14 @@ test('Back closes the find bar, the key list, a dialog, or an open area, and not
 	assert.equal(page.url(), here)
 })
 
-test('a paused tester says how long it has been paused', { skip }, async (t) => {
+test('a paused tester says how long it has been paused', browserTest, async (t) => {
 	const { page, url, workspace } = await open(t)
 	read(workspace, (store) => event(store, 'x-9', { step: 'pause', detail: { reason: 'Waiting for the host.' } }))
 	await page.goto(url('/explorations/x-9'))
 	assert.match(await page.content(), /paused for\s*<span data-since="[^"]+">\d/)
 })
 
-test('the zoom label is not live, and pages without evidence have no viewer', { skip }, async (t) => {
+test('the zoom label is not live, and pages without evidence have no viewer', browserTest, async (t) => {
 	const { page, url } = await open(t)
 	await page.goto(url('/plans/coupons?view=needs'))
 	assert.equal(await page.locator('[data-viewer]').count(), 0)
@@ -598,7 +606,7 @@ test('the zoom label is not live, and pages without evidence have no viewer', { 
 	assert.equal(await page.locator('[data-viewer-scale][aria-live]').count(), 0)
 })
 
-test('the navigator strip stays pinned at 900 px and its marks name their build', { skip }, async (t) => {
+test('the navigator strip stays pinned at 900 px and its marks name their build', browserTest, async (t) => {
 	const { page, url } = await open(t, { viewport: { width: 900, height: 600 } })
 	await page.goto(url('/plans/coupons?view=needs&focus=list'))
 	await page.waitForFunction(() => document.activeElement?.matches('[data-row]'))
@@ -625,7 +633,7 @@ test('the navigator strip stays pinned at 900 px and its marks name their build'
 	}
 })
 
-test('a run is rejected with a reason from the keyboard', { skip }, async (t) => {
+test('a run is rejected with a reason from the keyboard', browserTest, async (t) => {
 	const { page, url, workspace } = await open(t)
 	await page.goto(url('/runs/run-7#decide'))
 	await page.locator('#rationale').fill('The report misses the refund check.')
@@ -638,7 +646,7 @@ test('a run is rejected with a reason from the keyboard', { skip }, async (t) =>
 	)
 })
 
-test('a plan is approved through the two-step decision', { skip }, async (t) => {
+test('a plan is approved through the two-step decision', browserTest, async (t) => {
 	const { page, url, workspace } = await open(t)
 	await page.goto(url('/plans/search@1#decide'))
 	await page.locator('#rationale').fill('The plan covers the search rules.')
@@ -651,7 +659,7 @@ test('a plan is approved through the two-step decision', { skip }, async (t) => 
 	)
 })
 
-test('the evidence overlay opens by click and closes with Esc', { skip }, async (t) => {
+test('the evidence overlay opens by click and closes with Esc', browserTest, async (t) => {
 	const { page, url } = await open(t)
 	await page.goto(url('/runs/run-7?item=finding%3AF1'))
 	await page.locator('a[data-view]').first().click()
@@ -661,7 +669,7 @@ test('the evidence overlay opens by click and closes with Esc', { skip }, async 
 	await viewer.waitFor({ state: 'hidden' })
 })
 
-test('the pager and the filters work with the pointer', { skip }, async (t) => {
+test('the pager and the filters work with the pointer', browserTest, async (t) => {
 	const { page, url } = await open(t)
 	await page.goto(url('/log'))
 	await page.getByRole('link', { name: 'Next ›' }).click()
@@ -672,27 +680,34 @@ test('the pager and the filters work with the pointer', { skip }, async (t) => {
 	await page.waitForURL((address) => address.pathname === '/log' && !address.search)
 })
 
-test('the section Edit links open the editor at that section, and Remove explains a refusal', { skip }, async (t) => {
-	const { page, url, workspace } = await open(t)
-	await page.goto(url('/plans/search@1'))
-	await page.locator('a.h-link[href$="#edit-tests"]').click()
-	await page.waitForURL(/edit#edit-tests$/)
-	await page.waitForFunction(() => Boolean(document.activeElement?.closest('#edit-tests')))
-	await page.goto(url('/plans/search@1'))
-	const remove = page
-		.locator('details')
-		.filter({ has: page.locator('> summary', { hasText: 'Remove T1' }) })
-		.first()
-	await remove.locator('> summary').click()
-	await remove.locator('textarea').fill('T1 is covered by another plan.')
-	await remove.getByRole('button').last().click()
-	await page.waitForURL(/search@1\/edit$/)
-	await page.waitForFunction(() => document.activeElement?.matches('.form-error[role=alert]'))
-	assert.match((await page.locator('.form-error[role=alert]').textContent())!, /Requirement S1 has no test or gap/)
-	assert.ok(read(workspace, (store) => planDetail(store, 'search').plan.tests.some((test) => test.id === 'T1')))
-})
+test(
+	'the section Edit links open the editor at that section, and Remove explains a refusal',
+	browserTest,
+	async (t) => {
+		const { page, url, workspace } = await open(t)
+		await page.goto(url('/plans/search@1'))
+		await page.locator('a.h-link[href$="#edit-tests"]').click()
+		await page.waitForURL(/edit#edit-tests$/)
+		await page.waitForFunction(() => Boolean(document.activeElement?.closest('#edit-tests')))
+		await page.goto(url('/plans/search@1'))
+		const remove = page
+			.locator('details')
+			.filter({ has: page.locator('> summary', { hasText: 'Remove T1' }) })
+			.first()
+		await remove.locator('> summary').click()
+		await remove.locator('textarea').fill('T1 is covered by another plan.')
+		await remove.getByRole('button').last().click()
+		await page.waitForURL(/search@1\/edit$/)
+		await page.waitForFunction(() => document.activeElement?.matches('.form-error[role=alert]'))
+		assert.match(
+			(await page.locator('.form-error[role=alert]').textContent())!,
+			/Requirement S1 has no test or gap/
+		)
+		assert.ok(read(workspace, (store) => planDetail(store, 'search').plan.tests.some((test) => test.id === 'T1')))
+	}
+)
 
-test('the 409 and 500 pages say what happened, and Left or Esc leaves them', { skip }, async (t) => {
+test('the 409 and 500 pages say what happened, and Left or Esc leaves them', browserTest, async (t) => {
 	const { page, url, workspace } = await open(t)
 	const busy = await page.goto(url('/runs/run-8/report.json'))
 	assert.equal(busy!.status(), 409)
@@ -712,7 +727,7 @@ test('the 409 and 500 pages say what happened, and Left or Esc leaves them', { s
 
 test(
 	'dialogs, the find bar, the key list, and reason fields open and close 20 times in a row on a slow CPU',
-	{ skip },
+	browserTest,
 	async (t) => {
 		const { page, url } = await open(t)
 		const cdp = await page.context().newCDPSession(page)

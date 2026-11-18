@@ -5,7 +5,7 @@ import { closeStore, openStore } from '../plugin/src/index.ts'
 import { mergedClaims, mergedQuestions, operationLog } from '../plugin/src/views.ts'
 import { decideClaim } from '../plugin/src/journal.ts'
 import { seedVolume } from '../scripts/ui-volume.ts'
-import { open, skip, stop, launchWith } from './browser.ts'
+import { open, browserTest, stop, launchWith } from './browser.ts'
 
 test.before(() => launchWith(seedVolume))
 test.after(stop)
@@ -78,7 +78,7 @@ async function listRows(page: Page) {
 
 test(
 	'the keys walk home, navigator, list, record, and viewer, and Left or Esc goes back one level',
-	{ skip },
+	browserTest,
 	async (t) => {
 		const { page, url } = await open(t)
 		await page.goto(url('/'))
@@ -121,7 +121,7 @@ test(
 	}
 )
 
-test('Down then 1 in the same tick decides the new row, never the previous one', { skip }, async (t) => {
+test('Down then 1 in the same tick decides the new row, never the previous one', browserTest, async (t) => {
 	const { page, url, workspace } = await open(t)
 	await page.goto(url('/plans/coupons?view=needs&focus=list'))
 	await page.waitForFunction(() => document.activeElement?.matches('[data-row]'))
@@ -146,7 +146,7 @@ test('Down then 1 in the same tick decides the new row, never the previous one',
 
 test(
 	'numbers decide by key, one decision for each press, and the next waiting row takes the highlight',
-	{ skip },
+	browserTest,
 	async (t) => {
 		const { page, url, workspace } = await open(t)
 		const before = decisions(workspace)
@@ -186,7 +186,7 @@ test(
 	}
 )
 
-test('every option works by mouse, and a click then an arrow moves from the clicked row', { skip }, async (t) => {
+test('every option works by mouse, and a click then an arrow moves from the clicked row', browserTest, async (t) => {
 	const { page, url, workspace } = await open(t)
 	await page.goto(url('/plans/coupons?view=all'))
 	await page.locator('[data-nav][data-target="needs"]').click()
@@ -215,7 +215,7 @@ test('every option works by mouse, and a click then an arrow moves from the clic
 	await page.getByRole('button', { name: /Close/ }).click()
 })
 
-test('Browser Back equals Left, and Forward redoes the Right', { skip }, async (t) => {
+test('Browser Back equals Left, and Forward redoes the Right', browserTest, async (t) => {
 	const { page, url } = await open(t)
 	await page.goto(url('/plans/coupons'))
 	await page.waitForFunction(() => document.activeElement?.matches('[data-nav]'))
@@ -236,7 +236,7 @@ test('Browser Back equals Left, and Forward redoes the Right', { skip }, async (
 
 test(
 	'Space and Shift with the arrows select rows, Shift+Up shrinks the range, and Esc clears it',
-	{ skip },
+	browserTest,
 	async (t) => {
 		const { page, url } = await open(t)
 		await page.goto(url('/plans/coupons?view=needs&focus=list'))
@@ -261,7 +261,7 @@ test(
 
 test(
 	'the navigator expands an area, chooses a build by number, and keeps the highlight in view',
-	{ skip },
+	browserTest,
 	async (t) => {
 		const { page, url } = await open(t, { viewport: { width: 1440, height: 640 } })
 		await page.goto(url('/plans/coupons'))
@@ -295,7 +295,7 @@ test(
 	}
 )
 
-test('the highlighted row stays clear of the top bar and the status bar after long runs', { skip }, async (t) => {
+test('the highlighted row stays clear of the top bar and the status bar after long runs', browserTest, async (t) => {
 	const { page, url } = await open(t)
 	await page.goto(url('/plans/checkout?view=all&focus=list'))
 	await page.waitForFunction(() => document.activeElement?.matches('[data-row]'))
@@ -312,7 +312,7 @@ test('the highlighted row stays clear of the top bar and the status bar after lo
 	assert.equal(await clear(), null)
 })
 
-test('a form sent while the UI is stopped keeps the text and says that nothing is recorded', { skip }, async (t) => {
+test('a form sent while the UI is stopped keeps the text and says that nothing is recorded', browserTest, async (t) => {
 	const { page, url, ui } = await open(t)
 	await page.goto(url('/plans/coupons?item=q%3Ak1%2FQ3'))
 	await page.locator('[data-drawer] #answer-text').fill('Until the end of the day.')
@@ -322,7 +322,7 @@ test('a form sent while the UI is stopped keeps the text and says that nothing i
 	assert.equal(await page.locator('#answer-text').inputValue(), 'Until the end of the day.')
 })
 
-test('All items finds a defect and shows its evidence in two clicks', { skip }, async (t) => {
+test('All items finds a defect and shows its evidence in two clicks', browserTest, async (t) => {
 	const { page, url } = await open(t)
 	await page.goto(url('/plans/checkout?view=all'))
 	await page.locator('[data-panel="all"] [data-key="c:a1/D1"]').click()
@@ -337,7 +337,7 @@ test('All items finds a defect and shows its evidence in two clicks', { skip }, 
 	await page.locator('[data-drawer]').waitFor()
 })
 
-test('on a narrow window the record covers the list and Esc goes back to the row', { skip }, async (t) => {
+test('on a narrow window the record covers the list and Esc goes back to the row', browserTest, async (t) => {
 	const { page, url } = await open(t, { viewport: { width: 400, height: 800 } })
 	await page.goto(url('/plans/coupons?view=needs&focus=list'))
 	await page.waitForFunction(() => document.activeElement?.matches('[data-row]'))
@@ -354,7 +354,7 @@ test('on a narrow window the record covers the list and Esc goes back to the row
 	await page.waitForFunction((key) => document.activeElement?.getAttribute('data-key') === key, row)
 })
 
-test('the plan page opens what needs the person and folds the rest', { skip }, async (t) => {
+test('the plan page opens what needs the person and folds the rest', browserTest, async (t) => {
 	const { page, url } = await open(t)
 	await fits(page, url('/plans/checkout@2'))
 	await fits(page, url('/plans/basket/request'))
@@ -376,7 +376,7 @@ test('the plan page opens what needs the person and folds the rest', { skip }, a
 	await page.waitForURL(/\/plans\/checkout\?view=needs/)
 })
 
-test('every page in a plan fits, and Esc goes to its parent', { skip }, async (t) => {
+test('every page in a plan fits, and Esc goes to its parent', browserTest, async (t) => {
 	const { page, url } = await open(t)
 	for (const path of [
 		'/explorations/x-1',
@@ -393,27 +393,31 @@ test('every page in a plan fits, and Esc goes to its parent', { skip }, async (t
 	await page.waitForURL(/\/plans\/checkout@2$/)
 })
 
-test('the run page lists tests, findings, and gaps, and accepts the result from the overview', { skip }, async (t) => {
-	const { page, url } = await open(t)
-	await fits(page, url('/runs/run-7'))
-	await fits(page, url('/runs/run-7?item=test%3AT2'))
-	await fits(page, url('/runs/run-7?item=coverage'))
-	await page.goto(url('/runs/run-7'))
-	await page.locator('[data-key="finding:F1"]').click()
-	await page.waitForURL(/item=finding%3AF1/)
-	await page.locator('.q-detail .finding a[data-go]').first().click()
-	await page.waitForURL(/item=test%3AT2#T2\.A2$/)
-	await page.locator('[data-key="T2.A2"]').waitFor()
-	await page.keyboard.press('ArrowUp')
-	assert.equal((await highlighted(page)).key, 'test:T1')
-	await page.goto(url('/runs/run-7'))
-	await page.locator('#rationale').fill('The defects are known.')
-	await page.locator('[data-choose] button').first().click()
-	await page.getByText('Confirm acceptance').waitFor()
-	await page.keyboard.press('Control+Enter')
-	await page.getByRole('status').filter({ hasText: 'Accepted run-7' }).waitFor()
-	await page.locator('[data-region="state"]', { hasText: 'accepted' }).waitFor()
-})
+test(
+	'the run page lists tests, findings, and gaps, and accepts the result from the overview',
+	browserTest,
+	async (t) => {
+		const { page, url } = await open(t)
+		await fits(page, url('/runs/run-7'))
+		await fits(page, url('/runs/run-7?item=test%3AT2'))
+		await fits(page, url('/runs/run-7?item=coverage'))
+		await page.goto(url('/runs/run-7'))
+		await page.locator('[data-key="finding:F1"]').click()
+		await page.waitForURL(/item=finding%3AF1/)
+		await page.locator('.q-detail .finding a[data-go]').first().click()
+		await page.waitForURL(/item=test%3AT2#T2\.A2$/)
+		await page.locator('[data-key="T2.A2"]').waitFor()
+		await page.keyboard.press('ArrowUp')
+		assert.equal((await highlighted(page)).key, 'test:T1')
+		await page.goto(url('/runs/run-7'))
+		await page.locator('#rationale').fill('The defects are known.')
+		await page.locator('[data-choose] button').first().click()
+		await page.getByText('Confirm acceptance').waitFor()
+		await page.keyboard.press('Control+Enter')
+		await page.getByRole('status').filter({ hasText: 'Accepted run-7' }).waitFor()
+		await page.locator('[data-region="state"]', { hasText: 'accepted' }).waitFor()
+	}
+)
 
 async function menusInside(page: Awaited<ReturnType<typeof open>>['page'], path: string) {
 	const menus = page.locator('details[data-menu]:visible > summary')
@@ -437,7 +441,7 @@ async function menusInside(page: Awaited<ReturnType<typeof open>>['page'], path:
 	}
 }
 
-test('every menu opens inside the window from 1440px to 390px', { skip }, async (t) => {
+test('every menu opens inside the window from 1440px to 390px', browserTest, async (t) => {
 	const { page, url } = await open(t)
 	for (const width of [1440, 760, 600, 390]) {
 		await page.setViewportSize({ width, height: 900 })
@@ -448,7 +452,7 @@ test('every menu opens inside the window from 1440px to 390px', { skip }, async 
 	}
 })
 
-test('a decision from another tab after the page loaded is refused and names the first', { skip }, async (t) => {
+test('a decision from another tab after the page loaded is refused and names the first', browserTest, async (t) => {
 	const { page, url, workspace } = await open(t)
 	await page.goto(url('/plans/coupons?view=needs&focus=list'))
 	await page.waitForFunction(() => document.activeElement?.matches('[data-row]'))
@@ -483,7 +487,7 @@ function within(promise: Promise<void>, what: string) {
 	])
 }
 
-test('a live update that lands while a decision is sent does not lose the refusal', { skip }, async (t) => {
+test('a live update that lands while a decision is sent does not lose the refusal', browserTest, async (t) => {
 	const { page, url, workspace } = await open(t)
 	let releaseRefresh = () => {}
 	let releasePost = () => {}
@@ -528,7 +532,7 @@ test('a live update that lands while a decision is sent does not lose the refusa
 	await page.getByText(`${key.slice(2)} was accepted by qa-lead.`).waitFor()
 })
 
-test('a number key after a live update moved the highlight records nothing and says why', { skip }, async (t) => {
+test('a number key after a live update moved the highlight records nothing and says why', browserTest, async (t) => {
 	const { page, url, workspace } = await open(t)
 	await page.goto(url('/plans/coupons?view=needs&focus=list'))
 	await page.locator('[data-live]', { hasText: 'Live' }).waitFor()
@@ -561,7 +565,7 @@ test('a number key after a live update moved the highlight records nothing and s
 
 test(
 	'numbers act on a selection, an action on several records asks first, and cancel keeps the selection',
-	{ skip },
+	browserTest,
 	async (t) => {
 		const { page, url, workspace } = await open(t)
 		await page.goto(url('/plans/coupons?view=needs&focus=list'))
@@ -594,7 +598,7 @@ test(
 	}
 )
 
-test('a hand-over shows a 0 Undo note, and 0 undoes it while the note shows', { skip }, async (t) => {
+test('a hand-over shows a 0 Undo note, and 0 undoes it while the note shows', browserTest, async (t) => {
 	const { page, url, workspace } = await open(t)
 	await page.goto(url('/plans/coupons?view=all&at=c%3Ak1%2FD1&focus=list'))
 	await page.waitForFunction(() => document.activeElement?.getAttribute('data-key') === 'c:k1/D1')
@@ -616,7 +620,7 @@ test('a hand-over shows a 0 Undo note, and 0 undoes it while the note shows', { 
 
 test(
 	'the find bar moves with Up and Down, keeps Left and Right for the caret, and names how many more results exist',
-	{ skip },
+	browserTest,
 	async (t) => {
 		const { page, url } = await open(t)
 		await page.goto(url('/plans/coupons'))
@@ -647,7 +651,7 @@ test(
 	}
 )
 
-test('the key list and the status bar hints come from one table', { skip }, async (t) => {
+test('the key list and the status bar hints come from one table', browserTest, async (t) => {
 	const { page, url } = await open(t)
 	await page.goto(url('/plans/coupons?view=needs&focus=list'))
 	await page.waitForFunction(() => document.activeElement?.matches('[data-row]'))

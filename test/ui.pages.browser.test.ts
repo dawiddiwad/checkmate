@@ -16,7 +16,7 @@ import {
 	savePlan,
 } from '../plugin/src/index.ts'
 import { evidenceFile } from './support.ts'
-import { checkmate, launch, open, skip, stop } from './browser.ts'
+import { checkmate, launch, open, browserTest, stop } from './browser.ts'
 
 test.before(launch)
 test.after(stop)
@@ -142,7 +142,7 @@ function seedLong(workspace: string) {
 	}
 }
 
-test('a run page updates live and keeps typed text', { skip }, async (t) => {
+test('a run page updates live and keeps typed text', browserTest, async (t) => {
 	const { page, url, workspace } = await open(t)
 	await page.goto(url('/runs/run-8?item=test%3AT1'))
 	await page.locator('[data-live]', { hasText: 'Live' }).waitFor()
@@ -175,7 +175,7 @@ test('a run page updates live and keeps typed text', { skip }, async (t) => {
 	assert.match(page.url(), /\/runs\/run-7$/)
 })
 
-test('dark mode follows the system and the header toggle overrides it', { skip }, async (t) => {
+test('dark mode follows the system and the header toggle overrides it', browserTest, async (t) => {
 	const { page, url } = await open(t)
 	await page.emulateMedia({ colorScheme: 'dark' })
 	await page.goto(url('/runs/run-7'))
@@ -187,7 +187,7 @@ test('dark mode follows the system and the header toggle overrides it', { skip }
 	assert.equal(await page.evaluate(() => document.documentElement.dataset.theme), 'light')
 })
 
-test('list filters, sorting, and pages update in place, keep the URL, and update live', { skip }, async (t) => {
+test('list filters, sorting, and pages update in place, keep the URL, and update live', browserTest, async (t) => {
 	const { page, url, workspace } = await open(t)
 	await page.goto(url('/log'))
 	await page.evaluate(() => ((window as unknown as { marker: number }).marker = 1))
@@ -230,37 +230,41 @@ test('list filters, sorting, and pages update in place, keep the URL, and update
 	assert.equal(new URL(page.url()).pathname, '/')
 })
 
-test('the plan page folds its sections and closed gaps, and loads the full history on demand', { skip }, async (t) => {
-	const { page, url } = await open(t)
-	await page.goto(url('/plans/checkout@2#G1'))
-	const closed = page.locator('#G1 details')
-	assert.equal(await closed.evaluate((details) => (details as HTMLDetailsElement).open), false)
-	assert.equal(
-		await page.locator('#G1 summary').evaluate((summary) => getComputedStyle(summary).color),
-		'rgb(75, 84, 98)'
-	)
-	await page.locator('#G1 summary').click()
-	await page.locator('#G1 .gap-b').waitFor()
-	await page.locator('#runs').scrollIntoViewIfNeeded()
-	await page.locator('[data-region="plan-runs"] a', { hasText: 'run-7' }).waitFor()
-	await page.goto(url('/plans/account@7'))
-	assert.equal(
-		await page.locator('[data-region="history"]').evaluate((details) => (details as HTMLDetailsElement).open),
-		false
-	)
-	await page.getByRole('heading', { name: 'History' }).click()
-	const entries = page.locator('[data-history] ol.history > li')
-	assert.equal(await entries.count(), 6)
-	assert.equal(await page.locator('[data-history] details[open]').count(), 1)
-	await page.getByText('Show full history · 1 earlier revision').click()
-	await page.locator('[data-history] summary', { hasText: 'account@1' }).waitFor()
-	assert.equal(await entries.count(), 7)
-	assert.equal(new URL(page.url()).search, '')
-	await page.reload()
-	assert.equal(await entries.count(), 6)
-})
+test(
+	'the plan page folds its sections and closed gaps, and loads the full history on demand',
+	browserTest,
+	async (t) => {
+		const { page, url } = await open(t)
+		await page.goto(url('/plans/checkout@2#G1'))
+		const closed = page.locator('#G1 details')
+		assert.equal(await closed.evaluate((details) => (details as HTMLDetailsElement).open), false)
+		assert.equal(
+			await page.locator('#G1 summary').evaluate((summary) => getComputedStyle(summary).color),
+			'rgb(75, 84, 98)'
+		)
+		await page.locator('#G1 summary').click()
+		await page.locator('#G1 .gap-b').waitFor()
+		await page.locator('#runs').scrollIntoViewIfNeeded()
+		await page.locator('[data-region="plan-runs"] a', { hasText: 'run-7' }).waitFor()
+		await page.goto(url('/plans/account@7'))
+		assert.equal(
+			await page.locator('[data-region="history"]').evaluate((details) => (details as HTMLDetailsElement).open),
+			false
+		)
+		await page.getByRole('heading', { name: 'History' }).click()
+		const entries = page.locator('[data-history] ol.history > li')
+		assert.equal(await entries.count(), 6)
+		assert.equal(await page.locator('[data-history] details[open]').count(), 1)
+		await page.getByText('Show full history · 1 earlier revision').click()
+		await page.locator('[data-history] summary', { hasText: 'account@1' }).waitFor()
+		assert.equal(await entries.count(), 7)
+		assert.equal(new URL(page.url()).search, '')
+		await page.reload()
+		assert.equal(await entries.count(), 6)
+	}
+)
 
-test('a finished run downloads its report', { skip }, async (t) => {
+test('a finished run downloads its report', browserTest, async (t) => {
 	const { page, url } = await open(t)
 	await page.goto(url('/runs/run-7'))
 	await page.getByText('Download report').click()
@@ -286,7 +290,7 @@ test('a finished run downloads its report', { skip }, async (t) => {
 	)
 })
 
-test('Settings adds and retires an instance from the keyboard and updates live', { skip }, async (t) => {
+test('Settings adds and retires an instance from the keyboard and updates live', browserTest, async (t) => {
 	const { page, url, workspace } = await open(t)
 	await page.goto(url('/'))
 	await page.getByRole('link', { name: 'Settings' }).focus()
@@ -329,7 +333,7 @@ async function overflow(page: Awaited<ReturnType<typeof open>>['page']) {
 	})
 }
 
-test('long unbroken values do not widen the page at 1280px and 390px', { skip }, async (t) => {
+test('long unbroken values do not widen the page at 1280px and 390px', browserTest, async (t) => {
 	const { page, url, workspace } = await open(t)
 	seedLong(workspace)
 	for (const width of [1280, 390]) {
@@ -362,7 +366,7 @@ test('long unbroken values do not widen the page at 1280px and 390px', { skip },
 	}
 })
 
-test('the evidence viewer fits at 390px and names a file that it cannot show', { skip }, async (t) => {
+test('the evidence viewer fits at 390px and names a file that it cannot show', browserTest, async (t) => {
 	const { page, url, workspace } = await open(t, { viewport: { width: 390, height: 844 } })
 	seedOddFiles(workspace)
 	await page.goto(url('/runs/run-8?item=test%3AT1'))
@@ -384,7 +388,7 @@ test('the evidence viewer fits at 390px and names a file that it cannot show', {
 	await viewer.waitFor({ state: 'hidden' })
 })
 
-test('an empty file and a damaged image get a note and Download in tiles of one size', { skip }, async (t) => {
+test('an empty file and a damaged image get a note and Download in tiles of one size', browserTest, async (t) => {
 	const { page, url, workspace } = await open(t)
 	seedOddFiles(workspace)
 	await page.goto(url('/runs/run-8?item=test%3AT1'))

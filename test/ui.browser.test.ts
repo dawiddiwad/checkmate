@@ -3,12 +3,12 @@ import assert from 'node:assert/strict'
 import { closeStore, openStore, planDetail } from '../plugin/src/index.ts'
 import { human } from '../scripts/ui-demo.ts'
 import { startUi } from '../plugin/src/ui/server.ts'
-import { approval, checkmate, launch, open, skip, stop } from './browser.ts'
+import { approval, checkmate, launch, open, browserTest, stop } from './browser.ts'
 
 test.before(launch)
 test.after(stop)
 
-test('the shortcuts panel opens by key and a #decide or #answer link focuses its form', { skip }, async (t) => {
+test('the shortcuts panel opens by key and a #decide or #answer link focuses its form', browserTest, async (t) => {
 	const { page, url } = await open(t)
 	await page.goto(url('/inbox'))
 	await page.waitForURL(url('/'))
@@ -32,7 +32,7 @@ test('the shortcuts panel opens by key and a #decide or #answer link focuses its
 	await page.waitForFunction(() => document.activeElement?.id === 'rationale')
 })
 
-test('a gap answer goes from the form to Needs you', { skip }, async (t) => {
+test('a gap answer goes from the form to Needs you', browserTest, async (t) => {
 	const { page, url, workspace } = await open(t)
 	await page.goto(url('/plans/checkout@2/gaps/G2#answer'))
 	const record = page.getByRole('button', { name: 'Record answer' })
@@ -56,7 +56,7 @@ test('a gap answer goes from the form to Needs you', { skip }, async (t) => {
 	)
 })
 
-test('approval confirms in place without a modal', { skip }, async (t) => {
+test('approval confirms in place without a modal', browserTest, async (t) => {
 	const { page, url, workspace } = await open(t)
 	let dialogs = 0
 	page.on('dialog', () => dialogs++)
@@ -76,7 +76,7 @@ test('approval confirms in place without a modal', { skip }, async (t) => {
 	assert.equal(dialogs, 0)
 })
 
-test('forms and list filters work with JavaScript disabled', { skip }, async (t) => {
+test('forms and list filters work with JavaScript disabled', browserTest, async (t) => {
 	const { page, url, workspace } = await open(t, { javaScriptEnabled: false })
 	await page.goto(url('/plans/search@1'))
 	await page.getByLabel('Rationale').fill('Reviewed without scripts.')
@@ -106,7 +106,7 @@ test('forms and list filters work with JavaScript disabled', { skip }, async (t)
 	await page.waitForURL(/\/runs\?.*status=started.*sort=run&dir=asc/)
 })
 
-test('a plan edit saves in place and records the actor', { skip }, async (t) => {
+test('a plan edit saves in place and records the actor', browserTest, async (t) => {
 	const { page, url, workspace } = await open(t)
 	await page.goto(url('/plans/search@1'))
 	await page.getByRole('link', { name: 'Edit plan' }).click()
@@ -123,7 +123,7 @@ test('a plan edit saves in place and records the actor', { skip }, async (t) => 
 	assert.deepEqual(planDetail(store, 'search').plan.tests[1].requirementIds, ['S1', 'S2'])
 })
 
-test('the plan editor shows a long check in full at phone width', { skip }, async (t) => {
+test('the plan editor shows a long check in full at phone width', browserTest, async (t) => {
 	const { page, url } = await open(t, { viewport: { width: 390, height: 844 } })
 	await page.goto(url('/plans/search@1/edit'))
 	const check = page.locator('#edit-T1 textarea[name$=".check"]').first()
@@ -135,7 +135,7 @@ test('the plan editor shows a long check in full at phone width', { skip }, asyn
 	assert(size.client > 40, JSON.stringify(size))
 })
 
-test('Bring into plan on the run page adds the run gap to the plan', { skip }, async (t) => {
+test('Bring into plan on the run page adds the run gap to the plan', browserTest, async (t) => {
 	const { page, url, workspace } = await open(t)
 	await page.goto(url('/runs/run-7?item=gap%3AG4'))
 	await page.getByRole('button', { name: 'Bring into plan' }).click()
@@ -146,7 +146,7 @@ test('Bring into plan on the run page adds the run gap to the plan', { skip }, a
 	assert(planDetail(store, 'checkout').plan.gaps.some((gap) => gap.id === 'G4'))
 })
 
-test('the evidence viewer keeps focus inside and Esc gives it back', { skip }, async (t) => {
+test('the evidence viewer keeps focus inside and Esc gives it back', browserTest, async (t) => {
 	const { page, url } = await open(t)
 	await page.goto(url('/runs/run-7?item=test%3AT1'))
 	await page.locator('[data-key="T1.A1"] summary').click()
@@ -168,7 +168,7 @@ test('the evidence viewer keeps focus inside and Esc gives it back', { skip }, a
 	assert(await link.evaluate((element) => element === document.activeElement))
 })
 
-test('the JSON editor shows the reason field when the JSON removes a test', { skip }, async (t) => {
+test('the JSON editor shows the reason field when the JSON removes a test', browserTest, async (t) => {
 	const { page, url, workspace } = await open(t)
 	await page.goto(url('/plans/checkout@2/edit'))
 	await page.getByText('Edit as JSON').click()
@@ -191,7 +191,7 @@ test('the JSON editor shows the reason field when the JSON removes a test', { sk
 	)
 })
 
-test('Ctrl+Enter with an empty field shows an inline message and focuses the field', { skip }, async (t) => {
+test('Ctrl+Enter with an empty field shows an inline message and focuses the field', browserTest, async (t) => {
 	const { page, url } = await open(t)
 	const message = page.locator('.form-error[role="alert"]')
 	const focused = () => page.evaluate(() => document.activeElement?.id)
@@ -216,7 +216,7 @@ test('Ctrl+Enter with an empty field shows an inline message and focuses the fie
 	assert.equal(await focused(), 'answer-text')
 })
 
-test('a decision from elsewhere shows its notice at once and keeps the typed text', { skip }, async (t) => {
+test('a decision from elsewhere shows its notice at once and keeps the typed text', browserTest, async (t) => {
 	const { page, url, workspace } = await open(t)
 	await page.goto(url('/plans/checkout?item=g%3AG2'))
 	await page.locator('[data-live]', { hasText: 'Live' }).waitFor()
@@ -239,7 +239,7 @@ test('a decision from elsewhere shows its notice at once and keeps the typed tex
 	assert.equal(await page.locator('#answer-text').inputValue(), 'Half-written answer')
 })
 
-test('the first send after a restart of the UI goes through without a refused request', { skip }, async (t) => {
+test('the first send after a restart of the UI goes through without a refused request', browserTest, async (t) => {
 	const { page, url, ui, workspace } = await open(t)
 	const refused: string[] = []
 	page.on('response', (response) => {

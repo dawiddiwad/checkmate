@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { closeStore, openPlan, openStore } from '../plugin/src/index.ts'
 import { mergedQuestions } from '../plugin/src/views.ts'
 import { agent } from '../scripts/ui-demo.ts'
-import { checkmate, launch, open, skip, stop } from './browser.ts'
+import { checkmate, launch, open, browserTest, stop } from './browser.ts'
 import { coupon, done, ended, launched, openTest, report, stacks } from './explorations.ts'
 
 test.before(launch)
@@ -11,7 +11,7 @@ test.after(stop)
 
 test(
 	'a plan without a revision leads to the live view, which updates to the merged items that the plan page answers',
-	{ skip },
+	browserTest,
 	async (t) => {
 		const { page, url, workspace } = await open(t)
 		const store = openStore(workspace)
@@ -64,7 +64,7 @@ test(
 
 test(
 	'the live view of the session path changes without a reload when another process writes started, pause, or done',
-	{ skip },
+	browserTest,
 	async (t) => {
 		const { page, url, workspace } = await open(t)
 		const cli = async (args: string[]) => JSON.parse((await checkmate(workspace, [...args, '--json'])).stdout)

@@ -9,7 +9,7 @@ import { closeStore, openStore } from '../plugin/src/store.ts'
 import { explorationEvents } from '../plugin/src/explorations.ts'
 import { running } from '../plugin/src/explorers.ts'
 import { targetList, targetRevision } from '../plugin/src/targets.ts'
-import { launchWith, openIn, skip, stop } from './browser.ts'
+import { launchWith, openIn, browserTest, stop } from './browser.ts'
 import { directory, plan, store, target } from './support.ts'
 import { fakeClaude } from './claude.ts'
 
@@ -62,7 +62,7 @@ const focused = (page: Page) =>
 const field = (page: Page, name: string) => page.locator(`form[data-page-form] [name="${name}"]`)
 const alert = (page: Page, name: string) => page.locator(`form[data-page-form] [role="alert"][data-field="${name}"]`)
 
-test('a person sets up the first target with the keys alone', { skip }, async (t) => {
+test('a person sets up the first target with the keys alone', browserTest, async (t) => {
 	const app = await application(t)
 	const { page, url, read } = await setup(t, 'nothing')
 	await page.goto(url('/'))
@@ -103,7 +103,7 @@ test('a person sets up the first target with the keys alone', { skip }, async (t
 	assert.equal(await page.locator('main h1').textContent(), 'New change')
 })
 
-test('a person sets up the first target with the pointer', { skip }, async (t) => {
+test('a person sets up the first target with the pointer', browserTest, async (t) => {
 	const app = await application(t)
 	const { page, url, read } = await setup(t, 'nothing')
 	await page.goto(url('/'))
@@ -118,26 +118,30 @@ test('a person sets up the first target with the pointer', { skip }, async (t) =
 	)
 })
 
-test('an address that does not answer is refused in the form with the sentence of the engine', { skip }, async (t) => {
-	const { page, url, read } = await setup(t, 'nothing')
-	await page.goto(url('/'))
-	await page.keyboard.type('http://127.0.0.1:1')
-	await page.locator('[data-assumed]:not([hidden])').waitFor()
-	await page.keyboard.press('Enter')
-	await alert(page, 'url').waitFor()
-	assert.match(
-		(await alert(page, 'url').textContent()) ?? '',
-		/The application did not answer at http:\/\/127\.0\.0\.1:1\./
-	)
-	assert.equal(await focused(page), 'setup-url')
-	assert.equal(page.url(), url('/'))
-	assert.equal(await field(page, 'url').inputValue(), 'http://127.0.0.1:1')
-	read((reading) => assert.equal(targetList(reading).length, 0))
-})
+test(
+	'an address that does not answer is refused in the form with the sentence of the engine',
+	browserTest,
+	async (t) => {
+		const { page, url, read } = await setup(t, 'nothing')
+		await page.goto(url('/'))
+		await page.keyboard.type('http://127.0.0.1:1')
+		await page.locator('[data-assumed]:not([hidden])').waitFor()
+		await page.keyboard.press('Enter')
+		await alert(page, 'url').waitFor()
+		assert.match(
+			(await alert(page, 'url').textContent()) ?? '',
+			/The application did not answer at http:\/\/127\.0\.0\.1:1\./
+		)
+		assert.equal(await focused(page), 'setup-url')
+		assert.equal(page.url(), url('/'))
+		assert.equal(await field(page, 'url').inputValue(), 'http://127.0.0.1:1')
+		read((reading) => assert.equal(targetList(reading).length, 0))
+	}
+)
 
 test(
 	'an address that is not local has no default, and asks once more in a dialog that names it',
-	{ skip },
+	browserTest,
 	async (t) => {
 		const { page, url, read } = await setup(t, 'nothing')
 		await page.goto(url('/'))
@@ -194,7 +198,7 @@ const ticket = (workspace: string, name = 'docs/Checkout Ticket.md') => {
 	writeFileSync(join(workspace, name), '# Checkout\nAC1 A coupon gives 10 percent.\n')
 }
 
-test('a person starts the first test from a ticket file with the keys alone', { skip }, async (t) => {
+test('a person starts the first test from a ticket file with the keys alone', browserTest, async (t) => {
 	const { page, url, read, workspace } = await setup(t, 'target')
 	ticket(workspace)
 	await page.goto(url('/'))
@@ -229,7 +233,7 @@ test('a person starts the first test from a ticket file with the keys alone', { 
 
 test(
 	'a pasted ticket gives its first line as the name of the plan and is kept in .checkmate/sources',
-	{ skip },
+	browserTest,
 	async (t) => {
 		const { page, url, workspace, read } = await setup(t, 'target')
 		await page.goto(url('/new'))
@@ -253,7 +257,7 @@ test(
 	}
 )
 
-test('the refusals of the new change show at their field and keep the draft', { skip }, async (t) => {
+test('the refusals of the new change show at their field and keep the draft', browserTest, async (t) => {
 	const { page, url, read } = await setup(t, 'target')
 	await page.goto(url('/new'))
 	await page.keyboard.press('Enter')
@@ -291,7 +295,7 @@ test('the refusals of the new change show at their field and keep the draft', { 
 	assert.equal(await focused(page), 'change-rules')
 })
 
-test('the draft of the new change survives Esc, a reload, and a visit to New target', { skip }, async (t) => {
+test('the draft of the new change survives Esc, a reload, and a visit to New target', browserTest, async (t) => {
 	const { page, url } = await setup(t, 'targets')
 	await page.goto(url('/new'))
 	assert.equal(await page.locator('select[name="target"]').count(), 1)
@@ -314,7 +318,7 @@ test('the draft of the new change survives Esc, a reload, and a visit to New tar
 	assert.equal(await field(page, 'build').inputValue(), 'my-build')
 })
 
-test('Up and Down move the caret to the first or last line of a text before they leave it', { skip }, async (t) => {
+test('Up and Down move the caret to the first or last line of a text before they leave it', browserTest, async (t) => {
 	const { page, url } = await setup(t, 'target')
 	await page.goto(url('/new'))
 	await page.locator('#change-text').fill('one\ntwo\nthree')
@@ -336,7 +340,7 @@ test('Up and Down move the caret to the first or last line of a text before they
 	assert.equal(await focused(page), 'change-file')
 })
 
-test('home shows a row for a new change after the plans, and the keys open it', { skip }, async (t) => {
+test('home shows a row for a new change after the plans, and the keys open it', browserTest, async (t) => {
 	const { page, url } = await setup(t, 'plan')
 	await page.goto(url('/'))
 	await page.locator('[data-live]', { hasText: 'Live' }).waitFor()
@@ -350,7 +354,7 @@ test('home shows a row for a new change after the plans, and the keys open it', 
 	await page.waitForURL(url('/'))
 })
 
-test('the find bar lists New change and New target', { skip }, async (t) => {
+test('the find bar lists New change and New target', browserTest, async (t) => {
 	const { page, url } = await setup(t, 'plan')
 	await page.goto(url('/'))
 	await page.locator('[data-live]', { hasText: 'Live' }).waitFor()

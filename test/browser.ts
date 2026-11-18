@@ -1,5 +1,5 @@
 import type { TestContext } from 'node:test'
-import type { Browser, BrowserContextOptions, Page } from 'playwright-core'
+import type { Browser, BrowserContext, BrowserContextOptions, Page } from 'playwright-core'
 import { execFile } from 'node:child_process'
 import { rmSync } from 'node:fs'
 import { join } from 'node:path'
@@ -8,11 +8,15 @@ import { promisify } from 'node:util'
 import { chromium } from 'playwright-core'
 import { startUi } from '../plugin/src/ui/server.ts'
 import { human, seedDemo } from '../scripts/ui-demo.ts'
+import { seededProcesses } from '../scripts/ui-volume.ts'
 import { closeStore, openStore, planDetail } from '../plugin/src/index.ts'
 import { copied, directory, root } from './support.ts'
 
 const executablePath = process.env.CHECKMATE_BROWSER_EXECUTABLE
-export const skip = executablePath ? false : 'Set CHECKMATE_BROWSER_EXECUTABLE to a Chromium binary'
+const skip = executablePath ? false : 'Set CHECKMATE_BROWSER_EXECUTABLE to a Chromium binary'
+export const browserTest = { skip, timeout: 60_000 }
+const closeWait = 10_000
+const commandWait = 30_000
 const run = promisify(execFile)
 const template = directory()
 let browser: Browser | undefined
@@ -27,8 +31,13 @@ export async function launchWith(seed: (workspace: string) => void) {
 	browser = await chromium.launch({ executablePath })
 }
 
+function bounded(work: Promise<unknown> | undefined) {
+	return Promise.race([work?.catch(() => {}), new Promise((resolve) => setTimeout(resolve, closeWait).unref())])
+}
+
 export async function stop() {
-	await browser?.close()
+	await bounded(browser?.close())
+	for (const seeded of seededProcesses.splice(0)) seeded.kill('SIGKILL')
 	rmSync(template, { recursive: true, force: true })
 }
 
@@ -43,13 +52,15 @@ export async function openIn(
 	env?: Record<string, string | undefined>
 ) {
 	const ui = await startUi({ workspace, env })
+	const contexts: BrowserContext[] = []
+	t.after(async () => {
+		for (const opened of contexts) await bounded(opened.close())
+		await bounded(ui.close())
+	})
 	const context = await browser!.newContext({ viewport: { width: 1280, height: 900 }, ...options })
+	contexts.push(context)
 	context.setDefaultTimeout(5000)
 	await context.addCookies([{ name: 'checkmate_actor', value: human, url: ui.url }])
-	t.after(async () => {
-		await context.close()
-		await ui.close()
-	})
 	const errors: string[] = []
 	context.on('page', (opened) => opened.on('pageerror', (error) => errors.push(error.message)))
 	const page = await context.newPage()
@@ -59,14 +70,11 @@ export async function openIn(
 }
 
 export function checkmate(workspace: string, args: string[]) {
-	return run(process.execPath, [
-		join(root, 'plugin/dist/checkmate.js'),
-		...args,
-		'--workspace',
-		workspace,
-		'--actor',
-		'worker',
-	])
+	return run(
+		process.execPath,
+		[join(root, 'plugin/dist/checkmate.js'), ...args, '--workspace', workspace, '--actor', 'worker'],
+		{ timeout: commandWait }
+	)
 }
 
 export function approval(workspace: string, planId: string) {

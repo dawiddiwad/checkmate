@@ -6,7 +6,7 @@ import { answerGap } from '../plugin/src/plans.ts'
 import { mergedClaims, mergedQuestions, operationLog, planDetail } from '../plugin/src/views.ts'
 import { seedVolume } from '../scripts/ui-volume.ts'
 import { entries } from './explorations.ts'
-import { launchWith, open, skip, stop } from './browser.ts'
+import { launchWith, open, browserTest, stop } from './browser.ts'
 
 test.before(() => launchWith(seedVolume))
 test.after(stop)
@@ -88,7 +88,7 @@ const steps: Step[] = [
 ]
 
 for (const how of ['key', 'click'] as const)
-	test(`every option of every record kind works inside the record by ${how}`, { skip }, async (t) => {
+	test(`every option of every record kind works inside the record by ${how}`, browserTest, async (t) => {
 		for (const step of steps) {
 			const { page, url } = await open(t)
 			await page.goto(url(step.path))
@@ -112,7 +112,7 @@ for (const how of ['key', 'click'] as const)
 
 test(
 	'the last row stays clear of the bulk bar, the toast, and the status bar on short windows',
-	{ skip },
+	browserTest,
 	async (t) => {
 		const { page, url } = await open(t)
 		const overlap = () =>
@@ -163,7 +163,7 @@ const said = (page: Page) =>
 		[...document.querySelectorAll('[data-say], [data-say-strip]')].map((element) => element.textContent).join('')
 	)
 
-test('the arrows and Space scroll a page that has nothing to move to, and say nothing', { skip }, async (t) => {
+test('the arrows and Space scroll a page that has nothing to move to, and say nothing', browserTest, async (t) => {
 	const { page, url } = await open(t, { viewport: { width: 1440, height: 600 } })
 	for (const path of ['/settings/targets/shop-local', '/plans/basket/request', '/plans/checkout@2']) {
 		await page.goto(url(path))
@@ -178,7 +178,7 @@ test('the arrows and Space scroll a page that has nothing to move to, and say no
 	assert.equal(await said(page), '')
 })
 
-test('a row decided in another session hands the highlight to its neighbour and says so', { skip }, async (t) => {
+test('a row decided in another session hands the highlight to its neighbour and says so', browserTest, async (t) => {
 	const { page, url, workspace } = await open(t)
 	await page.goto(url('/plans/coupons?view=needs&focus=list&at=q%3Ak1%2FQ8'))
 	await page.locator('[data-live]', { hasText: 'Live' }).waitFor()
@@ -197,7 +197,7 @@ test('a row decided in another session hands the highlight to its neighbour and 
 	assert.match(await said(page), /k1\/Q8 was answered in another session/)
 })
 
-test('a deferred question says Deferred in the toast, the badge, and the list', { skip }, async (t) => {
+test('a deferred question says Deferred in the toast, the badge, and the list', browserTest, async (t) => {
 	const { page, url, workspace } = await open(t)
 	await page.goto(url('/plans/coupons?view=needs&focus=list&at=q%3Ak1%2FQ4'))
 	await ready(page, '[data-row]')
@@ -213,7 +213,7 @@ test('a deferred question says Deferred in the toast, the badge, and the list', 
 	)
 })
 
-test('Home lists the plans that need you first and returns to the plan you left', { skip }, async (t) => {
+test('Home lists the plans that need you first and returns to the plan you left', browserTest, async (t) => {
 	const { page, url } = await open(t)
 	await page.goto(url('/'))
 	await ready(page, '[data-row]')
@@ -232,7 +232,7 @@ test('Home lists the plans that need you first and returns to the plan you left'
 	await page.waitForFunction(() => document.activeElement?.getAttribute('data-key') === 'plan:coupons')
 })
 
-test('Enter on an empty find query does nothing, and a message clears on the next key', { skip }, async (t) => {
+test('Enter on an empty find query does nothing, and a message clears on the next key', browserTest, async (t) => {
 	const { page, url } = await open(t)
 	await page.goto(url('/plans/coupons?view=needs&focus=list'))
 	await ready(page, '[data-row]')
@@ -249,7 +249,7 @@ test('Enter on an empty find query does nothing, and a message clears on the nex
 	assert(await page.getByRole('dialog', { name: 'Find' }).isVisible())
 })
 
-test('summaries, More, and the navigator show hover and pressed states', { skip }, async (t) => {
+test('summaries, More, and the navigator show hover and pressed states', browserTest, async (t) => {
 	const { page, url } = await open(t, { viewport: { width: 1100, height: 800 } })
 	const background = (selector: string) =>
 		page
@@ -274,7 +274,7 @@ test('summaries, More, and the navigator show hover and pressed states', { skip 
 	await page.mouse.up()
 })
 
-test('without JavaScript a record opens from its row and takes a decision and a reason', { skip }, async (t) => {
+test('without JavaScript a record opens from its row and takes a decision and a reason', browserTest, async (t) => {
 	const { page, url, workspace } = await open(t, { javaScriptEnabled: false })
 	await page.goto(url('/plans/coupons?view=needs'))
 	await page.locator('[data-panel="needs"] [data-key="c:k1/D10"] a.sp-c-title').click()
@@ -291,7 +291,7 @@ test('without JavaScript a record opens from its row and takes a decision and a 
 	assert.equal(states.find((claim) => claim.id === 'k1/D12')!.state, 'rejected')
 })
 
-test('a key pressed while a decision is sent records one decision and acts on nothing else', { skip }, async (t) => {
+test('a key pressed while a decision is sent records one decision and acts on nothing else', browserTest, async (t) => {
 	const { page, url, workspace } = await open(t)
 	const decisions = () =>
 		read(
@@ -312,7 +312,7 @@ test('a key pressed while a decision is sent records one decision and acts on no
 	assert.equal(decisions(), before + 1)
 })
 
-test('the plan editor saves and refuses by keys only', { skip }, async (t) => {
+test('the plan editor saves and refuses by keys only', browserTest, async (t) => {
 	const { page, url, workspace } = await open(t)
 	await page.goto(url('/plans/search@1/edit'))
 	const title = page.locator('#edit-T2').getByLabel('Title')
@@ -342,7 +342,7 @@ test('the plan editor saves and refuses by keys only', { skip }, async (t) => {
 	await page.waitForURL(/\/plans\/search@1$/)
 })
 
-test('Settings adds and retires an instance by keys only', { skip }, async (t) => {
+test('Settings adds and retires an instance by keys only', browserTest, async (t) => {
 	const { page, url } = await open(t)
 	await page.goto(url('/settings/targets/shop-local'))
 	await page.getByLabel('Instance ID').focus()
@@ -360,7 +360,7 @@ test('Settings adds and retires an instance by keys only', { skip }, async (t) =
 	await page.waitForURL(/\/settings\/targets$/)
 })
 
-test('the request page, the run page, and the testers view step in and out by keys only', { skip }, async (t) => {
+test('the request page, the run page, and the testers view step in and out by keys only', browserTest, async (t) => {
 	const { page, url } = await open(t)
 	await page.goto(url('/plans/basket/request'))
 	await page.keyboard.press('Escape')
@@ -393,7 +393,7 @@ test('the request page, the run page, and the testers view step in and out by ke
 	await page.waitForURL(/\/plans\/checkout(\?|$)/)
 })
 
-test('the rule and build marks follow a live update, and the build columns still choose', { skip }, async (t) => {
+test('the rule and build marks follow a live update, and the build columns still choose', browserTest, async (t) => {
 	const { page, url, workspace } = await open(t)
 	await page.goto(url('/plans/coupons?view=area%3ACodes'))
 	await page.locator('[data-live]', { hasText: 'Live' }).waitFor()
@@ -419,7 +419,7 @@ test('the rule and build marks follow a live update, and the build columns still
 	)
 })
 
-test('with a record open, the title of each row takes the rest of the row at every width', { skip }, async (t) => {
+test('with a record open, the title of each row takes the rest of the row at every width', browserTest, async (t) => {
 	const { page, url } = await open(t)
 	for (const width of [1440, 1240, 1100, 900, 760, 400]) {
 		await page.setViewportSize({ width, height: 900 })

@@ -8,6 +8,7 @@ import { decideClaim, handOffClaims } from '../plugin/src/journal.ts'
 import { harvestExploration } from '../plugin/src/harvest.ts'
 import { startUi } from '../plugin/src/ui/server.ts'
 import { done, ended, entries, event, launch, launched, report } from '../test/explorations.ts'
+import type { ChildProcess } from 'node:child_process'
 import { spawn, spawnSync } from 'node:child_process'
 import { agent, human, minutesAgo, pageShot, seedDemo, withDemoClock } from './ui-demo.ts'
 
@@ -496,10 +497,13 @@ function running(store: Store) {
 	])
 }
 
+export const seededProcesses: ChildProcess[] = []
+
 function processRuns(store: Store) {
 	const gone = spawnSync(process.execPath, ['-e', '']).pid!
 	const alive = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 1200000)'], { detached: true, stdio: 'ignore' })
 	alive.unref()
+	seededProcesses.push(alive)
 	const open = (planId: string, explorationId: string, build: string, instance: string) => {
 		openExploration(store, 'checkmate', { planId, build, explorationId, instance })
 		event(store, explorationId, { step: 'start', detail: { ...launch, explorers: 2 } })

@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { seedEdges } from '../scripts/ui-volume.ts'
-import { launchWith, open, skip, stop } from './browser.ts'
+import { launchWith, open, browserTest, stop } from './browser.ts'
 
 test.before(() => launchWith(seedEdges))
 test.after(stop)
@@ -19,7 +19,7 @@ const pages = [
 	'/plans/odd1/request',
 ]
 
-test('long, empty, and hostile content stays inside every page at every width', { skip }, async (t) => {
+test('long, empty, and hostile content stays inside every page at every width', browserTest, async (t) => {
 	const { page, url } = await open(t)
 	for (const width of widths) {
 		await page.setViewportSize({ width, height: 800 })
@@ -37,7 +37,7 @@ test('long, empty, and hostile content stays inside every page at every width', 
 
 test(
 	'rows of 300-character titles keep one height, and the 40-character area keeps its full name in a title',
-	{ skip },
+	browserTest,
 	async (t) => {
 		const { page, url } = await open(t)
 		for (const width of [1440, 760, 400]) {
@@ -60,7 +60,7 @@ test(
 	}
 )
 
-test('the markup in a title shows as text, and the empty plan says what to do next', { skip }, async (t) => {
+test('the markup in a title shows as text, and the empty plan says what to do next', browserTest, async (t) => {
 	const { page, url } = await open(t)
 	await page.goto(url('/plans/odd1?view=all&item=c%3Az1%2FD2'))
 	assert.match((await page.locator('#record-title').textContent())!, /\*\*bold\*\* _it_ \[link\]\(javascript:/)

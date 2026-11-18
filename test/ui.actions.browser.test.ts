@@ -4,7 +4,7 @@ import assert from 'node:assert/strict'
 import { closeStore, openStore } from '../plugin/src/store.ts'
 import { explorationState, running } from '../plugin/src/explorers.ts'
 import { explorationEvents } from '../plugin/src/explorations.ts'
-import { focusedKey, launchWith, openIn, skip, stop } from './browser.ts'
+import { focusedKey, launchWith, openIn, browserTest, stop } from './browser.ts'
 import { postAs, waitFor, workspaceWithFake } from './actions.ts'
 import { done, event, launched, openTest, report } from './explorations.ts'
 import { human } from '../scripts/ui-demo.ts'
@@ -24,12 +24,13 @@ const focused = (page: Page) =>
 async function setup(t: Parameters<typeof workspaceWithFake>[0], replies: Parameters<typeof workspaceWithFake>[1]) {
 	const base = workspaceWithFake(t, replies)
 	const opened = await openIn(t, base.workspace, {}, base.env)
-	const alive = () => {
-		const { supervisor, children } = base.pids('x-1')
+	const processesOf = (explorationId: string) => {
+		const { supervisor, children } = base.pids(explorationId)
 		return [supervisor, ...children].filter((pid): pid is number => pid !== undefined)
 	}
+	const alive = () => processesOf('x-1')
 	t.after(() => {
-		for (const pid of alive()) if (running(pid)) process.kill(-pid, 'SIGKILL')
+		for (const pid of ['x-1', 'x-2'].flatMap(processesOf)) if (running(pid)) process.kill(-pid, 'SIGKILL')
 	})
 	return { ...base, ...opened, alive }
 }
@@ -37,7 +38,7 @@ async function setup(t: Parameters<typeof workspaceWithFake>[0], replies: Parame
 const state = (read: ReturnType<typeof workspaceWithFake>['read'], id: string) =>
 	read((reading) => explorationState(explorationEvents(reading, id)))
 
-test('a person starts, watches, and stops a test with the keys alone', { skip }, async (t) => {
+test('a person starts, watches, and stops a test with the keys alone', browserTest, async (t) => {
 	const { page, url, read, alive } = await setup(t, sleeping)
 	await page.goto(url('/plans/checkout'))
 	await page.locator('[data-live]', { hasText: 'Live' }).waitFor()
@@ -128,7 +129,7 @@ test('a person starts, watches, and stops a test with the keys alone', { skip },
 	assert.match((await page.locator('.sp-nav [data-target="testers"]').textContent()) ?? '', /Testers · stopped/)
 })
 
-test('a person starts a test, stops one tester, and stops the test with the pointer', { skip }, async (t) => {
+test('a person starts a test, stops one tester, and stops the test with the pointer', browserTest, async (t) => {
 	const { page, url, read, pids } = await setup(t, sleeping)
 	await page.goto(url('/plans/checkout'))
 	await page.locator('[data-live]', { hasText: 'Live' }).waitFor()
@@ -168,7 +169,7 @@ test('a person starts a test, stops one tester, and stops the test with the poin
 	assert(pids('x-1').children.every((pid) => !running(pid)))
 })
 
-test('a dialog closes with a message when the tester that it names ends', { skip }, async (t) => {
+test('a dialog closes with a message when the tester that it names ends', browserTest, async (t) => {
 	const { page, url, read, pids } = await setup(t, sleeping)
 	await page.goto(url('/plans/checkout'))
 	await page.locator('[data-panel]:not([hidden]) [data-act="test"]').click()
@@ -200,7 +201,7 @@ test('a dialog closes with a message when the tester that it names ends', { skip
 	await page.getByRole('button', { name: 'Test build… again' }).waitFor()
 })
 
-test('a run whose supervisor dies shows as interrupted, and no place says running', { skip }, async (t) => {
+test('a run whose supervisor dies shows as interrupted, and no place says running', browserTest, async (t) => {
 	const { page, url, read, pids } = await setup(t, sleeping)
 	await page.goto(url('/plans/checkout'))
 	await page.locator('[data-panel]:not([hidden]) [data-act="test"]').click()
@@ -236,7 +237,7 @@ test('a run whose supervisor dies shows as interrupted, and no place says runnin
 
 test(
 	'a second start is refused inside the dialog, which stays open and keeps focus on the field',
-	{ skip },
+	browserTest,
 	async (t) => {
 		const { page, url, ui, pids, read } = await setup(t, sleeping)
 		assert.equal(
@@ -254,6 +255,7 @@ test(
 				.status,
 			303
 		)
+		await waitFor('the second test sleeps', () => pids('x-2').children.length === 2)
 		await page.goto(url('/activity'))
 		await page.waitForFunction(() => document.activeElement?.matches('[data-row]'))
 		await page.keyboard.press('ArrowDown')
@@ -294,7 +296,7 @@ test(
 
 test(
 	'the failure of a run says what went wrong and what to do next, in the view and in Activity',
-	{ skip },
+	browserTest,
 	async (t) => {
 		const { page, url, workspace } = await setup(t, {})
 		const seeded = openStore(workspace)
@@ -348,7 +350,7 @@ test(
 	}
 )
 
-test('Test the answers asks first, names the count, and opens the Testers view', { skip }, async (t) => {
+test('Test the answers asks first, names the count, and opens the Testers view', browserTest, async (t) => {
 	const { page, url, read, ui } = await setup(t, {
 		explorer: 'Tested.',
 		recorder: [stacks, { kind: 'question', id: 'Q1', question: 'Can a coupon apply to a sale item?' }],
@@ -402,7 +404,7 @@ test('Test the answers asks first, names the count, and opens the Testers view',
 		.waitFor()
 })
 
-test('a live update keeps the focus on the action that has it', { skip }, async (t) => {
+test('a live update keeps the focus on the action that has it', browserTest, async (t) => {
 	const { page, url, workspace } = await setup(t, {})
 	const seeded = openStore(workspace)
 	openTest(seeded, 'checkout', 'x-1', 'b1')
@@ -425,37 +427,41 @@ test('a live update keeps the focus on the action that has it', { skip }, async 
 	assert.equal(await focused(page), 'Test build…')
 })
 
-test('an empty rules field is refused inside the dialog, at the field, with the focus there', { skip }, async (t) => {
-	const { page, url, read } = await setup(t, sleeping)
-	await page.goto(url('/plans/checkout'))
-	await page.getByRole('button', { name: 'Test build…' }).click()
-	const dialog = page.locator('dialog[data-act-dialog="test"]')
-	await dialog.waitFor()
-	await page.locator('#act-test-build').fill('b1')
-	await page.locator('#act-test-rules').fill('')
-	await page.keyboard.press('Enter')
-	const message = dialog.locator('#act-test-rules + [role="alert"], #act-test-rules-help + [role="alert"]')
-	await message.waitFor()
-	assert.match((await message.textContent())!, /Give the tool rules of the explorers and the verifier/)
-	assert.equal(await focused(page), 'act-test-rules')
-	assert(await dialog.evaluate((element: HTMLDialogElement) => element.open))
-	assert.equal(await page.locator('#act-test-build').inputValue(), 'b1')
-	assert.equal(
-		read((reading) => reading.db.prepare('SELECT COUNT(*) AS n FROM explorations').get()!.n),
-		0
-	)
-	await page.locator('#act-test-rules').fill('Read')
-	await page.keyboard.press('Enter')
-	await page.waitForURL(/\/explorations\/x-1$/)
-	assert.deepEqual(
-		read((reading) => explorationEvents(reading, 'x-1').find((item) => item.step === 'start')!.detail.allow),
-		['Read']
-	)
-})
+test(
+	'an empty rules field is refused inside the dialog, at the field, with the focus there',
+	browserTest,
+	async (t) => {
+		const { page, url, read } = await setup(t, sleeping)
+		await page.goto(url('/plans/checkout'))
+		await page.getByRole('button', { name: 'Test build…' }).click()
+		const dialog = page.locator('dialog[data-act-dialog="test"]')
+		await dialog.waitFor()
+		await page.locator('#act-test-build').fill('b1')
+		await page.locator('#act-test-rules').fill('')
+		await page.keyboard.press('Enter')
+		const message = dialog.locator('#act-test-rules + [role="alert"], #act-test-rules-help + [role="alert"]')
+		await message.waitFor()
+		assert.match((await message.textContent())!, /Give the tool rules of the explorers and the verifier/)
+		assert.equal(await focused(page), 'act-test-rules')
+		assert(await dialog.evaluate((element: HTMLDialogElement) => element.open))
+		assert.equal(await page.locator('#act-test-build').inputValue(), 'b1')
+		assert.equal(
+			read((reading) => reading.db.prepare('SELECT COUNT(*) AS n FROM explorations').get()!.n),
+			0
+		)
+		await page.locator('#act-test-rules').fill('Read')
+		await page.keyboard.press('Enter')
+		await page.waitForURL(/\/explorations\/x-1$/)
+		assert.deepEqual(
+			read((reading) => explorationEvents(reading, 'x-1').find((item) => item.step === 'start')!.detail.allow),
+			['Read']
+		)
+	}
+)
 
 test(
 	'a row that cannot show its options lists them in the detail, and the number keys act there',
-	{ skip },
+	browserTest,
 	async (t) => {
 		const { page, url, ui, pids } = await setup(t, sleeping)
 		await page.setViewportSize({ width: 400, height: 800 })

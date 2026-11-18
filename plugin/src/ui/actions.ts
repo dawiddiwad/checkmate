@@ -141,8 +141,8 @@ export function testDialog(
 				data-stop
 			/>
 			<p class="help" id="act-test-rules-help">
-				One tool rule for each word, as in <code>--allow</code>, for example <code>Read Bash</code>. A tester
-				cannot answer a permission prompt.
+				One tool rule for each word, as in <code>--allow</code>, for example <code>Read Bash</code>. With the
+				rule, a tester does not ask. Without it, each call asks you here.
 			</p>
 			<details class="sp-more" data-more>
 				<summary data-stop>More</summary>

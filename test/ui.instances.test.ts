@@ -106,3 +106,10 @@ test('the new change form asks for the instance and keeps the instance of its ta
 	assert.match(refused.body, /data-field="instance"/)
 	assert.match(refused.body, /Choose the instance: local or staging\./)
 })
+
+test('the Test build dialog says what a tester does with and without the rule', async (t) => {
+	const { ui } = await fixture(t, [])
+	const page = (await call(ui, '/plans/checkout')).body
+	assert.match(page, /With the\s+rule, a tester does not ask\. Without it, each call asks you here\./)
+	assert.doesNotMatch(page, /cannot answer a permission prompt/)
+})

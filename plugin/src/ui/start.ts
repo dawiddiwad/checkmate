@@ -208,7 +208,7 @@ export function newChangePage(context: Context, defaults: NewChangeDefaults, onH
 			levelNames.map((level) => [level, level, levelNotes[level]] as [string, string, string]),
 			'normal'
 		)}
-		${field('change-rules', 'rules', 'Testers may use without asking', 'One tool rule for each word, as in --allow, for example Read Bash. A tester cannot answer a permission prompt.', '', context.testerRules)}
+		${field('change-rules', 'rules', 'Testers may use without asking', 'One tool rule for each word, as in --allow, for example Read Bash. With the rule, a tester does not ask. Without it, each call asks you here.', '', context.testerRules)}
 		<details class="sp-more" data-more>
 			<summary>More</summary>
 			${field('change-since', 'since', 'Since (git ref)', 'Without it, Checkmate uses the default branch of origin.')}

@@ -88,6 +88,8 @@ test('home is the first-run form without a target, the new change without a plan
 	assert.match(change, /name="file"/)
 	assert.match(change, /name="text"/)
 	assert.match(change, /name="rules"[^>]*value="Read Bash"/)
+	assert.match(change, /With the rule, a tester does not ask\. Without it, each call asks you here\./)
+	assert.doesNotMatch(change, /cannot answer a permission prompt/)
 	assert.match(change, /<input\s+type="hidden"\s+name="target"\s+value="checkout-local"/)
 	assert.match(change, /href="\/setup"/)
 	const third = await fixture(t, 'plan')

@@ -7,13 +7,12 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { closeStore, openStore } from '../plugin/src/store.ts'
 import { explorationEvents } from '../plugin/src/explorations.ts'
-import { running } from '../plugin/src/explorers.ts'
 import { planRequest } from '../plugin/src/plans.ts'
 import { targetList, targetRevision } from '../plugin/src/targets.ts'
 import { startUi } from '../plugin/src/ui/server.ts'
 import { actor, directory, plan, store, target } from './support.ts'
 import { fakeClaude } from './claude.ts'
-import { call, token, waitFor } from './actions.ts'
+import { call, endProcessesIn, token, waitFor } from './actions.ts'
 
 async function application(t: TestContext) {
 	const server = createServer((_, res) => res.end('ok'))
@@ -24,6 +23,7 @@ async function application(t: TestContext) {
 
 async function fixture(t: TestContext, seed: 'nothing' | 'target' | 'plan') {
 	const workspace = realpathSync(directory(t))
+	t.after(() => endProcessesIn(workspace))
 	const opened = store(t, workspace)
 	if (seed !== 'nothing') target(opened)
 	if (seed === 'plan') plan(opened)
@@ -43,15 +43,6 @@ async function fixture(t: TestContext, seed: 'nothing' | 'target' | 'plan') {
 	}
 	const post = async (path: string, form: Record<string, string> = {}, headers: Record<string, string> = as) =>
 		call(ui, path, { csrf: token((await call(ui, '/setup')).body), ...form }, headers)
-	t.after(() => {
-		for (const pid of read((reading) =>
-			reading.db
-				.prepare("SELECT detail FROM exploration_events WHERE step IN ('supervisor', 'child')")
-				.all()
-				.map((row) => JSON.parse(String(row.detail)).pid as number)
-		))
-			if (running(pid)) process.kill(-pid, 'SIGKILL')
-	})
 	return { ui, workspace, as, read, post, fake }
 }
 

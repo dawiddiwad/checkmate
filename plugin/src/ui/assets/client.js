@@ -1479,7 +1479,8 @@ let relayer = null
 
 function pushLayer(name) {
 	if (quietPop) relayer = name
-	else window.history.pushState({ ...window.history.state, layer: name }, '', location.href)
+	else if (window.history.state?.layer !== name)
+		window.history.pushState({ ...window.history.state, layer: name }, '', location.href)
 }
 
 function dropLayer(key, value = null) {
@@ -1775,9 +1776,10 @@ function openAct(button) {
 	showHints()
 }
 
-function backFromAct() {
+function backFromAct(dialog) {
 	const from = actFrom
 	actFrom = null
+	if (!dialogHadFocus(dialog)) return showHints()
 	const key = from?.closest?.('[data-key]')?.dataset.key
 	const target = from?.isConnected
 		? from
@@ -1944,9 +1946,9 @@ document.addEventListener(
 	'close',
 	(event) => {
 		const dialog = event.target
-		if (!dialog.matches?.('dialog[data-act-dialog]')) return
-		if (!dialog.open && dialog.returnValue !== 'yes') dropLayer('layer', 'act')
-		backFromAct()
+		if (!dialog.matches?.('dialog[data-act-dialog]') || dialog.open) return
+		if (dialog.returnValue !== 'yes') dropLayer('layer', 'act')
+		backFromAct(dialog)
 	},
 	true
 )

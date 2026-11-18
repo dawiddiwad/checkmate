@@ -293,8 +293,9 @@ test(
 	}
 )
 
-test('a refresh that lands while a dialog is open keeps the highlight on its row', browserTest, async (t) => {
-	const { page, url, ui, pids, read } = await setup(t, sleeping)
+async function activityOnStoppedRun(t: Parameters<typeof setup>[0]) {
+	const app = await setup(t, sleeping)
+	const { page, url, ui, pids, read } = app
 	const started = (build: string) =>
 		postAs(ui, human, '/plans/checkout/test', { build, level: 'smoke', rules: 'Read Bash' })
 	assert.equal((await started('b1')).status, 303)
@@ -312,6 +313,11 @@ test('a refresh that lands while a dialog is open keeps the highlight on its row
 	await page.keyboard.press('ArrowDown')
 	assert.equal(await focusedKey(page), 'run:x-1')
 	await page.locator('.hl [data-act="test"]').waitFor()
+	return { ...app, watched }
+}
+
+test('a refresh that lands while a dialog is open keeps the highlight on its row', browserTest, async (t) => {
+	const { page, ui, watched } = await activityOnStoppedRun(t)
 	await page.keyboard.press('1')
 	await page.locator('dialog[data-act-dialog="test"][open]').waitFor()
 	watched.hold()
@@ -324,6 +330,49 @@ test('a refresh that lands while a dialog is open keeps the highlight on its row
 	await page.locator('dialog[open]').waitFor({ state: 'detached' })
 	await page.keyboard.press('1')
 	await page.locator('dialog[data-act-dialog="test"][open]').waitFor()
+})
+
+test(
+	'a dialog that opens again before its close event keeps one history entry and the focus',
+	browserTest,
+	async (t) => {
+		const { page } = await activityOnStoppedRun(t)
+		await page.keyboard.press('1')
+		await page.locator('dialog[data-act-dialog="test"][open]').waitFor()
+		await page.evaluate(() => {
+			const press = (key: string) =>
+				document.activeElement!.dispatchEvent(
+					new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true })
+				)
+			press('Escape')
+			press('Escape')
+			press('1')
+		})
+		await page.locator('dialog[data-act-dialog="test"][open]').waitFor()
+		assert.equal(await page.evaluate(() => window.history.state?.layer), 'act')
+		await page.keyboard.press('Escape')
+		await page.keyboard.press('Escape')
+		await page.locator('dialog[open]').waitFor({ state: 'detached' })
+		await page.waitForFunction(() => !window.history.state?.layer)
+		await page.waitForFunction(() => document.activeElement?.getAttribute('data-key') === 'run:x-1')
+	}
+)
+
+test('a close event that comes late does not take the focus from the row that was moved to', browserTest, async (t) => {
+	const { page } = await activityOnStoppedRun(t)
+	await page.keyboard.press('1')
+	await page.locator('dialog[data-act-dialog="test"][open]').waitFor()
+	await page.evaluate(() => {
+		const press = (key: string) =>
+			document.activeElement!.dispatchEvent(
+				new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true })
+			)
+		press('Escape')
+		press('Escape')
+		press('ArrowUp')
+	})
+	await page.waitForFunction(() => new Promise((done) => requestAnimationFrame(() => done(true))))
+	assert.equal(await focusedKey(page), 'run:x-2')
 })
 
 test(

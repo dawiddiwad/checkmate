@@ -2396,6 +2396,7 @@ function replaceRegion(region, fresh, previous) {
 		if (opened.has(details.dataset.openKey)) details.open = opened.get(details.dataset.openKey)
 	const scrolled = region.scrollTop
 	const detailMarked = level === 'detail' && region.matches('[data-drawer]')
+	const detailLabel = detailMarked ? current('detail')?.dataset.label : null
 	region.replaceWith(next)
 	next.scrollTop = scrolled
 	if (next.matches('[data-drawer]')) drawer = next
@@ -2446,7 +2447,10 @@ function replaceRegion(region, fresh, previous) {
 		target?.focus({ preventScroll: true })
 	}
 	if (actFocus) document.querySelector(`[data-actions] button[data-act="${CSS.escape(actFocus)}"]`)?.focus()
-	if (detailMarked && next.matches('[data-drawer]')) mark(rowsAt('detail')[0], 'detail')
+	if (detailMarked && next.matches('[data-drawer]')) {
+		const sections = rowsAt('detail')
+		mark(sections.find((section) => section.dataset.label === detailLabel) ?? sections[0], 'detail')
+	}
 	const messages = markChanged(before, next)
 	syncRationale(next)
 	syncSource(next)

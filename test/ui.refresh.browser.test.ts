@@ -3,7 +3,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { closeStore, openStore } from '../plugin/src/index.ts'
 import { answerGap } from '../plugin/src/plans.ts'
-import { decideClaim } from '../plugin/src/journal.ts'
+import { decideClaim, handOffClaims } from '../plugin/src/journal.ts'
 import { mergedClaims } from '../plugin/src/views.ts'
 import { seedVolume } from '../scripts/ui-volume.ts'
 import { open, browserTest, stop, launchWith, focusedKey } from './browser.ts'
@@ -207,4 +207,26 @@ test('a refresh that arrives while the page leaves is dropped', browserTest, asy
 	assert.equal(watched.replaced(), before)
 	letPageGo()
 	await page.waitForURL(/item=/)
+})
+
+test('a refresh of a record keeps the focus on the section that has it', browserTest, async (t) => {
+	const { page, url, workspace } = await open(t)
+	const watched = await watchRefreshes(page)
+	await page.goto(url('/plans/coupons?item=c%3Ak1%2FD9'))
+	await page.locator('[data-live]', { hasText: 'Live' }).waitFor()
+	await page.waitForFunction(() => document.activeElement?.matches('[data-sub]'))
+	await page.keyboard.press('ArrowDown')
+	await page.keyboard.press('ArrowDown')
+	const label = () => page.evaluate(() => document.activeElement?.getAttribute('data-label'))
+	const section = await label()
+	assert(section)
+	watched.hold()
+	read(workspace, (store) =>
+		handOffClaims(store, 'qa-lead', { planId: 'coupons', claimIds: ['k1/D9'], to: 'the developer', undo: false })
+	)
+	await watched.arrived()
+	const before = watched.replaced()
+	await watched.release()
+	assert(watched.replaced() > before, 'the record was replaced')
+	assert.equal(await label(), section)
 })

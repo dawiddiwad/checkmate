@@ -223,3 +223,7 @@ export function duration(ms: number) {
 	if (minutes < 60) return `${minutes} min ${seconds % 60} s`
 	return `${Math.floor(minutes / 60)} h ${minutes % 60} min`
 }
+
+export function asList<T>(item: T | null) {
+	return item ? [item] : []
+}

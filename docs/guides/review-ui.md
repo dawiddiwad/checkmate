@@ -151,6 +151,7 @@ Press `Enter` to set up the target. The new-change form opens. When the applicat
 - `Ticket text`: the text of the ticket, when you have no file. Fill in the file or the text, not both. Checkmate saves the text in `.checkmate/sources/<plan>.md` and gives that path to the plan as its source. Checkmate creates no file outside `.checkmate/`.
 - `Name of the plan`. Checkmate gives a name from the file name, or from the first line of the text, as the product makes the ID of a target. You can change it. The form refuses a name of a plan that exists.
 - `Target`. The form shows the choice only when the record has more than one target.
+- `Instance`. The form shows the choice only when the chosen target has more than one active instance. The form refuses a start with no instance. When the instance has an address that is not local, the dialog for that address asks first.
 - `Build`, `Level`, and `Testers may use without asking`, as in the `Test build…` dialog.
 - `More`: `Since`, `Until`, and `Repository folder`.
 
@@ -169,11 +170,13 @@ A form keeps your text as a draft. It stays when you press `Esc`, reload the pag
 5. Open `More` to give `Since`, `Until`, and `Repository folder`. Without `Since`, the UI uses the default branch of `origin`, as `checkmate test` does.
 6. Press `Enter`. The Testers view of the new test opens.
 
+When the target of the plan has more than one active instance, the dialog has the choice `Instance` after the build. Each instance has a number: press `1`, `2`, and so on to choose it. The choice starts on the instance of the last test of the plan when that instance is active. Without such an instance, the choice has no start value, and the dialog refuses at the field with `Choose the instance: <names>.` until you choose one. The UI gives the choice to the engine as `--instance`. `Test again` and `Test build… again` start on the instance of their run. With one active instance, the dialog has no `Instance` choice. A retired instance is not in the choice.
+
 The UI starts the testers as new Claude Code processes with the rules of the field. The follow-up of a test uses the rules of that test. The test runs without the UI: closing the UI does not stop it. The UI starts a test only when no test of the plan is in progress. When one is in progress, the dialog stays open, names the running test, and links to it.
 
 When the engine refuses the start, the dialog shows the reason in a sentence at the field, and keeps your text. An empty rules field shows the refusal of the engine at that field. For example, when `claude` is not on `PATH`, the dialog says so and gives the next step.
 
-`Test the answers (<n>)…` shows when the last test of the plan is completed and <n> answers of the product owner are not tested yet. A dialog names the count. Press `Enter` or `1` to start the follow-up.
+`Test the answers (<n>)…` shows when the last test of the plan is completed and <n> answers of the product owner are not tested yet. A dialog names the count. Press `Enter` or `1` to start the follow-up. The follow-up uses the instance of its test.
 
 ### Activity
 

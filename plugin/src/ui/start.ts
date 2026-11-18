@@ -4,7 +4,8 @@ import { levelNames } from '../levels.ts'
 import { html } from './html.ts'
 import { heading } from './layout.ts'
 
-export type NewTarget = { targetId: string; address: string | null; local: boolean }
+export type NewInstance = { id: string; address: string | null; local: boolean }
+export type NewTarget = { targetId: string; address: string | null; local: boolean; instances: NewInstance[] }
 export type NewChangeDefaults = { build: string; target: string; targets: NewTarget[] }
 
 const levelNotes: Record<string, string> = {
@@ -41,6 +42,29 @@ function choice(name: string, label: string, options: Array<[string, string, str
 						value="${value}"
 						${value === checked ? html`checked` : ''}
 					/><kbd>${index + 1}</kbd><span>${text}</span></label
+				>`
+		)}
+	</fieldset>`
+}
+
+function instanceChoice(target: NewTarget, shown: boolean) {
+	return html`<fieldset
+		class="sp-seg"
+		role="radiogroup"
+		data-choice="instance"
+		data-instances="${target.targetId}"
+		${shown ? '' : html`hidden disabled`}
+	>
+		<legend class="lab">Instance</legend>
+		${target.instances.map(
+			(instance, index) =>
+				html`<label class="sp-seg-o" title="${instance.id}"
+					><input
+						type="radio"
+						name="instance"
+						value="${instance.id}"
+						${instance.local ? '' : html`data-nonlocal data-address="${instance.address ?? ''}"`}
+					/><kbd>${index + 1}</kbd><span>${instance.id}</span></label
 				>`
 		)}
 	</fieldset>`
@@ -151,7 +175,10 @@ export function newChangePage(context: Context, defaults: NewChangeDefaults, onH
 					<p class="help" data-new-target-note>
 						Target <strong>${chosen.targetId}</strong>. <a href="/setup" data-new-target-link>New target</a>
 					</p>`
-	const body = html`${targets}
+	const instances = defaults.targets
+		.filter((target) => target.instances.length)
+		.map((target) => instanceChoice(target, target.targetId === chosen.targetId))
+	const body = html`${targets} ${instances}
 		${field(
 			'change-file',
 			'file',

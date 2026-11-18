@@ -13,9 +13,10 @@ import { claimEvidence, entryEvidence, explorationLive, planExplorations } from 
 import { actorField, emptyState, gapPanel, hidden, keptText, messages, rationaleField, recordPanel } from './forms.ts'
 import { banner, crumbBar, downloads, heading } from './layout.ts'
 import { navigator, reviewOf } from './review.ts'
-import { ago, duration, html, join, pill, pillClass, plural, time, words } from './html.ts'
+import { ago, asList, duration, html, join, pill, pillClass, plural, time, words } from './html.ts'
 import { evidenceList, shownAsText, viewLink } from './evidence.ts'
 import { askingPill, asksFor, permissionHistory, requestHref, rowOptions, rulesLines, waitsFor } from './permissions.ts'
+import type { InstanceChoice } from './actions.ts'
 import { failureOf, money, optionsBox, phases, runsOf } from './activity.ts'
 import type { Run } from './activity.ts'
 import {
@@ -26,6 +27,7 @@ import {
 	testAgainOption,
 	testButton,
 	testDialog,
+	instanceChoice,
 	testerStopOption,
 } from './actions.ts'
 
@@ -773,7 +775,14 @@ function runOptions(live: Live, run: Run, others: Listed[]) {
 	</section>`
 }
 
-function runActions(context: Context, live: Live, run: Run, others: Listed[], workspaceBuild: string) {
+function runActions(
+	context: Context,
+	live: Live,
+	run: Run,
+	others: Listed[],
+	workspaceBuild: string,
+	choice: InstanceChoice | null
+) {
 	const { stoppable, again } = runChoices(live, others)
 	const testers = live.explorers.filter((item) => stoppableTester(live, item))
 	const subject = { explorationId: live.explorationId, planId: live.planId, build: live.build }
@@ -783,6 +792,7 @@ function runActions(context: Context, live: Live, run: Run, others: Listed[], wo
 		since: run.since,
 		until: run.until,
 		repo: run.repo,
+		instance: live.instanceId,
 	}
 	return html`<div data-region="exploration-actions">
 		<div class="sp-tools" data-actions>
@@ -791,7 +801,7 @@ function runActions(context: Context, live: Live, run: Run, others: Listed[], wo
 		</div>
 		${stoppable ? stopDialog(context, subject) : ''}
 		${testers.map((item) => stopTesterDialog(context, subject, item.explorer))}
-		${again ? testDialog(context, live.planId, values, workspaceBuild) : ''}
+		${again ? testDialog(context, live.planId, values, workspaceBuild, asList(choice)) : ''}
 	</div>`
 }
 
@@ -871,7 +881,8 @@ export function explorationPage(
 				live,
 				run,
 				review.explorations.filter((item) => item.explorationId !== explorationId),
-				defaultBuild(store.workspace)
+				defaultBuild(store.workspace),
+				instanceChoice(store, live.planId)
 			)}
 			<div data-region="exploration-list">${explorationList(context, live, others, asking)}</div>
 			<div data-region="permission-history">

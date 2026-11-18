@@ -622,13 +622,17 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 	}
 
 	function changeDefaults(target: string | null) {
+		const where = (address: string | undefined) => ({
+			address: address ? hostOf(address) : null,
+			local: address ? !URL.canParse(address) || isLocalAddress(address) : true,
+		})
 		const targets = targetList(store).map((item) => {
-			const address =
-				instanceList(store, item.targetId).find((instance) => !instance.retired)?.entries.web ?? null
+			const active = activeInstances(item.targetId)
 			return {
 				targetId: item.targetId,
-				address: address ? hostOf(address) : null,
-				local: address ? !URL.canParse(address) || isLocalAddress(address) : true,
+				...where(active[0]?.entries.web),
+				instances:
+					active.length < 2 ? [] : active.map((one) => ({ id: one.instanceId, ...where(one.entries.web) })),
 			}
 		})
 		return { build: defaultBuild(store.workspace), target: target ?? '', targets }
@@ -1094,6 +1098,19 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		})
 	}
 
+	function activeInstances(targetId: string) {
+		return instanceList(store, targetId).filter((instance) => !instance.retired)
+	}
+
+	function instanceFrom(form: URLSearchParams, targetId: string) {
+		const names = activeInstances(targetId).map((item) => item.instanceId)
+		if (names.length < 2) return { instance: undefined, error: '' }
+		const instance = form.get('instance')?.trim() ?? ''
+		if (names.includes(instance)) return { instance, error: '' }
+		const list = names.length > 2 ? `${names.slice(0, -1).join(', ')}, or ${names.at(-1)}` : names.join(' or ')
+		return { instance: undefined, error: `Choose the instance: ${list}.` }
+	}
+
 	function startTest(request: Request, form: URLSearchParams, planId: string) {
 		const back = `/plans/${planId}`
 		const { actor, cookies } = actorFrom(request, form)
@@ -1106,6 +1123,8 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		if (!build) return refuse('Write the build name.', 'build')
 		if (!(levelNames as string[]).includes(level)) return refuse('Choose the level smoke, normal, or deep.')
 		if (until && !typedSince) return refuse('Until needs Since. Fill in Since, or leave Until empty.', 'until')
+		const chosen = instanceFrom(form, planRequest(store, planId).target.profile.targetId)
+		if (chosen.error) return refuse(chosen.error, 'instance')
 		const running = runningOf(planId)
 		if (running) return refuse(inProgress(planId, running))
 		const stopping = stoppingOf(planId)
@@ -1122,6 +1141,7 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 					planId,
 					build,
 					level,
+					instance: chosen.instance,
 					since,
 					until,
 					repo,
@@ -1559,7 +1579,12 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		if (!build) return refuse('Write the build name.', 'build')
 		if (!(levelNames as string[]).includes(level)) return refuse('Choose the level smoke, normal, or deep.')
 		if (until && !since) return refuse('Until needs Since. Fill in Since, or leave Until empty.', 'until')
-		const address = instanceList(store, targetId).find((instance) => !instance.retired)?.entries.web
+		const chosen = instanceFrom(form, targetId)
+		if (chosen.error) return refuse(chosen.error, 'instance')
+		const address = (
+			activeInstances(targetId).find((item) => item.instanceId === chosen.instance) ??
+			activeInstances(targetId)[0]
+		)?.entries.web
 		if (address && URL.canParse(address) && !isLocalAddress(address) && form.get('confirmed') !== '1')
 			return refuse(`Confirm that Checkmate may test ${hostOf(address)}, an address that is not local.`, 'target')
 		try {
@@ -1584,6 +1609,7 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 					sources: [kept || source],
 					build,
 					level,
+					instance: chosen.instance,
 					since,
 					until,
 					repo,

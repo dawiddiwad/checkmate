@@ -1757,6 +1757,14 @@ function fillAct(form, values) {
 	if (['since', 'until', 'repo'].some((name) => values[name])) form.querySelector('[data-more]').open = true
 }
 
+function showInstances(form, key) {
+	for (const group of form.querySelectorAll('fieldset[data-instances]')) {
+		const shown = group.dataset.instances === key
+		group.hidden = !shown
+		group.disabled = !shown
+	}
+}
+
 function firstField(form) {
 	return form.querySelector('input:not([type="hidden"]):not([type="radio"])') ?? form.querySelector('button')
 }
@@ -1767,6 +1775,7 @@ function openAct(button) {
 	const form = dialog.querySelector('[data-act-form]')
 	if (button.dataset.action) form.action = button.dataset.action
 	if (button.dataset.title) dialog.querySelector('[data-act-title]').textContent = button.dataset.title
+	showInstances(form, button.dataset.plan)
 	if (button.dataset.fill) fillAct(form, JSON.parse(button.dataset.fill))
 	dialog.querySelector('[data-act-error]').replaceChildren()
 	actFrom = document.activeElement
@@ -1803,9 +1812,12 @@ function closeGone(region, replacement) {
 
 function actStops(dialog) {
 	const stops = [...dialog.querySelectorAll('[data-stop]')].filter((element) => element.getClientRects().length)
-	const radios = stops.filter((element) => element.type === 'radio')
-	const kept = radios.find((radio) => radio.checked) ?? radios[0]
-	return stops.filter((element) => element.type !== 'radio' || element === kept)
+	const kept = new Map()
+	for (const radio of stops.filter((element) => element.type === 'radio')) {
+		const group = radio.closest('fieldset')
+		if (!kept.has(group) || radio.checked) kept.set(group, radio)
+	}
+	return stops.filter((element) => element.type !== 'radio' || kept.get(element.closest('fieldset')) === element)
 }
 
 function actKey(event, dialog) {
@@ -1835,7 +1847,7 @@ function actKey(event, dialog) {
 		if (fold?.open) fold.open = false
 		else dialog.close('no')
 	} else if (/^[1-9]$/.test(key)) {
-		const choice = dialog.querySelector(`[data-key-n="${key}"]`)
+		const choice = (target.closest('fieldset') ?? dialog).querySelector(`[data-key-n="${key}"]`)
 		if (!choice) return
 		event.preventDefault()
 		if (choice.matches('input')) {
@@ -1892,7 +1904,7 @@ document.addEventListener('click', (event) => {
 
 function refuseAt(form, message) {
 	const named = form.elements[message.dataset.field ?? '']
-	const field = named?.tagName ? named : named?.[0]
+	const field = named?.tagName ? named : [...(named ?? [])].find((element) => !element.disabled)
 	message.dataset.refusal = ''
 	if (!field) {
 		form.querySelector('[data-act-error]').replaceChildren(message)
@@ -2776,7 +2788,8 @@ function forgetDrafts(form) {
 
 async function confirmAddress(form) {
 	const select = form.elements.target
-	const marked = select?.selectedOptions?.[0] ?? select
+	const picked = form.querySelector('fieldset[data-instances]:not([hidden]) input[name="instance"]:checked')
+	const marked = picked ?? select?.selectedOptions?.[0] ?? select
 	const address = form.dataset.nonlocal || (marked?.hasAttribute?.('data-nonlocal') ? marked.dataset.address : '')
 	if (!address) return true
 	const setup = form.getAttribute('action') === '/setup'
@@ -2798,14 +2811,12 @@ function pageStops() {
 		.filter((element) => element.getClientRects().length)
 		.filter((element) => {
 			if (element.type !== 'radio') return true
-			if (seen.has(element.name)) return false
-			seen.add(element.name)
+			if (seen.has(element.closest('fieldset'))) return false
+			seen.add(element.closest('fieldset'))
 			return true
 		})
 		.map((element) =>
-			element.type === 'radio'
-				? (pageForm.querySelector(`input[name="${element.name}"]:checked`) ?? element)
-				: element
+			element.type === 'radio' ? (element.closest('fieldset').querySelector(':checked') ?? element) : element
 		)
 }
 
@@ -2824,7 +2835,8 @@ function pageFormKey(event) {
 	if (!inside) return false
 	const key = event.key
 	const stops = pageStops()
-	const own = target.type === 'radio' ? stops.find((stop) => stop.name === target.name) : target
+	const own =
+		target.type === 'radio' ? stops.find((stop) => stop.closest('fieldset') === target.closest('fieldset')) : target
 	const at = stops.indexOf(own)
 	const move = (to) => {
 		event.preventDefault()
@@ -2851,7 +2863,7 @@ function pageFormKey(event) {
 		return true
 	}
 	if (/^[1-9]$/.test(key) && target.type === 'radio') {
-		const group = [...pageForm.querySelectorAll(`input[name="${target.name}"]`)]
+		const group = [...target.closest('fieldset').querySelectorAll('input[type="radio"]')]
 		const choice = group[Number(key) - 1]
 		if (!choice) return false
 		event.preventDefault()
@@ -2870,6 +2882,13 @@ function planName(text) {
 		.replace(/^[^a-z0-9]+/, '')
 		.replace(/-+$/, '')
 		.slice(0, 96)
+}
+
+const newTarget = pageForm?.querySelector('select[data-new-target]')
+
+if (newTarget) {
+	showInstances(pageForm, newTarget.value)
+	newTarget.addEventListener('change', () => showInstances(pageForm, newTarget.value))
 }
 
 const ticketFile = document.querySelector('[data-ticket-file]')

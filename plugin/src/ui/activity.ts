@@ -9,10 +9,10 @@ import { explorationPermissions } from '../permissions.ts'
 import { explorationState, explorationStatus, startOf } from '../explorers.ts'
 import { authenticationHint } from '../sessions.ts'
 import { mergedClaims, mergedQuestions } from '../views.ts'
-import { duration, glyph, html, pill, plural, time } from './html.ts'
+import { asList, duration, glyph, html, pill, plural, time } from './html.ts'
 import { emptyNotice, heading } from './layout.ts'
 import { listHref, listState, pageTrail, pager } from './lists.ts'
-import { stopDialog, stopOption, testDialog, testAgainOption } from './actions.ts'
+import { instanceChoice, stopDialog, stopOption, testDialog, testAgainOption } from './actions.ts'
 import type { RequestRecord } from '../requests.ts'
 import { allRequests, isEnded } from '../requests.ts'
 
@@ -29,6 +29,7 @@ export type Run = {
 	follow: boolean
 	planId: string
 	build: string
+	instanceId: string
 	level: string | null
 	state: string
 	running: boolean
@@ -136,6 +137,7 @@ export function runsOf(store: Store, explorationId: string, counts: Map<string, 
 		explorationId,
 		planId: status.planId,
 		build: status.build,
+		instanceId: status.instanceId,
 		level: status.level,
 		since: status.since ?? '',
 		until: status.until ?? '',
@@ -398,7 +400,9 @@ export function activityPage(
 	const total = entries.length
 	const first = total ? (shown.page - 1) * shown.size + 1 : 0
 	const last = Math.min(total, shown.page * shown.size)
-	const dialogs = html`${testDialog(context, null, { build: '', level: 'normal', since: '', until: '', repo: '' }, defaults.build)}
+	const planIds = [...new Set(page.rows.flatMap((entry) => (entry.run ? [entry.run.planId] : [])))]
+	const choices = planIds.flatMap((planId) => asList(instanceChoice(store, planId)))
+	const dialogs = html`${testDialog(context, null, { build: '', level: 'normal', since: '', until: '', repo: '' }, defaults.build, choices)}
 	${page.rows.flatMap((entry) => (entry.run?.stoppable ? [stopDialog(context, entry.run)] : []))}`
 	return {
 		title: 'Activity',

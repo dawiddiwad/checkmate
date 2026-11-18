@@ -1,13 +1,26 @@
 import type { Html } from './html.ts'
 import type { Context } from './layout.ts'
+import type { Store } from '../store.ts'
+import { one } from '../store.ts'
 import { levelNames } from '../levels.ts'
+import { planRequest } from '../plans.ts'
+import { instanceList } from '../targets.ts'
 import { html, plural } from './html.ts'
 
-export type TestValues = { build: string; level: string; since: string; until: string; repo: string }
+export type TestValues = {
+	build: string
+	level: string
+	since: string
+	until: string
+	repo: string
+	instance?: string
+}
+
+export type InstanceChoice = { planId: string; instances: string[]; chosen: string }
 
 type Subject = { explorationId: string; planId: string; build: string }
 
-type Again = Omit<TestValues, 'level'> & { planId: string; level: string | null }
+type Again = Omit<TestValues, 'level' | 'instance'> & { planId: string; level: string | null; instanceId: string }
 
 const levelNotes: Record<string, string> = {
 	smoke: '1 tester, no verifier',
@@ -44,7 +57,52 @@ function field(id: string, label: string, name: string, value: string, required 
 		/>`
 }
 
-export function testDialog(context: Context, planId: string | null, values: TestValues, fallbackBuild = '') {
+export function instanceChoice(store: Store, planId: string): InstanceChoice | null {
+	const targetId = planRequest(store, planId).target.profile.targetId
+	const active = instanceList(store, targetId)
+		.filter((instance) => !instance.retired)
+		.map((instance) => instance.instanceId)
+	if (active.length < 2) return null
+	const last = one<{ instance_id: string }>(
+		store,
+		'SELECT instance_id FROM explorations WHERE plan_id = ? ORDER BY rowid DESC LIMIT 1',
+		planId
+	)
+	return { planId, instances: active, chosen: active.find((id) => id === last?.instance_id) ?? '' }
+}
+
+function instanceField(choice: InstanceChoice, shown: boolean) {
+	return html`<fieldset
+		class="sp-seg"
+		role="radiogroup"
+		aria-label="Instance"
+		data-instances="${choice.planId}"
+		${shown ? '' : html`hidden disabled`}
+	>
+		<legend>Instance</legend>
+		${choice.instances.map(
+			(instance, index) =>
+				html`<label class="sp-seg-o" title="${instance}"
+					><input
+						type="radio"
+						name="instance"
+						value="${instance}"
+						data-stop
+						data-key-n="${index + 1}"
+						${instance === choice.chosen ? html`checked` : ''}
+					/><kbd>${index + 1}</kbd><span>${instance}</span></label
+				>`
+		)}
+	</fieldset>`
+}
+
+export function testDialog(
+	context: Context,
+	planId: string | null,
+	values: TestValues,
+	fallbackBuild = '',
+	instances: InstanceChoice[] = []
+) {
 	const build = values.build || fallbackBuild
 	const shown = { ...values, build }
 	return shell(
@@ -55,6 +113,7 @@ export function testDialog(context: Context, planId: string | null, values: Test
 		context,
 		html`<p class="sp-sub">Start a test of the plan on this computer. The testers run in the background.</p>
 			${field('act-test-build', 'Build', 'build', shown.build, true)}
+			${instances.map((choice) => instanceField(choice, choice.planId === planId))}
 			<fieldset class="sp-seg" role="radiogroup" aria-label="Level">
 				<legend>Level</legend>
 				${levelNames.map(
@@ -264,7 +323,7 @@ export function testButton(planId: string, label = 'Test build…', values: Part
 	return actionButton(
 		'test',
 		label,
-		html`data-action="/plans/${planId}/test" data-title="Test a build of ${planId}"
+		html`data-action="/plans/${planId}/test" data-title="Test a build of ${planId}" data-plan="${planId}"
 		data-fill="${JSON.stringify(values)}"`
 	)
 }
@@ -301,6 +360,7 @@ export function testAgainOption(run: Again, n = 1) {
 		since: run.since,
 		until: run.until,
 		repo: run.repo,
+		instance: run.instanceId,
 	})
 	return html`<button
 		type="button"
@@ -309,6 +369,7 @@ export function testAgainOption(run: Again, n = 1) {
 		data-act="test"
 		data-action="/plans/${run.planId}/test"
 		data-title="Test a build of ${run.planId}"
+		data-plan="${run.planId}"
 		data-fill="${values}"
 		aria-label="${n}: Test again"
 		title="Test again"

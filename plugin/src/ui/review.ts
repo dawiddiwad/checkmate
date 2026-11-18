@@ -11,7 +11,7 @@ import { storableDefects } from '../harvest.ts'
 import { oracleStates } from '../journal.ts'
 import { followCount } from '../explorers.ts'
 import { mergedClaims, mergedQuestions, needsYou, planDetail, planExplorations, planHasRevision } from '../views.ts'
-import { age, glyph, html, plural, words } from './html.ts'
+import { age, asList, glyph, html, plural, words } from './html.ts'
 import { crumbBar } from './layout.ts'
 import { askBadge, askTitle, requestHref, requestName, rowOptions, waitsFor } from './permissions.ts'
 import { defaultBuild } from '../modes.ts'
@@ -20,6 +20,7 @@ import { phaseOf } from './activity.ts'
 import {
 	copyDialog,
 	followDialog,
+	instanceChoice,
 	ruleDialog,
 	storeButton,
 	storeDialog,
@@ -1095,7 +1096,7 @@ export function reviewPage(
 			</div>
 			${record}
 			<div data-region="plan-actions">
-				${review.running ? '' : testDialog(context, planId, { build: '', level: 'normal', since: '', until: '', repo: '' }, defaultBuild(store.workspace))}
+				${review.running ? '' : testDialog(context, planId, { build: '', level: 'normal', since: '', until: '', repo: '' }, defaultBuild(store.workspace), asList(instanceChoice(store, planId)))}
 				${review.answers ? followDialog(context, planId, { ...review.answers, planId }, review.answers.count) : ''}
 				${
 					ruleEditable(review)

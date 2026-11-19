@@ -570,10 +570,8 @@ test(
 		await page.locator('dialog[data-act-dialog^="stop-x-1-a"][open]').waitFor()
 		await page.keyboard.press('Escape')
 		await page.goto(url('/explorations/x-1'))
-		const overview = page.locator('[data-region="exploration-detail"] [data-option]')
-		assert.deepEqual(await overview.evaluateAll((items) => items.map((item) => item.getAttribute('aria-label'))), [
-			'1: Stop the test',
-		])
+		const overview = page.locator('[data-region="exploration-detail"]')
+		assert.equal(await overview.getByRole('button', { name: 'Stop…' }).getAttribute('title'), 'Stop the test')
 	}
 )
 

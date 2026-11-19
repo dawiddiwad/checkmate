@@ -1002,6 +1002,10 @@ if (import.meta.main) {
 		console.log(`Seeded ${resolve(target)}`)
 	} else {
 		const workspace = mkdtempSync(join(tmpdir(), 'checkmate-ui-volume-'))
+		process.on('exit', () => {
+			endSeededProcesses()
+			rmSync(workspace, { recursive: true, force: true })
+		})
 		;(process.argv.includes('--edges') ? seedEdges : seedVolume)(workspace)
 		const ui = await startUi({ workspace, defaultActor: human })
 		console.log(`Checkmate UI on the volume seed: ${ui.url}`)
@@ -1010,7 +1014,6 @@ if (import.meta.main) {
 			await ui.close()
 			process.exit(0)
 		}
-		process.on('exit', () => rmSync(workspace, { recursive: true, force: true }))
 		process.on('SIGINT', stopUi)
 		process.on('SIGTERM', stopUi)
 	}

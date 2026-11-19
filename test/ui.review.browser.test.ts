@@ -10,6 +10,26 @@ import { open, browserTest, stop, launchWith } from './browser.ts'
 test.before(() => launchWith(seedVolume))
 test.after(stop)
 
+test('review lists expose row controls and hide decorative separators from the plan tree', browserTest, async (t) => {
+	const { page, url } = await open(t)
+	await page.goto(url('/'))
+	const plans = page.getByRole('list', { name: 'Plans', exact: true })
+	await plans
+		.getByRole('listitem')
+		.filter({ hasText: 'New change' })
+		.getByRole('link', { name: /New change/ })
+		.waitFor()
+
+	await page.goto(url('/plans/coupons?view=needs'))
+	const tree = page.getByRole('tree', { name: 'Views of coupons' })
+	assert.equal(await tree.getByRole('separator').count(), 0)
+	await page.locator('[data-panel="needs"]').getByRole('listitem').first().getByRole('checkbox').waitFor()
+
+	await page.goto(url('/activity'))
+	const activity = page.getByRole('list', { name: 'Runs and requests' })
+	await activity.getByRole('listitem').getByRole('button', { name: 'Stop…' }).waitFor()
+})
+
 async function fits(page: Page, path: string) {
 	for (const colorScheme of ['light', 'dark'] as const)
 		for (const width of [1440, 900]) {
@@ -594,6 +614,13 @@ test(
 		assert.equal(await page.locator('[data-panel="needs"] [data-row].sel').count(), 2)
 		await page.keyboard.press('1')
 		await dialog.waitFor()
+		await page.route('**/bulk', (route) => route.abort())
+		await page.keyboard.press('Enter')
+		await page.locator('[data-say], [data-say-strip]', { hasText: 'Checkmate did not answer.' }).waitFor()
+		assert.equal(await page.locator('[data-panel="needs"] [data-row].sel').count(), 2)
+		await page.unroute('**/bulk')
+		await bar.locator('[data-bulk-action="accept"]').click()
+		await dialog.waitFor()
 		await page.keyboard.press('Enter')
 		await page.getByRole('status').filter({ hasText: 'Accepted 2 claims' }).waitFor()
 		assert.equal(await page.locator('[data-panel="needs"] [data-row].sel').count(), 0)
@@ -617,6 +644,12 @@ test('a hand-over shows a 0 Undo note, and 0 undoes it while the note shows', br
 		read(workspace, (store) => mergedClaims(store, 'coupons').find((item) => item.id === 'k1/D1')!.handoff)
 	assert.equal(handed()?.to, 'the payments team')
 	await page.waitForFunction(() => document.activeElement?.matches('[data-row]'))
+	await page.route('**/plans/coupons/handoff', (route) => route.abort())
+	await page.keyboard.press('0')
+	await page.locator('[data-say], [data-say-strip]', { hasText: 'Checkmate did not answer.' }).waitFor()
+	assert.equal(await note.isVisible(), true)
+	assert.equal(handed()?.to, 'the payments team')
+	await page.unroute('**/plans/coupons/handoff')
 	await page.keyboard.press('0')
 	await page.getByRole('status').filter({ hasText: 'k1/D1 not handed over' }).waitFor()
 	assert.equal(handed(), null)
@@ -654,6 +687,50 @@ test(
 		await find.waitFor({ state: 'hidden' })
 	}
 )
+
+test('editing a Find query clears the selected result before the next search returns', browserTest, async (t) => {
+	const { page, url } = await open(t)
+	let asked = 0
+	await page.route('**/requests', (route) => {
+		if (route.request().method() !== 'POST') return route.continue()
+		asked++
+		return route.abort()
+	})
+	await page.goto(url('/'))
+	await page.keyboard.press('/')
+	const find = page.getByRole('dialog', { name: 'Find' })
+	const input = find.locator('[data-find-input]')
+	const selected = find.locator('[data-find-results] [aria-selected="true"]')
+	const results = [
+		['coupons stack', /Two coupons stack on one order/],
+		['password reset link', /password reset link/i],
+	] as const
+	await input.fill('zzzz no matching records')
+	await selected.filter({ hasText: 'Ask Checkmate' }).waitFor()
+
+	for (const [query, expected] of results) {
+		const pattern = `**/find?q=${encodeURIComponent(query)}`
+		const pending = Promise.withResolvers<void>()
+		await page.route(pattern, async (route) => {
+			await pending.promise
+			await route.continue()
+		})
+		try {
+			await input.fill(query)
+			await input.press('Enter')
+			assert.equal(await input.isVisible(), true)
+			assert.equal(await selected.count(), 0)
+		} finally {
+			pending.resolve()
+		}
+		await selected.filter({ hasText: expected }).waitFor()
+		await page.unroute(pattern)
+	}
+	assert.equal(asked, 0)
+	const href = await selected.getAttribute('href')
+	await input.press('Enter')
+	await page.waitForURL((address) => address.pathname + address.search === href)
+})
 
 test('the key list and the status bar hints come from one table', browserTest, async (t) => {
 	const { page, url } = await open(t)

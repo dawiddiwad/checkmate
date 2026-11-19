@@ -20963,14 +20963,7 @@ function stopButton(explorationId, label = "Stop the test\u2026") {
   return actionButton(`stop-${explorationId}`, label);
 }
 function stopOption(explorationId, n = 1) {
-  return html2`<button
-		type="button"
-		class="sp-btn"
-		data-option
-		data-act="stop-${explorationId}"
-		aria-label="${n}: Stop the test"
-		title="Stop the test"
-	>
+  return html2`<button type="button" class="sp-btn" data-option data-act="stop-${explorationId}" title="Stop the test">
 		<kbd aria-hidden="true">${n}</kbd><span>Stop…</span>
 	</button>`;
 }
@@ -21238,8 +21231,7 @@ function row(run2, n, now) {
   const label = run2.follow ? `${run2.explorationId} follow-up` : run2.explorationId;
   return html2`<div
 		class="sp-row"
-		role="option"
-		aria-selected="false"
+		role="listitem"
 		tabindex="-1"
 		id="run-${n}"
 		data-row
@@ -21273,8 +21265,7 @@ function requestRow(request, n, now) {
   const title = `Request \xB7 ${request.text.trim().split("\n")[0]}`;
   return html2`<div
 		class="sp-row"
-		role="option"
-		aria-selected="false"
+		role="listitem"
 		tabindex="-1"
 		id="request-row-${n}"
 		data-row
@@ -21333,7 +21324,7 @@ function activityPage(store, context, params, defaults) {
 				<p class="list-count" data-list-count role="status">
 					${total ? `Showing ${first}\u2013${last} of ${plural(total, "entry", "entries")}` : ""}
 				</p>
-				${total ? html2`<div class="sp-list activity" role="listbox" aria-label="Runs and requests" data-list>
+				${total ? html2`<div class="sp-list activity" role="list" aria-label="Runs and requests" data-list>
 									${group("Running now", running3)}${group("Earlier", earlier)}
 								</div>
 								${pager(spec, shown2, total)}` : emptyNotice(spec.none[0], spec.none[1])}
@@ -21991,8 +21982,7 @@ function itemRow(context, review, item, id2, view) {
   const extra = extraOf(context, review, item);
   return html2`<div
 		class="sp-row${dim ? " dim" : ""}"
-		role="option"
-		aria-selected="false"
+		role="listitem"
 		tabindex="-1"
 		id="${id2}"
 		data-row
@@ -22023,7 +22013,7 @@ function pickKey(review, item) {
 function listOf(context, review, view, groups, label) {
   if (!groups.length) return html2`<p class="sp-empty">${emptyText(view)}</p>`;
   let n = 0;
-  return html2`<div class="sp-list" role="listbox" aria-multiselectable="true" aria-label="${label}" data-list>
+  return html2`<div class="sp-list" role="list" aria-label="${label}" data-list>
 		${groups.map(
     (group) => html2`<div class="sp-gh" role="presentation">${group.label} <span>${group.items.length}</span></div>
 					${group.items.map((item) => itemRow(context, review, item, `row-${slug(view)}-${n++}`, view))}`
@@ -22186,7 +22176,7 @@ function navigator(review, current, exploration2 = null) {
     )
   )}
 				${navRow(review, current, "all", href("all"), "", "All items", count(review.items.length))}
-				<div class="sp-sep" role="separator"></div>
+				<div class="sp-sep" aria-hidden="true"></div>
 			</div>
 			<div class="sp-nhead" aria-hidden="true">
 				<span></span><span>Rule</span
@@ -22215,7 +22205,7 @@ function navigator(review, current, exploration2 = null) {
       look: "rule"
     }
   )}
-			<div class="sp-sep" role="separator"></div>
+			<div class="sp-sep" aria-hidden="true"></div>
 			${review.map.builds.map(
     (item) => navRow(
       review,
@@ -22227,7 +22217,7 @@ function navigator(review, current, exploration2 = null) {
       count(itemsOf(review, `build:${item.build}`).length)
     )
   )}
-			${review.map.builds.length ? html2`<div class="sp-sep" role="separator"></div>` : ""}
+			${review.map.builds.length ? html2`<div class="sp-sep" aria-hidden="true"></div>` : ""}
 			${navRow(review, current, "rules", href("rules"), "", "Rules of the plan", count(review.map.rows.length - 1))}
 			${review.running ? "" : testersRow}
 			${navRow(review, current, "plan", review.revision ? `/plans/${planId}@${review.revision}` : `/plans/${planId}/request`, "", review.revision ? `Plan @${review.revision}` : "Plan request", html2`<span></span>`, { look: "link" })}
@@ -22370,13 +22360,12 @@ function rulesList(context, review) {
   const rows2 = review.map.rows.filter((row3) => row3.rule.id !== outside);
   if (!rows2.length) return html2`<p class="sp-empty">This plan has no rules yet.</p>`;
   const editable = ruleEditable(review);
-  return html2`<div class="sp-list wide-title" role="listbox" aria-label="Rules of the plan" data-list>
+  return html2`<div class="sp-list wide-title" role="list" aria-label="Rules of the plan" data-list>
 		<div class="sp-gh" role="presentation">Rules <span>${rows2.length}</span></div>
 		${rows2.map(
     (row3, index2) => html2`<div
 					class="sp-row"
-					role="option"
-					aria-selected="false"
+					role="listitem"
 					tabindex="-1"
 					id="row-rules-${index2}"
 					data-row
@@ -23569,15 +23558,13 @@ function tile(review, loop2, index2) {
   ];
   return html2`<div
 		class="sp-ct"
-		role="option"
-		aria-selected="false"
+		role="listitem"
 		tabindex="-1"
 		id="plan-${index2}"
 		data-row
 		data-key="plan:${review.planId}"
 		data-href="${reviewHref(review.planId, "needs")}"
 		data-label="${review.planId}"
-		aria-labelledby="plan-${index2}-title"
 	>
 		<div class="sp-ct-main">
 			<div class="sp-ct-head">
@@ -23593,7 +23580,7 @@ function tile(review, loop2, index2) {
 									${time(latest.firstTestedAt)}` : review.target}${loop2 && !review.running ? ` \xB7 waits on ${roleWords[loop2.waitsOn]}` : ""}</span
 				>
 			</div>
-			<h2 class="sp-ct-title ell" id="plan-${index2}-title" title="${review.objective}">${review.objective}</h2>
+			<h2 class="sp-ct-title ell" title="${review.objective}">${review.objective}</h2>
 			<p class="sp-ct-verdict"><b>${verdict.head}</b> ${verdict.tail}</p>
 		</div>
 		${miniMap(review)}
@@ -23610,18 +23597,16 @@ function tile(review, loop2, index2) {
 function newChangeRow(index2) {
   return html2`<div
 		class="sp-ct sp-ct-new"
-		role="option"
-		aria-selected="false"
+		role="listitem"
 		tabindex="-1"
 		id="plan-${index2}"
 		data-row
 		data-key="new:change"
 		data-href="/new"
 		data-label="New change"
-		aria-labelledby="plan-${index2}-title"
 	>
 		<div class="sp-ct-main">
-			<h2 class="sp-ct-title ell" id="plan-${index2}-title">New change</h2>
+			<h2 class="sp-ct-title ell">New change</h2>
 			<p class="sp-ct-verdict">Give a ticket. Checkmate makes a plan and starts the first test.</p>
 		</div>
 		<div class="sp-ct-opts">
@@ -23641,7 +23626,7 @@ function homePage(store) {
   const plans = listed.map((each) => each.plan);
   const reviews = listed.map((each) => each.review);
   const blocking = reviews.reduce((sum2, review) => sum2 + verdictLine(review).blocking, 0);
-  const body = plans.length ? html2`<div class="sp-home" role="listbox" aria-label="Plans" data-list>
+  const body = plans.length ? html2`<div class="sp-home" role="list" aria-label="Plans" data-list>
 				${reviews.map((review, index2) => tile(review, plans[index2].loop, index2))}${newChangeRow(reviews.length)}
 			</div>` : emptyNotice(
     "No plan yet.",
@@ -26924,9 +26909,9 @@ data: ${matched.join(",") || "*"}
     return errorPage(request, 404, "Page not found", `Checkmate has no page at ${pathname}. Start from Needs you.`);
   }
   function changeDefaults(target) {
-    const where = (address2) => ({
-      address: address2 ? hostOf(address2) : null,
-      local: address2 ? !URL.canParse(address2) || isLocalAddress(address2) : true
+    const where = (address) => ({
+      address: address ? hostOf(address) : null,
+      local: address ? !URL.canParse(address) || isLocalAddress(address) : true
     });
     const targets = targetList(store).map((item) => {
       const active = activeInstances(item.targetId);
@@ -27802,9 +27787,9 @@ data: ${matched.join(",") || "*"}
     if (until && !since) return refuse3("Until needs Since. Fill in Since, or leave Until empty.", "until");
     const chosen = instanceFrom(form, targetId);
     if (chosen.error) return refuse3(chosen.error, "instance");
-    const address2 = (activeInstances(targetId).find((item) => item.instanceId === chosen.instance) ?? activeInstances(targetId)[0])?.entries.web;
-    if (address2 && URL.canParse(address2) && !isLocalAddress(address2) && form.get("confirmed") !== "1")
-      return refuse3(`Confirm that Checkmate may test ${hostOf(address2)}, an address that is not local.`, "target");
+    const address = (activeInstances(targetId).find((item) => item.instanceId === chosen.instance) ?? activeInstances(targetId)[0])?.entries.web;
+    if (address && URL.canParse(address) && !isLocalAddress(address) && form.get("confirmed") !== "1")
+      return refuse3(`Confirm that Checkmate may test ${hostOf(address)}, an address that is not local.`, "target");
     try {
       requireClaude(env);
       launchPlan(targetRevision(store, targetId).profile, { planId, build, allow, claudeArgs: [], level }, env);
@@ -28227,38 +28212,44 @@ data: ${matched.join(",") || "*"}
   const server = createServer((req, res) => {
     void handle(req, res);
   });
-  await new Promise((resolve8, reject) => {
-    server.once("error", reject);
-    server.listen(options3.port ?? 0, "127.0.0.1", () => resolve8());
-  });
-  const address = server.address();
-  port = typeof address === "object" && address ? address.port : 0;
-  if (!liveUi(options3.workspace)) {
-    closeOpenPermissions(store, "ui-stopped");
-    staleRequests(store);
+  async function close() {
+    if (closed) return;
+    closed = true;
+    await requester.close();
+    hooks.close();
+    if (port) removeUiFile(options3.workspace, port);
+    clearInterval(poll);
+    clearInterval(heartbeat);
+    clearInterval(supervisorWatch);
+    for (const client of clients) client.res.end();
+    clients.clear();
+    await new Promise((resolve8) => {
+      server.close(() => resolve8());
+      server.closeAllConnections();
+    });
+    closeStore(watch);
+    closeStore(store);
   }
-  writeUiFile(options3.workspace, { port, pid: process.pid, hookToken });
-  return {
-    url: `http://127.0.0.1:${port}/`,
-    close: async () => {
-      if (closed) return;
-      closed = true;
-      await requester.close();
-      hooks.close();
-      removeUiFile(options3.workspace, port);
-      clearInterval(poll);
-      clearInterval(heartbeat);
-      clearInterval(supervisorWatch);
-      for (const client of clients) client.res.end();
-      clients.clear();
-      await new Promise((resolve8) => {
-        server.close(() => resolve8());
-        server.closeAllConnections();
+  try {
+    await new Promise((resolve8, reject) => {
+      server.once("error", reject);
+      server.listen(options3.port ?? 0, "127.0.0.1", () => {
+        server.off("error", reject);
+        resolve8();
       });
-      closeStore(watch);
-      closeStore(store);
+    });
+    const address = server.address();
+    port = typeof address === "object" && address ? address.port : 0;
+    if (!liveUi(options3.workspace)) {
+      closeOpenPermissions(store, "ui-stopped");
+      staleRequests(store);
     }
-  };
+    writeUiFile(options3.workspace, { port, pid: process.pid, hookToken });
+  } catch (error) {
+    await close();
+    throw error;
+  }
+  return { url: `http://127.0.0.1:${port}/`, close };
 }
 
 // plugin/src/agents.ts

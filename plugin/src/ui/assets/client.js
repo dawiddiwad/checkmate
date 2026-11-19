@@ -955,7 +955,6 @@ function applyPicks() {
 	for (const row of document.querySelectorAll('[data-row][data-pick]')) {
 		const on = picks.has(row.dataset.key)
 		row.classList.toggle('sel', on)
-		row.setAttribute('aria-selected', on ? 'true' : 'false')
 		const box = row.querySelector('[data-pick-box]')
 		if (box) box.checked = on
 	}
@@ -1057,7 +1056,8 @@ function ask({ title, text, field = null, yes = 'Confirm', no = 'Cancel' }) {
 
 function confirmKey(event) {
 	const typing = event.target.matches?.('input')
-	if (event.key === 'Escape' || (event.key === 'ArrowLeft' && !typing)) {
+	const cancel = event.key === 'Enter' && event.target.closest('[data-confirm-no]')
+	if (cancel || event.key === 'Escape' || (event.key === 'ArrowLeft' && !typing)) {
 		event.preventDefault()
 		confirmDialog.close('no')
 	} else if (event.key === 'Enter' || (event.key === '1' && !typing)) {
@@ -1071,17 +1071,21 @@ function confirmKey(event) {
 async function post(action, fields) {
 	const data = new URLSearchParams()
 	for (const [name, value] of fields) data.append(name, value)
-	let response = await fetch(action, { method: 'POST', body: data })
-	if (response.status === 403 && (await renewToken())) {
-		data.set('csrf', document.querySelector('input[name="csrf"]').value)
-		response = await fetch(action, { method: 'POST', body: data })
+	try {
+		let response = await fetch(action, { method: 'POST', body: data })
+		if (response.status === 403 && (await renewToken())) {
+			data.set('csrf', document.querySelector('input[name="csrf"]').value)
+			response = await fetch(action, { method: 'POST', body: data })
+		}
+		if (response.ok && response.redirected) return null
+		const fresh = new DOMParser().parseFromString(await response.text(), 'text/html')
+		return (
+			fresh.querySelector('[role="alert"]')?.textContent?.trim() ||
+			'Checkmate refused the action. Nothing is recorded.'
+		)
+	} catch {
+		return 'Checkmate did not answer. Check the record before you try again.'
 	}
-	if (response.ok && response.redirected) return null
-	const fresh = new DOMParser().parseFromString(await response.text(), 'text/html')
-	return (
-		fresh.querySelector('[role="alert"]')?.textContent?.trim() ||
-		'Checkmate refused the action. Nothing is recorded.'
-	)
 }
 
 function csrf() {
@@ -1240,6 +1244,16 @@ async function bulk(action) {
 	location.reload()
 }
 
+let undoTimer = null
+
+function hideUndo(note) {
+	note.remove()
+	dockRoom()
+	try {
+		window.sessionStorage.removeItem('checkmate-undo')
+	} catch {}
+}
+
 function showUndo() {
 	let kept = null
 	try {
@@ -1264,32 +1278,32 @@ function showUndo() {
 	document.querySelector('[data-toast]')?.remove()
 	body.append(note)
 	dockRoom()
-	setTimeout(() => {
-		note.remove()
-		dockRoom()
-		try {
-			window.sessionStorage.removeItem('checkmate-undo')
-		} catch {}
-	}, kept.until - Date.now())
+	undoTimer = setTimeout(() => hideUndo(note), kept.until - Date.now())
 }
 
 async function undo() {
 	const note = document.querySelector('[data-undo]')
 	if (!note) return
+	const button = note.querySelector('[data-undo-button]')
+	if (button.disabled) return
 	let kept = null
 	try {
 		kept = JSON.parse(window.sessionStorage.getItem('checkmate-undo') ?? 'null')
-		window.sessionStorage.removeItem('checkmate-undo')
 	} catch {}
-	note.remove()
 	if (!kept) return
+	clearTimeout(undoTimer)
+	button.disabled = true
 	const refused = await post(`/plans/${kept.plan}/handoff`, [
 		['csrf', csrf()],
 		['return', location.pathname + location.search],
 		['undo', '1'],
 		...kept.claims.map((claim) => ['claim', claim]),
 	])
-	if (refused) return tell(refused)
+	if (refused) {
+		button.disabled = false
+		return tell(refused)
+	}
+	hideUndo(note)
 	location.reload()
 }
 
@@ -1356,20 +1370,27 @@ function findResults(results, query) {
 	)
 }
 
+function clearFindResults() {
+	clearTimeout(findTimer)
+	findTicket++
+	findResults([], '')
+	findDialog.querySelector('[data-find-none]').hidden = true
+	findDialog.querySelector('[data-find-more]').hidden = true
+	findMark()
+}
+
 async function findNow() {
 	const ticket = ++findTicket
 	const query = findDialog.querySelector('[data-find-input]').value.trim()
 	if (findAsking) return
 	if (findMode === 'ask') {
 		findResults([], query)
-		findDialog.querySelector('[data-find-none]').hidden = true
-		findDialog.querySelector('[data-find-more]').hidden = true
 		return findMark(findLinks()[0])
 	}
 	try {
 		const response = await fetch(`/find?q=${encodeURIComponent(query)}`, { cache: 'no-store' })
 		const found = await response.json()
-		if (ticket !== findTicket || findAsking) return
+		if (!findDialog.open || ticket !== findTicket || findAsking) return
 		findResults(found.results, query)
 		findDialog.querySelector('[data-find-none]').hidden = found.results.length > 0 || !query
 		const more = findDialog.querySelector('[data-find-more]')
@@ -1387,6 +1408,7 @@ function openFind(mode = 'find') {
 	findDialog.querySelector('[data-find-asking]').hidden = true
 	findDialog.querySelector('[data-find-error]').hidden = true
 	findDialog.querySelector('[data-find-results]').hidden = false
+	clearFindResults()
 	const input = findDialog.querySelector('[data-find-input]')
 	input.readOnly = false
 	input.placeholder = mode === 'ask' ? 'Ask a follow-up' : ''
@@ -1405,7 +1427,9 @@ async function askNow() {
 	const input = findDialog.querySelector('[data-find-input]')
 	const text = input.value.trim()
 	if (!text || findAsking) return
-	findAsking = 'sending'
+	const sending = Symbol()
+	findAsking = sending
+	input.readOnly = true
 	const error = findDialog.querySelector('[data-find-error]')
 	error.hidden = true
 	const send = () =>
@@ -1425,22 +1449,26 @@ async function askNow() {
 					'Checkmate refused the request. Nothing is sent.'
 			)
 		}
+		if (findAsking !== sending) return
 		findAsking = id[1]
-		input.readOnly = true
 		findDialog.querySelector('[data-find-results]').hidden = true
 		findDialog.querySelector('[data-find-none]').hidden = true
 		findDialog.querySelector('[data-find-more]').hidden = true
 		findDialog.querySelector('[data-find-asking]').hidden = false
 		findDialog.querySelector('[data-find-asking]').textContent = `Asking… ${id[1]}`
 	} catch (problem) {
+		if (findAsking !== sending) return
 		findAsking = null
+		input.readOnly = false
 		error.textContent = problem.message
 		error.hidden = false
 	}
 }
 
 findDialog.querySelector('[data-find-input]').addEventListener('input', () => {
-	clearTimeout(findTimer)
+	if (findAsking) return
+	clearFindResults()
+	if (findMode === 'ask') return findNow()
 	findTimer = setTimeout(findNow, 120)
 })
 

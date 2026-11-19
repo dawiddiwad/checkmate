@@ -215,7 +215,7 @@ node scripts/render-diagrams.ts
 npm run ui:volume
 ```
 
-The command prints the URL. Ctrl+C stops the UI and deletes the workspace. To keep the workspace, seed a folder: `node scripts/ui-volume.ts --seed <folder>`, then run `checkmate ui --workspace <folder>`.
+The command prints the URL. Ctrl+C stops the UI and its sample process, then deletes the workspace. To keep the workspace, run `node scripts/ui-volume.ts --seed <folder>`. Then run `checkmate ui --workspace <folder>`.
 
 ### Review UI screenshots
 

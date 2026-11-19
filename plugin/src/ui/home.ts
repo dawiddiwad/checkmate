@@ -86,15 +86,13 @@ function tile(review: Review, loop: { state: string; waitsOn: string } | undefin
 	]
 	return html`<div
 		class="sp-ct"
-		role="option"
-		aria-selected="false"
+		role="listitem"
 		tabindex="-1"
 		id="plan-${index}"
 		data-row
 		data-key="plan:${review.planId}"
 		data-href="${reviewHref(review.planId, 'needs')}"
 		data-label="${review.planId}"
-		aria-labelledby="plan-${index}-title"
 	>
 		<div class="sp-ct-main">
 			<div class="sp-ct-head">
@@ -124,7 +122,7 @@ function tile(review: Review, loop: { state: string; waitsOn: string } | undefin
 					}${loop && !review.running ? ` · waits on ${roleWords[loop.waitsOn]}` : ''}</span
 				>
 			</div>
-			<h2 class="sp-ct-title ell" id="plan-${index}-title" title="${review.objective}">${review.objective}</h2>
+			<h2 class="sp-ct-title ell" title="${review.objective}">${review.objective}</h2>
 			<p class="sp-ct-verdict"><b>${verdict.head}</b> ${verdict.tail}</p>
 		</div>
 		${miniMap(review)}
@@ -142,18 +140,16 @@ function tile(review: Review, loop: { state: string; waitsOn: string } | undefin
 function newChangeRow(index: number) {
 	return html`<div
 		class="sp-ct sp-ct-new"
-		role="option"
-		aria-selected="false"
+		role="listitem"
 		tabindex="-1"
 		id="plan-${index}"
 		data-row
 		data-key="new:change"
 		data-href="/new"
 		data-label="New change"
-		aria-labelledby="plan-${index}-title"
 	>
 		<div class="sp-ct-main">
-			<h2 class="sp-ct-title ell" id="plan-${index}-title">New change</h2>
+			<h2 class="sp-ct-title ell">New change</h2>
 			<p class="sp-ct-verdict">Give a ticket. Checkmate makes a plan and starts the first test.</p>
 		</div>
 		<div class="sp-ct-opts">
@@ -177,7 +173,7 @@ export function homePage(store: Store): Page {
 	const reviews = listed.map((each) => each.review)
 	const blocking = reviews.reduce((sum, review) => sum + verdictLine(review).blocking, 0)
 	const body = plans.length
-		? html`<div class="sp-home" role="listbox" aria-label="Plans" data-list>
+		? html`<div class="sp-home" role="list" aria-label="Plans" data-list>
 				${reviews.map((review, index) => tile(review, plans[index].loop, index))}${newChangeRow(reviews.length)}
 			</div>`
 		: emptyNotice(

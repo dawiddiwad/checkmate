@@ -504,8 +504,7 @@ export function itemRow(context: Context, review: Review, item: Item, id: string
 	const extra = extraOf(context, review, item)
 	return html`<div
 		class="sp-row${dim ? ' dim' : ''}"
-		role="option"
-		aria-selected="false"
+		role="listitem"
 		tabindex="-1"
 		id="${id}"
 		data-row
@@ -546,7 +545,7 @@ export function pickKey(review: Review, item: Item) {
 function listOf(context: Context, review: Review, view: string, groups: Group[], label: string) {
 	if (!groups.length) return html`<p class="sp-empty">${emptyText(view)}</p>`
 	let n = 0
-	return html`<div class="sp-list" role="listbox" aria-multiselectable="true" aria-label="${label}" data-list>
+	return html`<div class="sp-list" role="list" aria-label="${label}" data-list>
 		${groups.map(
 			(group) =>
 				html`<div class="sp-gh" role="presentation">${group.label} <span>${group.items.length}</span></div>
@@ -736,7 +735,7 @@ export function navigator(review: Review, current: string, exploration: string |
 					)
 				)}
 				${navRow(review, current, 'all', href('all'), '', 'All items', count(review.items.length))}
-				<div class="sp-sep" role="separator"></div>
+				<div class="sp-sep" aria-hidden="true"></div>
 			</div>
 			<div class="sp-nhead" aria-hidden="true">
 				<span></span><span>Rule</span
@@ -766,7 +765,7 @@ export function navigator(review: Review, current: string, exploration: string |
 					look: 'rule',
 				}
 			)}
-			<div class="sp-sep" role="separator"></div>
+			<div class="sp-sep" aria-hidden="true"></div>
 			${review.map.builds.map((item) =>
 				navRow(
 					review,
@@ -778,7 +777,7 @@ export function navigator(review: Review, current: string, exploration: string |
 					count(itemsOf(review, `build:${item.build}`).length)
 				)
 			)}
-			${review.map.builds.length ? html`<div class="sp-sep" role="separator"></div>` : ''}
+			${review.map.builds.length ? html`<div class="sp-sep" aria-hidden="true"></div>` : ''}
 			${navRow(review, current, 'rules', href('rules'), '', 'Rules of the plan', count(review.map.rows.length - 1))}
 			${review.running ? '' : testersRow}
 			${navRow(review, current, 'plan', review.revision ? `/plans/${planId}@${review.revision}` : `/plans/${planId}/request`, '', review.revision ? `Plan @${review.revision}` : 'Plan request', html`<span></span>`, { look: 'link' })}
@@ -950,14 +949,13 @@ function rulesList(context: Context, review: Review) {
 	const rows = review.map.rows.filter((row) => row.rule.id !== outside)
 	if (!rows.length) return html`<p class="sp-empty">This plan has no rules yet.</p>`
 	const editable = ruleEditable(review)
-	return html`<div class="sp-list wide-title" role="listbox" aria-label="Rules of the plan" data-list>
+	return html`<div class="sp-list wide-title" role="list" aria-label="Rules of the plan" data-list>
 		<div class="sp-gh" role="presentation">Rules <span>${rows.length}</span></div>
 		${rows.map(
 			(row, index) =>
 				html`<div
 					class="sp-row"
-					role="option"
-					aria-selected="false"
+					role="listitem"
 					tabindex="-1"
 					id="row-rules-${index}"
 					data-row

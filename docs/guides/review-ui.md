@@ -70,7 +70,9 @@ After a decision, the next item that waits for you takes the highlight. When you
 
 ### Act on several records
 
-Select rows with their boxes, with `Space`, or with `Shift` `↑` `↓`. A strip directly above the status bar shows the number of selected rows and the actions that apply to them, numbered: `Accept <n> findings as defects`, `<n> questions right as built`, `Defer <n> questions`, `Hand over <n> defects`, `Copy <n> defects for the developer`, and `Clear the selection` last. While rows are selected, the number keys act on the selection. Each action on more than one record asks first and names the count. `Enter` or `1` confirms. `Esc` or `←` cancels and keeps the selection. The selection clears when the action is complete. The strip and the notes after an action never cover a row: while they show, the navigator and the list end above them. A hand-over shows a note with `0 Undo` for some seconds. A copy shows the toast `Copied <n> defects` and keeps the selection. Press `0` or click `Undo` to remove the hand-over. The other decisions have no undo in Checkmate.
+Select rows with their boxes, with `Space`, or with `Shift` `↑` `↓`. A strip directly above the status bar shows the number of selected rows and the actions that apply to them, numbered: `Accept <n> findings as defects`, `<n> questions right as built`, `Defer <n> questions`, `Hand over <n> defects`, `Copy <n> defects for the developer`, and `Clear the selection` last. While rows are selected, the number keys act on the selection. Each action on more than one record asks first and names the count. `Enter` activates the focused button. `1` confirms when the focus is outside a text field. `Esc` or `←` outside a text field cancels and keeps the selection. The selection clears when the action is complete. The strip and the notes after an action never cover a row: while they show, the navigator and the list end above them. A hand-over shows a note with `0 Undo` for some seconds. A copy shows the toast `Copied <n> defects` and keeps the selection. Press `0` or click `Undo` to remove the hand-over. The other decisions have no undo in Checkmate.
+
+If Checkmate does not answer, the status bar shows a message. The selection or the Undo button stays available. Check the record before you try again.
 
 ### Store defects as tests
 
@@ -110,7 +112,7 @@ The page gets the text from `/plans/<planId>/defects.txt?claim=<claimId>` (one `
 
 ### Find
 
-`/`, `Ctrl` `K`, or `Find` in the status bar opens the find bar. Type words to find plans, claims, and questions of all plans that contain each word. The bar shows the first 12 results and the number of other results. `↑` and `↓` move in the results, `Enter` opens the highlighted result and does nothing while the query is empty, `←` and `→` move the caret, and `Esc` closes the bar. When the text has a word, the last row is `Ask Checkmate: <text>`. It is the highlighted row when nothing matches. See [Requests](#requests).
+`/`, `Ctrl` `K`, or `Find` in the status bar opens the find bar. Type words to find plans, claims, and questions of all plans that contain each word. The bar shows the first 12 results and the number of other results. `↑` and `↓` move in the results. When you change the query, the bar clears the old results. `Enter` opens the highlighted result when the query has text and the results are ready. `←` and `→` move the caret. `Esc` closes the bar. When the text has a word, the last row is `Ask Checkmate: <text>`. It is the highlighted row when nothing matches. See [Requests](#requests).
 
 ### A record
 

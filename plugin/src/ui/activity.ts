@@ -303,8 +303,7 @@ function row(run: Run, n: number, now: number) {
 	const label = run.follow ? `${run.explorationId} follow-up` : run.explorationId
 	return html`<div
 		class="sp-row"
-		role="option"
-		aria-selected="false"
+		role="listitem"
 		tabindex="-1"
 		id="run-${n}"
 		data-row
@@ -344,8 +343,7 @@ function requestRow(request: RequestRecord, n: number, now: number) {
 	const title = `Request · ${request.text.trim().split('\n')[0]}`
 	return html`<div
 		class="sp-row"
-		role="option"
-		aria-selected="false"
+		role="listitem"
 		tabindex="-1"
 		id="request-row-${n}"
 		data-row
@@ -417,7 +415,7 @@ export function activityPage(
 				</p>
 				${
 					total
-						? html`<div class="sp-list activity" role="listbox" aria-label="Runs and requests" data-list>
+						? html`<div class="sp-list activity" role="list" aria-label="Runs and requests" data-list>
 									${group('Running now', running)}${group('Earlier', earlier)}
 								</div>
 								${pager(spec, shown, total)}`

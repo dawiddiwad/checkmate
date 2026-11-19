@@ -4,10 +4,14 @@ import type { Ui } from '../plugin/src/ui/server.ts'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { request } from 'node:http'
-import { execFileSync } from 'node:child_process'
-import { rmSync } from 'node:fs'
+import { execFileSync, spawn } from 'node:child_process'
+import { once } from 'node:events'
+import { existsSync, readdirSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
+import { setTimeout as pause } from 'node:timers/promises'
 import { startUi } from '../plugin/src/ui/server.ts'
+import { explorationEvents } from '../plugin/src/explorations.ts'
+import { running } from '../plugin/src/sessions.ts'
 import { agent, human, seedDemo } from '../scripts/ui-demo.ts'
 import {
 	answerGap,
@@ -93,6 +97,59 @@ async function start(t: TestContext) {
 	t.after(() => ui.close())
 	return { ui, workspace, port: new URL(ui.url).port }
 }
+
+test('a port conflict releases the resources of the failed UI', (t) => {
+	const workspace = directory(t)
+	execFileSync(
+		process.execPath,
+		[
+			'--input-type=module',
+			'-e',
+			`import assert from 'node:assert/strict'
+			import { join } from 'node:path'
+			import { startUi } from './plugin/src/ui/server.ts'
+			const first = await startUi({ workspace: join(process.argv[1], 'first') })
+			try {
+				const port = Number(new URL(first.url).port)
+				await assert.rejects(startUi({ workspace: join(process.argv[1], 'second'), port }), { code: 'EADDRINUSE' })
+				assert.equal((await fetch(first.url)).status, 200)
+			} finally {
+				await first.close()
+			}`,
+			workspace,
+		],
+		{ cwd: root, timeout: 8000 }
+	)
+})
+
+test('stopping the demo removes the workspace and ends its dummy process', { timeout: 15000 }, async (t) => {
+	const parent = directory(t)
+	const demo = spawn(process.execPath, ['scripts/ui-volume.ts'], {
+		cwd: root,
+		env: { ...process.env, TMPDIR: parent },
+	})
+	let dummy: number | undefined
+	try {
+		const [chunk] = await once(demo.stdout, 'data', { signal: t.signal })
+		assert.match(chunk.toString(), /Checkmate UI on the volume seed/)
+		const [name] = readdirSync(parent)
+		assert(name.startsWith('checkmate-ui-volume-'))
+		const workspace = join(parent, name)
+		dummy = read(workspace, (store) =>
+			Number(explorationEvents(store, 'x-14').find((event) => event.step === 'supervisor')?.detail.pid)
+		)
+		assert(running(dummy))
+		const stopped = once(demo, 'exit', { signal: t.signal })
+		demo.kill('SIGINT')
+		assert.deepEqual(await stopped, [0, null])
+		assert.equal(existsSync(workspace), false)
+		for (let i = 0; i < 20 && running(dummy); i++) await pause(50, undefined, { signal: t.signal })
+		assert.equal(running(dummy), false)
+	} finally {
+		demo.kill('SIGKILL')
+		if (dummy !== undefined && running(dummy)) process.kill(dummy, 'SIGKILL')
+	}
+})
 
 type Reply = { status: number; headers: IncomingHttpHeaders; body: string }
 

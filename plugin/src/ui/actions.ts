@@ -349,14 +349,7 @@ export function stopButton(explorationId: string, label = 'Stop the test…') {
 }
 
 export function stopOption(explorationId: string, n = 1) {
-	return html`<button
-		type="button"
-		class="sp-btn"
-		data-option
-		data-act="stop-${explorationId}"
-		aria-label="${n}: Stop the test"
-		title="Stop the test"
-	>
+	return html`<button type="button" class="sp-btn" data-option data-act="stop-${explorationId}" title="Stop the test">
 		<kbd aria-hidden="true">${n}</kbd><span>Stop…</span>
 	</button>`
 }

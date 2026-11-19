@@ -2049,37 +2049,45 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 	const server = createServer((req, res) => {
 		void handle(req, res)
 	})
-	await new Promise<void>((resolve, reject) => {
-		server.once('error', reject)
-		server.listen(options.port ?? 0, '127.0.0.1', () => resolve())
-	})
-	const address = server.address()
-	port = typeof address === 'object' && address ? address.port : 0
-	if (!liveUi(options.workspace)) {
-		closeOpenPermissions(store, 'ui-stopped')
-		staleRequests(store)
-	}
-	writeUiFile(options.workspace, { port, pid: process.pid, hookToken })
 
-	return {
-		url: `http://127.0.0.1:${port}/`,
-		close: async () => {
-			if (closed) return
-			closed = true
-			await requester.close()
-			hooks.close()
-			removeUiFile(options.workspace, port)
-			clearInterval(poll)
-			clearInterval(heartbeat)
-			clearInterval(supervisorWatch)
-			for (const client of clients) client.res.end()
-			clients.clear()
-			await new Promise<void>((resolve) => {
-				server.close(() => resolve())
-				server.closeAllConnections()
-			})
-			closeStore(watch)
-			closeStore(store)
-		},
+	async function close() {
+		if (closed) return
+		closed = true
+		await requester.close()
+		hooks.close()
+		if (port) removeUiFile(options.workspace, port)
+		clearInterval(poll)
+		clearInterval(heartbeat)
+		clearInterval(supervisorWatch)
+		for (const client of clients) client.res.end()
+		clients.clear()
+		await new Promise<void>((resolve) => {
+			server.close(() => resolve())
+			server.closeAllConnections()
+		})
+		closeStore(watch)
+		closeStore(store)
 	}
+
+	try {
+		await new Promise<void>((resolve, reject) => {
+			server.once('error', reject)
+			server.listen(options.port ?? 0, '127.0.0.1', () => {
+				server.off('error', reject)
+				resolve()
+			})
+		})
+		const address = server.address()
+		port = typeof address === 'object' && address ? address.port : 0
+		if (!liveUi(options.workspace)) {
+			closeOpenPermissions(store, 'ui-stopped')
+			staleRequests(store)
+		}
+		writeUiFile(options.workspace, { port, pid: process.pid, hookToken })
+	} catch (error) {
+		await close()
+		throw error
+	}
+
+	return { url: `http://127.0.0.1:${port}/`, close }
 }

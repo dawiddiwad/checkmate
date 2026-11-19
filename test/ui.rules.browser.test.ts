@@ -156,6 +156,18 @@ test('a person edits, adds, and removes a rule with the pointer', browserTest, a
 	await page.getByRole('button', { name: 'Remove rule R1' }).click()
 	await page.locator('dialog[data-confirm][open]').getByRole('button', { name: 'Cancel' }).click()
 	assert.equal(rulesOf(workspace).length, 3)
+
+	await page.getByRole('button', { name: 'Remove rule R1' }).click()
+	const confirm = page.locator('dialog[data-confirm][open]')
+	await page.keyboard.press('Tab')
+	assert(await confirm.locator('[data-confirm-no]').evaluate((button) => button === document.activeElement))
+	await page.keyboard.press('Enter')
+	await confirm.waitFor({ state: 'hidden' })
+	assert.equal(
+		await page.locator('dialog[data-confirm]').evaluate((dialog: HTMLDialogElement) => dialog.returnValue),
+		'no'
+	)
+	assert.equal(rulesOf(workspace).length, 3)
 })
 
 async function defectRows(page: Page, url: (path: string) => string) {

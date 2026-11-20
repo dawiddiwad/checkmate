@@ -14707,7 +14707,8 @@ function piOption(model) {
   }) : [];
   return [{ value: value2, label: value2, ...levels.some((level) => level !== "off") ? { effortLevels: levels } : {} }];
 }
-function piRpcCatalog(program, workspace2, env) {
+var piCatalogTimeout = 1e4;
+function piRpcCatalog(program, workspace2, env, timeout) {
   const provider = !env.CHECKMATE_PI_MODEL?.trim() ? env.CHECKMATE_PI_PROVIDER?.trim().toLowerCase() : void 0;
   return new Promise((resolve9) => {
     const host = spawn2(program, ["--no-mcp", "--no-session", "--mode", "rpc", ...piModelArgs(env)], {
@@ -14722,15 +14723,15 @@ function piRpcCatalog(program, workspace2, env) {
     let state = false;
     const timer = setTimeout(() => {
       host.kill("SIGKILL");
-      finish2();
-    }, 1e4);
-    function finish2() {
+      finish2(true);
+    }, timeout);
+    function finish2(timedOut = false) {
       clearTimeout(timer);
       lines2.close();
-      resolve9(models && catalog(models, model));
+      resolve9({ value: models && catalog(models, model), timedOut });
     }
-    host.once("error", finish2);
-    host.once("close", finish2);
+    host.once("error", () => finish2());
+    host.once("close", () => finish2());
     host.stdin.on("error", () => {
     });
     lines2.on("line", (line) => {
@@ -14770,11 +14771,13 @@ function piModels(stdout) {
     return [{ value: value2, label: value2 }];
   });
 }
-async function discoverModelCatalog(harness, workspace2, env) {
+async function discoverModelCatalog(harness, workspace2, env, retryForEffort = false) {
   const program = requireChild(env, harness);
   const isPi = harness === "pi";
   if (isPi) {
-    const value2 = await piRpcCatalog(program, workspace2, env).catch(() => void 0);
+    const first = await piRpcCatalog(program, workspace2, env, piCatalogTimeout).catch(() => void 0);
+    const retry = retryForEffort && first?.timedOut ? await piRpcCatalog(program, workspace2, env, 2 * piCatalogTimeout).catch(() => void 0) : void 0;
+    const value2 = retry?.value ?? first?.value;
     if (value2) return value2;
   }
   const name2 = isPi ? "Pi" : "Claude Code";
@@ -16923,6 +16926,9 @@ function hostAuthentication(store, explorationId) {
     (item) => item.detail.hint === authenticationHint || item.detail.hint === piAuthenticationHint
   );
 }
+function hasSavedEffort(launch) {
+  return Boolean(launch.effort || Object.values(launch.testerEfforts ?? {}).some(Boolean));
+}
 async function driveExploration(workspace2, explorationId, env) {
   exitOnSignal();
   const store = openStore(workspace2);
@@ -16937,7 +16943,12 @@ async function driveExploration(workspace2, explorationId, env) {
     const started = startOf(explorationEvents(store, explorationId));
     if (!started) throw new Refusal("prohibited", `Exploration ${explorationId} has no start.`);
     if (stopOf(explorationEvents(store, explorationId))) return;
-    const catalog2 = started.explorers || started.verifier ? await discoverModelCatalog(started.context.harness ?? "claude", workspace2, env).catch(() => void 0) : void 0;
+    const catalog2 = started.explorers || started.verifier ? await discoverModelCatalog(
+      started.context.harness ?? "claude",
+      workspace2,
+      env,
+      hasSavedEffort(started)
+    ).catch(() => void 0) : void 0;
     if (stopOf(explorationEvents(store, explorationId))) return;
     const launch = { ...started, context: contextForEffort(started.context, catalog2, started.effort ?? "") };
     if (launch.explorers) {
@@ -17141,9 +17152,12 @@ async function driveFollow(workspace2, explorationId, env) {
     const plan = events.findLast((item) => item.step === "follow").detail;
     const initial = startOf(events);
     const followModel = hostModel(plan.context.claudeArgs);
-    const catalog2 = await discoverModelCatalog(plan.context.harness ?? "claude", workspace2, env).catch(
-      () => void 0
-    );
+    const catalog2 = await discoverModelCatalog(
+      plan.context.harness ?? "claude",
+      workspace2,
+      env,
+      hasSavedEffort(initial)
+    ).catch(() => void 0);
     if (stopOf(explorationEvents(store, explorationId))) return;
     const launch = {
       ...initial,

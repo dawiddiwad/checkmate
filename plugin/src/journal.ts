@@ -662,9 +662,10 @@ export function recordText(store: Store, planId: string, viewer: string, build?:
 
 export type ClaimState = 'observed' | 'suspected' | 'confirmed' | 'unresolved' | 'accepted' | 'rejected'
 export type BuildStatus = {
-	status: 'fixed' | 'not_fixed' | 'no verdict'
+	status: 'fixed' | 'not_fixed' | 'disputed' | 'no verdict'
 	basis: 'majority' | 'disputed' | 'single' | 'verified' | 'reported' | 'none'
 }
+
 export type ClaimDecision = { verdict: 'approved' | 'rejected'; actor: string; rationale: string }
 export type Handoff = { to: string; actor: string; at: string }
 export type Claim = ReturnType<typeof claimList>[number]
@@ -767,15 +768,14 @@ export function claimList(
 			if (check) return { status: confirms(check) ? 'not_fixed' : 'fixed', basis: 'verified' }
 			if (found.some((defect) => defect.build === build)) return { status: 'not_fixed', basis: 'reported' }
 			if (!results.size) return { status: 'no verdict', basis: 'none' }
-			if (count('fixed') === count('not_fixed')) return { status: 'fixed', basis: 'disputed' }
+			if (count('fixed') === count('not_fixed')) return { status: 'disputed', basis: 'disputed' }
 			return {
 				status: count('fixed') > count('not_fixed') ? 'fixed' : 'not_fixed',
 				basis: results.size === 1 ? 'single' : 'majority',
 			}
 		}
-		const statuses = Object.fromEntries(
-			state.builds.filter((_, index) => index > first).map((build) => [build, statusOn(build)])
-		)
+		const retests = state.builds.slice(first + 1).map((build) => [build, statusOn(build)] as const)
+		const latestRetest = retests.findLast(([, on]) => on.status !== 'no verdict')?.[1].status ?? null
 		const decision = decided.get(issue.id) ?? null
 		const confirmed = actors.length > 1 || verified === 'confirmed'
 		const suspected = found.every((defect) => defect.suspected || (!defect.steps && !defect.evidence?.length))
@@ -790,9 +790,6 @@ export function claimList(
 					: suspected
 						? 'suspected'
 						: 'observed'
-		const latest = Object.values(statuses)
-			.filter((on) => on.status !== 'no verdict')
-			.at(-1)?.status
 		return {
 			id: issue.id,
 			title: issue.title!,
@@ -816,8 +813,9 @@ export function claimList(
 					: (decision?.rationale ?? null),
 			decision,
 			handoff: handed.get(issue.id) ?? null,
-			statuses,
-			open: claimState !== 'rejected' && latest !== 'fixed',
+			statuses: Object.fromEntries(retests),
+			latestRetest,
+			open: claimState !== 'rejected' && latestRetest !== 'fixed',
 			note: issue.note ?? null,
 		}
 	})

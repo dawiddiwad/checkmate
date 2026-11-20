@@ -86,17 +86,18 @@ const stateWords: Record<ClaimBuildState, string> = {
 	still_present: 'Still present',
 	fixed: 'Fixed',
 	returned: 'Returned',
+	disputed: 'Disputed',
 	not_retested: 'Not retested',
 }
 
-function latestState(detail: Detail | null) {
+export function latestClaimBuild(detail: Detail | null) {
 	return detail?.builds.findLast((on) => on.state !== 'not_retested') ?? detail?.builds.at(-1) ?? null
 }
 
 function claimItem(planId: string, claim: ClaimRow, detail: Detail | null, needs: boolean): Item {
 	const kind: Kind =
 		claim.state === 'rejected' ? 'rejected' : oracleStates.includes(claim.state) ? 'finding' : 'defect'
-	const latest = latestState(detail)
+	const latest = latestClaimBuild(detail)
 	const meta =
 		kind === 'finding'
 			? `${claim.severity} · ${words(claim.state)}`
@@ -109,14 +110,15 @@ function claimItem(planId: string, claim: ClaimRow, detail: Detail | null, needs
 					]
 						.filter(Boolean)
 						.join(' · ')
-	const present = detail?.builds.filter((on) => ['new', 'still_present', 'returned'].includes(on.state)) ?? []
+	const builds =
+		detail?.builds.filter((on) => ['new', 'still_present', 'returned', 'disputed'].includes(on.state)) ?? []
 	return {
 		key: `c:${claim.id}`,
 		kind,
 		id: claim.id,
 		title: claim.title,
 		rule: claim.rule ?? null,
-		builds: present.map((on) => on.build),
+		builds: builds.map((on) => on.build),
 		needs,
 		blocking: false,
 		severity: claim.severity,

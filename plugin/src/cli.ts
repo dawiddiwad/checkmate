@@ -1143,6 +1143,7 @@ const commands: Record<string, Command> = {
 					claim.title,
 					`expected=${claim.expected}`,
 					`actual=${claim.actual}`,
+					...(claim.latestRetest === 'disputed' ? ['retest=disputed'] : []),
 					...(claim.handoff ? [`handed=${claim.handoff.to}`] : []),
 				]),
 			}

@@ -357,6 +357,8 @@ A claim is an issue of the merger, or a defect that is in no issue. Its ID is `<
 
 A claim needs no planned assertion. The factory works on the open claims that are `observed`, `confirmed`, or `accepted`. The inbox lists the open claims that are `suspected` or `unresolved`. A claim is closed when the oracle rejects it, or when the latest observed retest verdict of a later build is `fixed`.
 
+A tied retest vote gives `disputed` and keeps the claim open. An explicit verification takes precedence over the votes for its build. A later build with no verdict leaves the dispute open. `claim list` prints `retest=disputed` while the latest retest is disputed. JSON gives the latest retest status in `latestRetest`.
+
 **Questions.** The merger also joins the questions that one answer answers into a `topic` entry, for example `merge/T1`, with its members and a `label` of one to three words. The inbox, `status`, `explore show`, and the review UI show the topic in place of its members, and one answer to the topic answers each member. The record keeps each question of each explorer. A question is non-blocking unless the explorer marked it `blocking`. Only a blocking question, or a `suspected` or `unresolved` claim, makes the plan wait on the oracle. A question is in the same inbox list as the gaps of the plans, with its ID, for example `a1/Q1` or `merge/T1`. Answer it as a gap: `checkmate gap answer <planId> a1/Q1 --kind <kind> --value "<answer>" --rationale "<why>"`. The answer goes into the record. The next recorders of the plan see it.
 
 ### Hand-over

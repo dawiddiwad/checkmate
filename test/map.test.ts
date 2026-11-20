@@ -3,8 +3,10 @@ import assert from 'node:assert/strict'
 import type { TestContext } from 'node:test'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { buildOrder, handOffClaims, journal, mostFrequent, planQuestions } from '../plugin/src/journal.ts'
+import { buildOrder, handOffClaims, journal, mostFrequent, planClaims, planQuestions } from '../plugin/src/journal.ts'
+import { run } from '../plugin/src/cli.ts'
 import { claimDetails, ruleMap } from '../plugin/src/rulemap.ts'
+import { reviewOf } from '../plugin/src/ui/review.ts'
 import { plan, planRequest, store, target } from './support.ts'
 import { done, entries, openTest } from './explorations.ts'
 
@@ -92,7 +94,14 @@ test('the rule map gives each rule a status on each build, with defects by sever
 		r2b1.claims.map((claim) => [claim.id, claim.change]),
 		[['a1/D1', 'new']]
 	)
-	assert.deepEqual(r2b2.changes, { new: [], still_present: [], fixed: ['a1/D1'], returned: [], not_retested: [] })
+	assert.deepEqual(r2b2.changes, {
+		new: [],
+		still_present: [],
+		fixed: ['a1/D1'],
+		returned: [],
+		disputed: [],
+		not_retested: [],
+	})
 	assert.deepEqual([r2b3.before, r2b3.changes.returned], ['not_checked', ['a1/D1']])
 	const [o1, o2, o3] = row('outside').cells
 	assert.deepEqual(
@@ -136,7 +145,14 @@ test('the rule map groups rules into areas in order of first rule, with the wors
 	assert.deepEqual(first.cells[0].severities, { critical: 0, high: 1, medium: 1, low: 0 })
 	assert.deepEqual(first.cells[0].claims, row('R1').cells[0].claims.length + row('R2').cells[0].claims.length)
 	assert.deepEqual(first.cells[0].criteria, { right: 1, wrong: 0 })
-	assert.deepEqual(first.cells[1].changes, { new: 0, still_present: 0, fixed: 1, returned: 0, not_retested: 1 })
+	assert.deepEqual(first.cells[1].changes, {
+		new: 0,
+		still_present: 0,
+		fixed: 1,
+		returned: 0,
+		disputed: 0,
+		not_retested: 1,
+	})
 	assert.deepEqual(
 		map.rows.map((item) => item.rule.id),
 		['R1', 'R2', 'R3', 'outside']
@@ -197,6 +213,96 @@ test('a claim state on each build tells new, still present, fixed, returned, and
 	assert.deepEqual(
 		details.get('a1/D3')!.builds.map((item) => item.state),
 		['new', 'not_retested', 'not_retested']
+	)
+})
+
+test('tied retests keep an open claim open and reopen a previously fixed claim', (t) => {
+	const opened = store(t)
+	target(opened)
+	plan(opened)
+	const first = 'a1/D1'
+	const second = 'a1/D2'
+	const tiedBuild = '20'
+	const claims = () => planClaims(opened, 'checkout')
+	const verdicts = (explorationId: string) => {
+		for (const [tester, result] of [
+			['a1', 'fixed'],
+			['a2', 'not_fixed'],
+			['a3', 'not_retested'],
+		])
+			entries(
+				opened,
+				explorationId,
+				tester,
+				[first, second].map((defect) => ({ kind: 'verdict', defect, result }))
+			)
+	}
+	openTest(opened, 'checkout', 'x-1', 'b1')
+	entries(opened, 'x-1', 'a1', [
+		{ ...defect('D1', 'high'), rule: 'R2' },
+		{ ...defect('D2', 'medium'), rule: 'R3' },
+	])
+	done(opened, 'x-1')
+	openTest(opened, 'checkout', 'x-2', '30')
+	entries(opened, 'x-2', 'a1', [{ kind: 'verdict', defect: second, result: 'fixed' }])
+	done(opened, 'x-2')
+	assert.deepEqual(
+		claims().map(({ open }) => open),
+		[true, false]
+	)
+	openTest(opened, 'checkout', 'x-3', tiedBuild)
+	verdicts('x-3')
+	entries(opened, 'x-3', 'a1', [
+		{ kind: 'criterion', rule: 'R2', text: 'The total is correct.', verdict: 'ok' },
+		{ kind: 'criterion', rule: 'R3', text: 'The refund is correct.', verdict: 'ok' },
+	])
+	done(opened, 'x-3')
+	const disputed = { status: 'disputed', basis: 'disputed' }
+	assert.deepEqual(
+		claims().map(({ open, statuses }) => [open, statuses[tiedBuild]]),
+		[
+			[true, disputed],
+			[true, disputed],
+		]
+	)
+	const map = ruleMap(opened, 'checkout')
+	for (const [rule, id] of [
+		['R2', first],
+		['R3', second],
+	]) {
+		const cell = map.rows.find((row) => row.rule.id === rule)!.cells.find((row) => row.build === tiedBuild)!
+		assert.deepEqual([cell.status, cell.changes.fixed, cell.changes.disputed], ['question', [], [id]])
+	}
+	openTest(opened, 'checkout', 'x-4', 'b4')
+	entries(opened, 'x-4', 'a1', [{ kind: 'note', text: 'Neither defect was retested on this build.' }])
+	done(opened, 'x-4')
+	assert.deepEqual(
+		claims().map(({ open, statuses }) => [open, statuses.b4]),
+		[
+			[true, { status: 'no verdict', basis: 'none' }],
+			[true, { status: 'no verdict', basis: 'none' }],
+		]
+	)
+	const listed = run(['claim', 'list', 'checkout'], { cwd: opened.workspace, env: {}, stdin: () => '' })
+	assert.equal(listed.code, 0, listed.output)
+	assert.equal((listed.output.match(/retest=disputed/g) ?? []).length, 2, listed.output)
+	for (const item of reviewOf(opened, 'checkout').items.filter((item) => item.claim)) {
+		assert.match(item.meta, /^Disputed/)
+		assert(item.builds.includes(tiedBuild))
+	}
+	openTest(opened, 'checkout', 'x-5', 'b5')
+	verdicts('x-5')
+	entries(opened, 'x-5', 'verify', [
+		{ kind: 'observation', refutes: first, saw: 'The fixture has the expected total.' },
+		{ kind: 'observation', confirms: second, saw: 'The refund still fails.' },
+	])
+	done(opened, 'x-5')
+	assert.deepEqual(
+		claims().map(({ open, statuses }) => [open, statuses.b5]),
+		[
+			[false, { status: 'fixed', basis: 'verified' }],
+			[true, { status: 'not_fixed', basis: 'verified' }],
+		]
 	)
 })
 

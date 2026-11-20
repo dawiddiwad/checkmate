@@ -5,12 +5,14 @@ import { defaultArea, outsideRule, planRules, storedTestCounts } from './rules.t
 import type { Rule } from './rules.ts'
 import { fileName, mediaTypeOf, mergedEntries } from './views.ts'
 
-export type ClaimBuildState = 'new' | 'still_present' | 'fixed' | 'returned' | 'not_retested'
+const buildStates = ['new', 'still_present', 'fixed', 'returned', 'disputed', 'not_retested'] as const
+export type ClaimBuildState = (typeof buildStates)[number]
 export const buildStateWords: Record<string, string> = {
 	new: 'new',
 	still_present: 'still present',
 	fixed: 'fixed',
 	returned: 'present again',
+	disputed: 'disputed',
 	not_retested: 'not tested again',
 }
 export type CellStatus = 'failed' | 'question' | 'passed' | 'not_checked'
@@ -39,11 +41,11 @@ export function claimBuildStates(claim: Claim, builds: string[]) {
 				? 'new'
 				: !on || on.status === 'no verdict'
 					? 'not_retested'
-					: on.status === 'fixed'
-						? 'fixed'
-						: fixedBefore
+					: on.status === 'not_fixed'
+						? fixedBefore
 							? 'returned'
 							: 'still_present'
+						: on.status
 		if (state === 'fixed') fixedBefore = true
 		if (state === 'still_present' || state === 'returned') fixedBefore = false
 		return { build, state }
@@ -57,7 +59,6 @@ function planRecord(store: Store, planId: string) {
 }
 
 const worstFirst: CellStatus[] = ['failed', 'question', 'passed', 'not_checked']
-const buildStates: ClaimBuildState[] = ['new', 'still_present', 'fixed', 'returned', 'not_retested']
 
 type RuleCell = {
 	status: CellStatus
@@ -125,6 +126,7 @@ export function ruleMap(store: Store, planId: string) {
 	const cellOf = (rule: string, build: string) => {
 		const own = claims.filter((claim) => ruleOf(claim.rule) === rule && states.get(claim.id)!.has(build))
 		const present = own.filter((claim) => presentStates.includes(states.get(claim.id)!.get(build)!))
+		const disputed = own.filter((claim) => states.get(claim.id)!.get(build) === 'disputed')
 		const asked = questions.filter(
 			(question) => ruleOf(question.rule) === rule && question.answer === null && question.builds.includes(build)
 		)
@@ -132,9 +134,15 @@ export function ruleMap(store: Store, planId: string) {
 		const wrong = checked.filter((entry) => entry.verdict === 'wrong').length
 		const right = checked.filter((entry) => entry.verdict === 'ok').length
 		const status: CellStatus =
-			present.length || wrong ? 'failed' : asked.length ? 'question' : right ? 'passed' : 'not_checked'
+			present.length || wrong
+				? 'failed'
+				: asked.length || disputed.length
+					? 'question'
+					: right
+						? 'passed'
+						: 'not_checked'
 		const changes = Object.fromEntries(
-			(['new', 'still_present', 'fixed', 'returned', 'not_retested'] as const).map((name) => [
+			buildStates.map((name) => [
 				name,
 				own.filter((claim) => states.get(claim.id)!.get(build) === name).map((claim) => claim.id),
 			])
@@ -145,7 +153,7 @@ export function ruleMap(store: Store, planId: string) {
 			severities: Object.fromEntries(
 				severities.map((severity) => [severity, present.filter((claim) => claim.severity === severity).length])
 			) as Record<(typeof severities)[number], number>,
-			claims: present.map((claim) => ({
+			claims: [...present, ...disputed].map((claim) => ({
 				id: claim.id,
 				title: claim.title,
 				severity: claim.severity,

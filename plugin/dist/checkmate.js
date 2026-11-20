@@ -11576,20 +11576,18 @@ function claimList(state, decided = /* @__PURE__ */ new Map(), handed = /* @__PU
       if (check) return { status: confirms(check) ? "not_fixed" : "fixed", basis: "verified" };
       if (found.some((defect) => defect.build === build)) return { status: "not_fixed", basis: "reported" };
       if (!results.size) return { status: "no verdict", basis: "none" };
-      if (count2("fixed") === count2("not_fixed")) return { status: "fixed", basis: "disputed" };
+      if (count2("fixed") === count2("not_fixed")) return { status: "disputed", basis: "disputed" };
       return {
         status: count2("fixed") > count2("not_fixed") ? "fixed" : "not_fixed",
         basis: results.size === 1 ? "single" : "majority"
       };
     };
-    const statuses = Object.fromEntries(
-      state.builds.filter((_, index2) => index2 > first).map((build) => [build, statusOn(build)])
-    );
+    const retests2 = state.builds.slice(first + 1).map((build) => [build, statusOn(build)]);
+    const latestRetest2 = retests2.findLast(([, on]) => on.status !== "no verdict")?.[1].status ?? null;
     const decision = decided.get(issue.id) ?? null;
     const confirmed = actors.length > 1 || verified === "confirmed";
     const suspected = found.every((defect) => defect.suspected || !defect.steps && !defect.evidence?.length);
     const claimState = decision ? decision.verdict === "approved" ? "accepted" : "rejected" : confirmed ? "confirmed" : verified === "refuted" ? "unresolved" : suspected ? "suspected" : "observed";
-    const latest = Object.values(statuses).filter((on) => on.status !== "no verdict").at(-1)?.status;
     return {
       id: issue.id,
       title: issue.title,
@@ -11610,8 +11608,9 @@ function claimList(state, decided = /* @__PURE__ */ new Map(), handed = /* @__PU
       reason: claimState === "unresolved" ? `The verifier did not see it: ${firstCheck?.saw ?? "no reason given"}` : decision?.rationale ?? null,
       decision,
       handoff: handed.get(issue.id) ?? null,
-      statuses,
-      open: claimState !== "rejected" && latest !== "fixed",
+      statuses: Object.fromEntries(retests2),
+      latestRetest: latestRetest2,
+      open: claimState !== "rejected" && latestRetest2 !== "fixed",
       note: issue.note ?? null
     };
   });
@@ -21242,11 +21241,13 @@ function returnFields(item, back) {
 }
 
 // plugin/src/rulemap.ts
+var buildStates = ["new", "still_present", "fixed", "returned", "disputed", "not_retested"];
 var buildStateWords = {
   new: "new",
   still_present: "still present",
   fixed: "fixed",
   returned: "present again",
+  disputed: "disputed",
   not_retested: "not tested again"
 };
 var severities = ["critical", "high", "medium", "low"];
@@ -21255,7 +21256,7 @@ function claimBuildStates(claim, builds) {
   let fixedBefore = false;
   return builds.slice(Math.max(0, builds.indexOf(claim.build))).map((build, index2) => {
     const on = claim.statuses[build];
-    const state = index2 === 0 ? "new" : !on || on.status === "no verdict" ? "not_retested" : on.status === "fixed" ? "fixed" : fixedBefore ? "returned" : "still_present";
+    const state = index2 === 0 ? "new" : !on || on.status === "no verdict" ? "not_retested" : on.status === "not_fixed" ? fixedBefore ? "returned" : "still_present" : on.status;
     if (state === "fixed") fixedBefore = true;
     if (state === "still_present" || state === "returned") fixedBefore = false;
     return { build, state };
@@ -21267,7 +21268,6 @@ function planRecord2(store, planId) {
   return { state, claims: planClaims(store, planId, keep), questions: planQuestions(store, planId, keep) };
 }
 var worstFirst = ["failed", "question", "passed", "not_checked"];
-var buildStates = ["new", "still_present", "fixed", "returned", "not_retested"];
 function sumCells(build, cells) {
   const total = (count2) => cells.reduce((sum, cell3) => sum + count2(cell3), 0);
   return {
@@ -21323,15 +21323,16 @@ function ruleMap(store, planId) {
   const cellOf = (rule, build) => {
     const own = claims.filter((claim) => ruleOf(claim.rule) === rule && states.get(claim.id).has(build));
     const present = own.filter((claim) => presentStates.includes(states.get(claim.id).get(build)));
+    const disputed = own.filter((claim) => states.get(claim.id).get(build) === "disputed");
     const asked2 = questions.filter(
       (question) => ruleOf(question.rule) === rule && question.answer === null && question.builds.includes(build)
     );
     const checked = criteria.filter((entry) => ruleOf(entry.rule) === rule && entry.build === build);
     const wrong = checked.filter((entry) => entry.verdict === "wrong").length;
     const right = checked.filter((entry) => entry.verdict === "ok").length;
-    const status = present.length || wrong ? "failed" : asked2.length ? "question" : right ? "passed" : "not_checked";
+    const status = present.length || wrong ? "failed" : asked2.length || disputed.length ? "question" : right ? "passed" : "not_checked";
     const changes = Object.fromEntries(
-      ["new", "still_present", "fixed", "returned", "not_retested"].map((name2) => [
+      buildStates.map((name2) => [
         name2,
         own.filter((claim) => states.get(claim.id).get(build) === name2).map((claim) => claim.id)
       ])
@@ -21342,7 +21343,7 @@ function ruleMap(store, planId) {
       severities: Object.fromEntries(
         severities.map((severity) => [severity, present.filter((claim) => claim.severity === severity).length])
       ),
-      claims: present.map((claim) => ({
+      claims: [...present, ...disputed].map((claim) => ({
         id: claim.id,
         title: claim.title,
         severity: claim.severity,
@@ -23648,7 +23649,7 @@ function recordDrawer(store, context, review, item, view, refusal) {
 			<section class="sp-dhead" tabindex="-1" data-sub data-label="${item.id}">
 				<div class="sp-pills">
 					${itemTag(item)}
-					${item.detail && item.kind !== "rejected" ? html2`<span class="sp-pill">${buildStateWords[item.detail.builds.at(-1)?.state ?? ""] ?? ""}</span>` : ""}
+					${item.detail && item.kind !== "rejected" ? html2`<span class="sp-pill">${buildStateWords[latestClaimBuild(item.detail)?.state ?? ""] ?? ""}</span>` : ""}
 					${item.claim?.handoff ? html2`<span class="sp-pill green">Handed over</span>` : ""}
 					<span class="sp-c-id">${item.id}</span>
 					${when ? html2`<span class="sp-c-id">${time(when)}</span>` : ""}
@@ -23716,27 +23717,28 @@ var stateWords = {
   still_present: "Still present",
   fixed: "Fixed",
   returned: "Returned",
+  disputed: "Disputed",
   not_retested: "Not retested"
 };
-function latestState(detail) {
+function latestClaimBuild(detail) {
   return detail?.builds.findLast((on) => on.state !== "not_retested") ?? detail?.builds.at(-1) ?? null;
 }
 function claimItem(planId, claim, detail, needs) {
   const kind = claim.state === "rejected" ? "rejected" : oracleStates.includes(claim.state) ? "finding" : "defect";
-  const latest = latestState(detail);
+  const latest = latestClaimBuild(detail);
   const meta2 = kind === "finding" ? `${claim.severity} \xB7 ${words(claim.state)}` : kind === "rejected" ? `rejected by ${claim.decision?.actor ?? "someone"}` : [
     latest ? stateWords[latest.state] : null,
     claim.handoff ? `handed over to ${claim.handoff.to}` : null,
     `\xD7${claim.reporters}`
   ].filter(Boolean).join(" \xB7 ");
-  const present = detail?.builds.filter((on) => ["new", "still_present", "returned"].includes(on.state)) ?? [];
+  const builds = detail?.builds.filter((on) => ["new", "still_present", "returned", "disputed"].includes(on.state)) ?? [];
   return {
     key: `c:${claim.id}`,
     kind,
     id: claim.id,
     title: claim.title,
     rule: claim.rule ?? null,
-    builds: present.map((on) => on.build),
+    builds: builds.map((on) => on.build),
     needs,
     blocking: false,
     severity: claim.severity,
@@ -38105,6 +38107,7 @@ var commands = {
           claim.title,
           `expected=${claim.expected}`,
           `actual=${claim.actual}`,
+          ...claim.latestRetest === "disputed" ? ["retest=disputed"] : [],
           ...claim.handoff ? [`handed=${claim.handoff.to}`] : []
         ])
       };

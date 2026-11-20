@@ -48,6 +48,8 @@ The actor is a record. It is not a proof of identity. Checkmate has no authentic
 
 Each write records one row: the time, the actor, the command, the flags and the payload, the status, the response, and the changed subjects. A refused write also records a row with the status `rejected`. A write that cannot get the database lock records nothing. A read, for example `status` or `inbox`, records nothing.
 
+The launcher records each worker attempt as `delegate <stage>` with actor `checkmate:delegate`. Its arguments give the requested subject and the harness. Its `response.data` gives the verified stage `operation` ID or `null`, and the host-reported `observedModels`, `costUsd`, and `costPartial` when available. If the attempt record fails, the receipt includes a warning. In JSON, read `usageWarning`.
+
 Each row has a row ID. The row ID increases in the order of the writes. The last field of each line is the row ID. A decision line has its rationale before the row ID.
 
 ```sh

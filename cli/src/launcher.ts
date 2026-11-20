@@ -1,9 +1,11 @@
 import type { Profile, Reply, Status, Store } from '../../plugin/src/index.ts'
 import { Refusal, closeStore, isBusy, openRejections, openStore, runClock, validate } from '../../plugin/src/index.ts'
 import type { Harness } from '../../plugin/src/pi.ts'
-import { piArgs, piResult, selectedHarness } from '../../plugin/src/pi.ts'
+import { piArgs, piResult, resolvePiModelArgs, selectedHarness } from '../../plugin/src/pi.ts'
 import { workspaceEnv } from '../../plugin/src/settings.ts'
-import { childOutputLimit, pluginRoot as bundledPluginRoot } from '../../plugin/src/sessions.ts'
+import type { ChildCall } from '../../plugin/src/sessions.ts'
+import { childOutputLimit, pluginRoot as bundledPluginRoot, usageOf } from '../../plugin/src/sessions.ts'
+import { write } from '../../plugin/src/store.ts'
 import { spawn } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
@@ -11,11 +13,13 @@ import { join, resolve } from 'node:path'
 export const stages = ['setup', 'plan', 'revise', 'execute'] as const
 export type Stage = (typeof stages)[number]
 export type WorkerResponse = { status: Status; subject: string; reasons: string[] }
+type WorkerUsage = Pick<ChildCall, 'observedModels' | 'costUsd' | 'costPartial'>
 export type DelegateResponse = WorkerResponse & {
 	operation: string | null
 	command?: string
 	data?: Record<string, unknown>
-}
+	usageWarning?: string
+} & WorkerUsage
 export type DelegateOptions = {
 	allowedTools: string[]
 	claudeArgs?: string[]
@@ -32,6 +36,7 @@ type WorkerOptions = {
 	env?: Record<string, string | undefined>
 	harness?: Harness
 }
+type WorkerResult = { response: WorkerResponse; failure?: undefined } | { response?: undefined; failure: Error }
 type RunRow = {
 	run_id: string
 	plan_id: string
@@ -76,6 +81,7 @@ export function defaultPluginRoot() {
 
 export const unverifiedReason =
 	'The worker may have written already. Read `checkmate status` or `checkmate log` before you run delegate again.'
+const usageWarning = 'Checkmate could not record the delegated worker attempt.'
 
 export function resumeReason(runId: string) {
 	return `Recorded results stay. Run \`checkmate run resume ${runId}\` or \`checkmate run finish ${runId} ...\``
@@ -90,19 +96,45 @@ function excerpt(message: unknown) {
 	return line ? `: ${line}` : ''
 }
 
-function readEnvelope(output: string) {
-	let envelope: Record<string, unknown>
+function parseClaudeEnvelope(output: string): unknown {
 	try {
-		envelope = JSON.parse(output)
+		return JSON.parse(output)
 	} catch {
 		refuse('Claude did not return a JSON envelope')
 	}
+}
+
+function reportedCost(value: unknown) {
+	return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : undefined
+}
+
+function claudeUsage(envelope: unknown): WorkerUsage {
+	if (!envelope || typeof envelope !== 'object' || !('type' in envelope) || envelope.type !== 'result') return {}
+	const { modelUsage, total_cost_usd } = envelope as Record<string, unknown>
+	const entries =
+		modelUsage && typeof modelUsage === 'object' && !Array.isArray(modelUsage) ? Object.entries(modelUsage) : []
+	const calls = entries.map(([model, entry]) => {
+		const provider = typeof entry?.provider === 'string' && /^[\w.-]+$/.test(entry.provider) ? entry.provider : ''
+		const id = provider && !model.startsWith(`${provider}/`) ? `${provider}/${model}` : model
+		return {
+			costUsd: reportedCost(entry?.costUSD),
+			...(/^[\w./:@+-]+$/.test(model) ? { observedModels: [id] } : {}),
+		}
+	})
+	const total = reportedCost(total_cost_usd)
+	const usage = usageOf(calls)
+	if (total === undefined) return usage
+	return { costUsd: total, ...(usage.observedModels ? { observedModels: usage.observedModels } : {}) }
+}
+
+function readClaudeResponse(envelope: unknown) {
 	if (typeof envelope !== 'object' || envelope === null || !('type' in envelope) || !('subtype' in envelope))
 		refuse('Invalid Claude envelope')
-	if (envelope.type !== 'result' || envelope.subtype !== 'success' || envelope.is_error === true)
-		refuse(`Claude did not complete the stage${excerpt(envelope.result)}`)
-	if (!envelope.structured_output) refuse('Claude did not return structured output')
-	return validate('response', envelope.structured_output) as WorkerResponse
+	const { type, subtype, is_error, result, structured_output } = envelope as Record<string, unknown>
+	if (type !== 'result' || subtype !== 'success' || is_error === true)
+		refuse(`Claude did not complete the stage${excerpt(result)}`)
+	if (!structured_output) refuse('Claude did not return structured output')
+	return validate('response', structured_output) as WorkerResponse
 }
 
 class InvalidPiResponse extends Error {
@@ -115,8 +147,7 @@ class InvalidPiResponse extends Error {
 	}
 }
 
-function readPiResponse(output: string, errors: string, code: number | null, signal: NodeJS.Signals | null) {
-	const result = piResult(output, errors, code, signal)
+function readPiResponse(result: ChildCall) {
 	if (result.failure) throw new Error(result.failure[1])
 	const text = String(result.result).trim()
 	const fenced = /^```(?:json)?[ \t]*\r?\n([\s\S]*)\r?\n```$/i.exec(text)
@@ -164,10 +195,14 @@ export function workerArgs(pluginRoot: string, allowedTools: string[], claudeArg
 	return args
 }
 
-export function worker(executable: string, args: string[], options: WorkerOptions): Promise<WorkerResponse> {
+function launchWorker(
+	executable: string,
+	args: string[],
+	options: WorkerOptions
+): Promise<WorkerResult & { usage: WorkerUsage }> {
 	if (process.platform === 'win32') refuse('The launcher supports Linux and macOS process groups')
 	const limit = childOutputLimit(options.harness ?? 'claude')
-	return new Promise((resolvePromise, reject) => {
+	return new Promise((resolvePromise) => {
 		const child = spawn(executable, args, {
 			cwd: options.cwd,
 			env: options.env ?? process.env,
@@ -194,9 +229,10 @@ export function worker(executable: string, args: string[], options: WorkerOption
 		process.once('SIGTERM', interrupt)
 		const timer = setTimeout(() => stop('Worker deadline exceeded'), options.timeoutSeconds * 1000)
 		child.stdout.on('data', (bytes: Buffer) => {
+			const available = limit.bytes - outputBytes
+			if (available > 0) output.push(bytes.subarray(0, available))
 			outputBytes += bytes.length
 			if (outputBytes > limit.bytes) stop(`Worker output exceeds ${limit.mib} MiB`)
-			else output.push(bytes)
 		})
 		child.stderr.on('data', (bytes: Buffer) => {
 			if (errors.length < 4096) errors += bytes.toString()
@@ -212,17 +248,37 @@ export function worker(executable: string, args: string[], options: WorkerOption
 			process.removeListener('SIGINT', interrupt)
 			process.removeListener('SIGTERM', interrupt)
 			kill('SIGKILL')
-			if (failure) return reject(failure)
+			let usage: WorkerUsage = {}
 			try {
 				const stdout = Buffer.concat(output).toString()
-				if (options.harness === 'pi') return resolvePromise(readPiResponse(stdout, errors, code, signal))
-				if (code !== 0) return reject(new Error(`Worker exited with code ${code}${excerpt(errors)}`))
-				resolvePromise(readEnvelope(stdout))
+				if (options.harness === 'pi') {
+					const result = piResult(stdout, errors, code, signal)
+					usage = usageOf(failure ? [result, {}] : [result])
+					if (failure) return resolvePromise({ usage, failure })
+					return resolvePromise({ usage, response: readPiResponse(result) })
+				}
+				const stopped = failure !== undefined
+				if (code !== 0) failure ??= new Error(`Worker exited with code ${code}${excerpt(errors)}`)
+				const envelope = parseClaudeEnvelope(stdout)
+				const reported = claudeUsage(envelope)
+				usage = stopped ? usageOf([reported, {}]) : reported
+				if (failure) return resolvePromise({ usage, failure })
+				resolvePromise({ usage, response: readClaudeResponse(envelope) })
 			} catch (error) {
-				reject(error)
+				resolvePromise({ usage, failure: failure ?? workerFailure(error) })
 			}
 		})
 	})
+}
+
+function workerFailure(error: unknown) {
+	return error instanceof Error ? error : new Error('Unknown worker failure')
+}
+
+export async function worker(executable: string, args: string[], options: WorkerOptions): Promise<WorkerResponse> {
+	const result = await launchWorker(executable, args, options)
+	if (result.failure) throw result.failure
+	return result.response
 }
 
 function withStore<T>(workspace: string, read: (store: Store) => T) {
@@ -481,6 +537,35 @@ function subjectMatches(reported: string, subject: string) {
 	return reported === subject || reported.startsWith(`${subject}@`)
 }
 
+function recordAttempt(
+	store: Store,
+	stage: Stage,
+	subject: string,
+	harness: Harness,
+	response: DelegateResponse,
+	usage: WorkerUsage
+) {
+	const kind = stage === 'setup' ? 'target' : stage === 'execute' ? 'run' : 'plan'
+	try {
+		write(
+			store,
+			{ actor: 'checkmate:delegate', command: `delegate ${stage}`, subject, input: { subject, harness } },
+			() => ({
+				reply: {
+					status: response.status,
+					subject: response.subject,
+					reasons: [],
+					data: { operation: response.operation, ...usage },
+				},
+				subjects: [`${kind}:${subject}`],
+			})
+		)
+		return true
+	} catch {
+		return false
+	}
+}
+
 export async function delegate(
 	workspace: string,
 	stage: Stage,
@@ -521,28 +606,39 @@ export async function delegate(
 	const workerActor = `${harness}:${stage}`
 	const timeoutSeconds =
 		options.timeoutSeconds ?? (execution ? Math.max(1, execution.clock.remainingSeconds) : defaultTimeoutSeconds)
-	let claimed: WorkerResponse | null = null
-	let failure: Error | null = null
+	let claimed: WorkerResponse | undefined
+	let failure: Error | undefined
+	let usage: WorkerUsage = {}
+	let attempted = false
 	try {
-		claimed = await worker(
-			harness === 'pi' ? (options.pi ?? 'pi') : (options.claude ?? 'claude'),
+		const executable = harness === 'pi' ? (options.pi ?? 'pi') : (options.claude ?? 'claude')
+		const args =
 			harness === 'pi'
-				? piArgs(['--no-session', '--no-mcp', '--tools', 'read,bash'], env)
-				: workerArgs(pluginRoot, options.allowedTools, options.claudeArgs),
-			{
-				cwd: workspace,
-				prompt: prompt(stage, subject, workspace, pluginRoot, execution, timeoutSeconds, harness),
-				timeoutSeconds,
-				harness,
-				env: {
-					...env,
-					CHECKMATE_ACTOR: workerActor,
-					...(run ? { PLAYWRIGHT_MCP_OUTPUT_DIR: join(workspace, '.checkmate', 'tmp', subject) } : {}),
-				},
-			}
-		)
+				? resolvePiModelArgs(
+						executable,
+						piArgs(['--no-session', '--no-mcp', '--tools', 'read,bash'], env),
+						workspace,
+						env
+					)
+				: workerArgs(pluginRoot, options.allowedTools, options.claudeArgs)
+		const instructions = prompt(stage, subject, workspace, pluginRoot, execution, timeoutSeconds, harness)
+		attempted = true
+		const result = await launchWorker(executable, args, {
+			cwd: workspace,
+			prompt: instructions,
+			timeoutSeconds,
+			harness,
+			env: {
+				...env,
+				CHECKMATE_ACTOR: workerActor,
+				...(run ? { PLAYWRIGHT_MCP_OUTPUT_DIR: join(workspace, '.checkmate', 'tmp', subject) } : {}),
+			},
+		})
+		claimed = result.response
+		failure = result.failure
+		usage = result.usage
 	} catch (error) {
-		failure = error instanceof Error ? error : new Error('Unknown worker failure')
+		failure = workerFailure(error)
 	}
 	const reportedSubject =
 		claimed?.subject ?? (failure instanceof InvalidPiResponse ? failure.reportedSubject : undefined)
@@ -553,9 +649,38 @@ export async function delegate(
 			? await closeBrowser(workspace, run.browser_session, options.playwright ?? 'playwright-cli')
 			: null
 	const extra = [...(cleanup ? [cleanup] : []), ...(run ? [resumeReason(subject)] : [])]
-	let verified: Verified | null
+	const receipt = (verified: Verified | null): DelegateResponse => {
+		if (verified && (!failure || failure instanceof InvalidPiResponse))
+			return {
+				status: verified.reply.status,
+				subject: verified.reply.subject,
+				reasons: [...verified.reply.reasons, ...(cleanup ? [cleanup] : [])],
+				operation: verified.operation,
+				command: verifiedBy[stage].command,
+				data: verified.reply.data,
+			}
+		if (failure) {
+			const status = /deadline|interrupted/.test(failure.message) ? 'interrupted' : 'operational_error'
+			return { status, subject, reasons: [failure.message, ...(verified ? [] : extra)], operation: null }
+		}
+		if (!run && claimed!.status === 'needs_decision' && claimed!.reasons.length)
+			return { status: 'needs_decision', subject, reasons: claimed!.reasons, operation: null }
+		const missing = run
+			? `run ${subject} is not finished`
+			: `no ${verifiedBy[stage].command} for ${subject} was recorded`
+		return {
+			status: 'operational_error',
+			subject,
+			reasons: [`Worker returned ${claimed!.status}, but ${missing}`, ...claimed!.reasons, ...extra],
+			operation: null,
+		}
+	}
 	try {
-		verified = withStore(workspace, (store) => verify(store, stage, subject, after, workerActor))
+		return withStore(workspace, (store) => {
+			const response = receipt(verify(store, stage, subject, after, workerActor))
+			const recorded = !attempted || recordAttempt(store, stage, subject, harness, response, usage)
+			return { ...response, ...usage, ...(recorded ? {} : { usageWarning }) }
+		})
 	} catch (error) {
 		if (!isBusy(error)) throw error
 		return {
@@ -563,30 +688,8 @@ export async function delegate(
 			subject,
 			reasons: [...(failure ? [failure.message] : []), (error as Error).message, unverifiedReason, ...extra],
 			operation: null,
+			...usage,
+			...(attempted ? { usageWarning } : {}),
 		}
-	}
-	if (verified && (!failure || failure instanceof InvalidPiResponse))
-		return {
-			status: verified.reply.status,
-			subject: verified.reply.subject,
-			reasons: [...verified.reply.reasons, ...(cleanup ? [cleanup] : [])],
-			operation: verified.operation,
-			command: verifiedBy[stage].command,
-			data: verified.reply.data,
-		}
-	if (failure) {
-		const status = /deadline|interrupted/.test(failure.message) ? 'interrupted' : 'operational_error'
-		return { status, subject, reasons: [failure.message, ...(verified ? [] : extra)], operation: null }
-	}
-	if (!run && claimed!.status === 'needs_decision' && claimed!.reasons.length)
-		return { status: 'needs_decision', subject, reasons: claimed!.reasons, operation: null }
-	const missing = run
-		? `run ${subject} is not finished`
-		: `no ${verifiedBy[stage].command} for ${subject} was recorded`
-	return {
-		status: 'operational_error',
-		subject,
-		reasons: [`Worker returned ${claimed!.status}, but ${missing}`, ...claimed!.reasons, ...extra],
-		operation: null,
 	}
 }

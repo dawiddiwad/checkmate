@@ -68,11 +68,20 @@ function cell(field: string) {
 	return field.replace(/\\/g, '\\\\').replace(/\t/g, '\\t').replace(/\r/g, '\\r').replace(/\n/g, '\\n')
 }
 
+function usageFields({ observedModels, costUsd, costPartial }: DelegateResponse) {
+	return [
+		...(observedModels?.length ? [`model=${cell(observedModels.join(','))}`] : []),
+		...(costUsd === undefined ? [] : [`costUsd=${costUsd}`]),
+		...(costPartial ? ['costPartial=true'] : []),
+	]
+}
+
 function recorded(response: DelegateResponse, json: boolean) {
-	const { operation, command, data, ...reply } = response
-	if (json) return JSON.stringify({ ...reply, ...data, operation })
+	const { operation, command, data, observedModels, costUsd, costPartial, usageWarning, ...reply } = response
+	if (json)
+		return JSON.stringify({ ...reply, ...data, operation, observedModels, costUsd, costPartial, usageWarning })
 	const [first, ...rest] = formatReply(command!, { ...reply, data: data! }, false).split('\n')
-	return [`${first} operation=${operation}`, ...rest].join('\n')
+	return [[`${first} operation=${operation}`, ...usageFields(response)].join(' '), ...rest].join('\n')
 }
 
 function print(response: DelegateResponse & Pick<Reply, 'refusal' | 'hint'>, json: boolean) {
@@ -86,11 +95,13 @@ function print(response: DelegateResponse & Pick<Reply, 'refusal' | 'hint'>, jso
 						response.subject,
 						...(response.refusal ? [`refusal=${response.refusal}`] : []),
 						...(response.operation ? [`operation=${response.operation}`] : []),
+						...usageFields(response),
 					].join(' '),
 					...response.reasons.map((reason) => `reason: ${cell(reason)}`),
 					...(response.hint ? [`hint: ${cell(response.hint)}`] : []),
 				].join('\n')
-	process.stdout.write(output + '\n')
+	const warning = !json && response.usageWarning ? `\nwarning: ${cell(response.usageWarning)}` : ''
+	process.stdout.write(`${output}${warning}\n`)
 	process.exitCode = response.status === 'completed' || response.status === 'needs_decision' ? 0 : 1
 }
 

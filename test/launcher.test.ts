@@ -19,6 +19,7 @@ import { answerGap, openPlan } from '../plugin/src/plans.ts'
 import { retireInstance } from '../plugin/src/targets.ts'
 import { rejectResult } from '../plugin/src/runs.ts'
 import { saveWorkspaceHarness } from '../plugin/src/settings.ts'
+import { operationLog } from '../plugin/src/views.ts'
 import {
 	actor,
 	begin,
@@ -54,7 +55,7 @@ function claude(workspace: string, body: string) {
 		`const { execFileSync } = require('node:child_process')
 const plugin = process.argv[process.argv.indexOf('--plugin-dir') + 1]
 const checkmate = (args, input = '') => execFileSync(process.execPath, [plugin + '/dist/checkmate.js', ...args], { input, encoding: 'utf8' })
-const reply = (output) => console.log(JSON.stringify({ type: 'result', subtype: 'success', structured_output: output }))
+const reply = (output, usage = {}) => console.log(JSON.stringify({ type: 'result', subtype: 'success', structured_output: output, ...usage }))
 ${body}`
 	)
 }
@@ -94,6 +95,15 @@ function query<T>(workspace: string, sql: string) {
 			.prepare(sql)
 			.all()
 			.map((row) => ({ ...row })) as T[]
+	} finally {
+		closeStore(opened)
+	}
+}
+
+function attempts(workspace: string, subject: string) {
+	const opened = openStore(workspace)
+	try {
+		return operationLog(opened, { subject }).filter(({ command }) => command.startsWith('delegate '))
 	} finally {
 		closeStore(opened)
 	}
@@ -144,6 +154,7 @@ test('delegate refuses an empty allow list and an unknown subject before it star
 		delegate(workspace, 'execute', 'run-1', { allowedTools: rules, pluginRoot, claude: missing }),
 		/run begin/
 	)
+	assert.deepEqual(attempts(workspace, 'plan:checkout'), [])
 })
 
 test('the parent checks the database, not the worker claim', async (t) => {
@@ -216,6 +227,12 @@ reply({ status: 'needs_decision', subject: '${subject}', reasons: ['Stopped.'] }
 		plan.includes(`\`checkmate <command>\` means \`node ${join(pluginRoot, 'dist', 'checkmate.js')} <command>\`.`)
 	)
 	assert.match(await prompt('setup', 'checkout-local'), /checkmate target instance list checkout-local/)
+	assert.deepEqual(attempts(workspace, 'target:checkout-local')[0].response, {
+		status: 'needs_decision',
+		subject: 'checkout-local',
+		reasons: [],
+		data: { operation: null },
+	})
 })
 
 function requested(t: TestContext) {
@@ -332,7 +349,7 @@ test('the npm CLI prints the facts of the recorded command with the operation', 
 		bin,
 		`const out = checkmate(['plan', 'save', 'checkout', '--json'], ${JSON.stringify(JSON.stringify(candidate()))})
 const { status, subject, reasons } = JSON.parse(out)
-reply({ status, subject, reasons })`
+reply({ status, subject, reasons }, { total_cost_usd: 0, modelUsage: { 'actual-claude': { provider: 'fixture' } } })`
 	)
 	renameSync(join(bin, 'fake-claude'), join(bin, 'claude'))
 	const output = execFileSync(
@@ -341,13 +358,23 @@ reply({ status, subject, reasons })`
 		{ cwd: workspace, env: { ...process.env, PATH: `${bin}:${process.env.PATH}` }, encoding: 'utf8' }
 	)
 	const lines = output.trim().split('\n')
-	const [operation] = query<{ id: string; response: string }>(
-		workspace,
-		"SELECT id, response FROM operations WHERE command = 'plan save' AND status != 'rejected'"
-	)
-	const sha256 = JSON.parse(operation.response).data.sha256 as string
+	const { operations } = JSON.parse(
+		execFileSync(process.execPath, [join(root, 'cli/src/main.ts'), 'log', '--subject', 'plan:checkout', '--json'], {
+			cwd: workspace,
+			encoding: 'utf8',
+		})
+	) as { operations: ReturnType<typeof operationLog> }
+	const operation = operations.find(({ command }) => command === 'plan save')!
+	const attempt = operations.find(({ command }) => command === 'delegate plan')!
+	const sha256 = (operation.response as { data: { sha256: string } }).data.sha256
+	assert.deepEqual(attempt.response, {
+		status: 'needs_decision',
+		subject: 'checkout@1',
+		reasons: [],
+		data: { operation: operation.id, observedModels: ['fixture/actual-claude'], costUsd: 0 },
+	})
 	assert.deepEqual(lines, [
-		`needs_decision checkout@1 sha256=${sha256.slice(0, 8)} operation=${operation.id}`,
+		`needs_decision checkout@1 sha256=${sha256.slice(0, 8)} operation=${operation.id} model=fixture/actual-claude costUsd=0`,
 		'reason: G1: Does the promotion stack with loyalty?',
 		'reason: G2: Which orders qualify for refunds?',
 	])
@@ -368,10 +395,19 @@ test('the npm CLI delegates through Pi and verifies a stage after more than 4 Mi
 		'pi',
 		`const { readFileSync, writeFileSync } = require('node:fs')
 const { execFileSync } = require('node:child_process')
+if (process.argv.includes('rpc')) {
+	const scope = process.argv[process.argv.indexOf('--models') + 1]
+	if (scope !== 'fixture-provider/**') throw new Error('Expected the requested provider scope')
+	const request = JSON.parse(readFileSync(0, 'utf8'))
+	const response = { type: 'response', id: request.id, success: true, data: { model: { provider: 'fixture-provider', id: 'native-default' } } }
+	writeFileSync(1, JSON.stringify(response) + '\\n')
+	process.exit(0)
+}
+const providerOnly = process.env.FAKE_PI_OUTPUT === 'provider-only'
 const response = (status, subject, reasons) => JSON.stringify({ status, subject, reasons })
 const event = (text, stopReason = 'stop') => console.log(JSON.stringify({
 	type: 'agent_end',
-	messages: [{ role: 'assistant', stopReason, content: [{ type: 'text', text }] }],
+	messages: [{ role: 'assistant', provider: providerOnly ? 'fixture-provider' : 'actual-provider', model: providerOnly ? 'native-default' : 'actual-model', usage: { cost: { total: 0.25 } }, stopReason, content: [{ type: 'text', text }] }],
 }))
 const fence = ${JSON.stringify('```')}
 const decision = response('needs_decision', 'checkout', ['No target instance.'])
@@ -382,7 +418,7 @@ if (process.env.FAKE_PI_OUTPUT === 'invalid') {
 	event(response('completed', 'checkout', [5]))
 } else if (process.env.FAKE_PI_OUTPUT === 'unrecorded') {
 	event(response('completed', 'checkout', []))
-} else if (process.env.FAKE_PI_OUTPUT === 'fenced') {
+} else if (process.env.FAKE_PI_OUTPUT === 'fenced' || providerOnly) {
 	event('  \\n' + fenced + '\\n  ')
 } else if (process.env.FAKE_PI_OUTPUT === 'trailing') {
 	event(fenced + '\\nThe stage needs a decision.')
@@ -411,7 +447,7 @@ if (process.env.FAKE_PI_OUTPUT === 'invalid') {
 			...process.env,
 			PATH: `${bin}:${process.env.PATH}`,
 			CHECKMATE_HARNESS: output === 'claude' ? 'claude' : undefined,
-			CHECKMATE_PI_MODEL: 'fixture-model',
+			CHECKMATE_PI_MODEL: output === 'provider-only' ? undefined : 'fixture-model',
 			CHECKMATE_PI_PROVIDER: 'fixture-provider',
 			FAKE_PI_OUTPUT: output,
 		}
@@ -439,7 +475,16 @@ if (process.env.FAKE_PI_OUTPUT === 'invalid') {
 		subject: 'checkout',
 		reasons: ['No target instance.'],
 		operation: null,
+		observedModels: ['actual-provider/actual-model'],
+		costUsd: 0.25,
 	})
+	assert.deepEqual(run('provider-only').observedModels, ['fixture-provider/native-default'])
+	assert.deepEqual(JSON.parse(readFileSync(join(workspace, 'pi-args.json'), 'utf8')).slice(3, 7), [
+		'--provider',
+		'fixture-provider',
+		'--model',
+		'native-default',
+	])
 	for (const output of ['trailing', 'multiple']) {
 		const result = run(output)
 		assert.equal(result.status, 'operational_error')
@@ -449,6 +494,8 @@ if (process.env.FAKE_PI_OUTPUT === 'invalid') {
 	const saved = run('recorded')
 	assert.equal(saved.subject, 'checkout@1')
 	assert.equal(saved.status, 'needs_decision')
+	assert.deepEqual(saved.observedModels, ['actual-provider/actual-model'])
+	assert.equal(saved.costUsd, 0.25)
 	const [operation] = query<{ id: string; actor: string }>(
 		workspace,
 		"SELECT id, actor FROM operations WHERE command = 'plan save' AND status != 'rejected'"
@@ -510,9 +557,23 @@ test('Pi recovers a malformed reply only from the delegated stage write', async 
 			end: 'setInterval(() => {}, 1000)',
 			reason: 'Worker deadline exceeded',
 			interrupted: true,
+			partial: true,
+		},
+		{
+			name: 'output beyond the cap',
+			end: `const { once } = require('node:events')
+async function send() {
+	const chunk = JSON.stringify({ type: 'tool_execution_update', result: 'x'.repeat(1024 * 1024) }) + '\\n'
+	for (let index = 0; index < 101; index++) {
+		if (!process.stdout.write(chunk)) await once(process.stdout, 'drain')
+	}
+}
+send()`,
+			reason: 'Worker output exceeds 100 MiB',
+			partial: true,
 		},
 	]
-	for (const { name, planId, writer, content, end, reason, interrupted } of cases)
+	for (const { name, planId, writer, content, end, reason, interrupted, partial } of cases)
 		await t.test(name, async (scenario) => {
 			const workspace = requested(scenario)
 			const opened = store(scenario, workspace)
@@ -532,7 +593,7 @@ execFileSync(process.execPath, ${JSON.stringify(saveArgs)}, { input: ${JSON.stri
 				`${save}
 console.log(JSON.stringify({
 	type: 'agent_end',
-	messages: [{ role: 'assistant', stopReason: 'stop', content: [{ type: 'text', text: ${JSON.stringify(content ?? 'The plan is saved.')} }] }],
+	messages: [{ role: 'assistant', provider: 'actual-provider', model: 'actual-model', usage: { cost: { total: 0 } }, stopReason: 'stop', content: [{ type: 'text', text: ${JSON.stringify(content ?? 'The plan is saved.')} }] }],
 }))
 ${end ?? ''}`
 			)
@@ -540,8 +601,13 @@ ${end ?? ''}`
 				allowedTools: [],
 				pluginRoot,
 				pi,
-				timeoutSeconds: interrupted ? 2 : 5,
+				timeoutSeconds: interrupted ? 2 : 20,
 			})
+			const usage = {
+				observedModels: ['actual-provider/actual-model'],
+				costUsd: 0,
+				...(partial ? { costPartial: true } : {}),
+			}
 			const writes = query<{ id: string; actor: string; status: string }>(
 				workspace,
 				"SELECT id, actor, status FROM operations WHERE command = 'plan save'"
@@ -553,12 +619,26 @@ ${end ?? ''}`
 					subject: 'checkout',
 					reasons: [reason],
 					operation: null,
+					...usage,
 				})
 			} else {
 				assert.equal(result.status, 'needs_decision')
 				assert.equal(result.subject, 'checkout@1')
 				assert.deepEqual(writes[0], { id: result.operation, actor: 'pi:plan', status: result.status })
+				assert.deepEqual(result.observedModels, usage.observedModels)
+				assert.equal(result.costUsd, usage.costUsd)
 			}
+			const [attempt] = attempts(workspace, 'plan:checkout')
+			assert.equal(attempt.actor, 'checkmate:delegate')
+			assert.equal(attempt.command, 'delegate plan')
+			assert.equal(attempt.status, result.status)
+			assert.deepEqual(attempt.arguments, { harness: 'pi', subject: 'checkout' })
+			assert.deepEqual(attempt.response, {
+				status: result.status,
+				subject: result.subject,
+				reasons: [],
+				data: { operation: result.operation, ...usage },
+			})
 		})
 })
 
@@ -589,7 +669,10 @@ test('a lock gives operational_error: retry before the worker, read the record a
 		)
 	)
 	const { workspace, session } = started(t)
-	const quits = claude(workspace, `reply({ status: 'completed', subject: 'run-1', reasons: [] })`)
+	const quits = claude(
+		workspace,
+		`reply({ status: 'completed', subject: 'run-1', reasons: [] }, { total_cost_usd: 0 })`
+	)
 	const pending = delegate(workspace, 'execute', 'run-1', {
 		allowedTools: rules,
 		pluginRoot,
@@ -609,10 +692,33 @@ test('a lock gives operational_error: retry before the worker, read the record a
 			resumeReason('run-1'),
 		],
 		operation: null,
+		costUsd: 0,
+		usageWarning: 'Checkmate could not record the delegated worker attempt.',
 	})
+	assert.deepEqual(attempts(workspace, 'run:run-1'), [])
 	assert.equal(await refused, `operational_error checkout\nreason: database is locked\nreason: ${busyReason}\n`)
 	releaseEarly()
 	assert.equal(existsSync(join(early, 'args.json')), false)
+})
+
+test('a refused attempt record preserves the verified response and its usage', async (t) => {
+	const workspace = requested(t)
+	const opened = openStore(workspace)
+	opened.db.exec(`CREATE TRIGGER reject_delegate_attempt BEFORE INSERT ON operations
+		WHEN new.command = 'delegate plan' BEGIN SELECT RAISE(ABORT, 'Cannot record the attempt'); END`)
+	closeStore(opened)
+	const saves = claude(
+		workspace,
+		`const out = checkmate(['plan', 'save', 'checkout', '--json'], ${JSON.stringify(JSON.stringify(candidate()))})
+const { status, subject, reasons } = JSON.parse(out)
+reply({ status, subject, reasons }, { total_cost_usd: 0.5 })`
+	)
+	const receipt = await delegate(workspace, 'plan', 'checkout', { allowedTools: rules, pluginRoot, claude: saves })
+	assert.equal(receipt.status, 'needs_decision')
+	assert.ok(receipt.operation)
+	assert.equal(receipt.costUsd, 0.5)
+	assert.match(receipt.usageWarning ?? '', /could not record the delegated worker attempt/)
+	assert.deepEqual(attempts(workspace, 'plan:checkout'), [])
 })
 
 test('delegate revise needs every pending decision applied', async (t) => {

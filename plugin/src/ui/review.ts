@@ -256,6 +256,7 @@ export function reviewOf(store: Store, planId: string) {
 		target: `${target.profile.targetId}@${target.revision}`,
 		revision: latest?.latestRevision ?? null,
 		sha: latest?.sha256 ?? '',
+		latestFinalizedRun: latest?.runs.findLast((run) => run.state === 'finalized') ?? null,
 		map,
 		areas: areasOf(map),
 		items,

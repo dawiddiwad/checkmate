@@ -37,7 +37,7 @@ import {
 import { needsYou } from '../plugin/src/views.ts'
 import { chatOf, listedChats } from '../plugin/src/requests.ts'
 import { fakeClaude } from './claude.ts'
-import { copied, directory, evidenceFile, root } from './support.ts'
+import { copied, defectRun, directory, evidenceFile, passRun, regressionPlan, root } from './support.ts'
 
 const payload = '<script>alert("gap")</script>'
 
@@ -735,6 +735,33 @@ test('the plan list and the plan page show the loop state and who it waits on', 
 		checkout,
 		/<div class="next-line" data-region="next">\s*<span class="loop"\s*><span class="sp-pill amber" data-status="needs_answers"><span aria-hidden="true">\?<\/span> needs answers<\/span> <span class="muted small">waits on oracle<\/span>/
 	)
+})
+
+test('the Plans card counts stored defects and shows the finalized build before and after a passing retest', async (t) => {
+	const workspace = directory(t)
+	read(workspace, (store) => {
+		regressionPlan(store)
+		assert.equal(defectRun(store, 'run-1', 'build-1').status, 'completed')
+	})
+	const ui = await startUi({ workspace, defaultActor: '' })
+	t.after(() => ui.close())
+	const card = async () => {
+		const { body, status } = await call(ui, '/')
+		assert.equal(status, 200)
+		return body.match(/data-key="plan:checkout"[\s\S]*?(?=data-key=")/)![0]
+	}
+	const failed = await card()
+	assert.match(failed, /data-status="defects_open"/)
+	assert.match(failed, /<b[^>]*>1<\/b><span>defects<\/span>/)
+	assert.match(failed, /Build build-1: 1 failed, 1 passed\./)
+	read(workspace, (store) => {
+		const retest = passRun(store, 'run-2', 'build-2', ['T1', 'T2'], { retestOf: 'run-1' })
+		assert.equal(retest.status, 'completed')
+	})
+	const fixed = await card()
+	assert.match(fixed, /data-status="awaits_acceptance"/)
+	assert.match(fixed, /<b[^>]*>0<\/b><span>defects<\/span>/)
+	assert.match(fixed, /Build build-2: 2 passed\./)
 })
 
 test('a started retest keeps the run that status waits on in the inbox and on its run page', async (t) => {

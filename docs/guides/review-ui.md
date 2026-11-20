@@ -47,6 +47,8 @@ When a page or a list has nothing to show, it says what is empty and gives the o
 
 The home page, `/`. It shows one row for each plan: the plan ID, the [loop state](../reference/commands.md#loop-states) and the role that it waits on, the latest build, the objective, one sentence about the latest build, a small map of the rules against the last two builds, and the counts of defects, findings to look at, open questions, and defects handed over. Option `1` opens the step that waits for you, for example `Answer 4 blocking questions`. A plan with a test in progress shows `Testing`, the step, and the time since the start. A plan whose last test was stopped or interrupted shows `stopped` or `interrupted`. The row `Testers now` of the navigator shows the same step and time. The plans that wait for you are first, and the plan with the most recent activity is first among them. The other plans follow. Click a row, or press `→` or `Enter`, to open the plan. When you go back from a plan, the home page highlights that plan.
 
+The defect count includes open defects from stored runs and explorations. When a plan has only stored runs, its summary shows the build and outcome of the latest finalized run.
+
 The row `New change` is after the plans. It opens the new-change form. When the record has no target, the home page is the first-run form. When the record has a target and no plan, the home page is the new-change form. See [Start from nothing](#start-from-nothing).
 
 The old addresses `/plans`, `/inbox`, and `/claims` open the home page. `/claims?plan=<planId>` opens `All items` of the plan. An old link `/?item=<item>` opens the item in its plan.

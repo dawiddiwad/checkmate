@@ -23501,6 +23501,7 @@ function reviewOf(store, planId) {
     target: `${target.profile.targetId}@${target.revision}`,
     revision: latest?.latestRevision ?? null,
     sha: latest?.sha256 ?? "",
+    latestFinalizedRun: latest?.runs.findLast((run2) => run2.state === "finalized") ?? null,
     map,
     areas: areasOf(map),
     items,
@@ -25252,15 +25253,23 @@ var roleWords = {
   factory: "the factory",
   none: "nobody"
 };
-function tile(review, loop2, cost, index2) {
+function runHeadline(run2) {
+  const counts2 = Object.entries(run2.counts).map(([outcome2, count2]) => `${count2} ${words(outcome2)}`);
+  const outcome = run2.completion === "completed" && counts2.length ? counts2.join(", ") : words(run2.completion ?? "finalized");
+  return `Build ${run2.build}: ${outcome}.`;
+}
+function tile(review, plan, runDefects, index2) {
+  const { loop: loop2, costUsd, costPartial } = plan;
   const verdict = verdictLine(review);
   const handed = review.items.filter((item) => item.kind === "defect" && item.claim?.handoff).length;
   const latest = review.map.builds.at(-1);
   const [label, href] = nextStep(review);
   const last = review.explorations.at(-1);
   const ended = !review.running && last && ["stopped", "interrupted"].includes(last.state) ? last : null;
+  const run2 = review.latestFinalizedRun;
+  const headline = !latest && !review.running && !ended && run2 ? runHeadline(run2) : verdict.head;
   const nums = [
-    [verdict.defects, "defects", false],
+    [verdict.defects + runDefects, "defects", false],
     [verdict.findings, "to look at", verdict.findings > 0],
     [verdict.open, "questions", verdict.blocking > 0],
     [handed, "handed over", false]
@@ -25290,9 +25299,9 @@ function tile(review, loop2, cost, index2) {
 				>
 			</div>
 			<h2 class="sp-ct-title ell" title="${review.objective}">${review.objective}</h2>
-			<p class="sp-ct-verdict"><b>${verdict.head}</b> ${verdict.tail}</p>
+			<p class="sp-ct-verdict"><b>${headline}</b> ${verdict.tail}</p>
 			<p class="sp-ct-cost" title="Reported cost across this plan’s explorations and chats">
-				Total cost ${costText(cost.costUsd, cost.costPartial)}
+				Total cost ${costText(costUsd, costPartial)}
 			</p>
 		</div>
 		${miniMap(review)}
@@ -25327,6 +25336,9 @@ function newChangeRow(index2) {
 	</div>`;
 }
 function homePage(store) {
+  const runDefects = /* @__PURE__ */ new Map();
+  for (const { planId } of findingList(store, { open: true }))
+    runDefects.set(planId, (runDefects.get(planId) ?? 0) + 1);
   const latest = (review, since) => [since, ...review.explorations.map((item) => item.startedAt)].sort().at(-1);
   const listed = planList(store).map((plan) => {
     const review = reviewOf(store, plan.planId);
@@ -25339,7 +25351,9 @@ function homePage(store) {
   const reviews = listed.map((each) => each.review);
   const blocking = reviews.reduce((sum, review) => sum + verdictLine(review).blocking, 0);
   const body = html2`<div class="sp-home" role="list" aria-label="Plans" data-list>
-		${reviews.map((review, index2) => tile(review, plans[index2].loop, plans[index2], index2))}${newChangeRow(reviews.length)}
+		${listed.map(({ plan, review }, index2) => tile(review, plan, runDefects.get(plan.planId) ?? 0, index2))}${newChangeRow(
+    reviews.length
+  )}
 	</div>`;
   return {
     title: "Plans",

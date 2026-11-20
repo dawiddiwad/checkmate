@@ -2,7 +2,8 @@ import type { Store } from '../store.ts'
 import type { Page } from './layout.ts'
 import type { Review } from './review.ts'
 import type { CellStatus } from '../rulemap.ts'
-import { planList } from '../views.ts'
+import type { PlanListRow } from '../views.ts'
+import { findingList, planList } from '../views.ts'
 import { costText, duration, glyph, html, pill, plural, time, words } from './html.ts'
 import { heading } from './layout.ts'
 import { buildLabel, outside, reviewHref, reviewOf, verdictLine } from './review.ts'
@@ -71,20 +72,25 @@ const roleWords: Record<string, string> = {
 	none: 'nobody',
 }
 
-function tile(
-	review: Review,
-	loop: { state: string; waitsOn: string } | undefined,
-	cost: { costUsd: number | null; costPartial: boolean },
-	index: number
-) {
+function runHeadline(run: NonNullable<Review['latestFinalizedRun']>) {
+	const counts = Object.entries(run.counts).map(([outcome, count]) => `${count} ${words(outcome)}`)
+	const outcome =
+		run.completion === 'completed' && counts.length ? counts.join(', ') : words(run.completion ?? 'finalized')
+	return `Build ${run.build}: ${outcome}.`
+}
+
+function tile(review: Review, plan: PlanListRow, runDefects: number, index: number) {
+	const { loop, costUsd, costPartial } = plan
 	const verdict = verdictLine(review)
 	const handed = review.items.filter((item) => item.kind === 'defect' && item.claim?.handoff).length
 	const latest = review.map.builds.at(-1)
 	const [label, href] = nextStep(review)
 	const last = review.explorations.at(-1)
 	const ended = !review.running && last && ['stopped', 'interrupted'].includes(last.state) ? last : null
+	const run = review.latestFinalizedRun
+	const headline = !latest && !review.running && !ended && run ? runHeadline(run) : verdict.head
 	const nums: Array<[number, string, boolean]> = [
-		[verdict.defects, 'defects', false],
+		[verdict.defects + runDefects, 'defects', false],
 		[verdict.findings, 'to look at', verdict.findings > 0],
 		[verdict.open, 'questions', verdict.blocking > 0],
 		[handed, 'handed over', false],
@@ -128,9 +134,9 @@ function tile(
 				>
 			</div>
 			<h2 class="sp-ct-title ell" title="${review.objective}">${review.objective}</h2>
-			<p class="sp-ct-verdict"><b>${verdict.head}</b> ${verdict.tail}</p>
+			<p class="sp-ct-verdict"><b>${headline}</b> ${verdict.tail}</p>
 			<p class="sp-ct-cost" title="Reported cost across this plan’s explorations and chats">
-				Total cost ${costText(cost.costUsd, cost.costPartial)}
+				Total cost ${costText(costUsd, costPartial)}
 			</p>
 		</div>
 		${miniMap(review)}
@@ -167,6 +173,9 @@ function newChangeRow(index: number) {
 }
 
 export function homePage(store: Store): Page {
+	const runDefects = new Map<string, number>()
+	for (const { planId } of findingList(store, { open: true }))
+		runDefects.set(planId, (runDefects.get(planId) ?? 0) + 1)
 	const latest = (review: ReturnType<typeof reviewOf>, since: string) =>
 		[since, ...review.explorations.map((item) => item.startedAt)].sort().at(-1)!
 	const listed = planList(store).map((plan) => {
@@ -181,7 +190,9 @@ export function homePage(store: Store): Page {
 	const reviews = listed.map((each) => each.review)
 	const blocking = reviews.reduce((sum, review) => sum + verdictLine(review).blocking, 0)
 	const body = html`<div class="sp-home" role="list" aria-label="Plans" data-list>
-		${reviews.map((review, index) => tile(review, plans[index].loop, plans[index], index))}${newChangeRow(reviews.length)}
+		${listed.map(({ plan, review }, index) => tile(review, plan, runDefects.get(plan.planId) ?? 0, index))}${newChangeRow(
+			reviews.length
+		)}
 	</div>`
 	return {
 		title: 'Plans',

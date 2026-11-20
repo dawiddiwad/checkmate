@@ -295,8 +295,8 @@ export function check(
 	})
 }
 
-export function passRun(store: Store, runId: string, build: string, tests = ['T1']) {
-	begin(store, runId, tests, build)
+export function passRun(store: Store, runId: string, build: string, tests = ['T1'], extra = {}) {
+	begin(store, runId, tests, build, extra)
 	for (const testId of tests) {
 		for (const assertionId of ['A1', 'A2']) check(store, runId, `${testId}.${assertionId}`, 'passed')
 		closeTest(store, actor, { runId, testId })

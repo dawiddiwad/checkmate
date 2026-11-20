@@ -566,7 +566,8 @@ function recordAttempt(
 	subject: string,
 	harness: Harness,
 	response: DelegateResponse,
-	usage: WorkerUsage
+	usage: WorkerUsage,
+	planId?: string
 ) {
 	const kind = stage === 'setup' ? 'target' : stage === 'execute' ? 'run' : 'plan'
 	try {
@@ -580,7 +581,7 @@ function recordAttempt(
 					reasons: [],
 					data: { operation: response.operation, ...usage },
 				},
-				subjects: [`${kind}:${subject}`],
+				subjects: [`${kind}:${subject}`, ...(planId ? [`plan:${planId}`] : [])],
 			})
 		)
 		return true
@@ -702,7 +703,7 @@ export async function delegate(
 	try {
 		return withStore(workspace, (store) => {
 			const response = receipt(verify(store, stage, subject, after, workerActor))
-			const recorded = !attempted || recordAttempt(store, stage, subject, harness, response, usage)
+			const recorded = !attempted || recordAttempt(store, stage, subject, harness, response, usage, run?.plan_id)
 			return { ...response, ...usage, ...(recorded ? {} : { usageWarning }) }
 		})
 	} catch (error) {

@@ -10,7 +10,7 @@ import { banner, crumbBar, downloads } from './layout.ts'
 import type { EvidenceFile } from './evidence.ts'
 import { emptyState, recordPanel, returnFields, verdictPanel } from './forms.ts'
 import { evidenceList, shownAsText } from './evidence.ts'
-import { counts, runStatus } from './lists.ts'
+import { counts, runStatus, runUsageLine } from './lists.ts'
 
 type Detail = ReturnType<typeof runDetail>
 type Evidence = Detail['tests'][number]['evidence'][number]
@@ -569,7 +569,9 @@ function summaryDetail(store: Store, context: Context, detail: Detail, state: Fo
 		: html`<span class="muted small">The report is ready when the run finishes.</span>`
 	return html`${crumbs}
 		<h2 class="q-h">Overview</h2>
-		${strip(detail)} ${detail.warnings.map((warning) => banner('warn', warning))} ${openChecks(detail)}
+		${strip(detail)}
+		<p class="muted small" data-region="run-usage">${runUsageLine(detail)}</p>
+		${detail.warnings.map((warning) => banner('warn', warning))} ${openChecks(detail)}
 		${decisionPanel(store, context, detail, state, returnFields({ key: 'summary' }, `/runs/${detail.runId}`))}
 		<div class="actions">${report}</div>`
 }

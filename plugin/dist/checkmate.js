@@ -14351,6 +14351,37 @@ function staleRequests(store) {
 
 // plugin/src/costs.ts
 var noModelCost = { costUsd: null, costPartial: false };
+var noRunUsage = { ...noModelCost, observedModels: [] };
+function delegateReceipts(store, { runId, planId, build }) {
+  return all(
+    store,
+    `SELECT r.run_id AS runId, r.plan_id AS planId, o.response -> '$.data' AS data
+		FROM operations o JOIN runs r ON r.run_id = json_extract(o.arguments, '$.subject')
+		WHERE o.command = 'delegate execute' AND o.actor = 'checkmate:delegate'
+		AND (? IS NULL OR r.run_id = ?) AND (? IS NULL OR r.plan_id = ?) AND (? IS NULL OR r.application_build = ?)
+		ORDER BY o.rowid`,
+    runId ?? null,
+    runId ?? null,
+    planId ?? null,
+    planId ?? null,
+    build ?? null,
+    build ?? null
+  ).map(({ data, ...row2 }) => ({ ...row2, usage: JSON.parse(data ?? "{}") ?? {} }));
+}
+function runUsages(store, filters) {
+  const byRun = /* @__PURE__ */ new Map();
+  for (const { runId, usage: usage2 } of delegateReceipts(store, filters)) {
+    const calls = byRun.get(runId) ?? [];
+    calls.push(usage2);
+    byRun.set(runId, calls);
+  }
+  return new Map(
+    [...byRun].map(([id2, calls]) => {
+      const { costUsd = null, costPartial = false, observedModels: observedModels2 = [] } = usageOf(calls);
+      return [id2, { costUsd, costPartial, observedModels: observedModels2 }];
+    })
+  );
+}
 var steps = ["end", "record", "rules", "merge", "verify", "follow-turn"];
 function addCost(total, status, attempted, value2, partial) {
   const amount2 = typeof value2 === "number" && Number.isFinite(value2) && value2 >= 0 ? value2 : null;
@@ -14387,18 +14418,26 @@ function groupedCosts(store, group, planId) {
     ...planId === void 0 ? [] : [planId]
   );
   const totals = /* @__PURE__ */ new Map();
-  for (const row2 of rows2) {
-    const total = totals.get(row2.key) ?? { amount: null, missing: false };
-    addCost(total, row2.status, Boolean(row2.attempted), row2.amount, row2.partial === 1);
-    totals.set(row2.key, total);
-  }
+  const totalFor = (key) => {
+    const total = totals.get(key) ?? { amount: null, missing: false };
+    totals.set(key, total);
+    return total;
+  };
+  for (const row2 of rows2)
+    addCost(totalFor(row2.key), row2.status, Boolean(row2.attempted), row2.amount, row2.partial === 1);
   if (group === "plan") {
     for (const chat of planChatsForCosts(store, planId)) {
       if (!chat.planId || !chat.turns.some((turn2) => turn2.startedAt)) continue;
-      const total = totals.get(chat.planId) ?? { amount: null, missing: false };
-      addCost(total, "completed", true, chat.costUsd, chat.costPartial);
-      totals.set(chat.planId, total);
+      addCost(totalFor(chat.planId), "completed", true, chat.costUsd, chat.costPartial);
     }
+    for (const receipt of delegateReceipts(store, { planId }))
+      addCost(
+        totalFor(receipt.planId),
+        "completed",
+        true,
+        receipt.usage.costUsd,
+        receipt.usage.costPartial === true
+      );
   }
   return new Map([...totals].map(([key, total]) => [key, costOf2(total)]));
 }
@@ -18999,6 +19038,7 @@ function runList(store, filters = {}) {
     filters.build ?? null,
     filters.build ?? null
   );
+  const usage2 = runUsages(store, filters);
   return rows2.map((row2) => ({
     runId: row2.run_id,
     planId: row2.plan_id,
@@ -19011,6 +19051,7 @@ function runList(store, filters = {}) {
     coverage: row2.coverage,
     sha256: row2.sha256,
     acceptance: row2.sha256 ? approvalLabel(resultAcceptance(store, row2, row2.sha256)) : null,
+    ...usage2.get(row2.run_id) ?? noRunUsage,
     counts: Object.fromEntries(
       all(
         store,
@@ -19068,6 +19109,7 @@ function runDetail(store, runId) {
   });
   return {
     runId,
+    ...runUsages(store, { runId }).get(runId) ?? noRunUsage,
     planId: run2.row.plan_id,
     revision: run2.row.plan_revision,
     planSha256: run2.row.plan_sha256,
@@ -19305,6 +19347,7 @@ function pagedRuns(store, query = {}) {
     `${row2.planId}@${row2.revision}`,
     row2.build,
     row2.instanceId,
+    ...row2.observedModels,
     ...Object.entries(row2.counts).map(([outcome, count2]) => `${count2} ${outcome}`),
     row2.completion,
     row2.coverage,
@@ -22534,6 +22577,15 @@ function runsSpec(store) {
     ]
   };
 }
+function runUsageLine({
+  observedModels: observedModels2,
+  costUsd,
+  costPartial
+}) {
+  const label = observedModels2.length > 1 ? "Models" : "Model";
+  return html2`${label} <code>${observedModels2.join(", ") || "Unknown"}</code> · Cost
+		<span ${costUsd === null ? "" : html2`title="Reported USD ${costUsd}"`}>${costText(costUsd, costPartial)}</span>`;
+}
 function runRow(row2) {
   return listRow(
     `run:${row2.runId}`,
@@ -22545,7 +22597,8 @@ function runRow(row2) {
 				<span class="muted"
 					>· build <code>${row2.build}</code> · ${row2.instanceId} ·
 					${row2.coverage ? `coverage ${words(row2.coverage)}` : "running"}</span
-				>`
+				>`,
+      html2`<span class="muted">${runUsageLine(row2)}</span>`
     ]
   );
 }
@@ -24496,7 +24549,9 @@ function panel(context, review, view, current, cost) {
 			${view === current ? html2`<h1 id="title-${slug(view)}" data-view-title>${title2}</h1>` : html2`<h2 id="title-${slug(view)}" data-view-title>${title2}</h2>`}
 			${head.sub ? html2`<p class="sp-sub">${head.sub}</p>` : ""}
 			<div class="sp-pills">${head.pills}</div>
-			<p class="sp-sub" title="Reported cost across this plan’s explorations and chats">Total cost ${cost}</p>
+			<p class="sp-sub" title="Reported cost across this plan’s explorations, chats, and structured runs">
+				Total cost ${cost}
+			</p>
 			${canChoose(view) ? html2`<p class="sp-sub att" data-build-note></p>` : ""}
 		</div>
 		<div class="sp-tools" data-actions>${tools}</div>
@@ -25633,7 +25688,7 @@ function tile(review, plan, runDefects, index2) {
 			</div>
 			<h2 class="sp-ct-title ell" title="${review.objective}">${review.objective}</h2>
 			<p class="sp-ct-verdict"><b>${verdict.head}</b> ${verdict.tail}</p>
-			<p class="sp-ct-cost" title="Reported cost across this plan’s explorations and chats">
+			<p class="sp-ct-cost" title="Reported cost across this plan’s explorations, chats, and structured runs">
 				Total cost ${costText(costUsd, costPartial)}
 			</p>
 		</div>
@@ -26378,7 +26433,10 @@ function planPage(store, context, planId, revision, state = null, allHistory = f
 		${pill(detail.approval.state)}
 		<span class="pill">target <span class="mono">${plan.target.targetId}@${plan.target.revision}</span></span>
 		<span class="pill" title="${detail.sha256}">sha256 <span class="mono">${short2(detail.sha256)}</span></span>
-		<span class="pill" data-region="plan-cost" title="Reported cost across this plan’s explorations and chats"
+		<span
+			class="pill"
+			data-region="plan-cost"
+			title="Reported cost across this plan’s explorations, chats, and structured runs"
 			>Total cost ${costText(cost.costUsd, cost.costPartial)}</span
 		>
 		<span class="head-actions">
@@ -27464,7 +27522,9 @@ function summaryDetail2(store, context, detail, state, crumbs) {
   ) : html2`<span class="muted small">The report is ready when the run finishes.</span>`;
   return html2`${crumbs}
 		<h2 class="q-h">Overview</h2>
-		${strip(detail)} ${detail.warnings.map((warning) => banner("warn", warning))} ${openChecks(detail)}
+		${strip(detail)}
+		<p class="muted small" data-region="run-usage">${runUsageLine(detail)}</p>
+		${detail.warnings.map((warning) => banner("warn", warning))} ${openChecks(detail)}
 		${decisionPanel(store, context, detail, state, returnFields({ key: "summary" }, `/runs/${detail.runId}`))}
 		<div class="actions">${report}</div>`;
 }

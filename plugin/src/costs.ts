@@ -1,10 +1,49 @@
 import type { ExplorationEvent } from './explorations.ts'
+import type { ChildCall } from './sessions.ts'
 import type { Store } from './store.ts'
 import { planChatsForCosts } from './requests.ts'
+import { usageOf } from './sessions.ts'
 import { all } from './store.ts'
 
 export type ModelCost = { costUsd: number | null; costPartial: boolean }
 export const noModelCost: ModelCost = { costUsd: null, costPartial: false }
+type RunUsage = ModelCost & { observedModels: string[] }
+export const noRunUsage: RunUsage = { ...noModelCost, observedModels: [] }
+
+type Usage = Pick<ChildCall, 'costUsd' | 'costPartial' | 'observedModels'>
+type RunFilters = { runId?: string; planId?: string; build?: string }
+
+function delegateReceipts(store: Store, { runId, planId, build }: RunFilters) {
+	return all<{ runId: string; planId: string; data: string | null }>(
+		store,
+		`SELECT r.run_id AS runId, r.plan_id AS planId, o.response -> '$.data' AS data
+		FROM operations o JOIN runs r ON r.run_id = json_extract(o.arguments, '$.subject')
+		WHERE o.command = 'delegate execute' AND o.actor = 'checkmate:delegate'
+		AND (? IS NULL OR r.run_id = ?) AND (? IS NULL OR r.plan_id = ?) AND (? IS NULL OR r.application_build = ?)
+		ORDER BY o.rowid`,
+		runId ?? null,
+		runId ?? null,
+		planId ?? null,
+		planId ?? null,
+		build ?? null,
+		build ?? null
+	).map(({ data, ...row }) => ({ ...row, usage: (JSON.parse(data ?? '{}') ?? {}) as Usage }))
+}
+
+export function runUsages(store: Store, filters: RunFilters) {
+	const byRun = new Map<string, Usage[]>()
+	for (const { runId, usage } of delegateReceipts(store, filters)) {
+		const calls = byRun.get(runId) ?? []
+		calls.push(usage)
+		byRun.set(runId, calls)
+	}
+	return new Map(
+		[...byRun].map(([id, calls]): [string, RunUsage] => {
+			const { costUsd = null, costPartial = false, observedModels = [] } = usageOf(calls)
+			return [id, { costUsd, costPartial, observedModels }]
+		})
+	)
+}
 
 const steps = ['end', 'record', 'rules', 'merge', 'verify', 'follow-turn']
 type Total = { amount: number | null; missing: boolean }
@@ -49,18 +88,26 @@ function groupedCosts(store: Store, group: 'plan' | 'exploration', planId?: stri
 		...(planId === undefined ? [] : [planId])
 	)
 	const totals = new Map<string, Total>()
-	for (const row of rows) {
-		const total = totals.get(row.key) ?? { amount: null, missing: false }
-		addCost(total, row.status, Boolean(row.attempted), row.amount, row.partial === 1)
-		totals.set(row.key, total)
+	const totalFor = (key: string) => {
+		const total = totals.get(key) ?? { amount: null, missing: false }
+		totals.set(key, total)
+		return total
 	}
+	for (const row of rows)
+		addCost(totalFor(row.key), row.status, Boolean(row.attempted), row.amount, row.partial === 1)
 	if (group === 'plan') {
 		for (const chat of planChatsForCosts(store, planId)) {
 			if (!chat.planId || !chat.turns.some((turn) => turn.startedAt)) continue
-			const total = totals.get(chat.planId) ?? { amount: null, missing: false }
-			addCost(total, 'completed', true, chat.costUsd, chat.costPartial)
-			totals.set(chat.planId, total)
+			addCost(totalFor(chat.planId), 'completed', true, chat.costUsd, chat.costPartial)
 		}
+		for (const receipt of delegateReceipts(store, { planId }))
+			addCost(
+				totalFor(receipt.planId),
+				'completed',
+				true,
+				receipt.usage.costUsd,
+				receipt.usage.costPartial === true
+			)
 	}
 	return new Map([...totals].map(([key, total]) => [key, costOf(total)]))
 }

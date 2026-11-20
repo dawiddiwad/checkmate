@@ -4,7 +4,7 @@ import type { Store } from './store.ts'
 import type { ExplorationEvent } from './explorations.ts'
 import type { Evidence, Row } from './journal.ts'
 import type { ModelCost } from './costs.ts'
-import { noModelCost, planCosts, planExplorationCosts } from './costs.ts'
+import { noModelCost, noRunUsage, planCosts, planExplorationCosts, runUsages } from './costs.ts'
 import { explorationStatus, followCount, running as alive, startOf, stopOf, stopPending } from './explorers.ts'
 import { exploration, explorationEvents } from './explorations.ts'
 import { factoryStates, isTester, journal, oracleStates, planClaims, planQuestions, shortName } from './journal.ts'
@@ -1228,6 +1228,7 @@ export function runList(store: Store, filters: { planId?: string; build?: string
 		filters.build ?? null,
 		filters.build ?? null
 	)
+	const usage = runUsages(store, filters)
 	return rows.map((row) => ({
 		runId: row.run_id,
 		planId: row.plan_id,
@@ -1240,6 +1241,7 @@ export function runList(store: Store, filters: { planId?: string; build?: string
 		coverage: row.coverage,
 		sha256: row.sha256,
 		acceptance: row.sha256 ? approvalLabel(resultAcceptance(store, row, row.sha256)) : null,
+		...(usage.get(row.run_id) ?? noRunUsage),
 		counts: Object.fromEntries(
 			all<{ outcome: string; count: number }>(
 				store,
@@ -1300,6 +1302,7 @@ export function runDetail(store: Store, runId: string) {
 		})
 	return {
 		runId,
+		...(runUsages(store, { runId }).get(runId) ?? noRunUsage),
 		planId: run.row.plan_id,
 		revision: run.row.plan_revision,
 		planSha256: run.row.plan_sha256,
@@ -1652,6 +1655,7 @@ export function pagedRuns(store: Store, query: ListQuery = {}) {
 		`${row.planId}@${row.revision}`,
 		row.build,
 		row.instanceId,
+		...row.observedModels,
 		...Object.entries(row.counts).map(([outcome, count]) => `${count} ${outcome}`),
 		row.completion,
 		row.coverage,

@@ -126,7 +126,7 @@ function tile(review: Review, plan: PlanListRow, runDefects: number, index: numb
 			</div>
 			<h2 class="sp-ct-title ell" title="${review.objective}">${review.objective}</h2>
 			<p class="sp-ct-verdict"><b>${verdict.head}</b> ${verdict.tail}</p>
-			<p class="sp-ct-cost" title="Reported cost across this plan’s explorations and chats">
+			<p class="sp-ct-cost" title="Reported cost across this plan’s explorations, chats, and structured runs">
 				Total cost ${costText(costUsd, costPartial)}
 			</p>
 		</div>

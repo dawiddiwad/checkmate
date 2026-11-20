@@ -205,7 +205,7 @@ A row shows its numbered options only when all of them fit in the row. When they
 
 `Activity` is also in the find bar. The list pages like `Log`: `↓` on the last row opens the next page.
 
-Each plan card and plan page shows the **Total cost** of its explorations and chats. Open a plan revision to see the **Cost** column for individual explorations. Open a chat to see its own cost. **Unknown** means no cost is available. **Partial** means some charges are missing.
+Each plan card and plan page shows the **Total cost** of its explorations, chats, and delegated run attempts. Open a plan revision to see the **Cost** column for individual explorations. Open a chat to see its own cost. The **Runs** list and each run overview show the models and cost reported for the run. **Unknown** means no cost is available. **Partial** means some charges are missing.
 
 ### Testers
 

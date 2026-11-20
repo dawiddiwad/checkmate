@@ -1,13 +1,54 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { explorationCost } from '../plugin/src/costs.ts'
+import { explorationCost, planCost } from '../plugin/src/costs.ts'
 import { explorationEvents } from '../plugin/src/explorations.ts'
 import { askRequest, listedChats, recordRequestEvent, requestOf, setRequestState } from '../plugin/src/requests.ts'
 import { openPlan } from '../plugin/src/plans.ts'
 import { completed, one, write } from '../plugin/src/store.ts'
-import { explorationLive, planExplorations, planList } from '../plugin/src/views.ts'
+import { explorationLive, planExplorations, planList, runDetail, runList } from '../plugin/src/views.ts'
 import { done, event, openTest } from './explorations.ts'
-import { actor, plan, planRequest, store, target } from './support.ts'
+import { actor, begin, delegateUsageReceipt, plan, planRequest, ready, store, target } from './support.ts'
+
+test('structured run receipts count once alongside exploration and chat usage', (t) => {
+	const opened = store(t)
+	ready(opened)
+	begin(opened, 'run-1', ['T1'], 'b1')
+	begin(opened, 'run-2', ['T1', 'T2'], 'b2')
+	openTest(opened, 'checkout', 'x-1', 'b1')
+	event(opened, 'x-1', { step: 'end', status: 'completed', detail: { costUsd: 0.5 } })
+	done(opened, 'x-1')
+	const chat = askRequest(opened, actor, {
+		text: 'What passed?',
+		chatId: null,
+		context: { planId: 'checkout', record: null },
+	})
+	setRequestState(opened, chat, 'running')
+	recordRequestEvent(
+		opened,
+		chat,
+		{ step: 'session', status: 'started', detail: { sessionId: 'chat' } },
+		{ subjects: [] }
+	)
+	setRequestState(opened, chat, 'answered', { costUsd: 0.125, costScope: 'turn' })
+	delegateUsageReceipt(opened, 'run-1', { observedModels: ['fixture/qa-local'], costUsd: 0.125 }, 'interrupted')
+	delegateUsageReceipt(opened, 'run-1', { observedModels: ['fixture/qa-local', 'fixture/second'], costUsd: 0.25 })
+	assert.deepEqual(planCost(opened, 'checkout'), { costUsd: 1, costPartial: false })
+	delegateUsageReceipt(opened, 'run-1', { observedModels: ['fixture/third'] }, 'operational_error')
+	delegateUsageReceipt(opened, 'run-2', { observedModels: ['fixture/qa-local'] })
+	const run = runDetail(opened, 'run-1')
+	assert.deepEqual(
+		[run.observedModels, run.costUsd, run.costPartial],
+		[['fixture/qa-local', 'fixture/second', 'fixture/third'], 0.375, true]
+	)
+	const [other] = runList(opened, { planId: 'checkout', build: 'b2' })
+	assert.deepEqual(
+		[other.runId, other.observedModels, other.costUsd, other.costPartial],
+		['run-2', ['fixture/qa-local'], null, false]
+	)
+	assert.deepEqual(planCost(opened, 'checkout'), { costUsd: 1, costPartial: true })
+	const [plan] = planList(opened)
+	assert.deepEqual([plan.costUsd, plan.costPartial], [1, true])
+})
 
 test('reported model costs roll up across exploration phases and plans', (t) => {
 	const opened = store(t)

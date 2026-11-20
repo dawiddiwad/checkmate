@@ -1,13 +1,14 @@
 import type { TestContext } from 'node:test'
 import type { PlanCandidate, PlanRequest, Profile } from '../plugin/src/types.ts'
-import type { Store } from '../plugin/src/store.ts'
+import type { Status, Store } from '../plugin/src/store.ts'
+import type { ChildCall } from '../plugin/src/sessions.ts'
 import assert from 'node:assert/strict'
 import { cpSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { closeStore, openStore } from '../plugin/src/store.ts'
+import { closeStore, openStore, write } from '../plugin/src/store.ts'
 import { addInstance, instanceList, openTarget, saveTarget } from '../plugin/src/targets.ts'
 import { answerGap, approvePlan, openPlan, planRevision, revisePlan, savePlan } from '../plugin/src/plans.ts'
 import {
@@ -273,6 +274,27 @@ export function begin(store: Store, runId = 'run-1', tests = ['T1', 'T2'], build
 	const reply = beginRun(store, actor, { runId, reference: 'checkout@2', tests, build, ...extra })
 	assert.equal(reply.status, 'completed', reply.reasons.join('; '))
 	return reply
+}
+
+export function delegateUsageReceipt(
+	store: Store,
+	runId: string,
+	usage: Pick<ChildCall, 'observedModels' | 'costUsd' | 'costPartial'>,
+	status: Status = 'completed'
+) {
+	write(
+		store,
+		{
+			actor: 'checkmate:delegate',
+			command: 'delegate execute',
+			subject: runId,
+			input: { subject: runId, harness: 'pi' },
+		},
+		() => ({
+			reply: { status, subject: runId, reasons: [], data: { operation: null, ...usage } },
+			subjects: [`run:${runId}`],
+		})
+	)
 }
 
 export function check(

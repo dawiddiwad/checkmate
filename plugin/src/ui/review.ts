@@ -1054,7 +1054,9 @@ function panel(context: Context, review: Review, view: string, current: string, 
 			}
 			${head.sub ? html`<p class="sp-sub">${head.sub}</p>` : ''}
 			<div class="sp-pills">${head.pills}</div>
-			<p class="sp-sub" title="Reported cost across this plan’s explorations and chats">Total cost ${cost}</p>
+			<p class="sp-sub" title="Reported cost across this plan’s explorations, chats, and structured runs">
+				Total cost ${cost}
+			</p>
 			${canChoose(view) ? html`<p class="sp-sub att" data-build-note></p>` : ''}
 		</div>
 		<div class="sp-tools" data-actions>${tools}</div>

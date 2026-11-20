@@ -50,6 +50,8 @@ Each write records one row: the time, the actor, the command, the flags and the 
 
 The launcher records each worker attempt as `delegate <stage>` with actor `checkmate:delegate`. Its arguments give the requested subject and the harness. Its `response.data` gives the verified stage `operation` ID or `null`, and the host-reported `observedModels`, `costUsd`, and `costPartial` when available. If the attempt record fails, the receipt includes a warning. In JSON, read `usageWarning`.
 
+The run read models use the saved `delegate execute` attempts. The JSON of `run show` and `run list` gives the observed model IDs, the sum of the reported costs, and whether some recorded attempts have missing or partial cost. Plan totals add each such attempt once, with the exploration and chat totals. The record keeps the attempt's usage outside the finalized result.
+
 Each row has a row ID. The row ID increases in the order of the writes. The last field of each line is the row ID. A decision line has its rationale before the row ID.
 
 ```sh

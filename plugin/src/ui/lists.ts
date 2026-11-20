@@ -3,7 +3,7 @@ import type { Html } from './html.ts'
 import type { Page } from './layout.ts'
 import type { ListPage, ListQuery } from '../views.ts'
 import { operationLog, pagedOperations, pagedRuns, planList, runList } from '../views.ts'
-import { glyph, html, join, pill, pillClass, plural, time, words } from './html.ts'
+import { costText, glyph, html, join, pill, pillClass, plural, time, words } from './html.ts'
 import { emptyNotice, heading } from './layout.ts'
 
 export function loopState(loop: { state: string; waitsOn: string }) {
@@ -301,6 +301,16 @@ export function runsSpec(store: Store): ListSpec {
 
 type RunRow = ReturnType<typeof pagedRuns>['rows'][number]
 
+export function runUsageLine({
+	observedModels,
+	costUsd,
+	costPartial,
+}: Pick<RunRow, 'observedModels' | 'costUsd' | 'costPartial'>) {
+	const label = observedModels.length > 1 ? 'Models' : 'Model'
+	return html`${label} <code>${observedModels.join(', ') || 'Unknown'}</code> · Cost
+		<span ${costUsd === null ? '' : html`title="Reported USD ${costUsd}"`}>${costText(costUsd, costPartial)}</span>`
+}
+
 function runRow(row: RunRow) {
 	return listRow(
 		`run:${row.runId}`,
@@ -313,6 +323,7 @@ function runRow(row: RunRow) {
 					>· build <code>${row.build}</code> · ${row.instanceId} ·
 					${row.coverage ? `coverage ${words(row.coverage)}` : 'running'}</span
 				>`,
+			html`<span class="muted">${runUsageLine(row)}</span>`,
 		]
 	)
 }

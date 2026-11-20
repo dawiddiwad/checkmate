@@ -37,7 +37,16 @@ import {
 import { needsYou } from '../plugin/src/views.ts'
 import { chatOf, listedChats } from '../plugin/src/requests.ts'
 import { fakeClaude } from './claude.ts'
-import { copied, defectRun, directory, evidenceFile, passRun, regressionPlan, root } from './support.ts'
+import {
+	copied,
+	defectRun,
+	delegateUsageReceipt,
+	directory,
+	evidenceFile,
+	passRun,
+	regressionPlan,
+	root,
+} from './support.ts'
 
 const payload = '<script>alert("gap")</script>'
 
@@ -777,6 +786,25 @@ test('the plan card and review views show the latest finalized run of a plan wit
 		assert(panel.includes(summary), view)
 		assert.doesNotMatch(page.body, /data-panel="build:fixture-build-2"/)
 	}
+})
+
+test('the structured run pages show reported usage and the plan card includes its cost', async (t) => {
+	const { ui, workspace } = await start(t)
+	read(workspace, (store) =>
+		delegateUsageReceipt(store, 'run-7', {
+			observedModels: ['fixture/qa-local'],
+			costUsd: 0.0000384,
+		})
+	)
+	for (const path of ['/runs/run-7', '/runs?plan=checkout']) {
+		const page = await call(ui, path)
+		assert.equal(page.status, 200)
+		assert.match(page.body, /fixture\/qa-local/)
+		assert.match(page.body, /&lt;\$0\.01/)
+	}
+	const home = await call(ui, '/')
+	const card = home.body.match(/data-key="plan:checkout"[\s\S]*?(?=data-key=")/)![0]
+	assert.match(card, /Total cost &lt;\$0\.01/)
 })
 
 test('a started retest keeps the run that status waits on in the inbox and on its run page', async (t) => {

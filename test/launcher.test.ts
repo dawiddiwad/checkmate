@@ -867,6 +867,10 @@ reply({ status, subject, reasons })`
 		}
 	)
 	assert.equal(typeof result.data!.coverage, 'string')
+	assert.deepEqual(
+		attempts(workspace, 'plan:checkout').map(({ command }) => command),
+		['delegate execute']
+	)
 	assert.match(String(result.data!.sha256), /^[a-f0-9]{64}$/)
 	const printed = formatReply('run finish', { ...result, data: result.data! }, false).split('\n')
 	assert.match(printed[0], /^completed run-1 coverage=\S+ sha256=[a-f0-9]{8}$/)

@@ -3494,7 +3494,7 @@ main a:active {
 }
 .chat-sidebar-header,
 .chat-thread-header {
-	min-height: 3.25rem;
+	min-height: 3.375rem;
 	padding: 0.75rem 1rem;
 	border-bottom: 1px solid var(--hair);
 }

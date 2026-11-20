@@ -304,6 +304,11 @@ test('arrows navigate from the plan to its chat list, turns, and back', browserT
 		const [left, right] = await Promise.all([sidebar.boundingBox(), thread.boundingBox()])
 		assert.equal(left!.x + left!.width, right!.x)
 		assert.equal(left!.y, right!.y)
+		const [listHeader, threadHeader] = await Promise.all([
+			sidebar.locator('.chat-sidebar-header').boundingBox(),
+			thread.locator('.chat-thread-header').boundingBox(),
+		])
+		assert.equal(listHeader!.y + listHeader!.height, threadHeader!.y + threadHeader!.height)
 		assert.equal(await sidebar.locator('[aria-current="page"]').getAttribute('data-key'), `chat:${chatId}`)
 		await otherChat.focus()
 		await page.keyboard.press('ArrowDown')

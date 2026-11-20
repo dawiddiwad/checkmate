@@ -18,7 +18,7 @@ import {
 } from 'node:fs'
 import { createRequire } from 'node:module'
 import { homedir } from 'node:os'
-import { delimiter, join } from 'node:path'
+import { delimiter, dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 export type Env = Record<string, string | undefined>
@@ -66,7 +66,7 @@ export type ChildCall = {
 	stderr?: string[]
 }
 
-const moduleRoot = fileURLToPath(new URL('..', import.meta.url))
+const moduleRoot = dirname(dirname(fileURLToPath(import.meta.url)))
 export const pluginRoot = existsSync(join(moduleRoot, '.claude-plugin', 'plugin.json'))
 	? moduleRoot
 	: join(moduleRoot, 'plugin')

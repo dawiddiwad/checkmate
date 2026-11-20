@@ -8696,7 +8696,7 @@ import {
 } from "node:fs";
 import { createRequire } from "node:module";
 import { homedir } from "node:os";
-import { delimiter, join as join2 } from "node:path";
+import { delimiter, dirname, join as join2 } from "node:path";
 import { fileURLToPath } from "node:url";
 var hookTokenName = "CHECKMATE_HOOK_TOKEN";
 var permissionTimeoutSeconds = 600;
@@ -8719,7 +8719,7 @@ function workDenyRules(otherFolders) {
     ...otherFolders.flatMap((folder) => [`Read(./${folder}/**)`, `Edit(./${folder}/**)`])
   ];
 }
-var moduleRoot = fileURLToPath(new URL("..", import.meta.url));
+var moduleRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 var pluginRoot = existsSync(join2(moduleRoot, ".claude-plugin", "plugin.json")) ? moduleRoot : join2(moduleRoot, "plugin");
 var maxOutputBytes = 4 * 1024 * 1024;
 var reservedClaudeArgs = [
@@ -28667,7 +28667,7 @@ data: ${matched.join(",") || "*"}
 
 // plugin/src/agents.ts
 import { mkdirSync as mkdirSync8, readFileSync as readFileSync8, rmSync as rmSync7, writeFileSync as writeFileSync5 } from "node:fs";
-import { dirname, join as join13 } from "node:path";
+import { dirname as dirname2, join as join13 } from "node:path";
 var testerAgent = "checkmate:tester";
 var clerkAgent = "checkmate:clerk";
 var doneSteps = ["study", "test", "record", "follow", "rules", "merge", "verify"];
@@ -28875,7 +28875,7 @@ function lineOf(explorationId, action2) {
 }
 function writeFile(store, path, text) {
   const full = join13(store.workspace, path);
-  mkdirSync8(dirname(full), { recursive: true });
+  mkdirSync8(dirname2(full), { recursive: true });
   writeFileSync5(full, text.endsWith("\n") ? text : `${text}
 `);
 }
@@ -29305,7 +29305,7 @@ function stepDone(store, actor, input) {
 
 // plugin/src/cli.ts
 import { mkdirSync as mkdirSync9, readFileSync as readFileSync9, writeFileSync as writeFileSync6 } from "node:fs";
-import { dirname as dirname2, join as join14, resolve as resolve7 } from "node:path";
+import { dirname as dirname3, join as join14, resolve as resolve7 } from "node:path";
 import { constants as constants2 } from "node:sqlite";
 var testFields2 = [
   "title",
@@ -30986,7 +30986,7 @@ function printPlan(reply) {
 }
 function writeOutput(store, out, content) {
   const path = resolve7(store.workspace, out);
-  mkdirSync9(dirname2(path), { recursive: true });
+  mkdirSync9(dirname3(path), { recursive: true });
   try {
     writeFileSync6(path, content, { flag: "wx" });
   } catch (error) {

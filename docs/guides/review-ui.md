@@ -118,7 +118,7 @@ The page gets the text from `/plans/<planId>/defects.txt?claim=<claimId>` (one `
 
 ### Find
 
-`/`, `Ctrl` `K`, or `Find` in the status bar opens the find bar. Type words to find plans, claims, and questions of all plans that contain each word. The bar shows the first 12 results and the number of other results. `↑` and `↓` move in the results. When you change the query, the bar clears the old results. `Enter` opens the highlighted result when the query has text and the results are ready. `←` and `→` move the caret. `Esc` closes the bar. When the text has a word, the last row is `Ask Checkmate: <text>`. It is the highlighted row when nothing matches. See [Chats](#chats).
+`/`, `Ctrl` `K`, or `Find` in the status bar opens the find bar. Type words to find plans, claims, and questions of all plans that contain each word. The bar shows the first 12 results and the number of other results. `↑` and `↓` move in the results. When you change the query, the bar clears the old results. `Enter` opens the highlighted result when the results are ready. `←` and `→` move the caret. `Esc` closes the bar. When the text has a word, the last row is `Ask Checkmate: <text>`. It is the highlighted row when nothing matches. See [Chats](#chats).
 
 ### A record
 
@@ -261,6 +261,8 @@ A chat asks in the same way. The record shows the tool and a link to the chat. T
 ### Chats
 
 Choose **Plan chats** on a plan to start or resume a conversation about that plan. The agent starts with the plan and its records. Chats belong to the plan across revisions, and their cost counts toward its total. The **Chats** button in the status bar lists all conversations.
+
+Use `↑` and `↓` to move through the navigator, the chats, or the turns of a conversation. Press `→` or `Enter` to open the highlighted item. Press `←` or `Esc` to go back. Use `Tab` to reach links and the composer. In the message field, `Ctrl` `Enter` or `⌘` `Enter` sends the message. `Esc` leaves the field and keeps the draft.
 
 From a plan, run, exploration, or list, you can also open **Find** and choose **Ask Checkmate**. The chat keeps that screen as its starting context. When this context identifies a plan, the chat also appears on that plan. **Find** continues the conversation when you already have a chat open. The agent can read related workspace records when needed.
 

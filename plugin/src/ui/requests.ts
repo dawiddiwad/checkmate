@@ -166,17 +166,18 @@ export function chatMessagePage(store: Store, context: Context, request: Request
 	const ended = isEnded(request)
 	const { planId, planRevision, planChat } = request.context
 	const plan = planChat ? `/plans/${planId}${planRevision ? `@${planRevision}` : ''}` : null
-	const back = plan ? `${plan}?chat=${request.conversation}` : `/chats/${request.conversation}`
+	const chat = plan ? `${plan}?chat=${request.conversation}` : `/chats/${request.conversation}`
+	const back = `${chat}${plan ? '&' : '?'}at=${encodeURIComponent(`request:${requestId}`)}`
 	const details = `/chats/${request.conversation}/messages/${requestId}`
 	const again = formOption(
 		context,
-		plan ? `${plan}/chats/${request.conversation}/turns` : `${back}/turns`,
+		plan ? `${plan}/chats/${request.conversation}/turns` : `${chat}/turns`,
 		request.state === 'failed' ? 1 : 2,
 		'Ask again',
 		'Send this message again in the same chat.',
 		[
 			['text', request.text],
-			['return', back],
+			['return', chat],
 		]
 	)
 	const options = !ended
@@ -215,7 +216,7 @@ export function chatMessagePage(store: Store, context: Context, request: Request
 			data-region="request-record"
 			data-drawer
 			data-back="${back}"
-			data-chat-back="${back}"
+			data-chat-back="${chat}"
 			data-key="request:${requestId}"
 		>
 			${crumbBar([

@@ -1489,14 +1489,13 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 				[path.slice('/plans/'.length), back],
 				['Plan chats', null],
 			],
-			back,
 			drawer: false,
 			subjects: [
 				...page.subjects,
 				'chats',
 				...chats.flatMap((item) => item.turns.map((turn) => `request:${turn.id}`)),
 			],
-			body: planChat(store, shown, env, { path, params, chats, chat, fresh }),
+			...planChat(store, shown, env, { path, params, chats, chat, fresh }),
 		})
 	}
 

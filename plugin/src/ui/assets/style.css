@@ -3514,6 +3514,15 @@ main a:active {
 .chat-list-item:hover {
 	background: var(--row-hover);
 }
+.chat-list-item.hl,
+.chat-thread-heading .btn.hl,
+.chat-list-actions .btn.hl {
+	background: var(--select-bg);
+	color: var(--select-ink);
+}
+.chat-list-item.hl span {
+	color: var(--select-muted);
+}
 .chat-list-item span,
 .chat-meta {
 	font-size: 0.85rem;
@@ -3549,6 +3558,10 @@ main a:active {
 	border-radius: 6px;
 	background: var(--surface);
 	overflow-wrap: anywhere;
+}
+.chat-turn:focus-visible .chat-assistant {
+	outline: 2px solid var(--accent);
+	outline-offset: -2px;
 }
 .chat-message p {
 	white-space: pre-wrap;

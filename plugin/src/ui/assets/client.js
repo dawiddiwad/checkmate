@@ -270,9 +270,16 @@ function tell(text) {
 }
 
 const review = document.querySelector('[data-review]')
+const chatPage = document.querySelector('[data-chat-view]')
+const chatView = chatPage?.dataset.chatView
+const chatNavigator =
+	chatView === 'list' &&
+	chatPage.hasAttribute('data-plan-chat') &&
+	Boolean(document.querySelector('[data-navigator]'))
 let drawer = document.querySelector('[data-drawer]')
 const viewerPane = document.querySelector('[data-viewer-pane]')
 const address = new URL(location.href)
+let chatListAt = address.searchParams.get('at')
 let level = viewerPane
 	? 'viewer'
 	: drawer
@@ -334,7 +341,7 @@ function currentView() {
 }
 
 function storeKey() {
-	return `checkmate-areas:${review?.dataset.plan ?? ''}`
+	return `checkmate-areas:${review?.dataset.plan ?? chatPage?.dataset.planChat ?? ''}`
 }
 
 function storedAreas() {
@@ -452,6 +459,7 @@ function highlight(row, where = level) {
 		other.tabIndex = other === row ? 0 : -1
 	}
 	if (!row) return
+	if (chatView === 'list' && where === 'list') chatListAt = row.dataset.key
 	fitOptions(row)
 	padTitle(row)
 }
@@ -534,6 +542,11 @@ function chooseBuild(n) {
 	const marks = [...row.querySelectorAll('[data-mark]')]
 	const mark = marks[n - 1]
 	if (!mark) return tell(`The build columns go from 1 to ${marks.length}.`)
+	if (chatNavigator) {
+		const destination = new URL(row.href)
+		destination.searchParams.set('build', mark.dataset.mark)
+		return location.assign(destination.href)
+	}
 	chosenBuild = chosenBuild === mark.dataset.mark ? null : mark.dataset.mark
 	if (currentView() !== row.dataset.target) showView(row.dataset.target)
 	applyBuild()
@@ -543,6 +556,12 @@ function chooseBuild(n) {
 
 function showView(view) {
 	if (!review) return
+	const chats = document.querySelector('[data-nav][data-target="chats"]')
+	if (chats) {
+		const destination = new URL(chats.href)
+		destination.searchParams.set('view', view)
+		chats.href = destination.href
+	}
 	for (const each of document.querySelectorAll('[data-panel]')) {
 		each.hidden = each.dataset.panel !== view
 		const heading = each.querySelector('[data-view-title]')
@@ -570,13 +589,14 @@ function hasPanel(view) {
 
 function startRow() {
 	const rows = listRows()
-	const wanted = address.searchParams.get('at') ?? address.searchParams.get('item')
+	const wanted =
+		chatView === 'list' ? chatListAt : (address.searchParams.get('at') ?? address.searchParams.get('item'))
 	if (location.hash === '#last') return rows.at(-1)
 	return (
 		rows.find((row) => row.dataset.key === wanted) ??
 		rows.find((row) => row.classList.contains('cur')) ??
 		rows.find((row) => 'needs' in row.dataset) ??
-		rows[0]
+		(chatView === 'thread' ? rows.at(-1) : rows[0])
 	)
 }
 
@@ -637,7 +657,7 @@ function settle() {
 		return showHints()
 	}
 	if (level === 'nav') {
-		const wanted = address.searchParams.get('nav') ?? currentView()
+		const wanted = chatNavigator ? 'chats' : (address.searchParams.get('nav') ?? currentView())
 		const row = navRows().find((each) => each.dataset.target === wanted) ?? navRows()[0]
 		for (const each of listRows()) each.classList.remove('hl')
 		mark(row, 'nav')
@@ -722,7 +742,7 @@ function enterList() {
 		applyBuild()
 	}
 	if (!startRow()) return enterActions() || tell('Nothing here.')
-	window.history.pushState({ level: 'list' }, '', location.pathname + location.search)
+	if (review) window.history.pushState({ level: 'list' }, '', location.pathname + location.search)
 	level = 'list'
 	settle()
 }
@@ -744,6 +764,7 @@ function deeper() {
 			window.history.pushState({ ...window.history.state, area: row.dataset.label }, '', location.href)
 			return showHints()
 		}
+		if (chatNavigator && row.dataset.target === 'chats') return enterList()
 		if (!hasPanel(row.dataset.target)) return void location.assign(row.href)
 		return enterList()
 	}
@@ -756,6 +777,10 @@ function back(event) {
 	if (event.key === 'Escape' && picks.size) {
 		clearPicks()
 		return tell('The selection is cleared.')
+	}
+	if (level === 'list' && chatNavigator) {
+		level = 'nav'
+		return settle()
 	}
 	if (level === 'list' && review) {
 		if (window.history.state?.level === 'list') return window.history.back()
@@ -811,9 +836,9 @@ async function leavePage(address) {
 	location.assign(address)
 }
 
-function draftKey(field) {
-	const item = new URL(location.href).searchParams.get('item') ?? ''
-	return `checkmate-draft:${location.pathname}:${item}:${field.form.getAttribute('action')}:${field.name}`
+function draftKey(field, address = new URL(location.href)) {
+	const item = address.searchParams.get('item') ?? ''
+	return `checkmate-draft:${address.pathname}:${item}:${field.form.getAttribute('action')}:${field.name}`
 }
 
 function draftFields() {
@@ -1463,8 +1488,8 @@ async function askNow() {
 				fresh.querySelector('[role="alert"]')?.textContent?.trim() || 'Checkmate could not send the message.'
 			)
 		}
-		if (findAsking !== sending) return
-		location.assign(destination.pathname + destination.search)
+		if (findAsking !== sending || !findDialog.open) return
+		openFindResult(destination.href)
 	} catch (problem) {
 		if (findAsking !== sending) return
 		findAsking = null
@@ -1481,10 +1506,25 @@ findDialog.querySelector('[data-find-input]').addEventListener('input', () => {
 	findTimer = setTimeout(findNow, 120)
 })
 
+function openFindResult(href) {
+	if (href === location.href) {
+		findDialog.close('no')
+		return refresh()
+	}
+	if (window.history.state?.layer === 'find') location.replace(href)
+	else location.assign(href)
+}
+
+findDialog.addEventListener('close', () => {
+	if (!findDialog.open) findAsking = null
+})
+
 findDialog.addEventListener('click', (event) => {
-	if (!event.target.closest('[data-find-ask]') || !plainClick(event)) return
+	const link = event.target.closest('[data-find-results] a')
+	if (!link || !plainClick(event)) return
 	event.preventDefault()
-	askNow()
+	if (link.hasAttribute('data-find-ask')) askNow()
+	else openFindResult(link.href)
 })
 
 document.addEventListener('click', (event) => {
@@ -1494,6 +1534,11 @@ document.addEventListener('click', (event) => {
 })
 
 function findKey(event) {
+	if (event.key === 'Escape') {
+		event.preventDefault()
+		findAsking = null
+		return findDialog.close('no')
+	}
 	const links = findLinks()
 	const at = links.findIndex((link) => link.getAttribute('aria-selected') === 'true')
 	if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
@@ -1504,10 +1549,9 @@ function findKey(event) {
 	if (event.key === 'Enter') {
 		event.preventDefault()
 		if (findAsking) return
-		const query = findDialog.querySelector('[data-find-input]').value.trim()
-		if (!query || !links[at]) return
+		if (!links[at]) return
 		if (links[at].matches('[data-find-ask]')) return askNow()
-		location.assign(links[at].href)
+		openFindResult(links[at].href)
 	}
 }
 
@@ -1553,7 +1597,7 @@ window.addEventListener('popstate', (event) => {
 		layer.close('no')
 		return event.stopImmediatePropagation()
 	}
-	const area = review && document.querySelector('[data-nav][aria-expanded="true"]')
+	const area = (review || chatNavigator) && document.querySelector('[data-nav][aria-expanded="true"]')
 	if (area && !event.state?.area && level === 'nav') {
 		const row = current('nav')
 		const owner = row?.getAttribute('aria-expanded') === 'true' ? row : (row && areaOf(row)) || area
@@ -1584,7 +1628,19 @@ const keyTable = [
 		run: (event) => step(down(event)),
 		hint: () =>
 			rowsAt().length > (level === 'detail' || level === 'viewer' ? 1 : 0)
-				? { nav: 'views', list: review ? 'records' : 'rows', detail: 'sub-records', viewer: 'files' }[level]
+				? {
+						nav: 'views',
+						list:
+							chatView === 'thread'
+								? 'turns'
+								: chatView === 'list'
+									? 'chats'
+									: review
+										? 'records'
+										: 'rows',
+						detail: 'sub-records',
+						viewer: 'files',
+					}[level]
 				: null,
 	},
 	{
@@ -2064,7 +2120,8 @@ function fieldKey(event) {
 		if (row) {
 			hideExtra(row)
 			mark(row, 'list')
-		} else target.blur()
+		} else if (target.closest('[data-chat-composer]') && current('list')) mark(current('list'), 'list')
+		else target.blur()
 		return showHints()
 	}
 	if (form && event.key === 'Enter' && !event.shiftKey && target.tagName === 'TEXTAREA') {
@@ -2115,6 +2172,10 @@ document.addEventListener('keydown', (event) => {
 	}
 	const inRecords =
 		target.closest?.('[data-row], [data-nav], [data-sub], [data-vfile]') || target === body || target.id === 'main'
+	const chatTurn = target.closest?.('[data-chat-turn]')
+	const chatControl = target.closest?.('a, button, summary, [role="region"]')
+	if (chatTurn?.contains(chatControl) && (event.key === 'Enter' || event.key === ' ' || /^Arrow/.test(event.key)))
+		return
 	if (!inRecords && (event.key === 'Enter' || event.key === ' ')) return
 	if (!inRecords && /^Arrow/.test(event.key) && target.closest?.('form, details, .menu-list')) return
 	const entry = keyTable.find((each) => each.test(event))
@@ -2125,7 +2186,18 @@ document.addEventListener('keydown', (event) => {
 	entry.run(event)
 })
 
-document.addEventListener('focusin', () => showHints())
+document.addEventListener('focusin', (event) => {
+	const target = event.target
+	if (chatPage?.contains(target) && target.matches('[data-row]:not(.hl)')) {
+		level = 'list'
+		if (chatNavigator) highlight(null, 'nav')
+		highlight(target, 'list')
+	} else if (chatNavigator && target.matches('[data-nav]:not(.hl)')) {
+		level = 'nav'
+		highlight(target, 'nav')
+	}
+	showHints()
+})
 
 function plainClick(event) {
 	return !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey && event.button === 0
@@ -2232,7 +2304,12 @@ document.addEventListener('click', (event) => {
 		return showHints()
 	}
 	const row = event.target.closest('[data-row]')
-	if (!row || event.target.closest('a, button, input, textarea, label, select, form')) return
+	if (
+		!row ||
+		row.hasAttribute('data-chat-turn') ||
+		event.target.closest('a, button, input, textarea, label, select, form')
+	)
+		return
 	level = 'list'
 	if (review) for (const each of navRows()) each.classList.remove('hl')
 	mark(row, 'list')
@@ -2337,7 +2414,7 @@ document.addEventListener('submit', (event) => {
 	const form = event.target
 	const row = form.closest('[data-row]')
 	const record = form.closest('[data-drawer]')
-	if (!row && !record) return
+	if ((!row && !record) || row?.hasAttribute('data-chat-turn')) return
 	event.preventDefault()
 	if (sending) return
 	sending = true
@@ -2481,8 +2558,10 @@ function replaceRegion(region, fresh, previous) {
 	const next = document.importNode(fresh, true)
 	for (const details of next.querySelectorAll('details[data-open-key]'))
 		if (opened.has(details.dataset.openKey)) details.open = opened.get(details.dataset.openKey)
+	const chatHistory = region.matches('[data-chat-history]')
+	const active = document.activeElement
 	const chatChanged =
-		region.matches('[data-chat-history]') &&
+		chatHistory &&
 		JSON.stringify(
 			[...region.querySelectorAll('[data-chat-content], [data-chat-terminal]')].map((item) =>
 				item.hasAttribute('data-chat-terminal') ? item.getAttribute('data-chat-terminal') : item.innerHTML
@@ -2497,8 +2576,24 @@ function replaceRegion(region, fresh, previous) {
 	const detailMarked = level === 'detail' && region.matches('[data-drawer]')
 	const detailLabel = detailMarked ? current('detail')?.dataset.label : null
 	region.replaceWith(next)
-	if (chatChanged) scrollChatToLatest(next)
-	else next.scrollTop = scrolled
+	if (chatHistory) {
+		const turns = listRows()
+		const selected = (!chatChanged && turns.find((row) => keyOf(row) === rowKey)) || turns.at(-1)
+		highlight(selected, 'list')
+		if (active === region) next.focus({ preventScroll: true })
+		else if (region.contains(active)) {
+			const turn = turns.find((row) => keyOf(row) === focusedKey)
+			const control = [...(turn?.querySelectorAll('a, button, summary, [tabindex]') ?? [])].find(
+				(each) => each.outerHTML === active.outerHTML
+			)
+			const target = control ?? selected
+			target?.focus({ preventScroll: true })
+		}
+		if (chatChanged) scrollChatToLatest(next)
+		else next.scrollTop = scrolled
+		return markChanged(before, next)
+	}
+	next.scrollTop = scrolled
 	if (next.matches('[data-drawer]')) drawer = next
 	if (review) {
 		for (const area of document.querySelectorAll('[data-nav][aria-expanded]'))
@@ -2876,6 +2971,7 @@ restoreAreas()
 if (location.hash === '#decide' || location.hash === '#answer')
 	window.addEventListener('load', () => window.requestAnimationFrame(focusDecision), { once: true })
 else if (review || drawer || listRows().length) settle()
+else if (chatView === 'new') document.querySelector('[data-chat-composer] textarea')?.focus()
 else showHints()
 if (!review && !drawer && !listRows().length)
 	window.addEventListener('load', () => placeAlert() || focusTarget(), { once: true })
@@ -3333,7 +3429,8 @@ if (activePlanChat && window.matchMedia('(max-width: 900px)').matches) {
 	if (shift > 0) nav.scrollLeft += shift
 }
 
-for (const history of document.querySelectorAll('[data-chat-history]')) scrollChatToLatest(history)
+for (const history of document.querySelectorAll('[data-chat-history]'))
+	if (current('list')?.dataset.key !== address.searchParams.get('at')) scrollChatToLatest(history)
 
 for (const form of document.querySelectorAll('[data-chat-composer]')) {
 	const harness = form.querySelector('[data-chat-harness]')
@@ -3386,8 +3483,8 @@ for (const form of document.querySelectorAll('[data-chat-composer]')) {
 		sendingChat = true
 		submit.disabled = true
 		error.hidden = true
+		const fields = new URLSearchParams(new FormData(form))
 		const send = () => {
-			const fields = new URLSearchParams(new FormData(form))
 			fields.set('csrf', csrf())
 			return fetch(form.action, { method: 'POST', body: fields })
 		}
@@ -3405,7 +3502,20 @@ for (const form of document.querySelectorAll('[data-chat-composer]')) {
 					fresh.querySelector('[role="alert"]')?.textContent?.trim() || 'Could not send the message.'
 				)
 			}
-			forgetDrafts(form)
+			const message = form.elements.text
+			if (message.value === fields.get('text') || !message.value.trim()) forgetDrafts(form)
+			else {
+				try {
+					const fresh = new DOMParser().parseFromString(await response.text(), 'text/html')
+					const next = fresh.querySelector('[data-chat-composer] textarea')
+					if (next) {
+						const previous = draftKey(message)
+						const target = draftKey(next, destination)
+						window.sessionStorage.setItem(target, message.value)
+						if (previous !== target) window.sessionStorage.removeItem(previous)
+					}
+				} catch {}
+			}
 			location.assign(destination.pathname + destination.search)
 		} catch (problem) {
 			error.textContent = problem.message || 'Could not send the message.'

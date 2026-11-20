@@ -240,6 +240,176 @@ test('the active plan chat tab is visible on a narrow screen', browserTest, asyn
 	assert.equal(await app.page.evaluate(() => window.scrollY), 0)
 })
 
+test('arrows navigate from the plan to its chat list, turns, and back', browserTest, async (t) => {
+	const pi = fakePi(t)
+	const { page, url, workspace } = await open(
+		t,
+		{},
+		{
+			...process.env,
+			CHECKMATE_HARNESS: 'pi',
+			PI_OFFLINE: '1',
+			PATH: `${pi}:${process.env.PATH}`,
+		}
+	)
+	const store = openStore(workspace)
+	try {
+		const context = { planId: 'coupons', record: null, planChat: true } as const
+		const first = askRequest(store, 'qa', { text: 'First question', context, chatId: null, harness: 'pi' })
+		const chatId = requestOf(store, first)!.conversation
+		setRequestState(store, first, 'answered', { reply: 'First reply.' })
+		const second = askRequest(store, 'qa', { text: 'Second question', context, chatId, harness: 'pi' })
+		setRequestState(store, second, 'answered', { reply: 'Second reply.' })
+		const other = askRequest(store, 'qa', { text: 'Other chat', context, chatId: null, harness: 'pi' })
+		setRequestState(store, other, 'answered', { reply: 'Another reply.' })
+
+		const focused = async (selector: string) =>
+			page.waitForFunction((value) => document.activeElement?.matches(value), selector)
+		await page.goto(url('/plans/coupons?view=needs'))
+		await focused('[data-target="needs"]')
+		await page.keyboard.press('ArrowDown')
+		await page.keyboard.press('ArrowDown')
+		await focused('[data-target="chats"]')
+		await page.keyboard.press('ArrowRight')
+		await page.waitForURL(url('/plans/coupons?view=all&chat=list'))
+		await focused('[data-key="chat:new"]')
+		await page.keyboard.press('ArrowDown')
+		await page.keyboard.press('ArrowDown')
+		await focused(`[data-key="chat:${chatId}"]`)
+		await page.keyboard.press('Escape')
+		await focused('[data-target="chats"]')
+		await page.keyboard.press('ArrowRight')
+		await focused(`[data-key="chat:${chatId}"]`)
+		await page.keyboard.press('Enter')
+		await focused(`[data-chat-turn][data-key="request:${second}"]`)
+		await page.keyboard.press('ArrowUp')
+		await focused(`[data-chat-turn][data-key="request:${first}"]`)
+		await page.keyboard.press('ArrowRight')
+		await page.waitForURL(url(`/chats/${chatId}/messages/${first}`))
+		await page.keyboard.press('ArrowLeft')
+		await focused(`[data-chat-turn][data-key="request:${first}"]`)
+		await page.keyboard.press('ArrowLeft')
+		await focused(`[data-key="chat:${chatId}"]`)
+		await page.keyboard.press('ArrowLeft')
+		await focused('[data-target="chats"]')
+		await page.keyboard.press('ArrowRight')
+		await focused(`[data-key="chat:${chatId}"]`)
+	} finally {
+		closeStore(store)
+	}
+})
+
+test('a draft typed while sending becomes the next message in the same chat', browserTest, async (t) => {
+	const pi = fakePi(t)
+	const { page, url, workspace } = await open(
+		t,
+		{},
+		{
+			...process.env,
+			CHECKMATE_HARNESS: 'pi',
+			PI_OFFLINE: '1',
+			PATH: `${pi}:${process.env.PATH}`,
+		}
+	)
+	const store = openStore(workspace)
+	const first = askRequest(store, 'qa', {
+		text: 'First message',
+		context: { planId: null, record: null },
+		chatId: null,
+		harness: 'pi',
+	})
+	const chatId = requestOf(store, first)!.conversation
+	setRequestState(store, first, 'answered', { reply: 'First reply.' })
+	closeStore(store)
+
+	const posted = Promise.withResolvers<void>()
+	const resume = Promise.withResolvers<void>()
+	await page.route('**/turns', async (route) => {
+		posted.resolve()
+		await resume.promise
+		await route.continue()
+	})
+	try {
+		await page.goto(url(`/chats/${chatId}`))
+		const text = page.getByLabel('Message', { exact: true })
+		await text.fill('Send this')
+		await page.keyboard.press('Control+Enter')
+		await posted.promise
+		await text.fill('Keep the next draft')
+		resume.resolve()
+		await page.getByText('Pi reply.', { exact: true }).waitFor()
+		assert.equal(await text.inputValue(), 'Keep the next draft')
+		assert.equal(await page.getByText('Send this', { exact: true }).count(), 1)
+	} finally {
+		resume.resolve()
+	}
+})
+
+test(
+	'Find opens a default result without adding a Back stop and Escape dismisses a pending send',
+	browserTest,
+	async (t) => {
+		const pi = fakePi(t)
+		const { page, url, workspace } = await open(
+			t,
+			{},
+			{
+				...process.env,
+				CHECKMATE_HARNESS: 'pi',
+				PI_OFFLINE: '1',
+				PATH: `${pi}:${process.env.PATH}`,
+			}
+		)
+		const plan = /\/plans\/coupons\?/
+		const find = page.locator('[data-find]')
+		const input = find.locator('[data-find-input]')
+		await page.goto(url('/log'))
+		await page.goto(url('/plans/coupons'))
+		await page.keyboard.press('/')
+		await input.fill('coupons')
+		await page.keyboard.press('Escape')
+		await find.waitFor({ state: 'hidden' })
+		await page.waitForFunction(() => !history.state?.layer)
+		await page.keyboard.press('/')
+		await input.fill('')
+		await find.locator('a[href="/activity"][aria-selected="true"]').waitFor()
+		await page.keyboard.press('Enter')
+		await page.waitForURL(url('/activity'))
+		await page.goBack()
+		await page.waitForURL(plan)
+		await page.goBack()
+		await page.waitForURL(/\/log/)
+
+		const held = Promise.withResolvers<void>()
+		const release = Promise.withResolvers<void>()
+		const completed = page.waitForResponse((response) => response.url().includes('/chats/') && response.ok())
+		await page.route('**/requests', async (route) => {
+			held.resolve()
+			await release.promise
+			await route.continue()
+		})
+		try {
+			await page.keyboard.press('/')
+			await input.fill('zebra query outside the record')
+			await find.locator('[data-find-ask]').click()
+			await held.promise
+			await page.keyboard.press('Escape')
+			await find.waitFor({ state: 'hidden' })
+			release.resolve()
+			await completed
+			assert.match(page.url(), /\/log/)
+			const store = openStore(workspace)
+			try {
+				assert.equal(requestOf(store, 'R1')?.text, 'zebra query outside the record')
+			} finally {
+				closeStore(store)
+			}
+		} finally {
+			release.resolve()
+		}
+	}
+)
+
 test('plan and global chat lists show newly reported costs without reloading', browserTest, async (t) => {
 	const app = await open(t)
 	const globalChats = await app.page.context().newPage()

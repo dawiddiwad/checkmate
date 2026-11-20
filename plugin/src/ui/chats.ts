@@ -53,6 +53,10 @@ function title(text: string) {
 	return line.length > 80 ? `${line.slice(0, 79).trimEnd()}…` : line
 }
 
+function chatRow(key: string, href: string, label: string) {
+	return html`data-row data-key="${key}" data-href="${href}" data-label="${label}"`
+}
+
 function origin(request: RequestRecord) {
 	const context = request.context
 	const revision = context.planRevision ? `@${context.planRevision}` : ''
@@ -82,7 +86,14 @@ function origin(request: RequestRecord) {
 function turn(store: Store, request: RequestRecord, context: Context, number: number, back: string) {
 	const permissions = explorationPermissions(store, request.id).filter((item) => !item.decision)
 	const failure = request.state === 'failed' ? failureText(request) : null
-	return html`<article class="chat-turn" data-key="request:${request.id}">
+	const details = `/chats/${request.conversation}/messages/${request.id}`
+	return html`<article
+		class="chat-turn"
+		data-chat-turn
+		tabindex="-1"
+		aria-label="Turn ${number}"
+		${chatRow(`request:${request.id}`, details, `Turn ${number}`)}
+	>
 		<div class="chat-message chat-user">
 			<div class="chat-meta">You · ${time(request.askedAt)}</div>
 			<p data-chat-content>${request.text}</p>
@@ -96,7 +107,7 @@ function turn(store: Store, request: RequestRecord, context: Context, number: nu
 				${request.harness === 'pi' ? 'Pi' : 'Claude Code'}${request.model ? ` · ${request.provider ? `${request.provider}/` : ''}${request.model}` : ''}${request.effort ? ` · ${request.effort}` : ''}
 				<span class="chat-status"
 					>${request.state === 'answered' ? '' : pill(request.state)}
-					<a href="/chats/${request.conversation}/messages/${request.id}">Turn ${number}</a></span
+					<a href="${details}">Turn ${number}</a></span
 				>
 			</div>
 			${request.reply ? html`<div class="chat-markdown" data-chat-content>${chatMarkdown(request.reply)}</div>` : ''}
@@ -136,15 +147,21 @@ function turn(store: Store, request: RequestRecord, context: Context, number: nu
 	</article>`
 }
 
-function chatList(chats: Chat[], href: (chat: Chat) => string, empty: Html) {
+function chatList(chats: Chat[], href: (chat: Chat) => string, empty: Html, navigate = true) {
 	return html`<div class="${chats.length ? 'chat-list' : ''}" data-region="chat-list">
 		${
 			chats.length
 				? chats.map((chat) => {
 						const last = chat.turns.at(-1)!
 						const unread = chat.turns.filter(isUnread).length
-						return html`<a class="chat-list-item" id="chat-${chat.id}" href="${href(chat)}"
-							><strong>${title(chat.turns[0].text)}</strong
+						const first = title(chat.turns[0].text)
+						const link = href(chat)
+						return html`<a
+							class="chat-list-item"
+							id="chat-${chat.id}"
+							href="${link}"
+							${navigate ? chatRow(`chat:${chat.id}`, link, first) : ''}
+							><strong>${first}</strong
 							><span>
 								${unread ? html`<span class="chat-unread">${unread} unread</span> · ` : ''}${last.state === 'answered' ? '' : html`${pill(last.state)} · `}${ago(last.askedAt)}
 								· ${chat.turns.length} ${chat.turns.length === 1 ? 'message' : 'messages'} ·
@@ -164,8 +181,14 @@ export function chatsPage(store: Store, context: Context, params: URLSearchParam
 		title: 'Chats',
 		section: 'chats',
 		subjects: ['requests'],
-		body: html`${heading('Chats', 'Your conversations with Checkmate.')}
-			<div class="chat-list-actions"><a class="btn" href="/chats?new=1">New chat</a></div>
+		back: fresh ? '/chats' : '/',
+		body: html`<section data-chat-view="${fresh ? 'new' : 'list'}">
+			${heading('Chats', 'Your conversations with Checkmate.')}
+			<div class="chat-list-actions">
+				<a class="btn" href="/chats?new=1" ${fresh ? '' : chatRow('chat:new', '/chats?new=1', 'New chat')}
+					>New chat</a
+				>
+			</div>
 			${fresh ? composer(context, '/chats', chatPreferences(store, env), params.get('screen') ?? '') : ''}
 			${chatList(
 				chats,
@@ -173,8 +196,10 @@ export function chatsPage(store: Store, context: Context, params: URLSearchParam
 					context.planChat && context.planId
 						? `/plans/${context.planId}${context.planRevision ? `@${context.planRevision}` : ''}?chat=${id}`
 						: `/chats/${id}`,
-				emptyNotice('No chats yet.', 'Start a chat or use Find to ask Checkmate.')
-			)}`,
+				emptyNotice('No chats yet.', 'Start a chat or use Find to ask Checkmate.'),
+				!fresh
+			)}
+		</section>`,
 	}
 }
 
@@ -212,45 +237,61 @@ export function planChat(
 		const params = new URLSearchParams(options.params)
 		params.delete('chat')
 		params.delete('newChat')
+		if (/^(chat|request):/.test(params.get('at') ?? '')) params.delete('at')
 		if (key) params.set(key, value)
+		if (value === 'list' && chat) params.set('at', `chat:${chat.id}`)
 		const query = params.toString()
 		return query ? `${path}?${query}` : path
 	}
-	return html`<section class="plan-chat" aria-label="Plan chats">
-		<div class="chat-thread-heading">
-			<a href="${address()}">${glyph('←')} Plan</a>
-			<a class="btn" href="${address('newChat', '1')}">New chat</a>
-		</div>
-		<h1>Plan chats · ${decodeURIComponent(path.slice('/plans/'.length))}</h1>
-		${
-			chat
-				? html`<div class="chat-thread">
-						<a href="${address('chat', 'list')}">${glyph('←')} All chats</a>
-						<h2>${title(chat.turns[0].text)}</h2>
-						${history(store, context, chat, address('chat', chat.id))}
-						${composer(context, `${path}/chats/${encodeURIComponent(chat.id)}/turns`, chatSelection(store, env, chat), '', address('chat', chat.id))}
-					</div>`
-				: fresh
-					? composer(context, `${path}/chats`, chatPreferences(store, env), '', address('newChat', '1'))
-					: chatList(chats, (item) => address('chat', item.id), html`<p class="help">No chats yet.</p>`)
-		}
-	</section>`
+	const list = address('chat', 'list')
+	const newChat = address('newChat', '1')
+	return {
+		back: chat || fresh ? list : address(),
+		body: html`<section
+			class="plan-chat"
+			aria-label="Plan chats"
+			data-plan-chat="${path.slice('/plans/'.length).split('@')[0]}"
+			data-chat-view="${chat ? 'thread' : fresh ? 'new' : 'list'}"
+		>
+			<div class="chat-thread-heading">
+				<a href="${address()}">${glyph('←')} Plan</a>
+				<a class="btn" href="${newChat}" ${chat || fresh ? '' : chatRow('chat:new', newChat, 'New chat')}
+					>New chat</a
+				>
+			</div>
+			<h1>Plan chats · ${decodeURIComponent(path.slice('/plans/'.length))}</h1>
+			${
+				chat
+					? html`<div class="chat-thread">
+							<a href="${list}">${glyph('←')} All chats</a>
+							<h2>${title(chat.turns[0].text)}</h2>
+							${history(store, context, chat, address('chat', chat.id))}
+							${composer(context, `${path}/chats/${encodeURIComponent(chat.id)}/turns`, chatSelection(store, env, chat), '', address('chat', chat.id))}
+						</div>`
+					: fresh
+						? composer(context, `${path}/chats`, chatPreferences(store, env), '', newChat)
+						: chatList(chats, (item) => address('chat', item.id), html`<p class="help">No chats yet.</p>`)
+			}
+		</section>`,
+	}
 }
 
 export function chatPage(store: Store, context: Context, id: string, env: Env): Page | null {
 	const chat = chatOf(store, id)
 	if (!chat) return null
+	const list = `/chats?at=${encodeURIComponent(`chat:${id}`)}`
 	return {
 		title: 'Chat',
 		section: 'chats',
+		back: list,
 		subjects: ['requests', ...chat.turns.map((item) => `request:${item.id}`)],
 		crumbs: [
 			['Chats', '/chats'],
 			['Chat', null],
 		],
-		body: html`<div class="chat-thread">
+		body: html`<div class="chat-thread" data-chat-view="thread">
 			<div class="chat-thread-heading">
-				<a href="/chats">${glyph('←')} Chats</a><a href="/chats?new=1">New chat</a>
+				<a href="${list}">${glyph('←')} Chats</a><a href="/chats?new=1">New chat</a>
 			</div>
 			<h1>${title(chat.turns[0].text)}</h1>
 			${origin(chat.turns[0])} ${history(store, context, chat, `/chats/${id}`)}

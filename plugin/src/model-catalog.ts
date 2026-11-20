@@ -166,7 +166,11 @@ function piRpcCatalog(program: string, workspace: string, env: Env): Promise<Mod
 			if (response.id === 'state' && response.command === 'get_state') {
 				state = true
 				const selected = response.data?.model
-				if (response.success && (!provider || selected?.provider?.toLowerCase() === provider))
+				if (
+					response.success &&
+					(!provider ||
+						(typeof selected?.provider === 'string' && selected.provider.toLowerCase() === provider))
+				)
 					model = piOption(selected)[0]
 			}
 			if (available && state && !host.stdin.writableEnded) host.stdin.end()

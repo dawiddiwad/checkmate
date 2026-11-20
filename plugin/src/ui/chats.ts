@@ -9,7 +9,7 @@ import { ago, costText, glyph, html, pill, time } from './html.ts'
 import { emptyNotice, heading } from './layout.ts'
 import { requestHref } from './permissions.ts'
 import { chatPreferences } from './requester.ts'
-import { failureText } from './requests.ts'
+import { failureText, requestModelLabel } from './requests.ts'
 import { chatMarkdown } from './markdown.ts'
 
 function composer(context: Context, action: string, selection: RequestSelection, screen = '', back = '') {
@@ -86,9 +86,7 @@ function origin(request: RequestRecord) {
 function turn(store: Store, request: RequestRecord, context: Context, number: number, back: string) {
 	const permissions = explorationPermissions(store, request.id).filter((item) => !item.decision)
 	const failure = request.state === 'failed' ? failureText(request) : null
-	const model = request.observedModels.length
-		? request.observedModels.join(', ')
-		: [request.provider, request.model].filter(Boolean).join('/')
+	const model = requestModelLabel(request)
 	const details = `/chats/${request.conversation}/messages/${request.id}`
 	return html`<article
 		class="chat-turn"

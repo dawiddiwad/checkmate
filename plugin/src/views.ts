@@ -452,6 +452,7 @@ function sessionExplorerLive(events: ExplorationEvent[], item: Explorer, now: nu
 	return {
 		explorer: item.explorer,
 		model: null,
+		...noModelCost,
 		reason: item.reason,
 		hint: item.hint,
 		turn: (action?.detail.step as string | undefined) ?? null,

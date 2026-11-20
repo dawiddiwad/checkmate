@@ -199,6 +199,7 @@ export type FakeReplies = Partial<
 		| 'verifier'
 		| 'rules'
 		| 'rules-repair'
+		| 'piUsage'
 		| 'request'
 		| 'models',
 		unknown

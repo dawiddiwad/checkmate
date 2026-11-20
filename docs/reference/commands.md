@@ -303,7 +303,7 @@ The charter also carries applied oracle decisions from the latest plan revision.
 
 `explore status <explorationId>` prints the state, the level, the number of explorers, the run model and its source (`level`, `host`, `workspace`, or `agent`), the verifier choice, the refs of the change (`since`, `until`), the seconds of the study turn and of the test turn (`studySeconds`, `testSeconds`), and one line for each explorer: its session, its end, its record, and the number of saved entries. A tester that a person stopped, alone or with the run, shows `ended=stopped` and `reason=Stopped by <name>: <reason>`, as the review UI shows `Stopped`. If a tester fails, `explore status` and `explore show` print its recorded failure reason. Up to 10 lines of standard error follow when available.
 
-When Pi emits a provider and model, status shows the provider-qualified model for that call. The run model source still identifies the launch choice. JSON gives `observedModels` when Pi reports the models and `costUsd` when there is a reported cost. `costPartial` marks a known total with missing usage. The explorer cost includes its turns and recorder.
+When Pi emits a provider and model, status shows the provider-qualified model for that call. The run model source still identifies the launch choice. JSON gives `observedModels` when Pi reports the models and `costUsd` with the total or `null` if it is unknown. `costPartial` marks a known total with missing usage. The explorer cost includes its turns and recorder.
 
 For an exploration opened with `explore open`, the count is the number of explorers in the record. An empty record has a count of zero. For an exploration that starts testers, the count is the planned number.
 

@@ -159,11 +159,18 @@ export function failureText(request: RequestRecord) {
 	return { cause, lines, detail: request.hint ? known.detail : null }
 }
 
+export function requestModelLabel(request: RequestRecord) {
+	return request.observedModels.length
+		? request.observedModels.join(', ')
+		: [request.provider, request.model].filter(Boolean).join('/')
+}
+
 export function chatMessagePage(store: Store, context: Context, request: RequestRecord): Page {
 	const requestId = request.id
 	const now = Date.now()
 	const open = explorationPermissions(store, requestId).filter((item) => !item.decision)
 	const ended = isEnded(request)
+	const model = requestModelLabel(request)
 	const { planId, planRevision, planChat } = request.context
 	const plan = planChat ? `/plans/${planId}${planRevision ? `@${planRevision}` : ''}` : null
 	const chat = plan ? `${plan}?chat=${request.conversation}` : `/chats/${request.conversation}`
@@ -227,6 +234,7 @@ export function chatMessagePage(store: Store, context: Context, request: Request
 				<div class="sp-pills">
 					${stateLabel(request)}
 					<span class="sp-c-id">${request.harness === 'pi' ? 'Pi' : 'Claude Code'}</span>
+					${model ? html`<span class="sp-c-id">${model}</span>` : ''}
 					<span class="sp-c-id">${request.asker}</span>
 					<span class="sp-c-id">${ago(request.askedAt)}</span>
 				</div>

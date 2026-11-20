@@ -21170,6 +21170,7 @@ function testerModels(context) {
 					<select
 						id="tester-model-a${index2 + 1}"
 						name="testerModel.a${index2 + 1}"
+						data-stop
 						data-tester-model-select
 						disabled
 					>

@@ -661,3 +661,30 @@ test('a person selects different tester models and keeps them when the level cha
 	const start = read((store) => explorationEvents(store, 'x-1').find((event) => event.step === 'start'))
 	assert.deepEqual(start?.detail.testerModels, { a1: 'haiku', a2: 'sonnet' })
 })
+
+test('new change offers tester models and starts with both selections', browserTest, async (t) => {
+	const { page, url, read } = await setup(t, sleeping)
+	await page.route('**/settings/harness/models?*', (route) =>
+		route.fulfill({
+			json: {
+				models: [
+					{ value: 'haiku', label: 'Haiku' },
+					{ value: 'sonnet', label: 'Sonnet' },
+				],
+			},
+		})
+	)
+	await page.goto(url('/new'))
+	const form = page.locator('form[data-page-form]')
+	await form.locator('[data-tester-models] summary').click()
+	await form.getByText('2 models available.').waitFor()
+	await form.getByLabel('Tester a1', { exact: true }).selectOption('haiku')
+	await form.getByLabel('Tester a2', { exact: true }).selectOption('sonnet')
+	await form.locator('[name="text"]').fill('Check the checkout.')
+	await form.locator('[name="plan"]').fill('new-model-run')
+	await form.locator('[name="build"]').fill('b1')
+	await form.getByRole('button', { name: 'Start the test' }).click()
+	await page.waitForURL(/\/explorations\/x-1$/)
+	const start = read((store) => explorationEvents(store, 'x-1').find((event) => event.step === 'start'))
+	assert.deepEqual(start?.detail.testerModels, { a1: 'haiku', a2: 'sonnet' })
+})

@@ -3163,6 +3163,7 @@ async function testerModelCount(details) {
 		const data = await response.json()
 		if (!response.ok) throw new Error(data.error || 'Could not load testers.')
 		if (sequence !== state.sequence) return
+		state.countError = false
 		details.querySelector('[data-tester-count-status]').textContent = ''
 		for (const row of details.querySelectorAll('[data-tester-model-row]')) {
 			const visible = Number(row.dataset.testerModelRow) <= data.count
@@ -3178,6 +3179,7 @@ async function testerModelCount(details) {
 			row.querySelector('select').disabled = true
 		}
 		state.countLoading = false
+		state.countError = true
 		details.querySelector('[data-tester-count-status]').textContent = error.message || 'Could not load testers.'
 	}
 }
@@ -3240,11 +3242,16 @@ document.addEventListener(
 	'submit',
 	(event) => {
 		const details = event.target.querySelector?.('[data-tester-models]')
-		if (!details || !testerModelState.get(details)?.countLoading) return
+		if (!details) return
+		const state = testerModelState.get(details)
+		const hasChoices = [...details.querySelectorAll('[data-tester-model-select]')].some((field) => field.value)
+		if (!state?.countLoading && !(state?.countError && hasChoices)) return
 		event.preventDefault()
 		event.stopImmediatePropagation()
 		details.open = true
-		details.querySelector('[data-tester-count-status]').textContent = 'Wait for the tester count before starting.'
+		details.querySelector('[data-tester-count-status]').textContent = state.countError
+			? 'Could not check the tester count. Refresh or reload before starting.'
+			: 'Wait for the tester count before starting.'
 	},
 	true
 )

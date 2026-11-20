@@ -1007,7 +1007,7 @@ export function gate(store: Store, input: GateInput) {
 				reasons.push(`Open blocking gap: ${gap.id}`)
 				hints.push(partialHint)
 			}
-	const runGaps = blockingRunGaps(store, plan.planId)
+	const runGaps = partial === 'wait_for_resolution' ? blockingRunGaps(store, plan.planId) : []
 	for (const id of selected) {
 		const test = tests.get(id)!
 		if (test.readiness !== 'ready') {
@@ -1015,8 +1015,8 @@ export function gate(store: Store, input: GateInput) {
 			hints.push(`Remove ${id} from --tests, or leave out --tests and add --partial ready_only.`)
 		}
 		const runGap = runGapAffecting(runGaps, test)
-		if (runGap && partial === 'wait_for_resolution') {
-			reasons.push(`Open blocking gap ${runGap.gap.id} of ${runGap.runId} affects ${id}`)
+		if (runGap) {
+			reasons.push(runGapReason(runGap, id))
 			hints.push(partialHint)
 		}
 		if (!target.profile.capabilities.includes(test.capability))
@@ -1091,6 +1091,18 @@ function blockingRunGaps(store: Store, planId: string) {
 
 function runGapAffecting(runGaps: RunGap[], test: Test) {
 	return runGaps.find((item) => gapsAffecting([item.gap], test).length > 0)
+}
+
+function runGapReason(runGap: RunGap, testId: string) {
+	return `Open blocking gap ${runGap.gap.id} of ${runGap.runId} affects ${testId}`
+}
+
+export function openRunGapReasons(store: Store, planId: string, tests: Test[]) {
+	const runGaps = blockingRunGaps(store, planId)
+	return tests.flatMap((test) => {
+		const runGap = runGapAffecting(runGaps, test)
+		return runGap ? [runGapReason(runGap, test.id)] : []
+	})
 }
 
 export function deferredPrerequisites(plan: Plan) {

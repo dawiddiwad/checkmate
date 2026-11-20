@@ -563,6 +563,30 @@ test('resume gives the gate refusal and leaves the attempt, selection and record
 	assert.equal(resumeRun(opened, actor, { runId: 'run-1' }).data.attempt, 2)
 })
 
+test('ready_only resume refuses a new blocking run gap until its affected test closes', (t) => {
+	const opened = store(t)
+	regressionPlan(opened)
+	begin(opened)
+	begin(opened, 'run-independent', ['T1'])
+	runGap(opened, 'G9', 'blocking')
+	const before = runDetail(opened, 'run-1')
+	const refused = resumeRun(opened, actor, { runId: 'run-1', error: ['T1'], reason: 'The host stopped.' })
+	assert.equal(refused.status, 'rejected')
+	assert(refused.reasons.includes('Open blocking gap G9 of run-1 affects T2'))
+	assert.match(refused.hint!, /checkmate run close run-1 <testId> --outcome <blocked\|error>/)
+	const after = runDetail(opened, 'run-1')
+	assert.deepEqual([after.attempts, after.tests], [before.attempts, before.tests])
+	assert.equal(resumeRun(opened, actor, { runId: 'run-independent' }).data.attempt, 2)
+	close(opened, 'T2', { outcome: 'blocked', reason: 'G9 blocks T2.' })
+	const resumed = resumeRun(opened, actor, { runId: 'run-1' })
+	assert.equal(resumed.data.attempt, 2)
+	assert.deepEqual(
+		(resumed.data.tests as { testId: string }[]).map((test) => test.testId),
+		['T1']
+	)
+	assert.deepEqual(runState(opened, 'run-1').request.selectedTestIds, ['T1', 'T2'])
+})
+
 test('runs warn about shared open tests on the same instance, including across builds', (t) => {
 	const opened = store(t)
 	regressionPlan(opened)

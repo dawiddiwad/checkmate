@@ -609,7 +609,7 @@ hint: Finish run-b1 first: checkmate run finish run-b1 --completion <completed|i
 
 `run begin` checks the instance first. It refuses an unknown instance and a retired instance.
 
-`run resume` checks that the recorded instance is active and the latest target profile is ready. It checks the gate with the recorded revision, instance, build, selected tests, partial execution policy, and retest link. See [Resume](runs.md#resume).
+`run resume` checks that the recorded instance is active and the latest target profile is ready. It checks the gate with the recorded revision, instance, build, selected tests, partial execution policy, and retest link. With `ready_only`, the command also refuses to resume the run if a blocking run gap affects an open test. See [Resume](runs.md#resume).
 
 `run begin` takes these flags. `run gate` takes the same flags except `--instance`, `--on-new-blocker`, and `--timeout`.
 

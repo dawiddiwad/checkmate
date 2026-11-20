@@ -27,6 +27,7 @@ import {
 	expectDecision,
 	gate,
 	latestPlans,
+	openRunGapReasons,
 	planRevision,
 	planRunGaps,
 	recordApproval,
@@ -1002,14 +1003,22 @@ export function resumeRun(store: Store, actor: string | undefined, input: Resume
 			partial: run.request.partialExecution,
 			retestOf: run.request.retestOf,
 		})
-		if (checked.reply.status !== 'completed')
+		const outcomes = runOutcomes(store, input.runId)
+		const openTests = run.plan.tests.filter(
+			(test) => run.request.selectedTestIds.includes(test.id) && !outcomes.has(test.id)
+		)
+		const runGapReasons =
+			checked.partial === 'ready_only' ? openRunGapReasons(store, run.plan.planId, openTests) : []
+		if (checked.reply.status !== 'completed' || runGapReasons.length)
 			return {
 				reply: {
 					status: 'rejected',
 					subject: input.runId,
-					reasons: [refusalReasons.prohibited, ...checked.reply.reasons],
+					reasons: [refusalReasons.prohibited, ...checked.reply.reasons, ...runGapReasons],
 					refusal: 'prohibited',
-					hint: `Run checkmate status ${run.plan.planId} to see the next step.`,
+					hint: runGapReasons.length
+						? `Close each affected test with checkmate run close ${input.runId} <testId> --outcome <blocked|error> --reason "<why>" before you resume. Use error if it has an assertion result.`
+						: `Run checkmate status ${run.plan.planId} to see the next step.`,
 					data: {},
 				},
 				subjects: [],
@@ -1038,10 +1047,9 @@ export function resumeRun(store: Store, actor: string | undefined, input: Resume
 				operationId
 			)
 		}
-		const outcomes = runOutcomes(store, input.runId)
 		const results = runAssertions(store, input.runId)
-		const tests = run.plan.tests
-			.filter((test) => run.request.selectedTestIds.includes(test.id) && !outcomes.has(test.id))
+		const tests = openTests
+			.filter((test) => !stalled.includes(test.id))
 			.map((test) => ({
 				testId: test.id,
 				warning: 'Actions may have occurred',

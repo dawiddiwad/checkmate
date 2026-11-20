@@ -268,6 +268,7 @@ A crash or a deadline does not finish a run. The run stays `started`, and the re
 
 - `run resume <runId>` checks that the recorded instance is active and the latest target profile is ready. It runs the gate again for the recorded plan revision, build, and selection.
 - If a check fails, the command gives `rejected` with the reason. The run keeps its current attempt and results. If the instance is retired, finish the stalled run and start a new run on an active instance.
+- With `ready_only`, a blocking run gap prevents resume when it affects an open test. Close each affected test as `blocked`. Use `error` when the test already has an assertion result. Then resume the remaining tests.
 - If the checks pass, the command records a new attempt. It lists each open test with the assertions that have no result. The browser session and evidence directory stay the same.
 - An open test shows `Actions may have occurred`. The oracle decides to continue it or to close it as `error`. When the oracle continues a test, check only the listed assertions. Each recorded result is final.
 - `run resume <runId> --error T3,T4 --reason <text>` closes those tests as `error` and records the new attempt in one step.

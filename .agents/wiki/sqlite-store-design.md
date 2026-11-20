@@ -432,6 +432,7 @@ A test can name a test in another plan in `dependsOn`: `["T1", "login:T3"]`. A g
 ### Resume
 
 - `checkmate run resume <runId>` checks that the recorded instance is active and the latest target profile is ready. It runs the gate again with the original request in the same transaction as the attempt write.
+- With `ready_only`, it also refuses resume when an open test has a blocking run gap. QA can close the affected test and resume the other tests.
 - A refusal keeps the attempt, outcomes, and evidence. After a successful check, `run resume` records a new attempt and lists the open tests with their assertions that have no result.
 - Recorded assertion results stay. The agent checks only the assertions that have no result.
 - Checkmate does not repeat a test automatically. An agent can have done actions of a test that was not closed when the session stopped. The resume output shows each such test with the warning `Actions may have occurred`. The oracle decides to continue it or to record it as `error`.

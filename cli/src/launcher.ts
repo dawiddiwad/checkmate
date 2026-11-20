@@ -2,6 +2,7 @@ import type { Profile, Reply, Status, Store } from '../../plugin/src/index.ts'
 import { Refusal, closeStore, isBusy, openRejections, openStore, runClock, validate } from '../../plugin/src/index.ts'
 import type { Harness } from '../../plugin/src/pi.ts'
 import { piArgs, piResult, selectedHarness } from '../../plugin/src/pi.ts'
+import { workspaceEnv } from '../../plugin/src/settings.ts'
 import { pluginRoot as bundledPluginRoot } from '../../plugin/src/sessions.ts'
 import { spawn } from 'node:child_process'
 import { readFileSync } from 'node:fs'
@@ -472,18 +473,21 @@ export async function delegate(
 ): Promise<DelegateResponse> {
 	workspace = resolve(workspace)
 	if (!stages.includes(stage)) refuse(`Unknown stage: ${stage}. Use one of: ${stages.join(', ')}.`, 'malformed')
-	const harness = selectedHarness(process.env)
-	if (harness === 'claude') {
-		if (!options.allowedTools.length)
-			refuse(`delegate needs --allow rules. Minimum: ${minimumRules.join(', ')}`, 'malformed')
-		checkClaudeArgs(options.claudeArgs ?? [])
-	} else if (options.allowedTools.length || options.claudeArgs?.length) {
-		refuse('Pi delegate does not accept --allow or --claude-arg.', 'malformed')
-	}
-	const { after, execution } = withStore(workspace, (store) => {
+	const { after, execution, harness, env } = withStore(workspace, (store) => {
+		const env = workspaceEnv(store, process.env)
+		const harness = selectedHarness(env)
+		if (harness === 'claude') {
+			if (!options.allowedTools.length)
+				refuse(`delegate needs --allow rules. Minimum: ${minimumRules.join(', ')}`, 'malformed')
+			checkClaudeArgs(options.claudeArgs ?? [])
+		} else if (options.allowedTools.length || options.claudeArgs?.length) {
+			refuse('Pi delegate does not accept --allow or --claude-arg.', 'malformed')
+		}
 		checkSubject(store, stage, subject)
 		const run = stage === 'execute' ? startedRun(store, subject) : null
 		return {
+			harness,
+			env,
 			after: lastOperation(store),
 			execution: run
 				? {
@@ -506,7 +510,7 @@ export async function delegate(
 		claimed = await worker(
 			harness === 'pi' ? (options.pi ?? 'pi') : (options.claude ?? 'claude'),
 			harness === 'pi'
-				? piArgs(['--no-session', '--no-mcp', '--tools', 'read,bash'])
+				? piArgs(['--no-session', '--no-mcp', '--tools', 'read,bash'], env)
 				: workerArgs(pluginRoot, options.allowedTools, options.claudeArgs),
 			{
 				cwd: workspace,
@@ -514,7 +518,7 @@ export async function delegate(
 				timeoutSeconds,
 				harness,
 				env: {
-					...process.env,
+					...env,
 					CHECKMATE_ACTOR: `${harness}:${stage}`,
 					...(run ? { PLAYWRIGHT_MCP_OUTPUT_DIR: join(workspace, '.checkmate', 'tmp', subject) } : {}),
 				},

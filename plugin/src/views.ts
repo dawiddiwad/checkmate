@@ -1,4 +1,4 @@
-import { selectedHarness } from './pi.ts'
+import type { Harness } from './pi.ts'
 import type { Plan, Result } from './types.ts'
 import type { Store } from './store.ts'
 import type { ExplorationEvent } from './explorations.ts'
@@ -42,6 +42,7 @@ import {
 import type { RunRow } from './runs.ts'
 import { findInstance, instanceList } from './targets.ts'
 import { rulesLine } from './rules.ts'
+import { workspaceHarness } from './settings.ts'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 
@@ -671,8 +672,8 @@ function foundEntries(
 }
 const overlaid: LoopState[] = ['needs_plan', 'ready_to_run', 'nothing_to_run', 'needs_retest', 'passed', 'accepted']
 
-export function planStatus(store: Store, planId: string) {
-	const status = { ...loopStatus(store, planId), rules: rulesLine(store, planId) }
+export function planStatus(store: Store, planId: string, harness = workspaceHarness(store)) {
+	const status = { ...loopStatus(store, planId, harness), rules: rulesLine(store, planId) }
 	const follows = status.explorations.flatMap((item) => {
 		const count = followCount(store, item.explorationId)
 		return count
@@ -684,8 +685,8 @@ export function planStatus(store: Store, planId: string) {
 	return follows.length ? { ...status, next: [...follows, ...status.next] } : status
 }
 
-function loopStatus(store: Store, planId: string) {
-	const base = checkStatus(store, planId)
+function loopStatus(store: Store, planId: string, harness: Harness) {
+	const base = checkStatus(store, planId, harness)
 	const explorations = all<{ exploration_id: string }>(
 		store,
 		'SELECT exploration_id FROM explorations WHERE plan_id = ? ORDER BY rowid',
@@ -816,13 +817,13 @@ function loopStatus(store: Store, planId: string) {
 	return { ...base, ...extra }
 }
 
-function checkStatus(store: Store, planId: string) {
+function checkStatus(store: Store, planId: string, harness: Harness) {
 	if (!one(store, 'SELECT 1 FROM plan_revisions WHERE plan_id = ?', planId)) {
 		planRequest(store, planId)
 		return {
 			planId,
 			revision: null,
-			...loop('needs_plan', 'planner', [], [delegateHint('plan', planId)]),
+			...loop('needs_plan', 'planner', [], [delegateCommand(harness, 'plan', planId)]),
 			approval: null,
 			gaps: [],
 			pendingDecisions: [],
@@ -932,14 +933,14 @@ function checkStatus(store: Store, planId: string) {
 				'run_in_progress',
 				'qa',
 				openRuns.map((run) => `${run.runId} is started on build ${run.build} on instance ${run.instanceId}`),
-				openRuns.map((run) => delegateHint('execute', run.runId))
+				openRuns.map((run) => delegateCommand(harness, 'execute', run.runId))
 			)
 		if (pendingDecisions.length)
 			return loop(
 				'needs_revision',
 				'planner',
 				pendingDecisions.map((item) => `${item.gapId} has a pending ${item.kind} decision`),
-				[delegateHint('revise', planId)]
+				[delegateCommand(harness, 'revise', planId)]
 			)
 		if (approval === 'rejected')
 			return loop(
@@ -1118,8 +1119,8 @@ export function openRejections(store: Store, planId: string) {
 		.filter((item) => item.testIds.length)
 }
 
-function delegateHint(stage: 'plan' | 'revise' | 'execute', subject: string) {
-	const rules = selectedHarness() === 'claude' ? ' --allow Read --allow Bash' : ''
+export function delegateCommand(harness: Harness, stage: 'setup' | 'plan' | 'revise' | 'execute', subject: string) {
+	const rules = harness === 'claude' ? ' --allow Read --allow Bash' : ''
 	return `checkmate delegate ${stage} ${subject}${rules}`
 }
 

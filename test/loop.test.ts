@@ -1,6 +1,8 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import type { Store } from '../plugin/src/store.ts'
+import { run } from '../plugin/src/cli.ts'
+import { saveWorkspaceHarness } from '../plugin/src/settings.ts'
 import {
 	answerGap,
 	approvePlan,
@@ -719,15 +721,20 @@ test('a cross-plan build hint names the build that selects the most tests, the n
 	followHints(t, opened, 'pay')
 })
 
-test('a Pi execute hint can run without Claude tool rules', (t) => {
+test('execute hints use the workspace harness unless the CLI overrides it', (t) => {
 	const opened = store(t)
 	ready(opened)
 	begin(opened, 'run-1', ['T1'], 'build-1')
-	const previous = process.env.CHECKMATE_HARNESS
-	process.env.CHECKMATE_HARNESS = 'pi'
-	t.after(() => {
-		if (previous === undefined) delete process.env.CHECKMATE_HARNESS
-		else process.env.CHECKMATE_HARNESS = previous
-	})
+	saveWorkspaceHarness(opened, actor, 'pi')
 	assert.ok(planStatus(opened, 'checkout').next.includes('checkmate delegate execute run-1'))
+	const status = (CHECKMATE_HARNESS?: string) =>
+		run(['status', 'checkout', '--json'], {
+			cwd: opened.workspace,
+			env: { CHECKMATE_HARNESS },
+			stdin: () => '',
+		})
+	assert.deepEqual(JSON.parse(status().output).next, ['checkmate delegate execute run-1'])
+	assert.deepEqual(JSON.parse(status('claude').output).next, [
+		'checkmate delegate execute run-1 --allow Read --allow Bash',
+	])
 })

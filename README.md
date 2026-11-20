@@ -41,7 +41,7 @@ Read [Test in Claude Code](docs/guides/claude-code.md).
 
 ## Use Pi
 
-Run Checkmate with Pi to use a provider and model configured in Pi. This branch includes a Pi skill and a CLI harness. See [Run Checkmate with Pi](docs/guides/pi.md) for local installation and commands.
+Choose **Settings → Coding harness → Pi** in the review UI to use your Pi provider and model. To test from an interactive Pi session, install the [Checkmate skill for Pi](docs/guides/pi.md).
 
 ## Team mode: the CLI in your factory
 

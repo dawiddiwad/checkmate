@@ -13418,6 +13418,78 @@ function exploration(store, explorationId) {
   return { ...row3, charter: { ...charter, requirements: explorationRules(store, explorationId) } };
 }
 
+// plugin/src/settings.ts
+var defaultTesterRules = "Read Bash";
+function setting(store, name2) {
+  return one(
+    store,
+    "SELECT value FROM workspace_settings WHERE name = ? ORDER BY rowid DESC LIMIT 1",
+    name2
+  )?.value;
+}
+function insertSetting(store, name2, value2, operationId) {
+  store.db.prepare("INSERT INTO workspace_settings (name, value, operation_id) VALUES (?, ?, ?)").run(name2, value2, operationId);
+}
+function workspaceHarness(store) {
+  return setting(store, "harness") === "pi" ? "pi" : "claude";
+}
+function workspaceEnv(store, env) {
+  return env.CHECKMATE_HARNESS?.trim() ? env : { ...env, CHECKMATE_HARNESS: workspaceHarness(store) };
+}
+function workspaceUiEnv(store, env) {
+  const saved = setting(store, "harness");
+  return saved === "claude" || saved === "pi" ? { ...env, CHECKMATE_HARNESS: saved } : env;
+}
+function saveWorkspaceHarness(store, actor, text) {
+  return write(
+    store,
+    { actor, command: "setting set", subject: "harness", input: { harness: text } },
+    (operationId) => {
+      const harness = requireChoice(text, ["claude", "pi"], "agent harness");
+      insertSetting(store, "harness", harness, operationId);
+      return { reply: completed("harness", { harness }), subjects: ["settings"] };
+    }
+  );
+}
+function ruleTokens(text) {
+  return text.match(/(?:[^\s(]|\([^)]*(?:\)|$))+/g) ?? [];
+}
+function testerRulesText(store, harness = "claude") {
+  return setting(store, harness === "pi" ? "piTesterRules" : "testerRules") ?? defaultTesterRules;
+}
+function saveTesterRules(store, actor, text, harness = "claude") {
+  const rules = ruleTokens(text);
+  const name2 = harness === "pi" ? "piTesterRules" : "testerRules";
+  return write(store, { actor, command: "setting set", subject: name2, input: { rules } }, (operationId) => {
+    requireWellFormed(
+      rules.length,
+      "Give at least one tool rule, for example Read Bash.",
+      "The engine needs at least one rule today. With the rule, a tester does not ask you. Without it, each call asks you in the review UI."
+    );
+    if (harness === "pi") piToolNames(rules);
+    insertSetting(store, name2, rules.join(" "), operationId);
+    return { reply: completed(name2, { rules }), subjects: ["settings"] };
+  });
+}
+var modelPattern = /^[A-Za-z0-9][A-Za-z0-9._:[\]-]{0,99}$/;
+var piModelPattern = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,199}$/;
+function requestModelText(store, harness = "claude") {
+  return setting(store, harness === "pi" ? "piRequestModel" : "requestModel") ?? "";
+}
+function saveRequestModel(store, actor, text, harness = "claude") {
+  const model = text.trim();
+  const name2 = harness === "pi" ? "piRequestModel" : "requestModel";
+  return write(store, { actor, command: "setting set", subject: name2, input: { model } }, (operationId) => {
+    requireWellFormed(
+      !model || (harness === "pi" ? piModelPattern : modelPattern).test(model),
+      `${model} is not a model alias or ID.`,
+      harness === "pi" ? "Give a Pi model ID. Leave the field empty to use the model configured in Pi." : "Use letters, digits, and the characters . : [ ] - . Leave the field empty for the model of Claude Code."
+    );
+    insertSetting(store, name2, model, operationId);
+    return { reply: completed(name2, { model }), subjects: ["settings"] };
+  });
+}
+
 // plugin/src/levels.ts
 var testLevels = {
   smoke: { explorers: 1, model: "haiku", verifier: false, studySeconds: 300, testSeconds: 600, followSeconds: 300 },
@@ -14725,7 +14797,7 @@ function launchPlan(profile, input, env) {
       model: null,
       modelFrom: "agent",
       verifier: row3.verifier,
-      context: { hiddenPlugin: null, claudeArgs: [] },
+      context: { hiddenPlugin: null, claudeArgs: [], harness: "claude" },
       allow: input.allow,
       studySeconds: row3.studySeconds,
       testSeconds,
@@ -14757,7 +14829,7 @@ function launchPlan(profile, input, env) {
     model: host ?? (harness === "pi" ? null : row3.model),
     modelFrom: host || harness === "pi" ? "host" : "level",
     verifier: row3.verifier,
-    context: harness === "pi" ? { hiddenPlugin, claudeArgs: [], harness, piArgs: piArgs2 } : { hiddenPlugin, claudeArgs: host ? claudeArgs : [...claudeArgs, "--model", row3.model] },
+    context: harness === "pi" ? { hiddenPlugin, claudeArgs: [], harness, piArgs: piArgs2 } : { hiddenPlugin, claudeArgs: host ? claudeArgs : [...claudeArgs, "--model", row3.model], harness },
     allow: input.allow,
     studySeconds: row3.studySeconds,
     testSeconds,
@@ -14861,6 +14933,7 @@ function startSupervisor(store, explorationId, actor, env, extra = []) {
   child.unref();
 }
 function startExploration(store, actor, given, env) {
+  if (!given.session) env = workspaceEnv(store, env);
   const change = changeOf(store.workspace, given);
   const input = { ...given, change, scope: given.scope ?? (change ? changedFiles(store.workspace, change) : []) };
   const reply = write(store, { actor, command: "explore start", subject: input.planId, input }, (operationId, at) => {
@@ -15368,25 +15441,27 @@ function followCount(store, explorationId) {
 function startFollow(store, actor, input, env) {
   const id2 = input.explorationId;
   let session = false;
+  let harness = "claude";
   const reply = write(store, { actor, command: "explore follow", subject: id2, input }, (operationId, at) => {
     const row3 = explorationRow(store, id2);
     const events = explorationEvents(store, id2);
-    session = startOf(events)?.path === "session";
-    if (!session) requireChild(env, startOf(events)?.context?.harness);
+    const stored = startOf(events);
+    session = stored?.path === "session";
+    harness = stored?.context?.harness ?? "claude";
     const state = explorationState(events);
     requireCondition(
-      followable(events),
+      stored && followable(events),
       `Exploration ${id2} is ${state}. A follow-up needs a completed exploration.`,
       ["failed", "stopped", "interrupted", "open"].includes(state) ? `Start a new test: checkmate test ${row3.plan_id} --allow Read --allow Bash` : `Run checkmate explore wait ${id2}. Then run the follow-up again.`
     );
+    if (!session) requireChild(env, harness);
     const answered = unusedAnswers(store, id2);
     requireCondition(
       answered.length,
       `Exploration ${id2} has no answer that a follow-up has not used.`,
       `Answer a question of the exploration first: checkmate gap answer ${row3.plan_id} <questionId> --kind <kind> --value "<answer>" --source "<source>" --rationale "<why>". Run checkmate explore show ${id2} to read its questions.`
     );
-    const stored = startOf(events);
-    if (stored.context.harness === "pi") {
+    if (harness === "pi") {
       requireWellFormed(!input.claudeArgs.length, "--claude-arg is for Claude.");
       piToolNames(input.allow);
     }
@@ -15421,7 +15496,7 @@ function startFollow(store, actor, input, env) {
       subjects: [`exploration:${id2}`, `plan:${row3.plan_id}`]
     };
   });
-  if (!session) startSupervisor(store, reply.subject, actor, env, ["--follow"]);
+  if (!session) startSupervisor(store, reply.subject, actor, { ...env, CHECKMATE_HARNESS: harness }, ["--follow"]);
   return reply;
 }
 function followSessions(events) {
@@ -15905,10 +15980,12 @@ function conversationHarness(store, sessionId) {
   const row3 = one(
     store,
     `SELECT e.detail FROM request_events e JOIN requests r ON r.request_id = e.request_id
-		WHERE r.conversation = ? AND e.step = 'session' ORDER BY e.rowid DESC LIMIT 1`,
+		WHERE r.conversation = ? AND (e.step = 'session' OR
+			(e.step = 'state' AND e.status = 'waiting' AND json_extract(e.detail, '$.harness') IS NOT NULL))
+		ORDER BY e.rowid DESC LIMIT 1`,
     sessionId
   );
-  return row3 ? JSON.parse(row3.detail).harness ?? "claude" : null;
+  return row3 ? JSON.parse(row3.detail).harness === "pi" ? "pi" : "claude" : null;
 }
 function addRequestEvent(store, requestId, event2, operationId, at) {
   execute(
@@ -15934,7 +16011,10 @@ function askRequest(store, actor, input) {
       "R",
       all(store, "SELECT request_id FROM requests").map((row3) => row3.request_id)
     );
-    const conversation = currentConversation(store) ?? insertConversation(store, operationId, at);
+    const current = currentConversation(store);
+    const previous = current && conversationHarness(store, current.sessionId);
+    const harness = input.harness ?? "claude";
+    const conversation = current && (!previous || previous === harness) ? current : insertConversation(store, operationId, at);
     execute(
       store,
       "INSERT INTO requests (request_id, text, context, asker, conversation, asked_at, operation_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -15946,7 +16026,7 @@ function askRequest(store, actor, input) {
       at,
       operationId
     );
-    addRequestEvent(store, requestId, { step: "state", status: "waiting", detail: {} }, operationId, at);
+    addRequestEvent(store, requestId, { step: "state", status: "waiting", detail: { harness } }, operationId, at);
     return {
       reply: completed(requestId, { requestId }),
       subjects: [`request:${requestId}`, "requests"]
@@ -16009,6 +16089,8 @@ function recordOf(ask, events) {
   const states = events.filter((event2) => event2.step === "state");
   const last = states.at(-1);
   const session = events.findLast((event2) => event2.step === "session");
+  const recorded = session ? JSON.parse(session.detail) : null;
+  const harness = JSON.parse(states[0].detail).harness ?? recorded?.harness;
   const finished = endStates.includes(last.status) ? last : null;
   const detail = finished ? JSON.parse(finished.detail) : {};
   const listOf2 = (value2) => Array.isArray(value2) ? value2 : [];
@@ -16018,9 +16100,10 @@ function recordOf(ask, events) {
     context: JSON.parse(ask.context),
     asker: ask.asker,
     conversation: ask.conversation,
+    harness: harness === "pi" ? "pi" : "claude",
     askedAt: ask.asked_at,
     state: last.status,
-    sessionId: session ? JSON.parse(session.detail).sessionId : null,
+    sessionId: recorded?.sessionId ?? null,
     activity: events.filter((event2) => event2.step === "activity").map((event2) => ({ at: event2.at, line: JSON.parse(event2.detail).line })),
     reply: typeof detail.reply === "string" ? detail.reply : null,
     costUsd: typeof detail.costUsd === "number" ? detail.costUsd : null,
@@ -16948,8 +17031,8 @@ function foundEntries(store, planId, explorationId, limit, claims, questions) {
   });
 }
 var overlaid = ["needs_plan", "ready_to_run", "nothing_to_run", "needs_retest", "passed", "accepted"];
-function planStatus(store, planId) {
-  const status = { ...loopStatus(store, planId), rules: rulesLine(store, planId) };
+function planStatus(store, planId, harness = workspaceHarness(store)) {
+  const status = { ...loopStatus(store, planId, harness), rules: rulesLine(store, planId) };
   const follows = status.explorations.flatMap((item) => {
     const count2 = followCount(store, item.explorationId);
     return count2 ? [
@@ -16958,8 +17041,8 @@ function planStatus(store, planId) {
   });
   return follows.length ? { ...status, next: [...follows, ...status.next] } : status;
 }
-function loopStatus(store, planId) {
-  const base = checkStatus(store, planId);
+function loopStatus(store, planId, harness) {
+  const base = checkStatus(store, planId, harness);
   const explorations = all(
     store,
     "SELECT exploration_id FROM explorations WHERE plan_id = ? ORDER BY rowid",
@@ -17071,13 +17154,13 @@ function loopStatus(store, planId) {
   }
   return { ...base, ...extra };
 }
-function checkStatus(store, planId) {
+function checkStatus(store, planId, harness) {
   if (!one(store, "SELECT 1 FROM plan_revisions WHERE plan_id = ?", planId)) {
     planRequest(store, planId);
     return {
       planId,
       revision: null,
-      ...loop("needs_plan", "planner", [], [delegateHint("plan", planId)]),
+      ...loop("needs_plan", "planner", [], [delegateCommand(harness, "plan", planId)]),
       approval: null,
       gaps: [],
       pendingDecisions: [],
@@ -17179,14 +17262,14 @@ function checkStatus(store, planId) {
         "run_in_progress",
         "qa",
         openRuns.map((run2) => `${run2.runId} is started on build ${run2.build} on instance ${run2.instanceId}`),
-        openRuns.map((run2) => delegateHint("execute", run2.runId))
+        openRuns.map((run2) => delegateCommand(harness, "execute", run2.runId))
       );
     if (pendingDecisions2.length)
       return loop(
         "needs_revision",
         "planner",
         pendingDecisions2.map((item) => `${item.gapId} has a pending ${item.kind} decision`),
-        [delegateHint("revise", planId)]
+        [delegateCommand(harness, "revise", planId)]
       );
     if (approval === "rejected")
       return loop(
@@ -17351,8 +17434,8 @@ function openRejections(store, planId) {
     rationale: latestApproval(store, "result", run2.runId).rationale
   })).filter((item) => item.testIds.length);
 }
-function delegateHint(stage, subject) {
-  const rules = selectedHarness() === "claude" ? " --allow Read --allow Bash" : "";
+function delegateCommand(harness, stage, subject) {
+  const rules = harness === "claude" ? " --allow Read --allow Bash" : "";
   return `checkmate delegate ${stage} ${subject}${rules}`;
 }
 function loopOf(store, planId) {
@@ -18609,6 +18692,7 @@ function checkRun(store, actor, input) {
   return { run: { runId, tests: begun.data.tests }, skipped: [] };
 }
 function runTest(store, actor, given, env) {
+  env = workspaceEnv(store, env);
   const assumed = [];
   const build = given.build ?? defaultBuild(store.workspace);
   if (!given.build) assumed.push(`build=${build}`);
@@ -18636,7 +18720,7 @@ function runTest(store, actor, given, env) {
       assumed,
       next: [
         ...check.run ? [
-          `Execute the stored tests of ${check.run.runId}: /checkmate:execute ${check.run.runId}, or checkmate delegate execute ${check.run.runId}`
+          `Execute the stored tests of ${check.run.runId}: ${given.session ? `/checkmate:execute ${check.run.runId}, or ` : ""}${delegateCommand(selectedHarness(env), "execute", check.run.runId)}`
         ] : [],
         ...explored.data.next
       ]
@@ -19090,49 +19174,51 @@ function statusBar(context, page) {
 		<span class="sb-keys" data-hints></span>
 	</footer>`;
 }
-var dialogs = html2`<dialog class="sp-keys" data-keys aria-labelledby="keys-title">
-		<div class="sp-dh">
-			<h2 id="keys-title" class="sp-path">Keys</h2>
-			<button class="sp-btn" type="button" data-keys-close><kbd>Esc</kbd><span>Close</span></button>
-		</div>
-		<div data-keys-table></div>
-	</dialog>
-	<dialog class="sp-find" data-find aria-label="Find or ask">
-		<input
-			type="search"
-			data-find-input
-			aria-label="Find a plan, a defect, or a question. Or type a request."
-			autocomplete="off"
-		/>
-		<ul role="listbox" aria-label="Results" data-find-results></ul>
-		<p class="sp-find-none" data-find-none hidden>Nothing matches.</p>
-		<p class="sp-find-none" data-find-more hidden></p>
-		<p class="sp-find-none" data-find-asking role="status" hidden></p>
-		<p class="sp-find-none" data-find-error role="alert" hidden></p>
-		<div class="sp-foot">
-			<span><kbd>${glyph("\u2191")}</kbd><kbd>${glyph("\u2193")}</kbd>Choose</span
-			><span><kbd>Enter</kbd><span data-find-enter>Go</span></span
-			><span><kbd>Esc</kbd>Close</span>
-		</div>
-		<p class="sp-find-note" data-find-note>
-			Ask Checkmate starts Claude Code on this computer, in your own session. It can read this workspace and
-			change records.
-		</p>
-	</dialog>
-	<dialog class="sp-confirm" data-confirm aria-labelledby="confirm-title">
-		<div class="sp-dh"><h2 id="confirm-title" class="sp-path" data-confirm-title></h2></div>
-		<form method="dialog" class="sp-form sp-confirm-b" data-confirm-form>
-			<p class="sp-sub" data-confirm-text></p>
-			<div data-confirm-field hidden>
-				<label for="confirm-input" data-confirm-label></label>
-				<input id="confirm-input" autocomplete="off" />
+var dialogs = (harness) => html2`<dialog class="sp-keys" data-keys aria-labelledby="keys-title">
+			<div class="sp-dh">
+				<h2 id="keys-title" class="sp-path">Keys</h2>
+				<button class="sp-btn" type="button" data-keys-close><kbd>Esc</kbd><span>Close</span></button>
 			</div>
-			<div class="btns">
-				<button class="sp-btn pri" value="yes" data-confirm-yes><kbd>Enter</kbd><span>Confirm</span></button>
-				<button class="sp-btn" value="no" data-confirm-no><kbd>Esc</kbd><span>Cancel</span></button>
+			<div data-keys-table></div>
+		</dialog>
+		<dialog class="sp-find" data-find data-harness="${harness}" aria-label="Find or ask">
+			<input
+				type="search"
+				data-find-input
+				aria-label="Find a plan, a defect, or a question. Or type a request."
+				autocomplete="off"
+			/>
+			<ul role="listbox" aria-label="Results" data-find-results></ul>
+			<p class="sp-find-none" data-find-none hidden>Nothing matches.</p>
+			<p class="sp-find-none" data-find-more hidden></p>
+			<p class="sp-find-none" data-find-asking role="status" hidden></p>
+			<p class="sp-find-none" data-find-error role="alert" hidden></p>
+			<div class="sp-foot">
+				<span><kbd>${glyph("\u2191")}</kbd><kbd>${glyph("\u2193")}</kbd>Choose</span
+				><span><kbd>Enter</kbd><span data-find-enter>Go</span></span
+				><span><kbd>Esc</kbd>Close</span>
 			</div>
-		</form>
-	</dialog>`;
+			<p class="sp-find-note" data-find-note>
+				Ask Checkmate starts ${harness === "pi" ? "Pi" : "Claude Code"} on this computer. It can read this
+				workspace and change records.
+			</p>
+		</dialog>
+		<dialog class="sp-confirm" data-confirm aria-labelledby="confirm-title">
+			<div class="sp-dh"><h2 id="confirm-title" class="sp-path" data-confirm-title></h2></div>
+			<form method="dialog" class="sp-form sp-confirm-b" data-confirm-form>
+				<p class="sp-sub" data-confirm-text></p>
+				<div data-confirm-field hidden>
+					<label for="confirm-input" data-confirm-label></label>
+					<input id="confirm-input" autocomplete="off" />
+				</div>
+				<div class="btns">
+					<button class="sp-btn pri" value="yes" data-confirm-yes>
+						<kbd>Enter</kbd><span>Confirm</span>
+					</button>
+					<button class="sp-btn" value="no" data-confirm-no><kbd>Esc</kbd><span>Cancel</span></button>
+				</div>
+			</form>
+		</dialog>`;
 function parentOf(page) {
   if (page.back !== void 0) return page.back;
   const links = page.crumbs?.filter(([, href]) => href) ?? [];
@@ -19178,7 +19264,7 @@ function layout(context, page) {
 				<div class="sp-saystrip" role="status" data-say-strip hidden></div>
 				${context.toast ? html2`<div class="toast" role="status" data-toast title="${context.toast}">${cut(context.toast)}</div>` : ""}
 				<div class="sr-only" aria-live="polite" data-announcer></div>
-				${dialogs} ${page.viewer ? viewer : ""}
+				${dialogs(context.harness)} ${page.viewer ? viewer : ""}
 			</body>
 		</html>`;
 }
@@ -20170,7 +20256,7 @@ function nextOpen(store, after) {
   return open[0] ?? null;
 }
 function choicesOf(item) {
-  const kind = item.tool === "Bash" ? "command" : "kind of call";
+  const kind = item.tool.toLowerCase() === "bash" ? "command" : "kind of call";
   const run2 = item.askerId;
   const rule = item.rule;
   const request = item.fromRequest;
@@ -20206,7 +20292,7 @@ function choicesOf(item) {
       decision: "deny",
       label: "Deny\u2026",
       reveal: "deny",
-      text: `Answers no. You write the reason first, and ${request ? "Claude Code" : "the tester"} gets it.`
+      text: `Answers no. You write the reason first, and the tool receives your reason.`
     },
     stopChoice(item)
   ];
@@ -20323,7 +20409,7 @@ function stateOf(item) {
   const decision = item.decision;
   if (decision.kind === "closed")
     return html2`<strong>Closed ${ago(decision.at)}:</strong> ${closedText[decision.cause]}.
-			${decision.cause === "timeout" ? "Claude Code denied the call." : ""}`;
+			${decision.cause === "timeout" ? "The tool call was denied." : ""}`;
   if (decision.kind === "rule")
     return html2`<strong>Answered ${ago(decision.at)} by a rule:</strong> ${decision.text}.`;
   return html2`<strong>Answered ${ago(decision.at)}:</strong> ${decision.text}.`;
@@ -20732,7 +20818,7 @@ function runsSpec(store) {
     path: "/runs",
     region: "runs",
     noun: "run",
-    none: ["No run yet.", html2`Approve a plan, then run <code>/checkmate:test</code> in Claude Code.`],
+    none: ["No run yet.", html2`Open a plan to review its tests and start a run.`],
     search: "Search runs",
     columns: [
       { label: "Run", sort: "run" },
@@ -20950,6 +21036,9 @@ function instanceField(choice2, shown2) {
   )}
 	</fieldset>`;
 }
+function testerToolHelp(harness) {
+  return harness === "pi" ? "List tool names, for example read bash. Pi enables the listed tools for the tester." : "List tool rules, for example Read Bash. With the rule, a tester does not ask. Without it, each call asks you here.";
+}
 function testDialog(context, planId, values, fallbackBuild = "", instances = []) {
   const build = values.build || fallbackBuild;
   const shown2 = { ...values, build };
@@ -20959,7 +21048,8 @@ function testDialog(context, planId, values, fallbackBuild = "", instances = [])
     planId ? `A test of ${planId} is in progress now. Nothing was started here.` : "Nothing was started.",
     planId ? `/plans/${planId}/test` : "/activity",
     context,
-    html2`<p class="sp-sub">Start a test of the plan on this computer. The testers run in the background.</p>
+    html2`<input type="hidden" name="harness" value="${context.harness}" />
+			<p class="sp-sub">Start a test of the plan on this computer. The testers run in the background.</p>
 			${field("act-test-build", "Build", "build", shown2.build, "Write the build name.")}
 			${instances.map((choice2) => instanceField(choice2, choice2.planId === planId))}
 			<fieldset class="sp-seg" role="radiogroup" aria-label="Level">
@@ -20987,10 +21077,7 @@ function testDialog(context, planId, values, fallbackBuild = "", instances = [])
 				aria-describedby="act-test-rules-help"
 				data-stop
 			/>
-			<p class="help" id="act-test-rules-help">
-				One tool rule for each word, as in <code>--allow</code>, for example <code>Read Bash</code>. With the
-				rule, a tester does not ask. Without it, each call asks you here.
-			</p>
+			<p class="help" id="act-test-rules-help">${testerToolHelp(context.harness)}</p>
 			<details class="sp-more" data-more>
 				<summary data-stop>More</summary>
 				${field("act-test-since", "Since (git ref)", "since", shown2.since)}
@@ -21256,7 +21343,19 @@ function money(costUsd) {
 function failureOf(reason, hint, events) {
   const text = reason ?? "";
   if (/No claude executable/.test(text)) return claudeMissing;
-  if (hint === authenticationHint || /Host authentication/.test(text))
+  if (/No pi executable/.test(text))
+    return {
+      cause: "Pi was not found on PATH.",
+      next: "Install Pi or choose Claude Code in Settings.",
+      detail: null
+    };
+  if (hint === piAuthenticationHint || /Host authentication/.test(text) && startOf(events)?.context?.harness === "pi")
+    return {
+      cause: "Pi could not sign in to its provider.",
+      next: "Check the provider login in Pi, then test again.",
+      detail: piAuthenticationHint
+    };
+  if (hint === authenticationHint)
     return {
       cause: "Claude Code is not signed in on this computer.",
       next: "Run claude and log in. Then test again.",
@@ -23561,51 +23660,6 @@ function claimPage(store, context, explorationId, claimId, state = null) {
   };
 }
 
-// plugin/src/settings.ts
-var defaultTesterRules = "Read Bash";
-function ruleTokens(text) {
-  return text.match(/(?:[^\s(]|\([^)]*(?:\)|$))+/g) ?? [];
-}
-function testerRulesText(store) {
-  const row3 = one(
-    store,
-    "SELECT value FROM workspace_settings WHERE name = 'testerRules' ORDER BY rowid DESC LIMIT 1"
-  );
-  return row3?.value ?? defaultTesterRules;
-}
-function saveTesterRules(store, actor, text) {
-  const rules = ruleTokens(text);
-  return write(store, { actor, command: "setting set", subject: "testerRules", input: { rules } }, (operationId) => {
-    requireWellFormed(
-      rules.length,
-      "Give at least one tool rule, for example Read Bash.",
-      "The engine needs at least one rule today. With the rule, a tester does not ask you. Without it, each call asks you in the review UI."
-    );
-    store.db.prepare("INSERT INTO workspace_settings (name, value, operation_id) VALUES (?, ?, ?)").run("testerRules", rules.join(" "), operationId);
-    return { reply: completed("testerRules", { rules }), subjects: ["settings"] };
-  });
-}
-var modelPattern = /^[A-Za-z0-9][A-Za-z0-9._:[\]-]{0,99}$/;
-function requestModelText(store) {
-  const row3 = one(
-    store,
-    "SELECT value FROM workspace_settings WHERE name = 'requestModel' ORDER BY rowid DESC LIMIT 1"
-  );
-  return row3?.value ?? "";
-}
-function saveRequestModel(store, actor, text) {
-  const model = text.trim();
-  return write(store, { actor, command: "setting set", subject: "requestModel", input: { model } }, (operationId) => {
-    requireWellFormed(
-      !model || modelPattern.test(model),
-      `${model} is not a model alias or ID.`,
-      "Use letters, digits, and the characters . : [ ] - . Leave the field empty for the model of Claude Code."
-    );
-    store.db.prepare("INSERT INTO workspace_settings (name, value, operation_id) VALUES (?, ?, ?)").run("requestModel", model, operationId);
-    return { reply: completed("requestModel", { model }), subjects: ["settings"] };
-  });
-}
-
 // plugin/src/developer.ts
 var separator = `
 
@@ -23843,13 +23897,9 @@ function homePage(store) {
   const plans = listed.map((each) => each.plan);
   const reviews = listed.map((each) => each.review);
   const blocking = reviews.reduce((sum2, review) => sum2 + verdictLine(review).blocking, 0);
-  const body = plans.length ? html2`<div class="sp-home" role="list" aria-label="Plans" data-list>
-				${reviews.map((review, index2) => tile(review, plans[index2].loop, index2))}${newChangeRow(reviews.length)}
-			</div>` : emptyNotice(
-    "No plan yet.",
-    html2`Ask Claude Code to test a change, for example <code>/checkmate:test the change in ticket.md</code>.
-					Each plan shows here with what waits for you.`
-  );
+  const body = html2`<div class="sp-home" role="list" aria-label="Plans" data-list>
+		${reviews.map((review, index2) => tile(review, plans[index2].loop, index2))}${newChangeRow(reviews.length)}
+	</div>`;
   return {
     title: "Plans",
     section: "home",
@@ -24051,7 +24101,8 @@ function newChangePage(context, defaults, onHome) {
     levelNames.map((level) => [level, level, levelNotes2[level]]),
     "normal"
   )}
-		${field2("change-rules", "rules", "Testers may use without asking", "One tool rule for each word, as in --allow, for example Read Bash. With the rule, a tester does not ask. Without it, each call asks you here.", "", context.testerRules)}
+		<input type="hidden" name="harness" value="${context.harness}" />
+		${field2("change-rules", "rules", "Testers may use without asking", testerToolHelp(context.harness), "", context.testerRules)}
 		<details class="sp-more" data-more>
 			<summary>More</summary>
 			${field2("change-since", "since", "Since (git ref)", "Without it, Checkmate uses the default branch of origin.")}
@@ -24218,7 +24269,7 @@ function gapsList(detail) {
 function runsTable(detail) {
   if (!detail.runs.length)
     return html2`<p class="none">
-			No run uses this plan yet. Approve the plan, then run <code>/checkmate:test</code>.
+			No run uses this plan yet. Approve the plan, then choose <strong>Test build…</strong> on its review page.
 		</p>`;
   return html2`<div class="scroll">
 		<table>
@@ -24432,13 +24483,13 @@ function fold(id2, title, count2, open, body, region = "") {
 		<div class="fold-b">${body}</div>
 	</details>`;
 }
-function planContext(store, planId) {
+function planContext(store, planId, harness) {
   return {
     waiting: needsYou(store).items.filter((item) => item.planId === planId),
     claims: mergedClaims(store, planId),
     questions: mergedQuestions(store, planId),
     explorations: planExplorations(store, planId),
-    status: planStatus(store, planId)
+    status: planStatus(store, planId, harness)
   };
 }
 function nextLine(planId, found) {
@@ -24521,7 +24572,7 @@ function planPage(store, context, planId, revision, state = null, allHistory = f
   const { plan } = detail;
   const subject = `${planId}@${revision}`;
   const latest = detail.revision === detail.latestRevision;
-  const found = planContext(store, planId);
+  const found = planContext(store, planId, context.harness);
   const meta2 = html2`<div class="meta">
 		${pill(detail.approval.state)}
 		<span class="pill">target <span class="mono">${plan.target.targetId}@${plan.target.revision}</span></span>
@@ -24603,19 +24654,19 @@ function planPage(store, context, planId, revision, state = null, allHistory = f
     nav: navigator(reviewOf(store, planId), "plan")
   };
 }
-function storedTestsEmpty(planId, completed2) {
+function storedTestsEmpty(planId, completed2, harness) {
   return html2`<div data-key="no-tests">
 		${emptyNotice(
     "No stored tests yet.",
     html2`A stored test comes from the claims of a completed exploration. To store them, run
 				<code>checkmate harvest ${completed2 ?? "<explorationId>"}</code>. To write a plan with tests, run
-				<code>/checkmate:plan ${planId}</code>.`
+				<code>${harness === "pi" ? `checkmate delegate plan ${planId}` : `/checkmate:plan ${planId}`}</code>.`
   )}
 	</div>`;
 }
-function requestPage(store, planId) {
+function requestPage(store, planId, harness) {
   const { request, target } = planRequest(store, planId);
-  const found = planContext(store, planId);
+  const found = planContext(store, planId, harness);
   const targetRef = `${target.profile.targetId}@${target.revision}`;
   const targetLink = html2`<a
 		class="mono"
@@ -24658,7 +24709,7 @@ function requestPage(store, planId) {
 			<div class="main-col">
 				${fold("request", "Request", null, !anyOpen, overview)} ${claimsFold(planId, found)}
 				${questionsFold(planId, found)} ${explorationsFold(found)}
-				${fold("tests", "Stored tests", 0, !found.explorations.length, storedTestsEmpty(planId, completed2), "tests")}
+				${fold("tests", "Stored tests", 0, !found.explorations.length, storedTestsEmpty(planId, completed2, harness), "tests")}
 			</div>
 			${side(
     recordPanel(
@@ -25736,7 +25787,7 @@ function elapsed(request, now) {
 function failureText(request) {
   const [sentence2, ...lines2] = (request.reason ?? "").split("\n");
   const known = failureOf(request.reason, request.hint, []);
-  const cause = /No claude executable|Host authentication/.test(request.reason ?? "") || request.hint ? `${known.cause} ${known.next}` : sentence2 || "The request failed. No reason is recorded.";
+  const cause = /No (?:claude|pi) executable|Host authentication/.test(request.reason ?? "") || request.hint ? `${known.cause} ${known.next}` : sentence2 || "The request failed. No reason is recorded.";
   return { cause, lines: lines2, detail: request.hint ? known.detail : null };
 }
 function requestPage2(store, context, requestId) {
@@ -25748,14 +25799,15 @@ function requestPage2(store, context, requestId) {
   const back = "/requests";
   const asked2 = [
     ["text", request.text],
-    ["context", JSON.stringify(request.context)]
+    ["context", JSON.stringify(request.context)],
+    ["harness", context.harness]
   ];
   const again = formOption(
     context,
     "/requests",
     ended && request.state !== "failed" ? 2 : 1,
     "Ask again",
-    "Sends the same text as a new request.",
+    `Send the same text to ${context.harness === "pi" ? "Pi" : "Claude Code"} as a new request.`,
     [...asked2, ["return", `/requests/${requestId}`]]
   );
   const options3 = !ended ? [
@@ -25768,7 +25820,7 @@ function requestPage2(store, context, requestId) {
       [],
       {
         title: `Stop request ${requestId}?`,
-        text: `Checkmate stops Claude Code. The changes that it made stay. You can ask again.`,
+        text: `Stop this request? You can review any changes it already made.`,
         yes: "Stop the request"
       }
     )
@@ -25780,7 +25832,7 @@ function requestPage2(store, context, requestId) {
       "/requests/conversation",
       3,
       "New conversation",
-      "Claude Code forgets the earlier requests. The next request starts a new conversation.",
+      "Start the next request with an empty conversation.",
       [["return", `/requests/${requestId}`]]
     )
   ];
@@ -25807,6 +25859,7 @@ function requestPage2(store, context, requestId) {
 				<div class="sp-pills">
 					${stateLabel(request)}
 					<span class="sp-c-id">${requestId}</span>
+					<span class="sp-c-id">${request.harness === "pi" ? "Pi" : "Claude Code"}</span>
 					<span class="sp-c-id">${request.asker}</span>
 					<span class="sp-c-id">${ago(request.askedAt)}</span>
 				</div>
@@ -25830,7 +25883,7 @@ function requestPage2(store, context, requestId) {
 							</h2>
 							${request.activity.length ? html2`<ol class="sp-activity" aria-live="polite">
 											${request.activity.map((entry, index2) => html2`<li data-key="line:${index2}" class="ell" title="${entry.line}">${entry.line}</li>`)}
-										</ol>` : html2`<p class="help">Claude Code has used no tool yet.</p>`}
+										</ol>` : html2`<p class="help">Waiting for the first tool call.</p>`}
 						</section>` : ""}
 			${request.state === "running" || request.state === "waiting" ? html2`<p class="help" data-key="elapsed">
 							${request.state === "running" ? html2`Running for ${elapsed(request, now)}.` : ""}
@@ -25956,7 +26009,7 @@ function conversationText(store) {
 // plugin/src/ui/settings.ts
 var settingsPages = [
   { path: "/settings/targets", label: "Targets" },
-  { path: "/settings/claude", label: "Claude Code" }
+  { path: "/settings/harness", label: "Coding harness" }
 ];
 function settingsNav(current) {
   return html2`<nav class="settings-nav" aria-label="Settings pages">
@@ -25972,7 +26025,7 @@ function settingsNav(current) {
 	</nav>`;
 }
 function settingsPage(current, title, subjects, body, status) {
-  const target = title !== "Targets" && title !== "Claude Code";
+  const target = title !== "Targets" && title !== "Coding harness";
   return {
     title,
     section: "settings",
@@ -26347,7 +26400,7 @@ function instanceFromForm(entryPoints, form) {
     references: references2
   };
 }
-function claudeProgram(env) {
+function harnessProgram(env) {
   try {
     const program = requireChild(env, selectedHarness(env));
     return html2`<code>${program}</code>`;
@@ -26356,34 +26409,39 @@ function claudeProgram(env) {
     return html2`<span class="form-error" role="status">${error.message} ${error.hint ?? ""}</span>`;
   }
 }
-function claudePage(store, context, env, form = null, model = null) {
-  const pi = selectedHarness(env) === "pi";
-  const body = html2`${heading(pi ? "Pi" : "Claude Code", "The program that runs the testers. Checkmate makes no call to it on this page.")}
-		<section class="panel" aria-labelledby="claude-program">
-			<h2 class="lab" id="claude-program">Program</h2>
-			<p>${claudeProgram(env)}</p>
-			<p class="help">
-				${pi ? "Pi" : "Claude Code"} keeps the login and tools. Checkmate does not read or copy a credential.
-			</p>
+function harnessPage(store, context, env, form = null, model = null) {
+  const effectiveEnv = workspaceUiEnv(store, env);
+  const harness = selectedHarness(effectiveEnv);
+  const pi = harness === "pi";
+  const body = html2`${heading("Coding harness", null)}
+		<section class="panel" aria-labelledby="harness-label">
+			<form method="post" action="/settings/harness/select" class="decision-form">
+				<input type="hidden" name="csrf" value="${context.csrf}" />
+				<div class="field-group">
+					<label id="harness-label" class="lab" for="coding-harness">Program for this workspace</label>
+					<select id="coding-harness" name="harness">
+						<option value="claude" ${harness === "claude" ? html2`selected` : ""}>Claude Code</option>
+						<option value="pi" ${harness === "pi" ? html2`selected` : ""}>Pi</option>
+					</select>
+					<p class="help">Applies to new tests and requests in this workspace.</p>
+				</div>
+				<div class="btns"><button class="btn primary">Save the program</button></div>
+			</form>
+			<p id="harness-program">Current executable · ${harnessProgram(effectiveEnv)}</p>
 		</section>
 		<section class="panel" aria-labelledby="claude-rules">
 			<h2 class="lab" id="claude-rules">Tool rules of testers</h2>
-			<p class="help">
-				A rule lets a tester use a tool without asking you, for example <code>Read</code> or <code>Bash</code>.
-				The engine needs at least one rule today. A test that you start in the UI shows these rules, and you can
-				change them there.
-			</p>
 			<p class="help" data-key="permission-bash">
-				With the rule <code>Bash</code>, testers run commands without asking. Without it, each command asks you
-				here, and a tester waits up to 10 minutes for the answer.
+				${pi ? "With Bash, testers can run commands. Without it, they cannot use Bash." : "With Bash, testers run commands without asking. Without it, each command asks you here. A tester waits up to 10 minutes for an answer."}
 			</p>
 			<p class="help" data-region="permission-hook">
 				${liveUi(context.workspace) ? "Testers that start now can ask you in this UI when a tool needs a permission." : "Testers that start now cannot ask you. The UI of this folder does not run. A tool that needs a permission is denied."}
 			</p>
-			<form method="post" action="/settings/claude" class="decision-form">
+			<form method="post" action="/settings/harness/rules" class="decision-form">
 				<input type="hidden" name="csrf" value="${context.csrf}" />
+				<input type="hidden" name="harness" value="${harness}" />
 				<div class="field-group">
-					<label class="lab" for="tester-rules">Tool rules of testers</label>
+					<label class="lab" for="tester-rules">Default tools for new tests</label>
 					<input
 						id="tester-rules"
 						name="rules"
@@ -26393,7 +26451,9 @@ function claudePage(store, context, env, form = null, model = null) {
 						aria-describedby="tester-rules-help"
 						${form ? html2`autofocus` : ""}
 					/>
-					<p class="help" id="tester-rules-help">One rule for each word, as in <code>--allow</code>.</p>
+					<p class="help" id="tester-rules-help">
+						${pi ? "Enter tool names separated by spaces, for example read bash." : "Enter tool rules separated by spaces, for example Read Bash."}
+					</p>
 					${form ? html2`<p class="form-error" role="alert" data-field="rules">${form.error}</p>` : ""}
 				</div>
 				<div class="btns"><button class="btn primary">Save the rules</button></div>
@@ -26446,16 +26506,17 @@ function claudePage(store, context, env, form = null, model = null) {
 				own session. It has your login, your settings, and your tools. Checkmate asks you here when a tool needs
 				permission.
 			</p>
-			<form method="post" action="/settings/claude/model" class="decision-form">
+			<form method="post" action="/settings/harness/model" class="decision-form">
 				<input type="hidden" name="csrf" value="${context.csrf}" />
+				<input type="hidden" name="harness" value="${harness}" />
 				<div class="field-group">
 					<label class="lab" for="request-model">Model for requests</label>
 					<input
 						id="request-model"
 						name="model"
-						maxlength="100"
+						maxlength="${pi ? 200 : 100}"
 						autocomplete="off"
-						value="${model?.value ?? requestModelText(store)}"
+						value="${model?.value ?? requestModelText(store, harness)}"
 						aria-describedby="request-model-help"
 						${model ? html2`autofocus` : ""}
 					/>
@@ -26469,11 +26530,11 @@ function claudePage(store, context, env, form = null, model = null) {
 			<p class="help" data-region="conversation">${conversationText(store)}</p>
 			<form method="post" action="/requests/conversation" class="decision-form">
 				<input type="hidden" name="csrf" value="${context.csrf}" />
-				<input type="hidden" name="return" value="/settings/claude" />
+				<input type="hidden" name="return" value="/settings/harness" />
 				<div class="btns"><button class="btn">New conversation</button></div>
 			</form>
 		</section>`;
-  return settingsPage("/settings/claude", "Claude Code", ["*"], body);
+  return settingsPage("/settings/harness", "Coding harness", ["*"], body);
 }
 
 // plugin/src/ui/requester.ts
@@ -26723,7 +26784,7 @@ function createRequester(store, options3) {
     const run2 = {
       id: request.id,
       actor: requestActor(request.asker, request.id),
-      harness: "claude",
+      harness: request.harness,
       child: null,
       result: null,
       broken: false,
@@ -26735,12 +26796,11 @@ function createRequester(store, options3) {
     let program;
     let modelArgs = [];
     try {
-      run2.harness = selectedHarness(options3.env);
       program = requireChild(options3.env, run2.harness);
       if (run2.harness === "pi")
         modelArgs = piModelArgs({
           ...options3.env,
-          CHECKMATE_PI_MODEL: requestModelText(store) || options3.env.CHECKMATE_PI_MODEL
+          CHECKMATE_PI_MODEL: requestModelText(store, "pi") || options3.env.CHECKMATE_PI_MODEL
         });
     } catch (error) {
       const refusal = error;
@@ -26770,13 +26830,14 @@ function createRequester(store, options3) {
       sessionId: request.conversation,
       resume: conversationStarted(store, request.conversation),
       hook,
-      model: requestModelText(store) || null,
+      model: requestModelText(store, "claude") || null,
       checkmate: checkmateScript()
     });
     guarded(() => setRequestState(store, run2.id, "running"));
     const env = {
       ...options3.env,
       CHECKMATE_ACTOR: run2.actor,
+      CHECKMATE_HARNESS: run2.harness,
       [requestVariable]: request.id,
       [hookTokenName]: options3.hookToken,
       ...run2.harness === "pi" ? { CHECKMATE_PI_HOOK: JSON.stringify(hook) } : {}
@@ -26810,10 +26871,8 @@ function createRequester(store, options3) {
   }
   return {
     ask(actor, text, context) {
-      const conversation = currentConversation(store);
-      const previous = conversation && conversationHarness(store, conversation.sessionId);
-      if (previous && previous !== selectedHarness(options3.env)) startConversation(store, actor);
-      const id2 = askRequest(store, actor, { text, context });
+      const harness = selectedHarness(workspaceUiEnv(store, options3.env));
+      const id2 = askRequest(store, actor, { text, context, harness });
       queue.push(id2);
       next();
       return id2;
@@ -27014,6 +27073,7 @@ async function startUi(options3) {
   const hookToken = workspaceHookToken(options3.workspace, options3.newHookToken);
   const hooks = createHooks(store, hookToken, options3);
   const env = options3.env ?? process.env;
+  const launchEnv = () => workspaceUiEnv(store, env);
   const requester = createRequester(store, {
     workspace: options3.workspace,
     env,
@@ -27078,7 +27138,8 @@ data: ${matched.join(",") || "*"}
       running: runningCount(store),
       cursor: latestRowid(store),
       workspace: options3.workspace,
-      testerRules: testerRulesText(store)
+      harness: selectedHarness(workspaceUiEnv(store, env)),
+      testerRules: testerRulesText(store, selectedHarness(workspaceUiEnv(store, env)))
     };
   }
   function render(request, page, extraCookies = []) {
@@ -27222,7 +27283,8 @@ data: ${matched.join(",") || "*"}
     if (pathname === "/permissions") return firstRequest(request);
     const asked2 = routes.permit.exec(pathname);
     if (asked2) return permissionRecord(request, asked2[1], asked2[2]);
-    if (pathname === "/settings/claude") return render(request, claudePage(store, shown2, env));
+    if (pathname === "/settings/claude") return redirect(request.res, "/settings/harness");
+    if (pathname === "/settings/harness") return render(request, harnessPage(store, shown2, env));
     if (pathname === "/requests") return render(request, repliesPage(store, searchParams));
     const askedRequest = routes.requestPage.exec(pathname);
     if (askedRequest) return requestRecord(request, askedRequest[1]);
@@ -27252,7 +27314,7 @@ data: ${matched.join(",") || "*"}
         { "Cache-Control": "no-store" }
       );
     const requested = routes.request.exec(pathname);
-    if (requested) return render(request, requestPage(store, requested[1]));
+    if (requested) return render(request, requestPage(store, requested[1], shown2.harness));
     const plan = routes.plan.exec(pathname);
     if (plan)
       return render(
@@ -27776,6 +27838,8 @@ data: ${matched.join(",") || "*"}
     const [typedSince, until, repo] = ["since", "until", "repo"].map((name2) => form.get(name2)?.trim() || void 0);
     const refuse3 = (message, field4 = "") => actionRefusal(request, back, message, field4);
     if (!actor) return refuse3("Enter your name. Checkmate records it with the test.");
+    if (form.has("harness") && form.get("harness") !== selectedHarness(launchEnv()))
+      return refuse3("The coding harness changed. Reload the page and try again.");
     if (!build) return refuse3("Write the build name.", "build");
     if (!levelNames.includes(level)) return refuse3("Choose the level smoke, normal, or deep.");
     if (until && !typedSince) return refuse3("Until needs Since. Fill in Since, or leave Until empty.", "until");
@@ -27805,7 +27869,7 @@ data: ${matched.join(",") || "*"}
           allow: ruleTokens(form.get("rules") ?? ""),
           claudeArgs: []
         },
-        env
+        launchEnv()
       );
       redirect(request.res, `/explorations/${started.subject}`, [
         ...cookies,
@@ -27828,7 +27892,7 @@ data: ${matched.join(",") || "*"}
     if (running3) return refuse3(inProgress(planId, running3));
     try {
       const answers = unusedAnswers(store, explorationId).length;
-      startFollow(store, actor, { explorationId, allow: [], claudeArgs: [] }, env);
+      startFollow(store, actor, { explorationId, allow: [], claudeArgs: [] }, launchEnv());
       redirect(request.res, `/explorations/${explorationId}`, [
         ...cookies,
         cookie("checkmate_toast", `Testing ${plural(answers, "answer")} of ${explorationId}`, 60)
@@ -28014,6 +28078,8 @@ data: ${matched.join(",") || "*"}
     if (!actor) return refuse3("Enter your name. Checkmate records it with the request.");
     const text = form.get("text")?.trim() ?? "";
     if (!text) return refuse3("Write the request first.");
+    if (form.has("harness") && form.get("harness") !== selectedHarness(launchEnv()))
+      return refuse3("The coding harness changed. Reload to see which program will receive your request.");
     let context2;
     try {
       context2 = form.has("context") ? contextFromData(form.get("context") ?? "") : screenContext(store, form.get("screen") ?? "");
@@ -28054,21 +28120,38 @@ data: ${matched.join(",") || "*"}
       cookie("checkmate_toast", "The next request starts a new conversation.", 60)
     ]);
   }
+  function saveHarness(request, form) {
+    const { actor, cookies } = actorFrom(request, form);
+    if (!actor)
+      return errorPage(request, 422, "Coding harness", "Enter your name. Checkmate records it with the setting.");
+    try {
+      saveWorkspaceHarness(store, actor, form.get("harness") ?? "");
+    } catch (error) {
+      return errorPage(request, 422, "Coding harness", engineText(error));
+    }
+    redirect(request.res, "/settings/harness", [
+      ...cookies,
+      cookie("checkmate_toast", "Saved the coding harness", 60)
+    ]);
+  }
   function saveModel(request, form) {
     const { actor, cookies } = actorFrom(request, form);
     const typed = form.get("model") ?? "";
-    const page = (error) => () => claudePage(store, context(request), env, null, { value: typed, error });
+    const page = (error) => () => harnessPage(store, context(request), env, null, { value: typed, error });
     if (!actor) return refuse2(request, page("Enter your name. Checkmate records it with the setting."), cookies);
+    const harness = selectedHarness(workspaceUiEnv(store, env));
+    if (form.get("harness") !== harness)
+      return refuse2(request, page("The coding harness changed. Reload the page and try again."), cookies);
     try {
-      saveRequestModel(store, actor, typed);
+      saveRequestModel(store, actor, typed, harness);
     } catch (error) {
       return refuse2(request, page(engineText(error)), cookies);
     }
-    redirect(request.res, "/settings/claude", [
+    redirect(request.res, "/settings/harness", [
       ...cookies,
       cookie(
         "checkmate_toast",
-        typed.trim() ? "Saved the model for requests" : "Requests use the model of Claude Code",
+        typed.trim() ? "Saved the model for requests" : "Requests use the model of the coding harness",
         60
       )
     ]);
@@ -28076,14 +28159,17 @@ data: ${matched.join(",") || "*"}
   function saveRules2(request, form) {
     const { actor, cookies } = actorFrom(request, form);
     const typed = form.get("rules") ?? "";
-    const page = (error) => () => claudePage(store, context(request), env, { value: typed, error });
+    const page = (error) => () => harnessPage(store, context(request), env, { value: typed, error });
     if (!actor) return refuse2(request, page("Enter your name. Checkmate records it with the setting."), cookies);
+    const harness = selectedHarness(workspaceUiEnv(store, env));
+    if (form.get("harness") !== harness)
+      return refuse2(request, page("The coding harness changed. Reload the page and try again."), cookies);
     try {
-      saveTesterRules(store, actor, typed);
+      saveTesterRules(store, actor, typed, harness);
     } catch (error) {
       return refuse2(request, page(engineText(error)), cookies);
     }
-    redirect(request.res, "/settings/claude", [
+    redirect(request.res, "/settings/harness", [
       ...cookies,
       cookie("checkmate_toast", "Saved the tool rules of testers", 60)
     ]);
@@ -28173,6 +28259,8 @@ data: ${matched.join(",") || "*"}
     const [since, until, repo] = ["since", "until", "repo"].map((name2) => form.get(name2)?.trim() || void 0);
     const allow = ruleTokens(form.get("rules") ?? "");
     if (!actor) return refuse3("Enter your name. Checkmate records it with the plan and the test.");
+    if (form.has("harness") && form.get("harness") !== selectedHarness(launchEnv()))
+      return refuse3("The coding harness changed. Reload the page and try again.");
     if (!typedFile && !text.trim())
       return refuse3("Give the ticket: the path of a file in the workspace, or the pasted text.", "file");
     if (typedFile && text.trim()) return refuse3("Give the file or the pasted text, not both.", "text");
@@ -28200,9 +28288,14 @@ data: ${matched.join(",") || "*"}
     const address = (activeInstances(targetId).find((item) => item.instanceId === chosen.instance) ?? activeInstances(targetId)[0])?.entries.web;
     if (address && URL.canParse(address) && !isLocalAddress(address) && form.get("confirmed") !== "1")
       return refuse3(`Confirm that Checkmate may test ${hostOf(address)}, an address that is not local.`, "target");
+    const childEnv2 = launchEnv();
     try {
-      requireChild(env, selectedHarness(env));
-      launchPlan(targetRevision(store, targetId).profile, { planId, build, allow, claudeArgs: [], level }, env);
+      requireChild(childEnv2, selectedHarness(childEnv2));
+      launchPlan(
+        targetRevision(store, targetId).profile,
+        { planId, build, allow, claudeArgs: [], level },
+        childEnv2
+      );
     } catch (error) {
       const message = engineText(error);
       return refuse3(message, /tool rules/.test(message) ? "rules" : "");
@@ -28230,7 +28323,7 @@ data: ${matched.join(",") || "*"}
           allow,
           claudeArgs: []
         },
-        env
+        childEnv2
       );
       redirect(request.res, `/explorations/${started.subject}`, [
         ...cookies,
@@ -28541,8 +28634,10 @@ data: ${matched.join(",") || "*"}
       return redirect(request.res, safeBack(form.get("back")), [cookie("checkmate_actor", name2)]);
     }
     if (pathname === "/bulk") return bulk(request, form);
-    if (pathname === "/settings/claude") return saveRules2(request, form);
-    if (pathname === "/settings/claude/model") return saveModel(request, form);
+    if (pathname === "/settings/harness/select") return saveHarness(request, form);
+    if (pathname === "/settings/claude" || pathname === "/settings/harness/rules") return saveRules2(request, form);
+    if (pathname === "/settings/claude/model" || pathname === "/settings/harness/model")
+      return saveModel(request, form);
     if (pathname === "/requests") return askText(request, form);
     if (pathname === "/requests/conversation") return newConversation(request, form);
     const stoppingRequest = routes.stopRequest.exec(pathname);
@@ -29520,9 +29615,9 @@ var commands = {
   },
   status: {
     positionals: ["planId"],
-    run: (store, args) => {
+    run: (store, args, { env }) => {
       const planId = value(args, "planId");
-      return completed(planId, planStatus(store, planId));
+      return completed(planId, planStatus(store, planId, selectedHarness(workspaceEnv(store, env))));
     },
     print: (reply) => {
       const status = reply.data;
@@ -30723,7 +30818,7 @@ var commands = {
         timeoutSeconds: integer(args, "timeout") ?? defaultRecorderTimeout,
         claudeArgs: checkClaudeArgs(list(args, "claude-arg") ?? [])
       },
-      env,
+      workspaceEnv(store, env),
       cwd
     ),
     print: (reply) => ({

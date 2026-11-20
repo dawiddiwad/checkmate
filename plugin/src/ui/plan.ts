@@ -199,7 +199,7 @@ function gapsList(detail: Detail) {
 function runsTable(detail: Detail) {
 	if (!detail.runs.length)
 		return html`<p class="none">
-			No run uses this plan yet. Approve the plan, then run <code>/checkmate:test</code>.
+			No run uses this plan yet. Approve the plan, then choose <strong>Test build…</strong> on its review page.
 		</p>`
 	return html`<div class="scroll">
 		<table>
@@ -453,13 +453,13 @@ type PlanContext = {
 	status: ReturnType<typeof planStatus>
 }
 
-function planContext(store: Store, planId: string): PlanContext {
+function planContext(store: Store, planId: string, harness: Context['harness']): PlanContext {
 	return {
 		waiting: needsYou(store).items.filter((item) => item.planId === planId),
 		claims: mergedClaims(store, planId),
 		questions: mergedQuestions(store, planId),
 		explorations: planExplorations(store, planId),
-		status: planStatus(store, planId),
+		status: planStatus(store, planId, harness),
 	}
 }
 
@@ -560,7 +560,7 @@ export function planPage(
 	const { plan } = detail
 	const subject = `${planId}@${revision}`
 	const latest = detail.revision === detail.latestRevision
-	const found = planContext(store, planId)
+	const found = planContext(store, planId, context.harness)
 	const meta = html`<div class="meta">
 		${pill(detail.approval.state)}
 		<span class="pill">target <span class="mono">${plan.target.targetId}@${plan.target.revision}</span></span>
@@ -649,20 +649,20 @@ export function planPage(
 	}
 }
 
-function storedTestsEmpty(planId: string, completed: string | undefined) {
+function storedTestsEmpty(planId: string, completed: string | undefined, harness: Context['harness']) {
 	return html`<div data-key="no-tests">
 		${emptyNotice(
 			'No stored tests yet.',
 			html`A stored test comes from the claims of a completed exploration. To store them, run
 				<code>checkmate harvest ${completed ?? '<explorationId>'}</code>. To write a plan with tests, run
-				<code>/checkmate:plan ${planId}</code>.`
+				<code>${harness === 'pi' ? `checkmate delegate plan ${planId}` : `/checkmate:plan ${planId}`}</code>.`
 		)}
 	</div>`
 }
 
-export function requestPage(store: Store, planId: string): Page {
+export function requestPage(store: Store, planId: string, harness: Context['harness']): Page {
 	const { request, target } = planRequest(store, planId)
-	const found = planContext(store, planId)
+	const found = planContext(store, planId, harness)
 	const targetRef = `${target.profile.targetId}@${target.revision}`
 	const targetLink = html`<a
 		class="mono"
@@ -712,7 +712,7 @@ export function requestPage(store: Store, planId: string): Page {
 			<div class="main-col">
 				${fold('request', 'Request', null, !anyOpen, overview)} ${claimsFold(planId, found)}
 				${questionsFold(planId, found)} ${explorationsFold(found)}
-				${fold('tests', 'Stored tests', 0, !found.explorations.length, storedTestsEmpty(planId, completed), 'tests')}
+				${fold('tests', 'Stored tests', 0, !found.explorations.length, storedTestsEmpty(planId, completed, harness), 'tests')}
 			</div>
 			${side(
 				recordPanel(

@@ -1,15 +1,21 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import type { TestContext } from 'node:test'
-import { mkdirSync } from 'node:fs'
-import { join } from 'node:path'
+import { mkdirSync, writeFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
 import { readStreamLine } from '../plugin/src/ui/requester.ts'
 import { startUi } from '../plugin/src/ui/server.ts'
-import { checkmateScript, pluginRoot, requestSystemPrompt, uiFilePath } from '../plugin/src/sessions.ts'
+import {
+	checkmateScript,
+	executableOnPath,
+	pluginRoot,
+	requestSystemPrompt,
+	uiFilePath,
+} from '../plugin/src/sessions.ts'
 import { allRequests, currentConversation, requestOf } from '../plugin/src/requests.ts'
 import { explorationPermissions, openPermissions } from '../plugin/src/permissions.ts'
 import { closeStore, openStore } from '../plugin/src/store.ts'
-import { saveRequestModel } from '../plugin/src/settings.ts'
+import { saveRequestModel, saveWorkspaceHarness } from '../plugin/src/settings.ts'
 import { readFileSync } from 'node:fs'
 import { call, endProcessesIn, token, waitFor, workspaceWithFake } from './actions.ts'
 import { directory } from './support.ts'
@@ -183,10 +189,10 @@ test('the model setting adds --model and an empty setting removes it', async (t)
 	await f.state(await f.ask('one'), 'answered')
 	const [withModel] = f.called()
 	assert.deepEqual(withModel.args.slice(-2), ['--model', 'sonnet'])
-	const refused = await f.post('/settings/claude/model', { model: 'bad model; rm -rf' })
+	const refused = await f.post('/settings/harness/model', { harness: 'claude', model: 'bad model; rm -rf' })
 	assert.equal(refused.status, 422)
 	assert.match(refused.body, /is not a model alias or ID/)
-	assert.equal((await f.post('/settings/claude/model', { model: '' })).status, 303)
+	assert.equal((await f.post('/settings/harness/model', { harness: 'claude', model: '' })).status, 303)
 	await f.state(await f.ask('two'), 'answered')
 	assert(!f.called()[0].args.includes('--model'))
 })
@@ -521,7 +527,7 @@ for (const [path, form] of [
 	['/requests', { text: 'hello' }],
 	['/requests/R1/stop', {}],
 	['/requests/conversation', {}],
-	['/settings/claude/model', { model: 'sonnet' }],
+	['/settings/harness/model', { model: 'sonnet' }],
 ] as const)
 	test(`${path} refuses a foreign origin and a missing token`, async (t) => {
 		const f = await serverOf(t, { request: 'Done.' })
@@ -597,4 +603,73 @@ test('Pi request stream rejects incomplete and aborted replies', () => {
 	assert.equal(length.kind === 'result' && length.value.is_error, true)
 	const [aborted] = readStreamLine(line({ type: 'agent_settled', aborted: true }), 'pi')
 	assert.equal(aborted.kind === 'result' && aborted.value.is_error, true)
+})
+
+test('queued requests keep their harness when the workspace changes host', async (t) => {
+	const f = await serverOf(
+		t,
+		{ request: '!hang' },
+		{
+			CHECKMATE_HARNESS: 'claude',
+			CHECKMATE_PI_MODEL: 'startup-model',
+			CHECKMATE_PI_PROVIDER: undefined,
+		}
+	)
+	const executable = join(dirname(executableOnPath('claude', f.env)!), 'pi')
+	writeFileSync(
+		executable,
+		`#!/usr/bin/env node
+const { createInterface } = require('node:readline')
+const { writeFileSync } = require('node:fs')
+const args = process.argv.slice(2)
+const extension = args[args.indexOf('--extension') + 1]
+createInterface({input: process.stdin}).on('line', line => {
+	const message = JSON.parse(line)
+	if (message.type === 'get_commands') console.log(JSON.stringify({
+		type: 'response', id: message.id, success: true,
+		data: {commands: [{name: 'checkmate-permission-ready', source: 'extension', sourceInfo: {path: extension}}]}
+	}))
+	if (message.type === 'prompt') {
+		writeFileSync('pi-request.json', JSON.stringify({args, harness: process.env.CHECKMATE_HARNESS}))
+		console.log(JSON.stringify({type: 'agent_end', messages: [{
+			role: 'assistant', stopReason: 'stop', content: [{type: 'text', text: 'Pi reply.'}]
+		}]}))
+		console.log(JSON.stringify({type: 'agent_settled', aborted: false}))
+	}
+})
+`,
+		{ mode: 0o755 }
+	)
+	const active = await f.ask('Hold the original conversation.')
+	await waitFor('Claude is waiting', () => f.answers().includes('hanging'))
+	const queued = await f.ask('Stay in the original conversation.')
+	f.read((store) => {
+		saveWorkspaceHarness(store, 'qa-lead', 'pi')
+		saveRequestModel(store, 'qa-lead', 'openrouter/z-ai/glm-5.3-flash', 'pi')
+		saveRequestModel(store, 'qa-lead', 'opus', 'claude')
+	})
+	const pi = await f.ask('Start a separate Pi conversation.')
+	assert.equal(f.request(queued)?.conversation, f.request(active)?.conversation)
+	assert.notEqual(f.request(pi)?.conversation, f.request(active)?.conversation)
+	f.read((store) => saveWorkspaceHarness(store, 'qa-lead', 'claude'))
+	f.reply({ request: 'Claude reply.' })
+	await f.post(`/requests/${active}/stop`, {})
+	assert.equal((await f.state(queued, 'answered')).reply, 'Claude reply.')
+	assert.equal((await f.state(pi, 'answered')).reply, 'Pi reply.')
+	const launch = JSON.parse(readFileSync(join(f.workspace, 'pi-request.json'), 'utf8'))
+	assert.equal(launch.harness, 'pi')
+	assert.equal(launch.args[launch.args.indexOf('--model') + 1], 'openrouter/z-ai/glm-5.3-flash')
+	assert.equal(launch.args[launch.args.indexOf('--session-id') + 1], f.request(pi)?.conversation)
+	const claude = f.called().at(-1)
+	assert.equal(claude.args[claude.args.indexOf('--model') + 1], 'opus')
+})
+
+test('a request from a stale find bar is refused before it enters the queue', async (t) => {
+	const s = await serverOf(t, {}, { CHECKMATE_HARNESS: 'pi' })
+	const response = await s.post('/requests', { text: 'Review the plan.', harness: 'claude' })
+	assert.equal(response.status, 422)
+	assert.match(response.body, /coding harness changed/i)
+	assert.equal(s.read(allRequests).length, 0)
+	const page = await call(s.ui, '/activity')
+	assert.match(page.body, /Ask Checkmate starts Pi on this computer/)
 })

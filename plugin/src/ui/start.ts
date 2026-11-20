@@ -2,6 +2,7 @@ import type { Html } from './html.ts'
 import type { Context, Page } from './layout.ts'
 import { levelNames } from '../levels.ts'
 import { html } from './html.ts'
+import { testerToolHelp } from './actions.ts'
 import { heading } from './layout.ts'
 
 export type NewInstance = { id: string; address: string | null; local: boolean }
@@ -210,7 +211,8 @@ export function newChangePage(context: Context, defaults: NewChangeDefaults, onH
 			levelNames.map((level) => [level, level, levelNotes[level]] as [string, string, string]),
 			'normal'
 		)}
-		${field('change-rules', 'rules', 'Testers may use without asking', 'One tool rule for each word, as in --allow, for example Read Bash. With the rule, a tester does not ask. Without it, each call asks you here.', '', context.testerRules)}
+		<input type="hidden" name="harness" value="${context.harness}" />
+		${field('change-rules', 'rules', 'Testers may use without asking', testerToolHelp(context.harness), '', context.testerRules)}
 		<details class="sp-more" data-more>
 			<summary>More</summary>
 			${field('change-since', 'since', 'Since (git ref)', 'Without it, Checkmate uses the default branch of origin.')}

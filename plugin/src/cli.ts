@@ -81,6 +81,8 @@ import type { Claim } from './journal.ts'
 import { decideClaim, handOffClaims, logEntries, planClaims, readEntries } from './journal.ts'
 import { defaultRecorderTimeout, recordSession } from './recorder.ts'
 import { checkClaudeArgs, liveUi, pluginRoot } from './sessions.ts'
+import { selectedHarness } from './pi.ts'
+import { workspaceEnv } from './settings.ts'
 import { decidePermission, explorationPermissions, permissionDecisions } from './permissions.ts'
 import { inputLine } from './ui/hooks.ts'
 import {
@@ -358,9 +360,9 @@ const commands: Record<string, Command> = {
 	},
 	status: {
 		positionals: ['planId'],
-		run: (store, args) => {
+		run: (store, args, { env }) => {
 			const planId = value(args, 'planId')!
-			return completed(planId, planStatus(store, planId))
+			return completed(planId, planStatus(store, planId, selectedHarness(workspaceEnv(store, env))))
 		},
 		print: (reply) => {
 			const status = reply.data as ReturnType<typeof planStatus>
@@ -1629,7 +1631,7 @@ const commands: Record<string, Command> = {
 					timeoutSeconds: integer(args, 'timeout') ?? defaultRecorderTimeout,
 					claudeArgs: checkClaudeArgs(list(args, 'claude-arg') ?? []),
 				},
-				env,
+				workspaceEnv(store, env),
 				cwd
 			),
 		print: (reply) => ({

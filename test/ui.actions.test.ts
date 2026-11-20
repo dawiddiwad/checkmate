@@ -6,7 +6,8 @@ import { closeStore, openStore } from '../plugin/src/store.ts'
 import { explorationEvents } from '../plugin/src/explorations.ts'
 import { explorationStatus, running } from '../plugin/src/explorers.ts'
 import { startUi } from '../plugin/src/ui/server.ts'
-import { authenticationHint } from '../plugin/src/sessions.ts'
+import { requestModelText, workspaceHarness } from '../plugin/src/settings.ts'
+import { piAuthenticationHint, authenticationHint } from '../plugin/src/sessions.ts'
 import { failureOf, phaseOf } from '../plugin/src/ui/activity.ts'
 import { ago } from '../plugin/src/ui/html.ts'
 import { actor, directory, plan, store, target } from './support.ts'
@@ -190,7 +191,7 @@ test('a start without claude on PATH says so and gives the next step', async (t)
 	const refused = await call(ui, '/plans/checkout/test', form, { Cookie: `checkmate_actor=${actor}` })
 	assert.equal(refused.status, 422)
 	assert.match(refused.body, /Claude Code was not found: no claude program is on PATH\. Install Claude Code/)
-	const settings = (await call(ui, '/settings/claude')).body
+	const settings = (await call(ui, '/settings/harness')).body
 	assert.match(settings, /No claude executable on PATH/)
 	assert.doesNotMatch(settings, /<code>\//)
 })
@@ -258,6 +259,8 @@ test('the phase comes from the events, and the failure sentences name the next s
 		failureOf('No claude executable on PATH. Nothing changed.', null, []).cause,
 		/^Claude Code was not found/
 	)
+	assert.match(failureOf('No pi executable on PATH.', null, []).cause, /^Pi was not found/)
+	assert.match(failureOf('Host authentication', piAuthenticationHint, []).cause, /^Pi could not sign in/)
 	const signedOut = failureOf('Host authentication: no session could log in.', authenticationHint, [])
 	assert.equal(signedOut.cause, 'Claude Code is not signed in on this computer.')
 	assert.equal(signedOut.detail, authenticationHint)
@@ -351,21 +354,21 @@ test('the tester rules of a start come from the form, and an empty field shows t
 
 test('the rules are a setting of the workspace: Settings keeps them, and the dialog starts from them', async (t) => {
 	const { ui, post, read } = await fixture(t, {})
-	const settings = (await call(ui, '/settings/claude')).body
+	const settings = (await call(ui, '/settings/harness')).body
 	assert.match(settings, /Tool rules of testers/)
-	assert.match(settings, /A rule lets a tester use a tool without asking you/)
+	assert.match(settings, /Enter tool rules separated by spaces/)
 	assert.match(settings, /name="rules"[^>]*value="Read Bash"/)
 	assert.match((await call(ui, '/plans/checkout')).body, /name="rules"[\s\S]*?value="Read Bash"/)
 	assert.match((await call(ui, '/plans/checkout')).body, /Testers may use without asking/)
-	const empty = await post('/settings/claude', { rules: ' ' })
+	const empty = await post('/settings/harness/rules', { harness: 'claude', rules: ' ' })
 	assert.equal(empty.status, 422)
 	assert.match(empty.body, /Give at least one tool rule/)
 	assert.doesNotMatch(empty.body, /cannot answer a permission prompt/)
 	assert.match(empty.body, /The engine needs at least one rule today/)
-	const saved = await post('/settings/claude', { rules: 'Read Bash Edit' })
+	const saved = await post('/settings/harness/rules', { harness: 'claude', rules: 'Read Bash Edit' })
 	assert.equal(saved.status, 303)
 	assert.match((await call(ui, '/plans/checkout')).body, /name="rules"[\s\S]*?value="Read Bash Edit"/)
-	assert.match((await call(ui, '/settings/claude')).body, /value="Read Bash Edit"/)
+	assert.match((await call(ui, '/settings/harness')).body, /value="Read Bash Edit"/)
 	read((reading) =>
 		assert.equal(
 			reading.db
@@ -376,14 +379,19 @@ test('the rules are a setting of the workspace: Settings keeps them, and the dia
 	)
 	const foreign = await call(
 		ui,
-		'/settings/claude',
-		{ csrf: token((await call(ui, '/settings/claude')).body), rules: 'Bash' },
+		'/settings/harness/rules',
+		{ csrf: token((await call(ui, '/settings/harness')).body), rules: 'Bash' },
 		{ Cookie: `checkmate_actor=${actor}`, Origin: 'http://evil.test' }
 	)
 	assert.equal(foreign.status, 403)
-	const none = await call(ui, '/settings/claude', { csrf: '', rules: 'Bash' }, { Cookie: `checkmate_actor=${actor}` })
+	const none = await call(
+		ui,
+		'/settings/harness/rules',
+		{ csrf: '', rules: 'Bash' },
+		{ Cookie: `checkmate_actor=${actor}` }
+	)
 	assert.equal(none.status, 403)
-	assert.match((await call(ui, '/settings/claude')).body, /value="Read Bash Edit"/)
+	assert.match((await call(ui, '/settings/harness')).body, /value="Read Bash Edit"/)
 })
 
 test('the phase of a run follows the turns of the testers in the strip, the banner, and the navigator', async (t) => {
@@ -524,4 +532,59 @@ test('a stop of testers that ignore SIGTERM does not hold the server, and the vi
 	assert.match(ended, new RegExp(`<strong>Stopped by ${actor}</strong\\s*>: wrong build`))
 	assert.doesNotMatch(ended, /Stopping x-1/)
 	assert.match(ended, /Test build… again/)
+})
+
+test('coding harness settings persist and reject forms from the previous harness', async (t) => {
+	const { ui, post, read } = await fixture(t, {})
+	const old = await call(ui, '/settings/claude')
+	assert.equal(old.status, 303)
+	assert.equal(old.headers.location, '/settings/harness')
+	assert.match((await call(ui, '/settings/harness')).body, /Coding harness/)
+	assert.equal((await post('/settings/harness/select', { harness: 'pi' })).status, 303)
+	const page = (await call(ui, '/settings/harness')).body
+	assert.match(page, /value="pi" selected/)
+	assert.match(page, /name="harness" value="pi"/)
+	assert.equal((await post('/settings/harness/rules', { harness: 'claude', rules: 'Edit' })).status, 422)
+	assert.equal((await post('/settings/harness/model', { harness: 'claude', model: 'sonnet' })).status, 422)
+	assert.equal((await post('/settings/harness/rules', { harness: 'pi', rules: 'Read Bash' })).status, 303)
+	assert.equal((await post('/settings/harness/model', { harness: 'pi', model: 'provider/model' })).status, 303)
+	assert.equal((await post('/settings/harness/select', { harness: 'invalid' })).status, 422)
+	read((store) => {
+		assert.equal(workspaceHarness(store), 'pi')
+		assert.equal(requestModelText(store, 'pi'), 'provider/model')
+		assert.equal(requestModelText(store, 'claude'), '')
+	})
+})
+
+test('a saved coding harness overrides the UI startup environment', async (t) => {
+	const base = workspaceWithFake(t, {})
+	const ui = await startUi({ workspace: base.workspace, env: { ...base.env, CHECKMATE_HARNESS: 'pi' } })
+	t.after(() => ui.close())
+	const initial = await call(ui, '/settings/harness')
+	assert.match(initial.body, /value="pi" selected/)
+	const saved = await call(
+		ui,
+		'/settings/harness/select',
+		{ csrf: token(initial.body), harness: 'claude' },
+		{ Cookie: `checkmate_actor=${actor}` }
+	)
+	assert.equal(saved.status, 303)
+	const changed = await call(ui, '/settings/harness')
+	assert.match(changed.body, /value="claude" selected/)
+	assert.match(changed.body, /name="harness" value="claude"/)
+})
+
+test('test forms reject rules from a different coding harness', async (t) => {
+	const { ui, post } = await fixture(t, {})
+	assert.match((await call(ui, '/new')).body, /name="harness" value="claude"/)
+	assert.match((await call(ui, '/plans/checkout')).body, /name="harness" value="claude"/)
+	assert.equal((await post('/settings/harness/select', { harness: 'pi' })).status, 303)
+	for (const path of ['/new', '/plans/checkout/test']) {
+		const refused = await post(path, { harness: 'claude', rules: 'Bash(git log:*)', build: 'test' })
+		assert.equal(refused.status, 422)
+		assert.match(refused.body, /coding harness changed/i)
+	}
+	const page = (await call(ui, '/settings/harness')).body
+	assert.match(page, /Without it, they cannot use Bash/)
+	assert.doesNotMatch(page, /Without it, each command asks/)
 })

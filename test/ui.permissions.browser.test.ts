@@ -448,7 +448,7 @@ test(
 		await page.locator('[data-moves-on]').waitFor()
 		const state = (await page.locator('[data-key="state"]').textContent()) ?? ''
 		assert.match(state, /Closed .*no answer in 10 minutes/)
-		assert.match(state, /Claude Code denied the call/)
+		assert.match(state, /The tool call was denied/)
 		await page.keyboard.press('x')
 		await page.waitForURL(url('/activity'), { timeout: 1500 })
 		void second

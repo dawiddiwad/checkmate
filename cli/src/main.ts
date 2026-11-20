@@ -16,7 +16,7 @@ type Parsed = {
 const delegateUsage =
 	'checkmate delegate <setup|plan|revise|execute> <targetId|planId|planId|runId> [--timeout <seconds>]'
 const delegateHarnessUsage =
-	'Claude (default) requires --allow <rule> and accepts --claude-arg <arg>. Both can repeat. Set CHECKMATE_HARNESS=pi to use Pi.'
+	'Claude requires --allow <rule> and accepts --claude-arg <arg>. Both can repeat. CHECKMATE_HARNESS overrides the workspace harness. The default is Claude.'
 
 function version() {
 	return JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version as string

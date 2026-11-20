@@ -12,6 +12,7 @@ import { activityLine, driveExploration, launchPlan, startOf } from '../plugin/s
 import { explorationLive } from '../plugin/src/views.ts'
 import { levelNames, testLevels } from '../plugin/src/levels.ts'
 import { authenticationHint, workDenyRules } from '../plugin/src/sessions.ts'
+import { saveWorkspaceHarness } from '../plugin/src/settings.ts'
 import { actor, directory, plan, root, store, target } from './support.ts'
 import { fakeClaude } from './claude.ts'
 import type { FakeReplies } from './claude.ts'
@@ -27,6 +28,7 @@ function setup(
 	const opened = store(t, workspace)
 	target(opened, options.profile)
 	plan(opened)
+	if (options.harness) saveWorkspaceHarness(opened, actor, options.harness)
 	closeStore(opened)
 	const fake = fakeClaude(t, options.replies ?? { explorer: 'Tested the cart.', recorder: [defect] }, options.harness)
 	if (options.installed !== false) {
@@ -39,7 +41,7 @@ function setup(
 	const command = (args: string[]) => {
 		const outcome = run([...args, '--workspace', workspace, '--json'], {
 			cwd: workspace,
-			env: { ...process.env, CHECKMATE_ACTOR: actor, CHECKMATE_HARNESS: options.harness, ...fake.env },
+			env: { ...process.env, CHECKMATE_ACTOR: actor, CHECKMATE_HARNESS: undefined, ...fake.env },
 			stdin: () => '',
 		})
 		return { code: outcome.code, body: JSON.parse(outcome.output) }

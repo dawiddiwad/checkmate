@@ -4,7 +4,7 @@ import type { Html } from './html.ts'
 import type { Context, Page } from './layout.ts'
 import type { EntryPoint, InstanceRecord } from '../targets.ts'
 import { Refusal } from '../contracts.ts'
-import { requestModelText } from '../settings.ts'
+import { requestModelText, workspaceUiEnv } from '../settings.ts'
 import { conversationText } from './requests.ts'
 import { testLevels } from '../levels.ts'
 import { liveUi, requireChild } from '../sessions.ts'
@@ -20,7 +20,7 @@ export type RetireState = { instanceId: string; error: string } | null
 
 const settingsPages = [
 	{ path: '/settings/targets', label: 'Targets' },
-	{ path: '/settings/claude', label: 'Claude Code' },
+	{ path: '/settings/harness', label: 'Coding harness' },
 ]
 
 function settingsNav(current: string) {
@@ -39,7 +39,7 @@ function settingsNav(current: string) {
 }
 
 function settingsPage(current: string, title: string, subjects: string[], body: Html, status?: number): Page {
-	const target = title !== 'Targets' && title !== 'Claude Code'
+	const target = title !== 'Targets' && title !== 'Coding harness'
 	return {
 		title,
 		section: 'settings',
@@ -471,7 +471,7 @@ export function instanceFromForm(entryPoints: EntryPoint[], form: URLSearchParam
 	}
 }
 
-function claudeProgram(env: Env) {
+function harnessProgram(env: Env) {
 	try {
 		const program = requireChild(env, selectedHarness(env))
 		return html`<code>${program}</code>`
@@ -481,32 +481,36 @@ function claudeProgram(env: Env) {
 	}
 }
 
-export function claudePage(
+export function harnessPage(
 	store: Store,
 	context: Context,
 	env: Env,
 	form: RulesForm | null = null,
 	model: RulesForm | null = null
 ): Page {
-	const pi = selectedHarness(env) === 'pi'
-	const body = html`${heading(pi ? 'Pi' : 'Claude Code', 'The program that runs the testers. Checkmate makes no call to it on this page.')}
-		<section class="panel" aria-labelledby="claude-program">
-			<h2 class="lab" id="claude-program">Program</h2>
-			<p>${claudeProgram(env)}</p>
-			<p class="help">
-				${pi ? 'Pi' : 'Claude Code'} keeps the login and tools. Checkmate does not read or copy a credential.
-			</p>
+	const effectiveEnv = workspaceUiEnv(store, env)
+	const harness = selectedHarness(effectiveEnv)
+	const pi = harness === 'pi'
+	const body = html`${heading('Coding harness', null)}
+		<section class="panel" aria-labelledby="harness-label">
+			<form method="post" action="/settings/harness/select" class="decision-form">
+				<input type="hidden" name="csrf" value="${context.csrf}" />
+				<div class="field-group">
+					<label id="harness-label" class="lab" for="coding-harness">Program for this workspace</label>
+					<select id="coding-harness" name="harness">
+						<option value="claude" ${harness === 'claude' ? html`selected` : ''}>Claude Code</option>
+						<option value="pi" ${harness === 'pi' ? html`selected` : ''}>Pi</option>
+					</select>
+					<p class="help">Applies to new tests and requests in this workspace.</p>
+				</div>
+				<div class="btns"><button class="btn primary">Save the program</button></div>
+			</form>
+			<p id="harness-program">Current executable · ${harnessProgram(effectiveEnv)}</p>
 		</section>
 		<section class="panel" aria-labelledby="claude-rules">
 			<h2 class="lab" id="claude-rules">Tool rules of testers</h2>
-			<p class="help">
-				A rule lets a tester use a tool without asking you, for example <code>Read</code> or <code>Bash</code>.
-				The engine needs at least one rule today. A test that you start in the UI shows these rules, and you can
-				change them there.
-			</p>
 			<p class="help" data-key="permission-bash">
-				With the rule <code>Bash</code>, testers run commands without asking. Without it, each command asks you
-				here, and a tester waits up to 10 minutes for the answer.
+				${pi ? 'With Bash, testers can run commands. Without it, they cannot use Bash.' : 'With Bash, testers run commands without asking. Without it, each command asks you here. A tester waits up to 10 minutes for an answer.'}
 			</p>
 			<p class="help" data-region="permission-hook">
 				${
@@ -515,10 +519,11 @@ export function claudePage(
 						: 'Testers that start now cannot ask you. The UI of this folder does not run. A tool that needs a permission is denied.'
 				}
 			</p>
-			<form method="post" action="/settings/claude" class="decision-form">
+			<form method="post" action="/settings/harness/rules" class="decision-form">
 				<input type="hidden" name="csrf" value="${context.csrf}" />
+				<input type="hidden" name="harness" value="${harness}" />
 				<div class="field-group">
-					<label class="lab" for="tester-rules">Tool rules of testers</label>
+					<label class="lab" for="tester-rules">Default tools for new tests</label>
 					<input
 						id="tester-rules"
 						name="rules"
@@ -528,7 +533,9 @@ export function claudePage(
 						aria-describedby="tester-rules-help"
 						${form ? html`autofocus` : ''}
 					/>
-					<p class="help" id="tester-rules-help">One rule for each word, as in <code>--allow</code>.</p>
+					<p class="help" id="tester-rules-help">
+						${pi ? 'Enter tool names separated by spaces, for example read bash.' : 'Enter tool rules separated by spaces, for example Read Bash.'}
+					</p>
 					${form ? html`<p class="form-error" role="alert" data-field="rules">${form.error}</p>` : ''}
 				</div>
 				<div class="btns"><button class="btn primary">Save the rules</button></div>
@@ -586,16 +593,17 @@ export function claudePage(
 				own session. It has your login, your settings, and your tools. Checkmate asks you here when a tool needs
 				permission.
 			</p>
-			<form method="post" action="/settings/claude/model" class="decision-form">
+			<form method="post" action="/settings/harness/model" class="decision-form">
 				<input type="hidden" name="csrf" value="${context.csrf}" />
+				<input type="hidden" name="harness" value="${harness}" />
 				<div class="field-group">
 					<label class="lab" for="request-model">Model for requests</label>
 					<input
 						id="request-model"
 						name="model"
-						maxlength="100"
+						maxlength="${pi ? 200 : 100}"
 						autocomplete="off"
-						value="${model?.value ?? requestModelText(store)}"
+						value="${model?.value ?? requestModelText(store, harness)}"
 						aria-describedby="request-model-help"
 						${model ? html`autofocus` : ''}
 					/>
@@ -609,9 +617,9 @@ export function claudePage(
 			<p class="help" data-region="conversation">${conversationText(store)}</p>
 			<form method="post" action="/requests/conversation" class="decision-form">
 				<input type="hidden" name="csrf" value="${context.csrf}" />
-				<input type="hidden" name="return" value="/settings/claude" />
+				<input type="hidden" name="return" value="/settings/harness" />
 				<div class="btns"><button class="btn">New conversation</button></div>
 			</form>
 		</section>`
-	return settingsPage('/settings/claude', 'Claude Code', ['*'], body)
+	return settingsPage('/settings/harness', 'Coding harness', ['*'], body)
 }

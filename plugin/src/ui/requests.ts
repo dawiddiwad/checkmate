@@ -130,7 +130,7 @@ function failureText(request: RequestRecord) {
 	const [sentence, ...lines] = (request.reason ?? '').split('\n')
 	const known = failureOf(request.reason, request.hint, [])
 	const cause =
-		/No claude executable|Host authentication/.test(request.reason ?? '') || request.hint
+		/No (?:claude|pi) executable|Host authentication/.test(request.reason ?? '') || request.hint
 			? `${known.cause} ${known.next}`
 			: sentence || 'The request failed. No reason is recorded.'
 	return { cause, lines, detail: request.hint ? known.detail : null }
@@ -146,13 +146,14 @@ export function requestPage(store: Store, context: Context, requestId: string): 
 	const asked = [
 		['text', request.text],
 		['context', JSON.stringify(request.context)],
+		['harness', context.harness],
 	] as Array<[string, string]>
 	const again = formOption(
 		context,
 		'/requests',
 		ended && request.state !== 'failed' ? 2 : 1,
 		'Ask again',
-		'Sends the same text as a new request.',
+		`Send the same text to ${context.harness === 'pi' ? 'Pi' : 'Claude Code'} as a new request.`,
 		[...asked, ['return', `/requests/${requestId}`]]
 	)
 	const options = !ended
@@ -166,7 +167,7 @@ export function requestPage(store: Store, context: Context, requestId: string): 
 					[],
 					{
 						title: `Stop request ${requestId}?`,
-						text: `Checkmate stops Claude Code. The changes that it made stay. You can ask again.`,
+						text: `Stop this request? You can review any changes it already made.`,
 						yes: 'Stop the request',
 					}
 				),
@@ -181,7 +182,7 @@ export function requestPage(store: Store, context: Context, requestId: string): 
 						'/requests/conversation',
 						3,
 						'New conversation',
-						'Claude Code forgets the earlier requests. The next request starts a new conversation.',
+						'Start the next request with an empty conversation.',
 						[['return', `/requests/${requestId}`]]
 					),
 				]
@@ -208,6 +209,7 @@ export function requestPage(store: Store, context: Context, requestId: string): 
 				<div class="sp-pills">
 					${stateLabel(request)}
 					<span class="sp-c-id">${requestId}</span>
+					<span class="sp-c-id">${request.harness === 'pi' ? 'Pi' : 'Claude Code'}</span>
 					<span class="sp-c-id">${request.asker}</span>
 					<span class="sp-c-id">${ago(request.askedAt)}</span>
 				</div>
@@ -244,7 +246,7 @@ export function requestPage(store: Store, context: Context, requestId: string): 
 									? html`<ol class="sp-activity" aria-live="polite">
 											${request.activity.map((entry, index) => html`<li data-key="line:${index}" class="ell" title="${entry.line}">${entry.line}</li>`)}
 										</ol>`
-									: html`<p class="help">Claude Code has used no tool yet.</p>`
+									: html`<p class="help">Waiting for the first tool call.</p>`
 							}
 						</section>`
 					: ''

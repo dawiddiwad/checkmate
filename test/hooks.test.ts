@@ -460,7 +460,7 @@ test('without an answer in time the response is empty and the request is closed'
 	assert.equal(late.status, 303)
 	assert.match(
 		(await call(f.ui, '/permissions/x-1/P1?view=history', undefined, as)).body,
-		/Closed[\s\S]*no answer in 10 minutes[\s\S]*Claude Code denied the call/
+		/Closed[\s\S]*no answer in 10 minutes[\s\S]*The tool call was denied/
 	)
 	assert.deepEqual(
 		(await requests(f)).map((item) => item.decision?.kind),
@@ -728,12 +728,9 @@ test('the status bar counts open requests, /permissions opens the first one, and
 	assert.match(record, /<code>Bash\(npm view \*\)<\/code>[\s\S]*\.claude\/settings\.local\.json/)
 	assert.match(record, /Allow every Bash call for this test/)
 	assert.match(record, /Stop tester a1…/)
-	const settings = (await call(f.ui, '/settings/claude')).body
+	const settings = (await call(f.ui, '/settings/harness')).body
 	assert.match(settings, /Testers that start now can ask you in this UI/)
-	assert.match(
-		settings,
-		/With the rule <code>Bash<\/code>, testers run commands without asking\. Without it, each command asks you\s+here, and a tester waits up to 10 minutes for the answer\./
-	)
+	assert.match(settings, /With Bash, testers run commands without asking\. Without it, each command asks you here\./)
 	await decide(f, 'P1', { decision: 'allow' })
 	await asked
 })
@@ -820,7 +817,7 @@ test('a denial without a reason shows the record again with the refusal at the f
 test('Settings says when testers started now cannot ask', async (t) => {
 	const f = await fixture(t)
 	writeFileSync(uiFilePath(f.workspace), JSON.stringify({ port: 1, pid: 2 ** 22 + 5, hookToken: 'old' }))
-	assert.match((await call(f.ui, '/settings/claude')).body, /Testers that start now cannot ask you/)
+	assert.match((await call(f.ui, '/settings/harness')).body, /Testers that start now cannot ask you/)
 })
 
 test('a child gets the hooks and the token only when ui.json names a live server', () => {

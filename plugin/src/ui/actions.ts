@@ -96,6 +96,12 @@ function instanceField(choice: InstanceChoice, shown: boolean) {
 	</fieldset>`
 }
 
+export function testerToolHelp(harness: Context['harness']) {
+	return harness === 'pi'
+		? 'List tool names, for example read bash. Pi enables the listed tools for the tester.'
+		: 'List tool rules, for example Read Bash. With the rule, a tester does not ask. Without it, each call asks you here.'
+}
+
 export function testDialog(
 	context: Context,
 	planId: string | null,
@@ -111,7 +117,8 @@ export function testDialog(
 		planId ? `A test of ${planId} is in progress now. Nothing was started here.` : 'Nothing was started.',
 		planId ? `/plans/${planId}/test` : '/activity',
 		context,
-		html`<p class="sp-sub">Start a test of the plan on this computer. The testers run in the background.</p>
+		html`<input type="hidden" name="harness" value="${context.harness}" />
+			<p class="sp-sub">Start a test of the plan on this computer. The testers run in the background.</p>
 			${field('act-test-build', 'Build', 'build', shown.build, 'Write the build name.')}
 			${instances.map((choice) => instanceField(choice, choice.planId === planId))}
 			<fieldset class="sp-seg" role="radiogroup" aria-label="Level">
@@ -140,10 +147,7 @@ export function testDialog(
 				aria-describedby="act-test-rules-help"
 				data-stop
 			/>
-			<p class="help" id="act-test-rules-help">
-				One tool rule for each word, as in <code>--allow</code>, for example <code>Read Bash</code>. With the
-				rule, a tester does not ask. Without it, each call asks you here.
-			</p>
+			<p class="help" id="act-test-rules-help">${testerToolHelp(context.harness)}</p>
 			<details class="sp-more" data-more>
 				<summary data-stop>More</summary>
 				${field('act-test-since', 'Since (git ref)', 'since', shown.since)}

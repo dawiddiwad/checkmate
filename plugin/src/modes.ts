@@ -8,7 +8,10 @@ import { upstreamBase } from './change.ts'
 import { openPlan } from './plans.ts'
 import { beginRun } from './runs.ts'
 import { startExploration } from './explorers.ts'
+import { selectedHarness } from './pi.ts'
+import { workspaceEnv } from './settings.ts'
 import { setupTarget, targetRevision } from './targets.ts'
+import { delegateCommand } from './views.ts'
 import { spawnSync } from 'node:child_process'
 import { resolve } from 'node:path'
 
@@ -117,6 +120,7 @@ function checkRun(store: Store, actor: string | undefined, input: TestInput & { 
 }
 
 export function runTest(store: Store, actor: string | undefined, given: TestInput, env: Env): Reply {
+	env = workspaceEnv(store, env)
 	const assumed: string[] = []
 	const build = given.build ?? defaultBuild(store.workspace)
 	if (!given.build) assumed.push(`build=${build}`)
@@ -148,7 +152,7 @@ export function runTest(store: Store, actor: string | undefined, given: TestInpu
 			next: [
 				...(check.run
 					? [
-							`Execute the stored tests of ${check.run.runId}: /checkmate:execute ${check.run.runId}, or checkmate delegate execute ${check.run.runId}`,
+							`Execute the stored tests of ${check.run.runId}: ${given.session ? `/checkmate:execute ${check.run.runId}, or ` : ''}${delegateCommand(selectedHarness(env), 'execute', check.run.runId)}`,
 						]
 					: []),
 				...(explored.data.next as string[]),

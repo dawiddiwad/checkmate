@@ -2,7 +2,7 @@
 
 > **Guide** · For agents, factories, CI jobs, and scripts that use the npm CLI. This is team mode.
 
-The factory opens each subject with a command and gives each stage to a Claude Code worker with `checkmate delegate`. The oracle decides between the stages, and the factory reads the record to know what to do next.
+The factory opens each subject with a command and gives each stage to the selected coding harness with `checkmate delegate`. The oracle decides between the stages, and the factory reads the record to know what to do next.
 
 <img src="../img/life.png" alt="Diagram: one plan from ticket to accepted result. On the left, the loop states with the role that each one waits on: needs_plan waits on the planner, needs_answers on the oracle, needs_revision on the planner, needs_approval on the oracle, ready_to_run on QA, defects_open on the factory, awaits_acceptance on the oracle, and accepted on none. On the right, the next step for each state: the planner writes plan@1 with gap G1 (plan save), the oracle answers G1 (gap answer), the planner writes plan@2 (plan revise), the oracle approves plan@2 (plan approve), QA runs the tests on build b1 (run begin), the factory fixes the code and builds b2, QA retests on build b2 (--retest-of), and the oracle accepts the result (result accept). An amber arrow goes from the runs back to the oracle's answer: a run finds a new gap. checkmate status prints the state, and the review UI shows it too." width="100%"/>
 
@@ -12,7 +12,7 @@ The factory opens each subject with a command and gives each stage to a Claude C
 
 - The CLI: `npm i -g @xoxoai/checkmate`. It contains the plugin and adds `delegate`.
 - Node.js 24.12.0 or later.
-- Claude Code with a logged-in `claude` command. `delegate` starts it.
+- A configured coding harness on `PATH`. Examples below use Claude Code. For Pi, see [Run Checkmate with Pi](pi.md).
 - For browser tests, Playwright CLI: `npm i -g @playwright/cli`.
 
 Run every command in the application workspace, or add `--workspace <path>`. The record is `.checkmate/checkmate.db` in that workspace.

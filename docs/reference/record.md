@@ -38,7 +38,7 @@ Every write records an actor. Checkmate uses the first value that it finds:
 
 Checkmate refuses a write without an actor.
 
-- `delegate` sets `CHECKMATE_ACTOR=claude:<stage>` for its worker.
+- `delegate` sets `CHECKMATE_ACTOR` to `claude:<stage>` or `pi:<stage>` for its worker.
 - A skill passes `--actor claude:<stage>` on each stage write, so the record shows `claude:<stage>` in the same session too.
 - The review UI fills in the same default. A human can change the name in the top bar.
 
@@ -121,19 +121,19 @@ The read models are in `plugin/src/permissions.ts`: `openPermissions(store, plan
 
 ## Requests
 
-`requests` has one row for each request. The row does not change. `context` is JSON: `planId` and `record` (`kind` and `id`) of the page that was on screen, or `null`. `conversation` is the ID of the Claude Code session. The conversation itself is the setting `conversation` in `workspace_settings` (`sessionId` and `startedAt`). `New conversation` adds a row.
+`requests` has one row for each request. The row does not change. `context` is JSON: `planId` and `record` (`kind` and `id`) of the page that was on screen, or `null`. `conversation` is the host session ID. The conversation itself is the setting `conversation` in `workspace_settings` (`sessionId` and `startedAt`). `New conversation` adds a row.
 
 `request_events` has the steps of a request. The latest `state` event gives the state.
 
-| Step                  | Status                                                                  | Detail                                                                                                            |
-| --------------------- | ----------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| `state`               | `waiting`, `running`, `answered`, `failed`, `stopped`, or `interrupted` | At the end: `reply`, `costUsd`, `denials` (one line for each denied call), `changes`, `reason`, and `hint`.       |
-| `session`             | `started`                                                               | `sessionId`: the first line of the stream of Claude Code gave it.                                                 |
-| `activity`            | `started`                                                               | `line`: the tool and the first line of its main input, at most 120 characters, with the same masking as a tester. |
-| `stop`                | `stopped`                                                               | `by`, and `reason` when you gave one.                                                                             |
-| `read`                | `read`                                                                  | The page of the reply was opened.                                                                                 |
-| `permission`          | `open`                                                                  | As in `exploration_events`. `who` is the request ID.                                                              |
-| `permission-decision` | The same values as in `exploration_events`                              | As in `exploration_events`.                                                                                       |
+| Step                  | Status                                                                  | Detail                                                                                                                             |
+| --------------------- | ----------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `state`               | `waiting`, `running`, `answered`, `failed`, `stopped`, or `interrupted` | At enqueue: `harness`. At the end: `reply`, `costUsd`, `denials` (one line for each denied call), `changes`, `reason`, and `hint`. |
+| `session`             | `started`                                                               | `sessionId` and `harness`.                                                                                                         |
+| `activity`            | `started`                                                               | `line`: the tool and the first line of its main input, at most 120 characters, with the same masking as a tester.                  |
+| `stop`                | `stopped`                                                               | `by`, and `reason` when you gave one.                                                                                              |
+| `read`                | `read`                                                                  | The page of the reply was opened.                                                                                                  |
+| `permission`          | `open`                                                                  | As in `exploration_events`. `who` is the request ID.                                                                               |
+| `permission-decision` | The same values as in `exploration_events`                              | As in `exploration_events`.                                                                                                        |
 
 Each item of `changes` has `text` (for example `handed over a1/D1, a1/D2`), `command`, `subject`, `at`, and `href`. The UI finds the changes in the operation log: the operations with `via` `R3` and the status `completed`, whatever their actor. The read models are in `plugin/src/requests.ts`.
 
@@ -171,8 +171,7 @@ The UI is a `node:http` server in the plugin. It has no npm dependencies and loa
 - The `back` and `return` values of a form are paths on the UI only. The UI uses `/` for other values.
 - A hand-over in the UI calls the same core function as `checkmate claim handoff`.
 - The UI edits, adds, and removes derived rules with `plan edit <planId> --patch`, the same core function (`patchPlan`). The POST routes are `/plans/<planId>/rules` (add), `/plans/<planId>/rules/<ruleId>` (edit), and `/plans/<planId>/rules/<ruleId>/remove`. The GET route `/plans/<planId>/defects.txt?claim=<claimId>` returns the text of `developerText`. It changes nothing.
-- The setting `testerRules` is a row of `workspace_settings`. Its default is `Read Bash`. The UI saves it from Settings, Claude Code, with the command `setting set`. The `Test build…` dialog and the new-change form start with it. The engine needs at least one rule today.
-- The setting `requestModel` is a row of `workspace_settings`. Its default is empty. An empty value means that Checkmate passes no `--model` argument to the session of a request. The UI saves it from Settings, Claude Code, `Model for requests`, with the command `setting set`.
+- `workspace_settings` records the coding harness, tester tool rules, and request model. Each change has a `setting set` operation. Claude Code and Pi have separate tool rules and request models. The defaults are `Read Bash` and an empty model field.
 - A pasted ticket is a file `.checkmate/sources/<planId>.md`. The plan request names it as a source. The UI creates no other file outside `.checkmate/`.
 - The routes that change the record are POST routes: `/setup/assumed` (reads only, for the assumptions of the first-run form), `/setup` (calls `setupTarget`), and `/new` (calls `runTest`, the function of `checkmate test`). Each checks the origin and the token.
 - A stop in the UI records the stop and starts `checkmate explore end <explorationId> --workspace <path>` as a background process. It ends the processes and records the event `stop-end` with the processes that are still alive.

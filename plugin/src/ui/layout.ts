@@ -1,3 +1,4 @@
+import type { Harness } from '../pi.ts'
 import type { Html } from './html.ts'
 import { glyph, html } from './html.ts'
 import { viewer } from './evidence.ts'
@@ -6,6 +7,7 @@ export type Theme = 'system' | 'light' | 'dark'
 export type Section = 'home' | 'activity' | 'runs' | 'log' | 'settings' | null
 
 export type Context = {
+	harness: Harness
 	path: string
 	csrf: string
 	actor: string | null
@@ -161,49 +163,52 @@ function statusBar(context: Context, page: Page) {
 	</footer>`
 }
 
-const dialogs = html`<dialog class="sp-keys" data-keys aria-labelledby="keys-title">
-		<div class="sp-dh">
-			<h2 id="keys-title" class="sp-path">Keys</h2>
-			<button class="sp-btn" type="button" data-keys-close><kbd>Esc</kbd><span>Close</span></button>
-		</div>
-		<div data-keys-table></div>
-	</dialog>
-	<dialog class="sp-find" data-find aria-label="Find or ask">
-		<input
-			type="search"
-			data-find-input
-			aria-label="Find a plan, a defect, or a question. Or type a request."
-			autocomplete="off"
-		/>
-		<ul role="listbox" aria-label="Results" data-find-results></ul>
-		<p class="sp-find-none" data-find-none hidden>Nothing matches.</p>
-		<p class="sp-find-none" data-find-more hidden></p>
-		<p class="sp-find-none" data-find-asking role="status" hidden></p>
-		<p class="sp-find-none" data-find-error role="alert" hidden></p>
-		<div class="sp-foot">
-			<span><kbd>${glyph('↑')}</kbd><kbd>${glyph('↓')}</kbd>Choose</span
-			><span><kbd>Enter</kbd><span data-find-enter>Go</span></span
-			><span><kbd>Esc</kbd>Close</span>
-		</div>
-		<p class="sp-find-note" data-find-note>
-			Ask Checkmate starts Claude Code on this computer, in your own session. It can read this workspace and
-			change records.
-		</p>
-	</dialog>
-	<dialog class="sp-confirm" data-confirm aria-labelledby="confirm-title">
-		<div class="sp-dh"><h2 id="confirm-title" class="sp-path" data-confirm-title></h2></div>
-		<form method="dialog" class="sp-form sp-confirm-b" data-confirm-form>
-			<p class="sp-sub" data-confirm-text></p>
-			<div data-confirm-field hidden>
-				<label for="confirm-input" data-confirm-label></label>
-				<input id="confirm-input" autocomplete="off" />
+const dialogs = (harness: Harness) =>
+	html`<dialog class="sp-keys" data-keys aria-labelledby="keys-title">
+			<div class="sp-dh">
+				<h2 id="keys-title" class="sp-path">Keys</h2>
+				<button class="sp-btn" type="button" data-keys-close><kbd>Esc</kbd><span>Close</span></button>
 			</div>
-			<div class="btns">
-				<button class="sp-btn pri" value="yes" data-confirm-yes><kbd>Enter</kbd><span>Confirm</span></button>
-				<button class="sp-btn" value="no" data-confirm-no><kbd>Esc</kbd><span>Cancel</span></button>
+			<div data-keys-table></div>
+		</dialog>
+		<dialog class="sp-find" data-find data-harness="${harness}" aria-label="Find or ask">
+			<input
+				type="search"
+				data-find-input
+				aria-label="Find a plan, a defect, or a question. Or type a request."
+				autocomplete="off"
+			/>
+			<ul role="listbox" aria-label="Results" data-find-results></ul>
+			<p class="sp-find-none" data-find-none hidden>Nothing matches.</p>
+			<p class="sp-find-none" data-find-more hidden></p>
+			<p class="sp-find-none" data-find-asking role="status" hidden></p>
+			<p class="sp-find-none" data-find-error role="alert" hidden></p>
+			<div class="sp-foot">
+				<span><kbd>${glyph('↑')}</kbd><kbd>${glyph('↓')}</kbd>Choose</span
+				><span><kbd>Enter</kbd><span data-find-enter>Go</span></span
+				><span><kbd>Esc</kbd>Close</span>
 			</div>
-		</form>
-	</dialog>`
+			<p class="sp-find-note" data-find-note>
+				Ask Checkmate starts ${harness === 'pi' ? 'Pi' : 'Claude Code'} on this computer. It can read this
+				workspace and change records.
+			</p>
+		</dialog>
+		<dialog class="sp-confirm" data-confirm aria-labelledby="confirm-title">
+			<div class="sp-dh"><h2 id="confirm-title" class="sp-path" data-confirm-title></h2></div>
+			<form method="dialog" class="sp-form sp-confirm-b" data-confirm-form>
+				<p class="sp-sub" data-confirm-text></p>
+				<div data-confirm-field hidden>
+					<label for="confirm-input" data-confirm-label></label>
+					<input id="confirm-input" autocomplete="off" />
+				</div>
+				<div class="btns">
+					<button class="sp-btn pri" value="yes" data-confirm-yes>
+						<kbd>Enter</kbd><span>Confirm</span>
+					</button>
+					<button class="sp-btn" value="no" data-confirm-no><kbd>Esc</kbd><span>Cancel</span></button>
+				</div>
+			</form>
+		</dialog>`
 
 export function parentOf(page: Page) {
 	if (page.back !== undefined) return page.back
@@ -252,7 +257,7 @@ export function layout(context: Context, page: Page) {
 				<div class="sp-saystrip" role="status" data-say-strip hidden></div>
 				${context.toast ? html`<div class="toast" role="status" data-toast title="${context.toast}">${cut(context.toast)}</div>` : ''}
 				<div class="sr-only" aria-live="polite" data-announcer></div>
-				${dialogs} ${page.viewer ? viewer : ''}
+				${dialogs(context.harness)} ${page.viewer ? viewer : ''}
 			</body>
 		</html>`
 }

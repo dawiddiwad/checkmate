@@ -4,7 +4,7 @@ import type { Review } from './review.ts'
 import type { CellStatus } from '../rulemap.ts'
 import { planList } from '../views.ts'
 import { duration, glyph, html, pill, plural, time, words } from './html.ts'
-import { emptyNotice, heading } from './layout.ts'
+import { heading } from './layout.ts'
 import { buildLabel, outside, reviewHref, reviewOf, verdictLine } from './review.ts'
 
 const maxColumns = 9
@@ -172,15 +172,9 @@ export function homePage(store: Store): Page {
 	const plans = listed.map((each) => each.plan)
 	const reviews = listed.map((each) => each.review)
 	const blocking = reviews.reduce((sum, review) => sum + verdictLine(review).blocking, 0)
-	const body = plans.length
-		? html`<div class="sp-home" role="list" aria-label="Plans" data-list>
-				${reviews.map((review, index) => tile(review, plans[index].loop, index))}${newChangeRow(reviews.length)}
-			</div>`
-		: emptyNotice(
-				'No plan yet.',
-				html`Ask Claude Code to test a change, for example <code>/checkmate:test the change in ticket.md</code>.
-					Each plan shows here with what waits for you.`
-			)
+	const body = html`<div class="sp-home" role="list" aria-label="Plans" data-list>
+		${reviews.map((review, index) => tile(review, plans[index].loop, index))}${newChangeRow(reviews.length)}
+	</div>`
 	return {
 		title: 'Plans',
 		section: 'home',

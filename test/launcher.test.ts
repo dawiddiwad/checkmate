@@ -18,6 +18,7 @@ import { formatReply } from '../plugin/src/cli.ts'
 import { answerGap, openPlan } from '../plugin/src/plans.ts'
 import { retireInstance } from '../plugin/src/targets.ts'
 import { rejectResult } from '../plugin/src/runs.ts'
+import { saveWorkspaceHarness } from '../plugin/src/settings.ts'
 import {
 	actor,
 	begin,
@@ -354,9 +355,14 @@ reply({ status, subject, reasons })`
 
 test('the npm CLI delegates through Pi and verifies the recorded stage operation', (t) => {
 	const workspace = requested(t)
+	const opened = store(t, workspace)
+	saveWorkspaceHarness(opened, actor, 'pi')
+	closeStore(opened)
 	const bundledPlugin = defaultPluginRoot()
 	const bin = join(workspace, 'bin')
 	mkdirSync(bin)
+	claude(bin, recordsArgs)
+	renameSync(join(bin, 'fake-claude'), join(bin, 'claude'))
 	executable(
 		bin,
 		'pi',
@@ -398,7 +404,7 @@ if (process.env.FAKE_PI_OUTPUT === 'invalid') {
 		const env = {
 			...process.env,
 			PATH: `${bin}:${process.env.PATH}`,
-			CHECKMATE_HARNESS: 'pi',
+			CHECKMATE_HARNESS: output === 'claude' ? 'claude' : undefined,
 			CHECKMATE_PI_MODEL: 'fixture-model',
 			CHECKMATE_PI_PROVIDER: 'fixture-provider',
 			FAKE_PI_OUTPUT: output,
@@ -414,6 +420,7 @@ if (process.env.FAKE_PI_OUTPUT === 'invalid') {
 		['--claude-arg', '--model'],
 	])
 		assert.match(run('', ...flags).reasons.join(' '), /Pi delegate does not accept/)
+	assert.deepEqual(run('claude', '--allow', 'Read').reasons, ['Stopped.'])
 	assert.equal(existsSync(join(workspace, 'pi-args.json')), false)
 	const invalid = run('invalid')
 	assert.equal(invalid.status, 'operational_error')

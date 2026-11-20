@@ -176,9 +176,9 @@ A form keeps your text as a draft. It stays when you press `Esc`, reload the pag
 
 When the target of the plan has more than one active instance, the dialog has the choice `Instance` after the build. Each instance has a number: press `1`, `2`, and so on to choose it. The choice starts on the instance of the last test of the plan when that instance is active. Without such an instance, the choice has no start value, and the dialog refuses at the field with `Choose the instance: <names>.` until you choose one. The UI gives the choice to the engine as `--instance`. `Test again` and `Test build… again` start on the instance of their run. With one active instance, the dialog has no `Instance` choice. A retired instance is not in the choice.
 
-The UI starts the testers as new Claude Code processes with the rules of the field. The follow-up of a test uses the rules of that test. The test runs without the UI: closing the UI does not stop it. The UI starts a test only when no test of the plan is in progress. When one is in progress, the dialog stays open, names the running test, and links to it.
+The UI starts each tester in the selected coding harness with the tools you entered. The follow-up of a test uses the rules of that test. The test runs without the UI: closing the UI does not stop it. The UI starts a test only when no test of the plan is in progress. When one is in progress, the dialog stays open, names the running test, and links to it.
 
-When the engine refuses the start, the dialog shows the reason in a sentence at the field, and keeps your text. An empty rules field shows the refusal of the engine at that field. For example, when `claude` is not on `PATH`, the dialog says so and gives the next step.
+When the engine refuses the start, the dialog shows the reason in a sentence at the field, and keeps your text. An empty rules field shows the refusal of the engine at that field. If the selected program is missing from `PATH`, the dialog names it.
 
 `Test the answers (<n>)…` shows when the last test of the plan is completed and <n> answers of the product owner are not tested yet. A dialog names the count. Press `Enter` or `1` to start the follow-up. The follow-up uses the instance of its test.
 
@@ -204,17 +204,17 @@ A row shows its numbered options only when all of them fit in the row. When they
 
 Below the list is the overview of the session, or the tester or phase that you open: `Not merged yet`, the merged claims and questions, the saved files, and `Download report`. A paused session waits for you in the Claude Code session, not in the UI.
 
-`Stop the test…` is in the action row while the session runs as processes. A dialog names the plan and the build, and has an optional reason. A tester that runs has `Stop` as its last option. Both ask first. A stop ends the supervisor and the Claude Code processes of the test. It keeps the record and the work folder. The UI answers at once: the view shows `Stopping…` while the processes end, and no other page waits. A background process ends the processes. The view shows `Stopped` when they have ended, or names the processes that are still alive. While a stop runs, a new test of the plan does not start. The dialog closes with a message when the test or the tester ends before you confirm.
+`Stop the test…` is in the action row while the session runs as processes. A dialog names the plan and the build, and has an optional reason. A tester that runs has `Stop` as its last option. Both ask first. A stop ends the supervisor and its tester processes. It keeps the record and the work folder. The UI answers at once: the view shows `Stopping…` while the processes end, and no other page waits. A background process ends the processes. The view shows `Stopped` when they have ended, or names the processes that are still alive. While a stop runs, a new test of the plan does not start. The dialog closes with a message when the test or the tester ends before you confirm.
 
 A stopped session shows `Stopped by <name>`, the reason, and the work folder where reports that were not recorded stay. When the supervisor dies without a stop, the session shows `The run was interrupted: the supervisor stopped before the end.` Both give `Test build… again`. A session of the Claude Code session path cannot stop here. Stop its testers in the session.
 
-A failed session says why and what to do next: `claude` was not found, Claude Code is not signed in, a tester did not end in time, or another reason with its text. A failed session shows its reason, the kept work folder `.checkmate/work/<explorationId>`, and the log. `Not merged yet` items are the raw questions and defects of single testers. They can change before the session is completed. `Needs you` does not show them.
+A failed session shows the reason, the next step, the work folder `.checkmate/work/<explorationId>`, and the log. `Not merged yet` items are the raw questions and defects of single testers. They can change before the session is completed. `Needs you` does not show them.
 
 A tester can always write in its own work folder. When a tester leaves files outside it, a line under the banner says `Tester a1 left files outside its work folder: <names>. Checkmate did not touch them.` Move or delete them yourself.
 
 ### Permission requests
 
-While the UI runs, a tester that needs a permission asks you. The tester waits for your answer for up to 10 minutes. Without the UI, or when the hook is blocked, a tester behaves as before: Claude Code denies the call.
+While the UI runs, a tester that needs a permission asks you. The tester waits for your answer for up to 10 minutes. Without the UI, or when the hook is blocked, a tester behaves as before: the tool call is denied.
 
 Open requests show in these places:
 
@@ -242,29 +242,19 @@ After an answer, the next open request opens in the same view. When no request i
 
 **History.** The Testers view of a run has the fold `Permission requests (<n>)`. It lists each request and its answer, who answered, and when, newest first, 20 for each page. `↓` on the last row opens the next page. `Enter` opens the record, which does not move on.
 
-A rule for this test answers the same request of every other tester of the run at once. The record shows `allowed by rule <rule>, set by <name>`. A rule of one run does not apply to another run. A request with no answer in 10 minutes closes, and the call is denied. A request also closes when the tester or the run stops, and when the UI stops. A request of a run or of a request that has ended gets an empty answer and does not show: Claude Code denies the call. The same answers are in `checkmate explore permit`. Each request and each answer is an event of the exploration, so the record shows who decided what.
+A rule for this test answers the same request of every other tester of the run at once. The record shows `allowed by rule <rule>, set by <name>`. A rule of one run does not apply to another run. A request with no answer in 10 minutes closes, and the call is denied. A request also closes when the tester or the run stops, and when the UI stops. A request of a run or of a request that has ended gets an empty answer and does not show: the tool call is denied. The same answers are in `checkmate explore permit`. Each request and each answer is an event of the exploration, so the record shows who decided what.
 
 `/permissions` opens the first open request, or `Activity` when none is open.
 
-A request of the find bar asks in the same way. Its record says `Request R3 asks to run a command`. The options are the same six. `for this test` reads `for this conversation`. A rule lasts for the later requests of the same conversation, and ends when you start a new conversation. `Stop the request…` stops the request. A request has no `Run` in its details: it shows `Request` with a link.
+A request of the find bar asks in the same way. Its record says `Request R3 asks to run a command`. The available options depend on the tool and the harness. `for this test` reads `for this conversation`. A rule lasts for the later requests of the same conversation, and ends when you start a new conversation. `Stop the request…` stops the request. A request has no `Run` in its details: it shows `Request` with a link.
 
 ### Requests
 
-A request is a free-form task for Claude Code, for example `why does D3 fail?` or `hand over all high defects`. Press `/`, type the text, and choose the last row, `Ask Checkmate: <text>`. `Enter` sends it. The bar shows `Asking… R3`, and `Enter` does nothing more until you close the bar. `Esc` closes the bar, and the request goes on. The find bar says that asking starts Claude Code on this computer.
+Press `/`, type a task, and choose `Ask Checkmate`. The find bar names the coding harness that will receive your text. It runs in the project workspace with your host login and tools. If a plan or record is open, Checkmate includes its name for context. A tool that needs approval opens a permission request.
 
-The request runs in your own Claude Code, in the workspace folder. It has your login, your settings, and all your tools. Checkmate removes no tool and sets no model, unless you set `Model for requests` in Settings. A tool that needs an approval asks you in the UI, as a tester does. The request also gets the Checkmate plugin of the UI, and a short instruction: the reply shows in a narrow pane, and records change with the `checkmate` command. The text of the request goes to Claude Code. When a plan or a record was on screen, one more line follows it: `For context only: the person had plan checkout and question a1/Q1 on screen. Use this only when the request refers to it.` Nothing that you type goes on a command line.
+One request runs at a time. Later requests in the same conversation can use its history. Choose `New conversation` to start again. After you switch harnesses, the next request starts a conversation in the selected harness. Earlier replies remain in `Replies`.
 
-One request runs at a time. A second request waits and starts when the first ends. All requests of a workspace share one conversation, so a later request knows the earlier ones. `New conversation` starts a new one.
-
-- **The request page.** `/requests/<R>` shows your question and its context. While the request runs, it shows the lines of activity as they come, the newest last, the time that passed, and `1 Stop the request…`. A dialog asks first. When a permission request of the request is open, the page says `This request waits for you: a permission request` and links to it. When the request ended, the page shows the reply as plain paragraphs and lists, the cost, the time it took, the records that the request changed (each is a link), and the tool calls that Claude Code denied. The options are `1 Ask a follow-up` (the find bar, in ask mode), `2 Ask again` (the same text, a new request), and `3 New conversation`. A request that failed shows the reason and `1 Ask again`. Opening a reply marks it read. Text from the model is always shown as text, never as HTML.
-- **Replies.** `/requests` lists the requests. The requests that you did not read come first, then the others, newest first. A row has the state, the ID, the first line of the question, the first line of the reply, who asked, when, and the cost. `→` opens the request. `←` and Back return to the list. The list pages like `Log`.
-- **The status bar.** `Request R3 · running` opens the running request. `1 reply` opens the reply, and `<n> replies` opens the list.
-- **Activity.** The list shows requests next to the runs, with their state and cost.
-- **Stop.** `Stop the request…` sends `SIGINT` to Claude Code. After 5 seconds it sends `SIGTERM`, and after 1.5 more seconds `SIGKILL`. The state is `stopped`, and the conversation goes on with the next request. When the UI stops, the running request ends in the same way with the state `interrupted`. A request that waits when the UI stops is `interrupted` too.
-
-The states are `waiting`, `running`, `answered`, `failed`, `stopped`, and `interrupted`. A request fails when Claude Code is not found, is not signed in, prints a line that is not JSON, or ends without a reply. The page gives the sentence and the last 20 lines of the messages of Claude Code.
-
-Checkmate sets `CHECKMATE_REQUEST=R3` for Claude Code. Each write of the `checkmate` command stores `R3` in `operations.via`, also when the session gives its own `--actor`. Without `--actor`, the actor is `<your name> via request R3`. The Log shows `via request R3` on these rows, and the link opens the request. While the request runs, the page says `Changes show when the request ends.` When the request ends, the page lists the operations with `via` `R3`, for example `handed over a1/D1, a1/D2` and `answered a1/Q4`. The page says `The request changed no record.` only when the Log has no operation with `via` `R3`. A request that you stop shows its lines of activity and the changes that it made before the stop.
+Open a request to read its activity, answer a permission prompt, or choose `Stop the request…`. When it ends, the page shows the reply or failure reason, elapsed time, and a link to each record it changed. Use `Ask a follow-up` to continue or `Ask again` to send the same text. The Log links each write to its request, including writes made before a stop.
 
 An activity line of a request or a tester shows the tool and the first line of its main input, at most 120 characters. For a shell command, the line drops a leading `cd <path> &&` or `cd <path>;` and the leading variable assignments. A command that runs the Checkmate command line, also through a variable, shows as `checkmate <arguments>`. The path of the workspace shows as `.`. Checkmate masks secrets. The permission record shows the full command.
 
@@ -284,11 +274,9 @@ The run list and the operation log. They page, sort, and filter. The address kee
 
 ### Settings
 
-`Settings` in the status bar opens `Targets`. `Claude Code` shows the path of `claude`, or says that no `claude` is on `PATH`. It also shows the default model alias of each test level. The page makes no call to Claude Code. The host wins: a test that you start from a shell with `--claude-arg --model --claude-arg <model>` uses that model. A test that you start in the UI uses the alias of its level.
+Open **Settings → Coding harness**, choose **Claude Code** or **Pi**, and save. The choice applies to new work in this workspace and survives a restart. A running test and its follow-up use the harness that started the test. The page shows whether the selected program is on `PATH`. Configure its provider and login in the harness.
 
-`Requests` has `Model for requests`, an alias or an ID that Claude Code gets with `--model`. Empty means the model that Claude Code chooses by itself, and is the default. It also says when the conversation started and how many requests it has, and has `New conversation`.
-
-`Tool rules of testers` has the rules that the `Test build…` dialog and the new-change form start with. A rule lets a tester use a tool without asking you, for example `Read` or `Bash`. Write one rule for each word. The engine needs at least one rule today. Checkmate keeps the setting in the record, with the name and the time of the change, and the Log shows it as `setting set`. With the rule `Bash`, testers run commands without asking. Without it, each command asks you in the UI, and a tester waits up to 10 minutes for the answer. The page also says whether testers that start now can ask you for a permission in the UI. They can when `.checkmate/ui.json` names a UI that runs.
+Each harness keeps its own tester tool rules and request model. The tool rules fill the `Test build…` and `New change` forms. Leave the request model empty to use the host default. Switching back restores that harness's settings.
 
 `Targets`. A target page shows the entry points, the instances, the tools, the profile, and the revision history.
 

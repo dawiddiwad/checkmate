@@ -4,8 +4,9 @@ import type { TestContext } from 'node:test'
 import { existsSync, realpathSync } from 'node:fs'
 import { join } from 'node:path'
 import { run } from '../plugin/src/cli.ts'
-import { closeStore } from '../plugin/src/store.ts'
+import { closeStore, openStore } from '../plugin/src/store.ts'
 import { workDenyRules } from '../plugin/src/sessions.ts'
+import { saveWorkspaceHarness } from '../plugin/src/settings.ts'
 import { actor, directory, plan, store, target } from './support.ts'
 import { fakeClaude } from './claude.ts'
 
@@ -45,11 +46,14 @@ function setup(t: TestContext, harness?: 'pi') {
 const answer = ['gap', 'answer', 'checkout', 'a1/Q1', '--kind', 'defer', '--value', 'No.', '--rationale', 'Rule.']
 
 test('Pi follow-up reopens the test session and records the new entries', (t) => {
-	const { command, wait, reply, called } = setup(t, 'pi')
+	const { command, wait, reply, called, workspace } = setup(t, 'pi')
 	assert.equal(command(['explore', 'start', 'checkout', '--build', 'b1', '--level', 'smoke', ...allow]).code, 0)
 	assert.equal(wait('x-1').body.state, 'completed')
 	const tester = called().find((call) => call.role === 'tester')
 	assert.equal(command(answer).code, 0)
+	const opened = openStore(workspace)
+	saveWorkspaceHarness(opened, actor, 'claude')
+	closeStore(opened)
 	reply({ recorder: [stacks, question, sale] })
 	assert.equal(command(['explore', 'follow', 'x-1'], 'claude').code, 0)
 	const done = wait('x-1')

@@ -53,7 +53,14 @@ import { all } from '../store.ts'
 import { autoMode, defaultBuild, hasRequest, runTest } from '../modes.ts'
 import { upstreamBase } from '../change.ts'
 import { levelNames } from '../levels.ts'
-import { ruleTokens, saveRequestModel, saveTesterRules, testerRulesText } from '../settings.ts'
+import {
+	ruleTokens,
+	saveRequestModel,
+	saveTesterRules,
+	saveWorkspaceHarness,
+	testerRulesText,
+	workspaceUiEnv,
+} from '../settings.ts'
 import { isUnread, markRequestRead, requestOf, requestStatus, staleRequests } from '../requests.ts'
 import { planRequest } from '../plans.ts'
 import type { Env } from '../sessions.ts'
@@ -101,7 +108,7 @@ import { candidateFromForm, candidateJson, editPage, emptyField, ownChanges, rem
 import type { AdoptError } from './run.ts'
 import { runPage } from './run.ts'
 import type { InstanceForm } from './settings.ts'
-import { claudePage, instanceFromForm, targetPage, targetsPage } from './settings.ts'
+import { harnessPage, instanceFromForm, targetPage, targetsPage } from './settings.ts'
 import type { HookOptions } from './hooks.ts'
 import { createHooks, sameSecret } from './hooks.ts'
 import { emptyRecord, nextOpen, permissionPage, requestHref } from './permissions.ts'
@@ -308,6 +315,7 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 	const hookToken = workspaceHookToken(options.workspace, options.newHookToken)
 	const hooks = createHooks(store, hookToken, options)
 	const env = options.env ?? process.env
+	const launchEnv = () => workspaceUiEnv(store, env)
 	const requester = createRequester(store, {
 		workspace: options.workspace,
 		env,
@@ -384,7 +392,8 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 			running: runningCount(store),
 			cursor: latestRowid(store),
 			workspace: options.workspace,
-			testerRules: testerRulesText(store),
+			harness: selectedHarness(workspaceUiEnv(store, env)),
+			testerRules: testerRulesText(store, selectedHarness(workspaceUiEnv(store, env))),
 		}
 	}
 
@@ -541,7 +550,8 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		if (pathname === '/permissions') return firstRequest(request)
 		const asked = routes.permit.exec(pathname)
 		if (asked) return permissionRecord(request, asked[1], asked[2])
-		if (pathname === '/settings/claude') return render(request, claudePage(store, shown, env))
+		if (pathname === '/settings/claude') return redirect(request.res, '/settings/harness')
+		if (pathname === '/settings/harness') return render(request, harnessPage(store, shown, env))
 		if (pathname === '/requests') return render(request, repliesPage(store, searchParams))
 		const askedRequest = routes.requestPage.exec(pathname)
 		if (askedRequest) return requestRecord(request, askedRequest[1])
@@ -571,7 +581,7 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 				{ 'Cache-Control': 'no-store' }
 			)
 		const requested = routes.request.exec(pathname)
-		if (requested) return render(request, requestPage(store, requested[1]))
+		if (requested) return render(request, requestPage(store, requested[1], shown.harness))
 		const plan = routes.plan.exec(pathname)
 		if (plan)
 			return render(
@@ -1146,6 +1156,8 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		const [typedSince, until, repo] = ['since', 'until', 'repo'].map((name) => form.get(name)?.trim() || undefined)
 		const refuse = (message: Html | string, field = '') => actionRefusal(request, back, message, field)
 		if (!actor) return refuse('Enter your name. Checkmate records it with the test.')
+		if (form.has('harness') && form.get('harness') !== selectedHarness(launchEnv()))
+			return refuse('The coding harness changed. Reload the page and try again.')
 		if (!build) return refuse('Write the build name.', 'build')
 		if (!(levelNames as string[]).includes(level)) return refuse('Choose the level smoke, normal, or deep.')
 		if (until && !typedSince) return refuse('Until needs Since. Fill in Since, or leave Until empty.', 'until')
@@ -1175,7 +1187,7 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 					allow: ruleTokens(form.get('rules') ?? ''),
 					claudeArgs: [],
 				},
-				env
+				launchEnv()
 			)
 			redirect(request.res, `/explorations/${started.subject}`, [
 				...cookies,
@@ -1199,7 +1211,7 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		if (running) return refuse(inProgress(planId, running))
 		try {
 			const answers = unusedAnswers(store, explorationId).length
-			startFollow(store, actor, { explorationId, allow: [], claudeArgs: [] }, env)
+			startFollow(store, actor, { explorationId, allow: [], claudeArgs: [] }, launchEnv())
 			redirect(request.res, `/explorations/${explorationId}`, [
 				...cookies,
 				cookie('checkmate_toast', `Testing ${plural(answers, 'answer')} of ${explorationId}`, 60),
@@ -1400,6 +1412,8 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		if (!actor) return refuse('Enter your name. Checkmate records it with the request.')
 		const text = form.get('text')?.trim() ?? ''
 		if (!text) return refuse('Write the request first.')
+		if (form.has('harness') && form.get('harness') !== selectedHarness(launchEnv()))
+			return refuse('The coding harness changed. Reload to see which program will receive your request.')
 		let context
 		try {
 			context = form.has('context')
@@ -1452,21 +1466,39 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		])
 	}
 
+	function saveHarness(request: Request, form: URLSearchParams) {
+		const { actor, cookies } = actorFrom(request, form)
+		if (!actor)
+			return errorPage(request, 422, 'Coding harness', 'Enter your name. Checkmate records it with the setting.')
+		try {
+			saveWorkspaceHarness(store, actor, form.get('harness') ?? '')
+		} catch (error) {
+			return errorPage(request, 422, 'Coding harness', engineText(error))
+		}
+		redirect(request.res, '/settings/harness', [
+			...cookies,
+			cookie('checkmate_toast', 'Saved the coding harness', 60),
+		])
+	}
+
 	function saveModel(request: Request, form: URLSearchParams) {
 		const { actor, cookies } = actorFrom(request, form)
 		const typed = form.get('model') ?? ''
-		const page = (error: string) => () => claudePage(store, context(request), env, null, { value: typed, error })
+		const page = (error: string) => () => harnessPage(store, context(request), env, null, { value: typed, error })
 		if (!actor) return refuse(request, page('Enter your name. Checkmate records it with the setting.'), cookies)
+		const harness = selectedHarness(workspaceUiEnv(store, env))
+		if (form.get('harness') !== harness)
+			return refuse(request, page('The coding harness changed. Reload the page and try again.'), cookies)
 		try {
-			saveRequestModel(store, actor, typed)
+			saveRequestModel(store, actor, typed, harness)
 		} catch (error) {
 			return refuse(request, page(engineText(error)), cookies)
 		}
-		redirect(request.res, '/settings/claude', [
+		redirect(request.res, '/settings/harness', [
 			...cookies,
 			cookie(
 				'checkmate_toast',
-				typed.trim() ? 'Saved the model for requests' : 'Requests use the model of Claude Code',
+				typed.trim() ? 'Saved the model for requests' : 'Requests use the model of the coding harness',
 				60
 			),
 		])
@@ -1475,14 +1507,17 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 	function saveRules(request: Request, form: URLSearchParams) {
 		const { actor, cookies } = actorFrom(request, form)
 		const typed = form.get('rules') ?? ''
-		const page = (error: string) => () => claudePage(store, context(request), env, { value: typed, error })
+		const page = (error: string) => () => harnessPage(store, context(request), env, { value: typed, error })
 		if (!actor) return refuse(request, page('Enter your name. Checkmate records it with the setting.'), cookies)
+		const harness = selectedHarness(workspaceUiEnv(store, env))
+		if (form.get('harness') !== harness)
+			return refuse(request, page('The coding harness changed. Reload the page and try again.'), cookies)
 		try {
-			saveTesterRules(store, actor, typed)
+			saveTesterRules(store, actor, typed, harness)
 		} catch (error) {
 			return refuse(request, page(engineText(error)), cookies)
 		}
-		redirect(request.res, '/settings/claude', [
+		redirect(request.res, '/settings/harness', [
 			...cookies,
 			cookie('checkmate_toast', 'Saved the tool rules of testers', 60),
 		])
@@ -1583,6 +1618,8 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		const [since, until, repo] = ['since', 'until', 'repo'].map((name) => form.get(name)?.trim() || undefined)
 		const allow = ruleTokens(form.get('rules') ?? '')
 		if (!actor) return refuse('Enter your name. Checkmate records it with the plan and the test.')
+		if (form.has('harness') && form.get('harness') !== selectedHarness(launchEnv()))
+			return refuse('The coding harness changed. Reload the page and try again.')
 		if (!typedFile && !text.trim())
 			return refuse('Give the ticket: the path of a file in the workspace, or the pasted text.', 'file')
 		if (typedFile && text.trim()) return refuse('Give the file or the pasted text, not both.', 'text')
@@ -1613,9 +1650,14 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		)?.entries.web
 		if (address && URL.canParse(address) && !isLocalAddress(address) && form.get('confirmed') !== '1')
 			return refuse(`Confirm that Checkmate may test ${hostOf(address)}, an address that is not local.`, 'target')
+		const childEnv = launchEnv()
 		try {
-			requireChild(env, selectedHarness(env))
-			launchPlan(targetRevision(store, targetId).profile, { planId, build, allow, claudeArgs: [], level }, env)
+			requireChild(childEnv, selectedHarness(childEnv))
+			launchPlan(
+				targetRevision(store, targetId).profile,
+				{ planId, build, allow, claudeArgs: [], level },
+				childEnv
+			)
 		} catch (error) {
 			const message = engineText(error)
 			return refuse(message, /tool rules/.test(message) ? 'rules' : '')
@@ -1642,7 +1684,7 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 					allow,
 					claudeArgs: [],
 				},
-				env
+				childEnv
 			)
 			redirect(request.res, `/explorations/${started.subject}`, [
 				...cookies,
@@ -1982,8 +2024,10 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 			return redirect(request.res, safeBack(form.get('back')), [cookie('checkmate_actor', name)])
 		}
 		if (pathname === '/bulk') return bulk(request, form)
-		if (pathname === '/settings/claude') return saveRules(request, form)
-		if (pathname === '/settings/claude/model') return saveModel(request, form)
+		if (pathname === '/settings/harness/select') return saveHarness(request, form)
+		if (pathname === '/settings/claude' || pathname === '/settings/harness/rules') return saveRules(request, form)
+		if (pathname === '/settings/claude/model' || pathname === '/settings/harness/model')
+			return saveModel(request, form)
 		if (pathname === '/requests') return askText(request, form)
 		if (pathname === '/requests/conversation') return newConversation(request, form)
 		const stoppingRequest = routes.stopRequest.exec(pathname)

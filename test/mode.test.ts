@@ -85,7 +85,7 @@ test('test in regression mode begins a run of the ready tests and explores the c
 	assert.deepEqual(reply.body.run, { runId: 'run-1', tests: ['T1', 'T2'] })
 	assert.deepEqual(reply.body.scope, ['cart.js'])
 	assert.deepEqual(reply.body.next, [
-		'Execute the stored tests of run-1: /checkmate:execute run-1, or checkmate delegate execute run-1',
+		'Execute the stored tests of run-1: checkmate delegate execute run-1 --allow Read --allow Bash',
 		'checkmate explore wait x-1',
 	])
 	wait('x-1')

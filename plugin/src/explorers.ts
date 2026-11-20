@@ -19,7 +19,9 @@ import {
 	unplacedMatches,
 	verifyItems,
 } from './journal.ts'
+import type { Harness } from './pi.ts'
 import { piModelArgs, selectedHarness } from './pi.ts'
+import { workspaceEnv } from './settings.ts'
 import { defaultLevel, levelNames, storedLevel, testLevels } from './levels.ts'
 import { explorerActor, lastEntry, recordSession, defaultRecorderTimeout } from './recorder.ts'
 import {
@@ -134,7 +136,7 @@ export function launchPlan(profile: Profile, input: StartInput, env: Env): Launc
 			model: null,
 			modelFrom: 'agent',
 			verifier: row.verifier,
-			context: { hiddenPlugin: null, claudeArgs: [] },
+			context: { hiddenPlugin: null, claudeArgs: [], harness: 'claude' },
 			allow: input.allow,
 			studySeconds: row.studySeconds,
 			testSeconds,
@@ -169,7 +171,7 @@ export function launchPlan(profile: Profile, input: StartInput, env: Env): Launc
 		context:
 			harness === 'pi'
 				? { hiddenPlugin, claudeArgs: [], harness, piArgs }
-				: { hiddenPlugin, claudeArgs: host ? claudeArgs : [...claudeArgs, '--model', row.model] },
+				: { hiddenPlugin, claudeArgs: host ? claudeArgs : [...claudeArgs, '--model', row.model], harness },
 		allow: input.allow,
 		studySeconds: row.studySeconds,
 		testSeconds,
@@ -300,6 +302,7 @@ function startSupervisor(store: Store, explorationId: string, actor: string, env
 }
 
 export function startExploration(store: Store, actor: string | undefined, given: StartInput, env: Env) {
+	if (!given.session) env = workspaceEnv(store, env)
 	const change = changeOf(store.workspace, given)
 	const input = { ...given, change, scope: given.scope ?? (change ? changedFiles(store.workspace, change) : []) }
 	const reply = write(store, { actor, command: 'explore start', subject: input.planId, input }, (operationId, at) => {
@@ -881,27 +884,29 @@ export function followCount(store: Store, explorationId: string) {
 export function startFollow(store: Store, actor: string | undefined, input: FollowInput, env: Env) {
 	const id = input.explorationId
 	let session = false
+	let harness: Harness = 'claude'
 	const reply = write(store, { actor, command: 'explore follow', subject: id, input }, (operationId, at) => {
 		const row = explorationRow(store, id)
 		const events = explorationEvents(store, id)
-		session = startOf(events)?.path === 'session'
-		if (!session) requireChild(env, startOf(events)?.context?.harness)
+		const stored = startOf(events)
+		session = stored?.path === 'session'
+		harness = stored?.context?.harness ?? 'claude'
 		const state = explorationState(events)
 		requireCondition(
-			followable(events),
+			stored && followable(events),
 			`Exploration ${id} is ${state}. A follow-up needs a completed exploration.`,
 			['failed', 'stopped', 'interrupted', 'open'].includes(state)
 				? `Start a new test: checkmate test ${row.plan_id} --allow Read --allow Bash`
 				: `Run checkmate explore wait ${id}. Then run the follow-up again.`
 		)
+		if (!session) requireChild(env, harness)
 		const answered = unusedAnswers(store, id)
 		requireCondition(
 			answered.length,
 			`Exploration ${id} has no answer that a follow-up has not used.`,
 			`Answer a question of the exploration first: checkmate gap answer ${row.plan_id} <questionId> --kind <kind> --value "<answer>" --source "<source>" --rationale "<why>". Run checkmate explore show ${id} to read its questions.`
 		)
-		const stored = startOf(events)!
-		if (stored.context.harness === 'pi') {
+		if (harness === 'pi') {
 			requireWellFormed(!input.claudeArgs.length, '--claude-arg is for Claude.')
 			piToolNames(input.allow)
 		}
@@ -941,7 +946,7 @@ export function startFollow(store: Store, actor: string | undefined, input: Foll
 			subjects: [`exploration:${id}`, `plan:${row.plan_id}`],
 		}
 	})
-	if (!session) startSupervisor(store, reply.subject, actor!, env, ['--follow'])
+	if (!session) startSupervisor(store, reply.subject, actor!, { ...env, CHECKMATE_HARNESS: harness }, ['--follow'])
 	return reply
 }
 

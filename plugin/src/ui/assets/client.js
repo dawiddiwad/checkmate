@@ -1440,7 +1440,12 @@ async function askNow() {
 	const send = () =>
 		fetch('/requests', {
 			method: 'POST',
-			body: new URLSearchParams({ csrf: csrf(), text, screen: location.pathname + location.search }),
+			body: new URLSearchParams({
+				csrf: csrf(),
+				text,
+				harness: findDialog.dataset.harness,
+				screen: location.pathname + location.search,
+			}),
 		})
 	try {
 		let response = await send()

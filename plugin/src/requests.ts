@@ -1,4 +1,5 @@
 import type { Store } from './store.ts'
+import type { Harness } from './pi.ts'
 import { randomUUID } from 'node:crypto'
 import { all, canonical, completed, execute, one, write } from './store.ts'
 import { requireText, requireWellFormed, unusedId } from './contracts.ts'
@@ -13,6 +14,7 @@ export type RequestRecord = {
 	context: RequestContext
 	asker: string
 	conversation: string
+	harness: Harness
 	askedAt: string
 	state: RequestState
 	sessionId: string | null
@@ -102,14 +104,16 @@ export function conversationStarted(store: Store, sessionId: string) {
 	)
 }
 
-export function conversationHarness(store: Store, sessionId: string) {
+function conversationHarness(store: Store, sessionId: string) {
 	const row = one<{ detail: string }>(
 		store,
 		`SELECT e.detail FROM request_events e JOIN requests r ON r.request_id = e.request_id
-		WHERE r.conversation = ? AND e.step = 'session' ORDER BY e.rowid DESC LIMIT 1`,
+		WHERE r.conversation = ? AND (e.step = 'session' OR
+			(e.step = 'state' AND e.status = 'waiting' AND json_extract(e.detail, '$.harness') IS NOT NULL))
+		ORDER BY e.rowid DESC LIMIT 1`,
 		sessionId
 	)
-	return row ? ((JSON.parse(row.detail).harness ?? 'claude') as string) : null
+	return row ? (JSON.parse(row.detail).harness === 'pi' ? 'pi' : 'claude') : null
 }
 
 export function addRequestEvent(
@@ -131,7 +135,11 @@ export function addRequestEvent(
 	)
 }
 
-export function askRequest(store: Store, actor: string | undefined, input: { text: string; context: RequestContext }) {
+export function askRequest(
+	store: Store,
+	actor: string | undefined,
+	input: { text: string; context: RequestContext; harness?: Harness }
+) {
 	const text = requireText(input.text, 'request text')
 	requireWellFormed(
 		text.length <= maxRequestText,
@@ -143,7 +151,11 @@ export function askRequest(store: Store, actor: string | undefined, input: { tex
 			'R',
 			all<{ request_id: string }>(store, 'SELECT request_id FROM requests').map((row) => row.request_id)
 		)
-		const conversation = currentConversation(store) ?? insertConversation(store, operationId, at)
+		const current = currentConversation(store)
+		const previous = current && conversationHarness(store, current.sessionId)
+		const harness = input.harness ?? 'claude'
+		const conversation =
+			current && (!previous || previous === harness) ? current : insertConversation(store, operationId, at)
 		execute(
 			store,
 			'INSERT INTO requests (request_id, text, context, asker, conversation, asked_at, operation_id) VALUES (?, ?, ?, ?, ?, ?, ?)',
@@ -155,7 +167,7 @@ export function askRequest(store: Store, actor: string | undefined, input: { tex
 			at,
 			operationId
 		)
-		addRequestEvent(store, requestId, { step: 'state', status: 'waiting', detail: {} }, operationId, at)
+		addRequestEvent(store, requestId, { step: 'state', status: 'waiting', detail: { harness } }, operationId, at)
 		return {
 			reply: completed(requestId, { requestId }),
 			subjects: [`request:${requestId}`, 'requests'],
@@ -235,6 +247,8 @@ function recordOf(ask: AskRow, events: EventRow[]): RequestRecord {
 	const states = events.filter((event) => event.step === 'state')
 	const last = states.at(-1)!
 	const session = events.findLast((event) => event.step === 'session')
+	const recorded = session ? (JSON.parse(session.detail) as { sessionId?: string; harness?: Harness }) : null
+	const harness = JSON.parse(states[0].detail).harness ?? recorded?.harness
 	const finished = endStates.includes(last.status as RequestState) ? last : null
 	const detail = finished ? (JSON.parse(finished.detail) as Record<string, unknown>) : {}
 	const listOf = <T>(value: unknown) => (Array.isArray(value) ? (value as T[]) : [])
@@ -244,9 +258,10 @@ function recordOf(ask: AskRow, events: EventRow[]): RequestRecord {
 		context: JSON.parse(ask.context) as RequestContext,
 		asker: ask.asker,
 		conversation: ask.conversation,
+		harness: harness === 'pi' ? 'pi' : 'claude',
 		askedAt: ask.asked_at,
 		state: last.status as RequestState,
-		sessionId: session ? (JSON.parse(session.detail) as { sessionId: string }).sessionId : null,
+		sessionId: recorded?.sessionId ?? null,
 		activity: events
 			.filter((event) => event.step === 'activity')
 			.map((event) => ({ at: event.at, line: (JSON.parse(event.detail) as { line: string }).line })),

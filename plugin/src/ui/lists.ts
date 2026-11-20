@@ -266,7 +266,7 @@ export function runsSpec(store: Store): ListSpec {
 		path: '/runs',
 		region: 'runs',
 		noun: 'run',
-		none: ['No run yet.', html`Approve a plan, then run <code>/checkmate:test</code> in Claude Code.`],
+		none: ['No run yet.', html`Open a plan to review its tests and start a run.`],
 		search: 'Search runs',
 		columns: [
 			{ label: 'Run', sort: 'run' },

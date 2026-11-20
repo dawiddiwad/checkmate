@@ -26,8 +26,6 @@ import {
 	askRequest,
 	changesOf,
 	conversationStarted,
-	conversationHarness,
-	currentConversation,
 	recordRequestEvent,
 	requestActor,
 	requestOf,
@@ -36,7 +34,7 @@ import {
 	startConversation,
 	stopRequestRecord,
 } from '../requests.ts'
-import { requestModelText } from '../settings.ts'
+import { requestModelText, workspaceUiEnv } from '../settings.ts'
 import { activityLine } from './hooks.ts'
 
 export type RequesterOptions = {
@@ -243,7 +241,7 @@ export function createRequester(store: Store, options: RequesterOptions): Reques
 		const run: Running = {
 			id: request.id,
 			actor: requestActor(request.asker, request.id),
-			harness: 'claude',
+			harness: request.harness,
 			child: null,
 			result: null,
 			broken: false,
@@ -255,12 +253,11 @@ export function createRequester(store: Store, options: RequesterOptions): Reques
 		let program: string
 		let modelArgs: string[] = []
 		try {
-			run.harness = selectedHarness(options.env)
 			program = requireChild(options.env, run.harness)
 			if (run.harness === 'pi')
 				modelArgs = piModelArgs({
 					...options.env,
-					CHECKMATE_PI_MODEL: requestModelText(store) || options.env.CHECKMATE_PI_MODEL,
+					CHECKMATE_PI_MODEL: requestModelText(store, 'pi') || options.env.CHECKMATE_PI_MODEL,
 				})
 		} catch (error) {
 			const refusal = error as Refusal
@@ -293,13 +290,14 @@ export function createRequester(store: Store, options: RequesterOptions): Reques
 						sessionId: request.conversation,
 						resume: conversationStarted(store, request.conversation),
 						hook,
-						model: requestModelText(store) || null,
+						model: requestModelText(store, 'claude') || null,
 						checkmate: checkmateScript(),
 					})
 		guarded(() => setRequestState(store, run.id, 'running'))
 		const env = {
 			...options.env,
 			CHECKMATE_ACTOR: run.actor,
+			CHECKMATE_HARNESS: run.harness,
 			[requestVariable]: request.id,
 			[hookTokenName]: options.hookToken,
 			...(run.harness === 'pi' ? { CHECKMATE_PI_HOOK: JSON.stringify(hook) } : {}),
@@ -339,10 +337,8 @@ export function createRequester(store: Store, options: RequesterOptions): Reques
 
 	return {
 		ask(actor, text, context) {
-			const conversation = currentConversation(store)
-			const previous = conversation && conversationHarness(store, conversation.sessionId)
-			if (previous && previous !== selectedHarness(options.env)) startConversation(store, actor)
-			const id = askRequest(store, actor, { text, context })
+			const harness = selectedHarness(workspaceUiEnv(store, options.env))
+			const id = askRequest(store, actor, { text, context, harness })
 			queue.push(id)
 			next()
 			return id

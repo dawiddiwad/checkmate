@@ -7,7 +7,7 @@ import { all } from '../store.ts'
 import { explorationEvents } from '../explorations.ts'
 import { explorationPermissions } from '../permissions.ts'
 import { explorationState, explorationStatus, startOf } from '../explorers.ts'
-import { authenticationHint } from '../sessions.ts'
+import { authenticationHint, piAuthenticationHint } from '../sessions.ts'
 import { mergedClaims, mergedQuestions } from '../views.ts'
 import { asList, duration, glyph, html, pill, plural, time } from './html.ts'
 import { emptyNotice, heading } from './layout.ts'
@@ -83,7 +83,22 @@ export function money(costUsd: number) {
 export function failureOf(reason: string | null, hint: string | null, events: ExplorationEvent[]): Failure {
 	const text = reason ?? ''
 	if (/No claude executable/.test(text)) return claudeMissing
-	if (hint === authenticationHint || /Host authentication/.test(text))
+	if (/No pi executable/.test(text))
+		return {
+			cause: 'Pi was not found on PATH.',
+			next: 'Install Pi or choose Claude Code in Settings.',
+			detail: null,
+		}
+	if (
+		hint === piAuthenticationHint ||
+		(/Host authentication/.test(text) && startOf(events)?.context?.harness === 'pi')
+	)
+		return {
+			cause: 'Pi could not sign in to its provider.',
+			next: 'Check the provider login in Pi, then test again.',
+			detail: piAuthenticationHint,
+		}
+	if (hint === authenticationHint)
 		return {
 			cause: 'Claude Code is not signed in on this computer.',
 			next: 'Run claude and log in. Then test again.',

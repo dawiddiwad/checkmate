@@ -50,7 +50,7 @@ const pages = [
 	'/explorations/x-15',
 	'/explorations/x-17',
 	'/explorations/x-16',
-	'/settings/claude',
+	'/settings/harness',
 	'/plans/login',
 	'/plans/account',
 	'/new',
@@ -609,3 +609,15 @@ test(
 		assert.deepEqual(cases, ['none', 'none', 'uppercase'])
 	}
 )
+
+test('coding harness choice is available and saved from Settings', browserTest, async (t) => {
+	const { page, url } = await open(t, {}, { ...process.env, CHECKMATE_HARNESS: undefined })
+	await page.goto(url('/settings/harness'))
+	await page.getByLabel('Program for this workspace').selectOption('pi')
+	await page.getByRole('button', { name: 'Save the program' }).click()
+	assert.equal(await page.getByLabel('Program for this workspace').inputValue(), 'pi')
+	assert.match((await page.locator('#harness-program').locator('..').textContent()) ?? '', /Pi/)
+	await page.reload()
+	assert.equal(await page.getByLabel('Program for this workspace').inputValue(), 'pi')
+	await check(page, url('/settings/harness'), 400, 'light')
+})

@@ -105,7 +105,7 @@ type Choice = {
 }
 
 function choicesOf(item: Permission): Choice[] {
-	const kind = item.tool === 'Bash' ? 'command' : 'kind of call'
+	const kind = item.tool.toLowerCase() === 'bash' ? 'command' : 'kind of call'
 	const run = item.askerId
 	const rule = item.rule
 	const request = item.fromRequest
@@ -145,7 +145,7 @@ function choicesOf(item: Permission): Choice[] {
 			decision: 'deny',
 			label: 'Deny…',
 			reveal: 'deny',
-			text: `Answers no. You write the reason first, and ${request ? 'Claude Code' : 'the tester'} gets it.`,
+			text: `Answers no. You write the reason first, and the tool receives your reason.`,
 		},
 		stopChoice(item),
 	]
@@ -294,7 +294,7 @@ function stateOf(item: Permission) {
 	const decision = item.decision!
 	if (decision.kind === 'closed')
 		return html`<strong>Closed ${ago(decision.at)}:</strong> ${closedText[decision.cause!]}.
-			${decision.cause === 'timeout' ? 'Claude Code denied the call.' : ''}`
+			${decision.cause === 'timeout' ? 'The tool call was denied.' : ''}`
 	if (decision.kind === 'rule')
 		return html`<strong>Answered ${ago(decision.at)} by a rule:</strong> ${decision.text}.`
 	return html`<strong>Answered ${ago(decision.at)}:</strong> ${decision.text}.`

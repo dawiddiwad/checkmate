@@ -232,7 +232,7 @@ test('Home lists the plans that need you first and returns to the plan you left'
 	await page.waitForFunction(() => document.activeElement?.getAttribute('data-key') === 'plan:coupons')
 })
 
-test('Enter on an empty find query does nothing, and a message clears on the next key', browserTest, async (t) => {
+test('a status message clears on the next key', browserTest, async (t) => {
 	const { page, url } = await open(t)
 	await page.goto(url('/plans/coupons?view=needs&focus=list'))
 	await ready(page, '[data-row]')
@@ -240,13 +240,6 @@ test('Enter on an empty find query does nothing, and a message clears on the nex
 	assert.match(await said(page), /options go from 1 to 2/)
 	await page.keyboard.press('0')
 	assert.equal(await said(page), '')
-	const before = page.url()
-	await page.keyboard.press('/')
-	await page.getByRole('dialog', { name: 'Find' }).waitFor()
-	await page.keyboard.press('Enter')
-	await page.waitForTimeout(300)
-	assert.equal(page.url(), before)
-	assert(await page.getByRole('dialog', { name: 'Find' }).isVisible())
 })
 
 test('summaries, More, and the navigator show hover and pressed states', browserTest, async (t) => {

@@ -80,7 +80,7 @@ test('a person sets up the first target with the keys alone', browserTest, async
 	assert.equal(await field(page, 'operations').first().isChecked(), true)
 	await page.keyboard.press('ArrowDown')
 	assert.equal(await focused(page), 'setup-target')
-	await page.keyboard.press('Control+A')
+	await page.keyboard.press('ControlOrMeta+A')
 	await page.keyboard.type('shop')
 	await page.keyboard.press('ArrowDown')
 	assert.equal(await focused(page), 'setup-environment')

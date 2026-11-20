@@ -121,6 +121,11 @@ function applyTheme(form, theme) {
 	const button = form.querySelector('button[name="theme"]')
 	button.value = theme === 'dark' ? 'light' : 'dark'
 	button.dataset.current = theme
+	for (const frame of document.querySelectorAll('.ev-frame')) {
+		const url = new URL(frame.src)
+		url.searchParams.set('theme', theme)
+		frame.src = url.href
+	}
 }
 
 document.addEventListener('submit', (event) => {
@@ -2717,13 +2722,25 @@ async function showHistory(link) {
 function placeMenu(menu) {
 	const list = menu.querySelector('.menu-list')
 	if (!list) return
-	list.style.left = '0px'
-	list.style.right = 'auto'
 	const edge = 8
 	const box = menu.getBoundingClientRect()
+	const top = document.querySelector('.top').getBoundingClientRect().bottom + edge
+	const bottom = document.querySelector('.statusbar').getBoundingClientRect().top - edge
+	const above = Math.min(bottom, box.top - edge)
+	const below = Math.max(top, box.bottom + edge)
+	const roomAbove = Math.max(0, above - top)
+	const roomBelow = Math.max(0, bottom - below)
+	list.style.position = 'fixed'
+	list.style.left = '0px'
+	list.style.right = 'auto'
+	list.style.bottom = 'auto'
+	const height = list.scrollHeight + list.offsetHeight - list.clientHeight
+	const up = roomBelow < height && roomAbove > roomBelow
+	list.style.maxHeight = `${up ? roomAbove : roomBelow}px`
+	list.style.top = `${up ? above - list.offsetHeight : below}px`
 	const width = list.offsetWidth
 	const left = Math.max(edge, Math.min(box.right - width, window.innerWidth - edge - width))
-	list.style.left = `${left - box.left}px`
+	list.style.left = `${left}px`
 }
 
 document.addEventListener(
@@ -2734,7 +2751,13 @@ document.addEventListener(
 	true
 )
 
-window.addEventListener('resize', () => document.querySelectorAll('details[data-menu][open]').forEach(placeMenu))
+function placeOpenMenus(event) {
+	if (event.target.closest?.('.menu-list')) return
+	document.querySelectorAll('details[data-menu][open]').forEach(placeMenu)
+}
+
+window.addEventListener('resize', placeOpenMenus)
+window.addEventListener('scroll', placeOpenMenus, true)
 
 function brokenImage(image) {
 	image.hidden = true

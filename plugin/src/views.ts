@@ -1759,6 +1759,7 @@ const evidenceTypes: Record<string, string> = {
 	txt: 'text/plain',
 	log: 'text/plain',
 	md: 'text/markdown',
+	html: 'text/html',
 	json: 'application/json',
 }
 

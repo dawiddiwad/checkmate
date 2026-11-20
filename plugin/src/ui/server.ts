@@ -88,6 +88,7 @@ import { actorLimit, html, plural } from './html.ts'
 import type { BulkState } from './bulk.ts'
 import { answerDefaults, bulkProblem, claimDefaults } from './bulk.ts'
 import { heading, layout } from './layout.ts'
+import { htmlType, imageTypes } from './evidence.ts'
 import { emptyState } from './forms.ts'
 import { logPage, runsPage } from './lists.ts'
 import { homePage } from './home.ts'
@@ -162,7 +163,8 @@ const routes = {
 }
 const contentSecurityPolicy =
 	"default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; form-action 'self'"
-const inlineImages = ['image/png', 'image/jpeg', 'image/webp', 'image/gif']
+const previewPolicy =
+	"sandbox; default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src data:; base-uri 'none'; form-action 'none'; frame-ancestors 'self'"
 const documentTypes: Record<string, string> = {
 	html: 'text/html; charset=utf-8',
 	md: 'text/markdown; charset=utf-8',
@@ -435,7 +437,24 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 	}
 
 	function serveFile(request: Request, evidence: { name: string; mediaType: string; bytes: Uint8Array }) {
-		const inline = inlineImages.includes(evidence.mediaType) || evidence.mediaType === 'text/plain'
+		if (evidence.mediaType === htmlType && request.url.searchParams.get('preview') === '1') {
+			const theme = request.url.searchParams.get('theme') ?? request.cookies.checkmate_theme
+			const scheme = theme === 'dark' || theme === 'light' ? theme : 'light dark'
+			const [first, second] = evidence.bytes
+			const bigEndian = first === 0xfe && second === 0xff
+			const utf16 = bigEndian || (first === 0xff && second === 0xfe)
+			const style = Buffer.from(
+				`<style>:where(:root) { color-scheme: ${scheme} }</style>`,
+				utf16 ? 'utf16le' : 'utf8'
+			)
+			if (bigEndian) style.swap16()
+			return send(request.res, 200, htmlType, Buffer.concat([evidence.bytes, style]), {
+				'Content-Security-Policy': previewPolicy,
+				'Referrer-Policy': 'no-referrer',
+				'X-Frame-Options': 'SAMEORIGIN',
+			})
+		}
+		const inline = imageTypes.includes(evidence.mediaType) || evidence.mediaType === 'text/plain'
 		send(request.res, 200, evidence.mediaType, evidence.bytes, {
 			'Content-Disposition': `${inline ? 'inline' : 'attachment'}; ${attachmentName(evidence.name)}`,
 			'Cache-Control': 'private, max-age=31536000, immutable',
@@ -449,11 +468,7 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		} catch {
 			return errorPage(request, 404, 'Evidence not found', `Checkmate has no evidence ${evidenceId}.`)
 		}
-		const inline = inlineImages.includes(evidence.mediaType) || evidence.mediaType === 'text/plain'
-		send(request.res, 200, evidence.mediaType, evidence.bytes, {
-			'Content-Disposition': `${inline ? 'inline' : 'attachment'}; ${attachmentName(evidence.name)}`,
-			'Cache-Control': 'private, max-age=31536000, immutable',
-		})
+		serveFile(request, evidence)
 	}
 
 	function download(request: Request, body: string, format: string, name: string) {

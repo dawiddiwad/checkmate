@@ -17636,6 +17636,7 @@ var evidenceTypes = {
   txt: "text/plain",
   log: "text/plain",
   md: "text/markdown",
+  html: "text/html",
   json: "application/json"
 };
 function fileName(path) {
@@ -18645,6 +18646,7 @@ function asList(item) {
 
 // plugin/src/ui/evidence.ts
 var imageTypes = ["image/png", "image/jpeg", "image/webp", "image/gif"];
+var htmlType = "text/html";
 var textTypes = ["text/plain", "text/markdown", "application/json", "application/xml", "text/csv"];
 var inlineLimit = 64 * 1024;
 function size(bytes) {
@@ -18654,6 +18656,17 @@ function size(bytes) {
 }
 function shownAsText(mediaType, bytes) {
   return textTypes.includes(mediaType) && bytes <= inlineLimit;
+}
+function htmlPreview(file) {
+  if (!file.href || file.mediaType !== htmlType) return null;
+  return html2`<iframe
+		class="ev-frame"
+		src="${file.href}?preview=1"
+		title="Preview of ${file.name}"
+		loading="lazy"
+		referrerpolicy="no-referrer"
+		sandbox
+	></iframe>`;
 }
 function download(file) {
   if (!file.href) return "";
@@ -18698,6 +18711,8 @@ function evidenceItem(file) {
 			</a>
 			${caption(file)}
 		</figure>`;
+  const frame = htmlPreview(file);
+  if (frame) return html2`<figure class="ev">${frame}${caption(file)}</figure>`;
   if (file.text && (!file.href || shownAsText(file.mediaType, file.size)))
     return html2`<figure class="ev ev-text">
 			<pre tabindex="0" data-view-source>${file.text()}</pre>
@@ -21562,7 +21577,7 @@ function preview(file) {
 			>`;
   if (file.text && (!file.href || shownAsText(file.mediaType, file.size)))
     return html2`<pre tabindex="0">${file.text()}</pre>`;
-  return html2`<p class="sp-empty">No preview for this file type.</p>`;
+  return htmlPreview(file) ?? html2`<p class="sp-empty">No preview for this file type.</p>`;
 }
 function evidenceViewer(store, review, item, view, index2) {
   const files2 = filesOf(store, review, item);
@@ -26499,7 +26514,7 @@ var routes = {
   font: /^\/assets\/fonts\/(ibm-plex-sans-(?:400|600)|ibm-plex-mono-(?:400|500|600))\.woff2$/
 };
 var contentSecurityPolicy = "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; form-action 'self'";
-var inlineImages2 = ["image/png", "image/jpeg", "image/webp", "image/gif"];
+var previewPolicy = "sandbox; default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src data:; base-uri 'none'; form-action 'none'; frame-ancestors 'self'";
 var documentTypes = {
   html: "text/html; charset=utf-8",
   md: "text/markdown; charset=utf-8",
@@ -26729,7 +26744,24 @@ data: ${matched.join(",") || "*"}
     serveFile(request, claimEvidence(store, planOfExploration(explorationId), claimId, index2));
   }
   function serveFile(request, evidence2) {
-    const inline = inlineImages2.includes(evidence2.mediaType) || evidence2.mediaType === "text/plain";
+    if (evidence2.mediaType === htmlType && request.url.searchParams.get("preview") === "1") {
+      const theme = request.url.searchParams.get("theme") ?? request.cookies.checkmate_theme;
+      const scheme = theme === "dark" || theme === "light" ? theme : "light dark";
+      const [first, second] = evidence2.bytes;
+      const bigEndian = first === 254 && second === 255;
+      const utf16 = bigEndian || first === 255 && second === 254;
+      const style = Buffer.from(
+        `<style>:where(:root) { color-scheme: ${scheme} }</style>`,
+        utf16 ? "utf16le" : "utf8"
+      );
+      if (bigEndian) style.swap16();
+      return send(request.res, 200, htmlType, Buffer.concat([evidence2.bytes, style]), {
+        "Content-Security-Policy": previewPolicy,
+        "Referrer-Policy": "no-referrer",
+        "X-Frame-Options": "SAMEORIGIN"
+      });
+    }
+    const inline = imageTypes.includes(evidence2.mediaType) || evidence2.mediaType === "text/plain";
     send(request.res, 200, evidence2.mediaType, evidence2.bytes, {
       "Content-Disposition": `${inline ? "inline" : "attachment"}; ${attachmentName(evidence2.name)}`,
       "Cache-Control": "private, max-age=31536000, immutable"
@@ -26742,11 +26774,7 @@ data: ${matched.join(",") || "*"}
     } catch {
       return errorPage(request, 404, "Evidence not found", `Checkmate has no evidence ${evidenceId}.`);
     }
-    const inline = inlineImages2.includes(evidence2.mediaType) || evidence2.mediaType === "text/plain";
-    send(request.res, 200, evidence2.mediaType, evidence2.bytes, {
-      "Content-Disposition": `${inline ? "inline" : "attachment"}; ${attachmentName(evidence2.name)}`,
-      "Cache-Control": "private, max-age=31536000, immutable"
-    });
+    serveFile(request, evidence2);
   }
   function download2(request, body, format2, name2) {
     send(request.res, 200, documentTypes[format2], body, {

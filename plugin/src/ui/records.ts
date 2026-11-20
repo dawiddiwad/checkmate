@@ -7,7 +7,7 @@ import type { Item, Review } from './review.ts'
 import { html, plural, time, words } from './html.ts'
 import { banner } from './layout.ts'
 import { keptText } from './forms.ts'
-import { imageTypes, shownAsText, size } from './evidence.ts'
+import { htmlPreview, imageTypes, shownAsText, size } from './evidence.ts'
 import { claimEvidenceFiles } from './exploration.ts'
 import { buildStateWords } from '../rulemap.ts'
 import { buildLabel, itemTag, optionsOf, outside, reviewHref } from './review.ts'
@@ -318,7 +318,7 @@ function preview(file: EvidenceFile) {
 			>`
 	if (file.text && (!file.href || shownAsText(file.mediaType, file.size)))
 		return html`<pre tabindex="0">${file.text()}</pre>`
-	return html`<p class="sp-empty">No preview for this file type.</p>`
+	return htmlPreview(file) ?? html`<p class="sp-empty">No preview for this file type.</p>`
 }
 
 export function evidenceViewer(store: Store, review: Review, item: Item, view: string, index: number) {

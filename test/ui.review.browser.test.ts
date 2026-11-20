@@ -1,11 +1,14 @@
 import type { Page } from 'playwright-core'
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { readFile } from 'node:fs/promises'
 import { closeStore, openStore } from '../plugin/src/index.ts'
 import { mergedClaims, mergedQuestions, operationLog } from '../plugin/src/views.ts'
 import { decideClaim } from '../plugin/src/journal.ts'
 import { seedVolume } from '../scripts/ui-volume.ts'
 import { open, browserTest, stop, launchWith } from './browser.ts'
+import { done, ended, launched, openTest, stacks } from './explorations.ts'
+import { evidenceFile } from './support.ts'
 
 test.before(() => launchWith(seedVolume))
 test.after(stop)
@@ -361,6 +364,53 @@ test('All items finds a defect and shows its evidence in two clicks', browserTes
 	await page.locator('[data-drawer]').waitFor()
 })
 
+test('HTML evidence renders in an isolated preview and still downloads', browserTest, async (t) => {
+	const { page, url, workspace } = await open(t, { colorScheme: 'dark' })
+	const name = 'capture.html'
+	const source = Buffer.from(
+		`\uFEFF<!doctype html>
+		<style>h1 { color: rgb(15, 30, 45) }</style>
+		<h1>Captured result</h1>
+		<script>document.querySelector('h1').textContent = 'Script ran'</script>
+		<img src="/assets/favicon.svg?from-evidence" alt="">`,
+		'utf16le'
+	)
+	const store = openStore(workspace)
+	try {
+		openTest(store, 'checkout', 'x-html', 'html-build', 'local')
+		launched(store, 'x-html', 'h1')
+		ended(store, 'x-html', 'h1', [{ ...stacks, evidence: [evidenceFile(store, 'x-html', name, source)] }])
+		done(store, 'x-html')
+	} finally {
+		closeStore(store)
+	}
+	let imageServed = false
+	page.on('response', (response) => {
+		if (response.url().endsWith('?from-evidence')) imageServed = true
+	})
+	await page.goto(url('/plans/checkout?view=all&item=c%3Ah1%2FD1&file=0'))
+	const iframe = page.getByTitle(`Preview of ${name}`)
+	const heading = iframe.contentFrame().getByRole('heading', { name: 'Captured result' })
+	await heading.waitFor()
+	assert.equal(await heading.evaluate((element) => getComputedStyle(element).color), 'rgb(15, 30, 45)')
+	const body = iframe.contentFrame().locator('body')
+	assert.equal(await body.evaluate((element) => getComputedStyle(element).color), 'rgb(255, 255, 255)')
+	const light = page.waitForEvent('framenavigated', (frame) => frame.url().endsWith('preview=1&theme=light'))
+	await page.locator('[data-theme-form] button').click()
+	await light
+	assert.equal(await body.evaluate((element) => getComputedStyle(element).color), 'rgb(0, 0, 0)')
+	assert.equal(await heading.evaluate((element) => getComputedStyle(element).color), 'rgb(15, 30, 45)')
+	assert.equal(await iframe.evaluate((element) => (element as HTMLIFrameElement).contentDocument), null)
+	const image = iframe.contentFrame().locator('img')
+	assert.equal(await image.evaluate((element: HTMLImageElement) => element.naturalWidth), 0)
+	assert.equal(imageServed, false)
+	const waiting = page.waitForEvent('download')
+	await page.locator('[data-vfig="0"]').getByRole('link', { name: 'Download' }).click()
+	const download = await waiting
+	assert.equal(download.suggestedFilename(), name)
+	assert.deepEqual(await readFile(await download.path()), source)
+})
+
 test('on a narrow window the record covers the list and Esc goes back to the row', browserTest, async (t) => {
 	const { page, url } = await open(t, { viewport: { width: 400, height: 800 } })
 	await page.goto(url('/plans/coupons?view=needs&focus=list'))
@@ -474,6 +524,25 @@ test('every menu opens inside the window from 1440px to 390px', browserTest, asy
 			await menusInside(page, path)
 		}
 	}
+})
+
+test('the exploration report menu opens above the status bar when the trigger is near it', browserTest, async (t) => {
+	const { page, url } = await open(t, { viewport: { width: 390, height: 480 } })
+	await page.goto(url('/explorations/x-1?item=summary'))
+	const summary = page.getByText('Download report', { exact: true })
+	await summary.evaluate((element) => element.scrollIntoView({ block: 'end' }))
+	await summary.click()
+	await page.waitForFunction(() => {
+		const menu = document.querySelector('main details[data-menu][open]')
+		if (!menu) return false
+		const list = menu.querySelector('.menu-list')!.getBoundingClientRect()
+		const top = document.querySelector('.top')!.getBoundingClientRect().bottom
+		const bottom = document.querySelector('.statusbar')!.getBoundingClientRect().top
+		return list.top >= top && list.bottom <= Math.min(bottom, menu.getBoundingClientRect().top)
+	})
+	const waiting = page.waitForEvent('download')
+	await page.getByRole('link', { name: /^Markdown/ }).click()
+	assert.equal((await waiting).suggestedFilename(), 'x-1-report.md')
 })
 
 test('a decision from another tab after the page loaded is refused and names the first', browserTest, async (t) => {

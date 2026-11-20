@@ -129,7 +129,9 @@ The old addresses of a claim and a question, `/explorations/<id>/claims/<claimId
 
 Open a file of a claim to show the evidence viewer. It lists the files at the left and shows one at the right. Move between the files with `↑` and `↓`. An image shows at its size, up to the width of the window. A small text file shows as text. Each file has `Download`. An empty file shows `Empty file`, and an image that the browser cannot show shows `This image cannot be shown.`.
 
-The run page and the testers view show evidence as tiles. Click a tile to open it in a viewer. `Esc` closes the viewer.
+An HTML file shows as a static preview. The default colors follow the Checkmate theme. The preview keeps inline styles and embedded images. Scripts, forms, and resources loaded from other files are blocked. Use `Download` to get the original file.
+
+The run page and the testers view show evidence as tiles. Open an image or a small text file in the viewer from its tile. HTML previews show in the tiles. `Esc` closes the viewer.
 
 ### Start from nothing
 

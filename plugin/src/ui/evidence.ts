@@ -12,6 +12,7 @@ export type EvidenceFile = {
 export type Opener = { name: string; kind: 'image' | 'text'; page: string; src: string }
 
 export const imageTypes = ['image/png', 'image/jpeg', 'image/webp', 'image/gif']
+export const htmlType = 'text/html'
 const textTypes = ['text/plain', 'text/markdown', 'application/json', 'application/xml', 'text/csv']
 const inlineLimit = 64 * 1024
 
@@ -23,6 +24,18 @@ export function size(bytes: number) {
 
 export function shownAsText(mediaType: string, bytes: number) {
 	return textTypes.includes(mediaType) && bytes <= inlineLimit
+}
+
+export function htmlPreview(file: EvidenceFile) {
+	if (!file.href || file.mediaType !== htmlType) return null
+	return html`<iframe
+		class="ev-frame"
+		src="${file.href}?preview=1"
+		title="Preview of ${file.name}"
+		loading="lazy"
+		referrerpolicy="no-referrer"
+		sandbox
+	></iframe>`
 }
 
 function download(file: EvidenceFile) {
@@ -71,6 +84,8 @@ export function evidenceItem(file: EvidenceFile) {
 			</a>
 			${caption(file)}
 		</figure>`
+	const frame = htmlPreview(file)
+	if (frame) return html`<figure class="ev">${frame}${caption(file)}</figure>`
 	if (file.text && (!file.href || shownAsText(file.mediaType, file.size)))
 		return html`<figure class="ev ev-text">
 			<pre tabindex="0" data-view-source>${file.text()}</pre>

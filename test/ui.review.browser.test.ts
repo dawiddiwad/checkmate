@@ -756,12 +756,14 @@ test(
 		await dialog.getByText('Accept 2 findings as defects?').waitFor()
 		await page.keyboard.press('Escape')
 		await dialog.waitFor({ state: 'hidden' })
+		const message = page.locator('[data-say], [data-say-strip]')
+		await message.filter({ hasText: 'Nothing is recorded. The selection stays.' }).waitFor()
 		assert.equal(await page.locator('[data-panel="needs"] [data-row].sel').count(), 2)
 		await page.keyboard.press('1')
 		await dialog.waitFor()
 		await page.route('**/bulk', (route) => route.abort())
 		await page.keyboard.press('Enter')
-		await page.locator('[data-say], [data-say-strip]', { hasText: 'Checkmate did not answer.' }).waitFor()
+		await message.filter({ hasText: 'Checkmate did not answer.' }).waitFor()
 		assert.equal(await page.locator('[data-panel="needs"] [data-row].sel').count(), 2)
 		await page.unroute('**/bulk')
 		await bar.locator('[data-bulk-action="accept"]').click()
@@ -773,6 +775,35 @@ test(
 		for (const key of keys) assert.equal(claims.find((claim) => `c:${claim.id}` === key)!.state, 'accepted', key)
 	}
 )
+
+test('canceling and immediately reopening a bulk confirmation submits only once', browserTest, async (t) => {
+	const { page, url } = await open(t)
+	await page.goto(url('/plans/coupons?view=needs&focus=list'))
+	await page.waitForFunction(() => document.activeElement?.matches('[data-row]'))
+	await page.keyboard.press('Shift+ArrowDown')
+	const dialog = page.getByRole('dialog', { name: 'Accept as defects' })
+	const message = page.locator('[data-say], [data-say-strip]')
+	let posts = 0
+	await page.route('**/bulk', (route) => {
+		assert.equal(route.request().method(), 'POST')
+		posts++
+		return route.abort()
+	})
+	await page.keyboard.press('1')
+	await dialog.waitFor()
+	await page.evaluate(() => {
+		for (const key of ['Escape', '1'])
+			document.activeElement?.dispatchEvent(
+				new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true })
+			)
+	})
+	await message.filter({ hasText: 'Nothing is recorded. The selection stays.' }).waitFor()
+	await dialog.waitFor()
+	await page.keyboard.press('Enter')
+	await message.filter({ hasText: 'Checkmate did not answer.' }).waitFor()
+	assert.equal(posts, 1)
+	await page.getByRole('group', { name: 'Selection', exact: true }).getByText('2 selected').waitFor()
+})
 
 test('a hand-over shows a 0 Undo note, and 0 undoes it while the note shows', browserTest, async (t) => {
 	const { page, url, workspace } = await open(t)

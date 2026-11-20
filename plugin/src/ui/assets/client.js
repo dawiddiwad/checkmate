@@ -1098,8 +1098,11 @@ function showBulk() {
 	}
 }
 
-function ask({ title, text, field = null, yes = 'Confirm', no = 'Cancel' }) {
-	return new Promise((resolve) => {
+let confirmation = null
+
+async function ask({ title, text, field = null, yes = 'Confirm', no = 'Cancel' }) {
+	while (confirmation) await confirmation
+	confirmation = new Promise((resolve) => {
 		confirmDialog.querySelector('[data-confirm-title]').textContent = title
 		confirmDialog.querySelector('[data-confirm-text]').textContent = text
 		confirmDialog.querySelector('[data-confirm-yes] span').textContent = yes
@@ -1115,13 +1118,17 @@ function ask({ title, text, field = null, yes = 'Confirm', no = 'Cancel' }) {
 		confirmDialog.showModal()
 		if (field) input.focus()
 		else confirmDialog.querySelector('[data-confirm-yes]').focus()
-		const closed = () => {
-			if (confirmDialog.open) return
-			confirmDialog.removeEventListener('close', closed)
-			resolve(confirmDialog.returnValue === 'yes' ? { value: input.value.trim() } : null)
-		}
-		confirmDialog.addEventListener('close', closed)
+		confirmDialog.addEventListener(
+			'close',
+			() => resolve(confirmDialog.returnValue === 'yes' ? { value: input.value.trim() } : null),
+			{ once: true }
+		)
 	})
+	try {
+		return await confirmation
+	} finally {
+		confirmation = null
+	}
 }
 
 function confirmKey(event) {

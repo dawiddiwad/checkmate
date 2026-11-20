@@ -66,7 +66,7 @@ test('a person sets up the first target with the keys alone', browserTest, async
 	const app = await application(t)
 	const { page, url, read } = await setup(t, 'nothing')
 	await page.goto(url('/'))
-	assert.equal(await focused(page), 'setup-url')
+	await page.waitForFunction(() => document.activeElement?.matches('#setup-url'))
 	assert(await page.locator('[data-assumed]').isHidden())
 	await page.keyboard.type(app)
 	await page.locator('[data-assumed]:not([hidden]) [data-assumed-list] dt').first().waitFor()
@@ -117,6 +117,37 @@ test('a person sets up the first target with the pointer', browserTest, async (t
 			'any_test_operation',
 		])
 	)
+})
+
+test('a malformed first-run address shows a field error and keeps the entered values', browserTest, async (t) => {
+	const { page, url, read } = await setup(t, 'nothing')
+	const address = 'http://127.0.0.1:9http://127.0.0.1:63399'
+	await page.goto(url('/'))
+	const form = {
+		csrf: await field(page, 'csrf').inputValue(),
+		url: address,
+		target: 'shop',
+		environment: 'staging',
+		operations: 'no',
+	}
+	const reply = await page.request.post(url('/setup'), { form })
+	assert.equal(reply.status(), 422)
+	const returned = await page.context().newPage()
+	await returned.setContent(await reply.text())
+	assert.match((await alert(returned, 'url').textContent()) ?? '', /http:\/\/localhost:3000/)
+	assert.equal(await field(returned, 'url').inputValue(), address)
+	assert.equal(await field(returned, 'target').inputValue(), 'shop')
+	assert.equal(await field(returned, 'environment').inputValue(), 'staging')
+	assert(await field(returned, 'operations').nth(1).isChecked())
+	await returned.close()
+
+	await field(page, 'url').fill(address)
+	await page.keyboard.press('Enter')
+	await alert(page, 'url').waitFor()
+	assert.match((await alert(page, 'url').textContent()) ?? '', /http:\/\/localhost:3000/)
+	assert.equal(await focused(page), 'setup-url')
+	assert.equal(await field(page, 'url').inputValue(), address)
+	read((reading) => assert.equal(targetList(reading).length, 0))
 })
 
 test(

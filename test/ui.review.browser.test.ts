@@ -291,6 +291,48 @@ test('Browser Back equals Left, and Forward redoes the Right', browserTest, asyn
 	assert.equal((await highlighted(page)).key, row)
 })
 
+test('returning from a record keeps the eligible selected rows in the review list', browserTest, async (t) => {
+	const { page, url, workspace } = await open(t)
+	await page.goto(url('/plans/coupons?view=needs&focus=list'))
+	await page.waitForFunction(() => document.activeElement?.matches('[data-row]'))
+	const first = (await highlighted(page)).key!
+	assert.match(first, /^c:/)
+	const picked = () => page.locator('[data-panel="needs"]').getByRole('checkbox', { checked: true }).all()
+	const names = async () => Promise.all((await picked()).map((box) => box.getAttribute('aria-label')))
+	await page.keyboard.press('Space')
+	await page.keyboard.press('Shift+ArrowDown')
+	const checked = await names()
+	assert.equal(checked.length, 2)
+	const strip = page.getByRole('group', { name: 'Selection', exact: true })
+	for (const back of [
+		() => page.goBack(),
+		() => page.keyboard.press('Escape'),
+		() => page.getByRole('link', { name: /Close/ }).click(),
+	]) {
+		await page.keyboard.press('Enter')
+		await page.locator('[data-drawer]').waitFor()
+		await back()
+		await page.waitForURL((address) => !address.searchParams.has('item'))
+		await strip.getByText('2 selected').waitFor()
+		assert.deepEqual(await names(), checked)
+	}
+	await page.keyboard.press('Enter')
+	await page.locator('[data-drawer]').waitFor()
+	read(workspace, (store) =>
+		decideClaim(store, 'qa-lead', {
+			planId: 'coupons',
+			claimId: first.slice(2),
+			verdict: 'approved',
+			rationale: 'Accepted in another session.',
+		})
+	)
+	await page.getByRole('link', { name: /Close/ }).click()
+	await strip.getByText('1 selected').waitFor()
+	assert.deepEqual(await names(), [checked[1]])
+	await page.keyboard.press('Escape')
+	assert.equal((await names()).length, 0)
+})
+
 test(
 	'Space and Shift with the arrows select rows, Shift+Up shrinks the range, and Esc clears it',
 	browserTest,

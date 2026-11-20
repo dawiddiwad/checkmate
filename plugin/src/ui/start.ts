@@ -100,20 +100,31 @@ export function assumedRows(lines: string[]) {
 	})
 }
 
-export function firstRunPage(context: Context, onHome: boolean, back = '/'): Page {
+export function firstRunPage(
+	context: Context,
+	onHome: boolean,
+	back = '/',
+	invalidAddress?: Record<string, string>
+): Page {
 	const body = html`${field(
 			'setup-url',
 			'url',
 			'Address of the application',
 			'The web address that the testers open, for example http://localhost:3000.',
 			html`required autofocus inputmode="url" data-setup-url data-missing="Give the address of the application,
-			for example http://localhost:3000."`
+			for example http://localhost:3000."`,
+			invalidAddress?.url
 		)}
-		<div class="setup-assumed" data-assumed hidden>
+		${invalidAddress ? html`<p class="form-error" role="alert" data-field="url" data-refusal>Give the address of the application, for example http://localhost:3000.</p>` : ''}
+		<div
+			class="setup-assumed"
+			data-assumed
+			${invalidAddress?.target || invalidAddress?.environment ? '' : html`hidden`}
+		>
 			<h2 class="lab">What Checkmate will assume</h2>
 			<p class="help">Checkmate sets up the target from this address. Change the name or the environment here.</p>
-			${field('setup-target', 'target', 'Target name', 'Letters, digits, _ or -.', html`data-setup-field`)}
-			${field('setup-environment', 'environment', 'Environment (optional)', 'For example staging. A name that starts with prod is a production instance.', html`data-setup-field`)}
+			${field('setup-target', 'target', 'Target name', 'Letters, digits, _ or -.', html`data-setup-field ${invalidAddress?.target ? html`data-touched="1"` : ''}`, invalidAddress?.target)}
+			${field('setup-environment', 'environment', 'Environment (optional)', 'For example staging. A name that starts with prod is a production instance.', html`data-setup-field`, invalidAddress?.environment)}
 			<dl class="facts" data-assumed-list></dl>
 		</div>
 		${choice(
@@ -123,12 +134,13 @@ export function firstRunPage(context: Context, onHome: boolean, back = '/'): Pag
 				['yes', 'Yes', 'Testers may do any action that the application offers to a test user.'],
 				['no', 'No', 'Testers only read.'],
 			],
-			''
+			invalidAddress?.operations ?? ''
 		)}
 		<p class="help" data-operations-help>Type the address first.</p>
 		<input type="hidden" name="confirmed" value="" />`
 	return {
 		title: 'New target',
+		status: invalidAddress ? 422 : 200,
 		section: 'home',
 		subjects: ['inbox', 'settings'],
 		crumbs: onHome

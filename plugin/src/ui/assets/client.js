@@ -289,6 +289,7 @@ let level = viewerPane
 				: 'nav'
 			: 'list'
 const picks = new Set()
+const reviewPicksKey = 'checkmate-review-picks'
 let anchor = null
 let sending = false
 let chosenBuild = address.searchParams.get('build')
@@ -605,6 +606,11 @@ function placeAlert() {
 		(element) => element.textContent.trim() && shown(element)
 	)
 	if (!alert) return false
+	const pageForm = alert.closest('[data-page-form]')
+	if (pageForm && alert.hasAttribute('data-refusal')) {
+		refuseAt(pageForm, alert)
+		return true
+	}
 	const field = alert.dataset.field && document.getElementById(alert.dataset.field)
 	if (field) {
 		alert.id ||= `${field.id}-error`
@@ -727,9 +733,9 @@ function extend(by) {
 	const from = rows.findIndex((row) => row.dataset.key === anchor)
 	const to = rows.indexOf(next)
 	picks.clear()
-	for (const key of rangeBase) picks.add(key)
+	for (const item of rangeBase) picks.add(item)
 	for (const row of rows.slice(Math.min(from, to), Math.max(from, to) + 1))
-		if (row.dataset.pick) picks.add(row.dataset.key)
+		if (row.dataset.pick) picks.add(row.dataset.pick)
 	applyPicks()
 	showPath()
 	showHints()
@@ -749,6 +755,7 @@ function enterList() {
 
 function open(row) {
 	if (!row?.dataset.href) return tell('Nothing deeper.')
+	keepReviewPicks()
 	location.assign(row.dataset.href)
 }
 
@@ -973,17 +980,52 @@ function choose(n) {
 	option.click()
 }
 
-function pick(row, on = !picks.has(row.dataset.key)) {
+function pick(row, on = !picks.has(row.dataset.pick)) {
 	if (!row.dataset.pick) return
-	if (on) picks.add(row.dataset.key)
-	else picks.delete(row.dataset.key)
+	if (on) picks.add(row.dataset.pick)
+	else picks.delete(row.dataset.pick)
+	applyPicks()
+}
+
+function keepReviewPicks() {
+	if (!review || drawer || viewerPane || !picks.size) return
+	const items = listRows()
+		.map((row) => row.dataset.pick)
+		.filter((item) => picks.has(item))
+	try {
+		window.sessionStorage.setItem(
+			reviewPicksKey,
+			JSON.stringify({ plan: review.dataset.plan, view: currentView(), items })
+		)
+	} catch {}
+}
+
+function restoreReviewPicks() {
+	if (!review || drawer || viewerPane) return
+	let kept
+	try {
+		kept = JSON.parse(window.sessionStorage.getItem(reviewPicksKey))
+		window.sessionStorage.removeItem(reviewPicksKey)
+	} catch {
+		return
+	}
+	if (kept?.plan !== review.dataset.plan || kept.view !== currentView() || !Array.isArray(kept.items)) return
+	if (window.performance.getEntriesByType('navigation')[0]?.type === 'reload') return
+	picks.clear()
+	anchor = null
+	rangeBase = null
+	const items = new Set(kept.items)
+	for (const row of listRows()) if (items.has(row.dataset.pick)) picks.add(row.dataset.pick)
 	applyPicks()
 }
 
 function applyPicks() {
+	const rows = [...document.querySelectorAll('[data-row][data-pick]')]
+	const eligible = new Set(rows.map((row) => row.dataset.pick))
+	for (const item of picks) if (!eligible.has(item)) picks.delete(item)
 	showBulk()
-	for (const row of document.querySelectorAll('[data-row][data-pick]')) {
-		const on = picks.has(row.dataset.key)
+	for (const row of rows) {
+		const on = picks.has(row.dataset.pick)
 		row.classList.toggle('sel', on)
 		const box = row.querySelector('[data-pick-box]')
 		if (box) box.checked = on
@@ -1013,9 +1055,7 @@ const confirmDialog = document.querySelector('[data-confirm]')
 const findDialog = document.querySelector('[data-find]')
 
 function picked(kind) {
-	return [...picks]
-		.map((key) => document.querySelector(`[data-row][data-key="${CSS.escape(key)}"][data-pick]`)?.dataset.pick)
-		.filter((pick) => pick?.startsWith(`${kind}:`))
+	return [...picks].filter((pick) => pick.startsWith(`${kind}:`))
 }
 
 function plural(count, one, many = `${one}s`) {
@@ -2306,6 +2346,8 @@ document.addEventListener('click', (event) => {
 		return showHints()
 	}
 	const row = event.target.closest('[data-row]')
+	const link = event.target.closest('a[href]')
+	if (link && row?.dataset.href === link.getAttribute('href')) keepReviewPicks()
 	if (
 		!row ||
 		row.hasAttribute('data-chat-turn') ||
@@ -2432,6 +2474,7 @@ window.addEventListener('pageshow', (event) => {
 	sending = false
 	leaving = false
 	if (event.persisted) {
+		restoreReviewPicks()
 		connect()
 		refresh()
 		for (const history of document.querySelectorAll('[data-chat-history]')) scrollChatToLatest(history)
@@ -2966,6 +3009,7 @@ dockRoom()
 document.querySelector('[data-find-open]').hidden = false
 showUndo()
 if (review && chosenBuild) applyBuild()
+restoreReviewPicks()
 syncRationale()
 syncSource()
 openTarget()

@@ -1841,12 +1841,16 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		return { yes, chosen: typed === 'yes' || typed === 'no' || local, local }
 	}
 
+	function setupAddress(url: string) {
+		return /^https?:\/\/[^\s/]+/i.test(url) ? URL.parse(url) : null
+	}
+
 	function previewSetup(request: Request, form: URLSearchParams) {
 		const url = (form.get('url') ?? '').trim()
+		const address = setupAddress(url)
 		const reply = (body: Record<string, unknown>) =>
 			send(request.res, 200, 'application/json; charset=utf-8', JSON.stringify(body))
-		if (!/^https?:\/\/[^\s/]+/i.test(url))
-			return reply({ error: 'Give a full address, for example http://localhost:3000.' })
+		if (!address) return reply({ error: 'Give a full address, for example http://localhost:3000.' })
 		try {
 			const choice = setupChoice(form, url)
 			const planned = setupAssumptions({
@@ -1857,7 +1861,7 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 				env,
 			})
 			reply({
-				address: new URL(url).host,
+				address: address.host,
 				local: choice.local,
 				targetId: planned.targetId,
 				assumed: assumedRows(planned.assumed.filter((line) => !line.startsWith('target='))),
@@ -1873,16 +1877,20 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		const refuse = (message: Html | string, field = '') => actionRefusal(request, back, message, field)
 		const url = (form.get('url') ?? '').trim()
 		if (!actor) return refuse('Enter your name. Checkmate records it with the target.')
-		if (!/^https?:\/\/[^\s/]+/i.test(url))
-			return refuse('Give the address of the application, for example http://localhost:3000.', 'url')
+		const address = setupAddress(url)
+		if (!address) {
+			const onHome = !targetList(store).length
+			const submitted = values(form, ['url', 'target', 'environment', 'operations'])
+			return render(request, firstRunPage(context(request), onHome, cameFrom(request), submitted), cookies)
+		}
 		const choice = setupChoice(form, url)
 		if (!choice.chosen)
 			return refuse(
-				`${new URL(url).host} is not a local address. Choose whether testers may change data there.`,
+				`${address.host} is not a local address. Choose whether testers may change data there.`,
 				'operations'
 			)
 		if (!choice.local && form.get('confirmed') !== '1')
-			return refuse(`Confirm that Checkmate may test ${new URL(url).host}, an address that is not local.`, 'url')
+			return refuse(`Confirm that Checkmate may test ${address.host}, an address that is not local.`, 'url')
 		const typedTarget = form.get('target')?.trim() || undefined
 		const environment = form.get('environment')?.trim() || undefined
 		try {

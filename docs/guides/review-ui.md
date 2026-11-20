@@ -80,6 +80,8 @@ After a decision, the next item that waits for you takes the highlight. When you
 
 Select rows with their boxes, with `Space`, or with `Shift` `↑` `↓`. A strip directly above the status bar shows the number of selected rows and the actions that apply to them, numbered: `Accept <n> findings as defects`, `<n> questions right as built`, `Defer <n> questions`, `Hand over <n> defects`, `Copy <n> defects for the developer`, and `Clear the selection` last. While rows are selected, the number keys act on the selection. Each action on more than one record asks first and names the count. `Enter` activates the focused button. `1` confirms when the focus is outside a text field. `Esc` or `←` outside a text field cancels and keeps the selection. The selection clears when the action is complete. The strip and the notes after an action never cover a row: while they show, the navigator and the list end above them. A hand-over shows a note with `0 Undo` for some seconds. A copy shows the toast `Copied <n> defects` and keeps the selection. Press `0` or click `Undo` to remove the hand-over. The other decisions have no undo in Checkmate.
 
+When you open a record and return to the same list in the same tab, rows that you can still select stay selected. Press `Esc` in the list to clear the selection.
+
 If Checkmate does not answer, the status bar shows a message. The selection or the Undo button stays available. Check the record before you try again.
 
 ### Store defects as tests
@@ -153,7 +155,7 @@ The find bar lists `New change` (`/new`) and `New target` (`/setup`).
 
 `Testers may change data` is the choice `--operations`. `Yes` lets the testers do any action that the application offers to a test user. `No` limits the testers to reading. For a local address (`localhost`, a loopback address, or a private range) the choice starts as `Yes`. For another address the choice has no start value. Choose `Yes` or `No`. When you set up a target on an address that is not local, a dialog asks once more and names the address.
 
-Press `Enter` to set up the target. The new-change form opens. When the application does not answer, the form shows the sentence of the engine at the address field, and keeps your text. The form sets up the target with the same function as `checkmate setup`.
+Press `Enter` to set up the target. The new-change form opens. If the address is invalid or the application does not answer, the form shows the reason at the address field and keeps your text. The form sets up the target with the same function as `checkmate setup`.
 
 `New target` in the new-change form opens the same form. `Esc` goes back to the new-change form and keeps your draft.
 

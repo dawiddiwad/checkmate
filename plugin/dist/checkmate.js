@@ -25458,20 +25458,26 @@ function assumedRows(lines2) {
     return [assumedLabels[name2] ?? name2, line.slice(at + 1)];
   });
 }
-function firstRunPage(context, onHome, back = "/") {
+function firstRunPage(context, onHome, back = "/", invalidAddress) {
   const body = html2`${field2(
     "setup-url",
     "url",
     "Address of the application",
     "The web address that the testers open, for example http://localhost:3000.",
     html2`required autofocus inputmode="url" data-setup-url data-missing="Give the address of the application,
-			for example http://localhost:3000."`
+			for example http://localhost:3000."`,
+    invalidAddress?.url
   )}
-		<div class="setup-assumed" data-assumed hidden>
+		${invalidAddress ? html2`<p class="form-error" role="alert" data-field="url" data-refusal>Give the address of the application, for example http://localhost:3000.</p>` : ""}
+		<div
+			class="setup-assumed"
+			data-assumed
+			${invalidAddress?.target || invalidAddress?.environment ? "" : html2`hidden`}
+		>
 			<h2 class="lab">What Checkmate will assume</h2>
 			<p class="help">Checkmate sets up the target from this address. Change the name or the environment here.</p>
-			${field2("setup-target", "target", "Target name", "Letters, digits, _ or -.", html2`data-setup-field`)}
-			${field2("setup-environment", "environment", "Environment (optional)", "For example staging. A name that starts with prod is a production instance.", html2`data-setup-field`)}
+			${field2("setup-target", "target", "Target name", "Letters, digits, _ or -.", html2`data-setup-field ${invalidAddress?.target ? html2`data-touched="1"` : ""}`, invalidAddress?.target)}
+			${field2("setup-environment", "environment", "Environment (optional)", "For example staging. A name that starts with prod is a production instance.", html2`data-setup-field`, invalidAddress?.environment)}
 			<dl class="facts" data-assumed-list></dl>
 		</div>
 		${choice(
@@ -25481,12 +25487,13 @@ function firstRunPage(context, onHome, back = "/") {
       ["yes", "Yes", "Testers may do any action that the application offers to a test user."],
       ["no", "No", "Testers only read."]
     ],
-    ""
+    invalidAddress?.operations ?? ""
   )}
 		<p class="help" data-operations-help>Type the address first.</p>
 		<input type="hidden" name="confirmed" value="" />`;
   return {
     title: "New target",
+    status: invalidAddress ? 422 : 200,
     section: "home",
     subjects: ["inbox", "settings"],
     crumbs: onHome ? [["Plans", null]] : [
@@ -35506,11 +35513,14 @@ data: ${matched.join(",") || "*"}
     const yes = typed === "yes" || typed === "" && local;
     return { yes, chosen: typed === "yes" || typed === "no" || local, local };
   }
+  function setupAddress(url) {
+    return /^https?:\/\/[^\s/]+/i.test(url) ? URL.parse(url) : null;
+  }
   function previewSetup(request2, form) {
     const url = (form.get("url") ?? "").trim();
+    const address = setupAddress(url);
     const reply = (body) => send(request2.res, 200, "application/json; charset=utf-8", JSON.stringify(body));
-    if (!/^https?:\/\/[^\s/]+/i.test(url))
-      return reply({ error: "Give a full address, for example http://localhost:3000." });
+    if (!address) return reply({ error: "Give a full address, for example http://localhost:3000." });
     try {
       const choice2 = setupChoice(form, url);
       const planned = setupAssumptions({
@@ -35521,7 +35531,7 @@ data: ${matched.join(",") || "*"}
         env
       });
       reply({
-        address: new URL(url).host,
+        address: address.host,
         local: choice2.local,
         targetId: planned.targetId,
         assumed: assumedRows(planned.assumed.filter((line) => !line.startsWith("target=")))
@@ -35536,16 +35546,20 @@ data: ${matched.join(",") || "*"}
     const refuse3 = (message, field4 = "") => actionRefusal(request2, back, message, field4);
     const url = (form.get("url") ?? "").trim();
     if (!actor) return refuse3("Enter your name. Checkmate records it with the target.");
-    if (!/^https?:\/\/[^\s/]+/i.test(url))
-      return refuse3("Give the address of the application, for example http://localhost:3000.", "url");
+    const address = setupAddress(url);
+    if (!address) {
+      const onHome = !targetList(store).length;
+      const submitted = values(form, ["url", "target", "environment", "operations"]);
+      return render(request2, firstRunPage(context(request2), onHome, cameFrom(request2), submitted), cookies);
+    }
     const choice2 = setupChoice(form, url);
     if (!choice2.chosen)
       return refuse3(
-        `${new URL(url).host} is not a local address. Choose whether testers may change data there.`,
+        `${address.host} is not a local address. Choose whether testers may change data there.`,
         "operations"
       );
     if (!choice2.local && form.get("confirmed") !== "1")
-      return refuse3(`Confirm that Checkmate may test ${new URL(url).host}, an address that is not local.`, "url");
+      return refuse3(`Confirm that Checkmate may test ${address.host}, an address that is not local.`, "url");
     const typedTarget = form.get("target")?.trim() || void 0;
     const environment = form.get("environment")?.trim() || void 0;
     try {

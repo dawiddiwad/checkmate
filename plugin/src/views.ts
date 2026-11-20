@@ -399,6 +399,7 @@ export function planExplorations(store: Store, planId: string) {
 			explorers: status.explorerCount,
 			startedAt: row.started_at,
 			reason: ended ? status.reason : null,
+			hint: ended ? status.doneHint : null,
 			follow: status.follow,
 			followReason: status.followReason,
 			paused: status.paused,

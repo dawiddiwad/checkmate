@@ -1,3 +1,4 @@
+import { piAuthenticationHint } from '../plugin/src/sessions.ts'
 import type { Page } from 'playwright-core'
 import test from 'node:test'
 import assert from 'node:assert/strict'
@@ -396,6 +397,11 @@ test(
 		done(seeded, 'x-3', 'failed', { reason: 'No explorer session was recorded.' })
 		openTest(seeded, 'checkout', 'x-4', 'b4')
 		done(seeded, 'x-4', 'failed', { reason: 'The instance local did not answer.' })
+		openTest(seeded, 'checkout', 'x-5', 'b5')
+		done(seeded, 'x-5', 'failed', {
+			reason: 'Host authentication: no session could log in.',
+			hint: piAuthenticationHint,
+		})
 		closeStore(seeded)
 		const expected: Array<[string, RegExp]> = [
 			[
@@ -404,6 +410,7 @@ test(
 			],
 			['x-2', /Claude Code is not signed in on this computer\. Run claude and log in\. Then test again\./],
 			['x-3', /A tester did not end in 900 seconds\. Checkmate stopped it\. Test again with the level smoke/],
+			['x-5', /Pi could not sign in to its provider/],
 			['x-4', /The test failed: The instance local did not answer\. Read the log of the run\. Then test again\./],
 		]
 		for (const [id, text] of expected) {

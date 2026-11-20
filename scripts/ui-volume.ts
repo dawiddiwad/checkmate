@@ -1008,13 +1008,13 @@ if (import.meta.main) {
 		})
 		;(process.argv.includes('--edges') ? seedEdges : seedVolume)(workspace)
 		const ui = await startUi({ workspace, defaultActor: human })
-		console.log(`Checkmate UI on the volume seed: ${ui.url}`)
-		console.log('Press Ctrl+C to stop. The workspace is removed on stop.')
 		const stopUi = async () => {
 			await ui.close()
 			process.exit(0)
 		}
 		process.on('SIGINT', stopUi)
 		process.on('SIGTERM', stopUi)
+		console.log(`Checkmate UI on the volume seed: ${ui.url}`)
+		console.log('Press Ctrl+C to stop. The workspace is removed on stop.')
 	}
 }

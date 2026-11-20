@@ -138,7 +138,7 @@ function endedLine(item: Listed) {
 		return html`<strong
 			>The run ${item.explorationId} was interrupted: the supervisor stopped before the end.</strong
 		>`
-	const failure = failureOf(item.reason, null, [])
+	const failure = failureOf(item.reason, item.hint, [])
 	return html`<strong>${failure.cause}</strong> ${failure.next}`
 }
 

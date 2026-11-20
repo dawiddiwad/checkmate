@@ -98,7 +98,7 @@ export function failureOf(reason: string | null, hint: string | null, events: Ex
 			next: 'Check the provider login in Pi, then test again.',
 			detail: piAuthenticationHint,
 		}
-	if (hint === authenticationHint)
+	if (hint === authenticationHint || /Host authentication/.test(text))
 		return {
 			cause: 'Claude Code is not signed in on this computer.',
 			next: 'Run claude and log in. Then test again.',

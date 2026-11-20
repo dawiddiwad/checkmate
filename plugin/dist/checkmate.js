@@ -16841,6 +16841,7 @@ function planExplorations(store, planId) {
       explorers: status.explorerCount,
       startedAt: row3.started_at,
       reason: ended ? status.reason : null,
+      hint: ended ? status.doneHint : null,
       follow: status.follow,
       followReason: status.followReason,
       paused: status.paused,
@@ -21355,7 +21356,7 @@ function failureOf(reason, hint, events) {
       next: "Check the provider login in Pi, then test again.",
       detail: piAuthenticationHint
     };
-  if (hint === authenticationHint)
+  if (hint === authenticationHint || /Host authentication/.test(text))
     return {
       cause: "Claude Code is not signed in on this computer.",
       next: "Run claude and log in. Then test again.",
@@ -22919,7 +22920,7 @@ function endedLine(item) {
     return html2`<strong
 			>The run ${item.explorationId} was interrupted: the supervisor stopped before the end.</strong
 		>`;
-  const failure = failureOf(item.reason, null, []);
+  const failure = failureOf(item.reason, item.hint, []);
   return html2`<strong>${failure.cause}</strong> ${failure.next}`;
 }
 function explorationBanners(explorations) {

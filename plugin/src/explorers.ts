@@ -918,14 +918,31 @@ export async function driveExploration(workspace: string, explorationId: string,
 		if (launch.explorers) {
 			deriveRules(store, actor, explorationId, launch, env)
 			const ended = await launchExplorers(store, actor, explorationId, started, env, catalog)
-			recordExplorers(
-				store,
-				actor,
-				explorationId,
-				ended.filter((item) => item.calls.length === 2 && item.calls[1].failure?.[0] !== 'operational_error'),
-				env
+			const stops = explorationEvents(store, explorationId).filter(
+				(item) => item.step === 'stop' && item.explorer !== null
 			)
+			const lastStop = stops.length === ended.length ? stops.at(-1) : undefined
+			if (!lastStop)
+				recordExplorers(
+					store,
+					actor,
+					explorationId,
+					ended.filter(
+						(item) => item.calls.length === 2 && item.calls[1].failure?.[0] !== 'operational_error'
+					),
+					env
+				)
 			for (const { explorer } of ended) keepWorkFiles(store, actor, explorationId, explorer, 'test')
+			if (lastStop) {
+				keepBrowserFolder(store, explorationId)
+				event(store, actor, explorationId, {
+					step: 'done',
+					explorer: null,
+					status: 'stopped',
+					detail: { reason: stopText(lastStop) },
+				})
+				return
+			}
 		}
 		const ok = explorationEvents(store, explorationId).filter(
 			(item) => item.step === 'record' && item.status === 'completed'
@@ -1524,6 +1541,7 @@ export function pauseOf(events: ExplorationEvent[]) {
 export function explorationState(events: ExplorationEvent[]) {
 	if (followState(events) === 'running') return 'following'
 	const done = events.find((item) => item.step === 'done')
+	if (done?.status === 'stopped') return 'stopped'
 	if (done) return done.status === 'completed' ? 'completed' : 'failed'
 	const supervisor = events.find((item) => item.step === 'supervisor')
 	if (stopOf(events)) return 'stopped'
@@ -1588,7 +1606,7 @@ export function explorationStatus(store: Store, explorationId: string) {
 			ended: stop ? 'stopped' : (end?.status ?? null),
 			recorded: record?.status ?? null,
 			saved: (record?.detail.saved ?? 0) as number,
-			reason: (end?.detail.reason ?? record?.detail.reasons ?? (stop ? stopText(stop) : null)) as unknown,
+			reason: (stop ? stopText(stop) : (end?.detail.reason ?? record?.detail.reasons ?? null)) as unknown,
 			hint: (end?.detail.hint ??
 				(pi &&
 				typeof end?.detail.reason === 'string' &&

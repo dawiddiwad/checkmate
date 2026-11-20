@@ -16708,14 +16708,31 @@ async function driveExploration(workspace2, explorationId, env) {
     if (launch.explorers) {
       deriveRules(store, actor, explorationId, launch, env);
       const ended = await launchExplorers(store, actor, explorationId, started, env, catalog2);
-      recordExplorers(
-        store,
-        actor,
-        explorationId,
-        ended.filter((item) => item.calls.length === 2 && item.calls[1].failure?.[0] !== "operational_error"),
-        env
+      const stops = explorationEvents(store, explorationId).filter(
+        (item) => item.step === "stop" && item.explorer !== null
       );
+      const lastStop = stops.length === ended.length ? stops.at(-1) : void 0;
+      if (!lastStop)
+        recordExplorers(
+          store,
+          actor,
+          explorationId,
+          ended.filter(
+            (item) => item.calls.length === 2 && item.calls[1].failure?.[0] !== "operational_error"
+          ),
+          env
+        );
       for (const { explorer } of ended) keepWorkFiles(store, actor, explorationId, explorer, "test");
+      if (lastStop) {
+        keepBrowserFolder(store, explorationId);
+        event(store, actor, explorationId, {
+          step: "done",
+          explorer: null,
+          status: "stopped",
+          detail: { reason: stopText(lastStop) }
+        });
+        return;
+      }
     }
     const ok = explorationEvents(store, explorationId).filter(
       (item) => item.step === "record" && item.status === "completed"
@@ -17229,6 +17246,7 @@ function pauseOf(events) {
 function explorationState(events) {
   if (followState(events) === "running") return "following";
   const done = events.find((item) => item.step === "done");
+  if (done?.status === "stopped") return "stopped";
   if (done) return done.status === "completed" ? "completed" : "failed";
   const supervisor = events.find((item) => item.step === "supervisor");
   if (stopOf(events)) return "stopped";
@@ -17281,7 +17299,7 @@ function explorationStatus(store, explorationId) {
       ended: stop ? "stopped" : end?.status ?? null,
       recorded: record?.status ?? null,
       saved: record?.detail.saved ?? 0,
-      reason: end?.detail.reason ?? record?.detail.reasons ?? (stop ? stopText(stop) : null),
+      reason: stop ? stopText(stop) : end?.detail.reason ?? record?.detail.reasons ?? null,
       hint: end?.detail.hint ?? (pi && typeof end?.detail.reason === "string" && authenticationFailed({ failure: ["operational_error", end.detail.reason] }) ? piAuthenticationHint : null),
       stderr: end?.detail.stderr ?? [],
       strayBasis: "workspace_listing",

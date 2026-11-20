@@ -421,7 +421,7 @@ Without `--explorer`, the command does these steps:
 
 The state is then `stopped`. A stopped exploration stays in the record. `checkmate test <planId> --build <build>` and `explore start` start a new exploration for the same build.
 
-With `--explorer <name>`, the command ends only the `claude` process of that tester. The other testers go on. The run records, merges, and checks what exists. The tester shows `operational_error` when the run ends.
+With `--explorer <name>`, the command ends only the process of that tester. The tester shows `stopped` with the actor and reason. The other testers continue. Checkmate records, merges, and checks their work as usual. If you stop every tester, the exploration shows `stopped` with the actor and reason of the last stop. The work folder stays available.
 
 The command refuses in these cases:
 
@@ -430,7 +430,7 @@ The command refuses in these cases:
 - The exploration is on the session path. The operator session owns the testers. Stop them in the session.
 - The tester does not exist, has ended, or stopped already.
 
-A stop and the end of the run can happen together. The event that Checkmate records first wins. When the run ended first, the stop is refused. When the stop is first, the supervisor writes no `done` event.
+A whole-run stop and the end of the run can happen together. The event that Checkmate records first wins. When the run ended first, the stop is refused. When the whole-run stop is first, the supervisor writes no `done` event.
 
 The supervisor ends its workers when it gets `SIGTERM` or `SIGINT`. If the supervisor dies before the end, Checkmate shows `interrupted` and closes its open permissions. `explore stop` ends remaining workers. Before Checkmate starts another test of the plan, it also ends the identified workers of the interrupted test.
 

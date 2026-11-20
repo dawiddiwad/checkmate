@@ -156,13 +156,13 @@ test('when the done event is first, the stop is refused; when the stop is first,
 	assert.equal(explorationState(explorationEvents(again, 'x-1')), 'stopped')
 })
 
-function setup(t: TestContext, replies: Parameters<typeof fakeClaude>[1]) {
+function setup(t: TestContext, replies: Parameters<typeof fakeClaude>[1], harness: 'claude' | 'pi' = 'claude') {
 	const workspace = realpathSync(directory(t))
 	const opened = store(t, workspace)
 	target(opened)
 	plan(opened)
 	closeStore(opened)
-	const fake = fakeClaude(t, replies)
+	const fake = fakeClaude(t, replies, harness)
 	mkdirSync(join(fake.config, 'plugins'), { recursive: true })
 	writeFileSync(
 		join(fake.config, 'plugins', 'installed_plugins.json'),
@@ -171,7 +171,7 @@ function setup(t: TestContext, replies: Parameters<typeof fakeClaude>[1]) {
 	const command = (args: string[]) => {
 		const outcome = run([...args, '--workspace', workspace, '--json'], {
 			cwd: workspace,
-			env: { ...process.env, CHECKMATE_ACTOR: actor, ...fake.env },
+			env: { ...process.env, CHECKMATE_ACTOR: actor, CHECKMATE_HARNESS: harness, ...fake.env },
 			stdin: () => '',
 		})
 		return { code: outcome.code, body: JSON.parse(outcome.output) }
@@ -278,16 +278,45 @@ test('a stop of one tester ends only its child process, and the run goes on', (t
 	assert(!alive(children[0]))
 	assert(alive(children[1]) && alive(supervisor))
 	const middle = command(['explore', 'status', 'x-1']).body
+	const second = events('x-1').filter((item) => item.step === 'child')[1].explorer!
 	assert.equal(middle.state, 'testing')
 	assert.deepEqual(
 		middle.explorers.map((item: { explorer: string; ended: string | null }) => [item.explorer, item.ended]),
 		[
 			[first, 'stopped'],
-			[events('x-1').filter((item) => item.step === 'child')[1].explorer, null],
+			[second, null],
 		]
 	)
-	assert.equal(command(['explore', 'stop', 'x-1']).code, 0)
-	assert(!alive(supervisor) && children.every((pid) => !alive(pid)))
+	assert.equal(command(['explore', 'stop', 'x-1', '--explorer', second, '--reason', 'wrong build']).code, 0)
+	const ended = command(['explore', 'wait', 'x-1', '--timeout', '10']).body
+	assert.deepEqual([ended.state, ended.reason], ['stopped', `Stopped by ${actor}: wrong build`])
+	assert(children.every((pid) => !alive(pid)))
+})
+
+test('stopping the only tester stops the Pi exploration and keeps its work and the attributed reason', (t) => {
+	const { command, sleeping, workspace } = setup(t, { explorer: '!sleep' }, 'pi')
+	assert.equal(command(['explore', 'start', 'checkout', '--build', 'b1', '--level', 'smoke', ...allow]).code, 0)
+	const { supervisor, children } = sleeping('x-1', 1)
+	t.after(() => {
+		for (const pid of [supervisor, ...children]) if (alive(pid)) process.kill(-pid, 'SIGKILL')
+	})
+	const plan = join(workspace, '.checkmate', 'work', 'x-1', 'a1', 'plan.md')
+	waitFor('the tester writes its plan', () => existsSync(plan))
+	const reason = 'QA requested a clean stop'
+	const stop = command(['explore', 'stop', 'x-1', '--explorer', 'a1', '--reason', reason])
+	assert.equal(stop.code, 0, JSON.stringify(stop.body))
+	assert.match(stop.body.next[0], /explore start checkout --build b1/)
+	const status = command(['explore', 'wait', 'x-1', '--timeout', '10']).body
+	assert.deepEqual(
+		[status.state, status.reason, status.workFolder],
+		['stopped', `Stopped by ${actor}: ${reason}`, '.checkmate/work/x-1']
+	)
+	assert.deepEqual(
+		status.explorers.map((item: { ended: string; reason: unknown }) => [item.ended, item.reason]),
+		[['stopped', `Stopped by ${actor}: ${reason}`]]
+	)
+	assert(existsSync(plan))
+	assert(children.every((pid) => !alive(pid)))
 })
 
 test('a SIGKILL of the supervisor leaves the exploration interrupted, and a stop then ends the children', (t) => {

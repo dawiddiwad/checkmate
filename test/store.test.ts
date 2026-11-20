@@ -6,6 +6,7 @@ import {
 	busyTimeout,
 	canonical,
 	closeStore,
+	completed,
 	digest,
 	execute,
 	isBusy,
@@ -31,6 +32,7 @@ test('opening a workspace creates the schema, WAL mode, and the version rows', (
 		'blobs',
 		'decisions',
 		'evidence',
+		'exploration_event_costs',
 		'exploration_events',
 		'explorations',
 		'findings',
@@ -239,6 +241,15 @@ test('triggers refuse updates and deletes on every table', (t) => {
 		execute(opened, "INSERT INTO requests VALUES ('R1', 'why', '{}', 'tester', 'c1', ?, ?)", at, operationId)
 		execute(opened, "INSERT INTO request_events VALUES ('R1', ?, 'state', 'waiting', '{}', ?)", at, operationId)
 		return { reply: { status: 'completed', subject: 'x-1', reasons: [], data: {} }, subjects: [] }
+	})
+	write(opened, { actor, command: 'recover Pi costs', subject: 'x-1', input: null }, (operationId) => {
+		execute(
+			opened,
+			`INSERT INTO exploration_event_costs
+			SELECT operation_id, step, explorer, 0.01, 0, ? FROM exploration_events WHERE exploration_id = 'x-1'`,
+			operationId
+		)
+		return { reply: completed('x-1'), subjects: [] }
 	})
 	const tables = opened.db
 		.prepare("SELECT name FROM sqlite_master WHERE type = 'table'")

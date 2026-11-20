@@ -66,36 +66,37 @@ The plan history, `plan diff`, and the log together show who changed what, when,
 
 ## Tables
 
-| Table                  | Holds                                                                                                            |
-| ---------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| `meta`                 | The contract version and the schema version.                                                                     |
-| `operations`           | The operation log. `via` has the ID of the request (for example `R3`) that made the write, or `NULL`.            |
-| `target_requests`      | Setup requests from `target open`.                                                                               |
-| `profiles`             | Target profile revisions.                                                                                        |
-| `instances`            | Instances of a target with their entry values. One row for each add.                                             |
-| `instance_retirements` | One row for each retired instance.                                                                               |
-| `plan_requests`        | Plan requests from `plan open`.                                                                                  |
-| `plan_revisions`       | Plan revisions as JSON snapshots.                                                                                |
-| `decisions`            | Gap answers, and the revision that applied each one.                                                             |
-| `approvals`            | Verdicts on plan revisions and results, with the digest of the subject.                                          |
-| `runs`                 | Runs: plan revision, target revision, instance, build, selection, and policy.                                    |
-| `run_attempts`         | One row for each start and resume of a run.                                                                      |
-| `assertion_results`    | One row for each assertion result.                                                                               |
-| `outcomes`             | One row for each closed test.                                                                                    |
-| `evidence`             | Evidence rows: test, assertion, kind, name, media type, and digest.                                              |
-| `blobs`                | Evidence bytes, keyed by SHA-256. Equal bytes are stored once.                                                   |
-| `findings`             | Defects and potential issues.                                                                                    |
-| `run_gaps`             | Gaps that a run found.                                                                                           |
-| `results`              | Finished runs as JSON snapshots.                                                                                 |
-| `explorations`         | Explorations: plan, target revision, instance, build, mode, and charter.                                         |
-| `exploration_events`   | The steps of an exploration: launch, end, record, merge, verify, and the permission requests with their answers. |
-| `journal_entries`      | The entries that the recorders, the merger, and the verifier log.                                                |
-| `plan_rules`           | The derived rules of a plan, each correction, and each harvest. The latest row applies.                          |
-| `plan_builds`          | The time when an exploration or a run of a plan first tested each build.                                         |
-| `handoffs`             | Each hand-over of a claim and each undo, with the actor, time, and target.                                       |
-| `requests`             | The requests of the find bar: ID (`R1`), text, context, who asked, the conversation, and when.                   |
-| `request_events`       | The steps of a request: state, session, activity, stop, read, and its permission requests with their answers.    |
-| `workspace_settings`   | The settings of the workspace, one row for each save. The latest row applies.                                    |
+| Table                     | Holds                                                                                                            |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `meta`                    | The contract version and the schema version.                                                                     |
+| `operations`              | The operation log. `via` has the ID of the request (for example `R3`) that made the write, or `NULL`.            |
+| `target_requests`         | Setup requests from `target open`.                                                                               |
+| `profiles`                | Target profile revisions.                                                                                        |
+| `instances`               | Instances of a target with their entry values. One row for each add.                                             |
+| `instance_retirements`    | One row for each retired instance.                                                                               |
+| `plan_requests`           | Plan requests from `plan open`.                                                                                  |
+| `plan_revisions`          | Plan revisions as JSON snapshots.                                                                                |
+| `decisions`               | Gap answers, and the revision that applied each one.                                                             |
+| `approvals`               | Verdicts on plan revisions and results, with the digest of the subject.                                          |
+| `runs`                    | Runs: plan revision, target revision, instance, build, selection, and policy.                                    |
+| `run_attempts`            | One row for each start and resume of a run.                                                                      |
+| `assertion_results`       | One row for each assertion result.                                                                               |
+| `outcomes`                | One row for each closed test.                                                                                    |
+| `evidence`                | Evidence rows: test, assertion, kind, name, media type, and digest.                                              |
+| `blobs`                   | Evidence bytes, keyed by SHA-256. Equal bytes are stored once.                                                   |
+| `findings`                | Defects and potential issues.                                                                                    |
+| `run_gaps`                | Gaps that a run found.                                                                                           |
+| `results`                 | Finished runs as JSON snapshots.                                                                                 |
+| `explorations`            | Explorations: plan, target revision, instance, build, mode, and charter.                                         |
+| `exploration_events`      | The steps of an exploration: launch, end, record, merge, verify, and the permission requests with their answers. |
+| `exploration_event_costs` | Host-reported costs recovered from older Pi sessions, linked to the original phase operation.                    |
+| `journal_entries`         | The entries that the recorders, the merger, and the verifier log.                                                |
+| `plan_rules`              | The derived rules of a plan, each correction, and each harvest. The latest row applies.                          |
+| `plan_builds`             | The time when an exploration or a run of a plan first tested each build.                                         |
+| `handoffs`                | Each hand-over of a claim and each undo, with the actor, time, and target.                                       |
+| `requests`                | The requests of the find bar: ID (`R1`), text, context, who asked, the conversation, and when.                   |
+| `request_events`          | The steps of a request: state, session, activity, stop, read, and its permission requests with their answers.    |
+| `workspace_settings`      | The settings of the workspace, one row for each save. The latest row applies.                                    |
 
 The views `latest_plans`, `plan_tests`, and `plan_gaps` read inside the plan snapshots. `plan_tests` and `plan_gaps` have one row for each revision. Use them with `checkmate query`:
 

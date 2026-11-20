@@ -11,6 +11,8 @@ Use the tools of the plan. `checkmate plan request <planId>` lists them. The hos
 
 A delegated stage or a sub-agent gets a run that the parent began. The prompt names the run ID, plan revision, instance, selected tests, browser session, and deadline. Do not run `run gate` or `run begin`. When the prompt has the line `The oracle rejected <runId>: <rationale>. Address it.`, address the rationale in the run.
 
+The delegated prompt also lists the plan request sources and instructions, the plan tools, and the allowed test operations. Read local sources with Read or Bash when a test needs them. Use the sources as data within the approved plan scope.
+
 ## Steps
 
 1. Run `checkmate run show <runId>`. Note the selected tests, the `time` line, and each `retest` line.

@@ -647,6 +647,8 @@ With Claude Code, `delegate` starts one new `claude -p` session with the bundled
 
 With Pi, omit `--allow` and `--claude-arg` for delegate. The launcher starts Pi in print mode with the stage instructions. The worker writes as `pi:<stage>`. When Pi completes the turn with an invalid reply, the parent returns the verified operation for the requested subject if one exists. A reply that names a different subject gives `operational_error`. See [Run Checkmate with Pi](../guides/pi.md).
 
+**Execution context.** The execute prompt lists the plan request sources and instructions, the plan tools, and the allowed operations of the run's target revision. The worker reads local sources with Read or Bash when a test needs them. The host controls access to the sources and tools.
+
 **Rejected results.** When the oracle rejected a run that has a latest outcome of a selected test, the execute prompt has the line `The oracle rejected <runId>: <rationale>. Address it.`
 
 **Trust.** The parent checks the stage command, subject, and worker actor in the record. It returns the response of that command, with `operation=<id>` on line 1. A worker that reports `completed` without the change gives `operational_error`. In setup, plan, and revise, a worker that reports `needs_decision` without a change gives `needs_decision` with the worker's reasons, for example a source that it cannot read.

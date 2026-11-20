@@ -2,10 +2,12 @@ import type { Profile, Reply, Status, Store } from '../../plugin/src/index.ts'
 import { Refusal, closeStore, isBusy, openRejections, openStore, runClock, validate } from '../../plugin/src/index.ts'
 import type { Harness } from '../../plugin/src/pi.ts'
 import { piArgs, piResult, resolvePiModelArgs, selectedHarness } from '../../plugin/src/pi.ts'
+import { planRequest, planTools } from '../../plugin/src/plans.ts'
 import { workspaceEnv } from '../../plugin/src/settings.ts'
 import type { ChildCall } from '../../plugin/src/sessions.ts'
 import { childOutputLimit, pluginRoot as bundledPluginRoot, usageOf } from '../../plugin/src/sessions.ts'
 import { write } from '../../plugin/src/store.ts'
+import type { PlanRequest } from '../../plugin/src/types.ts'
 import { spawn } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
@@ -389,7 +391,13 @@ function verify(store: Store, stage: Stage, subject: string, after: number, acto
 }
 
 type Rejection = { runId: string; rationale: string }
-type Execution = { run: RunRow; profile: Profile; clock: ReturnType<typeof runClock>; rejected: Rejection[] }
+type Execution = {
+	run: RunRow
+	profile: Profile
+	planRequest: PlanRequest
+	clock: ReturnType<typeof runClock>
+	rejected: Rejection[]
+}
 
 function rejections(store: Store, run: RunRow) {
 	const selected = (JSON.parse(run.request) as { selectedTestIds: string[] }).selectedTestIds
@@ -418,7 +426,7 @@ function stagePrompt(stage: Stage, subject: string, execution: Execution | null)
 			`Plan: ${subject}. Read the pending decisions with \`checkmate plan pending ${subject}\`.`,
 			`Save the next revision with \`checkmate plan revise ${subject}\`. Do not answer gaps.`,
 		]
-	const { run, profile, clock, rejected } = execution!
+	const { run, profile, planRequest: planning, clock, rejected } = execution!
 	const request = JSON.parse(run.request) as {
 		selectedTestIds: string[]
 		onNewBlocker: string
@@ -428,9 +436,21 @@ function stagePrompt(stage: Stage, subject: string, execution: Execution | null)
 	const earlier = (request.retestDefects ?? []).map(
 		(defect) => `${defect.testIds.join(',')} (${defect.runId ?? request.retestOf}/${defect.findingId})`
 	)
+	const sources = planning.context?.sources ?? []
+	const tools = planTools(planning, profile).map(({ name, kind }) => `${name} (${kind})`)
 	return [
 		`Run: ${subject}. The parent began the run. Do not run \`run gate\` or \`run begin\`.`,
 		`Plan revision: ${run.plan_id}@${run.plan_revision}. Target: ${run.target_id}@${run.target_revision}. Build: ${run.application_build}.`,
+		...(sources.length
+			? [
+					`Plan request sources: ${sources.map((source) => JSON.stringify(source)).join(', ')}.`,
+					'Read local source files with Read or Bash. Use these sources for the tests that need them.',
+				]
+			: []),
+		...(planning.context?.instructions ? [`Plan request instructions: ${planning.context.instructions}`] : []),
+		`Plan tools: ${tools.join(', ') || 'none declared'}.`,
+		'Use Bash for CLI tools. Check for an executable on PATH before you report a CLI tool as missing. The host controls tool access and permissions.',
+		`Allowed test operations: ${profile.allowedOperations.join(', ')}.`,
 		`Instance: ${run.instance_id}. Read its entry values with \`checkmate target show ${run.target_id} --instance ${run.instance_id}\`. Run a command entry at test time. Do not write its output anywhere: not as a value, in evidence, in --observed, in a finding, or in a gap.`,
 		...(run.retired
 			? [
@@ -475,6 +495,8 @@ function prompt(
 ) {
 	const skill = join(pluginRoot, 'skills', stage, 'SKILL.md')
 	const workflow = join(pluginRoot, 'references', 'workflow.md')
+	const cliPath = join(pluginRoot, 'dist', 'checkmate.js')
+	const cliCommand = `node '${cliPath.replaceAll("'", "'\\''")}'`
 	const deadline = new Date(Date.now() + timeoutSeconds * 1000).toISOString()
 	const instructions =
 		harness === 'pi'
@@ -483,6 +505,7 @@ function prompt(
 					...[skill, workflow].map((path) =>
 						readFileSync(path, 'utf8')
 							.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, '')
+							.replaceAll('node "${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js"', () => cliCommand)
 							.replaceAll('${CLAUDE_PLUGIN_ROOT}', () => pluginRoot)
 							.replaceAll('claude:', 'pi:')
 							.trim()
@@ -494,7 +517,7 @@ function prompt(
 	return [
 		`This is a delegated Checkmate ${stage} stage. ${instructions.join('\n\n')}`,
 		`Workspace: ${workspace}. Run Checkmate commands from this directory. Add \`--actor ${harness}:${stage}\` to each write.`,
-		`\`checkmate <command>\` means \`node ${join(pluginRoot, 'dist', 'checkmate.js')} <command>\`.`,
+		`\`checkmate <command>\` means \`${cliCommand} <command>\`.`,
 		...stagePrompt(stage, subject, execution),
 		...(stage === 'execute'
 			? []
@@ -594,6 +617,7 @@ export async function delegate(
 				? {
 						run,
 						profile: runProfile(store, run),
+						planRequest: planRequest(store, run.plan_id).request,
 						clock: runClock(store, run),
 						rejected: rejections(store, run),
 					}

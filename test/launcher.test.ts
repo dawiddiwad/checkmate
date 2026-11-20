@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, symlinkSync, writeFileSync } from 'node:fs'
 import { execFile, execFileSync } from 'node:child_process'
 import { join } from 'node:path'
 import type { Stage } from '../cli/src/launcher.ts'
@@ -22,6 +22,7 @@ import { saveWorkspaceHarness } from '../plugin/src/settings.ts'
 import { operationLog } from '../plugin/src/views.ts'
 import {
 	actor,
+	approved,
 	begin,
 	candidate,
 	check,
@@ -32,6 +33,7 @@ import {
 	planRequest,
 	ready,
 	regressionPlan,
+	revised,
 	root,
 	store,
 	target,
@@ -224,7 +226,7 @@ reply({ status: 'needs_decision', subject: '${subject}', reasons: ['Stopped.'] }
 	assert(plan.includes(`read ${join(pluginRoot, 'skills', 'plan', 'SKILL.md')} and`), plan)
 	assert.doesNotMatch(plan, /person/)
 	assert(
-		plan.includes(`\`checkmate <command>\` means \`node ${join(pluginRoot, 'dist', 'checkmate.js')} <command>\`.`)
+		plan.includes(`\`checkmate <command>\` means \`node '${join(pluginRoot, 'dist', 'checkmate.js')}' <command>\`.`)
 	)
 	assert.match(await prompt('setup', 'checkout-local'), /checkmate target instance list checkout-local/)
 	assert.deepEqual(attempts(workspace, 'target:checkout-local')[0].response, {
@@ -519,6 +521,41 @@ if (process.env.FAKE_PI_OUTPUT === 'invalid') {
 	assert.match(prompt, /Write an open blocking gap/)
 	assert(prompt.includes(join(bundledPlugin, 'references', 'workflow.md')))
 	assert.doesNotMatch(prompt, /CLAUDE_PLUGIN_ROOT|--actor claude:/)
+})
+
+test('a Pi worker can run the CLI commands in its prompt from paths with shell characters', async (t) => {
+	const workspace = join(directory(t), 'factory workspace')
+	mkdirSync(workspace)
+	const opened = store(t, workspace)
+	target(opened)
+	openPlan(opened, actor, { planId: 'checkout', target: 'checkout-local@1', request: planRequest() })
+	saveWorkspaceHarness(opened, actor, 'pi')
+	closeStore(opened)
+	const installedPlugin = join(workspace, `factory's "plugin" $CHECKMATE_ACTOR`)
+	symlinkSync(pluginRoot, installedPlugin)
+	const pi = executable(
+		workspace,
+		'fake-pi',
+		`const { readFileSync } = require('node:fs')
+const { execFileSync } = require('node:child_process')
+const prompt = readFileSync(0, 'utf8')
+const commands = prompt.split('\\n').filter((line) =>
+	line.startsWith('The plugin CLI is') || line.startsWith('\`checkmate <command>\` means')
+)
+if (commands.length !== 2) throw new Error('Expected two CLI references')
+for (const line of commands) {
+	const command = line.split('\`').find((code) => code.startsWith('node ') && code.endsWith(' <command>'))
+	const output = execFileSync('/bin/sh', ['-c', command.replace('<command>', 'target show checkout-local --json')], {
+		encoding: 'utf8',
+	})
+	if (JSON.parse(output).subject !== 'checkout-local@1') throw new Error(output)
+}
+const text = JSON.stringify({ status: 'needs_decision', subject: 'checkout', reasons: ['Stopped.'] })
+console.log(JSON.stringify({ type: 'agent_end', messages: [{ role: 'assistant', stopReason: 'stop', content: [{ type: 'text', text }] }] }))`
+	)
+	const result = await delegate(workspace, 'plan', 'checkout', { allowedTools: [], pluginRoot: installedPlugin, pi })
+	assert.deepEqual(result.reasons, ['Stopped.'])
+	assert.equal(result.status, 'needs_decision')
 })
 
 test('Pi recovers a malformed reply only from the delegated stage write', async (t) => {
@@ -920,6 +957,43 @@ reply({ status: 'completed', subject: 'run-3', reasons: [] })`
 	)
 	assert.doesNotMatch(prompt, /run-1|Wrong account/)
 	assert.match(prompt, /Reset: the factory owns it \(no command recorded\)\. Do not run it\./)
+})
+
+test('the execute prompt gives the plan request sources, instructions, tools, and allowed operations', async (t) => {
+	const workspace = directory(t)
+	const opened = store(t, workspace)
+	target(opened)
+	const source = 'Checkout fixture guide.md'
+	const instructions = 'Read the fixture guide for the checkout endpoints.'
+	writeFileSync(join(workspace, source), 'Fixture guide text.')
+	plan(opened, 'checkout', candidate(), {
+		...planRequest(),
+		context: { sources: [source, 'jira:SHOP-12'], instructions },
+		tools: ['node', { name: 'fixture-cli', kind: 'cli', purpose: 'Set up the checkout test data.' }],
+	})
+	revised(opened)
+	approved(opened)
+	begin(opened, 'run-1', ['T1'], 'build-1')
+	closeStore(opened)
+	const quits = claude(
+		workspace,
+		`require('node:fs').writeFileSync('prompt.txt', require('node:fs').readFileSync(0, 'utf8'))
+reply({ status: 'completed', subject: 'run-1', reasons: [] })`
+	)
+	await delegate(workspace, 'execute', 'run-1', {
+		allowedTools: rules,
+		pluginRoot,
+		claude: quits,
+		playwright: playwright(workspace),
+	})
+	const prompt = readFileSync(join(workspace, 'prompt.txt'), 'utf8')
+	assert(prompt.includes(`Plan request sources: "${source}", "jira:SHOP-12".`), prompt)
+	assert(prompt.includes(`Plan request instructions: ${instructions}`), prompt)
+	assert.match(prompt, /Read local source files with Read or Bash\./)
+	assert.match(prompt, /Plan tools: node \(cli\), fixture-cli \(cli\)\./)
+	assert.match(prompt, /Use Bash for CLI tools\..*The host controls tool access and permissions\./)
+	assert.match(prompt, /Allowed test operations: read_catalog, create_fixture_order, apply_fixture_discount\./)
+	assert.doesNotMatch(prompt, /Fixture guide text/)
 })
 
 test('the execute prompt of a retest names the tests of the earlier open defects first', async (t) => {

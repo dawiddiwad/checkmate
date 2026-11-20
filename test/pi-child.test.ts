@@ -4,7 +4,14 @@ import { join } from 'node:path'
 import test from 'node:test'
 import { pathToFileURL } from 'node:url'
 import { piErrorText, piResult, piStderr } from '../plugin/src/pi.ts'
-import { authenticationFailed, callChild, launchChild, workDenyRules } from '../plugin/src/sessions.ts'
+import {
+	authenticationFailed,
+	callChild,
+	claudeResult,
+	costOf,
+	launchChild,
+	workDenyRules,
+} from '../plugin/src/sessions.ts'
 import { directory } from './support.ts'
 
 // @ts-expect-error Pi loads this JavaScript extension directly.
@@ -41,6 +48,50 @@ test('Pi result uses the last completed assistant turn and recognizes host error
 	assert.equal(read(session, end('aborted')).failure?.[0], 'interrupted')
 	assert.equal(read(session, end('stop'), end('error', 'Wait', true)).failure?.[0], 'operational_error')
 	assert.equal(read(session, end('toolUse')).failure?.[0], 'operational_error')
+})
+
+test('Pi adds fresh usage across turns and retries without counting event copies', () => {
+	const assistant = (cost: number | undefined, stopReason: string) => ({
+		role: 'assistant',
+		stopReason,
+		content: [],
+		...(cost === undefined ? {} : { usage: { cost: { total: cost } } }),
+	})
+	const first = assistant(0.125, 'toolUse')
+	const tool = { role: 'toolResult', usage: { cost: { total: 0.25 } } }
+	const failed = assistant(0, 'error')
+	const last = assistant(0.5, 'stop')
+	const output = (...events: unknown[]) => events.map((event) => JSON.stringify(event)).join('\n')
+	const events = [
+		{ type: 'session', id: 'new-session', parentSession: '/source-session' },
+		{ type: 'agent_start' },
+		{ type: 'message_update', usage: first.usage },
+		{ type: 'message_end', message: first },
+		{ type: 'message_end', message: tool },
+		{ type: 'message_end', message: failed },
+		{ type: 'agent_end', messages: [first, tool, failed], willRetry: true },
+		{ type: 'agent_start' },
+		{ type: 'message_end', message: last },
+		{ type: 'agent_end', messages: [last] },
+	]
+	const result = piResult(output(...events), '', 0, null)
+	assert.equal(result.costUsd, 0.875)
+	assert.equal(result.costPartial, undefined)
+	const incomplete = piResult(output(...events.slice(0, -1)), '', 1, null)
+	assert.equal(incomplete.costUsd, 0.875)
+	assert.equal(incomplete.costPartial, true)
+	const fallback = piResult(output({ type: 'agent_end', messages: [assistant(0, 'stop')] }), '', 0, null)
+	assert.equal(fallback.costUsd, 0)
+	const missing = piResult(output({ type: 'agent_end', messages: [assistant(undefined, 'stop')] }), '', 0, null)
+	assert.equal(missing.costUsd, undefined)
+})
+
+test('phase cost uses Claude reported totals, preserves zero and flags missing call costs', () => {
+	const call = (cost: number | undefined) => claudeResult(JSON.stringify({ total_cost_usd: cost }), '', 0, null)
+	assert.deepEqual(costOf([call(0.25), call(0)]), { costUsd: 0.25 })
+	assert.deepEqual(costOf([call(0), call(undefined)]), { costUsd: 0, costPartial: true })
+	assert.deepEqual(costOf([call(undefined)]), {})
+	assert.deepEqual(costOf([call(-1)]), {})
 })
 
 test('Pi failures keep the provider message and status without headers or credential values', () => {

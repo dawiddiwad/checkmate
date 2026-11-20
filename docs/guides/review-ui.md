@@ -184,7 +184,7 @@ When the engine refuses the start, the dialog shows the reason in a sentence at 
 
 ### Activity
 
-`/activity` lists every test and follow-up of all plans, one row each. Runs in progress come first. The other runs follow, newest first. A row shows the state, the run ID, the plan, the build, the level, the person who started it, the time, the duration, the cost when Claude Code reported it, and one line about the outcome: the counts of defects and questions, or the reason that it failed or stopped. `→` opens the Testers view of the run.
+`/activity` lists every test and follow-up of all plans, one row each. Runs in progress come first. The other runs follow, newest first. A row shows the state, the run ID, the plan, the build, the level, the person who started it, the time, the duration, the cost reported by the coding harness, and one line about the outcome: the counts of defects and questions, or the reason that it failed or stopped. `→` opens the Testers view of the run.
 
 - `1 Stop…` shows on a run in progress. A dialog asks first.
 - `1 Test again` shows on a failed, stopped, or interrupted run. The `Test build…` dialog opens with the same build, level, `Since`, `Until`, and folder.
@@ -193,11 +193,13 @@ A row shows its numbered options only when all of them fit in the row. When they
 
 `Activity` is also in the find bar. The list pages like `Log`: `↓` on the last row opens the next page.
 
+Each card on **Plans** shows the total exploration cost for that plan. Open a plan revision to see the **Cost** column for individual explorations. **Unknown** means the harness supplied no cost. **Partial** means some charges are missing.
+
 ### Testers
 
 `/explorations/<explorationId>` is the live view of one session. It updates by itself while the session runs. It shows:
 
-- The state of the session, its build, instance, level, and phases. While the session runs, a strip shows the steps `study`, `test`, `record`, `merge`, and `check`. Only the step that runs now is lit. Checkmate reads the step from the events of the testers: `study` while each running tester is in its study turn, and `test` from the first tester in its test turn. The banner names the same step. The header says when the session started, for example `started just now` or `started 1 min ago`. On a session that is over, it also says when the session ended and how long it took. The title is `Testers now` while the session runs, and `Testers` after it. The time since the start counts up, and the cost so far shows when Claude Code reported it.
+- The state of the session, its build, instance, level, and phases. While the session runs, a strip shows the steps `study`, `test`, `record`, `merge`, and `check`. Only the step that runs now is lit. Checkmate reads the step from the events of the testers: `study` while each running tester is in its study turn, and `test` from the first tester in its test turn. The banner names the same step. The header says when the session started, for example `started just now` or `started 1 min ago`. On a session that is over, it also says when the session ended and how long it took. The title is `Testers now` while the session runs, and `Testers` after it. The time since the start counts up, and **Total cost** sums the reported cost of all testers and supporting stages, including follow-ups.
 - One row for each tester, with its state (`Given to the session`, `Running`, `Paused`, `Finished`, `Failed`, `Stopping…`, or `Stopped`), its first line, its step, and the time in that state. The time counts up while the tester runs. The first line is the last activity line with its age, for example `… · 2 min ago`. Checkmate does not invent activity. While a tester has no activity line, the line says where the tester is, for example `In its study turn. The first activity line comes when the turn ends.`
 - `After the testers`: `record`, `merge`, `verify`, and `follow-up`, with their states and reasons.
 - The other sessions of the plan.

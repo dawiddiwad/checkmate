@@ -14,6 +14,7 @@ import {
 	callChild,
 	childArgs,
 	childEnv,
+	costOf,
 	childHook,
 	replyArray,
 	requireChild,
@@ -115,9 +116,9 @@ function logReply(
 	}
 }
 
-function sum(calls: ChildCall[], key: 'costUsd' | 'durationMs') {
-	const values = calls.flatMap((call) => (call[key] === undefined ? [] : [call[key]]))
-	return values.length ? { [key]: values.reduce((total, value) => total + value, 0) } : {}
+function duration(calls: ChildCall[]) {
+	const values = calls.flatMap((call) => (call.durationMs === undefined ? [] : [call.durationMs]))
+	return values.length ? { durationMs: values.reduce((total, value) => total + value, 0) } : {}
 }
 
 function running(pid: number) {
@@ -434,8 +435,8 @@ function recordLocked(
 		referencesDropped: dropped.length,
 		...(dropped.length ? { droppedReferences: dropped } : {}),
 		...(unknownRules.length ? { unknownRules } : {}),
-		...sum(calls, 'costUsd'),
-		...sum(calls, 'durationMs'),
+		...costOf(calls),
+		...duration(calls),
 	}
 	const reply: Reply = {
 		status,

@@ -29,6 +29,14 @@ export function join(items: Html[], separator: Html | string) {
 	return html`${items.flatMap((item, i) => (i ? [separator, item] : [item]))}`
 }
 
+export function money(costUsd: number) {
+	return costUsd > 0 && costUsd < 0.01 ? '<$0.01' : `$${costUsd.toFixed(2)}`
+}
+
+export function costText(costUsd: number | null, partial: boolean) {
+	return costUsd === null ? 'Unknown' : `${money(costUsd)}${partial ? ' (partial)' : ''}`
+}
+
 export type Tone = 'pass' | 'fail' | 'block' | 'warn' | 'unsure' | 'acc' | 'muted'
 
 const statusLook: Record<string, [string, Tone]> = {

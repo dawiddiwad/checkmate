@@ -227,6 +227,18 @@ CREATE TABLE journal_entries (
 `
 const addedTables = [
 	{
+		ddl: `CREATE TABLE exploration_event_costs (
+	source_operation_id TEXT NOT NULL REFERENCES operations(id),
+	step TEXT NOT NULL,
+	explorer TEXT NOT NULL,
+	cost_usd REAL NOT NULL CHECK(cost_usd >= 0),
+	partial INTEGER NOT NULL CHECK(partial IN (0, 1)),
+	operation_id TEXT NOT NULL ${operationReference},
+	PRIMARY KEY (source_operation_id, step, explorer)
+) STRICT;`,
+		fill: '',
+	},
+	{
 		ddl: `CREATE TABLE plan_rules (
 	plan_id TEXT NOT NULL REFERENCES plan_requests(plan_id),
 	origin TEXT NOT NULL,

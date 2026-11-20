@@ -46,6 +46,7 @@ import {
 	authenticationHint,
 	callChild,
 	childEnv,
+	costOf,
 	childHook,
 	exitOnSignal,
 	installedPluginId,
@@ -602,11 +603,6 @@ export function recordExplorers(
 				store.workspace
 			).status
 	)
-}
-
-function costOf(calls: ChildCall[]) {
-	const costs = calls.flatMap((call) => (call.costUsd === undefined ? [] : [call.costUsd]))
-	return costs.length ? { costUsd: costs.reduce((total, cost) => total + cost, 0) } : {}
 }
 
 export function mergeInput(store: Store, explorationId: string, after = 0) {

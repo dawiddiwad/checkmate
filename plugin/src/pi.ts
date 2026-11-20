@@ -1,7 +1,7 @@
 import { STATUS_CODES } from 'node:http'
 import { stripVTControlCharacters } from 'node:util'
 import { Refusal } from './contracts.ts'
-import { excerpt, stderrTail } from './sessions.ts'
+import { costOf, excerpt, stderrTail } from './sessions.ts'
 import type { ChildCall, Env } from './sessions.ts'
 
 export type Harness = 'claude' | 'pi'
@@ -31,7 +31,13 @@ export function piArgs(own: string[] = [], env: Env = process.env) {
 }
 
 export type PiContent = { type: string; text?: string; name?: string; id?: string; arguments?: unknown }
-export type PiMessage = { role: string; content?: PiContent[]; stopReason?: string; errorMessage?: string }
+export type PiMessage = {
+	role: string
+	content?: PiContent[]
+	stopReason?: string
+	errorMessage?: string
+	usage?: { cost?: { total?: unknown } }
+}
 export type PiEvent = {
 	type: string
 	id?: string
@@ -124,17 +130,35 @@ export function piStderr(text: string) {
 	return stderrTail(text.split('\n').map(piErrorText).filter(Boolean).join('\n'))
 }
 
+export function piMessageCost(message?: PiMessage): number | null | undefined {
+	if (message?.role !== 'assistant' && !(message?.role === 'toolResult' && message.usage)) return undefined
+	const cost = message.usage?.cost?.total
+	return typeof cost === 'number' && Number.isFinite(cost) && cost >= 0 ? cost : null
+}
+
+function messageCosts(messages: PiMessage[]) {
+	return messages.flatMap((message) => {
+		const amount = piMessageCost(message)
+		return amount === undefined ? [] : [amount === null ? {} : { costUsd: amount }]
+	})
+}
+
 export function piResult(output: string, error: string, status: number | null, signal: string | null): ChildCall {
 	let sessionId: string | undefined
 	let final: PiMessage | undefined
 	let latestError: PiMessage | undefined
+	const costs: Array<Pick<ChildCall, 'costUsd'>> = []
+	let turnCosts: Array<Pick<ChildCall, 'costUsd'>> = []
 	for (const line of output.split('\n')) {
 		const event = piEvent(line)
 		if (event?.type === 'session' && typeof event.id === 'string') sessionId = event.id
 		if (event?.type === 'agent_start') {
 			final = undefined
 			latestError = undefined
+			costs.push(...turnCosts)
+			turnCosts = []
 		}
+		if (event?.type === 'message_end' && event.message) turnCosts.push(...messageCosts([event.message]))
 		if (
 			event?.type === 'message_end' &&
 			event.message?.role === 'assistant' &&
@@ -142,7 +166,10 @@ export function piResult(output: string, error: string, status: number | null, s
 		)
 			latestError = event.message
 		if (event?.type === 'agent_end') {
-			const last = Array.isArray(event.messages) ? event.messages.at(-1) : undefined
+			const messages = Array.isArray(event.messages) ? event.messages : []
+			costs.push(...(turnCosts.length ? turnCosts : messageCosts(messages)))
+			turnCosts = []
+			const last = messages.at(-1)
 			if (last?.role === 'assistant' && last.errorMessage) latestError = last
 			final = event.willRetry ? undefined : last
 		}
@@ -177,6 +204,7 @@ export function piResult(output: string, error: string, status: number | null, s
 		: undefined
 	return {
 		failure,
+		...costOf([...costs, ...turnCosts, ...(turnCosts.length || (failure && final === undefined) ? [{}] : [])]),
 		...(tail.length ? { stderr: tail } : {}),
 		...(sessionId ? { sessionId } : {}),
 		result: failure ? undefined : result,

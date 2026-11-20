@@ -10,7 +10,7 @@ import { explorationState, explorationStatus, startOf } from '../explorers.ts'
 import { authenticationFailed, authenticationHint, piAuthenticationHint } from '../sessions.ts'
 import { piErrorText } from '../pi.ts'
 import { mergedClaims, mergedQuestions } from '../views.ts'
-import { asList, duration, glyph, html, pill, plural, time } from './html.ts'
+import { asList, duration, glyph, html, money, pill, plural, time } from './html.ts'
 import { emptyNotice, heading } from './layout.ts'
 import { listHref, listState, pageTrail, pager } from './lists.ts'
 import { instanceChoice, stopDialog, stopOption, testDialog, testAgainOption } from './actions.ts'
@@ -77,9 +77,7 @@ export function costOf(events: ExplorationEvent[]) {
 	return costs.length ? costs.reduce((total, cost) => total + cost, 0) : null
 }
 
-export function money(costUsd: number) {
-	return `$${costUsd.toFixed(2)}`
-}
+export { money } from './html.ts'
 
 export function failureOf(reason: string | null, hint: string | null, events: ExplorationEvent[]): Failure {
 	const text = reason ?? ''

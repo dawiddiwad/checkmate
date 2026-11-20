@@ -13,11 +13,11 @@ import { claimEvidence, entryEvidence, explorationLive, planExplorations } from 
 import { actorField, emptyState, gapPanel, hidden, keptText, messages, rationaleField, recordPanel } from './forms.ts'
 import { banner, crumbBar, downloads, heading } from './layout.ts'
 import { navigator, reviewOf } from './review.ts'
-import { ago, asList, duration, html, join, pill, pillClass, plural, time, words } from './html.ts'
+import { ago, asList, costText, duration, html, join, pill, pillClass, plural, time, words } from './html.ts'
 import { evidenceList, shownAsText, viewLink } from './evidence.ts'
 import { askingPill, asksFor, permissionHistory, requestHref, rowOptions, rulesLines, waitsFor } from './permissions.ts'
 import type { InstanceChoice } from './actions.ts'
-import { failureOf, money, optionsBox, phases, runsOf } from './activity.ts'
+import { failureOf, optionsBox, phases, runsOf } from './activity.ts'
 import type { Run } from './activity.ts'
 import {
 	stopButton,
@@ -181,6 +181,7 @@ export function explorationsTable(explorations: Listed[]) {
 					<th scope="col">Instance</th>
 					<th scope="col">Level</th>
 					<th scope="col">Started</th>
+					<th scope="col">Cost</th>
 				</tr>
 			</thead>
 			<tbody>
@@ -213,6 +214,9 @@ export function explorationsTable(explorations: Listed[]) {
 								}
 							</td>
 							<td class="nowrap">${time(item.startedAt)}</td>
+							<td class="nowrap" title="Reported exploration cost">
+								${costText(item.costUsd, item.costPartial)}
+							</td>
 						</tr>`
 				)}
 			</tbody>
@@ -883,7 +887,9 @@ export function explorationPage(
 										>`
 								)
 					}
-					${run.costUsd === null ? '' : html`<span class="sp-pill" title="Cost so far, as Claude Code reports it">${money(run.costUsd)}</span>`}
+					<span class="sp-pill" title="Reported cost across this exploration and its follow-ups"
+						>Total cost ${costText(live.costUsd, live.costPartial)}</span
+					>
 				</div>
 			</div>
 			<div data-region="exploration-banner">

@@ -270,7 +270,13 @@ export function addEvent(
 export function explorationEvents(store: Store, explorationId: string): ExplorationEvent[] {
 	return all<{ at: string; step: string; explorer: string | null; status: string; detail: string }>(
 		store,
-		'SELECT at, step, explorer, status, detail FROM exploration_events WHERE exploration_id = ? ORDER BY rowid',
+		`SELECT e.at, e.step, e.explorer, e.status,
+			CASE WHEN c.cost_usd IS NULL OR json_type(e.detail, '$.costUsd') IN ('integer','real') THEN e.detail
+				WHEN c.partial THEN json_set(e.detail, '$.costUsd', c.cost_usd, '$.costPartial', json('true'))
+				ELSE json_set(e.detail, '$.costUsd', c.cost_usd) END AS detail
+		FROM exploration_events e LEFT JOIN exploration_event_costs c
+			ON c.source_operation_id = e.operation_id AND c.step = e.step AND c.explorer = coalesce(e.explorer, '')
+		WHERE e.exploration_id = ? ORDER BY e.rowid`,
 		explorationId
 	).map((row) => ({ ...row, detail: JSON.parse(row.detail) }))
 }

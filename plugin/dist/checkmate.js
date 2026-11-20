@@ -218,6 +218,18 @@ CREATE TABLE journal_entries (
 `;
 var addedTables = [
   {
+    ddl: `CREATE TABLE exploration_event_costs (
+	source_operation_id TEXT NOT NULL REFERENCES operations(id),
+	step TEXT NOT NULL,
+	explorer TEXT NOT NULL,
+	cost_usd REAL NOT NULL CHECK(cost_usd >= 0),
+	partial INTEGER NOT NULL CHECK(partial IN (0, 1)),
+	operation_id TEXT NOT NULL ${operationReference},
+	PRIMARY KEY (source_operation_id, step, explorer)
+) STRICT;`,
+    fill: ""
+  },
+  {
     ddl: `CREATE TABLE plan_rules (
 	plan_id TEXT NOT NULL REFERENCES plan_requests(plan_id),
 	origin TEXT NOT NULL,
@@ -8699,21 +8711,40 @@ function providerError(text) {
 function piStderr(text) {
   return stderrTail(text.split("\n").map(piErrorText).filter(Boolean).join("\n"));
 }
+function piMessageCost(message) {
+  if (message?.role !== "assistant" && !(message?.role === "toolResult" && message.usage)) return void 0;
+  const cost = message.usage?.cost?.total;
+  return typeof cost === "number" && Number.isFinite(cost) && cost >= 0 ? cost : null;
+}
+function messageCosts(messages2) {
+  return messages2.flatMap((message) => {
+    const amount2 = piMessageCost(message);
+    return amount2 === void 0 ? [] : [amount2 === null ? {} : { costUsd: amount2 }];
+  });
+}
 function piResult(output, error, status, signal) {
   let sessionId;
   let final;
   let latestError;
+  const costs = [];
+  let turnCosts = [];
   for (const line of output.split("\n")) {
     const event2 = piEvent(line);
     if (event2?.type === "session" && typeof event2.id === "string") sessionId = event2.id;
     if (event2?.type === "agent_start") {
       final = void 0;
       latestError = void 0;
+      costs.push(...turnCosts);
+      turnCosts = [];
     }
+    if (event2?.type === "message_end" && event2.message) turnCosts.push(...messageCosts([event2.message]));
     if (event2?.type === "message_end" && event2.message?.role === "assistant" && ["error", "aborted"].includes(event2.message.stopReason ?? ""))
       latestError = event2.message;
     if (event2?.type === "agent_end") {
-      const last = Array.isArray(event2.messages) ? event2.messages.at(-1) : void 0;
+      const messages2 = Array.isArray(event2.messages) ? event2.messages : [];
+      costs.push(...turnCosts.length ? turnCosts : messageCosts(messages2));
+      turnCosts = [];
+      const last = messages2.at(-1);
       if (last?.role === "assistant" && last.errorMessage) latestError = last;
       final = event2.willRetry ? void 0 : last;
     }
@@ -8744,6 +8775,7 @@ function piResult(output, error, status, signal) {
   const result = Array.isArray(final?.content) ? final.content.flatMap((part) => part?.type === "text" && typeof part.text === "string" ? [part.text] : []).join("") : void 0;
   return {
     failure,
+    ...costOf([...costs, ...turnCosts, ...turnCosts.length || failure && final === void 0 ? [{}] : []]),
     ...tail.length ? { stderr: tail } : {},
     ...sessionId ? { sessionId } : {},
     result: failure ? void 0 : result
@@ -8789,6 +8821,16 @@ function workDenyRules(otherFolders) {
     "Bash(sqlite3 .checkmate:*)",
     ...otherFolders.flatMap((folder) => [`Read(./${folder}/**)`, `Edit(./${folder}/**)`])
   ];
+}
+function costOf(calls) {
+  const costs = calls.flatMap((call) => call.costUsd === void 0 ? [] : [call.costUsd]);
+  if (!costs.length) return {};
+  const costUsd = costs.reduce((total, cost) => total + cost, 0);
+  if (!Number.isFinite(costUsd)) return {};
+  return {
+    costUsd,
+    ...costs.length < calls.length || calls.some((call) => call.costPartial) ? { costPartial: true } : {}
+  };
 }
 var moduleRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 var pluginRoot = existsSync(join2(moduleRoot, ".claude-plugin", "plugin.json")) ? moduleRoot : join2(moduleRoot, "plugin");
@@ -9072,11 +9114,12 @@ function claudeResult(output, error, status, signal) {
     `claude exited with ${signal ? `signal ${signal}` : `code ${status}`}${excerpt(error || parsed.result)}`
   ] : parsed.is_error === true ? ["operational_error", `claude ended with an error${excerpt(parsed.result)}`] : void 0;
   const tail = failure ? stderrTail(error) : [];
+  const cost = parsed.total_cost_usd;
   return {
     failure,
     ...tail.length ? { stderr: tail } : {},
     result: parsed.result,
-    ...typeof parsed.total_cost_usd === "number" ? { costUsd: parsed.total_cost_usd } : {},
+    ...typeof cost === "number" && Number.isFinite(cost) && cost >= 0 ? { costUsd: cost } : {},
     ...typeof parsed.duration_ms === "number" ? { durationMs: parsed.duration_ms } : {},
     ...typeof parsed.session_id === "string" ? { sessionId: parsed.session_id } : {}
   };
@@ -9091,14 +9134,19 @@ function callChild(executable, args, prompt, cwd, env, seconds, harness = "claud
     killSignal: "SIGTERM",
     maxBuffer: maxOutputBytes
   });
-  const code = child.error && "code" in child.error ? String(child.error.code) : void 0;
-  if (code === "ETIMEDOUT")
-    return { failure: ["interrupted", `${harness} did not end in ${seconds} seconds. Checkmate stopped it.`] };
-  if (code === "ENOBUFS")
-    return { failure: ["operational_error", `${harness} output exceeded 4 MiB. Checkmate stopped it.`] };
-  if (code) return { failure: ["operational_error", `${harness} failed: ${code}.`] };
   const result = harness === "pi" ? piResult : claudeResult;
-  return result(child.stdout ?? "", child.stderr ?? "", child.status, child.signal);
+  const parsed = result(child.stdout ?? "", child.stderr ?? "", child.status, child.signal);
+  const code = child.error && "code" in child.error ? String(child.error.code) : void 0;
+  const cost = costOf(harness === "pi" && code ? [parsed, {}] : [parsed]);
+  if (code === "ETIMEDOUT")
+    return {
+      ...cost,
+      failure: ["interrupted", `${harness} did not end in ${seconds} seconds. Checkmate stopped it.`]
+    };
+  if (code === "ENOBUFS")
+    return { ...cost, failure: ["operational_error", `${harness} output exceeded 4 MiB. Checkmate stopped it.`] };
+  if (code) return { ...cost, failure: ["operational_error", `${harness} failed: ${code}.`] };
+  return parsed;
 }
 function closingBracket(text, start) {
   let depth = 0;
@@ -9196,7 +9244,9 @@ function launchChild(executable, args, prompt, cwd, env, seconds, onStart, harne
       clearTimeout(timer);
       clearTimeout(killTimer);
       const result = harness === "pi" ? piResult : claudeResult;
-      resolvePromise(failure ? { failure } : result(output, errors, status, signal));
+      const parsed = result(output, errors, status, signal);
+      const cost = costOf(harness === "pi" && failure ? [parsed, {}] : [parsed]);
+      resolvePromise(failure ? { ...cost, failure } : parsed);
     });
   });
 }
@@ -13290,6 +13340,58 @@ function resultAcceptance(store, run2, sha256) {
   return approvalState(store, "result", run2.run_id, sha256, policy);
 }
 
+// plugin/src/costs.ts
+var noModelCost = { costUsd: null, costPartial: false };
+var steps = ["end", "record", "rules", "merge", "verify", "follow-turn"];
+function addCost(total, status, attempted, value2, partial) {
+  const amount2 = typeof value2 === "number" && Number.isFinite(value2) && value2 >= 0 ? value2 : null;
+  if (status === "skipped" && !attempted && amount2 === null) return;
+  if (amount2 !== null) total.amount = (total.amount ?? 0) + amount2;
+  if (amount2 === null || partial) total.missing = true;
+}
+function costOf2(total) {
+  return { costUsd: total.amount, costPartial: total.amount !== null && total.missing };
+}
+function explorationCost(events) {
+  const total = { amount: null, missing: false };
+  for (const { step, status, detail } of events) {
+    if (!steps.includes(step)) continue;
+    addCost(total, status, Boolean(detail.session || detail.agent), detail.costUsd, detail.costPartial === true);
+  }
+  return costOf2(total);
+}
+function groupedCosts(store, planId) {
+  const reported = "json_type(e.detail, '$.costUsd') IN ('integer', 'real')";
+  const rows2 = all(
+    store,
+    `SELECT ${planId === void 0 ? "x.plan_id" : "e.exploration_id"} AS key, e.status,
+			(json_extract(e.detail, '$.session') IS NOT NULL OR json_extract(e.detail, '$.agent') IS NOT NULL) AS attempted,
+			CASE WHEN ${reported} THEN json_extract(e.detail, '$.costUsd') ELSE xc.cost_usd END AS amount,
+			CASE WHEN ${reported} THEN json_type(e.detail, '$.costPartial') = 'true' ELSE xc.partial END AS partial
+		FROM exploration_events e
+		JOIN explorations x ON x.exploration_id = e.exploration_id
+		LEFT JOIN exploration_event_costs xc ON xc.source_operation_id = e.operation_id
+			AND xc.step = e.step AND xc.explorer = coalesce(e.explorer, '')
+		WHERE e.step IN (${steps.map(() => "?").join(", ")})${planId === void 0 ? "" : " AND x.plan_id = ?"}
+		ORDER BY e.rowid`,
+    ...steps,
+    ...planId === void 0 ? [] : [planId]
+  );
+  const totals = /* @__PURE__ */ new Map();
+  for (const row3 of rows2) {
+    const total = totals.get(row3.key) ?? { amount: null, missing: false };
+    addCost(total, row3.status, Boolean(row3.attempted), row3.amount, row3.partial === 1);
+    totals.set(row3.key, total);
+  }
+  return new Map([...totals].map(([key, total]) => [key, costOf2(total)]));
+}
+function planCosts(store) {
+  return groupedCosts(store);
+}
+function planExplorationCosts(store, planId) {
+  return groupedCosts(store, planId);
+}
+
 // plugin/src/explorations.ts
 import { mkdirSync as mkdirSync4, writeFileSync as writeFileSync2 } from "node:fs";
 import { join as join5 } from "node:path";
@@ -13479,7 +13581,13 @@ function addEvent(store, explorationId, event2, operationId, at) {
 function explorationEvents(store, explorationId) {
   return all(
     store,
-    "SELECT at, step, explorer, status, detail FROM exploration_events WHERE exploration_id = ? ORDER BY rowid",
+    `SELECT e.at, e.step, e.explorer, e.status,
+			CASE WHEN c.cost_usd IS NULL OR json_type(e.detail, '$.costUsd') IN ('integer','real') THEN e.detail
+				WHEN c.partial THEN json_set(e.detail, '$.costUsd', c.cost_usd, '$.costPartial', json('true'))
+				ELSE json_set(e.detail, '$.costUsd', c.cost_usd) END AS detail
+		FROM exploration_events e LEFT JOIN exploration_event_costs c
+			ON c.source_operation_id = e.operation_id AND c.step = e.step AND c.explorer = coalesce(e.explorer, '')
+		WHERE e.exploration_id = ? ORDER BY e.rowid`,
     explorationId
   ).map((row3) => ({ ...row3, detail: JSON.parse(row3.detail) }));
 }
@@ -14520,9 +14628,9 @@ function logReply(store, actor, explorationId, planId, entries, missing, dropped
     return [`${error.message}${error.hint ? ` ${error.hint}` : ""}`];
   }
 }
-function sum(calls, key) {
-  const values = calls.flatMap((call) => call[key] === void 0 ? [] : [call[key]]);
-  return values.length ? { [key]: values.reduce((total, value2) => total + value2, 0) } : {};
+function duration(calls) {
+  const values = calls.flatMap((call) => call.durationMs === void 0 ? [] : [call.durationMs]);
+  return values.length ? { durationMs: values.reduce((total, value2) => total + value2, 0) } : {};
 }
 function running2(pid) {
   try {
@@ -14779,8 +14887,8 @@ function recordLocked(store, operation, input, plan, env, cwd, started) {
     referencesDropped: dropped.length,
     ...dropped.length ? { droppedReferences: dropped } : {},
     ...unknownRules.length ? { unknownRules } : {},
-    ...sum(calls, "costUsd"),
-    ...sum(calls, "durationMs")
+    ...costOf(calls),
+    ...duration(calls)
   };
   const reply = {
     status,
@@ -15306,10 +15414,6 @@ function recordExplorers(store, actor, explorationId, sessions, env) {
       store.workspace
     ).status
   );
-}
-function costOf(calls) {
-  const costs = calls.flatMap((call) => call.costUsd === void 0 ? [] : [call.costUsd]);
-  return costs.length ? { costUsd: costs.reduce((total, cost) => total + cost, 0) } : {};
 }
 function mergeInput(store, explorationId, after = 0) {
   const opened = explorationRow(store, explorationId);
@@ -16883,12 +16987,14 @@ function testCounts(plan) {
   return { total: plan.tests.length, ready: count2("ready"), blocked: count2("blocked"), deferred: count2("deferred") };
 }
 function planList(store) {
+  const costs = planCosts(store);
   const drafted = latestRevisions(store).map((row3) => {
     const open = [
       ...row3.plan.gaps.filter((gap) => gap.status === "open"),
       ...planRunGaps(store, row3.plan_id).filter((item) => !item.adopted).map((item) => item.gap)
     ];
     return {
+      ...costs.get(row3.plan_id) ?? noModelCost,
       planId: row3.plan_id,
       status: "drafted",
       revision: row3.revision,
@@ -16908,6 +17014,7 @@ function planList(store) {
     };
   });
   const requested = requestedPlans(store).map((request) => ({
+    ...costs.get(request.planId) ?? noModelCost,
     planId: request.planId,
     status: "requested",
     revision: null,
@@ -17015,6 +17122,7 @@ function planHasRevision(store, planId) {
   return Boolean(one(store, "SELECT 1 FROM plan_revisions WHERE plan_id = ?", planId));
 }
 function planExplorations(store, planId) {
+  const costs = planExplorationCosts(store, planId);
   return all(
     store,
     "SELECT exploration_id, started_at FROM explorations WHERE plan_id = ? ORDER BY rowid",
@@ -17023,6 +17131,7 @@ function planExplorations(store, planId) {
     const status = explorationStatus(store, row3.exploration_id);
     const ended = ["failed", "stopped", "interrupted"].includes(status.state);
     return {
+      ...costs.get(row3.exploration_id) ?? noModelCost,
       explorationId: status.explorationId,
       state: status.state,
       running: runningExploration.includes(status.state),
@@ -17172,6 +17281,7 @@ function explorationLive(store, explorationId, now = Date.now()) {
   const found = foundEntries(store, status.planId, explorationId, limit, claims, questions);
   const ended = ["failed", "stopped", "interrupted"].includes(status.state);
   return {
+    ...explorationCost(events),
     explorationId,
     planId: status.planId,
     goal: opened.charter.goal,
@@ -18796,6 +18906,115 @@ function exportExploration(store, explorationId, format2) {
   return lines2.join("\n") + "\n";
 }
 
+// plugin/src/pi-session-costs.ts
+import { createReadStream, realpathSync as realpathSync5 } from "node:fs";
+import { readdir } from "node:fs/promises";
+import { homedir as homedir2 } from "node:os";
+import { basename as basename2, join as join10, resolve as resolve5 } from "node:path";
+import { createInterface } from "node:readline";
+async function readUsage(path, workspace, session) {
+  const stream = createReadStream(path, { encoding: "utf8" });
+  let usage2;
+  try {
+    for await (const line of createInterface({ input: stream, crlfDelay: Infinity })) {
+      if (!line.trim()) continue;
+      const entry = JSON.parse(line);
+      if (!usage2) {
+        if (entry.type !== "session" || entry.id !== session || realpathSync5(entry.cwd) !== workspace) return;
+        usage2 = { parent: entry.parentSession ? basename2(entry.parentSession) : null, messages: /* @__PURE__ */ new Map() };
+      } else if (entry.type === "message") {
+        const cost = piMessageCost(entry.message);
+        if (cost === void 0) continue;
+        if (typeof entry.id !== "string" || typeof entry.timestamp !== "string") return;
+        usage2.messages.set(entry.id, { at: entry.timestamp, cost });
+      }
+    }
+    return usage2;
+  } catch {
+    return void 0;
+  } finally {
+    stream.destroy();
+  }
+}
+async function recoverPiCosts(store, env) {
+  const phases2 = all(
+    store,
+    `
+		SELECT e.operation_id AS operation, e.step, coalesce(e.explorer, '') AS explorer,
+			CASE WHEN e.step = 'record' THEN e.detail ->> 'recorder' ELSE e.detail ->> 'session' END AS session,
+			CASE WHEN e.step = 'record' THEN e.detail ->> 'session' END AS parent,
+			CASE WHEN e.step = 'follow-turn' THEN (SELECT max(f.at) FROM exploration_events f WHERE f.exploration_id = e.exploration_id
+				AND f.step = 'follow' AND f.rowid < e.rowid) ELSE start.at END AS since, e.at AS until
+		FROM exploration_events start JOIN exploration_events e ON e.exploration_id = start.exploration_id
+		JOIN exploration_events done ON done.exploration_id = e.exploration_id AND done.step = 'done'
+		LEFT JOIN exploration_event_costs c ON c.source_operation_id = e.operation_id
+			AND c.step = e.step AND c.explorer = coalesce(e.explorer, '')
+		WHERE start.step = 'start' AND start.detail ->> '$.context.harness' = 'pi'
+			AND e.step IN ('end', 'record', 'rules', 'merge', 'verify', 'follow-turn')
+			AND coalesce(json_type(e.detail, '$.costUsd'), '') NOT IN ('integer', 'real') AND c.cost_usd IS NULL
+	`
+  );
+  if (!phases2.length) return;
+  const workspace = realpathSync5(store.workspace);
+  const home = env.HOME || env.USERPROFILE || homedir2();
+  const expand = (path) => resolve5(
+    workspace,
+    path.replace(/^~(?=$|[/\\])/, () => home)
+  );
+  const agent = expand(env.PI_CODING_AGENT_DIR || join10(home, ".pi", "agent"));
+  const project = "--" + workspace.replace(/^[/\\]/, "").replace(/[/\\:]/g, "-") + "--";
+  const folder = env.PI_CODING_AGENT_SESSION_DIR ? expand(env.PI_CODING_AGENT_SESSION_DIR) : join10(agent, "sessions", project);
+  const files2 = await readdir(folder, { withFileTypes: true }).catch(() => []);
+  const paths = /* @__PURE__ */ new Map();
+  for (const file of files2) {
+    const id2 = /_([0-9a-f-]{36})\.jsonl$/i.exec(file.name)?.[1];
+    if (file.isFile() && id2) paths.set(id2, join10(folder, file.name));
+  }
+  const sessions = /* @__PURE__ */ new Map();
+  function load(id2) {
+    const path = paths.get(id2);
+    if (!path) return;
+    if (!sessions.has(id2)) sessions.set(id2, readUsage(path, workspace, id2));
+    return sessions.get(id2);
+  }
+  const costs = [];
+  for (const phase of phases2) {
+    const session = await load(phase.session);
+    if (!session) continue;
+    const parent = phase.parent ? await load(phase.parent) : void 0;
+    if (phase.parent && (!parent || session.parent !== basename2(paths.get(phase.parent)))) continue;
+    if (!phase.parent && session.parent) continue;
+    let total = 0;
+    let reported = false;
+    let partial = false;
+    for (const [id2, { at, cost }] of session.messages) {
+      if (parent?.messages.has(id2) || at < phase.since || at > phase.until) continue;
+      if (cost === null) partial = true;
+      else {
+        total += cost;
+        reported = true;
+      }
+    }
+    if (reported && Number.isFinite(total)) costs.push({ ...phase, total, partial });
+  }
+  if (!costs.length) return;
+  write(
+    store,
+    { actor: "checkmate", command: "recover Pi costs", subject: "explorations", input: null },
+    (operationId) => {
+      const insert = store.db.prepare(`INSERT INTO exploration_event_costs
+			(source_operation_id, step, explorer, cost_usd, partial, operation_id) VALUES (?, ?, ?, ?, ?, ?)
+			ON CONFLICT (source_operation_id, step, explorer) DO NOTHING`);
+      let saved = 0;
+      for (const cost of costs)
+        saved += Number(
+          insert.run(cost.operation, cost.step, cost.explorer, cost.total, Number(cost.partial), operationId).changes
+        );
+      return { reply: completed("explorations", { saved }), subjects: ["explorations"] };
+    }
+  );
+}
+
 // plugin/src/ui/server.ts
 import { createServer } from "node:http";
 import { randomBytes as randomBytes3 } from "node:crypto";
@@ -18804,7 +19023,7 @@ import { fileURLToPath as fileURLToPath2 } from "node:url";
 
 // plugin/src/modes.ts
 import { spawnSync as spawnSync5 } from "node:child_process";
-import { resolve as resolve5 } from "node:path";
+import { resolve as resolve6 } from "node:path";
 var testModes = ["exploratory", "regression", "auto"];
 var storedTestsNone = "none, the testers retest the earlier findings";
 function hasRequest(store, planId) {
@@ -18897,7 +19116,7 @@ function runTest(store, actor, given, env, preferSavedModel = false) {
   const input = { ...given, build };
   if (!hasRequest(store, input.planId)) openRequest(store, actor, input, env, assumed);
   const mode = input.mode && input.mode !== "auto" ? input.mode : autoMode(store, input.planId);
-  const base = input.since ? void 0 : upstreamBase(resolve5(store.workspace, input.repo ?? "."));
+  const base = input.since ? void 0 : upstreamBase(resolve6(store.workspace, input.repo ?? "."));
   if (!input.since)
     assumed.push(
       base ? `since=${base} (the default branch of origin, behind the checked-out commit)` : "since=none (no diff is given: no --since, and no default branch of origin behind the checked-out commit)"
@@ -18952,8 +19171,14 @@ function html2(strings, ...values) {
   for (let i = 0; i < values.length; i++) text += piece(values[i]) + strings[i + 1];
   return { html: text };
 }
-function join10(items, separator2) {
+function join11(items, separator2) {
   return html2`${items.flatMap((item, i) => i ? [separator2, item] : [item])}`;
+}
+function money(costUsd) {
+  return costUsd > 0 && costUsd < 0.01 ? "<$0.01" : `$${costUsd.toFixed(2)}`;
+}
+function costText(costUsd, partial) {
+  return costUsd === null ? "Unknown" : `${money(costUsd)}${partial ? " (partial)" : ""}`;
 }
 var statusLook = {
   passed: ["\u2713", "pass"],
@@ -19122,7 +19347,7 @@ function metadataList(values = {}) {
 function plural(count2, one2, many = `${one2}s`) {
   return `${count2} ${count2 === 1 ? one2 : many}`;
 }
-function duration(ms2) {
+function duration2(ms2) {
   const seconds = Math.round(ms2 / 1e3);
   if (seconds < 60) return `${seconds} s`;
   const minutes = Math.floor(seconds / 60);
@@ -19752,7 +19977,7 @@ function planRecord2(store, planId) {
 var worstFirst = ["failed", "question", "passed", "not_checked"];
 var buildStates = ["new", "still_present", "fixed", "returned", "not_retested"];
 function sumCells(build, cells) {
-  const total = (count2) => cells.reduce((sum2, cell3) => sum2 + count2(cell3), 0);
+  const total = (count2) => cells.reduce((sum, cell3) => sum + count2(cell3), 0);
   return {
     build,
     status: worstFirst.find((status) => cells.some((cell3) => cell3.status === status)),
@@ -19948,8 +20173,8 @@ function claimDetails(store, planId) {
 
 // plugin/src/harvest.ts
 var harvestedStates = ["observed", "confirmed", "accepted"];
-function stepsText(steps, fallback) {
-  const text = [steps ?? []].flat().join(" ").trim();
+function stepsText(steps2, fallback) {
+  const text = [steps2 ?? []].flat().join(" ").trim();
   return text || fallback;
 }
 function linkedCriterion(entry, criteria) {
@@ -20199,7 +20424,7 @@ function activityLine2(tool, input, cwd) {
   return line.length > lineLimit ? `${line.slice(0, lineLimit - 1)}\u2026` : line;
 }
 function readJson(req) {
-  return new Promise((resolve8) => {
+  return new Promise((resolve9) => {
     const chunks = [];
     let length = 0;
     req.on("data", (chunk) => {
@@ -20208,12 +20433,12 @@ function readJson(req) {
     });
     req.on("end", () => {
       try {
-        resolve8(length > maxBody ? null : JSON.parse(Buffer.concat(chunks).toString("utf8")));
+        resolve9(length > maxBody ? null : JSON.parse(Buffer.concat(chunks).toString("utf8")));
       } catch {
-        resolve8(null);
+        resolve9(null);
       }
     });
-    req.on("error", () => resolve8(null));
+    req.on("error", () => resolve9(null));
   });
 }
 function refuse(res) {
@@ -20453,7 +20678,7 @@ function requestHref(item, from, history = false) {
   return query ? `${recordPath(item)}?${query}` : recordPath(item);
 }
 function waitsFor(item) {
-  return html2`waits <span data-since="${item.at}">${duration(Math.max(0, Date.now() - Date.parse(item.at)))}</span>`;
+  return html2`waits <span data-since="${item.at}">${duration2(Math.max(0, Date.now() - Date.parse(item.at)))}</span>`;
 }
 function nextOpen(store, after) {
   const open = openPermissions(store).filter((item) => !after || requestName(item) !== requestName(after));
@@ -21153,7 +21378,7 @@ function logRow(row3) {
     html2`${pill(row3.status === "rejected" ? "rejected_operation" : row3.status, words(row3.status))} ${time(row3.at)}`,
     [
       html2`${person}${row3.via ? html2` <a href="/requests/${row3.via}">via request ${row3.via}</a>` : ""} ·
-			${row3.subjects.length ? join10(row3.subjects.map(subjectLink), " ") : html2`<span class="muted">no subject</span>`}`,
+			${row3.subjects.length ? join11(row3.subjects.map(subjectLink), " ") : html2`<span class="muted">no subject</span>`}`,
       ...row3.status === "rejected" ? [html2`<span class="reason">${reasons(row3.response).join(" ")}</span>`] : [],
       html2`<span class="mono muted">${row3.id}</span>`
     ]
@@ -21564,12 +21789,9 @@ function phaseOf2(events, state) {
   );
   return unrecorded ? "record" : "merge";
 }
-function costOf2(events) {
+function costOf3(events) {
   const costs = events.flatMap((item) => typeof item.detail.costUsd === "number" ? [item.detail.costUsd] : []);
   return costs.length ? costs.reduce((total, cost) => total + cost, 0) : null;
-}
-function money(costUsd) {
-  return `$${costUsd.toFixed(2)}`;
 }
 function failureOf(reason, hint, events) {
   const text = reason ?? "";
@@ -21677,7 +21899,7 @@ function runsOf(store, explorationId, counts2) {
     actor: starters[0]?.actor ?? "unknown",
     startedAt: startAt,
     endedAt: done?.at ?? stop?.at ?? (status.state === "interrupted" ? events.at(-1)?.at ?? null : null),
-    costUsd: costOf2(firstFollow === -1 ? events : events.slice(0, firstFollow)),
+    costUsd: costOf3(firstFollow === -1 ? events : events.slice(0, firstFollow)),
     outcome: testing ? waits : outcomes[status.state === "following" ? "completed" : status.state] ?? "",
     failure,
     stoppable: testing && status.path !== "session"
@@ -21707,7 +21929,7 @@ function runsOf(store, explorationId, counts2) {
       actor: followers[number]?.actor ?? "unknown",
       startedAt: events[from].at,
       endedAt: ended?.at ?? (state === "stopped" ? later.findLast((item) => item.step === "stop")?.at ?? null : null),
-      costUsd: costOf2(later),
+      costUsd: costOf3(later),
       outcome: words4[state] ?? "",
       failure: trouble,
       stoppable: state === "following"
@@ -21764,7 +21986,7 @@ function meta(run2, now) {
   return [
     run2.actor,
     time(run2.startedAt),
-    run2.running ? html2`<span data-since="${run2.startedAt}">${duration(spent)}</span>` : duration(spent),
+    run2.running ? html2`<span data-since="${run2.startedAt}">${duration2(spent)}</span>` : duration2(spent),
     run2.costUsd === null ? null : money(run2.costUsd)
   ];
 }
@@ -21773,7 +21995,7 @@ function metaText(run2, now) {
   return [
     run2.actor,
     run2.startedAt,
-    duration(Math.max(0, end - Date.parse(run2.startedAt))),
+    duration2(Math.max(0, end - Date.parse(run2.startedAt))),
     run2.costUsd === null ? null : money(run2.costUsd)
   ].filter(Boolean).join(" \xB7 ");
 }
@@ -21807,22 +22029,22 @@ function row(run2, n, now) {
 		<span class="sp-c-tag">${pill(run2.state)}</span>
 		<span class="sp-c-id" title="${run2.explorationId}">${run2.explorationId}</span>
 		<span class="sp-c-title ell" title="${title}">${title}</span>
-		<span class="sp-c-meta ell" title="${metaText(run2, now)}">${join11(meta(run2, now), " \xB7 ")}</span>
+		<span class="sp-c-meta ell" title="${metaText(run2, now)}">${join12(meta(run2, now), " \xB7 ")}</span>
 		${optionsBox(items)}
 	</div>`;
 }
-function join11(items, separator2) {
+function join12(items, separator2) {
   const shown2 = items.filter((item) => item !== null);
   return html2`${shown2.map((item, index2) => index2 ? html2`${separator2}${item}` : item)}`;
 }
 function requestRow(request, n, now) {
   const start = Date.parse(request.startedAt ?? request.askedAt);
   const end = request.endedAt ? Date.parse(request.endedAt) : now;
-  const spent = isEnded(request) ? duration(Math.max(0, end - start)) : null;
+  const spent = isEnded(request) ? duration2(Math.max(0, end - start)) : null;
   const meta2 = [
     request.asker,
     time(request.askedAt),
-    request.state === "running" ? html2`<span data-since="${request.startedAt}">${duration(Math.max(0, now - start))}</span>` : spent,
+    request.state === "running" ? html2`<span data-since="${request.startedAt}">${duration2(Math.max(0, now - start))}</span>` : spent,
     request.costUsd === null ? null : money(request.costUsd)
   ];
   const metaText2 = [request.asker, request.askedAt, spent, request.costUsd === null ? null : money(request.costUsd)].filter(Boolean).join(" \xB7 ");
@@ -21841,7 +22063,7 @@ function requestRow(request, n, now) {
 		<span class="sp-c-tag">${pill(request.state)}</span>
 		<span class="sp-c-id" title="${request.id}">${request.id}</span>
 		<span class="sp-c-title ell" title="${title}">${title}</span>
-		<span class="sp-c-meta ell" title="${metaText2}">${join11(meta2, " \xB7 ")}</span>
+		<span class="sp-c-meta ell" title="${metaText2}">${join12(meta2, " \xB7 ")}</span>
 	</div>`;
 }
 function activityPage(store, context, params, defaults) {
@@ -22334,7 +22556,7 @@ function reviewOf(store, planId) {
     items,
     explorations,
     running: running3,
-    storable: storableDefects(store, planId).reduce((sum2, item) => sum2 + item.claims.length, 0),
+    storable: storableDefects(store, planId).reduce((sum, item) => sum + item.claims.length, 0),
     approvalRequired: approvalPolicy(target.profile).plan === "required"
   };
 }
@@ -23155,7 +23377,7 @@ function claimEvidenceList2(store, planId, claim) {
 function dataLine(reason, data) {
   return html2`${reason ?? "No reason is recorded."}
 	${data.length ? html2` Its data:
-				${join10(
+				${join11(
     data.map((path) => html2`<code>${path}</code>`),
     ", "
   )}.` : ""}`;
@@ -23204,6 +23426,7 @@ function explorationsTable(explorations) {
 					<th scope="col">Instance</th>
 					<th scope="col">Level</th>
 					<th scope="col">Started</th>
+					<th scope="col">Cost</th>
 				</tr>
 			</thead>
 			<tbody>
@@ -23225,6 +23448,9 @@ function explorationsTable(explorations) {
 								${item.level ?? html2`<span class="muted">none</span>`}${item.explorers === null ? "" : html2` <span class="muted">· ${plural(item.explorers, "explorer")}</span>`}
 							</td>
 							<td class="nowrap">${time(item.startedAt)}</td>
+							<td class="nowrap" title="Reported exploration cost">
+								${costText(item.costUsd, item.costPartial)}
+							</td>
 						</tr>`
   )}
 			</tbody>
@@ -23240,10 +23466,10 @@ function inState(item) {
   if (item.pausedAt)
     return html2`<span class="age"
 			>paused for
-			<span data-since="${item.pausedAt}">${duration(Date.now() - Date.parse(item.pausedAt))}</span></span
+			<span data-since="${item.pausedAt}">${duration2(Date.now() - Date.parse(item.pausedAt))}</span></span
 		>`;
   const live = item.startedAt && (item.state === "running" || item.state === "given");
-  return live ? html2`<span class="age" data-since="${item.startedAt}">${duration(item.elapsedMs)}</span>` : html2`<span class="age">${duration(item.elapsedMs)}</span>`;
+  return live ? html2`<span class="age" data-since="${item.startedAt}">${duration2(item.elapsedMs)}</span>` : html2`<span class="age">${duration2(item.elapsedMs)}</span>`;
 }
 function explorationHref(explorationId, key) {
   return key && key !== "summary" ? `/explorations/${explorationId}?item=${encodeURIComponent(key)}` : `/explorations/${explorationId}`;
@@ -23434,7 +23660,7 @@ function explorationList(context, live, others, asking) {
       `tester-${index2}`,
       [
         item.turn,
-        item.pausedAt ? `paused for ${duration(Date.now() - Date.parse(item.pausedAt))}` : item.elapsedMs !== null ? duration(item.elapsedMs) : null,
+        item.pausedAt ? `paused for ${duration2(Date.now() - Date.parse(item.pausedAt))}` : item.elapsedMs !== null ? duration2(item.elapsedMs) : null,
         raw ? `${raw} not merged` : null
       ].filter(Boolean).join(" \xB7 "),
       asked2 ? rowOptions(context, asked2, from) : stoppableTester(live, item) ? optionsBox([testerStopOption(live.explorationId, item.explorer, 1)]) : "",
@@ -23656,7 +23882,7 @@ function phaseDetail(live, row3, crumbs) {
 function timeLine(live, run2) {
   const started = html2`started ${ago(run2.startedAt)}`;
   if (live.running || !run2.endedAt) return started;
-  const took = duration(Date.parse(run2.endedAt) - Date.parse(run2.startedAt));
+  const took = duration2(Date.parse(run2.endedAt) - Date.parse(run2.startedAt));
   return html2`${started}, ended ${ago(run2.endedAt)}, took ${took}`;
 }
 function phaseStrip(run2) {
@@ -23761,13 +23987,15 @@ function explorationPage(store, context, explorationId, params = new URLSearchPa
 					${live.running && run2.phase ? html2`${phaseStrip(run2)}
 									<span class="sp-pill" title="Time since the start"
 										>elapsed
-										${live.running ? html2`<span data-since="${run2.startedAt}">${duration(Date.now() - Date.parse(run2.startedAt))}</span>` : ""}</span
+										${live.running ? html2`<span data-since="${run2.startedAt}">${duration2(Date.now() - Date.parse(run2.startedAt))}</span>` : ""}</span
 									>` : live.phases.map(
       (row3) => html2`<span class="${pillClass(row3.state)}" title="${words(row3.state)}"
 											>${row3.phase}</span
 										>`
     )}
-					${run2.costUsd === null ? "" : html2`<span class="sp-pill" title="Cost so far, as Claude Code reports it">${money(run2.costUsd)}</span>`}
+					<span class="sp-pill" title="Reported cost across this exploration and its follow-ups"
+						>Total cost ${costText(live.costUsd, live.costPartial)}</span
+					>
 				</div>
 			</div>
 			<div data-region="exploration-banner">
@@ -23879,7 +24107,7 @@ function claimPage(store, context, explorationId, claimId, state = null) {
 					</div>
 				</form>
 			</section>`;
-  const steps = [claim.steps ?? []].flat();
+  const steps2 = [claim.steps ?? []].flat();
   return {
     title: `${report.planId} \xB7 ${claim.id}`,
     section: "home",
@@ -23902,9 +24130,9 @@ function claimPage(store, context, explorationId, claimId, state = null) {
 					<p>${claim.expected}</p>
 					<p class="lab">Actual</p>
 					<p>${claim.actual}</p>
-					${steps.length ? html2`<p class="lab">Steps</p>
+					${steps2.length ? html2`<p class="lab">Steps</p>
 									<ol>
-										${steps.map((step) => html2`<li>${step}</li>`)}
+										${steps2.map((step) => html2`<li>${step}</li>`)}
 									</ol>` : ""}
 					<p class="lab">Evidence</p>
 					${claimEvidenceList2(store, report.planId, claim)}
@@ -23977,7 +24205,7 @@ async function discoverModels(harness, workspace, env) {
   const name2 = isPi ? "Pi" : "Claude Code";
   const args = isPi ? ["--no-mcp", "--list-models"] : claudeArgs;
   const input = isPi ? "" : JSON.stringify({ type: "control_request", request_id: requestId, request: { subtype: "initialize" } }) + "\n";
-  return new Promise((resolve8, reject) => {
+  return new Promise((resolve9, reject) => {
     const host = execFile(
       program,
       args,
@@ -23985,7 +24213,7 @@ async function discoverModels(harness, workspace, env) {
       (error, stdout) => {
         const models = error ? void 0 : parseModels(stdout);
         if (!models) return reject(new Error(`${name2} could not list models. Check the host configuration.`));
-        resolve8([...new Map(models.map((model) => [model.value, model])).values()]);
+        resolve9([...new Map(models.map((model) => [model.value, model])).values()]);
       }
     );
     host.stdin?.on("error", () => {
@@ -24009,13 +24237,13 @@ function developerText(store, planId, claimIds) {
     requireCondition(claim, `Unknown defect ${claimId} of plan ${planId}.`);
     const detail = details.find((item) => item.id === claimId);
     const rule = rules.find((item) => item.id === claim.rule);
-    const steps = [claim.steps ?? []].flat();
+    const steps2 = [claim.steps ?? []].flat();
     const files2 = [...new Set(detail.evidence.flatMap((item) => item.name ? [item.name] : []))];
     return [
       claim.title,
       `Severity: ${claim.severity}`,
       `Rule: ${rule ? `${rule.id} ${rule.text}` : claim.rule === outsideRule || !claim.rule ? "Outside the rules of the plan." : `${claim.rule} is not a rule of the plan now.`}`,
-      ...steps.length ? ["Steps:", ...steps.map((step, index2) => `${index2 + 1}. ${step}`)] : ["Steps: none recorded"],
+      ...steps2.length ? ["Steps:", ...steps2.map((step, index2) => `${index2 + 1}. ${step}`)] : ["Steps: none recorded"],
       `Expected: ${claim.expected}`,
       `Actual: ${claim.actual}`,
       `State: ${detail.builds.map((on) => `${on.build} ${buildStateWords[on.state]}`).join("; ") || "not tested on a build"}`,
@@ -24026,7 +24254,7 @@ function developerText(store, planId, claimIds) {
 }
 
 // plugin/src/ui/server.ts
-import { resolve as resolve6 } from "node:path";
+import { resolve as resolve7 } from "node:path";
 import { mkdirSync as mkdirSync7, rmSync as rmSync6, writeFileSync as writeFileSync4 } from "node:fs";
 
 // plugin/src/actor.ts
@@ -24148,7 +24376,7 @@ var roleWords = {
   factory: "the factory",
   none: "nobody"
 };
-function tile(review, loop2, index2) {
+function tile(review, loop2, cost, index2) {
   const verdict = verdictLine(review);
   const handed = review.items.filter((item) => item.kind === "defect" && item.claim?.handoff).length;
   const latest = review.map.builds.at(-1);
@@ -24180,13 +24408,16 @@ function tile(review, loop2, index2) {
 					title="${latest ? `${latest.build}, first tested ${latest.firstTestedAt}` : review.target}"
 					>${review.running ? html2`${review.phase ?? words(review.running.state)} ·
 									<span data-since="${review.running.startedAt}"
-										>${duration(Date.now() - Date.parse(review.running.startedAt))}</span
+										>${duration2(Date.now() - Date.parse(review.running.startedAt))}</span
 									>` : latest ? html2`${buildLabel(review, latest.build)} ${latest.build} ·
 									${time(latest.firstTestedAt)}` : review.target}${loop2 && !review.running ? ` \xB7 waits on ${roleWords[loop2.waitsOn]}` : ""}</span
 				>
 			</div>
 			<h2 class="sp-ct-title ell" title="${review.objective}">${review.objective}</h2>
 			<p class="sp-ct-verdict"><b>${verdict.head}</b> ${verdict.tail}</p>
+			<p class="sp-ct-cost" title="Reported cost across this plan’s explorations">
+				Total cost ${costText(cost.costUsd, cost.costPartial)}
+			</p>
 		</div>
 		${miniMap(review)}
 		<div class="sp-nums">
@@ -24230,14 +24461,18 @@ function homePage(store) {
   );
   const plans = listed.map((each) => each.plan);
   const reviews = listed.map((each) => each.review);
-  const blocking = reviews.reduce((sum2, review) => sum2 + verdictLine(review).blocking, 0);
+  const blocking = reviews.reduce((sum, review) => sum + verdictLine(review).blocking, 0);
   const body = html2`<div class="sp-home" role="list" aria-label="Plans" data-list>
-		${reviews.map((review, index2) => tile(review, plans[index2].loop, index2))}${newChangeRow(reviews.length)}
+		${reviews.map((review, index2) => tile(review, plans[index2].loop, plans[index2], index2))}${newChangeRow(reviews.length)}
 	</div>`;
   return {
     title: "Plans",
     section: "home",
-    subjects: ["inbox", ...plans.map((plan) => `plan:${plan.planId}`)],
+    subjects: [
+      "inbox",
+      ...plans.map((plan) => `plan:${plan.planId}`),
+      ...reviews.flatMap((review) => review.explorations.map((item) => `exploration:${item.explorationId}`))
+    ],
     crumbs: [["Plans", null]],
     back: null,
     body: html2`<div data-region="home">
@@ -24467,7 +24702,7 @@ function testLink(planId, revision, reference) {
   return owner ? html2`<a class="mono" href="/plans/${owner}#${id2}">${reference}</a>` : html2`<a class="mono" href="/plans/${planId}@${revision}#${id2}">${reference}</a>`;
 }
 function ids(values, link) {
-  return values.length ? join10(values.map(link), ", ") : html2`<span class="muted">none</span>`;
+  return values.length ? join11(values.map(link), ", ") : html2`<span class="muted">none</span>`;
 }
 function facts2(rows2) {
   const shown2 = rows2.filter(([, value2]) => value2 !== false);
@@ -25546,7 +25781,7 @@ function findingRefs(detail, reference) {
   const findings = detail.findings.filter((finding) => finding.assertionIds.includes(reference));
   if (!findings.length) return "";
   return html2` ·
-	${join10(
+	${join11(
     findings.map(
       (finding) => html2`<a href="${runItemHref(detail.runId, `finding:${finding.id}`)}" data-go>finding ${finding.id}</a>`
     ),
@@ -25662,7 +25897,7 @@ function findingCard(store, detail, finding) {
 							</ol>` : ""}
 			<p class="muted small">
 				Assertions
-				${join10(
+				${join11(
     finding.assertionIds.map((id2) => assertionLink(detail.runId, id2)),
     ", "
   )}${finding.requirementIds.length ? ` \xB7 requirements ${finding.requirementIds.join(", ")}` : ""}
@@ -26115,9 +26350,9 @@ function stateLabel(request) {
 function elapsed(request, now) {
   const start = Date.parse(request.startedAt ?? request.askedAt);
   if (!isEnded(request) && request.state === "running")
-    return html2`<span data-since="${request.startedAt}">${duration(Math.max(0, now - start))}</span>`;
+    return html2`<span data-since="${request.startedAt}">${duration2(Math.max(0, now - start))}</span>`;
   const end = request.endedAt ? Date.parse(request.endedAt) : now;
-  return duration(Math.max(0, end - start));
+  return duration2(Math.max(0, end - start));
 }
 function failureText(request) {
   const [sentence2, ...lines2] = (request.reason ?? "").split("\n");
@@ -26378,7 +26613,7 @@ function none3(text = "none") {
   return html2`<span class="muted">${text}</span>`;
 }
 function words3(items) {
-  return items.length ? join10(
+  return items.length ? join11(
     items.map((item) => html2`<code>${item}</code>`),
     " "
   ) : none3();
@@ -26536,7 +26771,7 @@ function entryList2(instance) {
 					<dt class="mono">${name2}</dt>
 					<dd>
 						<code
-							>${join10(
+							>${join11(
       value2.split(" ").map((word) => html2`<span class="word">${word}</span>`),
       " "
     )}</code
@@ -26860,7 +27095,7 @@ function harnessPage(store, context, env, form = null, model = null, testerModel
 }
 
 // plugin/src/ui/requester.ts
-import { join as join12 } from "node:path";
+import { join as join13 } from "node:path";
 
 // plugin/src/ui/pi-request.ts
 import { spawn as spawn3 } from "node:child_process";
@@ -26939,11 +27174,11 @@ function streamPi(program, args, prompt, cwd, env, extension, sessionId, onLine,
       } else onLine(line);
     }
   });
-  const finished = new Promise((resolve8) => {
+  const finished = new Promise((resolve9) => {
     child.on("close", (status, signal) => {
       clearTimeout(timeout);
       for (const timer of timers) clearTimeout(timer);
-      resolve8({
+      resolve9({
         status,
         signal,
         stderr,
@@ -27133,7 +27368,7 @@ function createRequester(store, options3) {
       explorationId: requestHookName,
       who: request.id
     };
-    const extension = join12(pluginRoot, "pi", "permission.mjs");
+    const extension = join13(pluginRoot, "pi", "permission.mjs");
     const args = run2.harness === "pi" ? [
       "--mode",
       "rpc",
@@ -27332,7 +27567,7 @@ function cookie(name2, value2, maxAge = 60 * 60 * 24 * 365) {
   return `${name2}=${encodeURIComponent(value2)}; Path=/; Max-Age=${maxAge}; HttpOnly; SameSite=Strict`;
 }
 function readForm(req) {
-  return new Promise((resolve8, reject) => {
+  return new Promise((resolve9, reject) => {
     const chunks = [];
     let length = 0;
     req.on("data", (chunk) => {
@@ -27341,7 +27576,7 @@ function readForm(req) {
     });
     req.on(
       "end",
-      () => resolve8(length > maxForm ? null : new URLSearchParams(Buffer.concat(chunks).toString("utf8")))
+      () => resolve9(length > maxForm ? null : new URLSearchParams(Buffer.concat(chunks).toString("utf8")))
     );
     req.on("error", reject);
   });
@@ -27386,6 +27621,12 @@ function plainMessage(error) {
 async function startUi(options3) {
   const files2 = assets();
   const store = openStore(options3.workspace);
+  await recoverPiCosts(store, options3.env ?? process.env).catch(() => {
+    ;
+    (options3.log ?? console.error)(
+      "Could not recover archived Pi costs. The UI will use the costs in the workspace."
+    );
+  });
   const watch = openReadOnlyStore(options3.workspace);
   const csrf = randomBytes3(24).toString("hex");
   const hookToken = workspaceHookToken(options3.workspace, options3.newHookToken);
@@ -28182,7 +28423,7 @@ data: ${matched.join(",") || "*"}
         `A stop of ${stopping.explorationId} is in progress. Wait until it ends, then start the test.`
       );
     try {
-      const since = typedSince ?? upstreamBase(resolve6(store.workspace, repo ?? "."));
+      const since = typedSince ?? upstreamBase(resolve7(store.workspace, repo ?? "."));
       const started = startExploration(
         store,
         actor,
@@ -28244,7 +28485,7 @@ data: ${matched.join(",") || "*"}
         storable.length,
         `Every defect of ${planId} is stored as a test already. Nothing is left to store.`
       );
-      const count2 = storable.reduce((sum2, item) => sum2 + item.claims.length, 0);
+      const count2 = storable.reduce((sum, item) => sum + item.claims.length, 0);
       requireCondition(
         !form.get("count") || form.get("count") === String(count2),
         `${plural(count2, "defect")} can be stored now, not ${form.get("count")}. Nothing is stored. Close this dialog and read the count again.`
@@ -28725,8 +28966,8 @@ data: ${matched.join(",") || "*"}
     const kept = text.trim() ? `.checkmate/sources/${planId}.md` : "";
     try {
       if (kept) {
-        mkdirSync7(resolve6(store.workspace, ".checkmate", "sources"), { recursive: true });
-        writeFileSync4(resolve6(store.workspace, kept), text.endsWith("\n") ? text : `${text}
+        mkdirSync7(resolve7(store.workspace, ".checkmate", "sources"), { recursive: true });
+        writeFileSync4(resolve7(store.workspace, kept), text.endsWith("\n") ? text : `${text}
 `);
       }
       const started = runTest(
@@ -28754,7 +28995,7 @@ data: ${matched.join(",") || "*"}
         cookie("checkmate_toast", `Started ${started.subject} on build ${build}`, 60)
       ]);
     } catch (error) {
-      if (kept && !hasRequest(store, planId)) rmSync6(resolve6(store.workspace, kept), { force: true });
+      if (kept && !hasRequest(store, planId)) rmSync6(resolve7(store.workspace, kept), { force: true });
       refuse3(engineText(error));
     }
   }
@@ -29153,22 +29394,22 @@ data: ${matched.join(",") || "*"}
     clearInterval(supervisorWatch);
     for (const client of clients) client.res.end();
     clients.clear();
-    await new Promise((resolve8) => {
+    await new Promise((resolve9) => {
       const forceClose = setTimeout(() => server.closeAllConnections(), 1e3);
       server.close(() => {
         clearTimeout(forceClose);
-        resolve8();
+        resolve9();
       });
     });
     closeStore(watch);
     closeStore(store);
   }
   try {
-    await new Promise((resolve8, reject) => {
+    await new Promise((resolve9, reject) => {
       server.once("error", reject);
       server.listen(options3.port ?? 0, "127.0.0.1", () => {
         server.off("error", reject);
-        resolve8();
+        resolve9();
       });
     });
     const address = server.address();
@@ -29187,7 +29428,7 @@ data: ${matched.join(",") || "*"}
 
 // plugin/src/agents.ts
 import { mkdirSync as mkdirSync8, readFileSync as readFileSync8, rmSync as rmSync7, writeFileSync as writeFileSync5 } from "node:fs";
-import { dirname as dirname2, join as join13 } from "node:path";
+import { dirname as dirname2, join as join14 } from "node:path";
 var testerAgent = "checkmate:tester";
 var clerkAgent = "checkmate:clerk";
 var doneSteps = ["study", "test", "record", "follow", "rules", "merge", "verify"];
@@ -29394,7 +29635,7 @@ function lineOf(explorationId, action2) {
   return `${action2.action} ${action2.name} ${action2.step} agent=${action2.to}${description} prompt="${promptOf2(action2)}"`;
 }
 function writeFile(store, path, text) {
-  const full = join13(store.workspace, path);
+  const full = join14(store.workspace, path);
   mkdirSync8(dirname2(full), { recursive: true });
   writeFileSync5(full, text.endsWith("\n") ? text : `${text}
 `);
@@ -29413,7 +29654,7 @@ function answerNext(store, actor, explorationId, actions, word) {
 ${replyLimit}
 End your reply with this line: ${replyLineOf(action2.name, action2.step)}`
         );
-        if (action2.answer) rmSync7(join13(store.workspace, action2.answer), { force: true });
+        if (action2.answer) rmSync7(join14(store.workspace, action2.answer), { force: true });
         addEvent(
           store,
           explorationId,
@@ -29589,19 +29830,19 @@ function nextActions(store, actor, explorationId) {
       return answerNext(store, actor, explorationId, [rulesAction(store, explorationId, rules, phase)], "wait");
   }
   const testers = phase.follow ? followTesters(events, launch).flatMap((item) => item.skipped ? [] : [item.explorer]) : explorerNames(launch.explorers);
-  const steps = testers.map((explorer) => ({
+  const steps2 = testers.map((explorer) => ({
     explorer,
     due: testerDue(
       phase.events.filter((item) => item.explorer === explorer),
       phase.follow ? "follow" : "study"
     )
   }));
-  if (steps.some((item) => item.due !== "settled"))
+  if (steps2.some((item) => item.due !== "settled"))
     return answerNext(
       store,
       actor,
       explorationId,
-      steps.filter((item) => !["running", "settled"].includes(item.due)).map((item) => testerAction(store, explorationId, item.explorer, item.due, phase)),
+      steps2.filter((item) => !["running", "settled"].includes(item.due)).map((item) => testerAction(store, explorationId, item.explorer, item.due, phase)),
       "wait"
     );
   const after = phase.follow?.after ?? 0;
@@ -29625,7 +29866,7 @@ function nextActions(store, actor, explorationId) {
 }
 function readText2(store, path) {
   try {
-    return readFileSync8(join13(store.workspace, path), "utf8");
+    return readFileSync8(join14(store.workspace, path), "utf8");
   } catch {
     return void 0;
   }
@@ -29825,7 +30066,7 @@ function stepDone(store, actor, input) {
 
 // plugin/src/cli.ts
 import { mkdirSync as mkdirSync9, readFileSync as readFileSync9, writeFileSync as writeFileSync6 } from "node:fs";
-import { dirname as dirname3, join as join14, resolve as resolve7 } from "node:path";
+import { dirname as dirname3, join as join15, resolve as resolve8 } from "node:path";
 import { constants as constants2 } from "node:sqlite";
 var testFields2 = [
   "title",
@@ -31505,7 +31746,7 @@ function printPlan(reply) {
   };
 }
 function writeOutput(store, out, content) {
-  const path = resolve7(store.workspace, out);
+  const path = resolve8(store.workspace, out);
   mkdirSync9(dirname3(path), { recursive: true });
   try {
     writeFileSync6(path, content, { flag: "wx" });
@@ -31665,7 +31906,7 @@ function commandHelp(argv) {
   return { ...refused("invalid_request", "checkmate", unknownCommand(words4)), data: { usage: [] } };
 }
 function version() {
-  return JSON.parse(readFileSync9(join14(pluginRoot, ".claude-plugin", "plugin.json"), "utf8")).version;
+  return JSON.parse(readFileSync9(join15(pluginRoot, ".claude-plugin", "plugin.json"), "utf8")).version;
 }
 function readJson2(text) {
   requireWellFormed(
@@ -31705,7 +31946,7 @@ function run(argv, io) {
   }
   const command = commands[name2];
   const subject = command.positionals.length && name2 !== "query" ? String(args[command.positionals[0]]) : name2;
-  const workspace = resolve7(io.cwd, value(args, "workspace") ?? ".");
+  const workspace = resolve8(io.cwd, value(args, "workspace") ?? ".");
   let store;
   try {
     store = command.readOnly ? openReadOnlyStore(workspace) : openStore(workspace);
@@ -31753,7 +31994,7 @@ function uiOptions(tokens, cwd) {
     port === void 0 || /^[0-9]+$/.test(values.port) && port <= 65535,
     `Invalid --port: ${values.port}. Use 0 to 65535.`
   );
-  return { workspace: resolve7(cwd, values.workspace ?? "."), port, newHookToken };
+  return { workspace: resolve8(cwd, values.workspace ?? "."), port, newHookToken };
 }
 async function serveUi(tokens) {
   const json = tokens.includes("--json");

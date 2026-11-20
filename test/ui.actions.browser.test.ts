@@ -715,3 +715,60 @@ test('a failed Pi tester shows the provider error in the run and its detail', br
 	assert.match((await page.locator('main').textContent()) ?? '', /API key expired/i)
 	assert.doesNotMatch((await page.locator('main').textContent()) ?? '', /secret-value/)
 })
+
+test('reported costs are visible on plan cards, exploration and history at narrow widths', browserTest, async (t) => {
+	const { page, url, workspace } = await setup(t, {})
+	const store = openStore(workspace)
+	for (const [id, cost] of [
+		['x-1', 0.12],
+		['x-2', 0],
+		['x-3', null],
+	] as const) {
+		openExploration(store, human, { planId: 'checkout', build: id, explorationId: id })
+		event(store, id, { step: 'start', detail: { ...launch, explorers: 1 } })
+		launched(store, id, 'a1')
+		event(store, id, {
+			step: 'end',
+			explorer: 'a1',
+			status: 'completed',
+			detail: cost === null ? {} : { costUsd: cost },
+		})
+		if (id === 'x-1') event(store, id, { step: 'record', explorer: 'a1', status: 'completed', detail: {} })
+		done(store, id)
+	}
+	closeStore(store)
+	for (const width of [1280, 400]) {
+		await page.setViewportSize({ width, height: 900 })
+		await page.goto(url('/'))
+		assert.match(
+			(await page.locator('[data-key="plan:checkout"]').textContent()) ?? '',
+			/Total cost \$0\.12 \(partial\)/
+		)
+		await page.goto(url('/explorations/x-1'))
+		assert.match(
+			(await page.locator('[data-region="exploration-state"]').textContent()) ?? '',
+			/Total cost \$0\.12 \(partial\)/
+		)
+		await page.goto(url('/explorations/x-2'))
+		assert.match(
+			(await page.locator('[data-region="exploration-state"]').textContent()) ?? '',
+			/Total cost \$0\.00/
+		)
+		await page.goto(url('/explorations/x-3'))
+		assert.match(
+			(await page.locator('[data-region="exploration-state"]').textContent()) ?? '',
+			/Total cost Unknown/
+		)
+		await page.goto(url('/plans/checkout@1'))
+		await page.locator('details[data-open-key="section:explorations"] > summary').click()
+		const history = page.locator('details[data-open-key="section:explorations"] table')
+		assert.match(
+			(await history.locator('tr[data-key="exploration:x-1"]').textContent()) ?? '',
+			/\$0\.12 \(partial\)/
+		)
+		assert.match((await history.locator('tr[data-key="exploration:x-2"]').textContent()) ?? '', /\$0\.00/)
+		assert.match((await history.locator('tr[data-key="exploration:x-3"]').textContent()) ?? '', /Unknown/)
+		const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)
+		assert.equal(overflow, false)
+	}
+})

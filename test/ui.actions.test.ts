@@ -730,3 +730,66 @@ test('a new Pi authentication failure shows the tester error in the run banner',
 	const page = (await call(ui, '/explorations/x-3')).body
 	assert.match(page, /data-key="run-ended"[\s\S]*?HTTP 401[\s\S]*?API key expired/)
 })
+
+test('plan, exploration, and history show reported, partial, zero, and unknown costs', async (t) => {
+	const { ui, workspace } = await fixture(t, {})
+	const store = openStore(workspace)
+	for (const [id, cost] of [
+		['x-1', 0.12],
+		['x-2', 0],
+		['x-3', null],
+		['x-small', 0.001],
+	] as const) {
+		openExploration(store, actor, { planId: 'checkout', build: id, explorationId: id })
+		event(store, id, { step: 'start', detail: { ...launch, explorers: 1 } })
+		launched(store, id, 'a1')
+		event(store, id, {
+			step: 'end',
+			explorer: 'a1',
+			status: 'completed',
+			detail: cost === null ? {} : { costUsd: cost },
+		})
+		if (id === 'x-1') event(store, id, { step: 'record', explorer: 'a1', status: 'completed', detail: {} })
+		done(store, id)
+	}
+	closeStore(store)
+	const home = (await call(ui, '/')).body
+	assert.match(home, /data-key="plan:checkout"[\s\S]*?Total cost \$0\.12 \(partial\)/)
+	const partial = (await call(ui, '/explorations/x-1')).body
+	assert.match(partial, /Total cost \$0\.12 \(partial\)/)
+	const zero = (await call(ui, '/explorations/x-2')).body
+	assert.match(zero, /Total cost \$0\.00/)
+	const unknown = (await call(ui, '/explorations/x-3')).body
+	assert.match(unknown, /Total cost Unknown/)
+	assert.match((await call(ui, '/explorations/x-small')).body, /Total cost &lt;\$0\.01/)
+	const history = (await call(ui, '/plans/checkout@1')).body
+	assert.match(history, /<th scope="col">Cost<\/th>/)
+	assert.match(history, /data-key="exploration:x-1"[\s\S]*?\$0\.12 \(partial\)/)
+	assert.match(history, /data-key="exploration:x-2"[\s\S]*?\$0\.00/)
+	assert.match(history, /data-key="exploration:x-3"[\s\S]*?Unknown/)
+})
+
+test('recovered Pi session costs appear on all three cost surfaces', async (t) => {
+	const { ui, workspace } = await fixture(t, {})
+	const store = openStore(workspace)
+	openExploration(store, actor, { planId: 'checkout', build: 'b1', explorationId: 'x-4' })
+	event(store, 'x-4', {
+		step: 'start',
+		detail: { ...launch, explorers: 1, context: { harness: 'pi', claudeArgs: [], hiddenPlugin: null } },
+	})
+	launched(store, 'x-4', 'a1')
+	event(store, 'x-4', { step: 'end', explorer: 'a1', status: 'completed', detail: { session: 'session-a1' } })
+	done(store, 'x-4')
+	const operation = store.db
+		.prepare("SELECT operation_id FROM exploration_events WHERE exploration_id = 'x-4' AND step = 'end'")
+		.get()!.operation_id
+	store.db
+		.prepare(
+			'INSERT INTO exploration_event_costs (source_operation_id, step, explorer, cost_usd, partial, operation_id) VALUES (?, ?, ?, ?, ?, ?)'
+		)
+		.run(operation, 'end', 'a1', 0.14, 0, operation)
+	closeStore(store)
+	assert.match((await call(ui, '/')).body, /Total cost \$0\.14/)
+	assert.match((await call(ui, '/explorations/x-4')).body, /Total cost \$0\.14/)
+	assert.match((await call(ui, '/plans/checkout@1')).body, /data-key="exploration:x-4"[\s\S]*?\$0\.14/)
+})

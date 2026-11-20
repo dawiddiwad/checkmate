@@ -1,5 +1,6 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Store } from '../store.ts'
+import { recoverPiCosts } from '../pi-session-costs.ts'
 import type { Context, Page, Theme } from './layout.ts'
 import type { FormState } from './forms.ts'
 import type { EditState } from './edit.ts'
@@ -315,6 +316,11 @@ function plainMessage(error: unknown) {
 export async function startUi(options: UiOptions): Promise<Ui> {
 	const files = assets()
 	const store = openStore(options.workspace)
+	await recoverPiCosts(store, options.env ?? process.env).catch(() => {
+		;(options.log ?? console.error)(
+			'Could not recover archived Pi costs. The UI will use the costs in the workspace.'
+		)
+	})
 	const watch = openReadOnlyStore(options.workspace)
 	const csrf = randomBytes(24).toString('hex')
 	const hookToken = workspaceHookToken(options.workspace, options.newHookToken)

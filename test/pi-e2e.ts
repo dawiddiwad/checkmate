@@ -16,7 +16,12 @@ import { directory, plan, profile, root, target } from './support.ts'
 const cli = join(root, 'cli/dist/checkmate.js')
 const runFile = promisify(execFile)
 
-async function piFixture(t: TestContext, handler: RequestListener, apiKey = 'fixture') {
+async function piFixture(
+	t: TestContext,
+	handler: RequestListener,
+	apiKey = 'fixture',
+	cost?: { input: number; output: number; cacheRead: number; cacheWrite: number }
+) {
 	const workspace = directory(t)
 	const agent = join(workspace, 'agent')
 	mkdirSync(agent)
@@ -34,7 +39,7 @@ async function piFixture(t: TestContext, handler: RequestListener, apiKey = 'fix
 					baseUrl: `http://127.0.0.1:${address.port}/v1`,
 					api: 'openai-completions',
 					apiKey,
-					models: [{ id: 'fixture' }],
+					models: [{ id: 'fixture', ...(cost ? { cost } : {}) }],
 				},
 			},
 		})
@@ -107,6 +112,54 @@ test('real Pi runs a tool and delegate verifies the recorded setup', async (t) =
 	assert.ok(
 		requests[1].messages.some((m) => m.role === 'tool' && JSON.stringify(m.content).includes('checkout-local'))
 	)
+})
+
+test('real Pi charges this exploration only for new study, test and recorder messages', async (t) => {
+	let calls = 0
+	const { workspace, run } = await piFixture(
+		t,
+		(req, res) => {
+			req.resume()
+			calls++
+			const content =
+				calls === 3
+					? JSON.stringify([{ kind: 'note', text: 'The fixture exploration completed.' }])
+					: 'Finished the test turn.'
+			res.writeHead(200, { 'Content-Type': 'text/event-stream' })
+			const send = (chunk: Record<string, unknown>) =>
+				res.write(
+					`data: ${JSON.stringify({ id: 'fixture', object: 'chat.completion.chunk', model: 'fixture', ...chunk })}\n\n`
+				)
+			send({ choices: [{ index: 0, delta: { role: 'assistant', content }, finish_reason: null }] })
+			send({ choices: [{ index: 0, delta: {}, finish_reason: 'stop' }] })
+			const input = 2 ** (calls - 1)
+			send({ choices: [], usage: { prompt_tokens: input, completion_tokens: 1, total_tokens: input + 1 } })
+			res.end('data: [DONE]\n\n')
+		},
+		'fixture',
+		{ input: 1_000_000, output: 0, cacheRead: 0, cacheWrite: 0 }
+	)
+	const opened = openStore(workspace)
+	try {
+		target(opened)
+		plan(opened)
+	} finally {
+		closeStore(opened)
+	}
+	const started = JSON.parse(
+		await run('explore', 'start', 'checkout', '--build', 'cost', '--level', 'smoke', '--allow', 'Read', '--json')
+	)
+	const finished = JSON.parse(await run('explore', 'wait', started.explorationId, '--timeout', '30', '--json'))
+	assert.equal(finished.state, 'completed')
+	assert.equal(calls, 3)
+	const reader = openStore(workspace)
+	try {
+		const events = explorationEvents(reader, started.explorationId)
+		assert.equal(events.find((event) => event.step === 'end')?.detail.costUsd, 3)
+		assert.equal(events.find((event) => event.step === 'record')?.detail.costUsd, 4)
+	} finally {
+		closeStore(reader)
+	}
 })
 
 test('real Pi records an expired-key failure and shows a safe diagnosis', async (t) => {

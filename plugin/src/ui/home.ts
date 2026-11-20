@@ -3,7 +3,7 @@ import type { Page } from './layout.ts'
 import type { Review } from './review.ts'
 import type { CellStatus } from '../rulemap.ts'
 import { planList } from '../views.ts'
-import { duration, glyph, html, pill, plural, time, words } from './html.ts'
+import { costText, duration, glyph, html, pill, plural, time, words } from './html.ts'
 import { heading } from './layout.ts'
 import { buildLabel, outside, reviewHref, reviewOf, verdictLine } from './review.ts'
 
@@ -71,7 +71,12 @@ const roleWords: Record<string, string> = {
 	none: 'nobody',
 }
 
-function tile(review: Review, loop: { state: string; waitsOn: string } | undefined, index: number) {
+function tile(
+	review: Review,
+	loop: { state: string; waitsOn: string } | undefined,
+	cost: { costUsd: number | null; costPartial: boolean },
+	index: number
+) {
 	const verdict = verdictLine(review)
 	const handed = review.items.filter((item) => item.kind === 'defect' && item.claim?.handoff).length
 	const latest = review.map.builds.at(-1)
@@ -124,6 +129,9 @@ function tile(review: Review, loop: { state: string; waitsOn: string } | undefin
 			</div>
 			<h2 class="sp-ct-title ell" title="${review.objective}">${review.objective}</h2>
 			<p class="sp-ct-verdict"><b>${verdict.head}</b> ${verdict.tail}</p>
+			<p class="sp-ct-cost" title="Reported cost across this plan’s explorations">
+				Total cost ${costText(cost.costUsd, cost.costPartial)}
+			</p>
 		</div>
 		${miniMap(review)}
 		<div class="sp-nums">
@@ -173,12 +181,16 @@ export function homePage(store: Store): Page {
 	const reviews = listed.map((each) => each.review)
 	const blocking = reviews.reduce((sum, review) => sum + verdictLine(review).blocking, 0)
 	const body = html`<div class="sp-home" role="list" aria-label="Plans" data-list>
-		${reviews.map((review, index) => tile(review, plans[index].loop, index))}${newChangeRow(reviews.length)}
+		${reviews.map((review, index) => tile(review, plans[index].loop, plans[index], index))}${newChangeRow(reviews.length)}
 	</div>`
 	return {
 		title: 'Plans',
 		section: 'home',
-		subjects: ['inbox', ...plans.map((plan) => `plan:${plan.planId}`)],
+		subjects: [
+			'inbox',
+			...plans.map((plan) => `plan:${plan.planId}`),
+			...reviews.flatMap((review) => review.explorations.map((item) => `exploration:${item.explorationId}`)),
+		],
 		crumbs: [['Plans', null]],
 		back: null,
 		body: html`<div data-region="home">

@@ -61,9 +61,21 @@ export type ChildCall = {
 	failure?: ['interrupted' | 'operational_error', string]
 	result?: unknown
 	costUsd?: number
+	costPartial?: boolean
 	durationMs?: number
 	sessionId?: string
 	stderr?: string[]
+}
+
+export function costOf(calls: Array<Pick<ChildCall, 'costUsd' | 'costPartial'>>) {
+	const costs = calls.flatMap((call) => (call.costUsd === undefined ? [] : [call.costUsd]))
+	if (!costs.length) return {}
+	const costUsd = costs.reduce((total, cost) => total + cost, 0)
+	if (!Number.isFinite(costUsd)) return {}
+	return {
+		costUsd,
+		...(costs.length < calls.length || calls.some((call) => call.costPartial) ? { costPartial: true } : {}),
+	}
 }
 
 const moduleRoot = dirname(dirname(fileURLToPath(import.meta.url)))
@@ -399,11 +411,12 @@ export function claudeResult(output: string, error: string, status: number | nul
 				? ['operational_error', `claude ended with an error${excerpt(parsed.result)}`]
 				: undefined
 	const tail = failure ? stderrTail(error) : []
+	const cost = parsed.total_cost_usd
 	return {
 		failure,
 		...(tail.length ? { stderr: tail } : {}),
 		result: parsed.result,
-		...(typeof parsed.total_cost_usd === 'number' ? { costUsd: parsed.total_cost_usd } : {}),
+		...(typeof cost === 'number' && Number.isFinite(cost) && cost >= 0 ? { costUsd: cost } : {}),
 		...(typeof parsed.duration_ms === 'number' ? { durationMs: parsed.duration_ms } : {}),
 		...(typeof parsed.session_id === 'string' ? { sessionId: parsed.session_id } : {}),
 	}
@@ -427,14 +440,19 @@ export function callChild(
 		killSignal: 'SIGTERM',
 		maxBuffer: maxOutputBytes,
 	})
-	const code = child.error && 'code' in child.error ? String(child.error.code) : undefined
-	if (code === 'ETIMEDOUT')
-		return { failure: ['interrupted', `${harness} did not end in ${seconds} seconds. Checkmate stopped it.`] }
-	if (code === 'ENOBUFS')
-		return { failure: ['operational_error', `${harness} output exceeded 4 MiB. Checkmate stopped it.`] }
-	if (code) return { failure: ['operational_error', `${harness} failed: ${code}.`] }
 	const result = harness === 'pi' ? piResult : claudeResult
-	return result(child.stdout ?? '', child.stderr ?? '', child.status, child.signal)
+	const parsed = result(child.stdout ?? '', child.stderr ?? '', child.status, child.signal)
+	const code = child.error && 'code' in child.error ? String(child.error.code) : undefined
+	const cost = costOf(harness === 'pi' && code ? [parsed, {}] : [parsed])
+	if (code === 'ETIMEDOUT')
+		return {
+			...cost,
+			failure: ['interrupted', `${harness} did not end in ${seconds} seconds. Checkmate stopped it.`],
+		}
+	if (code === 'ENOBUFS')
+		return { ...cost, failure: ['operational_error', `${harness} output exceeded 4 MiB. Checkmate stopped it.`] }
+	if (code) return { ...cost, failure: ['operational_error', `${harness} failed: ${code}.`] }
+	return parsed
 }
 
 function closingBracket(text: string, start: number) {
@@ -545,7 +563,9 @@ export function launchChild(
 			clearTimeout(timer)
 			clearTimeout(killTimer)
 			const result = harness === 'pi' ? piResult : claudeResult
-			resolvePromise(failure ? { failure } : result(output, errors, status, signal))
+			const parsed = result(output, errors, status, signal)
+			const cost = costOf(harness === 'pi' && failure ? [parsed, {}] : [parsed])
+			resolvePromise(failure ? { ...cost, failure } : parsed)
 		})
 	})
 }

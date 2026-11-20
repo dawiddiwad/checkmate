@@ -3,6 +3,8 @@ import type { Plan, Result } from './types.ts'
 import type { Store } from './store.ts'
 import type { ExplorationEvent } from './explorations.ts'
 import type { Evidence, Row } from './journal.ts'
+import type { ModelCost } from './costs.ts'
+import { explorationCost, noModelCost, planCosts, planExplorationCosts } from './costs.ts'
 import { explorationStatus, followCount, running as alive, startOf, stopOf, stopPending } from './explorers.ts'
 import { exploration, explorationEvents } from './explorations.ts'
 import { factoryStates, isTester, journal, oracleStates, planClaims, planQuestions, shortName } from './journal.ts'
@@ -49,7 +51,7 @@ import { join } from 'node:path'
 type RevisionRow = { plan_id: string; revision: number; sha256: string; body: string; at: string; actor: string }
 type ApprovalState = ReturnType<typeof approvalState>
 export type ApprovalLabel = 'approved' | 'rejected' | 'pending' | 'not_required'
-export type PlanListRow = {
+export type PlanListRow = ModelCost & {
 	planId: string
 	status: 'requested' | 'drafted'
 	revision: number | null
@@ -212,6 +214,7 @@ function testCounts(plan: Plan) {
 }
 
 export function planList(store: Store): PlanListRow[] {
+	const costs = planCosts(store)
 	const drafted = latestRevisions(store).map((row): PlanListRow => {
 		const open = [
 			...row.plan.gaps.filter((gap) => gap.status === 'open'),
@@ -220,6 +223,7 @@ export function planList(store: Store): PlanListRow[] {
 				.map((item) => item.gap),
 		]
 		return {
+			...(costs.get(row.plan_id) ?? noModelCost),
 			planId: row.plan_id,
 			status: 'drafted',
 			revision: row.revision,
@@ -241,6 +245,7 @@ export function planList(store: Store): PlanListRow[] {
 		}
 	})
 	const requested = requestedPlans(store).map((request): PlanListRow => ({
+		...(costs.get(request.planId) ?? noModelCost),
 		planId: request.planId,
 		status: 'requested',
 		revision: null,
@@ -382,6 +387,7 @@ export function planHasRevision(store: Store, planId: string) {
 }
 
 export function planExplorations(store: Store, planId: string) {
+	const costs = planExplorationCosts(store, planId)
 	return all<{ exploration_id: string; started_at: string }>(
 		store,
 		'SELECT exploration_id, started_at FROM explorations WHERE plan_id = ? ORDER BY rowid',
@@ -390,6 +396,7 @@ export function planExplorations(store: Store, planId: string) {
 		const status = explorationStatus(store, row.exploration_id)
 		const ended = ['failed', 'stopped', 'interrupted'].includes(status.state)
 		return {
+			...(costs.get(row.exploration_id) ?? noModelCost),
 			explorationId: status.explorationId,
 			state: status.state,
 			running: runningExploration.includes(status.state),
@@ -600,6 +607,7 @@ export function explorationLive(store: Store, explorationId: string, now = Date.
 	const found = foundEntries(store, status.planId, explorationId, limit, claims, questions)
 	const ended = ['failed', 'stopped', 'interrupted'].includes(status.state)
 	return {
+		...explorationCost(events),
 		explorationId,
 		planId: status.planId,
 		goal: opened.charter.goal,

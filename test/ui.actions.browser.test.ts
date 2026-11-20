@@ -10,6 +10,9 @@ import { endProcessesIn, postAs, waitFor, workspaceWithFake } from './actions.ts
 import { done, event, launch, launched, openTest, report } from './explorations.ts'
 import { human } from '../scripts/ui-demo.ts'
 import { watchRefreshes } from './refresh.ts'
+import { asking, bash, waitOpen } from './permissions.ts'
+import { explorationPermissions } from '../plugin/src/permissions.ts'
+import { cli } from './support.ts'
 
 test.before(() => launchWith(() => {}))
 test.after(stop)
@@ -23,8 +26,12 @@ const focused = (page: Page) =>
 		return element.id || element.dataset.key || element.textContent?.trim() || element.tagName
 	})
 
-async function setup(t: Parameters<typeof workspaceWithFake>[0], replies: Parameters<typeof workspaceWithFake>[1]) {
-	const base = workspaceWithFake(t, replies)
+async function setup(
+	t: Parameters<typeof workspaceWithFake>[0],
+	replies: Parameters<typeof workspaceWithFake>[1],
+	harness?: 'pi'
+) {
+	const base = workspaceWithFake(t, replies, harness)
 	t.after(() => endProcessesIn(base.workspace))
 	const opened = await openIn(t, base.workspace, {}, base.env)
 	const alive = () => {
@@ -235,6 +242,86 @@ test('a run whose supervisor dies shows as interrupted, and no place says runnin
 	assert.match((await page.locator('[data-key="plan:checkout"]').textContent()) ?? '', /interrupted/)
 	await page.goto(url('/plans/checkout'))
 	assert.match((await page.locator('.sp-nav [data-target="testers"]').textContent()) ?? '', /interrupted/)
+})
+
+test('an interrupted Pi run closes held permission and ends old workers before a retry', browserTest, async (t) => {
+	const { page, url, ui, workspace, read, pids } = await setup(t, sleeping, 'pi')
+	assert.equal(
+		(await postAs(ui, human, '/plans/checkout/test', { build: 'b1', level: 'smoke', rules: 'Read' })).status,
+		303
+	)
+	await page.goto(url('/explorations/x-1'))
+	await waitFor('Pi test worker', () => pids('x-1').children.length === 2)
+	const { supervisor, children } = pids('x-1')
+	assert(running(children[1]))
+	const permission = asking(ui, workspace, 'x-1', 'a1', bash('printf harmless'))
+	await waitOpen(workspace, 1)
+	process.kill(supervisor!, 'SIGKILL')
+	await waitFor('supervisor exit', () => !running(supervisor))
+	const refused = cli(workspace, ['explore', 'permit', 'x-1', 'P1', '--allow'])
+	assert.equal(refused.code, 1)
+	assert.match(refused.output, /supervisor stopped before the end/)
+	assert.deepEqual(await permission, { status: 200, body: '' })
+	assert.equal(
+		read((store) => explorationPermissions(store, 'x-1')[0].decision?.cause),
+		'interrupted'
+	)
+	assert(running(children[1]))
+
+	await page.getByRole('button', { name: 'Test build… again' }).click()
+	await page
+		.locator('dialog[data-act-dialog="test"]')
+		.getByRole('button', { name: /Start the test/ })
+		.click()
+	await page.waitForURL(/\/explorations\/x-2$/)
+	assert(children.every((pid) => !running(pid)))
+	await waitFor('replacement Pi worker', () => pids('x-2').children.length === 2)
+	assert.equal(state(read, 'x-1'), 'interrupted')
+	assert.equal(state(read, 'x-2'), 'testing')
+})
+
+test('competing starts keep the losing form and its link through live updates', browserTest, async (t) => {
+	const { page, url, pids, read } = await setup(t, sleeping, 'pi')
+	const other = await page.context().newPage()
+	const arrived = Promise.withResolvers<void>()
+	const proceed = Promise.withResolvers<void>()
+	await other.route('**/plans/checkout/test', async (route) => {
+		arrived.resolve()
+		await proceed.promise
+		await route.continue()
+	})
+	try {
+		const dialogs = await Promise.all(
+			[page, other].map(async (tab, index) => {
+				await tab.goto(url('/plans/checkout'))
+				await tab.locator('[data-live]', { hasText: 'Live' }).waitFor()
+				await tab.locator('[data-panel]:not([hidden]) [data-act="test"]').click()
+				const dialog = tab.locator('dialog[data-act-dialog="test"][open]')
+				await dialog.locator('input[name="build"]').fill(`build-${index}`)
+				await dialog.getByText('smoke', { exact: true }).click()
+				return dialog
+			})
+		)
+		await dialogs[1].getByRole('button', { name: /Start the test/ }).click()
+		await arrived.promise
+		await dialogs[0].getByRole('button', { name: /Start the test/ }).click()
+		await page.waitForURL(/\/explorations\/x-1$/)
+		proceed.resolve()
+		const conflict = dialogs[1].getByRole('alert', { name: '' }).filter({ hasText: 'in progress' })
+		await conflict.waitFor()
+		await waitFor('first test worker starts', () => pids('x-1').children.length === 2)
+		await other.waitForFunction(() =>
+			document.querySelector('[data-region="activity-link"]')?.textContent?.includes('running')
+		)
+		assert.equal(await dialogs[1].locator('input[name="build"]').inputValue(), 'build-1')
+		assert.equal(await conflict.getByRole('link', { name: 'Open x-1' }).getAttribute('href'), '/explorations/x-1')
+		assert.equal(
+			read((store) => explorationEvents(store, 'x-2').length),
+			0
+		)
+	} finally {
+		proceed.resolve()
+	}
 })
 
 test(

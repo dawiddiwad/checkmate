@@ -302,6 +302,7 @@ const commands: Record<string, Command> = {
 	},
 	inbox: {
 		positionals: [],
+		readOnly: true,
 		run: (store) => completed('inbox', inbox(store)),
 		print: (reply) => {
 			const waiting = reply.data as ReturnType<typeof inbox>
@@ -361,6 +362,7 @@ const commands: Record<string, Command> = {
 	},
 	status: {
 		positionals: ['planId'],
+		readOnly: true,
 		run: (store, args, { env }) => {
 			const planId = value(args, 'planId')!
 			return completed(planId, planStatus(store, planId, selectedHarness(workspaceEnv(store, env))))
@@ -1658,6 +1660,7 @@ const commands: Record<string, Command> = {
 	},
 	log: {
 		positionals: [],
+		readOnly: true,
 		flags: { subject: 'value', limit: { min: 1, max: 1000 }, after: { min: 0, max: Number.MAX_SAFE_INTEGER } },
 		check: (args) => {
 			const subject = value(args, 'subject')

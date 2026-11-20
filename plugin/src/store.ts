@@ -1,7 +1,7 @@
 import type { SQLInputValue } from 'node:sqlite'
 import { DatabaseSync } from 'node:sqlite'
 import { createHash, randomBytes } from 'node:crypto'
-import { mkdirSync, rmdirSync, rmSync } from 'node:fs'
+import { existsSync, mkdirSync, rmdirSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 
 export type Status =
@@ -371,15 +371,18 @@ function addExplorationTables(db: DatabaseSync) {
 	setSchemaVersion(db, '4')
 }
 
-function addViaColumn(db: DatabaseSync) {
-	if (!db.prepare("SELECT 1 FROM pragma_table_info('operations') WHERE name = 'via'").get())
-		db.exec('ALTER TABLE operations ADD COLUMN via TEXT')
+function hasViaColumn(db: DatabaseSync) {
+	return Boolean(db.prepare("SELECT 1 FROM pragma_table_info('operations') WHERE name = 'via'").get())
+}
+
+function hasTable(db: DatabaseSync, name: string) {
+	return Boolean(db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(name))
 }
 
 function addMissingTables(db: DatabaseSync) {
 	for (const { ddl, fill } of addedTables) {
 		const [name] = tableNamesOf(ddl)
-		if (db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(name)) continue
+		if (hasTable(db, name)) continue
 		db.exec(ddl)
 		db.exec(triggersOf(ddl))
 		if (fill) db.exec(fill)
@@ -422,19 +425,19 @@ export function openStore(workspace: string): Store {
 		db.exec('PRAGMA journal_mode = WAL')
 		db.exec('PRAGMA foreign_keys = ON')
 		db.exec('BEGIN IMMEDIATE')
-		if (!db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'meta'").get()) {
+		if (!hasTable(db, 'meta')) {
 			db.exec(tables + explorationTables + views)
 			db.exec(triggersOf(tables + explorationTables))
 			const insert = db.prepare('INSERT INTO meta (key, value) VALUES (?, ?)')
 			insert.run('contractVersion', contractVersion)
 			insert.run('schemaVersion', schemaVersion)
 		}
-		const version = String(db.prepare("SELECT value FROM meta WHERE key = 'schemaVersion'").get()?.value)
+		const version = String(versionOf(db))
 		if (version === '3') addExplorationTables(db)
 		if (['3', '4', '5', '6'].includes(version)) setSchemaVersion(db, schemaVersion)
 		if (['3', '4', '5', '6', schemaVersion].includes(version)) {
 			addMissingTables(db)
-			addViaColumn(db)
+			if (!hasViaColumn(db)) db.exec('ALTER TABLE operations ADD COLUMN via TEXT')
 		}
 		db.exec('COMMIT')
 	} catch (error) {
@@ -447,17 +450,38 @@ export function openStore(workspace: string): Store {
 
 export function openReadOnlyStore(workspace: string): Store {
 	const path = databasePath(workspace)
+	if (existsSync(path)) {
+		const db = new DatabaseSync(path, { readOnly: true })
+		try {
+			db.exec(`PRAGMA busy_timeout = ${busyTimeout()}`)
+			if (
+				hasTable(db, 'meta') &&
+				versionOf(db) === schemaVersion &&
+				hasViaColumn(db) &&
+				addedTables.every(({ ddl }) => hasTable(db, tableNamesOf(ddl)[0]))
+			)
+				return { db, workspace, path }
+		} catch (error) {
+			db.close()
+			throw error
+		}
+		db.close()
+	}
 	closeStore(openStore(workspace))
 	const db = new DatabaseSync(path, { readOnly: true })
 	db.exec(`PRAGMA busy_timeout = ${busyTimeout()}`)
 	return checkedStore(db, workspace, path)
 }
 
+function versionOf(db: DatabaseSync) {
+	return db.prepare("SELECT value FROM meta WHERE key = 'schemaVersion'").get()?.value
+}
+
 function checkedStore(db: DatabaseSync, workspace: string, path: string): Store {
-	const row = db.prepare("SELECT value FROM meta WHERE key = 'schemaVersion'").get()
-	if (row?.value !== schemaVersion) {
+	const version = versionOf(db)
+	if (version !== schemaVersion) {
 		db.close()
-		throw new Error(`Database ${path} has schema version ${row?.value ?? 'none'}. Expected ${schemaVersion}.`)
+		throw new Error(`Database ${path} has schema version ${version ?? 'none'}. Expected ${schemaVersion}.`)
 	}
 	return { db, workspace, path }
 }

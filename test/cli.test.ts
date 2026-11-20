@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs'
 import { execFileSync, spawn } from 'node:child_process'
 import { userInfo } from 'node:os'
 import { join } from 'node:path'
-import { closeStore } from '../plugin/src/store.ts'
+import { closeStore, openStore } from '../plugin/src/store.ts'
 import { uiOptions } from '../plugin/src/cli.ts'
 import { answerGap, rejectPlan } from '../plugin/src/plans.ts'
 import { beginRun, closeTest, finishRun, rejectResult } from '../plugin/src/runs.ts'
@@ -180,6 +180,25 @@ test('--expect-sha stops a decision on a changed snapshot', (t) => {
 	const approved = cli(workspace, ['plan', 'approve', 'checkout@2', '--rationale', 'Ok.', '--expect-sha', sha256])
 	assert.equal(approved.code, 0)
 	assert.equal(approved.lines[0], `completed checkout@2 verdict=approved sha256=${sha256.slice(0, 8)}`)
+})
+
+test('status reads the committed plan while another command holds the write lock', (t) => {
+	const workspace = setup(t)
+	const writer = openStore(workspace)
+	try {
+		writer.db.exec('BEGIN IMMEDIATE')
+		writer.db.exec("UPDATE plan_revisions SET body = json_set(body, '$.objective', 'Uncommitted objective')")
+		const result = execFileSync(
+			process.execPath,
+			[join(root, 'plugin/dist/checkmate.js'), 'status', 'checkout', '--workspace', workspace, '--json'],
+			{ encoding: 'utf8', env: { ...process.env, CHECKMATE_BUSY_TIMEOUT_MS: '10' } }
+		)
+		assert.equal(JSON.parse(result).status, 'completed')
+		assert.doesNotMatch(result, /Uncommitted objective/)
+	} finally {
+		writer.db.exec('ROLLBACK')
+		closeStore(writer)
+	}
 })
 
 test('query is read-only and prints TSV with a header or JSON rows', (t) => {

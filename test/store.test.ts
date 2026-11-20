@@ -359,11 +359,12 @@ test('a reader sees committed writes while another connection holds the write lo
 	assert.equal(second.db.prepare("SELECT count(*) AS n FROM meta WHERE key = 'pending'").get()!.n, 0)
 	second.db.exec('PRAGMA busy_timeout = 0')
 	assert.throws(() => second.db.exec('BEGIN IMMEDIATE'), /database is locked/)
-	first.db.exec('ROLLBACK')
 	const reader = openReadOnlyStore(first.workspace)
 	t.after(() => closeStore(reader))
 	assert.equal(reader.db.prepare('SELECT count(*) AS n FROM profiles').get()!.n, 1)
+	assert.equal(reader.db.prepare("SELECT count(*) AS n FROM meta WHERE key = 'pending'").get()!.n, 0)
 	assert.throws(() => reader.db.exec("INSERT INTO meta (key, value) VALUES ('x', 'y')"), /readonly/)
+	first.db.exec('ROLLBACK')
 })
 
 test('canonical JSON sorts keys and has no whitespace; digest is SHA-256 hex', () => {

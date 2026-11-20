@@ -3,7 +3,7 @@ import type { Profile } from './types.ts'
 import type { ChildContext, ChildCall, Env } from './sessions.ts'
 import type { Charter, ExplorationEvent, OpenInput } from './explorations.ts'
 import type { TestLevel } from './levels.ts'
-import { closeStore, completed, one, openStore, saveBlob, write } from './store.ts'
+import { all, closeStore, completed, one, openStore, saveBlob, write } from './store.ts'
 import { Refusal, requireChoice, requireCondition, requireWellFormed } from './contracts.ts'
 import { addEvent, exploration, explorationEvents, insertExploration, workFolder } from './explorations.ts'
 import type { Refused } from './journal.ts'
@@ -389,7 +389,15 @@ export function startExploration(
 	const change = changeOf(store.workspace, given)
 	const input = { ...given, change, scope: given.scope ?? (change ? changedFiles(store.workspace, change) : []) }
 	const reply = write(store, { actor, command: 'explore start', subject: input.planId, input }, (operationId, at) => {
-		if (!input.session) requireChild(env, selectedHarness(env))
+		if (!input.session) {
+			requireChild(env, selectedHarness(env))
+			for (const { exploration_id: id } of all<{ exploration_id: string }>(
+				store,
+				'SELECT exploration_id FROM explorations WHERE plan_id = ?',
+				input.planId
+			))
+				recoverWorkers(store, id)
+		}
 		const opened = input.explorationId
 			? finishable(store, input.explorationId)
 			: insertExploration(store, input, operationId, at)
@@ -472,7 +480,13 @@ export function startOf(events: ExplorationEvent[]) {
 
 function noteChild(store: Store, actor: string, explorationId: string, explorer: string | null) {
 	return (pid: number) => {
-		event(store, actor, explorationId, { step: 'child', explorer, status: 'started', detail: { pid } })
+		const born = groupBirth(pid)
+		event(store, actor, explorationId, {
+			step: 'child',
+			explorer,
+			status: 'started',
+			detail: { pid, ...(born ? { born } : {}) },
+		})
 		if (explorer && testerStopOf(explorationEvents(store, explorationId), explorer)) endGroup(pid, 'SIGTERM')
 	}
 }
@@ -988,6 +1002,38 @@ function followable(events: ExplorationEvent[]) {
 	)
 }
 
+function retryCommand(store: Store, id: string, launch: Launch | undefined) {
+	const { plan_id, build, mode, instance_id, charter } = explorationRow(store, id)
+	const { change } = JSON.parse(charter) as Charter
+	const command = [
+		'checkmate',
+		...(launch?.path === 'session' ? ['test', plan_id, '--session'] : ['explore', 'start', plan_id]),
+		'--build',
+		build,
+		'--mode',
+		mode,
+		'--instance',
+		instance_id,
+	]
+	if (change) {
+		command.push('--since', change.since, '--repo', change.repo)
+		if (change.range.length === 1) command.push('--until', change.until)
+	}
+	if (launch) {
+		command.push('--level', launch.level)
+		if (launch.explorers > 0) command.push('--explorers', String(launch.explorers))
+		if (launch.timeoutSeconds) command.push('--timeout', String(launch.timeoutSeconds))
+		if (launch.testSeconds && launch.testSeconds !== testLevels[launch.level].testSeconds)
+			command.push('--minutes', String(launch.testSeconds / 60))
+		for (const rule of launch.allow ?? []) command.push('--allow', rule)
+	}
+	const harness = launch ? `CHECKMATE_HARNESS=${launch.context?.harness ?? 'claude'} ` : ''
+	return (
+		harness +
+		command.map((word) => (/^[\w./:@-]+$/.test(word) ? word : `'${word.replaceAll("'", "'\\''")}'`)).join(' ')
+	)
+}
+
 export function followCount(store: Store, explorationId: string) {
 	return followable(explorationEvents(store, explorationId)) ? unusedAnswers(store, explorationId).length : 0
 }
@@ -1007,7 +1053,7 @@ export function startFollow(store: Store, actor: string | undefined, input: Foll
 			stored && followable(events),
 			`Exploration ${id} is ${state}. A follow-up needs a completed exploration.`,
 			['failed', 'stopped', 'interrupted', 'open'].includes(state)
-				? `Start a new test: checkmate test ${row.plan_id} --allow Read --allow Bash`
+				? `Start a new test: ${retryCommand(store, id, stored)}`
 				: `Run checkmate explore wait ${id}. Then run the follow-up again.`
 		)
 		if (!session) requireChild(env, harness)
@@ -1017,6 +1063,7 @@ export function startFollow(store: Store, actor: string | undefined, input: Foll
 			`Exploration ${id} has no answer that a follow-up has not used.`,
 			`Answer a question of the exploration first: checkmate gap answer ${row.plan_id} <questionId> --kind <kind> --value "<answer>" --source "<source>" --rationale "<why>". Run checkmate explore show ${id} to read its questions.`
 		)
+		if (!session) recoverWorkers(store, id)
 		if (harness === 'pi') {
 			requireWellFormed(!input.claudeArgs.length, '--claude-arg is for Claude.')
 			piToolNames(input.allow)
@@ -1247,14 +1294,60 @@ function childPids(events: ExplorationEvent[], explorer?: string) {
 	return explorer === undefined ? [...new Set(pids)] : pids.slice(-1)
 }
 
-function endProcesses(all: number[]) {
-	const pids = all.filter(running)
+function endProcesses(all: number[], alive: (pid: number) => boolean = running) {
+	const pids = all.filter(alive)
 	for (const pid of pids) endGroup(pid, 'SIGTERM')
-	if (!waitUntil(() => !pids.some(running), stopWaitMilliseconds)) {
-		for (const pid of pids.filter(running)) endGroup(pid, 'SIGKILL')
-		waitUntil(() => !pids.some(running), killWaitMilliseconds)
+	if (!waitUntil(() => !pids.some(alive), stopWaitMilliseconds)) {
+		for (const pid of pids.filter(alive)) endGroup(pid, 'SIGKILL')
+		waitUntil(() => !pids.some(alive), killWaitMilliseconds)
 	}
-	return pids.filter(running)
+	return pids.filter(alive)
+}
+
+function groupBirth(pid: number) {
+	const result = spawnSync('ps', ['-p', String(pid), '-o', 'pgid=', '-o', 'lstart='], {
+		encoding: 'utf8',
+		env: { ...process.env, LC_ALL: 'C' },
+	})
+	const [group, ...started] = (result.stdout ?? '').trim().split(/\s+/)
+	if (Number(group) !== pid) return undefined
+	const born = Date.parse(started.join(' '))
+	return Number.isFinite(born) ? born : undefined
+}
+
+export function interruptedSupervisor(events: ExplorationEvent[]) {
+	const follow = events.findLastIndex((item) => item.step === 'follow')
+	const phase = events.slice(follow + 1)
+	if (phase.some((item) => item.step === (follow === -1 ? 'done' : 'followed'))) return false
+	const supervisor = phase.find((item) => item.step === 'supervisor')
+	return typeof supervisor?.detail.pid === 'number' && !running(supervisor.detail.pid)
+}
+
+function recoverWorkers(store: Store, id: string) {
+	const events = explorationEvents(store, id)
+	if (!interruptedSupervisor(events) && !stopOf(events)) return
+	requireCondition(!stopPending(events), `A stop of ${id} is in progress. Wait until it ends, then start the test.`)
+	const phase = events.slice(events.findLastIndex((item) => item.step === 'follow') + 1)
+	const workers = new Map<number, ExplorationEvent>()
+	for (const child of phase) {
+		const pid = child.detail.pid
+		if (child.step === 'child' && typeof pid === 'number' && pid > 1) workers.set(pid, child)
+	}
+	const alive = (pid: number) => {
+		if (!running(pid)) return false
+		const born = groupBirth(pid)
+		if (born === undefined) return false
+		const child = workers.get(pid)!
+		if (typeof child.detail.born === 'number') return child.detail.born === born
+		const age = Date.parse(child.at) - born
+		return age >= 0 && age < 60_000
+	}
+	const left = endProcesses([...workers.keys()], alive)
+	requireCondition(
+		!left.length,
+		`Workers of ${id} are still alive: ${left.join(', ')}. No replacement started.`,
+		`Run checkmate explore show ${id} to review the interrupted test. Try again when its workers have ended.`
+	)
 }
 
 export type StopRecord = { background?: boolean }
@@ -1326,7 +1419,9 @@ function stoppedProcesses(events: ExplorationEvent[], explorer?: string) {
 export function stopPending(events: ExplorationEvent[], explorer: string | null = null) {
 	const stop = events.findLast((item) => item.step === 'stop' && item.explorer === explorer)
 	if (!stop?.detail.ending) return false
-	const end = events.findLast((item) => item.step === 'stop-end' && item.explorer === explorer)
+	const end = events
+		.slice(events.lastIndexOf(stop) + 1)
+		.find((item) => item.step === 'stop-end' && item.explorer === explorer)
 	if (end) return false
 	const { supervisor, children } = stoppedProcesses(events, explorer ?? undefined)
 	return [...supervisor, ...children].some(running)
@@ -1387,7 +1482,6 @@ export function stopExploration(store: Store, actor: string | undefined, input: 
 	const reply = recordStop(store, actor, input)
 	const left = endStopped(store, id, explorer)
 	const kept = explorer === undefined && existsSync(join(store.workspace, workFolder(id))) ? workFolder(id) : null
-	const row = explorationRow(store, id)
 	return {
 		...reply,
 		status: left.length ? 'operational_error' : 'completed',
@@ -1397,7 +1491,7 @@ export function stopExploration(store: Store, actor: string | undefined, input: 
 			left,
 			workFolder: kept,
 			...(kept ? { note: 'Reports that were not recorded stay in the work folder.' } : {}),
-			next: [`checkmate test ${row.plan_id} --build ${row.build}`],
+			next: [retryCommand(store, id, startOf(explorationEvents(store, id)))],
 		},
 	}
 }

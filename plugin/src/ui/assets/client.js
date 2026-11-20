@@ -272,10 +272,9 @@ function tell(text) {
 const review = document.querySelector('[data-review]')
 const chatPage = document.querySelector('[data-chat-view]')
 const chatView = chatPage?.dataset.chatView
-const chatNavigator =
-	chatView === 'list' &&
-	chatPage.hasAttribute('data-plan-chat') &&
-	Boolean(document.querySelector('[data-navigator]'))
+const planChat = chatPage?.closest('[data-plan-chat]')
+let chatLane = chatView === 'thread' ? 'thread' : 'list'
+const chatNavigator = chatView === 'list' && planChat && Boolean(document.querySelector('[data-navigator]'))
 let drawer = document.querySelector('[data-drawer]')
 const viewerPane = document.querySelector('[data-viewer-pane]')
 const address = new URL(location.href)
@@ -307,7 +306,7 @@ function panel() {
 }
 
 function listRows() {
-	const root = review ? panel() : document
+	const root = chatPage ? chatPage.querySelector(`[data-chat-lane="${chatLane}"]`) : review ? panel() : document
 	return root ? [...root.querySelectorAll('[data-row]')].filter(shown) : []
 }
 
@@ -341,7 +340,7 @@ function currentView() {
 }
 
 function storeKey() {
-	return `checkmate-areas:${review?.dataset.plan ?? chatPage?.dataset.planChat ?? ''}`
+	return `checkmate-areas:${review?.dataset.plan ?? planChat?.dataset.planChat ?? ''}`
 }
 
 function storedAreas() {
@@ -454,7 +453,8 @@ function remember() {
 const zones = { nav: '[data-nav]', list: '[data-row]', detail: '[data-sub]', viewer: '[data-vfile]' }
 
 function highlight(row, where = level) {
-	for (const other of document.querySelectorAll(zones[where])) {
+	const rows = chatPage && where === 'list' ? listRows() : document.querySelectorAll(zones[where])
+	for (const other of rows) {
 		other.classList.toggle('hl', other === row)
 		other.tabIndex = other === row ? 0 : -1
 	}
@@ -1631,9 +1631,9 @@ const keyTable = [
 				? {
 						nav: 'views',
 						list:
-							chatView === 'thread'
+							chatView === 'thread' && chatLane === 'thread'
 								? 'turns'
-								: chatView === 'list'
+								: chatPage
 									? 'chats'
 									: review
 										? 'records'
@@ -1907,7 +1907,7 @@ function backFromAct(dialog) {
 
 function closeGone(region, replacement) {
 	for (const dialog of region.querySelectorAll('dialog[data-act-dialog][open]')) {
-		if (dialog.querySelector('[data-sending]')) continue
+		if (dialog.querySelector('[data-sending], [data-refusal]')) continue
 		if (replacement.querySelector(`dialog[data-act-dialog="${CSS.escape(dialog.dataset.actDialog)}"]`)) continue
 		dialog.close('gone')
 		tell(dialog.dataset.gone || 'This changed. Nothing was done.')
@@ -2188,7 +2188,9 @@ document.addEventListener('keydown', (event) => {
 
 document.addEventListener('focusin', (event) => {
 	const target = event.target
-	if (chatPage?.contains(target) && target.matches('[data-row]:not(.hl)')) {
+	const lane = chatPage?.contains(target) && target.closest('[data-chat-lane]')
+	if (lane) chatLane = lane.dataset.chatLane
+	if (lane && target.matches('[data-row]')) {
 		level = 'list'
 		if (chatNavigator) highlight(null, 'nav')
 		highlight(target, 'list')
@@ -2577,9 +2579,9 @@ function replaceRegion(region, fresh, previous) {
 	const detailLabel = detailMarked ? current('detail')?.dataset.label : null
 	region.replaceWith(next)
 	if (chatHistory) {
-		const turns = listRows()
+		const turns = [...next.querySelectorAll('[data-chat-turn]')]
 		const selected = (!chatChanged && turns.find((row) => keyOf(row) === rowKey)) || turns.at(-1)
-		highlight(selected, 'list')
+		if (chatLane === 'thread') highlight(selected, 'list')
 		if (active === region) next.focus({ preventScroll: true })
 		else if (region.contains(active)) {
 			const turn = turns.find((row) => keyOf(row) === focusedKey)
@@ -2970,8 +2972,8 @@ openTarget()
 restoreAreas()
 if (location.hash === '#decide' || location.hash === '#answer')
 	window.addEventListener('load', () => window.requestAnimationFrame(focusDecision), { once: true })
-else if (review || drawer || listRows().length) settle()
 else if (chatView === 'new') document.querySelector('[data-chat-composer] textarea')?.focus()
+else if (review || drawer || listRows().length) settle()
 else showHints()
 if (!review && !drawer && !listRows().length)
 	window.addEventListener('load', () => placeAlert() || focusTarget(), { once: true })

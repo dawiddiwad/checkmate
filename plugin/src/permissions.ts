@@ -1,6 +1,7 @@
 import type { Reply, Store } from './store.ts'
 import { all, completed, one, write } from './store.ts'
-import { addEvent } from './explorations.ts'
+import { addEvent, explorationEvents } from './explorations.ts'
+import { interruptedSupervisor } from './explorers.ts'
 import { addRequestEvent, isRequestId, requestOf, requestStopped } from './requests.ts'
 import { requireChoice, requireCondition, requireWellFormed } from './contracts.ts'
 import { explorerActor } from './recorder.ts'
@@ -41,7 +42,7 @@ export type ForceRule = {
 	at: string
 	requestId: string
 }
-export type ClosedCause = 'timeout' | 'ui-stopped' | 'stopped' | 'disconnected'
+export type ClosedCause = 'timeout' | 'ui-stopped' | 'stopped' | 'interrupted' | 'disconnected'
 export type PermissionRequestInput = {
 	askerId: string
 	who: string
@@ -55,6 +56,7 @@ export const closedText: Record<ClosedCause, string> = {
 	timeout: 'no answer in 10 minutes',
 	'ui-stopped': 'the UI stopped',
 	stopped: 'the tester or the run stopped',
+	interrupted: 'the run supervisor stopped before the end',
 	disconnected: 'the tester did not wait any more',
 }
 
@@ -295,6 +297,10 @@ export function requestPermission(store: Store, input: PermissionRequestInput) {
 		subject: input.askerId,
 	}
 	return write(store, { ...operation, input: { who: input.who, tool: input.tool } }, (operationId, at) => {
+		requireCondition(
+			fromRequest || !interruptedSupervisor(explorationEvents(store, input.askerId)),
+			`Exploration ${input.askerId} was interrupted. The permission request is closed.`
+		)
 		const id = nextRequestId(store, input.askerId)
 		const request = { askerId: input.askerId, fromRequest, id, who: input.who, tester }
 		addAskerEvent(
@@ -359,6 +365,11 @@ export function decidePermission(
 		requireCondition(
 			!request.decision,
 			`Permission request ${request.id} of ${request.askerId} has an answer already: ${request.decision?.text}. Nothing changed.`
+		)
+		const cause = permissionClosedCause(store, request)
+		requireCondition(
+			!cause,
+			`Permission request ${request.id} of ${request.askerId} closed because ${cause ? closedText[cause] : ''}. Nothing changed.`
 		)
 		requireCondition(
 			(choice !== 'allow-kind' && choice !== 'always') || request.rule,
@@ -458,13 +469,13 @@ export function permissionAnswer(request: Permission, decision: PermissionDecisi
 	return ''
 }
 
-export function stoppedSince(store: Store, request: Permission) {
+function stoppedSince(store: Store, request: Permission) {
 	if (request.fromRequest) return requestStopped(store, request.askerId)
 	return (
 		one(
 			store,
-			`SELECT 1 FROM exploration_events WHERE exploration_id = ? AND step = 'stop'
-			AND (explorer IS NULL OR explorer = ?)
+			`SELECT 1 FROM exploration_events WHERE exploration_id = ?
+			AND (step = 'follow' OR (step = 'stop' AND (explorer IS NULL OR explorer = ?)))
 			AND rowid > (SELECT rowid FROM exploration_events WHERE exploration_id = ? AND step = '${requestStep}' AND json_extract(detail, '$.id') = ?)`,
 			request.askerId,
 			request.who,
@@ -472,4 +483,9 @@ export function stoppedSince(store: Store, request: Permission) {
 			request.id
 		) !== undefined
 	)
+}
+
+export function permissionClosedCause(store: Store, request: Permission): ClosedCause | undefined {
+	if (stoppedSince(store, request)) return 'stopped'
+	if (!request.fromRequest && interruptedSupervisor(explorationEvents(store, request.askerId))) return 'interrupted'
 }

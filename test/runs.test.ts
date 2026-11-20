@@ -693,6 +693,14 @@ test('findings name recorded assertions, matching requirements, and evidence of 
 			.testIds,
 		[]
 	)
+	assert.equal(finding({ id: 'F5', requirementIds: [] }).status, 'completed')
+	check(opened, 'run-1', 'T2.A1', 'passed')
+	close(opened, 'T2')
+	assert.equal(finish(opened).status, 'completed')
+	const result = runResult(opened, 'run-1')!.result
+	assert.deepEqual(result.findings.find(({ id }) => id === 'F4')?.assertionIds, [])
+	assert.deepEqual(result.findings.find(({ id }) => id === 'F4')?.testIds, [])
+	assert.deepEqual(result.findings.find(({ id }) => id === 'F5')?.requirementIds, [])
 })
 
 test('a runtime gap is new, open, and names known requirements and tests', (t) => {

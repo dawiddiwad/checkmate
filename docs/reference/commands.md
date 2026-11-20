@@ -364,7 +364,7 @@ checkmate explore follow <explorationId> [--allow <rule>] [--claude-arg <arg>] [
 
 `explore follow` tests the answers of the oracle. It does not wait for answers before the test: the explorers test first, and the follow-up tests the points that the answers decide.
 
-It needs a completed exploration, and one or more questions of the exploration with an answer that no completed follow-up used. Else it refuses with the reason and a hint. It returns at once. Then run `explore wait <explorationId>`.
+It needs a completed exploration and at least one answer that a completed follow-up has not used. If the exploration failed, stopped, or was interrupted, the hint gives a new test command with the recorded build, mode, instance, level, and tool rules. The follow-up returns at once. Then run `explore wait <explorationId>`.
 
 1. It resumes each explorer session of the exploration for one more turn, with `--resume <session>`, the model, the `--settings` argument, and the `--allowedTools` rules of the earlier turns, and no tool list argument. Without `--allow`, `--claude-arg`, or `--timeout`, it uses the values of `explore start`. It skips a session that ended in its study turn, and a session that it cannot resume, and gives the reason of each.
 2. The brief of the turn does not name Checkmate. It gives the answered questions with their answers, numbered, the same list to each explorer: `The owner of the product answered these questions:`. It asks the explorer to test the points that the answers decide, on the same build, and to add to `report.md` each new defect and one line for each earlier unclear point that an answer settles. It gives the seconds of the follow-up turn of the level: smoke 300, normal 600, deep 600.
@@ -430,7 +430,7 @@ The command refuses in these cases:
 
 A stop and the end of the run can happen together. The event that Checkmate records first wins. When the run ended first, the stop is refused. When the stop is first, the supervisor writes no `done` event.
 
-The supervisor ends its own `claude` processes when it gets `SIGTERM` or `SIGINT`. When `SIGKILL` ends the supervisor, the state is `interrupted`, and the `claude` processes can stay alive until `explore stop` ends them.
+The supervisor ends its workers when it gets `SIGTERM` or `SIGINT`. If the supervisor dies before the end, Checkmate shows `interrupted` and closes its open permissions. `explore stop` ends remaining workers. Before Checkmate starts another test of the plan, it also ends the identified workers of the interrupted test.
 
 ### explore permit
 
@@ -584,7 +584,7 @@ hint: Finish run-b1 first: checkmate run finish run-b1 --completion <completed|i
 | `interrupted`       | A run or a delegated worker stopped at the deadline or on a signal.                      | 1    |
 | `operational_error` | A tool, access, lock, or worker failure stopped the work.                                | 1    |
 
-**Lock.** One command writes at a time. Every command waits up to 30 seconds for the database lock, also a read such as `log`, `status`, or `inbox`. Set `CHECKMATE_BUSY_TIMEOUT_MS` to change the wait. When it cannot get the lock, it gives `operational_error` with the reason `Another command holds the database lock. Nothing changed. Run the command again.` Run the same command again. The log has no row for that attempt.
+**Lock.** One command writes at a time. Reads such as `log`, `status`, and `inbox` can read committed data during a write. A new database or schema update requires a write lock. A command waits up to 30 seconds for a lock it needs. Set `CHECKMATE_BUSY_TIMEOUT_MS` to change the wait. If the wait expires, the command gives `operational_error` and changes nothing. Run it again.
 
 `needs_decision` exits with 0. For example, `plan save` with open gaps saves the revision and gives `needs_decision`. `run begin` gives `needs_decision` when the gate refuses the run, and then no run exists. Read line 1, not only the exit code.
 

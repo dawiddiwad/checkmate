@@ -24,7 +24,7 @@ The database is `<workspace>/.checkmate/checkmate.db`. The workspace is the curr
 - Rows do not change after a write. Triggers refuse `UPDATE` and `DELETE` on every table, with two exceptions: a decision records the revision that applied it, once, and `plan edit` changes a plan revision that has no approval and no run.
 - Retiring an instance adds a row to `instance_retirements`. The instance row does not change.
 - A plan revision, a profile, and a result are canonical JSON snapshots. The digest is the SHA-256 of that text. A digest detects change. It does not authenticate the actor.
-- The database uses WAL mode, a busy timeout of 30 seconds, and foreign keys. `CHECKMATE_BUSY_TIMEOUT_MS` changes the busy timeout. The CLI, a delegated worker, and the review UI can use it at the same time. One command writes at a time. Every command waits for the lock, also a read such as `log`, `status`, or `inbox`. A command that cannot get the lock in 30 seconds gives `operational_error` and changes nothing. One host writes to one database.
+- The database uses WAL mode and foreign keys. One command writes at a time. Reads can see committed data during a write if the schema is current. A new database or schema update requires a write lock. `CHECKMATE_BUSY_TIMEOUT_MS` changes the lock wait from its default of 30 seconds. If the wait expires, the command gives `operational_error` and changes nothing. One host writes to one database.
 - The schema version is 7. Checkmate upgrades a database of version 3, 4, 5, or 6 when it opens it: it adds the missing tables and the column `operations.via`. Checkmate refuses a database with another version.
 
 ## Actor

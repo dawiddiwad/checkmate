@@ -389,6 +389,7 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		const current = watchedStates()
 		if (current === supervisors) return
 		supervisors = current
+		hooks.release()
 		for (const client of clients) client.res.write('data: *\n\n')
 	}, 1000)
 	const heartbeat = setInterval(() => {

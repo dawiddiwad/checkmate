@@ -216,7 +216,7 @@ Below the list is the overview of the session, or the tester or phase that you o
 
 `Stop the test…` is in the action row while the session runs as processes. A dialog names the plan and the build, and has an optional reason. A tester that runs has `Stop` as its last option. Both ask first. A stop ends the supervisor and its tester processes. It keeps the record and the work folder. The UI answers at once: the view shows `Stopping…` while the processes end, and no other page waits. A background process ends the processes. The view shows `Stopped` when they have ended, or names the processes that are still alive. While a stop runs, a new test of the plan does not start. The dialog closes with a message when the test or the tester ends before you confirm.
 
-A stopped session shows `Stopped by <name>`, the reason, and the work folder where reports that were not recorded stay. When the supervisor dies without a stop, the session shows `The run was interrupted: the supervisor stopped before the end.` Both give `Test build… again`. A session of the Claude Code session path cannot stop here. Stop its testers in the session.
+A stopped session shows `Stopped by <name>`, the reason, and the work folder where reports that were not recorded stay. When the supervisor dies, the session shows `interrupted`. Both give `Test build… again`. Checkmate ends the interrupted test's remaining workers before it starts a replacement. If a test started in another tab, the dialog keeps your values and shows a link to that test. For the Claude Code session path, stop the testers in the host session.
 
 A failed session shows the reason, the next step, the work folder `.checkmate/work/<explorationId>`, and the log. `Not merged yet` items are the raw questions and defects of single testers. They can change before the session is completed. `Needs you` does not show them.
 
@@ -252,7 +252,7 @@ After an answer, the next open request opens in the same view. When no request i
 
 **History.** The Testers view of a run has the fold `Permission requests (<n>)`. It lists each request and its answer, who answered, and when, newest first, 20 for each page. `↓` on the last row opens the next page. `Enter` opens the record, which does not move on.
 
-A rule for this test answers the same request of every other tester of the run at once. The record shows `allowed by rule <rule>, set by <name>`. A rule of one run does not apply to another run. A request with no answer in 10 minutes closes, and the call is denied. A request also closes when the tester or the run stops, and when the UI stops. A permission request for an ended run or chat turn gets an empty answer and does not show. The tool call is denied. The same answers are in `checkmate explore permit`. Each request and each answer is an event of the exploration, so the record shows who decided what.
+A rule for this test answers the same request of every other tester of the run at once. The record shows `allowed by rule <rule>, set by <name>`. A rule of one run does not apply to another run. A request closes after 10 minutes without an answer, when the tester or UI stops, or when the run stops or is interrupted. The tool call is denied. Requests from ended runs and chat turns also get a denial. The same answers are in `checkmate explore permit`. The record shows each request, its decision, and who made it.
 
 `/permissions` opens the first open request, or `Activity` when none is open.
 
@@ -260,7 +260,7 @@ A chat asks in the same way. The record shows the tool and a link to the chat. T
 
 ### Chats
 
-Choose **Plan chats** on a plan to start or resume a conversation about that plan. The agent starts with the plan and its records. Chats belong to the plan across revisions, and their cost counts toward its total. The **Chats** button in the status bar lists all conversations.
+Choose **Plan chats** for the conversations about a plan. The agent starts with the plan and its records. Chats stay with the plan across revisions, and their cost counts toward its total. **Chats** in the status bar lists all conversations. On a wide window, the conversation list stays beside the open chat. On a narrow window, use **All chats** to return to the list.
 
 Use `↑` and `↓` to move through the navigator, the chats, or the turns of a conversation. Press `→` or `Enter` to open the highlighted item. Press `←` or `Esc` to go back. Use `Tab` to reach links and the composer. In the message field, `Ctrl` `Enter` or `⌘` `Enter` sends the message. `Esc` leaves the field and keeps the draft.
 

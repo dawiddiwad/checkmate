@@ -21,19 +21,24 @@ export async function waitFor<T>(what: string, look: () => T | undefined | false
 	}
 }
 
-export function workspaceWithFake(t: TestContext, replies: Parameters<typeof fakeClaude>[1]) {
+export function workspaceWithFake(t: TestContext, replies: Parameters<typeof fakeClaude>[1], harness?: 'pi') {
 	const workspace = realpathSync(directory(t))
 	const opened = store(t, workspace)
 	target(opened)
 	plan(opened)
 	closeStore(opened)
-	const fake = fakeClaude(t, replies)
+	const fake = fakeClaude(t, replies, harness)
 	mkdirSync(join(fake.config, 'plugins'), { recursive: true })
 	writeFileSync(
 		join(fake.config, 'plugins', 'installed_plugins.json'),
 		JSON.stringify({ version: 2, plugins: { 'checkmate@checkmate': [{ installPath: join(root, 'plugin') }] } })
 	)
-	const env = { ...process.env, ...fake.env, CHECKMATE_ACTOR: undefined }
+	const env = {
+		...process.env,
+		...fake.env,
+		CHECKMATE_ACTOR: undefined,
+		...(harness ? { CHECKMATE_HARNESS: harness, PI_OFFLINE: '1' } : {}),
+	}
 	const read = <T>(view: (reading: ReturnType<typeof openStore>) => T) => {
 		const reading = openStore(workspace)
 		try {

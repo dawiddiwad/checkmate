@@ -143,7 +143,7 @@ test('an explicit Claude follow-up model also applies to the forked recorder', (
 })
 
 test('explore follow refuses an exploration that is not completed or that has no new answer', (t) => {
-	const { command, wait, reply } = setup(t)
+	const { command, wait, reply } = setup(t, 'pi')
 	command(['explore', 'start', 'checkout', '--build', 'b1', '--level', 'smoke', ...allow])
 	wait('x-1')
 	const none = command(['explore', 'follow', 'x-1'])
@@ -151,11 +151,26 @@ test('explore follow refuses an exploration that is not completed or that has no
 	assert.match(none.body.reasons[1], /^Exploration x-1 has no answer that a follow-up has not used\.$/)
 	assert.match(none.body.hint, /^Answer a question of the exploration first: checkmate gap answer checkout/)
 	reply({ explorer: '!crash' })
-	command(['explore', 'start', 'checkout', '--build', 'b2', '--level', 'smoke', ...allow])
+	command([
+		'explore',
+		'start',
+		'checkout',
+		'--build',
+		"b2's feature",
+		'--mode',
+		'regression',
+		'--level',
+		'smoke',
+		'--allow',
+		'Read',
+	])
 	wait('x-2')
 	const failed = command(['explore', 'follow', 'x-2'])
 	assert.match(failed.body.reasons[1], /^Exploration x-2 is failed\. A follow-up needs a completed exploration\.$/)
-	assert.match(failed.body.hint, /^Start a new test: checkmate test checkout/)
+	assert.equal(
+		failed.body.hint,
+		"Start a new test: CHECKMATE_HARNESS=pi checkmate explore start checkout --build 'b2'\\''s feature' --mode regression --instance local --level smoke --explorers 1 --timeout 1800 --allow Read"
+	)
 	assert.equal(command(['explore', 'follow', 'x-9']).code, 1)
 })
 

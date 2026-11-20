@@ -8,7 +8,13 @@ import { addEvent, explorationEvents } from '../explorations.ts'
 import { explorationState } from '../explorers.ts'
 import { explorerActor } from '../recorder.ts'
 import { isEnded, isRequestId, requestOf, requestStopped } from '../requests.ts'
-import { closePermission, permissionAnswer, permissionOf, requestPermission, stoppedSince } from '../permissions.ts'
+import {
+	closePermission,
+	permissionAnswer,
+	permissionClosedCause,
+	permissionOf,
+	requestPermission,
+} from '../permissions.ts'
 
 export type HookOptions = {
 	holdMilliseconds?: number
@@ -145,7 +151,7 @@ export function createHooks(store: Store, token: string, options: HookOptions = 
 		try {
 			if (cause) closePermission(store, entry.askerId, entry.id, cause)
 			const request = permissionOf(store, entry.askerId, entry.id)
-			if (request?.decision) body = permissionAnswer(request, request.decision)
+			if (request?.decision && cause !== 'interrupted') body = permissionAnswer(request, request.decision)
 		} catch (error) {
 			log(`could not answer ${entry.id} of ${entry.askerId}: ${(error as Error).message}`)
 		}
@@ -157,8 +163,12 @@ export function createHooks(store: Store, token: string, options: HookOptions = 
 		for (const entry of [...held.values()]) {
 			try {
 				const request = permissionOf(store, entry.askerId, entry.id)
-				if (!request || request.decision) finish(entry)
-				else if (stoppedSince(store, request)) finish(entry, 'stopped')
+				if (!request) finish(entry)
+				else {
+					const cause = permissionClosedCause(store, request)
+					if (cause === 'interrupted' || (!request.decision && cause)) finish(entry, cause)
+					else if (request.decision) finish(entry)
+				}
 			} catch (error) {
 				log(`could not release ${entry.id} of ${entry.askerId}: ${(error as Error).message}`)
 			}

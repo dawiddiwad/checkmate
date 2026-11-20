@@ -9343,29 +9343,29 @@ var toolKinds = ["cli", "mcp", "skill"];
 var entryPointKinds = ["url", "command", "value"];
 function openTarget(store, actor, input) {
   return write(store, { actor, command: "target open", subject: input.targetId, input }, (operationId) => {
-    const request = targetRequestCheck(input);
+    const request2 = targetRequestCheck(input);
     const existing = one(
       store,
       "SELECT body FROM target_requests WHERE target_id = ?",
-      request.targetId
+      request2.targetId
     );
     if (existing) {
       requireCondition(
-        existing.body === canonical(request),
-        `Target ${request.targetId} is open with other values. Use a new target ID for a different scope.`
+        existing.body === canonical(request2),
+        `Target ${request2.targetId} is open with other values. Use a new target ID for a different scope.`
       );
-      return { reply: completed(request.targetId, { request, recorded: false }), subjects: [] };
+      return { reply: completed(request2.targetId, { request: request2, recorded: false }), subjects: [] };
     }
     execute(
       store,
       "INSERT INTO target_requests (target_id, body, operation_id) VALUES (?, ?, ?)",
-      request.targetId,
-      canonical(request),
+      request2.targetId,
+      canonical(request2),
       operationId
     );
     return {
-      reply: completed(request.targetId, { request, recorded: true }),
-      subjects: [`target:${request.targetId}`]
+      reply: completed(request2.targetId, { request: request2, recorded: true }),
+      subjects: [`target:${request2.targetId}`]
     };
   });
 }
@@ -9436,25 +9436,25 @@ function saveTarget(store, actor, input) {
 }
 function save(store, actor, input) {
   return write(store, { actor, command: "target save", subject: input.targetId, input }, (operationId) => {
-    const request = targetRequest(store, input.targetId);
+    const request2 = targetRequest(store, input.targetId);
     const profile = profileCheck(input.profile);
     requireCondition(
-      profile.targetId === request.targetId,
-      `Profile targetId ${profile.targetId} differs from ${request.targetId}`
+      profile.targetId === request2.targetId,
+      `Profile targetId ${profile.targetId} differs from ${request2.targetId}`
     );
     requireCondition(
-      same(profile.entryPoints, request.entryPoints),
+      same(profile.entryPoints, request2.entryPoints),
       "Profile entryPoints differ from the setup request"
     );
     requireCondition(
-      same(profile.capabilities, request.capabilities),
+      same(profile.capabilities, request2.capabilities),
       "Profile capabilities differ from the setup request"
     );
     requireCondition(
-      same(profile.allowedOperations, request.allowedOperations),
+      same(profile.allowedOperations, request2.allowedOperations),
       "Profile allowedOperations differ from the setup request"
     );
-    for (const requested of request.tools) {
+    for (const requested of request2.tools) {
       const tool = profile.tools.find((tool2) => tool2.name === requested.name);
       requireCondition(tool, `Profile has no entry for the requested tool ${requested.name}`);
       requireCondition(
@@ -9472,7 +9472,7 @@ function save(store, actor, input) {
         productionHint
       );
     }
-    const unreachable = profile.tools.filter((tool) => !tool.reachable && request.tools.some((requested) => requested.name === tool.name)).map((tool) => `Requested tool ${tool.name} (${tool.kind}) is not reachable`);
+    const unreachable = profile.tools.filter((tool) => !tool.reachable && request2.tools.some((requested) => requested.name === tool.name)).map((tool) => `Requested tool ${tool.name} (${tool.kind}) is not reachable`);
     requireCondition(
       !unreachable.length || !profile.readyForLiveExecution,
       `${unreachable.join(". ")}. Set readyForLiveExecution to false.`
@@ -9543,12 +9543,12 @@ function targetList(store) {
 				AS instances
 		FROM target_requests r ORDER BY r.target_id`
   ).map((row3) => {
-    const request = JSON.parse(row3.body);
+    const request2 = JSON.parse(row3.body);
     return {
       targetId: row3.target_id,
       revision: row3.revision,
-      capabilities: request.capabilities,
-      entryPoints: request.entryPoints.map((entry) => entry.name),
+      capabilities: request2.capabilities,
+      entryPoints: request2.entryPoints.map((entry) => entry.name),
       activeInstances: row3.instances
     };
   });
@@ -9611,16 +9611,16 @@ function instanceCheck(entryPoints, value2) {
 }
 function addInstance(store, actor, input) {
   return write(store, { actor, command: "target instance add", subject: input.targetId, input }, (operationId) => {
-    const request = targetRequest(store, input.targetId);
+    const request2 = targetRequest(store, input.targetId);
     const instanceId = requireIdentifier(input.instanceId, "instance ID");
-    const instance = instanceCheck(request.entryPoints, input.instance);
+    const instance = instanceCheck(request2.entryPoints, input.instance);
     const subject = `${input.targetId}/${instanceId}`;
     const latest = one(
       store,
       "SELECT body FROM profiles WHERE target_id = ? ORDER BY revision DESC LIMIT 1",
       input.targetId
     );
-    const operations = latest ? JSON.parse(latest.body).allowedOperations : request.allowedOperations;
+    const operations = latest ? JSON.parse(latest.body).allowedOperations : request2.allowedOperations;
     requireCondition(
       !isProduction(instanceId, instance.environment) || !operations.includes(anyTestOperation),
       `Instance ${subject} is a production instance. ${anyTestOperation} is not permitted on it.`,
@@ -9844,14 +9844,14 @@ function setupTarget(store, actor, input) {
   const entryPoints = [{ name: "web", kind: "url", purpose: "The application." }];
   const known = one(store, "SELECT 1 FROM target_requests WHERE target_id = ?", targetId);
   if (!known) openTarget(store, actor, { targetId, entryPoints, capabilities, allowedOperations, tools: [] });
-  const request = targetRequest(store, targetId);
+  const request2 = targetRequest(store, targetId);
   const saved = one(
     store,
     "SELECT revision FROM profiles WHERE target_id = ? ORDER BY revision DESC LIMIT 1",
     targetId
   );
-  const reachable = saved ? true : input.answered ?? urlAnswers(url);
-  if (!reachable) assumed.push(`ready=false (${url} did not answer)`);
+  const reachable = input.answered ?? urlAnswers(url);
+  if (!reachable && !saved) assumed.push(`ready=false (${url} did not answer)`);
   if (!saved)
     saveTarget(store, actor, {
       targetId,
@@ -9859,11 +9859,11 @@ function setupTarget(store, actor, input) {
         contractVersion: "toolkit-2",
         targetId,
         revision: 1,
-        entryPoints: request.entryPoints,
-        capabilities: request.capabilities,
+        entryPoints: request2.entryPoints,
+        capabilities: request2.capabilities,
         tools,
         authentication: { kind: "none", references: [] },
-        allowedOperations: request.allowedOperations,
+        allowedOperations: request2.allowedOperations,
         startup: { owner: "factory", command: null },
         cleanup: "Leave the test data. Remove it only when the application offers a way.",
         readyForLiveExecution: reachable
@@ -9884,6 +9884,8 @@ function setupTarget(store, actor, input) {
     capabilities: latest.profile.capabilities,
     allowedOperations: latest.profile.allowedOperations,
     ready: latest.profile.readyForLiveExecution,
+    instanceReachable: reachable,
+    ...!latest.profile.readyForLiveExecution ? { next: `Recheck the target prerequisites and save a new profile: checkmate delegate setup ${targetId}` } : {},
     created: !known,
     assumed: known ? [] : assumed
   });
@@ -10294,8 +10296,8 @@ function planRules(store, planId) {
     const stored = storedRules(store, planId);
     return stored?.origin === "harvested" ? { rules: withHeldRules(stored.rules, held), origin: "harvested" } : { rules: held, origin: "revision" };
   }
-  const { request } = planRequest(store, planId);
-  if (request.requirements?.length) return { rules: plainRules(request.requirements), origin: "request" };
+  const { request: request2 } = planRequest(store, planId);
+  if (request2.requirements?.length) return { rules: plainRules(request2.requirements), origin: "request" };
   return storedRules(store, planId) ?? { rules: [], origin: null };
 }
 function explorationRules(store, explorationId) {
@@ -10349,8 +10351,8 @@ function ticketFile(store, typed) {
   return path.slice(workspace.length + 1);
 }
 function ruleSources(store, planId) {
-  const { request } = planRequest(store, planId);
-  return (request.context?.sources ?? []).map((name2) => ({ name: name2, text: sourceText(store, name2) }));
+  const { request: request2 } = planRequest(store, planId);
+  return (request2.context?.sources ?? []).map((name2) => ({ name: name2, text: sourceText(store, name2) }));
 }
 function rulesNeeded(store, planId) {
   return !planRules(store, planId).rules.length && ruleSources(store, planId).some((source) => source.text !== null);
@@ -11350,13 +11352,13 @@ function openPlan(store, actor, input) {
     const target = revisionReference(requireText(input.target, "target (--target)"), "target reference");
     requireWellFormed(target.revision !== null, `Name the target revision: --target ${target.id}@<revision>`);
     const profile = targetRevision(store, target.id, target.revision).profile;
-    const request = validate("plan-request", input.request);
+    const request2 = validate("plan-request", input.request);
     requireWellFormed(
-      request.requirements?.length || request.context?.sources.length,
+      request2.requirements?.length || request2.context?.sources.length,
       "A plan request needs requirements or context sources"
     );
-    index(request.requirements ?? [], "id", "requirement");
-    for (const tool of request.tools ?? [])
+    index(request2.requirements ?? [], "id", "requirement");
+    for (const tool of request2.tools ?? [])
       if (typeof tool === "string")
         requireWellFormed(
           profile.tools.some((known) => known.name === tool),
@@ -11369,9 +11371,9 @@ function openPlan(store, actor, input) {
           `Tool ${tool.name} is in the target profile. Name it as a string.`
         );
       }
-    const names = planTools(request, profile).map((tool) => tool.name);
+    const names = planTools(request2, profile).map((tool) => tool.name);
     requireWellFormed(new Set(names).size === names.length, "Duplicate tool name in the plan request");
-    const body = canonical(request);
+    const body = canonical(request2);
     const data = { planId, target: `${target.id}@${target.revision}` };
     const existing = one(store, "SELECT * FROM plan_requests WHERE plan_id = ?", planId);
     if (existing) {
@@ -11396,25 +11398,25 @@ function openPlan(store, actor, input) {
 function planRequest(store, planId) {
   const row3 = one(store, "SELECT * FROM plan_requests WHERE plan_id = ?", planId);
   requireCondition(row3, `Unknown plan: ${planId}. Run plan open first.`);
-  const request = JSON.parse(row3.body);
-  return { request, target: targetRevision(store, row3.target_id, row3.target_revision) };
+  const request2 = JSON.parse(row3.body);
+  return { request: request2, target: targetRevision(store, row3.target_id, row3.target_revision) };
 }
-function planTools(request, profile) {
-  const named = (request.tools ?? []).filter((tool) => typeof tool === "string");
-  const added = (request.tools ?? []).filter((tool) => typeof tool !== "string");
+function planTools(request2, profile) {
+  const named = (request2.tools ?? []).filter((tool) => typeof tool === "string");
+  const added = (request2.tools ?? []).filter((tool) => typeof tool !== "string");
   const kept = named.length ? profile.tools.filter((tool) => named.includes(tool.name)) : profile.tools;
   return [...kept, ...added];
 }
 function showPlanRequest(store, planId) {
-  const { request, target } = planRequest(store, planId);
+  const { request: request2, target } = planRequest(store, planId);
   return completed(planId, {
     planId,
     target: `${target.profile.targetId}@${target.revision}`,
-    objective: request.objective,
-    requirements: request.requirements ?? [],
-    sourceContext: request.sourceContext ?? [],
-    context: request.context ?? { sources: [] },
-    tools: planTools(request, target.profile),
+    objective: request2.objective,
+    requirements: request2.requirements ?? [],
+    sourceContext: request2.sourceContext ?? [],
+    context: request2.context ?? { sources: [] },
+    tools: planTools(request2, target.profile),
     capabilities: target.profile.capabilities,
     allowedOperations: target.profile.allowedOperations
   });
@@ -11768,13 +11770,13 @@ function newFields(name2, change, required, defaults = {}) {
 }
 function savePlan(store, actor, input) {
   return write(store, { actor, command: "plan save", subject: input.planId, input }, (operationId) => {
-    const { request, target } = planRequest(store, input.planId);
+    const { request: request2, target } = planRequest(store, input.planId);
     requireCondition(
       !one(store, "SELECT 1 FROM plan_revisions WHERE plan_id = ?", input.planId),
       `Plan ${input.planId} has revision 1. Use plan edit, or gap answer and plan revise, to change it.`
     );
     const candidate = validate("plan-candidate", input.candidate);
-    const requirements = candidateRequirements(request, candidate.requirements);
+    const requirements = candidateRequirements(request2, candidate.requirements);
     return storeRevision(
       store,
       {
@@ -11783,7 +11785,7 @@ function savePlan(store, actor, input) {
         revision: 1,
         previousRevision: null,
         target: { targetId: target.profile.targetId, revision: target.revision, sha256: target.sha256 },
-        objective: request.objective,
+        objective: request2.objective,
         requirements,
         tests: candidate.tests,
         gaps: candidate.gaps,
@@ -11794,15 +11796,15 @@ function savePlan(store, actor, input) {
     );
   });
 }
-function candidateRequirements(request, drafted) {
-  if (request.requirements?.length) {
+function candidateRequirements(request2, drafted) {
+  if (request2.requirements?.length) {
     requireWellFormed(
       !drafted,
       "The plan request names the requirements. Do not add requirements to the candidate."
     );
-    return request.requirements;
+    return request2.requirements;
   }
-  const sources = request.context?.sources ?? [];
+  const sources = request2.context?.sources ?? [];
   requireWellFormed(
     drafted?.length,
     `The plan request has no requirements. Draft them from the context sources: ${sources.join(", ")}`
@@ -12652,7 +12654,7 @@ function beginRun(store, actor, input) {
         };
       }
       const { plan, sha256 } = checked.revision;
-      const request = {
+      const request2 = {
         selectedTestIds: checked.tests,
         partialExecution: checked.partial,
         onNewBlocker,
@@ -12672,7 +12674,7 @@ function beginRun(store, actor, input) {
         plan.target.revision,
         instance.instanceId,
         checked.build,
-        canonical(request),
+        canonical(request2),
         at,
         browserSession,
         timeoutSeconds,
@@ -13404,16 +13406,23 @@ function latestRevision(store, planId) {
   );
   return row3 ? { revision: row3.revision, plan: JSON.parse(row3.body) } : null;
 }
-function charterOf(store, planId, scope, change, knownState = null) {
-  const { request, target } = planRequest(store, planId);
+function charterOf(store, planId, plan, scope, change, knownState = null) {
+  const { request: request2, target } = planRequest(store, planId);
   return {
-    goal: request.objective,
+    goal: request2.objective,
     requirements: planRules(store, planId).rules.map(({ id: id2, text }) => ({ id: id2, text })),
-    sources: request.context?.sources ?? [],
-    instructions: request.context?.instructions ?? null,
+    decisions: plan?.gaps.flatMap((gap) => {
+      if (gap.status !== "resolved" && gap.status !== "deferred") return [];
+      const decision = plan.decisions.find(({ id: id2 }) => id2 === gap.decisionId);
+      if (!decision) return [];
+      const { gapId, kind, value: value2, source } = decision;
+      return [{ gapId, kind, question: gap.question, value: value2, source }];
+    }) ?? [],
+    sources: request2.context?.sources ?? [],
+    instructions: request2.context?.instructions ?? null,
     capabilities: target.profile.capabilities,
     operations: target.profile.allowedOperations,
-    tools: planTools(request, target.profile).map(({ name: name2, purpose }) => ({ name: name2, purpose })),
+    tools: planTools(request2, target.profile).map(({ name: name2, purpose }) => ({ name: name2, purpose })),
     scope,
     change,
     knownState
@@ -13525,9 +13534,11 @@ function insertExploration(store, input, operationId, at) {
   const mode = requireChoice(input.mode ?? "exploratory", explorationModes, "mode (--mode)");
   const instance = runInstance(store, target.profile.targetId, input.instance);
   const explorationId = input.explorationId ?? nextExplorationId(store);
+  const revision = latestRevision(store, planId);
   const charter = charterOf(
     store,
     planId,
+    revision?.plan,
     input.scope ?? [],
     input.change ?? null,
     writeKnownState(store, planId, explorationId, build)
@@ -13537,7 +13548,7 @@ function insertExploration(store, input, operationId, at) {
     "INSERT INTO explorations (exploration_id, plan_id, plan_revision, target_id, target_revision, instance_id, build, mode, charter, started_at, operation_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     explorationId,
     planId,
-    latestRevision(store, planId)?.revision ?? null,
+    revision?.revision ?? null,
     target.profile.targetId,
     target.revision,
     instance.instanceId,
@@ -13676,8 +13687,8 @@ function saveRequestModel(store, actor, text, harness = "claude") {
     return { reply: completed(name2, { model }), subjects: ["settings"] };
   });
 }
-function saveModels(store, actor, harness, request, tester) {
-  const requestModel = request.trim();
+function saveModels(store, actor, harness, request2, tester) {
+  const requestModel = request2.trim();
   const testerModel = tester.trim();
   const input = { harness, requestModel, testerModel };
   return write(store, { actor, command: "setting set", subject: "models", input }, (operationId) => {
@@ -14445,6 +14456,11 @@ function testDataText(dataPrefix) {
 }
 function explorerBrief(charter, entries, dataPrefix, workFolder2, seconds) {
   const change = charter.change;
+  const decisions = charter.decisions ?? [];
+  const decisionInstructions = [
+    "Use the applied oracle answers to settle open points in the sources. Keep deferred questions deferred.",
+    "Ask only about points that the sources and the applied oracle decisions leave open."
+  ];
   const diff = change ? [
     `The code of the change is shown by git diff ${change.range.join(" ")} in ${change.repo === "." ? "the workspace" : `the folder ${change.repo}`}.`,
     ...change.checkedOut ? [] : ["The checked-out files are the version before the change, and the diff shows the change."],
@@ -14457,6 +14473,15 @@ function explorerBrief(charter, entries, dataPrefix, workFolder2, seconds) {
     ...charter.requirements.length ? ["", "Rules of the change:", ...charter.requirements.map((item) => `- ${item.id}: ${item.text}`)] : [],
     ...charter.sources.length ? ["", `Read: ${charter.sources.join(", ")}`] : [],
     ...charter.instructions ? ["", charter.instructions] : [],
+    ...decisions.length ? [
+      "",
+      "Applied oracle decisions:",
+      ...decisions.map(({ gapId, kind, question, value: value2, source }) => {
+        const label = kind === "defer" ? "Deferred" : kind === "accept_assumption" ? "Accepted assumption" : "Answer";
+        return `- ${gapId}: ${question} ${label}: ${value2}${source ? ` (source: ${source})` : ""}`;
+      }),
+      ...decisionInstructions
+    ] : [],
     ...charter.scope.length ? ["", "Changed files:", ...charter.scope.map((path) => `- ${path}`)] : [],
     ...diff.length ? ["", ...diff] : [],
     ...charter.knownState ? [
@@ -14483,7 +14508,12 @@ function explorerBrief(charter, entries, dataPrefix, workFolder2, seconds) {
   ];
   const test = [
     "Now test the change and the existing behaviour that it can break.",
-    "The owner of the product has not answered your questions yet. Use the sources where they decide the point, and report the rest as unclear.",
+    ...decisions.length ? [
+      ...decisionInstructions,
+      "Report a point as unclear only if it is still open after you check the sources and the applied oracle decisions."
+    ] : [
+      "The owner of the product has not answered your questions yet. Use the sources where they decide the point, and report the rest as unclear."
+    ],
     ...diff,
     testDataText(dataPrefix),
     `Save the files that show a problem, for example screenshots or responses, in ${workFolder2}/.`,
@@ -15129,7 +15159,7 @@ async function watchStray(store, actor, explorationId, explorer, turn, run2) {
       step: "stray",
       explorer,
       status: "completed",
-      detail: { turn, names: stray }
+      detail: { turn, names: stray, basis: "workspace_listing" }
     });
   return result;
 }
@@ -16132,6 +16162,7 @@ function explorationStatus(store, explorationId) {
       reason: end?.detail.reason ?? record?.detail.reasons ?? (stop ? stopText(stop) : null),
       hint: end?.detail.hint ?? (pi && typeof end?.detail.reason === "string" && authenticationFailed({ failure: ["operational_error", end.detail.reason] }) ? piAuthenticationHint : null),
       stderr: end?.detail.stderr ?? [],
+      strayBasis: "workspace_listing",
       stray: [
         ...new Set(
           own.filter((item) => item.step === "stray").flatMap((item) => item.detail.names)
@@ -16434,25 +16465,25 @@ function allRequests(store) {
     (ask) => recordOf(ask, events.get(ask.request_id) ?? [])
   );
 }
-function isUnread(request) {
-  return unreadStates.includes(request.state) && !request.read;
+function isUnread(request2) {
+  return unreadStates.includes(request2.state) && !request2.read;
 }
-function isEnded(request) {
-  return endStates.includes(request.state);
+function isEnded(request2) {
+  return endStates.includes(request2.state);
 }
 function requestStatus(store) {
   const requests = allRequests(store);
   const unread = requests.filter(isUnread);
   return {
-    running: requests.find((request) => request.state === "running")?.id ?? null,
-    waiting: requests.filter((request) => request.state === "waiting").length,
+    running: requests.find((request2) => request2.state === "running")?.id ?? null,
+    waiting: requests.filter((request2) => request2.state === "waiting").length,
     unread: unread.length,
     firstUnread: unread.at(-1)?.id ?? null
   };
 }
 function listedRequests(store) {
   const requests = allRequests(store).reverse();
-  return [...requests.filter(isUnread), ...requests.filter((request) => !isUnread(request))];
+  return [...requests.filter(isUnread), ...requests.filter((request2) => !isUnread(request2))];
 }
 var recordPaths = {
   plan: "/plans/",
@@ -16495,10 +16526,10 @@ function changesOf(store, requestId2) {
   });
 }
 function staleRequests(store) {
-  for (const request of allRequests(store))
-    if (request.state === "running" || request.state === "waiting")
-      setRequestState(store, request.id, "interrupted", {
-        reason: request.state === "running" ? "The UI stopped before the request ended." : "The UI stopped before the request started."
+  for (const request2 of allRequests(store))
+    if (request2.state === "running" || request2.state === "waiting")
+      setRequestState(store, request2.id, "interrupted", {
+        reason: request2.state === "running" ? "The UI stopped before the request ended." : "The UI stopped before the request started."
       });
 }
 
@@ -16523,7 +16554,7 @@ function rows(store, planId, askerId) {
     planId ?? null,
     askerId ?? null
   );
-  const request = all(
+  const request2 = all(
     store,
     `SELECT e.request_id AS asker_id, 1 AS from_request, json_extract(r.context, '$.planId') AS plan_id, e.at, e.step, NULL AS explorer, e.status, e.detail
 		FROM request_events e JOIN requests r ON r.request_id = e.request_id
@@ -16531,7 +16562,7 @@ function rows(store, planId, askerId) {
     planId ?? null,
     askerId ?? null
   );
-  return [...exploration2, ...request];
+  return [...exploration2, ...request2];
 }
 function ruleText(rule) {
   return rule.ruleContent ? `${rule.toolName}(${rule.ruleContent})` : rule.toolName;
@@ -16599,8 +16630,8 @@ function permissionsOf(list2) {
         decision: null
       });
     } else {
-      const request = found.get(key);
-      if (request && !request.decision) request.decision = decisionOf(row3);
+      const request2 = found.get(key);
+      if (request2 && !request2.decision) request2.decision = decisionOf(row3);
     }
   }
   return [...found.values()];
@@ -16658,22 +16689,22 @@ function nextRequestId(store, askerId) {
   ).count;
   return `P${count2 + 1}`;
 }
-function addAskerEvent(store, request, event2, operationId, at) {
-  if (request.fromRequest) addRequestEvent(store, request.askerId, event2, operationId, at);
-  else addEvent(store, request.askerId, { ...event2, explorer: request.tester }, operationId, at);
+function addAskerEvent(store, request2, event2, operationId, at) {
+  if (request2.fromRequest) addRequestEvent(store, request2.askerId, event2, operationId, at);
+  else addEvent(store, request2.askerId, { ...event2, explorer: request2.tester }, operationId, at);
 }
-function subjectsOf(request) {
+function subjectsOf(request2) {
   return [
-    request.fromRequest ? `request:${request.askerId}` : `exploration:${request.askerId}`,
-    ...request.planId ? [`plan:${request.planId}`] : [],
+    request2.fromRequest ? `request:${request2.askerId}` : `exploration:${request2.askerId}`,
+    ...request2.planId ? [`plan:${request2.planId}`] : [],
     "permissions"
   ];
 }
-function addDecision(store, request, kind, detail, operationId, at) {
+function addDecision(store, request2, kind, detail, operationId, at) {
   addAskerEvent(
     store,
-    request,
-    { step: decisionStep, status: kind, detail: { id: request.id, who: request.who, ...detail } },
+    request2,
+    { step: decisionStep, status: kind, detail: { id: request2.id, who: request2.who, ...detail } },
     operationId,
     at
   );
@@ -16699,10 +16730,10 @@ function requestPermission(store, input) {
   };
   return write(store, { ...operation, input: { who: input.who, tool: input.tool } }, (operationId, at) => {
     const id2 = nextRequestId(store, input.askerId);
-    const request = { askerId: input.askerId, fromRequest, id: id2, who: input.who, tester };
+    const request2 = { askerId: input.askerId, fromRequest, id: id2, who: input.who, tester };
     addAskerEvent(
       store,
-      request,
+      request2,
       {
         step: requestStep,
         status: "open",
@@ -16722,7 +16753,7 @@ function requestPermission(store, input) {
     if (force)
       addDecision(
         store,
-        request,
+        request2,
         "rule",
         {
           by: "rule",
@@ -16750,37 +16781,37 @@ function decidePermission(store, actor, input, stop) {
     input: { requestId: input.requestId, decision: choice2 }
   };
   const reply = write(store, operation, (operationId, at, who) => {
-    const request = findPermission(store, input.askerId, input.requestId);
+    const request2 = findPermission(store, input.askerId, input.requestId);
     requireCondition(
-      !request.decision,
-      `Permission request ${request.id} of ${request.askerId} has an answer already: ${request.decision?.text}. Nothing changed.`
+      !request2.decision,
+      `Permission request ${request2.id} of ${request2.askerId} has an answer already: ${request2.decision?.text}. Nothing changed.`
     );
     requireCondition(
-      choice2 !== "allow-kind" && choice2 !== "always" || request.rule,
-      `Permission request ${request.id} has no rule that Claude Code can remember. Allow it once, or deny it.`
+      choice2 !== "allow-kind" && choice2 !== "always" || request2.rule,
+      `Permission request ${request2.id} has no rule that Claude Code can remember. Allow it once, or deny it.`
     );
-    const scope = request.fromRequest ? "conversation" : "test";
-    const stopped = request.fromRequest ? "request" : request.tester ? "tester" : "run";
+    const scope = request2.fromRequest ? "conversation" : "test";
+    const stopped = request2.fromRequest ? "request" : request2.tester ? "tester" : "run";
     const texts = {
       allow: "allowed once",
-      "allow-kind": `allowed for this ${scope}: ${request.rule}`,
-      "allow-tool": `allowed for this ${scope}: every ${request.tool} call`,
-      always: `allowed always in this project: ${request.rule}`,
+      "allow-kind": `allowed for this ${scope}: ${request2.rule}`,
+      "allow-tool": `allowed for this ${scope}: every ${request2.tool} call`,
+      always: `allowed always in this project: ${request2.rule}`,
       deny: `denied: ${reason}`,
       stop: `stopped the ${stopped}${reason ? `: ${reason}` : ""}`
     };
-    const rule = choice2 === "allow-tool" ? request.tool : choice2 === "allow-kind" || choice2 === "always" ? request.rule : null;
+    const rule = choice2 === "allow-tool" ? request2.tool : choice2 === "allow-kind" || choice2 === "always" ? request2.rule : null;
     addDecision(
       store,
-      request,
+      request2,
       choice2,
       { by: who, text: `${texts[choice2]}, by ${who}`, ...reason ? { reason } : {}, ...rule ? { rule } : {} },
       operationId,
       at
     );
     return {
-      reply: completed(request.askerId, { requestId: request.id, decision: choice2, who: request.tester }),
-      subjects: subjectsOf(request)
+      reply: completed(request2.askerId, { requestId: request2.id, decision: choice2, who: request2.tester }),
+      subjects: subjectsOf(request2)
     };
   });
   if (choice2 === "stop") stop(reply.data.who ?? void 0, reason);
@@ -16796,12 +16827,12 @@ function closePermission(store, askerId, requestId2, cause) {
       input: { requestId: requestId2, cause }
     },
     (operationId, at) => {
-      const request = findPermission(store, askerId, requestId2);
-      if (request.decision) return { reply: completed(askerId, { closed: false }), subjects: [] };
-      addDecision(store, request, "closed", { by: "checkmate", text: closedText[cause], cause }, operationId, at);
+      const request2 = findPermission(store, askerId, requestId2);
+      if (request2.decision) return { reply: completed(askerId, { closed: false }), subjects: [] };
+      addDecision(store, request2, "closed", { by: "checkmate", text: closedText[cause], cause }, operationId, at);
       return {
         reply: completed(askerId, { closed: true }),
-        subjects: subjectsOf(request)
+        subjects: subjectsOf(request2)
       };
     }
   ).data.closed;
@@ -16812,9 +16843,9 @@ function closeOpenPermissions(store, cause) {
 function decisionBody(decision) {
   return JSON.stringify({ hookSpecificOutput: { hookEventName: "PermissionRequest", decision } });
 }
-function permissionAnswer(request, decision) {
+function permissionAnswer(request2, decision) {
   const withRule = (destination) => {
-    const suggestion = kindSuggestion(request.suggestions);
+    const suggestion = kindSuggestion(request2.suggestions);
     const update = {
       type: "addRules",
       rules: rulesOf(suggestion),
@@ -16823,12 +16854,12 @@ function permissionAnswer(request, decision) {
     };
     return decisionBody({ behavior: "allow", updatedPermissions: [update] });
   };
-  const forTool = (decision.kind === "allow-tool" || decision.kind === "rule") && decision.rule === request.tool;
+  const forTool = (decision.kind === "allow-tool" || decision.kind === "rule") && decision.rule === request2.tool;
   if (forTool)
     return decisionBody({
       behavior: "allow",
       updatedPermissions: [
-        { type: "addRules", rules: [{ toolName: request.tool }], behavior: "allow", destination: "session" }
+        { type: "addRules", rules: [{ toolName: request2.tool }], behavior: "allow", destination: "session" }
       ]
     });
   if (decision.kind === "allow") return decisionBody({ behavior: "allow" });
@@ -16843,17 +16874,17 @@ function permissionAnswer(request, decision) {
     });
   return "";
 }
-function stoppedSince(store, request) {
-  if (request.fromRequest) return requestStopped(store, request.askerId);
+function stoppedSince(store, request2) {
+  if (request2.fromRequest) return requestStopped(store, request2.askerId);
   return one(
     store,
     `SELECT 1 FROM exploration_events WHERE exploration_id = ? AND step = 'stop'
 			AND (explorer IS NULL OR explorer = ?)
 			AND rowid > (SELECT rowid FROM exploration_events WHERE exploration_id = ? AND step = '${requestStep}' AND json_extract(detail, '$.id') = ?)`,
-    request.askerId,
-    request.who,
-    request.askerId,
-    request.id
+    request2.askerId,
+    request2.who,
+    request2.askerId,
+    request2.id
   ) !== void 0;
 }
 
@@ -16973,7 +17004,7 @@ function inbox(store) {
       };
     });
   });
-  const requests = requestedPlans(store).filter((request) => !explored.includes(request.planId));
+  const requests = requestedPlans(store).filter((request2) => !explored.includes(request2.planId));
   return { gaps: allGaps, plans, results, claims, requests: requests.sort(bySince) };
 }
 function selectedCounts(result) {
@@ -17013,19 +17044,19 @@ function planList(store) {
       loop: loopOf(store, row3.plan_id)
     };
   });
-  const requested = requestedPlans(store).map((request) => ({
-    ...costs.get(request.planId) ?? noModelCost,
-    planId: request.planId,
+  const requested = requestedPlans(store).map((request2) => ({
+    ...costs.get(request2.planId) ?? noModelCost,
+    planId: request2.planId,
     status: "requested",
     revision: null,
     sha256: null,
-    since: request.since,
+    since: request2.since,
     openGaps: [],
     openBlockingGaps: [],
     tests: { total: 0, ready: 0, blocked: 0, deferred: 0 },
     approval: null,
     blocked: [],
-    loop: loopOf(store, request.planId)
+    loop: loopOf(store, request2.planId)
   }));
   return [...drafted, ...requested].sort((a, b) => a.planId.localeCompare(b.planId));
 }
@@ -18490,6 +18521,18 @@ function runDocument(report) {
     },
     { heading: "Acceptance" },
     approvalBlock(acceptance, "The target policy does not require acceptance."),
+    ...report.retest.length ? [
+      { heading: "Retest verdicts" },
+      {
+        table: ["Finding", "Title", "Verdict", "Tests"],
+        rows: report.retest.map((item) => [
+          `${item.runId}/${item.findingId}`,
+          item.title,
+          item.verdict,
+          join9(item.testIds)
+        ])
+      }
+    ] : [],
     { heading: `Plan approval (${plan.planId}@${plan.revision})` },
     approvalBlock(report.planApproval, "The target policy does not require plan approval."),
     { heading: "Tests" },
@@ -18803,7 +18846,15 @@ function junit(report) {
       ["instance", result.instanceId],
       ["target", `${result.target.targetId}@${result.target.revision}`],
       ["completion", result.completion],
-      ["coverage", result.coverage.status]
+      ["coverage", result.coverage.status],
+      ...report.retest.flatMap((item) => {
+        const name2 = `retest.${item.runId}/${item.findingId}`;
+        return [
+          [`${name2}.verdict`, item.verdict],
+          [`${name2}.title`, item.title],
+          [`${name2}.tests`, item.testIds.join(",")]
+        ];
+      })
     ]) + "\n" + cases.join("\n") + "\n"
   );
   return `<?xml version="1.0" encoding="UTF-8"?>
@@ -18849,6 +18900,7 @@ function runReport(store, runId) {
     planApproval: { state: approvalLabel(approval), latest: approval.latest },
     plan: { planId, revision, objective, requirements, tests, gaps, decisions, assumptions },
     inline,
+    retest: retestVerdicts(run2, runOutcomes(store, runId)),
     times: testTimes(store, runId)
   };
 }
@@ -19017,15 +19069,15 @@ async function recoverPiCosts(store, env) {
 
 // plugin/src/ui/server.ts
 import { createServer } from "node:http";
-import { randomBytes as randomBytes3 } from "node:crypto";
-import { existsSync as existsSync6, readFileSync as readFileSync7 } from "node:fs";
+import { randomBytes as randomBytes4 } from "node:crypto";
+import { existsSync as existsSync6, readFileSync as readFileSync8, realpathSync as realpathSync7 } from "node:fs";
 import { fileURLToPath as fileURLToPath2 } from "node:url";
 
 // plugin/src/modes.ts
 import { spawnSync as spawnSync5 } from "node:child_process";
 import { resolve as resolve6 } from "node:path";
 var testModes = ["exploratory", "regression", "auto"];
-var storedTestsNone = "none, the testers retest the earlier findings";
+var storedTestsNone = "none, testers use earlier results when available";
 function hasRequest(store, planId) {
   return Boolean(one(store, "SELECT 1 FROM plan_requests WHERE plan_id = ?", planId));
 }
@@ -20297,7 +20349,7 @@ function harvested(base, rules, items, explorationId, build, capabilities, opera
 function harvestExploration(store, actor, input) {
   return write(store, { actor, command: "harvest", subject: input.explorationId, input }, (operationId) => {
     const row3 = explorationRow(store, input.explorationId);
-    const { request, target } = planRequest(store, row3.plan_id);
+    const { request: request2, target } = planRequest(store, row3.plan_id);
     const items = drafts(store, row3.exploration_id, input.observations);
     requireCondition(
       items.length,
@@ -20330,7 +20382,7 @@ function harvestExploration(store, actor, input) {
         revision: 1,
         previousRevision: null,
         target: { targetId: target.profile.targetId, revision: target.revision, sha256: target.sha256 },
-        objective: request.objective,
+        objective: request2.objective,
         requirements: result.candidate.requirements,
         tests: result.candidate.tests,
         gaps: [],
@@ -20466,8 +20518,8 @@ function createHooks(store, token, options3 = {}) {
     let body = "";
     try {
       if (cause) closePermission(store, entry.askerId, entry.id, cause);
-      const request = permissionOf(store, entry.askerId, entry.id);
-      if (request?.decision) body = permissionAnswer(request, request.decision);
+      const request2 = permissionOf(store, entry.askerId, entry.id);
+      if (request2?.decision) body = permissionAnswer(request2, request2.decision);
     } catch (error) {
       log(`could not answer ${entry.id} of ${entry.askerId}: ${error.message}`);
     }
@@ -20477,9 +20529,9 @@ function createHooks(store, token, options3 = {}) {
   function release() {
     for (const entry of [...held.values()]) {
       try {
-        const request = permissionOf(store, entry.askerId, entry.id);
-        if (!request || request.decision) finish2(entry);
-        else if (stoppedSince(store, request)) finish2(entry, "stopped");
+        const request2 = permissionOf(store, entry.askerId, entry.id);
+        if (!request2 || request2.decision) finish2(entry);
+        else if (stoppedSince(store, request2)) finish2(entry, "stopped");
       } catch (error) {
         log(`could not release ${entry.id} of ${entry.askerId}: ${error.message}`);
       }
@@ -20523,8 +20575,8 @@ function createHooks(store, token, options3 = {}) {
         cwd
       });
       if (!made.byRule) return hold(askerId, made.id, res);
-      const request = permissionOf(store, askerId, made.id);
-      answer(res, permissionAnswer(request, request.decision));
+      const request2 = permissionOf(store, askerId, made.id);
+      answer(res, permissionAnswer(request2, request2.decision));
     } catch (error) {
       log(`could not record the permission call of ${who} in ${askerId}: ${error.message}`);
       answer(res, "");
@@ -20688,11 +20740,11 @@ function choicesOf(item) {
   const kind = item.tool.toLowerCase() === "bash" ? "command" : "kind of call";
   const run2 = item.askerId;
   const rule = item.rule;
-  const request = item.fromRequest;
-  const scope = request ? "conversation" : "test";
-  const everyone = request ? `later requests of this conversation` : `any tester of this run`;
-  const where = request ? `request ${run2}` : `run ${run2}`;
-  const ends = request ? "The rule ends when you start a new conversation." : "The rule ends with the run.";
+  const request2 = item.fromRequest;
+  const scope = request2 ? "conversation" : "test";
+  const everyone = request2 ? `later requests of this conversation` : `any tester of this run`;
+  const where = request2 ? `request ${run2}` : `run ${run2}`;
+  const ends = request2 ? "The rule ends when you start a new conversation." : "The rule ends with the run.";
   return [
     { decision: "allow", label: "Allow once", text: "Answers this request with yes. Checkmate stores no rule." },
     ...rule ? [
@@ -20714,7 +20766,7 @@ function choicesOf(item) {
         label: `Always allow this ${kind} in this project`,
         text: html2`Answers yes now. Claude Code writes the rule <code>${rule}</code> to
 							<code>.claude/settings.local.json</code> of the project, and the rule stays after this
-							${request ? "conversation" : "run"}. Checkmate writes no settings file.`
+							${request2 ? "conversation" : "run"}. Checkmate writes no settings file.`
       }
     ] : [],
     {
@@ -22037,31 +22089,31 @@ function join12(items, separator2) {
   const shown2 = items.filter((item) => item !== null);
   return html2`${shown2.map((item, index2) => index2 ? html2`${separator2}${item}` : item)}`;
 }
-function requestRow(request, n, now) {
-  const start = Date.parse(request.startedAt ?? request.askedAt);
-  const end = request.endedAt ? Date.parse(request.endedAt) : now;
-  const spent = isEnded(request) ? duration2(Math.max(0, end - start)) : null;
+function requestRow(request2, n, now) {
+  const start = Date.parse(request2.startedAt ?? request2.askedAt);
+  const end = request2.endedAt ? Date.parse(request2.endedAt) : now;
+  const spent = isEnded(request2) ? duration2(Math.max(0, end - start)) : null;
   const meta2 = [
-    request.asker,
-    time(request.askedAt),
-    request.state === "running" ? html2`<span data-since="${request.startedAt}">${duration2(Math.max(0, now - start))}</span>` : spent,
-    request.costUsd === null ? null : money(request.costUsd)
+    request2.asker,
+    time(request2.askedAt),
+    request2.state === "running" ? html2`<span data-since="${request2.startedAt}">${duration2(Math.max(0, now - start))}</span>` : spent,
+    request2.costUsd === null ? null : money(request2.costUsd)
   ];
-  const metaText2 = [request.asker, request.askedAt, spent, request.costUsd === null ? null : money(request.costUsd)].filter(Boolean).join(" \xB7 ");
-  const title = `Request \xB7 ${request.text.trim().split("\n")[0]}`;
+  const metaText2 = [request2.asker, request2.askedAt, spent, request2.costUsd === null ? null : money(request2.costUsd)].filter(Boolean).join(" \xB7 ");
+  const title = `Request \xB7 ${request2.text.trim().split("\n")[0]}`;
   return html2`<div
 		class="sp-row"
 		role="listitem"
 		tabindex="-1"
 		id="request-row-${n}"
 		data-row
-		data-key="request:${request.id}"
-		data-href="/requests/${request.id}"
-		data-label="${request.id}"
+		data-key="request:${request2.id}"
+		data-href="/requests/${request2.id}"
+		data-label="${request2.id}"
 	>
 		<span class="sp-c-cb"></span>
-		<span class="sp-c-tag">${pill(request.state)}</span>
-		<span class="sp-c-id" title="${request.id}">${request.id}</span>
+		<span class="sp-c-tag">${pill(request2.state)}</span>
+		<span class="sp-c-id" title="${request2.id}">${request2.id}</span>
 		<span class="sp-c-title ell" title="${title}">${title}</span>
 		<span class="sp-c-meta ell" title="${metaText2}">${join12(meta2, " \xB7 ")}</span>
 	</div>`;
@@ -22076,10 +22128,10 @@ function activityPage(store, context, params, defaults) {
       render: (n2, now2) => row(run2, n2, now2),
       run: run2
     })),
-    ...allRequests(store).map((request) => ({
-      at: request.askedAt,
-      running: request.state === "running" || request.state === "waiting",
-      render: (n2, now2) => requestRow(request, n2, now2),
+    ...allRequests(store).map((request2) => ({
+      at: request2.askedAt,
+      running: request2.state === "running" || request2.state === "waiting",
+      render: (n2, now2) => requestRow(request2, n2, now2),
       run: null
     }))
   ].sort((a, b) => Number(b.running) - Number(a.running) || b.at.localeCompare(a.at));
@@ -22537,7 +22589,7 @@ function reviewOf(store, planId) {
     ...questions,
     ...others.map((item) => waitingItem(planId, item))
   ].map((item) => item.rule !== null && !known.has(item.rule) ? { ...item, rule: outside } : item);
-  const { request, target } = planRequest(store, planId);
+  const { request: request2, target } = planRequest(store, planId);
   const explorations = planExplorations(store, planId);
   const latest = planHasRevision(store, planId) ? planDetail(store, planId) : null;
   const running3 = explorations.find((item) => item.running) ?? null;
@@ -22547,7 +22599,7 @@ function reviewOf(store, planId) {
     phase: running3 ? phaseOf2(explorationEvents(store, running3.explorationId), running3.state) : null,
     answers: last && answers ? { explorationId: last.explorationId, build: last.build, count: answers } : null,
     planId,
-    objective: request.objective,
+    objective: request2.objective,
     target: `${target.profile.targetId}@${target.revision}`,
     revision: latest?.latestRevision ?? null,
     sha: latest?.sha256 ?? "",
@@ -23494,8 +23546,8 @@ function failedLine(run2, live) {
 function strayLines(live) {
   return live.explorers.filter((item) => item.stray.length).map(
     (item) => html2`<p class="help" data-key="stray-${item.explorer}">
-					Tester ${item.explorer} left files outside its work folder: <code>${item.stray.join(", ")}</code>.
-					Checkmate did not touch them.
+					Workspace entries appeared outside the work folder during tester ${item.explorer}’s turns:
+					<code>${item.stray.join(", ")}</code>. Checkmate did not touch them.
 				</p>`
   );
 }
@@ -24255,7 +24307,7 @@ function developerText(store, planId, claimIds) {
 
 // plugin/src/ui/server.ts
 import { resolve as resolve7 } from "node:path";
-import { mkdirSync as mkdirSync7, rmSync as rmSync6, writeFileSync as writeFileSync4 } from "node:fs";
+import { mkdirSync as mkdirSync8, rmSync as rmSync7, writeFileSync as writeFileSync4 } from "node:fs";
 
 // plugin/src/actor.ts
 import { execFileSync } from "node:child_process";
@@ -24416,7 +24468,7 @@ function tile(review, loop2, cost, index2) {
 			<h2 class="sp-ct-title ell" title="${review.objective}">${review.objective}</h2>
 			<p class="sp-ct-verdict"><b>${verdict.head}</b> ${verdict.tail}</p>
 			<p class="sp-ct-cost" title="Reported cost across this plan’s explorations">
-				Total cost ${costText(cost.costUsd, cost.costPartial)}
+				Exploration cost ${costText(cost.costUsd, cost.costPartial)}
 			</p>
 		</div>
 		${miniMap(review)}
@@ -25235,7 +25287,7 @@ function storedTestsEmpty(planId, completed2, harness) {
 	</div>`;
 }
 function requestPage(store, planId, harness) {
-  const { request, target } = planRequest(store, planId);
+  const { request: request2, target } = planRequest(store, planId);
   const found = planContext(store, planId, harness);
   const targetRef = `${target.profile.targetId}@${target.revision}`;
   const targetLink = html2`<a
@@ -25244,7 +25296,7 @@ function requestPage(store, planId, harness) {
 		>${targetRef}</a
 	>`;
   const instances = [...new Set(found.explorations.map((item) => item.instanceId))];
-  const sources = [...request.context?.sources ?? [], ...(request.sourceContext ?? []).map((item) => item.uri)];
+  const sources = [...request2.context?.sources ?? [], ...(request2.sourceContext ?? []).map((item) => item.uri)];
   const completed2 = found.explorations.filter((item) => item.state === "completed").at(-1)?.explorationId;
   const meta2 = html2`<div class="meta">
 		${pill("requested", "no revision yet")}
@@ -25252,7 +25304,7 @@ function requestPage(store, planId, harness) {
 	</div>`;
   const anyOpen = found.waiting.length > 0 || found.explorations.some((item) => item.running || ["failed", "stopped", "interrupted"].includes(item.state));
   const overview = facts2([
-    ["Objective", request.objective],
+    ["Objective", request2.objective],
     ["Target", targetLink],
     [
       "Instance",
@@ -25264,15 +25316,15 @@ function requestPage(store, planId, harness) {
 						${sources.map((source) => html2`<li><code>${source}</code></li>`)}
 					</ul>` : html2`<span class="muted">none</span>`
     ],
-    ["Instructions", request.context?.instructions || false],
+    ["Instructions", request2.context?.instructions || false],
     [
       "Requirements",
-      (request.requirements ?? []).length > 0 && html2`<ul class="plain">
-					${(request.requirements ?? []).map((item) => html2`<li><span class="mono">${item.id}</span> ${item.text}</li>`)}
+      (request2.requirements ?? []).length > 0 && html2`<ul class="plain">
+					${(request2.requirements ?? []).map((item) => html2`<li><span class="mono">${item.id}</span> ${item.text}</li>`)}
 				</ul>`
     ]
   ]);
-  const body = html2`${heading(planId, request.objective, meta2)} ${nextLine(planId, found)}
+  const body = html2`${heading(planId, request2.objective, meta2)} ${nextLine(planId, found)}
 		${chips(found, [["tests", "Stored tests", 0]])}
 		<div data-region="banners">${explorationBanners(found.explorations)}</div>
 		<div class="split">
@@ -26044,6 +26096,16 @@ function inconclusiveList(detail) {
 		</ul>
 	</div>`;
 }
+function retestList(detail) {
+  if (!detail.retest.length) return "";
+  const labels2 = { fixed: "Fixed", not_fixed: "Not fixed", not_retested: "Not retested" };
+  return html2`<div class="field-group">
+		<p class="lab">Retest verdicts</p>
+		<ul class="plist retest-verdicts">
+			${detail.retest.map((item) => html2`<li><a href="/runs/${encodeURIComponent(item.runId)}?item=finding%3A${encodeURIComponent(item.findingId)}">${item.runId}/${item.findingId}</a> · ${item.title} · ${labels2[item.verdict]} · ${item.testIds.join(", ")}</li>`)}
+		</ul>
+	</div>`;
+}
 function decisionPanel(store, context, detail, state, extra = null) {
   const result = detail.result;
   if (!result)
@@ -26053,7 +26115,11 @@ function decisionPanel(store, context, detail, state, extra = null) {
 				<p class="help">The decision opens when the run finishes. This page updates live.</p>`
     );
   if (result.acceptance === "not_required")
-    return recordPanel("Decision", html2`<p class="help">The target policy does not require result acceptance.</p>`);
+    return recordPanel(
+      "Decision",
+      html2`<p class="help">The target policy does not require result acceptance.</p>
+				${retestList(detail)}`
+    );
   const latest = result.latestDecision;
   if (latest && !state)
     return recordPanel(
@@ -26064,7 +26130,8 @@ function decisionPanel(store, context, detail, state, extra = null) {
 				<p class="help">
 					By ${latest.actor} · ${time(latest.at)} · sha256 <code>${short2(latest.sha256)}</code>
 				</p>
-				<blockquote>${latest.rationale}</blockquote>`,
+				<blockquote>${latest.rationale}</blockquote>
+				${retestList(detail)}`,
       `${detail.runId} was ${latest.verdict === "approved" ? "accepted" : "rejected"} by ${latest.actor}. Review it before you decide.`
     );
   return verdictPanel(
@@ -26090,7 +26157,7 @@ function decisionPanel(store, context, detail, state, extra = null) {
       },
       staleMessage: `${detail.runId} has a new result. Review it before you decide.`,
       ...extra ? { extra } : {},
-      intro: inconclusiveList(detail)
+      intro: html2`${retestList(detail)}${inconclusiveList(detail)}`
     },
     state ?? emptyState()
   );
@@ -26344,38 +26411,43 @@ function formOption(context, action2, n, label, hints, fields, ask) {
 		</button>
 	</form>`;
 }
-function stateLabel(request) {
-  return pill(request.state);
+function stateLabel(request2) {
+  return pill(request2.state);
 }
-function elapsed(request, now) {
-  const start = Date.parse(request.startedAt ?? request.askedAt);
-  if (!isEnded(request) && request.state === "running")
-    return html2`<span data-since="${request.startedAt}">${duration2(Math.max(0, now - start))}</span>`;
-  const end = request.endedAt ? Date.parse(request.endedAt) : now;
+function elapsed(request2, now) {
+  const start = Date.parse(request2.startedAt ?? request2.askedAt);
+  if (!isEnded(request2) && request2.state === "running")
+    return html2`<span data-since="${request2.startedAt}">${duration2(Math.max(0, now - start))}</span>`;
+  const end = request2.endedAt ? Date.parse(request2.endedAt) : now;
   return duration2(Math.max(0, end - start));
 }
-function failureText(request) {
-  const [sentence2, ...lines2] = (request.reason ?? "").split("\n");
-  const known = failureOf(request.reason, request.hint, []);
-  const cause = /No (?:claude|pi) executable|Host authentication/.test(request.reason ?? "") || request.hint ? `${known.cause} ${known.next}` : sentence2 || "The request failed. No reason is recorded.";
-  return { cause, lines: lines2, detail: request.hint ? known.detail : null };
+function failureText(request2) {
+  if (request2.harness === "pi" && !/No pi executable/.test(request2.reason ?? "")) {
+    const cause2 = piErrorText(request2.reason) || "The request failed. No reason is recorded.";
+    const authentication = request2.hint === piAuthenticationHint || authenticationFailed({ failure: ["operational_error", cause2] });
+    return { cause: cause2, lines: [], detail: authentication ? "Check the provider login in Pi. Then ask again." : null };
+  }
+  const [sentence2, ...lines2] = (request2.reason ?? "").split("\n");
+  const known = failureOf(request2.reason, request2.hint, []);
+  const cause = /No (?:claude|pi) executable|Host authentication/.test(request2.reason ?? "") || request2.hint ? `${known.cause} ${known.next}` : sentence2 || "The request failed. No reason is recorded.";
+  return { cause, lines: lines2, detail: request2.hint ? known.detail : null };
 }
 function requestPage2(store, context, requestId2) {
-  const request = requestOf(store, requestId2);
-  if (!request) return null;
+  const request2 = requestOf(store, requestId2);
+  if (!request2) return null;
   const now = Date.now();
   const open = explorationPermissions(store, requestId2).filter((item) => !item.decision);
-  const ended = isEnded(request);
+  const ended = isEnded(request2);
   const back = "/requests";
   const asked2 = [
-    ["text", request.text],
-    ["context", JSON.stringify(request.context)],
+    ["text", request2.text],
+    ["context", JSON.stringify(request2.context)],
     ["harness", context.harness]
   ];
   const again = formOption(
     context,
     "/requests",
-    ended && request.state !== "failed" ? 2 : 1,
+    ended && request2.state !== "failed" ? 2 : 1,
     "Ask again",
     `Send the same text to ${context.harness === "pi" ? "Pi" : "Claude Code"} as a new request.`,
     [...asked2, ["return", `/requests/${requestId2}`]]
@@ -26394,7 +26466,7 @@ function requestPage2(store, context, requestId2) {
         yes: "Stop the request"
       }
     )
-  ] : request.state === "failed" ? [again] : [
+  ] : request2.state === "failed" ? [again] : [
     followOption(1),
     again,
     formOption(
@@ -26406,8 +26478,8 @@ function requestPage2(store, context, requestId2) {
       [["return", `/requests/${requestId2}`]]
     )
   ];
-  const failure = request.state === "failed" ? failureText(request) : null;
-  const tried = ended && !request.changes.length ? operationCountOf(store, requestId2) : 0;
+  const failure = request2.state === "failed" ? failureText(request2) : null;
+  const tried = ended && !request2.changes.length ? operationCountOf(store, requestId2) : 0;
   return {
     title: `${requestId2} \xB7 Request`,
     section: null,
@@ -26427,41 +26499,41 @@ function requestPage2(store, context, requestId2) {
 			${crumbBar([["Replies", "/requests"]])}
 			<section class="sp-dhead" tabindex="-1" data-sub data-label="${requestId2}">
 				<div class="sp-pills">
-					${stateLabel(request)}
+					${stateLabel(request2)}
 					<span class="sp-c-id">${requestId2}</span>
-					<span class="sp-c-id">${request.harness === "pi" ? "Pi" : "Claude Code"}</span>
-					<span class="sp-c-id">${request.asker}</span>
-					<span class="sp-c-id">${ago(request.askedAt)}</span>
+					<span class="sp-c-id">${request2.harness === "pi" ? "Pi" : "Claude Code"}</span>
+					<span class="sp-c-id">${request2.asker}</span>
+					<span class="sp-c-id">${ago(request2.askedAt)}</span>
 				</div>
 				<h1 id="record-title" class="sp-ask-title">Request ${requestId2}</h1>
 			</section>
 			<section aria-labelledby="asked-title" data-key="asked">
 				<h2 class="lab" id="asked-title">You asked</h2>
-				<p class="sp-reply sp-asked">${request.text}</p>
-				${contextLine(request.context)}
+				<p class="sp-reply sp-asked">${request2.text}</p>
+				${contextLine(request2.context)}
 			</section>
-			${request.state === "waiting" ? html2`<p class="banner info" role="status" data-key="state">
+			${request2.state === "waiting" ? html2`<p class="banner info" role="status" data-key="state">
 							This request waits. Another request runs now. It starts when that one ends.
 						</p>` : ""}
 			${open.length ? html2`<p class="banner warn" role="status" data-key="waits">
 							This request waits for you: a permission request.
 							<a href="${requestHref(open[0], `/requests/${requestId2}`)}">Answer it</a>
 						</p>` : ""}
-			${request.state === "running" || request.activity.length ? html2`<section aria-labelledby="activity-title">
+			${request2.state === "running" || request2.activity.length ? html2`<section aria-labelledby="activity-title">
 							<h2 class="lab" id="activity-title">
-								Activity <span class="n">${request.activity.length}</span>
+								Activity <span class="n">${request2.activity.length}</span>
 							</h2>
-							${request.activity.length ? html2`<ol class="sp-activity" aria-live="polite">
-											${request.activity.map((entry, index2) => html2`<li data-key="line:${index2}" class="ell" title="${entry.line}">${entry.line}</li>`)}
+							${request2.activity.length ? html2`<ol class="sp-activity" aria-live="polite">
+											${request2.activity.map((entry, index2) => html2`<li data-key="line:${index2}" class="ell" title="${entry.line}">${entry.line}</li>`)}
 										</ol>` : html2`<p class="help">Waiting for the first tool call.</p>`}
 						</section>` : ""}
-			${request.state === "running" || request.state === "waiting" ? html2`<p class="help" data-key="elapsed">
-							${request.state === "running" ? html2`Running for ${elapsed(request, now)}.` : ""}
+			${request2.state === "running" || request2.state === "waiting" ? html2`<p class="help" data-key="elapsed">
+							${request2.state === "running" ? html2`Running for ${elapsed(request2, now)}.` : ""}
 						</p>` : ""}
-			${request.state === "answered" ? html2`<section aria-labelledby="reply-title" data-key="reply">
+			${request2.state === "answered" ? html2`<section aria-labelledby="reply-title" data-key="reply">
 							<h2 class="lab" id="reply-title">Reply</h2>
 							<div class="sp-reply">
-								${request.reply?.trim() ? blocks(request.reply) : html2`<p class="muted">The reply has no text.</p>`}
+								${request2.reply?.trim() ? blocks(request2.reply) : html2`<p class="muted">The reply has no text.</p>`}
 							</div>
 						</section>` : ""}
 			${failure ? html2`<section aria-labelledby="failed-title" data-key="failure">
@@ -26470,26 +26542,26 @@ function requestPage2(store, context, requestId2) {
 							${failure.detail ? html2`<p class="help">${failure.detail}</p>` : ""}
 							${failure.lines.length ? html2`<pre class="sp-code" tabindex="0">${failure.lines.join("\n")}</pre>` : ""}
 						</section>` : ""}
-			${request.state === "stopped" || request.state === "interrupted" ? html2`<p class="banner info" role="status" data-key="state">${request.reason ?? ""}</p>` : ""}
+			${request2.state === "stopped" || request2.state === "interrupted" ? html2`<p class="banner info" role="status" data-key="state">${request2.reason ?? ""}</p>` : ""}
 			${ended ? html2`<p class="help" data-key="took">
-							${request.costUsd === null ? "" : `Cost ${money(request.costUsd)}. `}Took
-							${elapsed(request, now)}.
+							${request2.costUsd === null ? "" : `Cost ${money(request2.costUsd)}. `}Took
+							${elapsed(request2, now)}.
 						</p>` : ""}
-			${ended && request.denials.length ? html2`<p class="help" data-key="denials">
-							${plural(request.denials.length, "tool call was", "tool calls were")} denied:
-							${request.denials.join(", ")}.
+			${ended && request2.denials.length ? html2`<p class="help" data-key="denials">
+							${plural(request2.denials.length, "tool call was", "tool calls were")} denied:
+							${request2.denials.join(", ")}.
 						</p>` : ""}
 			${ended ? html2`<section aria-labelledby="changes-title" data-key="changes">
 							<h2 class="lab" id="changes-title">
-								Changed <span class="n">${request.changes.length}</span>
+								Changed <span class="n">${request2.changes.length}</span>
 							</h2>
-							${request.changes.length ? html2`<ul class="sp-changes">
-											${request.changes.map((change) => html2`<li>${change.href ? html2`<a href="${change.href}">${change.text}</a>` : change.text} <span class="muted">${time(change.at)}</span></li>`)}
+							${request2.changes.length ? html2`<ul class="sp-changes">
+											${request2.changes.map((change) => html2`<li>${change.href ? html2`<a href="${change.href}">${change.text}</a>` : change.text} <span class="muted">${time(change.at)}</span></li>`)}
 										</ul>` : tried ? html2`<p class="help">
 												The Log has ${plural(tried, "write")} of the request. The request has no
 												completed change.
 											</p>` : html2`<p class="help">The request changed no record.</p>`}
-						</section>` : request.state === "running" ? html2`<p class="help" data-key="changes">Changes show when the request ends.</p>` : ""}
+						</section>` : request2.state === "running" ? html2`<p class="help" data-key="changes">Changes show when the request ends.</p>` : ""}
 			<section class="sp-options" aria-labelledby="options-title" data-key="options:${requestId2}">
 				<h2 class="lab" id="options-title">Options</h2>
 				<ol class="sp-optlist asks">
@@ -26510,10 +26582,10 @@ var spec2 = {
   filters: [],
   none: ["No request yet.", "Press / and type a request. Choose Ask Checkmate."]
 };
-function row2(request, n) {
-  const reply = request.state === "answered" ? firstLine(request.reply) : firstLine(request.reason) || "";
-  const meta2 = [request.asker, request.askedAt, request.costUsd === null ? null : money(request.costUsd)].filter(Boolean).join(" \xB7 ");
-  const title = `${firstLine(request.text)}${reply ? ` \xB7 ${reply}` : ""}`;
+function row2(request2, n) {
+  const reply = request2.state === "answered" ? firstLine(request2.reply) : firstLine(request2.reason) || "";
+  const meta2 = [request2.asker, request2.askedAt, request2.costUsd === null ? null : money(request2.costUsd)].filter(Boolean).join(" \xB7 ");
+  const title = `${firstLine(request2.text)}${reply ? ` \xB7 ${reply}` : ""}`;
   return html2`<div
 		class="sp-row"
 		role="option"
@@ -26521,18 +26593,18 @@ function row2(request, n) {
 		tabindex="-1"
 		id="reply-${n}"
 		data-row
-		data-key="request:${request.id}"
-		data-href="/requests/${request.id}"
-		data-label="${request.id}"
+		data-key="request:${request2.id}"
+		data-href="/requests/${request2.id}"
+		data-label="${request2.id}"
 	>
 		<span class="sp-c-cb"></span>
-		<span class="sp-c-tag">${stateLabel(request)}</span>
-		<span class="sp-c-id" title="${request.id}">${request.id}</span>
-		<span class="sp-c-title ell" title="${request.text}${reply ? `
+		<span class="sp-c-tag">${stateLabel(request2)}</span>
+		<span class="sp-c-id" title="${request2.id}">${request2.id}</span>
+		<span class="sp-c-title ell" title="${request2.text}${reply ? `
 ${reply}` : ""}">${title}</span>
 		<span class="sp-c-meta ell" title="${meta2}"
-			>${request.asker} ·
-			${time(request.askedAt)}${request.costUsd === null ? "" : ` \xB7 ${money(request.costUsd)}`}</span
+			>${request2.asker} ·
+			${time(request2.askedAt)}${request2.costUsd === null ? "" : ` \xB7 ${money(request2.costUsd)}`}</span
 		>
 	</div>`;
 }
@@ -26543,10 +26615,10 @@ function repliesPage(store, params) {
   const shown2 = { ...state, page: Math.min(state.page, last) };
   const rows2 = requests.slice((shown2.page - 1) * shown2.size, shown2.page * shown2.size);
   const unread = rows2.filter(isUnread);
-  const earlier = rows2.filter((request) => !isUnread(request));
+  const earlier = rows2.filter((request2) => !isUnread(request2));
   let n = 0;
   const group = (label, items) => items.length ? html2`<div class="sp-gh" role="presentation">${label} <span>${items.length}</span></div>
-					${items.map((request) => row2(request, n++))}` : "";
+					${items.map((request2) => row2(request2, n++))}` : "";
   const total = requests.length;
   const unreadTotal = requests.filter(isUnread).length;
   const first = total ? (shown2.page - 1) * shown2.size + 1 : 0;
@@ -26739,8 +26811,15 @@ function profileFacts(profile) {
 						</dd>
 					</div>` : ""}
 		<div>
-			<dt>Ready</dt>
-			<dd>${profile.readyForLiveExecution ? pill("ready") : pill("blocked", "not ready")}</dd>
+			<dt>Profile readiness</dt>
+			<dd>
+				${profile.readyForLiveExecution ? pill("ready") : html2`${pill("blocked", "not ready")}
+								<p class="help">
+									Check the active instances below. Then run
+									<code>checkmate delegate setup ${profile.targetId}</code>
+									to recheck the prerequisites and save a profile revision.
+								</p>`}
+			</dd>
 		</div>
 	</dl>`;
 }
@@ -26898,7 +26977,7 @@ ${value2("references")}</textarea>
 	</section>`;
 }
 function targetPage(store, context, targetId, revision, form = null, retire = null) {
-  const request = targetRequest(store, targetId);
+  const request2 = targetRequest(store, targetId);
   const latest = targetHistory(store, targetId).at(-1)?.revision ?? null;
   const shown2 = latest === null ? null : targetRevision(store, targetId, revision ?? latest);
   const instances = instanceList(store, targetId);
@@ -26932,8 +27011,8 @@ function targetPage(store, context, targetId, revision, form = null, retire = nu
 					>
 				</nav>
 				<section aria-labelledby="entry-points">
-					<h2 id="entry-points">Entry points <span class="n">${request.entryPoints.length}</span></h2>
-					${entryPointsTable(request.entryPoints)}
+					<h2 id="entry-points">Entry points <span class="n">${request2.entryPoints.length}</span></h2>
+					${entryPointsTable(request2.entryPoints)}
 				</section>
 				<section aria-labelledby="instances" data-region="instances">
 					<h2 id="instances">Instances <span class="n">${instances.length}</span></h2>
@@ -26947,7 +27026,7 @@ function targetPage(store, context, targetId, revision, form = null, retire = nu
 				</section>
 			</div>
 			<aside class="side" aria-label="Add instance">
-				${addForm(context, targetId, request.entryPoints, form)}
+				${addForm(context, targetId, request2.entryPoints, form)}
 				<p class="back"><a href="/settings/targets">All targets</a></p>
 			</aside>
 		</div>`;
@@ -27219,7 +27298,7 @@ function readStreamLine(line, harness = "claude") {
           kind: "result",
           value: {
             is_error: error,
-            result: error ? message?.errorMessage || "Pi did not complete the response." : reply
+            result: error ? piErrorText(message?.errorMessage) || "Pi did not complete the response." : reply
           }
         }
       ];
@@ -27275,12 +27354,12 @@ function createRequester(store, options3) {
     }
   }
   function conclude(run2, end) {
-    const stderr = stderrTail(end?.stderr ?? "", stderrCount);
+    const stderr = run2.harness === "pi" ? [] : stderrTail(end?.stderr ?? "", stderrCount);
     const result = run2.result;
     const outcome = run2.stopping ? {
       state: run2.stopping,
       detail: { reason: run2.reason }
-    } : !end ? failed(run2.reason) : end.error ? failed(end.error) : run2.harness === "pi" && end.status !== 0 ? failed(
+    } : !end ? failed(run2.reason) : end.error ? failed(end.error) : run2.harness === "pi" && result?.is_error === true ? errorOutcome(result, stderr, "pi") : run2.harness === "pi" && end.status !== 0 ? failed(
       [
         `pi exited with ${end.signal ? `signal ${end.signal}` : `code ${end.status}`}.`,
         ...stderr
@@ -27302,10 +27381,11 @@ function createRequester(store, options3) {
     const text = typeof result.result === "string" ? result.result : "";
     const call = { failure: ["operational_error", text], result: text, stderr };
     const authentication = authenticationFailed(call);
+    if (harness === "pi") return failed(text, authentication ? piAuthenticationHint : null);
     const first = text.trim().split("\n")[0].slice(0, 200);
     return failed(
       [`${harness} ended with an error` + (first ? `: ${first}` : "."), ...stderr].join("\n"),
-      authentication && harness === "claude" ? authenticationHint : null
+      authentication ? authenticationHint : null
     );
   }
   function read(run2, line) {
@@ -27337,11 +27417,11 @@ function createRequester(store, options3) {
       else if (found.kind === "result") run2.result = found.value;
     }
   }
-  function launch(request) {
+  function launch(request2) {
     const run2 = {
-      id: request.id,
-      actor: requestActor(request.asker, request.id),
-      harness: request.harness,
+      id: request2.id,
+      actor: requestActor(request2.asker, request2.id),
+      harness: request2.harness,
       child: null,
       result: null,
       broken: false,
@@ -27366,22 +27446,22 @@ function createRequester(store, options3) {
       port: options3.hookPort(),
       token: options3.hookToken,
       explorationId: requestHookName,
-      who: request.id
+      who: request2.id
     };
     const extension = join13(pluginRoot, "pi", "permission.mjs");
     const args = run2.harness === "pi" ? [
       "--mode",
       "rpc",
       ...modelArgs,
-      conversationStarted(store, request.conversation) ? "--session" : "--session-id",
-      request.conversation,
+      conversationStarted(store, request2.conversation) ? "--session" : "--session-id",
+      request2.conversation,
       "--extension",
       extension,
       "--append-system-prompt",
       requestSystemPrompt(checkmateScript())
     ] : requestArgs({
-      sessionId: request.conversation,
-      resume: conversationStarted(store, request.conversation),
+      sessionId: request2.conversation,
+      resume: conversationStarted(store, request2.conversation),
       hook,
       model: requestModelText(store, "claude") || null,
       checkmate: checkmateScript()
@@ -27391,11 +27471,11 @@ function createRequester(store, options3) {
       ...options3.env,
       CHECKMATE_ACTOR: run2.actor,
       CHECKMATE_HARNESS: run2.harness,
-      [requestVariable]: request.id,
+      [requestVariable]: request2.id,
       [hookTokenName]: options3.hookToken,
       ...run2.harness === "pi" ? { CHECKMATE_PI_HOOK: JSON.stringify(hook) } : {}
     };
-    const prompt = requestPrompt(request.text, screenText(request.context));
+    const prompt = requestPrompt(request2.text, screenText(request2.context));
     run2.child = run2.harness === "pi" ? streamPi(
       program,
       args,
@@ -27403,7 +27483,7 @@ function createRequester(store, options3) {
       options3.workspace,
       env,
       extension,
-      request.conversation,
+      request2.conversation,
       (line) => read(run2, line),
       delays
     ) : streamClaude(program, args, prompt, options3.workspace, env, (line) => read(run2, line), delays);
@@ -27418,8 +27498,8 @@ function createRequester(store, options3) {
     if (running3 || closing) return;
     const id2 = queue.shift();
     if (!id2) return;
-    const request = requestOf(store, id2);
-    if (request?.state === "waiting") launch(request);
+    const request2 = requestOf(store, id2);
+    if (request2?.state === "waiting") launch(request2);
     else next();
   }
   return {
@@ -27465,6 +27545,112 @@ function createRequester(store, options3) {
       await run2.done;
     }
   };
+}
+
+// plugin/src/ui/lifecycle.ts
+import { createHmac, randomBytes as randomBytes3, timingSafeEqual as timingSafeEqual2 } from "node:crypto";
+import { mkdirSync as mkdirSync7, readFileSync as readFileSync7, realpathSync as realpathSync6, rmSync as rmSync6 } from "node:fs";
+import { request } from "node:http";
+import { join as join14 } from "node:path";
+import { DatabaseSync as DatabaseSync2 } from "node:sqlite";
+import { setTimeout as delay } from "node:timers/promises";
+var lifecyclePath = "/internal/ui-lifecycle";
+function lifecycleProof(token, workspace, pid, action2, nonce, body) {
+  return createHmac("sha256", token).update(JSON.stringify([workspace, pid, action2, nonce, body])).digest("hex");
+}
+async function withUiStartupLock(workspace, run2) {
+  const folder = join14(workspace, ".checkmate", "tmp");
+  mkdirSync7(folder, { recursive: true });
+  const lock = new DatabaseSync2(join14(folder, "ui-startup.sqlite"));
+  try {
+    const deadline = Date.now() + 15e3;
+    for (; ; ) {
+      try {
+        lock.exec("BEGIN IMMEDIATE");
+        break;
+      } catch (error) {
+        if (!isBusy(error) || Date.now() >= deadline) throw error;
+        await delay(50);
+      }
+    }
+    return await run2(realpathSync6(workspace));
+  } finally {
+    lock.close();
+  }
+}
+function uiMarker(workspace) {
+  try {
+    const file = JSON.parse(readFileSync7(uiFilePath(workspace), "utf8"));
+    if (Number.isInteger(file.port) && file.port > 0 && file.port <= 65535 && Number.isSafeInteger(file.pid) && file.pid > 0)
+      return file;
+  } catch {
+  }
+  return null;
+}
+function requestProof(url, headers) {
+  return new Promise((resolve9, reject) => {
+    const req = request(
+      url,
+      { method: "POST", agent: false, headers, signal: AbortSignal.timeout(2e3) },
+      (res) => {
+        let body = "";
+        res.setEncoding("utf8");
+        res.on("data", (chunk) => {
+          body += chunk;
+          if (body.length > 1024) req.destroy(new Error("Invalid UI response."));
+        });
+        res.on("error", reject);
+        res.on(
+          "end",
+          () => resolve9({ status: res.statusCode ?? 0, body, proof: res.headers["x-checkmate-proof"] })
+        );
+      }
+    );
+    req.on("error", reject);
+    req.end();
+  });
+}
+async function contactUi(workspace, action2) {
+  const marker = uiMarker(workspace);
+  if (!marker) return null;
+  const { port, pid, hookToken } = marker;
+  const url = `http://127.0.0.1:${port}/`;
+  const nonce = randomBytes3(24).toString("hex");
+  const unverified = () => new Error(
+    "Could not verify the Checkmate UI. Stop the earlier UI, or remove .checkmate/ui.json if no Checkmate UI runs."
+  );
+  let token = "";
+  try {
+    token = readFileSync7(hookTokenPath(workspace), "utf8").trim();
+  } catch {
+  }
+  const signed = /^[0-9a-f]{64}$/.test(token) && token === hookToken;
+  let response;
+  try {
+    response = await requestProof(new URL(lifecyclePath, url), {
+      "X-Checkmate-Action": action2,
+      "X-Checkmate-Nonce": nonce,
+      "X-Checkmate-Proof": signed ? lifecycleProof(token, workspace, pid, action2, nonce) : ""
+    });
+  } catch (error) {
+    if (error.code !== "ECONNREFUSED") throw unverified();
+    rmSync6(uiFilePath(workspace), { force: true });
+    return null;
+  }
+  const { status, body, proof } = response;
+  const expected = lifecycleProof(token, workspace, pid, action2, nonce, body);
+  if (!signed || status !== 200 || typeof proof !== "string" || !/^[0-9a-f]{64}$/.test(proof) || !timingSafeEqual2(Buffer.from(proof), Buffer.from(expected)))
+    throw unverified();
+  const { harness } = JSON.parse(body);
+  if (harness !== "pi" && harness !== "claude") throw unverified();
+  if (action2 === "stop") {
+    const deadline = Date.now() + 1e4;
+    while (uiMarker(workspace)?.pid === pid) {
+      if (Date.now() >= deadline) throw new Error("The Checkmate UI is still shutting down.");
+      await delay(50);
+    }
+  }
+  return { url, harness };
 }
 
 // plugin/src/ui/server.ts
@@ -27527,12 +27713,12 @@ function directory(candidates, file) {
 function assets() {
   const files2 = directory(["./assets/", "../src/ui/assets/", "../plugin/src/ui/assets/"], "style.css");
   const fonts = `${files2}fonts/`;
-  const read = (name2) => readFileSync7(files2 + name2);
+  const read = (name2) => readFileSync8(files2 + name2);
   return {
     "/assets/style.css": { type: "text/css; charset=utf-8", body: read("style.css") },
     "/assets/client.js": { type: "text/javascript; charset=utf-8", body: read("client.js") },
     "/assets/favicon.svg": { type: "image/svg+xml", body: read("favicon.svg") },
-    font: (name2) => readFileSync7(`${fonts}${name2}.woff2`)
+    font: (name2) => readFileSync8(`${fonts}${name2}.woff2`)
   };
 }
 function securityHeaders() {
@@ -27628,10 +27814,11 @@ async function startUi(options3) {
     );
   });
   const watch = openReadOnlyStore(options3.workspace);
-  const csrf = randomBytes3(24).toString("hex");
+  const csrf = randomBytes4(24).toString("hex");
   const hookToken = workspaceHookToken(options3.workspace, options3.newHookToken);
   const hooks = createHooks(store, hookToken, options3);
-  const env = options3.env ?? process.env;
+  const env = { ...options3.env ?? process.env };
+  const workspace = realpathSync7(options3.workspace);
   const pendingModels = /* @__PURE__ */ new Map();
   const launchEnv = () => workspaceUiEnv(store, env);
   const requester = createRequester(store, {
@@ -27684,14 +27871,14 @@ data: ${matched.join(",") || "*"}
   const heartbeat = setInterval(() => {
     for (const client of clients) client.res.write(": heartbeat\n\n");
   }, 15e3);
-  function context(request, path = request.url.pathname + request.url.search) {
-    const theme = themes.includes(request.cookies.checkmate_theme) ? request.cookies.checkmate_theme : "system";
+  function context(request2, path = request2.url.pathname + request2.url.search) {
+    const theme = themes.includes(request2.cookies.checkmate_theme) ? request2.cookies.checkmate_theme : "system";
     return {
       path,
       csrf,
-      actor: request.cookies.checkmate_actor?.trim().slice(0, actorLimit) || fallbackActor || null,
+      actor: request2.cookies.checkmate_actor?.trim().slice(0, actorLimit) || fallbackActor || null,
       theme,
-      toast: (request.req.headers["sec-fetch-mode"] ?? "navigate") === "navigate" || request.req.headers["x-checkmate-queue"] === "1" ? request.cookies.checkmate_toast || null : null,
+      toast: (request2.req.headers["sec-fetch-mode"] ?? "navigate") === "navigate" || request2.req.headers["x-checkmate-queue"] === "1" ? request2.cookies.checkmate_toast || null : null,
       queueCount: needsYou(store).urgent,
       permissions: openPermissions(store).length,
       requests: requestStatus(store),
@@ -27702,18 +27889,18 @@ data: ${matched.join(",") || "*"}
       testerRules: testerRulesText(store, selectedHarness(workspaceUiEnv(store, env)))
     };
   }
-  function render(request, page, extraCookies = []) {
-    const shown2 = context(request);
+  function render(request2, page, extraCookies = []) {
+    const shown2 = context(request2);
     const cookies = [...extraCookies];
     if (shown2.toast) cookies.push(cookie("checkmate_toast", "", 0));
     const subjects = [...page.subjects, "permissions", "requests"];
-    send(request.res, page.status ?? 200, "text/html; charset=utf-8", layout(shown2, { ...page, subjects }).html, {
+    send(request2.res, page.status ?? 200, "text/html; charset=utf-8", layout(shown2, { ...page, subjects }).html, {
       "Set-Cookie": cookies,
       Vary: "Cookie"
     });
   }
-  function errorPage(request, status, title, message) {
-    render(request, {
+  function errorPage(request2, status, title, message) {
+    render(request2, {
       title,
       section: null,
       subjects: ["inbox"],
@@ -27732,23 +27919,23 @@ data: ${matched.join(",") || "*"}
       cookies: [...actorCookie, cookie("checkmate_toast", flash, 60)]
     };
   }
-  function inQueue(request, form, page, state) {
+  function inQueue(request2, form, page, state) {
     const key = form.get("item");
     if (form.get("return") === null || key === null) return page;
     const back = safeBack(form.get("return"));
-    const url = new URL(back, request.url);
+    const url = new URL(back, request2.url);
     const run2 = routes.run.exec(url.pathname);
-    if (run2) return () => runPage(store, context(request, back), run2[1], url.searchParams, state);
+    if (run2) return () => runPage(store, context(request2, back), run2[1], url.searchParams, state);
     const plan = routes.latestPlan.exec(url.pathname);
-    if (plan) return () => reviewPage(store, context(request, back), plan[1], url.searchParams, { key, state });
+    if (plan) return () => reviewPage(store, context(request2, back), plan[1], url.searchParams, { key, state });
     return page;
   }
-  function serveClaimEvidence(request, explorationId, claimId, index2) {
-    serveFile(request, claimEvidence(store, planOfExploration(explorationId), claimId, index2));
+  function serveClaimEvidence(request2, explorationId, claimId, index2) {
+    serveFile(request2, claimEvidence(store, planOfExploration(explorationId), claimId, index2));
   }
-  function serveFile(request, evidence2) {
-    if (evidence2.mediaType === htmlType && request.url.searchParams.get("preview") === "1") {
-      const theme = request.url.searchParams.get("theme") ?? request.cookies.checkmate_theme;
+  function serveFile(request2, evidence2) {
+    if (evidence2.mediaType === htmlType && request2.url.searchParams.get("preview") === "1") {
+      const theme = request2.url.searchParams.get("theme") ?? request2.cookies.checkmate_theme;
       const scheme = theme === "dark" || theme === "light" ? theme : "light dark";
       const [first, second] = evidence2.bytes;
       const bigEndian = first === 254 && second === 255;
@@ -27758,69 +27945,69 @@ data: ${matched.join(",") || "*"}
         utf16 ? "utf16le" : "utf8"
       );
       if (bigEndian) style.swap16();
-      return send(request.res, 200, htmlType, Buffer.concat([evidence2.bytes, style]), {
+      return send(request2.res, 200, htmlType, Buffer.concat([evidence2.bytes, style]), {
         "Content-Security-Policy": previewPolicy,
         "Referrer-Policy": "no-referrer",
         "X-Frame-Options": "SAMEORIGIN"
       });
     }
     const inline = imageTypes.includes(evidence2.mediaType) || evidence2.mediaType === "text/plain";
-    send(request.res, 200, evidence2.mediaType, evidence2.bytes, {
+    send(request2.res, 200, evidence2.mediaType, evidence2.bytes, {
       "Content-Disposition": `${inline ? "inline" : "attachment"}; ${attachmentName(evidence2.name)}`,
       "Cache-Control": "private, max-age=31536000, immutable"
     });
   }
-  function serveEvidence(request, evidenceId) {
+  function serveEvidence(request2, evidenceId) {
     let evidence2;
     try {
       evidence2 = evidenceBytes(store, evidenceId);
     } catch {
-      return errorPage(request, 404, "Evidence not found", `Checkmate has no evidence ${evidenceId}.`);
+      return errorPage(request2, 404, "Evidence not found", `Checkmate has no evidence ${evidenceId}.`);
     }
-    serveFile(request, evidence2);
+    serveFile(request2, evidence2);
   }
-  function download2(request, body, format2, name2) {
-    send(request.res, 200, documentTypes[format2], body, {
+  function download2(request2, body, format2, name2) {
+    send(request2.res, 200, documentTypes[format2], body, {
       "Content-Disposition": `attachment; ${attachmentName(name2)}`
     });
   }
-  function events(request) {
+  function events(request2) {
     const subjects = new Set(
-      (request.url.searchParams.get("subjects") ?? "").split(",").map((subject) => subject.trim()).filter(Boolean)
+      (request2.url.searchParams.get("subjects") ?? "").split(",").map((subject) => subject.trim()).filter(Boolean)
     );
-    const header2 = request.req.headers["last-event-id"];
-    const after = Number(header2 ?? request.url.searchParams.get("after") ?? Number.NaN);
-    request.res.writeHead(200, {
+    const header2 = request2.req.headers["last-event-id"];
+    const after = Number(header2 ?? request2.url.searchParams.get("after") ?? Number.NaN);
+    request2.res.writeHead(200, {
       ...securityHeaders(),
       "Content-Type": "text/event-stream; charset=utf-8",
       "Cache-Control": "no-store",
       Connection: "keep-alive"
     });
-    request.res.write("retry: 2000\n\n");
-    const client = { res: request.res, subjects, last: -1 };
+    request2.res.write("retry: 2000\n\n");
+    const client = { res: request2.res, subjects, last: -1 };
     if (Number.isInteger(after) && after >= 0) {
       client.last = after;
       for (const change of changesAfter(watch, after)) deliver(client, change);
     } else client.last = cursor;
     clients.add(client);
-    request.req.on("close", () => clients.delete(client));
+    request2.req.on("close", () => clients.delete(client));
   }
-  function get(request) {
-    const { pathname, searchParams } = request.url;
+  function get(request2) {
+    const { pathname, searchParams } = request2.url;
     const asset = files2[pathname];
     if (asset && typeof asset === "object")
-      return send(request.res, 200, asset.type, asset.body, { "Cache-Control": "no-cache" });
+      return send(request2.res, 200, asset.type, asset.body, { "Cache-Control": "no-cache" });
     const font = routes.font.exec(pathname);
     if (font)
-      return send(request.res, 200, "font/woff2", files2.font(font[1]), {
+      return send(request2.res, 200, "font/woff2", files2.font(font[1]), {
         "Cache-Control": "public, max-age=31536000, immutable"
       });
-    if (pathname === "/events") return events(request);
-    if (pathname === "/settings/harness/models") return modelCatalog(request);
-    if (pathname === "/settings/harness/tester-count") return testerCount(request);
+    if (pathname === "/events") return events(request2);
+    if (pathname === "/settings/harness/models") return modelCatalog(request2);
+    if (pathname === "/settings/harness/tester-count") return testerCount(request2);
     if (pathname === "/find")
       return send(
-        request.res,
+        request2.res,
         200,
         "application/json; charset=utf-8",
         JSON.stringify(find(searchParams.get("q") ?? "")),
@@ -27829,118 +28016,118 @@ data: ${matched.join(",") || "*"}
         }
       );
     const evidence2 = routes.evidence.exec(pathname);
-    if (evidence2) return serveEvidence(request, evidence2[1]);
-    const shown2 = context(request);
-    if (pathname === "/" && searchParams.has("item")) return redirect(request.res, oldItem(searchParams));
-    if (pathname === "/") return render(request, startOfHome(shown2));
-    if (pathname === "/setup") return render(request, firstRunPage(shown2, false, cameFrom(request)));
+    if (evidence2) return serveEvidence(request2, evidence2[1]);
+    const shown2 = context(request2);
+    if (pathname === "/" && searchParams.has("item")) return redirect(request2.res, oldItem(searchParams));
+    if (pathname === "/") return render(request2, startOfHome(shown2));
+    if (pathname === "/setup") return render(request2, firstRunPage(shown2, false, cameFrom(request2)));
     if (pathname === "/new")
-      return render(request, newChangePage(shown2, changeDefaults(searchParams.get("target")), false));
-    if (pathname === "/inbox" || pathname === "/plans") return redirect(request.res, "/");
-    if (pathname === "/claims") return redirect(request.res, oldItem(searchParams, "all"));
-    if (pathname === "/runs") return render(request, runsPage(store, searchParams));
-    if (pathname === "/log") return render(request, logPage(store, searchParams));
+      return render(request2, newChangePage(shown2, changeDefaults(searchParams.get("target")), false));
+    if (pathname === "/inbox" || pathname === "/plans") return redirect(request2.res, "/");
+    if (pathname === "/claims") return redirect(request2.res, oldItem(searchParams, "all"));
+    if (pathname === "/runs") return render(request2, runsPage(store, searchParams));
+    if (pathname === "/log") return render(request2, logPage(store, searchParams));
     if (pathname === "/activity")
-      return render(request, activityPage(store, shown2, searchParams, { build: defaultBuild(store.workspace) }));
-    if (pathname === "/permissions") return firstRequest(request);
+      return render(request2, activityPage(store, shown2, searchParams, { build: defaultBuild(store.workspace) }));
+    if (pathname === "/permissions") return firstRequest(request2);
     const asked2 = routes.permit.exec(pathname);
-    if (asked2) return permissionRecord(request, asked2[1], asked2[2]);
-    if (pathname === "/settings/claude") return redirect(request.res, "/settings/harness");
-    if (pathname === "/settings/harness") return render(request, harnessPage(store, shown2, env));
-    if (pathname === "/requests") return render(request, repliesPage(store, searchParams));
+    if (asked2) return permissionRecord(request2, asked2[1], asked2[2]);
+    if (pathname === "/settings/claude") return redirect(request2.res, "/settings/harness");
+    if (pathname === "/settings/harness") return render(request2, harnessPage(store, shown2, env));
+    if (pathname === "/requests") return render(request2, repliesPage(store, searchParams));
     const askedRequest = routes.requestPage.exec(pathname);
-    if (askedRequest) return requestRecord(request, askedRequest[1]);
-    if (pathname === "/actor") return render(request, actorPage(shown2, safeBack(searchParams.get("back"))));
-    if (pathname === "/settings") return redirect(request.res, "/settings/targets");
-    if (pathname === "/settings/targets") return render(request, targetsPage(store));
+    if (askedRequest) return requestRecord(request2, askedRequest[1]);
+    if (pathname === "/actor") return render(request2, actorPage(shown2, safeBack(searchParams.get("back"))));
+    if (pathname === "/settings") return redirect(request2.res, "/settings/targets");
+    if (pathname === "/settings/targets") return render(request2, targetsPage(store));
     const target = routes.target.exec(pathname);
     if (target) {
       const revision = searchParams.get("revision");
       const number = revision && /^[1-9][0-9]{0,8}$/.test(revision) ? Number(revision) : null;
-      const kept = keptInstance(request);
+      const kept = keptInstance(request2);
       return render(
-        request,
+        request2,
         targetPage(store, shown2, target[1], number, kept),
         kept ? [cookie("checkmate_instance", "", 0)] : []
       );
     }
     const latest = routes.latestPlan.exec(pathname);
-    if (latest) return render(request, reviewPage(store, shown2, latest[1], searchParams));
+    if (latest) return render(request2, reviewPage(store, shown2, latest[1], searchParams));
     const defectText = routes.defectText.exec(pathname);
     if (defectText)
       return send(
-        request.res,
+        request2.res,
         200,
         "text/plain; charset=utf-8",
         developerText(store, defectText[1], searchParams.getAll("claim")),
         { "Cache-Control": "no-store" }
       );
     const requested = routes.request.exec(pathname);
-    if (requested) return render(request, requestPage(store, requested[1], shown2.harness));
+    if (requested) return render(request2, requestPage(store, requested[1], shown2.harness));
     const plan = routes.plan.exec(pathname);
     if (plan)
       return render(
-        request,
+        request2,
         planPage(store, shown2, plan[1], Number(plan[2]), null, searchParams.get("history") === "all")
       );
     const edit = routes.edit.exec(pathname);
-    if (edit) return render(request, editPage(store, shown2, edit[1], Number(edit[2])));
+    if (edit) return render(request2, editPage(store, shown2, edit[1], Number(edit[2])));
     const history = routes.history.exec(pathname);
     if (history) {
       const detail = planDetail(store, history[1], Number(history[2]));
-      return send(request.res, 200, "text/html; charset=utf-8", planHistoryList(store, detail, true).html);
+      return send(request2.res, 200, "text/html; charset=utf-8", planHistoryList(store, detail, true).html);
     }
     const planExport = routes.planExport.exec(pathname);
     if (planExport) {
       const [, planId, revision, format2] = planExport;
       const body = exportPlan(store, `${planId}@${revision}`, format2);
-      return download2(request, body, format2, `${planId}-${revision}-plan.${format2}`);
+      return download2(request2, body, format2, `${planId}-${revision}-plan.${format2}`);
     }
     const report = routes.report.exec(pathname);
     if (report) {
       const [, runId, format2] = report;
       if (!runDetail(store, runId).result)
         return errorPage(
-          request,
+          request2,
           409,
           "Report not ready",
           `${runId} is in progress. The report is ready when it finishes.`
         );
       const name2 = format2 === "junit" ? `${runId}-junit.xml` : `${runId}-report.${format2}`;
-      return download2(request, exportRun(store, runId, format2), format2, name2);
+      return download2(request2, exportRun(store, runId, format2), format2, name2);
     }
     const exploration2 = routes.exploration.exec(pathname);
-    if (exploration2) return render(request, explorationPage(store, shown2, exploration2[1], searchParams));
+    if (exploration2) return render(request2, explorationPage(store, shown2, exploration2[1], searchParams));
     const file = routes.explorerFile.exec(pathname);
     if (file && searchParams.has("download")) {
       const [, explorationId, explorer, phase, name2] = file;
       const saved = explorerFile(store, explorationId, explorer, phase, name2);
-      return download2(request, saved.text, "md", `${explorationId}-${explorer}-${name2}`);
+      return download2(request2, saved.text, "md", `${explorationId}-${explorer}-${name2}`);
     }
-    if (file) return render(request, explorerFilePage(store, file[1], file[2], file[3], file[4]));
+    if (file) return render(request2, explorerFilePage(store, file[1], file[2], file[3], file[4]));
     const explorationExport = routes.explorationExport.exec(pathname);
     if (explorationExport) {
       const [, explorationId, format2] = explorationExport;
       return download2(
-        request,
+        request2,
         exportExploration(store, explorationId, format2),
         format2,
         `${explorationId}-report.${format2}`
       );
     }
     const question = routes.question.exec(pathname);
-    if (question) return redirect(request.res, recordHref(question[1], `q:${question[2]}`, searchParams));
+    if (question) return redirect(request2.res, recordHref(question[1], `q:${question[2]}`, searchParams));
     const claim = routes.claim.exec(pathname);
-    if (claim) return redirect(request.res, recordHref(claim[1], `c:${claim[2]}`, searchParams));
+    if (claim) return redirect(request2.res, recordHref(claim[1], `c:${claim[2]}`, searchParams));
     const claimFile = routes.claimEvidence.exec(pathname);
-    if (claimFile) return serveClaimEvidence(request, claimFile[1], claimFile[2], Number(claimFile[3]));
+    if (claimFile) return serveClaimEvidence(request2, claimFile[1], claimFile[2], Number(claimFile[3]));
     const entryFile = routes.entryEvidence.exec(pathname);
-    if (entryFile) return serveFile(request, entryEvidence(store, entryFile[1], entryFile[2], Number(entryFile[3])));
+    if (entryFile) return serveFile(request2, entryEvidence(store, entryFile[1], entryFile[2], Number(entryFile[3])));
     const gap = routes.gap.exec(pathname);
-    if (gap) return render(request, gapPage(store, shown2, gap[1], Number(gap[2]), gap[3]));
+    if (gap) return render(request2, gapPage(store, shown2, gap[1], Number(gap[2]), gap[3]));
     const run2 = routes.run.exec(pathname);
-    if (run2) return render(request, runPage(store, shown2, run2[1], searchParams));
-    return errorPage(request, 404, "Page not found", `Checkmate has no page at ${pathname}. Start from Needs you.`);
+    if (run2) return render(request2, runPage(store, shown2, run2[1], searchParams));
+    return errorPage(request2, 404, "Page not found", `Checkmate has no page at ${pathname}. Start from Needs you.`);
   }
   function changeDefaults(target) {
     const where = (address) => ({
@@ -27962,11 +28149,11 @@ data: ${matched.join(",") || "*"}
     if (!planList(store).length) return newChangePage(shown2, changeDefaults(null), true);
     return homePage(store);
   }
-  function cameFrom(request) {
-    const referer = request.req.headers.referer;
+  function cameFrom(request2) {
+    const referer = request2.req.headers.referer;
     if (!referer || !URL.canParse(referer)) return "/";
     const from = new URL(referer);
-    return from.host === request.req.headers.host && from.pathname === "/new" ? `/new${from.search}` : "/";
+    return from.host === request2.req.headers.host && from.pathname === "/new" ? `/new${from.search}` : "/";
   }
   function actorPage(shown2, back) {
     return {
@@ -27992,14 +28179,14 @@ data: ${matched.join(",") || "*"}
 				</form>`
     };
   }
-  function actorFrom(request, form) {
+  function actorFrom(request2, form) {
     const typed = form.get("actor")?.trim().slice(0, actorLimit) ?? "";
-    const actor = typed || request.cookies.checkmate_actor?.trim() || fallbackActor;
+    const actor = typed || request2.cookies.checkmate_actor?.trim() || fallbackActor;
     return { actor, cookies: typed ? [cookie("checkmate_actor", typed)] : [] };
   }
-  function keptInstance(request) {
+  function keptInstance(request2) {
     try {
-      const kept = JSON.parse(request.cookies.checkmate_instance ?? "");
+      const kept = JSON.parse(request2.cookies.checkmate_instance ?? "");
       return typeof kept?.error === "string" && typeof kept.values === "object" ? kept : null;
     } catch {
       return null;
@@ -28008,25 +28195,25 @@ data: ${matched.join(",") || "*"}
   function values(form, names) {
     return Object.fromEntries(names.map((name2) => [name2, form.get(name2) ?? ""]));
   }
-  function refuse2(request, page, cookies = []) {
+  function refuse2(request2, page, cookies = []) {
     const shown2 = page();
-    render(request, { ...shown2, status: shown2.status ?? 422 }, cookies);
+    render(request2, { ...shown2, status: shown2.status ?? 422 }, cookies);
   }
-  function answer2(request, form, planId, revision, gapId) {
+  function answer2(request2, form, planId, revision, gapId) {
     const state = {
       ...emptyState(),
       values: values(form, ["kind", "value", "source", "rationale", "actor"])
     };
-    const { actor, cookies } = actorFrom(request, form);
+    const { actor, cookies } = actorFrom(request2, form);
     const input = answerInput(form, state, actor);
     const page = inQueue(
-      request,
+      request2,
       form,
-      () => gapPage(store, context(request), planId, revision, gapId, state),
+      () => gapPage(store, context(request2), planId, revision, gapId, state),
       state
     );
     state.error = answerProblem(input, actor);
-    if (state.error) return refuse2(request, page, cookies);
+    if (state.error) return refuse2(request2, page, cookies);
     try {
       answerGap(store, actor, {
         planId,
@@ -28046,10 +28233,10 @@ data: ${matched.join(",") || "*"}
 						>Review revision ${latest.latestRevision}</a
 					>, then send again.`;
       else state.error = plainMessage(error);
-      return refuse2(request, page, cookies);
+      return refuse2(request2, page, cookies);
     }
     const next = nextItem(`${input.kind === "defer" ? "Deferred" : "Answered"} ${planId} \xB7 ${gapId}`, cookies, form);
-    redirect(request.res, next.location, next.cookies);
+    redirect(request2.res, next.location, next.cookies);
   }
   function answerInput(form, state, actor) {
     const typed = state.values;
@@ -28078,23 +28265,23 @@ data: ${matched.join(",") || "*"}
     if (!rationale.trim()) return "Write a rationale. Checkmate records it with your answer.";
     return null;
   }
-  function answerExplorationQuestion(request, form, explorationId, questionId) {
+  function answerExplorationQuestion(request2, form, explorationId, questionId) {
     const state = {
       ...emptyState(),
       values: values(form, ["kind", "value", "source", "rationale", "actor"])
     };
-    const { actor, cookies } = actorFrom(request, form);
+    const { actor, cookies } = actorFrom(request2, form);
     const input = answerInput(form, state, actor);
     const planId = planOfExploration(explorationId);
-    const page = () => questionPage(store, context(request), explorationId, questionId, state);
+    const page = () => questionPage(store, context(request2), explorationId, questionId, state);
     const asked2 = mergedQuestions(store, planId).find((item) => item.id === questionId);
     if (asked2 && asked2.answer !== null && (asked2.decision !== "defer" || input.kind === "defer")) {
       state.stale = html2`<strong>${questionId} has an answer now: ${asked2.answer}</strong> Your answer was not
 				recorded. Your text is kept below.`;
-      return refuse2(request, inQueue(request, form, page, state), cookies);
+      return refuse2(request2, inQueue(request2, form, page, state), cookies);
     }
     state.error = answerProblem(input, actor);
-    if (state.error) return refuse2(request, inQueue(request, form, page, state), cookies);
+    if (state.error) return refuse2(request2, inQueue(request2, form, page, state), cookies);
     try {
       answerGap(store, actor, {
         planId,
@@ -28106,69 +28293,69 @@ data: ${matched.join(",") || "*"}
       });
     } catch (error) {
       state.error = plainMessage(error);
-      return refuse2(request, inQueue(request, form, page, state), cookies);
+      return refuse2(request2, inQueue(request2, form, page, state), cookies);
     }
     const next = nextItem(
       `${input.kind === "defer" ? "Deferred" : "Answered"} ${planId} \xB7 ${questionId}`,
       cookies,
       form
     );
-    redirect(request.res, next.location, next.cookies);
+    redirect(request2.res, next.location, next.cookies);
   }
-  function decideExplorationClaim(request, form, explorationId, claimId) {
+  function decideExplorationClaim(request2, form, explorationId, claimId) {
     const state = { ...emptyState(), values: values(form, ["verdict", "rationale", "actor"]) };
-    const { actor, cookies } = actorFrom(request, form);
+    const { actor, cookies } = actorFrom(request2, form);
     const planId = planOfExploration(explorationId);
     const verdict = state.values.verdict;
     const page = inQueue(
-      request,
+      request2,
       form,
-      () => claimPage(store, context(request), explorationId, claimId, state),
+      () => claimPage(store, context(request2), explorationId, claimId, state),
       state
     );
     if (verdict !== "approved" && verdict !== "rejected") {
       state.error = "Choose Accept as a defect or Reject.";
-      return refuse2(request, page, cookies);
+      return refuse2(request2, page, cookies);
     }
     const decided = mergedClaims(store, planId).find((item) => item.id === claimId)?.decision;
     if (decided) {
       const verdict2 = decided.verdict === "approved" ? "accepted" : "rejected";
       const what = `${claimId} was ${verdict2} by ${decided.actor}.`;
       state.stale = html2`<strong>${what}</strong> Your decision was not recorded. Your text is kept below.`;
-      return refuse2(request, page, cookies);
+      return refuse2(request2, page, cookies);
     }
     const typed = state.values.rationale.trim();
     const quick = form.get("return") !== null;
     if (quick && verdict === "rejected" && !typed) {
       state.error = "Write a short reason for the reject.";
-      return refuse2(request, page, cookies);
+      return refuse2(request2, page, cookies);
     }
     const rationale = typed || (quick ? "Accepted in the review UI. No reason was given." : "");
     try {
       decideClaim(store, actor, { planId, claimId, verdict, rationale });
     } catch (error) {
       state.error = plainMessage(error);
-      return refuse2(request, page, cookies);
+      return refuse2(request2, page, cookies);
     }
     const next = nextItem(
       `${verdict === "approved" ? "Accepted" : "Rejected"} ${planId} \xB7 ${claimId}`,
       cookies,
       form
     );
-    redirect(request.res, next.location, next.cookies);
+    redirect(request2.res, next.location, next.cookies);
   }
-  function bulkPage(request, back, state) {
-    const url = new URL(back, request.url);
+  function bulkPage(request2, back, state) {
+    const url = new URL(back, request2.url);
     const plan = routes.latestPlan.exec(url.pathname);
     if (!plan) return () => homePage(store);
-    const shown2 = context(request, url.pathname + url.search);
+    const shown2 = context(request2, url.pathname + url.search);
     return () => reviewPage(store, shown2, plan[1], url.searchParams, null, state.error);
   }
-  function bulk(request, form) {
+  function bulk(request2, form) {
     const what = form.get("what") === "claims" ? "claims" : "questions";
     const picks = form.getAll("pick");
     const back = safeBack(form.get("return"));
-    const { actor, cookies } = actorFrom(request, form);
+    const { actor, cookies } = actorFrom(request2, form);
     const state = {
       what,
       values: values(
@@ -28178,7 +28365,7 @@ data: ${matched.join(",") || "*"}
       error: null,
       confirm: false
     };
-    const page = bulkPage(request, back, state);
+    const page = bulkPage(request2, back, state);
     const waiting = what === "claims" ? claimsAcross(store).filter((claim) => !claim.decision).map((claim) => ({
       key: `claim:${claim.planId}:${claim.id}`,
       planId: claim.planId,
@@ -28193,7 +28380,7 @@ data: ${matched.join(",") || "*"}
     else state.error = bulkProblem(what, state.values, actor);
     if (!state.error && form.get("confirmed") !== "1")
       state.error = `Confirm the action for ${plural(picks.length, "item")}. Nothing is recorded.`;
-    if (state.error) return refuse2(request, page, cookies);
+    if (state.error) return refuse2(request2, page, cookies);
     const items = found.map((item) => item);
     if (what === "claims") {
       const decision = claimDefaults(state.values);
@@ -28205,7 +28392,7 @@ data: ${matched.join(",") || "*"}
           rationale: decision.rationale
         });
       const flash2 = `${decision.verdict === "approved" ? "Accepted" : "Rejected"} ${plural(items.length, "claim")}`;
-      return redirect(request.res, back, [...cookies, cookie("checkmate_toast", flash2, 60)]);
+      return redirect(request2.res, back, [...cookies, cookie("checkmate_toast", flash2, 60)]);
     }
     const answer3 = answerDefaults(state.values, actor);
     for (const item of items)
@@ -28219,7 +28406,7 @@ data: ${matched.join(",") || "*"}
         ...item.explorationId ? {} : { expectSha256: planDetail(store, item.planId).sha256 }
       });
     const flash = `${answer3.kind === "defer" ? "Deferred" : "Answered"} ${plural(items.length, "question")}`;
-    redirect(request.res, back, [...cookies, cookie("checkmate_toast", flash, 60)]);
+    redirect(request2.res, back, [...cookies, cookie("checkmate_toast", flash, 60)]);
   }
   function recordHref(explorationId, key, params) {
     const view = params.get("view") ?? "all";
@@ -28265,27 +28452,27 @@ data: ${matched.join(",") || "*"}
     const plan = params.get("plan");
     return plan ? `/plans/${plan}?view=${view}` : "/";
   }
-  function handOver(request, form, planId) {
-    const { actor, cookies } = actorFrom(request, form);
+  function handOver(request2, form, planId) {
+    const { actor, cookies } = actorFrom(request2, form);
     const claimIds = form.getAll("claim");
     const named = claimIds.length === 1 ? claimIds[0] : plural(claimIds.length, "defect");
     const undo = form.get("undo") === "1";
     const to = form.get("to")?.trim() ?? "";
     const back = safeBack(form.get("return") ?? `/plans/${planId}`);
-    const fail = (message) => redirect(request.res, back, [...cookies, cookie("checkmate_toast", message, 60)]);
+    const fail = (message) => redirect(request2.res, back, [...cookies, cookie("checkmate_toast", message, 60)]);
     if (!undo && !to) return fail(`Name who takes ${named}. Nothing is recorded.`);
     try {
       handOffClaims(store, actor, { planId, claimIds, ...undo ? {} : { to }, undo });
     } catch (error) {
       return fail(`${plainMessage(error)} Nothing is recorded.`);
     }
-    redirect(request.res, back, [
+    redirect(request2.res, back, [
       ...cookies,
       cookie("checkmate_toast", undo ? `${named} not handed over` : `Handed ${named} over to ${to}`, 60)
     ]);
   }
-  function actionRefusal(request, back, message, field4 = "") {
-    render(request, {
+  function actionRefusal(request2, back, message, field4 = "") {
+    render(request2, {
       title: "Nothing was done",
       section: "home",
       subjects: ["inbox"],
@@ -28315,10 +28502,10 @@ data: ${matched.join(",") || "*"}
   function ruleHref(planId, ruleId2) {
     return reviewHref(planId, "rules", ruleId2 ? `&at=${encodeURIComponent(`rule:${ruleId2}`)}&focus=list` : "");
   }
-  function ruleChange(request, form, planId, change) {
+  function ruleChange(request2, form, planId, change) {
     const back = reviewHref(planId, "rules");
     const { origin } = planRules(store, planId);
-    const refuse3 = (message, field4 = "") => actionRefusal(request, back, message, field4);
+    const refuse3 = (message, field4 = "") => actionRefusal(request2, back, message, field4);
     if (origin !== "derived" && origin !== "corrected" && origin !== "harvested")
       return refuse3(`The rules of ${planId} do not come from the sources. Edit them in the plan editor.`);
     try {
@@ -28331,10 +28518,10 @@ data: ${matched.join(",") || "*"}
       );
     }
   }
-  function changeRule(request, form, planId, ruleId2) {
+  function changeRule(request2, form, planId, ruleId2) {
     const back = reviewHref(planId, "rules");
-    const { actor, cookies } = actorFrom(request, form);
-    const refuse3 = (message, field4 = "") => actionRefusal(request, back, message, field4);
+    const { actor, cookies } = actorFrom(request2, form);
+    const refuse3 = (message, field4 = "") => actionRefusal(request2, back, message, field4);
     const text = form.get("text")?.trim() ?? "";
     const area2 = form.get("newArea")?.trim() || form.get("area")?.trim() || "";
     if (!actor) return refuse3("Enter your name. Checkmate records it with the rule.");
@@ -28350,31 +28537,31 @@ data: ${matched.join(",") || "*"}
       rules.map((rule) => rule.id)
     );
     const source = form.get("source")?.trim() || "Added in the review UI.";
-    ruleChange(request, form, planId, () => {
+    ruleChange(request2, form, planId, () => {
       patchPlan(store, actor, {
         reference: planId,
         patch: { requirements: { [id2]: ruleId2 ? { text, area: area2 } : { text, area: area2, source } } }
       });
-      redirect(request.res, ruleHref(planId, id2), [
+      redirect(request2.res, ruleHref(planId, id2), [
         ...cookies,
         cookie("checkmate_toast", `${ruleId2 ? "Changed" : "Added"} rule ${id2}`, 60)
       ]);
     });
   }
-  function removeRule(request, form, planId, ruleId2) {
+  function removeRule(request2, form, planId, ruleId2) {
     const back = reviewHref(planId, "rules");
-    const { actor, cookies } = actorFrom(request, form);
-    if (!actor) return actionRefusal(request, back, "Enter your name. Checkmate records it with the rule.");
+    const { actor, cookies } = actorFrom(request2, form);
+    if (!actor) return actionRefusal(request2, back, "Enter your name. Checkmate records it with the rule.");
     const cited = [...mergedClaims(store, planId), ...mergedQuestions(store, planId)].filter(
       (item) => item.rule === ruleId2
     ).length;
     const listed = ruleMap(store, planId).rows.map((row3) => row3.rule.id).filter((id2) => id2 !== outsideRule);
     const at = listed.indexOf(ruleId2);
     const next = listed[at + 1] ?? listed[at - 1];
-    ruleChange(request, form, planId, () => {
+    ruleChange(request2, form, planId, () => {
       patchPlan(store, actor, { reference: planId, patch: { requirements: { [ruleId2]: null } } });
       const outside2 = cited ? ` ${plural(cited, "item")} that cited it ${cited === 1 ? "shows" : "show"} under Outside the rules.` : "";
-      redirect(request.res, ruleHref(planId, next), [
+      redirect(request2.res, ruleHref(planId, next), [
         ...cookies,
         cookie("checkmate_toast", `Removed rule ${ruleId2}.${outside2}`, 60)
       ]);
@@ -28399,14 +28586,14 @@ data: ${matched.join(",") || "*"}
     }
     return selected;
   }
-  function startTest(request, form, planId) {
+  function startTest(request2, form, planId) {
     const back = `/plans/${planId}`;
-    const { actor, cookies } = actorFrom(request, form);
+    const { actor, cookies } = actorFrom(request2, form);
     planRequest(store, planId);
     const build = form.get("build")?.trim() ?? "";
     const level = form.get("level")?.trim() || "normal";
     const [typedSince, until, repo] = ["since", "until", "repo"].map((name2) => form.get(name2)?.trim() || void 0);
-    const refuse3 = (message, field4 = "") => actionRefusal(request, back, message, field4);
+    const refuse3 = (message, field4 = "") => actionRefusal(request2, back, message, field4);
     if (!actor) return refuse3("Enter your name. Checkmate records it with the test.");
     if (form.has("harness") && form.get("harness") !== selectedHarness(launchEnv()))
       return refuse3("The coding harness changed. Reload the page and try again.");
@@ -28443,7 +28630,7 @@ data: ${matched.join(",") || "*"}
         launchEnv(),
         true
       );
-      redirect(request.res, `/explorations/${started.subject}`, [
+      redirect(request2.res, `/explorations/${started.subject}`, [
         ...cookies,
         cookie("checkmate_toast", `Started ${started.subject} on build ${build}`, 60)
       ]);
@@ -28452,10 +28639,10 @@ data: ${matched.join(",") || "*"}
       refuse3(text, /tool rules/.test(text) ? "rules" : "");
     }
   }
-  function startAnswers(request, form, planId) {
+  function startAnswers(request2, form, planId) {
     const back = `/plans/${planId}`;
-    const { actor, cookies } = actorFrom(request, form);
-    const refuse3 = (message) => actionRefusal(request, back, message);
+    const { actor, cookies } = actorFrom(request2, form);
+    const refuse3 = (message) => actionRefusal(request2, back, message);
     const explorationId = form.get("exploration") ?? "";
     if (!actor) return refuse3("Enter your name. Checkmate records it with the test.");
     if (planOfExploration(explorationId) !== planId)
@@ -28465,7 +28652,7 @@ data: ${matched.join(",") || "*"}
     try {
       const answers = unusedAnswers(store, explorationId).length;
       startFollow(store, actor, { explorationId, allow: [], claudeArgs: [] }, launchEnv());
-      redirect(request.res, `/explorations/${explorationId}`, [
+      redirect(request2.res, `/explorations/${explorationId}`, [
         ...cookies,
         cookie("checkmate_toast", `Testing ${plural(answers, "answer")} of ${explorationId}`, 60)
       ]);
@@ -28473,10 +28660,10 @@ data: ${matched.join(",") || "*"}
       refuse3(engineText(error));
     }
   }
-  function storeDefects(request, form, planId) {
+  function storeDefects(request2, form, planId) {
     const view = form.get("view") === "rules" ? "rules" : "all";
-    const { actor, cookies } = actorFrom(request, form);
-    const refuse3 = (message) => actionRefusal(request, reviewHref(planId, view), message);
+    const { actor, cookies } = actorFrom(request2, form);
+    const refuse3 = (message) => actionRefusal(request2, reviewHref(planId, view), message);
     if (!actor) return refuse3("Enter your name. Checkmate records it with the tests.");
     const attached = [];
     try {
@@ -28499,15 +28686,15 @@ data: ${matched.join(",") || "*"}
       return refuse3(`${engineText(error)}${stored}`);
     }
     const list2 = attached.map((item) => `${item.test} \u2192 ${item.rule}`).join(", ");
-    redirect(request.res, reviewHref(planId, view), [
+    redirect(request2.res, reviewHref(planId, view), [
       ...cookies,
       cookie("checkmate_toast", `Stored ${plural(attached.length, "defect")} as tests: ${list2}`, 60)
     ]);
   }
-  function stopRun(request, form, explorationId, explorer) {
+  function stopRun(request2, form, explorationId, explorer) {
     const back = `/explorations/${explorationId}`;
-    const { actor, cookies } = actorFrom(request, form);
-    const refuse3 = (message) => actionRefusal(request, back, message);
+    const { actor, cookies } = actorFrom(request2, form);
+    const refuse3 = (message) => actionRefusal(request2, back, message);
     if (!actor) return refuse3("Enter your name. Checkmate records it with the stop.");
     try {
       recordStop(store, actor, {
@@ -28521,31 +28708,31 @@ data: ${matched.join(",") || "*"}
       return refuse3(engineText(error));
     }
     const flash = explorer ? `Stopping tester ${explorer} of ${explorationId}\u2026` : `Stopping ${explorationId}\u2026`;
-    redirect(request.res, back, [...cookies, cookie("checkmate_toast", flash, 60)]);
+    redirect(request2.res, back, [...cookies, cookie("checkmate_toast", flash, 60)]);
   }
   function sameSiteFrom(value2) {
     return value2 && safeBack(value2) === value2 ? value2 : null;
   }
-  function refererPath(request) {
-    const referer = request.req.headers.referer;
+  function refererPath(request2) {
+    const referer = request2.req.headers.referer;
     if (!referer || !URL.canParse(referer)) return null;
     const from = new URL(referer);
-    return from.host === request.req.headers.host && from.pathname !== "/permissions" ? sameSiteFrom(from.pathname + from.search) : null;
+    return from.host === request2.req.headers.host && from.pathname !== "/permissions" ? sameSiteFrom(from.pathname + from.search) : null;
   }
-  function firstRequest(request) {
+  function firstRequest(request2) {
     const first = nextOpen(store, null);
-    redirect(request.res, first ? requestHref(first, refererPath(request)) : "/activity");
+    redirect(request2.res, first ? requestHref(first, refererPath(request2)) : "/activity");
   }
-  function permissionRecord(request, explorationId, requestId2) {
-    const { searchParams } = request.url;
+  function permissionRecord(request2, explorationId, requestId2) {
+    const { searchParams } = request2.url;
     const view = { from: sameSiteFrom(searchParams.get("from")), history: searchParams.get("view") === "history" };
     render(
-      request,
-      permissionPage(store, context(request), explorationId, requestId2, view, null) ?? emptyRecord(explorationId, requestId2)
+      request2,
+      permissionPage(store, context(request2), explorationId, requestId2, view, null) ?? emptyRecord(explorationId, requestId2)
     );
   }
-  function permit(request, form, explorationId, requestId2) {
-    const { actor, cookies } = actorFrom(request, form);
+  function permit(request2, form, explorationId, requestId2) {
+    const { actor, cookies } = actorFrom(request2, form);
     const from = sameSiteFrom(form.get("from"));
     const returnTo = form.get("return") ? safeBack(form.get("return")) : null;
     const name2 = `${explorationId}/${requestId2}`;
@@ -28553,7 +28740,7 @@ data: ${matched.join(",") || "*"}
       const found = permissionOf(store, explorationId, requestId2);
       const page = found && !found.decision ? permissionPage(
         store,
-        context(request),
+        context(request2),
         explorationId,
         requestId2,
         { from, history: false },
@@ -28563,8 +28750,8 @@ data: ${matched.join(",") || "*"}
           field: form.get("decision") === "deny" && !form.get("reason")?.trim() ? "reason" : null
         }
       ) : null;
-      if (page) return render(request, page);
-      actionRefusal(request, returnTo ?? from ?? "/activity", message);
+      if (page) return render(request2, page);
+      actionRefusal(request2, returnTo ?? from ?? "/activity", message);
     };
     if (!actor) return refuse3("Enter your name. Checkmate records it with the answer.");
     try {
@@ -28588,7 +28775,7 @@ data: ${matched.join(",") || "*"}
       if (!found?.decision) return refuse3(engineText(error));
       const flash = `${name2} has an answer already: ${found.decision.text}. Nothing is recorded.`;
       return redirect(
-        request.res,
+        request2.res,
         returnTo ?? requestHref(found, from),
         returnTo ? [...cookies, cookie("checkmate_toast", flash, 60)] : cookies
       );
@@ -28598,15 +28785,15 @@ data: ${matched.join(",") || "*"}
     const answered = permissionOf(store, explorationId, requestId2);
     const next = returnTo ? null : nextOpen(store, answered);
     const where = returnTo ?? (next ? requestHref(next, from) : from ?? "/activity");
-    redirect(request.res, where, [
+    redirect(request2.res, where, [
       ...cookies,
       cookie("checkmate_toast", `Answered ${name2}: ${answered.decision.text}`, 60)
     ]);
   }
-  function permitMany(request, form) {
-    const { actor, cookies } = actorFrom(request, form);
+  function permitMany(request2, form) {
+    const { actor, cookies } = actorFrom(request2, form);
     const back = safeBack(form.get("return"));
-    const refuse3 = (message) => actionRefusal(request, back, message);
+    const refuse3 = (message) => actionRefusal(request2, back, message);
     const decision = form.get("decision");
     const reason = form.get("reason")?.trim() ?? "";
     const named = form.getAll("pick").map((pick) => /^permission:[^:]+:(.+)\/(P[1-9][0-9]{0,8})$/.exec(pick));
@@ -28630,23 +28817,23 @@ data: ${matched.join(",") || "*"}
     if (!answered.length) return refuse3(`${gone.join(", ")} had an answer already, or closed. Nothing is recorded.`);
     const verb = decision === "allow" ? "Allowed once" : "Denied";
     const rest = gone.length ? ` ${plural(gone.length, "request")} had an answer already.` : "";
-    redirect(request.res, back, [
+    redirect(request2.res, back, [
       ...cookies,
       cookie("checkmate_toast", `${verb}: ${plural(answered.length, "request")}.${rest}`, 60)
     ]);
   }
-  function requestRecord(request, requestId2) {
+  function requestRecord(request2, requestId2) {
     const found = requestOf(store, requestId2);
-    const shown2 = context(request);
+    const shown2 = context(request2);
     if (found && isUnread(found) && shown2.actor) markRequestRead(store, shown2.actor, requestId2);
-    const page = found ? requestPage2(store, context(request), requestId2) : null;
-    if (!page) return errorPage(request, 404, "No such request", `Checkmate has no request ${requestId2}.`);
-    render(request, page);
+    const page = found ? requestPage2(store, context(request2), requestId2) : null;
+    if (!page) return errorPage(request2, 404, "No such request", `Checkmate has no request ${requestId2}.`);
+    render(request2, page);
   }
-  function askText(request, form) {
-    const { actor, cookies } = actorFrom(request, form);
+  function askText(request2, form) {
+    const { actor, cookies } = actorFrom(request2, form);
     const back = safeBack(form.get("return") ?? "/requests");
-    const refuse3 = (message) => actionRefusal(request, back, message);
+    const refuse3 = (message) => actionRefusal(request2, back, message);
     if (!actor) return refuse3("Enter your name. Checkmate records it with the request.");
     const text = form.get("text")?.trim() ?? "";
     if (!text) return refuse3("Write the request first.");
@@ -28664,7 +28851,7 @@ data: ${matched.join(",") || "*"}
     } catch (error) {
       return refuse3(engineText(error));
     }
-    redirect(request.res, `/requests/${id2}`, cookies);
+    redirect(request2.res, `/requests/${id2}`, cookies);
   }
   function contextFromData(text) {
     const data = JSON.parse(text);
@@ -28672,30 +28859,30 @@ data: ${matched.join(",") || "*"}
     const record = typeof data.record?.kind === "string" && typeof data.record.id === "string" ? { kind: data.record.kind.slice(0, 40), id: data.record.id.slice(0, 96) } : null;
     return { planId, record };
   }
-  function stopRequest(request, form, requestId2) {
-    const { actor, cookies } = actorFrom(request, form);
+  function stopRequest(request2, form, requestId2) {
+    const { actor, cookies } = actorFrom(request2, form);
     const back = `/requests/${requestId2}`;
-    if (!actor) return actionRefusal(request, back, "Enter your name. Checkmate records it with the stop.");
+    if (!actor) return actionRefusal(request2, back, "Enter your name. Checkmate records it with the stop.");
     const found = requestOf(store, requestId2);
     const flash = found?.state === "running" || found?.state === "waiting" ? `Stopping ${requestId2}\u2026` : `${requestId2} has ended. Nothing was stopped.`;
     requester.stop(actor, requestId2, form.get("reason")?.trim() ?? "");
     hooks.release();
-    redirect(request.res, back, [...cookies, cookie("checkmate_toast", flash, 60)]);
+    redirect(request2.res, back, [...cookies, cookie("checkmate_toast", flash, 60)]);
   }
-  function newConversation(request, form) {
-    const { actor, cookies } = actorFrom(request, form);
+  function newConversation(request2, form) {
+    const { actor, cookies } = actorFrom(request2, form);
     const back = safeBack(form.get("return") ?? "/requests");
-    if (!actor) return actionRefusal(request, back, "Enter your name. Checkmate records it with the change.");
+    if (!actor) return actionRefusal(request2, back, "Enter your name. Checkmate records it with the change.");
     requester.newConversation(actor);
-    redirect(request.res, back, [
+    redirect(request2.res, back, [
       ...cookies,
       cookie("checkmate_toast", "The next request starts a new conversation.", 60)
     ]);
   }
-  function testerCount(request) {
+  function testerCount(request2) {
     const harness = selectedHarness(workspaceUiEnv(store, env));
-    const query = request.url.searchParams;
-    const reply = (status, body) => send(request.res, status, "application/json; charset=utf-8", JSON.stringify(body), {
+    const query = request2.url.searchParams;
+    const reply = (status, body) => send(request2.res, status, "application/json; charset=utf-8", JSON.stringify(body), {
       "Cache-Control": "no-store"
     });
     if (query.get("harness") !== harness)
@@ -28711,12 +28898,12 @@ data: ${matched.join(",") || "*"}
       return reply(404, { error: "Choose a target or plan." });
     }
   }
-  async function modelCatalog(request) {
+  async function modelCatalog(request2) {
     const harness = selectedHarness(workspaceUiEnv(store, env));
-    const sendJson = (status, body) => send(request.res, status, "application/json; charset=utf-8", JSON.stringify(body), {
+    const sendJson = (status, body) => send(request2.res, status, "application/json; charset=utf-8", JSON.stringify(body), {
       "Cache-Control": "no-store"
     });
-    if (request.url.searchParams.get("harness") !== harness)
+    if (request2.url.searchParams.get("harness") !== harness)
       return sendJson(409, { error: "The coding harness changed. Reload the page." });
     try {
       let pending = pendingModels.get(harness);
@@ -28734,30 +28921,30 @@ data: ${matched.join(",") || "*"}
       return sendJson(503, { error: "Could not load models. Try again." });
     }
   }
-  function saveHarness(request, form) {
-    const { actor, cookies } = actorFrom(request, form);
+  function saveHarness(request2, form) {
+    const { actor, cookies } = actorFrom(request2, form);
     if (!actor)
-      return errorPage(request, 422, "Coding harness", "Enter your name. Checkmate records it with the setting.");
+      return errorPage(request2, 422, "Coding harness", "Enter your name. Checkmate records it with the setting.");
     try {
       saveWorkspaceHarness(store, actor, form.get("harness") ?? "");
     } catch (error) {
-      return errorPage(request, 422, "Coding harness", engineText(error));
+      return errorPage(request2, 422, "Coding harness", engineText(error));
     }
-    redirect(request.res, "/settings/harness", [
+    redirect(request2.res, "/settings/harness", [
       ...cookies,
       cookie("checkmate_toast", "Saved the coding harness", 60)
     ]);
   }
-  function saveModel(request, form) {
-    const { actor, cookies } = actorFrom(request, form);
+  function saveModel(request2, form) {
+    const { actor, cookies } = actorFrom(request2, form);
     const typed = form.get("model") ?? "";
-    const page = (error) => () => harnessPage(store, context(request), env, null, { value: typed, error });
-    if (!actor) return refuse2(request, page("Enter your name. Checkmate records it with the setting."), cookies);
+    const page = (error) => () => harnessPage(store, context(request2), env, null, { value: typed, error });
+    if (!actor) return refuse2(request2, page("Enter your name. Checkmate records it with the setting."), cookies);
     const harness = selectedHarness(workspaceUiEnv(store, env));
     if (form.get("harness") !== harness)
       return refuse2(
-        request,
-        () => harnessPage(store, context(request), env, null, {
+        request2,
+        () => harnessPage(store, context(request2), env, null, {
           value: requestModelText(store, harness),
           error: "The coding harness changed. Reload the page and try again."
         }),
@@ -28766,9 +28953,9 @@ data: ${matched.join(",") || "*"}
     try {
       saveRequestModel(store, actor, typed, harness);
     } catch (error) {
-      return refuse2(request, page(engineText(error)), cookies);
+      return refuse2(request2, page(engineText(error)), cookies);
     }
-    redirect(request.res, "/settings/harness", [
+    redirect(request2.res, "/settings/harness", [
       ...cookies,
       cookie(
         "checkmate_toast",
@@ -28777,19 +28964,19 @@ data: ${matched.join(",") || "*"}
       )
     ]);
   }
-  function saveModelSettings(request, form) {
-    const { actor, cookies } = actorFrom(request, form);
+  function saveModelSettings(request2, form) {
+    const { actor, cookies } = actorFrom(request2, form);
     const harness = selectedHarness(workspaceUiEnv(store, env));
     const tester = form.get("testerModel") ?? testerModelText(store, harness);
     const requested = form.get("requestModel") ?? requestModelText(store, harness);
-    const page = (error) => () => harnessPage(store, context(request), env, null, { value: requested, error: "" }, { value: tester, error });
-    if (!actor) return refuse2(request, page("Enter your name. Checkmate records it with the setting."), cookies);
+    const page = (error) => () => harnessPage(store, context(request2), env, null, { value: requested, error: "" }, { value: tester, error });
+    if (!actor) return refuse2(request2, page("Enter your name. Checkmate records it with the setting."), cookies);
     if (form.get("harness") !== harness)
       return refuse2(
-        request,
+        request2,
         () => harnessPage(
           store,
-          context(request),
+          context(request2),
           env,
           null,
           { value: requestModelText(store, harness), error: "" },
@@ -28801,24 +28988,24 @@ data: ${matched.join(",") || "*"}
         cookies
       );
     if (!form.has("requestModel") || !form.has("testerModel"))
-      return refuse2(request, page("Reload the page to save both model choices."), cookies);
+      return refuse2(request2, page("Reload the page to save both model choices."), cookies);
     try {
       saveModels(store, actor, harness, requested, tester);
     } catch (error) {
-      return refuse2(request, page(engineText(error)), cookies);
+      return refuse2(request2, page(engineText(error)), cookies);
     }
-    redirect(request.res, "/settings/harness", [...cookies, cookie("checkmate_toast", "Saved the models", 60)]);
+    redirect(request2.res, "/settings/harness", [...cookies, cookie("checkmate_toast", "Saved the models", 60)]);
   }
-  function saveRules2(request, form) {
-    const { actor, cookies } = actorFrom(request, form);
+  function saveRules2(request2, form) {
+    const { actor, cookies } = actorFrom(request2, form);
     const typed = form.get("rules") ?? "";
-    const page = (error) => () => harnessPage(store, context(request), env, { value: typed, error });
-    if (!actor) return refuse2(request, page("Enter your name. Checkmate records it with the setting."), cookies);
+    const page = (error) => () => harnessPage(store, context(request2), env, { value: typed, error });
+    if (!actor) return refuse2(request2, page("Enter your name. Checkmate records it with the setting."), cookies);
     const harness = selectedHarness(workspaceUiEnv(store, env));
     if (form.get("harness") !== harness)
       return refuse2(
-        request,
-        () => harnessPage(store, context(request), env, {
+        request2,
+        () => harnessPage(store, context(request2), env, {
           value: testerRulesText(store, harness),
           error: "The coding harness changed. Reload the page and try again."
         }),
@@ -28827,9 +29014,9 @@ data: ${matched.join(",") || "*"}
     try {
       saveTesterRules(store, actor, typed, harness);
     } catch (error) {
-      return refuse2(request, page(engineText(error)), cookies);
+      return refuse2(request2, page(engineText(error)), cookies);
     }
-    redirect(request.res, "/settings/harness", [
+    redirect(request2.res, "/settings/harness", [
       ...cookies,
       cookie("checkmate_toast", "Saved the tool rules of testers", 60)
     ]);
@@ -28840,9 +29027,9 @@ data: ${matched.join(",") || "*"}
     const yes = typed === "yes" || typed === "" && local;
     return { yes, chosen: typed === "yes" || typed === "no" || local, local };
   }
-  function previewSetup(request, form) {
+  function previewSetup(request2, form) {
     const url = (form.get("url") ?? "").trim();
-    const reply = (body) => send(request.res, 200, "application/json; charset=utf-8", JSON.stringify(body));
+    const reply = (body) => send(request2.res, 200, "application/json; charset=utf-8", JSON.stringify(body));
     if (!/^https?:\/\/[^\s/]+/i.test(url))
       return reply({ error: "Give a full address, for example http://localhost:3000." });
     try {
@@ -28864,10 +29051,10 @@ data: ${matched.join(",") || "*"}
       reply({ error: plainMessage(error) });
     }
   }
-  async function setUp(request, form) {
+  async function setUp(request2, form) {
     const back = "/setup";
-    const { actor, cookies } = actorFrom(request, form);
-    const refuse3 = (message, field4 = "") => actionRefusal(request, back, message, field4);
+    const { actor, cookies } = actorFrom(request2, form);
+    const refuse3 = (message, field4 = "") => actionRefusal(request2, back, message, field4);
     const url = (form.get("url") ?? "").trim();
     if (!actor) return refuse3("Enter your name. Checkmate records it with the target.");
     if (!/^https?:\/\/[^\s/]+/i.test(url))
@@ -28894,7 +29081,19 @@ data: ${matched.join(",") || "*"}
         answered: true
       });
       if (reply.status !== "completed") return refuse3(reply.reasons.join(" "), "target");
-      redirect(request.res, `/new?target=${encodeURIComponent(String(reply.data.targetId))}`, [
+      if (!reply.data.ready) {
+        const targetId = String(reply.data.targetId);
+        redirect(request2.res, `/settings/targets/${encodeURIComponent(targetId)}`, [
+          ...cookies,
+          cookie(
+            "checkmate_toast",
+            `The application answered, but the saved profile is not ready. Recheck it: checkmate delegate setup ${targetId}`,
+            60
+          )
+        ]);
+        return;
+      }
+      redirect(request2.res, `/new?target=${encodeURIComponent(String(reply.data.targetId))}`, [
         ...cookies,
         cookie("checkmate_toast", `Set up target ${reply.data.targetId}`, 60)
       ]);
@@ -28906,10 +29105,10 @@ data: ${matched.join(",") || "*"}
       );
     }
   }
-  function startChange(request, form) {
+  function startChange(request2, form) {
     const back = "/new";
-    const { actor, cookies } = actorFrom(request, form);
-    const refuse3 = (message, field4 = "") => actionRefusal(request, back, message, field4);
+    const { actor, cookies } = actorFrom(request2, form);
+    const refuse3 = (message, field4 = "") => actionRefusal(request2, back, message, field4);
     const text = form.get("text") ?? "";
     const typedFile = form.get("file")?.trim() ?? "";
     const planId = form.get("plan")?.trim() ?? "";
@@ -28966,7 +29165,7 @@ data: ${matched.join(",") || "*"}
     const kept = text.trim() ? `.checkmate/sources/${planId}.md` : "";
     try {
       if (kept) {
-        mkdirSync7(resolve7(store.workspace, ".checkmate", "sources"), { recursive: true });
+        mkdirSync8(resolve7(store.workspace, ".checkmate", "sources"), { recursive: true });
         writeFileSync4(resolve7(store.workspace, kept), text.endsWith("\n") ? text : `${text}
 `);
       }
@@ -28990,12 +29189,12 @@ data: ${matched.join(",") || "*"}
         childEnv2,
         true
       );
-      redirect(request.res, `/explorations/${started.subject}`, [
+      redirect(request2.res, `/explorations/${started.subject}`, [
         ...cookies,
         cookie("checkmate_toast", `Started ${started.subject} on build ${build}`, 60)
       ]);
     } catch (error) {
-      if (kept && !hasRequest(store, planId)) rmSync6(resolve7(store.workspace, kept), { force: true });
+      if (kept && !hasRequest(store, planId)) rmSync7(resolve7(store.workspace, kept), { force: true });
       refuse3(engineText(error));
     }
   }
@@ -29005,23 +29204,23 @@ data: ${matched.join(",") || "*"}
   function verdictState(form) {
     return { ...emptyState(), values: values(form, ["verdict", "rationale", "actor"]) };
   }
-  function decide(request, form, choices, page, record, staleCheck) {
+  function decide(request2, form, choices, page, record, staleCheck) {
     const state = verdictState(form);
-    const { actor, cookies } = actorFrom(request, form);
+    const { actor, cookies } = actorFrom(request2, form);
     const view = () => page(state);
     const sha = form.get("sha") ?? "";
     const token = form.get("decision") ?? "";
     state.stale = staleCheck(sha, token);
-    if (state.stale) return refuse2(request, view, cookies);
-    if (form.get("back")) return refuse2(request, () => ({ ...view(), status: 200 }), cookies);
+    if (state.stale) return refuse2(request2, view, cookies);
+    if (form.get("back")) return refuse2(request2, () => ({ ...view(), status: 200 }), cookies);
     if (!choices.includes(state.values.verdict)) state.error = "Choose a decision.";
     else if (!actor) state.error = "Enter your name. Checkmate records it with your decision.";
     else if (!state.values.rationale.trim())
       state.error = "Write a rationale. Checkmate records it with your decision.";
-    if (state.error) return refuse2(request, view, cookies);
+    if (state.error) return refuse2(request2, view, cookies);
     if (form.get("confirmed") !== "1") {
       state.confirm = true;
-      return refuse2(request, () => ({ ...view(), status: 200 }), cookies);
+      return refuse2(request2, () => ({ ...view(), status: 200 }), cookies);
     }
     let flash;
     try {
@@ -29029,23 +29228,23 @@ data: ${matched.join(",") || "*"}
     } catch (error) {
       state.stale = staleCheck(sha, token);
       if (!state.stale) state.error = plainMessage(error);
-      return refuse2(request, view, cookies);
+      return refuse2(request2, view, cookies);
     }
     const next = nextItem(flash, cookies, form);
-    redirect(request.res, next.location, next.cookies);
+    redirect(request2.res, next.location, next.cookies);
   }
   function decidedBanner(subject, latest, verdicts) {
     const what = latest ? html2`${subject} was ${verdicts[latest.verdict]} by ${latest.actor} after you opened this page.` : html2`${subject} has another decision now.`;
     return html2`<strong>${what}</strong> Your decision was not recorded. Your text is kept below. Review the
 			decision, then send again.`;
   }
-  function decidePlan2(request, form, planId, revision) {
+  function decidePlan2(request2, form, planId, revision) {
     const subject = `${planId}@${revision}`;
     decide(
-      request,
+      request2,
       form,
       ["approve", "reject"],
-      (state) => inQueue(request, form, () => planPage(store, context(request), planId, revision, state), state)(),
+      (state) => inQueue(request2, form, () => planPage(store, context(request2), planId, revision, state), state)(),
       (actor, verdict, rationale, sha, token) => {
         const input = { reference: subject, rationale, expectSha256: sha, expectDecision: token };
         if (verdict === "approve") approvePlan(store, actor, input);
@@ -29065,12 +29264,12 @@ data: ${matched.join(",") || "*"}
       }
     );
   }
-  function decideRun(request, form, runId) {
+  function decideRun(request2, form, runId) {
     decide(
-      request,
+      request2,
       form,
       ["accept", "reject"],
-      (state) => inQueue(request, form, () => runPage(store, context(request), runId, void 0, state), state)(),
+      (state) => inQueue(request2, form, () => runPage(store, context(request2), runId, void 0, state), state)(),
       (actor, verdict, rationale, sha, token) => {
         const input = { runId, rationale, expectSha256: sha, expectDecision: token };
         if (verdict === "accept") acceptResult(store, actor, input);
@@ -29091,12 +29290,12 @@ data: ${matched.join(",") || "*"}
       }
     );
   }
-  function adopt(request, form, runId, gapId) {
-    const { actor, cookies } = actorFrom(request, form);
+  function adopt(request2, form, runId, gapId) {
+    const { actor, cookies } = actorFrom(request2, form);
     const planId = runDetail(store, runId).planId;
     const sha = form.get("sha") ?? "";
-    const page = (message) => () => runPage(store, context(request), runId, void 0, null, { gapId, message });
-    if (!actor) return refuse2(request, page("Enter your name. Checkmate records it with the change."), cookies);
+    const page = (message) => () => runPage(store, context(request2), runId, void 0, null, { gapId, message });
+    if (!actor) return refuse2(request2, page("Enter your name. Checkmate records it with the change."), cookies);
     const latest = planDetail(store, planId);
     let adopted;
     try {
@@ -29109,15 +29308,15 @@ data: ${matched.join(",") || "*"}
     } catch (error) {
       const message = latest.sha256 === sha ? plainMessage(error) : html2`<strong>${planId} changed after you opened this page.</strong> ${gapId} was not brought into
 							the plan. Review the plan, then send again.`;
-      return refuse2(request, page(message), cookies);
+      return refuse2(request2, page(message), cookies);
     }
-    redirect(request.res, `/runs/${runId}?item=${encodeURIComponent(`gap:${gapId}`)}`, [
+    redirect(request2.res, `/runs/${runId}?item=${encodeURIComponent(`gap:${gapId}`)}`, [
       ...cookies,
       cookie("checkmate_toast", `Brought ${gapId} into ${adopted.subject}`, 60)
     ]);
   }
-  function saveEdit(request, form, planId, revision) {
-    const { actor, cookies } = actorFrom(request, form);
+  function saveEdit(request2, form, planId, revision) {
+    const { actor, cookies } = actorFrom(request2, form);
     const subject = `${planId}@${revision}`;
     const detail = planDetail(store, planId, revision);
     const base = planCandidate(detail.plan);
@@ -29137,7 +29336,7 @@ data: ${matched.join(",") || "*"}
       removed: [],
       rationale: form.get("rationale") ?? ""
     };
-    const page = () => editPage(store, context(request), planId, revision, state);
+    const page = () => editPage(store, context(request2), planId, revision, state);
     let candidate;
     if (removing !== null) {
       candidate = { ...base, tests: base.tests.filter((test) => test.id !== removing) };
@@ -29161,14 +29360,14 @@ data: ${matched.join(",") || "*"}
     if (blank && !state.error)
       [state.error, state.field] = [`Fill in ${blank.label}. It cannot be empty.`, blank.name];
     if (!state.error && !state.removed.length && candidateJson(candidate) === candidateJson(base))
-      return redirect(request.res, `/plans/${subject}`, [
+      return redirect(request2.res, `/plans/${subject}`, [
         ...cookies,
         cookie("checkmate_toast", `No changes. ${subject} is not saved again.`, 60)
       ]);
     if (!actor) state.error ??= "Enter your name. Checkmate records it with the edit.";
     if (state.removed.length && !rationale)
       state.error ??= `The edit removes ${state.removed.join(", ")}. Write the reason in Reason for removal.`;
-    if (state.error) return refuse2(request, page, cookies);
+    if (state.error) return refuse2(request2, page, cookies);
     let saved;
     try {
       saved = editPlan(store, actor, {
@@ -29181,7 +29380,7 @@ data: ${matched.join(",") || "*"}
       const latest = planDetail(store, planId);
       if (latest.latestRevision === revision && latest.sha256 === sha) {
         state.error = plainMessage(error);
-        return refuse2(request, page, cookies);
+        return refuse2(request2, page, cookies);
       }
       const fresh = planCandidate(latest.plan);
       state.unsaved = ownChanges(form, fresh);
@@ -29193,17 +29392,17 @@ data: ${matched.join(",") || "*"}
 				saved. The editor shows ${planId}@${latest.latestRevision} as it is now. Your changes are listed above
 				it.`;
       return refuse2(
-        request,
-        () => editPage(store, context(request), planId, latest.latestRevision, state),
+        request2,
+        () => editPage(store, context(request2), planId, latest.latestRevision, state),
         cookies
       );
     }
     const saving = `${planId}@${saved.revision}`;
     const flash = saved.edit === "in_place" ? `Saved ${saving} in place` : `Saved ${saving}${planDetail(store, planId).approval.policy === "none" ? "" : ". It needs approval."}`;
-    redirect(request.res, `/plans/${saving}`, [...cookies, cookie("checkmate_toast", flash, 60)]);
+    redirect(request2.res, `/plans/${saving}`, [...cookies, cookie("checkmate_toast", flash, 60)]);
   }
-  function saveInstance(request, form, targetId) {
-    const { actor, cookies } = actorFrom(request, form);
+  function saveInstance(request2, form, targetId) {
+    const { actor, cookies } = actorFrom(request2, form);
     const entryPoints = targetRequest(store, targetId).entryPoints;
     const state = {
       values: values(form, [
@@ -29218,8 +29417,8 @@ data: ${matched.join(",") || "*"}
     const again = () => {
       const kept = JSON.stringify(state);
       if (kept.length > 3e3)
-        return refuse2(request, () => targetPage(store, context(request), targetId, null, state), cookies);
-      redirect(request.res, `/settings/targets/${targetId}#add-instance`, [
+        return refuse2(request2, () => targetPage(store, context(request2), targetId, null, state), cookies);
+      redirect(request2.res, `/settings/targets/${targetId}#add-instance`, [
         ...cookies,
         cookie("checkmate_instance", kept, 60)
       ]);
@@ -29238,119 +29437,119 @@ data: ${matched.join(",") || "*"}
       state.error = plainMessage(error);
       return again();
     }
-    redirect(request.res, `/settings/targets/${targetId}#instance-${instanceId}`, [
+    redirect(request2.res, `/settings/targets/${targetId}#instance-${instanceId}`, [
       ...cookies,
       cookie("checkmate_toast", `Added instance ${instanceId} to ${targetId}`, 60)
     ]);
   }
-  function retire(request, form, targetId, instanceId) {
-    const { actor, cookies } = actorFrom(request, form);
-    const page = (error) => () => targetPage(store, context(request), targetId, null, null, { instanceId, error });
+  function retire(request2, form, targetId, instanceId) {
+    const { actor, cookies } = actorFrom(request2, form);
+    const page = (error) => () => targetPage(store, context(request2), targetId, null, null, { instanceId, error });
     if (form.get("confirmed") !== "1")
-      return refuse2(request, page("Confirm that you want to retire the instance."), cookies);
-    if (!actor) return refuse2(request, page("Enter your name. Checkmate records it with the change."), cookies);
+      return refuse2(request2, page("Confirm that you want to retire the instance."), cookies);
+    if (!actor) return refuse2(request2, page("Enter your name. Checkmate records it with the change."), cookies);
     try {
       retireInstance(store, actor, { targetId, instanceId });
     } catch (error) {
-      return refuse2(request, page(plainMessage(error)), cookies);
+      return refuse2(request2, page(plainMessage(error)), cookies);
     }
-    redirect(request.res, `/settings/targets/${targetId}#instance-${instanceId}`, [
+    redirect(request2.res, `/settings/targets/${targetId}#instance-${instanceId}`, [
       ...cookies,
       cookie("checkmate_toast", `Retired instance ${instanceId} of ${targetId}`, 60)
     ]);
   }
-  async function post(request) {
-    const origin = request.req.headers.origin;
-    if (origin !== void 0 && origin !== `http://${request.req.headers.host}`)
+  async function post(request2) {
+    const origin = request2.req.headers.origin;
+    if (origin !== void 0 && origin !== `http://${request2.req.headers.host}`)
       return send(
-        request.res,
+        request2.res,
         403,
         "text/plain; charset=utf-8",
         "Refused: the request comes from another origin."
       );
-    const form = await readForm(request.req);
+    const form = await readForm(request2.req);
     if (!form)
       return errorPage(
-        request,
+        request2,
         413,
         "Form too large",
         "The form has more than 256 KiB of text. Checkmate did not record it. Go back, make the text shorter, then send the form again."
       );
     if (!sameSecret(form.get("csrf") ?? "", csrf))
       return errorPage(
-        request,
+        request2,
         403,
         "Form expired",
         "This form came from an earlier start of the UI. Load the page again, then send the form again."
       );
-    const { pathname } = request.url;
+    const { pathname } = request2.url;
     if (pathname === "/theme") {
       const theme = form.get("theme");
-      return redirect(request.res, safeBack(form.get("back")), [
+      return redirect(request2.res, safeBack(form.get("back")), [
         cookie("checkmate_theme", themes.includes(theme) ? theme : "system")
       ]);
     }
     if (pathname === "/actor") {
       const name2 = form.get("actor")?.trim() ?? "";
       if (!name2)
-        return errorPage(request, 422, "Your name", "Enter a name. Checkmate records it with each decision.");
+        return errorPage(request2, 422, "Your name", "Enter a name. Checkmate records it with each decision.");
       if (name2.length > actorLimit)
-        return errorPage(request, 422, "Your name", `Use a name of ${actorLimit} characters or fewer.`);
-      return redirect(request.res, safeBack(form.get("back")), [cookie("checkmate_actor", name2)]);
+        return errorPage(request2, 422, "Your name", `Use a name of ${actorLimit} characters or fewer.`);
+      return redirect(request2.res, safeBack(form.get("back")), [cookie("checkmate_actor", name2)]);
     }
-    if (pathname === "/bulk") return bulk(request, form);
-    if (pathname === "/settings/harness/select") return saveHarness(request, form);
-    if (pathname === "/settings/harness/models") return saveModelSettings(request, form);
-    if (pathname === "/settings/claude" || pathname === "/settings/harness/rules") return saveRules2(request, form);
+    if (pathname === "/bulk") return bulk(request2, form);
+    if (pathname === "/settings/harness/select") return saveHarness(request2, form);
+    if (pathname === "/settings/harness/models") return saveModelSettings(request2, form);
+    if (pathname === "/settings/claude" || pathname === "/settings/harness/rules") return saveRules2(request2, form);
     if (pathname === "/settings/claude/model" || pathname === "/settings/harness/model")
-      return saveModel(request, form);
-    if (pathname === "/requests") return askText(request, form);
-    if (pathname === "/requests/conversation") return newConversation(request, form);
+      return saveModel(request2, form);
+    if (pathname === "/requests") return askText(request2, form);
+    if (pathname === "/requests/conversation") return newConversation(request2, form);
     const stoppingRequest = routes.stopRequest.exec(pathname);
-    if (stoppingRequest) return stopRequest(request, form, stoppingRequest[1]);
-    if (pathname === "/setup/assumed") return previewSetup(request, form);
-    if (pathname === "/setup") return await setUp(request, form);
-    if (pathname === "/new") return startChange(request, form);
+    if (stoppingRequest) return stopRequest(request2, form, stoppingRequest[1]);
+    if (pathname === "/setup/assumed") return previewSetup(request2, form);
+    if (pathname === "/setup") return await setUp(request2, form);
+    if (pathname === "/new") return startChange(request2, form);
     const handoff = routes.handoff.exec(pathname);
-    if (handoff) return handOver(request, form, handoff[1]);
+    if (handoff) return handOver(request2, form, handoff[1]);
     const adding = routes.rules.exec(pathname);
-    if (adding) return changeRule(request, form, adding[1], null);
+    if (adding) return changeRule(request2, form, adding[1], null);
     const editing = routes.rule.exec(pathname);
-    if (editing) return changeRule(request, form, editing[1], editing[2]);
+    if (editing) return changeRule(request2, form, editing[1], editing[2]);
     const removing = routes.removeRule.exec(pathname);
-    if (removing) return removeRule(request, form, removing[1], removing[2]);
+    if (removing) return removeRule(request2, form, removing[1], removing[2]);
     const starting = routes.startTest.exec(pathname);
-    if (starting) return startTest(request, form, starting[1]);
+    if (starting) return startTest(request2, form, starting[1]);
     const following = routes.startFollow.exec(pathname);
-    if (following) return startAnswers(request, form, following[1]);
+    if (following) return startAnswers(request2, form, following[1]);
     const harvesting = routes.harvest.exec(pathname);
-    if (harvesting) return storeDefects(request, form, harvesting[1]);
-    if (routes.permitMany.test(pathname)) return permitMany(request, form);
+    if (harvesting) return storeDefects(request2, form, harvesting[1]);
+    if (routes.permitMany.test(pathname)) return permitMany(request2, form);
     const permitting = routes.permit.exec(pathname);
-    if (permitting) return permit(request, form, permitting[1], permitting[2]);
+    if (permitting) return permit(request2, form, permitting[1], permitting[2]);
     const stopping = routes.stopRun.exec(pathname);
-    if (stopping) return stopRun(request, form, stopping[1]);
+    if (stopping) return stopRun(request2, form, stopping[1]);
     const stoppingTester = routes.stopTester.exec(pathname);
-    if (stoppingTester) return stopRun(request, form, stoppingTester[1], stoppingTester[2]);
+    if (stoppingTester) return stopRun(request2, form, stoppingTester[1], stoppingTester[2]);
     const edit = routes.edit.exec(pathname);
-    if (edit) return saveEdit(request, form, edit[1], Number(edit[2]));
+    if (edit) return saveEdit(request2, form, edit[1], Number(edit[2]));
     const question = routes.question.exec(pathname);
-    if (question) return answerExplorationQuestion(request, form, question[1], question[2]);
+    if (question) return answerExplorationQuestion(request2, form, question[1], question[2]);
     const claim = routes.claim.exec(pathname);
-    if (claim) return decideExplorationClaim(request, form, claim[1], claim[2]);
+    if (claim) return decideExplorationClaim(request2, form, claim[1], claim[2]);
     const gap = routes.gap.exec(pathname);
-    if (gap) return answer2(request, form, gap[1], Number(gap[2]), gap[3]);
+    if (gap) return answer2(request2, form, gap[1], Number(gap[2]), gap[3]);
     const plan = routes.plan.exec(pathname);
-    if (plan) return decidePlan2(request, form, plan[1], Number(plan[2]));
+    if (plan) return decidePlan2(request2, form, plan[1], Number(plan[2]));
     const run2 = routes.run.exec(pathname);
-    if (run2) return decideRun(request, form, run2[1]);
+    if (run2) return decideRun(request2, form, run2[1]);
     const runGap = routes.runGap.exec(pathname);
-    if (runGap) return adopt(request, form, runGap[1], runGap[2]);
+    if (runGap) return adopt(request2, form, runGap[1], runGap[2]);
     const added = routes.addInstance.exec(pathname);
-    if (added) return saveInstance(request, form, added[1]);
+    if (added) return saveInstance(request2, form, added[1]);
     const retired = routes.retireInstance.exec(pathname);
-    if (retired) return retire(request, form, retired[1], retired[2]);
-    return errorPage(request, 404, "Page not found", `Checkmate has no form at ${pathname}.`);
+    if (retired) return retire(request2, form, retired[1], retired[2]);
+    return errorPage(request2, 404, "Page not found", `Checkmate has no form at ${pathname}.`);
   }
   async function handle(req, res) {
     const host = req.headers.host;
@@ -29361,23 +29560,36 @@ data: ${matched.join(",") || "*"}
         "text/plain; charset=utf-8",
         "Refused: unknown host. Open the URL that checkmate ui printed."
       );
-    const request = {
+    const request2 = {
       req,
       res,
       url: new URL(req.url ?? "/", `http://${host}`),
       cookies: parseCookies(req.headers.cookie)
     };
     try {
-      if (req.method === "POST" && hooks.handles(request.url.pathname))
-        return await hooks.handle(req, res, request.url.pathname);
-      if (req.method === "GET" || req.method === "HEAD") return await get(request);
-      if (req.method === "POST") return await post(request);
+      if (req.method === "POST" && request2.url.pathname === lifecyclePath) {
+        const action2 = req.headers["x-checkmate-action"];
+        const nonce = req.headers["x-checkmate-nonce"];
+        const proof = req.headers["x-checkmate-proof"];
+        if (action2 !== "status" && action2 !== "open-pi" && action2 !== "stop" || typeof nonce !== "string" || !/^[0-9a-f]{48}$/.test(nonce) || typeof proof !== "string" || !sameSecret(proof, lifecycleProof(hookToken, workspace, process.pid, action2, nonce)) || closed)
+          return send(res, 403, "text/plain; charset=utf-8", "Refused.");
+        if (action2 === "open-pi") env.CHECKMATE_HARNESS = "pi";
+        if (action2 === "stop") res.once("finish", () => void close());
+        const body = JSON.stringify({ harness: selectedHarness(launchEnv()) });
+        return send(res, 200, "application/json; charset=utf-8", body, {
+          "X-Checkmate-Proof": lifecycleProof(hookToken, workspace, process.pid, action2, nonce, body)
+        });
+      }
+      if (req.method === "POST" && hooks.handles(request2.url.pathname))
+        return await hooks.handle(req, res, request2.url.pathname);
+      if (req.method === "GET" || req.method === "HEAD") return await get(request2);
+      if (req.method === "POST") return await post(request2);
       send(res, 405, "text/plain; charset=utf-8", "Method not allowed.", { Allow: "GET, POST" });
     } catch (error) {
       const message = plainMessage(error);
       if (res.headersSent) return res.end();
-      if (notFoundError(message)) return errorPage(request, 404, "Not found", message);
-      errorPage(request, 500, "Something went wrong", `Checkmate could not finish the request: ${message}`);
+      if (notFoundError(message)) return errorPage(request2, 404, "Not found", message);
+      errorPage(request2, 500, "Something went wrong", `Checkmate could not finish the request: ${message}`);
     }
   }
   const server = createServer((req, res) => {
@@ -29388,7 +29600,6 @@ data: ${matched.join(",") || "*"}
     closed = true;
     await requester.close();
     hooks.close();
-    if (port) removeUiFile(options3.workspace, port);
     clearInterval(poll);
     clearInterval(heartbeat);
     clearInterval(supervisorWatch);
@@ -29403,6 +29614,7 @@ data: ${matched.join(",") || "*"}
     });
     closeStore(watch);
     closeStore(store);
+    if (port) removeUiFile(options3.workspace, port);
   }
   try {
     await new Promise((resolve9, reject) => {
@@ -29427,8 +29639,8 @@ data: ${matched.join(",") || "*"}
 }
 
 // plugin/src/agents.ts
-import { mkdirSync as mkdirSync8, readFileSync as readFileSync8, rmSync as rmSync7, writeFileSync as writeFileSync5 } from "node:fs";
-import { dirname as dirname2, join as join14 } from "node:path";
+import { mkdirSync as mkdirSync9, readFileSync as readFileSync9, rmSync as rmSync8, writeFileSync as writeFileSync5 } from "node:fs";
+import { dirname as dirname2, join as join15 } from "node:path";
 var testerAgent = "checkmate:tester";
 var clerkAgent = "checkmate:clerk";
 var doneSteps = ["study", "test", "record", "follow", "rules", "merge", "verify"];
@@ -29635,8 +29847,8 @@ function lineOf(explorationId, action2) {
   return `${action2.action} ${action2.name} ${action2.step} agent=${action2.to}${description} prompt="${promptOf2(action2)}"`;
 }
 function writeFile(store, path, text) {
-  const full = join14(store.workspace, path);
-  mkdirSync8(dirname2(full), { recursive: true });
+  const full = join15(store.workspace, path);
+  mkdirSync9(dirname2(full), { recursive: true });
   writeFileSync5(full, text.endsWith("\n") ? text : `${text}
 `);
 }
@@ -29654,7 +29866,7 @@ function answerNext(store, actor, explorationId, actions, word) {
 ${replyLimit}
 End your reply with this line: ${replyLineOf(action2.name, action2.step)}`
         );
-        if (action2.answer) rmSync7(join14(store.workspace, action2.answer), { force: true });
+        if (action2.answer) rmSync8(join15(store.workspace, action2.answer), { force: true });
         addEvent(
           store,
           explorationId,
@@ -29866,7 +30078,7 @@ function nextActions(store, actor, explorationId) {
 }
 function readText2(store, path) {
   try {
-    return readFileSync8(join14(store.workspace, path), "utf8");
+    return readFileSync9(join15(store.workspace, path), "utf8");
   } catch {
     return void 0;
   }
@@ -30065,8 +30277,8 @@ function stepDone(store, actor, input) {
 }
 
 // plugin/src/cli.ts
-import { mkdirSync as mkdirSync9, readFileSync as readFileSync9, writeFileSync as writeFileSync6 } from "node:fs";
-import { dirname as dirname3, join as join15, resolve as resolve8 } from "node:path";
+import { mkdirSync as mkdirSync10, readFileSync as readFileSync10, writeFileSync as writeFileSync6 } from "node:fs";
+import { dirname as dirname3, join as join16, resolve as resolve8 } from "node:path";
 import { constants as constants2 } from "node:sqlite";
 var testFields2 = [
   "title",
@@ -30269,11 +30481,11 @@ var commands = {
             claim.title,
             ...claim.reason ? [claim.reason] : []
           ]),
-          ...waiting.requests.map((request) => [
-            request.planId,
+          ...waiting.requests.map((request2) => [
+            request2.planId,
             "requested",
-            request.target,
-            request.objective
+            request2.target,
+            request2.objective
           ])
         ]
       };
@@ -30366,13 +30578,13 @@ var commands = {
     positionals: ["targetId"],
     run: (store, args) => showTargetRequest(store, value(args, "targetId")),
     print: (reply) => {
-      const request = reply.data.request;
+      const request2 = reply.data.request;
       return {
         lines: [
-          ...request.entryPoints.map((entry) => ["entryPoint", entry.name, entry.kind, entry.purpose]),
-          ["capabilities", request.capabilities],
-          ["operations", request.allowedOperations],
-          ...request.tools.map((tool) => ["tool", tool.name, tool.kind, tool.purpose])
+          ...request2.entryPoints.map((entry) => ["entryPoint", entry.name, entry.kind, entry.purpose]),
+          ["capabilities", request2.capabilities],
+          ["operations", request2.allowedOperations],
+          ...request2.tools.map((tool) => ["tool", tool.name, tool.kind, tool.purpose])
         ]
       };
     }
@@ -31046,8 +31258,10 @@ var commands = {
         instance: reply.data.instanceId,
         capabilities: reply.data.capabilities,
         operations: reply.data.allowedOperations,
-        ready: reply.data.ready
-      }
+        profile_ready: reply.data.ready,
+        instance_reachable: reply.data.instanceReachable
+      },
+      lines: reply.data.next ? [[reply.data.next]] : []
     })
   },
   test: {
@@ -31747,7 +31961,7 @@ function printPlan(reply) {
 }
 function writeOutput(store, out, content) {
   const path = resolve8(store.workspace, out);
-  mkdirSync9(dirname3(path), { recursive: true });
+  mkdirSync10(dirname3(path), { recursive: true });
   try {
     writeFileSync6(path, content, { flag: "wx" });
   } catch (error) {
@@ -31885,12 +32099,14 @@ function usage(name2) {
   ].join(" ");
 }
 var uiUsage = "Usage: checkmate ui [--port <value>] [--new-hook-token]";
+var uiStopUsage = "checkmate ui --stop";
 function help() {
   return [
     ...Object.keys(commands).map((name2) => usage(name2).replace("Usage: ", "")),
     uiUsage.replace("Usage: ", ""),
+    uiStopUsage,
     "Options for every command: --workspace <path>, --json"
-  ].join("\n");
+  ];
 }
 function commandHelp(argv) {
   const words4 = argv.slice(
@@ -31899,14 +32115,14 @@ function commandHelp(argv) {
   );
   for (let count2 = words4.length; count2 > 0; count2--) {
     const prefix = words4.slice(0, count2).join(" ");
-    if (prefix === "ui") return completed("ui", { usage: [uiUsage.replace("Usage: ", "")] });
+    if (prefix === "ui") return completed("ui", { usage: [uiUsage.replace("Usage: ", ""), uiStopUsage] });
     const names = Object.keys(commands).filter((name2) => name2 === prefix || name2.startsWith(`${prefix} `));
     if (names.length) return completed(prefix, { usage: names.map((name2) => usage(name2).replace("Usage: ", "")) });
   }
   return { ...refused("invalid_request", "checkmate", unknownCommand(words4)), data: { usage: [] } };
 }
 function version() {
-  return JSON.parse(readFileSync9(join15(pluginRoot, ".claude-plugin", "plugin.json"), "utf8")).version;
+  return JSON.parse(readFileSync10(join16(pluginRoot, ".claude-plugin", "plugin.json"), "utf8")).version;
 }
 function readJson2(text) {
   requireWellFormed(
@@ -31926,8 +32142,11 @@ function readJson2(text) {
 }
 function run(argv, io) {
   if (argv[0] === "--version") return { code: 0, output: version() };
-  if (!argv.length || argv[0] === "--help") return { code: 0, output: help() };
   const json = argv.includes("--json");
+  if (!argv.length || argv[0] === "--help" || argv[0] === "--json" && argv[1] === "--help") {
+    const usage2 = help();
+    return { code: 0, output: json ? format(completed("checkmate", { usage: usage2 }), true) : usage2.join("\n") };
+  }
   if (argv.includes("--help")) {
     const reply = commandHelp(argv);
     const code = reply.status === "completed" ? 0 : 1;
@@ -31973,9 +32192,14 @@ function run(argv, io) {
 function uiOptions(tokens, cwd) {
   const values = {};
   let newHookToken = false;
+  let stop = false;
   for (let i = 0; i < tokens.length; i++) {
     const token = tokens[i];
     if (token === "--json") continue;
+    if (token === "--stop") {
+      stop = true;
+      continue;
+    }
     if (token === "--new-hook-token") {
       newHookToken = true;
       continue;
@@ -31994,7 +32218,8 @@ function uiOptions(tokens, cwd) {
     port === void 0 || /^[0-9]+$/.test(values.port) && port <= 65535,
     `Invalid --port: ${values.port}. Use 0 to 65535.`
   );
-  return { workspace: resolve8(cwd, values.workspace ?? "."), port, newHookToken };
+  requireWellFormed(!stop || port === void 0 && !newHookToken, "Use --stop with --workspace or --json only.");
+  return { workspace: resolve8(cwd, values.workspace ?? "."), port, newHookToken, stop };
 }
 async function serveUi(tokens) {
   const json = tokens.includes("--json");
@@ -32006,16 +32231,45 @@ async function serveUi(tokens) {
     process.exitCode = 1;
     return;
   }
-  const ui = await startUi(options3);
-  process.stdout.write(
-    format(completed("ui", { url: ui.url }), json, (reply) => ({ facts: { url: reply.data.url } })) + "\n"
-  );
-  const stop = async () => {
-    await ui.close();
-    process.exit(0);
-  };
-  process.once("SIGINT", stop);
-  process.once("SIGTERM", stop);
+  const fromPi = process.env.CHECKMATE_PI_UI === "1";
+  if (fromPi) delete process.env.CHECKMATE_PI_UI;
+  try {
+    const data = await withUiStartupLock(options3.workspace, async (workspace) => {
+      const action2 = options3.stop ? "stop" : fromPi ? "open-pi" : "status";
+      const active = await contactUi(workspace, action2);
+      if (options3.stop) return { stopped: Boolean(active) };
+      if (active) {
+        if (fromPi) return active;
+        throw new Error(
+          `The Checkmate UI already runs at ${active.url} Use checkmate ui --stop before starting it again.`
+        );
+      }
+      const ui = await startUi({
+        ...options3,
+        workspace,
+        env: fromPi ? { ...process.env, CHECKMATE_HARNESS: "pi" } : process.env
+      });
+      const stop = async () => {
+        await ui.close();
+        process.exit(0);
+      };
+      process.once("SIGINT", stop);
+      process.once("SIGTERM", stop);
+      if (!fromPi) return { url: ui.url };
+      try {
+        const started = await contactUi(workspace, "status");
+        if (!started) throw new Error("The new Checkmate UI did not respond.");
+        return started;
+      } catch (error) {
+        await ui.close();
+        throw error;
+      }
+    });
+    process.stdout.write(format(completed("ui", data), json, (reply) => ({ facts: reply.data })) + "\n");
+  } catch (error) {
+    process.stdout.write(format(refused("rejected", "ui", error), json) + "\n");
+    process.exitCode = 1;
+  }
 }
 async function main(argv) {
   if (argv[0] === "ui" && !argv.includes("--help")) return serveUi(argv.slice(1));
@@ -32026,7 +32280,7 @@ async function main(argv) {
   const outcome = run(argv, {
     cwd: process.cwd(),
     env: process.env,
-    stdin: () => readFileSync9(0, "utf8")
+    stdin: () => readFileSync10(0, "utf8")
   });
   process.stdout.write(outcome.output + "\n");
   process.exitCode = outcome.code;

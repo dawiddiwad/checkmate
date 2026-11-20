@@ -203,8 +203,19 @@ function profileFacts(profile: Profile) {
 				: ''
 		}
 		<div>
-			<dt>Ready</dt>
-			<dd>${profile.readyForLiveExecution ? pill('ready') : pill('blocked', 'not ready')}</dd>
+			<dt>Profile readiness</dt>
+			<dd>
+				${
+					profile.readyForLiveExecution
+						? pill('ready')
+						: html`${pill('blocked', 'not ready')}
+								<p class="help">
+									Check the active instances below. Then run
+									<code>checkmate delegate setup ${profile.targetId}</code>
+									to recheck the prerequisites and save a profile revision.
+								</p>`
+				}
+			</dd>
 		</div>
 	</dl>`
 }

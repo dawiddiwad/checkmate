@@ -1,6 +1,6 @@
 import { join } from 'node:path'
 import type { Store } from '../store.ts'
-import { piEvent, piModelArgs, selectedHarness } from '../pi.ts'
+import { piErrorText, piEvent, piModelArgs, selectedHarness } from '../pi.ts'
 import { streamPi } from './pi-request.ts'
 import type { ChildCall, Env, StopDelays, StreamedClaude } from '../sessions.ts'
 import type { RequestContext, RequestRecord } from '../requests.ts'
@@ -11,6 +11,7 @@ import {
 	authenticationHint,
 	checkmateScript,
 	defaultStopDelays,
+	piAuthenticationHint,
 	pluginRoot,
 	requestSystemPrompt,
 	hookTokenName,
@@ -82,7 +83,9 @@ export function readStreamLine(line: string, harness: 'claude' | 'pi' = 'claude'
 					kind: 'result',
 					value: {
 						is_error: error,
-						result: error ? message?.errorMessage || 'Pi did not complete the response.' : reply,
+						result: error
+							? piErrorText(message?.errorMessage) || 'Pi did not complete the response.'
+							: reply,
 					},
 				},
 			]
@@ -156,7 +159,7 @@ export function createRequester(store: Store, options: RequesterOptions): Reques
 	}
 
 	function conclude(run: Running, end: Awaited<StreamedClaude['finished']> | null) {
-		const stderr = stderrTail(end?.stderr ?? '', stderrCount)
+		const stderr = run.harness === 'pi' ? [] : stderrTail(end?.stderr ?? '', stderrCount)
 		const result = run.result
 		const outcome = run.stopping
 			? {
@@ -167,29 +170,31 @@ export function createRequester(store: Store, options: RequesterOptions): Reques
 				? failed(run.reason)
 				: end.error
 					? failed(end.error)
-					: run.harness === 'pi' && end.status !== 0
-						? failed(
-								[
-									`pi exited with ${end.signal ? `signal ${end.signal}` : `code ${end.status}`}.`,
-									...stderr,
-								].join('\n')
-							)
-						: run.broken
-							? failed([`${run.harness} printed a line that is not JSON.`, ...stderr].join('\n'))
-							: !result
-								? failed([`${run.harness} ended without a reply.`, ...stderr].join('\n'))
-								: result.is_error === true
-									? errorOutcome(result, stderr, run.harness)
-									: {
-											state: 'answered' as const,
-											detail: {
-												reply: typeof result.result === 'string' ? result.result : '',
-												...(typeof result.total_cost_usd === 'number'
-													? { costUsd: result.total_cost_usd }
-													: {}),
-												denials: denialLines(result, options.workspace),
-											},
-										}
+					: run.harness === 'pi' && result?.is_error === true
+						? errorOutcome(result, stderr, 'pi')
+						: run.harness === 'pi' && end.status !== 0
+							? failed(
+									[
+										`pi exited with ${end.signal ? `signal ${end.signal}` : `code ${end.status}`}.`,
+										...stderr,
+									].join('\n')
+								)
+							: run.broken
+								? failed([`${run.harness} printed a line that is not JSON.`, ...stderr].join('\n'))
+								: !result
+									? failed([`${run.harness} ended without a reply.`, ...stderr].join('\n'))
+									: result.is_error === true
+										? errorOutcome(result, stderr, run.harness)
+										: {
+												state: 'answered' as const,
+												detail: {
+													reply: typeof result.result === 'string' ? result.result : '',
+													...(typeof result.total_cost_usd === 'number'
+														? { costUsd: result.total_cost_usd }
+														: {}),
+													denials: denialLines(result, options.workspace),
+												},
+											}
 		guarded(() => {
 			const changes = changesOf(store, run.id)
 			setRequestState(store, run.id, outcome.state, { ...outcome.detail, changes })
@@ -200,10 +205,11 @@ export function createRequester(store: Store, options: RequesterOptions): Reques
 		const text = typeof result.result === 'string' ? result.result : ''
 		const call: ChildCall = { failure: ['operational_error', text], result: text, stderr }
 		const authentication = authenticationFailed(call)
+		if (harness === 'pi') return failed(text, authentication ? piAuthenticationHint : null)
 		const first = text.trim().split('\n')[0].slice(0, 200)
 		return failed(
 			[`${harness} ended with an error` + (first ? `: ${first}` : '.'), ...stderr].join('\n'),
-			authentication && harness === 'claude' ? authenticationHint : null
+			authentication ? authenticationHint : null
 		)
 	}
 

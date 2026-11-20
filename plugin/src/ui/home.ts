@@ -130,7 +130,7 @@ function tile(
 			<h2 class="sp-ct-title ell" title="${review.objective}">${review.objective}</h2>
 			<p class="sp-ct-verdict"><b>${verdict.head}</b> ${verdict.tail}</p>
 			<p class="sp-ct-cost" title="Reported cost across this plan’s explorations">
-				Total cost ${costText(cost.costUsd, cost.costPartial)}
+				Exploration cost ${costText(cost.costUsd, cost.costPartial)}
 			</p>
 		</div>
 		${miniMap(review)}

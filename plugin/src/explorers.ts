@@ -278,7 +278,7 @@ async function watchStray<T>(
 			step: 'stray',
 			explorer,
 			status: 'completed',
-			detail: { turn, names: stray },
+			detail: { turn, names: stray, basis: 'workspace_listing' },
 		})
 	return result
 }
@@ -1431,6 +1431,7 @@ export function explorationStatus(store: Store, explorationId: string) {
 					? piAuthenticationHint
 					: null)) as string | null,
 			stderr: (end?.detail.stderr ?? []) as string[],
+			strayBasis: 'workspace_listing',
 			stray: [
 				...new Set(
 					own.filter((item) => item.step === 'stray').flatMap((item) => item.detail.names as string[])

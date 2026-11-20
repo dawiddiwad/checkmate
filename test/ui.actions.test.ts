@@ -754,7 +754,7 @@ test('plan, exploration, and history show reported, partial, zero, and unknown c
 	}
 	closeStore(store)
 	const home = (await call(ui, '/')).body
-	assert.match(home, /data-key="plan:checkout"[\s\S]*?Total cost \$0\.12 \(partial\)/)
+	assert.match(home, /data-key="plan:checkout"[\s\S]*?Exploration cost \$0\.12 \(partial\)/)
 	const partial = (await call(ui, '/explorations/x-1')).body
 	assert.match(partial, /Total cost \$0\.12 \(partial\)/)
 	const zero = (await call(ui, '/explorations/x-2')).body
@@ -789,7 +789,7 @@ test('recovered Pi session costs appear on all three cost surfaces', async (t) =
 		)
 		.run(operation, 'end', 'a1', 0.14, 0, operation)
 	closeStore(store)
-	assert.match((await call(ui, '/')).body, /Total cost \$0\.14/)
+	assert.match((await call(ui, '/')).body, /Exploration cost \$0\.14/)
 	assert.match((await call(ui, '/explorations/x-4')).body, /Total cost \$0\.14/)
 	assert.match((await call(ui, '/plans/checkout@1')).body, /data-key="exploration:x-4"[\s\S]*?\$0\.14/)
 })

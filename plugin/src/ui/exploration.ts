@@ -278,8 +278,8 @@ function strayLines(live: Live) {
 		.map(
 			(item) =>
 				html`<p class="help" data-key="stray-${item.explorer}">
-					Tester ${item.explorer} left files outside its work folder: <code>${item.stray.join(', ')}</code>.
-					Checkmate did not touch them.
+					Workspace entries appeared outside the work folder during tester ${item.explorer}’s turns:
+					<code>${item.stray.join(', ')}</code>. Checkmate did not touch them.
 				</p>`
 		)
 }

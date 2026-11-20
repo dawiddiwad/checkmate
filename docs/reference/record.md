@@ -138,7 +138,7 @@ The read models are in `plugin/src/permissions.ts`: `openPermissions(store, plan
 
 Each item of `changes` has `text` (for example `handed over a1/D1, a1/D2`), `command`, `subject`, `at`, and `href`. The UI finds the changes in the operation log: the operations with `via` `R3` and the status `completed`, whatever their actor. The read models are in `plugin/src/requests.ts`.
 
-The step `stray` (status `completed`) has `turn` and `names`: the top-level entries that a tester left in the workspace outside its work folder during one turn.
+The step `stray` (status `completed`) has `turn`, `names`, and `basis`. With basis `workspace_listing`, the entries appeared outside the work folder during the tester turn. The tester status gives the same basis as `strayBasis`.
 
 ## Entries of an exploration
 

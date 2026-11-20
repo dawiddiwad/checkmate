@@ -520,6 +520,7 @@ test('--version and --help need no workspace', () => {
 	assert.equal(cli('/nonexistent', ['--version']).output, manifest.version)
 	const help = cli('/nonexistent', ['--help']).output
 	assert.match(help, /^checkmate init$/m)
+	assert.equal(json('/nonexistent', ['--help']).body.usage[0], 'checkmate init')
 	assert.match(
 		help,
 		/checkmate run check <runId> <testId> <assertionId> --result <passed\|failed\|inconclusive\|not_checked> \[--observed <value>\]/
@@ -542,6 +543,7 @@ test('--version and --help need no workspace', () => {
 	assert.deepEqual(cli('/nonexistent', ['ui', '--help']).lines, [
 		'completed ui',
 		'checkmate ui [--port <value>] [--new-hook-token]',
+		'checkmate ui --stop',
 	])
 	assert.equal(cli('/nonexistent', ['nope', '--help']).lines[0], 'invalid_request checkmate refusal=malformed')
 })

@@ -1,6 +1,8 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { closeTest, finishRun, recordGap } from '../plugin/src/runs.ts'
+import { decisionPanel } from '../plugin/src/ui/run.ts'
+import { runDetail } from '../plugin/src/views.ts'
 import { exportRun, runReport } from '../plugin/src/render.ts'
 import { checkAssertion } from '../plugin/src/runs.ts'
 import { accept, actor, begin, check, evidenceFile, failT2, ready, store } from './support.ts'
@@ -96,7 +98,7 @@ test('the Markdown and JSON reports carry the same summary, decisions, and accep
 	)
 	assert.doesNotMatch(markdown, /base64/)
 	const record = JSON.parse(exportRun(opened, 'run-1', 'json'))
-	assert.deepEqual(Object.keys(record).sort(), ['acceptance', 'plan', 'planApproval', 'result', 'sha256'])
+	assert.deepEqual(Object.keys(record).sort(), ['acceptance', 'plan', 'planApproval', 'result', 'retest', 'sha256'])
 	assert.equal(record.result.completion, 'completed')
 	assert.equal(record.result.instanceId, 'local')
 	assert.match(exportRun(opened, 'run-1', 'html'), /<td>Instance<\/td><td>local<\/td>/)
@@ -107,4 +109,27 @@ test('the Markdown and JSON reports carry the same summary, decisions, and accep
 	)
 	assert.equal(runReport(opened, 'run-1').sha256, record.sha256)
 	assert.throws(() => exportRun(opened, 'run-1', 'pdf'), /Invalid format \(--format\): pdf/)
+})
+
+test('retest verdicts appear in the acceptance panel and exported reports', (t) => {
+	const opened = reported(t)
+	begin(opened, 'run-2', ['T1', 'T2'], 'b2', { retestOf: 'run-1' })
+	for (const testId of ['T1', 'T2']) {
+		for (const assertionId of ['A1', 'A2']) check(opened, 'run-2', `${testId}.${assertionId}`, 'passed')
+		closeTest(opened, actor, { runId: 'run-2', testId })
+	}
+	finishRun(opened, actor, { runId: 'run-2', completion: 'completed', cleanup: 'completed', cleanupReason: 'Done.' })
+	const panel = decisionPanel(opened, { csrf: 'test', actor } as never, runDetail(opened, 'run-2'), null).html
+	assert.match(
+		panel,
+		/href="\/runs\/run-1\?item=finding%3AF1"[^>]*>run-1\/F1<\/a> · Promotion stacks with loyalty · Fixed · T2/
+	)
+	const junit = exportRun(opened, 'run-2', 'junit')
+	assert.match(junit, /name="retest.run-1\/F1.verdict" value="fixed"/)
+	assert.match(junit, /name="retest.run-1\/F1.title" value="Promotion stacks with loyalty"/)
+	for (const format of ['md', 'html', 'json']) {
+		const report = exportRun(opened, 'run-2', format)
+		assert.match(report, /Promotion stacks with loyalty/)
+		assert.match(report, /fixed/)
+	}
 })

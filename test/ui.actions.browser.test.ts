@@ -743,7 +743,7 @@ test('reported costs are visible on plan cards, exploration and history at narro
 		await page.goto(url('/'))
 		assert.match(
 			(await page.locator('[data-key="plan:checkout"]').textContent()) ?? '',
-			/Total cost \$123\.57 \(partial\)/
+			/Exploration cost \$123\.57 \(partial\)/
 		)
 		await page.goto(url('/explorations/x-1'))
 		assert.match(

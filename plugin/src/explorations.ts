@@ -15,6 +15,7 @@ export const explorationModes = ['exploratory', 'regression'] as const
 export type Charter = {
 	goal: string
 	requirements: Array<{ id: string; text: string }>
+	decisions?: Array<Pick<Plan['decisions'][number], 'gapId' | 'kind' | 'value' | 'source'> & { question: string }>
 	sources: string[]
 	instructions: string | null
 	capabilities: string[]
@@ -41,9 +42,10 @@ function latestRevision(store: Store, planId: string) {
 	return row ? { revision: row.revision, plan: JSON.parse(row.body) as Plan } : null
 }
 
-export function charterOf(
+function charterOf(
 	store: Store,
 	planId: string,
+	plan: Plan | undefined,
 	scope: string[],
 	change: Change | null,
 	knownState: string | null = null
@@ -52,6 +54,14 @@ export function charterOf(
 	return {
 		goal: request.objective,
 		requirements: planRules(store, planId).rules.map(({ id, text }) => ({ id, text })),
+		decisions:
+			plan?.gaps.flatMap((gap) => {
+				if (gap.status !== 'resolved' && gap.status !== 'deferred') return []
+				const decision = plan.decisions.find(({ id }) => id === gap.decisionId)
+				if (!decision) return []
+				const { gapId, kind, value, source } = decision
+				return [{ gapId, kind, question: gap.question, value, source }]
+			}) ?? [],
 		sources: request.context?.sources ?? [],
 		instructions: request.context?.instructions ?? null,
 		capabilities: target.profile.capabilities,
@@ -205,9 +215,11 @@ export function insertExploration(store: Store, input: OpenInput, operationId: s
 	const mode = requireChoice(input.mode ?? 'exploratory', explorationModes, 'mode (--mode)')
 	const instance = runInstance(store, target.profile.targetId, input.instance)
 	const explorationId = input.explorationId ?? nextExplorationId(store)
+	const revision = latestRevision(store, planId)
 	const charter = charterOf(
 		store,
 		planId,
+		revision?.plan,
 		input.scope ?? [],
 		input.change ?? null,
 		writeKnownState(store, planId, explorationId, build)
@@ -217,7 +229,7 @@ export function insertExploration(store: Store, input: OpenInput, operationId: s
 		'INSERT INTO explorations (exploration_id, plan_id, plan_revision, target_id, target_revision, instance_id, build, mode, charter, started_at, operation_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
 		explorationId,
 		planId,
-		latestRevision(store, planId)?.revision ?? null,
+		revision?.revision ?? null,
 		target.profile.targetId,
 		target.revision,
 		instance.instanceId,

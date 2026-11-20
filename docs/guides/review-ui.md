@@ -24,7 +24,7 @@ With the npm CLI:
 checkmate ui [--workspace <path>] [--port <n>] [--new-hook-token]
 ```
 
-Open the URL in a browser on the same computer. The UI listens on `127.0.0.1` only. The Claude Code and Pi packages include the UI and start it in the background. For a foreground CLI launch, stop it with Ctrl+C. When you start it again on the same port (`--port <n>`), the testers that run keep asking you. On another port, the turn that runs cannot ask, and the next turn asks again. `--new-hook-token` makes a new secret for the testers. Use it only when you think that another process read `.checkmate/hook-token`.
+Open the URL in a browser on the same computer. The UI listens on `127.0.0.1` only. The Claude Code and Pi packages include the UI and start it in the background. Use `/checkmate-ui stop` in Pi or `checkmate ui --stop` from the CLI. Ctrl+C also stops a foreground CLI launch. A workspace uses one UI at a time. When you start it again on the same port (`--port <n>`), the testers that run keep asking you. On another port, the turn that runs cannot ask, and the next turn asks again. `--new-hook-token` makes a new secret for the testers. Use it only when you think that another process read `.checkmate/hook-token`.
 
 ## The layout
 
@@ -199,7 +199,7 @@ A row shows its numbered options only when all of them fit in the row. When they
 
 `Activity` is also in the find bar. The list pages like `Log`: `↓` on the last row opens the next page.
 
-Each card on **Plans** shows the total exploration cost for that plan. Open a plan revision to see the **Cost** column for individual explorations. **Unknown** means the harness supplied no cost. **Partial** means some charges are missing.
+Each card on **Plans** labels the reported sum as **Exploration cost**. Find requests and delegated runs have separate records. Open a plan revision to see the **Cost** column for individual explorations. **Unknown** means the harness supplied no cost. **Partial** means some charges are missing.
 
 ### Testers
 
@@ -210,7 +210,7 @@ Each card on **Plans** shows the total exploration cost for that plan. Open a pl
 - `After the testers`: `record`, `merge`, `verify`, and `follow-up`, with their states and reasons.
 - The other sessions of the plan.
 
-When Pi reports a provider error, the failed run shows its cause. Open an individual tester to see its error. For `HTTP 401: API key expired.`, configure Pi with a valid provider key and test again.
+When Pi reports a provider error, a failed Find request or test shows its cause. Open an individual tester to see its error. For `HTTP 401: API key expired.`, configure Pi with a valid provider key and test again.
 
 Below the list is the overview of the session, or the tester or phase that you open: `Not merged yet`, the merged claims and questions, the saved files, and `Download report`. A paused session waits for you in the Claude Code session, not in the UI.
 
@@ -220,7 +220,7 @@ A stopped session shows `Stopped by <name>`, the reason, and the work folder whe
 
 A failed session shows the reason, the next step, the work folder `.checkmate/work/<explorationId>`, and the log. `Not merged yet` items are the raw questions and defects of single testers. They can change before the session is completed. `Needs you` does not show them.
 
-A tester can always write in its own work folder. When a tester leaves files outside it, a line under the banner says `Tester a1 left files outside its work folder: <names>. Checkmate did not touch them.` Move or delete them yourself.
+A tester can always write in its own work folder. The banner lists workspace entries that appear outside the work folder during a tester’s turns. Other workspace activity can create those entries.
 
 ### Permission requests
 
@@ -276,7 +276,7 @@ An activity line of a request or a tester shows the tool and the first line of i
 
 ### Run
 
-`/runs/<runId>` lists the overview, the tests, the findings, the new gaps, the coverage, and the cleanup of a run. Open a row to show it below the list. The overview has the outcome counts, the assertions that did not pass, the result decision, and `Download report` (HTML, Markdown, JSON, or JUnit XML). Each new gap that the plan does not have yet has `Answer` and `Bring into plan`.
+`/runs/<runId>` lists the overview, the tests, the findings, the new gaps, the coverage, and the cleanup of a run. Open a row to show it below the list. The overview has the outcome counts, the assertions that did not pass, the result decision, and `Download report` (HTML, Markdown, JSON, or JUnit XML). For a retest, the decision panel links to earlier defects and shows their verdicts. All four report formats include those verdicts. Each new gap that the plan does not have yet has `Answer` and `Bring into plan`.
 
 ### Runs and Log
 

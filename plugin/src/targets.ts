@@ -636,8 +636,8 @@ export function setupTarget(store: Store, actor: string | undefined, input: Setu
 		'SELECT revision FROM profiles WHERE target_id = ? ORDER BY revision DESC LIMIT 1',
 		targetId
 	)
-	const reachable = saved ? true : (input.answered ?? urlAnswers(url))
-	if (!reachable) assumed.push(`ready=false (${url} did not answer)`)
+	const reachable = input.answered ?? urlAnswers(url)
+	if (!reachable && !saved) assumed.push(`ready=false (${url} did not answer)`)
 	if (!saved)
 		saveTarget(store, actor, {
 			targetId,
@@ -670,6 +670,10 @@ export function setupTarget(store: Store, actor: string | undefined, input: Setu
 		capabilities: latest.profile.capabilities,
 		allowedOperations: latest.profile.allowedOperations,
 		ready: latest.profile.readyForLiveExecution,
+		instanceReachable: reachable,
+		...(!latest.profile.readyForLiveExecution
+			? { next: `Recheck the target prerequisites and save a new profile: checkmate delegate setup ${targetId}` }
+			: {}),
 		created: !known,
 		assumed: known ? [] : assumed,
 	})

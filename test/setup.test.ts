@@ -51,7 +51,7 @@ test('setup saves a target from a URL with defaults and prints each assumed valu
 	assert.equal(reply.code, 0, reply.output)
 	const targetId = `127-0-0-1-${new URL(url).port}`
 	assert.deepEqual(reply.lines, [
-		`completed ${targetId} revision=1 instance=local capabilities=http operations=any_test_operation ready=true`,
+		`completed ${targetId} revision=1 instance=local capabilities=http operations=any_test_operation profile_ready=true instance_reachable=true`,
 		`assumed: target=${targetId} (the host of the URL)`,
 		'assumed: instance=local',
 		'assumed: entry point=web (url)',
@@ -79,7 +79,7 @@ test('setup finds a browser tool, takes explicit values, and marks a silent URL 
 	assert.equal(reply.code, 0, reply.output)
 	assert.match(
 		reply.lines[0],
-		/^completed shop revision=1 instance=uat capabilities=browser,http operations=read,order ready=false$/
+		/^completed shop revision=1 instance=uat capabilities=browser,http operations=read,order profile_ready=false instance_reachable=false$/
 	)
 	assert(!reply.lines.some((line) => /target=|instance=|operations=/.test(line.replace(reply.lines[0], ''))))
 	assert(reply.lines.includes('assumed: ready=false (http://127.0.0.1:1 did not answer)'))

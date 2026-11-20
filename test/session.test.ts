@@ -361,7 +361,7 @@ test('a later build without stored tests is a plain retest, and nothing asks for
 	assert.match(after.at(-1)!, /^Optional, at any time: keep the claims as stored tests: checkmate harvest x-1$/)
 	const again = text([...first, '--build', 'b2', '--actor', actor])
 	assert.match(again, /^completed x-2 .*mode=regression/)
-	assert.match(again, /\nstored_tests\tnone, the testers retest the earlier findings\n/)
+	assert.match(again, /\nstored_tests\tnone, testers use earlier results when available\n/)
 	assert.match(again, /\nnext\tcheckmate explore next x-2\n/)
 	assert.doesNotMatch(again, /harvest|no stored tests|check_skipped/i)
 	const next = text(['explore', 'next', 'x-2', '--actor', actor])

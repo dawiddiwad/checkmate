@@ -605,6 +605,41 @@ test('Pi request stream rejects incomplete and aborted replies', () => {
 	assert.equal(aborted.kind === 'result' && aborted.value.is_error, true)
 })
 
+test('a Pi provider failure records the diagnosis and the UI shows how to retry', async (t) => {
+	const f = await serverOf(t, {}, { CHECKMATE_HARNESS: 'pi' })
+	const executable = join(dirname(executableOnPath('claude', f.env)!), 'pi')
+	writeFileSync(
+		executable,
+		`#!/usr/bin/env node
+const { createInterface } = require('node:readline')
+const args = process.argv.slice(2)
+const extension = args[args.indexOf('--extension') + 1]
+createInterface({ input: process.stdin }).on('line', line => {
+	const request = JSON.parse(line)
+	if (request.type === 'get_commands') console.log(JSON.stringify({
+		type: 'response', id: request.id, success: true,
+		data: { commands: [{ name: 'checkmate-permission-ready', source: 'extension', sourceInfo: { path: extension } }] }
+	}))
+	if (request.type === 'prompt') {
+		const providerError = { message: 'API key expired.', metadata: { headers: { 'WWW-Authenticate': 'Bearer fixture' } } }
+		console.error('Warning: No project session found; creating a new session.')
+		console.log(JSON.stringify({ type: 'agent_end', messages: [{
+			role: 'assistant', stopReason: 'error', errorMessage: '401: ' + JSON.stringify(providerError)
+		}] }))
+		console.log(JSON.stringify({ type: 'agent_settled', aborted: false }))
+	}
+})
+`,
+		{ mode: 0o755 }
+	)
+	const id = await f.ask('Check the local fixture.')
+	assert.equal((await f.state(id, 'failed')).reason, 'HTTP 401: API key expired.')
+	const page = (await call(f.ui, `/requests/${id}`)).body
+	assert.match(page, /HTTP 401: API key expired\./)
+	assert.match(page, /Check the provider login in Pi\. Then ask again\./)
+	assert.doesNotMatch(page, /WWW-Authenticate|Bearer fixture|No project session found/)
+})
+
 test('queued requests keep their harness when the workspace changes host', async (t) => {
 	const f = await serverOf(
 		t,

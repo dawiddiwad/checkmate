@@ -1,62 +1,62 @@
 import { spawn } from 'node:child_process'
-import { closeSync, existsSync, mkdirSync, openSync, readFileSync } from 'node:fs'
+import { closeSync, existsSync, mkdirSync, openSync } from 'node:fs'
 import { join } from 'node:path'
-import { setTimeout as delay } from 'node:timers/promises'
+import { createInterface } from 'node:readline'
 import { fileURLToPath } from 'node:url'
 
 const installedCli = new URL('../plugin/dist/checkmate.js', import.meta.url)
 const repositoryCli = new URL('../../plugin/dist/checkmate.js', import.meta.url)
 const sourceCli = new URL('../src/main.ts', import.meta.url)
 
-function runningUi(workspace) {
-	try {
-		const { port, pid, hookToken } = JSON.parse(readFileSync(join(workspace, '.checkmate', 'ui.json'), 'utf8'))
-		if (!Number.isInteger(port) || port < 1 || port > 65535) return
-		if (!Number.isInteger(pid) || pid < 1 || typeof hookToken !== 'string' || !hookToken) return
-		process.kill(pid, 0)
-		return `http://127.0.0.1:${port}/`
-	} catch {}
-}
-
-async function startUi(workspace) {
+async function runUi(workspace, stop) {
 	const cli = fileURLToPath(existsSync(sourceCli) ? repositoryCli : installedCli)
 	if (!existsSync(cli)) throw new Error('The Checkmate UI bundle is missing. Reinstall the Checkmate package.')
 	const folder = join(workspace, '.checkmate', 'tmp')
 	mkdirSync(folder, { recursive: true })
 	const logPath = join(folder, 'pi-ui.log')
-	const log = openSync(logPath, 'w', 0o600)
+	const log = openSync(logPath, 'a', 0o600)
 	let child
 	try {
-		child = spawn('node', [cli, 'ui'], {
+		child = spawn('node', [cli, 'ui', '--json', ...(stop ? ['--stop'] : [])], {
 			cwd: workspace,
-			env: { ...process.env, CHECKMATE_HARNESS: 'pi' },
+			env: { ...process.env, CHECKMATE_PI_UI: '1' },
 			detached: true,
-			stdio: ['ignore', log, log],
+			stdio: ['ignore', 'pipe', log],
 		})
 	} finally {
 		closeSync(log)
 	}
-	let spawnError
-	child.once('error', (error) => {
-		spawnError = error
-	})
-	child.unref()
-	const deadline = Date.now() + 15_000
-	while (Date.now() < deadline) {
-		if (spawnError) throw spawnError
-		if (child.exitCode !== null || child.signalCode !== null)
-			throw new Error(readFileSync(logPath, 'utf8').trim().slice(-1000) || `See ${logPath}.`)
-		const address = runningUi(workspace)
-		if (address) return address
-		await delay(50)
+	const lines = createInterface({ input: child.stdout })
+	try {
+		const result = await new Promise((resolve, reject) => {
+			const timer = setTimeout(
+				() => reject(new Error(`The UI command did not finish within 30 seconds. See ${logPath}.`)),
+				30_000
+			)
+			lines.once('line', (line) => {
+				clearTimeout(timer)
+				resolve(line)
+			})
+			lines.once('close', () => {
+				clearTimeout(timer)
+				reject(new Error(`The UI command exited before replying. See ${logPath}.`))
+			})
+			child.once('error', (error) => {
+				clearTimeout(timer)
+				reject(error)
+			})
+		})
+		const reply = JSON.parse(result)
+		if (reply.status !== 'completed') throw new Error(reply.reasons?.join(' ') || `See ${logPath}.`)
+		return reply
+	} finally {
+		lines.close()
+		child.stdout.destroy()
+		child.unref()
 	}
-	child.kill()
-	throw new Error(`The UI did not start within 15 seconds. See ${logPath}.`)
 }
 
 export default function checkmate(pi) {
-	const starting = new Map()
-
 	pi.registerCommand('checkmate', {
 		description: 'Set up a QA target, plan or run tests, and inspect evidence',
 		handler: async (args, ctx) => {
@@ -69,27 +69,43 @@ export default function checkmate(pi) {
 				return
 			}
 			await ctx.waitForIdle()
+			if (!pi.getCommands().some((command) => command.source === 'skill' && command.name === 'skill:checkmate')) {
+				ctx.ui.notify(
+					'The Checkmate skill is disabled or unavailable. Enable skills in Pi or load the Checkmate skill, then try again.',
+					'warning'
+				)
+				return
+			}
 			pi.sendUserMessage(`/skill:checkmate ${request}`, { expandPromptTemplates: true })
 		},
 	})
 
 	pi.registerCommand('checkmate-ui', {
-		description: 'Open the Checkmate review UI for this workspace',
-		handler: async (_args, ctx) => {
-			const workspace = ctx.cwd
+		description: 'Open the Checkmate review UI, or use /checkmate-ui stop to stop it',
+		handler: async (args, ctx) => {
+			const action = args.trim()
+			if (action && action !== 'stop') {
+				ctx.ui.notify('Use /checkmate-ui to open the review UI or /checkmate-ui stop to stop it.', 'warning')
+				return
+			}
 			try {
-				let address = runningUi(workspace)
-				if (!address) {
-					if (!starting.has(workspace))
-						starting.set(
-							workspace,
-							startUi(workspace).finally(() => starting.delete(workspace))
-						)
-					address = await starting.get(workspace)
+				const reply = await runUi(ctx.cwd, action === 'stop')
+				if (action === 'stop') {
+					ctx.ui.notify(
+						reply.stopped ? 'Stopped the Checkmate UI.' : 'The Checkmate UI is already stopped.',
+						'info'
+					)
+					return
 				}
-				ctx.ui.notify(`Checkmate UI: ${address}`, 'info')
+				const harness = reply.harness === 'pi' ? 'Pi' : 'Claude Code'
+				const settings =
+					reply.harness === 'claude' ? ` Change the saved choice at ${reply.url}settings/harness.` : ''
+				ctx.ui.notify(`Checkmate UI: ${reply.url} Coding harness: ${harness}.${settings}`, 'info')
 			} catch (error) {
-				ctx.ui.notify(`Could not start Checkmate UI. ${error.message}`, 'error')
+				ctx.ui.notify(
+					`Could not ${action === 'stop' ? 'stop' : 'open'} the Checkmate UI. ${error.message}`,
+					'error'
+				)
 			}
 		},
 	})

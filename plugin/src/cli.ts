@@ -75,6 +75,7 @@ import {
 } from './views.ts'
 import { exportExploration, exportPlan, exportRun, explorationFormats, formats, runFormats } from './render.ts'
 import { startUi } from './ui/server.ts'
+import { contactUi, withUiStartupLock } from './ui/lifecycle.ts'
 import { defaultActor, requestOfEnv } from './actor.ts'
 import { explorationModes, openExploration } from './explorations.ts'
 import type { Claim } from './journal.ts'
@@ -1181,8 +1182,10 @@ const commands: Record<string, Command> = {
 				instance: reply.data.instanceId,
 				capabilities: reply.data.capabilities,
 				operations: reply.data.allowedOperations,
-				ready: reply.data.ready,
+				profile_ready: reply.data.ready,
+				instance_reachable: reply.data.instanceReachable,
 			},
+			lines: reply.data.next ? [[reply.data.next]] : [],
 		}),
 	},
 	test: {
@@ -2084,13 +2087,15 @@ function usage(name: string) {
 }
 
 const uiUsage = 'Usage: checkmate ui [--port <value>] [--new-hook-token]'
+const uiStopUsage = 'checkmate ui --stop'
 
 function help() {
 	return [
 		...Object.keys(commands).map((name) => usage(name).replace('Usage: ', '')),
 		uiUsage.replace('Usage: ', ''),
+		uiStopUsage,
 		'Options for every command: --workspace <path>, --json',
-	].join('\n')
+	]
 }
 
 function commandHelp(argv: string[]): Reply {
@@ -2100,7 +2105,7 @@ function commandHelp(argv: string[]): Reply {
 	)
 	for (let count = words.length; count > 0; count--) {
 		const prefix = words.slice(0, count).join(' ')
-		if (prefix === 'ui') return completed('ui', { usage: [uiUsage.replace('Usage: ', '')] })
+		if (prefix === 'ui') return completed('ui', { usage: [uiUsage.replace('Usage: ', ''), uiStopUsage] })
 		const names = Object.keys(commands).filter((name) => name === prefix || name.startsWith(`${prefix} `))
 		if (names.length) return completed(prefix, { usage: names.map((name) => usage(name).replace('Usage: ', '')) })
 	}
@@ -2130,8 +2135,11 @@ function readJson(text: string) {
 
 export function run(argv: string[], io: Io): Outcome {
 	if (argv[0] === '--version') return { code: 0, output: version() }
-	if (!argv.length || argv[0] === '--help') return { code: 0, output: help() }
 	const json = argv.includes('--json')
+	if (!argv.length || argv[0] === '--help' || (argv[0] === '--json' && argv[1] === '--help')) {
+		const usage = help()
+		return { code: 0, output: json ? format(completed('checkmate', { usage }), true) : usage.join('\n') }
+	}
 	if (argv.includes('--help')) {
 		const reply = commandHelp(argv)
 		const code = reply.status === 'completed' ? 0 : 1
@@ -2180,9 +2188,14 @@ export function run(argv: string[], io: Io): Outcome {
 export function uiOptions(tokens: string[], cwd: string) {
 	const values: Record<string, string> = {}
 	let newHookToken = false
+	let stop = false
 	for (let i = 0; i < tokens.length; i++) {
 		const token = tokens[i]
 		if (token === '--json') continue
+		if (token === '--stop') {
+			stop = true
+			continue
+		}
 		if (token === '--new-hook-token') {
 			newHookToken = true
 			continue
@@ -2201,7 +2214,8 @@ export function uiOptions(tokens: string[], cwd: string) {
 		port === undefined || (/^[0-9]+$/.test(values.port) && port <= 65535),
 		`Invalid --port: ${values.port}. Use 0 to 65535.`
 	)
-	return { workspace: resolve(cwd, values.workspace ?? '.'), port, newHookToken }
+	requireWellFormed(!stop || (port === undefined && !newHookToken), 'Use --stop with --workspace or --json only.')
+	return { workspace: resolve(cwd, values.workspace ?? '.'), port, newHookToken, stop }
 }
 
 export async function serveUi(tokens: string[]) {
@@ -2214,16 +2228,45 @@ export async function serveUi(tokens: string[]) {
 		process.exitCode = 1
 		return
 	}
-	const ui = await startUi(options)
-	process.stdout.write(
-		format(completed('ui', { url: ui.url }), json, (reply) => ({ facts: { url: reply.data.url } })) + '\n'
-	)
-	const stop = async () => {
-		await ui.close()
-		process.exit(0)
+	const fromPi = process.env.CHECKMATE_PI_UI === '1'
+	if (fromPi) delete process.env.CHECKMATE_PI_UI
+	try {
+		const data = await withUiStartupLock(options.workspace, async (workspace) => {
+			const action = options.stop ? 'stop' : fromPi ? 'open-pi' : 'status'
+			const active = await contactUi(workspace, action)
+			if (options.stop) return { stopped: Boolean(active) }
+			if (active) {
+				if (fromPi) return active
+				throw new Error(
+					`The Checkmate UI already runs at ${active.url} Use checkmate ui --stop before starting it again.`
+				)
+			}
+			const ui = await startUi({
+				...options,
+				workspace,
+				env: fromPi ? { ...process.env, CHECKMATE_HARNESS: 'pi' } : process.env,
+			})
+			const stop = async () => {
+				await ui.close()
+				process.exit(0)
+			}
+			process.once('SIGINT', stop)
+			process.once('SIGTERM', stop)
+			if (!fromPi) return { url: ui.url }
+			try {
+				const started = await contactUi(workspace, 'status')
+				if (!started) throw new Error('The new Checkmate UI did not respond.')
+				return started
+			} catch (error) {
+				await ui.close()
+				throw error
+			}
+		})
+		process.stdout.write(format(completed('ui', data), json, (reply) => ({ facts: reply.data })) + '\n')
+	} catch (error) {
+		process.stdout.write(format(refused('rejected', 'ui', error), json) + '\n')
+		process.exitCode = 1
 	}
-	process.once('SIGINT', stop)
-	process.once('SIGTERM', stop)
 }
 
 export async function main(argv: string[]) {

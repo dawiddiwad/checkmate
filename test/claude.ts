@@ -4,7 +4,7 @@ import { delimiter, join } from 'node:path'
 import { directory, root } from './support.ts'
 
 const script = `#!/usr/bin/env node
-const { appendFileSync, mkdirSync, readFileSync, writeFileSync } = require('node:fs')
+const { appendFileSync, readFileSync, writeFileSync } = require('node:fs')
 const { join } = require('node:path')
 const { randomUUID } = require('node:crypto')
 const args = process.argv.slice(2)
@@ -64,11 +64,7 @@ else if (reply === '!stubborn') {
 	process.on('SIGTERM', () => {})
 	setTimeout(() => {}, 60000)
 } else if (reply === '!sleep') setTimeout(() => {}, 60000)
-else if (reply === '!stray') {
-	mkdirSync(join(process.cwd(), 'qa-scratch'), { recursive: true })
-	writeFileSync(join(process.cwd(), 'qa-scratch', 'notes.md'), 'x')
-	finish('Done.')
-} else if (reply === '!ask') askHooks().then(() => finish('Done.'))
+else if (reply === '!ask') askHooks().then(() => finish('Done.'))
 else finish(typeof reply === 'string' ? reply : JSON.stringify(reply ?? 'Done.'))
 function finish(result) {
 	if (pi) {

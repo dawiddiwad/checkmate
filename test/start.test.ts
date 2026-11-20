@@ -158,3 +158,30 @@ test('the rules of testers are words, a rule with a space in its brackets is one
 		1
 	)
 })
+
+test('setup reports the instance probe and saved profile readiness separately', (t) => {
+	const opened = store(t)
+	const input = { targetId: 'shop', env: { PATH: '' } }
+	const first = setupTarget(opened, actor, {
+		...input,
+		url: 'http://localhost:1',
+		instanceId: 'bad',
+		answered: false,
+	})
+	assert.equal(first.data.ready, false)
+	assert.equal(first.data.instanceReachable, false)
+	const recovered = setupTarget(opened, actor, {
+		...input,
+		url: 'http://localhost:2',
+		instanceId: 'good',
+		answered: true,
+	})
+	assert.equal(recovered.data.ready, false)
+	assert.equal(recovered.data.instanceReachable, true)
+	assert.match(String(recovered.data.next), /checkmate delegate setup shop/)
+	const other = { ...input, targetId: 'other' }
+	setupTarget(opened, actor, { ...other, url: 'http://localhost:2', instanceId: 'good', answered: true })
+	const dead = setupTarget(opened, actor, { ...other, url: 'http://localhost:1', instanceId: 'bad', answered: false })
+	assert.equal(dead.data.ready, true)
+	assert.equal(dead.data.instanceReachable, false)
+})

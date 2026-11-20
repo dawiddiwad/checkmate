@@ -16,7 +16,7 @@ import { spawnSync } from 'node:child_process'
 import { resolve } from 'node:path'
 
 export const testModes = ['exploratory', 'regression', 'auto'] as const
-export const storedTestsNone = 'none, the testers retest the earlier findings'
+export const storedTestsNone = 'none, testers use earlier results when available'
 export type TestInput = Omit<StartInput, 'mode' | 'scope' | 'build'> & {
 	build?: string
 	url?: string

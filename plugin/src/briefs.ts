@@ -242,6 +242,11 @@ export function explorerBrief(
 	seconds: { study: number; test: number }
 ) {
 	const change = charter.change
+	const decisions = charter.decisions ?? []
+	const decisionInstructions = [
+		'Use the applied oracle answers to settle open points in the sources. Keep deferred questions deferred.',
+		'Ask only about points that the sources and the applied oracle decisions leave open.',
+	]
 	const diff = change
 		? [
 				`The code of the change is shown by git diff ${change.range.join(' ')} in ${change.repo === '.' ? 'the workspace' : `the folder ${change.repo}`}.`,
@@ -260,6 +265,22 @@ export function explorerBrief(
 			: []),
 		...(charter.sources.length ? ['', `Read: ${charter.sources.join(', ')}`] : []),
 		...(charter.instructions ? ['', charter.instructions] : []),
+		...(decisions.length
+			? [
+					'',
+					'Applied oracle decisions:',
+					...decisions.map(({ gapId, kind, question, value, source }) => {
+						const label =
+							kind === 'defer'
+								? 'Deferred'
+								: kind === 'accept_assumption'
+									? 'Accepted assumption'
+									: 'Answer'
+						return `- ${gapId}: ${question} ${label}: ${value}${source ? ` (source: ${source})` : ''}`
+					}),
+					...decisionInstructions,
+				]
+			: []),
 		...(charter.scope.length ? ['', 'Changed files:', ...charter.scope.map((path) => `- ${path}`)] : []),
 		...(diff.length ? ['', ...diff] : []),
 		...(charter.knownState
@@ -293,7 +314,14 @@ export function explorerBrief(
 	]
 	const test = [
 		'Now test the change and the existing behaviour that it can break.',
-		'The owner of the product has not answered your questions yet. Use the sources where they decide the point, and report the rest as unclear.',
+		...(decisions.length
+			? [
+					...decisionInstructions,
+					'Report a point as unclear only if it is still open after you check the sources and the applied oracle decisions.',
+				]
+			: [
+					'The owner of the product has not answered your questions yet. Use the sources where they decide the point, and report the rest as unclear.',
+				]),
 		...diff,
 		testDataText(dataPrefix),
 		`Save the files that show a problem, for example screenshots or responses, in ${workFolder}/.`,

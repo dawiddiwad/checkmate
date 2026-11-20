@@ -360,6 +360,17 @@ function inconclusiveList(detail: Detail) {
 	</div>`
 }
 
+function retestList(detail: Detail) {
+	if (!detail.retest.length) return ''
+	const labels = { fixed: 'Fixed', not_fixed: 'Not fixed', not_retested: 'Not retested' }
+	return html`<div class="field-group">
+		<p class="lab">Retest verdicts</p>
+		<ul class="plist retest-verdicts">
+			${detail.retest.map((item) => html`<li><a href="/runs/${encodeURIComponent(item.runId)}?item=finding%3A${encodeURIComponent(item.findingId)}">${item.runId}/${item.findingId}</a> · ${item.title} · ${labels[item.verdict]} · ${item.testIds.join(', ')}</li>`)}
+		</ul>
+	</div>`
+}
+
 export function decisionPanel(
 	store: Store,
 	context: Context,
@@ -375,7 +386,11 @@ export function decisionPanel(
 				<p class="help">The decision opens when the run finishes. This page updates live.</p>`
 		)
 	if (result.acceptance === 'not_required')
-		return recordPanel('Decision', html`<p class="help">The target policy does not require result acceptance.</p>`)
+		return recordPanel(
+			'Decision',
+			html`<p class="help">The target policy does not require result acceptance.</p>
+				${retestList(detail)}`
+		)
 	const latest = result.latestDecision
 	if (latest && !state)
 		return recordPanel(
@@ -386,7 +401,8 @@ export function decisionPanel(
 				<p class="help">
 					By ${latest.actor} · ${time(latest.at)} · sha256 <code>${short(latest.sha256)}</code>
 				</p>
-				<blockquote>${latest.rationale}</blockquote>`,
+				<blockquote>${latest.rationale}</blockquote>
+				${retestList(detail)}`,
 			`${detail.runId} was ${latest.verdict === 'approved' ? 'accepted' : 'rejected'} by ${latest.actor}. Review it before you decide.`
 		)
 	return verdictPanel(
@@ -412,7 +428,7 @@ export function decisionPanel(
 			},
 			staleMessage: `${detail.runId} has a new result. Review it before you decide.`,
 			...(extra ? { extra } : {}),
-			intro: inconclusiveList(detail),
+			intro: html`${retestList(detail)}${inconclusiveList(detail)}`,
 		},
 		state ?? emptyState()
 	)

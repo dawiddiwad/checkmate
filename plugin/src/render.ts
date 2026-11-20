@@ -5,7 +5,7 @@ import type { Approval } from './plans.ts'
 import type { ApprovalLabel } from './views.ts'
 import { requireChoice, requireCondition, revisionReference } from './contracts.ts'
 import { planApproval, planRevision } from './plans.ts'
-import { outcomeCounts, resultAcceptance, runResult, runState } from './runs.ts'
+import { outcomeCounts, resultAcceptance, retestVerdicts, runOutcomes, runResult, runState } from './runs.ts'
 import { approvalLabel, evidenceBytes } from './views.ts'
 import { explorationReport } from './explorers.ts'
 
@@ -31,6 +31,7 @@ export type RunReport = {
 		'planId' | 'revision' | 'objective' | 'requirements' | 'tests' | 'gaps' | 'decisions' | 'assumptions'
 	>
 	inline: Record<string, { image?: string; text?: string }>
+	retest: ReturnType<typeof retestVerdicts>
 	times: Record<string, number>
 }
 
@@ -285,6 +286,20 @@ function runDocument(report: RunReport): Report {
 		},
 		{ heading: 'Acceptance' },
 		approvalBlock(acceptance, 'The target policy does not require acceptance.'),
+		...(report.retest.length
+			? ([
+					{ heading: 'Retest verdicts' },
+					{
+						table: ['Finding', 'Title', 'Verdict', 'Tests'],
+						rows: report.retest.map((item) => [
+							`${item.runId}/${item.findingId}`,
+							item.title,
+							item.verdict,
+							join(item.testIds),
+						]),
+					},
+				] as Block[])
+			: []),
 		{ heading: `Plan approval (${plan.planId}@${plan.revision})` },
 		approvalBlock(report.planApproval, 'The target policy does not require plan approval.'),
 		{ heading: 'Tests' },
@@ -615,6 +630,14 @@ function junit(report: RunReport) {
 			['target', `${result.target.targetId}@${result.target.revision}`],
 			['completion', result.completion],
 			['coverage', result.coverage.status],
+			...report.retest.flatMap((item): Array<[string, string]> => {
+				const name = `retest.${item.runId}/${item.findingId}`
+				return [
+					[`${name}.verdict`, item.verdict],
+					[`${name}.title`, item.title],
+					[`${name}.tests`, item.testIds.join(',')],
+				]
+			}),
 		]) +
 			'\n' +
 			cases.join('\n') +
@@ -668,6 +691,7 @@ export function runReport(store: Store, runId: string): RunReport {
 		planApproval: { state: approvalLabel(approval), latest: approval.latest },
 		plan: { planId, revision, objective, requirements, tests, gaps, decisions, assumptions },
 		inline,
+		retest: retestVerdicts(run, runOutcomes(store, runId)),
 		times: testTimes(store, runId),
 	}
 }

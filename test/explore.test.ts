@@ -8,12 +8,13 @@ import { run } from '../plugin/src/cli.ts'
 import { closeStore, completed, openStore, write } from '../plugin/src/store.ts'
 import { addEvent, explorationEvents } from '../plugin/src/explorations.ts'
 import { explorerBrief } from '../plugin/src/briefs.ts'
+import { patchPlan } from '../plugin/src/plans.ts'
 import { activityLine, driveExploration, launchPlan, startOf } from '../plugin/src/explorers.ts'
 import { explorationLive } from '../plugin/src/views.ts'
 import { levelNames, testLevels } from '../plugin/src/levels.ts'
 import { authenticationHint, workDenyRules } from '../plugin/src/sessions.ts'
 import { saveWorkspaceHarness } from '../plugin/src/settings.ts'
-import { actor, directory, plan, root, store, target } from './support.ts'
+import { actor, approved, directory, plan, revised, root, store, target } from './support.ts'
 import { fakeClaude } from './claude.ts'
 import type { FakeReplies } from './claude.ts'
 
@@ -105,6 +106,51 @@ test('a Pi provider error is saved and logged as a safe tester failure', (t) => 
 	const log = readFileSync(join(workspace, '.checkmate', 'tmp', 'explore-x-1.log'), 'utf8')
 	assert.match(log, /x-1\/a1 study: pi ended with an error: HTTP 401: API key expired/)
 	assert.doesNotMatch(log, /fixture-secret|headers/i)
+})
+
+test('a Pi smoke tester gets applied oracle decisions from the current plan revision', (t) => {
+	const { workspace, start, wait, called } = setup(t, { harness: 'pi', installed: false })
+	const opened = openStore(workspace)
+	try {
+		revised(opened)
+		approved(opened)
+		const edited = patchPlan(opened, actor, {
+			reference: 'checkout@2',
+			patch: { tests: { T2: { title: 'Promotion without loyalty' } } },
+		})
+		assert.equal(edited.subject, 'checkout@3')
+	} finally {
+		closeStore(opened)
+	}
+
+	const started = start(['--level', 'smoke'])
+	assert.equal(started.code, 0, JSON.stringify(started.body))
+	assert.deepEqual(started.body.charter.decisions, [
+		{
+			gapId: 'G1',
+			kind: 'clarify',
+			question: 'Does the promotion stack with loyalty?',
+			value: 'Promotion replaces loyalty. Expected total is 240 PLN.',
+			source: 'decisions#promotion',
+		},
+		{
+			gapId: 'G2',
+			kind: 'defer',
+			question: 'Which orders qualify for refunds?',
+			value: 'Do not check refunds in this scope.',
+			source: null,
+		},
+	])
+	const done = wait()
+	assert.equal(done.body.outcome, 'done')
+	const calls = called()
+	const study = calls.find((call) => call.role === 'explorer')
+	const tester = calls.find((call) => call.role === 'tester')
+	assert.match(study.prompt, /R2: .*stacking is unspecified/)
+	assert.match(study.prompt, /G1: Does the promotion stack with loyalty\? Answer: .*240 PLN/)
+	assert.match(study.prompt, /G2: Which orders qualify for refunds\? Deferred: Do not check refunds/)
+	assert.match(study.prompt, /Ask only about points that the sources and the applied oracle decisions leave open/)
+	assert.match(tester.prompt, /Report a point as unclear only if it is still open/)
 })
 
 test('explore start launches the explorers of the level in a clean context, then records each session', (t) => {

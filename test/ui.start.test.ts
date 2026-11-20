@@ -8,7 +8,7 @@ import { join } from 'node:path'
 import { closeStore, openStore } from '../plugin/src/store.ts'
 import { explorationEvents } from '../plugin/src/explorations.ts'
 import { planRequest } from '../plugin/src/plans.ts'
-import { targetList, targetRevision } from '../plugin/src/targets.ts'
+import { setupTarget, targetList, targetRevision } from '../plugin/src/targets.ts'
 import { startUi } from '../plugin/src/ui/server.ts'
 import { actor, directory, plan, store, target } from './support.ts'
 import { fakeClaude } from './claude.ts'
@@ -379,4 +379,24 @@ test('a new change records individual tester models and rejects extra testers be
 		const start = explorationEvents(store, 'x-1').find((event) => event.step === 'start')
 		assert.deepEqual(start?.detail.testerModels, { a1: 'haiku', a2: 'sonnet' })
 	})
+})
+
+test('setup directs a recovered instance with an unready profile to its recovery action', async (t) => {
+	const app = await application(t)
+	const { ui, post, workspace } = await fixture(t, 'nothing')
+	const opened = openStore(workspace)
+	setupTarget(opened, actor, {
+		targetId: 'shop',
+		url: 'http://127.0.0.1:1',
+		instanceId: 'old',
+		answered: false,
+		env: { PATH: '' },
+	})
+	closeStore(opened)
+	const reply = await post('/setup', { url: app, target: 'shop' })
+	assert.equal(reply.status, 303)
+	assert.equal(reply.headers.location, '/settings/targets/shop')
+	const cookies = String(reply.headers['set-cookie'])
+	assert.match(decodeURIComponent(cookies), /application answered, but the saved profile is not ready/)
+	assert.match((await call(ui, '/settings/targets/shop')).body, /checkmate delegate setup shop/)
 })

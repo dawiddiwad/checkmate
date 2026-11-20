@@ -52,7 +52,7 @@ test('test records a missing request, explores first, and checks the stored test
 	assert.deepEqual([second.body.mode, second.body.run], ['regression', null])
 	assert.deepEqual(
 		[second.body.checkSkipped, second.body.storedTests],
-		[[], 'none, the testers retest the earlier findings']
+		[[], 'none, testers use earlier results when available']
 	)
 	assert.deepEqual(second.body.next, ['checkmate explore wait x-2'])
 	assert.doesNotMatch(second.output, /harvest|no stored tests/i)
@@ -98,7 +98,7 @@ test('test in regression mode begins a run of the ready tests and explores the c
 	)
 	assert.match(
 		tester.prompt,
-		/unclear\.\nThe code of the change is shown by git diff --merge-base HEAD in the workspace\.\nRead the diff first\. Test what the diff changes and what depends on it\.\nUse the existing records/
+		/after you check the sources and the applied oracle decisions\.\nThe code of the change is shown by git diff --merge-base HEAD in the workspace\.\nRead the diff first\. Test what the diff changes and what depends on it\.\nUse the existing records/
 	)
 	assert.doesNotMatch(explorer.prompt + tester.prompt, /version before the change/)
 	const head = execFileSync('git', ['rev-parse', '--short', 'HEAD'], { cwd: workspace, encoding: 'utf8' }).trim()

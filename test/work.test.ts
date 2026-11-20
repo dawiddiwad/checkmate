@@ -1,9 +1,12 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
+import { mkdirSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { run } from '../plugin/src/cli.ts'
 import { explorationEvents } from '../plugin/src/explorations.ts'
 import { explorationStatus } from '../plugin/src/explorers.ts'
+import { explorationPermissions } from '../plugin/src/permissions.ts'
 import { startUi } from '../plugin/src/ui/server.ts'
 import { actor } from './support.ts'
 import { call, endProcessesIn, waitFor, workspaceWithFake } from './actions.ts'
@@ -83,9 +86,11 @@ test('a tester always may write in its own work folder, and no other child gets 
 })
 
 for (const git of [false, true]) {
-	test(`a file that a tester leaves in the project root is recorded and not touched${git ? ' (git workspace)' : ''}`, async (t) => {
-		const ws = setup(t, { explorer: '!stray', recorder: [defect] })
+	test(`a new workspace entry is reported during the tester turn${git ? ' (git workspace)' : ''}`, async (t) => {
+		const ws = setup(t, { explorer: '!ask', recorder: [defect] })
 		if (git) execFileSync('git', ['init', '-q'], { cwd: ws.workspace })
+		const ui = await startUi({ workspace: ws.workspace, defaultActor: '' })
+		t.after(() => ui.close())
 		const started = ws.command([
 			'explore',
 			'start',
@@ -100,22 +105,26 @@ for (const git of [false, true]) {
 			'Bash',
 		])
 		assert.equal(started.code, 0, started.output)
+		const permission = await waitFor('the study permission request', () =>
+			ws.read((reading) => explorationPermissions(reading, 'x-1').find((item) => !item.decision))
+		)
+		const scratch = join(ws.workspace, 'qa-scratch')
+		mkdirSync(scratch)
+		writeFileSync(join(scratch, 'report.md'), 'External report')
+		const allowed = ws.command(['explore', 'permit', 'x-1', permission.id, '--allow'])
+		assert.equal(allowed.code, 0, allowed.output)
 		await ws.ended('done')
 		const strays = ws.read((reading) => explorationEvents(reading, 'x-1').filter((item) => item.step === 'stray'))
 		assert.deepEqual(
-			strays.map((item) => [item.explorer, item.status, item.detail.turn, item.detail.names]),
-			[['a1', 'completed', 'study', [git ? 'qa-scratch/' : 'qa-scratch']]]
+			strays.map((item) => [item.explorer, item.status, item.detail.turn, item.detail.names, item.detail.basis]),
+			[['a1', 'completed', 'study', [git ? 'qa-scratch/' : 'qa-scratch'], 'workspace_listing']]
 		)
-		assert.equal(
-			ws.read((reading) => explorationStatus(reading, 'x-1').explorers[0].stray.length),
-			1
-		)
-		const ui = await startUi({ workspace: ws.workspace, defaultActor: '' })
-		t.after(() => ui.close())
+		const status = ws.read((reading) => explorationStatus(reading, 'x-1').explorers[0])
+		assert.deepEqual([status.strayBasis, status.stray], ['workspace_listing', [git ? 'qa-scratch/' : 'qa-scratch']])
 		const page = (await call(ui, '/explorations/x-1')).body
 		assert.match(
 			page,
-			/Tester a1 left files outside its work folder: <code>qa-scratch\/?<\/code>\.\s+Checkmate did not touch them\./
+			/Workspace entries appeared outside the work folder during tester a1’s turns:\s+<code>qa-scratch\/?<\/code>\./
 		)
 	})
 }

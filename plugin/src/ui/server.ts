@@ -6,7 +6,7 @@ import type { FormState } from './forms.ts'
 import type { EditState } from './edit.ts'
 import { createServer } from 'node:http'
 import { randomBytes } from 'node:crypto'
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, realpathSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { closeStore, openReadOnlyStore, openStore } from '../store.ts'
 import type { Approval } from '../plans.ts'
@@ -119,6 +119,7 @@ import type { HookOptions } from './hooks.ts'
 import { createHooks, sameSecret } from './hooks.ts'
 import { emptyRecord, nextOpen, permissionPage, requestHref } from './permissions.ts'
 import { createRequester } from './requester.ts'
+import { lifecyclePath, lifecycleProof } from './lifecycle.ts'
 import { repliesPage, requestPage as requestRecordPage, screenContext } from './requests.ts'
 
 export type UiOptions = HookOptions & {
@@ -325,7 +326,8 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 	const csrf = randomBytes(24).toString('hex')
 	const hookToken = workspaceHookToken(options.workspace, options.newHookToken)
 	const hooks = createHooks(store, hookToken, options)
-	const env = options.env ?? process.env
+	const env = { ...(options.env ?? process.env) }
+	const workspace = realpathSync(options.workspace)
 	const pendingModels = new Map<string, ReturnType<typeof discoverModels>>()
 	const launchEnv = () => workspaceUiEnv(store, env)
 	const requester = createRequester(store, {
@@ -1707,6 +1709,18 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 				answered: true,
 			})
 			if (reply.status !== 'completed') return refuse(reply.reasons.join(' '), 'target')
+			if (!reply.data.ready) {
+				const targetId = String(reply.data.targetId)
+				redirect(request.res, `/settings/targets/${encodeURIComponent(targetId)}`, [
+					...cookies,
+					cookie(
+						'checkmate_toast',
+						`The application answered, but the saved profile is not ready. Recheck it: checkmate delegate setup ${targetId}`,
+						60
+					),
+				])
+				return
+			}
 			redirect(request.res, `/new?target=${encodeURIComponent(String(reply.data.targetId))}`, [
 				...cookies,
 				cookie('checkmate_toast', `Set up target ${reply.data.targetId}`, 60),
@@ -2220,6 +2234,26 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 			cookies: parseCookies(req.headers.cookie),
 		}
 		try {
+			if (req.method === 'POST' && request.url.pathname === lifecyclePath) {
+				const action = req.headers['x-checkmate-action']
+				const nonce = req.headers['x-checkmate-nonce']
+				const proof = req.headers['x-checkmate-proof']
+				if (
+					(action !== 'status' && action !== 'open-pi' && action !== 'stop') ||
+					typeof nonce !== 'string' ||
+					!/^[0-9a-f]{48}$/.test(nonce) ||
+					typeof proof !== 'string' ||
+					!sameSecret(proof, lifecycleProof(hookToken, workspace, process.pid, action, nonce)) ||
+					closed
+				)
+					return send(res, 403, 'text/plain; charset=utf-8', 'Refused.')
+				if (action === 'open-pi') env.CHECKMATE_HARNESS = 'pi'
+				if (action === 'stop') res.once('finish', () => void close())
+				const body = JSON.stringify({ harness: selectedHarness(launchEnv()) })
+				return send(res, 200, 'application/json; charset=utf-8', body, {
+					'X-Checkmate-Proof': lifecycleProof(hookToken, workspace, process.pid, action, nonce, body),
+				})
+			}
 			if (req.method === 'POST' && hooks.handles(request.url.pathname))
 				return await hooks.handle(req, res, request.url.pathname)
 			if (req.method === 'GET' || req.method === 'HEAD') return await get(request)
@@ -2242,7 +2276,6 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		closed = true
 		await requester.close()
 		hooks.close()
-		if (port) removeUiFile(options.workspace, port)
 		clearInterval(poll)
 		clearInterval(heartbeat)
 		clearInterval(supervisorWatch)
@@ -2257,6 +2290,7 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		})
 		closeStore(watch)
 		closeStore(store)
+		if (port) removeUiFile(options.workspace, port)
 	}
 
 	try {

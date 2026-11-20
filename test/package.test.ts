@@ -79,6 +79,9 @@ console.log(JSON.stringify({ type: 'result', subtype: 'success', structured_outp
 
 	assert.equal(checkmate('--version'), version)
 	assert.match(checkmate('--help'), /checkmate delegate <setup\|plan\|revise\|execute>/)
+	const help = JSON.parse(checkmate('--help', '--json'))
+	assert.equal(help.status, 'completed')
+	assert.ok(help.usage.some((line: string) => line.startsWith('checkmate delegate ')))
 	assert.match(
 		checkmate('delegate', '--help'),
 		/^completed delegate\ncheckmate delegate <setup\|plan\|revise\|execute>/

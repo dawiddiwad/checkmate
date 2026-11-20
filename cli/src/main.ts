@@ -16,15 +16,16 @@ type Parsed = {
 const delegateUsage =
 	'checkmate delegate <setup|plan|revise|execute> <targetId|planId|planId|runId> [--timeout <seconds>]'
 const delegateHarnessUsage =
-	'Claude requires --allow <rule> and accepts --claude-arg <arg>. Both can repeat. CHECKMATE_HARNESS overrides the workspace harness. The default is Claude.'
+	'With Pi, omit --allow and --claude-arg. Claude requires --allow <rule> and accepts --claude-arg <arg>. CHECKMATE_HARNESS overrides the workspace harness. The default is Claude.'
 
 function version() {
 	return JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version as string
 }
 
-function help() {
+function help(json: boolean) {
 	const commands = coreRun(['--help'], { cwd: process.cwd(), env: {}, stdin: () => '' }).output.split('\n')
-	return [...commands.slice(0, -1), delegateUsage, delegateHarnessUsage, commands.at(-1)].join('\n')
+	const usage = [...commands.slice(0, -1), delegateUsage, delegateHarnessUsage, commands.at(-1)]
+	return json ? JSON.stringify({ status: 'completed', subject: 'checkmate', reasons: [], usage }) : usage.join('\n')
 }
 
 function parse(tokens: string[], options: string[]): Parsed {
@@ -144,7 +145,8 @@ async function runDelegate(tokens: string[]) {
 if (import.meta.main) {
 	const argv = process.argv.slice(2)
 	if (argv[0] === '--version') process.stdout.write(version() + '\n')
-	else if (!argv.length || argv[0] === '--help') process.stdout.write(help() + '\n')
+	else if (!argv.length || argv[0] === '--help' || (argv[0] === '--json' && argv[1] === '--help'))
+		process.stdout.write(help(argv.includes('--json')) + '\n')
 	else if (argv[0] === 'delegate') await runDelegate(argv.slice(1))
 	else await core(argv)
 }

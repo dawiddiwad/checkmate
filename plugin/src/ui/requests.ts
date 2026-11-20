@@ -12,6 +12,8 @@ import { crumbBar, emptyNotice, heading } from './layout.ts'
 import { listHref, listState, pageTrail, pager } from './lists.ts'
 import { failureOf, money } from './activity.ts'
 import { requestHref } from './permissions.ts'
+import { piErrorText } from '../pi.ts'
+import { authenticationFailed, piAuthenticationHint } from '../sessions.ts'
 
 const kinds: Record<string, string> = { c: 'defect', q: 'question', g: 'gap' }
 const planPath = /^\/plans\/([A-Za-z0-9][A-Za-z0-9_-]{0,95})(?:@[1-9][0-9]{0,8})?(?:\/|$)/
@@ -127,6 +129,12 @@ function elapsed(request: RequestRecord, now: number) {
 }
 
 function failureText(request: RequestRecord) {
+	if (request.harness === 'pi' && !/No pi executable/.test(request.reason ?? '')) {
+		const cause = piErrorText(request.reason) || 'The request failed. No reason is recorded.'
+		const authentication =
+			request.hint === piAuthenticationHint || authenticationFailed({ failure: ['operational_error', cause] })
+		return { cause, lines: [], detail: authentication ? 'Check the provider login in Pi. Then ask again.' : null }
+	}
 	const [sentence, ...lines] = (request.reason ?? '').split('\n')
 	const known = failureOf(request.reason, request.hint, [])
 	const cause =

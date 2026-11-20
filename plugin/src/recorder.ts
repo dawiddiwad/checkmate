@@ -55,10 +55,20 @@ function addedEntries(store: Store, explorationId: string, actor: string, after:
 }
 
 export function launchContext(store: Store, explorationId: string, explorer: string, session: string) {
-	const launch = explorationEvents(store, explorationId)
-		.filter((event) => event.step === 'launch' && event.explorer === explorer && event.detail.session === session)
-		.at(-1)
-	return launch ? (launch.detail.context as ChildContext) : undefined
+	const events = explorationEvents(store, explorationId)
+	const turn = events.findLastIndex(
+		(event) =>
+			event.step === 'follow-turn' &&
+			event.status !== 'operational_error' &&
+			event.explorer === explorer &&
+			event.detail.session === session
+	)
+	const follow = turn === -1 ? undefined : events.slice(0, turn).findLast((event) => event.step === 'follow')
+	const launch = events.findLast(
+		(event) => event.step === 'launch' && event.explorer === explorer && event.detail.session === session
+	)
+	return (events[turn]?.detail.context ?? follow?.detail.context ?? launch?.detail.context) as
+		ChildContext | undefined
 }
 
 const entryTitle = (entry: Partial<Entry>) => entry.title ?? entry.text ?? entry.question ?? entry.saw ?? ''

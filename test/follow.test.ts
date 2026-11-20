@@ -4,9 +4,10 @@ import type { TestContext } from 'node:test'
 import { existsSync, realpathSync } from 'node:fs'
 import { join } from 'node:path'
 import { run } from '../plugin/src/cli.ts'
+import { startExploration } from '../plugin/src/explorers.ts'
 import { closeStore, openStore } from '../plugin/src/store.ts'
 import { workDenyRules } from '../plugin/src/sessions.ts'
-import { saveWorkspaceHarness } from '../plugin/src/settings.ts'
+import { saveModels, saveWorkspaceHarness } from '../plugin/src/settings.ts'
 import { actor, directory, plan, store, target } from './support.ts'
 import { fakeClaude } from './claude.ts'
 
@@ -46,23 +47,60 @@ function setup(t: TestContext, harness?: 'pi') {
 const answer = ['gap', 'answer', 'checkout', 'a1/Q1', '--kind', 'defer', '--value', 'No.', '--rationale', 'Rule.']
 
 test('Pi follow-up reopens the test session and records the new entries', (t) => {
-	const { command, wait, reply, called, workspace } = setup(t, 'pi')
-	assert.equal(command(['explore', 'start', 'checkout', '--build', 'b1', '--level', 'smoke', ...allow]).code, 0)
+	const { command, wait, reply, called, workspace, env } = setup(t, 'pi')
+	const model = 'openrouter/z-ai/glm-5.3-flash'
+	const configured = openStore(workspace)
+	saveModels(configured, actor, 'pi', '', 'provider/run-default')
+	startExploration(
+		configured,
+		actor,
+		{
+			planId: 'checkout',
+			build: 'b1',
+			level: 'smoke',
+			allow: ['Read', 'Bash'],
+			claudeArgs: [],
+			testerModels: { a1: model },
+		},
+		{ ...env, CHECKMATE_HARNESS: 'pi' }
+	)
+	closeStore(configured)
 	assert.equal(wait('x-1').body.state, 'completed')
 	const tester = called().find((call) => call.role === 'tester')
 	assert.equal(command(answer).code, 0)
 	const opened = openStore(workspace)
 	saveWorkspaceHarness(opened, actor, 'claude')
+	saveModels(opened, actor, 'pi', '', 'another-model')
 	closeStore(opened)
 	reply({ recorder: [stacks, question, sale] })
 	assert.equal(command(['explore', 'follow', 'x-1'], 'claude').code, 0)
 	const done = wait('x-1')
 	assert.equal(done.body.follow, 'completed')
 	const calls = called()
+	assert.equal(after(tester.args, '--model'), model)
+	for (const role of ['follower', 'recorder', 'merger']) {
+		const call = calls.find((item) => item.role === role)
+		assert.ok(call)
+		assert.equal(after(call.args, '--model'), role === 'merger' ? 'provider/run-default' : model)
+	}
 	assert.equal(after(calls.find((call) => call.role === 'follower').args, '--session'), tester.session)
 	assert.equal(after(calls.find((call) => call.role === 'recorder').args, '--fork'), tester.session)
 	const record = command(['query', "SELECT detail FROM exploration_events WHERE step = 'record'"]).body.rows
 	assert.equal(JSON.parse(record.at(-1).detail).saved, 1)
+})
+
+test('an explicit Claude follow-up model also applies to the forked recorder', (t) => {
+	const { command, wait, called, reply } = setup(t)
+	assert.equal(command(['explore', 'start', 'checkout', '--build', 'b1', '--level', 'smoke', ...allow]).code, 0)
+	assert.equal(wait('x-1').body.state, 'completed')
+	called()
+	assert.equal(command(answer).code, 0)
+	reply({ recorder: [stacks, question, sale] })
+	assert.equal(command(['explore', 'follow', 'x-1', '--claude-arg', '--model', '--claude-arg', 'sonnet']).code, 0)
+	assert.equal(wait('x-1').body.follow, 'completed')
+	const calls = called()
+	for (const role of ['follower', 'recorder'])
+		assert.equal(after(calls.find((call) => call.role === role).args, '--model'), 'sonnet')
 })
 
 test('explore follow refuses an exploration that is not completed or that has no new answer', (t) => {

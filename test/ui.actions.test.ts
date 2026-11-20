@@ -6,7 +6,7 @@ import { closeStore, openStore } from '../plugin/src/store.ts'
 import { explorationEvents } from '../plugin/src/explorations.ts'
 import { explorationStatus, running } from '../plugin/src/explorers.ts'
 import { startUi } from '../plugin/src/ui/server.ts'
-import { requestModelText, workspaceHarness } from '../plugin/src/settings.ts'
+import { requestModelText, testerModelText, workspaceHarness } from '../plugin/src/settings.ts'
 import { piAuthenticationHint, authenticationHint } from '../plugin/src/sessions.ts'
 import { failureOf, phaseOf } from '../plugin/src/ui/activity.ts'
 import { ago } from '../plugin/src/ui/html.ts'
@@ -542,16 +542,43 @@ test('coding harness settings persist and reject forms from the previous harness
 	assert.match((await call(ui, '/settings/harness')).body, /Coding harness/)
 	assert.equal((await post('/settings/harness/select', { harness: 'pi' })).status, 303)
 	const page = (await call(ui, '/settings/harness')).body
+	assert.equal((await call(ui, '/settings/harness/models?harness=claude')).status, 409)
 	assert.match(page, /value="pi" selected/)
 	assert.match(page, /name="harness" value="pi"/)
 	assert.equal((await post('/settings/harness/rules', { harness: 'claude', rules: 'Edit' })).status, 422)
 	assert.equal((await post('/settings/harness/model', { harness: 'claude', model: 'sonnet' })).status, 422)
+	assert.equal(
+		(await post('/settings/harness/models', { harness: 'claude', testerModel: 'sonnet', requestModel: '' })).status,
+		422
+	)
 	assert.equal((await post('/settings/harness/rules', { harness: 'pi', rules: 'Read Bash' })).status, 303)
-	assert.equal((await post('/settings/harness/model', { harness: 'pi', model: 'provider/model' })).status, 303)
+	assert.equal(
+		(
+			await post('/settings/harness/models', {
+				harness: 'pi',
+				testerModel: 'provider/tester',
+				requestModel: 'provider/model',
+			})
+		).status,
+		303
+	)
+	assert.equal(
+		(
+			await post('/settings/harness/models', {
+				harness: 'pi',
+				testerModel: 'new/model',
+				requestModel: 'bad\nmodel',
+			})
+		).status,
+		422
+	)
+	assert.equal((await post('/settings/harness/models', { harness: 'pi', requestModel: 'partial' })).status, 422)
 	assert.equal((await post('/settings/harness/select', { harness: 'invalid' })).status, 422)
 	read((store) => {
 		assert.equal(workspaceHarness(store), 'pi')
 		assert.equal(requestModelText(store, 'pi'), 'provider/model')
+		assert.equal(testerModelText(store, 'pi'), 'provider/tester')
+		assert.equal(testerModelText(store, 'claude'), '')
 		assert.equal(requestModelText(store, 'claude'), '')
 	})
 })
@@ -587,4 +614,18 @@ test('test forms reject rules from a different coding harness', async (t) => {
 	const page = (await call(ui, '/settings/harness')).body
 	assert.match(page, /Without it, they cannot use Bash/)
 	assert.doesNotMatch(page, /Without it, each command asks/)
+})
+
+test('tester count follows the selected level and rejects a stale harness', async (t) => {
+	const { ui, post } = await fixture(t, {})
+	const count = await call(ui, '/settings/harness/tester-count?harness=claude&plan=checkout&level=normal')
+	assert.equal(count.status, 200)
+	assert.equal(JSON.parse(count.body).count, 2)
+	const smoke = await call(ui, '/settings/harness/tester-count?harness=claude&target=checkout-local&level=smoke')
+	assert.equal(JSON.parse(smoke.body).count, 1)
+	assert.equal((await post('/settings/harness/select', { harness: 'pi' })).status, 303)
+	assert.equal(
+		(await call(ui, '/settings/harness/tester-count?harness=claude&plan=checkout&level=normal')).status,
+		409
+	)
 })

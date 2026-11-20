@@ -11,6 +11,12 @@ export function selectedHarness(env: Env = process.env): Harness {
 	throw new Refusal('malformed', 'CHECKMATE_HARNESS must be claude or pi.')
 }
 
+export function piModelEnv(env: Env, model: string, providerQualified = model.includes('/')): Env {
+	return model
+		? { ...env, CHECKMATE_PI_MODEL: model, ...(providerQualified ? { CHECKMATE_PI_PROVIDER: undefined } : {}) }
+		: env
+}
+
 export function piModelArgs(env: Env) {
 	const model = env.CHECKMATE_PI_MODEL?.trim()
 	const provider = env.CHECKMATE_PI_PROVIDER?.trim()

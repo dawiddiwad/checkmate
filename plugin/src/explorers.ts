@@ -20,8 +20,8 @@ import {
 	verifyItems,
 } from './journal.ts'
 import type { Harness } from './pi.ts'
-import { piModelArgs, selectedHarness } from './pi.ts'
-import { workspaceEnv } from './settings.ts'
+import { piModelArgs, piModelEnv, selectedHarness } from './pi.ts'
+import { requireModel, testerModelText, workspaceEnv } from './settings.ts'
 import { defaultLevel, levelNames, storedLevel, testLevels } from './levels.ts'
 import { explorerActor, lastEntry, recordSession, defaultRecorderTimeout } from './recorder.ts'
 import {
@@ -82,6 +82,7 @@ export type StartInput = OpenInput & {
 	repo?: string
 	allow: string[]
 	claudeArgs: string[]
+	testerModels?: Record<string, string>
 	timeoutSeconds?: number
 	session?: boolean
 }
@@ -91,9 +92,10 @@ export type Launch = {
 	level: TestLevel
 	explorers: number
 	model: string | null
-	modelFrom: 'level' | 'host' | 'agent'
+	modelFrom: 'level' | 'host' | 'agent' | 'workspace'
 	verifier: boolean
 	context: ChildContext
+	testerModels?: Record<string, string>
 	allow: string[]
 	timeoutSeconds: number
 	pluginHidden: boolean
@@ -116,7 +118,29 @@ function hostModel(claudeArgs: string[]) {
 	return undefined
 }
 
-export function launchPlan(profile: Profile, input: StartInput, env: Env): Launch {
+function contextForModel(context: ChildContext, model: string | undefined): ChildContext {
+	if (!model) return context
+	const pi = context.harness === 'pi'
+	const source = pi ? (context.piArgs ?? []) : context.claudeArgs
+	const args: string[] = []
+	for (let index = 0; index < source.length; index++) {
+		const value = source[index]
+		const flag = value.split('=', 1)[0]
+		if (flag === '--model' || (flag === '--provider' && pi && model.includes('/'))) {
+			if (value === flag) index++
+		} else args.push(value)
+	}
+	args.push('--model', model)
+	return pi ? { ...context, piArgs: args } : { ...context, claudeArgs: args }
+}
+
+export function launchPlan(
+	profile: Profile,
+	input: StartInput,
+	env: Env,
+	savedModel = '',
+	preferSaved = false
+): Launch {
 	const level = requireChoice(
 		input.level ?? storedLevel(profile.explore?.level) ?? defaultLevel,
 		levelNames,
@@ -125,7 +149,13 @@ export function launchPlan(profile: Profile, input: StartInput, env: Env): Launc
 	const row = testLevels[level]
 	const explorers = input.explorers ?? profile.explore?.explorers ?? row.explorers
 	const testSeconds = input.minutes ? input.minutes * 60 : row.testSeconds
+	const testerModels = Object.entries(input.testerModels ?? {}).flatMap(([name, text]) => {
+		requireWellFormed(typeof text === 'string', `Give a model ID for tester ${name}.`)
+		const model = text.trim()
+		return model ? [[name, model] as const] : []
+	})
 	if (input.session) {
+		requireWellFormed(!testerModels.length, 'Individual tester models require testers in new processes.')
 		requireWellFormed(
 			!input.claudeArgs.length && input.timeoutSeconds === undefined,
 			'--claude-arg and --timeout are for testers in new processes. With --session, the host session starts the testers as agents.'
@@ -146,6 +176,11 @@ export function launchPlan(profile: Profile, input: StartInput, env: Env): Launc
 		}
 	}
 	const harness = selectedHarness(env)
+	const names = explorerNames(explorers)
+	for (const [name, model] of testerModels) {
+		requireWellFormed(names.includes(name), `Unknown tester ${name} for this exploration.`)
+		requireModel(harness, model)
+	}
 	if (harness === 'pi') {
 		requireWellFormed(
 			!input.claudeArgs.length,
@@ -154,8 +189,12 @@ export function launchPlan(profile: Profile, input: StartInput, env: Env): Launc
 		piToolNames(input.allow)
 	}
 	const claudeArgs = checkClaudeArgs(input.claudeArgs)
-	const piArgs = harness === 'pi' ? piModelArgs(env) : []
+	const selected = Boolean(
+		savedModel && (harness === 'pi' ? preferSaved || !env.CHECKMATE_PI_MODEL?.trim() : !hostModel(claudeArgs))
+	)
+	const piArgs = harness === 'pi' ? piModelArgs(selected ? piModelEnv(env, savedModel) : env) : []
 	const host = hostModel(harness === 'pi' ? piArgs : claudeArgs)
+	const model = selected ? savedModel : (host ?? (harness === 'pi' ? null : row.model))
 	const hiddenPlugin = harness === 'claude' ? installedPluginId(env) : null
 	requireWellFormed(
 		input.allow.length || (explorers === 0 && !row.verifier),
@@ -165,13 +204,18 @@ export function launchPlan(profile: Profile, input: StartInput, env: Env): Launc
 	return {
 		level,
 		explorers,
-		model: host ?? (harness === 'pi' ? null : row.model),
-		modelFrom: host || harness === 'pi' ? 'host' : 'level',
+		model,
+		modelFrom: selected ? 'workspace' : host || harness === 'pi' ? 'host' : 'level',
 		verifier: row.verifier,
 		context:
 			harness === 'pi'
 				? { hiddenPlugin, claudeArgs: [], harness, piArgs }
-				: { hiddenPlugin, claudeArgs: host ? claudeArgs : [...claudeArgs, '--model', row.model], harness },
+				: {
+						hiddenPlugin,
+						claudeArgs: host ? claudeArgs : [...claudeArgs, '--model', selected ? savedModel : row.model],
+						harness,
+					},
+		...(testerModels.length ? { testerModels: Object.fromEntries(testerModels) } : {}),
 		allow: input.allow,
 		studySeconds: row.studySeconds,
 		testSeconds,
@@ -301,7 +345,13 @@ function startSupervisor(store: Store, explorationId: string, actor: string, env
 	child.unref()
 }
 
-export function startExploration(store: Store, actor: string | undefined, given: StartInput, env: Env) {
+export function startExploration(
+	store: Store,
+	actor: string | undefined,
+	given: StartInput,
+	env: Env,
+	preferSavedModel = false
+) {
 	if (!given.session) env = workspaceEnv(store, env)
 	const change = changeOf(store.workspace, given)
 	const input = { ...given, change, scope: given.scope ?? (change ? changedFiles(store.workspace, change) : []) }
@@ -311,7 +361,14 @@ export function startExploration(store: Store, actor: string | undefined, given:
 			? finishable(store, input.explorationId)
 			: insertExploration(store, input, operationId, at)
 		const row = explorationRow(store, opened.explorationId)
-		const launch = launchPlan(targetRevision(store, row.target_id, row.target_revision).profile, input, env)
+		const savedModel = input.session ? '' : testerModelText(store, selectedHarness(env))
+		const launch = launchPlan(
+			targetRevision(store, row.target_id, row.target_revision).profile,
+			input,
+			env,
+			savedModel,
+			preferSavedModel
+		)
 		addEvent(
 			store,
 			opened.explorationId,
@@ -385,9 +442,11 @@ function noteChild(store: Store, actor: string, explorationId: string, explorer:
 	}
 }
 
-function failureHint(launch: Launch, call: ChildCall) {
+function failureHint(launch: Launch, call: ChildCall, testerModel?: string) {
 	if (authenticationFailed(call)) return launch.context.harness === 'pi' ? piAuthenticationHint : authenticationHint
 	if (!/model/i.test([call.failure?.[1] ?? '', ...(call.stderr ?? [])].join(' '))) return undefined
+	if (testerModel) return `The host refused tester model ${testerModel}. Select another model for the tester.`
+	if (launch.modelFrom === 'workspace') return 'Change Model for testers in Settings.'
 	if (launch.context.harness === 'pi')
 		return 'Check the model configured in Pi, or set CHECKMATE_PI_MODEL and CHECKMATE_PI_PROVIDER.'
 	return launch.modelFrom === 'level'
@@ -454,6 +513,7 @@ async function launchExplorers(store: Store, actor: string, explorationId: strin
 	const executable = requireChild(env, launch.context.harness)
 	const runs = explorerNames(launch.explorers).map(async (explorer) => {
 		const session = randomUUID()
+		const tester = contextForModel(launch.context, launch.testerModels?.[explorer])
 		const { folder, grant, deny, extraEnv } = explorerWork(store, explorationId, explorer, launch.explorers)
 		const rules = launch.context.harness === 'pi' ? launch.allow : [...launch.allow, ...grant]
 		const brief = explorerBrief(opened.charter, entries, `qa-${explorationId}-${explorer}-`, folder, {
@@ -466,14 +526,14 @@ async function launchExplorers(store: Store, actor: string, explorationId: strin
 			status: 'started',
 			detail: {
 				session,
-				context: launch.context,
+				context: tester,
 				engineRules: grant,
 				brief,
 			},
 		})
 		const turn = (own: string[], prompt: string, name: string) => {
 			const hook = childHook(store.workspace, explorationId, explorer)
-			const context = { ...launch.context, deny, hook, work: folder }
+			const context = { ...tester, deny, hook, work: folder }
 			return watchStray(store, actor, explorationId, explorer, name, () =>
 				launchChild(
 					executable,
@@ -504,7 +564,7 @@ async function launchExplorers(store: Store, actor: string, explorationId: strin
 	const ended = await Promise.all(runs)
 	for (const { explorer, session, calls } of ended) {
 		const call = calls.find((item) => item.failure) ?? calls.at(-1)!
-		const hint = failureHint(launch, call)
+		const hint = failureHint(launch, call, launch.testerModels?.[explorer])
 		const durations = calls.flatMap((item) => (item.durationMs === undefined ? [] : [item.durationMs]))
 		event(store, actor, explorationId, {
 			step: 'end',
@@ -849,6 +909,7 @@ type FollowPlan = {
 	after: number
 	allow: string[]
 	context: ChildContext
+	modelOverride?: string
 	timeoutSeconds: number
 	seconds: number
 }
@@ -911,6 +972,7 @@ export function startFollow(store: Store, actor: string | undefined, input: Foll
 			piToolNames(input.allow)
 		}
 		const claudeArgs = checkClaudeArgs(input.claudeArgs)
+		const modelOverride = hostModel(claudeArgs)
 		const plan: FollowPlan = {
 			answers: answered.map((question) => question.answerId!),
 			questions: answered.map((question) => ({ question: question.question, answer: question.answer! })),
@@ -920,11 +982,10 @@ export function startFollow(store: Store, actor: string | undefined, input: Foll
 				? {
 						...stored.context,
 						claudeArgs:
-							hostModel(claudeArgs) || !stored.model
-								? claudeArgs
-								: [...claudeArgs, '--model', stored.model],
+							modelOverride || !stored.model ? claudeArgs : [...claudeArgs, '--model', stored.model],
 					}
 				: stored.context,
+			...(modelOverride ? { modelOverride } : {}),
 			timeoutSeconds: input.timeoutSeconds ?? stored.timeoutSeconds,
 			seconds: testLevels[stored.level].followSeconds,
 		}
@@ -979,15 +1040,18 @@ export async function driveFollow(workspace: string, explorationId: string, env:
 		const events = explorationEvents(store, explorationId)
 		if (stopOf(events)) return
 		const plan = events.findLast((item) => item.step === 'follow')!.detail as FollowPlan
-		const launch = {
-			...startOf(events)!,
+		const initial = startOf(events)!
+		const followModel = hostModel(plan.context.claudeArgs)
+		const launch: Launch = {
+			...initial,
+			...(followModel && followModel !== initial.model ? { model: followModel, modelFrom: 'host' } : {}),
 			allow: plan.allow,
 			context: plan.context,
 			timeoutSeconds: plan.timeoutSeconds,
 		}
 		const sessions = followSessions(events)
 		const phase = `follow-${events.filter((item) => item.step === 'follow').length}`
-		const count = startOf(events)!.explorers
+		const count = initial.explorers
 		const executable = requireChild(env, launch.context.harness)
 		const ended = await Promise.all(
 			sessions
@@ -997,7 +1061,9 @@ export async function driveFollow(workspace: string, explorationId: string, env:
 					const rules = plan.context.harness === 'pi' ? plan.allow : [...plan.allow, ...grant]
 					const watch = watchWork(store, actor, explorationId, explorer, 'follow-up')
 					const hook = childHook(store.workspace, explorationId, explorer)
-					const context = { ...plan.context, deny, hook, work: folder }
+					const model = plan.modelOverride ? undefined : initial.testerModels?.[explorer]
+					const tester = contextForModel(plan.context, model)
+					const context = { ...tester, deny, hook, work: folder }
 					const call = await watchStray(store, actor, explorationId, explorer, 'follow-up', () =>
 						launchChild(
 							executable,
@@ -1011,17 +1077,18 @@ export async function driveFollow(workspace: string, explorationId: string, env:
 						)
 					)
 					watch.stop()
-					return { explorer, session, call }
+					return { explorer, session, call, tester, model }
 				})
 		)
-		for (const { explorer, session, call } of ended) {
-			const hint = failureHint(launch, call)
+		for (const { explorer, session, call, tester, model } of ended) {
+			const hint = failureHint(launch, call, model)
 			event(store, actor, explorationId, {
 				step: 'follow-turn',
 				explorer,
 				status: call.failure?.[0] ?? 'completed',
 				detail: {
 					session,
+					...(model ? { context: tester } : {}),
 					...(call.failure ? { reason: call.failure[1] } : {}),
 					...(call.stderr ? { stderr: call.stderr } : {}),
 					...(hint ? { hint } : {}),
@@ -1035,8 +1102,17 @@ export async function driveFollow(workspace: string, explorationId: string, env:
 		).length
 		for (const { explorer } of ended) keepWorkFiles(store, actor, explorationId, explorer, phase)
 		if (recorded) {
-			mergeReports(store, actor, explorationId, launch, env, plan.after)
-			if (launch.verifier) await verifyClaims(store, actor, explorationId, launch, env, plan.after)
+			const review = {
+				...initial,
+				context:
+					followModel && followModel !== initial.model
+						? contextForModel(plan.context, initial.model ?? undefined)
+						: plan.context,
+				allow: plan.allow,
+				timeoutSeconds: plan.timeoutSeconds,
+			}
+			mergeReports(store, actor, explorationId, review, env, plan.after)
+			if (review.verifier) await verifyClaims(store, actor, explorationId, review, env, plan.after)
 			removeWork(store, explorationId)
 		} else keepBrowserFolder(store, explorationId)
 		const skipped = [
@@ -1321,6 +1397,7 @@ export function explorationStatus(store: Store, explorationId: string) {
 		return {
 			explorer,
 			actor: explorerActor(explorer),
+			model: launch?.testerModels?.[explorer] ?? launch?.model ?? null,
 			session: (last('launch')?.detail.session ??
 				record?.detail.session ??
 				own.findLast((item) => item.detail.agent)?.detail.agent ??

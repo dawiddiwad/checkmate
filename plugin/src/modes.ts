@@ -119,7 +119,13 @@ function checkRun(store: Store, actor: string | undefined, input: TestInput & { 
 	return { run: { runId, tests: begun.data.tests as string[] }, skipped: [] }
 }
 
-export function runTest(store: Store, actor: string | undefined, given: TestInput, env: Env): Reply {
+export function runTest(
+	store: Store,
+	actor: string | undefined,
+	given: TestInput,
+	env: Env,
+	preferSavedModel = false
+): Reply {
 	env = workspaceEnv(store, env)
 	const assumed: string[] = []
 	const build = given.build ?? defaultBuild(store.workspace)
@@ -134,7 +140,13 @@ export function runTest(store: Store, actor: string | undefined, given: TestInpu
 				? `since=${base} (the default branch of origin, behind the checked-out commit)`
 				: 'since=none (no diff is given: no --since, and no default branch of origin behind the checked-out commit)'
 		)
-	const explored = startExploration(store, actor, { ...input, since: input.since ?? base, mode }, env)
+	const explored = startExploration(
+		store,
+		actor,
+		{ ...input, since: input.since ?? base, mode },
+		env,
+		preferSavedModel
+	)
 	const charter = explored.data.charter as Charter
 	const check: { run: { runId: string; tests: string[] } | null; skipped: string[]; storedTests?: string } =
 		mode === 'regression' ? checkRun(store, actor, input) : { run: null, skipped: [] }

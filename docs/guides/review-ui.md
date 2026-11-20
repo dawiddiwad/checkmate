@@ -156,7 +156,7 @@ Press `Enter` to set up the target. The new-change form opens. When the applicat
 - `Name of the plan`. Checkmate gives a name from the file name, or from the first line of the text, as the product makes the ID of a target. You can change it. The form refuses a name of a plan that exists.
 - `Target`. The form shows the choice only when the record has more than one target.
 - `Instance`. The form shows the choice only when the chosen target has more than one active instance. The form refuses a start with no instance. When the instance has an address that is not local, the dialog for that address asks first.
-- `Build`, `Level`, and `Testers may use without asking`, as in the `Test build…` dialog.
+- `Build`, `Level`, `Models by tester`, and `Testers may use without asking`, as in the `Test build…` dialog.
 - `More`: `Since`, `Until`, and `Repository folder`.
 
 Press `Enter` to make the plan and start the test with the same function as `checkmate test <plan> --source <file>`. The Testers view of the new test opens. Each refusal shows at its field, and the form keeps your text. When the target is on an address that is not local, a dialog asks first.
@@ -169,14 +169,14 @@ A form keeps your text as a draft. It stays when you press `Esc`, reload the pag
 
 1. Choose `Test build…`. A dialog opens.
 2. Write the build name. The field has the name that `checkmate test` gives when you give no `--build`: the short git commit, or the date and time in UTC.
-3. Choose the level: `smoke`, `normal`, or `deep`. `normal` is the first choice. Press `1`, `2`, or `3` to choose a level.
+3. Choose the level: `smoke`, `normal`, or `deep`. `normal` is the first choice. Press `1`, `2`, or `3` to choose a level. To give individual testers different models, open **Models by tester**. Choose a model for each tester you want to change. The others use the workspace tester setting.
 4. Check `Testers may use without asking`. The field has the tool rules of the testers, one rule for each word, as in `checkmate test --allow`, for example `Read Bash`. It starts with the rules of the workspace setting `Tool rules of testers` (see [Settings](#settings)). The engine needs at least one rule today. A tool without a rule asks you in the UI, if the UI runs.
 5. Open `More` to give `Since`, `Until`, and `Repository folder`. Without `Since`, the UI uses the default branch of `origin`, as `checkmate test` does.
 6. Press `Enter`. The Testers view of the new test opens.
 
 When the target of the plan has more than one active instance, the dialog has the choice `Instance` after the build. Each instance has a number: press `1`, `2`, and so on to choose it. The choice starts on the instance of the last test of the plan when that instance is active. Without such an instance, the choice has no start value, and the dialog refuses at the field with `Choose the instance: <names>.` until you choose one. The UI gives the choice to the engine as `--instance`. `Test again` and `Test build… again` start on the instance of their run. With one active instance, the dialog has no `Instance` choice. A retired instance is not in the choice.
 
-The UI starts each tester in the selected coding harness with the tools you entered. The follow-up of a test uses the rules of that test. The test runs without the UI: closing the UI does not stop it. The UI starts a test only when no test of the plan is in progress. When one is in progress, the dialog stays open, names the running test, and links to it.
+The UI starts each tester in the selected coding harness with the tools you entered. Open a tester in the Testers view to see its selected model. Follow-up tests keep each tester’s model and tool rules. The test runs without the UI: closing the UI does not stop it. The UI starts a test only when no test of the plan is in progress. When one is in progress, the dialog stays open, names the running test, and links to it.
 
 When the engine refuses the start, the dialog shows the reason in a sentence at the field, and keeps your text. An empty rules field shows the refusal of the engine at that field. If the selected program is missing from `PATH`, the dialog names it.
 
@@ -276,7 +276,9 @@ The run list and the operation log. They page, sort, and filter. The address kee
 
 Open **Settings → Coding harness**, choose **Claude Code** or **Pi**, and save. The choice applies to new work in this workspace and survives a restart. A running test and its follow-up use the harness that started the test. The page shows whether the selected program is on `PATH`. Configure its provider and login in the harness.
 
-Each harness keeps its own tester tool rules and request model. The tool rules fill the `Test build…` and `New change` forms. Leave the request model empty to use the host default. Switching back restores that harness's settings.
+Under **Models**, choose **Model for requests** and **Model for testers**, then select **Save models**. The list comes from the selected harness. Pi lists the provider with each model. Refresh the list after you change the host configuration. Choose the default option to let Pi use its configured model or Claude testers use their test level. Each harness remembers its choices.
+
+The tester tool rules fill the `Test build…` and `New change` forms.
 
 `Targets`. A target page shows the entry points, the instances, the tools, the profile, and the revision history.
 

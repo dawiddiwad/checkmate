@@ -2,7 +2,7 @@ import type { Html } from './html.ts'
 import type { Context, Page } from './layout.ts'
 import { levelNames } from '../levels.ts'
 import { html } from './html.ts'
-import { testerToolHelp } from './actions.ts'
+import { testerModels, testerToolHelp } from './actions.ts'
 import { heading } from './layout.ts'
 
 export type NewInstance = { id: string; address: string | null; local: boolean }
@@ -213,6 +213,7 @@ export function newChangePage(context: Context, defaults: NewChangeDefaults, onH
 		)}
 		<input type="hidden" name="harness" value="${context.harness}" />
 		${field('change-rules', 'rules', 'Testers may use without asking', testerToolHelp(context.harness), '', context.testerRules)}
+		${testerModels(context)}
 		<details class="sp-more" data-more>
 			<summary>More</summary>
 			${field('change-since', 'since', 'Since (git ref)', 'Without it, Checkmate uses the default branch of origin.')}

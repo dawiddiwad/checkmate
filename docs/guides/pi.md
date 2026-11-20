@@ -27,4 +27,4 @@ Start Pi in the project workspace. Enter `/skill:checkmate` followed by a ticket
 
 A delegated stage uses Pi's `read` and `bash` tools. The launcher disables MCP for that stage. For a process exploration, give each permitted tool name with `--allow`, for example `--allow Read --allow Bash`. A scoped Claude permission rule is not a Pi tool name. Use a trusted workspace for shell access.
 
-Pi uses its configured model by default. To override it for child processes, set `CHECKMATE_PI_MODEL`. Set `CHECKMATE_PI_PROVIDER` with the model to select a provider. Supply credentials through Pi's login or provider environment. For the UI, set these variables in the shell that starts it.
+Select separate request and tester models in **Settings → Coding harness → Models**. Pi supplies the list. For a CLI override, set `CHECKMATE_PI_MODEL`. Set `CHECKMATE_PI_PROVIDER` with a model ID to select a provider. Supply credentials through Pi.

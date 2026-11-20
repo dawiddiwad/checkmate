@@ -282,7 +282,7 @@ The supervisor does these steps:
 - Level: `--level`, else `explore.level` of the target profile, else `normal`.
 - Number of explorers: `--explorers`, else `explore.explorers` of the profile, else the number of the level.
 - Time of the turns: the study seconds of the level, and `--minutes <n>` times 60 for the test turn, else the test seconds of the level. `--minutes` does not change the study turn. Without `--timeout`, the deadline of each turn is three times the longer turn, and at least 1800 seconds.
-- Model: `--claude-arg --model --claude-arg <model>`, else the alias of the level. Checkmate gives the alias as `--model <alias>`. The host resolves it.
+- Tester model: an explicit CLI model takes precedence over the workspace tester model. With neither, Claude uses the alias of the level and Pi uses its host default. In the review UI, a model selected for an individual tester overrides the workspace tester model for that run.
 
 **Host authentication.** When the output of an explorer, a recorder, the merger, or the verifier contains `authentication`, in any letter case, Checkmate stores a hint and does not try again. A Claude Code session does not pass its login token to the commands that it runs. Log in on the machine so that Claude Code stores the login, or run `checkmate test` from a shell outside a Claude Code session, or let the host give the credential in a supported way, for example an `apiKeyHelper` in the host settings. When no session could log in, the exploration fails with the reason `Host authentication: no session could log in.` Checkmate does not read or copy a credential.
 
@@ -296,7 +296,7 @@ When the host refuses the model, the launch of that explorer fails. `explore wai
 
 ### explore status and explore wait
 
-`explore status <explorationId>` prints the state, the level, the number of explorers, the model and where it came from (`level` or `host`), the verifier choice, the refs of the change (`since`, `until`), the seconds of the study turn and of the test turn (`studySeconds`, `testSeconds`), and one line for each explorer: its session, its end, its record, and the number of saved entries. A tester that a person stopped, alone or with the run, shows `ended=stopped` and `reason=Stopped by <name>: <reason>`, as the review UI shows `Stopped`. When a launch failed, one `stderr` line follows for each of the last 10 lines of the error output, also in `explore show`.
+`explore status <explorationId>` prints the state, the level, the number of explorers, the run model and its source (`level`, `host`, `workspace`, or `agent`), the verifier choice, the refs of the change (`since`, `until`), the seconds of the study turn and of the test turn (`studySeconds`, `testSeconds`), and one line for each explorer: its session, its end, its record, and the number of saved entries. A tester that a person stopped, alone or with the run, shows `ended=stopped` and `reason=Stopped by <name>: <reason>`, as the review UI shows `Stopped`. When a launch failed, one `stderr` line follows for each of the last 10 lines of the error output, also in `explore show`.
 
 | State         | Meaning                                                             |
 | ------------- | ------------------------------------------------------------------- |
@@ -666,7 +666,7 @@ Prints `completed ui url=<url>` and serves the review UI on `127.0.0.1` until SI
 | Variable                    | Read by        | Effect                                                                                                                            |
 | --------------------------- | -------------- | --------------------------------------------------------------------------------------------------------------------------------- |
 | `CHECKMATE_HARNESS`         | Checkmate      | Override the workspace choice for a CLI command. In the UI, this supplies the initial choice until you save one.                  |
-| `CHECKMATE_PI_MODEL`        | Checkmate      | Pass a model to Pi. When unset, Pi selects its configured model.                                                                  |
+| `CHECKMATE_PI_MODEL`        | Checkmate      | Set the Pi model for a CLI call or supply a startup default for the UI.                                                           |
 | `CHECKMATE_PI_PROVIDER`     | Checkmate      | Pass a provider to Pi. Also set `CHECKMATE_PI_MODEL`.                                                                             |
 | `CHECKMATE_ACTOR`           | Checkmate      | The default actor of a write. `--actor` overrides it.                                                                             |
 | `CHECKMATE_BUSY_TIMEOUT_MS` | Checkmate      | The wait for the database lock in milliseconds. A value that is not a whole number from 1 to 2147483647 gives the default, 30000. |

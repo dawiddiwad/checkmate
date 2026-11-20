@@ -68,6 +68,9 @@ test('a person starts, watches, and stops a test with the keys alone', browserTe
 	await page.keyboard.press('ArrowDown')
 	await page.keyboard.press('ArrowDown')
 	await page.keyboard.press('ArrowDown')
+	assert.equal(await focused(page), 'Models by tester')
+	for (let i = 0; i < 4 && (await focused(page)) !== 'EnterStart the test'; i++)
+		await page.keyboard.press('ArrowDown')
 	assert.equal(await focused(page), 'EnterStart the test')
 	await page.keyboard.press('Enter')
 	await page.waitForURL(/\/explorations\/x-1$/)
@@ -618,4 +621,43 @@ test('a banner that appears above the highlighted row does not move the row on s
 		tops.every((top) => Math.abs(top - before) <= 1),
 		`the highlighted row was at ${before} and then at ${[...new Set(tops.map(Math.round))]}`
 	)
+})
+
+test('a person selects different tester models and keeps them when the level changes', browserTest, async (t) => {
+	const { page, url, read, pids } = await setup(t, sleeping)
+	await page.route('**/settings/harness/models?*', (route) =>
+		route.fulfill({
+			json: {
+				models: [
+					{ value: 'haiku', label: 'Haiku' },
+					{ value: 'sonnet', label: 'Sonnet' },
+				],
+			},
+		})
+	)
+	await page.goto(url('/plans/checkout'))
+	await page.locator('[data-panel]:not([hidden]) [data-act="test"]').click()
+	const dialog = page.locator('dialog[data-act-dialog="test"][open]')
+	await dialog.locator('[data-tester-models] summary').click()
+	await dialog.getByText('2 models available.').waitFor()
+	await dialog.getByLabel('Tester a1', { exact: true }).waitFor({ state: 'visible' })
+	await page.waitForFunction(() => !(document.querySelector('[name="testerModel.a1"]') as HTMLSelectElement).disabled)
+	await dialog.getByLabel('Tester a1', { exact: true }).focus()
+	await page.keyboard.press('ArrowDown')
+	assert.equal(await dialog.getByLabel('Tester a1', { exact: true }).inputValue(), 'haiku')
+	await dialog.getByLabel('Tester a2', { exact: true }).selectOption('sonnet')
+	await dialog.locator('[data-tester-models] summary').click()
+	await dialog.locator('label', { hasText: 'smoke' }).click()
+	await page.waitForFunction(() => (document.querySelector('[name="testerModel.a2"]') as HTMLSelectElement).disabled)
+	await dialog.locator('label', { hasText: 'normal' }).click()
+	await page.waitForFunction(() => !(document.querySelector('[name="testerModel.a2"]') as HTMLSelectElement).disabled)
+	await dialog.locator('[data-tester-models] summary').click()
+	assert.equal(await dialog.getByLabel('Tester a1', { exact: true }).inputValue(), 'haiku')
+	assert.equal(await dialog.getByLabel('Tester a2', { exact: true }).inputValue(), 'sonnet')
+	await dialog.locator('input[name="build"]').fill('b-models')
+	await dialog.getByRole('button', { name: /Start the test/ }).click()
+	await page.waitForURL(/\/explorations\/x-1$/)
+	await waitFor('both testers start', () => pids('x-1').children.length >= 2)
+	const start = read((store) => explorationEvents(store, 'x-1').find((event) => event.step === 'start'))
+	assert.deepEqual(start?.detail.testerModels, { a1: 'haiku', a2: 'sonnet' })
 })

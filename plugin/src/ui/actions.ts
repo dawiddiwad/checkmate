@@ -102,6 +102,33 @@ export function testerToolHelp(harness: Context['harness']) {
 		: 'List tool rules, for example Read Bash. With the rule, a tester does not ask. Without it, each call asks you here.'
 }
 
+export function testerModels(context: Context) {
+	return html`<details class="sp-more" data-tester-models data-harness="${context.harness}">
+		<summary data-stop>Models by tester</summary>
+		<p class="help">Choose a model for a tester, or use the workspace tester model.</p>
+		<p class="help" role="status" data-tester-count-status></p>
+		<p class="help" role="status" data-tester-model-status>Open to load models.</p>
+		<button class="btn" type="button" data-stop data-tester-model-refresh>Refresh models</button>
+		<label for="tester-model-filter">Filter models</label>
+		<input id="tester-model-filter" type="search" autocomplete="off" data-stop data-tester-model-filter />
+		${Array.from(
+			{ length: 10 },
+			(_, index) =>
+				html`<div class="field-group" data-tester-model-row="${index + 1}" hidden>
+					<label for="tester-model-a${index + 1}">Tester a${index + 1}</label>
+					<select
+						id="tester-model-a${index + 1}"
+						name="testerModel.a${index + 1}"
+						data-tester-model-select
+						disabled
+					>
+						<option value="">Use workspace tester model</option>
+					</select>
+				</div>`
+		)}
+	</details>`
+}
+
 export function testDialog(
 	context: Context,
 	planId: string | null,
@@ -154,6 +181,7 @@ export function testDialog(
 				${field('act-test-until', 'Until (git ref)', 'until', shown.until)}
 				${field('act-test-repo', 'Repository folder', 'repo', shown.repo)}
 			</details>
+			${testerModels(context)}
 			<div class="btns">
 				<button class="sp-btn pri" data-stop><kbd>Enter</kbd><span>Start the test</span></button>
 				<button class="sp-btn" type="button" data-act-cancel data-stop>

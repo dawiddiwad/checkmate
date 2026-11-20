@@ -15,7 +15,7 @@ import {
 import { allRequests, currentConversation, requestOf } from '../plugin/src/requests.ts'
 import { explorationPermissions, openPermissions } from '../plugin/src/permissions.ts'
 import { closeStore, openStore } from '../plugin/src/store.ts'
-import { saveRequestModel, saveWorkspaceHarness } from '../plugin/src/settings.ts'
+import { saveModels, saveRequestModel, saveWorkspaceHarness } from '../plugin/src/settings.ts'
 import { readFileSync } from 'node:fs'
 import { call, endProcessesIn, token, waitFor, workspaceWithFake } from './actions.ts'
 import { directory } from './support.ts'
@@ -612,7 +612,7 @@ test('queued requests keep their harness when the workspace changes host', async
 		{
 			CHECKMATE_HARNESS: 'claude',
 			CHECKMATE_PI_MODEL: 'startup-model',
-			CHECKMATE_PI_PROVIDER: undefined,
+			CHECKMATE_PI_PROVIDER: 'startup-provider',
 		}
 	)
 	const executable = join(dirname(executableOnPath('claude', f.env)!), 'pi')
@@ -645,7 +645,7 @@ createInterface({input: process.stdin}).on('line', line => {
 	const queued = await f.ask('Stay in the original conversation.')
 	f.read((store) => {
 		saveWorkspaceHarness(store, 'qa-lead', 'pi')
-		saveRequestModel(store, 'qa-lead', 'openrouter/z-ai/glm-5.3-flash', 'pi')
+		saveModels(store, 'qa-lead', 'pi', 'openrouter/z-ai/glm-5.3-flash', '')
 		saveRequestModel(store, 'qa-lead', 'opus', 'claude')
 	})
 	const pi = await f.ask('Start a separate Pi conversation.')
@@ -658,10 +658,19 @@ createInterface({input: process.stdin}).on('line', line => {
 	assert.equal((await f.state(pi, 'answered')).reply, 'Pi reply.')
 	const launch = JSON.parse(readFileSync(join(f.workspace, 'pi-request.json'), 'utf8'))
 	assert.equal(launch.harness, 'pi')
+	assert(!launch.args.includes('--provider'))
 	assert.equal(launch.args[launch.args.indexOf('--model') + 1], 'openrouter/z-ai/glm-5.3-flash')
 	assert.equal(launch.args[launch.args.indexOf('--session-id') + 1], f.request(pi)?.conversation)
 	const claude = f.called().at(-1)
 	assert.equal(claude.args[claude.args.indexOf('--model') + 1], 'opus')
+
+	f.read((store) => saveWorkspaceHarness(store, 'qa-lead', 'pi'))
+	const legacy = await f.post('/settings/harness/model', { harness: 'pi', model: 'z-ai/legacy' })
+	assert.equal(legacy.status, 303, legacy.body)
+	await f.state(await f.ask('Keep the configured provider.'), 'answered')
+	const legacyArgs = JSON.parse(readFileSync(join(f.workspace, 'pi-request.json'), 'utf8')).args
+	assert.equal(legacyArgs[legacyArgs.indexOf('--model') + 1], 'z-ai/legacy')
+	assert.equal(legacyArgs[legacyArgs.indexOf('--provider') + 1], 'startup-provider')
 })
 
 test('a request from a stale find bar is refused before it enters the queue', async (t) => {

@@ -4,9 +4,8 @@ import type { Html } from './html.ts'
 import type { Context, Page } from './layout.ts'
 import type { EntryPoint, InstanceRecord } from '../targets.ts'
 import { Refusal } from '../contracts.ts'
-import { requestModelText, workspaceUiEnv } from '../settings.ts'
+import { requestModelText, testerModelText, workspaceUiEnv } from '../settings.ts'
 import { conversationText } from './requests.ts'
-import { testLevels } from '../levels.ts'
 import { liveUi, requireChild } from '../sessions.ts'
 import { selectedHarness } from '../pi.ts'
 import type { Env } from '../sessions.ts'
@@ -486,11 +485,14 @@ export function harnessPage(
 	context: Context,
 	env: Env,
 	form: RulesForm | null = null,
-	model: RulesForm | null = null
+	model: RulesForm | null = null,
+	testerModel: RulesForm | null = null
 ): Page {
 	const effectiveEnv = workspaceUiEnv(store, env)
 	const harness = selectedHarness(effectiveEnv)
 	const pi = harness === 'pi'
+	const testerValue = testerModel?.value ?? testerModelText(store, harness)
+	const requestValue = model?.value ?? requestModelText(store, harness)
 	const body = html`${heading('Coding harness', null)}
 		<div class="panel">
 			<form method="post" action="/settings/harness/select" class="decision-form">
@@ -541,50 +543,51 @@ export function harnessPage(
 				<div class="btns"><button class="btn primary">Save the rules</button></div>
 			</form>
 		</section>
-		${
-			pi
-				? html`<section class="panel">
-						<h2 class="lab">Model of the testers</h2>
-						<p class="help">
-							Pi selects the model from its settings. Set CHECKMATE_PI_MODEL to choose a model for
-							Checkmate sessions.
-						</p>
-					</section>`
-				: html`<section class="panel" aria-labelledby="claude-model">
-						<h2 class="lab" id="claude-model">Model of the testers</h2>
-						<p class="help">
-							Checkmate gives each test level a default model alias. A test that you start in the UI uses
-							it. Claude Code resolves the alias.
-						</p>
-						<div class="scroll">
-							<table>
-								<thead>
-									<tr>
-										<th scope="col">Level</th>
-										<th scope="col">Model alias</th>
-										<th scope="col">Testers</th>
-									</tr>
-								</thead>
-								<tbody>
-									${Object.entries(testLevels).map(
-										([level, row]) =>
-											html`<tr>
-												<td class="mono">${level}</td>
-												<td class="mono">${row.model}</td>
-												<td>${row.explorers}${row.verifier ? ' and a verifier' : ''}</td>
-											</tr>`
-									)}
-								</tbody>
-							</table>
-						</div>
-						<p class="help">
-							The host wins. To use another model, start the test from a shell with
-							<code>checkmate test &lt;planId&gt; --claude-arg --model --claude-arg &lt;model&gt;</code>.
-							When the host refuses the model, the test fails and names this override. Checkmate does not
-							try another model.
-						</p>
-					</section>`
-		}
+		<section class="panel" aria-labelledby="model-settings" data-model-catalog="${harness}">
+			<h2 class="lab" id="model-settings">Models</h2>
+			<p class="help">Choose a model for each kind of work. Choose a default or a model from the list.</p>
+			<p class="help" role="status" data-model-status>Loading models from ${pi ? 'Pi' : 'Claude Code'}…</p>
+			<button class="btn" type="button" data-model-refresh>Refresh models</button>
+			<div class="field-group">
+				<label class="lab" for="model-filter">Filter models</label>
+				<input id="model-filter" type="search" autocomplete="off" placeholder="Search available models" />
+			</div>
+			<form method="post" action="/settings/harness/models" class="decision-form">
+				<input type="hidden" name="csrf" value="${context.csrf}" />
+				<input type="hidden" name="harness" value="${harness}" />
+				<div class="field-group">
+					<label class="lab" for="tester-model">Model for testers</label>
+					<select id="tester-model" name="testerModel" aria-describedby="tester-model-help" data-model-select>
+						<option value="">${pi ? 'Pi default' : 'Test level default'}</option>
+						${testerValue ? html`<option value="${testerValue}" selected>${testerValue}</option>` : ''}
+					</select>
+					<p class="help" id="tester-model-help">
+						${pi ? 'The Pi default is the model configured in Pi.' : 'The test level selects its default model.'}
+					</p>
+					<p class="help" data-model-unavailable="tester-model" hidden></p>
+					${testerModel?.error ? html`<p class="form-error" role="alert" data-field="model">${testerModel.error}</p>` : ''}
+				</div>
+
+				<div class="field-group">
+					<label class="lab" for="request-model">Model for requests</label>
+					<select
+						id="request-model"
+						name="requestModel"
+						aria-describedby="request-model-help"
+						data-model-select
+					>
+						<option value="">${pi ? 'Pi default' : 'Claude Code default'}</option>
+						${requestValue ? html`<option value="${requestValue}" selected>${requestValue}</option>` : ''}
+					</select>
+					<p class="help" id="request-model-help">
+						The default is the model configured in ${pi ? 'Pi' : 'Claude Code'}.
+					</p>
+					<p class="help" data-model-unavailable="request-model" hidden></p>
+					${model?.error ? html`<p class="form-error" role="alert" data-field="model">${model.error}</p>` : ''}
+				</div>
+				<div class="btns"><button class="btn primary">Save models</button></div>
+			</form>
+		</section>
 		<section class="panel" aria-labelledby="claude-requests">
 			<h2 class="lab" id="claude-requests">Requests</h2>
 
@@ -593,27 +596,6 @@ export function harnessPage(
 				own session. It has your login, your settings, and your tools. Checkmate asks you here when a tool needs
 				permission.
 			</p>
-			<form method="post" action="/settings/harness/model" class="decision-form">
-				<input type="hidden" name="csrf" value="${context.csrf}" />
-				<input type="hidden" name="harness" value="${harness}" />
-				<div class="field-group">
-					<label class="lab" for="request-model">Model for requests</label>
-					<input
-						id="request-model"
-						name="model"
-						maxlength="${pi ? 200 : 100}"
-						autocomplete="off"
-						value="${model?.value ?? requestModelText(store, harness)}"
-						aria-describedby="request-model-help"
-						${model ? html`autofocus` : ''}
-					/>
-					<p class="help" id="request-model-help">
-						A model alias or ID. Empty means the model that ${pi ? 'Pi' : 'Claude Code'} chooses.
-					</p>
-					${model ? html`<p class="form-error" role="alert" data-field="model">${model.error}</p>` : ''}
-				</div>
-				<div class="btns"><button class="btn primary">Save the model</button></div>
-			</form>
 			<p class="help" data-region="conversation">${conversationText(store)}</p>
 			<form method="post" action="/requests/conversation" class="decision-form">
 				<input type="hidden" name="csrf" value="${context.csrf}" />

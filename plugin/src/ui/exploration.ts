@@ -663,6 +663,14 @@ function explorerDetail(store: Store, live: Live, item: LiveExplorer, crumbs: Ht
 		<h2 class="q-h">Explorer ${item.explorer}</h2>
 		<p class="q-meta">${explorerState(item)} ${inState(item)}</p>
 		<dl class="facts">
+			${
+				item.model
+					? html`<div>
+							<dt>Model</dt>
+							<dd><code>${item.model}</code></dd>
+						</div>`
+					: ''
+			}
 			<div>
 				<dt>${live.path === 'session' ? 'Step' : 'Turn'}</dt>
 				<dd>${item.turn ?? none}</dd>

@@ -34,7 +34,7 @@ import {
 	startConversation,
 	stopRequestRecord,
 } from '../requests.ts'
-import { requestModelText, workspaceUiEnv } from '../settings.ts'
+import { piRequestModelEnv, requestModelText, workspaceUiEnv } from '../settings.ts'
 import { activityLine } from './hooks.ts'
 
 export type RequesterOptions = {
@@ -254,11 +254,7 @@ export function createRequester(store: Store, options: RequesterOptions): Reques
 		let modelArgs: string[] = []
 		try {
 			program = requireChild(options.env, run.harness)
-			if (run.harness === 'pi')
-				modelArgs = piModelArgs({
-					...options.env,
-					CHECKMATE_PI_MODEL: requestModelText(store, 'pi') || options.env.CHECKMATE_PI_MODEL,
-				})
+			if (run.harness === 'pi') modelArgs = piModelArgs(piRequestModelEnv(store, options.env))
 		} catch (error) {
 			const refusal = error as Refusal
 			run.reason = [refusal.message, refusal.hint].filter(Boolean).join(' ')

@@ -52,11 +52,15 @@ import { explorationEvents } from '../explorations.ts'
 import { all } from '../store.ts'
 import { autoMode, defaultBuild, hasRequest, runTest } from '../modes.ts'
 import { upstreamBase } from '../change.ts'
-import { levelNames } from '../levels.ts'
+import { levelNames, testLevels } from '../levels.ts'
+import type { TestLevel } from '../levels.ts'
 import {
 	ruleTokens,
+	requestModelText,
+	testerModelText,
 	saveRequestModel,
 	saveTesterRules,
+	saveModels,
 	saveWorkspaceHarness,
 	testerRulesText,
 	workspaceUiEnv,
@@ -67,6 +71,7 @@ import type { Env } from '../sessions.ts'
 import type { StopDelays } from '../sessions.ts'
 import { liveUi, removeUiFile, requireChild, workspaceHookToken, writeUiFile } from '../sessions.ts'
 import { selectedHarness } from '../pi.ts'
+import { discoverModels } from '../model-catalog.ts'
 import { launchPlan } from '../explorers.ts'
 import { maxAreaCharacters, outsideRule, planRules, ticketFile } from '../rules.ts'
 import { ruleMap } from '../rulemap.ts'
@@ -315,6 +320,7 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 	const hookToken = workspaceHookToken(options.workspace, options.newHookToken)
 	const hooks = createHooks(store, hookToken, options)
 	const env = options.env ?? process.env
+	const pendingModels = new Map<string, ReturnType<typeof discoverModels>>()
 	const launchEnv = () => workspaceUiEnv(store, env)
 	const requester = createRequester(store, {
 		workspace: options.workspace,
@@ -523,6 +529,8 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 				'Cache-Control': 'public, max-age=31536000, immutable',
 			})
 		if (pathname === '/events') return events(request)
+		if (pathname === '/settings/harness/models') return modelCatalog(request)
+		if (pathname === '/settings/harness/tester-count') return testerCount(request)
 		if (pathname === '/find')
 			return send(
 				request.res,
@@ -1147,6 +1155,15 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		return { instance: undefined, error: `Choose the instance: ${list}.` }
 	}
 
+	function testerModelsFrom(form: URLSearchParams) {
+		const selected: Record<string, string> = {}
+		for (const [name, value] of form) {
+			if (name.startsWith('testerModel.') && value.trim())
+				selected[name.slice('testerModel.'.length)] = value.trim()
+		}
+		return selected
+	}
+
 	function startTest(request: Request, form: URLSearchParams, planId: string) {
 		const back = `/plans/${planId}`
 		const { actor, cookies } = actorFrom(request, form)
@@ -1186,8 +1203,10 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 					mode: autoMode(store, planId),
 					allow: ruleTokens(form.get('rules') ?? ''),
 					claudeArgs: [],
+					testerModels: testerModelsFrom(form),
 				},
-				launchEnv()
+				launchEnv(),
+				true
 			)
 			redirect(request.res, `/explorations/${started.subject}`, [
 				...cookies,
@@ -1466,6 +1485,51 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		])
 	}
 
+	function testerCount(request: Request) {
+		const harness = selectedHarness(workspaceUiEnv(store, env))
+		const query = request.url.searchParams
+		const reply = (status: number, body: unknown) =>
+			send(request.res, status, 'application/json; charset=utf-8', JSON.stringify(body), {
+				'Cache-Control': 'no-store',
+			})
+		if (query.get('harness') !== harness)
+			return reply(409, { error: 'The coding harness changed. Reload the page.' })
+		const level = query.get('level') ?? ''
+		if (!(levelNames as string[]).includes(level)) return reply(422, { error: 'Choose a test level.' })
+		try {
+			const plan = query.get('plan')
+			const target = query.get('target')
+			const profile = plan ? planRequest(store, plan).target.profile : targetRevision(store, target ?? '').profile
+			return reply(200, { count: profile.explore?.explorers ?? testLevels[level as TestLevel].explorers })
+		} catch {
+			return reply(404, { error: 'Choose a target or plan.' })
+		}
+	}
+
+	async function modelCatalog(request: Request) {
+		const harness = selectedHarness(workspaceUiEnv(store, env))
+		const sendJson = (status: number, body: unknown) =>
+			send(request.res, status, 'application/json; charset=utf-8', JSON.stringify(body), {
+				'Cache-Control': 'no-store',
+			})
+		if (request.url.searchParams.get('harness') !== harness)
+			return sendJson(409, { error: 'The coding harness changed. Reload the page.' })
+		try {
+			let pending = pendingModels.get(harness)
+			if (!pending) {
+				pending = discoverModels(harness, store.workspace, workspaceUiEnv(store, env))
+				pendingModels.set(harness, pending)
+				void pending.finally(() => pendingModels.delete(harness)).catch(() => {})
+			}
+			const models = await pending
+			if (selectedHarness(workspaceUiEnv(store, env)) !== harness)
+				return sendJson(409, { error: 'The coding harness changed. Reload the page.' })
+			return sendJson(200, { models })
+		} catch {
+			return sendJson(503, { error: 'Could not load models. Try again.' })
+		}
+	}
+
 	function saveHarness(request: Request, form: URLSearchParams) {
 		const { actor, cookies } = actorFrom(request, form)
 		if (!actor)
@@ -1488,7 +1552,15 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		if (!actor) return refuse(request, page('Enter your name. Checkmate records it with the setting.'), cookies)
 		const harness = selectedHarness(workspaceUiEnv(store, env))
 		if (form.get('harness') !== harness)
-			return refuse(request, page('The coding harness changed. Reload the page and try again.'), cookies)
+			return refuse(
+				request,
+				() =>
+					harnessPage(store, context(request), env, null, {
+						value: requestModelText(store, harness),
+						error: 'The coding harness changed. Reload the page and try again.',
+					}),
+				cookies
+			)
 		try {
 			saveRequestModel(store, actor, typed, harness)
 		} catch (error) {
@@ -1504,6 +1576,41 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		])
 	}
 
+	function saveModelSettings(request: Request, form: URLSearchParams) {
+		const { actor, cookies } = actorFrom(request, form)
+		const harness = selectedHarness(workspaceUiEnv(store, env))
+		const tester = form.get('testerModel') ?? testerModelText(store, harness)
+		const requested = form.get('requestModel') ?? requestModelText(store, harness)
+		const page = (error: string) => () =>
+			harnessPage(store, context(request), env, null, { value: requested, error: '' }, { value: tester, error })
+		if (!actor) return refuse(request, page('Enter your name. Checkmate records it with the setting.'), cookies)
+		if (form.get('harness') !== harness)
+			return refuse(
+				request,
+				() =>
+					harnessPage(
+						store,
+						context(request),
+						env,
+						null,
+						{ value: requestModelText(store, harness), error: '' },
+						{
+							value: testerModelText(store, harness),
+							error: 'The coding harness changed. Reload the page and try again.',
+						}
+					),
+				cookies
+			)
+		if (!form.has('requestModel') || !form.has('testerModel'))
+			return refuse(request, page('Reload the page to save both model choices.'), cookies)
+		try {
+			saveModels(store, actor, harness, requested, tester)
+		} catch (error) {
+			return refuse(request, page(engineText(error)), cookies)
+		}
+		redirect(request.res, '/settings/harness', [...cookies, cookie('checkmate_toast', 'Saved the models', 60)])
+	}
+
 	function saveRules(request: Request, form: URLSearchParams) {
 		const { actor, cookies } = actorFrom(request, form)
 		const typed = form.get('rules') ?? ''
@@ -1511,7 +1618,15 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		if (!actor) return refuse(request, page('Enter your name. Checkmate records it with the setting.'), cookies)
 		const harness = selectedHarness(workspaceUiEnv(store, env))
 		if (form.get('harness') !== harness)
-			return refuse(request, page('The coding harness changed. Reload the page and try again.'), cookies)
+			return refuse(
+				request,
+				() =>
+					harnessPage(store, context(request), env, {
+						value: testerRulesText(store, harness),
+						error: 'The coding harness changed. Reload the page and try again.',
+					}),
+				cookies
+			)
 		try {
 			saveTesterRules(store, actor, typed, harness)
 		} catch (error) {
@@ -1651,12 +1766,15 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		if (address && URL.canParse(address) && !isLocalAddress(address) && form.get('confirmed') !== '1')
 			return refuse(`Confirm that Checkmate may test ${hostOf(address)}, an address that is not local.`, 'target')
 		const childEnv = launchEnv()
+		const harness = selectedHarness(childEnv)
 		try {
-			requireChild(childEnv, selectedHarness(childEnv))
+			requireChild(childEnv, harness)
 			launchPlan(
 				targetRevision(store, targetId).profile,
-				{ planId, build, allow, claudeArgs: [], level },
-				childEnv
+				{ planId, build, allow, claudeArgs: [], level, testerModels: testerModelsFrom(form) },
+				childEnv,
+				testerModelText(store, harness),
+				true
 			)
 		} catch (error) {
 			const message = engineText(error)
@@ -1683,8 +1801,10 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 					repo,
 					allow,
 					claudeArgs: [],
+					testerModels: testerModelsFrom(form),
 				},
-				childEnv
+				childEnv,
+				true
 			)
 			redirect(request.res, `/explorations/${started.subject}`, [
 				...cookies,
@@ -2025,6 +2145,7 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		}
 		if (pathname === '/bulk') return bulk(request, form)
 		if (pathname === '/settings/harness/select') return saveHarness(request, form)
+		if (pathname === '/settings/harness/models') return saveModelSettings(request, form)
 		if (pathname === '/settings/claude' || pathname === '/settings/harness/rules') return saveRules(request, form)
 		if (pathname === '/settings/claude/model' || pathname === '/settings/harness/model')
 			return saveModel(request, form)
@@ -2095,7 +2216,7 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		try {
 			if (req.method === 'POST' && hooks.handles(request.url.pathname))
 				return await hooks.handle(req, res, request.url.pathname)
-			if (req.method === 'GET' || req.method === 'HEAD') return get(request)
+			if (req.method === 'GET' || req.method === 'HEAD') return await get(request)
 			if (req.method === 'POST') return await post(request)
 			send(res, 405, 'text/plain; charset=utf-8', 'Method not allowed.', { Allow: 'GET, POST' })
 		} catch (error) {

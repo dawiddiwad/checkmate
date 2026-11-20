@@ -2,6 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { seedVolume } from '../scripts/ui-volume.ts'
 import { closeStore, openStore } from '../plugin/src/index.ts'
+import { saveModels } from '../plugin/src/settings.ts'
 import { decideClaim } from '../plugin/src/journal.ts'
 import { answerGap } from '../plugin/src/plans.ts'
 import { launchWith, open, browserTest, stop } from './browser.ts'
@@ -619,5 +620,55 @@ test('coding harness choice is available and saved from Settings', browserTest, 
 	assert.match((await page.locator('#harness-program').locator('..').textContent()) ?? '', /Pi/)
 	await page.reload()
 	assert.equal(await page.getByLabel('Program for this workspace').inputValue(), 'pi')
+	await check(page, url('/settings/harness'), 400, 'light')
+})
+
+test('model choices are searchable, preserve unavailable values, and retry discovery', browserTest, async (t) => {
+	const { page, url, workspace } = await open(t, {}, { ...process.env, CHECKMATE_HARNESS: undefined })
+	const store = openStore(workspace)
+	try {
+		saveModels(store, 'qa-lead', 'claude', 'sonnet', 'retired')
+	} finally {
+		closeStore(store)
+	}
+	let fail = false
+	await page.route('**/settings/harness/models?*', (route) =>
+		route.fulfill(
+			fail
+				? { status: 503, json: { error: 'Could not load models. Try again.' } }
+				: {
+						json: {
+							models: [
+								{ value: 'sonnet', label: 'Sonnet' },
+								{ value: 'opus', label: 'Opus' },
+								{ value: 'haiku', label: 'Haiku' },
+							],
+						},
+					}
+		)
+	)
+	await page.goto(url('/settings/harness'))
+	await page.getByText('3 models available.', { exact: false }).waitFor()
+	assert.equal(await page.getByLabel('Model for testers').inputValue(), 'retired')
+	assert.equal(await page.getByLabel('Model for requests').inputValue(), 'sonnet')
+	assert.match(
+		(await page.locator('[data-model-unavailable="tester-model"]').textContent()) ?? '',
+		/not in the current list/
+	)
+	await page.getByLabel('Filter models').fill('opus')
+	assert.equal(await page.locator('#tester-model option[value="retired"]').count(), 1)
+	await page.getByLabel('Model for testers').selectOption('opus')
+	await page.getByLabel('Filter models').fill('haiku')
+	await page.getByLabel('Model for requests').selectOption('haiku')
+	await page.getByRole('button', { name: 'Save models' }).click()
+	assert.equal(await page.getByLabel('Model for testers').inputValue(), 'opus')
+	assert.equal(await page.getByLabel('Model for requests').inputValue(), 'haiku')
+	fail = true
+	await page.getByRole('button', { name: 'Refresh models' }).click()
+	await page.getByText('Could not load models. Try again.').waitFor()
+	assert.equal(await page.getByLabel('Model for testers').inputValue(), 'opus')
+	fail = false
+	await page.getByRole('button', { name: 'Refresh models' }).click()
+	await page.getByText('3 models available.', { exact: false }).waitFor()
 	await check(page, url('/settings/harness'), 400, 'light')
 })

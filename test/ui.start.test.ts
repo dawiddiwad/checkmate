@@ -353,3 +353,30 @@ test('a new change on an address that is not local asks to confirm', async (t) =
 	)
 	assert(!existsSync(join(workspace, '.checkmate', 'sources')))
 })
+
+test('a new change records individual tester models and rejects extra testers before creating the plan', async (t) => {
+	const { post, read } = await fixture(t, 'target')
+	const form = {
+		text: 'Check the checkout.',
+		plan: 'model-choice',
+		target: 'checkout-local',
+		build: 'b1',
+		level: 'normal',
+		rules: 'Read',
+		harness: 'claude',
+		'testerModel.a1': 'haiku',
+		'testerModel.a2': 'sonnet',
+	}
+	const invalid = await post('/new', { ...form, 'testerModel.a3': 'opus' })
+	assert.equal(invalid.status, 422)
+	assert.equal(
+		read((store) => store.db.prepare('SELECT count(*) AS n FROM requests').get()!.n),
+		0
+	)
+	const started = await post('/new', form)
+	assert.equal(started.status, 303)
+	read((store) => {
+		const start = explorationEvents(store, 'x-1').find((event) => event.step === 'start')
+		assert.deepEqual(start?.detail.testerModels, { a1: 'haiku', a2: 'sonnet' })
+	})
+})

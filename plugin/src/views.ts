@@ -443,6 +443,7 @@ function sessionExplorerLive(events: ExplorationEvent[], item: Explorer, now: nu
 	const span = (from: string, to: number) => Math.max(0, to - Date.parse(from))
 	return {
 		explorer: item.explorer,
+		model: null,
 		turn: (action?.detail.step as string | undefined) ?? null,
 		state,
 		startedAt: last?.at ?? null,
@@ -516,6 +517,7 @@ function explorerLive(
 		)
 	return {
 		explorer: item.explorer,
+		model: item.model,
 		turn,
 		state,
 		startedAt,

@@ -8627,6 +8627,9 @@ function selectedHarness(env = process.env) {
   if (configured === "pi") return "pi";
   throw new Refusal("malformed", "CHECKMATE_HARNESS must be claude or pi.");
 }
+function piModelEnv(env, model, providerQualified = model.includes("/")) {
+  return model ? { ...env, CHECKMATE_PI_MODEL: model, ...providerQualified ? { CHECKMATE_PI_PROVIDER: void 0 } : {} } : env;
+}
 function piModelArgs(env) {
   const model = env.CHECKMATE_PI_MODEL?.trim();
   const provider = env.CHECKMATE_PI_PROVIDER?.trim();
@@ -8767,8 +8770,8 @@ function installedPluginId(env, root = pluginRoot) {
       if (typeof install.installPath === "string" && own && realPath(install.installPath) === own) return id2;
   return null;
 }
-function checkClaudeArgs(claudeArgs) {
-  for (const arg of claudeArgs) {
+function checkClaudeArgs(claudeArgs2) {
+  for (const arg of claudeArgs2) {
     const reserved = reservedClaudeArgs.find((flag) => arg === flag || arg.startsWith(`${flag}=`));
     if (reserved)
       throw new Refusal(
@@ -8777,7 +8780,7 @@ function checkClaudeArgs(claudeArgs) {
         "Give tool rules with --allow. Give other host choices, for example --model, with --claude-arg."
       );
   }
-  return claudeArgs;
+  return claudeArgs2;
 }
 function uiFilePath(workspace) {
   return join2(workspace, ".checkmate", "ui.json");
@@ -13471,23 +13474,59 @@ function saveTesterRules(store, actor, text, harness = "claude") {
     return { reply: completed(name2, { rules }), subjects: ["settings"] };
   });
 }
-var modelPattern = /^[A-Za-z0-9][A-Za-z0-9._:[\]-]{0,99}$/;
-var piModelPattern = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,199}$/;
+var modelPattern = /^[A-Za-z0-9][A-Za-z0-9._:/[\]-]{0,511}$/;
+var piModelPattern = /^[^\p{Cc}\p{Cs}]{1,512}$/u;
+function piRequestModel(store) {
+  const value2 = setting(store, "piRequestModel") ?? "";
+  return value2.startsWith("{") ? JSON.parse(value2) : { model: value2, providerQualified: false };
+}
 function requestModelText(store, harness = "claude") {
-  return setting(store, harness === "pi" ? "piRequestModel" : "requestModel") ?? "";
+  return harness === "pi" ? piRequestModel(store).model : setting(store, "requestModel") ?? "";
+}
+function piRequestModelEnv(store, env) {
+  const { model, providerQualified } = piRequestModel(store);
+  return piModelEnv(env, model, providerQualified);
+}
+function testerModelText(store, harness = "claude") {
+  return setting(store, harness === "pi" ? "piTesterModel" : "testerModel") ?? "";
 }
 function saveRequestModel(store, actor, text, harness = "claude") {
   const model = text.trim();
   const name2 = harness === "pi" ? "piRequestModel" : "requestModel";
   return write(store, { actor, command: "setting set", subject: name2, input: { model } }, (operationId) => {
-    requireWellFormed(
-      !model || (harness === "pi" ? piModelPattern : modelPattern).test(model),
-      `${model} is not a model alias or ID.`,
-      harness === "pi" ? "Give a Pi model ID. Leave the field empty to use the model configured in Pi." : "Use letters, digits, and the characters . : [ ] - . Leave the field empty for the model of Claude Code."
-    );
-    insertSetting(store, name2, model, operationId);
+    requireModel(harness, model);
+    const value2 = harness === "pi" ? JSON.stringify({ model, providerQualified: false }) : model;
+    if (value2 !== setting(store, name2)) insertSetting(store, name2, value2, operationId);
     return { reply: completed(name2, { model }), subjects: ["settings"] };
   });
+}
+function saveModels(store, actor, harness, request, tester) {
+  const requestModel = request.trim();
+  const testerModel = tester.trim();
+  const input = { harness, requestModel, testerModel };
+  return write(store, { actor, command: "setting set", subject: "models", input }, (operationId) => {
+    requireModel(harness, requestModel);
+    requireModel(harness, testerModel);
+    if (requestModel !== requestModelText(store, harness)) {
+      const name2 = harness === "pi" ? "piRequestModel" : "requestModel";
+      insertSetting(store, name2, modelValue(name2, requestModel), operationId);
+    }
+    if (testerModel !== testerModelText(store, harness)) {
+      const name2 = harness === "pi" ? "piTesterModel" : "testerModel";
+      insertSetting(store, name2, testerModel, operationId);
+    }
+    return { reply: completed("models", input), subjects: ["settings"] };
+  });
+}
+function modelValue(name2, model) {
+  return name2 === "piRequestModel" ? JSON.stringify({ model, providerQualified: model.includes("/") }) : model;
+}
+function requireModel(harness, model) {
+  requireWellFormed(
+    !model || (harness === "pi" ? piModelPattern : modelPattern).test(model),
+    `${model} is not a model alias or ID.`,
+    harness === "pi" ? "Give a Pi model ID. Leave the field empty to use the model configured in Pi." : "Use letters, digits, and the characters . : / [ ] - . Use an empty field for the default model."
+  );
 }
 
 // plugin/src/levels.ts
@@ -14372,8 +14411,15 @@ function addedEntries(store, explorationId, actor, after) {
   return Object.fromEntries(rows2.map((row3) => [row3.kind, row3.count]));
 }
 function launchContext(store, explorationId, explorer, session) {
-  const launch = explorationEvents(store, explorationId).filter((event2) => event2.step === "launch" && event2.explorer === explorer && event2.detail.session === session).at(-1);
-  return launch ? launch.detail.context : void 0;
+  const events = explorationEvents(store, explorationId);
+  const turn = events.findLastIndex(
+    (event2) => event2.step === "follow-turn" && event2.status !== "operational_error" && event2.explorer === explorer && event2.detail.session === session
+  );
+  const follow = turn === -1 ? void 0 : events.slice(0, turn).findLast((event2) => event2.step === "follow");
+  const launch = events.findLast(
+    (event2) => event2.step === "launch" && event2.explorer === explorer && event2.detail.session === session
+  );
+  return events[turn]?.detail.context ?? follow?.detail.context ?? launch?.detail.context;
 }
 var entryTitle = (entry) => entry.title ?? entry.text ?? entry.question ?? entry.saw ?? "";
 var entryKey = (entry) => `${entry.kind}
@@ -14770,14 +14816,29 @@ var pollMilliseconds = 500;
 var activityMilliseconds = 5e3;
 var mergerActor = "qa:merge";
 var verifierActor = "qa:verify";
-function hostModel(claudeArgs) {
-  for (const [index2, arg] of claudeArgs.entries()) {
-    if (arg === "--model") return claudeArgs[index2 + 1];
+function hostModel(claudeArgs2) {
+  for (const [index2, arg] of claudeArgs2.entries()) {
+    if (arg === "--model") return claudeArgs2[index2 + 1];
     if (arg.startsWith("--model=")) return arg.slice("--model=".length);
   }
   return void 0;
 }
-function launchPlan(profile, input, env) {
+function contextForModel(context, model) {
+  if (!model) return context;
+  const pi = context.harness === "pi";
+  const source = pi ? context.piArgs ?? [] : context.claudeArgs;
+  const args = [];
+  for (let index2 = 0; index2 < source.length; index2++) {
+    const value2 = source[index2];
+    const flag = value2.split("=", 1)[0];
+    if (flag === "--model" || flag === "--provider" && pi && model.includes("/")) {
+      if (value2 === flag) index2++;
+    } else args.push(value2);
+  }
+  args.push("--model", model);
+  return pi ? { ...context, piArgs: args } : { ...context, claudeArgs: args };
+}
+function launchPlan(profile, input, env, savedModel = "", preferSaved = false) {
   const level = requireChoice(
     input.level ?? storedLevel(profile.explore?.level) ?? defaultLevel,
     levelNames,
@@ -14786,7 +14847,13 @@ function launchPlan(profile, input, env) {
   const row3 = testLevels[level];
   const explorers = input.explorers ?? profile.explore?.explorers ?? row3.explorers;
   const testSeconds = input.minutes ? input.minutes * 60 : row3.testSeconds;
+  const testerModels2 = Object.entries(input.testerModels ?? {}).flatMap(([name2, text]) => {
+    requireWellFormed(typeof text === "string", `Give a model ID for tester ${name2}.`);
+    const model2 = text.trim();
+    return model2 ? [[name2, model2]] : [];
+  });
   if (input.session) {
+    requireWellFormed(!testerModels2.length, "Individual tester models require testers in new processes.");
     requireWellFormed(
       !input.claudeArgs.length && input.timeoutSeconds === void 0,
       "--claude-arg and --timeout are for testers in new processes. With --session, the host session starts the testers as agents."
@@ -14807,6 +14874,11 @@ function launchPlan(profile, input, env) {
     };
   }
   const harness = selectedHarness(env);
+  const names = explorerNames(explorers);
+  for (const [name2, model2] of testerModels2) {
+    requireWellFormed(names.includes(name2), `Unknown tester ${name2} for this exploration.`);
+    requireModel(harness, model2);
+  }
   if (harness === "pi") {
     requireWellFormed(
       !input.claudeArgs.length,
@@ -14814,9 +14886,13 @@ function launchPlan(profile, input, env) {
     );
     piToolNames(input.allow);
   }
-  const claudeArgs = checkClaudeArgs(input.claudeArgs);
-  const piArgs2 = harness === "pi" ? piModelArgs(env) : [];
-  const host = hostModel(harness === "pi" ? piArgs2 : claudeArgs);
+  const claudeArgs2 = checkClaudeArgs(input.claudeArgs);
+  const selected = Boolean(
+    savedModel && (harness === "pi" ? preferSaved || !env.CHECKMATE_PI_MODEL?.trim() : !hostModel(claudeArgs2))
+  );
+  const piArgs2 = harness === "pi" ? piModelArgs(selected ? piModelEnv(env, savedModel) : env) : [];
+  const host = hostModel(harness === "pi" ? piArgs2 : claudeArgs2);
+  const model = selected ? savedModel : host ?? (harness === "pi" ? null : row3.model);
   const hiddenPlugin = harness === "claude" ? installedPluginId(env) : null;
   requireWellFormed(
     input.allow.length || explorers === 0 && !row3.verifier,
@@ -14826,10 +14902,15 @@ function launchPlan(profile, input, env) {
   return {
     level,
     explorers,
-    model: host ?? (harness === "pi" ? null : row3.model),
-    modelFrom: host || harness === "pi" ? "host" : "level",
+    model,
+    modelFrom: selected ? "workspace" : host || harness === "pi" ? "host" : "level",
     verifier: row3.verifier,
-    context: harness === "pi" ? { hiddenPlugin, claudeArgs: [], harness, piArgs: piArgs2 } : { hiddenPlugin, claudeArgs: host ? claudeArgs : [...claudeArgs, "--model", row3.model], harness },
+    context: harness === "pi" ? { hiddenPlugin, claudeArgs: [], harness, piArgs: piArgs2 } : {
+      hiddenPlugin,
+      claudeArgs: host ? claudeArgs2 : [...claudeArgs2, "--model", selected ? savedModel : row3.model],
+      harness
+    },
+    ...testerModels2.length ? { testerModels: Object.fromEntries(testerModels2) } : {},
     allow: input.allow,
     studySeconds: row3.studySeconds,
     testSeconds,
@@ -14932,7 +15013,7 @@ function startSupervisor(store, explorationId, actor, env, extra = []) {
   );
   child.unref();
 }
-function startExploration(store, actor, given, env) {
+function startExploration(store, actor, given, env, preferSavedModel = false) {
   if (!given.session) env = workspaceEnv(store, env);
   const change = changeOf(store.workspace, given);
   const input = { ...given, change, scope: given.scope ?? (change ? changedFiles(store.workspace, change) : []) };
@@ -14940,7 +15021,14 @@ function startExploration(store, actor, given, env) {
     if (!input.session) requireChild(env, selectedHarness(env));
     const opened = input.explorationId ? finishable(store, input.explorationId) : insertExploration(store, input, operationId, at);
     const row3 = explorationRow(store, opened.explorationId);
-    const launch = launchPlan(targetRevision(store, row3.target_id, row3.target_revision).profile, input, env);
+    const savedModel = input.session ? "" : testerModelText(store, selectedHarness(env));
+    const launch = launchPlan(
+      targetRevision(store, row3.target_id, row3.target_revision).profile,
+      input,
+      env,
+      savedModel,
+      preferSavedModel
+    );
     addEvent(
       store,
       opened.explorationId,
@@ -15003,9 +15091,11 @@ function noteChild(store, actor, explorationId, explorer) {
     if (explorer && testerStopOf(explorationEvents(store, explorationId), explorer)) endGroup(pid, "SIGTERM");
   };
 }
-function failureHint(launch, call) {
+function failureHint(launch, call, testerModel) {
   if (authenticationFailed(call)) return launch.context.harness === "pi" ? piAuthenticationHint : authenticationHint;
   if (!/model/i.test([call.failure?.[1] ?? "", ...call.stderr ?? []].join(" "))) return void 0;
+  if (testerModel) return `The host refused tester model ${testerModel}. Select another model for the tester.`;
+  if (launch.modelFrom === "workspace") return "Change Model for testers in Settings.";
   if (launch.context.harness === "pi")
     return "Check the model configured in Pi, or set CHECKMATE_PI_MODEL and CHECKMATE_PI_PROVIDER.";
   return launch.modelFrom === "level" ? `The host refused the model ${launch.model} of level ${launch.level}. Give another model with --claude-arg --model --claude-arg <model>, or choose another --level.` : `The host refused the model ${launch.model}. Give another model with --claude-arg --model --claude-arg <model>.`;
@@ -15062,6 +15152,7 @@ async function launchExplorers(store, actor, explorationId, launch, env) {
   const executable = requireChild(env, launch.context.harness);
   const runs = explorerNames(launch.explorers).map(async (explorer) => {
     const session = randomUUID3();
+    const tester = contextForModel(launch.context, launch.testerModels?.[explorer]);
     const { folder, grant, deny, extraEnv } = explorerWork(store, explorationId, explorer, launch.explorers);
     const rules = launch.context.harness === "pi" ? launch.allow : [...launch.allow, ...grant];
     const brief = explorerBrief(opened.charter, entries, `qa-${explorationId}-${explorer}-`, folder, {
@@ -15074,14 +15165,14 @@ async function launchExplorers(store, actor, explorationId, launch, env) {
       status: "started",
       detail: {
         session,
-        context: launch.context,
+        context: tester,
         engineRules: grant,
         brief
       }
     });
     const turn = (own, prompt, name2) => {
       const hook = childHook(store.workspace, explorationId, explorer);
-      const context = { ...launch.context, deny, hook, work: folder };
+      const context = { ...tester, deny, hook, work: folder };
       return watchStray(
         store,
         actor,
@@ -15117,7 +15208,7 @@ async function launchExplorers(store, actor, explorationId, launch, env) {
   const ended = await Promise.all(runs);
   for (const { explorer, session, calls } of ended) {
     const call = calls.find((item) => item.failure) ?? calls.at(-1);
-    const hint = failureHint(launch, call);
+    const hint = failureHint(launch, call, launch.testerModels?.[explorer]);
     const durations = calls.flatMap((item) => item.durationMs === void 0 ? [] : [item.durationMs]);
     event(store, actor, explorationId, {
       step: "end",
@@ -15465,16 +15556,18 @@ function startFollow(store, actor, input, env) {
       requireWellFormed(!input.claudeArgs.length, "--claude-arg is for Claude.");
       piToolNames(input.allow);
     }
-    const claudeArgs = checkClaudeArgs(input.claudeArgs);
+    const claudeArgs2 = checkClaudeArgs(input.claudeArgs);
+    const modelOverride = hostModel(claudeArgs2);
     const plan = {
       answers: answered.map((question) => question.answerId),
       questions: answered.map((question) => ({ question: question.question, answer: question.answer })),
       after: lastEntry(store),
       allow: input.allow.length ? input.allow : stored.allow,
-      context: claudeArgs.length ? {
+      context: claudeArgs2.length ? {
         ...stored.context,
-        claudeArgs: hostModel(claudeArgs) || !stored.model ? claudeArgs : [...claudeArgs, "--model", stored.model]
+        claudeArgs: modelOverride || !stored.model ? claudeArgs2 : [...claudeArgs2, "--model", stored.model]
       } : stored.context,
+      ...modelOverride ? { modelOverride } : {},
       timeoutSeconds: input.timeoutSeconds ?? stored.timeoutSeconds,
       seconds: testLevels[stored.level].followSeconds
     };
@@ -15523,15 +15616,18 @@ async function driveFollow(workspace, explorationId, env) {
     const events = explorationEvents(store, explorationId);
     if (stopOf(events)) return;
     const plan = events.findLast((item) => item.step === "follow").detail;
+    const initial = startOf(events);
+    const followModel = hostModel(plan.context.claudeArgs);
     const launch = {
-      ...startOf(events),
+      ...initial,
+      ...followModel && followModel !== initial.model ? { model: followModel, modelFrom: "host" } : {},
       allow: plan.allow,
       context: plan.context,
       timeoutSeconds: plan.timeoutSeconds
     };
     const sessions = followSessions(events);
     const phase = `follow-${events.filter((item) => item.step === "follow").length}`;
-    const count2 = startOf(events).explorers;
+    const count2 = initial.explorers;
     const executable = requireChild(env, launch.context.harness);
     const ended = await Promise.all(
       sessions.filter((item) => !item.skipped).map(async ({ explorer, session }) => {
@@ -15539,7 +15635,9 @@ async function driveFollow(workspace, explorationId, env) {
         const rules = plan.context.harness === "pi" ? plan.allow : [...plan.allow, ...grant];
         const watch = watchWork(store, actor, explorationId, explorer, "follow-up");
         const hook = childHook(store.workspace, explorationId, explorer);
-        const context = { ...plan.context, deny, hook, work: folder };
+        const model = plan.modelOverride ? void 0 : initial.testerModels?.[explorer];
+        const tester = contextForModel(plan.context, model);
+        const context = { ...tester, deny, hook, work: folder };
         const call = await watchStray(
           store,
           actor,
@@ -15558,17 +15656,18 @@ async function driveFollow(workspace, explorationId, env) {
           )
         );
         watch.stop();
-        return { explorer, session, call };
+        return { explorer, session, call, tester, model };
       })
     );
-    for (const { explorer, session, call } of ended) {
-      const hint = failureHint(launch, call);
+    for (const { explorer, session, call, tester, model } of ended) {
+      const hint = failureHint(launch, call, model);
       event(store, actor, explorationId, {
         step: "follow-turn",
         explorer,
         status: call.failure?.[0] ?? "completed",
         detail: {
           session,
+          ...model ? { context: tester } : {},
           ...call.failure ? { reason: call.failure[1] } : {},
           ...call.stderr ? { stderr: call.stderr } : {},
           ...hint ? { hint } : {},
@@ -15582,8 +15681,14 @@ async function driveFollow(workspace, explorationId, env) {
     ).length;
     for (const { explorer } of ended) keepWorkFiles(store, actor, explorationId, explorer, phase);
     if (recorded) {
-      mergeReports(store, actor, explorationId, launch, env, plan.after);
-      if (launch.verifier) await verifyClaims(store, actor, explorationId, launch, env, plan.after);
+      const review = {
+        ...initial,
+        context: followModel && followModel !== initial.model ? contextForModel(plan.context, initial.model ?? void 0) : plan.context,
+        allow: plan.allow,
+        timeoutSeconds: plan.timeoutSeconds
+      };
+      mergeReports(store, actor, explorationId, review, env, plan.after);
+      if (review.verifier) await verifyClaims(store, actor, explorationId, review, env, plan.after);
       removeWork(store, explorationId);
     } else keepBrowserFolder(store, explorationId);
     const skipped = [
@@ -15830,6 +15935,7 @@ function explorationStatus(store, explorationId) {
     return {
       explorer,
       actor: explorerActor(explorer),
+      model: launch?.testerModels?.[explorer] ?? launch?.model ?? null,
       session: last("launch")?.detail.session ?? record?.detail.session ?? own.findLast((item) => item.detail.agent)?.detail.agent ?? null,
       ended: stop ? "stopped" : end?.status ?? null,
       recorded: record?.status ?? null,
@@ -15936,8 +16042,8 @@ function screenText(context) {
   ];
   return parts.length ? parts.join(" and ") : null;
 }
-function requestActor(person, requestId) {
-  return `${person} via request ${requestId}`;
+function requestActor(person, requestId2) {
+  return `${person} via request ${requestId2}`;
 }
 function isRequestId(store, id2) {
   return one(store, "SELECT 1 FROM requests WHERE request_id = ?", id2) !== void 0;
@@ -15987,11 +16093,11 @@ function conversationHarness(store, sessionId) {
   );
   return row3 ? JSON.parse(row3.detail).harness === "pi" ? "pi" : "claude" : null;
 }
-function addRequestEvent(store, requestId, event2, operationId, at) {
+function addRequestEvent(store, requestId2, event2, operationId, at) {
   execute(
     store,
     "INSERT INTO request_events (request_id, at, step, status, detail, operation_id) VALUES (?, ?, ?, ?, ?, ?)",
-    requestId,
+    requestId2,
     at,
     event2.step,
     event2.status,
@@ -16007,7 +16113,7 @@ function askRequest(store, actor, input) {
     "Make the text shorter."
   );
   return write(store, { actor, command: "request ask", subject: "requests", input }, (operationId, at, who) => {
-    const requestId = unusedId(
+    const requestId2 = unusedId(
       "R",
       all(store, "SELECT request_id FROM requests").map((row3) => row3.request_id)
     );
@@ -16018,7 +16124,7 @@ function askRequest(store, actor, input) {
     execute(
       store,
       "INSERT INTO requests (request_id, text, context, asker, conversation, asked_at, operation_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
-      requestId,
+      requestId2,
       text,
       canonical(input.context),
       who,
@@ -16026,63 +16132,63 @@ function askRequest(store, actor, input) {
       at,
       operationId
     );
-    addRequestEvent(store, requestId, { step: "state", status: "waiting", detail: { harness } }, operationId, at);
+    addRequestEvent(store, requestId2, { step: "state", status: "waiting", detail: { harness } }, operationId, at);
     return {
-      reply: completed(requestId, { requestId }),
-      subjects: [`request:${requestId}`, "requests"]
+      reply: completed(requestId2, { requestId: requestId2 }),
+      subjects: [`request:${requestId2}`, "requests"]
     };
   }).data.requestId;
 }
-function recordRequestEvent(store, requestId, event2, options3) {
+function recordRequestEvent(store, requestId2, event2, options3) {
   return write(
     store,
     {
       actor: options3.actor ?? requestAuthor,
       command: `request ${event2.step}`,
-      subject: requestId,
+      subject: requestId2,
       input: { status: event2.status }
     },
     (operationId, at) => {
-      addRequestEvent(store, requestId, event2, operationId, at);
-      return { reply: completed(requestId), subjects: options3.subjects };
+      addRequestEvent(store, requestId2, event2, operationId, at);
+      return { reply: completed(requestId2), subjects: options3.subjects };
     }
   );
 }
-function setRequestState(store, requestId, state, detail = {}) {
+function setRequestState(store, requestId2, state, detail = {}) {
   recordRequestEvent(
     store,
-    requestId,
+    requestId2,
     { step: "state", status: state, detail },
-    { subjects: [`request:${requestId}`, "requests"] }
+    { subjects: [`request:${requestId2}`, "requests"] }
   );
 }
-function addRequestActivity(store, requestId, line) {
+function addRequestActivity(store, requestId2, line) {
   recordRequestEvent(
     store,
-    requestId,
+    requestId2,
     { step: "activity", status: "started", detail: { line } },
-    { subjects: [`request:${requestId}`] }
+    { subjects: [`request:${requestId2}`] }
   );
 }
-function markRequestRead(store, actor, requestId) {
-  return write(store, { actor, command: "request read", subject: requestId, input: null }, (operationId, at) => {
-    addRequestEvent(store, requestId, { step: "read", status: "read", detail: {} }, operationId, at);
-    return { reply: completed(requestId), subjects: [`request:${requestId}`, "requests"] };
+function markRequestRead(store, actor, requestId2) {
+  return write(store, { actor, command: "request read", subject: requestId2, input: null }, (operationId, at) => {
+    addRequestEvent(store, requestId2, { step: "read", status: "read", detail: {} }, operationId, at);
+    return { reply: completed(requestId2), subjects: [`request:${requestId2}`, "requests"] };
   });
 }
-function requestStopped(store, requestId) {
-  return one(store, "SELECT 1 FROM request_events WHERE request_id = ? AND step = 'stop'", requestId) !== void 0;
+function requestStopped(store, requestId2) {
+  return one(store, "SELECT 1 FROM request_events WHERE request_id = ? AND step = 'stop'", requestId2) !== void 0;
 }
-function stopRequestRecord(store, actor, requestId, reason) {
-  return write(store, { actor, command: "request stop", subject: requestId, input: null }, (operationId, at, who) => {
+function stopRequestRecord(store, actor, requestId2, reason) {
+  return write(store, { actor, command: "request stop", subject: requestId2, input: null }, (operationId, at, who) => {
     addRequestEvent(
       store,
-      requestId,
+      requestId2,
       { step: "stop", status: "stopped", detail: { by: who, ...reason ? { reason } : {} } },
       operationId,
       at
     );
-    return { reply: completed(requestId), subjects: [`request:${requestId}`, "requests", "permissions"] };
+    return { reply: completed(requestId2), subjects: [`request:${requestId2}`, "requests", "permissions"] };
   });
 }
 function recordOf(ask, events) {
@@ -16129,9 +16235,9 @@ function eventsByRequest(store, where, ...parameters) {
   }
   return found;
 }
-function requestOf(store, requestId) {
-  const ask = one(store, "SELECT * FROM requests WHERE request_id = ?", requestId);
-  return ask ? recordOf(ask, eventsByRequest(store, "AND request_id = ?", requestId).get(requestId) ?? []) : null;
+function requestOf(store, requestId2) {
+  const ask = one(store, "SELECT * FROM requests WHERE request_id = ?", requestId2);
+  return ask ? recordOf(ask, eventsByRequest(store, "AND request_id = ?", requestId2).get(requestId2) ?? []) : null;
 }
 function allRequests(store) {
   const events = eventsByRequest(store, "");
@@ -16178,15 +16284,15 @@ function describeChange(command, subject, input) {
   if (command === "setting set") return `changed the setting ${subject}`;
   return `${command} ${subject}`;
 }
-function operationCountOf(store, requestId) {
-  return one(store, "SELECT count(*) AS count FROM operations WHERE via = ?", requestId).count;
+function operationCountOf(store, requestId2) {
+  return one(store, "SELECT count(*) AS count FROM operations WHERE via = ?", requestId2).count;
 }
-function changesOf(store, requestId) {
+function changesOf(store, requestId2) {
   return all(
     store,
     `SELECT at, command, arguments, subjects, json_extract(response, '$.subject') AS subject
 		FROM operations WHERE via = ? AND status = 'completed' ORDER BY rowid`,
-    requestId
+    requestId2
   ).map((row3) => {
     const record = JSON.parse(row3.subjects).map((subject2) => /^(plan|run|exploration|target):(.+)$/.exec(subject2)).find((found) => found);
     const subject = record ? record[2] : row3.subject;
@@ -16341,14 +16447,14 @@ function permissionRules(store, askerId) {
     ] : []
   );
 }
-function permissionOf(store, askerId, requestId) {
-  return explorationPermissions(store, askerId).find((item) => item.id === requestId);
+function permissionOf(store, askerId, requestId2) {
+  return explorationPermissions(store, askerId).find((item) => item.id === requestId2);
 }
-function findPermission(store, askerId, requestId) {
-  const found = permissionOf(store, askerId, requestId);
+function findPermission(store, askerId, requestId2) {
+  const found = permissionOf(store, askerId, requestId2);
   requireCondition(
     found,
-    `Exploration ${askerId} has no permission request ${requestId}.`,
+    `Exploration ${askerId} has no permission request ${requestId2}.`,
     `Run checkmate explore show ${askerId}.`
   );
   return found;
@@ -16491,17 +16597,17 @@ function decidePermission(store, actor, input, stop) {
   if (choice2 === "stop") stop(reply.data.who ?? void 0, reason);
   return reply;
 }
-function closePermission(store, askerId, requestId, cause) {
+function closePermission(store, askerId, requestId2, cause) {
   return write(
     store,
     {
       actor: "checkmate",
       command: "explore permission-close",
       subject: askerId,
-      input: { requestId, cause }
+      input: { requestId: requestId2, cause }
     },
     (operationId, at) => {
-      const request = findPermission(store, askerId, requestId);
+      const request = findPermission(store, askerId, requestId2);
       if (request.decision) return { reply: completed(askerId, { closed: false }), subjects: [] };
       addDecision(store, request, "closed", { by: "checkmate", text: closedText[cause], cause }, operationId, at);
       return {
@@ -16871,6 +16977,7 @@ function sessionExplorerLive(events, item, now) {
   const span = (from, to) => Math.max(0, to - Date.parse(from));
   return {
     explorer: item.explorer,
+    model: null,
     turn: action2?.detail.step ?? null,
     state,
     startedAt: last?.at ?? null,
@@ -16911,6 +17018,7 @@ function explorerLive(store, explorationId, events, item, running3, now) {
   );
   return {
     explorer: item.explorer,
+    model: item.model,
     turn,
     state,
     startedAt,
@@ -18692,7 +18800,7 @@ function checkRun(store, actor, input) {
     return { run: null, skipped: begun.reasons.filter((reason) => !/^Refused/.test(reason)) };
   return { run: { runId, tests: begun.data.tests }, skipped: [] };
 }
-function runTest(store, actor, given, env) {
+function runTest(store, actor, given, env, preferSavedModel = false) {
   env = workspaceEnv(store, env);
   const assumed = [];
   const build = given.build ?? defaultBuild(store.workspace);
@@ -18705,7 +18813,13 @@ function runTest(store, actor, given, env) {
     assumed.push(
       base ? `since=${base} (the default branch of origin, behind the checked-out commit)` : "since=none (no diff is given: no --since, and no default branch of origin behind the checked-out commit)"
     );
-  const explored = startExploration(store, actor, { ...input, since: input.since ?? base, mode }, env);
+  const explored = startExploration(
+    store,
+    actor,
+    { ...input, since: input.since ?? base, mode },
+    env,
+    preferSavedModel
+  );
   const charter = explored.data.charter;
   const check = mode === "regression" ? checkRun(store, actor, input) : { run: null, skipped: [] };
   return {
@@ -20419,8 +20533,8 @@ function stateText(item) {
   const decision = item.decision;
   return decision.kind === "closed" ? `Closed: ${closedText[decision.cause]}.` : `Answered: ${decision.text}.`;
 }
-function permissionPage(store, context, askerId, requestId, view, refusal) {
-  const item = permissionOf(store, askerId, requestId);
+function permissionPage(store, context, askerId, requestId2, view, refusal) {
+  const item = permissionOf(store, askerId, requestId2);
   if (!item) return null;
   const { from } = view;
   const asker = askerPath(item);
@@ -20609,14 +20723,14 @@ function decisionPill(item) {
   const [label, tone2] = look[kind];
   return html2`<span class="sp-pill ${tone2}">${label}</span>`;
 }
-function emptyRecord(explorationId, requestId) {
+function emptyRecord(explorationId, requestId2) {
   return {
     title: "No such request",
     section: null,
     subjects: ["inbox"],
     status: 404,
     back: "/activity",
-    body: html2`${heading("No such request", `Run ${explorationId} has no permission request ${requestId}.`)}
+    body: html2`${heading("No such request", `Run ${explorationId} has no permission request ${requestId2}.`)}
 			<p class="actions"><a class="btn primary" href="/activity">Activity</a></p>`
   };
 }
@@ -21040,6 +21154,31 @@ function instanceField(choice2, shown2) {
 function testerToolHelp(harness) {
   return harness === "pi" ? "List tool names, for example read bash. Pi enables the listed tools for the tester." : "List tool rules, for example Read Bash. With the rule, a tester does not ask. Without it, each call asks you here.";
 }
+function testerModels(context) {
+  return html2`<details class="sp-more" data-tester-models data-harness="${context.harness}">
+		<summary data-stop>Models by tester</summary>
+		<p class="help">Choose a model for a tester, or use the workspace tester model.</p>
+		<p class="help" role="status" data-tester-count-status></p>
+		<p class="help" role="status" data-tester-model-status>Open to load models.</p>
+		<button class="btn" type="button" data-stop data-tester-model-refresh>Refresh models</button>
+		<label for="tester-model-filter">Filter models</label>
+		<input id="tester-model-filter" type="search" autocomplete="off" data-stop data-tester-model-filter />
+		${Array.from(
+    { length: 10 },
+    (_, index2) => html2`<div class="field-group" data-tester-model-row="${index2 + 1}" hidden>
+					<label for="tester-model-a${index2 + 1}">Tester a${index2 + 1}</label>
+					<select
+						id="tester-model-a${index2 + 1}"
+						name="testerModel.a${index2 + 1}"
+						data-tester-model-select
+						disabled
+					>
+						<option value="">Use workspace tester model</option>
+					</select>
+				</div>`
+  )}
+	</details>`;
+}
 function testDialog(context, planId, values, fallbackBuild = "", instances = []) {
   const build = values.build || fallbackBuild;
   const shown2 = { ...values, build };
@@ -21085,6 +21224,7 @@ function testDialog(context, planId, values, fallbackBuild = "", instances = [])
 				${field("act-test-until", "Until (git ref)", "until", shown2.until)}
 				${field("act-test-repo", "Repository folder", "repo", shown2.repo)}
 			</details>
+			${testerModels(context)}
 			<div class="btns">
 				<button class="sp-btn pri" data-stop><kbd>Enter</kbd><span>Start the test</span></button>
 				<button class="sp-btn" type="button" data-act-cancel data-stop>
@@ -23344,6 +23484,10 @@ function explorerDetail(store, live, item, crumbs) {
 		<h2 class="q-h">Explorer ${item.explorer}</h2>
 		<p class="q-meta">${explorerState(item)} ${inState(item)}</p>
 		<dl class="facts">
+			${item.model ? html2`<div>
+							<dt>Model</dt>
+							<dd><code>${item.model}</code></dd>
+						</div>` : ""}
 			<div>
 				<dt>${live.path === "session" ? "Step" : "Turn"}</dt>
 				<dd>${item.turn ?? none2}</dd>
@@ -23659,6 +23803,85 @@ function claimPage(store, context, explorationId, claimId, state = null) {
 				${panel2}
 			</div>`
   };
+}
+
+// plugin/src/model-catalog.ts
+import { execFile } from "node:child_process";
+import { stripVTControlCharacters } from "node:util";
+var requestId = "checkmate-models";
+var claudeArgs = [
+  "-p",
+  "--input-format",
+  "stream-json",
+  "--output-format",
+  "stream-json",
+  "--verbose",
+  "--no-session-persistence",
+  "--strict-mcp-config",
+  "--mcp-config",
+  '{"mcpServers":{}}',
+  "--settings",
+  '{"disableAllHooks":true}',
+  "--tools",
+  ""
+];
+function claudeModels(stdout) {
+  for (const line of stdout.split("\n")) {
+    let event2;
+    try {
+      event2 = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    if (event2?.type !== "control_response" || event2.response?.request_id !== requestId) continue;
+    const models = event2.response.response?.models;
+    if (event2.response.subtype !== "success" || !Array.isArray(models)) return void 0;
+    return models.flatMap(
+      (model) => typeof model?.value === "string" && model.value.length && model.value !== "default" ? [
+        {
+          value: model.value,
+          label: typeof model.displayName === "string" ? model.displayName : model.value
+        }
+      ] : []
+    );
+  }
+  return void 0;
+}
+function piModels(stdout) {
+  const lines2 = stripVTControlCharacters(stdout).trim().split("\n");
+  const header2 = lines2.findIndex((line) => /^provider\s+model\s+context\b/.test(line.trim()));
+  if (header2 === -1) return lines2.some((line) => /^No models available\./.test(line.trim())) ? [] : void 0;
+  const columns2 = lines2[header2].trim().split(/\s+/).length;
+  return lines2.slice(header2 + 1).flatMap((line) => {
+    const fields = line.trim().split(/\s{2,}/);
+    if (fields.length !== columns2) return [];
+    const [provider, model] = fields;
+    const value2 = `${provider}/${model}`;
+    return [{ value: value2, label: value2 }];
+  });
+}
+async function discoverModels(harness, workspace, env) {
+  const program = requireChild(env, harness);
+  const isPi = harness === "pi";
+  const parseModels = isPi ? piModels : claudeModels;
+  const name2 = isPi ? "Pi" : "Claude Code";
+  const args = isPi ? ["--no-mcp", "--list-models"] : claudeArgs;
+  const input = isPi ? "" : JSON.stringify({ type: "control_request", request_id: requestId, request: { subtype: "initialize" } }) + "\n";
+  return new Promise((resolve8, reject) => {
+    const host = execFile(
+      program,
+      args,
+      { cwd: workspace, env, timeout: 1e4, killSignal: "SIGKILL", maxBuffer: 1024 * 1024 },
+      (error, stdout) => {
+        const models = error ? void 0 : parseModels(stdout);
+        if (!models) return reject(new Error(`${name2} could not list models. Check the host configuration.`));
+        resolve8([...new Map(models.map((model) => [model.value, model])).values()]);
+      }
+    );
+    host.stdin?.on("error", () => {
+    });
+    host.stdin?.end(input);
+  });
 }
 
 // plugin/src/developer.ts
@@ -24104,6 +24327,7 @@ function newChangePage(context, defaults, onHome) {
   )}
 		<input type="hidden" name="harness" value="${context.harness}" />
 		${field2("change-rules", "rules", "Testers may use without asking", testerToolHelp(context.harness), "", context.testerRules)}
+		${testerModels(context)}
 		<details class="sp-more" data-more>
 			<summary>More</summary>
 			${field2("change-since", "since", "Since (git ref)", "Without it, Checkmate uses the default branch of origin.")}
@@ -25791,11 +26015,11 @@ function failureText(request) {
   const cause = /No (?:claude|pi) executable|Host authentication/.test(request.reason ?? "") || request.hint ? `${known.cause} ${known.next}` : sentence2 || "The request failed. No reason is recorded.";
   return { cause, lines: lines2, detail: request.hint ? known.detail : null };
 }
-function requestPage2(store, context, requestId) {
-  const request = requestOf(store, requestId);
+function requestPage2(store, context, requestId2) {
+  const request = requestOf(store, requestId2);
   if (!request) return null;
   const now = Date.now();
-  const open = explorationPermissions(store, requestId).filter((item) => !item.decision);
+  const open = explorationPermissions(store, requestId2).filter((item) => !item.decision);
   const ended = isEnded(request);
   const back = "/requests";
   const asked2 = [
@@ -25809,18 +26033,18 @@ function requestPage2(store, context, requestId) {
     ended && request.state !== "failed" ? 2 : 1,
     "Ask again",
     `Send the same text to ${context.harness === "pi" ? "Pi" : "Claude Code"} as a new request.`,
-    [...asked2, ["return", `/requests/${requestId}`]]
+    [...asked2, ["return", `/requests/${requestId2}`]]
   );
   const options3 = !ended ? [
     formOption(
       context,
-      `/requests/${requestId}/stop`,
+      `/requests/${requestId2}/stop`,
       1,
       "Stop the request\u2026",
       "Ends this request. The conversation goes on with the next request.",
       [],
       {
-        title: `Stop request ${requestId}?`,
+        title: `Stop request ${requestId2}?`,
         text: `Stop this request? You can review any changes it already made.`,
         yes: "Stop the request"
       }
@@ -25834,18 +26058,18 @@ function requestPage2(store, context, requestId) {
       3,
       "New conversation",
       "Start the next request with an empty conversation.",
-      [["return", `/requests/${requestId}`]]
+      [["return", `/requests/${requestId2}`]]
     )
   ];
   const failure = request.state === "failed" ? failureText(request) : null;
-  const tried = ended && !request.changes.length ? operationCountOf(store, requestId) : 0;
+  const tried = ended && !request.changes.length ? operationCountOf(store, requestId2) : 0;
   return {
-    title: `${requestId} \xB7 Request`,
+    title: `${requestId2} \xB7 Request`,
     section: null,
-    subjects: [`request:${requestId}`, "requests"],
+    subjects: [`request:${requestId2}`, "requests"],
     crumbs: [
       ["Replies", "/requests"],
-      [requestId, null]
+      [requestId2, null]
     ],
     back,
     body: html2`<div
@@ -25853,18 +26077,18 @@ function requestPage2(store, context, requestId) {
 			data-region="request-record"
 			data-drawer
 			data-back="${back}"
-			data-key="request:${requestId}"
+			data-key="request:${requestId2}"
 		>
 			${crumbBar([["Replies", "/requests"]])}
-			<section class="sp-dhead" tabindex="-1" data-sub data-label="${requestId}">
+			<section class="sp-dhead" tabindex="-1" data-sub data-label="${requestId2}">
 				<div class="sp-pills">
 					${stateLabel(request)}
-					<span class="sp-c-id">${requestId}</span>
+					<span class="sp-c-id">${requestId2}</span>
 					<span class="sp-c-id">${request.harness === "pi" ? "Pi" : "Claude Code"}</span>
 					<span class="sp-c-id">${request.asker}</span>
 					<span class="sp-c-id">${ago(request.askedAt)}</span>
 				</div>
-				<h1 id="record-title" class="sp-ask-title">Request ${requestId}</h1>
+				<h1 id="record-title" class="sp-ask-title">Request ${requestId2}</h1>
 			</section>
 			<section aria-labelledby="asked-title" data-key="asked">
 				<h2 class="lab" id="asked-title">You asked</h2>
@@ -25876,7 +26100,7 @@ function requestPage2(store, context, requestId) {
 						</p>` : ""}
 			${open.length ? html2`<p class="banner warn" role="status" data-key="waits">
 							This request waits for you: a permission request.
-							<a href="${requestHref(open[0], `/requests/${requestId}`)}">Answer it</a>
+							<a href="${requestHref(open[0], `/requests/${requestId2}`)}">Answer it</a>
 						</p>` : ""}
 			${request.state === "running" || request.activity.length ? html2`<section aria-labelledby="activity-title">
 							<h2 class="lab" id="activity-title">
@@ -25921,7 +26145,7 @@ function requestPage2(store, context, requestId) {
 												completed change.
 											</p>` : html2`<p class="help">The request changed no record.</p>`}
 						</section>` : request.state === "running" ? html2`<p class="help" data-key="changes">Changes show when the request ends.</p>` : ""}
-			<section class="sp-options" aria-labelledby="options-title" data-key="options:${requestId}">
+			<section class="sp-options" aria-labelledby="options-title" data-key="options:${requestId2}">
 				<h2 class="lab" id="options-title">Options</h2>
 				<ol class="sp-optlist asks">
 					${options3.map((option) => html2`<li>${option}</li>`)}
@@ -26410,10 +26634,12 @@ function harnessProgram(env) {
     return html2`<span class="form-error" role="status">${error.message} ${error.hint ?? ""}</span>`;
   }
 }
-function harnessPage(store, context, env, form = null, model = null) {
+function harnessPage(store, context, env, form = null, model = null, testerModel = null) {
   const effectiveEnv = workspaceUiEnv(store, env);
   const harness = selectedHarness(effectiveEnv);
   const pi = harness === "pi";
+  const testerValue = testerModel?.value ?? testerModelText(store, harness);
+  const requestValue = model?.value ?? requestModelText(store, harness);
   const body = html2`${heading("Coding harness", null)}
 		<div class="panel">
 			<form method="post" action="/settings/harness/select" class="decision-form">
@@ -26460,45 +26686,51 @@ function harnessPage(store, context, env, form = null, model = null) {
 				<div class="btns"><button class="btn primary">Save the rules</button></div>
 			</form>
 		</section>
-		${pi ? html2`<section class="panel">
-						<h2 class="lab">Model of the testers</h2>
-						<p class="help">
-							Pi selects the model from its settings. Set CHECKMATE_PI_MODEL to choose a model for
-							Checkmate sessions.
-						</p>
-					</section>` : html2`<section class="panel" aria-labelledby="claude-model">
-						<h2 class="lab" id="claude-model">Model of the testers</h2>
-						<p class="help">
-							Checkmate gives each test level a default model alias. A test that you start in the UI uses
-							it. Claude Code resolves the alias.
-						</p>
-						<div class="scroll">
-							<table>
-								<thead>
-									<tr>
-										<th scope="col">Level</th>
-										<th scope="col">Model alias</th>
-										<th scope="col">Testers</th>
-									</tr>
-								</thead>
-								<tbody>
-									${Object.entries(testLevels).map(
-    ([level, row3]) => html2`<tr>
-												<td class="mono">${level}</td>
-												<td class="mono">${row3.model}</td>
-												<td>${row3.explorers}${row3.verifier ? " and a verifier" : ""}</td>
-											</tr>`
-  )}
-								</tbody>
-							</table>
-						</div>
-						<p class="help">
-							The host wins. To use another model, start the test from a shell with
-							<code>checkmate test &lt;planId&gt; --claude-arg --model --claude-arg &lt;model&gt;</code>.
-							When the host refuses the model, the test fails and names this override. Checkmate does not
-							try another model.
-						</p>
-					</section>`}
+		<section class="panel" aria-labelledby="model-settings" data-model-catalog="${harness}">
+			<h2 class="lab" id="model-settings">Models</h2>
+			<p class="help">Choose a model for each kind of work. Choose a default or a model from the list.</p>
+			<p class="help" role="status" data-model-status>Loading models from ${pi ? "Pi" : "Claude Code"}…</p>
+			<button class="btn" type="button" data-model-refresh>Refresh models</button>
+			<div class="field-group">
+				<label class="lab" for="model-filter">Filter models</label>
+				<input id="model-filter" type="search" autocomplete="off" placeholder="Search available models" />
+			</div>
+			<form method="post" action="/settings/harness/models" class="decision-form">
+				<input type="hidden" name="csrf" value="${context.csrf}" />
+				<input type="hidden" name="harness" value="${harness}" />
+				<div class="field-group">
+					<label class="lab" for="tester-model">Model for testers</label>
+					<select id="tester-model" name="testerModel" aria-describedby="tester-model-help" data-model-select>
+						<option value="">${pi ? "Pi default" : "Test level default"}</option>
+						${testerValue ? html2`<option value="${testerValue}" selected>${testerValue}</option>` : ""}
+					</select>
+					<p class="help" id="tester-model-help">
+						${pi ? "The Pi default is the model configured in Pi." : "The test level selects its default model."}
+					</p>
+					<p class="help" data-model-unavailable="tester-model" hidden></p>
+					${testerModel?.error ? html2`<p class="form-error" role="alert" data-field="model">${testerModel.error}</p>` : ""}
+				</div>
+
+				<div class="field-group">
+					<label class="lab" for="request-model">Model for requests</label>
+					<select
+						id="request-model"
+						name="requestModel"
+						aria-describedby="request-model-help"
+						data-model-select
+					>
+						<option value="">${pi ? "Pi default" : "Claude Code default"}</option>
+						${requestValue ? html2`<option value="${requestValue}" selected>${requestValue}</option>` : ""}
+					</select>
+					<p class="help" id="request-model-help">
+						The default is the model configured in ${pi ? "Pi" : "Claude Code"}.
+					</p>
+					<p class="help" data-model-unavailable="request-model" hidden></p>
+					${model?.error ? html2`<p class="form-error" role="alert" data-field="model">${model.error}</p>` : ""}
+				</div>
+				<div class="btns"><button class="btn primary">Save models</button></div>
+			</form>
+		</section>
 		<section class="panel" aria-labelledby="claude-requests">
 			<h2 class="lab" id="claude-requests">Requests</h2>
 
@@ -26507,27 +26739,6 @@ function harnessPage(store, context, env, form = null, model = null) {
 				own session. It has your login, your settings, and your tools. Checkmate asks you here when a tool needs
 				permission.
 			</p>
-			<form method="post" action="/settings/harness/model" class="decision-form">
-				<input type="hidden" name="csrf" value="${context.csrf}" />
-				<input type="hidden" name="harness" value="${harness}" />
-				<div class="field-group">
-					<label class="lab" for="request-model">Model for requests</label>
-					<input
-						id="request-model"
-						name="model"
-						maxlength="${pi ? 200 : 100}"
-						autocomplete="off"
-						value="${model?.value ?? requestModelText(store, harness)}"
-						aria-describedby="request-model-help"
-						${model ? html2`autofocus` : ""}
-					/>
-					<p class="help" id="request-model-help">
-						A model alias or ID. Empty means the model that ${pi ? "Pi" : "Claude Code"} chooses.
-					</p>
-					${model ? html2`<p class="form-error" role="alert" data-field="model">${model.error}</p>` : ""}
-				</div>
-				<div class="btns"><button class="btn primary">Save the model</button></div>
-			</form>
 			<p class="help" data-region="conversation">${conversationText(store)}</p>
 			<form method="post" action="/requests/conversation" class="decision-form">
 				<input type="hidden" name="csrf" value="${context.csrf}" />
@@ -26798,11 +27009,7 @@ function createRequester(store, options3) {
     let modelArgs = [];
     try {
       program = requireChild(options3.env, run2.harness);
-      if (run2.harness === "pi")
-        modelArgs = piModelArgs({
-          ...options3.env,
-          CHECKMATE_PI_MODEL: requestModelText(store, "pi") || options3.env.CHECKMATE_PI_MODEL
-        });
+      if (run2.harness === "pi") modelArgs = piModelArgs(piRequestModelEnv(store, options3.env));
     } catch (error) {
       const refusal = error;
       run2.reason = [refusal.message, refusal.hint].filter(Boolean).join(" ");
@@ -26878,20 +27085,20 @@ function createRequester(store, options3) {
       next();
       return id2;
     },
-    stop(actor, requestId, reason) {
-      if (running3?.id === requestId) {
+    stop(actor, requestId2, reason) {
+      if (running3?.id === requestId2) {
         if (running3.stopping) return;
         running3.stopping = "stopped";
         running3.reason = reason || "Stopped by you.";
-        stopRequestRecord(store, actor, requestId, reason);
+        stopRequestRecord(store, actor, requestId2, reason);
         running3.child?.stop();
         return;
       }
-      const at = queue.indexOf(requestId);
+      const at = queue.indexOf(requestId2);
       if (at === -1) return;
       queue.splice(at, 1);
-      stopRequestRecord(store, actor, requestId, reason);
-      setRequestState(store, requestId, "stopped", { reason: "Stopped before it started.", changes: [] });
+      stopRequestRecord(store, actor, requestId2, reason);
+      setRequestState(store, requestId2, "stopped", { reason: "Stopped before it started.", changes: [] });
     },
     newConversation(actor) {
       startConversation(store, actor);
@@ -27074,6 +27281,7 @@ async function startUi(options3) {
   const hookToken = workspaceHookToken(options3.workspace, options3.newHookToken);
   const hooks = createHooks(store, hookToken, options3);
   const env = options3.env ?? process.env;
+  const pendingModels = /* @__PURE__ */ new Map();
   const launchEnv = () => workspaceUiEnv(store, env);
   const requester = createRequester(store, {
     workspace: options3.workspace,
@@ -27257,6 +27465,8 @@ data: ${matched.join(",") || "*"}
         "Cache-Control": "public, max-age=31536000, immutable"
       });
     if (pathname === "/events") return events(request);
+    if (pathname === "/settings/harness/models") return modelCatalog(request);
+    if (pathname === "/settings/harness/tester-count") return testerCount(request);
     if (pathname === "/find")
       return send(
         request.res,
@@ -27830,6 +28040,14 @@ data: ${matched.join(",") || "*"}
     const list2 = names.length > 2 ? `${names.slice(0, -1).join(", ")}, or ${names.at(-1)}` : names.join(" or ");
     return { instance: void 0, error: `Choose the instance: ${list2}.` };
   }
+  function testerModelsFrom(form) {
+    const selected = {};
+    for (const [name2, value2] of form) {
+      if (name2.startsWith("testerModel.") && value2.trim())
+        selected[name2.slice("testerModel.".length)] = value2.trim();
+    }
+    return selected;
+  }
   function startTest(request, form, planId) {
     const back = `/plans/${planId}`;
     const { actor, cookies } = actorFrom(request, form);
@@ -27868,9 +28086,11 @@ data: ${matched.join(",") || "*"}
           repo,
           mode: autoMode(store, planId),
           allow: ruleTokens(form.get("rules") ?? ""),
-          claudeArgs: []
+          claudeArgs: [],
+          testerModels: testerModelsFrom(form)
         },
-        launchEnv()
+        launchEnv(),
+        true
       );
       redirect(request.res, `/explorations/${started.subject}`, [
         ...cookies,
@@ -27965,26 +28185,26 @@ data: ${matched.join(",") || "*"}
     const first = nextOpen(store, null);
     redirect(request.res, first ? requestHref(first, refererPath(request)) : "/activity");
   }
-  function permissionRecord(request, explorationId, requestId) {
+  function permissionRecord(request, explorationId, requestId2) {
     const { searchParams } = request.url;
     const view = { from: sameSiteFrom(searchParams.get("from")), history: searchParams.get("view") === "history" };
     render(
       request,
-      permissionPage(store, context(request), explorationId, requestId, view, null) ?? emptyRecord(explorationId, requestId)
+      permissionPage(store, context(request), explorationId, requestId2, view, null) ?? emptyRecord(explorationId, requestId2)
     );
   }
-  function permit(request, form, explorationId, requestId) {
+  function permit(request, form, explorationId, requestId2) {
     const { actor, cookies } = actorFrom(request, form);
     const from = sameSiteFrom(form.get("from"));
     const returnTo = form.get("return") ? safeBack(form.get("return")) : null;
-    const name2 = `${explorationId}/${requestId}`;
+    const name2 = `${explorationId}/${requestId2}`;
     const refuse3 = (message) => {
-      const found = permissionOf(store, explorationId, requestId);
+      const found = permissionOf(store, explorationId, requestId2);
       const page = found && !found.decision ? permissionPage(
         store,
         context(request),
         explorationId,
-        requestId,
+        requestId2,
         { from, history: false },
         {
           error: String(message),
@@ -28002,7 +28222,7 @@ data: ${matched.join(",") || "*"}
         actor,
         {
           askerId: explorationId,
-          requestId,
+          requestId: requestId2,
           decision: form.get("decision") ?? "",
           reason: form.get("reason") ?? void 0
         },
@@ -28013,7 +28233,7 @@ data: ${matched.join(",") || "*"}
         }
       );
     } catch (error) {
-      const found = permissionOf(store, explorationId, requestId);
+      const found = permissionOf(store, explorationId, requestId2);
       if (!found?.decision) return refuse3(engineText(error));
       const flash = `${name2} has an answer already: ${found.decision.text}. Nothing is recorded.`;
       return redirect(
@@ -28024,7 +28244,7 @@ data: ${matched.join(",") || "*"}
     } finally {
       hooks.release();
     }
-    const answered = permissionOf(store, explorationId, requestId);
+    const answered = permissionOf(store, explorationId, requestId2);
     const next = returnTo ? null : nextOpen(store, answered);
     const where = returnTo ?? (next ? requestHref(next, from) : from ?? "/activity");
     redirect(request.res, where, [
@@ -28046,13 +28266,13 @@ data: ${matched.join(",") || "*"}
     const answered = [];
     const gone = [];
     for (const found of named) {
-      const [, explorationId, requestId] = found;
+      const [, explorationId, requestId2] = found;
       try {
-        decidePermission(store, actor, { askerId: explorationId, requestId, decision, reason }, () => {
+        decidePermission(store, actor, { askerId: explorationId, requestId: requestId2, decision, reason }, () => {
         });
-        answered.push(`${explorationId}/${requestId}`);
+        answered.push(`${explorationId}/${requestId2}`);
       } catch {
-        gone.push(`${explorationId}/${requestId}`);
+        gone.push(`${explorationId}/${requestId2}`);
       }
     }
     hooks.release();
@@ -28064,12 +28284,12 @@ data: ${matched.join(",") || "*"}
       cookie("checkmate_toast", `${verb}: ${plural(answered.length, "request")}.${rest}`, 60)
     ]);
   }
-  function requestRecord(request, requestId) {
-    const found = requestOf(store, requestId);
+  function requestRecord(request, requestId2) {
+    const found = requestOf(store, requestId2);
     const shown2 = context(request);
-    if (found && isUnread(found) && shown2.actor) markRequestRead(store, shown2.actor, requestId);
-    const page = found ? requestPage2(store, context(request), requestId) : null;
-    if (!page) return errorPage(request, 404, "No such request", `Checkmate has no request ${requestId}.`);
+    if (found && isUnread(found) && shown2.actor) markRequestRead(store, shown2.actor, requestId2);
+    const page = found ? requestPage2(store, context(request), requestId2) : null;
+    if (!page) return errorPage(request, 404, "No such request", `Checkmate has no request ${requestId2}.`);
     render(request, page);
   }
   function askText(request, form) {
@@ -28101,13 +28321,13 @@ data: ${matched.join(",") || "*"}
     const record = typeof data.record?.kind === "string" && typeof data.record.id === "string" ? { kind: data.record.kind.slice(0, 40), id: data.record.id.slice(0, 96) } : null;
     return { planId, record };
   }
-  function stopRequest(request, form, requestId) {
+  function stopRequest(request, form, requestId2) {
     const { actor, cookies } = actorFrom(request, form);
-    const back = `/requests/${requestId}`;
+    const back = `/requests/${requestId2}`;
     if (!actor) return actionRefusal(request, back, "Enter your name. Checkmate records it with the stop.");
-    const found = requestOf(store, requestId);
-    const flash = found?.state === "running" || found?.state === "waiting" ? `Stopping ${requestId}\u2026` : `${requestId} has ended. Nothing was stopped.`;
-    requester.stop(actor, requestId, form.get("reason")?.trim() ?? "");
+    const found = requestOf(store, requestId2);
+    const flash = found?.state === "running" || found?.state === "waiting" ? `Stopping ${requestId2}\u2026` : `${requestId2} has ended. Nothing was stopped.`;
+    requester.stop(actor, requestId2, form.get("reason")?.trim() ?? "");
     hooks.release();
     redirect(request.res, back, [...cookies, cookie("checkmate_toast", flash, 60)]);
   }
@@ -28120,6 +28340,48 @@ data: ${matched.join(",") || "*"}
       ...cookies,
       cookie("checkmate_toast", "The next request starts a new conversation.", 60)
     ]);
+  }
+  function testerCount(request) {
+    const harness = selectedHarness(workspaceUiEnv(store, env));
+    const query = request.url.searchParams;
+    const reply = (status, body) => send(request.res, status, "application/json; charset=utf-8", JSON.stringify(body), {
+      "Cache-Control": "no-store"
+    });
+    if (query.get("harness") !== harness)
+      return reply(409, { error: "The coding harness changed. Reload the page." });
+    const level = query.get("level") ?? "";
+    if (!levelNames.includes(level)) return reply(422, { error: "Choose a test level." });
+    try {
+      const plan = query.get("plan");
+      const target = query.get("target");
+      const profile = plan ? planRequest(store, plan).target.profile : targetRevision(store, target ?? "").profile;
+      return reply(200, { count: profile.explore?.explorers ?? testLevels[level].explorers });
+    } catch {
+      return reply(404, { error: "Choose a target or plan." });
+    }
+  }
+  async function modelCatalog(request) {
+    const harness = selectedHarness(workspaceUiEnv(store, env));
+    const sendJson = (status, body) => send(request.res, status, "application/json; charset=utf-8", JSON.stringify(body), {
+      "Cache-Control": "no-store"
+    });
+    if (request.url.searchParams.get("harness") !== harness)
+      return sendJson(409, { error: "The coding harness changed. Reload the page." });
+    try {
+      let pending = pendingModels.get(harness);
+      if (!pending) {
+        pending = discoverModels(harness, store.workspace, workspaceUiEnv(store, env));
+        pendingModels.set(harness, pending);
+        void pending.finally(() => pendingModels.delete(harness)).catch(() => {
+        });
+      }
+      const models = await pending;
+      if (selectedHarness(workspaceUiEnv(store, env)) !== harness)
+        return sendJson(409, { error: "The coding harness changed. Reload the page." });
+      return sendJson(200, { models });
+    } catch {
+      return sendJson(503, { error: "Could not load models. Try again." });
+    }
   }
   function saveHarness(request, form) {
     const { actor, cookies } = actorFrom(request, form);
@@ -28142,7 +28404,14 @@ data: ${matched.join(",") || "*"}
     if (!actor) return refuse2(request, page("Enter your name. Checkmate records it with the setting."), cookies);
     const harness = selectedHarness(workspaceUiEnv(store, env));
     if (form.get("harness") !== harness)
-      return refuse2(request, page("The coding harness changed. Reload the page and try again."), cookies);
+      return refuse2(
+        request,
+        () => harnessPage(store, context(request), env, null, {
+          value: requestModelText(store, harness),
+          error: "The coding harness changed. Reload the page and try again."
+        }),
+        cookies
+      );
     try {
       saveRequestModel(store, actor, typed, harness);
     } catch (error) {
@@ -28157,6 +28426,38 @@ data: ${matched.join(",") || "*"}
       )
     ]);
   }
+  function saveModelSettings(request, form) {
+    const { actor, cookies } = actorFrom(request, form);
+    const harness = selectedHarness(workspaceUiEnv(store, env));
+    const tester = form.get("testerModel") ?? testerModelText(store, harness);
+    const requested = form.get("requestModel") ?? requestModelText(store, harness);
+    const page = (error) => () => harnessPage(store, context(request), env, null, { value: requested, error: "" }, { value: tester, error });
+    if (!actor) return refuse2(request, page("Enter your name. Checkmate records it with the setting."), cookies);
+    if (form.get("harness") !== harness)
+      return refuse2(
+        request,
+        () => harnessPage(
+          store,
+          context(request),
+          env,
+          null,
+          { value: requestModelText(store, harness), error: "" },
+          {
+            value: testerModelText(store, harness),
+            error: "The coding harness changed. Reload the page and try again."
+          }
+        ),
+        cookies
+      );
+    if (!form.has("requestModel") || !form.has("testerModel"))
+      return refuse2(request, page("Reload the page to save both model choices."), cookies);
+    try {
+      saveModels(store, actor, harness, requested, tester);
+    } catch (error) {
+      return refuse2(request, page(engineText(error)), cookies);
+    }
+    redirect(request.res, "/settings/harness", [...cookies, cookie("checkmate_toast", "Saved the models", 60)]);
+  }
   function saveRules2(request, form) {
     const { actor, cookies } = actorFrom(request, form);
     const typed = form.get("rules") ?? "";
@@ -28164,7 +28465,14 @@ data: ${matched.join(",") || "*"}
     if (!actor) return refuse2(request, page("Enter your name. Checkmate records it with the setting."), cookies);
     const harness = selectedHarness(workspaceUiEnv(store, env));
     if (form.get("harness") !== harness)
-      return refuse2(request, page("The coding harness changed. Reload the page and try again."), cookies);
+      return refuse2(
+        request,
+        () => harnessPage(store, context(request), env, {
+          value: testerRulesText(store, harness),
+          error: "The coding harness changed. Reload the page and try again."
+        }),
+        cookies
+      );
     try {
       saveTesterRules(store, actor, typed, harness);
     } catch (error) {
@@ -28290,12 +28598,15 @@ data: ${matched.join(",") || "*"}
     if (address && URL.canParse(address) && !isLocalAddress(address) && form.get("confirmed") !== "1")
       return refuse3(`Confirm that Checkmate may test ${hostOf(address)}, an address that is not local.`, "target");
     const childEnv2 = launchEnv();
+    const harness = selectedHarness(childEnv2);
     try {
-      requireChild(childEnv2, selectedHarness(childEnv2));
+      requireChild(childEnv2, harness);
       launchPlan(
         targetRevision(store, targetId).profile,
-        { planId, build, allow, claudeArgs: [], level },
-        childEnv2
+        { planId, build, allow, claudeArgs: [], level, testerModels: testerModelsFrom(form) },
+        childEnv2,
+        testerModelText(store, harness),
+        true
       );
     } catch (error) {
       const message = engineText(error);
@@ -28322,9 +28633,11 @@ data: ${matched.join(",") || "*"}
           until,
           repo,
           allow,
-          claudeArgs: []
+          claudeArgs: [],
+          testerModels: testerModelsFrom(form)
         },
-        childEnv2
+        childEnv2,
+        true
       );
       redirect(request.res, `/explorations/${started.subject}`, [
         ...cookies,
@@ -28636,6 +28949,7 @@ data: ${matched.join(",") || "*"}
     }
     if (pathname === "/bulk") return bulk(request, form);
     if (pathname === "/settings/harness/select") return saveHarness(request, form);
+    if (pathname === "/settings/harness/models") return saveModelSettings(request, form);
     if (pathname === "/settings/claude" || pathname === "/settings/harness/rules") return saveRules2(request, form);
     if (pathname === "/settings/claude/model" || pathname === "/settings/harness/model")
       return saveModel(request, form);
@@ -28705,7 +29019,7 @@ data: ${matched.join(",") || "*"}
     try {
       if (req.method === "POST" && hooks.handles(request.url.pathname))
         return await hooks.handle(req, res, request.url.pathname);
-      if (req.method === "GET" || req.method === "HEAD") return get(request);
+      if (req.method === "GET" || req.method === "HEAD") return await get(request);
       if (req.method === "POST") return await post(request);
       send(res, 405, "text/plain; charset=utf-8", "Method not allowed.", { Allow: "GET, POST" });
     } catch (error) {

@@ -1824,6 +1824,8 @@ function openAct(button) {
 	if (button.dataset.title) dialog.querySelector('[data-act-title]').textContent = button.dataset.title
 	showInstances(form, button.dataset.plan)
 	if (button.dataset.fill) fillAct(form, JSON.parse(button.dataset.fill))
+	const testerModels = form.querySelector('[data-tester-models]')
+	if (testerModels?.open && testerModelState.has(testerModels)) testerModelCount(testerModels)
 	dialog.querySelector('[data-act-error]').replaceChildren()
 	actFrom = document.activeElement
 	pushLayer('act')
@@ -1858,7 +1860,10 @@ function closeGone(region, replacement) {
 }
 
 function actStops(dialog) {
-	const stops = [...dialog.querySelectorAll('[data-stop]')].filter((element) => element.getClientRects().length)
+	const stops = [...dialog.querySelectorAll('[data-stop]')].filter(
+		(element) =>
+			element.getClientRects().length && (!element.closest('details:not([open])') || element.matches('summary'))
+	)
 	const kept = new Map()
 	for (const radio of stops.filter((element) => element.type === 'radio')) {
 		const group = radio.closest('fieldset')
@@ -1869,13 +1874,22 @@ function actStops(dialog) {
 
 function actKey(event, dialog) {
 	const target = event.target
-	const typing = target.matches?.('input[type="text"], input:not([type]), textarea')
+	const typing = target.matches?.('input[type="text"], input[type="search"], input:not([type]), textarea')
 	const key = event.key
 	if (key === 'Escape') {
 		event.preventDefault()
 		if (!typing) return dialog.close('no')
 		actLast = target
 		return target.blur()
+	}
+	if (target.matches('select')) {
+		if (key === 'ArrowDown' || key === 'ArrowUp') {
+			event.preventDefault()
+			const direction = key === 'ArrowDown' ? 1 : -1
+			target.selectedIndex = Math.max(0, Math.min(target.options.length - 1, target.selectedIndex + direction))
+			target.dispatchEvent(new window.Event('change', { bubbles: true }))
+		}
+		return
 	}
 	if (key === 'ArrowUp' || key === 'ArrowDown') {
 		event.preventDefault()
@@ -3048,3 +3062,189 @@ if (setupUrl) {
 		})
 	if (setupUrl.value.trim()) preview()
 }
+
+async function fetchModelCatalog(harness) {
+	const response = await fetch(`/settings/harness/models?harness=${encodeURIComponent(harness)}`)
+	const data = await response.json()
+	if (!response.ok) throw new Error(data.error || 'Could not load models. Try again.')
+	return data.models
+}
+
+function modelCatalog(panel) {
+	const status = panel.querySelector('[data-model-status]')
+	const refresh = panel.querySelector('[data-model-refresh]')
+	const filter = panel.querySelector('#model-filter')
+	const fields = [...panel.querySelectorAll('[data-model-select]')]
+	let models = null
+	function showModels() {
+		const query = filter.value.trim().toLowerCase()
+		for (const field of fields) {
+			const selected = field.value
+			const found = models?.find((model) => model.value === selected)
+			setModelOptions(field, models ?? [], query, field.options[0].textContent)
+			const note = panel.querySelector(`[data-model-unavailable="${field.id}"]`)
+			const missing = models && selected && !found
+			note.hidden = !missing
+			note.textContent = missing
+				? 'This saved model is not in the current list. You can keep it or choose another.'
+				: ''
+		}
+	}
+	async function load() {
+		refresh.disabled = true
+		status.textContent = 'Loading models…'
+		try {
+			models = await fetchModelCatalog(panel.dataset.modelCatalog)
+			status.textContent = models.length
+				? `${models.length} models available. Use the filter to narrow the list.`
+				: 'No models found. Check the host settings and refresh.'
+			showModels()
+		} catch (error) {
+			status.textContent = error.message || 'Could not load models. Try again.'
+		} finally {
+			refresh.disabled = false
+		}
+	}
+	for (const field of fields) field.addEventListener('change', showModels)
+	filter.addEventListener('input', showModels)
+	refresh.addEventListener('click', load)
+	load()
+}
+
+const modelPanel = document.querySelector('[data-model-catalog]')
+if (modelPanel) modelCatalog(modelPanel)
+
+const testerModelState = new WeakMap()
+
+function showTesterModels(details) {
+	const state = testerModelState.get(details)
+	if (!state) return
+	const query = details.querySelector('[data-tester-model-filter]').value.trim().toLowerCase()
+	for (const row of details.querySelectorAll('[data-tester-model-row]')) {
+		const select = row.querySelector('select')
+		if (!row.hidden) setModelOptions(select, state.models, query, 'Use workspace tester model')
+	}
+}
+
+function newOption(label, value) {
+	const option = document.createElement('option')
+	option.textContent = label
+	option.value = value
+	return option
+}
+
+function setModelOptions(select, models, query, defaultLabel) {
+	const selected = select.value
+	const options = [newOption(defaultLabel, '')]
+	if (selected && !models.some((model) => model.value === selected))
+		options.push(newOption(`${selected} (not in list)`, selected))
+	for (const model of models) {
+		if (model.value === selected || !query || `${model.value} ${model.label}`.toLowerCase().includes(query))
+			options.push(newOption(model.label, model.value))
+	}
+	select.replaceChildren(...options)
+	select.value = selected
+}
+
+async function testerModelCount(details) {
+	const form = details.closest('form')
+	const state = testerModelState.get(details)
+	if (!form || !state) return
+	const sequence = ++state.sequence
+	state.countLoading = true
+	for (const row of details.querySelectorAll('[data-tester-model-row]')) row.querySelector('select').disabled = true
+	const level = form.querySelector('[name="level"]:checked')?.value ?? 'normal'
+	const params = new URLSearchParams({ harness: details.dataset.harness, level })
+	const plan = new URL(form.action).pathname.match(/^\/plans\/([^/]+)\/test$/)
+	if (plan) params.set('plan', decodeURIComponent(plan[1]))
+	else params.set('target', form.elements.target?.value ?? '')
+	try {
+		const response = await fetch(`/settings/harness/tester-count?${params}`)
+		const data = await response.json()
+		if (!response.ok) throw new Error(data.error || 'Could not load testers.')
+		if (sequence !== state.sequence) return
+		details.querySelector('[data-tester-count-status]').textContent = ''
+		for (const row of details.querySelectorAll('[data-tester-model-row]')) {
+			const visible = Number(row.dataset.testerModelRow) <= data.count
+			row.hidden = !visible
+			row.querySelector('select').disabled = !visible
+		}
+		showTesterModels(details)
+		state.countLoading = false
+	} catch (error) {
+		if (sequence !== state.sequence) return
+		for (const row of details.querySelectorAll('[data-tester-model-row]')) {
+			row.hidden = true
+			row.querySelector('select').disabled = true
+		}
+		state.countLoading = false
+		details.querySelector('[data-tester-count-status]').textContent = error.message || 'Could not load testers.'
+	}
+}
+
+async function loadTesterModels(details) {
+	let state = testerModelState.get(details)
+	if (!state) {
+		state = { models: [], sequence: 0, loaded: false, loading: false }
+		testerModelState.set(details, state)
+	}
+	testerModelCount(details)
+	if (state.loading) return
+	state.loading = true
+	const status = details.querySelector('[data-tester-model-status]')
+	const refresh = details.querySelector('[data-tester-model-refresh]')
+	refresh.disabled = true
+	status.textContent = 'Loading models…'
+	try {
+		state.models = await fetchModelCatalog(details.dataset.harness)
+		state.loaded = true
+		showTesterModels(details)
+		status.textContent = state.models.length
+			? `${state.models.length} models available.`
+			: 'No models found. Check the host settings and refresh.'
+	} catch (error) {
+		status.textContent = error.message || 'Could not load models. Try again.'
+	} finally {
+		state.loading = false
+		refresh.disabled = false
+	}
+}
+
+document.addEventListener(
+	'toggle',
+	(event) => {
+		const details = event.target
+		if (details.matches?.('[data-tester-models]') && details.open) loadTesterModels(details)
+	},
+	true
+)
+
+document.addEventListener('change', (event) => {
+	const form = event.target.form
+	if (!form || !['level', 'target'].includes(event.target.name)) return
+	const details = form.querySelector('[data-tester-models]')
+	if (details && testerModelState.has(details)) testerModelCount(details)
+})
+
+document.addEventListener('input', (event) => {
+	if (event.target.matches?.('[data-tester-model-filter]'))
+		showTesterModels(event.target.closest('[data-tester-models]'))
+})
+
+document.addEventListener('click', (event) => {
+	if (event.target.closest?.('[data-tester-model-refresh]'))
+		loadTesterModels(event.target.closest('[data-tester-models]'))
+})
+
+document.addEventListener(
+	'submit',
+	(event) => {
+		const details = event.target.querySelector?.('[data-tester-models]')
+		if (!details || !testerModelState.get(details)?.countLoading) return
+		event.preventDefault()
+		event.stopImmediatePropagation()
+		details.open = true
+		details.querySelector('[data-tester-count-status]').textContent = 'Wait for the tester count before starting.'
+	},
+	true
+)

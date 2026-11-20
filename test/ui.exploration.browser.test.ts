@@ -1,13 +1,45 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { closeStore, openPlan, openStore } from '../plugin/src/index.ts'
+import { openExploration } from '../plugin/src/explorations.ts'
 import { mergedQuestions } from '../plugin/src/views.ts'
 import { agent } from '../scripts/ui-demo.ts'
 import { checkmate, launch, open, browserTest, stop } from './browser.ts'
-import { coupon, done, ended, launched, openTest, report, stacks } from './explorations.ts'
+import { coupon, done, ended, event, launched, openTest, report, stacks } from './explorations.ts'
 
 test.before(launch)
 test.after(stop)
+
+test('tester details show the recorded default and individual models at a narrow width', browserTest, async (t) => {
+	const { page, url, workspace } = await open(t, { viewport: { width: 400, height: 800 } })
+	const store = openStore(workspace)
+	const defaultModel = 'test-provider/default-model'
+	const individual = `test-provider/${'long-model-name-'.repeat(9)}override`
+	try {
+		openExploration(store, agent, { planId: 'checkout', explorationId: 'x-models', build: 'b1', instance: 'local' })
+		event(store, 'x-models', {
+			step: 'start',
+			detail: { level: 'smoke', explorers: 2, model: defaultModel, testerModels: { a2: individual } },
+		})
+		launched(store, 'x-models', 'a1')
+		launched(store, 'x-models', 'a2')
+		done(store, 'x-models')
+	} finally {
+		closeStore(store)
+	}
+	await page.goto(url('/explorations/x-models?item=explorer:a1'))
+	await page.getByText(defaultModel, { exact: true }).waitFor()
+	await page.goto(url('/explorations/x-models?item=explorer:a2'))
+	const model = page.getByText(individual, { exact: true })
+	await model.waitFor()
+	assert(
+		await model.evaluate((element) => {
+			const range = document.createRange()
+			range.selectNodeContents(element)
+			return range.getClientRects().length > 1
+		})
+	)
+})
 
 test(
 	'a plan without a revision leads to the live view, which updates to the merged items that the plan page answers',

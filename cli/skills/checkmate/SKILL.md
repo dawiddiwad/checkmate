@@ -3,7 +3,7 @@ name: checkmate
 description: Set up a QA target, plan or run tests, and inspect evidence with Checkmate in Pi.
 ---
 
-Use the CLI in this package. Resolve `../../dist/checkmate.js` from the directory of this skill. Run each command in the project workspace as `CHECKMATE_HARNESS=pi node "<absolute CLI path>" <command>`. Keep the provider, model, credentials, and tool policy in Pi.
+Use the CLI in this package. Resolve `../../src/main.ts` from the directory of this skill. If that file is absent, use `../../dist/checkmate.js`. Run each command in the project workspace as `CHECKMATE_HARNESS=pi node "<absolute CLI path>" <command>`. Keep the provider, model, credentials, and tool policy in Pi.
 
 1. Run `target list` and `plan list`. Use an existing target or plan when it matches the request.
 2. For a new target, ask for the running URL. For a remote URL, confirm the environment and permitted operations. Run `setup --url <url>`. Give the confirmed `--environment` and `--operations` for production. Record only a reference for credentials.

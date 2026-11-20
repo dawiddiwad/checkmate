@@ -12,13 +12,19 @@ In Claude Code:
 /checkmate:ui
 ```
 
+In Pi with the [Checkmate extension](pi.md):
+
+```text
+/checkmate-ui
+```
+
 With the npm CLI:
 
 ```sh
 checkmate ui [--workspace <path>] [--port <n>] [--new-hook-token]
 ```
 
-The command prints `completed ui url=<url>`. Open that URL in a browser on the same computer. The UI listens on `127.0.0.1` only. It runs until you stop it with Ctrl+C. When you start it again on the same port (`--port <n>`), the testers that run keep asking you. On another port, the turn that runs cannot ask, and the next turn asks again. `--new-hook-token` makes a new secret for the testers. Use it only when you think that another process read `.checkmate/hook-token`. The plugin contains the UI, so you do not need npm.
+Open the URL in a browser on the same computer. The UI listens on `127.0.0.1` only. The Claude Code and Pi packages include the UI and start it in the background. For a foreground CLI launch, stop it with Ctrl+C. When you start it again on the same port (`--port <n>`), the testers that run keep asking you. On another port, the turn that runs cannot ask, and the next turn asks again. `--new-hook-token` makes a new secret for the testers. Use it only when you think that another process read `.checkmate/hook-token`.
 
 ## The layout
 

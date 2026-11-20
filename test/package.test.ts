@@ -43,6 +43,8 @@ test('the npm package runs from node_modules, serves the UI, and delegate loads 
 	assert.ok(metadata.keywords.includes('software-factory'))
 	assert.deepEqual(metadata.pi.skills, ['./skills'])
 	assert.ok(existsSync(join(installed, 'skills/checkmate/SKILL.md')))
+	assert.deepEqual(metadata.pi.extensions, ['./extensions/checkmate.mjs'])
+	assert.ok(existsSync(join(installed, 'extensions/checkmate.mjs')))
 	assert.deepEqual(metadata.publishConfig, { access: 'public' })
 	const readme = readFileSync(join(installed, 'README.md'), 'utf8')
 	assert.equal(readme, packageReadme(readFileSync(join(root, 'README.md'), 'utf8'), version))

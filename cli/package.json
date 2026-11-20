@@ -31,11 +31,15 @@
 		"checkmate": "dist/checkmate.js"
 	},
 	"pi": {
+		"extensions": [
+			"./extensions/checkmate.mjs"
+		],
 		"skills": [
 			"./skills"
 		]
 	},
 	"files": [
+		"extensions",
 		"skills",
 		"dist",
 		"plugin",

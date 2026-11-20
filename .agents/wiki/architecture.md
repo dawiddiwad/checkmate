@@ -1,6 +1,6 @@
 # Architecture
 
-Checkmate includes a Claude Code plugin, a Pi skill, and a deterministic Node.js toolkit. The workspace setting selects the host for new work. A CLI caller can override it with `CHECKMATE_HARNESS`. The UI uses the startup environment until a person saves a choice. Claude Code is the default. Pi owns its provider configuration and model selection. `plugin/src/pi.ts` builds Pi arguments and reads its event stream. `cli/skills/checkmate/` provides the interactive entry point in Pi.
+Checkmate includes a Claude Code plugin, a Pi package, and a deterministic Node.js toolkit. The workspace setting selects the host for new work. A CLI caller can override it with `CHECKMATE_HARNESS`. The UI uses the startup environment until a person saves a choice. Claude Code is the default, and the Pi extension starts the UI with Pi as the default. Pi owns its provider configuration and model selection. `plugin/src/pi.ts` builds Pi arguments and reads its event stream. `cli/extensions/checkmate.mjs` registers the Pi commands and starts the review UI. `cli/skills/checkmate/` defines the interactive workflow.
 
 `plugin/` is the installed plugin. It has no npm dependencies.
 

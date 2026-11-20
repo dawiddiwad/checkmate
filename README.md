@@ -41,7 +41,13 @@ Read [Test in Claude Code](docs/guides/claude-code.md).
 
 ## Use Pi
 
-Choose **Settings → Coding harness → Pi** in the review UI to use your Pi provider and model. To test from an interactive Pi session, install the [Checkmate skill for Pi](docs/guides/pi.md).
+With Pi and Node.js 24.12.0 or later installed, add Checkmate from this repository:
+
+```sh
+pi install git:github.com/dawiddiwad/checkmate@wip/pi
+```
+
+Start Pi in your project. Enter `/checkmate-ui` to open the review UI, or enter `/checkmate <test objective>` to work in the Pi session. The package includes the UI, the engine, and the Checkmate skill. Read [Run Checkmate with Pi](docs/guides/pi.md).
 
 ## Team mode: the CLI in your factory
 

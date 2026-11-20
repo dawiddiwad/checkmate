@@ -89,7 +89,7 @@ Use these rules when you add or change a test.
 
 ## Pi integration test
 
-Install Pi on your path and run `npm run test:pi`. The test starts the real Pi CLI with a temporary agent directory. A local HTTP fixture returns a tool call and a final response. The test checks the recorded database operation. It requires no provider key.
+Install Pi on your path and run `npm run test:pi`. This CI check installs the package from an isolated Git repository and opens the review UI in a clean workspace. It also checks recorded operations with the real Pi CLI and a local model fixture. It requires no provider key.
 
 ## Live tests
 

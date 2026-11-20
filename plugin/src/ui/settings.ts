@@ -6,7 +6,6 @@ import type { EntryPoint, InstanceRecord } from '../targets.ts'
 import { Refusal } from '../contracts.ts'
 import { requestEffortText, requestModelText, testerEffortText, testerModelText, workspaceUiEnv } from '../settings.ts'
 import { testLevels } from '../levels.ts'
-import { conversationText } from './requests.ts'
 import { liveUi, requireChild } from '../sessions.ts'
 import { selectedHarness } from '../pi.ts'
 import type { Env } from '../sessions.ts'
@@ -627,20 +626,14 @@ export function harnessPage(
 				<div class="btns"><button class="btn primary">Save models</button></div>
 			</form>
 		</section>
-		<section class="panel" aria-labelledby="claude-requests">
-			<h2 class="lab" id="claude-requests">Requests</h2>
+		<section class="panel" aria-labelledby="chat-settings">
+			<h2 class="lab" id="chat-settings">Chats</h2>
 
 			<p class="help">
-				A request that you type in the find bar runs in ${pi ? 'Pi' : 'Claude Code'} on this computer, in your
-				own session. It has your login, your settings, and your tools. Checkmate asks you here when a tool needs
-				permission.
+				New chats use ${pi ? 'Pi' : 'Claude Code'} and your request model by default. Change the harness, model,
+				or effort for the next message in the chat.
 			</p>
-			<p class="help" data-region="conversation">${conversationText(store)}</p>
-			<form method="post" action="/requests/conversation" class="decision-form">
-				<input type="hidden" name="csrf" value="${context.csrf}" />
-				<input type="hidden" name="return" value="/settings/harness" />
-				<div class="btns"><button class="btn">New conversation</button></div>
-			</form>
+			<div class="btns"><a class="btn" href="/chats">Open Chats</a></div>
 		</section>`
 	return settingsPage('/settings/harness', 'Coding harness', ['*'], body)
 }

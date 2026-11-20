@@ -16540,9 +16540,6 @@ function startConversation(store, actor) {
     subjects: ["requests", "settings"]
   }));
 }
-function conversationSize(store, sessionId) {
-  return one(store, "SELECT count(*) AS count FROM requests WHERE conversation = ?", sessionId).count;
-}
 function conversationHarness(store, sessionId) {
   const row3 = one(
     store,
@@ -26603,355 +26600,6 @@ function runPage(store, context, runId, params = new URLSearchParams(), state = 
   };
 }
 
-// plugin/src/ui/requests.ts
-var kinds2 = { c: "defect", q: "question", g: "gap" };
-var planPath = /^\/plans\/([A-Za-z0-9][A-Za-z0-9_-]{0,95})(?:@[1-9][0-9]{0,8})?(?:\/|$)/;
-var recordPaths2 = [
-  [/^\/explorations\/([A-Za-z0-9][A-Za-z0-9_-]{0,95})(?:\/|$)/, "run"],
-  [/^\/runs\/([A-Za-z0-9][A-Za-z0-9_-]{0,95})(?:\/|$)/, "run"],
-  [/^\/requests\/(R[1-9][0-9]{0,8})$/, "request"]
-];
-function screenContext(store, address, chat = false) {
-  let url;
-  try {
-    url = new URL(address, "http://checkmate.local");
-  } catch {
-    return { planId: null, record: null };
-  }
-  const known = (planId2) => planId2 && one(store, "SELECT 1 FROM plan_requests WHERE plan_id = ?", planId2) ? planId2 : null;
-  let planId = known(planPath.exec(url.pathname)?.[1]);
-  if (chat) {
-    if (url.origin !== "http://checkmate.local") return { planId: null, record: null };
-    if (url.pathname === "/" || url.pathname === "/plans") return { planId: null, record: null, page: "plans" };
-    if (url.pathname === "/runs" || url.pathname === "/activity")
-      return { planId: null, record: null, page: url.pathname === "/runs" ? "runs" : "activity" };
-    const run2 = /^\/(runs|explorations)\/([A-Za-z0-9][A-Za-z0-9_-]{0,95})$/.exec(url.pathname);
-    if (run2) {
-      const [, section, id2] = run2;
-      const record2 = section === "runs" ? one(
-        store,
-        "SELECT plan_id, plan_revision FROM runs WHERE run_id = ?",
-        id2
-      ) : one(
-        store,
-        "SELECT plan_id, plan_revision FROM explorations WHERE exploration_id = ?",
-        id2
-      );
-      return {
-        planId: record2?.plan_id ?? null,
-        record: record2 ? { kind: section === "runs" ? "run" : "exploration", id: id2 } : null,
-        ...record2?.plan_revision ? { planRevision: record2.plan_revision } : {}
-      };
-    }
-    const revision = /^\/plans\/[^/@]+@([1-9]\d{0,8})(?:\/|$)/.exec(url.pathname);
-    const planRevision2 = planId && revision ? one(
-      store,
-      "SELECT revision FROM plan_revisions WHERE plan_id = ? AND revision = ?",
-      planId,
-      Number(revision[1])
-    )?.revision : void 0;
-    return { planId, record: null, ...planRevision2 ? { planRevision: planRevision2 } : {} };
-  }
-  let record = null;
-  const key = url.searchParams.get("item") ?? url.searchParams.get("at") ?? "";
-  const [letter, ...rest] = key.split(":");
-  if (planId && kinds2[letter] && rest.length) record = { kind: kinds2[letter], id: rest.join(":").slice(0, 96) };
-  for (const [pattern, kind] of recordPaths2) {
-    const found = pattern.exec(url.pathname);
-    if (!found || record) continue;
-    record = { kind, id: found[1] };
-    if (url.pathname.startsWith("/explorations/"))
-      planId = known(
-        one(store, "SELECT plan_id FROM explorations WHERE exploration_id = ?", found[1])?.plan_id
-      );
-  }
-  return { planId, record };
-}
-function firstLine(text) {
-  return (text ?? "").trim().split("\n")[0];
-}
-function blocks(text) {
-  return text.replace(/\r\n?/g, "\n").trim().split(/\n{2,}/).map((block) => {
-    const lines2 = block.split("\n");
-    if (lines2.every((line) => /^\s*[-*] /.test(line)))
-      return html2`<ul>
-					${lines2.map((line) => html2`<li>${line.replace(/^\s*[-*] /, "")}</li>`)}
-				</ul>`;
-    if (lines2.every((line) => /^\s*\d+[.)] /.test(line)))
-      return html2`<ol>
-					${lines2.map((line) => html2`<li>${line.replace(/^\s*\d+[.)] /, "")}</li>`)}
-				</ol>`;
-    return html2`<p>${lines2.map((line, index2) => index2 ? html2`<br />${line}` : line)}</p>`;
-  });
-}
-function contextLine(context) {
-  if (!context.planId && !context.record) return "";
-  return html2`<p class="help" data-key="context">
-		On screen:
-		${context.planId ? html2`<a href="/plans/${context.planId}">plan ${context.planId}</a>` : ""}${context.planId && context.record ? ", " : ""}${context.record ? `${context.record.kind} ${context.record.id}` : ""}.
-	</p>`;
-}
-function hidden4(name2, value2) {
-  return html2`<input type="hidden" name="${name2}" value="${value2}" />`;
-}
-function followOption(n) {
-  return html2`<button
-		type="button"
-		class="sp-btn"
-		data-option
-		data-ask-follow
-		aria-label="${n}: Ask a follow-up"
-		title="Ask a follow-up. The conversation goes on."
-	>
-		<kbd aria-hidden="true">${n}</kbd><span>Ask a follow-up</span>
-	</button>`;
-}
-function formOption(context, action2, n, label, hints, fields, ask) {
-  const confirm = ask ? html2`data-ask-title="${ask.title}" data-ask-text="${ask.text}" data-ask-yes="${ask.yes}"` : "";
-  return html2`<form method="post" action="${action2}" class="sp-opt">
-		${hidden4("csrf", context.csrf)}${fields.map(([name2, value2]) => hidden4(name2, value2))}
-		<button class="sp-btn" data-option ${confirm} aria-label="${n}: ${label}" title="${hints}">
-			<kbd aria-hidden="true">${n}</kbd><span>${label}</span>
-		</button>
-	</form>`;
-}
-function stateLabel(request2) {
-  return pill(request2.state);
-}
-function elapsed(request2, now) {
-  const start = Date.parse(request2.startedAt ?? request2.askedAt);
-  if (!isEnded(request2) && request2.state === "running")
-    return html2`<span data-since="${request2.startedAt}">${duration2(Math.max(0, now - start))}</span>`;
-  const end = request2.endedAt ? Date.parse(request2.endedAt) : now;
-  return duration2(Math.max(0, end - start));
-}
-function failureText(request2) {
-  if (request2.harness === "pi" && !/No pi executable/.test(request2.reason ?? "")) {
-    const cause2 = piErrorText(request2.reason) || "The request failed. No reason is recorded.";
-    const authentication = request2.hint === piAuthenticationHint || authenticationFailed({ failure: ["operational_error", cause2] });
-    return { cause: cause2, lines: [], detail: authentication ? "Check the provider login in Pi. Then ask again." : null };
-  }
-  const [sentence2, ...lines2] = (request2.reason ?? "").split("\n");
-  const known = failureOf(request2.reason, request2.hint, []);
-  const cause = /No (?:claude|pi) executable|Host authentication/.test(request2.reason ?? "") || request2.hint ? `${known.cause} ${known.next}` : sentence2 || "The request failed. No reason is recorded.";
-  return { cause, lines: lines2, detail: request2.hint ? known.detail : null };
-}
-function requestPage2(store, context, requestId2) {
-  const request2 = requestOf(store, requestId2);
-  if (!request2) return null;
-  const now = Date.now();
-  const open = explorationPermissions(store, requestId2).filter((item) => !item.decision);
-  const ended = isEnded(request2);
-  const back = "/requests";
-  const asked2 = [
-    ["text", request2.text],
-    ["context", JSON.stringify(request2.context)],
-    ["harness", context.harness]
-  ];
-  const again = formOption(
-    context,
-    "/requests",
-    ended && request2.state !== "failed" ? 2 : 1,
-    "Ask again",
-    `Send the same text to ${context.harness === "pi" ? "Pi" : "Claude Code"} as a new request.`,
-    [...asked2, ["return", `/requests/${requestId2}`]]
-  );
-  const options3 = !ended ? [
-    formOption(
-      context,
-      `/requests/${requestId2}/stop`,
-      1,
-      "Stop the request\u2026",
-      "Ends this request. The conversation goes on with the next request.",
-      [],
-      {
-        title: `Stop request ${requestId2}?`,
-        text: `Stop this request? You can review any changes it already made.`,
-        yes: "Stop the request"
-      }
-    )
-  ] : request2.state === "failed" ? [again] : [
-    followOption(1),
-    again,
-    formOption(
-      context,
-      "/requests/conversation",
-      3,
-      "New conversation",
-      "Start the next request with an empty conversation.",
-      [["return", `/requests/${requestId2}`]]
-    )
-  ];
-  const failure = request2.state === "failed" ? failureText(request2) : null;
-  const tried = ended && !request2.changes.length ? operationCountOf(store, requestId2) : 0;
-  return {
-    title: `${requestId2} \xB7 Request`,
-    section: null,
-    subjects: [`request:${requestId2}`, "requests"],
-    crumbs: [
-      ["Replies", "/requests"],
-      [requestId2, null]
-    ],
-    back,
-    body: html2`<div
-			class="sp-record"
-			data-region="request-record"
-			data-drawer
-			data-back="${back}"
-			data-key="request:${requestId2}"
-		>
-			${crumbBar([["Replies", "/requests"]])}
-			<section class="sp-dhead" tabindex="-1" data-sub data-label="${requestId2}">
-				<div class="sp-pills">
-					${stateLabel(request2)}
-					<span class="sp-c-id">${requestId2}</span>
-					<span class="sp-c-id">${request2.harness === "pi" ? "Pi" : "Claude Code"}</span>
-					<span class="sp-c-id">${request2.asker}</span>
-					<span class="sp-c-id">${ago(request2.askedAt)}</span>
-				</div>
-				<h1 id="record-title" class="sp-ask-title">Request ${requestId2}</h1>
-			</section>
-			<section aria-labelledby="asked-title" data-key="asked">
-				<h2 class="lab" id="asked-title">You asked</h2>
-				<p class="sp-reply sp-asked">${request2.text}</p>
-				${contextLine(request2.context)}
-			</section>
-			${request2.state === "waiting" ? html2`<p class="banner info" role="status" data-key="state">
-							This request waits. Another request runs now. It starts when that one ends.
-						</p>` : ""}
-			${open.length ? html2`<p class="banner warn" role="status" data-key="waits">
-							This request waits for you: a permission request.
-							<a href="${requestHref(open[0], `/requests/${requestId2}`)}">Answer it</a>
-						</p>` : ""}
-			${request2.state === "running" || request2.activity.length ? html2`<section aria-labelledby="activity-title">
-							<h2 class="lab" id="activity-title">
-								Activity <span class="n">${request2.activity.length}</span>
-							</h2>
-							${request2.activity.length ? html2`<ol class="sp-activity" aria-live="polite">
-											${request2.activity.map((entry, index2) => html2`<li data-key="line:${index2}" class="ell" title="${entry.line}">${entry.line}</li>`)}
-										</ol>` : html2`<p class="help">Waiting for the first tool call.</p>`}
-						</section>` : ""}
-			${request2.state === "running" || request2.state === "waiting" ? html2`<p class="help" data-key="elapsed">
-							${request2.state === "running" ? html2`Running for ${elapsed(request2, now)}.` : ""}
-						</p>` : ""}
-			${request2.state === "answered" ? html2`<section aria-labelledby="reply-title" data-key="reply">
-							<h2 class="lab" id="reply-title">Reply</h2>
-							<div class="sp-reply">
-								${request2.reply?.trim() ? blocks(request2.reply) : html2`<p class="muted">The reply has no text.</p>`}
-							</div>
-						</section>` : ""}
-			${failure ? html2`<section aria-labelledby="failed-title" data-key="failure">
-							<h2 class="lab" id="failed-title">What went wrong</h2>
-							<p class="banner fail" role="alert">${failure.cause}</p>
-							${failure.detail ? html2`<p class="help">${failure.detail}</p>` : ""}
-							${failure.lines.length ? html2`<pre class="sp-code" tabindex="0">${failure.lines.join("\n")}</pre>` : ""}
-						</section>` : ""}
-			${request2.state === "stopped" || request2.state === "interrupted" ? html2`<p class="banner info" role="status" data-key="state">${request2.reason ?? ""}</p>` : ""}
-			${ended ? html2`<p class="help" data-key="took">
-							${request2.costUsd === null ? "" : `Cost ${money(request2.costUsd)}. `}Took
-							${elapsed(request2, now)}.
-						</p>` : ""}
-			${ended && request2.denials.length ? html2`<p class="help" data-key="denials">
-							${plural(request2.denials.length, "tool call was", "tool calls were")} denied:
-							${request2.denials.join(", ")}.
-						</p>` : ""}
-			${ended ? html2`<section aria-labelledby="changes-title" data-key="changes">
-							<h2 class="lab" id="changes-title">
-								Changed <span class="n">${request2.changes.length}</span>
-							</h2>
-							${request2.changes.length ? html2`<ul class="sp-changes">
-											${request2.changes.map((change) => html2`<li>${change.href ? html2`<a href="${change.href}">${change.text}</a>` : change.text} <span class="muted">${time(change.at)}</span></li>`)}
-										</ul>` : tried ? html2`<p class="help">
-												The Log has ${plural(tried, "write")} of the request. The request has no
-												completed change.
-											</p>` : html2`<p class="help">The request changed no record.</p>`}
-						</section>` : request2.state === "running" ? html2`<p class="help" data-key="changes">Changes show when the request ends.</p>` : ""}
-			<section class="sp-options" aria-labelledby="options-title" data-key="options:${requestId2}">
-				<h2 class="lab" id="options-title">Options</h2>
-				<ol class="sp-optlist asks">
-					${options3.map((option) => html2`<li>${option}</li>`)}
-				</ol>
-			</section>
-		</div>`
-  };
-}
-var spec2 = {
-  path: "/requests",
-  region: "replies",
-  noun: "request",
-  search: "",
-  columns: [],
-  sort: "",
-  direction: "desc",
-  filters: [],
-  none: ["No request yet.", "Press / and type a request. Choose Ask Checkmate."]
-};
-function row2(request2, n) {
-  const reply = request2.state === "answered" ? firstLine(request2.reply) : firstLine(request2.reason) || "";
-  const meta2 = [request2.asker, request2.askedAt, request2.costUsd === null ? null : money(request2.costUsd)].filter(Boolean).join(" \xB7 ");
-  const title2 = `${firstLine(request2.text)}${reply ? ` \xB7 ${reply}` : ""}`;
-  return html2`<div
-		class="sp-row"
-		role="option"
-		aria-selected="false"
-		tabindex="-1"
-		id="reply-${n}"
-		data-row
-		data-key="request:${request2.id}"
-		data-href="/requests/${request2.id}"
-		data-label="${request2.id}"
-	>
-		<span class="sp-c-cb"></span>
-		<span class="sp-c-tag">${stateLabel(request2)}</span>
-		<span class="sp-c-id" title="${request2.id}">${request2.id}</span>
-		<span class="sp-c-title ell" title="${request2.text}${reply ? `
-${reply}` : ""}">${title2}</span>
-		<span class="sp-c-meta ell" title="${meta2}"
-			>${request2.asker} ·
-			${time(request2.askedAt)}${request2.costUsd === null ? "" : ` \xB7 ${money(request2.costUsd)}`}</span
-		>
-	</div>`;
-}
-function repliesPage(store, params) {
-  const state = listState(params, spec2);
-  const requests = listedRequests(store);
-  const last = Math.max(1, Math.ceil(requests.length / state.size));
-  const shown2 = { ...state, page: Math.min(state.page, last) };
-  const rows2 = requests.slice((shown2.page - 1) * shown2.size, shown2.page * shown2.size);
-  const unread = rows2.filter(isUnread);
-  const earlier = rows2.filter((request2) => !isUnread(request2));
-  let n = 0;
-  const group = (label, items) => items.length ? html2`<div class="sp-gh" role="presentation">${label} <span>${items.length}</span></div>
-					${items.map((request2) => row2(request2, n++))}` : "";
-  const total = requests.length;
-  const unreadTotal = requests.filter(isUnread).length;
-  const first = total ? (shown2.page - 1) * shown2.size + 1 : 0;
-  const end = Math.min(total, shown2.page * shown2.size);
-  return {
-    title: "Replies",
-    section: null,
-    subjects: ["requests"],
-    address: listHref(spec2, shown2),
-    ...pageTrail(spec2, shown2, total, "Replies"),
-    body: html2`${heading("Replies", unreadTotal ? `${plural(unreadTotal, "reply", "replies")} not read yet.` : "Every request and its reply.")}
-			<div data-region="replies" data-list-region>
-				<p class="list-count" data-list-count role="status">
-					${total ? `Showing ${first}\u2013${end} of ${plural(total, "request")}` : ""}
-				</p>
-				${total ? html2`<div class="sp-list activity" role="listbox" aria-label="Requests" data-list>
-									${group("Not read", unread)}${group("Earlier", earlier)}
-								</div>
-								${pager(spec2, shown2, total)}` : emptyNotice(spec2.none[0], spec2.none[1])}
-			</div>`
-  };
-}
-function conversationText(store) {
-  const conversation = currentConversation(store);
-  if (!conversation) return "No conversation yet. The next request starts one.";
-  const count2 = conversationSize(store, conversation.sessionId);
-  return html2`Conversation started ${ago(conversation.startedAt)}, ${plural(count2, "request")}.`;
-}
-
 // plugin/src/ui/settings.ts
 var settingsPages = [
   { path: "/settings/targets", label: "Targets" },
@@ -27486,20 +27134,14 @@ function harnessPage(store, context, env, form = null, model = null, testerModel
 				<div class="btns"><button class="btn primary">Save models</button></div>
 			</form>
 		</section>
-		<section class="panel" aria-labelledby="claude-requests">
-			<h2 class="lab" id="claude-requests">Requests</h2>
+		<section class="panel" aria-labelledby="chat-settings">
+			<h2 class="lab" id="chat-settings">Chats</h2>
 
 			<p class="help">
-				A request that you type in the find bar runs in ${pi ? "Pi" : "Claude Code"} on this computer, in your
-				own session. It has your login, your settings, and your tools. Checkmate asks you here when a tool needs
-				permission.
+				New chats use ${pi ? "Pi" : "Claude Code"} and your request model by default. Change the harness, model,
+				or effort for the next message in the chat.
 			</p>
-			<p class="help" data-region="conversation">${conversationText(store)}</p>
-			<form method="post" action="/requests/conversation" class="decision-form">
-				<input type="hidden" name="csrf" value="${context.csrf}" />
-				<input type="hidden" name="return" value="/settings/harness" />
-				<div class="btns"><button class="btn">New conversation</button></div>
-			</form>
+			<div class="btns"><a class="btn" href="/chats">Open Chats</a></div>
 		</section>`;
   return settingsPage("/settings/harness", "Coding harness", ["*"], body);
 }
@@ -28047,6 +27689,349 @@ async function contactUi(workspace, action2) {
     }
   }
   return { url, harness };
+}
+
+// plugin/src/ui/requests.ts
+var kinds2 = { c: "defect", q: "question", g: "gap" };
+var planPath = /^\/plans\/([A-Za-z0-9][A-Za-z0-9_-]{0,95})(?:@[1-9][0-9]{0,8})?(?:\/|$)/;
+var recordPaths2 = [
+  [/^\/explorations\/([A-Za-z0-9][A-Za-z0-9_-]{0,95})(?:\/|$)/, "run"],
+  [/^\/runs\/([A-Za-z0-9][A-Za-z0-9_-]{0,95})(?:\/|$)/, "run"],
+  [/^\/requests\/(R[1-9][0-9]{0,8})$/, "request"]
+];
+function screenContext(store, address, chat = false) {
+  let url;
+  try {
+    url = new URL(address, "http://checkmate.local");
+  } catch {
+    return { planId: null, record: null };
+  }
+  const known = (planId2) => planId2 && one(store, "SELECT 1 FROM plan_requests WHERE plan_id = ?", planId2) ? planId2 : null;
+  let planId = known(planPath.exec(url.pathname)?.[1]);
+  if (chat) {
+    if (url.origin !== "http://checkmate.local") return { planId: null, record: null };
+    if (url.pathname === "/" || url.pathname === "/plans") return { planId: null, record: null, page: "plans" };
+    if (url.pathname === "/runs" || url.pathname === "/activity")
+      return { planId: null, record: null, page: url.pathname === "/runs" ? "runs" : "activity" };
+    const run2 = /^\/(runs|explorations)\/([A-Za-z0-9][A-Za-z0-9_-]{0,95})$/.exec(url.pathname);
+    if (run2) {
+      const [, section, id2] = run2;
+      const record2 = section === "runs" ? one(
+        store,
+        "SELECT plan_id, plan_revision FROM runs WHERE run_id = ?",
+        id2
+      ) : one(
+        store,
+        "SELECT plan_id, plan_revision FROM explorations WHERE exploration_id = ?",
+        id2
+      );
+      return {
+        planId: record2?.plan_id ?? null,
+        record: record2 ? { kind: section === "runs" ? "run" : "exploration", id: id2 } : null,
+        ...record2?.plan_revision ? { planRevision: record2.plan_revision } : {}
+      };
+    }
+    const revision = /^\/plans\/[^/@]+@([1-9]\d{0,8})(?:\/|$)/.exec(url.pathname);
+    const planRevision2 = planId && revision ? one(
+      store,
+      "SELECT revision FROM plan_revisions WHERE plan_id = ? AND revision = ?",
+      planId,
+      Number(revision[1])
+    )?.revision : void 0;
+    return { planId, record: null, ...planRevision2 ? { planRevision: planRevision2 } : {} };
+  }
+  let record = null;
+  const key = url.searchParams.get("item") ?? url.searchParams.get("at") ?? "";
+  const [letter, ...rest] = key.split(":");
+  if (planId && kinds2[letter] && rest.length) record = { kind: kinds2[letter], id: rest.join(":").slice(0, 96) };
+  for (const [pattern, kind] of recordPaths2) {
+    const found = pattern.exec(url.pathname);
+    if (!found || record) continue;
+    record = { kind, id: found[1] };
+    if (url.pathname.startsWith("/explorations/"))
+      planId = known(
+        one(store, "SELECT plan_id FROM explorations WHERE exploration_id = ?", found[1])?.plan_id
+      );
+  }
+  return { planId, record };
+}
+function firstLine(text) {
+  return (text ?? "").trim().split("\n")[0];
+}
+function blocks(text) {
+  return text.replace(/\r\n?/g, "\n").trim().split(/\n{2,}/).map((block) => {
+    const lines2 = block.split("\n");
+    if (lines2.every((line) => /^\s*[-*] /.test(line)))
+      return html2`<ul>
+					${lines2.map((line) => html2`<li>${line.replace(/^\s*[-*] /, "")}</li>`)}
+				</ul>`;
+    if (lines2.every((line) => /^\s*\d+[.)] /.test(line)))
+      return html2`<ol>
+					${lines2.map((line) => html2`<li>${line.replace(/^\s*\d+[.)] /, "")}</li>`)}
+				</ol>`;
+    return html2`<p>${lines2.map((line, index2) => index2 ? html2`<br />${line}` : line)}</p>`;
+  });
+}
+function contextLine(context) {
+  if (!context.planId && !context.record) return "";
+  return html2`<p class="help" data-key="context">
+		On screen:
+		${context.planId ? html2`<a href="/plans/${context.planId}">plan ${context.planId}</a>` : ""}${context.planId && context.record ? ", " : ""}${context.record ? `${context.record.kind} ${context.record.id}` : ""}.
+	</p>`;
+}
+function hidden4(name2, value2) {
+  return html2`<input type="hidden" name="${name2}" value="${value2}" />`;
+}
+function followOption(n) {
+  return html2`<button
+		type="button"
+		class="sp-btn"
+		data-option
+		data-ask-follow
+		aria-label="${n}: Ask a follow-up"
+		title="Ask a follow-up. The conversation goes on."
+	>
+		<kbd aria-hidden="true">${n}</kbd><span>Ask a follow-up</span>
+	</button>`;
+}
+function formOption(context, action2, n, label, hints, fields, ask) {
+  const confirm = ask ? html2`data-ask-title="${ask.title}" data-ask-text="${ask.text}" data-ask-yes="${ask.yes}"` : "";
+  return html2`<form method="post" action="${action2}" class="sp-opt">
+		${hidden4("csrf", context.csrf)}${fields.map(([name2, value2]) => hidden4(name2, value2))}
+		<button class="sp-btn" data-option ${confirm} aria-label="${n}: ${label}" title="${hints}">
+			<kbd aria-hidden="true">${n}</kbd><span>${label}</span>
+		</button>
+	</form>`;
+}
+function stateLabel(request2) {
+  return pill(request2.state);
+}
+function elapsed(request2, now) {
+  const start = Date.parse(request2.startedAt ?? request2.askedAt);
+  if (!isEnded(request2) && request2.state === "running")
+    return html2`<span data-since="${request2.startedAt}">${duration2(Math.max(0, now - start))}</span>`;
+  const end = request2.endedAt ? Date.parse(request2.endedAt) : now;
+  return duration2(Math.max(0, end - start));
+}
+function failureText(request2) {
+  if (request2.harness === "pi" && !/No pi executable/.test(request2.reason ?? "")) {
+    const cause2 = piErrorText(request2.reason) || "The request failed. No reason is recorded.";
+    const authentication = request2.hint === piAuthenticationHint || authenticationFailed({ failure: ["operational_error", cause2] });
+    return { cause: cause2, lines: [], detail: authentication ? "Check the provider login in Pi. Then ask again." : null };
+  }
+  const [sentence2, ...lines2] = (request2.reason ?? "").split("\n");
+  const known = failureOf(request2.reason, request2.hint, []);
+  const cause = /No (?:claude|pi) executable|Host authentication/.test(request2.reason ?? "") || request2.hint ? `${known.cause} ${known.next}` : sentence2 || "The request failed. No reason is recorded.";
+  return { cause, lines: lines2, detail: request2.hint ? known.detail : null };
+}
+function requestPage2(store, context, requestId2) {
+  const request2 = requestOf(store, requestId2);
+  if (!request2) return null;
+  const now = Date.now();
+  const open = explorationPermissions(store, requestId2).filter((item) => !item.decision);
+  const ended = isEnded(request2);
+  const back = "/requests";
+  const asked2 = [
+    ["text", request2.text],
+    ["context", JSON.stringify(request2.context)],
+    ["harness", context.harness]
+  ];
+  const again = formOption(
+    context,
+    "/requests",
+    ended && request2.state !== "failed" ? 2 : 1,
+    "Ask again",
+    `Send the same text to ${context.harness === "pi" ? "Pi" : "Claude Code"} as a new request.`,
+    [...asked2, ["return", `/requests/${requestId2}`]]
+  );
+  const options3 = !ended ? [
+    formOption(
+      context,
+      `/requests/${requestId2}/stop`,
+      1,
+      "Stop the request\u2026",
+      "Ends this request. The conversation goes on with the next request.",
+      [],
+      {
+        title: `Stop request ${requestId2}?`,
+        text: `Stop this request? You can review any changes it already made.`,
+        yes: "Stop the request"
+      }
+    )
+  ] : request2.state === "failed" ? [again] : [
+    followOption(1),
+    again,
+    formOption(
+      context,
+      "/requests/conversation",
+      3,
+      "New conversation",
+      "Start the next request with an empty conversation.",
+      [["return", `/requests/${requestId2}`]]
+    )
+  ];
+  const failure = request2.state === "failed" ? failureText(request2) : null;
+  const tried = ended && !request2.changes.length ? operationCountOf(store, requestId2) : 0;
+  return {
+    title: `${requestId2} \xB7 Request`,
+    section: null,
+    subjects: [`request:${requestId2}`, "requests"],
+    crumbs: [
+      ["Replies", "/requests"],
+      [requestId2, null]
+    ],
+    back,
+    body: html2`<div
+			class="sp-record"
+			data-region="request-record"
+			data-drawer
+			data-back="${back}"
+			data-key="request:${requestId2}"
+		>
+			${crumbBar([["Replies", "/requests"]])}
+			<section class="sp-dhead" tabindex="-1" data-sub data-label="${requestId2}">
+				<div class="sp-pills">
+					${stateLabel(request2)}
+					<span class="sp-c-id">${requestId2}</span>
+					<span class="sp-c-id">${request2.harness === "pi" ? "Pi" : "Claude Code"}</span>
+					<span class="sp-c-id">${request2.asker}</span>
+					<span class="sp-c-id">${ago(request2.askedAt)}</span>
+				</div>
+				<h1 id="record-title" class="sp-ask-title">Request ${requestId2}</h1>
+			</section>
+			<section aria-labelledby="asked-title" data-key="asked">
+				<h2 class="lab" id="asked-title">You asked</h2>
+				<p class="sp-reply sp-asked">${request2.text}</p>
+				${contextLine(request2.context)}
+			</section>
+			${request2.state === "waiting" ? html2`<p class="banner info" role="status" data-key="state">
+							This request waits. Another request runs now. It starts when that one ends.
+						</p>` : ""}
+			${open.length ? html2`<p class="banner warn" role="status" data-key="waits">
+							This request waits for you: a permission request.
+							<a href="${requestHref(open[0], `/requests/${requestId2}`)}">Answer it</a>
+						</p>` : ""}
+			${request2.state === "running" || request2.activity.length ? html2`<section aria-labelledby="activity-title">
+							<h2 class="lab" id="activity-title">
+								Activity <span class="n">${request2.activity.length}</span>
+							</h2>
+							${request2.activity.length ? html2`<ol class="sp-activity" aria-live="polite">
+											${request2.activity.map((entry, index2) => html2`<li data-key="line:${index2}" class="ell" title="${entry.line}">${entry.line}</li>`)}
+										</ol>` : html2`<p class="help">Waiting for the first tool call.</p>`}
+						</section>` : ""}
+			${request2.state === "running" || request2.state === "waiting" ? html2`<p class="help" data-key="elapsed">
+							${request2.state === "running" ? html2`Running for ${elapsed(request2, now)}.` : ""}
+						</p>` : ""}
+			${request2.state === "answered" ? html2`<section aria-labelledby="reply-title" data-key="reply">
+							<h2 class="lab" id="reply-title">Reply</h2>
+							<div class="sp-reply">
+								${request2.reply?.trim() ? blocks(request2.reply) : html2`<p class="muted">The reply has no text.</p>`}
+							</div>
+						</section>` : ""}
+			${failure ? html2`<section aria-labelledby="failed-title" data-key="failure">
+							<h2 class="lab" id="failed-title">What went wrong</h2>
+							<p class="banner fail" role="alert">${failure.cause}</p>
+							${failure.detail ? html2`<p class="help">${failure.detail}</p>` : ""}
+							${failure.lines.length ? html2`<pre class="sp-code" tabindex="0">${failure.lines.join("\n")}</pre>` : ""}
+						</section>` : ""}
+			${request2.state === "stopped" || request2.state === "interrupted" ? html2`<p class="banner info" role="status" data-key="state">${request2.reason ?? ""}</p>` : ""}
+			${ended ? html2`<p class="help" data-key="took">
+							${request2.costUsd === null ? "" : `Cost ${money(request2.costUsd)}. `}Took
+							${elapsed(request2, now)}.
+						</p>` : ""}
+			${ended && request2.denials.length ? html2`<p class="help" data-key="denials">
+							${plural(request2.denials.length, "tool call was", "tool calls were")} denied:
+							${request2.denials.join(", ")}.
+						</p>` : ""}
+			${ended ? html2`<section aria-labelledby="changes-title" data-key="changes">
+							<h2 class="lab" id="changes-title">
+								Changed <span class="n">${request2.changes.length}</span>
+							</h2>
+							${request2.changes.length ? html2`<ul class="sp-changes">
+											${request2.changes.map((change) => html2`<li>${change.href ? html2`<a href="${change.href}">${change.text}</a>` : change.text} <span class="muted">${time(change.at)}</span></li>`)}
+										</ul>` : tried ? html2`<p class="help">
+												The Log has ${plural(tried, "write")} of the request. The request has no
+												completed change.
+											</p>` : html2`<p class="help">The request changed no record.</p>`}
+						</section>` : request2.state === "running" ? html2`<p class="help" data-key="changes">Changes show when the request ends.</p>` : ""}
+			<section class="sp-options" aria-labelledby="options-title" data-key="options:${requestId2}">
+				<h2 class="lab" id="options-title">Options</h2>
+				<ol class="sp-optlist asks">
+					${options3.map((option) => html2`<li>${option}</li>`)}
+				</ol>
+			</section>
+		</div>`
+  };
+}
+var spec2 = {
+  path: "/requests",
+  region: "replies",
+  noun: "request",
+  search: "",
+  columns: [],
+  sort: "",
+  direction: "desc",
+  filters: [],
+  none: ["No request yet.", "Press / and type a request. Choose Ask Checkmate."]
+};
+function row2(request2, n) {
+  const reply = request2.state === "answered" ? firstLine(request2.reply) : firstLine(request2.reason) || "";
+  const meta2 = [request2.asker, request2.askedAt, request2.costUsd === null ? null : money(request2.costUsd)].filter(Boolean).join(" \xB7 ");
+  const title2 = `${firstLine(request2.text)}${reply ? ` \xB7 ${reply}` : ""}`;
+  return html2`<div
+		class="sp-row"
+		role="option"
+		aria-selected="false"
+		tabindex="-1"
+		id="reply-${n}"
+		data-row
+		data-key="request:${request2.id}"
+		data-href="/requests/${request2.id}"
+		data-label="${request2.id}"
+	>
+		<span class="sp-c-cb"></span>
+		<span class="sp-c-tag">${stateLabel(request2)}</span>
+		<span class="sp-c-id" title="${request2.id}">${request2.id}</span>
+		<span class="sp-c-title ell" title="${request2.text}${reply ? `
+${reply}` : ""}">${title2}</span>
+		<span class="sp-c-meta ell" title="${meta2}"
+			>${request2.asker} ·
+			${time(request2.askedAt)}${request2.costUsd === null ? "" : ` \xB7 ${money(request2.costUsd)}`}</span
+		>
+	</div>`;
+}
+function repliesPage(store, params) {
+  const state = listState(params, spec2);
+  const requests = listedRequests(store);
+  const last = Math.max(1, Math.ceil(requests.length / state.size));
+  const shown2 = { ...state, page: Math.min(state.page, last) };
+  const rows2 = requests.slice((shown2.page - 1) * shown2.size, shown2.page * shown2.size);
+  const unread = rows2.filter(isUnread);
+  const earlier = rows2.filter((request2) => !isUnread(request2));
+  let n = 0;
+  const group = (label, items) => items.length ? html2`<div class="sp-gh" role="presentation">${label} <span>${items.length}</span></div>
+					${items.map((request2) => row2(request2, n++))}` : "";
+  const total = requests.length;
+  const unreadTotal = requests.filter(isUnread).length;
+  const first = total ? (shown2.page - 1) * shown2.size + 1 : 0;
+  const end = Math.min(total, shown2.page * shown2.size);
+  return {
+    title: "Replies",
+    section: null,
+    subjects: ["requests"],
+    address: listHref(spec2, shown2),
+    ...pageTrail(spec2, shown2, total, "Replies"),
+    body: html2`${heading("Replies", unreadTotal ? `${plural(unreadTotal, "reply", "replies")} not read yet.` : "Every request and its reply.")}
+			<div data-region="replies" data-list-region>
+				<p class="list-count" data-list-count role="status">
+					${total ? `Showing ${first}\u2013${end} of ${plural(total, "request")}` : ""}
+				</p>
+				${total ? html2`<div class="sp-list activity" role="listbox" aria-label="Requests" data-list>
+									${group("Not read", unread)}${group("Earlier", earlier)}
+								</div>
+								${pager(spec2, shown2, total)}` : emptyNotice(spec2.none[0], spec2.none[1])}
+			</div>`
+  };
 }
 
 // plugin/src/ui/chats.ts

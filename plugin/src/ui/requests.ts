@@ -6,7 +6,6 @@ import type { RequestContext, RequestRecord } from '../requests.ts'
 import { one } from '../store.ts'
 import { listedRequests, operationCountOf, requestOf, isEnded, isUnread } from '../requests.ts'
 import { explorationPermissions } from '../permissions.ts'
-import { currentConversation, conversationSize } from '../requests.ts'
 import { ago, duration, html, pill, plural, time } from './html.ts'
 import { crumbBar, emptyNotice, heading } from './layout.ts'
 import { listHref, listState, pageTrail, pager } from './lists.ts'
@@ -457,11 +456,4 @@ export function repliesPage(store: Store, params: URLSearchParams): Page {
 				}
 			</div>`,
 	}
-}
-
-export function conversationText(store: Store) {
-	const conversation = currentConversation(store)
-	if (!conversation) return 'No conversation yet. The next request starts one.'
-	const count = conversationSize(store, conversation.sessionId)
-	return html`Conversation started ${ago(conversation.startedAt)}, ${plural(count, 'request')}.`
 }

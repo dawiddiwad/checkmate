@@ -100,11 +100,6 @@ export function startConversation(store: Store, actor: string | undefined) {
 	}))
 }
 
-export function conversationSize(store: Store, sessionId: string) {
-	return one<{ count: number }>(store, 'SELECT count(*) AS count FROM requests WHERE conversation = ?', sessionId)!
-		.count
-}
-
 function conversationHarness(store: Store, sessionId: string) {
 	const row = one<{ detail: string }>(
 		store,

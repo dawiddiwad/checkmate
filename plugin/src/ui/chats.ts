@@ -301,7 +301,10 @@ export function planChat(
 			aria-label="Plan chats"
 			data-plan-chat="${path.slice('/plans/'.length).split('@')[0]}"
 		>
-			${heading('Plan chats', decodeURIComponent(path.slice('/plans/'.length)))}
+			${heading(
+				'Plan chats',
+				html`<a href="${address()}">${glyph('←')} Plan</a> · ${decodeURIComponent(path.slice('/plans/'.length))}`
+			)}
 			${workspace(
 				chat ? 'thread' : fresh ? 'new' : 'list',
 				newChat,

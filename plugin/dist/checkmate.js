@@ -33910,7 +33910,10 @@ function planChat(store, context, env, options3) {
 			aria-label="Plan chats"
 			data-plan-chat="${path.slice("/plans/".length).split("@")[0]}"
 		>
-			${heading("Plan chats", decodeURIComponent(path.slice("/plans/".length)))}
+			${heading(
+      "Plan chats",
+      html2`<a href="${address()}">${glyph("\u2190")} Plan</a> · ${decodeURIComponent(path.slice("/plans/".length))}`
+    )}
 			${workspace(
       chat ? "thread" : fresh ? "new" : "list",
       newChat,

@@ -29,4 +29,6 @@ Select separate request and tester models in **Settings → Coding harness → M
 
 For a CLI override, set `CHECKMATE_PI_MODEL`. Set `CHECKMATE_PI_PROVIDER` with a model ID to select a provider. If you set only the provider, Checkmate uses the current saved model for that provider when it applies. Otherwise, Pi selects from the available models of that provider. Checkmate reports an error if Pi cannot select a model from that provider. Supply credentials through Pi.
 
+If a Pi model list request times out when an exploration has a saved reasoning effort, Checkmate requests the list again. A text model list gives model names. Checkmate uses the effort levels that Pi reports for the selected model.
+
 When Pi reports the provider and model of a call, Checkmate keeps the provider-qualified ID with the result. The exploration status and chat show the models Pi used. Checkmate keeps costs that Pi reports, including costs of calls that fail or stop. A missing cost stays unknown.

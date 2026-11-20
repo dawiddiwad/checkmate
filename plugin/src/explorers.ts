@@ -896,6 +896,10 @@ function hostAuthentication(store: Store, explorationId: string) {
 	)
 }
 
+function hasSavedEffort(launch: Launch) {
+	return Boolean(launch.effort || Object.values(launch.testerEfforts ?? {}).some(Boolean))
+}
+
 export async function driveExploration(workspace: string, explorationId: string, env: Env) {
 	exitOnSignal()
 	const store = openStore(workspace)
@@ -912,7 +916,12 @@ export async function driveExploration(workspace: string, explorationId: string,
 		if (stopOf(explorationEvents(store, explorationId))) return
 		const catalog =
 			started.explorers || started.verifier
-				? await discoverModelCatalog(started.context.harness ?? 'claude', workspace, env).catch(() => undefined)
+				? await discoverModelCatalog(
+						started.context.harness ?? 'claude',
+						workspace,
+						env,
+						hasSavedEffort(started)
+					).catch(() => undefined)
 				: undefined
 		if (stopOf(explorationEvents(store, explorationId))) return
 		const launch = { ...started, context: contextForEffort(started.context, catalog, started.effort ?? '') }
@@ -1157,9 +1166,12 @@ export async function driveFollow(workspace: string, explorationId: string, env:
 		const plan = events.findLast((item) => item.step === 'follow')!.detail as FollowPlan
 		const initial = startOf(events)!
 		const followModel = hostModel(plan.context.claudeArgs)
-		const catalog = await discoverModelCatalog(plan.context.harness ?? 'claude', workspace, env).catch(
-			() => undefined
-		)
+		const catalog = await discoverModelCatalog(
+			plan.context.harness ?? 'claude',
+			workspace,
+			env,
+			hasSavedEffort(initial)
+		).catch(() => undefined)
 		if (stopOf(explorationEvents(store, explorationId))) return
 		const launch: Launch = {
 			...initial,

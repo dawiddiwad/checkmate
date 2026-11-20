@@ -13,7 +13,7 @@ function fixture(t: TestContext, host: 'claude' | 'pi', body: string) {
 	return {
 		workspace,
 		list: (mode = '') => discoverModels(host, workspace, { PATH: bin, FIXTURE: mode }),
-		catalog: () => discoverModelCatalog(host, workspace, { PATH: bin }),
+		catalog: (retryForEffort = false) => discoverModelCatalog(host, workspace, { PATH: bin }, retryForEffort),
 	}
 }
 
@@ -136,4 +136,32 @@ lines.on('line', (line) => {
 	assert.equal(resolvedEffort('pi', found, 'one/model', 'xhigh', 'local'), undefined)
 	assert.deepEqual(effortArgs('pi', 'off'), ['--thinking', 'off'])
 	assert.deepEqual(effortArgs('pi', undefined), [])
+})
+
+test('Pi retries a timed-out catalog once before resolving a saved effort', { timeout: 35_000 }, async (t) => {
+	const { catalog, workspace } = fixture(
+		t,
+		'pi',
+		`
+const { appendFileSync, existsSync } = require('node:fs')
+const { createInterface } = require('node:readline')
+if (!process.argv.includes('--mode')) throw new Error('A text list cannot verify effort')
+const attempted = existsSync('rpc-attempts')
+appendFileSync('rpc-attempts', 'rpc\\n')
+if (!attempted) {
+	process.stdin.resume()
+} else {
+	const model = { provider: 'host', id: 'reasoning', reasoning: true, thinkingLevelMap: { xhigh: null } }
+	createInterface({ input: process.stdin }).on('line', (line) => {
+		const { id, type } = JSON.parse(line)
+		const data = type === 'get_state' ? { model } : { models: [model] }
+		console.log(JSON.stringify({ type: 'response', command: type, id, success: true, data }))
+	})
+}
+`
+	)
+	const found = await catalog(true)
+	assert.equal(readFileSync(join(workspace, 'rpc-attempts'), 'utf8'), 'rpc\nrpc\n')
+	assert.equal(resolvedEffort('pi', found, 'host/reasoning', 'medium'), 'medium')
+	assert.equal(resolvedEffort('pi', found, 'host/reasoning', 'max'), undefined)
 })

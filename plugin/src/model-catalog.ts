@@ -125,7 +125,11 @@ function piOption(model?: PiModel): ModelOption[] {
 	return [{ value, label: value, ...(levels.some((level) => level !== 'off') ? { effortLevels: levels } : {}) }]
 }
 
-function piRpcCatalog(program: string, workspace: string, env: Env): Promise<ModelCatalog | undefined> {
+const piCatalogTimeout = 10_000
+
+type PiCatalogProbe = { value?: ModelCatalog; timedOut: boolean }
+
+function piRpcCatalog(program: string, workspace: string, env: Env, timeout: number): Promise<PiCatalogProbe> {
 	const provider = !env.CHECKMATE_PI_MODEL?.trim() ? env.CHECKMATE_PI_PROVIDER?.trim().toLowerCase() : undefined
 	return new Promise((resolve) => {
 		const host = spawn(program, ['--no-mcp', '--no-session', '--mode', 'rpc', ...piModelArgs(env)], {
@@ -140,15 +144,15 @@ function piRpcCatalog(program: string, workspace: string, env: Env): Promise<Mod
 		let state = false
 		const timer = setTimeout(() => {
 			host.kill('SIGKILL')
-			finish()
-		}, 10_000)
-		function finish() {
+			finish(true)
+		}, timeout)
+		function finish(timedOut = false) {
 			clearTimeout(timer)
 			lines.close()
-			resolve(models && catalog(models, model))
+			resolve({ value: models && catalog(models, model), timedOut })
 		}
-		host.once('error', finish)
-		host.once('close', finish)
+		host.once('error', () => finish())
+		host.once('close', () => finish())
 		host.stdin.on('error', () => {})
 		lines.on('line', (line) => {
 			let response
@@ -193,11 +197,21 @@ function piModels(stdout: string): ModelOption[] | undefined {
 	})
 }
 
-export async function discoverModelCatalog(harness: Harness, workspace: string, env: Env): Promise<ModelCatalog> {
+export async function discoverModelCatalog(
+	harness: Harness,
+	workspace: string,
+	env: Env,
+	retryForEffort = false
+): Promise<ModelCatalog> {
 	const program = requireChild(env, harness)
 	const isPi = harness === 'pi'
 	if (isPi) {
-		const value = await piRpcCatalog(program, workspace, env).catch(() => undefined)
+		const first = await piRpcCatalog(program, workspace, env, piCatalogTimeout).catch(() => undefined)
+		const retry =
+			retryForEffort && first?.timedOut
+				? await piRpcCatalog(program, workspace, env, 2 * piCatalogTimeout).catch(() => undefined)
+				: undefined
+		const value = retry?.value ?? first?.value
 		if (value) return value
 	}
 	const name = isPi ? 'Pi' : 'Claude Code'

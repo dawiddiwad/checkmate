@@ -1354,11 +1354,30 @@ export function runDetail(store: Store, runId: string) {
 		size: row.size,
 	}))
 	const finished = runResult(store, runId)
-	const attempts = all<{ attempt: number; started_at: string; actor: string }>(
+	const { attempt: _attempt, ...clock } = runClock(store, run.row, finished?.result.finishedAt)
+	const receipts = all<{ attempt: number | null; at: string; status: string }>(
+		store,
+		`SELECT json_extract(arguments, '$.attempt') AS attempt, at, status FROM operations
+		WHERE command = 'delegate execute' AND actor = 'checkmate:delegate' AND json_extract(arguments, '$.subject') = ?
+		ORDER BY rowid`,
+		runId
+	)
+	const starts = all<{ attempt: number; started_at: string; actor: string }>(
 		store,
 		'SELECT attempt, started_at, actor FROM run_attempts WHERE run_id = ? ORDER BY attempt',
 		runId
-	).map((row) => ({ attempt: row.attempt, startedAt: row.started_at, actor: row.actor }))
+	)
+	const attempts = starts.map(({ attempt, started_at, actor }) => {
+		const receipt = receipts.findLast(
+			(row) => row.attempt === attempt || (row.attempt === null && starts.length === 1)
+		)
+		return {
+			attempt,
+			startedAt: started_at,
+			actor,
+			...(receipt?.status === 'interrupted' ? { workerInterruptedAt: receipt.at } : {}),
+		}
+	})
 	const tests = run.plan.tests
 		.filter((test) => run.request.selectedTestIds.includes(test.id))
 		.map((test) => {
@@ -1399,7 +1418,7 @@ export function runDetail(store: Store, runId: string) {
 		startedAt: run.row.started_at,
 		browserSession: run.row.browser_session,
 		deadlineSeconds: run.row.deadline_seconds,
-		clock: runClock(store, run.row, finished?.result.finishedAt),
+		clock,
 		request: run.request,
 		state: finished ? ('finalized' as const) : ('started' as const),
 		attempts,

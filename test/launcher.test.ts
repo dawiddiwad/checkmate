@@ -805,6 +805,7 @@ setInterval(() => {}, 1000)`
 	assert.equal(result.status, 'interrupted')
 	assert.deepEqual(result.reasons, ['Worker deadline exceeded', resumeReason('run-1')])
 	assert.match(result.reasons[1], /checkmate run resume run-1/)
+	assert.deepEqual(attempts(workspace, 'run:run-1')[0].arguments, { subject: 'run-1', harness: 'claude', attempt: 1 })
 	assert.deepEqual(query(workspace, 'SELECT run_id FROM results'), [])
 	assert.deepEqual(
 		query(workspace, "SELECT test_id, assertion_id, result FROM assertion_results WHERE run_id = 'run-1'"),

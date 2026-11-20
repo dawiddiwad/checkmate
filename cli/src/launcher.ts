@@ -567,13 +567,18 @@ function recordAttempt(
 	harness: Harness,
 	response: DelegateResponse,
 	usage: WorkerUsage,
-	planId?: string
+	execution: Execution | null
 ) {
 	const kind = stage === 'setup' ? 'target' : stage === 'execute' ? 'run' : 'plan'
 	try {
 		write(
 			store,
-			{ actor: 'checkmate:delegate', command: `delegate ${stage}`, subject, input: { subject, harness } },
+			{
+				actor: 'checkmate:delegate',
+				command: `delegate ${stage}`,
+				subject,
+				input: { subject, harness, ...(execution ? { attempt: execution.clock.attempt } : {}) },
+			},
 			() => ({
 				reply: {
 					status: response.status,
@@ -581,7 +586,7 @@ function recordAttempt(
 					reasons: [],
 					data: { operation: response.operation, ...usage },
 				},
-				subjects: [`${kind}:${subject}`, ...(planId ? [`plan:${planId}`] : [])],
+				subjects: [`${kind}:${subject}`, ...(execution ? [`plan:${execution.run.plan_id}`] : [])],
 			})
 		)
 		return true
@@ -703,7 +708,7 @@ export async function delegate(
 	try {
 		return withStore(workspace, (store) => {
 			const response = receipt(verify(store, stage, subject, after, workerActor))
-			const recorded = !attempted || recordAttempt(store, stage, subject, harness, response, usage, run?.plan_id)
+			const recorded = !attempted || recordAttempt(store, stage, subject, harness, response, usage, execution)
 			return { ...response, ...usage, ...(recorded ? {} : { usageWarning }) }
 		})
 	} catch (error) {

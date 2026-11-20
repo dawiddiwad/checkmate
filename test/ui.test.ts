@@ -35,6 +35,8 @@ import {
 	savePlan,
 } from '../plugin/src/index.ts'
 import { needsYou } from '../plugin/src/views.ts'
+import { resumeRun } from '../plugin/src/runs.ts'
+import { write } from '../plugin/src/store.ts'
 import { chatOf, listedChats } from '../plugin/src/requests.ts'
 import { fakeClaude } from './claude.ts'
 import {
@@ -805,6 +807,59 @@ test('the structured run pages show reported usage and the plan card includes it
 	const home = await call(ui, '/')
 	const card = home.body.match(/data-key="plan:checkout"[\s\S]*?(?=data-key=")/)![0]
 	assert.match(card, /Total cost &lt;\$0\.01/)
+})
+
+test('the run details show only the current worker interruption as a recovery notice', async (t) => {
+	const { ui, workspace } = await start(t)
+	const path = '/runs/run-8'
+	const receipt = (attempt?: number) =>
+		read(workspace, (store) =>
+			write(
+				store,
+				{
+					actor: 'checkmate:delegate',
+					command: 'delegate execute',
+					subject: 'run-8',
+					input: { subject: 'run-8', harness: 'pi', ...(attempt === undefined ? {} : { attempt }) },
+				},
+				() => ({
+					reply: { status: 'interrupted', subject: 'run-8', reasons: [], data: { operation: null } },
+					subjects: ['run:run-8', 'plan:login'],
+				})
+			)
+		)
+	assert.doesNotMatch((await call(ui, path)).body, /Delegated worker interrupted/)
+	receipt()
+	const legacy = await call(ui, `${path}?item=cleanup`)
+	assert.equal(legacy.status, 200)
+	assert.match(legacy.body, /in progress/)
+	assert.match(legacy.body, /role="status"><b>Delegated worker interrupted/)
+	assert.match(legacy.body, /checkmate run resume run-8/)
+	assert.match(legacy.body, /checkmate run finish run-8/)
+	const resumed = read(workspace, (store) => resumeRun(store, agent, { runId: 'run-8' }))
+	assert.equal(resumed.status, 'completed')
+	receipt()
+	assert.doesNotMatch((await call(ui, `${path}?item=cleanup`)).body, /Delegated worker interrupted/)
+	receipt(1)
+	assert.doesNotMatch((await call(ui, path)).body, /checkmate run resume run-8/)
+	const history = (await call(ui, `${path}?item=cleanup`)).body
+	assert.match(history, /Attempt 1[^<]*(?:<time[^>]*>[\s\S]*?<\/time>)?[^<]*Delegated worker interrupted/)
+	assert.doesNotMatch(history, /checkmate run resume run-8/)
+	receipt(2)
+	assert.match((await call(ui, path)).body, /role="status"><b>Delegated worker interrupted/)
+	assert.deepEqual(
+		read(workspace, (store) => {
+			const { state, attempts } = runDetail(store, 'run-8')
+			return [state, attempts.map(({ attempt, workerInterruptedAt }) => [attempt, Boolean(workerInterruptedAt)])]
+		}),
+		[
+			'started',
+			[
+				[1, true],
+				[2, true],
+			],
+		]
+	)
 })
 
 test('a started retest keeps the run that status waits on in the inbox and on its run page', async (t) => {

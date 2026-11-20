@@ -266,6 +266,7 @@ The exit code of `run finish` is 0 for `completed` and 1 for `interrupted` or `o
 
 A crash or a deadline does not finish a run. The run stays `started`, and the recorded results stay.
 
+- The run detail shows a recovery notice when the current attempt has a recorded delegated worker interruption. Cleanup and attempts shows interruptions that Checkmate can match to an attempt.
 - `run resume <runId>` checks that the recorded instance is active and the latest target profile is ready. It runs the gate again for the recorded plan revision, build, and selection.
 - If a check fails, the command gives `rejected` with the reason. The run keeps its current attempt and results. If the instance is retired, finish the stalled run and start a new run on an active instance.
 - With `ready_only`, a blocking run gap prevents resume when it affects an open test. Close each affected test as `blocked`. Use `error` when the test already has an assertion result. Then resume the remaining tests.

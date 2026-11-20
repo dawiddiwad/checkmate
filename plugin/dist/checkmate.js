@@ -13113,12 +13113,13 @@ function selectedTest(run2, testId) {
 function runClock(store, row2, at = (/* @__PURE__ */ new Date()).toISOString()) {
   const attempt = one(
     store,
-    "SELECT started_at FROM run_attempts WHERE run_id = ? ORDER BY attempt DESC LIMIT 1",
+    "SELECT attempt, started_at FROM run_attempts WHERE run_id = ? ORDER BY attempt DESC LIMIT 1",
     row2.run_id
   );
   const start = Date.parse(attempt.started_at);
   const elapsedSeconds = Math.max(0, Math.floor((Date.parse(at) - start) / 1e3));
   return {
+    attempt: attempt.attempt,
     attemptStartedAt: attempt.started_at,
     deadline: new Date(start + row2.deadline_seconds * 1e3).toISOString(),
     deadlineSeconds: row2.deadline_seconds,
@@ -19192,11 +19193,30 @@ function runDetail(store, runId) {
     size: row2.size
   }));
   const finished = runResult(store, runId);
-  const attempts = all(
+  const { attempt: _attempt, ...clock2 } = runClock(store, run2.row, finished?.result.finishedAt);
+  const receipts = all(
+    store,
+    `SELECT json_extract(arguments, '$.attempt') AS attempt, at, status FROM operations
+		WHERE command = 'delegate execute' AND actor = 'checkmate:delegate' AND json_extract(arguments, '$.subject') = ?
+		ORDER BY rowid`,
+    runId
+  );
+  const starts = all(
     store,
     "SELECT attempt, started_at, actor FROM run_attempts WHERE run_id = ? ORDER BY attempt",
     runId
-  ).map((row2) => ({ attempt: row2.attempt, startedAt: row2.started_at, actor: row2.actor }));
+  );
+  const attempts = starts.map(({ attempt, started_at, actor }) => {
+    const receipt = receipts.findLast(
+      (row2) => row2.attempt === attempt || row2.attempt === null && starts.length === 1
+    );
+    return {
+      attempt,
+      startedAt: started_at,
+      actor,
+      ...receipt?.status === "interrupted" ? { workerInterruptedAt: receipt.at } : {}
+    };
+  });
   const tests = run2.plan.tests.filter((test) => run2.request.selectedTestIds.includes(test.id)).map((test) => {
     const closed = outcomes.get(test.id);
     return {
@@ -19235,7 +19255,7 @@ function runDetail(store, runId) {
     startedAt: run2.row.started_at,
     browserSession: run2.row.browser_session,
     deadlineSeconds: run2.row.deadline_seconds,
-    clock: runClock(store, run2.row, finished?.result.finishedAt),
+    clock: clock2,
     request: run2.request,
     state: finished ? "finalized" : "started",
     attempts,
@@ -27413,7 +27433,10 @@ function cleanup(detail) {
 			<dd>
 				<ul class="plain">
 					${detail.attempts.map(
-    (attempt) => html2`<li>Attempt ${attempt.attempt} · ${time(attempt.startedAt)} · ${attempt.actor}</li>`
+    (attempt) => html2`<li>
+								Attempt ${attempt.attempt} · ${time(attempt.startedAt)} · ${attempt.actor}
+								${attempt.workerInterruptedAt ? html2` · Delegated worker interrupted ${time(attempt.workerInterruptedAt)}` : ""}
+							</li>`
   )}
 				</ul>
 			</dd>
@@ -27648,6 +27671,7 @@ function summaryDetail2(store, context, detail, state, crumbs) {
 }
 function runPage(store, context, runId, params = new URLSearchParams(), state = null, adoptError = null) {
   const detail = runDetail(store, runId);
+  const interruption = detail.attempts.at(-1)?.workerInterruptedAt;
   const asked2 = adoptError ? `gap:${adoptError.gapId}` : params.get("item") ?? "summary";
   const test = detail.tests.find((item) => `test:${item.testId}` === asked2);
   const finding = detail.findings.find((item) => `finding:${item.id}` === asked2);
@@ -27689,6 +27713,12 @@ function runPage(store, context, runId, params = new URLSearchParams(), state = 
 				data-key="detail:${selected}"
 				data-stale-message="This run changed. Review it before you decide."
 			>
+				${!detail.result && interruption ? banner(
+      "info",
+      html2`<b>Delegated worker interrupted ${time(interruption)}.</b> Recorded results stay.
+									Run <code>checkmate run resume ${runId}</code> to continue. To end the run, use
+									<code>checkmate run finish ${runId}</code> with a completion and cleanup result.`
+    ) : ""}
 				${pane}
 			</section>`
   };

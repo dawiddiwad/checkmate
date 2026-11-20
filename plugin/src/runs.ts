@@ -205,14 +205,15 @@ export function runClock(
 	row: Pick<RunRow, 'run_id' | 'deadline_seconds'>,
 	at = new Date().toISOString()
 ) {
-	const attempt = one<{ started_at: string }>(
+	const attempt = one<{ attempt: number; started_at: string }>(
 		store,
-		'SELECT started_at FROM run_attempts WHERE run_id = ? ORDER BY attempt DESC LIMIT 1',
+		'SELECT attempt, started_at FROM run_attempts WHERE run_id = ? ORDER BY attempt DESC LIMIT 1',
 		row.run_id
 	)!
 	const start = Date.parse(attempt.started_at)
 	const elapsedSeconds = Math.max(0, Math.floor((Date.parse(at) - start) / 1000))
 	return {
+		attempt: attempt.attempt,
 		attemptStartedAt: attempt.started_at,
 		deadline: new Date(start + row.deadline_seconds * 1000).toISOString(),
 		deadlineSeconds: row.deadline_seconds,

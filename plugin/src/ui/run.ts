@@ -308,7 +308,14 @@ function cleanup(detail: Detail) {
 				<ul class="plain">
 					${detail.attempts.map(
 						(attempt) =>
-							html`<li>Attempt ${attempt.attempt} · ${time(attempt.startedAt)} · ${attempt.actor}</li>`
+							html`<li>
+								Attempt ${attempt.attempt} · ${time(attempt.startedAt)} · ${attempt.actor}
+								${
+										attempt.workerInterruptedAt
+											? html` · Delegated worker interrupted ${time(attempt.workerInterruptedAt)}`
+											: ''
+									}
+							</li>`
 					)}
 				</ul>
 			</dd>
@@ -585,6 +592,7 @@ export function runPage(
 	adoptError: AdoptError | null = null
 ): Page {
 	const detail = runDetail(store, runId)
+	const interruption = detail.attempts.at(-1)?.workerInterruptedAt
 	const asked = adoptError ? `gap:${adoptError.gapId}` : (params.get('item') ?? 'summary')
 	const test = detail.tests.find((item) => `test:${item.testId}` === asked)
 	const finding = detail.findings.find((item) => `finding:${item.id}` === asked)
@@ -637,6 +645,16 @@ export function runPage(
 				data-key="detail:${selected}"
 				data-stale-message="This run changed. Review it before you decide."
 			>
+				${
+					!detail.result && interruption
+						? banner(
+								'info',
+								html`<b>Delegated worker interrupted ${time(interruption)}.</b> Recorded results stay.
+									Run <code>checkmate run resume ${runId}</code> to continue. To end the run, use
+									<code>checkmate run finish ${runId}</code> with a completion and cleanup result.`
+							)
+						: ''
+				}
 				${pane}
 			</section>`,
 	}

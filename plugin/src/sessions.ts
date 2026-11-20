@@ -358,7 +358,7 @@ export const piAuthenticationHint = 'Log in with Pi on this machine, or configur
 export function authenticationFailed(call: ChildCall) {
 	return (
 		Boolean(call.failure) &&
-		/authentication|not authenticated|no api key|invalid api key|unauthorized/i.test(
+		/authentication|not authenticated|no api key|invalid api key|api key expired|unauthorized|\bHTTP 401\b/i.test(
 			[call.failure?.[1] ?? '', ...(call.stderr ?? []), typeof call.result === 'string' ? call.result : ''].join(
 				' '
 			)

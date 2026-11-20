@@ -3,12 +3,12 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { realpathSync } from 'node:fs'
 import { closeStore, openStore } from '../plugin/src/store.ts'
-import { explorationEvents } from '../plugin/src/explorations.ts'
+import { explorationEvents, openExploration } from '../plugin/src/explorations.ts'
 import { explorationStatus, running } from '../plugin/src/explorers.ts'
 import { startUi } from '../plugin/src/ui/server.ts'
 import { requestModelText, testerModelText, workspaceHarness } from '../plugin/src/settings.ts'
 import { piAuthenticationHint, authenticationHint } from '../plugin/src/sessions.ts'
-import { failureOf, phaseOf } from '../plugin/src/ui/activity.ts'
+import { failureOf, phaseOf, runsOf } from '../plugin/src/ui/activity.ts'
 import { ago } from '../plugin/src/ui/html.ts'
 import { actor, directory, plan, store, target } from './support.ts'
 import { fakeClaude } from './claude.ts'
@@ -628,4 +628,105 @@ test('tester count follows the selected level and rejects a stale harness', asyn
 		(await call(ui, '/settings/harness/tester-count?harness=claude&plan=checkout&level=normal')).status,
 		409
 	)
+})
+
+test('a legacy Pi 401 failure shows the safe reason on the run and tester', async (t) => {
+	const { ui, workspace } = await fixture(t, {})
+	const opened = openStore(workspace)
+	openExploration(opened, actor, { planId: 'checkout', build: 'b1', explorationId: 'x-2' })
+	event(opened, 'x-2', {
+		step: 'start',
+		detail: { ...launch, context: { harness: 'pi', claudeArgs: [], hiddenPlugin: null } },
+	})
+	launched(opened, 'x-2', 'a1')
+	event(opened, 'x-2', {
+		step: 'end',
+		explorer: 'a1',
+		status: 'operational_error',
+		detail: {
+			reason: 'pi ended with an error: 401: {"message":"API key expired","api_key":"secret-value"}',
+			stderr: ['Authorization: Bearer secret-value'],
+		},
+	})
+	done(opened, 'x-2', 'failed', { reason: 'No explorer session was recorded.' })
+	closeStore(opened)
+	const page = (await call(ui, '/explorations/x-2')).body
+	assert.match(page, /HTTP 401/)
+	assert.match(page, /API key expired/i)
+	assert.doesNotMatch(page, /secret-value/)
+	const detail = (await call(ui, '/explorations/x-2?item=explorer%3Aa1')).body
+	assert.match(detail, /HTTP 401/)
+	assert.match(detail, /API key expired/i)
+	assert.doesNotMatch(detail, /secret-value/)
+})
+
+test('Pi tester diagnostics do not replace unrelated failures or mislabel billing as login', () => {
+	const at = '2026-01-01T00:00:00Z'
+	const events = [
+		{
+			at,
+			step: 'start',
+			explorer: null,
+			status: 'started',
+			detail: { ...launch, context: { harness: 'pi', claudeArgs: [], hiddenPlugin: null } },
+		},
+		{
+			at,
+			step: 'end',
+			explorer: 'a1',
+			status: 'operational_error',
+			detail: { reason: 'pi ended with an error: 402: {"message":"Insufficient credits for this API key"}' },
+		},
+	]
+	const billing = failureOf('No explorer session was recorded.', null, events)
+	assert.match(billing.cause, /HTTP 402/i)
+	assert.doesNotMatch(billing.next, /login|sign in/i)
+	const unrelated = failureOf('The verifier could not finish.', null, events)
+	assert.match(unrelated.cause, /verifier could not finish/i)
+	assert.doesNotMatch(unrelated.cause, /402/)
+})
+
+test('a follow-up failure reports its own reason, not an earlier tester error', async (t) => {
+	const { workspace } = await fixture(t, {})
+	const store = openStore(workspace)
+	openExploration(store, actor, { planId: 'checkout', build: 'b1', explorationId: 'x-2' })
+	event(store, 'x-2', {
+		step: 'start',
+		detail: { ...launch, context: { harness: 'pi', claudeArgs: [], hiddenPlugin: null } },
+	})
+	launched(store, 'x-2', 'a1')
+	event(store, 'x-2', {
+		step: 'end',
+		explorer: 'a1',
+		status: 'operational_error',
+		detail: { reason: 'pi ended with an error: 401: {"message":"API key expired"}' },
+	})
+	done(store, 'x-2', 'completed')
+	event(store, 'x-2', { step: 'follow', detail: { answers: [] } })
+	event(store, 'x-2', { step: 'followed', status: 'failed', detail: { reason: 'The follow-up could not continue.' } })
+	const follow = runsOf(store, 'x-2', new Map()).find((item) => item.follow)
+	assert.match(follow?.outcome ?? '', /follow-up could not continue/)
+	assert.doesNotMatch(follow?.outcome ?? '', /401|API key expired/)
+	closeStore(store)
+})
+
+test('a new Pi authentication failure shows the tester error in the run banner', async (t) => {
+	const { ui, workspace } = await fixture(t, {})
+	const store = openStore(workspace)
+	openExploration(store, actor, { planId: 'checkout', build: 'b1', explorationId: 'x-3' })
+	event(store, 'x-3', {
+		step: 'start',
+		detail: { ...launch, context: { harness: 'pi', claudeArgs: [], hiddenPlugin: null } },
+	})
+	launched(store, 'x-3', 'a1')
+	event(store, 'x-3', {
+		step: 'end',
+		explorer: 'a1',
+		status: 'operational_error',
+		detail: { reason: 'pi ended with an error: HTTP 401: API key expired.' },
+	})
+	done(store, 'x-3', 'failed', { reason: 'Host authentication: no session could log in.' })
+	closeStore(store)
+	const page = (await call(ui, '/explorations/x-3')).body
+	assert.match(page, /data-key="run-ended"[\s\S]*?HTTP 401[\s\S]*?API key expired/)
 })

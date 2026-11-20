@@ -8621,6 +8621,8 @@ function He(i, { instancePath: t = "", parentData: _, parentDataProperty: Z, roo
 }
 
 // plugin/src/pi.ts
+import { STATUS_CODES } from "node:http";
+import { stripVTControlCharacters } from "node:util";
 function selectedHarness(env = process.env) {
   const configured = env.CHECKMATE_HARNESS?.trim();
   if (!configured || configured === "claude") return "claude";
@@ -8646,33 +8648,99 @@ function piEvent(line) {
   } catch {
   }
 }
+function providerMessage(text) {
+  const body = text.trimStart();
+  if (!body.startsWith("{")) return body.split(/\s+(?=\{|\[\{)/, 1)[0];
+  try {
+    const payload = JSON.parse(body);
+    const messages2 = [payload.error?.message, payload.message, payload.error];
+    return messages2.find((message) => typeof message === "string") ?? "";
+  } catch {
+    const primary = body.split(/"headers"\s*:/i, 1)[0];
+    const message = /"message"\s*:\s*("(?:\\.|[^"\\])*")/.exec(primary);
+    if (message) {
+      try {
+        return JSON.parse(message[1]);
+      } catch {
+      }
+    }
+    return "";
+  }
+}
+function safeMessage(value2) {
+  const text = value2.split(/[\r\n]/, 1)[0].trim();
+  if (text.startsWith("{") || text.startsWith("[") || /^(?:headers?|response headers?|authorization|proxy-authorization|cookie|set-cookie|www-authenticate|proxy-authenticate|(?:content-|x-)[a-z0-9_-]+)\s*:/i.test(
+    text
+  ))
+    return "";
+  return text.replace(/\s+(?:response )?headers?\s*[:=].*$/i, "").replace(/\b(?:authorization|cookie)\s*[:=]\s*.*$|\bbearer\s+.*$/i, "[redacted]").replace(
+    /(\b(?:api[-_ ]?key|(?:access |refresh )?token|password|secret|credential)(?: provided| used| value)?\s*[:=]\s*).*$/i,
+    "$1[redacted]"
+  ).replace(
+    /(\b(?:api[-_ ]?key|(?:access |refresh )?token|password|secret|credential)\s+)["'][^"']+["']/gi,
+    "$1[redacted]"
+  ).replace(/https?:\/\/\S+/gi, "[URL]").replace(/\b(?:sk-|gh[pousr]_|hf_|xox[baprs]-)[A-Za-z0-9_-]+/g, "[redacted]").replace(new RegExp("\\p{Cc}", "gu"), "").slice(0, 200).trimEnd();
+}
+function piErrorText(value2) {
+  if (typeof value2 !== "string") return "";
+  const text = stripVTControlCharacters(value2).trim();
+  const wrapped = /^((?:The session of [a-z0-9-]+ could not resume: )?pi (?:ended with an error|interrupted the response|exited with (?:code \d+|signal [A-Z]+))):\s*([\s\S]+)$/i.exec(
+    text
+  );
+  const reason = providerError(wrapped?.[2] ?? text);
+  return wrapped ? [wrapped[1], reason].filter(Boolean).join(": ") : reason;
+}
+function providerError(text) {
+  const response = /^(?:(?:Error|APIError):\s*)?(?:(?:HTTP(?: error)?|status(?: code)?)\s*)?([45][0-9]{2})(?:[ :]+|$)/i.exec(text);
+  const message = safeMessage(providerMessage(response ? text.slice(response[0].length) : text));
+  if (!response) return message;
+  return `HTTP ${response[1]}: ${message || STATUS_CODES[Number(response[1])] || "Provider request failed."}`;
+}
+function piStderr(text) {
+  return stderrTail(text.split("\n").map(piErrorText).filter(Boolean).join("\n"));
+}
 function piResult(output, error, status, signal) {
   let sessionId;
   let final;
+  let latestError;
   for (const line of output.split("\n")) {
     const event2 = piEvent(line);
     if (event2?.type === "session" && typeof event2.id === "string") sessionId = event2.id;
-    if (event2?.type === "agent_start") final = void 0;
-    if (event2?.type === "agent_end")
-      final = !event2.willRetry && Array.isArray(event2.messages) ? event2.messages.at(-1) : void 0;
+    if (event2?.type === "agent_start") {
+      final = void 0;
+      latestError = void 0;
+    }
+    if (event2?.type === "message_end" && event2.message?.role === "assistant" && ["error", "aborted"].includes(event2.message.stopReason ?? ""))
+      latestError = event2.message;
+    if (event2?.type === "agent_end") {
+      const last = Array.isArray(event2.messages) ? event2.messages.at(-1) : void 0;
+      if (last?.role === "assistant" && last.errorMessage) latestError = last;
+      final = event2.willRetry ? void 0 : last;
+    }
     if (event2?.type === "agent_settled" && event2.aborted)
-      final = { role: "assistant", stopReason: "aborted", errorMessage: final?.errorMessage };
+      final = {
+        role: "assistant",
+        stopReason: "aborted",
+        errorMessage: final?.errorMessage ?? latestError?.errorMessage
+      };
   }
+  const reason = piErrorText(final?.errorMessage ?? latestError?.errorMessage);
+  const stderr = piStderr(error);
   let failure;
   if (status !== 0)
     failure = [
       "operational_error",
-      `pi exited with ${signal ? `signal ${signal}` : `code ${status}`}${excerpt(error || final?.errorMessage)}`
+      `pi exited with ${signal ? `signal ${signal}` : `code ${status}`}${excerpt(reason || stderr[0])}`
     ];
+  else if ((final ?? latestError)?.stopReason === "aborted")
+    failure = ["interrupted", `pi interrupted the response${excerpt(reason)}`];
+  else if ((final ?? latestError)?.stopReason === "error")
+    failure = ["operational_error", `pi ended with an error${excerpt(reason)}`];
   else if (final?.role !== "assistant")
     failure = ["operational_error", "pi did not return a final assistant message."];
-  else if (final.stopReason === "aborted")
-    failure = ["interrupted", `pi interrupted the response${excerpt(final.errorMessage)}`];
-  else if (final.stopReason === "error")
-    failure = ["operational_error", `pi ended with an error${excerpt(final.errorMessage)}`];
   else if (final.stopReason === "length") failure = ["operational_error", "pi reached the output token limit."];
   else if (final.stopReason !== "stop") failure = ["operational_error", "pi did not finish the assistant turn."];
-  const tail = failure ? stderrTail(error) : [];
+  const tail = failure ? stderr : [];
   const result = Array.isArray(final?.content) ? final.content.flatMap((part) => part?.type === "text" && typeof part.text === "string" ? [part.text] : []).join("") : void 0;
   return {
     failure,
@@ -8977,7 +9045,7 @@ function requireClaude(env) {
 var authenticationHint = "The host session does not pass its login token to the commands that it runs. Log in on this machine so that Claude Code stores the login (run claude and log in), or run checkmate test from a shell outside a Claude Code session, or let the host give the credential in a supported way, for example an apiKeyHelper in the host settings.";
 var piAuthenticationHint = "Log in with Pi on this machine, or configure authentication through the Pi host.";
 function authenticationFailed(call) {
-  return Boolean(call.failure) && /authentication|not authenticated|no api key|invalid api key|unauthorized/i.test(
+  return Boolean(call.failure) && /authentication|not authenticated|no api key|invalid api key|api key expired|unauthorized|\bHTTP 401\b/i.test(
     [call.failure?.[1] ?? "", ...call.stderr ?? [], typeof call.result === "string" ? call.result : ""].join(
       " "
     )
@@ -15209,6 +15277,8 @@ async function launchExplorers(store, actor, explorationId, launch, env) {
   for (const { explorer, session, calls } of ended) {
     const call = calls.find((item) => item.failure) ?? calls.at(-1);
     const hint = failureHint(launch, call, launch.testerModels?.[explorer]);
+    if (launch.context.harness === "pi" && call.failure)
+      console.error(`${explorationId}/${explorer} ${calls.length === 1 ? "study" : "test"}: ${call.failure[1]}`);
     const durations = calls.flatMap((item) => item.durationMs === void 0 ? [] : [item.durationMs]);
     event(store, actor, explorationId, {
       step: "end",
@@ -15661,6 +15731,8 @@ async function driveFollow(workspace, explorationId, env) {
     );
     for (const { explorer, session, call, tester, model } of ended) {
       const hint = failureHint(launch, call, model);
+      if (launch.context.harness === "pi" && call.failure)
+        console.error(`${explorationId}/${explorer} follow-up: ${call.failure[1]}`);
       event(store, actor, explorationId, {
         step: "follow-turn",
         explorer,
@@ -15919,10 +15991,23 @@ function stopReason(events) {
   const stop = stopOf(events);
   return stop ? stopText(stop) : null;
 }
+function piExplorationDetails(detail) {
+  return {
+    ...detail,
+    ...typeof detail.reason === "string" ? { reason: piErrorText(detail.reason) } : {},
+    ...Array.isArray(detail.reasons) ? { reasons: detail.reasons.map(piErrorText).filter(Boolean) } : {},
+    ...Array.isArray(detail.stderr) ? { stderr: piStderr(detail.stderr.join("\n")) } : {},
+    ...Array.isArray(detail.skipped) ? { skipped: detail.skipped.map(piErrorText).filter(Boolean) } : {}
+  };
+}
 function explorationStatus(store, explorationId) {
   const row3 = explorationRow(store, explorationId);
-  const events = explorationEvents(store, explorationId);
-  const launch = startOf(events);
+  const raw = explorationEvents(store, explorationId);
+  const launch = startOf(raw);
+  const pi = launch?.context?.harness === "pi";
+  const events = pi ? raw.map(
+    (item) => ["failed", "operational_error", "interrupted"].includes(item.status) ? { ...item, detail: piExplorationDetails(item.detail) } : item
+  ) : raw;
   const charter = JSON.parse(row3.charter);
   const state = explorationState(events);
   const names = [...new Set(events.flatMap((item) => item.explorer ? [item.explorer] : []))];
@@ -15941,7 +16026,7 @@ function explorationStatus(store, explorationId) {
       recorded: record?.status ?? null,
       saved: record?.detail.saved ?? 0,
       reason: end?.detail.reason ?? record?.detail.reasons ?? (stop ? stopText(stop) : null),
-      hint: end?.detail.hint ?? null,
+      hint: end?.detail.hint ?? (pi && typeof end?.detail.reason === "string" && authenticationFailed({ failure: ["operational_error", end.detail.reason] }) ? piAuthenticationHint : null),
       stderr: end?.detail.stderr ?? [],
       stray: [
         ...new Set(
@@ -16978,6 +17063,8 @@ function sessionExplorerLive(events, item, now) {
   return {
     explorer: item.explorer,
     model: null,
+    reason: item.reason,
+    hint: item.hint,
     turn: action2?.detail.step ?? null,
     state,
     startedAt: last?.at ?? null,
@@ -17019,6 +17106,8 @@ function explorerLive(store, explorationId, events, item, running3, now) {
   return {
     explorer: item.explorer,
     model: item.model,
+    reason: item.reason,
+    hint: item.hint,
     turn,
     state,
     startedAt,
@@ -21491,6 +21580,22 @@ function failureOf(reason, hint, events) {
       next: "Install Pi or choose Claude Code in Settings.",
       detail: null
     };
+  const testerFailure = text === "No explorer session was recorded." || text === "Host authentication: no session could log in.";
+  if (testerFailure && startOf(events)?.context?.harness === "pi") {
+    const failed2 = events.find(
+      (item) => item.step === "end" && item.status === "operational_error" && item.detail.reason
+    );
+    const diagnostic = piErrorText(failed2?.detail.reason);
+    if (diagnostic) {
+      const auth = authenticationFailed({ failure: ["operational_error", diagnostic] });
+      const guidance = typeof failed2?.detail.hint === "string" ? piErrorText(failed2.detail.hint) : "";
+      return {
+        cause: `Tester ${failed2?.explorer ?? ""} failed: ${diagnostic}`,
+        next: auth ? "Check the provider login in Pi, then test again." : guidance || "Check the Pi configuration, then test again.",
+        detail: null
+      };
+    }
+  }
   if (hint === piAuthenticationHint || /Host authentication/.test(text) && startOf(events)?.context?.harness === "pi")
     return {
       cause: "Pi could not sign in to its provider.",
@@ -21536,7 +21641,9 @@ function runsOf(store, explorationId, counts2) {
   const [claims, questions] = counts2.get(`${status.planId}:${explorationId}`) ?? [0, 0];
   const waiting = explorationPermissions(store, explorationId).filter((item) => !item.decision).length;
   const waits = waiting ? `waits for you: ${plural(waiting, "permission request")}` : "";
-  const failure = status.state === "failed" ? failureOf(status.reason, status.doneHint, events) : null;
+  const firstFollow = events.findIndex((item) => item.step === "follow");
+  const firstRun = firstFollow === -1 ? events : events.slice(0, firstFollow);
+  const failure = status.state === "failed" ? failureOf(status.reason, status.doneHint, firstRun) : null;
   const outcomes = {
     completed: `${plural(claims, "defect")}, ${plural(questions, "question")}`,
     failed: failure ? `${failure.cause} ${failure.next}` : "",
@@ -21559,7 +21666,6 @@ function runsOf(store, explorationId, counts2) {
       )[0].charter
     ).change?.repo ?? ""
   };
-  const firstFollow = events.findIndex((item) => item.step === "follow");
   const testing = isRunning(status.state) && status.state !== "following";
   const own = {
     ...base,
@@ -23267,6 +23373,8 @@ function testerState(live, item) {
 	>`;
 }
 function testerLine(item) {
+  if (["failed", "operational_error"].includes(item.state ?? "") && typeof item.reason === "string")
+    return item.reason;
   const busy = item.state === "running" || item.state === "given";
   if (item.activity && item.activityAt)
     return html2`${item.activity} · <span class="age">${ago(item.activityAt)}</span>`;
@@ -23484,6 +23592,7 @@ function explorerDetail(store, live, item, crumbs) {
   return html2`${crumbs}
 		<h2 class="q-h">Explorer ${item.explorer}</h2>
 		<p class="q-meta">${explorerState(item)} ${inState(item)}</p>
+		${["failed", "operational_error"].includes(item.state ?? "") && item.reason ? html2`<div class="banner fail" role="alert"><strong>Tester failed.</strong> ${Array.isArray(item.reason) ? item.reason.join(" ") : item.reason} ${item.hint ? html2`<p>${item.hint}</p>` : ""}</div>` : ""}
 		<dl class="facts">
 			${item.model ? html2`<div>
 							<dt>Model</dt>
@@ -23808,7 +23917,7 @@ function claimPage(store, context, explorationId, claimId, state = null) {
 
 // plugin/src/model-catalog.ts
 import { execFile } from "node:child_process";
-import { stripVTControlCharacters } from "node:util";
+import { stripVTControlCharacters as stripVTControlCharacters2 } from "node:util";
 var requestId = "checkmate-models";
 var claudeArgs = [
   "-p",
@@ -23849,7 +23958,7 @@ function claudeModels(stdout) {
   return void 0;
 }
 function piModels(stdout) {
-  const lines2 = stripVTControlCharacters(stdout).trim().split("\n");
+  const lines2 = stripVTControlCharacters2(stdout).trim().split("\n");
   const header2 = lines2.findIndex((line) => /^provider\s+model\s+context\b/.test(line.trim()));
   if (header2 === -1) return lines2.some((line) => /^No models available\./.test(line.trim())) ? [] : void 0;
   const columns2 = lines2[header2].trim().split(/\s+/).length;
@@ -29849,7 +29958,7 @@ function explorationLines(reply) {
         `ended=${item.ended ?? "-"}`,
         `recorded=${item.recorded ?? "-"}`,
         `saved=${item.saved}`,
-        ...item.ended === "stopped" ? [`reason=${item.reason}`] : []
+        ...typeof item.reason === "string" && item.reason ? [`reason=${item.reason}`] : []
       ]),
       ...status.paused ? [["paused", status.paused, "waits_on=oracle"]] : [],
       ...status.explorers.flatMap((item) => item.stderr.map((line) => [item.explorer, "stderr", line])),

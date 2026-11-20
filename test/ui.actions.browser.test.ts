@@ -4,10 +4,10 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { closeStore, openStore } from '../plugin/src/store.ts'
 import { explorationState, running } from '../plugin/src/explorers.ts'
-import { explorationEvents } from '../plugin/src/explorations.ts'
+import { explorationEvents, openExploration } from '../plugin/src/explorations.ts'
 import { focusedKey, launchWith, openIn, browserTest, stop } from './browser.ts'
 import { endProcessesIn, postAs, waitFor, workspaceWithFake } from './actions.ts'
-import { done, event, launched, openTest, report } from './explorations.ts'
+import { done, event, launch, launched, openTest, report } from './explorations.ts'
 import { human } from '../scripts/ui-demo.ts'
 import { watchRefreshes } from './refresh.ts'
 
@@ -687,4 +687,31 @@ test('new change offers tester models and starts with both selections', browserT
 	await page.waitForURL(/\/explorations\/x-1$/)
 	const start = read((store) => explorationEvents(store, 'x-1').find((event) => event.step === 'start'))
 	assert.deepEqual(start?.detail.testerModels, { a1: 'haiku', a2: 'sonnet' })
+})
+
+test('a failed Pi tester shows the provider error in the run and its detail', browserTest, async (t) => {
+	const { page, url, workspace } = await setup(t, {})
+	const store = openStore(workspace)
+	openExploration(store, human, { planId: 'checkout', build: 'b1', explorationId: 'x-2' })
+	event(store, 'x-2', {
+		step: 'start',
+		detail: { ...launch, context: { harness: 'pi', claudeArgs: [], hiddenPlugin: null } },
+	})
+	launched(store, 'x-2', 'a1')
+	event(store, 'x-2', {
+		step: 'end',
+		explorer: 'a1',
+		status: 'operational_error',
+		detail: {
+			reason: 'pi ended with an error: 401: {"message":"API key expired","api_key":"secret-value"}',
+		},
+	})
+	done(store, 'x-2', 'failed', { reason: 'No explorer session was recorded.' })
+	closeStore(store)
+	await page.goto(url('/explorations/x-2'))
+	assert.match((await page.locator('[data-key="run-ended"]').textContent()) ?? '', /HTTP 401/)
+	await page.locator('[data-key="explorer:a1"]').click()
+	await page.waitForURL(/item=explorer%3Aa1/)
+	assert.match((await page.locator('main').textContent()) ?? '', /API key expired/i)
+	assert.doesNotMatch((await page.locator('main').textContent()) ?? '', /secret-value/)
 })

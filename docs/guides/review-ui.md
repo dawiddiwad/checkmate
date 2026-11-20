@@ -202,6 +202,8 @@ A row shows its numbered options only when all of them fit in the row. When they
 - `After the testers`: `record`, `merge`, `verify`, and `follow-up`, with their states and reasons.
 - The other sessions of the plan.
 
+When Pi reports a provider error, the failed run shows its cause. Open an individual tester to see its error. For `HTTP 401: API key expired.`, configure Pi with a valid provider key and test again.
+
 Below the list is the overview of the session, or the tester or phase that you open: `Not merged yet`, the merged claims and questions, the saved files, and `Download report`. A paused session waits for you in the Claude Code session, not in the UI.
 
 `Stop the test…` is in the action row while the session runs as processes. A dialog names the plan and the build, and has an optional reason. A tester that runs has `Stop` as its last option. Both ask first. A stop ends the supervisor and its tester processes. It keeps the record and the work folder. The UI answers at once: the view shows `Stopping…` while the processes end, and no other page waits. A background process ends the processes. The view shows `Stopped` when they have ended, or names the processes that are still alive. While a stop runs, a new test of the plan does not start. The dialog closes with a message when the test or the tester ends before you confirm.

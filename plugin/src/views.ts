@@ -444,6 +444,8 @@ function sessionExplorerLive(events: ExplorationEvent[], item: Explorer, now: nu
 	return {
 		explorer: item.explorer,
 		model: null,
+		reason: item.reason,
+		hint: item.hint,
 		turn: (action?.detail.step as string | undefined) ?? null,
 		state,
 		startedAt: last?.at ?? null,
@@ -518,6 +520,8 @@ function explorerLive(
 	return {
 		explorer: item.explorer,
 		model: item.model,
+		reason: item.reason,
+		hint: item.hint,
 		turn,
 		state,
 		startedAt,

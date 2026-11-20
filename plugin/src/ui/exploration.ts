@@ -383,6 +383,8 @@ function testerState(live: Live, item: LiveExplorer) {
 }
 
 function testerLine(item: LiveExplorer) {
+	if (['failed', 'operational_error'].includes(item.state ?? '') && typeof item.reason === 'string')
+		return item.reason
 	const busy = item.state === 'running' || item.state === 'given'
 	if (item.activity && item.activityAt)
 		return html`${item.activity} · <span class="age">${ago(item.activityAt)}</span>`
@@ -662,6 +664,7 @@ function explorerDetail(store: Store, live: Live, item: LiveExplorer, crumbs: Ht
 	return html`${crumbs}
 		<h2 class="q-h">Explorer ${item.explorer}</h2>
 		<p class="q-meta">${explorerState(item)} ${inState(item)}</p>
+		${['failed', 'operational_error'].includes(item.state ?? '') && item.reason ? html`<div class="banner fail" role="alert"><strong>Tester failed.</strong> ${Array.isArray(item.reason) ? item.reason.join(' ') : item.reason} ${item.hint ? html`<p>${item.hint}</p>` : ''}</div>` : ''}
 		<dl class="facts">
 			${
 				item.model

@@ -20,7 +20,7 @@ import {
 	verifyItems,
 } from './journal.ts'
 import type { Harness } from './pi.ts'
-import { piModelArgs, piModelEnv, selectedHarness } from './pi.ts'
+import { piErrorText, piModelArgs, piModelEnv, piStderr, selectedHarness } from './pi.ts'
 import { requireModel, testerModelText, workspaceEnv } from './settings.ts'
 import { defaultLevel, levelNames, storedLevel, testLevels } from './levels.ts'
 import { explorerActor, lastEntry, recordSession, defaultRecorderTimeout } from './recorder.ts'
@@ -565,6 +565,8 @@ async function launchExplorers(store: Store, actor: string, explorationId: strin
 	for (const { explorer, session, calls } of ended) {
 		const call = calls.find((item) => item.failure) ?? calls.at(-1)!
 		const hint = failureHint(launch, call, launch.testerModels?.[explorer])
+		if (launch.context.harness === 'pi' && call.failure)
+			console.error(`${explorationId}/${explorer} ${calls.length === 1 ? 'study' : 'test'}: ${call.failure[1]}`)
 		const durations = calls.flatMap((item) => (item.durationMs === undefined ? [] : [item.durationMs]))
 		event(store, actor, explorationId, {
 			step: 'end',
@@ -1082,6 +1084,8 @@ export async function driveFollow(workspace: string, explorationId: string, env:
 		)
 		for (const { explorer, session, call, tester, model } of ended) {
 			const hint = failureHint(launch, call, model)
+			if (launch.context.harness === 'pi' && call.failure)
+				console.error(`${explorationId}/${explorer} follow-up: ${call.failure[1]}`)
 			event(store, actor, explorationId, {
 				step: 'follow-turn',
 				explorer,
@@ -1380,10 +1384,28 @@ function stopReason(events: ExplorationEvent[]) {
 	return stop ? stopText(stop) : null
 }
 
+function piExplorationDetails(detail: Record<string, unknown>): Record<string, unknown> {
+	return {
+		...detail,
+		...(typeof detail.reason === 'string' ? { reason: piErrorText(detail.reason) } : {}),
+		...(Array.isArray(detail.reasons) ? { reasons: detail.reasons.map(piErrorText).filter(Boolean) } : {}),
+		...(Array.isArray(detail.stderr) ? { stderr: piStderr(detail.stderr.join('\n')) } : {}),
+		...(Array.isArray(detail.skipped) ? { skipped: detail.skipped.map(piErrorText).filter(Boolean) } : {}),
+	}
+}
+
 export function explorationStatus(store: Store, explorationId: string) {
 	const row = explorationRow(store, explorationId)
-	const events = explorationEvents(store, explorationId)
-	const launch = startOf(events)
+	const raw = explorationEvents(store, explorationId)
+	const launch = startOf(raw)
+	const pi = launch?.context?.harness === 'pi'
+	const events = pi
+		? raw.map((item) =>
+				['failed', 'operational_error', 'interrupted'].includes(item.status)
+					? { ...item, detail: piExplorationDetails(item.detail) }
+					: item
+			)
+		: raw
 	const charter = JSON.parse(row.charter) as Charter
 	const state = explorationState(events)
 	const names = [...new Set(events.flatMap((item) => (item.explorer ? [item.explorer] : [])))]
@@ -1406,7 +1428,12 @@ export function explorationStatus(store: Store, explorationId: string) {
 			recorded: record?.status ?? null,
 			saved: (record?.detail.saved ?? 0) as number,
 			reason: (end?.detail.reason ?? record?.detail.reasons ?? (stop ? stopText(stop) : null)) as unknown,
-			hint: (end?.detail.hint ?? null) as string | null,
+			hint: (end?.detail.hint ??
+				(pi &&
+				typeof end?.detail.reason === 'string' &&
+				authenticationFailed({ failure: ['operational_error', end.detail.reason] })
+					? piAuthenticationHint
+					: null)) as string | null,
 			stderr: (end?.detail.stderr ?? []) as string[],
 			stray: [
 				...new Set(

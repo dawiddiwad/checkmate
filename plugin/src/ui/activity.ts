@@ -7,7 +7,8 @@ import { all } from '../store.ts'
 import { explorationEvents } from '../explorations.ts'
 import { explorationPermissions } from '../permissions.ts'
 import { explorationState, explorationStatus, startOf } from '../explorers.ts'
-import { authenticationHint, piAuthenticationHint } from '../sessions.ts'
+import { authenticationFailed, authenticationHint, piAuthenticationHint } from '../sessions.ts'
+import { piErrorText } from '../pi.ts'
 import { mergedClaims, mergedQuestions } from '../views.ts'
 import { asList, duration, glyph, html, pill, plural, time } from './html.ts'
 import { emptyNotice, heading } from './layout.ts'
@@ -89,6 +90,26 @@ export function failureOf(reason: string | null, hint: string | null, events: Ex
 			next: 'Install Pi or choose Claude Code in Settings.',
 			detail: null,
 		}
+
+	const testerFailure =
+		text === 'No explorer session was recorded.' || text === 'Host authentication: no session could log in.'
+	if (testerFailure && startOf(events)?.context?.harness === 'pi') {
+		const failed = events.find(
+			(item) => item.step === 'end' && item.status === 'operational_error' && item.detail.reason
+		)
+		const diagnostic = piErrorText(failed?.detail.reason)
+		if (diagnostic) {
+			const auth = authenticationFailed({ failure: ['operational_error', diagnostic] })
+			const guidance = typeof failed?.detail.hint === 'string' ? piErrorText(failed.detail.hint) : ''
+			return {
+				cause: `Tester ${failed?.explorer ?? ''} failed: ${diagnostic}`,
+				next: auth
+					? 'Check the provider login in Pi, then test again.'
+					: guidance || 'Check the Pi configuration, then test again.',
+				detail: null,
+			}
+		}
+	}
 	if (
 		hint === piAuthenticationHint ||
 		(/Host authentication/.test(text) && startOf(events)?.context?.harness === 'pi')
@@ -141,7 +162,9 @@ export function runsOf(store: Store, explorationId: string, counts: Map<string, 
 	const [claims, questions] = counts.get(`${status.planId}:${explorationId}`) ?? [0, 0]
 	const waiting = explorationPermissions(store, explorationId).filter((item) => !item.decision).length
 	const waits = waiting ? `waits for you: ${plural(waiting, 'permission request')}` : ''
-	const failure = status.state === 'failed' ? failureOf(status.reason, status.doneHint, events) : null
+	const firstFollow = events.findIndex((item) => item.step === 'follow')
+	const firstRun = firstFollow === -1 ? events : events.slice(0, firstFollow)
+	const failure = status.state === 'failed' ? failureOf(status.reason, status.doneHint, firstRun) : null
 	const outcomes: Record<string, string> = {
 		completed: `${plural(claims, 'defect')}, ${plural(questions, 'question')}`,
 		failed: failure ? `${failure.cause} ${failure.next}` : '',
@@ -164,7 +187,6 @@ export function runsOf(store: Store, explorationId: string, counts: Map<string, 
 			)[0].charter
 		).change?.repo ?? '') as string,
 	}
-	const firstFollow = events.findIndex((item) => item.step === 'follow')
 	const testing = isRunning(status.state) && status.state !== 'following'
 	const own: Run = {
 		...base,

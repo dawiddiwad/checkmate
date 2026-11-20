@@ -3,7 +3,7 @@ import { mkdirSync, symlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import test from 'node:test'
 import { pathToFileURL } from 'node:url'
-import { piResult } from '../plugin/src/pi.ts'
+import { piErrorText, piResult, piStderr } from '../plugin/src/pi.ts'
 import { authenticationFailed, callChild, launchChild, workDenyRules } from '../plugin/src/sessions.ts'
 import { directory } from './support.ts'
 
@@ -41,6 +41,33 @@ test('Pi result uses the last completed assistant turn and recognizes host error
 	assert.equal(read(session, end('aborted')).failure?.[0], 'interrupted')
 	assert.equal(read(session, end('stop'), end('error', 'Wait', true)).failure?.[0], 'operational_error')
 	assert.equal(read(session, end('toolUse')).failure?.[0], 'operational_error')
+})
+
+test('Pi failures keep the provider message and status without headers or credential values', () => {
+	const body = '{"message":"API key expired.","code":401,"headers":{"authorization":"sensitive"}}'
+	const message = { role: 'assistant', stopReason: 'error', errorMessage: `401 ${body}` }
+	const output = JSON.stringify({ type: 'message_end', message })
+	const result = piResult(output, 'Warning: startup flag ignored\nAuthorization:sensitive', 1, null)
+	assert.deepEqual(result.failure, ['operational_error', 'pi exited with code 1: HTTP 401: API key expired.'])
+	assert.deepEqual(result.stderr, ['Warning: startup flag ignored'])
+	assert(authenticationFailed(result))
+	assert.equal(
+		piErrorText('pi ended with an error: 401 ' + body.slice(0, -10)),
+		'pi ended with an error: HTTP 401: API key expired.'
+	)
+	assert.equal(
+		piErrorText('Error: 402: {"message":"Insufficient credits for this API key."}'),
+		'HTTP 402: Insufficient credits for this API key.'
+	)
+	assert.equal(piErrorText('HTTP 403 refresh token expired.'), 'HTTP 403: refresh token expired.')
+	assert.equal(
+		piErrorText('401 {"error":{"message":"Incorrect API key provided: demo-secret"}}'),
+		'HTTP 401: Incorrect API key provided: [redacted]'
+	)
+	assert.deepEqual(
+		piStderr('Authorization:dummytoken\nCookie:sample=demo\nWWW-Authenticate: Basic realm="service"'),
+		[]
+	)
 })
 
 test('Pi children stop and report output overflow', async (t) => {

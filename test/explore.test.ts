@@ -87,6 +87,26 @@ test('Pi exploration resumes the study session and forks its recorder', (t) => {
 	assert.equal(done.body.explorers[0].saved, 1)
 })
 
+test('a Pi provider error is saved and logged as a safe tester failure', (t) => {
+	const { start, wait, workspace } = setup(t, { harness: 'pi', installed: false, replies: { explorer: '!pi-auth' } })
+	assert.equal(start(['--level', 'smoke']).code, 0)
+	const done = wait()
+	assert.equal(done.body.state, 'failed')
+	const opened = openStore(workspace)
+	try {
+		const end = explorationEvents(opened, 'x-1').find((item) => item.step === 'end')!
+		assert.equal(end.detail.reason, 'pi ended with an error: HTTP 401: API key expired.')
+		assert.deepEqual(end.detail.stderr, ['Warning: fixture startup'])
+		assert.match(String(end.detail.hint), /Log in with Pi/)
+		assert.doesNotMatch(JSON.stringify(end.detail), /fixture-secret|headers/i)
+	} finally {
+		closeStore(opened)
+	}
+	const log = readFileSync(join(workspace, '.checkmate', 'tmp', 'explore-x-1.log'), 'utf8')
+	assert.match(log, /x-1\/a1 study: pi ended with an error: HTTP 401: API key expired/)
+	assert.doesNotMatch(log, /fixture-secret|headers/i)
+})
+
 test('explore start launches the explorers of the level in a clean context, then records each session', (t) => {
 	const { start, wait, called, workspace, command } = setup(t)
 	const started = start(['--level', 'deep'])
@@ -346,6 +366,7 @@ test('a failed launch keeps the last lines of stderr, and status offers the test
 		env: {},
 		stdin: () => '',
 	})
+	assert.match(shown.output, /\na1\t[^\n]*\treason=claude exited with code 1: stack line 1/)
 	assert.match(shown.output, /\na1\tstderr\tstack line 3\n/)
 	assert.match(shown.output, /\na1\tstderr\tstack line 12(\n|$)/)
 	const status = command(['status', 'later']).body

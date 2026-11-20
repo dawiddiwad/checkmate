@@ -1,23 +1,64 @@
 import assert from 'node:assert/strict'
 import { execFile } from 'node:child_process'
 import { createServer } from 'node:http'
+import type { RequestListener } from 'node:http'
 import { once } from 'node:events'
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { test } from 'node:test'
+import type { TestContext } from 'node:test'
 import { promisify } from 'node:util'
-import { directory, profile, root } from './support.ts'
+import { closeStore, openStore } from '../plugin/src/store.ts'
+import { explorationEvents } from '../plugin/src/explorations.ts'
+import { startUi } from '../plugin/src/ui/server.ts'
+import { directory, plan, profile, root, target } from './support.ts'
 
-test('real Pi runs a tool and delegate verifies the recorded setup', async (t) => {
+const cli = join(root, 'cli/dist/checkmate.js')
+const runFile = promisify(execFile)
+
+async function piFixture(t: TestContext, handler: RequestListener, apiKey = 'fixture') {
 	const workspace = directory(t)
 	const agent = join(workspace, 'agent')
 	mkdirSync(agent)
-	const cli = join(root, 'cli/dist/checkmate.js')
+	const server = createServer(handler)
+	server.listen(0, '127.0.0.1')
+	await once(server, 'listening')
+	t.after(() => server.close())
+	const address = server.address()
+	assert.ok(address && typeof address !== 'string')
+	writeFileSync(
+		join(agent, 'models.json'),
+		JSON.stringify({
+			providers: {
+				localfixture: {
+					baseUrl: `http://127.0.0.1:${address.port}/v1`,
+					api: 'openai-completions',
+					apiKey,
+					models: [{ id: 'fixture' }],
+				},
+			},
+		})
+	)
+	const env = {
+		PATH: process.env.PATH,
+		HOME: workspace,
+		PI_CODING_AGENT_DIR: agent,
+		PI_OFFLINE: '1',
+		CHECKMATE_ACTOR: 'tester',
+		CHECKMATE_HARNESS: 'pi',
+		CHECKMATE_PI_PROVIDER: 'localfixture',
+		CHECKMATE_PI_MODEL: 'fixture',
+	}
+	const run = async (...args: string[]) =>
+		(await runFile(process.execPath, [cli, ...args], { cwd: workspace, env, timeout: 45_000 })).stdout
+	return { workspace, env, run }
+}
+
+test('real Pi runs a tool and delegate verifies the recorded setup', async (t) => {
 	const value = profile()
-	writeFileSync(join(workspace, 'profile.json'), JSON.stringify(value))
 	const command = `node "${cli}" target save checkout-local --actor pi:setup < profile.json`
 	const requests: Array<{ model: string; messages: Array<{ role: string; content: unknown }> }> = []
-	const server = createServer(async (req, res) => {
+	const { workspace, run } = await piFixture(t, async (req, res) => {
 		let body = ''
 		for await (const chunk of req) body += chunk
 		requests.push(JSON.parse(body))
@@ -45,36 +86,7 @@ test('real Pi runs a tool and delegate verifies the recorded setup', async (t) =
 		}
 		res.end('data: [DONE]\n\n')
 	})
-	server.listen(0, '127.0.0.1')
-	await once(server, 'listening')
-	t.after(() => server.close())
-	const address = server.address()
-	assert.ok(address && typeof address !== 'string')
-	writeFileSync(
-		join(agent, 'models.json'),
-		JSON.stringify({
-			providers: {
-				localfixture: {
-					baseUrl: `http://127.0.0.1:${address.port}/v1`,
-					api: 'openai-completions',
-					apiKey: 'fixture',
-					models: [{ id: 'fixture' }],
-				},
-			},
-		})
-	)
-	const env = {
-		PATH: process.env.PATH,
-		HOME: workspace,
-		PI_CODING_AGENT_DIR: agent,
-		PI_OFFLINE: '1',
-		CHECKMATE_ACTOR: 'tester',
-		CHECKMATE_HARNESS: 'pi',
-		CHECKMATE_PI_PROVIDER: 'localfixture',
-		CHECKMATE_PI_MODEL: 'fixture',
-	}
-	const run = async (...args: string[]) =>
-		(await promisify(execFile)(process.execPath, [cli, ...args], { cwd: workspace, env })).stdout
+	writeFileSync(join(workspace, 'profile.json'), JSON.stringify(value))
 	await run('init')
 	await run(
 		'target',
@@ -95,4 +107,114 @@ test('real Pi runs a tool and delegate verifies the recorded setup', async (t) =
 	assert.ok(
 		requests[1].messages.some((m) => m.role === 'tool' && JSON.stringify(m.content).includes('checkout-local'))
 	)
+})
+
+test('real Pi records an expired-key failure and shows a safe diagnosis', async (t) => {
+	const fixtureKey = 'fixture-expired-key-do-not-display'
+	const header = 'Bearer error="invalid_token", error_description="API key expired"'
+	let requests = 0
+	let authorized = false
+	const { workspace, env, run } = await piFixture(
+		t,
+		(req, res) => {
+			requests++
+			authorized ||= req.headers.authorization === `Bearer ${fixtureKey}`
+			req.resume()
+			res.writeHead(401, { 'Content-Type': 'application/json', 'WWW-Authenticate': header })
+			res.end(
+				JSON.stringify({
+					error: {
+						message: 'API key expired.',
+						code: 401,
+						metadata: { headers: { 'WWW-Authenticate': header } },
+					},
+				})
+			)
+		},
+		fixtureKey
+	)
+	const store = openStore(workspace)
+	try {
+		target(store)
+		plan(store)
+	} finally {
+		closeStore(store)
+	}
+	const ui = await startUi({ workspace, env })
+	try {
+		const started = JSON.parse(
+			await run(
+				'explore',
+				'start',
+				'checkout',
+				'--build',
+				'b1',
+				'--level',
+				'smoke',
+				'--allow',
+				'Read',
+				'--allow',
+				'Bash',
+				'--json'
+			)
+		)
+		assert.equal(started.status, 'completed')
+		await assert.rejects(run('explore', 'wait', started.subject, '--timeout', '30', '--json'), (error) => {
+			const reply = JSON.parse((error as { stdout: string }).stdout)
+			assert.equal(reply.outcome, 'failed')
+			return true
+		})
+		assert.equal(requests, 1)
+		assert(authorized, 'Pi did not pass the fixture key to its provider')
+		const status = await run('explore', 'status', started.subject, '--json')
+		const compact = await run('explore', 'status', started.subject)
+		const log = await run('log', '--json')
+		const outcome = JSON.parse(status)
+		assert.equal(outcome.explorers[0].recorded, null)
+		assert.match(outcome.reason, /Host authentication/)
+		const recorded = openStore(workspace)
+		try {
+			const ended = explorationEvents(recorded, started.subject).find(
+				(item) => item.step === 'end' && item.explorer === 'a1'
+			)
+			assert.equal(ended?.status, 'operational_error')
+			assert.match(String(ended.detail.reason), /\b401\b.*API key expired\./)
+		} finally {
+			closeStore(recorded)
+		}
+		const overview = '/explorations/' + started.subject
+		const pages = await Promise.all(
+			[overview, overview + '?item=explorer:a1'].map(async (path) => {
+				const response = await fetch(new URL(path, ui.url))
+				assert.equal(response.status, 200)
+				return response.text()
+			})
+		)
+		const detailAt = pages[1].indexOf('data-region="exploration-detail"')
+		assert.notEqual(detailAt, -1)
+		const outputs = {
+			'JSON status': status,
+			'compact status': compact,
+			'operation log': log,
+			'exploration overview': pages[0],
+			'tester detail': pages[1].slice(detailAt),
+		}
+		for (const [place, output] of Object.entries(outputs))
+			assert(/\b401\b[^\n]*API key expired\./.test(output), `Missing expiry diagnosis in ${place}`)
+		const supervisorLog = readFileSync(
+			join(workspace, '.checkmate', 'tmp', `explore-${started.subject}.log`),
+			'utf8'
+		)
+		const privateData = /WWW-Authenticate|error_description|invalid_token/i
+		for (const [place, output] of Object.entries({
+			...outputs,
+			'tester page': pages[1],
+			'supervisor log': supervisorLog,
+		})) {
+			assert(!output.includes(fixtureKey), `Provider key leaked in ${place}`)
+			assert(!privateData.test(output), `Provider header leaked in ${place}`)
+		}
+	} finally {
+		await ui.close()
+	}
 })

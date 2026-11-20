@@ -73,7 +73,14 @@ else finish(typeof reply === 'string' ? reply : JSON.stringify(reply ?? 'Done.')
 function finish(result) {
 	if (pi) {
 		emit({ type: 'session', id: session })
-		const message = { role: 'assistant', stopReason: 'stop', content: [{ type: 'text', text: result }] }
+		const message = result === '!pi-auth'
+			? { role: 'assistant', stopReason: 'error', content: [], errorMessage: '401 ' +
+				JSON.stringify({ message: 'API key expired.', code: 401, headers: { authorization: 'fixture-secret' } }) }
+			: { role: 'assistant', stopReason: 'stop', content: [{ type: 'text', text: result }] }
+		if (result === '!pi-auth') {
+			process.stderr.write('Warning: fixture startup\\nAuthorization:fixture-secret\\n')
+			emit({ type: 'message_end', message })
+		}
 		emit({ type: 'agent_end', messages: [message], willRetry: false })
 		emit({ type: 'agent_settled', aborted: false })
 		return

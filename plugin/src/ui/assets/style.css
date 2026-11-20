@@ -1764,7 +1764,7 @@ a.sp-c-title {
 	background: var(--hair);
 }
 .sb-where {
-	flex: 0 0 var(--path-w, 320px);
+	flex: 0 1 var(--path-w, 320px);
 	min-width: 0;
 	overflow: hidden;
 	color: var(--ink);
@@ -1889,6 +1889,9 @@ a.sp-c-title {
 	flex: 0 1 auto;
 	min-width: 0;
 	overflow: hidden;
+}
+.sb-keys:has(> [data-cap='?']) {
+	min-width: 4.5em;
 }
 button.sb-k {
 	padding: 0;
@@ -2946,6 +2949,9 @@ details.fold[open] > summary::before {
 		justify-content: center;
 		min-width: 40px;
 		min-height: 40px;
+	}
+	.sb-keys:has(> [data-cap='?']) {
+		min-width: 40px;
 	}
 	button.sb-k .sb-kt {
 		position: absolute;

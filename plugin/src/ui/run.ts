@@ -311,10 +311,10 @@ function cleanup(detail: Detail) {
 							html`<li>
 								Attempt ${attempt.attempt} · ${time(attempt.startedAt)} · ${attempt.actor}
 								${
-										attempt.workerInterruptedAt
-											? html` · Delegated worker interrupted ${time(attempt.workerInterruptedAt)}`
-											: ''
-									}
+									attempt.workerInterruptedAt
+										? html` · Delegated worker interrupted ${time(attempt.workerInterruptedAt)}`
+										: ''
+								}
 							</li>`
 					)}
 				</ul>

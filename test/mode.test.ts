@@ -6,7 +6,7 @@ import { realpathSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { run } from '../plugin/src/cli.ts'
 import { closeStore } from '../plugin/src/store.ts'
-import { actor, directory, ready, store, target } from './support.ts'
+import { actor, begin, directory, ready, store, target } from './support.ts'
 import { fakeClaude } from './claude.ts'
 
 const allow = ['--allow', 'Read', '--allow', 'Bash']
@@ -62,7 +62,10 @@ test('test records a missing request, explores first, and checks the stored test
 })
 
 test('test in regression mode begins a run of the ready tests and explores the changed files', (t) => {
-	const { command, wait, called, workspace } = setup(t, ready)
+	const { command, wait, called, workspace } = setup(t, (opened) => {
+		ready(opened)
+		begin(opened, 'existing', ['T1'], 'b1')
+	})
 	execFileSync('git', ['init', '-q'], { cwd: workspace })
 	writeFileSync(join(workspace, 'cart.js'), 'one\n')
 	execFileSync('git', ['add', 'cart.js'], { cwd: workspace })
@@ -83,6 +86,7 @@ test('test in regression mode begins a run of the ready tests and explores the c
 	])
 	assert.equal(reply.code, 0, reply.output)
 	assert.deepEqual(reply.body.run, { runId: 'run-1', tests: ['T1', 'T2'] })
+	assert.deepEqual(reply.body.warnings, ['Run existing also has open tests on checkout-local/local: T1.'])
 	assert.deepEqual(reply.body.scope, ['cart.js'])
 	assert.deepEqual(reply.body.next, [
 		'Execute the stored tests of run-1: checkmate delegate execute run-1 --allow Read --allow Bash',

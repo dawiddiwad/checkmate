@@ -6,7 +6,7 @@ import type { FormState } from './forms.ts'
 import { evidenceBytes, planDetail, runDetail } from '../views.ts'
 import { decisionToken, planRevision, planRunGaps } from '../plans.ts'
 import { hasMetadata, html, icon, join, metadataList, pill, plural, short, time, words } from './html.ts'
-import { crumbBar, downloads } from './layout.ts'
+import { banner, crumbBar, downloads } from './layout.ts'
 import type { EvidenceFile } from './evidence.ts'
 import { emptyState, recordPanel, returnFields, verdictPanel } from './forms.ts'
 import { evidenceList, shownAsText } from './evidence.ts'
@@ -569,7 +569,7 @@ function summaryDetail(store: Store, context: Context, detail: Detail, state: Fo
 		: html`<span class="muted small">The report is ready when the run finishes.</span>`
 	return html`${crumbs}
 		<h2 class="q-h">Overview</h2>
-		${strip(detail)} ${openChecks(detail)}
+		${strip(detail)} ${detail.warnings.map((warning) => banner('warn', warning))} ${openChecks(detail)}
 		${decisionPanel(store, context, detail, state, returnFields({ key: 'summary' }, `/runs/${detail.runId}`))}
 		<div class="actions">${report}</div>`
 }
@@ -617,7 +617,7 @@ export function runPage(
 		viewer: true,
 		title: label ? `${runId} · ${label}` : runId,
 		section: 'runs',
-		subjects: [`run:${runId}`, 'inbox'],
+		subjects: [`run:${runId}`, 'inbox', ...(detail.result ? [] : [`plan:${detail.planId}`])],
 		status: adoptError ? 422 : undefined,
 		crumbs: [
 			['Plans', '/'],

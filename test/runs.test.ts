@@ -18,9 +18,17 @@ import {
 	runState,
 	stoppedReason,
 } from '../plugin/src/runs.ts'
-import { adoptGaps, answerGap, patchPlan, planRevision, planRunGaps, revisePlan } from '../plugin/src/plans.ts'
+import {
+	adoptGaps,
+	answerGap,
+	patchPlan,
+	planRevision,
+	planRunGaps,
+	rejectPlan,
+	revisePlan,
+} from '../plugin/src/plans.ts'
 import { inbox, planStatus, runDetail } from '../plugin/src/views.ts'
-import { addInstance, retireInstance } from '../plugin/src/targets.ts'
+import { addInstance, retireInstance, saveTarget } from '../plugin/src/targets.ts'
 import {
 	accept,
 	actor,
@@ -32,6 +40,7 @@ import {
 	failT2,
 	passRun,
 	plan,
+	profile,
 	ready,
 	regressionPlan,
 	revised,
@@ -505,6 +514,80 @@ test('resume keeps recorded results, lists what is open, and can close stalled t
 	)
 })
 
+test('resume refuses a retired instance even when the target has another active instance', (t) => {
+	const opened = started(t)
+	check(opened, 'run-1', 'T1.A1', 'passed')
+	addInstance(opened, actor, {
+		targetId: 'checkout-local',
+		instanceId: 'replacement',
+		instance: { entries: { web: 'https://replacement.example.com' } },
+	})
+	retireInstance(opened, actor, { targetId: 'checkout-local', instanceId: 'local' })
+	const before = runDetail(opened, 'run-1')
+	assert.throws(
+		() => resumeRun(opened, actor, { runId: 'run-1', error: ['T1'], reason: 'The host stopped.' }),
+		/Instance checkout-local\/local is retired\. Run run-1 cannot resume/
+	)
+	const after = runDetail(opened, 'run-1')
+	assert.deepEqual([after.instance, after.attempts, after.tests], [before.instance, before.attempts, before.tests])
+})
+
+test('resume checks the latest target profile and keeps the pinned target revision', (t) => {
+	const opened = started(t)
+	const save = (revision: number, readyForLiveExecution: boolean) =>
+		saveTarget(opened, actor, { targetId: 'checkout-local', profile: profile({ revision, readyForLiveExecution }) })
+	assert.equal(save(2, false).status, 'needs_decision')
+	assert.throws(
+		() => resumeRun(opened, actor, { runId: 'run-1' }),
+		/Target prerequisites are not ready: checkout-local@2/
+	)
+	assert.equal(runDetail(opened, 'run-1').attempts.length, 1)
+	assert.equal(save(3, true).status, 'completed')
+	assert.equal(resumeRun(opened, actor, { runId: 'run-1' }).data.attempt, 2)
+	assert.equal(runDetail(opened, 'run-1').target, 'checkout-local@1')
+})
+
+test('resume gives the gate refusal and leaves the attempt, selection and recorded work intact', (t) => {
+	const opened = started(t)
+	passT1(opened)
+	check(opened, 'run-1', 'T2.A1', 'passed')
+	const before = runDetail(opened, 'run-1')
+	rejectPlan(opened, actor, { reference: 'checkout@2', rationale: 'The oracle withdrew approval.' })
+	const resumed = resumeRun(opened, actor, { runId: 'run-1', error: ['T2'], reason: 'The host stopped.' })
+	assert.equal(resumed.status, 'rejected')
+	assert.equal(resumed.refusal, 'prohibited')
+	assert(resumed.reasons.includes('Plan checkout@2 is not approved'))
+	const after = runDetail(opened, 'run-1')
+	assert.deepEqual([after.attempts, after.request, after.tests], [before.attempts, before.request, before.tests])
+	approved(opened)
+	assert.equal(resumeRun(opened, actor, { runId: 'run-1' }).data.attempt, 2)
+})
+
+test('runs warn about shared open tests on the same instance, including across builds', (t) => {
+	const opened = store(t)
+	regressionPlan(opened)
+	addInstance(opened, actor, {
+		targetId: 'checkout-local',
+		instanceId: 'staging',
+		instance: { entries: { web: 'https://staging.example.com' } },
+	})
+	begin(opened, 'run-1', ['T1'], 'b1', { instance: 'local' })
+	assert.deepEqual(begin(opened, 'run-matrix', ['T1'], 'b1', { instance: 'staging' }).data.warnings, [])
+	assert.deepEqual(begin(opened, 'run-disjoint', ['T2'], 'b1', { instance: 'local' }).data.warnings, [])
+	const duplicate = begin(opened, 'run-overlap', ['T1'], 'b2', { instance: 'local' })
+	assert.deepEqual(duplicate.data.warnings, ['Run run-1 also has open tests on checkout-local/local: T1.'])
+	assert.deepEqual(resumeRun(opened, actor, { runId: 'run-overlap' }).data.warnings, duplicate.data.warnings)
+	assert.deepEqual(runDetail(opened, 'run-1').warnings, [
+		'Run run-overlap also has open tests on checkout-local/local: T1.',
+	])
+	passT1(opened)
+	assert.deepEqual(runDetail(opened, 'run-overlap').warnings, [])
+	assert.equal((begin(opened, 'run-active', ['T1'], 'b2', { instance: 'local' }).data.warnings as string[]).length, 1)
+	finish(opened, 'run-overlap', 'interrupted')
+	assert.deepEqual(runDetail(opened, 'run-overlap').warnings, [])
+	assert.deepEqual(runDetail(opened, 'run-active').warnings, [])
+})
+
 test('run begin runs the gate and refuses an existing run ID', (t) => {
 	const opened = store(t)
 	ready(opened)
@@ -928,11 +1011,14 @@ test('a retest of a refreshed sandbox runs on the new instance with the same pla
 		runId: 'run-2',
 		reference: 'checkout@2',
 		tests: ['T1'],
-		build: 'build-2',
+		build: 'build-1',
 		retestOf: 'run-1',
 	})
 	assert.equal(retest.status, 'completed', retest.reasons.join('; '))
 	assert.equal(retest.data.instanceId, 'local-2')
+	const request = runState(opened, 'run-2').request
+	assert.equal(resumeRun(opened, actor, { runId: 'run-2' }).data.attempt, 2)
+	assert.deepEqual(runState(opened, 'run-2').request, request)
 	passT1(opened, 'run-2')
 	finish(opened, 'run-2')
 	const result = runResult(opened, 'run-2')!.result

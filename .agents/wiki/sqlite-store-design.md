@@ -431,10 +431,12 @@ A test can name a test in another plan in `dependsOn`: `["T1", "login:T3"]`. A g
 
 ### Resume
 
-- `checkmate run resume <runId>` records a new attempt. It lists each selected test that is not closed, with the assertions that have no result.
+- `checkmate run resume <runId>` checks that the recorded instance is active and the latest target profile is ready. It runs the gate again with the original request in the same transaction as the attempt write.
+- A refusal keeps the attempt, outcomes, and evidence. After a successful check, `run resume` records a new attempt and lists the open tests with their assertions that have no result.
 - Recorded assertion results stay. The agent checks only the assertions that have no result.
 - Checkmate does not repeat a test automatically. An agent can have done actions of a test that was not closed when the session stopped. The resume output shows each such test with the warning `Actions may have occurred`. The oracle decides to continue it or to record it as `error`.
 - `checkmate run resume <runId> --error T3,T4 --reason <text>` closes the named tests as `error` and records the new attempt in one step.
+- `run begin` and `run resume` return a warning for each started run of the same plan that shares open tests on the same target instance. `run show` and the run overview calculate the warning from current records.
 - A deadline or a worker failure in `delegate` does not finalize the run with `error` for every test, as `toolkit-1` does. The run stays `started`. Recorded outcomes stay. The response says to resume or finish.
 
 ### Result acceptance

@@ -296,10 +296,11 @@ The [hooks reference of Claude Code](https://code.claude.com/docs/en/hooks) has 
 
 A deadline, a signal, or a crash does not finish a run. The run stays `started`, and the recorded results stay. `delegate` returns `interrupted` or `operational_error`.
 
-- `checkmate run resume <runId>` lists each test that is not closed, with its assertions that have no result. Then delegate `execute` again.
+- `checkmate run resume <runId>` checks the recorded instance, the latest target profile, and the run gate. On `completed`, it lists the open tests and their remaining assertions. Then delegate `execute` again.
+- On `rejected`, read the reasons before you delegate again. When the instance is retired, finish the stalled run and start a new run on an active instance.
 - Checkmate does not repeat a test. Each open test shows `Actions may have occurred`, and the oracle decides to continue it or to close it as `error`.
 - `checkmate run resume <runId> --error T3,T4 --reason <text>` closes the named tests as `error`.
-- `checkmate run finish <runId> --completion interrupted --cause host_stopped --reason <text> --cleanup <status> --cleanup-reason <text>` ends the run with the results that it has. It works right after `run resume`.
+- `checkmate run finish <runId> --completion interrupted --cause host_stopped --reason <text> --cleanup <status> --cleanup-reason <text>` ends the run with the results that it has. You can finish a stalled run directly.
 
 [Resume](../reference/runs.md#resume) has the rules.
 

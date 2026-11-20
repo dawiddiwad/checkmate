@@ -852,6 +852,27 @@ test('plan edit reads the edited content on standard input and prints the edit k
 	assert.equal(json(workspace, ['plan', 'show', 'checkout@1']).body.plan.tests[0].title, 'Patched')
 })
 
+test('run commands print overlap warnings and resume exits with the current gate reason', (t) => {
+	const workspace = directory(t)
+	const opened = store(t, workspace)
+	ready(opened)
+	begin(opened, 'run-1', ['T1'])
+	const duplicate = cli(workspace, ['run', 'begin', 'run-2', 'checkout@2', '--tests', 'T1', '--build', 'build-1'])
+	assert.equal(duplicate.code, 0)
+	assert(duplicate.lines.includes('warning\tRun run-1 also has open tests on checkout-local/local: T1.'))
+	assert.deepEqual(json(workspace, ['run', 'show', 'run-1']).body.warnings, [
+		'Run run-2 also has open tests on checkout-local/local: T1.',
+	])
+	const resumed = cli(workspace, ['run', 'resume', 'run-1'])
+	assert.equal(resumed.code, 0)
+	assert(resumed.lines.includes('warning\tRun run-2 also has open tests on checkout-local/local: T1.'))
+	rejectPlan(opened, 'oracle', { reference: 'checkout@2', rationale: 'Check the requirements again.' })
+	const refused = cli(workspace, ['run', 'resume', 'run-1'])
+	assert.equal(refused.code, 1)
+	assert.equal(refused.lines[0], 'rejected run-1 refusal=prohibited')
+	assert(refused.lines.includes('reason: Plan checkout@2 is not approved'))
+})
+
 test('run show and status print one retest line for each earlier defect', (t) => {
 	const opened = store(t)
 	regressionPlan(opened)

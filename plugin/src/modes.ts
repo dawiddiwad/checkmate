@@ -116,7 +116,11 @@ function checkRun(store: Store, actor: string | undefined, input: TestInput & { 
 	})
 	if (begun.status !== 'completed')
 		return { run: null, skipped: begun.reasons.filter((reason) => !/^Refused/.test(reason)) }
-	return { run: { runId, tests: begun.data.tests as string[] }, skipped: [] }
+	return {
+		run: { runId, tests: begun.data.tests as string[] },
+		skipped: [],
+		warnings: begun.data.warnings as string[],
+	}
 }
 
 export function runTest(
@@ -148,7 +152,7 @@ export function runTest(
 		preferSavedModel
 	)
 	const charter = explored.data.charter as Charter
-	const check: { run: { runId: string; tests: string[] } | null; skipped: string[]; storedTests?: string } =
+	const check: ReturnType<typeof checkRun> =
 		mode === 'regression' ? checkRun(store, actor, input) : { run: null, skipped: [] }
 	return {
 		...explored,
@@ -160,6 +164,7 @@ export function runTest(
 			run: check.run,
 			checkSkipped: check.skipped,
 			...(check.storedTests ? { storedTests: check.storedTests } : {}),
+			...(check.warnings?.length ? { warnings: check.warnings } : {}),
 			assumed,
 			next: [
 				...(check.run

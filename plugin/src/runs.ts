@@ -31,7 +31,7 @@ import {
 	planRunGaps,
 	recordApproval,
 } from './plans.ts'
-import { runInstance, targetRevision } from './targets.ts'
+import { findInstance, runInstance, targetRevision } from './targets.ts'
 import { addPlanBuild } from './journal.ts'
 import { mkdirSync, readFileSync, realpathSync, rmSync, statSync } from 'node:fs'
 import { basename, extname, isAbsolute, join, resolve, sep } from 'node:path'
@@ -269,6 +269,25 @@ export function runGaps(store: Store, runId: string): Gap[] {
 	)
 }
 
+export function runOverlapWarnings(store: Store, runId: string) {
+	return all<{ run_id: string; target_id: string; instance_id: string; tests: string }>(
+		store,
+		`SELECT other.run_id, other.target_id, other.instance_id,
+			group_concat(test.value, ', ' ORDER BY test.key) AS tests
+		FROM runs r JOIN runs other ON other.plan_id = r.plan_id
+			AND other.target_id = r.target_id AND other.instance_id = r.instance_id
+		JOIN json_each(r.request, '$.selectedTestIds') test
+		WHERE r.run_id = ? AND other.run_id <> r.run_id
+			AND NOT EXISTS (SELECT 1 FROM results WHERE run_id = other.run_id)
+			AND EXISTS (SELECT 1 FROM json_each(other.request, '$.selectedTestIds') WHERE value = test.value)
+			AND NOT EXISTS (
+				SELECT 1 FROM outcomes WHERE run_id IN (r.run_id, other.run_id) AND test_id = test.value
+			)
+		GROUP BY other.run_id ORDER BY other.rowid`,
+		runId
+	).map((row) => `Run ${row.run_id} also has open tests on ${row.target_id}/${row.instance_id}: ${row.tests}.`)
+}
+
 export function beginRun(store: Store, actor: string | undefined, input: BeginInput) {
 	const reply = write(
 		store,
@@ -345,6 +364,7 @@ export function beginRun(store: Store, actor: string | undefined, input: BeginIn
 					deadlineSeconds: timeoutSeconds,
 					deadline: new Date(Date.parse(at) + timeoutSeconds * 1000).toISOString(),
 					evidenceDirectory: evidenceDirectory(runId),
+					warnings: runOverlapWarnings(store, runId),
 				}),
 				subjects: [`run:${runId}`, `plan:${plan.planId}`],
 			}
@@ -609,7 +629,7 @@ export function closeTest(store: Store, actor: string | undefined, input: CloseI
 		const evidenceIds = storeEvidence(store, input.runId, test.id, null, files, operationId)
 		return {
 			reply: completed(input.runId, { runId: input.runId, testId: test.id, outcome, reason, evidenceIds }),
-			subjects: [`run:${input.runId}`],
+			subjects: [`run:${input.runId}`, `plan:${run.plan.planId}`],
 		}
 	})
 	removeFiles(files)
@@ -962,6 +982,38 @@ export function resumeRun(store: Store, actor: string | undefined, input: Resume
 		const stalled = input.error ?? []
 		requireWellFormed(stalled.length > 0 || input.reason === undefined, '--reason applies only with --error')
 		const reason = stalled.length ? requireText(input.reason, 'reason (--reason) for --error') : null
+		const instance = findInstance(store, run.row.target_id, run.row.instance_id)
+		requireCondition(
+			!instance.retired,
+			`Instance ${instance.targetId}/${instance.instanceId} is retired. Run ${input.runId} cannot resume on it.`,
+			`Finish ${input.runId} to keep its recorded results. Start a new run on an active instance.`
+		)
+		const target = targetRevision(store, run.row.target_id)
+		requireCondition(
+			target.profile.readyForLiveExecution,
+			`Target prerequisites are not ready: ${run.row.target_id}@${target.revision}`,
+			`The setup stage must save a ready profile for ${run.row.target_id}.`
+		)
+		const checked = gate(store, {
+			reference: `${run.plan.planId}@${run.plan.revision}`,
+			tests: run.request.selectedTestIds,
+			build: run.row.application_build,
+			instance: run.row.instance_id,
+			partial: run.request.partialExecution,
+			retestOf: run.request.retestOf,
+		})
+		if (checked.reply.status !== 'completed')
+			return {
+				reply: {
+					status: 'rejected',
+					subject: input.runId,
+					reasons: [refusalReasons.prohibited, ...checked.reply.reasons],
+					refusal: 'prohibited',
+					hint: `Run checkmate status ${run.plan.planId} to see the next step.`,
+					data: {},
+				},
+				subjects: [],
+			}
 		const attempt = currentAttempt(store, input.runId) + 1
 		execute(
 			store,
@@ -1006,8 +1058,9 @@ export function resumeRun(store: Store, actor: string | undefined, input: Resume
 				evidenceDirectory: evidenceDirectory(input.runId),
 				closed: stalled,
 				tests,
+				warnings: runOverlapWarnings(store, input.runId),
 			}),
-			subjects: [`run:${input.runId}`],
+			subjects: stalled.length ? [`run:${input.runId}`, `plan:${run.plan.planId}`] : [`run:${input.runId}`],
 		}
 	})
 }

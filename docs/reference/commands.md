@@ -35,7 +35,7 @@ Every command takes `--workspace <path>` and `--json`. Put options after the com
 |           | `target list`                                                                                              | Lists each target with its latest revision and instances.                                                                         |
 |           | `target show <targetId[@rev]> [--instance <id>]`                                                           | Prints a profile, and the values of one instance.                                                                                 |
 |           | `target instance add <targetId> <instanceId>`                                                              | Adds an instance from `--entry` flags or standard input.                                                                          |
-|           | `target instance retire <targetId> <instanceId>`                                                           | Retires an instance. No new run can start on it.                                                                                  |
+|           | `target instance retire <targetId> <instanceId>`                                                           | Retires an instance. A run can start or resume only on an active instance.                                                        |
 |           | `target instance list <targetId>`                                                                          | Lists the instances of a target, active and retired.                                                                              |
 | Plan      | `plan open <planId> --target <targetId@rev>`                                                               | Records a plan request.                                                                                                           |
 |           | `plan request <planId>`                                                                                    | Prints the request with the resolved tools.                                                                                       |
@@ -57,7 +57,7 @@ Every command takes `--workspace <path>` and `--json`. Put options after the com
 |           | `run close <runId> <testId>`                                                                               | Closes a test and derives its outcome.                                                                                            |
 |           | `run finding <runId>`, `run gap <runId>`                                                                   | Records a finding or a new gap from standard input.                                                                               |
 |           | `run finish <runId>`                                                                                       | Checks the run and stores the result.                                                                                             |
-|           | `run resume <runId>`                                                                                       | Records a new attempt for a stalled run.                                                                                          |
+|           | `run resume <runId>`                                                                                       | Checks the instance, target readiness, and gate before it records a new attempt for a stalled run.                                |
 |           | `run show <runId>`, `run list`                                                                             | Prints a run, or lists runs.                                                                                                      |
 |           | `finding list [--plan <planId>] [--open]`                                                                  | Lists the findings of all runs, one line for each finding.                                                                        |
 | Test      | `test <planId> --build <build> --allow <rule>`                                                             | Tests a change: explores the build, and in regression mode also begins a run of the stored tests. Read [test](#test).             |
@@ -575,7 +575,7 @@ reason: Run run-b1 is not finished. Retest a finished run.
 hint: Finish run-b1 first: checkmate run finish run-b1 --completion <completed|interrupted|operational_error> --cleanup <completed|failed|not_applicable> --cleanup-reason "<text>". Then run this command again. To start a run that is not a retest, leave out --retest-of.
 ```
 
-`invalid_request` is always `malformed`. `rejected` is `malformed` or `prohibited`. When the gate refuses `run begin`, the status stays `needs_decision`, and the reply has `refusal=prohibited` and a hint. `run gate` gives the same hint without `refusal`, because it records nothing.
+`invalid_request` is always `malformed`. `rejected` is `malformed` or `prohibited`. When the gate refuses `run begin`, the status stays `needs_decision`, and the reply has `refusal=prohibited` and a hint. `run gate` gives the same hint without `refusal`, because it records nothing. When the gate refuses `run resume`, the status is `rejected` and the reply gives the reasons. The run keeps its current attempt and results.
 
 ## Statuses and exit codes
 
@@ -606,6 +606,8 @@ hint: Finish run-b1 first: checkmate run finish run-b1 --completion <completed|i
 
 `run begin` checks the instance first. It refuses an unknown instance and a retired instance.
 
+`run resume` checks that the recorded instance is active and the latest target profile is ready. It checks the gate with the recorded revision, instance, build, selected tests, partial execution policy, and retest link. See [Resume](runs.md#resume).
+
 `run begin` takes these flags. `run gate` takes the same flags except `--instance`, `--on-new-blocker`, and `--timeout`.
 
 | Flag               | Values                                      | Default                                                                                       |
@@ -623,6 +625,7 @@ hint: Finish run-b1 first: checkmate run finish run-b1 --completion <completed|i
 - A retest needs a new run ID and a new build. `run begin` records the open defects of the earlier run in the request as `retestDefects`.
 - Give `--instance` when the target has two or more active instances. `run begin` refuses the run without it. `run gate` does not take `--instance`.
 - For a matrix, begin one run of the same plan revision for each instance, for example `run-uat` with `--instance uat` and `run-staging` with `--instance staging`.
+- `run begin`, `run resume`, and `run show` warn when started runs of the same plan have open tests in common on one instance. `test` also gives the warning if it starts a structured run. The warning names the shared tests and the other run. It does not block the command.
 
 ## delegate
 

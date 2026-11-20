@@ -43,10 +43,11 @@ A run uses one instance of the target. `run show`, `run list`, `status`, the rev
 - QA reads the entry values with `checkmate target show <targetId> --instance <instanceId>`.
 - QA uses a `url` entry and a `value` entry as they are.
 - QA runs a `command` entry at test time, for example to get a one-time login URL. Checkmate stores the command, not its output.
-- A retired instance cannot start a run.
+- A run can start or resume only on an active instance.
 - A retest needs the same plan and target and a new build. It can run on another instance. It can keep the build only on a new instance after the instance of the earlier run is retired.
 - A cross-plan dependency needs a passed result on the same build. A run on any instance counts.
 - A matrix is one run of the same plan revision for each instance. `checkmate status <planId>` prints a `started` line for each open run, with its instance. On one build, each instance has its own latest outcome. A pass on one instance does not hide a failure on another instance.
+- `run begin`, `run resume`, `run show`, and the run overview warn when started runs of the same plan share open tests on one instance. The warning names the other run and the shared tests. This also applies to runs with different builds. The commands can still complete.
 - A refreshed sandbox is a new instance. Retire the old instance, add the new one, and retest on it. The retest can use the same build. The plan and the retest chain stay the same.
 
 This example uses a Salesforce sandbox. The `web` entry is a command that prints a one-time login URL. The `org` entry is the org alias.
@@ -265,8 +266,10 @@ The exit code of `run finish` is 0 for `completed` and 1 for `interrupted` or `o
 
 A crash or a deadline does not finish a run. The run stays `started`, and the recorded results stay.
 
-- `run resume <runId>` records a new attempt. It lists each open test with the assertions that have no result.
-- Checkmate does not repeat a test. A test that was open when the session stopped shows `Actions may have occurred`. The oracle decides to continue it or to close it as `error`.
+- `run resume <runId>` checks that the recorded instance is active and the latest target profile is ready. It runs the gate again for the recorded plan revision, build, and selection.
+- If a check fails, the command gives `rejected` with the reason. The run keeps its current attempt and results. If the instance is retired, finish the stalled run and start a new run on an active instance.
+- If the checks pass, the command records a new attempt. It lists each open test with the assertions that have no result. The browser session and evidence directory stay the same.
+- An open test shows `Actions may have occurred`. The oracle decides to continue it or to close it as `error`. When the oracle continues a test, check only the listed assertions. Each recorded result is final.
 - `run resume <runId> --error T3,T4 --reason <text>` closes those tests as `error` and records the new attempt in one step.
 
 ## Export

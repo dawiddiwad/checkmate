@@ -948,6 +948,7 @@ const commands: Record<string, Command> = {
 				reason: value(args, 'reason'),
 			}),
 		print: (reply) => {
+			if (reply.status !== 'completed') return {}
 			const data = reply.data as {
 				attempt: number
 				browserSession: string

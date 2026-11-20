@@ -175,6 +175,40 @@ test('a run page updates live and keeps typed text', browserTest, async (t) => {
 	assert.match(page.url(), /\/runs\/run-7$/)
 })
 
+test('a run overview warns while another run has open tests in common on its instance', browserTest, async (t) => {
+	const { page, url, workspace } = await open(t)
+	await page.goto(url('/runs/run-8'))
+	await page.locator('[data-live]', { hasText: 'Live' }).waitFor()
+	const warning = page
+		.getByRole('alert')
+		.filter({ hasText: 'Run run-overlap also has open tests on shop-local/staging: T1.' })
+	assert.equal(await warning.count(), 0)
+	await checkmate(workspace, [
+		'run',
+		'begin',
+		'run-overlap',
+		'login@1',
+		'--tests',
+		'T1',
+		'--instance',
+		'staging',
+		'--build',
+		'fixture-build-4',
+	])
+	await warning.waitFor()
+	await checkmate(workspace, [
+		'run',
+		'close',
+		'run-overlap',
+		'T1',
+		'--outcome',
+		'not_run',
+		'--reason',
+		'Duplicate work.',
+	])
+	await warning.waitFor({ state: 'detached' })
+})
+
 test('dark mode follows the system and the header toggle overrides it', browserTest, async (t) => {
 	const { page, url } = await open(t)
 	await page.emulateMedia({ colorScheme: 'dark' })

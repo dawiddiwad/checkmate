@@ -68,8 +68,10 @@ When `target request`, `plan request`, or `run show` refuses with `Unknown ...`,
 3. Run `checkmate run begin <runId> <planId@rev> --build <build> --instance <instanceId> --actor claude:execute` once, with the same selection. You can leave out `--instance` only when the target has one active instance. Add `--retest-of <runId>` for a retest. A retest must select each ready test with an open defect of the earlier run and each ready regression test. A gate without `--tests` selects them.
 4. When it does not print `completed`, no run exists. Stop and report the `reason:` lines.
 
+An overlap warning names the other run and the shared open tests on the instance.
+
 - After a rejected result: run `checkmate status <planId>` first. A `why` line `<runId> was rejected by <actor>: <rationale>` gives the reason of the oracle. Do the retest so that it addresses the rationale. When the rationale needs a plan change, stop and tell the oracle.
-- Stalled run: run `checkmate run resume <runId> --actor claude:execute`. Check only the assertions that it lists. The oracle decides about tests marked `Actions may have occurred`.
+- Stalled run: run `checkmate run resume <runId> --actor claude:execute`. It checks the instance, the latest target profile, and the gate. When it gives `rejected`, stop and report the reasons. When it gives `completed`, check only the assertions that it lists. The oracle decides about tests marked `Actions may have occurred`.
 - A reset with owner `factory`: ask the oracle for the reset before a test that needs a fresh state.
 
 ## Report to the oracle

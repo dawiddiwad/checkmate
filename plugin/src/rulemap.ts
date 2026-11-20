@@ -1,6 +1,6 @@
 import type { Store } from './store.ts'
 import type { Claim, Row } from './journal.ts'
-import { buildOrder, journal, planClaims, planQuestions, shortName } from './journal.ts'
+import { buildOrder, criterionCounts, journal, planClaims, planQuestions, shortName } from './journal.ts'
 import { defaultArea, outsideRule, planRules, storedTestCounts } from './rules.ts'
 import type { Rule } from './rules.ts'
 import { fileName, mediaTypeOf, mergedEntries } from './views.ts'
@@ -131,8 +131,7 @@ export function ruleMap(store: Store, planId: string) {
 			(question) => ruleOf(question.rule) === rule && question.answer === null && question.builds.includes(build)
 		)
 		const checked = criteria.filter((entry) => ruleOf(entry.rule) === rule && entry.build === build)
-		const wrong = checked.filter((entry) => entry.verdict === 'wrong').length
-		const right = checked.filter((entry) => entry.verdict === 'ok').length
+		const { right, wrong } = criterionCounts(checked)
 		const status: CellStatus =
 			present.length || wrong
 				? 'failed'

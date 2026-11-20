@@ -20,8 +20,12 @@ import {
 } from '../plugin/src/views.ts'
 import { askRequest, requestActor, requestOf, setRequestState } from '../plugin/src/requests.ts'
 import { completed, write } from '../plugin/src/store.ts'
+import { logEntries } from '../plugin/src/journal.ts'
+import { unusedAnswers } from '../plugin/src/explorers.ts'
+import { ruleMap } from '../plugin/src/rulemap.ts'
 import { addInstance } from '../plugin/src/targets.ts'
 import { endSeededProcesses, seedVolume } from '../scripts/ui-volume.ts'
+import { done, entries, openTest } from './explorations.ts'
 import {
 	accept,
 	actor,
@@ -251,6 +255,136 @@ test('paged lists sort, filter by text and dropdown, and report the total', (t) 
 	assert.throws(() => pagedPlans(opened, { filters: { owner: 'x' } }), /Unknown filter: owner/)
 	assert.throws(() => pagedPlans(opened, { filters: { show: 'some' } }), /Invalid show filter: some/)
 	assert.throws(() => pagedOperations(opened, { offset: -1 }), /Invalid offset: -1/)
+})
+
+const exploredRule = (rule: string, verdict: 'ok' | 'wrong' | undefined = 'ok') => ({
+	kind: 'criterion',
+	rule,
+	text: `Checked ${rule}.`,
+	verdict,
+})
+const allExploredRules = () => ['R1', 'R2', 'R3'].map((rule) => exploredRule(rule))
+
+test('exploration-only status needs completed green coverage of the latest build', (t) => {
+	const opened = store(t)
+	target(opened)
+	openPlan(opened, actor, { planId: 'checkout', target: 'checkout-local@1', request: planRequest() })
+	const status = () => planStatus(opened, 'checkout')
+	const cell = (rule: string, build: string) =>
+		ruleMap(opened, 'checkout')
+			.rows.find((row) => row.rule.id === rule)!
+			.cells.find((item) => item.build === build)?.status
+	openTest(opened, 'checkout', 'x-1', 'b1')
+	entries(opened, 'x-1', 'a1', allExploredRules())
+	done(opened, 'x-1')
+	assert.deepEqual([status().state, status().waitsOn, status().next], ['passed', 'none', []])
+	openTest(opened, 'checkout', 'x-2', 'b2')
+	entries(opened, 'x-2', 'a1', [exploredRule('R1'), { ...exploredRule('R2'), verdict: undefined }])
+	done(opened, 'x-2')
+	assert.equal(status().state, 'ready_to_test')
+	assert.match(status().why.join(' '), /R2.*b2/)
+	assert.match(status().next.join(' '), /checkmate test checkout --build b2/)
+	openTest(opened, 'checkout', 'x-3', 'b1')
+	entries(opened, 'x-3', 'a1', [exploredRule('R1')])
+	done(opened, 'x-3')
+	assert.equal(status().state, 'ready_to_test')
+	openTest(opened, 'checkout', 'x-4', 'b2')
+	logEntries(opened, actor, { explorationId: 'x-4', entries: [exploredRule('R2'), exploredRule('R3')] })
+	assert.equal(status().state, 'exploring')
+	assert.equal(cell('R2', 'b2'), 'not_checked')
+	done(opened, 'x-4')
+	assert.equal(status().state, 'passed')
+	assert.equal(cell('R2', 'b2'), 'passed')
+	assert.equal(planList(opened)[0].loop.state, 'passed')
+	assert.equal(status().revision, null)
+	assert.deepEqual(runList(opened), [])
+	openTest(opened, 'checkout', 'x-5', 'b2')
+	entries(opened, 'x-5', 'a1', [{ ...exploredRule('R1'), verdict: undefined }, exploredRule('R2', 'wrong')])
+	done(opened, 'x-5')
+	assert.equal(status().state, 'ready_to_test')
+	assert.equal(cell('R1', 'b2'), 'passed')
+	assert.equal(cell('R2', 'b2'), 'failed')
+	assert.match(status().next.join(' '), /--build <new build>/)
+	openTest(opened, 'checkout', 'x-6', 'b3')
+	entries(opened, 'x-6', 'a1', allExploredRules())
+	done(opened, 'x-6')
+	assert.equal(status().state, 'passed')
+	openTest(opened, 'checkout', 'x-7', 'b3')
+	done(opened, 'x-7', 'failed', { reason: 'The fixture stopped.' })
+	assert.equal(status().state, 'ready_to_test')
+	assert.match(status().why.join(' '), /x-7 failed.*The fixture stopped/)
+})
+
+test('exploration-only status waits for questions and claims, and fresh green coverage replaces old follow-up hints', (t) => {
+	const opened = store(t)
+	target(opened)
+	openPlan(opened, actor, { planId: 'checkout', target: 'checkout-local@1', request: planRequest() })
+	const status = () => planStatus(opened, 'checkout')
+	openTest(opened, 'checkout', 'x-1', 'b1')
+	entries(opened, 'x-1', 'a1', [
+		...allExploredRules(),
+		{ kind: 'question', id: 'Q1', question: 'What is the limit?' },
+	])
+	done(opened, 'x-1')
+	assert.deepEqual([status().state, status().waitsOn], ['needs_triage', 'oracle'])
+	assert.match(status().next[0], /checkmate gap answer/)
+	const answer = answerGap(opened, actor, {
+		planId: 'checkout',
+		gapId: 'a1/Q1',
+		kind: 'clarify',
+		value: 'Ten.',
+		source: 'brief#limit',
+		rationale: 'Specified.',
+	})
+	assert.equal(answer.status, 'completed', answer.reasons.join(' '))
+	assert.deepEqual(
+		[status().state, status().waitsOn, status().next],
+		[
+			'ready_to_test',
+			'qa',
+			[
+				'1 unused answer of x-1: checkmate explore follow x-1',
+				'Retest on the next build: checkmate test checkout --build <new build> --allow Read --allow Bash',
+			],
+		]
+	)
+	openTest(opened, 'checkout', 'x-2', 'b2')
+	entries(opened, 'x-2', 'a1', allExploredRules())
+	done(opened, 'x-2')
+	assert.deepEqual([status().state, status().next], ['passed', []])
+	assert.equal(unusedAnswers(opened, 'x-1').length, 1)
+	openTest(opened, 'checkout', 'x-3', 'b2')
+	entries(opened, 'x-3', 'a1', [
+		{
+			kind: 'defect',
+			rule: 'R3',
+			title: 'The limit is not applied',
+			severity: 'medium',
+			expected: 'Ten.',
+			actual: 'Eleven.',
+			steps: 'Try eleven.',
+		},
+	])
+	done(opened, 'x-3')
+	assert.deepEqual([status().state, status().waitsOn], ['defects_open', 'factory'])
+})
+
+test('an empty rule set and a revision without results cannot pass from exploration', (t) => {
+	const opened = store(t)
+	ready(opened)
+	openPlan(opened, actor, {
+		planId: 'other',
+		target: 'checkout-local@1',
+		request: { objective: 'Check the rules.', context: { sources: ['rules.md'] } },
+	})
+	openTest(opened, 'checkout', 'x-1', 'b1')
+	entries(opened, 'x-1', 'a1', allExploredRules())
+	done(opened, 'x-1')
+	assert.equal(planStatus(opened, 'checkout').state, 'ready_to_run')
+	openTest(opened, 'other', 'x-2', 'b1')
+	entries(opened, 'x-2', 'a1', [exploredRule('outside')])
+	done(opened, 'x-2')
+	assert.equal(planStatus(opened, 'other').state, 'ready_to_test')
 })
 
 test('plan status follows the loop and names the role and the delegate stage', (t) => {

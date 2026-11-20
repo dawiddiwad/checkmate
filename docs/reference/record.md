@@ -176,6 +176,8 @@ The read models in `plugin/src/rulemap.ts` give the review UI the rule map of a 
 
 The rule map also has `areas`. An area groups the rules that have the same `area`, without regard to case, and it uses the first spelling. A rule without `area` is in the area `Rules`. The areas are in the order of the first rule of each. An area has its `label`, its `ruleIds`, and one cell for each build. The cell of an area has the worst `status` of its rules (`failed`, then `question`, then `passed`, then `not_checked`). It also has the sums of `severities`, `criteria`, `claims`, `questions`, and `changes` of its rules. The row of `outside` is in no area.
 
+A passing criterion becomes visible in the rule map when its exploration completes. The map and the exploration-only plan status use the same counts for criterion verdicts. A criterion without a verdict contributes no result.
+
 ## Review UI
 
 The UI is a `node:http` server in the plugin. It runs from the bundled plugin without an npm install. The UI loads its assets and evidence from the local server. A link can open an external site.

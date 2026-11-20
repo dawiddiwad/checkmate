@@ -881,6 +881,13 @@ export function planCriteria(store: Store, planId: string) {
 	}))
 }
 
+export function criterionCounts(entries: Entry[]) {
+	return {
+		right: entries.filter((entry) => entry.verdict === 'ok').length,
+		wrong: entries.filter((entry) => entry.verdict === 'wrong').length,
+	}
+}
+
 const stopWords = new Set(
 	'the and for with not but was are from that this when has have its into than then there should instead'.split(' ')
 )

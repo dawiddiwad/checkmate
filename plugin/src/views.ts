@@ -7,7 +7,18 @@ import type { ModelCost } from './costs.ts'
 import { noModelCost, noRunUsage, planCosts, planExplorationCosts, runUsages } from './costs.ts'
 import { explorationStatus, followCount, running as alive, startOf, stopOf, stopPending } from './explorers.ts'
 import { exploration, explorationEvents } from './explorations.ts'
-import { factoryStates, isTester, journal, oracleStates, planClaims, planQuestions, shortName } from './journal.ts'
+import {
+	buildOrder,
+	criterionCounts,
+	explorationRow,
+	factoryStates,
+	isTester,
+	journal,
+	oracleStates,
+	planClaims,
+	planQuestions,
+	shortName,
+} from './journal.ts'
 import { all, canonical, digest, one } from './store.ts'
 import { requireChoice, requireCondition } from './contracts.ts'
 import { openPermissions } from './permissions.ts'
@@ -44,7 +55,7 @@ import {
 } from './runs.ts'
 import type { RunRow } from './runs.ts'
 import { findInstance, instanceList } from './targets.ts'
-import { rulesLine } from './rules.ts'
+import { planRules, rulesLine } from './rules.ts'
 import { workspaceHarness } from './settings.ts'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
@@ -367,7 +378,10 @@ export function mergedEntries(store: Store, planId: string) {
 			(row) => [row.exploration_id, mergedUpTo(explorationEvents(store, row.exploration_id))]
 		)
 	)
-	return (row: Row) => !fromSession(row) || row.seq <= (limits.get(row.explorationId) ?? 0)
+	return (row: Row) => {
+		const needsCompletion = fromSession(row) || (row.kind === 'criterion' && row.verdict === 'ok')
+		return !needsCompletion || row.seq <= (limits.get(row.explorationId) ?? 0)
+	}
 }
 
 export function mergedClaims(store: Store, planId: string) {
@@ -693,16 +707,8 @@ function foundEntries(
 const overlaid: LoopState[] = ['needs_plan', 'ready_to_run', 'nothing_to_run', 'needs_retest', 'passed', 'accepted']
 
 export function planStatus(store: Store, planId: string, harness = workspaceHarness(store)) {
-	const status = { ...loopStatus(store, planId, harness), rules: rulesLine(store, planId) }
-	const follows = status.explorations.flatMap((item) => {
-		const count = followCount(store, item.explorationId)
-		return count
-			? [
-					`${amount(count, 'unused answer')} of ${item.explorationId}: checkmate explore follow ${item.explorationId}`,
-				]
-			: []
-	})
-	return follows.length ? { ...status, next: [...follows, ...status.next] } : status
+	const { follows, ...status } = loopStatus(store, planId, harness)
+	return { ...status, rules: rulesLine(store, planId), next: [...follows, ...status.next] }
 }
 
 function loopStatus(store: Store, planId: string, harness: Harness) {
@@ -721,7 +727,19 @@ function loopStatus(store: Store, planId: string, harness: Harness) {
 			...(status.paused ? { paused: status.paused } : {}),
 		}
 	})
-	const claims = mergedClaims(store, planId)
+	const latestBuild = base.revision === null ? buildOrder(store, planId).at(-1)?.build : undefined
+	const follows = explorations
+		.filter((item) => latestBuild === undefined || item.build === latestBuild)
+		.flatMap((item) => {
+			const count = followCount(store, item.explorationId)
+			return count
+				? [
+						`${amount(count, 'unused answer')} of ${item.explorationId}: checkmate explore follow ${item.explorationId}`,
+					]
+				: []
+		})
+	const keep = mergedEntries(store, planId)
+	const claims = planClaims(store, planId, keep)
 		.filter((claim) => claim.open)
 		.map((claim) => ({
 			claimId: claim.id,
@@ -733,8 +751,8 @@ function loopStatus(store: Store, planId: string, harness: Harness) {
 			reason: claim.reason,
 			handoff: claim.handoff,
 		}))
-	const questions = mergedQuestions(store, planId).filter((question) => question.answer === null)
-	const extra = { explorations, claims, questions }
+	const questions = planQuestions(store, planId, keep).filter((question) => question.answer === null)
+	const extra = { explorations, claims, questions, follows }
 	if (!overlaid.includes(base.state)) return { ...base, ...extra }
 	const running = explorations.filter((item) => runningExploration.includes(item.state))
 	const paused = running.filter((item) => item.paused)
@@ -768,6 +786,7 @@ function loopStatus(store: Store, planId: string, harness: Harness) {
 		}
 	const triage = claims.filter((claim) => oracleStates.includes(claim.state))
 	const blocking = questions.filter((question) => question.blocking)
+	const answerQuestion = `checkmate gap answer ${planId} <questionId> --kind <kind> --value "<answer>" --source "<source>" --rationale "<why>"`
 	if (triage.length || blocking.length)
 		return {
 			...base,
@@ -780,11 +799,7 @@ function loopStatus(store: Store, planId: string, harness: Harness) {
 					...triage.map((claim) => `${claim.claimId} is ${claim.state}: ${claim.title}`),
 				],
 				[
-					...(blocking.length
-						? [
-								`checkmate gap answer ${planId} <questionId> --kind <kind> --value "<answer>" --source "<source>" --rationale "<why>"`,
-							]
-						: []),
+					...(blocking.length ? [answerQuestion] : []),
 					...(triage.length ? [`checkmate claim accept|reject ${planId} <claimId> --rationale "<why>"`] : []),
 				]
 			),
@@ -792,7 +807,6 @@ function loopStatus(store: Store, planId: string, harness: Harness) {
 	const fixes = claims.filter((claim) => factoryStates.includes(claim.state))
 	const kept = fixes.filter((claim) => !claim.handoff).length
 	const last = explorations.at(-1)
-	const failed = last !== undefined && ['failed', 'stopped', 'interrupted'].includes(last.state)
 	const finished = explorations.filter((item) => item.state === 'completed').at(-1)
 	const after = [
 		...(fixes.length
@@ -807,7 +821,7 @@ function loopStatus(store: Store, planId: string, harness: Harness) {
 			: []),
 		...(questions.length
 			? [
-					`${amount(questions.length, 'open question')} can be answered at any time and do not block: checkmate gap answer ${planId} <questionId> --kind <kind> --value "<answer>" --source "<source>" --rationale "<why>"`,
+					`${amount(questions.length, 'open question')} can be answered at any time and do not block: ${answerQuestion}`,
 				]
 			: []),
 		`Retest on the next build: checkmate test ${planId} --build <new build> --allow Read --allow Bash`,
@@ -818,11 +832,73 @@ function loopStatus(store: Store, planId: string, harness: Harness) {
 	if (fixes.length)
 		return { ...base, ...extra, ...loop('defects_open', 'factory', [amount(fixes.length, 'open claim')], after) }
 	if (base.state === 'needs_plan') {
-		const why = !last
+		const tested = explorations.findLast((item) => item.build === latestBuild)
+		if (last?.state === 'completed' && tested?.state === 'completed') {
+			const build = tested.build
+			const rules = planRules(store, planId).rules
+			const criteria = journal(store, planId, undefined, keep).team.filter(
+				(entry) => entry.kind === 'criterion' && entry.build === build
+			)
+			const coverage = rules.map(({ id }) => ({
+				id,
+				...criterionCounts(criteria.filter((entry) => entry.rule === id)),
+			}))
+			const missing = coverage.flatMap(({ id, right, wrong }) => {
+				if (wrong) return [`${id} has a wrong criterion on build ${build}`]
+				return right ? [] : [`${id} has no passing criterion on build ${build}`]
+			})
+			if (coverage.some(({ wrong }) => wrong))
+				return { ...base, ...extra, ...loop('ready_to_test', 'qa', missing, after) }
+			if (!rules.length || missing.length) {
+				const quoted = /^[\w./:@-]+$/.test(build) ? build : `'${build.replaceAll("'", "'\\''")}'`
+				const target = planRequest(store, planId).target.profile.targetId
+				const instances = instanceList(store, target).filter((instance) => !instance.retired)
+				const testedInstance = explorationRow(store, tested.explorationId).instance_id
+				const instance =
+					instances.length === 1
+						? ''
+						: ` --instance ${instances.some((item) => item.instanceId === testedInstance) ? testedInstance : '<instanceId>'}`
+				return {
+					...base,
+					...extra,
+					...loop('ready_to_test', 'qa', rules.length ? missing : ['No current rule to test'], [
+						`checkmate test ${planId} --build ${quoted}${instance} --allow Read --allow Bash`,
+						...(questions.length ? [answerQuestion] : []),
+					]),
+				}
+			}
+			if (follows.length)
+				return {
+					...base,
+					...extra,
+					...loop('ready_to_test', 'qa', [`Build ${build} has unused answers`], after),
+				}
+			if (questions.length)
+				return {
+					...base,
+					...extra,
+					...loop(
+						'needs_triage',
+						'oracle',
+						questions.map((question) => `${question.id} is open: ${question.question}`),
+						[answerQuestion]
+					),
+				}
+			return {
+				...base,
+				...extra,
+				...loop('passed', 'none', [`All ${amount(rules.length, 'current rule')} passed on build ${build}`], []),
+			}
+		}
+		const incomplete = last?.state === 'completed' ? tested : last
+		const failed = incomplete && ['failed', 'stopped', 'interrupted'].includes(incomplete.state)
+		const why = !incomplete
 			? ['No exploration yet']
 			: failed
-				? [`${last.explorationId} ${last.state} on build ${last.build}${last.reason ? `: ${last.reason}` : ''}`]
-				: [`${last.explorationId} is ${last.state} on build ${last.build}`]
+				? [
+						`${incomplete.explorationId} ${incomplete.state} on build ${incomplete.build}${incomplete.reason ? `: ${incomplete.reason}` : ''}`,
+					]
+				: [`${incomplete.explorationId} is ${incomplete.state} on build ${incomplete.build}`]
 		return {
 			...base,
 			...extra,
@@ -830,7 +906,7 @@ function loopStatus(store: Store, planId: string, harness: Harness) {
 				'ready_to_test',
 				'qa',
 				why,
-				!last || failed ? [`checkmate test ${planId} --allow Read --allow Bash`] : after
+				!incomplete || failed ? [`checkmate test ${planId} --allow Read --allow Bash`] : after
 			),
 		}
 	}

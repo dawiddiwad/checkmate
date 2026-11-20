@@ -492,11 +492,11 @@ export function harnessPage(
 	const harness = selectedHarness(effectiveEnv)
 	const pi = harness === 'pi'
 	const body = html`${heading('Coding harness', null)}
-		<section class="panel" aria-labelledby="harness-label">
+		<div class="panel">
 			<form method="post" action="/settings/harness/select" class="decision-form">
 				<input type="hidden" name="csrf" value="${context.csrf}" />
 				<div class="field-group">
-					<label id="harness-label" class="lab" for="coding-harness">Program for this workspace</label>
+					<label class="lab" for="coding-harness">Program for this workspace</label>
 					<select id="coding-harness" name="harness">
 						<option value="claude" ${harness === 'claude' ? html`selected` : ''}>Claude Code</option>
 						<option value="pi" ${harness === 'pi' ? html`selected` : ''}>Pi</option>
@@ -506,7 +506,7 @@ export function harnessPage(
 				<div class="btns"><button class="btn primary">Save the program</button></div>
 			</form>
 			<p id="harness-program">Current executable · ${harnessProgram(effectiveEnv)}</p>
-		</section>
+		</div>
 		<section class="panel" aria-labelledby="claude-rules">
 			<h2 class="lab" id="claude-rules">Tool rules of testers</h2>
 			<p class="help" data-key="permission-bash">

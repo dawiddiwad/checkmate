@@ -16,7 +16,8 @@ import {
 } from '../views.ts'
 import { decisionToken, planRequest, planRunGaps } from '../plans.ts'
 import { gapsAffecting } from '../contracts.ts'
-import { glyph, hasMetadata, html, join, metadataList, pill, plural, short, time, words } from './html.ts'
+import { planCost } from '../costs.ts'
+import { costText, glyph, hasMetadata, html, join, metadataList, pill, plural, short, time, words } from './html.ts'
 import { banner, downloads, emptyNotice, heading } from './layout.ts'
 import { emptyState, gapPanel, recordPanel, verdictPanel } from './forms.ts'
 import { counts, loopState, runStatus } from './lists.ts'
@@ -554,17 +555,22 @@ export function planPage(
 	planId: string,
 	revision: number,
 	state: FormState | null = null,
-	allHistory = false
+	allHistory = false,
+	chatting = false
 ): Page {
 	const detail = planDetail(store, planId, revision)
 	const { plan } = detail
 	const subject = `${planId}@${revision}`
 	const latest = detail.revision === detail.latestRevision
 	const found = planContext(store, planId, context.harness)
+	const cost = planCost(store, planId)
 	const meta = html`<div class="meta">
 		${pill(detail.approval.state)}
 		<span class="pill">target <span class="mono">${plan.target.targetId}@${plan.target.revision}</span></span>
 		<span class="pill" title="${detail.sha256}">sha256 <span class="mono">${short(detail.sha256)}</span></span>
+		<span class="pill" data-region="plan-cost" title="Reported cost across this plan’s explorations and chats"
+			>Total cost ${costText(cost.costUsd, cost.costPartial)}</span
+		>
 		<span class="head-actions">
 			${latest ? html`<a class="btn small" href="/plans/${subject}/edit">Edit plan</a>` : ''}
 			${downloads('Export', `/plans/${subject}/export`, 'The HTML export is print-ready. Open it and print to PDF.')}
@@ -645,7 +651,10 @@ export function planPage(
 			[subject, null],
 		],
 		back: `/plans/${planId}?nav=plan`,
-		nav: navigator(reviewOf(store, planId), 'plan'),
+		nav: navigator(reviewOf(store, planId), 'plan', null, {
+			href: `/plans/${subject}?chat=list${allHistory ? '&history=all' : ''}`,
+			active: chatting,
+		}),
 	}
 }
 

@@ -199,7 +199,7 @@ A row shows its numbered options only when all of them fit in the row. When they
 
 `Activity` is also in the find bar. The list pages like `Log`: `↓` on the last row opens the next page.
 
-Each card on **Plans** labels the reported sum as **Exploration cost**. Find requests and delegated runs have separate records. Open a plan revision to see the **Cost** column for individual explorations. **Unknown** means the harness supplied no cost. **Partial** means some charges are missing.
+Each plan card and plan page shows the **Total cost** of its explorations and chats. Open a plan revision to see the **Cost** column for individual explorations. Open a chat to see its own cost. **Unknown** means no cost is available. **Partial** means some charges are missing.
 
 ### Testers
 
@@ -260,17 +260,19 @@ A request of the find bar asks in the same way. Its record says `Request R3 asks
 
 ### Chats
 
-Open **Chats** to resume a conversation or choose **New chat**. From a plan, run, exploration, or list, open **Find** and choose **Ask Checkmate**. The chat keeps that screen as its starting context. The agent can read other workspace records when they are relevant.
+Choose **Plan chats** on a plan to start or resume a conversation about that plan. The agent starts with the plan and its records. Chats belong to the plan across revisions, and their cost counts toward its total. The **Chats** button in the status bar lists all conversations.
+
+From a plan, run, exploration, or list, you can also open **Find** and choose **Ask Checkmate**. The chat keeps that screen as its starting context. When this context identifies a plan, the chat also appears on that plan. **Find** continues the conversation when you already have a chat open. The agent can read related workspace records when needed.
 
 Type follow-ups in the same chat. Choose a harness, model, and available effort for the next message. Each sent message keeps its selections. When the host and model stay the same, Checkmate continues the host session. When they change, Checkmate opens a new host session and sends up to eight recent turns as context. The chat keeps its full history.
 
-One message runs at a time in the workspace. The chat shows waiting turns, permissions, replies, and record changes. Choose **Stop** to stop a turn. Open its request ID for the detailed record. Chats also lists conversations from earlier versions.
+One message runs at a time in the workspace. The chat shows the latest message when you open it and when a new message arrives. It shows waiting turns, permissions, replies, and record changes. Choose **Stop** to stop a turn. Open its request ID for the detailed record. Chats also lists conversations from earlier versions.
 
 An activity line of a request or a tester shows the tool and the first line of its main input, at most 120 characters. For a shell command, the line drops a leading `cd <path> &&` or `cd <path>;` and the leading variable assignments. A command that runs the Checkmate command line, also through a variable, shows as `checkmate <arguments>`. The path of the workspace shows as `.`. Checkmate masks secrets. The permission record shows the full command.
 
 ### Plan
 
-`Plan @<revision>` opens the plan document, `/plans/<planId>@<revision>`. It shows the approval, the loop state, the one next step, and the sections `Overview`, `Claims`, `Questions`, `Explorations`, `Tests`, `Runs`, and `History`. A section opens by itself when it needs you. Approve or reject the revision in the panel. `Export` downloads the plan as HTML, Markdown, or JSON. A plan without a revision shows its request at `/plans/<planId>/request`.
+`Plan @<revision>` opens the plan document, `/plans/<planId>@<revision>`. It shows the approval, the loop state, the one next step, and the sections `Overview`, `Claims`, `Questions`, `Explorations`, `Tests`, `Runs`, and `History`. A section opens by itself when it needs you. Use **Plan chats** to discuss the plan. Approve or reject the revision in the panel. `Export` downloads the plan as HTML, Markdown, or JSON. A plan without a revision shows its request at `/plans/<planId>/request`.
 
 `Edit plan` opens the editor. It has forms for the rules, tests, assertions, and coverage. `Edit as JSON` adds or removes items. Only the latest revision can change, and the rules of `plan edit` apply. To remove a test, click `Remove <testId>` on the test, write the reason, then click `Remove <testId>` again. The rules that the tester derived for a plan without a revision change only with `checkmate plan edit <planId> --patch`.
 

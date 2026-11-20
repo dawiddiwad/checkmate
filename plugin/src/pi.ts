@@ -36,7 +36,7 @@ export type PiMessage = {
 	content?: PiContent[]
 	stopReason?: string
 	errorMessage?: string
-	usage?: { cost?: { total?: unknown } }
+	usage?: { totalTokens?: number; cost?: { total?: unknown } }
 }
 export type PiEvent = {
 	type: string

@@ -35,6 +35,8 @@ import {
 	savePlan,
 } from '../plugin/src/index.ts'
 import { needsYou } from '../plugin/src/views.ts'
+import { chatOf, listedChats } from '../plugin/src/requests.ts'
+import { fakeClaude } from './claude.ts'
 import { copied, directory, evidenceFile, root } from './support.ts'
 
 const payload = '<script>alert("gap")</script>'
@@ -91,9 +93,9 @@ test.before(() => {
 })
 test.after(() => rmSync(template, { recursive: true, force: true }))
 
-async function start(t: TestContext) {
+async function start(t: TestContext, env?: Record<string, string | undefined>) {
 	const workspace = copied(t, template)
-	const ui = await startUi({ workspace, defaultActor: '' })
+	const ui = await startUi({ workspace, defaultActor: '', env })
 	t.after(() => ui.close())
 	return { ui, workspace, port: new URL(ui.url).port }
 }
@@ -203,6 +205,51 @@ function read<T>(workspace: string, view: (store: ReturnType<typeof openStore>) 
 		closeStore(store)
 	}
 }
+
+test('plan chat keeps its route and refuses a conversation owned by another plan', async (t) => {
+	const fake = fakeClaude(t, { request: { result: 'Plan reply.' } })
+	const { ui, workspace } = await start(t, { ...process.env, ...fake.env, CHECKMATE_HARNESS: 'claude' })
+	const page = await call(ui, '/plans/search@1?history=all&newChat=1', { headers: actorCookie })
+	assert.equal(page.status, 200)
+	const form = {
+		csrf: field(page.body, 'csrf'),
+		text: 'Explain this plan',
+		harness: 'claude',
+		screen: '/plans/checkout',
+		context: JSON.stringify({ planId: 'checkout' }),
+		return: '/plans/search@1?history=all&newChat=1',
+	}
+	const started = await call(ui, '/plans/search@1/chats', { form, headers: actorCookie })
+	assert.equal(started.status, 303)
+	const location = started.headers.location!
+	assert.match(location, /^\/plans\/search@1\?history=all&chat=[0-9a-f-]+$/)
+	const chatId = new URL(location, ui.url).searchParams.get('chat')!
+	const chat = read(workspace, (store) => chatOf(store, chatId))
+	assert.equal(chat?.context.planId, 'search')
+	assert.equal(chat?.context.planRevision, 1)
+
+	for (const path of [`/plans/checkout/chats/${chatId}/turns`, `/chats/${chatId}/turns`]) {
+		const refused = await call(ui, path, { form, headers: actorCookie })
+		assert.equal(refused.status, 422, path)
+	}
+	assert.equal((await call(ui, `/plans/checkout?chat=${chatId}`)).status, 404)
+	for (const path of ['/plans/missing/chats', '/plans/search@999/chats']) {
+		assert.equal((await call(ui, path, { form, headers: actorCookie })).status, 404, path)
+	}
+	assert.equal((await call(ui, `/chats/${chatId}`)).headers.location, `/plans/search@1?chat=${chatId}`)
+	const follow = await call(ui, `/plans/search@1/chats/${chatId}/turns`, {
+		form: { ...form, text: 'What should I check next?', return: location },
+		headers: actorCookie,
+	})
+	assert.equal(follow.status, 303)
+	assert.equal(follow.headers.location, location)
+	const chats = read(workspace, (store) => listedChats(store, 'search'))
+	assert.deepEqual(
+		chats.map((item) => item.id),
+		[chatId]
+	)
+	assert.equal(chats[0].turns.length, 2)
+})
 
 test('each page renders and escapes stored text', async (t) => {
 	const { ui } = await start(t)

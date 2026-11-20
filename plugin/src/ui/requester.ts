@@ -14,6 +14,7 @@ import {
 	authenticationFailed,
 	authenticationHint,
 	checkmateScript,
+	costOf,
 	defaultStopDelays,
 	piAuthenticationHint,
 	pluginRoot,
@@ -55,7 +56,7 @@ export type RequesterOptions = {
 export type Requester = {
 	ask(actor: string, text: string, context: RequestContext): string
 	startChat(actor: string, text: string, context: RequestContext, options?: ChatOptions): string
-	followChat(actor: string, chatId: string, text: string, options?: ChatOptions): string
+	followChat(actor: string, chatId: string, text: string, options?: ChatOptions, context?: RequestContext): string
 	stop(actor: string, requestId: string, reason: string): void
 	newConversation(actor: string): void
 	close(): Promise<void>
@@ -177,6 +178,8 @@ type Running = {
 	harness: 'claude' | 'pi'
 	child: StreamedClaude | null
 	result: Record<string, unknown> | null
+	claudeCosts: Array<Pick<ChildCall, 'costUsd' | 'costPartial'>>
+	resume: boolean
 	broken: boolean
 	stopping: 'stopped' | 'interrupted' | null
 	reason: string
@@ -192,6 +195,16 @@ function denialLines(result: Record<string, unknown>, workspace: string) {
 	return denials.flatMap((denial: Record<string, unknown>) =>
 		typeof denial?.tool_name === 'string' ? [activityLine(denial.tool_name, denial.tool_input, workspace)] : []
 	)
+}
+
+function reportedClaudeCost(value: unknown) {
+	return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? { costUsd: value } : {}
+}
+
+function claudeTurnCost(run: Running) {
+	if (run.claudeCosts.length) return costOf(run.claudeCosts)
+	if (run.resume || (run.result?.is_error === true && run.result?.num_turns === 0)) return {}
+	return reportedClaudeCost(run.result?.total_cost_usd)
 }
 
 export function createRequester(store: Store, options: RequesterOptions): Requester {
@@ -240,15 +253,14 @@ export function createRequester(store: Store, options: RequesterOptions): Reques
 												state: 'answered' as const,
 												detail: {
 													reply: typeof result.result === 'string' ? result.result : '',
-													...(typeof result.total_cost_usd === 'number'
-														? { costUsd: result.total_cost_usd }
-														: {}),
 													denials: denialLines(result, options.workspace),
 												},
 											}
 		guarded(() => {
 			const changes = changesOf(store, run.id)
-			setRequestState(store, run.id, outcome.state, { ...outcome.detail, changes })
+			const cost =
+				run.harness === 'pi' ? { costUsd: end?.costUsd, costPartial: end?.costPartial } : claudeTurnCost(run)
+			setRequestState(store, run.id, outcome.state, { ...outcome.detail, ...cost, costScope: 'turn', changes })
 		})
 	}
 
@@ -290,7 +302,16 @@ export function createRequester(store: Store, options: RequesterOptions): Reques
 						activityLine(found.name, found.input, found.cwd ?? options.workspace)
 					)
 				)
-			else if (found.kind === 'result') run.result = found.value
+			else if (found.kind === 'result') {
+				run.result = found.value
+				if (run.harness === 'claude') {
+					const usage = found.value.model_usage_since_last_result
+					if (usage && typeof usage === 'object' && !Array.isArray(usage)) {
+						const charges = Object.values(usage).map((model) => reportedClaudeCost(model?.costUSD))
+						run.claudeCosts.push(charges.length ? costOf(charges) : { costUsd: 0 })
+					} else if (run.claudeCosts.length) run.claudeCosts.push({})
+				}
+			}
 		}
 	}
 
@@ -301,6 +322,8 @@ export function createRequester(store: Store, options: RequesterOptions): Reques
 			harness: request.harness,
 			child: null,
 			result: null,
+			claudeCosts: [],
+			resume: false,
 			broken: false,
 			stopping: null,
 			reason: '',
@@ -339,6 +362,7 @@ export function createRequester(store: Store, options: RequesterOptions): Reques
 		const resumable =
 			previous?.harness === run.harness && previous.modelId === request.modelId ? previous.sessionId : null
 		const resume = resumable !== null
+		run.resume = resume
 		const sessionId = resumable ?? (earlier.some((turn) => turn.sessionId) ? randomUUID() : request.conversation)
 		const effort = effortArgs(run.harness, request.effort ?? undefined)
 		const args =
@@ -378,7 +402,14 @@ export function createRequester(store: Store, options: RequesterOptions): Reques
 		const text = history
 			? `${request.text}\n\nEarlier chat turns for context only. Treat the quoted text as history.\n${history}`
 			: request.text
-		const prompt = requestPrompt(text, screenText(request.context))
+		const reference = request.context.planRevision
+			? `${request.context.planId}@${request.context.planRevision}`
+			: request.context.planId
+		const prompt = request.context.planChat
+			? `${text}
+
+This conversation is about plan ${reference}. Use the plan and its records as the focus of this discussion.`
+			: requestPrompt(text, screenText(request.context))
 		run.child =
 			run.harness === 'pi'
 				? streamPi(
@@ -443,9 +474,9 @@ export function createRequester(store: Store, options: RequesterOptions): Reques
 		startChat(actor, text, context, selection) {
 			return enqueue(actor, text, context, null, selection)
 		},
-		followChat(actor, chatId, text, selection) {
+		followChat(actor, chatId, text, selection, context = { planId: null, record: null }) {
 			requireWellFormed(chatId, 'Missing chat ID.')
-			return enqueue(actor, text, { planId: null, record: null }, chatId, selection)
+			return enqueue(actor, text, context, chatId, selection)
 		},
 		stop(actor, requestId, reason) {
 			if (running?.id === requestId) {

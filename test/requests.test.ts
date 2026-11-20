@@ -226,6 +226,23 @@ test('activity lines, the reply, the cost, and the denials are recorded from the
 	assert.equal(done.sessionId, f.read((reading) => currentConversation(reading))!.sessionId)
 })
 
+test('Claude chat costs exclude inherited totals and keep reported costs of failed turns', async (t) => {
+	const f = await serverOf(t, { request: { cost: 0 } })
+	const first = await f.state(await f.ask('Start the chat.'), 'answered')
+	assert.equal(first.costUsd, 0)
+	f.reply({ request: { cost: 2, isError: true, currentUsage: { sonnet: { costUSD: 0.125 }, other: {} } } })
+	const failed = await f.state(await f.ask('Continue the chat.'), 'failed')
+	assert.equal(failed.sessionId, first.sessionId)
+	assert.equal(failed.costUsd, 0.125)
+	assert.equal(failed.costPartial, true)
+	f.reply({ request: { cost: 3 } })
+	const latest = await f.state(await f.ask('Try again.'), 'answered')
+	assert.equal(latest.costUsd, null)
+	const chat = f.read((store) => chatOf(store, first.conversation))
+	assert.equal(chat?.costUsd, 0.125)
+	assert.equal(chat?.costPartial, true)
+})
+
 test('a second request waits and starts when the first ends', async (t) => {
 	const f = await serverOf(t, { request: '!hang' })
 	const first = await f.ask('first')
@@ -608,7 +625,7 @@ test('Pi request stream rejects incomplete and aborted replies', () => {
 	assert.equal(aborted.kind === 'result' && aborted.value.is_error, true)
 })
 
-test('a Pi provider failure records the diagnosis and the UI shows how to retry', async (t) => {
+test('failed and stopped Pi turns keep fresh usage and the UI shows the provider diagnosis', async (t) => {
 	const f = await serverOf(t, {}, { CHECKMATE_HARNESS: 'pi' })
 	const executable = join(dirname(executableOnPath('claude', f.env)!), 'pi')
 	writeFileSync(
@@ -623,12 +640,23 @@ createInterface({ input: process.stdin }).on('line', line => {
 		type: 'response', id: request.id, success: true,
 		data: { commands: [{ name: 'checkmate-permission-ready', source: 'extension', sourceInfo: { path: extension } }] }
 	}))
+	if (request.type === 'abort') console.log(JSON.stringify({ type: 'agent_settled', aborted: true }))
+	if (request.type === 'prompt' && request.message.includes('Stop this turn.')) {
+		console.log(JSON.stringify({ type: 'message_end', message: { role: 'assistant', usage: { cost: { total: 0.125 } } } }))
+		console.log(JSON.stringify({ type: 'message_update', usage: { cost: { total: 0.25 } } }))
+		console.log(JSON.stringify({ type: 'tool_execution_start', toolName: 'Fixture' }))
+		return
+	}
 	if (request.type === 'prompt') {
 		const providerError = { message: 'API key expired.', metadata: { headers: { 'WWW-Authenticate': 'Bearer fixture' } } }
 		console.error('Warning: No project session found; creating a new session.')
-		console.log(JSON.stringify({ type: 'agent_end', messages: [{
-			role: 'assistant', stopReason: 'error', errorMessage: '401: ' + JSON.stringify(providerError)
-		}] }))
+		const assistant = { role: 'assistant', usage: { cost: { total: 0.125 } } }
+		const tool = { role: 'toolResult', usage: { cost: { total: 0.25 } } }
+		const failed = { role: 'assistant', stopReason: 'error', errorMessage: '401: ' + JSON.stringify(providerError), usage: { totalTokens: 0, cost: { total: 0 } } }
+		for (const message of [assistant, tool, failed]) console.log(JSON.stringify({ type: 'message_end', message }))
+		console.log(JSON.stringify({ type: 'compaction_end', result: { usage: { cost: { total: 0.0625 } } } }))
+		console.log(JSON.stringify({ type: 'entry_appended', entry: { type: 'usage', usage: { cost: { total: 0.0625 } } } }))
+		console.log(JSON.stringify({ type: 'agent_end', messages: [assistant, tool, failed] }))
 		console.log(JSON.stringify({ type: 'agent_settled', aborted: false }))
 	}
 })
@@ -636,11 +664,23 @@ createInterface({ input: process.stdin }).on('line', line => {
 		{ mode: 0o755 }
 	)
 	const id = await f.ask('Check the local fixture.')
-	assert.equal((await f.state(id, 'failed')).reason, 'HTTP 401: API key expired.')
+	const failed = await f.state(id, 'failed')
+	assert.equal(failed.reason, 'HTTP 401: API key expired.')
+	assert.equal(failed.costUsd, 0.5)
+	assert.equal(failed.costPartial, true)
 	const page = (await call(f.ui, `/requests/${id}`)).body
 	assert.match(page, /HTTP 401: API key expired\./)
 	assert.match(page, /Check the provider login in Pi\. Then ask again\./)
 	assert.doesNotMatch(page, /WWW-Authenticate|Bearer fixture|No project session found/)
+	const next = await f.ask('Stop this turn.')
+	await waitFor('Pi reached the stoppable point', () =>
+		f.request(next)?.activity.some(({ line }) => line === 'Fixture')
+	)
+	assert.equal((await f.post(`/requests/${next}/stop`, {})).status, 303)
+	const stopped = await f.state(next, 'stopped')
+	assert.equal(stopped.costUsd, 0.375)
+	assert.equal(stopped.costPartial, true)
+	assert.equal(stopped.sessionId, failed.sessionId)
 })
 
 test('queued requests keep their harness when the workspace changes host', async (t) => {

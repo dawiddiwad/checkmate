@@ -9,9 +9,43 @@ import { seedVolume } from '../scripts/ui-volume.ts'
 import { open, browserTest, stop, launchWith } from './browser.ts'
 import { done, ended, launched, openTest, stacks } from './explorations.ts'
 import { evidenceFile } from './support.ts'
+import { fakeClaude } from './claude.ts'
 
 test.before(() => launchWith(seedVolume))
 test.after(stop)
+
+test('plan chats preserve the review view through new chat and browser back', browserTest, async (t) => {
+	const fake = fakeClaude(t, { request: { result: 'Plan reply.' } })
+	const { page, url } = await open(t, {}, { ...process.env, ...fake.env, CHECKMATE_HARNESS: 'claude' })
+	const review = url('/plans/coupons?view=all')
+	const summary = await page.context().newPage()
+	await summary.goto(review)
+	await page.goto(review)
+	await page.getByRole('treeitem', { name: 'Plan chats' }).click()
+	await page.waitForURL(url('/plans/coupons?view=all&chat=list'))
+	await page.getByRole('link', { name: 'New chat' }).click()
+	await page.waitForURL(url('/plans/coupons?view=all&newChat=1'))
+	await page.getByLabel('Message', { exact: true }).fill('Explain the checks')
+	await page.getByRole('button', { name: 'Send', exact: true }).click()
+	await page.getByText('Plan reply.', { exact: true }).waitFor()
+	const conversation = page.url()
+	assert.match(conversation, /\/plans\/coupons\?view=all&chat=[0-9a-f-]+$/)
+	await summary
+		.locator('[data-panel="all"]')
+		.getByText(/Total cost \$0\.06/)
+		.waitFor()
+	await page.goBack()
+	await page.waitForURL(url('/plans/coupons?view=all&newChat=1'))
+	await page.getByRole('link', { name: '← Plan', exact: true }).click()
+	await page.waitForURL(review)
+	await page.getByRole('heading', { name: 'All items', exact: true }).waitFor()
+	await page.goto(conversation)
+	await page.keyboard.press('/')
+	await page.locator('[data-find-input]').fill('Which check comes next?')
+	await page.locator('[data-find-ask]').click()
+	await page.getByText('Which check comes next?', { exact: true }).waitFor()
+	assert.equal(page.url(), conversation)
+})
 
 test('review lists expose row controls and hide decorative separators from the plan tree', browserTest, async (t) => {
 	const { page, url } = await open(t)

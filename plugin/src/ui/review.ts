@@ -11,7 +11,8 @@ import { storableDefects } from '../harvest.ts'
 import { oracleStates } from '../journal.ts'
 import { followCount } from '../explorers.ts'
 import { mergedClaims, mergedQuestions, needsYou, planDetail, planExplorations, planHasRevision } from '../views.ts'
-import { age, asList, glyph, html, plural, words } from './html.ts'
+import { planCost } from '../costs.ts'
+import { age, asList, costText, glyph, html, plural, words } from './html.ts'
 import { crumbBar } from './layout.ts'
 import { askBadge, askTitle, requestHref, requestName, rowOptions, waitsFor } from './permissions.ts'
 import { defaultBuild } from '../modes.ts'
@@ -617,7 +618,7 @@ function navRow(
 		aria-selected="${on ? 'true' : 'false'}"
 		${extra.expanded === undefined ? '' : html`aria-expanded="${extra.expanded ? 'true' : 'false'}"`}
 		${extra.area ? html`data-in-area="${extra.area}"` : ''}
-		tabindex="-1"
+		tabindex="${view === 'chats' ? '0' : '-1'}"
 		href="${href}"
 		data-nav
 		data-target="${view}"
@@ -652,15 +653,21 @@ function testersLabel(review: Review, testers: Review['explorations'][number]) {
 		: 'Testers'
 }
 
-export function navigator(review: Review, current: string, exploration: string | null = null) {
+export function navigator(
+	review: Review,
+	current: string,
+	exploration: string | null = null,
+	chat = { href: reviewHref(review.planId, current, '&chat=list'), active: false }
+) {
 	const { planId } = review
+	const active = chat.active ? 'chats' : current
 	const href = (view: string) => reviewHref(planId, view)
 	const needs = itemsOf(review, 'needs')
 	const testers = review.explorations.find((item) => item.explorationId === exploration) ?? review.explorations.at(-1)
 	const testersRow = testers
 		? navRow(
 				review,
-				current,
+				active,
 				'testers',
 				`/explorations/${testers.explorationId}`,
 				'',
@@ -677,7 +684,7 @@ export function navigator(review: Review, current: string, exploration: string |
 		return [
 			navRow(
 				review,
-				current,
+				active,
 				`area:${area.label}`,
 				href(`area:${area.label}`),
 				glyph(open ? '▾' : '▸'),
@@ -692,7 +699,7 @@ export function navigator(review: Review, current: string, exploration: string |
 				const row = review.map.rows.find((each) => each.rule.id === id)!
 				return navRow(
 					review,
-					current,
+					active,
 					`rule:${id}`,
 					href(`rule:${id}`),
 					id,
@@ -724,7 +731,7 @@ export function navigator(review: Review, current: string, exploration: string |
 				${review.running ? testersRow : ''}
 				${navRow(
 					review,
-					current,
+					active,
 					'needs',
 					href('needs'),
 					'',
@@ -734,7 +741,8 @@ export function navigator(review: Review, current: string, exploration: string |
 						needs.some((item) => item.blocking)
 					)
 				)}
-				${navRow(review, current, 'all', href('all'), '', 'All items', count(review.items.length))}
+				${navRow(review, active, 'all', href('all'), '', 'All items', count(review.items.length))}
+				${navRow(review, active, 'chats', chat.href, '', 'Plan chats', html``, { look: 'link' })}
 				<div class="sp-sep" aria-hidden="true"></div>
 			</div>
 			<div class="sp-nhead" aria-hidden="true">
@@ -752,7 +760,7 @@ export function navigator(review: Review, current: string, exploration: string |
 			${ruleRows}
 			${navRow(
 				review,
-				current,
+				active,
 				`rule:${outside}`,
 				href(`rule:${outside}`),
 				'Out',
@@ -769,7 +777,7 @@ export function navigator(review: Review, current: string, exploration: string |
 			${review.map.builds.map((item) =>
 				navRow(
 					review,
-					current,
+					active,
 					`build:${item.build}`,
 					href(`build:${item.build}`),
 					buildLabel(review, item.build),
@@ -778,9 +786,9 @@ export function navigator(review: Review, current: string, exploration: string |
 				)
 			)}
 			${review.map.builds.length ? html`<div class="sp-sep" aria-hidden="true"></div>` : ''}
-			${navRow(review, current, 'rules', href('rules'), '', 'Rules of the plan', count(review.map.rows.length - 1))}
+			${navRow(review, active, 'rules', href('rules'), '', 'Rules of the plan', count(review.map.rows.length - 1))}
 			${review.running ? '' : testersRow}
-			${navRow(review, current, 'plan', review.revision ? `/plans/${planId}@${review.revision}` : `/plans/${planId}/request`, '', review.revision ? `Plan @${review.revision}` : 'Plan request', html`<span></span>`, { look: 'link' })}
+			${navRow(review, active, 'plan', review.revision ? `/plans/${planId}@${review.revision}` : `/plans/${planId}/request`, '', review.revision ? `Plan @${review.revision}` : 'Plan request', html`<span></span>`, { look: 'link' })}
 		</div>
 	</nav>`
 }
@@ -985,7 +993,7 @@ export function viewsOf(review: Review) {
 	]
 }
 
-function panel(context: Context, review: Review, view: string, current: string) {
+function panel(context: Context, review: Review, view: string, current: string, cost: string) {
 	const head = viewHead(review, view)
 	const items = itemsOf(review, view)
 	const groups = view.startsWith('area:') ? ruleGroups(review, view, items) : groupsOf(items)
@@ -1033,6 +1041,7 @@ function panel(context: Context, review: Review, view: string, current: string) 
 			}
 			${head.sub ? html`<p class="sp-sub">${head.sub}</p>` : ''}
 			<div class="sp-pills">${head.pills}</div>
+			<p class="sp-sub" title="Reported cost across this plan’s explorations and chats">Total cost ${cost}</p>
 			${canChoose(view) ? html`<p class="sp-sub att" data-build-note></p>` : ''}
 		</div>
 		<div class="sp-tools" data-actions>${tools}</div>
@@ -1052,6 +1061,7 @@ export function reviewPage(
 	const views = viewsOf(review)
 	const asked = params.get('view') ?? 'needs'
 	const current = views.includes(asked) ? asked : 'needs'
+	const chatting = params.has('chat') || params.get('newChat') === '1'
 	const title = viewTitle(review, current)
 	const key = refusal?.key ?? params.get('item')
 	const item = key ? (review.items.find((each) => each.key === key && each.kind !== 'permission') ?? null) : null
@@ -1061,7 +1071,8 @@ export function reviewPage(
 			? evidenceViewer(store, review, item, current, Number(file))
 			: recordDrawer(store, context, review, item, current, refusal)
 		: ''
-	const panels = views.map((view) => panel(context, review, view, current))
+	const cost = planCost(store, planId)
+	const panels = views.map((view) => panel(context, review, view, current, costText(cost.costUsd, cost.costPartial)))
 	return {
 		title: `${item ? `${item.id} · ` : ''}${title} · ${planId}`,
 		section: 'home',
@@ -1081,7 +1092,7 @@ export function reviewPage(
 			? reviewHref(planId, current, `&at=${encodeURIComponent(item.key)}&focus=list`)
 			: `/?at=${encodeURIComponent(`plan:${planId}`)}`,
 		drawer: Boolean(item),
-		nav: navigator(review, current),
+		nav: navigator(review, current, null, { href: reviewHref(planId, current, '&chat=list'), active: chatting }),
 		body: html`${notice ? html`<p class="form-error" role="alert" data-notice>${notice}</p>` : ''}
 			<div
 				class="sp-review"

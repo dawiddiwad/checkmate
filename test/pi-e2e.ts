@@ -10,8 +10,11 @@ import type { TestContext } from 'node:test'
 import { promisify } from 'node:util'
 import { closeStore, openStore } from '../plugin/src/store.ts'
 import { explorationEvents } from '../plugin/src/explorations.ts'
+import { chatOf } from '../plugin/src/requests.ts'
+import { planCosts } from '../plugin/src/costs.ts'
 import { startUi } from '../plugin/src/ui/server.ts'
 import { directory, plan, profile, root, target } from './support.ts'
+import { call, token, waitFor } from './actions.ts'
 
 const cli = join(root, 'cli/dist/checkmate.js')
 const runFile = promisify(execFile)
@@ -159,6 +162,75 @@ test('real Pi charges this exploration only for new study, test and recorder mes
 		assert.equal(events.find((event) => event.step === 'record')?.detail.costUsd, 4)
 	} finally {
 		closeStore(reader)
+	}
+})
+
+test('real Pi adds each new turn of a resumed plan chat to its plan exactly once', async (t) => {
+	const conversations: Array<Array<{ role: string; content: unknown }>> = []
+	const { workspace, env } = await piFixture(
+		t,
+		async (req, res) => {
+			let body = ''
+			for await (const chunk of req) body += chunk
+			conversations.push(JSON.parse(body).messages)
+			const calls = conversations.length
+			res.writeHead(200, { 'Content-Type': 'text/event-stream' })
+			const send = (chunk: Record<string, unknown>) =>
+				res.write(
+					`data: ${JSON.stringify({ id: 'fixture', object: 'chat.completion.chunk', model: 'fixture', ...chunk })}\n\n`
+				)
+			send({
+				choices: [
+					{
+						index: 0,
+						delta: { role: 'assistant', content: 'This is the fixture reply.' },
+						finish_reason: null,
+					},
+				],
+			})
+			send({ choices: [{ index: 0, delta: {}, finish_reason: 'stop' }] })
+			send({ choices: [], usage: { prompt_tokens: calls, completion_tokens: 1, total_tokens: calls + 1 } })
+			res.end('data: [DONE]\n\n')
+		},
+		'fixture',
+		{ input: 1_000_000, output: 0, cacheRead: 0, cacheWrite: 0 }
+	)
+	const store = openStore(workspace)
+	target(store)
+	plan(store)
+	const ui = await startUi({ workspace, env, defaultActor: 'tester' })
+	try {
+		const csrf = token((await call(ui, '/plans/checkout')).body)
+		const first = await call(ui, '/plans/checkout/chats', { csrf, harness: 'pi', text: 'Review checkout.' })
+		assert.equal(first.status, 303, first.body)
+		const address = String(first.headers.location)
+		const id = new URL(address, ui.url).searchParams.get('chat')
+		assert.ok(id, address)
+		await waitFor('the first Pi chat reply', () => chatOf(store, id)?.turns[0]?.state === 'answered')
+		assert.equal(chatOf(store, id)?.costUsd, 1)
+		const second = await call(ui, `/plans/checkout/chats/${id}/turns`, {
+			csrf,
+			harness: 'pi',
+			text: 'What should I test next?',
+		})
+		assert.equal(second.status, 303, second.body)
+		await waitFor('the resumed reply', () => chatOf(store, id)?.turns[1]?.state === 'answered')
+		const chat = chatOf(store, id)!
+		assert.equal(conversations.length, 2)
+		for (const messages of conversations)
+			assert.match(JSON.stringify(messages.at(-1)?.content), /This conversation is about plan checkout\./)
+		assert.match(JSON.stringify(conversations[1]), /This is the fixture reply\./)
+		assert.equal(chat.turns[0].sessionId, chat.turns[1].sessionId)
+		assert.deepEqual(
+			chat.turns.map((turn) => turn.costUsd),
+			[1, 2]
+		)
+		assert.equal(chat.costUsd, 3)
+		assert.deepEqual(planCosts(store).get('checkout'), { costUsd: 3, costPartial: false })
+		assert.match((await call(ui, '/')).body, /Total cost \$3\.00/)
+	} finally {
+		await ui.close()
+		closeStore(store)
 	}
 })
 

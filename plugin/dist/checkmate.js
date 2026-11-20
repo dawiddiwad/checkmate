@@ -13342,6 +13342,440 @@ function resultAcceptance(store, run2, sha256) {
   return approvalState(store, "result", run2.run_id, sha256, policy);
 }
 
+// plugin/src/requests.ts
+import { randomUUID as randomUUID2 } from "node:crypto";
+var maxRequestText = 4e3;
+var requestAuthor = "checkmate";
+var chatIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+var endStates = ["answered", "failed", "stopped", "interrupted"];
+var unreadStates = ["answered", "failed"];
+var askRows = `SELECT r.*, json_type(o.arguments, '$.chatId') = 'null' AS explicit_chat
+FROM requests r JOIN operations o ON o.id = r.operation_id`;
+function screenText(context) {
+  const parts = [
+    ...context.planId ? [`plan ${context.planId}${context.planRevision ? `@${context.planRevision}` : ""}`] : [],
+    ...context.record ? [`${context.record.kind} ${context.record.id}`] : []
+  ];
+  return parts.length ? parts.join(" and ") : context.page ? `the ${context.page} page` : null;
+}
+function requestActor(person, requestId2) {
+  return `${person} via request ${requestId2}`;
+}
+function isRequestId(store, id2) {
+  return one(store, "SELECT 1 FROM requests WHERE request_id = ?", id2) !== void 0;
+}
+function currentConversation(store) {
+  const row3 = one(
+    store,
+    "SELECT value FROM workspace_settings WHERE name = 'conversation' ORDER BY rowid DESC LIMIT 1"
+  );
+  return row3 ? JSON.parse(row3.value) : null;
+}
+function insertConversation(store, operationId, at) {
+  const conversation = { sessionId: randomUUID2(), startedAt: at };
+  execute(
+    store,
+    "INSERT INTO workspace_settings (name, value, operation_id) VALUES ('conversation', ?, ?)",
+    canonical(conversation),
+    operationId
+  );
+  return conversation;
+}
+function startConversation(store, actor) {
+  return write(store, { actor, command: "request conversation", subject: "conversation", input: null }, (id2, at) => ({
+    reply: completed("conversation", { ...insertConversation(store, id2, at) }),
+    subjects: ["requests", "settings"]
+  }));
+}
+function conversationHarness(store, sessionId) {
+  const row3 = one(
+    store,
+    `SELECT e.detail FROM request_events e JOIN requests r ON r.request_id = e.request_id
+		WHERE r.conversation = ? AND (e.step = 'session' OR
+			(e.step = 'state' AND e.status = 'waiting' AND json_extract(e.detail, '$.harness') IS NOT NULL))
+		ORDER BY e.rowid DESC LIMIT 1`,
+    sessionId
+  );
+  return row3 ? JSON.parse(row3.detail).harness === "pi" ? "pi" : "claude" : null;
+}
+function addRequestEvent(store, requestId2, event2, operationId, at) {
+  execute(
+    store,
+    "INSERT INTO request_events (request_id, at, step, status, detail, operation_id) VALUES (?, ?, ?, ?, ?, ?)",
+    requestId2,
+    at,
+    event2.step,
+    event2.status,
+    canonical(event2.detail),
+    operationId
+  );
+}
+function askRequest(store, actor, input) {
+  const text = requireText(input.text, "request text");
+  requireWellFormed(
+    text.length <= maxRequestText,
+    `The request has more than ${maxRequestText} characters.`,
+    "Make the text shorter."
+  );
+  return write(store, { actor, command: "request ask", subject: "requests", input }, (operationId, at, who) => {
+    const requestId2 = unusedId(
+      "R",
+      all(store, "SELECT request_id FROM requests").map((row3) => row3.request_id)
+    );
+    const harness = input.harness ?? "claude";
+    let chatId2;
+    let context = input.context;
+    if (input.chatId) {
+      requireWellFormed(chatIdPattern.test(input.chatId), "Invalid chat ID.");
+      const initial = one(
+        store,
+        `${askRows} WHERE r.conversation = ? ORDER BY r.rowid LIMIT 1`,
+        input.chatId
+      );
+      requireWellFormed(initial, `Unknown chat: ${input.chatId}`);
+      chatId2 = input.chatId;
+      const original = JSON.parse(initial.context);
+      requireWellFormed(
+        !context.planChat && !original.planChat || context.planChat === true && Boolean(initial.explicit_chat) && context.planId === original.planId,
+        "The chat belongs to a different context."
+      );
+      context = original;
+    } else if (input.chatId === null) {
+      validateChatContext(store, context);
+      chatId2 = randomUUID2();
+    } else {
+      requireWellFormed(!context.planChat, "Start a new chat for the plan.");
+      const current = currentConversation(store);
+      const previous = current && conversationHarness(store, current.sessionId);
+      chatId2 = (current && (!previous || previous === harness) ? current : insertConversation(store, operationId, at)).sessionId;
+    }
+    execute(
+      store,
+      "INSERT INTO requests (request_id, text, context, asker, conversation, asked_at, operation_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      requestId2,
+      text,
+      canonical(context),
+      who,
+      chatId2,
+      at,
+      operationId
+    );
+    const { model = null, provider = null, effort = null, modelId = null } = input;
+    addRequestEvent(
+      store,
+      requestId2,
+      { step: "state", status: "waiting", detail: { harness, model, provider, effort, modelId } },
+      operationId,
+      at
+    );
+    return {
+      reply: completed(requestId2, { requestId: requestId2 }),
+      subjects: [`request:${requestId2}`, `chat:${chatId2}`, "requests", "chats"]
+    };
+  }).data.requestId;
+}
+function validateChatContext(store, context) {
+  requireWellFormed(!context.planChat || context.planId, "A plan chat needs a plan.");
+  if (context.page)
+    requireWellFormed(["plans", "runs", "activity", "chats"].includes(context.page), "Unknown chat context page.");
+  if (context.planId)
+    requireWellFormed(
+      one(store, "SELECT 1 FROM plan_requests WHERE plan_id = ?", context.planId),
+      `Unknown plan: ${context.planId}`
+    );
+  if (context.planRevision !== void 0)
+    requireWellFormed(
+      context.planId && one(
+        store,
+        "SELECT 1 FROM plan_revisions WHERE plan_id = ? AND revision = ?",
+        context.planId,
+        context.planRevision
+      ),
+      `Unknown plan revision: ${context.planId}@${context.planRevision}`
+    );
+  const { record } = context;
+  if (!record) return;
+  const query = record.kind === "run" ? "SELECT plan_id, plan_revision FROM runs WHERE run_id = ?" : record.kind === "exploration" ? "SELECT plan_id, plan_revision FROM explorations WHERE exploration_id = ?" : null;
+  requireWellFormed(query, `Unknown chat context kind: ${record.kind}`);
+  const found = one(store, query, record.id);
+  requireWellFormed(found, `Unknown ${record.kind}: ${record.id}`);
+  requireWellFormed(!context.planId || found.plan_id === context.planId, "The chat context has a different plan.");
+  requireWellFormed(
+    context.planRevision === void 0 || found.plan_revision === context.planRevision,
+    "The chat context has a different plan revision."
+  );
+}
+function recordRequestEvent(store, requestId2, event2, options3) {
+  return write(
+    store,
+    {
+      actor: options3.actor ?? requestAuthor,
+      command: `request ${event2.step}`,
+      subject: requestId2,
+      input: { status: event2.status }
+    },
+    (operationId, at) => {
+      addRequestEvent(store, requestId2, event2, operationId, at);
+      return { reply: completed(requestId2), subjects: options3.subjects };
+    }
+  );
+}
+function setRequestState(store, requestId2, state, detail = {}) {
+  recordRequestEvent(
+    store,
+    requestId2,
+    { step: "state", status: state, detail },
+    { subjects: [`request:${requestId2}`, "requests"] }
+  );
+}
+function addRequestActivity(store, requestId2, line) {
+  recordRequestEvent(
+    store,
+    requestId2,
+    { step: "activity", status: "started", detail: { line } },
+    { subjects: [`request:${requestId2}`] }
+  );
+}
+function markRequestRead(store, actor, requestId2) {
+  return write(store, { actor, command: "request read", subject: requestId2, input: null }, (operationId, at) => {
+    addRequestEvent(store, requestId2, { step: "read", status: "read", detail: {} }, operationId, at);
+    return { reply: completed(requestId2), subjects: [`request:${requestId2}`, "requests"] };
+  });
+}
+function requestStopped(store, requestId2) {
+  return one(store, "SELECT 1 FROM request_events WHERE request_id = ? AND step = 'stop'", requestId2) !== void 0;
+}
+function stopRequestRecord(store, actor, requestId2, reason) {
+  return write(store, { actor, command: "request stop", subject: requestId2, input: null }, (operationId, at, who) => {
+    addRequestEvent(
+      store,
+      requestId2,
+      { step: "stop", status: "stopped", detail: { by: who, ...reason ? { reason } : {} } },
+      operationId,
+      at
+    );
+    return { reply: completed(requestId2), subjects: [`request:${requestId2}`, "requests", "permissions"] };
+  });
+}
+function recordOf(ask, events) {
+  const states = events.filter((event2) => event2.step === "state");
+  const last = states.at(-1);
+  const session = events.findLast((event2) => event2.step === "session");
+  const recorded = session ? JSON.parse(session.detail) : null;
+  const selection = JSON.parse(states[0].detail);
+  const harness = selection.harness ?? recorded?.harness;
+  const finished = endStates.includes(last.status) ? last : null;
+  const detail = finished ? JSON.parse(finished.detail) : {};
+  const listOf2 = (value2) => Array.isArray(value2) ? value2 : [];
+  return {
+    id: ask.request_id,
+    text: ask.text,
+    context: JSON.parse(ask.context),
+    asker: ask.asker,
+    conversation: ask.conversation,
+    harness: harness === "pi" ? "pi" : "claude",
+    model: selection.model ?? null,
+    provider: selection.provider ?? null,
+    effort: selection.effort ?? null,
+    modelId: selection.modelId ?? (selection.provider && selection.model ? `${selection.provider}/${selection.model}` : selection.model) ?? null,
+    askedAt: ask.asked_at,
+    state: last.status,
+    sessionId: recorded?.sessionId ?? null,
+    activity: events.filter((event2) => event2.step === "activity").map((event2) => ({ at: event2.at, line: JSON.parse(event2.detail).line })),
+    reply: typeof detail.reply === "string" ? detail.reply : null,
+    costUsd: typeof detail.costUsd === "number" && Number.isFinite(detail.costUsd) && detail.costUsd >= 0 ? detail.costUsd : null,
+    costPartial: detail.costPartial === true,
+    ...detail.costScope !== "turn" && harness !== "pi" ? { costCumulative: true } : {},
+    startedAt: states.find((event2) => event2.status === "running")?.at ?? null,
+    endedAt: finished?.at ?? null,
+    reason: typeof detail.reason === "string" ? detail.reason : null,
+    hint: typeof detail.hint === "string" ? detail.hint : null,
+    denials: listOf2(detail.denials),
+    changes: listOf2(detail.changes),
+    read: events.some((event2) => event2.step === "read")
+  };
+}
+function eventsByRequest(store, where, parameters, activity = true) {
+  const found = /* @__PURE__ */ new Map();
+  for (const row3 of all(
+    store,
+    `SELECT request_id, at, step, status, detail FROM request_events WHERE step IN ('state', 'session'${activity ? ", 'activity', 'read'" : ""}) ${where} ORDER BY rowid`,
+    ...parameters
+  )) {
+    const list2 = found.get(row3.request_id) ?? [];
+    list2.push(row3);
+    found.set(row3.request_id, list2);
+  }
+  return found;
+}
+function requestOf(store, requestId2) {
+  const ask = one(store, `${askRows} WHERE r.request_id = ?`, requestId2);
+  return ask ? recordOf(ask, eventsByRequest(store, "AND request_id = ?", [requestId2]).get(requestId2) ?? []) : null;
+}
+function allRequests(store) {
+  const events = eventsByRequest(store, "", []);
+  return all(store, `${askRows} ORDER BY r.rowid`).map(
+    (ask) => recordOf(ask, events.get(ask.request_id) ?? [])
+  );
+}
+function chatFromTurns(first, turns) {
+  const sessions = /* @__PURE__ */ new Set();
+  const calls = [];
+  for (const turn2 of turns) {
+    if (!turn2.startedAt) continue;
+    const repeated = turn2.sessionId !== null && sessions.has(turn2.sessionId);
+    if (turn2.harness === "claude" && turn2.sessionId) sessions.add(turn2.sessionId);
+    if (turn2.costUsd === null || turn2.costCumulative && (repeated || !turn2.sessionId)) calls.push({});
+    else calls.push({ costUsd: turn2.costUsd, costPartial: turn2.costPartial });
+  }
+  const { costUsd, costPartial } = costOf(calls);
+  const context = turns[0].context;
+  return {
+    id: first.conversation,
+    planId: first.explicit_chat ? context.planId : null,
+    context,
+    turns,
+    costUsd: costUsd ?? null,
+    costPartial: costPartial ?? false
+  };
+}
+function chatOf(store, id2) {
+  if (!chatIdPattern.test(id2)) return null;
+  const asks = all(store, `${askRows} WHERE r.conversation = ? ORDER BY r.rowid`, id2);
+  if (!asks.length) return null;
+  const events = eventsByRequest(
+    store,
+    "AND request_id IN (SELECT request_id FROM requests WHERE conversation = ?)",
+    [id2]
+  );
+  return chatFromTurns(
+    asks[0],
+    asks.map((ask) => recordOf(ask, events.get(ask.request_id) ?? []))
+  );
+}
+function listedChats(store, planId) {
+  return readChats(store, planId, true);
+}
+function planChatsForCosts(store, planId) {
+  return readChats(store, planId ?? null, false);
+}
+function readChats(store, planId, activity) {
+  const firstAsks = `${askRows}
+		WHERE r.rowid IN (SELECT min(rowid) FROM requests GROUP BY conversation)
+		AND json_extract(r.context, '$.planId') IS NOT NULL
+		AND json_type(o.arguments, '$.chatId') = 'null'${typeof planId !== "string" ? "" : " AND json_extract(r.context, '$.planId') = ?"}`;
+  const scoped = planId !== void 0;
+  const parameters = typeof planId === "string" ? [planId] : [];
+  const conversations = `SELECT conversation FROM (${firstAsks})`;
+  const asks = all(
+    store,
+    `${askRows}${scoped ? ` WHERE r.conversation IN (${conversations})` : ""} ORDER BY r.rowid`,
+    ...parameters
+  );
+  const events = eventsByRequest(
+    store,
+    scoped ? `AND request_id IN (SELECT request_id FROM requests WHERE conversation IN (${conversations}))` : "",
+    parameters,
+    activity
+  );
+  const chats = /* @__PURE__ */ new Map();
+  for (const ask of asks) {
+    const chat = chats.get(ask.conversation) ?? { first: ask, turns: [] };
+    chat.turns.push(recordOf(ask, events.get(ask.request_id) ?? []));
+    chats.delete(ask.conversation);
+    chats.set(ask.conversation, chat);
+  }
+  return [...chats.values()].reverse().map(({ first, turns }) => chatFromTurns(first, turns));
+}
+function chatHistory(turns) {
+  const entries = [];
+  let remaining = 12e3;
+  for (const turn2 of turns.slice(-8).reverse()) {
+    if (!isEnded(turn2)) continue;
+    const entry = JSON.stringify({
+      request: turn2.text.slice(0, 2e3),
+      state: turn2.state,
+      reply: turn2.reply?.slice(0, 2e3) ?? null,
+      changes: turn2.changes.slice(0, 10).map((change) => change.text.slice(0, 120))
+    });
+    if (entry.length + 1 > remaining) break;
+    entries.unshift(entry);
+    remaining -= entry.length + 1;
+  }
+  return entries.join("\n");
+}
+function isUnread(request2) {
+  return unreadStates.includes(request2.state) && !request2.read;
+}
+function isEnded(request2) {
+  return endStates.includes(request2.state);
+}
+function requestStatus(store) {
+  const requests = allRequests(store);
+  const unread = requests.filter(isUnread);
+  const running3 = requests.find((request2) => request2.state === "running");
+  const firstUnread = unread.at(-1);
+  return {
+    running: running3?.id ?? null,
+    runningChat: running3?.conversation ?? null,
+    waiting: requests.filter((request2) => request2.state === "waiting").length,
+    unread: unread.length,
+    firstUnread: firstUnread?.id ?? null,
+    firstUnreadChat: firstUnread?.conversation ?? null
+  };
+}
+function listedRequests(store) {
+  const requests = allRequests(store).reverse();
+  return [...requests.filter(isUnread), ...requests.filter((request2) => !isUnread(request2))];
+}
+var recordPaths = {
+  plan: "/plans/",
+  run: "/runs/",
+  exploration: "/explorations/",
+  target: "/settings/targets/"
+};
+function describeChange(command, subject, input) {
+  const named = (ids2) => Array.isArray(ids2) ? ids2.map((id2) => `${subject}/${String(id2)}`).join(", ") : subject;
+  if (command === "claim handoff") return `${input.undo ? "took back" : "handed over"} ${named(input.claimIds)}`;
+  if (command === "gap answer") return `answered ${subject}/${String(input.gapId)}`;
+  if (command === "claim accept") return `accepted ${subject}/${String(input.claimId)}`;
+  if (command === "claim reject") return `rejected ${subject}/${String(input.claimId)}`;
+  if (command === "plan edit") return `edited plan ${subject}`;
+  if (command === "plan save") return `saved plan ${subject}`;
+  if (command === "plan revise") return `revised plan ${subject}`;
+  if (command === "plan open") return `opened plan ${subject}`;
+  if (command === "setting set") return `changed the setting ${subject}`;
+  return `${command} ${subject}`;
+}
+function operationCountOf(store, requestId2) {
+  return one(store, "SELECT count(*) AS count FROM operations WHERE via = ?", requestId2).count;
+}
+function changesOf(store, requestId2) {
+  return all(
+    store,
+    `SELECT at, command, arguments, subjects, json_extract(response, '$.subject') AS subject
+		FROM operations WHERE via = ? AND status = 'completed' ORDER BY rowid`,
+    requestId2
+  ).map((row3) => {
+    const record = JSON.parse(row3.subjects).map((subject2) => /^(plan|run|exploration|target):(.+)$/.exec(subject2)).find((found) => found);
+    const subject = record ? record[2] : row3.subject;
+    return {
+      text: describeChange(row3.command, subject, JSON.parse(row3.arguments)),
+      command: row3.command,
+      subject,
+      at: row3.at,
+      href: record ? `${recordPaths[record[1]]}${subject}` : null
+    };
+  });
+}
+function staleRequests(store) {
+  for (const request2 of allRequests(store))
+    if (request2.state === "running" || request2.state === "waiting")
+      setRequestState(store, request2.id, "interrupted", {
+        reason: request2.state === "running" ? "The UI stopped before the request ended." : "The UI stopped before the request started."
+      });
+}
+
 // plugin/src/costs.ts
 var noModelCost = { costUsd: null, costPartial: false };
 var steps = ["end", "record", "rules", "merge", "verify", "follow-turn"];
@@ -13362,11 +13796,11 @@ function explorationCost(events) {
   }
   return costOf2(total);
 }
-function groupedCosts(store, planId) {
+function groupedCosts(store, group, planId) {
   const reported = "json_type(e.detail, '$.costUsd') IN ('integer', 'real')";
   const rows2 = all(
     store,
-    `SELECT ${planId === void 0 ? "x.plan_id" : "e.exploration_id"} AS key, e.status,
+    `SELECT ${group === "plan" ? "x.plan_id" : "e.exploration_id"} AS key, e.status,
 			(json_extract(e.detail, '$.session') IS NOT NULL OR json_extract(e.detail, '$.agent') IS NOT NULL) AS attempted,
 			CASE WHEN ${reported} THEN json_extract(e.detail, '$.costUsd') ELSE xc.cost_usd END AS amount,
 			CASE WHEN ${reported} THEN json_type(e.detail, '$.costPartial') = 'true' ELSE xc.partial END AS partial
@@ -13385,13 +13819,24 @@ function groupedCosts(store, planId) {
     addCost(total, row3.status, Boolean(row3.attempted), row3.amount, row3.partial === 1);
     totals.set(row3.key, total);
   }
+  if (group === "plan") {
+    for (const chat of planChatsForCosts(store, planId)) {
+      if (!chat.planId || !chat.turns.some((turn2) => turn2.startedAt)) continue;
+      const total = totals.get(chat.planId) ?? { amount: null, missing: false };
+      addCost(total, "completed", true, chat.costUsd, chat.costPartial);
+      totals.set(chat.planId, total);
+    }
+  }
   return new Map([...totals].map(([key, total]) => [key, costOf2(total)]));
 }
 function planCosts(store) {
-  return groupedCosts(store);
+  return groupedCosts(store, "plan");
+}
+function planCost(store, planId) {
+  return groupedCosts(store, "plan", planId).get(planId) ?? noModelCost;
 }
 function planExplorationCosts(store, planId) {
-  return groupedCosts(store, planId);
+  return groupedCosts(store, "exploration", planId);
 }
 
 // plugin/src/explorations.ts
@@ -14800,7 +15245,7 @@ function verifierBrief(items, entries, operations, dataPrefix, answer2) {
 }
 
 // plugin/src/recorder.ts
-import { randomUUID as randomUUID2 } from "node:crypto";
+import { randomUUID as randomUUID3 } from "node:crypto";
 import { existsSync as existsSync3, mkdirSync as mkdirSync5, readFileSync as readFileSync5, rmSync as rmSync4, writeFileSync as writeFileSync3 } from "node:fs";
 import { join as join6 } from "node:path";
 var defaultRecorderTimeout = 600;
@@ -15012,7 +15457,7 @@ function prepare(store, input, env) {
     explorer,
     context,
     harness,
-    recorder: randomUUID2(),
+    recorder: randomUUID3(),
     actor: explorerActor(explorer)
   };
 }
@@ -15209,7 +15654,7 @@ function upstreamBase(repository) {
 
 // plugin/src/explorers.ts
 import { spawn as spawn3, spawnSync as spawnSync4 } from "node:child_process";
-import { randomUUID as randomUUID3 } from "node:crypto";
+import { randomUUID as randomUUID4 } from "node:crypto";
 import {
   existsSync as existsSync4,
   mkdirSync as mkdirSync6,
@@ -15584,7 +16029,7 @@ async function launchExplorers(store, actor, explorationId, launch, env, catalog
   const entries = entryValues(store, explorationId);
   const executable = requireChild(env, launch.context.harness);
   const runs = explorerNames(launch.explorers).map(async (explorer) => {
-    const session = randomUUID3();
+    const session = randomUUID4();
     const model = launch.testerModels?.[explorer];
     const tester = contextForEffort(
       contextForModel(launch.context, model),
@@ -15711,7 +16156,7 @@ function unplacedReports(store, explorationId, after = 0) {
 function mergeReports(store, actor, explorationId, launch, env, after = 0) {
   const input = mergeInput(store, explorationId, after);
   if (!input) return;
-  const session = randomUUID3();
+  const session = randomUUID4();
   const executable = requireChild(env, launch.context.harness);
   const call = (args, prompt) => {
     const hook = childHook(store.workspace, explorationId, "merge");
@@ -15764,7 +16209,7 @@ function deriveRules(store, actor, explorationId, launch, env) {
   if (!rulesNeeded(store, opened.plan_id)) return;
   const sources = ruleSources(store, opened.plan_id);
   const names = sources.map((source) => source.name);
-  const session = randomUUID3();
+  const session = randomUUID4();
   const call = (args, prompt) => {
     const hook = childHook(store.workspace, explorationId, "rules");
     const context = { ...launch.context, hook };
@@ -15832,7 +16277,7 @@ async function verifyClaims(store, actor, explorationId, launch, env, after = 0)
   const input = verifyInput(store, explorationId, after);
   if (!input) return;
   const { items } = input;
-  const session = randomUUID3();
+  const session = randomUUID4();
   const brief = verifierBrief(items, input.entries, input.operations, input.dataPrefix);
   const ask = (own, prompt) => {
     const hook = childHook(store.workspace, explorationId, "verify");
@@ -16495,382 +16940,6 @@ function explorationReport(store, explorationId) {
       }))
     )
   };
-}
-
-// plugin/src/requests.ts
-import { randomUUID as randomUUID4 } from "node:crypto";
-var maxRequestText = 4e3;
-var requestAuthor = "checkmate";
-var chatIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
-var endStates = ["answered", "failed", "stopped", "interrupted"];
-var unreadStates = ["answered", "failed"];
-function screenText(context) {
-  const parts = [
-    ...context.planId ? [`plan ${context.planId}${context.planRevision ? `@${context.planRevision}` : ""}`] : [],
-    ...context.record ? [`${context.record.kind} ${context.record.id}`] : []
-  ];
-  return parts.length ? parts.join(" and ") : context.page ? `the ${context.page} page` : null;
-}
-function requestActor(person, requestId2) {
-  return `${person} via request ${requestId2}`;
-}
-function isRequestId(store, id2) {
-  return one(store, "SELECT 1 FROM requests WHERE request_id = ?", id2) !== void 0;
-}
-function currentConversation(store) {
-  const row3 = one(
-    store,
-    "SELECT value FROM workspace_settings WHERE name = 'conversation' ORDER BY rowid DESC LIMIT 1"
-  );
-  return row3 ? JSON.parse(row3.value) : null;
-}
-function insertConversation(store, operationId, at) {
-  const conversation = { sessionId: randomUUID4(), startedAt: at };
-  execute(
-    store,
-    "INSERT INTO workspace_settings (name, value, operation_id) VALUES ('conversation', ?, ?)",
-    canonical(conversation),
-    operationId
-  );
-  return conversation;
-}
-function startConversation(store, actor) {
-  return write(store, { actor, command: "request conversation", subject: "conversation", input: null }, (id2, at) => ({
-    reply: completed("conversation", { ...insertConversation(store, id2, at) }),
-    subjects: ["requests", "settings"]
-  }));
-}
-function conversationHarness(store, sessionId) {
-  const row3 = one(
-    store,
-    `SELECT e.detail FROM request_events e JOIN requests r ON r.request_id = e.request_id
-		WHERE r.conversation = ? AND (e.step = 'session' OR
-			(e.step = 'state' AND e.status = 'waiting' AND json_extract(e.detail, '$.harness') IS NOT NULL))
-		ORDER BY e.rowid DESC LIMIT 1`,
-    sessionId
-  );
-  return row3 ? JSON.parse(row3.detail).harness === "pi" ? "pi" : "claude" : null;
-}
-function addRequestEvent(store, requestId2, event2, operationId, at) {
-  execute(
-    store,
-    "INSERT INTO request_events (request_id, at, step, status, detail, operation_id) VALUES (?, ?, ?, ?, ?, ?)",
-    requestId2,
-    at,
-    event2.step,
-    event2.status,
-    canonical(event2.detail),
-    operationId
-  );
-}
-function askRequest(store, actor, input) {
-  const text = requireText(input.text, "request text");
-  requireWellFormed(
-    text.length <= maxRequestText,
-    `The request has more than ${maxRequestText} characters.`,
-    "Make the text shorter."
-  );
-  return write(store, { actor, command: "request ask", subject: "requests", input }, (operationId, at, who) => {
-    const requestId2 = unusedId(
-      "R",
-      all(store, "SELECT request_id FROM requests").map((row3) => row3.request_id)
-    );
-    const harness = input.harness ?? "claude";
-    let chatId;
-    let context = input.context;
-    if (input.chatId) {
-      requireWellFormed(chatIdPattern.test(input.chatId), "Invalid chat ID.");
-      const initial = one(
-        store,
-        "SELECT context FROM requests WHERE conversation = ? ORDER BY rowid LIMIT 1",
-        input.chatId
-      );
-      requireWellFormed(initial, `Unknown chat: ${input.chatId}`);
-      chatId = input.chatId;
-      context = JSON.parse(initial.context);
-    } else if (input.chatId === null) {
-      validateChatContext(store, context);
-      chatId = randomUUID4();
-    } else {
-      const current = currentConversation(store);
-      const previous = current && conversationHarness(store, current.sessionId);
-      chatId = (current && (!previous || previous === harness) ? current : insertConversation(store, operationId, at)).sessionId;
-    }
-    execute(
-      store,
-      "INSERT INTO requests (request_id, text, context, asker, conversation, asked_at, operation_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
-      requestId2,
-      text,
-      canonical(context),
-      who,
-      chatId,
-      at,
-      operationId
-    );
-    const { model = null, provider = null, effort = null, modelId = null } = input;
-    addRequestEvent(
-      store,
-      requestId2,
-      { step: "state", status: "waiting", detail: { harness, model, provider, effort, modelId } },
-      operationId,
-      at
-    );
-    return {
-      reply: completed(requestId2, { requestId: requestId2 }),
-      subjects: [`request:${requestId2}`, `chat:${chatId}`, "requests", "chats"]
-    };
-  }).data.requestId;
-}
-function validateChatContext(store, context) {
-  if (context.page)
-    requireWellFormed(["plans", "runs", "activity", "chats"].includes(context.page), "Unknown chat context page.");
-  if (context.planId)
-    requireWellFormed(
-      one(store, "SELECT 1 FROM plan_requests WHERE plan_id = ?", context.planId),
-      `Unknown plan: ${context.planId}`
-    );
-  if (context.planRevision !== void 0)
-    requireWellFormed(
-      context.planId && one(
-        store,
-        "SELECT 1 FROM plan_revisions WHERE plan_id = ? AND revision = ?",
-        context.planId,
-        context.planRevision
-      ),
-      `Unknown plan revision: ${context.planId}@${context.planRevision}`
-    );
-  const { record } = context;
-  if (!record) return;
-  const query = record.kind === "run" ? "SELECT plan_id, plan_revision FROM runs WHERE run_id = ?" : record.kind === "exploration" ? "SELECT plan_id, plan_revision FROM explorations WHERE exploration_id = ?" : null;
-  requireWellFormed(query, `Unknown chat context kind: ${record.kind}`);
-  const found = one(store, query, record.id);
-  requireWellFormed(found, `Unknown ${record.kind}: ${record.id}`);
-  requireWellFormed(!context.planId || found.plan_id === context.planId, "The chat context has a different plan.");
-  requireWellFormed(
-    context.planRevision === void 0 || found.plan_revision === context.planRevision,
-    "The chat context has a different plan revision."
-  );
-}
-function recordRequestEvent(store, requestId2, event2, options3) {
-  return write(
-    store,
-    {
-      actor: options3.actor ?? requestAuthor,
-      command: `request ${event2.step}`,
-      subject: requestId2,
-      input: { status: event2.status }
-    },
-    (operationId, at) => {
-      addRequestEvent(store, requestId2, event2, operationId, at);
-      return { reply: completed(requestId2), subjects: options3.subjects };
-    }
-  );
-}
-function setRequestState(store, requestId2, state, detail = {}) {
-  recordRequestEvent(
-    store,
-    requestId2,
-    { step: "state", status: state, detail },
-    { subjects: [`request:${requestId2}`, "requests"] }
-  );
-}
-function addRequestActivity(store, requestId2, line) {
-  recordRequestEvent(
-    store,
-    requestId2,
-    { step: "activity", status: "started", detail: { line } },
-    { subjects: [`request:${requestId2}`] }
-  );
-}
-function markRequestRead(store, actor, requestId2) {
-  return write(store, { actor, command: "request read", subject: requestId2, input: null }, (operationId, at) => {
-    addRequestEvent(store, requestId2, { step: "read", status: "read", detail: {} }, operationId, at);
-    return { reply: completed(requestId2), subjects: [`request:${requestId2}`, "requests"] };
-  });
-}
-function requestStopped(store, requestId2) {
-  return one(store, "SELECT 1 FROM request_events WHERE request_id = ? AND step = 'stop'", requestId2) !== void 0;
-}
-function stopRequestRecord(store, actor, requestId2, reason) {
-  return write(store, { actor, command: "request stop", subject: requestId2, input: null }, (operationId, at, who) => {
-    addRequestEvent(
-      store,
-      requestId2,
-      { step: "stop", status: "stopped", detail: { by: who, ...reason ? { reason } : {} } },
-      operationId,
-      at
-    );
-    return { reply: completed(requestId2), subjects: [`request:${requestId2}`, "requests", "permissions"] };
-  });
-}
-function recordOf(ask, events) {
-  const states = events.filter((event2) => event2.step === "state");
-  const last = states.at(-1);
-  const session = events.findLast((event2) => event2.step === "session");
-  const recorded = session ? JSON.parse(session.detail) : null;
-  const selection = JSON.parse(states[0].detail);
-  const harness = selection.harness ?? recorded?.harness;
-  const finished = endStates.includes(last.status) ? last : null;
-  const detail = finished ? JSON.parse(finished.detail) : {};
-  const listOf2 = (value2) => Array.isArray(value2) ? value2 : [];
-  return {
-    id: ask.request_id,
-    text: ask.text,
-    context: JSON.parse(ask.context),
-    asker: ask.asker,
-    conversation: ask.conversation,
-    harness: harness === "pi" ? "pi" : "claude",
-    model: selection.model ?? null,
-    provider: selection.provider ?? null,
-    effort: selection.effort ?? null,
-    modelId: selection.modelId ?? (selection.provider && selection.model ? `${selection.provider}/${selection.model}` : selection.model) ?? null,
-    askedAt: ask.asked_at,
-    state: last.status,
-    sessionId: recorded?.sessionId ?? null,
-    activity: events.filter((event2) => event2.step === "activity").map((event2) => ({ at: event2.at, line: JSON.parse(event2.detail).line })),
-    reply: typeof detail.reply === "string" ? detail.reply : null,
-    costUsd: typeof detail.costUsd === "number" ? detail.costUsd : null,
-    startedAt: states.find((event2) => event2.status === "running")?.at ?? null,
-    endedAt: finished?.at ?? null,
-    reason: typeof detail.reason === "string" ? detail.reason : null,
-    hint: typeof detail.hint === "string" ? detail.hint : null,
-    denials: listOf2(detail.denials),
-    changes: listOf2(detail.changes),
-    read: events.some((event2) => event2.step === "read")
-  };
-}
-function eventsByRequest(store, where, ...parameters) {
-  const found = /* @__PURE__ */ new Map();
-  for (const row3 of all(
-    store,
-    `SELECT request_id, at, step, status, detail FROM request_events WHERE step IN ('state', 'session', 'activity', 'read') ${where} ORDER BY rowid`,
-    ...parameters
-  )) {
-    const list2 = found.get(row3.request_id) ?? [];
-    list2.push(row3);
-    found.set(row3.request_id, list2);
-  }
-  return found;
-}
-function requestOf(store, requestId2) {
-  const ask = one(store, "SELECT * FROM requests WHERE request_id = ?", requestId2);
-  return ask ? recordOf(ask, eventsByRequest(store, "AND request_id = ?", requestId2).get(requestId2) ?? []) : null;
-}
-function allRequests(store) {
-  const events = eventsByRequest(store, "");
-  return all(store, "SELECT * FROM requests ORDER BY rowid").map(
-    (ask) => recordOf(ask, events.get(ask.request_id) ?? [])
-  );
-}
-function chatOf(store, id2) {
-  if (!chatIdPattern.test(id2)) return null;
-  const asks = all(store, "SELECT * FROM requests WHERE conversation = ? ORDER BY rowid", id2);
-  if (!asks.length) return null;
-  const events = eventsByRequest(
-    store,
-    "AND request_id IN (SELECT request_id FROM requests WHERE conversation = ?)",
-    id2
-  );
-  const turns = asks.map((ask) => recordOf(ask, events.get(ask.request_id) ?? []));
-  return { id: id2, context: turns[0].context, turns };
-}
-function listedChats(store) {
-  const chats = /* @__PURE__ */ new Map();
-  for (const turn2 of allRequests(store)) {
-    const chat = chats.get(turn2.conversation) ?? { id: turn2.conversation, context: turn2.context, turns: [] };
-    chat.turns.push(turn2);
-    chats.delete(chat.id);
-    chats.set(chat.id, chat);
-  }
-  return [...chats.values()].reverse();
-}
-function chatHistory(turns) {
-  const entries = [];
-  let remaining = 12e3;
-  for (const turn2 of turns.slice(-8).reverse()) {
-    if (!isEnded(turn2)) continue;
-    const entry = JSON.stringify({
-      request: turn2.text.slice(0, 2e3),
-      state: turn2.state,
-      reply: turn2.reply?.slice(0, 2e3) ?? null,
-      changes: turn2.changes.slice(0, 10).map((change) => change.text.slice(0, 120))
-    });
-    if (entry.length + 1 > remaining) break;
-    entries.unshift(entry);
-    remaining -= entry.length + 1;
-  }
-  return entries.join("\n");
-}
-function isUnread(request2) {
-  return unreadStates.includes(request2.state) && !request2.read;
-}
-function isEnded(request2) {
-  return endStates.includes(request2.state);
-}
-function requestStatus(store) {
-  const requests = allRequests(store);
-  const unread = requests.filter(isUnread);
-  const running3 = requests.find((request2) => request2.state === "running");
-  const firstUnread = unread.at(-1);
-  return {
-    running: running3?.id ?? null,
-    runningChat: running3?.conversation ?? null,
-    waiting: requests.filter((request2) => request2.state === "waiting").length,
-    unread: unread.length,
-    firstUnread: firstUnread?.id ?? null,
-    firstUnreadChat: firstUnread?.conversation ?? null
-  };
-}
-function listedRequests(store) {
-  const requests = allRequests(store).reverse();
-  return [...requests.filter(isUnread), ...requests.filter((request2) => !isUnread(request2))];
-}
-var recordPaths = {
-  plan: "/plans/",
-  run: "/runs/",
-  exploration: "/explorations/",
-  target: "/settings/targets/"
-};
-function describeChange(command, subject, input) {
-  const named = (ids2) => Array.isArray(ids2) ? ids2.map((id2) => `${subject}/${String(id2)}`).join(", ") : subject;
-  if (command === "claim handoff") return `${input.undo ? "took back" : "handed over"} ${named(input.claimIds)}`;
-  if (command === "gap answer") return `answered ${subject}/${String(input.gapId)}`;
-  if (command === "claim accept") return `accepted ${subject}/${String(input.claimId)}`;
-  if (command === "claim reject") return `rejected ${subject}/${String(input.claimId)}`;
-  if (command === "plan edit") return `edited plan ${subject}`;
-  if (command === "plan save") return `saved plan ${subject}`;
-  if (command === "plan revise") return `revised plan ${subject}`;
-  if (command === "plan open") return `opened plan ${subject}`;
-  if (command === "setting set") return `changed the setting ${subject}`;
-  return `${command} ${subject}`;
-}
-function operationCountOf(store, requestId2) {
-  return one(store, "SELECT count(*) AS count FROM operations WHERE via = ?", requestId2).count;
-}
-function changesOf(store, requestId2) {
-  return all(
-    store,
-    `SELECT at, command, arguments, subjects, json_extract(response, '$.subject') AS subject
-		FROM operations WHERE via = ? AND status = 'completed' ORDER BY rowid`,
-    requestId2
-  ).map((row3) => {
-    const record = JSON.parse(row3.subjects).map((subject2) => /^(plan|run|exploration|target):(.+)$/.exec(subject2)).find((found) => found);
-    const subject = record ? record[2] : row3.subject;
-    return {
-      text: describeChange(row3.command, subject, JSON.parse(row3.arguments)),
-      command: row3.command,
-      subject,
-      at: row3.at,
-      href: record ? `${recordPaths[record[1]]}${subject}` : null
-    };
-  });
-}
-function staleRequests(store) {
-  for (const request2 of allRequests(store))
-    if (request2.state === "running" || request2.state === "waiting")
-      setRequestState(store, request2.id, "interrupted", {
-        reason: request2.state === "running" ? "The UI stopped before the request ended." : "The UI stopped before the request started."
-      });
 }
 
 // plugin/src/permissions.ts
@@ -21060,10 +21129,10 @@ function requestName(item) {
 function recordPath(item) {
   return `/permissions/${requestName(item)}`;
 }
-function requestHref(item, from, history = false) {
+function requestHref(item, from, history2 = false) {
   const params = new URLSearchParams();
   if (from) params.set("from", from);
-  if (history) params.set("view", "history");
+  if (history2) params.set("view", "history");
   const query = params.toString();
   return query ? `${recordPath(item)}?${query}` : recordPath(item);
 }
@@ -23254,7 +23323,7 @@ function navRow(review, current, view, href, id2, text, end, extra = {}) {
 		aria-selected="${on ? "true" : "false"}"
 		${extra.expanded === void 0 ? "" : html2`aria-expanded="${extra.expanded ? "true" : "false"}"`}
 		${extra.area ? html2`data-in-area="${extra.area}"` : ""}
-		tabindex="-1"
+		tabindex="${view === "chats" ? "0" : "-1"}"
 		href="${href}"
 		data-nav
 		data-target="${view}"
@@ -23282,14 +23351,15 @@ function testersLabel(review, testers) {
   if (review.running) return review.phase ? `Testers now \xB7 ${review.phase}` : "Testers now";
   return ["stopped", "interrupted", "failed"].includes(testers.state) ? `Testers \xB7 ${words(testers.state)}` : "Testers";
 }
-function navigator(review, current, exploration2 = null) {
+function navigator(review, current, exploration2 = null, chat = { href: reviewHref(review.planId, current, "&chat=list"), active: false }) {
   const { planId } = review;
+  const active = chat.active ? "chats" : current;
   const href = (view) => reviewHref(planId, view);
   const needs = itemsOf(review, "needs");
   const testers = review.explorations.find((item) => item.explorationId === exploration2) ?? review.explorations.at(-1);
   const testersRow = testers ? navRow(
     review,
-    current,
+    active,
     "testers",
     `/explorations/${testers.explorationId}`,
     "",
@@ -23304,7 +23374,7 @@ function navigator(review, current, exploration2 = null) {
     return [
       navRow(
         review,
-        current,
+        active,
         `area:${area2.label}`,
         href(`area:${area2.label}`),
         glyph(open ? "\u25BE" : "\u25B8"),
@@ -23319,7 +23389,7 @@ function navigator(review, current, exploration2 = null) {
         const row3 = review.map.rows.find((each) => each.rule.id === id2);
         return navRow(
           review,
-          current,
+          active,
           `rule:${id2}`,
           href(`rule:${id2}`),
           id2,
@@ -23351,7 +23421,7 @@ function navigator(review, current, exploration2 = null) {
 				${review.running ? testersRow : ""}
 				${navRow(
     review,
-    current,
+    active,
     "needs",
     href("needs"),
     "",
@@ -23361,7 +23431,8 @@ function navigator(review, current, exploration2 = null) {
       needs.some((item) => item.blocking)
     )
   )}
-				${navRow(review, current, "all", href("all"), "", "All items", count(review.items.length))}
+				${navRow(review, active, "all", href("all"), "", "All items", count(review.items.length))}
+				${navRow(review, active, "chats", chat.href, "", "Plan chats", html2``, { look: "link" })}
 				<div class="sp-sep" aria-hidden="true"></div>
 			</div>
 			<div class="sp-nhead" aria-hidden="true">
@@ -23378,7 +23449,7 @@ function navigator(review, current, exploration2 = null) {
 			${ruleRows}
 			${navRow(
     review,
-    current,
+    active,
     `rule:${outside}`,
     href(`rule:${outside}`),
     "Out",
@@ -23395,7 +23466,7 @@ function navigator(review, current, exploration2 = null) {
 			${review.map.builds.map(
     (item) => navRow(
       review,
-      current,
+      active,
       `build:${item.build}`,
       href(`build:${item.build}`),
       buildLabel(review, item.build),
@@ -23404,9 +23475,9 @@ function navigator(review, current, exploration2 = null) {
     )
   )}
 			${review.map.builds.length ? html2`<div class="sp-sep" aria-hidden="true"></div>` : ""}
-			${navRow(review, current, "rules", href("rules"), "", "Rules of the plan", count(review.map.rows.length - 1))}
+			${navRow(review, active, "rules", href("rules"), "", "Rules of the plan", count(review.map.rows.length - 1))}
 			${review.running ? "" : testersRow}
-			${navRow(review, current, "plan", review.revision ? `/plans/${planId}@${review.revision}` : `/plans/${planId}/request`, "", review.revision ? `Plan @${review.revision}` : "Plan request", html2`<span></span>`, { look: "link" })}
+			${navRow(review, active, "plan", review.revision ? `/plans/${planId}@${review.revision}` : `/plans/${planId}/request`, "", review.revision ? `Plan @${review.revision}` : "Plan request", html2`<span></span>`, { look: "link" })}
 		</div>
 	</nav>`;
 }
@@ -23579,7 +23650,7 @@ function viewsOf(review) {
     "rules"
   ];
 }
-function panel(context, review, view, current) {
+function panel(context, review, view, current, cost) {
   const head = viewHead(review, view);
   const items = itemsOf(review, view);
   const groups = view.startsWith("area:") ? ruleGroups(review, view, items) : groupsOf(items);
@@ -23611,6 +23682,7 @@ function panel(context, review, view, current) {
 			${view === current ? html2`<h1 id="title-${slug(view)}" data-view-title>${title2}</h1>` : html2`<h2 id="title-${slug(view)}" data-view-title>${title2}</h2>`}
 			${head.sub ? html2`<p class="sp-sub">${head.sub}</p>` : ""}
 			<div class="sp-pills">${head.pills}</div>
+			<p class="sp-sub" title="Reported cost across this plan’s explorations and chats">Total cost ${cost}</p>
 			${canChoose(view) ? html2`<p class="sp-sub att" data-build-note></p>` : ""}
 		</div>
 		<div class="sp-tools" data-actions>${tools}</div>
@@ -23622,12 +23694,14 @@ function reviewPage(store, context, planId, params, refusal = null, notice = nul
   const views2 = viewsOf(review);
   const asked2 = params.get("view") ?? "needs";
   const current = views2.includes(asked2) ? asked2 : "needs";
+  const chatting = params.has("chat") || params.get("newChat") === "1";
   const title2 = viewTitle(review, current);
   const key = refusal?.key ?? params.get("item");
   const item = key ? review.items.find((each) => each.key === key && each.kind !== "permission") ?? null : null;
   const file = params.get("file");
   const record = item ? file !== null && /^[0-9]{1,3}$/.test(file) && item.claim ? evidenceViewer(store, review, item, current, Number(file)) : recordDrawer(store, context, review, item, current, refusal) : "";
-  const panels = views2.map((view) => panel(context, review, view, current));
+  const cost = planCost(store, planId);
+  const panels = views2.map((view) => panel(context, review, view, current, costText(cost.costUsd, cost.costPartial)));
   return {
     title: `${item ? `${item.id} \xB7 ` : ""}${title2} \xB7 ${planId}`,
     section: "home",
@@ -23645,7 +23719,7 @@ function reviewPage(store, context, planId, params, refusal = null, notice = nul
     ],
     back: item ? reviewHref(planId, current, `&at=${encodeURIComponent(item.key)}&focus=list`) : `/?at=${encodeURIComponent(`plan:${planId}`)}`,
     drawer: Boolean(item),
-    nav: navigator(review, current),
+    nav: navigator(review, current, null, { href: reviewHref(planId, current, "&chat=list"), active: chatting }),
     body: html2`${notice ? html2`<p class="form-error" role="alert" data-notice>${notice}</p>` : ""}
 			<div
 				class="sp-review"
@@ -24736,8 +24810,8 @@ function tile(review, loop2, cost, index2) {
 			</div>
 			<h2 class="sp-ct-title ell" title="${review.objective}">${review.objective}</h2>
 			<p class="sp-ct-verdict"><b>${verdict.head}</b> ${verdict.tail}</p>
-			<p class="sp-ct-cost" title="Reported cost across this plan’s explorations">
-				Exploration cost ${costText(cost.costUsd, cost.costPartial)}
+			<p class="sp-ct-cost" title="Reported cost across this plan’s explorations and chats">
+				Total cost ${costText(cost.costUsd, cost.costPartial)}
 			</p>
 		</div>
 		${miniMap(review)}
@@ -25458,16 +25532,20 @@ function explorationsFold(found) {
     "explorations"
   );
 }
-function planPage(store, context, planId, revision, state = null, allHistory = false) {
+function planPage(store, context, planId, revision, state = null, allHistory = false, chatting = false) {
   const detail = planDetail(store, planId, revision);
   const { plan } = detail;
   const subject = `${planId}@${revision}`;
   const latest = detail.revision === detail.latestRevision;
   const found = planContext(store, planId, context.harness);
+  const cost = planCost(store, planId);
   const meta2 = html2`<div class="meta">
 		${pill(detail.approval.state)}
 		<span class="pill">target <span class="mono">${plan.target.targetId}@${plan.target.revision}</span></span>
 		<span class="pill" title="${detail.sha256}">sha256 <span class="mono">${short2(detail.sha256)}</span></span>
+		<span class="pill" data-region="plan-cost" title="Reported cost across this plan’s explorations and chats"
+			>Total cost ${costText(cost.costUsd, cost.costPartial)}</span
+		>
 		<span class="head-actions">
 			${latest ? html2`<a class="btn small" href="/plans/${subject}/edit">Edit plan</a>` : ""}
 			${downloads("Export", `/plans/${subject}/export`, "The HTML export is print-ready. Open it and print to PDF.")}
@@ -25542,7 +25620,10 @@ function planPage(store, context, planId, revision, state = null, allHistory = f
       [subject, null]
     ],
     back: `/plans/${planId}?nav=plan`,
-    nav: navigator(reviewOf(store, planId), "plan")
+    nav: navigator(reviewOf(store, planId), "plan", null, {
+      href: `/plans/${subject}?chat=list${allHistory ? "&history=all" : ""}`,
+      active: chatting
+    })
   };
 }
 function storedTestsEmpty(planId, completed2, harness) {
@@ -27160,6 +27241,19 @@ function streamPi(program, args, prompt, cwd, env, extension, sessionId, onLine,
   let error = null;
   let ready = false;
   let stopped = false;
+  let prompted = false;
+  let settled = false;
+  const costs = [];
+  let messageCosts2 = [];
+  let inProgress;
+  const charge = (amount2) => typeof amount2 === "number" && Number.isFinite(amount2) && amount2 >= 0 ? { costUsd: amount2 } : {};
+  const messageCharge = (message) => {
+    const amount2 = piMessageCost(message);
+    if (amount2 === void 0) return;
+    if (amount2 === 0 && message?.usage?.totalTokens === 0 && (message.stopReason === "error" || message.stopReason === "aborted"))
+      return {};
+    return charge(amount2);
+  };
   const timers = [];
   const send2 = (value2) => child.stdin.write(`${JSON.stringify(value2)}
 `);
@@ -27205,6 +27299,32 @@ function streamPi(program, args, prompt, cwd, env, extension, sessionId, onLine,
         shutdown();
         continue;
       }
+      if (prompted) {
+        if (value2.type === "message_update") inProgress = charge(value2.usage?.cost?.total);
+        if (value2.type === "message_end") {
+          const cost = messageCharge(value2.message);
+          if (value2.message?.role === "assistant") {
+            if (cost?.costUsd === void 0 && inProgress?.costUsd !== void 0)
+              messageCosts2.push({ costUsd: inProgress.costUsd, costPartial: true });
+            else if (cost) messageCosts2.push(cost);
+            inProgress = void 0;
+          } else if (cost) messageCosts2.push(cost);
+        }
+        if (value2.type === "agent_end") {
+          if (!messageCosts2.length && Array.isArray(value2.messages)) {
+            for (const message of value2.messages) {
+              const cost = messageCharge(message);
+              if (cost) messageCosts2.push(cost);
+            }
+          }
+          costs.push(...messageCosts2);
+          messageCosts2 = [];
+          inProgress = void 0;
+        }
+        if (value2.type === "entry_appended" && value2.entry?.type === "usage")
+          costs.push(charge(value2.entry.usage?.cost?.total));
+        if (value2.type === "compaction_end" && value2.result) costs.push(charge(value2.result.usage?.cost?.total));
+      }
       if (value2.type === "response" && value2.id === "checkmate-ready") {
         const commands2 = value2.data?.commands;
         ready = value2.success === true && Array.isArray(commands2) && commands2.some(
@@ -27217,11 +27337,15 @@ function streamPi(program, args, prompt, cwd, env, extension, sessionId, onLine,
           continue;
         }
         onLine(JSON.stringify({ type: "session", id: sessionId }));
-        if (!stopped) send2({ id: "checkmate-prompt", type: "prompt", message: prompt });
+        if (!stopped) {
+          prompted = true;
+          send2({ id: "checkmate-prompt", type: "prompt", message: prompt });
+        }
       } else if (value2.type === "response" && value2.id === "checkmate-prompt" && value2.success !== true) {
         error = `Pi rejected the request: ${value2.error || "unknown error"}`;
         shutdown();
       } else if (value2.type === "agent_settled") {
+        settled = value2.aborted !== true;
         onLine(line);
         shutdown();
       } else onLine(line);
@@ -27235,6 +27359,12 @@ function streamPi(program, args, prompt, cwd, env, extension, sessionId, onLine,
         status,
         signal,
         stderr,
+        ...costOf([
+          ...costs,
+          ...messageCosts2,
+          ...inProgress ? [inProgress] : [],
+          ...settled && !error ? [] : [{}]
+        ]),
         error: error ?? (!ready && !stopped ? "Pi did not verify the permission gate." : null)
       });
     });
@@ -27336,6 +27466,14 @@ function denialLines(result, workspace) {
     (denial) => typeof denial?.tool_name === "string" ? [activityLine2(denial.tool_name, denial.tool_input, workspace)] : []
   );
 }
+function reportedClaudeCost(value2) {
+  return typeof value2 === "number" && Number.isFinite(value2) && value2 >= 0 ? { costUsd: value2 } : {};
+}
+function claudeTurnCost(run2) {
+  if (run2.claudeCosts.length) return costOf(run2.claudeCosts);
+  if (run2.resume || run2.result?.is_error === true && run2.result?.num_turns === 0) return {};
+  return reportedClaudeCost(run2.result?.total_cost_usd);
+}
 function createRequester(store, options3) {
   const log = options3.log ?? ((line) => process.stderr.write(`checkmate ui: ${line}
 `));
@@ -27365,13 +27503,13 @@ function createRequester(store, options3) {
       state: "answered",
       detail: {
         reply: typeof result.result === "string" ? result.result : "",
-        ...typeof result.total_cost_usd === "number" ? { costUsd: result.total_cost_usd } : {},
         denials: denialLines(result, options3.workspace)
       }
     };
     guarded(() => {
       const changes = changesOf(store, run2.id);
-      setRequestState(store, run2.id, outcome.state, { ...outcome.detail, changes });
+      const cost = run2.harness === "pi" ? { costUsd: end?.costUsd, costPartial: end?.costPartial } : claudeTurnCost(run2);
+      setRequestState(store, run2.id, outcome.state, { ...outcome.detail, ...cost, costScope: "turn", changes });
     });
   }
   function errorOutcome(result, stderr, harness) {
@@ -27411,7 +27549,16 @@ function createRequester(store, options3) {
             activityLine2(found.name, found.input, found.cwd ?? options3.workspace)
           )
         );
-      else if (found.kind === "result") run2.result = found.value;
+      else if (found.kind === "result") {
+        run2.result = found.value;
+        if (run2.harness === "claude") {
+          const usage2 = found.value.model_usage_since_last_result;
+          if (usage2 && typeof usage2 === "object" && !Array.isArray(usage2)) {
+            const charges = Object.values(usage2).map((model) => reportedClaudeCost(model?.costUSD));
+            run2.claudeCosts.push(charges.length ? costOf(charges) : { costUsd: 0 });
+          } else if (run2.claudeCosts.length) run2.claudeCosts.push({});
+        }
+      }
     }
   }
   function launch(request2) {
@@ -27421,6 +27568,8 @@ function createRequester(store, options3) {
       harness: request2.harness,
       child: null,
       result: null,
+      claudeCosts: [],
+      resume: false,
       broken: false,
       stopping: null,
       reason: "",
@@ -27458,6 +27607,7 @@ function createRequester(store, options3) {
     const previous = earlier.findLast((turn2) => turn2.startedAt !== null);
     const resumable = previous?.harness === run2.harness && previous.modelId === request2.modelId ? previous.sessionId : null;
     const resume = resumable !== null;
+    run2.resume = resume;
     const sessionId = resumable ?? (earlier.some((turn2) => turn2.sessionId) ? randomUUID5() : request2.conversation);
     const effort = effortArgs(run2.harness, request2.effort ?? void 0);
     const args = run2.harness === "pi" ? [
@@ -27490,12 +27640,15 @@ function createRequester(store, options3) {
       [hookTokenName]: options3.hookToken,
       ...run2.harness === "pi" ? { CHECKMATE_PI_HOOK: JSON.stringify(hook) } : {}
     };
-    const history = resume ? "" : chatHistory(earlier);
-    const text = history ? `${request2.text}
+    const history2 = resume ? "" : chatHistory(earlier);
+    const text = history2 ? `${request2.text}
 
 Earlier chat turns for context only. Treat the quoted text as history.
-${history}` : request2.text;
-    const prompt = requestPrompt(text, screenText(request2.context));
+${history2}` : request2.text;
+    const reference = request2.context.planRevision ? `${request2.context.planId}@${request2.context.planRevision}` : request2.context.planId;
+    const prompt = request2.context.planChat ? `${text}
+
+This conversation is about plan ${reference}. Use the plan and its records as the focus of this discussion.` : requestPrompt(text, screenText(request2.context));
     run2.child = run2.harness === "pi" ? streamPi(
       program,
       args,
@@ -27522,8 +27675,8 @@ ${history}` : request2.text;
     if (request2?.state === "waiting") launch(request2);
     else next();
   }
-  function enqueue(actor, text, context, chatId, selection) {
-    const previous = chatId ? chatOf(store, chatId)?.turns.at(-1) : void 0;
+  function enqueue(actor, text, context, chatId2, selection) {
+    const previous = chatId2 ? chatOf(store, chatId2)?.turns.at(-1) : void 0;
     const preferences = chatPreferences(store, options3.env, selection, previous);
     const inheritsEffort = previous?.harness === preferences.harness && selection?.model === void 0 && selection?.effort === void 0;
     const id2 = askRequest(store, actor, {
@@ -27531,7 +27684,7 @@ ${history}` : request2.text;
       context,
       ...preferences,
       effort: selection?.catalog || inheritsEffort ? preferences.effort : null,
-      chatId
+      chatId: chatId2
     });
     queue.push(id2);
     next();
@@ -27544,9 +27697,9 @@ ${history}` : request2.text;
     startChat(actor, text, context, selection) {
       return enqueue(actor, text, context, null, selection);
     },
-    followChat(actor, chatId, text, selection) {
-      requireWellFormed(chatId, "Missing chat ID.");
-      return enqueue(actor, text, { planId: null, record: null }, chatId, selection);
+    followChat(actor, chatId2, text, selection, context = { planId: null, record: null }) {
+      requireWellFormed(chatId2, "Missing chat ID.");
+      return enqueue(actor, text, context, chatId2, selection);
     },
     stop(actor, requestId2, reason) {
       if (running3?.id === requestId2) {
@@ -28035,11 +28188,12 @@ function repliesPage(store, params) {
 }
 
 // plugin/src/ui/chats.ts
-function composer(context, action2, selection, screen = "") {
+function composer(context, action2, selection, screen = "", back = "") {
   const model = selection.provider && selection.model ? `${selection.provider}/${selection.model}` : selection.model;
   return html2`<form method="post" action="${action2}" class="chat-composer" data-chat-composer>
 		<input type="hidden" name="csrf" value="${context.csrf}" />
 		${screen ? html2`<input type="hidden" name="screen" value="${screen}" />` : ""}
+		${back ? html2`<input type="hidden" name="return" value="${back}" />` : ""}
 		<label for="chat-text">Message</label>
 		<textarea id="chat-text" name="text" required maxlength="4000" rows="4" placeholder="Ask Checkmate…"></textarea>
 		<div class="chat-controls">
@@ -28091,26 +28245,30 @@ function origin(request2) {
 					>` : page ? html2`<a href="${page[1]}">${page[0]}</a>` : "";
   return start ? html2`<p class="help">Started from ${start}.</p>` : "";
 }
-function turn(store, request2, context) {
+function turn(store, request2, context, back = `/chats/${request2.conversation}`) {
   const permissions = explorationPermissions(store, request2.id).filter((item) => !item.decision);
   const failure = request2.state === "failed" ? failureText(request2) : null;
   return html2`<article class="chat-turn" data-key="request:${request2.id}">
 		<div class="chat-message chat-user">
 			<div class="chat-meta">You · ${time(request2.askedAt)}</div>
-			<p>${request2.text}</p>
+			<p data-chat-content>${request2.text}</p>
 		</div>
-		<div class="chat-message chat-assistant">
+		<div
+			class="chat-message chat-assistant"
+			${["answered", "failed", "stopped", "interrupted"].includes(request2.state) ? html2`data-chat-terminal="${request2.state}"` : ""}
+		>
 			<div class="chat-meta">
 				Checkmate ·
 				${request2.harness === "pi" ? "Pi" : "Claude Code"}${request2.model ? ` \xB7 ${request2.provider ? `${request2.provider}/` : ""}${request2.model}` : ""}${request2.effort ? ` \xB7 ${request2.effort}` : ""}
-				${pill(request2.state)}
-				<a href="/requests/${request2.id}">${request2.id}</a>
+				<span class="chat-status"
+					>${pill(request2.state)} <a href="/requests/${request2.id}">${request2.id}</a></span
+				>
 			</div>
-			${request2.reply ? html2`<p>${request2.reply}</p>` : ""}
+			${request2.reply ? html2`<p data-chat-content>${request2.reply}</p>` : ""}
 			${request2.state === "waiting" ? html2`<p class="help">Waiting for another request to finish.</p>` : ""}
 			${request2.state === "running" ? html2`<p class="help">Working…</p>` : ""}
-			${permissions.map((item) => html2`<p class="banner warn">Waiting for permission. <a href="${requestHref(item, `/chats/${request2.conversation}`)}">Answer it</a></p>`)}
-			${request2.activity.length ? html2`<details>
+			${permissions.map((item) => html2`<p class="banner warn">Waiting for permission. <a href="${requestHref(item, back)}">Answer it</a></p>`)}
+			${request2.activity.length ? html2`<details data-open-key="activity:${request2.id}">
 							<summary>Activity (${request2.activity.length})</summary>
 							<ol class="sp-activity">
 								${request2.activity.map((entry) => html2`<li>${entry.line}</li>`)}
@@ -28118,15 +28276,30 @@ function turn(store, request2, context) {
 						</details>` : ""}
 			${failure ? html2`<p class="banner fail">${failure.cause}</p>
 							${failure.detail ? html2`<p class="help">${failure.detail}</p>` : ""}${failure.lines.length ? html2`<pre class="sp-code">${failure.lines.join("\n")}</pre>` : ""}` : request2.reason ? html2`<p class="banner info">${request2.reason}</p>` : ""}
-			${request2.changes.length ? html2`<details>
+			${request2.changes.length ? html2`<details data-open-key="changes:${request2.id}">
 							<summary>Changes (${request2.changes.length})</summary>
 							<ul>
 								${request2.changes.map((change) => html2`<li>${change.href ? html2`<a href="${change.href}">${change.text}</a>` : change.text}</li>`)}
 							</ul>
 						</details>` : ""}
-			${request2.state === "running" || request2.state === "waiting" ? html2`<form method="post" action="/requests/${request2.id}/stop"><input type="hidden" name="csrf" value="${context.csrf}" /><input type="hidden" name="return" value="/chats/${request2.conversation}" /><button class="btn" type="submit">Stop</button></form>` : ""}
+			${request2.state === "running" || request2.state === "waiting" ? html2`<form method="post" action="/requests/${request2.id}/stop"><input type="hidden" name="csrf" value="${context.csrf}" /><input type="hidden" name="return" value="${back}" /><button class="btn" type="submit">Stop</button></form>` : ""}
 		</div>
 	</article>`;
+}
+function chatList(chats, href, empty) {
+  return html2`<div class="${chats.length ? "chat-list" : ""}" data-region="chat-list">
+		${chats.length ? chats.map((chat) => {
+    const last = chat.turns.at(-1);
+    return html2`<a class="chat-list-item" id="chat-${chat.id}" href="${href(chat)}"
+							><strong>${title(chat.turns[0].text)}</strong
+							><span>
+								${pill(last.state)} · ${ago(last.askedAt)} · ${chat.turns.length}
+								${chat.turns.length === 1 ? "message" : "messages"} ·
+								<span title="Chat cost">${costText(chat.costUsd, chat.costPartial)}</span></span
+							></a
+						>`;
+  }) : empty}
+	</div>`;
 }
 function chatsPage(store, context, params, env) {
   const chats = listedChats(store);
@@ -28138,20 +28311,57 @@ function chatsPage(store, context, params, env) {
     body: html2`${heading("Chats", "Your conversations with Checkmate.")}
 			<div class="chat-list-actions"><a class="btn" href="/chats?new=1">New chat</a></div>
 			${fresh ? composer(context, "/chats", chatPreferences(store, env), params.get("screen") ?? "") : ""}
-			${chats.length ? html2`<div class="chat-list">
-							${chats.map((chat) => {
-      const first = chat.turns[0];
-      const last = chat.turns[chat.turns.length - 1];
-      return html2`<a class="chat-list-item" href="/chats/${chat.id}"
-									><strong>${title(first.text)}</strong
-									><span
-										>${pill(last.state)} · ${ago(last.askedAt)} · ${chat.turns.length}
-										${chat.turns.length === 1 ? "message" : "messages"}</span
-									></a
-								>`;
-    })}
-						</div>` : emptyNotice("No chats yet.", "Start a chat or use Find to ask Checkmate.")}`
+			${chatList(
+      chats,
+      ({ id: id2, context: context2 }) => context2.planChat && context2.planId ? `/plans/${context2.planId}${context2.planRevision ? `@${context2.planRevision}` : ""}?chat=${id2}` : `/chats/${id2}`,
+      emptyNotice("No chats yet.", "Start a chat or use Find to ask Checkmate.")
+    )}`
   };
+}
+function chatSelection(store, env, chat) {
+  const last = chat.turns.at(-1);
+  return chatPreferences(store, env, {
+    harness: last.harness,
+    model: last.provider && last.model ? `${last.provider}/${last.model}` : last.model ?? void 0,
+    effort: last.effort ?? void 0
+  });
+}
+function history(store, context, chat, back) {
+  return html2`<p class="chat-cost" data-region="chat-cost">Chat cost ${costText(chat.costUsd, chat.costPartial)}</p>
+		<div
+			class="chat-history"
+			data-region="chat-history"
+			data-chat-history
+			role="region"
+			aria-label="Conversation"
+			tabindex="0"
+		>
+			${chat.turns.map((item) => turn(store, item, context, back))}
+		</div>`;
+}
+function planChat(store, context, env, options3) {
+  const { path, chats, chat, fresh } = options3;
+  const address = (key = "", value2 = "") => {
+    const params = new URLSearchParams(options3.params);
+    params.delete("chat");
+    params.delete("newChat");
+    if (key) params.set(key, value2);
+    const query = params.toString();
+    return query ? `${path}?${query}` : path;
+  };
+  return html2`<section class="plan-chat" aria-label="Plan chats">
+		<div class="chat-thread-heading">
+			<a href="${address()}">← Plan</a>
+			<a class="btn" href="${address("newChat", "1")}">New chat</a>
+		</div>
+		<h1>Plan chats · ${decodeURIComponent(path.slice("/plans/".length))}</h1>
+		${chat ? html2`<div class="chat-thread">
+						<a href="${address("chat", "list")}">← All chats</a>
+						<h2>${title(chat.turns[0].text)}</h2>
+						${history(store, context, chat, address("chat", chat.id))}
+						${composer(context, `${path}/chats/${encodeURIComponent(chat.id)}/turns`, chatSelection(store, env, chat), "", address("chat", chat.id))}
+					</div>` : fresh ? composer(context, `${path}/chats`, chatPreferences(store, env), "", address("newChat", "1")) : chatList(chats, (item) => address("chat", item.id), html2`<p class="help">No chats yet.</p>`)}
+	</section>`;
 }
 function chatPage(store, context, id2, env) {
   const chat = chatOf(store, id2);
@@ -28167,17 +28377,15 @@ function chatPage(store, context, id2, env) {
     body: html2`<div class="chat-thread">
 			<div class="chat-thread-heading"><a href="/chats">← Chats</a><a href="/chats?new=1">New chat</a></div>
 			<h1>${title(chat.turns[0].text)}</h1>
-			${origin(chat.turns[0])}
-			<div class="chat-history" data-region="chat-history" aria-label="Conversation">
-				${chat.turns.map((item) => turn(store, item, context))}
-			</div>
-			${composer(context, `/chats/${id2}/turns`, chatPreferences(store, env, { harness: chat.turns.at(-1).harness, model: chat.turns.at(-1).provider && chat.turns.at(-1).model ? `${chat.turns.at(-1).provider}/${chat.turns.at(-1).model}` : chat.turns.at(-1).model ?? void 0, effort: chat.turns.at(-1).effort ?? void 0 }))}
+			${origin(chat.turns[0])} ${history(store, context, chat, `/chats/${id2}`)}
+			${composer(context, `/chats/${id2}/turns`, chatSelection(store, env, chat))}
 		</div>`
   };
 }
 
 // plugin/src/ui/server.ts
 var id = "[A-Za-z0-9][A-Za-z0-9_-]{0,95}";
+var chatId = "[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}";
 var routes = {
   plan: new RegExp(`^/plans/(${id})@([1-9][0-9]{0,8})$`),
   latestPlan: new RegExp(`^/plans/(${id})$`),
@@ -28192,8 +28400,9 @@ var routes = {
   harvest: new RegExp(`^/plans/(${id})/harvest$`),
   permit: new RegExp(`^/permissions/(${id})/(P[1-9][0-9]{0,8})$`),
   requestPage: /^\/requests\/(R[1-9][0-9]{0,8})$/,
-  chatPage: /^\/chats\/([0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})$/,
-  chatTurn: /^\/chats\/([0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})\/turns$/,
+  chatPage: new RegExp(`^/chats/(${chatId})$`),
+  chatTurn: new RegExp(`^/chats/(${chatId})/turns$`),
+  planChatPost: new RegExp(`^(/plans/(${id})(?:@([1-9][0-9]{0,8}))?)/chats(?:/(${chatId})/turns)?$`),
   stopRequest: /^\/requests\/(R[1-9][0-9]{0,8})\/stop$/,
   permitMany: /^\/permissions\/bulk$/,
   stopRun: new RegExp(`^/explorations/(${id})/stop$`),
@@ -28580,7 +28789,7 @@ data: ${matched.join(",") || "*"}
       );
     }
     const latest = routes.latestPlan.exec(pathname);
-    if (latest) return render(request2, reviewPage(store, shown2, latest[1], searchParams));
+    if (latest) return openPlanPage(request2, reviewPage(store, shown2, latest[1], searchParams), latest[1]);
     const defectText = routes.defectText.exec(pathname);
     if (defectText)
       return send(
@@ -28594,15 +28803,24 @@ data: ${matched.join(",") || "*"}
     if (requested) return render(request2, requestPage(store, requested[1], shown2.harness));
     const plan = routes.plan.exec(pathname);
     if (plan)
-      return render(
+      return openPlanPage(
         request2,
-        planPage(store, shown2, plan[1], Number(plan[2]), null, searchParams.get("history") === "all")
+        planPage(
+          store,
+          shown2,
+          plan[1],
+          Number(plan[2]),
+          null,
+          searchParams.get("history") === "all",
+          searchParams.has("chat") || searchParams.get("newChat") === "1"
+        ),
+        plan[1]
       );
     const edit = routes.edit.exec(pathname);
     if (edit) return render(request2, editPage(store, shown2, edit[1], Number(edit[2])));
-    const history = routes.history.exec(pathname);
-    if (history) {
-      const detail = planDetail(store, history[1], Number(history[2]));
+    const history2 = routes.history.exec(pathname);
+    if (history2) {
+      const detail = planDetail(store, history2[1], Number(history2[2]));
       return send(request2.res, 200, "text/html; charset=utf-8", planHistoryList(store, detail, true).html);
     }
     const planExport = routes.planExport.exec(pathname);
@@ -29359,47 +29577,121 @@ data: ${matched.join(",") || "*"}
     if (!page) return errorPage(request2, 404, "No such request", `Checkmate has no request ${requestId2}.`);
     render(request2, page);
   }
-  function openChat(request2, id2) {
-    const chat = chatOf(store, id2);
-    if (!chat) return errorPage(request2, 404, "Chat not found", "Open Chats to choose a conversation.");
-    const actor = context(request2).actor;
+  function markChatRead(chat, actor) {
     if (actor) {
       for (const turn2 of chat.turns) if (isUnread(turn2)) markRequestRead(store, actor, turn2.id);
     }
+  }
+  function planChatHref(chat) {
+    const { planId, planRevision: planRevision2 } = chat.context;
+    return `/plans/${planId}${planRevision2 ? `@${planRevision2}` : ""}?chat=${chat.id}`;
+  }
+  function openPlanPage(request2, page, planId) {
+    const { pathname: path, searchParams } = request2.url;
+    const selected = searchParams.get("chat");
+    const fresh = searchParams.get("newChat") === "1";
+    if (selected === null && !fresh) return render(request2, page);
+    const chats = listedChats(store, planId);
+    const chat = chats.find((item) => item.id === selected) ?? null;
+    if (selected !== null && selected !== "list" && !chat)
+      return errorPage(request2, 404, "Chat not found", "Choose a conversation from the chats of this plan.");
+    const params = new URLSearchParams(searchParams);
+    params.delete("chat");
+    params.delete("newChat");
+    const back = params.size ? `${path}?${params}` : path;
+    const shown2 = context(request2);
+    if (chat) markChatRead(chat, shown2.actor);
+    return render(request2, {
+      ...page,
+      title: `Plan chats \xB7 ${planId}`,
+      crumbs: [
+        ["Plans", "/"],
+        [path.slice("/plans/".length), back],
+        ["Plan chats", null]
+      ],
+      back,
+      drawer: false,
+      subjects: [
+        ...page.subjects,
+        "chats",
+        ...chats.flatMap((item) => item.turns.map((turn2) => `request:${turn2.id}`))
+      ],
+      body: planChat(store, shown2, env, { path, params, chats, chat, fresh })
+    });
+  }
+  function openChat(request2, id2) {
+    const chat = chatOf(store, id2);
+    if (!chat) return errorPage(request2, 404, "Chat not found", "Open Chats to choose a conversation.");
+    if (chat.context.planChat) return redirect(request2.res, planChatHref(chat));
+    markChatRead(chat, context(request2).actor);
     const page = chatPage(store, context(request2), id2, env);
     if (page) return render(request2, page);
   }
-  async function sendChat(request2, form, id2) {
+  async function sendChat(request2, form, id2, plan) {
+    const path = plan?.[1] ?? null;
+    const planId = plan?.[2];
+    const planRevision2 = plan?.[3] ? Number(plan[3]) : void 0;
+    const returned = form.get("return");
+    const params = new URLSearchParams(
+      path && returned?.startsWith(`${path}?`) ? returned.slice(path.length + 1) : ""
+    );
+    params.delete("chat");
+    params.delete("newChat");
+    const planDestination = (turnId) => {
+      const query = new URLSearchParams(params);
+      if (turnId) query.set("chat", turnId);
+      else query.set("newChat", "1");
+      return `${path}?${query}`;
+    };
     const { actor, cookies } = actorFrom(request2, form);
-    const back = id2 ? `/chats/${id2}` : safeBack(form.get("return") ?? "/chats");
+    const back = path ? planDestination(id2) : id2 ? `/chats/${id2}` : safeBack(returned ?? "/chats");
     const refuse3 = (message2) => actionRefusal(request2, back, message2);
     if (!actor) return refuse3("Enter your name to send a message.");
     const message = form.get("text")?.trim() ?? "";
     if (!message) return refuse3("Write a message first.");
     const picked = form.get("harness");
     if (picked !== null && picked !== "pi" && picked !== "claude") return refuse3("Choose a coding harness.");
-    const fromFind = form.get("chat") === "1";
+    const fromFind = request2.url.pathname === "/requests";
     const workspaceHarness2 = selectedHarness(launchEnv());
     if (fromFind && picked !== null && picked !== workspaceHarness2)
       return refuse3("The coding harness changed. Reload and try again.");
     const screen = form.get("screen") ?? "";
-    const chatId = id2 ?? (fromFind ? routes.chatPage.exec(new URL(safeBack(screen), "http://checkmate.local").pathname)?.[1] : void 0);
-    const chat = chatId ? chatOf(store, chatId) : null;
-    if (chatId && !chat) return refuse3("This chat is no longer available.");
+    const chatId2 = id2 ?? (fromFind ? routes.chatPage.exec(new URL(safeBack(screen), "http://checkmate.local").pathname)?.[1] : void 0);
+    const chat = chatId2 ? chatOf(store, chatId2) : null;
+    if (planId) {
+      if (planRevision2) planDetail(store, planId, planRevision2);
+      else planRequest(store, planId);
+    }
+    if (chatId2 && (!chat || (planId ? chat.planId !== planId : chat.context.planChat)))
+      return refuse3("This chat is no longer available here.");
     const harness = (fromFind ? null : picked) ?? chat?.turns.at(-1)?.harness ?? workspaceHarness2;
     const model = form.get("model") ?? void 0;
     const effort = form.get("effort") ?? void 0;
     try {
       const catalog2 = await catalogFor(harness, model === "").catch(() => void 0);
       const choices = { harness, model, effort, catalog: catalog2 };
-      const turn2 = chatId ? requester.followChat(actor, chatId, message, choices) : requester.startChat(actor, message, screenContext(store, screen, true), choices);
-      redirect(request2.res, `/chats/${requestOf(store, turn2).conversation}`, cookies);
+      const scope = planId ? { planId, planRevision: planRevision2, record: null, planChat: true } : void 0;
+      const turn2 = chatId2 ? requester.followChat(actor, chatId2, message, choices, scope) : requester.startChat(actor, message, scope ?? screenContext(store, screen, true), choices);
+      const conversation = requestOf(store, turn2).conversation;
+      redirect(request2.res, path ? planDestination(conversation) : `/chats/${conversation}`, cookies);
     } catch (error) {
       return refuse3(engineText(error));
     }
   }
   function askText(request2, form) {
-    if (form.get("chat") === "1") return sendChat(request2, form);
+    if (form.get("chat") === "1") {
+      const screen = form.get("screen") ?? "";
+      if (screen.startsWith("/plans/")) {
+        const address = new URL(screen, request2.url.origin);
+        const selected = address.searchParams.get("chat");
+        const plan = selected && routes.planChatPost.exec(`${address.pathname}/chats/${selected}/turns`);
+        if (plan) {
+          form.set("return", address.pathname + address.search);
+          return sendChat(request2, form, plan[4], plan);
+        }
+      }
+      return sendChat(request2, form);
+    }
     const { actor, cookies } = actorFrom(request2, form);
     const back = safeBack(form.get("return") ?? "/requests");
     const refuse3 = (message) => actionRefusal(request2, back, message);
@@ -29432,7 +29724,11 @@ data: ${matched.join(",") || "*"}
     const { actor, cookies } = actorFrom(request2, form);
     const found = requestOf(store, requestId2);
     const chat = found ? `/chats/${found.conversation}` : "";
-    const back = form.get("return") === chat && chat ? chat : `/requests/${requestId2}`;
+    const returned = form.get("return");
+    const address = returned?.startsWith("/plans/") ? new URL(returned, request2.url.origin) : null;
+    const plan = address && (routes.latestPlan.exec(address.pathname) ?? routes.plan.exec(address.pathname));
+    const scoped = found && plan && address.searchParams.get("chat") === found.conversation && chatOf(store, found.conversation)?.planId === plan[1];
+    const back = scoped ? address.pathname + address.search : returned === chat && chat ? chat : `/requests/${requestId2}`;
     if (!actor) return actionRefusal(request2, back, "Enter your name. Checkmate records it with the stop.");
     const flash = found?.state === "running" || found?.state === "waiting" ? `Stopping ${requestId2}\u2026` : `${requestId2} has ended. Nothing was stopped.`;
     requester.stop(actor, requestId2, form.get("reason")?.trim() ?? "");
@@ -30109,6 +30405,8 @@ data: ${matched.join(",") || "*"}
     if (pathname === "/chats") return sendChat(request2, form);
     const chat = routes.chatTurn.exec(pathname);
     if (chat) return sendChat(request2, form, chat[1]);
+    const planChatForm = routes.planChatPost.exec(pathname);
+    if (planChatForm) return sendChat(request2, form, planChatForm[4], planChatForm);
     if (pathname === "/requests/conversation") return newConversation(request2, form);
     const stoppingRequest = routes.stopRequest.exec(pathname);
     if (stoppingRequest) return stopRequest(request2, form, stoppingRequest[1]);

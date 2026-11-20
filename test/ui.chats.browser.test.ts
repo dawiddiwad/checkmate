@@ -8,6 +8,8 @@ import { launchWith, open, browserTest, stop } from './browser.ts'
 import { seedVolume } from '../scripts/ui-volume.ts'
 import { fakeClaude } from './claude.ts'
 import { endProcessesIn } from './actions.ts'
+import { closeStore, openStore } from '../plugin/src/index.ts'
+import { addRequestActivity, askRequest, requestOf, setRequestState } from '../plugin/src/requests.ts'
 
 function fakePi(t: TestContext) {
 	const bin = directory(t)
@@ -92,6 +94,17 @@ test('chat controls switch harness and retain model and effort at mobile width',
 	assert.equal(await effort.isHidden(), true)
 	await model.selectOption('local/think')
 	await effort.selectOption('high')
+	await app.page.setViewportSize({ width: 1440, height: 900 })
+	const rows = await Promise.all([harness, model, effort].map((field) => field.boundingBox()))
+	assert.equal(new Set(rows.map((row) => row!.y)).size, 1)
+	const send = await app.page.getByRole('button', { name: 'Send' }).boundingBox()
+	assert.equal(rows[0]!.y + rows[0]!.height, send!.y + send!.height)
+	await app.page.setViewportSize({ width: 390, height: 844 })
+	const mobileRows = await Promise.all([harness, model, effort].map((field) => field.boundingBox()))
+	assert.equal(new Set(mobileRows.map((row) => row!.y)).size, 1)
+	await app.page.setViewportSize({ width: 320, height: 844 })
+	assert.equal(await app.page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true)
+	await app.page.setViewportSize({ width: 390, height: 844 })
 	await app.page.locator('[name="text"]').fill('Continue with Pi')
 	await app.page.getByRole('button', { name: 'Send' }).click()
 	await app.page.waitForURL(address)
@@ -123,4 +136,122 @@ test('a refused chat message keeps the draft and shows the error', browserTest, 
 	assert.equal(await app.page.getByRole('button', { name: 'Send' }).isEnabled(), true)
 	await app.page.reload()
 	assert.equal(await message.inputValue(), 'Keep this draft')
+})
+
+test('chat scrolls to new messages inside its history and keeps a draft', browserTest, async (t) => {
+	const app = await open(t, { viewport: { width: 1440, height: 900 } })
+	const write = <T>(run: (store: ReturnType<typeof openStore>) => T) => {
+		const store = openStore(app.workspace)
+		try {
+			return run(store)
+		} finally {
+			closeStore(store)
+		}
+	}
+	let chatId = ''
+	for (let i = 0; i < 6; i++) {
+		const id = write((store) =>
+			askRequest(store, 'qa', {
+				text: `Message ${i} ${'long text '.repeat(20)}`,
+				context: { planId: null, record: null },
+				chatId: chatId || null,
+			})
+		)
+		chatId = write((store) => requestOf(store, id)!.conversation)
+		write((store) =>
+			setRequestState(store, id, 'answered', { reply: `Reply ${i} ${'long text '.repeat(20)}`, changes: [] })
+		)
+	}
+	await app.page.goto(app.url(`/chats/${chatId}`))
+	const history = app.page.locator('[data-chat-history]')
+	const atBottom = () =>
+		history.evaluate((element) => element.scrollHeight - element.clientHeight - element.scrollTop < 2)
+	assert.equal(await atBottom(), true)
+	await app.page.locator('[name="text"]').fill('Keep this draft')
+	for (let i = 0; i < 2; i++) {
+		await history.evaluate((element) => {
+			element.scrollTop = 0
+		})
+		const id = write((store) =>
+			askRequest(store, 'qa', {
+				text: `Incoming ${i}`,
+				context: { planId: null, record: null },
+				chatId,
+			})
+		)
+		write((store) => setRequestState(store, id, 'answered', { reply: `New reply ${i}`, changes: [] }))
+		await app.page.getByText(`New reply ${i}`, { exact: true }).waitFor()
+		assert.equal(await atBottom(), true)
+		assert.equal(await app.page.locator('[name="text"]').inputValue(), 'Keep this draft')
+	}
+	const pending = write((store) =>
+		askRequest(store, 'qa', {
+			text: 'Last question',
+			context: { planId: null, record: null },
+			chatId,
+		})
+	)
+	write((store) => setRequestState(store, pending, 'running'))
+	await app.page.getByText('Last question', { exact: true }).waitFor()
+	await app.page.reload()
+	await app.page.getByText('Last question', { exact: true }).waitFor({ state: 'attached' })
+	await history.evaluate((element) => {
+		element.scrollTop = 0
+	})
+	write((store) => addRequestActivity(store, pending, 'Checking'))
+	await app.page.getByText('Activity (1)', { exact: true }).waitFor({ state: 'attached' })
+	assert.equal(await history.evaluate((element) => element.scrollTop), 0)
+	write((store) => setRequestState(store, pending, 'failed', { reason: 'Provider error' }))
+	await app.page.getByText('Provider error', { exact: true }).waitFor({ state: 'attached' })
+	assert.equal(await atBottom(), true)
+	const empty = write((store) =>
+		askRequest(store, 'qa', {
+			text: 'Empty reply',
+			context: { planId: null, record: null },
+			chatId,
+			harness: 'pi',
+		})
+	)
+	write((store) => setRequestState(store, empty, 'running'))
+	await app.page.getByText('Empty reply', { exact: true }).waitFor({ state: 'attached' })
+	await history.evaluate((element) => {
+		element.scrollTop = 0
+	})
+	write((store) => setRequestState(store, empty, 'answered', { reply: '', changes: [], costUsd: 0.25 }))
+	await app.page.getByText('Chat cost $0.25 (partial)', { exact: true }).waitFor()
+	assert.equal(await atBottom(), true)
+})
+
+test('the active plan chat tab is visible on a narrow screen', browserTest, async (t) => {
+	const app = await open(t, { viewport: { width: 320, height: 844 } })
+	await app.page.goto(app.url('/plans/coupons?chat=list'))
+	const nav = app.page.locator('[data-navigator]')
+	const tab = nav.locator('[data-target="chats"][aria-selected="true"]')
+	const bounds = await Promise.all([nav.boundingBox(), tab.boundingBox()])
+	assert(bounds[1]!.x >= bounds[0]!.x)
+	assert(bounds[1]!.x + bounds[1]!.width <= bounds[0]!.x + bounds[0]!.width)
+	assert.equal(await app.page.evaluate(() => window.scrollY), 0)
+})
+
+test('plan and global chat lists show newly reported costs without reloading', browserTest, async (t) => {
+	const app = await open(t)
+	const globalChats = await app.page.context().newPage()
+	await Promise.all([app.page.goto(app.url('/plans/coupons?chat=list')), globalChats.goto(app.url('/chats'))])
+	await Promise.all([app.page, globalChats].map((page) => page.getByText('No chats yet.').waitFor()))
+	const store = openStore(app.workspace)
+	try {
+		const id = askRequest(store, 'qa', {
+			text: 'Check the coupon plan',
+			context: { planId: 'coupons', record: null, planChat: true },
+			chatId: null,
+			harness: 'pi',
+		})
+		setRequestState(store, id, 'running')
+		const rows = [app.page, globalChats].map((page) => page.getByRole('link', { name: /Check the coupon plan/ }))
+		await Promise.all(rows.map((row) => row.getByText('Unknown').waitFor()))
+		setRequestState(store, id, 'answered', { reply: 'Checked.', costUsd: 0.67, costScope: 'turn' })
+		await Promise.all(rows.map((row) => row.getByText('$0.67', { exact: true }).waitFor()))
+	} finally {
+		closeStore(store)
+	}
 })

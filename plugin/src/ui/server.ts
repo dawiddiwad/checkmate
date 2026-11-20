@@ -67,7 +67,8 @@ import {
 	testerRulesText,
 	workspaceUiEnv,
 } from '../settings.ts'
-import { chatOf, isUnread, markRequestRead, requestOf, requestStatus, staleRequests } from '../requests.ts'
+import type { Chat, RequestContext } from '../requests.ts'
+import { chatOf, isUnread, listedChats, markRequestRead, requestOf, requestStatus, staleRequests } from '../requests.ts'
 import { planRequest } from '../plans.ts'
 import type { Env } from '../sessions.ts'
 import type { StopDelays } from '../sessions.ts'
@@ -123,7 +124,7 @@ import { emptyRecord, nextOpen, permissionPage, requestHref } from './permission
 import { createRequester } from './requester.ts'
 import { lifecyclePath, lifecycleProof } from './lifecycle.ts'
 import { repliesPage, requestPage as requestRecordPage, screenContext } from './requests.ts'
-import { chatPage, chatsPage } from './chats.ts'
+import { chatPage, chatsPage, planChat } from './chats.ts'
 
 export type UiOptions = HookOptions & {
 	workspace: string
@@ -141,6 +142,7 @@ type Client = { res: ServerResponse; subjects: Set<string>; last: number }
 type Change = ReturnType<typeof changesAfter>[number]
 
 const id = '[A-Za-z0-9][A-Za-z0-9_-]{0,95}'
+const chatId = '[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}'
 const routes = {
 	plan: new RegExp(`^/plans/(${id})@([1-9][0-9]{0,8})$`),
 	latestPlan: new RegExp(`^/plans/(${id})$`),
@@ -155,8 +157,9 @@ const routes = {
 	harvest: new RegExp(`^/plans/(${id})/harvest$`),
 	permit: new RegExp(`^/permissions/(${id})/(P[1-9][0-9]{0,8})$`),
 	requestPage: /^\/requests\/(R[1-9][0-9]{0,8})$/,
-	chatPage: /^\/chats\/([0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})$/,
-	chatTurn: /^\/chats\/([0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})\/turns$/,
+	chatPage: new RegExp(`^/chats/(${chatId})$`),
+	chatTurn: new RegExp(`^/chats/(${chatId})/turns$`),
+	planChatPost: new RegExp(`^(/plans/(${id})(?:@([1-9][0-9]{0,8}))?)/chats(?:/(${chatId})/turns)?$`),
 	stopRequest: /^\/requests\/(R[1-9][0-9]{0,8})\/stop$/,
 	permitMany: /^\/permissions\/bulk$/,
 	stopRun: new RegExp(`^/explorations/(${id})/stop$`),
@@ -594,7 +597,7 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 			)
 		}
 		const latest = routes.latestPlan.exec(pathname)
-		if (latest) return render(request, reviewPage(store, shown, latest[1], searchParams))
+		if (latest) return openPlanPage(request, reviewPage(store, shown, latest[1], searchParams), latest[1])
 		const defectText = routes.defectText.exec(pathname)
 		if (defectText)
 			return send(
@@ -608,9 +611,18 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		if (requested) return render(request, requestPage(store, requested[1], shown.harness))
 		const plan = routes.plan.exec(pathname)
 		if (plan)
-			return render(
+			return openPlanPage(
 				request,
-				planPage(store, shown, plan[1], Number(plan[2]), null, searchParams.get('history') === 'all')
+				planPage(
+					store,
+					shown,
+					plan[1],
+					Number(plan[2]),
+					null,
+					searchParams.get('history') === 'all',
+					searchParams.has('chat') || searchParams.get('newChat') === '1'
+				),
+				plan[1]
 			)
 		const edit = routes.edit.exec(pathname)
 		if (edit) return render(request, editPage(store, shown, edit[1], Number(edit[2])))
@@ -1441,25 +1453,84 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		render(request, page)
 	}
 
+	function markChatRead(chat: Chat, actor: string | null) {
+		if (actor) for (const turn of chat.turns) if (isUnread(turn)) markRequestRead(store, actor, turn.id)
+	}
+
+	function planChatHref(chat: Chat) {
+		const { planId, planRevision } = chat.context
+		return `/plans/${planId}${planRevision ? `@${planRevision}` : ''}?chat=${chat.id}`
+	}
+
+	function openPlanPage(request: Request, page: Page, planId: string) {
+		const { pathname: path, searchParams } = request.url
+		const selected = searchParams.get('chat')
+		const fresh = searchParams.get('newChat') === '1'
+		if (selected === null && !fresh) return render(request, page)
+
+		const chats = listedChats(store, planId)
+		const chat = chats.find((item) => item.id === selected) ?? null
+		if (selected !== null && selected !== 'list' && !chat)
+			return errorPage(request, 404, 'Chat not found', 'Choose a conversation from the chats of this plan.')
+		const params = new URLSearchParams(searchParams)
+		params.delete('chat')
+		params.delete('newChat')
+		const back = params.size ? `${path}?${params}` : path
+		const shown = context(request)
+		if (chat) markChatRead(chat, shown.actor)
+		return render(request, {
+			...page,
+			title: `Plan chats · ${planId}`,
+			crumbs: [
+				['Plans', '/'],
+				[path.slice('/plans/'.length), back],
+				['Plan chats', null],
+			],
+			back,
+			drawer: false,
+			subjects: [
+				...page.subjects,
+				'chats',
+				...chats.flatMap((item) => item.turns.map((turn) => `request:${turn.id}`)),
+			],
+			body: planChat(store, shown, env, { path, params, chats, chat, fresh }),
+		})
+	}
+
 	function openChat(request: Request, id: string) {
 		const chat = chatOf(store, id)
 		if (!chat) return errorPage(request, 404, 'Chat not found', 'Open Chats to choose a conversation.')
-		const actor = context(request).actor
-		if (actor) for (const turn of chat.turns) if (isUnread(turn)) markRequestRead(store, actor, turn.id)
+		if (chat.context.planChat) return redirect(request.res, planChatHref(chat))
+		markChatRead(chat, context(request).actor)
 		const page = chatPage(store, context(request), id, env)
 		if (page) return render(request, page)
 	}
 
-	async function sendChat(request: Request, form: URLSearchParams, id?: string) {
+	async function sendChat(request: Request, form: URLSearchParams, id?: string, plan?: RegExpExecArray) {
+		const path = plan?.[1] ?? null
+		const planId = plan?.[2]
+		const planRevision = plan?.[3] ? Number(plan[3]) : undefined
+		const returned = form.get('return')
+		const params = new URLSearchParams(
+			path && returned?.startsWith(`${path}?`) ? returned.slice(path.length + 1) : ''
+		)
+		params.delete('chat')
+		params.delete('newChat')
+		const planDestination = (turnId?: string) => {
+			const query = new URLSearchParams(params)
+			if (turnId) query.set('chat', turnId)
+			else query.set('newChat', '1')
+			return `${path}?${query}`
+		}
 		const { actor, cookies } = actorFrom(request, form)
-		const back = id ? `/chats/${id}` : safeBack(form.get('return') ?? '/chats')
+		const back = path ? planDestination(id) : id ? `/chats/${id}` : safeBack(returned ?? '/chats')
 		const refuse = (message: string) => actionRefusal(request, back, message)
 		if (!actor) return refuse('Enter your name to send a message.')
 		const message = form.get('text')?.trim() ?? ''
 		if (!message) return refuse('Write a message first.')
 		const picked = form.get('harness')
 		if (picked !== null && picked !== 'pi' && picked !== 'claude') return refuse('Choose a coding harness.')
-		const fromFind = form.get('chat') === '1'
+		const fromFind = request.url.pathname === '/requests'
 		const workspaceHarness = selectedHarness(launchEnv())
 		if (fromFind && picked !== null && picked !== workspaceHarness)
 			return refuse('The coding harness changed. Reload and try again.')
@@ -1470,24 +1541,45 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 				? routes.chatPage.exec(new URL(safeBack(screen), 'http://checkmate.local').pathname)?.[1]
 				: undefined)
 		const chat = chatId ? chatOf(store, chatId) : null
-		if (chatId && !chat) return refuse('This chat is no longer available.')
+		if (planId) {
+			if (planRevision) planDetail(store, planId, planRevision)
+			else planRequest(store, planId)
+		}
+		if (chatId && (!chat || (planId ? chat.planId !== planId : chat.context.planChat)))
+			return refuse('This chat is no longer available here.')
 		const harness = (fromFind ? null : picked) ?? chat?.turns.at(-1)?.harness ?? workspaceHarness
 		const model = form.get('model') ?? undefined
 		const effort = form.get('effort') ?? undefined
 		try {
 			const catalog = await catalogFor(harness, model === '').catch(() => undefined)
 			const choices = { harness, model, effort, catalog }
+			const scope: RequestContext | undefined = planId
+				? { planId, planRevision, record: null, planChat: true }
+				: undefined
 			const turn = chatId
-				? requester.followChat(actor, chatId, message, choices)
-				: requester.startChat(actor, message, screenContext(store, screen, true), choices)
-			redirect(request.res, `/chats/${requestOf(store, turn)!.conversation}`, cookies)
+				? requester.followChat(actor, chatId, message, choices, scope)
+				: requester.startChat(actor, message, scope ?? screenContext(store, screen, true), choices)
+			const conversation = requestOf(store, turn)!.conversation
+			redirect(request.res, path ? planDestination(conversation) : `/chats/${conversation}`, cookies)
 		} catch (error) {
 			return refuse(engineText(error))
 		}
 	}
 
 	function askText(request: Request, form: URLSearchParams) {
-		if (form.get('chat') === '1') return sendChat(request, form)
+		if (form.get('chat') === '1') {
+			const screen = form.get('screen') ?? ''
+			if (screen.startsWith('/plans/')) {
+				const address = new URL(screen, request.url.origin)
+				const selected = address.searchParams.get('chat')
+				const plan = selected && routes.planChatPost.exec(`${address.pathname}/chats/${selected}/turns`)
+				if (plan) {
+					form.set('return', address.pathname + address.search)
+					return sendChat(request, form, plan[4], plan)
+				}
+			}
+			return sendChat(request, form)
+		}
 		const { actor, cookies } = actorFrom(request, form)
 		const back = safeBack(form.get('return') ?? '/requests')
 		const refuse = (message: string) => actionRefusal(request, back, message)
@@ -1527,7 +1619,19 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		const { actor, cookies } = actorFrom(request, form)
 		const found = requestOf(store, requestId)
 		const chat = found ? `/chats/${found.conversation}` : ''
-		const back = form.get('return') === chat && chat ? chat : `/requests/${requestId}`
+		const returned = form.get('return')
+		const address = returned?.startsWith('/plans/') ? new URL(returned, request.url.origin) : null
+		const plan = address && (routes.latestPlan.exec(address.pathname) ?? routes.plan.exec(address.pathname))
+		const scoped =
+			found &&
+			plan &&
+			address.searchParams.get('chat') === found.conversation &&
+			chatOf(store, found.conversation)?.planId === plan[1]
+		const back = scoped
+			? address!.pathname + address!.search
+			: returned === chat && chat
+				? chat
+				: `/requests/${requestId}`
 		if (!actor) return actionRefusal(request, back, 'Enter your name. Checkmate records it with the stop.')
 		const flash =
 			found?.state === 'running' || found?.state === 'waiting'
@@ -2264,6 +2368,8 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		if (pathname === '/chats') return sendChat(request, form)
 		const chat = routes.chatTurn.exec(pathname)
 		if (chat) return sendChat(request, form, chat[1])
+		const planChatForm = routes.planChatPost.exec(pathname)
+		if (planChatForm) return sendChat(request, form, planChatForm[4], planChatForm)
 		if (pathname === '/requests/conversation') return newConversation(request, form)
 		const stoppingRequest = routes.stopRequest.exec(pathname)
 		if (stoppingRequest) return stopRequest(request, form, stoppingRequest[1])

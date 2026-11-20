@@ -1,5 +1,8 @@
 import { spawn } from 'node:child_process'
-import type { Env, StopDelays, StreamedClaude } from '../sessions.ts'
+import type { PiMessage } from '../pi.ts'
+import { piMessageCost } from '../pi.ts'
+import { costOf } from '../sessions.ts'
+import type { ChildCall, Env, StopDelays, StreamEnd, StreamedClaude } from '../sessions.ts'
 
 export function streamPi(
 	program: string,
@@ -19,6 +22,26 @@ export function streamPi(
 	let error: string | null = null
 	let ready = false
 	let stopped = false
+	let prompted = false
+	let settled = false
+	type Charge = Pick<ChildCall, 'costUsd' | 'costPartial'>
+	type Usage = PiMessage['usage']
+	const costs: Charge[] = []
+	let messageCosts: Charge[] = []
+	let inProgress: Charge | undefined
+	const charge = (amount: unknown): Charge =>
+		typeof amount === 'number' && Number.isFinite(amount) && amount >= 0 ? { costUsd: amount } : {}
+	const messageCharge = (message?: PiMessage) => {
+		const amount = piMessageCost(message)
+		if (amount === undefined) return
+		if (
+			amount === 0 &&
+			message?.usage?.totalTokens === 0 &&
+			(message.stopReason === 'error' || message.stopReason === 'aborted')
+		)
+			return {}
+		return charge(amount)
+	}
 	const timers: NodeJS.Timeout[] = []
 	const send = (value: unknown) => child.stdin.write(`${JSON.stringify(value)}\n`)
 	const kill = (signal: NodeJS.Signals) => {
@@ -58,6 +81,12 @@ export function streamPi(
 				id?: string
 				success?: boolean
 				error?: string
+				message?: PiMessage
+				messages?: PiMessage[]
+				usage?: Usage
+				result?: { usage?: Usage }
+				entry?: { type?: string; usage?: Usage }
+				aborted?: boolean
 				data?: { commands?: Array<{ name?: string; source?: string; sourceInfo?: { path?: string } }> }
 			}
 			try {
@@ -67,6 +96,32 @@ export function streamPi(
 				error = 'Pi printed a line that is not JSON.'
 				shutdown()
 				continue
+			}
+			if (prompted) {
+				if (value.type === 'message_update') inProgress = charge(value.usage?.cost?.total)
+				if (value.type === 'message_end') {
+					const cost = messageCharge(value.message)
+					if (value.message?.role === 'assistant') {
+						if (cost?.costUsd === undefined && inProgress?.costUsd !== undefined)
+							messageCosts.push({ costUsd: inProgress.costUsd, costPartial: true })
+						else if (cost) messageCosts.push(cost)
+						inProgress = undefined
+					} else if (cost) messageCosts.push(cost)
+				}
+				if (value.type === 'agent_end') {
+					if (!messageCosts.length && Array.isArray(value.messages)) {
+						for (const message of value.messages) {
+							const cost = messageCharge(message)
+							if (cost) messageCosts.push(cost)
+						}
+					}
+					costs.push(...messageCosts)
+					messageCosts = []
+					inProgress = undefined
+				}
+				if (value.type === 'entry_appended' && value.entry?.type === 'usage')
+					costs.push(charge(value.entry.usage?.cost?.total))
+				if (value.type === 'compaction_end' && value.result) costs.push(charge(value.result.usage?.cost?.total))
 			}
 			if (value.type === 'response' && value.id === 'checkmate-ready') {
 				const commands = value.data?.commands
@@ -86,22 +141,21 @@ export function streamPi(
 					continue
 				}
 				onLine(JSON.stringify({ type: 'session', id: sessionId }))
-				if (!stopped) send({ id: 'checkmate-prompt', type: 'prompt', message: prompt })
+				if (!stopped) {
+					prompted = true
+					send({ id: 'checkmate-prompt', type: 'prompt', message: prompt })
+				}
 			} else if (value.type === 'response' && value.id === 'checkmate-prompt' && value.success !== true) {
 				error = `Pi rejected the request: ${value.error || 'unknown error'}`
 				shutdown()
 			} else if (value.type === 'agent_settled') {
+				settled = value.aborted !== true
 				onLine(line)
 				shutdown()
 			} else onLine(line)
 		}
 	})
-	const finished = new Promise<{
-		status: number | null
-		signal: string | null
-		stderr: string
-		error: string | null
-	}>((resolve) => {
+	const finished = new Promise<StreamEnd>((resolve) => {
 		child.on('close', (status, signal) => {
 			clearTimeout(timeout)
 			for (const timer of timers) clearTimeout(timer)
@@ -109,6 +163,12 @@ export function streamPi(
 				status,
 				signal,
 				stderr,
+				...costOf([
+					...costs,
+					...messageCosts,
+					...(inProgress ? [inProgress] : []),
+					...(settled && !error ? [] : [{}]),
+				]),
 				error: error ?? (!ready && !stopped ? 'Pi did not verify the permission gate.' : null),
 			})
 		})

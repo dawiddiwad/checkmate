@@ -1,5 +1,6 @@
 import type { ExplorationEvent } from './explorations.ts'
 import type { Store } from './store.ts'
+import { planChatsForCosts } from './requests.ts'
 import { all } from './store.ts'
 
 export type ModelCost = { costUsd: number | null; costPartial: boolean }
@@ -30,11 +31,11 @@ export function explorationCost(events: ExplorationEvent[]): ModelCost {
 
 type CostRow = { key: string; status: string; attempted: number; amount: number | null; partial: number | null }
 
-function groupedCosts(store: Store, planId?: string) {
+function groupedCosts(store: Store, group: 'plan' | 'exploration', planId?: string) {
 	const reported = "json_type(e.detail, '$.costUsd') IN ('integer', 'real')"
 	const rows = all<CostRow>(
 		store,
-		`SELECT ${planId === undefined ? 'x.plan_id' : 'e.exploration_id'} AS key, e.status,
+		`SELECT ${group === 'plan' ? 'x.plan_id' : 'e.exploration_id'} AS key, e.status,
 			(json_extract(e.detail, '$.session') IS NOT NULL OR json_extract(e.detail, '$.agent') IS NOT NULL) AS attempted,
 			CASE WHEN ${reported} THEN json_extract(e.detail, '$.costUsd') ELSE xc.cost_usd END AS amount,
 			CASE WHEN ${reported} THEN json_type(e.detail, '$.costPartial') = 'true' ELSE xc.partial END AS partial
@@ -53,13 +54,25 @@ function groupedCosts(store: Store, planId?: string) {
 		addCost(total, row.status, Boolean(row.attempted), row.amount, row.partial === 1)
 		totals.set(row.key, total)
 	}
+	if (group === 'plan') {
+		for (const chat of planChatsForCosts(store, planId)) {
+			if (!chat.planId || !chat.turns.some((turn) => turn.startedAt)) continue
+			const total = totals.get(chat.planId) ?? { amount: null, missing: false }
+			addCost(total, 'completed', true, chat.costUsd, chat.costPartial)
+			totals.set(chat.planId, total)
+		}
+	}
 	return new Map([...totals].map(([key, total]) => [key, costOf(total)]))
 }
 
 export function planCosts(store: Store) {
-	return groupedCosts(store)
+	return groupedCosts(store, 'plan')
+}
+
+export function planCost(store: Store, planId: string) {
+	return groupedCosts(store, 'plan', planId).get(planId) ?? noModelCost
 }
 
 export function planExplorationCosts(store: Store, planId: string) {
-	return groupedCosts(store, planId)
+	return groupedCosts(store, 'exploration', planId)
 }

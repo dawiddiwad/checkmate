@@ -67,7 +67,9 @@ export type ChildCall = {
 	stderr?: string[]
 }
 
-export function costOf(calls: Array<Pick<ChildCall, 'costUsd' | 'costPartial'>>) {
+export function costOf(
+	calls: Array<Pick<ChildCall, 'costUsd' | 'costPartial'>>
+): Pick<ChildCall, 'costUsd' | 'costPartial'> {
 	const costs = calls.flatMap((call) => (call.costUsd === undefined ? [] : [call.costUsd]))
 	if (!costs.length) return {}
 	const costUsd = costs.reduce((total, cost) => total + cost, 0)
@@ -613,7 +615,12 @@ export function requestPrompt(text: string, screen: string | null) {
 		: text
 }
 
-export type StreamEnd = { status: number | null; signal: string | null; stderr: string; error: string | null }
+export type StreamEnd = Pick<ChildCall, 'costUsd' | 'costPartial'> & {
+	status: number | null
+	signal: string | null
+	stderr: string
+	error: string | null
+}
 export type StopDelays = { terminate: number; kill: number }
 export type StreamedClaude = { pid: number | undefined; stop(): void; finished: Promise<StreamEnd> }
 

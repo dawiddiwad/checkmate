@@ -1,3 +1,5 @@
+import type { ModelCost } from './costs.ts'
+import { costOf } from './sessions.ts'
 import type { Store } from './store.ts'
 import type { Harness } from './pi.ts'
 import { randomUUID } from 'node:crypto'
@@ -11,6 +13,7 @@ export type RequestContext = {
 	record: { kind: string; id: string } | null
 	page?: 'plans' | 'runs' | 'activity' | 'chats'
 	planRevision?: number
+	planChat?: true
 }
 export type RequestSelection = {
 	harness: Harness
@@ -32,6 +35,8 @@ export type RequestRecord = RequestSelection & {
 	activity: Array<{ at: string; line: string }>
 	reply: string | null
 	costUsd: number | null
+	costPartial: boolean
+	costCumulative?: true
 	startedAt: string | null
 	endedAt: string | null
 	reason: string | null
@@ -56,7 +61,11 @@ type AskRow = {
 	asker: string
 	conversation: string
 	asked_at: string
+	explicit_chat: number | null
 }
+
+const askRows = `SELECT r.*, json_type(o.arguments, '$.chatId') = 'null' AS explicit_chat
+FROM requests r JOIN operations o ON o.id = r.operation_id`
 
 export function screenText(context: RequestContext) {
 	const parts = [
@@ -156,18 +165,25 @@ export function askRequest(
 		let context = input.context
 		if (input.chatId) {
 			requireWellFormed(chatIdPattern.test(input.chatId), 'Invalid chat ID.')
-			const initial = one<{ context: string }>(
+			const initial = one<AskRow>(
 				store,
-				'SELECT context FROM requests WHERE conversation = ? ORDER BY rowid LIMIT 1',
+				`${askRows} WHERE r.conversation = ? ORDER BY r.rowid LIMIT 1`,
 				input.chatId
 			)
 			requireWellFormed(initial, `Unknown chat: ${input.chatId}`)
 			chatId = input.chatId
-			context = JSON.parse(initial.context) as RequestContext
+			const original = JSON.parse(initial.context) as RequestContext
+			requireWellFormed(
+				(!context.planChat && !original.planChat) ||
+					(context.planChat === true && Boolean(initial.explicit_chat) && context.planId === original.planId),
+				'The chat belongs to a different context.'
+			)
+			context = original
 		} else if (input.chatId === null) {
 			validateChatContext(store, context)
 			chatId = randomUUID()
 		} else {
+			requireWellFormed(!context.planChat, 'Start a new chat for the plan.')
 			const current = currentConversation(store)
 			const previous = current && conversationHarness(store, current.sessionId)
 			chatId = (
@@ -201,6 +217,7 @@ export function askRequest(
 }
 
 function validateChatContext(store: Store, context: RequestContext) {
+	requireWellFormed(!context.planChat || context.planId, 'A plan chat needs a plan.')
 	if (context.page)
 		requireWellFormed(['plans', 'runs', 'activity', 'chats'].includes(context.page), 'Unknown chat context page.')
 	if (context.planId)
@@ -336,7 +353,12 @@ function recordOf(ask: AskRow, events: EventRow[]): RequestRecord {
 			.filter((event) => event.step === 'activity')
 			.map((event) => ({ at: event.at, line: (JSON.parse(event.detail) as { line: string }).line })),
 		reply: typeof detail.reply === 'string' ? detail.reply : null,
-		costUsd: typeof detail.costUsd === 'number' ? detail.costUsd : null,
+		costUsd:
+			typeof detail.costUsd === 'number' && Number.isFinite(detail.costUsd) && detail.costUsd >= 0
+				? detail.costUsd
+				: null,
+		costPartial: detail.costPartial === true,
+		...(detail.costScope !== 'turn' && harness !== 'pi' ? { costCumulative: true } : {}),
 		startedAt: states.find((event) => event.status === 'running')?.at ?? null,
 		endedAt: finished?.at ?? null,
 		reason: typeof detail.reason === 'string' ? detail.reason : null,
@@ -347,11 +369,11 @@ function recordOf(ask: AskRow, events: EventRow[]): RequestRecord {
 	}
 }
 
-function eventsByRequest(store: Store, where: string, ...parameters: string[]) {
+function eventsByRequest(store: Store, where: string, parameters: string[], activity = true) {
 	const found = new Map<string, EventRow[]>()
 	for (const row of all<EventRow>(
 		store,
-		`SELECT request_id, at, step, status, detail FROM request_events WHERE step IN ('state', 'session', 'activity', 'read') ${where} ORDER BY rowid`,
+		`SELECT request_id, at, step, status, detail FROM request_events WHERE step IN ('state', 'session'${activity ? ", 'activity', 'read'" : ''}) ${where} ORDER BY rowid`,
 		...parameters
 	)) {
 		const list = found.get(row.request_id) ?? []
@@ -362,41 +384,91 @@ function eventsByRequest(store: Store, where: string, ...parameters: string[]) {
 }
 
 export function requestOf(store: Store, requestId: string) {
-	const ask = one<AskRow>(store, 'SELECT * FROM requests WHERE request_id = ?', requestId)
-	return ask ? recordOf(ask, eventsByRequest(store, 'AND request_id = ?', requestId).get(requestId) ?? []) : null
+	const ask = one<AskRow>(store, `${askRows} WHERE r.request_id = ?`, requestId)
+	return ask ? recordOf(ask, eventsByRequest(store, 'AND request_id = ?', [requestId]).get(requestId) ?? []) : null
 }
 
 export function allRequests(store: Store) {
-	const events = eventsByRequest(store, '')
-	return all<AskRow>(store, 'SELECT * FROM requests ORDER BY rowid').map((ask) =>
+	const events = eventsByRequest(store, '', [])
+	return all<AskRow>(store, `${askRows} ORDER BY r.rowid`).map((ask) =>
 		recordOf(ask, events.get(ask.request_id) ?? [])
 	)
 }
 
-export type Chat = { id: string; context: RequestContext; turns: RequestRecord[] }
+export type Chat = ModelCost & { id: string; planId: string | null; context: RequestContext; turns: RequestRecord[] }
+
+function chatFromTurns(first: AskRow, turns: RequestRecord[]): Chat {
+	const sessions = new Set<string>()
+	const calls = []
+	for (const turn of turns) {
+		if (!turn.startedAt) continue
+		const repeated = turn.sessionId !== null && sessions.has(turn.sessionId)
+		if (turn.harness === 'claude' && turn.sessionId) sessions.add(turn.sessionId)
+		if (turn.costUsd === null || (turn.costCumulative && (repeated || !turn.sessionId))) calls.push({})
+		else calls.push({ costUsd: turn.costUsd, costPartial: turn.costPartial })
+	}
+	const { costUsd, costPartial } = costOf(calls)
+	const context = turns[0].context
+	return {
+		id: first.conversation,
+		planId: first.explicit_chat ? context.planId : null,
+		context,
+		turns,
+		costUsd: costUsd ?? null,
+		costPartial: costPartial ?? false,
+	}
+}
 
 export function chatOf(store: Store, id: string): Chat | null {
 	if (!chatIdPattern.test(id)) return null
-	const asks = all<AskRow>(store, 'SELECT * FROM requests WHERE conversation = ? ORDER BY rowid', id)
+	const asks = all<AskRow>(store, `${askRows} WHERE r.conversation = ? ORDER BY r.rowid`, id)
 	if (!asks.length) return null
 	const events = eventsByRequest(
 		store,
 		'AND request_id IN (SELECT request_id FROM requests WHERE conversation = ?)',
-		id
+		[id]
 	)
-	const turns = asks.map((ask) => recordOf(ask, events.get(ask.request_id) ?? []))
-	return { id, context: turns[0].context, turns }
+	return chatFromTurns(
+		asks[0],
+		asks.map((ask) => recordOf(ask, events.get(ask.request_id) ?? []))
+	)
 }
 
-export function listedChats(store: Store): Chat[] {
-	const chats = new Map<string, Chat>()
-	for (const turn of allRequests(store)) {
-		const chat = chats.get(turn.conversation) ?? { id: turn.conversation, context: turn.context, turns: [] }
-		chat.turns.push(turn)
-		chats.delete(chat.id)
-		chats.set(chat.id, chat)
+export function listedChats(store: Store, planId?: string): Chat[] {
+	return readChats(store, planId, true)
+}
+
+export function planChatsForCosts(store: Store, planId?: string) {
+	return readChats(store, planId ?? null, false)
+}
+
+function readChats(store: Store, planId: string | null | undefined, activity: boolean): Chat[] {
+	const firstAsks = `${askRows}
+		WHERE r.rowid IN (SELECT min(rowid) FROM requests GROUP BY conversation)
+		AND json_extract(r.context, '$.planId') IS NOT NULL
+		AND json_type(o.arguments, '$.chatId') = 'null'${typeof planId !== 'string' ? '' : " AND json_extract(r.context, '$.planId') = ?"}`
+	const scoped = planId !== undefined
+	const parameters = typeof planId === 'string' ? [planId] : []
+	const conversations = `SELECT conversation FROM (${firstAsks})`
+	const asks = all<AskRow>(
+		store,
+		`${askRows}${scoped ? ` WHERE r.conversation IN (${conversations})` : ''} ORDER BY r.rowid`,
+		...parameters
+	)
+	const events = eventsByRequest(
+		store,
+		scoped ? `AND request_id IN (SELECT request_id FROM requests WHERE conversation IN (${conversations}))` : '',
+		parameters,
+		activity
+	)
+	const chats = new Map<string, { first: AskRow; turns: RequestRecord[] }>()
+	for (const ask of asks) {
+		const chat = chats.get(ask.conversation) ?? { first: ask, turns: [] }
+		chat.turns.push(recordOf(ask, events.get(ask.request_id) ?? []))
+		chats.delete(ask.conversation)
+		chats.set(ask.conversation, chat)
 	}
-	return [...chats.values()].reverse()
+	return [...chats.values()].reverse().map(({ first, turns }) => chatFromTurns(first, turns))
 }
 
 export function chatHistory(turns: RequestRecord[]) {

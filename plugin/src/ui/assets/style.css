@@ -3481,7 +3481,8 @@ main a:active {
 	}
 }
 
-.chat-thread {
+.chat-thread,
+.plan-chat {
 	max-width: 760px;
 	margin: 0 auto;
 }
@@ -3489,11 +3490,21 @@ main a:active {
 .chat-controls {
 	display: flex;
 	align-items: end;
-	gap: 1rem;
+	gap: 0.75rem;
 	flex-wrap: wrap;
 }
 .chat-thread-heading {
 	justify-content: space-between;
+	align-items: center;
+}
+.chat-thread-heading h2 {
+	margin: 0;
+}
+.chat-thread h1,
+.chat-thread h2,
+.plan-chat h1,
+.chat-list-item strong {
+	overflow-wrap: anywhere;
 }
 .chat-list-actions {
 	margin-bottom: 1rem;
@@ -3509,6 +3520,9 @@ main a:active {
 	border-bottom: 1px solid var(--hair);
 	text-decoration: none;
 }
+.chat-list-item:hover {
+	background: var(--row-hover);
+}
 .chat-list-item span,
 .chat-meta {
 	font-size: 0.85rem;
@@ -3516,26 +3530,47 @@ main a:active {
 }
 .chat-history {
 	display: grid;
+	align-content: start;
 	gap: 1rem;
+	max-height: min(45vh, 600px);
+	overflow-y: auto;
+	overscroll-behavior: contain;
 	margin: 1.5rem 0;
+	padding: 0 0.25rem;
+}
+.chat-cost {
+	margin: 0;
+	color: var(--muted);
+	font-size: 0.85rem;
 }
 .chat-turn {
 	display: grid;
 	gap: 0.75rem;
 }
 .chat-message {
+	min-width: 0;
 	padding: 1rem;
 	border: 1px solid var(--hair);
 	border-radius: 6px;
+	background: var(--surface);
+	overflow-wrap: anywhere;
 }
 .chat-message p {
 	white-space: pre-wrap;
 }
 .chat-user {
 	margin-left: 2rem;
+	background: var(--surface-2);
 }
 .chat-assistant {
 	margin-right: 2rem;
+}
+.chat-meta {
+	font-weight: 600;
+}
+.chat-status {
+	display: inline-block;
+	white-space: nowrap;
 }
 .chat-composer {
 	display: grid;
@@ -3544,11 +3579,41 @@ main a:active {
 }
 .chat-composer textarea {
 	width: 100%;
+	resize: vertical;
 }
 .chat-controls label {
 	display: grid;
 	gap: 0.25rem;
+	min-width: 0;
+	margin: 0;
+}
+.chat-controls label:nth-child(1) {
+	flex: 0 1 92px;
+}
+.chat-controls label:nth-child(2) {
+	flex: 1 1 115px;
+}
+.chat-controls label:nth-child(3) {
+	flex: 0 1 98px;
+}
+.chat-controls select {
+	width: 100%;
+	max-width: 100%;
 }
 .chat-controls button {
 	margin-left: auto;
+}
+.chat-composer [data-chat-model-status]:empty {
+	display: none;
+}
+@media (max-width: 480px) {
+	.chat-history {
+		max-height: 25vh;
+	}
+	.chat-user {
+		margin-left: 0.75rem;
+	}
+	.chat-assistant {
+		margin-right: 0.75rem;
+	}
 }

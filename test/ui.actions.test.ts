@@ -3,6 +3,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { realpathSync } from 'node:fs'
 import { closeStore, openStore } from '../plugin/src/store.ts'
+import { askRequest, setRequestState } from '../plugin/src/requests.ts'
 import { explorationEvents, openExploration } from '../plugin/src/explorations.ts'
 import { explorationStatus, running } from '../plugin/src/explorers.ts'
 import { startUi } from '../plugin/src/ui/server.ts'
@@ -731,7 +732,7 @@ test('a new Pi authentication failure shows the tester error in the run banner',
 	assert.match(page, /data-key="run-ended"[\s\S]*?HTTP 401[\s\S]*?API key expired/)
 })
 
-test('plan, exploration, and history show reported, partial, zero, and unknown costs', async (t) => {
+test('plan totals include chats and exploration history keeps individual costs', async (t) => {
 	const { ui, workspace } = await fixture(t, {})
 	const store = openStore(workspace)
 	for (const [id, cost] of [
@@ -752,9 +753,23 @@ test('plan, exploration, and history show reported, partial, zero, and unknown c
 		if (id === 'x-1') event(store, id, { step: 'record', explorer: 'a1', status: 'completed', detail: {} })
 		done(store, id)
 	}
+	const chat = askRequest(store, actor, {
+		text: 'Review checkout.',
+		context: { planId: 'checkout', record: null, planChat: true },
+		chatId: null,
+	})
+	setRequestState(store, chat, 'running')
+	setRequestState(store, chat, 'answered', { reply: 'Reviewed.', costUsd: 0.32, costScope: 'turn' })
+	const other = askRequest(store, actor, {
+		text: 'Show all plans.',
+		context: { planId: null, record: null, page: 'plans' },
+		chatId: null,
+	})
+	setRequestState(store, other, 'running')
+	setRequestState(store, other, 'answered', { reply: 'Listed.', costUsd: 0.75, costScope: 'turn' })
 	closeStore(store)
 	const home = (await call(ui, '/')).body
-	assert.match(home, /data-key="plan:checkout"[\s\S]*?Exploration cost \$0\.12 \(partial\)/)
+	assert.match(home, /data-key="plan:checkout"[\s\S]*?Total cost \$0\.44 \(partial\)/)
 	const partial = (await call(ui, '/explorations/x-1')).body
 	assert.match(partial, /Total cost \$0\.12 \(partial\)/)
 	const zero = (await call(ui, '/explorations/x-2')).body
@@ -763,6 +778,7 @@ test('plan, exploration, and history show reported, partial, zero, and unknown c
 	assert.match(unknown, /Total cost Unknown/)
 	assert.match((await call(ui, '/explorations/x-small')).body, /Total cost &lt;\$0\.01/)
 	const history = (await call(ui, '/plans/checkout@1')).body
+	assert.match(history, /Total cost \$0\.44 \(partial\)/)
 	assert.match(history, /<th scope="col">Cost<\/th>/)
 	assert.match(history, /data-key="exploration:x-1"[\s\S]*?\$0\.12 \(partial\)/)
 	assert.match(history, /data-key="exploration:x-2"[\s\S]*?\$0\.00/)
@@ -789,7 +805,7 @@ test('recovered Pi session costs appear on all three cost surfaces', async (t) =
 		)
 		.run(operation, 'end', 'a1', 0.14, 0, operation)
 	closeStore(store)
-	assert.match((await call(ui, '/')).body, /Exploration cost \$0\.14/)
+	assert.match((await call(ui, '/')).body, /Total cost \$0\.14/)
 	assert.match((await call(ui, '/explorations/x-4')).body, /Total cost \$0\.14/)
 	assert.match((await call(ui, '/plans/checkout@1')).body, /data-key="exploration:x-4"[\s\S]*?\$0\.14/)
 })

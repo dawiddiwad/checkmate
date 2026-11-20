@@ -177,7 +177,7 @@ async function streamRequest(reply) {
 		await new Promise((resolve) => setTimeout(resolve, 60000))
 	}
 	if (spec.noResult) return
-	emit({ type: 'result', subtype: spec.isError ? 'error_during_execution' : 'success', is_error: Boolean(spec.isError), result: spec.result ?? 'Done.', session_id: session, total_cost_usd: spec.cost ?? 0.06, duration_ms: 1000, permission_denials: denials })
+	emit({ type: 'result', subtype: spec.isError ? 'error_during_execution' : 'success', is_error: Boolean(spec.isError), result: spec.result ?? 'Done.', session_id: session, total_cost_usd: spec.cost ?? 0.06, model_usage_since_last_result: spec.currentUsage, duration_ms: 1000, permission_denials: denials })
 }
 `
 

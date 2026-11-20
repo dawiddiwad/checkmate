@@ -1452,7 +1452,11 @@ async function askNow() {
 		let response = await send()
 		if (response.status === 403 && (await renewToken())) response = await send()
 		const destination = response.ok && response.redirected ? new URL(response.url) : null
-		if (!destination || !/^\/chats\/[^/]+$/.test(destination.pathname)) {
+		if (
+			!destination ||
+			destination.origin !== location.origin ||
+			!(/^\/chats\/[^/]+$/.test(destination.pathname) || /^\/plans\/[^/]+$/.test(destination.pathname))
+		) {
 			const fresh = new DOMParser().parseFromString(await response.text(), 'text/html')
 			throw new Error(
 				fresh.querySelector('[role="alert"]')?.textContent?.trim() ||
@@ -1460,7 +1464,7 @@ async function askNow() {
 			)
 		}
 		if (findAsking !== sending) return
-		location.assign(destination.pathname)
+		location.assign(destination.pathname + destination.search)
 	} catch (problem) {
 		if (findAsking !== sending) return
 		findAsking = null
@@ -2465,11 +2469,23 @@ function replaceRegion(region, fresh, previous) {
 	const next = document.importNode(fresh, true)
 	for (const details of next.querySelectorAll('details[data-open-key]'))
 		if (opened.has(details.dataset.openKey)) details.open = opened.get(details.dataset.openKey)
+	const chatChanged =
+		region.matches('[data-chat-history]') &&
+		JSON.stringify(
+			[...region.querySelectorAll('[data-chat-content], [data-chat-terminal]')].map((item) =>
+				item.hasAttribute('data-chat-terminal') ? item.getAttribute('data-chat-terminal') : item.textContent
+			)
+		) !==
+			JSON.stringify(
+				[...fresh.querySelectorAll('[data-chat-content], [data-chat-terminal]')].map((item) =>
+					item.hasAttribute('data-chat-terminal') ? item.getAttribute('data-chat-terminal') : item.textContent
+				)
+			)
 	const scrolled = region.scrollTop
 	const detailMarked = level === 'detail' && region.matches('[data-drawer]')
 	const detailLabel = detailMarked ? current('detail')?.dataset.label : null
 	region.replaceWith(next)
-	next.scrollTop = scrolled
+	next.scrollTop = chatChanged ? next.scrollHeight : scrolled
 	if (next.matches('[data-drawer]')) drawer = next
 	if (review) {
 		for (const area of document.querySelectorAll('[data-nav][aria-expanded]'))
@@ -3297,6 +3313,15 @@ document.addEventListener(
 	true
 )
 
+const activePlanChat = document.querySelector('[data-navigator] [data-target="chats"][aria-selected="true"]')
+if (activePlanChat && matchMedia('(max-width: 900px)').matches) {
+	const nav = activePlanChat.closest('[data-navigator]')
+	const shift = activePlanChat.getBoundingClientRect().right - nav.getBoundingClientRect().right + 8
+	if (shift > 0) nav.scrollLeft += shift
+}
+
+for (const history of document.querySelectorAll('[data-chat-history]')) history.scrollTop = history.scrollHeight
+
 for (const form of document.querySelectorAll('[data-chat-composer]')) {
 	const harness = form.querySelector('[data-chat-harness]')
 	const model = form.querySelector('[data-chat-model]')
@@ -3357,14 +3382,18 @@ for (const form of document.querySelectorAll('[data-chat-composer]')) {
 			let response = await send()
 			if (response.status === 403 && (await renewToken())) response = await send()
 			const destination = response.ok && response.redirected ? new URL(response.url) : null
-			if (!destination || !/^\/chats\/[^/]+$/.test(destination.pathname)) {
+			if (
+				!destination ||
+				destination.origin !== location.origin ||
+				!(/^\/chats\/[^/]+$/.test(destination.pathname) || /^\/plans\/[^/]+$/.test(destination.pathname))
+			) {
 				const fresh = new DOMParser().parseFromString(await response.text(), 'text/html')
 				throw new Error(
 					fresh.querySelector('[role="alert"]')?.textContent?.trim() || 'Could not send the message.'
 				)
 			}
 			forgetDrafts(form)
-			location.assign(destination.pathname)
+			location.assign(destination.pathname + destination.search)
 		} catch (problem) {
 			error.textContent = problem.message || 'Could not send the message.'
 			error.hidden = false

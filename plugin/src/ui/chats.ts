@@ -1,20 +1,22 @@
 import type { Store } from '../store.ts'
-import type { RequestRecord, RequestSelection } from '../requests.ts'
+import type { Chat, RequestRecord, RequestSelection } from '../requests.ts'
 import type { Env } from '../sessions.ts'
+import type { Html } from './html.ts'
 import type { Context, Page } from './layout.ts'
 import { chatOf, listedChats } from '../requests.ts'
 import { explorationPermissions } from '../permissions.ts'
-import { ago, html, pill, time } from './html.ts'
+import { ago, costText, html, pill, time } from './html.ts'
 import { emptyNotice, heading } from './layout.ts'
 import { requestHref } from './permissions.ts'
 import { chatPreferences } from './requester.ts'
 import { failureText } from './requests.ts'
 
-function composer(context: Context, action: string, selection: RequestSelection, screen = '') {
+function composer(context: Context, action: string, selection: RequestSelection, screen = '', back = '') {
 	const model = selection.provider && selection.model ? `${selection.provider}/${selection.model}` : selection.model
 	return html`<form method="post" action="${action}" class="chat-composer" data-chat-composer>
 		<input type="hidden" name="csrf" value="${context.csrf}" />
 		${screen ? html`<input type="hidden" name="screen" value="${screen}" />` : ''}
+		${back ? html`<input type="hidden" name="return" value="${back}" />` : ''}
 		<label for="chat-text">Message</label>
 		<textarea id="chat-text" name="text" required maxlength="4000" rows="4" placeholder="Ask Checkmate…"></textarea>
 		<div class="chat-controls">
@@ -76,28 +78,32 @@ function origin(request: RequestRecord) {
 	return start ? html`<p class="help">Started from ${start}.</p>` : ''
 }
 
-function turn(store: Store, request: RequestRecord, context: Context) {
+function turn(store: Store, request: RequestRecord, context: Context, back = `/chats/${request.conversation}`) {
 	const permissions = explorationPermissions(store, request.id).filter((item) => !item.decision)
 	const failure = request.state === 'failed' ? failureText(request) : null
 	return html`<article class="chat-turn" data-key="request:${request.id}">
 		<div class="chat-message chat-user">
 			<div class="chat-meta">You · ${time(request.askedAt)}</div>
-			<p>${request.text}</p>
+			<p data-chat-content>${request.text}</p>
 		</div>
-		<div class="chat-message chat-assistant">
+		<div
+			class="chat-message chat-assistant"
+			${['answered', 'failed', 'stopped', 'interrupted'].includes(request.state) ? html`data-chat-terminal="${request.state}"` : ''}
+		>
 			<div class="chat-meta">
 				Checkmate ·
 				${request.harness === 'pi' ? 'Pi' : 'Claude Code'}${request.model ? ` · ${request.provider ? `${request.provider}/` : ''}${request.model}` : ''}${request.effort ? ` · ${request.effort}` : ''}
-				${pill(request.state)}
-				<a href="/requests/${request.id}">${request.id}</a>
+				<span class="chat-status"
+					>${pill(request.state)} <a href="/requests/${request.id}">${request.id}</a></span
+				>
 			</div>
-			${request.reply ? html`<p>${request.reply}</p>` : ''}
+			${request.reply ? html`<p data-chat-content>${request.reply}</p>` : ''}
 			${request.state === 'waiting' ? html`<p class="help">Waiting for another request to finish.</p>` : ''}
 			${request.state === 'running' ? html`<p class="help">Working…</p>` : ''}
-			${permissions.map((item) => html`<p class="banner warn">Waiting for permission. <a href="${requestHref(item, `/chats/${request.conversation}`)}">Answer it</a></p>`)}
+			${permissions.map((item) => html`<p class="banner warn">Waiting for permission. <a href="${requestHref(item, back)}">Answer it</a></p>`)}
 			${
 				request.activity.length
-					? html`<details>
+					? html`<details data-open-key="activity:${request.id}">
 							<summary>Activity (${request.activity.length})</summary>
 							<ol class="sp-activity">
 								${request.activity.map((entry) => html`<li>${entry.line}</li>`)}
@@ -115,7 +121,7 @@ function turn(store: Store, request: RequestRecord, context: Context) {
 			}
 			${
 				request.changes.length
-					? html`<details>
+					? html`<details data-open-key="changes:${request.id}">
 							<summary>Changes (${request.changes.length})</summary>
 							<ul>
 								${request.changes.map((change) => html`<li>${change.href ? html`<a href="${change.href}">${change.text}</a>` : change.text}</li>`)}
@@ -123,9 +129,29 @@ function turn(store: Store, request: RequestRecord, context: Context) {
 						</details>`
 					: ''
 			}
-			${request.state === 'running' || request.state === 'waiting' ? html`<form method="post" action="/requests/${request.id}/stop"><input type="hidden" name="csrf" value="${context.csrf}" /><input type="hidden" name="return" value="/chats/${request.conversation}" /><button class="btn" type="submit">Stop</button></form>` : ''}
+			${request.state === 'running' || request.state === 'waiting' ? html`<form method="post" action="/requests/${request.id}/stop"><input type="hidden" name="csrf" value="${context.csrf}" /><input type="hidden" name="return" value="${back}" /><button class="btn" type="submit">Stop</button></form>` : ''}
 		</div>
 	</article>`
+}
+
+function chatList(chats: Chat[], href: (chat: Chat) => string, empty: Html) {
+	return html`<div class="${chats.length ? 'chat-list' : ''}" data-region="chat-list">
+		${
+			chats.length
+				? chats.map((chat) => {
+						const last = chat.turns.at(-1)!
+						return html`<a class="chat-list-item" id="chat-${chat.id}" href="${href(chat)}"
+							><strong>${title(chat.turns[0].text)}</strong
+							><span>
+								${pill(last.state)} · ${ago(last.askedAt)} · ${chat.turns.length}
+								${chat.turns.length === 1 ? 'message' : 'messages'} ·
+								<span title="Chat cost">${costText(chat.costUsd, chat.costPartial)}</span></span
+							></a
+						>`
+					})
+				: empty
+		}
+	</div>`
 }
 
 export function chatsPage(store: Store, context: Context, params: URLSearchParams, env: Env): Page {
@@ -138,24 +164,74 @@ export function chatsPage(store: Store, context: Context, params: URLSearchParam
 		body: html`${heading('Chats', 'Your conversations with Checkmate.')}
 			<div class="chat-list-actions"><a class="btn" href="/chats?new=1">New chat</a></div>
 			${fresh ? composer(context, '/chats', chatPreferences(store, env), params.get('screen') ?? '') : ''}
-			${
-				chats.length
-					? html`<div class="chat-list">
-							${chats.map((chat) => {
-								const first = chat.turns[0]
-								const last = chat.turns[chat.turns.length - 1]
-								return html`<a class="chat-list-item" href="/chats/${chat.id}"
-									><strong>${title(first.text)}</strong
-									><span
-										>${pill(last.state)} · ${ago(last.askedAt)} · ${chat.turns.length}
-										${chat.turns.length === 1 ? 'message' : 'messages'}</span
-									></a
-								>`
-							})}
-						</div>`
-					: emptyNotice('No chats yet.', 'Start a chat or use Find to ask Checkmate.')
-			}`,
+			${chatList(
+				chats,
+				({ id, context }) =>
+					context.planChat && context.planId
+						? `/plans/${context.planId}${context.planRevision ? `@${context.planRevision}` : ''}?chat=${id}`
+						: `/chats/${id}`,
+				emptyNotice('No chats yet.', 'Start a chat or use Find to ask Checkmate.')
+			)}`,
 	}
+}
+
+function chatSelection(store: Store, env: Env, chat: Chat) {
+	const last = chat.turns.at(-1)!
+	return chatPreferences(store, env, {
+		harness: last.harness,
+		model: last.provider && last.model ? `${last.provider}/${last.model}` : (last.model ?? undefined),
+		effort: last.effort ?? undefined,
+	})
+}
+
+function history(store: Store, context: Context, chat: Chat, back: string) {
+	return html`<p class="chat-cost" data-region="chat-cost">Chat cost ${costText(chat.costUsd, chat.costPartial)}</p>
+		<div
+			class="chat-history"
+			data-region="chat-history"
+			data-chat-history
+			role="region"
+			aria-label="Conversation"
+			tabindex="0"
+		>
+			${chat.turns.map((item) => turn(store, item, context, back))}
+		</div>`
+}
+
+export function planChat(
+	store: Store,
+	context: Context,
+	env: Env,
+	options: { path: string; chats: Chat[]; chat: Chat | null; fresh: boolean; params: URLSearchParams }
+) {
+	const { path, chats, chat, fresh } = options
+	const address = (key = '', value = '') => {
+		const params = new URLSearchParams(options.params)
+		params.delete('chat')
+		params.delete('newChat')
+		if (key) params.set(key, value)
+		const query = params.toString()
+		return query ? `${path}?${query}` : path
+	}
+	return html`<section class="plan-chat" aria-label="Plan chats">
+		<div class="chat-thread-heading">
+			<a href="${address()}">← Plan</a>
+			<a class="btn" href="${address('newChat', '1')}">New chat</a>
+		</div>
+		<h1>Plan chats · ${decodeURIComponent(path.slice('/plans/'.length))}</h1>
+		${
+			chat
+				? html`<div class="chat-thread">
+						<a href="${address('chat', 'list')}">← All chats</a>
+						<h2>${title(chat.turns[0].text)}</h2>
+						${history(store, context, chat, address('chat', chat.id))}
+						${composer(context, `${path}/chats/${encodeURIComponent(chat.id)}/turns`, chatSelection(store, env, chat), '', address('chat', chat.id))}
+					</div>`
+				: fresh
+					? composer(context, `${path}/chats`, chatPreferences(store, env), '', address('newChat', '1'))
+					: chatList(chats, (item) => address('chat', item.id), html`<p class="help">No chats yet.</p>`)
+		}
+	</section>`
 }
 
 export function chatPage(store: Store, context: Context, id: string, env: Env): Page | null {
@@ -172,11 +248,8 @@ export function chatPage(store: Store, context: Context, id: string, env: Env): 
 		body: html`<div class="chat-thread">
 			<div class="chat-thread-heading"><a href="/chats">← Chats</a><a href="/chats?new=1">New chat</a></div>
 			<h1>${title(chat.turns[0].text)}</h1>
-			${origin(chat.turns[0])}
-			<div class="chat-history" data-region="chat-history" aria-label="Conversation">
-				${chat.turns.map((item) => turn(store, item, context))}
-			</div>
-			${composer(context, `/chats/${id}/turns`, chatPreferences(store, env, { harness: chat.turns.at(-1)!.harness, model: chat.turns.at(-1)!.provider && chat.turns.at(-1)!.model ? `${chat.turns.at(-1)!.provider}/${chat.turns.at(-1)!.model}` : (chat.turns.at(-1)!.model ?? undefined), effort: chat.turns.at(-1)!.effort ?? undefined }))}
+			${origin(chat.turns[0])} ${history(store, context, chat, `/chats/${id}`)}
+			${composer(context, `/chats/${id}/turns`, chatSelection(store, env, chat))}
 		</div>`,
 	}
 }

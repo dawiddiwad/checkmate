@@ -16,6 +16,7 @@ Checkmate includes a Claude Code plugin, a Pi package, and a deterministic Node.
 - `plugin/src/cli.ts` parses arguments and prints compact or JSON output. `plugin/dist/checkmate.js` is its bundle.
 - `plugin/src/render.ts` generates the Markdown, HTML, and JSON exports.
 - `plugin/src/ui/` is the review UI: a `node:http` server on `127.0.0.1`, the pages, and the assets. `ui/settings.ts` has the Settings pages. `ui/hooks.ts` has the hook routes that the sessions of a run and of a request call: it holds each permission request until a person answers, and keeps the activity line of each tester. `ui/chats.ts` renders Chats. `ui/requester.ts` runs one turn at a time, with Claude stream JSON or Pi RPC. It sends recent turns when a selection change needs a new native session. `checkmate ui` starts it.
+- The first chat turn gives the chat its validated plan context. The plan and global Chats views read the same turns. `costs.ts` adds the reported chat costs to the exploration costs for that plan.
 - `plugin/src/types.ts` and `plugin/src/validators.js` are generated from the schemas.
 
 `cli/` is the npm package `@xoxoai/checkmate`.

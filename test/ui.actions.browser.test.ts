@@ -723,6 +723,7 @@ test('reported costs are visible on plan cards, exploration and history at narro
 		['x-1', 0.12],
 		['x-2', 0],
 		['x-3', null],
+		['x-4', 123.45],
 	] as const) {
 		openExploration(store, human, { planId: 'checkout', build: id, explorationId: id })
 		event(store, id, { step: 'start', detail: { ...launch, explorers: 1 } })
@@ -742,7 +743,7 @@ test('reported costs are visible on plan cards, exploration and history at narro
 		await page.goto(url('/'))
 		assert.match(
 			(await page.locator('[data-key="plan:checkout"]').textContent()) ?? '',
-			/Total cost \$0\.12 \(partial\)/
+			/Total cost \$123\.57 \(partial\)/
 		)
 		await page.goto(url('/explorations/x-1'))
 		assert.match(
@@ -768,6 +769,16 @@ test('reported costs are visible on plan cards, exploration and history at narro
 		)
 		assert.match((await history.locator('tr[data-key="exploration:x-2"]').textContent()) ?? '', /\$0\.00/)
 		assert.match((await history.locator('tr[data-key="exploration:x-3"]').textContent()) ?? '', /Unknown/)
+		const cost = history.locator('tr[data-key="exploration:x-4"] td[title="Reported exploration cost"]')
+		assert.equal((await cost.textContent())?.trim(), '$123.45')
+		const fits = await cost.evaluate((cell) => {
+			const range = document.createRange()
+			range.selectNodeContents(cell)
+			const lines = [...range.getClientRects()].filter((rect) => rect.width > 0)
+			const bounds = cell.getBoundingClientRect()
+			return lines.length === 1 && lines[0].left >= bounds.left && lines[0].right <= bounds.right
+		})
+		assert.equal(fits, true, `cost fits on one line at ${width}px`)
 		const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)
 		assert.equal(overflow, false)
 	}

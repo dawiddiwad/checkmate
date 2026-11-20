@@ -23448,7 +23448,7 @@ function explorationsTable(explorations) {
 								${item.level ?? html2`<span class="muted">none</span>`}${item.explorers === null ? "" : html2` <span class="muted">· ${plural(item.explorers, "explorer")}</span>`}
 							</td>
 							<td class="nowrap">${time(item.startedAt)}</td>
-							<td class="nowrap" title="Reported exploration cost">
+							<td class="exploration-cost" title="Reported exploration cost">
 								${costText(item.costUsd, item.costPartial)}
 							</td>
 						</tr>`

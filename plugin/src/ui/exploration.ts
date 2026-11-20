@@ -214,7 +214,7 @@ export function explorationsTable(explorations: Listed[]) {
 								}
 							</td>
 							<td class="nowrap">${time(item.startedAt)}</td>
-							<td class="nowrap" title="Reported exploration cost">
+							<td class="exploration-cost" title="Reported exploration cost">
 								${costText(item.costUsd, item.costPartial)}
 							</td>
 						</tr>`

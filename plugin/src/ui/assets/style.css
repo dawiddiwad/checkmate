@@ -843,6 +843,10 @@ th {
 	background: var(--surface-2);
 	white-space: nowrap;
 }
+.exploration-cost {
+	min-inline-size: calc(7ch + 24px);
+	white-space: nowrap;
+}
 tbody tr:hover {
 	background: var(--row-hover);
 }

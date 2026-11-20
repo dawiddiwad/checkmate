@@ -630,7 +630,7 @@ test('a person selects different tester models and keeps them when the level cha
 			json: {
 				models: [
 					{ value: 'haiku', label: 'Haiku' },
-					{ value: 'sonnet', label: 'Sonnet' },
+					{ value: 'sonnet', label: 'Sonnet', effortLevels: ['medium', 'high'] },
 				],
 			},
 		})
@@ -646,6 +646,10 @@ test('a person selects different tester models and keeps them when the level cha
 	await page.keyboard.press('ArrowDown')
 	assert.equal(await dialog.getByLabel('Tester a1', { exact: true }).inputValue(), 'haiku')
 	await dialog.getByLabel('Tester a2', { exact: true }).selectOption('sonnet')
+	assert.equal(await dialog.getByLabel('Reasoning effort for tester a1', { exact: true }).isVisible(), false)
+	const effort = dialog.getByLabel('Reasoning effort for tester a2', { exact: true })
+	assert.equal(await effort.locator('option:checked').textContent(), 'Default (medium)')
+	await effort.selectOption('high')
 	await dialog.locator('[data-tester-models] summary').click()
 	await dialog.locator('label', { hasText: 'smoke' }).click()
 	await page.waitForFunction(() => (document.querySelector('[name="testerModel.a2"]') as HTMLSelectElement).disabled)
@@ -654,12 +658,14 @@ test('a person selects different tester models and keeps them when the level cha
 	await dialog.locator('[data-tester-models] summary').click()
 	assert.equal(await dialog.getByLabel('Tester a1', { exact: true }).inputValue(), 'haiku')
 	assert.equal(await dialog.getByLabel('Tester a2', { exact: true }).inputValue(), 'sonnet')
+	assert.equal(await effort.inputValue(), 'high')
 	await dialog.locator('input[name="build"]').fill('b-models')
 	await dialog.getByRole('button', { name: /Start the test/ }).click()
 	await page.waitForURL(/\/explorations\/x-1$/)
 	await waitFor('both testers start', () => pids('x-1').children.length >= 2)
 	const start = read((store) => explorationEvents(store, 'x-1').find((event) => event.step === 'start'))
 	assert.deepEqual(start?.detail.testerModels, { a1: 'haiku', a2: 'sonnet' })
+	assert.deepEqual(start?.detail.testerEfforts, { a2: 'high' })
 })
 
 test('new change offers tester models and starts with both selections', browserTest, async (t) => {

@@ -4,7 +4,7 @@ import { glyph, html } from './html.ts'
 import { viewer } from './evidence.ts'
 
 export type Theme = 'system' | 'light' | 'dark'
-export type Section = 'home' | 'activity' | 'runs' | 'log' | 'settings' | null
+export type Section = 'home' | 'activity' | 'runs' | 'log' | 'settings' | 'chats' | null
 
 export type Context = {
 	harness: Harness
@@ -15,7 +15,13 @@ export type Context = {
 	toast: string | null
 	queueCount: number
 	permissions: number
-	requests: { running: string | null; unread: number; firstUnread: string | null }
+	requests: {
+		running: string | null
+		runningChat?: string | null
+		unread: number
+		firstUnread: string | null
+		firstUnreadChat?: string | null
+	}
 	running: number
 	cursor: number
 	workspace: string
@@ -101,7 +107,7 @@ function statusBar(context: Context, page: Page) {
 		<span class="sb-links">
 			<a
 				class="sb-btn"
-				href="${context.requests.running ? `/requests/${context.requests.running}` : '/requests'}"
+				href="${context.requests.runningChat ? `/chats/${context.requests.runningChat}` : '/chats'}"
 				title="The request that runs now"
 				data-region="request-link"
 				${context.requests.running ? '' : html`hidden`}
@@ -117,7 +123,11 @@ function statusBar(context: Context, page: Page) {
 			>
 			<a
 				class="sb-btn att"
-				href="${context.requests.unread === 1 ? `/requests/${context.requests.firstUnread}` : '/requests'}"
+				href="${
+					context.requests.unread === 1 && context.requests.firstUnreadChat
+						? `/chats/${context.requests.firstUnreadChat}`
+						: '/chats'
+				}"
 				title="Replies to your requests that you did not read"
 				aria-label="${context.requests.unread} ${context.requests.unread === 1 ? 'reply' : 'replies'} not read"
 				data-region="replies-link"
@@ -145,8 +155,8 @@ function statusBar(context: Context, page: Page) {
 					${page.section === 'activity' ? html`aria-current="page"` : ''}
 					>${html`<span>Activity${context.running ? html`<span class="sb-long"> · ${context.running} running</span>` : ''}</span>`}</a
 				>
-				${statusLink(page, 'runs', '/runs', 'Runs')} ${statusLink(page, 'log', '/log', 'Log')}
-				${statusLink(page, 'settings', '/settings', 'Settings')}</span
+				${statusLink(page, 'chats', '/chats', 'Chats')} ${statusLink(page, 'runs', '/runs', 'Runs')}
+				${statusLink(page, 'log', '/log', 'Log')} ${statusLink(page, 'settings', '/settings', 'Settings')}</span
 			>
 			<details class="sb-more menu" data-menu>
 				<summary class="sb-btn">More</summary>
@@ -154,7 +164,8 @@ function statusBar(context: Context, page: Page) {
 					<button type="button" data-find-open>Find</button
 					><a href="/activity" data-region="activity-menu"
 						>Activity${context.running ? ` · ${context.running} running` : ''}</a
-					><a href="/runs">Runs</a><a href="/log">Log</a><a href="/settings">Settings</a>
+					><a href="/chats">Chats</a><a href="/runs">Runs</a><a href="/log">Log</a
+					><a href="/settings">Settings</a>
 				</div>
 			</details>
 		</span>

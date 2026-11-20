@@ -4,7 +4,8 @@ import type { Html } from './html.ts'
 import type { Context, Page } from './layout.ts'
 import type { EntryPoint, InstanceRecord } from '../targets.ts'
 import { Refusal } from '../contracts.ts'
-import { requestModelText, testerModelText, workspaceUiEnv } from '../settings.ts'
+import { requestEffortText, requestModelText, testerEffortText, testerModelText, workspaceUiEnv } from '../settings.ts'
+import { testLevels } from '../levels.ts'
 import { conversationText } from './requests.ts'
 import { liveUi, requireChild } from '../sessions.ts'
 import { selectedHarness } from '../pi.ts'
@@ -504,6 +505,8 @@ export function harnessPage(
 	const pi = harness === 'pi'
 	const testerValue = testerModel?.value ?? testerModelText(store, harness)
 	const requestValue = model?.value ?? requestModelText(store, harness)
+	const levelModels = [...new Set(Object.values(testLevels).map((level) => level.model))]
+	const testerDefault = !pi && levelModels.length === 1 ? levelModels[0] : ''
 	const body = html`${heading('Coding harness', null)}
 		<div class="panel">
 			<form method="post" action="/settings/harness/select" class="decision-form">
@@ -554,7 +557,12 @@ export function harnessPage(
 				<div class="btns"><button class="btn primary">Save the rules</button></div>
 			</form>
 		</section>
-		<section class="panel" aria-labelledby="model-settings" data-model-catalog="${harness}">
+		<section
+			class="panel"
+			aria-labelledby="model-settings"
+			data-model-catalog="${harness}"
+			data-tester-default="${testerDefault}"
+		>
 			<h2 class="lab" id="model-settings">Models</h2>
 			<p class="help">Choose a model for each kind of work. Choose a default or a model from the list.</p>
 			<p class="help" role="status" data-model-status>Loading models from ${pi ? 'Pi' : 'Claude Code'}…</p>
@@ -576,6 +584,16 @@ export function harnessPage(
 						${pi ? 'The Pi default is the model configured in Pi.' : 'The test level selects its default model.'}
 					</p>
 					<p class="help" data-model-unavailable="tester-model" hidden></p>
+					<div hidden>
+						<label class="lab" for="tester-effort">Reasoning effort for testers</label>
+						<select
+							id="tester-effort"
+							name="testerEffort"
+							data-effort-for="tester-model"
+							data-saved-effort="${testerEffortText(store, harness)}"
+							disabled
+						></select>
+					</div>
 					${testerModel?.error ? html`<p class="form-error" role="alert" data-field="model">${testerModel.error}</p>` : ''}
 				</div>
 
@@ -594,6 +612,16 @@ export function harnessPage(
 						The default is the model configured in ${pi ? 'Pi' : 'Claude Code'}.
 					</p>
 					<p class="help" data-model-unavailable="request-model" hidden></p>
+					<div hidden>
+						<label class="lab" for="request-effort">Reasoning effort for requests</label>
+						<select
+							id="request-effort"
+							name="requestEffort"
+							data-effort-for="request-model"
+							data-saved-effort="${requestEffortText(store, harness)}"
+							disabled
+						></select>
+					</div>
 					${model?.error ? html`<p class="form-error" role="alert" data-field="model">${model.error}</p>` : ''}
 				</div>
 				<div class="btns"><button class="btn primary">Save models</button></div>

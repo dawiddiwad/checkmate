@@ -21,9 +21,11 @@ import {
 } from './journal.ts'
 import type { Harness } from './pi.ts'
 import { piErrorText, piModelArgs, piModelEnv, piStderr, selectedHarness } from './pi.ts'
-import { requireModel, testerModelText, workspaceEnv } from './settings.ts'
+import { requireEffort, requireModel, testerEffortText, testerModelText, workspaceEnv } from './settings.ts'
+import type { ModelCatalog } from './model-catalog.ts'
+import { discoverModelCatalog, effortArgs, resolvedEffort } from './model-catalog.ts'
 import { defaultLevel, levelNames, storedLevel, testLevels } from './levels.ts'
-import { explorerActor, lastEntry, recordSession, defaultRecorderTimeout } from './recorder.ts'
+import { explorerActor, lastEntry, launchContext, recordSession, defaultRecorderTimeout } from './recorder.ts'
 import {
 	explorerBrief,
 	followBrief,
@@ -84,6 +86,7 @@ export type StartInput = OpenInput & {
 	allow: string[]
 	claudeArgs: string[]
 	testerModels?: Record<string, string>
+	testerEfforts?: Record<string, string>
 	timeoutSeconds?: number
 	session?: boolean
 }
@@ -94,9 +97,11 @@ export type Launch = {
 	explorers: number
 	model: string | null
 	modelFrom: 'level' | 'host' | 'agent' | 'workspace'
+	effort?: string
 	verifier: boolean
 	context: ChildContext
 	testerModels?: Record<string, string>
+	testerEfforts?: Record<string, string>
 	allow: string[]
 	timeoutSeconds: number
 	pluginHidden: boolean
@@ -111,12 +116,16 @@ const activityMilliseconds = 5000
 export const mergerActor = 'qa:merge'
 export const verifierActor = 'qa:verify'
 
-function hostModel(claudeArgs: string[]) {
-	for (const [index, arg] of claudeArgs.entries()) {
-		if (arg === '--model') return claudeArgs[index + 1]
-		if (arg.startsWith('--model=')) return arg.slice('--model='.length)
+function hostArg(args: string[], flag: string) {
+	for (const [index, arg] of args.entries()) {
+		if (arg === flag) return args[index + 1]
+		if (arg.startsWith(`${flag}=`)) return arg.slice(flag.length + 1)
 	}
 	return undefined
+}
+
+function hostModel(args: string[]) {
+	return hostArg(args, '--model')
 }
 
 function contextForModel(context: ChildContext, model: string | undefined): ChildContext {
@@ -135,12 +144,25 @@ function contextForModel(context: ChildContext, model: string | undefined): Chil
 	return pi ? { ...context, piArgs: args } : { ...context, claudeArgs: args }
 }
 
+function contextForEffort(context: ChildContext, catalog: ModelCatalog | undefined, choice: string): ChildContext {
+	if (!catalog) return context
+	const { harness = 'claude' } = context
+	const args = harness === 'pi' ? (context.piArgs ?? []) : context.claudeArgs
+	if (hostArg(args, harness === 'pi' ? '--thinking' : '--effort')) return context
+	const effort = resolvedEffort(harness, catalog, hostModel(args) ?? '', choice, hostArg(args, '--provider'))
+	if (!effort) return context
+	return harness === 'pi'
+		? { ...context, piArgs: [...args, ...effortArgs(harness, effort)] }
+		: { ...context, claudeArgs: [...args, ...effortArgs(harness, effort)] }
+}
+
 export function launchPlan(
 	profile: Profile,
 	input: StartInput,
 	env: Env,
 	savedModel = '',
-	preferSaved = false
+	preferSaved = false,
+	savedEffort = ''
 ): Launch {
 	const level = requireChoice(
 		input.level ?? storedLevel(profile.explore?.level) ?? defaultLevel,
@@ -155,8 +177,10 @@ export function launchPlan(
 		const model = text.trim()
 		return model ? [[name, model] as const] : []
 	})
+	const testerEfforts = Object.entries(input.testerEfforts ?? {})
 	if (input.session) {
 		requireWellFormed(!testerModels.length, 'Individual tester models require testers in new processes.')
+		requireWellFormed(!testerEfforts.length, 'Individual tester efforts require testers in new processes.')
 		requireWellFormed(
 			!input.claudeArgs.length && input.timeoutSeconds === undefined,
 			'--claude-arg and --timeout are for testers in new processes. With --session, the host session starts the testers as agents.'
@@ -181,6 +205,10 @@ export function launchPlan(
 	for (const [name, model] of testerModels) {
 		requireWellFormed(names.includes(name), `Unknown tester ${name} for this exploration.`)
 		requireModel(harness, model)
+	}
+	for (const [name, effort] of testerEfforts) {
+		requireWellFormed(names.includes(name), `Unknown tester ${name} for this exploration.`)
+		requireEffort(harness, effort)
 	}
 	if (harness === 'pi') {
 		requireWellFormed(
@@ -217,6 +245,10 @@ export function launchPlan(
 						harness,
 					},
 		...(testerModels.length ? { testerModels: Object.fromEntries(testerModels) } : {}),
+		...(testerEfforts.length ? { testerEfforts: Object.fromEntries(testerEfforts) } : {}),
+		...(savedEffort && (selected || !host || (harness === 'pi' && preferSaved && !savedModel))
+			? { effort: savedEffort }
+			: {}),
 		allow: input.allow,
 		studySeconds: row.studySeconds,
 		testSeconds,
@@ -363,12 +395,14 @@ export function startExploration(
 			: insertExploration(store, input, operationId, at)
 		const row = explorationRow(store, opened.explorationId)
 		const savedModel = input.session ? '' : testerModelText(store, selectedHarness(env))
+		const savedEffort = input.session ? '' : testerEffortText(store, selectedHarness(env))
 		const launch = launchPlan(
 			targetRevision(store, row.target_id, row.target_revision).profile,
 			input,
 			env,
 			savedModel,
-			preferSavedModel
+			preferSavedModel,
+			savedEffort
 		)
 		addEvent(
 			store,
@@ -508,13 +542,25 @@ function watchWork(store: Store, actor: string, explorationId: string, explorer:
 	}
 }
 
-async function launchExplorers(store: Store, actor: string, explorationId: string, launch: Launch, env: Env) {
+async function launchExplorers(
+	store: Store,
+	actor: string,
+	explorationId: string,
+	launch: Launch,
+	env: Env,
+	catalog?: ModelCatalog
+) {
 	const opened = exploration(store, explorationId)
 	const entries = entryValues(store, explorationId)
 	const executable = requireChild(env, launch.context.harness)
 	const runs = explorerNames(launch.explorers).map(async (explorer) => {
 		const session = randomUUID()
-		const tester = contextForModel(launch.context, launch.testerModels?.[explorer])
+		const model = launch.testerModels?.[explorer]
+		const tester = contextForEffort(
+			contextForModel(launch.context, model),
+			catalog,
+			launch.testerEfforts?.[explorer] ?? (model ? '' : (launch.effort ?? ''))
+		)
 		const { folder, grant, deny, extraEnv } = explorerWork(store, explorationId, explorer, launch.explorers)
 		const rules = launch.context.harness === 'pi' ? launch.allow : [...launch.allow, ...grant]
 		const brief = explorerBrief(opened.charter, entries, `qa-${explorationId}-${explorer}-`, folder, {
@@ -846,12 +892,18 @@ export async function driveExploration(workspace: string, explorationId: string,
 			status: 'started',
 			detail: { pid: process.pid },
 		})
-		const launch = startOf(explorationEvents(store, explorationId))
-		if (!launch) throw new Refusal('prohibited', `Exploration ${explorationId} has no start.`)
+		const started = startOf(explorationEvents(store, explorationId))
+		if (!started) throw new Refusal('prohibited', `Exploration ${explorationId} has no start.`)
 		if (stopOf(explorationEvents(store, explorationId))) return
+		const catalog =
+			started.explorers || started.verifier
+				? await discoverModelCatalog(started.context.harness ?? 'claude', workspace, env).catch(() => undefined)
+				: undefined
+		if (stopOf(explorationEvents(store, explorationId))) return
+		const launch = { ...started, context: contextForEffort(started.context, catalog, started.effort ?? '') }
 		if (launch.explorers) {
 			deriveRules(store, actor, explorationId, launch, env)
-			const ended = await launchExplorers(store, actor, explorationId, launch, env)
+			const ended = await launchExplorers(store, actor, explorationId, started, env, catalog)
 			recordExplorers(
 				store,
 				actor,
@@ -1040,6 +1092,10 @@ export async function driveFollow(workspace: string, explorationId: string, env:
 		const plan = events.findLast((item) => item.step === 'follow')!.detail as FollowPlan
 		const initial = startOf(events)!
 		const followModel = hostModel(plan.context.claudeArgs)
+		const catalog = await discoverModelCatalog(plan.context.harness ?? 'claude', workspace, env).catch(
+			() => undefined
+		)
+		if (stopOf(explorationEvents(store, explorationId))) return
 		const launch: Launch = {
 			...initial,
 			...(followModel && followModel !== initial.model ? { model: followModel, modelFrom: 'host' } : {}),
@@ -1060,7 +1116,19 @@ export async function driveFollow(workspace: string, explorationId: string, env:
 					const watch = watchWork(store, actor, explorationId, explorer, 'follow-up')
 					const hook = childHook(store.workspace, explorationId, explorer)
 					const model = plan.modelOverride ? undefined : initial.testerModels?.[explorer]
-					const tester = contextForModel(plan.context, model)
+					const resumed =
+						plan.context.harness === 'pi' && !model && !hostModel(plan.context.piArgs ?? [])
+							? launchContext(store, explorationId, explorer, session)
+							: undefined
+					const tester =
+						resumed ??
+						contextForEffort(
+							contextForModel(plan.context, model),
+							catalog,
+							plan.modelOverride
+								? ''
+								: (initial.testerEfforts?.[explorer] ?? (model ? '' : (initial.effort ?? '')))
+						)
 					const context = { ...tester, deny, hook, work: folder }
 					const call = await watchStray(store, actor, explorationId, explorer, 'follow-up', () =>
 						launchChild(
@@ -1088,7 +1156,7 @@ export async function driveFollow(workspace: string, explorationId: string, env:
 				status: call.failure?.[0] ?? 'completed',
 				detail: {
 					session,
-					...(model ? { context: tester } : {}),
+					context: tester,
 					...(call.failure ? { reason: call.failure[1] } : {}),
 					...(call.stderr ? { stderr: call.stderr } : {}),
 					...(hint ? { hint } : {}),
@@ -1104,10 +1172,13 @@ export async function driveFollow(workspace: string, explorationId: string, env:
 		if (recorded) {
 			const review = {
 				...initial,
-				context:
+				context: contextForEffort(
 					followModel && followModel !== initial.model
 						? contextForModel(plan.context, initial.model ?? undefined)
 						: plan.context,
+					catalog,
+					initial.effort ?? ''
+				),
 				allow: plan.allow,
 				timeoutSeconds: plan.timeoutSeconds,
 			}

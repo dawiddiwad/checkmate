@@ -110,7 +110,7 @@ function choicesOf(item: Permission): Choice[] {
 	const rule = item.rule
 	const request = item.fromRequest
 	const scope = request ? 'conversation' : 'test'
-	const everyone = request ? `later requests of this conversation` : `any tester of this run`
+	const everyone = request ? 'later requests in this conversation using the same harness' : 'any tester of this run'
 	const where = request ? `request ${run}` : `run ${run}`
 	const ends = request ? 'The rule ends when you start a new conversation.' : 'The rule ends with the run.'
 	return [

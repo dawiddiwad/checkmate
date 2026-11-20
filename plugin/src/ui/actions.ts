@@ -125,6 +125,16 @@ export function testerModels(context: Context) {
 					>
 						<option value="">Use workspace tester model</option>
 					</select>
+					<div hidden>
+						<label for="tester-effort-a${index + 1}">Reasoning effort for tester a${index + 1}</label>
+						<select
+							id="tester-effort-a${index + 1}"
+							name="testerEffort.a${index + 1}"
+							data-stop
+							data-tester-effort-select
+							disabled
+						></select>
+					</div>
 				</div>`
 		)}
 	</details>`

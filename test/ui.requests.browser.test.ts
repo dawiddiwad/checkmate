@@ -36,127 +36,28 @@ const onRow = (page: Page) => page.waitForFunction(() => document.activeElement?
 const onRecord = (page: Page) => page.waitForFunction(() => document.activeElement?.matches('[data-sub]'))
 const hanging = { tools: [{ name: 'Bash', input: { command: 'npm test' } }], hang: true }
 
-async function closeFind(page: Page) {
-	await page.keyboard.press('Escape')
-	await page.locator('[data-find]').waitFor({ state: 'hidden' })
-	await page.waitForFunction(() => !window.history.state?.layer)
-}
-
 async function askByKeys(page: Page, text: string) {
 	await page.keyboard.press('/')
 	await page.locator('[data-find]').waitFor()
 	await page.keyboard.type(text)
 	await page.locator('[data-find-ask][aria-selected="true"]').waitFor()
-	await page.keyboard.press('Enter')
-	await page.locator('[data-find-asking]:not([hidden])').waitFor()
-	return (await page.locator('[data-find-asking]').textContent())!.replace('Asking… ', '')
+	await page.locator('[data-find-ask]').click()
+	await page.waitForURL(/\/chats\/[^/]+$/).catch(async (error) => {
+		throw new Error(`${error.message}: ${await page.locator('[data-find-error]').textContent()}`)
+	})
+	return 'R1'
 }
 
-test(
-	'by keys: ask from the find bar, watch the activity, stop, read the reply, follow up, ask again, start over',
-	browserTest,
-	async (t) => {
-		const { page, url, state, count, read, called, reply } = await prepare(t, { request: hanging })
-		await page.goto(url('/plans/coupons?view=all&focus=list'))
-		await onRow(page)
-		const first = await askByKeys(page, 'why does D3 fail')
-		assert.equal(first, 'R1')
-		assert.equal(await page.locator('[data-find-results]').isHidden(), true)
-		await state('R1', 'running')
-		await page.keyboard.press('Enter')
-		assert.equal(count(), 1)
-		await closeFind(page)
-		assert.equal(new URL(page.url()).pathname, '/plans/coupons')
-		const link = page.locator('[data-region="request-link"]')
-		await link.waitFor()
-		assert.match((await link.textContent()) ?? '', /Request R1 · running/)
-		assert.equal(
-			read((reading) => requestOf(reading, 'R1')!.context.planId),
-			'coupons'
-		)
-		await link.focus()
-		await page.keyboard.press('Enter')
-		await page.waitForURL(url('/requests/R1'))
-		await onRecord(page)
-		await page.locator('.sp-activity li').first().waitFor()
-		assert.match((await page.locator('.sp-activity li').first().textContent()) ?? '', /Bash: npm test/)
-		assert.match((await page.locator('.sp-dhead').textContent()) ?? '', /running/)
-		reply({ request: { result: 'D3 fails because the fee is added first.\n\n- fee\n- coupon', cost: 0.07 } })
-		await page.keyboard.press('1')
-		await page.locator('dialog[data-confirm][open]').waitFor()
-		assert.match((await page.locator('[data-confirm-title]').textContent()) ?? '', /Stop request R1\?/)
-		await page.keyboard.press('Enter')
-		await state('R1', 'stopped')
-		await page.locator('[data-toast]').waitFor()
-		await onRecord(page)
-		await page.locator('.sp-dhead [data-status="stopped"]').waitFor()
-		assert.deepEqual(await page.locator('.sp-options [data-option] kbd').allTextContents(), ['1', '2', '3'])
-		await page.keyboard.press('2')
-		await page.waitForURL(url('/requests/R2'))
-		await state('R2', 'answered')
-		await page.locator('[data-key="reply"] li').first().waitFor()
-		assert.match(
-			(await page.locator('[data-key="reply"]').textContent()) ?? '',
-			/D3 fails because the fee is added first\./
-		)
-		assert.match((await page.locator('[data-key="took"]').textContent()) ?? '', /Cost \$0\.07\./)
-		assert.equal(await page.locator('.sp-options [data-option] kbd').count(), 3)
-		await page.keyboard.press('1')
-		await page.locator('[data-find]').waitFor()
-		assert.equal(await page.locator('[data-find-input]').getAttribute('placeholder'), 'Ask a follow-up')
-		await page.keyboard.type('and D4?')
-		await page.locator('[data-find-ask][aria-selected="true"]').waitFor()
-		assert.equal(await page.locator('[data-find-results] li').count(), 1)
-		await page.keyboard.press('Enter')
-		await page.locator('[data-find-asking]:not([hidden])').waitFor()
-		assert.equal((await page.locator('[data-find-asking]').textContent())?.trim(), 'Asking… R3')
-		await closeFind(page)
-		await state('R3', 'answered')
-		assert.deepEqual(
-			read((reading) => requestOf(reading, 'R3')!.context),
-			{ planId: null, record: { kind: 'request', id: 'R2' } }
-		)
-		await page.locator('[data-region="replies-link"]').waitFor()
-		assert.match((await page.locator('[data-region="replies-link"]').textContent()) ?? '', /1 reply/)
-		assert.equal(await page.locator('[data-region="replies-link"]').getAttribute('href'), '/requests/R3')
-		called()
-		await page.keyboard.press('3')
-		await page.locator('[data-toast]').waitFor()
-		await page.locator('[data-live]', { hasText: 'Live' }).waitFor()
-		await page.keyboard.press('/')
-		await page.keyboard.type('after the new start')
-		await page.locator('[data-find-ask][aria-selected="true"]').waitFor()
-		await page.keyboard.press('Enter')
-		await page.locator('[data-find-asking]:not([hidden])').waitFor()
-		await state('R4', 'answered')
-		const [last] = called()
-		assert(last.args.includes('--session-id') && !last.args.includes('--resume'))
-	}
-)
-
-test('by pointer: ask, stop with the dialog, and open the reply', browserTest, async (t) => {
-	const { page, url, state, reply } = await prepare(t, { request: hanging })
+test('a chat shows activity and can stop a request', browserTest, async (t) => {
+	const { page, url, state } = await prepare(t, { request: hanging })
 	await page.goto(url('/plans/coupons?view=all&focus=list'))
-	await page.locator('.sb-btn[data-find-open]').click()
-	await page.locator('[data-find-input]').fill('explain D10 please')
-	await page.locator('[data-find-ask]').click()
-	await page.locator('[data-find-asking]:not([hidden])').waitFor()
-	await closeFind(page)
-	await page.locator('[data-region="request-link"]').click()
-	await page.waitForURL(url('/requests/R1'))
-	reply({ request: { result: 'Done by pointer.' } })
-	await page.getByRole('button', { name: '1: Stop the request…' }).click()
-	await page.locator('[data-confirm-yes]').click()
+	await askByKeys(page, 'why does D3 fail')
+	await state('R1', 'running')
+	await page.locator('.chat-assistant summary').first().click()
+	await page.locator('.sp-activity li').first().waitFor()
+	await page.getByRole('button', { name: 'Stop', exact: true }).click()
 	await state('R1', 'stopped')
-	await page.getByRole('button', { name: '2: Ask again' }).click()
-	await page.waitForURL(url('/requests/R2'))
-	await state('R2', 'answered')
-	await page.locator('[data-key="reply"]').waitFor()
-	await page.getByRole('button', { name: '1: Ask a follow-up' }).click()
-	await page.locator('[data-find]').waitFor()
-	await closeFind(page)
-	await page.getByRole('button', { name: '3: New conversation' }).click()
-	await page.locator('[data-toast]').waitFor()
+	await page.locator('.chat-assistant [data-status="stopped"]').waitFor()
 })
 
 test('two unread replies fill the list, Right opens one, Left and Back return to the list', browserTest, async (t) => {
@@ -168,8 +69,8 @@ test('two unread replies fill the list, Right opens one, Left and Back return to
 	const bar = page.locator('[data-region="replies-link"]')
 	await bar.waitFor()
 	assert.match((await bar.textContent()) ?? '', /2 replies/)
-	assert.equal(await bar.getAttribute('href'), '/requests')
-	await bar.click()
+	assert.equal(await bar.getAttribute('href'), '/chats')
+	await page.goto(url('/requests'))
 	await page.waitForURL(url('/requests'))
 	await onRow(page)
 	assert.match((await page.locator('.sp-gh').first().textContent()) ?? '', /Not read\s*2/)
@@ -200,12 +101,10 @@ async function prepareWithAsks(t: TestContext) {
 		for (const [index, text] of texts.entries()) {
 			app.reply({ request: { result: `Reply to ${text}.` } })
 			await app.page.goto(app.url('/plans/coupons?view=all&focus=list'))
-			await onRow(app.page)
-			await app.page.keyboard.press('/')
-			await app.page.keyboard.type(text)
-			await app.page.locator('[data-find-ask][aria-selected="true"]').waitFor()
-			await app.page.keyboard.press('Enter')
-			await app.page.locator('[data-find-asking]:not([hidden])').waitFor()
+			await app.page.evaluate(async (message) => {
+				const csrf = document.querySelector<HTMLInputElement>('[name="csrf"]')!.value
+				await fetch('/requests', { method: 'POST', body: new URLSearchParams({ csrf, text: message }) })
+			}, text)
 			await app.state(`R${index + 1}`, 'answered')
 		}
 	}
@@ -237,7 +136,6 @@ test('a permission request of a request is answered from its record', browserTes
 	await page.goto(url('/plans/coupons?view=all&focus=list'))
 	await onRow(page)
 	await askByKeys(page, 'look up the package')
-	await closeFind(page)
 	const count = page.locator('[data-region="permissions-link"]')
 	await count.waitFor()
 	assert.equal((await count.textContent())?.trim(), '1 permission')
@@ -327,7 +225,6 @@ test(
 		await page.goto(url('/plans/coupons?view=all&focus=list'))
 		await onRow(page)
 		await askByKeys(page, 'stay running')
-		await closeFind(page)
 		await state('R1', 'running')
 		await page.goto(url('/requests/R1'))
 		await onRecord(page)

@@ -94,7 +94,7 @@ The plan history, `plan diff`, and the log together show who changed what, when,
 | `plan_rules`              | The derived rules of a plan, each correction, and each harvest. The latest row applies.                          |
 | `plan_builds`             | The time when an exploration or a run of a plan first tested each build.                                         |
 | `handoffs`                | Each hand-over of a claim and each undo, with the actor, time, and target.                                       |
-| `requests`                | The requests of the find bar: ID (`R1`), text, context, who asked, the conversation, and when.                   |
+| `requests`                | The turns of a chat: request ID (`R1`), text, context, who asked, chat ID, and time.                             |
 | `request_events`          | The steps of a request: state, session, activity, stop, read, and its permission requests with their answers.    |
 | `workspace_settings`      | The settings of the workspace, one row for each save. The latest row applies.                                    |
 
@@ -118,23 +118,23 @@ A request has at most one `permission-decision`. A request without one is open. 
 
 The activity line comes from the `PreToolUse` hook. It has the tool and the first line of the main input, cut at a newline. The value of a token, password, key, or authorization argument is `…`. The UI keeps the last line of each tester in memory and writes it at most once in 2 seconds. The Testers view shows the last activity line of a tester with its age.
 
-The read models are in `plugin/src/permissions.ts`: `openPermissions(store, planId?)`, `explorationPermissions(store, askerId)`, `permissionRules(store, askerId)`, and `decidePermission(store, actor, input, stop)`. The asker is an exploration (`x-1`) or a request (`R3`). A request keeps its permission events in `request_events`, with the same steps and details. A request has no `explorer`. The rules of a request apply to all requests of its conversation.
+The read models are in `plugin/src/permissions.ts`: `openPermissions(store, planId?)`, `explorationPermissions(store, askerId)`, `permissionRules(store, askerId)`, and `decidePermission(store, actor, input, stop)`. The asker is an exploration (`x-1`) or a request (`R3`). A request keeps its permission events in `request_events`, with the same steps and details. A request has no `explorer`. The rules of a request apply to turns of its chat that use the same harness.
 
-## Requests
+## Chats
 
-`requests` has one row for each request. The row does not change. `context` is JSON: `planId` and `record` (`kind` and `id`) of the page that was on screen, or `null`. `conversation` is the host session ID. The conversation itself is the setting `conversation` in `workspace_settings` (`sessionId` and `startedAt`). `New conversation` adds a row.
+`requests` has one immutable row for each turn. `conversation` groups the rows of one chat, including existing rows from the find bar. `context` keeps the starting page, plan revision, or record when known. Native session IDs are in `session` events. A chat can use more than one native session.
 
 `request_events` has the steps of a request. The latest `state` event gives the state.
 
-| Step                  | Status                                                                  | Detail                                                                                                                             |
-| --------------------- | ----------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| `state`               | `waiting`, `running`, `answered`, `failed`, `stopped`, or `interrupted` | At enqueue: `harness`. At the end: `reply`, `costUsd`, `denials` (one line for each denied call), `changes`, `reason`, and `hint`. |
-| `session`             | `started`                                                               | `sessionId` and `harness`.                                                                                                         |
-| `activity`            | `started`                                                               | `line`: the tool and the first line of its main input, at most 120 characters, with the same masking as a tester.                  |
-| `stop`                | `stopped`                                                               | `by`, and `reason` when you gave one.                                                                                              |
-| `read`                | `read`                                                                  | The page of the reply was opened.                                                                                                  |
-| `permission`          | `open`                                                                  | As in `exploration_events`. `who` is the request ID.                                                                               |
-| `permission-decision` | The same values as in `exploration_events`                              | As in `exploration_events`.                                                                                                        |
+| Step                  | Status                                                                  | Detail                                                                                                                                                                           |
+| --------------------- | ----------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `state`               | `waiting`, `running`, `answered`, `failed`, `stopped`, or `interrupted` | At enqueue: `harness`, `model`, `provider`, `effort`, and `modelId`. At the end: `reply`, `costUsd`, `denials` (one line for each denied call), `changes`, `reason`, and `hint`. |
+| `session`             | `started`                                                               | `sessionId` and `harness`.                                                                                                                                                       |
+| `activity`            | `started`                                                               | `line`: the tool and the first line of its main input, at most 120 characters, with the same masking as a tester.                                                                |
+| `stop`                | `stopped`                                                               | `by`, and `reason` when you gave one.                                                                                                                                            |
+| `read`                | `read`                                                                  | The page of the reply was opened.                                                                                                                                                |
+| `permission`          | `open`                                                                  | As in `exploration_events`. `who` is the request ID.                                                                                                                             |
+| `permission-decision` | The same values as in `exploration_events`                              | As in `exploration_events`.                                                                                                                                                      |
 
 Each item of `changes` has `text` (for example `handed over a1/D1, a1/D2`), `command`, `subject`, `at`, and `href`. The UI finds the changes in the operation log: the operations with `via` `R3` and the status `completed`, whatever their actor. The read models are in `plugin/src/requests.ts`.
 

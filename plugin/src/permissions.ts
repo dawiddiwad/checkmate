@@ -1,7 +1,7 @@
 import type { Reply, Store } from './store.ts'
 import { all, completed, one, write } from './store.ts'
 import { addEvent } from './explorations.ts'
-import { addRequestEvent, isRequestId, requestStopped } from './requests.ts'
+import { addRequestEvent, isRequestId, requestOf, requestStopped } from './requests.ts'
 import { requireChoice, requireCondition, requireWellFormed } from './contracts.ts'
 import { explorerActor } from './recorder.ts'
 
@@ -181,19 +181,16 @@ export function openPermissions(store: Store, planId?: string) {
 	return permissionsOf(rows(store, planId, undefined)).filter((item) => !item.decision)
 }
 
-function conversationOf(store: Store, askerId: string) {
-	return one<{ conversation: string }>(store, 'SELECT conversation FROM requests WHERE request_id = ?', askerId)
-		?.conversation
-}
-
 function ruleScope(store: Store, askerId: string) {
-	const conversation = conversationOf(store, askerId)
-	if (!conversation) return explorationPermissions(store, askerId)
+	const request = requestOf(store, askerId)
+	if (!request) return explorationPermissions(store, askerId)
 	return all<{ request_id: string }>(
 		store,
 		'SELECT request_id FROM requests WHERE conversation = ?',
-		conversation
-	).flatMap((row) => explorationPermissions(store, row.request_id))
+		request.conversation
+	)
+		.filter((row) => requestOf(store, row.request_id)?.harness === request.harness)
+		.flatMap((row) => explorationPermissions(store, row.request_id))
 }
 
 export function permissionRules(store: Store, askerId: string): ForceRule[] {

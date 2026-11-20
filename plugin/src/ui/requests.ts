@@ -23,7 +23,7 @@ const recordPaths: Array<[RegExp, string]> = [
 	[/^\/requests\/(R[1-9][0-9]{0,8})$/, 'request'],
 ]
 
-export function screenContext(store: Store, address: string): RequestContext {
+export function screenContext(store: Store, address: string, chat = false): RequestContext {
 	let url: URL
 	try {
 		url = new URL(address, 'http://checkmate.local')
@@ -33,6 +33,44 @@ export function screenContext(store: Store, address: string): RequestContext {
 	const known = (planId: string | undefined) =>
 		planId && one(store, 'SELECT 1 FROM plan_requests WHERE plan_id = ?', planId) ? planId : null
 	let planId = known(planPath.exec(url.pathname)?.[1])
+	if (chat) {
+		if (url.origin !== 'http://checkmate.local') return { planId: null, record: null }
+		if (url.pathname === '/' || url.pathname === '/plans') return { planId: null, record: null, page: 'plans' }
+		if (url.pathname === '/runs' || url.pathname === '/activity')
+			return { planId: null, record: null, page: url.pathname === '/runs' ? 'runs' : 'activity' }
+		const run = /^\/(runs|explorations)\/([A-Za-z0-9][A-Za-z0-9_-]{0,95})$/.exec(url.pathname)
+		if (run) {
+			const [, section, id] = run
+			const record =
+				section === 'runs'
+					? one<{ plan_id: string; plan_revision: number }>(
+							store,
+							'SELECT plan_id, plan_revision FROM runs WHERE run_id = ?',
+							id
+						)
+					: one<{ plan_id: string; plan_revision: number | null }>(
+							store,
+							'SELECT plan_id, plan_revision FROM explorations WHERE exploration_id = ?',
+							id
+						)
+			return {
+				planId: record?.plan_id ?? null,
+				record: record ? { kind: section === 'runs' ? 'run' : 'exploration', id } : null,
+				...(record?.plan_revision ? { planRevision: record.plan_revision } : {}),
+			}
+		}
+		const revision = /^\/plans\/[^/@]+@([1-9]\d{0,8})(?:\/|$)/.exec(url.pathname)
+		const planRevision =
+			planId && revision
+				? one<{ revision: number }>(
+						store,
+						'SELECT revision FROM plan_revisions WHERE plan_id = ? AND revision = ?',
+						planId,
+						Number(revision[1])
+					)?.revision
+				: undefined
+		return { planId, record: null, ...(planRevision ? { planRevision } : {}) }
+	}
 	let record: RequestContext['record'] = null
 	const key = url.searchParams.get('item') ?? url.searchParams.get('at') ?? ''
 	const [letter, ...rest] = key.split(':')
@@ -128,7 +166,7 @@ function elapsed(request: RequestRecord, now: number) {
 	return duration(Math.max(0, end - start))
 }
 
-function failureText(request: RequestRecord) {
+export function failureText(request: RequestRecord) {
 	if (request.harness === 'pi' && !/No pi executable/.test(request.reason ?? '')) {
 		const cause = piErrorText(request.reason) || 'The request failed. No reason is recorded.'
 		const authentication =

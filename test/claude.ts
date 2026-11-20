@@ -8,8 +8,33 @@ const { appendFileSync, readFileSync, writeFileSync } = require('node:fs')
 const { join } = require('node:path')
 const { randomUUID } = require('node:crypto')
 const args = process.argv.slice(2)
-const prompt = readFileSync(0, 'utf8')
 const after = (flag) => (args.includes(flag) ? args[args.indexOf(flag) + 1] : undefined)
+if (after('--input-format') === 'stream-json' && args.includes('--no-session-persistence')) {
+	const request = JSON.parse(readFileSync(0, 'utf8'))
+	const replies = JSON.parse(readFileSync(process.env.FAKE_CLAUDE_REPLIES, 'utf8'))
+	const models = replies.models ?? []
+	console.log(JSON.stringify({ type: 'control_response', response: {
+		request_id: request.request_id, subtype: 'success', response: { models },
+	} }))
+	process.exit(0)
+}
+if (after('--mode') === 'rpc' && args.includes('--no-session')) {
+	const lines = require('node:readline').createInterface({ input: process.stdin })
+	const replies = JSON.parse(readFileSync(process.env.FAKE_CLAUDE_REPLIES, 'utf8'))
+	const models = replies.models ?? []
+	const configured = after('--model')
+	const model = configured === undefined
+		? models[0]
+		: models.find(({ provider, id }) => configured === provider + '/' + id || configured === id)
+	lines.on('line', (line) => {
+		const { id, type } = JSON.parse(line)
+		console.log(JSON.stringify({
+			type: 'response', command: type, id, success: true, data: type === 'get_state' ? { model } : { models },
+		}))
+	})
+	return
+}
+const prompt = readFileSync(0, 'utf8')
 const pi = after('--mode') === 'json'
 const resumed = after('--resume') ?? after('--session') ?? after('--fork')
 const streamed = args.includes('stream-json')
@@ -167,7 +192,8 @@ export type FakeReplies = Partial<
 		| 'verifier'
 		| 'rules'
 		| 'rules-repair'
-		| 'request',
+		| 'request'
+		| 'models',
 		unknown
 	>
 >

@@ -639,8 +639,8 @@ test('model choices are searchable, preserve unavailable values, and retry disco
 				: {
 						json: {
 							models: [
-								{ value: 'sonnet', label: 'Sonnet' },
-								{ value: 'opus', label: 'Opus' },
+								{ value: 'sonnet', label: 'Sonnet', effortLevels: ['low', 'medium', 'high'] },
+								{ value: 'opus', label: 'Opus', effortLevels: ['low', 'high', 'max'] },
 								{ value: 'haiku', label: 'Haiku' },
 							],
 						},
@@ -651,6 +651,11 @@ test('model choices are searchable, preserve unavailable values, and retry disco
 	await page.getByText('3 models available.', { exact: false }).waitFor()
 	assert.equal(await page.getByLabel('Model for testers').inputValue(), 'retired')
 	assert.equal(await page.getByLabel('Model for requests').inputValue(), 'sonnet')
+	assert.equal(await page.getByLabel('Reasoning effort for testers').isVisible(), false)
+	assert.equal(
+		await page.getByLabel('Reasoning effort for requests').locator('option:checked').textContent(),
+		'Default (medium)'
+	)
 	assert.match(
 		(await page.locator('[data-model-unavailable="tester-model"]').textContent()) ?? '',
 		/not in the current list/
@@ -658,11 +663,17 @@ test('model choices are searchable, preserve unavailable values, and retry disco
 	await page.getByLabel('Filter models').fill('opus')
 	assert.equal(await page.locator('#tester-model option[value="retired"]').count(), 1)
 	await page.getByLabel('Model for testers').selectOption('opus')
+	const effort = page.getByLabel('Reasoning effort for testers')
+	assert.equal(await effort.locator('option[value="medium"]').count(), 0)
+	await effort.selectOption('max')
 	await page.getByLabel('Filter models').fill('haiku')
 	await page.getByLabel('Model for requests').selectOption('haiku')
 	await page.getByRole('button', { name: 'Save models' }).click()
 	assert.equal(await page.getByLabel('Model for testers').inputValue(), 'opus')
 	assert.equal(await page.getByLabel('Model for requests').inputValue(), 'haiku')
+	assert.equal(await page.getByLabel('Reasoning effort for requests').isVisible(), false)
+	await effort.waitFor({ state: 'visible' })
+	assert.equal(await effort.inputValue(), 'max')
 	fail = true
 	await page.getByRole('button', { name: 'Refresh models' }).click()
 	await page.getByText('Could not load models. Try again.').waitFor()

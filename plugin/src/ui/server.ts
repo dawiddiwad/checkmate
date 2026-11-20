@@ -58,6 +58,7 @@ import type { TestLevel } from '../levels.ts'
 import {
 	ruleTokens,
 	requestModelText,
+	testerEffortText,
 	testerModelText,
 	saveRequestModel,
 	saveTesterRules,
@@ -66,13 +67,14 @@ import {
 	testerRulesText,
 	workspaceUiEnv,
 } from '../settings.ts'
-import { isUnread, markRequestRead, requestOf, requestStatus, staleRequests } from '../requests.ts'
+import { chatOf, isUnread, markRequestRead, requestOf, requestStatus, staleRequests } from '../requests.ts'
 import { planRequest } from '../plans.ts'
 import type { Env } from '../sessions.ts'
 import type { StopDelays } from '../sessions.ts'
 import { liveUi, removeUiFile, requireChild, workspaceHookToken, writeUiFile } from '../sessions.ts'
 import { selectedHarness } from '../pi.ts'
-import { discoverModels } from '../model-catalog.ts'
+import type { Harness } from '../pi.ts'
+import { discoverModelCatalog } from '../model-catalog.ts'
 import { launchPlan } from '../explorers.ts'
 import { maxAreaCharacters, outsideRule, planRules, ticketFile } from '../rules.ts'
 import { ruleMap } from '../rulemap.ts'
@@ -121,6 +123,7 @@ import { emptyRecord, nextOpen, permissionPage, requestHref } from './permission
 import { createRequester } from './requester.ts'
 import { lifecyclePath, lifecycleProof } from './lifecycle.ts'
 import { repliesPage, requestPage as requestRecordPage, screenContext } from './requests.ts'
+import { chatPage, chatsPage } from './chats.ts'
 
 export type UiOptions = HookOptions & {
 	workspace: string
@@ -152,6 +155,8 @@ const routes = {
 	harvest: new RegExp(`^/plans/(${id})/harvest$`),
 	permit: new RegExp(`^/permissions/(${id})/(P[1-9][0-9]{0,8})$`),
 	requestPage: /^\/requests\/(R[1-9][0-9]{0,8})$/,
+	chatPage: /^\/chats\/([0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})$/,
+	chatTurn: /^\/chats\/([0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})\/turns$/,
 	stopRequest: /^\/requests\/(R[1-9][0-9]{0,8})\/stop$/,
 	permitMany: /^\/permissions\/bulk$/,
 	stopRun: new RegExp(`^/explorations/(${id})/stop$`),
@@ -328,7 +333,7 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 	const hooks = createHooks(store, hookToken, options)
 	const env = { ...(options.env ?? process.env) }
 	const workspace = realpathSync(options.workspace)
-	const pendingModels = new Map<string, ReturnType<typeof discoverModels>>()
+	const pendingModels = new Map<string, ReturnType<typeof discoverModelCatalog>>()
 	const launchEnv = () => workspaceUiEnv(store, env)
 	const requester = createRequester(store, {
 		workspace: options.workspace,
@@ -568,6 +573,9 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		if (asked) return permissionRecord(request, asked[1], asked[2])
 		if (pathname === '/settings/claude') return redirect(request.res, '/settings/harness')
 		if (pathname === '/settings/harness') return render(request, harnessPage(store, shown, env))
+		if (pathname === '/chats') return render(request, chatsPage(store, shown, searchParams, env))
+		const chat = routes.chatPage.exec(pathname)
+		if (chat) return openChat(request, chat[1])
 		if (pathname === '/requests') return render(request, repliesPage(store, searchParams))
 		const askedRequest = routes.requestPage.exec(pathname)
 		if (askedRequest) return requestRecord(request, askedRequest[1])
@@ -1163,11 +1171,11 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		return { instance: undefined, error: `Choose the instance: ${list}.` }
 	}
 
-	function testerModelsFrom(form: URLSearchParams) {
+	function testerChoicesFrom(form: URLSearchParams, name: 'testerModel' | 'testerEffort') {
 		const selected: Record<string, string> = {}
-		for (const [name, value] of form) {
-			if (name.startsWith('testerModel.') && value.trim())
-				selected[name.slice('testerModel.'.length)] = value.trim()
+		const prefix = `${name}.`
+		for (const [field, value] of form) {
+			if (field.startsWith(prefix) && value.trim()) selected[field.slice(prefix.length)] = value.trim()
 		}
 		return selected
 	}
@@ -1211,7 +1219,8 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 					mode: autoMode(store, planId),
 					allow: ruleTokens(form.get('rules') ?? ''),
 					claudeArgs: [],
-					testerModels: testerModelsFrom(form),
+					testerModels: testerChoicesFrom(form, 'testerModel'),
+					testerEfforts: testerChoicesFrom(form, 'testerEffort'),
 				},
 				launchEnv(),
 				true
@@ -1432,7 +1441,53 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		render(request, page)
 	}
 
+	function openChat(request: Request, id: string) {
+		const chat = chatOf(store, id)
+		if (!chat) return errorPage(request, 404, 'Chat not found', 'Open Chats to choose a conversation.')
+		const actor = context(request).actor
+		if (actor) for (const turn of chat.turns) if (isUnread(turn)) markRequestRead(store, actor, turn.id)
+		const page = chatPage(store, context(request), id, env)
+		if (page) return render(request, page)
+	}
+
+	async function sendChat(request: Request, form: URLSearchParams, id?: string) {
+		const { actor, cookies } = actorFrom(request, form)
+		const back = id ? `/chats/${id}` : safeBack(form.get('return') ?? '/chats')
+		const refuse = (message: string) => actionRefusal(request, back, message)
+		if (!actor) return refuse('Enter your name to send a message.')
+		const message = form.get('text')?.trim() ?? ''
+		if (!message) return refuse('Write a message first.')
+		const picked = form.get('harness')
+		if (picked !== null && picked !== 'pi' && picked !== 'claude') return refuse('Choose a coding harness.')
+		const fromFind = form.get('chat') === '1'
+		const workspaceHarness = selectedHarness(launchEnv())
+		if (fromFind && picked !== null && picked !== workspaceHarness)
+			return refuse('The coding harness changed. Reload and try again.')
+		const screen = form.get('screen') ?? ''
+		const chatId =
+			id ??
+			(fromFind
+				? routes.chatPage.exec(new URL(safeBack(screen), 'http://checkmate.local').pathname)?.[1]
+				: undefined)
+		const chat = chatId ? chatOf(store, chatId) : null
+		if (chatId && !chat) return refuse('This chat is no longer available.')
+		const harness = (fromFind ? null : picked) ?? chat?.turns.at(-1)?.harness ?? workspaceHarness
+		const model = form.get('model') ?? undefined
+		const effort = form.get('effort') ?? undefined
+		try {
+			const catalog = await catalogFor(harness, model === '').catch(() => undefined)
+			const choices = { harness, model, effort, catalog }
+			const turn = chatId
+				? requester.followChat(actor, chatId, message, choices)
+				: requester.startChat(actor, message, screenContext(store, screen, true), choices)
+			redirect(request.res, `/chats/${requestOf(store, turn)!.conversation}`, cookies)
+		} catch (error) {
+			return refuse(engineText(error))
+		}
+	}
+
 	function askText(request: Request, form: URLSearchParams) {
+		if (form.get('chat') === '1') return sendChat(request, form)
 		const { actor, cookies } = actorFrom(request, form)
 		const back = safeBack(form.get('return') ?? '/requests')
 		const refuse = (message: string) => actionRefusal(request, back, message)
@@ -1470,9 +1525,10 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 
 	function stopRequest(request: Request, form: URLSearchParams, requestId: string) {
 		const { actor, cookies } = actorFrom(request, form)
-		const back = `/requests/${requestId}`
-		if (!actor) return actionRefusal(request, back, 'Enter your name. Checkmate records it with the stop.')
 		const found = requestOf(store, requestId)
+		const chat = found ? `/chats/${found.conversation}` : ''
+		const back = form.get('return') === chat && chat ? chat : `/requests/${requestId}`
+		if (!actor) return actionRefusal(request, back, 'Enter your name. Checkmate records it with the stop.')
 		const flash =
 			found?.state === 'running' || found?.state === 'waiting'
 				? `Stopping ${requestId}…`
@@ -1508,31 +1564,49 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 			const plan = query.get('plan')
 			const target = query.get('target')
 			const profile = plan ? planRequest(store, plan).target.profile : targetRevision(store, target ?? '').profile
-			return reply(200, { count: profile.explore?.explorers ?? testLevels[level as TestLevel].explorers })
+			const policy = testLevels[level as TestLevel]
+			return reply(200, {
+				count: profile.explore?.explorers ?? policy.explorers,
+				model: testerModelText(store, harness) || (harness === 'claude' ? policy.model : ''),
+				effort: testerEffortText(store, harness),
+			})
 		} catch {
 			return reply(404, { error: 'Choose a target or plan.' })
 		}
 	}
 
+	function catalogFor(harness: Harness, hostDefault = false) {
+		const key = hostDefault && harness === 'pi' ? 'pi-host-default' : harness
+		let pending = pendingModels.get(key)
+		if (!pending) {
+			pending = discoverModelCatalog(harness, store.workspace, {
+				...env,
+				CHECKMATE_HARNESS: harness,
+				...(key === 'pi-host-default'
+					? { CHECKMATE_PI_MODEL: undefined, CHECKMATE_PI_PROVIDER: undefined }
+					: {}),
+			})
+			pendingModels.set(key, pending)
+			void pending.finally(() => pendingModels.delete(key)).catch(() => {})
+		}
+		return pending
+	}
+
 	async function modelCatalog(request: Request) {
-		const harness = selectedHarness(workspaceUiEnv(store, env))
+		const requested = request.url.searchParams.get('harness')
+		const chat = request.url.searchParams.get('scope') === 'chat'
+		const active = selectedHarness(launchEnv())
+		const harness = chat && (requested === 'pi' || requested === 'claude') ? requested : active
 		const sendJson = (status: number, body: unknown) =>
 			send(request.res, status, 'application/json; charset=utf-8', JSON.stringify(body), {
 				'Cache-Control': 'no-store',
 			})
-		if (request.url.searchParams.get('harness') !== harness)
-			return sendJson(409, { error: 'The coding harness changed. Reload the page.' })
+		if (requested !== harness) return sendJson(409, { error: 'The coding harness changed. Reload the page.' })
 		try {
-			let pending = pendingModels.get(harness)
-			if (!pending) {
-				pending = discoverModels(harness, store.workspace, workspaceUiEnv(store, env))
-				pendingModels.set(harness, pending)
-				void pending.finally(() => pendingModels.delete(harness)).catch(() => {})
-			}
-			const models = await pending
-			if (selectedHarness(workspaceUiEnv(store, env)) !== harness)
+			const models = await catalogFor(harness, chat && request.url.searchParams.get('hostDefault') === '1')
+			if (!chat && selectedHarness(launchEnv()) !== harness)
 				return sendJson(409, { error: 'The coding harness changed. Reload the page.' })
-			return sendJson(200, { models })
+			return sendJson(200, models)
 		} catch {
 			return sendJson(503, { error: 'Could not load models. Try again.' })
 		}
@@ -1612,7 +1686,15 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		if (!form.has('requestModel') || !form.has('testerModel'))
 			return refuse(request, page('Reload the page to save both model choices.'), cookies)
 		try {
-			saveModels(store, actor, harness, requested, tester)
+			saveModels(
+				store,
+				actor,
+				harness,
+				requested,
+				tester,
+				form.get('requestEffort') ?? undefined,
+				form.get('testerEffort') ?? undefined
+			)
 		} catch (error) {
 			return refuse(request, page(engineText(error)), cookies)
 		}
@@ -1791,7 +1873,15 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 			requireChild(childEnv, harness)
 			launchPlan(
 				targetRevision(store, targetId).profile,
-				{ planId, build, allow, claudeArgs: [], level, testerModels: testerModelsFrom(form) },
+				{
+					planId,
+					build,
+					allow,
+					claudeArgs: [],
+					level,
+					testerModels: testerChoicesFrom(form, 'testerModel'),
+					testerEfforts: testerChoicesFrom(form, 'testerEffort'),
+				},
 				childEnv,
 				testerModelText(store, harness),
 				true
@@ -1821,7 +1911,8 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 					repo,
 					allow,
 					claudeArgs: [],
-					testerModels: testerModelsFrom(form),
+					testerModels: testerChoicesFrom(form, 'testerModel'),
+					testerEfforts: testerChoicesFrom(form, 'testerEffort'),
 				},
 				childEnv,
 				true
@@ -2170,6 +2261,9 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		if (pathname === '/settings/claude/model' || pathname === '/settings/harness/model')
 			return saveModel(request, form)
 		if (pathname === '/requests') return askText(request, form)
+		if (pathname === '/chats') return sendChat(request, form)
+		const chat = routes.chatTurn.exec(pathname)
+		if (chat) return sendChat(request, form, chat[1])
 		if (pathname === '/requests/conversation') return newConversation(request, form)
 		const stoppingRequest = routes.stopRequest.exec(pathname)
 		if (stoppingRequest) return stopRequest(request, form, stoppingRequest[1])

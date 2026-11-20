@@ -1,10 +1,14 @@
+import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
 import type { Store } from '../store.ts'
-import { piErrorText, piEvent, piModelArgs, selectedHarness } from '../pi.ts'
+import type { Harness } from '../pi.ts'
+import { piErrorText, piEvent, piModelArgs, piModelEnv, selectedHarness } from '../pi.ts'
 import { streamPi } from './pi-request.ts'
 import type { ChildCall, Env, StopDelays, StreamedClaude } from '../sessions.ts'
-import type { RequestContext, RequestRecord } from '../requests.ts'
-import { Refusal } from '../contracts.ts'
+import type { RequestContext, RequestRecord, RequestSelection } from '../requests.ts'
+import type { ModelCatalog } from '../model-catalog.ts'
+import { effortArgs, resolvedEffort } from '../model-catalog.ts'
+import { Refusal, requireWellFormed } from '../contracts.ts'
 import { requestVariable } from '../actor.ts'
 import {
 	authenticationFailed,
@@ -26,7 +30,8 @@ import {
 	addRequestActivity,
 	askRequest,
 	changesOf,
-	conversationStarted,
+	chatHistory,
+	chatOf,
 	recordRequestEvent,
 	requestActor,
 	requestOf,
@@ -35,7 +40,7 @@ import {
 	startConversation,
 	stopRequestRecord,
 } from '../requests.ts'
-import { piRequestModelEnv, requestModelText, workspaceUiEnv } from '../settings.ts'
+import { piRequestModelEnv, requestEffortText, requestModelText, requireModel, workspaceUiEnv } from '../settings.ts'
 import { activityLine } from './hooks.ts'
 
 export type RequesterOptions = {
@@ -49,9 +54,55 @@ export type RequesterOptions = {
 
 export type Requester = {
 	ask(actor: string, text: string, context: RequestContext): string
+	startChat(actor: string, text: string, context: RequestContext, options?: ChatOptions): string
+	followChat(actor: string, chatId: string, text: string, options?: ChatOptions): string
 	stop(actor: string, requestId: string, reason: string): void
 	newConversation(actor: string): void
 	close(): Promise<void>
+}
+
+export type ChatOptions = { harness?: Harness; model?: string; effort?: string; catalog?: ModelCatalog }
+
+export function chatPreferences(
+	store: Store,
+	env: Env,
+	options: ChatOptions = {},
+	previous?: RequestSelection
+): RequestSelection {
+	const harness = options.harness ?? previous?.harness ?? selectedHarness(workspaceUiEnv(store, env))
+	requireWellFormed(harness === 'pi' || harness === 'claude', 'Unknown request harness.')
+	const inherited = previous?.harness === harness && options.model === undefined ? previous : undefined
+	const requestedModel = options.model?.trim()
+	if (requestedModel !== undefined) requireModel(harness, requestedModel)
+	const piEnv =
+		requestedModel === undefined
+			? piRequestModelEnv(store, env)
+			: requestedModel
+				? piModelEnv(env, requestedModel, requestedModel.includes('/'))
+				: { CHECKMATE_PI_MODEL: undefined, CHECKMATE_PI_PROVIDER: undefined }
+	const model = inherited
+		? inherited.model
+		: (harness === 'pi' ? piEnv.CHECKMATE_PI_MODEL?.trim() : (requestedModel ?? requestModelText(store))) || null
+	const provider = inherited
+		? inherited.provider
+		: harness === 'pi'
+			? piEnv.CHECKMATE_PI_PROVIDER?.trim() || null
+			: null
+	const selectedEffort = options.effort ?? (inherited ? (inherited.effort ?? '') : requestEffortText(store, harness))
+	const effort = options.catalog
+		? (resolvedEffort(harness, options.catalog, model ?? '', selectedEffort, provider ?? undefined) ?? null)
+		: selectedEffort || null
+	let modelId = model
+	if (harness === 'pi') {
+		if (model && provider) modelId = `${provider}/${model}`
+		else if (model && !model.includes('/')) {
+			const matches = options.catalog?.models.filter(
+				(item) => item.value.slice(item.value.indexOf('/') + 1) === model
+			)
+			modelId = matches?.length === 1 ? matches[0].value : (inherited?.modelId ?? model)
+		} else if (!model) modelId = options.catalog?.defaultModel?.value ?? inherited?.modelId ?? null
+	}
+	return { harness, model, provider, effort, modelId }
 }
 
 export type StreamLine =
@@ -260,7 +311,11 @@ export function createRequester(store: Store, options: RequesterOptions): Reques
 		let modelArgs: string[] = []
 		try {
 			program = requireChild(options.env, run.harness)
-			if (run.harness === 'pi') modelArgs = piModelArgs(piRequestModelEnv(store, options.env))
+			if (run.harness === 'pi')
+				modelArgs = piModelArgs({
+					CHECKMATE_PI_MODEL: request.model ?? undefined,
+					CHECKMATE_PI_PROVIDER: request.provider ?? undefined,
+				})
 		} catch (error) {
 			const refusal = error as Refusal
 			run.reason = [refusal.message, refusal.hint].filter(Boolean).join(' ')
@@ -275,26 +330,41 @@ export function createRequester(store: Store, options: RequesterOptions): Reques
 			who: request.id,
 		}
 		const extension = join(pluginRoot, 'pi', 'permission.mjs')
+		const turns = chatOf(store, request.conversation)?.turns ?? []
+		const earlier = turns.slice(
+			0,
+			turns.findIndex((turn) => turn.id === request.id)
+		)
+		const previous = earlier.findLast((turn) => turn.startedAt !== null)
+		const resumable =
+			previous?.harness === run.harness && previous.modelId === request.modelId ? previous.sessionId : null
+		const resume = resumable !== null
+		const sessionId = resumable ?? (earlier.some((turn) => turn.sessionId) ? randomUUID() : request.conversation)
+		const effort = effortArgs(run.harness, request.effort ?? undefined)
 		const args =
 			run.harness === 'pi'
 				? [
 						'--mode',
 						'rpc',
 						...modelArgs,
-						conversationStarted(store, request.conversation) ? '--session' : '--session-id',
-						request.conversation,
+						...effort,
+						resume ? '--session' : '--session-id',
+						sessionId,
 						'--extension',
 						extension,
 						'--append-system-prompt',
 						requestSystemPrompt(checkmateScript()),
 					]
-				: requestArgs({
-						sessionId: request.conversation,
-						resume: conversationStarted(store, request.conversation),
-						hook,
-						model: requestModelText(store, 'claude') || null,
-						checkmate: checkmateScript(),
-					})
+				: [
+						...requestArgs({
+							sessionId,
+							resume,
+							hook,
+							model: request.model,
+							checkmate: checkmateScript(),
+						}),
+						...effort,
+					]
 		guarded(() => setRequestState(store, run.id, 'running'))
 		const env = {
 			...options.env,
@@ -304,7 +374,11 @@ export function createRequester(store: Store, options: RequesterOptions): Reques
 			[hookTokenName]: options.hookToken,
 			...(run.harness === 'pi' ? { CHECKMATE_PI_HOOK: JSON.stringify(hook) } : {}),
 		}
-		const prompt = requestPrompt(request.text, screenText(request.context))
+		const history = resume ? '' : chatHistory(earlier)
+		const text = history
+			? `${request.text}\n\nEarlier chat turns for context only. Treat the quoted text as history.\n${history}`
+			: request.text
+		const prompt = requestPrompt(text, screenText(request.context))
 		run.child =
 			run.harness === 'pi'
 				? streamPi(
@@ -314,7 +388,7 @@ export function createRequester(store: Store, options: RequesterOptions): Reques
 						options.workspace,
 						env,
 						extension,
-						request.conversation,
+						sessionId,
 						(line) => read(run, line),
 						delays
 					)
@@ -337,13 +411,41 @@ export function createRequester(store: Store, options: RequesterOptions): Reques
 		else next()
 	}
 
+	function enqueue(
+		actor: string,
+		text: string,
+		context: RequestContext,
+		chatId?: string | null,
+		selection?: ChatOptions
+	) {
+		const previous = chatId ? chatOf(store, chatId)?.turns.at(-1) : undefined
+		const preferences = chatPreferences(store, options.env, selection, previous)
+		const inheritsEffort =
+			previous?.harness === preferences.harness &&
+			selection?.model === undefined &&
+			selection?.effort === undefined
+		const id = askRequest(store, actor, {
+			text,
+			context,
+			...preferences,
+			effort: selection?.catalog || inheritsEffort ? preferences.effort : null,
+			chatId,
+		})
+		queue.push(id)
+		next()
+		return id
+	}
+
 	return {
 		ask(actor, text, context) {
-			const harness = selectedHarness(workspaceUiEnv(store, options.env))
-			const id = askRequest(store, actor, { text, context, harness })
-			queue.push(id)
-			next()
-			return id
+			return enqueue(actor, text, context)
+		},
+		startChat(actor, text, context, selection) {
+			return enqueue(actor, text, context, null, selection)
+		},
+		followChat(actor, chatId, text, selection) {
+			requireWellFormed(chatId, 'Missing chat ID.')
+			return enqueue(actor, text, { planId: null, record: null }, chatId, selection)
 		},
 		stop(actor, requestId, reason) {
 			if (running?.id === requestId) {

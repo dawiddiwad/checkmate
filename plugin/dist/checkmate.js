@@ -9253,9 +9253,9 @@ function launchChild(executable, args, prompt, cwd, env, seconds, onStart, harne
 var requestHookName = "request";
 function requestSystemPrompt(checkmate) {
   return [
-    "This request comes from the Checkmate web UI.",
-    "The reply shows in a narrow pane. Answer in plain sentences: first what you found or did, then what changed.",
-    "Put a question to the person in the reply.",
+    "This conversation comes from the Checkmate web UI.",
+    "Answer what the person asked. When you change the record, say what changed.",
+    "Ask a question when you need the person to decide or clarify.",
     `To change a record, use the checkmate command line of this workspace: node ${checkmate} <command>.`
   ].join(" ");
 }
@@ -9279,7 +9279,7 @@ function requestArgs(session) {
 function requestPrompt(text, screen) {
   return screen ? `${text}
 
-For context only: the person had ${screen} on screen. Use this only when the request refers to it.` : text;
+Starting context: the person opened the chat from ${screen}. Use this when relevant. You may inspect other workspace records if they help answer the request.` : text;
 }
 var defaultStopDelays = { terminate: 5e3, kill: endGraceMilliseconds };
 function streamClaude(claude, args, prompt, cwd, env, onLine, delays = defaultStopDelays) {
@@ -10381,12 +10381,12 @@ function checkedRules(reply, sources) {
   if (!rules.length && !refusals.length) refusals.push("The reply has no rule.");
   return { rules, refusals };
 }
-function saveRules(store, operationId, planId, rules, origin) {
+function saveRules(store, operationId, planId, rules, origin2) {
   execute(
     store,
     "INSERT INTO plan_rules (plan_id, origin, body, operation_id) VALUES (?, ?, ?, ?)",
     planId,
-    origin,
+    origin2,
     canonical(rules),
     operationId
   );
@@ -10450,25 +10450,25 @@ function patchRules(store, operationId, planId, patch) {
     areas.size <= maxAreas,
     `The rules have ${areas.size} areas. Use at most ${maxAreas} areas for the plan.`
   );
-  const origin = stored.origin === "harvested" ? "harvested" : "corrected";
-  saveRules(store, operationId, planId, rules, origin);
+  const origin2 = stored.origin === "harvested" ? "harvested" : "corrected";
+  saveRules(store, operationId, planId, rules, origin2);
   return {
     reply: {
       status: "completed",
       subject: planId,
       reasons: [],
-      data: { planId, edit: "rules", origin, rules: rules.map((rule) => rule.id) }
+      data: { planId, edit: "rules", origin: origin2, rules: rules.map((rule) => rule.id) }
     },
     subjects: [`plan:${planId}`, "inbox"]
   };
 }
 function rulesLine(store, planId) {
-  const { rules, origin } = planRules(store, planId);
+  const { rules, origin: origin2 } = planRules(store, planId);
   const held = heldRules(store, planId);
-  if (origin === "harvested" && held)
+  if (origin2 === "harvested" && held)
     return `${rules.length} rules were derived from the sources. ${rules.filter((rule) => held.ids.has(rule.id)).length} have a stored test and belong to revision ${held.revision}. Correct the others with checkmate plan edit ${planId} --patch.`;
-  if (origin !== "derived" && origin !== "corrected") return null;
-  return `${rules.length} rules were derived from the sources${origin === "corrected" ? " and corrected" : ""}. Correct them with checkmate plan edit ${planId} --patch.`;
+  if (origin2 !== "derived" && origin2 !== "corrected") return null;
+  return `${rules.length} rules were derived from the sources${origin2 === "corrected" ? " and corrected" : ""}. Correct them with checkmate plan edit ${planId} --patch.`;
 }
 
 // plugin/src/journal.ts
@@ -13608,6 +13608,179 @@ function exploration(store, explorationId) {
   return { ...row3, charter: { ...charter, requirements: explorationRules(store, explorationId) } };
 }
 
+// plugin/src/model-catalog.ts
+import { execFile, spawn as spawn2 } from "node:child_process";
+import { createInterface } from "node:readline";
+import { stripVTControlCharacters as stripVTControlCharacters2 } from "node:util";
+var effortLevels = {
+  claude: ["low", "medium", "high", "xhigh", "max"],
+  pi: ["off", "minimal", "low", "medium", "high", "xhigh", "max"]
+};
+function resolvedEffort(harness, catalog2, model, effort, provider) {
+  let option = model ? catalog2.models.find((item) => item.value === model) : catalog2.defaultModel;
+  if (harness === "claude" && model === "default") option = catalog2.defaultModel;
+  if (harness === "pi" && model && provider && !option?.value.startsWith(`${provider}/`))
+    option = catalog2.models.find((item) => item.value === `${provider}/${model}`);
+  if (harness === "pi" && model && !option && !provider) {
+    const matches = catalog2.models.filter((item) => item.value.slice(item.value.indexOf("/") + 1) === model);
+    if (matches.length === 1) option = matches[0];
+  }
+  const selected = effort || "medium";
+  return option?.effortLevels?.includes(selected) ? selected : void 0;
+}
+function effortArgs(harness, effort) {
+  return effort ? [harness === "pi" ? "--thinking" : "--effort", effort] : [];
+}
+var requestId = "checkmate-models";
+var claudeArgs = [
+  "-p",
+  "--input-format",
+  "stream-json",
+  "--output-format",
+  "stream-json",
+  "--verbose",
+  "--no-session-persistence",
+  "--strict-mcp-config",
+  "--mcp-config",
+  '{"mcpServers":{}}',
+  "--settings",
+  '{"disableAllHooks":true}',
+  "--tools",
+  ""
+];
+function catalog(options3, defaultModel) {
+  const models = [...new Map(options3.map((model) => [model.value, model])).values()];
+  return { models, ...defaultModel ? { defaultModel } : {} };
+}
+function claudeModels(stdout) {
+  for (const line of stdout.split("\n")) {
+    let event2;
+    try {
+      event2 = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    if (event2?.type !== "control_response" || event2.response?.request_id !== requestId) continue;
+    const models = event2.response.response?.models;
+    if (event2.response.subtype !== "success" || !Array.isArray(models)) return void 0;
+    const options3 = models.flatMap((model) => {
+      if (typeof model?.value !== "string" || !model.value) return [];
+      const advertised = model.supportedEffortLevels;
+      const levels = model.supportsEffort !== false && Array.isArray(advertised) ? effortLevels.claude.filter((level) => advertised.includes(level)) : [];
+      return [
+        {
+          value: model.value,
+          label: typeof model.displayName === "string" ? model.displayName : model.value,
+          ...levels.length ? { effortLevels: levels } : {}
+        }
+      ];
+    });
+    return catalog(
+      options3.filter((option) => option.value !== "default"),
+      options3.find((option) => option.value === "default")
+    );
+  }
+  return void 0;
+}
+function piOption(model) {
+  if (typeof model?.provider !== "string" || !model.provider || typeof model.id !== "string" || !model.id) return [];
+  const value2 = `${model.provider}/${model.id}`;
+  const levels = model.reasoning === true ? effortLevels.pi.filter((level) => {
+    const mapped = model.thinkingLevelMap?.[level];
+    return mapped !== null && (level !== "xhigh" && level !== "max" || typeof mapped === "string");
+  }) : [];
+  return [{ value: value2, label: value2, ...levels.some((level) => level !== "off") ? { effortLevels: levels } : {} }];
+}
+function piRpcCatalog(program, workspace, env) {
+  return new Promise((resolve9) => {
+    const host = spawn2(program, ["--no-mcp", "--no-session", "--mode", "rpc", ...piModelArgs(env)], {
+      cwd: workspace,
+      env,
+      stdio: ["pipe", "pipe", "ignore"]
+    });
+    const lines2 = createInterface({ input: host.stdout });
+    let models;
+    let model;
+    let available = false;
+    let state = false;
+    const timer = setTimeout(() => {
+      host.kill("SIGKILL");
+      finish2();
+    }, 1e4);
+    function finish2() {
+      clearTimeout(timer);
+      lines2.close();
+      resolve9(models && catalog(models, model));
+    }
+    host.once("error", finish2);
+    host.once("close", finish2);
+    host.stdin.on("error", () => {
+    });
+    lines2.on("line", (line) => {
+      let response;
+      try {
+        response = JSON.parse(line);
+      } catch {
+        return;
+      }
+      if (response?.type !== "response") return;
+      if (response.id === "models" && response.command === "get_available_models") {
+        available = true;
+        if (response.success && Array.isArray(response.data?.models))
+          models = response.data.models.flatMap(piOption);
+      }
+      if (response.id === "state" && response.command === "get_state") {
+        state = true;
+        if (response.success) model = piOption(response.data?.model)[0];
+      }
+      if (available && state && !host.stdin.writableEnded) host.stdin.end();
+    });
+    host.stdin.write('{"id":"models","type":"get_available_models"}\n{"id":"state","type":"get_state"}\n');
+  });
+}
+function piModels(stdout) {
+  const lines2 = stripVTControlCharacters2(stdout).trim().split("\n");
+  const header2 = lines2.findIndex((line) => /^provider\s+model\s+context\b/.test(line.trim()));
+  if (header2 === -1) return lines2.some((line) => /^No models available\./.test(line.trim())) ? [] : void 0;
+  const columns2 = lines2[header2].trim().split(/\s+/).length;
+  return lines2.slice(header2 + 1).flatMap((line) => {
+    const fields = line.trim().split(/\s{2,}/);
+    if (fields.length !== columns2) return [];
+    const [provider, model] = fields;
+    const value2 = `${provider}/${model}`;
+    return [{ value: value2, label: value2 }];
+  });
+}
+async function discoverModelCatalog(harness, workspace, env) {
+  const program = requireChild(env, harness);
+  const isPi = harness === "pi";
+  if (isPi) {
+    const value2 = await piRpcCatalog(program, workspace, env).catch(() => void 0);
+    if (value2) return value2;
+  }
+  const name2 = isPi ? "Pi" : "Claude Code";
+  const args = isPi ? ["--no-mcp", "--list-models"] : claudeArgs;
+  const input = isPi ? "" : JSON.stringify({ type: "control_request", request_id: requestId, request: { subtype: "initialize" } }) + "\n";
+  return new Promise((resolve9, reject) => {
+    const host = execFile(
+      program,
+      args,
+      { cwd: workspace, env, timeout: 1e4, killSignal: "SIGKILL", maxBuffer: 1024 * 1024 },
+      (error, stdout) => {
+        if (!error) {
+          const models = isPi ? piModels(stdout) : void 0;
+          const result = isPi ? models && catalog(models) : claudeModels(stdout);
+          if (result) return resolve9(result);
+        }
+        reject(new Error(`${name2} could not list models. Check the host configuration.`));
+      }
+    );
+    host.stdin?.on("error", () => {
+    });
+    host.stdin?.end(input);
+  });
+}
+
 // plugin/src/settings.ts
 var defaultTesterRules = "Read Bash";
 function setting(store, name2) {
@@ -13677,28 +13850,60 @@ function piRequestModelEnv(store, env) {
 function testerModelText(store, harness = "claude") {
   return setting(store, harness === "pi" ? "piTesterModel" : "testerModel") ?? "";
 }
+function effortSetting(kind, harness) {
+  if (harness === "pi") return kind === "request" ? "piRequestEffort" : "piTesterEffort";
+  return kind === "request" ? "requestEffort" : "testerEffort";
+}
+function requestEffortText(store, harness = "claude") {
+  return setting(store, effortSetting("request", harness)) ?? "";
+}
+function testerEffortText(store, harness = "claude") {
+  return setting(store, effortSetting("tester", harness)) ?? "";
+}
+function requireEffort(harness, effort) {
+  requireWellFormed(
+    typeof effort === "string" && (!effort || effortLevels[harness].includes(effort)),
+    "Choose a reasoning effort supported by the coding harness."
+  );
+}
 function saveRequestModel(store, actor, text, harness = "claude") {
   const model = text.trim();
   const name2 = harness === "pi" ? "piRequestModel" : "requestModel";
   return write(store, { actor, command: "setting set", subject: name2, input: { model } }, (operationId) => {
     requireModel(harness, model);
     const value2 = harness === "pi" ? JSON.stringify({ model, providerQualified: false }) : model;
-    if (value2 !== setting(store, name2)) insertSetting(store, name2, value2, operationId);
+    if (value2 !== setting(store, name2)) {
+      insertSetting(store, name2, value2, operationId);
+      if (requestEffortText(store, harness))
+        insertSetting(store, effortSetting("request", harness), "", operationId);
+    }
     return { reply: completed(name2, { model }), subjects: ["settings"] };
   });
 }
-function saveModels(store, actor, harness, request2, tester) {
+function saveModels(store, actor, harness, request2, tester, requestEffort, testerEffort) {
   const requestModel = request2.trim();
   const testerModel = tester.trim();
-  const input = { harness, requestModel, testerModel };
+  const input = { harness, requestModel, testerModel, requestEffort, testerEffort };
   return write(store, { actor, command: "setting set", subject: "models", input }, (operationId) => {
     requireModel(harness, requestModel);
     requireModel(harness, testerModel);
-    if (requestModel !== requestModelText(store, harness)) {
+    const requestChanged = requestModel !== requestModelText(store, harness);
+    const testerChanged = testerModel !== testerModelText(store, harness);
+    for (const [kind, choice2, changed] of [
+      ["request", requestEffort, requestChanged],
+      ["tester", testerEffort, testerChanged]
+    ]) {
+      if (choice2 === void 0 && !changed) continue;
+      const effort = choice2?.trim() ?? "";
+      requireEffort(harness, effort);
+      const name2 = effortSetting(kind, harness);
+      if (effort !== (setting(store, name2) ?? "")) insertSetting(store, name2, effort, operationId);
+    }
+    if (requestChanged) {
       const name2 = harness === "pi" ? "piRequestModel" : "requestModel";
       insertSetting(store, name2, modelValue(name2, requestModel), operationId);
     }
-    if (testerModel !== testerModelText(store, harness)) {
+    if (testerChanged) {
       const name2 = harness === "pi" ? "piTesterModel" : "testerModel";
       insertSetting(store, name2, testerModel, operationId);
     }
@@ -14618,14 +14823,14 @@ function addedEntries(store, explorationId, actor, after) {
 }
 function launchContext(store, explorationId, explorer, session) {
   const events = explorationEvents(store, explorationId);
-  const turn = events.findLastIndex(
+  const turn2 = events.findLastIndex(
     (event2) => event2.step === "follow-turn" && event2.status !== "operational_error" && event2.explorer === explorer && event2.detail.session === session
   );
-  const follow = turn === -1 ? void 0 : events.slice(0, turn).findLast((event2) => event2.step === "follow");
+  const follow = turn2 === -1 ? void 0 : events.slice(0, turn2).findLast((event2) => event2.step === "follow");
   const launch = events.findLast(
     (event2) => event2.step === "launch" && event2.explorer === explorer && event2.detail.session === session
   );
-  return events[turn]?.detail.context ?? follow?.detail.context ?? launch?.detail.context;
+  return events[turn2]?.detail.context ?? follow?.detail.context ?? launch?.detail.context;
 }
 var entryTitle = (entry) => entry.title ?? entry.text ?? entry.question ?? entry.saw ?? "";
 var entryKey = (entry) => `${entry.kind}
@@ -15003,7 +15208,7 @@ function upstreamBase(repository) {
 }
 
 // plugin/src/explorers.ts
-import { spawn as spawn2, spawnSync as spawnSync4 } from "node:child_process";
+import { spawn as spawn3, spawnSync as spawnSync4 } from "node:child_process";
 import { randomUUID as randomUUID3 } from "node:crypto";
 import {
   existsSync as existsSync4,
@@ -15022,12 +15227,15 @@ var pollMilliseconds = 500;
 var activityMilliseconds = 5e3;
 var mergerActor = "qa:merge";
 var verifierActor = "qa:verify";
-function hostModel(claudeArgs2) {
-  for (const [index2, arg] of claudeArgs2.entries()) {
-    if (arg === "--model") return claudeArgs2[index2 + 1];
-    if (arg.startsWith("--model=")) return arg.slice("--model=".length);
+function hostArg(args, flag) {
+  for (const [index2, arg] of args.entries()) {
+    if (arg === flag) return args[index2 + 1];
+    if (arg.startsWith(`${flag}=`)) return arg.slice(flag.length + 1);
   }
   return void 0;
+}
+function hostModel(args) {
+  return hostArg(args, "--model");
 }
 function contextForModel(context, model) {
   if (!model) return context;
@@ -15044,7 +15252,16 @@ function contextForModel(context, model) {
   args.push("--model", model);
   return pi ? { ...context, piArgs: args } : { ...context, claudeArgs: args };
 }
-function launchPlan(profile, input, env, savedModel = "", preferSaved = false) {
+function contextForEffort(context, catalog2, choice2) {
+  if (!catalog2) return context;
+  const { harness = "claude" } = context;
+  const args = harness === "pi" ? context.piArgs ?? [] : context.claudeArgs;
+  if (hostArg(args, harness === "pi" ? "--thinking" : "--effort")) return context;
+  const effort = resolvedEffort(harness, catalog2, hostModel(args) ?? "", choice2, hostArg(args, "--provider"));
+  if (!effort) return context;
+  return harness === "pi" ? { ...context, piArgs: [...args, ...effortArgs(harness, effort)] } : { ...context, claudeArgs: [...args, ...effortArgs(harness, effort)] };
+}
+function launchPlan(profile, input, env, savedModel = "", preferSaved = false, savedEffort = "") {
   const level = requireChoice(
     input.level ?? storedLevel(profile.explore?.level) ?? defaultLevel,
     levelNames,
@@ -15058,8 +15275,10 @@ function launchPlan(profile, input, env, savedModel = "", preferSaved = false) {
     const model2 = text.trim();
     return model2 ? [[name2, model2]] : [];
   });
+  const testerEfforts = Object.entries(input.testerEfforts ?? {});
   if (input.session) {
     requireWellFormed(!testerModels2.length, "Individual tester models require testers in new processes.");
+    requireWellFormed(!testerEfforts.length, "Individual tester efforts require testers in new processes.");
     requireWellFormed(
       !input.claudeArgs.length && input.timeoutSeconds === void 0,
       "--claude-arg and --timeout are for testers in new processes. With --session, the host session starts the testers as agents."
@@ -15084,6 +15303,10 @@ function launchPlan(profile, input, env, savedModel = "", preferSaved = false) {
   for (const [name2, model2] of testerModels2) {
     requireWellFormed(names.includes(name2), `Unknown tester ${name2} for this exploration.`);
     requireModel(harness, model2);
+  }
+  for (const [name2, effort] of testerEfforts) {
+    requireWellFormed(names.includes(name2), `Unknown tester ${name2} for this exploration.`);
+    requireEffort(harness, effort);
   }
   if (harness === "pi") {
     requireWellFormed(
@@ -15117,6 +15340,8 @@ function launchPlan(profile, input, env, savedModel = "", preferSaved = false) {
       harness
     },
     ...testerModels2.length ? { testerModels: Object.fromEntries(testerModels2) } : {},
+    ...testerEfforts.length ? { testerEfforts: Object.fromEntries(testerEfforts) } : {},
+    ...savedEffort && (selected || !host || harness === "pi" && preferSaved && !savedModel) ? { effort: savedEffort } : {},
     allow: input.allow,
     studySeconds: row3.studySeconds,
     testSeconds,
@@ -15150,7 +15375,7 @@ function topLevelNames(workspace) {
   const names = status.status === 0 ? status.stdout.split("\n").filter((line) => line.startsWith("?? ")).map((line) => line.slice(3).replace(/^"|"$/g, "")) : readdirSync2(workspace);
   return new Set(names.filter((name2) => !strayIgnored.includes(name2.replace(/\/$/, ""))));
 }
-async function watchStray(store, actor, explorationId, explorer, turn, run2) {
+async function watchStray(store, actor, explorationId, explorer, turn2, run2) {
   const before = topLevelNames(store.workspace);
   const result = await run2();
   const stray = [...topLevelNames(store.workspace)].filter((name2) => !before.has(name2)).sort();
@@ -15159,7 +15384,7 @@ async function watchStray(store, actor, explorationId, explorer, turn, run2) {
       step: "stray",
       explorer,
       status: "completed",
-      detail: { turn, names: stray, basis: "workspace_listing" }
+      detail: { turn: turn2, names: stray, basis: "workspace_listing" }
     });
   return result;
 }
@@ -15207,7 +15432,7 @@ function startSupervisor(store, explorationId, actor, env, extra = []) {
   const folder = join7(store.workspace, ".checkmate", "tmp");
   mkdirSync6(folder, { recursive: true });
   const log = openSync(join7(folder, `explore-${explorationId}.log`), "a");
-  const child = spawn2(
+  const child = spawn3(
     process.execPath,
     [checkmateScript(), "explore", "drive", explorationId, "--workspace", store.workspace, ...extra],
     {
@@ -15228,12 +15453,14 @@ function startExploration(store, actor, given, env, preferSavedModel = false) {
     const opened = input.explorationId ? finishable(store, input.explorationId) : insertExploration(store, input, operationId, at);
     const row3 = explorationRow(store, opened.explorationId);
     const savedModel = input.session ? "" : testerModelText(store, selectedHarness(env));
+    const savedEffort = input.session ? "" : testerEffortText(store, selectedHarness(env));
     const launch = launchPlan(
       targetRevision(store, row3.target_id, row3.target_revision).profile,
       input,
       env,
       savedModel,
-      preferSavedModel
+      preferSavedModel,
+      savedEffort
     );
     addEvent(
       store,
@@ -15321,11 +15548,11 @@ function workFiles(folder) {
     return /* @__PURE__ */ new Map();
   }
 }
-function activityLine(turn, changed, count2) {
+function activityLine(turn2, changed, count2) {
   const named = changed.length > 3 ? `${changed.slice(0, 3).join(", ")} and ${changed.length - 3} more` : changed.join(", ");
-  return `${turn}: wrote ${named}. ${count2} ${count2 === 1 ? "file" : "files"} in the work folder.`;
+  return `${turn2}: wrote ${named}. ${count2} ${count2 === 1 ? "file" : "files"} in the work folder.`;
 }
-function watchWork(store, actor, explorationId, explorer, turn) {
+function watchWork(store, actor, explorationId, explorer, turn2) {
   const folder = join7(store.workspace, workFolder(explorationId, explorer));
   let known = workFiles(folder);
   const check = () => {
@@ -15337,14 +15564,14 @@ function watchWork(store, actor, explorationId, explorer, turn) {
         step: "activity",
         explorer,
         status: "started",
-        detail: { turn, activity: activityLine(turn, changed, now.size) }
+        detail: { turn: turn2, activity: activityLine(turn2, changed, now.size) }
       });
   };
   const timer = setInterval(check, activityMilliseconds);
   return {
     next: (name2) => {
       check();
-      turn = name2;
+      turn2 = name2;
     },
     stop: () => {
       clearInterval(timer);
@@ -15352,13 +15579,18 @@ function watchWork(store, actor, explorationId, explorer, turn) {
     }
   };
 }
-async function launchExplorers(store, actor, explorationId, launch, env) {
+async function launchExplorers(store, actor, explorationId, launch, env, catalog2) {
   const opened = exploration(store, explorationId);
   const entries = entryValues(store, explorationId);
   const executable = requireChild(env, launch.context.harness);
   const runs = explorerNames(launch.explorers).map(async (explorer) => {
     const session = randomUUID3();
-    const tester = contextForModel(launch.context, launch.testerModels?.[explorer]);
+    const model = launch.testerModels?.[explorer];
+    const tester = contextForEffort(
+      contextForModel(launch.context, model),
+      catalog2,
+      launch.testerEfforts?.[explorer] ?? (model ? "" : launch.effort ?? "")
+    );
     const { folder, grant, deny, extraEnv } = explorerWork(store, explorationId, explorer, launch.explorers);
     const rules = launch.context.harness === "pi" ? launch.allow : [...launch.allow, ...grant];
     const brief = explorerBrief(opened.charter, entries, `qa-${explorationId}-${explorer}-`, folder, {
@@ -15376,7 +15608,7 @@ async function launchExplorers(store, actor, explorationId, launch, env) {
         brief
       }
     });
-    const turn = (own, prompt, name2) => {
+    const turn2 = (own, prompt, name2) => {
       const hook = childHook(store.workspace, explorationId, explorer);
       const context = { ...tester, deny, hook, work: folder };
       return watchStray(
@@ -15398,7 +15630,7 @@ async function launchExplorers(store, actor, explorationId, launch, env) {
       );
     };
     const watch = watchWork(store, actor, explorationId, explorer, "study");
-    const study = await turn(["--session-id", session], brief.study, "study");
+    const study = await turn2(["--session-id", session], brief.study, "study");
     watch.next("test");
     if (!study.failure)
       event(store, actor, explorationId, {
@@ -15407,7 +15639,7 @@ async function launchExplorers(store, actor, explorationId, launch, env) {
         status: "started",
         detail: { session, turn: "test" }
       });
-    const calls = study.failure ? [study] : [study, await turn(["--resume", session], brief.test, "test")];
+    const calls = study.failure ? [study] : [study, await turn2(["--resume", session], brief.test, "test")];
     watch.stop();
     return { explorer, session, calls };
   });
@@ -15664,12 +15896,15 @@ async function driveExploration(workspace, explorationId, env) {
       status: "started",
       detail: { pid: process.pid }
     });
-    const launch = startOf(explorationEvents(store, explorationId));
-    if (!launch) throw new Refusal("prohibited", `Exploration ${explorationId} has no start.`);
+    const started = startOf(explorationEvents(store, explorationId));
+    if (!started) throw new Refusal("prohibited", `Exploration ${explorationId} has no start.`);
     if (stopOf(explorationEvents(store, explorationId))) return;
+    const catalog2 = started.explorers || started.verifier ? await discoverModelCatalog(started.context.harness ?? "claude", workspace, env).catch(() => void 0) : void 0;
+    if (stopOf(explorationEvents(store, explorationId))) return;
+    const launch = { ...started, context: contextForEffort(started.context, catalog2, started.effort ?? "") };
     if (launch.explorers) {
       deriveRules(store, actor, explorationId, launch, env);
-      const ended = await launchExplorers(store, actor, explorationId, launch, env);
+      const ended = await launchExplorers(store, actor, explorationId, started, env, catalog2);
       recordExplorers(
         store,
         actor,
@@ -15822,6 +16057,10 @@ async function driveFollow(workspace, explorationId, env) {
     const plan = events.findLast((item) => item.step === "follow").detail;
     const initial = startOf(events);
     const followModel = hostModel(plan.context.claudeArgs);
+    const catalog2 = await discoverModelCatalog(plan.context.harness ?? "claude", workspace, env).catch(
+      () => void 0
+    );
+    if (stopOf(explorationEvents(store, explorationId))) return;
     const launch = {
       ...initial,
       ...followModel && followModel !== initial.model ? { model: followModel, modelFrom: "host" } : {},
@@ -15840,7 +16079,12 @@ async function driveFollow(workspace, explorationId, env) {
         const watch = watchWork(store, actor, explorationId, explorer, "follow-up");
         const hook = childHook(store.workspace, explorationId, explorer);
         const model = plan.modelOverride ? void 0 : initial.testerModels?.[explorer];
-        const tester = contextForModel(plan.context, model);
+        const resumed2 = plan.context.harness === "pi" && !model && !hostModel(plan.context.piArgs ?? []) ? launchContext(store, explorationId, explorer, session) : void 0;
+        const tester = resumed2 ?? contextForEffort(
+          contextForModel(plan.context, model),
+          catalog2,
+          plan.modelOverride ? "" : initial.testerEfforts?.[explorer] ?? (model ? "" : initial.effort ?? "")
+        );
         const context = { ...tester, deny, hook, work: folder };
         const call = await watchStray(
           store,
@@ -15873,7 +16117,7 @@ async function driveFollow(workspace, explorationId, env) {
         status: call.failure?.[0] ?? "completed",
         detail: {
           session,
-          ...model ? { context: tester } : {},
+          context: tester,
           ...call.failure ? { reason: call.failure[1] } : {},
           ...call.stderr ? { stderr: call.stderr } : {},
           ...hint ? { hint } : {},
@@ -15889,7 +16133,11 @@ async function driveFollow(workspace, explorationId, env) {
     if (recorded) {
       const review = {
         ...initial,
-        context: followModel && followModel !== initial.model ? contextForModel(plan.context, initial.model ?? void 0) : plan.context,
+        context: contextForEffort(
+          followModel && followModel !== initial.model ? contextForModel(plan.context, initial.model ?? void 0) : plan.context,
+          catalog2,
+          initial.effort ?? ""
+        ),
         allow: plan.allow,
         timeoutSeconds: plan.timeoutSeconds
       };
@@ -16048,7 +16296,7 @@ function startEnding(store, explorationId, actor, explorer, env) {
   const folder = join7(store.workspace, ".checkmate", "tmp");
   mkdirSync6(folder, { recursive: true });
   const log = openSync(join7(folder, `explore-${explorationId}.log`), "a");
-  const child = spawn2(
+  const child = spawn3(
     process.execPath,
     [
       checkmateScript(),
@@ -16253,14 +16501,15 @@ function explorationReport(store, explorationId) {
 import { randomUUID as randomUUID4 } from "node:crypto";
 var maxRequestText = 4e3;
 var requestAuthor = "checkmate";
+var chatIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 var endStates = ["answered", "failed", "stopped", "interrupted"];
 var unreadStates = ["answered", "failed"];
 function screenText(context) {
   const parts = [
-    ...context.planId ? [`plan ${context.planId}`] : [],
+    ...context.planId ? [`plan ${context.planId}${context.planRevision ? `@${context.planRevision}` : ""}`] : [],
     ...context.record ? [`${context.record.kind} ${context.record.id}`] : []
   ];
-  return parts.length ? parts.join(" and ") : null;
+  return parts.length ? parts.join(" and ") : context.page ? `the ${context.page} page` : null;
 }
 function requestActor(person, requestId2) {
   return `${person} via request ${requestId2}`;
@@ -16293,14 +16542,6 @@ function startConversation(store, actor) {
 }
 function conversationSize(store, sessionId) {
   return one(store, "SELECT count(*) AS count FROM requests WHERE conversation = ?", sessionId).count;
-}
-function conversationStarted(store, sessionId) {
-  return one(
-    store,
-    `SELECT 1 FROM request_events e JOIN requests r ON r.request_id = e.request_id
-			WHERE r.conversation = ? AND e.step = 'session'`,
-    sessionId
-  ) !== void 0;
 }
 function conversationHarness(store, sessionId) {
   const row3 = one(
@@ -16337,27 +16578,81 @@ function askRequest(store, actor, input) {
       "R",
       all(store, "SELECT request_id FROM requests").map((row3) => row3.request_id)
     );
-    const current = currentConversation(store);
-    const previous = current && conversationHarness(store, current.sessionId);
     const harness = input.harness ?? "claude";
-    const conversation = current && (!previous || previous === harness) ? current : insertConversation(store, operationId, at);
+    let chatId;
+    let context = input.context;
+    if (input.chatId) {
+      requireWellFormed(chatIdPattern.test(input.chatId), "Invalid chat ID.");
+      const initial = one(
+        store,
+        "SELECT context FROM requests WHERE conversation = ? ORDER BY rowid LIMIT 1",
+        input.chatId
+      );
+      requireWellFormed(initial, `Unknown chat: ${input.chatId}`);
+      chatId = input.chatId;
+      context = JSON.parse(initial.context);
+    } else if (input.chatId === null) {
+      validateChatContext(store, context);
+      chatId = randomUUID4();
+    } else {
+      const current = currentConversation(store);
+      const previous = current && conversationHarness(store, current.sessionId);
+      chatId = (current && (!previous || previous === harness) ? current : insertConversation(store, operationId, at)).sessionId;
+    }
     execute(
       store,
       "INSERT INTO requests (request_id, text, context, asker, conversation, asked_at, operation_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
       requestId2,
       text,
-      canonical(input.context),
+      canonical(context),
       who,
-      conversation.sessionId,
+      chatId,
       at,
       operationId
     );
-    addRequestEvent(store, requestId2, { step: "state", status: "waiting", detail: { harness } }, operationId, at);
+    const { model = null, provider = null, effort = null, modelId = null } = input;
+    addRequestEvent(
+      store,
+      requestId2,
+      { step: "state", status: "waiting", detail: { harness, model, provider, effort, modelId } },
+      operationId,
+      at
+    );
     return {
       reply: completed(requestId2, { requestId: requestId2 }),
-      subjects: [`request:${requestId2}`, "requests"]
+      subjects: [`request:${requestId2}`, `chat:${chatId}`, "requests", "chats"]
     };
   }).data.requestId;
+}
+function validateChatContext(store, context) {
+  if (context.page)
+    requireWellFormed(["plans", "runs", "activity", "chats"].includes(context.page), "Unknown chat context page.");
+  if (context.planId)
+    requireWellFormed(
+      one(store, "SELECT 1 FROM plan_requests WHERE plan_id = ?", context.planId),
+      `Unknown plan: ${context.planId}`
+    );
+  if (context.planRevision !== void 0)
+    requireWellFormed(
+      context.planId && one(
+        store,
+        "SELECT 1 FROM plan_revisions WHERE plan_id = ? AND revision = ?",
+        context.planId,
+        context.planRevision
+      ),
+      `Unknown plan revision: ${context.planId}@${context.planRevision}`
+    );
+  const { record } = context;
+  if (!record) return;
+  const query = record.kind === "run" ? "SELECT plan_id, plan_revision FROM runs WHERE run_id = ?" : record.kind === "exploration" ? "SELECT plan_id, plan_revision FROM explorations WHERE exploration_id = ?" : null;
+  requireWellFormed(query, `Unknown chat context kind: ${record.kind}`);
+  const found = one(store, query, record.id);
+  requireWellFormed(found, `Unknown ${record.kind}: ${record.id}`);
+  requireWellFormed(!context.planId || found.plan_id === context.planId, "The chat context has a different plan.");
+  requireWellFormed(
+    context.planRevision === void 0 || found.plan_revision === context.planRevision,
+    "The chat context has a different plan revision."
+  );
 }
 function recordRequestEvent(store, requestId2, event2, options3) {
   return write(
@@ -16416,7 +16711,8 @@ function recordOf(ask, events) {
   const last = states.at(-1);
   const session = events.findLast((event2) => event2.step === "session");
   const recorded = session ? JSON.parse(session.detail) : null;
-  const harness = JSON.parse(states[0].detail).harness ?? recorded?.harness;
+  const selection = JSON.parse(states[0].detail);
+  const harness = selection.harness ?? recorded?.harness;
   const finished = endStates.includes(last.status) ? last : null;
   const detail = finished ? JSON.parse(finished.detail) : {};
   const listOf2 = (value2) => Array.isArray(value2) ? value2 : [];
@@ -16427,6 +16723,10 @@ function recordOf(ask, events) {
     asker: ask.asker,
     conversation: ask.conversation,
     harness: harness === "pi" ? "pi" : "claude",
+    model: selection.model ?? null,
+    provider: selection.provider ?? null,
+    effort: selection.effort ?? null,
+    modelId: selection.modelId ?? (selection.provider && selection.model ? `${selection.provider}/${selection.model}` : selection.model) ?? null,
     askedAt: ask.asked_at,
     state: last.status,
     sessionId: recorded?.sessionId ?? null,
@@ -16465,6 +16765,45 @@ function allRequests(store) {
     (ask) => recordOf(ask, events.get(ask.request_id) ?? [])
   );
 }
+function chatOf(store, id2) {
+  if (!chatIdPattern.test(id2)) return null;
+  const asks = all(store, "SELECT * FROM requests WHERE conversation = ? ORDER BY rowid", id2);
+  if (!asks.length) return null;
+  const events = eventsByRequest(
+    store,
+    "AND request_id IN (SELECT request_id FROM requests WHERE conversation = ?)",
+    id2
+  );
+  const turns = asks.map((ask) => recordOf(ask, events.get(ask.request_id) ?? []));
+  return { id: id2, context: turns[0].context, turns };
+}
+function listedChats(store) {
+  const chats = /* @__PURE__ */ new Map();
+  for (const turn2 of allRequests(store)) {
+    const chat = chats.get(turn2.conversation) ?? { id: turn2.conversation, context: turn2.context, turns: [] };
+    chat.turns.push(turn2);
+    chats.delete(chat.id);
+    chats.set(chat.id, chat);
+  }
+  return [...chats.values()].reverse();
+}
+function chatHistory(turns) {
+  const entries = [];
+  let remaining = 12e3;
+  for (const turn2 of turns.slice(-8).reverse()) {
+    if (!isEnded(turn2)) continue;
+    const entry = JSON.stringify({
+      request: turn2.text.slice(0, 2e3),
+      state: turn2.state,
+      reply: turn2.reply?.slice(0, 2e3) ?? null,
+      changes: turn2.changes.slice(0, 10).map((change) => change.text.slice(0, 120))
+    });
+    if (entry.length + 1 > remaining) break;
+    entries.unshift(entry);
+    remaining -= entry.length + 1;
+  }
+  return entries.join("\n");
+}
 function isUnread(request2) {
   return unreadStates.includes(request2.state) && !request2.read;
 }
@@ -16474,11 +16813,15 @@ function isEnded(request2) {
 function requestStatus(store) {
   const requests = allRequests(store);
   const unread = requests.filter(isUnread);
+  const running3 = requests.find((request2) => request2.state === "running");
+  const firstUnread = unread.at(-1);
   return {
-    running: requests.find((request2) => request2.state === "running")?.id ?? null,
+    running: running3?.id ?? null,
+    runningChat: running3?.conversation ?? null,
     waiting: requests.filter((request2) => request2.state === "waiting").length,
     unread: unread.length,
-    firstUnread: unread.at(-1)?.id ?? null
+    firstUnread: firstUnread?.id ?? null,
+    firstUnreadChat: firstUnread?.conversation ?? null
   };
 }
 function listedRequests(store) {
@@ -16642,17 +16985,14 @@ function explorationPermissions(store, askerId) {
 function openPermissions(store, planId) {
   return permissionsOf(rows(store, planId, void 0)).filter((item) => !item.decision);
 }
-function conversationOf(store, askerId) {
-  return one(store, "SELECT conversation FROM requests WHERE request_id = ?", askerId)?.conversation;
-}
 function ruleScope(store, askerId) {
-  const conversation = conversationOf(store, askerId);
-  if (!conversation) return explorationPermissions(store, askerId);
+  const request2 = requestOf(store, askerId);
+  if (!request2) return explorationPermissions(store, askerId);
   return all(
     store,
     "SELECT request_id FROM requests WHERE conversation = ?",
-    conversation
-  ).flatMap((row3) => explorationPermissions(store, row3.request_id));
+    request2.conversation
+  ).filter((row3) => requestOf(store, row3.request_id)?.harness === request2.harness).flatMap((row3) => explorationPermissions(store, row3.request_id));
 }
 function permissionRules(store, askerId) {
   return ruleScope(store, askerId).flatMap(
@@ -17228,7 +17568,7 @@ function explorerLive(store, explorationId, events, item, running3, now) {
   const stoppedBy = own.find((event2) => event2.step === "stop") ?? (end?.status === "completed" || follow !== -1 ? void 0 : stopOf(events));
   const followTurn = followed.find((event2) => event2.explorer === item.explorer && event2.step === "follow-turn");
   const inFollow = follow !== -1 && item.session !== null;
-  const turn = inFollow ? "follow-up" : end ? String(end.detail.turn ?? "test") : launch ? String(own.findLast((event2) => event2.step === "turn")?.detail.turn ?? "study") : null;
+  const turn2 = inFollow ? "follow-up" : end ? String(end.detail.turn ?? "test") : launch ? String(own.findLast((event2) => event2.step === "turn")?.detail.turn ?? "study") : null;
   const startedAt = inFollow ? events[follow].at : launch?.at ?? null;
   const endedAt = inFollow ? followTurn?.at ?? null : stoppedBy?.at ?? end?.at ?? null;
   const stopped = followed.some((event2) => event2.step === "followed") ? "skipped" : "stopped";
@@ -17248,7 +17588,7 @@ function explorerLive(store, explorationId, events, item, running3, now) {
     model: item.model,
     reason: item.reason,
     hint: item.hint,
-    turn,
+    turn: turn2,
     state,
     startedAt,
     pausedAt,
@@ -18963,12 +19303,12 @@ import { createReadStream, realpathSync as realpathSync5 } from "node:fs";
 import { readdir } from "node:fs/promises";
 import { homedir as homedir2 } from "node:os";
 import { basename as basename2, join as join10, resolve as resolve5 } from "node:path";
-import { createInterface } from "node:readline";
+import { createInterface as createInterface2 } from "node:readline";
 async function readUsage(path, workspace, session) {
   const stream = createReadStream(path, { encoding: "utf8" });
   let usage2;
   try {
-    for await (const line of createInterface({ input: stream, crlfDelay: Infinity })) {
+    for await (const line of createInterface2({ input: stream, crlfDelay: Infinity })) {
       if (!line.trim()) continue;
       const entry = JSON.parse(line);
       if (!usage2) {
@@ -19594,7 +19934,7 @@ function statusBar(context, page) {
 		<span class="sb-links">
 			<a
 				class="sb-btn"
-				href="${context.requests.running ? `/requests/${context.requests.running}` : "/requests"}"
+				href="${context.requests.runningChat ? `/chats/${context.requests.runningChat}` : "/chats"}"
 				title="The request that runs now"
 				data-region="request-link"
 				${context.requests.running ? "" : html2`hidden`}
@@ -19610,7 +19950,7 @@ function statusBar(context, page) {
 			>
 			<a
 				class="sb-btn att"
-				href="${context.requests.unread === 1 ? `/requests/${context.requests.firstUnread}` : "/requests"}"
+				href="${context.requests.unread === 1 && context.requests.firstUnreadChat ? `/chats/${context.requests.firstUnreadChat}` : "/chats"}"
 				title="Replies to your requests that you did not read"
 				aria-label="${context.requests.unread} ${context.requests.unread === 1 ? "reply" : "replies"} not read"
 				data-region="replies-link"
@@ -19638,8 +19978,8 @@ function statusBar(context, page) {
 					${page.section === "activity" ? html2`aria-current="page"` : ""}
 					>${html2`<span>Activity${context.running ? html2`<span class="sb-long"> · ${context.running} running</span>` : ""}</span>`}</a
 				>
-				${statusLink(page, "runs", "/runs", "Runs")} ${statusLink(page, "log", "/log", "Log")}
-				${statusLink(page, "settings", "/settings", "Settings")}</span
+				${statusLink(page, "chats", "/chats", "Chats")} ${statusLink(page, "runs", "/runs", "Runs")}
+				${statusLink(page, "log", "/log", "Log")} ${statusLink(page, "settings", "/settings", "Settings")}</span
 			>
 			<details class="sb-more menu" data-menu>
 				<summary class="sb-btn">More</summary>
@@ -19647,7 +19987,8 @@ function statusBar(context, page) {
 					<button type="button" data-find-open>Find</button
 					><a href="/activity" data-region="activity-menu"
 						>Activity${context.running ? ` \xB7 ${context.running} running` : ""}</a
-					><a href="/runs">Runs</a><a href="/log">Log</a><a href="/settings">Settings</a>
+					><a href="/chats">Chats</a><a href="/runs">Runs</a><a href="/log">Log</a
+					><a href="/settings">Settings</a>
 				</div>
 			</details>
 		</span>
@@ -19758,10 +20099,10 @@ function crumbBar(crumbs) {
   ])}
 	</p>`;
 }
-function heading(title, sub = null, extra = "") {
+function heading(title2, sub = null, extra = "") {
   return html2`<div class="sp-h">
 		<div>
-			<h1>${title}</h1>
+			<h1>${title2}</h1>
 			${sub ? html2`<p class="sp-sub">${sub}</p>` : ""}
 		</div>
 		${extra}
@@ -19985,14 +20326,14 @@ ${state.values.value ?? ""}</textarea>
 		</form>
 	</section>`;
 }
-function recordPanel(title, content, decided = "") {
+function recordPanel(title2, content, decided = "") {
   return html2`<section
 		class="panel decision"
 		aria-labelledby="decide-title"
 		data-region="decision"
 		${decided ? html2`data-decided-message="${decided}"` : ""}
 	>
-		<h2 class="lab" id="decide-title">${title}</h2>
+		<h2 class="lab" id="decide-title">${title2}</h2>
 		${content}
 	</section>`;
 }
@@ -20742,7 +21083,7 @@ function choicesOf(item) {
   const rule = item.rule;
   const request2 = item.fromRequest;
   const scope = request2 ? "conversation" : "test";
-  const everyone = request2 ? `later requests of this conversation` : `any tester of this run`;
+  const everyone = request2 ? "later requests in this conversation using the same harness" : "any tester of this run";
   const where = request2 ? `request ${run2}` : `run ${run2}`;
   const ends = request2 ? "The rule ends when you start a new conversation." : "The rule ends with the run.";
   return [
@@ -20911,7 +21252,7 @@ function permissionPage(store, context, askerId, requestId2, view, refusal) {
   const name2 = requestName(item);
   const rules = permissionRules(store, askerId);
   const choices = item.decision ? [] : choicesOf(item);
-  const title = askHeading(item);
+  const title2 = askHeading(item);
   return {
     title: `${name2} \xB7 Permission request`,
     section: "home",
@@ -20946,7 +21287,7 @@ function permissionPage(store, context, askerId, requestId2, view, refusal) {
 					<span class="sp-c-id">${name2}</span>
 					<span class="sp-c-id">${item.decision ? ago(item.at) : waitsFor(item)}</span>
 				</div>
-				<h1 id="record-title" class="sp-ask-title" title="${title}">${title}</h1>
+				<h1 id="record-title" class="sp-ask-title" title="${title2}">${title2}</h1>
 			</section>
 			${item.decision ? html2`<p class="banner info" role="status" data-key="state">
 							${stateOf(item)}
@@ -21233,12 +21574,12 @@ function filterBar(spec3, state) {
 		<a class="btn ghost" href="${spec3.path}" data-list-clear>Clear</a>
 	</form>`;
 }
-function pageTrail(spec3, state, total, title) {
+function pageTrail(spec3, state, total, title2) {
   const last = Math.max(1, Math.ceil(total / state.size));
   if (last === 1) return { back: "/" };
   return {
     back: state.page > 1 ? listHref(spec3, state, { page: 1 }) : "/",
-    crumbs: [[`${title} \xB7 page ${state.page} of ${last}`, null]]
+    crumbs: [[`${title2} \xB7 page ${state.page} of ${last}`, null]]
   };
 }
 function pager(spec3, state, total) {
@@ -21456,14 +21797,14 @@ var levelNotes = {
   normal: "2 testers and a verifier",
   deep: "3 testers and a verifier"
 };
-function shell(id2, title, gone, action2, context, body) {
+function shell(id2, title2, gone, action2, context, body) {
   return html2`<dialog
 		class="sp-confirm sp-act"
 		data-act-dialog="${id2}"
 		data-gone="${gone}"
 		aria-labelledby="act-${id2}-title"
 	>
-		<div class="sp-dh"><h2 id="act-${id2}-title" class="sp-path" data-act-title>${title}</h2></div>
+		<div class="sp-dh"><h2 id="act-${id2}-title" class="sp-path" data-act-title>${title2}</h2></div>
 		<form method="post" action="${action2}" class="sp-form sp-confirm-b" data-act-form>
 			<input type="hidden" name="csrf" value="${context.csrf}" />
 			<div data-act-error aria-live="polite"></div>
@@ -21542,6 +21883,16 @@ function testerModels(context) {
 					>
 						<option value="">Use workspace tester model</option>
 					</select>
+					<div hidden>
+						<label for="tester-effort-a${index2 + 1}">Reasoning effort for tester a${index2 + 1}</label>
+						<select
+							id="tester-effort-a${index2 + 1}"
+							name="testerEffort.a${index2 + 1}"
+							data-stop
+							data-tester-effort-select
+							disabled
+						></select>
+					</div>
 				</div>`
   )}
 	</details>`;
@@ -22065,7 +22416,7 @@ function optionsBox(items) {
 }
 function row(run2, n, now) {
   const items = options2(run2);
-  const title = `${run2.planId} \xB7 ${run2.follow ? "Follow-up" : "Test"} ${run2.build}${run2.level && !run2.follow ? ` \xB7 ${run2.level}` : ""}${sentence(run2) ? ` \xB7 ${sentence(run2)}` : ""}`;
+  const title2 = `${run2.planId} \xB7 ${run2.follow ? "Follow-up" : "Test"} ${run2.build}${run2.level && !run2.follow ? ` \xB7 ${run2.level}` : ""}${sentence(run2) ? ` \xB7 ${sentence(run2)}` : ""}`;
   const label = run2.follow ? `${run2.explorationId} follow-up` : run2.explorationId;
   return html2`<div
 		class="sp-row"
@@ -22080,7 +22431,7 @@ function row(run2, n, now) {
 		<span class="sp-c-cb"></span>
 		<span class="sp-c-tag">${pill(run2.state)}</span>
 		<span class="sp-c-id" title="${run2.explorationId}">${run2.explorationId}</span>
-		<span class="sp-c-title ell" title="${title}">${title}</span>
+		<span class="sp-c-title ell" title="${title2}">${title2}</span>
 		<span class="sp-c-meta ell" title="${metaText(run2, now)}">${join12(meta(run2, now), " \xB7 ")}</span>
 		${optionsBox(items)}
 	</div>`;
@@ -22100,7 +22451,7 @@ function requestRow(request2, n, now) {
     request2.costUsd === null ? null : money(request2.costUsd)
   ];
   const metaText2 = [request2.asker, request2.askedAt, spent, request2.costUsd === null ? null : money(request2.costUsd)].filter(Boolean).join(" \xB7 ");
-  const title = `Request \xB7 ${request2.text.trim().split("\n")[0]}`;
+  const title2 = `Request \xB7 ${request2.text.trim().split("\n")[0]}`;
   return html2`<div
 		class="sp-row"
 		role="listitem"
@@ -22114,7 +22465,7 @@ function requestRow(request2, n, now) {
 		<span class="sp-c-cb"></span>
 		<span class="sp-c-tag">${pill(request2.state)}</span>
 		<span class="sp-c-id" title="${request2.id}">${request2.id}</span>
-		<span class="sp-c-title ell" title="${title}">${title}</span>
+		<span class="sp-c-title ell" title="${title2}">${title2}</span>
 		<span class="sp-c-meta ell" title="${metaText2}">${join12(meta2, " \xB7 ")}</span>
 	</div>`;
 }
@@ -23102,10 +23453,10 @@ function viewHead(review, view) {
     return { sub: "Questions to answer and findings to decide, blocking ones first.", pills: html2`` };
   if (view === "all") return { sub: `${verdict.head} ${verdict.tail}`, pills: html2`` };
   if (view === "rules") {
-    const origin = review.map.rulesOrigin;
+    const origin2 = review.map.rulesOrigin;
     const rows2 = review.map.rows.filter((row3) => row3.rule.id !== outside);
     const stored = rows2.filter((row3) => row3.storedTests).length;
-    const edit = origin === "harvested" ? `The tester derived these rules from the sources. Edit the rules that have no stored test here, or with checkmate plan edit ${review.planId} --patch. Edit the others in the plan editor.` : origin === "derived" || origin === "corrected" ? `The tester derived these rules from the sources${origin === "corrected" ? ", and they were corrected" : ""}. Edit them here, or with checkmate plan edit ${review.planId} --patch.` : origin ? "The rules come from the plan. Edit them in the plan editor." : "This plan has no rules yet.";
+    const edit = origin2 === "harvested" ? `The tester derived these rules from the sources. Edit the rules that have no stored test here, or with checkmate plan edit ${review.planId} --patch. Edit the others in the plan editor.` : origin2 === "derived" || origin2 === "corrected" ? `The tester derived these rules from the sources${origin2 === "corrected" ? ", and they were corrected" : ""}. Edit them here, or with checkmate plan edit ${review.planId} --patch.` : origin2 ? "The rules come from the plan. Edit them in the plan editor." : "This plan has no rules yet.";
     return {
       sub: stored ? `${stored} of ${rows2.length} rules have a stored test. ${edit}` : edit,
       pills: html2``
@@ -23235,7 +23586,7 @@ function panel(context, review, view, current) {
   const head = viewHead(review, view);
   const items = itemsOf(review, view);
   const groups = view.startsWith("area:") ? ruleGroups(review, view, items) : groupsOf(items);
-  const title = viewTitle(review, view);
+  const title2 = viewTitle(review, view);
   const edit = view === "rules" && review.revision ? html2`<a class="sp-btn" href="/plans/${review.planId}@${review.revision}/edit"
 					><span>Edit the rules</span></a
 				>` : "";
@@ -23251,7 +23602,7 @@ function panel(context, review, view, current) {
   return html2`<section
 		class="sp-panel"
 		data-panel="${view}"
-		data-title="${title}"
+		data-title="${title2}"
 		aria-labelledby="title-${slug(view)}"
 		${view === current ? "" : html2`hidden`}
 	>
@@ -23260,13 +23611,13 @@ function panel(context, review, view, current) {
     [review.planId, `/plans/${review.planId}`],
     [review.target, null]
   ])}
-			${view === current ? html2`<h1 id="title-${slug(view)}" data-view-title>${title}</h1>` : html2`<h2 id="title-${slug(view)}" data-view-title>${title}</h2>`}
+			${view === current ? html2`<h1 id="title-${slug(view)}" data-view-title>${title2}</h1>` : html2`<h2 id="title-${slug(view)}" data-view-title>${title2}</h2>`}
 			${head.sub ? html2`<p class="sp-sub">${head.sub}</p>` : ""}
 			<div class="sp-pills">${head.pills}</div>
 			${canChoose(view) ? html2`<p class="sp-sub att" data-build-note></p>` : ""}
 		</div>
 		<div class="sp-tools" data-actions>${tools}</div>
-		${view === "rules" ? rulesList(context, review) : listOf(context, review, view, groups, title)}
+		${view === "rules" ? rulesList(context, review) : listOf(context, review, view, groups, title2)}
 	</section>`;
 }
 function reviewPage(store, context, planId, params, refusal = null, notice = null) {
@@ -23274,14 +23625,14 @@ function reviewPage(store, context, planId, params, refusal = null, notice = nul
   const views2 = viewsOf(review);
   const asked2 = params.get("view") ?? "needs";
   const current = views2.includes(asked2) ? asked2 : "needs";
-  const title = viewTitle(review, current);
+  const title2 = viewTitle(review, current);
   const key = refusal?.key ?? params.get("item");
   const item = key ? review.items.find((each) => each.key === key && each.kind !== "permission") ?? null : null;
   const file = params.get("file");
   const record = item ? file !== null && /^[0-9]{1,3}$/.test(file) && item.claim ? evidenceViewer(store, review, item, current, Number(file)) : recordDrawer(store, context, review, item, current, refusal) : "";
   const panels = views2.map((view) => panel(context, review, view, current));
   return {
-    title: `${item ? `${item.id} \xB7 ` : ""}${title} \xB7 ${planId}`,
+    title: `${item ? `${item.id} \xB7 ` : ""}${title2} \xB7 ${planId}`,
     section: "home",
     subjects: [
       `plan:${planId}`,
@@ -23292,7 +23643,7 @@ function reviewPage(store, context, planId, params, refusal = null, notice = nul
     crumbs: [
       ["Plans", "/"],
       [planId, `/plans/${planId}`],
-      [title, item ? reviewHref(planId, current) : null],
+      [title2, item ? reviewHref(planId, current) : null],
       ...item ? [[item.id, null]] : []
     ],
     back: item ? reviewHref(planId, current, `&at=${encodeURIComponent(item.key)}&focus=list`) : `/?at=${encodeURIComponent(`plan:${planId}`)}`,
@@ -23661,7 +24012,7 @@ function testerLine(item) {
   if (item.turn === "study") return "In its study turn. The first activity line comes when the turn ends.";
   return `In its ${item.turn ?? "test"} turn. No activity line yet.`;
 }
-function spRow(key, href, label, tag, title, meta2, n, metaText2 = "", opts = "", ask = "") {
+function spRow(key, href, label, tag, title2, meta2, n, metaText2 = "", opts = "", ask = "") {
   return html2`<div
 		class="sp-row"
 		role="option"
@@ -23677,7 +24028,7 @@ function spRow(key, href, label, tag, title, meta2, n, metaText2 = "", opts = ""
 		<span class="sp-c-cb"></span>
 		<span class="sp-c-tag">${tag}</span>
 		<span class="sp-c-id">${label}</span>
-		<span class="sp-c-title ell" title="${typeof title === "string" ? title : ""}">${title}</span>
+		<span class="sp-c-title ell" title="${typeof title2 === "string" ? title2 : ""}">${title2}</span>
 		<span class="sp-c-meta ell" title="${typeof meta2 === "string" ? meta2 : metaText2}">${meta2}</span>
 		${opts}
 	</div>`;
@@ -24003,7 +24354,7 @@ function explorationPage(store, context, explorationId, params = new URLSearchPa
   const phase = live.phases.find((row3) => `phase:${row3.phase}` === asked2);
   const label = explorer ? explorer.explorer : phase ? phase.phase : null;
   const review = reviewOf(store, live.planId);
-  const title = live.running ? "Testers now" : "Testers";
+  const title2 = live.running ? "Testers now" : "Testers";
   const others = review.explorations.filter((item) => item.explorationId !== explorationId).reverse();
   const permissions = explorationPermissions(store, explorationId);
   const open = permissions.filter((item) => !item.decision);
@@ -24011,7 +24362,7 @@ function explorationPage(store, context, explorationId, params = new URLSearchPa
   const detail = explorer ? explorerDetail(store, live, explorer, html2``) : phase ? phaseDetail(live, phase, html2``) : summaryDetail(store, live, html2``, runOptions(live, run2, others));
   return {
     viewer: true,
-    title: label ? `${explorationId} \xB7 ${label}` : `${title} \xB7 ${explorationId}`,
+    title: label ? `${explorationId} \xB7 ${label}` : `${title2} \xB7 ${explorationId}`,
     section: "home",
     subjects: [`exploration:${explorationId}`, `plan:${live.planId}`],
     crumbs: [
@@ -24028,7 +24379,7 @@ function explorationPage(store, context, explorationId, params = new URLSearchPa
       [live.planId, `/plans/${live.planId}`],
       [review.target, null]
     ])}
-					<h1>${title}</h1>
+					<h1>${title2}</h1>
 					<p class="sp-sub">
 						Session ${explorationId} on build ${live.build} · ${live.instanceId} ·
 						${live.level ?? "no level"} · ${timeLine(live, run2)}. ${live.goal}
@@ -24193,85 +24544,6 @@ function claimPage(store, context, explorationId, claimId, state = null) {
 				${panel2}
 			</div>`
   };
-}
-
-// plugin/src/model-catalog.ts
-import { execFile } from "node:child_process";
-import { stripVTControlCharacters as stripVTControlCharacters2 } from "node:util";
-var requestId = "checkmate-models";
-var claudeArgs = [
-  "-p",
-  "--input-format",
-  "stream-json",
-  "--output-format",
-  "stream-json",
-  "--verbose",
-  "--no-session-persistence",
-  "--strict-mcp-config",
-  "--mcp-config",
-  '{"mcpServers":{}}',
-  "--settings",
-  '{"disableAllHooks":true}',
-  "--tools",
-  ""
-];
-function claudeModels(stdout) {
-  for (const line of stdout.split("\n")) {
-    let event2;
-    try {
-      event2 = JSON.parse(line);
-    } catch {
-      continue;
-    }
-    if (event2?.type !== "control_response" || event2.response?.request_id !== requestId) continue;
-    const models = event2.response.response?.models;
-    if (event2.response.subtype !== "success" || !Array.isArray(models)) return void 0;
-    return models.flatMap(
-      (model) => typeof model?.value === "string" && model.value.length && model.value !== "default" ? [
-        {
-          value: model.value,
-          label: typeof model.displayName === "string" ? model.displayName : model.value
-        }
-      ] : []
-    );
-  }
-  return void 0;
-}
-function piModels(stdout) {
-  const lines2 = stripVTControlCharacters2(stdout).trim().split("\n");
-  const header2 = lines2.findIndex((line) => /^provider\s+model\s+context\b/.test(line.trim()));
-  if (header2 === -1) return lines2.some((line) => /^No models available\./.test(line.trim())) ? [] : void 0;
-  const columns2 = lines2[header2].trim().split(/\s+/).length;
-  return lines2.slice(header2 + 1).flatMap((line) => {
-    const fields = line.trim().split(/\s{2,}/);
-    if (fields.length !== columns2) return [];
-    const [provider, model] = fields;
-    const value2 = `${provider}/${model}`;
-    return [{ value: value2, label: value2 }];
-  });
-}
-async function discoverModels(harness, workspace, env) {
-  const program = requireChild(env, harness);
-  const isPi = harness === "pi";
-  const parseModels = isPi ? piModels : claudeModels;
-  const name2 = isPi ? "Pi" : "Claude Code";
-  const args = isPi ? ["--no-mcp", "--list-models"] : claudeArgs;
-  const input = isPi ? "" : JSON.stringify({ type: "control_request", request_id: requestId, request: { subtype: "initialize" } }) + "\n";
-  return new Promise((resolve9, reject) => {
-    const host = execFile(
-      program,
-      args,
-      { cwd: workspace, env, timeout: 1e4, killSignal: "SIGKILL", maxBuffer: 1024 * 1024 },
-      (error, stdout) => {
-        const models = error ? void 0 : parseModels(stdout);
-        if (!models) return reject(new Error(`${name2} could not list models. Check the host configuration.`));
-        resolve9([...new Map(models.map((model) => [model.value, model])).values()]);
-      }
-    );
-    host.stdin?.on("error", () => {
-    });
-    host.stdin?.end(input);
-  });
 }
 
 // plugin/src/developer.ts
@@ -25092,7 +25364,7 @@ function newerBanner(detail) {
 function side(content) {
   return html2`<aside class="side" aria-label="Decision">${content}</aside>`;
 }
-function fold(id2, title, count2, open, body, region = "") {
+function fold(id2, title2, count2, open, body, region = "") {
   return html2`<details
 		class="fold"
 		data-open-key="section:${id2}"
@@ -25100,7 +25372,7 @@ function fold(id2, title, count2, open, body, region = "") {
 		${open ? html2`open` : ""}
 	>
 		<summary>
-			<h2 id="${id2}">${title}${count2 === null ? "" : html2` <span class="n">${count2}</span>`}</h2>
+			<h2 id="${id2}">${title2}${count2 === null ? "" : html2` <span class="n">${count2}</span>`}</h2>
 		</summary>
 		<div class="fold-b">${body}</div>
 	</details>`;
@@ -25690,13 +25962,13 @@ function editPage(store, context, planId, revision, state = null) {
   const detail = planDetail(store, planId, revision);
   const subject = `${planId}@${revision}`;
   const path = `/plans/${subject}/edit`;
-  const title = `Edit ${subject}`;
+  const title2 = `Edit ${subject}`;
   if (detail.revision !== detail.latestRevision)
     return {
-      title,
+      title: title2,
       section: "home",
       subjects: [`plan:${planId}`],
-      body: html2`${heading(title, detail.plan.objective)}
+      body: html2`${heading(title2, detail.plan.objective)}
 			${banner(
         "info",
         html2`Only the latest revision can change.
@@ -25741,7 +26013,7 @@ function editPage(store, context, planId, revision, state = null) {
 			</div>
 			${actorLine(context, shown2, path, mode)}`;
   const body = html2`${heading(
-    title,
+    title2,
     detail.plan.objective,
     html2`<div class="meta">
 				<a class="pill" href="/plans/${subject}">${subject}</a>
@@ -25794,7 +26066,7 @@ function editPage(store, context, planId, revision, state = null) {
 			</details>
 		</div>`;
   return {
-    title,
+    title: title2,
     section: "home",
     subjects: [`plan:${planId}`],
     body,
@@ -26162,7 +26434,7 @@ function decisionPanel(store, context, detail, state, extra = null) {
     state ?? emptyState()
   );
 }
-function runRow2(runId, key, selected, label, tag, title, meta2 = "") {
+function runRow2(runId, key, selected, label, tag, title2, meta2 = "") {
   return html2`<div
 		class="sp-row${key === selected ? " cur" : ""}"
 		role="option"
@@ -26177,13 +26449,13 @@ function runRow2(runId, key, selected, label, tag, title, meta2 = "") {
 		<span class="sp-c-cb"></span>
 		<span class="sp-c-tag">${tag}</span>
 		<span class="sp-c-id">${label}</span>
-		<span class="sp-c-title ell" title="${typeof title === "string" ? title : ""}">${title}</span>
+		<span class="sp-c-title ell" title="${typeof title2 === "string" ? title2 : ""}">${title2}</span>
 		<span class="sp-c-meta ell" title="${typeof meta2 === "string" ? meta2 : ""}">${meta2}</span>
 	</div>`;
 }
-function runGroup(title, rows2) {
+function runGroup(title2, rows2) {
   if (!rows2.length) return "";
-  return html2`<div class="sp-gh" role="presentation">${title} <span>${rows2.length}</span></div>
+  return html2`<div class="sp-gh" role="presentation">${title2} <span>${rows2.length}</span></div>
 		${rows2}`;
 }
 function passedCount(test) {
@@ -26339,7 +26611,7 @@ var recordPaths2 = [
   [/^\/runs\/([A-Za-z0-9][A-Za-z0-9_-]{0,95})(?:\/|$)/, "run"],
   [/^\/requests\/(R[1-9][0-9]{0,8})$/, "request"]
 ];
-function screenContext(store, address) {
+function screenContext(store, address, chat = false) {
   let url;
   try {
     url = new URL(address, "http://checkmate.local");
@@ -26348,6 +26620,38 @@ function screenContext(store, address) {
   }
   const known = (planId2) => planId2 && one(store, "SELECT 1 FROM plan_requests WHERE plan_id = ?", planId2) ? planId2 : null;
   let planId = known(planPath.exec(url.pathname)?.[1]);
+  if (chat) {
+    if (url.origin !== "http://checkmate.local") return { planId: null, record: null };
+    if (url.pathname === "/" || url.pathname === "/plans") return { planId: null, record: null, page: "plans" };
+    if (url.pathname === "/runs" || url.pathname === "/activity")
+      return { planId: null, record: null, page: url.pathname === "/runs" ? "runs" : "activity" };
+    const run2 = /^\/(runs|explorations)\/([A-Za-z0-9][A-Za-z0-9_-]{0,95})$/.exec(url.pathname);
+    if (run2) {
+      const [, section, id2] = run2;
+      const record2 = section === "runs" ? one(
+        store,
+        "SELECT plan_id, plan_revision FROM runs WHERE run_id = ?",
+        id2
+      ) : one(
+        store,
+        "SELECT plan_id, plan_revision FROM explorations WHERE exploration_id = ?",
+        id2
+      );
+      return {
+        planId: record2?.plan_id ?? null,
+        record: record2 ? { kind: section === "runs" ? "run" : "exploration", id: id2 } : null,
+        ...record2?.plan_revision ? { planRevision: record2.plan_revision } : {}
+      };
+    }
+    const revision = /^\/plans\/[^/@]+@([1-9]\d{0,8})(?:\/|$)/.exec(url.pathname);
+    const planRevision2 = planId && revision ? one(
+      store,
+      "SELECT revision FROM plan_revisions WHERE plan_id = ? AND revision = ?",
+      planId,
+      Number(revision[1])
+    )?.revision : void 0;
+    return { planId, record: null, ...planRevision2 ? { planRevision: planRevision2 } : {} };
+  }
   let record = null;
   const key = url.searchParams.get("item") ?? url.searchParams.get("at") ?? "";
   const [letter, ...rest] = key.split(":");
@@ -26585,7 +26889,7 @@ var spec2 = {
 function row2(request2, n) {
   const reply = request2.state === "answered" ? firstLine(request2.reply) : firstLine(request2.reason) || "";
   const meta2 = [request2.asker, request2.askedAt, request2.costUsd === null ? null : money(request2.costUsd)].filter(Boolean).join(" \xB7 ");
-  const title = `${firstLine(request2.text)}${reply ? ` \xB7 ${reply}` : ""}`;
+  const title2 = `${firstLine(request2.text)}${reply ? ` \xB7 ${reply}` : ""}`;
   return html2`<div
 		class="sp-row"
 		role="option"
@@ -26601,7 +26905,7 @@ function row2(request2, n) {
 		<span class="sp-c-tag">${stateLabel(request2)}</span>
 		<span class="sp-c-id" title="${request2.id}">${request2.id}</span>
 		<span class="sp-c-title ell" title="${request2.text}${reply ? `
-${reply}` : ""}">${title}</span>
+${reply}` : ""}">${title2}</span>
 		<span class="sp-c-meta ell" title="${meta2}"
 			>${request2.asker} ·
 			${time(request2.askedAt)}${request2.costUsd === null ? "" : ` \xB7 ${money(request2.costUsd)}`}</span
@@ -26666,16 +26970,16 @@ function settingsNav(current) {
 		</ul>
 	</nav>`;
 }
-function settingsPage(current, title, subjects, body, status) {
-  const target = title !== "Targets" && title !== "Coding harness";
+function settingsPage(current, title2, subjects, body, status) {
+  const target = title2 !== "Targets" && title2 !== "Coding harness";
   return {
-    title,
+    title: title2,
     section: "settings",
     subjects,
     status,
     crumbs: [
       ["Settings", "/settings/targets"],
-      ...target ? [["Targets", "/settings/targets"], [title, null]] : [[title, null]]
+      ...target ? [["Targets", "/settings/targets"], [title2, null]] : [[title2, null]]
     ],
     back: target ? "/settings/targets" : "/",
     body: html2`${settingsNav(current)} ${body}`
@@ -27064,6 +27368,8 @@ function harnessPage(store, context, env, form = null, model = null, testerModel
   const pi = harness === "pi";
   const testerValue = testerModel?.value ?? testerModelText(store, harness);
   const requestValue = model?.value ?? requestModelText(store, harness);
+  const levelModels = [...new Set(Object.values(testLevels).map((level) => level.model))];
+  const testerDefault = !pi && levelModels.length === 1 ? levelModels[0] : "";
   const body = html2`${heading("Coding harness", null)}
 		<div class="panel">
 			<form method="post" action="/settings/harness/select" class="decision-form">
@@ -27110,7 +27416,12 @@ function harnessPage(store, context, env, form = null, model = null, testerModel
 				<div class="btns"><button class="btn primary">Save the rules</button></div>
 			</form>
 		</section>
-		<section class="panel" aria-labelledby="model-settings" data-model-catalog="${harness}">
+		<section
+			class="panel"
+			aria-labelledby="model-settings"
+			data-model-catalog="${harness}"
+			data-tester-default="${testerDefault}"
+		>
 			<h2 class="lab" id="model-settings">Models</h2>
 			<p class="help">Choose a model for each kind of work. Choose a default or a model from the list.</p>
 			<p class="help" role="status" data-model-status>Loading models from ${pi ? "Pi" : "Claude Code"}…</p>
@@ -27132,6 +27443,16 @@ function harnessPage(store, context, env, form = null, model = null, testerModel
 						${pi ? "The Pi default is the model configured in Pi." : "The test level selects its default model."}
 					</p>
 					<p class="help" data-model-unavailable="tester-model" hidden></p>
+					<div hidden>
+						<label class="lab" for="tester-effort">Reasoning effort for testers</label>
+						<select
+							id="tester-effort"
+							name="testerEffort"
+							data-effort-for="tester-model"
+							data-saved-effort="${testerEffortText(store, harness)}"
+							disabled
+						></select>
+					</div>
 					${testerModel?.error ? html2`<p class="form-error" role="alert" data-field="model">${testerModel.error}</p>` : ""}
 				</div>
 
@@ -27150,6 +27471,16 @@ function harnessPage(store, context, env, form = null, model = null, testerModel
 						The default is the model configured in ${pi ? "Pi" : "Claude Code"}.
 					</p>
 					<p class="help" data-model-unavailable="request-model" hidden></p>
+					<div hidden>
+						<label class="lab" for="request-effort">Reasoning effort for requests</label>
+						<select
+							id="request-effort"
+							name="requestEffort"
+							data-effort-for="request-model"
+							data-saved-effort="${requestEffortText(store, harness)}"
+							disabled
+						></select>
+					</div>
 					${model?.error ? html2`<p class="form-error" role="alert" data-field="model">${model.error}</p>` : ""}
 				</div>
 				<div class="btns"><button class="btn primary">Save models</button></div>
@@ -27174,12 +27505,13 @@ function harnessPage(store, context, env, form = null, model = null, testerModel
 }
 
 // plugin/src/ui/requester.ts
+import { randomUUID as randomUUID5 } from "node:crypto";
 import { join as join13 } from "node:path";
 
 // plugin/src/ui/pi-request.ts
-import { spawn as spawn3 } from "node:child_process";
+import { spawn as spawn4 } from "node:child_process";
 function streamPi(program, args, prompt, cwd, env, extension, sessionId, onLine, delays) {
-  const child = spawn3(program, args, { cwd, env, stdio: ["pipe", "pipe", "pipe"], detached: true });
+  const child = spawn4(program, args, { cwd, env, stdio: ["pipe", "pipe", "pipe"], detached: true });
   child.stdout.setEncoding("utf8");
   let pending = "";
   let stderr = "";
@@ -27279,6 +27611,29 @@ function streamPi(program, args, prompt, cwd, env, extension, sessionId, onLine,
 }
 
 // plugin/src/ui/requester.ts
+function chatPreferences(store, env, options3 = {}, previous) {
+  const harness = options3.harness ?? previous?.harness ?? selectedHarness(workspaceUiEnv(store, env));
+  requireWellFormed(harness === "pi" || harness === "claude", "Unknown request harness.");
+  const inherited = previous?.harness === harness && options3.model === void 0 ? previous : void 0;
+  const requestedModel = options3.model?.trim();
+  if (requestedModel !== void 0) requireModel(harness, requestedModel);
+  const piEnv = requestedModel === void 0 ? piRequestModelEnv(store, env) : requestedModel ? piModelEnv(env, requestedModel, requestedModel.includes("/")) : { CHECKMATE_PI_MODEL: void 0, CHECKMATE_PI_PROVIDER: void 0 };
+  const model = inherited ? inherited.model : (harness === "pi" ? piEnv.CHECKMATE_PI_MODEL?.trim() : requestedModel ?? requestModelText(store)) || null;
+  const provider = inherited ? inherited.provider : harness === "pi" ? piEnv.CHECKMATE_PI_PROVIDER?.trim() || null : null;
+  const selectedEffort = options3.effort ?? (inherited ? inherited.effort ?? "" : requestEffortText(store, harness));
+  const effort = options3.catalog ? resolvedEffort(harness, options3.catalog, model ?? "", selectedEffort, provider ?? void 0) ?? null : selectedEffort || null;
+  let modelId = model;
+  if (harness === "pi") {
+    if (model && provider) modelId = `${provider}/${model}`;
+    else if (model && !model.includes("/")) {
+      const matches = options3.catalog?.models.filter(
+        (item) => item.value.slice(item.value.indexOf("/") + 1) === model
+      );
+      modelId = matches?.length === 1 ? matches[0].value : inherited?.modelId ?? model;
+    } else if (!model) modelId = options3.catalog?.defaultModel?.value ?? inherited?.modelId ?? null;
+  }
+  return { harness, model, provider, effort, modelId };
+}
 var stderrCount = 20;
 function readStreamLine(line, harness = "claude") {
   if (harness === "pi") {
@@ -27434,7 +27789,11 @@ function createRequester(store, options3) {
     let modelArgs = [];
     try {
       program = requireChild(options3.env, run2.harness);
-      if (run2.harness === "pi") modelArgs = piModelArgs(piRequestModelEnv(store, options3.env));
+      if (run2.harness === "pi")
+        modelArgs = piModelArgs({
+          CHECKMATE_PI_MODEL: request2.model ?? void 0,
+          CHECKMATE_PI_PROVIDER: request2.provider ?? void 0
+        });
     } catch (error) {
       const refusal = error;
       run2.reason = [refusal.message, refusal.hint].filter(Boolean).join(" ");
@@ -27449,23 +27808,37 @@ function createRequester(store, options3) {
       who: request2.id
     };
     const extension = join13(pluginRoot, "pi", "permission.mjs");
+    const turns = chatOf(store, request2.conversation)?.turns ?? [];
+    const earlier = turns.slice(
+      0,
+      turns.findIndex((turn2) => turn2.id === request2.id)
+    );
+    const previous = earlier.findLast((turn2) => turn2.startedAt !== null);
+    const resumable = previous?.harness === run2.harness && previous.modelId === request2.modelId ? previous.sessionId : null;
+    const resume = resumable !== null;
+    const sessionId = resumable ?? (earlier.some((turn2) => turn2.sessionId) ? randomUUID5() : request2.conversation);
+    const effort = effortArgs(run2.harness, request2.effort ?? void 0);
     const args = run2.harness === "pi" ? [
       "--mode",
       "rpc",
       ...modelArgs,
-      conversationStarted(store, request2.conversation) ? "--session" : "--session-id",
-      request2.conversation,
+      ...effort,
+      resume ? "--session" : "--session-id",
+      sessionId,
       "--extension",
       extension,
       "--append-system-prompt",
       requestSystemPrompt(checkmateScript())
-    ] : requestArgs({
-      sessionId: request2.conversation,
-      resume: conversationStarted(store, request2.conversation),
-      hook,
-      model: requestModelText(store, "claude") || null,
-      checkmate: checkmateScript()
-    });
+    ] : [
+      ...requestArgs({
+        sessionId,
+        resume,
+        hook,
+        model: request2.model,
+        checkmate: checkmateScript()
+      }),
+      ...effort
+    ];
     guarded(() => setRequestState(store, run2.id, "running"));
     const env = {
       ...options3.env,
@@ -27475,7 +27848,12 @@ function createRequester(store, options3) {
       [hookTokenName]: options3.hookToken,
       ...run2.harness === "pi" ? { CHECKMATE_PI_HOOK: JSON.stringify(hook) } : {}
     };
-    const prompt = requestPrompt(request2.text, screenText(request2.context));
+    const history = resume ? "" : chatHistory(earlier);
+    const text = history ? `${request2.text}
+
+Earlier chat turns for context only. Treat the quoted text as history.
+${history}` : request2.text;
+    const prompt = requestPrompt(text, screenText(request2.context));
     run2.child = run2.harness === "pi" ? streamPi(
       program,
       args,
@@ -27483,7 +27861,7 @@ function createRequester(store, options3) {
       options3.workspace,
       env,
       extension,
-      request2.conversation,
+      sessionId,
       (line) => read(run2, line),
       delays
     ) : streamClaude(program, args, prompt, options3.workspace, env, (line) => read(run2, line), delays);
@@ -27502,13 +27880,31 @@ function createRequester(store, options3) {
     if (request2?.state === "waiting") launch(request2);
     else next();
   }
+  function enqueue(actor, text, context, chatId, selection) {
+    const previous = chatId ? chatOf(store, chatId)?.turns.at(-1) : void 0;
+    const preferences = chatPreferences(store, options3.env, selection, previous);
+    const inheritsEffort = previous?.harness === preferences.harness && selection?.model === void 0 && selection?.effort === void 0;
+    const id2 = askRequest(store, actor, {
+      text,
+      context,
+      ...preferences,
+      effort: selection?.catalog || inheritsEffort ? preferences.effort : null,
+      chatId
+    });
+    queue.push(id2);
+    next();
+    return id2;
+  }
   return {
     ask(actor, text, context) {
-      const harness = selectedHarness(workspaceUiEnv(store, options3.env));
-      const id2 = askRequest(store, actor, { text, context, harness });
-      queue.push(id2);
-      next();
-      return id2;
+      return enqueue(actor, text, context);
+    },
+    startChat(actor, text, context, selection) {
+      return enqueue(actor, text, context, null, selection);
+    },
+    followChat(actor, chatId, text, selection) {
+      requireWellFormed(chatId, "Missing chat ID.");
+      return enqueue(actor, text, { planId: null, record: null }, chatId, selection);
     },
     stop(actor, requestId2, reason) {
       if (running3?.id === requestId2) {
@@ -27653,6 +28049,148 @@ async function contactUi(workspace, action2) {
   return { url, harness };
 }
 
+// plugin/src/ui/chats.ts
+function composer(context, action2, selection, screen = "") {
+  const model = selection.provider && selection.model ? `${selection.provider}/${selection.model}` : selection.model;
+  return html2`<form method="post" action="${action2}" class="chat-composer" data-chat-composer>
+		<input type="hidden" name="csrf" value="${context.csrf}" />
+		${screen ? html2`<input type="hidden" name="screen" value="${screen}" />` : ""}
+		<label for="chat-text">Message</label>
+		<textarea id="chat-text" name="text" required maxlength="4000" rows="4" placeholder="Ask Checkmate…"></textarea>
+		<div class="chat-controls">
+			<label
+				>Harness
+				<select name="harness" data-chat-harness>
+					<option value="claude" ${selection.harness === "claude" ? "selected" : ""}>Claude Code</option>
+					<option value="pi" ${selection.harness === "pi" ? "selected" : ""}>Pi</option>
+				</select></label
+			>
+			<label
+				>Model
+				<select name="model" data-chat-model>
+					<option value="">Host default</option>
+					${model ? html2`<option value="${model}" selected>${model}</option>` : ""}
+				</select></label
+			>
+			<label hidden
+				>Effort
+				<select name="effort" data-chat-effort data-selected="${selection.effort ?? ""}">
+					<option value="">Host default</option>
+				</select></label
+			>
+			<button class="btn primary" type="submit">Send</button>
+		</div>
+		<p class="help" data-chat-model-status aria-live="polite"></p>
+		<p class="form-error" data-chat-error role="alert" hidden></p>
+	</form>`;
+}
+function title(text) {
+  const line = text.split("\n")[0];
+  return line.length > 80 ? `${line.slice(0, 79).trimEnd()}\u2026` : line;
+}
+function origin(request2) {
+  const context = request2.context;
+  const revision = context.planRevision ? `@${context.planRevision}` : "";
+  const record = context.record;
+  const links = {
+    plans: ["Plans", "/"],
+    runs: ["Runs", "/runs"],
+    activity: ["Activity", "/activity"],
+    chats: ["Chats", "/chats"]
+  };
+  const page = context.page && links[context.page];
+  const start = record?.kind === "run" || record?.kind === "exploration" ? html2`<a href="/${record.kind === "run" ? "runs" : "explorations"}/${encodeURIComponent(record.id)}"
+					>${record.kind} ${record.id}</a
+				>` : context.planId ? html2`<a href="/plans/${encodeURIComponent(context.planId)}${revision}"
+						>plan ${context.planId}${revision}</a
+					>` : page ? html2`<a href="${page[1]}">${page[0]}</a>` : "";
+  return start ? html2`<p class="help">Started from ${start}.</p>` : "";
+}
+function turn(store, request2, context) {
+  const permissions = explorationPermissions(store, request2.id).filter((item) => !item.decision);
+  const failure = request2.state === "failed" ? failureText(request2) : null;
+  return html2`<article class="chat-turn" data-key="request:${request2.id}">
+		<div class="chat-message chat-user">
+			<div class="chat-meta">You · ${time(request2.askedAt)}</div>
+			<p>${request2.text}</p>
+		</div>
+		<div class="chat-message chat-assistant">
+			<div class="chat-meta">
+				Checkmate ·
+				${request2.harness === "pi" ? "Pi" : "Claude Code"}${request2.model ? ` \xB7 ${request2.provider ? `${request2.provider}/` : ""}${request2.model}` : ""}${request2.effort ? ` \xB7 ${request2.effort}` : ""}
+				${pill(request2.state)}
+				<a href="/requests/${request2.id}">${request2.id}</a>
+			</div>
+			${request2.reply ? html2`<p>${request2.reply}</p>` : ""}
+			${request2.state === "waiting" ? html2`<p class="help">Waiting for another request to finish.</p>` : ""}
+			${request2.state === "running" ? html2`<p class="help">Working…</p>` : ""}
+			${permissions.map((item) => html2`<p class="banner warn">Waiting for permission. <a href="${requestHref(item, `/chats/${request2.conversation}`)}">Answer it</a></p>`)}
+			${request2.activity.length ? html2`<details>
+							<summary>Activity (${request2.activity.length})</summary>
+							<ol class="sp-activity">
+								${request2.activity.map((entry) => html2`<li>${entry.line}</li>`)}
+							</ol>
+						</details>` : ""}
+			${failure ? html2`<p class="banner fail">${failure.cause}</p>
+							${failure.detail ? html2`<p class="help">${failure.detail}</p>` : ""}${failure.lines.length ? html2`<pre class="sp-code">${failure.lines.join("\n")}</pre>` : ""}` : request2.reason ? html2`<p class="banner info">${request2.reason}</p>` : ""}
+			${request2.changes.length ? html2`<details>
+							<summary>Changes (${request2.changes.length})</summary>
+							<ul>
+								${request2.changes.map((change) => html2`<li>${change.href ? html2`<a href="${change.href}">${change.text}</a>` : change.text}</li>`)}
+							</ul>
+						</details>` : ""}
+			${request2.state === "running" || request2.state === "waiting" ? html2`<form method="post" action="/requests/${request2.id}/stop"><input type="hidden" name="csrf" value="${context.csrf}" /><input type="hidden" name="return" value="/chats/${request2.conversation}" /><button class="btn" type="submit">Stop</button></form>` : ""}
+		</div>
+	</article>`;
+}
+function chatsPage(store, context, params, env) {
+  const chats = listedChats(store);
+  const fresh = params.has("new");
+  return {
+    title: "Chats",
+    section: "chats",
+    subjects: ["requests"],
+    body: html2`${heading("Chats", "Your conversations with Checkmate.")}
+			<div class="chat-list-actions"><a class="btn" href="/chats?new=1">New chat</a></div>
+			${fresh ? composer(context, "/chats", chatPreferences(store, env), params.get("screen") ?? "") : ""}
+			${chats.length ? html2`<div class="chat-list">
+							${chats.map((chat) => {
+      const first = chat.turns[0];
+      const last = chat.turns[chat.turns.length - 1];
+      return html2`<a class="chat-list-item" href="/chats/${chat.id}"
+									><strong>${title(first.text)}</strong
+									><span
+										>${pill(last.state)} · ${ago(last.askedAt)} · ${chat.turns.length}
+										${chat.turns.length === 1 ? "message" : "messages"}</span
+									></a
+								>`;
+    })}
+						</div>` : emptyNotice("No chats yet.", "Start a chat or use Find to ask Checkmate.")}`
+  };
+}
+function chatPage(store, context, id2, env) {
+  const chat = chatOf(store, id2);
+  if (!chat) return null;
+  return {
+    title: "Chat",
+    section: "chats",
+    subjects: ["requests", ...chat.turns.map((item) => `request:${item.id}`)],
+    crumbs: [
+      ["Chats", "/chats"],
+      ["Chat", null]
+    ],
+    body: html2`<div class="chat-thread">
+			<div class="chat-thread-heading"><a href="/chats">← Chats</a><a href="/chats?new=1">New chat</a></div>
+			<h1>${title(chat.turns[0].text)}</h1>
+			${origin(chat.turns[0])}
+			<div class="chat-history" data-region="chat-history" aria-label="Conversation">
+				${chat.turns.map((item) => turn(store, item, context))}
+			</div>
+			${composer(context, `/chats/${id2}/turns`, chatPreferences(store, env, { harness: chat.turns.at(-1).harness, model: chat.turns.at(-1).provider && chat.turns.at(-1).model ? `${chat.turns.at(-1).provider}/${chat.turns.at(-1).model}` : chat.turns.at(-1).model ?? void 0, effort: chat.turns.at(-1).effort ?? void 0 }))}
+		</div>`
+  };
+}
+
 // plugin/src/ui/server.ts
 var id = "[A-Za-z0-9][A-Za-z0-9_-]{0,95}";
 var routes = {
@@ -27669,6 +28207,8 @@ var routes = {
   harvest: new RegExp(`^/plans/(${id})/harvest$`),
   permit: new RegExp(`^/permissions/(${id})/(P[1-9][0-9]{0,8})$`),
   requestPage: /^\/requests\/(R[1-9][0-9]{0,8})$/,
+  chatPage: /^\/chats\/([0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})$/,
+  chatTurn: /^\/chats\/([0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})\/turns$/,
   stopRequest: /^\/requests\/(R[1-9][0-9]{0,8})\/stop$/,
   permitMany: /^\/permissions\/bulk$/,
   stopRun: new RegExp(`^/explorations/(${id})/stop$`),
@@ -27899,14 +28439,14 @@ data: ${matched.join(",") || "*"}
       Vary: "Cookie"
     });
   }
-  function errorPage(request2, status, title, message) {
+  function errorPage(request2, status, title2, message) {
     render(request2, {
-      title,
+      title: title2,
       section: null,
       subjects: ["inbox"],
       status,
       back: "/",
-      body: html2`${heading(title, message)}
+      body: html2`${heading(title2, message)}
 				<p class="actions">
 					<a class="btn primary" href="/">Needs you</a> <a class="btn" href="/plans">Plans</a>
 					<a class="btn" href="/runs">Runs</a>
@@ -28034,6 +28574,9 @@ data: ${matched.join(",") || "*"}
     if (asked2) return permissionRecord(request2, asked2[1], asked2[2]);
     if (pathname === "/settings/claude") return redirect(request2.res, "/settings/harness");
     if (pathname === "/settings/harness") return render(request2, harnessPage(store, shown2, env));
+    if (pathname === "/chats") return render(request2, chatsPage(store, shown2, searchParams, env));
+    const chat = routes.chatPage.exec(pathname);
+    if (chat) return openChat(request2, chat[1]);
     if (pathname === "/requests") return render(request2, repliesPage(store, searchParams));
     const askedRequest = routes.requestPage.exec(pathname);
     if (askedRequest) return requestRecord(request2, askedRequest[1]);
@@ -28504,9 +29047,9 @@ data: ${matched.join(",") || "*"}
   }
   function ruleChange(request2, form, planId, change) {
     const back = reviewHref(planId, "rules");
-    const { origin } = planRules(store, planId);
+    const { origin: origin2 } = planRules(store, planId);
     const refuse3 = (message, field4 = "") => actionRefusal(request2, back, message, field4);
-    if (origin !== "derived" && origin !== "corrected" && origin !== "harvested")
+    if (origin2 !== "derived" && origin2 !== "corrected" && origin2 !== "harvested")
       return refuse3(`The rules of ${planId} do not come from the sources. Edit them in the plan editor.`);
     try {
       change();
@@ -28578,11 +29121,11 @@ data: ${matched.join(",") || "*"}
     const list2 = names.length > 2 ? `${names.slice(0, -1).join(", ")}, or ${names.at(-1)}` : names.join(" or ");
     return { instance: void 0, error: `Choose the instance: ${list2}.` };
   }
-  function testerModelsFrom(form) {
+  function testerChoicesFrom(form, name2) {
     const selected = {};
-    for (const [name2, value2] of form) {
-      if (name2.startsWith("testerModel.") && value2.trim())
-        selected[name2.slice("testerModel.".length)] = value2.trim();
+    const prefix = `${name2}.`;
+    for (const [field4, value2] of form) {
+      if (field4.startsWith(prefix) && value2.trim()) selected[field4.slice(prefix.length)] = value2.trim();
     }
     return selected;
   }
@@ -28625,7 +29168,8 @@ data: ${matched.join(",") || "*"}
           mode: autoMode(store, planId),
           allow: ruleTokens(form.get("rules") ?? ""),
           claudeArgs: [],
-          testerModels: testerModelsFrom(form)
+          testerModels: testerChoicesFrom(form, "testerModel"),
+          testerEfforts: testerChoicesFrom(form, "testerEffort")
         },
         launchEnv(),
         true
@@ -28830,7 +29374,47 @@ data: ${matched.join(",") || "*"}
     if (!page) return errorPage(request2, 404, "No such request", `Checkmate has no request ${requestId2}.`);
     render(request2, page);
   }
+  function openChat(request2, id2) {
+    const chat = chatOf(store, id2);
+    if (!chat) return errorPage(request2, 404, "Chat not found", "Open Chats to choose a conversation.");
+    const actor = context(request2).actor;
+    if (actor) {
+      for (const turn2 of chat.turns) if (isUnread(turn2)) markRequestRead(store, actor, turn2.id);
+    }
+    const page = chatPage(store, context(request2), id2, env);
+    if (page) return render(request2, page);
+  }
+  async function sendChat(request2, form, id2) {
+    const { actor, cookies } = actorFrom(request2, form);
+    const back = id2 ? `/chats/${id2}` : safeBack(form.get("return") ?? "/chats");
+    const refuse3 = (message2) => actionRefusal(request2, back, message2);
+    if (!actor) return refuse3("Enter your name to send a message.");
+    const message = form.get("text")?.trim() ?? "";
+    if (!message) return refuse3("Write a message first.");
+    const picked = form.get("harness");
+    if (picked !== null && picked !== "pi" && picked !== "claude") return refuse3("Choose a coding harness.");
+    const fromFind = form.get("chat") === "1";
+    const workspaceHarness2 = selectedHarness(launchEnv());
+    if (fromFind && picked !== null && picked !== workspaceHarness2)
+      return refuse3("The coding harness changed. Reload and try again.");
+    const screen = form.get("screen") ?? "";
+    const chatId = id2 ?? (fromFind ? routes.chatPage.exec(new URL(safeBack(screen), "http://checkmate.local").pathname)?.[1] : void 0);
+    const chat = chatId ? chatOf(store, chatId) : null;
+    if (chatId && !chat) return refuse3("This chat is no longer available.");
+    const harness = (fromFind ? null : picked) ?? chat?.turns.at(-1)?.harness ?? workspaceHarness2;
+    const model = form.get("model") ?? void 0;
+    const effort = form.get("effort") ?? void 0;
+    try {
+      const catalog2 = await catalogFor(harness, model === "").catch(() => void 0);
+      const choices = { harness, model, effort, catalog: catalog2 };
+      const turn2 = chatId ? requester.followChat(actor, chatId, message, choices) : requester.startChat(actor, message, screenContext(store, screen, true), choices);
+      redirect(request2.res, `/chats/${requestOf(store, turn2).conversation}`, cookies);
+    } catch (error) {
+      return refuse3(engineText(error));
+    }
+  }
   function askText(request2, form) {
+    if (form.get("chat") === "1") return sendChat(request2, form);
     const { actor, cookies } = actorFrom(request2, form);
     const back = safeBack(form.get("return") ?? "/requests");
     const refuse3 = (message) => actionRefusal(request2, back, message);
@@ -28861,9 +29445,10 @@ data: ${matched.join(",") || "*"}
   }
   function stopRequest(request2, form, requestId2) {
     const { actor, cookies } = actorFrom(request2, form);
-    const back = `/requests/${requestId2}`;
-    if (!actor) return actionRefusal(request2, back, "Enter your name. Checkmate records it with the stop.");
     const found = requestOf(store, requestId2);
+    const chat = found ? `/chats/${found.conversation}` : "";
+    const back = form.get("return") === chat && chat ? chat : `/requests/${requestId2}`;
+    if (!actor) return actionRefusal(request2, back, "Enter your name. Checkmate records it with the stop.");
     const flash = found?.state === "running" || found?.state === "waiting" ? `Stopping ${requestId2}\u2026` : `${requestId2} has ended. Nothing was stopped.`;
     requester.stop(actor, requestId2, form.get("reason")?.trim() ?? "");
     hooks.release();
@@ -28893,30 +29478,45 @@ data: ${matched.join(",") || "*"}
       const plan = query.get("plan");
       const target = query.get("target");
       const profile = plan ? planRequest(store, plan).target.profile : targetRevision(store, target ?? "").profile;
-      return reply(200, { count: profile.explore?.explorers ?? testLevels[level].explorers });
+      const policy = testLevels[level];
+      return reply(200, {
+        count: profile.explore?.explorers ?? policy.explorers,
+        model: testerModelText(store, harness) || (harness === "claude" ? policy.model : ""),
+        effort: testerEffortText(store, harness)
+      });
     } catch {
       return reply(404, { error: "Choose a target or plan." });
     }
   }
+  function catalogFor(harness, hostDefault = false) {
+    const key = hostDefault && harness === "pi" ? "pi-host-default" : harness;
+    let pending = pendingModels.get(key);
+    if (!pending) {
+      pending = discoverModelCatalog(harness, store.workspace, {
+        ...env,
+        CHECKMATE_HARNESS: harness,
+        ...key === "pi-host-default" ? { CHECKMATE_PI_MODEL: void 0, CHECKMATE_PI_PROVIDER: void 0 } : {}
+      });
+      pendingModels.set(key, pending);
+      void pending.finally(() => pendingModels.delete(key)).catch(() => {
+      });
+    }
+    return pending;
+  }
   async function modelCatalog(request2) {
-    const harness = selectedHarness(workspaceUiEnv(store, env));
+    const requested = request2.url.searchParams.get("harness");
+    const chat = request2.url.searchParams.get("scope") === "chat";
+    const active = selectedHarness(launchEnv());
+    const harness = chat && (requested === "pi" || requested === "claude") ? requested : active;
     const sendJson = (status, body) => send(request2.res, status, "application/json; charset=utf-8", JSON.stringify(body), {
       "Cache-Control": "no-store"
     });
-    if (request2.url.searchParams.get("harness") !== harness)
-      return sendJson(409, { error: "The coding harness changed. Reload the page." });
+    if (requested !== harness) return sendJson(409, { error: "The coding harness changed. Reload the page." });
     try {
-      let pending = pendingModels.get(harness);
-      if (!pending) {
-        pending = discoverModels(harness, store.workspace, workspaceUiEnv(store, env));
-        pendingModels.set(harness, pending);
-        void pending.finally(() => pendingModels.delete(harness)).catch(() => {
-        });
-      }
-      const models = await pending;
-      if (selectedHarness(workspaceUiEnv(store, env)) !== harness)
+      const models = await catalogFor(harness, chat && request2.url.searchParams.get("hostDefault") === "1");
+      if (!chat && selectedHarness(launchEnv()) !== harness)
         return sendJson(409, { error: "The coding harness changed. Reload the page." });
-      return sendJson(200, { models });
+      return sendJson(200, models);
     } catch {
       return sendJson(503, { error: "Could not load models. Try again." });
     }
@@ -28990,7 +29590,15 @@ data: ${matched.join(",") || "*"}
     if (!form.has("requestModel") || !form.has("testerModel"))
       return refuse2(request2, page("Reload the page to save both model choices."), cookies);
     try {
-      saveModels(store, actor, harness, requested, tester);
+      saveModels(
+        store,
+        actor,
+        harness,
+        requested,
+        tester,
+        form.get("requestEffort") ?? void 0,
+        form.get("testerEffort") ?? void 0
+      );
     } catch (error) {
       return refuse2(request2, page(engineText(error)), cookies);
     }
@@ -29153,7 +29761,15 @@ data: ${matched.join(",") || "*"}
       requireChild(childEnv2, harness);
       launchPlan(
         targetRevision(store, targetId).profile,
-        { planId, build, allow, claudeArgs: [], level, testerModels: testerModelsFrom(form) },
+        {
+          planId,
+          build,
+          allow,
+          claudeArgs: [],
+          level,
+          testerModels: testerChoicesFrom(form, "testerModel"),
+          testerEfforts: testerChoicesFrom(form, "testerEffort")
+        },
         childEnv2,
         testerModelText(store, harness),
         true
@@ -29184,7 +29800,8 @@ data: ${matched.join(",") || "*"}
           repo,
           allow,
           claudeArgs: [],
-          testerModels: testerModelsFrom(form)
+          testerModels: testerChoicesFrom(form, "testerModel"),
+          testerEfforts: testerChoicesFrom(form, "testerEffort")
         },
         childEnv2,
         true
@@ -29459,8 +30076,8 @@ data: ${matched.join(",") || "*"}
     ]);
   }
   async function post(request2) {
-    const origin = request2.req.headers.origin;
-    if (origin !== void 0 && origin !== `http://${request2.req.headers.host}`)
+    const origin2 = request2.req.headers.origin;
+    if (origin2 !== void 0 && origin2 !== `http://${request2.req.headers.host}`)
       return send(
         request2.res,
         403,
@@ -29504,6 +30121,9 @@ data: ${matched.join(",") || "*"}
     if (pathname === "/settings/claude/model" || pathname === "/settings/harness/model")
       return saveModel(request2, form);
     if (pathname === "/requests") return askText(request2, form);
+    if (pathname === "/chats") return sendChat(request2, form);
+    const chat = routes.chatTurn.exec(pathname);
+    if (chat) return sendChat(request2, form, chat[1]);
     if (pathname === "/requests/conversation") return newConversation(request2, form);
     const stoppingRequest = routes.stopRequest.exec(pathname);
     if (stoppingRequest) return stopRequest(request2, form, stoppingRequest[1]);

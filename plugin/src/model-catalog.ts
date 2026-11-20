@@ -1,10 +1,41 @@
-import { execFile } from 'node:child_process'
+import { execFile, spawn } from 'node:child_process'
+import { createInterface } from 'node:readline'
 import { stripVTControlCharacters } from 'node:util'
+import { piModelArgs } from './pi.ts'
 import type { Harness } from './pi.ts'
 import type { Env } from './sessions.ts'
 import { requireChild } from './sessions.ts'
 
-export type ModelOption = { value: string; label: string }
+export type ModelOption = { value: string; label: string; effortLevels?: string[] }
+export type ModelCatalog = { models: ModelOption[]; defaultModel?: ModelOption }
+
+export const effortLevels = {
+	claude: ['low', 'medium', 'high', 'xhigh', 'max'],
+	pi: ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'],
+}
+
+export function resolvedEffort(
+	harness: Harness,
+	catalog: ModelCatalog,
+	model: string,
+	effort: string,
+	provider?: string
+) {
+	let option = model ? catalog.models.find((item) => item.value === model) : catalog.defaultModel
+	if (harness === 'claude' && model === 'default') option = catalog.defaultModel
+	if (harness === 'pi' && model && provider && !option?.value.startsWith(`${provider}/`))
+		option = catalog.models.find((item) => item.value === `${provider}/${model}`)
+	if (harness === 'pi' && model && !option && !provider) {
+		const matches = catalog.models.filter((item) => item.value.slice(item.value.indexOf('/') + 1) === model)
+		if (matches.length === 1) option = matches[0]
+	}
+	const selected = effort || 'medium'
+	return option?.effortLevels?.includes(selected) ? selected : undefined
+}
+
+export function effortArgs(harness: Harness, effort: string | undefined) {
+	return effort ? [harness === 'pi' ? '--thinking' : '--effort', effort] : []
+}
 
 const requestId = 'checkmate-models'
 const claudeArgs = [
@@ -29,11 +60,23 @@ type InitializeResponse = {
 	response?: {
 		request_id?: string
 		subtype?: string
-		response?: { models?: Array<{ value?: string; displayName?: string }> }
+		response?: {
+			models?: Array<{
+				value?: string
+				displayName?: string
+				supportsEffort?: boolean
+				supportedEffortLevels?: unknown
+			}>
+		}
 	}
 }
 
-function claudeModels(stdout: string): ModelOption[] | undefined {
+function catalog(options: ModelOption[], defaultModel?: ModelOption): ModelCatalog {
+	const models = [...new Map(options.map((model) => [model.value, model])).values()]
+	return { models, ...(defaultModel ? { defaultModel } : {}) }
+}
+
+function claudeModels(stdout: string): ModelCatalog | undefined {
 	for (const line of stdout.split('\n')) {
 		let event: InitializeResponse
 		try {
@@ -44,18 +87,89 @@ function claudeModels(stdout: string): ModelOption[] | undefined {
 		if (event?.type !== 'control_response' || event.response?.request_id !== requestId) continue
 		const models = event.response.response?.models
 		if (event.response.subtype !== 'success' || !Array.isArray(models)) return undefined
-		return models.flatMap((model) =>
-			typeof model?.value === 'string' && model.value.length && model.value !== 'default'
-				? [
-						{
-							value: model.value,
-							label: typeof model.displayName === 'string' ? model.displayName : model.value,
-						},
-					]
-				: []
+		const options = models.flatMap((model) => {
+			if (typeof model?.value !== 'string' || !model.value) return []
+			const advertised = model.supportedEffortLevels
+			const levels =
+				model.supportsEffort !== false && Array.isArray(advertised)
+					? effortLevels.claude.filter((level) => advertised.includes(level))
+					: []
+			return [
+				{
+					value: model.value,
+					label: typeof model.displayName === 'string' ? model.displayName : model.value,
+					...(levels.length ? { effortLevels: levels } : {}),
+				},
+			]
+		})
+		return catalog(
+			options.filter((option) => option.value !== 'default'),
+			options.find((option) => option.value === 'default')
 		)
 	}
 	return undefined
+}
+
+type PiModel = { provider?: unknown; id?: unknown; reasoning?: unknown; thinkingLevelMap?: Record<string, unknown> }
+
+function piOption(model?: PiModel): ModelOption[] {
+	if (typeof model?.provider !== 'string' || !model.provider || typeof model.id !== 'string' || !model.id) return []
+	const value = `${model.provider}/${model.id}`
+	const levels =
+		model.reasoning === true
+			? effortLevels.pi.filter((level) => {
+					const mapped = model.thinkingLevelMap?.[level]
+					return mapped !== null && ((level !== 'xhigh' && level !== 'max') || typeof mapped === 'string')
+				})
+			: []
+	return [{ value, label: value, ...(levels.some((level) => level !== 'off') ? { effortLevels: levels } : {}) }]
+}
+
+function piRpcCatalog(program: string, workspace: string, env: Env): Promise<ModelCatalog | undefined> {
+	return new Promise((resolve) => {
+		const host = spawn(program, ['--no-mcp', '--no-session', '--mode', 'rpc', ...piModelArgs(env)], {
+			cwd: workspace,
+			env,
+			stdio: ['pipe', 'pipe', 'ignore'],
+		})
+		const lines = createInterface({ input: host.stdout })
+		let models: ModelOption[] | undefined
+		let model: ModelOption | undefined
+		let available = false
+		let state = false
+		const timer = setTimeout(() => {
+			host.kill('SIGKILL')
+			finish()
+		}, 10_000)
+		function finish() {
+			clearTimeout(timer)
+			lines.close()
+			resolve(models && catalog(models, model))
+		}
+		host.once('error', finish)
+		host.once('close', finish)
+		host.stdin.on('error', () => {})
+		lines.on('line', (line) => {
+			let response
+			try {
+				response = JSON.parse(line)
+			} catch {
+				return
+			}
+			if (response?.type !== 'response') return
+			if (response.id === 'models' && response.command === 'get_available_models') {
+				available = true
+				if (response.success && Array.isArray(response.data?.models))
+					models = response.data.models.flatMap(piOption)
+			}
+			if (response.id === 'state' && response.command === 'get_state') {
+				state = true
+				if (response.success) model = piOption(response.data?.model)[0]
+			}
+			if (available && state && !host.stdin.writableEnded) host.stdin.end()
+		})
+		host.stdin.write('{"id":"models","type":"get_available_models"}\n{"id":"state","type":"get_state"}\n')
+	})
 }
 
 function piModels(stdout: string): ModelOption[] | undefined {
@@ -72,10 +186,13 @@ function piModels(stdout: string): ModelOption[] | undefined {
 	})
 }
 
-export async function discoverModels(harness: Harness, workspace: string, env: Env): Promise<ModelOption[]> {
+export async function discoverModelCatalog(harness: Harness, workspace: string, env: Env): Promise<ModelCatalog> {
 	const program = requireChild(env, harness)
 	const isPi = harness === 'pi'
-	const parseModels = isPi ? piModels : claudeModels
+	if (isPi) {
+		const value = await piRpcCatalog(program, workspace, env).catch(() => undefined)
+		if (value) return value
+	}
 	const name = isPi ? 'Pi' : 'Claude Code'
 	const args = isPi ? ['--no-mcp', '--list-models'] : claudeArgs
 	const input = isPi
@@ -87,12 +204,19 @@ export async function discoverModels(harness: Harness, workspace: string, env: E
 			args,
 			{ cwd: workspace, env, timeout: 10_000, killSignal: 'SIGKILL', maxBuffer: 1024 * 1024 },
 			(error, stdout) => {
-				const models = error ? undefined : parseModels(stdout)
-				if (!models) return reject(new Error(`${name} could not list models. Check the host configuration.`))
-				resolve([...new Map(models.map((model) => [model.value, model])).values()])
+				if (!error) {
+					const models = isPi ? piModels(stdout) : undefined
+					const result = isPi ? models && catalog(models) : claudeModels(stdout)
+					if (result) return resolve(result)
+				}
+				reject(new Error(`${name} could not list models. Check the host configuration.`))
 			}
 		)
 		host.stdin?.on('error', () => {})
 		host.stdin?.end(input)
 	})
+}
+
+export async function discoverModels(harness: Harness, workspace: string, env: Env): Promise<ModelOption[]> {
+	return (await discoverModelCatalog(harness, workspace, env)).models
 }

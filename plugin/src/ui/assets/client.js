@@ -843,7 +843,7 @@ for (const field of draftFields()) {
 }
 
 document.addEventListener('submit', (event) => {
-	if (event.target.matches?.('[data-act-form]')) return
+	if (event.target.matches?.('[data-act-form], [data-chat-composer]')) return
 	for (const field of event.target.querySelectorAll?.('textarea, input') ?? [])
 		try {
 			if (field.name) window.sessionStorage.removeItem(draftKey(field))
@@ -1443,6 +1443,7 @@ async function askNow() {
 			body: new URLSearchParams({
 				csrf: csrf(),
 				text,
+				chat: '1',
 				harness: findDialog.dataset.harness,
 				screen: location.pathname + location.search,
 			}),
@@ -1450,9 +1451,8 @@ async function askNow() {
 	try {
 		let response = await send()
 		if (response.status === 403 && (await renewToken())) response = await send()
-		const id =
-			response.ok && response.redirected ? /^\/requests\/(R\d+)$/.exec(new URL(response.url).pathname) : null
-		if (!id) {
+		const destination = response.ok && response.redirected ? new URL(response.url) : null
+		if (!destination || !/^\/chats\/[^/]+$/.test(destination.pathname)) {
 			const fresh = new DOMParser().parseFromString(await response.text(), 'text/html')
 			throw new Error(
 				fresh.querySelector('[role="alert"]')?.textContent?.trim() ||
@@ -1460,12 +1460,7 @@ async function askNow() {
 			)
 		}
 		if (findAsking !== sending) return
-		findAsking = id[1]
-		findDialog.querySelector('[data-find-results]').hidden = true
-		findDialog.querySelector('[data-find-none]').hidden = true
-		findDialog.querySelector('[data-find-more]').hidden = true
-		findDialog.querySelector('[data-find-asking]').hidden = false
-		findDialog.querySelector('[data-find-asking]').textContent = `Asking… ${id[1]}`
+		location.assign(destination.pathname)
 	} catch (problem) {
 		if (findAsking !== sending) return
 		findAsking = null
@@ -3067,7 +3062,24 @@ async function fetchModelCatalog(harness) {
 	const response = await fetch(`/settings/harness/models?harness=${encodeURIComponent(harness)}`)
 	const data = await response.json()
 	if (!response.ok) throw new Error(data.error || 'Could not load models. Try again.')
-	return data.models
+	return data
+}
+
+function modelEfforts(catalog, value) {
+	return (value ? catalog?.models.find((model) => model.value === value) : catalog?.defaultModel)?.effortLevels ?? []
+}
+
+function showEffort(select, levels, identity, automatic, label) {
+	const current = select.dataset.model === undefined ? (select.dataset.savedEffort ?? '') : select.value
+	const chosen = select.dataset.model === undefined || select.dataset.model === identity ? current : ''
+	select.dataset.model = identity
+	select.parentElement.hidden = !levels.length
+	select.disabled = !levels.length
+	select.replaceChildren(
+		newOption(automatic ? `${label} (${automatic})` : label, ''),
+		...levels.map((level) => newOption(level, level))
+	)
+	select.value = levels.includes(chosen) ? chosen : ''
 }
 
 function modelCatalog(panel) {
@@ -3075,10 +3087,11 @@ function modelCatalog(panel) {
 	const refresh = panel.querySelector('[data-model-refresh]')
 	const filter = panel.querySelector('#model-filter')
 	const fields = [...panel.querySelectorAll('[data-model-select]')]
-	let models = null
+	let catalog = null
 	function showModels() {
 		const query = filter.value.trim().toLowerCase()
 		for (const field of fields) {
+			const models = catalog?.models
 			const selected = field.value
 			const found = models?.find((model) => model.value === selected)
 			setModelOptions(field, models ?? [], query, field.options[0].textContent)
@@ -3088,13 +3101,18 @@ function modelCatalog(panel) {
 			note.textContent = missing
 				? 'This saved model is not in the current list. You can keep it or choose another.'
 				: ''
+			const value = selected || (field.id === 'tester-model' ? panel.dataset.testerDefault : '')
+			const levels = modelEfforts(catalog, value)
+			const effort = panel.querySelector(`[data-effort-for="${field.id}"]`)
+			showEffort(effort, levels, value, levels.includes('medium') ? 'medium' : '', 'Default')
 		}
 	}
 	async function load() {
 		refresh.disabled = true
 		status.textContent = 'Loading models…'
 		try {
-			models = await fetchModelCatalog(panel.dataset.modelCatalog)
+			catalog = await fetchModelCatalog(panel.dataset.modelCatalog)
+			const models = catalog.models
 			status.textContent = models.length
 				? `${models.length} models available. Use the filter to narrow the list.`
 				: 'No models found. Check the host settings and refresh.'
@@ -3121,8 +3139,21 @@ function showTesterModels(details) {
 	if (!state) return
 	const query = details.querySelector('[data-tester-model-filter]').value.trim().toLowerCase()
 	for (const row of details.querySelectorAll('[data-tester-model-row]')) {
-		const select = row.querySelector('select')
-		if (!row.hidden) setModelOptions(select, state.models, query, 'Use workspace tester model')
+		if (row.hidden) continue
+		const select = row.querySelector('[data-tester-model-select]')
+		setModelOptions(select, state.catalog?.models ?? [], query, 'Use workspace tester model')
+		const value = select.value || state.model || ''
+		const levels = modelEfforts(state.catalog, value)
+		const automatic =
+			!select.value && state.effort
+				? levels.includes(state.effort)
+					? state.effort
+					: ''
+				: levels.includes('medium')
+					? 'medium'
+					: ''
+		const effort = row.querySelector('[data-tester-effort-select]')
+		showEffort(effort, levels, value, automatic, select.value ? 'Default' : 'Use workspace effort')
 	}
 }
 
@@ -3152,7 +3183,7 @@ async function testerModelCount(details) {
 	if (!form || !state) return
 	const sequence = ++state.sequence
 	state.countLoading = true
-	for (const row of details.querySelectorAll('[data-tester-model-row]')) row.querySelector('select').disabled = true
+	for (const select of details.querySelectorAll('[data-tester-model-row] select')) select.disabled = true
 	const level = form.querySelector('[name="level"]:checked')?.value ?? 'normal'
 	const params = new URLSearchParams({ harness: details.dataset.harness, level })
 	const plan = new URL(form.action).pathname.match(/^\/plans\/([^/]+)\/test$/)
@@ -3164,13 +3195,15 @@ async function testerModelCount(details) {
 		if (!response.ok) throw new Error(data.error || 'Could not load testers.')
 		if (sequence !== state.sequence) return
 		state.countError = false
+		state.model = data.model
+		state.effort = data.effort
 		details.querySelector('[data-tester-count-status]').textContent = ''
 		for (const row of details.querySelectorAll('[data-tester-model-row]')) {
 			const visible = Number(row.dataset.testerModelRow) <= data.count
 			row.hidden = !visible
-			const select = row.querySelector('select')
+			const select = row.querySelector('[data-tester-model-select]')
 			select.disabled = !visible
-			if (!visible) setModelOptions(select, [], '', 'Use workspace tester model')
+			if (!visible) row.querySelector('[data-tester-effort-select]').disabled = true
 		}
 		showTesterModels(details)
 		state.countLoading = false
@@ -3178,7 +3211,7 @@ async function testerModelCount(details) {
 		if (sequence !== state.sequence) return
 		for (const row of details.querySelectorAll('[data-tester-model-row]')) {
 			row.hidden = true
-			row.querySelector('select').disabled = true
+			for (const select of row.querySelectorAll('select')) select.disabled = true
 		}
 		state.countLoading = false
 		state.countError = true
@@ -3189,7 +3222,7 @@ async function testerModelCount(details) {
 async function loadTesterModels(details) {
 	let state = testerModelState.get(details)
 	if (!state) {
-		state = { models: [], sequence: 0, loaded: false, loading: false }
+		state = { catalog: null, sequence: 0, loading: false }
 		testerModelState.set(details, state)
 	}
 	testerModelCount(details)
@@ -3200,11 +3233,11 @@ async function loadTesterModels(details) {
 	refresh.disabled = true
 	status.textContent = 'Loading models…'
 	try {
-		state.models = await fetchModelCatalog(details.dataset.harness)
-		state.loaded = true
+		state.catalog = await fetchModelCatalog(details.dataset.harness)
 		showTesterModels(details)
-		status.textContent = state.models.length
-			? `${state.models.length} models available.`
+		const { models } = state.catalog
+		status.textContent = models.length
+			? `${models.length} models available.`
 			: 'No models found. Check the host settings and refresh.'
 	} catch (error) {
 		status.textContent = error.message || 'Could not load models. Try again.'
@@ -3225,6 +3258,10 @@ document.addEventListener(
 
 document.addEventListener('change', (event) => {
 	const form = event.target.form
+	if (event.target.matches?.('[data-tester-model-select]')) {
+		showTesterModels(event.target.closest('[data-tester-models]'))
+		return
+	}
 	if (!form || !['level', 'target'].includes(event.target.name)) return
 	const details = form.querySelector('[data-tester-models]')
 	if (details && testerModelState.has(details)) testerModelCount(details)
@@ -3246,7 +3283,9 @@ document.addEventListener(
 		const details = event.target.querySelector?.('[data-tester-models]')
 		if (!details) return
 		const state = testerModelState.get(details)
-		const hasChoices = [...details.querySelectorAll('[data-tester-model-select]')].some((field) => field.value)
+		const hasChoices = [
+			...details.querySelectorAll('[data-tester-model-select], [data-tester-effort-select]'),
+		].some((field) => field.value)
 		if (!state?.countLoading && !(state?.countError && hasChoices)) return
 		event.preventDefault()
 		event.stopImmediatePropagation()
@@ -3257,3 +3296,86 @@ document.addEventListener(
 	},
 	true
 )
+
+for (const form of document.querySelectorAll('[data-chat-composer]')) {
+	const harness = form.querySelector('[data-chat-harness]')
+	const model = form.querySelector('[data-chat-model]')
+	const effort = form.querySelector('[data-chat-effort]')
+	const effortLabel = effort.closest('label')
+	const status = form.querySelector('[data-chat-model-status]')
+	const error = form.querySelector('[data-chat-error]')
+	const submit = form.querySelector('[type=submit]')
+	let sendingChat = false
+	let models = []
+	let defaultModel = null
+	let sequence = 0
+	function showEffort() {
+		const selected = models.find((item) => item.value === (model.value || defaultModel))
+		const levels = selected?.effortLevels ?? []
+		const selectedEffort = effort.value || effort.dataset.selected
+		effort.replaceChildren(newOption('Host default', ''))
+		for (const level of levels) effort.append(newOption(level, level))
+		effort.value = levels.includes(selectedEffort) ? selectedEffort : ''
+		effort.dataset.selected = ''
+		effortLabel.hidden = !levels.length
+	}
+	async function loadChatModels() {
+		const ticket = ++sequence
+		status.textContent = 'Loading models…'
+		try {
+			const response = await fetch(
+				`/settings/harness/models?harness=${encodeURIComponent(harness.value)}&scope=chat`
+			)
+			const data = await response.json()
+			if (!response.ok) throw new Error(data.error || 'Could not load models.')
+			if (ticket !== sequence) return
+			models = data.models
+			defaultModel = data.defaultModel?.value ?? null
+			setModelOptions(model, models, '', 'Host default')
+			showEffort()
+			status.textContent = ''
+		} catch (error) {
+			if (ticket !== sequence) return
+			models = []
+			setModelOptions(model, [], '', 'Host default')
+			showEffort()
+			status.textContent = error.message || 'Could not load models.'
+		}
+	}
+	form.addEventListener('submit', async (event) => {
+		event.preventDefault()
+		if (sendingChat) return
+		sendingChat = true
+		submit.disabled = true
+		error.hidden = true
+		const send = () => {
+			const fields = new URLSearchParams(new FormData(form))
+			fields.set('csrf', csrf())
+			return fetch(form.action, { method: 'POST', body: fields })
+		}
+		try {
+			let response = await send()
+			if (response.status === 403 && (await renewToken())) response = await send()
+			const destination = response.ok && response.redirected ? new URL(response.url) : null
+			if (!destination || !/^\/chats\/[^/]+$/.test(destination.pathname)) {
+				const fresh = new DOMParser().parseFromString(await response.text(), 'text/html')
+				throw new Error(
+					fresh.querySelector('[role="alert"]')?.textContent?.trim() || 'Could not send the message.'
+				)
+			}
+			forgetDrafts(form)
+			location.assign(destination.pathname)
+		} catch (problem) {
+			error.textContent = problem.message || 'Could not send the message.'
+			error.hidden = false
+			sendingChat = false
+			submit.disabled = false
+		}
+	})
+	harness.addEventListener('change', loadChatModels)
+	model.addEventListener('change', () => {
+		if (model.value) showEffort()
+		else loadChatModels()
+	})
+	loadChatModels()
+}

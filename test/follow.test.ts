@@ -49,8 +49,13 @@ const answer = ['gap', 'answer', 'checkout', 'a1/Q1', '--kind', 'defer', '--valu
 test('Pi follow-up reopens the test session and records the new entries', (t) => {
 	const { command, wait, reply, called, workspace, env } = setup(t, 'pi')
 	const model = 'openrouter/z-ai/glm-5.3-flash'
+	const models = [
+		{ provider: 'provider', id: 'run-default', reasoning: true },
+		{ provider: 'openrouter', id: 'z-ai/glm-5.3-flash', reasoning: true },
+	]
+	reply({ recorder: [stacks, question], models })
 	const configured = openStore(workspace)
-	saveModels(configured, actor, 'pi', '', 'provider/run-default')
+	saveModels(configured, actor, 'pi', '', 'provider/run-default', undefined, 'low')
 	startExploration(
 		configured,
 		actor,
@@ -61,6 +66,7 @@ test('Pi follow-up reopens the test session and records the new entries', (t) =>
 			allow: ['Read', 'Bash'],
 			claudeArgs: [],
 			testerModels: { a1: model },
+			testerEfforts: { a1: 'high' },
 		},
 		{ ...env, CHECKMATE_HARNESS: 'pi' }
 	)
@@ -72,21 +78,54 @@ test('Pi follow-up reopens the test session and records the new entries', (t) =>
 	saveWorkspaceHarness(opened, actor, 'claude')
 	saveModels(opened, actor, 'pi', '', 'another-model')
 	closeStore(opened)
-	reply({ recorder: [stacks, question, sale] })
+	reply({ recorder: [stacks, question, sale], models })
 	assert.equal(command(['explore', 'follow', 'x-1'], 'claude').code, 0)
 	const done = wait('x-1')
 	assert.equal(done.body.follow, 'completed')
 	const calls = called()
 	assert.equal(after(tester.args, '--model'), model)
+	assert.equal(after(tester.args, '--thinking'), 'high')
 	for (const role of ['follower', 'recorder', 'merger']) {
 		const call = calls.find((item) => item.role === role)
 		assert.ok(call)
 		assert.equal(after(call.args, '--model'), role === 'merger' ? 'provider/run-default' : model)
+		assert.equal(after(call.args, '--thinking'), role === 'merger' ? 'low' : 'high')
 	}
 	assert.equal(after(calls.find((call) => call.role === 'follower').args, '--session'), tester.session)
 	assert.equal(after(calls.find((call) => call.role === 'recorder').args, '--fork'), tester.session)
 	const record = command(['query', "SELECT detail FROM exploration_events WHERE step = 'record'"]).body.rows
 	assert.equal(JSON.parse(record.at(-1).detail).saved, 1)
+})
+
+test('Pi follow-up keeps the effort of a session started with the Pi default', (t) => {
+	const { command, wait, reply, called, workspace } = setup(t, 'pi')
+	const configured = openStore(workspace)
+	saveModels(configured, actor, 'pi', '', '', undefined, 'high')
+	closeStore(configured)
+	reply({
+		models: [{ provider: 'host', id: 'original', reasoning: true }],
+		recorder: [stacks, question],
+	})
+	assert.equal(command(['explore', 'start', 'checkout', '--build', 'b1', '--level', 'smoke', ...allow]).code, 0)
+	assert.equal(wait('x-1').body.state, 'completed')
+	const tester = called().find((call) => call.role === 'tester')
+	assert.ok(tester)
+	assert(!tester.args.includes('--model'))
+	assert.equal(after(tester.args, '--thinking'), 'high')
+	assert.equal(command(answer).code, 0)
+	reply({
+		models: [{ provider: 'host', id: 'new-default', reasoning: false }],
+		recorder: [stacks, question, sale],
+	})
+	assert.equal(command(['explore', 'follow', 'x-1']).code, 0)
+	assert.equal(wait('x-1').body.follow, 'completed')
+	const calls = called()
+	for (const role of ['follower', 'recorder']) {
+		const call = calls.find((item) => item.role === role)
+		assert.ok(call)
+		assert(!call.args.includes('--model'))
+		assert.equal(after(call.args, '--thinking'), 'high')
+	}
 })
 
 test('an explicit Claude follow-up model also applies to the forked recorder', (t) => {

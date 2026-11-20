@@ -8,12 +8,14 @@ import { startUi } from '../plugin/src/ui/server.ts'
 import { piModelArgs, selectedHarness } from '../plugin/src/pi.ts'
 import {
 	piRequestModelEnv,
+	requestEffortText,
 	requestModelText,
 	saveModels,
 	saveRequestModel,
 	saveTesterRules,
 	saveWorkspaceHarness,
 	testerRulesText,
+	testerEffortText,
 	testerModelText,
 	workspaceEnv,
 	workspaceUiEnv,
@@ -104,6 +106,22 @@ test('saving both models rejects invalid settings without changing either model'
 	assert.equal(testerModelText(opened), '')
 })
 
+test('workspace effort belongs to its harness and role', (t) => {
+	const opened = store(t)
+	saveModels(opened, actor, 'claude', 'sonnet', '', 'high', 'low')
+	saveModels(opened, actor, 'pi', 'host/request', '', 'minimal', 'xhigh')
+	assert.equal(requestEffortText(opened), 'high')
+	assert.equal(testerEffortText(opened), 'low')
+	assert.equal(requestEffortText(opened, 'pi'), 'minimal')
+	assert.equal(testerEffortText(opened, 'pi'), 'xhigh')
+	assert.throws(() => saveModels(opened, actor, 'claude', '', '', 'off', 'medium'), /reasoning effort/)
+	assert.equal(requestModelText(opened), 'sonnet')
+	assert.equal(testerEffortText(opened), 'low')
+	saveModels(opened, actor, 'claude', 'opus', '')
+	assert.equal(requestEffortText(opened), '')
+	assert.equal(testerEffortText(opened), 'low')
+})
+
 test('legacy Pi IDs keep the configured provider and catalog IDs can change it', (t) => {
 	const opened = store(t)
 	const legacy = 'z-ai/glm-5.3-flash'
@@ -140,11 +158,17 @@ for (const harness of ['claude', 'pi'] as const) {
 		plan(opened)
 		const selected = harness === 'pi' ? 'openrouter/z-ai/glm-5.3-flash' : 'sonnet'
 		const overrides = harness === 'pi' ? ['provider/first', 'provider/second'] : ['opus', 'haiku']
-		saveModels(opened, actor, harness, 'request-only', selected)
+		saveModels(opened, actor, harness, 'request-only', selected, undefined, 'low')
 		closeStore(opened)
+		const models = [selected, ...overrides].map((model) => {
+			if (harness === 'claude') return { value: model, supportedEffortLevels: ['low', 'medium', 'high'] }
+			const slash = model.indexOf('/')
+			return { provider: model.slice(0, slash), id: model.slice(slash + 1), reasoning: true }
+		})
 		const fake = fakeClaude(
 			t,
 			{
+				models,
 				recorder: [{ kind: 'defect', title: 'Wrong tax', severity: 'high', expected: '0', actual: '23' }],
 				verifier: [{ id: 'a1/D1', seen: true, saw: 'The tax is 23 again.' }],
 			},
@@ -169,6 +193,7 @@ for (const harness of ['claude', 'pi'] as const) {
 			rules: 'Read Bash',
 			'testerModel.a1': overrides[0],
 			'testerModel.a2': overrides[1],
+			'testerEffort.a1': 'high',
 		})
 		assert.equal(sent.status, 303, await sent.text())
 		const id = sent.headers.get('location')!.split('/').at(-1)!
@@ -187,6 +212,7 @@ for (const harness of ['claude', 'pi'] as const) {
 		})
 		const calls = fake.called()
 		const argument = (call: { args: string[] }, name: string) => call.args[call.args.indexOf(name) + 1]
+		const effortFlag = harness === 'pi' ? '--thinking' : '--effort'
 		for (const [index, model] of overrides.entries()) {
 			const name = `a${index + 1}`
 			const study = calls.find((call) => call.role === 'explorer' && call.work.endsWith(`/${name}`))
@@ -204,6 +230,7 @@ for (const harness of ['claude', 'pi'] as const) {
 			assert.ok(recorder)
 			for (const call of [study, tester, recorder]) {
 				assert.equal(argument(call, '--model'), model)
+				assert.equal(argument(call, effortFlag), index === 0 ? 'high' : 'medium')
 				assert(!call.args.includes('--provider'))
 			}
 		}
@@ -211,6 +238,7 @@ for (const harness of ['claude', 'pi'] as const) {
 			const call = calls.find((item) => item.role === role)
 			assert.ok(call, `missing ${role}`)
 			assert.equal(argument(call, '--model'), selected)
+			assert.equal(argument(call, effortFlag), 'low')
 		}
 		const reader = openStore(workspace)
 		try {

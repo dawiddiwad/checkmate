@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import type { TestContext } from 'node:test'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
-import { readStreamLine } from '../plugin/src/ui/requester.ts'
+import { createRequester, readStreamLine } from '../plugin/src/ui/requester.ts'
 import { startUi } from '../plugin/src/ui/server.ts'
 import {
 	checkmateScript,
@@ -12,7 +12,7 @@ import {
 	requestSystemPrompt,
 	uiFilePath,
 } from '../plugin/src/sessions.ts'
-import { allRequests, currentConversation, requestOf } from '../plugin/src/requests.ts'
+import { allRequests, chatOf, currentConversation, listedChats, requestOf } from '../plugin/src/requests.ts'
 import { explorationPermissions, openPermissions } from '../plugin/src/permissions.ts'
 import { closeStore, openStore } from '../plugin/src/store.ts'
 import { saveModels, saveRequestModel, saveWorkspaceHarness } from '../plugin/src/settings.ts'
@@ -150,7 +150,7 @@ test('the first request starts claude with a fixed argument list, and a later on
 	assert.equal(one.cwd, f.workspace)
 	assert.equal(
 		one.prompt,
-		'why does D3 fail?\n\nFor context only: the person had plan checkout on screen. Use this only when the request refers to it.'
+		'why does D3 fail?\n\nStarting context: the person opened the chat from plan checkout. Use this when relevant. You may inspect other workspace records if they help answer the request.'
 	)
 	assert.equal(one.actor, 'qa-lead via request R1')
 	assert(['CHECKMATE_ACTOR', 'CHECKMATE_HOOK_TOKEN', 'CHECKMATE_REQUEST'].every((name) => one.env.includes(name)))
@@ -665,7 +665,7 @@ createInterface({input: process.stdin}).on('line', line => {
 		data: {commands: [{name: 'checkmate-permission-ready', source: 'extension', sourceInfo: {path: extension}}]}
 	}))
 	if (message.type === 'prompt') {
-		writeFileSync('pi-request.json', JSON.stringify({args, harness: process.env.CHECKMATE_HARNESS}))
+		writeFileSync('pi-request.json', JSON.stringify({args, prompt: message.message, harness: process.env.CHECKMATE_HARNESS}))
 		console.log(JSON.stringify({type: 'agent_end', messages: [{
 			role: 'assistant', stopReason: 'stop', content: [{type: 'text', text: 'Pi reply.'}]
 		}]}))
@@ -697,7 +697,7 @@ createInterface({input: process.stdin}).on('line', line => {
 	assert.equal(launch.args[launch.args.indexOf('--model') + 1], 'openrouter/z-ai/glm-5.3-flash')
 	assert.equal(launch.args[launch.args.indexOf('--session-id') + 1], f.request(pi)?.conversation)
 	const claude = f.called().at(-1)
-	assert.equal(claude.args[claude.args.indexOf('--model') + 1], 'opus')
+	assert(!claude.args.includes('--model'))
 
 	f.read((store) => saveWorkspaceHarness(store, 'qa-lead', 'pi'))
 	const legacy = await f.post('/settings/harness/model', { harness: 'pi', model: 'z-ai/legacy' })
@@ -706,6 +706,131 @@ createInterface({input: process.stdin}).on('line', line => {
 	const legacyArgs = JSON.parse(readFileSync(join(f.workspace, 'pi-request.json'), 'utf8')).args
 	assert.equal(legacyArgs[legacyArgs.indexOf('--model') + 1], 'z-ai/legacy')
 	assert.equal(legacyArgs[legacyArgs.indexOf('--provider') + 1], 'startup-provider')
+
+	const store = openStore(f.workspace)
+	const requester = createRequester(store, {
+		workspace: f.workspace,
+		env: f.env,
+		hookPort: () => f.hook.port,
+		hookToken: f.hook.hookToken,
+		delays: stops,
+	})
+	try {
+		const chat = f.request(active)!.conversation
+		const catalog = {
+			models: [{ value: 'openrouter/pi-fixture', label: 'Pi fixture', effortLevels: ['medium'] }],
+		}
+		const id = requester.followChat('qa-lead', chat, 'Continue in Pi.', {
+			harness: 'pi',
+			model: 'openrouter/pi-fixture',
+			effort: 'medium',
+			catalog,
+		})
+		const turn = await f.state(id, 'answered')
+		const switched = JSON.parse(readFileSync(join(f.workspace, 'pi-request.json'), 'utf8'))
+		assert.equal(turn.conversation, chat)
+		assert.notEqual(turn.sessionId, f.request(active)?.sessionId)
+		assert.equal(switched.args[switched.args.indexOf('--thinking') + 1], 'medium')
+		assert.equal(switched.args[switched.args.indexOf('--session-id') + 1], turn.sessionId)
+		assert.match(switched.prompt, /Stay in the original conversation.*Claude reply/s)
+		assert.doesNotMatch(switched.prompt, /Start a separate Pi conversation/)
+	} finally {
+		await requester.close()
+		closeStore(store)
+	}
+})
+
+test('explicit chats keep their context and hand off recent turns when the execution selection changes', async (t) => {
+	const f = workspaceWithFake(t, { request: 'A reply.' })
+	const store = openStore(f.workspace)
+	const requester = createRequester(store, {
+		workspace: f.workspace,
+		env: f.env,
+		hookPort: () => 1234,
+		hookToken: 'test',
+		delays: stops,
+	})
+	try {
+		const actor = 'qa-lead'
+		const context = { planId: 'checkout', planRevision: 1, record: null }
+		assert.throws(
+			() => requester.startChat(actor, 'Hello', { ...context, planRevision: 999 }),
+			/Unknown plan revision/
+		)
+		const catalog = { models: [{ value: 'sonnet', label: 'Sonnet', effortLevels: ['medium', 'high'] }] }
+		assert.throws(() => requester.followChat(actor, 'missing', 'Hello'), /Invalid chat ID/)
+		assert.throws(
+			() => requester.followChat(actor, '11111111-1111-1111-1111-111111111111', 'Hello'),
+			/Unknown chat/
+		)
+		const answered = (id: string) =>
+			waitFor(`${id} answered`, () => {
+				const turn = f.read((reader) => requestOf(reader, id))
+				return turn?.state === 'answered' && turn
+			})
+		const first = await answered(requester.startChat(actor, 'First prompt.', context, { model: 'sonnet', catalog }))
+		const independent = await answered(requester.startChat(actor, 'An independent chat.', context))
+		assert.notEqual(independent.conversation, first.conversation)
+		const same = await answered(
+			requester.followChat(actor, first.conversation, 'Same model.', {
+				model: 'sonnet',
+				effort: 'high',
+				catalog,
+			})
+		)
+		assert.equal(first.effort, 'medium')
+		assert.equal(same.effort, 'high')
+		assert.equal(same.sessionId, first.sessionId)
+		assert.deepEqual(same.context, context)
+		saveRequestModel(store, actor, 'haiku', 'claude')
+		const inherited = await answered(requester.followChat(actor, first.conversation, 'Keep the selection.'))
+		assert.equal(inherited.model, 'sonnet')
+		assert.equal(inherited.effort, 'high')
+		assert.equal(inherited.sessionId, first.sessionId)
+		const switched = await answered(
+			requester.followChat(actor, first.conversation, 'Different model.', {
+				model: 'opus',
+				effort: 'high',
+				catalog,
+			})
+		)
+		assert.notEqual(switched.sessionId, first.sessionId)
+		assert.equal(switched.effort, null)
+		const [initial, separate, resumed, kept, handedOff] = f.called()
+		assert.equal(initial.args[initial.args.indexOf('--effort') + 1], 'medium')
+		assert(!separate.prompt.includes('First prompt.'))
+		assert.equal(resumed.args[resumed.args.indexOf('--resume') + 1], first.sessionId)
+		assert.equal(resumed.args[resumed.args.indexOf('--effort') + 1], 'high')
+		assert.equal(kept.args[kept.args.indexOf('--model') + 1], 'sonnet')
+		assert.equal(handedOff.args[handedOff.args.indexOf('--session-id') + 1], switched.sessionId)
+		assert.match(handedOff.prompt, /First prompt.*A reply.*Same model/s)
+		assert.doesNotMatch(handedOff.prompt, /An independent chat/)
+		const chat = f.read((reader) => chatOf(reader, first.conversation))
+		assert.deepEqual(
+			chat?.turns.map((turn) => turn.id),
+			[first.id, same.id, inherited.id, switched.id]
+		)
+		assert.deepEqual(
+			f.read(listedChats).map((chat) => chat.id),
+			[first.conversation, independent.conversation]
+		)
+		f.reply({ request: '!auth' })
+		const unavailable = requester.followChat(actor, first.conversation, 'Try the native session.')
+		await waitFor('native resume failed before initialization', () =>
+			f.read((reader) => requestOf(reader, unavailable)?.state === 'failed')
+		)
+		const unavailableArgs = f.called().at(-1).args
+		assert.equal(unavailableArgs[unavailableArgs.indexOf('--resume') + 1], switched.sessionId)
+		f.reply({ request: 'Recovered.' })
+		const recovered = await answered(requester.followChat(actor, first.conversation, 'Continue after the error.'))
+		assert.notEqual(recovered.sessionId, switched.sessionId)
+		const recoveredCall = f.called().at(-1)
+		assert.equal(recoveredCall.args[recoveredCall.args.indexOf('--session-id') + 1], recovered.sessionId)
+		assert.match(recoveredCall.prompt, /Different model.*A reply/s)
+	} finally {
+		await requester.close()
+		closeStore(store)
+	}
 })
 
 test('a request from a stale find bar is refused before it enters the queue', async (t) => {

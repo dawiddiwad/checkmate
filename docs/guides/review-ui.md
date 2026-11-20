@@ -33,7 +33,7 @@ Each page has the same four parts:
 - The top bar: `Checkmate` opens the home page. At the right are the live state, your name, and the switch for light and dark.
 - The navigator, at the left on the pages of a plan.
 - The centre: the list or the page.
-- The status bar, at the bottom. It shows the path to where you are, for example `Plans › checkout › Needs you › a1/D1`, the buttons `Find`, `Keys`, `Activity`, `Runs`, `Log`, and `Settings`, and the keys that work where you are. `Activity` shows `Activity · <n> running` while <n> tests run. On a narrow window, `More` holds `Activity`, `Runs`, `Log`, and `Settings`. On a window of 600 pixels or less, `More` also holds `Find`. While a request runs, `Request R3 · running` shows first. When tester or request permission requests wait, `<n> permissions` follows it. When replies are not read, `<n> reply` or `<n> replies` follows that. When items wait for you, `<n> need you · all plans` comes next. It counts the items of all plans. When the keys do not fit, the status bar removes the least important keys first. `? Keys` always shows. A message shows in the case that it is written, so a build name keeps its case. It comes before the keys: the keys make room for it, and a message that still does not fit shows in full in a strip above the status bar.
+- The status bar, at the bottom. It shows the path to where you are, for example `Plans › checkout › Needs you › a1/D1`, the buttons `Find`, `Keys`, `Activity`, `Chats`, `Runs`, `Log`, and `Settings`, and the keys that work where you are. `Activity` shows `Activity · <n> running` while <n> tests run. On a narrow window, `More` holds `Activity`, `Chats`, `Runs`, `Log`, and `Settings`. On a window of 600 pixels or less, `More` also holds `Find`. While a request runs, `Request R3 · running` shows first. When tester or request permission requests wait, `<n> permissions` follows it. When replies are not read, `<n> reply` or `<n> replies` follows that. When items wait for you, `<n> need you · all plans` comes next. It counts the items of all plans. When the keys do not fit, the status bar removes the least important keys first. `? Keys` always shows. A message shows in the case that it is written, so a build name keeps its case. It comes before the keys: the keys make room for it, and a message that still does not fit shows in full in a strip above the status bar.
 
 On a window of 900 pixels or less, the navigator is one row of chips. The row stays under the top bar when you scroll, and each mark shows its build, for example `B1`. On a window of 760 pixels or less, each row has two lines: the badge, the ID, and the title, then the short note. On the highlighted row, its options replace the note. The rows do not change height when the highlight moves. On a window of 760 pixels or less, a record covers the list, and each button is at least 40 pixels high. A link that stands alone, and the box around the checkbox of a row, are at least 40 pixels high too. The status bar keeps the last level of the path, `Find`, `Keys`, and `More`. Each level of the path has its full text as its title, also when the window cuts it.
 
@@ -118,7 +118,7 @@ The page gets the text from `/plans/<planId>/defects.txt?claim=<claimId>` (one `
 
 ### Find
 
-`/`, `Ctrl` `K`, or `Find` in the status bar opens the find bar. Type words to find plans, claims, and questions of all plans that contain each word. The bar shows the first 12 results and the number of other results. `↑` and `↓` move in the results. When you change the query, the bar clears the old results. `Enter` opens the highlighted result when the query has text and the results are ready. `←` and `→` move the caret. `Esc` closes the bar. When the text has a word, the last row is `Ask Checkmate: <text>`. It is the highlighted row when nothing matches. See [Requests](#requests).
+`/`, `Ctrl` `K`, or `Find` in the status bar opens the find bar. Type words to find plans, claims, and questions of all plans that contain each word. The bar shows the first 12 results and the number of other results. `↑` and `↓` move in the results. When you change the query, the bar clears the old results. `Enter` opens the highlighted result when the query has text and the results are ready. `←` and `→` move the caret. `Esc` closes the bar. When the text has a word, the last row is `Ask Checkmate: <text>`. It is the highlighted row when nothing matches. See [Chats](#chats).
 
 ### A record
 
@@ -175,7 +175,7 @@ A form keeps your text as a draft. It stays when you press `Esc`, reload the pag
 
 1. Choose `Test build…`. A dialog opens.
 2. Write the build name. The field has the name that `checkmate test` gives when you give no `--build`: the short git commit, or the date and time in UTC.
-3. Choose the level: `smoke`, `normal`, or `deep`. `normal` is the first choice. Press `1`, `2`, or `3` to choose a level. To give individual testers different models, open **Models by tester**. Choose a model for each tester you want to change. The others use the workspace tester setting.
+3. Choose the level: `smoke`, `normal`, or `deep`. `normal` is the first choice. Press `1`, `2`, or `3` to choose a level. To give individual testers different models, open **Models by tester**. Choose a model for each tester you want to change. Set effort for each tester when the selected model offers it. The others use the workspace tester setting.
 4. Check `Testers may use without asking`. The field has the tool rules of the testers, one rule for each word, as in `checkmate test --allow`, for example `Read Bash`. It starts with the rules of the workspace setting `Tool rules of testers` (see [Settings](#settings)). The engine needs at least one rule today. A tool without a rule asks you in the UI, if the UI runs.
 5. Open `More` to give `Since`, `Until`, and `Repository folder`. Without `Since`, the UI uses the default branch of `origin`, as `checkmate test` does.
 6. Press `Enter`. The Testers view of the new test opens.
@@ -256,15 +256,15 @@ A rule for this test answers the same request of every other tester of the run a
 
 `/permissions` opens the first open request, or `Activity` when none is open.
 
-A request of the find bar asks in the same way. Its record says `Request R3 asks to run a command`. The available options depend on the tool and the harness. `for this test` reads `for this conversation`. A rule lasts for the later requests of the same conversation, and ends when you start a new conversation. `Stop the request…` stops the request. A request has no `Run` in its details: it shows `Request` with a link.
+A request of the find bar asks in the same way. Its record says `Request R3 asks to run a command`. The available options depend on the tool and the harness. `for this test` reads `for this conversation`. A rule applies to later turns in the same chat that use the same harness. `Stop the request…` stops the request. A request has no `Run` in its details: it shows `Request` with a link.
 
-### Requests
+### Chats
 
-Press `/`, type a task, and choose `Ask Checkmate`. The find bar names the coding harness that will receive your text. It runs in the project workspace with your host login and tools. If a plan or record is open, Checkmate includes its name for context. A tool that needs approval opens a permission request.
+Open **Chats** to resume a conversation or choose **New chat**. From a plan, run, exploration, or list, open **Find** and choose **Ask Checkmate**. The chat keeps that screen as its starting context. The agent can read other workspace records when they are relevant.
 
-One request runs at a time. Later requests in the same conversation can use its history. Choose `New conversation` to start again. After you switch harnesses, the next request starts a conversation in the selected harness. Earlier replies remain in `Replies`.
+Type follow-ups in the same chat. Choose a harness, model, and available effort for the next message. Each sent message keeps its selections. When the host and model stay the same, Checkmate continues the host session. When they change, Checkmate opens a new host session and sends up to eight recent turns as context. The chat keeps its full history.
 
-Open a request to read its activity, answer a permission prompt, or choose `Stop the request…`. When it ends, the page shows the reply or failure reason, elapsed time, and a link to each record it changed. Use `Ask a follow-up` to continue or `Ask again` to send the same text. The Log links each write to its request, including writes made before a stop.
+One message runs at a time in the workspace. The chat shows waiting turns, permissions, replies, and record changes. Choose **Stop** to stop a turn. Open its request ID for the detailed record. Chats also lists conversations from earlier versions.
 
 An activity line of a request or a tester shows the tool and the first line of its main input, at most 120 characters. For a shell command, the line drops a leading `cd <path> &&` or `cd <path>;` and the leading variable assignments. A command that runs the Checkmate command line, also through a variable, shows as `checkmate <arguments>`. The path of the workspace shows as `.`. Checkmate masks secrets. The permission record shows the full command.
 
@@ -286,7 +286,7 @@ The run list and the operation log. They page, sort, and filter. The address kee
 
 Open **Settings → Coding harness**, choose **Claude Code** or **Pi**, and save. The choice applies to new work in this workspace and survives a restart. A running test and its follow-up use the harness that started the test. The page shows whether the selected program is on `PATH`. Configure its provider and login in the harness.
 
-Under **Models**, choose **Model for requests** and **Model for testers**, then select **Save models**. The list comes from the selected harness. Pi lists the provider with each model. Refresh the list after you change the host configuration. Choose the default option to let Pi use its configured model or Claude testers use their test level. Each harness remembers its choices.
+Under **Models**, choose **Model for requests** and **Model for testers**, then select **Save models**. The list comes from the selected harness. Pi lists the provider with each model. Refresh the list after you change the host configuration. Choose the default option to let Pi use its configured model or Claude testers use their test level. Each harness remembers its choices. Set effort for each role when the selected model supports it. Checkmate uses medium for an unset effort when the host advertises it. If the host cannot confirm support, Checkmate leaves the effort flag unset.
 
 The tester tool rules fill the `Test build…` and `New change` forms.
 

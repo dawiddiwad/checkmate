@@ -582,9 +582,9 @@ export const requestHookName = 'request'
 
 export function requestSystemPrompt(checkmate: string) {
 	return [
-		'This request comes from the Checkmate web UI.',
-		'The reply shows in a narrow pane. Answer in plain sentences: first what you found or did, then what changed.',
-		'Put a question to the person in the reply.',
+		'This conversation comes from the Checkmate web UI.',
+		'Answer what the person asked. When you change the record, say what changed.',
+		'Ask a question when you need the person to decide or clarify.',
 		`To change a record, use the checkmate command line of this workspace: node ${checkmate} <command>.`,
 	].join(' ')
 }
@@ -609,7 +609,7 @@ export function requestArgs(session: RequestSession) {
 
 export function requestPrompt(text: string, screen: string | null) {
 	return screen
-		? `${text}\n\nFor context only: the person had ${screen} on screen. Use this only when the request refers to it.`
+		? `${text}\n\nStarting context: the person opened the chat from ${screen}. Use this when relevant. You may inspect other workspace records if they help answer the request.`
 		: text
 }
 

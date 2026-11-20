@@ -1,6 +1,7 @@
 import type { Store } from './store.ts'
 import { completed, one, write } from './store.ts'
 import { requireChoice, requireWellFormed } from './contracts.ts'
+import { effortLevels } from './model-catalog.ts'
 import type { Harness } from './pi.ts'
 import { piModelEnv } from './pi.ts'
 import type { Env } from './sessions.ts'
@@ -93,29 +94,73 @@ export function testerModelText(store: Store, harness: Harness = 'claude') {
 	return setting(store, harness === 'pi' ? 'piTesterModel' : 'testerModel') ?? ''
 }
 
+function effortSetting(kind: 'request' | 'tester', harness: Harness) {
+	if (harness === 'pi') return kind === 'request' ? 'piRequestEffort' : 'piTesterEffort'
+	return kind === 'request' ? 'requestEffort' : 'testerEffort'
+}
+
+export function requestEffortText(store: Store, harness: Harness = 'claude') {
+	return setting(store, effortSetting('request', harness)) ?? ''
+}
+
+export function testerEffortText(store: Store, harness: Harness = 'claude') {
+	return setting(store, effortSetting('tester', harness)) ?? ''
+}
+
+export function requireEffort(harness: Harness, effort: unknown): asserts effort is string {
+	requireWellFormed(
+		typeof effort === 'string' && (!effort || effortLevels[harness].includes(effort)),
+		'Choose a reasoning effort supported by the coding harness.'
+	)
+}
+
 export function saveRequestModel(store: Store, actor: string | undefined, text: string, harness: Harness = 'claude') {
 	const model = text.trim()
 	const name = harness === 'pi' ? 'piRequestModel' : 'requestModel'
 	return write(store, { actor, command: 'setting set', subject: name, input: { model } }, (operationId) => {
 		requireModel(harness, model)
 		const value = harness === 'pi' ? JSON.stringify({ model, providerQualified: false }) : model
-		if (value !== setting(store, name)) insertSetting(store, name, value, operationId)
+		if (value !== setting(store, name)) {
+			insertSetting(store, name, value, operationId)
+			if (requestEffortText(store, harness))
+				insertSetting(store, effortSetting('request', harness), '', operationId)
+		}
 		return { reply: completed(name, { model }), subjects: ['settings'] }
 	})
 }
 
-export function saveModels(store: Store, actor: string | undefined, harness: Harness, request: string, tester: string) {
+export function saveModels(
+	store: Store,
+	actor: string | undefined,
+	harness: Harness,
+	request: string,
+	tester: string,
+	requestEffort?: string,
+	testerEffort?: string
+) {
 	const requestModel = request.trim()
 	const testerModel = tester.trim()
-	const input = { harness, requestModel, testerModel }
+	const input = { harness, requestModel, testerModel, requestEffort, testerEffort }
 	return write(store, { actor, command: 'setting set', subject: 'models', input }, (operationId) => {
 		requireModel(harness, requestModel)
 		requireModel(harness, testerModel)
-		if (requestModel !== requestModelText(store, harness)) {
+		const requestChanged = requestModel !== requestModelText(store, harness)
+		const testerChanged = testerModel !== testerModelText(store, harness)
+		for (const [kind, choice, changed] of [
+			['request', requestEffort, requestChanged],
+			['tester', testerEffort, testerChanged],
+		] as const) {
+			if (choice === undefined && !changed) continue
+			const effort = choice?.trim() ?? ''
+			requireEffort(harness, effort)
+			const name = effortSetting(kind, harness)
+			if (effort !== (setting(store, name) ?? '')) insertSetting(store, name, effort, operationId)
+		}
+		if (requestChanged) {
 			const name = harness === 'pi' ? 'piRequestModel' : 'requestModel'
 			insertSetting(store, name, modelValue(name, requestModel), operationId)
 		}
-		if (testerModel !== testerModelText(store, harness)) {
+		if (testerChanged) {
 			const name = harness === 'pi' ? 'piTesterModel' : 'testerModel'
 			insertSetting(store, name, testerModel, operationId)
 		}

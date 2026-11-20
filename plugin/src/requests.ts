@@ -6,15 +6,26 @@ import { requireText, requireWellFormed, unusedId } from './contracts.ts'
 
 export const requestStates = ['waiting', 'running', 'answered', 'failed', 'stopped', 'interrupted'] as const
 export type RequestState = (typeof requestStates)[number]
-export type RequestContext = { planId: string | null; record: { kind: string; id: string } | null }
+export type RequestContext = {
+	planId: string | null
+	record: { kind: string; id: string } | null
+	page?: 'plans' | 'runs' | 'activity' | 'chats'
+	planRevision?: number
+}
+export type RequestSelection = {
+	harness: Harness
+	model: string | null
+	provider: string | null
+	effort: string | null
+	modelId: string | null
+}
 export type RequestChange = { text: string; command: string; subject: string; at: string; href: string | null }
-export type RequestRecord = {
+export type RequestRecord = RequestSelection & {
 	id: string
 	text: string
 	context: RequestContext
 	asker: string
 	conversation: string
-	harness: Harness
 	askedAt: string
 	state: RequestState
 	sessionId: string | null
@@ -33,6 +44,7 @@ export type Conversation = { sessionId: string; startedAt: string }
 
 export const maxRequestText = 4000
 export const requestAuthor = 'checkmate'
+const chatIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 const endStates: RequestState[] = ['answered', 'failed', 'stopped', 'interrupted']
 const unreadStates: RequestState[] = ['answered', 'failed']
 
@@ -48,10 +60,10 @@ type AskRow = {
 
 export function screenText(context: RequestContext) {
 	const parts = [
-		...(context.planId ? [`plan ${context.planId}`] : []),
+		...(context.planId ? [`plan ${context.planId}${context.planRevision ? `@${context.planRevision}` : ''}`] : []),
 		...(context.record ? [`${context.record.kind} ${context.record.id}`] : []),
 	]
-	return parts.length ? parts.join(' and ') : null
+	return parts.length ? parts.join(' and ') : context.page ? `the ${context.page} page` : null
 }
 
 export function requestActor(person: string, requestId: string) {
@@ -93,17 +105,6 @@ export function conversationSize(store: Store, sessionId: string) {
 		.count
 }
 
-export function conversationStarted(store: Store, sessionId: string) {
-	return (
-		one(
-			store,
-			`SELECT 1 FROM request_events e JOIN requests r ON r.request_id = e.request_id
-			WHERE r.conversation = ? AND e.step = 'session'`,
-			sessionId
-		) !== undefined
-	)
-}
-
 function conversationHarness(store: Store, sessionId: string) {
 	const row = one<{ detail: string }>(
 		store,
@@ -138,7 +139,11 @@ export function addRequestEvent(
 export function askRequest(
 	store: Store,
 	actor: string | undefined,
-	input: { text: string; context: RequestContext; harness?: Harness }
+	input: Partial<RequestSelection> & {
+		text: string
+		context: RequestContext
+		chatId?: string | null
+	}
 ) {
 	const text = requireText(input.text, 'request text')
 	requireWellFormed(
@@ -151,28 +156,90 @@ export function askRequest(
 			'R',
 			all<{ request_id: string }>(store, 'SELECT request_id FROM requests').map((row) => row.request_id)
 		)
-		const current = currentConversation(store)
-		const previous = current && conversationHarness(store, current.sessionId)
 		const harness = input.harness ?? 'claude'
-		const conversation =
-			current && (!previous || previous === harness) ? current : insertConversation(store, operationId, at)
+		let chatId: string
+		let context = input.context
+		if (input.chatId) {
+			requireWellFormed(chatIdPattern.test(input.chatId), 'Invalid chat ID.')
+			const initial = one<{ context: string }>(
+				store,
+				'SELECT context FROM requests WHERE conversation = ? ORDER BY rowid LIMIT 1',
+				input.chatId
+			)
+			requireWellFormed(initial, `Unknown chat: ${input.chatId}`)
+			chatId = input.chatId
+			context = JSON.parse(initial.context) as RequestContext
+		} else if (input.chatId === null) {
+			validateChatContext(store, context)
+			chatId = randomUUID()
+		} else {
+			const current = currentConversation(store)
+			const previous = current && conversationHarness(store, current.sessionId)
+			chatId = (
+				current && (!previous || previous === harness) ? current : insertConversation(store, operationId, at)
+			).sessionId
+		}
 		execute(
 			store,
 			'INSERT INTO requests (request_id, text, context, asker, conversation, asked_at, operation_id) VALUES (?, ?, ?, ?, ?, ?, ?)',
 			requestId,
 			text,
-			canonical(input.context),
+			canonical(context),
 			who,
-			conversation.sessionId,
+			chatId,
 			at,
 			operationId
 		)
-		addRequestEvent(store, requestId, { step: 'state', status: 'waiting', detail: { harness } }, operationId, at)
+		const { model = null, provider = null, effort = null, modelId = null } = input
+		addRequestEvent(
+			store,
+			requestId,
+			{ step: 'state', status: 'waiting', detail: { harness, model, provider, effort, modelId } },
+			operationId,
+			at
+		)
 		return {
 			reply: completed(requestId, { requestId }),
-			subjects: [`request:${requestId}`, 'requests'],
+			subjects: [`request:${requestId}`, `chat:${chatId}`, 'requests', 'chats'],
 		}
 	}).data.requestId as string
+}
+
+function validateChatContext(store: Store, context: RequestContext) {
+	if (context.page)
+		requireWellFormed(['plans', 'runs', 'activity', 'chats'].includes(context.page), 'Unknown chat context page.')
+	if (context.planId)
+		requireWellFormed(
+			one(store, 'SELECT 1 FROM plan_requests WHERE plan_id = ?', context.planId),
+			`Unknown plan: ${context.planId}`
+		)
+	if (context.planRevision !== undefined)
+		requireWellFormed(
+			context.planId &&
+				one(
+					store,
+					'SELECT 1 FROM plan_revisions WHERE plan_id = ? AND revision = ?',
+					context.planId,
+					context.planRevision
+				),
+			`Unknown plan revision: ${context.planId}@${context.planRevision}`
+		)
+	const { record } = context
+	if (!record) return
+	const query =
+		record.kind === 'run'
+			? 'SELECT plan_id, plan_revision FROM runs WHERE run_id = ?'
+			: record.kind === 'exploration'
+				? 'SELECT plan_id, plan_revision FROM explorations WHERE exploration_id = ?'
+				: null
+	requireWellFormed(query, `Unknown chat context kind: ${record.kind}`)
+	const found = one<{ plan_id: string; plan_revision: number | null }>(store, query, record.id)
+	requireWellFormed(found, `Unknown ${record.kind}: ${record.id}`)
+	requireWellFormed(!context.planId || found.plan_id === context.planId, 'The chat context has a different plan.')
+	requireWellFormed(
+		context.planRevision === undefined || found.plan_revision === context.planRevision,
+		'The chat context has a different plan revision.'
+	)
 }
 
 export function recordRequestEvent(
@@ -248,7 +315,8 @@ function recordOf(ask: AskRow, events: EventRow[]): RequestRecord {
 	const last = states.at(-1)!
 	const session = events.findLast((event) => event.step === 'session')
 	const recorded = session ? (JSON.parse(session.detail) as { sessionId?: string; harness?: Harness }) : null
-	const harness = JSON.parse(states[0].detail).harness ?? recorded?.harness
+	const selection = JSON.parse(states[0].detail) as Partial<RequestSelection>
+	const harness = selection.harness ?? recorded?.harness
 	const finished = endStates.includes(last.status as RequestState) ? last : null
 	const detail = finished ? (JSON.parse(finished.detail) as Record<string, unknown>) : {}
 	const listOf = <T>(value: unknown) => (Array.isArray(value) ? (value as T[]) : [])
@@ -259,6 +327,13 @@ function recordOf(ask: AskRow, events: EventRow[]): RequestRecord {
 		asker: ask.asker,
 		conversation: ask.conversation,
 		harness: harness === 'pi' ? 'pi' : 'claude',
+		model: selection.model ?? null,
+		provider: selection.provider ?? null,
+		effort: selection.effort ?? null,
+		modelId:
+			selection.modelId ??
+			(selection.provider && selection.model ? `${selection.provider}/${selection.model}` : selection.model) ??
+			null,
 		askedAt: ask.asked_at,
 		state: last.status as RequestState,
 		sessionId: recorded?.sessionId ?? null,
@@ -303,6 +378,50 @@ export function allRequests(store: Store) {
 	)
 }
 
+export type Chat = { id: string; context: RequestContext; turns: RequestRecord[] }
+
+export function chatOf(store: Store, id: string): Chat | null {
+	if (!chatIdPattern.test(id)) return null
+	const asks = all<AskRow>(store, 'SELECT * FROM requests WHERE conversation = ? ORDER BY rowid', id)
+	if (!asks.length) return null
+	const events = eventsByRequest(
+		store,
+		'AND request_id IN (SELECT request_id FROM requests WHERE conversation = ?)',
+		id
+	)
+	const turns = asks.map((ask) => recordOf(ask, events.get(ask.request_id) ?? []))
+	return { id, context: turns[0].context, turns }
+}
+
+export function listedChats(store: Store): Chat[] {
+	const chats = new Map<string, Chat>()
+	for (const turn of allRequests(store)) {
+		const chat = chats.get(turn.conversation) ?? { id: turn.conversation, context: turn.context, turns: [] }
+		chat.turns.push(turn)
+		chats.delete(chat.id)
+		chats.set(chat.id, chat)
+	}
+	return [...chats.values()].reverse()
+}
+
+export function chatHistory(turns: RequestRecord[]) {
+	const entries: string[] = []
+	let remaining = 12_000
+	for (const turn of turns.slice(-8).reverse()) {
+		if (!isEnded(turn)) continue
+		const entry = JSON.stringify({
+			request: turn.text.slice(0, 2_000),
+			state: turn.state,
+			reply: turn.reply?.slice(0, 2_000) ?? null,
+			changes: turn.changes.slice(0, 10).map((change) => change.text.slice(0, 120)),
+		})
+		if (entry.length + 1 > remaining) break
+		entries.unshift(entry)
+		remaining -= entry.length + 1
+	}
+	return entries.join('\n')
+}
+
 export function isUnread(request: RequestRecord) {
 	return unreadStates.includes(request.state) && !request.read
 }
@@ -314,11 +433,15 @@ export function isEnded(request: RequestRecord) {
 export function requestStatus(store: Store) {
 	const requests = allRequests(store)
 	const unread = requests.filter(isUnread)
+	const running = requests.find((request) => request.state === 'running')
+	const firstUnread = unread.at(-1)
 	return {
-		running: requests.find((request) => request.state === 'running')?.id ?? null,
+		running: running?.id ?? null,
+		runningChat: running?.conversation ?? null,
 		waiting: requests.filter((request) => request.state === 'waiting').length,
 		unread: unread.length,
-		firstUnread: unread.at(-1)?.id ?? null,
+		firstUnread: firstUnread?.id ?? null,
+		firstUnreadChat: firstUnread?.conversation ?? null,
 	}
 }
 

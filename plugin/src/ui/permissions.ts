@@ -6,6 +6,7 @@ import { closedText, explorationPermissions, openPermissions, permissionOf, perm
 import { ago, duration, glyph, html, pill, plural, time } from './html.ts'
 import { crumbBar, heading } from './layout.ts'
 import { inputLine } from './hooks.ts'
+import { requestOf } from '../requests.ts'
 
 export type PermissionRefusal = { error: string; reason: string; field: 'reason' | null }
 
@@ -32,10 +33,11 @@ export function asksFor(item: Permission) {
 	return line ? `${verb}: ${line}` : verb
 }
 
-export function askerPath(item: Pick<Permission, 'askerId' | 'fromRequest'>) {
-	return item.fromRequest
-		? { label: 'Request', href: `/requests/${item.askerId}`, fallback: `/requests/${item.askerId}` }
-		: { label: 'Run', href: `/explorations/${item.askerId}`, fallback: '/activity' }
+function askerPath(store: Store, item: Permission) {
+	if (!item.fromRequest) return { label: 'Run', href: `/explorations/${item.askerId}`, fallback: '/activity' }
+	const message = requestOf(store, item.askerId)
+	const href = message ? `/chats/${message.conversation}` : '/chats'
+	return { label: 'Chat', href, fallback: href }
 }
 
 const things: Record<string, string> = {
@@ -53,7 +55,7 @@ const things: Record<string, string> = {
 }
 
 export function askerName(item: Permission) {
-	if (item.fromRequest) return `Request ${item.askerId}`
+	if (item.fromRequest) return `Chat message ${item.askerId}`
 	if (item.tester) return `Tester ${item.who}`
 	if (item.who.startsWith('record-')) return `The recorder of ${item.who.slice('record-'.length)}`
 	return `Step ${item.who}`
@@ -108,11 +110,11 @@ function choicesOf(item: Permission): Choice[] {
 	const kind = item.tool.toLowerCase() === 'bash' ? 'command' : 'kind of call'
 	const run = item.askerId
 	const rule = item.rule
-	const request = item.fromRequest
-	const scope = request ? 'conversation' : 'test'
-	const everyone = request ? 'later requests in this conversation using the same harness' : 'any tester of this run'
-	const where = request ? `request ${run}` : `run ${run}`
-	const ends = request ? 'The rule ends when you start a new conversation.' : 'The rule ends with the run.'
+	const chat = item.fromRequest
+	const scope = chat ? 'chat' : 'test'
+	const everyone = chat ? 'later messages in this chat using the same harness' : 'any tester of this run'
+	const where = chat ? `message ${run}` : `run ${run}`
+	const ends = chat ? 'The rule applies only to this chat.' : 'The rule ends with the run.'
 	return [
 		{ decision: 'allow', label: 'Allow once', text: 'Answers this request with yes. Checkmate stores no rule.' },
 		...(rule
@@ -120,8 +122,9 @@ function choicesOf(item: Permission): Choice[] {
 					{
 						decision: 'allow-kind',
 						label: `Allow this ${kind} for this ${scope}`,
-						text: html`Answers yes now and for every later request with the rule <code>${rule}</code>, from
-							${everyone}. Checkmate stores the rule in the record of ${where}. ${ends}`,
+						text: html`Answers yes now and for every later permission request with the rule
+							<code>${rule}</code>, from ${everyone}. Checkmate stores the rule in the record of ${where}.
+							${ends}`,
 					},
 				]
 			: []),
@@ -137,7 +140,7 @@ function choicesOf(item: Permission): Choice[] {
 						label: `Always allow this ${kind} in this project`,
 						text: html`Answers yes now. Claude Code writes the rule <code>${rule}</code> to
 							<code>.claude/settings.local.json</code> of the project, and the rule stays after this
-							${request ? 'conversation' : 'run'}. Checkmate writes no settings file.`,
+							${chat ? 'chat' : 'run'}. Checkmate writes no settings file.`,
 					},
 				]
 			: []),
@@ -156,13 +159,13 @@ function stopChoice(item: Permission): Choice {
 	if (item.fromRequest)
 		return {
 			decision: 'stop',
-			label: 'Stop the request…',
+			label: 'Stop the reply…',
 			ask: {
-				title: `Stop request ${run}?`,
-				text: `Checkmate denies this call and stops request ${run}. You can ask again.`,
-				yes: 'Stop the request',
+				title: `Stop the reply to message ${run}?`,
+				text: `Checkmate denies this call and stops the reply. You can send another message in the chat.`,
+				yes: 'Stop the reply',
 			},
-			text: `Answers no and stops request ${run}. You confirm first.`,
+			text: `Answers no and stops the reply to message ${run}. You confirm first.`,
 		}
 	return {
 		decision: 'stop',
@@ -316,7 +319,7 @@ export function permissionPage(
 	const item = permissionOf(store, askerId, requestId)
 	if (!item) return null
 	const { from } = view
-	const asker = askerPath(item)
+	const asker = askerPath(store, item)
 	const back = from ?? asker.fallback
 	const moves = item.decision && !view.history
 	const next = nextOpen(store, item)
@@ -440,10 +443,8 @@ ${refusal?.reason ?? ''}</textarea>
 			${
 				rules.length
 					? html`<section aria-labelledby="rules-title">
-							<h2 class="lab" id="rules-title">
-								Rules of this ${item.fromRequest ? 'conversation' : 'test'}
-							</h2>
-							${rulesLines(rules, item.fromRequest ? 'conversation' : 'test')}
+							<h2 class="lab" id="rules-title">Rules of this ${item.fromRequest ? 'chat' : 'test'}</h2>
+							${rulesLines(rules, item.fromRequest ? 'chat' : 'test')}
 						</section>`
 					: ''
 			}

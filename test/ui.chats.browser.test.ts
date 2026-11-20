@@ -50,6 +50,11 @@ test('Find opens a chat and a follow-up stays in its history', browserTest, asyn
 	await app.page.waitForURL(/\/chats\/[^/]+$/)
 	await app.page.locator('.chat-user').getByText('Explain the plan', { exact: true }).waitFor()
 	await app.page.getByText('A reply.', { exact: true }).waitFor()
+	assert.equal(await app.page.locator('.chat-assistant [data-status="answered"]').count(), 0)
+	assert.match(
+		(await app.page.getByRole('link', { name: 'Turn 1' }).getAttribute('href'))!,
+		/^\/chats\/[^/]+\/messages\/R1$/
+	)
 	const address = app.page.url()
 	await app.page.locator('[name="text"]').fill('What next?')
 	await app.page.getByRole('button', { name: 'Send' }).click()
@@ -57,7 +62,9 @@ test('Find opens a chat and a follow-up stays in its history', browserTest, asyn
 	await app.page.getByText('What next?', { exact: true }).waitFor()
 	assert.equal(await app.page.locator('.chat-user').count(), 2)
 	await app.page.getByRole('link', { name: 'Chats', exact: true }).first().click()
-	await app.page.getByRole('link', { name: /Explain the plan/ }).waitFor()
+	const row = app.page.getByRole('link', { name: /Explain the plan/ })
+	await row.waitFor()
+	assert.equal(await row.locator('[data-status="answered"]').count(), 0)
 })
 
 test('chat controls switch harness and retain model and effort at mobile width', browserTest, async (t) => {
@@ -249,8 +256,14 @@ test('plan and global chat lists show newly reported costs without reloading', b
 		setRequestState(store, id, 'running')
 		const rows = [app.page, globalChats].map((page) => page.getByRole('link', { name: /Check the coupon plan/ }))
 		await Promise.all(rows.map((row) => row.getByText('Unknown').waitFor()))
+		assert.equal(await rows[0].locator('[data-status="running"]').count(), 1)
 		setRequestState(store, id, 'answered', { reply: 'Checked.', costUsd: 0.67, costScope: 'turn' })
 		await Promise.all(rows.map((row) => row.getByText('$0.67', { exact: true }).waitFor()))
+		assert.equal(await rows[0].locator('[data-status="answered"]').count(), 0)
+		await Promise.all(rows.map((row) => row.getByText('1 unread', { exact: true }).waitFor()))
+		await rows[0].click()
+		await app.page.getByText('Checked.', { exact: true }).waitFor()
+		await globalChats.getByText('1 unread', { exact: true }).waitFor({ state: 'detached' })
 	} finally {
 		closeStore(store)
 	}

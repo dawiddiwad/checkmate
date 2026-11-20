@@ -336,6 +336,8 @@ export function subjectLink(subject: string) {
 	if (kind === 'plan') return html`<a class="mono" href="/plans/${id}">${subject}</a>`
 	if (kind === 'run') return html`<a class="mono" href="/runs/${id}">${subject}</a>`
 	if (kind === 'target') return html`<a class="mono" href="/settings/targets/${id}">${subject}</a>`
+	if (kind === 'chat') return html`<a class="mono" href="/chats/${id}">${subject}</a>`
+	if (kind === 'chats') return html`<a class="mono" href="/chats">Chats</a>`
 	if (kind === 'inbox') return html`<a class="mono" href="/">${subject}</a>`
 	return html`<span class="mono">${subject}</span>`
 }
@@ -346,7 +348,7 @@ function reasons(response: unknown) {
 }
 
 export function logSpec(store: Store): ListSpec {
-	const recent = operationLog(store, { limit: 1000 })
+	const recent = operationLog(store, { limit: 1000, display: true })
 	return {
 		path: '/log',
 		region: 'log',
@@ -398,16 +400,16 @@ export function logSpec(store: Store): ListSpec {
 type LogRow = ReturnType<typeof pagedOperations>['rows'][number]
 
 function logRow(row: LogRow) {
-	const suffix = ` via request ${row.via}`
-	const person = row.via && row.actor.endsWith(suffix) ? row.actor.slice(0, -suffix.length) : row.actor
+	const subjects = row.subjects.filter((subject) => subject !== `chat:${row.viaChat}`)
+	const via = row.viaChat ? html` <a href="/chats/${row.viaChat}">via chat</a>` : ''
 	return listRow(
 		`op:${row.rowid}`,
 		null,
 		row.command,
 		html`${pill(row.status === 'rejected' ? 'rejected_operation' : row.status, words(row.status))} ${time(row.at)}`,
 		[
-			html`${person}${row.via ? html` <a href="/requests/${row.via}">via request ${row.via}</a>` : ''} ·
-			${row.subjects.length ? join(row.subjects.map(subjectLink), ' ') : html`<span class="muted">no subject</span>`}`,
+			html`${row.actor}${via} ·
+			${subjects.length ? join(subjects.map(subjectLink), ' ') : html`<span class="muted">no subject</span>`}`,
 			...(row.status === 'rejected'
 				? [html`<span class="reason">${reasons(row.response).join(' ')}</span>`]
 				: []),

@@ -108,10 +108,10 @@ function statusBar(context: Context, page: Page) {
 			<a
 				class="sb-btn"
 				href="${context.requests.runningChat ? `/chats/${context.requests.runningChat}` : '/chats'}"
-				title="The request that runs now"
+				title="The chat that is active now"
 				data-region="request-link"
 				${context.requests.running ? '' : html`hidden`}
-				>${context.requests.running ? html`<span>Request ${context.requests.running}<span class="sb-long sb-running"> · running</span></span>` : ''}</a
+				>${context.requests.running ? html`<span>Chat<span class="sb-long sb-running"> · working</span></span>` : ''}</a
 			>
 			<a
 				class="sb-btn att"
@@ -128,11 +128,11 @@ function statusBar(context: Context, page: Page) {
 						? `/chats/${context.requests.firstUnreadChat}`
 						: '/chats'
 				}"
-				title="Replies to your requests that you did not read"
-				aria-label="${context.requests.unread} ${context.requests.unread === 1 ? 'reply' : 'replies'} not read"
+				title="Unread updates in your chats"
+				aria-label="${context.requests.unread} unread chat updates"
 				data-region="replies-link"
 				${context.requests.unread ? '' : html`hidden`}
-				>${context.requests.unread ? html`<span>${context.requests.unread}<span class="sb-long"> ${context.requests.unread === 1 ? 'reply' : 'replies'}</span></span>` : ''}</a
+				>${context.requests.unread ? html`<span>${context.requests.unread}<span class="sb-long"> unread</span></span>` : ''}</a
 			>
 			<a
 				class="sb-btn att"
@@ -186,7 +186,7 @@ const dialogs = (harness: Harness) =>
 			<input
 				type="search"
 				data-find-input
-				aria-label="Find a plan, a defect, or a question. Or type a request."
+				aria-label="Find a plan, a defect, or a question. Or ask Checkmate."
 				autocomplete="off"
 			/>
 			<ul role="listbox" aria-label="Results" data-find-results></ul>

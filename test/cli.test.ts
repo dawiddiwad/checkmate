@@ -403,7 +403,7 @@ test('the operation log has one row per write, records refusals, and lists subje
 	assert.deepEqual(cli(workspace, ['log', '--subject', 'checkout-local']).lines, [
 		'invalid_request log refusal=malformed',
 		'reason: Refused: malformed request.',
-		'reason: Invalid --subject: checkout-local. Use target:<targetId>, plan:<planId>, run:<runId>, or inbox.',
+		'reason: Invalid --subject: checkout-local. Use target:<targetId>, plan:<planId>, run:<runId>, chat:<chatId>, or inbox.',
 	])
 	for (const [flag, text, reason] of [
 		['--after', 'x', 'Invalid --after: x. Use a whole number from 0'],

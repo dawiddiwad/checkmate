@@ -33,7 +33,7 @@ Each page has the same four parts:
 - The top bar: `Checkmate` opens the home page. At the right are the live state, your name, and the switch for light and dark.
 - The navigator, at the left on the pages of a plan.
 - The centre: the list or the page.
-- The status bar, at the bottom. It shows the path to where you are, for example `Plans › checkout › Needs you › a1/D1`, the buttons `Find`, `Keys`, `Activity`, `Chats`, `Runs`, `Log`, and `Settings`, and the keys that work where you are. `Activity` shows `Activity · <n> running` while <n> tests run. On a narrow window, `More` holds `Activity`, `Chats`, `Runs`, `Log`, and `Settings`. On a window of 600 pixels or less, `More` also holds `Find`. While a request runs, `Request R3 · running` shows first. When tester or request permission requests wait, `<n> permissions` follows it. When replies are not read, `<n> reply` or `<n> replies` follows that. When items wait for you, `<n> need you · all plans` comes next. It counts the items of all plans. When the keys do not fit, the status bar removes the least important keys first. `? Keys` always shows. A message shows in the case that it is written, so a build name keeps its case. It comes before the keys: the keys make room for it, and a message that still does not fit shows in full in a strip above the status bar.
+- The status bar, at the bottom. It shows the path to where you are, for example `Plans › checkout › Needs you › a1/D1`, the buttons `Find`, `Keys`, `Activity`, `Chats`, `Runs`, `Log`, and `Settings`, and the keys that work where you are. `Activity` shows `Activity · <n> running` while <n> tests run. On a narrow window, `More` holds `Activity`, `Chats`, `Runs`, `Log`, and `Settings`. On a window of 600 pixels or less, `More` also holds `Find`. While a chat turn runs, `Chat · working` shows first. When permission requests wait, `<n> permissions` follows it. New chat replies and errors count toward `<n> unread`. When items wait for you, `<n> need you · all plans` comes next. It counts the items of all plans. When the keys do not fit, the status bar removes the least important keys first. `? Keys` always shows. A message shows in the case that it is written, so a build name keeps its case. It comes before the keys: the keys make room for it, and a message that still does not fit shows in full in a strip above the status bar.
 
 On a window of 900 pixels or less, the navigator is one row of chips. The row stays under the top bar when you scroll, and each mark shows its build, for example `B1`. On a window of 760 pixels or less, each row has two lines: the badge, the ID, and the title, then the short note. On the highlighted row, its options replace the note. The rows do not change height when the highlight moves. On a window of 760 pixels or less, a record covers the list, and each button is at least 40 pixels high. A link that stands alone, and the box around the checkbox of a row, are at least 40 pixels high too. The status bar keeps the last level of the path, `Find`, `Keys`, and `More`. Each level of the path has its full text as its title, also when the window cuts it.
 
@@ -190,7 +190,7 @@ When the engine refuses the start, the dialog shows the reason in a sentence at 
 
 ### Activity
 
-`/activity` lists every test and follow-up of all plans, one row each. Runs in progress come first. The other runs follow, newest first. A row shows the state, the run ID, the plan, the build, the level, the person who started it, the time, the duration, the cost reported by the coding harness, and one line about the outcome: the counts of defects and questions, or the reason that it failed or stopped. `→` opens the Testers view of the run.
+`/activity` lists every test and follow-up of all plans, one row each. Runs in progress come first. The other runs follow, newest first. A row shows the state, the run ID, the plan, the build, the level, the person who started it, the time, the duration, the cost reported by the coding harness, and one line about the outcome: the counts of defects and questions, or the reason that it failed or stopped. `→` opens the Testers view of the run. A **Chat** row shows activity for one message and opens its conversation.
 
 - `1 Stop…` shows on a run in progress. A dialog asks first.
 - `1 Test again` shows on a failed, stopped, or interrupted run. The `Test build…` dialog opens with the same build, level, `Since`, `Until`, and folder.
@@ -210,7 +210,7 @@ Each plan card and plan page shows the **Total cost** of its explorations and ch
 - `After the testers`: `record`, `merge`, `verify`, and `follow-up`, with their states and reasons.
 - The other sessions of the plan.
 
-When Pi reports a provider error, a failed Find request or test shows its cause. Open an individual tester to see its error. For `HTTP 401: API key expired.`, configure Pi with a valid provider key and test again.
+When Pi reports a provider error, a failed chat turn or test shows its cause. Open an individual tester to see its error. For `HTTP 401: API key expired.`, configure Pi with a valid provider key and test again.
 
 Below the list is the overview of the session, or the tester or phase that you open: `Not merged yet`, the merged claims and questions, the saved files, and `Download report`. A paused session waits for you in the Claude Code session, not in the UI.
 
@@ -252,11 +252,11 @@ After an answer, the next open request opens in the same view. When no request i
 
 **History.** The Testers view of a run has the fold `Permission requests (<n>)`. It lists each request and its answer, who answered, and when, newest first, 20 for each page. `↓` on the last row opens the next page. `Enter` opens the record, which does not move on.
 
-A rule for this test answers the same request of every other tester of the run at once. The record shows `allowed by rule <rule>, set by <name>`. A rule of one run does not apply to another run. A request with no answer in 10 minutes closes, and the call is denied. A request also closes when the tester or the run stops, and when the UI stops. A request of a run or of a request that has ended gets an empty answer and does not show: the tool call is denied. The same answers are in `checkmate explore permit`. Each request and each answer is an event of the exploration, so the record shows who decided what.
+A rule for this test answers the same request of every other tester of the run at once. The record shows `allowed by rule <rule>, set by <name>`. A rule of one run does not apply to another run. A request with no answer in 10 minutes closes, and the call is denied. A request also closes when the tester or the run stops, and when the UI stops. A permission request for an ended run or chat turn gets an empty answer and does not show. The tool call is denied. The same answers are in `checkmate explore permit`. Each request and each answer is an event of the exploration, so the record shows who decided what.
 
 `/permissions` opens the first open request, or `Activity` when none is open.
 
-A request of the find bar asks in the same way. Its record says `Request R3 asks to run a command`. The available options depend on the tool and the harness. `for this test` reads `for this conversation`. A rule applies to later turns in the same chat that use the same harness. `Stop the request…` stops the request. A request has no `Run` in its details: it shows `Request` with a link.
+A chat asks in the same way. The record shows the tool and a link to the chat. The available options depend on the tool and the harness. A rule marked `for this chat` applies to later turns in that chat with the same harness. Choose `Stop the reply…` to stop the active turn.
 
 ### Chats
 
@@ -266,9 +266,9 @@ From a plan, run, exploration, or list, you can also open **Find** and choose **
 
 Type follow-ups in the same chat. Choose a harness, model, and available effort for the next message. Each sent message keeps its selections. When the host and model stay the same, Checkmate continues the host session. When they change, Checkmate opens a new host session and sends up to eight recent turns as context. The chat keeps its full history.
 
-One message runs at a time in the workspace. The chat shows the latest message when you open it and when a new message arrives. It shows waiting turns, permissions, replies, and record changes. Choose **Stop** to stop a turn. Open its request ID for the detailed record. Chats also lists conversations from earlier versions.
+One message runs at a time in the workspace. The chat shows the latest message when you open it and when a new message arrives. It shows waiting turns, permissions, replies, and record changes. Choose **Stop** to stop a turn. Open **Turn** for timing, cost, and tool activity. Chat lists show which conversations have unread updates.
 
-An activity line of a request or a tester shows the tool and the first line of its main input, at most 120 characters. For a shell command, the line drops a leading `cd <path> &&` or `cd <path>;` and the leading variable assignments. A command that runs the Checkmate command line, also through a variable, shows as `checkmate <arguments>`. The path of the workspace shows as `.`. Checkmate masks secrets. The permission record shows the full command.
+An activity line of a chat turn or a tester shows the tool and the first line of its main input, at most 120 characters. For a shell command, the line drops a leading `cd <path> &&` or `cd <path>;` and the leading variable assignments. A command that runs the Checkmate command line, also through a variable, shows as `checkmate <arguments>`. The path of the workspace shows as `.`. Checkmate masks secrets. The permission record shows the full command.
 
 ### Plan
 
@@ -282,13 +282,13 @@ An activity line of a request or a tester shows the tool and the first line of i
 
 ### Runs and Log
 
-The run list and the operation log. They page, sort, and filter. The address keeps the list state.
+The run list and the operation log page, sort, and filter. The address keeps the list state. **Log** labels chat actions and links to the conversation.
 
 ### Settings
 
 Open **Settings → Coding harness**, choose **Claude Code** or **Pi**, and save. The choice applies to new work in this workspace and survives a restart. A running test and its follow-up use the harness that started the test. The page shows whether the selected program is on `PATH`. Configure its provider and login in the harness.
 
-Under **Models**, choose **Model for requests** and **Model for testers**, then select **Save models**. The list comes from the selected harness. Pi lists the provider with each model. Refresh the list after you change the host configuration. Choose the default option to let Pi use its configured model or Claude testers use their test level. Each harness remembers its choices. Set effort for each role when the selected model supports it. Checkmate uses medium for an unset effort when the host advertises it. If the host cannot confirm support, Checkmate leaves the effort flag unset.
+Under **Models**, choose **Model for chats** and **Model for testers**, then select **Save models**. The list comes from the selected harness. Pi lists the provider with each model. Refresh the list after you change the host configuration. Choose the default option to let Pi use its configured model or Claude testers use their test level. Each harness remembers its choices. Set effort for each role when the selected model supports it. Checkmate uses medium for an unset effort when the host advertises it. If the host cannot confirm support, Checkmate leaves the effort flag unset.
 
 The tester tool rules fill the `Test build…` and `New change` forms.
 

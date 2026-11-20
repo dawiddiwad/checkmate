@@ -1662,13 +1662,14 @@ const commands: Record<string, Command> = {
 		check: (args) => {
 			const subject = value(args, 'subject')
 			requireWellFormed(
-				subject === undefined || subject === 'inbox' || /^(target|plan|run):./.test(subject),
-				`Invalid --subject: ${subject}. Use target:<targetId>, plan:<planId>, run:<runId>, or inbox.`
+				subject === undefined || subject === 'inbox' || /^(target|plan|run|chat):./.test(subject),
+				`Invalid --subject: ${subject}. Use target:<targetId>, plan:<planId>, run:<runId>, chat:<chatId>, or inbox.`
 			)
 		},
 		run: (store, args) => {
 			return completed('log', {
 				operations: operationLog(store, {
+					display: args.json !== true,
 					subject: value(args, 'subject'),
 					limit: integer(args, 'limit'),
 					after: integer(args, 'after'),
@@ -1682,7 +1683,9 @@ const commands: Record<string, Command> = {
 				operation.actor,
 				operation.command,
 				operation.status,
-				operation.subjects,
+				operation.subjects.map((subject) =>
+					subject.startsWith('chat:') ? `/chats/${subject.slice(5)}` : subject
+				),
 				...rationaleOf(operation.arguments),
 				operation.rowid,
 			]),
@@ -1864,7 +1867,7 @@ function decisionLines(decision: Approval | null | undefined) {
 }
 
 function rationaleOf(input: unknown) {
-	const rationale = (input as { rationale?: unknown }).rationale
+	const rationale = (input as { rationale?: unknown } | null)?.rationale
 	return typeof rationale === 'string' && rationale ? [rationale] : []
 }
 

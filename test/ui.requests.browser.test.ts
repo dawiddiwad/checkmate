@@ -48,7 +48,7 @@ async function askByKeys(page: Page, text: string) {
 	return 'R1'
 }
 
-test('a chat shows activity and can stop a request', browserTest, async (t) => {
+test('a chat shows activity and can stop the active turn', browserTest, async (t) => {
 	const { page, url, state } = await prepare(t, { request: hanging })
 	await page.goto(url('/plans/coupons?view=all&focus=list'))
 	await askByKeys(page, 'why does D3 fail')
@@ -60,40 +60,34 @@ test('a chat shows activity and can stop a request', browserTest, async (t) => {
 	await page.locator('.chat-assistant [data-status="stopped"]').waitFor()
 })
 
-test('two unread replies fill the list, Right opens one, Left and Back return to the list', browserTest, async (t) => {
-	const { page, url, state, ask } = await prepareWithAsks(t)
-	await ask(['zzz one', 'zzz two'])
-	await state('R1', 'answered')
-	await state('R2', 'answered')
-	await page.goto(url('/plans/coupons?view=all&focus=list'))
-	const bar = page.locator('[data-region="replies-link"]')
-	await bar.waitFor()
-	assert.match((await bar.textContent()) ?? '', /2 replies/)
-	assert.equal(await bar.getAttribute('href'), '/chats')
-	await page.goto(url('/requests'))
-	await page.waitForURL(url('/requests'))
-	await onRow(page)
-	assert.match((await page.locator('.sp-gh').first().textContent()) ?? '', /Not read\s*2/)
-	assert.deepEqual(
-		await page.locator('[data-row]').evaluateAll((rows) => rows.map((row) => row.getAttribute('data-key'))),
-		['request:R2', 'request:R1']
-	)
-	const first = await page.locator('[data-row]').first().textContent()
-	assert.match(first ?? '', /zzz two/)
-	assert.match(first ?? '', /Reply to zzz two\./)
-	await page.keyboard.press('ArrowDown')
-	await page.keyboard.press('ArrowRight')
-	await page.waitForURL(url('/requests/R1'))
-	await onRecord(page)
-	await page.keyboard.press('ArrowLeft')
-	await page.waitForURL(url('/requests'))
-	await page.keyboard.press('ArrowDown')
-	await page.keyboard.press('Enter')
-	await page.waitForURL(url('/requests/R1'))
-	await page.goBack()
-	await page.waitForURL(url('/requests'))
-	assert.match((await page.locator('.sp-gh').first().textContent()) ?? '', /Not read\s*1/)
-})
+test(
+	'the old replies address opens Chats, where unread conversations can be opened by keyboard',
+	browserTest,
+	async (t) => {
+		const { page, url, state, ask } = await prepareWithAsks(t)
+		await ask(['zzz one', 'zzz two'])
+		await state('R1', 'answered')
+		await state('R2', 'answered')
+		await page.goto(url('/plans/coupons?view=all&focus=list'))
+		const bar = page.locator('[data-region="replies-link"]')
+		await bar.waitFor()
+		assert.match((await bar.textContent()) ?? '', /2 unread/)
+		assert.equal(await bar.getAttribute('href'), '/chats')
+		await page.goto(url('/requests'))
+		await page.waitForURL(url('/chats'))
+		const conversations = page.locator('.chat-list-item')
+		assert.equal(await conversations.count(), 2)
+		assert.match((await conversations.first().textContent()) ?? '', /zzz two/)
+		assert.equal(await page.getByText('1 unread', { exact: true }).count(), 2)
+		await conversations.first().focus()
+		await page.keyboard.press('Enter')
+		await page.waitForURL(/\/chats\/[^/]+$/)
+		await page.getByText('Reply to zzz two.', { exact: true }).waitFor()
+		await page.goBack()
+		await page.waitForURL(url('/chats'))
+		await page.waitForFunction(() => document.querySelectorAll('.chat-list .chat-unread').length === 1)
+	}
+)
 
 async function prepareWithAsks(t: TestContext) {
 	const app = await prepare(t, { request: { result: 'Reply to one question.' } })
@@ -103,7 +97,10 @@ async function prepareWithAsks(t: TestContext) {
 			await app.page.goto(app.url('/plans/coupons?view=all&focus=list'))
 			await app.page.evaluate(async (message) => {
 				const csrf = document.querySelector<HTMLInputElement>('[name="csrf"]')!.value
-				await fetch('/requests', { method: 'POST', body: new URLSearchParams({ csrf, text: message }) })
+				await fetch('/requests', {
+					method: 'POST',
+					body: new URLSearchParams({ csrf, text: message, chat: '1' }),
+				})
 			}, text)
 			await app.state(`R${index + 1}`, 'answered')
 		}
@@ -111,12 +108,13 @@ async function prepareWithAsks(t: TestContext) {
 	return { ...app, ask }
 }
 
-test('a failed request shows the reason and one option, Ask again', browserTest, async (t) => {
-	const { page, url, state } = await prepare(t, { request: '!crash' })
+test('a failed turn shows the reason and retries inside the same chat', browserTest, async (t) => {
+	const { page, url, state, reply } = await prepare(t, { request: '!crash' })
 	await page.goto(url('/plans/coupons?view=all&focus=list'))
 	await onRow(page)
 	await askByKeys(page, 'this will fail')
 	await state('R1', 'failed')
+	const chat = page.url()
 	await page.goto(url('/requests/R1'))
 	await onRecord(page)
 	assert.match((await page.locator('[data-key="failure"]').textContent()) ?? '', /claude ended without a reply\./)
@@ -128,27 +126,33 @@ test('a failed request shows the reason and one option, Ask again', browserTest,
 			.then((all) => all.map((text) => text.replace(/\s+/g, ' ').trim())),
 		['1Ask again']
 	)
+	reply({ request: { result: 'Retried successfully.' } })
+	await page.getByRole('button', { name: /Ask again/ }).click()
+	await page.waitForURL(chat)
+	await page.getByText('Retried successfully.', { exact: true }).waitFor()
+	assert.equal(await page.locator('.chat-turn').count(), 2)
 })
 
-test('a permission request of a request is answered from its record', browserTest, async (t) => {
+test('a permission prompt is answered from the message details', browserTest, async (t) => {
 	const asking = { name: 'Bash', input: { command: 'npm view left-pad' }, rule: 'npm view *' }
 	const { page, url, state, read } = await prepare(t, { request: { ask: [asking], result: 'Looked it up.' } })
 	await page.goto(url('/plans/coupons?view=all&focus=list'))
 	await onRow(page)
 	await askByKeys(page, 'look up the package')
+	const details = page.url() + '/messages/R1'
 	const count = page.locator('[data-region="permissions-link"]')
 	await count.waitFor()
 	assert.equal((await count.textContent())?.trim(), '1 permission')
-	await page.goto(url('/requests/R1'))
+	await page.goto(details)
 	await onRecord(page)
 	const waits = page.locator('[data-key="waits"]')
 	await waits.waitFor()
-	assert.match((await waits.textContent()) ?? '', /waits for you: a permission request/)
+	assert.match((await waits.textContent()) ?? '', /This turn is waiting for permission/)
 	await waits.locator('a').click()
 	await page.waitForURL(/\/permissions\/R1\/P1/)
 	await onRecord(page)
-	assert.match((await page.locator('h1').textContent()) ?? '', /Request R1 asks to run a command/)
-	assert.match((await page.locator('.sp-options').textContent()) ?? '', /for this conversation/)
+	assert.match((await page.locator('h1').textContent()) ?? '', /Chat message R1 asks to run a command/)
+	assert.match((await page.locator('.sp-options').textContent()) ?? '', /for this chat/)
 	assert.deepEqual(await page.locator('.sp-options [data-option] kbd').allTextContents(), [
 		'1',
 		'2',
@@ -160,7 +164,7 @@ test('a permission request of a request is answered from its record', browserTes
 	await page.keyboard.press('1')
 	await state('R1', 'answered')
 	assert.equal(read((reading) => openPermissions(reading)).length, 0)
-	await page.waitForURL(url('/requests/R1'))
+	await page.waitForURL(details)
 	await page.locator('[data-key="reply"]').waitFor()
 })
 
@@ -214,11 +218,14 @@ test(
 			/starts Claude Code on this computer/
 		)
 		await page.keyboard.press('Escape')
+		await page.keyboard.press('/')
+		await page.locator('[data-find-input]').fill('chats')
+		await page.locator('[data-find-results] a[href="/chats"]:not([data-find-ask])').waitFor()
 	}
 )
 
 test(
-	'the stop dialog and the follow-up find bar of the request page open and close 20 times in a row',
+	'the stop dialog and the follow-up find bar of the message details open and close 20 times in a row',
 	browserTest,
 	async (t) => {
 		const { page, url, state } = await prepare(t, { request: hanging })
@@ -226,7 +233,7 @@ test(
 		await onRow(page)
 		await askByKeys(page, 'stay running')
 		await state('R1', 'running')
-		await page.goto(url('/requests/R1'))
+		await page.goto(page.url() + '/messages/R1')
 		await onRecord(page)
 		const address = page.url()
 		for (let round = 0; round < 20; round++) {
@@ -237,7 +244,7 @@ test(
 			await page.waitForFunction(() => !window.history.state?.layer)
 			assert.equal(page.url(), address, `round ${round}`)
 		}
-		assert.equal((await page.locator('[data-region="request-link"]').textContent())?.trim(), 'Request R1 · running')
+		assert.equal((await page.locator('[data-region="request-link"]').textContent())?.trim(), 'Chat · working')
 		await page.keyboard.press('1')
 		await page.locator('dialog[data-confirm][open]').waitFor()
 		await page.keyboard.press('Enter')
@@ -259,7 +266,7 @@ test(
 )
 
 test(
-	'the request page keeps its highlight and its keys while the activity and the state change live',
+	'message details keep their highlight and its keys while the activity and the state change live',
 	browserTest,
 	async (t) => {
 		const { page, url, read } = await prepare(t, {})
@@ -282,7 +289,7 @@ test(
 		read((reading) => setRequestState(reading, id, 'answered', { reply: 'Done.', changes: [] }))
 		await page.locator('[data-key="reply"]').waitFor()
 		await keep('after the reply')
-		assert.deepEqual(await page.locator('.sp-options [data-option] kbd').allTextContents(), ['1', '2', '3'])
+		assert.deepEqual(await page.locator('.sp-options [data-option] kbd').allTextContents(), ['1', '2'])
 		await page.keyboard.press('1')
 		await page.locator('[data-find][open]').waitFor()
 		await page.keyboard.press('Escape')

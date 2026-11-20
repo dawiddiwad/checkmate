@@ -1383,15 +1383,60 @@ type OperationRow = {
 	response: string
 	subjects: string
 	via: string | null
+	via_chat?: string | null
 }
 
-export function operationLog(store: Store, filters: { subject?: string; limit?: number; after?: number } = {}) {
+const displayedOperations = `(
+	SELECT operations.rowid, operations.id, operations.at, operations.status, operations.arguments, operations.response,
+		CASE
+			WHEN via_request.request_id IS NOT NULL AND substr(actor, -length(' via request ' || via)) = ' via request ' || via
+				THEN substr(actor, 1, length(actor) - length(' via request ' || via))
+			ELSE actor
+		END AS actor,
+		CASE
+			WHEN command = 'request ask' THEN 'chat send'
+			WHEN command = 'request conversation' THEN 'chat reset'
+			WHEN command GLOB 'request *' THEN 'chat ' || substr(command, 9)
+			WHEN command GLOB 'explore permission*'
+				AND EXISTS (SELECT 1 FROM json_each(operations.subjects) WHERE value GLOB 'request:*')
+				THEN 'chat ' || substr(command, 9)
+			ELSE command
+		END AS command,
+		NULL AS via,
+		via_request.conversation AS via_chat,
+		(SELECT json_group_array(subject) FROM (
+			SELECT subject FROM (
+				SELECT CASE
+					WHEN item.value GLOB 'request:*' THEN coalesce('chat:' || turn.conversation, 'chats')
+					WHEN item.value = 'requests' THEN 'chats'
+					ELSE item.value
+				END AS subject, item.key AS position
+				FROM json_each(operations.subjects) item
+				LEFT JOIN requests turn ON turn.request_id = substr(item.value, 9) AND item.value GLOB 'request:*'
+				UNION ALL
+				SELECT 'chat:' || via_request.conversation, json_array_length(operations.subjects)
+				WHERE via_request.conversation IS NOT NULL
+			) GROUP BY subject ORDER BY min(position)
+		)) AS subjects
+	FROM operations
+	LEFT JOIN requests via_request ON via_request.request_id = operations.via
+)`
+
+export function operationLog(
+	store: Store,
+	filters: { subject?: string; limit?: number; after?: number; display?: boolean } = {}
+) {
 	const limit = filters.limit ?? 50
 	requireCondition(Number.isInteger(limit) && limit > 0 && limit <= 1000, `Invalid limit: ${limit}. Use 1 to 1000.`)
+	const source = filters.display ? displayedOperations : 'operations'
+	const subjectFilter =
+		!filters.display && filters.subject?.startsWith('chat:')
+			? `id IN (SELECT id FROM ${displayedOperations} WHERE EXISTS (SELECT 1 FROM json_each(subjects) WHERE value = ?))`
+			: 'EXISTS (SELECT 1 FROM json_each(subjects) WHERE value = ?)'
 	return all<OperationRow>(
 		store,
-		`SELECT rowid, * FROM operations
-		WHERE (? IS NULL OR EXISTS (SELECT 1 FROM json_each(subjects) WHERE value = ?)) AND rowid > ?
+		`SELECT rowid, * FROM ${source}
+		WHERE (? IS NULL OR ${subjectFilter}) AND rowid > ?
 		ORDER BY rowid ${filters.after === undefined ? 'DESC' : 'ASC'} LIMIT ?`,
 		filters.subject ?? null,
 		filters.subject ?? null,
@@ -1407,6 +1452,7 @@ function operationRow(row: OperationRow) {
 		at: row.at,
 		actor: row.actor,
 		via: row.via,
+		...(row.via_chat === undefined ? {} : { viaChat: row.via_chat }),
 		command: row.command,
 		status: row.status,
 		subjects: JSON.parse(row.subjects) as string[],
@@ -1625,7 +1671,7 @@ export function pagedOperations(
 		AND (:actor IS NULL OR actor = :actor) AND (:command IS NULL OR command = :command)
 		AND (:status IS NULL OR status = :status)
 		AND (:q = '' OR instr(lower(at || ' ' || actor || ' ' || command || ' ' || status || ' ' || subjects || ' ' || id
-			|| ' ' || coalesce(via, '') || ' ' || coalesce(response ->> '$.reasons', '')), :q) > 0)`
+			|| ' ' || coalesce(response ->> '$.reasons', '')), :q) > 0)`
 	const parameters = {
 		subject: filters.subject ?? null,
 		actor: filters.actor ?? null,
@@ -1634,12 +1680,14 @@ export function pagedOperations(
 		q: options.q,
 	}
 	const total = (
-		store.db.prepare(`SELECT count(*) AS total FROM operations ${where}`).get(parameters) as { total: number }
+		store.db.prepare(`SELECT count(*) AS total FROM ${displayedOperations} ${where}`).get(parameters) as {
+			total: number
+		}
 	).total
 	const direction = options.direction === 'asc' ? 'ASC' : 'DESC'
 	const rows = store.db
 		.prepare(
-			`SELECT rowid, * FROM operations ${where} ORDER BY ${logColumns[options.sort]} ${direction}, rowid ${direction} LIMIT :limit OFFSET :offset`
+			`SELECT * FROM ${displayedOperations} ${where} ORDER BY ${logColumns[options.sort]} ${direction}, rowid ${direction} LIMIT :limit OFFSET :offset`
 		)
 		.all({ ...parameters, limit: options.limit, offset: options.offset }) as OperationRow[]
 	return {

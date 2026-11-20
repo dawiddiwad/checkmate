@@ -9,7 +9,13 @@ import { launchWith, open, browserTest, stop } from './browser.ts'
 import { files } from './explorations.ts'
 import { check, measure } from './layout.ts'
 import { asking, bash, openOf, seedHistory, waitOpen } from './permissions.ts'
-import { addRequestActivity, askRequest, recordRequestEvent, setRequestState } from '../plugin/src/requests.ts'
+import {
+	addRequestActivity,
+	askRequest,
+	recordRequestEvent,
+	requestOf,
+	setRequestState,
+} from '../plugin/src/requests.ts'
 
 test.before(() => launchWith(seedVolume))
 
@@ -259,6 +265,7 @@ function seedRequests(workspace: string) {
 			{ step: 'session', status: 'started', detail: { sessionId: 's' } },
 			{ subjects: [] }
 		)
+		return requestOf(reading, running)!.conversation
 	} finally {
 		closeStore(reading)
 	}
@@ -266,12 +273,12 @@ function seedRequests(workspace: string) {
 
 for (const colorScheme of ['dark', 'light'] as const)
 	test(
-		`the request page and the replies list line up at 1440, 900, and 400 in the ${colorScheme} theme`,
+		`chat lists and message details line up at 1440, 900, and 400 in the ${colorScheme} theme`,
 		{ ...browserTest, timeout: 120_000 },
 		async (t) => {
 			const { page, url, workspace } = await open(t)
-			seedRequests(workspace)
-			const paths = ['/requests', '/requests/R1', '/requests/R2', '/requests/R3', '/requests', '/activity']
+			const chat = '/chats/' + seedRequests(workspace)
+			const paths = ['/chats', chat, ...['R1', 'R2', 'R3'].map((id) => chat + '/messages/' + id), '/activity']
 			for (const width of [1440, 900, 400])
 				for (const path of paths) await check(page, url(path), width, colorScheme)
 		}
@@ -650,10 +657,10 @@ test('model choices are searchable, preserve unavailable values, and retry disco
 	await page.goto(url('/settings/harness'))
 	await page.getByText('3 models available.', { exact: false }).waitFor()
 	assert.equal(await page.getByLabel('Model for testers').inputValue(), 'retired')
-	assert.equal(await page.getByLabel('Model for requests').inputValue(), 'sonnet')
+	assert.equal(await page.getByLabel('Model for chats').inputValue(), 'sonnet')
 	assert.equal(await page.getByLabel('Reasoning effort for testers').isVisible(), false)
 	assert.equal(
-		await page.getByLabel('Reasoning effort for requests').locator('option:checked').textContent(),
+		await page.getByLabel('Reasoning effort for chats').locator('option:checked').textContent(),
 		'Default (medium)'
 	)
 	assert.match(
@@ -667,11 +674,11 @@ test('model choices are searchable, preserve unavailable values, and retry disco
 	assert.equal(await effort.locator('option[value="medium"]').count(), 0)
 	await effort.selectOption('max')
 	await page.getByLabel('Filter models').fill('haiku')
-	await page.getByLabel('Model for requests').selectOption('haiku')
+	await page.getByLabel('Model for chats').selectOption('haiku')
 	await page.getByRole('button', { name: 'Save models' }).click()
 	assert.equal(await page.getByLabel('Model for testers').inputValue(), 'opus')
-	assert.equal(await page.getByLabel('Model for requests').inputValue(), 'haiku')
-	assert.equal(await page.getByLabel('Reasoning effort for requests').isVisible(), false)
+	assert.equal(await page.getByLabel('Model for chats').inputValue(), 'haiku')
+	assert.equal(await page.getByLabel('Reasoning effort for chats').isVisible(), false)
 	await effort.waitFor({ state: 'visible' })
 	assert.equal(await effort.inputValue(), 'max')
 	fail = true

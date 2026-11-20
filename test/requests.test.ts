@@ -299,7 +299,7 @@ test('a server that stops ends the running request as interrupted, and a restart
 	const second = await f.ask('second')
 	await f.ui.close()
 	assert.equal(f.request(first)?.state, 'interrupted')
-	assert.equal(f.request(first)?.reason, 'The UI stopped before the request ended.')
+	assert.equal(f.request(first)?.reason, 'The UI stopped before this turn ended.')
 	assert.equal(f.request(second)?.state, 'interrupted')
 	const again = await startUi({ workspace: f.workspace, env: f.env, defaultActor: 'qa-lead', stopDelays: stops })
 	t.after(() => again.close())
@@ -420,7 +420,7 @@ test('a change made with another --actor is still a change of the request', asyn
 	assert(page.body.includes('answered checkout/G1'))
 	assert(!page.body.includes('changed no record'))
 	const log = await call(f.ui, '/log')
-	assert(log.body.includes(`href="/requests/${id}">via request ${id}`))
+	assert(log.body.includes(`href="/chats/${done.conversation}">via chat`))
 })
 
 test('a request without a write says that it changed no record', async (t) => {
@@ -428,7 +428,7 @@ test('a request without a write says that it changed no record', async (t) => {
 	const id = await f.ask('look')
 	await f.state(id, 'answered')
 	const page = await call(f.ui, `/requests/${id}`)
-	assert(page.body.includes('The request changed no record.'))
+	assert(page.body.includes('This turn changed no records.'))
 })
 
 test('a stopped request shows its activity and the changes that it made, and a running one says when changes show', async (t) => {
@@ -443,7 +443,7 @@ test('a stopped request shows its activity and the changes that it made, and a r
 	await waitFor('the child hangs', () => f.answers().includes('hanging'))
 	await waitFor('the activity shows', () => f.request(id)?.activity.length === 1)
 	const running = await call(f.ui, `/requests/${id}`)
-	assert(running.body.includes('Changes show when the request ends.'))
+	assert(running.body.includes('Changes appear when this turn ends.'))
 	assert(!running.body.includes('changed no record'))
 	await f.post(`/requests/${id}/stop`, {})
 	await f.state(id, 'stopped')
@@ -495,10 +495,11 @@ test('a tool that needs approval asks through the record of the request, and a r
 	)
 	assert.equal(open.id, 'P1')
 	const record = (await call(f.ui, `/permissions/${first}/P1`)).body
-	assert.match(record, /<h1[^>]*>Request R1 asks to run a command<\/h1>/)
-	assert.match(record, /Allow this command for this conversation/)
-	assert.match(record, /Allow every Bash call for this conversation/)
-	assert.match(record, /Stop the request…/)
+	assert.match(record, /<h1[^>]*>Chat message R1 asks to run a command<\/h1>/)
+	assert.match(record, /Allow this command for this chat/)
+	assert.match(record, /Allow every Bash call for this chat/)
+	assert.match(record, /Stop the reply…/)
+	assert(record.includes(`href="/chats/${f.request(first)!.conversation}"`))
 	assert.match((await call(f.ui, '/activity')).body, /data-region="permissions-link"\s*>1 permission</)
 	assert.equal((await f.post(`/permissions/${first}/P1`, { decision: 'allow-kind' })).status, 303)
 	await f.state(first, 'answered')
@@ -581,32 +582,35 @@ test('opening a reply marks it read, and the status bar counts unread replies', 
 	await f.state(two, 'answered')
 	assert.match(
 		(await call(f.ui, '/activity')).body,
-		/data-region="replies-link"[^>]*><span>2<span class="sb-long"> replies<\/span><\/span>/
+		/data-region="replies-link"[^>]*><span>2<span class="sb-long"> unread<\/span><\/span>/
 	)
-	const list = (await call(f.ui, '/requests')).body
-	assert.match(list, /Not read\s*<span>2<\/span>/)
-	assert(list.indexOf('data-key="request:R2"') < list.indexOf('data-key="request:R1"'))
-	await call(f.ui, '/requests/R2')
+	const list = await call(f.ui, '/requests')
+	assert.equal(list.status, 303)
+	assert.equal(list.headers.location, '/chats')
+	const conversation = f.request(two)!.conversation
+	const message = await call(f.ui, `/chats/${conversation}/messages/${two}`)
+	assert.match(message.body, /<h1[^>]*>Message details<\/h1>/)
+	assert.equal((await call(f.ui, `/chats/00000000-0000-0000-0000-000000000000/messages/${two}`)).status, 404)
 	const after = (await call(f.ui, '/activity')).body
 	const badge =
-		/href="(\/chats\/[0-9a-f-]+)"[^>]*data-region="replies-link"[^>]*><span>1<span class="sb-long"> reply<\/span><\/span>/.exec(
+		/href="(\/chats\/[0-9a-f-]+)"[^>]*data-region="replies-link"[^>]*><span>1<span class="sb-long"> unread<\/span><\/span>/.exec(
 			after
 		)
 	assert.equal(badge?.[1], `/chats/${f.request(one)!.conversation}`)
-	assert.match((await call(f.ui, '/requests')).body, /Earlier\s*<span>1<\/span>/)
+	assert.match((await call(f.ui, '/chats')).body, /1 unread/)
 	await call(f.ui, badge![1])
 	assert.equal(f.request(one)?.read, true)
 })
 
-test('Activity lists requests next to runs with their state and cost', async (t) => {
+test('Activity lists chat messages next to runs with their state and cost', async (t) => {
 	const f = await serverOf(t, { request: { result: 'Done.', cost: 0.31 } })
 	const id = await f.ask('why does D3 fail?')
 	await f.state(id, 'answered')
 	const page = (await call(f.ui, '/activity')).body
 	const row = /<div[^>]*data-key="request:R1"[\s\S]*?<\/div>\s*(?=<div|<\/div>)/.exec(page)?.[0] ?? ''
-	assert.match(row, /data-href="\/requests\/R1"/)
+	assert(row.includes(`data-href="/chats/${f.request(id)!.conversation}"`))
 	assert.match(row, /data-status="answered"/)
-	assert.match(row, /Request · why does D3 fail\?/)
+	assert.match(row, /Chat message · why does D3 fail\?/)
 	assert.match(row, /\$0\.31/)
 	assert.match(page, /Showing 1–1 of 1 entry/)
 })

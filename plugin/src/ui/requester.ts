@@ -71,7 +71,7 @@ export function chatPreferences(
 	previous?: RequestSelection
 ): RequestSelection {
 	const harness = options.harness ?? previous?.harness ?? selectedHarness(workspaceUiEnv(store, env))
-	requireWellFormed(harness === 'pi' || harness === 'claude', 'Unknown request harness.')
+	requireWellFormed(harness === 'pi' || harness === 'claude', 'Unknown chat harness.')
 	const inherited = previous?.harness === harness && options.model === undefined ? previous : undefined
 	const requestedModel = options.model?.trim()
 	if (requestedModel !== undefined) requireModel(harness, requestedModel)
@@ -501,14 +501,14 @@ This conversation is about plan ${reference}. Use the plan and its records as th
 			for (const id of queue.splice(0))
 				guarded(() =>
 					setRequestState(store, id, 'interrupted', {
-						reason: 'The UI stopped before the request started.',
+						reason: 'The UI stopped before this turn started.',
 						changes: [],
 					})
 				)
 			const run = running as Running | null
 			if (!run) return
 			run.stopping ??= 'interrupted'
-			if (run.stopping === 'interrupted') run.reason = 'The UI stopped before the request ended.'
+			if (run.stopping === 'interrupted') run.reason = 'The UI stopped before this turn ended.'
 			run.child?.stop()
 			await run.done
 		},

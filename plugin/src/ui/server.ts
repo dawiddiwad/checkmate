@@ -123,7 +123,7 @@ import { createHooks, sameSecret } from './hooks.ts'
 import { emptyRecord, nextOpen, permissionPage, requestHref } from './permissions.ts'
 import { createRequester } from './requester.ts'
 import { lifecyclePath, lifecycleProof } from './lifecycle.ts'
-import { repliesPage, requestPage as requestRecordPage, screenContext } from './requests.ts'
+import { chatMessagePage, screenContext } from './requests.ts'
 import { chatPage, chatsPage, planChat } from './chats.ts'
 
 export type UiOptions = HookOptions & {
@@ -158,6 +158,7 @@ const routes = {
 	permit: new RegExp(`^/permissions/(${id})/(P[1-9][0-9]{0,8})$`),
 	requestPage: /^\/requests\/(R[1-9][0-9]{0,8})$/,
 	chatPage: new RegExp(`^/chats/(${chatId})$`),
+	chatMessage: new RegExp(`^/chats/(${chatId})/messages/(R[1-9][0-9]{0,8})$`),
 	chatTurn: new RegExp(`^/chats/(${chatId})/turns$`),
 	planChatPost: new RegExp(`^(/plans/(${id})(?:@([1-9][0-9]{0,8}))?)/chats(?:/(${chatId})/turns)?$`),
 	stopRequest: /^\/requests\/(R[1-9][0-9]{0,8})\/stop$/,
@@ -579,9 +580,11 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		if (pathname === '/chats') return render(request, chatsPage(store, shown, searchParams, env))
 		const chat = routes.chatPage.exec(pathname)
 		if (chat) return openChat(request, chat[1])
-		if (pathname === '/requests') return render(request, repliesPage(store, searchParams))
+		const message = routes.chatMessage.exec(pathname)
+		if (message) return messageRecord(request, message[2], message[1])
+		if (pathname === '/requests') return redirect(request.res, '/chats')
 		const askedRequest = routes.requestPage.exec(pathname)
-		if (askedRequest) return requestRecord(request, askedRequest[1])
+		if (askedRequest) return messageRecord(request, askedRequest[1])
 		if (pathname === '/actor') return render(request, actorPage(shown, safeBack(searchParams.get('back'))))
 		if (pathname === '/settings') return redirect(request.res, '/settings/targets')
 		if (pathname === '/settings/targets') return render(request, targetsPage(store))
@@ -1016,10 +1019,10 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 			return [head, ...items].filter((entry) => matches(`${entry.id} ${entry.title} ${entry.kind}`))
 		})
 		const pages = [
-			{ kind: 'page', id: 'Activity', title: 'Tests and follow-ups of all plans', href: '/activity' },
+			{ kind: 'page', id: 'Activity', title: 'Tests, follow-ups, and chats', href: '/activity' },
 			{ kind: 'page', id: 'New change', title: 'Give a ticket and start the first test', href: '/new' },
 			{ kind: 'page', id: 'New target', title: 'Set up the application to test', href: '/setup' },
-			{ kind: 'page', id: 'Replies', title: 'Requests that you asked and their replies', href: '/requests' },
+			{ kind: 'page', id: 'Chats', title: 'Conversations with Checkmate', href: '/chats' },
 		].filter((entry) => matches(`${entry.id} ${entry.title} ${entry.kind}`))
 		const all = [...pages, ...found]
 		const shown = 12
@@ -1444,13 +1447,13 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		])
 	}
 
-	function requestRecord(request: Request, requestId: string) {
+	function messageRecord(request: Request, requestId: string, chatId?: string) {
 		const found = requestOf(store, requestId)
+		if (!found || (chatId && found.conversation !== chatId))
+			return errorPage(request, 404, 'Message not found', 'Open Chats to choose a conversation.')
 		const shown = context(request)
-		if (found && isUnread(found) && shown.actor) markRequestRead(store, shown.actor, requestId)
-		const page = found ? requestRecordPage(store, context(request), requestId) : null
-		if (!page) return errorPage(request, 404, 'No such request', `Checkmate has no request ${requestId}.`)
-		render(request, page)
+		if (isUnread(found) && shown.actor) markRequestRead(store, shown.actor, requestId)
+		render(request, chatMessagePage(store, context(request), found))
 	}
 
 	function markChatRead(chat: Chat, actor: string | null) {
@@ -1583,18 +1586,18 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		const { actor, cookies } = actorFrom(request, form)
 		const back = safeBack(form.get('return') ?? '/requests')
 		const refuse = (message: string) => actionRefusal(request, back, message)
-		if (!actor) return refuse('Enter your name. Checkmate records it with the request.')
+		if (!actor) return refuse('Enter your name to send a message.')
 		const text = form.get('text')?.trim() ?? ''
-		if (!text) return refuse('Write the request first.')
+		if (!text) return refuse('Write a message first.')
 		if (form.has('harness') && form.get('harness') !== selectedHarness(launchEnv()))
-			return refuse('The coding harness changed. Reload to see which program will receive your request.')
+			return refuse('The coding harness changed. Reload and try again.')
 		let context
 		try {
 			context = form.has('context')
 				? contextFromData(form.get('context') ?? '')
 				: screenContext(store, form.get('screen') ?? '')
 		} catch {
-			return refuse('The context of the request is not valid.')
+			return refuse('The context of the message is not valid.')
 		}
 		let id
 		try {
@@ -1619,6 +1622,7 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		const { actor, cookies } = actorFrom(request, form)
 		const found = requestOf(store, requestId)
 		const chat = found ? `/chats/${found.conversation}` : ''
+		const details = found ? `${chat}/messages/${requestId}` : ''
 		const returned = form.get('return')
 		const address = returned?.startsWith('/plans/') ? new URL(returned, request.url.origin) : null
 		const plan = address && (routes.latestPlan.exec(address.pathname) ?? routes.plan.exec(address.pathname))
@@ -1629,14 +1633,12 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 			chatOf(store, found.conversation)?.planId === plan[1]
 		const back = scoped
 			? address!.pathname + address!.search
-			: returned === chat && chat
-				? chat
+			: returned && (returned === chat || returned === details)
+				? returned
 				: `/requests/${requestId}`
 		if (!actor) return actionRefusal(request, back, 'Enter your name. Checkmate records it with the stop.')
 		const flash =
-			found?.state === 'running' || found?.state === 'waiting'
-				? `Stopping ${requestId}…`
-				: `${requestId} has ended. Nothing was stopped.`
+			found?.state === 'running' || found?.state === 'waiting' ? 'Stopping this turn…' : 'This turn has ended.'
 		requester.stop(actor, requestId, form.get('reason')?.trim() ?? '')
 		hooks.release()
 		redirect(request.res, back, [...cookies, cookie('checkmate_toast', flash, 60)])
@@ -1756,7 +1758,7 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 			...cookies,
 			cookie(
 				'checkmate_toast',
-				typed.trim() ? 'Saved the model for requests' : 'Requests use the model of the coding harness',
+				typed.trim() ? 'Saved the model for chats' : 'Chats use the model of the coding harness',
 				60
 			),
 		])

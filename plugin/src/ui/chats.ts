@@ -3,9 +3,9 @@ import type { Chat, RequestRecord, RequestSelection } from '../requests.ts'
 import type { Env } from '../sessions.ts'
 import type { Html } from './html.ts'
 import type { Context, Page } from './layout.ts'
-import { chatOf, listedChats } from '../requests.ts'
+import { chatOf, isUnread, listedChats } from '../requests.ts'
 import { explorationPermissions } from '../permissions.ts'
-import { ago, costText, html, pill, time } from './html.ts'
+import { ago, costText, glyph, html, pill, time } from './html.ts'
 import { emptyNotice, heading } from './layout.ts'
 import { requestHref } from './permissions.ts'
 import { chatPreferences } from './requester.ts'
@@ -78,7 +78,7 @@ function origin(request: RequestRecord) {
 	return start ? html`<p class="help">Started from ${start}.</p>` : ''
 }
 
-function turn(store: Store, request: RequestRecord, context: Context, back = `/chats/${request.conversation}`) {
+function turn(store: Store, request: RequestRecord, context: Context, number: number, back: string) {
 	const permissions = explorationPermissions(store, request.id).filter((item) => !item.decision)
 	const failure = request.state === 'failed' ? failureText(request) : null
 	return html`<article class="chat-turn" data-key="request:${request.id}">
@@ -94,11 +94,12 @@ function turn(store: Store, request: RequestRecord, context: Context, back = `/c
 				Checkmate ·
 				${request.harness === 'pi' ? 'Pi' : 'Claude Code'}${request.model ? ` · ${request.provider ? `${request.provider}/` : ''}${request.model}` : ''}${request.effort ? ` · ${request.effort}` : ''}
 				<span class="chat-status"
-					>${pill(request.state)} <a href="/requests/${request.id}">${request.id}</a></span
+					>${request.state === 'answered' ? '' : pill(request.state)}
+					<a href="/chats/${request.conversation}/messages/${request.id}">Turn ${number}</a></span
 				>
 			</div>
 			${request.reply ? html`<p data-chat-content>${request.reply}</p>` : ''}
-			${request.state === 'waiting' ? html`<p class="help">Waiting for another request to finish.</p>` : ''}
+			${request.state === 'waiting' ? html`<p class="help">Waiting for another chat to finish.</p>` : ''}
 			${request.state === 'running' ? html`<p class="help">Working…</p>` : ''}
 			${permissions.map((item) => html`<p class="banner warn">Waiting for permission. <a href="${requestHref(item, back)}">Answer it</a></p>`)}
 			${
@@ -140,11 +141,12 @@ function chatList(chats: Chat[], href: (chat: Chat) => string, empty: Html) {
 			chats.length
 				? chats.map((chat) => {
 						const last = chat.turns.at(-1)!
+						const unread = chat.turns.filter(isUnread).length
 						return html`<a class="chat-list-item" id="chat-${chat.id}" href="${href(chat)}"
 							><strong>${title(chat.turns[0].text)}</strong
 							><span>
-								${pill(last.state)} · ${ago(last.askedAt)} · ${chat.turns.length}
-								${chat.turns.length === 1 ? 'message' : 'messages'} ·
+								${unread ? html`<span class="chat-unread">${unread} unread</span> · ` : ''}${last.state === 'answered' ? '' : html`${pill(last.state)} · `}${ago(last.askedAt)}
+								· ${chat.turns.length} ${chat.turns.length === 1 ? 'message' : 'messages'} ·
 								<span title="Chat cost">${costText(chat.costUsd, chat.costPartial)}</span></span
 							></a
 						>`
@@ -194,7 +196,7 @@ function history(store: Store, context: Context, chat: Chat, back: string) {
 			aria-label="Conversation"
 			tabindex="0"
 		>
-			${chat.turns.map((item) => turn(store, item, context, back))}
+			${chat.turns.map((item, index) => turn(store, item, context, index + 1, back))}
 		</div>`
 }
 
@@ -215,14 +217,14 @@ export function planChat(
 	}
 	return html`<section class="plan-chat" aria-label="Plan chats">
 		<div class="chat-thread-heading">
-			<a href="${address()}">← Plan</a>
+			<a href="${address()}">${glyph('←')} Plan</a>
 			<a class="btn" href="${address('newChat', '1')}">New chat</a>
 		</div>
 		<h1>Plan chats · ${decodeURIComponent(path.slice('/plans/'.length))}</h1>
 		${
 			chat
 				? html`<div class="chat-thread">
-						<a href="${address('chat', 'list')}">← All chats</a>
+						<a href="${address('chat', 'list')}">${glyph('←')} All chats</a>
 						<h2>${title(chat.turns[0].text)}</h2>
 						${history(store, context, chat, address('chat', chat.id))}
 						${composer(context, `${path}/chats/${encodeURIComponent(chat.id)}/turns`, chatSelection(store, env, chat), '', address('chat', chat.id))}
@@ -246,7 +248,9 @@ export function chatPage(store: Store, context: Context, id: string, env: Env): 
 			['Chat', null],
 		],
 		body: html`<div class="chat-thread">
-			<div class="chat-thread-heading"><a href="/chats">← Chats</a><a href="/chats?new=1">New chat</a></div>
+			<div class="chat-thread-heading">
+				<a href="/chats">${glyph('←')} Chats</a><a href="/chats?new=1">New chat</a>
+			</div>
 			<h1>${title(chat.turns[0].text)}</h1>
 			${origin(chat.turns[0])} ${history(store, context, chat, `/chats/${id}`)}
 			${composer(context, `/chats/${id}/turns`, chatSelection(store, env, chat))}

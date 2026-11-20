@@ -288,7 +288,7 @@ const spec: ListSpec = {
 	sort: 'started',
 	direction: 'desc',
 	filters: [],
-	none: ['No run or request yet.', 'Start a test with Test build… in a plan, or press / and ask Checkmate.'],
+	none: ['No run or chat message yet.', 'Start a test with Test build… in a plan, or press / and ask Checkmate.'],
 }
 
 function sentence(run: Run) {
@@ -360,35 +360,35 @@ function join(items: Array<Html | string | null>, separator: string): Html {
 	return html`${shown.map((item, index) => (index ? html`${separator}${item}` : item))}`
 }
 
-function requestRow(request: RequestRecord, n: number, now: number) {
-	const start = Date.parse(request.startedAt ?? request.askedAt)
-	const end = request.endedAt ? Date.parse(request.endedAt) : now
-	const spent = isEnded(request) ? duration(Math.max(0, end - start)) : null
+function chatRow(turn: RequestRecord, n: number, now: number) {
+	const start = Date.parse(turn.startedAt ?? turn.askedAt)
+	const end = turn.endedAt ? Date.parse(turn.endedAt) : now
+	const spent = isEnded(turn) ? duration(Math.max(0, end - start)) : null
 	const meta = [
-		request.asker,
-		time(request.askedAt),
-		request.state === 'running'
-			? html`<span data-since="${request.startedAt}">${duration(Math.max(0, now - start))}</span>`
+		turn.asker,
+		time(turn.askedAt),
+		turn.state === 'running'
+			? html`<span data-since="${turn.startedAt}">${duration(Math.max(0, now - start))}</span>`
 			: spent,
-		request.costUsd === null ? null : money(request.costUsd),
+		turn.costUsd === null ? null : money(turn.costUsd),
 	]
-	const metaText = [request.asker, request.askedAt, spent, request.costUsd === null ? null : money(request.costUsd)]
+	const metaText = [turn.asker, turn.askedAt, spent, turn.costUsd === null ? null : money(turn.costUsd)]
 		.filter(Boolean)
 		.join(' · ')
-	const title = `Request · ${request.text.trim().split('\n')[0]}`
+	const title = `Chat message · ${turn.text.trim().split('\n')[0]}`
 	return html`<div
 		class="sp-row"
 		role="listitem"
 		tabindex="-1"
-		id="request-row-${n}"
+		id="chat-row-${n}"
 		data-row
-		data-key="request:${request.id}"
-		data-href="/requests/${request.id}"
-		data-label="${request.id}"
+		data-key="request:${turn.id}"
+		data-href="/chats/${turn.conversation}"
+		data-label="${turn.id}"
 	>
 		<span class="sp-c-cb"></span>
-		<span class="sp-c-tag">${pill(request.state)}</span>
-		<span class="sp-c-id" title="${request.id}">${request.id}</span>
+		<span class="sp-c-tag">${pill(turn.state, turn.state === 'answered' ? 'Completed' : undefined)}</span>
+		<span class="sp-c-id" title="${turn.id}">${turn.id}</span>
 		<span class="sp-c-title ell" title="${title}">${title}</span>
 		<span class="sp-c-meta ell" title="${metaText}">${join(meta, ' · ')}</span>
 	</div>`
@@ -411,10 +411,10 @@ export function activityPage(
 			render: (n, now) => row(run, n, now),
 			run,
 		})),
-		...allRequests(store).map((request): Entry => ({
-			at: request.askedAt,
-			running: request.state === 'running' || request.state === 'waiting',
-			render: (n, now) => requestRow(request, n, now),
+		...allRequests(store).map((turn): Entry => ({
+			at: turn.askedAt,
+			running: turn.state === 'running' || turn.state === 'waiting',
+			render: (n, now) => chatRow(turn, n, now),
 			run: null,
 		})),
 	].sort((a, b) => Number(b.running) - Number(a.running) || b.at.localeCompare(a.at))
@@ -443,14 +443,14 @@ export function activityPage(
 		subjects: ['*'],
 		address: listHref(spec, shown),
 		...pageTrail(spec, shown, total, 'Activity'),
-		body: html`${heading('Activity', 'Every test and follow-up of every plan, and every request. Open one to watch it, or test again.')}
+		body: html`${heading('Activity', 'Tests, follow-ups, and chat messages. Open an entry to see its run or chat.')}
 			<div data-region="activity" data-list-region>
 				<p class="list-count" data-list-count role="status">
 					${total ? `Showing ${first}–${last} of ${plural(total, 'entry', 'entries')}` : ''}
 				</p>
 				${
 					total
-						? html`<div class="sp-list activity" role="list" aria-label="Runs and requests" data-list>
+						? html`<div class="sp-list activity" role="list" aria-label="Runs and chat messages" data-list>
 									${group('Running now', running)}${group('Earlier', earlier)}
 								</div>
 								${pager(spec, shown, total)}`

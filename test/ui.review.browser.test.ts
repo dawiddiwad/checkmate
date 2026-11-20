@@ -36,7 +36,7 @@ test('plan chats preserve the review view through new chat and browser back', br
 		.waitFor()
 	await page.goBack()
 	await page.waitForURL(url('/plans/coupons?view=all&newChat=1'))
-	await page.getByRole('link', { name: '← Plan', exact: true }).click()
+	await page.getByRole('link', { name: 'Plan', exact: true }).click()
 	await page.waitForURL(review)
 	await page.getByRole('heading', { name: 'All items', exact: true }).waitFor()
 	await page.goto(conversation)
@@ -63,7 +63,7 @@ test('review lists expose row controls and hide decorative separators from the p
 	await page.locator('[data-panel="needs"]').getByRole('listitem').first().getByRole('checkbox').waitFor()
 
 	await page.goto(url('/activity'))
-	const activity = page.getByRole('list', { name: 'Runs and requests' })
+	const activity = page.getByRole('list', { name: 'Runs and chat messages' })
 	await activity.getByRole('listitem').getByRole('button', { name: 'Stop…' }).waitFor()
 })
 

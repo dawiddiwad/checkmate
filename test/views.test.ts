@@ -18,6 +18,8 @@ import {
 	planStatus,
 	runList,
 } from '../plugin/src/views.ts'
+import { askRequest, requestActor, requestOf, setRequestState } from '../plugin/src/requests.ts'
+import { completed, write } from '../plugin/src/store.ts'
 import { addInstance } from '../plugin/src/targets.ts'
 import { endSeededProcesses, seedVolume } from '../scripts/ui-volume.ts'
 import {
@@ -40,6 +42,49 @@ import {
 	store,
 	target,
 } from './support.ts'
+
+test('the log filters and links chat operations while preserving their stored names and attribution', (t) => {
+	const opened = store(t)
+	const turn = askRequest(opened, actor, {
+		text: 'Review the plan.',
+		context: { planId: null, record: null },
+		chatId: null,
+	})
+	const id = requestOf(opened, turn)!.conversation
+	const subject = `chat:${id}`
+	setRequestState(opened, turn, 'running')
+	opened.via = turn
+	write(opened, { actor: requestActor(actor, turn), command: 'plan edit', subject: 'checkout', input: null }, () => ({
+		reply: completed('checkout'),
+		subjects: ['plan:checkout'],
+	}))
+	opened.via = undefined
+
+	const display = pagedOperations(opened, { filters: { subject }, sort: 'time', direction: 'asc' })
+	assert.deepEqual(
+		display.rows.map((row) => [row.command, row.actor, row.subjects, row.viaChat]),
+		[
+			['chat send', actor, [subject, 'chats'], null],
+			['chat state', 'checkmate', [subject, 'chats'], null],
+			['plan edit', actor, ['plan:checkout', subject], id],
+		]
+	)
+	assert.equal(pagedOperations(opened, { q: 'chat state', filters: { command: 'chat state' } }).total, 1)
+	const source = operationLog(opened, { subject, after: 0 })
+	assert.deepEqual(
+		source.map((row) => row.command),
+		['request ask', 'request state', 'plan edit']
+	)
+	assert.equal(source[2].actor, requestActor(actor, turn))
+	assert.equal(source[2].via, turn)
+
+	const plain = cli(opened.workspace, ['log', '--subject', subject, '--limit', '2'])
+	assert.equal(plain.lines.length, 3)
+	assert(plain.lines[1].includes(`	${actor}	plan edit	completed	plan:checkout,/chats/${id}	`))
+	assert(plain.lines[2].includes(`	chat state	completed	/chats/${id},chats	`))
+	const structured = cli(opened.workspace, ['log', '--subject', subject, '--limit', '2', '--json'])
+	assert.deepEqual(JSON.parse(structured.output).operations, source.slice(1).reverse())
+})
 
 test('the inbox lists open gaps without a decision, plans to approve, and results to accept', (t) => {
 	const opened = store(t)

@@ -1331,7 +1331,7 @@ function askRow(query) {
 	const item = document.createElement('li')
 	item.setAttribute('role', 'none')
 	const link = document.createElement('a')
-	link.href = '/requests'
+	link.href = '/chats'
 	link.dataset.findAsk = ''
 	link.setAttribute('role', 'option')
 	link.tabIndex = -1
@@ -1419,7 +1419,7 @@ function openFind(mode = 'find') {
 	input.placeholder = mode === 'ask' ? 'Ask a follow-up' : ''
 	input.setAttribute(
 		'aria-label',
-		mode === 'ask' ? 'Ask a follow-up' : 'Find a plan, a defect, or a question. Or type a request.'
+		mode === 'ask' ? 'Ask a follow-up' : 'Find a plan, a defect, or a question. Or ask Checkmate.'
 	)
 	pushLayer('find')
 	findDialog.showModal()
@@ -1445,7 +1445,8 @@ async function askNow() {
 				text,
 				chat: '1',
 				harness: findDialog.dataset.harness,
-				screen: location.pathname + location.search,
+				screen:
+					document.querySelector('[data-chat-back]')?.dataset.chatBack ?? location.pathname + location.search,
 			}),
 		})
 	try {
@@ -1459,8 +1460,7 @@ async function askNow() {
 		) {
 			const fresh = new DOMParser().parseFromString(await response.text(), 'text/html')
 			throw new Error(
-				fresh.querySelector('[role="alert"]')?.textContent?.trim() ||
-					'Checkmate refused the request. Nothing is sent.'
+				fresh.querySelector('[role="alert"]')?.textContent?.trim() || 'Checkmate could not send the message.'
 			)
 		}
 		if (findAsking !== sending) return
@@ -2349,9 +2349,14 @@ document.addEventListener('submit', (event) => {
 	send(form, event.submitter)
 })
 
-window.addEventListener('pageshow', () => {
+window.addEventListener('pageshow', (event) => {
 	sending = false
 	leaving = false
+	if (event.persisted) {
+		connect()
+		refresh()
+		for (const history of document.querySelectorAll('[data-chat-history]')) history.scrollTop = history.scrollHeight
+	}
 })
 
 window.addEventListener('popstate', () => {

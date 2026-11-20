@@ -60,6 +60,8 @@ completed log
 01M7CVS3M0B4SXWSEEBHYDMTH4	2026-11-14T11:06:15.552Z	po	run finish	completed	run:run-2,plan:checkout,inbox	41
 ```
 
+The review UI and the compact log show chat operations with their conversation IDs. Open a chat from its log link. Use `checkmate log --subject chat:<chatId>` to show operations for that chat, including changes made during a turn. The JSON log retains the stored operation names, subjects, and turn attribution.
+
 To read only the new operations, give the last row ID that you read: `checkmate log --after 42`. With `--after`, the log lists the operations oldest first. [Get a signal when the oracle must act](../guides/factory.md#get-a-signal-when-the-oracle-must-act) uses this cursor.
 
 The plan history, `plan diff`, and the log together show who changed what, when, and why. When `plan edit` changes a revision in place, the log keeps the edit.
@@ -118,7 +120,7 @@ A request has at most one `permission-decision`. A request without one is open. 
 
 The activity line comes from the `PreToolUse` hook. It has the tool and the first line of the main input, cut at a newline. The value of a token, password, key, or authorization argument is `…`. The UI keeps the last line of each tester in memory and writes it at most once in 2 seconds. The Testers view shows the last activity line of a tester with its age.
 
-The read models are in `plugin/src/permissions.ts`: `openPermissions(store, planId?)`, `explorationPermissions(store, askerId)`, `permissionRules(store, askerId)`, and `decidePermission(store, actor, input, stop)`. The asker is an exploration (`x-1`) or a request (`R3`). A request keeps its permission events in `request_events`, with the same steps and details. A request has no `explorer`. The rules of a request apply to turns of its chat that use the same harness.
+The read models are in `plugin/src/permissions.ts`: `openPermissions(store, planId?)`, `explorationPermissions(store, askerId)`, `permissionRules(store, askerId)`, and `decidePermission(store, actor, input, stop)`. The asker is an exploration (`x-1`) or a chat turn (`R3`). Chat turns keep their permission events in `request_events`, with the same steps and details. A chat turn has no `explorer`. A rule for a chat applies to turns of that chat with the same harness.
 
 ## Chats
 
@@ -175,7 +177,7 @@ The UI is a `node:http` server in the plugin. It has no npm dependencies and loa
 - A hand-over in the UI calls the same core function as `checkmate claim handoff`.
 - The UI edits, adds, and removes derived rules with `plan edit <planId> --patch`, the same core function (`patchPlan`). The POST routes are `/plans/<planId>/rules` (add), `/plans/<planId>/rules/<ruleId>` (edit), and `/plans/<planId>/rules/<ruleId>/remove`. The GET route `/plans/<planId>/defects.txt?claim=<claimId>` returns the text of `developerText`. It changes nothing.
 - When the UI starts, it recovers missing costs for older Pi explorations from matching local session files when available. The recovery records USD amounts separately from the original events. Recorder forks exclude costs already present in the parent session.
-- `workspace_settings` records the coding harness, tester tool rules, and model choices. Each change has a `setting set` operation. Claude Code and Pi have separate tool rules, request models, and tester models. An empty model setting selects the default.
+- `workspace_settings` records the coding harness, tester tool rules, and model choices. Each change has a `setting set` operation. Claude Code and Pi have separate tool rules, chat models, and tester models. An empty model setting selects the default.
 - A pasted ticket is a file `.checkmate/sources/<planId>.md`. The plan request names it as a source. The UI creates no other file outside `.checkmate/`.
 - The routes that change the record are POST routes: `/setup/assumed` (reads only, for the assumptions of the first-run form), `/setup` (calls `setupTarget`), and `/new` (calls `runTest`, the function of `checkmate test`). Each checks the origin and the token.
 - A stop in the UI records the stop and starts `checkmate explore end <explorationId> --workspace <path>` as a background process. It ends the processes and records the event `stop-end` with the processes that are still alive.

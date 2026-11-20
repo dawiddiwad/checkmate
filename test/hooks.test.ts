@@ -1006,8 +1006,8 @@ test('a request is an asker: its permission request is held, shown by the same r
 	assert.equal(asked.planId, 'checkout')
 	assert.equal(asked.tester, null)
 	const page = (await call(f.ui, `/permissions/${id}/P1`, undefined, as)).body
-	assert.match(page, /<h1[^>]*>Request R1 asks to run a command<\/h1>/)
-	assert.match(page, /Allow this command for this conversation/)
+	assert.match(page, /<h1[^>]*>Chat message R1 asks to run a command<\/h1>/)
+	assert.match(page, /Allow this command for this chat/)
 	assert.match((await call(f.ui, '/activity', undefined, as)).body, /data-region="permissions-link"\s*>1 permission</)
 	const csrf = token((await call(f.ui, '/activity', undefined, as)).body)
 	assert.equal((await call(f.ui, `/permissions/${id}/P1`, { csrf, decision: 'allow' }, as)).status, 303)

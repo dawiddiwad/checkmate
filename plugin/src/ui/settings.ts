@@ -516,7 +516,7 @@ export function harnessPage(
 						<option value="claude" ${harness === 'claude' ? html`selected` : ''}>Claude Code</option>
 						<option value="pi" ${harness === 'pi' ? html`selected` : ''}>Pi</option>
 					</select>
-					<p class="help">Applies to new tests and requests in this workspace.</p>
+					<p class="help">Applies to new tests and chats in this workspace.</p>
 				</div>
 				<div class="btns"><button class="btn primary">Save the program</button></div>
 			</form>
@@ -597,7 +597,7 @@ export function harnessPage(
 				</div>
 
 				<div class="field-group">
-					<label class="lab" for="request-model">Model for requests</label>
+					<label class="lab" for="request-model">Model for chats</label>
 					<select
 						id="request-model"
 						name="requestModel"
@@ -612,7 +612,7 @@ export function harnessPage(
 					</p>
 					<p class="help" data-model-unavailable="request-model" hidden></p>
 					<div hidden>
-						<label class="lab" for="request-effort">Reasoning effort for requests</label>
+						<label class="lab" for="request-effort">Reasoning effort for chats</label>
 						<select
 							id="request-effort"
 							name="requestEffort"
@@ -630,8 +630,8 @@ export function harnessPage(
 			<h2 class="lab" id="chat-settings">Chats</h2>
 
 			<p class="help">
-				New chats use ${pi ? 'Pi' : 'Claude Code'} and your request model by default. Change the harness, model,
-				or effort for the next message in the chat.
+				New chats use ${pi ? 'Pi' : 'Claude Code'} and your chat model by default. Change the harness, model, or
+				effort for the next message in the chat.
 			</p>
 			<div class="btns"><a class="btn" href="/chats">Open Chats</a></div>
 		</section>`

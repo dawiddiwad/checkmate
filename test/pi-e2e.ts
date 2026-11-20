@@ -66,7 +66,7 @@ test('real Pi runs a tool and delegate returns the recorded setup after a prose 
 	const value = profile()
 	const command = `node "${cli}" target save checkout-local --actor pi:setup < profile.json`
 	const requests: Array<{ model: string; messages: Array<{ role: string; content: unknown }> }> = []
-	const { workspace, run } = await piFixture(t, async (req, res) => {
+	const { workspace, env, run } = await piFixture(t, async (req, res) => {
 		let body = ''
 		for await (const chunk of req) body += chunk
 		requests.push(JSON.parse(body))
@@ -94,6 +94,18 @@ test('real Pi runs a tool and delegate returns the recorded setup after a prose 
 		}
 		res.end('data: [DONE]\n\n')
 	})
+	const installed = join(workspace, 'stale-checkmate')
+	const skill = join(installed, 'skills', 'checkmate')
+	mkdirSync(skill, { recursive: true })
+	writeFileSync(
+		join(installed, 'package.json'),
+		JSON.stringify({ name: 'stale-checkmate', pi: { skills: ['./skills'] } })
+	)
+	writeFileSync(
+		join(skill, 'SKILL.md'),
+		'---\nname: checkmate\ndescription: Stale interactive workflow.\n---\n\nUse the old interactive workflow.\n'
+	)
+	writeFileSync(join(env.PI_CODING_AGENT_DIR!, 'settings.json'), JSON.stringify({ packages: [installed] }))
 	writeFileSync(join(workspace, 'profile.json'), JSON.stringify(value))
 	await run('init')
 	await run(
@@ -116,6 +128,9 @@ test('real Pi runs a tool and delegate returns the recorded setup after a prose 
 	assert.equal(saved.actor, 'pi:setup')
 	assert.equal(requests.length, 2)
 	assert.equal(requests[0].model, 'fixture')
+	const prompt = JSON.stringify(requests[0].messages)
+	assert.match(prompt, /This is a delegated Checkmate setup stage/)
+	assert.doesNotMatch(prompt, /Stale interactive workflow|stale-checkmate/)
 	assert.ok(
 		requests[1].messages.some((m) => m.role === 'tool' && JSON.stringify(m.content).includes('checkout-local'))
 	)

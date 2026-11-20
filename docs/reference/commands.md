@@ -648,7 +648,7 @@ checkmate delegate <setup|plan|revise|execute> <subject> --allow <rule>... [--ti
 
 With Claude Code, `delegate` starts one new `claude -p` session with the bundled plugin, a response schema, `--permission-prompts none`, and `--no-session-persistence`. It sets `CHECKMATE_ACTOR=claude:<stage>` for the worker.
 
-With Pi, omit `--allow` and `--claude-arg` for delegate. The launcher starts Pi in print mode with the stage instructions. The worker writes as `pi:<stage>`. When Pi completes the turn with an invalid reply, the parent returns the verified operation for the requested subject if one exists. A reply that names a different subject gives `operational_error`. See [Run Checkmate with Pi](../guides/pi.md).
+With Pi, omit `--allow` and `--claude-arg` for delegate. The launcher starts Pi in print mode with the bundled stage instructions and `--no-skills`. The worker writes as `pi:<stage>`. When Pi completes the turn with an invalid reply, the parent returns the verified operation for the requested subject if one exists. A reply that names a different subject gives `operational_error`. See [Run Checkmate with Pi](../guides/pi.md).
 
 **Execution context.** The execute prompt lists the plan request sources and instructions, the plan tools, and the allowed operations of the run's target revision. The worker reads local sources with Read or Bash when a test needs them. The host controls access to the sources and tools.
 

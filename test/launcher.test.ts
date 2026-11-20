@@ -513,6 +513,7 @@ if (process.env.FAKE_PI_OUTPUT === 'invalid') {
 		'fixture-provider',
 		'--no-session',
 		'--no-mcp',
+		'--no-skills',
 		'--tools',
 		'read,bash',
 	])

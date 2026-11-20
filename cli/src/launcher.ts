@@ -641,7 +641,7 @@ export async function delegate(
 			harness === 'pi'
 				? resolvePiModelArgs(
 						executable,
-						piArgs(['--no-session', '--no-mcp', '--tools', 'read,bash'], env),
+						piArgs(['--no-session', '--no-mcp', '--no-skills', '--tools', 'read,bash'], env),
 						workspace,
 						env
 					)

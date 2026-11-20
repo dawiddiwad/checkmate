@@ -9170,7 +9170,10 @@ function costOf(calls) {
 }
 var moduleRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 var pluginRoot = existsSync2(join2(moduleRoot, ".claude-plugin", "plugin.json")) ? moduleRoot : join2(moduleRoot, "plugin");
-var maxOutputBytes = 4 * 1024 * 1024;
+function childOutputLimit(harness) {
+  const mib = harness === "pi" ? 100 : 4;
+  return { mib, bytes: mib * 1024 * 1024 };
+}
 var reservedClaudeArgs = [
   "-p",
   "--print",
@@ -9461,6 +9464,7 @@ function claudeResult(output, error, status, signal) {
   };
 }
 function callChild(executable, args, prompt, cwd, env, seconds, harness = "claude") {
+  const limit = childOutputLimit(harness);
   const child = spawnSync(executable, args, {
     cwd,
     env,
@@ -9468,7 +9472,7 @@ function callChild(executable, args, prompt, cwd, env, seconds, harness = "claud
     encoding: "utf8",
     timeout: seconds * 1e3,
     killSignal: "SIGTERM",
-    maxBuffer: maxOutputBytes
+    maxBuffer: limit.bytes
   });
   const result = harness === "pi" ? piResult : claudeResult;
   const parsed = result(child.stdout ?? "", child.stderr ?? "", child.status, child.signal);
@@ -9480,7 +9484,10 @@ function callChild(executable, args, prompt, cwd, env, seconds, harness = "claud
       failure: ["interrupted", `${harness} did not end in ${seconds} seconds. Checkmate stopped it.`]
     };
   if (code2 === "ENOBUFS")
-    return { ...cost, failure: ["operational_error", `${harness} output exceeded 4 MiB. Checkmate stopped it.`] };
+    return {
+      ...cost,
+      failure: ["operational_error", `${harness} output exceeded ${limit.mib} MiB. Checkmate stopped it.`]
+    };
   if (code2) return { ...cost, failure: ["operational_error", `${harness} failed: ${code2}.`] };
   return parsed;
 }
@@ -9538,6 +9545,7 @@ function exitOnSignal() {
   process.once("SIGINT", end);
 }
 function launchChild(executable, args, prompt, cwd, env, seconds, onStart, harness = "claude") {
+  const limit = childOutputLimit(harness);
   return new Promise((resolvePromise) => {
     const child = spawn(executable, args, { cwd, env, stdio: ["pipe", "pipe", "pipe"], detached: true });
     child.stdout.setEncoding("utf8");
@@ -9562,8 +9570,8 @@ function launchChild(executable, args, prompt, cwd, env, seconds, onStart, harne
     child.stdout.on("data", (text2) => {
       if (failure) return;
       bytes += Buffer.byteLength(text2);
-      if (bytes > maxOutputBytes)
-        stop(["operational_error", `${harness} output exceeded 4 MiB. Checkmate stopped it.`]);
+      if (bytes > limit.bytes)
+        stop(["operational_error", `${harness} output exceeded ${limit.mib} MiB. Checkmate stopped it.`]);
       else output += text2;
     });
     child.stderr.on("data", (bytes2) => {

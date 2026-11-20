@@ -84,7 +84,11 @@ const moduleRoot = dirname(dirname(fileURLToPath(import.meta.url)))
 export const pluginRoot = existsSync(join(moduleRoot, '.claude-plugin', 'plugin.json'))
 	? moduleRoot
 	: join(moduleRoot, 'plugin')
-const maxOutputBytes = 4 * 1024 * 1024
+
+export function childOutputLimit(harness: Harness) {
+	const mib = harness === 'pi' ? 100 : 4
+	return { mib, bytes: mib * 1024 * 1024 }
+}
 
 export const reservedClaudeArgs = [
 	'-p',
@@ -433,6 +437,7 @@ export function callChild(
 	seconds: number,
 	harness: Harness = 'claude'
 ): ChildCall {
+	const limit = childOutputLimit(harness)
 	const child = spawnSync(executable, args, {
 		cwd,
 		env,
@@ -440,7 +445,7 @@ export function callChild(
 		encoding: 'utf8',
 		timeout: seconds * 1000,
 		killSignal: 'SIGTERM',
-		maxBuffer: maxOutputBytes,
+		maxBuffer: limit.bytes,
 	})
 	const result = harness === 'pi' ? piResult : claudeResult
 	const parsed = result(child.stdout ?? '', child.stderr ?? '', child.status, child.signal)
@@ -452,7 +457,10 @@ export function callChild(
 			failure: ['interrupted', `${harness} did not end in ${seconds} seconds. Checkmate stopped it.`],
 		}
 	if (code === 'ENOBUFS')
-		return { ...cost, failure: ['operational_error', `${harness} output exceeded 4 MiB. Checkmate stopped it.`] }
+		return {
+			...cost,
+			failure: ['operational_error', `${harness} output exceeded ${limit.mib} MiB. Checkmate stopped it.`],
+		}
 	if (code) return { ...cost, failure: ['operational_error', `${harness} failed: ${code}.`] }
 	return parsed
 }
@@ -524,6 +532,7 @@ export function launchChild(
 	onStart?: (pid: number) => void,
 	harness: Harness = 'claude'
 ): Promise<ChildCall> {
+	const limit = childOutputLimit(harness)
 	return new Promise((resolvePromise) => {
 		const child = spawn(executable, args, { cwd, env, stdio: ['pipe', 'pipe', 'pipe'], detached: true })
 		child.stdout.setEncoding('utf8')
@@ -548,8 +557,8 @@ export function launchChild(
 		child.stdout.on('data', (text: string) => {
 			if (failure) return
 			bytes += Buffer.byteLength(text)
-			if (bytes > maxOutputBytes)
-				stop(['operational_error', `${harness} output exceeded 4 MiB. Checkmate stopped it.`])
+			if (bytes > limit.bytes)
+				stop(['operational_error', `${harness} output exceeded ${limit.mib} MiB. Checkmate stopped it.`])
 			else output += text
 		})
 		child.stderr.on('data', (bytes: Buffer) => {

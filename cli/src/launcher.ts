@@ -3,7 +3,7 @@ import { Refusal, closeStore, isBusy, openRejections, openStore, runClock, valid
 import type { Harness } from '../../plugin/src/pi.ts'
 import { piArgs, piResult, selectedHarness } from '../../plugin/src/pi.ts'
 import { workspaceEnv } from '../../plugin/src/settings.ts'
-import { pluginRoot as bundledPluginRoot } from '../../plugin/src/sessions.ts'
+import { childOutputLimit, pluginRoot as bundledPluginRoot } from '../../plugin/src/sessions.ts'
 import { spawn } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
@@ -47,7 +47,6 @@ type RunRow = {
 }
 type Verified = { operation: string; reply: Reply }
 
-const maxOutputBytes = 4 * 1024 * 1024
 const defaultTimeoutSeconds = 300
 
 export const minimumRules = ['Read', 'Bash']
@@ -167,6 +166,7 @@ export function workerArgs(pluginRoot: string, allowedTools: string[], claudeArg
 
 export function worker(executable: string, args: string[], options: WorkerOptions): Promise<WorkerResponse> {
 	if (process.platform === 'win32') refuse('The launcher supports Linux and macOS process groups')
+	const limit = childOutputLimit(options.harness ?? 'claude')
 	return new Promise((resolvePromise, reject) => {
 		const child = spawn(executable, args, {
 			cwd: options.cwd,
@@ -195,7 +195,7 @@ export function worker(executable: string, args: string[], options: WorkerOption
 		const timer = setTimeout(() => stop('Worker deadline exceeded'), options.timeoutSeconds * 1000)
 		child.stdout.on('data', (bytes: Buffer) => {
 			outputBytes += bytes.length
-			if (outputBytes > maxOutputBytes) stop('Worker output exceeds 4 MiB')
+			if (outputBytes > limit.bytes) stop(`Worker output exceeds ${limit.mib} MiB`)
 			else output.push(bytes)
 		})
 		child.stderr.on('data', (bytes: Buffer) => {

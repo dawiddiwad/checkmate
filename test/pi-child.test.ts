@@ -3,6 +3,7 @@ import { mkdirSync, symlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import test from 'node:test'
 import { pathToFileURL } from 'node:url'
+import { worker } from '../cli/src/launcher.ts'
 import { piErrorText, piResult, piStderr } from '../plugin/src/pi.ts'
 import {
 	authenticationFailed,
@@ -121,15 +122,53 @@ test('Pi failures keep the provider message and status without headers or creden
 	)
 })
 
-test('Pi children stop and report output overflow', async (t) => {
+test('Pi subprocesses accept more than 4 MiB and stop above 100 MiB', async (t) => {
 	const cwd = directory(t)
-	const args = ['-e', "process.stdout.write('x'.repeat(5 * 1024 * 1024)); setInterval(() => {}, 1000)"]
-	const sync = callChild(process.execPath, args, '', cwd, {}, 10, 'pi')
-	const spawned = await launchChild(process.execPath, args, '', cwd, {}, 10, undefined, 'pi')
-	for (const result of [sync, spawned]) {
-		assert.equal(result.failure?.[0], 'operational_error')
-		assert.match(result.failure?.[1] ?? '', /pi output exceeded 4 MiB/)
+	const reply = { status: 'needs_decision', subject: 'fixture', reasons: ['Fixture decision.'] }
+	const message = {
+		role: 'assistant',
+		stopReason: 'stop',
+		content: [{ type: 'text', text: JSON.stringify(reply) }],
+		usage: { cost: { total: 0.25 } },
 	}
+	const args = (mib: number) => [
+		'-e',
+		`const { once } = require('node:events')
+		async function send() {
+			console.log(${JSON.stringify(JSON.stringify({ type: 'message_end', message }))})
+			const chunk = JSON.stringify({ type: 'tool_execution_update', result: 'x'.repeat(1024 * 1024) }) + '\\n'
+			for (let index = 0; index < ${mib}; index++) {
+				if (!process.stdout.write(chunk)) await once(process.stdout, 'drain')
+			}
+			console.log(${JSON.stringify(JSON.stringify({ type: 'agent_end', messages: [message] }))})
+		}
+		send()`,
+	]
+	const small = args(5)
+	const large = args(101)
+	const sync = (args: string[], harness: 'pi' | 'claude') =>
+		callChild(process.execPath, args, '', cwd, {}, 20, harness)
+	const spawned = (args: string[], harness: 'pi' | 'claude') =>
+		launchChild(process.execPath, args, '', cwd, {}, 20, undefined, harness)
+	const delegate = (args: string[], harness: 'pi' | 'claude') =>
+		worker(process.execPath, args, { cwd, prompt: '', timeoutSeconds: 20, env: {}, harness })
+	for (const call of [sync, spawned]) {
+		const result = await call(small, 'pi')
+		assert.equal(result.failure, undefined)
+		assert.equal(result.result, JSON.stringify(reply))
+		assert.deepEqual(await call(large, 'pi'), {
+			failure: ['operational_error', 'pi output exceeded 100 MiB. Checkmate stopped it.'],
+			costUsd: 0.25,
+			costPartial: true,
+		})
+		assert.deepEqual((await call(small, 'claude')).failure, [
+			'operational_error',
+			'claude output exceeded 4 MiB. Checkmate stopped it.',
+		])
+	}
+	assert.deepEqual(await delegate(small, 'pi'), reply)
+	await assert.rejects(delegate(large, 'pi'), /Worker output exceeds 100 MiB/)
+	await assert.rejects(delegate(small, 'claude'), /Worker output exceeds 4 MiB/)
 })
 
 test('Pi tool policy protects the store, other explorers and aliases of their paths', (t) => {

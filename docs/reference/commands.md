@@ -635,11 +635,11 @@ checkmate delegate <setup|plan|revise|execute> <subject> --allow <rule>... [--ti
 
 With Claude Code, `delegate` starts one new `claude -p` session with the bundled plugin, a response schema, `--permission-prompts none`, and `--no-session-persistence`. It sets `CHECKMATE_ACTOR=claude:<stage>` for the worker.
 
-With Pi, omit `--allow` and `--claude-arg` for delegate. The launcher starts Pi in print mode with the stage instructions. The worker writes as `pi:<stage>`. The parent validates the JSON reply and checks the same operation in the database. See [Run Checkmate with Pi](../guides/pi.md).
+With Pi, omit `--allow` and `--claude-arg` for delegate. The launcher starts Pi in print mode with the stage instructions. The worker writes as `pi:<stage>`. When Pi completes the turn with an invalid reply, the parent returns the verified operation for the requested subject if one exists. A reply that names a different subject gives `operational_error`. See [Run Checkmate with Pi](../guides/pi.md).
 
 **Rejected results.** When the oracle rejected a run that has a latest outcome of a selected test, the execute prompt has the line `The oracle rejected <runId>: <rationale>. Address it.`
 
-**Trust.** The parent does not trust the worker's summary. It reads the database and returns the response of the recorded command, with `operation=<id>` on line 1. A worker that reports `completed` without the change gives `operational_error`. In setup, plan, and revise, a worker that reports `needs_decision` without a change gives `needs_decision` with the worker's reasons, for example a source that it cannot read.
+**Trust.** The parent checks the stage command, subject, and worker actor in the record. It returns the response of that command, with `operation=<id>` on line 1. A worker that reports `completed` without the change gives `operational_error`. In setup, plan, and revise, a worker that reports `needs_decision` without a change gives `needs_decision` with the worker's reasons, for example a source that it cannot read.
 
 **Permissions.** Give one `--allow <rule>` for each Claude tool permission. `delegate` refuses an empty list. Give at least `Read` and `Bash`. A prefix rule such as `Bash(node *)` is not sufficient, because the permission check blocks a heredoc with JSON. `Bash` lets the worker run any shell command in the workspace, so use a trusted workspace. Add rules for the tools of the target or the plan: `mcp__jira` allows every tool of the `jira` server, and `mcp__jira__get_issue` allows one tool. An execute stage that saves screenshots with another tool can need `Write`. The launcher adds no permission bypass of its own.
 

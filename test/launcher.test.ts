@@ -468,6 +468,94 @@ if (process.env.FAKE_PI_OUTPUT === 'invalid') {
 	assert.doesNotMatch(prompt, /CLAUDE_PLUGIN_ROOT|--actor claude:/)
 })
 
+test('Pi recovers a malformed reply only from the delegated stage write', async (t) => {
+	const invalid = 'Pi did not return a JSON response'
+	const cases = [
+		{ name: 'prose after the requested write', planId: 'checkout' },
+		{
+			name: 'invalid schema after the requested write',
+			planId: 'checkout',
+			content: JSON.stringify({ status: 'completed', subject: 'checkout', reasons: [5] }),
+		},
+		{ name: 'no write', reason: invalid },
+		{ name: 'another actor', planId: 'checkout', writer: 'oracle', reason: invalid },
+		{ name: 'another subject', planId: 'other', reason: invalid },
+		{
+			name: 'a wrong reply subject',
+			planId: 'checkout',
+			content: JSON.stringify({ status: 'completed', subject: 'other', reasons: [] }),
+			reason: 'Worker response names other, not checkout',
+		},
+		{
+			name: 'a wrong reply subject with an invalid schema',
+			planId: 'checkout',
+			content: JSON.stringify({ status: 'completed', subject: 'other', reasons: [5] }),
+			reason: 'Worker response names other, not checkout',
+		},
+		{
+			name: 'a process exit',
+			planId: 'checkout',
+			end: 'process.exitCode = 1',
+			reason: 'pi exited with code 1',
+		},
+		{
+			name: 'a deadline',
+			planId: 'checkout',
+			end: 'setInterval(() => {}, 1000)',
+			reason: 'Worker deadline exceeded',
+			interrupted: true,
+		},
+	]
+	for (const { name, planId, writer, content, end, reason, interrupted } of cases)
+		await t.test(name, async (scenario) => {
+			const workspace = requested(scenario)
+			const opened = store(scenario, workspace)
+			saveWorkspaceHarness(opened, actor, 'pi')
+			if (planId === 'other')
+				openPlan(opened, actor, { planId, target: 'checkout-local@1', request: planRequest() })
+			closeStore(opened)
+			const saveArgs = [join(pluginRoot, 'dist/checkmate.js'), 'plan', 'save', planId, '--json']
+			if (writer) saveArgs.push('--actor', writer)
+			const save = planId
+				? `const { execFileSync } = require('node:child_process')
+execFileSync(process.execPath, ${JSON.stringify(saveArgs)}, { input: ${JSON.stringify(JSON.stringify(candidate()))} })`
+				: ''
+			const pi = executable(
+				workspace,
+				'fake-pi',
+				`${save}
+console.log(JSON.stringify({
+	type: 'agent_end',
+	messages: [{ role: 'assistant', stopReason: 'stop', content: [{ type: 'text', text: ${JSON.stringify(content ?? 'The plan is saved.')} }] }],
+}))
+${end ?? ''}`
+			)
+			const result = await delegate(workspace, 'plan', 'checkout', {
+				allowedTools: [],
+				pluginRoot,
+				pi,
+				timeoutSeconds: interrupted ? 2 : 5,
+			})
+			const writes = query<{ id: string; actor: string; status: string }>(
+				workspace,
+				"SELECT id, actor, status FROM operations WHERE command = 'plan save'"
+			)
+			assert.equal(writes.length, planId ? 1 : 0)
+			if (reason) {
+				assert.deepEqual(result, {
+					status: interrupted ? 'interrupted' : 'operational_error',
+					subject: 'checkout',
+					reasons: [reason],
+					operation: null,
+				})
+			} else {
+				assert.equal(result.status, 'needs_decision')
+				assert.equal(result.subject, 'checkout@1')
+				assert.deepEqual(writes[0], { id: result.operation, actor: 'pi:plan', status: result.status })
+			}
+		})
+})
+
 function hold(workspace: string) {
 	const holder = openStore(workspace)
 	holder.db.exec('BEGIN IMMEDIATE')

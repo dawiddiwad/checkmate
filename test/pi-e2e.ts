@@ -62,7 +62,7 @@ async function piFixture(
 	return { workspace, env, run }
 }
 
-test('real Pi runs a tool and delegate verifies the recorded setup', async (t) => {
+test('real Pi runs a tool and delegate returns the recorded setup after a prose reply', async (t) => {
 	const value = profile()
 	const command = `node "${cli}" target save checkout-local --actor pi:setup < profile.json`
 	const requests: Array<{ model: string; messages: Array<{ role: string; content: unknown }> }> = []
@@ -82,7 +82,7 @@ test('real Pi runs a tool and delegate verifies the recorded setup', async (t) =
 						},
 					],
 				}
-			: { content: JSON.stringify({ status: 'completed', subject: 'checkout-local', reasons: [] }) }
+			: { content: 'The target profile is saved.' }
 		res.writeHead(200, { 'Content-Type': 'text/event-stream' })
 		for (const [payload, reason] of [
 			[{ role: 'assistant', ...delta }, null],
@@ -109,7 +109,11 @@ test('real Pi runs a tool and delegate verifies the recorded setup', async (t) =
 	)
 	const response = JSON.parse(await run('delegate', 'setup', value.targetId, '--json', '--timeout', '30'))
 	assert.equal(response.status, 'completed')
-	assert.ok(response.operation)
+	const log = JSON.parse(await run('log', '--subject', `target:${value.targetId}`, '--json'))
+	const saved = log.operations.find((operation: { command: string }) => operation.command === 'target save')
+	assert.ok(saved)
+	assert.equal(response.operation, saved.id)
+	assert.equal(saved.actor, 'pi:setup')
 	assert.equal(requests.length, 2)
 	assert.equal(requests[0].model, 'fixture')
 	assert.ok(

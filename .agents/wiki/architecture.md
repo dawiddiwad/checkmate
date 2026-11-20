@@ -22,7 +22,7 @@ Checkmate includes a Claude Code plugin, a Pi package, and a deterministic Node.
 `cli/` is the npm package `@xoxoai/checkmate`.
 
 - `cli/src/main.ts` handles `delegate` and passes every other command to the plugin CLI.
-- `cli/src/launcher.ts` starts the selected coding harness with the stage instructions, checks its structured response, and then checks the database for the recorded change.
+- `cli/src/launcher.ts` starts the selected coding harness with the stage instructions. It checks the worker reply and verifies the stage command, subject, and actor in the record.
 
 The repository root contains tests, scripts, documentation, and development tools.
 

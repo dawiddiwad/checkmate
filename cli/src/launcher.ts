@@ -106,6 +106,16 @@ function readEnvelope(output: string) {
 	return validate('response', envelope.structured_output) as WorkerResponse
 }
 
+class InvalidPiResponse extends Error {
+	reportedSubject?: string
+
+	constructor(message: string, response?: unknown) {
+		super(message)
+		if (response && typeof response === 'object' && 'subject' in response && typeof response.subject === 'string')
+			this.reportedSubject = response.subject
+	}
+}
+
 function readPiResponse(output: string, errors: string, code: number | null, signal: NodeJS.Signals | null) {
 	const result = piResult(output, errors, code, signal)
 	if (result.failure) throw new Error(result.failure[1])
@@ -115,9 +125,14 @@ function readPiResponse(output: string, errors: string, code: number | null, sig
 	try {
 		response = JSON.parse(fenced?.[1] ?? text)
 	} catch {
-		refuse('Pi did not return a JSON response')
+		throw new InvalidPiResponse('Pi did not return a JSON response')
 	}
-	return validate('response', response) as WorkerResponse
+	try {
+		return validate('response', response) as WorkerResponse
+	} catch (error) {
+		if (error instanceof Refusal) throw new InvalidPiResponse(error.message, response)
+		throw error
+	}
 }
 
 function checkClaudeArgs(claudeArgs: string[]) {
@@ -299,12 +314,13 @@ function checkSubject(store: Store, stage: Stage, subject: string) {
 	if (stage === 'execute') startedRun(store, subject)
 }
 
-function verify(store: Store, stage: Stage, subject: string, after: number): Verified | null {
+function verify(store: Store, stage: Stage, subject: string, after: number, actor: string): Verified | null {
 	const { command, key } = verifiedBy[stage]
 	const row = one<{ id: string; response: string }>(
 		store,
-		`SELECT id, response FROM operations WHERE rowid > ? AND command = ? AND status != 'rejected' AND json_extract(arguments, '$.${key}') = ? ORDER BY rowid DESC LIMIT 1`,
+		`SELECT id, response FROM operations WHERE rowid > ? AND actor = ? AND command = ? AND status != 'rejected' AND json_extract(arguments, '$.${key}') = ? ORDER BY rowid DESC LIMIT 1`,
 		after,
+		actor,
 		command,
 		subject
 	)
@@ -502,6 +518,7 @@ export async function delegate(
 	const run = execution?.run ?? null
 	const browser = execution ? usesPlaywright(execution.profile) : false
 	const pluginRoot = options.pluginRoot ?? defaultPluginRoot()
+	const workerActor = `${harness}:${stage}`
 	const timeoutSeconds =
 		options.timeoutSeconds ?? (execution ? Math.max(1, execution.clock.remainingSeconds) : defaultTimeoutSeconds)
 	let claimed: WorkerResponse | null = null
@@ -519,16 +536,18 @@ export async function delegate(
 				harness,
 				env: {
 					...env,
-					CHECKMATE_ACTOR: `${harness}:${stage}`,
+					CHECKMATE_ACTOR: workerActor,
 					...(run ? { PLAYWRIGHT_MCP_OUTPUT_DIR: join(workspace, '.checkmate', 'tmp', subject) } : {}),
 				},
 			}
 		)
-		if (!subjectMatches(claimed.subject, subject))
-			failure = new Error(`Worker response names ${claimed.subject}, not ${subject}`)
 	} catch (error) {
 		failure = error instanceof Error ? error : new Error('Unknown worker failure')
 	}
+	const reportedSubject =
+		claimed?.subject ?? (failure instanceof InvalidPiResponse ? failure.reportedSubject : undefined)
+	if (reportedSubject && !subjectMatches(reportedSubject, subject))
+		failure = new Error(`Worker response names ${reportedSubject}, not ${subject}`)
 	const cleanup =
 		run && browser
 			? await closeBrowser(workspace, run.browser_session, options.playwright ?? 'playwright-cli')
@@ -536,7 +555,7 @@ export async function delegate(
 	const extra = [...(cleanup ? [cleanup] : []), ...(run ? [resumeReason(subject)] : [])]
 	let verified: Verified | null
 	try {
-		verified = withStore(workspace, (store) => verify(store, stage, subject, after))
+		verified = withStore(workspace, (store) => verify(store, stage, subject, after, workerActor))
 	} catch (error) {
 		if (!isBusy(error)) throw error
 		return {
@@ -546,11 +565,7 @@ export async function delegate(
 			operation: null,
 		}
 	}
-	if (failure) {
-		const status = /deadline|interrupted/.test(failure.message) ? 'interrupted' : 'operational_error'
-		return { status, subject, reasons: [failure.message, ...(verified ? [] : extra)], operation: null }
-	}
-	if (verified)
+	if (verified && (!failure || failure instanceof InvalidPiResponse))
 		return {
 			status: verified.reply.status,
 			subject: verified.reply.subject,
@@ -559,6 +574,10 @@ export async function delegate(
 			command: verifiedBy[stage].command,
 			data: verified.reply.data,
 		}
+	if (failure) {
+		const status = /deadline|interrupted/.test(failure.message) ? 'interrupted' : 'operational_error'
+		return { status, subject, reasons: [failure.message, ...(verified ? [] : extra)], operation: null }
+	}
 	if (!run && claimed!.status === 'needs_decision' && claimed!.reasons.length)
 		return { status: 'needs_decision', subject, reasons: claimed!.reasons, operation: null }
 	const missing = run

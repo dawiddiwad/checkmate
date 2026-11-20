@@ -24,6 +24,7 @@ export type Charter = {
 	scope: string[]
 	change: Change | null
 	knownState: string | null
+	knownAnswerIds?: string[]
 }
 export type ExplorationEvent = {
 	at: string
@@ -48,7 +49,7 @@ function charterOf(
 	plan: Plan | undefined,
 	scope: string[],
 	change: Change | null,
-	knownState: string | null = null
+	knownState: { path: string; answerIds: string[] } | null
 ): Charter {
 	const { request, target } = planRequest(store, planId)
 	return {
@@ -69,7 +70,8 @@ function charterOf(
 		tools: planTools(request, target.profile).map(({ name, purpose }) => ({ name, purpose })),
 		scope,
 		change,
-		knownState,
+		knownState: knownState?.path ?? null,
+		...(knownState?.answerIds.length ? { knownAnswerIds: knownState.answerIds } : {}),
 	}
 }
 
@@ -82,7 +84,7 @@ const isEntryId = (word: string) => /^([A-Za-z0-9_-]+\/)?[A-Z]+[0-9]+$/.test(wor
 
 const withBlankEnd = (lines: string[]) => (lines.at(-1) === '' ? lines : [...lines, ''])
 
-export function knownStateText(store: Store, planId: string, build: string) {
+function knownState(store: Store, planId: string, build: string) {
 	const state = journal(store, planId)
 	const claims = planClaims(store, planId).filter((claim) => claim.build !== build)
 	const lastSeen = (claim: Claim) =>
@@ -139,7 +141,10 @@ export function knownStateText(store: Store, planId: string, build: string) {
 			'',
 			...(answers.length || rejected.length
 				? [
-						...answers.map((question) => `- ${question.question} Answer: ${question.answer}`),
+						...answers.map((question) => ({
+							text: `- ${question.question} Answer: ${question.answer}`,
+							answerId: question.answerId,
+						})),
 						...rejected.map((claim) =>
 							`- Not a defect: ${claim.title}. ${claim.decision?.rationale ?? ''}`.trim()
 						),
@@ -178,17 +183,25 @@ export function knownStateText(store: Store, planId: string, build: string) {
 	let full = newestFirst.length
 	let lines = render(full)
 	while (lines.length > maxKnownLines && full > 0) lines = render(--full)
-	if (lines.length <= maxKnownLines) return lines.join('\n') + '\n'
-	return [...lines.slice(0, maxKnownLines - 1), 'More results are left out.'].join('\n') + '\n'
+	if (lines.length > maxKnownLines) lines = [...lines.slice(0, maxKnownLines - 1), 'More results are left out.']
+	return {
+		text: lines.map((line) => (typeof line === 'string' ? line : line.text)).join('\n') + '\n',
+		answerIds: lines.flatMap((line) => (typeof line !== 'string' && line.answerId ? [line.answerId] : [])),
+	}
+}
+
+export function knownStateText(store: Store, planId: string, build: string) {
+	return knownState(store, planId, build).text
 }
 
 function writeKnownState(store: Store, planId: string, explorationId: string, build: string) {
 	if (!one(store, 'SELECT 1 FROM explorations WHERE plan_id = ? AND exploration_id != ?', planId, explorationId))
 		return null
 	const path = `${workFolder(explorationId)}/known-state.md`
+	const { text, answerIds } = knownState(store, planId, build)
 	mkdirSync(join(store.workspace, workFolder(explorationId)), { recursive: true })
-	writeFileSync(join(store.workspace, path), knownStateText(store, planId, build))
-	return path
+	writeFileSync(join(store.workspace, path), text)
+	return { path, answerIds }
 }
 
 export function nextExplorationId(store: Store) {

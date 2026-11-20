@@ -1061,8 +1061,12 @@ function retryCommand(store: Store, id: string, launch: Launch | undefined) {
 	)
 }
 
-export function followCount(store: Store, explorationId: string) {
-	return followable(explorationEvents(store, explorationId)) ? unusedAnswers(store, explorationId).length : 0
+export function followCount(store: Store, explorationId: string, knownAnswers?: ReadonlySet<string>) {
+	if (!followable(explorationEvents(store, explorationId))) return 0
+	const answers = unusedAnswers(store, explorationId)
+	return knownAnswers?.size
+		? answers.filter(({ answerId }) => !answerId || !knownAnswers.has(answerId)).length
+		: answers.length
 }
 
 export function startFollow(store: Store, actor: string | undefined, input: FollowInput, env: Env) {

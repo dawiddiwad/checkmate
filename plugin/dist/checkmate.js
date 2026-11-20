@@ -14486,7 +14486,7 @@ function latestRevision(store, planId) {
   );
   return row2 ? { revision: row2.revision, plan: JSON.parse(row2.body) } : null;
 }
-function charterOf(store, planId, plan, scope, change, knownState = null) {
+function charterOf(store, planId, plan, scope, change, knownState2) {
   const { request: request2, target } = planRequest(store, planId);
   return {
     goal: request2.objective,
@@ -14505,7 +14505,8 @@ function charterOf(store, planId, plan, scope, change, knownState = null) {
     tools: planTools(request2, target.profile).map(({ name: name2, purpose }) => ({ name: name2, purpose })),
     scope,
     change,
-    knownState
+    knownState: knownState2?.path ?? null,
+    ...knownState2?.answerIds.length ? { knownAnswerIds: knownState2.answerIds } : {}
   };
 }
 function workFolder(explorationId, explorer) {
@@ -14514,7 +14515,7 @@ function workFolder(explorationId, explorer) {
 var maxKnownLines = 150;
 var isEntryId = (word) => /^([A-Za-z0-9_-]+\/)?[A-Z]+[0-9]+$/.test(word);
 var withBlankEnd = (lines2) => lines2.at(-1) === "" ? lines2 : [...lines2, ""];
-function knownStateText(store, planId, build) {
+function knownState(store, planId, build) {
   const state = journal(store, planId);
   const claims = planClaims(store, planId).filter((claim) => claim.build !== build);
   const lastSeen = (claim) => Object.entries(claim.statuses).filter(([, on]) => on.status === "not_fixed").map(([seen]) => seen).at(-1) ?? claim.build;
@@ -14558,7 +14559,10 @@ function knownStateText(store, planId, build) {
       "## Decisions of the product owner",
       "",
       ...answers.length || rejected.length ? [
-        ...answers.map((question) => `- ${question.question} Answer: ${question.answer}`),
+        ...answers.map((question) => ({
+          text: `- ${question.question} Answer: ${question.answer}`,
+          answerId: question.answerId
+        })),
         ...rejected.map(
           (claim) => `- Not a defect: ${claim.title}. ${claim.decision?.rationale ?? ""}`.trim()
         )
@@ -14590,16 +14594,20 @@ function knownStateText(store, planId, build) {
   let full = newestFirst.length;
   let lines2 = render(full);
   while (lines2.length > maxKnownLines && full > 0) lines2 = render(--full);
-  if (lines2.length <= maxKnownLines) return lines2.join("\n") + "\n";
-  return [...lines2.slice(0, maxKnownLines - 1), "More results are left out."].join("\n") + "\n";
+  if (lines2.length > maxKnownLines) lines2 = [...lines2.slice(0, maxKnownLines - 1), "More results are left out."];
+  return {
+    text: lines2.map((line) => typeof line === "string" ? line : line.text).join("\n") + "\n",
+    answerIds: lines2.flatMap((line) => typeof line !== "string" && line.answerId ? [line.answerId] : [])
+  };
 }
 function writeKnownState(store, planId, explorationId, build) {
   if (!one(store, "SELECT 1 FROM explorations WHERE plan_id = ? AND exploration_id != ?", planId, explorationId))
     return null;
   const path = `${workFolder(explorationId)}/known-state.md`;
+  const { text: text2, answerIds } = knownState(store, planId, build);
   mkdirSync4(join5(store.workspace, workFolder(explorationId)), { recursive: true });
-  writeFileSync2(join5(store.workspace, path), knownStateText(store, planId, build));
-  return path;
+  writeFileSync2(join5(store.workspace, path), text2);
+  return { path, answerIds };
 }
 function nextExplorationId(store) {
   const ids2 = all(store, "SELECT exploration_id FROM explorations").map(
@@ -17133,8 +17141,10 @@ function retryCommand(store, id2, launch) {
   const harness = launch ? `CHECKMATE_HARNESS=${launch.context?.harness ?? "claude"} ` : "";
   return harness + command.map((word) => /^[\w./:@-]+$/.test(word) ? word : `'${word.replaceAll("'", "'\\''")}'`).join(" ");
 }
-function followCount(store, explorationId) {
-  return followable(explorationEvents(store, explorationId)) ? unusedAnswers(store, explorationId).length : 0;
+function followCount(store, explorationId, knownAnswers) {
+  if (!followable(explorationEvents(store, explorationId))) return 0;
+  const answers = unusedAnswers(store, explorationId);
+  return knownAnswers?.size ? answers.filter(({ answerId }) => !answerId || !knownAnswers.has(answerId)).length : answers.length;
 }
 function startFollow(store, actor, input, env) {
   const id2 = input.explorationId;
@@ -18616,8 +18626,21 @@ function loopStatus(store, planId, harness) {
     };
   });
   const latestBuild = base.revision === null ? buildOrder(store, planId).at(-1)?.build : void 0;
-  const follows = explorations.filter((item) => latestBuild === void 0 || item.build === latestBuild).flatMap((item) => {
-    const count2 = followCount(store, item.explorationId);
+  const followSources = explorations.filter((item) => latestBuild === void 0 || item.build === latestBuild);
+  const knownAnswers = /* @__PURE__ */ new Set();
+  if (latestBuild !== void 0) {
+    for (const { explorationId } of followSources) {
+      const { knownAnswerIds } = JSON.parse(explorationRow(store, explorationId).charter);
+      if (!knownAnswerIds?.length) continue;
+      const events = explorationEvents(store, explorationId);
+      if (events.find((event2) => event2.step === "done")?.status !== "completed") continue;
+      const launch = startOf(events);
+      if (!launch || launch.explorers <= 0) continue;
+      for (const id2 of knownAnswerIds) knownAnswers.add(id2);
+    }
+  }
+  const follows = followSources.flatMap((item) => {
+    const count2 = followCount(store, item.explorationId, knownAnswers);
     return count2 ? [
       `${amount(count2, "unused answer")} of ${item.explorationId}: checkmate explore follow ${item.explorationId}`
     ] : [];

@@ -6,8 +6,8 @@ import { join } from 'node:path'
 import { run } from '../plugin/src/cli.ts'
 import { closeStore } from '../plugin/src/store.ts'
 import type { TestContext } from 'node:test'
-import { openPlan } from '../plugin/src/plans.ts'
-import { knownStateText, openExploration } from '../plugin/src/explorations.ts'
+import { answerGap, openPlan } from '../plugin/src/plans.ts'
+import { exploration, knownStateText, openExploration } from '../plugin/src/explorations.ts'
 import { logEntries } from '../plugin/src/journal.ts'
 import { actor, directory, planRequest, store, target } from './support.ts'
 import { fakeClaude } from './claude.ts'
@@ -76,6 +76,7 @@ test('a later exploration gets one plain file with the results of earlier builds
 	const started = command(['explore', 'start', 'checkout', '--build', 'b2', '--level', 'smoke', ...allow])
 	assert.equal(started.code, 0, started.output)
 	assert.equal(charter('x-2').knownState, '.checkmate/work/x-2/known-state.md')
+	assert.equal(charter('x-2').knownAnswerIds.length, 1)
 	const text = readFileSync(join(workspace, '.checkmate', 'work', 'x-2', 'known-state.md'), 'utf8')
 	assert.equal(
 		text,
@@ -307,4 +308,38 @@ test('a long file shortens the oldest fixed defects to a title line, and says ho
 	assert.equal(lines.filter((line) => /^- a1\/D[0-9]+: /.test(line)).length, shortened)
 	assert.equal(lines.filter((line) => /^### a1\/D[0-9]+: /.test(line)).length, 30 - shortened)
 	assert(text.indexOf('a1/D30') < text.indexOf('a1/D1:'), 'the newest fix comes first')
+})
+
+test('an answer omitted from the known-state file is also omitted from its charter snapshot', (t) => {
+	const opened = store(t)
+	target(opened)
+	openPlan(opened, actor, { planId: 'checkout', target: 'checkout-local@1', request: planRequest() })
+	openExploration(opened, actor, { planId: 'checkout', build: 'b1' })
+	const problems = Array.from({ length: 25 }, (_, index) => ({
+		kind: 'defect',
+		title: `Problem ${index + 1}`,
+		severity: 'medium',
+		expected: 'The correct value.',
+		actual: 'The wrong value.',
+		steps: 'Check the value.',
+	}))
+	logEntries(opened, 'qa:a1', {
+		explorationId: 'x-1',
+		entries: [...problems, { kind: 'question', id: 'Q1', question: 'What is the limit?' }],
+	})
+	const answer = answerGap(opened, actor, {
+		planId: 'checkout',
+		gapId: 'a1/Q1',
+		kind: 'clarify',
+		value: 'Ten.',
+		source: 'brief#limit',
+		rationale: 'Specified.',
+	})
+	assert.equal(answer.status, 'completed', answer.reasons.join(' '))
+	openExploration(opened, actor, { planId: 'checkout', build: 'b2' })
+	const { knownState, knownAnswerIds } = exploration(opened, 'x-2').charter
+	const text = readFileSync(join(opened.workspace, knownState!), 'utf8')
+	assert.match(text, /More results are left out\./)
+	assert.doesNotMatch(text, /What is the limit\?/)
+	assert.equal(knownAnswerIds, undefined)
 })

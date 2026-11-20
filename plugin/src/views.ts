@@ -1,7 +1,7 @@
 import type { Harness } from './pi.ts'
 import type { Plan, Result } from './types.ts'
 import type { Store } from './store.ts'
-import type { ExplorationEvent } from './explorations.ts'
+import type { Charter, ExplorationEvent } from './explorations.ts'
 import type { Evidence, Row } from './journal.ts'
 import type { ModelCost } from './costs.ts'
 import { noModelCost, noRunUsage, planCosts, planExplorationCosts, runUsages } from './costs.ts'
@@ -728,16 +728,27 @@ function loopStatus(store: Store, planId: string, harness: Harness) {
 		}
 	})
 	const latestBuild = base.revision === null ? buildOrder(store, planId).at(-1)?.build : undefined
-	const follows = explorations
-		.filter((item) => latestBuild === undefined || item.build === latestBuild)
-		.flatMap((item) => {
-			const count = followCount(store, item.explorationId)
-			return count
-				? [
-						`${amount(count, 'unused answer')} of ${item.explorationId}: checkmate explore follow ${item.explorationId}`,
-					]
-				: []
-		})
+	const followSources = explorations.filter((item) => latestBuild === undefined || item.build === latestBuild)
+	const knownAnswers = new Set<string>()
+	if (latestBuild !== undefined) {
+		for (const { explorationId } of followSources) {
+			const { knownAnswerIds } = JSON.parse(explorationRow(store, explorationId).charter) as Charter
+			if (!knownAnswerIds?.length) continue
+			const events = explorationEvents(store, explorationId)
+			if (events.find((event) => event.step === 'done')?.status !== 'completed') continue
+			const launch = startOf(events)
+			if (!launch || launch.explorers <= 0) continue
+			for (const id of knownAnswerIds) knownAnswers.add(id)
+		}
+	}
+	const follows = followSources.flatMap((item) => {
+		const count = followCount(store, item.explorationId, knownAnswers)
+		return count
+			? [
+					`${amount(count, 'unused answer')} of ${item.explorationId}: checkmate explore follow ${item.explorationId}`,
+				]
+			: []
+	})
 	const keep = mergedEntries(store, planId)
 	const claims = planClaims(store, planId, keep)
 		.filter((claim) => claim.open)

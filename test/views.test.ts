@@ -22,10 +22,11 @@ import { askRequest, requestActor, requestOf, setRequestState } from '../plugin/
 import { completed, write } from '../plugin/src/store.ts'
 import { logEntries } from '../plugin/src/journal.ts'
 import { unusedAnswers } from '../plugin/src/explorers.ts'
+import { openExploration } from '../plugin/src/explorations.ts'
 import { ruleMap } from '../plugin/src/rulemap.ts'
 import { addInstance } from '../plugin/src/targets.ts'
 import { endSeededProcesses, seedVolume } from '../scripts/ui-volume.ts'
-import { done, entries, openTest } from './explorations.ts'
+import { done, entries, event, launch, openTest } from './explorations.ts'
 import {
 	accept,
 	actor,
@@ -367,6 +368,48 @@ test('exploration-only status waits for questions and claims, and fresh green co
 	])
 	done(opened, 'x-3')
 	assert.deepEqual([status().state, status().waitsOn], ['defects_open', 'factory'])
+})
+
+test('a completed fresh exploration satisfies answers shared in its same-build known state', (t) => {
+	const opened = store(t)
+	target(opened)
+	openPlan(opened, actor, { planId: 'checkout', target: 'checkout-local@1', request: planRequest() })
+	const status = () => planStatus(opened, 'checkout')
+	const unused = /^1 unused answer of x-1:/
+	openTest(opened, 'checkout', 'x-1', 'b1')
+	entries(opened, 'x-1', 'a1', [
+		...allExploredRules(),
+		{ kind: 'question', id: 'Q1', question: 'What is the limit?' },
+	])
+	done(opened, 'x-1')
+	openTest(opened, 'checkout', 'x-2', 'b1')
+	const answer = answerGap(opened, actor, {
+		planId: 'checkout',
+		gapId: 'a1/Q1',
+		kind: 'clarify',
+		value: 'Ten.',
+		source: 'brief#limit',
+		rationale: 'Specified.',
+	})
+	assert.equal(answer.status, 'completed', answer.reasons.join(' '))
+	done(opened, 'x-2')
+	assert.equal(status().state, 'ready_to_test')
+	assert.match(status().next[0], unused)
+	openTest(opened, 'checkout', 'x-3', 'b1')
+	assert.equal(status().state, 'exploring')
+	assert.match(status().next[0], unused)
+	done(opened, 'x-3', 'failed')
+	assert.equal(status().state, 'ready_to_test')
+	assert.match(status().next[0], unused)
+	openExploration(opened, actor, { planId: 'checkout', explorationId: 'x-4', build: 'b1' })
+	event(opened, 'x-4', { step: 'start', detail: { ...launch, explorers: 0 } })
+	done(opened, 'x-4')
+	assert.equal(status().state, 'ready_to_test')
+	assert.match(status().next[0], unused)
+	openTest(opened, 'checkout', 'x-5', 'b1')
+	done(opened, 'x-5')
+	assert.deepEqual([status().state, status().next], ['passed', []])
+	assert.equal(unusedAnswers(opened, 'x-1').length, 1)
 })
 
 test('an empty rule set and a revision without results cannot pass from exploration', (t) => {

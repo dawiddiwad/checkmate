@@ -136,7 +136,7 @@ export type JournalVerdict = {
 	build: string
 	supersedes?: string
 	defect: string
-	result: 'fixed' | 'not_fixed'
+	result: 'fixed' | 'not_fixed' | 'not_retested'
 	saw?: string
 	evidence?: string | Array<string>
 }

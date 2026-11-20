@@ -1753,6 +1753,16 @@ export function explorationReport(store: Store, explorationId: string) {
 		startedAt: opened.started_at,
 		claims: planClaims(store, opened.plan_id).filter((claim) => claim.explorationId === explorationId),
 		questions: planQuestions(store, opened.plan_id).filter((question) => question.explorationId === explorationId),
+		retests: own
+			.filter((entry) => entry.kind === 'verdict')
+			.map(({ id, actor, defect, result, saw, evidence }) => ({
+				id,
+				actor,
+				defect: defect!,
+				result: result!,
+				saw: saw ?? null,
+				evidence: evidence ?? [],
+			})),
 		criteria: own
 			.filter((entry) => entry.kind === 'criterion')
 			.map(({ id, text, source }) => ({ id, text: text!, source: source ?? null })),

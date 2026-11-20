@@ -125,10 +125,87 @@ test('a later exploration gets one plain file with the results of earlier builds
 	)
 	const recorder = calls.filter((call) => call.role === 'recorder').at(-1)
 	assert.match(recorder.prompt, /open defect a2\/D1 \(b1, low\): Wrong tax/)
-	assert.match(recorder.prompt, /log a verdict with the ID of that defect: fixed or not_fixed/)
+	assert.match(recorder.prompt, /Use fixed or not_fixed only when the session ran the retest and observed/)
+	assert.match(recorder.prompt, /use not_retested\. Put the reason in "saw"/)
 	const claims = command(['explore', 'show', 'x-1']).body.claims
 	const tax = claims.find((claim: { id: string }) => claim.id === 'a2/D1')
 	assert.deepEqual(tax.statuses.b2, { status: 'not_fixed', basis: 'single' })
+})
+
+test('the recorder saves incomplete retests without casting a claim vote', (t) => {
+	const workspace = realpathSync(directory(t))
+	const opened = store(t, workspace)
+	target(opened)
+	openPlan(opened, actor, { planId: 'checkout', target: 'checkout-local@1', request: planRequest() })
+	for (const build of ['b1', 'b2']) openExploration(opened, actor, { planId: 'checkout', build })
+	const ids = ['D1', 'D2', 'D3']
+	const defectId = (id: string) => `a1/${id}`
+	logEntries(opened, 'qa:a1', {
+		explorationId: 'x-1',
+		entries: ids.map((id) => ({
+			kind: 'defect',
+			id,
+			title: `Problem ${id}`,
+			severity: 'medium',
+			expected: `Right ${id}`,
+			actual: `Wrong ${id}`,
+			steps: `Do ${id}.`,
+		})),
+	})
+	closeStore(opened)
+	const reason = 'The required run was unavailable.'
+	const fake = fakeClaude(t, {
+		recorder: {
+			[first]: [
+				{ kind: 'verdict', defect: defectId('D1'), result: 'fixed', saw: 'The total is correct.' },
+				{ kind: 'verdict', defect: defectId('D2'), result: 'not_fixed', saw: 'The total is still wrong.' },
+			],
+			[second]: ids.map((id) => ({ kind: 'verdict', defect: defectId(id), result: 'not_retested', saw: reason })),
+		},
+	})
+	const command = (args: string[], json = true) =>
+		run([...args, '--workspace', workspace, ...(json ? ['--json'] : [])], {
+			cwd: workspace,
+			env: { ...process.env, CHECKMATE_ACTOR: actor, ...fake.env },
+			stdin: () => '',
+		})
+	for (const [name, session, saved] of [
+		['a1', first, 2],
+		['a2', second, 3],
+	] as const) {
+		const reply = command(['record', 'x-2', '--explorer', name, '--session', session])
+		assert.equal(reply.code, 0, reply.output)
+		assert.deepEqual(JSON.parse(reply.output).added, { verdict: saved })
+	}
+	const report = JSON.parse(command(['explore', 'show', 'x-2']).output)
+	assert.deepEqual(
+		report.retests.filter((entry: { actor: string }) => entry.actor === 'qa:a2'),
+		ids.map((id, index) => ({
+			id: `a2/V${index + 1}`,
+			actor: 'qa:a2',
+			defect: defectId(id),
+			result: 'not_retested',
+			saw: reason,
+			evidence: [],
+		}))
+	)
+	assert.match(
+		command(['explore', 'show', 'x-2'], false).output,
+		/a2\/V1\tverdict\ta1\/D1\tnot_retested\tThe required run was unavailable\./
+	)
+	const { claims } = JSON.parse(command(['claim', 'list', 'checkout', '--all']).output)
+	assert.deepEqual(
+		claims.map((claim: { id: string; statuses: { b2: unknown }; open: boolean }) => [
+			claim.id,
+			claim.statuses.b2,
+			claim.open,
+		]),
+		[
+			['a1/D1', { status: 'fixed', basis: 'single' }, false],
+			['a1/D2', { status: 'not_fixed', basis: 'single' }, true],
+			['a1/D3', { status: 'no verdict', basis: 'none' }, true],
+		]
+	)
 })
 
 test('--since reads the changes of a repository in a subfolder with --repo', (t) => {

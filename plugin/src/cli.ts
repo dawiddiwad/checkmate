@@ -1569,6 +1569,13 @@ const commands: Record<string, Command> = {
 						question.question,
 						...(question.members.length > 1 ? [`members=${question.members.join(',')}`] : []),
 					]),
+					...report.retests.map((entry) => [
+						entry.id,
+						'verdict',
+						entry.defect,
+						entry.result,
+						...(entry.saw ? [entry.saw] : []),
+					]),
 					...report.criteria.map((criterion) => [criterion.id, 'criterion', criterion.text]),
 					...report.files.map((file) => [file.explorer, 'file', file.phase, file.name, `${file.size} bytes`]),
 				],

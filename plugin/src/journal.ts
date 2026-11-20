@@ -1,4 +1,5 @@
 import type { Store } from './store.ts'
+import type { JournalVerdict } from './types.ts'
 import { all, canonical, completed, digest, execute, one, saveBlob, write } from './store.ts'
 import { Refusal, requireCondition, requireWellFormed, schemaProblems, unusedId } from './contracts.ts'
 import { recordApproval } from './plans.ts'
@@ -42,7 +43,7 @@ export type Entry = {
 	suspected?: boolean
 	question?: string
 	defect?: string
-	result?: 'fixed' | 'not_fixed'
+	result?: JournalVerdict['result']
 	evidence?: Evidence[]
 	answer?: string
 	reports?: string[]
@@ -752,7 +753,10 @@ export function claimList(
 		const firstCheck = checkOn(state.builds[first])
 		const verified = !firstCheck ? 'none' : confirms(firstCheck) ? 'confirmed' : 'refuted'
 		const verdicts = state.team
-			.filter((entry) => entry.kind === 'verdict' && names.includes(entry.defect ?? ''))
+			.filter(
+				(entry) =>
+					entry.kind === 'verdict' && entry.result !== 'not_retested' && names.includes(entry.defect ?? '')
+			)
 			.sort((a, b) => a.seq - b.seq)
 		const statusOn = (build: string): BuildStatus => {
 			const results = new Map<string, string>()

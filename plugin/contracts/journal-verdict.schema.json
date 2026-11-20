@@ -1,7 +1,7 @@
 {
 	"$schema": "http://json-schema.org/draft-07/schema#",
 	"$id": "journal-verdict.schema.json",
-	"description": "The retest of an earlier defect on this build.",
+	"description": "The result of a retest of an earlier defect on this build, or the reason it could not be retested.",
 	"type": "object",
 	"properties": {
 		"kind": {
@@ -22,11 +22,11 @@
 			"minLength": 1
 		},
 		"result": {
-			"description": "The result of the retest.",
-			"enum": ["fixed", "not_fixed"]
+			"description": "Use fixed or not_fixed for an observed result. Use not_retested when the retest did not give an observed result.",
+			"enum": ["fixed", "not_fixed", "not_retested"]
 		},
 		"saw": {
-			"description": "What you saw.",
+			"description": "What you saw, or the reason for not_retested.",
 			"type": "string",
 			"minLength": 1
 		},

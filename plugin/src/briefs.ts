@@ -129,7 +129,9 @@ export function recorderPrompt(
 		replyText('the new entries', answer),
 		'Number the new entries freely, for example N1, O1, D1. Use an ID of the record only to point at an entry of the record.',
 		'Evidence is the path of a file that already exists, as the tester saved it, from the directory of the session, or the text that you saw.',
-		'When the session retested a defect of an earlier build, log a verdict with the ID of that defect: fixed or not_fixed.',
+		'Log a verdict with the ID of each earlier defect for which the session reports a retest or a reason it could not retest.',
+		'Use fixed or not_fixed only when the session ran the retest and observed whether the defect still occurred.',
+		'When the session skipped the retest, was blocked or refused, or could not observe a result, use not_retested. Put the reason in "saw".',
 		...(rules.length
 			? [
 					'For each rule of the plan that the session checked, log one criterion with its "rule" and "verdict". Give each defect and question its "rule", or outside.',

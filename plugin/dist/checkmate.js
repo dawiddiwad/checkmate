@@ -2858,7 +2858,7 @@ function Ee(i, { instancePath: t = "", parentData: N, parentDataProperty: _, roo
   return Ee.errors = e, s === 0;
 }
 var Gs = Re;
-var hs = { $schema: "http://json-schema.org/draft-07/schema#", $id: "journal-verdict.schema.json", description: "The retest of an earlier defect on this build.", type: "object", properties: { kind: { const: "verdict" }, id: { $ref: "journal-entry.schema.json#/definitions/id" }, build: { $ref: "journal-entry.schema.json#/definitions/build" }, supersedes: { $ref: "journal-entry.schema.json#/definitions/supersedes" }, defect: { description: "The ID of the earlier defect or issue.", type: "string", minLength: 1 }, result: { description: "The result of the retest.", enum: ["fixed", "not_fixed"] }, saw: { description: "What you saw.", type: "string", minLength: 1 }, evidence: { $ref: "journal-entry.schema.json#/definitions/evidence" } }, required: ["kind", "build", "defect", "result"], additionalProperties: false };
+var hs = { $schema: "http://json-schema.org/draft-07/schema#", $id: "journal-verdict.schema.json", description: "The result of a retest of an earlier defect on this build, or the reason it could not be retested.", type: "object", properties: { kind: { const: "verdict" }, id: { $ref: "journal-entry.schema.json#/definitions/id" }, build: { $ref: "journal-entry.schema.json#/definitions/build" }, supersedes: { $ref: "journal-entry.schema.json#/definitions/supersedes" }, defect: { description: "The ID of the earlier defect or issue.", type: "string", minLength: 1 }, result: { description: "Use fixed or not_fixed for an observed result. Use not_retested when the retest did not give an observed result.", enum: ["fixed", "not_fixed", "not_retested"] }, saw: { description: "What you saw, or the reason for not_retested.", type: "string", minLength: 1 }, evidence: { $ref: "journal-entry.schema.json#/definitions/evidence" } }, required: ["kind", "build", "defect", "result"], additionalProperties: false };
 function Re(i, { instancePath: t = "", parentData: N, parentDataProperty: _, rootData: T = i } = {}) {
   let e = null, s = 0;
   if (i && typeof i == "object" && !Array.isArray(i)) {
@@ -2936,7 +2936,7 @@ function Re(i, { instancePath: t = "", parentData: N, parentDataProperty: _, roo
     }
     if (i.result !== void 0) {
       let a = i.result;
-      if (!(a === "fixed" || a === "not_fixed")) {
+      if (!(a === "fixed" || a === "not_fixed" || a === "not_retested")) {
         let r = { instancePath: t + "/result", schemaPath: "#/properties/result/enum", keyword: "enum", params: { allowedValues: hs.properties.result.enum }, message: "must be equal to one of the allowed values" };
         e === null ? e = [r] : e.push(r), s++;
       }
@@ -11564,7 +11564,9 @@ function claimList(state, decided = /* @__PURE__ */ new Map(), handed = /* @__PU
     const first = Math.min(...found.map((defect) => order(defect.build)));
     const firstCheck = checkOn(state.builds[first]);
     const verified = !firstCheck ? "none" : confirms(firstCheck) ? "confirmed" : "refuted";
-    const verdicts = state.team.filter((entry) => entry.kind === "verdict" && names.includes(entry.defect ?? "")).sort((a, b) => a.seq - b.seq);
+    const verdicts = state.team.filter(
+      (entry) => entry.kind === "verdict" && entry.result !== "not_retested" && names.includes(entry.defect ?? "")
+    ).sort((a, b) => a.seq - b.seq);
     const statusOn = (build) => {
       const results = /* @__PURE__ */ new Map();
       for (const verdict of verdicts.filter((entry) => entry.build === build))
@@ -15340,7 +15342,7 @@ var journal_question_schema_default = {
 var journal_verdict_schema_default = {
   $schema: "http://json-schema.org/draft-07/schema#",
   $id: "journal-verdict.schema.json",
-  description: "The retest of an earlier defect on this build.",
+  description: "The result of a retest of an earlier defect on this build, or the reason it could not be retested.",
   type: "object",
   properties: {
     kind: {
@@ -15361,11 +15363,11 @@ var journal_verdict_schema_default = {
       minLength: 1
     },
     result: {
-      description: "The result of the retest.",
-      enum: ["fixed", "not_fixed"]
+      description: "Use fixed or not_fixed for an observed result. Use not_retested when the retest did not give an observed result.",
+      enum: ["fixed", "not_fixed", "not_retested"]
     },
     saw: {
-      description: "What you saw.",
+      description: "What you saw, or the reason for not_retested.",
       type: "string",
       minLength: 1
     },
@@ -15599,7 +15601,9 @@ function recorderPrompt(build, record, saved = [], answer2, rules = []) {
     replyText("the new entries", answer2),
     "Number the new entries freely, for example N1, O1, D1. Use an ID of the record only to point at an entry of the record.",
     "Evidence is the path of a file that already exists, as the tester saved it, from the directory of the session, or the text that you saw.",
-    "When the session retested a defect of an earlier build, log a verdict with the ID of that defect: fixed or not_fixed.",
+    "Log a verdict with the ID of each earlier defect for which the session reports a retest or a reason it could not retest.",
+    "Use fixed or not_fixed only when the session ran the retest and observed whether the defect still occurred.",
+    'When the session skipped the retest, was blocked or refused, or could not observe a result, use not_retested. Put the reason in "saw".',
     ...rules.length ? [
       'For each rule of the plan that the session checked, log one criterion with its "rule" and "verdict". Give each defect and question its "rule", or outside.'
     ] : [],
@@ -17642,6 +17646,14 @@ function explorationReport(store, explorationId) {
     startedAt: opened.started_at,
     claims: planClaims(store, opened.plan_id).filter((claim) => claim.explorationId === explorationId),
     questions: planQuestions(store, opened.plan_id).filter((question) => question.explorationId === explorationId),
+    retests: own.filter((entry) => entry.kind === "verdict").map(({ id: id2, actor, defect, result, saw, evidence: evidence2 }) => ({
+      id: id2,
+      actor,
+      defect,
+      result,
+      saw: saw ?? null,
+      evidence: evidence2 ?? []
+    })),
     criteria: own.filter((entry) => entry.kind === "criterion").map(({ id: id2, text: text2, source }) => ({ id: id2, text: text2, source: source ?? null })),
     notes: own.filter((entry) => entry.kind === "note").map(({ id: id2, text: text2, area: area2 }) => ({ id: id2, text: text2, area: area2 ?? null })),
     observations: own.filter((entry) => entry.kind === "observation").length,
@@ -38423,6 +38435,13 @@ var commands = {
             question.answer === null ? "open" : "answered",
             question.question,
             ...question.members.length > 1 ? [`members=${question.members.join(",")}`] : []
+          ]),
+          ...report.retests.map((entry) => [
+            entry.id,
+            "verdict",
+            entry.defect,
+            entry.result,
+            ...entry.saw ? [entry.saw] : []
           ]),
           ...report.criteria.map((criterion) => [criterion.id, "criterion", criterion.text]),
           ...report.files.map((file) => [file.explorer, "file", file.phase, file.name, `${file.size} bytes`])

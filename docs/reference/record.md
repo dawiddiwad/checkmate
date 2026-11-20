@@ -161,6 +161,8 @@ The JSON Schemas `plugin/contracts/journal-*.schema.json` define the entries. Ea
 | `question`  | `actual`  | What the build does now, in one sentence.                                                       |
 | `topic`     | `label`   | The topic of the merged questions in one to three words.                                        |
 
+A `verdict` entry names an earlier defect or issue. Its `result` is `fixed`, `not_fixed`, or `not_retested`. For `not_retested`, give the reason in `saw`. The record keeps the entry and its evidence. Only `fixed` and `not_fixed` count as votes on the claim for the build.
+
 Checkmate checks each `rule` against the rules of the charter. It changes an unknown ID to `outside` and counts it. The rule of a claim is the most frequent `rule` of its reports. With a tie, it is the rule of the first report. The rule of a merged question comes from its members in the same way.
 
 The rules of a plan come from the latest revision, else from the request, else from the [derived rules](commands.md#derived-rules). The exception is a revision that `harvest` made over derived rules. The last row of `plan_rules` then has the origin `harvested`, and the rules are the requirements of the revision, plus each derived rule that the revision does not have, in the order of the derived rules, then the other requirements of the revision. The builds of a plan are in the order of `plan_builds`.

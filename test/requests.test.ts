@@ -571,11 +571,14 @@ test('opening a reply marks it read, and the status bar counts unread replies', 
 	assert(list.indexOf('data-key="request:R2"') < list.indexOf('data-key="request:R1"'))
 	await call(f.ui, '/requests/R2')
 	const after = (await call(f.ui, '/activity')).body
-	assert.match(
-		after,
-		/href="\/requests\/R1"[^>]*data-region="replies-link"[^>]*><span>1<span class="sb-long"> reply<\/span><\/span>/
-	)
+	const badge =
+		/href="(\/chats\/[0-9a-f-]+)"[^>]*data-region="replies-link"[^>]*><span>1<span class="sb-long"> reply<\/span><\/span>/.exec(
+			after
+		)
+	assert.equal(badge?.[1], `/chats/${f.request(one)!.conversation}`)
 	assert.match((await call(f.ui, '/requests')).body, /Earlier\s*<span>1<\/span>/)
+	await call(f.ui, badge![1])
+	assert.equal(f.request(one)?.read, true)
 })
 
 test('Activity lists requests next to runs with their state and cost', async (t) => {

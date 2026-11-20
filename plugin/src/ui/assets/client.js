@@ -3168,7 +3168,9 @@ async function testerModelCount(details) {
 		for (const row of details.querySelectorAll('[data-tester-model-row]')) {
 			const visible = Number(row.dataset.testerModelRow) <= data.count
 			row.hidden = !visible
-			row.querySelector('select').disabled = !visible
+			const select = row.querySelector('select')
+			select.disabled = !visible
+			if (!visible) setModelOptions(select, [], '', 'Use workspace tester model')
 		}
 		showTesterModels(details)
 		state.countLoading = false

@@ -119,6 +119,7 @@ export function testerModels(context: Context) {
 					<select
 						id="tester-model-a${index + 1}"
 						name="testerModel.a${index + 1}"
+						data-stop
 						data-tester-model-select
 						disabled
 					>

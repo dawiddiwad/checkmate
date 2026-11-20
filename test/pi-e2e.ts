@@ -217,8 +217,13 @@ test('real Pi adds each new turn of a resumed plan chat to its plan exactly once
 		await waitFor('the resumed reply', () => chatOf(store, id)?.turns[1]?.state === 'answered')
 		const chat = chatOf(store, id)!
 		assert.equal(conversations.length, 2)
-		for (const messages of conversations)
+		for (const messages of conversations) {
 			assert.match(JSON.stringify(messages.at(-1)?.content), /This conversation is about plan checkout\./)
+			const instructions = JSON.stringify(messages.filter((message) => message.role === 'system'))
+			assert.match(instructions, /Write replies in Markdown/)
+			assert.match(instructions, /\/runs\/<runId>/)
+			assert.match(instructions, /item=q%3A<testerId>%2F<questionId>/)
+		}
 		assert.match(JSON.stringify(conversations[1]), /This is the fixture reply\./)
 		assert.equal(chat.turns[0].sessionId, chat.turns[1].sessionId)
 		assert.deepEqual(

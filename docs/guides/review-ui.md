@@ -266,6 +266,8 @@ From a plan, run, exploration, or list, you can also open **Find** and choose **
 
 Type follow-ups in the same chat. Choose a harness, model, and available effort for the next message. Each sent message keeps its selections. When the host and model stay the same, Checkmate continues the host session. When they change, Checkmate opens a new host session and sends up to eight recent turns as context. The chat keeps its full history.
 
+Replies show Markdown lists, tables, code, and links. Checkmate asks the agent to link to the records it cites, such as a plan, question, or run. Stored evidence images show in the reply. Images on other sites open as links.
+
 One message runs at a time in the workspace. The chat shows the latest message when you open it and when a new message arrives. It shows waiting turns, permissions, replies, and record changes. Choose **Stop** to stop a turn. Open **Turn** for timing, cost, and tool activity. Chat lists show which conversations have unread updates.
 
 An activity line of a chat turn or a tester shows the tool and the first line of its main input, at most 120 characters. For a shell command, the line drops a leading `cd <path> &&` or `cd <path>;` and the leading variable assignments. A command that runs the Checkmate command line, also through a variable, shows as `checkmate <arguments>`. The path of the workspace shows as `.`. Checkmate masks secrets. The permission record shows the full command.

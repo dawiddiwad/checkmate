@@ -557,10 +557,10 @@ for (const [path, form] of [
 		assert.equal(f.read((reading) => allRequests(reading)).length, 0)
 	})
 
-test('the request page shows model text as text and the reply as plain paragraphs and lists', async (t) => {
+test('message details render Markdown and escape raw markup', async (t) => {
 	const f = await serverOf(t, {
 		request: {
-			result: '<script>alert(1)</script> found.\nSecond line.\n\n- one <b>bold</b>\n- two\n\n1. first\n2. second',
+			result: '<script>alert(1)</script> found.\nSecond line.\n\n- **one** <b>bold</b>\n- two\n\n1. first\n2. second\n\n[Plan](/plans/checkout) [Block](javascript:alert%281%29)',
 		},
 	})
 	const id = await f.ask('<img src=x onerror=alert(1)>')
@@ -568,9 +568,11 @@ test('the request page shows model text as text and the reply as plain paragraph
 	const page = (await call(f.ui, `/requests/${id}`)).body
 	assert(!page.includes('<script>alert'))
 	assert(!page.includes('<img src=x'))
-	assert.match(page, /<p>&lt;script&gt;alert\(1\)&lt;\/script&gt; found\.<br \/>Second line\.<\/p>/)
-	assert.match(page, /<ul>\s*<li>one &lt;b&gt;bold&lt;\/b&gt;<\/li>\s*<li>two<\/li>\s*<\/ul>/)
+	assert.match(page, /&lt;script&gt;alert\(1\)&lt;\/script&gt; found\./)
+	assert.match(page, /<ul>\s*<li><strong>one<\/strong> &lt;b&gt;bold&lt;\/b&gt;<\/li>\s*<li>two<\/li>\s*<\/ul>/)
 	assert.match(page, /<ol>\s*<li>first<\/li>\s*<li>second<\/li>\s*<\/ol>/)
+	assert.match(page, /<a href="\/plans\/checkout">Plan<\/a>/)
+	assert.doesNotMatch(page, /href="javascript:/)
 	assert.match(page, /Cost \$0\.06\./)
 })
 

@@ -2355,7 +2355,7 @@ window.addEventListener('pageshow', (event) => {
 	if (event.persisted) {
 		connect()
 		refresh()
-		for (const history of document.querySelectorAll('[data-chat-history]')) history.scrollTop = history.scrollHeight
+		for (const history of document.querySelectorAll('[data-chat-history]')) scrollChatToLatest(history)
 	}
 })
 
@@ -2452,6 +2452,13 @@ function announce(text) {
 	setTimeout(() => (announcer.textContent = text), 50)
 }
 
+function scrollChatToLatest(history) {
+	const bottom = () => (history.scrollTop = history.scrollHeight)
+	bottom()
+	for (const image of history.querySelectorAll('.chat-turn:last-child [data-chat-content] img'))
+		if (!image.complete) image.addEventListener('load', bottom, { once: true })
+}
+
 function replaceRegion(region, fresh, previous) {
 	const before = keyed(previous ?? region)
 	const opened = new Map(
@@ -2478,19 +2485,20 @@ function replaceRegion(region, fresh, previous) {
 		region.matches('[data-chat-history]') &&
 		JSON.stringify(
 			[...region.querySelectorAll('[data-chat-content], [data-chat-terminal]')].map((item) =>
-				item.hasAttribute('data-chat-terminal') ? item.getAttribute('data-chat-terminal') : item.textContent
+				item.hasAttribute('data-chat-terminal') ? item.getAttribute('data-chat-terminal') : item.innerHTML
 			)
 		) !==
 			JSON.stringify(
 				[...fresh.querySelectorAll('[data-chat-content], [data-chat-terminal]')].map((item) =>
-					item.hasAttribute('data-chat-terminal') ? item.getAttribute('data-chat-terminal') : item.textContent
+					item.hasAttribute('data-chat-terminal') ? item.getAttribute('data-chat-terminal') : item.innerHTML
 				)
 			)
 	const scrolled = region.scrollTop
 	const detailMarked = level === 'detail' && region.matches('[data-drawer]')
 	const detailLabel = detailMarked ? current('detail')?.dataset.label : null
 	region.replaceWith(next)
-	next.scrollTop = chatChanged ? next.scrollHeight : scrolled
+	if (chatChanged) scrollChatToLatest(next)
+	else next.scrollTop = scrolled
 	if (next.matches('[data-drawer]')) drawer = next
 	if (review) {
 		for (const area of document.querySelectorAll('[data-nav][aria-expanded]'))
@@ -3325,7 +3333,7 @@ if (activePlanChat && window.matchMedia('(max-width: 900px)').matches) {
 	if (shift > 0) nav.scrollLeft += shift
 }
 
-for (const history of document.querySelectorAll('[data-chat-history]')) history.scrollTop = history.scrollHeight
+for (const history of document.querySelectorAll('[data-chat-history]')) scrollChatToLatest(history)
 
 for (const form of document.querySelectorAll('[data-chat-composer]')) {
 	const harness = form.querySelector('[data-chat-harness]')

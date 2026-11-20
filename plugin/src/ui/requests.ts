@@ -11,6 +11,7 @@ import { failureOf } from './activity.ts'
 import { requestHref } from './permissions.ts'
 import { piErrorText } from '../pi.ts'
 import { authenticationFailed, piAuthenticationHint } from '../sessions.ts'
+import { chatMarkdown } from './markdown.ts'
 
 const kinds: Record<string, string> = { c: 'defect', q: 'question', g: 'gap' }
 const planPath = /^\/plans\/([A-Za-z0-9][A-Za-z0-9_-]{0,95})(?:@[1-9][0-9]{0,8})?(?:\/|$)/
@@ -83,25 +84,6 @@ export function screenContext(store: Store, address: string, chat = false): Requ
 			)
 	}
 	return { planId, record }
-}
-
-function blocks(text: string) {
-	return text
-		.replace(/\r\n?/g, '\n')
-		.trim()
-		.split(/\n{2,}/)
-		.map((block) => {
-			const lines = block.split('\n')
-			if (lines.every((line) => /^\s*[-*] /.test(line)))
-				return html`<ul>
-					${lines.map((line) => html`<li>${line.replace(/^\s*[-*] /, '')}</li>`)}
-				</ul>`
-			if (lines.every((line) => /^\s*\d+[.)] /.test(line)))
-				return html`<ol>
-					${lines.map((line) => html`<li>${line.replace(/^\s*\d+[.)] /, '')}</li>`)}
-				</ol>`
-			return html`<p>${lines.map((line, index) => (index ? html`<br />${line}` : line))}</p>`
-		})
 }
 
 function contextLine(context: RequestContext) {
@@ -296,8 +278,8 @@ export function chatMessagePage(store: Store, context: Context, request: Request
 				request.state === 'answered'
 					? html`<section aria-labelledby="reply-title" data-key="reply">
 							<h2 class="lab" id="reply-title">Reply</h2>
-							<div class="sp-reply">
-								${request.reply?.trim() ? blocks(request.reply) : html`<p class="muted">The reply has no text.</p>`}
+							<div class="sp-reply chat-markdown">
+								${request.reply?.trim() ? chatMarkdown(request.reply) : html`<p class="muted">The reply has no text.</p>`}
 							</div>
 						</section>`
 					: ''

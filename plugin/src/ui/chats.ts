@@ -10,6 +10,7 @@ import { emptyNotice, heading } from './layout.ts'
 import { requestHref } from './permissions.ts'
 import { chatPreferences } from './requester.ts'
 import { failureText } from './requests.ts'
+import { chatMarkdown } from './markdown.ts'
 
 function composer(context: Context, action: string, selection: RequestSelection, screen = '', back = '') {
 	const model = selection.provider && selection.model ? `${selection.provider}/${selection.model}` : selection.model
@@ -98,7 +99,7 @@ function turn(store: Store, request: RequestRecord, context: Context, number: nu
 					<a href="/chats/${request.conversation}/messages/${request.id}">Turn ${number}</a></span
 				>
 			</div>
-			${request.reply ? html`<p data-chat-content>${request.reply}</p>` : ''}
+			${request.reply ? html`<div class="chat-markdown" data-chat-content>${chatMarkdown(request.reply)}</div>` : ''}
 			${request.state === 'waiting' ? html`<p class="help">Waiting for another chat to finish.</p>` : ''}
 			${request.state === 'running' ? html`<p class="help">Working…</p>` : ''}
 			${permissions.map((item) => html`<p class="banner warn">Waiting for permission. <a href="${requestHref(item, back)}">Answer it</a></p>`)}

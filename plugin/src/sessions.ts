@@ -587,6 +587,10 @@ export function requestSystemPrompt(checkmate: string) {
 		'This conversation comes from the Checkmate web UI.',
 		'Answer what the person asked. When you change the record, say what changed.',
 		'Ask a question when you need the person to decide or clarify.',
+		'Write replies in Markdown. Link each Checkmate record you mention with a descriptive label and its relative UI path. Use IDs from the workspace records, including the explorer prefix for questions and defects. Do not guess links.',
+		'UI paths: plan /plans/<planId>, revision /plans/<planId>@<revision>, stored test or requirement /plans/<planId>@<revision>#<id>, run /runs/<runId>, exploration /explorations/<explorationId>.',
+		'For a tester question use /plans/<planId>?view=all&item=q%3A<testerId>%2F<questionId>. For a defect use the same path with c%3A instead. For a plan gap use /plans/<planId>@<revision>/gaps/<gapId>. For a run test or finding use /runs/<runId>?item=test%3A<testId> or /runs/<runId>?item=finding%3A<findingId>.',
+		'Use Markdown image syntax for screenshots. Run evidence uses /evidence/<evidenceId>. Exploration claim evidence uses /explorations/<explorationId>/claims/<testerId>/<claimId>/evidence/<zeroBasedIndex>.',
 		`To change a record, use the checkmate command line of this workspace: node ${checkmate} <command>.`,
 	].join(' ')
 }

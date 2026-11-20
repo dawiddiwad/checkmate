@@ -268,3 +268,75 @@ test('plan and global chat lists show newly reported costs without reloading', b
 		closeStore(store)
 	}
 })
+
+test('a plan chat renders Markdown and opens the linked question and run', browserTest, async (t) => {
+	const { page, url, workspace } = await open(t, { viewport: { width: 390, height: 844 }, colorScheme: 'dark' })
+	const question = '/plans/coupons?view=all&item=q%3Ak1%2FQ4'
+	const run = '/runs/run-7'
+	const evidence = '/explorations/x-11/claims/k1/D1/evidence/0'
+	const reading = openStore(workspace)
+	const id = askRequest(reading, 'qa', {
+		text: 'Which checks need my attention?',
+		context: { planId: 'coupons', record: null, planChat: true },
+		chatId: null,
+		harness: 'pi',
+	})
+	const address = url(`/plans/coupons?chat=${requestOf(reading, id)!.conversation}`)
+	try {
+		setRequestState(reading, id, 'answered', {
+			reply: [
+				'### Items to review',
+				'',
+				`- **Read** [question k1/Q4](${question}).`,
+				`  - Check [run 7](${run}).`,
+				'- Inspect `coupon_status`.',
+				'',
+				'| Check | Status |',
+				'| --- | ---: |',
+				'| Coupons | Ready |',
+				'',
+				'```text',
+				'long output '.repeat(25),
+				'```',
+				'',
+				`![Coupon evidence](${evidence})`,
+				'![External image](https://images.example.com/coupon.png)',
+				'[Unsafe link](javascript:alert%281%29)',
+				'<img src=x onerror="window.hit=1">',
+			].join('\n'),
+		})
+	} finally {
+		closeStore(reading)
+	}
+	const externalRequests: string[] = []
+	page.on('request', (request) => {
+		if (request.url().startsWith('https://images.example.com/')) externalRequests.push(request.url())
+	})
+	await page.goto(address)
+	const reply = page.locator('.chat-markdown')
+	await reply.getByRole('heading', { name: 'Items to review' }).waitFor()
+	assert.equal(await reply.locator('ul ul li').textContent(), 'Check run 7.')
+	assert.equal(await reply.locator('strong').textContent(), 'Read')
+	assert.equal(await reply.locator('p code, li code').textContent(), 'coupon_status')
+	const status = reply.getByRole('cell', { name: 'Ready' })
+	assert.equal(await status.isVisible(), true)
+	assert.equal(await status.evaluate((el) => getComputedStyle(el).textAlign), 'right')
+	assert.match((await reply.locator('pre code').textContent()) ?? '', /long output/)
+	await page.waitForFunction(
+		() => document.querySelector<HTMLImageElement>('img[alt="Coupon evidence"]')?.naturalWidth
+	)
+	assert.equal(await reply.locator('img').count(), 1)
+	assert.equal(await reply.getByRole('link', { name: 'External image' }).count(), 1)
+	assert.equal(await reply.getByRole('link', { name: 'Unsafe link' }).count(), 0)
+	assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true)
+	const history = page.locator('[data-chat-history]')
+	assert(await history.evaluate((el) => el.scrollHeight - el.scrollTop - el.clientHeight < 2))
+	assert.deepEqual(externalRequests, [])
+	await reply.getByRole('link', { name: 'question k1/Q4' }).click()
+	await page.waitForURL(url(question))
+	await page.locator('[data-drawer]').waitFor()
+	await page.goto(address)
+	await reply.getByRole('link', { name: 'run 7' }).click()
+	await page.waitForURL(url(run))
+	await page.getByRole('heading', { name: 'run-7', exact: true }).waitFor()
+})

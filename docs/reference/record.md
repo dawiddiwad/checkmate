@@ -167,7 +167,7 @@ The rule map also has `areas`. An area groups the rules that have the same `area
 
 ## Review UI
 
-The UI is a `node:http` server in the plugin. It has no npm dependencies and loads nothing from the internet.
+The UI is a `node:http` server in the plugin. It runs from the bundled plugin without an npm install. The UI loads its assets and evidence from the local server. A link can open an external site.
 
 - It listens on `127.0.0.1` only. It refuses a request with another `Host` header, and a form from another origin.
 - Each form carries a token from the current start of the UI.

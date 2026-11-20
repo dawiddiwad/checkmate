@@ -3314,7 +3314,7 @@ document.addEventListener(
 )
 
 const activePlanChat = document.querySelector('[data-navigator] [data-target="chats"][aria-selected="true"]')
-if (activePlanChat && matchMedia('(max-width: 900px)').matches) {
+if (activePlanChat && window.matchMedia('(max-width: 900px)').matches) {
 	const nav = activePlanChat.closest('[data-navigator]')
 	const shift = activePlanChat.getBoundingClientRect().right - nav.getBoundingClientRect().right + 8
 	if (shift > 0) nav.scrollLeft += shift

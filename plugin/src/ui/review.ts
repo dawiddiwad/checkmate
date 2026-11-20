@@ -816,21 +816,29 @@ const cellWords: Record<CellStatus, [string, string]> = {
 	not_checked: ['not tested', ''],
 }
 
+function buildHeadline(review: Review, defects: number, critical: number) {
+	if (review.running)
+		return `Build ${review.running.build} is under test now by ${plural(review.running.explorers ?? 0, 'tester')}.`
+	const last = review.explorations.at(-1)
+	if (last && (last.state === 'stopped' || last.state === 'interrupted'))
+		return `The test of build ${last.build} was ${last.state}.`
+	const build = review.map.builds.at(-1)?.build
+	if (build) return `Build ${build}: ${plural(defects, 'open defect')}${critical ? `, ${critical} critical` : ''}.`
+	const run = review.latestFinalizedRun
+	if (!run) return 'No build is tested yet.'
+	const counts = Object.entries(run.counts).map(([outcome, count]) => `${count} ${words(outcome)}`)
+	const outcome =
+		run.completion === 'completed' && counts.length ? counts.join(', ') : words(run.completion ?? 'finalized')
+	return `Build ${run.build}: ${outcome}.`
+}
+
 export function verdictLine(review: Review) {
 	const defects = review.items.filter((item) => item.kind === 'defect' && item.claim?.open)
 	const critical = defects.filter((item) => item.severity === 'critical').length
 	const findings = review.items.filter((item) => item.kind === 'finding').length
 	const open = review.items.filter((item) => item.kind === 'question' || item.kind === 'gap')
 	const blocking = open.filter((item) => item.blocking).length
-	const build = review.map.builds.at(-1)?.build
-	const last = review.explorations.at(-1)
-	const head = review.running
-		? `Build ${review.running.build} is under test now by ${plural(review.running.explorers ?? 0, 'tester')}.`
-		: last && (last.state === 'stopped' || last.state === 'interrupted')
-			? `The test of build ${last.build} was ${last.state === 'stopped' ? 'stopped' : 'interrupted'}.`
-			: build
-				? `Build ${build}: ${plural(defects.length, 'open defect')}${critical ? `, ${critical} critical` : ''}.`
-				: 'No build is tested yet.'
+	const head = buildHeadline(review, defects.length, critical)
 	const tail = [
 		findings ? `${plural(findings, 'finding')} ${findings === 1 ? 'needs' : 'need'} your look.` : null,
 		open.length
@@ -845,7 +853,10 @@ export function verdictLine(review: Review) {
 function viewHead(review: Review, view: string) {
 	const verdict = verdictLine(review)
 	if (view === 'needs')
-		return { sub: 'Questions to answer and findings to decide, blocking ones first.', pills: html`` }
+		return {
+			sub: `${verdict.head} Questions to answer and findings to decide, blocking ones first.`,
+			pills: html``,
+		}
 	if (view === 'all') return { sub: `${verdict.head} ${verdict.tail}`, pills: html`` }
 	if (view === 'rules') {
 		const origin = review.map.rulesOrigin

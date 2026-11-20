@@ -65,6 +65,8 @@ The old addresses `/plans`, `/inbox`, and `/claims` open the home page. `/claims
 - One row for each build, `B1`, `B2`, and so on, in the order in which the plan tested them.
 - `Rules of the plan`, then `Plan @<revision>` (or `Plan request` for a plan without a revision).
 
+The `Needs you` and `All items` summaries use the same build summary as the plan card. The rule marks come from exploration records.
+
 The centre shows the items of the highlighted row. The items are in groups: `Is this a defect?` (the findings that are `suspected` or `unresolved`), `Questions that block testing`, `Approvals`, the other questions by topic, the defects by severity, `Answered questions`, and `Rejected findings`. An area shows the items of all its rules, grouped by rule. A rule shows its state on each build. Click a mark of a rule or an area, or press its number, to show only the items of that build.
 
 Each row shows a box for the selection, a badge, the ID, the title, and a short note, for example `Returned · ×3`. The highlighted row also shows its options, numbered from left to right:

@@ -24299,15 +24299,27 @@ var cellWords = {
   passed: ["passed", "green"],
   not_checked: ["not tested", ""]
 };
+function buildHeadline(review, defects, critical) {
+  if (review.running)
+    return `Build ${review.running.build} is under test now by ${plural(review.running.explorers ?? 0, "tester")}.`;
+  const last = review.explorations.at(-1);
+  if (last && (last.state === "stopped" || last.state === "interrupted"))
+    return `The test of build ${last.build} was ${last.state}.`;
+  const build = review.map.builds.at(-1)?.build;
+  if (build) return `Build ${build}: ${plural(defects, "open defect")}${critical ? `, ${critical} critical` : ""}.`;
+  const run2 = review.latestFinalizedRun;
+  if (!run2) return "No build is tested yet.";
+  const counts2 = Object.entries(run2.counts).map(([outcome2, count2]) => `${count2} ${words(outcome2)}`);
+  const outcome = run2.completion === "completed" && counts2.length ? counts2.join(", ") : words(run2.completion ?? "finalized");
+  return `Build ${run2.build}: ${outcome}.`;
+}
 function verdictLine(review) {
   const defects = review.items.filter((item) => item.kind === "defect" && item.claim?.open);
   const critical = defects.filter((item) => item.severity === "critical").length;
   const findings = review.items.filter((item) => item.kind === "finding").length;
   const open = review.items.filter((item) => item.kind === "question" || item.kind === "gap");
   const blocking = open.filter((item) => item.blocking).length;
-  const build = review.map.builds.at(-1)?.build;
-  const last = review.explorations.at(-1);
-  const head = review.running ? `Build ${review.running.build} is under test now by ${plural(review.running.explorers ?? 0, "tester")}.` : last && (last.state === "stopped" || last.state === "interrupted") ? `The test of build ${last.build} was ${last.state === "stopped" ? "stopped" : "interrupted"}.` : build ? `Build ${build}: ${plural(defects.length, "open defect")}${critical ? `, ${critical} critical` : ""}.` : "No build is tested yet.";
+  const head = buildHeadline(review, defects.length, critical);
   const tail = [
     findings ? `${plural(findings, "finding")} ${findings === 1 ? "needs" : "need"} your look.` : null,
     open.length ? `${plural(open.length, "question")} open${blocking ? `, ${blocking} ${blocking === 1 ? "blocks" : "block"} testing` : ""}.` : null
@@ -24317,7 +24329,10 @@ function verdictLine(review) {
 function viewHead(review, view) {
   const verdict = verdictLine(review);
   if (view === "needs")
-    return { sub: "Questions to answer and findings to decide, blocking ones first.", pills: html2`` };
+    return {
+      sub: `${verdict.head} Questions to answer and findings to decide, blocking ones first.`,
+      pills: html2``
+    };
   if (view === "all") return { sub: `${verdict.head} ${verdict.tail}`, pills: html2`` };
   if (view === "rules") {
     const origin2 = review.map.rulesOrigin;
@@ -25574,11 +25589,6 @@ var roleWords = {
   factory: "the factory",
   none: "nobody"
 };
-function runHeadline(run2) {
-  const counts2 = Object.entries(run2.counts).map(([outcome2, count2]) => `${count2} ${words(outcome2)}`);
-  const outcome = run2.completion === "completed" && counts2.length ? counts2.join(", ") : words(run2.completion ?? "finalized");
-  return `Build ${run2.build}: ${outcome}.`;
-}
 function tile(review, plan, runDefects, index2) {
   const { loop: loop2, costUsd, costPartial } = plan;
   const verdict = verdictLine(review);
@@ -25587,8 +25597,6 @@ function tile(review, plan, runDefects, index2) {
   const [label, href] = nextStep(review);
   const last = review.explorations.at(-1);
   const ended = !review.running && last && ["stopped", "interrupted"].includes(last.state) ? last : null;
-  const run2 = review.latestFinalizedRun;
-  const headline = !latest && !review.running && !ended && run2 ? runHeadline(run2) : verdict.head;
   const nums = [
     [verdict.defects + runDefects, "defects", false],
     [verdict.findings, "to look at", verdict.findings > 0],
@@ -25620,7 +25628,7 @@ function tile(review, plan, runDefects, index2) {
 				>
 			</div>
 			<h2 class="sp-ct-title ell" title="${review.objective}">${review.objective}</h2>
-			<p class="sp-ct-verdict"><b>${headline}</b> ${verdict.tail}</p>
+			<p class="sp-ct-verdict"><b>${verdict.head}</b> ${verdict.tail}</p>
 			<p class="sp-ct-cost" title="Reported cost across this plan’s explorations and chats">
 				Total cost ${costText(costUsd, costPartial)}
 			</p>

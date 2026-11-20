@@ -764,6 +764,21 @@ test('the Plans card counts stored defects and shows the finalized build before 
 	assert.match(fixed, /Build build-2: 2 passed\./)
 })
 
+test('the plan card and review views show the latest finalized run of a plan with only stored runs', async (t) => {
+	const { ui } = await start(t)
+	const summary = 'Build fixture-build-2: 1 failed, 1 inconclusive, 1 passed.'
+	const home = await call(ui, '/')
+	const card = home.body.match(/data-key="plan:checkout"[\s\S]*?(?=data-key=")/)![0]
+	assert(card.includes(summary), card)
+	for (const view of ['needs', 'all']) {
+		const page = await call(ui, `/plans/checkout?view=${view}`)
+		assert.equal(page.status, 200)
+		const panel = page.body.match(new RegExp(`data-panel="${view}"[^>]*>[\\s\\S]*?</section>`))![0]
+		assert(panel.includes(summary), view)
+		assert.doesNotMatch(page.body, /data-panel="build:fixture-build-2"/)
+	}
+})
+
 test('a started retest keeps the run that status waits on in the inbox and on its run page', async (t) => {
 	const { ui, workspace } = await start(t)
 	assert.match((await call(ui, '/plans/checkout')).body, /data-key="r:run-7"/)

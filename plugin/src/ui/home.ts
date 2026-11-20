@@ -72,13 +72,6 @@ const roleWords: Record<string, string> = {
 	none: 'nobody',
 }
 
-function runHeadline(run: NonNullable<Review['latestFinalizedRun']>) {
-	const counts = Object.entries(run.counts).map(([outcome, count]) => `${count} ${words(outcome)}`)
-	const outcome =
-		run.completion === 'completed' && counts.length ? counts.join(', ') : words(run.completion ?? 'finalized')
-	return `Build ${run.build}: ${outcome}.`
-}
-
 function tile(review: Review, plan: PlanListRow, runDefects: number, index: number) {
 	const { loop, costUsd, costPartial } = plan
 	const verdict = verdictLine(review)
@@ -87,8 +80,6 @@ function tile(review: Review, plan: PlanListRow, runDefects: number, index: numb
 	const [label, href] = nextStep(review)
 	const last = review.explorations.at(-1)
 	const ended = !review.running && last && ['stopped', 'interrupted'].includes(last.state) ? last : null
-	const run = review.latestFinalizedRun
-	const headline = !latest && !review.running && !ended && run ? runHeadline(run) : verdict.head
 	const nums: Array<[number, string, boolean]> = [
 		[verdict.defects + runDefects, 'defects', false],
 		[verdict.findings, 'to look at', verdict.findings > 0],
@@ -134,7 +125,7 @@ function tile(review: Review, plan: PlanListRow, runDefects: number, index: numb
 				>
 			</div>
 			<h2 class="sp-ct-title ell" title="${review.objective}">${review.objective}</h2>
-			<p class="sp-ct-verdict"><b>${headline}</b> ${verdict.tail}</p>
+			<p class="sp-ct-verdict"><b>${verdict.head}</b> ${verdict.tail}</p>
 			<p class="sp-ct-cost" title="Reported cost across this plan’s explorations and chats">
 				Total cost ${costText(costUsd, costPartial)}
 			</p>

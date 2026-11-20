@@ -449,6 +449,7 @@ const commands: Record<string, Command> = {
 	},
 	'target request': {
 		positionals: ['targetId'],
+		readOnly: true,
 		run: (store, args) => showTargetRequest(store, value(args, 'targetId')!),
 		print: (reply) => {
 			const request = reply.data.request as TargetRequest
@@ -472,6 +473,7 @@ const commands: Record<string, Command> = {
 	},
 	'target list': {
 		positionals: [],
+		readOnly: true,
 		run: (store) => completed('targets', { targets: targetList(store) }),
 		print: (reply) => ({
 			facts: { count: (reply.data.targets as unknown[]).length },
@@ -485,6 +487,7 @@ const commands: Record<string, Command> = {
 	'target show': {
 		positionals: ['reference'],
 		flags: { instance: 'value' },
+		readOnly: true,
 		run: (store, args) => showTarget(store, value(args, 'reference')!, value(args, 'instance')),
 		print: (reply) => {
 			const profile = reply.data.profile as Profile
@@ -564,6 +567,7 @@ const commands: Record<string, Command> = {
 	},
 	'target instance list': {
 		positionals: ['targetId'],
+		readOnly: true,
 		run: (store, args) => {
 			const targetId = value(args, 'targetId')!
 			return completed(targetId, { instances: instanceList(store, targetId) })
@@ -598,6 +602,7 @@ const commands: Record<string, Command> = {
 	},
 	'plan request': {
 		positionals: ['planId'],
+		readOnly: true,
 		run: (store, args) => showPlanRequest(store, value(args, 'planId')!),
 		print: (reply) => {
 			const data = reply.data as ReturnType<typeof showPlanRequest>['data'] & {
@@ -636,12 +641,14 @@ const commands: Record<string, Command> = {
 	'plan show': {
 		positionals: ['reference'],
 		flags: { tests: 'list', fields: 'list', gaps: ['open', 'all'] },
+		readOnly: true,
 		run: (store, args) => showPlan(store, args),
 		print: printPlan,
 	},
 	'plan list': {
 		positionals: [],
 		flags: { 'needs-decision': 'switch', 'awaiting-approval': 'switch', blocked: 'switch', 'waits-on': roles },
+		readOnly: true,
 		run: (store, args) => {
 			const waitsOn = value(args, 'waits-on')
 			const plans = planList(store).filter(
@@ -671,6 +678,7 @@ const commands: Record<string, Command> = {
 	},
 	'plan diff': {
 		positionals: ['planId', 'from', 'to'],
+		readOnly: true,
 		run: (store, args) =>
 			diffPlan(store, { planId: value(args, 'planId')!, from: value(args, 'from')!, to: value(args, 'to')! }),
 		print: (reply) => {
@@ -719,6 +727,7 @@ const commands: Record<string, Command> = {
 	},
 	'plan pending': {
 		positionals: ['planId'],
+		readOnly: true,
 		run: (store, args) => showPending(store, value(args, 'planId')!),
 		print: (reply) => {
 			const data = reply.data as ReturnType<typeof showPending>['data'] & {
@@ -798,6 +807,7 @@ const commands: Record<string, Command> = {
 		positionals: ['reference'],
 		flags: { tests: 'list', build: 'value', partial: partialModes, 'retest-of': 'value' },
 		required: ['build'],
+		readOnly: true,
 		run: (store, args) =>
 			gate(store, {
 				reference: value(args, 'reference')!,
@@ -970,6 +980,7 @@ const commands: Record<string, Command> = {
 	'run show': {
 		positionals: ['runId'],
 		flags: { tests: 'list' },
+		readOnly: true,
 		run: (store, args) => {
 			const detail = runDetail(store, value(args, 'runId')!)
 			const selected = list(args, 'tests')
@@ -1040,6 +1051,7 @@ const commands: Record<string, Command> = {
 	'run list': {
 		positionals: [],
 		flags: { plan: 'value', build: 'value' },
+		readOnly: true,
 		run: (store, args) =>
 			completed('runs', { runs: runList(store, { planId: value(args, 'plan'), build: value(args, 'build') }) }),
 		print: (reply) => ({
@@ -1059,6 +1071,7 @@ const commands: Record<string, Command> = {
 	'finding list': {
 		positionals: [],
 		flags: { plan: 'value', open: 'switch' },
+		readOnly: true,
 		run: (store, args) =>
 			completed('findings', {
 				findings: findingList(store, { planId: value(args, 'plan'), open: Boolean(args.open) }),
@@ -1090,6 +1103,7 @@ const commands: Record<string, Command> = {
 		positionals: ['evidenceId'],
 		flags: { out: 'value' },
 		required: ['out'],
+		readOnly: true,
 		run: (store, args) => {
 			const evidence = evidenceBytes(store, value(args, 'evidenceId')!)
 			const out = writeOutput(store, value(args, 'out')!, evidence.bytes)
@@ -1573,6 +1587,7 @@ const commands: Record<string, Command> = {
 	},
 	'explore levels': {
 		positionals: [],
+		readOnly: true,
 		run: () => completed('levels', { levels: testLevels }),
 		print: (reply) => ({
 			lines: Object.entries(reply.data.levels as typeof testLevels).map(([name, level]) => [
@@ -1770,6 +1785,7 @@ function exportCommand(
 		positionals: [positional],
 		flags: { format: choices, out: 'value' },
 		required: ['format'],
+		readOnly: true,
 		run: (store, args) => {
 			const subject = value(args, positional)!
 			const format = value(args, 'format')!

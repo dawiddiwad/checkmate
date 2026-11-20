@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs'
 import { execFileSync, spawn } from 'node:child_process'
 import { userInfo } from 'node:os'
 import { join } from 'node:path'
-import { closeStore, openStore } from '../plugin/src/store.ts'
+import { closeStore } from '../plugin/src/store.ts'
 import { uiOptions } from '../plugin/src/cli.ts'
 import { answerGap, rejectPlan } from '../plugin/src/plans.ts'
 import { beginRun, closeTest, finishRun, rejectResult } from '../plugin/src/runs.ts'
@@ -182,22 +182,37 @@ test('--expect-sha stops a decision on a changed snapshot', (t) => {
 	assert.equal(approved.lines[0], `completed checkout@2 verdict=approved sha256=${sha256.slice(0, 8)}`)
 })
 
-test('status reads the committed plan while another command holds the write lock', (t) => {
-	const workspace = setup(t)
-	const writer = openStore(workspace)
+test('inspection commands read committed records while another command holds the write lock', async (t) => {
+	const writer = store(t)
+	const { workspace } = writer
+	ready(writer)
+	assert.equal(passRun(writer, 'run-1', 'build-1').status, 'completed')
+	const commands: Array<[string[], object]> = [
+		[['status', 'checkout'], { subject: 'checkout' }],
+		[['plan', 'show', 'checkout@2'], { subject: 'checkout@2', plan: { objective: planRequest().objective } }],
+		[['run', 'show', 'run-1'], { subject: 'run-1', state: 'finalized' }],
+		[
+			['target', 'show', 'checkout-local@1', '--instance', 'local'],
+			{ subject: 'checkout-local@1', instance: { instanceId: 'local' } },
+		],
+		[['run', 'list'], { subject: 'runs', runs: [{ runId: 'run-1' }] }],
+	]
+	writer.db.exec('BEGIN IMMEDIATE')
 	try {
-		writer.db.exec('BEGIN IMMEDIATE')
-		writer.db.exec("UPDATE plan_revisions SET body = json_set(body, '$.objective', 'Uncommitted objective')")
-		const result = execFileSync(
-			process.execPath,
-			[join(root, 'plugin/dist/checkmate.js'), 'status', 'checkout', '--workspace', workspace, '--json'],
-			{ encoding: 'utf8', env: { ...process.env, CHECKMATE_BUSY_TIMEOUT_MS: '10' } }
-		)
-		assert.equal(JSON.parse(result).status, 'completed')
-		assert.doesNotMatch(result, /Uncommitted objective/)
+		writer.db.exec(`INSERT INTO instances (target_id, instance_id, body, operation_id)
+			SELECT target_id, 'uncommitted-instance', body, operation_id FROM instances WHERE instance_id = 'local'`)
+		for (const [args, expected] of commands)
+			await t.test(args.join(' '), () => {
+				const result = execFileSync(
+					process.execPath,
+					[join(root, 'plugin/dist/checkmate.js'), ...args, '--workspace', workspace, '--json'],
+					{ encoding: 'utf8', env: { ...process.env, CHECKMATE_BUSY_TIMEOUT_MS: '10' } }
+				)
+				assert.partialDeepStrictEqual(JSON.parse(result), { status: 'completed', ...expected })
+				assert.doesNotMatch(result, /uncommitted-instance/)
+			})
 	} finally {
 		writer.db.exec('ROLLBACK')
-		closeStore(writer)
 	}
 })
 

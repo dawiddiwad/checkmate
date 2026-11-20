@@ -37057,6 +37057,7 @@ var commands = {
   },
   "target request": {
     positionals: ["targetId"],
+    readOnly: true,
     run: (store, args) => showTargetRequest(store, value(args, "targetId")),
     print: (reply) => {
       const request2 = reply.data.request;
@@ -37079,6 +37080,7 @@ var commands = {
   },
   "target list": {
     positionals: [],
+    readOnly: true,
     run: (store) => completed("targets", { targets: targetList(store) }),
     print: (reply) => ({
       facts: { count: reply.data.targets.length },
@@ -37092,6 +37094,7 @@ var commands = {
   "target show": {
     positionals: ["reference"],
     flags: { instance: "value" },
+    readOnly: true,
     run: (store, args) => showTarget(store, value(args, "reference"), value(args, "instance")),
     print: (reply) => {
       const profile = reply.data.profile;
@@ -37167,6 +37170,7 @@ var commands = {
   },
   "target instance list": {
     positionals: ["targetId"],
+    readOnly: true,
     run: (store, args) => {
       const targetId = value(args, "targetId");
       return completed(targetId, { instances: instanceList(store, targetId) });
@@ -37198,6 +37202,7 @@ var commands = {
   },
   "plan request": {
     positionals: ["planId"],
+    readOnly: true,
     run: (store, args) => showPlanRequest(store, value(args, "planId")),
     print: (reply) => {
       const data = reply.data;
@@ -37226,12 +37231,14 @@ var commands = {
   "plan show": {
     positionals: ["reference"],
     flags: { tests: "list", fields: "list", gaps: ["open", "all"] },
+    readOnly: true,
     run: (store, args) => showPlan(store, args),
     print: printPlan
   },
   "plan list": {
     positionals: [],
     flags: { "needs-decision": "switch", "awaiting-approval": "switch", blocked: "switch", "waits-on": roles },
+    readOnly: true,
     run: (store, args) => {
       const waitsOn = value(args, "waits-on");
       const plans = planList(store).filter(
@@ -37255,6 +37262,7 @@ var commands = {
   },
   "plan diff": {
     positionals: ["planId", "from", "to"],
+    readOnly: true,
     run: (store, args) => diffPlan(store, { planId: value(args, "planId"), from: value(args, "from"), to: value(args, "to") }),
     print: (reply) => {
       const patch = reply.data.patch;
@@ -37299,6 +37307,7 @@ var commands = {
   },
   "plan pending": {
     positionals: ["planId"],
+    readOnly: true,
     run: (store, args) => showPending(store, value(args, "planId")),
     print: (reply) => {
       const data = reply.data;
@@ -37372,6 +37381,7 @@ var commands = {
     positionals: ["reference"],
     flags: { tests: "list", build: "value", partial: partialModes, "retest-of": "value" },
     required: ["build"],
+    readOnly: true,
     run: (store, args) => gate(store, {
       reference: value(args, "reference"),
       tests: list2(args, "tests"),
@@ -37530,6 +37540,7 @@ var commands = {
   "run show": {
     positionals: ["runId"],
     flags: { tests: "list" },
+    readOnly: true,
     run: (store, args) => {
       const detail = runDetail(store, value(args, "runId"));
       const selected = list2(args, "tests");
@@ -37600,6 +37611,7 @@ var commands = {
   "run list": {
     positionals: [],
     flags: { plan: "value", build: "value" },
+    readOnly: true,
     run: (store, args) => completed("runs", { runs: runList(store, { planId: value(args, "plan"), build: value(args, "build") }) }),
     print: (reply) => ({
       facts: { count: reply.data.runs.length },
@@ -37618,6 +37630,7 @@ var commands = {
   "finding list": {
     positionals: [],
     flags: { plan: "value", open: "switch" },
+    readOnly: true,
     run: (store, args) => completed("findings", {
       findings: findingList(store, { planId: value(args, "plan"), open: Boolean(args.open) })
     }),
@@ -37648,6 +37661,7 @@ var commands = {
     positionals: ["evidenceId"],
     flags: { out: "value" },
     required: ["out"],
+    readOnly: true,
     run: (store, args) => {
       const evidence2 = evidenceBytes(store, value(args, "evidenceId"));
       const out = writeOutput(store, value(args, "out"), evidence2.bytes);
@@ -38118,6 +38132,7 @@ var commands = {
   },
   "explore levels": {
     positionals: [],
+    readOnly: true,
     run: () => completed("levels", { levels: testLevels }),
     print: (reply) => ({
       lines: Object.entries(reply.data.levels).map(([name2, level]) => [
@@ -38303,6 +38318,7 @@ function exportCommand(positional, choices, render) {
     positionals: [positional],
     flags: { format: choices, out: "value" },
     required: ["format"],
+    readOnly: true,
     run: (store, args) => {
       const subject = value(args, positional);
       const format3 = value(args, "format");

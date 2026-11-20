@@ -134,7 +134,10 @@ export function recorderPrompt(
 		'When the session skipped the retest, was blocked or refused, or could not observe a result, use not_retested. Put the reason in "saw".',
 		...(rules.length
 			? [
-					'For each rule of the plan that the session checked, log one criterion with its "rule" and "verdict". Give each defect and question its "rule", or outside.',
+					'For each rule of the plan that the session checked, log one criterion with its "rule".',
+					'Use "ok" only when the session observed that the product met the rule. Use "wrong" only when the session observed product behaviour that contradicts the rule. Put the specific observed behaviour in "saw".',
+					'A skipped, partial, blocked, or refused check leaves the rule unverified unless the session observed behaviour that contradicts it. Omit "verdict" for an unverified rule. If useful, log a note with the reason. A test restriction, a missing result, or an inference from another rule gives no verdict.',
+					'Give each defect and question its "rule", or outside.',
 				]
 			: []),
 		'',

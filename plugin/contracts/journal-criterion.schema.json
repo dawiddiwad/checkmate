@@ -30,8 +30,13 @@
 			"minLength": 1
 		},
 		"verdict": {
-			"description": "ok when the result is correct. wrong when it is not.",
+			"description": "ok when the observed behaviour meets the rule. wrong when the observed behaviour contradicts the rule. Omit it when the rule remains unverified.",
 			"enum": ["ok", "wrong"]
+		},
+		"saw": {
+			"description": "The specific product behaviour that the test session observed for this rule. Required for ok and wrong in a recorder reply.",
+			"type": "string",
+			"minLength": 1
 		},
 		"area": {
 			"$ref": "journal-entry.schema.json#/definitions/area"

@@ -419,6 +419,12 @@ function checkedEntry(
 		)
 	}
 	const entry = draft as Omit<Entry, 'evidence'> & { evidence?: string | string[] }
+	if (recorded && entry.kind === 'criterion' && entry.verdict && !entry.saw?.trim())
+		throw new EntryRefusal(
+			`${path}.saw`,
+			`${path}.saw is required for a criterion verdict in a recorder reply`,
+			'Give the specific product behaviour the session observed for this rule, or omit the verdict if the rule remains unverified.'
+		)
 	if (entry.rule !== undefined && entry.rule !== outsideRule && !rules.ids.has(entry.rule)) {
 		rules.unknown.push(entry.rule)
 		entry.rule = outsideRule

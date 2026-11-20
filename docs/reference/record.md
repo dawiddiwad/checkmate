@@ -157,13 +157,16 @@ The JSON Schemas `plugin/contracts/journal-*.schema.json` define the entries. Ea
 | Entry       | Field     | Holds                                                                                           |
 | ----------- | --------- | ----------------------------------------------------------------------------------------------- |
 | `criterion` | `rule`    | The ID of the plan rule that the session checked, or `outside`.                                 |
-| `criterion` | `verdict` | `ok` when the behaviour was right, `wrong` when it was not.                                     |
+| `criterion` | `verdict` | `ok` when the observed behaviour meets the rule. `wrong` when it contradicts the rule.          |
+| `criterion` | `saw`     | The specific product behaviour that the test session observed for the rule.                     |
 | `defect`    | `rule`    | The ID of the plan rule that the defect concerns, or `outside` for behaviour outside the rules. |
 | `question`  | `rule`    | The ID of the plan rule that the question concerns, or `outside`.                               |
 | `question`  | `actual`  | What the build does now, in one sentence.                                                       |
 | `topic`     | `label`   | The topic of the merged questions in one to three words.                                        |
 
 A `verdict` entry names an earlier defect or issue. Its `result` is `fixed`, `not_fixed`, or `not_retested`. For `not_retested`, give the reason in `saw`. The record keeps the entry and its evidence. Only `fixed` and `not_fixed` count as votes on the claim for the build.
+
+A recorder reply must give `saw` for a criterion with a verdict. Leave out the verdict if a skipped, partial, blocked, or refused check leaves the rule unverified. Use a note to record the reason. Checkmate checks that the observation field has text. The tester supplies the observation. Manual log entries and earlier records can omit `saw`.
 
 Checkmate checks each `rule` against the rules of the charter. It changes an unknown ID to `outside` and counts it. The rule of a claim is the most frequent `rule` of its reports. With a tie, it is the rule of the first report. The rule of a merged question comes from its members in the same way.
 

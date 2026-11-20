@@ -38,6 +38,7 @@ export type JournalCriterion = {
 	text: string
 	source?: string
 	verdict?: 'ok' | 'wrong'
+	saw?: string
 	area?: string
 }
 

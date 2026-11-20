@@ -5,9 +5,11 @@ import { mkdirSync, realpathSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { run } from '../plugin/src/cli.ts'
 import { recorderPrompt } from '../plugin/src/briefs.ts'
+import { ruleMap } from '../plugin/src/rulemap.ts'
 import { actor, directory, plan, store, target } from './support.ts'
 import { fakeClaude } from './claude.ts'
 import { closeStore } from '../plugin/src/store.ts'
+import { done } from './explorations.ts'
 
 const session = '22222222-2222-4222-8222-222222222222'
 const observation = { kind: 'observation', about: 'coupon', saw: 'The total is 450.00.' }
@@ -103,7 +105,7 @@ test('record forks the test session, and Checkmate logs the reply as the explore
 	)
 	assert.match(
 		call.prompt,
-		/\nFor each rule of the plan that the session checked, log one criterion with its "rule" and "verdict"\. Give each defect and question its "rule", or outside\.\n/
+		/Use "wrong" only when the session observed product behaviour that contradicts the rule\..*\n.*Omit "verdict" for an unverified rule/
 	)
 	assert.match(
 		call.prompt,
@@ -126,7 +128,13 @@ test('the recorder ties criteria, defects, and questions to a plan rule, and an 
 	const { record, reply, entries } = setup(t)
 	reply({
 		recorder: [
-			{ kind: 'criterion', rule: 'R1', text: 'A 400 PLN order totals 400 PLN.', verdict: 'ok' },
+			{
+				kind: 'criterion',
+				rule: 'R1',
+				text: 'A 400 PLN order totals 400 PLN.',
+				verdict: 'ok',
+				saw: 'The order summary showed a total of 400 PLN.',
+			},
 			{ ...defect, rule: 'R9' },
 			{ kind: 'question', rule: 'outside', question: 'Is a gift card a payment?' },
 			{ kind: 'question', question: 'Does the promotion stack?' },
@@ -142,6 +150,44 @@ test('the recorder ties criteria, defects, and questions to a plan rule, and an 
 			['outside', undefined],
 			['outside', undefined],
 			[undefined, undefined],
+		]
+	)
+})
+
+test('the recorder requires an observation for criterion verdicts and keeps incomplete checks unverified', (t) => {
+	const { workspace, record, reply, called, entries } = setup(t)
+	const skipped = { kind: 'criterion', rule: 'R3', text: 'Refund eligibility is unspecified.' }
+	const partial = { kind: 'criterion', rule: 'R2', text: 'A 40 percent promotion applies.' }
+	const observed = {
+		kind: 'criterion',
+		rule: 'R1',
+		text: 'A 400 PLN order totals 400 PLN.',
+		verdict: 'wrong',
+		saw: 'The order summary showed a total of 450 PLN.',
+	}
+	reply({
+		recorder: [{ ...skipped, verdict: 'wrong' }, { ...partial, verdict: 'ok', saw: ' ' }, observed],
+		repair: [skipped, partial, { kind: 'note', text: 'The test session did not exercise a refund.' }],
+	})
+	const result = record()
+	assert.equal(result.code, 0, JSON.stringify(result.body))
+	assert.deepEqual([result.body.calls, result.body.saved, result.body.refused], [2, 4, 0])
+	const [, repair] = called()
+	assert.match(repair.prompt, /\[0\] \[0\]\.saw is required/)
+	assert.match(repair.prompt, /\[1\] \[1\]\.saw is required/)
+	assert.deepEqual(
+		entries().map((row) => JSON.parse(row.body).verdict),
+		['wrong', undefined, undefined, undefined]
+	)
+	const opened = store(t, workspace)
+	done(opened, 'x-1')
+	const map = ruleMap(opened, 'checkout')
+	assert.deepEqual(
+		map.rows.slice(0, 3).map((row) => [row.rule.id, row.cells[0]?.status]),
+		[
+			['R1', 'failed'],
+			['R2', 'not_checked'],
+			['R3', 'not_checked'],
 		]
 	)
 })

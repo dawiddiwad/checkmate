@@ -57,8 +57,8 @@ export function messages(state: FormState) {
 }
 
 export function keptText(state: FormState) {
-	const typed = (state.values.value || state.values.rationale || '').trim()
-	if (!typed) return ''
+	const typed = state.values.value || state.values.rationale || ''
+	if (!typed.trim()) return ''
 	return html`<div class="kept" data-kept>
 		<p class="lab">Your text</p>
 		<blockquote>${typed}</blockquote>

@@ -354,6 +354,8 @@ In a text field, typing types. `Enter` sends a one-line answer, a reason, or a n
 
 Typed text is not lost. When you leave a record or a page with text in a field, the browser keeps the text as a draft. When you come back, the field shows the text and the note `Draft kept.` The plan editor asks before it goes back with changes that are not saved: `Keep editing` or `Leave and lose the changes`. A save without changes records no revision.
 
+If a gap changes while you write an answer in `Needs you`, the row shows a notice. If you send a stale answer, Checkmate refuses it and shows your draft with the original gap and revision.
+
 `↑` on the first row of a list moves to its action row, for example `Test build…`. `→` and `←` move between the actions, `Enter` chooses one, and `↓` or `Esc` returns to the list. When a list has no row, `→` on its name in the navigator moves to the action row.
 
 The first-run form and the new-change form follow the same keys. `↑` and `↓` move between the fields and the buttons. In a field with more than one line, `↑` and `↓` first move the caret to the first or the last line. On a choice, press `1` or `2` (or `3`) to choose an option. `Esc` leaves a field and keeps the text. `Esc` again goes back one level. `Enter` in a field of one line sends the form.

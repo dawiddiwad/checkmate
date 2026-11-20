@@ -14,6 +14,7 @@ import { mergedClaims, mergedQuestions, needsYou, planDetail, planExplorations, 
 import { planCost } from '../costs.ts'
 import { age, asList, costText, glyph, html, plural, words } from './html.ts'
 import { crumbBar } from './layout.ts'
+import { keptText, messages } from './forms.ts'
 import { askBadge, askTitle, requestHref, requestName, rowOptions, waitsFor } from './permissions.ts'
 import { defaultBuild } from '../modes.ts'
 import { explorationEvents } from '../explorations.ts'
@@ -473,7 +474,7 @@ export function extraOf(context: Context, review: Review, item: Item) {
 	const form = (field: string, label: string, name: string, fields: Array<[string, string]>, url = action(item)) =>
 		html`<div class="sp-c-extra" data-extra="${field}" hidden>
 			<form method="post" action="${url}" class="sp-form" data-field-form>
-				${hiddenFields(context, item, fields)}
+				${hiddenFields(context, item, fields)} ${item.kind === 'gap' ? html`<div data-stale-slot></div>` : ''}
 				<label for="${field}-${item.key}">${label}</label>
 				<textarea id="${field}-${item.key}" name="${name}" rows="2" required></textarea>
 				<div class="btns">
@@ -1076,7 +1077,17 @@ export function reviewPage(
 	const chatting = params.has('chat') || params.get('newChat') === '1'
 	const title = viewTitle(review, current)
 	const key = refusal?.key ?? params.get('item')
-	const item = key ? (review.items.find((each) => each.key === key && each.kind !== 'permission') ?? null) : null
+	const item =
+		key && !(refusal?.subject && refusal.state.stale)
+			? (review.items.find((each) => each.key === key && each.kind !== 'permission') ?? null)
+			: null
+	const refusedAnswer =
+		refusal?.subject && !item
+			? html`<section aria-labelledby="refused-answer">
+					<h2 id="refused-answer">Answer for ${refusal.subject}</h2>
+					${messages(refusal.state)}${keptText(refusal.state)}
+				</section>`
+			: ''
 	const file = params.get('file')
 	const record = item
 		? file !== null && /^[0-9]{1,3}$/.test(file) && item.claim
@@ -1105,7 +1116,7 @@ export function reviewPage(
 			: `/?at=${encodeURIComponent(`plan:${planId}`)}`,
 		drawer: Boolean(item),
 		nav: navigator(review, current, null, { href: reviewHref(planId, current, '&chat=list'), active: chatting }),
-		body: html`${notice ? html`<p class="form-error" role="alert" data-notice>${notice}</p>` : ''}
+		body: html`${notice ? html`<p class="form-error" role="alert" data-notice>${notice}</p>` : ''}${refusedAnswer}
 			<div
 				class="sp-review"
 				data-review

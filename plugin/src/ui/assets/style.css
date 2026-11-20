@@ -389,6 +389,10 @@ th {
 [data-stale-slot]:empty {
 	display: none;
 }
+.kept blockquote {
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+}
 .sp-main {
 	min-width: 0;
 	container: main / inline-size;

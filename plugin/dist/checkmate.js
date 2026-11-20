@@ -21023,8 +21023,8 @@ function messages(state) {
 	${state.error ? html2`<p class="form-error" role="alert">${state.error}</p>` : ""}`;
 }
 function keptText(state) {
-  const typed = (state.values.value || state.values.rationale || "").trim();
-  if (!typed) return "";
+  const typed = state.values.value || state.values.rationale || "";
+  if (!typed.trim()) return "";
   return html2`<div class="kept" data-kept>
 		<p class="lab">Your text</p>
 		<blockquote>${typed}</blockquote>
@@ -24004,7 +24004,7 @@ function optionsOf(context, review, item) {
 function extraOf(context, review, item) {
   const form = (field4, label, name2, fields, url = action(item)) => html2`<div class="sp-c-extra" data-extra="${field4}" hidden>
 			<form method="post" action="${url}" class="sp-form" data-field-form>
-				${hiddenFields2(context, item, fields)}
+				${hiddenFields2(context, item, fields)} ${item.kind === "gap" ? html2`<div data-stale-slot></div>` : ""}
 				<label for="${field4}-${item.key}">${label}</label>
 				<textarea id="${field4}-${item.key}" name="${name2}" rows="2" required></textarea>
 				<div class="btns">
@@ -24511,7 +24511,11 @@ function reviewPage(store, context, planId, params, refusal = null, notice = nul
   const chatting = params.has("chat") || params.get("newChat") === "1";
   const title2 = viewTitle(review, current);
   const key = refusal?.key ?? params.get("item");
-  const item = key ? review.items.find((each) => each.key === key && each.kind !== "permission") ?? null : null;
+  const item = key && !(refusal?.subject && refusal.state.stale) ? review.items.find((each) => each.key === key && each.kind !== "permission") ?? null : null;
+  const refusedAnswer = refusal?.subject && !item ? html2`<section aria-labelledby="refused-answer">
+					<h2 id="refused-answer">Answer for ${refusal.subject}</h2>
+					${messages(refusal.state)}${keptText(refusal.state)}
+				</section>` : "";
   const file = params.get("file");
   const record = item ? file !== null && /^[0-9]{1,3}$/.test(file) && item.claim ? evidenceViewer(store, review, item, current, Number(file)) : recordDrawer(store, context, review, item, current, refusal) : "";
   const cost = planCost(store, planId);
@@ -24534,7 +24538,7 @@ function reviewPage(store, context, planId, params, refusal = null, notice = nul
     back: item ? reviewHref(planId, current, `&at=${encodeURIComponent(item.key)}&focus=list`) : `/?at=${encodeURIComponent(`plan:${planId}`)}`,
     drawer: Boolean(item),
     nav: navigator(review, current, null, { href: reviewHref(planId, current, "&chat=list"), active: chatting }),
-    body: html2`${notice ? html2`<p class="form-error" role="alert" data-notice>${notice}</p>` : ""}
+    body: html2`${notice ? html2`<p class="form-error" role="alert" data-notice>${notice}</p>` : ""}${refusedAnswer}
 			<div
 				class="sp-review"
 				data-review
@@ -34550,15 +34554,20 @@ data: ${matched.join(",") || "*"}
       cookies: [...actorCookie, cookie("checkmate_toast", flash, 60)]
     };
   }
-  function inQueue(request2, form, page, state) {
-    const key = form.get("item");
+  function inQueue(request2, form, page, state, gap) {
+    const key = gap ? `g:${gap.id}` : form.get("item");
     if (form.get("return") === null || key === null) return page;
     const back = safeBack(form.get("return"));
     const url = new URL(back, request2.url);
     const run2 = routes.run.exec(url.pathname);
-    if (run2) return () => runPage(store, context(request2, back), run2[1], url.searchParams, state);
+    if (run2 && !gap) return () => runPage(store, context(request2, back), run2[1], url.searchParams, state);
     const plan = routes.latestPlan.exec(url.pathname);
-    if (plan) return () => reviewPage(store, context(request2, back), plan[1], url.searchParams, { key, state });
+    if (plan && (!gap || gap.planId === plan[1]))
+      return () => reviewPage(store, context(request2, back), plan[1], url.searchParams, {
+        key,
+        state,
+        subject: gap ? `${gap.planId}@${gap.revision} \xB7 ${gap.id}` : void 0
+      });
     return page;
   }
   function serveClaimEvidence(request2, explorationId, claimId, index2) {
@@ -34855,7 +34864,8 @@ data: ${matched.join(",") || "*"}
       request2,
       form,
       () => gapPage(store, context(request2), planId, revision, gapId, state),
-      state
+      state,
+      { planId, revision, id: gapId }
     );
     state.error = answerProblem(input, actor);
     if (state.error) return refuse2(request2, page, cookies);
@@ -34871,12 +34881,16 @@ data: ${matched.join(",") || "*"}
       });
     } catch (error) {
       const latest = planDetail(store, planId);
+      const pending = latest.pendingDecisions.find((each) => each.gapId === gapId);
       if (latest.sha256 !== form.get("sha"))
         state.stale = html2`<strong>${planId} has a newer revision (${latest.latestRevision}).</strong> Your
 					answer was not recorded. Your text is kept below.
 					<a href="/plans/${planId}@${latest.latestRevision}/gaps/${gapId}"
 						>Review revision ${latest.latestRevision}</a
 					>, then send again.`;
+      else if (pending && form.has("return"))
+        state.stale = html2`<strong>${gapId} was answered by ${pending.actor}.</strong> Your answer was not
+					recorded. Your text is kept below.`;
       else state.error = plainMessage(error);
       return refuse2(request2, page, cookies);
     }

@@ -12,7 +12,7 @@ import { claimEvidenceFiles } from './exploration.ts'
 import { buildStateWords } from '../rulemap.ts'
 import { buildLabel, itemTag, optionsOf, outside, reviewHref } from './review.ts'
 
-export type Refusal = { key: string; state: FormState }
+export type Refusal = { key: string; state: FormState; subject?: string }
 
 function acrossBuilds(review: Review, item: Item) {
 	const builds = item.detail?.builds ?? []

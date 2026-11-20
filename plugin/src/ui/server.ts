@@ -454,15 +454,27 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		}
 	}
 
-	function inQueue(request: Request, form: URLSearchParams, page: () => Page, state: FormState) {
-		const key = form.get('item')
+	function inQueue(
+		request: Request,
+		form: URLSearchParams,
+		page: () => Page,
+		state: FormState,
+		gap?: { planId: string; revision: number; id: string }
+	) {
+		const key = gap ? `g:${gap.id}` : form.get('item')
 		if (form.get('return') === null || key === null) return page
 		const back = safeBack(form.get('return'))
 		const url = new URL(back, request.url)
 		const run = routes.run.exec(url.pathname)
-		if (run) return () => runPage(store, context(request, back), run[1], url.searchParams, state)
+		if (run && !gap) return () => runPage(store, context(request, back), run[1], url.searchParams, state)
 		const plan = routes.latestPlan.exec(url.pathname)
-		if (plan) return () => reviewPage(store, context(request, back), plan[1], url.searchParams, { key, state })
+		if (plan && (!gap || gap.planId === plan[1]))
+			return () =>
+				reviewPage(store, context(request, back), plan[1], url.searchParams, {
+					key,
+					state,
+					subject: gap ? `${gap.planId}@${gap.revision} · ${gap.id}` : undefined,
+				})
 		return page
 	}
 
@@ -778,7 +790,8 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 			request,
 			form,
 			() => gapPage(store, context(request), planId, revision, gapId, state),
-			state
+			state,
+			{ planId, revision, id: gapId }
 		)
 		state.error = answerProblem(input, actor)
 		if (state.error) return refuse(request, page, cookies)
@@ -794,12 +807,16 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 			})
 		} catch (error) {
 			const latest = planDetail(store, planId)
+			const pending = latest.pendingDecisions.find((each) => each.gapId === gapId)
 			if (latest.sha256 !== form.get('sha'))
 				state.stale = html`<strong>${planId} has a newer revision (${latest.latestRevision}).</strong> Your
 					answer was not recorded. Your text is kept below.
 					<a href="/plans/${planId}@${latest.latestRevision}/gaps/${gapId}"
 						>Review revision ${latest.latestRevision}</a
 					>, then send again.`
+			else if (pending && form.has('return'))
+				state.stale = html`<strong>${gapId} was answered by ${pending.actor}.</strong> Your answer was not
+					recorded. Your text is kept below.`
 			else state.error = plainMessage(error)
 			return refuse(request, page, cookies)
 		}

@@ -3,7 +3,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import { closeStore, openStore } from '../plugin/src/index.ts'
-import { mergedClaims, mergedQuestions, operationLog } from '../plugin/src/views.ts'
+import { mergedClaims, mergedQuestions, operationLog, planDetail } from '../plugin/src/views.ts'
 import { decideClaim } from '../plugin/src/journal.ts'
 import { seedVolume } from '../scripts/ui-volume.ts'
 import { open, browserTest, stop, launchWith } from './browser.ts'
@@ -619,6 +619,51 @@ test('the exploration report menu opens above the status bar when the trigger is
 	const waiting = page.waitForEvent('download')
 	await page.getByRole('link', { name: /^Markdown/ }).click()
 	assert.equal((await waiting).suggestedFilename(), 'x-1-report.md')
+})
+
+test('a concurrent gap answer keeps the refused inline draft with its original gap', browserTest, async (t) => {
+	const { page, url, workspace } = await open(t)
+	const otherContext = await page.context().browser()!.newContext()
+	t.after(() => otherContext.close())
+	await otherContext.addCookies([{ name: 'checkmate_actor', value: 'other-oracle', url: url('/') }])
+	const other = await otherContext.newPage()
+	const queue = url('/plans/checkout?view=needs&at=g%3AG2&focus=list')
+	const gap = '[data-panel="needs"] [data-key="g:G2"]'
+	const draft = '  Keep the shipping choice through checkout.\nInclude the guest checkout.  '
+
+	await page.goto(queue)
+	await page.locator('[data-live]', { hasText: 'Live' }).waitFor()
+	await page.locator(gap).getByRole('link', { name: '2: It should be different' }).click()
+	const answer = page.locator(gap).getByLabel('How it should be, in one sentence')
+	await answer.fill(draft)
+
+	await other.goto(queue)
+	await other.locator(gap).getByRole('button', { name: '1: Right as built' }).click()
+	await other.locator(gap).waitFor({ state: 'hidden', timeout: 5000 })
+	await page
+		.locator(gap)
+		.getByRole('status')
+		.filter({ hasText: /G2 changed or was answered/ })
+		.waitFor()
+	assert.equal(await answer.inputValue(), draft)
+
+	const submission = page.waitForResponse(
+		(response) =>
+			response.url() === url('/plans/checkout@2/gaps/G2') &&
+			response.request().method() === 'POST' &&
+			response.request().isNavigationRequest()
+	)
+	await answer.press('Enter')
+	assert.equal((await submission).status(), 422)
+	const refused = page.getByRole('region', { name: 'Answer for checkout@2 · G2' })
+	await refused.getByText(/G2 was answered by other-oracle/).waitFor()
+	assert.equal(await refused.locator('blockquote').textContent(), draft)
+	await page.locator(gap).waitFor({ state: 'hidden' })
+	const pending = read(workspace, (store) => planDetail(store, 'checkout').pendingDecisions)
+	assert.deepEqual(
+		pending.map(({ gapId, actor, kind }) => ({ gapId, actor, kind })),
+		[{ gapId: 'G2', actor: 'other-oracle', kind: 'accept_assumption' }]
+	)
 })
 
 test('a decision from another tab after the page loaded is refused and names the first', browserTest, async (t) => {

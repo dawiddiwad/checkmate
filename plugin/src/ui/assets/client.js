@@ -2550,6 +2550,23 @@ function staleNotice(region, replacement) {
 	announce(text)
 }
 
+function staleGapDrafts(region, replacement) {
+	for (const form of region.querySelectorAll('[data-extra]:not([hidden]) form:has([data-stale-slot])')) {
+		if (!dirty(form)) continue
+		const row = form.closest('[data-row]')
+		const panel = row.closest('[data-panel]').dataset.panel
+		const key = row.dataset.key
+		const fresh = replacement.querySelector(
+			`[data-panel="${CSS.escape(panel)}"] [data-row][data-key="${CSS.escape(key)}"] [data-extra] form`
+		)
+		if (fresh && fresh.getAttribute('action') === form.getAttribute('action')) continue
+		const label = row.dataset.label
+		staleNotice(form, {
+			dataset: { decidedMessage: `${label} changed or was answered in another session.` },
+		})
+	}
+}
+
 function keyed(root) {
 	const map = new Map()
 	for (const element of root.querySelectorAll('[data-key]')) map.set(element.dataset.key, element)
@@ -2739,7 +2756,8 @@ async function refresh() {
 				continue
 			closeGone(region, replacement)
 			if (dirty(region)) {
-				staleNotice(region, replacement)
+				if (name === 'review') staleGapDrafts(region, replacement)
+				else staleNotice(region, replacement)
 				continue
 			}
 			messages.push(...replaceRegion(region, replacement, previous))

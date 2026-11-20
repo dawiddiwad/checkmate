@@ -80,7 +80,7 @@ import { explorationModes, openExploration } from './explorations.ts'
 import type { Claim } from './journal.ts'
 import { decideClaim, handOffClaims, logEntries, planClaims, readEntries } from './journal.ts'
 import { defaultRecorderTimeout, recordSession } from './recorder.ts'
-import { checkClaudeArgs, liveUi } from './sessions.ts'
+import { checkClaudeArgs, liveUi, pluginRoot } from './sessions.ts'
 import { decidePermission, explorationPermissions, permissionDecisions } from './permissions.ts'
 import { inputLine } from './ui/hooks.ts'
 import {
@@ -100,7 +100,7 @@ import { levelNames, testLevels } from './levels.ts'
 import { runTest, testModes } from './modes.ts'
 import { harvestExploration } from './harvest.ts'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { dirname, resolve } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import { constants } from 'node:sqlite'
 
 type FlagKind = 'value' | 'list' | 'repeat' | 'switch' | readonly string[] | { min: number; max: number }
@@ -2106,7 +2106,7 @@ function commandHelp(argv: string[]): Reply {
 }
 
 function version() {
-	return JSON.parse(readFileSync(new URL('../.claude-plugin/plugin.json', import.meta.url), 'utf8')).version as string
+	return JSON.parse(readFileSync(join(pluginRoot, '.claude-plugin', 'plugin.json'), 'utf8')).version as string
 }
 
 function readJson(text: string) {

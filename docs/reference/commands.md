@@ -86,7 +86,7 @@ Every command takes `--workspace <path>` and `--json`. Put options after the com
 | Output    | `export plan <ref>`, `export run <runId>`                                                                  | Prints a report as `md`, `html`, `json`, or `junit` (run only).                                                                   |
 |           | `evidence get <evidenceId> --out <file>`                                                                   | Writes the evidence bytes to a new file.                                                                                          |
 |           | `ui`                                                                                                       | Starts the review UI.                                                                                                             |
-| npm only  | `delegate <stage> <subject>`                                                                               | Runs a stage in a new Claude Code session.                                                                                        |
+| npm only  | `delegate <stage> <subject>`                                                                               | Runs a stage in the selected harness.                                                                                             |
 
 The run commands are in [Runs and evidence](runs.md). The payloads are in [Payloads](payloads.md).
 
@@ -162,7 +162,7 @@ The exploration states apply only when the check state is `ready_to_test`, `read
 
 When the oracle rejected the latest revision, or a run that has a latest outcome of a ready test, a `why` line gives the decision: `<subject> was rejected by <actor>: <rationale>`. Address the rationale in the next revision or the next run.
 
-A `next` line is a hint for a person or an agent. Do not parse it. Replace each `<placeholder>` with a value, and the command runs. The gate does not refuse a `run begin` hint. A state can give more than one `next` line: one `delegate execute` for each started run, one retest for each run with open defects, one rerun for each run that gives a `needs_retest` reason, and one `result accept` for each run that waits. `--json` gives `next` as a list. A `delegate` hint has the minimum rules `--allow Read --allow Bash`. When the target has two or more active instances, a `run begin` hint has `--instance`: the instance of the earlier run when it is still active, else `<instanceId>`. A rerun uses the build and the instance of the run that needs it. When that instance is retired, the rerun is a retest on a new instance with `--retest-of` and the same build. When a test has a cross-plan dependency, a `run begin` hint names the build on which the dependencies select the most tests, and the newest build on a tie.
+A `next` line is a hint for a person or an agent. Do not parse it. Replace each `<placeholder>` with a value, and the command runs. The gate does not refuse a `run begin` hint. A state can give more than one `next` line: one `delegate execute` for each started run, one retest for each run with open defects, one rerun for each run that gives a `needs_retest` reason, and one `result accept` for each run that waits. `--json` gives `next` as a list. A Claude `delegate` hint has the minimum rules `--allow Read --allow Bash`. When the target has two or more active instances, a `run begin` hint has `--instance`: the instance of the earlier run when it is still active, else `<instanceId>`. A rerun uses the build and the instance of the run that needs it. When that instance is retired, the rerun is a retest on a new instance with `--retest-of` and the same build. When a test has a cross-plan dependency, a `run begin` hint names the build on which the dependencies select the most tests, and the newest build on a tie.
 
 `--json` also gives `stage`: the `delegate` stage that the plan waits on. It is `revise` for `needs_revision`, `execute` for `run_in_progress`, and `none` for every other state. The subject of `plan` and `revise` is the plan ID. The subjects of `execute` are the run IDs in `openRuns`, one for each started run. `latestRun` is the latest run in begin order.
 
@@ -631,7 +631,9 @@ checkmate delegate <setup|plan|revise|execute> <subject> --allow <rule>... [--ti
 | `revise`  | `planId`   | One or more decisions from `gap answer` | A new revision exists and no pending decision remains. |
 | `execute` | `runId`    | `run begin`                             | The run is finished.                                   |
 
-`delegate` starts one new `claude -p` session with the bundled plugin, a response schema, `--permission-prompts none`, and `--no-session-persistence`. It sets `CHECKMATE_ACTOR=claude:<stage>` for the worker.
+With Claude Code, `delegate` starts one new `claude -p` session with the bundled plugin, a response schema, `--permission-prompts none`, and `--no-session-persistence`. It sets `CHECKMATE_ACTOR=claude:<stage>` for the worker.
+
+With `CHECKMATE_HARNESS=pi`, omit `--allow` and `--claude-arg` for delegate. The launcher starts Pi in print mode with the stage instructions. The worker writes as `pi:<stage>`. The parent validates the JSON reply and checks the same operation in the database. See [Run Checkmate with Pi](../guides/pi.md).
 
 **Rejected results.** When the oracle rejected a run that has a latest outcome of a selected test, the execute prompt has the line `The oracle rejected <runId>: <rationale>. Address it.`
 
@@ -663,6 +665,9 @@ Prints `completed ui url=<url>` and serves the review UI on `127.0.0.1` until SI
 
 | Variable                    | Read by        | Effect                                                                                                                            |
 | --------------------------- | -------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `CHECKMATE_HARNESS`         | Checkmate      | Select `claude` (default) or `pi` for child sessions.                                                                             |
+| `CHECKMATE_PI_MODEL`        | Checkmate      | Pass a model to Pi. When unset, Pi selects its configured model.                                                                  |
+| `CHECKMATE_PI_PROVIDER`     | Checkmate      | Pass a provider to Pi. Also set `CHECKMATE_PI_MODEL`.                                                                             |
 | `CHECKMATE_ACTOR`           | Checkmate      | The default actor of a write. `--actor` overrides it.                                                                             |
 | `CHECKMATE_BUSY_TIMEOUT_MS` | Checkmate      | The wait for the database lock in milliseconds. A value that is not a whole number from 1 to 2147483647 gives the default, 30000. |
 | `ANTHROPIC_MODEL`           | The host       | Claude Code selects the model with it. Checkmate does not read it. `delegate` passes it.                                          |

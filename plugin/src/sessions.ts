@@ -1,4 +1,6 @@
 import { Refusal } from './contracts.ts'
+import { piArgs, piResult } from './pi.ts'
+import type { Harness } from './pi.ts'
 import { randomBytes } from 'node:crypto'
 import type { ChildProcess } from 'node:child_process'
 import { spawn, spawnSync } from 'node:child_process'
@@ -6,6 +8,7 @@ import {
 	accessSync,
 	chmodSync,
 	constants,
+	existsSync,
 	mkdirSync,
 	readFileSync,
 	realpathSync,
@@ -13,13 +16,22 @@ import {
 	statSync,
 	writeFileSync,
 } from 'node:fs'
+import { createRequire } from 'node:module'
 import { homedir } from 'node:os'
 import { delimiter, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 export type Env = Record<string, string | undefined>
 export type ChildHook = { port: number; token: string; explorationId: string; who: string }
-export type ChildContext = { hiddenPlugin: string | null; claudeArgs: string[]; deny?: string[]; hook?: ChildHook }
+export type ChildContext = {
+	hiddenPlugin: string | null
+	claudeArgs: string[]
+	harness?: Harness
+	piArgs?: string[]
+	deny?: string[]
+	work?: string
+	hook?: ChildHook
+}
 export type UiFile = { port: number; pid: number; hookToken: string }
 
 export const hookTokenName = 'CHECKMATE_HOOK_TOKEN'
@@ -45,7 +57,7 @@ export function workDenyRules(otherFolders: string[]) {
 		...otherFolders.flatMap((folder) => [`Read(./${folder}/**)`, `Edit(./${folder}/**)`]),
 	]
 }
-export type ClaudeCall = {
+export type ChildCall = {
 	failure?: ['interrupted' | 'operational_error', string]
 	result?: unknown
 	costUsd?: number
@@ -54,7 +66,10 @@ export type ClaudeCall = {
 	stderr?: string[]
 }
 
-export const pluginRoot = fileURLToPath(new URL('..', import.meta.url))
+const moduleRoot = fileURLToPath(new URL('..', import.meta.url))
+export const pluginRoot = existsSync(join(moduleRoot, '.claude-plugin', 'plugin.json'))
+	? moduleRoot
+	: join(moduleRoot, 'plugin')
 const maxOutputBytes = 4 * 1024 * 1024
 
 export const reservedClaudeArgs = [
@@ -125,8 +140,13 @@ export function uiFilePath(workspace: string) {
 }
 
 function zombie(pid: number) {
+	if (process.platform === 'darwin') {
+		const processState = spawnSync('/bin/ps', ['-o', 'state=', '-p', String(pid)], { encoding: 'utf8' })
+		return processState.stdout?.trimStart().startsWith('Z') === true
+	}
 	try {
-		return readFileSync(`/proc/${pid}/stat`, 'utf8').split(') ')[1]?.startsWith('Z') === true
+		const stat = readFileSync(`/proc/${pid}/stat`, 'utf8')
+		return stat[stat.lastIndexOf(') ') + 2] === 'Z'
 	} catch {
 		return false
 	}
@@ -134,6 +154,7 @@ function zombie(pid: number) {
 
 export function running(pid: unknown) {
 	if (typeof pid !== 'number') return false
+	if (pid === process.pid) return true
 	try {
 		process.kill(pid, 0)
 		return !zombie(pid)
@@ -217,7 +238,53 @@ export function hookSettings(hook: ChildHook) {
 	}
 }
 
-export function childArgs(context: ChildContext, own: string[]) {
+export function piToolNames(rules: string[]) {
+	const builtin = ['read', 'bash', 'edit', 'write', 'grep', 'find', 'ls']
+	const names = rules.map((rule) => {
+		if (!/^[a-zA-Z_][a-zA-Z0-9_-]*$/.test(rule))
+			throw new Refusal('malformed', `Pi --allow needs a tool name. It does not accept the rule ${rule}.`)
+		const lower = rule.toLowerCase()
+		return builtin.includes(lower) ? lower : rule
+	})
+	return [...new Set(names)]
+}
+
+function piWorkTools(context: ChildContext, names: string[]) {
+	return context.work ? ['edit', 'write'].filter((name) => !names.includes(name)) : []
+}
+
+function piExtension(name: string) {
+	const path = join(pluginRoot, 'pi', name)
+	try {
+		accessSync(path, constants.R_OK)
+		const extension = createRequire(import.meta.url)(path) as { default?: unknown }
+		if (typeof extension.default !== 'function') throw new Error('Missing extension entry point')
+	} catch (error) {
+		throw new Refusal('prohibited', `Cannot load the Pi extension ${name}${excerpt((error as Error).message)}`)
+	}
+	return ['--extension', path]
+}
+
+export function childArgs(context: ChildContext, own: string[], allow: string[] = []) {
+	if (context.harness === 'pi') {
+		const names = piToolNames(allow)
+		const tools = [...names, ...piWorkTools(context, names)]
+		const args = own[0] === '--resume' ? ['--session', ...own.slice(1)] : own
+		return piArgs(
+			[
+				...(context.piArgs ?? []),
+				'--no-context-files',
+				'--no-skills',
+				'--no-prompt-templates',
+				'--no-tools',
+				...(tools.length ? ['--tools', tools.map((name) => `+${name}`).join(',')] : []),
+				...(context.deny?.length || context.work ? piExtension('child.mjs') : []),
+				...(context.hook ? piExtension('permission.mjs') : []),
+				...args,
+			],
+			{}
+		)
+	}
 	const settings = {
 		...(context.hiddenPlugin ? { enabledPlugins: { [context.hiddenPlugin]: false } } : {}),
 		...(context.deny?.length ? { permissions: { deny: context.deny } } : {}),
@@ -228,6 +295,7 @@ export function childArgs(context: ChildContext, own: string[]) {
 		...context.claudeArgs,
 		...(Object.keys(settings).length ? ['--settings', JSON.stringify(settings)] : []),
 		...own,
+		...allow.flatMap((rule) => ['--allowedTools', rule]),
 		'--output-format',
 		'json',
 		'--permission-prompts',
@@ -235,11 +303,20 @@ export function childArgs(context: ChildContext, own: string[]) {
 	]
 }
 
-export function childEnv(env: Env, extra: Env = {}, hook?: ChildHook) {
-	return {
+export function childEnv(env: Env, extra: Env = {}, hook?: ChildHook, context?: ChildContext, allow: string[] = []) {
+	const base = {
 		...Object.fromEntries(Object.entries(env).filter(([name]) => !name.startsWith('CHECKMATE_'))),
 		...extra,
-		...(hook ? { [hookTokenName]: hook.token } : {}),
+	}
+	if (context?.harness !== 'pi') return { ...base, ...(hook ? { [hookTokenName]: hook.token } : {}) }
+	const names = piToolNames(allow)
+	const scoped = piWorkTools(context, names)
+	return {
+		...base,
+		...(hook ? { CHECKMATE_PI_HOOK: JSON.stringify({ ...hook, allow: [...names, ...scoped] }) } : {}),
+		...(context.deny?.length || context.work
+			? { CHECKMATE_PI_POLICY: JSON.stringify({ deny: context.deny ?? [], work: context.work, scoped }) }
+			: {}),
 	}
 }
 
@@ -252,6 +329,14 @@ export function executableOnPath(name: string, env: Env) {
 		} catch {}
 	}
 	return undefined
+}
+
+export function requireChild(env: Env, harness: Harness = 'claude') {
+	if (harness === 'claude') return requireClaude(env)
+	const pi = executableOnPath('pi', env)
+	if (!pi)
+		throw new Refusal('prohibited', 'No pi executable on PATH. Nothing changed.', 'Install Pi or add it to PATH.')
+	return pi
 }
 
 export function requireClaude(env: Env) {
@@ -268,10 +353,12 @@ export function requireClaude(env: Env) {
 export const authenticationHint =
 	'The host session does not pass its login token to the commands that it runs. Log in on this machine so that Claude Code stores the login (run claude and log in), or run checkmate test from a shell outside a Claude Code session, or let the host give the credential in a supported way, for example an apiKeyHelper in the host settings.'
 
-export function authenticationFailed(call: ClaudeCall) {
+export const piAuthenticationHint = 'Log in with Pi on this machine, or configure authentication through the Pi host.'
+
+export function authenticationFailed(call: ChildCall) {
 	return (
 		Boolean(call.failure) &&
-		/authentication/i.test(
+		/authentication|not authenticated|no api key|invalid api key|unauthorized/i.test(
 			[call.failure?.[1] ?? '', ...(call.stderr ?? []), typeof call.result === 'string' ? call.result : ''].join(
 				' '
 			)
@@ -302,7 +389,7 @@ export function claudeResult(output: string, error: string, status: number | nul
 		const value = JSON.parse(output) as unknown
 		if (value && typeof value === 'object') parsed = value as Record<string, unknown>
 	} catch {}
-	const failure: ClaudeCall['failure'] =
+	const failure: ChildCall['failure'] =
 		status !== 0
 			? [
 					'operational_error',
@@ -322,15 +409,16 @@ export function claudeResult(output: string, error: string, status: number | nul
 	}
 }
 
-export function callClaude(
-	claude: string,
+export function callChild(
+	executable: string,
 	args: string[],
 	prompt: string,
 	cwd: string,
 	env: Env,
-	seconds: number
-): ClaudeCall {
-	const child = spawnSync(claude, args, {
+	seconds: number,
+	harness: Harness = 'claude'
+): ChildCall {
+	const child = spawnSync(executable, args, {
 		cwd,
 		env,
 		input: prompt,
@@ -341,9 +429,12 @@ export function callClaude(
 	})
 	const code = child.error && 'code' in child.error ? String(child.error.code) : undefined
 	if (code === 'ETIMEDOUT')
-		return { failure: ['interrupted', `claude did not end in ${seconds} seconds. Checkmate stopped it.`] }
-	if (code) return { failure: ['operational_error', `claude failed: ${code}.`] }
-	return claudeResult(child.stdout ?? '', child.stderr ?? '', child.status, child.signal)
+		return { failure: ['interrupted', `${harness} did not end in ${seconds} seconds. Checkmate stopped it.`] }
+	if (code === 'ENOBUFS')
+		return { failure: ['operational_error', `${harness} output exceeded 4 MiB. Checkmate stopped it.`] }
+	if (code) return { failure: ['operational_error', `${harness} failed: ${code}.`] }
+	const result = harness === 'pi' ? piResult : claudeResult
+	return result(child.stdout ?? '', child.stderr ?? '', child.status, child.signal)
 }
 
 function closingBracket(text: string, start: number) {
@@ -383,7 +474,7 @@ function killGroup(child: ChildProcess, signal: NodeJS.Signals) {
 	} catch {}
 }
 
-export async function endLaunchedClaudes() {
+export async function endLaunchedChildren() {
 	const ending = [...liveChildren]
 	const closed = Promise.all(ending.map((child) => new Promise((done) => child.once('close', done))))
 	for (const child of ending) killGroup(child, 'SIGTERM')
@@ -396,36 +487,50 @@ export async function endLaunchedClaudes() {
 
 export function exitOnSignal() {
 	const end = async () => {
-		await endLaunchedClaudes()
+		await endLaunchedChildren()
 		process.exit(143)
 	}
 	process.once('SIGTERM', end)
 	process.once('SIGINT', end)
 }
 
-export function launchClaude(
-	claude: string,
+export function launchChild(
+	executable: string,
 	args: string[],
 	prompt: string,
 	cwd: string,
 	env: Env,
 	seconds: number,
-	onStart?: (pid: number) => void
-): Promise<ClaudeCall> {
+	onStart?: (pid: number) => void,
+	harness: Harness = 'claude'
+): Promise<ChildCall> {
 	return new Promise((resolvePromise) => {
-		const child = spawn(claude, args, { cwd, env, stdio: ['pipe', 'pipe', 'pipe'], detached: true })
+		const child = spawn(executable, args, { cwd, env, stdio: ['pipe', 'pipe', 'pipe'], detached: true })
+		child.stdout.setEncoding('utf8')
 		liveChildren.add(child)
 		if (child.pid) onStart?.(child.pid)
 		let output = ''
 		let errors = ''
-		let failure: ClaudeCall['failure']
-		const timer = setTimeout(() => {
-			failure = ['interrupted', `claude did not end in ${seconds} seconds. Checkmate stopped it.`]
+		let failure: ChildCall['failure']
+		let bytes = 0
+		let killTimer: NodeJS.Timeout | undefined
+		const stop = (reason: NonNullable<ChildCall['failure']>) => {
+			if (failure) return
+			failure = reason
 			killGroup(child, 'SIGTERM')
-			setTimeout(() => killGroup(child, 'SIGKILL'), endGraceMilliseconds).unref()
-		}, seconds * 1000)
-		child.stdout.on('data', (bytes: Buffer) => {
-			if (output.length < maxOutputBytes) output += bytes.toString()
+			killTimer = setTimeout(() => killGroup(child, 'SIGKILL'), endGraceMilliseconds)
+			killTimer.unref()
+		}
+		const timer = setTimeout(
+			() => stop(['interrupted', `${harness} did not end in ${seconds} seconds. Checkmate stopped it.`]),
+			seconds * 1000
+		)
+		child.stdout.on('data', (text: string) => {
+			if (failure) return
+			bytes += Buffer.byteLength(text)
+			if (bytes > maxOutputBytes)
+				stop(['operational_error', `${harness} output exceeded 4 MiB. Checkmate stopped it.`])
+			else output += text
 		})
 		child.stderr.on('data', (bytes: Buffer) => {
 			errors = (errors + bytes.toString()).slice(-16384)
@@ -433,12 +538,14 @@ export function launchClaude(
 		child.stdin.on('error', () => {})
 		child.stdin.end(prompt)
 		child.on('error', (error) => {
-			failure ??= ['operational_error', `claude failed: ${'code' in error ? String(error.code) : 'unknown'}.`]
+			failure ??= ['operational_error', `${harness} failed: ${'code' in error ? String(error.code) : 'unknown'}.`]
 		})
 		child.on('close', (status, signal) => {
 			liveChildren.delete(child)
 			clearTimeout(timer)
-			resolvePromise(failure ? { failure } : claudeResult(output, errors, status, signal))
+			clearTimeout(killTimer)
+			const result = harness === 'pi' ? piResult : claudeResult
+			resolvePromise(failure ? { failure } : result(output, errors, status, signal))
 		})
 	})
 }
@@ -502,13 +609,14 @@ export function streamClaude(
 	delays: StopDelays = defaultStopDelays
 ): StreamedClaude {
 	const child = spawn(claude, args, { cwd, env, stdio: ['pipe', 'pipe', 'pipe'], detached: true })
+	child.stdout.setEncoding('utf8')
 	liveChildren.add(child)
 	const timers: NodeJS.Timeout[] = []
 	let errors = ''
 	let pending = ''
 	let spawnError: string | null = null
-	child.stdout.on('data', (bytes: Buffer) => {
-		const lines = (pending + bytes.toString()).split('\n')
+	child.stdout.on('data', (text: string) => {
+		const lines = (pending + text).split('\n')
 		pending = lines.pop() ?? ''
 		for (const line of lines) if (line.trim()) onLine(line)
 	})

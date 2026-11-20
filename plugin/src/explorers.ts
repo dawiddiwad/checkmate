@@ -1,6 +1,6 @@
 import type { Reply, Store } from './store.ts'
 import type { Profile } from './types.ts'
-import type { ChildContext, ClaudeCall, Env } from './sessions.ts'
+import type { ChildContext, ChildCall, Env } from './sessions.ts'
 import type { Charter, ExplorationEvent, OpenInput } from './explorations.ts'
 import type { TestLevel } from './levels.ts'
 import { closeStore, completed, one, openStore, saveBlob, write } from './store.ts'
@@ -19,6 +19,7 @@ import {
 	unplacedMatches,
 	verifyItems,
 } from './journal.ts'
+import { piModelArgs, selectedHarness } from './pi.ts'
 import { defaultLevel, levelNames, storedLevel, testLevels } from './levels.ts'
 import { explorerActor, lastEntry, recordSession, defaultRecorderTimeout } from './recorder.ts'
 import {
@@ -41,14 +42,16 @@ import {
 	childArgs,
 	authenticationFailed,
 	authenticationHint,
-	callClaude,
+	callChild,
 	childEnv,
 	childHook,
 	exitOnSignal,
 	installedPluginId,
 	replyArray,
-	launchClaude,
-	requireClaude,
+	launchChild,
+	piAuthenticationHint,
+	piToolNames,
+	requireChild,
 	running,
 	storeDenyRules,
 	workDenyRules,
@@ -140,9 +143,18 @@ export function launchPlan(profile: Profile, input: StartInput, env: Env): Launc
 			path: 'session',
 		}
 	}
+	const harness = selectedHarness(env)
+	if (harness === 'pi') {
+		requireWellFormed(
+			!input.claudeArgs.length,
+			'--claude-arg is for Claude. Set CHECKMATE_PI_MODEL and CHECKMATE_PI_PROVIDER for Pi.'
+		)
+		piToolNames(input.allow)
+	}
 	const claudeArgs = checkClaudeArgs(input.claudeArgs)
-	const host = hostModel(claudeArgs)
-	const hiddenPlugin = installedPluginId(env)
+	const piArgs = harness === 'pi' ? piModelArgs(env) : []
+	const host = hostModel(harness === 'pi' ? piArgs : claudeArgs)
+	const hiddenPlugin = harness === 'claude' ? installedPluginId(env) : null
 	requireWellFormed(
 		input.allow.length || (explorers === 0 && !row.verifier),
 		'Give the tool rules of the explorers and the verifier with --allow, for example --allow Read --allow Bash',
@@ -151,16 +163,19 @@ export function launchPlan(profile: Profile, input: StartInput, env: Env): Launc
 	return {
 		level,
 		explorers,
-		model: host ?? row.model,
-		modelFrom: host ? 'host' : 'level',
+		model: host ?? (harness === 'pi' ? null : row.model),
+		modelFrom: host || harness === 'pi' ? 'host' : 'level',
 		verifier: row.verifier,
-		context: { hiddenPlugin, claudeArgs: host ? claudeArgs : [...claudeArgs, '--model', row.model] },
+		context:
+			harness === 'pi'
+				? { hiddenPlugin, claudeArgs: [], harness, piArgs }
+				: { hiddenPlugin, claudeArgs: host ? claudeArgs : [...claudeArgs, '--model', row.model] },
 		allow: input.allow,
 		studySeconds: row.studySeconds,
 		testSeconds,
 		timeoutSeconds:
 			input.timeoutSeconds ?? Math.max(defaultExplorerTimeout, Math.max(row.studySeconds, testSeconds) * 3),
-		pluginHidden: hiddenPlugin !== null,
+		pluginHidden: harness === 'pi' || hiddenPlugin !== null,
 	}
 }
 
@@ -288,7 +303,7 @@ export function startExploration(store: Store, actor: string | undefined, given:
 	const change = changeOf(store.workspace, given)
 	const input = { ...given, change, scope: given.scope ?? (change ? changedFiles(store.workspace, change) : []) }
 	const reply = write(store, { actor, command: 'explore start', subject: input.planId, input }, (operationId, at) => {
-		if (!input.session) requireClaude(env)
+		if (!input.session) requireChild(env, selectedHarness(env))
 		const opened = input.explorationId
 			? finishable(store, input.explorationId)
 			: insertExploration(store, input, operationId, at)
@@ -367,9 +382,11 @@ function noteChild(store: Store, actor: string, explorationId: string, explorer:
 	}
 }
 
-function failureHint(launch: Launch, call: ClaudeCall) {
-	if (authenticationFailed(call)) return authenticationHint
+function failureHint(launch: Launch, call: ChildCall) {
+	if (authenticationFailed(call)) return launch.context.harness === 'pi' ? piAuthenticationHint : authenticationHint
 	if (!/model/i.test([call.failure?.[1] ?? '', ...(call.stderr ?? [])].join(' '))) return undefined
+	if (launch.context.harness === 'pi')
+		return 'Check the model configured in Pi, or set CHECKMATE_PI_MODEL and CHECKMATE_PI_PROVIDER.'
 	return launch.modelFrom === 'level'
 		? `The host refused the model ${launch.model} of level ${launch.level}. Give another model with --claude-arg --model --claude-arg <model>, or choose another --level.`
 		: `The host refused the model ${launch.model}. Give another model with --claude-arg --model --claude-arg <model>.`
@@ -431,11 +448,11 @@ function watchWork(store: Store, actor: string, explorationId: string, explorer:
 async function launchExplorers(store: Store, actor: string, explorationId: string, launch: Launch, env: Env) {
 	const opened = exploration(store, explorationId)
 	const entries = entryValues(store, explorationId)
-	const claude = requireClaude(env)
+	const executable = requireChild(env, launch.context.harness)
 	const runs = explorerNames(launch.explorers).map(async (explorer) => {
 		const session = randomUUID()
 		const { folder, grant, deny, extraEnv } = explorerWork(store, explorationId, explorer, launch.explorers)
-		const rules = [...launch.allow, ...grant].flatMap((rule) => ['--allowedTools', rule])
+		const rules = launch.context.harness === 'pi' ? launch.allow : [...launch.allow, ...grant]
 		const brief = explorerBrief(opened.charter, entries, `qa-${explorationId}-${explorer}-`, folder, {
 			study: launch.studySeconds,
 			test: launch.testSeconds,
@@ -444,19 +461,26 @@ async function launchExplorers(store: Store, actor: string, explorationId: strin
 			step: 'launch',
 			explorer,
 			status: 'started',
-			detail: { session, context: launch.context, engineRules: grant, brief },
+			detail: {
+				session,
+				context: launch.context,
+				engineRules: grant,
+				brief,
+			},
 		})
 		const turn = (own: string[], prompt: string, name: string) => {
 			const hook = childHook(store.workspace, explorationId, explorer)
+			const context = { ...launch.context, deny, hook, work: folder }
 			return watchStray(store, actor, explorationId, explorer, name, () =>
-				launchClaude(
-					claude,
-					childArgs({ ...launch.context, deny, hook }, [...own, ...rules]),
+				launchChild(
+					executable,
+					childArgs(context, own, rules),
 					prompt,
 					store.workspace,
-					childEnv(env, extraEnv, hook),
+					childEnv(env, extraEnv, hook, context, rules),
 					launch.timeoutSeconds,
-					noteChild(store, actor, explorationId, explorer)
+					noteChild(store, actor, explorationId, explorer),
+					context.harness
 				)
 			)
 		}
@@ -515,7 +539,7 @@ export function recordExplorers(
 	)
 }
 
-function costOf(calls: ClaudeCall[]) {
+function costOf(calls: ChildCall[]) {
 	const costs = calls.flatMap((call) => (call.costUsd === undefined ? [] : [call.costUsd]))
 	return costs.length ? { costUsd: costs.reduce((total, cost) => total + cost, 0) } : {}
 }
@@ -558,16 +582,18 @@ function mergeReports(store: Store, actor: string, explorationId: string, launch
 	const input = mergeInput(store, explorationId, after)
 	if (!input) return
 	const session = randomUUID()
-	const claude = requireClaude(env)
+	const executable = requireChild(env, launch.context.harness)
 	const call = (args: string[], prompt: string) => {
 		const hook = childHook(store.workspace, explorationId, 'merge')
-		return callClaude(
-			claude,
-			childArgs({ ...launch.context, hook }, args),
+		const context = { ...launch.context, hook }
+		return callChild(
+			executable,
+			childArgs(context, args),
 			prompt,
 			store.workspace,
-			childEnv(env, {}, hook),
-			defaultRecorderTimeout
+			childEnv(env, {}, hook, context),
+			defaultRecorderTimeout,
+			context.harness
 		)
 	}
 	const log = (reply: unknown[] | undefined) => logMerge(store, explorationId, reply)
@@ -597,7 +623,9 @@ function mergeReports(store: Store, actor: string, explorationId: string, launch
 			reports: input.count,
 			refused: refusals.length,
 			...(failure ? { reason: failure[1] } : {}),
-			...(calls.some(authenticationFailed) ? { hint: authenticationHint } : {}),
+			...(calls.some(authenticationFailed)
+				? { hint: launch.context.harness === 'pi' ? piAuthenticationHint : authenticationHint }
+				: {}),
 			...(calls.find((item) => item.stderr)?.stderr ? { stderr: calls.find((item) => item.stderr)!.stderr } : {}),
 			...costOf(calls),
 		},
@@ -612,13 +640,15 @@ function deriveRules(store: Store, actor: string, explorationId: string, launch:
 	const session = randomUUID()
 	const call = (args: string[], prompt: string) => {
 		const hook = childHook(store.workspace, explorationId, 'rules')
-		return callClaude(
-			requireClaude(env),
-			childArgs({ ...launch.context, hook }, args),
+		const context = { ...launch.context, hook }
+		return callChild(
+			requireChild(env, context.harness),
+			childArgs(context, args),
 			prompt,
 			store.workspace,
-			childEnv(env, {}, hook),
-			defaultRecorderTimeout
+			childEnv(env, {}, hook, context),
+			defaultRecorderTimeout,
+			context.harness
 		)
 	}
 	const calls = [call(['--session-id', session], rulesPrompt(opened.charter.goal, sources))]
@@ -640,7 +670,9 @@ function deriveRules(store: Store, actor: string, explorationId: string, launch:
 			rules: checked.rules.length,
 			refused: checked.refusals.length,
 			...(checked.rules.length ? {} : { reason: failure?.[1] ?? checked.refusals.join(' ') }),
-			...(calls.some(authenticationFailed) ? { hint: authenticationHint } : {}),
+			...(calls.some(authenticationFailed)
+				? { hint: launch.context.harness === 'pi' ? piAuthenticationHint : authenticationHint }
+				: {}),
 			...costOf(calls),
 		},
 	}
@@ -680,17 +712,18 @@ async function verifyClaims(store: Store, actor: string, explorationId: string, 
 	const { items } = input
 	const session = randomUUID()
 	const brief = verifierBrief(items, input.entries, input.operations, input.dataPrefix)
-	const allowed = launch.allow.flatMap((rule) => ['--allowedTools', rule])
 	const ask = (own: string[], prompt: string) => {
 		const hook = childHook(store.workspace, explorationId, 'verify')
-		return launchClaude(
-			requireClaude(env),
-			childArgs({ ...launch.context, deny: storeDenyRules, hook }, [...own, ...allowed]),
+		const context = { ...launch.context, deny: storeDenyRules, hook }
+		return launchChild(
+			requireChild(env, context.harness),
+			childArgs(context, own, launch.allow),
 			prompt,
 			store.workspace,
-			childEnv(env, {}, hook),
+			childEnv(env, {}, hook, context, launch.allow),
 			launch.timeoutSeconds,
-			noteChild(store, actor, explorationId, null)
+			noteChild(store, actor, explorationId, null),
+			context.harness
 		)
 	}
 	const ids = new Set(items.map((item) => item.id))
@@ -719,7 +752,9 @@ async function verifyClaims(store: Store, actor: string, explorationId: string, 
 							reason: `The verifier gave no result, also after one repair${failure ? ` (${failure[1]})` : ''}. The claims keep their states.`,
 						}),
 			...(stderr ? { stderr } : {}),
-			...(calls.some(authenticationFailed) ? { hint: authenticationHint } : {}),
+			...(calls.some(authenticationFailed)
+				? { hint: launch.context.harness === 'pi' ? piAuthenticationHint : authenticationHint }
+				: {}),
 			...costOf(calls),
 		},
 	})
@@ -734,7 +769,9 @@ function newDefects(store: Store, planId: string, after: number) {
 }
 
 function hostAuthentication(store: Store, explorationId: string) {
-	return explorationEvents(store, explorationId).some((item) => item.detail.hint === authenticationHint)
+	return explorationEvents(store, explorationId).some(
+		(item) => item.detail.hint === authenticationHint || item.detail.hint === piAuthenticationHint
+	)
 }
 
 export async function driveExploration(workspace: string, explorationId: string, env: Env) {
@@ -784,7 +821,9 @@ export async function driveExploration(workspace: string, explorationId: string,
 								? 'Host authentication: no session could log in.'
 								: 'No explorer session was recorded.',
 						}),
-				...(!ok && hostAuthentication(store, explorationId) ? { hint: authenticationHint } : {}),
+				...(!ok && hostAuthentication(store, explorationId)
+					? { hint: launch.context.harness === 'pi' ? piAuthenticationHint : authenticationHint }
+					: {}),
 			},
 		})
 	} catch (error) {
@@ -846,7 +885,7 @@ export function startFollow(store: Store, actor: string | undefined, input: Foll
 		const row = explorationRow(store, id)
 		const events = explorationEvents(store, id)
 		session = startOf(events)?.path === 'session'
-		if (!session) requireClaude(env)
+		if (!session) requireChild(env, startOf(events)?.context?.harness)
 		const state = explorationState(events)
 		requireCondition(
 			followable(events),
@@ -862,6 +901,10 @@ export function startFollow(store: Store, actor: string | undefined, input: Foll
 			`Answer a question of the exploration first: checkmate gap answer ${row.plan_id} <questionId> --kind <kind> --value "<answer>" --source "<source>" --rationale "<why>". Run checkmate explore show ${id} to read its questions.`
 		)
 		const stored = startOf(events)!
+		if (stored.context.harness === 'pi') {
+			requireWellFormed(!input.claudeArgs.length, '--claude-arg is for Claude.')
+			piToolNames(input.allow)
+		}
 		const claudeArgs = checkClaudeArgs(input.claudeArgs)
 		const plan: FollowPlan = {
 			answers: answered.map((question) => question.answerId!),
@@ -940,24 +983,26 @@ export async function driveFollow(workspace: string, explorationId: string, env:
 		const sessions = followSessions(events)
 		const phase = `follow-${events.filter((item) => item.step === 'follow').length}`
 		const count = startOf(events)!.explorers
-		const claude = requireClaude(env)
+		const executable = requireChild(env, launch.context.harness)
 		const ended = await Promise.all(
 			sessions
 				.filter((item) => !item.skipped)
 				.map(async ({ explorer, session }) => {
 					const { folder, grant, deny, extraEnv } = explorerWork(store, explorationId, explorer, count)
-					const rules = [...plan.allow, ...grant].flatMap((rule) => ['--allowedTools', rule])
+					const rules = plan.context.harness === 'pi' ? plan.allow : [...plan.allow, ...grant]
 					const watch = watchWork(store, actor, explorationId, explorer, 'follow-up')
 					const hook = childHook(store.workspace, explorationId, explorer)
+					const context = { ...plan.context, deny, hook, work: folder }
 					const call = await watchStray(store, actor, explorationId, explorer, 'follow-up', () =>
-						launchClaude(
-							claude,
-							childArgs({ ...plan.context, deny, hook }, ['--resume', session, ...rules]),
+						launchChild(
+							executable,
+							childArgs(context, ['--resume', session], rules),
 							followBrief(plan.questions, folder, plan.seconds),
 							store.workspace,
-							childEnv(env, extraEnv, hook),
+							childEnv(env, extraEnv, hook, context, rules),
 							plan.timeoutSeconds,
-							noteChild(store, actor, explorationId, explorer)
+							noteChild(store, actor, explorationId, explorer),
+							context.harness
 						)
 					)
 					watch.stop()
@@ -1006,7 +1051,9 @@ export async function driveFollow(workspace: string, explorationId: string, env:
 				answers: plan.answers,
 				skipped,
 				...(recorded ? {} : { reason: 'No explorer session of the follow-up was recorded.' }),
-				...(ended.some((item) => authenticationFailed(item.call)) ? { hint: authenticationHint } : {}),
+				...(ended.some((item) => authenticationFailed(item.call))
+					? { hint: launch.context.harness === 'pi' ? piAuthenticationHint : authenticationHint }
+					: {}),
 			},
 		})
 	} catch (error) {

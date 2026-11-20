@@ -5,6 +5,7 @@ import { execFile, execFileSync } from 'node:child_process'
 import { join } from 'node:path'
 import type { Stage } from '../cli/src/launcher.ts'
 import {
+	defaultPluginRoot,
 	delegate,
 	minimumRules,
 	reservedClaudeArgs,
@@ -349,6 +350,115 @@ reply({ status, subject, reasons })`
 		'reason: G1: Does the promotion stack with loyalty?',
 		'reason: G2: Which orders qualify for refunds?',
 	])
+})
+
+test('the npm CLI delegates through Pi and verifies the recorded stage operation', (t) => {
+	const workspace = requested(t)
+	const bundledPlugin = defaultPluginRoot()
+	const bin = join(workspace, 'bin')
+	mkdirSync(bin)
+	executable(
+		bin,
+		'pi',
+		`const { readFileSync, writeFileSync } = require('node:fs')
+const { execFileSync } = require('node:child_process')
+const response = (status, subject, reasons) => JSON.stringify({ status, subject, reasons })
+const event = (text, stopReason = 'stop') => console.log(JSON.stringify({
+	type: 'agent_end',
+	messages: [{ role: 'assistant', stopReason, content: [{ type: 'text', text }] }],
+}))
+const fence = ${JSON.stringify('```')}
+const decision = response('needs_decision', 'checkout', ['No target instance.'])
+const fenced = fence + 'json\\n' + decision + '\\n' + fence
+writeFileSync('pi-args.json', JSON.stringify(process.argv.slice(2)))
+writeFileSync('pi-prompt.txt', readFileSync(0, 'utf8'))
+if (process.env.FAKE_PI_OUTPUT === 'invalid') {
+	event(response('completed', 'checkout', [5]))
+} else if (process.env.FAKE_PI_OUTPUT === 'unrecorded') {
+	event(response('completed', 'checkout', []))
+} else if (process.env.FAKE_PI_OUTPUT === 'fenced') {
+	event('  \\n' + fenced + '\\n  ')
+} else if (process.env.FAKE_PI_OUTPUT === 'trailing') {
+	event(fenced + '\\nThe stage needs a decision.')
+} else if (process.env.FAKE_PI_OUTPUT === 'multiple') {
+	event(fenced + '\\n' + fenced)
+} else if (process.env.FAKE_PI_OUTPUT === 'incomplete') {
+	event(decision, 'toolUse')
+} else {
+	const recorded = execFileSync(process.execPath, [${JSON.stringify(join(bundledPlugin, 'dist/checkmate.js'))}, 'plan', 'save', 'checkout', '--json'], {
+		input: ${JSON.stringify(JSON.stringify(candidate()))},
+		encoding: 'utf8',
+	})
+	const { status, subject, reasons } = JSON.parse(recorded)
+	event(response(status, subject, reasons))
+}`
+	)
+	const run = (output: string, ...flags: string[]) => {
+		const args = [join(root, 'cli/src/main.ts'), 'delegate', 'plan', 'checkout', '--json', ...flags]
+		const env = {
+			...process.env,
+			PATH: `${bin}:${process.env.PATH}`,
+			CHECKMATE_HARNESS: 'pi',
+			CHECKMATE_PI_MODEL: 'fixture-model',
+			CHECKMATE_PI_PROVIDER: 'fixture-provider',
+			FAKE_PI_OUTPUT: output,
+		}
+		try {
+			return JSON.parse(execFileSync(process.execPath, args, { cwd: workspace, env, encoding: 'utf8' }))
+		} catch (error) {
+			return JSON.parse((error as { stdout: string }).stdout)
+		}
+	}
+	for (const flags of [
+		['--allow', 'Read'],
+		['--claude-arg', '--model'],
+	])
+		assert.match(run('', ...flags).reasons.join(' '), /Pi delegate does not accept/)
+	assert.equal(existsSync(join(workspace, 'pi-args.json')), false)
+	const invalid = run('invalid')
+	assert.equal(invalid.status, 'operational_error')
+	assert.match(invalid.reasons[0], /reasons\/0/)
+	const unrecorded = run('unrecorded')
+	assert.equal(unrecorded.status, 'operational_error')
+	assert.match(unrecorded.reasons[0], /no plan save for checkout was recorded/)
+	assert.deepEqual(run('fenced'), {
+		status: 'needs_decision',
+		subject: 'checkout',
+		reasons: ['No target instance.'],
+		operation: null,
+	})
+	for (const output of ['trailing', 'multiple']) {
+		const result = run(output)
+		assert.equal(result.status, 'operational_error')
+		assert.match(result.reasons[0], /Pi did not return a JSON response/)
+	}
+	assert.equal(run('incomplete').status, 'operational_error')
+	const saved = run('recorded')
+	assert.equal(saved.subject, 'checkout@1')
+	assert.equal(saved.status, 'needs_decision')
+	const [operation] = query<{ id: string; actor: string }>(
+		workspace,
+		"SELECT id, actor FROM operations WHERE command = 'plan save' AND status != 'rejected'"
+	)
+	assert.deepEqual(operation, { id: saved.operation, actor: 'pi:plan' })
+	assert.deepEqual(JSON.parse(readFileSync(join(workspace, 'pi-args.json'), 'utf8')), [
+		'-p',
+		'--mode',
+		'json',
+		'--model',
+		'fixture-model',
+		'--provider',
+		'fixture-provider',
+		'--no-session',
+		'--no-mcp',
+		'--tools',
+		'read,bash',
+	])
+	const prompt = readFileSync(join(workspace, 'pi-prompt.txt'), 'utf8')
+	assert.match(prompt, /checkmate plan save <planId> --actor pi:plan/)
+	assert.match(prompt, /Write an open blocking gap/)
+	assert(prompt.includes(join(bundledPlugin, 'references', 'workflow.md')))
+	assert.doesNotMatch(prompt, /CLAUDE_PLUGIN_ROOT|--actor claude:/)
 })
 
 function hold(workspace: string) {

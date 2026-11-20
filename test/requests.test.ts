@@ -584,3 +584,17 @@ test('Activity lists requests next to runs with their state and cost', async (t)
 	assert.match(row, /\$0\.31/)
 	assert.match(page, /Showing 1–1 of 1 entry/)
 })
+
+test('Pi request stream rejects incomplete and aborted replies', () => {
+	const line = (value: unknown) => JSON.stringify(value)
+	const [length] = readStreamLine(
+		line({
+			type: 'agent_end',
+			messages: [{ role: 'assistant', stopReason: 'length', content: [{ type: 'text', text: 'partial' }] }],
+		}),
+		'pi'
+	)
+	assert.equal(length.kind === 'result' && length.value.is_error, true)
+	const [aborted] = readStreamLine(line({ type: 'agent_settled', aborted: true }), 'pi')
+	assert.equal(aborted.kind === 'result' && aborted.value.is_error, true)
+})

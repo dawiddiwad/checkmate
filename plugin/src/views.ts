@@ -1,3 +1,4 @@
+import { selectedHarness } from './pi.ts'
 import type { Plan, Result } from './types.ts'
 import type { Store } from './store.ts'
 import type { ExplorationEvent } from './explorations.ts'
@@ -1118,7 +1119,8 @@ export function openRejections(store: Store, planId: string) {
 }
 
 function delegateHint(stage: 'plan' | 'revise' | 'execute', subject: string) {
-	return `checkmate delegate ${stage} ${subject} --allow Read --allow Bash`
+	const rules = selectedHarness() === 'claude' ? ' --allow Read --allow Bash' : ''
+	return `checkmate delegate ${stage} ${subject}${rules}`
 }
 
 function loopOf(store: Store, planId: string) {

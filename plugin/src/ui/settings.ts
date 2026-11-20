@@ -7,7 +7,8 @@ import { Refusal } from '../contracts.ts'
 import { requestModelText } from '../settings.ts'
 import { conversationText } from './requests.ts'
 import { testLevels } from '../levels.ts'
-import { liveUi, requireClaude } from '../sessions.ts'
+import { liveUi, requireChild } from '../sessions.ts'
+import { selectedHarness } from '../pi.ts'
 import type { Env } from '../sessions.ts'
 import { instanceList, targetHistory, targetList, targetRequest, targetRevision } from '../targets.ts'
 import { html, join, pill, plural, short, time } from './html.ts'
@@ -472,7 +473,8 @@ export function instanceFromForm(entryPoints: EntryPoint[], form: URLSearchParam
 
 function claudeProgram(env: Env) {
 	try {
-		return html`<code>${requireClaude(env)}</code>`
+		const program = requireChild(env, selectedHarness(env))
+		return html`<code>${program}</code>`
 	} catch (error) {
 		if (!(error instanceof Refusal)) throw error
 		return html`<span class="form-error" role="status">${error.message} ${error.hint ?? ''}</span>`
@@ -486,13 +488,13 @@ export function claudePage(
 	form: RulesForm | null = null,
 	model: RulesForm | null = null
 ): Page {
-	const body = html`${heading('Claude Code', 'The program that runs the testers. Checkmate makes no call to it on this page.')}
+	const pi = selectedHarness(env) === 'pi'
+	const body = html`${heading(pi ? 'Pi' : 'Claude Code', 'The program that runs the testers. Checkmate makes no call to it on this page.')}
 		<section class="panel" aria-labelledby="claude-program">
 			<h2 class="lab" id="claude-program">Program</h2>
 			<p>${claudeProgram(env)}</p>
 			<p class="help">
-				Claude Code keeps the login, the permissions, and the tools. Checkmate starts <code>claude</code> and
-				does not read or copy a credential.
+				${pi ? 'Pi' : 'Claude Code'} keeps the login and tools. Checkmate does not read or copy a credential.
 			</p>
 		</section>
 		<section class="panel" aria-labelledby="claude-rules">
@@ -532,44 +534,56 @@ export function claudePage(
 				<div class="btns"><button class="btn primary">Save the rules</button></div>
 			</form>
 		</section>
-		<section class="panel" aria-labelledby="claude-model">
-			<h2 class="lab" id="claude-model">Model of the testers</h2>
-			<p class="help">
-				Checkmate gives each test level a default model alias. A test that you start in the UI uses it. Claude
-				Code resolves the alias.
-			</p>
-			<div class="scroll">
-				<table>
-					<thead>
-						<tr>
-							<th scope="col">Level</th>
-							<th scope="col">Model alias</th>
-							<th scope="col">Testers</th>
-						</tr>
-					</thead>
-					<tbody>
-						${Object.entries(testLevels).map(
-							([level, row]) =>
-								html`<tr>
-									<td class="mono">${level}</td>
-									<td class="mono">${row.model}</td>
-									<td>${row.explorers}${row.verifier ? ' and a verifier' : ''}</td>
-								</tr>`
-						)}
-					</tbody>
-				</table>
-			</div>
-			<p class="help">
-				The host wins. To use another model, start the test from a shell with
-				<code>checkmate test &lt;planId&gt; --claude-arg --model --claude-arg &lt;model&gt;</code>. When the
-				host refuses the model, the test fails and names this override. Checkmate does not try another model.
-			</p>
-		</section>
+		${
+			pi
+				? html`<section class="panel">
+						<h2 class="lab">Model of the testers</h2>
+						<p class="help">
+							Pi selects the model from its settings. Set CHECKMATE_PI_MODEL to choose a model for
+							Checkmate sessions.
+						</p>
+					</section>`
+				: html`<section class="panel" aria-labelledby="claude-model">
+						<h2 class="lab" id="claude-model">Model of the testers</h2>
+						<p class="help">
+							Checkmate gives each test level a default model alias. A test that you start in the UI uses
+							it. Claude Code resolves the alias.
+						</p>
+						<div class="scroll">
+							<table>
+								<thead>
+									<tr>
+										<th scope="col">Level</th>
+										<th scope="col">Model alias</th>
+										<th scope="col">Testers</th>
+									</tr>
+								</thead>
+								<tbody>
+									${Object.entries(testLevels).map(
+										([level, row]) =>
+											html`<tr>
+												<td class="mono">${level}</td>
+												<td class="mono">${row.model}</td>
+												<td>${row.explorers}${row.verifier ? ' and a verifier' : ''}</td>
+											</tr>`
+									)}
+								</tbody>
+							</table>
+						</div>
+						<p class="help">
+							The host wins. To use another model, start the test from a shell with
+							<code>checkmate test &lt;planId&gt; --claude-arg --model --claude-arg &lt;model&gt;</code>.
+							When the host refuses the model, the test fails and names this override. Checkmate does not
+							try another model.
+						</p>
+					</section>`
+		}
 		<section class="panel" aria-labelledby="claude-requests">
 			<h2 class="lab" id="claude-requests">Requests</h2>
+
 			<p class="help">
-				A request that you type in the find bar runs in Claude Code on this computer, in your own session. It
-				has your login, your settings, and all your tools. Claude Code asks you here when a tool needs a
+				A request that you type in the find bar runs in ${pi ? 'Pi' : 'Claude Code'} on this computer, in your
+				own session. It has your login, your settings, and your tools. Checkmate asks you here when a tool needs
 				permission.
 			</p>
 			<form method="post" action="/settings/claude/model" class="decision-form">
@@ -586,8 +600,7 @@ export function claudePage(
 						${model ? html`autofocus` : ''}
 					/>
 					<p class="help" id="request-model-help">
-						A model alias or ID, for example <code>sonnet</code>. Empty means the model that Claude Code
-						chooses by itself.
+						A model alias or ID. Empty means the model that ${pi ? 'Pi' : 'Claude Code'} chooses.
 					</p>
 					${model ? html`<p class="form-error" role="alert" data-field="model">${model.error}</p>` : ''}
 				</div>

@@ -17,7 +17,8 @@
 		"phase:verify": "npm run type:check && npm run lint:check && npm run format:check && npm test && node test/plugin.ts",
 		"generate": "node scripts/generate-types.ts && node scripts/generate-validators.ts",
 		"build": "npm run generate && node scripts/build-plugin.ts",
-		"ui:volume": "node scripts/ui-volume.ts"
+		"ui:volume": "node scripts/ui-volume.ts",
+		"test:pi": "node scripts/build-cli.ts && node --test test/pi-e2e.ts test/pi-request.test.ts test/pi-permission.test.ts"
 	},
 	"devDependencies": {
 		"@eslint/js": "10.0.1",

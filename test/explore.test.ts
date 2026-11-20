@@ -21,14 +21,14 @@ const allow = ['--allow', 'Read', '--allow', 'Bash']
 
 function setup(
 	t: TestContext,
-	options: { profile?: Partial<Profile>; installed?: boolean; replies?: FakeReplies } = {}
+	options: { profile?: Partial<Profile>; installed?: boolean; replies?: FakeReplies; harness?: 'pi' } = {}
 ) {
 	const workspace = realpathSync(directory(t))
 	const opened = store(t, workspace)
 	target(opened, options.profile)
 	plan(opened)
 	closeStore(opened)
-	const fake = fakeClaude(t, options.replies ?? { explorer: 'Tested the cart.', recorder: [defect] })
+	const fake = fakeClaude(t, options.replies ?? { explorer: 'Tested the cart.', recorder: [defect] }, options.harness)
 	if (options.installed !== false) {
 		mkdirSync(join(fake.config, 'plugins'), { recursive: true })
 		writeFileSync(
@@ -39,7 +39,7 @@ function setup(
 	const command = (args: string[]) => {
 		const outcome = run([...args, '--workspace', workspace, '--json'], {
 			cwd: workspace,
-			env: { ...process.env, CHECKMATE_ACTOR: actor, ...fake.env },
+			env: { ...process.env, CHECKMATE_ACTOR: actor, CHECKMATE_HARNESS: options.harness, ...fake.env },
 			stdin: () => '',
 		})
 		return { code: outcome.code, body: JSON.parse(outcome.output) }
@@ -60,6 +60,30 @@ const explorerSettings = (explorer: string) =>
 		permissions: { deny: workDenyRules(others(explorer, ['a1', 'a2', 'a3'])) },
 	})
 const nameOf = (call: { prompt: string }) => /\.checkmate\/work\/x-1\/(a\d)\//.exec(call.prompt)![1]
+
+test('Pi exploration resumes the study session and forks its recorder', (t) => {
+	const { start, wait, called } = setup(t, { harness: 'pi', installed: false })
+	const started = start(['--level', 'smoke'])
+	assert.equal(started.code, 0, JSON.stringify(started.body))
+	assert.equal(started.body.model, null)
+	const done = wait()
+	assert.equal(done.body.outcome, 'done', JSON.stringify(done.body))
+	const calls = called()
+	const study = calls.find((call) => call.role === 'explorer')
+	const tester = calls.find((call) => call.role === 'tester')
+	const recorder = calls.find((call) => call.role === 'recorder')
+	assert.equal(after(study.args, '--mode'), 'json')
+	assert.equal(after(study.args, '--tools'), '+read,+bash,+edit,+write')
+	assert(!study.args.includes('--model'))
+	assert(study.args.includes('--no-context-files'))
+	assert(study.args.includes('--no-skills'))
+	assert(study.env.includes('CHECKMATE_PI_POLICY'))
+	assert.equal(after(tester.args, '--session'), study.session)
+	assert.equal(after(recorder.args, '--fork'), study.session)
+	assert.notEqual(recorder.session, study.session)
+	assert.equal(after(recorder.args, '--tools'), '+read')
+	assert.equal(done.body.explorers[0].saved, 1)
+})
 
 test('explore start launches the explorers of the level in a clean context, then records each session', (t) => {
 	const { start, wait, called, workspace, command } = setup(t)

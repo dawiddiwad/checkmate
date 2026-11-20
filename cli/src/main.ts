@@ -14,7 +14,9 @@ type Parsed = {
 }
 
 const delegateUsage =
-	'checkmate delegate <setup|plan|revise|execute> <targetId|planId|planId|runId> --allow <rule>... [--timeout <seconds>] [--claude-arg <arg>]...'
+	'checkmate delegate <setup|plan|revise|execute> <targetId|planId|planId|runId> [--timeout <seconds>]'
+const delegateHarnessUsage =
+	'Claude (default) requires --allow <rule> and accepts --claude-arg <arg>. Both can repeat. Set CHECKMATE_HARNESS=pi to use Pi.'
 
 function version() {
 	return JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version as string
@@ -22,7 +24,7 @@ function version() {
 
 function help() {
 	const commands = coreRun(['--help'], { cwd: process.cwd(), env: {}, stdin: () => '' }).output.split('\n')
-	return [...commands.slice(0, -1), delegateUsage, commands.at(-1)].join('\n')
+	return [...commands.slice(0, -1), delegateUsage, delegateHarnessUsage, commands.at(-1)].join('\n')
 }
 
 function parse(tokens: string[], options: string[]): Parsed {
@@ -92,7 +94,7 @@ function print(response: DelegateResponse & Pick<Reply, 'refusal' | 'hint'>, jso
 }
 
 function printHelp(json: boolean) {
-	const usage = [delegateUsage]
+	const usage = [delegateUsage, delegateHarnessUsage]
 	const output = json
 		? JSON.stringify({ status: 'completed', subject: 'delegate', reasons: [], usage })
 		: ['completed delegate', ...usage].join('\n')

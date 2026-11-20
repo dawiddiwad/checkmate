@@ -18,6 +18,7 @@ import {
 	accept,
 	actor,
 	approved,
+	begin,
 	candidate,
 	check,
 	followHints,
@@ -716,4 +717,17 @@ test('a cross-plan build hint names the build that selects the most tests, the n
 		'checkmate run begin <runId> pay@1 --build b3 --partial ready_only',
 	])
 	followHints(t, opened, 'pay')
+})
+
+test('a Pi execute hint can run without Claude tool rules', (t) => {
+	const opened = store(t)
+	ready(opened)
+	begin(opened, 'run-1', ['T1'], 'build-1')
+	const previous = process.env.CHECKMATE_HARNESS
+	process.env.CHECKMATE_HARNESS = 'pi'
+	t.after(() => {
+		if (previous === undefined) delete process.env.CHECKMATE_HARNESS
+		else process.env.CHECKMATE_HARNESS = previous
+	})
+	assert.ok(planStatus(opened, 'checkout').next.includes('checkmate delegate execute run-1'))
 })

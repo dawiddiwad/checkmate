@@ -58,7 +58,8 @@ import { isUnread, markRequestRead, requestOf, requestStatus, staleRequests } fr
 import { planRequest } from '../plans.ts'
 import type { Env } from '../sessions.ts'
 import type { StopDelays } from '../sessions.ts'
-import { liveUi, removeUiFile, requireClaude, workspaceHookToken, writeUiFile } from '../sessions.ts'
+import { liveUi, removeUiFile, requireChild, workspaceHookToken, writeUiFile } from '../sessions.ts'
+import { selectedHarness } from '../pi.ts'
 import { launchPlan } from '../explorers.ts'
 import { maxAreaCharacters, outsideRule, planRules, ticketFile } from '../rules.ts'
 import { ruleMap } from '../rulemap.ts'
@@ -1613,7 +1614,7 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		if (address && URL.canParse(address) && !isLocalAddress(address) && form.get('confirmed') !== '1')
 			return refuse(`Confirm that Checkmate may test ${hostOf(address)}, an address that is not local.`, 'target')
 		try {
-			requireClaude(env)
+			requireChild(env, selectedHarness(env))
 			launchPlan(targetRevision(store, targetId).profile, { planId, build, allow, claudeArgs: [], level }, env)
 		} catch (error) {
 			const message = engineText(error)
@@ -2077,8 +2078,11 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		for (const client of clients) client.res.end()
 		clients.clear()
 		await new Promise<void>((resolve) => {
-			server.close(() => resolve())
-			server.closeAllConnections()
+			const forceClose = setTimeout(() => server.closeAllConnections(), 1000)
+			server.close(() => {
+				clearTimeout(forceClose)
+				resolve()
+			})
 		})
 		closeStore(watch)
 		closeStore(store)

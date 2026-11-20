@@ -39,6 +39,10 @@ Claude starts independent testers as agents of your session, so you see their wo
 
 Read [Test in Claude Code](docs/guides/claude-code.md).
 
+## Use Pi
+
+Run Checkmate with Pi to use a provider and model configured in Pi. This branch includes a Pi skill and a CLI harness. See [Run Checkmate with Pi](docs/guides/pi.md) for local installation and commands.
+
 ## Team mode: the CLI in your factory
 
 Your agents share the work. Install the CLI:
@@ -62,7 +66,7 @@ checkmate status checkout
 
 Read [Run Checkmate from a factory](docs/guides/factory.md).
 
-Both modes need Node.js 24.12.0 or later and Claude Code. Team mode also needs a logged-in `claude` command. For browser tests, install Playwright CLI: `npm i -g @playwright/cli`.
+Use Node.js 24.12.0 or later. For delegated stages, install and authenticate the selected harness. For browser tests, install Playwright CLI: `npm i -g @playwright/cli`.
 
 ## Documentation
 

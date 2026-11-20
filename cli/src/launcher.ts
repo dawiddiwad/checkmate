@@ -1,9 +1,11 @@
 import type { Profile, Reply, Status, Store } from '../../plugin/src/index.ts'
 import { Refusal, closeStore, isBusy, openRejections, openStore, runClock, validate } from '../../plugin/src/index.ts'
+import type { Harness } from '../../plugin/src/pi.ts'
+import { piArgs, piResult, selectedHarness } from '../../plugin/src/pi.ts'
+import { pluginRoot as bundledPluginRoot } from '../../plugin/src/sessions.ts'
 import { spawn } from 'node:child_process'
-import { existsSync, readFileSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
 
 export const stages = ['setup', 'plan', 'revise', 'execute'] as const
 export type Stage = (typeof stages)[number]
@@ -18,10 +20,17 @@ export type DelegateOptions = {
 	claudeArgs?: string[]
 	timeoutSeconds?: number
 	claude?: string
+	pi?: string
 	playwright?: string
 	pluginRoot?: string
 }
-type WorkerOptions = { cwd: string; prompt: string; timeoutSeconds: number; env?: Record<string, string | undefined> }
+type WorkerOptions = {
+	cwd: string
+	prompt: string
+	timeoutSeconds: number
+	env?: Record<string, string | undefined>
+	harness?: Harness
+}
 type RunRow = {
 	run_id: string
 	plan_id: string
@@ -62,9 +71,7 @@ const verifiedBy: Record<Stage, { command: string; key: string }> = {
 }
 
 export function defaultPluginRoot() {
-	const bundled = fileURLToPath(new URL('../plugin', import.meta.url))
-	if (existsSync(join(bundled, '.claude-plugin', 'plugin.json'))) return bundled
-	return fileURLToPath(new URL('../../plugin', import.meta.url))
+	return bundledPluginRoot
 }
 
 export const unverifiedReason =
@@ -96,6 +103,20 @@ function readEnvelope(output: string) {
 		refuse(`Claude did not complete the stage${excerpt(envelope.result)}`)
 	if (!envelope.structured_output) refuse('Claude did not return structured output')
 	return validate('response', envelope.structured_output) as WorkerResponse
+}
+
+function readPiResponse(output: string, errors: string, code: number | null, signal: NodeJS.Signals | null) {
+	const result = piResult(output, errors, code, signal)
+	if (result.failure) throw new Error(result.failure[1])
+	const text = String(result.result).trim()
+	const fenced = /^```(?:json)?[ \t]*\r?\n([\s\S]*)\r?\n```$/i.exec(text)
+	let response: unknown
+	try {
+		response = JSON.parse(fenced?.[1] ?? text)
+	} catch {
+		refuse('Pi did not return a JSON response')
+	}
+	return validate('response', response) as WorkerResponse
 }
 
 function checkClaudeArgs(claudeArgs: string[]) {
@@ -137,7 +158,8 @@ export function worker(executable: string, args: string[], options: WorkerOption
 			stdio: ['pipe', 'pipe', 'pipe'],
 			detached: true,
 		})
-		let output = ''
+		const output: Buffer[] = []
+		let outputBytes = 0
 		let errors = ''
 		let failure: Error | undefined
 		let killTimer: ReturnType<typeof setTimeout> | undefined
@@ -156,8 +178,9 @@ export function worker(executable: string, args: string[], options: WorkerOption
 		process.once('SIGTERM', interrupt)
 		const timer = setTimeout(() => stop('Worker deadline exceeded'), options.timeoutSeconds * 1000)
 		child.stdout.on('data', (bytes: Buffer) => {
-			if (output.length + bytes.length > maxOutputBytes) stop('Worker output exceeds 4 MiB')
-			else output += bytes.toString()
+			outputBytes += bytes.length
+			if (outputBytes > maxOutputBytes) stop('Worker output exceeds 4 MiB')
+			else output.push(bytes)
 		})
 		child.stderr.on('data', (bytes: Buffer) => {
 			if (errors.length < 4096) errors += bytes.toString()
@@ -167,16 +190,18 @@ export function worker(executable: string, args: string[], options: WorkerOption
 		child.on('error', (error) => {
 			failure = new Error(`Cannot start worker: ${'code' in error ? String(error.code) : 'unknown'}`)
 		})
-		child.on('close', (code) => {
+		child.on('close', (code, signal) => {
 			clearTimeout(timer)
 			clearTimeout(killTimer)
 			process.removeListener('SIGINT', interrupt)
 			process.removeListener('SIGTERM', interrupt)
 			kill('SIGKILL')
 			if (failure) return reject(failure)
-			if (code !== 0) return reject(new Error(`Worker exited with code ${code}${excerpt(errors)}`))
 			try {
-				resolvePromise(readEnvelope(output))
+				const stdout = Buffer.concat(output).toString()
+				if (options.harness === 'pi') return resolvePromise(readPiResponse(stdout, errors, code, signal))
+				if (code !== 0) return reject(new Error(`Worker exited with code ${code}${excerpt(errors)}`))
+				resolvePromise(readEnvelope(stdout))
 			} catch (error) {
 				reject(error)
 			}
@@ -372,14 +397,30 @@ function prompt(
 	workspace: string,
 	pluginRoot: string,
 	execution: Execution | null,
-	timeoutSeconds: number
+	timeoutSeconds: number,
+	harness: Harness
 ) {
 	const skill = join(pluginRoot, 'skills', stage, 'SKILL.md')
 	const workflow = join(pluginRoot, 'references', 'workflow.md')
 	const deadline = new Date(Date.now() + timeoutSeconds * 1000).toISOString()
+	const instructions =
+		harness === 'pi'
+			? [
+					'Follow the Checkmate stage instructions and workflow below before you start.',
+					...[skill, workflow].map((path) =>
+						readFileSync(path, 'utf8')
+							.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, '')
+							.replaceAll('${CLAUDE_PLUGIN_ROOT}', () => pluginRoot)
+							.replaceAll('claude:', 'pi:')
+							.trim()
+					),
+				]
+			: [
+					`Use the checkmate:${stage} skill from the loaded plugin. If you cannot load it, read ${skill} and ${workflow} with the Read tool before you start.`,
+				]
 	return [
-		`This is a delegated Checkmate ${stage} stage. Use the checkmate:${stage} skill from the loaded plugin. If you cannot load it, read ${skill} and ${workflow} with the Read tool before you start.`,
-		`Workspace: ${workspace}. Run Checkmate commands from this directory. Add \`--actor claude:${stage}\` to each write.`,
+		`This is a delegated Checkmate ${stage} stage. ${instructions.join('\n\n')}`,
+		`Workspace: ${workspace}. Run Checkmate commands from this directory. Add \`--actor ${harness}:${stage}\` to each write.`,
 		`\`checkmate <command>\` means \`node ${join(pluginRoot, 'dist', 'checkmate.js')} <command>\`.`,
 		...stagePrompt(stage, subject, execution),
 		...(stage === 'execute'
@@ -399,6 +440,13 @@ function prompt(
 					'If permission, access, or a tool is missing, stop and return needs_decision with the missing item as a reason.',
 				]),
 		`Return { status, subject, reasons } from \`${finalCommand[stage]}\`, the final command of the stage. The subject is ${subject}.`,
+		...(harness === 'pi'
+			? [
+					'In your final answer, return only one JSON object, without commentary or Markdown.',
+					'Use one of these status values: completed, needs_decision, interrupted, operational_error, rejected.',
+					`For example, if you need a decision from the oracle, return {"status":"needs_decision","subject":${JSON.stringify(subject)},"reasons":["A specific decision the oracle must make."]}.`,
+				]
+			: []),
 	].join('\n')
 }
 
@@ -424,9 +472,14 @@ export async function delegate(
 ): Promise<DelegateResponse> {
 	workspace = resolve(workspace)
 	if (!stages.includes(stage)) refuse(`Unknown stage: ${stage}. Use one of: ${stages.join(', ')}.`, 'malformed')
-	if (!options.allowedTools.length)
-		refuse(`delegate needs --allow rules. Minimum: ${minimumRules.join(', ')}`, 'malformed')
-	checkClaudeArgs(options.claudeArgs ?? [])
+	const harness = selectedHarness(process.env)
+	if (harness === 'claude') {
+		if (!options.allowedTools.length)
+			refuse(`delegate needs --allow rules. Minimum: ${minimumRules.join(', ')}`, 'malformed')
+		checkClaudeArgs(options.claudeArgs ?? [])
+	} else if (options.allowedTools.length || options.claudeArgs?.length) {
+		refuse('Pi delegate does not accept --allow or --claude-arg.', 'malformed')
+	}
 	const { after, execution } = withStore(workspace, (store) => {
 		checkSubject(store, stage, subject)
 		const run = stage === 'execute' ? startedRun(store, subject) : null
@@ -451,15 +504,18 @@ export async function delegate(
 	let failure: Error | null = null
 	try {
 		claimed = await worker(
-			options.claude ?? 'claude',
-			workerArgs(pluginRoot, options.allowedTools, options.claudeArgs),
+			harness === 'pi' ? (options.pi ?? 'pi') : (options.claude ?? 'claude'),
+			harness === 'pi'
+				? piArgs(['--no-session', '--no-mcp', '--tools', 'read,bash'])
+				: workerArgs(pluginRoot, options.allowedTools, options.claudeArgs),
 			{
 				cwd: workspace,
-				prompt: prompt(stage, subject, workspace, pluginRoot, execution, timeoutSeconds),
+				prompt: prompt(stage, subject, workspace, pluginRoot, execution, timeoutSeconds, harness),
 				timeoutSeconds,
+				harness,
 				env: {
 					...process.env,
-					CHECKMATE_ACTOR: `claude:${stage}`,
+					CHECKMATE_ACTOR: `${harness}:${stage}`,
 					...(run ? { PLAYWRIGHT_MCP_OUTPUT_DIR: join(workspace, '.checkmate', 'tmp', subject) } : {}),
 				},
 			}

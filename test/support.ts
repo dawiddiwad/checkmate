@@ -3,6 +3,7 @@ import type { PlanCandidate, PlanRequest, Profile } from '../plugin/src/types.ts
 import type { Store } from '../plugin/src/store.ts'
 import assert from 'node:assert/strict'
 import { cpSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { spawnSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -31,13 +32,28 @@ export async function sandbox(t?: TestContext) {
 }
 
 export function endProcessesIn(workspace: string) {
-	for (const entry of readdirSync('/proc').filter((name) => /^[0-9]+$/.test(name))) {
+	const pids =
+		process.platform === 'darwin'
+			? (
+					spawnSync('/usr/sbin/lsof', ['-nP', '-a', '-d', 'cwd', '-t', workspace], {
+						encoding: 'utf8',
+					}).stdout ?? ''
+				)
+					.trim()
+					.split(/\s+/)
+			: readdirSync('/proc').filter((pid) => {
+					try {
+						return realpathSync(`/proc/${pid}/cwd`) === workspace
+					} catch {
+						return false
+					}
+				})
+	for (const pid of pids.filter((pid) => /^[1-9]\d*$/.test(pid))) {
 		try {
-			if (realpathSync(`/proc/${entry}/cwd`) !== workspace) continue
-			process.kill(-Number(entry), 'SIGKILL')
+			process.kill(-Number(pid), 'SIGKILL')
 		} catch {}
 		try {
-			process.kill(Number(entry), 'SIGKILL')
+			process.kill(Number(pid), 'SIGKILL')
 		} catch {}
 	}
 }

@@ -21,17 +21,17 @@ const question = { kind: 'question', id: 'Q1', question: 'Can a coupon apply to 
 const allow = ['--allow', 'Read', '--allow', 'Bash']
 const after = (args: string[], flag: string) => args[args.indexOf(flag) + 1]
 
-function setup(t: TestContext) {
+function setup(t: TestContext, harness?: 'pi') {
 	const workspace = realpathSync(directory(t))
 	const opened = store(t, workspace)
 	target(opened)
 	plan(opened)
 	closeStore(opened)
-	const fake = fakeClaude(t, { explorer: 'Tested.', recorder: [stacks, question], merger: [] })
-	const command = (args: string[]) => {
+	const fake = fakeClaude(t, { explorer: 'Tested.', recorder: [stacks, question], merger: [] }, harness)
+	const command = (args: string[], selected: 'pi' | 'claude' | undefined = harness) => {
 		const outcome = run([...args, '--workspace', workspace, '--json'], {
 			cwd: workspace,
-			env: { ...process.env, CHECKMATE_ACTOR: actor, ...fake.env },
+			env: { ...process.env, CHECKMATE_ACTOR: actor, CHECKMATE_HARNESS: selected, ...fake.env },
 			stdin: () => '',
 		})
 		return { code: outcome.code, body: JSON.parse(outcome.output), output: outcome.output }
@@ -43,6 +43,23 @@ function setup(t: TestContext) {
 }
 
 const answer = ['gap', 'answer', 'checkout', 'a1/Q1', '--kind', 'defer', '--value', 'No.', '--rationale', 'Rule.']
+
+test('Pi follow-up reopens the test session and records the new entries', (t) => {
+	const { command, wait, reply, called } = setup(t, 'pi')
+	assert.equal(command(['explore', 'start', 'checkout', '--build', 'b1', '--level', 'smoke', ...allow]).code, 0)
+	assert.equal(wait('x-1').body.state, 'completed')
+	const tester = called().find((call) => call.role === 'tester')
+	assert.equal(command(answer).code, 0)
+	reply({ recorder: [stacks, question, sale] })
+	assert.equal(command(['explore', 'follow', 'x-1'], 'claude').code, 0)
+	const done = wait('x-1')
+	assert.equal(done.body.follow, 'completed')
+	const calls = called()
+	assert.equal(after(calls.find((call) => call.role === 'follower').args, '--session'), tester.session)
+	assert.equal(after(calls.find((call) => call.role === 'recorder').args, '--fork'), tester.session)
+	const record = command(['query', "SELECT detail FROM exploration_events WHERE step = 'record'"]).body.rows
+	assert.equal(JSON.parse(record.at(-1).detail).saved, 1)
+})
 
 test('explore follow refuses an exploration that is not completed or that has no new answer', (t) => {
 	const { command, wait, reply } = setup(t)

@@ -149,6 +149,7 @@ export function createHooks(store: Store, token: string, options: HookOptions = 
 		} catch (error) {
 			log(`could not answer ${entry.id} of ${entry.askerId}: ${(error as Error).message}`)
 		}
+		if (cause === 'ui-stopped') entry.res.shouldKeepAlive = false
 		answer(entry.res, body)
 	}
 

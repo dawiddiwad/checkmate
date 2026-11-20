@@ -8620,6 +8620,65 @@ function He(i, { instancePath: t = "", parentData: _, parentDataProperty: Z, roo
   return He.errors = e, s === 0;
 }
 
+// plugin/src/pi.ts
+function selectedHarness(env = process.env) {
+  const configured = env.CHECKMATE_HARNESS?.trim();
+  if (!configured || configured === "claude") return "claude";
+  if (configured === "pi") return "pi";
+  throw new Refusal("malformed", "CHECKMATE_HARNESS must be claude or pi.");
+}
+function piModelArgs(env) {
+  const model = env.CHECKMATE_PI_MODEL?.trim();
+  const provider = env.CHECKMATE_PI_PROVIDER?.trim();
+  if (provider && !model) throw new Refusal("malformed", "CHECKMATE_PI_PROVIDER requires CHECKMATE_PI_MODEL.");
+  return [...model ? ["--model", model] : [], ...provider ? ["--provider", provider] : []];
+}
+function piArgs(own = [], env = process.env) {
+  return ["-p", "--mode", "json", ...piModelArgs(env), ...own];
+}
+function piEvent(line) {
+  try {
+    const value2 = JSON.parse(line);
+    if (typeof value2?.type === "string") return value2;
+  } catch {
+  }
+}
+function piResult(output, error, status, signal) {
+  let sessionId;
+  let final;
+  for (const line of output.split("\n")) {
+    const event2 = piEvent(line);
+    if (event2?.type === "session" && typeof event2.id === "string") sessionId = event2.id;
+    if (event2?.type === "agent_start") final = void 0;
+    if (event2?.type === "agent_end")
+      final = !event2.willRetry && Array.isArray(event2.messages) ? event2.messages.at(-1) : void 0;
+    if (event2?.type === "agent_settled" && event2.aborted)
+      final = { role: "assistant", stopReason: "aborted", errorMessage: final?.errorMessage };
+  }
+  let failure;
+  if (status !== 0)
+    failure = [
+      "operational_error",
+      `pi exited with ${signal ? `signal ${signal}` : `code ${status}`}${excerpt(error || final?.errorMessage)}`
+    ];
+  else if (final?.role !== "assistant")
+    failure = ["operational_error", "pi did not return a final assistant message."];
+  else if (final.stopReason === "aborted")
+    failure = ["interrupted", `pi interrupted the response${excerpt(final.errorMessage)}`];
+  else if (final.stopReason === "error")
+    failure = ["operational_error", `pi ended with an error${excerpt(final.errorMessage)}`];
+  else if (final.stopReason === "length") failure = ["operational_error", "pi reached the output token limit."];
+  else if (final.stopReason !== "stop") failure = ["operational_error", "pi did not finish the assistant turn."];
+  const tail = failure ? stderrTail(error) : [];
+  const result = Array.isArray(final?.content) ? final.content.flatMap((part) => part?.type === "text" && typeof part.text === "string" ? [part.text] : []).join("") : void 0;
+  return {
+    failure,
+    ...tail.length ? { stderr: tail } : {},
+    ...sessionId ? { sessionId } : {},
+    result: failure ? void 0 : result
+  };
+}
+
 // plugin/src/sessions.ts
 import { randomBytes as randomBytes2 } from "node:crypto";
 import { spawn, spawnSync } from "node:child_process";
@@ -8627,6 +8686,7 @@ import {
   accessSync,
   chmodSync,
   constants,
+  existsSync,
   mkdirSync as mkdirSync2,
   readFileSync,
   realpathSync,
@@ -8634,6 +8694,7 @@ import {
   statSync,
   writeFileSync
 } from "node:fs";
+import { createRequire } from "node:module";
 import { homedir } from "node:os";
 import { delimiter, join as join2 } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -8658,7 +8719,8 @@ function workDenyRules(otherFolders) {
     ...otherFolders.flatMap((folder) => [`Read(./${folder}/**)`, `Edit(./${folder}/**)`])
   ];
 }
-var pluginRoot = fileURLToPath(new URL("..", import.meta.url));
+var moduleRoot = fileURLToPath(new URL("..", import.meta.url));
+var pluginRoot = existsSync(join2(moduleRoot, ".claude-plugin", "plugin.json")) ? moduleRoot : join2(moduleRoot, "plugin");
 var maxOutputBytes = 4 * 1024 * 1024;
 var reservedClaudeArgs = [
   "-p",
@@ -8721,14 +8783,20 @@ function uiFilePath(workspace) {
   return join2(workspace, ".checkmate", "ui.json");
 }
 function zombie(pid) {
+  if (process.platform === "darwin") {
+    const processState = spawnSync("/bin/ps", ["-o", "state=", "-p", String(pid)], { encoding: "utf8" });
+    return processState.stdout?.trimStart().startsWith("Z") === true;
+  }
   try {
-    return readFileSync(`/proc/${pid}/stat`, "utf8").split(") ")[1]?.startsWith("Z") === true;
+    const stat = readFileSync(`/proc/${pid}/stat`, "utf8");
+    return stat[stat.lastIndexOf(") ") + 2] === "Z";
   } catch {
     return false;
   }
 }
 function running(pid) {
   if (typeof pid !== "number") return false;
+  if (pid === process.pid) return true;
   try {
     process.kill(pid, 0);
     return !zombie(pid);
@@ -8800,7 +8868,50 @@ function hookSettings(hook) {
     }
   };
 }
-function childArgs(context, own) {
+function piToolNames(rules) {
+  const builtin = ["read", "bash", "edit", "write", "grep", "find", "ls"];
+  const names = rules.map((rule) => {
+    if (!/^[a-zA-Z_][a-zA-Z0-9_-]*$/.test(rule))
+      throw new Refusal("malformed", `Pi --allow needs a tool name. It does not accept the rule ${rule}.`);
+    const lower = rule.toLowerCase();
+    return builtin.includes(lower) ? lower : rule;
+  });
+  return [...new Set(names)];
+}
+function piWorkTools(context, names) {
+  return context.work ? ["edit", "write"].filter((name2) => !names.includes(name2)) : [];
+}
+function piExtension(name2) {
+  const path = join2(pluginRoot, "pi", name2);
+  try {
+    accessSync(path, constants.R_OK);
+    const extension = createRequire(import.meta.url)(path);
+    if (typeof extension.default !== "function") throw new Error("Missing extension entry point");
+  } catch (error) {
+    throw new Refusal("prohibited", `Cannot load the Pi extension ${name2}${excerpt(error.message)}`);
+  }
+  return ["--extension", path];
+}
+function childArgs(context, own, allow = []) {
+  if (context.harness === "pi") {
+    const names = piToolNames(allow);
+    const tools = [...names, ...piWorkTools(context, names)];
+    const args = own[0] === "--resume" ? ["--session", ...own.slice(1)] : own;
+    return piArgs(
+      [
+        ...context.piArgs ?? [],
+        "--no-context-files",
+        "--no-skills",
+        "--no-prompt-templates",
+        "--no-tools",
+        ...tools.length ? ["--tools", tools.map((name2) => `+${name2}`).join(",")] : [],
+        ...context.deny?.length || context.work ? piExtension("child.mjs") : [],
+        ...context.hook ? piExtension("permission.mjs") : [],
+        ...args
+      ],
+      {}
+    );
+  }
   const settings = {
     ...context.hiddenPlugin ? { enabledPlugins: { [context.hiddenPlugin]: false } } : {},
     ...context.deny?.length ? { permissions: { deny: context.deny } } : {},
@@ -8811,17 +8922,25 @@ function childArgs(context, own) {
     ...context.claudeArgs,
     ...Object.keys(settings).length ? ["--settings", JSON.stringify(settings)] : [],
     ...own,
+    ...allow.flatMap((rule) => ["--allowedTools", rule]),
     "--output-format",
     "json",
     "--permission-prompts",
     "none"
   ];
 }
-function childEnv(env, extra = {}, hook) {
-  return {
+function childEnv(env, extra = {}, hook, context, allow = []) {
+  const base = {
     ...Object.fromEntries(Object.entries(env).filter(([name2]) => !name2.startsWith("CHECKMATE_"))),
-    ...extra,
-    ...hook ? { [hookTokenName]: hook.token } : {}
+    ...extra
+  };
+  if (context?.harness !== "pi") return { ...base, ...hook ? { [hookTokenName]: hook.token } : {} };
+  const names = piToolNames(allow);
+  const scoped = piWorkTools(context, names);
+  return {
+    ...base,
+    ...hook ? { CHECKMATE_PI_HOOK: JSON.stringify({ ...hook, allow: [...names, ...scoped] }) } : {},
+    ...context.deny?.length || context.work ? { CHECKMATE_PI_POLICY: JSON.stringify({ deny: context.deny ?? [], work: context.work, scoped }) } : {}
   };
 }
 function executableOnPath(name2, env) {
@@ -8835,6 +8954,13 @@ function executableOnPath(name2, env) {
   }
   return void 0;
 }
+function requireChild(env, harness = "claude") {
+  if (harness === "claude") return requireClaude(env);
+  const pi = executableOnPath("pi", env);
+  if (!pi)
+    throw new Refusal("prohibited", "No pi executable on PATH. Nothing changed.", "Install Pi or add it to PATH.");
+  return pi;
+}
 function requireClaude(env) {
   const claude = executableOnPath("claude", env);
   if (!claude)
@@ -8846,8 +8972,9 @@ function requireClaude(env) {
   return claude;
 }
 var authenticationHint = "The host session does not pass its login token to the commands that it runs. Log in on this machine so that Claude Code stores the login (run claude and log in), or run checkmate test from a shell outside a Claude Code session, or let the host give the credential in a supported way, for example an apiKeyHelper in the host settings.";
+var piAuthenticationHint = "Log in with Pi on this machine, or configure authentication through the Pi host.";
 function authenticationFailed(call) {
-  return Boolean(call.failure) && /authentication/i.test(
+  return Boolean(call.failure) && /authentication|not authenticated|no api key|invalid api key|unauthorized/i.test(
     [call.failure?.[1] ?? "", ...call.stderr ?? [], typeof call.result === "string" ? call.result : ""].join(
       " "
     )
@@ -8883,8 +9010,8 @@ function claudeResult(output, error, status, signal) {
     ...typeof parsed.session_id === "string" ? { sessionId: parsed.session_id } : {}
   };
 }
-function callClaude(claude, args, prompt, cwd, env, seconds) {
-  const child = spawnSync(claude, args, {
+function callChild(executable, args, prompt, cwd, env, seconds, harness = "claude") {
+  const child = spawnSync(executable, args, {
     cwd,
     env,
     input: prompt,
@@ -8895,9 +9022,12 @@ function callClaude(claude, args, prompt, cwd, env, seconds) {
   });
   const code = child.error && "code" in child.error ? String(child.error.code) : void 0;
   if (code === "ETIMEDOUT")
-    return { failure: ["interrupted", `claude did not end in ${seconds} seconds. Checkmate stopped it.`] };
-  if (code) return { failure: ["operational_error", `claude failed: ${code}.`] };
-  return claudeResult(child.stdout ?? "", child.stderr ?? "", child.status, child.signal);
+    return { failure: ["interrupted", `${harness} did not end in ${seconds} seconds. Checkmate stopped it.`] };
+  if (code === "ENOBUFS")
+    return { failure: ["operational_error", `${harness} output exceeded 4 MiB. Checkmate stopped it.`] };
+  if (code) return { failure: ["operational_error", `${harness} failed: ${code}.`] };
+  const result = harness === "pi" ? piResult : claudeResult;
+  return result(child.stdout ?? "", child.stderr ?? "", child.status, child.signal);
 }
 function closingBracket(text, start) {
   let depth = 0;
@@ -8934,7 +9064,7 @@ function killGroup(child, signal) {
   } catch {
   }
 }
-async function endLaunchedClaudes() {
+async function endLaunchedChildren() {
   const ending = [...liveChildren];
   const closed = Promise.all(ending.map((child) => new Promise((done) => child.once("close", done))));
   for (const child of ending) killGroup(child, "SIGTERM");
@@ -8946,41 +9076,56 @@ async function endLaunchedClaudes() {
 }
 function exitOnSignal() {
   const end = async () => {
-    await endLaunchedClaudes();
+    await endLaunchedChildren();
     process.exit(143);
   };
   process.once("SIGTERM", end);
   process.once("SIGINT", end);
 }
-function launchClaude(claude, args, prompt, cwd, env, seconds, onStart) {
+function launchChild(executable, args, prompt, cwd, env, seconds, onStart, harness = "claude") {
   return new Promise((resolvePromise) => {
-    const child = spawn(claude, args, { cwd, env, stdio: ["pipe", "pipe", "pipe"], detached: true });
+    const child = spawn(executable, args, { cwd, env, stdio: ["pipe", "pipe", "pipe"], detached: true });
+    child.stdout.setEncoding("utf8");
     liveChildren.add(child);
     if (child.pid) onStart?.(child.pid);
     let output = "";
     let errors = "";
     let failure;
-    const timer = setTimeout(() => {
-      failure = ["interrupted", `claude did not end in ${seconds} seconds. Checkmate stopped it.`];
+    let bytes = 0;
+    let killTimer;
+    const stop = (reason) => {
+      if (failure) return;
+      failure = reason;
       killGroup(child, "SIGTERM");
-      setTimeout(() => killGroup(child, "SIGKILL"), endGraceMilliseconds).unref();
-    }, seconds * 1e3);
-    child.stdout.on("data", (bytes) => {
-      if (output.length < maxOutputBytes) output += bytes.toString();
+      killTimer = setTimeout(() => killGroup(child, "SIGKILL"), endGraceMilliseconds);
+      killTimer.unref();
+    };
+    const timer = setTimeout(
+      () => stop(["interrupted", `${harness} did not end in ${seconds} seconds. Checkmate stopped it.`]),
+      seconds * 1e3
+    );
+    child.stdout.on("data", (text) => {
+      if (failure) return;
+      bytes += Buffer.byteLength(text);
+      if (bytes > maxOutputBytes)
+        stop(["operational_error", `${harness} output exceeded 4 MiB. Checkmate stopped it.`]);
+      else output += text;
     });
-    child.stderr.on("data", (bytes) => {
-      errors = (errors + bytes.toString()).slice(-16384);
+    child.stderr.on("data", (bytes2) => {
+      errors = (errors + bytes2.toString()).slice(-16384);
     });
     child.stdin.on("error", () => {
     });
     child.stdin.end(prompt);
     child.on("error", (error) => {
-      failure ??= ["operational_error", `claude failed: ${"code" in error ? String(error.code) : "unknown"}.`];
+      failure ??= ["operational_error", `${harness} failed: ${"code" in error ? String(error.code) : "unknown"}.`];
     });
     child.on("close", (status, signal) => {
       liveChildren.delete(child);
       clearTimeout(timer);
-      resolvePromise(failure ? { failure } : claudeResult(output, errors, status, signal));
+      clearTimeout(killTimer);
+      const result = harness === "pi" ? piResult : claudeResult;
+      resolvePromise(failure ? { failure } : result(output, errors, status, signal));
     });
   });
 }
@@ -9018,13 +9163,14 @@ For context only: the person had ${screen} on screen. Use this only when the req
 var defaultStopDelays = { terminate: 5e3, kill: endGraceMilliseconds };
 function streamClaude(claude, args, prompt, cwd, env, onLine, delays = defaultStopDelays) {
   const child = spawn(claude, args, { cwd, env, stdio: ["pipe", "pipe", "pipe"], detached: true });
+  child.stdout.setEncoding("utf8");
   liveChildren.add(child);
   const timers = [];
   let errors = "";
   let pending = "";
   let spawnError = null;
-  child.stdout.on("data", (bytes) => {
-    const lines2 = (pending + bytes.toString()).split("\n");
+  child.stdout.on("data", (text) => {
+    const lines2 = (pending + text).split("\n");
     pending = lines2.pop() ?? "";
     for (const line of lines2) if (line.trim()) onLine(line);
   });
@@ -10203,7 +10349,7 @@ function rulesLine(store, planId) {
 }
 
 // plugin/src/journal.ts
-import { existsSync, readdirSync, readFileSync as readFileSync3, realpathSync as realpathSync3, statSync as statSync3 } from "node:fs";
+import { existsSync as existsSync2, readdirSync, readFileSync as readFileSync3, realpathSync as realpathSync3, statSync as statSync3 } from "node:fs";
 import { isAbsolute, join as join3, relative, resolve as resolve2, sep as sep2 } from "node:path";
 var entryKinds = [
   "criterion",
@@ -10377,7 +10523,7 @@ function onlyFileEndingWith(cwd, spec3) {
   return matches.length === 1 ? matches[0] : void 0;
 }
 function evidenceOf(store, spec3, cwd, missing) {
-  const found = [resolve2(cwd, spec3), resolve2(store.workspace, spec3)].find((path) => existsSync(path)) ?? (missing && !isEvidenceText(spec3) ? onlyFileEndingWith(cwd, spec3) : void 0);
+  const found = [resolve2(cwd, spec3), resolve2(store.workspace, spec3)].find((path) => existsSync2(path)) ?? (missing && !isEvidenceText(spec3) ? onlyFileEndingWith(cwd, spec3) : void 0);
   if (found && (!missing || insideWorkspace(store, found))) {
     const name2 = relative(store.workspace, found);
     return { path: name2, ...saveBlob(store, evidenceFile(store, name2)) };
@@ -14133,7 +14279,7 @@ function verifierBrief(items, entries, operations, dataPrefix, answer2) {
 
 // plugin/src/recorder.ts
 import { randomUUID as randomUUID2 } from "node:crypto";
-import { existsSync as existsSync2, mkdirSync as mkdirSync5, readFileSync as readFileSync5, rmSync as rmSync4, writeFileSync as writeFileSync3 } from "node:fs";
+import { existsSync as existsSync3, mkdirSync as mkdirSync5, readFileSync as readFileSync5, rmSync as rmSync4, writeFileSync as writeFileSync3 } from "node:fs";
 import { join as join6 } from "node:path";
 var defaultRecorderTimeout = 600;
 var reservedExplorers = ["rules", "merge", "verify"];
@@ -14320,15 +14466,26 @@ function prepare(store, input, env) {
   requireWellFormed(
     /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(input.session),
     `Invalid session ID: ${input.session}. Give the session_id of the test session.`,
-    "claude -p --output-format json gives it in session_id. In an interactive session, /status shows it."
+    "The host can show the ID of its current session."
   );
   const exploration2 = explorationRow(store, input.explorationId);
-  const claude = requireClaude(env);
-  const context = launchContext(store, exploration2.exploration_id, explorer, input.session) ?? {
+  const stored = launchContext(store, exploration2.exploration_id, explorer, input.session);
+  const harness = stored ? stored.harness ?? "claude" : selectedHarness(env);
+  if (harness === "pi") requireWellFormed(!input.claudeArgs?.length, "--claude-arg is for Claude.");
+  const context = stored ?? {
     hiddenPlugin: null,
-    claudeArgs: input.claudeArgs ?? []
+    claudeArgs: input.claudeArgs ?? [],
+    ...harness === "pi" ? { harness, piArgs: piModelArgs(env) } : {}
   };
-  return { claude, exploration: exploration2, explorer, context, recorder: randomUUID2(), actor: explorerActor(explorer) };
+  return {
+    executable: requireChild(env, harness),
+    exploration: exploration2,
+    explorer,
+    context,
+    harness,
+    recorder: randomUUID2(),
+    actor: explorerActor(explorer)
+  };
 }
 function recordSession(store, actor, input, env, cwd) {
   const operation = { actor, command: "record", subject: input.explorationId, input };
@@ -14364,21 +14521,33 @@ function recordSession(store, actor, input, env, cwd) {
 function recordLocked(store, operation, input, plan, env, cwd, started) {
   const { exploration: exploration2, actor } = plan;
   const hook = childHook(store.workspace, exploration2.exploration_id, `record-${plan.explorer}`);
-  const context = { ...plan.context, hook };
-  const childEnvironment = childEnv(env, { CHECKMATE_RECORDER: "1" }, hook);
+  const context = {
+    ...plan.context,
+    hook,
+    ...plan.harness === "pi" ? { deny: storeDenyRules } : {}
+  };
+  const allow = plan.harness === "pi" ? ["read"] : [];
+  const childEnvironment = childEnv(env, { CHECKMATE_RECORDER: "1" }, hook, context, allow);
   const left = () => input.timeoutSeconds - Math.floor((Date.now() - started) / 1e3);
   const after = lastEntry(store);
   const earlier = savedEntries(store, exploration2.plan_id, exploration2.exploration_id, actor);
   const prompt = promptOf(store, exploration2, actor, earlier);
-  const resume = ["--resume", input.session, "--fork-session", "--session-id", plan.recorder];
-  const calls = [
-    callClaude(plan.claude, childArgs(context, resume), prompt, cwd, childEnvironment, Math.max(1, left()))
-  ];
+  const resume = plan.harness === "pi" ? ["--fork", input.session, "--session-id", plan.recorder] : ["--resume", input.session, "--fork-session", "--session-id", plan.recorder];
+  const ask = (args, prompt2, seconds) => callChild(
+    plan.executable,
+    childArgs(context, args, allow),
+    prompt2,
+    cwd,
+    childEnvironment,
+    seconds,
+    plan.harness
+  );
+  const calls = [ask(resume, prompt, Math.max(1, left()))];
   const missing = [];
   const dropped = [];
   const unknownRules = [];
   const work = join6(store.workspace, workFolder(exploration2.exploration_id, plan.explorer));
-  const evidenceCwd = existsSync2(work) ? work : cwd;
+  const evidenceCwd = existsSync3(work) ? work : cwd;
   const log = (entries) => logReply(
     store,
     actor,
@@ -14395,16 +14564,7 @@ function recordLocked(store, operation, input, plan, env, cwd, started) {
   const repeated = given && first ? given.length - first.length : 0;
   let refusals = first?.length ? log(first) : [];
   if (!calls[0].failure && refusals.length && left() > 0) {
-    calls.push(
-      callClaude(
-        plan.claude,
-        childArgs(context, ["--resume", plan.recorder]),
-        repairPrompt(refusals),
-        cwd,
-        childEnvironment,
-        left()
-      )
-    );
+    calls.push(ask(["--resume", plan.recorder], repairPrompt(refusals), left()));
     const fix = replyArray(calls[1].result);
     if (fix) refusals = log(newEntries(fix, earlier));
   }
@@ -14440,8 +14600,8 @@ function recordLocked(store, operation, input, plan, env, cwd, started) {
     status,
     subject: exploration2.exploration_id,
     reasons: reasons2,
-    ...status === "completed" ? {} : calls.some(authenticationFailed) ? { hint: authenticationHint } : {
-      hint: `The entries that Checkmate logged stay. To read what the recorder did, run claude --resume ${plan.recorder}. Then run the same record command again.`
+    ...status === "completed" ? {} : calls.some(authenticationFailed) ? { hint: plan.harness === "pi" ? piAuthenticationHint : authenticationHint } : {
+      hint: `The entries that Checkmate logged stay. To read what the recorder did, run ${plan.harness === "pi" ? "pi --session" : "claude --resume"} ${plan.recorder}. Then run the same record command again.`
     },
     data
   };
@@ -14522,7 +14682,7 @@ function upstreamBase(repository) {
 import { spawn as spawn2, spawnSync as spawnSync4 } from "node:child_process";
 import { randomUUID as randomUUID3 } from "node:crypto";
 import {
-  existsSync as existsSync3,
+  existsSync as existsSync4,
   mkdirSync as mkdirSync6,
   openSync,
   readdirSync as readdirSync2,
@@ -14574,9 +14734,18 @@ function launchPlan(profile, input, env) {
       path: "session"
     };
   }
+  const harness = selectedHarness(env);
+  if (harness === "pi") {
+    requireWellFormed(
+      !input.claudeArgs.length,
+      "--claude-arg is for Claude. Set CHECKMATE_PI_MODEL and CHECKMATE_PI_PROVIDER for Pi."
+    );
+    piToolNames(input.allow);
+  }
   const claudeArgs = checkClaudeArgs(input.claudeArgs);
-  const host = hostModel(claudeArgs);
-  const hiddenPlugin = installedPluginId(env);
+  const piArgs2 = harness === "pi" ? piModelArgs(env) : [];
+  const host = hostModel(harness === "pi" ? piArgs2 : claudeArgs);
+  const hiddenPlugin = harness === "claude" ? installedPluginId(env) : null;
   requireWellFormed(
     input.allow.length || explorers === 0 && !row3.verifier,
     "Give the tool rules of the explorers and the verifier with --allow, for example --allow Read --allow Bash",
@@ -14585,15 +14754,15 @@ function launchPlan(profile, input, env) {
   return {
     level,
     explorers,
-    model: host ?? row3.model,
-    modelFrom: host ? "host" : "level",
+    model: host ?? (harness === "pi" ? null : row3.model),
+    modelFrom: host || harness === "pi" ? "host" : "level",
     verifier: row3.verifier,
-    context: { hiddenPlugin, claudeArgs: host ? claudeArgs : [...claudeArgs, "--model", row3.model] },
+    context: harness === "pi" ? { hiddenPlugin, claudeArgs: [], harness, piArgs: piArgs2 } : { hiddenPlugin, claudeArgs: host ? claudeArgs : [...claudeArgs, "--model", row3.model] },
     allow: input.allow,
     studySeconds: row3.studySeconds,
     testSeconds,
     timeoutSeconds: input.timeoutSeconds ?? Math.max(defaultExplorerTimeout, Math.max(row3.studySeconds, testSeconds) * 3),
-    pluginHidden: hiddenPlugin !== null
+    pluginHidden: harness === "pi" || hiddenPlugin !== null
   };
 }
 function explorerNames(count2) {
@@ -14640,7 +14809,7 @@ function keepWorkFiles(store, actor, explorationId, explorer, phase) {
   const folder = join7(store.workspace, workFolder(explorationId, explorer));
   const files2 = keptFiles.flatMap((name2) => {
     const path = join7(folder, name2);
-    return existsSync3(path) ? [{ name: name2, bytes: readFileSync6(path) }] : [];
+    return existsSync4(path) ? [{ name: name2, bytes: readFileSync6(path) }] : [];
   });
   if (!files2.length) return;
   const input = { explorer, phase, files: files2.map((file) => file.name) };
@@ -14657,12 +14826,12 @@ function keepWorkFiles(store, actor, explorationId, explorer, phase) {
   });
 }
 function removeIfEmpty(folder) {
-  if (existsSync3(folder) && !readdirSync2(folder).length) rmdirSync2(folder);
+  if (existsSync4(folder) && !readdirSync2(folder).length) rmdirSync2(folder);
 }
 var browserFolder = ".playwright-cli";
 function keepBrowserFolder(store, explorationId) {
   const from = join7(store.workspace, browserFolder);
-  if (startOf(explorationEvents(store, explorationId))?.browserFolder !== false || !existsSync3(from)) return;
+  if (startOf(explorationEvents(store, explorationId))?.browserFolder !== false || !existsSync4(from)) return;
   const to = join7(store.workspace, workFolder(explorationId), browserFolder);
   mkdirSync6(join7(to, ".."), { recursive: true });
   rmSync5(to, { recursive: true, force: true });
@@ -14695,7 +14864,7 @@ function startExploration(store, actor, given, env) {
   const change = changeOf(store.workspace, given);
   const input = { ...given, change, scope: given.scope ?? (change ? changedFiles(store.workspace, change) : []) };
   const reply = write(store, { actor, command: "explore start", subject: input.planId, input }, (operationId, at) => {
-    if (!input.session) requireClaude(env);
+    if (!input.session) requireChild(env, selectedHarness(env));
     const opened = input.explorationId ? finishable(store, input.explorationId) : insertExploration(store, input, operationId, at);
     const row3 = explorationRow(store, opened.explorationId);
     const launch = launchPlan(targetRevision(store, row3.target_id, row3.target_revision).profile, input, env);
@@ -14706,7 +14875,7 @@ function startExploration(store, actor, given, env) {
         step: "start",
         explorer: null,
         status: "started",
-        detail: { ...launch, browserFolder: existsSync3(join7(store.workspace, browserFolder)) }
+        detail: { ...launch, browserFolder: existsSync4(join7(store.workspace, browserFolder)) }
       },
       operationId,
       at
@@ -14762,8 +14931,10 @@ function noteChild(store, actor, explorationId, explorer) {
   };
 }
 function failureHint(launch, call) {
-  if (authenticationFailed(call)) return authenticationHint;
+  if (authenticationFailed(call)) return launch.context.harness === "pi" ? piAuthenticationHint : authenticationHint;
   if (!/model/i.test([call.failure?.[1] ?? "", ...call.stderr ?? []].join(" "))) return void 0;
+  if (launch.context.harness === "pi")
+    return "Check the model configured in Pi, or set CHECKMATE_PI_MODEL and CHECKMATE_PI_PROVIDER.";
   return launch.modelFrom === "level" ? `The host refused the model ${launch.model} of level ${launch.level}. Give another model with --claude-arg --model --claude-arg <model>, or choose another --level.` : `The host refused the model ${launch.model}. Give another model with --claude-arg --model --claude-arg <model>.`;
 }
 function entryValues(store, explorationId) {
@@ -14815,11 +14986,11 @@ function watchWork(store, actor, explorationId, explorer, turn) {
 async function launchExplorers(store, actor, explorationId, launch, env) {
   const opened = exploration(store, explorationId);
   const entries = entryValues(store, explorationId);
-  const claude = requireClaude(env);
+  const executable = requireChild(env, launch.context.harness);
   const runs = explorerNames(launch.explorers).map(async (explorer) => {
     const session = randomUUID3();
     const { folder, grant, deny, extraEnv } = explorerWork(store, explorationId, explorer, launch.explorers);
-    const rules = [...launch.allow, ...grant].flatMap((rule) => ["--allowedTools", rule]);
+    const rules = launch.context.harness === "pi" ? launch.allow : [...launch.allow, ...grant];
     const brief = explorerBrief(opened.charter, entries, `qa-${explorationId}-${explorer}-`, folder, {
       study: launch.studySeconds,
       test: launch.testSeconds
@@ -14828,24 +14999,31 @@ async function launchExplorers(store, actor, explorationId, launch, env) {
       step: "launch",
       explorer,
       status: "started",
-      detail: { session, context: launch.context, engineRules: grant, brief }
+      detail: {
+        session,
+        context: launch.context,
+        engineRules: grant,
+        brief
+      }
     });
     const turn = (own, prompt, name2) => {
       const hook = childHook(store.workspace, explorationId, explorer);
+      const context = { ...launch.context, deny, hook, work: folder };
       return watchStray(
         store,
         actor,
         explorationId,
         explorer,
         name2,
-        () => launchClaude(
-          claude,
-          childArgs({ ...launch.context, deny, hook }, [...own, ...rules]),
+        () => launchChild(
+          executable,
+          childArgs(context, own, rules),
           prompt,
           store.workspace,
-          childEnv(env, extraEnv, hook),
+          childEnv(env, extraEnv, hook, context, rules),
           launch.timeoutSeconds,
-          noteChild(store, actor, explorationId, explorer)
+          noteChild(store, actor, explorationId, explorer),
+          context.harness
         )
       );
     };
@@ -14934,16 +15112,18 @@ function mergeReports(store, actor, explorationId, launch, env, after = 0) {
   const input = mergeInput(store, explorationId, after);
   if (!input) return;
   const session = randomUUID3();
-  const claude = requireClaude(env);
+  const executable = requireChild(env, launch.context.harness);
   const call = (args, prompt) => {
     const hook = childHook(store.workspace, explorationId, "merge");
-    return callClaude(
-      claude,
-      childArgs({ ...launch.context, hook }, args),
+    const context = { ...launch.context, hook };
+    return callChild(
+      executable,
+      childArgs(context, args),
       prompt,
       store.workspace,
-      childEnv(env, {}, hook),
-      defaultRecorderTimeout
+      childEnv(env, {}, hook, context),
+      defaultRecorderTimeout,
+      context.harness
     );
   };
   const log = (reply) => logMerge(store, explorationId, reply);
@@ -14973,7 +15153,7 @@ function mergeReports(store, actor, explorationId, launch, env, after = 0) {
       reports: input.count,
       refused: refusals.length,
       ...failure ? { reason: failure[1] } : {},
-      ...calls.some(authenticationFailed) ? { hint: authenticationHint } : {},
+      ...calls.some(authenticationFailed) ? { hint: launch.context.harness === "pi" ? piAuthenticationHint : authenticationHint } : {},
       ...calls.find((item) => item.stderr)?.stderr ? { stderr: calls.find((item) => item.stderr).stderr } : {},
       ...costOf(calls)
     }
@@ -14987,13 +15167,15 @@ function deriveRules(store, actor, explorationId, launch, env) {
   const session = randomUUID3();
   const call = (args, prompt) => {
     const hook = childHook(store.workspace, explorationId, "rules");
-    return callClaude(
-      requireClaude(env),
-      childArgs({ ...launch.context, hook }, args),
+    const context = { ...launch.context, hook };
+    return callChild(
+      requireChild(env, context.harness),
+      childArgs(context, args),
       prompt,
       store.workspace,
-      childEnv(env, {}, hook),
-      defaultRecorderTimeout
+      childEnv(env, {}, hook, context),
+      defaultRecorderTimeout,
+      context.harness
     );
   };
   const calls = [call(["--session-id", session], rulesPrompt(opened.charter.goal, sources))];
@@ -15015,7 +15197,7 @@ function deriveRules(store, actor, explorationId, launch, env) {
       rules: checked.rules.length,
       refused: checked.refusals.length,
       ...checked.rules.length ? {} : { reason: failure?.[1] ?? checked.refusals.join(" ") },
-      ...calls.some(authenticationFailed) ? { hint: authenticationHint } : {},
+      ...calls.some(authenticationFailed) ? { hint: launch.context.harness === "pi" ? piAuthenticationHint : authenticationHint } : {},
       ...costOf(calls)
     }
   };
@@ -15052,17 +15234,18 @@ async function verifyClaims(store, actor, explorationId, launch, env, after = 0)
   const { items } = input;
   const session = randomUUID3();
   const brief = verifierBrief(items, input.entries, input.operations, input.dataPrefix);
-  const allowed = launch.allow.flatMap((rule) => ["--allowedTools", rule]);
   const ask = (own, prompt) => {
     const hook = childHook(store.workspace, explorationId, "verify");
-    return launchClaude(
-      requireClaude(env),
-      childArgs({ ...launch.context, deny: storeDenyRules, hook }, [...own, ...allowed]),
+    const context = { ...launch.context, deny: storeDenyRules, hook };
+    return launchChild(
+      requireChild(env, context.harness),
+      childArgs(context, own, launch.allow),
       prompt,
       store.workspace,
-      childEnv(env, {}, hook),
+      childEnv(env, {}, hook, context, launch.allow),
       launch.timeoutSeconds,
-      noteChild(store, actor, explorationId, null)
+      noteChild(store, actor, explorationId, null),
+      context.harness
     );
   };
   const ids2 = new Set(items.map((item) => item.id));
@@ -15087,7 +15270,7 @@ async function verifyClaims(store, actor, explorationId, launch, env, after = 0)
         reason: `The verifier gave no result, also after one repair${failure ? ` (${failure[1]})` : ""}. The claims keep their states.`
       },
       ...stderr ? { stderr } : {},
-      ...calls.some(authenticationFailed) ? { hint: authenticationHint } : {},
+      ...calls.some(authenticationFailed) ? { hint: launch.context.harness === "pi" ? piAuthenticationHint : authenticationHint } : {},
       ...costOf(calls)
     }
   });
@@ -15098,7 +15281,9 @@ function newDefects(store, planId, after) {
   );
 }
 function hostAuthentication(store, explorationId) {
-  return explorationEvents(store, explorationId).some((item) => item.detail.hint === authenticationHint);
+  return explorationEvents(store, explorationId).some(
+    (item) => item.detail.hint === authenticationHint || item.detail.hint === piAuthenticationHint
+  );
 }
 async function driveExploration(workspace, explorationId, env) {
   exitOnSignal();
@@ -15143,7 +15328,7 @@ async function driveExploration(workspace, explorationId, env) {
         ...ok ? {} : {
           reason: hostAuthentication(store, explorationId) ? "Host authentication: no session could log in." : "No explorer session was recorded."
         },
-        ...!ok && hostAuthentication(store, explorationId) ? { hint: authenticationHint } : {}
+        ...!ok && hostAuthentication(store, explorationId) ? { hint: launch.context.harness === "pi" ? piAuthenticationHint : authenticationHint } : {}
       }
     });
   } catch (error) {
@@ -15187,7 +15372,7 @@ function startFollow(store, actor, input, env) {
     const row3 = explorationRow(store, id2);
     const events = explorationEvents(store, id2);
     session = startOf(events)?.path === "session";
-    if (!session) requireClaude(env);
+    if (!session) requireChild(env, startOf(events)?.context?.harness);
     const state = explorationState(events);
     requireCondition(
       followable(events),
@@ -15201,6 +15386,10 @@ function startFollow(store, actor, input, env) {
       `Answer a question of the exploration first: checkmate gap answer ${row3.plan_id} <questionId> --kind <kind> --value "<answer>" --source "<source>" --rationale "<why>". Run checkmate explore show ${id2} to read its questions.`
     );
     const stored = startOf(events);
+    if (stored.context.harness === "pi") {
+      requireWellFormed(!input.claudeArgs.length, "--claude-arg is for Claude.");
+      piToolNames(input.allow);
+    }
     const claudeArgs = checkClaudeArgs(input.claudeArgs);
     const plan = {
       answers: answered.map((question) => question.answerId),
@@ -15268,27 +15457,29 @@ async function driveFollow(workspace, explorationId, env) {
     const sessions = followSessions(events);
     const phase = `follow-${events.filter((item) => item.step === "follow").length}`;
     const count2 = startOf(events).explorers;
-    const claude = requireClaude(env);
+    const executable = requireChild(env, launch.context.harness);
     const ended = await Promise.all(
       sessions.filter((item) => !item.skipped).map(async ({ explorer, session }) => {
         const { folder, grant, deny, extraEnv } = explorerWork(store, explorationId, explorer, count2);
-        const rules = [...plan.allow, ...grant].flatMap((rule) => ["--allowedTools", rule]);
+        const rules = plan.context.harness === "pi" ? plan.allow : [...plan.allow, ...grant];
         const watch = watchWork(store, actor, explorationId, explorer, "follow-up");
         const hook = childHook(store.workspace, explorationId, explorer);
+        const context = { ...plan.context, deny, hook, work: folder };
         const call = await watchStray(
           store,
           actor,
           explorationId,
           explorer,
           "follow-up",
-          () => launchClaude(
-            claude,
-            childArgs({ ...plan.context, deny, hook }, ["--resume", session, ...rules]),
+          () => launchChild(
+            executable,
+            childArgs(context, ["--resume", session], rules),
             followBrief(plan.questions, folder, plan.seconds),
             store.workspace,
-            childEnv(env, extraEnv, hook),
+            childEnv(env, extraEnv, hook, context, rules),
             plan.timeoutSeconds,
-            noteChild(store, actor, explorationId, explorer)
+            noteChild(store, actor, explorationId, explorer),
+            context.harness
           )
         );
         watch.stop();
@@ -15335,7 +15526,7 @@ async function driveFollow(workspace, explorationId, env) {
         answers: plan.answers,
         skipped,
         ...recorded ? {} : { reason: "No explorer session of the follow-up was recorded." },
-        ...ended.some((item) => authenticationFailed(item.call)) ? { hint: authenticationHint } : {}
+        ...ended.some((item) => authenticationFailed(item.call)) ? { hint: launch.context.harness === "pi" ? piAuthenticationHint : authenticationHint } : {}
       }
     });
   } catch (error) {
@@ -15491,7 +15682,7 @@ function stopExploration(store, actor, input) {
   const explorer = input.explorer;
   const reply = recordStop(store, actor, input);
   const left = endStopped(store, id2, explorer);
-  const kept = explorer === void 0 && existsSync3(join7(store.workspace, workFolder(id2))) ? workFolder(id2) : null;
+  const kept = explorer === void 0 && existsSync4(join7(store.workspace, workFolder(id2))) ? workFolder(id2) : null;
   const row3 = explorationRow(store, id2);
   return {
     ...reply,
@@ -15605,7 +15796,7 @@ function explorationStatus(store, explorationId) {
     explorers,
     phases: events.filter((item) => ["merge", "verify", "follow", "followed"].includes(item.step)).map((item) => ({ step: item.step, status: item.status, detail: item.detail })),
     doneHint: done?.detail.hint ?? null,
-    workFolder: (["failed", "stopped", "interrupted"].includes(state) || ["failed", "stopped", "interrupted"].includes(follow ?? "")) && existsSync3(join7(store.workspace, workFolder(row3.exploration_id))) ? workFolder(row3.exploration_id) : null,
+    workFolder: (["failed", "stopped", "interrupted"].includes(state) || ["failed", "stopped", "interrupted"].includes(follow ?? "")) && existsSync4(join7(store.workspace, workFolder(row3.exploration_id))) ? workFolder(row3.exploration_id) : null,
     reason: done?.detail.reason ?? (state === "stopped" ? stopReason(events) : state === "interrupted" ? "The supervisor stopped before the end." : null)
   };
 }
@@ -15709,6 +15900,15 @@ function conversationStarted(store, sessionId) {
 			WHERE r.conversation = ? AND e.step = 'session'`,
     sessionId
   ) !== void 0;
+}
+function conversationHarness(store, sessionId) {
+  const row3 = one(
+    store,
+    `SELECT e.detail FROM request_events e JOIN requests r ON r.request_id = e.request_id
+		WHERE r.conversation = ? AND e.step = 'session' ORDER BY e.rowid DESC LIMIT 1`,
+    sessionId
+  );
+  return row3 ? JSON.parse(row3.detail).harness ?? "claude" : null;
 }
 function addRequestEvent(store, requestId, event2, operationId, at) {
   execute(
@@ -16280,7 +16480,7 @@ function stoppedSince(store, request) {
 }
 
 // plugin/src/views.ts
-import { existsSync as existsSync4 } from "node:fs";
+import { existsSync as existsSync5 } from "node:fs";
 import { join as join8 } from "node:path";
 function approvalLabel(state) {
   if (state.approved) return "approved";
@@ -16535,7 +16735,7 @@ function mergedQuestions(store, planId) {
 }
 function explorationData(store, status) {
   const log = `.checkmate/tmp/explore-${status.explorationId}.log`;
-  return [...status.workFolder ? [status.workFolder] : [], ...existsSync4(join8(store.workspace, log)) ? [log] : []];
+  return [...status.workFolder ? [status.workFolder] : [], ...existsSync5(join8(store.workspace, log)) ? [log] : []];
 }
 function planHasRevision(store, planId) {
   return Boolean(one(store, "SELECT 1 FROM plan_revisions WHERE plan_id = ?", planId));
@@ -17152,7 +17352,8 @@ function openRejections(store, planId) {
   })).filter((item) => item.testIds.length);
 }
 function delegateHint(stage, subject) {
-  return `checkmate delegate ${stage} ${subject} --allow Read --allow Bash`;
+  const rules = selectedHarness() === "claude" ? " --allow Read --allow Bash" : "";
+  return `checkmate delegate ${stage} ${subject}${rules}`;
 }
 function loopOf(store, planId) {
   const { state, waitsOn } = planStatus(store, planId);
@@ -18317,7 +18518,7 @@ function exportExploration(store, explorationId, format2) {
 // plugin/src/ui/server.ts
 import { createServer } from "node:http";
 import { randomBytes as randomBytes3 } from "node:crypto";
-import { existsSync as existsSync5, readFileSync as readFileSync7 } from "node:fs";
+import { existsSync as existsSync6, readFileSync as readFileSync7 } from "node:fs";
 import { fileURLToPath as fileURLToPath2 } from "node:url";
 
 // plugin/src/modes.ts
@@ -19755,6 +19956,7 @@ function createHooks(store, token, options3 = {}) {
     } catch (error) {
       log(`could not answer ${entry.id} of ${entry.askerId}: ${error.message}`);
     }
+    if (cause === "ui-stopped") entry.res.shouldKeepAlive = false;
     answer(entry.res, body);
   }
   function release() {
@@ -26147,20 +26349,21 @@ function instanceFromForm(entryPoints, form) {
 }
 function claudeProgram(env) {
   try {
-    return html2`<code>${requireClaude(env)}</code>`;
+    const program = requireChild(env, selectedHarness(env));
+    return html2`<code>${program}</code>`;
   } catch (error) {
     if (!(error instanceof Refusal)) throw error;
     return html2`<span class="form-error" role="status">${error.message} ${error.hint ?? ""}</span>`;
   }
 }
 function claudePage(store, context, env, form = null, model = null) {
-  const body = html2`${heading("Claude Code", "The program that runs the testers. Checkmate makes no call to it on this page.")}
+  const pi = selectedHarness(env) === "pi";
+  const body = html2`${heading(pi ? "Pi" : "Claude Code", "The program that runs the testers. Checkmate makes no call to it on this page.")}
 		<section class="panel" aria-labelledby="claude-program">
 			<h2 class="lab" id="claude-program">Program</h2>
 			<p>${claudeProgram(env)}</p>
 			<p class="help">
-				Claude Code keeps the login, the permissions, and the tools. Checkmate starts <code>claude</code> and
-				does not read or copy a credential.
+				${pi ? "Pi" : "Claude Code"} keeps the login and tools. Checkmate does not read or copy a credential.
 			</p>
 		</section>
 		<section class="panel" aria-labelledby="claude-rules">
@@ -26196,43 +26399,51 @@ function claudePage(store, context, env, form = null, model = null) {
 				<div class="btns"><button class="btn primary">Save the rules</button></div>
 			</form>
 		</section>
-		<section class="panel" aria-labelledby="claude-model">
-			<h2 class="lab" id="claude-model">Model of the testers</h2>
-			<p class="help">
-				Checkmate gives each test level a default model alias. A test that you start in the UI uses it. Claude
-				Code resolves the alias.
-			</p>
-			<div class="scroll">
-				<table>
-					<thead>
-						<tr>
-							<th scope="col">Level</th>
-							<th scope="col">Model alias</th>
-							<th scope="col">Testers</th>
-						</tr>
-					</thead>
-					<tbody>
-						${Object.entries(testLevels).map(
+		${pi ? html2`<section class="panel">
+						<h2 class="lab">Model of the testers</h2>
+						<p class="help">
+							Pi selects the model from its settings. Set CHECKMATE_PI_MODEL to choose a model for
+							Checkmate sessions.
+						</p>
+					</section>` : html2`<section class="panel" aria-labelledby="claude-model">
+						<h2 class="lab" id="claude-model">Model of the testers</h2>
+						<p class="help">
+							Checkmate gives each test level a default model alias. A test that you start in the UI uses
+							it. Claude Code resolves the alias.
+						</p>
+						<div class="scroll">
+							<table>
+								<thead>
+									<tr>
+										<th scope="col">Level</th>
+										<th scope="col">Model alias</th>
+										<th scope="col">Testers</th>
+									</tr>
+								</thead>
+								<tbody>
+									${Object.entries(testLevels).map(
     ([level, row3]) => html2`<tr>
-									<td class="mono">${level}</td>
-									<td class="mono">${row3.model}</td>
-									<td>${row3.explorers}${row3.verifier ? " and a verifier" : ""}</td>
-								</tr>`
+												<td class="mono">${level}</td>
+												<td class="mono">${row3.model}</td>
+												<td>${row3.explorers}${row3.verifier ? " and a verifier" : ""}</td>
+											</tr>`
   )}
-					</tbody>
-				</table>
-			</div>
-			<p class="help">
-				The host wins. To use another model, start the test from a shell with
-				<code>checkmate test &lt;planId&gt; --claude-arg --model --claude-arg &lt;model&gt;</code>. When the
-				host refuses the model, the test fails and names this override. Checkmate does not try another model.
-			</p>
-		</section>
+								</tbody>
+							</table>
+						</div>
+						<p class="help">
+							The host wins. To use another model, start the test from a shell with
+							<code>checkmate test &lt;planId&gt; --claude-arg --model --claude-arg &lt;model&gt;</code>.
+							When the host refuses the model, the test fails and names this override. Checkmate does not
+							try another model.
+						</p>
+					</section>`}
 		<section class="panel" aria-labelledby="claude-requests">
 			<h2 class="lab" id="claude-requests">Requests</h2>
+
 			<p class="help">
-				A request that you type in the find bar runs in Claude Code on this computer, in your own session. It
-				has your login, your settings, and all your tools. Claude Code asks you here when a tool needs a
+				A request that you type in the find bar runs in ${pi ? "Pi" : "Claude Code"} on this computer, in your
+				own session. It has your login, your settings, and your tools. Checkmate asks you here when a tool needs
 				permission.
 			</p>
 			<form method="post" action="/settings/claude/model" class="decision-form">
@@ -26249,8 +26460,7 @@ function claudePage(store, context, env, form = null, model = null) {
 						${model ? html2`autofocus` : ""}
 					/>
 					<p class="help" id="request-model-help">
-						A model alias or ID, for example <code>sonnet</code>. Empty means the model that Claude Code
-						chooses by itself.
+						A model alias or ID. Empty means the model that ${pi ? "Pi" : "Claude Code"} chooses.
 					</p>
 					${model ? html2`<p class="form-error" role="alert" data-field="model">${model.error}</p>` : ""}
 				</div>
@@ -26267,8 +26477,137 @@ function claudePage(store, context, env, form = null, model = null) {
 }
 
 // plugin/src/ui/requester.ts
+import { join as join12 } from "node:path";
+
+// plugin/src/ui/pi-request.ts
+import { spawn as spawn3 } from "node:child_process";
+function streamPi(program, args, prompt, cwd, env, extension, sessionId, onLine, delays) {
+  const child = spawn3(program, args, { cwd, env, stdio: ["pipe", "pipe", "pipe"], detached: true });
+  child.stdout.setEncoding("utf8");
+  let pending = "";
+  let stderr = "";
+  let error = null;
+  let ready = false;
+  let stopped = false;
+  const timers = [];
+  const send2 = (value2) => child.stdin.write(`${JSON.stringify(value2)}
+`);
+  const kill = (signal) => {
+    try {
+      process.kill(-child.pid, signal);
+    } catch {
+    }
+  };
+  let closing = false;
+  const shutdown = () => {
+    if (closing) return;
+    closing = true;
+    child.stdin.end();
+    timers.push(
+      setTimeout(() => kill("SIGTERM"), delays.terminate),
+      setTimeout(() => kill("SIGKILL"), delays.terminate + delays.kill)
+    );
+  };
+  const timeout = setTimeout(() => {
+    error = "Pi did not verify the permission gate.";
+    kill("SIGTERM");
+    timers.push(setTimeout(() => kill("SIGKILL"), delays.kill));
+  }, 1e4);
+  child.stdin.on("error", () => {
+  });
+  child.on("error", (cause) => {
+    error = `pi failed: ${cause.message}`;
+  });
+  child.stderr.on("data", (bytes) => {
+    stderr = (stderr + bytes.toString()).slice(-16384);
+  });
+  child.stdout.on("data", (bytes) => {
+    const lines2 = (pending + bytes).split("\n");
+    pending = lines2.pop() ?? "";
+    for (const line of lines2) {
+      let value2;
+      try {
+        value2 = JSON.parse(line);
+        if (!value2 || typeof value2 !== "object" || Array.isArray(value2)) throw new Error("Invalid event");
+      } catch {
+        error = "Pi printed a line that is not JSON.";
+        shutdown();
+        continue;
+      }
+      if (value2.type === "response" && value2.id === "checkmate-ready") {
+        const commands2 = value2.data?.commands;
+        ready = value2.success === true && Array.isArray(commands2) && commands2.some(
+          (command) => command.name === "checkmate-permission-ready" && command.source === "extension" && command.sourceInfo?.path === extension
+        );
+        clearTimeout(timeout);
+        if (!ready) {
+          error = "Pi did not load the permission gate.";
+          shutdown();
+          continue;
+        }
+        onLine(JSON.stringify({ type: "session", id: sessionId }));
+        if (!stopped) send2({ id: "checkmate-prompt", type: "prompt", message: prompt });
+      } else if (value2.type === "response" && value2.id === "checkmate-prompt" && value2.success !== true) {
+        error = `Pi rejected the request: ${value2.error || "unknown error"}`;
+        shutdown();
+      } else if (value2.type === "agent_settled") {
+        onLine(line);
+        shutdown();
+      } else onLine(line);
+    }
+  });
+  const finished = new Promise((resolve8) => {
+    child.on("close", (status, signal) => {
+      clearTimeout(timeout);
+      for (const timer of timers) clearTimeout(timer);
+      resolve8({
+        status,
+        signal,
+        stderr,
+        error: error ?? (!ready && !stopped ? "Pi did not verify the permission gate." : null)
+      });
+    });
+  });
+  send2({ id: "checkmate-ready", type: "get_commands" });
+  return {
+    pid: child.pid,
+    finished,
+    stop() {
+      if (stopped) return;
+      stopped = true;
+      send2({ type: "abort" });
+      shutdown();
+    }
+  };
+}
+
+// plugin/src/ui/requester.ts
 var stderrCount = 20;
-function readStreamLine(line) {
+function readStreamLine(line, harness = "claude") {
+  if (harness === "pi") {
+    const event2 = piEvent(line);
+    if (!event2) return [{ kind: "broken" }];
+    if (event2.type === "session" && event2.id) return [{ kind: "session", sessionId: event2.id }];
+    if (event2.type === "agent_settled" && event2.aborted)
+      return [{ kind: "result", value: { is_error: true, result: "Pi interrupted the response." } }];
+    if (event2.type === "tool_execution_start" && event2.toolName)
+      return [{ kind: "tool", name: event2.toolName, input: event2.args, cwd: void 0 }];
+    if (event2.type === "agent_end" && !event2.willRetry) {
+      const message = event2.messages?.at(-1);
+      const error = message?.role !== "assistant" || message.stopReason !== "stop";
+      const reply = message?.content?.flatMap((part) => part.type === "text" && part.text ? [part.text] : []).join("") ?? "";
+      return [
+        {
+          kind: "result",
+          value: {
+            is_error: error,
+            result: error ? message?.errorMessage || "Pi did not complete the response." : reply
+          }
+        }
+      ];
+    }
+    return [{ kind: "other" }];
+  }
   let value2;
   try {
     value2 = JSON.parse(line);
@@ -26323,7 +26662,12 @@ function createRequester(store, options3) {
     const outcome = run2.stopping ? {
       state: run2.stopping,
       detail: { reason: run2.reason }
-    } : !end ? failed(run2.reason) : end.error ? failed(end.error) : run2.broken ? failed(["claude printed a line that is not JSON.", ...stderr].join("\n")) : !result ? failed(["claude ended without a reply.", ...stderr].join("\n")) : result.is_error === true ? errorOutcome(result, stderr) : {
+    } : !end ? failed(run2.reason) : end.error ? failed(end.error) : run2.harness === "pi" && end.status !== 0 ? failed(
+      [
+        `pi exited with ${end.signal ? `signal ${end.signal}` : `code ${end.status}`}.`,
+        ...stderr
+      ].join("\n")
+    ) : run2.broken ? failed([`${run2.harness} printed a line that is not JSON.`, ...stderr].join("\n")) : !result ? failed([`${run2.harness} ended without a reply.`, ...stderr].join("\n")) : result.is_error === true ? errorOutcome(result, stderr, run2.harness) : {
       state: "answered",
       detail: {
         reply: typeof result.result === "string" ? result.result : "",
@@ -26336,18 +26680,18 @@ function createRequester(store, options3) {
       setRequestState(store, run2.id, outcome.state, { ...outcome.detail, changes });
     });
   }
-  function errorOutcome(result, stderr) {
+  function errorOutcome(result, stderr, harness) {
     const text = typeof result.result === "string" ? result.result : "";
     const call = { failure: ["operational_error", text], result: text, stderr };
     const authentication = authenticationFailed(call);
     const first = text.trim().split("\n")[0].slice(0, 200);
     return failed(
-      ["claude ended with an error" + (first ? `: ${first}` : "."), ...stderr].join("\n"),
-      authentication ? authenticationHint : null
+      [`${harness} ended with an error` + (first ? `: ${first}` : "."), ...stderr].join("\n"),
+      authentication && harness === "claude" ? authenticationHint : null
     );
   }
   function read(run2, line) {
-    for (const found of readStreamLine(line)) {
+    for (const found of readStreamLine(line, run2.harness)) {
       if (found.kind === "broken") {
         run2.broken = true;
         run2.child?.stop();
@@ -26356,7 +26700,11 @@ function createRequester(store, options3) {
           () => recordRequestEvent(
             store,
             run2.id,
-            { step: "session", status: "started", detail: { sessionId: found.sessionId } },
+            {
+              step: "session",
+              status: "started",
+              detail: { sessionId: found.sessionId, harness: run2.harness }
+            },
             { subjects: [`request:${run2.id}`] }
           )
         );
@@ -26375,6 +26723,7 @@ function createRequester(store, options3) {
     const run2 = {
       id: request.id,
       actor: requestActor(request.asker, request.id),
+      harness: "claude",
       child: null,
       result: null,
       broken: false,
@@ -26383,9 +26732,16 @@ function createRequester(store, options3) {
       done: Promise.resolve()
     };
     running3 = run2;
-    let claude;
+    let program;
+    let modelArgs = [];
     try {
-      claude = requireClaude(options3.env);
+      run2.harness = selectedHarness(options3.env);
+      program = requireChild(options3.env, run2.harness);
+      if (run2.harness === "pi")
+        modelArgs = piModelArgs({
+          ...options3.env,
+          CHECKMATE_PI_MODEL: requestModelText(store) || options3.env.CHECKMATE_PI_MODEL
+        });
     } catch (error) {
       const refusal = error;
       run2.reason = [refusal.message, refusal.hint].filter(Boolean).join(" ");
@@ -26393,15 +26749,27 @@ function createRequester(store, options3) {
       run2.done = Promise.resolve().then(() => finish2(run2, null));
       return;
     }
-    const args = requestArgs({
+    const hook = {
+      port: options3.hookPort(),
+      token: options3.hookToken,
+      explorationId: requestHookName,
+      who: request.id
+    };
+    const extension = join12(pluginRoot, "pi", "permission.mjs");
+    const args = run2.harness === "pi" ? [
+      "--mode",
+      "rpc",
+      ...modelArgs,
+      conversationStarted(store, request.conversation) ? "--session" : "--session-id",
+      request.conversation,
+      "--extension",
+      extension,
+      "--append-system-prompt",
+      requestSystemPrompt(checkmateScript())
+    ] : requestArgs({
       sessionId: request.conversation,
       resume: conversationStarted(store, request.conversation),
-      hook: {
-        port: options3.hookPort(),
-        token: options3.hookToken,
-        explorationId: requestHookName,
-        who: request.id
-      },
+      hook,
       model: requestModelText(store) || null,
       checkmate: checkmateScript()
     });
@@ -26410,10 +26778,21 @@ function createRequester(store, options3) {
       ...options3.env,
       CHECKMATE_ACTOR: run2.actor,
       [requestVariable]: request.id,
-      [hookTokenName]: options3.hookToken
+      [hookTokenName]: options3.hookToken,
+      ...run2.harness === "pi" ? { CHECKMATE_PI_HOOK: JSON.stringify(hook) } : {}
     };
     const prompt = requestPrompt(request.text, screenText(request.context));
-    run2.child = streamClaude(claude, args, prompt, options3.workspace, env, (line) => read(run2, line), delays);
+    run2.child = run2.harness === "pi" ? streamPi(
+      program,
+      args,
+      prompt,
+      options3.workspace,
+      env,
+      extension,
+      request.conversation,
+      (line) => read(run2, line),
+      delays
+    ) : streamClaude(program, args, prompt, options3.workspace, env, (line) => read(run2, line), delays);
     run2.done = run2.child.finished.then((end) => finish2(run2, end));
   }
   function finish2(run2, end) {
@@ -26431,6 +26810,9 @@ function createRequester(store, options3) {
   }
   return {
     ask(actor, text, context) {
+      const conversation = currentConversation(store);
+      const previous = conversation && conversationHarness(store, conversation.sessionId);
+      if (previous && previous !== selectedHarness(options3.env)) startConversation(store, actor);
       const id2 = askRequest(store, actor, { text, context });
       queue.push(id2);
       next();
@@ -26526,7 +26908,7 @@ var maxForm = 256 * 1024;
 function directory(candidates, file) {
   for (const candidate of candidates) {
     const path = fileURLToPath2(new URL(candidate, import.meta.url));
-    if (existsSync5(path + file)) return path;
+    if (existsSync6(path + file)) return path;
   }
   throw new Error(`Checkmate UI files are missing: ${file} not found in ${candidates.join(", ")}`);
 }
@@ -27819,7 +28201,7 @@ data: ${matched.join(",") || "*"}
     if (address && URL.canParse(address) && !isLocalAddress(address) && form.get("confirmed") !== "1")
       return refuse3(`Confirm that Checkmate may test ${hostOf(address)}, an address that is not local.`, "target");
     try {
-      requireClaude(env);
+      requireChild(env, selectedHarness(env));
       launchPlan(targetRevision(store, targetId).profile, { planId, build, allow, claudeArgs: [], level }, env);
     } catch (error) {
       const message = engineText(error);
@@ -28252,8 +28634,11 @@ data: ${matched.join(",") || "*"}
     for (const client of clients) client.res.end();
     clients.clear();
     await new Promise((resolve8) => {
-      server.close(() => resolve8());
-      server.closeAllConnections();
+      const forceClose = setTimeout(() => server.closeAllConnections(), 1e3);
+      server.close(() => {
+        clearTimeout(forceClose);
+        resolve8();
+      });
     });
     closeStore(watch);
     closeStore(store);
@@ -28282,7 +28667,7 @@ data: ${matched.join(",") || "*"}
 
 // plugin/src/agents.ts
 import { mkdirSync as mkdirSync8, readFileSync as readFileSync8, rmSync as rmSync7, writeFileSync as writeFileSync5 } from "node:fs";
-import { dirname, join as join12 } from "node:path";
+import { dirname, join as join13 } from "node:path";
 var testerAgent = "checkmate:tester";
 var clerkAgent = "checkmate:clerk";
 var doneSteps = ["study", "test", "record", "follow", "rules", "merge", "verify"];
@@ -28489,7 +28874,7 @@ function lineOf(explorationId, action2) {
   return `${action2.action} ${action2.name} ${action2.step} agent=${action2.to}${description} prompt="${promptOf2(action2)}"`;
 }
 function writeFile(store, path, text) {
-  const full = join12(store.workspace, path);
+  const full = join13(store.workspace, path);
   mkdirSync8(dirname(full), { recursive: true });
   writeFileSync5(full, text.endsWith("\n") ? text : `${text}
 `);
@@ -28508,7 +28893,7 @@ function answerNext(store, actor, explorationId, actions, word) {
 ${replyLimit}
 End your reply with this line: ${replyLineOf(action2.name, action2.step)}`
         );
-        if (action2.answer) rmSync7(join12(store.workspace, action2.answer), { force: true });
+        if (action2.answer) rmSync7(join13(store.workspace, action2.answer), { force: true });
         addEvent(
           store,
           explorationId,
@@ -28720,7 +29105,7 @@ function nextActions(store, actor, explorationId) {
 }
 function readText2(store, path) {
   try {
-    return readFileSync8(join12(store.workspace, path), "utf8");
+    return readFileSync8(join13(store.workspace, path), "utf8");
   } catch {
     return void 0;
   }
@@ -28920,7 +29305,7 @@ function stepDone(store, actor, input) {
 
 // plugin/src/cli.ts
 import { mkdirSync as mkdirSync9, readFileSync as readFileSync9, writeFileSync as writeFileSync6 } from "node:fs";
-import { dirname as dirname2, resolve as resolve7 } from "node:path";
+import { dirname as dirname2, join as join14, resolve as resolve7 } from "node:path";
 import { constants as constants2 } from "node:sqlite";
 var testFields2 = [
   "title",
@@ -30760,7 +31145,7 @@ function commandHelp(argv) {
   return { ...refused("invalid_request", "checkmate", unknownCommand(words4)), data: { usage: [] } };
 }
 function version() {
-  return JSON.parse(readFileSync9(new URL("../.claude-plugin/plugin.json", import.meta.url), "utf8")).version;
+  return JSON.parse(readFileSync9(join14(pluginRoot, ".claude-plugin", "plugin.json"), "utf8")).version;
 }
 function readJson2(text) {
   requireWellFormed(

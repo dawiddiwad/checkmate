@@ -102,6 +102,16 @@ export function conversationStarted(store: Store, sessionId: string) {
 	)
 }
 
+export function conversationHarness(store: Store, sessionId: string) {
+	const row = one<{ detail: string }>(
+		store,
+		`SELECT e.detail FROM request_events e JOIN requests r ON r.request_id = e.request_id
+		WHERE r.conversation = ? AND e.step = 'session' ORDER BY e.rowid DESC LIMIT 1`,
+		sessionId
+	)
+	return row ? ((JSON.parse(row.detail).harness ?? 'claude') as string) : null
+}
+
 export function addRequestEvent(
 	store: Store,
 	requestId: string,

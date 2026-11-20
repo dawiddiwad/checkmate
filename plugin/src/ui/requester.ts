@@ -1,5 +1,8 @@
+import { join } from 'node:path'
 import type { Store } from '../store.ts'
-import type { ClaudeCall, Env, StopDelays, StreamedClaude } from '../sessions.ts'
+import { piEvent, piModelArgs, selectedHarness } from '../pi.ts'
+import { streamPi } from './pi-request.ts'
+import type { ChildCall, Env, StopDelays, StreamedClaude } from '../sessions.ts'
 import type { RequestContext, RequestRecord } from '../requests.ts'
 import { Refusal } from '../contracts.ts'
 import { requestVariable } from '../actor.ts'
@@ -8,11 +11,13 @@ import {
 	authenticationHint,
 	checkmateScript,
 	defaultStopDelays,
+	pluginRoot,
+	requestSystemPrompt,
 	hookTokenName,
 	requestArgs,
 	requestHookName,
 	requestPrompt,
-	requireClaude,
+	requireChild,
 	stderrTail,
 	streamClaude,
 } from '../sessions.ts'
@@ -21,6 +26,8 @@ import {
 	askRequest,
 	changesOf,
 	conversationStarted,
+	conversationHarness,
+	currentConversation,
 	recordRequestEvent,
 	requestActor,
 	requestOf,
@@ -57,7 +64,33 @@ export type StreamLine =
 
 const stderrCount = 20
 
-export function readStreamLine(line: string): StreamLine[] {
+export function readStreamLine(line: string, harness: 'claude' | 'pi' = 'claude'): StreamLine[] {
+	if (harness === 'pi') {
+		const event = piEvent(line)
+		if (!event) return [{ kind: 'broken' }]
+		if (event.type === 'session' && event.id) return [{ kind: 'session', sessionId: event.id }]
+		if (event.type === 'agent_settled' && event.aborted)
+			return [{ kind: 'result', value: { is_error: true, result: 'Pi interrupted the response.' } }]
+		if (event.type === 'tool_execution_start' && event.toolName)
+			return [{ kind: 'tool', name: event.toolName, input: event.args, cwd: undefined }]
+		if (event.type === 'agent_end' && !event.willRetry) {
+			const message = event.messages?.at(-1)
+			const error = message?.role !== 'assistant' || message.stopReason !== 'stop'
+			const reply =
+				message?.content?.flatMap((part) => (part.type === 'text' && part.text ? [part.text] : [])).join('') ??
+				''
+			return [
+				{
+					kind: 'result',
+					value: {
+						is_error: error,
+						result: error ? message?.errorMessage || 'Pi did not complete the response.' : reply,
+					},
+				},
+			]
+		}
+		return [{ kind: 'other' }]
+	}
 	let value: unknown
 	try {
 		value = JSON.parse(line)
@@ -89,6 +122,7 @@ export function readStreamLine(line: string): StreamLine[] {
 type Running = {
 	id: string
 	actor: string
+	harness: 'claude' | 'pi'
 	child: StreamedClaude | null
 	result: Record<string, unknown> | null
 	broken: boolean
@@ -135,41 +169,48 @@ export function createRequester(store: Store, options: RequesterOptions): Reques
 				? failed(run.reason)
 				: end.error
 					? failed(end.error)
-					: run.broken
-						? failed(['claude printed a line that is not JSON.', ...stderr].join('\n'))
-						: !result
-							? failed(['claude ended without a reply.', ...stderr].join('\n'))
-							: result.is_error === true
-								? errorOutcome(result, stderr)
-								: {
-										state: 'answered' as const,
-										detail: {
-											reply: typeof result.result === 'string' ? result.result : '',
-											...(typeof result.total_cost_usd === 'number'
-												? { costUsd: result.total_cost_usd }
-												: {}),
-											denials: denialLines(result, options.workspace),
-										},
-									}
+					: run.harness === 'pi' && end.status !== 0
+						? failed(
+								[
+									`pi exited with ${end.signal ? `signal ${end.signal}` : `code ${end.status}`}.`,
+									...stderr,
+								].join('\n')
+							)
+						: run.broken
+							? failed([`${run.harness} printed a line that is not JSON.`, ...stderr].join('\n'))
+							: !result
+								? failed([`${run.harness} ended without a reply.`, ...stderr].join('\n'))
+								: result.is_error === true
+									? errorOutcome(result, stderr, run.harness)
+									: {
+											state: 'answered' as const,
+											detail: {
+												reply: typeof result.result === 'string' ? result.result : '',
+												...(typeof result.total_cost_usd === 'number'
+													? { costUsd: result.total_cost_usd }
+													: {}),
+												denials: denialLines(result, options.workspace),
+											},
+										}
 		guarded(() => {
 			const changes = changesOf(store, run.id)
 			setRequestState(store, run.id, outcome.state, { ...outcome.detail, changes })
 		})
 	}
 
-	function errorOutcome(result: Record<string, unknown>, stderr: string[]) {
+	function errorOutcome(result: Record<string, unknown>, stderr: string[], harness: 'claude' | 'pi') {
 		const text = typeof result.result === 'string' ? result.result : ''
-		const call: ClaudeCall = { failure: ['operational_error', text], result: text, stderr }
+		const call: ChildCall = { failure: ['operational_error', text], result: text, stderr }
 		const authentication = authenticationFailed(call)
 		const first = text.trim().split('\n')[0].slice(0, 200)
 		return failed(
-			['claude ended with an error' + (first ? `: ${first}` : '.'), ...stderr].join('\n'),
-			authentication ? authenticationHint : null
+			[`${harness} ended with an error` + (first ? `: ${first}` : '.'), ...stderr].join('\n'),
+			authentication && harness === 'claude' ? authenticationHint : null
 		)
 	}
 
 	function read(run: Running, line: string) {
-		for (const found of readStreamLine(line)) {
+		for (const found of readStreamLine(line, run.harness)) {
 			if (found.kind === 'broken') {
 				run.broken = true
 				run.child?.stop()
@@ -178,7 +219,11 @@ export function createRequester(store: Store, options: RequesterOptions): Reques
 					recordRequestEvent(
 						store,
 						run.id,
-						{ step: 'session', status: 'started', detail: { sessionId: found.sessionId } },
+						{
+							step: 'session',
+							status: 'started',
+							detail: { sessionId: found.sessionId, harness: run.harness },
+						},
 						{ subjects: [`request:${run.id}`] }
 					)
 				)
@@ -198,6 +243,7 @@ export function createRequester(store: Store, options: RequesterOptions): Reques
 		const run: Running = {
 			id: request.id,
 			actor: requestActor(request.asker, request.id),
+			harness: 'claude',
 			child: null,
 			result: null,
 			broken: false,
@@ -206,9 +252,16 @@ export function createRequester(store: Store, options: RequesterOptions): Reques
 			done: Promise.resolve(),
 		}
 		running = run
-		let claude: string
+		let program: string
+		let modelArgs: string[] = []
 		try {
-			claude = requireClaude(options.env)
+			run.harness = selectedHarness(options.env)
+			program = requireChild(options.env, run.harness)
+			if (run.harness === 'pi')
+				modelArgs = piModelArgs({
+					...options.env,
+					CHECKMATE_PI_MODEL: requestModelText(store) || options.env.CHECKMATE_PI_MODEL,
+				})
 		} catch (error) {
 			const refusal = error as Refusal
 			run.reason = [refusal.message, refusal.hint].filter(Boolean).join(' ')
@@ -216,27 +269,56 @@ export function createRequester(store: Store, options: RequesterOptions): Reques
 			run.done = Promise.resolve().then(() => finish(run, null))
 			return
 		}
-		const args = requestArgs({
-			sessionId: request.conversation,
-			resume: conversationStarted(store, request.conversation),
-			hook: {
-				port: options.hookPort(),
-				token: options.hookToken,
-				explorationId: requestHookName,
-				who: request.id,
-			},
-			model: requestModelText(store) || null,
-			checkmate: checkmateScript(),
-		})
+		const hook = {
+			port: options.hookPort(),
+			token: options.hookToken,
+			explorationId: requestHookName,
+			who: request.id,
+		}
+		const extension = join(pluginRoot, 'pi', 'permission.mjs')
+		const args =
+			run.harness === 'pi'
+				? [
+						'--mode',
+						'rpc',
+						...modelArgs,
+						conversationStarted(store, request.conversation) ? '--session' : '--session-id',
+						request.conversation,
+						'--extension',
+						extension,
+						'--append-system-prompt',
+						requestSystemPrompt(checkmateScript()),
+					]
+				: requestArgs({
+						sessionId: request.conversation,
+						resume: conversationStarted(store, request.conversation),
+						hook,
+						model: requestModelText(store) || null,
+						checkmate: checkmateScript(),
+					})
 		guarded(() => setRequestState(store, run.id, 'running'))
 		const env = {
 			...options.env,
 			CHECKMATE_ACTOR: run.actor,
 			[requestVariable]: request.id,
 			[hookTokenName]: options.hookToken,
+			...(run.harness === 'pi' ? { CHECKMATE_PI_HOOK: JSON.stringify(hook) } : {}),
 		}
 		const prompt = requestPrompt(request.text, screenText(request.context))
-		run.child = streamClaude(claude, args, prompt, options.workspace, env, (line) => read(run, line), delays)
+		run.child =
+			run.harness === 'pi'
+				? streamPi(
+						program,
+						args,
+						prompt,
+						options.workspace,
+						env,
+						extension,
+						request.conversation,
+						(line) => read(run, line),
+						delays
+					)
+				: streamClaude(program, args, prompt, options.workspace, env, (line) => read(run, line), delays)
 		run.done = run.child.finished.then((end) => finish(run, end))
 	}
 
@@ -257,6 +339,9 @@ export function createRequester(store: Store, options: RequesterOptions): Reques
 
 	return {
 		ask(actor, text, context) {
+			const conversation = currentConversation(store)
+			const previous = conversation && conversationHarness(store, conversation.sessionId)
+			if (previous && previous !== selectedHarness(options.env)) startConversation(store, actor)
 			const id = askRequest(store, actor, { text, context })
 			queue.push(id)
 			next()

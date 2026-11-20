@@ -1,6 +1,6 @@
 # Architecture
 
-Checkmate is a Claude Code plugin and a deterministic Node.js toolkit.
+Checkmate includes a Claude Code plugin, a Pi skill, and a deterministic Node.js toolkit. `CHECKMATE_HARNESS` selects the host for child processes. Claude Code is the default. Pi owns its provider configuration and model selection. `plugin/src/pi.ts` builds Pi arguments and reads its event stream. `cli/skills/checkmate/` provides the interactive entry point in Pi.
 
 `plugin/` is the installed plugin. It has no npm dependencies.
 
@@ -21,7 +21,7 @@ Checkmate is a Claude Code plugin and a deterministic Node.js toolkit.
 `cli/` is the npm package `@xoxoai/checkmate`.
 
 - `cli/src/main.ts` handles `delegate` and passes every other command to the plugin CLI.
-- `cli/src/launcher.ts` starts the installed Claude CLI with the bundled plugin, checks its structured response, and then checks the database for the recorded change.
+- `cli/src/launcher.ts` starts the selected coding harness with the stage instructions, checks its structured response, and then checks the database for the recorded change.
 
 The repository root contains tests, scripts, documentation, and development tools.
 

@@ -8,6 +8,7 @@
 		"ai-governance",
 		"claude-plugin",
 		"cli-tool",
+		"pi-package",
 		"sdlc",
 		"software-factory",
 		"test-automation"
@@ -29,7 +30,13 @@
 	"bin": {
 		"checkmate": "dist/checkmate.js"
 	},
+	"pi": {
+		"skills": [
+			"./skills"
+		]
+	},
 	"files": [
+		"skills",
 		"dist",
 		"plugin",
 		"README.md",

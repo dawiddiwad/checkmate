@@ -87,6 +87,10 @@ Use these rules when you add or change a test.
 5. **Assert behavior, not text.** The agent-facing CLI lines are a contract. Check the format of each command in one test. In other places, match the identifying tokens, for example `/Unknown test .*T9/`. Select HTML by `data-key`, role, or label, not by class names or markup.
 6. **Keep a runtime budget, not a count budget.** Do not use a fixed wait. Wait for a condition, or inject the timeout. Use a subprocess only when the proof needs a process boundary, for example standard input, an exit code, or a lock between processes. Use a browser only for client behavior. Seed a shared workspace once for each file, and copy it for each test.
 
+## Pi integration test
+
+Install Pi on your path and run `npm run test:pi`. The test starts the real Pi CLI with a temporary agent directory. A local HTTP fixture returns a tool call and a final response. The test checks the recorded database operation. It requires no provider key.
+
 ## Live tests
 
 ```sh

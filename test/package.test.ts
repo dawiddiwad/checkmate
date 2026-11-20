@@ -4,7 +4,9 @@ import { execFileSync, spawn } from 'node:child_process'
 import { once } from 'node:events'
 import { chmodSync, existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { directory, root } from './support.ts'
+import { closeStore } from '../plugin/src/store.ts'
+import { directory, plan, root, store, target } from './support.ts'
+import { fakeClaude } from './claude.ts'
 import { packageReadme } from '../scripts/build-cli.ts'
 
 function json(path: string) {
@@ -39,6 +41,8 @@ test('the npm package runs from node_modules, serves the UI, and delegate loads 
 	const metadata = json(join(installed, 'package.json'))
 	assert.equal(metadata.description, 'The QA system of record for an agent software factory')
 	assert.ok(metadata.keywords.includes('software-factory'))
+	assert.deepEqual(metadata.pi.skills, ['./skills'])
+	assert.ok(existsSync(join(installed, 'skills/checkmate/SKILL.md')))
 	assert.deepEqual(metadata.publishConfig, { access: 'public' })
 	const readme = readFileSync(join(installed, 'README.md'), 'utf8')
 	assert.equal(readme, packageReadme(readFileSync(join(root, 'README.md'), 'utf8'), version))
@@ -100,6 +104,38 @@ console.log(JSON.stringify({ type: 'result', subtype: 'success', structured_outp
 		'needs_decision checkout-local\nreason: No browser.'
 	)
 	assert.equal(readFileSync(join(project, 'plugin-dir.txt'), 'utf8'), realpathSync(join(installed, 'plugin')))
+	const piWorkspace = directory(t)
+	const opened = store(t, piWorkspace)
+	target(opened)
+	plan(opened)
+	closeStore(opened)
+	const fake = fakeClaude(t, { recorder: [{ kind: 'note', text: 'Pi explorer completed.' }] }, 'pi')
+	const piCheckmate = (...args: string[]) =>
+		JSON.parse(
+			execFileSync(join(project, 'node_modules/.bin/checkmate'), [...args, '--json'], {
+				cwd: piWorkspace,
+				env: { ...env, ...fake.env, CHECKMATE_HARNESS: 'pi' },
+				encoding: 'utf8',
+			})
+		)
+	const exploration = piCheckmate(
+		'explore',
+		'start',
+		'checkout',
+		'--build',
+		'packed',
+		'--level',
+		'smoke',
+		'--allow',
+		'Read'
+	)
+	assert.equal(piCheckmate('explore', 'wait', exploration.explorationId, '--timeout', '30').state, 'completed')
+	const explorer = fake.called().find((call) => call.role === 'explorer')
+	assert.equal(
+		explorer.args[explorer.args.indexOf('--extension') + 1],
+		realpathSync(join(installed, 'plugin/pi/child.mjs'))
+	)
+
 	const ui = spawn(join(project, 'node_modules/.bin/checkmate'), ['ui'], { cwd: project, env })
 	try {
 		const [first] = (await once(ui.stdout, 'data')) as [Buffer]

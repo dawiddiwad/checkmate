@@ -1,6 +1,6 @@
-import test from 'node:test'
+import test, { afterEach } from 'node:test'
 import assert from 'node:assert/strict'
-import type { TestContext } from 'node:test'
+import type { SuiteContext, TestContext } from 'node:test'
 import { spawn } from 'node:child_process'
 import { request } from 'node:http'
 import { existsSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs'
@@ -18,6 +18,7 @@ import {
 	requestPermission,
 } from '../plugin/src/permissions.ts'
 import { childArgs, childEnv, liveUi, uiFilePath, writeUiFile } from '../plugin/src/sessions.ts'
+import type { Ui } from '../plugin/src/ui/server.ts'
 import { startUi } from '../plugin/src/ui/server.ts'
 import { askRequest, stopRequestRecord } from '../plugin/src/requests.ts'
 import { activityLine } from '../plugin/src/ui/hooks.ts'
@@ -39,6 +40,11 @@ const rule = (destination: string) =>
 const as = { Cookie: `checkmate_actor=${actor}` }
 
 type Options = Parameters<typeof startUi>[0]
+const servers = new WeakMap<TestContext | SuiteContext, Ui[]>()
+
+afterEach(async (t) => {
+	await Promise.all((servers.get(t) ?? []).map((ui) => ui.close()))
+})
 
 function dummyProcess(t: TestContext) {
 	const child = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 120000)'], { detached: true, stdio: 'ignore' })
@@ -70,7 +76,7 @@ function workspaceOf(t: TestContext) {
 async function serverOf(t: TestContext, workspace: string, options: Partial<Options> = {}) {
 	const logs: string[] = []
 	const ui = await startUi({ workspace, defaultActor: '', log: (line) => logs.push(line), ...options })
-	t.after(() => ui.close())
+	servers.set(t, [...(servers.get(t) ?? []), ui])
 	const hookToken = (JSON.parse(readFileSync(uiFilePath(workspace), 'utf8')) as { hookToken: string }).hookToken
 	const read = <T>(view: (reading: ReturnType<typeof openStore>) => T) => {
 		const reading = openStore(workspace)
@@ -156,7 +162,8 @@ test('the hook token belongs to the workspace: a held request, a stop, and a sta
 	await waitOpen(first, 1)
 	const port = Number(new URL(first.ui.url).port)
 	await first.ui.close()
-	assert.deepEqual([(await held).status, (await held).body], [200, ''])
+	const drained = await held
+	assert.deepEqual([drained.status, drained.body, drained.headers.connection], [200, '', 'close'])
 	assert.equal(existsSync(uiFilePath(workspace)), false)
 	assert.equal(readFileSync(tokenFile, 'utf8'), first.hookToken)
 	const second = await serverOf(t, workspace, { port })

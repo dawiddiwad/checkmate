@@ -1,5 +1,5 @@
 import type { Reply, Status, Store } from './store.ts'
-import type { ChildContext, ClaudeCall, Env } from './sessions.ts'
+import type { ChildContext, ChildCall, Env } from './sessions.ts'
 import { all, one, write } from './store.ts'
 import { Refusal, requireIdentifier, requireWellFormed } from './contracts.ts'
 import { recorderPrompt, repairPrompt } from './briefs.ts'
@@ -7,15 +7,18 @@ import { bareOf, explorationRow, freshIds, journal, logEntries, recordText, refu
 import type { Entry, Refused } from './journal.ts'
 import { addEvent, explorationEvents, workFolder } from './explorations.ts'
 import { explorationRules } from './rules.ts'
+import { piModelArgs, selectedHarness } from './pi.ts'
 import {
 	authenticationFailed,
 	authenticationHint,
-	callClaude,
+	callChild,
 	childArgs,
 	childEnv,
 	childHook,
 	replyArray,
-	requireClaude,
+	requireChild,
+	piAuthenticationHint,
+	storeDenyRules,
 } from './sessions.ts'
 import { randomUUID } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
@@ -102,7 +105,7 @@ function logReply(
 	}
 }
 
-function sum(calls: ClaudeCall[], key: 'costUsd' | 'durationMs') {
+function sum(calls: ChildCall[], key: 'costUsd' | 'durationMs') {
 	const values = calls.flatMap((call) => (call[key] === undefined ? [] : [call[key]]))
 	return values.length ? { [key]: values.reduce((total, value) => total + value, 0) } : {}
 }
@@ -269,15 +272,26 @@ function prepare(store: Store, input: RecordInput, env: Env) {
 	requireWellFormed(
 		/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(input.session),
 		`Invalid session ID: ${input.session}. Give the session_id of the test session.`,
-		'claude -p --output-format json gives it in session_id. In an interactive session, /status shows it.'
+		'The host can show the ID of its current session.'
 	)
 	const exploration = explorationRow(store, input.explorationId)
-	const claude = requireClaude(env)
-	const context = launchContext(store, exploration.exploration_id, explorer, input.session) ?? {
+	const stored = launchContext(store, exploration.exploration_id, explorer, input.session)
+	const harness = stored ? (stored.harness ?? 'claude') : selectedHarness(env)
+	if (harness === 'pi') requireWellFormed(!input.claudeArgs?.length, '--claude-arg is for Claude.')
+	const context = stored ?? {
 		hiddenPlugin: null,
 		claudeArgs: input.claudeArgs ?? [],
+		...(harness === 'pi' ? { harness, piArgs: piModelArgs(env) } : {}),
 	}
-	return { claude, exploration, explorer, context, recorder: randomUUID(), actor: explorerActor(explorer) }
+	return {
+		executable: requireChild(env, harness),
+		exploration,
+		explorer,
+		context,
+		harness,
+		recorder: randomUUID(),
+		actor: explorerActor(explorer),
+	}
 }
 
 export function recordSession(
@@ -329,16 +343,32 @@ function recordLocked(
 ): Reply {
 	const { exploration, actor } = plan
 	const hook = childHook(store.workspace, exploration.exploration_id, `record-${plan.explorer}`)
-	const context = { ...plan.context, hook }
-	const childEnvironment = childEnv(env, { CHECKMATE_RECORDER: '1' }, hook)
+	const context = {
+		...plan.context,
+		hook,
+		...(plan.harness === 'pi' ? { deny: storeDenyRules } : {}),
+	}
+	const allow = plan.harness === 'pi' ? ['read'] : []
+	const childEnvironment = childEnv(env, { CHECKMATE_RECORDER: '1' }, hook, context, allow)
 	const left = () => input.timeoutSeconds - Math.floor((Date.now() - started) / 1000)
 	const after = lastEntry(store)
 	const earlier = savedEntries(store, exploration.plan_id, exploration.exploration_id, actor)
 	const prompt = promptOf(store, exploration, actor, earlier)
-	const resume = ['--resume', input.session, '--fork-session', '--session-id', plan.recorder]
-	const calls = [
-		callClaude(plan.claude, childArgs(context, resume), prompt, cwd, childEnvironment, Math.max(1, left())),
-	]
+	const resume =
+		plan.harness === 'pi'
+			? ['--fork', input.session, '--session-id', plan.recorder]
+			: ['--resume', input.session, '--fork-session', '--session-id', plan.recorder]
+	const ask = (args: string[], prompt: string, seconds: number) =>
+		callChild(
+			plan.executable,
+			childArgs(context, args, allow),
+			prompt,
+			cwd,
+			childEnvironment,
+			seconds,
+			plan.harness
+		)
+	const calls = [ask(resume, prompt, Math.max(1, left()))]
 	const missing: string[] = []
 	const dropped: string[] = []
 	const unknownRules: string[] = []
@@ -361,16 +391,7 @@ function recordLocked(
 	const repeated = given && first ? given.length - first.length : 0
 	let refusals = first?.length ? log(first) : []
 	if (!calls[0].failure && refusals.length && left() > 0) {
-		calls.push(
-			callClaude(
-				plan.claude,
-				childArgs(context, ['--resume', plan.recorder]),
-				repairPrompt(refusals),
-				cwd,
-				childEnvironment,
-				left()
-			)
-		)
+		calls.push(ask(['--resume', plan.recorder], repairPrompt(refusals), left()))
 		const fix = replyArray(calls[1].result)
 		if (fix) refusals = log(newEntries(fix, earlier))
 	}
@@ -413,9 +434,9 @@ function recordLocked(
 		...(status === 'completed'
 			? {}
 			: calls.some(authenticationFailed)
-				? { hint: authenticationHint }
+				? { hint: plan.harness === 'pi' ? piAuthenticationHint : authenticationHint }
 				: {
-						hint: `The entries that Checkmate logged stay. To read what the recorder did, run claude --resume ${plan.recorder}. Then run the same record command again.`,
+						hint: `The entries that Checkmate logged stay. To read what the recorder did, run ${plan.harness === 'pi' ? 'pi --session' : 'claude --resume'} ${plan.recorder}. Then run the same record command again.`,
 					}),
 		data,
 	}

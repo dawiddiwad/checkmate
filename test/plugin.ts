@@ -22,6 +22,7 @@ try {
 		'dist',
 		'evals',
 		'package.json',
+		'pi',
 		'references',
 		'skills',
 		'src',

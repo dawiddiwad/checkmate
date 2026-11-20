@@ -10,11 +10,12 @@ const { randomUUID } = require('node:crypto')
 const args = process.argv.slice(2)
 const prompt = readFileSync(0, 'utf8')
 const after = (flag) => (args.includes(flag) ? args[args.indexOf(flag) + 1] : undefined)
-const resumed = after('--resume')
+const pi = after('--mode') === 'json'
+const resumed = after('--resume') ?? after('--session') ?? after('--fork')
 const streamed = args.includes('stream-json')
 const role = streamed
 	? 'request'
-	: args.includes('--fork-session')
+	: (args.includes('--fork-session') || args.includes('--fork'))
 	? 'recorder'
 	: /^Write the rules /.test(prompt)
 		? 'rules'
@@ -70,6 +71,13 @@ else if (reply === '!stray') {
 } else if (reply === '!ask') askHooks().then(() => finish('Done.'))
 else finish(typeof reply === 'string' ? reply : JSON.stringify(reply ?? 'Done.'))
 function finish(result) {
+	if (pi) {
+		emit({ type: 'session', id: session })
+		const message = { role: 'assistant', stopReason: 'stop', content: [{ type: 'text', text: result }] }
+		emit({ type: 'agent_end', messages: [message], willRetry: false })
+		emit({ type: 'agent_settled', aborted: false })
+		return
+	}
 	process.stdout.write(
 		JSON.stringify({ type: 'result', subtype: 'success', is_error: false, result, session_id: session, total_cost_usd: 0.25, duration_ms: 1000 })
 	)
@@ -161,10 +169,10 @@ export type FakeReplies = Partial<
 	>
 >
 
-export function fakeClaude(t: TestContext, replies: FakeReplies = {}) {
+export function fakeClaude(t: TestContext, replies: FakeReplies = {}, harness: 'claude' | 'pi' = 'claude') {
 	const bin = directory(t)
-	writeFileSync(join(bin, 'claude'), script)
-	chmodSync(join(bin, 'claude'), 0o755)
+	writeFileSync(join(bin, harness), script)
+	chmodSync(join(bin, harness), 0o755)
 	const config = directory(t)
 	const call = join(directory(t), 'calls.jsonl')
 	const answers = join(directory(t), 'replies.json')

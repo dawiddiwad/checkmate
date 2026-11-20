@@ -679,6 +679,10 @@ function explorerDetail(store: Store, live: Live, item: LiveExplorer, crumbs: Ht
 					: ''
 			}
 			<div>
+				<dt>Reported cost</dt>
+				<dd>${costText(item.costUsd, item.costPartial)}</dd>
+			</div>
+			<div>
 				<dt>${live.path === 'session' ? 'Step' : 'Turn'}</dt>
 				<dd>${item.turn ?? none}</dd>
 			</div>

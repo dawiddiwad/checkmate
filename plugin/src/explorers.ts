@@ -3,6 +3,7 @@ import type { Profile } from './types.ts'
 import type { ChildContext, ChildCall, Env } from './sessions.ts'
 import type { Charter, ExplorationEvent, OpenInput } from './explorations.ts'
 import type { TestLevel } from './levels.ts'
+import { explorationCost } from './costs.ts'
 import { all, closeStore, completed, one, openStore, saveBlob, write } from './store.ts'
 import { Refusal, requireChoice, requireCondition, requireWellFormed } from './contracts.ts'
 import { addEvent, exploration, explorationEvents, insertExploration, workFolder } from './explorations.ts'
@@ -20,7 +21,7 @@ import {
 	verifyItems,
 } from './journal.ts'
 import type { Harness } from './pi.ts'
-import { piErrorText, piModelArgs, piModelEnv, piStderr, selectedHarness } from './pi.ts'
+import { piErrorText, piModelArgs, piOverrideModelArgs, piSavedModelEnv, piStderr, selectedHarness } from './pi.ts'
 import { requireEffort, requireModel, testerEffortText, testerModelText, workspaceEnv } from './settings.ts'
 import type { ModelCatalog } from './model-catalog.ts'
 import { discoverModelCatalog, effortArgs, resolvedEffort } from './model-catalog.ts'
@@ -48,7 +49,7 @@ import {
 	authenticationHint,
 	callChild,
 	childEnv,
-	costOf,
+	usageOf,
 	childHook,
 	exitOnSignal,
 	installedPluginId,
@@ -130,18 +131,14 @@ function hostModel(args: string[]) {
 
 function contextForModel(context: ChildContext, model: string | undefined): ChildContext {
 	if (!model) return context
-	const pi = context.harness === 'pi'
-	const source = pi ? (context.piArgs ?? []) : context.claudeArgs
+	if (context.harness === 'pi') return { ...context, piArgs: piOverrideModelArgs(context.piArgs ?? [], model) }
 	const args: string[] = []
-	for (let index = 0; index < source.length; index++) {
-		const value = source[index]
-		const flag = value.split('=', 1)[0]
-		if (flag === '--model' || (flag === '--provider' && pi && model.includes('/'))) {
-			if (value === flag) index++
-		} else args.push(value)
+	for (let index = 0; index < context.claudeArgs.length; index++) {
+		const value = context.claudeArgs[index]
+		if (value === '--model') index++
+		else if (!value.startsWith('--model=')) args.push(value)
 	}
-	args.push('--model', model)
-	return pi ? { ...context, piArgs: args } : { ...context, claudeArgs: args }
+	return { ...context, claudeArgs: [...args, '--model', model] }
 }
 
 function contextForEffort(context: ChildContext, catalog: ModelCatalog | undefined, choice: string): ChildContext {
@@ -218,10 +215,12 @@ export function launchPlan(
 		piToolNames(input.allow)
 	}
 	const claudeArgs = checkClaudeArgs(input.claudeArgs)
-	const selected = Boolean(
+	const prefersSaved = Boolean(
 		savedModel && (harness === 'pi' ? preferSaved || !env.CHECKMATE_PI_MODEL?.trim() : !hostModel(claudeArgs))
 	)
-	const piArgs = harness === 'pi' ? piModelArgs(selected ? piModelEnv(env, savedModel) : env) : []
+	const piEnv = harness === 'pi' && prefersSaved ? piSavedModelEnv(env, savedModel) : env
+	const selected = prefersSaved && (harness === 'claude' || piEnv !== env)
+	const piArgs = harness === 'pi' ? piModelArgs(piEnv) : []
 	const host = hostModel(harness === 'pi' ? piArgs : claudeArgs)
 	const model = selected ? savedModel : (host ?? (harness === 'pi' ? null : row.model))
 	const hiddenPlugin = harness === 'claude' ? installedPluginId(env) : null
@@ -592,9 +591,9 @@ async function launchExplorers(
 				brief,
 			},
 		})
-		const turn = (own: string[], prompt: string, name: string) => {
+		const turn = (own: string[], prompt: string, name: string, observedModel?: string) => {
 			const hook = childHook(store.workspace, explorationId, explorer)
-			const context = { ...tester, deny, hook, work: folder }
+			const context = { ...contextForModel(tester, observedModel), deny, hook, work: folder }
 			return watchStray(store, actor, explorationId, explorer, name, () =>
 				launchChild(
 					executable,
@@ -618,7 +617,9 @@ async function launchExplorers(
 				status: 'started',
 				detail: { session, turn: 'test' },
 			})
-		const calls = study.failure ? [study] : [study, await turn(['--resume', session], brief.test, 'test')]
+		const calls = study.failure
+			? [study]
+			: [study, await turn(['--resume', session], brief.test, 'test', study.observedModels?.at(-1))]
 		watch.stop()
 		return { explorer, session, calls }
 	})
@@ -638,7 +639,7 @@ async function launchExplorers(
 				...(call.failure ? { turn: calls.length === 1 ? 'study' : 'test', reason: call.failure[1] } : {}),
 				...(call.stderr ? { stderr: call.stderr } : {}),
 				...(hint ? { hint } : {}),
-				...costOf(calls),
+				...usageOf(calls),
 				...(durations.length ? { durationMs: durations.reduce((total, ms) => total + ms, 0) } : {}),
 			},
 		})
@@ -748,7 +749,7 @@ function mergeReports(store: Store, actor: string, explorationId: string, launch
 				? { hint: launch.context.harness === 'pi' ? piAuthenticationHint : authenticationHint }
 				: {}),
 			...(calls.find((item) => item.stderr)?.stderr ? { stderr: calls.find((item) => item.stderr)!.stderr } : {}),
-			...costOf(calls),
+			...usageOf(calls),
 		},
 	})
 }
@@ -794,7 +795,7 @@ function deriveRules(store: Store, actor: string, explorationId: string, launch:
 			...(calls.some(authenticationFailed)
 				? { hint: launch.context.harness === 'pi' ? piAuthenticationHint : authenticationHint }
 				: {}),
-			...costOf(calls),
+			...usageOf(calls),
 		},
 	}
 	write(store, { actor, command: 'explore rules', subject: explorationId, input: item }, (operationId, at) => {
@@ -876,7 +877,7 @@ async function verifyClaims(store: Store, actor: string, explorationId: string, 
 			...(calls.some(authenticationFailed)
 				? { hint: launch.context.harness === 'pi' ? piAuthenticationHint : authenticationHint }
 				: {}),
-			...costOf(calls),
+			...usageOf(calls),
 		},
 	})
 }
@@ -1224,7 +1225,7 @@ export async function driveFollow(workspace: string, explorationId: string, env:
 					...(call.failure ? { reason: call.failure[1] } : {}),
 					...(call.stderr ? { stderr: call.stderr } : {}),
 					...(hint ? { hint } : {}),
-					...costOf([call]),
+					...usageOf([call]),
 				},
 			})
 		}
@@ -1573,6 +1574,18 @@ function piExplorationDetails(detail: Record<string, unknown>): Record<string, u
 	}
 }
 
+function observedModels(events: ExplorationEvent[]) {
+	return [
+		...new Set(
+			events.flatMap(({ detail }) =>
+				Array.isArray(detail.observedModels)
+					? detail.observedModels.filter((model): model is string => typeof model === 'string')
+					: []
+			)
+		),
+	]
+}
+
 export function explorationStatus(store: Store, explorationId: string) {
 	const row = explorationRow(store, explorationId)
 	const raw = explorationEvents(store, explorationId)
@@ -1588,17 +1601,28 @@ export function explorationStatus(store: Store, explorationId: string) {
 	const charter = JSON.parse(row.charter) as Charter
 	const state = explorationState(events)
 	const names = [...new Set(events.flatMap((item) => (item.explorer ? [item.explorer] : [])))]
+	const runModels = observedModels(
+		events.filter(
+			({ explorer, step }) =>
+				['rules', 'merge', 'verify'].includes(step) ||
+				(step === 'end' && explorer && !launch?.testerModels?.[explorer])
+		)
+	)
 	const explorers = names.map((explorer) => {
 		const own = events.filter((item) => item.explorer === explorer)
 		const last = (step: string) => own.filter((item) => item.step === step).at(-1)
 		const end = last('end')
 		const record = last('record')
+		const models = observedModels(own.filter(({ step }) => step === 'end' || step === 'follow-turn'))
+		const selection = launch?.testerModels?.[explorer] ?? launch?.model ?? null
 		const stop =
 			own.find((item) => item.step === 'stop') ?? (end?.status === 'completed' ? undefined : stopOf(events))
 		return {
 			explorer,
 			actor: explorerActor(explorer),
-			model: launch?.testerModels?.[explorer] ?? launch?.model ?? null,
+			model: models.length === 1 ? models[0] : selection,
+			...(models.length ? { observedModels: models } : {}),
+			...explorationCost(own),
 			session: (last('launch')?.detail.session ??
 				record?.detail.session ??
 				own.findLast((item) => item.detail.agent)?.detail.agent ??
@@ -1626,6 +1650,7 @@ export function explorationStatus(store: Store, explorationId: string) {
 	const followed = events.filter((item) => item.step === 'followed').at(-1)
 	const follow = followState(events)
 	return {
+		...explorationCost(events),
 		explorationId: row.exploration_id,
 		planId: row.plan_id,
 		build: row.build,
@@ -1636,7 +1661,8 @@ export function explorationStatus(store: Store, explorationId: string) {
 		paused: ['completed', 'failed'].includes(state) ? null : pauseOf(events),
 		level: launch?.level ?? null,
 		explorerCount: launch?.explorers || explorers.length,
-		model: launch?.model ?? null,
+		model: runModels.length === 1 ? runModels[0] : (launch?.model ?? null),
+		...(runModels.length ? { observedModels: runModels } : {}),
 		modelFrom: launch?.modelFrom ?? null,
 		verifier: launch?.verifier ?? null,
 		since: charter.change?.since ?? null,

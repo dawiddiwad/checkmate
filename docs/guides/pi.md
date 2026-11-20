@@ -25,4 +25,8 @@ If you start the UI with `checkmate ui`, select **Pi** in **Settings → Coding 
 
 A delegated stage uses Pi’s `read` and `bash` tools. Run `checkmate delegate plan <planId>` or the equivalent stage command. Omit `--allow` and `--claude-arg` from the Claude Code examples in the factory guide. The launcher disables MCP for a delegated stage. For a process exploration, give each permitted tool name with `--allow`, for example `--allow Read --allow Bash`. A scoped Claude permission rule is not a Pi tool name. Use a trusted workspace for shell access.
 
-Select separate request and tester models in **Settings → Coding harness → Models**. Pi supplies the list. For a CLI override, set `CHECKMATE_PI_MODEL`. Set `CHECKMATE_PI_PROVIDER` with a model ID to select a provider. Supply credentials through Pi.
+Select separate request and tester models in **Settings → Coding harness → Models**. Pi supplies the list. A model choice for an individual tester applies to that tester. A model choice in a chat applies to that conversation. If none of these choices applies, Pi uses its current selection.
+
+For a CLI override, set `CHECKMATE_PI_MODEL`. Set `CHECKMATE_PI_PROVIDER` with a model ID to select a provider. If you set only the provider, Checkmate uses the current saved model for that provider when it applies. Otherwise, Pi selects from the available models of that provider. Checkmate reports an error if Pi cannot select a model from that provider. Supply credentials through Pi.
+
+When Pi reports the provider and model of a call, Checkmate keeps the provider-qualified ID with the result. The exploration status and chat show the models Pi used. Checkmate keeps costs that Pi reports, including costs of calls that fail or stop. A missing cost stays unknown.

@@ -47,7 +47,7 @@ async function piFixture(
 			},
 		})
 	)
-	const env = {
+	const env: Record<string, string | undefined> = {
 		PATH: process.env.PATH,
 		HOME: workspace,
 		PI_CODING_AGENT_DIR: agent,
@@ -123,7 +123,7 @@ test('real Pi runs a tool and delegate returns the recorded setup after a prose 
 
 test('real Pi charges this exploration only for new study, test and recorder messages', async (t) => {
 	let calls = 0
-	const { workspace, run } = await piFixture(
+	const { workspace, env, run } = await piFixture(
 		t,
 		(req, res) => {
 			req.resume()
@@ -146,6 +146,8 @@ test('real Pi charges this exploration only for new study, test and recorder mes
 		'fixture',
 		{ input: 1_000_000, output: 0, cacheRead: 0, cacheWrite: 0 }
 	)
+	delete env.CHECKMATE_PI_MODEL
+	delete env.CHECKMATE_PI_PROVIDER
 	const opened = openStore(workspace)
 	try {
 		target(opened)
@@ -159,11 +161,26 @@ test('real Pi charges this exploration only for new study, test and recorder mes
 	const finished = JSON.parse(await run('explore', 'wait', started.explorationId, '--timeout', '30', '--json'))
 	assert.equal(finished.state, 'completed')
 	assert.equal(calls, 3)
+	assert.equal(finished.model, 'localfixture/fixture')
+	assert.equal(finished.modelFrom, 'host')
+	assert.equal(finished.explorers[0].model, 'localfixture/fixture')
+	assert.equal(finished.costUsd, 7)
+	const ui = await startUi({ workspace, env })
+	try {
+		const detail = await call(ui, `/explorations/${started.explorationId}?item=explorer:a1`)
+		assert.equal(detail.status, 200)
+		assert.match(detail.body, /<code>localfixture\/fixture<\/code>/)
+	} finally {
+		await ui.close()
+	}
 	const reader = openStore(workspace)
 	try {
 		const events = explorationEvents(reader, started.explorationId)
 		assert.equal(events.find((event) => event.step === 'end')?.detail.costUsd, 3)
 		assert.equal(events.find((event) => event.step === 'record')?.detail.costUsd, 4)
+		assert.deepEqual(events.find((event) => event.step === 'record')?.detail.observedModels, [
+			'localfixture/fixture',
+		])
 	} finally {
 		closeStore(reader)
 	}
@@ -305,6 +322,8 @@ test('real Pi records an expired-key failure and shows a safe diagnosis', async 
 		const log = await run('log', '--json')
 		const outcome = JSON.parse(status)
 		assert.equal(outcome.explorers[0].recorded, null)
+		assert.equal(outcome.explorers[0].model, 'localfixture/fixture')
+		assert.equal(outcome.explorers[0].costUsd, null)
 		assert.match(outcome.reason, /Host authentication/)
 		const recorded = openStore(workspace)
 		try {

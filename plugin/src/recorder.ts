@@ -7,14 +7,14 @@ import { bareOf, explorationRow, freshIds, journal, logEntries, recordText, refu
 import type { Entry, Refused } from './journal.ts'
 import { addEvent, explorationEvents, workFolder } from './explorations.ts'
 import { explorationRules } from './rules.ts'
-import { piModelArgs, selectedHarness } from './pi.ts'
+import { piModelArgs, piOverrideModelArgs, selectedHarness } from './pi.ts'
 import {
 	authenticationFailed,
 	authenticationHint,
 	callChild,
 	childArgs,
 	childEnv,
-	costOf,
+	usageOf,
 	childHook,
 	replyArray,
 	requireChild,
@@ -68,8 +68,20 @@ export function launchContext(store: Store, explorationId: string, explorer: str
 	const launch = events.findLast(
 		(event) => event.step === 'launch' && event.explorer === explorer && event.detail.session === session
 	)
-	return (events[turn]?.detail.context ?? follow?.detail.context ?? launch?.detail.context) as
+	const context = (events[turn]?.detail.context ?? follow?.detail.context ?? launch?.detail.context) as
 		ChildContext | undefined
+	if (context?.harness !== 'pi') return context
+	const used = events.findLast(
+		(item) =>
+			(item.step === 'end' || (item.step === 'follow-turn' && item.status !== 'operational_error')) &&
+			item.explorer === explorer &&
+			item.detail.session === session &&
+			Array.isArray(item.detail.observedModels) &&
+			item.detail.observedModels.length
+	)
+	const model = (used?.detail.observedModels as string[] | undefined)?.at(-1)
+	if (!model) return context
+	return { ...context, piArgs: piOverrideModelArgs(context.piArgs ?? [], model) }
 }
 
 const entryTitle = (entry: Partial<Entry>) => entry.title ?? entry.text ?? entry.question ?? entry.saw ?? ''
@@ -435,7 +447,7 @@ function recordLocked(
 		referencesDropped: dropped.length,
 		...(dropped.length ? { droppedReferences: dropped } : {}),
 		...(unknownRules.length ? { unknownRules } : {}),
-		...costOf(calls),
+		...usageOf(calls),
 		...duration(calls),
 	}
 	const reply: Reply = {

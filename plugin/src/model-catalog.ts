@@ -126,6 +126,7 @@ function piOption(model?: PiModel): ModelOption[] {
 }
 
 function piRpcCatalog(program: string, workspace: string, env: Env): Promise<ModelCatalog | undefined> {
+	const provider = !env.CHECKMATE_PI_MODEL?.trim() ? env.CHECKMATE_PI_PROVIDER?.trim().toLowerCase() : undefined
 	return new Promise((resolve) => {
 		const host = spawn(program, ['--no-mcp', '--no-session', '--mode', 'rpc', ...piModelArgs(env)], {
 			cwd: workspace,
@@ -164,7 +165,9 @@ function piRpcCatalog(program: string, workspace: string, env: Env): Promise<Mod
 			}
 			if (response.id === 'state' && response.command === 'get_state') {
 				state = true
-				if (response.success) model = piOption(response.data?.model)[0]
+				const selected = response.data?.model
+				if (response.success && (!provider || selected?.provider?.toLowerCase() === provider))
+					model = piOption(selected)[0]
 			}
 			if (available && state && !host.stdin.writableEnded) host.stdin.end()
 		})

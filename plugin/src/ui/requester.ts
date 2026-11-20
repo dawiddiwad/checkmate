@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
 import type { Store } from '../store.ts'
 import type { Harness } from '../pi.ts'
-import { piErrorText, piEvent, piModelArgs, piModelEnv, selectedHarness } from '../pi.ts'
+import { piErrorText, piEvent, piModelArgs, resolvePiModelArgs, piModelEnv, selectedHarness } from '../pi.ts'
 import { streamPi } from './pi-request.ts'
 import type { ChildCall, Env, StopDelays, StreamedClaude } from '../sessions.ts'
 import type { RequestContext, RequestRecord, RequestSelection } from '../requests.ts'
@@ -101,7 +101,13 @@ export function chatPreferences(
 				(item) => item.value.slice(item.value.indexOf('/') + 1) === model
 			)
 			modelId = matches?.length === 1 ? matches[0].value : (inherited?.modelId ?? model)
-		} else if (!model) modelId = options.catalog?.defaultModel?.value ?? inherited?.modelId ?? null
+		} else if (!model) {
+			const hostModel = options.catalog?.defaultModel?.value
+			modelId =
+				(hostModel && (!provider || hostModel.toLowerCase().startsWith(`${provider.toLowerCase()}/`))
+					? hostModel
+					: inherited?.modelId) ?? null
+		}
 	}
 	return { harness, model, provider, effort, modelId }
 }
@@ -259,7 +265,9 @@ export function createRequester(store: Store, options: RequesterOptions): Reques
 		guarded(() => {
 			const changes = changesOf(store, run.id)
 			const cost =
-				run.harness === 'pi' ? { costUsd: end?.costUsd, costPartial: end?.costPartial } : claudeTurnCost(run)
+				run.harness === 'pi'
+					? { costUsd: end?.costUsd, costPartial: end?.costPartial, observedModels: end?.observedModels }
+					: claudeTurnCost(run)
 			setRequestState(store, run.id, outcome.state, { ...outcome.detail, ...cost, costScope: 'turn', changes })
 		})
 	}
@@ -332,13 +340,17 @@ export function createRequester(store: Store, options: RequesterOptions): Reques
 		running = run
 		let program: string
 		let modelArgs: string[] = []
+		let modelId = request.modelId
 		try {
 			program = requireChild(options.env, run.harness)
-			if (run.harness === 'pi')
-				modelArgs = piModelArgs({
+			if (run.harness === 'pi') {
+				const args = piModelArgs({
 					CHECKMATE_PI_MODEL: request.model ?? undefined,
 					CHECKMATE_PI_PROVIDER: request.provider ?? undefined,
 				})
+				modelArgs = resolvePiModelArgs(program, args, options.workspace, options.env)
+				if (!request.model && request.provider) modelId = `${modelArgs[1]}/${modelArgs[3]}`
+			}
 		} catch (error) {
 			const refusal = error as Refusal
 			run.reason = [refusal.message, refusal.hint].filter(Boolean).join(' ')
@@ -360,7 +372,14 @@ export function createRequester(store: Store, options: RequesterOptions): Reques
 		)
 		const previous = earlier.findLast((turn) => turn.startedAt !== null)
 		const resumable =
-			previous?.harness === run.harness && previous.modelId === request.modelId ? previous.sessionId : null
+			previous?.harness === run.harness &&
+			(previous.modelId === modelId ||
+				(run.harness === 'pi' &&
+					modelId &&
+					previous.observedModels.length === 1 &&
+					previous.observedModels[0] === modelId))
+				? previous.sessionId
+				: null
 		const resume = resumable !== null
 		run.resume = resume
 		const sessionId = resumable ?? (earlier.some((turn) => turn.sessionId) ? randomUUID() : request.conversation)

@@ -4,7 +4,7 @@ import type { Store } from './store.ts'
 import type { ExplorationEvent } from './explorations.ts'
 import type { Evidence, Row } from './journal.ts'
 import type { ModelCost } from './costs.ts'
-import { explorationCost, noModelCost, planCosts, planExplorationCosts } from './costs.ts'
+import { noModelCost, planCosts, planExplorationCosts } from './costs.ts'
 import { explorationStatus, followCount, running as alive, startOf, stopOf, stopPending } from './explorers.ts'
 import { exploration, explorationEvents } from './explorations.ts'
 import { factoryStates, isTester, journal, oracleStates, planClaims, planQuestions, shortName } from './journal.ts'
@@ -527,7 +527,9 @@ function explorerLive(
 		)
 	return {
 		explorer: item.explorer,
-		model: item.model,
+		model: item.observedModels?.join(', ') ?? item.model,
+		costUsd: item.costUsd,
+		costPartial: item.costPartial,
 		reason: item.reason,
 		hint: item.hint,
 		turn,
@@ -608,7 +610,8 @@ export function explorationLive(store: Store, explorationId: string, now = Date.
 	const found = foundEntries(store, status.planId, explorationId, limit, claims, questions)
 	const ended = ['failed', 'stopped', 'interrupted'].includes(status.state)
 	return {
-		...explorationCost(events),
+		costUsd: status.costUsd,
+		costPartial: status.costPartial,
 		explorationId,
 		planId: status.planId,
 		goal: opened.charter.goal,
@@ -617,7 +620,7 @@ export function explorationLive(store: Store, explorationId: string, now = Date.
 		mode: status.mode,
 		level: status.level,
 		explorerCount: status.explorerCount,
-		model: status.model,
+		model: status.observedModels?.join(', ') ?? status.model,
 		startedAt: opened.started_at,
 		state: status.state,
 		running,

@@ -98,6 +98,13 @@ function finish(result) {
 			? { role: 'assistant', stopReason: 'error', content: [], errorMessage: '401 ' +
 				JSON.stringify({ message: 'API key expired.', code: 401, headers: { authorization: 'fixture-secret' } }) }
 			: { role: 'assistant', stopReason: 'stop', content: [{ type: 'text', text: result }] }
+		if (typeof replies.piUsage === 'number') {
+			const configured = after('--model')
+			const model = replies.models?.find(({ provider, id }) => configured === provider + '/' + id ||
+				(id === configured && provider === after('--provider'))) ?? replies.models?.[0]
+			if (model) Object.assign(message, { provider: model.provider, model: model.id })
+			message.usage = { cost: { total: replies.piUsage } }
+		}
 		if (result === '!pi-auth') {
 			process.stderr.write('Warning: fixture startup\\nAuthorization:fixture-secret\\n')
 			emit({ type: 'message_end', message })

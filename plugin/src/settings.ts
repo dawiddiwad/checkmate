@@ -3,7 +3,7 @@ import { completed, one, write } from './store.ts'
 import { requireChoice, requireWellFormed } from './contracts.ts'
 import { effortLevels } from './model-catalog.ts'
 import type { Harness } from './pi.ts'
-import { piModelEnv } from './pi.ts'
+import { piSavedModelEnv } from './pi.ts'
 import type { Env } from './sessions.ts'
 import { piToolNames } from './sessions.ts'
 
@@ -87,7 +87,7 @@ export function requestModelText(store: Store, harness: Harness = 'claude') {
 
 export function piRequestModelEnv(store: Store, env: Env): Env {
 	const { model, providerQualified } = piRequestModel(store)
-	return piModelEnv(env, model, providerQualified)
+	return piSavedModelEnv(env, model, providerQualified)
 }
 
 export function testerModelText(store: Store, harness: Harness = 'claude') {

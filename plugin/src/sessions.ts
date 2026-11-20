@@ -1,5 +1,5 @@
 import { Refusal } from './contracts.ts'
-import { piArgs, piResult } from './pi.ts'
+import { piArgs, piResult, resolvePiModelArgs } from './pi.ts'
 import type { Harness } from './pi.ts'
 import { randomBytes } from 'node:crypto'
 import type { ChildProcess } from 'node:child_process'
@@ -62,6 +62,7 @@ export type ChildCall = {
 	result?: unknown
 	costUsd?: number
 	costPartial?: boolean
+	observedModels?: string[]
 	durationMs?: number
 	sessionId?: string
 	stderr?: string[]
@@ -78,6 +79,17 @@ export function costOf(
 		costUsd,
 		...(costs.length < calls.length || calls.some((call) => call.costPartial) ? { costPartial: true } : {}),
 	}
+}
+
+export function usageOf(calls: Array<Pick<ChildCall, 'costUsd' | 'costPartial' | 'observedModels'>>) {
+	const recent = new Set<string>()
+	for (const call of calls)
+		for (const model of call.observedModels ?? []) {
+			recent.delete(model)
+			recent.add(model)
+		}
+	const observedModels = [...recent]
+	return { ...costOf(calls), ...(observedModels.length ? { observedModels } : {}) }
 }
 
 const moduleRoot = dirname(dirname(fileURLToPath(import.meta.url)))
@@ -428,6 +440,14 @@ export function claudeResult(output: string, error: string, status: number | nul
 	}
 }
 
+function piLaunchArgs(executable: string, args: string[], cwd: string, env: Env): string[] | ChildCall {
+	try {
+		return resolvePiModelArgs(executable, args, cwd, env)
+	} catch (error) {
+		return { failure: ['operational_error', (error as Error).message] }
+	}
+}
+
 export function callChild(
 	executable: string,
 	args: string[],
@@ -437,8 +457,10 @@ export function callChild(
 	seconds: number,
 	harness: Harness = 'claude'
 ): ChildCall {
+	const commandArgs = harness === 'pi' ? piLaunchArgs(executable, args, cwd, env) : args
+	if (!Array.isArray(commandArgs)) return commandArgs
 	const limit = childOutputLimit(harness)
-	const child = spawnSync(executable, args, {
+	const child = spawnSync(executable, commandArgs, {
 		cwd,
 		env,
 		input: prompt,
@@ -450,7 +472,7 @@ export function callChild(
 	const result = harness === 'pi' ? piResult : claudeResult
 	const parsed = result(child.stdout ?? '', child.stderr ?? '', child.status, child.signal)
 	const code = child.error && 'code' in child.error ? String(child.error.code) : undefined
-	const cost = costOf(harness === 'pi' && code ? [parsed, {}] : [parsed])
+	const cost = usageOf(harness === 'pi' && code ? [parsed, {}] : [parsed])
 	if (code === 'ETIMEDOUT')
 		return {
 			...cost,
@@ -532,9 +554,11 @@ export function launchChild(
 	onStart?: (pid: number) => void,
 	harness: Harness = 'claude'
 ): Promise<ChildCall> {
+	const commandArgs = harness === 'pi' ? piLaunchArgs(executable, args, cwd, env) : args
+	if (!Array.isArray(commandArgs)) return Promise.resolve(commandArgs)
 	const limit = childOutputLimit(harness)
 	return new Promise((resolvePromise) => {
-		const child = spawn(executable, args, { cwd, env, stdio: ['pipe', 'pipe', 'pipe'], detached: true })
+		const child = spawn(executable, commandArgs, { cwd, env, stdio: ['pipe', 'pipe', 'pipe'], detached: true })
 		child.stdout.setEncoding('utf8')
 		liveChildren.add(child)
 		if (child.pid) onStart?.(child.pid)
@@ -555,7 +579,7 @@ export function launchChild(
 			seconds * 1000
 		)
 		child.stdout.on('data', (text: string) => {
-			if (failure) return
+			if (failure && harness !== 'pi') return
 			bytes += Buffer.byteLength(text)
 			if (bytes > limit.bytes)
 				stop(['operational_error', `${harness} output exceeded ${limit.mib} MiB. Checkmate stopped it.`])
@@ -575,7 +599,7 @@ export function launchChild(
 			clearTimeout(killTimer)
 			const result = harness === 'pi' ? piResult : claudeResult
 			const parsed = result(output, errors, status, signal)
-			const cost = costOf(harness === 'pi' && failure ? [parsed, {}] : [parsed])
+			const cost = usageOf(harness === 'pi' && failure ? [parsed, {}] : [parsed])
 			resolvePromise(failure ? { ...cost, failure } : parsed)
 		})
 	})
@@ -628,7 +652,7 @@ export function requestPrompt(text: string, screen: string | null) {
 		: text
 }
 
-export type StreamEnd = Pick<ChildCall, 'costUsd' | 'costPartial'> & {
+export type StreamEnd = Pick<ChildCall, 'costUsd' | 'costPartial' | 'observedModels'> & {
 	status: number | null
 	signal: string | null
 	stderr: string

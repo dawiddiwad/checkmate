@@ -34,6 +34,7 @@ export type RequestRecord = RequestSelection & {
 	sessionId: string | null
 	activity: Array<{ at: string; line: string }>
 	reply: string | null
+	observedModels: string[]
 	costUsd: number | null
 	costPartial: boolean
 	costCumulative?: true
@@ -353,6 +354,7 @@ function recordOf(ask: AskRow, events: EventRow[]): RequestRecord {
 			.filter((event) => event.step === 'activity')
 			.map((event) => ({ at: event.at, line: (JSON.parse(event.detail) as { line: string }).line })),
 		reply: typeof detail.reply === 'string' ? detail.reply : null,
+		observedModels: listOf<string>(detail.observedModels),
 		costUsd:
 			typeof detail.costUsd === 'number' && Number.isFinite(detail.costUsd) && detail.costUsd >= 0
 				? detail.costUsd

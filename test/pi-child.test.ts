@@ -87,6 +87,30 @@ test('Pi adds fresh usage across turns and retries without counting event copies
 	assert.equal(missing.costUsd, undefined)
 })
 
+test('Pi keeps observed identities and partial usage through an unsuccessful provider call', () => {
+	const output = (...events: unknown[]) => events.map((event) => JSON.stringify(event)).join('\n')
+	const model = { role: 'assistant', provider: 'fixture', model: 'gpt-latest' }
+	const failed = { ...model, stopReason: 'error', usage: { totalTokens: 0, cost: { total: 0 } } }
+	const unknown = piResult(output({ type: 'agent_end', messages: [failed] }), '', 0, null)
+	assert.equal(unknown.costUsd, undefined)
+	assert.deepEqual(unknown.observedModels, ['fixture/gpt-latest'])
+	const partial = piResult(
+		output(
+			{ type: 'message_start', message: model },
+			{ type: 'message_update', usage: { cost: { total: 0.125 } } },
+			{ type: 'message_update', usage: { cost: { total: 0.25 } } },
+			{ type: 'message_end', message: failed },
+			{ type: 'agent_end', messages: [failed] }
+		),
+		'',
+		1,
+		null
+	)
+	assert.equal(partial.costUsd, 0.25)
+	assert.equal(partial.costPartial, true)
+	assert.deepEqual(partial.observedModels, ['fixture/gpt-latest'])
+})
+
 test('phase cost uses Claude reported totals, preserves zero and flags missing call costs', () => {
 	const call = (cost: number | undefined) => claudeResult(JSON.stringify({ total_cost_usd: cost }), '', 0, null)
 	assert.deepEqual(costOf([call(0.25), call(0)]), { costUsd: 0.25 })

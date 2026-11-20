@@ -6,6 +6,7 @@ import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { directory, root } from './support.ts'
+import { piModelArgs, resolvePiModelArgs } from '../plugin/src/pi.ts'
 import { streamPi } from '../plugin/src/ui/pi-request.ts'
 import { executableOnPath } from '../plugin/src/sessions.ts'
 
@@ -59,10 +60,14 @@ test('Pi RPC verifies the permission extension before sending a request', async 
 					baseUrl: `http://127.0.0.1:${address.port}/v1`,
 					api: 'openai-completions',
 					apiKey: 'fixture',
-					models: [{ id: 'fixture' }],
+					models: [{ id: 'fixture-older' }, { id: 'fixture' }],
 				},
 			},
 		})
+	)
+	writeFileSync(
+		join(agent, 'settings.json'),
+		JSON.stringify({ defaultProvider: 'localfixture', defaultModel: 'fixture' })
 	)
 	const hook = createServer((_req, res) => {
 		res.setHeader('Content-Type', 'application/json')
@@ -88,19 +93,15 @@ test('Pi RPC verifies the permission extension before sending a request', async 
 	}
 	const lines: string[] = []
 	const sessionId = randomUUID()
-	const args = [
-		'--mode',
-		'rpc',
-		'--provider',
-		'localfixture',
-		'--model',
-		'fixture',
-		'--no-extensions',
-		'--extension',
-		extension,
-		'--session-id',
-		sessionId,
-	]
+	const scope = piModelArgs({ CHECKMATE_PI_PROVIDER: 'localfixture' })
+	const modelArgs = resolvePiModelArgs(pi, scope, workspace, env)
+	assert.deepEqual(modelArgs, ['--provider', 'localfixture', '--model', 'fixture'])
+	assert.throws(
+		() => resolvePiModelArgs(pi, piModelArgs({ CHECKMATE_PI_PROVIDER: 'absentfixture' }), workspace, env),
+		/Pi could not select an available model for provider absentfixture/
+	)
+	assert.equal(calls, 0)
+	const args = ['--mode', 'rpc', ...modelArgs, '--no-extensions', '--extension', extension, '--session-id', sessionId]
 	const run = streamPi(
 		pi,
 		args,
@@ -114,6 +115,7 @@ test('Pi RPC verifies the permission extension before sending a request', async 
 	)
 	const result = await run.finished
 	assert.equal(result.error, null, result.stderr)
+	assert.deepEqual(result.observedModels, ['localfixture/fixture'])
 	assert.equal(calls, 2)
 	assert.match(requests[1], /Denied by test/)
 	assert.equal(existsSync(join(workspace, 'blocked')), false)

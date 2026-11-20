@@ -86,6 +86,9 @@ function origin(request: RequestRecord) {
 function turn(store: Store, request: RequestRecord, context: Context, number: number, back: string) {
 	const permissions = explorationPermissions(store, request.id).filter((item) => !item.decision)
 	const failure = request.state === 'failed' ? failureText(request) : null
+	const model = request.observedModels.length
+		? request.observedModels.join(', ')
+		: [request.provider, request.model].filter(Boolean).join('/')
 	const details = `/chats/${request.conversation}/messages/${request.id}`
 	return html`<article
 		class="chat-turn"
@@ -104,7 +107,7 @@ function turn(store: Store, request: RequestRecord, context: Context, number: nu
 		>
 			<div class="chat-meta">
 				Checkmate ·
-				${request.harness === 'pi' ? 'Pi' : 'Claude Code'}${request.model ? ` · ${request.provider ? `${request.provider}/` : ''}${request.model}` : ''}${request.effort ? ` · ${request.effort}` : ''}
+				${request.harness === 'pi' ? 'Pi' : 'Claude Code'}${model ? ` · ${model}` : ''}${request.effort ? ` · ${request.effort}` : ''}
 				<span class="chat-status"
 					>${request.state === 'answered' ? '' : pill(request.state)}
 					<a href="${details}">Turn ${number}</a></span

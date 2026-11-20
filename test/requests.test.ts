@@ -648,7 +648,7 @@ createInterface({ input: process.stdin }).on('line', line => {
 	}))
 	if (request.type === 'abort') console.log(JSON.stringify({ type: 'agent_settled', aborted: true }))
 	if (request.type === 'prompt' && request.message.includes('Stop this turn.')) {
-		console.log(JSON.stringify({ type: 'message_end', message: { role: 'assistant', usage: { cost: { total: 0.125 } } } }))
+		console.log(JSON.stringify({ type: 'message_end', message: { role: 'assistant', provider: 'fixture', model: 'resolved', usage: { cost: { total: 0.125 } } } }))
 		console.log(JSON.stringify({ type: 'message_update', usage: { cost: { total: 0.25 } } }))
 		console.log(JSON.stringify({ type: 'tool_execution_start', toolName: 'Fixture' }))
 		return
@@ -656,9 +656,9 @@ createInterface({ input: process.stdin }).on('line', line => {
 	if (request.type === 'prompt') {
 		const providerError = { message: 'API key expired.', metadata: { headers: { 'WWW-Authenticate': 'Bearer fixture' } } }
 		console.error('Warning: No project session found; creating a new session.')
-		const assistant = { role: 'assistant', usage: { cost: { total: 0.125 } } }
+		const assistant = { role: 'assistant', provider: 'fixture', model: 'resolved', usage: { cost: { total: 0.125 } } }
 		const tool = { role: 'toolResult', usage: { cost: { total: 0.25 } } }
-		const failed = { role: 'assistant', stopReason: 'error', errorMessage: '401: ' + JSON.stringify(providerError), usage: { totalTokens: 0, cost: { total: 0 } } }
+		const failed = { role: 'assistant', provider: 'fixture', model: 'resolved', stopReason: 'error', errorMessage: '401: ' + JSON.stringify(providerError), usage: { totalTokens: 0, cost: { total: 0 } } }
 		for (const message of [assistant, tool, failed]) console.log(JSON.stringify({ type: 'message_end', message }))
 		console.log(JSON.stringify({ type: 'compaction_end', result: { usage: { cost: { total: 0.0625 } } } }))
 		console.log(JSON.stringify({ type: 'entry_appended', entry: { type: 'usage', usage: { cost: { total: 0.0625 } } } }))
@@ -673,8 +673,10 @@ createInterface({ input: process.stdin }).on('line', line => {
 	const failed = await f.state(id, 'failed')
 	assert.equal(failed.reason, 'HTTP 401: API key expired.')
 	assert.equal(failed.costUsd, 0.5)
+	assert.deepEqual(failed.observedModels, ['fixture/resolved'])
 	assert.equal(failed.costPartial, true)
 	const page = (await call(f.ui, `/requests/${id}`)).body
+	assert.match(page, /fixture\/resolved/)
 	assert.match(page, /HTTP 401: API key expired\./)
 	assert.match(page, /Check the provider login in Pi\. Then ask again\./)
 	assert.doesNotMatch(page, /WWW-Authenticate|Bearer fixture|No project session found/)
@@ -685,6 +687,7 @@ createInterface({ input: process.stdin }).on('line', line => {
 	assert.equal((await f.post(`/requests/${next}/stop`, {})).status, 303)
 	const stopped = await f.state(next, 'stopped')
 	assert.equal(stopped.costUsd, 0.375)
+	assert.deepEqual(stopped.observedModels, ['fixture/resolved'])
 	assert.equal(stopped.costPartial, true)
 	assert.equal(stopped.sessionId, failed.sessionId)
 })

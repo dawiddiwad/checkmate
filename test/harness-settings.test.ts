@@ -75,6 +75,26 @@ test('tester model changes and clearing leave legacy request models alone', (t) 
 	assert.equal(launchPlan(profile(), input, {}, testerModelText(opened)).model, testLevels.normal.model)
 })
 
+test('a Pi provider-only override keeps the latest saved model for that provider', (t) => {
+	const opened = store(t)
+	const env = { CHECKMATE_HARNESS: 'pi', CHECKMATE_PI_PROVIDER: 'team' }
+	const input = { planId: 'checkout', build: 'b1', allow: ['Read'], claudeArgs: [] }
+	saveModels(opened, actor, 'pi', 'elsewhere/request', 'elsewhere/tester')
+	const different = launchPlan(profile(), input, env, testerModelText(opened, 'pi'))
+	assert.deepEqual([different.model, different.modelFrom], [null, 'host'])
+	assert.deepEqual(different.context.piArgs, ['--models', 'team/**'])
+	assert.deepEqual(piModelArgs(piRequestModelEnv(opened, env)), ['--models', 'team/**'])
+
+	saveModels(opened, actor, 'pi', 'team/request-latest', 'team/vendor/tester-latest')
+	const same = launchPlan(profile(), input, env, testerModelText(opened, 'pi'))
+	assert.deepEqual([same.model, same.modelFrom], ['team/vendor/tester-latest', 'workspace'])
+	assert.deepEqual(same.context.piArgs, ['--model', 'vendor/tester-latest', '--provider', 'team'])
+	assert.deepEqual(piModelArgs(piRequestModelEnv(opened, env)), ['--model', 'request-latest', '--provider', 'team'])
+
+	const explicit = launchPlan(profile(), input, { ...env, CHECKMATE_PI_MODEL: 'explicit' }, 'elsewhere/saved')
+	assert.deepEqual(explicit.context.piArgs, ['--model', 'explicit', '--provider', 'team'])
+})
+
 test('individual model overrides fit the tester count and host', () => {
 	const input = { planId: 'checkout', build: 'b1', allow: ['Read'], claudeArgs: [], level: 'smoke' }
 	assert.throws(() => launchPlan(profile(), { ...input, testerModels: { a2: 'sonnet' } }, {}), /Unknown tester a2/)
@@ -169,6 +189,7 @@ for (const harness of ['claude', 'pi'] as const) {
 			t,
 			{
 				models,
+				piUsage: harness === 'pi' ? 0.25 : undefined,
 				recorder: [{ kind: 'defect', title: 'Wrong tax', severity: 'high', expected: '0', actual: '23' }],
 				verifier: [{ id: 'a1/D1', seen: true, saw: 'The tax is 23 again.' }],
 			},
@@ -242,10 +263,22 @@ for (const harness of ['claude', 'pi'] as const) {
 		}
 		const reader = openStore(workspace)
 		try {
+			const result = explorationStatus(reader, id)
 			assert.deepEqual(
-				explorationStatus(reader, id).explorers.map((item) => item.model),
+				result.explorers.map((item) => item.model),
 				overrides
 			)
+			if (harness === 'pi') {
+				assert.equal(result.model, selected)
+				assert.deepEqual(
+					result.explorers.map((item) => item.observedModels),
+					overrides.map((model) => [model])
+				)
+				assert.deepEqual(
+					result.explorers.map((item) => item.costUsd),
+					[0.75, 0.75]
+				)
+			}
 		} finally {
 			closeStore(reader)
 		}

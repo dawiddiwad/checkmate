@@ -353,7 +353,7 @@ reply({ status, subject, reasons })`
 	])
 })
 
-test('the npm CLI delegates through Pi and verifies the recorded stage operation', (t) => {
+test('the npm CLI delegates through Pi and verifies a stage after more than 4 MiB of output', (t) => {
 	const workspace = requested(t)
 	const opened = store(t, workspace)
 	saveWorkspaceHarness(opened, actor, 'pi')
@@ -391,12 +391,18 @@ if (process.env.FAKE_PI_OUTPUT === 'invalid') {
 } else if (process.env.FAKE_PI_OUTPUT === 'incomplete') {
 	event(decision, 'toolUse')
 } else {
-	const recorded = execFileSync(process.execPath, [${JSON.stringify(join(bundledPlugin, 'dist/checkmate.js'))}, 'plan', 'save', 'checkout', '--json'], {
-		input: ${JSON.stringify(JSON.stringify(candidate()))},
-		encoding: 'utf8',
+	const update = {
+		type: 'tool_execution_update',
+		partialResult: { content: [{ type: 'text', text: 'x'.repeat(5 * 1024 * 1024) }] },
+	}
+	process.stdout.write(JSON.stringify(update) + '\\n', () => {
+		const recorded = execFileSync(process.execPath, [${JSON.stringify(join(bundledPlugin, 'dist/checkmate.js'))}, 'plan', 'save', 'checkout', '--json'], {
+			input: ${JSON.stringify(JSON.stringify(candidate()))},
+			encoding: 'utf8',
+		})
+		const { status, subject, reasons } = JSON.parse(recorded)
+		event(response(status, subject, reasons))
 	})
-	const { status, subject, reasons } = JSON.parse(recorded)
-	event(response(status, subject, reasons))
 }`
 	)
 	const run = (output: string, ...flags: string[]) => {

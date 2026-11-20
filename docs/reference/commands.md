@@ -302,9 +302,11 @@ The charter also carries applied oracle decisions from the latest plan revision.
 
 `explore status <explorationId>` prints the state, the level, the number of explorers, the run model and its source (`level`, `host`, `workspace`, or `agent`), the verifier choice, the refs of the change (`since`, `until`), the seconds of the study turn and of the test turn (`studySeconds`, `testSeconds`), and one line for each explorer: its session, its end, its record, and the number of saved entries. A tester that a person stopped, alone or with the run, shows `ended=stopped` and `reason=Stopped by <name>: <reason>`, as the review UI shows `Stopped`. If a tester fails, `explore status` and `explore show` print its recorded failure reason. Up to 10 lines of standard error follow when available.
 
+For an exploration opened with `explore open`, the count is the number of explorers in the record. An empty record has a count of zero. For an exploration that starts testers, the count is the planned number.
+
 | State         | Meaning                                                             |
 | ------------- | ------------------------------------------------------------------- |
-| `open`        | The exploration has no explorers. Record sessions with `record`.    |
+| `open`        | The exploration is ready for manual recording. Use `record`.        |
 | `starting`    | The supervisor did not start yet.                                   |
 | `testing`     | The explorers run.                                                  |
 | `recording`   | The recorders run.                                                  |

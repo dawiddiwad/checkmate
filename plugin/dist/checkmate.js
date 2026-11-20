@@ -17323,7 +17323,7 @@ function explorationStatus(store, explorationId) {
     path: launch ? launch.path ?? "process" : null,
     paused: ["completed", "failed"].includes(state) ? null : pauseOf(events),
     level: launch?.level ?? null,
-    explorerCount: launch?.explorers ?? null,
+    explorerCount: launch?.explorers || explorers.length,
     model: launch?.model ?? null,
     modelFrom: launch?.modelFrom ?? null,
     verifier: launch?.verifier ?? null,

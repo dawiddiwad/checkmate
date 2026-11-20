@@ -88,6 +88,23 @@ test('Pi exploration resumes the study session and forks its recorder', (t) => {
 	assert.equal(done.body.explorers[0].saved, 1)
 })
 
+test('the JSON export counts manually recorded testers on an opened exploration', (t) => {
+	const { command, wait } = setup(t, { harness: 'pi', installed: false })
+	assert.equal(command(['explore', 'open', 'checkout', '--build', 'b1']).code, 0)
+	const report = () => JSON.parse(command(['export', 'exploration', 'x-1', '--format', 'json']).body.content)
+	const empty = report()
+	const session = '11111111-1111-4111-8111-111111111111'
+	assert.equal(command(['record', 'x-1', '--explorer', 'manual', '--session', session]).code, 0)
+	assert.equal(command(['explore', 'finish', 'x-1', '--level', 'smoke']).code, 0)
+	assert.equal(wait().body.state, 'completed')
+	const finished = report()
+	assert.deepEqual(
+		[finished.explorerCount, finished.explorers.length, finished.explorers[0].explorer],
+		[1, 1, 'manual']
+	)
+	assert.deepEqual([empty.explorerCount, empty.explorers], [0, []])
+})
+
 test('a Pi provider error is saved and logged as a safe tester failure', (t) => {
 	const { start, wait, workspace } = setup(t, { harness: 'pi', installed: false, replies: { explorer: '!pi-auth' } })
 	assert.equal(start(['--level', 'smoke']).code, 0)

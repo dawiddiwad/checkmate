@@ -550,6 +550,7 @@ test('Pi recovers a malformed reply only from the delegated stage write', async 
 			planId: 'checkout',
 			end: 'process.exitCode = 1',
 			reason: 'pi exited with code 1',
+			partial: true,
 		},
 		{
 			name: 'a deadline',

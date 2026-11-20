@@ -8969,6 +8969,7 @@ function Ye(i, { instancePath: t = "", parentData: N, parentDataProperty: _, roo
 }
 
 // plugin/src/pi.ts
+import { spawnSync } from "node:child_process";
 import { STATUS_CODES } from "node:http";
 import { stripVTControlCharacters } from "node:util";
 function selectedHarness(env = process.env) {
@@ -8980,11 +8981,74 @@ function selectedHarness(env = process.env) {
 function piModelEnv(env, model, providerQualified = model.includes("/")) {
   return model ? { ...env, CHECKMATE_PI_MODEL: model, ...providerQualified ? { CHECKMATE_PI_PROVIDER: void 0 } : {} } : env;
 }
+function piSavedModelEnv(env, model, providerQualified = model.includes("/")) {
+  const provider = env.CHECKMATE_PI_PROVIDER?.trim();
+  if (provider && !env.CHECKMATE_PI_MODEL?.trim()) {
+    if (!providerQualified || !model.toLowerCase().startsWith(`${provider.toLowerCase()}/`)) return env;
+    return { ...env, CHECKMATE_PI_MODEL: model.slice(provider.length + 1) };
+  }
+  return piModelEnv(env, model, providerQualified);
+}
 function piModelArgs(env) {
   const model = env.CHECKMATE_PI_MODEL?.trim();
   const provider = env.CHECKMATE_PI_PROVIDER?.trim();
-  if (provider && !model) throw new Refusal("malformed", "CHECKMATE_PI_PROVIDER requires CHECKMATE_PI_MODEL.");
+  if (provider && !model) {
+    if (/[,\p{Cc}]/u.test(provider)) throw new Refusal("malformed", "Give a Pi provider with a valid name.");
+    return ["--models", `${provider.replace(/[\\*?\[\]{}!+()]/g, "\\$&")}/**`];
+  }
   return [...model ? ["--model", model] : [], ...provider ? ["--provider", provider] : []];
+}
+function piScopeProvider(args) {
+  const index2 = args.indexOf("--models");
+  const scope = args[index2 + 1];
+  if (index2 >= 0 && scope?.endsWith("/**")) return scope.slice(0, -3).replace(/\\(.)/g, "$1");
+}
+function piOverrideModelArgs(source, model) {
+  const args = [];
+  const hasProvider = model.includes("/");
+  for (let index2 = 0; index2 < source.length; index2++) {
+    const flag = source[index2];
+    if (flag === "--model" || flag === "--models" || hasProvider && flag === "--provider") index2++;
+    else args.push(flag);
+  }
+  const provider = hasProvider ? void 0 : piScopeProvider(source);
+  if (provider) args.push("--provider", provider);
+  return [...args, "--model", model];
+}
+function resolvePiModelArgs(program, args, cwd, env) {
+  const provider = piScopeProvider(args);
+  if (!provider) return args;
+  const index2 = args.indexOf("--models");
+  const scope = args[index2 + 1];
+  const host = spawnSync(program, ["--no-mcp", "--no-session", "--mode", "rpc", "--models", scope], {
+    cwd,
+    env,
+    encoding: "utf8",
+    input: '{"type":"get_state","id":"checkmate-provider"}\n',
+    timeout: 1e4,
+    killSignal: "SIGKILL",
+    maxBuffer: 1024 * 1024
+  });
+  for (const line of host.stdout?.split("\n") ?? []) {
+    let response;
+    try {
+      response = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    if (response?.type !== "response" || response.id !== "checkmate-provider" || !response.success) continue;
+    const model = response.data?.model;
+    if (piModelId(model?.provider, model?.id) && model.provider.toLowerCase() === provider.toLowerCase())
+      return [
+        ...args.slice(0, index2),
+        "--provider",
+        model.provider,
+        "--model",
+        model.id,
+        ...args.slice(index2 + 2)
+      ];
+  }
+  throw new Refusal("prohibited", `Pi could not select an available model for provider ${provider}.`);
 }
 function piArgs(own = [], env = process.env) {
   return ["-p", "--mode", "json", ...piModelArgs(env), ...own];
@@ -9047,39 +9111,114 @@ function providerError(text2) {
 function piStderr(text2) {
   return stderrTail(text2.split("\n").map(piErrorText).filter(Boolean).join("\n"));
 }
-function piMessageCost(message) {
-  if (message?.role !== "assistant" && !(message?.role === "toolResult" && message.usage)) return void 0;
-  const cost = message.usage?.cost?.total;
+function piModelId(provider, model) {
+  if (typeof provider !== "string" || typeof model !== "string" || !provider.trim() || !model.trim()) return;
+  return `${provider}/${model}`;
+}
+function piMessageModel(message) {
+  if (message?.role === "assistant") return piModelId(message.provider, message.model);
+}
+function reportedCost(usage2) {
+  const cost = usage2?.cost?.total;
   return typeof cost === "number" && Number.isFinite(cost) && cost >= 0 ? cost : null;
 }
-function messageCosts(messages2) {
-  return messages2.flatMap((message) => {
-    const amount2 = piMessageCost(message);
-    return amount2 === void 0 ? [] : [amount2 === null ? {} : { costUsd: amount2 }];
-  });
+function piMessageCost(message) {
+  if (message?.role !== "assistant" && !(message?.role === "toolResult" && message.usage)) return void 0;
+  const cost = reportedCost(message.usage);
+  if (cost === 0 && message.usage?.totalTokens === 0 && (message.stopReason === "error" || message.stopReason === "aborted"))
+    return null;
+  return cost;
+}
+function piTurnUsage() {
+  const calls = [];
+  let messages2 = [];
+  let current = {};
+  function addMessage(message) {
+    const costUsd = piMessageCost(message);
+    if (costUsd === void 0) return;
+    const model = piMessageModel(message);
+    if (message?.role === "assistant") {
+      messages2.push({
+        observedModels: model ? [model] : current.observedModels,
+        costUsd: costUsd ?? current.costUsd,
+        costPartial: costUsd === null && current.costUsd !== void 0
+      });
+      current = {};
+    } else messages2.push({ costUsd: costUsd ?? void 0 });
+  }
+  return {
+    read(event2) {
+      switch (event2.type) {
+        case "agent_start":
+          calls.push(...messages2);
+          messages2 = [];
+          current = {};
+          break;
+        case "message_start": {
+          const model = piMessageModel(event2.message);
+          if (model) current.observedModels = [model];
+          break;
+        }
+        case "message_update": {
+          const message = event2.message ?? event2.assistantMessageEvent?.partial;
+          const model = piMessageModel(message);
+          if (model) current.observedModels = [model];
+          const cost = event2.usage ? reportedCost(event2.usage) : piMessageCost(message);
+          if (cost !== null && cost !== void 0 && (cost !== 0 || (event2.usage ?? message?.usage)?.totalTokens))
+            current.costUsd = cost;
+          break;
+        }
+        case "message_end":
+          addMessage(event2.message);
+          break;
+        case "agent_end":
+          if (!messages2.length && Array.isArray(event2.messages))
+            for (const message of event2.messages) addMessage(message);
+          calls.push(...messages2);
+          messages2 = [];
+          current = {};
+          break;
+        case "entry_appended":
+          if (event2.entry?.type === "usage") {
+            const model = piModelId(event2.entry.provider, event2.entry.model);
+            calls.push({
+              costUsd: reportedCost(event2.entry.usage) ?? void 0,
+              observedModels: model ? [model] : void 0
+            });
+          }
+          break;
+        case "compaction_end":
+          if (event2.result && typeof event2.result === "object")
+            calls.push({ costUsd: reportedCost(event2.result.usage) ?? void 0 });
+      }
+    },
+    finish(partial) {
+      return usageOf([
+        ...calls,
+        ...messages2,
+        ...current.costUsd !== void 0 || current.observedModels ? [{ ...current, costPartial: true }] : [],
+        ...partial || messages2.length ? [{}] : []
+      ]);
+    }
+  };
 }
 function piResult(output, error, status, signal) {
   let sessionId;
   let final;
   let latestError;
-  const costs = [];
-  let turnCosts = [];
+  const usage2 = piTurnUsage();
   for (const line of output.split("\n")) {
     const event2 = piEvent(line);
+    if (event2) usage2.read(event2);
     if (event2?.type === "session" && typeof event2.id === "string") sessionId = event2.id;
     if (event2?.type === "agent_start") {
       final = void 0;
       latestError = void 0;
-      costs.push(...turnCosts);
-      turnCosts = [];
     }
-    if (event2?.type === "message_end" && event2.message) turnCosts.push(...messageCosts([event2.message]));
     if (event2?.type === "message_end" && event2.message?.role === "assistant" && ["error", "aborted"].includes(event2.message.stopReason ?? ""))
       latestError = event2.message;
     if (event2?.type === "agent_end") {
       const messages2 = Array.isArray(event2.messages) ? event2.messages : [];
-      costs.push(...turnCosts.length ? turnCosts : messageCosts(messages2));
-      turnCosts = [];
       const last = messages2.at(-1);
       if (last?.role === "assistant" && last.errorMessage) latestError = last;
       final = event2.willRetry ? void 0 : last;
@@ -9111,7 +9250,7 @@ function piResult(output, error, status, signal) {
   const result = Array.isArray(final?.content) ? final.content.flatMap((part) => part?.type === "text" && typeof part.text === "string" ? [part.text] : []).join("") : void 0;
   return {
     failure,
-    ...costOf([...costs, ...turnCosts, ...turnCosts.length || failure && final === void 0 ? [{}] : []]),
+    ...usage2.finish(status !== 0 || Boolean(failure && final === void 0)),
     ...tail.length ? { stderr: tail } : {},
     ...sessionId ? { sessionId } : {},
     result: failure ? void 0 : result
@@ -9120,7 +9259,7 @@ function piResult(output, error, status, signal) {
 
 // plugin/src/sessions.ts
 import { randomBytes as randomBytes2 } from "node:crypto";
-import { spawn, spawnSync } from "node:child_process";
+import { spawn, spawnSync as spawnSync2 } from "node:child_process";
 import {
   accessSync,
   chmodSync,
@@ -9167,6 +9306,16 @@ function costOf(calls) {
     costUsd,
     ...costs.length < calls.length || calls.some((call) => call.costPartial) ? { costPartial: true } : {}
   };
+}
+function usageOf(calls) {
+  const recent = /* @__PURE__ */ new Set();
+  for (const call of calls)
+    for (const model of call.observedModels ?? []) {
+      recent.delete(model);
+      recent.add(model);
+    }
+  const observedModels2 = [...recent];
+  return { ...costOf(calls), ...observedModels2.length ? { observedModels: observedModels2 } : {} };
 }
 var moduleRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 var pluginRoot = existsSync2(join2(moduleRoot, ".claude-plugin", "plugin.json")) ? moduleRoot : join2(moduleRoot, "plugin");
@@ -9236,7 +9385,7 @@ function uiFilePath(workspace2) {
 }
 function zombie(pid) {
   if (process.platform === "darwin") {
-    const processState = spawnSync("/bin/ps", ["-o", "state=", "-p", String(pid)], { encoding: "utf8" });
+    const processState = spawnSync2("/bin/ps", ["-o", "state=", "-p", String(pid)], { encoding: "utf8" });
     return processState.stdout?.trimStart().startsWith("Z") === true;
   }
   try {
@@ -9463,9 +9612,18 @@ function claudeResult(output, error, status, signal) {
     ...typeof parsed.session_id === "string" ? { sessionId: parsed.session_id } : {}
   };
 }
+function piLaunchArgs(executable, args, cwd, env) {
+  try {
+    return resolvePiModelArgs(executable, args, cwd, env);
+  } catch (error) {
+    return { failure: ["operational_error", error.message] };
+  }
+}
 function callChild(executable, args, prompt, cwd, env, seconds, harness = "claude") {
+  const commandArgs = harness === "pi" ? piLaunchArgs(executable, args, cwd, env) : args;
+  if (!Array.isArray(commandArgs)) return commandArgs;
   const limit = childOutputLimit(harness);
-  const child = spawnSync(executable, args, {
+  const child = spawnSync2(executable, commandArgs, {
     cwd,
     env,
     input: prompt,
@@ -9477,7 +9635,7 @@ function callChild(executable, args, prompt, cwd, env, seconds, harness = "claud
   const result = harness === "pi" ? piResult : claudeResult;
   const parsed = result(child.stdout ?? "", child.stderr ?? "", child.status, child.signal);
   const code2 = child.error && "code" in child.error ? String(child.error.code) : void 0;
-  const cost = costOf(harness === "pi" && code2 ? [parsed, {}] : [parsed]);
+  const cost = usageOf(harness === "pi" && code2 ? [parsed, {}] : [parsed]);
   if (code2 === "ETIMEDOUT")
     return {
       ...cost,
@@ -9545,9 +9703,11 @@ function exitOnSignal() {
   process.once("SIGINT", end);
 }
 function launchChild(executable, args, prompt, cwd, env, seconds, onStart, harness = "claude") {
+  const commandArgs = harness === "pi" ? piLaunchArgs(executable, args, cwd, env) : args;
+  if (!Array.isArray(commandArgs)) return Promise.resolve(commandArgs);
   const limit = childOutputLimit(harness);
   return new Promise((resolvePromise) => {
-    const child = spawn(executable, args, { cwd, env, stdio: ["pipe", "pipe", "pipe"], detached: true });
+    const child = spawn(executable, commandArgs, { cwd, env, stdio: ["pipe", "pipe", "pipe"], detached: true });
     child.stdout.setEncoding("utf8");
     liveChildren.add(child);
     if (child.pid) onStart?.(child.pid);
@@ -9568,7 +9728,7 @@ function launchChild(executable, args, prompt, cwd, env, seconds, onStart, harne
       seconds * 1e3
     );
     child.stdout.on("data", (text2) => {
-      if (failure) return;
+      if (failure && harness !== "pi") return;
       bytes += Buffer.byteLength(text2);
       if (bytes > limit.bytes)
         stop(["operational_error", `${harness} output exceeded ${limit.mib} MiB. Checkmate stopped it.`]);
@@ -9589,7 +9749,7 @@ function launchChild(executable, args, prompt, cwd, env, seconds, onStart, harne
       clearTimeout(killTimer);
       const result = harness === "pi" ? piResult : claudeResult;
       const parsed = result(output, errors, status, signal);
-      const cost = costOf(harness === "pi" && failure ? [parsed, {}] : [parsed]);
+      const cost = usageOf(harness === "pi" && failure ? [parsed, {}] : [parsed]);
       resolvePromise(failure ? { ...cost, failure } : parsed);
     });
   });
@@ -9675,7 +9835,7 @@ function streamClaude(claude, args, prompt, cwd, env, onLine, delays = defaultSt
 }
 
 // plugin/src/targets.ts
-import { spawnSync as spawnSync2 } from "node:child_process";
+import { spawnSync as spawnSync3 } from "node:child_process";
 var anyTestOperation = "any_test_operation";
 var readOnlyOperation = "read_only";
 var readOnlyOperationText = "You can only read. Do not create, change, or delete data in the application.";
@@ -10113,13 +10273,13 @@ function isLocalAddress(url) {
   return first === 127 || first === 10 || first === 192 && second === 168 || first === 172 && second >= 16 && second <= 31;
 }
 function toolVersion(path) {
-  const run2 = spawnSync2(path, ["--version"], { encoding: "utf8", timeout: 5e3 });
+  const run2 = spawnSync3(path, ["--version"], { encoding: "utf8", timeout: 5e3 });
   const line = run2.status === 0 ? run2.stdout.trim().split("\n")[0] : "";
   return /[0-9]+(\.[0-9]+)+/.exec(line)?.[0];
 }
 function urlAnswers(url) {
   if (!/^https?:\/\//i.test(url)) return true;
-  const check = spawnSync2(
+  const check = spawnSync3(
     process.execPath,
     [
       "-e",
@@ -12492,7 +12652,7 @@ function gate(store, input) {
         hints.push(partialHint);
       }
   }
-  const runGaps2 = blockingRunGaps(store, plan.planId);
+  const runGaps2 = partial === "wait_for_resolution" ? blockingRunGaps(store, plan.planId) : [];
   for (const id2 of selected) {
     const test = tests.get(id2);
     if (test.readiness !== "ready") {
@@ -12500,8 +12660,8 @@ function gate(store, input) {
       hints.push(`Remove ${id2} from --tests, or leave out --tests and add --partial ready_only.`);
     }
     const runGap = runGapAffecting(runGaps2, test);
-    if (runGap && partial === "wait_for_resolution") {
-      reasons2.push(`Open blocking gap ${runGap.gap.id} of ${runGap.runId} affects ${id2}`);
+    if (runGap) {
+      reasons2.push(runGapReason(runGap, id2));
       hints.push(partialHint);
     }
     if (!target.profile.capabilities.includes(test.capability))
@@ -12570,6 +12730,16 @@ function blockingRunGaps(store, planId) {
 }
 function runGapAffecting(runGaps2, test) {
   return runGaps2.find((item) => gapsAffecting([item.gap], test).length > 0);
+}
+function runGapReason(runGap, testId) {
+  return `Open blocking gap ${runGap.gap.id} of ${runGap.runId} affects ${testId}`;
+}
+function openRunGapReasons(store, planId, tests) {
+  const runGaps2 = blockingRunGaps(store, planId);
+  return tests.flatMap((test) => {
+    const runGap = runGapAffecting(runGaps2, test);
+    return runGap ? [runGapReason(runGap, test.id)] : [];
+  });
 }
 function deferredPrerequisites(plan) {
   const deferred = /* @__PURE__ */ new Map();
@@ -12972,6 +13142,24 @@ function runGaps(store, runId) {
     (row2) => JSON.parse(row2.body)
   );
 }
+function runOverlapWarnings(store, runId) {
+  return all(
+    store,
+    `SELECT other.run_id, other.target_id, other.instance_id,
+			group_concat(test.value, ', ' ORDER BY test.key) AS tests
+		FROM runs r JOIN runs other ON other.plan_id = r.plan_id
+			AND other.target_id = r.target_id AND other.instance_id = r.instance_id
+		JOIN json_each(r.request, '$.selectedTestIds') test
+		WHERE r.run_id = ? AND other.run_id <> r.run_id
+			AND NOT EXISTS (SELECT 1 FROM results WHERE run_id = other.run_id)
+			AND EXISTS (SELECT 1 FROM json_each(other.request, '$.selectedTestIds') WHERE value = test.value)
+			AND NOT EXISTS (
+				SELECT 1 FROM outcomes WHERE run_id IN (r.run_id, other.run_id) AND test_id = test.value
+			)
+		GROUP BY other.run_id ORDER BY other.rowid`,
+    runId
+  ).map((row2) => `Run ${row2.run_id} also has open tests on ${row2.target_id}/${row2.instance_id}: ${row2.tests}.`);
+}
 function beginRun(store, actor, input) {
   const reply = write(
     store,
@@ -13047,7 +13235,8 @@ function beginRun(store, actor, input) {
           browserSession,
           deadlineSeconds: timeoutSeconds,
           deadline: new Date(Date.parse(at) + timeoutSeconds * 1e3).toISOString(),
-          evidenceDirectory: evidenceDirectory(runId)
+          evidenceDirectory: evidenceDirectory(runId),
+          warnings: runOverlapWarnings(store, runId)
         }),
         subjects: [`run:${runId}`, `plan:${plan.planId}`]
       };
@@ -13285,7 +13474,7 @@ function closeTest(store, actor, input) {
     const evidenceIds = storeEvidence(store, input.runId, test.id, null, files2, operationId);
     return {
       reply: completed(input.runId, { runId: input.runId, testId: test.id, outcome, reason, evidenceIds }),
-      subjects: [`run:${input.runId}`]
+      subjects: [`run:${input.runId}`, `plan:${run2.plan.planId}`]
     };
   });
   removeFiles(files2);
@@ -13608,6 +13797,43 @@ function resumeRun(store, actor, input) {
     const stalled = input.error ?? [];
     requireWellFormed(stalled.length > 0 || input.reason === void 0, "--reason applies only with --error");
     const reason = stalled.length ? requireText(input.reason, "reason (--reason) for --error") : null;
+    const instance = findInstance(store, run2.row.target_id, run2.row.instance_id);
+    requireCondition(
+      !instance.retired,
+      `Instance ${instance.targetId}/${instance.instanceId} is retired. Run ${input.runId} cannot resume on it.`,
+      `Finish ${input.runId} to keep its recorded results. Start a new run on an active instance.`
+    );
+    const target = targetRevision(store, run2.row.target_id);
+    requireCondition(
+      target.profile.readyForLiveExecution,
+      `Target prerequisites are not ready: ${run2.row.target_id}@${target.revision}`,
+      `The setup stage must save a ready profile for ${run2.row.target_id}.`
+    );
+    const checked = gate(store, {
+      reference: `${run2.plan.planId}@${run2.plan.revision}`,
+      tests: run2.request.selectedTestIds,
+      build: run2.row.application_build,
+      instance: run2.row.instance_id,
+      partial: run2.request.partialExecution,
+      retestOf: run2.request.retestOf
+    });
+    const outcomes = runOutcomes(store, input.runId);
+    const openTests = run2.plan.tests.filter(
+      (test) => run2.request.selectedTestIds.includes(test.id) && !outcomes.has(test.id)
+    );
+    const runGapReasons = checked.partial === "ready_only" ? openRunGapReasons(store, run2.plan.planId, openTests) : [];
+    if (checked.reply.status !== "completed" || runGapReasons.length)
+      return {
+        reply: {
+          status: "rejected",
+          subject: input.runId,
+          reasons: [refusalReasons.prohibited, ...checked.reply.reasons, ...runGapReasons],
+          refusal: "prohibited",
+          hint: runGapReasons.length ? `Close each affected test with checkmate run close ${input.runId} <testId> --outcome <blocked|error> --reason "<why>" before you resume. Use error if it has an assertion result.` : `Run checkmate status ${run2.plan.planId} to see the next step.`,
+          data: {}
+        },
+        subjects: []
+      };
     const attempt = currentAttempt(store, input.runId) + 1;
     execute(
       store,
@@ -13632,9 +13858,8 @@ function resumeRun(store, actor, input) {
         operationId
       );
     }
-    const outcomes = runOutcomes(store, input.runId);
     const results = runAssertions(store, input.runId);
-    const tests = run2.plan.tests.filter((test) => run2.request.selectedTestIds.includes(test.id) && !outcomes.has(test.id)).map((test) => ({
+    const tests = openTests.filter((test) => !stalled.includes(test.id)).map((test) => ({
       testId: test.id,
       warning: "Actions may have occurred",
       recorded: test.assertions.filter((assertion) => results.has(`${test.id}.${assertion.id}`)).length,
@@ -13649,9 +13874,10 @@ function resumeRun(store, actor, input) {
         deadline: new Date(Date.parse(at) + run2.row.deadline_seconds * 1e3).toISOString(),
         evidenceDirectory: evidenceDirectory(input.runId),
         closed: stalled,
-        tests
+        tests,
+        warnings: runOverlapWarnings(store, input.runId)
       }),
-      subjects: [`run:${input.runId}`]
+      subjects: stalled.length ? [`run:${input.runId}`, `plan:${run2.plan.planId}`] : [`run:${input.runId}`]
     };
   });
 }
@@ -13931,6 +14157,7 @@ function recordOf(ask, events) {
     sessionId: recorded?.sessionId ?? null,
     activity: events.filter((event2) => event2.step === "activity").map((event2) => ({ at: event2.at, line: JSON.parse(event2.detail).line })),
     reply: typeof detail.reply === "string" ? detail.reply : null,
+    observedModels: listOf2(detail.observedModels),
     costUsd: typeof detail.costUsd === "number" && Number.isFinite(detail.costUsd) && detail.costUsd >= 0 ? detail.costUsd : null,
     costPartial: detail.costPartial === true,
     ...detail.costScope !== "turn" && harness !== "pi" ? { costCumulative: true } : {},
@@ -14481,6 +14708,7 @@ function piOption(model) {
   return [{ value: value2, label: value2, ...levels.some((level) => level !== "off") ? { effortLevels: levels } : {} }];
 }
 function piRpcCatalog(program, workspace2, env) {
+  const provider = !env.CHECKMATE_PI_MODEL?.trim() ? env.CHECKMATE_PI_PROVIDER?.trim().toLowerCase() : void 0;
   return new Promise((resolve9) => {
     const host = spawn2(program, ["--no-mcp", "--no-session", "--mode", "rpc", ...piModelArgs(env)], {
       cwd: workspace2,
@@ -14520,7 +14748,9 @@ function piRpcCatalog(program, workspace2, env) {
       }
       if (response.id === "state" && response.command === "get_state") {
         state = true;
-        if (response.success) model = piOption(response.data?.model)[0];
+        const selected = response.data?.model;
+        if (response.success && (!provider || typeof selected?.provider === "string" && selected.provider.toLowerCase() === provider))
+          model = piOption(selected)[0];
       }
       if (available && state && !host.stdin.writableEnded) host.stdin.end();
     });
@@ -14634,7 +14864,7 @@ function requestModelText(store, harness = "claude") {
 }
 function piRequestModelEnv(store, env) {
   const { model, providerQualified } = piRequestModel(store);
-  return piModelEnv(env, model, providerQualified);
+  return piSavedModelEnv(env, model, providerQualified);
 }
 function testerModelText(store, harness = "claude") {
   return setting(store, harness === "pi" ? "piTesterModel" : "testerModel") ?? "";
@@ -15619,7 +15849,14 @@ function launchContext(store, explorationId, explorer, session) {
   const launch = events.findLast(
     (event2) => event2.step === "launch" && event2.explorer === explorer && event2.detail.session === session
   );
-  return events[turn2]?.detail.context ?? follow?.detail.context ?? launch?.detail.context;
+  const context = events[turn2]?.detail.context ?? follow?.detail.context ?? launch?.detail.context;
+  if (context?.harness !== "pi") return context;
+  const used = events.findLast(
+    (item) => (item.step === "end" || item.step === "follow-turn" && item.status !== "operational_error") && item.explorer === explorer && item.detail.session === session && Array.isArray(item.detail.observedModels) && item.detail.observedModels.length
+  );
+  const model = used?.detail.observedModels?.at(-1);
+  if (!model) return context;
+  return { ...context, piArgs: piOverrideModelArgs(context.piArgs ?? [], model) };
 }
 var entryTitle = (entry) => entry.title ?? entry.text ?? entry.question ?? entry.saw ?? "";
 var entryKey = (entry) => `${entry.kind}
@@ -15911,7 +16148,7 @@ function recordLocked(store, operation, input, plan, env, cwd, started) {
     referencesDropped: dropped.length,
     ...dropped.length ? { droppedReferences: dropped } : {},
     ...unknownRules.length ? { unknownRules } : {},
-    ...costOf(calls),
+    ...usageOf(calls),
     ...duration(calls)
   };
   const reply = {
@@ -15941,11 +16178,11 @@ function recordLocked(store, operation, input, plan, env, cwd, started) {
 }
 
 // plugin/src/change.ts
-import { spawnSync as spawnSync3 } from "node:child_process";
+import { spawnSync as spawnSync4 } from "node:child_process";
 import { relative as relative2, resolve as resolve4 } from "node:path";
 var refHint = "Give --since a commit, a branch, or a tag of the repository. Give --repo <dir> when the code is in a subfolder. Or give the changed files with --scope.";
 function git(cwd, args) {
-  const out = spawnSync3("git", args, { cwd, encoding: "utf8" });
+  const out = spawnSync4("git", args, { cwd, encoding: "utf8" });
   return out.status === 0 ? out.stdout.trim() : void 0;
 }
 function commit(cwd, ref) {
@@ -15976,7 +16213,7 @@ function changeOf(workspace2, input) {
   };
 }
 function changedFiles(workspace2, change) {
-  const diff = spawnSync3("git", ["diff", "--name-only", ...change.range, "--"], {
+  const diff = spawnSync4("git", ["diff", "--name-only", ...change.range, "--"], {
     cwd: resolve4(workspace2, change.repo),
     encoding: "utf8"
   });
@@ -15992,12 +16229,12 @@ function upstreamBase(repository) {
   const branch = git(repository, ["symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"]);
   const head = commit(repository, "HEAD");
   if (!branch || !head || commit(repository, branch) === head) return void 0;
-  const ancestor = spawnSync3("git", ["merge-base", "--is-ancestor", branch, "HEAD"], { cwd: repository });
+  const ancestor = spawnSync4("git", ["merge-base", "--is-ancestor", branch, "HEAD"], { cwd: repository });
   return ancestor.status === 0 ? branch : void 0;
 }
 
 // plugin/src/explorers.ts
-import { spawn as spawn3, spawnSync as spawnSync4 } from "node:child_process";
+import { spawn as spawn3, spawnSync as spawnSync5 } from "node:child_process";
 import { randomUUID as randomUUID4 } from "node:crypto";
 import {
   existsSync as existsSync5,
@@ -16028,18 +16265,14 @@ function hostModel(args) {
 }
 function contextForModel(context, model) {
   if (!model) return context;
-  const pi = context.harness === "pi";
-  const source = pi ? context.piArgs ?? [] : context.claudeArgs;
+  if (context.harness === "pi") return { ...context, piArgs: piOverrideModelArgs(context.piArgs ?? [], model) };
   const args = [];
-  for (let index2 = 0; index2 < source.length; index2++) {
-    const value2 = source[index2];
-    const flag = value2.split("=", 1)[0];
-    if (flag === "--model" || flag === "--provider" && pi && model.includes("/")) {
-      if (value2 === flag) index2++;
-    } else args.push(value2);
+  for (let index2 = 0; index2 < context.claudeArgs.length; index2++) {
+    const value2 = context.claudeArgs[index2];
+    if (value2 === "--model") index2++;
+    else if (!value2.startsWith("--model=")) args.push(value2);
   }
-  args.push("--model", model);
-  return pi ? { ...context, piArgs: args } : { ...context, claudeArgs: args };
+  return { ...context, claudeArgs: [...args, "--model", model] };
 }
 function contextForEffort(context, catalog2, choice2) {
   if (!catalog2) return context;
@@ -16105,10 +16338,12 @@ function launchPlan(profile, input, env, savedModel = "", preferSaved = false, s
     piToolNames(input.allow);
   }
   const claudeArgs2 = checkClaudeArgs(input.claudeArgs);
-  const selected = Boolean(
+  const prefersSaved = Boolean(
     savedModel && (harness === "pi" ? preferSaved || !env.CHECKMATE_PI_MODEL?.trim() : !hostModel(claudeArgs2))
   );
-  const piArgs2 = harness === "pi" ? piModelArgs(selected ? piModelEnv(env, savedModel) : env) : [];
+  const piEnv = harness === "pi" && prefersSaved ? piSavedModelEnv(env, savedModel) : env;
+  const selected = prefersSaved && (harness === "claude" || piEnv !== env);
+  const piArgs2 = harness === "pi" ? piModelArgs(piEnv) : [];
   const host = hostModel(harness === "pi" ? piArgs2 : claudeArgs2);
   const model = selected ? savedModel : host ?? (harness === "pi" ? null : row2.model);
   const hiddenPlugin = harness === "claude" ? installedPluginId(env) : null;
@@ -16157,7 +16392,7 @@ function explorerWork(store, explorationId, explorer, count2) {
 }
 var strayIgnored = [".checkmate", ".playwright-cli"];
 function topLevelNames(workspace2) {
-  const status = spawnSync4("git", ["status", "--porcelain", "--untracked-files=normal"], {
+  const status = spawnSync5("git", ["status", "--porcelain", "--untracked-files=normal"], {
     cwd: workspace2,
     encoding: "utf8"
   });
@@ -16411,9 +16646,9 @@ async function launchExplorers(store, actor, explorationId, launch, env, catalog
         brief
       }
     });
-    const turn2 = (own, prompt, name2) => {
+    const turn2 = (own, prompt, name2, observedModel) => {
       const hook = childHook(store.workspace, explorationId, explorer);
-      const context = { ...tester, deny, hook, work: folder };
+      const context = { ...contextForModel(tester, observedModel), deny, hook, work: folder };
       return watchStray(
         store,
         actor,
@@ -16442,7 +16677,7 @@ async function launchExplorers(store, actor, explorationId, launch, env, catalog
         status: "started",
         detail: { session, turn: "test" }
       });
-    const calls = study.failure ? [study] : [study, await turn2(["--resume", session], brief.test, "test")];
+    const calls = study.failure ? [study] : [study, await turn2(["--resume", session], brief.test, "test", study.observedModels?.at(-1))];
     watch.stop();
     return { explorer, session, calls };
   });
@@ -16462,7 +16697,7 @@ async function launchExplorers(store, actor, explorationId, launch, env, catalog
         ...call.failure ? { turn: calls.length === 1 ? "study" : "test", reason: call.failure[1] } : {},
         ...call.stderr ? { stderr: call.stderr } : {},
         ...hint ? { hint } : {},
-        ...costOf(calls),
+        ...usageOf(calls),
         ...durations.length ? { durationMs: durations.reduce((total, ms2) => total + ms2, 0) } : {}
       }
     });
@@ -16558,7 +16793,7 @@ function mergeReports(store, actor, explorationId, launch, env, after = 0) {
       ...failure ? { reason: failure[1] } : {},
       ...calls.some(authenticationFailed) ? { hint: launch.context.harness === "pi" ? piAuthenticationHint : authenticationHint } : {},
       ...calls.find((item) => item.stderr)?.stderr ? { stderr: calls.find((item) => item.stderr).stderr } : {},
-      ...costOf(calls)
+      ...usageOf(calls)
     }
   });
 }
@@ -16601,7 +16836,7 @@ function deriveRules(store, actor, explorationId, launch, env) {
       refused: checked.refusals.length,
       ...checked.rules.length ? {} : { reason: failure?.[1] ?? checked.refusals.join(" ") },
       ...calls.some(authenticationFailed) ? { hint: launch.context.harness === "pi" ? piAuthenticationHint : authenticationHint } : {},
-      ...costOf(calls)
+      ...usageOf(calls)
     }
   };
   write(store, { actor, command: "explore rules", subject: explorationId, input: item }, (operationId, at) => {
@@ -16674,7 +16909,7 @@ async function verifyClaims(store, actor, explorationId, launch, env, after = 0)
       },
       ...stderr ? { stderr } : {},
       ...calls.some(authenticationFailed) ? { hint: launch.context.harness === "pi" ? piAuthenticationHint : authenticationHint } : {},
-      ...costOf(calls)
+      ...usageOf(calls)
     }
   });
 }
@@ -16970,7 +17205,7 @@ async function driveFollow(workspace2, explorationId, env) {
           ...call.failure ? { reason: call.failure[1] } : {},
           ...call.stderr ? { stderr: call.stderr } : {},
           ...hint ? { hint } : {},
-          ...costOf([call])
+          ...usageOf([call])
         }
       });
     }
@@ -17053,7 +17288,7 @@ function endProcesses(all2, alive = running) {
   return pids.filter(alive);
 }
 function groupBirth(pid) {
-  const result = spawnSync4("ps", ["-p", String(pid), "-o", "pgid=", "-o", "lstart="], {
+  const result = spawnSync5("ps", ["-p", String(pid), "-o", "pgid=", "-o", "lstart="], {
     encoding: "utf8",
     env: { ...process.env, LC_ALL: "C" }
   });
@@ -17274,6 +17509,15 @@ function piExplorationDetails(detail) {
     ...Array.isArray(detail.skipped) ? { skipped: detail.skipped.map(piErrorText).filter(Boolean) } : {}
   };
 }
+function observedModels(events) {
+  return [
+    ...new Set(
+      events.flatMap(
+        ({ detail }) => Array.isArray(detail.observedModels) ? detail.observedModels.filter((model) => typeof model === "string") : []
+      )
+    )
+  ];
+}
 function explorationStatus(store, explorationId) {
   const row2 = explorationRow(store, explorationId);
   const raw = explorationEvents(store, explorationId);
@@ -17285,16 +17529,25 @@ function explorationStatus(store, explorationId) {
   const charter = JSON.parse(row2.charter);
   const state = explorationState(events);
   const names = [...new Set(events.flatMap((item) => item.explorer ? [item.explorer] : []))];
+  const runModels = observedModels(
+    events.filter(
+      ({ explorer, step }) => ["rules", "merge", "verify"].includes(step) || step === "end" && explorer && !launch?.testerModels?.[explorer]
+    )
+  );
   const explorers = names.map((explorer) => {
     const own = events.filter((item) => item.explorer === explorer);
     const last = (step) => own.filter((item) => item.step === step).at(-1);
     const end = last("end");
     const record = last("record");
+    const models = observedModels(own.filter(({ step }) => step === "end" || step === "follow-turn"));
+    const selection = launch?.testerModels?.[explorer] ?? launch?.model ?? null;
     const stop = own.find((item) => item.step === "stop") ?? (end?.status === "completed" ? void 0 : stopOf(events));
     return {
       explorer,
       actor: explorerActor(explorer),
-      model: launch?.testerModels?.[explorer] ?? launch?.model ?? null,
+      model: models.length === 1 ? models[0] : selection,
+      ...models.length ? { observedModels: models } : {},
+      ...explorationCost(own),
       session: last("launch")?.detail.session ?? record?.detail.session ?? own.findLast((item) => item.detail.agent)?.detail.agent ?? null,
       ended: stop ? "stopped" : end?.status ?? null,
       recorded: record?.status ?? null,
@@ -17314,6 +17567,7 @@ function explorationStatus(store, explorationId) {
   const followed = events.filter((item) => item.step === "followed").at(-1);
   const follow = followState(events);
   return {
+    ...explorationCost(events),
     explorationId: row2.exploration_id,
     planId: row2.plan_id,
     build: row2.build,
@@ -17324,7 +17578,8 @@ function explorationStatus(store, explorationId) {
     paused: ["completed", "failed"].includes(state) ? null : pauseOf(events),
     level: launch?.level ?? null,
     explorerCount: launch?.explorers || explorers.length,
-    model: launch?.model ?? null,
+    model: runModels.length === 1 ? runModels[0] : launch?.model ?? null,
+    ...runModels.length ? { observedModels: runModels } : {},
     modelFrom: launch?.modelFrom ?? null,
     verifier: launch?.verifier ?? null,
     since: charter.change?.since ?? null,
@@ -18070,6 +18325,7 @@ function sessionExplorerLive(events, item, now) {
   return {
     explorer: item.explorer,
     model: null,
+    ...noModelCost,
     reason: item.reason,
     hint: item.hint,
     turn: action2?.detail.step ?? null,
@@ -18112,7 +18368,9 @@ function explorerLive(store, explorationId, events, item, running3, now) {
   );
   return {
     explorer: item.explorer,
-    model: item.model,
+    model: item.observedModels?.join(", ") ?? item.model,
+    costUsd: item.costUsd,
+    costPartial: item.costPartial,
     reason: item.reason,
     hint: item.hint,
     turn: turn2,
@@ -18179,7 +18437,8 @@ function explorationLive(store, explorationId, now = Date.now()) {
   const found = foundEntries(store, status.planId, explorationId, limit, claims, questions);
   const ended = ["failed", "stopped", "interrupted"].includes(status.state);
   return {
-    ...explorationCost(events),
+    costUsd: status.costUsd,
+    costPartial: status.costPartial,
     explorationId,
     planId: status.planId,
     goal: opened.charter.goal,
@@ -18188,7 +18447,7 @@ function explorationLive(store, explorationId, now = Date.now()) {
     mode: status.mode,
     level: status.level,
     explorerCount: status.explorerCount,
-    model: status.model,
+    model: status.observedModels?.join(", ") ?? status.model,
     startedAt: opened.started_at,
     state: status.state,
     running: running3,
@@ -18797,6 +19056,7 @@ function runDetail(store, runId) {
     state: finished ? "finalized" : "started",
     attempts,
     tests,
+    warnings: finished ? [] : runOverlapWarnings(store, runId),
     findings: runFindings(store, runId),
     retest: retestVerdicts(run2, outcomes),
     newGaps: runGaps(store, runId),
@@ -19979,7 +20239,7 @@ import { existsSync as existsSync7, readFileSync as readFileSync8, realpathSync 
 import { fileURLToPath as fileURLToPath2 } from "node:url";
 
 // plugin/src/modes.ts
-import { spawnSync as spawnSync5 } from "node:child_process";
+import { spawnSync as spawnSync6 } from "node:child_process";
 import { resolve as resolve6 } from "node:path";
 var testModes = ["exploratory", "regression", "auto"];
 var storedTestsNone = "none, testers use earlier results when available";
@@ -19998,7 +20258,7 @@ function nextRunId(store) {
   );
 }
 function gitBuild(workspace2) {
-  const head = spawnSync5("git", ["rev-parse", "--short", "HEAD"], { cwd: workspace2, encoding: "utf8" });
+  const head = spawnSync6("git", ["rev-parse", "--short", "HEAD"], { cwd: workspace2, encoding: "utf8" });
   return head.status === 0 ? head.stdout.trim() || void 0 : void 0;
 }
 function dateBuild(now = /* @__PURE__ */ new Date()) {
@@ -20063,7 +20323,11 @@ function checkRun(store, actor, input) {
   });
   if (begun.status !== "completed")
     return { run: null, skipped: begun.reasons.filter((reason) => !/^Refused/.test(reason)) };
-  return { run: { runId, tests: begun.data.tests }, skipped: [] };
+  return {
+    run: { runId, tests: begun.data.tests },
+    skipped: [],
+    warnings: begun.data.warnings
+  };
 }
 function runTest(store, actor, given, env, preferSavedModel = false) {
   env = workspaceEnv(store, env);
@@ -20097,6 +20361,7 @@ function runTest(store, actor, given, env, preferSavedModel = false) {
       run: check.run,
       checkSkipped: check.skipped,
       ...check.storedTests ? { storedTests: check.storedTests } : {},
+      ...check.warnings?.length ? { warnings: check.warnings } : {},
       assumed,
       next: [
         ...check.run ? [
@@ -24807,6 +25072,10 @@ function explorerDetail(store, live, item, crumbs) {
 							<dd><code>${item.model}</code></dd>
 						</div>` : ""}
 			<div>
+				<dt>Reported cost</dt>
+				<dd>${costText(item.costUsd, item.costPartial)}</dd>
+			</div>
+			<div>
 				<dt>${live.path === "session" ? "Step" : "Turn"}</dt>
 				<dd>${item.turn ?? none2}</dd>
 			</div>
@@ -27157,7 +27426,7 @@ function summaryDetail2(store, context, detail, state, crumbs) {
   ) : html2`<span class="muted small">The report is ready when the run finishes.</span>`;
   return html2`${crumbs}
 		<h2 class="q-h">Overview</h2>
-		${strip(detail)} ${openChecks(detail)}
+		${strip(detail)} ${detail.warnings.map((warning) => banner("warn", warning))} ${openChecks(detail)}
 		${decisionPanel(store, context, detail, state, returnFields({ key: "summary" }, `/runs/${detail.runId}`))}
 		<div class="actions">${report}</div>`;
 }
@@ -27186,7 +27455,7 @@ function runPage(store, context, runId, params = new URLSearchParams(), state = 
     viewer: true,
     title: label ? `${runId} \xB7 ${label}` : runId,
     section: "runs",
-    subjects: [`run:${runId}`, "inbox"],
+    subjects: [`run:${runId}`, "inbox", ...detail.result ? [] : [`plan:${detail.planId}`]],
     status: adoptError ? 422 : void 0,
     crumbs: [
       ["Plans", "/"],
@@ -27771,17 +28040,7 @@ function streamPi(program, args, prompt, cwd, env, extension, sessionId, onLine,
   let stopped = false;
   let prompted = false;
   let settled = false;
-  const costs = [];
-  let messageCosts2 = [];
-  let inProgress;
-  const charge = (amount2) => typeof amount2 === "number" && Number.isFinite(amount2) && amount2 >= 0 ? { costUsd: amount2 } : {};
-  const messageCharge = (message) => {
-    const amount2 = piMessageCost(message);
-    if (amount2 === void 0) return;
-    if (amount2 === 0 && message?.usage?.totalTokens === 0 && (message.stopReason === "error" || message.stopReason === "aborted"))
-      return {};
-    return charge(amount2);
-  };
+  const usage2 = piTurnUsage();
   const timers = [];
   const send2 = (value2) => child.stdin.write(`${JSON.stringify(value2)}
 `);
@@ -27827,32 +28086,7 @@ function streamPi(program, args, prompt, cwd, env, extension, sessionId, onLine,
         shutdown();
         continue;
       }
-      if (prompted) {
-        if (value2.type === "message_update") inProgress = charge(value2.usage?.cost?.total);
-        if (value2.type === "message_end") {
-          const cost = messageCharge(value2.message);
-          if (value2.message?.role === "assistant") {
-            if (cost?.costUsd === void 0 && inProgress?.costUsd !== void 0)
-              messageCosts2.push({ costUsd: inProgress.costUsd, costPartial: true });
-            else if (cost) messageCosts2.push(cost);
-            inProgress = void 0;
-          } else if (cost) messageCosts2.push(cost);
-        }
-        if (value2.type === "agent_end") {
-          if (!messageCosts2.length && Array.isArray(value2.messages)) {
-            for (const message of value2.messages) {
-              const cost = messageCharge(message);
-              if (cost) messageCosts2.push(cost);
-            }
-          }
-          costs.push(...messageCosts2);
-          messageCosts2 = [];
-          inProgress = void 0;
-        }
-        if (value2.type === "entry_appended" && value2.entry?.type === "usage")
-          costs.push(charge(value2.entry.usage?.cost?.total));
-        if (value2.type === "compaction_end" && value2.result) costs.push(charge(value2.result.usage?.cost?.total));
-      }
+      if (prompted) usage2.read(value2);
       if (value2.type === "response" && value2.id === "checkmate-ready") {
         const commands2 = value2.data?.commands;
         ready = value2.success === true && Array.isArray(commands2) && commands2.some(
@@ -27887,12 +28121,7 @@ function streamPi(program, args, prompt, cwd, env, extension, sessionId, onLine,
         status,
         signal,
         stderr,
-        ...costOf([
-          ...costs,
-          ...messageCosts2,
-          ...inProgress ? [inProgress] : [],
-          ...settled && !error ? [] : [{}]
-        ]),
+        ...usage2.finish(!settled || Boolean(error)),
         error: error ?? (!ready && !stopped ? "Pi did not verify the permission gate." : null)
       });
     });
@@ -27930,7 +28159,10 @@ function chatPreferences(store, env, options3 = {}, previous) {
         (item) => item.value.slice(item.value.indexOf("/") + 1) === model
       );
       modelId = matches?.length === 1 ? matches[0].value : inherited?.modelId ?? model;
-    } else if (!model) modelId = options3.catalog?.defaultModel?.value ?? inherited?.modelId ?? null;
+    } else if (!model) {
+      const hostModel2 = options3.catalog?.defaultModel?.value;
+      modelId = (hostModel2 && (!provider || hostModel2.toLowerCase().startsWith(`${provider.toLowerCase()}/`)) ? hostModel2 : inherited?.modelId) ?? null;
+    }
   }
   return { harness, model, provider, effort, modelId };
 }
@@ -28036,7 +28268,7 @@ function createRequester(store, options3) {
     };
     guarded(() => {
       const changes = changesOf(store, run2.id);
-      const cost = run2.harness === "pi" ? { costUsd: end?.costUsd, costPartial: end?.costPartial } : claudeTurnCost(run2);
+      const cost = run2.harness === "pi" ? { costUsd: end?.costUsd, costPartial: end?.costPartial, observedModels: end?.observedModels } : claudeTurnCost(run2);
       setRequestState(store, run2.id, outcome.state, { ...outcome.detail, ...cost, costScope: "turn", changes });
     });
   }
@@ -28106,13 +28338,17 @@ function createRequester(store, options3) {
     running3 = run2;
     let program;
     let modelArgs = [];
+    let modelId = request2.modelId;
     try {
       program = requireChild(options3.env, run2.harness);
-      if (run2.harness === "pi")
-        modelArgs = piModelArgs({
+      if (run2.harness === "pi") {
+        const args2 = piModelArgs({
           CHECKMATE_PI_MODEL: request2.model ?? void 0,
           CHECKMATE_PI_PROVIDER: request2.provider ?? void 0
         });
+        modelArgs = resolvePiModelArgs(program, args2, options3.workspace, options3.env);
+        if (!request2.model && request2.provider) modelId = `${modelArgs[1]}/${modelArgs[3]}`;
+      }
     } catch (error) {
       const refusal = error;
       run2.reason = [refusal.message, refusal.hint].filter(Boolean).join(" ");
@@ -28133,7 +28369,7 @@ function createRequester(store, options3) {
       turns.findIndex((turn2) => turn2.id === request2.id)
     );
     const previous = earlier.findLast((turn2) => turn2.startedAt !== null);
-    const resumable = previous?.harness === run2.harness && previous.modelId === request2.modelId ? previous.sessionId : null;
+    const resumable = previous?.harness === run2.harness && (previous.modelId === modelId || run2.harness === "pi" && modelId && previous.observedModels.length === 1 && previous.observedModels[0] === modelId) ? previous.sessionId : null;
     const resume = resumable !== null;
     run2.resume = resume;
     const sessionId = resumable ?? (earlier.some((turn2) => turn2.sessionId) ? randomUUID5() : request2.conversation);
@@ -33594,11 +33830,15 @@ function failureText(request2) {
   const cause = /No (?:claude|pi) executable|Host authentication/.test(request2.reason ?? "") || request2.hint ? `${known.cause} ${known.next}` : sentence2 || "The message failed. No reason is recorded.";
   return { cause, lines: lines2, detail: request2.hint ? known.detail : null };
 }
+function requestModelLabel(request2) {
+  return request2.observedModels.length ? request2.observedModels.join(", ") : [request2.provider, request2.model].filter(Boolean).join("/");
+}
 function chatMessagePage(store, context, request2) {
   const requestId2 = request2.id;
   const now = Date.now();
   const open = explorationPermissions(store, requestId2).filter((item) => !item.decision);
   const ended = isEnded(request2);
+  const model = requestModelLabel(request2);
   const { planId, planRevision: planRevision2, planChat: planChat2 } = request2.context;
   const plan = planChat2 ? `/plans/${planId}${planRevision2 ? `@${planRevision2}` : ""}` : null;
   const chat = plan ? `${plan}?chat=${request2.conversation}` : `/chats/${request2.conversation}`;
@@ -33658,6 +33898,7 @@ function chatMessagePage(store, context, request2) {
 				<div class="sp-pills">
 					${stateLabel(request2)}
 					<span class="sp-c-id">${request2.harness === "pi" ? "Pi" : "Claude Code"}</span>
+					${model ? html2`<span class="sp-c-id">${model}</span>` : ""}
 					<span class="sp-c-id">${request2.asker}</span>
 					<span class="sp-c-id">${ago(request2.askedAt)}</span>
 				</div>
@@ -33791,6 +34032,7 @@ function origin(request2) {
 function turn(store, request2, context, number, back) {
   const permissions = explorationPermissions(store, request2.id).filter((item) => !item.decision);
   const failure = request2.state === "failed" ? failureText(request2) : null;
+  const model = requestModelLabel(request2);
   const details = `/chats/${request2.conversation}/messages/${request2.id}`;
   return html2`<article
 		class="chat-turn"
@@ -33809,7 +34051,7 @@ function turn(store, request2, context, number, back) {
 		>
 			<div class="chat-meta">
 				Checkmate ·
-				${request2.harness === "pi" ? "Pi" : "Claude Code"}${request2.model ? ` \xB7 ${request2.provider ? `${request2.provider}/` : ""}${request2.model}` : ""}${request2.effort ? ` \xB7 ${request2.effort}` : ""}
+				${request2.harness === "pi" ? "Pi" : "Claude Code"}${model ? ` \xB7 ${model}` : ""}${request2.effort ? ` \xB7 ${request2.effort}` : ""}
 				<span class="chat-status"
 					>${request2.state === "answered" ? "" : pill(request2.state)}
 					<a href="${details}">Turn ${number}</a></span
@@ -36927,6 +37169,8 @@ function explorationLines(reply) {
       explorers: status.explorerCount ?? void 0,
       model: status.model ?? void 0,
       modelFrom: status.modelFrom ?? void 0,
+      costUsd: status.costUsd ?? void 0,
+      costPartial: status.costPartial ? true : void 0,
       verifier: status.verifier ?? void 0,
       since: status.since ?? void 0,
       until: status.until ?? void 0,
@@ -36944,6 +37188,9 @@ function explorationLines(reply) {
         `ended=${item.ended ?? "-"}`,
         `recorded=${item.recorded ?? "-"}`,
         `saved=${item.saved}`,
+        ...item.observedModels?.length ? [`model=${item.observedModels.join(",")}`] : [],
+        ...item.costUsd === null ? [] : [`costUsd=${item.costUsd}`],
+        ...item.costPartial ? ["costPartial=true"] : [],
         ...typeof item.reason === "string" && item.reason ? [`reason=${item.reason}`] : []
       ]),
       ...status.paused ? [["paused", status.paused, "waits_on=oracle"]] : [],
@@ -37569,6 +37816,7 @@ var commands = {
       reason: value(args, "reason")
     }),
     print: (reply) => {
+      if (reply.status !== "completed") return {};
       const data = reply.data;
       return {
         facts: {

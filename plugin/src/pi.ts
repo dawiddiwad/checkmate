@@ -34,7 +34,7 @@ export function piModelArgs(env: Env) {
 	const provider = env.CHECKMATE_PI_PROVIDER?.trim()
 	if (provider && !model) {
 		if (/[,\p{Cc}]/u.test(provider)) throw new Refusal('malformed', 'Give a Pi provider with a valid name.')
-		return ['--models', `${provider.replace(/[\\*?\[\]{}!+()]/g, '\\$&')}/**`]
+		return ['--models', `${provider.replace(/[\\*?[\]{}!+()]/g, '\\$&')}/**`]
 	}
 	return [...(model ? ['--model', model] : []), ...(provider ? ['--provider', provider] : [])]
 }

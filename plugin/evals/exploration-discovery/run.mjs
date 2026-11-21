@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { setTimeout as sleep } from 'node:timers/promises'
+import { parseArgs } from 'node:util'
 import { saveModels } from '../../src/settings.ts'
 import { closeStore, openStore } from '../../src/store.ts'
 import { buildSource, deploy } from './releases.mjs'
@@ -17,8 +18,43 @@ const model = 'openai-codex/gpt-6-luna'
 const thinking = 'medium'
 const limit = 420
 const plan = 'harbor-pr-27'
-const prompt =
-	'Explore the open PR in PR.md using the app and its source. Report reproducible defects and regressions with steps, expected behavior, actual behavior, and evidence.'
+const scenarios = {
+	discovery: {
+		mode: 'exploratory',
+		prompt: 'Explore the open PR in PR.md using the app and its source. Report reproducible defects and regressions with steps, expected behavior, actual behavior, and evidence.',
+		requirements: [
+			{
+				id: 'R1',
+				text: 'Valid batches update all bookings. Invalid batches leave all bookings unchanged.',
+				source: 'PR.md',
+			},
+			{
+				id: 'R2',
+				text: 'Existing desk and API workflows follow the product rules after the change.',
+				source: 'PRODUCT.md',
+			},
+		],
+	},
+	core: {
+		mode: 'regression',
+		prompt: 'Regression-test the core workflows documented in PRODUCT.md on both deployed builds. Exercise asset search, booking lists and pagination, availability and pricing, single-booking reschedule and cancellation, booking history, and desk filters and CSV export. Use the running app and inspect the source as needed. Report reproducible defects and regressions with steps, expected behavior, actual behavior, and evidence. The new bulk rescheduling flow is outside this run.',
+		requirements: [
+			{
+				id: 'R1',
+				text: 'Asset search, booking lists and pagination follow the product rules.',
+				source: 'PRODUCT.md',
+			},
+			{ id: 'R2', text: 'Availability and pricing follow the product rules.', source: 'PRODUCT.md' },
+			{
+				id: 'R3',
+				text: 'Single reschedule, cancellation and history follow the product rules.',
+				source: 'PRODUCT.md',
+			},
+			{ id: 'R4', text: 'Desk filtering and CSV export follow the product rules.', source: 'PRODUCT.md' },
+		],
+	},
+}
+const levels = { smoke: 1, normal: 2 }
 const tools = ['read', 'bash', 'edit', 'write']
 const cli = join(root, 'cli/dist/checkmate.js')
 
@@ -113,8 +149,9 @@ function runChild(file, args, cwd, env, output, seconds) {
 	})
 }
 
-async function bare(cwd, env, folder) {
-	const output = join(folder, 'bare.ndjson')
+async function bare(arm, folder, prompt) {
+	const { name, cwd, env } = arm
+	const output = join(folder, name + '.ndjson')
 	const outcome = await runChild(
 		'pi',
 		[
@@ -148,18 +185,18 @@ async function bare(cwd, env, folder) {
 			?.message.content.filter((block) => block.type === 'text')
 			.map((block) => block.text)
 			.join('\n') ?? ''
-	writeFileSync(join(folder, 'bare-report.md'), text)
+	writeFileSync(join(folder, name + '-report.md'), text)
 	const summary = {
 		...outcome,
 		finalReport: Boolean(text.trim()),
 		...nativeUsage(env.PI_CODING_AGENT_SESSION_DIR, model, thinking),
 	}
-	json(join(folder, 'bare.json'), summary)
+	json(join(folder, name + '.json'), summary)
 	assert(summary.finalReport, 'Bare Pi did not return a final report')
 	return summary
 }
 
-function prepareSmoke(cwd, env, urls) {
+function prepareCheckmate({ cwd, env, entries }, scenario) {
 	const command = (args, input) => checkmate(cwd, env, args, input === undefined ? undefined : JSON.stringify(input))
 	const store = openStore(cwd)
 	try {
@@ -173,10 +210,7 @@ function prepareSmoke(cwd, env, urls) {
 			'target',
 			'open',
 			'harbor',
-			'--entry-point',
-			'pr:url:PR preview',
-			'--entry-point',
-			'base:url:Base preview',
+			...entries.flatMap(({ name, purpose }) => ['--entry-point', name + ':url:' + purpose]),
 			'--capabilities',
 			'browser,cli',
 			'--operations',
@@ -192,10 +226,7 @@ function prepareSmoke(cwd, env, urls) {
 			contractVersion: 'toolkit-2',
 			targetId: 'harbor',
 			revision: 1,
-			entryPoints: [
-				{ name: 'pr', kind: 'url', purpose: 'PR preview' },
-				{ name: 'base', kind: 'url', purpose: 'Base preview' },
-			],
+			entryPoints: entries.map(({ name, purpose }) => ({ name, purpose, kind: 'url' })),
 			capabilities: ['browser', 'cli'],
 			tools: [
 				{ name: 'curl', kind: 'cli', purpose: 'Exercise preview APIs', reachable: true },
@@ -204,7 +235,7 @@ function prepareSmoke(cwd, env, urls) {
 			authentication: { kind: 'none', references: [] },
 			allowedOperations: ['read_reservations', 'change_reservations'],
 			startup: { owner: 'factory', command: null },
-			cleanup: 'The fixture runner closes both previews.',
+			cleanup: 'The fixture runner closes the previews.',
 			readyForLiveExecution: true,
 		})
 	)
@@ -215,36 +246,25 @@ function prepareSmoke(cwd, env, urls) {
 			'add',
 			'harbor',
 			'previews',
-			'--entry',
-			'pr=' + urls.pr,
-			'--entry',
-			'base=' + urls.base,
+			...entries.flatMap(({ name, url }) => ['--entry', name + '=' + url]),
 			'--environment',
 			'Local PR previews',
 		])
 	)
 	checked(
 		command(['plan', 'open', plan, '--target', 'harbor@1'], {
-			objective:
-				'Explore the open PR for bulk rescheduling and verify existing reservation workflows in Harbor Rentals.',
-			requirements: [
-				{
-					id: 'R1',
-					text: 'Valid batches update all bookings. Invalid batches leave all bookings unchanged.',
-					source: 'PR.md',
-				},
-				{
-					id: 'R2',
-					text: 'Existing desk and API workflows follow the product rules after the change.',
-					source: 'PRODUCT.md',
-				},
-			],
-			context: { sources: ['PR.md', 'PRODUCT.md', 'TARGETS.md'] },
+			objective: scenario.prompt,
+			requirements: scenario.requirements,
+			context: {
+				sources: ['PR.md', 'PRODUCT.md', 'TARGETS.md'],
+				instructions:
+					'Use only the preview pair assigned to your tester in TARGETS.md. Each pair has separate data.',
+			},
 		})
 	)
 }
 
-async function smoke(cwd, env, folder, refs) {
+async function explore({ cwd, env, refs }, folder, level, mode, reports) {
 	const command = (args) => checkmate(cwd, env, args)
 	const started = Date.now()
 	const launch = checked(
@@ -261,9 +281,9 @@ async function smoke(cwd, env, folder, refs) {
 			'--until',
 			refs.head,
 			'--mode',
-			'exploratory',
+			mode,
 			'--level',
-			'smoke',
+			level,
 			'--minutes',
 			'4',
 			'--timeout',
@@ -272,17 +292,27 @@ async function smoke(cwd, env, folder, refs) {
 		])
 	)
 	const id = launch.explorationId
-	json(join(folder, 'smoke-launch.json'), launch)
-	assert(launch.explorers === 1 && launch.verifier === false && launch.model === model, JSON.stringify(launch))
+	json(join(folder, level + '-launch.json'), launch)
+	assert(
+		launch.explorers === levels[level] && launch.verifier === (level === 'normal') && launch.model === model,
+		JSON.stringify(launch)
+	)
 	let previous
 	let detail
-	const rawReport = join(cwd, '.checkmate', 'work', id, 'a1', 'report.md')
+	const workDir = join(cwd, '.checkmate', 'work', id)
 	try {
 		while (Date.now() - started < limit * 1_000) {
 			detail = checked(command(['explore', 'status', id]))
-			if (existsSync(rawReport)) writeFileSync(join(folder, 'smoke-report.md'), readFileSync(rawReport))
+			for (const [index, report] of reports.entries()) {
+				const path = join(workDir, 'a' + (index + 1), 'report.md')
+				try {
+					writeFileSync(join(folder, report + '-report.md'), readFileSync(path))
+				} catch (error) {
+					if (error.code !== 'ENOENT') throw error
+				}
+			}
 			if (detail.state !== previous) {
-				console.log(`Checkmate ${id} ${detail.state}`)
+				console.log(`${mode} Checkmate ${id} ${detail.state}`)
 				previous = detail.state
 			}
 			if (['completed', 'failed', 'interrupted', 'stopped'].includes(detail.state)) break
@@ -293,11 +323,11 @@ async function smoke(cwd, env, folder, refs) {
 			command(['explore', 'stop', id, '--reason', 'Eval wall-clock limit'])
 		}
 	}
-	try {
-		execFileSync('playwright-cli', ['-s=qa-' + id + '-a1', 'close'], { cwd, env, stdio: 'ignore', timeout: 5_000 })
-	} catch {}
+	for (const index of reports.keys()) {
+		closeBrowser(cwd, env, 'qa-' + id + '-a' + (index + 1))
+	}
 	const shown = checked(command(['explore', 'show', id]))
-	json(join(folder, 'smoke-show.json'), shown)
+	json(join(folder, level + '-show.json'), shown)
 	const summary = {
 		state: shown.state,
 		exploration: id,
@@ -305,47 +335,89 @@ async function smoke(cwd, env, folder, refs) {
 		recordedClaims: shown.claims.length,
 		...nativeUsage(env.PI_CODING_AGENT_SESSION_DIR, model, thinking),
 	}
-	json(join(folder, 'smoke.json'), summary)
+	json(join(folder, level + '.json'), summary)
 	assert.equal(summary.state, 'completed', JSON.stringify(shown))
 	return summary
 }
 
+function closeBrowser(cwd, env, session) {
+	try {
+		execFileSync('playwright-cli', ['-s=' + session, 'close'], { cwd, env, stdio: 'ignore', timeout: 5_000 })
+	} catch {}
+}
+
 async function main() {
+	const args = parseArgs({
+		options: {
+			verify: { type: 'boolean' },
+			level: { type: 'string', default: 'smoke' },
+			scenario: { type: 'string', default: 'discovery' },
+		},
+	}).values
+	const level = args.level
+	const count = levels[level]
+	const scenario = scenarios[args.scenario]
+	assert(
+		Object.hasOwn(levels, level) && Object.hasOwn(scenarios, args.scenario),
+		'Use --level smoke|normal and --scenario discovery|core'
+	)
 	const oracle = await verifyFixture()
 	console.log(`Verified ${oracle.length} seeded cases in base, PR, and fixed control`)
-	if (process.argv.includes('--verify')) return
+	if (args.verify) return
 	assert(existsSync(cli), 'Build the CLI with node scripts/build-cli.ts first')
 	const base = join(root, 'plugin/evals/results')
 	mkdirSync(base, { recursive: true })
-	const folder = mkdtempSync(join(base, 'exploration-discovery-'))
+	const folder = mkdtempSync(join(base, `exploration-${args.scenario}-${level}-`))
 	console.log('Results: ' + folder)
 	json(join(folder, 'oracle.json'), oracle)
 	const bin = join(folder, 'bin')
 	mkdirSync(bin)
 	const pi = command('which', ['pi'], root)
 	writeFileSync(join(bin, 'pi'), '#!/bin/sh\nexec "$EVAL_PI_BIN" --no-extensions --no-mcp "$@"\n', { mode: 0o700 })
+	const testers = Array.from({ length: count }, (_, index) => 'a' + (index + 1))
+	const bareAgents = testers.map((name) => (count === 1 ? 'bare' : 'bare-' + name))
+	const checkmateReports = testers.map((name) => (count === 1 ? level : level + '-' + name))
 	const previews = []
 	try {
-		const arms = {}
-		for (const name of ['bare', 'smoke']) {
+		const arms = []
+		for (const name of [...bareAgents, level]) {
 			const cwd = join(mkdtempSync(join(tmpdir(), 'harbor-' + name + '-')), 'preview')
 			const refs = workspace(cwd)
-			const pr = await deploy(readFileSync(join(cwd, 'app.mjs'), 'utf8'))
-			previews.push(pr)
-			const base = await deploy(
-				execFileSync('git', ['show', refs.base + ':app.mjs'], { cwd, encoding: 'utf8', timeout: 30_000 })
-			)
-			previews.push(base)
-			const urls = { pr: pr.url, base: base.url }
+			const sources = {
+				pr: readFileSync(join(cwd, 'app.mjs'), 'utf8'),
+				base: execFileSync('git', ['show', refs.base + ':app.mjs'], { cwd, encoding: 'utf8', timeout: 30_000 }),
+			}
+			const entries = []
+			const lanes = name === level ? testers : [null]
+			for (const tester of lanes) {
+				for (const build of ['pr', 'base']) {
+					const preview = await deploy(sources[build])
+					previews.push(preview)
+					entries.push({
+						name: tester && count > 1 ? build + '-' + tester : build,
+						purpose:
+							(tester ? 'Tester ' + tester + ' ' : '') + (build === 'pr' ? 'PR preview' : 'Base preview'),
+						build: refs[build === 'pr' ? 'head' : 'base'],
+						url: preview.url,
+					})
+				}
+			}
+			const laneNote =
+				name === level && count > 1
+					? 'Use the pair for your own tester name (a1 or a2, as in your work folder). Each pair has separate data.'
+					: 'The base and PR previews start with the same seeded records.'
 			writeFileSync(
 				join(cwd, 'TARGETS.md'),
-				`# Deployed previews
-
-- PR build \`${refs.head}\`: ${urls.pr}
-- Base build \`${refs.base}\`: ${urls.base}
-
-Read PRODUCT.md for the product rules. Inspect app.mjs and use git diff main...HEAD for the PR changes. Both HTTP previews start with the same seeded records. Use curl or playwright-cli. Use this workspace and the named previews only.
-`
+				[
+					'# Deployed previews',
+					'',
+					...entries.map(({ purpose, build, url }) => '- ' + purpose + ' (' + build + '): ' + url),
+					'',
+					laneNote,
+					'Read PRODUCT.md for the product rules. Inspect app.mjs and use git diff main...HEAD for the PR changes.',
+					'Use curl or playwright-cli. Use this workspace and the named previews only.',
+					'',
+				].join('\n')
 			)
 			const sessions = join(folder, name + '-sessions')
 			mkdirSync(sessions, { mode: 0o700 })
@@ -359,44 +431,46 @@ Read PRODUCT.md for the product rules. Inspect app.mjs and use git diff main...H
 				CHECKMATE_PI_PROVIDER: undefined,
 				PLAYWRIGHT_CLI_SESSION: 'harbor-' + name + '-' + folder.split('-').at(-1),
 			}
-			arms[name] = { cwd, env, urls, refs }
+			arms.push({ name, cwd, env, entries, refs })
 		}
-		assert.deepEqual(arms.bare.refs, arms.smoke.refs)
-		command('git', ['bundle', 'create', join(folder, 'fixture.bundle'), '--all'], arms.bare.cwd)
-		prepareSmoke(arms.smoke.cwd, arms.smoke.env, arms.smoke.urls)
+		const checkmateArm = arms.at(-1)
+		const refs = arms[0].refs
+		for (const arm of arms) assert.deepEqual(arm.refs, refs)
+		command('git', ['bundle', 'create', join(folder, 'fixture.bundle'), '--all'], arms[0].cwd)
+		prepareCheckmate(checkmateArm, scenario)
 		json(join(folder, 'run.json'), {
 			model,
 			thinking,
 			armWallSeconds: limit,
-			level: 'smoke',
-			barePrompt: prompt,
+			testMinutes: 4,
+			level,
+			scenario: args.scenario,
+			mode: scenario.mode,
+			barePrompt: scenario.prompt,
+			bareAgents,
+			checkmateReports,
 			code: command('git', ['rev-parse', 'HEAD'], root),
-			refs: arms.bare.refs,
-			workspaces: { bare: arms.bare.cwd, smoke: arms.smoke.cwd },
+			refs,
+			workspaces: Object.fromEntries(arms.map(({ name, cwd }) => [name, cwd])),
+			previews: Object.fromEntries(arms.map(({ name, entries }) => [name, entries])),
 		})
 		const results = await Promise.allSettled([
-			bare(arms.bare.cwd, arms.bare.env, folder),
-			smoke(arms.smoke.cwd, arms.smoke.env, folder, arms.smoke.refs),
+			...arms.slice(0, -1).map((arm) => bare(arm, folder, scenario.prompt)),
+			explore(checkmateArm, folder, level, scenario.mode, checkmateReports),
 		])
-		for (const arm of Object.values(arms)) {
-			try {
-				command('playwright-cli', ['-s=' + arm.env.PLAYWRIGHT_CLI_SESSION, 'close'], arm.cwd, { env: arm.env })
-			} catch {}
-		}
+		for (const arm of arms) closeBrowser(arm.cwd, arm.env, arm.env.PLAYWRIGHT_CLI_SESSION)
 		json(
 			join(folder, 'arms.json'),
-			results.map((result) =>
-				result.status === 'fulfilled' ? result : { status: result.status, error: String(result.reason) }
+			results.map((result, index) =>
+				result.status === 'fulfilled'
+					? { name: arms[index].name, ...result }
+					: { name: arms[index].name, status: result.status, error: String(result.reason) }
 			)
 		)
 		const failures = results.filter((result) => result.status === 'rejected')
 		if (failures.length) throw new AggregateError(failures.map((result) => result.reason))
 		console.log(
-			JSON.stringify(
-				results.map((result) => result.value),
-				null,
-				2
-			)
+			JSON.stringify(Object.fromEntries(arms.map(({ name }, index) => [name, results[index].value])), null, 2)
 		)
 	} finally {
 		await Promise.all(previews.map((preview) => preview.close()))

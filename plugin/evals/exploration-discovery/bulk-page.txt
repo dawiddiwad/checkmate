@@ -1,0 +1,15 @@
+function bulkPage() {
+	return `<!doctype html><html lang="en"><meta charset="utf-8"><title>Bulk reschedule · Harbor Rentals</title>
+<a href="/">Reservations</a><h1>Bulk reschedule</h1><p>Enter one booking ID and its new dates per line, separated by commas.</p>
+<form><label for="changes">Booking ID, pickup, return</label><br><textarea id="changes" required rows="6" cols="55" placeholder="B101, 2027-04-06, 2027-04-08"></textarea><br><button>Apply changes</button></form>
+<pre role="status"></pre><script>document.querySelector('form').addEventListener('submit', async (event) => {
+event.preventDefault();
+const changes = document.querySelector('textarea').value.trim().split('\\n').map(line => {
+const [id, from, to] = line.split(',').map(value => value.trim());
+return {id, from, to};
+});
+const response = await fetch('/api/bulk-reschedule',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({changes})});
+document.querySelector('pre').textContent = JSON.stringify(await response.json(),null,2);
+});</script></html>`
+}
+

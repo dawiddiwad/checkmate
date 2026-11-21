@@ -67,13 +67,13 @@ async function main() {
 		record({ stage: 'review', prompt })
 		result = {
 			answers: [{ id: 'a1/Q1', value: 'Display READY after the preview loads.', source: 'The fixture request.', rationale: 'The request names the preview output.' }],
-			claims: [{ id: 'a1/D1', decision: 'accept', rationale: 'QA saw FIRST instead of READY.' }],
+			claims: [{ id: 'a1/D1', decision: 'accept', rationale: 'QA observed a preview without READY.' }],
 			decisions: [],
 		}
 	} else if (prompt.startsWith('A change of the application')) {
 		const url = prompt.match(/http:\\/\\/127\\.0\\.0\\.1:\\d+/)?.[0]
 		if (!url) throw new Error('The QA study lacks a preview URL')
-		record({ stage: 'study', session, url })
+		record({ stage: 'study', session, url, prompt })
 		writeFileSync(join(work, 'plan.md'), 'Read the deployed preview output.')
 		writeFileSync(join(work, 'questions.md'), 'None')
 		result = 'The test approach is ready.'
@@ -135,7 +135,7 @@ if (command === 'issue' && action === 'view') {
 	const script = String.raw`
 import assert from 'node:assert/strict'
 import { pathToFileURL } from 'node:url'
-const { requestSource } = await import(process.argv[1])
+const { requestSource, validateConfig } = await import(process.argv[1])
 const workspace = process.cwd()
 const read = options => requestSource(workspace, options)
 const file = 'Factory ticket.md'
@@ -154,6 +154,15 @@ await assert.rejects(read({ prompt: 'Also this', issue: '27' }), /Give one of/)
 await assert.rejects(read({ prompt: '  ' }), /Give one of/)
 await assert.rejects(read({ issue: 'https://example.invalid/issues/27' }), /GitHub issue number or URL/)
 await assert.rejects(read({ prompt: '🦉'.repeat(32769) }), /at most 128 KiB/)
+const role = { model: 'fixture/model' }
+const config = { oracle: role, factory: role, qa: { ...role, level: 'normal', minutes: 2 }, maxBuilds: 3, maxExplorations: 4, timeoutSeconds: 60 }
+assert.deepEqual(validateConfig({ ...config, verify: ['node', 'test.ts'] }).jobs, { afterFactory: [['node', 'test.ts']] })
+assert.deepEqual(validateConfig({ ...config, jobs: { afterReview: [] } }).jobs, { afterReview: [] })
+assert.throws(() => validateConfig({ ...config, jobs: { afterRun: [] } }), /Unknown jobs setting afterRun/)
+assert.throws(() => validateConfig({ ...config, jobs: { afterFactory: ['node', 'test.ts'] } }), /must be a command and its arguments/)
+assert.throws(() => validateConfig({ ...config, jobs: { afterFactory: [] }, verify: ['node'] }), /Use either verify or jobs.afterFactory/)
+assert.throws(() => validateConfig({ ...config, qa: { ...config.qa, exploreBeforeFactory: 'true' } }), /must be true or false/)
+assert.throws(() => validateConfig({ ...config, maxExplorations: 1, qa: { ...config.qa, exploreBeforeFactory: true } }), /maxExplorations must be between 2 and 50/)
 `
 	const result = spawnSync(process.execPath, ['--input-type=module', '--eval', script, moduleURL], {
 		cwd: workspace,
@@ -176,122 +185,221 @@ await assert.rejects(read({ prompt: '🦉'.repeat(32769) }), /at most 128 KiB/)
 	)
 })
 
-test(
-	'the factory pauses for a scope choice, records a QA defect, fixes it, and passes a new build',
-	{ timeout: 120_000 },
-	async (t) => {
-		const home = directory(t)
-		const repository = join(home, 'source')
-		const campaign = join(home, 'campaign')
-		const bin = join(home, 'bin')
-		const calls = join(home, 'calls.jsonl')
-		mkdirSync(join(repository, 'scripts'), { recursive: true })
-		mkdirSync(bin)
-		writeFileSync(calls, '')
-		const env = {
-			...process.env,
-			PATH: `${bin}${delimiter}${process.env.PATH}`,
-			GIT_AUTHOR_NAME: 'Fixture',
-			GIT_AUTHOR_EMAIL: 'fixture@example.invalid',
-			GIT_COMMITTER_NAME: 'Fixture',
-			GIT_COMMITTER_EMAIL: 'fixture@example.invalid',
-			npm_config_audit: 'false',
-			npm_config_fund: 'false',
-			npm_config_offline: 'true',
-		}
-		function execute(file: string, args: string[], expected = 0) {
-			const result = spawnSync(file, args, { cwd: repository, env, encoding: 'utf8', timeout: 90_000 })
-			assert.ifError(result.error)
-			assert.equal(result.status, expected, result.stdout + result.stderr)
-			return result.stdout
-		}
-		const run = (args: string[], expected = 0) =>
-			execute(process.execPath, [join(root, 'scripts/factory.mjs'), ...args], expected)
-		const save = (name: string, data: string) => writeFileSync(join(repository, name), data)
-		const manifest = { name: 'checkmate-factory-fixture', version: '1.0.0', type: 'module', private: true }
-		save('package.json', JSON.stringify(manifest))
-		save(
-			'package-lock.json',
-			JSON.stringify({
-				name: manifest.name,
-				version: manifest.version,
-				lockfileVersion: 3,
-				packages: { '': manifest },
-			})
-		)
-		save('.gitignore', 'node_modules/\ncli/dist/\n')
-		save('message.txt', 'BASE')
-		save('scripts/preview.mjs', preview)
-		save(
-			'scripts/build-cli.ts',
-			`import { copyFileSync, mkdirSync } from 'node:fs'\nmkdirSync('cli/dist', { recursive: true })\ncopyFileSync('scripts/preview.mjs', 'cli/dist/checkmate.js')\n`
-		)
-		save(
-			'scripts/verify.ts',
-			`import assert from 'node:assert/strict'\nimport { readFileSync } from 'node:fs'\nassert(['FIRST', 'READY'].includes(readFileSync('message.txt', 'utf8')))\n`
-		)
-		save(
-			'factory.yml',
-			`oracle: {model: fixture/model, effort: medium}\nfactory: {model: fixture/model, effort: medium}\nqa: {model: fixture/model, effort: medium, level: smoke, minutes: 1}\nmaxBuilds: 3\nmaxExplorations: 4\nverify: [node, scripts/verify.ts]\ntimeoutSeconds: 60\n`
-		)
-		writeFileSync(join(bin, 'pi'), fakePi(calls))
-		chmodSync(join(bin, 'pi'), 0o700)
-		execute('git', ['init', '-q', '-b', 'main'])
-		execute('git', ['add', '.'])
-		execute('git', ['commit', '-qm', 'Fixture baseline'])
-		const baseline = execute('git', ['rev-parse', 'HEAD']).trim()
-
-		run(['start', '--prompt', 'Display READY in the preview.', '--output', campaign, '--config', 'factory.yml'], 2)
-		assert.match(
-			readFileSync(join(campaign, 'decisions.json'), 'utf8'),
-			/How should the preview communicate readiness/
-		)
-		assert.doesNotMatch(readFileSync(calls, 'utf8'), /"stage":"worker"/)
-		const answers = join(home, 'answers.json')
-		writeFileSync(answers, JSON.stringify({ D1: 'text' }))
-		run(['resume', campaign, '--answers', answers])
-		assert.match(run(['status', campaign]), /passed/)
-		assert.equal(execute('git', ['rev-parse', 'HEAD']).trim(), baseline)
-		assert.equal(execute('git', ['status', '--porcelain']), '')
-		const bundleRefs = execute('git', ['bundle', 'list-heads', join(campaign, 'candidate.bundle')])
-
-		const records = join(campaign, 'records')
-		const db = new DatabaseSync(join(records, '.checkmate', 'checkmate.db'), { readOnly: true })
-		try {
-			const plan = db.prepare('SELECT plan_id FROM plan_requests').get()!.plan_id as string
-			const attempts = db.prepare('SELECT build FROM explorations ORDER BY rowid').all()
-			assert.equal(attempts.length, 2)
-			assert.notEqual(attempts[0].build, attempts[1].build)
-			assert(
-				bundleRefs.split('\n').some((line) => line.startsWith(`${attempts[1].build} `)),
-				bundleRefs
+for (const exploreBeforeFactory of [false, true])
+	test(
+		exploreBeforeFactory
+			? 'factory phase jobs run in order, and baseline findings reach the worker before the first edit'
+			: 'the factory pauses for a scope choice, records a QA defect, fixes it, and passes a new build',
+		{ timeout: 120_000 },
+		async (t) => {
+			const home = directory(t)
+			const repository = join(home, 'source')
+			const campaign = join(home, 'campaign')
+			const bin = join(home, 'bin')
+			const calls = join(home, 'calls.jsonl')
+			mkdirSync(join(repository, 'scripts'), { recursive: true })
+			mkdirSync(bin)
+			writeFileSync(calls, '')
+			const env = {
+				...process.env,
+				PATH: `${bin}${delimiter}${process.env.PATH}`,
+				GIT_AUTHOR_NAME: 'Fixture',
+				GIT_AUTHOR_EMAIL: 'fixture@example.invalid',
+				GIT_COMMITTER_NAME: 'Fixture',
+				GIT_COMMITTER_EMAIL: 'fixture@example.invalid',
+				npm_config_audit: 'false',
+				npm_config_fund: 'false',
+				npm_config_offline: 'true',
+			}
+			function execute(file: string, args: string[], expected = 0) {
+				const result = spawnSync(file, args, { cwd: repository, env, encoding: 'utf8', timeout: 90_000 })
+				assert.ifError(result.error)
+				assert.equal(result.status, expected, result.stdout + result.stderr)
+				return result.stdout
+			}
+			const run = (args: string[], expected = 0) =>
+				execute(process.execPath, [join(root, 'scripts/factory.mjs'), ...args], expected)
+			const save = (name: string, data: string) => writeFileSync(join(repository, name), data)
+			const manifest = { name: 'checkmate-factory-fixture', version: '1.0.0', type: 'module', private: true }
+			save('package.json', JSON.stringify(manifest))
+			save(
+				'package-lock.json',
+				JSON.stringify({
+					name: manifest.name,
+					version: manifest.version,
+					lockfileVersion: 3,
+					packages: { '': manifest },
+				})
 			)
-			const status = json(records, ['status', plan])
-			assert.equal(status.code, 0, JSON.stringify(status.body))
-			assert.equal(status.body.state, 'passed')
-			const retested = json(records, ['claim', 'list', plan, '--all']).body.claims
-			assert.equal(retested.length, 1)
-			assert.equal(retested[0].latestRetest, 'fixed')
-			assert.equal(retested[0].open, false)
-			const operations = db
-				.prepare('SELECT command FROM operations ORDER BY rowid')
-				.all()
-				.map((row) => row.command)
-			for (const command of ['gap answer', 'claim accept', 'claim handoff'])
-				assert(operations.includes(command), command)
-		} finally {
-			db.close()
-		}
-		const trace = readFileSync(calls, 'utf8')
-			.trim()
-			.split('\n')
-			.map((line) => JSON.parse(line))
-		assert.match(trace.find((call) => call.stage === 'worker').prompt, /Use status text/)
-		const tested = trace.filter((call) => call.stage === 'test')
-		assert.deepEqual(
-			tested.map((call) => call.body),
-			['FIRST', 'READY']
-		)
-		for (const { url } of tested) await assert.rejects(fetch(url, { signal: AbortSignal.timeout(2000) }))
+			save('.gitignore', 'node_modules/\ncli/dist/\n')
+			save('message.txt', 'BASE')
+			save('scripts/preview.mjs', preview)
+			save(
+				'scripts/build-cli.ts',
+				`import { copyFileSync, mkdirSync } from 'node:fs'\nmkdirSync('cli/dist', { recursive: true })\ncopyFileSync('scripts/preview.mjs', 'cli/dist/checkmate.js')\n`
+			)
+			save(
+				'scripts/verify.ts',
+				`import assert from 'node:assert/strict'\nimport { readFileSync } from 'node:fs'\nassert(['FIRST', 'READY'].includes(readFileSync('message.txt', 'utf8')))\n`
+			)
+			save(
+				'scripts/job.mjs',
+				String.raw`import assert from 'node:assert/strict'
+import { appendFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
+const [stage, marker] = process.argv.slice(2)
+const { CHECKMATE_FACTORY_BUILD: build, CHECKMATE_FACTORY_CAMPAIGN_DIR: campaign,
+	CHECKMATE_FACTORY_RECORDS_DIR: records, CHECKMATE_FACTORY_EXPLORATION: exploration } = process.env
+assert.equal(records, join(campaign, 'records'))
+assert.ok(existsSync(join(records, '.checkmate', 'checkmate.db')))
+const trace = ${JSON.stringify(calls)}
+const body = readFileSync('message.txt', 'utf8')
+appendFileSync(trace, JSON.stringify({ stage, build, exploration, body, marker }) + '\n')
+if (stage === 'afterVerify') assert.ok(existsSync('cli/dist/checkmate.js'))
+if (stage === 'afterExploration' && exploration === 'x-1') {
+	const firstFailure = join(campaign, 'hook-failed')
+	const attempts = readFileSync(trace, 'utf8').trim().split('\n').map(JSON.parse)
+	const { url } = attempts.find(record => record.stage === 'test')
+	await assert.rejects(fetch(url, { signal: AbortSignal.timeout(2000) }))
+	if (!existsSync(firstFailure)) {
+		writeFileSync(firstFailure, 'failed')
+		throw new Error('Phase job interrupted the baseline before oracle review.')
 	}
-)
+}
+if (stage === 'afterFactory' && body === 'FIRST') throw new Error('FIRST failed the configured gate.')
+`
+			)
+			save(
+				'factory.yml',
+				`oracle: {model: fixture/model, effort: medium}\nfactory: {model: fixture/model, effort: medium}\nqa: {model: fixture/model, effort: medium, level: smoke, minutes: 1, exploreBeforeFactory: ${exploreBeforeFactory}}\nmaxBuilds: 3\nmaxExplorations: 4\ntimeoutSeconds: 60\n` +
+					(exploreBeforeFactory
+						? `jobs:
+  afterScope:
+    - [node, scripts/job.mjs, afterScope, 'one argument']
+    - [node, scripts/job.mjs, afterScope, second]
+  afterFactory:
+    - [node, scripts/job.mjs, afterFactory]
+  afterVerify:
+    - [node, scripts/job.mjs, afterVerify]
+  afterExploration:
+    - [node, scripts/job.mjs, afterExploration]
+  afterReview:
+    - [node, scripts/job.mjs, afterReview]
+`
+						: 'verify: [node, scripts/verify.ts]\n')
+			)
+			writeFileSync(join(bin, 'pi'), fakePi(calls))
+			chmodSync(join(bin, 'pi'), 0o700)
+			execute('git', ['init', '-q', '-b', 'main'])
+			execute('git', ['add', '.'])
+			execute('git', ['commit', '-qm', 'Fixture baseline'])
+			const baseline = execute('git', ['rev-parse', 'HEAD']).trim()
+
+			run(
+				['start', '--prompt', 'Display READY in the preview.', '--output', campaign, '--config', 'factory.yml'],
+				2
+			)
+			assert.match(
+				readFileSync(join(campaign, 'decisions.json'), 'utf8'),
+				/How should the preview communicate readiness/
+			)
+			assert.doesNotMatch(readFileSync(calls, 'utf8'), /"stage":"worker"/)
+			const answers = join(home, 'answers.json')
+			writeFileSync(answers, JSON.stringify({ D1: 'text' }))
+			const resumed = JSON.parse(run(['resume', campaign, '--answers', answers], exploreBeforeFactory ? 1 : 0))
+			if (exploreBeforeFactory) {
+				assert.equal(resumed.phase, 'afterExploration')
+				assert.equal(resumed.builds, 0)
+				assert.equal(resumed.explorations, 1)
+				assert.match(resumed.reason, /Phase job interrupted the baseline/)
+				assert.doesNotMatch(readFileSync(calls, 'utf8'), /"stage":"(worker|review)"/)
+				assert.equal(JSON.parse(run(['resume', campaign])).baselineExploration, 'x-1')
+			}
+			assert.match(run(['status', campaign]), /passed/)
+			assert.equal(execute('git', ['rev-parse', 'HEAD']).trim(), baseline)
+			assert.equal(execute('git', ['status', '--porcelain']), '')
+			const bundleRefs = execute('git', ['bundle', 'list-heads', join(campaign, 'candidate.bundle')])
+
+			const records = join(campaign, 'records')
+			const db = new DatabaseSync(join(records, '.checkmate', 'checkmate.db'), { readOnly: true })
+			try {
+				const plan = db.prepare('SELECT plan_id FROM plan_requests').get()!.plan_id as string
+				const attempts = db.prepare('SELECT build FROM explorations ORDER BY rowid').all()
+				assert.equal(attempts.length, 2)
+				assert.equal(attempts[0].build === baseline, exploreBeforeFactory)
+				assert.notEqual(attempts[0].build, attempts[1].build)
+				assert(
+					bundleRefs.split('\n').some((line) => line.startsWith(`${attempts[1].build} `)),
+					bundleRefs
+				)
+				const status = json(records, ['status', plan])
+				assert.equal(status.code, 0, JSON.stringify(status.body))
+				assert.equal(status.body.state, 'passed')
+				const retested = json(records, ['claim', 'list', plan, '--all']).body.claims
+				assert.equal(retested.length, 1)
+				assert.equal(retested[0].latestRetest, 'fixed')
+				assert.equal(retested[0].open, false)
+				const operations = db
+					.prepare('SELECT command FROM operations ORDER BY rowid')
+					.all()
+					.map((row) => row.command)
+				for (const command of ['gap answer', 'claim accept', 'claim handoff'])
+					assert(operations.includes(command), command)
+			} finally {
+				db.close()
+			}
+			const trace = readFileSync(calls, 'utf8')
+				.trim()
+				.split('\n')
+				.map((line) => JSON.parse(line))
+			assert.match(trace.find((call) => call.stage === 'worker').prompt, /Use status text/)
+			if (exploreBeforeFactory) {
+				assert.deepEqual(
+					trace.map(({ stage }) => stage),
+					[
+						'scope',
+						'scope',
+						'afterScope',
+						'afterScope',
+						'afterVerify',
+						'study',
+						'test',
+						'afterExploration',
+						'afterExploration',
+						'review',
+						'afterReview',
+						'worker',
+						'afterFactory',
+						'worker',
+						'afterFactory',
+						'afterVerify',
+						'study',
+						'test',
+						'afterExploration',
+						'afterReview',
+					]
+				)
+				const scopeJobs = trace.filter(({ stage }) => stage === 'afterScope')
+				assert.deepEqual(
+					scopeJobs.map(({ marker }) => marker),
+					['one argument', 'second']
+				)
+				assert.equal(scopeJobs[0].build, baseline)
+				assert.equal(trace.find(({ stage }) => stage === 'afterReview').exploration, 'x-1')
+				const [baselineStudy, candidateStudy] = trace.filter(({ stage }) => stage === 'study')
+				assert.doesNotMatch(baselineStudy.prompt, /Read the diff first/)
+				assert.match(candidateStudy.prompt, /Read the diff first/)
+				const [firstWorker, secondWorker] = trace.filter(({ stage }) => stage === 'worker')
+				assert.match(firstWorker.prompt, /Questions and answers from baseline x-1/)
+				assert.match(firstWorker.prompt, /Display READY after the preview loads/)
+				assert.match(firstWorker.prompt, /Wrong preview text/)
+				assert.match(secondWorker.prompt, /FIRST failed the configured gate/)
+			}
+			const tested = trace.filter((call) => call.stage === 'test')
+			assert.deepEqual(
+				tested.map((call) => call.body),
+				[exploreBeforeFactory ? 'BASE' : 'FIRST', 'READY']
+			)
+			for (const { url } of tested) await assert.rejects(fetch(url, { signal: AbortSignal.timeout(2000) }))
+		}
+	)

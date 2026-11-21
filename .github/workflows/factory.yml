@@ -85,6 +85,8 @@ jobs:
             ${{ runner.temp }}/checkmate-factory/status.json
             ${{ runner.temp }}/checkmate-factory/decisions.json
             ${{ runner.temp }}/checkmate-factory/candidate.bundle
+            ${{ runner.temp }}/checkmate-factory/logs/job-*.out
+            ${{ runner.temp }}/checkmate-factory/logs/job-*.err
             ${{ runner.temp }}/checkmate-factory/records/request.md
             ${{ runner.temp }}/checkmate-factory/records/decisions.md
             ${{ runner.temp }}/checkmate-factory/records/preview.md

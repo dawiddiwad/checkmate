@@ -198,6 +198,28 @@ async function runFactory(root, directory, campaign, state) {
 	const claims = () => cm(['claim', 'list', plan]).claims
 	const logReview = (record) => writeJson(join(runtime.logs, 'review-' + state.explorations + '.json'), record)
 	const shellArg = (s) => "'" + s.replaceAll("'", "'\"'\"'") + "'"
+	const exploringBaseline = () => config.qa.exploreBeforeFactory && state.builds === 0
+
+	function checkCandidate(label) {
+		assert.equal(git(work, 'rev-parse', 'HEAD'), state.candidate, label + ' changed the candidate commit')
+		assert(!git(work, 'status', '--porcelain'), label + ' changed the candidate checkout')
+	}
+
+	async function runJobs(phase) {
+		const commands = config.jobs[phase] ?? []
+		const context = {
+			CHECKMATE_FACTORY_CAMPAIGN_DIR: directory,
+			CHECKMATE_FACTORY_RECORDS_DIR: records,
+			CHECKMATE_FACTORY_BUILD: state.candidate,
+			CHECKMATE_FACTORY_EXPLORATION: state.lastExploration ?? '',
+		}
+		for (const [index, [file, ...args]] of commands.entries()) {
+			const name = `job-${phase}-${state.builds}-${state.explorations}-${index + 1}`
+			console.error(`Factory ${phase} · job ${index + 1}/${commands.length} · ${file}`)
+			await runtime.run(file, args, work, name, context)
+			checkCandidate(name)
+		}
+	}
 
 	function bundleCandidate(candidate) {
 		if (candidate === campaign.base) return
@@ -252,7 +274,7 @@ async function runFactory(root, directory, campaign, state) {
 			}
 		}
 		if (shown?.state === 'completed') {
-			persist('review', { lastExploration: shown.explorationId, active: null })
+			persist('afterExploration', { lastExploration: shown.explorationId, active: null })
 		} else {
 			persist('explore', { active: null })
 		}
@@ -261,7 +283,7 @@ async function runFactory(root, directory, campaign, state) {
 	async function scope() {
 		if (state.charter) {
 			setupPlan(cm, state.charter, runtime.playwright)
-			return persist('build', { reason: 'The oracle set the acceptance rules.' })
+			return persist('afterScope', { reason: 'The oracle set the acceptance rules.' })
 		}
 		const result = await runtime.role(
 			'oracle',
@@ -290,6 +312,11 @@ async function runFactory(root, directory, campaign, state) {
 		persist('scope', { charter })
 	}
 
+	async function afterScope() {
+		await runJobs('afterScope')
+		persist(exploringBaseline() ? 'verify' : 'build')
+	}
+
 	async function build() {
 		if (state.builds >= config.maxBuilds)
 			return finish('exhausted', 'Reached maxBuilds. See the Checkmate plan and previous checks.')
@@ -303,13 +330,19 @@ async function runFactory(root, directory, campaign, state) {
 			'factory-' + number,
 			[
 				'# Factory worker',
-				'Implement the request or repair the listed accepted defects in this isolated checkout. Preserve behavior outside the requested scope. If you run a focused test, name its file directly with node --test. The runner owns the configured verification command and the QA run. Leave your changes in the working tree for the runner to commit. Use only the checkout for edits. Keep Git refs, external services and Checkmate reports under the runner’s control.',
+				'Implement the request or repair the listed accepted defects in this isolated checkout. Preserve behavior outside the requested scope. If you run a focused test, name its file directly with node --test. The runner owns the configured phase jobs and the QA run. Leave your changes in the working tree for the runner to commit. Use only the checkout for edits. Keep Git refs, external services and Checkmate reports under the runner’s control.',
 				'## Request',
 				ticket,
 				'## Acceptance rules',
 				JSON.stringify(state.charter),
 				'## Oracle decisions',
 				notes(),
+				...(state.baselineExploration
+					? [
+							'## Questions and answers from baseline ' + state.baselineExploration,
+							JSON.stringify(runtime.explorationQuestions(plan, state.baselineExploration)),
+						]
+					: []),
 				'## Accepted defects to fix',
 				JSON.stringify(state.fixes),
 				'## Previous build check',
@@ -349,20 +382,22 @@ async function runFactory(root, directory, campaign, state) {
 	async function verify() {
 		try {
 			await runtime.run('npm', ['ci'], work, 'install-candidate-' + state.builds)
-			await runtime.run(config.verify[0], config.verify.slice(1), work, 'verify-' + state.builds)
+			if (!exploringBaseline()) await runJobs('afterFactory')
 			await runtime.run(process.execPath, ['scripts/build-cli.ts'], work, 'build-' + state.builds)
+			checkCandidate('Build checks')
+			await runJobs('afterVerify')
 		} catch (error) {
 			abort()
+			if (exploringBaseline()) throw error
 			persist('build', { buildError: error.message, reason: 'The candidate did not pass its build check.' })
 			return
 		}
-		assert(!git(work, 'status', '--porcelain'), 'Build checks changed the candidate checkout')
 		persist('explore', { reason: 'The candidate passed its build check.' })
 	}
 
 	async function explore() {
 		await closeAttempt()
-		if (state.phase === 'review') return
+		if (state.phase === 'afterExploration') return
 		if (state.explorations >= config.maxExplorations)
 			return finish('exhausted', 'Reached maxExplorations. Inspect the remaining rules and claims in Checkmate.')
 		if (!existsSync(join(work, 'cli', 'dist', 'checkmate.js'))) return persist('verify')
@@ -381,6 +416,11 @@ async function runFactory(root, directory, campaign, state) {
 					'CLI: ' + command,
 					'Workspace: ' + preview.workspace,
 					'Checkout: ' + work,
+					...(exploringBaseline()
+						? [
+								'This is the starting build before implementation. Identify gaps in the request and exercise existing behavior. Record missing requested behavior against its acceptance rule. File separate defects for failures in existing behavior.',
+							]
+						: []),
 					'Pass --workspace ' + shellArg(preview.workspace) + ' to candidate CLI commands that use data.',
 					'The preview is disposable. The factory keeps one QA record in the campaign workspace.',
 				].join('\n\n') + '\n'
@@ -398,7 +438,7 @@ async function runFactory(root, directory, campaign, state) {
 				'--entry',
 				'sandbox=' + preview.workspace,
 				'--environment',
-				'Factory candidate ' + state.candidate,
+				(exploringBaseline() ? 'Factory baseline ' : 'Factory candidate ') + state.candidate,
 			])
 			const launch = cm([
 				'explore',
@@ -408,12 +448,7 @@ async function runFactory(root, directory, campaign, state) {
 				state.candidate,
 				'--instance',
 				instance,
-				'--repo',
-				work,
-				'--since',
-				campaign.base,
-				'--until',
-				state.candidate,
+				...(exploringBaseline() ? [] : ['--repo', work, '--since', campaign.base, '--until', state.candidate]),
 				'--mode',
 				'exploratory',
 				'--level',
@@ -449,6 +484,11 @@ async function runFactory(root, directory, campaign, state) {
 		} finally {
 			await closeAttempt(preview.close)
 		}
+	}
+
+	async function afterExploration() {
+		await runJobs('afterExploration')
+		persist('review')
 	}
 
 	async function review() {
@@ -509,9 +549,14 @@ async function runFactory(root, directory, campaign, state) {
 			}
 			if (result.decisions.length) return pending(result.decisions)
 		}
+		persist('afterReview')
+	}
+
+	async function afterReview() {
+		await runJobs('afterReview')
 		const fresh = summary()
-		persist('review', { nativeState: fresh.state, nativeNext: fresh.next })
-		if (fresh.state === 'passed') {
+		persist('afterReview', { nativeState: fresh.state, nativeNext: fresh.next })
+		if (fresh.state === 'passed' && !exploringBaseline()) {
 			const latest = fresh.explorations.at(-1)
 			assert.equal(
 				latest?.explorationId,
@@ -528,7 +573,14 @@ async function runFactory(root, directory, campaign, state) {
 		for (const claim of fixes) {
 			if (!claim.handoff) cm(['claim', 'handoff', plan, claim.id, '--to', 'factory'], { actor: 'oracle' })
 		}
-		if (fixes.length) persist('build', { fixes, reason: 'The oracle handed accepted defects to the factory.' })
+		if (exploringBaseline()) {
+			persist('build', {
+				fixes,
+				baselineExploration: state.lastExploration,
+				reason: 'The oracle reviewed the baseline. The factory can start implementation.',
+			})
+		} else if (fixes.length)
+			persist('build', { fixes, reason: 'The oracle handed accepted defects to the factory.' })
 		else persist('explore', { fixes: [], reason: 'Checkmate needs a fresh exploration to complete the record.' })
 	}
 
@@ -537,7 +589,7 @@ async function runFactory(root, directory, campaign, state) {
 	try {
 		ensureWorktree()
 		await runtime.models()
-		const phases = { scope, build, verify, explore, review }
+		const phases = { scope, afterScope, build, verify, explore, afterExploration, review, afterReview }
 		while (state.state === 'running') {
 			abort()
 			console.error(

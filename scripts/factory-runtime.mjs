@@ -4,6 +4,7 @@ import { closeSync, existsSync, mkdirSync, openSync, readFileSync } from 'node:f
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { setTimeout as pause } from 'node:timers/promises'
+import { planQuestions } from '../plugin/src/journal.ts'
 import { discoverModelCatalog } from '../plugin/src/model-catalog.ts'
 import { executableOnPath } from '../plugin/src/sessions.ts'
 import { saveModels } from '../plugin/src/settings.ts'
@@ -169,8 +170,8 @@ export function createRuntime(directory, config) {
 		return output.error?.message ?? (tail(output.stderr) || fallback)
 	}
 
-	async function run(file, args, cwd, name) {
-		const output = await logged(file, args, cwd, name)
+	async function run(file, args, cwd, name, context) {
+		const output = await logged(file, args, cwd, name, context && { ...buildEnv, ...context })
 		if (output.code !== 0)
 			throw new Error(`${name} failed. See ${output.stderr}. ${failure(output, tail(output.stdout))}`)
 		return output
@@ -240,6 +241,17 @@ export function createRuntime(directory, config) {
 					return [{ name: evidence.name, text: Buffer.from(evidence.bytes).toString('utf8', 0, 2000) }]
 				}),
 			}))
+		} finally {
+			closeStore(store)
+		}
+	}
+
+	function explorationQuestions(plan, explorationId) {
+		const store = openReadOnlyStore(records)
+		try {
+			return planQuestions(store, plan)
+				.filter((item) => item.explorationId === explorationId)
+				.map(({ id, question, answer }) => ({ id, question, answer }))
 		} finally {
 			closeStore(store)
 		}
@@ -349,6 +361,7 @@ export function createRuntime(directory, config) {
 		cm,
 		models,
 		claimEvidence,
+		explorationQuestions,
 		role,
 		preview,
 		playwright: Boolean(executableOnPath('playwright-cli', env)),

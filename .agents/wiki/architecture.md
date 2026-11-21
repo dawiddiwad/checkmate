@@ -31,3 +31,5 @@ The host owns the agent loop, authentication, credentials, context, tools, and p
 A Pi provider-only override uses the current saved model for that provider or the model that Pi selects within that provider. The launch choice stays in the record. Pi events give the observed model IDs and any reported costs. Each phase and chat turn keeps the costs of its own calls.
 
 The oracle owns scope, decisions, and release decisions. The factory owns application startup and fixes. Target content cannot authorize a change to the request or plan.
+
+For Checkmate development, `scripts/factory.mjs` runs the jobs in `factory.yml` after each configured phase. It can explore the starting build and review the results before the factory agent starts implementation.

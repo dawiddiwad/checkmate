@@ -3,7 +3,7 @@ name: checkmate-factory
 description: Start, inspect, or resume a Checkmate development campaign in the Checkmate source repository. Use for a development task from a GitHub issue, a prompt, or a file.
 ---
 
-Use `scripts/factory.mjs` from the root of the Checkmate source repository. This workflow needs the source checkout, its installed dependencies, and an authenticated Pi host. The repository's `factory.yml` sets the role models, effort levels, and campaign limits.
+Use `scripts/factory.mjs` from the root of the Checkmate source repository. This workflow needs the source checkout, its installed dependencies, and an authenticated Pi host. The repository's `factory.yml` sets the role models, effort, phase jobs, and campaign limits. Set `qa.exploreBeforeFactory` to `true` to explore the starting build before the factory agent begins. Use `--config <yaml>` to choose a different config.
 
 Start a campaign with exactly one input. Pass the user's text or path as one argument.
 

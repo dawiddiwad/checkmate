@@ -9,7 +9,14 @@ qa:
   effort: medium
   level: normal
   minutes: 4
+  exploreBeforeFactory: false
 maxBuilds: 3
 maxExplorations: 6
 timeoutSeconds: 900
-verify: [npm, run, 'phase:verify']
+jobs:
+  afterScope: []
+  afterFactory:
+    - [npm, run, 'phase:verify']
+  afterVerify: []
+  afterExploration: []
+  afterReview: []

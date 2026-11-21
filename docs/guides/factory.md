@@ -12,7 +12,7 @@ The factory opens each subject with a command and gives each stage to the select
 
 In the Checkmate source repository, the factory runner turns a development request into a campaign. The oracle sets the scope and resolves decisions. The factory agent changes and builds Checkmate in a separate worktree. Checkmate explores the candidate and keeps the plan, findings, evidence, and decisions in the campaign record. The factory fixes confirmed defects. Checkmate retests each candidate.
 
-Use Node.js 24.12.0 or later, Git, and an authenticated Pi host. Run `npm ci` from the source checkout. For a GitHub issue, install and authenticate `gh` as well. Edit the repository's [`factory.yml`](../../factory.yml) to set the model and effort for each role, the QA level and time, and the limits for builds and explorations. Pi supplies the credentials.
+Use Node.js 24.12.0 or later, Git, and an authenticated Pi host. Run `npm ci` from the source checkout. For a GitHub issue, install and authenticate `gh` as well. The repository's [`factory.yml`](../../factory.yml) sets the role models, effort, phase jobs, and campaign limits. Pi supplies the credentials.
 
 From the source checkout, start `pi --skill ./cli/skills/checkmate-factory`. In Pi, enter `/skill:checkmate-factory <development request>`. An agent or a script can call the same runner directly. Use one input per campaign.
 
@@ -23,6 +23,33 @@ node scripts/factory.mjs start --file docs/change.md
 ```
 
 `--issue` also accepts a GitHub issue URL. `--file` accepts a local path, file URL, or HTTP link. Authenticate `gh` for a GitHub file link. Use `--config <yaml>` to use another config and `--output <new-campaign-dir>` to set the campaign directory.
+
+### Set phase jobs and baseline exploration
+
+To explore the starting build and run two focused checks after each factory round, set these keys in a copy of `factory.yml`. Keep the other `qa` settings in that copy.
+
+```yaml
+qa:
+  exploreBeforeFactory: true
+jobs:
+  afterFactory:
+    - [node, --test, test/cli.test.ts]
+    - [node, --test, test/ui.test.ts]
+```
+
+Set `qa.exploreBeforeFactory` to `true` to explore the starting build after the oracle sets the acceptance rules. The oracle reviews the baseline before implementation. The factory agent receives the baseline questions, answers, and accepted defects. The baseline uses one exploration from `maxExplorations`. Set the limit to at least two to leave room for candidate QA. The default is `false`.
+
+| Job list           | When it runs                                                                        |
+| ------------------ | ----------------------------------------------------------------------------------- |
+| `afterScope`       | After the plan opens, before baseline QA or the first factory round.                |
+| `afterFactory`     | After each factory round commits its edits and installs candidate dependencies.     |
+| `afterVerify`      | After the CLI package builds, including for a baseline.                             |
+| `afterExploration` | After a completed exploration closes its preview, before oracle review.             |
+| `afterReview`      | After oracle review and any required human decision, before the next phase or pass. |
+
+Jobs run in order in the isolated worktree. Give each command as a list of arguments. The runner executes the list directly. Use `[]` or omit a job list to skip it. Write job artifacts to the campaign directory. The checked-in config runs `npm run phase:verify` after the factory. Older configs can still use `verify` for a single `afterFactory` command. The runner installs dependencies and builds the CLI to prepare the preview.
+
+A failed `afterFactory` or candidate `afterVerify` job sends the error to the next factory round. Other job failures stop the campaign at that phase. Resume retries the unfinished phase and its jobs. Read each command's output in the campaign `logs/` directory. Jobs can use `CHECKMATE_FACTORY_CAMPAIGN_DIR`, `CHECKMATE_FACTORY_RECORDS_DIR`, `CHECKMATE_FACTORY_BUILD`, and `CHECKMATE_FACTORY_EXPLORATION`. The last variable gives the latest completed exploration ID or an empty value.
 
 For GitHub Actions, configure the `CHECKMATE_FACTORY_PI_AUTH` secret with the Pi host's auth file format. Once the [factory workflow](../../.github/workflows/factory.yml) is on the default branch, dispatch it and select the input type and value. The workflow uploads a campaign artifact. Download it to resume in a source checkout that has the campaign's base commit.
 

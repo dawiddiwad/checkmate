@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url'
 import { parseDocument } from 'yaml'
 
 const inputLimit = 128 * 1024
+const jobPhases = ['afterScope', 'afterFactory', 'afterVerify', 'afterExploration', 'afterReview']
 
 function mapping(value, label, keys) {
 	assert(value && typeof value === 'object' && !Array.isArray(value), label + ' must be a mapping')
@@ -32,6 +33,14 @@ function role(value, name, fields = []) {
 	return settings
 }
 
+function command(value, label) {
+	assert(
+		Array.isArray(value) && value.length && value.every((item) => typeof item === 'string' && item.trim()),
+		label + ' must be a command and its arguments'
+	)
+	return value
+}
+
 export function readConfig(path) {
 	const document = parseDocument(readFileSync(path, 'utf8'))
 	if (document.errors.length) throw document.errors[0]
@@ -46,24 +55,34 @@ export function validateConfig(value) {
 		'maxBuilds',
 		'maxExplorations',
 		'timeoutSeconds',
+		'jobs',
 		'verify',
 	])
-	const qa = role(config.qa, 'qa', ['level', 'minutes'])
+	const qa = role(config.qa, 'qa', ['level', 'minutes', 'exploreBeforeFactory'])
 	assert(['smoke', 'normal', 'deep'].includes(qa.level), 'qa.level must be smoke, normal, or deep')
 	assert(
-		Array.isArray(config.verify) &&
-			config.verify.length &&
-			config.verify.every((item) => typeof item === 'string' && item.trim()),
-		'verify must be a command and its arguments'
+		qa.exploreBeforeFactory === undefined || typeof qa.exploreBeforeFactory === 'boolean',
+		'qa.exploreBeforeFactory must be true or false'
 	)
+	const jobs = config.jobs === undefined ? {} : mapping(config.jobs, 'jobs', jobPhases)
+	const phaseJobs = Object.fromEntries(
+		Object.entries(jobs).map(([phase, commands]) => {
+			assert(Array.isArray(commands), 'jobs.' + phase + ' must be a list of commands')
+			return [phase, commands.map((item, index) => command(item, `jobs.${phase}[${index}]`))]
+		})
+	)
+	if (config.verify !== undefined) {
+		assert(phaseJobs.afterFactory === undefined, 'Use either verify or jobs.afterFactory')
+		phaseJobs.afterFactory = [command(config.verify, 'verify')]
+	}
 	return {
 		oracle: role(config.oracle, 'oracle'),
 		factory: role(config.factory, 'factory'),
 		qa: { ...qa, minutes: integer(qa.minutes, 'qa.minutes', 1, 60) },
 		maxBuilds: integer(config.maxBuilds, 'maxBuilds', 1, 20),
-		maxExplorations: integer(config.maxExplorations, 'maxExplorations', 1, 50),
+		maxExplorations: integer(config.maxExplorations, 'maxExplorations', qa.exploreBeforeFactory ? 2 : 1, 50),
 		timeoutSeconds: integer(config.timeoutSeconds, 'timeoutSeconds', 60, 7200),
-		verify: config.verify,
+		jobs: phaseJobs,
 	}
 }
 

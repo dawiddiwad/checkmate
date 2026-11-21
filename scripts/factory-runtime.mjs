@@ -4,7 +4,7 @@ import { closeSync, existsSync, mkdirSync, openSync, readFileSync } from 'node:f
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { setTimeout as pause } from 'node:timers/promises'
-import { planQuestions } from '../plugin/src/journal.ts'
+import { journal, planQuestions } from '../plugin/src/journal.ts'
 import { discoverModelCatalog } from '../plugin/src/model-catalog.ts'
 import { executableOnPath } from '../plugin/src/sessions.ts'
 import { saveModels } from '../plugin/src/settings.ts'
@@ -253,9 +253,22 @@ export function createRuntime(directory, config) {
 	function explorationQuestions(plan, explorationId) {
 		const store = openReadOnlyStore(records)
 		try {
-			return planQuestions(store, plan)
-				.filter((item) => item.explorationId === explorationId)
-				.map(({ id, question, answer }) => ({ id, question, answer }))
+			return planQuestions(store, plan).filter(
+				(item) => explorationId === undefined || item.explorationId === explorationId
+			)
+		} finally {
+			closeStore(store)
+		}
+	}
+
+	function explorationNotes(plan, explorationId) {
+		if (!explorationId) return []
+		const store = openReadOnlyStore(records)
+		try {
+			return journal(store, plan)
+				.team.filter((entry) => entry.explorationId === explorationId && entry.kind === 'note')
+				.map(({ text }) => text?.slice(0, 1000))
+				.slice(0, 12)
 		} finally {
 			closeStore(store)
 		}
@@ -301,19 +314,23 @@ export function createRuntime(directory, config) {
 		const workspace = join(directory, name)
 		mkdirSync(workspace, { recursive: true, mode: 0o700 })
 		const seed = join(work, 'scripts', 'ui-demo.ts')
+		let chatPath
 		if (existsSync(seed)) {
-			await run(
+			const receipt = await run(
 				node,
 				[
 					'--input-type=module',
 					'-e',
-					"import { pathToFileURL } from 'node:url'; const { seedDemo } = await import(pathToFileURL(process.argv[1])); seedDemo(process.argv[2])",
+					"import { pathToFileURL } from 'node:url'; const { seedDemo } = await import(pathToFileURL(process.argv[1])); const fixture = seedDemo(process.argv[2], { factory: true }); if (fixture) console.log(JSON.stringify(fixture))",
 					seed,
 					workspace,
 				],
 				work,
 				name + '-seed'
 			)
+			const fixture = readFileSync(receipt.stdout, 'utf8').trim().split('\n').at(-1)
+			if (fixture?.startsWith('{')) chatPath = JSON.parse(fixture).chatPath
+			assert(chatPath === undefined || /^\/chats\/[\w-]+$/.test(chatPath), 'Invalid factory sample chat path')
 		}
 		const cli = join(work, 'cli', 'dist', 'checkmate.js')
 		const stdout = join(logs, name + '.out')
@@ -346,7 +363,7 @@ export function createRuntime(directory, config) {
 						url.protocol === 'http:' && url.hostname === '127.0.0.1' && url.port,
 						'Candidate UI must serve a private IPv4 loopback port'
 					)
-					return { url: url.href, workspace, cli, close }
+					return { url: url.href, workspace, cli, close, chatPath }
 				}
 				await pause(150)
 			}
@@ -368,6 +385,7 @@ export function createRuntime(directory, config) {
 		models,
 		claimEvidence,
 		explorationQuestions,
+		explorationNotes,
 		role,
 		preview,
 		playwright: Boolean(executableOnPath('playwright-cli', env)),

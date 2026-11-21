@@ -6,20 +6,25 @@ import { DatabaseSync } from 'node:sqlite'
 import test from 'node:test'
 import { pathToFileURL } from 'node:url'
 import { startUi } from '../plugin/src/ui/server.ts'
+import { seedDemo } from '../scripts/ui-demo.ts'
 import { directory, json, root } from './support.ts'
 
 const preview = `import { createServer } from 'node:http'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 const text = readFileSync(new URL('../../message.txt', import.meta.url), 'utf8')
 if (process.argv[2] !== 'ui') process.exit(1)
-const server = createServer((request, response) => response.end(text))
+const workspace = process.argv[process.argv.indexOf('--workspace') + 1]
+const server = createServer((request, response) => {
+	if (request.url === '/chats/fixture' && existsSync(workspace + '/chat.txt')) response.end(readFileSync(workspace + '/chat.txt', 'utf8'))
+	else response.end(text)
+})
 server.listen(0, '127.0.0.1', () => {
 	console.log(JSON.stringify({ status: 'completed', subject: 'ui', reasons: [], url: 'http://127.0.0.1:' + server.address().port }))
 })
 process.on('SIGTERM', () => server.close())
 `
 
-const fakePi = (journal: string, oracleCorrections: boolean) => `#!/usr/bin/env node
+const fakePi = (journal: string, mode: string) => `#!/usr/bin/env node
 const { randomUUID } = require('node:crypto')
 const { appendFileSync, readFileSync, writeFileSync } = require('node:fs')
 const { createInterface } = require('node:readline')
@@ -29,7 +34,8 @@ const after = flag => args.includes(flag) ? args[args.indexOf(flag) + 1] : undef
 const model = { provider: 'fixture', id: 'model', reasoning: true }
 const emit = data => console.log(JSON.stringify(data))
 const journal = ${JSON.stringify(journal)}
-const oracleCorrections = ${oracleCorrections}
+const mode = ${JSON.stringify(mode)}
+const oracleCorrections = mode === 'baseline'
 const record = data => appendFileSync(journal, JSON.stringify(data) + '\\n')
 const calls = () => readFileSync(journal, 'utf8').trim().split('\\n').filter(Boolean).map(JSON.parse)
 if (after('--mode') === 'rpc') {
@@ -62,11 +68,14 @@ async function main() {
 			requirements: [rule],
 			decisions: awaitingChoice ? [readiness] : [],
 		}
-		if (firstScope) result = '{'
+		if (mode === 'setup') result.decisions = []
+		else if (firstScope) result = '{'
 	} else if (prompt.startsWith('# Factory worker')) {
 		const prior = readFileSync('message.txt', 'utf8')
 		record({ stage: 'worker', prior, cwd: process.cwd(), prompt })
-		writeFileSync('message.txt', prior === 'BASE' && !prompt.includes('Questions and answers from baseline') ? 'FIRST' : 'READY')
+		if (mode === 'setup' && prompt.includes('## Required preview setup')) {
+			writeFileSync('scripts/ui-demo.ts', 'import { writeFileSync } from "node:fs"\\nexport function seedDemo(workspace) { writeFileSync(workspace + "/chat.txt", "Loaded chat history"); return { chatPath: "/chats/fixture" } }\\n')
+		} else writeFileSync('message.txt', prior === 'BASE' && !prompt.includes('Questions and answers from baseline') ? 'FIRST' : 'READY')
 		result = 'Updated the preview.'
 	} else if (prompt.startsWith('# Factory oracle review')) {
 		const firstReview = !calls().some(call => call.stage === 'review')
@@ -89,6 +98,11 @@ async function main() {
 			}]
 		}
 		else if (firstReview) result = { answers: [], claims: [], decisions: [] }
+		if (mode === 'setup') {
+			const questions = JSON.parse(prompt.split('## Questions\\n\\n')[1].split('\\n\\n##')[0])
+			result = { answers: questions.map(({ id }) => ({ id, value: 'Compare the plan list and chat.', source: 'The ticket.', rationale: 'Both are review pages.' })), claims: [], decisions: [] }
+			if (firstReview) result.previewSetup = 'Seed a populated chat in every preview.'
+		}
 	} else if (prompt.startsWith('A change of the application')) {
 		const url = prompt.match(/http:\\/\\/127\\.0\\.0\\.1:\\d+/)?.[0]
 		if (!url) throw new Error('The QA study lacks a preview URL')
@@ -99,19 +113,28 @@ async function main() {
 	} else if (prompt.startsWith('Now test')) {
 		const { url } = calls().find(call => call.stage === 'study' && call.session === session)
 		const body = await (await fetch(url)).text()
-		record({ stage: 'test', session, url, body })
+	const chat = readFileSync('preview.md', 'utf8').match(/Sample chat with message history: (\\S+)/)?.[1]
+		const fixture = chat ? await (await fetch(chat)).text() : null
+		record({ stage: 'test', session, url, body, fixture })
 		writeFileSync(join(work, 'observed.txt'), body)
 		writeFileSync(join(work, 'report.md'), 'The deployed preview displayed ' + body + '.')
 		result = 'Tested the preview.'
 	} else if (prompt.startsWith('Now write the record')) {
 		const observation = calls().find(call => call.stage === 'test' && call.session === after('--fork'))
 		const ready = observation.body === 'READY'
+		if (mode === 'setup') result = [
+			{ kind: 'criterion', rule: 'R1', text: rule },
+			{ kind: 'note', text: observation.fixture ? 'The chat loaded, but the visual comparison is still unverified.' : 'A populated chat is missing from the preview.' },
+			...(observation.fixture ? [{ kind: 'question', id: 'Q1', rule: 'R1', question: 'Which page should be compared?', blocking: false }] : []),
+		]
+		else {
 		result = [{ kind: 'criterion', rule: 'R1', text: rule, verdict: ready ? 'ok' : 'wrong', saw: observation.body }]
 		if (ready) result.push({ kind: 'verdict', defect: 'a1/D1', result: 'fixed', saw: 'The preview displayed READY.' })
 		else result.push(
 			{ kind: 'defect', id: 'D1', rule: 'R1', title: 'Wrong preview text', severity: 'medium', steps: 'Open the deployed preview.', expected: 'READY', actual: observation.body, evidence: ['observed.txt'] },
 			{ kind: 'question', id: 'Q1', rule: 'R1', question: 'When should READY be displayed?', blocking: true },
 		)
+		}
 	} else throw new Error('Unexpected fake Pi prompt: ' + prompt.slice(0, 200))
 	const text = typeof result === 'string' ? result : JSON.stringify(result)
 	const message = { role: 'assistant', provider: model.provider, model: model.id, stopReason: 'stop', content: [{ type: 'text', text }], usage: { cost: { total: 0 } } }
@@ -121,6 +144,21 @@ async function main() {
 	emit({ type: 'agent_settled', aborted: false })
 }
 `
+
+test('the factory demo has a populated chat before QA starts', async (t) => {
+	const workspace = directory(t)
+	const fixture = seedDemo(workspace, { factory: true })
+	assert.ok(fixture?.chatPath)
+	const ui = await startUi({ workspace })
+	t.after(() => ui.close())
+	const response = await fetch(new URL(fixture.chatPath, ui.url))
+	assert.equal(response.status, 200)
+	const html = await response.text()
+	assert.match(html, /QA sample: what is in the review workspace\?/)
+	assert.match(html, /Open a plan to review its rules/)
+	assert.match(html, /Where can I review the plans\?/)
+	assert.match(html, />plans list<\/a>/)
+})
 
 test('the factory reads local files and GitHub requests and rejects invalid input', (t) => {
 	const workspace = directory(t)
@@ -214,13 +252,16 @@ assert.throws(() => validateDecisions([decision], new Set(['D1'])), /Oracle deci
 	)
 })
 
-for (const exploreBeforeFactory of [false, true])
+for (const mode of ['standard', 'baseline', 'setup'])
 	test(
-		exploreBeforeFactory
-			? 'factory phase jobs run in order, and baseline findings reach the worker before the first edit'
-			: 'the factory pauses for a scope choice, records a QA defect, fixes it, and passes a new build',
+		mode === 'setup'
+			? 'the factory prepares QA fixtures, reuses an answer, and stops when coverage stalls'
+			: mode === 'baseline'
+				? 'factory phase jobs run in order, and baseline findings reach the worker before the first edit'
+				: 'the factory pauses for a scope choice, records a QA defect, fixes it, and passes a new build',
 		{ timeout: 120_000 },
 		async (t) => {
+			const exploreBeforeFactory = mode === 'baseline'
 			const home = directory(t)
 			const repository = join(home, 'source')
 			const campaign = join(home, 'campaign')
@@ -303,7 +344,7 @@ if (stage === 'afterFactory' && !existsSync(join(campaign, 'verification-ready')
 			)
 			save(
 				'factory.yml',
-				`oracle: {model: fixture/model, effort: medium, maxCorrections: ${exploreBeforeFactory ? 2 : 0}}\nfactory: {model: fixture/model, effort: medium}\nqa: {model: fixture/model, effort: medium, level: smoke, minutes: 1, exploreBeforeFactory: ${exploreBeforeFactory}}\nmaxBuilds: 3\nmaxExplorations: 4\ntimeoutSeconds: 60\n` +
+				`oracle: {model: fixture/model, effort: medium, maxCorrections: ${exploreBeforeFactory ? 2 : 0}}\nfactory: {model: fixture/model, effort: medium}\nqa: {model: fixture/model, effort: medium, level: smoke, minutes: 1, exploreBeforeFactory: ${exploreBeforeFactory}}\nmaxBuilds: 3\nmaxExplorations: 6\ntimeoutSeconds: 60\n` +
 					(exploreBeforeFactory
 						? `jobs:
   afterScope:
@@ -320,7 +361,7 @@ if (stage === 'afterFactory' && !existsSync(join(campaign, 'verification-ready')
 `
 						: 'verify: [node, scripts/verify.ts]\n')
 			)
-			writeFileSync(join(bin, 'pi'), fakePi(calls, exploreBeforeFactory))
+			writeFileSync(join(bin, 'pi'), fakePi(calls, mode))
 			chmodSync(join(bin, 'pi'), 0o700)
 			execute('git', ['init', '-q', '-b', 'main'])
 			execute('git', ['add', '.'])
@@ -336,6 +377,29 @@ if (stage === 'afterFactory' && !existsSync(join(campaign, 'verification-ready')
 				'--config',
 				'factory.yml',
 			]
+			if (mode === 'setup') {
+				const result = JSON.parse(run(start, 1))
+				assert.equal(result.phase, 'explore')
+				assert.equal(result.builds, 2)
+				assert.equal(result.explorations, 4)
+				assert.match(result.reason, /QA made no progress across two retries of the same build/)
+				const trace = readFileSync(calls, 'utf8')
+					.trim()
+					.split('\n')
+					.map((line) => JSON.parse(line))
+				assert.match(
+					trace.filter(({ stage }) => stage === 'worker')[1].prompt,
+					/## Required preview setup\n\nSeed a populated chat/
+				)
+				assert.deepEqual(
+					trace.filter(({ stage }) => stage === 'test').map(({ fixture }) => fixture),
+					[null, 'Loaded chat history', 'Loaded chat history', 'Loaded chat history']
+				)
+				const questions = json(join(campaign, 'records'), ['explore', 'show', 'x-4']).body.questions
+				assert.equal(questions[0].answer, 'Compare the plan list and chat.')
+				assert.match(trace.filter(({ stage }) => stage === 'review').at(-1).prompt, /## Questions\n\n\[\]/)
+				return
+			}
 			if (exploreBeforeFactory) run(start, 2)
 			else {
 				const failed = JSON.parse(run(start, 1))

@@ -8,6 +8,7 @@ import { closeStore } from '../plugin/src/store.ts'
 import type { TestContext } from 'node:test'
 import { answerGap, openPlan } from '../plugin/src/plans.ts'
 import { exploration, knownStateText, openExploration } from '../plugin/src/explorations.ts'
+import { explorerBrief } from '../plugin/src/briefs.ts'
 import { logEntries } from '../plugin/src/journal.ts'
 import { actor, directory, planRequest, store, target } from './support.ts'
 import { fakeClaude } from './claude.ts'
@@ -77,6 +78,11 @@ test('a later exploration gets one plain file with the results of earlier builds
 	assert.equal(started.code, 0, started.output)
 	assert.equal(charter('x-2').knownState, '.checkmate/work/x-2/known-state.md')
 	assert.equal(charter('x-2').knownAnswerIds.length, 1)
+	const brief = explorerBrief(charter('x-2'), [], 'qa', '.checkmate/work/x-2/a1', { study: 30, test: 60 })
+	for (const prompt of [brief.study, brief.test]) {
+		assert.match(prompt, /a1\/Q1: .*Deferred: No, never\./)
+		assert.doesNotMatch(prompt, /has not answered your questions/)
+	}
 	const text = readFileSync(join(workspace, '.checkmate', 'work', 'x-2', 'known-state.md'), 'utf8')
 	assert.equal(
 		text,
@@ -337,9 +343,10 @@ test('an answer omitted from the known-state file is also omitted from its chart
 	})
 	assert.equal(answer.status, 'completed', answer.reasons.join(' '))
 	openExploration(opened, actor, { planId: 'checkout', build: 'b2' })
-	const { knownState, knownAnswerIds } = exploration(opened, 'x-2').charter
+	const { knownState, knownAnswerIds, decisions } = exploration(opened, 'x-2').charter
 	const text = readFileSync(join(opened.workspace, knownState!), 'utf8')
 	assert.match(text, /More results are left out\./)
 	assert.doesNotMatch(text, /What is the limit\?/)
 	assert.equal(knownAnswerIds, undefined)
+	assert.deepEqual(decisions, [])
 })

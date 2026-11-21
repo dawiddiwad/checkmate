@@ -145,8 +145,12 @@ function reviewResult(result, questions, claims) {
 		...(claimIds.size ? ['claims ' + [...claimIds].join(', ')] : []),
 	]
 	assert(!omitted.length, 'Oracle review omitted ' + omitted.join(' and '))
+	if (result.previewSetup !== undefined && result.previewSetup !== null)
+		text(result.previewSetup, 'preview setup task')
 	return result
 }
+
+const questionKey = (question) => question.trim().replace(/\s+/g, ' ')
 
 function setupPlan(cm, charter, playwright) {
 	const entryPoints = [
@@ -207,6 +211,7 @@ function setupPlan(cm, charter, playwright) {
 				instructions: [
 					'Use the candidate CLI and disposable workspace listed in preview.md.',
 					'Use the running preview for UI checks. Use the candidate checkout only for inspection.',
+					'You may create local test records in the disposable preview through the UI or CLI. Describe missing preview data or tools as setup blockers in report.md.',
 					'Record an observation for each rule you tested. Leave untested rules unverified.',
 					'Retest earlier claims on this build and record the actual result with evidence.',
 				].join(' '),
@@ -413,11 +418,22 @@ async function runFactory(root, directory, campaign, state) {
 				...(state.baselineExploration
 					? [
 							'## Questions and answers from baseline ' + state.baselineExploration,
-							JSON.stringify(runtime.explorationQuestions(plan, state.baselineExploration)),
+							JSON.stringify(
+								runtime
+									.explorationQuestions(plan, state.baselineExploration)
+									.map(({ id, question, answer }) => ({ id, question, answer }))
+							),
 						]
 					: []),
 				'## Accepted defects to fix',
 				JSON.stringify(state.fixes),
+				...(state.previewSetup
+					? [
+							'## Required preview setup',
+							state.previewSetup.task,
+							'Implement reproducible preparation for each disposable preview in scripts/ui-demo.ts or the fixture code it uses. Scope setup changes to local QA data and tools.',
+						]
+					: []),
 				'## Previous build check',
 				state.buildError ?? 'No failed check.',
 			].join('\n\n')
@@ -441,6 +457,11 @@ async function runFactory(root, directory, campaign, state) {
 			)
 		}
 		const candidate = git(work, 'rev-parse', 'HEAD')
+		if (candidate === state.candidate && state.previewSetup)
+			return finish(
+				'failed',
+				'The factory made no changes for required preview setup. ' + state.previewSetup.task
+			)
 		if (candidate === state.candidate && state.fixes.length) {
 			persist('build', {
 				buildError: 'The worker made no commit for accepted defects.',
@@ -517,7 +538,8 @@ async function runFactory(root, directory, campaign, state) {
 					'Build: ' + state.candidate,
 					'UI: ' + preview.url,
 					'CLI: ' + command,
-					'Workspace: ' + preview.workspace,
+					'Candidate workspace: ' + preview.workspace,
+					'QA record workspace: ' + records + '. Resolve paths in the QA brief from this directory.',
 					'Checkout: ' + work,
 					...(exploringBaseline()
 						? [
@@ -526,6 +548,9 @@ async function runFactory(root, directory, campaign, state) {
 						: []),
 					'Pass --workspace ' + shellArg(preview.workspace) + ' to candidate CLI commands that use data.',
 					'The preview is disposable. The factory keeps one QA record in the campaign workspace.',
+					...(preview.chatPath
+						? ['Sample chat with message history: ' + new URL(preview.chatPath, preview.url).href]
+						: []),
 					...(state.claimRetests?.length
 						? [
 								'## Claims to retest',
@@ -624,21 +649,46 @@ async function runFactory(root, directory, campaign, state) {
 		const status = summary()
 		const current = claims()
 		const questions = []
+		const previousAnswers = status.questions.length
+			? runtime.explorationQuestions(plan).filter((item) => item.answer && item.decision === 'clarify')
+			: []
 		for (const question of status.questions) {
 			const choice = state.choices.find(({ questionIds }) => questionIds?.includes(question.id))
-			if (!choice) questions.push(question)
-			else {
+			if (choice) {
 				answerQuestion({
 					id: question.id,
 					value: choice.answer,
 					source: 'decisions.md#' + choice.id,
 					rationale: 'The product owner selected ' + choice.option + ' in decision ' + choice.id + '.',
 				})
+				continue
 			}
+			const prior =
+				!question.blocking &&
+				!question.actual &&
+				previousAnswers.findLast(
+					(item) =>
+						!item.blocking &&
+						!item.actual &&
+						item.rule === question.rule &&
+						item.builds.includes(state.candidate) &&
+						question.builds.includes(state.candidate) &&
+						questionKey(item.question) === questionKey(question.question)
+				)
+			if (prior)
+				answerQuestion({
+					id: question.id,
+					value: prior.answer,
+					source: prior.answerId,
+					rationale: 'The same question was answered for this rule and build.',
+				})
+			else questions.push(question)
 		}
 		const awaiting = current.filter((claim) => claim.state !== 'accepted')
 		let claimRetests = []
-		if (questions.length || awaiting.length) {
+		let previewSetup = state.previewSetup?.exploration === state.lastExploration ? state.previewSetup : null
+		const qaNotes = status.state === 'passed' ? [] : runtime.explorationNotes(plan, state.lastExploration)
+		if (questions.length || awaiting.length || qaNotes.length) {
 			const result = await oracleReply(
 				'oracle-review-' + state.explorations + '-' + state.choices.length,
 				[
@@ -646,7 +696,8 @@ async function runFactory(root, directory, campaign, state) {
 					escalation,
 					'Handle every listed question and claim. Use the request, saved decisions, existing product behavior, and tests to answer routine questions and provide concrete QA setup instructions. Use the listed IDs exactly. When a product decision is necessary, include questionIds or claimIds on the decision and list each affected item only once.',
 					'Accept a claim when its observation supports a real defect against the accepted behavior. Reject it when evidence shows the claim is wrong. Use retest when you need more evidence and include the next check in the rationale.',
-					'Return {"answers":[{"id":"a1/Q1","value":"...","source":"...","rationale":"..."}],"claims":[{"id":"a1/D1","decision":"accept","rationale":"..."}],"decisions":[]}.',
+					'If the latest QA notes show missing preview data or tooling that blocks coverage, assign a concrete previewSetup task to the factory. Describe the required fixture or tool and how QA can check it. Use null when the preview needs no change. Keep setup limited to disposable QA and use fixture data where possible.',
+					'Return {"answers":[{"id":"a1/Q1","value":"...","source":"...","rationale":"..."}],"claims":[{"id":"a1/D1","decision":"accept","rationale":"..."}],"decisions":[],"previewSetup":null}.',
 					'## Request',
 					ticket,
 					'## Decisions already made',
@@ -657,8 +708,14 @@ async function runFactory(root, directory, campaign, state) {
 					runtime.records,
 					'## Questions',
 					JSON.stringify(questions),
+					'## Previously answered questions',
+					JSON.stringify(
+						previousAnswers.slice(-30).map(({ id, question, answer }) => ({ id, question, answer }))
+					),
 					'## Claims',
 					JSON.stringify(runtime.claimEvidence(plan, awaiting)),
+					'## Latest QA notes',
+					JSON.stringify(qaNotes),
 				].join('\n\n'),
 				(reply) => reviewResult(reply, questions, awaiting)
 			)
@@ -669,9 +726,14 @@ async function runFactory(root, directory, campaign, state) {
 					cm(['claim', claim.decision, plan, claim.id, '--rationale', claim.rationale], { actor: 'oracle' })
 			}
 			claimRetests = result.claims.filter(({ decision }) => decision === 'retest')
-			if (result.decisions.length) return pending(result.decisions)
+			if (result.previewSetup)
+				previewSetup = { exploration: state.lastExploration, task: result.previewSetup.trim() }
+			if (result.decisions.length) {
+				persist('review', { previewSetup })
+				return pending(result.decisions)
+			}
 		}
-		persist('afterReview', { claimRetests })
+		persist('afterReview', { claimRetests, previewSetup })
 	}
 
 	async function afterReview() {
@@ -682,7 +744,7 @@ async function runFactory(root, directory, campaign, state) {
 	function concludeReview() {
 		const fresh = summary()
 		persist('afterReview', { nativeState: fresh.state, nativeNext: fresh.next })
-		if (fresh.state === 'passed' && !exploringBaseline() && !state.verificationError) {
+		if (fresh.state === 'passed' && !exploringBaseline() && !state.verificationError && !state.previewSetup) {
 			const latest = fresh.explorations.at(-1)
 			assert.equal(
 				latest?.explorationId,
@@ -705,15 +767,36 @@ async function runFactory(root, directory, campaign, state) {
 				baselineExploration: state.lastExploration,
 				reason: 'The oracle reviewed the baseline. The factory can start implementation.',
 			})
-		} else if (fixes.length) {
+		} else if (fixes.length || state.previewSetup) {
 			persist('build', {
 				fixes,
 				buildError: state.verificationError,
-				reason: 'The oracle handed accepted defects to the factory.',
+				reason: state.previewSetup
+					? 'The oracle assigned preview setup to the factory.'
+					: 'The oracle handed accepted defects to the factory.',
 			})
 		} else if (state.verificationError) {
 			verificationFailed(state.verificationError)
-		} else persist('explore', { fixes: [], reason: 'Checkmate needs a fresh exploration to complete the record.' })
+		} else {
+			const coverage = [...(fresh.why ?? [])]
+				.filter((reason) => / has (no passing|a wrong) criterion /.test(reason))
+				.sort()
+			const signature = JSON.stringify(coverage.length ? coverage : [fresh.state, ...(fresh.why ?? [])])
+			const previous = state.qaProgress
+			const unchanged =
+				previous?.build === state.candidate && previous.signature === signature ? previous.unchanged + 1 : 0
+			persist('explore', {
+				fixes: [],
+				qaProgress: { build: state.candidate, signature, unchanged },
+				reason: 'Checkmate needs a fresh exploration to complete the record.',
+			})
+			if (unchanged >= 2) {
+				return finish(
+					'failed',
+					'QA made no progress across two retries of the same build. Review the remaining rules and preview setup before resuming.'
+				)
+			}
+		}
 	}
 
 	process.once('SIGINT', stop)

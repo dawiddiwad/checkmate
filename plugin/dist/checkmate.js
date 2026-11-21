@@ -14489,16 +14489,17 @@ function latestRevision(store, planId) {
 }
 function charterOf(store, planId, plan, scope, change, knownState2) {
   const { request: request2, target } = planRequest(store, planId);
+  const decisions = plan?.gaps.flatMap((gap) => {
+    if (gap.status !== "resolved" && gap.status !== "deferred") return [];
+    const decision = plan.decisions.find(({ id: id2 }) => id2 === gap.decisionId);
+    if (!decision) return [];
+    const { gapId, kind, value: value2, source } = decision;
+    return [{ gapId, kind, question: gap.question, value: value2, source }];
+  }) ?? [];
   return {
     goal: request2.objective,
     requirements: planRules(store, planId).rules.map(({ id: id2, text: text2 }) => ({ id: id2, text: text2 })),
-    decisions: plan?.gaps.flatMap((gap) => {
-      if (gap.status !== "resolved" && gap.status !== "deferred") return [];
-      const decision = plan.decisions.find(({ id: id2 }) => id2 === gap.decisionId);
-      if (!decision) return [];
-      const { gapId, kind, value: value2, source } = decision;
-      return [{ gapId, kind, question: gap.question, value: value2, source }];
-    }) ?? [],
+    decisions: [...decisions, ...knownState2?.answers ?? []],
     sources: request2.context?.sources ?? [],
     instructions: request2.context?.instructions ?? null,
     capabilities: target.profile.capabilities,
@@ -14596,19 +14597,27 @@ function knownState(store, planId, build) {
   let lines2 = render(full);
   while (lines2.length > maxKnownLines && full > 0) lines2 = render(--full);
   if (lines2.length > maxKnownLines) lines2 = [...lines2.slice(0, maxKnownLines - 1), "More results are left out."];
+  const answerIds = lines2.flatMap((line) => typeof line !== "string" && line.answerId ? [line.answerId] : []);
   return {
     text: lines2.map((line) => typeof line === "string" ? line : line.text).join("\n") + "\n",
-    answerIds: lines2.flatMap((line) => typeof line !== "string" && line.answerId ? [line.answerId] : [])
+    answerIds,
+    answers: answers.flatMap(
+      ({ id: id2, answerId, question, answer: answer2, decision }) => {
+        if (!answerId || !answerIds.includes(answerId) || answer2 === null) return [];
+        const kind = decision === "defer" || decision === "accept_assumption" ? decision : "clarify";
+        return [{ gapId: id2, kind, question, value: answer2, source: null }];
+      }
+    )
   };
 }
 function writeKnownState(store, planId, explorationId, build) {
   if (!one(store, "SELECT 1 FROM explorations WHERE plan_id = ? AND exploration_id != ?", planId, explorationId))
     return null;
   const path = `${workFolder(explorationId)}/known-state.md`;
-  const { text: text2, answerIds } = knownState(store, planId, build);
+  const { text: text2, answerIds, answers } = knownState(store, planId, build);
   mkdirSync4(join5(store.workspace, workFolder(explorationId)), { recursive: true });
   writeFileSync2(join5(store.workspace, path), text2);
-  return { path, answerIds };
+  return { path, answerIds, answers };
 }
 function nextExplorationId(store) {
   const ids2 = all(store, "SELECT exploration_id FROM explorations").map(
@@ -15674,6 +15683,7 @@ function recorderPrompt(build, record, saved = [], answer2, rules = []) {
   const text2 = [
     `Now write the record of this test session for the QA record of the team (build ${build}).`,
     "Record what you did and found, your questions for the product owner, and the answers that you received. Do not test again for the record, and do not change the files of the project. Do not repeat what the record already holds.",
+    "Log product questions the tester raised. Record a missing fixture, tool, or runtime prerequisite as a note unless the tester found a product defect. A blocked check gives no product verdict.",
     replyText("the new entries", answer2),
     "Number the new entries freely, for example N1, O1, D1. Use an ID of the record only to point at an entry of the record.",
     "Evidence is the path of a file that already exists, as the tester saved it, from the directory of the session, or the text that you saw.",
@@ -15771,6 +15781,12 @@ function explorerBrief(charter, entries, dataPrefix, workFolder2, seconds) {
     "Use the applied oracle answers to settle open points in the sources. Keep deferred questions deferred.",
     "Ask only about points that the sources and the applied oracle decisions leave open."
   ];
+  const appliedDecisions = decisions.map(({ gapId, kind, question, value: value2, source }) => {
+    const label = kind === "defer" ? "Deferred" : kind === "accept_assumption" ? "Accepted assumption" : "Answer";
+    return `- ${gapId}: ${question} ${label}: ${value2}${source ? ` (source: ${source})` : ""}`;
+  });
+  const answers = appliedDecisions.length ? ["", "Applied oracle decisions:", ...appliedDecisions] : [];
+  const hasAnswers = Boolean(appliedDecisions.length || charter.knownAnswerIds?.length);
   const diff = change ? [
     `The code of the change is shown by git diff ${change.range.join(" ")} in ${change.repo === "." ? "the workspace" : `the folder ${change.repo}`}.`,
     ...change.checkedOut ? [] : ["The checked-out files are the version before the change, and the diff shows the change."],
@@ -15783,15 +15799,8 @@ function explorerBrief(charter, entries, dataPrefix, workFolder2, seconds) {
     ...charter.requirements.length ? ["", "Rules of the change:", ...charter.requirements.map((item) => `- ${item.id}: ${item.text}`)] : [],
     ...charter.sources.length ? ["", `Read: ${charter.sources.join(", ")}`] : [],
     ...charter.instructions ? ["", charter.instructions] : [],
-    ...decisions.length ? [
-      "",
-      "Applied oracle decisions:",
-      ...decisions.map(({ gapId, kind, question, value: value2, source }) => {
-        const label = kind === "defer" ? "Deferred" : kind === "accept_assumption" ? "Accepted assumption" : "Answer";
-        return `- ${gapId}: ${question} ${label}: ${value2}${source ? ` (source: ${source})` : ""}`;
-      }),
-      ...decisionInstructions
-    ] : [],
+    ...answers,
+    ...hasAnswers ? decisionInstructions : [],
     ...charter.scope.length ? ["", "Changed files:", ...charter.scope.map((path) => `- ${path}`)] : [],
     ...diff.length ? ["", ...diff] : [],
     ...charter.knownState ? [
@@ -15818,7 +15827,8 @@ function explorerBrief(charter, entries, dataPrefix, workFolder2, seconds) {
   ];
   const test = [
     "Now test the change and the existing behaviour that it can break.",
-    ...decisions.length ? [
+    ...answers,
+    ...hasAnswers ? [
       ...decisionInstructions,
       "Report a point as unclear only if it is still open after you check the sources and the applied oracle decisions."
     ] : [

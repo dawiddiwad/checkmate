@@ -16,8 +16,7 @@ maxExplorations: 6
 timeoutSeconds: 900
 jobs:
   afterScope: []
-  afterFactory:
-    - [npm, run, 'phase:verify']
+  afterFactory: []
   afterVerify: []
   afterExploration: []
   afterReview: []

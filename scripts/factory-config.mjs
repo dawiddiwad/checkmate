@@ -226,6 +226,13 @@ export function chooseOptions(decisions, choices) {
 	return decisions.map((decision) => {
 		const option = decision.options.find(({ id }) => id === choices[decision.id])
 		assert(option, 'Choose a listed option for ' + decision.id)
-		return { id: decision.id, question: decision.question, option: option.id, answer: option.label }
+		return {
+			id: decision.id,
+			question: decision.question,
+			option: option.id,
+			answer: option.label,
+			...(decision.questionIds?.length ? { questionIds: decision.questionIds } : {}),
+			...(decision.claimIds?.length ? { claimIds: decision.claimIds } : {}),
+		}
 	})
 }

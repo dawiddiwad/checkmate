@@ -90,7 +90,13 @@ function parseOracleReply(reply) {
 }
 
 function scopeResult(result) {
-	if (result.decisions.length) return result
+	if (result.decisions.length) {
+		assert(
+			result.decisions.every(({ questionIds, claimIds }) => questionIds === undefined && claimIds === undefined),
+			'Scope decisions cannot link to review items'
+		)
+		return result
+	}
 	assert(
 		Array.isArray(result.requirements) && result.requirements.length >= 1 && result.requirements.length <= 10,
 		'Give one to ten observable requirements'
@@ -113,9 +119,32 @@ function reviewResult(result, questions, claims) {
 	}
 	for (const claim of result.claims) {
 		assert(claimIds.delete(claim?.id), 'Unknown or duplicate claim: ' + claim?.id)
-		assert(['accept', 'reject'].includes(claim.decision), 'Choose accept or reject for ' + claim.id)
+		assert(
+			['accept', 'reject', 'retest'].includes(claim.decision),
+			'Choose accept, reject, or retest for ' + claim.id
+		)
 		text(claim.rationale, 'claim rationale')
 	}
+	for (const decision of result.decisions) {
+		let linked = 0
+		for (const [field, open] of [
+			['questionIds', questionIds],
+			['claimIds', claimIds],
+		]) {
+			const ids = decision[field] === undefined ? [] : decision[field]
+			assert(Array.isArray(ids), 'Decision ' + decision.id + '.' + field + ' must be a list')
+			for (const id of ids) {
+				assert(open.delete(id), 'Unknown or already handled review item: ' + id)
+				linked++
+			}
+		}
+		assert(linked, 'Link decision ' + decision.id + ' to an open question or claim')
+	}
+	const omitted = [
+		...(questionIds.size ? ['questions ' + [...questionIds].join(', ')] : []),
+		...(claimIds.size ? ['claims ' + [...claimIds].join(', ')] : []),
+	]
+	assert(!omitted.length, 'Oracle review omitted ' + omitted.join(' and '))
 	return result
 }
 
@@ -497,6 +526,12 @@ async function runFactory(root, directory, campaign, state) {
 						: []),
 					'Pass --workspace ' + shellArg(preview.workspace) + ' to candidate CLI commands that use data.',
 					'The preview is disposable. The factory keeps one QA record in the campaign workspace.',
+					...(state.claimRetests?.length
+						? [
+								'## Claims to retest',
+								...state.claimRetests.map(({ id, rationale }) => `- ${id}: ${rationale}`),
+							]
+						: []),
 				].join('\n\n') + '\n'
 			)
 			cm([
@@ -565,18 +600,52 @@ async function runFactory(root, directory, campaign, state) {
 		persist('review')
 	}
 
+	function answerQuestion({ id, value, source, rationale }) {
+		cm(
+			[
+				'gap',
+				'answer',
+				plan,
+				id,
+				'--kind',
+				'clarify',
+				'--source',
+				source,
+				'--value',
+				value,
+				'--rationale',
+				rationale,
+			],
+			{ actor: 'oracle' }
+		)
+	}
+
 	async function review() {
 		const status = summary()
 		const current = claims()
-		const questions = status.questions
+		const questions = []
+		for (const question of status.questions) {
+			const choice = state.choices.find(({ questionIds }) => questionIds?.includes(question.id))
+			if (!choice) questions.push(question)
+			else {
+				answerQuestion({
+					id: question.id,
+					value: choice.answer,
+					source: 'decisions.md#' + choice.id,
+					rationale: 'The product owner selected ' + choice.option + ' in decision ' + choice.id + '.',
+				})
+			}
+		}
 		const awaiting = current.filter((claim) => claim.state !== 'accepted')
+		let claimRetests = []
 		if (questions.length || awaiting.length) {
 			const result = await oracleReply(
 				'oracle-review-' + state.explorations + '-' + state.choices.length,
 				[
 					'# Factory oracle review',
 					escalation,
-					'Use the product contract to answer questions. Accept a claim only when its observation supports a real defect against the accepted behavior. Reject a claim when there is evidence it is wrong. Leave unverified claims for fresh QA. Record an answer or decision only for a listed ID.',
+					'Handle every listed question and claim. Use the request, saved decisions, existing product behavior, and tests to answer routine questions and provide concrete QA setup instructions. Use the listed IDs exactly. When a product decision is necessary, include questionIds or claimIds on the decision and list each affected item only once.',
+					'Accept a claim when its observation supports a real defect against the accepted behavior. Reject it when evidence shows the claim is wrong. Use retest when you need more evidence and include the next check in the rationale.',
 					'Return {"answers":[{"id":"a1/Q1","value":"...","source":"...","rationale":"..."}],"claims":[{"id":"a1/D1","decision":"accept","rationale":"..."}],"decisions":[]}.',
 					'## Request',
 					ticket,
@@ -594,31 +663,15 @@ async function runFactory(root, directory, campaign, state) {
 				(reply) => reviewResult(reply, questions, awaiting)
 			)
 			logReview(result)
-			for (const answer of result.answers) {
-				cm(
-					[
-						'gap',
-						'answer',
-						plan,
-						answer.id,
-						'--kind',
-						'clarify',
-						'--source',
-						answer.source,
-						'--value',
-						answer.value,
-						'--rationale',
-						answer.rationale,
-					],
-					{ actor: 'oracle' }
-				)
-			}
+			for (const answer of result.answers) answerQuestion(answer)
 			for (const claim of result.claims) {
-				cm(['claim', claim.decision, plan, claim.id, '--rationale', claim.rationale], { actor: 'oracle' })
+				if (claim.decision !== 'retest')
+					cm(['claim', claim.decision, plan, claim.id, '--rationale', claim.rationale], { actor: 'oracle' })
 			}
+			claimRetests = result.claims.filter(({ decision }) => decision === 'retest')
 			if (result.decisions.length) return pending(result.decisions)
 		}
-		persist('afterReview')
+		persist('afterReview', { claimRetests })
 	}
 
 	async function afterReview() {
@@ -767,17 +820,15 @@ async function main(argv) {
 			const notes =
 				[
 					'# Human product decisions',
-					...state.choices.map(
-						(choice) =>
-							'## ' +
-							choice.id +
-							'\n\n' +
-							choice.question +
-							'\n\nSelected ' +
-							choice.option +
-							': ' +
-							choice.answer
-					),
+					...state.choices.map((choice) => {
+						const items = [...(choice.questionIds ?? []), ...(choice.claimIds ?? [])]
+						return [
+							'## ' + choice.id,
+							choice.question,
+							'Selected ' + choice.option + ': ' + choice.answer,
+							...(items.length ? ['Checkmate review items ' + items.join(', ')] : []),
+						].join('\n\n')
+					}),
 				].join('\n\n') + '\n'
 			writeFileSync(join(directory, 'records', 'decisions.md'), notes)
 			state.decisions = []

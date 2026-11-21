@@ -69,16 +69,26 @@ async function main() {
 		writeFileSync('message.txt', prior === 'BASE' && !prompt.includes('Questions and answers from baseline') ? 'FIRST' : 'READY')
 		result = 'Updated the preview.'
 	} else if (prompt.startsWith('# Factory oracle review')) {
+		const firstReview = !calls().some(call => call.stage === 'review')
 		record({ stage: 'review', prompt })
 		result = {
 			answers: [{ id: 'a1/Q1', value: 'Display READY after the preview loads.', source: 'The fixture request.', rationale: 'The request names the preview output.' }],
 			claims: [{ id: 'a1/D1', decision: 'accept', rationale: 'QA observed a preview without READY.' }],
 			decisions: [],
 		}
-		if (oracleCorrections && !prompt.includes('Oracle decision ID already answered: D1')) {
-			const id = prompt.includes('Invalid Oracle decision ID "merge/T1"') ? 'D1' : 'merge/T1'
-			result.decisions = [{ ...readiness, id }]
+		if (oracleCorrections) {
+			const id = prompt.includes('Oracle decision ID already answered: D1') ? 'D2'
+				: prompt.includes('Invalid Oracle decision ID "merge/T1"') ? 'D1' : 'merge/T1'
+			result.answers = []
+			result.decisions = [{
+				...readiness, id, questionIds: ['a1/Q1'], question: 'When should READY be displayed?',
+				options: [
+					{ id: 'text', label: 'Display READY after the preview loads.', tradeoff: 'Reflects readiness.' },
+					{ id: 'badge', label: 'Display READY before the preview loads.', tradeoff: 'Shows the label sooner.' },
+				],
+			}]
 		}
+		else if (firstReview) result = { answers: [], claims: [], decisions: [] }
 	} else if (prompt.startsWith('A change of the application')) {
 		const url = prompt.match(/http:\\/\\/127\\.0\\.0\\.1:\\d+/)?.[0]
 		if (!url) throw new Error('The QA study lacks a preview URL')
@@ -341,14 +351,20 @@ if (stage === 'afterFactory' && !existsSync(join(campaign, 'verification-ready')
 			assert.doesNotMatch(readFileSync(calls, 'utf8'), /"stage":"worker"/)
 			const answers = join(home, 'answers.json')
 			writeFileSync(answers, JSON.stringify({ D1: 'text' }))
-			const resumed = JSON.parse(run(['resume', campaign, '--answers', answers], exploreBeforeFactory ? 1 : 0))
+			const resumed = JSON.parse(run(['resume', campaign, '--answers', answers], 1))
 			if (exploreBeforeFactory) {
 				assert.equal(resumed.phase, 'afterExploration')
 				assert.equal(resumed.builds, 0)
 				assert.equal(resumed.explorations, 1)
 				assert.match(resumed.reason, /Phase job interrupted the baseline/)
 				assert.doesNotMatch(readFileSync(calls, 'utf8'), /"stage":"(worker|review)"/)
-				const blocked = JSON.parse(run(['resume', campaign], 1))
+				const pending = JSON.parse(run(['resume', campaign], 2))
+				assert.equal(pending.explorations, 1)
+				assert.equal(pending.builds, 0)
+				assert.equal(pending.decisions[0].id, 'D2')
+				assert.deepEqual(pending.decisions[0].questionIds, ['a1/Q1'])
+				writeFileSync(answers, JSON.stringify({ D2: 'text' }))
+				const blocked = JSON.parse(run(['resume', campaign, '--answers', answers], 1))
 				assert.equal(blocked.baselineExploration, 'x-1')
 				assert.equal(blocked.nativeState, 'passed')
 				assert.equal(blocked.lastExploration, 'x-2')
@@ -371,6 +387,15 @@ if (stage === 'afterFactory' && !existsSync(join(campaign, 'verification-ready')
 				assert.equal(passed.candidate, blocked.candidate)
 				assert.equal(passed.lastExploration, 'x-2')
 				assert.equal(passed.verificationError, null)
+			} else {
+				assert.equal(resumed.phase, 'review')
+				assert.equal(resumed.explorations, 1)
+				assert.match(resumed.reason, /Oracle review omitted questions a1\/Q1 and claims a1\/D1/)
+				const open = json(join(campaign, 'records'), ['status', 'checkmate-self']).body
+				assert.equal(open.questions.length, 1)
+				assert.equal(open.claims.length, 1)
+				assert.equal(open.claims[0].handoff, null)
+				run(['resume', campaign])
 			}
 			assert.match(run(['status', campaign]), /passed/)
 			assert.equal(execute('git', ['rev-parse', 'HEAD']).trim(), baseline)

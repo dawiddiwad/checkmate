@@ -59,6 +59,8 @@ By default, the runner creates a directory under `.checkmate/factory/`. It exits
 
 The oracle answers from the request and existing product rules. It pauses for product decisions with two or more comparable options. Read `decisions.json` for the IDs, trade-offs, and recommendation. Save the person's answers as a JSON object. Map each decision ID to the chosen option ID from that file.
 
+In review, the oracle must address each open question and claim. It answers questions and accepts, rejects, or requests more evidence on claims. It links escalated decisions to the affected items. On resume, the runner records each selected answer against its linked Checkmate questions. The factory receives accepted defects. QA receives any requested checks for more evidence.
+
 If an oracle reply fails validation, the runner sends the error and the earlier reply back to the oracle. Set `oracle.maxCorrections` in `factory.yml` to choose how many correction attempts follow the first reply. The default is `2`. The range is `0` to `10`. Use `0` to disable corrections. The runner validates the full reply before it saves any decisions or findings from that reply. The `logs/` directory holds each attempt. Host failures stop the current phase with their own error.
 
 ```json

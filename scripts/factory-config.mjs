@@ -58,6 +58,8 @@ export function validateConfig(value) {
 		'jobs',
 		'verify',
 	])
+	const oracle = role(config.oracle, 'oracle', ['maxCorrections'])
+	const { maxCorrections = 2 } = oracle
 	const qa = role(config.qa, 'qa', ['level', 'minutes', 'exploreBeforeFactory'])
 	assert(['smoke', 'normal', 'deep'].includes(qa.level), 'qa.level must be smoke, normal, or deep')
 	assert(
@@ -76,7 +78,10 @@ export function validateConfig(value) {
 		phaseJobs.afterFactory = [command(config.verify, 'verify')]
 	}
 	return {
-		oracle: role(config.oracle, 'oracle'),
+		oracle: {
+			...oracle,
+			maxCorrections: integer(maxCorrections, 'oracle.maxCorrections', 0, 10),
+		},
 		factory: role(config.factory, 'factory'),
 		qa: { ...qa, minutes: integer(qa.minutes, 'qa.minutes', 1, 60) },
 		maxBuilds: integer(config.maxBuilds, 'maxBuilds', 1, 20),
@@ -176,27 +181,35 @@ export async function requestSource(root, options) {
 
 const idPattern = /^[a-zA-Z][\w-]{0,39}$/
 
-export function validateDecisions(value) {
+function decisionId(id, label) {
+	assert(
+		typeof id === 'string' && idPattern.test(id),
+		`Invalid ${label}${typeof id === 'string' ? ' ' + JSON.stringify(id.slice(0, 80)) : ''}. Use a letter followed by up to 39 letters, digits, underscores, or hyphens`
+	)
+}
+
+function hasText(value) {
+	return typeof value === 'string' && value.trim()
+}
+
+export function validateDecisions(value, answered = new Set()) {
 	assert(Array.isArray(value), 'Oracle decisions must be a list')
 	const seen = new Set()
 	for (const item of value) {
-		assert(
-			item && typeof item.id === 'string' && idPattern.test(item.id) && !seen.has(item.id),
-			'Oracle decision IDs must be unique'
-		)
+		decisionId(item?.id, 'Oracle decision ID')
+		assert(!seen.has(item.id), 'Duplicate oracle decision ID: ' + item.id)
+		assert(!answered.has(item.id), 'Oracle decision ID already answered: ' + item.id)
 		seen.add(item.id)
-		assert(item.question?.trim() && item.reason?.trim(), 'Each decision needs a question and reason')
+		assert(hasText(item.question) && hasText(item.reason), 'Each decision needs a question and reason')
 		assert(
 			Array.isArray(item.options) && item.options.length >= 2 && item.options.length <= 5,
 			'Each decision needs two to five options'
 		)
 		const ids = new Set()
 		for (const option of item.options) {
-			assert(
-				typeof option?.id === 'string' && idPattern.test(option.id) && !ids.has(option.id),
-				'Decision option IDs must be unique'
-			)
-			assert(option.label?.trim() && option.tradeoff?.trim(), 'Each option needs a label and tradeoff')
+			decisionId(option?.id, 'Decision option ID')
+			assert(!ids.has(option.id), 'Duplicate option ID for ' + item.id + ': ' + option.id)
+			assert(hasText(option.label) && hasText(option.tradeoff), 'Each option needs a label and tradeoff')
 			ids.add(option.id)
 		}
 		assert(ids.has(item.recommended), 'Recommend one of the decision options')

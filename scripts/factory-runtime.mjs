@@ -95,7 +95,7 @@ function reply(output) {
 	return parsed
 }
 
-function roleReply(output, role, model, requireJson) {
+function roleReply(output, role, model) {
 	let latest
 	for (const line of output.split('\n')) {
 		if (!line.startsWith('{')) continue
@@ -117,8 +117,7 @@ function roleReply(output, role, model, requireJson) {
 		.map((block) => block.text)
 		.join('\n')
 		.trim()
-	assert(text, role + ' did not reply')
-	return requireJson ? JSON.parse(text.replace(/^\x60\x60\x60(?:json)?\s*|\s*\x60\x60\x60$/g, '')) : text
+	return text
 }
 
 export function createRuntime(directory, config) {
@@ -292,7 +291,9 @@ export function createRuntime(directory, config) {
 			throw new Error(
 				label + ' failed. See ' + output.stderr + '. ' + failure(output, 'Check the Pi host authentication.')
 			)
-		return roleReply(readFileSync(output.stdout, 'utf8'), label, settings.model, name === 'oracle')
+		const reply = roleReply(readFileSync(output.stdout, 'utf8'), label, settings.model)
+		assert(name === 'oracle' || reply, label + ' did not reply')
+		return reply
 	}
 
 	async function preview(work, name) {

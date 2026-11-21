@@ -19,7 +19,7 @@ server.listen(0, '127.0.0.1', () => {
 process.on('SIGTERM', () => server.close())
 `
 
-const fakePi = (journal: string) => `#!/usr/bin/env node
+const fakePi = (journal: string, oracleCorrections: boolean) => `#!/usr/bin/env node
 const { randomUUID } = require('node:crypto')
 const { appendFileSync, readFileSync, writeFileSync } = require('node:fs')
 const { createInterface } = require('node:readline')
@@ -29,6 +29,7 @@ const after = flag => args.includes(flag) ? args[args.indexOf(flag) + 1] : undef
 const model = { provider: 'fixture', id: 'model', reasoning: true }
 const emit = data => console.log(JSON.stringify(data))
 const journal = ${JSON.stringify(journal)}
+const oracleCorrections = ${oracleCorrections}
 const record = data => appendFileSync(journal, JSON.stringify(data) + '\\n')
 const calls = () => readFileSync(journal, 'utf8').trim().split('\\n').filter(Boolean).map(JSON.parse)
 if (after('--mode') === 'rpc') {
@@ -44,21 +45,24 @@ async function main() {
 	const session = after('--session-id') || after('--session') || after('--fork') || randomUUID()
 	const work = process.env.PLAYWRIGHT_MCP_OUTPUT_DIR
 	const rule = 'The deployed preview displays READY.'
+	const readiness = {
+		id: 'D1', question: 'How should the preview communicate readiness?',
+		options: [
+			{ id: 'text', label: 'Use status text', tradeoff: 'Simple to read.' },
+			{ id: 'badge', label: 'Use a badge', tradeoff: 'Easy to scan.' },
+		], recommended: 'text', reason: 'The labels are both suitable for the fixture.',
+	}
 	let result
 	if (prompt.startsWith('# Factory oracle scope')) {
-		const first = !calls().some(call => call.stage === 'scope')
+		const firstScope = !calls().some(call => call.stage === 'scope')
 		record({ stage: 'scope', prompt })
+		const awaitingChoice = !prompt.includes('Selected text: Use status text')
 		result = {
 			objective: 'Display READY in the candidate preview.',
 			requirements: [rule],
-			decisions: first ? [{
-				id: 'D1', question: 'How should the preview communicate readiness?',
-				options: [
-					{ id: 'text', label: 'Use status text', tradeoff: 'Simple to read.' },
-					{ id: 'badge', label: 'Use a badge', tradeoff: 'Easy to scan.' },
-				], recommended: 'text', reason: 'The labels are both suitable for the fixture.',
-			}] : [],
+			decisions: awaitingChoice ? [readiness] : [],
 		}
+		if (firstScope) result = '{'
 	} else if (prompt.startsWith('# Factory worker')) {
 		const prior = readFileSync('message.txt', 'utf8')
 		record({ stage: 'worker', prior, cwd: process.cwd(), prompt })
@@ -70,6 +74,10 @@ async function main() {
 			answers: [{ id: 'a1/Q1', value: 'Display READY after the preview loads.', source: 'The fixture request.', rationale: 'The request names the preview output.' }],
 			claims: [{ id: 'a1/D1', decision: 'accept', rationale: 'QA observed a preview without READY.' }],
 			decisions: [],
+		}
+		if (oracleCorrections && !prompt.includes('Oracle decision ID already answered: D1')) {
+			const id = prompt.includes('Invalid Oracle decision ID "merge/T1"') ? 'D1' : 'merge/T1'
+			result.decisions = [{ ...readiness, id }]
 		}
 	} else if (prompt.startsWith('A change of the application')) {
 		const url = prompt.match(/http:\\/\\/127\\.0\\.0\\.1:\\d+/)?.[0]
@@ -136,7 +144,7 @@ if (command === 'issue' && action === 'view') {
 	const script = String.raw`
 import assert from 'node:assert/strict'
 import { pathToFileURL } from 'node:url'
-const { requestSource, validateConfig } = await import(process.argv[1])
+const { requestSource, validateConfig, validateDecisions } = await import(process.argv[1])
 const workspace = process.cwd()
 const read = options => requestSource(workspace, options)
 const file = 'Factory ticket.md'
@@ -157,6 +165,9 @@ await assert.rejects(read({ issue: 'https://example.invalid/issues/27' }), /GitH
 await assert.rejects(read({ prompt: '🦉'.repeat(32769) }), /at most 128 KiB/)
 const role = { model: 'fixture/model' }
 const config = { oracle: role, factory: role, qa: { ...role, level: 'normal', minutes: 2 }, maxBuilds: 3, maxExplorations: 4, timeoutSeconds: 60 }
+assert.equal(validateConfig(config).oracle.maxCorrections, 2)
+assert.equal(validateConfig({ ...config, oracle: { ...role, maxCorrections: 0 } }).oracle.maxCorrections, 0)
+assert.throws(() => validateConfig({ ...config, oracle: { ...role, maxCorrections: -1 } }), /oracle.maxCorrections must be between 0 and 10/)
 assert.deepEqual(validateConfig({ ...config, verify: ['node', 'test.ts'] }).jobs, { afterFactory: [['node', 'test.ts']] })
 assert.deepEqual(validateConfig({ ...config, jobs: { afterReview: [] } }).jobs, { afterReview: [] })
 assert.throws(() => validateConfig({ ...config, jobs: { afterRun: [] } }), /Unknown jobs setting afterRun/)
@@ -164,6 +175,13 @@ assert.throws(() => validateConfig({ ...config, jobs: { afterFactory: ['node', '
 assert.throws(() => validateConfig({ ...config, jobs: { afterFactory: [] }, verify: ['node'] }), /Use either verify or jobs.afterFactory/)
 assert.throws(() => validateConfig({ ...config, qa: { ...config.qa, exploreBeforeFactory: 'true' } }), /must be true or false/)
 assert.throws(() => validateConfig({ ...config, maxExplorations: 1, qa: { ...config.qa, exploreBeforeFactory: true } }), /maxExplorations must be between 2 and 50/)
+const decision = { id: 'D1', question: 'Question?', reason: 'Reason.', recommended: 'one', options: [
+	{ id: 'one', label: 'One', tradeoff: 'First tradeoff.' },
+	{ id: 'two', label: 'Two', tradeoff: 'Second tradeoff.' },
+] }
+assert.throws(() => validateDecisions([{ ...decision, id: 'merge/T1' }], new Set()), /Invalid Oracle decision ID "merge\/T1"/)
+assert.throws(() => validateDecisions([decision, decision], new Set()), /Duplicate oracle decision ID: D1/)
+assert.throws(() => validateDecisions([decision], new Set(['D1'])), /Oracle decision ID already answered: D1/)
 `
 	const result = spawnSync(process.execPath, ['--input-type=module', '--eval', script, moduleURL], {
 		cwd: workspace,
@@ -275,7 +293,7 @@ if (stage === 'afterFactory' && !existsSync(join(campaign, 'verification-ready')
 			)
 			save(
 				'factory.yml',
-				`oracle: {model: fixture/model, effort: medium}\nfactory: {model: fixture/model, effort: medium}\nqa: {model: fixture/model, effort: medium, level: smoke, minutes: 1, exploreBeforeFactory: ${exploreBeforeFactory}}\nmaxBuilds: 3\nmaxExplorations: 4\ntimeoutSeconds: 60\n` +
+				`oracle: {model: fixture/model, effort: medium, maxCorrections: ${exploreBeforeFactory ? 2 : 0}}\nfactory: {model: fixture/model, effort: medium}\nqa: {model: fixture/model, effort: medium, level: smoke, minutes: 1, exploreBeforeFactory: ${exploreBeforeFactory}}\nmaxBuilds: 3\nmaxExplorations: 4\ntimeoutSeconds: 60\n` +
 					(exploreBeforeFactory
 						? `jobs:
   afterScope:
@@ -292,17 +310,30 @@ if (stage === 'afterFactory' && !existsSync(join(campaign, 'verification-ready')
 `
 						: 'verify: [node, scripts/verify.ts]\n')
 			)
-			writeFileSync(join(bin, 'pi'), fakePi(calls))
+			writeFileSync(join(bin, 'pi'), fakePi(calls, exploreBeforeFactory))
 			chmodSync(join(bin, 'pi'), 0o700)
 			execute('git', ['init', '-q', '-b', 'main'])
 			execute('git', ['add', '.'])
 			execute('git', ['commit', '-qm', 'Fixture baseline'])
 			const baseline = execute('git', ['rev-parse', 'HEAD']).trim()
 
-			run(
-				['start', '--prompt', 'Display READY in the preview.', '--output', campaign, '--config', 'factory.yml'],
-				2
-			)
+			const start = [
+				'start',
+				'--prompt',
+				'Display READY in the preview.',
+				'--output',
+				campaign,
+				'--config',
+				'factory.yml',
+			]
+			if (exploreBeforeFactory) run(start, 2)
+			else {
+				const failed = JSON.parse(run(start, 1))
+				assert.equal(failed.phase, 'scope')
+				assert.match(failed.reason, /Oracle reply is invalid after one attempt/)
+				assert.equal(readFileSync(calls, 'utf8').match(/"stage":"scope"/g)?.length, 1)
+				run(['resume', campaign], 2)
+			}
 			assert.match(
 				readFileSync(join(campaign, 'decisions.json'), 'utf8'),
 				/How should the preview communicate readiness/
@@ -370,7 +401,7 @@ if (stage === 'afterFactory' && !existsSync(join(campaign, 'verification-ready')
 					.all()
 					.map((row) => row.command)
 				for (const command of ['gap answer', 'claim accept', 'claim handoff'])
-					assert(operations.includes(command), command)
+					assert.equal(operations.filter((operation) => operation === command).length, 1, command)
 			} finally {
 				db.close()
 			}
@@ -385,6 +416,7 @@ if (stage === 'afterFactory' && !existsSync(join(campaign, 'verification-ready')
 					[
 						'scope',
 						'scope',
+						'scope',
 						'afterScope',
 						'afterScope',
 						'afterVerify',
@@ -392,6 +424,8 @@ if (stage === 'afterFactory' && !existsSync(join(campaign, 'verification-ready')
 						'test',
 						'afterExploration',
 						'afterExploration',
+						'review',
+						'review',
 						'review',
 						'afterReview',
 						'worker',
@@ -407,6 +441,12 @@ if (stage === 'afterFactory' && !existsSync(join(campaign, 'verification-ready')
 						'afterVerify',
 					]
 				)
+				const scope = trace.filter(({ stage }) => stage === 'scope')
+				assert.match(scope[1].prompt, /Oracle reply must contain valid JSON/)
+				const [badId, reusedId, corrected] = trace.filter(({ stage }) => stage === 'review')
+				assert.doesNotMatch(badId.prompt, /Oracle reply correction/)
+				assert.match(reusedId.prompt, /Invalid Oracle decision ID "merge\/T1"/)
+				assert.match(corrected.prompt, /Oracle decision ID already answered: D1/)
 				const scopeJobs = trace.filter(({ stage }) => stage === 'afterScope')
 				assert.deepEqual(
 					scopeJobs.map(({ marker }) => marker),

@@ -1,6 +1,7 @@
 oracle:
   model: openai-codex/gpt-6-luna
   effort: medium
+  maxCorrections: 2
 factory:
   model: openai-codex/gpt-6-luna
   effort: medium

@@ -12,4 +12,3 @@ const response = await fetch('/api/bulk-reschedule',{method:'POST',headers:{'Con
 document.querySelector('pre').textContent = JSON.stringify(await response.json(),null,2);
 });</script></html>`
 }
-

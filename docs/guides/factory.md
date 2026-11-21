@@ -49,7 +49,9 @@ Set `qa.exploreBeforeFactory` to `true` to explore the starting build after the 
 
 Jobs run in order in the isolated worktree. Give each command as a list of arguments. The runner executes the list directly. Use `[]` or omit a job list to skip it. Write job artifacts to the campaign directory. The checked-in config runs `npm run phase:verify` after the factory. Older configs can still use `verify` for a single `afterFactory` command. The runner installs dependencies and builds the CLI to prepare the preview.
 
-A failed `afterFactory` or candidate `afterVerify` job sends the error to the next factory round. Other job failures stop the campaign at that phase. Resume retries the unfinished phase and its jobs. Read each command's output in the campaign `logs/` directory. Jobs can use `CHECKMATE_FACTORY_CAMPAIGN_DIR`, `CHECKMATE_FACTORY_RECORDS_DIR`, `CHECKMATE_FACTORY_BUILD`, and `CHECKMATE_FACTORY_EXPLORATION`. The last variable gives the latest completed exploration ID or an empty value.
+Phase jobs run with their own harness selection. If an `afterFactory` or candidate `afterVerify` job fails and the candidate can run, Checkmate still explores it. The factory can fix defects that the oracle accepts. A failed check blocks the campaign from passing. If QA has no fixes to hand off, the campaign stops with the check error and the exploration record. `resume` retries the checks on the same commit and uses the saved QA result. Other phase job failures stop the campaign at that phase.
+
+Read each command's output in the campaign `logs/` directory. Jobs can use `CHECKMATE_FACTORY_CAMPAIGN_DIR`, `CHECKMATE_FACTORY_RECORDS_DIR`, `CHECKMATE_FACTORY_BUILD`, and `CHECKMATE_FACTORY_EXPLORATION`. The last variable gives the latest completed exploration ID or an empty value.
 
 For GitHub Actions, configure the `CHECKMATE_FACTORY_PI_AUTH` secret with the Pi host's auth file format. Once the [factory workflow](../../.github/workflows/factory.yml) is on the default branch, dispatch it and select the input type and value. The workflow uploads a campaign artifact. Download it to resume in a source checkout that has the campaign's base commit.
 

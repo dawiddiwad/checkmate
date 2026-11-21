@@ -15,4 +15,4 @@ To inspect an existing campaign, use `node scripts/factory.mjs status <campaign-
 
 If the runner exits with 2, read `decisions.json`. Give the person the open decisions, the trade-offs for each option, and the oracle's recommendation. After the person answers, write a JSON object that maps each decision ID to its chosen option ID. Run `node scripts/factory.mjs resume <campaign-dir> --answers <json-file>`.
 
-If the runner exits with 0, report the tested commit, the Checkmate record, and the candidate bundle. If it exits with 1, report the reason saved by the runner and where to inspect the campaign.
+If the runner exits with 0, report the tested commit, the Checkmate record, and the candidate bundle. If it exits with 1, report the reason in `status.json`, the latest exploration ID if present, and where to inspect the campaign. If verification failed after QA, `resume` retries the checks on the same commit.

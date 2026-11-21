@@ -5,6 +5,7 @@ import { delimiter, join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import test from 'node:test'
 import { pathToFileURL } from 'node:url'
+import { startUi } from '../plugin/src/ui/server.ts'
 import { directory, json, root } from './support.ts'
 
 const preview = `import { createServer } from 'node:http'
@@ -61,7 +62,7 @@ async function main() {
 	} else if (prompt.startsWith('# Factory worker')) {
 		const prior = readFileSync('message.txt', 'utf8')
 		record({ stage: 'worker', prior, cwd: process.cwd(), prompt })
-		writeFileSync('message.txt', prior === 'BASE' ? 'FIRST' : 'READY')
+		writeFileSync('message.txt', prior === 'BASE' && !prompt.includes('Questions and answers from baseline') ? 'FIRST' : 'READY')
 		result = 'Updated the preview.'
 	} else if (prompt.startsWith('# Factory oracle review')) {
 		record({ stage: 'review', prompt })
@@ -252,6 +253,8 @@ const { CHECKMATE_FACTORY_BUILD: build, CHECKMATE_FACTORY_CAMPAIGN_DIR: campaign
 	CHECKMATE_FACTORY_RECORDS_DIR: records, CHECKMATE_FACTORY_EXPLORATION: exploration } = process.env
 assert.equal(records, join(campaign, 'records'))
 assert.ok(existsSync(join(records, '.checkmate', 'checkmate.db')))
+assert.equal(process.env.CHECKMATE_HARNESS, undefined)
+assert.equal(process.env.CHECKMATE_ACTOR, undefined)
 const trace = ${JSON.stringify(calls)}
 const body = readFileSync('message.txt', 'utf8')
 appendFileSync(trace, JSON.stringify({ stage, build, exploration, body, marker }) + '\n')
@@ -266,7 +269,8 @@ if (stage === 'afterExploration' && exploration === 'x-1') {
 		throw new Error('Phase job interrupted the baseline before oracle review.')
 	}
 }
-if (stage === 'afterFactory' && body === 'FIRST') throw new Error('FIRST failed the configured gate.')
+if (stage === 'afterFactory' && !existsSync(join(campaign, 'verification-ready')))
+	throw new Error('The configured gate could not reach its fixture.')
 `
 			)
 			save(
@@ -313,7 +317,29 @@ if (stage === 'afterFactory' && body === 'FIRST') throw new Error('FIRST failed 
 				assert.equal(resumed.explorations, 1)
 				assert.match(resumed.reason, /Phase job interrupted the baseline/)
 				assert.doesNotMatch(readFileSync(calls, 'utf8'), /"stage":"(worker|review)"/)
-				assert.equal(JSON.parse(run(['resume', campaign])).baselineExploration, 'x-1')
+				const blocked = JSON.parse(run(['resume', campaign], 1))
+				assert.equal(blocked.baselineExploration, 'x-1')
+				assert.equal(blocked.nativeState, 'passed')
+				assert.equal(blocked.lastExploration, 'x-2')
+				assert.equal(blocked.builds, 1)
+				assert.match(blocked.reason, /The configured gate could not reach its fixture/)
+				const ui = await startUi({ workspace: join(campaign, 'records') })
+				try {
+					const page = await fetch(new URL('/explorations/x-2', ui.url))
+					assert.equal(page.status, 200)
+					assert.match(await page.text(), /Display READY/)
+				} finally {
+					await ui.close()
+				}
+				const rechecked = JSON.parse(run(['resume', campaign], 1))
+				assert.equal(rechecked.builds, 1)
+				assert.equal(rechecked.explorations, 2)
+				assert.equal(rechecked.candidate, blocked.candidate)
+				writeFileSync(join(campaign, 'verification-ready'), '')
+				const passed = JSON.parse(run(['resume', campaign]))
+				assert.equal(passed.candidate, blocked.candidate)
+				assert.equal(passed.lastExploration, 'x-2')
+				assert.equal(passed.verificationError, null)
 			}
 			assert.match(run(['status', campaign]), /passed/)
 			assert.equal(execute('git', ['rev-parse', 'HEAD']).trim(), baseline)
@@ -370,13 +396,15 @@ if (stage === 'afterFactory' && body === 'FIRST') throw new Error('FIRST failed 
 						'afterReview',
 						'worker',
 						'afterFactory',
-						'worker',
-						'afterFactory',
 						'afterVerify',
 						'study',
 						'test',
 						'afterExploration',
 						'afterReview',
+						'afterFactory',
+						'afterVerify',
+						'afterFactory',
+						'afterVerify',
 					]
 				)
 				const scopeJobs = trace.filter(({ stage }) => stage === 'afterScope')
@@ -389,11 +417,10 @@ if (stage === 'afterFactory' && body === 'FIRST') throw new Error('FIRST failed 
 				const [baselineStudy, candidateStudy] = trace.filter(({ stage }) => stage === 'study')
 				assert.doesNotMatch(baselineStudy.prompt, /Read the diff first/)
 				assert.match(candidateStudy.prompt, /Read the diff first/)
-				const [firstWorker, secondWorker] = trace.filter(({ stage }) => stage === 'worker')
+				const firstWorker = trace.find(({ stage }) => stage === 'worker')
 				assert.match(firstWorker.prompt, /Questions and answers from baseline x-1/)
 				assert.match(firstWorker.prompt, /Display READY after the preview loads/)
 				assert.match(firstWorker.prompt, /Wrong preview text/)
-				assert.match(secondWorker.prompt, /FIRST failed the configured gate/)
 			}
 			const tested = trace.filter((call) => call.stage === 'test')
 			assert.deepEqual(

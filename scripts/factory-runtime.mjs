@@ -128,7 +128,10 @@ export function createRuntime(directory, config) {
 	const env = hostEnvironment(directory)
 	const buildEnv = Object.fromEntries(
 		Object.entries(env).filter(
-			([name]) => !/^(PI_CODING_AGENT_|OPENAI_|OPENROUTER_|ANTHROPIC_|CODEX_ACCESS_TOKEN$)/.test(name)
+			([name]) =>
+				!/^(CHECKMATE_HARNESS$|CHECKMATE_ACTOR$|PI_CODING_AGENT_|OPENAI_|OPENROUTER_|ANTHROPIC_|CODEX_ACCESS_TOKEN$)/.test(
+					name
+				)
 		)
 	)
 	const jobs = new Set()
@@ -173,7 +176,9 @@ export function createRuntime(directory, config) {
 	async function run(file, args, cwd, name, context) {
 		const output = await logged(file, args, cwd, name, context && { ...buildEnv, ...context })
 		if (output.code !== 0)
-			throw new Error(`${name} failed. See ${output.stderr}. ${failure(output, tail(output.stdout))}`)
+			throw new Error(
+				`${name} failed. See ${output.stdout} and ${output.stderr}. ${failure(output, tail(output.stdout))}`
+			)
 		return output
 	}
 
@@ -316,7 +321,7 @@ export function createRuntime(directory, config) {
 			node,
 			[cli, 'ui', '--workspace', workspace, '--port', '0', '--json'],
 			work,
-			buildEnv,
+			{ ...buildEnv, CHECKMATE_HARNESS: 'pi', CHECKMATE_ACTOR: 'factory' },
 			stdout,
 			stderr
 		)

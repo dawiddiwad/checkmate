@@ -379,20 +379,50 @@ async function runFactory(root, directory, campaign, state) {
 		persist('verify', { candidate, factorySummary: reply.slice(0, 2000), buildError: null })
 	}
 
+	function verificationFailed(verificationError) {
+		persist('verify', {
+			state: 'failed',
+			verificationError,
+			retryVerification: true,
+			reason: 'Candidate verification failed. Review the Checkmate exploration. ' + verificationError,
+		})
+	}
+
 	async function verify() {
+		const verificationErrors = []
+		async function checkJobs(phase) {
+			try {
+				await runJobs(phase)
+			} catch (error) {
+				abort()
+				if (exploringBaseline()) throw error
+				checkCandidate(phase)
+				verificationErrors.push(error.message)
+			}
+		}
 		try {
 			await runtime.run('npm', ['ci'], work, 'install-candidate-' + state.builds)
-			if (!exploringBaseline()) await runJobs('afterFactory')
+			if (!exploringBaseline()) await checkJobs('afterFactory')
 			await runtime.run(process.execPath, ['scripts/build-cli.ts'], work, 'build-' + state.builds)
 			checkCandidate('Build checks')
-			await runJobs('afterVerify')
+			await checkJobs('afterVerify')
 		} catch (error) {
 			abort()
-			if (exploringBaseline()) throw error
+			if (exploringBaseline() || state.retryVerification) throw error
 			persist('build', { buildError: error.message, reason: 'The candidate did not pass its build check.' })
 			return
 		}
-		persist('explore', { reason: 'The candidate passed its build check.' })
+		const verificationError = verificationErrors.join('\n') || null
+		const retry = state.retryVerification
+		if (retry && verificationError) return verificationFailed(verificationError)
+		persist(retry ? 'afterReview' : 'explore', {
+			verificationError,
+			retryVerification: false,
+			reason: verificationError
+				? 'Verification failed. Checkmate will explore the runnable candidate.'
+				: 'The candidate passed its build check.',
+		})
+		if (retry) concludeReview()
 	}
 
 	async function explore() {
@@ -554,9 +584,13 @@ async function runFactory(root, directory, campaign, state) {
 
 	async function afterReview() {
 		await runJobs('afterReview')
+		concludeReview()
+	}
+
+	function concludeReview() {
 		const fresh = summary()
 		persist('afterReview', { nativeState: fresh.state, nativeNext: fresh.next })
-		if (fresh.state === 'passed' && !exploringBaseline()) {
+		if (fresh.state === 'passed' && !exploringBaseline() && !state.verificationError) {
 			const latest = fresh.explorations.at(-1)
 			assert.equal(
 				latest?.explorationId,
@@ -579,9 +613,15 @@ async function runFactory(root, directory, campaign, state) {
 				baselineExploration: state.lastExploration,
 				reason: 'The oracle reviewed the baseline. The factory can start implementation.',
 			})
-		} else if (fixes.length)
-			persist('build', { fixes, reason: 'The oracle handed accepted defects to the factory.' })
-		else persist('explore', { fixes: [], reason: 'Checkmate needs a fresh exploration to complete the record.' })
+		} else if (fixes.length) {
+			persist('build', {
+				fixes,
+				buildError: state.verificationError,
+				reason: 'The oracle handed accepted defects to the factory.',
+			})
+		} else if (state.verificationError) {
+			verificationFailed(state.verificationError)
+		} else persist('explore', { fixes: [], reason: 'Checkmate needs a fresh exploration to complete the record.' })
 	}
 
 	process.once('SIGINT', stop)

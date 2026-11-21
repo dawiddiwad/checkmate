@@ -126,7 +126,6 @@ export function recorderPrompt(
 	const text = [
 		`Now write the record of this test session for the QA record of the team (build ${build}).`,
 		'Record what you did and found, your questions for the product owner, and the answers that you received. Do not test again for the record, and do not change the files of the project. Do not repeat what the record already holds.',
-		'Log product questions the tester raised. Record a missing fixture, tool, or runtime prerequisite as a note unless the tester found a product defect. A blocked check gives no product verdict.',
 		replyText('the new entries', answer),
 		'Number the new entries freely, for example N1, O1, D1. Use an ID of the record only to point at an entry of the record.',
 		'Evidence is the path of a file that already exists, as the tester saved it, from the directory of the session, or the text that you saw.',
@@ -253,12 +252,6 @@ export function explorerBrief(
 		'Use the applied oracle answers to settle open points in the sources. Keep deferred questions deferred.',
 		'Ask only about points that the sources and the applied oracle decisions leave open.',
 	]
-	const appliedDecisions = decisions.map(({ gapId, kind, question, value, source }) => {
-		const label = kind === 'defer' ? 'Deferred' : kind === 'accept_assumption' ? 'Accepted assumption' : 'Answer'
-		return `- ${gapId}: ${question} ${label}: ${value}${source ? ` (source: ${source})` : ''}`
-	})
-	const answers = appliedDecisions.length ? ['', 'Applied oracle decisions:', ...appliedDecisions] : []
-	const hasAnswers = Boolean(appliedDecisions.length || charter.knownAnswerIds?.length)
 	const diff = change
 		? [
 				`The code of the change is shown by git diff ${change.range.join(' ')} in ${change.repo === '.' ? 'the workspace' : `the folder ${change.repo}`}.`,
@@ -277,8 +270,22 @@ export function explorerBrief(
 			: []),
 		...(charter.sources.length ? ['', `Read: ${charter.sources.join(', ')}`] : []),
 		...(charter.instructions ? ['', charter.instructions] : []),
-		...answers,
-		...(hasAnswers ? decisionInstructions : []),
+		...(decisions.length
+			? [
+					'',
+					'Applied oracle decisions:',
+					...decisions.map(({ gapId, kind, question, value, source }) => {
+						const label =
+							kind === 'defer'
+								? 'Deferred'
+								: kind === 'accept_assumption'
+									? 'Accepted assumption'
+									: 'Answer'
+						return `- ${gapId}: ${question} ${label}: ${value}${source ? ` (source: ${source})` : ''}`
+					}),
+					...decisionInstructions,
+				]
+			: []),
 		...(charter.scope.length ? ['', 'Changed files:', ...charter.scope.map((path) => `- ${path}`)] : []),
 		...(diff.length ? ['', ...diff] : []),
 		...(charter.knownState
@@ -312,8 +319,7 @@ export function explorerBrief(
 	]
 	const test = [
 		'Now test the change and the existing behaviour that it can break.',
-		...answers,
-		...(hasAnswers
+		...(decisions.length
 			? [
 					...decisionInstructions,
 					'Report a point as unclear only if it is still open after you check the sources and the applied oracle decisions.',

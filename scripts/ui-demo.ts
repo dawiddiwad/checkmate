@@ -1,6 +1,5 @@
 import type { PlanCandidate, PlanRequest, Profile } from '../plugin/src/types.ts'
 import type { Store } from '../plugin/src/store.ts'
-import { askRequest, requestOf, setRequestState } from '../plugin/src/requests.ts'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { crc32, deflateSync } from 'node:zlib'
@@ -617,31 +616,13 @@ function seedStartedRun(store: Store) {
 	])
 }
 
-export function seedDemo(workspace: string, { factory = false } = {}) {
+export function seedDemo(workspace: string) {
 	const store = openStore(workspace)
 	try {
 		withDemoClock(() => seedAll(store))
-		if (factory) return { chatPath: seedFactoryChat(store) }
 	} finally {
 		closeStore(store)
 	}
-}
-
-function seedFactoryChat(store: Store) {
-	const context = { planId: null, record: null }
-	const first = askRequest(store, human, {
-		text: 'QA sample: what is in the review workspace?',
-		context,
-		chatId: null,
-		harness: 'pi',
-	})
-	const chatId = requestOf(store, first)!.conversation
-	setRequestState(store, first, 'answered', {
-		reply: 'The workspace has plans and recorded QA activity.\n\n- Open a plan to review its rules.\n- Open Testers to see exploration results.',
-	})
-	const second = askRequest(store, human, { text: 'Where can I review the plans?', context, chatId, harness: 'pi' })
-	setRequestState(store, second, 'answered', { reply: 'Open the [plans list](/) to choose a plan.' })
-	return '/chats/' + chatId
 }
 
 function seedAll(store: Store) {

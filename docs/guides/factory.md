@@ -6,76 +6,7 @@ The factory opens each subject with a command and gives each stage to the select
 
 <img src="../img/life.png" alt="Diagram: one plan from ticket to accepted result. On the left, the loop states with the role that each one waits on: needs_plan waits on the planner, needs_answers on the oracle, needs_revision on the planner, needs_approval on the oracle, ready_to_run on QA, defects_open on the factory, awaits_acceptance on the oracle, and accepted on none. On the right, the next step for each state: the planner writes plan@1 with gap G1 (plan save), the oracle answers G1 (gap answer), the planner writes plan@2 (plan revise), the oracle approves plan@2 (plan approve), QA runs the tests on build b1 (run begin), the factory fixes the code and builds b2, QA retests on build b2 (--retest-of), and the oracle accepts the result (result accept). An amber arrow goes from the runs back to the oracle's answer: a run finds a new gap. checkmate status prints the state, and the review UI shows it too." width="100%"/>
 
-**On this page:** [Develop Checkmate with its own factory](#develop-checkmate-with-its-own-factory) · [Before you start](#before-you-start) · [Read a response](#read-a-response) · [Give permissions to a worker](#give-permissions-to-a-worker) · [Give Claude Code options to a worker](#give-claude-code-options-to-a-worker) · [One ticket through the loop](#one-ticket-through-the-loop) · [Read the record](#read-the-record) · [Get a signal when the oracle must act](#get-a-signal-when-the-oracle-must-act) · [When a run stops](#when-a-run-stops) · [Use a sub-agent instead of delegate](#use-a-sub-agent-instead-of-delegate)
-
-## Develop Checkmate with its own factory
-
-In the Checkmate source repository, the factory runner turns a development request into a campaign. The oracle sets the scope and resolves decisions. The factory agent changes and builds Checkmate in a separate worktree. Checkmate explores the candidate and keeps the plan, findings, evidence, and decisions in the campaign record. The factory fixes confirmed defects. Checkmate retests each candidate.
-
-Use Node.js 24.12.0 or later, Git, and an authenticated Pi host. Run `npm ci` from the source checkout. For a GitHub issue, install and authenticate `gh` as well. The repository's [`factory.yml`](../../factory.yml) sets the role models, effort, phase jobs, and campaign limits. Pi supplies the credentials.
-
-From the source checkout, start `pi --skill ./cli/skills/checkmate-factory`. In Pi, enter `/skill:checkmate-factory <development request>`. An agent or a script can call the same runner directly. Use one input per campaign.
-
-```sh
-node scripts/factory.mjs start --issue 42
-node scripts/factory.mjs start --prompt "Keep the last selected plan after a refresh."
-node scripts/factory.mjs start --file docs/change.md
-```
-
-`--issue` also accepts a GitHub issue URL. `--file` accepts a local path, file URL, or HTTP link. Authenticate `gh` for a GitHub file link. Use `--config <yaml>` to use another config and `--output <new-campaign-dir>` to set the campaign directory.
-
-### Set phase jobs and baseline exploration
-
-To explore the starting build and run two focused checks after each factory round, set these keys in a copy of `factory.yml`. Keep the other `qa` settings in that copy.
-
-```yaml
-qa:
-  exploreBeforeFactory: true
-jobs:
-  afterFactory:
-    - [node, --test, test/cli.test.ts]
-    - [node, --test, test/ui.test.ts]
-```
-
-Set `qa.exploreBeforeFactory` to `true` to explore the starting build after the oracle sets the acceptance rules. The oracle reviews the baseline before implementation. The factory agent receives the baseline questions, answers, and accepted defects. The baseline uses one exploration from `maxExplorations`. Set the limit to at least two to leave room for candidate QA. The default is `false`.
-
-| Job list           | When it runs                                                                        |
-| ------------------ | ----------------------------------------------------------------------------------- |
-| `afterScope`       | After the plan opens, before baseline QA or the first factory round.                |
-| `afterFactory`     | After each factory round commits its edits and installs candidate dependencies.     |
-| `afterVerify`      | After the CLI package builds, including for a baseline.                             |
-| `afterExploration` | After a completed exploration closes its preview, before oracle review.             |
-| `afterReview`      | After oracle review and any required human decision, before the next phase or pass. |
-
-Jobs run in order in the isolated worktree. Give each command as a list of arguments. The runner executes the list directly. Use `[]` or omit a job list to skip it. Write job artifacts to the campaign directory. The checked-in config runs `npm run phase:verify` after the factory. Older configs can still use `verify` for a single `afterFactory` command. The runner installs dependencies and builds the CLI to prepare the preview.
-
-Phase jobs run with their own harness selection. If an `afterFactory` or candidate `afterVerify` job fails and the candidate can run, Checkmate still explores it. The factory can fix defects that the oracle accepts. A failed check blocks the campaign from passing. If QA has no fixes to hand off, the campaign stops with the check error and the exploration record. `resume` retries the checks on the same commit and uses the saved QA result. Other phase job failures stop the campaign at that phase.
-
-Read each command's output in the campaign `logs/` directory. Jobs can use `CHECKMATE_FACTORY_CAMPAIGN_DIR`, `CHECKMATE_FACTORY_RECORDS_DIR`, `CHECKMATE_FACTORY_BUILD`, and `CHECKMATE_FACTORY_EXPLORATION`. The last variable gives the latest completed exploration ID or an empty value.
-
-For GitHub Actions, configure the `CHECKMATE_FACTORY_PI_AUTH` secret with the Pi host's auth file format. Once the [factory workflow](../../.github/workflows/factory.yml) is on the default branch, dispatch it and select the input type and value. The workflow uploads a campaign artifact. Download it to resume in a source checkout that has the campaign's base commit.
-
-By default, the runner creates a directory under `.checkmate/factory/`. It exits with 0 when the candidate passes, 2 when a person must decide, and 1 when the campaign fails or reaches its limit. `status.json` gives the result. Use `node scripts/factory.mjs status <campaign-dir>` to read it again. Open the `records` workspace in the [review UI](review-ui.md). The factory stops each disposable candidate preview after its exploration. When the factory creates a commit, `candidate.bundle` records it against the base commit. Review the changes in the candidate worktree or fetch the bundle locally.
-
-The oracle answers from the request and existing product rules. It pauses for product decisions with two or more comparable options. Read `decisions.json` for the IDs, trade-offs, and recommendation. Save the person's answers as a JSON object. Map each decision ID to the chosen option ID from that file.
-
-In review, the oracle addresses each open question and claim and reads the latest QA notes when coverage is incomplete. It answers questions and accepts, rejects, or requests more evidence on claims. It links escalated decisions to the affected items. On resume, the runner records each selected answer against its linked Checkmate questions. Exact, nonblocking repeats for the same rule and build can reuse a saved answer.
-
-The factory receives accepted defects and preview setup tasks. It prepares each disposable preview before QA starts. The Checkmate preview includes a sample chat with saved messages and replies. It creates this data without a model call and links to it in `preview.md`. QA receives prior answers in both briefs and any requested checks for more evidence. If two retries on the same build leave the remaining coverage unchanged, the campaign stops with the reason in `status.json`.
-
-If an oracle reply fails validation, the runner sends the error and the earlier reply back to the oracle. Set `oracle.maxCorrections` in `factory.yml` to choose how many correction attempts follow the first reply. The default is `2`. The range is `0` to `10`. Use `0` to disable corrections. The runner validates the full reply before it saves any decisions or findings from that reply. The `logs/` directory holds each attempt. Host failures stop the current phase with their own error.
-
-```json
-{ "D1": "preserve" }
-```
-
-Apply the answers to the same campaign.
-
-```sh
-node scripts/factory.mjs resume <campaign-dir> --answers answers.json
-```
-
-To continue an interrupted campaign, run `node scripts/factory.mjs resume <campaign-dir>`.
+**On this page:** [Before you start](#before-you-start) · [Read a response](#read-a-response) · [Give permissions to a worker](#give-permissions-to-a-worker) · [Give Claude Code options to a worker](#give-claude-code-options-to-a-worker) · [One ticket through the loop](#one-ticket-through-the-loop) · [Read the record](#read-the-record) · [Get a signal when the oracle must act](#get-a-signal-when-the-oracle-must-act) · [When a run stops](#when-a-run-stops) · [Use a sub-agent instead of delegate](#use-a-sub-agent-instead-of-delegate)
 
 ## Before you start
 

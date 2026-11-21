@@ -145,8 +145,6 @@ claude plugin eval plugin --scaffold --trust-plugin --allow-tools Bash Read Writ
 - The suite is not part of `phase:verify` or CI. A passed suite does not prove that a worker always follows the skills.
 - The marketplace plugin contains `plugin/evals/`. The npm package does not: `scripts/build-cli.ts` leaves it out of the plugin copy.
 
-The separate [exploratory discovery eval](../plugin/evals/exploration-discovery/README.md) compares bare Pi with Checkmate smoke or normal on the same local Git PR and deployed builds. A deterministic oracle identifies existing defects and PR regressions.
-
 ## Contracts
 
 1. Edit the schemas in `plugin/contracts/`.

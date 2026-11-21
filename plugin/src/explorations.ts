@@ -26,7 +26,6 @@ export type Charter = {
 	knownState: string | null
 	knownAnswerIds?: string[]
 }
-type KnownState = { path: string; answerIds: string[]; answers: NonNullable<Charter['decisions']> }
 export type ExplorationEvent = {
 	at: string
 	step: string
@@ -50,21 +49,20 @@ function charterOf(
 	plan: Plan | undefined,
 	scope: string[],
 	change: Change | null,
-	knownState: KnownState | null
+	knownState: { path: string; answerIds: string[] } | null
 ): Charter {
 	const { request, target } = planRequest(store, planId)
-	const decisions =
-		plan?.gaps.flatMap((gap) => {
-			if (gap.status !== 'resolved' && gap.status !== 'deferred') return []
-			const decision = plan.decisions.find(({ id }) => id === gap.decisionId)
-			if (!decision) return []
-			const { gapId, kind, value, source } = decision
-			return [{ gapId, kind, question: gap.question, value, source }]
-		}) ?? []
 	return {
 		goal: request.objective,
 		requirements: planRules(store, planId).rules.map(({ id, text }) => ({ id, text })),
-		decisions: [...decisions, ...(knownState?.answers ?? [])],
+		decisions:
+			plan?.gaps.flatMap((gap) => {
+				if (gap.status !== 'resolved' && gap.status !== 'deferred') return []
+				const decision = plan.decisions.find(({ id }) => id === gap.decisionId)
+				if (!decision) return []
+				const { gapId, kind, value, source } = decision
+				return [{ gapId, kind, question: gap.question, value, source }]
+			}) ?? [],
 		sources: request.context?.sources ?? [],
 		instructions: request.context?.instructions ?? null,
 		capabilities: target.profile.capabilities,
@@ -186,17 +184,9 @@ function knownState(store: Store, planId: string, build: string) {
 	let lines = render(full)
 	while (lines.length > maxKnownLines && full > 0) lines = render(--full)
 	if (lines.length > maxKnownLines) lines = [...lines.slice(0, maxKnownLines - 1), 'More results are left out.']
-	const answerIds = lines.flatMap((line) => (typeof line !== 'string' && line.answerId ? [line.answerId] : []))
 	return {
 		text: lines.map((line) => (typeof line === 'string' ? line : line.text)).join('\n') + '\n',
-		answerIds,
-		answers: answers.flatMap<NonNullable<Charter['decisions']>[number]>(
-			({ id, answerId, question, answer, decision }) => {
-				if (!answerId || !answerIds.includes(answerId) || answer === null) return []
-				const kind = decision === 'defer' || decision === 'accept_assumption' ? decision : 'clarify'
-				return [{ gapId: id, kind, question, value: answer, source: null }]
-			}
-		),
+		answerIds: lines.flatMap((line) => (typeof line !== 'string' && line.answerId ? [line.answerId] : [])),
 	}
 }
 
@@ -208,10 +198,10 @@ function writeKnownState(store: Store, planId: string, explorationId: string, bu
 	if (!one(store, 'SELECT 1 FROM explorations WHERE plan_id = ? AND exploration_id != ?', planId, explorationId))
 		return null
 	const path = `${workFolder(explorationId)}/known-state.md`
-	const { text, answerIds, answers } = knownState(store, planId, build)
+	const { text, answerIds } = knownState(store, planId, build)
 	mkdirSync(join(store.workspace, workFolder(explorationId)), { recursive: true })
 	writeFileSync(join(store.workspace, path), text)
-	return { path, answerIds, answers }
+	return { path, answerIds }
 }
 
 export function nextExplorationId(store: Store) {

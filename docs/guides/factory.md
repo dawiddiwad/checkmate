@@ -6,7 +6,41 @@ The factory opens each subject with a command and gives each stage to the select
 
 <img src="../img/life.png" alt="Diagram: one plan from ticket to accepted result. On the left, the loop states with the role that each one waits on: needs_plan waits on the planner, needs_answers on the oracle, needs_revision on the planner, needs_approval on the oracle, ready_to_run on QA, defects_open on the factory, awaits_acceptance on the oracle, and accepted on none. On the right, the next step for each state: the planner writes plan@1 with gap G1 (plan save), the oracle answers G1 (gap answer), the planner writes plan@2 (plan revise), the oracle approves plan@2 (plan approve), QA runs the tests on build b1 (run begin), the factory fixes the code and builds b2, QA retests on build b2 (--retest-of), and the oracle accepts the result (result accept). An amber arrow goes from the runs back to the oracle's answer: a run finds a new gap. checkmate status prints the state, and the review UI shows it too." width="100%"/>
 
-**On this page:** [Before you start](#before-you-start) · [Read a response](#read-a-response) · [Give permissions to a worker](#give-permissions-to-a-worker) · [Give Claude Code options to a worker](#give-claude-code-options-to-a-worker) · [One ticket through the loop](#one-ticket-through-the-loop) · [Read the record](#read-the-record) · [Get a signal when the oracle must act](#get-a-signal-when-the-oracle-must-act) · [When a run stops](#when-a-run-stops) · [Use a sub-agent instead of delegate](#use-a-sub-agent-instead-of-delegate)
+**On this page:** [Develop Checkmate with its own factory](#develop-checkmate-with-its-own-factory) · [Before you start](#before-you-start) · [Read a response](#read-a-response) · [Give permissions to a worker](#give-permissions-to-a-worker) · [Give Claude Code options to a worker](#give-claude-code-options-to-a-worker) · [One ticket through the loop](#one-ticket-through-the-loop) · [Read the record](#read-the-record) · [Get a signal when the oracle must act](#get-a-signal-when-the-oracle-must-act) · [When a run stops](#when-a-run-stops) · [Use a sub-agent instead of delegate](#use-a-sub-agent-instead-of-delegate)
+
+## Develop Checkmate with its own factory
+
+In the Checkmate source repository, the factory runner turns a development request into a campaign. The oracle sets the scope and resolves decisions. The factory agent changes and builds Checkmate in a separate worktree. Checkmate explores the candidate and keeps the plan, findings, evidence, and decisions in the campaign record. The factory fixes confirmed defects. Checkmate retests each candidate.
+
+Use Node.js 24.12.0 or later, Git, and an authenticated Pi host. Run `npm ci` from the source checkout. For a GitHub issue, install and authenticate `gh` as well. Edit the repository's [`factory.yml`](../../factory.yml) to set the model and effort for each role, the QA level and time, and the limits for builds and explorations. Pi supplies the credentials.
+
+From the source checkout, start `pi --skill ./cli/skills/checkmate-factory`. In Pi, enter `/skill:checkmate-factory <development request>`. An agent or a script can call the same runner directly. Use one input per campaign.
+
+```sh
+node scripts/factory.mjs start --issue 42
+node scripts/factory.mjs start --prompt "Keep the last selected plan after a refresh."
+node scripts/factory.mjs start --file docs/change.md
+```
+
+`--issue` also accepts a GitHub issue URL. `--file` accepts a local path, file URL, or HTTP link. Authenticate `gh` for a GitHub file link. Use `--config <yaml>` to use another config and `--output <new-campaign-dir>` to set the campaign directory.
+
+For GitHub Actions, configure the `CHECKMATE_FACTORY_PI_AUTH` secret with the Pi host's auth file format. Once the [factory workflow](../../.github/workflows/factory.yml) is on the default branch, dispatch it and select the input type and value. The workflow uploads a campaign artifact. Download it to resume in a source checkout that has the campaign's base commit.
+
+By default, the runner creates a directory under `.checkmate/factory/`. It exits with 0 when the candidate passes, 2 when a person must decide, and 1 when the campaign fails or reaches its limit. `status.json` gives the result. Use `node scripts/factory.mjs status <campaign-dir>` to read it again. Open the `records` workspace in the [review UI](review-ui.md). The factory stops each disposable candidate preview after its exploration. When the factory creates a commit, `candidate.bundle` records it against the base commit. Review the changes in the candidate worktree or fetch the bundle locally.
+
+The oracle answers from the request and existing product rules. It pauses for product decisions with two or more comparable options. Read `decisions.json` for the IDs, trade-offs, and recommendation. Save the person's answers as a JSON object. Map each decision ID to the chosen option ID from that file.
+
+```json
+{ "D1": "preserve" }
+```
+
+Apply the answers to the same campaign.
+
+```sh
+node scripts/factory.mjs resume <campaign-dir> --answers answers.json
+```
+
+To continue an interrupted campaign, run `node scripts/factory.mjs resume <campaign-dir>`.
 
 ## Before you start
 

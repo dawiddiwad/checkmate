@@ -1,0 +1,15 @@
+oracle:
+  model: openai-codex/gpt-6-luna
+  effort: medium
+factory:
+  model: openai-codex/gpt-6-luna
+  effort: medium
+qa:
+  model: openai-codex/gpt-6-luna
+  effort: medium
+  level: normal
+  minutes: 4
+maxBuilds: 3
+maxExplorations: 6
+timeoutSeconds: 900
+verify: [npm, run, 'phase:verify']

@@ -72,6 +72,8 @@ checkmate status checkout
 
 Read [Run Checkmate from a factory](docs/guides/factory.md).
 
+When you work on Checkmate itself, use the [development factory](docs/guides/factory.md#develop-checkmate-with-its-own-factory). Start it from Pi with `/skill:checkmate-factory`, from the source checkout with the runner, or from GitHub Actions.
+
 Use Node.js 24.12.0 or later. For delegated stages, install and authenticate the selected harness. For browser tests, install Playwright CLI: `npm i -g @playwright/cli`.
 
 ## Documentation

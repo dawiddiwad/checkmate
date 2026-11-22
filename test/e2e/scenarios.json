@@ -139,9 +139,8 @@
 	{
 		"number": 23,
 		"name": "Run a narrow retest with prerequisites and regressions — uncovered tests silently accepted.",
-		"status": "partial",
-		"reason": "The fixed build is retested against the prior run; prerequisite and regression selection still needs a dedicated case.",
-		"test": "Answer, revise, and approve the named revision — execution against the wrong revision."
+		"status": "covered",
+		"test": "Run a narrow retest with prerequisites and regressions — uncovered tests silently accepted."
 	},
 	{
 		"number": 24,

@@ -1300,3 +1300,174 @@ test(
 		await once(child, 'exit')
 	}
 )
+
+test('Run a narrow retest with prerequisites and regressions — uncovered tests silently accepted.', async (t) => {
+	const workspace = directory(t)
+	writeFileSync(join(workspace, 'ticket.md'), 'The quote is 240.\n')
+	const app = await fixture()
+	t.after(() => app.close())
+	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle' }
+	const ok = async (args: string[], value?: unknown) => {
+		const result = await inputCommand(workspace, env, value === undefined ? '' : JSON.stringify(value), ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	await ok(['setup', '--url', app.baseUrl, '--target', 'shop'])
+	await ok([
+		'plan',
+		'open',
+		'ticket',
+		'--target',
+		'shop@1',
+		'--objective',
+		'Check the quote.',
+		'--source',
+		'ticket.md',
+	])
+	const common = {
+		requirementIds: ['R1'],
+		capability: 'http',
+		operations: ['read_catalog'],
+		preconditions: [],
+		action: 'Read quote.',
+	}
+	await ok(['plan', 'save', 'ticket'], {
+		requirements: [{ id: 'R1', text: 'The quote is 240.', source: 'ticket.md' }],
+		tests: [
+			{
+				...common,
+				id: 'T1',
+				title: 'Prerequisite',
+				dependsOn: [],
+				metadata: { type: 'regression' },
+				assertions: [{ id: 'A1', check: 'Service responds.', checkKind: 'deterministic' }],
+			},
+			{
+				...common,
+				id: 'T2',
+				title: 'Quote',
+				dependsOn: ['T1'],
+				assertions: [{ id: 'A1', check: 'The quote is 240.', checkKind: 'deterministic' }],
+			},
+			{
+				...common,
+				id: 'T3',
+				title: 'Unrelated',
+				dependsOn: [],
+				assertions: [{ id: 'A1', check: 'The quote is positive.', checkKind: 'deterministic' }],
+			},
+		],
+		gaps: [],
+	})
+	await ok(['plan', 'approve', 'ticket@1', '--rationale', 'Run the rules.'])
+	await ok(['run', 'begin', 'run-1', 'ticket@1', '--build', 'broken', '--tests', 'T1,T2'])
+	const quote = await (await fetch(`${app.baseUrl}/quote?promotion=true&loyalty=true`)).json()
+	assert.equal(quote.totalPLN, 220)
+	await ok(
+		['run', 'check', 'run-1', 'T1', 'A1', '--result', 'passed', '--observed', 'HTTP 200', '--evidence', '-'],
+		quote
+	)
+	await ok(['run', 'close', 'run-1', 'T1'])
+	const checked = await inputCommand(
+		workspace,
+		env,
+		JSON.stringify(quote),
+		'run',
+		'check',
+		'run-1',
+		'T2',
+		'A1',
+		'--result',
+		'failed',
+		'--observed',
+		'220',
+		'--evidence',
+		'-'
+	)
+	assert.equal(checked.code, 0, checked.output)
+	await ok(['run', 'finding', 'run-1'], {
+		id: 'F1',
+		type: 'defect',
+		severity: 'high',
+		assertionIds: ['T2.A1'],
+		requirementIds: ['R1'],
+		title: 'Wrong quote',
+		expected: '240',
+		observed: '220',
+		reproduction: ['Read quote.'],
+		evidenceIds: checked.body.evidenceIds,
+	})
+	await ok(['run', 'close', 'run-1', 'T2'])
+	await ok([
+		'run',
+		'finish',
+		'run-1',
+		'--completion',
+		'completed',
+		'--cleanup',
+		'completed',
+		'--cleanup-reason',
+		'No test data.',
+	])
+	const missing = await command(
+		workspace,
+		env,
+		'run',
+		'begin',
+		'bad',
+		'ticket@1',
+		'--build',
+		'fixed',
+		'--retest-of',
+		'run-1',
+		'--tests',
+		'T2'
+	)
+	assert.equal(missing.body.status, 'needs_decision', missing.output)
+	assert.match(missing.output, /regression test/)
+	assert.match(missing.output, /Missing prerequisite: T1/)
+	app.fix()
+	const fixed = await (await fetch(`${app.baseUrl}/quote?promotion=true&loyalty=true`)).json()
+	assert.equal(fixed.totalPLN, 240)
+	const begun = await ok([
+		'run',
+		'begin',
+		'run-2',
+		'ticket@1',
+		'--build',
+		'fixed',
+		'--retest-of',
+		'run-1',
+		'--tests',
+		'T1,T2',
+	])
+	assert.deepEqual(begun.tests, ['T1', 'T2'])
+	for (const id of ['T1', 'T2']) {
+		await ok(
+			['run', 'check', 'run-2', id, 'A1', '--result', 'passed', '--observed', '240', '--evidence', '-'],
+			fixed
+		)
+		await ok(['run', 'close', 'run-2', id])
+	}
+	await ok([
+		'run',
+		'finish',
+		'run-2',
+		'--completion',
+		'completed',
+		'--cleanup',
+		'completed',
+		'--cleanup-reason',
+		'No test data.',
+	])
+	const result = await ok(['query', "SELECT body FROM results WHERE run_id = 'run-2'"])
+	const recorded = JSON.parse(result.rows[0].body)
+	assert.deepEqual(
+		recorded.tests.map((item: { testId: string; outcome: string }) => [item.testId, item.outcome]),
+		[
+			['T1', 'passed'],
+			['T2', 'passed'],
+			['T3', 'not_run'],
+		]
+	)
+})

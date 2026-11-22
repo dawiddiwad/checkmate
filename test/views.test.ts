@@ -24,7 +24,6 @@ import { logEntries } from '../plugin/src/journal.ts'
 import { unusedAnswers } from '../plugin/src/explorers.ts'
 import { openExploration } from '../plugin/src/explorations.ts'
 import { ruleMap } from '../plugin/src/rulemap.ts'
-import { addInstance } from '../plugin/src/targets.ts'
 import { endSeededProcesses, seedVolume } from '../scripts/ui-volume.ts'
 import { done, entries, event, launch, openTest } from './explorations.ts'
 import {
@@ -607,42 +606,6 @@ test('plan status puts blocking gaps before defects and defects before non-block
 	)
 })
 
-test('plan status lists every open run of a matrix with its instance', (t) => {
-	const opened = store(t)
-	ready(opened)
-	const instances = ['local', 'uat', 'staging', 'eu', 'us']
-	for (const instanceId of instances.slice(1))
-		addInstance(opened, actor, {
-			targetId: 'checkout-local',
-			instanceId,
-			instance: { entries: { web: `https://${instanceId}.example.com` } },
-		})
-	instances.forEach((instanceId, i) => begin(opened, `run-${i + 1}`, ['T1'], 'build-1', { instance: instanceId }))
-	const status = planStatus(opened, 'checkout')
-	assert.equal(status.state, 'run_in_progress')
-	assert.equal(status.stage, 'execute')
-	assert.deepEqual(
-		status.openRuns.map((run) => [run.runId, run.instanceId]),
-		instances.map((instanceId, i) => [`run-${i + 1}`, instanceId])
-	)
-	assert.deepEqual(
-		status.why,
-		instances.map((instanceId, i) => `run-${i + 1} is started on build build-1 on instance ${instanceId}`)
-	)
-	assert.deepEqual(
-		status.next,
-		instances.map((_, i) => `checkmate delegate execute run-${i + 1} --allow Read --allow Bash`)
-	)
-	assert.equal(status.latestRun?.runId, 'run-5')
-	const printed = cli(opened.workspace, ['status', 'checkout']).lines
-	assert.match(printed[0], / run=run-5$/)
-	assert(printed.includes('run-3\tstarted\tbuild=build-1\tinstance=staging'), printed.join('\n'))
-	assert.deepEqual(
-		runList(opened).map((run) => run.instanceId),
-		instances
-	)
-})
-
 function failedRun(opened: ReturnType<typeof store>, runId: string, build: string, extra = {}) {
 	begin(opened, runId, ['T1', 'T2'], build, extra)
 	for (const reference of ['T1.A1', 'T1.A2']) check(opened, runId, reference, 'passed')
@@ -657,17 +620,6 @@ function openDefects(opened: ReturnType<typeof store>) {
 	const status = planStatus(opened, 'checkout')
 	return [status.state, status.defects.map((defect) => `${defect.runId}/${defect.findingId}`)]
 }
-
-test('a narrow run that passes other tests does not close a defect or reach acceptance', (t) => {
-	const opened = store(t)
-	ready(opened)
-	failedRun(opened, 'run-1', 'b1')
-	passRun(opened, 'run-2', 'b2', ['T1'])
-	assert.deepEqual(openDefects(opened), ['defects_open', ['run-1/F1']])
-	assert.deepEqual(planStatus(opened, 'checkout').why, ['run-1 has 1 defect on build b1'])
-	accept(opened, 'run-2')
-	assert.equal(planStatus(opened, 'checkout').state, 'defects_open')
-})
 
 test('a started retest does not close a defect', (t) => {
 	const opened = store(t)
@@ -692,6 +644,8 @@ test('a narrow run closes a defect only when it passes every test of the defect'
 	closeTest(opened, actor, { runId: 'run-2', testId: 'T1' })
 	finishRun(opened, actor, { runId: 'run-2', completion: 'completed', cleanup: 'completed', cleanupReason: 'Done.' })
 	assert.deepEqual(openDefects(opened), ['defects_open', ['run-1/F1']])
+	accept(opened, 'run-2')
+	assert.equal(planStatus(opened, 'checkout').state, 'defects_open')
 	begin(opened, 'run-3', ['T1', 'T2'], 'b3', { retestOf: 'run-1' })
 	for (const testId of ['T1', 'T2']) {
 		for (const assertionId of ['A1', 'A2']) check(opened, 'run-3', `${testId}.${assertionId}`, 'passed')

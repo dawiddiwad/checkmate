@@ -7,11 +7,14 @@ import { join } from 'node:path'
 import { closeStore } from '../plugin/src/store.ts'
 import { directory, plan, root, store, target } from './support.ts'
 import { fakeClaude } from './claude.ts'
+import { fixture } from './fixture.ts'
 import { packageReadme } from '../scripts/build-cli.ts'
 
 function json(path: string) {
 	return JSON.parse(readFileSync(path, 'utf8'))
 }
+
+type JournalRow = { exploration_id: string; kind: string; build: string; body: string }
 
 test('the npm package runs from node_modules, serves the UI, and delegate loads the bundled plugin', async (t) => {
 	t.after(() => {
@@ -245,6 +248,162 @@ console.log(JSON.stringify({ type: 'result', subtype: 'success', structured_outp
 		explorer.args[explorer.args.indexOf('--extension') + 1],
 		realpathSync(join(installed, 'plugin/pi/child.mjs'))
 	)
+
+	const app = await fixture()
+	try {
+		const workspace = directory(t)
+		writeFileSync(join(workspace, 'ticket.md'), 'The promotion quote is 240 PLN.\n')
+		const replay = fakeClaude(
+			t,
+			{
+				rules: [{ id: 'R1', text: 'The promotion quote is 240 PLN.', source: 'ticket.md', area: 'Promotion' }],
+			},
+			'pi'
+		)
+		const replayEnv = {
+			...process.env,
+			...replay.env,
+			CHECKMATE_ACTOR: 'oracle',
+			CHECKMATE_HARNESS: 'pi',
+			FAKE_CLAUDE_REPLAY: join(root, 'test/local-replay.mjs'),
+			QA_REPLAY_DIR: directory(t),
+			QA_APP_URL: app.baseUrl,
+			QA_WORKSPACE: workspace,
+			QA_CLI: join(project, 'node_modules/.bin/checkmate'),
+		}
+		const call = (...args: string[]) =>
+			new Promise<{ code: number | null; body: ReturnType<typeof JSON.parse>; output: string }>(
+				(resolve, reject) => {
+					const child = spawn(process.execPath, [replayEnv.QA_CLI, ...args, '--json'], {
+						cwd: workspace,
+						env: replayEnv,
+						timeout: 70000,
+					})
+					let output = ''
+					let error = ''
+					child.stdout.on('data', (chunk) => (output += chunk))
+					child.stderr.on('data', (chunk) => (error += chunk))
+					child.on('error', reject)
+					child.on('close', (code) => {
+						try {
+							resolve({ code, body: JSON.parse(output), output: output + error })
+						} catch {
+							reject(new Error(output + error))
+						}
+					})
+				}
+			)
+		const ok = async (...args: string[]) => {
+			const result = await call(...args)
+			assert.equal(result.code, 0, result.output)
+			return result.body
+		}
+		const runBuild = async (build: string, first = false) => {
+			const started = await ok(
+				'test',
+				'cart',
+				'--build',
+				build,
+				'--level',
+				'smoke',
+				'--allow',
+				'Read',
+				...(first ? ['--url', app.baseUrl, '--source', 'ticket.md'] : [])
+			)
+			const done = await ok('explore', 'wait', started.explorationId, '--timeout', '60')
+			assert.equal(done.state, 'completed')
+			return started.explorationId as string
+		}
+		const broken = await runBuild('broken', true)
+		const status = await ok('status', 'cart')
+		assert.deepEqual([status.state, status.waitsOn], ['needs_triage', 'oracle'])
+		assert.match(status.why.join(' '), /blocks testing.*promotion/i)
+		const inbox = await ok('inbox')
+		assert.ok(
+			inbox.gaps.some(
+				(gap: { gapId: string; severity: string }) => gap.gapId === 'a1/Q1' && gap.severity === 'blocking'
+			)
+		)
+		const follow = await call('explore', 'follow', broken)
+		assert.equal(follow.code, 1)
+		assert.match(follow.output, /no answer/i)
+		const before = await ok('query', 'SELECT exploration_id, kind, build, body FROM journal_entries ORDER BY rowid')
+		const defect = before.rows.find((row: JournalRow) => row.kind === 'defect')
+		assert.equal(defect.build, 'broken')
+		assert.match(defect.body, /220/)
+		assert.match(JSON.stringify(JSON.parse(defect.body).evidence), /HTTP 200.*220/)
+		const shown = await ok('explore', 'show', broken)
+		assert.match(JSON.stringify(shown), /220/)
+		assert.equal((await (await fetch(`${app.baseUrl}/quote?promotion=true&loyalty=true`)).json()).totalPLN, 220)
+		t.diagnostic(`${broken}: broken build reported 220 PLN, a defect with evidence, and a blocking question`)
+		app.fix()
+		assert.equal((await (await fetch(`${app.baseUrl}/quote?promotion=true&loyalty=true`)).json()).totalPLN, 240)
+		const withoutAnswer = await runBuild('fixed')
+		const unverified = await ok(
+			'query',
+			`SELECT body FROM journal_entries WHERE exploration_id = '${withoutAnswer}' AND kind = 'criterion'`
+		)
+		assert.equal(unverified.rows.length, 0)
+		t.diagnostic(`${withoutAnswer}: fixed build did not pass the rule before the oracle answered`)
+		await ok(
+			'gap',
+			'answer',
+			'cart',
+			'a1/Q1',
+			'--kind',
+			'clarify',
+			'--value',
+			'The promotion replaces loyalty.',
+			'--source',
+			'oracle',
+			'--rationale',
+			'Product decision.'
+		)
+		const answered = await ok('inbox')
+		assert.ok(!answered.gaps.some((gap: { gapId: string }) => gap.gapId === 'a1/Q1'))
+		const fixed = await runBuild('fixed')
+		const records = await ok(
+			'query',
+			'SELECT exploration_id, kind, build, body FROM journal_entries ORDER BY rowid'
+		)
+		const criterion = records.rows.find(
+			(row: JournalRow) => row.exploration_id === fixed && row.kind === 'criterion'
+		)
+		assert.equal(criterion.build, 'fixed')
+		assert.deepEqual([JSON.parse(criterion.body).rule, JSON.parse(criterion.body).verdict], ['R1', 'ok'])
+		assert.match(criterion.body, /240/)
+		const verdict = records.rows.find((row: JournalRow) => row.exploration_id === fixed && row.kind === 'verdict')
+		assert.equal(JSON.parse(verdict.body).result, 'fixed')
+		const retested = await ok('explore', 'show', fixed)
+		assert.ok(
+			retested.retests.some(
+				(item: { defect: string; result: string }) => item.defect === 'a1/D1' && item.result === 'fixed'
+			)
+		)
+		assert.ok(records.rows.some((row: JournalRow) => row.exploration_id === broken && row.body === defect.body))
+		t.diagnostic(`${fixed}: after the oracle answer, the fixed build reported 240 PLN and rule R1 passed`)
+		assert.ok(app.actions() >= 3)
+		const supervisors = await ok('query', "SELECT detail FROM exploration_events WHERE step = 'supervisor'")
+		const pids = [
+			...replay.called().map((item: { pid: number }) => item.pid),
+			...supervisors.rows.map((row: { detail: string }) => JSON.parse(row.detail).pid as number),
+		]
+		const alive = (pid: number) => {
+			try {
+				process.kill(pid, 0)
+				return true
+			} catch {
+				return false
+			}
+		}
+		const deadline = Date.now() + 5000
+		while (pids.some(alive) && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 50))
+		assert.deepEqual(pids.filter(alive), [], 'Pi and supervisor processes must exit')
+	} finally {
+		await app.close()
+	}
+	await assert.rejects(fetch(`${app.baseUrl}/health`))
+	t.diagnostic('The loopback app, Pi replay processes, and exploration supervisors exited')
 
 	const ui = spawn(join(project, 'node_modules/.bin/checkmate'), ['ui'], { cwd: project, env })
 	try {

@@ -87,6 +87,18 @@ Use these rules when you add or change a test.
 5. **Assert behavior, not text.** The agent-facing CLI lines are a contract. Check the format of each command in one test. In other places, match the identifying tokens, for example `/Unknown test .*T9/`. Select HTML by `data-key`, role, or label, not by class names or markup.
 6. **Keep a runtime budget, not a count budget.** Do not use a fixed wait. Wait for a condition, or inject the timeout. Use a subprocess only when the proof needs a process boundary, for example standard input, an exit code, or a lock between processes. Use a browser only for client behavior. Seed a shared workspace once for each file, and copy it for each test.
 
+## Local packaged QA quickstart
+
+1. Use Node.js 24.12.0 or later.
+2. Run `npm ci` in the repository.
+3. Run `node --test test/package.test.ts`.
+
+The test builds and packs the npm CLI. It installs the tarball in a temporary workspace. It starts the disposable checkout app on a loopback port. A scripted Pi process reads the app response and the recorded oracle answer. It needs no model, provider credentials, or browser.
+
+The output names three explorations. The broken build returns 220 PLN and records a defect, evidence, and a blocking question. A fixed build returns 240 PLN, but the replay does not pass the rule before the answer. The test records the oracle answer with `checkmate gap answer`, then tests the fixed build again. It checks the passing rule, the fixed verdict, and the earlier evidence. It checks that the app and worker processes exit. Temporary workspaces are removed after the test.
+
+This replay checks the package and record flow. It does not measure the judgment of a live model or prove that a real host follows the workflow.
+
 ## Pi integration test
 
 Install Pi on your path and run `npm run test:pi`. This CI check installs the package from an isolated Git repository and opens the review UI in a clean workspace. It also checks recorded operations with the real Pi CLI and a local model fixture. It requires no provider key.

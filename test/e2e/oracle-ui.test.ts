@@ -499,11 +499,12 @@ test(
 		assert.equal(openOf(workspace).length, 0)
 		const denial = asking({ url }, workspace, 'perm-e2e', 'a2', bash('curl http://127.0.0.1/private'))
 		await waitOpen(workspace, 1)
-		await page.goto(new URL('/permissions/perm-e2e/P2', url).href)
-		await page.waitForFunction(() => document.activeElement?.matches('[data-sub]'))
-		await page.keyboard.press('3')
-		await page.locator('#deny-text').fill('The private path is outside this test.')
-		await page.getByRole('button', { name: 'Deny', exact: true }).click()
+		const { page: denialPage } = await pageFor(t, url)
+		await denialPage.goto(new URL('/permissions/perm-e2e/P2', url).href)
+		await denialPage.waitForFunction(() => document.activeElement?.matches('[data-sub]'))
+		await denialPage.keyboard.press('3')
+		await denialPage.locator('#deny-text').fill('The private path is outside this test.')
+		await denialPage.getByRole('button', { name: 'Deny', exact: true }).click()
 		assert.deepEqual(await denial, {
 			status: 200,
 			body: plainBody('{"behavior":"deny","message":"The private path is outside this test."}'),

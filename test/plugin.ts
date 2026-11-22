@@ -42,8 +42,13 @@ try {
 	await mkdir(workspace)
 	assert.equal(checkmate(['init'], workspace), 'completed .checkmate/checkmate.db')
 	assert.equal(checkmate(['plan', 'list'], workspace), 'completed plans count=0')
-	for (const name of ['setup', 'plan', 'revise', 'execute', 'report', 'status', 'ui', 'test'])
-		await readFile(join(source, `skills/${name}/SKILL.md`))
+	for (const name of ['setup', 'plan', 'revise', 'execute', 'report', 'status', 'ui', 'test']) {
+		const skill = await readFile(join(source, `skills/${name}/SKILL.md`), 'utf8')
+		const frontmatter = /^---\n([\s\S]*?)\n---(?:\n|$)/.exec(skill)?.[1]
+		assert(frontmatter, `${name} has no frontmatter`)
+		assert.match(frontmatter, new RegExp(`^name: ${name}$`, 'm'))
+		assert.match(frontmatter, /^description: \S.*$/m)
+	}
 	for (const name of ['tester', 'clerk']) await readFile(join(source, `agents/${name}.md`))
 	const stageWrites: Record<string, RegExp> = {
 		setup: /checkmate target (save|instance add) /,

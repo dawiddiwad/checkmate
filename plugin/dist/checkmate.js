@@ -9376,7 +9376,7 @@ var reservedClaudeArgs = [
 ];
 function checkmateScript() {
   const own = fileURLToPath(import.meta.url);
-  return own.endsWith(".ts") ? join2(pluginRoot, "bin", "checkmate.ts") : own;
+  return own.endsWith(".ts") ? join2(pluginRoot, "..", "cli", "src", "main.ts") : own;
 }
 function claudeConfigDir(env) {
   return env.CLAUDE_CONFIG_DIR?.trim() || join2(homedir(), ".claude");
@@ -9788,7 +9788,14 @@ function launchChild(executable, args, prompt2, cwd, env, seconds2, onStart, har
   });
 }
 var requestHookName = "request";
-function requestSystemPrompt(checkmate) {
+function requestSystemPrompt(checkmate, harness = "claude") {
+  const skill = readFileSync(join2(pluginRoot, "references", "oracle-workflow.md"), "utf8");
+  const start = skill.indexOf("1. Run `target list`");
+  if (start < 0) throw new Error("The Checkmate oracle workflow is missing. Reinstall the plugin.");
+  const workflow = skill.slice(start).replace(
+    "- Run `delegate execute` without `--allow` or `--claude-arg`. Pi controls its own tools and permissions. Do not widen them to work around a refusal.",
+    harness === "pi" ? "- Run `delegate execute` without `--allow` or `--claude-arg`. Pi controls its own tools and permissions. Do not widen them to work around a refusal." : "- Use the configured Claude permissions for `delegate execute`. Do not widen them to work around a refusal."
+  );
   return [
     "This conversation comes from the Checkmate web UI.",
     "Answer what the person asked. When you change the record, say what changed.",
@@ -9797,8 +9804,9 @@ function requestSystemPrompt(checkmate) {
     "UI paths: plan /plans/<planId>, revision /plans/<planId>@<revision>, stored test or requirement /plans/<planId>@<revision>#<id>, run /runs/<runId>, exploration /explorations/<explorationId>.",
     "For a tester question use /plans/<planId>?view=all&item=q%3A<testerId>%2F<questionId>. For a defect use the same path with c%3A instead. For a plan gap use /plans/<planId>@<revision>/gaps/<gapId>. For a run test or finding use /runs/<runId>?item=test%3A<testId> or /runs/<runId>?item=finding%3A<findingId>.",
     "Use Markdown image syntax for screenshots. Run evidence uses /evidence/<evidenceId>. Exploration claim evidence uses /explorations/<explorationId>/claims/<testerId>/<claimId>/evidence/<zeroBasedIndex>.",
-    `To change a record, use the checkmate command line of this workspace: node ${checkmate} <command>.`,
-    "When the person asks to execute tests, run begin records setup only. After it succeeds, use delegate execute with the exact run ID, then report the recorded outcome or the specific launch blocker. Do not delegate when the person asks only to set up or inspect records."
+    `To change a record, use the checkmate command line of this workspace: node '${checkmate.replaceAll("'", "'\\''")}' <command>.`,
+    `Follow this Checkmate workflow using the command path above:
+${workflow}`
   ].join(" ");
 }
 function requestArgs(session) {
@@ -29079,7 +29087,7 @@ function createRequester(store, options3) {
       "--extension",
       extension,
       "--append-system-prompt",
-      requestSystemPrompt(checkmateScript())
+      requestSystemPrompt(checkmateScript(), "pi")
     ] : [
       ...requestArgs({
         sessionId,

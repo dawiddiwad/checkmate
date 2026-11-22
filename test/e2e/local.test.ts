@@ -1263,6 +1263,253 @@ test('Discover the packaged Claude plugin and invoke its entry — broken plugin
 	assert.deepEqual(JSON.parse(list).plans, [])
 })
 
+test('Execute a plan chat through the packaged UI — a begun run must reach its worker.', async (t) => {
+	const workspace = directory(t)
+	mkdirSync(join(workspace, '.checkmate'))
+	writeFileSync(
+		join(workspace, '.checkmate/checkmate.db'),
+		gunzipSync(readFileSync(join(root, 'test/e2e/fixtures/workspace-39d33f7.db.gz')))
+	)
+	const app = await fixture()
+	t.after(() => app.close())
+	app.fix()
+	const bin = join(workspace, 'bin')
+	mkdirSync(bin)
+	writeFileSync(
+		join(bin, 'claude'),
+		`#!/usr/bin/env node
+const { execFileSync } = require('node:child_process')
+const { readFileSync } = require('node:fs')
+const args = process.argv.slice(2)
+const plugin = args[args.indexOf('--plugin-dir') + 1]
+const cli = plugin + '/dist/checkmate.js'
+const run = (args, input) => execFileSync(process.execPath, [cli, ...args], {input, encoding:'utf8'})
+const input = readFileSync(0, 'utf8')
+if (args.includes('stream-json')) {
+  const instructions = args[args.indexOf('--append-system-prompt') + 1]
+  if (!input.includes('execute the fixture run') || !instructions.includes('When the person asks you to run or retest stored tests')) throw Error('Wrong request or workflow')
+  run(['run','begin','ui-run','ticket@1','--build','fixed','--instance','local','--tests','T1'])
+  run(['delegate','execute','ui-run','--allow','Read','--allow','Bash'])
+  console.log(JSON.stringify({type:'result',subtype:'success',is_error:false,result:'Run finished.',session_id:'fixture',duration_ms:1}))
+} else {
+  fetch(process.env.QA_APP_URL + '/quote?promotion=true&loyalty=true').then(r => r.json()).then(quote => {
+    if (quote.totalPLN !== 240 || !input.includes('ui-run')) throw Error('Wrong build or run')
+    run(['run','check','ui-run','T1','A1','--result','passed','--observed','240','--evidence','-'], JSON.stringify(quote))
+    run(['run','close','ui-run','T1'])
+    run(['run','finish','ui-run','--completion','completed','--cleanup','completed','--cleanup-reason','No test data.'])
+    console.log(JSON.stringify({type:'result',subtype:'success',structured_output:{status:'completed',subject:'ui-run',reasons:[]}}))
+  }).catch(e => { console.error(e); process.exitCode = 1 })
+}
+`,
+		{ mode: 0o755 }
+	)
+	const { delimiter } = await import('node:path')
+	const env = {
+		...process.env,
+		PATH: `${bin}${delimiter}${process.env.PATH}`,
+		CHECKMATE_ACTOR: 'oracle',
+		CHECKMATE_HARNESS: 'claude',
+		QA_APP_URL: app.baseUrl,
+	}
+	const ok = async (...args: string[]) => {
+		const result = await command(workspace, env, ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	await ok('target', 'instance', 'add', 'shop', 'local', '--entry', `web=${app.baseUrl}`)
+	await ok('plan', 'approve', 'ticket@1', '--rationale', 'Run the rule.')
+	const ui = spawn(process.execPath, [binary, 'ui', '--port', '0', '--json'], { cwd: workspace, env })
+	t.after(() => ui.kill('SIGTERM'))
+	const [data] = (await once(ui.stdout, 'data')) as [Buffer]
+	const url = JSON.parse(data.toString()).url as string
+	const page = await (await fetch(new URL('/plans/ticket', url))).text()
+	const csrf = /name="csrf" value="([^"]+)"/.exec(page)?.[1]
+	assert(csrf, 'Plan page did not expose a CSRF token')
+	const response = await fetch(new URL('/plans/ticket/chats', url), {
+		method: 'POST',
+		headers: { 'content-type': 'application/x-www-form-urlencoded', origin: new URL(url).origin },
+		body: new URLSearchParams({
+			actor: 'oracle',
+			text: 'Please execute the fixture run.',
+			harness: 'claude',
+			csrf,
+		}),
+		redirect: 'manual',
+	})
+	assert.equal(response.status, 303)
+	let result
+	for (let attempt = 0; attempt < 100; attempt++) {
+		const rows = await ok('query', "SELECT body FROM results WHERE run_id='ui-run'")
+		if (rows.rows.length) {
+			result = JSON.parse(rows.rows[0].body)
+			break
+		}
+		await new Promise((resolve) => setTimeout(resolve, 100))
+	}
+	assert(result, 'UI chat did not produce a result')
+	assert.equal(result.tests[0].outcome, 'passed')
+	assert.equal((await ok('run', 'show', 'ui-run')).build, 'fixed')
+	assert.deepEqual(
+		(await ok('query', "SELECT actor FROM operations WHERE command='run check' AND status='completed'")).rows,
+		[{ actor: 'claude:execute' }]
+	)
+	assert.equal((await ok('query', 'SELECT count(*) AS n FROM runs')).rows[0].n, 1)
+	ui.kill('SIGTERM')
+	await once(ui, 'close')
+})
+
+test('Execute a request through Pi RPC — a begun run must reach its worker.', { timeout: 60000 }, async (t) => {
+	const workspace = directory(t)
+	mkdirSync(join(workspace, '.checkmate'))
+	writeFileSync(
+		join(workspace, '.checkmate/checkmate.db'),
+		gunzipSync(readFileSync(join(root, 'test/e2e/fixtures/workspace-39d33f7.db.gz')))
+	)
+	const app = await fixture()
+	t.after(() => app.close())
+	app.fix()
+	const bin = join(workspace, 'bin')
+	mkdirSync(bin)
+	const realPi = execFileSync('which', ['pi'], { encoding: 'utf8' }).trim()
+	writeFileSync(
+		join(bin, 'pi'),
+		`#!/usr/bin/env node
+const { execFileSync } = require('node:child_process')
+const { readFileSync } = require('node:fs')
+const input = readFileSync(0, 'utf8')
+if (!input.includes('pi-run')) throw Error('Wrong run')
+const run = (args, input) => execFileSync(process.execPath, [process.env.QA_CLI, ...args], {input, encoding:'utf8'})
+fetch(process.env.QA_APP_URL + '/quote?promotion=true&loyalty=true').then(r => r.json()).then(quote => {
+  if (quote.totalPLN !== 240) throw Error('Wrong build')
+  run(['run','check','pi-run','T1','A1','--result','passed','--observed','240','--evidence','-'], JSON.stringify(quote))
+  run(['run','close','pi-run','T1'])
+  run(['run','finish','pi-run','--completion','completed','--cleanup','completed','--cleanup-reason','No test data.'])
+  const result = JSON.stringify({status:'completed',subject:'pi-run',reasons:[]})
+  console.log(JSON.stringify({type:'agent_end',messages:[{role:'assistant',stopReason:'stop',content:[{type:'text',text:result}]}]}))
+}).catch(e => { console.error(e); process.exitCode = 1 })
+`,
+		{ mode: 0o755 }
+	)
+	const { delimiter } = await import('node:path')
+	const home = directory(t)
+	const agent = join(home, 'agent')
+	mkdirSync(agent)
+	const env = {
+		...process.env,
+		HOME: home,
+		PI_CODING_AGENT_DIR: agent,
+		PI_OFFLINE: '1',
+		PI_TELEMETRY: '0',
+		PATH: `${bin}${delimiter}${process.env.PATH}`,
+		CHECKMATE_ACTOR: 'oracle',
+		CHECKMATE_HARNESS: 'pi',
+		QA_APP_URL: app.baseUrl,
+		QA_CLI: binary,
+	}
+	const ok = async (...args: string[]) => {
+		const result = await command(workspace, env, ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	await ok('target', 'instance', 'add', 'shop', 'local', '--entry', `web=${app.baseUrl}`)
+	await ok('plan', 'approve', 'ticket@1', '--rationale', 'Run the rule.')
+	const shell = (value: string) => `'${value.replaceAll("'", "'\\''")}'`
+	const cli = `${shell(process.execPath)} ${shell(binary)}`
+	const operation = `${cli} run begin pi-run ticket@1 --build fixed --instance local --tests T1 && ${cli} delegate execute pi-run`
+	let calls = 0
+	let sawGuidance = false
+	const provider = createServer(async (req, res) => {
+		let data = ''
+		for await (const part of req) data += part
+		const request = JSON.parse(data)
+		calls++
+		if (calls === 1)
+			sawGuidance =
+				data.includes('execute the fixture run') &&
+				data.includes('When the person asks you to run or retest stored tests')
+		const delta =
+			calls === 1
+				? {
+						tool_calls: [
+							{
+								index: 0,
+								id: 'call_fixture',
+								type: 'function',
+								function: { name: 'bash', arguments: JSON.stringify({ command: operation }) },
+							},
+						],
+					}
+				: { content: 'The run finished.' }
+		res.writeHead(200, { 'content-type': 'text/event-stream' })
+		res.write(
+			`data: ${JSON.stringify({ id: 'fixture', object: 'chat.completion.chunk', model: 'fixture', choices: [{ index: 0, delta, finish_reason: null }] })}\n\n`
+		)
+		res.write(
+			`data: ${JSON.stringify({ id: 'fixture', object: 'chat.completion.chunk', model: 'fixture', choices: [{ index: 0, delta: {}, finish_reason: calls === 1 ? 'tool_calls' : 'stop' }] })}\n\n`
+		)
+		res.end('data: [DONE]\n\n')
+		void request
+	})
+	provider.listen(0, '127.0.0.1')
+	await once(provider, 'listening')
+	t.after(() => provider.close())
+	const address = provider.address()
+	assert(address && typeof address !== 'string')
+	writeFileSync(
+		join(agent, 'models.json'),
+		JSON.stringify({
+			providers: {
+				localfixture: {
+					baseUrl: `http://127.0.0.1:${address.port}/v1`,
+					api: 'openai-completions',
+					apiKey: 'fixture',
+					models: [{ id: 'fixture' }],
+				},
+			},
+		})
+	)
+	execFileSync(realPi, ['install', join(project, 'node_modules/@xoxoai/checkmate'), '--local', '--approve'], {
+		cwd: workspace,
+		env,
+		timeout: 30000,
+	})
+	const child = spawn(
+		realPi,
+		['--mode', 'rpc', '--no-session', '--provider', 'localfixture', '--model', 'fixture', '--approve'],
+		{ cwd: workspace, env, stdio: 'pipe' }
+	)
+	t.after(() => child.kill('SIGTERM'))
+	const lines = createInterface({ input: child.stdout })
+	const events: Record<string, unknown>[] = []
+	lines.on('line', (line) => {
+		try {
+			events.push(JSON.parse(line))
+		} catch {}
+	})
+	child.stdin.write(
+		JSON.stringify({ id: 'prompt', type: 'prompt', message: '/checkmate please execute the fixture run' }) + '\n'
+	)
+	const deadline = Date.now() + 30000
+	while (!events.some((event) => event.type === 'agent_end') && Date.now() < deadline)
+		await new Promise((resolve) => setTimeout(resolve, 50))
+	assert(
+		events.some((event) => event.type === 'agent_end'),
+		'Pi did not finish'
+	)
+	assert(sawGuidance, 'Pi did not receive the workflow skill')
+	assert(calls >= 2, 'Pi did not return the tool result to the provider')
+	const results = await ok('query', "SELECT body FROM results WHERE run_id='pi-run'")
+	assert.equal(JSON.parse(results.rows[0].body).tests[0].outcome, 'passed')
+	assert.equal((await ok('run', 'show', 'pi-run')).build, 'fixed')
+	assert.deepEqual(
+		(await ok('query', "SELECT actor FROM operations WHERE command='run check' AND status='completed'")).rows,
+		[{ actor: 'pi:execute' }]
+	)
+	assert.equal((await ok('query', 'SELECT count(*) AS n FROM runs')).rows[0].n, 1)
+	child.stdin.end()
+	await once(child, 'exit')
+})
+
 test(
 	'Install the Pi package and route a request — wrong skill, workspace, or harness.',
 	{ timeout: 60000 },
@@ -1665,6 +1912,17 @@ test('Resume a structured run after a worker deadline — outcomes lost or gate 
 	const entry = join(plugin, 'dist/checkmate.js')
 	const manifest = JSON.parse(readFileSync(join(plugin, '.claude-plugin/plugin.json'), 'utf8'))
 	assert.equal(execFileSync(process.execPath, [entry, '--version'], { encoding: 'utf8' }).trim(), manifest.version)
+	assert(existsSync(join(plugin, 'pi/permission.mjs')))
+	const ui = spawn(process.execPath, [entry, 'ui', '--port', '0'], { cwd: directory(t), env: process.env })
+	try {
+		const [data] = (await once(ui.stdout, 'data')) as [Buffer]
+		const url = /^completed ui url=(\S+)$/m.exec(data.toString())?.[1]
+		assert(url, data.toString())
+		assert.equal((await fetch(new URL('/assets/style.css', url))).status, 200)
+	} finally {
+		ui.kill('SIGTERM')
+		await once(ui, 'close')
+	}
 	mkdirSync(join(workspace, '.checkmate'))
 	writeFileSync(
 		join(workspace, '.checkmate/checkmate.db'),
@@ -1714,6 +1972,16 @@ fetch(process.env.QA_APP_URL + '/quote?promotion=true&loyalty=true').then(r => r
 	await ok('target', 'instance', 'add', 'shop', 'local', '--entry', `web=${app.baseUrl}`)
 	await ok('plan', 'approve', 'ticket@1', '--rationale', 'Run the rule.')
 	await ok('run', 'begin', 'run-1', 'ticket@1', '--build', 'fixed', '--instance', 'local', '--tests', 'T1')
+	const missing = await invoke(entry, workspace, { ...env, PATH: '' }, '', [
+		'delegate',
+		'execute',
+		'run-1',
+		'--allow',
+		'Read',
+	])
+	assert.equal(missing.code, 1, missing.output)
+	assert.match(missing.output, /Cannot start worker: ENOENT/)
+	assert.equal((await ok('query', 'SELECT count(*) AS n FROM runs')).rows[0].n, 1)
 	const stopped = await invoke(entry, workspace, env, '', [
 		'delegate',
 		'execute',

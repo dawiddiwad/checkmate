@@ -396,7 +396,7 @@ export function createRequester(store: Store, options: RequesterOptions): Reques
 						'--extension',
 						extension,
 						'--append-system-prompt',
-						requestSystemPrompt(checkmateScript()),
+						requestSystemPrompt(checkmateScript(), 'pi'),
 					]
 				: [
 						...requestArgs({

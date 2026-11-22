@@ -28,7 +28,7 @@ Run the full gate:
 npm run phase:verify
 ```
 
-It runs type and generated-file checks, lint, Prettier, and `npm test`. The test command builds and packs the CLI, installs it into disposable workspaces, and runs 34 required end-to-end cases with real SQLite, loopback applications, controlled hosts, Pi, and Chromium. It fails when a prerequisite is missing, a required case is absent, or a case skips. CI runs `npm run phase:verify`.
+It runs type and generated-file checks, lint, Prettier, and `npm test`. The test command builds and packs the CLI, installs it into disposable workspaces, and runs 36 required end-to-end cases with real SQLite, loopback applications, controlled hosts, Pi, and Chromium. It fails when a prerequisite is missing, a required case is absent, or a case skips. CI runs `npm run phase:verify`.
 
 The 42-scenario proposal map is [test/e2e/scenarios.json](../test/e2e/scenarios.json). Some historical Factory campaign behavior is outside this checkout. The local external Factory fixture does not verify Factory checkout, archive, budget, or campaign ownership. Tests use controlled hosts; they do not test live model judgment or require paid model calls.
 
@@ -40,7 +40,7 @@ Use `npm test` to run only the packaged end-to-end suite after you install the s
 - `npm pack ./cli` runs the CLI package build and creates the installable tarball.
 - `npm run type:check`, `npm run lint:check`, and `npm run format:check` run the individual static checks.
 
-The root package is private. The published CLI package is `cli/`. `scripts/build-cli.ts` bundles `cli/src/main.ts` and copies the plugin, README, and license into that package. Keep `LICENSE` and package metadata with the code.
+The root package is private. The published CLI package is `cli/`. The build bundles `cli/src/main.ts` into the plugin and copies the same executable, plugin, README, and license into the CLI package. Keep `LICENSE` and package metadata with the code.
 
 ## Agent-only instructions
 

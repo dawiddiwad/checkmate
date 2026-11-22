@@ -14,14 +14,12 @@ import {
 	directory,
 	json,
 	passRun,
-	plan,
 	planRequest,
 	profile,
 	promotionDelta,
 	ready,
 	root,
 	store,
-	target,
 } from './support.ts'
 import type { TestContext } from 'node:test'
 

@@ -33,7 +33,11 @@ export const scenarios: Scenario[] = [
 	{ name: 'Finding and JUnit/JSON export', tests: ['test/metadata.test.ts'] },
 	{ name: 'Narrow retest prerequisites', tests: ['test/runs.test.ts'] },
 	{ name: 'Two-instance matrix', tests: ['test/runs.test.ts'], limit: 'No full matrix acceptance journey' },
-	{ name: 'Host permission allow and deny', tests: ['test/ui.permissions.browser.test.ts'] },
+	{
+		name: 'Host permission allow and deny',
+		tests: ['test/ui.permissions.browser.test.ts'],
+		limit: 'Controlled host; native enforcement needs live host',
+	},
 	{ name: 'Stop one tester', tests: ['test/explore-stop.test.ts', 'test/ui.actions.browser.test.ts'] },
 	{ name: 'Interrupt supervisor and retry', tests: ['test/explore-stop.test.ts', 'test/lifecycle.test.ts'] },
 	{ name: 'Resume after worker deadline', tests: ['test/launcher.test.ts', 'test/runs.test.ts'] },

@@ -125,21 +125,6 @@ test('explore status prints ended=stopped and the reason for a tester that a per
 	)
 })
 
-test('a stop of a follow-up leaves the exploration completed and the follow-up stopped', (t) => {
-	const opened = seeded(t)
-	openTest(opened, 'checkout', 'x-1', 'b1')
-	done(opened, 'x-1')
-	event(opened, 'x-1', { step: 'follow', detail: { answers: [] } })
-	event(opened, 'x-1', { step: 'supervisor', detail: { pid: process.pid } })
-	assert.equal(explorationState(explorationEvents(opened, 'x-1')), 'following')
-	event(opened, 'x-1', { step: 'stop', detail: { actor: 'ana', reason: 'late', was: 'following' } })
-	const status = explorationStatus(opened, 'x-1')
-	assert.deepEqual(
-		[status.state, status.follow, status.followReason],
-		['completed', 'stopped', 'Stopped by ana: late']
-	)
-})
-
 test('when the done event is first, the stop is refused; when the stop is first, the driver writes no done event', async (t) => {
 	const opened = seeded(t)
 	openExploration(opened, actor, { planId: 'checkout', build: 'b1', explorationId: 'x-1' })

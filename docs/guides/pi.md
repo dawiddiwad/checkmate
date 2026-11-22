@@ -4,11 +4,13 @@ Use Node.js 24.12.0 or later. Install Pi on `PATH` and configure your provider i
 
 ## Install the Pi extension
 
-Install the package from the Checkmate repository:
+Install the published package:
 
 ```sh
-pi install git:github.com/dawiddiwad/checkmate@wip/pi
+pi install npm:@xoxoai/checkmate
 ```
+
+To test an unreleased change, install its Git ref instead, for example `pi install git:github.com/dawiddiwad/checkmate@<ref>`. The published package contains the features of its released version.
 
 Start Pi in the project workspace. Use these commands:
 

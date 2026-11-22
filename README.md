@@ -15,7 +15,7 @@ Checkmate turns a ticket into tests that an agent can run. It records the open q
 - The **planner** turns a ticket into tests with exact assertions. Each unclear requirement becomes a gap.
 - The **oracle** answers gaps, approves plans, and accepts results. The oracle is an agent or a person.
 - **QA** runs the tests, early and again on each new build. It records each result with its evidence, and it records defects and new gaps.
-- The **factory** runs the agents and their sandboxes, and builds the code. Checkmate does not start, schedule, or message agents, and it does not change code.
+- The **factory** owns the build and application lifecycle. When asked, Checkmate starts workers through the configured host. Checkmate does not change the application code.
 - The record is one SQLite file: `.checkmate/checkmate.db`. A human can make the oracle's decisions in the review UI at any time.
 
 ## Solo mode: the plugin in Claude Code
@@ -41,10 +41,10 @@ Read [Test in Claude Code](docs/guides/claude-code.md).
 
 ## Use Pi
 
-With Pi and Node.js 24.12.0 or later installed, add Checkmate from this repository:
+With Pi and Node.js 24.12.0 or later installed, add the published Checkmate package:
 
 ```sh
-pi install git:github.com/dawiddiwad/checkmate@wip/pi
+pi install npm:@xoxoai/checkmate
 ```
 
 Start Pi in your project. Enter `/checkmate-ui` to open the review UI, or enter `/checkmate <test objective>` to work in the Pi session. The package includes the UI, the engine, and the Checkmate skill. Read [Run Checkmate with Pi](docs/guides/pi.md).

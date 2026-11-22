@@ -320,7 +320,10 @@ test(
 			'/plans/notes?view=all&focus=list',
 			'/plans/notes?view=all&item=c%3Ak1%2FD1',
 		]
-		for (const [width, colorScheme] of [[400, 'light'], [1440, 'dark']] as const) {
+		for (const [width, colorScheme] of [
+			[400, 'light'],
+			[1440, 'dark'],
+		] as const) {
 			for (const path of paths) await check(page, url(path), width, colorScheme)
 			const opened = [
 				['/plans/notes?view=rules&focus=list', '1', 'dialog[data-act-dialog="rule-edit"][open]'],

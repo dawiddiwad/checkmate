@@ -264,10 +264,12 @@ test('a live update never closes the store dialog or moves its focus', browserTe
 	assert.equal(writes(workspace), 0)
 })
 
-
 test('the store dialog and changed rows fit at narrow and wide sizes', browserTest, async (t) => {
 	const { page, url, workspace } = await open(t)
-	for (const [width, colorScheme] of [[400, 'light'], [1440, 'dark']] as const) {
+	for (const [width, colorScheme] of [
+		[400, 'light'],
+		[1440, 'dark'],
+	] as const) {
 		await page.setViewportSize({ width, height: 900 })
 		await page.emulateMedia({ colorScheme, reducedMotion: 'reduce' })
 		for (const view of ['all', 'rules']) {
@@ -284,7 +286,10 @@ test('the store dialog and changed rows fit at narrow and wide sizes', browserTe
 		}
 	}
 	storeAll(workspace)
-	for (const [width, colorScheme] of [[400, 'light'], [1440, 'dark']] as const)
+	for (const [width, colorScheme] of [
+		[400, 'light'],
+		[1440, 'dark'],
+	] as const)
 		for (const path of [
 			'/plans/notes?view=all',
 			'/plans/notes?view=rules&focus=list',

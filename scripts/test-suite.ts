@@ -47,6 +47,7 @@ const titles = [...new Set(selected.map((item) => item.title))]
 const escaped = titles.map((title) => title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')
 const pattern = new RegExp(`^(?:${escaped})$`)
 const missing = new Set(selected.map(({ file, title }) => `${resolve(file)}\n${title}`))
+const allowed = new Set(missing)
 let passed = 0
 let failed = 0
 let skipped = 0
@@ -65,7 +66,14 @@ for await (const event of stream) {
 	const file = data.entryFile ?? data.file
 	if (event.type === 'test:pass' && !data.entryFile && file && resolve(data.name) === file) continue
 	if (name === 'extended' && data.skip && file && missing.has(`${file}\n${data.name}`)) continue
-	if (file && data.nesting === 0 && name !== 'extended') missing.delete(`${file}\n${data.name}`)
+	if (file && data.nesting === 0 && name !== 'extended') {
+		const key = `${file}\n${data.name}`
+		if (!allowed.has(key)) {
+			failed++
+			console.error(`Unexpected case selected: ${file}: ${data.name}`)
+		}
+		missing.delete(key)
+	}
 	if (data.skip) {
 		skipped++
 		console.log(`- ${data.name} # SKIP ${String(data.skip)}`)

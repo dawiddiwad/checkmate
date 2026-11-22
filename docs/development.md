@@ -32,7 +32,7 @@ It runs type and generated-file checks, lint, Prettier, and `npm test`. The test
 
 The 42-scenario proposal map is [test/e2e/scenarios.json](../test/e2e/scenarios.json). Some historical Factory campaign behavior is outside this checkout. The local external Factory fixture does not verify Factory checkout, archive, budget, or campaign ownership. Tests use controlled hosts; they do not test live model judgment or require paid model calls.
 
-Use `npm test` to run only the packaged end-to-end suite after you install the same prerequisites. Do not run it with a substitute browser or a fake `pi` executable; the runner checks both actual executables.
+Use `npm test` to run only the packaged end-to-end suite after you install the same prerequisites. Use Chromium and the real Pi CLI. The runner checks that the browser is executable and `pi --version` succeeds; it does not verify their identity.
 
 ## Build and package
 
@@ -45,3 +45,7 @@ The root package is private. The published CLI package is `cli/`. `scripts/build
 ## Agent-only instructions
 
 > **Agent only:** Read [AGENTS.md](../AGENTS.md) and [development procedures](../.agents/wiki/development-procedures.md) before changing code or tests. They link to the coding standards, architecture, and task-specific skills. Runtime instructions for delegated tests live in the [test skill](../plugin/skills/test/SKILL.md) and [stage rules](../plugin/references/workflow.md). These files govern agent prompts; do not replace them with this guide.
+
+## Documentation media
+
+Run `node scripts/build-cli.ts`, then set `CHECKMATE_BROWSER_EXECUTABLE` and run `node scripts/capture-docs-ui.ts` to capture the current review UI with disposable sample records. Run `node scripts/render-onboarding.ts` with FFmpeg on `PATH` to rebuild the onboarding GIF. The final scene uses the captured UI; the earlier workflow is an illustration.

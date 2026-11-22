@@ -2,9 +2,7 @@
 
 Use this path when a person makes the decisions and an installed host does the planning or test work. The person is the oracle. The host supplies the model and permissions. Checkmate stores the record and evidence.
 
-![Checkmate review UI](media/ui/review.png)
-
-![Oracle answer form in the Checkmate review UI](media/ui/answer.png)
+[![Checkmate review UI](media/ui/review.png)](media/ui/review.png)
 
 ## Before you start
 
@@ -102,6 +100,10 @@ checkmate run show run-2
 
 Replace the example plan revision and run IDs with the current values. The `run-1` commands above use the same IDs as this example. For Pi, omit `--allow`. The old run remains unchanged. Accept the new result only after you inspect its evidence and retest verdicts.
 
+Activity lists tests, follow-ups, and chat messages. Open an entry to inspect its status.
+
+[![Activity shows a completed test for the checkout build](media/ui/activity.png)](media/ui/activity.png)
+
 If a process stops, the run stays in the record. First read the reason and decide whether its actions are safe to continue. Then resume the same run:
 
 ```sh
@@ -109,7 +111,7 @@ checkmate run resume run-1
 checkmate delegate execute run-1 --allow Read --allow Bash
 ```
 
-`resume` rechecks the instance, profile, and run gate. It does not repeat an open test. If you cannot safely continue a test, close it with a reason:
+`resume` rechecks the instance, profile, and run gate. It records a new attempt and lists the open tests. It does not run test actions. If you cannot safely continue a test, close it with a reason:
 
 ```sh
 checkmate run close run-1 T2 --outcome error --reason "Could not resume safely."

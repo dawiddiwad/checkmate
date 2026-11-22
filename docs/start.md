@@ -5,7 +5,7 @@ Checkmate records tests and decisions for one project in `.checkmate/checkmate.d
 ## Requirements
 
 - Node.js 24.12.0 or later.
-- A running application with a URL reachable from the workspace.
+- For local runtime QA, a running application with a URL reachable from the workspace.
 - Claude Code or Pi, configured in its host, for delegated planning and test work.
 - Playwright CLI on `PATH` only when the test uses a browser.
 

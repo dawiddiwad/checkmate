@@ -6,7 +6,9 @@
 
 Checkmate turns a ticket into tests. It records each run, its evidence, open questions, and oracle decisions in one local SQLite record. Agents and people use the same record.
 
-![Checkmate reviews a ticket, tests two builds, and records an oracle decision.](docs/img/onboarding.gif)
+The illustration shows the build-first loop. Its final scene shows the current review UI.
+
+[![A build-first QA loop: the oracle answers gaps and approves a plan; the factory builds b1; QA explores and tests it; the factory fixes the defect and builds b2; QA retests; the oracle accepts the result and promotes the tests. The ending shows the current review UI and an answer to a blocking question.](docs/img/onboarding.gif)](docs/img/onboarding.gif)
 
 ## Start in a project
 

@@ -67,13 +67,13 @@ checkmate run show <runId>
 checkmate run resume <runId>
 ```
 
-Resume checks the current instance, profile, and gate. It does not repeat an open test. If you cannot safely continue a test that may have changed the application, close it as `error` and explain why. Read [Local human-oracle QA](local-qa.md#review-a-result-and-retry) for the full procedure.
+Resume checks the current instance, profile, and gate. It records a new attempt and lists the open tests. It does not run test actions. If you cannot safely continue a test that may have changed the application, close it as `error` and explain why. Read [Local human-oracle QA](local-qa.md#review-a-result-and-retry) for the full procedure.
 
 ## Promotion and permanent runs
 
 `plan promote` records an explicit oracle decision. It requires a completed, accepted, passing run of the latest plan revision on the latest recorded build, with evidence for every assertion. Every rule must have a test, every test must pass in that one run, and no gap, question, or claim can remain open.
 
-The promotion creates an immutable test snapshot. Later plan edits do not change it. `run permanent` requires an explicit `--build` and uses only the latest valid promotion, or the exact latest promotion named by `--promotion`. It starts no exploration and accepts no discovery findings. Checkmate refuses a wrong, stale, empty, rejected, or withdrawn promotion; it does not fall back to an older snapshot.
+The promotion creates an immutable test snapshot. Later plan edits do not change it. `run permanent` requires an explicit `--build` and uses the most recent promotion by source revision if it remains valid. Use `--promotion` to require that exact snapshot. It starts no exploration and accepts no discovery findings. Checkmate refuses a wrong, stale, empty, rejected, or withdrawn promotion; it does not fall back to an older snapshot.
 
 See [Factory workflows](factory.md) for the three complete paths and the ownership rules.
 

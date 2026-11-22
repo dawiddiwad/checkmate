@@ -56,7 +56,7 @@ try {
 		await page.goto(new URL('/activity', url).href)
 		await page.locator('[data-live]:not([hidden])').waitFor()
 		await page.evaluate(() => document.fonts.ready)
-		await page.screenshot({ path: join(output, 'activity.png') })
+		await page.screenshot({ path: join(output, 'activity.png'), clip: { x: 0, y: 0, width: 1440, height: 270 } })
 		await context.close()
 	} finally {
 		await browser.close()

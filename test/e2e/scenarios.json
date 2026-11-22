@@ -173,8 +173,9 @@
 	{
 		"number": 29,
 		"name": "Show a safe provider failure and retained partial usage — secret visible or usage silently zero.",
-		"status": "pending",
-		"reason": "Fresh end-to-end scenario not yet written."
+		"status": "covered",
+		"test": "Show a safe provider failure and retained partial usage — secret visible or usage silently zero.",
+		"limit": "Controlled Pi stream; the local timeout is accelerated."
 	},
 	{
 		"number": 30,

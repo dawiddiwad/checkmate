@@ -1034,3 +1034,57 @@ test('Stop only one tester and keep the others running — sibling workers kille
 	assert.equal(stopped.code, 1, stopped.output)
 	assert.equal(stopped.body.state, 'stopped')
 })
+
+test('Show a safe provider failure and retained partial usage — secret visible or usage silently zero.', async (t) => {
+	const workspace = directory(t)
+	writeFileSync(join(workspace, 'ticket.md'), 'The checkout responds.\n')
+	const app = await fixture()
+	t.after(() => app.close())
+	const host = fakeClaude(t, { explorer: '!pi-auth' }, 'pi')
+	const clock = join(workspace, 'clock.cjs')
+	writeFileSync(
+		clock,
+		`if (process.argv.includes('drive')) { const original = global.setTimeout; global.setTimeout = (fn, delay, ...args) => original(fn, delay === 60000 ? 4000 : delay, ...args) }`
+	)
+	const env = {
+		...process.env,
+		...host.env,
+		CHECKMATE_ACTOR: 'oracle',
+		CHECKMATE_HARNESS: 'pi',
+		NODE_OPTIONS: `--require=${clock}`,
+	}
+	const ok = async (...args: string[]) => {
+		const result = await command(workspace, env, ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	const failed = await ok(
+		'test',
+		'cart',
+		'--url',
+		app.baseUrl,
+		'--source',
+		'ticket.md',
+		'--build',
+		'b1',
+		'--level',
+		'smoke',
+		'--allow',
+		'Read'
+	)
+	const error = await command(workspace, env, 'explore', 'wait', failed.explorationId, '--timeout', '60')
+	assert.equal(error.code, 1, error.output)
+	assert.equal(error.body.state, 'failed')
+	assert.match(error.output, /API key|authentication|log in/i)
+	assert.doesNotMatch(error.output, /fixture-secret/)
+	host.reply({ tester: '!partial-sleep', recorder: [{ kind: 'note', text: 'Partial session recorded.' }] })
+	const retry = await ok('test', 'cart', '--build', 'b2', '--level', 'smoke', '--timeout', '60', '--allow', 'Read')
+	assert.equal((await ok('explore', 'wait', retry.explorationId, '--timeout', '60')).state, 'completed')
+	const events = await ok(
+		'query',
+		`SELECT detail FROM exploration_events WHERE exploration_id = '${retry.explorationId}' AND step = 'end'`
+	)
+	const detail = JSON.parse(events.rows[0].detail)
+	assert.deepEqual([detail.costUsd, detail.costPartial], [0.125, true])
+	assert.ok(detail.observedModels.includes('fixture/partial'))
+})

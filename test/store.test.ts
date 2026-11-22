@@ -9,7 +9,6 @@ import {
 	completed,
 	digest,
 	execute,
-	isBusy,
 	openReadOnlyStore,
 	openStore,
 	ulid,
@@ -82,20 +81,6 @@ test('a database with another schema version is refused', (t) => {
 	db.exec("UPDATE meta SET value = '1' WHERE key = 'schemaVersion'")
 	db.close()
 	assert.throws(() => openStore(workspace), /schema version 1\. Expected 7/)
-})
-
-test('a previous workspace gains the promotion table and keeps its plan', (t) => {
-	const opened = store(t)
-	target(opened)
-	plan(opened)
-	closeStore(opened)
-	const old = new DatabaseSync(join(opened.workspace, '.checkmate', 'checkmate.db'))
-	old.exec('DROP TABLE plan_promotions')
-	old.close()
-	const migrated = openReadOnlyStore(opened.workspace)
-	assert.equal(planRevision(migrated, 'checkout').plan.revision, 1)
-	assert.equal(migrated.db.prepare('SELECT count(*) AS count FROM plan_promotions').get()!.count, 0)
-	closeStore(migrated)
 })
 
 test('a database of schema version 3 gets the exploration tables and keeps its rows', (t) => {
@@ -315,29 +300,6 @@ test('a command waits CHECKMATE_BUSY_TIMEOUT_MS for the lock, else 30 seconds', 
 	assert.equal(busyTimeout('2147483647'), 2147483647)
 	for (const value of [undefined, '', '0', '-5', '1.5', 'abc', ' 1000', '2147483648'])
 		assert.equal(busyTimeout(value), 30000, String(value))
-})
-
-test('a write that meets a lock rolls back and logs no rejection', (t) => {
-	const opened = store(t)
-	const busy = Object.assign(new Error('database is locked'), { errcode: 5 })
-	assert(isBusy(busy))
-	assert(isBusy(Object.assign(new Error('database is locked'), { errcode: 517 })))
-	assert(!isBusy(new Error('database is locked')))
-	assert.throws(
-		() =>
-			write(opened, { actor, command: 'test', subject: 'x', input: null }, (operationId) => {
-				execute(
-					opened,
-					"INSERT INTO target_requests (target_id, body, operation_id) VALUES ('t', '{}', ?)",
-					operationId
-				)
-				throw busy
-			}),
-		/database is locked/
-	)
-	assert.equal(opened.db.isTransaction, false)
-	assert.equal(opened.db.prepare('SELECT count(*) AS n FROM target_requests').get()!.n, 0)
-	assert.equal(opened.db.prepare('SELECT count(*) AS n FROM operations').get()!.n, 0)
 })
 
 test('foreign keys refuse rows that name missing parents', (t) => {

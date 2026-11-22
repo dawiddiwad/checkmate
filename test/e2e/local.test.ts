@@ -1393,6 +1393,348 @@ require('node:readline').createInterface({input:process.stdin}).on('line', line 
 	assert.equal((await ok('query', 'SELECT count(*) AS n FROM runs')).rows[0].n, 1)
 	ui.kill('SIGTERM')
 	await once(ui, 'close')
+
+	const piWorkspace = directory(t)
+	mkdirSync(join(piWorkspace, '.checkmate'))
+	writeFileSync(
+		join(piWorkspace, '.checkmate/checkmate.db'),
+		gunzipSync(readFileSync(join(root, 'test/e2e/fixtures/workspace-39d33f7.db.gz')))
+	)
+	const installed = join(project, 'node_modules/@xoxoai/checkmate')
+	const fullCli = join(installed, 'dist/checkmate.js')
+	assert.match(execFileSync(process.execPath, [fullCli, '--help'], { encoding: 'utf8' }), /checkmate delegate/)
+	const realPi = execFileSync('which', ['pi'], { encoding: 'utf8' }).trim()
+	const piHome = directory(t)
+	const agent = join(piHome, 'agent')
+	mkdirSync(agent)
+	const providerRequests: Array<{ body: Record<string, unknown>; ui: boolean; kind: string }> = []
+	const providerErrors: string[] = []
+	let uiSetupToolCalls = 0
+	let uiExecutionStep = 0
+	let workerStep = 0
+	let uiCliPath = ''
+	const shell = (value: string) => `'${value.replaceAll("'", "'\\''")}'`
+	const workerScript = `
+import { execFileSync } from 'node:child_process'
+const cli = ${JSON.stringify(fullCli)}
+const response = await fetch(${JSON.stringify(`${app.baseUrl}/quote?promotion=true&loyalty=true`)})
+const quote = await response.json()
+if (response.status !== 200 || quote.totalPLN !== 240) throw Error('The fixed loopback build did not return 240 PLN.')
+const invoke = (args, input = '') => execFileSync(process.execPath, [cli, ...args], { input, encoding: 'utf8', stdio: ['pipe', 'pipe', 'inherit'] })
+invoke(['run', 'check', 'pi-ui-run', 'T1', 'A1', '--result', 'passed', '--observed', String(quote.totalPLN), '--evidence', '-'], JSON.stringify({ status: response.status, quote }))
+invoke(['run', 'close', 'pi-ui-run', 'T1'])
+invoke(['run', 'finish', 'pi-ui-run', '--completion', 'completed', '--cleanup', 'completed', '--cleanup-reason', 'No test data.'])
+`
+	const workerCommand = `node --input-type=module -e ${shell(workerScript)}`
+	const provider = createServer(async (req, res) => {
+		let data = ''
+		for await (const part of req) data += part
+		try {
+			const body = JSON.parse(data) as Record<string, unknown>
+			const messages = Array.isArray(body.messages) ? body.messages : []
+			const requestText = JSON.stringify(messages)
+			const ui = requestText.includes('This conversation comes from the Checkmate web UI.')
+			const worker = !ui && requestText.includes('Run: pi-ui-run.')
+			const lastUserText = JSON.stringify(
+				messages.filter((message: Record<string, unknown>) => message.role === 'user').at(-1)?.content ?? ''
+			)
+			providerRequests.push({ body, ui, kind: worker ? 'worker' : ui ? 'ui' : 'other' })
+			let delta: Record<string, unknown>
+			let finishReason: string
+			if (ui && lastUserText.includes('Check setup only. Do not run QA or start a test.')) {
+				if (
+					!requestText.includes(
+						'When the person asks only for setup or a reachability check, stop after setup.'
+					)
+				)
+					throw Error('The UI Pi prompt omitted the setup-only instruction.')
+				delta = { content: 'Setup is ready. I did not start QA.' }
+				finishReason = 'stop'
+			} else if (ui && lastUserText.includes('Please execute the fixture run.')) {
+				if (
+					!requestText.includes(
+						'When the person asks you to run or retest stored tests, continue until you execute the run that Checkmate began.'
+					)
+				)
+					throw Error('The UI Pi prompt omitted the run handoff instruction.')
+				const cliPath = /node '([^']+)' <command>/.exec(requestText)?.[1]
+				if (!cliPath || !existsSync(cliPath))
+					throw Error('The UI Pi prompt did not name its installed CLI path.')
+				assert.match(
+					execFileSync(process.execPath, [cliPath, '--help'], { encoding: 'utf8' }),
+					/checkmate delegate/
+				)
+				uiCliPath = cliPath
+				if (uiExecutionStep === 0) {
+					uiExecutionStep++
+					delta = {
+						tool_calls: [
+							{
+								index: 0,
+								id: 'ui-begin',
+								type: 'function',
+								function: {
+									name: 'bash',
+									arguments: JSON.stringify({
+										command: `node ${shell(uiCliPath)} run begin pi-ui-run ticket@1 --build fixed --instance local --tests T1`,
+									}),
+								},
+							},
+						],
+					}
+					finishReason = 'tool_calls'
+				} else if (uiExecutionStep === 1) {
+					uiExecutionStep++
+					delta = {
+						tool_calls: [
+							{
+								index: 0,
+								id: 'ui-execute',
+								type: 'function',
+								function: {
+									name: 'bash',
+									arguments: JSON.stringify({
+										command: `node ${shell(uiCliPath)} delegate execute pi-ui-run`,
+									}),
+								},
+							},
+						],
+					}
+					finishReason = 'tool_calls'
+				} else {
+					uiExecutionStep++
+					delta = { content: 'The fixture run finished. Its recorded evidence is ready for review.' }
+					finishReason = 'stop'
+				}
+			} else if (worker) {
+				if (workerStep === 0) {
+					workerStep++
+					delta = {
+						tool_calls: [
+							{
+								index: 0,
+								id: 'worker-run',
+								type: 'function',
+								function: { name: 'bash', arguments: JSON.stringify({ command: workerCommand }) },
+							},
+						],
+					}
+					finishReason = 'tool_calls'
+				} else {
+					workerStep++
+					delta = { content: JSON.stringify({ status: 'completed', subject: 'pi-ui-run', reasons: [] }) }
+					finishReason = 'stop'
+				}
+			} else {
+				throw Error(`Unexpected local provider request: ${requestText.slice(-500)}`)
+			}
+			if (
+				ui &&
+				lastUserText.includes('Check setup only. Do not run QA or start a test.') &&
+				Array.isArray(delta.tool_calls)
+			)
+				uiSetupToolCalls += delta.tool_calls.length
+			res.writeHead(200, { 'content-type': 'text/event-stream' })
+			res.write(
+				`data: ${JSON.stringify({ id: 'fixture', object: 'chat.completion.chunk', model: 'fixture', choices: [{ index: 0, delta, finish_reason: null }] })}\n\n`
+			)
+			res.write(
+				`data: ${JSON.stringify({ id: 'fixture', object: 'chat.completion.chunk', model: 'fixture', choices: [{ index: 0, delta: {}, finish_reason: finishReason }] })}\n\n`
+			)
+			res.end('data: [DONE]\n\n')
+		} catch (error) {
+			providerErrors.push((error as Error).message)
+			res.writeHead(500)
+			res.end((error as Error).message)
+		}
+	})
+	provider.listen(0, '127.0.0.1')
+	await once(provider, 'listening')
+	t.after(() => provider.close())
+	const providerAddress = provider.address()
+	assert(providerAddress && typeof providerAddress !== 'string')
+	writeFileSync(
+		join(agent, 'models.json'),
+		JSON.stringify({
+			providers: {
+				localfixture: {
+					baseUrl: `http://127.0.0.1:${providerAddress.port}/v1`,
+					api: 'openai-completions',
+					apiKey: 'fixture',
+					models: [{ id: 'fixture' }],
+				},
+			},
+		})
+	)
+	const piEnv = {
+		...process.env,
+		HOME: piHome,
+		PI_CODING_AGENT_DIR: agent,
+		PI_OFFLINE: '1',
+		PI_TELEMETRY: '0',
+		CHECKMATE_ACTOR: 'oracle',
+		CHECKMATE_HARNESS: 'pi',
+		CHECKMATE_PI_MODEL: 'localfixture/fixture',
+		QA_APP_URL: app.baseUrl,
+	}
+	execFileSync(realPi, ['install', installed, '--local', '--approve'], {
+		cwd: piWorkspace,
+		env: piEnv,
+		timeout: 30000,
+	})
+	const okPi = async (...args: string[]) => {
+		const result = await command(piWorkspace, piEnv, ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	await okPi('target', 'instance', 'add', 'shop', 'local', '--entry', `web=${app.baseUrl}`)
+	await okPi('plan', 'approve', 'ticket@1', '--rationale', 'Run the fixture rule.')
+	const piUi = spawn(process.execPath, [binary, 'ui', '--port', '0', '--json'], { cwd: piWorkspace, env: piEnv })
+	t.after(() => piUi.kill('SIGTERM'))
+	const [piData] = (await once(piUi.stdout, 'data')) as [Buffer]
+	const piUrl = JSON.parse(piData.toString()).url as string
+	const piPage = await (await fetch(new URL('/plans/ticket', piUrl))).text()
+	const piCsrf = /name="csrf" value="([^"]+)"/.exec(piPage)?.[1]
+	assert(piCsrf, 'Pi UI plan page did not expose a CSRF token')
+	const postChat = async (path: URL, text: string) => {
+		const response = await fetch(path, {
+			method: 'POST',
+			headers: { 'content-type': 'application/x-www-form-urlencoded', origin: new URL(piUrl).origin },
+			body: new URLSearchParams({
+				actor: 'oracle',
+				text,
+				harness: 'pi',
+				model: 'localfixture/fixture',
+				csrf: piCsrf,
+			}),
+			redirect: 'manual',
+		})
+		assert.equal(response.status, 303, await response.text())
+		return new URL(response.headers.get('location')!, piUrl)
+	}
+	const setupChat = await postChat(
+		new URL('/plans/ticket/chats', piUrl),
+		'Check setup only. Do not run QA or start a test.'
+	)
+	const piQuery = async (sql: string) => okPi('query', sql)
+	const waitForRequestState = async (state: string) => {
+		for (let attempt = 0; attempt < 100; attempt++) {
+			const latest = await piQuery(
+				"SELECT request_id, status FROM request_events WHERE step='state' ORDER BY rowid DESC LIMIT 1"
+			)
+			if (latest.rows[0]?.status === state) return latest.rows[0].request_id as string
+			await new Promise((resolve) => setTimeout(resolve, 100))
+		}
+		const events = await piQuery('SELECT request_id, step, status, detail FROM request_events ORDER BY rowid')
+		const runs = await piQuery('SELECT run_id, application_build FROM runs')
+		const operations = await piQuery(
+			"SELECT command, actor, arguments, status FROM operations WHERE command IN ('run begin', 'run check', 'run finish', 'delegate execute', 'request permit') ORDER BY rowid"
+		)
+		throw Error(
+			`Pi UI chat did not reach state ${state}. Provider errors: ${providerErrors.join('; ')}; execution=${JSON.stringify({ uiExecutionStep, workerStep, requests: providerRequests.map((item) => ({ kind: item.kind, tail: JSON.stringify(item.body.messages).slice(-500) })), events: events.rows, runs: runs.rows, operations: operations.rows })}`
+		)
+	}
+	const setupRequestId = await waitForRequestState('answered')
+	assert.equal(uiSetupToolCalls, 0)
+	assert.equal((await piQuery('SELECT count(*) AS n FROM runs')).rows[0].n, 0)
+	const chatId = setupChat.searchParams.get('chat')
+	assert(chatId, setupChat.href)
+	const executionChat = await postChat(
+		new URL(`/plans/ticket/chats/${chatId}/turns`, piUrl),
+		'Please execute the fixture run.'
+	)
+	assert.equal(executionChat.searchParams.get('chat'), chatId)
+	let permission: { request_id: string; detail: string } | undefined
+	for (let attempt = 0; attempt < 100; attempt++) {
+		const open = await piQuery(
+			"SELECT request_id, detail FROM request_events WHERE step='permission' AND status='open' ORDER BY rowid DESC LIMIT 1"
+		)
+		permission = open.rows[0]
+		if (permission) break
+		await new Promise((resolve) => setTimeout(resolve, 100))
+	}
+	assert(
+		permission,
+		`Pi did not request the UI permission. Provider errors: ${providerErrors.join('; ')}; steps=${JSON.stringify({ uiExecutionStep, workerStep, requests: providerRequests.map((item) => ({ kind: item.kind, model: item.body.model, tail: JSON.stringify(item.body.messages).slice(-800) })) })}`
+	)
+	const allowedPermissions = new Set<string>()
+	const allowPermission = async (item: { request_id: string; detail: string }) => {
+		const id = (JSON.parse(item.detail) as { id: string }).id
+		const path = `/permissions/${item.request_id}/${id}`
+		const page = await (await fetch(new URL(path, piUrl))).text()
+		assert.match(page, /Allow once/)
+		const csrf = /name="csrf" value="([^"]+)"/.exec(page)?.[1]
+		assert(csrf, 'Permission page did not expose a CSRF token')
+		const response = await fetch(new URL(path, piUrl), {
+			method: 'POST',
+			headers: { 'content-type': 'application/x-www-form-urlencoded', origin: new URL(piUrl).origin },
+			body: new URLSearchParams({ actor: 'oracle', decision: 'allow', csrf }),
+			redirect: 'manual',
+		})
+		assert.equal(response.status, 303, await response.text())
+		allowedPermissions.add(`${item.request_id}/${id}`)
+	}
+	await allowPermission(permission)
+	let piResult
+	for (let attempt = 0; attempt < 200; attempt++) {
+		const results = await piQuery("SELECT body FROM results WHERE run_id='pi-ui-run'")
+		if (results.rows.length) {
+			piResult = JSON.parse(results.rows[0].body)
+			break
+		}
+		const open = await piQuery(
+			"SELECT request_id, detail FROM request_events WHERE step='permission' AND status='open' ORDER BY rowid"
+		)
+		for (const item of open.rows as Array<{ request_id: string; detail: string }>) {
+			const id = (JSON.parse(item.detail) as { id: string }).id
+			if (!allowedPermissions.has(`${item.request_id}/${id}`)) await allowPermission(item)
+		}
+		await new Promise((resolve) => setTimeout(resolve, 100))
+	}
+	const piRequestId = await waitForRequestState('answered')
+	assert.notEqual(piRequestId, setupRequestId)
+	assert(piResult, `Pi UI did not finish the run. Provider errors: ${providerErrors.join('; ')}`)
+	assert.equal(piResult.tests[0].outcome, 'passed')
+	assert.equal(piResult.tests[0].assertions[0].result, 'passed')
+	assert.equal((await okPi('run', 'show', 'pi-ui-run')).build, 'fixed')
+	assert.equal(workerStep, 2)
+	assert.equal(uiExecutionStep, 3)
+	assert.equal((await piQuery('SELECT count(*) AS n FROM runs')).rows[0].n, 1)
+	const runOps = (
+		await piQuery(
+			"SELECT command, actor FROM operations WHERE json_extract(arguments, '$.runId')='pi-ui-run' AND command IN ('run begin', 'run check', 'run close', 'run finish') ORDER BY rowid"
+		)
+	).rows
+	assert.deepEqual(runOps, [
+		{ command: 'run begin', actor: `oracle via request ${piRequestId}` },
+		{ command: 'run check', actor: 'pi:execute' },
+		{ command: 'run close', actor: 'pi:execute' },
+		{ command: 'run finish', actor: 'pi:execute' },
+	])
+	assert.equal((await piQuery("SELECT count(*) AS n FROM operations WHERE command='request permit'")).rows[0].n, 2)
+	assert.deepEqual((await piQuery("SELECT DISTINCT actor FROM operations WHERE command='request permit'")).rows, [
+		{ actor: 'oracle' },
+	])
+	assert.equal(
+		JSON.parse((await piQuery("SELECT arguments FROM operations WHERE command='request permit'")).rows[0].arguments)
+			.decision,
+		'allow'
+	)
+	assert.equal(
+		(
+			await piQuery(
+				"SELECT actor FROM operations WHERE command='run finish' AND json_extract(arguments, '$.runId')='pi-ui-run'"
+			)
+		).rows[0].actor,
+		'pi:execute'
+	)
+	assert.match(JSON.stringify(piResult), /240/)
+	assert.ok(providerRequests.every((item) => item.body.model === 'fixture'))
+	assert.equal(providerRequests.filter((item) => item.ui).length, 4)
+	assert.equal(providerRequests.filter((item) => item.kind === 'worker').length, 2)
+	assert.deepEqual(providerErrors, [])
+	piUi.kill('SIGTERM')
+	await once(piUi, 'close')
 })
 
 test('Execute a request through Pi RPC — a begun run must reach its worker.', { timeout: 60000 }, async (t) => {

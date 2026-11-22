@@ -112,14 +112,15 @@
 	{
 		"number": 19,
 		"name": "Delegate setup and plan and verify the record — prose or mismatched actor stands in for a receipt.",
-		"status": "pending",
-		"reason": "Fresh end-to-end scenario not yet written."
+		"status": "covered",
+		"test": "Delegate setup and plan and verify the record — prose or mismatched actor stands in for a receipt."
 	},
 	{
 		"number": 20,
 		"name": "Answer, revise, and approve the named revision — execution against the wrong revision.",
-		"status": "pending",
-		"reason": "Fresh end-to-end scenario not yet written."
+		"status": "partial",
+		"reason": "The no-build review, revision, approval and handoff are covered; execution against the revision remains to be added.",
+		"test": "Answer, revise, and approve the named revision — execution against the wrong revision."
 	},
 	{
 		"number": 21,

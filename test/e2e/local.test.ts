@@ -31,9 +31,14 @@ test.after(async () => {
 })
 
 function command(workspace: string, env: NodeJS.ProcessEnv, ...args: string[]) {
+	return inputCommand(workspace, env, '', ...args)
+}
+
+function inputCommand(workspace: string, env: NodeJS.ProcessEnv, input: string, ...args: string[]) {
 	return new Promise<{ code: number | null; body: ReturnType<typeof JSON.parse>; output: string }>(
 		(resolve, reject) => {
 			const child = spawn(process.execPath, [binary, ...args, '--json'], { cwd: workspace, env, timeout: 70000 })
+			child.stdin.end(input)
 			let output = ''
 			let error = ''
 			child.stdout.on('data', (part) => (output += part))
@@ -570,4 +575,197 @@ test('Interrupt the supervisor and retry safely — orphan workers or duplicate 
 		'SELECT (SELECT count(*) FROM target_requests) AS targets, (SELECT count(*) FROM plan_requests) AS plans, (SELECT count(*) FROM explorations) AS attempts'
 	)
 	assert.deepEqual(counts.rows, [{ targets: 1, plans: 1, attempts: 2 }])
+})
+
+test('Answer, revise, and approve the named revision — execution against the wrong revision.', async (t) => {
+	const workspace = directory(t)
+	const { chmodSync, copyFileSync, mkdirSync } = await import('node:fs')
+	const { delimiter } = await import('node:path')
+	const bin = join(workspace, 'bin')
+	mkdirSync(bin)
+	copyFileSync(join(root, 'test/e2e/spec-host.mjs'), join(bin, 'pi'))
+	chmodSync(join(bin, 'pi'), 0o755)
+	writeFileSync(join(workspace, 'ticket.md'), 'The quote is 240. Does the promotion replace loyalty?\n')
+	const env = {
+		...process.env,
+		PATH: `${bin}${delimiter}${process.env.PATH}`,
+		CHECKMATE_ACTOR: 'oracle',
+		CHECKMATE_HARNESS: 'pi',
+	}
+	const ok = async (args: string[], value?: object) => {
+		const result = await inputCommand(workspace, env, value ? JSON.stringify(value) : '', ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	const target = {
+		contractVersion: 'toolkit-2',
+		targetId: 'shop',
+		revision: 1,
+		entryPoints: [{ name: 'web', kind: 'url', purpose: 'Shop HTTP API.' }],
+		capabilities: ['http'],
+		tools: [],
+		authentication: { kind: 'none', references: [] },
+		allowedOperations: ['read_catalog'],
+		startup: { owner: 'factory', command: null },
+		cleanup: 'No test data.',
+		readyForLiveExecution: true,
+		approvals: { plan: 'required', result: 'required' },
+	}
+	await ok([
+		'target',
+		'open',
+		'shop',
+		'--entry-point',
+		'web:url:Shop HTTP API.',
+		'--capabilities',
+		'http',
+		'--operations',
+		'read_catalog',
+	])
+	await ok(['target', 'save', 'shop'], target)
+	await ok([
+		'plan',
+		'open',
+		'ticket',
+		'--target',
+		'shop@1',
+		'--objective',
+		'Check the quote.',
+		'--source',
+		'ticket.md',
+	])
+	await ok(['plan', 'save', 'ticket'], {
+		requirements: [{ id: 'R1', text: 'The quote is 240.', source: 'ticket.md' }],
+		tests: [
+			{
+				id: 'T1',
+				title: 'Quote',
+				requirementIds: ['R1'],
+				capability: 'http',
+				operations: ['read_catalog'],
+				dependsOn: [],
+				preconditions: [],
+				action: 'Read the quote.',
+				assertions: [{ id: 'A1', check: 'The quote is 240.', checkKind: 'deterministic' }],
+			},
+		],
+		gaps: [],
+	})
+	const review = await ok(['delegate', 'spec', 'ticket@1'])
+	assert.equal(review.status, 'needs_decision')
+	const first = await ok(['spec', 'status', 'ticket@1'])
+	assert.equal(first.ready, false)
+	assert.equal(first.findings[0].evidence, 'Does the promotion replace loyalty?')
+	const blocked = await command(
+		workspace,
+		env,
+		'spec',
+		'handoff',
+		'ticket@1',
+		'--expect-sha',
+		first.sha256,
+		'--rationale',
+		'Ready.'
+	)
+	assert.equal(blocked.code, 1, blocked.output)
+	assert.match(blocked.output, /Gap G1 is open/)
+	await ok([
+		'gap',
+		'answer',
+		'ticket',
+		'G1',
+		'--kind',
+		'clarify',
+		'--value',
+		'The promotion replaces loyalty.',
+		'--source',
+		'oracle',
+		'--rationale',
+		'Owner decision.',
+	])
+	await ok(['plan', 'revise', 'ticket'], { tests: {} })
+	const stale = await command(workspace, env, 'delegate', 'spec', 'ticket@1')
+	assert.equal(stale.code, 1, stale.output)
+	assert.match(stale.output, /stale/i)
+	await ok(['delegate', 'spec', 'ticket@2'])
+	await ok(['plan', 'approve', 'ticket@2', '--rationale', 'The owner approves.'])
+	const ready = await ok(['spec', 'status', 'ticket@2'])
+	assert.equal(ready.ready, true)
+	await ok(['spec', 'handoff', 'ticket@2', '--expect-sha', ready.sha256, '--rationale', 'Ready to build.'])
+	const counts = await ok([
+		'query',
+		'SELECT (SELECT count(*) FROM instances) AS instances, (SELECT count(*) FROM runs) AS runs, (SELECT count(*) FROM explorations) AS explorations, (SELECT count(*) FROM plan_builds) AS builds',
+	])
+	assert.deepEqual(counts.rows, [{ instances: 0, runs: 0, explorations: 0, builds: 0 }])
+})
+
+test('Delegate setup and plan and verify the record — prose or mismatched actor stands in for a receipt.', async (t) => {
+	const workspace = directory(t)
+	const { chmodSync, copyFileSync, mkdirSync } = await import('node:fs')
+	const { delimiter } = await import('node:path')
+	const bin = join(workspace, 'bin')
+	mkdirSync(bin)
+	copyFileSync(join(root, 'test/e2e/delegate-host.mjs'), join(bin, 'claude'))
+	chmodSync(join(bin, 'claude'), 0o755)
+	writeFileSync(join(workspace, 'ticket.md'), 'The quote is 240.\n')
+	const env = {
+		...process.env,
+		PATH: `${bin}${delimiter}${process.env.PATH}`,
+		CHECKMATE_ACTOR: 'oracle',
+		CHECKMATE_HARNESS: 'claude',
+		QA_STAGE: 'setup',
+		QA_LIE: '0',
+	}
+	const ok = async (...args: string[]) => {
+		const result = await command(workspace, env, ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	await ok(
+		'target',
+		'open',
+		'shop',
+		'--entry-point',
+		'web:url:Shop HTTP API.',
+		'--capabilities',
+		'http',
+		'--operations',
+		'read_catalog'
+	)
+	const setup = await ok('delegate', 'setup', 'shop', '--allow', 'Read')
+	assert.equal(setup.status, 'completed')
+	await ok('plan', 'open', 'ticket', '--target', 'shop@1', '--objective', 'Check the quote.', '--source', 'ticket.md')
+	env.QA_STAGE = 'plan'
+	env.QA_LIE = '1'
+	const liar = await command(workspace, env, 'delegate', 'plan', 'ticket', '--allow', 'Read')
+	assert.equal(liar.code, 1, liar.output)
+	assert.match(liar.output, /no plan save/i)
+	assert.equal((await ok('query', 'SELECT count(*) AS n FROM plan_revisions')).rows[0].n, 0)
+	const wrongWorkspace = directory(t)
+	const { cpSync } = await import('node:fs')
+	cpSync(join(workspace, '.checkmate'), join(wrongWorkspace, '.checkmate'), { recursive: true })
+	copyFileSync(join(workspace, 'ticket.md'), join(wrongWorkspace, 'ticket.md'))
+	const wrongActor = await command(
+		wrongWorkspace,
+		{ ...env, QA_LIE: 'actor' },
+		'delegate',
+		'plan',
+		'ticket',
+		'--allow',
+		'Read'
+	)
+	assert.equal(wrongActor.code, 1, wrongActor.output)
+	assert.match(wrongActor.output, /actor|no plan save/i)
+	env.QA_LIE = '0'
+	const plan = await ok('delegate', 'plan', 'ticket', '--allow', 'Read')
+	assert.equal(plan.status, 'completed')
+	assert.equal(plan.subject, 'ticket@1')
+	const records = await ok(
+		'query',
+		"SELECT command, actor, status FROM operations WHERE command IN ('target save', 'plan save') ORDER BY rowid"
+	)
+	assert.deepEqual(records.rows, [
+		{ command: 'target save', actor: 'claude:setup', status: 'completed' },
+		{ command: 'plan save', actor: 'claude:plan', status: 'completed' },
+	])
 })

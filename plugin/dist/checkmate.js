@@ -485,6 +485,24 @@ CREATE TABLE journal_entries (
 `;
 var addedTables = [
   {
+    ddl: `CREATE TABLE plan_promotions (
+	plan_id TEXT NOT NULL,
+	source_revision INTEGER NOT NULL,
+	promoted_revision INTEGER NOT NULL,
+	build TEXT NOT NULL,
+	run_id TEXT NOT NULL REFERENCES runs(run_id),
+	result_sha256 TEXT NOT NULL,
+	tests TEXT NOT NULL,
+	rationale TEXT NOT NULL,
+	operation_id TEXT NOT NULL ${operationReference},
+	PRIMARY KEY (plan_id, source_revision),
+	CHECK (promoted_revision = source_revision + 1),
+	FOREIGN KEY (plan_id, source_revision) REFERENCES plan_revisions(plan_id, revision),
+	FOREIGN KEY (plan_id, promoted_revision) REFERENCES plan_revisions(plan_id, revision)
+) STRICT;`,
+    fill: ""
+  },
+  {
     ddl: `CREATE TABLE exploration_event_costs (
 	source_operation_id TEXT NOT NULL REFERENCES operations(id),
 	step TEXT NOT NULL,
@@ -634,6 +652,9 @@ function addMissingTables(db) {
     db.exec(triggersOf(ddl));
     if (fill) db.exec(fill);
   }
+  db.exec(`CREATE TRIGGER IF NOT EXISTS promoted_plan_update BEFORE UPDATE ON plan_revisions
+	WHEN EXISTS (SELECT 1 FROM plan_promotions WHERE plan_id = OLD.plan_id AND promoted_revision = OLD.revision)
+	BEGIN SELECT RAISE(ABORT, 'Rows of promoted plan revisions are immutable'); END;`);
 }
 function completed(subject, data = {}) {
   return { status: "completed", subject, reasons: [], data };
@@ -12021,6 +12042,8 @@ function planCandidate(plan) {
 }
 function frozenRevision(store, planId, revision) {
   if (one(store, "SELECT 1 FROM runs WHERE plan_id = ? AND plan_revision = ?", planId, revision)) return "run";
+  if (one(store, "SELECT 1 FROM plan_promotions WHERE plan_id = ? AND promoted_revision = ?", planId, revision))
+    return "promotion";
   const approved = one(
     store,
     "SELECT 1 FROM approvals WHERE subject_kind = 'plan' AND subject_id = ? AND verdict = 'approved'",
@@ -27120,7 +27143,7 @@ function editPage(store, context, planId, revision, state = null) {
   const needsApproval = detail.approval.policy !== "none";
   const next = revision + 1;
   const save2 = frozen ? `Save as ${planId}@${next}` : "Save changes";
-  const why = frozen === "run" ? `A run uses ${subject}.` : `${subject} is approved.`;
+  const why = frozen === "run" ? `A run uses ${subject}.` : frozen === "promotion" ? `${subject} was promoted.` : `${subject} is approved.`;
   const notice = frozen ? banner(
     "warn",
     html2`<strong
@@ -37337,6 +37360,173 @@ function stepDone(store, actor, input) {
   return reply;
 }
 
+// plugin/src/promotion.ts
+function planPromotions(store, planId) {
+  planRequest(store, planId);
+  return all(
+    store,
+    `SELECT p.*, o.actor, o.at FROM plan_promotions p JOIN operations o ON o.id = p.operation_id
+		WHERE p.plan_id = ? ORDER BY p.source_revision`,
+    planId
+  ).map((row2) => ({
+    planId: row2.plan_id,
+    sourceRevision: row2.source_revision,
+    revision: row2.promoted_revision,
+    build: row2.build,
+    runId: row2.run_id,
+    resultSha256: row2.result_sha256,
+    accepted: resultAcceptance(store, runState(store, row2.run_id).row, row2.result_sha256).approved,
+    tests: JSON.parse(row2.tests),
+    rationale: row2.rationale,
+    actor: row2.actor,
+    at: row2.at
+  }));
+}
+function promotePlan(store, actor, input) {
+  return write(store, { actor, command: "plan promote", subject: input.reference, input }, (operationId) => {
+    const reference2 = revisionReference(requireText(input.reference, "plan reference"), "plan reference");
+    requireWellFormed(reference2.revision !== null, "Name the plan revision to promote.");
+    const build = requireText(input.build, "application build (--build)");
+    const rationale = requireText(input.rationale, "rationale (--rationale)");
+    const run2 = runState(store, input.runId);
+    const result = runResult(store, input.runId);
+    requireCondition(result, `Run ${input.runId} is not finished.`);
+    requireCondition(
+      run2.row.plan_id === reference2.id && run2.row.plan_revision === reference2.revision,
+      `Run ${input.runId} does not belong to ${input.reference}.`
+    );
+    requireCondition(run2.row.application_build === build, `Run ${input.runId} is not on build ${build}.`);
+    requireCondition(
+      resultAcceptance(store, run2.row, result.sha256).approved,
+      `Accept result ${input.runId} first.`
+    );
+    const current = planRevision(store, reference2.id);
+    const latestBuild = one(
+      store,
+      `SELECT build FROM (
+				SELECT x.build AS build, o.rowid AS position FROM explorations x
+				JOIN operations o ON o.id = x.operation_id WHERE x.plan_id = ?
+				UNION ALL
+				SELECT r.application_build AS build, o.rowid AS position FROM runs r
+				JOIN operations o ON o.id = r.operation_id WHERE r.plan_id = ?
+			) ORDER BY position DESC LIMIT 1`,
+      reference2.id,
+      reference2.id
+    )?.build;
+    requireCondition(latestBuild === build, `Build ${build} is not the latest build of ${reference2.id}.`);
+    const previous = one(
+      store,
+      "SELECT * FROM plan_promotions WHERE plan_id = ? AND source_revision = ?",
+      reference2.id,
+      reference2.revision
+    );
+    if (previous) {
+      requireCondition(
+        previous.run_id === input.runId && previous.build === build && previous.result_sha256 === result.sha256 && previous.rationale === rationale,
+        `${input.reference} was promoted with a different decision.`
+      );
+      requireCondition(
+        current.plan.revision === previous.promoted_revision,
+        `Plan ${reference2.id} has changed since promotion.`
+      );
+      const changed = one(
+        store,
+        `SELECT 1 FROM operations o JOIN plan_promotions p ON p.plan_id = ? AND p.source_revision = ?
+				WHERE o.rowid > (SELECT rowid FROM operations WHERE id = p.operation_id)
+				AND o.status = 'completed' AND EXISTS (SELECT 1 FROM json_each(o.subjects) WHERE value = ?) LIMIT 1`,
+        reference2.id,
+        reference2.revision,
+        `plan:${reference2.id}`
+      );
+      requireCondition(!changed, `The record of ${reference2.id} has changed since promotion.`);
+      return {
+        reply: completed(`${reference2.id}@${previous.promoted_revision}`, {
+          planId: reference2.id,
+          sourceRevision: reference2.revision,
+          revision: previous.promoted_revision,
+          build,
+          runId: input.runId,
+          tests: JSON.parse(previous.tests),
+          recorded: false
+        }),
+        subjects: []
+      };
+    }
+    requireCondition(
+      current.plan.revision === reference2.revision,
+      `Plan ${input.reference} is not the latest revision.`
+    );
+    requireCondition(run2.row.plan_sha256 === current.sha256, `Run ${input.runId} uses a different plan snapshot.`);
+    const plan = current.plan;
+    requireCondition(
+      plan.requirements.length > 0 && plan.tests.length > 0,
+      "The plan needs rules and tests to promote."
+    );
+    requireCondition(!plan.gaps.some((gap) => gap.status === "open"), "Resolve all plan gaps before promotion.");
+    const status = planStatus(store, reference2.id);
+    requireCondition(status.state === "accepted", `Plan ${reference2.id} is ${status.state}, not accepted.`);
+    const exploration2 = status.explorations.filter((item) => item.build === build).at(-1);
+    requireCondition(
+      !exploration2 || exploration2.state === "completed",
+      `Exploration ${exploration2?.explorationId} on ${build} is ${exploration2?.state}.`
+    );
+    requireCondition(
+      !status.questions.length && !status.claims.length,
+      "Resolve the open exploration questions and claims before promotion."
+    );
+    for (const rule of planRules(store, reference2.id).rules)
+      requireCondition(
+        plan.tests.some((test) => test.requirementIds.includes(rule.id)),
+        `Rule ${rule.id} has no test.`
+      );
+    requireCondition(result.result.completion === "completed", `Run ${input.runId} did not complete.`);
+    for (const test of plan.tests) {
+      requireCondition(
+        test.readiness === "ready" && test.assertions.length,
+        `Test ${test.id} is not ready for promotion.`
+      );
+      const tested = result.result.tests.find((item) => item.testId === test.id);
+      requireCondition(tested?.outcome === "passed", `Test ${test.id} did not pass in ${input.runId}.`);
+      for (const assertion of test.assertions) {
+        const checked = tested.assertions.find((item) => item.assertionId === assertion.id);
+        requireCondition(
+          checked?.result === "passed" && checked.observed && checked.evidenceIds.length,
+          `Assertion ${test.id}.${assertion.id} needs a passing observation and evidence in ${input.runId}.`
+        );
+      }
+    }
+    const candidate = planCandidate(plan);
+    const change = storeEdit(store, operationId, current, candidate);
+    const promoted = planRevision(store, reference2.id);
+    const tests = candidate.tests.map((test) => test.id);
+    execute(
+      store,
+      "INSERT INTO plan_promotions VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      reference2.id,
+      reference2.revision,
+      promoted.plan.revision,
+      build,
+      input.runId,
+      result.sha256,
+      JSON.stringify(tests),
+      rationale,
+      operationId
+    );
+    return {
+      reply: completed(`${reference2.id}@${promoted.plan.revision}`, {
+        planId: reference2.id,
+        sourceRevision: reference2.revision,
+        revision: promoted.plan.revision,
+        build,
+        runId: input.runId,
+        tests,
+        recorded: true
+      }),
+      subjects: [...change.subjects, `run:${input.runId}`]
+    };
+  });
+}
+
 // plugin/src/cli.ts
 import { mkdirSync as mkdirSync10, readFileSync as readFileSync10, writeFileSync as writeFileSync6 } from "node:fs";
 import { dirname as dirname3, join as join16, resolve as resolve8 } from "node:path";
@@ -37817,6 +38007,45 @@ var commands = {
     stdin: true,
     run: (store, args, { actor, stdin }) => savePlan(store, actor, { planId: value(args, "planId"), candidate: stdin() }),
     print: (reply) => ({ facts: { sha256: short3(reply.data.sha256) } })
+  },
+  "plan promote": {
+    positionals: ["reference"],
+    flags: { run: "value", build: "value", rationale: "value" },
+    required: ["run", "build", "rationale"],
+    write: true,
+    run: (store, args, { actor }) => promotePlan(store, actor, {
+      reference: value(args, "reference"),
+      runId: value(args, "run"),
+      build: value(args, "build"),
+      rationale: value(args, "rationale")
+    }),
+    print: (reply) => ({
+      facts: {
+        build: reply.data.build,
+        run: reply.data.runId,
+        tests: reply.data.tests,
+        recorded: reply.data.recorded
+      }
+    })
+  },
+  "plan promotions": {
+    positionals: ["planId"],
+    readOnly: true,
+    run: (store, args) => completed(value(args, "planId"), { promotions: planPromotions(store, value(args, "planId")) }),
+    print: (reply) => ({
+      lines: reply.data.promotions.map((item) => [
+        `${item.planId}@${item.revision}`,
+        `source=${item.sourceRevision}`,
+        `build=${item.build}`,
+        `run=${item.runId}`,
+        `sha256=${short3(item.resultSha256)}`,
+        `accepted=${item.accepted}`,
+        `tests=${item.tests.join(",")}`,
+        `actor=${item.actor}`,
+        item.at,
+        item.rationale
+      ])
+    })
   },
   "plan show": {
     positionals: ["reference"],

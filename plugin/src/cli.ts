@@ -102,6 +102,7 @@ import { doneSteps, nextActions, pauseRun, stepDone, stepsStarted } from './agen
 import { levelNames, testLevels } from './levels.ts'
 import { runTest, testModes } from './modes.ts'
 import { harvestExploration } from './harvest.ts'
+import { planPromotions, promotePlan } from './promotion.ts'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { constants } from 'node:sqlite'
@@ -645,6 +646,47 @@ const commands: Record<string, Command> = {
 		run: (store, args, { actor, stdin }) =>
 			savePlan(store, actor, { planId: value(args, 'planId')!, candidate: stdin() }),
 		print: (reply) => ({ facts: { sha256: short(reply.data.sha256) } }),
+	},
+	'plan promote': {
+		positionals: ['reference'],
+		flags: { run: 'value', build: 'value', rationale: 'value' },
+		required: ['run', 'build', 'rationale'],
+		write: true,
+		run: (store, args, { actor }) =>
+			promotePlan(store, actor, {
+				reference: value(args, 'reference')!,
+				runId: value(args, 'run')!,
+				build: value(args, 'build')!,
+				rationale: value(args, 'rationale')!,
+			}),
+		print: (reply) => ({
+			facts: {
+				build: reply.data.build,
+				run: reply.data.runId,
+				tests: reply.data.tests,
+				recorded: reply.data.recorded,
+			},
+		}),
+	},
+	'plan promotions': {
+		positionals: ['planId'],
+		readOnly: true,
+		run: (store, args) =>
+			completed(value(args, 'planId')!, { promotions: planPromotions(store, value(args, 'planId')!) }),
+		print: (reply) => ({
+			lines: (reply.data.promotions as ReturnType<typeof planPromotions>).map((item) => [
+				`${item.planId}@${item.revision}`,
+				`source=${item.sourceRevision}`,
+				`build=${item.build}`,
+				`run=${item.runId}`,
+				`sha256=${short(item.resultSha256)}`,
+				`accepted=${item.accepted}`,
+				`tests=${item.tests.join(',')}`,
+				`actor=${item.actor}`,
+				item.at,
+				item.rationale,
+			]),
+		}),
 	},
 	'plan show': {
 		positionals: ['reference'],

@@ -44,6 +44,7 @@ test('opening a workspace creates the schema, WAL mode, and the version rows', (
 		'operations',
 		'outcomes',
 		'plan_builds',
+		'plan_promotions',
 		'plan_requests',
 		'plan_revisions',
 		'plan_rules',
@@ -81,6 +82,20 @@ test('a database with another schema version is refused', (t) => {
 	db.exec("UPDATE meta SET value = '1' WHERE key = 'schemaVersion'")
 	db.close()
 	assert.throws(() => openStore(workspace), /schema version 1\. Expected 7/)
+})
+
+test('a previous workspace gains the promotion table and keeps its plan', (t) => {
+	const opened = store(t)
+	target(opened)
+	plan(opened)
+	closeStore(opened)
+	const old = new DatabaseSync(join(opened.workspace, '.checkmate', 'checkmate.db'))
+	old.exec('DROP TABLE plan_promotions')
+	old.close()
+	const migrated = openReadOnlyStore(opened.workspace)
+	assert.equal(planRevision(migrated, 'checkout').plan.revision, 1)
+	assert.equal(migrated.db.prepare('SELECT count(*) AS count FROM plan_promotions').get()!.count, 0)
+	closeStore(migrated)
 })
 
 test('a database of schema version 3 gets the exploration tables and keeps its rows', (t) => {
@@ -232,6 +247,12 @@ test('triggers refuse updates and deletes on every table', (t) => {
 			operationId
 		)
 		execute(opened, "INSERT INTO plan_rules VALUES ('checkout', 'derived', '[]', ?)", operationId)
+		execute(
+			opened,
+			`INSERT INTO plan_promotions SELECT r.plan_id, r.plan_revision - 1, r.plan_revision, r.application_build,
+			r.run_id, s.sha256, '["T1"]', 'Fixture', ? FROM runs r JOIN results s ON s.run_id = r.run_id WHERE r.run_id = 'run-1'`,
+			operationId
+		)
 		execute(
 			opened,
 			"INSERT INTO handoffs VALUES ('checkout', 'a1/D1', 'Cart team', 'tester', 'now', ?)",

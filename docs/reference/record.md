@@ -99,6 +99,7 @@ The plan history, `plan diff`, and the log together show who changed what, when,
 | `journal_entries`         | The entries that the recorders, the merger, and the verifier log.                                                |
 | `plan_rules`              | The derived rules of a plan, each correction, and each harvest. The latest row applies.                          |
 | `plan_builds`             | The time when an exploration or a run of a plan first tested each build.                                         |
+| `plan_promotions`         | Permanent test snapshots with revisions, build, result digest, and oracle decision.                              |
 | `handoffs`                | Each hand-over of a claim and each undo, with the actor, time, and target.                                       |
 | `requests`                | The turns of a chat: request ID (`R1`), text, context, who asked, chat ID, and time.                             |
 | `request_events`          | The steps of a request: state, session, activity, stop, read, and its permission requests with their answers.    |

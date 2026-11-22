@@ -82,6 +82,55 @@ Tell the setup stage how to restore a fresh state of the application, for exampl
 
 A `command` entry runs a program at test time, for example `sf org open --target-org <alias> --url-only --json`. The `--allow` rules of `delegate execute` must cover the programs that the command entries use, for example `--allow "Bash(sf *)"`.
 
+### Build first and promote tests
+
+Use this path when the oracle writes the ticket rules before the first build. The factory owns the build and starts the application. Checkmate does not start or fix the application. Use a ticket plan ID that is unique in the workspace. Prepare a target profile and an instance for the application as in step 1.
+
+The oracle opens the ticket plan and saves its rules and draft tests. A plan revision needs a test for each rule. This example has one rule and one HTTP test:
+
+```sh
+checkmate plan open SHOP-12 --target shop@1 --objective "Check the quote." --source ticket.md
+checkmate plan save SHOP-12 <<'JSON'
+{
+  "requirements": [{"id":"R1","text":"The quote is 240 PLN.","source":"ticket.md"}],
+  "tests": [{
+    "id":"T1", "title":"Promotion quote", "requirementIds":["R1"],
+    "capability":"http", "operations":["read_catalog"], "dependsOn":[],
+    "preconditions":[], "action":"Read the quote with the promotion and loyalty.",
+    "assertions":[{"id":"A1","check":"The quote is 240 PLN.","checkKind":"deterministic"}]
+  }],
+  "gaps": []
+}
+JSON
+checkmate plan approve SHOP-12@1 --rationale "The ticket rules are correct."
+```
+
+The factory produces the first build and starts the instance. Give its identity explicitly. Start the first exploration only after the build exists:
+
+```sh
+checkmate explore start SHOP-12 --build "$FIRST_BUILD" --instance local --allow Read --allow Bash
+checkmate explore wait <explorationId>
+checkmate run begin run-1 SHOP-12@1 --build "$FIRST_BUILD" --instance local --tests T1
+checkmate delegate execute run-1 --allow Read --allow Bash
+```
+
+The oracle answers every open question and gap. The factory fixes defects and supplies a distinct build. Explore and retest that build. Retest every open exploration claim as well as each failed structured test. If an answer changes the plan, revise and approve the new revision first. Use that revision in the next command.
+
+```sh
+checkmate explore start SHOP-12 --build "$FIXED_BUILD" --instance local --allow Read --allow Bash
+checkmate explore wait <explorationId>
+checkmate run begin run-2 SHOP-12@1 --build "$FIXED_BUILD" --instance local --tests T1 --retest-of run-1
+checkmate delegate execute run-2 --allow Read --allow Bash
+checkmate status SHOP-12
+checkmate result accept run-2 --rationale "The fixed build passes the ticket rules."
+checkmate plan promote SHOP-12@1 --run run-2 --build "$FIXED_BUILD" --rationale "Save these tests for this ticket."
+checkmate plan promotions SHOP-12
+```
+
+Promotion is an explicit oracle action. It requires the latest recorded build, the latest plan revision, an explicitly accepted completed run of that revision, and a passing observation with evidence for every assertion of every test. Each plan rule must have a test. Resolve all gaps, questions, and open claims first. The current guard treats every rule in the plan as applicable and requires one run to cover all tests. Put only the applicable ticket rules in this plan.
+
+Promotion stores the test IDs, the source and promoted plan revisions, the build, the accepted result digest, the oracle, and the rationale. It creates a new frozen plan revision. A later edit creates another revision and preserves the promoted snapshot. The new revision needs plan approval when the target policy requires it. Repeat the same promotion command to recover its receipt; a changed plan, build, or decision is refused. `plan promotions` lists the saved snapshots. There is no permanent-only execution mode yet; do not treat an ordinary exploratory `test` command as that mode.
+
 ### 2. Iteration 1: plan and run early
 
 The planner writes the tests from the ticket. It reads the running base build to check the preconditions of the tests, and it does not change the state of the application. Each test creates its own data, so it does not depend on seed data or on another test. The feature does not exist yet, so the plan has gaps. The response is `needs_decision` with one `reason:` line for each open blocking gap.

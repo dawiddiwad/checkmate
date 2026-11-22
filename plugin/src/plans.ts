@@ -227,6 +227,8 @@ export function planCandidate(plan: Plan): Required<PlanCandidate> {
 
 export function frozenRevision(store: Store, planId: string, revision: number) {
 	if (one(store, 'SELECT 1 FROM runs WHERE plan_id = ? AND plan_revision = ?', planId, revision)) return 'run'
+	if (one(store, 'SELECT 1 FROM plan_promotions WHERE plan_id = ? AND promoted_revision = ?', planId, revision))
+		return 'promotion'
 	const approved = one(
 		store,
 		"SELECT 1 FROM approvals WHERE subject_kind = 'plan' AND subject_id = ? AND verdict = 'approved'",

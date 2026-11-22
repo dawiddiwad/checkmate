@@ -227,6 +227,24 @@ CREATE TABLE journal_entries (
 `
 const addedTables = [
 	{
+		ddl: `CREATE TABLE plan_promotions (
+	plan_id TEXT NOT NULL,
+	source_revision INTEGER NOT NULL,
+	promoted_revision INTEGER NOT NULL,
+	build TEXT NOT NULL,
+	run_id TEXT NOT NULL REFERENCES runs(run_id),
+	result_sha256 TEXT NOT NULL,
+	tests TEXT NOT NULL,
+	rationale TEXT NOT NULL,
+	operation_id TEXT NOT NULL ${operationReference},
+	PRIMARY KEY (plan_id, source_revision),
+	CHECK (promoted_revision = source_revision + 1),
+	FOREIGN KEY (plan_id, source_revision) REFERENCES plan_revisions(plan_id, revision),
+	FOREIGN KEY (plan_id, promoted_revision) REFERENCES plan_revisions(plan_id, revision)
+) STRICT;`,
+		fill: '',
+	},
+	{
 		ddl: `CREATE TABLE exploration_event_costs (
 	source_operation_id TEXT NOT NULL REFERENCES operations(id),
 	step TEXT NOT NULL,
@@ -387,6 +405,9 @@ function addMissingTables(db: DatabaseSync) {
 		db.exec(triggersOf(ddl))
 		if (fill) db.exec(fill)
 	}
+	db.exec(`CREATE TRIGGER IF NOT EXISTS promoted_plan_update BEFORE UPDATE ON plan_revisions
+	WHEN EXISTS (SELECT 1 FROM plan_promotions WHERE plan_id = OLD.plan_id AND promoted_revision = OLD.revision)
+	BEGIN SELECT RAISE(ABORT, 'Rows of promoted plan revisions are immutable'); END;`)
 }
 
 export function completed(subject: string, data: Record<string, unknown> = {}): Reply {

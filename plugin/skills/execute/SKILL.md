@@ -24,8 +24,8 @@ The delegated prompt also lists the plan request sources and instructions, the p
    3. Make the test data. Read [Test data and reset](#test-data-and-reset). When a precondition fails, adapt the data.
    4. Do the action. Record each assertion with `run check`. Read [Assertion results](#assertion-results).
    5. Close the test with `checkmate run close <runId> <testId> --actor claude:execute`. Checkmate calculates the outcome.
-   6. When something unknown blocks the test, record a gap, close the test as `blocked`, and go to the next test. When a tool or access fails, close the test as `error`, and go to the next test. Do not stop the run.
-5. Probe the edge cases. Read [Exploration](#exploration).
+   6. When something unknown blocks the test, record a gap, close the test as `blocked`, and go to the next test. For `mode=permanent`, close the test as `blocked` with the reason and do not record a gap. When a tool or access fails, close the test as `error`, and go to the next test. Do not stop the run.
+5. Unless `run show` gives `mode=permanent`, probe the edge cases. Read [Exploration](#exploration).
 6. Record a defect finding for each failed assertion. Read [Findings and gaps](#findings-and-gaps).
 7. Finish the run. Read [Finish](#finish). Always end with `run finish`, also when no test passed.
 
@@ -94,6 +94,8 @@ EOF
 For a test that you did not start, run `checkmate run close <runId> <testId> --actor claude:execute --outcome blocked|not_run|error --reason "<cause>"`. Use `blocked` for a failed prerequisite or a new blocking gap. Use `error` for a tool or access failure. Add `--cause deadline` only under the [time](#time) rule.
 
 ## Exploration
+
+For `mode=permanent`, do not explore, probe, discover, or generate rules or tests. Run only the selected tests.
 
 After the planned tests, probe the rules of the selected tests for defects that the plan does not check. For example: a value exactly at a threshold, upper case or extra whitespace, the other entry point (API or UI), the state after a removal or an undo, or a total or count in a second view.
 

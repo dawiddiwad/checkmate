@@ -41,6 +41,7 @@ export {
 } from './plans.ts'
 export {
 	beginRun,
+	beginPermanentRun,
 	checkAssertion,
 	closeTest,
 	recordFinding,
@@ -51,6 +52,7 @@ export {
 	rejectResult,
 	runResult,
 	runClock,
+	requirePermanentSelection,
 } from './runs.ts'
 export {
 	inbox,

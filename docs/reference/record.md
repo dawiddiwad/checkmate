@@ -111,6 +111,8 @@ The views `latest_plans`, `plan_tests`, and `plan_gaps` read inside the plan sna
 checkmate query "select plan_id, revision, gap_id, status from plan_gaps where status = 'open'"
 ```
 
+For a permanent run, `runs.request` records the promoted revision, its source revision, and the accepted result digest. The run row and finished result retain the selected snapshot revision and execution build. Earlier runs have no `permanent` field.
+
 ## Permission requests and activity lines
 
 When the review UI runs, the sessions of a run can ask a person for a permission. The UI records each request and each answer as an event in `exploration_events`. Both events carry `explorer` only when the asker is a tester.

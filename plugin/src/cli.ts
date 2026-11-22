@@ -53,6 +53,7 @@ import {
 	newBlockerPolicies,
 	acceptResult,
 	beginRun,
+	beginPermanentRun,
 	checkAssertion,
 	closeTest,
 	finishRun,
@@ -909,6 +910,35 @@ const commands: Record<string, Command> = {
 			lines: leftOutLines(reply),
 		}),
 	},
+	'run permanent': {
+		positionals: ['runId', 'planId'],
+		flags: { build: 'value', instance: 'value', promotion: 'value', timeout: { min: 1, max: 3600 } },
+		required: ['build'],
+		write: true,
+		run: (store, args, { actor }) =>
+			beginPermanentRun(store, actor, {
+				runId: value(args, 'runId')!,
+				planId: value(args, 'planId')!,
+				build: value(args, 'build')!,
+				instance: value(args, 'instance'),
+				promotion: value(args, 'promotion'),
+				timeoutSeconds: integer(args, 'timeout'),
+			}),
+		print: (reply) => ({
+			facts: {
+				plan: reply.data.plan,
+				build: reply.data.build,
+				instance: reply.data.instanceId,
+				tests: reply.data.tests,
+				startedAt: reply.data.startedAt,
+				browserSession: reply.data.browserSession,
+				deadlineSeconds: reply.data.deadlineSeconds,
+				deadline: reply.data.deadline,
+				evidenceDirectory: reply.data.evidenceDirectory,
+			},
+			lines: leftOutLines(reply),
+		}),
+	},
 	'run check': {
 		positionals: ['runId', 'testId', 'assertionId'],
 		flags: { result: assertionResults, observed: 'value', reason: 'value', evidence: 'repeat' },
@@ -1049,6 +1079,7 @@ const commands: Record<string, Command> = {
 			return {
 				facts: {
 					state: detail.state,
+					mode: detail.request.permanent ? 'permanent' : undefined,
 					plan: `${detail.planId}@${detail.revision}`,
 					build: detail.build,
 					instance: detail.instance.instanceId,

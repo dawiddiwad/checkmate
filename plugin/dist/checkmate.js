@@ -11897,6 +11897,104 @@ function decideClaim(store, actor, input) {
   });
 }
 
+// plugin/src/permanent.ts
+function permanentSelection(store, planId, requested) {
+  requireIdentifier(planId, "ticket plan ID");
+  if (requested !== void 0) {
+    const reference3 = revisionReference(requireText(requested, "promotion (--promotion)"), "promotion reference");
+    requireWellFormed(
+      reference3.revision !== null,
+      "Name the promoted plan revision with --promotion <planId@revision>."
+    );
+    requireCondition(reference3.id === planId, `Promotion ${requested} does not belong to ticket ${planId}.`);
+  }
+  const saved = one(
+    store,
+    `SELECT p.*, v.body AS snapshot, v.sha256 AS snapshot_sha256, source.body AS source, source.sha256 AS source_sha256,
+		s.sha256 AS result_digest, s.body AS result_body, r.plan_id AS run_plan, r.plan_revision AS run_revision, r.application_build AS run_build,
+		r.plan_sha256 AS run_plan_sha256
+		FROM plan_promotions p LEFT JOIN plan_revisions v ON v.plan_id = p.plan_id AND v.revision = p.promoted_revision
+		LEFT JOIN plan_revisions source ON source.plan_id = p.plan_id AND source.revision = p.source_revision
+		LEFT JOIN runs r ON r.run_id = p.run_id LEFT JOIN results s ON s.run_id = r.run_id
+		WHERE p.plan_id = ? ORDER BY p.source_revision DESC LIMIT 1`,
+    planId
+  );
+  requireCondition(
+    saved,
+    `Ticket ${planId} has no permanent test promotion.`,
+    `Promote an accepted plan first: checkmate plan promote ${planId}@<revision> --run <runId> --build <build> --rationale "<why>"`
+  );
+  const reference2 = `${planId}@${saved.promoted_revision}`;
+  requireCondition(
+    requested === void 0 || requested === reference2,
+    `Promotion ${requested} is not the current promotion for ${planId}.`,
+    `Use --promotion ${reference2}.`
+  );
+  requireCondition(
+    typeof saved.snapshot === "string" && typeof saved.source === "string" && typeof saved.result_body === "string" && digest(saved.snapshot) === saved.snapshot_sha256 && digest(saved.source) === saved.source_sha256 && saved.run_plan_sha256 === saved.source_sha256 && saved.run_plan === planId && saved.run_revision === saved.source_revision && saved.run_build === saved.build && saved.result_digest === saved.result_sha256 && digest(saved.result_body) === saved.result_sha256 && saved.promoted_revision === saved.source_revision + 1,
+    `Promotion ${reference2} has inconsistent provenance.`
+  );
+  const acceptance = one(
+    store,
+    "SELECT verdict, subject_sha256 FROM approvals WHERE subject_kind = 'result' AND subject_id = ? ORDER BY rowid DESC LIMIT 1",
+    saved.run_id
+  );
+  requireCondition(
+    acceptance?.verdict === "approved" && acceptance.subject_sha256 === saved.result_sha256,
+    `Promotion ${reference2} is withdrawn or its result is not accepted.`,
+    `Review checkmate plan promotions ${planId}.`
+  );
+  const planDecision = one(
+    store,
+    "SELECT verdict, subject_sha256 FROM approvals WHERE subject_kind = 'plan' AND subject_id = ? ORDER BY rowid DESC LIMIT 1",
+    reference2
+  );
+  requireCondition(
+    !(planDecision?.verdict === "rejected" && planDecision.subject_sha256 === saved.snapshot_sha256),
+    `Promotion ${reference2} is rejected.`,
+    `Review checkmate plan show ${reference2} and checkmate plan promotions ${planId}.`
+  );
+  let tests;
+  try {
+    tests = JSON.parse(saved.tests);
+  } catch {
+    tests = null;
+  }
+  let plan;
+  let source;
+  try {
+    plan = JSON.parse(saved.snapshot);
+    source = JSON.parse(saved.source);
+  } catch {
+    throw new Refusal("prohibited", `Promotion ${reference2} has an invalid plan snapshot.`);
+  }
+  requireCondition(
+    plan && typeof plan === "object" && source && typeof source === "object",
+    `Promotion ${reference2} has an invalid plan snapshot.`
+  );
+  const { revision: _revision, previousRevision: _previousRevision, ...snapshotContent } = plan;
+  const { revision: _sourceRevision, previousRevision: _sourcePreviousRevision, ...sourceContent } = source;
+  requireCondition(
+    plan.planId === planId && plan.revision === saved.promoted_revision && source.planId === planId && source.revision === saved.source_revision && Array.isArray(plan.tests) && Array.isArray(source.tests) && canonical(snapshotContent) === canonical(sourceContent),
+    `Promotion ${reference2} does not match its accepted test definitions.`
+  );
+  const ids2 = plan.tests.map((test) => test.id);
+  requireCondition(
+    Array.isArray(tests) && tests.length > 0 && tests.every((id2) => typeof id2 === "string") && new Set(tests).size === tests.length && tests.length === ids2.length && tests.every((id2) => ids2.includes(id2)),
+    `Promotion ${reference2} has no valid permanent test selection.`,
+    `Review checkmate plan promotions ${planId}.`
+  );
+  return {
+    planId,
+    sourceRevision: saved.source_revision,
+    revision: saved.promoted_revision,
+    reference: reference2,
+    tests,
+    resultSha256: saved.result_sha256,
+    snapshotSha256: saved.snapshot_sha256
+  };
+}
+
 // plugin/src/plans.ts
 var decisionKinds = ["clarify", "accept_assumption", "defer"];
 var partialModes = ["wait_for_resolution", "ready_only"];
@@ -12659,7 +12757,14 @@ function gate(store, input) {
   const revision = planRevision(store, reference2.id, reference2.revision);
   const { plan } = revision;
   const subject = `${plan.planId}@${plan.revision}`;
-  latestCheck(store, plan.planId, plan.revision);
+  const permanent = input.permanent ? permanentSelection(store, plan.planId, input.permanent) : null;
+  if (permanent) {
+    requireCondition(permanent.revision === plan.revision, `Run must use ${permanent.reference}.`);
+    requireCondition(
+      JSON.stringify(input.tests) === JSON.stringify(permanent.tests),
+      `Permanent run must select exactly the tests of ${permanent.reference}.`
+    );
+  } else latestCheck(store, plan.planId, plan.revision);
   const target = targetRevision(store, plan.target.targetId, plan.target.revision);
   const build = requireText(input.build, "application build (--build)");
   const partial = requireChoice(input.partial ?? "ready_only", partialModes, "partial execution (--partial)");
@@ -12689,7 +12794,7 @@ function gate(store, input) {
     hints.push(`The setup stage must save a ready profile for ${plan.target.targetId}.`);
   }
   const approval = planApproval(store, plan, revision.sha256);
-  if (approval.policy === "required" && !approval.approved) {
+  if (permanent ? approval.rejected : approval.policy === "required" && !approval.approved) {
     reasons2.push(`Plan ${subject} is not approved`);
     hints.push(`The oracle must approve ${subject}. ${status}`);
   }
@@ -13116,6 +13221,16 @@ function runState(store, runId) {
     finished: Boolean(one(store, "SELECT 1 FROM results WHERE run_id = ?", runId))
   };
 }
+function requirePermanentSelection(store, runId) {
+  const run2 = runState(store, runId);
+  const saved = run2.request.permanent;
+  if (!saved) return;
+  const selected = permanentSelection(store, run2.row.plan_id, saved.reference);
+  requireCondition(
+    selected.revision === run2.row.plan_revision && selected.snapshotSha256 === run2.row.plan_sha256 && selected.sourceRevision === saved.sourceRevision && selected.resultSha256 === saved.resultSha256 && JSON.stringify(selected.tests) === JSON.stringify(run2.request.selectedTestIds),
+    `Run ${runId} no longer matches its permanent promotion.`
+  );
+}
 function startedRun(store, runId) {
   const run2 = runState(store, runId);
   requireCondition(
@@ -13210,9 +13325,31 @@ function runOverlapWarnings(store, runId) {
   ).map((row2) => `Run ${row2.run_id} also has open tests on ${row2.target_id}/${row2.instance_id}: ${row2.tests}.`);
 }
 function beginRun(store, actor, input) {
+  return begin(store, actor, input);
+}
+function beginPermanentRun(store, actor, input) {
+  return begin(
+    store,
+    actor,
+    {
+      runId: input.runId,
+      reference: input.planId,
+      build: input.build,
+      instance: input.instance,
+      timeoutSeconds: input.timeoutSeconds
+    },
+    input
+  );
+}
+function begin(store, actor, input, permanent) {
   const reply = write(
     store,
-    { actor, command: "run begin", subject: input.runId, input },
+    {
+      actor,
+      command: permanent ? "run permanent" : "run begin",
+      subject: input.runId,
+      input: permanent ? { ...input, ...permanent } : input
+    },
     (operationId, at, actor2) => {
       const runId = requireIdentifier(input.runId, "run ID");
       requireCondition(
@@ -13229,8 +13366,16 @@ function beginRun(store, actor, input) {
         Number.isInteger(timeoutSeconds) && timeoutSeconds > 0 && timeoutSeconds <= 3600,
         `Invalid timeout: ${timeoutSeconds}. Use 1 to 3600 seconds.`
       );
-      const instance = runInstance(store, plannedTarget(store, input.reference), input.instance);
-      const checked = gate(store, { ...input, instance: instance.instanceId });
+      const selection = permanent ? permanentSelection(store, permanent.planId, permanent.promotion) : null;
+      const requested = selection ? {
+        ...input,
+        reference: selection.reference,
+        tests: selection.tests,
+        partial: "wait_for_resolution",
+        permanent: selection.reference
+      } : input;
+      const instance = runInstance(store, plannedTarget(store, requested.reference), input.instance);
+      const checked = gate(store, { ...requested, instance: instance.instanceId });
       if (checked.reply.status !== "completed") {
         const reasons2 = [refusalReasons.prohibited, ...checked.reply.reasons];
         return {
@@ -13245,7 +13390,14 @@ function beginRun(store, actor, input) {
         onNewBlocker,
         timeoutSeconds,
         retestOf: input.retestOf ?? null,
-        ...input.retestOf ? { retestDefects: checked.retestDefects } : {}
+        ...input.retestOf ? { retestDefects: checked.retestDefects } : {},
+        ...selection ? {
+          permanent: {
+            reference: selection.reference,
+            sourceRevision: selection.sourceRevision,
+            resultSha256: selection.resultSha256
+          }
+        } : {}
       };
       const browserSession = `cm-${randomUUID()}`;
       execute(
@@ -13285,7 +13437,8 @@ function beginRun(store, actor, input) {
           deadlineSeconds: timeoutSeconds,
           deadline: new Date(Date.parse(at) + timeoutSeconds * 1e3).toISOString(),
           evidenceDirectory: evidenceDirectory(runId),
-          warnings: runOverlapWarnings(store, runId)
+          warnings: runOverlapWarnings(store, runId),
+          ...selection ? { permanent: request2.permanent, build: checked.build } : {}
         }),
         subjects: [`run:${runId}`, `plan:${plan.planId}`]
       };
@@ -13402,6 +13555,7 @@ function checkAssertion(store, actor, input) {
   let files2 = [];
   const reply = write(store, { actor, command: "run check", subject: input.runId, input }, (operationId, at) => {
     const run2 = startedRun(store, input.runId);
+    if (run2.request.permanent) requirePermanentSelection(store, input.runId);
     const test = selectedTest(run2, input.testId);
     const assertion = test.assertions.find((assertion2) => assertion2.id === input.assertionId);
     requireWellFormed(
@@ -13472,6 +13626,7 @@ function closeTest(store, actor, input) {
   let files2 = [];
   const reply = write(store, { actor, command: "run close", subject: input.runId, input }, (operationId, at) => {
     const run2 = startedRun(store, input.runId);
+    if (run2.request.permanent && input.outcome === void 0) requirePermanentSelection(store, input.runId);
     const test = selectedTest(run2, input.testId);
     requireOpen(store, input.runId, test.id);
     const results = runAssertions(store, input.runId);
@@ -13533,6 +13688,10 @@ function recordFinding(store, actor, input) {
   return write(store, { actor, command: "run finding", subject: input.runId, input }, (operationId) => {
     const run2 = startedRun(store, input.runId);
     const finding = validate("finding", input.finding);
+    requireCondition(
+      !run2.request.permanent || finding.type === "defect",
+      "A permanent run records only defects of its selected tests."
+    );
     const findingIds = runFindings(store, input.runId).map((item) => item.id);
     requireCondition(
       !findingIds.includes(finding.id),
@@ -13594,6 +13753,10 @@ function recordFinding(store, actor, input) {
 function recordGap(store, actor, input) {
   return write(store, { actor, command: "run gap", subject: input.runId, input }, (operationId) => {
     const run2 = startedRun(store, input.runId);
+    requireCondition(
+      !run2.request.permanent,
+      "A permanent run does not discover gaps. Close the affected test as blocked with its reason."
+    );
     const gap = validate("gap", input.gap);
     requireWellFormed(
       gap.status === "open" && gap.decisionId === null,
@@ -13677,6 +13840,8 @@ function finish(store, actor, input) {
         operationId
       );
     const outcomes = runOutcomes(store, input.runId);
+    if (run2.request.permanent && completion === "completed" && [...outcomes.values()].some((item) => item.outcome === "passed"))
+      requirePermanentSelection(store, input.runId);
     const results = runAssertions(store, input.runId);
     const findings = runFindings(store, input.runId);
     const newGaps = runGaps(store, input.runId);
@@ -13712,7 +13877,7 @@ function finish(store, actor, input) {
         if (outcome !== "not_run" && outcome !== "blocked") continue;
         const cause2 = test.dependsOn.some(
           (id2) => id2.includes(":") ? dependencyBlock(store, id2, run2.row.application_build) !== null : outcomes.get(id2)?.outcome !== "passed"
-        ) || newGaps.some((gap) => gap.severity === "blocking");
+        ) || newGaps.some((gap) => gap.severity === "blocking") || Boolean(run2.request.permanent) && outcome === "blocked" && Boolean(outcomes.get(test.id)?.reason);
         requireCondition(
           cause2,
           `Selected test ${test.id} is ${outcome} without a cause. A completed run needs a prerequisite that did not pass, or a new blocking gap.`,
@@ -13864,7 +14029,8 @@ function resumeRun(store, actor, input) {
       build: run2.row.application_build,
       instance: run2.row.instance_id,
       partial: run2.request.partialExecution,
-      retestOf: run2.request.retestOf
+      retestOf: run2.request.retestOf,
+      ...run2.request.permanent ? { permanent: run2.request.permanent.reference } : {}
     });
     const outcomes = runOutcomes(store, input.runId);
     const openTests = run2.plan.tests.filter(
@@ -31593,10 +31759,10 @@ var StateBlock = class {
     while (pos > min) if (code2 !== this.src.charCodeAt(--pos)) return pos + 1;
     return pos;
   }
-  getLines(begin, end, indent2, keepLastLF) {
-    if (begin >= end) return "";
-    const queue = new Array(end - begin);
-    for (let i = 0, line = begin; line < end; line++, i++) {
+  getLines(begin2, end, indent2, keepLastLF) {
+    if (begin2 >= end) return "";
+    const queue = new Array(end - begin2);
+    for (let i = 0, line = begin2; line < end; line++, i++) {
       let lineIndent = 0;
       const lineStart = this.bMarks[line];
       let first = lineStart;
@@ -38250,6 +38416,34 @@ var commands = {
       lines: leftOutLines(reply)
     })
   },
+  "run permanent": {
+    positionals: ["runId", "planId"],
+    flags: { build: "value", instance: "value", promotion: "value", timeout: { min: 1, max: 3600 } },
+    required: ["build"],
+    write: true,
+    run: (store, args, { actor }) => beginPermanentRun(store, actor, {
+      runId: value(args, "runId"),
+      planId: value(args, "planId"),
+      build: value(args, "build"),
+      instance: value(args, "instance"),
+      promotion: value(args, "promotion"),
+      timeoutSeconds: integer(args, "timeout")
+    }),
+    print: (reply) => ({
+      facts: {
+        plan: reply.data.plan,
+        build: reply.data.build,
+        instance: reply.data.instanceId,
+        tests: reply.data.tests,
+        startedAt: reply.data.startedAt,
+        browserSession: reply.data.browserSession,
+        deadlineSeconds: reply.data.deadlineSeconds,
+        deadline: reply.data.deadline,
+        evidenceDirectory: reply.data.evidenceDirectory
+      },
+      lines: leftOutLines(reply)
+    })
+  },
   "run check": {
     positionals: ["runId", "testId", "assertionId"],
     flags: { result: assertionResults, observed: "value", reason: "value", evidence: "repeat" },
@@ -38378,6 +38572,7 @@ var commands = {
       return {
         facts: {
           state: detail.state,
+          mode: detail.request.permanent ? "permanent" : void 0,
           plan: `${detail.planId}@${detail.revision}`,
           build: detail.build,
           instance: detail.instance.instanceId,

@@ -129,7 +129,23 @@ checkmate plan promotions SHOP-12
 
 Promotion is an explicit oracle action. It requires the latest recorded build, the latest plan revision, an explicitly accepted completed run of that revision, and a passing observation with evidence for every assertion of every test. Each plan rule must have a test. Resolve all gaps, questions, and open claims first. The current guard treats every rule in the plan as applicable and requires one run to cover all tests. Put only the applicable ticket rules in this plan.
 
-Promotion stores the test IDs, the source and promoted plan revisions, the build, the accepted result digest, the oracle, and the rationale. It creates a new frozen plan revision. A later edit creates another revision and preserves the promoted snapshot. The new revision needs plan approval when the target policy requires it. Repeat the same promotion command to recover its receipt; a changed plan, build, or decision is refused. `plan promotions` lists the saved snapshots. There is no permanent-only execution mode yet; do not treat an ordinary exploratory `test` command as that mode.
+Promotion stores the test IDs, the source and promoted plan revisions, the build, the accepted result digest, the oracle, and the rationale. It creates a new frozen plan revision. A later edit creates another revision and preserves the promoted snapshot. A general run of the new revision needs plan approval when the target policy requires it. Repeat the same promotion command to recover its receipt; a changed plan, build, or decision is refused. `plan promotions` lists the saved snapshots.
+
+### Run only the permanent tests
+
+The factory supplies the build and starts the instance. Name the ticket plan and the build. Then delegate the run:
+
+```sh
+checkmate run permanent run-3 SHOP-12 --build "$NEXT_BUILD" --instance local
+checkmate delegate execute run-3 --allow Read --allow Bash
+checkmate run show run-3 --json
+```
+
+For Pi, omit `--allow` from `delegate execute`. The run uses the ticket's most recent promotion by source revision. It uses the exact tests of that immutable snapshot, even when a later draft changes the plan. It does not start an exploration or derive rules. The executor must not probe or generate tests. A permanent run cannot record discovery gaps or potential issues. It can record a defect of a selected failed assertion.
+
+The promotion is the oracle's authorization for this run. A separate approval of the promoted revision is not required. A later rejection of the promoted revision or withdrawal of its accepted source result prevents a new run. Checkmate does not fall back to an older promotion. Use `checkmate plan promotions SHOP-12` to inspect the choices. To require the current snapshot explicitly, add `--promotion SHOP-12@<promoted-revision>`. A missing, empty, wrong-ticket, stale, or withdrawn selection is refused before a run or host starts.
+
+`run show` gives `mode=permanent`. Its JSON `request.permanent` identifies the promotion and accepted source result. The result keeps the ticket plan revision, selected tests, and explicit build. If the promotion is withdrawn before delegation or resume, Checkmate refuses that action. Close the affected tests as blocked or error and finish the run to retain its record. The host controls tools and permissions; the workflow instructions are not a sandbox.
 
 ### 2. Iteration 1: plan and run early
 

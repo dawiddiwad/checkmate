@@ -974,3 +974,63 @@ test('Delegate setup and plan and verify the record — prose or mismatched acto
 		{ command: 'plan save', actor: 'claude:plan', status: 'completed' },
 	])
 })
+
+test('Stop only one tester and keep the others running — sibling workers killed.', async (t) => {
+	const workspace = directory(t)
+	writeFileSync(join(workspace, 'ticket.md'), 'The checkout responds.\n')
+	const app = await fixture()
+	t.after(() => app.close())
+	const host = fakeClaude(t, { tester: '!sleep' }, 'pi')
+	const env = { ...process.env, ...host.env, CHECKMATE_ACTOR: 'oracle', CHECKMATE_HARNESS: 'pi' }
+	const ok = async (...args: string[]) => {
+		const result = await command(workspace, env, ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	const started = await ok(
+		'test',
+		'cart',
+		'--url',
+		app.baseUrl,
+		'--source',
+		'ticket.md',
+		'--build',
+		'b1',
+		'--level',
+		'smoke',
+		'--explorers',
+		'2',
+		'--allow',
+		'Read'
+	)
+	const calls: Array<{ role: string; pid: number; work: string }> = []
+	const deadline = Date.now() + 10000
+	while (calls.filter((call) => call.role === 'tester').length < 2 && Date.now() < deadline) {
+		calls.push(...host.called())
+		await new Promise((resolve) => setTimeout(resolve, 50))
+	}
+	const testers = calls.filter((call) => call.role === 'tester')
+	assert.equal(testers.length, 2, 'Both controlled testers must start.')
+	const one = testers.find((item) => item.work.endsWith('/a1'))!
+	const two = testers.find((item) => item.work.endsWith('/a2'))!
+	assert.ok(one && two)
+	const alive = (pid: number) => {
+		try {
+			process.kill(pid, 0)
+			return true
+		} catch {
+			return false
+		}
+	}
+	await ok('explore', 'stop', started.explorationId, '--explorer', 'a1', '--reason', 'Stop only the first tester.')
+	assert.equal(alive(one.pid), false)
+	assert.equal(alive(two.pid), true)
+	const status = await ok('explore', 'status', started.explorationId)
+	assert.equal(status.state, 'testing')
+	assert.equal(status.explorers.find((item: { explorer: string }) => item.explorer === 'a1').ended, 'stopped')
+	await ok('explore', 'stop', started.explorationId, '--explorer', 'a2', '--reason', 'Finish the test.')
+	assert.equal(alive(two.pid), false)
+	const stopped = await command(workspace, env, 'explore', 'wait', started.explorationId, '--timeout', '60')
+	assert.equal(stopped.code, 1, stopped.output)
+	assert.equal(stopped.body.state, 'stopped')
+})

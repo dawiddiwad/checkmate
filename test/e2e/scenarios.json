@@ -155,8 +155,8 @@
 	{
 		"number": 26,
 		"name": "Stop only one tester and keep the others running — sibling workers killed.",
-		"status": "pending",
-		"reason": "Fresh end-to-end scenario not yet written."
+		"status": "covered",
+		"test": "Stop only one tester and keep the others running — sibling workers killed."
 	},
 	{
 		"number": 27,

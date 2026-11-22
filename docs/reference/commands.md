@@ -487,7 +487,7 @@ The supervisor ends its workers when it gets `SIGTERM` or `SIGINT`. If the super
 
 A later request of the same exploration is answered at once when its first `addRules` suggestion has the same rules as a rule that `--allow-kind` set, or when it is for the tool that `--allow-tool` allowed. This holds for each tester and each step of the run. The record shows it as `allowed by rule <rule>, set by <actor>`, or as `allowed by rule every <tool> call, set by <actor>`. A rule of one exploration does not apply to another exploration.
 
-`explore permissions <explorationId>` prints one line for each request: the ID, the answer or `open`, who asked, the tool, the first line of the input, and the rule. Read [Permission requests](review-ui.md#permission-requests) for the way the UI shows them.
+`explore permissions <explorationId>` prints one line for each request: the ID, the answer or `open`, who asked, the tool, the first line of the input, and the rule. Read [Permission requests](../guides/review-ui.md#permission-requests) for the way the UI shows them.
 
 ### explore finish
 

@@ -1088,3 +1088,111 @@ test('Show a safe provider failure and retained partial usage — secret visible
 	assert.deepEqual([detail.costUsd, detail.costPartial], [0.125, true])
 	assert.ok(detail.observedModels.includes('fixture/partial'))
 })
+
+test('Run ready tests and report blocked tests — partial execution misreported complete.', async (t) => {
+	const workspace = directory(t)
+	writeFileSync(join(workspace, 'ticket.md'), 'The quote is 240. The refund rule needs a decision.\n')
+	const app = await fixture()
+	t.after(() => app.close())
+	app.fix()
+	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle' }
+	const ok = async (args: string[], value?: object) => {
+		const result = await inputCommand(workspace, env, value ? JSON.stringify(value) : '', ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	await ok(['setup', '--url', app.baseUrl, '--target', 'shop'])
+	await ok([
+		'plan',
+		'open',
+		'ticket',
+		'--target',
+		'shop@1',
+		'--objective',
+		'Check the ticket.',
+		'--source',
+		'ticket.md',
+	])
+	const common = { capability: 'http', operations: ['read_catalog'], dependsOn: [], preconditions: [] }
+	await ok(['plan', 'save', 'ticket'], {
+		requirements: [
+			{ id: 'R1', text: 'The quote is 240.', source: 'ticket.md' },
+			{ id: 'R2', text: 'Refund eligibility is specified.', source: 'ticket.md' },
+		],
+		tests: [
+			{
+				...common,
+				id: 'T1',
+				title: 'Quote',
+				requirementIds: ['R1'],
+				action: 'Read the quote.',
+				assertions: [{ id: 'A1', check: 'The quote is 240.', checkKind: 'deterministic' }],
+			},
+			{
+				...common,
+				id: 'T2',
+				title: 'Refund',
+				requirementIds: ['R2'],
+				action: 'Check the refund.',
+				assertions: [],
+			},
+		],
+		gaps: [
+			{
+				id: 'G1',
+				severity: 'blocking',
+				status: 'open',
+				requirementIds: ['R2'],
+				testIds: ['T2'],
+				question: 'Which refunds qualify?',
+				consequence: 'The result is unknown.',
+				decisionId: null,
+			},
+		],
+	})
+	await ok(['plan', 'approve', 'ticket@1', '--rationale', 'Run the ready rule.'])
+	const started = await ok(['run', 'begin', 'run-1', 'ticket@1', '--build', 'b1', '--partial', 'ready_only'])
+	assert.deepEqual(started.tests, ['T1'])
+	assert.deepEqual(started.leftOut, [{ testId: 'T2', reason: 'blocked by G1' }])
+	const quote = await (await fetch(`${app.baseUrl}/quote?promotion=true&loyalty=true`)).json()
+	assert.equal(quote.totalPLN, 240)
+	const checked = await inputCommand(
+		workspace,
+		env,
+		JSON.stringify(quote),
+		'run',
+		'check',
+		'run-1',
+		'T1',
+		'A1',
+		'--result',
+		'passed',
+		'--observed',
+		String(quote.totalPLN),
+		'--evidence',
+		'-'
+	)
+	assert.equal(checked.code, 0, checked.output)
+	await ok(['run', 'close', 'run-1', 'T1'])
+	await ok([
+		'run',
+		'finish',
+		'run-1',
+		'--completion',
+		'completed',
+		'--cleanup',
+		'completed',
+		'--cleanup-reason',
+		'No test data.',
+	])
+	const rows = await ok(['query', "SELECT body FROM results WHERE run_id = 'run-1'"])
+	const result = JSON.parse(rows.rows[0].body)
+	assert.deepEqual(
+		result.tests.map((item: { testId: string; outcome: string }) => [item.testId, item.outcome]),
+		[
+			['T1', 'passed'],
+			['T2', 'not_run'],
+		]
+	)
+	assert.equal(result.coverage.status, 'partial')
+})

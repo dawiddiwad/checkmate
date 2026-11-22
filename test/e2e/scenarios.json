@@ -124,8 +124,8 @@
 	{
 		"number": 21,
 		"name": "Run ready tests and report blocked tests — partial execution misreported complete.",
-		"status": "pending",
-		"reason": "Fresh end-to-end scenario not yet written."
+		"status": "covered",
+		"test": "Run ready tests and report blocked tests — partial execution misreported complete."
 	},
 	{
 		"number": 22,

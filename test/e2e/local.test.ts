@@ -1637,6 +1637,9 @@ invoke(['run', 'finish', 'pi-ui-run', '--completion', 'completed', '--cleanup', 
 	const setupRequestId = await waitForRequestState('answered')
 	assert.equal(uiSetupToolCalls, 0)
 	assert.equal((await piQuery('SELECT count(*) AS n FROM runs')).rows[0].n, 0)
+	assert.equal(workerStep, 0)
+	assert.equal(providerRequests.filter((item) => item.kind === 'worker').length, 0)
+	assert.equal((await piQuery("SELECT count(*) AS n FROM operations WHERE command='delegate execute'")).rows[0].n, 0)
 	const chatId = setupChat.searchParams.get('chat')
 	assert(chatId, setupChat.href)
 	const executionChat = await postChat(
@@ -1697,6 +1700,12 @@ invoke(['run', 'finish', 'pi-ui-run', '--completion', 'completed', '--cleanup', 
 	assert.equal(piResult.tests[0].outcome, 'passed')
 	assert.equal(piResult.tests[0].assertions[0].result, 'passed')
 	assert.equal((await okPi('run', 'show', 'pi-ui-run')).build, 'fixed')
+	const proof = await piQuery(
+		"SELECT test_id, assertion_id, CAST(blobs.bytes AS TEXT) AS contents FROM evidence JOIN blobs USING (sha256) WHERE run_id='pi-ui-run'"
+	)
+	assert.equal(proof.rows.length, 1)
+	assert.deepEqual([proof.rows[0].test_id, proof.rows[0].assertion_id], ['T1', 'A1'])
+	assert.match(proof.rows[0].contents, /240/)
 	assert.equal(workerStep, 2)
 	assert.equal(uiExecutionStep, 3)
 	assert.equal((await piQuery('SELECT count(*) AS n FROM runs')).rows[0].n, 1)
@@ -1715,10 +1724,11 @@ invoke(['run', 'finish', 'pi-ui-run', '--completion', 'completed', '--cleanup', 
 	assert.deepEqual((await piQuery("SELECT DISTINCT actor FROM operations WHERE command='request permit'")).rows, [
 		{ actor: 'oracle' },
 	])
-	assert.equal(
-		JSON.parse((await piQuery("SELECT arguments FROM operations WHERE command='request permit'")).rows[0].arguments)
-			.decision,
-		'allow'
+	assert.deepEqual(
+		(await piQuery("SELECT arguments FROM operations WHERE command='request permit' ORDER BY rowid")).rows.map(
+			(row: { arguments: string }) => JSON.parse(row.arguments).decision
+		),
+		['allow', 'allow']
 	)
 	assert.equal(
 		(

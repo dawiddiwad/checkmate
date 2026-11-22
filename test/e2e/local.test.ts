@@ -1296,6 +1296,7 @@ test(
 		assert.match(input, /inspect the checkout fixture/)
 		assert.match(input, /Run `target list` and `plan list`/)
 		assert.match(input, /checkmate/i)
+		assert.ok(input.includes(workspace), 'Pi must route the request with the disposable workspace')
 		child.stdin.end()
 		await once(child, 'exit')
 	}

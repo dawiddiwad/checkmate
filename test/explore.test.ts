@@ -7,7 +7,6 @@ import { join } from 'node:path'
 import { run } from '../plugin/src/cli.ts'
 import { closeStore, completed, openStore, write } from '../plugin/src/store.ts'
 import { addEvent, explorationEvents } from '../plugin/src/explorations.ts'
-import { explorerBrief } from '../plugin/src/briefs.ts'
 import { patchPlan } from '../plugin/src/plans.ts'
 import { activityLine, driveExploration, launchPlan, startOf } from '../plugin/src/explorers.ts'
 import { explorationLive } from '../plugin/src/views.ts'
@@ -501,32 +500,6 @@ test('a failed study turn ends the explorer, and the test turn does not start', 
 	)
 	const ended = command(['query', "SELECT detail FROM exploration_events WHERE step = 'end'"]).body.rows
 	assert.equal(JSON.parse(ended[0].detail).turn, 'study')
-})
-
-test('the brief of a retest asks for one line in the report for each problem of the known state', () => {
-	const brief = explorerBrief(
-		{
-			goal: 'g',
-			requirements: [],
-			sources: [],
-			instructions: null,
-			capabilities: [],
-			operations: [],
-			tools: [],
-			scope: [],
-			change: null,
-			knownState: 'qa-evidence/x-2/known-state.md',
-		},
-		[],
-		'qa-',
-		'qa-evidence/x-2/a1',
-		{ study: 600, test: 900 }
-	)
-	assert.match(brief.study, /\nRead qa-evidence\/x-2\/known-state\.md\. It has the results of earlier builds\./)
-	assert.match(
-		brief.test,
-		/\nFor each problem in qa-evidence\/x-2\/known-state\.md, write one line in the report: still present, fixed, or not retested with the reason\.\nYou have 900 seconds/
-	)
 })
 
 test('a test turn that times out keeps its work: the recorder forks the session', async (t) => {

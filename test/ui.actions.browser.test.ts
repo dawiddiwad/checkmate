@@ -55,7 +55,7 @@ test('a person starts, watches, and stops a test with the keys alone', browserTe
 	await page.keyboard.press('Enter')
 	await page.locator('dialog[data-act-dialog="test"][open]').waitFor()
 	assert.equal(await focused(page), 'act-test-build')
-	await page.keyboard.press('Control+A')
+	await page.keyboard.press('ControlOrMeta+A')
 	await page.keyboard.type('b1')
 	await page.keyboard.press('ArrowDown')
 	assert.equal(await page.evaluate(() => (document.activeElement as HTMLInputElement).value), 'normal')

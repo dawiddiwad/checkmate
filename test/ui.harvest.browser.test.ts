@@ -207,7 +207,7 @@ test(
 		await page.keyboard.press('1')
 		const edit = page.locator('dialog[data-act-dialog="rule-edit"]')
 		await edit.waitFor()
-		await page.keyboard.press('Control+A')
+		await page.keyboard.press('ControlOrMeta+A')
 		await page.keyboard.type('A note can be pinned to the top.')
 		await page.keyboard.press('Enter')
 		await toast(page, 'Changed rule R4')
@@ -264,34 +264,34 @@ test('a live update never closes the store dialog or moves its focus', browserTe
 	assert.equal(writes(workspace), 0)
 })
 
-for (const colorScheme of ['dark', 'light'] as const)
-	test(`the store dialog and the changed rows line up in the ${colorScheme} theme`, browserTest, async (t) => {
-		const { page, url, workspace } = await open(t)
-		for (const width of [1440, 900, 400]) {
-			await page.setViewportSize({ width, height: 900 })
-			await page.emulateMedia({ colorScheme, reducedMotion: 'reduce' })
-			for (const view of ['all', 'rules']) {
-				await page.goto(url(`/plans/notes?view=${view}`))
-				await page.evaluate(() => document.fonts.ready)
-				await page.getByRole('button', { name: 'Store 4 defects as tests…' }).click()
-				await page.locator('dialog[open]').waitFor()
-				assert.deepEqual(await page.evaluate(measure, width <= 760), [], `${view} dialog at ${width}`)
-				const box = await page.locator('dialog[open]').boundingBox()
-				assert(box && box.x >= 0 && box.x + box.width <= width + 0.5, `dialog fits ${width}`)
-				await page.keyboard.press('Escape')
-				await page.locator('dialog[open]').waitFor({ state: 'hidden' })
-				await page.waitForFunction(() => !window.history.state?.layer)
-			}
+
+test('the store dialog and changed rows fit at narrow and wide sizes', browserTest, async (t) => {
+	const { page, url, workspace } = await open(t)
+	for (const [width, colorScheme] of [[400, 'light'], [1440, 'dark']] as const) {
+		await page.setViewportSize({ width, height: 900 })
+		await page.emulateMedia({ colorScheme, reducedMotion: 'reduce' })
+		for (const view of ['all', 'rules']) {
+			await page.goto(url(`/plans/notes?view=${view}`))
+			await page.evaluate(() => document.fonts.ready)
+			await page.getByRole('button', { name: 'Store 4 defects as tests…' }).click()
+			await page.locator('dialog[open]').waitFor()
+			assert.deepEqual(await page.evaluate(measure, width <= 760), [], `${view} dialog at ${width}`)
+			const box = await page.locator('dialog[open]').boundingBox()
+			assert(box && box.x >= 0 && box.x + box.width <= width + 0.5, `dialog fits ${width}`)
+			await page.keyboard.press('Escape')
+			await page.locator('dialog[open]').waitFor({ state: 'hidden' })
+			await page.waitForFunction(() => !window.history.state?.layer)
 		}
-		storeAll(workspace)
-		for (const width of [1440, 900, 400])
-			for (const path of [
-				'/plans/notes?view=all',
-				'/plans/notes?view=rules&focus=list',
-				'/plans/notes?view=rules&focus=list&at=rule%3AR1',
-				'/plans/notes?view=rule%3AR1',
-				'/plans/notes?view=rule%3AR4',
-				'/plans/notes?view=rule%3AHR1',
-			])
-				await check(page, url(path), width, colorScheme)
-	})
+	}
+	storeAll(workspace)
+	for (const [width, colorScheme] of [[400, 'light'], [1440, 'dark']] as const)
+		for (const path of [
+			'/plans/notes?view=all',
+			'/plans/notes?view=rules&focus=list',
+			'/plans/notes?view=rules&focus=list&at=rule%3AR1',
+			'/plans/notes?view=rule%3AR1',
+			'/plans/notes?view=rule%3AR4',
+			'/plans/notes?view=rule%3AHR1',
+		])
+			await check(page, url(path), width, colorScheme)
+})

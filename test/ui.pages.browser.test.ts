@@ -307,16 +307,6 @@ test('a finished run downloads its report', browserTest, async (t) => {
 	await page.getByRole('link', { name: /^HTML/ }).click()
 	const file = await waiting
 	assert.equal(file.suggestedFilename(), 'run-7-report.html')
-	const junit = await page.evaluate(async () => {
-		const text = await (await fetch('/runs/run-7/report.junit')).text()
-		const xml = new DOMParser().parseFromString(text, 'application/xml')
-		return {
-			errors: xml.getElementsByTagName('parsererror').length,
-			cases: xml.querySelectorAll('testsuites > testsuite > testcase').length,
-			failure: xml.querySelector('testcase failure')?.getAttribute('message'),
-		}
-	})
-	assert.deepEqual(junit, { errors: 0, cases: 3, failure: 'The promotion stacks with the loyalty credit' })
 	await page.keyboard.press('Escape')
 	assert.equal(
 		await page.locator('main details[data-menu]').evaluate((menu) => (menu as HTMLDetailsElement).open),

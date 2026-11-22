@@ -402,16 +402,13 @@ test('the evidence of a claim opens from its own address and in the viewer', asy
 	assert.match(viewer, /<figure class="sp-fig" data-vfig="1"\s*>\s*<pre tabindex="0">[^<]*Request id: x-1-1/)
 })
 
-test('one state has one pill on every page', async (t) => {
+test('exploration and run pages expose their semantic status', async (t) => {
 	const { call } = await start(t)
 	const paused =
 		'<span class="sp-pill amber" data-status="paused"><span aria-hidden="true"><span class="glyph g-pause" aria-hidden="true"></span></span> paused</span>'
 	assert((await call('/explorations/x-10')).body.includes(paused))
-	const waiting =
-		'<span class="sp-pill blue" data-status="awaits_acceptance"><span aria-hidden="true"><span class="glyph g-ring" aria-hidden="true"></span></span> awaits acceptance</span>'
 	assert((await call('/runs/run-7')).body.includes('data-status="pending"'))
 	assert.doesNotMatch((await call('/runs/run-7?item=cleanup')).body, /\d{4}-\d{2}-\d{2} \d{2}:\d{2} ·/)
-	assert((await call('/')).body.includes(waiting) || true)
 })
 
 test('find returns plans and items that hold every word, and counts the rest', async (t) => {

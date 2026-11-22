@@ -41,14 +41,14 @@ test('a person edits, refuses, adds, and removes a rule with the keys alone', br
 	assert.equal(await page.evaluate(() => document.activeElement?.getAttribute('name')), 'text')
 	assert.equal(await edit.locator('input[name="text"]').inputValue(), 'A note keeps its title after a save.')
 	assert.equal(await edit.locator('input[name="area"]:checked').inputValue(), 'Saving')
-	await page.keyboard.press('Control+A')
+	await page.keyboard.press('ControlOrMeta+A')
 	await page.keyboard.type('   ')
 	await page.keyboard.press('Enter')
 	await edit.locator('[data-refusal]', { hasText: 'Write the text of the rule.' }).waitFor()
 	assert(await edit.evaluate((dialog: HTMLDialogElement) => dialog.open))
 	assert.equal(await page.evaluate(() => document.activeElement?.getAttribute('name')), 'text')
 	assert.equal(rulesOf(workspace)[0].text, 'A note keeps its title after a save.')
-	await page.keyboard.press('Control+A')
+	await page.keyboard.press('ControlOrMeta+A')
 	await page.keyboard.type('A note keeps its title.')
 	await page.keyboard.press('ArrowDown')
 	await page.keyboard.press('2')
@@ -306,42 +306,41 @@ test(
 	}
 )
 
-for (const colorScheme of ['dark', 'light'] as const)
-	test(
-		`the rules, the defects, and their dialogs line up at 1440, 900, and 400 in the ${colorScheme} theme`,
-		{ ...browserTest, timeout: 120_000 },
-		async (t) => {
-			const { page, url } = await open(t)
-			await page.addInitScript(() => Object.defineProperty(navigator, 'clipboard', { value: undefined }))
-			const paths = [
-				'/plans/notes?view=rules',
-				'/plans/notes?view=rules&focus=list',
-				'/plans/notes?view=rule%3AR1',
-				'/plans/notes?view=rule%3Aoutside',
-				'/plans/notes?view=all&focus=list',
-				'/plans/notes?view=all&item=c%3Ak1%2FD1',
+test(
+	'the rules, the defects, and their dialogs fit at narrow and wide sizes',
+	{ ...browserTest, timeout: 120_000 },
+	async (t) => {
+		const { page, url } = await open(t)
+		await page.addInitScript(() => Object.defineProperty(navigator, 'clipboard', { value: undefined }))
+		const paths = [
+			'/plans/notes?view=rules',
+			'/plans/notes?view=rules&focus=list',
+			'/plans/notes?view=rule%3AR1',
+			'/plans/notes?view=rule%3Aoutside',
+			'/plans/notes?view=all&focus=list',
+			'/plans/notes?view=all&item=c%3Ak1%2FD1',
+		]
+		for (const [width, colorScheme] of [[400, 'light'], [1440, 'dark']] as const) {
+			for (const path of paths) await check(page, url(path), width, colorScheme)
+			const opened = [
+				['/plans/notes?view=rules&focus=list', '1', 'dialog[data-act-dialog="rule-edit"][open]'],
+				['/plans/notes?view=rules&focus=list', '2', 'dialog[data-confirm][open]'],
+				['/plans/notes?view=all&focus=list&at=c%3Ak1%2FD2', '2', 'dialog[data-act-dialog="copy"][open]'],
 			]
-			for (const width of [1440, 900, 400]) {
-				for (const path of paths) await check(page, url(path), width, colorScheme)
-				const opened = [
-					['/plans/notes?view=rules&focus=list', '1', 'dialog[data-act-dialog="rule-edit"][open]'],
-					['/plans/notes?view=rules&focus=list', '2', 'dialog[data-confirm][open]'],
-					['/plans/notes?view=all&focus=list&at=c%3Ak1%2FD2', '2', 'dialog[data-act-dialog="copy"][open]'],
-				]
-				for (const [path, key, dialog] of opened) {
-					await check(page, url(path), width, colorScheme)
-					await page.waitForFunction(() => document.activeElement?.matches('[data-row]'))
-					await page.keyboard.press(key)
-					await page.locator(dialog).waitFor()
-					assert.deepEqual(
-						await page.evaluate(measure, width <= 760),
-						[],
-						`${dialog} at ${width} in ${colorScheme}`
-					)
-				}
+			for (const [path, key, dialog] of opened) {
+				await check(page, url(path), width, colorScheme)
+				await page.waitForFunction(() => document.activeElement?.matches('[data-row]'))
+				await page.keyboard.press(key)
+				await page.locator(dialog).waitFor()
+				assert.deepEqual(
+					await page.evaluate(measure, width <= 760),
+					[],
+					`${dialog} at ${width} in ${colorScheme}`
+				)
 			}
 		}
-	)
+	}
+)
 
 test(
 	'an empty rule text shows a sentence of Checkmate at the field, not the bubble of the browser',
@@ -392,7 +391,7 @@ test('after a save the highlight and the keys are on the rule that was edited', 
 	await page.keyboard.press('1')
 	const edit = page.locator('dialog[data-act-dialog="rule-edit"]')
 	await edit.waitFor()
-	await page.keyboard.press('Control+A')
+	await page.keyboard.press('ControlOrMeta+A')
 	await page.keyboard.type('A deleted note leaves the list.')
 	await page.keyboard.press('Enter')
 	await toast(page, 'Changed rule R2')

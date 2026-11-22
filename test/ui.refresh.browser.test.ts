@@ -117,7 +117,7 @@ test('a refresh never closes or re-creates the find bar, the key panel, or a dia
 		await page.locator(`${dialog}[open]`).waitFor()
 		await page.locator(field).focus()
 		if (name !== 'key panel') {
-			await page.keyboard.press('Control+A')
+			await page.keyboard.press('ControlOrMeta+A')
 			await page.keyboard.type('cou')
 		}
 		await page.locator(dialog).evaluate((element) => Object.assign(element, { kept: true }))

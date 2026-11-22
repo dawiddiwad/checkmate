@@ -338,6 +338,8 @@ A follow-up does not change the state of a completed exploration. `follow` gives
 
 An operator agent runs `explore wait` as a background command. A factory runs it directly.
 
+When all explorer sessions end without a record, `explore wait` gives a `next` command to start a new exploration after the failure is fixed. It retains the failed exploration. The command uses the recorded plan, build, instance, mode, level, and tool rules. The JSON also gives the target ID and revision, the plan ID and revision, and the exploration and instance IDs. Review other launch options before the new exploration. The host owns authentication and permissions.
+
 ### Merge, verify, and claims
 
 After the records, the supervisor does two more steps:

@@ -244,7 +244,7 @@ function leftOutLines(reply: Reply) {
 }
 
 function explorationLines(reply: Reply): Printed {
-	const status = reply.data as Partial<ReturnType<typeof explorationStatus>> & { outcome?: string }
+	const status = reply.data as Partial<ReturnType<typeof explorationStatus>> & { outcome?: string; next?: string[] }
 	if (!status.explorers) return {}
 	return {
 		facts: {
@@ -267,8 +267,11 @@ function explorationLines(reply: Reply): Printed {
 			follow: status.follow ?? undefined,
 			followReason: status.followReason ?? undefined,
 			path: status.path === 'session' ? 'session' : undefined,
+			target: status.targetId,
+			instance: status.instanceId,
 		},
 		lines: [
+			...(status.next ?? []).map((command) => ['next', command]),
 			...status.explorers.map((item) => [
 				item.explorer,
 				status.path === 'session' ? `agent=${item.session ?? '-'}` : (item.session ?? '-'),

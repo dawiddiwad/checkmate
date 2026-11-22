@@ -17669,6 +17669,9 @@ function explorationStatus(store, explorationId) {
     ...explorationCost(events),
     explorationId: row2.exploration_id,
     planId: row2.plan_id,
+    planRevision: row2.plan_revision,
+    targetId: row2.target_id,
+    targetRevision: row2.target_revision,
     build: row2.build,
     mode: row2.mode,
     instanceId: row2.instance_id,
@@ -17702,6 +17705,9 @@ function waitExploration(store, explorationId, timeoutSeconds) {
     const ended = ["completed", "failed", "stopped", "interrupted", "open"].includes(status.state);
     if (ended || Date.now() >= until) {
       const outcome = status.state === "completed" ? "done" : ended ? "failed" : "timeout";
+      const events = explorationEvents(store, explorationId);
+      const done = events.find((item) => item.step === "done");
+      const retry = status.state === "failed" && done?.detail.recorded === 0 ? retryCommand(store, explorationId, startOf(events)) : void 0;
       const hints = [
         ...status.explorers.flatMap((item) => item.hint ? [item.hint] : []),
         ...status.doneHint ? [status.doneHint] : []
@@ -17711,7 +17717,7 @@ function waitExploration(store, explorationId, timeoutSeconds) {
         subject: explorationId,
         reasons: outcome === "timeout" ? [`Exploration ${explorationId} is ${status.state} after ${timeoutSeconds} seconds.`] : outcome === "failed" ? [status.reason ?? `Exploration ${explorationId} is ${status.state}.`] : [],
         ...outcome === "timeout" ? { hint: `Run checkmate explore wait ${explorationId} again.` } : hints.length ? { hint: [...new Set(hints)].join(" ") } : {},
-        data: { ...status, outcome }
+        data: { ...status, outcome, ...retry ? { next: [retry] } : {} }
       };
     }
     Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, pollMilliseconds);
@@ -37459,9 +37465,12 @@ function explorationLines(reply) {
       workFolder: status.workFolder ?? void 0,
       follow: status.follow ?? void 0,
       followReason: status.followReason ?? void 0,
-      path: status.path === "session" ? "session" : void 0
+      path: status.path === "session" ? "session" : void 0,
+      target: status.targetId,
+      instance: status.instanceId
     },
     lines: [
+      ...(status.next ?? []).map((command) => ["next", command]),
       ...status.explorers.map((item) => [
         item.explorer,
         status.path === "session" ? `agent=${item.session ?? "-"}` : item.session ?? "-",

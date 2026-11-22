@@ -95,6 +95,94 @@ console.log(JSON.stringify({ type: 'result', subtype: 'success', structured_outp
 			0
 		)
 	closeStore(freshStore)
+	const retryWorkspace = directory(t)
+	const host = fakeClaude(t, { explorer: '!pi-auth' }, 'pi')
+	const retryEnv = { ...env, ...host.env, CHECKMATE_HARNESS: 'pi' }
+	const installedCommand = (...args: string[]) => {
+		const result = spawnSync(process.execPath, [join(project, 'node_modules/.bin/checkmate'), ...args, '--json'], {
+			cwd: retryWorkspace,
+			env: retryEnv,
+			encoding: 'utf8',
+		})
+		return { code: result.status, body: JSON.parse(result.stdout) }
+	}
+	const started = installedCommand(
+		'test',
+		'cart',
+		'--url',
+		'http://127.0.0.1:9',
+		'--source',
+		'ticket.md',
+		'--build',
+		'b1',
+		'--level',
+		'smoke',
+		'--allow',
+		'Read'
+	)
+	assert.equal(started.code, 0)
+	const failed = installedCommand('explore', 'wait', started.body.explorationId, '--timeout', '30')
+	assert.equal(failed.code, 1)
+	assert.deepEqual(
+		[
+			failed.body.state,
+			failed.body.planId,
+			failed.body.targetId,
+			failed.body.targetRevision,
+			failed.body.instanceId,
+			failed.body.build,
+		],
+		['failed', 'cart', '127-0-0-1-9', 1, 'local', 'b1']
+	)
+	assert.match(failed.body.hint, /Log in with Pi/)
+	assert.equal(failed.body.next.length, 1)
+	const compact = spawnSync(
+		process.execPath,
+		[
+			join(project, 'node_modules/.bin/checkmate'),
+			'explore',
+			'wait',
+			started.body.explorationId,
+			'--timeout',
+			'30',
+		],
+		{ cwd: retryWorkspace, env: retryEnv, encoding: 'utf8' }
+	)
+	assert.equal(compact.status, 1)
+	assert.ok(compact.stdout.includes(`next\t${failed.body.next[0]}`))
+	host.reply({ recorder: [{ kind: 'note', text: 'Retry completed.' }] })
+	const retried = spawnSync('/bin/sh', ['-c', `${failed.body.next[0]} --json`], {
+		cwd: retryWorkspace,
+		env: { ...retryEnv, PATH: `${join(project, 'node_modules/.bin')}:${retryEnv.PATH}` },
+		encoding: 'utf8',
+	})
+	assert.equal(retried.status, 0, retried.stderr + retried.stdout)
+	const retry = JSON.parse(retried.stdout)
+	assert.notEqual(retry.explorationId, started.body.explorationId)
+	assert.equal(installedCommand('explore', 'wait', retry.explorationId, '--timeout', '30').body.state, 'completed')
+	assert.equal(installedCommand('explore', 'status', started.body.explorationId).body.state, 'failed')
+	const saved = store(t, retryWorkspace)
+	for (const table of ['target_requests', 'profiles', 'instances', 'plan_requests'])
+		assert.equal((saved.db.prepare(`SELECT count(*) AS count FROM ${table}`).get() as { count: number }).count, 1)
+	const starts = saved.db
+		.prepare("SELECT status FROM operations WHERE command = 'explore start' ORDER BY rowid")
+		.all()
+	assert.deepEqual(
+		starts.map((row) => row.status),
+		['completed', 'completed']
+	)
+	const done = saved.db
+		.prepare("SELECT exploration_id, status FROM exploration_events WHERE step = 'done' ORDER BY rowid")
+		.all()
+	assert.deepEqual(
+		done.map((row) => [row.exploration_id, row.status]),
+		[
+			[started.body.explorationId, 'failed'],
+			[retry.explorationId, 'completed'],
+		]
+	)
+	assert.equal((saved.db.prepare('SELECT count(*) AS count FROM explorations').get() as { count: number }).count, 2)
+	closeStore(saved)
 	assert.match(checkmate('--help'), /checkmate delegate <setup\|plan\|revise\|execute>/)
 	const help = JSON.parse(checkmate('--help', '--json'))
 	assert.equal(help.status, 'completed')

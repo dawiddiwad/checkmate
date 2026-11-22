@@ -1669,6 +1669,9 @@ export function explorationStatus(store: Store, explorationId: string) {
 		...explorationCost(events),
 		explorationId: row.exploration_id,
 		planId: row.plan_id,
+		planRevision: row.plan_revision,
+		targetId: row.target_id,
+		targetRevision: row.target_revision,
 		build: row.build,
 		mode: row.mode,
 		instanceId: row.instance_id,
@@ -1722,6 +1725,12 @@ export function waitExploration(store: Store, explorationId: string, timeoutSeco
 		const ended = ['completed', 'failed', 'stopped', 'interrupted', 'open'].includes(status.state)
 		if (ended || Date.now() >= until) {
 			const outcome = status.state === 'completed' ? 'done' : ended ? 'failed' : 'timeout'
+			const events = explorationEvents(store, explorationId)
+			const done = events.find((item) => item.step === 'done')
+			const retry =
+				status.state === 'failed' && done?.detail.recorded === 0
+					? retryCommand(store, explorationId, startOf(events))
+					: undefined
 			const hints = [
 				...status.explorers.flatMap((item) => (item.hint ? [item.hint] : [])),
 				...(status.doneHint ? [status.doneHint] : []),
@@ -1740,7 +1749,7 @@ export function waitExploration(store: Store, explorationId: string, timeoutSeco
 					: hints.length
 						? { hint: [...new Set(hints)].join(' ') }
 						: {}),
-				data: { ...status, outcome },
+				data: { ...status, outcome, ...(retry ? { next: [retry] } : {}) },
 			}
 		}
 		Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, pollMilliseconds)

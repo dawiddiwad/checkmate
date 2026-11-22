@@ -457,3 +457,53 @@ test('Merge duplicate findings and preserve evidence — defect inflated or uniq
 	assert.ok(rows.every((row: { body: string }) => /HTTP 200: 220 PLN/.test(row.body)))
 	assert.notDeepEqual(JSON.parse(rows[0].body).evidence, JSON.parse(rows[1].body).evidence)
 })
+
+test('Show disputed/failed retest without closing a claim — unresolved defect reported fixed.', async (t) => {
+	const workspace = directory(t)
+	writeFileSync(join(workspace, 'ticket.md'), 'The promotion quote is 240 PLN.\n')
+	const app = await fixture()
+	t.after(() => app.close())
+	const host = fakeClaude(
+		t,
+		{ rules: [{ id: 'R1', text: 'The promotion quote is 240 PLN.', source: 'ticket.md', area: 'Promotion' }] },
+		'pi'
+	)
+	const env = {
+		...process.env,
+		...host.env,
+		CHECKMATE_ACTOR: 'oracle',
+		CHECKMATE_HARNESS: 'pi',
+		FAKE_CLAUDE_REPLAY: join(root, 'test/e2e/clean-replay.mjs'),
+		QA_REPLAY_DIR: directory(t),
+		QA_APP_URL: app.baseUrl,
+		QA_RETEST: '0',
+	}
+	const ok = async (...args: string[]) => {
+		const result = await command(workspace, env, ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	const first = await ok(
+		'test',
+		'cart',
+		'--url',
+		app.baseUrl,
+		'--source',
+		'ticket.md',
+		'--build',
+		'broken',
+		'--level',
+		'smoke',
+		'--allow',
+		'Read'
+	)
+	assert.equal((await ok('explore', 'wait', first.explorationId, '--timeout', '60')).state, 'completed')
+	env.QA_RETEST = '1'
+	const second = await ok('test', 'cart', '--build', 'still-broken', '--level', 'smoke', '--allow', 'Read')
+	assert.equal((await ok('explore', 'wait', second.explorationId, '--timeout', '60')).state, 'completed')
+	const claims = (await ok('claim', 'list', 'cart')).claims
+	assert.equal(claims.length, 1)
+	assert.equal(claims[0].open, true)
+	assert.equal(claims[0].statuses['still-broken'].status, 'not_fixed')
+	assert.match(JSON.stringify(await ok('explore', 'show', second.explorationId)), /220/)
+})

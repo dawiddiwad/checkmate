@@ -40,5 +40,6 @@ This codebase is for humans first, and must be:
 - Do not add abstractions unless they remove real complexity.
 - If behavior changes, update tests.
 - Test public behavior through the command or UI first. Use the built or packed artifact when packaging can change behavior. Use real persistence or a loopback app when the workflow crosses those boundaries. Follow [test design](.agents/wiki/development-procedures.md#test-design).
+- Run `npm test` for the primary path and `npm run test:merge` for the mapped merge checks. Use `npm run test:map` to inspect coverage and gaps.
 - If public API, config, or workflow changes, update documentation.
 - Keep authentication, credentials, and permissions with the host. Checkmate names a default model alias only for the sessions that it starts. The host can override it. Use ASD-STE100 style for documentation, instructions, and skills.

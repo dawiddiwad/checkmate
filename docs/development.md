@@ -11,7 +11,7 @@ The plugin is plain TypeScript that Node.js runs directly, with no runtime npm d
 1. Use Node.js 24.12.0 or later.
 2. Install the pinned development dependencies with `npm ci`.
 3. Make your change on a feature branch.
-4. Run `npm run phase:verify`.
+4. Run `npm run phase:verify` and `npm run test:merge`.
 
 ## Layout
 
@@ -38,46 +38,18 @@ The plugin is plain TypeScript that Node.js runs directly, with no runtime npm d
 
 ```sh
 npm run phase:verify
+npm run test:merge
 ```
 
-`phase:verify` runs, in order:
+`phase:verify` checks generated files, types, lint, and formatting. It runs `npm test` and the copied-plugin smoke. `npm test` runs the packaged QA path, specification handoff, promotion, shared status, lifecycle recovery, permission, migration, transaction, and evidence checks. It does not need a browser or a model.
 
-1. `type:check`: the generated types, validators, and plugin bundle match their sources, and TypeScript has no errors.
-2. `lint:check`: ESLint on `plugin`, `cli`, `scripts`, and `test`.
-3. `format:check`: Prettier.
-4. `npm test`: runs `node --test test/*.test.ts`. It uses temporary workspaces and needs no network or Claude credential. It includes browser suites; those suites skip when `CHECKMATE_BROWSER_EXECUTABLE` is unset.
-5. `node test/plugin.ts`: copies `plugin/` out of the repository and runs the bundled CLI without npm install.
+`test:merge` runs the primary path and the files mapped to the supported end-to-end scenarios. Run `npm run test:map` to print the 42 scenarios, their test files, and known gaps. The file list is in `scripts/test-scenarios.ts`; `scripts/test-suite.ts` runs it. The map includes partial evidence. It does not claim that a deterministic replay proves model judgment. The historical self-Factory campaign runner is absent; its six campaign scenarios are not supported by this branch.
 
-The verify job in CI also runs `npm run test:tools` as a separate step after `phase:verify`. `test:tools` runs `test/tools.ts`: a real browser through Playwright CLI and the HTTP API against the checkout fixture. It runs separately from `npm test`. It exercises the fixture, Playwright CLI, and Checkmate run records together. Run it when you change `test/fixture.ts`, the Playwright CLI version, or `plugin/references/browser.md`.
+The merge selection includes browser cases. Set `CHECKMATE_BROWSER_EXECUTABLE` to Chromium. Browser cases skip when this variable is unset. CI sets it and runs `phase:verify`, `test:merge`, `test:tools`, and `test:pi`. The release candidate repeats `phase:verify` and `test:merge`. `test:tools` exercises a real browser and the HTTP checkout fixture. `test:pi` uses the real Pi CLI with a loopback provider. Neither needs paid models.
 
-Browser tests need Chromium. Set `CHECKMATE_BROWSER_EXECUTABLE` to its path to run them. CI sets this variable. Without it, browser cases in `npm test` skip. `npm run test:tools` also needs Chromium. On a restricted Linux filesystem, set `XDG_CACHE_HOME` to a writable directory.
+`npm run test:extended` runs the remaining test files. It excludes files in the merge selection. This is a migration selection, not a claim that every remaining case is unique. Review and retire duplicate cases as their behavior gets a primary owner. Run it when you change behavior covered by those files.
 
-| Selected test file               | Covers                                                                                                        |
-| -------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| `test/store.test.ts`             | Schema, version check, triggers, foreign keys, WAL readers, lock errors, canonical JSON, ULIDs.               |
-| `test/targets.test.ts`           | Setup requests, profile checks, revision order, the default approval policy.                                  |
-| `test/plans.test.ts`             | Plan rules, decisions, delta revise, concurrent revise, patch edits, approval, gate reasons.                  |
-| `test/cross-plan.test.ts`        | Cross-plan references, cycles, blocks by result, acceptance, and open gaps in other plans.                    |
-| `test/runs.test.ts`              | Outcomes, checks, closes, findings, runtime gaps, finish rules, coverage, resume, retest.                     |
-| `test/evidence.test.ts`          | Blob deduplication, file deletion, equal bytes on read, path containment, the 32 MiB limit.                   |
-| `test/views.test.ts`             | The inbox, the approval policy, the loop state, and the plan, run, and log lists.                             |
-| `test/render.test.ts`            | HTML, Markdown, and JSON exports.                                                                             |
-| `test/cli.test.ts`               | Output, flags, read-only `query`, actor, standard input, log cursor, parallel writers, export.                |
-| `test/launcher.test.ts`          | `delegate` with a fake Claude CLI: worker output, checks, `--claude-arg`, deadlines, cleanup.                 |
-| `test/hook.test.ts`              | The oracle signal hook and settings from the factory guide, with fake payloads and a webhook.                 |
-| `test/package.test.ts`           | `npm pack` and install of the CLI, delegated spec review, permanent-only run, and local app QA.               |
-| `test/spec.test.ts`              | Specification review and handoff, followed by a loopback run, retest, and promotion.                          |
-| `test/promotion.test.ts`         | Promotion requirements and refusals, including snapshots and acceptance.                                      |
-| `test/qa-status.test.ts`         | Same-build follow recommendations shared by the CLI and review page.                                          |
-| `test/release.test.ts`           | Version rules and the five version files.                                                                     |
-| `test/ui.test.ts`                | UI pages, escaping, forms, stale digests, Host and Origin checks, live events, lists, edits.                  |
-| `test/ui.browser.test.ts`        | The UI in a real browser: keyboard, focus, forms, the editor, and no JavaScript.                              |
-| `test/ui.pages.browser.test.ts`  | The UI in a real browser: live updates, lists, history, downloads, Settings, dark mode, and page width.       |
-| `test/ui.review.test.ts`         | The plan review on the volume seed: views, records, options, hand-over, bulk, find, evidence, status path.    |
-| `test/ui.review.browser.test.ts` | The plan review in a real browser: the key model, Down then 1, history, selection, areas, bars, mouse.        |
-| `test/ui.layout.browser.test.ts` | Alignment, contrast, overflow, and tap targets at 1440, 900, and 400 px in both themes and the fallback font. |
-
-Add tests for changed relationships and failure paths. Do not replace browser or live checks with mocked success.
+On macOS, the prior full browser run had five failures in the harvest editor, records editor, refresh dialog, review chat, and start-form caret tests. These files stay in the merge selection. A skipped browser run does not establish that they pass.
 
 ## Writing tests
 
@@ -177,7 +149,7 @@ Each merged pull request to `main` starts the release job in `.github/workflows/
 
 1. `scripts/release-version.ts` checks that the five version files agree: `package.json`, `package-lock.json`, `cli/package.json`, `plugin/.claude-plugin/plugin.json`, and `.claude-plugin/marketplace.json`.
 2. When the current version already has a tag, it increases the patch version in all five files.
-3. The job runs `phase:verify` on the release candidate.
+3. The job runs `phase:verify` and `test:merge` on the release candidate.
 4. It pushes the version commit and the tag `v<version>`.
 5. It publishes `./cli` to npm with trusted publishing. No npm token is used.
 6. After the publish succeeds, it creates the GitHub release.

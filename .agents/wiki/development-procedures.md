@@ -6,7 +6,7 @@ Read the implementation before changing its contract or documentation.
 2. Update the implementation and tests.
 3. Run `npm run generate` after a schema change.
 4. Update the relevant workflow skill and documentation.
-5. Run `npm run phase:verify`.
+5. Run `npm run phase:verify` and `npm run test:merge`.
 6. Run `npm run test:live` only when the change needs it and the run is authorized. Authentication alone does not authorize a potentially paid run.
 
 Follow the rules in [Writing tests](../../docs/development.md#writing-tests) when you add or change a test.

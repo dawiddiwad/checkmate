@@ -697,6 +697,204 @@ test('Answer, revise, and approve the named revision — execution against the w
 		'SELECT (SELECT count(*) FROM instances) AS instances, (SELECT count(*) FROM runs) AS runs, (SELECT count(*) FROM explorations) AS explorations, (SELECT count(*) FROM plan_builds) AS builds',
 	])
 	assert.deepEqual(counts.rows, [{ instances: 0, runs: 0, explorations: 0, builds: 0 }])
+	const app = await fixture()
+	t.after(() => app.close())
+	const host = fakeClaude(t, { recorder: [{ kind: 'note', text: 'Explored the supplied build.' }] }, 'pi')
+	const runtime = { ...env, ...host.env }
+	const run = async (args: string[], input = '') => {
+		const result = await inputCommand(workspace, runtime, input, ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	await run(['target', 'instance', 'add', 'shop', 'local', '--entry', `web=${app.baseUrl}`])
+	const oldRevision = await command(
+		workspace,
+		runtime,
+		'run',
+		'begin',
+		'old-run',
+		'ticket@1',
+		'--build',
+		'broken',
+		'--instance',
+		'local',
+		'--tests',
+		'T1'
+	)
+	assert.equal(oldRevision.code, 1, oldRevision.output)
+	const firstBuild = await run([
+		'explore',
+		'start',
+		'ticket',
+		'--build',
+		'broken',
+		'--instance',
+		'local',
+		'--level',
+		'smoke',
+		'--allow',
+		'Read',
+	])
+	assert.equal((await run(['explore', 'wait', firstBuild.explorationId, '--timeout', '60'])).state, 'completed')
+	await run(['run', 'begin', 'run-1', 'ticket@2', '--build', 'broken', '--instance', 'local', '--tests', 'T1'])
+	const broken = await (await fetch(`${app.baseUrl}/quote?promotion=true&loyalty=true`)).json()
+	assert.equal(broken.totalPLN, 220)
+	const failure = await run(
+		['run', 'check', 'run-1', 'T1', 'A1', '--result', 'failed', '--observed', '220', '--evidence', '-'],
+		'HTTP 200: 220'
+	)
+	await run(
+		['run', 'finding', 'run-1'],
+		JSON.stringify({
+			id: 'F1',
+			type: 'defect',
+			severity: 'high',
+			assertionIds: ['T1.A1'],
+			requirementIds: ['R1'],
+			title: 'Wrong quote',
+			expected: '240',
+			observed: '220',
+			reproduction: ['Read the quote.'],
+			evidenceIds: failure.evidenceIds,
+		})
+	)
+	await run(['run', 'close', 'run-1', 'T1'])
+	await run([
+		'run',
+		'finish',
+		'run-1',
+		'--completion',
+		'completed',
+		'--cleanup',
+		'completed',
+		'--cleanup-reason',
+		'No test data.',
+	])
+	await run(['result', 'accept', 'run-1', '--rationale', 'The finding is valid.'])
+	const rejected = await command(
+		workspace,
+		runtime,
+		'plan',
+		'promote',
+		'ticket@2',
+		'--run',
+		'run-1',
+		'--build',
+		'broken',
+		'--rationale',
+		'Save tests.'
+	)
+	assert.equal(rejected.code, 1, rejected.output)
+	app.fix()
+	assert.equal((await (await fetch(`${app.baseUrl}/quote?promotion=true&loyalty=true`)).json()).totalPLN, 240)
+	const fixedBuild = await run([
+		'explore',
+		'start',
+		'ticket',
+		'--build',
+		'fixed',
+		'--instance',
+		'local',
+		'--level',
+		'smoke',
+		'--allow',
+		'Read',
+	])
+	assert.equal((await run(['explore', 'wait', fixedBuild.explorationId, '--timeout', '60'])).state, 'completed')
+	await run([
+		'run',
+		'begin',
+		'run-2',
+		'ticket@2',
+		'--build',
+		'fixed',
+		'--instance',
+		'local',
+		'--tests',
+		'T1',
+		'--retest-of',
+		'run-1',
+	])
+	await run(
+		['run', 'check', 'run-2', 'T1', 'A1', '--result', 'passed', '--observed', '240', '--evidence', '-'],
+		'HTTP 200: 240'
+	)
+	await run(['run', 'close', 'run-2', 'T1'])
+	await run([
+		'run',
+		'finish',
+		'run-2',
+		'--completion',
+		'completed',
+		'--cleanup',
+		'completed',
+		'--cleanup-reason',
+		'No test data.',
+	])
+	const promotion = [
+		'plan',
+		'promote',
+		'ticket@2',
+		'--run',
+		'run-2',
+		'--build',
+		'fixed',
+		'--rationale',
+		'Save tests.',
+	]
+	assert.equal((await command(workspace, runtime, ...promotion)).code, 1)
+	await run(['result', 'accept', 'run-2', '--rationale', 'The fixed build passes.'])
+	const saved = await run(promotion)
+	assert.deepEqual([saved.subject, saved.recorded, saved.tests], ['ticket@3', true, ['T1']])
+	assert.equal((await run(promotion)).recorded, false)
+	const snapshots = await run(['plan', 'promotions', 'ticket'])
+	assert.deepEqual(
+		[snapshots.promotions[0].sourceRevision, snapshots.promotions[0].build, snapshots.promotions[0].runId],
+		[2, 'fixed', 'run-2']
+	)
+	await run(
+		['plan', 'edit', 'ticket@3', '--patch'],
+		JSON.stringify({ tests: { T1: { title: 'Later draft title' } } })
+	)
+	const before = await run(['query', 'SELECT count(*) AS n FROM explorations'])
+	const permanent = await run([
+		'run',
+		'permanent',
+		'permanent-1',
+		'ticket',
+		'--build',
+		'future',
+		'--promotion',
+		'ticket@3',
+	])
+	assert.deepEqual([permanent.plan, permanent.build, permanent.tests], ['ticket@3', 'future', ['T1']])
+	copyFileSync(join(root, 'test/e2e/delegate-host.mjs'), join(bin, 'claude'))
+	chmodSync(join(bin, 'claude'), 0o755)
+	const permanentEnv = {
+		...runtime,
+		PATH: `${bin}${delimiter}${runtime.PATH}`,
+		CHECKMATE_HARNESS: 'claude',
+		QA_STAGE: 'permanent',
+		QA_APP_URL: app.baseUrl,
+	}
+	const executed = await command(
+		workspace,
+		permanentEnv,
+		'delegate',
+		'execute',
+		'permanent-1',
+		'--allow',
+		'Read',
+		'--allow',
+		'Bash'
+	)
+	assert.equal(executed.code, 0, executed.output)
+	const result = await run(['run', 'show', 'permanent-1'])
+	assert.deepEqual(
+		[result.build, result.tests[0].title, result.tests[0].outcome, result.request.permanent.reference],
+		['future', 'Quote', 'passed', 'ticket@3']
+	)
+	assert.equal((await run(['query', 'SELECT count(*) AS n FROM explorations'])).rows[0].n, before.rows[0].n)
 })
 
 test('Delegate setup and plan and verify the record — prose or mismatched actor stands in for a receipt.', async (t) => {

@@ -59,6 +59,47 @@ if (process.env.QA_STAGE === 'setup') {
 		],
 		gaps: [],
 	})
+} else if (process.env.QA_STAGE === 'permanent') {
+	if (!prompt.includes('Permanent-only run from ticket@3') || !prompt.includes('Do not explore'))
+		throw Error('Permanent-only instructions missing')
+	const detail = run(['run', 'show', 'permanent-1'])
+	if (
+		detail.tests.length !== 1 ||
+		detail.tests[0].title !== 'Quote' ||
+		detail.request.permanent.reference !== 'ticket@3'
+	)
+		throw Error('Wrong permanent snapshot')
+	const response = await fetch(`${process.env.QA_APP_URL}/quote?promotion=true&loyalty=true`)
+	const quote = await response.json()
+	if (response.status !== 200 || quote.totalPLN !== 240) throw Error('The selected build does not pass')
+	run(
+		[
+			'run',
+			'check',
+			'permanent-1',
+			'T1',
+			'A1',
+			'--result',
+			'passed',
+			'--observed',
+			String(quote.totalPLN),
+			'--evidence',
+			'-',
+		],
+		'HTTP 200: 240'
+	)
+	run(['run', 'close', 'permanent-1', 'T1'])
+	result = run([
+		'run',
+		'finish',
+		'permanent-1',
+		'--completion',
+		'completed',
+		'--cleanup',
+		'completed',
+		'--cleanup-reason',
+		'No test data.',
+	])
 } else throw Error('Unknown fixture stage')
 console.log(
 	JSON.stringify({

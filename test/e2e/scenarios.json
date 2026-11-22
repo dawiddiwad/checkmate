@@ -118,8 +118,7 @@
 	{
 		"number": 20,
 		"name": "Answer, revise, and approve the named revision — execution against the wrong revision.",
-		"status": "partial",
-		"reason": "The no-build review, revision, approval and handoff are covered; execution against the revision remains to be added.",
+		"status": "covered",
 		"test": "Answer, revise, and approve the named revision — execution against the wrong revision."
 	},
 	{
@@ -131,14 +130,16 @@
 	{
 		"number": 22,
 		"name": "Finish with a finding and export JUnit/JSON — CI receives an incorrect outcome.",
-		"status": "pending",
-		"reason": "Fresh end-to-end scenario not yet written."
+		"status": "partial",
+		"reason": "The broken run records a source-backed finding; JUnit/JSON export is not yet exercised.",
+		"test": "Answer, revise, and approve the named revision — execution against the wrong revision."
 	},
 	{
 		"number": 23,
 		"name": "Run a narrow retest with prerequisites and regressions — uncovered tests silently accepted.",
-		"status": "pending",
-		"reason": "Fresh end-to-end scenario not yet written."
+		"status": "partial",
+		"reason": "The fixed build is retested against the prior run; prerequisite and regression selection still needs a dedicated case.",
+		"test": "Answer, revise, and approve the named revision — execution against the wrong revision."
 	},
 	{
 		"number": 24,
@@ -185,8 +186,9 @@
 	{
 		"number": 31,
 		"name": "Trigger one fixed ticket with a pinned build — ambiguous input or wrong checkout.",
-		"status": "gap",
-		"reason": "The historical self-Factory campaign runner is absent; supported external Factory behavior still needs fresh scenarios."
+		"status": "partial",
+		"reason": "An external fixture supplies explicit broken and fixed build labels; the historical campaign and pinned checkout are absent.",
+		"test": "Answer, revise, and approve the named revision — execution against the wrong revision."
 	},
 	{
 		"number": 32,
@@ -197,8 +199,9 @@
 	{
 		"number": 33,
 		"name": "Reach a real built preview with deterministic seed data — QA runs against an empty/wrong app.",
-		"status": "gap",
-		"reason": "The historical self-Factory campaign runner is absent; supported external Factory behavior still needs fresh scenarios."
+		"status": "partial",
+		"reason": "The external fixture supplies a real loopback app; an independently built candidate preview is not yet covered.",
+		"test": "Answer, revise, and approve the named revision — execution against the wrong revision."
 	},
 	{
 		"number": 34,
@@ -209,8 +212,9 @@
 	{
 		"number": 35,
 		"name": "Carry evidence into the fix and retest the next build — duplicated work or stale claims.",
-		"status": "gap",
-		"reason": "The historical self-Factory campaign runner is absent; supported external Factory behavior still needs fresh scenarios."
+		"status": "partial",
+		"reason": "The broken result and evidence persist into a distinct-build retest; historical archived campaign transport is absent.",
+		"test": "Answer, revise, and approve the named revision — execution against the wrong revision."
 	},
 	{
 		"number": 36,

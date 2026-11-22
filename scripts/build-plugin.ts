@@ -5,12 +5,13 @@ import assert from 'node:assert/strict'
 
 const output = new URL('../plugin/dist/checkmate.js', import.meta.url)
 const bundle = await build({
-	entryPoints: [fileURLToPath(new URL('../plugin/bin/checkmate.ts', import.meta.url))],
+	entryPoints: [fileURLToPath(new URL('../cli/src/main.ts', import.meta.url))],
 	bundle: true,
 	platform: 'node',
 	format: 'esm',
 	target: 'node24',
 	legalComments: 'none',
+	banner: { js: '#!/usr/bin/env node' },
 	write: false,
 })
 const text = bundle.outputFiles[0].text

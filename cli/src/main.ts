@@ -3,7 +3,7 @@ import type { Reply } from '../../plugin/src/index.ts'
 import { busyReason, formatReply, isBusy, main as core, refused, run as coreRun } from '../../plugin/src/index.ts'
 import { delegate, stages } from './launcher.ts'
 import { exploreSpec } from './spec.ts'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 
 type Parsed = {
 	positionals: string[]
@@ -21,7 +21,9 @@ const delegateHarnessUsage =
 	'With Pi, omit --allow and --claude-arg. Claude requires --allow <rule> and accepts --claude-arg <arg>. CHECKMATE_HARNESS overrides the workspace harness. The default is Claude. delegate spec uses no tools and needs no --allow.'
 
 function version() {
-	return JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version as string
+	const plugin = new URL('../.claude-plugin/plugin.json', import.meta.url)
+	const manifest = existsSync(plugin) ? plugin : new URL('../package.json', import.meta.url)
+	return JSON.parse(readFileSync(manifest, 'utf8')).version as string
 }
 
 function help(json: boolean) {
@@ -133,6 +135,13 @@ export function parseDelegate(tokens: string[]) {
 }
 
 async function runDelegate(tokens: string[]) {
+	if (/^(pi|claude):(setup|plan|revise|execute)$/.test(process.env.CHECKMATE_ACTOR ?? ''))
+		return refuse(
+			'rejected',
+			'delegate',
+			'A delegated worker cannot start another delegate.',
+			tokens.includes('--json')
+		)
 	let parsed: Parsed
 	try {
 		parsed = parseDelegate(tokens)

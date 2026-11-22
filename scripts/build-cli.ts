@@ -1,5 +1,4 @@
-import { build } from 'esbuild'
-import { cp, readFile, rm, writeFile } from 'node:fs/promises'
+import { cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { resolve } from 'node:path'
 
@@ -24,16 +23,9 @@ export function packageReadme(markdown: string, version: string) {
 }
 
 async function buildCli() {
-	await build({
-		entryPoints: [`${root}cli/src/main.ts`],
-		outfile: `${root}cli/dist/checkmate.js`,
-		bundle: true,
-		format: 'esm',
-		platform: 'node',
-		target: 'node24',
-		legalComments: 'none',
-		banner: { js: '#!/usr/bin/env node' },
-	})
+	await import('./build-plugin.ts')
+	await mkdir(`${root}cli/dist`, { recursive: true })
+	await cp(`${root}plugin/dist/checkmate.js`, `${root}cli/dist/checkmate.js`)
 	await rm(`${root}cli/plugin`, { recursive: true, force: true })
 	await cp(`${root}plugin`, `${root}cli/plugin`, { recursive: true })
 	const version = JSON.parse(await readFile(`${root}cli/package.json`, 'utf8')).version

@@ -38,9 +38,13 @@ function command(workspace: string, env: NodeJS.ProcessEnv, ...args: string[]) {
 }
 
 function inputCommand(workspace: string, env: NodeJS.ProcessEnv, input: string, ...args: string[]) {
+	return invoke(binary, workspace, env, input, args)
+}
+
+function invoke(entry: string, workspace: string, env: NodeJS.ProcessEnv, input: string, args: string[]) {
 	return new Promise<{ code: number | null; body: ReturnType<typeof JSON.parse>; output: string }>(
 		(resolve, reject) => {
-			const child = spawn(process.execPath, [binary, ...args, '--json'], { cwd: workspace, env, timeout: 70000 })
+			const child = spawn(process.execPath, [entry, ...args, '--json'], { cwd: workspace, env, timeout: 70000 })
 			child.stdin.end(input)
 			let output = ''
 			let error = ''
@@ -1243,6 +1247,15 @@ test('Discover the packaged Claude plugin and invoke its entry — broken plugin
 	const manifest = JSON.parse(readFileSync(join(plugin, '.claude-plugin/plugin.json'), 'utf8'))
 	assert.equal(manifest.name, 'checkmate')
 	const entry = join(plugin, 'dist/checkmate.js')
+	assert.equal(execFileSync(process.execPath, [entry, '--version'], { encoding: 'utf8' }).trim(), manifest.version)
+	assert.match(execFileSync(process.execPath, [entry, '--help'], { encoding: 'utf8' }), /delegate/)
+	const nested = await invoke(entry, workspace, { ...process.env, CHECKMATE_ACTOR: 'claude:execute' }, '', [
+		'delegate',
+		'execute',
+		'run-1',
+	])
+	assert.equal(nested.code, 1)
+	assert.match(nested.output, /cannot start another delegate/)
 	const output = execFileSync(process.execPath, [entry, 'init', '--json'], { cwd: workspace, encoding: 'utf8' })
 	assert.equal(JSON.parse(output).status, 'completed')
 	assert(existsSync(join(workspace, '.checkmate/checkmate.db')))
@@ -1641,6 +1654,17 @@ test('Run a two-instance matrix and accept each latest result — one pass masks
 
 test('Resume a structured run after a worker deadline — outcomes lost or gate bypassed.', async (t) => {
 	const workspace = directory(t)
+	const { cpSync } = await import('node:fs')
+	const plugin = join(workspace, 'standalone')
+	const installed = join(project, 'node_modules/@xoxoai/checkmate/plugin')
+	for (const path of ['.claude-plugin', 'dist', 'contracts', 'skills', 'references', 'pi', 'src/ui/assets']) {
+		const destination = join(plugin, path)
+		mkdirSync(join(destination, '..'), { recursive: true })
+		cpSync(join(installed, path), destination, { recursive: true })
+	}
+	const entry = join(plugin, 'dist/checkmate.js')
+	const manifest = JSON.parse(readFileSync(join(plugin, '.claude-plugin/plugin.json'), 'utf8'))
+	assert.equal(execFileSync(process.execPath, [entry, '--version'], { encoding: 'utf8' }).trim(), manifest.version)
 	mkdirSync(join(workspace, '.checkmate'))
 	writeFileSync(
 		join(workspace, '.checkmate/checkmate.db'),
@@ -1662,7 +1686,13 @@ const plugin = process.argv[process.argv.indexOf('--plugin-dir') + 1]
 writeFileSync('worker.pid', String(process.pid))
 fetch(process.env.QA_APP_URL + '/quote?promotion=true&loyalty=true').then(r => r.json()).then(quote => {
   if (quote.totalPLN !== 240) throw Error('Bad build')
-  execFileSync(process.execPath, [plugin + '/dist/checkmate.js', 'run', 'check', 'run-1', 'T1', 'A1', '--result', 'passed', '--observed', '240', '--evidence', '-'], { input: JSON.stringify(quote), stdio: ['pipe', 'pipe', 'inherit'] })
+  if (!process.env.QA_FINISH) execFileSync(process.execPath, [plugin + '/dist/checkmate.js', 'run', 'check', 'run-1', 'T1', 'A1', '--result', 'passed', '--observed', '240', '--evidence', '-'], { input: JSON.stringify(quote), stdio: ['pipe', 'pipe', 'inherit'] })
+  if (process.env.QA_FINISH) {
+    execFileSync(process.execPath, [plugin + '/dist/checkmate.js', 'run', 'close', 'run-1', 'T1'])
+    execFileSync(process.execPath, [plugin + '/dist/checkmate.js', 'run', 'finish', 'run-1', '--completion', 'completed', '--cleanup', 'completed', '--cleanup-reason', 'No test data.'])
+    console.log(JSON.stringify({type:'result',subtype:'success',structured_output:{status:'completed',subject:'run-1',reasons:[]}}))
+    return
+  }
   setInterval(() => {}, 1000)
 })
 `,
@@ -1677,16 +1707,14 @@ fetch(process.env.QA_APP_URL + '/quote?promotion=true&loyalty=true').then(r => r
 		QA_APP_URL: app.baseUrl,
 	}
 	const ok = async (...args: string[]) => {
-		const result = await command(workspace, env, ...args)
+		const result = await invoke(entry, workspace, env, '', args)
 		assert.equal(result.code, 0, result.output)
 		return result.body
 	}
 	await ok('target', 'instance', 'add', 'shop', 'local', '--entry', `web=${app.baseUrl}`)
 	await ok('plan', 'approve', 'ticket@1', '--rationale', 'Run the rule.')
 	await ok('run', 'begin', 'run-1', 'ticket@1', '--build', 'fixed', '--instance', 'local', '--tests', 'T1')
-	const stopped = await command(
-		workspace,
-		env,
+	const stopped = await invoke(entry, workspace, env, '', [
 		'delegate',
 		'execute',
 		'run-1',
@@ -1695,8 +1723,8 @@ fetch(process.env.QA_APP_URL + '/quote?promotion=true&loyalty=true').then(r => r
 		'--allow',
 		'Read',
 		'--allow',
-		'Bash'
-	)
+		'Bash',
+	])
 	assert.equal(stopped.code, 1, stopped.output)
 	assert.equal(stopped.body.status, 'interrupted')
 	assert.match(stopped.output, /Worker deadline exceeded/)
@@ -1708,18 +1736,17 @@ fetch(process.env.QA_APP_URL + '/quote?promotion=true&loyalty=true').then(r => r
 	const resumed = await ok('run', 'resume', 'run-1')
 	assert.equal(resumed.attempt, 2)
 	assert.equal(resumed.tests[0].recorded, 1)
-	await ok('run', 'close', 'run-1', 'T1')
-	await ok(
-		'run',
-		'finish',
+	const completed = await invoke(entry, workspace, { ...env, QA_FINISH: '1' }, '', [
+		'delegate',
+		'execute',
 		'run-1',
-		'--completion',
-		'completed',
-		'--cleanup',
-		'completed',
-		'--cleanup-reason',
-		'No test data.'
-	)
+		'--allow',
+		'Read',
+		'--allow',
+		'Bash',
+	])
+	assert.equal(completed.code, 0, completed.output)
+	assert.equal(completed.body.status, 'completed')
 	const results = await ok('query', "SELECT body FROM results WHERE run_id='run-1'")
 	const result = JSON.parse(results.rows[0].body)
 	assert.equal(result.tests[0].outcome, 'passed')

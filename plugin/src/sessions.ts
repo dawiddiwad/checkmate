@@ -625,6 +625,7 @@ export function requestSystemPrompt(checkmate: string) {
 		'For a tester question use /plans/<planId>?view=all&item=q%3A<testerId>%2F<questionId>. For a defect use the same path with c%3A instead. For a plan gap use /plans/<planId>@<revision>/gaps/<gapId>. For a run test or finding use /runs/<runId>?item=test%3A<testId> or /runs/<runId>?item=finding%3A<findingId>.',
 		'Use Markdown image syntax for screenshots. Run evidence uses /evidence/<evidenceId>. Exploration claim evidence uses /explorations/<explorationId>/claims/<testerId>/<claimId>/evidence/<zeroBasedIndex>.',
 		`To change a record, use the checkmate command line of this workspace: node ${checkmate} <command>.`,
+		'When the person asks to execute tests, run begin records setup only. After it succeeds, use delegate execute with the exact run ID, then report the recorded outcome or the specific launch blocker. Do not delegate when the person asks only to set up or inspect records.',
 	].join(' ')
 }
 

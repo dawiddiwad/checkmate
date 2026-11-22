@@ -996,26 +996,6 @@ function askOf(f: Fixture, context = { planId: 'checkout', record: null as null 
 	return f.read((reading) => askRequest(reading, 'dawid', { text: 'why does D3 fail?', context }))
 }
 
-test('a request is an asker: its permission request is held, shown by the same record, and answered', async (t) => {
-	const f = await fixture(t)
-	const id = askOf(f)
-	const held = requestPermissionCall(f, id)
-	const [asked] = (await waitOpen(f, 1)) as ReturnType<typeof openPermissions>
-	assert.equal(asked.askerId, id)
-	assert.equal(asked.fromRequest, true)
-	assert.equal(asked.planId, 'checkout')
-	assert.equal(asked.tester, null)
-	const page = (await call(f.ui, `/permissions/${id}/P1`, undefined, as)).body
-	assert.match(page, /<h1[^>]*>Chat message R1 asks to run a command<\/h1>/)
-	assert.match(page, /Allow this command for this chat/)
-	assert.match((await call(f.ui, '/activity', undefined, as)).body, /data-region="permissions-link"\s*>1 permission</)
-	const csrf = token((await call(f.ui, '/activity', undefined, as)).body)
-	assert.equal((await call(f.ui, `/permissions/${id}/P1`, { csrf, decision: 'allow' }, as)).status, 303)
-	const reply = await held
-	assert.equal(reply.body, wrap('{"behavior":"allow"}'))
-	assert.equal(open(f).length, 0)
-})
-
 test('a permission call of a run or a request that has ended gets an empty 200 and records nothing', async (t) => {
 	const f = await fixture(t)
 	const opened = openStore(f.workspace)

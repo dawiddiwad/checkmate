@@ -489,11 +489,12 @@ test('a missing claude program fails the request with the engine sentence', asyn
 test('a tool that needs approval asks through the record of the request, and a rule lasts for the conversation', async (t) => {
 	const asking = { name: 'Bash', input: { command: 'npm view left-pad' }, rule: 'npm view *' }
 	const f = await serverOf(t, { request: { ask: [asking] } })
-	const first = await f.ask('check the package')
+	const first = await f.ask('check the package', '/plans/checkout')
 	const open = await waitFor('the first permission request', () =>
 		f.read((reading) => openPermissions(reading)).find((item) => item.askerId === first)
 	)
 	assert.equal(open.id, 'P1')
+	assert.deepEqual([open.askerId, open.fromRequest, open.planId, open.tester], [first, true, 'checkout', null])
 	const record = (await call(f.ui, `/permissions/${first}/P1`)).body
 	assert.match(record, /<h1[^>]*>Chat message R1 asks to run a command<\/h1>/)
 	assert.match(record, /Allow this command for this chat/)

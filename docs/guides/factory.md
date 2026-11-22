@@ -82,6 +82,78 @@ Tell the setup stage how to restore a fresh state of the application, for exampl
 
 A `command` entry runs a program at test time, for example `sf org open --target-org <alias> --url-only --json`. The `--allow` rules of `delegate execute` must cover the programs that the command entries use, for example `--allow "Bash(sf *)"`.
 
+### Review the ticket before a build exists
+
+Use a unique ticket ID as the plan ID. The oracle or a planner reads the ticket, drafts its rules and tests, and records each question, gap, or specification defect as a plan gap. The steps below use a local ticket source. This path needs no build, application URL, or running instance. It records specification evidence, not runtime results. The host owns the planner and its permissions.
+
+Create a target profile for the intended tools and operations. `readyForLiveExecution` describes these prerequisites; it does not start or verify an application. Change the profile to match your tools and approval policy. The factory will add an actual instance after it builds the application.
+
+```sh
+export CHECKMATE_ACTOR=oracle
+checkmate target open shop --entry-point "web:url:Shop HTTP API." --capabilities http --operations read_catalog
+checkmate target save shop <<'JSON'
+{
+  "contractVersion":"toolkit-2", "targetId":"shop", "revision":1,
+  "entryPoints":[{"name":"web","kind":"url","purpose":"Shop HTTP API."}],
+  "capabilities":["http"], "tools":[],
+  "authentication":{"kind":"none","references":[]},
+  "allowedOperations":["read_catalog"],
+  "startup":{"owner":"factory","command":null}, "cleanup":"No test data.",
+  "readyForLiveExecution":true, "approvals":{"plan":"required","result":"required"}
+}
+JSON
+printf '%s\n' 'The promotion quote is 240 PLN. Does it replace loyalty?' > ticket.md
+checkmate plan open SHOP-12 --target shop@1 --objective "Check the quote." --source ticket.md
+checkmate plan save SHOP-12 <<'JSON'
+{
+  "requirements":[{"id":"R1","text":"The promotion quote is 240 PLN.","source":"ticket.md"}],
+  "tests":[{"id":"T1","title":"Promotion quote","requirementIds":["R1"],
+    "capability":"http","operations":["read_catalog"],"dependsOn":[],"preconditions":[],
+    "action":"Read the promotion quote.",
+    "assertions":[{"id":"A1","check":"The quote is 240 PLN.","checkKind":"deterministic"}]}],
+  "gaps":[{"id":"G1","severity":"blocking","status":"open","requirementIds":["R1"],
+    "testIds":["T1"],"question":"Does it replace loyalty?",
+    "consequence":"The combined quote is unclear.","decisionId":null}]
+}
+JSON
+SHA=$(checkmate plan show SHOP-12@1 --json | node -pe "JSON.parse(require('fs').readFileSync(0)).sha256")
+checkmate spec finding SHOP-12@1 G1 --kind question --source ticket.md \
+  --evidence "Does it replace loyalty?" --expect-sha "$SHA"
+checkmate spec review SHOP-12@1 --source ticket.md --evidence "Does it replace loyalty?" \
+  --rationale "Reviewed the ticket and its open question." --expect-sha "$SHA"
+checkmate spec status SHOP-12@1 --json
+```
+
+Use `--kind gap` or `--kind defect` for other specification findings. The finding must name an open plan gap and quote the named source. Each review records the current rule IDs, the actor, rationale, source excerpt, plan SHA, and source digests. All plan sources must be readable local files of at most 40,000 characters. Keep a local copy of an external ticket source. Source matching checks the quote, not the accuracy of the review. Checkmate stores these records in the operation log; `spec status --json` returns the findings and latest review.
+
+The status above is not ready. The oracle answers, and the planner applies the answer in a new revision. Review that revision and approve it if the target policy requires approval.
+
+```sh
+checkmate gap answer SHOP-12 G1 --kind clarify --value "The promotion replaces loyalty." \
+  --source "ticket owner" --rationale "Owner decision."
+checkmate plan revise SHOP-12 <<'JSON'
+{"tests":{}}
+JSON
+SHA=$(checkmate plan show SHOP-12@2 --json | node -pe "JSON.parse(require('fs').readFileSync(0)).sha256")
+checkmate spec review SHOP-12@2 --source ticket.md --evidence "The promotion quote is 240 PLN." \
+  --rationale "Reviewed the ticket rules and the oracle answer." --expect-sha "$SHA"
+checkmate plan approve SHOP-12@2 --rationale "Approve the resolved rules."
+checkmate spec status SHOP-12@2 --json
+checkmate spec handoff SHOP-12@2 --expect-sha "$SHA" --rationale "The factory can build these rules."
+```
+
+Handoff refuses an old or changed revision, changed sources, a missing current review, an open or deferred gap, a pending answer, an unresolved recorded finding, an uncovered rule, or a missing required approval. Read status again before using a previous handoff: later edits, answers, findings, or source changes can make it stale. No existing build-first command requires this optional handoff; the factory must check it before proceeding.
+
+The factory then builds and starts the application. Add the instance and use the same ticket and reviewed revision. Run the first exploration only after the build exists. Use the build-first loop below for the distinct fixed build, result acceptance, and explicit promotion; use `SHOP-12@2` in the run and promotion commands instead of `SHOP-12@1`.
+
+```sh
+checkmate target instance add shop local --entry "web=$BASE_URL"
+checkmate explore start SHOP-12 --build "$FIRST_BUILD" --instance local --allow Read --allow Bash
+checkmate explore wait <explorationId>
+checkmate run begin run-1 SHOP-12@2 --build "$FIRST_BUILD" --instance local --tests T1
+checkmate delegate execute run-1 --allow Read --allow Bash
+```
+
 ### Build first and promote tests
 
 Use this path when the oracle writes the ticket rules before the first build. The factory owns the build and starts the application. Checkmate does not start or fix the application. Use a ticket plan ID that is unique in the workspace. Prepare a target profile and an instance for the application as in step 1.

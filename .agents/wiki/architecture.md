@@ -9,6 +9,7 @@ Checkmate includes a Claude Code plugin, a Pi package, and a deterministic Node.
 - `plugin/contracts/` contains authoritative JSON Schemas.
 - `plugin/src/contracts.ts` checks document shape and plan relationships.
 - `plugin/src/store.ts` owns the SQLite database, transactions, and the operation log.
+- `plugin/src/spec.ts` records specification findings, reviews, and guarded handoffs in the operation log. It checks the current plan, decisions, approval, and local source digests without creating a build or a run.
 - `plugin/src/promotion.ts` checks an accepted run and records the permanent test snapshot of a ticket plan. The snapshot keeps its source revision, build, result digest, and test IDs.
 - `plugin/src/permanent.ts` selects the latest ticket promotion and checks its provenance and current acceptance. A permanent run uses that snapshot and does not discover tests or rules.
 - `plugin/src/targets.ts`, `plans.ts`, and `runs.ts` own the commands for targets and their instances, plans, and runs.

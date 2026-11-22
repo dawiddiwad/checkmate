@@ -47,6 +47,10 @@ Every command takes `--workspace <path>` and `--json`. Put options after the com
 |           | `plan diff <planId> <from> <to>`                                                                           | Prints the field changes and a JSON Patch.                                                                                        |
 |           | `plan promote <planId@rev> --run <runId> --build <build> --rationale <text>`                               | Saves the accepted tests as a permanent snapshot.                                                                                 |
 |           | `plan promotions <planId>`                                                                                 | Lists permanent snapshots and their provenance.                                                                                   |
+| Spec      | `spec finding <planId@rev> <gapId>`                                                                        | Records a question, gap, or specification defect with a source quote.                                                             |
+|           | `spec review <planId@rev>`                                                                                 | Records a review of the ticket rules and local sources.                                                                           |
+|           | `spec status <planId@rev>`                                                                                 | Checks whether the reviewed specification is ready for handoff.                                                                   |
+|           | `spec handoff <planId@rev>`                                                                                | Records an explicit handoff when the current review and decisions are ready.                                                      |
 | Decisions | `gap answer <planId> <gapId>`                                                                              | Records an answer to a gap.                                                                                                       |
 |           | `plan edit <planId@rev> [--patch]`                                                                         | Changes the latest revision.                                                                                                      |
 |           | `plan edit <planId> --patch`                                                                               | Corrects the derived rules of a plan. Read [Derived rules](#derived-rules).                                                       |
@@ -721,3 +725,7 @@ The tests read more variables. Read [Development](../development.md).
 
 - [Payloads](payloads.md): the JSON for each command.
 - [Runs and evidence](runs.md): the run commands in detail.
+
+### Specification review before a build
+
+Use `spec finding`, `spec review`, `spec status`, and `spec handoff` to review a ticket before the factory supplies a build. Findings need `--kind question|gap|defect`, `--source`, `--evidence`, and `--expect-sha`. Reviews need `--source`, `--evidence`, `--rationale`, and `--expect-sha`. Handoffs need `--rationale` and `--expect-sha`. `spec status --json` returns the review, findings, approval, readiness, and reasons. The [Factory guide](../guides/factory.md#review-the-ticket-before-a-build-exists) gives the full sequence and source limits.

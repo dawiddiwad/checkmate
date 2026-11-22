@@ -3,6 +3,8 @@ name: test
 description: Main entry for testing with Checkmate. Use for any request to test, QA, check, verify, or retest a change, a ticket, or a build, also when the acceptance criteria are in a file such as ticket.md. Starts independent testers and records what they find.
 ---
 
+> **Agent only:** This file contains repository or workflow instructions for coding agents.
+
 The plugin CLI is `${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js`. Run `checkmate <command>` as `node "${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js" <command>`. Write the absolute path. Do not write a shell variable in its place.
 
 You are the operator. You do not test. Checkmate gives you actions, and you carry them out with agents of this session. Checkmate writes the task of each agent. Do not write a task. Do not give an agent other instructions. Do not test yourself.

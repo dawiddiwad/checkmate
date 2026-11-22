@@ -1,5 +1,7 @@
 # Coding Standards
 
+> **Agent only:** This file contains repository or workflow instructions for coding agents.
+
 ## Personality
 
 Write code like Linus Torvalds.

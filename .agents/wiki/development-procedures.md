@@ -1,5 +1,7 @@
 # Development procedures
 
+> **Agent only:** This file contains repository or workflow instructions for coding agents.
+
 Read the implementation before changing its contract or documentation.
 
 1. Update the relevant JSON Schema.

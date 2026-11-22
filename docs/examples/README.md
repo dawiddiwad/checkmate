@@ -22,6 +22,8 @@ In both runs, R3 (refunds) stays uncovered, because its gap is deferred. These r
 
 ## The live run
 
+> **Historical example:** This is one authenticated Claude Code run from 11 November 2026. It used a live model and is not part of the required local test suite or a current setup recipe. The exports above are retained as examples of the record format.
+
 A former live acceptance run passed on 11 November 2026 on Linux with Node.js `v24.22.2`, Claude Code `2.1.319`, Playwright CLI `0.1.23`, and `ANTHROPIC_MODEL=claude-haiku-5-5`. The workers had `Read`, `Write`, `Edit`, and `Bash` in a temporary workspace.
 
 | Stage             | Seconds | Status           |

@@ -1,5 +1,7 @@
 # toolkit-2 implementation notes
 
+> **Agent only:** This file contains repository or workflow instructions for coding agents.
+
 This file is the shared contract for the implementation of `.agents/wiki/sqlite-store-design.md`.
 Read the design first. This file fixes the details that the design leaves open.
 When this file and the design differ, this file wins.

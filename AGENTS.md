@@ -1,5 +1,7 @@
 # AGENTS.md
 
+> **Agent only:** This file contains repository or workflow instructions for coding agents.
+
 ## Coding Standards
 
 Write code like Linus Torvalds.

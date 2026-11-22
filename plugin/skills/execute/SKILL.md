@@ -3,6 +3,8 @@ name: execute
 description: Run the stored tests of a Checkmate run ID such as run-1, or retest that run on a new build. Use when the test skill hands over a run, or the oracle names a run or a plan revision to run. A request to test a change goes to the test skill.
 ---
 
+> **Agent only:** This file contains repository or workflow instructions for coding agents.
+
 Read `${CLAUDE_PLUGIN_ROOT}/references/workflow.md`. It has the command rules, the actor rules, and the safety rules. In the same session as the oracle, also read `${CLAUDE_PLUGIN_ROOT}/references/session.md`: it tells you how to begin a run and how to report.
 
 The plugin CLI is `${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js`. Run `checkmate <command>` as `node "${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js" <command>`. Write the absolute path. Do not write a shell variable in its place.

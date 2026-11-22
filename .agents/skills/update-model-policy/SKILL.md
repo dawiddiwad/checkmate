@@ -3,6 +3,8 @@ name: update-model-policy
 description: Keep authentication and permissions with the Claude Code host, and keep model aliases in the level table.
 ---
 
+> **Agent only:** This file contains repository or workflow instructions for coding agents.
+
 Read `cli/src/launcher.ts`, `plugin/src/sessions.ts`, `plugin/src/levels.ts`, and the workflow skills before you change host integration.
 Use ASD-STE100 style for instructions and documentation.
 

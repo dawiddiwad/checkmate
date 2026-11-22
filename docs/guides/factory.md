@@ -2,6 +2,14 @@
 
 > **Guide** · For agents, factories, CI jobs, and scripts that use the npm CLI. This is team mode.
 
+The factory owns checkout, builds, and application startup. The host owns model selection, authentication, tools, and permissions. The oracle owns answers, approvals, result decisions, and promotion. Checkmate stores the record and enforces its gates; it does not start agents or applications.
+
+| Path                                                              | Use it when                                                    | Main gate                                                                               |
+| ----------------------------------------------------------------- | -------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| [Review before a build](#review-the-ticket-before-a-build-exists) | The ticket needs review before the application exists.         | Current local sources, review, resolved findings, and required approval before handoff. |
+| [Build first](#build-first-and-promote-tests)                     | The oracle can write and approve rules before the first build. | Retest the fixed build, accept its recorded result, then promote explicitly.            |
+| [Permanent run](#run-only-the-permanent-tests)                    | The plan already has a passing promoted snapshot.              | Select the latest accepted promotion and name the build. The snapshot stays fixed.      |
+
 The factory opens each subject with a command and gives each stage to the selected coding harness with `checkmate delegate`. The oracle decides between the stages, and the factory reads the record to know what to do next.
 
 <img src="../img/life.png" alt="Diagram: one plan from ticket to accepted result. On the left, the loop states with the role that each one waits on: needs_plan waits on the planner, needs_answers on the oracle, needs_revision on the planner, needs_approval on the oracle, ready_to_run on QA, defects_open on the factory, awaits_acceptance on the oracle, and accepted on none. On the right, the next step for each state: the planner writes plan@1 with gap G1 (plan save), the oracle answers G1 (gap answer), the planner writes plan@2 (plan revise), the oracle approves plan@2 (plan approve), QA runs the tests on build b1 (run begin), the factory fixes the code and builds b2, QA retests on build b2 (--retest-of), and the oracle accepts the result (result accept). An amber arrow goes from the runs back to the oracle's answer: a run finds a new gap. checkmate status prints the state, and the review UI shows it too." width="100%"/>

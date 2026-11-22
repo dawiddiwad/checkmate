@@ -51,7 +51,7 @@ Start Pi in your project. Enter `/checkmate-ui` to open the review UI, or enter 
 
 ## Team mode: the CLI in your factory
 
-Your agents share the work. Install the CLI:
+Use Node.js 24.12.0 or later. Install the CLI:
 
 ```sh
 npm i -g @xoxoai/checkmate
@@ -72,7 +72,9 @@ checkmate status checkout
 
 Read [Run Checkmate from a factory](docs/guides/factory.md).
 
-Use Node.js 24.12.0 or later. For delegated stages, install and authenticate the selected harness. For browser tests, install Playwright CLI: `npm i -g @playwright/cli`.
+For a human oracle, read [the inbox](docs/guides/oracle.md#find-what-waits-for-you), then follow the `next` command from `checkmate status <planId>`. After you answer a gap, ask the planner to revise the plan, check status again, and approve the exact revision it names. The same guide shows the retry after a result decision.
+
+For delegated stages, install and configure the selected harness. For browser tests, install Playwright CLI: `npm i -g @playwright/cli`.
 
 ## Documentation
 

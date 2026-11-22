@@ -1,5 +1,7 @@
 # Browser recipe
 
+> **Agent only:** This file contains repository or workflow instructions for coding agents.
+
 Use this recipe when the plan lists the `playwright-cli` tool. For another browser tool, for example an MCP server, use the same rules for sessions and evidence.
 
 Microsoft Playwright CLI is the default browser tool. Checkmate is tested with version `0.1.23`.

@@ -11,7 +11,7 @@ The plugin is plain TypeScript that Node.js runs directly, with no runtime npm d
 1. Use Node.js 24.12.0 or later.
 2. Install the pinned development dependencies with `npm ci`.
 3. Make your change on a feature branch.
-4. Install Pi and set `CHECKMATE_BROWSER_EXECUTABLE` to a Chromium executable.
+4. Install the Pi CLI and set `CHECKMATE_BROWSER_EXECUTABLE` to an executable Chromium browser. CI pins Pi 1.5.2.
 5. Run `npm run phase:verify`.
 
 ## Layout

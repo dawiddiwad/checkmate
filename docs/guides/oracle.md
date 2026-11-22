@@ -6,6 +6,8 @@ The oracle has the authority, and the agents do the work. Each decision is a rec
 
 ## Find what waits for you
 
+Open the application workspace that contains `.checkmate/checkmate.db`. Install the CLI with Node.js 24.12.0 or later if it is not installed. The factory or agent creates the plan and run; you make the decisions. A human can answer and approve without a model. A delegated `revise` stage needs a configured host and its permissions.
+
 ```sh
 checkmate inbox
 ```
@@ -20,6 +22,26 @@ run-1	result	checkout@1	b1	partial	passed=1
 The inbox lists the gaps to answer, the gaps of runs that the plan does not have yet (`run_gap`), the plans to approve, the rejected plans to change, the results to accept, and the plan requests without a revision (`requested`). The plan requests wait for the planner, not for you. The summary of a rejected plan starts with `Rejected. Change the plan.`
 
 To see one ticket, run `checkmate status <planId>`. It names the loop state and who acts next. In the review UI, each plan has `Needs you`. It shows the items that block testing first.
+
+## Take the next action
+
+Start with the inbox, then inspect the subject that needs your decision:
+
+```sh
+checkmate inbox
+checkmate status SHOP-12
+```
+
+Use the `next` command printed by `status`. For example, answer a gap, then ask the planner to apply the answer:
+
+```sh
+checkmate gap answer SHOP-12 G1 --kind clarify --source ticket.md \
+  --value "The promotion replaces loyalty." --rationale "Product owner decision."
+checkmate delegate revise SHOP-12 --allow Read --allow Bash
+checkmate status SHOP-12
+```
+
+When status says `needs_approval`, approve the revision it names. When it says `defects_open`, the factory must fix the application and provide a new build before QA retests. After the retest, inspect its evidence and accept or reject the recorded result. See [Run Checkmate from a factory](factory.md#build-first-and-promote-tests) for build ownership and the full retest path.
 
 ## The decisions
 

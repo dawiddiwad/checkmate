@@ -190,40 +190,43 @@
 		"number": 31,
 		"name": "Trigger one fixed ticket with a pinned build — ambiguous input or wrong checkout.",
 		"status": "partial",
-		"reason": "An external fixture supplies explicit broken and fixed build labels; the historical campaign and pinned checkout are absent.",
-		"test": "Answer, revise, and approve the named revision — execution against the wrong revision."
+		"reason": "The fixture binds a ticket hash to explicit build labels; a real Factory checkout and historical campaign trigger are not verified.",
+		"test": "Factory pins a ticket to built previews, retains failed evidence, and promotes only a passing retest"
 	},
 	{
 		"number": 32,
 		"name": "Pause for a human choice and resume from an archived campaign — lost decision or nonportable state.",
-		"status": "gap",
-		"reason": "The historical self-Factory campaign runner is absent; supported external Factory behavior still needs fresh scenarios."
+		"status": "partial",
+		"reason": "A copied Checkmate workspace resumes after an oracle answer; historical campaign archive and resumption are unavailable.",
+		"test": "Factory pins a ticket to built previews, retains failed evidence, and promotes only a passing retest"
 	},
 	{
 		"number": 33,
 		"name": "Reach a real built preview with deterministic seed data — QA runs against an empty/wrong app.",
-		"status": "partial",
-		"reason": "The external fixture supplies a real loopback app; an independently built candidate preview is not yet covered.",
-		"test": "Answer, revise, and approve the named revision — execution against the wrong revision."
+		"status": "covered",
+		"test": "Factory pins a ticket to built previews, retains failed evidence, and promotes only a passing retest",
+		"limit": "A disposable external Factory fixture builds and seeds the preview; a production Factory is not exercised."
 	},
 	{
 		"number": 34,
 		"name": "Retain QA after a verification failure and label the failed check — bad candidate incorrectly promoted.",
-		"status": "gap",
-		"reason": "The historical self-Factory campaign runner is absent; supported external Factory behavior still needs fresh scenarios."
+		"status": "partial",
+		"reason": "A failed QA assertion and its evidence prevent promotion; a separate Factory candidate-verification failure is not exercised.",
+		"test": "Factory pins a ticket to built previews, retains failed evidence, and promotes only a passing retest"
 	},
 	{
 		"number": 35,
 		"name": "Carry evidence into the fix and retest the next build — duplicated work or stale claims.",
 		"status": "partial",
-		"reason": "The broken result and evidence persist into a distinct-build retest; historical archived campaign transport is absent.",
-		"test": "Answer, revise, and approve the named revision — execution against the wrong revision."
+		"reason": "The broken result and evidence survive a fixed-build retest; the fixture does not prove a Factory consumed that evidence to produce the fix.",
+		"test": "Factory pins a ticket to built previews, retains failed evidence, and promotes only a passing retest"
 	},
 	{
 		"number": 36,
 		"name": "Stop on budget and close the preview and browser — unbounded loop, leaked processes, or unavailable evidence.",
-		"status": "gap",
-		"reason": "The historical self-Factory campaign runner is absent; supported external Factory behavior still needs fresh scenarios."
+		"status": "partial",
+		"reason": "External previews are stopped and observed exiting, but the historical campaign budget and browser lifecycle owner are unavailable.",
+		"test": "Factory pins a ticket to built previews, retains failed evidence, and promotes only a passing retest"
 	},
 	{
 		"number": 37,

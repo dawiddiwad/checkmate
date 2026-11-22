@@ -11,7 +11,6 @@ import { root } from '../support.ts'
 const project = mkdtempSync(join(tmpdir(), 'checkmate-factory-package-'))
 let binary = ''
 test.before(() => {
-	execFileSync(process.execPath, ['scripts/build-cli.ts'], { cwd: root, stdio: 'ignore' })
 	const packed = JSON.parse(
 		execFileSync('npm', ['pack', '--ignore-scripts', '--json', '--pack-destination', project], {
 			cwd: join(root, 'cli'),

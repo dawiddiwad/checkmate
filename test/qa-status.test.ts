@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
 import { realpathSync } from 'node:fs'
-import { join } from 'node:path'
+import { delimiter, join } from 'node:path'
 import { closeStore, openStore } from '../plugin/src/store.ts'
 import { answerGap, openPlan } from '../plugin/src/plans.ts'
 import { followCount } from '../plugin/src/explorers.ts'
@@ -33,8 +33,8 @@ test('CLI and review page share same-build follow recommendations and retain saf
 	assert.equal(followCount(opened, 'x-1'), 1)
 	assert.equal(followCount(opened, 'x-2'), 0)
 	closeStore(opened)
-	const fake = fakeClaude(t, {}, 'pi')
-	const env = { ...process.env, ...fake.env, CHECKMATE_HARNESS: 'pi' }
+	const fake = fakeClaude(t, {})
+	const env = { ...process.env, ...fake.env, PATH: fake.env.PATH.split(delimiter)[0], CHECKMATE_HARNESS: 'pi' }
 	const ui = await startUi({ workspace, env, defaultActor: actor })
 	t.after(() => ui.close())
 	const readCli = (planId = 'checkout') =>

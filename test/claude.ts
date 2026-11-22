@@ -64,6 +64,7 @@ const env = Object.keys(process.env).filter((name) => name.startsWith('CHECKMATE
 const work = process.env.PLAYWRIGHT_MCP_OUTPUT_DIR
 const files = { explorer: 'plan.md', tester: 'report.md', follower: 'follow-up-report.md' }
 if (work && files[role]) writeFileSync(join(work, files[role]), role + ' of ' + process.env.PLAYWRIGHT_CLI_SESSION + '\\n')
+if (process.env.FAKE_FOLLOW_STRAY && role === 'follower') writeFileSync('follow-stray.txt', 'Follow-up stray.')
 appendFileSync(process.env.FAKE_CLAUDE_CALL, JSON.stringify({ role, args, prompt, cwd: process.cwd(), env, work, session, pid: process.pid, actor: process.env.CHECKMATE_ACTOR }) + '\\n')
 const replies = JSON.parse(readFileSync(process.env.FAKE_CLAUDE_REPLIES, 'utf8'))
 const chosen = replies[role]
@@ -94,6 +95,10 @@ else if (reply === '!model') {
 }
 else if (reply === '!stubborn') {
 	process.on('SIGTERM', () => {})
+	setTimeout(() => {}, 60000)
+} else if (reply === '!partial-sleep') {
+	if (!pi) throw Error('Partial replay requires Pi')
+	emit({ type: 'message_end', message: { role: 'assistant', provider: 'fixture', model: 'partial', stopReason: 'stop', content: [{ type: 'text', text: 'Partial observation.' }], usage: { cost: { total: 0.125 } } } })
 	setTimeout(() => {}, 60000)
 } else if (reply === '!sleep') setTimeout(() => {}, 60000)
 else if (reply === '!ask') askHooks().then(() => finish('Done.'))

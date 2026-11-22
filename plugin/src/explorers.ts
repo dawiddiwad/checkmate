@@ -555,6 +555,46 @@ function watchWork(store: Store, actor: string, explorationId: string, explorer:
 	}
 }
 
+async function watchedTurns<T>(
+	store: Store,
+	actor: string,
+	explorationId: string,
+	explorer: string,
+	work: ReturnType<typeof explorerWork>,
+	launch: Launch,
+	env: Env,
+	executable: string,
+	initialTurn: string,
+	run: (
+		turn: (context: ChildContext, own: string[], prompt: string, name: string) => Promise<ChildCall>,
+		next: (name: string) => void
+	) => Promise<T>
+) {
+	const rules = launch.context.harness === 'pi' ? launch.allow : [...launch.allow, ...work.grant]
+	const watch = watchWork(store, actor, explorationId, explorer, initialTurn)
+	const turn = (tester: ChildContext, own: string[], prompt: string, name: string) => {
+		const hook = childHook(store.workspace, explorationId, explorer)
+		const context = { ...tester, deny: work.deny, hook, work: work.folder }
+		return watchStray(store, actor, explorationId, explorer, name, () =>
+			launchChild(
+				executable,
+				childArgs(context, own, rules),
+				prompt,
+				store.workspace,
+				childEnv(env, work.extraEnv, hook, context, rules),
+				launch.timeoutSeconds,
+				noteChild(store, actor, explorationId, explorer),
+				context.harness
+			)
+		)
+	}
+	try {
+		return await run(turn, watch.next)
+	} finally {
+		watch.stop()
+	}
+}
+
 async function launchExplorers(
 	store: Store,
 	actor: string,
@@ -574,8 +614,8 @@ async function launchExplorers(
 			catalog,
 			launch.testerEfforts?.[explorer] ?? (model ? '' : (launch.effort ?? ''))
 		)
-		const { folder, grant, deny, extraEnv } = explorerWork(store, explorationId, explorer, launch.explorers)
-		const rules = launch.context.harness === 'pi' ? launch.allow : [...launch.allow, ...grant]
+		const work = explorerWork(store, explorationId, explorer, launch.explorers)
+		const { folder, grant } = work
 		const brief = explorerBrief(opened.charter, entries, `qa-${explorationId}-${explorer}-`, folder, {
 			study: launch.studySeconds,
 			test: launch.testSeconds,
@@ -591,36 +631,37 @@ async function launchExplorers(
 				brief,
 			},
 		})
-		const turn = (own: string[], prompt: string, name: string, observedModel?: string) => {
-			const hook = childHook(store.workspace, explorationId, explorer)
-			const context = { ...contextForModel(tester, observedModel), deny, hook, work: folder }
-			return watchStray(store, actor, explorationId, explorer, name, () =>
-				launchChild(
-					executable,
-					childArgs(context, own, rules),
-					prompt,
-					store.workspace,
-					childEnv(env, extraEnv, hook, context, rules),
-					launch.timeoutSeconds,
-					noteChild(store, actor, explorationId, explorer),
-					context.harness
-				)
-			)
-		}
-		const watch = watchWork(store, actor, explorationId, explorer, 'study')
-		const study = await turn(['--session-id', session], brief.study, 'study')
-		watch.next('test')
-		if (!study.failure)
-			event(store, actor, explorationId, {
-				step: 'turn',
-				explorer,
-				status: 'started',
-				detail: { session, turn: 'test' },
-			})
-		const calls = study.failure
-			? [study]
-			: [study, await turn(['--resume', session], brief.test, 'test', study.observedModels?.at(-1))]
-		watch.stop()
+		const calls = await watchedTurns(
+			store,
+			actor,
+			explorationId,
+			explorer,
+			work,
+			launch,
+			env,
+			executable,
+			'study',
+			async (turn, next) => {
+				const study = await turn(tester, ['--session-id', session], brief.study, 'study')
+				next('test')
+				if (study.failure) return [study]
+				event(store, actor, explorationId, {
+					step: 'turn',
+					explorer,
+					status: 'started',
+					detail: { session, turn: 'test' },
+				})
+				return [
+					study,
+					await turn(
+						contextForModel(tester, study.observedModels?.at(-1)),
+						['--resume', session],
+						brief.test,
+						'test'
+					),
+				]
+			}
+		)
 		return { explorer, session, calls }
 	})
 	const ended = await Promise.all(runs)
@@ -1192,10 +1233,8 @@ export async function driveFollow(workspace: string, explorationId: string, env:
 			sessions
 				.filter((item) => !item.skipped)
 				.map(async ({ explorer, session }) => {
-					const { folder, grant, deny, extraEnv } = explorerWork(store, explorationId, explorer, count)
-					const rules = plan.context.harness === 'pi' ? plan.allow : [...plan.allow, ...grant]
-					const watch = watchWork(store, actor, explorationId, explorer, 'follow-up')
-					const hook = childHook(store.workspace, explorationId, explorer)
+					const work = explorerWork(store, explorationId, explorer, count)
+					const { folder } = work
 					const model = plan.modelOverride ? undefined : initial.testerModels?.[explorer]
 					const resumed =
 						plan.context.harness === 'pi' && !model && !hostModel(plan.context.piArgs ?? [])
@@ -1210,20 +1249,24 @@ export async function driveFollow(workspace: string, explorationId: string, env:
 								? ''
 								: (initial.testerEfforts?.[explorer] ?? (model ? '' : (initial.effort ?? '')))
 						)
-					const context = { ...tester, deny, hook, work: folder }
-					const call = await watchStray(store, actor, explorationId, explorer, 'follow-up', () =>
-						launchChild(
-							executable,
-							childArgs(context, ['--resume', session], rules),
-							followBrief(plan.questions, folder, plan.seconds),
-							store.workspace,
-							childEnv(env, extraEnv, hook, context, rules),
-							plan.timeoutSeconds,
-							noteChild(store, actor, explorationId, explorer),
-							context.harness
-						)
+					const call = await watchedTurns(
+						store,
+						actor,
+						explorationId,
+						explorer,
+						work,
+						launch,
+						env,
+						executable,
+						'follow-up',
+						(turn) =>
+							turn(
+								tester,
+								['--resume', session],
+								followBrief(plan.questions, folder, plan.seconds),
+								'follow-up'
+							)
 					)
-					watch.stop()
 					return { explorer, session, call, tester, model }
 				})
 		)

@@ -398,6 +398,12 @@ test('a completed fresh exploration satisfies answers shared in its same-build k
 	openTest(opened, 'checkout', 'x-3', 'b1')
 	assert.equal(status().state, 'exploring')
 	assert.match(status().next[0], unused)
+	assert.deepEqual(
+		status()
+			.qa.follow.filter((item) => item.recommended)
+			.map((item) => item.available),
+		[false]
+	)
 	done(opened, 'x-3', 'failed')
 	assert.equal(status().state, 'ready_to_test')
 	assert.match(status().next[0], unused)
@@ -410,6 +416,8 @@ test('a completed fresh exploration satisfies answers shared in its same-build k
 	done(opened, 'x-5')
 	assert.deepEqual([status().state, status().next], ['passed', []])
 	assert.equal(unusedAnswers(opened, 'x-1').length, 1)
+	const prior = status().qa.follow.find((item) => item.explorationId === 'x-1')!
+	assert.deepEqual([prior.eligible, prior.recommended, prior.available], [true, false, false])
 })
 
 test('an empty rule set and a revision without results cannot pass from exploration', (t) => {

@@ -18802,8 +18802,32 @@ function foundEntries(store, planId, explorationId, limit, claims, questions) {
 }
 var overlaid = ["needs_plan", "ready_to_run", "nothing_to_run", "needs_retest", "passed", "accepted"];
 function planStatus(store, planId, harness = workspaceHarness(store)) {
-  const { follows, ...status } = loopStatus(store, planId, harness);
-  return { ...status, rules: rulesLine(store, planId), next: [...follows, ...status.next] };
+  const { follows, followActions, ...status } = loopStatus(store, planId, harness);
+  const next = [...follows, ...status.next];
+  const running3 = status.explorations.some((item) => runningExploration.includes(item.state));
+  const actions = next.map((text2) => {
+    const follow = followActions.find((item) => item.text === text2);
+    return follow ? { kind: "follow", ...follow, available: !running3 } : { kind: "instruction", text: text2 };
+  });
+  const qa = {
+    build: buildOrder(store, planId).at(-1)?.build ?? status.latestRun?.build ?? null,
+    state: status.state,
+    waitsOn: status.waitsOn,
+    reasons: status.why,
+    blockers: [
+      ...status.gaps.filter((gap) => gap.severity === "blocking").map((gap) => ({ kind: "gap", id: gap.gapId, text: gap.question })),
+      ...status.questions.filter((question) => question.blocking).map((question) => ({ kind: "question", id: question.id, text: question.question })),
+      ...status.pendingDecisions.map((decision) => ({
+        kind: "decision",
+        id: decision.id,
+        text: `Gap ${decision.gapId} has a pending ${decision.kind} decision`
+      })),
+      ...status.claims.filter((claim) => oracleStates.includes(claim.state) || factoryStates.includes(claim.state)).map((claim) => ({ kind: "claim", id: claim.claimId, text: claim.title }))
+    ],
+    follow: followActions.map((item) => ({ ...item, available: item.recommended && !running3 })),
+    actions
+  };
+  return { ...status, rules: rulesLine(store, planId), next, qa };
 }
 function loopStatus(store, planId, harness) {
   const base = checkStatus(store, planId, harness);
@@ -18835,12 +18859,22 @@ function loopStatus(store, planId, harness) {
       for (const id2 of knownAnswerIds) knownAnswers.add(id2);
     }
   }
-  const follows = followSources.flatMap((item) => {
-    const count2 = followCount(store, item.explorationId, knownAnswers);
-    return count2 ? [
-      `${amount(count2, "unused answer")} of ${item.explorationId}: checkmate explore follow ${item.explorationId}`
-    ] : [];
+  const followActions = explorations.map((item) => {
+    const eligibleCount = startOf(explorationEvents(store, item.explorationId)) ? followCount(store, item.explorationId) : 0;
+    const count2 = eligibleCount && followSources.includes(item) ? followCount(store, item.explorationId, knownAnswers) : 0;
+    return {
+      explorationId: item.explorationId,
+      build: item.build,
+      state: item.state,
+      eligible: eligibleCount > 0,
+      unusedAnswers: eligibleCount,
+      recommended: count2 > 0,
+      count: count2,
+      command: `checkmate explore follow ${item.explorationId}`,
+      text: `${amount(count2, "unused answer")} of ${item.explorationId}: checkmate explore follow ${item.explorationId}`
+    };
   });
+  const follows = followActions.filter((item) => item.recommended).map((item) => item.text);
   const keep = mergedEntries(store, planId);
   const claims = planClaims(store, planId, keep).filter((claim) => claim.open).map((claim) => ({
     claimId: claim.id,
@@ -18853,7 +18887,7 @@ function loopStatus(store, planId, harness) {
     handoff: claim.handoff
   }));
   const questions = planQuestions(store, planId, keep).filter((question) => question.answer === null);
-  const extra = { explorations, claims, questions, follows };
+  const extra = { explorations, claims, questions, follows, followActions };
   if (!overlaid.includes(base.state)) return { ...base, ...extra };
   const running3 = explorations.filter((item) => runningExploration.includes(item.state));
   const paused = running3.filter((item) => item.paused);
@@ -24195,7 +24229,7 @@ function permissionItem(item) {
     permission: item
   };
 }
-function reviewOf(store, planId) {
+function reviewOf(store, planId, harness) {
   const map = ruleMap(store, planId);
   const details = new Map(claimDetails(store, planId).map((detail) => [detail.id, detail]));
   const waiting = needsYou(store).items.filter((item) => item.planId === planId);
@@ -24218,11 +24252,12 @@ function reviewOf(store, planId) {
   const explorations = planExplorations(store, planId);
   const latest = planHasRevision(store, planId) ? planDetail(store, planId) : null;
   const running3 = explorations.find((item) => item.running) ?? null;
-  const last = explorations.at(-1);
-  const answers = last && !running3 ? followCount(store, last.explorationId) : 0;
+  const qa = planStatus(store, planId, harness).qa;
+  const answers = qa.follow.find((item) => item.available) ?? null;
   return {
     phase: running3 ? phaseOf2(explorationEvents(store, running3.explorationId), running3.state) : null,
-    answers: last && answers ? { explorationId: last.explorationId, build: last.build, count: answers } : null,
+    answers,
+    qa,
     planId,
     objective: request2.objective,
     target: `${target.profile.targetId}@${target.revision}`,
@@ -24715,7 +24750,7 @@ function buildHeadline(review, defects, critical) {
   const last = review.explorations.at(-1);
   if (last && (last.state === "stopped" || last.state === "interrupted"))
     return `The test of build ${last.build} was ${last.state}.`;
-  const build = review.map.builds.at(-1)?.build;
+  const build = review.map.builds.length ? review.qa.build : null;
   if (build) return `Build ${build}: ${plural(defects, "open defect")}${critical ? `, ${critical} critical` : ""}.`;
   const run2 = review.latestFinalizedRun;
   if (!run2) return "No build is tested yet.";
@@ -24916,7 +24951,7 @@ function panel(context, review, view, current2, cost) {
 	</section>`;
 }
 function reviewPage(store, context, planId, params, refusal = null, notice = null) {
-  const review = reviewOf(store, planId);
+  const review = reviewOf(store, planId, context.harness);
   const views2 = viewsOf(review);
   const asked2 = params.get("view") ?? "needs";
   const current2 = views2.includes(asked2) ? asked2 : "needs";
@@ -24955,6 +24990,7 @@ function reviewPage(store, context, planId, params, refusal = null, notice = nul
 				class="sp-review"
 				data-review
 				data-plan="${planId}"
+				data-qa-status="${JSON.stringify(review.qa)}"
 				data-region="review"
 				${item ? html2`data-open="${item.key}"` : ""}
 			>

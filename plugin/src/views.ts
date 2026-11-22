@@ -709,7 +709,8 @@ const overlaid: LoopState[] = ['needs_plan', 'ready_to_run', 'nothing_to_run', '
 export function planStatus(store: Store, planId: string, harness = workspaceHarness(store)) {
 	const { follows, followActions, ...status } = loopStatus(store, planId, harness)
 	const next = [...follows, ...status.next]
-	const running = status.explorations.some((item) => runningExploration.includes(item.state))
+	const active = status.explorations.find((item) => runningExploration.includes(item.state))
+	const running = Boolean(active)
 	const actions = next.map((text) => {
 		const follow = followActions.find((item) => item.text === text)
 		return follow
@@ -718,6 +719,7 @@ export function planStatus(store: Store, planId: string, harness = workspaceHarn
 	})
 	const qa = {
 		build: buildOrder(store, planId).at(-1)?.build ?? status.latestRun?.build ?? null,
+		activeBuild: active?.build ?? null,
 		state: status.state,
 		waitsOn: status.waitsOn,
 		reasons: status.why,

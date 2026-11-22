@@ -115,8 +115,18 @@ test('CLI and review page share same-build follow recommendations and retain saf
 		)
 	)
 	const other = openStore(workspace)
-	plan(other, 'other')
-	answerGap(other, actor, {
+	openTest(other, 'checkout', 'x-4', 'b2')
+	done(other, 'x-4')
+	openTest(other, 'checkout', 'x-5', 'b1')
+	closeStore(other)
+	const running = readCli()
+	const runningPage = await readPage()
+	assert.deepEqual(runningPage.qa, running.qa)
+	assert.deepEqual([running.qa.build, running.qa.activeBuild], ['b2', 'b1'])
+	assert.match(runningPage.body, /Build b1 is under test now/)
+	const nextStore = openStore(workspace)
+	plan(nextStore, 'other')
+	answerGap(nextStore, actor, {
 		planId: 'other',
 		gapId: 'G1',
 		kind: 'clarify',
@@ -124,7 +134,7 @@ test('CLI and review page share same-build follow recommendations and retain saf
 		source: 'owner',
 		rationale: 'Owner answer.',
 	})
-	closeStore(other)
+	closeStore(nextStore)
 	const piStatus = readCli('other')
 	const piPage = await readPage('other')
 	assert.deepEqual(piPage.qa, piStatus.qa)

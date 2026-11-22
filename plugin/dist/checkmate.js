@@ -18804,13 +18804,15 @@ var overlaid = ["needs_plan", "ready_to_run", "nothing_to_run", "needs_retest", 
 function planStatus(store, planId, harness = workspaceHarness(store)) {
   const { follows, followActions, ...status } = loopStatus(store, planId, harness);
   const next = [...follows, ...status.next];
-  const running3 = status.explorations.some((item) => runningExploration.includes(item.state));
+  const active = status.explorations.find((item) => runningExploration.includes(item.state));
+  const running3 = Boolean(active);
   const actions = next.map((text2) => {
     const follow = followActions.find((item) => item.text === text2);
     return follow ? { kind: "follow", ...follow, available: !running3 } : { kind: "instruction", text: text2 };
   });
   const qa = {
     build: buildOrder(store, planId).at(-1)?.build ?? status.latestRun?.build ?? null,
+    activeBuild: active?.build ?? null,
     state: status.state,
     waitsOn: status.waitsOn,
     reasons: status.why,
@@ -24746,7 +24748,7 @@ var cellWords = {
 };
 function buildHeadline(review, defects, critical) {
   if (review.running)
-    return `Build ${review.running.build} is under test now by ${plural(review.running.explorers ?? 0, "tester")}.`;
+    return `Build ${review.qa.activeBuild} is under test now by ${plural(review.running.explorers ?? 0, "tester")}.`;
   const last = review.explorations.at(-1);
   if (last && (last.state === "stopped" || last.state === "interrupted"))
     return `The test of build ${last.build} was ${last.state}.`;

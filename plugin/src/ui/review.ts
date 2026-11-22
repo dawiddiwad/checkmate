@@ -829,7 +829,7 @@ const cellWords: Record<CellStatus, [string, string]> = {
 
 function buildHeadline(review: Review, defects: number, critical: number) {
 	if (review.running)
-		return `Build ${review.running.build} is under test now by ${plural(review.running.explorers ?? 0, 'tester')}.`
+		return `Build ${review.qa.activeBuild} is under test now by ${plural(review.running.explorers ?? 0, 'tester')}.`
 	const last = review.explorations.at(-1)
 	if (last && (last.state === 'stopped' || last.state === 'interrupted'))
 		return `The test of build ${last.build} was ${last.state}.`

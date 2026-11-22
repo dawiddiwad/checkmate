@@ -282,6 +282,6 @@ Export plain functions over a `Store`. The UI and the CLI use the same functions
 
 ## Tests
 
-`node --test test/*.test.ts` must stay fast (no network, no browser, no Claude). Use temporary workspaces.
-Cover the cases listed in design section 16. Remove toolkit-1 tests and fixtures that no longer apply. Keep
-`test/fixture.ts` (the checkout fixture server) and adapt `test/live.ts` later.
+Use the current test policy in [Development procedures](development-procedures.md#test-design) and the command list in [Development](../../docs/development.md#checks). `node --test test/*.test.ts` runs the `*.test.ts` suites, including browser suites. Browser suites skip when `CHECKMATE_BROWSER_EXECUTABLE` is unset. CI runs them with Chromium.
+
+The cases in design section 16 describe distinct storage and state invariants. Keep their useful behavior covered. Retire a case only when another test proves the same failure mode or when it has no distinct behavior to protect.

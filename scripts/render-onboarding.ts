@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { execFileSync } from 'node:child_process'
 
-const framesPerSecond = 10
+const framesPerSecond = 8
 const media = (name: string) => pathToFileURL(join(process.cwd(), 'docs/media', name)).href
 const frames = await mkdtemp(join(tmpdir(), 'checkmate-animation-'))
 const browser = await chromium.launch({

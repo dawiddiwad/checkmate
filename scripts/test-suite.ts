@@ -34,6 +34,7 @@ const files = selections[name]
 const missing = files.filter((file) => !all.includes(file))
 if (missing.length) throw Error(`Missing test files: ${missing.join(', ')}`)
 console.log(`${name}: ${files.length} test files`)
-const result = spawnSync(process.execPath, ['--test', ...files], { stdio: 'inherit' })
+const options = name === 'merge' ? ['--test-concurrency=4'] : []
+const result = spawnSync(process.execPath, ['--test', ...options, ...files], { stdio: 'inherit' })
 if (result.error) throw result.error
 process.exitCode = result.status ?? 1

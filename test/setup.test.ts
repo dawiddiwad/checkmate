@@ -8,13 +8,7 @@ import { once } from 'node:events'
 import { run } from '../plugin/src/cli.ts'
 import { closeStore, openStore } from '../plugin/src/store.ts'
 import { explorerBrief } from '../plugin/src/briefs.ts'
-import {
-	addInstance,
-	anyTestOperation,
-	anyTestOperationText,
-	targetRevision,
-	urlTargetId,
-} from '../plugin/src/targets.ts'
+import { addInstance, anyTestOperation, anyTestOperationText, targetRevision } from '../plugin/src/targets.ts'
 import { gate } from '../plugin/src/plans.ts'
 import { actor, directory, plan, store, target } from './support.ts'
 import { fakeClaude } from './claude.ts'
@@ -187,12 +181,4 @@ test('test with no build, no git, and no target sets up the target from --url an
 	assert.match(again.output, /\nassumed: target=127-0-0-1-1 \(the only target\)\n/)
 	assert.doesNotMatch(again.output, /assumed: build=/)
 	assert.equal(command(folder, ['explore', 'wait', 'x-2', '--timeout', '60'], env).code, 0)
-})
-
-test('the default target ID is the host and port of the URL', () => {
-	assert.deepEqual(['http://localhost:3000/app', 'https://Shop.Example.com/', 'not a url'].map(urlTargetId), [
-		'localhost-3000',
-		'shop-example-com',
-		'app',
-	])
 })

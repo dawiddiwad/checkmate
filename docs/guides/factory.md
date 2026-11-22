@@ -116,6 +116,15 @@ checkmate plan save SHOP-12 <<'JSON'
     "consequence":"The combined quote is unclear.","decisionId":null}]
 }
 JSON
+checkmate delegate spec SHOP-12@1
+checkmate spec status SHOP-12@1 --json
+```
+
+`delegate spec` sends the current ticket sources, plan revision, and applied oracle decisions to the configured model host. It gives the reviewer no tools and no application instance. The reviewer returns source-backed questions, gaps, and specification defects. Checkmate adds new blocking gaps, records their source excerpts, and records the review. The reviewer cannot answer, approve, or hand off. A source quote must match a local ticket file. If the host cannot review the sources, the command reports the failure and does not claim a review.
+
+A human or external factory can instead record the finding and review directly:
+
+```sh
 SHA=$(checkmate plan show SHOP-12@1 --json | node -pe "JSON.parse(require('fs').readFileSync(0)).sha256")
 checkmate spec finding SHOP-12@1 G1 --kind question --source ticket.md \
   --evidence "Does it replace loyalty?" --expect-sha "$SHA"
@@ -126,7 +135,7 @@ checkmate spec status SHOP-12@1 --json
 
 Use `--kind gap` or `--kind defect` for other specification findings. The finding must name an open plan gap and quote the named source. Each review records the current rule IDs, the actor, rationale, source excerpt, plan SHA, and source digests. All plan sources must be readable local files of at most 40,000 characters. Keep a local copy of an external ticket source. Source matching checks the quote, not the accuracy of the review. Checkmate stores these records in the operation log; `spec status --json` returns the findings and latest review.
 
-The status above is not ready. The oracle answers, and the planner applies the answer in a new revision. Review that revision and approve it if the target policy requires approval.
+The status above is not ready. The oracle answers, and the planner applies the answer in a new revision. Run `delegate spec` again on that revision. It receives the applied oracle answer. Review and approve the revision if the target policy requires approval. A pending answer must be applied with `plan revise` before another delegated review. If the reviewer finds another issue, answer it and repeat the loop before approval.
 
 ```sh
 checkmate gap answer SHOP-12 G1 --kind clarify --value "The promotion replaces loyalty." \
@@ -134,9 +143,9 @@ checkmate gap answer SHOP-12 G1 --kind clarify --value "The promotion replaces l
 checkmate plan revise SHOP-12 <<'JSON'
 {"tests":{}}
 JSON
+checkmate delegate spec SHOP-12@2
+checkmate spec status SHOP-12@2 --json
 SHA=$(checkmate plan show SHOP-12@2 --json | node -pe "JSON.parse(require('fs').readFileSync(0)).sha256")
-checkmate spec review SHOP-12@2 --source ticket.md --evidence "The promotion quote is 240 PLN." \
-  --rationale "Reviewed the ticket rules and the oracle answer." --expect-sha "$SHA"
 checkmate plan approve SHOP-12@2 --rationale "Approve the resolved rules."
 checkmate spec status SHOP-12@2 --json
 checkmate spec handoff SHOP-12@2 --expect-sha "$SHA" --rationale "The factory can build these rules."

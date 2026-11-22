@@ -2,6 +2,7 @@ import type { Stage, DelegateResponse } from './launcher.ts'
 import type { Reply } from '../../plugin/src/index.ts'
 import { busyReason, formatReply, isBusy, main as core, refused, run as coreRun } from '../../plugin/src/index.ts'
 import { delegate, stages } from './launcher.ts'
+import { exploreSpec } from './spec.ts'
 import { readFileSync } from 'node:fs'
 
 type Parsed = {
@@ -15,8 +16,9 @@ type Parsed = {
 
 const delegateUsage =
 	'checkmate delegate <setup|plan|revise|execute> <targetId|planId|planId|runId> [--timeout <seconds>]'
+const delegateSpecUsage = 'checkmate delegate spec <planId@revision> [--timeout <seconds>]'
 const delegateHarnessUsage =
-	'With Pi, omit --allow and --claude-arg. Claude requires --allow <rule> and accepts --claude-arg <arg>. CHECKMATE_HARNESS overrides the workspace harness. The default is Claude.'
+	'With Pi, omit --allow and --claude-arg. Claude requires --allow <rule> and accepts --claude-arg <arg>. CHECKMATE_HARNESS overrides the workspace harness. The default is Claude. delegate spec uses no tools and needs no --allow.'
 
 function version() {
 	return JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version as string
@@ -24,7 +26,7 @@ function version() {
 
 function help(json: boolean) {
 	const commands = coreRun(['--help'], { cwd: process.cwd(), env: {}, stdin: () => '' }).output.split('\n')
-	const usage = [...commands.slice(0, -1), delegateUsage, delegateHarnessUsage, commands.at(-1)]
+	const usage = [...commands.slice(0, -1), delegateUsage, delegateSpecUsage, delegateHarnessUsage, commands.at(-1)]
 	return json ? JSON.stringify({ status: 'completed', subject: 'checkmate', reasons: [], usage }) : usage.join('\n')
 }
 
@@ -106,7 +108,7 @@ function print(response: DelegateResponse & Pick<Reply, 'refusal' | 'hint'>, jso
 }
 
 function printHelp(json: boolean) {
-	const usage = [delegateUsage, delegateHarnessUsage]
+	const usage = [delegateUsage, delegateSpecUsage, delegateHarnessUsage]
 	const output = json
 		? JSON.stringify({ status: 'completed', subject: 'delegate', reasons: [], usage })
 		: ['completed delegate', ...usage].join('\n')
@@ -125,8 +127,8 @@ export function parseDelegate(tokens: string[]) {
 	seconds(parsed.values.timeout, 'timeout')
 	if (parsed.positionals.length !== 2)
 		throw new Error(`delegate needs 2 argument(s), not ${parsed.positionals.length}: <stage> <subject>`)
-	if (!stages.includes(parsed.positionals[0] as Stage))
-		throw new Error(`Unknown stage: ${parsed.positionals[0]}. Use one of: ${stages.join(', ')}.`)
+	if (parsed.positionals[0] !== 'spec' && !stages.includes(parsed.positionals[0] as Stage))
+		throw new Error(`Unknown stage: ${parsed.positionals[0]}. Use one of: ${[...stages, 'spec'].join(', ')}.`)
 	return parsed
 }
 
@@ -138,8 +140,20 @@ async function runDelegate(tokens: string[]) {
 	} catch (error) {
 		return refuse('invalid_request', 'delegate', error, tokens.includes('--json'))
 	}
-	const [stage, subject] = parsed.positionals as [Stage, string]
+	const [stage, subject] = parsed.positionals as [Stage | 'spec', string]
 	try {
+		if (stage === 'spec') {
+			if (parsed.allow.length || parsed.claudeArgs.length)
+				throw new Error('delegate spec uses no tools and does not accept --allow or --claude-arg.')
+			return print(
+				exploreSpec(
+					parsed.values.workspace ?? process.cwd(),
+					subject,
+					seconds(parsed.values.timeout, 'timeout') ?? 300
+				),
+				parsed.json
+			)
+		}
 		const response = await delegate(parsed.values.workspace ?? process.cwd(), stage, subject, {
 			allowedTools: parsed.allow,
 			claudeArgs: parsed.claudeArgs,

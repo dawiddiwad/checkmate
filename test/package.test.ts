@@ -9,6 +9,7 @@ import { directory, plan, root, store, target } from './support.ts'
 import { fakeClaude } from './claude.ts'
 import { fixture } from './fixture.ts'
 import { permanentPackage } from './permanent-package.ts'
+import { specPackage } from './spec-package.ts'
 import { packageReadme } from '../scripts/build-cli.ts'
 
 function json(path: string) {
@@ -99,6 +100,7 @@ console.log(JSON.stringify({ type: 'result', subtype: 'success', structured_outp
 			0
 		)
 	closeStore(freshStore)
+	specPackage(t, project)
 	permanentPackage(t, project)
 	const retryWorkspace = directory(t)
 	const host = fakeClaude(t, { explorer: '!pi-auth' }, 'pi')

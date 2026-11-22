@@ -2,7 +2,7 @@
 
 Use this path when a person makes the decisions and an installed host does the planning or test work. The person is the oracle. The host supplies the model and permissions. Checkmate stores the record and evidence.
 
-[![Checkmate review UI](media/ui/review.png)](media/ui/review.png)
+[![Review UI with a blocking refund question open in the answer drawer.](media/ui/review.png)](media/ui/review.png)
 
 ## Before you start
 

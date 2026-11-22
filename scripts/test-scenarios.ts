@@ -18,7 +18,7 @@ export const scenarios: Scenario[] = [
 	{ name: 'Consume an answer', tests: ['test/lifecycle.test.ts'] },
 	{ name: 'Approve, reject and hand off', tests: ['test/claims.test.ts', 'test/ui.review.test.ts'] },
 	{ name: 'Stale decision retains draft', tests: ['test/ui.browser.test.ts', 'test/ui.records.browser.test.ts'] },
-	{ name: 'Keyboard evidence review', tests: ['test/ui.review.browser.test.ts'] },
+	{ name: 'Keyboard evidence review', tests: ['test/ui.review.browser.test.ts', 'test/ui.layout.browser.test.ts'] },
 	{ name: 'Delegate setup and plan receipt', tests: ['test/launcher.test.ts'] },
 	{
 		name: 'Answer, revise and approve revision',

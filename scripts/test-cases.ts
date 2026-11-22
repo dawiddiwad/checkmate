@@ -25,6 +25,10 @@ export const cases: Record<string, string[]> = {
 		'the first send after a restart of the UI goes through without a refused request',
 	],
 	'test/ui.records.browser.test.ts': ['the plan editor saves and refuses by keys only'],
+	'test/ui.layout.browser.test.ts': [
+		'all pages fit at a narrow touch width',
+		'wide keyboard navigation and contrast remain usable',
+	],
 	'test/ui.review.browser.test.ts': [
 		'plan chats preserve the review view through new chat and browser back',
 		'the keys walk home, navigator, list, record, and viewer, and Left or Esc goes back one level',

@@ -27,7 +27,6 @@ test.before(async () => {
 	const packs = directory()
 	project = directory()
 	try {
-		execFileSync(process.execPath, ['scripts/build-cli.ts'], { cwd: root, stdio: 'ignore' })
 		const packed = execFileSync('npm', ['pack', '--ignore-scripts', '--json', '--pack-destination', packs], {
 			cwd: join(root, 'cli'),
 			encoding: 'utf8',
@@ -50,10 +49,6 @@ test.after(async () => {
 	await browser?.close()
 	const dirs = (globalThis as Record<string, unknown>).__checkmateE2eDirs as string[] | undefined
 	for (const path of dirs ?? []) rmSync(path, { recursive: true, force: true })
-	rmSync(join(root, 'cli/dist'), { recursive: true, force: true })
-	rmSync(join(root, 'cli/plugin'), { recursive: true, force: true })
-	rmSync(join(root, 'cli/README.md'), { force: true })
-	rmSync(join(root, 'cli/LICENSE'), { force: true })
 })
 
 function command(workspace: string, args: string[], env: Record<string, string | undefined> = {}, input?: string) {

@@ -8,8 +8,9 @@
 	{
 		"number": 2,
 		"name": "Install the Pi package and route a request — wrong skill, workspace, or harness.",
-		"status": "gap",
-		"reason": "Fresh install or authentic-host scenario not yet written."
+		"status": "covered",
+		"test": "Install the Pi package and route a request — wrong skill, workspace, or harness.",
+		"limit": "Pi routes the installed package to a deterministic loopback provider; model judgment is not tested."
 	},
 	{
 		"number": 3,
@@ -77,38 +78,39 @@
 	{
 		"number": 13,
 		"name": "Answer a blocking question and update the next actor — stalled workflow.",
-		"status": "pending",
-		"reason": "Separate UI scenario work in progress."
+		"status": "covered",
+		"test": "13–16 packaged oracle answers update the handoff, and the UI reflects the same record"
 	},
 	{
 		"number": 14,
 		"name": "Offer the same follow-up in CLI and UI — older eligible exploration omitted.",
-		"status": "pending",
-		"reason": "Separate UI scenario work in progress."
+		"status": "covered",
+		"test": "14 CLI and UI expose the same eligible follow-up and omit a consumed answer"
 	},
 	{
 		"number": 15,
 		"name": "Test an answer and acknowledge successful consumption — repeated or lost follow-up.",
-		"status": "pending",
-		"reason": "Separate UI scenario work in progress."
+		"status": "partial",
+		"reason": "A controlled specification reviewer reads the answer, but the test does not prove exploration follow-up consumption and acknowledgement.",
+		"test": "13–16 packaged oracle answers update the handoff, and the UI reflects the same record"
 	},
 	{
 		"number": 16,
 		"name": "Approve, reject, and hand off review items — missing rationale, actor, or destination.",
-		"status": "pending",
-		"reason": "Separate UI scenario work in progress."
+		"status": "covered",
+		"test": "16 review requires a rejection reason, accepts another finding, and hands it off"
 	},
 	{
 		"number": 17,
 		"name": "Refuse a stale decision without losing the draft — second operator overwrites first.",
-		"status": "pending",
-		"reason": "Separate UI scenario work in progress."
+		"status": "covered",
+		"test": "17 an answered claim makes an open browser draft stale without losing its text"
 	},
 	{
 		"number": 18,
 		"name": "Review and download evidence from the keyboard — actionable finding inaccessible.",
-		"status": "pending",
-		"reason": "Separate UI scenario work in progress."
+		"status": "covered",
+		"test": "18 keyboard review opens persisted finding evidence and returns to the claim"
 	},
 	{
 		"number": 19,
@@ -150,8 +152,9 @@
 	{
 		"number": 25,
 		"name": "Request, allow, and deny a host tool through the UI — hung prompt or incorrect decision.",
-		"status": "pending",
-		"reason": "Separate UI scenario work in progress."
+		"status": "covered",
+		"test": "25 one browser answer resolves a real host permission request",
+		"limit": "Packaged hook with synthetic host requests, not an authentic native permission prompt."
 	},
 	{
 		"number": 26,
@@ -238,25 +241,26 @@
 	{
 		"number": 39,
 		"name": "Reconnect live activity after a gap — review shows stale ownership or misses events.",
-		"status": "pending",
-		"reason": "Separate UI scenario work in progress."
+		"status": "covered",
+		"test": "39 the packaged activity stream replays only events after its cursor"
 	},
 	{
 		"number": 40,
 		"name": "Find by current build and download report offline — wrong build or broken artifact.",
-		"status": "pending",
-		"reason": "Separate UI scenario work in progress."
+		"status": "partial",
+		"reason": "Report downloads are checked, but no current-build selection or offline browser operation is verified.",
+		"test": "40 the finished report downloads over HTTP without a browser session"
 	},
 	{
 		"number": 41,
 		"name": "Keep a refused form in a no-JS browser — data loss or unusable correction.",
-		"status": "pending",
-		"reason": "Separate UI scenario work in progress."
+		"status": "covered",
+		"test": "41 no-JS refused decision keeps the entered text for correction"
 	},
 	{
 		"number": 42,
 		"name": "Recover a local UI restart with existing operation history — stuck Activity, hidden attempts, or divergent status.",
-		"status": "pending",
-		"reason": "Separate UI scenario work in progress."
+		"status": "covered",
+		"test": "42 the packaged UI restarts and accepts a form using persisted record state"
 	}
 ]

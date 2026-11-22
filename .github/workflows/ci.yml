@@ -32,10 +32,10 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run phase:verify
+      - run: npm install -g @earendil-works/pi-coding-agent@1.5.2
       - run: npm run test:e2e
       - run: npm run test:merge
       - run: npm run test:tools
-      - run: npm install -g @earendil-works/pi-coding-agent@1.5.2
       - run: npm run test:pi
   live:
     if: github.event_name == 'workflow_dispatch' && inputs.live
@@ -184,6 +184,7 @@ jobs:
       - name: Verify the release candidate
         run: |
           npm run phase:verify
+          npm install -g @earendil-works/pi-coding-agent@1.5.2
           npm run test:e2e
           npm run test:merge
       - name: Commit and tag the verified version

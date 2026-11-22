@@ -30,7 +30,7 @@
 		"test:merge": "node scripts/test-suite.ts merge",
 		"test:extended": "node scripts/test-suite.ts extended",
 		"test:map": "node scripts/test-suite.ts map",
-		"test:e2e": "node --test test/e2e/*.test.ts"
+		"test:e2e": "node scripts/build-cli.ts && node --test test/e2e/*.test.ts"
 	},
 	"devDependencies": {
 		"@eslint/js": "10.0.1",

@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict'
 import { execFileSync, spawn } from 'node:child_process'
 import { once } from 'node:events'
-import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { createServer } from 'node:http'
+import { createInterface } from 'node:readline'
 import { join } from 'node:path'
 import test from 'node:test'
 import { directory, root } from '../support.ts'
@@ -11,7 +13,6 @@ import { fixture } from '../fixture.ts'
 const project = directory()
 let binary = ''
 test.before(() => {
-	execFileSync(process.execPath, ['scripts/build-cli.ts'], { cwd: root, stdio: 'ignore' })
 	const packed = JSON.parse(
 		execFileSync('npm', ['pack', '--ignore-scripts', '--json', '--pack-destination', project], {
 			cwd: join(root, 'cli'),
@@ -1209,3 +1210,93 @@ test('Discover the packaged Claude plugin and invoke its entry — broken plugin
 	const list = execFileSync(process.execPath, [entry, 'plan', 'list', '--json'], { cwd: workspace, encoding: 'utf8' })
 	assert.deepEqual(JSON.parse(list).plans, [])
 })
+
+test(
+	'Install the Pi package and route a request — wrong skill, workspace, or harness.',
+	{ timeout: 60000 },
+	async (t) => {
+		const workspace = directory(t)
+		const home = directory(t)
+		const agent = join(home, 'agent')
+		mkdirSync(agent)
+		let received: (value: unknown) => void = () => {}
+		const request = new Promise<unknown>((resolve) => {
+			received = resolve
+		})
+		const provider = createServer(async (req, res) => {
+			let data = ''
+			for await (const part of req) data += part
+			received(JSON.parse(data))
+			res.writeHead(200, { 'content-type': 'text/event-stream' })
+			res.write(
+				`data: ${JSON.stringify({ id: 'fixture', object: 'chat.completion.chunk', model: 'fixture', choices: [{ index: 0, delta: { role: 'assistant', content: 'Done.' }, finish_reason: null }] })}\n\n`
+			)
+			res.write(
+				`data: ${JSON.stringify({ id: 'fixture', object: 'chat.completion.chunk', model: 'fixture', choices: [{ index: 0, delta: {}, finish_reason: 'stop' }] })}\n\n`
+			)
+			res.end('data: [DONE]\n\n')
+		})
+		provider.listen(0, '127.0.0.1')
+		await once(provider, 'listening')
+		t.after(() => provider.close())
+		const address = provider.address()
+		assert(address && typeof address !== 'string')
+		writeFileSync(
+			join(agent, 'models.json'),
+			JSON.stringify({
+				providers: {
+					localfixture: {
+						baseUrl: `http://127.0.0.1:${address.port}/v1`,
+						api: 'openai-completions',
+						apiKey: 'fixture',
+						models: [{ id: 'fixture' }],
+					},
+				},
+			})
+		)
+		const env = { ...process.env, HOME: home, PI_CODING_AGENT_DIR: agent, PI_OFFLINE: '1', PI_TELEMETRY: '0' }
+		const installed = join(project, 'node_modules/@xoxoai/checkmate')
+		execFileSync('pi', ['install', installed, '--local', '--approve'], { cwd: workspace, env, timeout: 30000 })
+		const child = spawn(
+			'pi',
+			['--mode', 'rpc', '--no-session', '--provider', 'localfixture', '--model', 'fixture', '--approve'],
+			{ cwd: workspace, env, stdio: 'pipe' }
+		)
+		t.after(() => child.kill('SIGTERM'))
+		const lines = createInterface({ input: child.stdout })
+		const events: Record<string, unknown>[] = []
+		lines.on('line', (line) => {
+			try {
+				events.push(JSON.parse(line))
+			} catch {}
+		})
+		const wait = async (predicate: (event: Record<string, unknown>) => boolean) => {
+			const deadline = Date.now() + 15000
+			while (Date.now() < deadline) {
+				const found = events.find(predicate)
+				if (found) return found
+				await new Promise((resolve) => setTimeout(resolve, 50))
+			}
+			throw Error(`Pi did not respond: ${JSON.stringify(events)}`)
+		}
+		child.stdin.write(JSON.stringify({ id: 'commands', type: 'get_commands' }) + '\n')
+		const commands = await wait((event) => event.id === 'commands')
+		assert.equal(commands.success, true)
+		assert.match(JSON.stringify(commands.data), /skill:checkmate/)
+		child.stdin.write(
+			JSON.stringify({ id: 'prompt', type: 'prompt', message: '/checkmate inspect the checkout fixture' }) + '\n'
+		)
+		assert.equal((await wait((event) => event.id === 'prompt')).success, true)
+		const input = JSON.stringify(
+			await Promise.race([
+				request,
+				new Promise((_, reject) => setTimeout(() => reject(Error('No local provider request')), 15000).unref()),
+			])
+		)
+		assert.match(input, /inspect the checkout fixture/)
+		assert.match(input, /Run `target list` and `plan list`/)
+		assert.match(input, /checkmate/i)
+		child.stdin.end()
+		await once(child, 'exit')
+	}
+)

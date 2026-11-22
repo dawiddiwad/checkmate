@@ -1248,6 +1248,14 @@ test('Discover the packaged Claude plugin and invoke its entry — broken plugin
 	assert.equal(manifest.name, 'checkmate')
 	const entry = join(plugin, 'dist/checkmate.js')
 	assert.equal(execFileSync(process.execPath, [entry, '--version'], { encoding: 'utf8' }).trim(), manifest.version)
+	const packageManifest = JSON.parse(
+		readFileSync(join(project, 'node_modules/@xoxoai/checkmate/package.json'), 'utf8')
+	)
+	assert.equal(
+		execFileSync(process.execPath, [binary, '--version'], { encoding: 'utf8' }).trim(),
+		packageManifest.version
+	)
+	assert.equal(manifest.version, packageManifest.version)
 	assert.match(execFileSync(process.execPath, [entry, '--help'], { encoding: 'utf8' }), /delegate/)
 	const nested = await invoke(entry, workspace, { ...process.env, CHECKMATE_ACTOR: 'claude:execute' }, '', [
 		'delegate',
@@ -1353,6 +1361,35 @@ if (args.includes('stream-json')) {
 		(await ok('query', "SELECT actor FROM operations WHERE command='run check' AND status='completed'")).rows,
 		[{ actor: 'claude:execute' }]
 	)
+	assert.equal((await ok('query', 'SELECT count(*) AS n FROM runs')).rows[0].n, 1)
+	writeFileSync(
+		join(bin, 'pi'),
+		`#!/usr/bin/env node
+const { appendFileSync } = require('node:fs')
+require('node:readline').createInterface({input:process.stdin}).on('line', line => {
+  const message = JSON.parse(line)
+  if (message.type === 'prompt') appendFileSync('unexpected-prompt', 'prompted')
+  console.log(JSON.stringify({type:'response',id:message.id,command:message.type,success:true,data:{commands:[]}}))
+})
+`,
+		{ mode: 0o755 }
+	)
+	const refused = await fetch(new URL('/plans/ticket/chats', url), {
+		method: 'POST',
+		headers: { 'content-type': 'application/x-www-form-urlencoded', origin: new URL(url).origin },
+		body: new URLSearchParams({ actor: 'oracle', text: 'Do not run without a gate.', harness: 'pi', csrf }),
+		redirect: 'manual',
+	})
+	assert.equal(refused.status, 303)
+	let gate = ''
+	for (let attempt = 0; attempt < 100; attempt++) {
+		const events = await ok('query', 'SELECT detail FROM request_events ORDER BY rowid')
+		gate = JSON.stringify(events.rows)
+		if (gate.includes('Pi did not load the permission gate')) break
+		await new Promise((resolve) => setTimeout(resolve, 100))
+	}
+	assert.match(gate, /Pi did not load the permission gate/)
+	assert.equal(existsSync(join(workspace, 'unexpected-prompt')), false)
 	assert.equal((await ok('query', 'SELECT count(*) AS n FROM runs')).rows[0].n, 1)
 	ui.kill('SIGTERM')
 	await once(ui, 'close')

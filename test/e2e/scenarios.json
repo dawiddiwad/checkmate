@@ -14,8 +14,9 @@
 	{
 		"number": 3,
 		"name": "Discover the packaged Claude plugin and invoke its entry — broken plugin distribution.",
-		"status": "gap",
-		"reason": "Fresh install or authentic-host scenario not yet written."
+		"status": "covered",
+		"test": "Discover the packaged Claude plugin and invoke its entry — broken plugin distribution.",
+		"limit": "The installed plugin bundle is invoked directly; a real Claude host is not exercised."
 	},
 	{
 		"number": 4,

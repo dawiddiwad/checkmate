@@ -1196,3 +1196,16 @@ test('Run ready tests and report blocked tests — partial execution misreported
 	)
 	assert.equal(result.coverage.status, 'partial')
 })
+
+test('Discover the packaged Claude plugin and invoke its entry — broken plugin distribution.', async (t) => {
+	const workspace = directory(t)
+	const plugin = join(project, 'node_modules/@xoxoai/checkmate/plugin')
+	const manifest = JSON.parse(readFileSync(join(plugin, '.claude-plugin/plugin.json'), 'utf8'))
+	assert.equal(manifest.name, 'checkmate')
+	const entry = join(plugin, 'dist/checkmate.js')
+	const output = execFileSync(process.execPath, [entry, 'init', '--json'], { cwd: workspace, encoding: 'utf8' })
+	assert.equal(JSON.parse(output).status, 'completed')
+	assert(existsSync(join(workspace, '.checkmate/checkmate.db')))
+	const list = execFileSync(process.execPath, [entry, 'plan', 'list', '--json'], { cwd: workspace, encoding: 'utf8' })
+	assert.deepEqual(JSON.parse(list).plans, [])
+})

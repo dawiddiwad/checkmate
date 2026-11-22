@@ -770,6 +770,13 @@ test('Answer, revise, and approve the named revision — execution against the w
 		'--cleanup-reason',
 		'No test data.',
 	])
+	await run(['export', 'run', 'run-1', '--format', 'json', '--out', 'broken.json'])
+	await run(['export', 'run', 'run-1', '--format', 'junit', '--out', 'broken.xml'])
+	const exported = JSON.parse(readFileSync(join(workspace, 'broken.json'), 'utf8'))
+	assert.deepEqual([exported.result.applicationBuild, exported.result.findings[0].id], ['broken', 'F1'])
+	const junit = readFileSync(join(workspace, 'broken.xml'), 'utf8')
+	assert.match(junit, /<failure/)
+	assert.match(junit, /F1|Wrong quote/)
 	await run(['result', 'accept', 'run-1', '--rationale', 'The finding is valid.'])
 	const rejected = await command(
 		workspace,

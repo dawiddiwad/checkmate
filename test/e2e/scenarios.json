@@ -130,8 +130,7 @@
 	{
 		"number": 22,
 		"name": "Finish with a finding and export JUnit/JSON — CI receives an incorrect outcome.",
-		"status": "partial",
-		"reason": "The broken run records a source-backed finding; JUnit/JSON export is not yet exercised.",
+		"status": "covered",
 		"test": "Answer, revise, and approve the named revision — execution against the wrong revision."
 	},
 	{

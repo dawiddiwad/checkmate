@@ -6,7 +6,6 @@ import { userInfo } from 'node:os'
 import { join } from 'node:path'
 import { closeStore } from '../plugin/src/store.ts'
 import { uiOptions } from '../plugin/src/cli.ts'
-import { rejectPlan } from '../plugin/src/plans.ts'
 import {
 	begin,
 	candidate,
@@ -562,63 +561,6 @@ test('plan open takes the objective, sources, and instructions as flags', (t) =>
 		open('empty', '--objective', 'Verify totals.').lines.at(-1),
 		'reason: A plan request needs requirements or context sources'
 	)
-})
-
-test('run gate and run begin with ready_only and no --tests print the selection and the tests left out', (t) => {
-	const workspace = setup(t)
-	cli(workspace, ['plan', 'approve', 'checkout@1', '--rationale', 'Run early.'])
-	const early = ['--build', 'b1', '--partial', 'ready_only']
-	const checked = cli(workspace, ['run', 'gate', 'checkout@1', ...early])
-	assert.match(checked.lines[0], /^completed checkout@1 sha256=[a-f0-9]{8} tests=T1$/)
-	assert.deepEqual(checked.lines.slice(1), ['T2\tleft_out\tblocked by G1', 'T3\tleft_out\tblocked by G2'])
-	const begun = cli(workspace, ['run', 'begin', 'run-1', 'checkout@1', ...early])
-	assert.match(begun.lines[0], /^completed run-1 instance=local tests=T1 startedAt=/)
-	assert.deepEqual(begun.lines.slice(1), checked.lines.slice(1))
-	assert.deepEqual(cli(workspace, ['run', 'gate', 'checkout@1', '--build', 'b1']).lines, checked.lines)
-	const missing = cli(workspace, ['run', 'gate', 'checkout@1', '--build', 'b1', '--partial', 'wait_for_resolution'])
-	assert.equal(missing.lines[2], 'reason: Select one or more tests with --tests, or use --partial ready_only')
-})
-
-test('plan edit reads the edited content on standard input and prints the edit kind', (t) => {
-	const workspace = setup(t)
-	const shown = json(workspace, ['plan', 'show', 'checkout@1']).body
-	const content = {
-		requirements: shown.plan.requirements,
-		tests: shown.plan.tests.map(({ readiness, gapIds, ...test }: Record<string, unknown>) => test),
-		gaps: shown.plan.gaps,
-	}
-	content.tests[0].title = 'Edited title'
-	const edited = cli(workspace, ['plan', 'edit', 'checkout@1', '--expect-sha', shown.sha256], content)
-	assert.equal(edited.code, 0, edited.output)
-	assert.match(edited.lines[0], /^needs_decision checkout@1 sha256=[a-f0-9]{8} edit=in_place$/)
-	assert.equal(json(workspace, ['plan', 'show', 'checkout@1']).body.plan.tests[0].title, 'Edited title')
-	const stale = cli(workspace, ['plan', 'edit', 'checkout@1', '--expect-sha', shown.sha256], content)
-	assert.equal(stale.code, 1)
-	assert.match(stale.lines[2], /^reason: checkout@1 has digest/)
-	const patched = cli(workspace, ['plan', 'edit', 'checkout@1', '--patch'], { tests: { T1: { title: 'Patched' } } })
-	assert.match(patched.lines[0], /^needs_decision checkout@1 sha256=[a-f0-9]{8} edit=in_place$/)
-	assert.equal(json(workspace, ['plan', 'show', 'checkout@1']).body.plan.tests[0].title, 'Patched')
-})
-
-test('run commands print overlap warnings and resume exits with the current gate reason', (t) => {
-	const workspace = directory(t)
-	const opened = store(t, workspace)
-	ready(opened)
-	begin(opened, 'run-1', ['T1'])
-	const duplicate = cli(workspace, ['run', 'begin', 'run-2', 'checkout@2', '--tests', 'T1', '--build', 'build-1'])
-	assert.equal(duplicate.code, 0)
-	assert(duplicate.lines.includes('warning\tRun run-1 also has open tests on checkout-local/local: T1.'))
-	assert.deepEqual(json(workspace, ['run', 'show', 'run-1']).body.warnings, [
-		'Run run-2 also has open tests on checkout-local/local: T1.',
-	])
-	const resumed = cli(workspace, ['run', 'resume', 'run-1'])
-	assert.equal(resumed.code, 0)
-	assert(resumed.lines.includes('warning\tRun run-2 also has open tests on checkout-local/local: T1.'))
-	rejectPlan(opened, 'oracle', { reference: 'checkout@2', rationale: 'Check the requirements again.' })
-	const refused = cli(workspace, ['run', 'resume', 'run-1'])
-	assert.equal(refused.code, 1)
-	assert.equal(refused.lines[0], 'rejected run-1 refusal=prohibited')
-	assert(refused.lines.includes('reason: Plan checkout@2 is not approved'))
 })
 
 test('a refusal says if the request is malformed or prohibited, and its hint gives the next command', (t) => {

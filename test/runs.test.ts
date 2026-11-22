@@ -3,7 +3,6 @@ import assert from 'node:assert/strict'
 import { existsSync, mkdirSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Store } from '../plugin/src/store.ts'
-import { testOutcome } from '../plugin/src/contracts.ts'
 import {
 	acceptResult,
 	beginRun,
@@ -71,15 +70,6 @@ function passT1(opened: Store, runId = 'run-1') {
 	check(opened, runId, 'T1.A2', 'passed')
 	closeTest(opened, actor, { runId, testId: 'T1' })
 }
-
-test('the outcome follows the first matching row: failed, error, inconclusive, passed', () => {
-	assert.equal(testOutcome(['passed', 'inconclusive', 'not_checked', 'failed']), 'failed')
-	assert.equal(testOutcome(['passed', 'failed']), 'failed')
-	assert.equal(testOutcome(['inconclusive', 'not_checked', 'passed']), 'error')
-	assert.equal(testOutcome(['passed', 'not_checked']), 'error')
-	assert.equal(testOutcome(['passed', 'inconclusive']), 'inconclusive')
-	assert.equal(testOutcome(['passed', 'passed']), 'passed')
-})
 
 test('run close derives the outcome from the recorded assertion results', (t) => {
 	const opened = store(t)

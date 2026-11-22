@@ -45,7 +45,7 @@ for (const file of requiredFiles) {
 const selected = requiredFiles.flatMap((file) => cases[file].map((title) => ({ file, title })))
 const titles = [...new Set(selected.map((item) => item.title))]
 const escaped = titles.map((title) => title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')
-const pattern = name === 'extended' ? new RegExp(`^(?!(?:${escaped})$)`) : new RegExp(`^(?:${escaped})$`)
+const pattern = new RegExp(`^(?:${escaped})$`)
 const missing = new Set(selected.map(({ file, title }) => `${resolve(file)}\n${title}`))
 let passed = 0
 let failed = 0
@@ -54,7 +54,7 @@ const started = Date.now()
 console.log(`${name}: ${name === 'extended' ? 'remaining cases' : `${selected.length} required cases`}`)
 const stream = run({
 	files: name === 'extended' ? all : requiredFiles,
-	testNamePatterns: [pattern],
+	...(name === 'extended' ? { testSkipPatterns: [pattern] } : { testNamePatterns: [pattern] }),
 	concurrency: 4,
 })
 for await (const event of stream) {
@@ -64,6 +64,7 @@ for await (const event of stream) {
 	const data = event.data
 	const file = data.entryFile ?? data.file
 	if (event.type === 'test:pass' && !data.entryFile && file && resolve(data.name) === file) continue
+	if (name === 'extended' && data.skip && file && missing.has(`${file}\n${data.name}`)) continue
 	if (file && data.nesting === 0 && name !== 'extended') missing.delete(`${file}\n${data.name}`)
 	if (data.skip) {
 		skipped++

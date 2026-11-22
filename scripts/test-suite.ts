@@ -63,6 +63,7 @@ for await (const event of stream) {
 	if (event.type !== 'test:pass' && event.type !== 'test:fail') continue
 	const data = event.data
 	const file = data.entryFile ?? data.file
+	if (event.type === 'test:pass' && !data.entryFile && file && resolve(data.name) === file) continue
 	if (file && data.nesting === 0 && name !== 'extended') missing.delete(`${file}\n${data.name}`)
 	if (data.skip) {
 		skipped++

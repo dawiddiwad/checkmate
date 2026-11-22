@@ -160,8 +160,8 @@
 	{
 		"number": 27,
 		"name": "Interrupt the supervisor and retry safely — orphan workers or duplicate testing.",
-		"status": "pending",
-		"reason": "Fresh end-to-end scenario not yet written."
+		"status": "covered",
+		"test": "Interrupt the supervisor and retry safely — orphan workers or duplicate testing."
 	},
 	{
 		"number": 28,

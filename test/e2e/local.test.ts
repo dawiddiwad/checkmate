@@ -507,3 +507,67 @@ test('Show disputed/failed retest without closing a claim — unresolved defect 
 	assert.equal(claims[0].statuses['still-broken'].status, 'not_fixed')
 	assert.match(JSON.stringify(await ok('explore', 'show', second.explorationId)), /220/)
 })
+
+test('Interrupt the supervisor and retry safely — orphan workers or duplicate testing.', async (t) => {
+	const workspace = directory(t)
+	writeFileSync(join(workspace, 'ticket.md'), 'The checkout responds.\n')
+	const app = await fixture()
+	t.after(() => app.close())
+	const host = fakeClaude(t, { tester: '!sleep' }, 'pi')
+	const env = { ...process.env, ...host.env, CHECKMATE_ACTOR: 'oracle', CHECKMATE_HARNESS: 'pi' }
+	const ok = async (...args: string[]) => {
+		const result = await command(workspace, env, ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	const first = await ok(
+		'test',
+		'cart',
+		'--url',
+		app.baseUrl,
+		'--source',
+		'ticket.md',
+		'--build',
+		'b1',
+		'--level',
+		'smoke',
+		'--allow',
+		'Read'
+	)
+	const calls: Array<{ role: string; pid: number }> = []
+	const deadline = Date.now() + 10000
+	while (!calls.some((call) => call.role === 'tester') && Date.now() < deadline) {
+		calls.push(...host.called())
+		await new Promise((resolve) => setTimeout(resolve, 50))
+	}
+	const tester = calls.find((call) => call.role === 'tester')
+	assert.ok(tester, 'The controlled tester did not start.')
+	const events = await ok('query', "SELECT detail FROM exploration_events WHERE step = 'supervisor'")
+	const supervisor = JSON.parse(events.rows[0].detail).pid as number
+	const alive = (pid: number) => {
+		try {
+			process.kill(pid, 0)
+			return true
+		} catch {
+			return false
+		}
+	}
+	process.kill(supervisor, 'SIGKILL')
+	const stoppedBy = Date.now() + 5000
+	while (alive(supervisor) && Date.now() < stoppedBy) await new Promise((resolve) => setTimeout(resolve, 50))
+	assert.equal(alive(supervisor), false)
+	const interrupted = await ok('explore', 'status', first.explorationId)
+	assert.equal(interrupted.state, 'interrupted')
+	await ok('explore', 'stop', first.explorationId, '--reason', 'Recover interrupted work.')
+
+	assert.equal(alive(tester.pid), false)
+	host.reply({ recorder: [{ kind: 'note', text: 'The retry completed.' }] })
+	const retry = await ok('test', 'cart', '--build', 'b1', '--level', 'smoke', '--allow', 'Read')
+	assert.notEqual(retry.explorationId, first.explorationId)
+	assert.equal((await ok('explore', 'wait', retry.explorationId, '--timeout', '60')).state, 'completed')
+	const counts = await ok(
+		'query',
+		'SELECT (SELECT count(*) FROM target_requests) AS targets, (SELECT count(*) FROM plan_requests) AS plans, (SELECT count(*) FROM explorations) AS attempts'
+	)
+	assert.deepEqual(counts.rows, [{ targets: 1, plans: 1, attempts: 2 }])
+})

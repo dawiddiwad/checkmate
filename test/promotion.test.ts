@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { execFileSync } from 'node:child_process'
+import { execFileSync, spawnSync } from 'node:child_process'
 import { realpathSync } from 'node:fs'
 import { join } from 'node:path'
 import { run } from '../plugin/src/cli.ts'
@@ -50,12 +50,18 @@ test('build-first records, accepts and explicitly promotes the passing ticket te
 	closeStore(opened)
 	const fake = fakeClaude(t, { recorder: [{ kind: 'note', text: 'Explored the first build.' }] }, 'pi')
 	const command = (args: string[], stdin = '') => {
-		const result = run([...args, '--workspace', workspace, '--json'], {
-			cwd: workspace,
-			env: { ...process.env, ...fake.env, CHECKMATE_ACTOR: 'oracle', CHECKMATE_HARNESS: 'pi' },
-			stdin: () => stdin,
-		})
-		return { code: result.code, body: JSON.parse(result.output), output: result.output }
+		const result = spawnSync(
+			process.execPath,
+			[join(root, 'plugin/dist/checkmate.js'), ...args, '--workspace', workspace, '--json'],
+			{
+				cwd: workspace,
+				encoding: 'utf8',
+				input: stdin,
+				timeout: 70000,
+				env: { ...process.env, ...fake.env, CHECKMATE_ACTOR: 'oracle', CHECKMATE_HARNESS: 'pi' },
+			}
+		)
+		return { code: result.status, body: JSON.parse(result.stdout), output: result.stdout + result.stderr }
 	}
 	const ok = (args: string[], stdin = '') => {
 		const result = command(args, stdin)

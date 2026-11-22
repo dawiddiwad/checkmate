@@ -4,93 +4,33 @@
 
 ### The QA system of record for an agent software factory.
 
-[![npm version](https://img.shields.io/npm/v/%40xoxoai%2Fcheckmate)](https://www.npmjs.com/package/@xoxoai/checkmate)
+Checkmate turns a ticket into tests. It records each run, its evidence, open questions, and oracle decisions in one local SQLite record. Agents and people use the same record.
 
-Checkmate turns a ticket into tests that an agent can run. It records the open questions, guides each test run, and keeps the evidence and every decision in one database. Agents and people read and write that record.
+![Checkmate reviews a ticket, tests two builds, and records an oracle decision.](docs/img/onboarding.gif)
 
-<img src="docs/img/onboarding.gif" alt="An animation of one ticket in two synced views. Top: a ring with four stations, the planner and the oracle on the top edge, the factory and QA on the bottom edge, the Checkmate record in the centre, and a human badge for the review UI below. An amber path on the left edge goes from QA back to the planner: new gaps or a plan change give a new revision. Below: the same steps on a swimlane timeline with lanes for the planner, the oracle, QA, and the factory, and a Checkmate record lane at the bottom. Iteration 1: the planner writes plan@1 with open gaps G1 to G3, the oracle answers them, the planner writes plan@2, and the oracle approves it. An early QA run fails three of four tests, with defects F1 to F3 and run gap G4. Iteration 2: the factory builds b2, and QA retests: three tests pass and defect F4 is found. A human edits the plan in the review UI to add G4 as plan@3, the oracle answers G4, the planner writes plan@4, and the oracle approves it. Iteration 3: the factory builds c3, QA retests and all four tests pass, and the oracle accepts the result. The animation ends with solo mode in Claude Code." width="100%"/>
+## Start in a project
 
-## In one minute
-
-- The **planner** turns a ticket into tests with exact assertions. Each unclear requirement becomes a gap.
-- The **oracle** answers gaps, approves plans, and accepts results. The oracle is an agent or a person.
-- **QA** runs the tests, early and again on each new build. It records each result with its evidence, and it records defects and new gaps.
-- The **factory** owns the build and application lifecycle. When asked, Checkmate starts workers through the configured host. Checkmate does not change the application code.
-- The record is one SQLite file: `.checkmate/checkmate.db`. A human can make the oracle's decisions in the review UI at any time.
-
-## Solo mode: the plugin in Claude Code
-
-You are the oracle. Install the plugin from the marketplace. You do not need npm.
-
-```text
-/plugin marketplace add dawiddiwad/checkmate
-/plugin install checkmate@checkmate
-```
-
-Then set up a target, test a change, and open the review UI:
-
-```text
-/checkmate:setup shop at http://127.0.0.1:4173, browser, operations read_catalog and create_order
-/checkmate:test checkout on shop, build b1: verify checkout totals from docs/checkout.md
-/checkmate:ui
-```
-
-Claude starts independent testers as agents of your session, so you see their work, and they count in the usage of the session. In a shell without a session, for example in CI, Checkmate starts them as new processes. The testers do not get the Checkmate skills. Checkmate records the work of each tester after it ends. Then a merger and a verifier turn the reports into claims. To plan stored tests first, use `/checkmate:plan`.
-
-Read [Test in Claude Code](docs/guides/claude-code.md).
-
-## Use Pi
-
-With Pi and Node.js 24.12.0 or later installed, add the published Checkmate package:
+Use Node.js 24.12.0 or later. Start the application you want to test, then install Checkmate and open its review UI:
 
 ```sh
-pi install npm:@xoxoai/checkmate
+npm install -g @xoxoai/checkmate
+cd /path/to/your/project
+checkmate ui
 ```
 
-Start Pi in your project. Enter `/checkmate-ui` to open the review UI, or enter `/checkmate <test objective>` to work in the Pi session. The package includes the UI, the engine, and the Checkmate skill. Read [Run Checkmate with Pi](docs/guides/pi.md).
+Open the URL that Checkmate prints. If no target exists, follow **Set up the application**; the new-change form opens after setup. Otherwise, choose **New change**. Enter a ticket or source file and start the test. Checkmate records the work in `.checkmate/checkmate.db` in this project.
 
-## Team mode: the CLI in your factory
+For delegated planning or testing, configure Claude Code or Pi in the host. The host owns models, credentials, tools, and permissions. Checkmate does not start your application.
 
-Use Node.js 24.12.0 or later. Install the CLI:
+## Choose a path
 
-```sh
-npm i -g @xoxoai/checkmate
-```
+- [Start and install](docs/start.md): prerequisites and first steps.
+- [Local human-oracle QA](docs/local-qa.md): run a local ticket, answer questions, inspect evidence, and recover a stopped run.
+- [Factory workflows](docs/factory.md): review before a build, build and promote tests, or run a permanent snapshot.
+- [CLI and record reference](docs/reference.md): commands, contracts, statuses, evidence, and limits.
+- [Development](docs/development.md): the installed-package gate and its prerequisites.
 
-Then set up a target, open a plan for a ticket, and let a planner write it:
-
-```sh
-checkmate target open shop --entry-point "web:url:Storefront and HTTP API." \
-  --capabilities browser,http --operations read_catalog,create_order
-checkmate target instance add shop local --entry web=http://127.0.0.1:4173
-checkmate delegate setup shop --allow Read --allow Bash
-checkmate plan open checkout --target shop@1 \
-  --objective "Verify checkout totals." --source docs/checkout.md
-checkmate delegate plan checkout --allow Read --allow Bash
-checkmate status checkout
-```
-
-Read [Run Checkmate from a factory](docs/guides/factory.md).
-
-For a human oracle, read [the inbox](docs/guides/oracle.md#find-what-waits-for-you), then follow the `next` command from `checkmate status <planId>`. After you answer a gap, ask the planner to revise the plan, check status again, and approve the exact revision it names. The same guide shows the retry after a result decision.
-
-For delegated stages, install and configure the selected harness. For browser tests, install Playwright CLI: `npm i -g @playwright/cli`.
-
-## Documentation
-
-| To do this                                     | Read                                                   |
-| ---------------------------------------------- | ------------------------------------------------------ |
-| Test your work in Claude Code                  | [Test in Claude Code](docs/guides/claude-code.md)      |
-| Connect Checkmate to your agents               | [Run Checkmate from a factory](docs/guides/factory.md) |
-| Answer gaps, approve plans, and accept results | [Decide as the oracle](docs/guides/oracle.md)          |
-| Make the decisions in the browser              | [Review in the browser](docs/guides/review-ui.md)      |
-| Learn the terms and who owns what              | [Concepts](docs/reference/concepts.md)                 |
-| Find a command, a status, or a loop state      | [Commands](docs/reference/commands.md)                 |
-| Write a JSON payload                           | [Payloads](docs/reference/payloads.md)                 |
-| Read outcomes, evidence, and coverage          | [Runs and evidence](docs/reference/runs.md)            |
-| Know what the database keeps, and its limits   | [The record](docs/reference/record.md)                 |
-| See real plans and reports                     | [Examples](docs/examples/README.md)                    |
-| Build, test, or release Checkmate              | [Development](docs/development.md)                     |
+The planner defines tests. QA runs them on a named build. The oracle answers gaps, approves plans, and accepts recorded results. The factory builds and fixes the application.
 
 ## License
 

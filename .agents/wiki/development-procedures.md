@@ -11,7 +11,7 @@ Read the implementation before changing its contract or documentation.
 5. Install Pi and set `CHECKMATE_BROWSER_EXECUTABLE` to Chromium.
 6. Run `npm run phase:verify`.
 
-Follow the rules in [Writing tests](../../docs/development.md#writing-tests) when you add or change a test.
+Follow the test design rules below when you add or change a test.
 
 ## Test design
 

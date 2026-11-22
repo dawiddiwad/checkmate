@@ -284,6 +284,6 @@ Export plain functions over a `Store`. The UI and the CLI use the same functions
 
 ## Tests
 
-Use the current test policy in [Development procedures](development-procedures.md#test-design) and the command list in [Development](../../docs/development.md#checks). `npm test` runs the required packaged scenarios. It requires Pi and Chromium and refuses skipped cases. `test/e2e/scenarios.json` records scenario coverage and gaps.
+Use the current test policy in [Development procedures](development-procedures.md#test-design) and the checks in [Development](../../docs/development.md#required-checks). `npm test` runs the required packaged scenarios. It requires Pi and Chromium and refuses skipped cases. `test/e2e/scenarios.json` records scenario coverage and gaps.
 
 The cases in design section 16 describe distinct storage and state invariants. Keep their useful behavior covered. Retire a case only when another test proves the same failure mode or when it has no distinct behavior to protect.

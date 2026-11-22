@@ -89,9 +89,8 @@
 	{
 		"number": 15,
 		"name": "Test an answer and acknowledge successful consumption — repeated or lost follow-up.",
-		"status": "partial",
-		"reason": "A controlled specification reviewer reads the answer, but the test does not prove exploration follow-up consumption and acknowledgement.",
-		"test": "13–16 packaged oracle answers update the handoff, and the UI reflects the same record"
+		"status": "covered",
+		"test": "15 the UI follow-up consumes the oracle answer and records a durable completion"
 	},
 	{
 		"number": 16,
@@ -249,9 +248,8 @@
 	{
 		"number": 40,
 		"name": "Find by current build and download report offline — wrong build or broken artifact.",
-		"status": "partial",
-		"reason": "Report downloads are checked, but no current-build selection or offline browser operation is verified.",
-		"test": "40 the finished report downloads over HTTP without a browser session"
+		"status": "covered",
+		"test": "40 select the current build and download its evidence-backed report for offline review"
 	},
 	{
 		"number": 41,

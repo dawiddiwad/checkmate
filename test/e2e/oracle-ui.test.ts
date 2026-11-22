@@ -6,16 +6,19 @@ import { chmodSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:
 import { createServer } from 'node:http'
 import { once } from 'node:events'
 import { join } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { chromium, type Browser, type BrowserContext } from 'playwright-core'
 import { closeStore, openStore } from '../../plugin/src/store.ts'
 import { seedDemo } from '../../scripts/ui-demo.ts'
-import { directory, root, store, target, plan, evidenceFile } from '../support.ts'
+import { actor, directory, root, store, target, plan, evidenceFile, ready } from '../support.ts'
 import { openTest, launched, entries, done, ended, stacks } from '../explorations.ts'
 import { asking, bash, allOf, openOf, plainBody, waitOpen } from '../permissions.ts'
 import { planDetail } from '../../plugin/src/index.ts'
 import { answerGap } from '../../plugin/src/plans.ts'
 import { mergedClaims } from '../../plugin/src/views.ts'
 import { endProcessesIn } from '../actions.ts'
+import { fakeClaude } from '../claude.ts'
+import { beginRun, checkAssertion, closeTest, finishRun } from '../../plugin/src/runs.ts'
 
 const executable = process.env.CHECKMATE_BROWSER_EXECUTABLE
 const browserSkip = executable ? false : 'Set CHECKMATE_BROWSER_EXECUTABLE to a Chromium binary'
@@ -82,9 +85,10 @@ function read<T>(workspace: string, view: (opened: ReturnType<typeof openStore>)
 	}
 }
 
-async function startUi(t: TestContext, workspace: string) {
+async function startUi(t: TestContext, workspace: string, env: NodeJS.ProcessEnv = {}) {
 	const server = spawn(cli, ['ui', '--port', '0', '--json', '--workspace', workspace], {
 		cwd: workspace,
+		env: { ...process.env, ...env },
 		stdio: ['ignore', 'pipe', 'pipe'],
 	})
 	t.after(async () => {
@@ -125,7 +129,7 @@ async function pageFor(t: TestContext, url: string, options: Parameters<Browser[
 	return { context, page }
 }
 
-async function prepared(t: TestContext, seeded: 'plan' | 'demo' = 'plan') {
+async function prepared(t: TestContext, seeded: 'plan' | 'demo' = 'plan', env: NodeJS.ProcessEnv = {}) {
 	const workspace = directory(t)
 	t.after(() => endProcessesIn(workspace))
 	if (seeded === 'demo') seedDemo(workspace)
@@ -135,7 +139,7 @@ async function prepared(t: TestContext, seeded: 'plan' | 'demo' = 'plan') {
 		plan(opened)
 		closeStore(opened)
 	}
-	const ui = await startUi(t, workspace)
+	const ui = await startUi(t, workspace, env)
 	return { workspace, ...ui }
 }
 
@@ -304,6 +308,90 @@ test('14 CLI and UI expose the same eligible follow-up and omit a consumed answe
 	)
 	assert.match(html, /Test the answers \(1\)/)
 })
+
+test(
+	'15 the UI follow-up consumes the oracle answer and records a durable completion',
+	{ skip: browserSkip, timeout: 60_000 },
+	async (t) => {
+		const fake = fakeClaude(t, { explorer: 'The build was inspected.', recorder: [] })
+		const { workspace, url } = await prepared(t, 'plan', { ...fake.env, CHECKMATE_HARNESS: 'claude' })
+		fake.reply({
+			explorer: 'The build was inspected.',
+			recorder: [{ kind: 'question', id: 'Q1', question: 'Does the promotion replace loyalty?' }],
+		})
+		const env = { ...fake.env, CHECKMATE_HARNESS: 'claude' }
+		const started = must(
+			workspace,
+			[
+				'explore',
+				'start',
+				'checkout',
+				'--build',
+				'build-follow',
+				'--level',
+				'smoke',
+				'--explorers',
+				'1',
+				'--allow',
+				'Read',
+				'--allow',
+				'Bash',
+			],
+			env
+		)
+		const explorationId = started.explorationId as string
+		assert.equal(must(workspace, ['explore', 'wait', explorationId, '--timeout', '60'], env).state, 'completed')
+		must(
+			workspace,
+			[
+				'gap',
+				'answer',
+				'checkout',
+				'a1/Q1',
+				'--kind',
+				'clarify',
+				'--value',
+				'The promotion replaces loyalty.',
+				'--source',
+				'Product owner',
+				'--rationale',
+				'The product owner decided the stacking rule.',
+			],
+			env
+		)
+		fake.reply({
+			explorer: 'The build was inspected.',
+			recorder: [{ kind: 'note', text: 'Retested: the promotion replaces loyalty, as the owner decided.' }],
+			follower: 'I tested the owner answer on build-follow and recorded what it settles.',
+			merger: [],
+		})
+		const { page } = await pageFor(t, url)
+		await page.goto(new URL('/plans/checkout', url).href)
+		await page.getByRole('button', { name: /Test the answers \(1\)/ }).click()
+		await page.getByRole('button', { name: /Test the 1 answer/ }).click()
+		await page.waitForURL(new RegExp(`/explorations/${explorationId}$`))
+		const finished = must(workspace, ['explore', 'wait', explorationId, '--timeout', '60'], env)
+		assert.equal(finished.follow, 'completed')
+		const calls = fake.called()
+		const follower = calls.find((call) => call.role === 'follower')
+		assert(follower, 'the follow-up host ran')
+		assert.match(follower.prompt, /The promotion replaces loyalty\./)
+		assert.match(follower.prompt, /Does the promotion replace loyalty\?/)
+		const show = must(workspace, ['explore', 'show', explorationId], env)
+		const phases = show.phases as Array<{ step: string; status: string; detail: Record<string, unknown> }>
+		const acknowledgment = phases.find((item) => item.step === 'followed')
+		assert.equal(acknowledgment?.status, 'completed')
+		assert.equal((acknowledgment?.detail as { answers?: number[] }).answers?.length, 1)
+		assert.match(JSON.stringify(show), /Retested: the promotion replaces loyalty/)
+		const status = must(workspace, ['status', 'checkout'], env)
+		assert.equal(
+			status.qa.follow.find((item: { explorationId: string }) => item.explorationId === explorationId)?.available,
+			false
+		)
+		await page.goto(new URL('/plans/checkout', url).href)
+		assert.doesNotMatch(await page.locator('body').innerText(), /Test the answers \(1\)/)
+	}
+)
 
 test(
 	'16 review requires a rejection reason, accepts another finding, and hands it off',
@@ -571,21 +659,85 @@ test('39 the packaged activity stream replays only events after its cursor', asy
 	await reader.cancel()
 })
 
-test('40 the finished report downloads over HTTP without a browser session', async (t) => {
-	const { url } = await prepared(t, 'demo')
-	const page = await fetch(new URL('/runs/run-7', url))
-	assert.equal(page.status, 200)
-	for (const extension of ['html', 'md', 'json', 'junit']) {
-		const response = await fetch(new URL(`/runs/run-7/report.${extension}`, url))
-		assert.equal(response.status, 200, extension)
-		assert.match(response.headers.get('content-type') ?? '', /(?:html|markdown|json|xml)/i)
-		const body = await response.text()
-		assert.match(body, /promotion/i)
+test(
+	'40 select the current build and download its evidence-backed report for offline review',
+	{ skip: browserSkip, timeout: 60_000 },
+	async (t) => {
+		const workspace = directory(t)
+		t.after(() => endProcessesIn(workspace))
+		const opened = store(t, workspace)
+		ready(opened)
+		const record = (runId: string, build: string, marker: string) => {
+			beginRun(opened, actor, { runId, reference: 'checkout@2', tests: ['T1'], build, instance: 'local' })
+			const evidence = checkAssertion(opened, actor, {
+				runId,
+				testId: 'T1',
+				assertionId: 'A1',
+				result: 'passed',
+				observed: marker,
+				evidence: [{ text: marker }],
+			})
+			checkAssertion(opened, actor, {
+				runId,
+				testId: 'T1',
+				assertionId: 'A2',
+				result: 'passed',
+				observed: `${build} order record is correct`,
+				evidence: [{ text: `${build} order record is correct` }],
+			})
+			closeTest(opened, actor, { runId, testId: 'T1' })
+			finishRun(opened, actor, {
+				runId,
+				completion: 'completed',
+				cleanup: 'completed',
+				cleanupReason: 'No browser or test data was left open.',
+			})
+			return (evidence.data.evidenceIds as string[])[0]
+		}
+		record('old-run', 'build-old', 'OLD_BUILD_EVIDENCE must not appear in the selected report.')
+		const evidenceId = record('current-run', 'build-current', 'CURRENT_BUILD_EVIDENCE: HTTP 200, totalPLN=240.')
+		closeStore(opened)
+		const { url, server } = await startUi(t, workspace)
+		const { page } = await pageFor(t, url)
+		await page.goto(new URL('/runs?build=build-current', url).href)
+		const rows = page.locator('[data-row][data-href^="/runs/"]')
+		assert.equal(await rows.count(), 1)
+		assert.equal(await rows.getAttribute('data-href'), '/runs/current-run')
+		await rows.click()
+		await page.waitForURL(/\/runs\/current-run$/)
+		await page.locator('details[data-menu] summary').filter({ hasText: 'Download report' }).click()
+		const [download] = await Promise.all([
+			page.waitForEvent('download'),
+			page.locator('a[data-download="html"]').click(),
+		])
+		const reportPath = join(workspace, 'current-run-report.html')
+		await download.saveAs(reportPath)
+		const response = await fetch(new URL(`/evidence/${evidenceId}`, url))
+		assert.equal(response.status, 200)
+		const evidencePath = join(workspace, 'current-run-evidence.txt')
+		writeFileSync(evidencePath, Buffer.from(await response.arrayBuffer()))
+		const stop = once(server, 'exit')
+		server.kill('SIGTERM')
+		await stop
+		const html = readFileSync(reportPath, 'utf8')
+		assert.match(html, /Test report: current-run/)
+		assert.match(html, /build-current/)
+		assert.match(html, /CURRENT_BUILD_EVIDENCE: HTTP 200, totalPLN=240/)
+		assert.doesNotMatch(html, /OLD_BUILD_EVIDENCE/)
+		assert.match(html, /Content-Security-Policy" content="default-src 'none'/)
+		assert.doesNotMatch(html, /<(?:script|link|img)[^>]+(?:src|href)="https?:\/\//i)
+		assert.equal(readFileSync(evidencePath, 'utf8'), 'CURRENT_BUILD_EVIDENCE: HTTP 200, totalPLN=240.')
+		await assert.rejects(fetch(url), /fetch failed|ECONNREFUSED/)
+		const external: string[] = []
+		page.on('request', (request) => {
+			if (/^https?:/.test(request.url())) external.push(request.url())
+		})
+		await page.goto(pathToFileURL(reportPath).href)
+		assert.equal(await page.getByRole('heading', { name: 'Test report: current-run' }).count(), 1)
+		assert.ok((await page.getByText('CURRENT_BUILD_EVIDENCE: HTTP 200, totalPLN=240.').count()) > 0)
+		assert.deepEqual(external, [])
 	}
-	const unavailable = await fetch(new URL('/runs/run-8/report.html', url))
-	assert.equal(unavailable.status, 409)
-	assert.equal((await fetch(new URL('/runs/missing/report.json', url))).status, 404)
-})
+)
 
 test(
 	'41 no-JS refused decision keeps the entered text for correction',

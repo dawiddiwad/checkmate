@@ -68,9 +68,10 @@ appendFileSync(process.env.FAKE_CLAUDE_CALL, JSON.stringify({ role, args, prompt
 const replies = JSON.parse(readFileSync(process.env.FAKE_CLAUDE_REPLIES, 'utf8'))
 const chosen = replies[role]
 const reply = chosen && typeof chosen === 'object' && !Array.isArray(chosen) ? chosen[resumed ?? ''] ?? chosen['*'] ?? (streamed ? chosen : undefined) : chosen
-if (process.env.FAKE_CLAUDE_REPLAY && (role === 'tester' || role === 'recorder')) {
-	import(require('node:url').pathToFileURL(process.env.FAKE_CLAUDE_REPLAY).href)
-		.then(({ replay }) => replay(role, role === 'recorder' ? resumed : session))
+const replayPath = role === 'rules' ? process.env.FAKE_RULES_REPLAY : (role === 'tester' || role === 'recorder') ? process.env.FAKE_CLAUDE_REPLAY : undefined
+if (replayPath) {
+	import(require('node:url').pathToFileURL(replayPath).href)
+		.then(({ replay }) => replay(role, role === 'recorder' ? resumed : session, prompt))
 		.then((result) => finish(typeof result === 'string' ? result : JSON.stringify(result)))
 		.catch((error) => { process.stderr.write(String(error)); process.exitCode = 1 })
 } else if (streamed) {

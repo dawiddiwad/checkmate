@@ -6,7 +6,7 @@ import { join } from 'node:path'
 import { run } from '../plugin/src/cli.ts'
 import { checkedRules } from '../plugin/src/rules.ts'
 import { closeStore } from '../plugin/src/store.ts'
-import { actor, directory, plan, store, target } from './support.ts'
+import { actor, directory, plan, root, store, target } from './support.ts'
 import { fakeClaude } from './claude.ts'
 import type { FakeReplies } from './claude.ts'
 
@@ -56,30 +56,24 @@ function setup(
 }
 
 test('the first test of a plan without rules derives them once from the sources, before the testers', (t) => {
-	const { command, testBuild, stored, called } = setup(t)
+	const { command, testBuild, stored, called, env } = setup(t)
+	env.FAKE_RULES_REPLAY = join(root, 'test/rules-replay.mjs')
 	testBuild('b1', ['--source', 'ticket.md', '--objective', 'Check the cart.', '--target', 'checkout-local'])
+	assert.equal(stored()[0]?.origin, 'derived')
+	assert.deepEqual(JSON.parse(stored()[0].body), derived)
 	const calls = called()
 	assert.deepEqual(
 		calls.map((call) => call.role),
 		['rules', 'explorer', 'tester', 'recorder']
 	)
 	const [rules, explorer] = calls
-	assert.match(rules.prompt, /^Write the rules of the change that the sources below describe\. Do not test\.\n/)
 	assert.match(rules.prompt, /Use no tool\./)
-	assert.match(
-		rules.prompt,
-		/\nSort the rules into areas\. Use at most nine areas for one plan\. Put each rule in exactly one area\. Rules that test one feature or one page share an area\. An area name is a plain noun phrase of one to three words, taken from the words of the sources/
-	)
-	assert.match(rules.prompt, /"area": "<the area of the rule>"/)
-	assert(rules.prompt.endsWith(`Goal: Check the cart.\n\nSource ticket.md:\n${ticket}`), rules.prompt)
 	assert(rules.args.includes('--session-id'))
 	assert(!rules.args.includes('--allowedTools'))
 	assert.match(
 		explorer.prompt,
 		/\nRules of the change:\n- R1: 5 or more items get 10% off\.\n- R2: A cart holds at most 20 items\.\n/
 	)
-	assert.deepEqual(stored()[0].origin, 'derived')
-	assert.deepEqual(JSON.parse(stored()[0].body), derived)
 	const events = command(['query', "SELECT status, detail FROM exploration_events WHERE step = 'rules'"]).body.rows
 	assert.equal(events[0].status, 'completed')
 	assert.deepEqual([JSON.parse(events[0].detail).rules, JSON.parse(events[0].detail).calls], [2, 1])

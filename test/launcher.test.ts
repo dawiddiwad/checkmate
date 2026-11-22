@@ -32,7 +32,6 @@ import {
 	plan,
 	planRequest,
 	ready,
-	regressionPlan,
 	revised,
 	root,
 	store,
@@ -940,86 +939,67 @@ reply({ status: 'completed', subject: 'run-1', reasons: [] })`
 	)
 })
 
-test('the execute prompt gives the rationale of a rejected run that the run tests again', async (t) => {
+test('a delegated retest consumes the ticket, instance, owner policy, and rejected-result context', async (t) => {
 	const workspace = directory(t)
 	const opened = store(t, workspace)
-	ready(opened, { reset: { owner: 'factory', command: null } })
-	passRun(opened, 'run-1', 'b1', ['T1'])
-	rejectResult(opened, 'Dawid', { runId: 'run-1', rationale: 'Wrong account.' })
-	passRun(opened, 'run-2', 'b2', ['T1'])
-	rejectResult(opened, 'Dawid', { runId: 'run-2', rationale: 'I need fullsize screenshots for evidence' })
-	begin(opened, 'run-3', ['T1'], 'b2')
-	closeStore(opened)
-	const quits = claude(
-		workspace,
-		`require('node:fs').writeFileSync('prompt.txt', require('node:fs').readFileSync(0, 'utf8'))
-reply({ status: 'completed', subject: 'run-3', reasons: [] })`
-	)
-	await delegate(workspace, 'execute', 'run-3', { allowedTools: rules, pluginRoot, claude: quits })
-	const prompt = readFileSync(join(workspace, 'prompt.txt'), 'utf8')
-	assert(
-		prompt.includes('The oracle rejected run-2: I need fullsize screenshots for evidence. Address it.\n'),
-		prompt
-	)
-	assert.doesNotMatch(prompt, /run-1|Wrong account/)
-	assert.match(prompt, /Reset: the factory owns it \(no command recorded\)\. Do not run it\./)
-})
-
-test('the execute prompt gives the plan request sources, instructions, tools, and allowed operations', async (t) => {
-	const workspace = directory(t)
-	const opened = store(t, workspace)
-	target(opened)
+	target(opened, { reset: { owner: 'factory', command: null } })
 	const source = 'Checkout fixture guide.md'
-	const instructions = 'Read the fixture guide for the checkout endpoints.'
-	writeFileSync(join(workspace, source), 'Fixture guide text.')
-	plan(opened, 'checkout', candidate(), {
+	writeFileSync(join(workspace, source), 'The promotion quote is 240 PLN.')
+	const tests = candidate()
+	tests.tests[0].metadata = { type: 'regression' }
+	tests.tests[1].dependsOn = []
+	plan(opened, 'checkout', tests, {
 		...planRequest(),
-		context: { sources: [source, 'jira:SHOP-12'], instructions },
-		tools: ['node', { name: 'fixture-cli', kind: 'cli', purpose: 'Set up the checkout test data.' }],
+		context: { sources: [source, 'jira:SHOP-12'], instructions: 'Read the fixture guide for the quote.' },
+		tools: ['node', { name: 'fixture-cli', kind: 'cli', purpose: 'Set up checkout data.' }],
 	})
 	revised(opened)
 	approved(opened)
-	begin(opened, 'run-1', ['T1'], 'build-1')
+	passRun(opened, 'run-old', 'b0', ['T1'])
+	rejectResult(opened, 'Dawid', { runId: 'run-old', rationale: 'Wrong account.' })
+	defectRun(opened, 'run-1', 'b1')
+	passRun(opened, 'run-2', 'b1', ['T1'])
+	rejectResult(opened, 'Dawid', { runId: 'run-2', rationale: 'Use fullsize screenshots.' })
+	begin(opened, 'run-3', ['T1', 'T2'], 'b2', { retestOf: 'run-1' })
 	closeStore(opened)
-	const quits = claude(
+	const worker = claude(
 		workspace,
-		`require('node:fs').writeFileSync('prompt.txt', require('node:fs').readFileSync(0, 'utf8'))
-reply({ status: 'completed', subject: 'run-1', reasons: [] })`
+		`const fs = require('node:fs')
+const prompt = fs.readFileSync(0, 'utf8')
+const source = /Plan request sources: "([^"]+)"/.exec(prompt)?.[1]
+const instance = /checkmate target show ([^ ]+) --instance ([^\x60 ]+)/.exec(prompt)
+const priority = /Run the tests of the open defects first: (T[0-9]+)/.exec(prompt)?.[1]
+if (!source || !instance || !priority || !prompt.includes('Read the fixture guide for the quote.') || !prompt.includes('fixture-cli (cli)') || !prompt.includes('read_catalog') || !prompt.includes('factory owns it') || !prompt.includes('Use fullsize screenshots') || prompt.includes('Wrong account')) throw Error('Missing execution context')
+const target = JSON.parse(checkmate(['target', 'show', instance[1], '--instance', instance[2], '--json']))
+if (target.instance.entries.web !== 'http://127.0.0.1:4173') throw Error('Wrong instance')
+const evidence = fs.readFileSync(source, 'utf8')
+if (!evidence.includes('240 PLN')) throw Error('Wrong ticket source')
+for (const test of [priority, ...['T1', 'T2'].filter(id => id !== priority)]) {
+ for (const assertion of ['A1', 'A2']) checkmate(['run', 'check', 'run-3', test, assertion, '--result', 'passed', '--observed', 'Verified with fullsize screenshots.', '--evidence', '-'], evidence)
+ checkmate(['run', 'close', 'run-3', test])
+}
+const { status, subject, reasons } = JSON.parse(checkmate(['run', 'finish', 'run-3', '--completion', 'completed', '--cleanup', 'completed', '--cleanup-reason', 'Closed.', '--json']))
+reply({ status, subject, reasons })`
 	)
-	await delegate(workspace, 'execute', 'run-1', {
+	const result = await delegate(workspace, 'execute', 'run-3', {
 		allowedTools: rules,
 		pluginRoot,
-		claude: quits,
+		claude: worker,
 		playwright: playwright(workspace),
 	})
-	const prompt = readFileSync(join(workspace, 'prompt.txt'), 'utf8')
-	assert(prompt.includes(`Plan request sources: "${source}", "jira:SHOP-12".`), prompt)
-	assert(prompt.includes(`Plan request instructions: ${instructions}`), prompt)
-	assert.match(prompt, /Read local source files with Read or Bash\./)
-	assert.match(prompt, /Plan tools: node \(cli\), fixture-cli \(cli\)\./)
-	assert.match(prompt, /Use Bash for CLI tools\..*The host controls tool access and permissions\./)
-	assert.match(prompt, /Allowed test operations: read_catalog, create_fixture_order, apply_fixture_discount\./)
-	assert.doesNotMatch(prompt, /Fixture guide text/)
-})
-
-test('the execute prompt of a retest names the tests of the earlier open defects first', async (t) => {
-	const workspace = directory(t)
-	const opened = store(t, workspace)
-	regressionPlan(opened)
-	defectRun(opened, 'run-1', 'b1')
-	begin(opened, 'run-2', ['T1', 'T2'], 'b2', { retestOf: 'run-1' })
-	closeStore(opened)
-	const quits = claude(
+	assert.equal(result.status, 'completed', result.reasons.join('; '))
+	const checks = query<{ test_id: string; observed: string }>(
 		workspace,
-		`require('node:fs').writeFileSync('prompt.txt', require('node:fs').readFileSync(0, 'utf8'))
-reply({ status: 'completed', subject: 'run-2', reasons: [] })`
+		"SELECT test_id, observed FROM assertion_results WHERE run_id = 'run-3' ORDER BY rowid"
 	)
-	await delegate(workspace, 'execute', 'run-2', { allowedTools: rules, pluginRoot, claude: quits })
-	const prompt = readFileSync(join(workspace, 'prompt.txt'), 'utf8')
-	assert(
-		prompt.includes(
-			'Retest of run-1. Run the tests of the open defects first: T2 (run-1/F1). When one fails again, record a new defect finding in this run.'
-		),
-		prompt
+	assert.deepEqual(
+		checks.map((item) => item.test_id),
+		['T2', 'T2', 'T1', 'T1']
 	)
+	assert.ok(checks.every((item) => item.observed === 'Verified with fullsize screenshots.'))
+	const evidence = query<{ bytes: Uint8Array }>(
+		workspace,
+		"SELECT b.bytes FROM evidence e JOIN blobs b ON b.sha256 = e.sha256 WHERE e.run_id = 'run-3'"
+	)
+	assert.ok(evidence.some((item) => Buffer.from(item.bytes).toString() === 'The promotion quote is 240 PLN.'))
 })

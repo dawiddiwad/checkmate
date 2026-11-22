@@ -13,7 +13,7 @@ function description(skill: string) {
 
 const testTrigger = /\b(test|qa|check|verify|retest)\s+(a |the )?(change|ticket|build)\b/i
 
-test('a request to test a change routes to the test skill, not to plan, execute, or revise', () => {
+test('skill descriptions state the test and planning boundary', () => {
 	const entry = description('test')
 	assert.match(entry, /test, QA, check, verify, or retest a change, a ticket, or a build/)
 	assert.match(entry, /acceptance criteria are in a file/)
@@ -29,7 +29,7 @@ test('a request to test a change routes to the test skill, not to plan, execute,
 	)
 })
 
-test('the test skill runs the session loop and names no removed level', () => {
+test('test skill documents the session commands and supported levels', () => {
 	const text = readFileSync(join(root, 'plugin/skills/test/SKILL.md'), 'utf8')
 	assert.doesNotMatch(text, /standard/i)
 	assert.match(text, /--level smoke\|normal\|deep/)

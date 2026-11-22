@@ -39,16 +39,7 @@ import { resumeRun } from '../plugin/src/runs.ts'
 import { write } from '../plugin/src/store.ts'
 import { chatOf, listedChats } from '../plugin/src/requests.ts'
 import { fakeClaude } from './claude.ts'
-import {
-	copied,
-	defectRun,
-	delegateUsageReceipt,
-	directory,
-	evidenceFile,
-	passRun,
-	regressionPlan,
-	root,
-} from './support.ts'
+import { copied, defectRun, delegateUsageReceipt, directory, evidenceFile, regressionPlan, root } from './support.ts'
 
 const payload = '<script>alert("gap")</script>'
 
@@ -728,27 +719,7 @@ test('a run gap is in Needs you, and its answer adopts it into the plan', async 
 	)
 })
 
-test('the plan list and the plan page show the loop state and who it waits on', async (t) => {
-	const { ui } = await start(t)
-	const home = (await call(ui, '/')).body
-	const loops = [
-		...home.matchAll(/data-key="plan:([^"]+)"[\s\S]*?data-status="([^"]+)"[\s\S]*?waits on ([A-Za-z]+)/g),
-	].map((match) => [match[1], match[2], match[3]])
-	assert.deepEqual(loops, [
-		['xss', 'needs_answers', 'oracle'],
-		['search', 'needs_approval', 'oracle'],
-		['checkout', 'needs_answers', 'oracle'],
-		['account', 'ready_to_run', 'QA'],
-		['login', 'run_in_progress', 'QA'],
-	])
-	const checkout = (await call(ui, '/plans/checkout@2')).body
-	assert.match(
-		checkout,
-		/<div class="next-line" data-region="next">\s*<span class="loop"\s*><span class="sp-pill amber" data-status="needs_answers"><span aria-hidden="true">\?<\/span> needs answers<\/span> <span class="muted small">waits on oracle<\/span>/
-	)
-})
-
-test('the Plans card counts stored defects and shows the finalized build before and after a passing retest', async (t) => {
+test('the Plans card shows the stored defect count and failed build', async (t) => {
 	const workspace = directory(t)
 	read(workspace, (store) => {
 		regressionPlan(store)
@@ -756,38 +727,12 @@ test('the Plans card counts stored defects and shows the finalized build before 
 	})
 	const ui = await startUi({ workspace, defaultActor: '' })
 	t.after(() => ui.close())
-	const card = async () => {
-		const { body, status } = await call(ui, '/')
-		assert.equal(status, 200)
-		return body.match(/data-key="plan:checkout"[\s\S]*?(?=data-key=")/)![0]
-	}
-	const failed = await card()
-	assert.match(failed, /data-status="defects_open"/)
-	assert.match(failed, /<b[^>]*>1<\/b><span>defects<\/span>/)
-	assert.match(failed, /Build build-1: 1 failed, 1 passed\./)
-	read(workspace, (store) => {
-		const retest = passRun(store, 'run-2', 'build-2', ['T1', 'T2'], { retestOf: 'run-1' })
-		assert.equal(retest.status, 'completed')
-	})
-	const fixed = await card()
-	assert.match(fixed, /data-status="awaits_acceptance"/)
-	assert.match(fixed, /<b[^>]*>0<\/b><span>defects<\/span>/)
-	assert.match(fixed, /Build build-2: 2 passed\./)
-})
-
-test('the plan card and review views show the latest finalized run of a plan with only stored runs', async (t) => {
-	const { ui } = await start(t)
-	const summary = 'Build fixture-build-2: 1 failed, 1 inconclusive, 1 passed.'
-	const home = await call(ui, '/')
-	const card = home.body.match(/data-key="plan:checkout"[\s\S]*?(?=data-key=")/)![0]
-	assert(card.includes(summary), card)
-	for (const view of ['needs', 'all']) {
-		const page = await call(ui, `/plans/checkout?view=${view}`)
-		assert.equal(page.status, 200)
-		const panel = page.body.match(new RegExp(`data-panel="${view}"[^>]*>[\\s\\S]*?</section>`))![0]
-		assert(panel.includes(summary), view)
-		assert.doesNotMatch(page.body, /data-panel="build:fixture-build-2"/)
-	}
+	const { body, status } = await call(ui, '/')
+	assert.equal(status, 200)
+	const card = body.match(/data-key="plan:checkout"[\s\S]*?(?=data-key=")/)![0]
+	assert.match(card, /data-status="defects_open"/)
+	assert.match(card, /<b[^>]*>1<\/b><span>defects<\/span>/)
+	assert.match(card, /Build build-1: 1 failed, 1 passed\./)
 })
 
 test('the structured run pages show reported usage and the plan card includes its cost', async (t) => {

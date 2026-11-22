@@ -61,6 +61,25 @@ test('test records a missing request, explores first, and checks the stored test
 	assert.equal(shown.mode, 'regression')
 })
 
+test('a new local test checks its source and host before it opens the target or plan', (t) => {
+	const workspace = realpathSync(directory(t))
+	const command = (args: string[], env: NodeJS.ProcessEnv) =>
+		run([...args, '--workspace', workspace, '--json'], {
+			cwd: workspace,
+			env: { ...env, CHECKMATE_ACTOR: actor },
+			stdin: () => '',
+		})
+	const args = ['test', 'cart', '--url', 'http://127.0.0.1:9', '--build', 'b1', ...allow]
+	const missingSource = command([...args, '--objective', 'Check the cart.'], { PATH: '' })
+	assert.match(missingSource.output, /needs requirements or context sources/)
+	const missingHost = command([...args, '--source', 'ticket.md'], { PATH: '', CHECKMATE_HARNESS: 'pi' })
+	assert.match(missingHost.output, /No pi executable on PATH/)
+	const opened = store(t, workspace)
+	for (const table of ['profiles', 'plan_requests', 'explorations', 'operations'])
+		assert.equal((opened.db.prepare(`SELECT count(*) AS count FROM ${table}`).get() as { count: number }).count, 0)
+	closeStore(opened)
+})
+
 test('test in regression mode begins a run of the ready tests and explores the changed files', (t) => {
 	const { command, wait, called, workspace } = setup(t, (opened) => {
 		ready(opened)

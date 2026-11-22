@@ -3,8 +3,8 @@ import type { Env } from './sessions.ts'
 import type { StartInput } from './explorers.ts'
 import type { Charter } from './explorations.ts'
 import { all, one } from './store.ts'
-import { Refusal, requireWellFormed, unusedId } from './contracts.ts'
-import { upstreamBase } from './change.ts'
+import { Refusal, requireIdentifier, requireWellFormed, unusedId, validate } from './contracts.ts'
+import { changeOf, changedFiles, upstreamBase } from './change.ts'
 import { openPlan } from './plans.ts'
 import { beginRun } from './runs.ts'
 import { startExploration } from './explorers.ts'
@@ -14,6 +14,7 @@ import { setupTarget, targetRevision } from './targets.ts'
 import { delegateCommand } from './views.ts'
 import { spawnSync } from 'node:child_process'
 import { resolve } from 'node:path'
+import { requireChild } from './sessions.ts'
 
 export const testModes = ['exploratory', 'regression', 'auto'] as const
 export const storedTestsNone = 'none, testers use earlier results when available'
@@ -135,8 +136,25 @@ export function runTest(
 	const build = given.build ?? defaultBuild(store.workspace)
 	if (!given.build) assumed.push(`build=${build}`)
 	const input = { ...given, build }
-	if (!hasRequest(store, input.planId)) openRequest(store, actor, input, env, assumed)
-	const mode = input.mode && input.mode !== 'auto' ? input.mode : autoMode(store, input.planId)
+	const newRequest = !hasRequest(store, input.planId)
+	if (newRequest) {
+		requireIdentifier(input.planId, 'plan ID')
+		const sources = input.sources ?? []
+		requireWellFormed(
+			input.objective || sources.length,
+			`Unknown plan: ${input.planId}. Give the ticket or the criteria file with --source.`,
+			`checkmate test ${input.planId} --source <ticket file>`
+		)
+		requireWellFormed(
+			sources.length,
+			'A plan request needs requirements or context sources',
+			`Give --source <ticket file>.`
+		)
+		validate('plan-request', {
+			objective: input.objective ?? `Test the change that ${sources.join(', ')} describes.`,
+			context: { sources, ...(input.instructions ? { instructions: input.instructions } : {}) },
+		})
+	}
 	const base = input.since ? undefined : upstreamBase(resolve(store.workspace, input.repo ?? '.'))
 	if (!input.since)
 		assumed.push(
@@ -144,6 +162,13 @@ export function runTest(
 				? `since=${base} (the default branch of origin, behind the checked-out commit)`
 				: 'since=none (no diff is given: no --since, and no default branch of origin behind the checked-out commit)'
 		)
+	if (newRequest) {
+		const change = changeOf(store.workspace, { ...input, since: input.since ?? base })
+		if (change && !input.scope) changedFiles(store.workspace, change)
+		if (!input.session) requireChild(env, selectedHarness(env))
+		openRequest(store, actor, input, env, assumed)
+	}
+	const mode = input.mode && input.mode !== 'auto' ? input.mode : autoMode(store, input.planId)
 	const explored = startExploration(
 		store,
 		actor,

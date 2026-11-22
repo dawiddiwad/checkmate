@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { execFileSync, spawn } from 'node:child_process'
+import { execFileSync, spawn, spawnSync } from 'node:child_process'
 import { once } from 'node:events'
 import { chmodSync, existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -78,6 +78,23 @@ console.log(JSON.stringify({ type: 'result', subtype: 'success', structured_outp
 		execFileSync(join(project, 'node_modules/.bin/checkmate'), args, { cwd: project, env, encoding: 'utf8' }).trim()
 
 	assert.equal(checkmate('--version'), version)
+	const fresh = directory(t)
+	const testArgs = ['test', 'cart', '--url', 'http://127.0.0.1:9', '--build', 'b1', '--allow', 'Read', '--json']
+	const attempt = (...args: string[]) =>
+		spawnSync(process.execPath, [join(project, 'node_modules/.bin/checkmate'), ...testArgs, ...args], {
+			cwd: fresh,
+			env: { ...env, PATH: '', CHECKMATE_HARNESS: 'pi' },
+			encoding: 'utf8',
+		})
+	assert.match(attempt('--objective', 'Check the cart.').stdout, /needs requirements or context sources/)
+	assert.match(attempt('--source', 'ticket.md').stdout, /No pi executable on PATH/)
+	const freshStore = store(t, fresh)
+	for (const table of ['profiles', 'plan_requests', 'explorations', 'operations'])
+		assert.equal(
+			(freshStore.db.prepare(`SELECT count(*) AS count FROM ${table}`).get() as { count: number }).count,
+			0
+		)
+	closeStore(freshStore)
 	assert.match(checkmate('--help'), /checkmate delegate <setup\|plan\|revise\|execute>/)
 	const help = JSON.parse(checkmate('--help', '--json'))
 	assert.equal(help.status, 'completed')

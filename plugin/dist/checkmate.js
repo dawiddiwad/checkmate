@@ -20540,13 +20540,37 @@ function runTest(store, actor, given, env, preferSavedModel = false) {
   const build = given.build ?? defaultBuild(store.workspace);
   if (!given.build) assumed.push(`build=${build}`);
   const input = { ...given, build };
-  if (!hasRequest(store, input.planId)) openRequest(store, actor, input, env, assumed);
-  const mode = input.mode && input.mode !== "auto" ? input.mode : autoMode(store, input.planId);
+  const newRequest = !hasRequest(store, input.planId);
+  if (newRequest) {
+    requireIdentifier(input.planId, "plan ID");
+    const sources = input.sources ?? [];
+    requireWellFormed(
+      input.objective || sources.length,
+      `Unknown plan: ${input.planId}. Give the ticket or the criteria file with --source.`,
+      `checkmate test ${input.planId} --source <ticket file>`
+    );
+    requireWellFormed(
+      sources.length,
+      "A plan request needs requirements or context sources",
+      `Give --source <ticket file>.`
+    );
+    validate("plan-request", {
+      objective: input.objective ?? `Test the change that ${sources.join(", ")} describes.`,
+      context: { sources, ...input.instructions ? { instructions: input.instructions } : {} }
+    });
+  }
   const base = input.since ? void 0 : upstreamBase(resolve6(store.workspace, input.repo ?? "."));
   if (!input.since)
     assumed.push(
       base ? `since=${base} (the default branch of origin, behind the checked-out commit)` : "since=none (no diff is given: no --since, and no default branch of origin behind the checked-out commit)"
     );
+  if (newRequest) {
+    const change = changeOf(store.workspace, { ...input, since: input.since ?? base });
+    if (change && !input.scope) changedFiles(store.workspace, change);
+    if (!input.session) requireChild(env, selectedHarness(env));
+    openRequest(store, actor, input, env, assumed);
+  }
+  const mode = input.mode && input.mode !== "auto" ? input.mode : autoMode(store, input.planId);
   const explored = startExploration(
     store,
     actor,

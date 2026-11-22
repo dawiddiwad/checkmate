@@ -48,7 +48,7 @@ npm run phase:verify
 4. `npm test`: runs `node --test test/*.test.ts`. It uses temporary workspaces and needs no network or Claude credential. It includes browser suites; those suites skip when `CHECKMATE_BROWSER_EXECUTABLE` is unset.
 5. `node test/plugin.ts`: copies `plugin/` out of the repository and runs the bundled CLI without npm install.
 
-The verify job in CI also runs `npm run test:tools` as a separate step after `phase:verify`. `test:tools` runs `test/tools.ts`: a real browser through Playwright CLI and the HTTP API against the checkout fixture. It is not in `npm test`, because it tests the fixture and Playwright CLI, not Checkmate. Run it when you change `test/fixture.ts`, the Playwright CLI version, or `plugin/references/browser.md`.
+The verify job in CI also runs `npm run test:tools` as a separate step after `phase:verify`. `test:tools` runs `test/tools.ts`: a real browser through Playwright CLI and the HTTP API against the checkout fixture. It runs separately from `npm test`. It exercises the fixture, Playwright CLI, and Checkmate run records together. Run it when you change `test/fixture.ts`, the Playwright CLI version, or `plugin/references/browser.md`.
 
 Browser tests need Chromium. Set `CHECKMATE_BROWSER_EXECUTABLE` to its path to run them. CI sets this variable. Without it, browser cases in `npm test` skip. `npm run test:tools` also needs Chromium. On a restricted Linux filesystem, set `XDG_CACHE_HOME` to a writable directory.
 

@@ -355,3 +355,105 @@ test('Pick an active instance and refuse unsafe defaults — mutation scope or s
 	assert.ok(study.prompt.includes(staging.baseUrl))
 	assert.ok(!study.prompt.includes(app.baseUrl))
 })
+
+test('Keep incomplete criteria unverified — false green.', async (t) => {
+	const workspace = directory(t)
+	writeFileSync(join(workspace, 'ticket.md'), 'The promotion quote is 240 PLN.\n')
+	const app = await fixture()
+	t.after(() => app.close())
+	const host = fakeClaude(
+		t,
+		{ rules: [{ id: 'R1', text: 'The promotion quote is 240 PLN.', source: 'ticket.md', area: 'Promotion' }] },
+		'pi'
+	)
+	const env = {
+		...process.env,
+		...host.env,
+		CHECKMATE_ACTOR: 'oracle',
+		CHECKMATE_HARNESS: 'pi',
+		FAKE_CLAUDE_REPLAY: join(root, 'test/e2e/incomplete-replay.mjs'),
+	}
+	const ok = async (...args: string[]) => {
+		const result = await command(workspace, env, ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	const start = await ok(
+		'test',
+		'cart',
+		'--url',
+		app.baseUrl,
+		'--source',
+		'ticket.md',
+		'--build',
+		'unobserved',
+		'--level',
+		'smoke',
+		'--allow',
+		'Read'
+	)
+	assert.equal((await ok('explore', 'wait', start.explorationId, '--timeout', '60')).state, 'completed')
+	const records = await ok('query', "SELECT body FROM journal_entries WHERE kind = 'criterion'")
+	assert.equal(records.rows.length, 1)
+	assert.equal(JSON.parse(records.rows[0].body).verdict, undefined)
+	const status = await ok('status', 'cart')
+	assert.equal(status.state, 'ready_to_test')
+	assert.match(status.why.join(' '), /R1.*unobserved/)
+})
+
+test('Merge duplicate findings and preserve evidence — defect inflated or unique evidence dropped.', async (t) => {
+	const workspace = directory(t)
+	writeFileSync(join(workspace, 'ticket.md'), 'The promotion quote is 240 PLN.\n')
+	const app = await fixture()
+	t.after(() => app.close())
+	const host = fakeClaude(
+		t,
+		{
+			rules: [{ id: 'R1', text: 'The promotion quote is 240 PLN.', source: 'ticket.md', area: 'Promotion' }],
+			merger: [
+				{ kind: 'issue', title: 'Promotion total is wrong', severity: 'high', reports: ['a1/D1', 'a2/D1'] },
+			],
+		},
+		'pi'
+	)
+	const env = {
+		...process.env,
+		...host.env,
+		CHECKMATE_ACTOR: 'oracle',
+		CHECKMATE_HARNESS: 'pi',
+		FAKE_CLAUDE_REPLAY: join(root, 'test/e2e/clean-replay.mjs'),
+		QA_REPLAY_DIR: directory(t),
+		QA_APP_URL: app.baseUrl,
+	}
+	const ok = async (...args: string[]) => {
+		const result = await command(workspace, env, ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	const start = await ok(
+		'test',
+		'cart',
+		'--url',
+		app.baseUrl,
+		'--source',
+		'ticket.md',
+		'--build',
+		'broken',
+		'--level',
+		'smoke',
+		'--explorers',
+		'2',
+		'--allow',
+		'Read'
+	)
+	assert.equal((await ok('explore', 'wait', start.explorationId, '--timeout', '60')).state, 'completed')
+	const claims = (await ok('claim', 'list', 'cart')).claims
+	assert.equal(claims.length, 1)
+	assert.deepEqual(claims[0].reports, ['a1/D1', 'a2/D1'])
+	const rows = (
+		await ok('query', "SELECT entry_id, body FROM journal_entries WHERE kind = 'defect' ORDER BY entry_id")
+	).rows
+	assert.equal(rows.length, 2)
+	assert.ok(rows.every((row: { body: string }) => /HTTP 200: 220 PLN/.test(row.body)))
+	assert.notDeepEqual(JSON.parse(rows[0].body).evidence, JSON.parse(rows[1].body).evidence)
+})

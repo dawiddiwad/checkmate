@@ -51,14 +51,14 @@
 	{
 		"number": 9,
 		"name": "Keep incomplete criteria unverified — false green.",
-		"status": "partial",
-		"reason": "The local replay checks no false pass before an answer; it does not record an incomplete criterion."
+		"status": "covered",
+		"test": "Keep incomplete criteria unverified — false green."
 	},
 	{
 		"number": 10,
 		"name": "Merge duplicate findings and preserve evidence — defect inflated or unique evidence dropped.",
-		"status": "pending",
-		"reason": "Fresh end-to-end scenario not yet written."
+		"status": "covered",
+		"test": "Merge duplicate findings and preserve evidence — defect inflated or unique evidence dropped."
 	},
 	{
 		"number": 11,

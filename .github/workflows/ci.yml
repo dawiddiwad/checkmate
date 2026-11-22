@@ -32,6 +32,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run phase:verify
+      - run: npm run test:e2e
       - run: npm run test:merge
       - run: npm run test:tools
       - run: npm install -g @earendil-works/pi-coding-agent@1.5.2
@@ -183,6 +184,7 @@ jobs:
       - name: Verify the release candidate
         run: |
           npm run phase:verify
+          npm run test:e2e
           npm run test:merge
       - name: Commit and tag the verified version
         if: steps.resume.outputs.resume != 'true'

@@ -38,12 +38,15 @@ The plugin is plain TypeScript that Node.js runs directly, with no runtime npm d
 
 ```sh
 npm run phase:verify
+npm run test:e2e
 npm run test:merge
 ```
 
 `phase:verify` checks generated files, types, lint, and formatting. It runs `npm test` and the copied-plugin smoke. `npm test` runs the packaged QA path, specification handoff, promotion, shared status, lifecycle recovery, permission, migration, transaction, and evidence checks. It does not need a browser or a model.
 
 `test:merge` runs the primary path and the named cases mapped to the supported end-to-end scenarios. Run `npm run test:map` to print each scenario, its primary case, and known gaps. `scripts/scenario-owners.ts` names the primary cases. `scripts/test-cases.ts` lists the required cases and focused invariants. The runner fails when a required case is missing or unexpectedly skipped. The map includes partial evidence. It does not claim that a deterministic replay proves model judgment. The historical self-Factory campaign runner is absent; its six campaign scenarios are not supported by this branch.
+
+`test:e2e` runs the new packed-artifact scenarios in `test/e2e/`. The new suite is incomplete. Keep the existing merge and extended selections until their required behavior has replacement coverage.
 
 The merge selection includes browser cases. Set `CHECKMATE_BROWSER_EXECUTABLE` to Chromium. Browser cases skip when this variable is unset. CI sets it and runs `phase:verify`, `test:merge`, `test:tools`, and `test:pi`. The release candidate repeats `phase:verify` and `test:merge`. `test:tools` exercises a real browser and the HTTP checkout fixture. `test:pi` uses the real Pi CLI with a loopback provider. Neither needs paid models.
 

@@ -29,7 +29,8 @@
 		"test:pi": "node scripts/build-cli.ts && node --test test/pi-install.ts test/pi-e2e.ts test/pi-request.test.ts test/pi-permission.test.ts",
 		"test:merge": "node scripts/test-suite.ts merge",
 		"test:extended": "node scripts/test-suite.ts extended",
-		"test:map": "node scripts/test-suite.ts map"
+		"test:map": "node scripts/test-suite.ts map",
+		"test:e2e": "node --test test/e2e/*.test.ts"
 	},
 	"devDependencies": {
 		"@eslint/js": "10.0.1",

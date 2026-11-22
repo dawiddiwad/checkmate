@@ -1,0 +1,255 @@
+[
+	{
+		"number": 1,
+		"name": "Install packed npm CLI and open the empty UI — installed assets or skills missing.",
+		"status": "covered",
+		"test": "Install packed npm CLI and open the empty UI — installed assets or skills missing."
+	},
+	{
+		"number": 2,
+		"name": "Install the Pi package and route a request — wrong skill, workspace, or harness.",
+		"status": "gap",
+		"reason": "Fresh install or authentic-host scenario not yet written."
+	},
+	{
+		"number": 3,
+		"name": "Discover the packaged Claude plugin and invoke its entry — broken plugin distribution.",
+		"status": "gap",
+		"reason": "Fresh install or authentic-host scenario not yet written."
+	},
+	{
+		"number": 4,
+		"name": "Run a new ticket against a local URL — hidden assumptions or missing successful receipt.",
+		"status": "covered",
+		"test": "Record a defect with replayable evidence — report text cannot become a reviewable claim."
+	},
+	{
+		"number": 5,
+		"name": "Recover after missing host or missing ticket source — unexplained partial records or duplicates.",
+		"status": "covered",
+		"test": "Recover after missing host or missing ticket source — unexplained partial records or duplicates."
+	},
+	{
+		"number": 6,
+		"name": "Pick an active instance and refuse unsafe defaults — mutation scope or selected URL is wrong.",
+		"status": "covered",
+		"test": "Pick an active instance and refuse unsafe defaults — mutation scope or selected URL is wrong."
+	},
+	{
+		"number": 7,
+		"name": "Record a defect with replayable evidence — report text cannot become a reviewable claim.",
+		"status": "covered",
+		"test": "Record a defect with replayable evidence — report text cannot become a reviewable claim."
+	},
+	{
+		"number": 8,
+		"name": "Explore a clean fixture — invented defect or missing observed coverage.",
+		"status": "covered",
+		"test": "Explore a clean fixture — invented defect or missing observed coverage.",
+		"limit": "Controlled replay does not measure live model false positives."
+	},
+	{
+		"number": 9,
+		"name": "Keep incomplete criteria unverified — false green.",
+		"status": "partial",
+		"reason": "The local replay checks no false pass before an answer; it does not record an incomplete criterion."
+	},
+	{
+		"number": 10,
+		"name": "Merge duplicate findings and preserve evidence — defect inflated or unique evidence dropped.",
+		"status": "pending",
+		"reason": "Fresh end-to-end scenario not yet written."
+	},
+	{
+		"number": 11,
+		"name": "Run a fixed-build retest — old finding remains open or source build changes.",
+		"status": "covered",
+		"test": "Record a defect with replayable evidence — report text cannot become a reviewable claim."
+	},
+	{
+		"number": 12,
+		"name": "Show disputed/failed retest without closing a claim — unresolved defect reported fixed.",
+		"status": "pending",
+		"reason": "Fresh end-to-end scenario not yet written."
+	},
+	{
+		"number": 13,
+		"name": "Answer a blocking question and update the next actor — stalled workflow.",
+		"status": "pending",
+		"reason": "Separate UI scenario work in progress."
+	},
+	{
+		"number": 14,
+		"name": "Offer the same follow-up in CLI and UI — older eligible exploration omitted.",
+		"status": "pending",
+		"reason": "Separate UI scenario work in progress."
+	},
+	{
+		"number": 15,
+		"name": "Test an answer and acknowledge successful consumption — repeated or lost follow-up.",
+		"status": "pending",
+		"reason": "Separate UI scenario work in progress."
+	},
+	{
+		"number": 16,
+		"name": "Approve, reject, and hand off review items — missing rationale, actor, or destination.",
+		"status": "pending",
+		"reason": "Separate UI scenario work in progress."
+	},
+	{
+		"number": 17,
+		"name": "Refuse a stale decision without losing the draft — second operator overwrites first.",
+		"status": "pending",
+		"reason": "Separate UI scenario work in progress."
+	},
+	{
+		"number": 18,
+		"name": "Review and download evidence from the keyboard — actionable finding inaccessible.",
+		"status": "pending",
+		"reason": "Separate UI scenario work in progress."
+	},
+	{
+		"number": 19,
+		"name": "Delegate setup and plan and verify the record — prose or mismatched actor stands in for a receipt.",
+		"status": "pending",
+		"reason": "Fresh end-to-end scenario not yet written."
+	},
+	{
+		"number": 20,
+		"name": "Answer, revise, and approve the named revision — execution against the wrong revision.",
+		"status": "pending",
+		"reason": "Fresh end-to-end scenario not yet written."
+	},
+	{
+		"number": 21,
+		"name": "Run ready tests and report blocked tests — partial execution misreported complete.",
+		"status": "pending",
+		"reason": "Fresh end-to-end scenario not yet written."
+	},
+	{
+		"number": 22,
+		"name": "Finish with a finding and export JUnit/JSON — CI receives an incorrect outcome.",
+		"status": "pending",
+		"reason": "Fresh end-to-end scenario not yet written."
+	},
+	{
+		"number": 23,
+		"name": "Run a narrow retest with prerequisites and regressions — uncovered tests silently accepted.",
+		"status": "pending",
+		"reason": "Fresh end-to-end scenario not yet written."
+	},
+	{
+		"number": 24,
+		"name": "Run a two-instance matrix and accept each latest result — one pass masks another instance’s failure.",
+		"status": "pending",
+		"reason": "Fresh end-to-end scenario not yet written."
+	},
+	{
+		"number": 25,
+		"name": "Request, allow, and deny a host tool through the UI — hung prompt or incorrect decision.",
+		"status": "pending",
+		"reason": "Separate UI scenario work in progress."
+	},
+	{
+		"number": 26,
+		"name": "Stop only one tester and keep the others running — sibling workers killed.",
+		"status": "pending",
+		"reason": "Fresh end-to-end scenario not yet written."
+	},
+	{
+		"number": 27,
+		"name": "Interrupt the supervisor and retry safely — orphan workers or duplicate testing.",
+		"status": "pending",
+		"reason": "Fresh end-to-end scenario not yet written."
+	},
+	{
+		"number": 28,
+		"name": "Resume a structured run after a worker deadline — outcomes lost or gate bypassed.",
+		"status": "pending",
+		"reason": "Fresh end-to-end scenario not yet written."
+	},
+	{
+		"number": 29,
+		"name": "Show a safe provider failure and retained partial usage — secret visible or usage silently zero.",
+		"status": "pending",
+		"reason": "Fresh end-to-end scenario not yet written."
+	},
+	{
+		"number": 30,
+		"name": "Resume a chat turn and change its model — wrong native session, context, or charge.",
+		"status": "pending",
+		"reason": "Fresh end-to-end scenario not yet written."
+	},
+	{
+		"number": 31,
+		"name": "Trigger one fixed ticket with a pinned build — ambiguous input or wrong checkout.",
+		"status": "gap",
+		"reason": "The historical self-Factory campaign runner is absent; supported external Factory behavior still needs fresh scenarios."
+	},
+	{
+		"number": 32,
+		"name": "Pause for a human choice and resume from an archived campaign — lost decision or nonportable state.",
+		"status": "gap",
+		"reason": "The historical self-Factory campaign runner is absent; supported external Factory behavior still needs fresh scenarios."
+	},
+	{
+		"number": 33,
+		"name": "Reach a real built preview with deterministic seed data — QA runs against an empty/wrong app.",
+		"status": "gap",
+		"reason": "The historical self-Factory campaign runner is absent; supported external Factory behavior still needs fresh scenarios."
+	},
+	{
+		"number": 34,
+		"name": "Retain QA after a verification failure and label the failed check — bad candidate incorrectly promoted.",
+		"status": "gap",
+		"reason": "The historical self-Factory campaign runner is absent; supported external Factory behavior still needs fresh scenarios."
+	},
+	{
+		"number": 35,
+		"name": "Carry evidence into the fix and retest the next build — duplicated work or stale claims.",
+		"status": "gap",
+		"reason": "The historical self-Factory campaign runner is absent; supported external Factory behavior still needs fresh scenarios."
+	},
+	{
+		"number": 36,
+		"name": "Stop on budget and close the preview and browser — unbounded loop, leaked processes, or unavailable evidence.",
+		"status": "gap",
+		"reason": "The historical self-Factory campaign runner is absent; supported external Factory behavior still needs fresh scenarios."
+	},
+	{
+		"number": 37,
+		"name": "Open a previous version’s workspace read/write — existing work becomes inaccessible.",
+		"status": "pending",
+		"reason": "Fresh end-to-end scenario not yet written."
+	},
+	{
+		"number": 38,
+		"name": "Retry a held database transaction — lost or duplicate edits.",
+		"status": "covered",
+		"test": "Retry a held database transaction — lost or duplicate edits."
+	},
+	{
+		"number": 39,
+		"name": "Reconnect live activity after a gap — review shows stale ownership or misses events.",
+		"status": "pending",
+		"reason": "Separate UI scenario work in progress."
+	},
+	{
+		"number": 40,
+		"name": "Find by current build and download report offline — wrong build or broken artifact.",
+		"status": "pending",
+		"reason": "Separate UI scenario work in progress."
+	},
+	{
+		"number": 41,
+		"name": "Keep a refused form in a no-JS browser — data loss or unusable correction.",
+		"status": "pending",
+		"reason": "Separate UI scenario work in progress."
+	},
+	{
+		"number": 42,
+		"name": "Recover a local UI restart with existing operation history — stuck Activity, hidden attempts, or divergent status.",
+		"status": "pending",
+		"reason": "Separate UI scenario work in progress."
+	}
+]

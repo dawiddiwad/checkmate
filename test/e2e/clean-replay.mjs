@@ -12,8 +12,16 @@ export async function replay(role, session) {
 	const observed = JSON.parse(readFileSync(path, 'utf8'))
 	if (observed.status !== 200) throw Error(`Unexpected HTTP status ${observed.status}`)
 	const evidence = `HTTP ${observed.status}: ${observed.total} PLN (session ${session})`
-	if (observed.total !== 240 && process.env.QA_RETEST === '1')
-		return [{ kind: 'verdict', defect: 'a1/D1', result: 'not_fixed', saw: evidence, evidence }]
+	if (process.env.QA_RETEST === '1')
+		return [
+			{
+				kind: 'verdict',
+				defect: 'a1/D1',
+				result: observed.total === 240 ? 'fixed' : 'not_fixed',
+				saw: evidence,
+				evidence,
+			},
+		]
 	if (observed.total !== 240)
 		return [
 			{

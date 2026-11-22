@@ -5,6 +5,8 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:http'
 import { createInterface } from 'node:readline'
 import { join } from 'node:path'
+import { gunzipSync } from 'node:zlib'
+import { DatabaseSync } from 'node:sqlite'
 import test from 'node:test'
 import { directory, root } from '../support.ts'
 import { fakeClaude } from '../claude.ts'
@@ -467,8 +469,19 @@ test('Merge duplicate findings and preserve evidence — defect inflated or uniq
 test('Show disputed/failed retest without closing a claim — unresolved defect reported fixed.', async (t) => {
 	const workspace = directory(t)
 	writeFileSync(join(workspace, 'ticket.md'), 'The promotion quote is 240 PLN.\n')
-	const app = await fixture()
-	t.after(() => app.close())
+	let flaky = false
+	let calls = 0
+	const server = createServer((_req, response) => {
+		const totalPLN = flaky && calls++ % 2 === 1 ? 240 : 220
+		response.setHeader('content-type', 'application/json')
+		response.end(JSON.stringify({ totalPLN }))
+	})
+	server.listen(0, '127.0.0.1')
+	await once(server, 'listening')
+	t.after(() => server.close())
+	const address = server.address()
+	assert(address && typeof address !== 'string')
+	const url = `http://127.0.0.1:${address.port}`
 	const host = fakeClaude(
 		t,
 		{ rules: [{ id: 'R1', text: 'The promotion quote is 240 PLN.', source: 'ticket.md', area: 'Promotion' }] },
@@ -481,7 +494,7 @@ test('Show disputed/failed retest without closing a claim — unresolved defect 
 		CHECKMATE_HARNESS: 'pi',
 		FAKE_CLAUDE_REPLAY: join(root, 'test/e2e/clean-replay.mjs'),
 		QA_REPLAY_DIR: directory(t),
-		QA_APP_URL: app.baseUrl,
+		QA_APP_URL: url,
 		QA_RETEST: '0',
 	}
 	const ok = async (...args: string[]) => {
@@ -493,7 +506,7 @@ test('Show disputed/failed retest without closing a claim — unresolved defect 
 		'test',
 		'cart',
 		'--url',
-		app.baseUrl,
+		url,
 		'--source',
 		'ticket.md',
 		'--build',
@@ -512,6 +525,32 @@ test('Show disputed/failed retest without closing a claim — unresolved defect 
 	assert.equal(claims[0].open, true)
 	assert.equal(claims[0].statuses['still-broken'].status, 'not_fixed')
 	assert.match(JSON.stringify(await ok('explore', 'show', second.explorationId)), /220/)
+	flaky = true
+	const disputed = await ok(
+		'test',
+		'cart',
+		'--build',
+		'flaky',
+		'--level',
+		'smoke',
+		'--explorers',
+		'2',
+		'--allow',
+		'Read'
+	)
+	assert.equal((await ok('explore', 'wait', disputed.explorationId, '--timeout', '60')).state, 'completed')
+	const claim = (await ok('claim', 'list', 'cart')).claims[0]
+	assert.equal(claim.open, true)
+	assert.equal(claim.statuses.flaky.status, 'disputed')
+	const verdicts = (
+		await ok(
+			'query',
+			`SELECT body FROM journal_entries WHERE exploration_id = '${disputed.explorationId}' AND kind = 'verdict'`
+		)
+	).rows
+		.map((row: { body: string }) => JSON.parse(row.body).result)
+		.sort()
+	assert.deepEqual(verdicts, ['fixed', 'not_fixed'])
 })
 
 test('Interrupt the supervisor and retry safely — orphan workers or duplicate testing.', async (t) => {
@@ -1469,6 +1508,133 @@ test('Run a narrow retest with prerequisites and regressions — uncovered tests
 			['T1', 'passed'],
 			['T2', 'passed'],
 			['T3', 'not_run'],
+		]
+	)
+})
+
+test('Open a previous version’s workspace read/write — existing work becomes inaccessible.', async (t) => {
+	const workspace = directory(t)
+	mkdirSync(join(workspace, '.checkmate'))
+	const path = join(workspace, '.checkmate/checkmate.db')
+	// Created by the public CLI at 39d33f74138202987a627e119b49ef4ea50a9a57.
+	writeFileSync(path, gunzipSync(readFileSync(join(root, 'test/e2e/fixtures/workspace-39d33f7.db.gz'))))
+	const previous = new DatabaseSync(path)
+	assert.equal(previous.prepare("SELECT count(*) AS n FROM sqlite_master WHERE name = 'plan_promotions'").get()!.n, 0)
+	previous.close()
+	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle' }
+	const before = await command(workspace, env, 'plan', 'show', 'ticket@1')
+	assert.equal(before.code, 0, before.output)
+	assert.match(before.output, /The quote is 240/)
+	const approval = await command(
+		workspace,
+		env,
+		'plan',
+		'approve',
+		'ticket@1',
+		'--rationale',
+		'Review the preserved plan.'
+	)
+	assert.equal(approval.code, 0, approval.output)
+	const after = await command(workspace, env, 'plan', 'show', 'ticket@1')
+	assert.equal(after.code, 0, after.output)
+	assert.match(after.output, /The quote is 240/)
+	const records = await command(
+		workspace,
+		env,
+		'query',
+		'SELECT (SELECT count(*) FROM plan_promotions) AS promotions, (SELECT count(*) FROM approvals) AS approvals'
+	)
+	assert.equal(records.code, 0, records.output)
+	assert.deepEqual(records.body.rows, [{ promotions: 0, approvals: 1 }])
+})
+
+test('Run a two-instance matrix and accept each latest result — one pass masks another instance’s failure.', async (t) => {
+	const workspace = directory(t)
+	mkdirSync(join(workspace, '.checkmate'))
+	writeFileSync(
+		join(workspace, '.checkmate/checkmate.db'),
+		gunzipSync(readFileSync(join(root, 'test/e2e/fixtures/workspace-39d33f7.db.gz')))
+	)
+	const a = await fixture()
+	const b = await fixture()
+	t.after(() => a.close())
+	t.after(() => b.close())
+	b.fix()
+	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle' }
+	const ok = async (args: string[], input = '') => {
+		const result = await inputCommand(workspace, env, input, ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	await ok(['target', 'instance', 'add', 'shop', 'a', '--entry', `web=${a.baseUrl}`])
+	await ok(['target', 'instance', 'add', 'shop', 'b', '--entry', `web=${b.baseUrl}`])
+	await ok(['plan', 'approve', 'ticket@1', '--rationale', 'Check both instances.'])
+	for (const [instance, app, expected] of [
+		['a', a, 220],
+		['b', b, 240],
+	] as const) {
+		const run = `run-${instance}`
+		await ok(['run', 'begin', run, 'ticket@1', '--build', 'b1', '--instance', instance, '--tests', 'T1'])
+		const observed = await (await fetch(`${app.baseUrl}/quote?promotion=true&loyalty=true`)).json()
+		assert.equal(observed.totalPLN, expected)
+		const checked = await ok(
+			[
+				'run',
+				'check',
+				run,
+				'T1',
+				'A1',
+				'--result',
+				expected === 240 ? 'passed' : 'failed',
+				'--observed',
+				String(expected),
+				'--evidence',
+				'-',
+			],
+			JSON.stringify(observed)
+		)
+		if (expected === 220)
+			await ok(
+				['run', 'finding', run],
+				JSON.stringify({
+					id: 'F1',
+					type: 'defect',
+					severity: 'high',
+					assertionIds: ['T1.A1'],
+					requirementIds: ['R1'],
+					title: 'Wrong quote',
+					expected: '240',
+					observed: '220',
+					reproduction: ['Read quote.'],
+					evidenceIds: checked.evidenceIds,
+				})
+			)
+		await ok(['run', 'close', run, 'T1'])
+		await ok([
+			'run',
+			'finish',
+			run,
+			'--completion',
+			'completed',
+			'--cleanup',
+			'completed',
+			'--cleanup-reason',
+			'No test data.',
+		])
+		await ok(['result', 'accept', run, '--rationale', 'Reviewed this instance.'])
+	}
+	const status = await ok(['status', 'ticket'])
+	assert.equal(status.state, 'defects_open', JSON.stringify(status))
+	assert.match(JSON.stringify(status), /run-a/)
+	const records = await ok(['query', 'SELECT run_id, body FROM results ORDER BY run_id'])
+	assert.deepEqual(
+		records.rows.map((row: { run_id: string; body: string }) => [
+			row.run_id,
+			JSON.parse(row.body).tests[0].outcome,
+		]),
+		[
+			['run-a', 'failed'],
+			['run-b', 'passed'],
 		]
 	)
 })

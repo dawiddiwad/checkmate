@@ -71,8 +71,7 @@
 	{
 		"number": 12,
 		"name": "Show disputed/failed retest without closing a claim — unresolved defect reported fixed.",
-		"status": "partial",
-		"reason": "The failed retest is covered; a disputed verdict is not yet covered.",
+		"status": "covered",
 		"test": "Show disputed/failed retest without closing a claim — unresolved defect reported fixed."
 	},
 	{
@@ -145,8 +144,8 @@
 	{
 		"number": 24,
 		"name": "Run a two-instance matrix and accept each latest result — one pass masks another instance’s failure.",
-		"status": "pending",
-		"reason": "Fresh end-to-end scenario not yet written."
+		"status": "covered",
+		"test": "Run a two-instance matrix and accept each latest result — one pass masks another instance’s failure."
 	},
 	{
 		"number": 25,
@@ -228,8 +227,8 @@
 	{
 		"number": 37,
 		"name": "Open a previous version’s workspace read/write — existing work becomes inaccessible.",
-		"status": "pending",
-		"reason": "Fresh end-to-end scenario not yet written."
+		"status": "covered",
+		"test": "Open a previous version’s workspace read/write — existing work becomes inaccessible."
 	},
 	{
 		"number": 38,

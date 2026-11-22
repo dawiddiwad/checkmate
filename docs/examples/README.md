@@ -22,7 +22,7 @@ In both runs, R3 (refunds) stays uncovered, because its gap is deferred. These r
 
 ## The live run
 
-`npm run test:live` passed on 11 November 2026 on Linux with Node.js `v24.22.2`, Claude Code `2.1.319`, Playwright CLI `0.1.23`, and `ANTHROPIC_MODEL=claude-haiku-5-5`. The workers had `Read`, `Write`, `Edit`, and `Bash` in a temporary workspace.
+A former live acceptance run passed on 11 November 2026 on Linux with Node.js `v24.22.2`, Claude Code `2.1.319`, Playwright CLI `0.1.23`, and `ANTHROPIC_MODEL=claude-haiku-5-5`. The workers had `Read`, `Write`, `Edit`, and `Bash` in a temporary workspace.
 
 | Stage             | Seconds | Status           |
 | ----------------- | ------: | ---------------- |
@@ -49,7 +49,7 @@ The current exporter rendered the files again from the stored snapshots of that 
 
 The live database was not kept, so two details come from other records:
 
-- The acceptance of `live-run` uses the actor and rationale of `test/live.ts`. Its time is known to the minute only.
+- The acceptance of `live-run` uses the actor and rationale recorded by the former live acceptance run. Its time is known to the minute only.
 - The HTTP evidence is inline because its bytes were recovered with the recorded digests. The text evidence of T1 was not recovered, so the report lists it without content.
 
 The evidence bytes stay in the database. The exports contain no credentials and no local paths. `.prettierignore` excludes this directory, so the files keep the exact bytes of the export.
@@ -65,4 +65,4 @@ checkmate export run live-run --format json > docs/examples/runs/live-run.json
 ## Next
 
 - [Runs and evidence](../reference/runs.md#export): what each report contains.
-- [Development](../development.md#live-tests): run the live tests yourself.
+- [Development](../development.md#checks): run the current checks.

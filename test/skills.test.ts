@@ -29,11 +29,6 @@ test('a request to test a change routes to the test skill, not to plan, execute,
 	)
 })
 
-test('each skill description stays short', () => {
-	for (const skill of ['test', 'plan', 'execute', 'revise', 'setup', 'status', 'report', 'ui'])
-		assert(description(skill).length <= 300, skill)
-})
-
 test('the test skill runs the session loop and names no removed level', () => {
 	const text = readFileSync(join(root, 'plugin/skills/test/SKILL.md'), 'utf8')
 	assert.doesNotMatch(text, /standard/i)

@@ -238,16 +238,13 @@ The command prints the URL. Ctrl+C stops the UI and its sample process, then del
 
 ### Review UI screenshots
 
-`scripts/ui-demo.ts` seeds a demo workspace. `npm run ui:volume` seeds a large workspace, with a plan of 50 rules in 9 areas over three builds, and starts the UI on it. `scripts/ui-screenshots.ts` captures it in PNG. The manual uses the dark captures as JPEG files, 1280 pixels wide, in `docs/img/ui/`:
+`scripts/ui-screenshots.ts` seeds a temporary demo workspace and captures the review UI in light and dark themes. It writes PNG files to the output directory:
 
 ```sh
 CHECKMATE_BROWSER_EXECUTABLE=/usr/bin/google-chrome node scripts/ui-screenshots.ts /tmp/shots
-for name in inbox plans plan run-gap settings-target; do
-  convert /tmp/shots/$name-dark.png -resize 1280x -quality 82 docs/img/ui/$name.jpg
-done
 ```
 
-Give each image alt text that says what it shows.
+Add alt text when you publish an image.
 
 ### Examples
 

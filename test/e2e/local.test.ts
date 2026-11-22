@@ -1638,3 +1638,178 @@ test('Run a two-instance matrix and accept each latest result — one pass masks
 		]
 	)
 })
+
+test('Resume a structured run after a worker deadline — outcomes lost or gate bypassed.', async (t) => {
+	const workspace = directory(t)
+	mkdirSync(join(workspace, '.checkmate'))
+	writeFileSync(
+		join(workspace, '.checkmate/checkmate.db'),
+		gunzipSync(readFileSync(join(root, 'test/e2e/fixtures/workspace-39d33f7.db.gz')))
+	)
+	const app = await fixture()
+	t.after(() => app.close())
+	app.fix()
+	const bin = join(workspace, 'bin')
+	mkdirSync(bin)
+	const { chmodSync } = await import('node:fs')
+	const { delimiter } = await import('node:path')
+	writeFileSync(
+		join(bin, 'claude'),
+		`#!/usr/bin/env node
+const { execFileSync } = require('node:child_process')
+const { writeFileSync } = require('node:fs')
+const plugin = process.argv[process.argv.indexOf('--plugin-dir') + 1]
+writeFileSync('worker.pid', String(process.pid))
+fetch(process.env.QA_APP_URL + '/quote?promotion=true&loyalty=true').then(r => r.json()).then(quote => {
+  if (quote.totalPLN !== 240) throw Error('Bad build')
+  execFileSync(process.execPath, [plugin + '/dist/checkmate.js', 'run', 'check', 'run-1', 'T1', 'A1', '--result', 'passed', '--observed', '240', '--evidence', '-'], { input: JSON.stringify(quote), stdio: ['pipe', 'pipe', 'inherit'] })
+  setInterval(() => {}, 1000)
+})
+`,
+		{ mode: 0o755 }
+	)
+	chmodSync(join(bin, 'claude'), 0o755)
+	const env = {
+		...process.env,
+		PATH: `${bin}${delimiter}${process.env.PATH}`,
+		CHECKMATE_ACTOR: 'oracle',
+		CHECKMATE_HARNESS: 'claude',
+		QA_APP_URL: app.baseUrl,
+	}
+	const ok = async (...args: string[]) => {
+		const result = await command(workspace, env, ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	await ok('target', 'instance', 'add', 'shop', 'local', '--entry', `web=${app.baseUrl}`)
+	await ok('plan', 'approve', 'ticket@1', '--rationale', 'Run the rule.')
+	await ok('run', 'begin', 'run-1', 'ticket@1', '--build', 'fixed', '--instance', 'local', '--tests', 'T1')
+	const stopped = await command(
+		workspace,
+		env,
+		'delegate',
+		'execute',
+		'run-1',
+		'--timeout',
+		'2',
+		'--allow',
+		'Read',
+		'--allow',
+		'Bash'
+	)
+	assert.equal(stopped.code, 1, stopped.output)
+	assert.equal(stopped.body.status, 'interrupted')
+	assert.match(stopped.output, /Worker deadline exceeded/)
+	const records = await ok(
+		'query',
+		"SELECT test_id, assertion_id, result FROM assertion_results WHERE run_id='run-1'"
+	)
+	assert.deepEqual(records.rows, [{ test_id: 'T1', assertion_id: 'A1', result: 'passed' }])
+	const resumed = await ok('run', 'resume', 'run-1')
+	assert.equal(resumed.attempt, 2)
+	assert.equal(resumed.tests[0].recorded, 1)
+	await ok('run', 'close', 'run-1', 'T1')
+	await ok(
+		'run',
+		'finish',
+		'run-1',
+		'--completion',
+		'completed',
+		'--cleanup',
+		'completed',
+		'--cleanup-reason',
+		'No test data.'
+	)
+	const results = await ok('query', "SELECT body FROM results WHERE run_id='run-1'")
+	const result = JSON.parse(results.rows[0].body)
+	assert.equal(result.tests[0].outcome, 'passed')
+	const pid = Number(readFileSync(join(workspace, 'worker.pid'), 'utf8'))
+	assert.throws(() => process.kill(pid, 0), /ESRCH/)
+})
+
+test(
+	'Resume a chat turn and change its model — wrong native session, context, or charge.',
+	{ timeout: 45000 },
+	async (t) => {
+		const workspace = directory(t)
+		const host = fakeClaude(t, {
+			request: 'The quote was checked.',
+			models: [
+				{ value: 'sonnet', displayName: 'Sonnet' },
+				{ value: 'opus', displayName: 'Opus' },
+			],
+		})
+		const env = { ...process.env, ...host.env, CHECKMATE_HARNESS: 'claude' }
+		const server = spawn(process.execPath, [binary, 'ui', '--port', '0', '--json'], { cwd: workspace, env })
+		t.after(() => {
+			if (server.exitCode === null) server.kill('SIGTERM')
+		})
+		const [first] = (await once(server.stdout, 'data')) as [Buffer]
+		const url = JSON.parse(first.toString().split('\n')[0]).url as string
+		assert(url)
+		const html = await (await fetch(new URL('/chats', url))).text()
+		const csrf = /name="csrf" value="([0-9a-f]+)"/.exec(html)?.[1]
+		assert(csrf)
+		const send = async (path: string, text: string, model: string) => {
+			const response = await fetch(new URL(path, url), {
+				method: 'POST',
+				redirect: 'manual',
+				headers: { 'content-type': 'application/x-www-form-urlencoded', cookie: 'checkmate_actor=oracle' },
+				body: new URLSearchParams({ csrf, text, model, harness: 'claude' }),
+			})
+			assert.equal(response.status, 303, await response.text())
+			return response.headers.get('location')!
+		}
+		const done = async (count: number) => {
+			const until = Date.now() + 10000
+			while (Date.now() < until) {
+				const result = await command(
+					workspace,
+					env,
+					'query',
+					"SELECT count(*) AS n FROM request_events WHERE status='answered'"
+				)
+				if (result.body.rows[0].n >= count) return
+				await new Promise((resolve) => setTimeout(resolve, 50))
+			}
+			throw Error('Chat did not answer')
+		}
+		const chat = await send('/chats', 'First prompt.', 'sonnet')
+		assert.match(chat, /^\/chats\//)
+		await done(1)
+		await send(`${chat}/turns`, 'Same model.', 'sonnet')
+		await done(2)
+		await send(`${chat}/turns`, 'Different model.', 'opus')
+		await done(3)
+		const calls = host.called().filter((item: { role: string }) => item.role === 'request')
+		assert.equal(calls.length, 3)
+		const flag = (call: { args: string[] }, key: string) => call.args[call.args.indexOf(key) + 1]
+		assert.equal(flag(calls[0], '--model'), 'sonnet')
+		assert.equal(flag(calls[1], '--resume'), flag(calls[0], '--session-id'))
+		assert.equal(flag(calls[2], '--model'), 'opus')
+		assert.notEqual(flag(calls[2], '--session-id'), flag(calls[0], '--session-id'))
+		assert.match(calls[2].prompt, /First prompt.*The quote was checked.*Same model/s)
+		const stored = await command(workspace, env, 'query', 'SELECT conversation, text FROM requests ORDER BY rowid')
+		assert.deepEqual(
+			stored.body.rows.map((row: { text: string }) => row.text),
+			['First prompt.', 'Same model.', 'Different model.']
+		)
+		assert.equal(new Set(stored.body.rows.map((row: { conversation: string }) => row.conversation)).size, 1)
+		const events = await command(workspace, env, 'query', 'SELECT detail FROM request_events ORDER BY rowid')
+		const history = JSON.stringify(events.body.rows)
+		assert.match(history, /sonnet/)
+		assert.match(history, /opus/)
+		assert.ok(history.includes(flag(calls[0], '--session-id')))
+		assert.ok(history.includes(flag(calls[2], '--session-id')))
+		const costs = await command(
+			workspace,
+			env,
+			'query',
+			"SELECT detail FROM request_events WHERE step='state' AND status='answered' ORDER BY rowid"
+		)
+		assert.deepEqual(
+			costs.body.rows.map((row: { detail: string }) => JSON.parse(row.detail).costUsd),
+			[0.06, undefined, 0.06]
+		)
+	}
+)

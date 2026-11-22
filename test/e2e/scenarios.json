@@ -169,8 +169,8 @@
 	{
 		"number": 28,
 		"name": "Resume a structured run after a worker deadline — outcomes lost or gate bypassed.",
-		"status": "pending",
-		"reason": "Fresh end-to-end scenario not yet written."
+		"status": "covered",
+		"test": "Resume a structured run after a worker deadline — outcomes lost or gate bypassed."
 	},
 	{
 		"number": 29,
@@ -182,8 +182,9 @@
 	{
 		"number": 30,
 		"name": "Resume a chat turn and change its model — wrong native session, context, or charge.",
-		"status": "pending",
-		"reason": "Fresh end-to-end scenario not yet written."
+		"status": "covered",
+		"test": "Resume a chat turn and change its model — wrong native session, context, or charge.",
+		"limit": "Controlled Claude protocol process; no live provider or model judgment."
 	},
 	{
 		"number": 31,

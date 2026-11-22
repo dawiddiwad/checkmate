@@ -563,6 +563,27 @@ test('plan open takes the objective, sources, and instructions as flags', (t) =>
 	)
 })
 
+test('plan edit reads the edited content on standard input and prints the edit kind', (t) => {
+	const workspace = setup(t)
+	const shown = json(workspace, ['plan', 'show', 'checkout@1']).body
+	const content = {
+		requirements: shown.plan.requirements,
+		tests: shown.plan.tests.map(({ readiness, gapIds, ...test }: Record<string, unknown>) => test),
+		gaps: shown.plan.gaps,
+	}
+	content.tests[0].title = 'Edited title'
+	const edited = cli(workspace, ['plan', 'edit', 'checkout@1', '--expect-sha', shown.sha256], content)
+	assert.equal(edited.code, 0, edited.output)
+	assert.match(edited.lines[0], /^needs_decision checkout@1 sha256=[a-f0-9]{8} edit=in_place$/)
+	assert.equal(json(workspace, ['plan', 'show', 'checkout@1']).body.plan.tests[0].title, 'Edited title')
+	const stale = cli(workspace, ['plan', 'edit', 'checkout@1', '--expect-sha', shown.sha256], content)
+	assert.equal(stale.code, 1)
+	assert.match(stale.lines[2], /^reason: checkout@1 has digest/)
+	const patched = cli(workspace, ['plan', 'edit', 'checkout@1', '--patch'], { tests: { T1: { title: 'Patched' } } })
+	assert.match(patched.lines[0], /^needs_decision checkout@1 sha256=[a-f0-9]{8} edit=in_place$/)
+	assert.equal(json(workspace, ['plan', 'show', 'checkout@1']).body.plan.tests[0].title, 'Patched')
+})
+
 test('a refusal says if the request is malformed or prohibited, and its hint gives the next command', (t) => {
 	const workspace = setup(t)
 	for (const [gap, value] of [

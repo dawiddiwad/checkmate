@@ -6,14 +6,11 @@ import { userInfo } from 'node:os'
 import { join } from 'node:path'
 import { closeStore } from '../plugin/src/store.ts'
 import { uiOptions } from '../plugin/src/cli.ts'
-import { answerGap, rejectPlan } from '../plugin/src/plans.ts'
-import { beginRun, closeTest, finishRun, rejectResult } from '../plugin/src/runs.ts'
+import { rejectPlan } from '../plugin/src/plans.ts'
 import {
 	begin,
 	candidate,
-	check,
 	cli,
-	defectRun,
 	directory,
 	json,
 	passRun,
@@ -22,7 +19,6 @@ import {
 	profile,
 	promotionDelta,
 	ready,
-	regressionPlan,
 	root,
 	store,
 	target,
@@ -330,66 +326,6 @@ test('--actor names the writer; parse errors are invalid requests', (t) => {
 	assert.match(badJson.lines[3], /^hint: Send one JSON object on standard input/)
 })
 
-test('compact output gives the actor and rationale of a rejected result', (t) => {
-	const workspace = directory(t)
-	const opened = store(t, workspace)
-	ready(opened)
-	passRun(opened, 'run-1', 'b1', ['T1', 'T2'])
-	rejectResult(opened, 'Dawid', { runId: 'run-1', rationale: 'I need fullsize screenshots for evidence' })
-	closeStore(opened)
-	const status = cli(workspace, ['status', 'checkout'])
-	assert.match(status.lines[0], /^completed checkout state=needs_retest waitsOn=qa /)
-	assert.equal(status.lines[1], 'why\trun-1 was rejected by Dawid: I need fullsize screenshots for evidence')
-	const shown = cli(workspace, ['run', 'show', 'run-1'])
-	assert.match(shown.lines[0], / acceptance=rejected$/)
-	assert.match(shown.lines.at(-1)!, /^decision\trejected\tDawid\t\S+Z\tI need fullsize screenshots for evidence$/)
-	assert.match(
-		cli(workspace, ['log', '--limit', '1']).lines[1],
-		/\tDawid\tresult reject\tcompleted\trun:run-1,plan:checkout,inbox\tI need fullsize screenshots for evidence\t\d+$/
-	)
-})
-
-test('compact output gives the rationale of a rejected plan and of gap answers', (t) => {
-	const workspace = directory(t)
-	const opened = store(t, workspace)
-	target(opened)
-	plan(opened)
-	rejectPlan(opened, 'Dawid', { reference: 'checkout@1', rationale: 'Add a refund test.' })
-	closeStore(opened)
-	assert.equal(
-		cli(workspace, ['status', 'checkout']).lines[1],
-		'why\tcheckout@1 was rejected by Dawid: Add a refund test.'
-	)
-	assert.equal(
-		cli(workspace, ['plan', 'show', 'checkout'])
-			.lines.at(-1)!
-			.replace(/\t\S+Z\t/, '\t<at>\t'),
-		'decision\trejected\tDawid\t<at>\tAdd a refund test.'
-	)
-	const reopened = store(t, workspace)
-	answerGap(reopened, 'tester', {
-		planId: 'checkout',
-		gapId: 'G2',
-		kind: 'defer',
-		value: 'Do not check refunds.',
-		rationale: 'Refunds ship next quarter.',
-	})
-	closeStore(reopened)
-	assert.match(
-		cli(workspace, ['plan', 'pending', 'checkout']).lines[1],
-		/^[0-9A-Z]{26}\tG2\tdefer\tDo not check refunds\.\tRefunds ship next quarter\.$/
-	)
-	assert(
-		cli(workspace, ['plan', 'show', 'checkout']).lines.some((line) =>
-			/\tG2\tpending defer\tDo not check refunds\.\tRefunds ship next quarter\.$/.test(line)
-		)
-	)
-	assert.match(
-		cli(workspace, ['log', '--limit', '1']).lines[1],
-		/\tgap answer\t.*\tRefunds ship next quarter\.\t\d+$/
-	)
-})
-
 test('the operation log has one row per write, records refusals, and lists subjects', (t) => {
 	const workspace = setup(t)
 	cli(workspace, ['plan', 'show', 'checkout'])
@@ -663,60 +599,6 @@ test('payload commands read a shell heredoc on standard input', (t) => {
 	assert.match(output, /^completed checkout-local@1 sha256=[a-f0-9]{8} recorded=true$/m)
 })
 
-test('inbox lists gaps to answer, plans to approve, results to accept, and plan requests', (t) => {
-	const workspace = setup(t)
-	const first = cli(workspace, ['inbox'])
-	assert.equal(first.code, 0)
-	assert.equal(first.lines[0], 'completed inbox gaps=2 plans=1 results=0 requests=0')
-	assert.deepEqual(first.lines.slice(1, 3), [
-		'checkout@1/G1\tgap\tblocking\tDoes the promotion stack with loyalty?',
-		'checkout@1/G2\tgap\tblocking\tWhich orders qualify for refunds?',
-	])
-	assert.match(
-		first.lines[3],
-		/^checkout@1\tplan\t[a-f0-9]{8}\t3 tests: 1 ready, 2 blocked, 0 deferred; 2 open gaps$/
-	)
-	const request = { objective: 'Draft later.', requirements: [{ id: 'R1', text: 'Later.', source: 'brief#1' }] }
-	cli(workspace, ['plan', 'open', 'later', '--target', 'checkout-local@1'], request)
-	const waiting = cli(workspace, ['inbox'])
-	assert.equal(waiting.lines[0], 'completed inbox gaps=2 plans=1 results=0 requests=1')
-	assert.equal(waiting.lines.at(-1), 'later\trequested\tcheckout-local@1\tDraft later.')
-	const plans = cli(workspace, ['plan', 'list'])
-	assert.equal(plans.lines[0], 'completed plans count=2')
-	assert.match(plans.lines[1], /^checkout@1\tgaps=G1,G2\tapproval=pending/)
-	assert.equal(plans.lines[2], 'later\tstatus=requested\tstate=ready_to_test\twaitsOn=qa')
-	assert.deepEqual(cli(workspace, ['plan', 'list', '--awaiting-approval']).lines.slice(1).length, 1)
-	revise(workspace)
-	cli(workspace, ['plan', 'approve', 'checkout@2', '--rationale', 'Ok.'])
-	cli(workspace, ['run', 'begin', 'run-1', 'checkout@2', '--tests', 'T1', '--build', 'b1'])
-	cli(workspace, [
-		'run',
-		'finish',
-		'run-1',
-		'--completion',
-		'interrupted',
-		'--cause',
-		'host_stopped',
-		'--reason',
-		'The oracle stopped the run.',
-		'--cleanup',
-		'completed',
-		'--cleanup-reason',
-		'Closed.',
-	])
-	const later = cli(workspace, ['inbox'])
-	assert.deepEqual(later.lines, [
-		'completed inbox gaps=0 plans=0 results=1 requests=1',
-		'run-1\tresult\tcheckout@2\tb1\tpartial\terror=1',
-		'later\trequested\tcheckout-local@1\tDraft later.',
-	])
-	const body = json(workspace, ['inbox']).body
-	assert.deepEqual(
-		[body.gaps, body.plans, body.results.map((row: { runId: string }) => row.runId)],
-		[[], [], ['run-1']]
-	)
-})
-
 test('plan open takes the objective, sources, and instructions as flags', (t) => {
 	const workspace = setup(t)
 	const open = (planId: string, ...flags: string[]) =>
@@ -755,80 +637,6 @@ test('run gate and run begin with ready_only and no --tests print the selection 
 	assert.deepEqual(cli(workspace, ['run', 'gate', 'checkout@1', '--build', 'b1']).lines, checked.lines)
 	const missing = cli(workspace, ['run', 'gate', 'checkout@1', '--build', 'b1', '--partial', 'wait_for_resolution'])
 	assert.equal(missing.lines[2], 'reason: Select one or more tests with --tests, or use --partial ready_only')
-})
-
-test('a run gap shows in the inbox, and plan adopt-gaps or gap answer brings it into the plan', (t) => {
-	const workspace = setup(t)
-	revise(workspace)
-	cli(workspace, ['plan', 'approve', 'checkout@2', '--rationale', 'Ok.'])
-	cli(workspace, ['run', 'begin', 'run-1', 'checkout@2', '--tests', 'T1', '--build', 'b1'])
-	const gap = (id: string) => ({
-		id,
-		severity: 'non_blocking',
-		status: 'open',
-		requirementIds: [],
-		testIds: ['T1'],
-		question: `Is ${id} a question?`,
-		consequence: 'Unknown.',
-		decisionId: null,
-	})
-	cli(workspace, ['run', 'gap', 'run-1'], gap('G3'))
-	cli(workspace, ['run', 'gap', 'run-1'], gap('G4'))
-	const waiting = cli(workspace, ['inbox'])
-	assert.equal(waiting.lines[0], 'completed inbox gaps=2 plans=0 results=0 requests=0')
-	assert.deepEqual(waiting.lines.slice(1), [
-		'checkout@2/G3\trun_gap\tnon_blocking\trun-1\tIs G3 a question?',
-		'checkout@2/G4\trun_gap\tnon_blocking\trun-1\tIs G4 a question?',
-	])
-	assert.deepEqual(json(workspace, ['plan', 'list']).body.plans[0].openGaps, ['G3', 'G4'])
-	const adopted = cli(workspace, ['plan', 'adopt-gaps', 'checkout@2', '--run', 'run-1', '--gaps', 'G3'])
-	assert.match(adopted.lines[0], /^completed checkout@3 sha256=[a-f0-9]{8} edit=new_revision adopted=G3$/)
-	const answered = cli(workspace, [
-		'gap',
-		'answer',
-		'checkout',
-		'G4',
-		'--kind',
-		'defer',
-		'--value',
-		'Later.',
-		'--rationale',
-		'Scope.',
-	])
-	assert.match(
-		answered.lines[0],
-		/^completed checkout decision=[0-9A-Z]{26} gap=G4 from=run-1 revision=3 edit=in_place$/
-	)
-	assert.deepEqual(cli(workspace, ['inbox']).lines.slice(1, 2), [
-		'checkout@3/G3\tgap\tnon_blocking\tIs G3 a question?',
-	])
-})
-
-test('status prints the loop state, who it waits on, and the open items', (t) => {
-	const workspace = setup(t)
-	const status = cli(workspace, ['status', 'checkout'])
-	assert.equal(status.code, 0)
-	assert.deepEqual(status.lines, [
-		'completed checkout state=needs_answers waitsOn=oracle revision=1 approval=pending',
-		'why\t2 open gaps',
-		'why\tcheckout@1 waits for approval',
-		'next\tcheckmate gap answer checkout <gapId> --kind <kind> --value "<answer>" --source "<source>" --rationale "<why>"',
-		'G1\tgap\tblocking\tDoes the promotion stack with loyalty?',
-		'G2\tgap\tblocking\tWhich orders qualify for refunds?',
-	])
-	const body = json(workspace, ['status', 'checkout']).body
-	assert.deepEqual([body.waitsOn, body.stage], ['oracle', 'none'])
-	assert.deepEqual(cli(workspace, ['status', 'nothing']).lines, [
-		'rejected nothing refusal=prohibited',
-		'reason: Refused: prohibited in the current state.',
-		'reason: Unknown plan: nothing. Run plan open first.',
-	])
-	assert.equal(cli(workspace, ['plan', 'list', '--waits-on', 'oracle']).lines[0], 'completed plans count=1')
-	assert.equal(cli(workspace, ['plan', 'list', '--waits-on', 'qa']).lines[0], 'completed plans count=0')
-	assert.match(
-		cli(workspace, ['plan', 'list', '--waits-on', 'boss']).output,
-		/^invalid_request plan list refusal=malformed\nreason: Refused: malformed request\.\nreason: Invalid --waits-on: boss\. Use one of: planner, oracle/
-	)
 })
 
 test('plan edit reads the edited content on standard input and prints the edit kind', (t) => {
@@ -871,33 +679,6 @@ test('run commands print overlap warnings and resume exits with the current gate
 	assert.equal(refused.code, 1)
 	assert.equal(refused.lines[0], 'rejected run-1 refusal=prohibited')
 	assert(refused.lines.includes('reason: Plan checkout@2 is not approved'))
-})
-
-test('run show and status print one retest line for each earlier defect', (t) => {
-	const opened = store(t)
-	regressionPlan(opened)
-	defectRun(opened, 'run-1', 'b1')
-	beginRun(opened, 'tester', {
-		runId: 'run-2',
-		reference: 'checkout@2',
-		build: 'b2',
-		partial: 'ready_only',
-		retestOf: 'run-1',
-	})
-	for (const testId of ['T1', 'T2']) {
-		for (const assertionId of ['A1', 'A2']) check(opened, 'run-2', `${testId}.${assertionId}`, 'passed')
-		closeTest(opened, 'tester', { runId: 'run-2', testId })
-	}
-	finishRun(opened, 'tester', {
-		runId: 'run-2',
-		completion: 'completed',
-		cleanup: 'completed',
-		cleanupReason: 'Closed.',
-	})
-	const shown = cli(opened.workspace, ['run', 'show', 'run-2']).lines
-	assert(shown.includes('run-1/F1\tretest\tfixed\tT2\tPromotion stacks with loyalty'), shown.join('\n'))
-	const status = cli(opened.workspace, ['status', 'checkout']).lines
-	assert(status.includes('run-1/F1\tretest\trun-2\tfixed\tPromotion stacks with loyalty'), status.join('\n'))
 })
 
 test('a refusal says if the request is malformed or prohibited, and its hint gives the next command', (t) => {

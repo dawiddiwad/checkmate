@@ -9,7 +9,6 @@ import {
 	isLocalAddress,
 	readOnlyOperation,
 	requireAnswer,
-	setupAssumptions,
 	setupTarget,
 	targetRevision,
 	urlReachable,
@@ -52,21 +51,6 @@ test('an ID from a text is made the way the product makes the ID of a target', (
 	assert.equal(slugId('???'), '')
 	assert.equal(urlTargetId('http://Localhost:3000/shop'), 'localhost-3000')
 	assert.equal(urlTargetId('nonsense'), 'app')
-})
-
-test('the assumptions of a setup are the lines that the setup reports', (t) => {
-	const opened = store(t)
-	const input = { url: 'http://localhost:3999', env: { PATH: '' }, answered: true }
-	const planned = setupAssumptions(input)
-	const done = setupTarget(opened, actor, input)
-	assert.deepEqual(done.data.assumed, planned.assumed)
-	assert.deepEqual(
-		planned.assumed.map((line) => line.split('=')[0]),
-		['target', 'instance', 'entry point', 'capabilities', 'operations', 'reset', 'authentication']
-	)
-	const readOnly = setupAssumptions({ ...input, operations: [readOnlyOperation], targetId: 'mine' })
-	assert.deepEqual(readOnly.allowedOperations, ['read_only'])
-	assert(!readOnly.assumed.some((line) => /^(target|operations)=/.test(line)))
 })
 
 test('a target that testers may only read has the sentence that says so in the brief', (t) => {

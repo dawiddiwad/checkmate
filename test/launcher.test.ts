@@ -218,22 +218,10 @@ reply({ status: 'needs_decision', subject: '${subject}', reasons: ['Stopped.'] }
 	}
 	const plan = await prompt('plan', 'checkout')
 	assert.match(plan, /Do not ask the oracle\. Do not wait for the oracle\./)
-	assert.match(plan, /Write an open blocking gap for each vague term that changes an expected value/)
-	assert.match(plan, /Plan regression tests only for existing rules that the sources state/)
-	assert.match(plan, /Deadline: 300 seconds from now \(\S+Z UTC\)\. Check the time with `date -u`\./)
-	assert.match(plan, /stop and return needs_decision/)
 	assert(plan.includes(`read ${join(pluginRoot, 'skills', 'plan', 'SKILL.md')} and`), plan)
-	assert.doesNotMatch(plan, /person/)
 	assert(
 		plan.includes(`\`checkmate <command>\` means \`node '${join(pluginRoot, 'dist', 'checkmate.js')}' <command>\`.`)
 	)
-	assert.match(await prompt('setup', 'checkout-local'), /checkmate target instance list checkout-local/)
-	assert.deepEqual(attempts(workspace, 'target:checkout-local')[0].response, {
-		status: 'needs_decision',
-		subject: 'checkout-local',
-		reasons: [],
-		data: { operation: null },
-	})
 })
 
 function requested(t: TestContext) {

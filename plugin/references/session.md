@@ -38,7 +38,13 @@ Before you answer a question about targets, plans, tests, gaps, runs, or results
 
 When `target request`, `plan request`, or `run show` refuses with `Unknown ...`, record the subject from the oracle's message.
 
-- Setup:
+- Setup: when the oracle gives the URL of the application, run the quick setup. It records the target and its first instance:
+
+  ```sh
+  checkmate setup --url <url>
+  ```
+
+  Report the `assumed:` lines. Use `target open` below only when the oracle names the operations, the tools, or other choices:
 
   ```sh
   checkmate target open <targetId> --entry-point "web:url:Storefront." --capabilities browser,http \

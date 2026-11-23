@@ -970,6 +970,22 @@ test('Delegate setup and plan and verify the record — prose or mismatched acto
 		assert.equal(result.code, 0, result.output)
 		return result.body
 	}
+	const noTarget = await command(
+		workspace,
+		env,
+		'plan',
+		'open',
+		'ticket',
+		'--target',
+		'shop@1',
+		'--objective',
+		'Check the quote.',
+		'--source',
+		'ticket.md'
+	)
+	assert.equal(noTarget.code, 1, noTarget.output)
+	assert.match(noTarget.output, /Unknown target profile: shop@1/)
+	assert.match(noTarget.output, /checkmate setup --url <url>/)
 	await ok(
 		'target',
 		'open',

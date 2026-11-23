@@ -13,6 +13,8 @@ A plan request has an `objective`, and `requirements` or `context.sources`, or b
 
 Save the plan with `plan save` before 75% of the deadline is used, also when it is not complete. A saved plan with gaps is better than no plan.
 
+When `checkmate target list` shows no target, or `plan open` refuses with `Unknown target profile`, create the target first. Give the URL of the application, then run `checkmate setup --url <url>`. Use the `targetId@1` that it prints in `--target`. Do not write `target open` with your own `--operations`. The setup skill has the details.
+
 ## Steps
 
 1. Run `checkmate plan request <planId>`. It prints the objective, requirements, context sources, instructions, source context, tools, target capabilities, and allowed operations. When it refuses with `Unknown plan`, return `needs_decision` with the reason. In the same session, follow `session.md`.

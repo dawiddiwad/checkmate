@@ -2078,5 +2078,12 @@ export function runGate(store: Store, runId: string) {
 				: partial
 					? { code: 2, state: 'partial_coverage' }
 					: { code: 0, state: 'passed' }
-	return { ...verdict, failed, errored, openGaps, completion, coverage }
+	const unverified = plan.tests
+		.filter((test) => detail.request.selectedTestIds.includes(test.id))
+		.flatMap((test) =>
+			test.assertions
+				.filter((assertion) => assertion.checkKind === 'deterministic' && assertion.expected === undefined)
+				.map((assertion) => `${test.id}.${assertion.id}`)
+		)
+	return { ...verdict, failed, errored, openGaps, completion, coverage, unverified }
 }

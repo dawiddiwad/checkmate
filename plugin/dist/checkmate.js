@@ -20716,7 +20716,10 @@ function runGate(store, runId) {
   const coverage2 = detail.result?.coverage.status ?? null;
   const partial = coverage2 !== "complete";
   const verdict = failed2.length ? { code: 1, state: "defects" } : couldNotTest ? { code: 2, state: "could_not_test" } : openGaps.length ? { code: 3, state: "blocked_on_oracle" } : partial ? { code: 2, state: "partial_coverage" } : { code: 0, state: "passed" };
-  return { ...verdict, failed: failed2, errored, openGaps, completion, coverage: coverage2 };
+  const unverified = plan.tests.filter((test) => detail.request.selectedTestIds.includes(test.id)).flatMap(
+    (test) => test.assertions.filter((assertion) => assertion.checkKind === "deterministic" && assertion.expected === void 0).map((assertion) => `${test.id}.${assertion.id}`)
+  );
+  return { ...verdict, failed: failed2, errored, openGaps, completion, coverage: coverage2, unverified };
 }
 
 // plugin/src/rulemap.ts
@@ -39498,6 +39501,8 @@ var commands = {
       return {
         facts: {
           state: detail.state,
+          gate: reply.data.gate?.state,
+          unverified: reply.data.gate?.unverified?.join(",") || void 0,
           mode: detail.request.permanent ? "permanent" : void 0,
           plan: `${detail.planId}@${detail.revision}`,
           build: detail.build,

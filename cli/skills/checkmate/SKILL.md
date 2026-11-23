@@ -50,3 +50,14 @@ When the person asks you to run or retest stored tests, continue until you execu
 If a command refuses or returns `needs_decision`, report its actual status, each `reason:`, and its `hint:` when present. Give the next command or ask for the missing decision or value. Do not invent an ID or say that execution started. After `delegate execute` completes, run `run show <runId>` and report the recorded test outcomes, evidence, gaps, and next decision. A completed command does not mean that every test passed.
 
 Read `status <planId>` when no run needs execution or after you report the run. Report the next action and its owner. A completed test command can record failed or blocked tests.
+
+## Gate a run for CI
+
+When the person asks you to gate a pipeline on a run, run `run show <runId> --gate` and use its exit code. It does not change the record.
+
+- 0: every selected test passed, and coverage is complete.
+- 1: a test failed. The product has defects. Report each failed test ID with its `failed` result.
+- 2: a test could not run, the run is not finished, or coverage is partial. Report it as not tested. Do not call it passed.
+- 3: the plan waits on an oracle decision: an open blocking gap. Report the gap ID and the command that answers it.
+
+Read the `gate=` line for the state name. A defect outranks the other codes.

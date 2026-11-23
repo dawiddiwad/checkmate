@@ -1094,6 +1094,9 @@ const commands: Record<string, Command> = {
 			return {
 				facts: {
 					state: detail.state,
+					gate: (reply.data.gate as { state: string } | undefined)?.state,
+					unverified:
+						(reply.data.gate as { unverified?: string[] } | undefined)?.unverified?.join(',') || undefined,
 					mode: detail.request.permanent ? 'permanent' : undefined,
 					plan: `${detail.planId}@${detail.revision}`,
 					build: detail.build,

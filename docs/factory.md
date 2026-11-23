@@ -338,3 +338,51 @@ checkmate status shop-12 --fail-on-blocked
 ```
 
 Exit code 3 means that the plan waits on the oracle. Read the questions with `checkmate status shop-12` and stop.
+
+## Gate a pipeline on a run
+
+Use one command for a CI job. It does not change the record:
+
+```sh
+checkmate run show <runId> --gate
+```
+
+The command exits with one code:
+
+| Exit | Gate state                             | Meaning                                                                                                                                                   |
+| ---- | -------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0    | `passed`                               | Every selected test passed, and coverage is complete.                                                                                                     |
+| 1    | `defects`                              | A test failed: the product has defects. JUnit lists them as `<failure>`.                                                                                  |
+| 2    | `could_not_test` or `partial_coverage` | A test could not run, the run is not finished, or some tests were not selected. JUnit lists the errors as `<error>` and the blocked tests as `<skipped>`. |
+| 3    | `blocked_on_oracle`                    | An open blocking gap waits for an oracle decision.                                                                                                        |
+
+A failed test outranks the other codes. Partial coverage never exits 0.
+
+Sample GitHub Actions step:
+
+```yaml
+- name: Gate on the Checkmate run
+  run: |
+    checkmate export run "$RUN_ID" --format junit --out reports/junit.xml
+    checkmate run show "$RUN_ID" --gate
+```
+
+The step fails for every code except 0. The JUnit file tells a reader which tests failed and which could not run.
+
+## Assertions with an observed item and an expected value
+
+A deterministic assertion names what is observed and the expected value separately:
+
+```json
+{
+	"id": "A1",
+	"check": "The kettle price shown on the product page is 240 PLN.",
+	"checkKind": "deterministic",
+	"observe": "the kettle price on /",
+	"expected": "240 PLN"
+}
+```
+
+The child records only the observed value with `run check --observed "300 PLN"`. The code compares it with `expected` and records `passed` or `failed`. `--result` is refused for these assertions. A value that cannot be observed is recorded as `not_checked` with `--reason`.
+
+Older plans with check text only still run, but the gate reports them as checks the code cannot compare. Revise the plan to give each comparable value an `observe` and an `expected`.

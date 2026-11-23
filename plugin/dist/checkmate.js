@@ -11154,14 +11154,18 @@ function browserExecutable(workspace2) {
   const path = join4(workspace2, browserConfig);
   const config2 = existsSync4(path) ? JSON.parse(readFileSync3(path, "utf8")) : {};
   const executable = config2.browser?.launchOptions?.executablePath;
-  const hint = `Add the executable to ${browserConfig}, for example {"browser":{"browserName":"chromium","launchOptions":{"executablePath":"/path/to/Google Chrome"}}}, then run setup again.`;
+  const hint = `Ask the person for the path of a Chrome or Chromium executable. Write ${browserConfig} only with the path they give, for example {"browser":{"browserName":"chromium","launchOptions":{"executablePath":"<the path they give>"}}}, then run setup again. Do not write this file yourself, and do not pick a browser yourself.`;
   requireCondition(
     typeof executable === "string" && executable !== "",
     `The browser tool needs a Chrome or Chromium executable, and ${browserConfig} names none.`,
     hint
   );
   const run2 = spawnSync5(executable, ["--version"], { timeout: 1e4 });
-  requireCondition(run2.status === 0, `The browser executable ${executable} does not run with --version.`, hint);
+  requireCondition(
+    run2.status === 0,
+    `The browser executable ${executable} does not run with --version. Ask the person for a different path.`,
+    hint
+  );
   return executable;
 }
 function readinessHint(store, targetId) {

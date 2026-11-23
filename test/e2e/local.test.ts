@@ -5491,6 +5491,9 @@ test('Setup needs a runnable Chrome or Chromium for the browser tool — API-onl
 	const missing = await setup()
 	assert.equal(missing.code, 1, missing.output)
 	assert.match(missing.output, /needs a Chrome or Chromium executable/)
+	// The driver asks the person for the browser; it does not write the config itself.
+	assert.match(missing.output, /Ask the person for the path of a Chrome or Chromium executable/)
+	assert.match(missing.output, /Do not write this file yourself/)
 	assert.match(missing.output, /\.playwright\/cli\.config\.json/)
 	const config = join(workspace, '.playwright', 'cli.config.json')
 	mkdirSync(join(workspace, '.playwright'))

@@ -63,7 +63,7 @@ An instance is one place where the target runs, for example `local`, `uat`, or `
    - `skill`: check that the skill is available in this session.
 8. Record each tool with `reachable` set to the result of the check.
 9. Check the target through the entry values of the instance with a read-only request. For a `command` entry, run the command and use its output only for this check. Do not run test actions.
-10. For a browser tool, open `about:blank` in a new isolated session with the browser config of the project. Put the browser output in `.checkmate/tmp/setup-<targetId>/`. Close that session. For `playwright-cli`, read `${CLAUDE_PLUGIN_ROOT}/references/browser.md`.
+10. If setup refuses a browser executable, ask the person for its path. Never write `.playwright/cli.config.json` yourself, and never pick a browser yourself. For a browser tool, open `about:blank` in a new isolated session with the browser config of the project. Put the browser output in `.checkmate/tmp/setup-<targetId>/`. Close that session. For `playwright-cli`, read `${CLAUDE_PLUGIN_ROOT}/references/browser.md`.
 11. Use the running application. Start it only when the owner of the application authorized a startup command.
 12. Write the profile. Use the shape below.
 13. Send the profile in a heredoc: `checkmate target save <targetId> --actor claude:setup <<'EOF'`, the JSON, then `EOF`.

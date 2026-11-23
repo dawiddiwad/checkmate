@@ -579,14 +579,19 @@ function browserExecutable(workspace: string) {
 	const path = join(workspace, browserConfig)
 	const config = existsSync(path) ? JSON.parse(readFileSync(path, 'utf8')) : {}
 	const executable: unknown = config.browser?.launchOptions?.executablePath
-	const hint = `Add the executable to ${browserConfig}, for example {"browser":{"browserName":"chromium","launchOptions":{"executablePath":"/path/to/Google Chrome"}}}, then run setup again.`
+	// The person names the browser. The driver never picks one and never writes the config without their path.
+	const hint = `Ask the person for the path of a Chrome or Chromium executable. Write ${browserConfig} only with the path they give, for example {"browser":{"browserName":"chromium","launchOptions":{"executablePath":"<the path they give>"}}}, then run setup again. Do not write this file yourself, and do not pick a browser yourself.`
 	requireCondition(
 		typeof executable === 'string' && executable !== '',
 		`The browser tool needs a Chrome or Chromium executable, and ${browserConfig} names none.`,
 		hint
 	)
 	const run = spawnSync(executable, ['--version'], { timeout: 10000 })
-	requireCondition(run.status === 0, `The browser executable ${executable} does not run with --version.`, hint)
+	requireCondition(
+		run.status === 0,
+		`The browser executable ${executable} does not run with --version. Ask the person for a different path.`,
+		hint
+	)
 	return executable
 }
 

@@ -918,10 +918,7 @@ export function revisePlan(
 			)
 		// An answer that drops a criterion must leave its requirement out of the revision. A kept one is refused, not saved.
 		for (const decision of decisions) {
-			if (
-				decision.kind !== 'clarify' ||
-				!/\b(drop|dropped|drops|remove|removed|out of scope)\b/i.test(decision.value)
-			)
+			if (decision.kind !== 'clarify' || !/\b(drop|dropped|drops|remove|removed)\b/i.test(decision.value))
 				continue
 			const gap = draft.gaps.find((gap) => gap.id === decision.gap_id)!
 			const kept = gap.requirementIds.filter((id) =>

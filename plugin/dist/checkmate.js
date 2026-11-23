@@ -13479,7 +13479,7 @@ function revisePlan(store, actor, input) {
         `Add an assertion to ${test.id} in the delta: {"tests": {"${test.id}": {"assertions": {"${unusedId("A", usedAssertionIds(store, input.planId, test.id))}": {"check": "<expected result>", "checkKind": "deterministic"}}}}}. When no decision or source gives an expected value, use "checkKind": "agent_observation" with a check that records the behavior and checks only what the sources state.`
       );
     for (const decision of decisions) {
-      if (decision.kind !== "clarify" || !/\b(drop|dropped|drops|remove|removed|out of scope)\b/i.test(decision.value))
+      if (decision.kind !== "clarify" || !/\b(drop|dropped|drops|remove|removed)\b/i.test(decision.value))
         continue;
       const gap = draft.gaps.find((gap2) => gap2.id === decision.gap_id);
       const kept = gap.requirementIds.filter(

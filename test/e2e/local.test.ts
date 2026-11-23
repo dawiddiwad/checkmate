@@ -3555,6 +3555,7 @@ test('Decide a structured assertion by comparing the observed value with the exp
 		{ assertion_id: 'A1', result: 'failed' },
 		{ assertion_id: 'A2', result: 'passed' },
 	])
+})
 
 test('Resume a run with a test that may have changed data — a recorded reset runs again, an external reset asks the oracle.', async (t) => {
 	const workspace = directory(t)

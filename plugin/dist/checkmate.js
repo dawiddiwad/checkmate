@@ -10748,6 +10748,7 @@ function gapsAffecting(gaps, test) {
   );
 }
 function testReadiness(gaps, test) {
+  if (test.metadata?.harvestedFrom) return "ready";
   const affected = gapsAffecting(gaps, test);
   if (affected.some((gap) => gap.status === "deferred" && gap.severity === "blocking")) return "deferred";
   if (affected.some((gap) => gap.status === "open" && gap.severity === "blocking")) return "blocked";
@@ -15107,6 +15108,96 @@ function exploration(store, explorationId) {
   return { ...row2, charter: { ...charter, requirements: explorationRules(store, explorationId) } };
 }
 
+// plugin/src/testRevision.ts
+function latestRules(store, planId) {
+  const row2 = one(
+    store,
+    "SELECT body FROM plan_rules WHERE plan_id = ? AND origin = 'derived' ORDER BY rowid DESC LIMIT 1",
+    planId
+  );
+  return row2 ? JSON.parse(row2.body) : [];
+}
+function journalOf(store, explorationId) {
+  return all(store, "SELECT body FROM journal_entries WHERE exploration_id = ?", explorationId).map(
+    (row2) => JSON.parse(row2.body)
+  );
+}
+function capabilityOf(profile) {
+  return profile.capabilities.includes("http") ? "http" : profile.capabilities[0];
+}
+function operationOf(profile) {
+  return profile.allowedOperations.includes(anyTestOperation) ? anyTestOperation : profile.allowedOperations[0];
+}
+function saveFirstRevision(store, actor, planId, explorationId) {
+  if (one(store, "SELECT 1 FROM plan_revisions WHERE plan_id = ?", planId)) return;
+  const { request: request2, target } = planRequest(store, planId);
+  const rules = latestRules(store, planId);
+  const entries = journalOf(store, explorationId);
+  const checked = new Map(
+    entries.filter((entry) => entry.kind === "criterion" && (entry.verdict === "ok" || entry.verdict === "wrong")).map((entry) => [entry.rule ?? "", entry])
+  );
+  const gaps = [];
+  const tests = [];
+  for (const rule of rules) {
+    const verdict = checked.get(rule.id);
+    if (!verdict || compoundCheck(rule.text)) {
+      gaps.push(unverifiedGap(rule));
+      continue;
+    }
+    tests.push({
+      id: `T${rule.id}`,
+      title: rule.text.slice(0, 200),
+      requirementIds: [rule.id],
+      capability: capabilityOf(target.profile) ?? "http",
+      operations: [operationOf(target.profile) ?? anyTestOperation],
+      dependsOn: [],
+      preconditions: [],
+      action: "Perform the check of this rule on the running application, and record what you observe.",
+      assertions: [{ id: "A1", check: rule.text, checkKind: "agent_observation" }]
+    });
+  }
+  for (const entry of entries.filter((item) => item.kind === "question" && item.id)) {
+    gaps.push({
+      id: entry.id,
+      severity: entry.blocking ? "blocking" : "non_blocking",
+      status: "open",
+      requirementIds: rules.some((rule) => rule.id === entry.rule) ? [entry.rule] : [],
+      testIds: [],
+      question: entry.question,
+      consequence: "The plan waits for the answer before the tests that this question affects can run.",
+      decisionId: null
+    });
+  }
+  savePlan(store, actor, {
+    planId,
+    candidate: candidateFor(request2, rules, tests, gaps)
+  });
+}
+function firstRevision(store, actor, planId, explorationId) {
+  try {
+    saveFirstRevision(store, actor, planId, explorationId);
+    return { revision: true };
+  } catch (error) {
+    return { revision: false, reason: error instanceof Error ? error.message : String(error) };
+  }
+}
+function unverifiedGap(rule) {
+  return {
+    id: `U${rule.id}`,
+    severity: "non_blocking",
+    status: "open",
+    requirementIds: [rule.id],
+    testIds: [],
+    question: `Rule ${rule.id} was not checked by the test. Check it by hand, or retest it with a test of its own.`,
+    consequence: "No test of this plan checks the rule.",
+    decisionId: null
+  };
+}
+function candidateFor(request2, rules, tests, gaps) {
+  const requirements = request2.requirements?.length ? {} : { requirements: rules };
+  return { ...requirements, tests, gaps };
+}
+
 // plugin/src/model-catalog.ts
 import { execFile, spawn as spawn2 } from "node:child_process";
 import { createInterface } from "node:readline";
@@ -16742,7 +16833,7 @@ function storableDefects(store, planId) {
     claims: notHarvested(drafts(store, exploration_id, false), known, exploration_id).map((item) => item.from)
   })).filter((item) => item.claims.length);
 }
-function capabilityOf(via, capabilities) {
+function capabilityOf2(via, capabilities) {
   const wanted = via === "ui" ? "browser" : via === "api" ? "http" : void 0;
   return wanted && capabilities.includes(wanted) ? wanted : capabilities[0];
 }
@@ -16778,7 +16869,7 @@ function harvested(base, rules, items, explorationId, build, capabilities, opera
       id: id2,
       title: item.title.slice(0, 200),
       requirementIds: [requirement.id],
-      capability: capabilityOf(item.via, capabilities),
+      capability: capabilityOf2(item.via, capabilities),
       operations,
       dependsOn: [],
       preconditions: [`Make new test data that starts with qa-<runId>-${id2}.`],
@@ -16881,7 +16972,8 @@ function storeFindingsRun(store, actor, explorationId) {
   );
   if (!defects.length) return { runId: null, reason: `No claim of ${explorationId} is a defect for a run.` };
   const harvested2 = harvestExploration(store, actor, { explorationId, observations: false });
-  if (harvested2.status !== "completed") return { runId: null, reason: harvested2.reasons.join(" ") };
+  if (harvested2.status !== "completed" && harvested2.status !== "needs_decision")
+    return { runId: null, reason: harvested2.reasons.join(" ") };
   const { plan } = planRevision(store, row2.plan_id);
   const runId = findingsRunId(explorationId);
   const tests = plan.tests.filter(
@@ -17787,6 +17879,7 @@ async function driveExploration(workspace2, explorationId, env) {
       if (launch.verifier) await verifyClaims(store, actor, explorationId, launch, env);
       removeWork(store, explorationId);
     } else keepBrowserFolder(store, explorationId);
+    const revision2 = ok ? firstRevision(store, actor, explorationRow(store, explorationId).plan_id, explorationId) : null;
     const findings = ok && explorationStatus(store, explorationId).path !== "session" ? storeFindings(store, actor, explorationId) : null;
     event(store, actor, explorationId, {
       step: "done",
@@ -17795,6 +17888,7 @@ async function driveExploration(workspace2, explorationId, env) {
       detail: {
         recorded: ok,
         ...findings ? { findingsRun: findings.runId, ...findings.reason ? { findingsReason: findings.reason } : {} } : {},
+        ...revision2?.reason ? { revisionReason: revision2.reason } : {},
         ...ok ? {} : {
           reason: hostAuthentication(store, explorationId) ? "Host authentication: no session could log in." : "No explorer session was recorded."
         },
@@ -37772,11 +37866,16 @@ function finishPhase(store, actor, explorationId, phase, launch) {
   if (recorded2) removeWork(store, explorationId);
   else keepBrowserFolder(store, explorationId);
   if (!phase.follow) {
+    const revision2 = recorded2 ? firstRevision(store, actor, explorationRow(store, explorationId).plan_id, explorationId) : null;
     addOutcome(store, actor, explorationId, {
       step: "done",
       explorer: null,
       status: recorded2 ? "completed" : "failed",
-      detail: { recorded: recorded2, ...recorded2 ? {} : { reason: "No explorer session was recorded." } }
+      detail: {
+        recorded: recorded2,
+        ...recorded2 ? {} : { reason: "No explorer session was recorded." },
+        ...revision2?.reason ? { revisionReason: revision2.reason } : {}
+      }
     });
     return;
   }

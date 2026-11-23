@@ -238,7 +238,10 @@ export function gapsAffecting(gaps: Gap[], test: Pick<Test, 'id' | 'requirementI
 	)
 }
 
-export function testReadiness(gaps: Gap[], test: Pick<Test, 'id' | 'requirementIds'>): Test['readiness'] {
+// A defect that the test observed is ready to record. Its open gaps stay on the test and status shows them.
+// A planned test waits for every gap that affects it.
+export function testReadiness(gaps: Gap[], test: Pick<Test, 'id' | 'requirementIds' | 'metadata'>): Test['readiness'] {
+	if (test.metadata?.harvestedFrom) return 'ready'
 	const affected = gapsAffecting(gaps, test)
 	if (affected.some((gap) => gap.status === 'deferred' && gap.severity === 'blocking')) return 'deferred'
 	if (affected.some((gap) => gap.status === 'open' && gap.severity === 'blocking')) return 'blocked'

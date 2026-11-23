@@ -8,6 +8,7 @@ import { all, closeStore, completed, one, openStore, saveBlob, write } from './s
 import { Refusal, requireChoice, requireCondition, requireWellFormed } from './contracts.ts'
 import { addEvent, exploration, explorationEvents, insertExploration, workFolder } from './explorations.ts'
 import type { Refused } from './journal.ts'
+import { firstRevision } from './testRevision.ts'
 import {
 	explorationRow,
 	joinClaims,
@@ -1021,6 +1022,9 @@ export async function driveExploration(workspace: string, explorationId: string,
 			if (launch.verifier) await verifyClaims(store, actor, explorationId, launch, env)
 			removeWork(store, explorationId)
 		} else keepBrowserFolder(store, explorationId)
+		const revision = ok
+			? firstRevision(store, actor, explorationRow(store, explorationId).plan_id, explorationId)
+			: null
 		const findings =
 			ok && explorationStatus(store, explorationId).path !== 'session'
 				? storeFindings(store, actor, explorationId)
@@ -1034,6 +1038,7 @@ export async function driveExploration(workspace: string, explorationId: string,
 				...(findings
 					? { findingsRun: findings.runId, ...(findings.reason ? { findingsReason: findings.reason } : {}) }
 					: {}),
+				...(revision?.reason ? { revisionReason: revision.reason } : {}),
 				...(ok
 					? {}
 					: {

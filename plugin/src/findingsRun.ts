@@ -24,7 +24,9 @@ export function storeFindingsRun(store: Store, actor: string | undefined, explor
 	)
 	if (!defects.length) return { runId: null, reason: `No claim of ${explorationId} is a defect for a run.` }
 	const harvested = harvestExploration(store, actor, { explorationId, observations: false })
-	if (harvested.status !== 'completed') return { runId: null, reason: harvested.reasons.join(' ') }
+	// An open gap makes the harvest a decision, but the observed tests are stored. The run always records the findings.
+	if (harvested.status !== 'completed' && harvested.status !== 'needs_decision')
+		return { runId: null, reason: harvested.reasons.join(' ') }
 	const { plan } = planRevision(store, row.plan_id)
 	const runId = findingsRunId(explorationId)
 	const tests = plan.tests.filter(

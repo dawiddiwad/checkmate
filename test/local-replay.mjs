@@ -54,7 +54,7 @@ export async function replay(role, session) {
 			{
 				kind: 'question',
 				id: 'Q1',
-				rule: 'outside',
+				rule: process.env.QA_QUESTION_RULE || 'outside',
 				question: 'Does the promotion replace the loyalty discount?',
 				blocking: true,
 			},

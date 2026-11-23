@@ -113,6 +113,66 @@ test('Recover after missing host or missing ticket source — unexplained partia
 	assert.deepEqual(result.body.rows, [{ targets: 0, plans: 0, explorations: 0, operations: 0 }])
 })
 
+test('Keep a defect stored while a question about its rule waits — the finding is lost or the run is refused.', async (t) => {
+	const workspace = directory(t)
+	writeFileSync(join(workspace, 'ticket.md'), 'The promotion quote is 240 PLN.\n')
+	const app = await fixture()
+	t.after(() => app.close())
+	const host = fakeClaude(
+		t,
+		{ rules: [{ id: 'R1', text: 'The promotion quote is 240 PLN.', source: 'ticket.md', area: 'Promotion' }] },
+		'pi'
+	)
+	const env = {
+		...process.env,
+		...host.env,
+		CHECKMATE_ACTOR: 'oracle',
+		CHECKMATE_HARNESS: 'pi',
+		FAKE_CLAUDE_REPLAY: join(root, 'test/local-replay.mjs'),
+		QA_REPLAY_DIR: directory(t),
+		QA_APP_URL: app.baseUrl,
+		QA_WORKSPACE: workspace,
+		QA_CLI: binary,
+		QA_QUESTION_RULE: 'R1',
+	}
+	const ok = async (...args: string[]) => {
+		const result = await command(workspace, env, ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	const start = await ok(
+		'test',
+		'cart',
+		'--url',
+		app.baseUrl,
+		'--reset',
+		'factory',
+		'--source',
+		'ticket.md',
+		'--build',
+		'broken',
+		'--level',
+		'smoke',
+		'--allow',
+		'Read'
+	)
+	assert.equal((await ok('explore', 'wait', start.explorationId, '--timeout', '60')).state, 'completed')
+	const status = await ok('status', 'cart')
+	assert.deepEqual([status.state, status.waitsOn], ['needs_answers', 'oracle'])
+	const shown = await ok('plan', 'show', 'cart')
+	const observed = shown.plan.tests.find(
+		(test: { metadata?: { harvestedFrom?: string } }) => test.metadata?.harvestedFrom
+	)
+	assert.equal(observed.readiness, 'ready', 'An observed defect is ready to record')
+	assert.deepEqual(
+		observed.gapIds,
+		['UR1', 'Q1'],
+		'Status must still name the waiting question and the unchecked rule'
+	)
+	await ok('export', 'run', `findings-${start.explorationId}`, '--format', 'junit', '--out', 'findings.xml')
+	assert.match(readFileSync(join(workspace, 'findings.xml'), 'utf8'), /<failure/)
+})
+
 test('Record a defect with replayable evidence — report text cannot become a reviewable claim.', async (t) => {
 	const workspace = directory(t)
 	writeFileSync(join(workspace, 'ticket.md'), 'The promotion quote is 240 PLN.\n')
@@ -157,7 +217,9 @@ test('Record a defect with replayable evidence — report text cannot become a r
 	)
 	assert.equal((await ok('explore', 'wait', start.explorationId, '--timeout', '60')).state, 'completed')
 	const status = await ok('status', 'cart')
-	assert.deepEqual([status.state, status.waitsOn], ['defects_open', 'factory'])
+	assert.deepEqual([status.state, status.waitsOn], ['needs_answers', 'oracle'])
+	const revision = await ok('plan', 'show', 'cart')
+	assert.equal(revision.revision, 1, 'The test flow must save revision 1')
 	await ok('export', 'run', `findings-${start.explorationId}`, '--format', 'junit', '--out', 'findings.xml')
 	const findingsXml = readFileSync(join(workspace, 'findings.xml'), 'utf8')
 	assert.match(findingsXml, /<failure/)
@@ -588,8 +650,15 @@ test('Keep incomplete criteria unverified — false green.', async (t) => {
 	assert.equal(records.rows.length, 1)
 	assert.equal(JSON.parse(records.rows[0].body).verdict, undefined)
 	const status = await ok('status', 'cart')
-	assert.equal(status.state, 'ready_to_test')
-	assert.match(status.why.join(' '), /R1.*unobserved/)
+	assert.equal(status.state, 'nothing_to_run')
+	const revision = await ok('plan', 'show', 'cart')
+	assert.ok(
+		revision.plan.gaps.some(
+			(gap: { requirementIds: string[]; question: string }) =>
+				gap.requirementIds.includes('R1') && /R1 was not checked/.test(gap.question)
+		),
+		'The unobserved rule must stay open as a gap'
+	)
 })
 
 test('Merge duplicate findings and preserve evidence — defect inflated or unique evidence dropped.', async (t) => {

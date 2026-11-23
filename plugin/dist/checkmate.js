@@ -902,6 +902,9 @@ function expectationMatches(observed, expected, marker) {
   if (rule.startsWith("absent:")) return !loose(value2).includes(loose(rule.slice("absent:".length)));
   return plainSame(value2, expected.replaceAll(markerPlaceholder, marker));
 }
+function looksShellExpanded(observed) {
+  return /(^|\s)\/(usr\/)?bin\/(ba|z|da)?sh(\s|$)/.test(observed.trim()) || /^(bash|sh|zsh)$/.test(observed.trim());
+}
 function repeatsExpectation(observed) {
   const value2 = observed.trim().toLowerCase();
   return typeWords.includes(value2) || /^(type|one-of|matches|at least|at most|contains|absent):/.test(value2);
@@ -14927,6 +14930,11 @@ function checkAssertion(store, actor, input) {
       );
     }
     const observed = optionalText(input.observed, "observation (--observed)");
+    requireWellFormed(
+      observed === null || !looksShellExpanded(observed),
+      `The observed value "${observed}" looks like a shell path, not the value. The shell expanded it before Checkmate got it.`,
+      "Record --observed in single quotes, for example --observed '$0', so the shell passes the value unchanged."
+    );
     const reason = optionalText(input.reason, "reason (--reason)");
     const result = assertion.expected === void 0 ? checkedResult(input.result, assertion, observed) : (requestCheck(test.action, input.request), decidedResult(input.result, assertion, observed, run2.request.marker ?? ""));
     files2 = evidenceFiles(store, input.runId, `${test.id}-${assertion.id}`, input.evidence);
@@ -42663,7 +42671,8 @@ function testPrompt(execution, workspace2, test, actor, pluginRoot2) {
     ...plannedRequest(test.action) ? [
       `The action names a request. Give --request with the method and path of the request you sent, with the planned method ${plannedRequest(text2(test.action)).method} and the planned path ${plannedRequest(text2(test.action)).path}. A request that misses the planned route is not an observation.`
     ] : [],
-    `Record each assertion: ${cli} run check ${runId} ${test.id} <assertion ID> --actor ${actor} --observed "<only the observed value, for example 300 PLN>" --evidence - <<'EOF'`,
+    `Record each assertion: ${cli} run check ${runId} ${test.id} <assertion ID> --actor ${actor} --observed '<only the observed value, for example $5.00 or 300 PLN>' --evidence - <<'EOF'`,
+    "Put --observed and --request values in single quotes. Inside double quotes the shell expands $ and backticks: $5.00 becomes .00 and $0 becomes a shell path.",
     "then the raw tool output that shows it, copied, then EOF. Use two words for the IDs: T1 A1. Give only the value of the observed item, not the whole line.",
     'For an assertion with an expected value, do not decide passed or failed: the code compares the observed value with the expected value. For an assertion without one, decide it with --result and --observed. When you cannot observe the value, record not_checked with --reason "<why>" and no --observed. A page error (for example HTTP 404) or a failed tool means the value is not observed: record not_checked for each assertion of that test with --reason, record no defect for it, and close the test as error. A value that the page shows as "not found" is not an observed value.',
     `For each failed assertion, record a defect: ${cli} run finding ${runId} --actor ${actor} <<'EOF' with {"id":"F-${test.id}-1","type":"defect","severity":"medium","assertionIds":["${test.id}.<assertion ID>"],"requirementIds":${JSON.stringify(test.requirementIds)},"title":"<short title>","expected":"<check>","observed":"<observed value>","reproduction":["<request or steps>"],"evidenceIds":["<evidence ID printed by run check>"]} then EOF.`,

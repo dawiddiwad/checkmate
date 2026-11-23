@@ -83,6 +83,11 @@ export function expectationMatches(observed: string, expected: string, marker: s
 	return plainSame(value, expected.replaceAll(markerPlaceholder, marker))
 }
 
+// A shell path where a value was expected: the shell expanded a $ or a backtick inside double quotes.
+export function looksShellExpanded(observed: string): boolean {
+	return /(^|\s)\/(usr\/)?bin\/(ba|z|da)?sh(\s|$)/.test(observed.trim()) || /^(bash|sh|zsh)$/.test(observed.trim())
+}
+
 // An observed value that is a type word or a rule is the expectation echoed, not something that was seen.
 export function repeatsExpectation(observed: string): boolean {
 	const value = observed.trim().toLowerCase()

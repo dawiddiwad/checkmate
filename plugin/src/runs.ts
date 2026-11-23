@@ -39,7 +39,7 @@ import { permanentSelection } from './permanent.ts'
 import { mkdirSync, readFileSync, realpathSync, rmSync, statSync } from 'node:fs'
 import { basename, extname, isAbsolute, join, resolve, sep } from 'node:path'
 import { randomUUID } from 'node:crypto'
-import { expectationMatches, repeatsExpectation } from './expectation.ts'
+import { expectationMatches, looksShellExpanded, repeatsExpectation } from './expectation.ts'
 import { plannedRequest, requestMatches } from './routes.ts'
 
 export type RunRow = {
@@ -675,6 +675,11 @@ export function checkAssertion(store: Store, actor: string | undefined, input: C
 			)
 		}
 		const observed = optionalText(input.observed, 'observation (--observed)')
+		requireWellFormed(
+			observed === null || !looksShellExpanded(observed),
+			`The observed value "${observed}" looks like a shell path, not the value. The shell expanded it before Checkmate got it.`,
+			"Record --observed in single quotes, for example --observed '$0', so the shell passes the value unchanged."
+		)
 		const reason = optionalText(input.reason, 'reason (--reason)')
 		const result =
 			assertion.expected === undefined

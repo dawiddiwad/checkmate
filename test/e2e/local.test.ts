@@ -5159,6 +5159,8 @@ test('Execute a run with a short deadline — the worker runs its test; no test 
 	assert.equal(delegated.body.status, 'completed', delegated.output)
 	// Every child command runs from the workspace, whatever directory the child's shell is in.
 	assert.match(readFileSync(piEnv.FAKE_PI_PROMPTS, 'utf8'), /cd '[^']*' && node /)
+	// A value with a dollar sign is given in single quotes, so the shell does not expand it.
+	assert.match(readFileSync(piEnv.FAKE_PI_PROMPTS, 'utf8'), /single quotes/)
 	const gated = await command(workspace, env, 'run', 'show', 'run-1', '--gate')
 	assert.equal(gated.code, 0, gated.output)
 	assert.equal(gated.body.gate.state, 'passed')
@@ -5986,4 +5988,156 @@ test('Signal a process group only as it was recorded — a PID whose group leade
 	trackGroup(quick)
 	await once(quick, 'exit')
 	assert.doesNotThrow(() => signalChild(quick, 'SIGKILL'))
+})
+
+test('Record an observed value with $ and backticks unchanged — the CLI gets the value as given, and a shell path where a value was expected is refused.', async (t) => {
+	const workspace = directory(t)
+	writeFileSync(join(workspace, 'ticket.md'), 'The shipping price is $5.00. The fee is $0 for pickup.\n')
+	const app = await fixture()
+	t.after(() => app.close())
+	app.fix()
+	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle' }
+	const ok = async (args: string[], value?: object) => {
+		const result = await inputCommand(workspace, env, value ? JSON.stringify(value) : '', ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	await ok(['setup', '--url', app.baseUrl, '--target', 'shop'])
+	await ok([
+		'plan',
+		'open',
+		'ticket',
+		'--target',
+		'shop@1',
+		'--objective',
+		'Check the prices.',
+		'--source',
+		'ticket.md',
+	])
+	await ok(['plan', 'save', 'ticket'], {
+		requirements: [
+			{ id: 'R1', text: 'The shipping price is $5.00. The fee is $0 for pickup.', source: 'ticket.md' },
+		],
+		tests: [
+			{
+				capability: 'http',
+				operations: ['read_catalog'],
+				dependsOn: [],
+				preconditions: [],
+				id: 'T1',
+				title: 'Prices',
+				requirementIds: ['R1'],
+				action: 'Read the prices.',
+				assertions: [
+					{
+						id: 'A1',
+						check: 'The shipping price is $5.00.',
+						checkKind: 'deterministic',
+						observe: 'the shipping price',
+						expected: '$5.00',
+					},
+					{
+						id: 'A2',
+						check: 'The pickup fee is $0.',
+						checkKind: 'deterministic',
+						observe: 'the pickup fee',
+						expected: '$0',
+					},
+				],
+			},
+		],
+		gaps: [],
+	})
+	await ok(['plan', 'approve', 'ticket@1', '--rationale', 'Run the rule.'])
+	await ok(['run', 'begin', 'run-1', 'ticket@1', '--build', 'b1', '--partial', 'ready_only'])
+	const shipping = await inputCommand(
+		workspace,
+		env,
+		'$5.00',
+		'run',
+		'check',
+		'run-1',
+		'T1',
+		'A1',
+		'--observed',
+		'$5.00',
+		'--evidence',
+		'-'
+	)
+	assert.equal(shipping.body.result, 'passed', shipping.output)
+	const fee = await inputCommand(
+		workspace,
+		env,
+		'$0',
+		'run',
+		'check',
+		'run-1',
+		'T1',
+		'A2',
+		'--observed',
+		'$0',
+		'--evidence',
+		'-'
+	)
+	assert.equal(fee.body.result, 'passed', fee.output)
+})
+
+test('A shell path recorded as an observed value is refused, with the single-quote form to send instead.', async (t) => {
+	const workspace = directory(t)
+	writeFileSync(join(workspace, 'ticket.md'), 'The fee is $0.\n')
+	const app = await fixture()
+	t.after(() => app.close())
+	app.fix()
+	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle' }
+	const ok = async (args: string[], value?: object) => {
+		const result = await inputCommand(workspace, env, value ? JSON.stringify(value) : '', ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	await ok(['setup', '--url', app.baseUrl, '--target', 'shop'])
+	await ok(['plan', 'open', 'ticket', '--target', 'shop@1', '--objective', 'Check the fee.', '--source', 'ticket.md'])
+	await ok(['plan', 'save', 'ticket'], {
+		requirements: [{ id: 'R1', text: 'The fee is $0.', source: 'ticket.md' }],
+		tests: [
+			{
+				capability: 'http',
+				operations: ['read_catalog'],
+				dependsOn: [],
+				preconditions: [],
+				id: 'T1',
+				title: 'Fee',
+				requirementIds: ['R1'],
+				action: 'Read the fee.',
+				assertions: [
+					{
+						id: 'A1',
+						check: 'The fee is $0.',
+						checkKind: 'deterministic',
+						observe: 'the fee',
+						expected: '$0',
+					},
+				],
+			},
+		],
+		gaps: [],
+	})
+	await ok(['plan', 'approve', 'ticket@1', '--rationale', 'Run the rule.'])
+	await ok(['run', 'begin', 'run-1', 'ticket@1', '--build', 'b1', '--partial', 'ready_only'])
+	const mangled = await inputCommand(
+		workspace,
+		env,
+		'$0',
+		'run',
+		'check',
+		'run-1',
+		'T1',
+		'A1',
+		'--observed',
+		'/bin/bash',
+		'--evidence',
+		'-'
+	)
+	assert.equal(mangled.code, 1, mangled.output)
+	assert.match(mangled.body.reasons.join(' '), /looks like a shell path/)
+	assert.match(mangled.body.hint, /single quotes/)
 })

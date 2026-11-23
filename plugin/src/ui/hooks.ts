@@ -2,7 +2,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Store } from '../store.ts'
 import type { ClosedCause, Suggestion } from '../permissions.ts'
 import { timingSafeEqual } from 'node:crypto'
-import { requestHookName } from '../sessions.ts'
+import { checkmateScript, requestHookName } from '../sessions.ts'
 import { completed, one, write } from '../store.ts'
 import { addEvent, explorationEvents } from '../explorations.ts'
 import { explorationState } from '../explorers.ts'
@@ -214,6 +214,7 @@ export function createHooks(store: Store, token: string, options: HookOptions = 
 				input,
 				suggestions,
 				cwd,
+				checkmate: checkmateScript(),
 			})
 			if (!made.byRule) return hold(askerId, made.id, res)
 			const request = permissionOf(store, askerId, made.id)!

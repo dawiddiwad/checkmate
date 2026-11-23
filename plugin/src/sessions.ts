@@ -638,6 +638,8 @@ export function requestSystemPrompt(checkmate: string, harness: Harness = 'claud
 		'For a tester question use /plans/<planId>?view=all&item=q%3A<testerId>%2F<questionId>. For a defect use the same path with c%3A instead. For a plan gap use /plans/<planId>@<revision>/gaps/<gapId>. For a run test or finding use /runs/<runId>?item=test%3A<testId> or /runs/<runId>?item=finding%3A<findingId>.',
 		'Use Markdown image syntax for screenshots. Run evidence uses /evidence/<evidenceId>. Exploration claim evidence uses /explorations/<explorationId>/claims/<testerId>/<claimId>/evidence/<zeroBasedIndex>.',
 		`To change a record, use the checkmate command line of this workspace: node '${checkmate.replaceAll("'", "'\\''")}' <command>.`,
+		'Run one Checkmate command per shell call, with the full command line above. Do not use a shell variable or the bare name checkmate. Do not chain commands with && or ;, and do not pipe or filter the output. Read the output as printed, or add --json.',
+		'Read a ticket or other source from the workspace folder, by the file name the plan gives. Do not search the disk for it.',
 		`Follow this Checkmate workflow using the command path above:\n${workflow}`,
 	].join(' ')
 }

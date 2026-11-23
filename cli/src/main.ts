@@ -2,7 +2,8 @@ import type { Stage, DelegateResponse } from './launcher.ts'
 import type { Reply } from '../../plugin/src/index.ts'
 import { busyReason, formatReply, isBusy, main as core, refused, run as coreRun } from '../../plugin/src/index.ts'
 import { versionLines } from '../../plugin/src/build.ts'
-import { delegate, stages } from './launcher.ts'
+import { delegate, minimumRules, stages } from './launcher.ts'
+import { selectedHarness } from '../../plugin/src/pi.ts'
 import { exploreSpec } from './spec.ts'
 import { existsSync, mkdirSync, openSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { spawn } from 'node:child_process'
@@ -153,6 +154,14 @@ function detachDelegate(tokens: string[]) {
 	const parsed = parseDelegate(rest.filter((token) => token !== '--json'))
 	const [stage, subject] = parsed.positionals as [Stage, string]
 	const workspace = parsed.values.workspace ?? process.cwd()
+	// A background run starts before delegate checks its rules, so a claude run without --allow is refused here, before it starts.
+	if (selectedHarness(process.env) === 'claude' && !parsed.allow.length)
+		return refuse(
+			'rejected',
+			subject,
+			`delegate needs --allow rules. Minimum: ${minimumRules.join(', ')}`,
+			tokens.includes('--json')
+		)
 	const file = resultFile(workspace, stage, subject)
 	mkdirSync(join(workspace, '.checkmate', 'tmp'), { recursive: true })
 	rmSync(file, { force: true })

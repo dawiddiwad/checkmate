@@ -6141,3 +6141,42 @@ test('A shell path recorded as an observed value is refused, with the single-quo
 	assert.match(mangled.body.reasons.join(' '), /looks like a shell path/)
 	assert.match(mangled.body.hint, /single quotes/)
 })
+
+test('A chat turn runs its Checkmate record commands without a prompt — a heredoc body is allowed, and a chained command with rm is still asked.', async (t) => {
+	const workspace = directory(t)
+	execFileSync(process.execPath, [binary, 'init'], { cwd: workspace, encoding: 'utf8' })
+	const { openStore, closeStore } = await import('../../plugin/src/store.ts')
+	const { askRequest } = await import('../../plugin/src/requests.ts')
+	const { requestPermission } = await import('../../plugin/src/permissions.ts')
+	const store = openStore(workspace)
+	t.after(() => closeStore(store))
+	const cli = '/workspace/cli/src/main.ts'
+	const id = askRequest(store, 'oracle', { text: 'Add a test.', context: { planId: null, record: null } })
+	const asked = (command: string) =>
+		requestPermission(store, {
+			askerId: id,
+			who: id,
+			tool: 'Bash',
+			input: { command },
+			suggestions: [],
+			checkmate: cli,
+		}).byRule
+	const edit = `node '${cli}' plan edit SHOP-1@1 --patch --rationale 'Add the 51 case.' <<'EOF'\n{"tests":{}}\nEOF`
+	assert.equal(asked(edit), true)
+	assert.equal(asked(`node '${cli}' status SHOP-1; rm -rf .checkmate`), false)
+	assert.equal(asked(`node '${cli}' run begin run-1 SHOP-1@1 --build b1`), false)
+})
+
+test('Refuse a detached claude delegate without --allow before it starts — the reply is not started and then refused.', async (t) => {
+	const workspace = directory(t)
+	execFileSync(process.execPath, [binary, 'init'], { cwd: workspace, encoding: 'utf8' })
+	const result = spawnSync(process.execPath, [binary, 'delegate', 'revise', 'SHOP-1', '--detach', '--json'], {
+		cwd: workspace,
+		encoding: 'utf8',
+		env: { ...process.env, CHECKMATE_HARNESS: 'claude', CHECKMATE_ACTOR: 'oracle' },
+	})
+	assert.match(result.stdout, /"status":"rejected"/, result.stdout + result.stderr)
+	assert.match(result.stdout, /delegate needs --allow rules\. Minimum: Read, Bash/)
+	assert.doesNotMatch(result.stdout, /"status":"running"/)
+	assert.equal(existsSync(join(workspace, '.checkmate', 'tmp', 'delegate-revise-SHOP-1.json.started')), false)
+})

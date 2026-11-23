@@ -10390,6 +10390,8 @@ function requestSystemPrompt(checkmate, harness = "claude") {
     "For a tester question use /plans/<planId>?view=all&item=q%3A<testerId>%2F<questionId>. For a defect use the same path with c%3A instead. For a plan gap use /plans/<planId>@<revision>/gaps/<gapId>. For a run test or finding use /runs/<runId>?item=test%3A<testId> or /runs/<runId>?item=finding%3A<findingId>.",
     "Use Markdown image syntax for screenshots. Run evidence uses /evidence/<evidenceId>. Exploration claim evidence uses /explorations/<explorationId>/claims/<testerId>/<claimId>/evidence/<zeroBasedIndex>.",
     `To change a record, use the checkmate command line of this workspace: node '${checkmate.replaceAll("'", "'\\''")}' <command>.`,
+    "Run one Checkmate command per shell call, with the full command line above. Do not use a shell variable or the bare name checkmate. Do not chain commands with && or ;, and do not pipe or filter the output. Read the output as printed, or add --json.",
+    "Read a ticket or other source from the workspace folder, by the file name the plan gives. Do not search the disk for it.",
     `Follow this Checkmate workflow using the command path above:
 ${workflow}`
   ].join(" ");
@@ -10659,9 +10661,9 @@ function settleCleanups(store, ids2) {
   return failures;
 }
 function resetCommand(text2) {
-  const words4 = text2.trim().split(/\s+/).filter(Boolean);
-  requireCondition(words4.length, "The command is empty. Give the command that the person or the project gives.");
-  return words4;
+  const words5 = text2.trim().split(/\s+/).filter(Boolean);
+  requireCondition(words5.length, "The command is empty. Give the command that the person or the project gives.");
+  return words5;
 }
 function dataSummary(workspace2, reset) {
   if (!reset) return { kind: dataKindText(null), owner: null, policy: null, prepare: null, cleanup: null };
@@ -13682,10 +13684,10 @@ function wordsOf2(text2) {
 }
 function droppedRequirement(requirements, value2) {
   const clauses = value2.split(/[.;,]|\band\b|\bso\b/i).filter((clause) => dropWording.test(clause) || /\bout of scope\b/i.test(clause));
-  const words4 = wordsOf2(clauses.join(" "));
+  const words5 = wordsOf2(clauses.join(" "));
   const scored = requirements.map((requirement) => ({
     id: requirement.id,
-    score: [...wordsOf2(requirement.text)].filter((word) => words4.has(word)).length
+    score: [...wordsOf2(requirement.text)].filter((word) => words5.has(word)).length
   })).filter((item) => item.score > 0).sort((a, b) => b.score - a.score);
   if (!scored.length || scored.length > 1 && scored[0].score === scored[1].score) return null;
   return scored[0].id;
@@ -19802,6 +19804,107 @@ function explorationReport(store, explorationId) {
   };
 }
 
+// plugin/pi/permission.mjs
+var readOnly = [
+  ["inbox"],
+  ["status"],
+  ["plan", "list"],
+  ["plan", "show"],
+  ["plan", "pending"],
+  ["plan", "diff"],
+  ["plan", "promotions"],
+  ["plan", "request"],
+  ["target", "list"],
+  ["target", "show"],
+  ["run", "list"],
+  ["run", "show"],
+  ["claim", "list"],
+  ["claim", "show"],
+  ["finding", "list"],
+  ["explore", "show"],
+  ["explore", "status"],
+  ["explore", "wait"]
+];
+var recordWrites = [
+  ["gap", "answer"],
+  ["delegate", "revise"],
+  ["delegate", "wait"]
+];
+var planBodies = [
+  ["plan", "edit"],
+  ["plan", "revise"],
+  ["plan", "save"]
+];
+var heredocMarker = "<<'EOF'\n";
+function words(segment) {
+  const tokens = [];
+  let token = null;
+  let quote = null;
+  for (let i = 0; i < segment.length; i++) {
+    const char = segment[i];
+    if (quote === "'") {
+      if (char === "'") quote = null;
+      else token += char;
+      continue;
+    }
+    if (quote === '"') {
+      if (char === '"') quote = null;
+      else if ("$`\\\n".includes(char)) return null;
+      else token += char;
+      continue;
+    }
+    if (char === " ") {
+      if (token !== null) tokens.push(token);
+      token = null;
+    } else if (char === "'" || char === '"') {
+      quote = char;
+      token = token ?? "";
+    } else if (";|&<>$`()\\\n	".includes(char)) return null;
+    else token = (token ?? "") + char;
+  }
+  if (quote) return null;
+  if (token !== null) tokens.push(token);
+  return tokens;
+}
+function allowedArguments(args, body) {
+  if (body === null && args.at(-1) === "--help" && args.length <= 2) return true;
+  const starts = (prefix) => prefix.every((word, index2) => args[index2] === word);
+  if (readOnly.some((prefix) => starts(prefix)) && body === null) return true;
+  if (recordWrites.some((prefix) => starts(prefix)) && body === null) return true;
+  if (planBodies.some((prefix) => starts(prefix)) && body !== null) return true;
+  return false;
+}
+function chatCommandAllowed(command, clis) {
+  if (typeof command !== "string" || !Array.isArray(clis)) return false;
+  let text2 = command;
+  let body = null;
+  let after = [];
+  const at = text2.indexOf(heredocMarker);
+  if (at >= 0) {
+    const tail = text2.slice(at + heredocMarker.length);
+    const end = tail.indexOf("\nEOF");
+    if (end < 0) return false;
+    const rest = tail.slice(end + "\nEOF".length);
+    if (rest !== "" && !rest.startsWith("\n")) return false;
+    body = tail.slice(0, end);
+    if (body.split("\n").includes("EOF")) return false;
+    text2 = text2.slice(0, at).trimEnd();
+    after = rest.split("\n").slice(1).flatMap((line) => line.split(" && "));
+  }
+  const segments = text2.split(" && ");
+  if (segments.some((segment) => segment.trim() === "")) return false;
+  const commands2 = [...segments, ...after];
+  if (commands2.some((segment) => segment.trim() === "")) return false;
+  return commands2.every((segment, index2) => {
+    const tokens = words(segment);
+    if (!tokens) return false;
+    const lead = tokens[0] === "CHECKMATE_HARNESS=pi" ? 1 : 0;
+    if (tokens[lead] !== "node" || !clis.includes(tokens[lead + 1])) return false;
+    const args = tokens.slice(lead + 2);
+    return allowedArguments(args, index2 === segments.length - 1 ? body : null);
+  });
+}
+
 // plugin/src/permissions.ts
 var permissionDecisions = ["allow", "allow-kind", "allow-tool", "always", "deny", "stop"];
 var closedText = {
@@ -19982,6 +20085,10 @@ function ruleInForce(store, askerId, tool, suggestions) {
     (item) => item.kind === "allow-tool" ? item.rule === tool : item.rule === wanted
   );
 }
+function commandOf(input) {
+  const command = input?.command;
+  return typeof command === "string" ? command : void 0;
+}
 function requestPermission(store, input) {
   const fromRequest = isRequestId(store, input.askerId);
   const tester = fromRequest || one(
@@ -20035,8 +20142,25 @@ function requestPermission(store, input) {
         operationId,
         at
       );
+    const chatAllowed = !force && fromRequest && input.tool === "Bash" && input.checkmate !== void 0 && chatCommandAllowed(commandOf(input.input), [input.checkmate]);
+    if (chatAllowed)
+      addDecision(
+        store,
+        request2,
+        "allow",
+        {
+          by: "checkmate",
+          text: "allowed: a Checkmate command that a chat may run",
+          reason: null,
+          rule: null,
+          setBy: null,
+          cause: null
+        },
+        operationId,
+        at
+      );
     return {
-      reply: completed(input.askerId, { id: id2, byRule: Boolean(force) }),
+      reply: completed(input.askerId, { id: id2, byRule: Boolean(force) || chatAllowed }),
       subjects: [fromRequest ? `request:${input.askerId}` : `exploration:${input.askerId}`, "permissions"]
     };
   }).data;
@@ -23320,7 +23444,7 @@ var statusLook = {
 var labels = {
   given: "given to the session"
 };
-function words(status) {
+function words2(status) {
   return status.replace(/_/g, " ");
 }
 var toneColor = {
@@ -23355,7 +23479,7 @@ function glyph(symbol) {
   const name2 = glyphNames[symbol];
   return name2 ? html2`<span class="glyph g-${name2}" aria-hidden="true"></span>` : html2`${symbol}`;
 }
-function pill(status, label = labels[status] ?? words(status)) {
+function pill(status, label = labels[status] ?? words2(status)) {
   const [icon2] = statusLook[status] ?? ["\xB7", "muted"];
   const look = pillClass(status);
   const mark2 = glyph(icon2);
@@ -23364,7 +23488,7 @@ function pill(status, label = labels[status] ?? words(status)) {
 function icon(status) {
   const [symbol, tone2] = status ? statusLook[status] ?? ["\xB7", "muted"] : ["\xB7", "muted"];
   const mark2 = { pass: "k-pass", fail: "k-fail", warn: "k-q", unsure: "k-q", acc: "k-run" }[tone2] ?? "k-none";
-  return html2`<span class="sp-mk ${mark2}" role="img" aria-label="${status ? words(status) : "no result yet"}"
+  return html2`<span class="sp-mk ${mark2}" role="img" aria-label="${status ? words2(status) : "no result yet"}"
 		>${glyph(symbol)}</span
 	>`;
 }
@@ -24169,7 +24293,8 @@ function createHooks(store, token, options3 = {}) {
         tool: body.tool_name,
         input,
         suggestions,
-        cwd
+        cwd,
+        checkmate: checkmateScript()
       });
       if (!made.byRule) return hold(askerId, made.id, res);
       const request2 = permissionOf(store, askerId, made.id);
@@ -24721,9 +24846,9 @@ function counts(values) {
   if (!shown2.length) return html2`<span class="muted">no outcomes yet</span>`;
   return html2`<span class="counts"
 		>${shown2.map(
-    (key) => html2`<span class="${pillClass(key)}" title="${values[key]} ${words(key)}"
+    (key) => html2`<span class="${pillClass(key)}" title="${values[key]} ${words2(key)}"
 					><span aria-hidden="true">${glyph(countLook[key][0])}</span> ${values[key]}<span class="sr-only">
-						${words(key)}</span
+						${words2(key)}</span
 					></span
 				>`
   )}</span
@@ -24949,7 +25074,7 @@ function runRow(row2) {
       html2`${counts(row2.counts)}
 				<span class="muted"
 					>· build <code>${row2.build}</code> · ${row2.instanceId} ·
-					${row2.coverage ? `coverage ${words(row2.coverage)}` : "running"}</span
+					${row2.coverage ? `coverage ${words2(row2.coverage)}` : "running"}</span
 				>`,
       html2`<span class="muted">${runUsageLine(row2)}</span>`
     ]
@@ -25024,7 +25149,7 @@ function logSpec(store) {
         label: "Status",
         choices: [
           ["", "All statuses"],
-          ...distinct(recent.map((row2) => row2.status)).map(([value2]) => [value2, words(value2)])
+          ...distinct(recent.map((row2) => row2.status)).map(([value2]) => [value2, words2(value2)])
         ],
         strict: false
       }
@@ -25038,7 +25163,7 @@ function logRow(row2) {
     `op:${row2.rowid}`,
     null,
     row2.command,
-    html2`${pill(row2.status === "rejected" ? "rejected_operation" : row2.status, words(row2.status))} ${time(row2.at)}`,
+    html2`${pill(row2.status === "rejected" ? "rejected_operation" : row2.status, words2(row2.status))} ${time(row2.at)}`,
     [
       html2`${row2.actor}${via} ·
 			${subjects.length ? join14(subjects.map(subjectLink), " ") : html2`<span class="muted">no subject</span>`}`,
@@ -25585,7 +25710,7 @@ function runsOf(store, explorationId, counts2) {
     const state = ended ? ended.status === "completed" ? "completed" : "failed" : last ? status.follow === "running" ? "following" : status.follow ?? "interrupted" : "interrupted";
     const answers = events[from].detail.answers?.length ?? 0;
     const trouble = state === "failed" ? failureOf(String(ended?.detail.reason ?? ""), ended?.detail.hint ?? null, later) : null;
-    const words4 = {
+    const words5 = {
       completed: `${plural(answers, "answer")} tested`,
       failed: trouble ? `${trouble.cause} ${trouble.next}` : "",
       stopped: status.followReason ?? "Stopped.",
@@ -25603,7 +25728,7 @@ function runsOf(store, explorationId, counts2) {
       startedAt: events[from].at,
       endedAt: ended?.at ?? (state === "stopped" ? later.findLast((item) => item.step === "stop")?.at ?? null : null),
       costUsd: costOf3(later),
-      outcome: words4[state] ?? "",
+      outcome: words5[state] ?? "",
       failure: trouble,
       stoppable: state === "following"
     };
@@ -25796,7 +25921,7 @@ function activityPage(store, context, params, defaults) {
 function acrossBuilds(review, item) {
   const builds = item.detail?.builds ?? [];
   if (!builds.length) return null;
-  return builds.map((on) => `${buildStateWords[on.state] ?? words(on.state)} in build ${buildLabel(review, on.build)}`).join(", ").replace(/^./, (first) => first.toUpperCase());
+  return builds.map((on) => `${buildStateWords[on.state] ?? words2(on.state)} in build ${buildLabel(review, on.build)}`).join(", ").replace(/^./, (first) => first.toUpperCase());
 }
 function ruleText2(review, rule) {
   if (rule === null || rule === outside) return "Outside the rules of the plan.";
@@ -25868,7 +25993,7 @@ function claimBody(context, store, review, item, base, back, state) {
   const uncertain = detail?.uncertain ?? [];
   const decided = claim.decision ? `${claim.decision.verdict === "approved" ? "Accepted" : "Rejected"} by ${claim.decision.actor}: ${claim.decision.rationale}` : null;
   return html2`${uncertain.length ? html2`<p class="sp-why">
-						${uncertain.map((reason) => `${words(reason.reason)}${reason.text ? `: ${reason.text}` : ""}`).join(" \xB7 ")}
+						${uncertain.map((reason) => `${words2(reason.reason)}${reason.text ? `: ${reason.text}` : ""}`).join(" \xB7 ")}
 					</p>` : ""}
 		<div class="sp-ea">
 			<div>
@@ -25891,7 +26016,7 @@ function claimBody(context, store, review, item, base, back, state) {
     ["Across builds", acrossBuilds(review, item)],
     ["Rule", ruleText2(review, item.rule)],
     ["Seen by", claim.actors.join(", ")],
-    ["State", words(claim.state)],
+    ["State", words2(claim.state)],
     ["Decision", decided],
     ["Handed over", claim.handoff ? `To ${claim.handoff.to}, by ${claim.handoff.actor}` : null]
   ])}
@@ -26078,7 +26203,7 @@ function latestClaimBuild(detail) {
 function claimItem(planId, claim, detail, needs) {
   const kind = claim.state === "rejected" ? "rejected" : oracleStates.includes(claim.state) ? "finding" : "defect";
   const latest = latestClaimBuild(detail);
-  const meta2 = kind === "finding" ? `${claim.severity} \xB7 ${words(claim.state)}` : kind === "rejected" ? `rejected by ${claim.decision?.actor ?? "someone"}` : [
+  const meta2 = kind === "finding" ? `${claim.severity} \xB7 ${words2(claim.state)}` : kind === "rejected" ? `rejected by ${claim.decision?.actor ?? "someone"}` : [
     latest ? stateWords[latest.state] : null,
     claim.handoff ? `handed over to ${claim.handoff.to}` : null,
     `\xD7${claim.reporters}`
@@ -26556,7 +26681,7 @@ function testersEnd(review, testers) {
 }
 function testersLabel(review, testers) {
   if (review.running) return review.phase ? `Testers now \xB7 ${review.phase}` : "Testers now";
-  return ["stopped", "interrupted", "failed"].includes(testers.state) ? `Testers \xB7 ${words(testers.state)}` : "Testers";
+  return ["stopped", "interrupted", "failed"].includes(testers.state) ? `Testers \xB7 ${words2(testers.state)}` : "Testers";
 }
 function navigator(review, current2, exploration2 = null, chat = { href: reviewHref(review.planId, current2, "&chat=list"), active: false }) {
   const { planId } = review;
@@ -26717,8 +26842,8 @@ function buildHeadline(review, defects, critical) {
   if (build) return `Build ${build}: ${plural(defects, "open defect")}${critical ? `, ${critical} critical` : ""}.`;
   const run2 = review.latestFinalizedRun;
   if (!run2) return "No build is tested yet.";
-  const counts2 = Object.entries(run2.counts).map(([outcome2, count2]) => `${count2} ${words(outcome2)}`);
-  const outcome = run2.completion === "completed" && counts2.length ? counts2.join(", ") : words(run2.completion ?? "finalized");
+  const counts2 = Object.entries(run2.counts).map(([outcome2, count2]) => `${count2} ${words2(outcome2)}`);
+  const outcome = run2.completion === "completed" && counts2.length ? counts2.join(", ") : words2(run2.completion ?? "finalized");
   return `Build ${run2.build}: ${outcome}.`;
 }
 function verdictLine(review) {
@@ -27696,7 +27821,7 @@ function explorationPage(store, context, explorationId, params = new URLSearchPa
 										>elapsed
 										${live.running ? html2`<span data-since="${run2.startedAt}">${duration2(Date.now() - Date.parse(run2.startedAt))}</span>` : ""}</span
 									>` : live.phases.map(
-      (row2) => html2`<span class="${pillClass(row2.state)}" title="${words(row2.state)}"
+      (row2) => html2`<span class="${pillClass(row2.state)}" title="${words2(row2.state)}"
 											>${row2.phase}</span
 										>`
     )}
@@ -28004,7 +28129,7 @@ function tile(review, plan, runDefects, index2) {
 				<span
 					class="sp-ct-when ell"
 					title="${latest ? `${latest.build}, first tested ${latest.firstTestedAt}` : review.target}"
-					>${review.running ? html2`${review.phase ?? words(review.running.state)} ·
+					>${review.running ? html2`${review.phase ?? words2(review.running.state)} ·
 									<span data-since="${review.running.startedAt}"
 										>${duration2(Date.now() - Date.parse(review.running.startedAt))}</span
 									>` : latest ? html2`${buildLabel(review, latest.build)} ${latest.build} ·
@@ -28388,7 +28513,7 @@ function testCard(detail, test, remove = "") {
 									<span class="box" aria-hidden="true"></span>
 									<span class="aid">${assertion.id}</span>
 									<span class="check">${assertion.check}</span>
-									<span class="tag">${words(assertion.checkKind)}</span>
+									<span class="tag">${words2(assertion.checkKind)}</span>
 								</li>`
   )}
 					</ul>` : html2`<p class="test-note">No assertions yet. A blocking gap must be answered first.</p>`}
@@ -28413,7 +28538,7 @@ function gapRow(detail, gap) {
 						${pill(decision.kind)} ${decision.value} <span class="muted">· ${decision.actor}</span>
 					</p>` : ""}
 		${pending ? html2`<p class="gap-d">
-						${pill("pending", "decision pending")} ${words(pending.kind)}: ${pending.value}
+						${pill("pending", "decision pending")} ${words2(pending.kind)}: ${pending.value}
 						<span class="muted">· ${pending.actor} · applies in the next revision</span>
 					</p>` : ""}
 		${answerable ? html2`<p>
@@ -28773,7 +28898,7 @@ function planPage(store, context, planId, revision2, state = null, allHistory = 
     "info",
     html2`${plural(detail.pendingDecisions.length, "decision")}
 				${detail.pendingDecisions.length === 1 ? "waits" : "wait"} for the next revision:
-				${detail.pendingDecisions.map((item) => `${item.gapId} ${words(item.kind)}`).join(", ")}.`
+				${detail.pendingDecisions.map((item) => `${item.gapId} ${words2(item.kind)}`).join(", ")}.`
   ) : "";
   const openGaps = plan.gaps.filter((gap) => gap.status === "open");
   const approving = detail.approval.state === "pending" || detail.approval.state === "rejected";
@@ -28950,7 +29075,7 @@ function gapPage(store, context, planId, revision2, gapId, state = null) {
         action: `/plans/${subject}/gaps/${gap.id}`,
         cancel: `/plans/${subject}#${gap.id}`,
         sha256: detail.sha256,
-        title: html2`${planId} · ${gap.id} · ${words(gap.severity)}`,
+        title: html2`${planId} · ${gap.id} · ${words2(gap.severity)}`,
         question: gap.question,
         staleMessage: `${planId} changed. Review it before you answer.`
       },
@@ -29031,7 +29156,7 @@ function unadoptedRunGap(store, planId, gapId) {
 }
 
 // plugin/src/ui/edit.ts
-function words2(values) {
+function words3(values) {
   return values.split(/[\s,]+/).map((value2) => value2.trim()).filter(Boolean);
 }
 function lines(values) {
@@ -29053,8 +29178,8 @@ function candidateFromForm(base, form) {
       ...test,
       title: text2(`t${i}.title`, test.title),
       capability: text2(`t${i}.capability`, test.capability),
-      operations: words2(form.get(`t${i}.operations`) ?? test.operations.join(", ")),
-      dependsOn: words2(form.get(`t${i}.dependsOn`) ?? test.dependsOn.join(", ")),
+      operations: words3(form.get(`t${i}.operations`) ?? test.operations.join(", ")),
+      dependsOn: words3(form.get(`t${i}.dependsOn`) ?? test.dependsOn.join(", ")),
       preconditions: lines(form.get(`t${i}.preconditions`) ?? test.preconditions.join("\n")),
       action: text2(`t${i}.action`, test.action),
       requirementIds: base.requirements.filter((requirement) => covered.has(`${test.id} ${requirement.id}`)).map((requirement) => requirement.id),
@@ -29425,7 +29550,7 @@ function assertionRow(store, detail, test, assertion) {
 		class="asr ${tone(assertion.result)}"
 		id="${reference2}"
 		data-key="${reference2}"
-		data-announce="${reference2} ${words(assertion.result)}"
+		data-announce="${reference2} ${words2(assertion.result)}"
 	>
 		<details ${open ? html2`open` : ""} data-open-key="${reference2}">
 			<summary class="asr-row">
@@ -29439,7 +29564,7 @@ function assertionRow(store, detail, test, assertion) {
 			</summary>
 			<div class="asr-body">
 				${assertion.reason ? html2`<p class="reason"><strong>Reason</strong> ${assertion.reason}</p>` : ""}
-				<p class="muted small">${words(assertion.checkKind)} · ${words(assertion.result)}</p>
+				<p class="muted small">${words2(assertion.checkKind)} · ${words2(assertion.result)}</p>
 				${runEvidence2(store, assertion.evidence)}
 			</div>
 		</details>
@@ -29453,7 +29578,7 @@ function testState(test, detail) {
 function testCard2(store, detail, test) {
   const passed = test.assertions.filter((assertion) => assertion.result === "passed").length;
   const recorded2 = test.assertions.filter((assertion) => assertion.result).length;
-  const announce = test.outcome ? `${test.testId} closed: ${words(test.outcome)}` : `${test.testId} running`;
+  const announce = test.outcome ? `${test.testId} closed: ${words2(test.outcome)}` : `${test.testId} running`;
   return html2`<article class="test" id="${test.testId}" data-key="card:${test.testId}" data-announce="${announce}">
 		<header class="test-h">
 			${testState(test, detail)}
@@ -29480,10 +29605,10 @@ function outcomeCounts2(detail) {
 function strip(detail) {
   const result = detail.result;
   return html2`<div class="strip" data-region="summary">
-		<div><small>Completion</small><strong>${result ? words(result.completion) : "running"}</strong></div>
-		<div><small>Coverage</small><strong>${result ? words(result.coverage.status) : "\u2013"}</strong></div>
+		<div><small>Completion</small><strong>${result ? words2(result.completion) : "running"}</strong></div>
+		<div><small>Coverage</small><strong>${result ? words2(result.coverage.status) : "\u2013"}</strong></div>
 		<div><small>Tests</small><strong>${counts(outcomeCounts2(detail))}</strong></div>
-		<div><small>Cleanup</small><strong>${result ? words(result.cleanup.status) : "\u2013"}</strong></div>
+		<div><small>Cleanup</small><strong>${result ? words2(result.cleanup.status) : "\u2013"}</strong></div>
 	</div>`;
 }
 function runItemHref(runId, key, hash = "") {
@@ -29782,11 +29907,11 @@ function runList2(detail, selected) {
       finding.id,
       pill(finding.severity),
       finding.title,
-      words(finding.type)
+      words2(finding.type)
     )
   );
   const gaps = detail.newGaps.map(
-    (gap) => runRow2(detail.runId, `gap:${gap.id}`, selected, gap.id, pill(gap.severity), gap.question, words(gap.status))
+    (gap) => runRow2(detail.runId, `gap:${gap.id}`, selected, gap.id, pill(gap.severity), gap.question, words2(gap.status))
   );
   const record = [
     runRow2(
@@ -29947,7 +30072,7 @@ function settingsPage(current2, title2, subjects, body, status) {
 function none3(text2 = "none") {
   return html2`<span class="muted">${text2}</span>`;
 }
-function words3(items) {
+function words4(items) {
   return items.length ? join14(
     items.map((item) => html2`<code>${item}</code>`),
     " "
@@ -29961,8 +30086,8 @@ function targetsPage(store) {
 					<a class="mono" href="/settings/targets/${target.targetId}" data-nav-item>${target.targetId}</a>
 				</td>
 				<td class="mono">${target.revision === null ? none3("no profile yet") : `@${target.revision}`}</td>
-				<td>${words3(target.capabilities)}</td>
-				<td>${words3(target.entryPoints)}</td>
+				<td>${words4(target.capabilities)}</td>
+				<td>${words4(target.entryPoints)}</td>
 				<td>${target.activeInstances}</td>
 			</tr>`
   );
@@ -30041,16 +30166,16 @@ function profileFacts(profile) {
   return html2`<dl class="facts">
 		<div>
 			<dt>Capabilities</dt>
-			<dd>${words3(profile.capabilities)}</dd>
+			<dd>${words4(profile.capabilities)}</dd>
 		</div>
 		<div>
 			<dt>Operations</dt>
-			<dd>${words3(profile.allowedOperations)}</dd>
+			<dd>${words4(profile.allowedOperations)}</dd>
 		</div>
 		<div>
 			<dt>Authentication</dt>
 			<dd>
-				<code>${profile.authentication.kind}</code> · references ${words3(profile.authentication.references)}
+				<code>${profile.authentication.kind}</code> · references ${words4(profile.authentication.references)}
 			</dd>
 		</div>
 		<div>
@@ -30170,7 +30295,7 @@ function instancesTable(context, targetId, instances, retire) {
 							<td class="mono">${instance.instanceId}</td>
 							<td>${entryList2(instance)}</td>
 							<td>${instance.environment ?? none3()}</td>
-							<td>${words3(instance.references)}</td>
+							<td>${words4(instance.references)}</td>
 							<td>${instance.addedBy} · ${time(instance.addedAt)}</td>
 							<td>${instance.retired ? pill("retired") : pill("active")}</td>
 							<td>${retireControl(context, targetId, instance, retire)}</td>
@@ -36486,7 +36611,7 @@ function origin(request2) {
 					>` : page ? html2`<a href="${page[1]}">${page[0]}</a>` : "";
   return start ? html2`<p class="help">Started from ${start}.</p>` : "";
 }
-function commandOf(input, tool) {
+function commandOf2(input, tool) {
   const command = typeof input === "object" && input !== null ? input.command : void 0;
   return typeof command === "string" ? command : tool;
 }
@@ -36525,7 +36650,7 @@ function turn(store, request2, context, number, back) {
 			${permissions.map(
     (item) => html2`<p class="banner warn" data-chat-waiting>
 						Waiting for your permission. The chat asks to run
-						<code>${commandOf(item.input, item.tool)}</code>.
+						<code>${commandOf2(item.input, item.tool)}</code>.
 						<a href="${requestHref(item, back)}">Answer it</a>. If no one answers in about 10 minutes,
 						Checkmate denies the command and the reply goes on without it.
 					</p>`
@@ -37503,8 +37628,8 @@ data: ${matched.join(",") || "*"}
     return `/plans/${planOfExploration(explorationId)}?view=${encodeURIComponent(view)}&item=${encodeURIComponent(key)}`;
   }
   function find(query) {
-    const words4 = query.toLowerCase().split(/\s+/).filter(Boolean);
-    const matches = (text2) => words4.every((word) => text2.toLowerCase().includes(word));
+    const words5 = query.toLowerCase().split(/\s+/).filter(Boolean);
+    const matches = (text2) => words5.every((word) => text2.toLowerCase().includes(word));
     const found = planList(store).flatMap((plan) => {
       const review = reviewOf(store, plan.planId);
       const head = {
@@ -41512,7 +41637,7 @@ var commands = {
     run: (store, args) => {
       const statement = queryStatement(store, value(args, "sql"));
       const columns2 = statement.columns().map((column) => column.name);
-      const rows2 = readOnly(() => statement.all()).map(
+      const rows2 = readOnly2(() => statement.all()).map(
         (row2) => Object.fromEntries(
           columns2.map((column) => {
             const field4 = row2[column];
@@ -41545,7 +41670,7 @@ var readPragmas = [
   "integrity_check",
   "quick_check"
 ];
-function readOnly(read) {
+function readOnly2(read) {
   try {
     return read();
   } catch (error) {
@@ -41558,7 +41683,7 @@ function queryStatement(store, sql) {
   store.db.setAuthorizer(
     (action2, name2, argument) => action2 === constants2.SQLITE_PRAGMA && argument !== null && !readPragmas.includes(name2) ? constants2.SQLITE_DENY : constants2.SQLITE_OK
   );
-  const statement = readOnly(() => store.db.prepare(sql));
+  const statement = readOnly2(() => store.db.prepare(sql));
   requireCondition(statement.columns().length > 0, readOnlyReason);
   const rest = sql.slice(statement.sourceSQL.length);
   requireWellFormed(
@@ -41781,26 +41906,26 @@ function formatReply(name2, reply, json) {
 }
 var globalFlags = { workspace: "value", json: "switch" };
 function commandName(argv) {
-  const words4 = [];
+  const words5 = [];
   for (const word of argv.slice(0, 3)) {
     if (word.startsWith("--")) break;
-    words4.push(word);
+    words5.push(word);
   }
-  for (let count2 = words4.length; count2 > 0; count2--)
-    if (commands[words4.slice(0, count2).join(" ")]) return words4.slice(0, count2).join(" ");
-  throw unknownCommand(words4);
+  for (let count2 = words5.length; count2 > 0; count2--)
+    if (commands[words5.slice(0, count2).join(" ")]) return words5.slice(0, count2).join(" ");
+  throw unknownCommand(words5);
 }
 var movedCommands = { "run accept": "result accept", "run reject": "result reject" };
-function unknownCommand(words4) {
-  const moved = movedCommands[words4.slice(0, 2).join(" ")];
+function unknownCommand(words5) {
+  const moved = movedCommands[words5.slice(0, 2).join(" ")];
   if (moved)
     return new Refusal(
       "malformed",
-      `Unknown command: ${words4.join(" ")}`,
+      `Unknown command: ${words5.join(" ")}`,
       `Use ${moved} <runId> --rationale "<why>". Run checkmate --help for the usage of each command.`
     );
-  const groups = words4.map((_, i) => {
-    const prefix = words4.slice(0, words4.length - i).join(" ");
+  const groups = words5.map((_, i) => {
+    const prefix = words5.slice(0, words5.length - i).join(" ");
     return Object.keys(commands).filter((name2) => name2.startsWith(`${prefix} `));
   });
   const names = groups.find((group) => group.length) ?? [
@@ -41808,7 +41933,7 @@ function unknownCommand(words4) {
   ];
   return new Refusal(
     "malformed",
-    `Unknown command: ${words4.join(" ") || "(none)"}`,
+    `Unknown command: ${words5.join(" ") || "(none)"}`,
     `Use one of: ${names.join(", ")}. Run checkmate --help for the usage of each command.`
   );
 }
@@ -41902,17 +42027,17 @@ function help() {
   ];
 }
 function commandHelp(argv) {
-  const words4 = argv.slice(
+  const words5 = argv.slice(
     0,
     argv.findIndex((word) => word.startsWith("--"))
   );
-  for (let count2 = words4.length; count2 > 0; count2--) {
-    const prefix = words4.slice(0, count2).join(" ");
+  for (let count2 = words5.length; count2 > 0; count2--) {
+    const prefix = words5.slice(0, count2).join(" ");
     if (prefix === "ui") return completed("ui", { usage: [uiUsage.replace("Usage: ", ""), uiStopUsage] });
     const names = Object.keys(commands).filter((name2) => name2 === prefix || name2.startsWith(`${prefix} `));
     if (names.length) return completed(prefix, { usage: names.map((name2) => usage(name2).replace("Usage: ", "")) });
   }
-  return { ...refused("invalid_request", "checkmate", unknownCommand(words4)), data: { usage: [] } };
+  return { ...refused("invalid_request", "checkmate", unknownCommand(words5)), data: { usage: [] } };
 }
 function version() {
   const manifest = JSON.parse(readFileSync14(join20(pluginRoot, ".claude-plugin", "plugin.json"), "utf8"));
@@ -43316,6 +43441,13 @@ function detachDelegate(tokens) {
   const parsed = parseDelegate(rest.filter((token) => token !== "--json"));
   const [stage, subject] = parsed.positionals;
   const workspace2 = parsed.values.workspace ?? process.cwd();
+  if (selectedHarness(process.env) === "claude" && !parsed.allow.length)
+    return refuse3(
+      "rejected",
+      subject,
+      `delegate needs --allow rules. Minimum: ${minimumRules.join(", ")}`,
+      tokens.includes("--json")
+    );
   const file = resultFile(workspace2, stage, subject);
   mkdirSync11(join22(workspace2, ".checkmate", "tmp"), { recursive: true });
   rmSync9(file, { force: true });

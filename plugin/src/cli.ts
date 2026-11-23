@@ -1098,6 +1098,7 @@ const commands: Record<string, Command> = {
 					gate: (reply.data.gate as { state: string } | undefined)?.state,
 					unverified:
 						(reply.data.gate as { unverified?: string[] } | undefined)?.unverified?.join(',') || undefined,
+					judgedByAgent: (reply.data.gate as { judgedByAgent?: number } | undefined)?.judgedByAgent,
 					mode: detail.request.permanent ? 'permanent' : undefined,
 					plan: `${detail.planId}@${detail.revision}`,
 					build: detail.build,
@@ -1108,6 +1109,7 @@ const commands: Record<string, Command> = {
 					acceptance: detail.result?.acceptance,
 				},
 				lines: [
+					...gateReasonLines(reply.data.gate as GateReason | undefined, detail.planId),
 					[
 						'time',
 						`deadline=${detail.clock.deadline}`,
@@ -2130,6 +2132,21 @@ function printPlan(reply: Reply): Printed {
 			...legacyLine(detail.legacyChecks, plan.planId),
 		],
 	}
+}
+
+type GateReason = { unverified: string[] }
+
+// A run that has a deterministic check without an expected value is not green: name the checks and the revise command.
+function gateReasonLines(gate: GateReason | undefined, planId: string) {
+	return gate && gate.unverified.length > 0
+		? [
+				[
+					'reason',
+					`deterministic checks without an expected value: ${gate.unverified.join(' ')}`,
+					`revise with: checkmate delegate revise ${planId}`,
+				],
+			]
+		: []
 }
 
 function legacyLine(checks: string[], planId: string) {

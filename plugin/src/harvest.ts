@@ -17,7 +17,6 @@ type Draft = {
 	source: string
 	action: string
 	checks: string[]
-	deterministic: boolean
 	via: string | undefined
 	basis: 'claim' | 'observed'
 }
@@ -62,7 +61,6 @@ function drafts(store: Store, explorationId: string, observations: boolean): Dra
 				source: criterion?.source ?? `exploration:${explorationId}/${claim.id}`,
 				action: stepsText(claim.steps ?? undefined, claim.title),
 				checks: checksOf(claim.expected),
-				deterministic: false,
 				via: report?.via,
 				basis: 'claim',
 			}
@@ -80,7 +78,6 @@ function drafts(store: Store, explorationId: string, observations: boolean): Dra
 						source: criterion?.source ?? `exploration:${explorationId}/${entry.id}`,
 						action: stepsText(entry.steps, entry.saw!),
 						checks: [entry.value !== undefined ? `The result is ${entry.value}.` : entry.saw!],
-						deterministic: entry.value !== undefined,
 						via: entry.via,
 						basis: 'observed',
 					}
@@ -171,8 +168,8 @@ function harvested(
 				...item.checks.map((check, index) => ({
 					id: `A${index + 1}`,
 					check,
-					checkKind: (item.deterministic ? 'deterministic' : 'agent_observation') as
-						'deterministic' | 'agent_observation',
+					// Harvested checks have no expected value, so the agent judges them.
+					checkKind: 'agent_observation' as const,
 				})),
 			],
 			metadata: {

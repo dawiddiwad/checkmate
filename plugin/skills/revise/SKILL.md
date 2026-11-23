@@ -54,3 +54,4 @@ Rules:
 - `defer`: change no assertion for that gap. A deferred blocking gap defers its tests. A deferred non-blocking gap only closes, and its tests stay ready. Send `{ "tests": {} }` when every decision is `defer`.
 - Do not write gap status, decisions, or assumptions. Checkmate applies them from the pending decisions.
 - Do not invent a decision. Do not answer a gap. Only the oracle records a decision, with `checkmate gap answer` or in the review UI.
+- Without a pending decision, a revise migrates the checks to the current shape: change only the tests that `plan show --json` shows with a deterministic check that has no `expected`, or a check that states more than one value. Give each migrated check `observe` and `expected` from the sources. Do not invent an expected value. When a split or a value needs a decision, send that test with `"assertions": []` and a gap: `"gaps": { "G-<testId>": { "question": "...", "consequence": "...", "testIds": ["<testId>"] } }`.

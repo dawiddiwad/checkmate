@@ -209,6 +209,14 @@ export type PlanDelta = {
 			}>
 		}
 	>
+	gaps?: Record<
+		string,
+		{
+			question: string
+			consequence: string
+			testIds: Array<string>
+		}
+	>
 }
 
 export type PlanPatch = {

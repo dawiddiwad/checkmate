@@ -20,7 +20,7 @@ import {
 	shortName,
 } from './journal.ts'
 import { all, canonical, digest, one } from './store.ts'
-import { requireChoice, requireCondition, unstructuredValue } from './contracts.ts'
+import { requireChoice, requireCondition, unverifiedCheck } from './contracts.ts'
 import { openPermissions } from './permissions.ts'
 import {
 	approvalState,
@@ -274,12 +274,12 @@ export function planList(store: Store): PlanListRow[] {
 	return [...drafted, ...requested].sort((a, b) => a.planId.localeCompare(b.planId))
 }
 
-// Checks saved before observe/expected. Revising the test adds them; the same rule refuses new plans.
+// Deterministic checks without observe and expected. Code cannot verify them; a revise migrates them.
 export function legacyChecks(plan: Plan) {
 	return plan.tests.flatMap((test) =>
-		test.metadata?.harvestedFrom === undefined
-			? test.assertions.filter((assertion) => unstructuredValue(assertion)).map((assertion) => `${test.id}.${assertion.id}`)
-			: []
+		test.assertions
+			.filter((assertion) => unverifiedCheck(assertion))
+			.map((assertion) => `${test.id}.${assertion.id}`)
 	)
 }
 
@@ -2080,6 +2080,13 @@ export function runGate(store: Store, runId: string) {
 		!detail.result || errored.length > 0 || completion === 'operational_error' || completion === 'interrupted'
 	const coverage = detail.result?.coverage.status ?? null
 	const partial = coverage !== 'complete'
+	const unverified = plan.tests
+		.filter((test) => detail.request.selectedTestIds.includes(test.id))
+		.flatMap((test) =>
+			test.assertions
+				.filter((assertion) => unverifiedCheck(assertion))
+				.map((assertion) => `${test.id}.${assertion.id}`)
+		)
 	const verdict = failed.length
 		? { code: 1, state: 'defects' }
 		: couldNotTest
@@ -2088,13 +2095,12 @@ export function runGate(store: Store, runId: string) {
 				? { code: 3, state: 'blocked_on_oracle' }
 				: partial
 					? { code: 2, state: 'partial_coverage' }
-					: { code: 0, state: 'passed' }
-	const unverified = plan.tests
-		.filter((test) => detail.request.selectedTestIds.includes(test.id))
-		.flatMap((test) =>
-			test.assertions
-				.filter((assertion) => assertion.checkKind === 'deterministic' && assertion.expected === undefined)
-				.map((assertion) => `${test.id}.${assertion.id}`)
-		)
-	return { ...verdict, failed, errored, openGaps, completion, coverage, unverified }
+					: unverified.length
+						? { code: 2, state: 'unverified_checks' }
+						: { code: 0, state: 'passed' }
+	// Agent observations may pass; the gate says how many verdicts the agent judged.
+	const judgedByAgent = detail.tests
+		.flatMap((test) => test.assertions)
+		.filter((assertion) => assertion.checkKind === 'agent_observation' && assertion.result !== null).length
+	return { ...verdict, failed, errored, openGaps, completion, coverage, unverified, judgedByAgent }
 }

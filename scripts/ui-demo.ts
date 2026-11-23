@@ -105,7 +105,13 @@ const loginCandidate: PlanCandidate = {
 			action: 'Open the sign-in page, enter valid credentials, and submit.',
 			assertions: [
 				{ id: 'A1', check: 'The account page shows the customer name.', checkKind: 'agent_observation' },
-				{ id: 'A2', check: 'The session cookie has the HttpOnly flag.', checkKind: 'deterministic' },
+				{
+					id: 'A2',
+					check: 'The session cookie has the HttpOnly flag.',
+					checkKind: 'deterministic',
+					observe: 'the Set-Cookie attributes of the session cookie',
+					expected: 'HttpOnly',
+				},
 			],
 		},
 		{
@@ -165,7 +171,13 @@ const checkoutCandidate: PlanCandidate = {
 			action: 'Add the 400 PLN item, complete checkout, and read the confirmation.',
 			assertions: [
 				{ id: 'A1', check: 'The confirmation shows a total of 400 PLN.', checkKind: 'agent_observation' },
-				{ id: 'A2', check: 'The order API returns one line item.', checkKind: 'deterministic' },
+				{
+					id: 'A2',
+					check: 'The order API returns one line item.',
+					checkKind: 'deterministic',
+					observe: 'the number of line items in the order API response',
+					expected: '1',
+				},
 			],
 		},
 		{
@@ -193,7 +205,13 @@ const checkoutCandidate: PlanCandidate = {
 					observe: 'totalPLN in the quote',
 					expected: '220',
 				},
-				{ id: 'A3', check: 'The quote does not list the loyalty discount.', checkKind: 'deterministic' },
+				{
+					id: 'A3',
+					check: 'The quote does not list the loyalty discount.',
+					checkKind: 'deterministic',
+					observe: 'the discount lines in the quote',
+					expected: 'none',
+				},
 			],
 		},
 		{
@@ -417,7 +435,7 @@ function seedLoginRun(store: Store) {
 		'T1-account.png',
 		pageShot('account'),
 	])
-	check(store, 'run-3', 'T1.A2', 'passed', 'Set-Cookie: sid=…; HttpOnly; SameSite=Lax', [
+	check(store, 'run-3', 'T1.A2', undefined, 'HttpOnly', [
 		'T1-cookie.txt',
 		'Set-Cookie: sid=redacted; Path=/; HttpOnly; SameSite=Lax\n',
 	])
@@ -484,7 +502,12 @@ function seedRevision(store: Store) {
 							observe: 'totalPLN in the quote',
 							expected: '240',
 						},
-						{ check: 'No loyalty line in the quote.', checkKind: 'deterministic' },
+						{
+							check: 'No loyalty line in the quote.',
+							checkKind: 'deterministic',
+							observe: 'the discount lines in the quote',
+							expected: 'none',
+						},
 					],
 				},
 			},
@@ -511,7 +534,7 @@ function seedCheckoutRun(store: Store) {
 		'T1-confirmation.png',
 		pageShot('confirmation'),
 	])
-	check(store, 'run-7', 'T1.A2', 'passed', 'lineItems has 1 entry.', [
+	check(store, 'run-7', 'T1.A2', undefined, '1', [
 		'T1-order.json',
 		json({ orderId: 'fx-1042', lineItems: [{ sku: 'LAMP-01', quantity: 1, pricePLN: 400 }], totalPLN: 400 }),
 	])
@@ -531,7 +554,7 @@ function seedCheckoutRun(store: Store) {
 	})
 	check(store, 'run-7', 'T2.A1', undefined, '200', ['T2-quote-status.json', quote])
 	const failed = check(store, 'run-7', 'T2.A4', undefined, '220', ['T2-quote.json', quote])
-	check(store, 'run-7', 'T2.A5', 'passed', 'No loyalty line in the quote.', [
+	check(store, 'run-7', 'T2.A5', undefined, 'none', [
 		'T2-quote-lines.txt',
 		'Lines: SPRING40 −160 PLN\nNo loyalty line.\n',
 	])
@@ -608,7 +631,15 @@ const accountCandidate: PlanCandidate = {
 			dependsOn: [],
 			preconditions: ['Signed in as anna@example.test.'],
 			action: 'Open the profile page and save a new display name.',
-			assertions: [{ id: 'A1', check: 'The header shows the new name.', checkKind: 'deterministic' }],
+			assertions: [
+				{
+					id: 'A1',
+					check: 'The header shows the new name.',
+					checkKind: 'deterministic',
+					observe: 'the name shown in the header after the save',
+					expected: 'Anna Nowak',
+				},
+			],
 		},
 	],
 	gaps: [],

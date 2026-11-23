@@ -349,14 +349,14 @@ checkmate run show <runId> --gate
 
 The command exits with one code:
 
-| Exit | Gate state                             | Meaning                                                                                                                                                   |
-| ---- | -------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 0    | `passed`                               | Every selected test passed, and coverage is complete.                                                                                                     |
-| 1    | `defects`                              | A test failed: the product has defects. JUnit lists them as `<failure>`.                                                                                  |
-| 2    | `could_not_test` or `partial_coverage` | A test could not run, the run is not finished, or some tests were not selected. JUnit lists the errors as `<error>` and the blocked tests as `<skipped>`. |
-| 3    | `blocked_on_oracle`                    | An open blocking gap waits for an oracle decision.                                                                                                        |
+| Exit | Gate state                                                   | Meaning                                                                                                                                                                                                |
+| ---- | ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 0    | `passed`                                                     | Every selected test passed, and coverage is complete.                                                                                                                                                  |
+| 1    | `defects`                                                    | A test failed: the product has defects. JUnit lists them as `<failure>`.                                                                                                                               |
+| 2    | `could_not_test`, `partial_coverage`, or `unverified_checks` | A test could not run, the run is not finished, some tests were not selected, or a deterministic check has no expected value. JUnit lists the errors as `<error>` and the blocked tests as `<skipped>`. |
+| 3    | `blocked_on_oracle`                                          | An open blocking gap waits for an oracle decision.                                                                                                                                                     |
 
-A failed test outranks the other codes. Partial coverage never exits 0.
+A failed test outranks the other codes. Partial coverage never exits 0. A run with a deterministic check that code did not verify never exits 0; the gate names the checks and the revise command. The gate also reports how many verdicts the agent judged (`judgedByAgent`), because those pass without a value comparison.
 
 Sample GitHub Actions step:
 
@@ -385,4 +385,4 @@ A deterministic assertion names what is observed and the expected value separate
 
 The child records only the observed value with `run check --observed "300 PLN"`. The code compares it with `expected` and records `passed` or `failed`. `--result` is refused for these assertions. A value that cannot be observed is recorded as `not_checked` with `--reason`.
 
-Older plans with check text only still run, but the gate reports them as checks the code cannot compare. Revise the plan to give each comparable value an `observe` and an `expected`.
+A deterministic check without an `expected` value is not verified by code. Plan save refuses it, `run begin` refuses a plan that holds one, and `checkmate delegate revise <planId>` migrates it to the current shape without an oracle decision. A check that cannot be split without a decision raises a blocking gap instead. Use `agent_observation` for a judgment that has no value to compare.

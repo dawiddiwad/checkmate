@@ -18,6 +18,7 @@ import {
 	planTargetCheck,
 	references,
 	compoundCheck,
+	unverifiedCheck,
 	requireChoice,
 	requireCondition,
 	requireIdentifier,
@@ -762,6 +763,17 @@ function decisionSnapshot(row: DecisionRow): Plan['decisions'][number] {
 	}
 }
 
+// Tests with a check that code cannot verify or that states more than one value. A revise migrates them.
+export function migrationTests(plan: Plan) {
+	return plan.tests
+		.filter((test) =>
+			test.assertions.some((assertion) => unverifiedCheck(assertion) || compoundCheck(assertion.check))
+		)
+		.map((test) => test.id)
+}
+
+export const migrationReason = 'migrate checks to the current shape'
+
 export function revisePlan(
 	store: Store,
 	actor: string | undefined,
@@ -771,9 +783,10 @@ export function revisePlan(
 		const base = planRevision(store, input.planId)
 		expectDigest(base.sha256, input.expectSha256, `${input.planId}@${base.plan.revision}`)
 		const decisions = pendingDecisions(store, input.planId)
+		const migrating = decisions.length === 0 && migrationTests(base.plan).length > 0
 		requireCondition(
-			decisions.length > 0,
-			`Plan ${input.planId} has no pending decision. Record one with gap answer first.`
+			decisions.length > 0 || migrating,
+			`Plan ${input.planId} has no pending decision and no check to migrate. Record one with gap answer first.`
 		)
 		const delta = validate('plan-delta', input.delta)
 		const { coverage, ...draft } = structuredClone(base.plan)
@@ -787,11 +800,15 @@ export function revisePlan(
 			if (decision.kind === 'accept_assumption')
 				draft.assumptions.push({ decisionId: decision.id, text: decision.value })
 		}
-		const affected = affectedTests(
-			base.plan,
-			decisions.map((decision) => decision.gap_id)
-		).map((test) => test.id)
-		const onlyAffected = `Change only the tests that the pending decisions affect: ${affected.join(', ') || 'none'}.`
+		const affected = migrating
+			? migrationTests(base.plan)
+			: affectedTests(
+					base.plan,
+					decisions.map((decision) => decision.gap_id)
+				).map((test) => test.id)
+		const onlyAffected = migrating
+			? `Change only the tests with checks to migrate: ${affected.join(', ')}.`
+			: `Change only the tests that the pending decisions affect: ${affected.join(', ') || 'none'}.`
 		for (const [id, change] of Object.entries(delta.requirements ?? {})) {
 			if (change.remove) continue
 			const existing = draft.requirements.find((requirement) => requirement.id === id)
@@ -844,6 +861,25 @@ export function revisePlan(
 					`Assertion ${test.id}.${assertion.id} checks more than one value: "${assertion.check}"`,
 					'Send one assertion for each value. Each assertion checks one expected value, so split the check into two assertions.'
 				)
+		for (const [gapId, change] of Object.entries(delta.gaps ?? {})) {
+			requireWellFormed(!draft.gaps.some((gap) => gap.id === gapId), `Gap ${gapId} already exists`)
+			for (const testId of change.testIds)
+				requireCondition(
+					affected.includes(testId),
+					`Test ${testId} is not affected by a pending decision. A revision changes only affected tests.`,
+					onlyAffected
+				)
+			draft.gaps.push({
+				id: gapId,
+				severity: 'blocking',
+				status: 'open',
+				requirementIds: [],
+				testIds: change.testIds,
+				question: change.question,
+				consequence: change.consequence,
+				decisionId: null,
+			})
+		}
 		const removedRequirements = removeRequirements(draft, delta.requirements ?? {}, removedTests)
 		if (removedTests.length) removeTests(draft, removedTests)
 		for (const test of draft.tests)
@@ -856,6 +892,7 @@ export function revisePlan(
 		for (const decision of decisions)
 			execute(store, 'UPDATE decisions SET applied_revision = ? WHERE id = ?', draft.revision, decision.id)
 		change.reply.data.applied = decisions.map((decision) => decision.id)
+		if (migrating) change.reply.data.reason = migrationReason
 		change.reply.data.removed = { tests: removedTests, requirements: removedRequirements }
 		return change
 	})
@@ -1153,13 +1190,20 @@ export function gate(store: Store, input: GateInput) {
 	const runGaps = partial === 'wait_for_resolution' ? blockingRunGaps(store, plan.planId) : []
 	for (const id of selected) {
 		const test = tests.get(id)!
-		for (const assertion of test.assertions)
+		for (const assertion of test.assertions) {
 			if (compoundCheck(assertion.check)) {
 				reasons.push(`Assertion ${id}.${assertion.id} checks more than one value: ${assertion.check}`)
 				hints.push(
 					`Revise the plan so that each assertion checks one value: checkmate delegate revise ${plan.planId}.`
 				)
 			}
+			if (unverifiedCheck(assertion)) {
+				reasons.push(
+					`Assertion ${id}.${assertion.id} is a deterministic check without an expected value: ${assertion.check}`
+				)
+				hints.push(`Migrate the checks to the current shape: checkmate delegate revise ${plan.planId}.`)
+			}
+		}
 		if (test.readiness !== 'ready') {
 			reasons.push(`Test is not ready: ${id}`)
 			hints.push(`Remove ${id} from --tests, or leave out --tests and add --partial ready_only.`)

@@ -113,6 +113,37 @@
 				"additionalProperties": false,
 				"minProperties": 1
 			}
+		},
+		"gaps": {
+			"type": "object",
+			"description": "Blocking gaps the revision raises for checks that need a decision before they can be migrated.",
+			"propertyNames": {
+				"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+			},
+			"additionalProperties": {
+				"type": "object",
+				"properties": {
+					"question": {
+						"type": "string",
+						"minLength": 1
+					},
+					"consequence": {
+						"type": "string",
+						"minLength": 1
+					},
+					"testIds": {
+						"type": "array",
+						"items": {
+							"type": "string",
+							"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+						},
+						"minItems": 1,
+						"uniqueItems": true
+					}
+				},
+				"required": ["question", "consequence", "testIds"],
+				"additionalProperties": false
+			}
 		}
 	},
 	"required": ["tests"],

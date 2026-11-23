@@ -688,8 +688,7 @@ test(
 				runId,
 				testId: 'T1',
 				assertionId: 'A2',
-				result: 'passed',
-				observed: `${build} order record is correct`,
+				observed: '1',
 				evidence: [{ text: `${build} order record is correct` }],
 			})
 			closeTest(opened, actor, { runId, testId: 'T1' })

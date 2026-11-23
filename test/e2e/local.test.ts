@@ -453,7 +453,15 @@ test('Drop a criterion by revise — a dropped criterion stayed ready and needed
 				dependsOn: [],
 				preconditions: [],
 				action: 'Read the list.',
-				assertions: [{ id: 'A1', check: 'The newest item is first.', checkKind: 'deterministic' }],
+				assertions: [
+					{
+						id: 'A1',
+						check: 'The newest item is first.',
+						checkKind: 'deterministic',
+						observe: 'the first item in the list',
+						expected: 'newest',
+					},
+				],
 			},
 		],
 		gaps: [
@@ -617,7 +625,15 @@ test('Revise a test whole — the code keeps an assertion ID whose check is unch
 				dependsOn: [],
 				preconditions: [],
 				action: 'Read the list.',
-				assertions: [{ id: 'A1', check: 'The newest item is first.', checkKind: 'deterministic' }],
+				assertions: [
+					{
+						id: 'A1',
+						check: 'The newest item is first.',
+						checkKind: 'deterministic',
+						observe: 'the first item in the list',
+						expected: 'newest',
+					},
+				],
 			},
 		],
 		gaps: [
@@ -667,7 +683,12 @@ test('Revise a test whole — the code keeps an assertion ID whose check is unch
 		tests: {
 			T2: {
 				assertions: [
-					{ check: 'The newest item is first.', checkKind: 'deterministic' },
+					{
+						check: 'The newest item is first.',
+						checkKind: 'deterministic',
+						observe: 'the first item in the list',
+						expected: 'newest',
+					},
 					{
 						check: 'The list has at most 10 items.',
 						checkKind: 'deterministic',
@@ -1866,7 +1887,7 @@ test('Execute a plan chat through the packaged UI — a begun run must reach its
 	mkdirSync(join(workspace, '.checkmate'))
 	writeFileSync(
 		join(workspace, '.checkmate/checkmate.db'),
-		gunzipSync(readFileSync(join(root, 'test/e2e/fixtures/workspace-39d33f7.db.gz')))
+		gunzipSync(readFileSync(join(root, 'test/e2e/fixtures/workspace-migrated.db.gz')))
 	)
 	const app = await fixture()
 	t.after(() => app.close())
@@ -1893,7 +1914,7 @@ if (args.includes('stream-json')) {
 } else {
   fetch(process.env.QA_APP_URL + '/quote?promotion=true&loyalty=true').then(r => r.json()).then(quote => {
     if (quote.totalPLN !== 240 || !input.includes('ui-run')) throw Error('Wrong build or run')
-    run(['run','check','ui-run','T1','A1','--result','passed','--observed','240','--evidence','-'], JSON.stringify(quote))
+    run(['run','check','ui-run','T1','A1','--observed','240','--evidence','-'], JSON.stringify(quote))
     run(['run','close','ui-run','T1'])
     run(['run','finish','ui-run','--completion','completed','--cleanup','completed','--cleanup-reason','No test data.'])
     console.log(JSON.stringify({type:'result',subtype:'success',structured_output:{status:'completed',subject:'ui-run',reasons:[]}}))
@@ -2004,7 +2025,7 @@ require('node:readline').createInterface({input:process.stdin}).on('line', line 
 	mkdirSync(join(piWorkspace, '.checkmate'))
 	writeFileSync(
 		join(piWorkspace, '.checkmate/checkmate.db'),
-		gunzipSync(readFileSync(join(root, 'test/e2e/fixtures/workspace-39d33f7.db.gz')))
+		gunzipSync(readFileSync(join(root, 'test/e2e/fixtures/workspace-migrated.db.gz')))
 	)
 	const installed = join(project, 'node_modules/@xoxoai/checkmate')
 	const fullCli = join(installed, 'dist/checkmate.js')
@@ -2027,7 +2048,7 @@ const response = await fetch(${JSON.stringify(`${app.baseUrl}/quote?promotion=tr
 const quote = await response.json()
 if (response.status !== 200 || quote.totalPLN !== 240) throw Error('The fixed loopback build did not return 240 PLN.')
 const invoke = (args, input = '') => execFileSync(process.execPath, [cli, ...args], { input, encoding: 'utf8', stdio: ['pipe', 'pipe', 'inherit'] })
-invoke(['run', 'check', 'pi-ui-run', 'T1', 'A1', '--result', 'passed', '--observed', String(quote.totalPLN), '--evidence', '-'], JSON.stringify({ status: response.status, quote }))
+invoke(['run', 'check', 'pi-ui-run', 'T1', 'A1', '--observed', String(quote.totalPLN), '--evidence', '-'], JSON.stringify({ status: response.status, quote }))
 invoke(['run', 'close', 'pi-ui-run', 'T1'])
 invoke(['run', 'finish', 'pi-ui-run', '--completion', 'completed', '--cleanup', 'completed', '--cleanup-reason', 'No test data.'])
 `
@@ -2358,7 +2379,7 @@ test('Execute a request through Pi RPC — a begun run must reach its worker.', 
 	mkdirSync(join(workspace, '.checkmate'))
 	writeFileSync(
 		join(workspace, '.checkmate/checkmate.db'),
-		gunzipSync(readFileSync(join(root, 'test/e2e/fixtures/workspace-39d33f7.db.gz')))
+		gunzipSync(readFileSync(join(root, 'test/e2e/fixtures/workspace-migrated.db.gz')))
 	)
 	const app = await fixture()
 	t.after(() => app.close())
@@ -2376,7 +2397,7 @@ if (!input.includes('pi-run')) throw Error('Wrong run')
 const run = (args, input) => execFileSync(process.execPath, [process.env.QA_CLI, ...args], {input, encoding:'utf8'})
 fetch(process.env.QA_APP_URL + '/quote?promotion=true&loyalty=true').then(r => r.json()).then(quote => {
   if (quote.totalPLN !== 240) throw Error('Wrong build')
-  run(['run','check','pi-run','T1','A1','--result','passed','--observed','240','--evidence','-'], JSON.stringify(quote))
+  run(['run','check','pi-run','T1','A1','--observed','240','--evidence','-'], JSON.stringify(quote))
   run(['run','close','pi-run','T1'])
   run(['run','finish','pi-run','--completion','completed','--cleanup','completed','--cleanup-reason','No test data.'])
   const result = JSON.stringify({status:'completed',subject:'pi-run',reasons:[]})
@@ -2635,7 +2656,15 @@ test('Run a narrow retest with prerequisites and regressions — uncovered tests
 				title: 'Prerequisite',
 				dependsOn: [],
 				metadata: { type: 'regression' },
-				assertions: [{ id: 'A1', check: 'Service responds.', checkKind: 'deterministic' }],
+				assertions: [
+					{
+						id: 'A1',
+						check: 'Service responds.',
+						checkKind: 'deterministic',
+						observe: 'the HTTP status of the service',
+						expected: '200',
+					},
+				],
 			},
 			{
 				...common,
@@ -2657,7 +2686,7 @@ test('Run a narrow retest with prerequisites and regressions — uncovered tests
 				id: 'T3',
 				title: 'Unrelated',
 				dependsOn: [],
-				assertions: [{ id: 'A1', check: 'The quote is positive.', checkKind: 'deterministic' }],
+				assertions: [{ id: 'A1', check: 'The quote is positive.', checkKind: 'agent_observation' }],
 			},
 		],
 		gaps: [],
@@ -2666,7 +2695,7 @@ test('Run a narrow retest with prerequisites and regressions — uncovered tests
 	await ok(['run', 'begin', 'run-1', 'ticket@1', '--build', 'broken', '--tests', 'T1,T2'])
 	const quote = await (await fetch(`${app.baseUrl}/quote?promotion=true&loyalty=true`)).json()
 	assert.equal(quote.totalPLN, 220)
-	await ok(['run', 'check', 'run-1', 'T1', 'A1', '--result', 'passed', '--observed', '200', '--evidence', '-'], quote)
+	await ok(['run', 'check', 'run-1', 'T1', 'A1', '--observed', '200', '--evidence', '-'], quote)
 	await ok(['run', 'close', 'run-1', 'T1'])
 	const checked = await inputCommand(
 		workspace,
@@ -2741,9 +2770,9 @@ test('Run a narrow retest with prerequisites and regressions — uncovered tests
 	])
 	assert.deepEqual(begun.tests, ['T1', 'T2'])
 	for (const id of ['T1', 'T2']) {
-		// T1 is a legacy check without expected, so it still takes --result; T2 decides from --observed.
-		const result = id === 'T1' ? ['--result', 'passed'] : []
-		await ok(['run', 'check', 'run-2', id, 'A1', ...result, '--observed', '240', '--evidence', '-'], fixed)
+		// T1 checks the HTTP status of the service, T2 the quote total.
+		const observed = id === 'T1' ? '200' : '240'
+		await ok(['run', 'check', 'run-2', id, 'A1', '--observed', observed, '--evidence', '-'], fixed)
 		await ok(['run', 'close', 'run-2', id])
 	}
 	await ok([
@@ -2810,7 +2839,7 @@ test('Run a two-instance matrix and accept each latest result — one pass masks
 	mkdirSync(join(workspace, '.checkmate'))
 	writeFileSync(
 		join(workspace, '.checkmate/checkmate.db'),
-		gunzipSync(readFileSync(join(root, 'test/e2e/fixtures/workspace-39d33f7.db.gz')))
+		gunzipSync(readFileSync(join(root, 'test/e2e/fixtures/workspace-migrated.db.gz')))
 	)
 	const a = await fixture()
 	const b = await fixture()
@@ -2835,19 +2864,7 @@ test('Run a two-instance matrix and accept each latest result — one pass masks
 		const observed = await (await fetch(`${app.baseUrl}/quote?promotion=true&loyalty=true`)).json()
 		assert.equal(observed.totalPLN, expected)
 		const checked = await ok(
-			[
-				'run',
-				'check',
-				run,
-				'T1',
-				'A1',
-				'--result',
-				expected === 240 ? 'passed' : 'failed',
-				'--observed',
-				String(expected),
-				'--evidence',
-				'-',
-			],
+			['run', 'check', run, 'T1', 'A1', '--observed', String(expected), '--evidence', '-'],
 			JSON.stringify(observed)
 		)
 		if (expected === 220)
@@ -2926,7 +2943,7 @@ test('Resume a structured run after a worker deadline — outcomes lost or gate 
 	mkdirSync(join(workspace, '.checkmate'))
 	writeFileSync(
 		join(workspace, '.checkmate/checkmate.db'),
-		gunzipSync(readFileSync(join(root, 'test/e2e/fixtures/workspace-39d33f7.db.gz')))
+		gunzipSync(readFileSync(join(root, 'test/e2e/fixtures/workspace-migrated.db.gz')))
 	)
 	const app = await fixture()
 	t.after(() => app.close())
@@ -2944,7 +2961,7 @@ const plugin = process.argv[process.argv.indexOf('--plugin-dir') + 1]
 writeFileSync('worker.pid', String(process.pid))
 fetch(process.env.QA_APP_URL + '/quote?promotion=true&loyalty=true').then(r => r.json()).then(quote => {
   if (quote.totalPLN !== 240) throw Error('Bad build')
-  if (!process.env.QA_FINISH) execFileSync(process.execPath, [plugin + '/dist/checkmate.js', 'run', 'check', 'run-1', 'T1', 'A1', '--result', 'passed', '--observed', '240', '--evidence', '-'], { input: JSON.stringify(quote), stdio: ['pipe', 'pipe', 'inherit'] })
+  if (!process.env.QA_FINISH) execFileSync(process.execPath, [plugin + '/dist/checkmate.js', 'run', 'check', 'run-1', 'T1', 'A1', '--observed', '240', '--evidence', '-'], { input: JSON.stringify(quote), stdio: ['pipe', 'pipe', 'inherit'] })
   if (process.env.QA_FINISH) {
     execFileSync(process.execPath, [plugin + '/dist/checkmate.js', 'run', 'close', 'run-1', 'T1'])
     execFileSync(process.execPath, [plugin + '/dist/checkmate.js', 'run', 'finish', 'run-1', '--completion', 'completed', '--cleanup', 'completed', '--cleanup-reason', 'No test data.'])
@@ -3307,7 +3324,15 @@ test('Refuse a run that can change data without a reset, then run the recorded r
 					dependsOn: [],
 					preconditions: [],
 					action: 'Create an order.',
-					assertions: [{ id: 'A1', check: 'The order is created.', checkKind: 'deterministic' }],
+					assertions: [
+						{
+							id: 'A1',
+							check: 'The order is created.',
+							checkKind: 'deterministic',
+							observe: 'the order status in the create response',
+							expected: 'created',
+						},
+					],
 				},
 			],
 			gaps: [],
@@ -3654,7 +3679,15 @@ test('Resume a run with a test that may have changed data — a recorded reset r
 					dependsOn: [],
 					preconditions: [],
 					action: 'Create an order.',
-					assertions: [{ id: 'A1', check: 'The order is created.', checkKind: 'deterministic' }],
+					assertions: [
+						{
+							id: 'A1',
+							check: 'The order is created.',
+							checkKind: 'deterministic',
+							observe: 'the order status in the create response',
+							expected: 'created',
+						},
+					],
 				},
 				{
 					id: 'T2',
@@ -3665,7 +3698,15 @@ test('Resume a run with a test that may have changed data — a recorded reset r
 					dependsOn: [],
 					preconditions: [],
 					action: 'Read the catalog.',
-					assertions: [{ id: 'A1', check: 'The catalog is listed.', checkKind: 'deterministic' }],
+					assertions: [
+						{
+							id: 'A1',
+							check: 'The catalog is listed.',
+							checkKind: 'deterministic',
+							observe: 'the catalog list in the response',
+							expected: 'listed',
+						},
+					],
 				},
 			],
 			gaps: [],
@@ -3772,7 +3813,7 @@ test('Show a legacy plan — status and plan show name checks saved without an e
 	assert.deepEqual(status.body.legacyChecks, ['T1.A1'])
 })
 
-test('Execute a legacy check — the worker is told to decide its result with --result, because the code has no expected value.', async (t) => {
+test('Refuse a run on a legacy check, then migrate it by revise without a decision — the check gets its expected value, no worker decides it.', async (t) => {
 	const workspace = directory(t)
 	mkdirSync(join(workspace, '.checkmate'))
 	writeFileSync(
@@ -3790,24 +3831,267 @@ test('Execute a legacy check — the worker is told to decide its result with --
 	}
 	await ok('target', 'instance', 'add', 'shop', 'local', '--entry', `web=${app.baseUrl}`)
 	await ok('plan', 'approve', 'ticket@1', '--rationale', 'Run the rule.')
-	await ok('run', 'begin', 'run-1', 'ticket@1', '--build', 'fixed', '--instance', 'local', '--tests', 'T1')
-	const bin = directory(t)
-	copyFileSync(join(root, 'test/e2e/per-test-host.mjs'), join(bin, 'pi'))
-	chmodSync(join(bin, 'pi'), 0o755)
-	const prompts = join(directory(t), 'prompts.txt')
-	const piEnv = {
-		...env,
-		PATH: `${bin}${delimiter}${process.env.PATH}`,
-		CHECKMATE_HARNESS: 'pi',
-		FAKE_PI_LOG: join(directory(t), 'log.txt'),
-		FAKE_PI_PROMPTS: prompts,
-		FAKE_CHECKMATE_CLI: binary,
-		FAKE_RUN: 'run-1',
+	const refused = await command(
+		workspace,
+		env,
+		'run',
+		'begin',
+		'run-1',
+		'ticket@1',
+		'--build',
+		'fixed',
+		'--instance',
+		'local',
+		'--tests',
+		'T1'
+	)
+	assert.equal(refused.body.status, 'needs_decision', refused.output)
+	assert.match(refused.body.reasons.join(' '), /T1\.A1 is a deterministic check without an expected value/)
+	assert.match(refused.body.hint, /checkmate delegate revise ticket/)
+	const migrated = await inputCommand(
+		workspace,
+		env,
+		JSON.stringify({
+			tests: {
+				T1: {
+					assertions: [
+						{
+							check: 'The quote is 240.',
+							checkKind: 'deterministic',
+							observe: 'the value stated by the check',
+							expected: '240',
+						},
+					],
+				},
+			},
+		}),
+		'plan',
+		'revise',
+		'ticket'
+	)
+	assert.equal(migrated.code, 0, migrated.output)
+	assert.equal(migrated.body.reason, 'migrate checks to the current shape')
+	await ok('plan', 'approve', 'ticket@2', '--rationale', 'Run the migrated rule.')
+	await ok('run', 'begin', 'run-1', 'ticket@2', '--build', 'fixed', '--instance', 'local', '--tests', 'T1')
+})
+
+test('Save a deterministic check only with an expected value — the kind decides, not a digit; an agent observation names no value and the gate counts its verdict.', async (t) => {
+	const workspace = directory(t)
+	writeFileSync(join(workspace, 'ticket.md'), 'The quote is 240 and the order has one item.\n')
+	const app = await fixture()
+	t.after(() => app.close())
+	app.fix()
+	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle' }
+	const ok = async (args: string[], value?: object) => {
+		const result = await inputCommand(workspace, env, value ? JSON.stringify(value) : '', ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
 	}
-	await inputCommand(workspace, piEnv, '', 'delegate', 'execute', 'run-1')
-	assert(
-		readFileSync(prompts, 'utf8').includes(
-			'A1: The quote is 240. This assertion has no expected value: decide it with --result passed, failed or inconclusive.'
-		)
+	await ok(['setup', '--url', app.baseUrl, '--target', 'shop'])
+	await ok([
+		'plan',
+		'open',
+		'ticket',
+		'--target',
+		'shop@1',
+		'--objective',
+		'Check the quote.',
+		'--source',
+		'ticket.md',
+	])
+	const plan = (assertions: object[][]) => ({
+		requirements: [{ id: 'R1', text: 'The quote is 240 and the order has one item.', source: 'ticket.md' }],
+		tests: [
+			{
+				capability: 'http',
+				operations: ['read_catalog'],
+				dependsOn: [],
+				preconditions: [],
+				id: 'T1',
+				title: 'Quote',
+				requirementIds: ['R1'],
+				action: 'Read the quote.',
+				assertions: assertions[0],
+			},
+			{
+				capability: 'http',
+				operations: ['read_catalog'],
+				dependsOn: [],
+				preconditions: [],
+				id: 'T2',
+				title: 'Order',
+				requirementIds: ['R1'],
+				action: 'Read the order.',
+				assertions: assertions[1],
+			},
+		],
+		gaps: [],
+	})
+	const refused = await inputCommand(
+		workspace,
+		env,
+		JSON.stringify(
+			plan([
+				[
+					{
+						id: 'A1',
+						check: 'The quote is 240.',
+						checkKind: 'deterministic',
+						observe: 'the quote total',
+						expected: '240',
+					},
+				],
+				[{ id: 'A1', check: 'The order has one item.', checkKind: 'deterministic' }],
+			])
+		),
+		'plan',
+		'save',
+		'ticket'
+	)
+	assert.equal(refused.code, 1, refused.output)
+	assert.match(
+		refused.body.reasons.join(' '),
+		/T2\.A1 is a deterministic check without an observed item and an expected value/
+	)
+	assert.match(refused.body.hint, /agent_observation/)
+	await ok(
+		['plan', 'save', 'ticket'],
+		plan([
+			[
+				{
+					id: 'A1',
+					check: 'The quote is 240.',
+					checkKind: 'deterministic',
+					observe: 'the quote total',
+					expected: '240',
+				},
+			],
+			[{ id: 'A1', check: 'The order has one item.', checkKind: 'agent_observation' }],
+		])
+	)
+	await ok(['plan', 'approve', 'ticket@1', '--rationale', 'Run the rule.'])
+	await ok(['run', 'begin', 'run-1', 'ticket@1', '--build', 'fixed', '--partial', 'ready_only'])
+	await ok(['run', 'check', 'run-1', 'T1', 'A1', '--observed', '240', '--evidence', '-'], { totalPLN: 240 })
+	await ok(['run', 'close', 'run-1', 'T1'])
+	await ok(['run', 'check', 'run-1', 'T2', 'A1', '--result', 'passed', '--observed', 'one item', '--evidence', '-'], {
+		lines: 1,
+	})
+	await ok(['run', 'close', 'run-1', 'T2'])
+	await ok([
+		'run',
+		'finish',
+		'run-1',
+		'--completion',
+		'completed',
+		'--cleanup',
+		'completed',
+		'--cleanup-reason',
+		'No test data.',
+	])
+	const gated = await command(workspace, env, 'run', 'show', 'run-1', '--gate')
+	assert.equal(gated.code, 0, gated.output)
+	assert.equal(gated.body.gate.state, 'passed')
+	assert.equal(gated.body.gate.judgedByAgent, 1)
+})
+
+test('Gate a run with a deterministic check that code did not verify — the run is not green and names the checks and the revise command.', async (t) => {
+	const workspace = directory(t)
+	mkdirSync(join(workspace, '.checkmate'))
+	writeFileSync(
+		join(workspace, '.checkmate/checkmate.db'),
+		gunzipSync(readFileSync(join(root, 'test/e2e/fixtures/workspace-migrated.db.gz')))
+	)
+	const app = await fixture()
+	t.after(() => app.close())
+	app.fix()
+	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle' }
+	const ok = async (...args: string[]) => {
+		const result = await command(workspace, env, ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	await ok('target', 'instance', 'add', 'shop', 'local', '--entry', `web=${app.baseUrl}`)
+	await ok('plan', 'approve', 'ticket@1', '--rationale', 'Run the rule.')
+	await ok('run', 'begin', 'run-1', 'ticket@1', '--build', 'fixed', '--instance', 'local', '--tests', 'T1')
+	await inputCommand(
+		workspace,
+		env,
+		'{"totalPLN":240}',
+		'run',
+		'check',
+		'run-1',
+		'T1',
+		'A1',
+		'--observed',
+		'240',
+		'--evidence',
+		'-'
+	)
+	await ok('run', 'close', 'run-1', 'T1')
+	await ok(
+		'run',
+		'finish',
+		'run-1',
+		'--completion',
+		'completed',
+		'--cleanup',
+		'completed',
+		'--cleanup-reason',
+		'No test data.'
+	)
+	const database = new DatabaseSync(join(workspace, '.checkmate', 'checkmate.db'))
+	for (const trigger of database
+		.prepare("SELECT name FROM sqlite_master WHERE type = 'trigger' AND tbl_name = 'plan_revisions'")
+		.all() as Array<{ name: string }>)
+		database.exec(`DROP TRIGGER ${trigger.name}`)
+	const body = (
+		database.prepare("SELECT body FROM plan_revisions WHERE plan_id = 'ticket' AND revision = 1").get() as {
+			body: string
+		}
+	).body
+	database
+		.prepare("UPDATE plan_revisions SET body = ? WHERE plan_id = 'ticket' AND revision = 1")
+		.run(body.replaceAll(',"expected":"240"', '').replaceAll(',"observe":"the value stated by the check"', ''))
+	database.close()
+	const gated = await command(workspace, env, 'run', 'show', 'run-1', '--gate')
+	assert.equal(gated.code, 2, gated.output)
+	assert.equal(gated.body.gate.state, 'unverified_checks')
+	assert.deepEqual(gated.body.gate.unverified, ['T1.A1'])
+})
+
+test('Revise a check that needs a decision to split — the test is blocked by a gap and keeps no check; no oracle decision is needed for the rest.', async (t) => {
+	const workspace = directory(t)
+	mkdirSync(join(workspace, '.checkmate'))
+	writeFileSync(
+		join(workspace, '.checkmate/checkmate.db'),
+		gunzipSync(readFileSync(join(root, 'test/e2e/fixtures/workspace-39d33f7.db.gz')))
+	)
+	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle' }
+	const revised = await inputCommand(
+		workspace,
+		env,
+		JSON.stringify({
+			tests: { T1: { assertions: [] } },
+			gaps: {
+				'G-T1': {
+					question: 'Which price does the quote show for the promotion?',
+					consequence: 'T1 stays untested until the oracle answers.',
+					testIds: ['T1'],
+				},
+			},
+		}),
+		'plan',
+		'revise',
+		'ticket'
+	)
+	assert.equal(revised.code, 0, revised.output)
+	assert.equal(revised.body.reason, 'migrate checks to the current shape')
+	const shown = await command(workspace, env, 'plan', 'show', 'ticket@2')
+	assert.equal(shown.code, 0, shown.output)
+	assert.deepEqual(shown.body.legacyChecks, [])
+	const gaps = shown.body.plan.gaps
+	assert.deepEqual(
+		gaps.map((gap: { id: string; status: string }) => [gap.id, gap.status]),
+		[['G-T1', 'open']]
 	)
 })

@@ -4,6 +4,7 @@ import {
 	Refusal,
 	closeStore,
 	isBusy,
+	planRevision,
 	openRejections,
 	openStore,
 	requirePermanentSelection,
@@ -12,7 +13,7 @@ import {
 } from '../../plugin/src/index.ts'
 import type { Harness } from '../../plugin/src/pi.ts'
 import { piArgs, piResult, resolvePiModelArgs, selectedHarness } from '../../plugin/src/pi.ts'
-import { planRequest, planTools } from '../../plugin/src/plans.ts'
+import { migrationTests, planRequest, planTools } from '../../plugin/src/plans.ts'
 import { workspaceEnv } from '../../plugin/src/settings.ts'
 import type { ChildCall } from '../../plugin/src/sessions.ts'
 import {
@@ -343,6 +344,11 @@ function pendingDecisions(store: Store, planId: string) {
 	)!.count
 }
 
+// A revise is due while decisions are pending or checks still need migrating to the current shape.
+function reviseNeeded(store: Store, planId: string) {
+	return pendingDecisions(store, planId) > 0 || migrationTests(planRevision(store, planId).plan).length > 0
+}
+
 function runProfile(store: Store, run: RunRow) {
 	const row = one<{ body: string }>(
 		store,
@@ -400,8 +406,10 @@ function checkSubject(store: Store, stage: Stage, subject: string) {
 	}
 	if (stage === 'revise') {
 		if (!one(store, 'SELECT 1 FROM plan_revisions WHERE plan_id = ?', subject)) refuse(`Unknown plan: ${subject}`)
-		if (!pendingDecisions(store, subject))
-			refuse(`Plan ${subject} has no pending decision. Record one with \`checkmate gap answer\`.`)
+		if (!reviseNeeded(store, subject))
+			refuse(
+				`Plan ${subject} has no pending decision and no check to migrate. Record one with \`checkmate gap answer\`.`
+			)
 	}
 	if (stage === 'execute') {
 		startedRun(store, subject)
@@ -436,7 +444,7 @@ function verify(store: Store, stage: Stage, subject: string, after: number, acto
 	if (!row) return null
 	if (stage === 'plan' && !one(store, 'SELECT 1 FROM plan_revisions WHERE plan_id = ? AND revision = 1', subject))
 		return null
-	if (stage === 'revise' && pendingDecisions(store, subject)) return null
+	if (stage === 'revise' && reviseNeeded(store, subject)) return null
 	if (stage === 'execute' && !one(store, 'SELECT 1 FROM results WHERE run_id = ?', subject)) return null
 	return { operation: row.id, reply: JSON.parse(row.response) as Reply }
 }
@@ -470,7 +478,7 @@ function stagePrompt(stage: Stage, subject: string, execution: Execution | null,
 			'Plan regression tests only for existing rules that the sources state, with expected values from the sources. Mark each with "metadata": { "type": "regression" }.',
 			'Each assertion checks one expected value. Write one assertion for each value. Do not join two values with "and" or ";" in one check.',
 			'Write each assertion with the exact expected text or value from the sources, for example: The page shows "1 book" when one book is stored. Do not write a general description such as "pluralizes correctly".',
-			'Each deterministic assertion names the observed item in "observe" and the expected value in "expected", and keeps the check text. Example: {"id":"A1","check":"The kettle price shown on the product page is 240 PLN.","checkKind":"deterministic","observe":"the price value labelled Price on the product page","expected":"240 PLN"}.',
+			'Each deterministic assertion names the observed item in "observe" and the expected value in "expected", and keeps the check text. Every deterministic check needs both. A judgment that has no value to compare is "checkKind": "agent_observation". Example: {"id":"A1","check":"The kettle price shown on the product page is 240 PLN.","checkKind":"deterministic","observe":"the price value labelled Price on the product page","expected":"240 PLN"}.',
 			'A ready assertion must be observable through the target with the test action. Name in the action every input the check depends on, for example a query parameter or a date. When the target cannot show the value, write an open blocking gap for it, or an agent_observation.',
 			'Make each test create its own data or use a unique value such as qa-<runId>-<testId>. Do not rely on seed data.',
 			'You can read the running application read-only (open a list page or send a GET) to check preconditions. Do not submit forms or change data.',
@@ -478,8 +486,10 @@ function stagePrompt(stage: Stage, subject: string, execution: Execution | null,
 		]
 	if (stage === 'revise')
 		return [
-			`Plan: ${subject}. Read the pending decisions with \`checkmate plan pending ${subject}\`.`,
+			`Plan: ${subject}. Read the pending decisions with \`checkmate plan pending ${subject}\`. With no pending decision, the revision migrates the checks to the current shape: read the plan with \`checkmate plan show ${subject} --json\`.`,
 			'Change only the tests that the decisions affect. Give each ready test at least one assertion. A test without an assertion is not ready.',
+			'When a migration has no pending decision, change only the tests with a deterministic check without "observe" and "expected", or with a check that states more than one value. Give each migrated deterministic check "observe" and "expected", and split a check that states more than one value into one assertion for each value. Do not invent an expected value that the sources do not state.',
+			'When a split or an expected value needs a decision, send that test with "assertions": [] and raise a gap: {"gaps": {"G-<testId>": {"question": "<the decision>", "consequence": "<what stays untested>", "testIds": ["<testId>"]}}}. Do not answer gaps.',
 			'When a decision has no expected value, add an assertion with "checkKind": "agent_observation" that records the behavior.',
 			'Send each changed test whole: title, requirementIds, capability, operations, dependsOn, preconditions, action, and assertions as a list of {"check", "checkKind", "observe", "expected"}. Every deterministic check needs \"observe\" (what the page or API shows) and \"expected\" (the single value to compare). A deterministic check without them is refused at save. If you cannot give an expected value, use \"checkKind\": \"agent_observation\" instead. Give one value in each check. Do not send assertion IDs; the code keeps them.',
 			'A new requirement needs "text" and "source". A test that a decision drops is removed with {"remove": true}.',

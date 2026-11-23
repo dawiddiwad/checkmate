@@ -284,9 +284,10 @@ export function derivePlan(draft: PlanDraft): Plan {
 	return { ...draft, requirements, tests, coverage: planCoverage({ ...draft, requirements, tests }) }
 }
 
-// A deterministic check that states a value needs the observed item and the expected value.
-export function unstructuredValue(assertion: { check: string; checkKind: string; expected?: string }) {
-	return assertion.checkKind === 'deterministic' && assertion.expected === undefined && /\d/.test(assertion.check)
+// A deterministic check compares a value, so code decides it from the observed item and the expected value.
+// A deterministic check without an expected value is not verified by code: it is a legacy check.
+export function unverifiedCheck(assertion: { checkKind: string; expected?: string }) {
+	return assertion.checkKind === 'deterministic' && assertion.expected === undefined
 }
 
 export function compoundCheck(check: string) {
@@ -357,9 +358,9 @@ export function planCheck(value: unknown): Plan {
 			)
 		for (const assertion of test.assertions)
 			requireWellFormed(
-				test.metadata?.harvestedFrom !== undefined || !unstructuredValue(assertion),
-				`Assertion ${test.id}.${assertion.id} states a value without the observed item and the expected value: ${assertion.check}`,
-				`Give the shape: {"id": "${assertion.id}", "check": "${assertion.check}", "checkKind": "deterministic", "observe": "<what is observed>", "expected": "<the value>"}.`
+				!unverifiedCheck(assertion),
+				`Assertion ${test.id}.${assertion.id} is a deterministic check without an observed item and an expected value: ${assertion.check}`,
+				`Give the shape: {"id": "${assertion.id}", "check": "${assertion.check}", "checkKind": "deterministic", "observe": "<what is observed>", "expected": "<the value>"}. A check that no value can be compared for is {"checkKind": "agent_observation"}, which the agent judges and the report says so.`
 			)
 		requireWellFormed(
 			same(

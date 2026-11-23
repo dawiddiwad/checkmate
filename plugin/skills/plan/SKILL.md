@@ -111,14 +111,18 @@ Rules:
 A test with a value that you chose can pass on a wrong product. For each rule that the change touches, check these points:
 
 - Thresholds and boundaries: "over", "under", "at least", "up to", "after". Is the boundary value in or out?
+- Money: the currency, whether a price includes tax, which tax rate applies, and the rounding unit. A price such as "80 PLN" does not say whether tax is included. Raise that point when the ticket names prices and no tax rule.
 - Rounding and the order of operations: which step rounds, to what precision, and which rule applies first.
 - Stacking: does the rule combine with an existing rule, replace it, or come before it?
 - Scope words: "all", "each", "any", "selected", "related". Which records does the rule include?
-- Counts, limits, and roles: how many, in which period, and who can do the action.
-- State change: what happens at or after a change, for example a removed item or a code that no longer qualifies.
+- Time: the time zone, whether an end date is included, and what happens at midnight or at a period change.
+- Identity and permissions: who can do the action, and what a user without that role gets.
+- Limits: how many, in which period, and what happens above or below a limit.
+- Errors: the status and the message for a missing, empty, or wrong-type input.
+- State change and data lifecycle: what a removal, a repeat, or a retry changes, and what is kept.
 - Messages: the exact text, only when the ticket sets a message.
 
-Raise a gap for each point that the sources do not settle. Do not ask what the sources answer. Name the point and the possible meanings in the gap `question`. Write assertions for the parts of the test that do not depend on the point.
+Raise a gap for each point that the sources do not settle. Do not ask what the sources answer. Name the point and the possible meanings in the gap `question`. Write assertions for the parts of the test that do not depend on the point. Do not raise a point that the sources settle, and do not raise a point that no rule touches. Raise a gap only when a test that you write needs the answer. Group the points of one kind into one gap.
 
 ## Edge cases
 

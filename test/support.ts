@@ -117,6 +117,7 @@ export function profile(overrides: Partial<Profile> = {}): Profile {
 		startup: { owner: 'factory', command: null },
 		cleanup: 'Close the run browser session. The fixture stores no records.',
 		readyForLiveExecution: true,
+		reset: { owner: 'factory', command: null },
 		approvals: { plan: 'required', result: 'required' },
 		...overrides,
 	}

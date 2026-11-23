@@ -55,6 +55,7 @@ import {
 } from './runs.ts'
 import type { RunRow } from './runs.ts'
 import { findInstance, instanceList } from './targets.ts'
+import { findingsRunId } from './findingsRun.ts'
 import { planRules, rulesLine } from './rules.ts'
 import { workspaceHarness } from './settings.ts'
 import { existsSync } from 'node:fs'
@@ -881,9 +882,7 @@ function loopStatus(store: Store, planId: string, harness: Harness) {
 				]
 			: []),
 		`Retest on the next build: checkmate test ${planId} --build <new build> --allow Read --allow Bash`,
-		...(finished && fixes.length
-			? [`Optional, at any time: keep the claims as stored tests: checkmate harvest ${finished.explorationId}`]
-			: []),
+		...(finished && fixes.length ? [storedRunNext(store, finished.explorationId)] : []),
 	]
 	if (fixes.length)
 		return { ...base, ...extra, ...loop('defects_open', 'factory', [amount(fixes.length, 'open claim')], after) }
@@ -2043,4 +2042,12 @@ export function claimsAcross(store: Store) {
 			}))
 		)
 		.sort((a, b) => b.foundAt.localeCompare(a.foundAt))
+}
+
+function storedRunNext(store: Store, explorationId: string) {
+	const runId = findingsRunId(explorationId)
+	const stored = one(store, 'SELECT 1 FROM runs WHERE run_id = ?', runId)
+	return stored
+		? `The defects are stored in run ${runId}. Export its report: checkmate export run ${runId} --format junit --out <file>`
+		: `Optional, at any time: keep the claims as stored tests: checkmate harvest ${explorationId}`
 }

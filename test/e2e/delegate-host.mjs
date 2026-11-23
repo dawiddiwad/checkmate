@@ -37,6 +37,7 @@ if (process.env.QA_STAGE === 'setup') {
 		startup: { owner: 'factory', command: null },
 		cleanup: 'No test data.',
 		readyForLiveExecution: true,
+		reset: { owner: 'factory', command: null },
 		approvals: { plan: 'required', result: 'required' },
 	})
 } else if (process.env.QA_STAGE === 'plan') {

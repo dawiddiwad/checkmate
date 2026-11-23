@@ -108,6 +108,7 @@ import { specFinding, specHandoff, specReview, specStatus } from './spec.ts'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { constants } from 'node:sqlite'
+import { versionLines } from './build.ts'
 
 type FlagKind = 'value' | 'list' | 'repeat' | 'switch' | readonly string[] | { min: number; max: number }
 type Args = Record<string, string | string[] | boolean>
@@ -373,6 +374,7 @@ const commands: Record<string, Command> = {
 	},
 	status: {
 		positionals: ['planId'],
+		flags: { 'fail-on-blocked': 'switch' },
 		readOnly: true,
 		run: (store, args, { env }) => {
 			const planId = value(args, 'planId')!
@@ -1264,7 +1266,14 @@ const commands: Record<string, Command> = {
 	},
 	setup: {
 		positionals: [],
-		flags: { url: 'value', target: 'value', instance: 'value', operations: 'list', environment: 'value' },
+		flags: {
+			url: 'value',
+			target: 'value',
+			instance: 'value',
+			operations: 'list',
+			environment: 'value',
+			reset: 'value',
+		},
 		required: ['url'],
 		write: true,
 		run: (store, args, { actor, env }) =>
@@ -1274,6 +1283,7 @@ const commands: Record<string, Command> = {
 				instanceId: value(args, 'instance'),
 				operations: list(args, 'operations'),
 				environment: value(args, 'environment'),
+				reset: value(args, 'reset'),
 				env,
 			}),
 		print: (reply) => ({
@@ -1308,6 +1318,7 @@ const commands: Record<string, Command> = {
 			until: 'value',
 			scope: 'list',
 			url: 'value',
+			reset: 'value',
 			repo: 'value',
 			session: 'switch',
 		},
@@ -1335,6 +1346,7 @@ const commands: Record<string, Command> = {
 					until: value(args, 'until'),
 					scope: list(args, 'scope'),
 					url: value(args, 'url'),
+					reset: value(args, 'reset'),
 					repo: value(args, 'repo'),
 					session: args.session === true,
 				},
@@ -2282,7 +2294,8 @@ function commandHelp(argv: string[]): Reply {
 }
 
 function version() {
-	return JSON.parse(readFileSync(join(pluginRoot, '.claude-plugin', 'plugin.json'), 'utf8')).version as string
+	const manifest = JSON.parse(readFileSync(join(pluginRoot, '.claude-plugin', 'plugin.json'), 'utf8'))
+	return versionLines(manifest.version as string, import.meta.url, process.env).join('\n')
 }
 
 function readJson(text: string) {
@@ -2340,7 +2353,7 @@ export function run(argv: string[], io: Io): Outcome {
 			cwd: io.cwd,
 			env: io.env,
 		})
-		const code = reply.status === 'completed' || reply.status === 'needs_decision' ? 0 : 1
+		const code = exitCodeOf(name, args, reply)
 		if (!json && typeof reply.data.content === 'string')
 			return { code, output: reply.data.content.replace(/\n$/, '') }
 		return { code, output: format(reply, json, command.print) }
@@ -2352,6 +2365,16 @@ export function run(argv: string[], io: Io): Outcome {
 	} finally {
 		if (store) closeStore(store)
 	}
+}
+
+export const blockedOnDecisionExitCode = 3
+
+function exitCodeOf(name: string, args: Args, reply: Reply) {
+	if (name === 'status' && args['fail-on-blocked'] && reply.status === 'completed') {
+		const status = reply.data as ReturnType<typeof planStatus>
+		if (status.waitsOn === 'oracle') return blockedOnDecisionExitCode
+	}
+	return reply.status === 'completed' || reply.status === 'needs_decision' ? 0 : 1
 }
 
 export function uiOptions(tokens: string[], cwd: string) {

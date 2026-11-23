@@ -25,6 +25,10 @@ Ask with the tool for:
 - A decision in the middle of a run, for example stop, use another URL, or continue. Record the pause first.
 - Accept or reject of a `suspected` or `unresolved` claim, when the person asks to triage.
 
+## Refusals
+
+A refusal prints `reason:` and `hint:` lines. Run the command in the hint, with the values of your task. Do not read the source code or the plugin files to find the cause of a refusal. Do not invent a reset command, for example `true`. Use the command that the oracle gave. When the oracle gave none, ask for it, or use `--reset factory` when the data never changes or the factory resets it.
+
 ## First run
 
 Run `checkmate target list`. When it shows no target:
@@ -32,12 +36,13 @@ Run `checkmate target list`. When it shows no target:
 1. Tell the person in two or three lines: a target is the record of where the application runs and what a tester can do there. Checkmate needs the URL of the running application, and how to sign in when the application needs a login.
 2. Use the values that the message of the person gives. Ask only for a missing value. Do not ask for a password or a token. Ask for the name of the environment variable or the file that has it.
 3. When the host of the URL is not local (`localhost`, `127.0.0.1`, a private address, or a name that ends with `.local` or `.test`), and the person did not say which environment it is, ask one question before setup: is this a test environment, staging, or production, and can testers make and change data there? Ask the two questions in one call, as Ask the person says. Ask only for what the message of the person does not give. Do not ask when the URL is local.
-4. Run `checkmate setup --url <url>`. Add `--environment "<the answer>"` when you asked. Start the value with `test`, `staging`, or `production`, for example `--environment "production, read only"`. For production, also add `--operations <a,b>` with the operations that the person permits. Checkmate refuses production without them.
+4. Run `checkmate setup --url <url>`. When testers can change data, ask the person for the reset command that restores the seed data, or for `factory`. Add `--reset "<command>"` or `--reset factory`. Add `--environment "<the answer>"` when you asked. Start the value with `test`, `staging`, or `production`, for example `--environment "production, read only"`. For production, also add `--operations <a,b>` with the operations that the person permits. Checkmate refuses production without them.
 5. Show a short table of what Checkmate set and what it assumed. Use the facts and each `assumed:` line.
 6. Continue with the test in the same turn.
 
 ## Start
 
+0. Run `node "${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js" --version`. When it prints a `warning:` line, tell the person that line before the test starts. Continue the test.
 1. Find the plan ID. Use the ticket ID, for example `shop-12`. When there is no ticket, make a short name from the objective, for example `coupon-limit`. Tell the person which one you used.
 2. Run one command:
 
@@ -112,3 +117,5 @@ Run a decision only when the oracle tells you the decision in this session:
 Do not change a state. Do not remove a claim.
 
 To start the testers as processes, for example in CI, run `checkmate test <planId> --allow Read --allow Bash` without `--session`, and then `checkmate explore wait <explorationId> --timeout 540`. A shell command stops after about 10 minutes. When the reply is `interrupted`, the testers still run. Run the same wait command again until the reply is `completed` or `operational_error`. Do not wrap the command in `timeout`. It is not on macOS.
+
+When the wait reply is `completed`, run `checkmate status <planId>`. When it says `waitsOn=oracle`, stop. Report its open questions and the command that answers them. Do not wait again, search for files, or schedule a wakeup. The oracle decides, not you.

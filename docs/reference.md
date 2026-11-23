@@ -54,6 +54,8 @@ Common states:
 | `awaits_acceptance` | oracle  | QA finished; the result needs a decision.       |
 | `accepted`          | none    | The oracle accepted the required results.       |
 
+For a pipeline, read the exit code, not only the text. `checkmate status <planId>` exits 0 by default, also when the plan waits on the oracle. Add `--fail-on-blocked` to exit with code 3 when `waitsOn=oracle`. Code 1 means a rejected or failed command. Code 0 means completed or `needs_decision`. A pipeline that needs the decision state must use `--fail-on-blocked` or read the `waitsOn` line.
+
 A command can return `needs_decision` when a person must decide or provide input. Read each `reason:` line. It is not the same as a command failure. A `rejected` response lists a gate or validation reason. Correct that reason before retrying.
 
 An answer is pending until the planner applies it. Approval applies to one revision. A result decision applies to one recorded run. Acceptance means the record is correct; it does not mean that every test passed or that Checkmate released the application.

@@ -14,6 +14,7 @@ import {
 	validate,
 } from './contracts.ts'
 import { executableOnPath } from './sessions.ts'
+import { changesData, resetCommand } from './resets.ts'
 import { spawnSync } from 'node:child_process'
 
 export type ToolKind = Profile['tools'][number]['kind']
@@ -482,6 +483,10 @@ export function instanceList(store: Store, targetId: string): InstanceRecord[] {
 	).map((row) => instanceRecord(store, targetId, row))
 }
 
+export function targetWebUrl(store: Store, targetId: string) {
+	return instanceList(store, targetId).find((instance) => !instance.retired)?.entries.web ?? '<url>'
+}
+
 export function findInstance(store: Store, targetId: string, instanceId: string): InstanceRecord {
 	targetRequest(store, targetId)
 	const row = one<InstanceRow>(
@@ -522,6 +527,7 @@ export type SetupInput = {
 	instanceId?: string
 	operations?: string[]
 	environment?: string
+	reset?: string
 	env: Record<string, string | undefined>
 	answered?: boolean
 }
@@ -585,6 +591,12 @@ export function requireAnswer(answered: boolean, url: string) {
 	)
 }
 
+function resetOf(text: string): Profile['reset'] {
+	return text === 'factory'
+		? { owner: 'factory', command: null }
+		: { owner: 'checkmate', command: resetCommand(text) }
+}
+
 export function setupAssumptions(input: SetupInput) {
 	const assumed: string[] = []
 	const url = requireText(input.url, 'application URL (--url)')
@@ -600,7 +612,7 @@ export function setupAssumptions(input: SetupInput) {
 	)
 	const allowedOperations = input.operations?.length ? input.operations : [anyTestOperation]
 	if (!input.operations?.length) assumed.push(`operations=${anyTestOperation}: ${anyTestOperationText}`)
-	assumed.push('reset=none', 'authentication=none')
+	assumed.push('authentication=none')
 	return { url, targetId, instanceId, browser, capabilities, allowedOperations, assumed }
 }
 
@@ -642,6 +654,7 @@ export function setupTarget(store: Store, actor: string | undefined, input: Setu
 	)
 	const reachable = input.answered ?? urlAnswers(url)
 	if (!reachable && !saved) assumed.push(`ready=false (${url} did not answer)`)
+	const reset = input.reset ? resetOf(input.reset) : undefined
 	if (!saved)
 		saveTarget(store, actor, {
 			targetId,
@@ -657,8 +670,16 @@ export function setupTarget(store: Store, actor: string | undefined, input: Setu
 				startup: { owner: 'factory', command: null },
 				cleanup: 'Leave the test data. Remove it only when the application offers a way.',
 				readyForLiveExecution: reachable,
+				...(reset ? { reset } : {}),
 			},
 		})
+	else if (reset && JSON.stringify(targetRevision(store, targetId).profile.reset) !== JSON.stringify(reset)) {
+		const latest = targetRevision(store, targetId)
+		saveTarget(store, actor, {
+			targetId,
+			profile: { ...latest.profile, revision: latest.revision + 1, reset },
+		})
+	}
 	const instance = addInstance(store, actor, {
 		targetId,
 		instanceId,
@@ -666,6 +687,8 @@ export function setupTarget(store: Store, actor: string | undefined, input: Setu
 	})
 	if (instance.status !== 'completed') return instance
 	const latest = targetRevision(store, targetId)
+	const needsReset = !latest.profile.reset && latest.profile.allowedOperations.some(changesData)
+	if (needsReset) assumed.push('reset=none: testers may change data, so a run or an exploration needs a reset')
 	return completed(targetId, {
 		targetId,
 		revision: latest.revision,
@@ -675,9 +698,13 @@ export function setupTarget(store: Store, actor: string | undefined, input: Setu
 		allowedOperations: latest.profile.allowedOperations,
 		ready: latest.profile.readyForLiveExecution,
 		instanceReachable: reachable,
-		...(!latest.profile.readyForLiveExecution
-			? { next: `Recheck the target prerequisites and save a new profile: checkmate delegate setup ${targetId}` }
-			: {}),
+		...(needsReset
+			? { next: `Record the reset: checkmate setup --url ${url} --reset "<command that restores the seed data>"` }
+			: !latest.profile.readyForLiveExecution
+				? {
+						next: `Recheck the target prerequisites and save a new profile: checkmate delegate setup ${targetId}`,
+					}
+				: {}),
 		created: !known,
 		assumed: known ? [] : assumed,
 	})

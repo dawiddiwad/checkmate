@@ -1,6 +1,7 @@
 import type { Stage, DelegateResponse } from './launcher.ts'
 import type { Reply } from '../../plugin/src/index.ts'
 import { busyReason, formatReply, isBusy, main as core, refused, run as coreRun } from '../../plugin/src/index.ts'
+import { versionLines } from '../../plugin/src/build.ts'
 import { delegate, stages } from './launcher.ts'
 import { exploreSpec } from './spec.ts'
 import { existsSync, readFileSync } from 'node:fs'
@@ -23,7 +24,11 @@ const delegateHarnessUsage =
 function version() {
 	const plugin = new URL('../.claude-plugin/plugin.json', import.meta.url)
 	const manifest = existsSync(plugin) ? plugin : new URL('../package.json', import.meta.url)
-	return JSON.parse(readFileSync(manifest, 'utf8')).version as string
+	return versionLines(
+		JSON.parse(readFileSync(manifest, 'utf8')).version as string,
+		import.meta.url,
+		process.env
+	).join('\n')
 }
 
 function help(json: boolean) {

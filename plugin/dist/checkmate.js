@@ -9933,8 +9933,38 @@ function streamClaude(claude, args, prompt2, cwd, env, onLine, delays = defaultS
   };
 }
 
-// plugin/src/targets.ts
+// plugin/src/resets.ts
 import { spawnSync as spawnSync3 } from "node:child_process";
+var readPrefixes = ["read_", "list_", "get_", "view_"];
+function changesData(operation) {
+  return !readPrefixes.some((prefix) => operation.startsWith(prefix));
+}
+function requireResetFor(profile, operations, subject, url) {
+  const changing = operations.filter(changesData);
+  requireCondition(
+    !changing.length || profile.reset,
+    `${subject} can change data (${changing.join(", ")}), and target ${profile.targetId} has no reset.`,
+    `Record the reset. Give the command that restores the seed data: checkmate setup --url ${url} --reset "<command>". When the data never changes, or the factory resets it before each run: checkmate setup --url ${url} --reset factory.`
+  );
+}
+function runReset(workspace2, profile) {
+  const command = profile.reset?.owner === "checkmate" ? profile.reset.command : null;
+  if (!command) return;
+  const result = spawnSync3(command[0], command.slice(1), { cwd: workspace2, encoding: "utf8", timeout: 12e4 });
+  requireCondition(
+    result.status === 0,
+    `The reset ${command.join(" ")} failed${result.status === null ? " before it finished" : ` with exit code ${result.status}`}.`,
+    "Run the reset by hand and read its output. Fix it, then start the run again."
+  );
+}
+function resetCommand(text2) {
+  const words4 = text2.trim().split(/\s+/).filter(Boolean);
+  requireCondition(words4.length, "The reset command is empty. Give a command, or factory.");
+  return words4;
+}
+
+// plugin/src/targets.ts
+import { spawnSync as spawnSync4 } from "node:child_process";
 var anyTestOperation = "any_test_operation";
 var readOnlyOperation = "read_only";
 var readOnlyOperationText = "You can only read. Do not create, change, or delete data in the application.";
@@ -10329,6 +10359,9 @@ function instanceList(store, targetId) {
     targetId
   ).map((row2) => instanceRecord(store, targetId, row2));
 }
+function targetWebUrl(store, targetId) {
+  return instanceList(store, targetId).find((instance) => !instance.retired)?.entries.web ?? "<url>";
+}
 function findInstance(store, targetId, instanceId) {
   targetRequest(store, targetId);
   const row2 = one(
@@ -10376,13 +10409,13 @@ function isLocalAddress(url) {
   return first === 127 || first === 10 || first === 192 && second === 168 || first === 172 && second >= 16 && second <= 31;
 }
 function toolVersion(path) {
-  const run2 = spawnSync3(path, ["--version"], { encoding: "utf8", timeout: 5e3 });
+  const run2 = spawnSync4(path, ["--version"], { encoding: "utf8", timeout: 5e3 });
   const line = run2.status === 0 ? run2.stdout.trim().split("\n")[0] : "";
   return /[0-9]+(\.[0-9]+)+/.exec(line)?.[0];
 }
 function urlAnswers(url) {
   if (!/^https?:\/\//i.test(url)) return true;
-  const check = spawnSync3(
+  const check = spawnSync4(
     process.execPath,
     [
       "-e",
@@ -10409,6 +10442,9 @@ function requireAnswer(answered, url) {
     "Start the application, or check the address. Then set up the target again."
   );
 }
+function resetOf(text2) {
+  return text2 === "factory" ? { owner: "factory", command: null } : { owner: "checkmate", command: resetCommand(text2) };
+}
 function setupAssumptions(input) {
   const assumed = [];
   const url = requireText(input.url, "application URL (--url)");
@@ -10424,7 +10460,7 @@ function setupAssumptions(input) {
   );
   const allowedOperations = input.operations?.length ? input.operations : [anyTestOperation];
   if (!input.operations?.length) assumed.push(`operations=${anyTestOperation}: ${anyTestOperationText}`);
-  assumed.push("reset=none", "authentication=none");
+  assumed.push("authentication=none");
   return { url, targetId, instanceId, browser, capabilities, allowedOperations, assumed };
 }
 function setupTarget(store, actor, input) {
@@ -10463,6 +10499,7 @@ function setupTarget(store, actor, input) {
   );
   const reachable = input.answered ?? urlAnswers(url);
   if (!reachable && !saved) assumed.push(`ready=false (${url} did not answer)`);
+  const reset = input.reset ? resetOf(input.reset) : void 0;
   if (!saved)
     saveTarget(store, actor, {
       targetId,
@@ -10477,9 +10514,17 @@ function setupTarget(store, actor, input) {
         allowedOperations: request2.allowedOperations,
         startup: { owner: "factory", command: null },
         cleanup: "Leave the test data. Remove it only when the application offers a way.",
-        readyForLiveExecution: reachable
+        readyForLiveExecution: reachable,
+        ...reset ? { reset } : {}
       }
     });
+  else if (reset && JSON.stringify(targetRevision(store, targetId).profile.reset) !== JSON.stringify(reset)) {
+    const latest2 = targetRevision(store, targetId);
+    saveTarget(store, actor, {
+      targetId,
+      profile: { ...latest2.profile, revision: latest2.revision + 1, reset }
+    });
+  }
   const instance = addInstance(store, actor, {
     targetId,
     instanceId,
@@ -10487,6 +10532,8 @@ function setupTarget(store, actor, input) {
   });
   if (instance.status !== "completed") return instance;
   const latest = targetRevision(store, targetId);
+  const needsReset = !latest.profile.reset && latest.profile.allowedOperations.some(changesData);
+  if (needsReset) assumed.push("reset=none: testers may change data, so a run or an exploration needs a reset");
   return completed(targetId, {
     targetId,
     revision: latest.revision,
@@ -10496,7 +10543,9 @@ function setupTarget(store, actor, input) {
     allowedOperations: latest.profile.allowedOperations,
     ready: latest.profile.readyForLiveExecution,
     instanceReachable: reachable,
-    ...!latest.profile.readyForLiveExecution ? { next: `Recheck the target prerequisites and save a new profile: checkmate delegate setup ${targetId}` } : {},
+    ...needsReset ? { next: `Record the reset: checkmate setup --url ${url} --reset "<command that restores the seed data>"` } : !latest.profile.readyForLiveExecution ? {
+      next: `Recheck the target prerequisites and save a new profile: checkmate delegate setup ${targetId}`
+    } : {},
     created: !known,
     assumed: known ? [] : assumed
   });
@@ -12881,6 +12930,12 @@ function gate(store, input) {
   const ready = input.tests === void 0 && partial === "ready_only" || input.retestOf ? readySelection(store, plan, build) : null;
   const selection = input.tests === void 0 && partial === "ready_only" ? ready : givenSelection(input.tests, tests, subject);
   const selected = selection.tests;
+  requireResetFor(
+    targetRevision(store, target.profile.targetId).profile,
+    selected.flatMap((id2) => tests.get(id2)?.operations ?? []),
+    `Run ${subject}`,
+    targetWebUrl(store, target.profile.targetId)
+  );
   if (input.retestOf) retestCheck(store, input.retestOf, plan, build, input.instance);
   const earlier = input.retestOf ? retestDefects(store, input.retestOf) : [];
   const reasons2 = [];
@@ -13493,6 +13548,7 @@ function begin(store, actor, input, permanent) {
         };
       }
       const { plan, sha256 } = checked.revision;
+      runReset(store.workspace, targetRevision(store, plan.target.targetId).profile);
       const request2 = {
         selectedTestIds: checked.tests,
         partialExecution: checked.partial,
@@ -16139,6 +16195,8 @@ function explorerBrief(charter, entries, dataPrefix, workFolder2, seconds2) {
       "The owner of the product has not answered your questions yet. Use the sources where they decide the point, and report the rest as unclear."
     ],
     ...diff,
+    "A defect needs a rule of the sources that the behaviour contradicts. Behaviour that the sources do not define is an unclear point, not a defect.",
+    "A defect that contradicts a rule of the sources can be high or critical. Any other defect is at most medium.",
     testDataText(dataPrefix),
     `Save the files that show a problem, for example screenshots or responses, in ${workFolder2}/.`,
     `Write ${workFolder2}/report.md: one section for each defect with title, severity, steps, expected result, actual result and evidence files. Number the defects D1, D2, and so on. List also what you tested and what is still unclear.`,
@@ -16577,12 +16635,273 @@ function recordLocked(store, operation, input, plan, env, cwd, started) {
   });
 }
 
+// plugin/src/harvest.ts
+var harvestedStates = ["observed", "confirmed", "accepted"];
+function stepsText(steps2, fallback) {
+  const text2 = [steps2 ?? []].flat().join(" ").trim();
+  return text2 || fallback;
+}
+function linkedCriterion(entry, criteria) {
+  const ids2 = [...entry?.links ?? [], ...(entry?.about ?? "").split(/[\s,;]+/)];
+  return ids2.map((id2) => criteria.get(id2)).find(Boolean);
+}
+function drafts(store, explorationId, observations) {
+  const row2 = explorationRow(store, explorationId);
+  const state = journal(store, row2.plan_id);
+  const own = state.team.filter((entry) => entry.explorationId === explorationId);
+  const byId = new Map(state.team.map((entry) => [entry.id, entry]));
+  const criteria = new Map(state.team.filter((entry) => entry.kind === "criterion").map((entry) => [entry.id, entry]));
+  const fromClaims = planClaims(store, row2.plan_id).filter((claim) => claim.explorationId === explorationId && harvestedStates.includes(claim.state)).map((claim) => {
+    const report = byId.get(claim.reports[0]);
+    const criterion = linkedCriterion(report, criteria);
+    return {
+      from: claim.id,
+      title: claim.title,
+      rule: claim.rule ?? void 0,
+      requirement: criterion?.text ?? claim.expected,
+      source: criterion?.source ?? `exploration:${explorationId}/${claim.id}`,
+      action: stepsText(claim.steps ?? void 0, claim.title),
+      check: claim.expected,
+      deterministic: false,
+      via: report?.via,
+      basis: "claim"
+    };
+  });
+  const fromObservations = observations ? own.filter((entry) => entry.kind === "observation" && entry.verdict === "ok" && entry.steps).map((entry) => {
+    const criterion = linkedCriterion(entry, criteria);
+    return {
+      from: entry.id,
+      rule: criterion?.rule,
+      title: `Observed: ${entry.about ?? entry.saw}`.slice(0, 200),
+      requirement: criterion?.text ?? entry.saw,
+      source: criterion?.source ?? `exploration:${explorationId}/${entry.id}`,
+      action: stepsText(entry.steps, entry.saw),
+      check: entry.value !== void 0 ? `The result is ${entry.value}.` : entry.saw,
+      deterministic: entry.value !== void 0,
+      via: entry.via,
+      basis: "observed"
+    };
+  }) : [];
+  return [...fromClaims, ...fromObservations];
+}
+function harvestedSources(tests) {
+  return new Set(tests.map((test) => test.metadata?.harvestedFrom).filter(Boolean));
+}
+function notHarvested(items, known, explorationId) {
+  return items.filter((item) => !known.has(`${explorationId}/${item.from}`));
+}
+function storableDefects(store, planId) {
+  const latest = one(store, "SELECT 1 FROM plan_revisions WHERE plan_id = ?", planId) ? planRevision(store, planId) : null;
+  const known = harvestedSources(latest?.plan.tests ?? []);
+  return all(
+    store,
+    "SELECT exploration_id FROM explorations WHERE plan_id = ? ORDER BY rowid",
+    planId
+  ).map(({ exploration_id }) => ({
+    explorationId: exploration_id,
+    claims: notHarvested(drafts(store, exploration_id, false), known, exploration_id).map((item) => item.from)
+  })).filter((item) => item.claims.length);
+}
+function capabilityOf(via, capabilities) {
+  const wanted = via === "ui" ? "browser" : via === "api" ? "http" : void 0;
+  return wanted && capabilities.includes(wanted) ? wanted : capabilities[0];
+}
+function harvested(base, rules, items, explorationId, build, capabilities, operations) {
+  const fresh = notHarvested(items, harvestedSources(base.tests), explorationId);
+  const requirements = [...base.requirements];
+  const tests = [...base.tests];
+  const added = [];
+  for (const item of fresh) {
+    const named = item.rule === outsideRule ? void 0 : rules.find((rule) => rule.id === item.rule);
+    const cited = named ?? requirements.find((entry) => entry.text === item.requirement) ?? rules.find((rule) => rule.text === item.requirement);
+    let requirement = requirements.find((entry) => entry.id === cited?.id);
+    if (!requirement && cited) {
+      requirement = { ...cited };
+      requirements.push(requirement);
+    }
+    if (!requirement) {
+      requirement = {
+        id: unusedId(
+          "HR",
+          requirements.map((entry) => entry.id)
+        ),
+        text: item.requirement,
+        source: item.source
+      };
+      requirements.push(requirement);
+    }
+    const id2 = unusedId(
+      "H",
+      tests.map((test) => test.id)
+    );
+    tests.push({
+      id: id2,
+      title: item.title.slice(0, 200),
+      requirementIds: [requirement.id],
+      capability: capabilityOf(item.via, capabilities),
+      operations,
+      dependsOn: [],
+      preconditions: [`Make new test data that starts with qa-<runId>-${id2}.`],
+      action: item.action,
+      assertions: [
+        { id: "A1", check: item.check, checkKind: item.deterministic ? "deterministic" : "agent_observation" }
+      ],
+      metadata: {
+        type: "regression",
+        origin: "harvest",
+        basis: item.basis,
+        harvestedFrom: `${explorationId}/${item.from}`,
+        build
+      }
+    });
+    added.push({ test: id2, rule: requirement.id });
+  }
+  return { candidate: { ...base, requirements, tests }, added, skipped: items.length - fresh.length };
+}
+function harvestExploration(store, actor, input) {
+  return write(store, { actor, command: "harvest", subject: input.explorationId, input }, (operationId) => {
+    const row2 = explorationRow(store, input.explorationId);
+    const { request: request2, target } = planRequest(store, row2.plan_id);
+    const items = drafts(store, row2.exploration_id, input.observations);
+    requireCondition(
+      items.length,
+      `Exploration ${row2.exploration_id} has nothing to harvest: no claim that is observed, confirmed, or accepted${input.observations ? ", and no observation with verdict ok and steps" : ""}.`,
+      input.observations ? void 0 : "Add --observations to harvest the observations with verdict ok and steps."
+    );
+    const hasRevision = one(store, "SELECT 1 FROM plan_revisions WHERE plan_id = ?", row2.plan_id);
+    const latest = hasRevision ? planRevision(store, row2.plan_id) : null;
+    const base = latest ? planCandidate(latest.plan) : { requirements: [], tests: [], gaps: [] };
+    const before = planRules(store, row2.plan_id);
+    const result = harvested(
+      base,
+      before.rules,
+      items,
+      row2.exploration_id,
+      row2.build,
+      target.profile.capabilities,
+      target.profile.allowedOperations
+    );
+    requireCondition(
+      result.added.length,
+      `Each item of ${row2.exploration_id} is harvested already into ${row2.plan_id}.`,
+      `Run checkmate plan show ${row2.plan_id} to read the harvested tests.`
+    );
+    const change = latest ? storeEdit(store, operationId, latest, result.candidate) : storeRevision(
+      store,
+      {
+        contractVersion: "toolkit-2",
+        planId: row2.plan_id,
+        revision: 1,
+        previousRevision: null,
+        target: { targetId: target.profile.targetId, revision: target.revision, sha256: target.sha256 },
+        objective: request2.objective,
+        requirements: result.candidate.requirements,
+        tests: result.candidate.tests,
+        gaps: [],
+        assumptions: [],
+        decisions: []
+      },
+      operationId
+    );
+    if (!latest && before.rules.length && before.origin !== "harvested")
+      saveRules(store, operationId, row2.plan_id, before.rules, "harvested");
+    const { plan } = planRevision(store, row2.plan_id);
+    const stocked = new Set(plan.tests.flatMap((item) => item.requirementIds));
+    const rules = planRules(store, row2.plan_id).rules;
+    return {
+      reply: {
+        ...change.reply,
+        data: {
+          ...change.reply.data,
+          explorationId: row2.exploration_id,
+          tests: result.added.map((item) => item.test),
+          attached: result.added,
+          skipped: result.skipped,
+          rules: rules.length,
+          rulesWithTests: rules.filter((rule) => stocked.has(rule.id)).length
+        }
+      },
+      subjects: [...change.subjects, `exploration:${row2.exploration_id}`]
+    };
+  });
+}
+
+// plugin/src/findingsRun.ts
+function findingsRunId(explorationId) {
+  return `findings-${explorationId}`;
+}
+function evidenceText(claim) {
+  return [`Observed: ${claim.actual}`, `Steps: ${claim.steps ?? "none recorded"}`].join("\n");
+}
+function storeFindingsRun(store, actor, explorationId) {
+  const row2 = explorationRow(store, explorationId);
+  const claims = planClaims(store, row2.plan_id);
+  const defects = claims.filter(
+    (claim) => claim.explorationId === explorationId && factoryStates.includes(claim.state)
+  );
+  if (!defects.length) return { runId: null, reason: `No claim of ${explorationId} is a defect for a run.` };
+  const harvested2 = harvestExploration(store, actor, { explorationId, observations: false });
+  if (harvested2.status !== "completed") return { runId: null, reason: harvested2.reasons.join(" ") };
+  const { plan } = planRevision(store, row2.plan_id);
+  const runId = findingsRunId(explorationId);
+  const tests = plan.tests.filter(
+    (test) => test.metadata?.harvestedFrom && String(test.metadata.harvestedFrom).startsWith(`${explorationId}/`)
+  );
+  const begun = beginRun(store, actor, {
+    runId,
+    reference: `${row2.plan_id}@${plan.revision}`,
+    tests: tests.map((test) => test.id),
+    build: row2.build,
+    instance: row2.instance_id,
+    partial: "ready_only"
+  });
+  if (begun.status !== "completed") return { runId: null, reason: begun.reasons.join(" ") };
+  let number = 0;
+  for (const test of tests) {
+    const claimId = String(test.metadata.harvestedFrom).slice(explorationId.length + 1);
+    const claim = defects.find((item) => item.id === claimId);
+    if (!claim) continue;
+    const check = checkAssertion(store, actor, {
+      runId,
+      testId: test.id,
+      assertionId: "A1",
+      result: "failed",
+      observed: claim.actual,
+      evidence: [{ text: evidenceText(claim) }]
+    });
+    number += 1;
+    recordFinding(store, actor, {
+      runId,
+      finding: {
+        id: `F${number}`,
+        type: "defect",
+        severity: claim.severity,
+        assertionIds: [`${test.id}.A1`],
+        requirementIds: test.requirementIds,
+        title: claim.title,
+        expected: claim.expected,
+        observed: claim.actual,
+        reproduction: [claim.steps ?? "See the observed result."],
+        evidenceIds: check.data.evidenceIds
+      }
+    });
+    closeTest(store, actor, { runId, testId: test.id });
+  }
+  const finished = finishRun(store, actor, {
+    runId,
+    completion: "completed",
+    cleanup: "not_applicable",
+    cleanupReason: "The findings run keeps no work folder."
+  });
+  return { runId, reason: finished.reasons.join(" ") };
+}
+
 // plugin/src/change.ts
-import { spawnSync as spawnSync4 } from "node:child_process";
+import { spawnSync as spawnSync5 } from "node:child_process";
 import { relative as relative2, resolve as resolve4 } from "node:path";
 var refHint = "Give --since a commit, a branch, or a tag of the repository. Give --repo <dir> when the code is in a subfolder. Or give the changed files with --scope.";
 function git(cwd, args) {
-  const out = spawnSync4("git", args, { cwd, encoding: "utf8" });
+  const out = spawnSync5("git", args, { cwd, encoding: "utf8" });
   return out.status === 0 ? out.stdout.trim() : void 0;
 }
 function commit(cwd, ref) {
@@ -16613,7 +16932,7 @@ function changeOf(workspace2, input) {
   };
 }
 function changedFiles(workspace2, change) {
-  const diff = spawnSync4("git", ["diff", "--name-only", ...change.range, "--"], {
+  const diff = spawnSync5("git", ["diff", "--name-only", ...change.range, "--"], {
     cwd: resolve4(workspace2, change.repo),
     encoding: "utf8"
   });
@@ -16629,12 +16948,12 @@ function upstreamBase(repository) {
   const branch = git(repository, ["symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"]);
   const head = commit(repository, "HEAD");
   if (!branch || !head || commit(repository, branch) === head) return void 0;
-  const ancestor = spawnSync4("git", ["merge-base", "--is-ancestor", branch, "HEAD"], { cwd: repository });
+  const ancestor = spawnSync5("git", ["merge-base", "--is-ancestor", branch, "HEAD"], { cwd: repository });
   return ancestor.status === 0 ? branch : void 0;
 }
 
 // plugin/src/explorers.ts
-import { spawn as spawn3, spawnSync as spawnSync5 } from "node:child_process";
+import { spawn as spawn3, spawnSync as spawnSync6 } from "node:child_process";
 import { randomUUID as randomUUID4 } from "node:crypto";
 import {
   existsSync as existsSync5,
@@ -16792,7 +17111,7 @@ function explorerWork(store, explorationId, explorer, count2) {
 }
 var strayIgnored = [".checkmate", ".playwright-cli"];
 function topLevelNames(workspace2) {
-  const status = spawnSync5("git", ["status", "--porcelain", "--untracked-files=normal"], {
+  const status = spawnSync6("git", ["status", "--porcelain", "--untracked-files=normal"], {
     cwd: workspace2,
     encoding: "utf8"
   });
@@ -16884,6 +17203,14 @@ function startExploration(store, actor, given, env, preferSavedModel = false) {
     }
     const opened = input.explorationId ? finishable(store, input.explorationId) : insertExploration(store, input, operationId, at);
     const row2 = explorationRow(store, opened.explorationId);
+    const exploredProfile = targetRevision(store, row2.target_id).profile;
+    requireResetFor(
+      exploredProfile,
+      exploredProfile.allowedOperations,
+      `Exploration ${row2.exploration_id}`,
+      targetWebUrl(store, row2.target_id)
+    );
+    runReset(store.workspace, exploredProfile);
     const savedModel = input.session ? "" : testerModelText(store, selectedHarness(env));
     const savedEffort = input.session ? "" : testerEffortText(store, selectedHarness(env));
     const launch = launchPlan(
@@ -17354,6 +17681,13 @@ function hostAuthentication(store, explorationId) {
 function hasSavedEffort(launch) {
   return Boolean(launch.effort || Object.values(launch.testerEfforts ?? {}).some(Boolean));
 }
+function storeFindings(store, actor, explorationId) {
+  try {
+    return storeFindingsRun(store, actor, explorationId);
+  } catch (error) {
+    return { runId: null, reason: error instanceof Error ? error.message : String(error) };
+  }
+}
 async function driveExploration(workspace2, explorationId, env) {
   exitOnSignal();
   const store = openStore(workspace2);
@@ -17413,12 +17747,14 @@ async function driveExploration(workspace2, explorationId, env) {
       if (launch.verifier) await verifyClaims(store, actor, explorationId, launch, env);
       removeWork(store, explorationId);
     } else keepBrowserFolder(store, explorationId);
+    const findings = ok && explorationStatus(store, explorationId).path !== "session" ? storeFindings(store, actor, explorationId) : null;
     event(store, actor, explorationId, {
       step: "done",
       explorer: null,
       status: ok ? "completed" : "failed",
       detail: {
         recorded: ok,
+        ...findings ? { findingsRun: findings.runId, ...findings.reason ? { findingsReason: findings.reason } : {} } : {},
         ...ok ? {} : {
           reason: hostAuthentication(store, explorationId) ? "Host authentication: no session could log in." : "No explorer session was recorded."
         },
@@ -17725,7 +18061,7 @@ function endProcesses(all2, alive = running) {
   return pids.filter(alive);
 }
 function groupBirth(pid) {
-  const result = spawnSync5("ps", ["-p", String(pid), "-o", "pgid=", "-o", "lstart="], {
+  const result = spawnSync6("ps", ["-p", String(pid), "-o", "pgid=", "-o", "lstart="], {
     encoding: "utf8",
     env: { ...process.env, LC_ALL: "C" }
   });
@@ -18059,7 +18395,10 @@ function waitExploration(store, explorationId, timeoutSeconds) {
       const retry = status.state === "failed" && done?.detail.recorded === 0 ? retryCommand(store, explorationId, startOf(events)) : void 0;
       const hints = [
         ...status.explorers.flatMap((item) => item.hint ? [item.hint] : []),
-        ...status.doneHint ? [status.doneHint] : []
+        ...status.doneHint ? [status.doneHint] : [],
+        ...outcome === "done" ? [
+          `Next: checkmate status ${status.planId}. If it says waitsOn=oracle, stop here and report its open questions with the command that answers them. Do not wait again, search files, or schedule a wakeup.`
+        ] : []
       ];
       return {
         status: outcome === "done" ? "completed" : outcome === "timeout" ? "interrupted" : "operational_error",
@@ -19114,7 +19453,7 @@ function loopStatus(store, planId, harness) {
       `${amount(questions.length, "open question")} can be answered at any time and do not block: ${answerQuestion2}`
     ] : [],
     `Retest on the next build: checkmate test ${planId} --build <new build> --allow Read --allow Bash`,
-    ...finished && fixes.length ? [`Optional, at any time: keep the claims as stored tests: checkmate harvest ${finished.explorationId}`] : []
+    ...finished && fixes.length ? [storedRunNext(store, finished.explorationId)] : []
   ];
   if (fixes.length)
     return { ...base, ...extra, ...loop("defects_open", "factory", [amount(fixes.length, "open claim")], after) };
@@ -20067,6 +20406,11 @@ function claimsAcross(store) {
     }))
   ).sort((a, b) => b.foundAt.localeCompare(a.foundAt));
 }
+function storedRunNext(store, explorationId) {
+  const runId = findingsRunId(explorationId);
+  const stored = one(store, "SELECT 1 FROM runs WHERE run_id = ?", runId);
+  return stored ? `The defects are stored in run ${runId}. Export its report: checkmate export run ${runId} --format junit --out <file>` : `Optional, at any time: keep the claims as stored tests: checkmate harvest ${explorationId}`;
+}
 
 // plugin/src/rulemap.ts
 var buildStates = ["new", "still_present", "fixed", "returned", "disputed", "not_retested"];
@@ -20992,33 +21336,45 @@ function junitStatus(report, test) {
     xmlText(text2.join("\n\n") || reason)
   );
 }
+function notSelectedReason(plan, testId) {
+  const gap = plan.gaps.find((item) => item.status === "open" && item.testIds.includes(testId));
+  return gap ? `blocked by open gap ${gap.id}: ${gap.question}` : "not selected for this run";
+}
 function junit(report) {
   const { result, plan } = report;
   const tests = result.tests.filter((test) => result.selectedTestIds.includes(test.testId));
+  const notSelected = plan.tests.filter((test) => !result.selectedTestIds.includes(test.id));
   const count2 = (...outcomes) => tests.filter((test) => outcomes.includes(test.outcome)).length;
   const totals = {
-    tests: tests.length,
+    tests: tests.length + notSelected.length,
     failures: count2("failed"),
     errors: count2("error", "inconclusive"),
-    skipped: count2("blocked", "not_run"),
+    skipped: count2("blocked", "not_run") + notSelected.length,
     time: (Date.parse(result.finishedAt) - Date.parse(result.startedAt)) / 1e3
   };
+  const properties = (planned) => xmlProperties([
+    ["title", planned.title],
+    ["requirements", planned.requirementIds.join(",")],
+    ...Object.entries(planned.metadata ?? {}).map(([key, value2]) => [
+      `metadata.${key}`,
+      value2
+    ])
+  ]);
   const cases = tests.map((test) => {
     const planned = plan.tests.find((item) => item.id === test.testId);
-    const properties = xmlProperties([
-      ["title", planned.title],
-      ["requirements", planned.requirementIds.join(",")],
-      ...Object.entries(planned.metadata ?? {}).map(([key, value2]) => [
-        `metadata.${key}`,
-        value2
-      ])
-    ]);
     return xmlTag(
       "testcase",
       { classname: plan.planId, name: planned.id, time: report.times[test.testId] ?? 0 },
-      properties + junitStatus(report, test)
+      properties(planned) + junitStatus(report, test)
     );
   });
+  const skippedCases = notSelected.map(
+    (planned) => xmlTag(
+      "testcase",
+      { classname: plan.planId, name: planned.id, time: 0 },
+      properties(planned) + xmlTag("skipped", { message: notSelectedReason(plan, planned.id) })
+    )
+  );
   const suite = xmlTag(
     "testsuite",
     {
@@ -21041,7 +21397,7 @@ function junit(report) {
           [`${name2}.tests`, item.testIds.join(",")]
         ];
       })
-    ]) + "\n" + cases.join("\n") + "\n"
+    ]) + "\n" + [...cases, ...skippedCases].join("\n") + "\n"
   );
   return `<?xml version="1.0" encoding="UTF-8"?>
 ${xmlTag("testsuites", { name: result.runId, ...totals }, suite)}
@@ -21260,7 +21616,7 @@ import { existsSync as existsSync7, readFileSync as readFileSync8, realpathSync 
 import { fileURLToPath as fileURLToPath2 } from "node:url";
 
 // plugin/src/modes.ts
-import { spawnSync as spawnSync6 } from "node:child_process";
+import { spawnSync as spawnSync7 } from "node:child_process";
 import { resolve as resolve6 } from "node:path";
 var testModes = ["exploratory", "regression", "auto"];
 var storedTestsNone = "none, testers use earlier results when available";
@@ -21279,7 +21635,7 @@ function nextRunId(store) {
   );
 }
 function gitBuild(workspace2) {
-  const head = spawnSync6("git", ["rev-parse", "--short", "HEAD"], { cwd: workspace2, encoding: "utf8" });
+  const head = spawnSync7("git", ["rev-parse", "--short", "HEAD"], { cwd: workspace2, encoding: "utf8" });
   return head.status === 0 ? head.stdout.trim() || void 0 : void 0;
 }
 function dateBuild(now = /* @__PURE__ */ new Date()) {
@@ -21306,7 +21662,7 @@ function chosenTarget(store, actor, input, env, assumed) {
     "The store has no target. Give the URL of the application with --url.",
     `checkmate test ${input.planId} --url <url> --source <ticket file>`
   );
-  const set = setupTarget(store, actor, { url: input.url, instanceId: input.instance, env });
+  const set = setupTarget(store, actor, { url: input.url, instanceId: input.instance, reset: input.reset, env });
   assumed.push(...set.data.assumed ?? []);
   return set.data.targetId;
 }
@@ -22215,197 +22571,6 @@ function recordPanel(title2, content, decided = "") {
 function returnFields(item, back) {
   return html2`<input type="hidden" name="item" value="${item.key}" />
 		<input type="hidden" name="return" value="${back}" />`;
-}
-
-// plugin/src/harvest.ts
-var harvestedStates = ["observed", "confirmed", "accepted"];
-function stepsText(steps2, fallback) {
-  const text2 = [steps2 ?? []].flat().join(" ").trim();
-  return text2 || fallback;
-}
-function linkedCriterion(entry, criteria) {
-  const ids2 = [...entry?.links ?? [], ...(entry?.about ?? "").split(/[\s,;]+/)];
-  return ids2.map((id2) => criteria.get(id2)).find(Boolean);
-}
-function drafts(store, explorationId, observations) {
-  const row2 = explorationRow(store, explorationId);
-  const state = journal(store, row2.plan_id);
-  const own = state.team.filter((entry) => entry.explorationId === explorationId);
-  const byId = new Map(state.team.map((entry) => [entry.id, entry]));
-  const criteria = new Map(state.team.filter((entry) => entry.kind === "criterion").map((entry) => [entry.id, entry]));
-  const fromClaims = planClaims(store, row2.plan_id).filter((claim) => claim.explorationId === explorationId && harvestedStates.includes(claim.state)).map((claim) => {
-    const report = byId.get(claim.reports[0]);
-    const criterion = linkedCriterion(report, criteria);
-    return {
-      from: claim.id,
-      title: claim.title,
-      rule: claim.rule ?? void 0,
-      requirement: criterion?.text ?? claim.expected,
-      source: criterion?.source ?? `exploration:${explorationId}/${claim.id}`,
-      action: stepsText(claim.steps ?? void 0, claim.title),
-      check: claim.expected,
-      deterministic: false,
-      via: report?.via,
-      basis: "claim"
-    };
-  });
-  const fromObservations = observations ? own.filter((entry) => entry.kind === "observation" && entry.verdict === "ok" && entry.steps).map((entry) => {
-    const criterion = linkedCriterion(entry, criteria);
-    return {
-      from: entry.id,
-      rule: criterion?.rule,
-      title: `Observed: ${entry.about ?? entry.saw}`.slice(0, 200),
-      requirement: criterion?.text ?? entry.saw,
-      source: criterion?.source ?? `exploration:${explorationId}/${entry.id}`,
-      action: stepsText(entry.steps, entry.saw),
-      check: entry.value !== void 0 ? `The result is ${entry.value}.` : entry.saw,
-      deterministic: entry.value !== void 0,
-      via: entry.via,
-      basis: "observed"
-    };
-  }) : [];
-  return [...fromClaims, ...fromObservations];
-}
-function harvestedSources(tests) {
-  return new Set(tests.map((test) => test.metadata?.harvestedFrom).filter(Boolean));
-}
-function notHarvested(items, known, explorationId) {
-  return items.filter((item) => !known.has(`${explorationId}/${item.from}`));
-}
-function storableDefects(store, planId) {
-  const latest = one(store, "SELECT 1 FROM plan_revisions WHERE plan_id = ?", planId) ? planRevision(store, planId) : null;
-  const known = harvestedSources(latest?.plan.tests ?? []);
-  return all(
-    store,
-    "SELECT exploration_id FROM explorations WHERE plan_id = ? ORDER BY rowid",
-    planId
-  ).map(({ exploration_id }) => ({
-    explorationId: exploration_id,
-    claims: notHarvested(drafts(store, exploration_id, false), known, exploration_id).map((item) => item.from)
-  })).filter((item) => item.claims.length);
-}
-function capabilityOf(via, capabilities) {
-  const wanted = via === "ui" ? "browser" : via === "api" ? "http" : void 0;
-  return wanted && capabilities.includes(wanted) ? wanted : capabilities[0];
-}
-function harvested(base, rules, items, explorationId, build, capabilities, operations) {
-  const fresh = notHarvested(items, harvestedSources(base.tests), explorationId);
-  const requirements = [...base.requirements];
-  const tests = [...base.tests];
-  const added = [];
-  for (const item of fresh) {
-    const named = item.rule === outsideRule ? void 0 : rules.find((rule) => rule.id === item.rule);
-    const cited = named ?? requirements.find((entry) => entry.text === item.requirement) ?? rules.find((rule) => rule.text === item.requirement);
-    let requirement = requirements.find((entry) => entry.id === cited?.id);
-    if (!requirement && cited) {
-      requirement = { ...cited };
-      requirements.push(requirement);
-    }
-    if (!requirement) {
-      requirement = {
-        id: unusedId(
-          "HR",
-          requirements.map((entry) => entry.id)
-        ),
-        text: item.requirement,
-        source: item.source
-      };
-      requirements.push(requirement);
-    }
-    const id2 = unusedId(
-      "H",
-      tests.map((test) => test.id)
-    );
-    tests.push({
-      id: id2,
-      title: item.title.slice(0, 200),
-      requirementIds: [requirement.id],
-      capability: capabilityOf(item.via, capabilities),
-      operations,
-      dependsOn: [],
-      preconditions: [`Make new test data that starts with qa-<runId>-${id2}.`],
-      action: item.action,
-      assertions: [
-        { id: "A1", check: item.check, checkKind: item.deterministic ? "deterministic" : "agent_observation" }
-      ],
-      metadata: {
-        type: "regression",
-        origin: "harvest",
-        basis: item.basis,
-        harvestedFrom: `${explorationId}/${item.from}`,
-        build
-      }
-    });
-    added.push({ test: id2, rule: requirement.id });
-  }
-  return { candidate: { ...base, requirements, tests }, added, skipped: items.length - fresh.length };
-}
-function harvestExploration(store, actor, input) {
-  return write(store, { actor, command: "harvest", subject: input.explorationId, input }, (operationId) => {
-    const row2 = explorationRow(store, input.explorationId);
-    const { request: request2, target } = planRequest(store, row2.plan_id);
-    const items = drafts(store, row2.exploration_id, input.observations);
-    requireCondition(
-      items.length,
-      `Exploration ${row2.exploration_id} has nothing to harvest: no claim that is observed, confirmed, or accepted${input.observations ? ", and no observation with verdict ok and steps" : ""}.`,
-      input.observations ? void 0 : "Add --observations to harvest the observations with verdict ok and steps."
-    );
-    const hasRevision = one(store, "SELECT 1 FROM plan_revisions WHERE plan_id = ?", row2.plan_id);
-    const latest = hasRevision ? planRevision(store, row2.plan_id) : null;
-    const base = latest ? planCandidate(latest.plan) : { requirements: [], tests: [], gaps: [] };
-    const before = planRules(store, row2.plan_id);
-    const result = harvested(
-      base,
-      before.rules,
-      items,
-      row2.exploration_id,
-      row2.build,
-      target.profile.capabilities,
-      target.profile.allowedOperations
-    );
-    requireCondition(
-      result.added.length,
-      `Each item of ${row2.exploration_id} is harvested already into ${row2.plan_id}.`,
-      `Run checkmate plan show ${row2.plan_id} to read the harvested tests.`
-    );
-    const change = latest ? storeEdit(store, operationId, latest, result.candidate) : storeRevision(
-      store,
-      {
-        contractVersion: "toolkit-2",
-        planId: row2.plan_id,
-        revision: 1,
-        previousRevision: null,
-        target: { targetId: target.profile.targetId, revision: target.revision, sha256: target.sha256 },
-        objective: request2.objective,
-        requirements: result.candidate.requirements,
-        tests: result.candidate.tests,
-        gaps: [],
-        assumptions: [],
-        decisions: []
-      },
-      operationId
-    );
-    if (!latest && before.rules.length && before.origin !== "harvested")
-      saveRules(store, operationId, row2.plan_id, before.rules, "harvested");
-    const { plan } = planRevision(store, row2.plan_id);
-    const stocked = new Set(plan.tests.flatMap((item) => item.requirementIds));
-    const rules = planRules(store, row2.plan_id).rules;
-    return {
-      reply: {
-        ...change.reply,
-        data: {
-          ...change.reply.data,
-          explorationId: row2.exploration_id,
-          tests: result.added.map((item) => item.test),
-          attached: result.added,
-          skipped: result.skipped,
-          rules: rules.length,
-          rulesWithTests: rules.filter((rule) => stocked.has(rule.id)).length
-        }
-      },
-      subjects: [...change.subjects, `exploration:${row2.exploration_id}`]
-    };
-  });
 }
 
 // plugin/src/ui/hooks.ts
@@ -38048,9 +38213,54 @@ function specHandoff(store, actor, input) {
 }
 
 // plugin/src/cli.ts
-import { mkdirSync as mkdirSync10, readFileSync as readFileSync10, writeFileSync as writeFileSync6 } from "node:fs";
-import { dirname as dirname3, join as join16, resolve as resolve8 } from "node:path";
+import { mkdirSync as mkdirSync10, readFileSync as readFileSync11, writeFileSync as writeFileSync6 } from "node:fs";
+import { dirname as dirname4, join as join17, resolve as resolve8 } from "node:path";
 import { constants as constants2 } from "node:sqlite";
+
+// plugin/src/build.ts
+import { createHash as createHash2 } from "node:crypto";
+import { existsSync as existsSync8, readdirSync as readdirSync3, readFileSync as readFileSync10, realpathSync as realpathSync8, statSync as statSync6 } from "node:fs";
+import { dirname as dirname3, join as join16 } from "node:path";
+import { fileURLToPath as fileURLToPath3 } from "node:url";
+var instructionFolders = ["agents", "contracts", "references", "skills"];
+function pluginRootOf(bundle) {
+  const moduleRoot2 = dirname3(dirname3(bundle));
+  return existsSync8(join16(moduleRoot2, ".claude-plugin", "plugin.json")) ? moduleRoot2 : join16(moduleRoot2, "plugin");
+}
+function filesUnder(folder) {
+  if (!existsSync8(folder)) return [];
+  return readdirSync3(folder).sort().flatMap((name2) => {
+    const path = join16(folder, name2);
+    return statSync6(path).isDirectory() ? filesUnder(path) : [path];
+  });
+}
+function buildDigest(bundle) {
+  const root = pluginRootOf(bundle);
+  const hash = createHash2("sha256").update(readFileSync10(bundle));
+  for (const folder of instructionFolders) {
+    for (const path of filesUnder(join16(root, folder))) {
+      hash.update(path.slice(root.length)).update(readFileSync10(path));
+    }
+  }
+  return hash.digest("hex").slice(0, 12);
+}
+function versionLines(version3, bundle, env) {
+  const running3 = fileURLToPath3(bundle);
+  const digest2 = buildDigest(running3);
+  const lines2 = [`${version3} build ${digest2}`, `running ${running3}`];
+  const onPath = executableOnPath("checkmate", env);
+  if (!onPath) return lines2;
+  const resolved2 = realpathSync8(onPath);
+  const other = buildDigest(resolved2);
+  if (other !== digest2) {
+    lines2.push(
+      `warning: the checkmate on PATH is build ${other} at ${resolved2}. This build is ${digest2}. Commands run by this session use ${running3}.`
+    );
+  }
+  return lines2;
+}
+
+// plugin/src/cli.ts
 var testFields2 = [
   "title",
   "readiness",
@@ -38273,6 +38483,7 @@ var commands = {
   },
   status: {
     positionals: ["planId"],
+    flags: { "fail-on-blocked": "switch" },
     readOnly: true,
     run: (store, args, { env }) => {
       const planId = value(args, "planId");
@@ -39106,7 +39317,14 @@ var commands = {
   },
   setup: {
     positionals: [],
-    flags: { url: "value", target: "value", instance: "value", operations: "list", environment: "value" },
+    flags: {
+      url: "value",
+      target: "value",
+      instance: "value",
+      operations: "list",
+      environment: "value",
+      reset: "value"
+    },
     required: ["url"],
     write: true,
     run: (store, args, { actor, env }) => setupTarget(store, actor, {
@@ -39115,6 +39333,7 @@ var commands = {
       instanceId: value(args, "instance"),
       operations: list2(args, "operations"),
       environment: value(args, "environment"),
+      reset: value(args, "reset"),
       env
     }),
     print: (reply) => ({
@@ -39149,6 +39368,7 @@ var commands = {
       until: "value",
       scope: "list",
       url: "value",
+      reset: "value",
       repo: "value",
       session: "switch"
     },
@@ -39175,6 +39395,7 @@ var commands = {
         until: value(args, "until"),
         scope: list2(args, "scope"),
         url: value(args, "url"),
+        reset: value(args, "reset"),
         repo: value(args, "repo"),
         session: args.session === true
       },
@@ -39892,7 +40113,7 @@ function printPlan(reply) {
 }
 function writeOutput(store, out, content) {
   const path = resolve8(store.workspace, out);
-  mkdirSync10(dirname3(path), { recursive: true });
+  mkdirSync10(dirname4(path), { recursive: true });
   try {
     writeFileSync6(path, content, { flag: "wx" });
   } catch (error) {
@@ -40056,7 +40277,8 @@ function commandHelp(argv) {
   return { ...refused("invalid_request", "checkmate", unknownCommand(words4)), data: { usage: [] } };
 }
 function version() {
-  return JSON.parse(readFileSync10(join16(pluginRoot, ".claude-plugin", "plugin.json"), "utf8")).version;
+  const manifest = JSON.parse(readFileSync11(join17(pluginRoot, ".claude-plugin", "plugin.json"), "utf8"));
+  return versionLines(manifest.version, import.meta.url, process.env).join("\n");
 }
 function readJson2(text2) {
   requireWellFormed(
@@ -40112,7 +40334,7 @@ function run(argv, io) {
       cwd: io.cwd,
       env: io.env
     });
-    const code2 = reply.status === "completed" || reply.status === "needs_decision" ? 0 : 1;
+    const code2 = exitCodeOf(name2, args, reply);
     if (!json && typeof reply.data.content === "string")
       return { code: code2, output: reply.data.content.replace(/\n$/, "") };
     return { code: code2, output: format2(reply, json, command.print) };
@@ -40122,6 +40344,14 @@ function run(argv, io) {
   } finally {
     if (store) closeStore(store);
   }
+}
+var blockedOnDecisionExitCode = 3;
+function exitCodeOf(name2, args, reply) {
+  if (name2 === "status" && args["fail-on-blocked"] && reply.status === "completed") {
+    const status = reply.data;
+    if (status.waitsOn === "oracle") return blockedOnDecisionExitCode;
+  }
+  return reply.status === "completed" || reply.status === "needs_decision" ? 0 : 1;
 }
 function uiOptions(tokens, cwd) {
   const values = {};
@@ -40214,7 +40444,7 @@ async function main(argv) {
   const outcome = run(argv, {
     cwd: process.cwd(),
     env: process.env,
-    stdin: () => readFileSync10(0, "utf8")
+    stdin: () => readFileSync11(0, "utf8")
   });
   process.stdout.write(outcome.output + "\n");
   process.exitCode = outcome.code;
@@ -40222,8 +40452,8 @@ async function main(argv) {
 
 // cli/src/launcher.ts
 import { spawn as spawn5 } from "node:child_process";
-import { readFileSync as readFileSync11 } from "node:fs";
-import { join as join17, resolve as resolve9 } from "node:path";
+import { readFileSync as readFileSync12 } from "node:fs";
+import { join as join18, resolve as resolve9 } from "node:path";
 var stages = ["setup", "plan", "revise", "execute"];
 var defaultTimeoutSeconds = 300;
 var minimumRules = ["Read", "Bash"];
@@ -40329,7 +40559,7 @@ function checkClaudeArgs2(claudeArgs2) {
   }
 }
 function workerArgs(pluginRoot2, allowedTools, claudeArgs2 = []) {
-  const schema = readFileSync11(join17(pluginRoot2, "contracts", "response.schema.json"), "utf8");
+  const schema = readFileSync12(join18(pluginRoot2, "contracts", "response.schema.json"), "utf8");
   const args = [
     "-p",
     ...claudeArgs2,
@@ -40600,15 +40830,15 @@ var finalCommand = {
   execute: "run finish"
 };
 function prompt(stage, subject, workspace2, pluginRoot2, execution, timeoutSeconds, harness, round = 1) {
-  const skill = join17(pluginRoot2, "skills", stage, "SKILL.md");
-  const workflow = join17(pluginRoot2, "references", "workflow.md");
-  const cliPath = join17(pluginRoot2, "dist", "checkmate.js");
+  const skill = join18(pluginRoot2, "skills", stage, "SKILL.md");
+  const workflow = join18(pluginRoot2, "references", "workflow.md");
+  const cliPath = join18(pluginRoot2, "dist", "checkmate.js");
   const cliCommand = `node '${cliPath.replaceAll("'", "'\\''")}'`;
   const deadline = new Date(Date.now() + timeoutSeconds * 1e3).toISOString();
   const instructions = harness === "pi" ? [
     "Follow the Checkmate stage instructions and workflow below before you start.",
     ...[skill, workflow].map(
-      (path) => readFileSync11(path, "utf8").replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, "").replaceAll('node "${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js"', () => cliCommand).replaceAll("${CLAUDE_PLUGIN_ROOT}", () => pluginRoot2).replaceAll("claude:", "pi:").trim()
+      (path) => readFileSync12(path, "utf8").replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, "").replaceAll('node "${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js"', () => cliCommand).replaceAll("${CLAUDE_PLUGIN_ROOT}", () => pluginRoot2).replaceAll("claude:", "pi:").trim()
     )
   ] : [
     `Use the checkmate:${stage} skill from the loaded plugin. If you cannot load it, read ${skill} and ${workflow} with the Read tool before you start.`
@@ -40758,7 +40988,7 @@ async function delegate(workspace2, stage, subject, options3) {
         env: {
           ...env,
           CHECKMATE_ACTOR: workerActor,
-          ...run2 ? { PLAYWRIGHT_MCP_OUTPUT_DIR: join17(workspace2, ".checkmate", "tmp", subject) } : {}
+          ...run2 ? { PLAYWRIGHT_MCP_OUTPUT_DIR: join18(workspace2, ".checkmate", "tmp", subject) } : {}
         }
       });
       claimed = result.response;
@@ -40997,14 +41227,18 @@ ${source.text}`)
 }
 
 // cli/src/main.ts
-import { existsSync as existsSync8, readFileSync as readFileSync12 } from "node:fs";
+import { existsSync as existsSync9, readFileSync as readFileSync13 } from "node:fs";
 var delegateUsage = "checkmate delegate <setup|plan|revise|execute> <targetId|planId|planId|runId> [--timeout <seconds>]";
 var delegateSpecUsage = "checkmate delegate spec <planId@revision> [--timeout <seconds>]";
 var delegateHarnessUsage = "With Pi, omit --allow and --claude-arg. Claude requires --allow <rule> and accepts --claude-arg <arg>. CHECKMATE_HARNESS overrides the workspace harness. The default is Claude. delegate spec uses no tools and needs no --allow.";
 function version2() {
   const plugin = new URL("../.claude-plugin/plugin.json", import.meta.url);
-  const manifest = existsSync8(plugin) ? plugin : new URL("../package.json", import.meta.url);
-  return JSON.parse(readFileSync12(manifest, "utf8")).version;
+  const manifest = existsSync9(plugin) ? plugin : new URL("../package.json", import.meta.url);
+  return versionLines(
+    JSON.parse(readFileSync13(manifest, "utf8")).version,
+    import.meta.url,
+    process.env
+  ).join("\n");
 }
 function help2(json) {
   const commands2 = run(["--help"], { cwd: process.cwd(), env: {}, stdin: () => "" }).output.split("\n");

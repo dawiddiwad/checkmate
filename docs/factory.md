@@ -315,3 +315,26 @@ checkmate delegate execute <runId> --allow Read --allow Bash
 ```
 
 Resume checks the instance, target profile, and run gate. It records a new attempt and lists the open tests. It does not run test actions. When an action may have changed application data and cannot be checked safely, close that test as `error` with a reason. See [Local human-oracle QA](local-qa.md#review-a-result-and-retry) for the recovery steps.
+
+## One-shot QA with a stored run
+
+Use `checkmate test` in a pipeline for QA on one build. It plans, explores, and stores the defects as a run. The run needs no harvest step.
+
+```sh
+checkmate test shop-12 --url http://127.0.0.1:4101 --source ticket.md \
+  --build shop-build-2 --reset factory --allow Read --allow Bash
+checkmate explore wait x-1 --timeout 540
+checkmate export run findings-x-1 --format junit --out junit.xml
+```
+
+Replace `x-1` with the exploration ID in the `test` reply. Repeat `explore wait` while it prints `interrupted`. An exploration that can change data needs a reset. Give `--reset "<command>"` with a command that restores the seed data, or `--reset factory` when the factory resets the data before each run. Checkmate refuses the exploration without a reset.
+
+The run ID is `findings-<explorationId>`. Each defect is one failed test. The other tests of the plan are not selected. The JUnit file marks each unselected test as `skipped` with its reason, for example the open gap that blocks it.
+
+Before a pipeline starts the next step, check the owner:
+
+```sh
+checkmate status shop-12 --fail-on-blocked
+```
+
+Exit code 3 means that the plan waits on the oracle. Read the questions with `checkmate status shop-12` and stop.

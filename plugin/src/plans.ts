@@ -2,7 +2,8 @@ import type { Gap, Plan, PlanCandidate, PlanDelta, PlanPatch, PlanRequest, Profi
 import type { Change, Reply, Store } from './store.ts'
 import { answerQuestion } from './journal.ts'
 import { patchRules, requireHeldRules } from './rules.ts'
-import { operationAllowed } from './targets.ts'
+import { operationAllowed, targetWebUrl } from './targets.ts'
+import { requireResetFor } from './resets.ts'
 import { all, canonical, completed, digest, execute, one, ulid, write } from './store.ts'
 import type { PlanDraft, Test } from './contracts.ts'
 import {
@@ -1025,6 +1026,12 @@ export function gate(store: Store, input: GateInput) {
 	const selection =
 		input.tests === undefined && partial === 'ready_only' ? ready! : givenSelection(input.tests, tests, subject)
 	const selected = selection.tests
+	requireResetFor(
+		targetRevision(store, target.profile.targetId).profile,
+		selected.flatMap((id) => tests.get(id)?.operations ?? []),
+		`Run ${subject}`,
+		targetWebUrl(store, target.profile.targetId)
+	)
 	if (input.retestOf) retestCheck(store, input.retestOf, plan, build, input.instance)
 	const earlier = input.retestOf ? retestDefects(store, input.retestOf) : []
 	const reasons: string[] = []

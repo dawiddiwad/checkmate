@@ -589,20 +589,25 @@ function junitStatus(report: RunReport, test: Result['tests'][number]) {
 	)
 }
 
+function notSelectedReason(plan: RunReport['plan'], testId: string) {
+	const gap = plan.gaps.find((item) => item.status === 'open' && item.testIds.includes(testId))
+	return gap ? `blocked by open gap ${gap.id}: ${gap.question}` : 'not selected for this run'
+}
+
 function junit(report: RunReport) {
 	const { result, plan } = report
 	const tests = result.tests.filter((test) => result.selectedTestIds.includes(test.testId))
+	const notSelected = plan.tests.filter((test) => !result.selectedTestIds.includes(test.id))
 	const count = (...outcomes: string[]) => tests.filter((test) => outcomes.includes(test.outcome)).length
 	const totals = {
-		tests: tests.length,
+		tests: tests.length + notSelected.length,
 		failures: count('failed'),
 		errors: count('error', 'inconclusive'),
-		skipped: count('blocked', 'not_run'),
+		skipped: count('blocked', 'not_run') + notSelected.length,
 		time: (Date.parse(result.finishedAt) - Date.parse(result.startedAt)) / 1000,
 	}
-	const cases = tests.map((test) => {
-		const planned = plan.tests.find((item) => item.id === test.testId)!
-		const properties = xmlProperties([
+	const properties = (planned: RunReport['plan']['tests'][number]) =>
+		xmlProperties([
 			['title', planned.title],
 			['requirements', planned.requirementIds.join(',')],
 			...Object.entries(planned.metadata ?? {}).map(([key, value]): [string, string | number | boolean] => [
@@ -610,12 +615,21 @@ function junit(report: RunReport) {
 				value,
 			]),
 		])
+	const cases = tests.map((test) => {
+		const planned = plan.tests.find((item) => item.id === test.testId)!
 		return xmlTag(
 			'testcase',
 			{ classname: plan.planId, name: planned.id, time: report.times[test.testId] ?? 0 },
-			properties + junitStatus(report, test)
+			properties(planned) + junitStatus(report, test)
 		)
 	})
+	const skippedCases = notSelected.map((planned) =>
+		xmlTag(
+			'testcase',
+			{ classname: plan.planId, name: planned.id, time: 0 },
+			properties(planned) + xmlTag('skipped', { message: notSelectedReason(plan, planned.id) })
+		)
+	)
 	const suite = xmlTag(
 		'testsuite',
 		{
@@ -640,7 +654,7 @@ function junit(report: RunReport) {
 			}),
 		]) +
 			'\n' +
-			cases.join('\n') +
+			[...cases, ...skippedCases].join('\n') +
 			'\n'
 	)
 	return `<?xml version="1.0" encoding="UTF-8"?>\n${xmlTag('testsuites', { name: result.runId, ...totals }, suite)}\n`

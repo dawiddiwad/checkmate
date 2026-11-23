@@ -39,7 +39,9 @@ import {
 	verifierRepairPrompt,
 } from './briefs.ts'
 import { checkedRules, ruleSources, rulesNeeded, saveRules } from './rules.ts'
-import { findInstance, targetRevision } from './targets.ts'
+import { findInstance, targetRevision, targetWebUrl } from './targets.ts'
+import { requireResetFor, runReset } from './resets.ts'
+import { storeFindingsRun } from './findingsRun.ts'
 import { changeOf, changedFiles } from './change.ts'
 import {
 	checkClaudeArgs,
@@ -401,6 +403,14 @@ export function startExploration(
 			? finishable(store, input.explorationId)
 			: insertExploration(store, input, operationId, at)
 		const row = explorationRow(store, opened.explorationId)
+		const exploredProfile = targetRevision(store, row.target_id).profile
+		requireResetFor(
+			exploredProfile,
+			exploredProfile.allowedOperations,
+			`Exploration ${row.exploration_id}`,
+			targetWebUrl(store, row.target_id)
+		)
+		runReset(store.workspace, exploredProfile)
 		const savedModel = input.session ? '' : testerModelText(store, selectedHarness(env))
 		const savedEffort = input.session ? '' : testerEffortText(store, selectedHarness(env))
 		const launch = launchPlan(
@@ -941,6 +951,14 @@ function hasSavedEffort(launch: Launch) {
 	return Boolean(launch.effort || Object.values(launch.testerEfforts ?? {}).some(Boolean))
 }
 
+function storeFindings(store: Store, actor: string, explorationId: string) {
+	try {
+		return storeFindingsRun(store, actor, explorationId)
+	} catch (error) {
+		return { runId: null, reason: error instanceof Error ? error.message : String(error) }
+	}
+}
+
 export async function driveExploration(workspace: string, explorationId: string, env: Env) {
 	exitOnSignal()
 	const store = openStore(workspace)
@@ -1003,12 +1021,19 @@ export async function driveExploration(workspace: string, explorationId: string,
 			if (launch.verifier) await verifyClaims(store, actor, explorationId, launch, env)
 			removeWork(store, explorationId)
 		} else keepBrowserFolder(store, explorationId)
+		const findings =
+			ok && explorationStatus(store, explorationId).path !== 'session'
+				? storeFindings(store, actor, explorationId)
+				: null
 		event(store, actor, explorationId, {
 			step: 'done',
 			explorer: null,
 			status: ok ? 'completed' : 'failed',
 			detail: {
 				recorded: ok,
+				...(findings
+					? { findingsRun: findings.runId, ...(findings.reason ? { findingsReason: findings.reason } : {}) }
+					: {}),
 				...(ok
 					? {}
 					: {
@@ -1790,6 +1815,11 @@ export function waitExploration(store: Store, explorationId: string, timeoutSeco
 			const hints = [
 				...status.explorers.flatMap((item) => (item.hint ? [item.hint] : [])),
 				...(status.doneHint ? [status.doneHint] : []),
+				...(outcome === 'done'
+					? [
+							`Next: checkmate status ${status.planId}. If it says waitsOn=oracle, stop here and report its open questions with the command that answers them. Do not wait again, search files, or schedule a wakeup.`,
+						]
+					: []),
 			]
 			return {
 				status: outcome === 'done' ? 'completed' : outcome === 'timeout' ? 'interrupted' : 'operational_error',

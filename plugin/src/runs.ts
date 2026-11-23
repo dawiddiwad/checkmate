@@ -33,6 +33,7 @@ import {
 	recordApproval,
 } from './plans.ts'
 import { findInstance, runInstance, targetRevision } from './targets.ts'
+import { runReset } from './resets.ts'
 import { addPlanBuild } from './journal.ts'
 import { permanentSelection } from './permanent.ts'
 import { mkdirSync, readFileSync, realpathSync, rmSync, statSync } from 'node:fs'
@@ -387,6 +388,7 @@ function begin(
 				}
 			}
 			const { plan, sha256 } = checked.revision
+			runReset(store.workspace, targetRevision(store, plan.target.targetId).profile)
 			const request: RunRequest = {
 				selectedTestIds: checked.tests,
 				partialExecution: checked.partial,

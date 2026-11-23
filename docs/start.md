@@ -57,6 +57,24 @@ Claude Code users can install the plugin without the npm CLI:
 
 Open the project in Claude Code and use `/checkmate:test`.
 
+To run a local build from a checkout, start Claude Code with its plugin directory:
+
+```sh
+claude --plugin-dir /path/to/checkmate/plugin
+```
+
+This loads the checkout for that session only. It wins over an installed copy, and the installed copy does not load beside it.
+
+A user-level `checkmate@checkmate` plugin also changes the result. A project-level install with the same plugin ID loses to it. Check the installed plugins with `claude plugin list`. Update the user-level copy with `claude plugin update checkmate@checkmate`. Remove it with `claude plugin uninstall checkmate@checkmate`.
+
+Check which build runs:
+
+```sh
+checkmate --version
+```
+
+The first line shows the build digest of the running plugin. A `warning:` line means that the `checkmate` on `PATH` is another build.
+
 Pi users can install the published package:
 
 ```sh

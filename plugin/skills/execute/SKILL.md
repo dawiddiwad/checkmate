@@ -110,4 +110,4 @@ After the selected tests, probe the rules of the selected tests for a few cases 
 
 ## Test data
 
-Each test owns its data. Use `qa-<runId>-<testId>` for a unique value. Do not change the application, its code, or its configuration. Do not run a command that the plan does not allow.
+Each test owns its data. Use `qa-<runId>-<testId>` for a unique value. Do not change the application, its code, or its configuration. Do not run a command that the plan does not allow. Checkmate runs the recorded reset before the run begins. Do not run a reset yourself.

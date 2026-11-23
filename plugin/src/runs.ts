@@ -33,7 +33,7 @@ import {
 	recordApproval,
 } from './plans.ts'
 import { findInstance, runInstance, targetRevision } from './targets.ts'
-import { runReset } from './resets.ts'
+import { changesData, runReset } from './resets.ts'
 import { addPlanBuild } from './journal.ts'
 import { permanentSelection } from './permanent.ts'
 import { mkdirSync, readFileSync, realpathSync, rmSync, statSync } from 'node:fs'
@@ -1166,6 +1166,22 @@ export function resumeRun(store: Store, actor: string | undefined, input: Resume
 				},
 				subjects: [],
 			}
+		const changing = openTests.filter((test) => !stalled.includes(test.id) && test.operations.some(changesData))
+		const reset = target.profile.reset
+		if (changing.length && reset?.owner !== 'checkmate')
+			return {
+				reply: {
+					status: 'needs_decision',
+					subject: input.runId,
+					reasons: [
+						`Actions may have occurred in ${changing.map((test) => test.id).join(', ')}, and Checkmate cannot reset the data of ${run.row.target_id} (${reset ? `reset owner ${reset.owner}` : 'no reset recorded'}).`,
+					],
+					hint: `Decide for each test. Close it as error with a reason: checkmate run resume ${input.runId} --error ${changing.map((test) => test.id).join(',')} --reason "<why>". Or restore the data outside Checkmate, then run checkmate run resume ${input.runId} again.`,
+					data: {},
+				},
+				subjects: [],
+			}
+		if (changing.length) runReset(store.workspace, target.profile)
 		const attempt = currentAttempt(store, input.runId) + 1
 		execute(
 			store,
@@ -1195,7 +1211,7 @@ export function resumeRun(store: Store, actor: string | undefined, input: Resume
 			.filter((test) => !stalled.includes(test.id))
 			.map((test) => ({
 				testId: test.id,
-				warning: 'Actions may have occurred',
+				...(changing.includes(test) ? { reset: 'ran before this attempt' } : {}),
 				recorded: test.assertions.filter((assertion) => results.has(`${test.id}.${assertion.id}`)).length,
 				assertions: test.assertions.filter((assertion) => !results.has(`${test.id}.${assertion.id}`)),
 			}))

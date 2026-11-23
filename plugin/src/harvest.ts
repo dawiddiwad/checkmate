@@ -16,7 +16,7 @@ type Draft = {
 	requirement: string
 	source: string
 	action: string
-	check: string
+	checks: string[]
 	deterministic: boolean
 	via: string | undefined
 	basis: 'claim' | 'observed'
@@ -34,10 +34,13 @@ function linkedCriterion(entry: Row | undefined, criteria: Map<string, Row>) {
 	return ids.map((id) => criteria.get(id)).find(Boolean)
 }
 
-// The assertion keeps its first clause. The finding keeps the whole expected value.
-function oneCheck(expected: string) {
-	const first = expected.split(/\band\b|;/i)[0].trim()
-	return first.endsWith('.') ? first : `${first}.`
+// One assertion for each clause of an expected value. Every clause stays; none is dropped.
+function checksOf(expected: string) {
+	const clauses = expected
+		.split(/\band\b|;/i)
+		.map((clause) => clause.trim())
+		.filter(Boolean)
+	return (clauses.length ? clauses : [expected]).map((clause) => (clause.endsWith('.') ? clause : `${clause}.`))
 }
 
 function drafts(store: Store, explorationId: string, observations: boolean): Draft[] {
@@ -58,7 +61,7 @@ function drafts(store: Store, explorationId: string, observations: boolean): Dra
 				requirement: criterion?.text ?? claim.expected,
 				source: criterion?.source ?? `exploration:${explorationId}/${claim.id}`,
 				action: stepsText(claim.steps ?? undefined, claim.title),
-				check: oneCheck(claim.expected),
+				checks: checksOf(claim.expected),
 				deterministic: false,
 				via: report?.via,
 				basis: 'claim',
@@ -76,7 +79,7 @@ function drafts(store: Store, explorationId: string, observations: boolean): Dra
 						requirement: criterion?.text ?? entry.saw!,
 						source: criterion?.source ?? `exploration:${explorationId}/${entry.id}`,
 						action: stepsText(entry.steps, entry.saw!),
-						check: entry.value !== undefined ? `The result is ${entry.value}.` : entry.saw!,
+						checks: [entry.value !== undefined ? `The result is ${entry.value}.` : entry.saw!],
 						deterministic: entry.value !== undefined,
 						via: entry.via,
 						basis: 'observed',
@@ -165,7 +168,12 @@ function harvested(
 			preconditions: [`Make new test data that starts with qa-<runId>-${id}.`],
 			action: item.action,
 			assertions: [
-				{ id: 'A1', check: item.check, checkKind: item.deterministic ? 'deterministic' : 'agent_observation' },
+				...item.checks.map((check, index) => ({
+					id: `A${index + 1}`,
+					check,
+					checkKind: (item.deterministic ? 'deterministic' : 'agent_observation') as
+						'deterministic' | 'agent_observation',
+				})),
 			],
 			metadata: {
 				type: 'regression',

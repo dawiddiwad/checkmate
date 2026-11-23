@@ -70,6 +70,15 @@ export function storeFindingsRun(store: Store, actor: string | undefined, explor
 				evidenceIds: check.data.evidenceIds,
 			},
 		})
+		for (const other of test.assertions.filter((assertion) => assertion.id !== 'A1')) {
+			checkAssertion(store, actor, {
+				runId,
+				testId: test.id,
+				assertionId: other.id,
+				result: 'not_checked',
+				reason: `Not checked: the defect is recorded on ${test.id}.A1.`,
+			})
+		}
 		closeTest(store, actor, { runId, testId: test.id })
 	}
 	const finished = finishRun(store, actor, {

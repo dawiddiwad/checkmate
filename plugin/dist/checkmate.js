@@ -14403,6 +14403,22 @@ function resumeRun(store, actor, input) {
         },
         subjects: []
       };
+    const changing = openTests.filter((test) => !stalled.includes(test.id) && test.operations.some(changesData));
+    const reset = target.profile.reset;
+    if (changing.length && reset?.owner !== "checkmate")
+      return {
+        reply: {
+          status: "needs_decision",
+          subject: input.runId,
+          reasons: [
+            `Actions may have occurred in ${changing.map((test) => test.id).join(", ")}, and Checkmate cannot reset the data of ${run2.row.target_id} (${reset ? `reset owner ${reset.owner}` : "no reset recorded"}).`
+          ],
+          hint: `Decide for each test. Close it as error with a reason: checkmate run resume ${input.runId} --error ${changing.map((test) => test.id).join(",")} --reason "<why>". Or restore the data outside Checkmate, then run checkmate run resume ${input.runId} again.`,
+          data: {}
+        },
+        subjects: []
+      };
+    if (changing.length) runReset(store.workspace, target.profile);
     const attempt = currentAttempt(store, input.runId) + 1;
     execute(
       store,
@@ -14430,7 +14446,7 @@ function resumeRun(store, actor, input) {
     const results = runAssertions(store, input.runId);
     const tests = openTests.filter((test) => !stalled.includes(test.id)).map((test) => ({
       testId: test.id,
-      warning: "Actions may have occurred",
+      ...changing.includes(test) ? { reset: "ran before this attempt" } : {},
       recorded: test.assertions.filter((assertion) => results.has(`${test.id}.${assertion.id}`)).length,
       assertions: test.assertions.filter((assertion) => !results.has(`${test.id}.${assertion.id}`))
     }));
@@ -16921,9 +16937,9 @@ function linkedCriterion(entry, criteria) {
   const ids2 = [...entry?.links ?? [], ...(entry?.about ?? "").split(/[\s,;]+/)];
   return ids2.map((id2) => criteria.get(id2)).find(Boolean);
 }
-function oneCheck(expected) {
-  const first = expected.split(/\band\b|;/i)[0].trim();
-  return first.endsWith(".") ? first : `${first}.`;
+function checksOf(expected) {
+  const clauses = expected.split(/\band\b|;/i).map((clause) => clause.trim()).filter(Boolean);
+  return (clauses.length ? clauses : [expected]).map((clause) => clause.endsWith(".") ? clause : `${clause}.`);
 }
 function drafts(store, explorationId, observations) {
   const row2 = explorationRow(store, explorationId);
@@ -16941,7 +16957,7 @@ function drafts(store, explorationId, observations) {
       requirement: criterion?.text ?? claim.expected,
       source: criterion?.source ?? `exploration:${explorationId}/${claim.id}`,
       action: stepsText(claim.steps ?? void 0, claim.title),
-      check: oneCheck(claim.expected),
+      checks: checksOf(claim.expected),
       deterministic: false,
       via: report?.via,
       basis: "claim"
@@ -16956,7 +16972,7 @@ function drafts(store, explorationId, observations) {
       requirement: criterion?.text ?? entry.saw,
       source: criterion?.source ?? `exploration:${explorationId}/${entry.id}`,
       action: stepsText(entry.steps, entry.saw),
-      check: entry.value !== void 0 ? `The result is ${entry.value}.` : entry.saw,
+      checks: [entry.value !== void 0 ? `The result is ${entry.value}.` : entry.saw],
       deterministic: entry.value !== void 0,
       via: entry.via,
       basis: "observed"
@@ -17024,7 +17040,11 @@ function harvested(base, rules, items, explorationId, build, capabilities, opera
       preconditions: [`Make new test data that starts with qa-<runId>-${id2}.`],
       action: item.action,
       assertions: [
-        { id: "A1", check: item.check, checkKind: item.deterministic ? "deterministic" : "agent_observation" }
+        ...item.checks.map((check, index2) => ({
+          id: `A${index2 + 1}`,
+          check,
+          checkKind: item.deterministic ? "deterministic" : "agent_observation"
+        }))
       ],
       metadata: {
         type: "regression",
@@ -17166,6 +17186,15 @@ function storeFindingsRun(store, actor, explorationId) {
         evidenceIds: check.data.evidenceIds
       }
     });
+    for (const other of test.assertions.filter((assertion) => assertion.id !== "A1")) {
+      checkAssertion(store, actor, {
+        runId,
+        testId: test.id,
+        assertionId: other.id,
+        result: "not_checked",
+        reason: `Not checked: the defect is recorded on ${test.id}.A1.`
+      });
+    }
     closeTest(store, actor, { runId, testId: test.id });
   }
   const finished = finishRun(store, actor, {

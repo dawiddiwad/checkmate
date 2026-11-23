@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { execFileSync, spawn, spawnSync } from 'node:child_process'
 import { once } from 'node:events'
-import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:http'
 import { createInterface } from 'node:readline'
 import { delimiter, join } from 'node:path'
@@ -3555,4 +3555,72 @@ test('Decide a structured assertion by comparing the observed value with the exp
 		{ assertion_id: 'A1', result: 'failed' },
 		{ assertion_id: 'A2', result: 'passed' },
 	])
+
+test('Resume a run with a test that may have changed data — a recorded reset runs again, an external reset asks the oracle.', async (t) => {
+	const workspace = directory(t)
+	writeFileSync(join(workspace, 'ticket.md'), 'An order can be created.\n')
+	writeFileSync(
+		join(workspace, 'reset.mjs'),
+		"import { writeFileSync } from 'node:fs'\nwriteFileSync('reset-ran.txt', 'yes')\n"
+	)
+	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle', CHECKMATE_HARNESS: 'pi' }
+	const ok = async (...args: string[]) => {
+		const result = await command(workspace, env, ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	const app = await fixture()
+	t.after(() => app.close())
+	await ok('setup', '--url', app.baseUrl, '--target', 'shop', '--instance', 'local', '--reset', 'node reset.mjs')
+	await ok('plan', 'open', 'ticket', '--target', 'shop@1', '--objective', 'Create an order.', '--source', 'ticket.md')
+	const saved = await inputCommand(
+		workspace,
+		env,
+		JSON.stringify({
+			requirements: [{ id: 'R1', text: 'An order can be created.', source: 'ticket.md' }],
+			tests: [
+				{
+					id: 'T1',
+					title: 'Create an order',
+					requirementIds: ['R1'],
+					capability: 'http',
+					operations: ['create_fixture_order'],
+					dependsOn: [],
+					preconditions: [],
+					action: 'Create an order.',
+					assertions: [{ id: 'A1', check: 'The order is created.', checkKind: 'deterministic' }],
+				},
+				{
+					id: 'T2',
+					title: 'Read the catalog',
+					requirementIds: ['R1'],
+					capability: 'http',
+					operations: ['read_catalog'],
+					dependsOn: [],
+					preconditions: [],
+					action: 'Read the catalog.',
+					assertions: [{ id: 'A1', check: 'The catalog is listed.', checkKind: 'deterministic' }],
+				},
+			],
+			gaps: [],
+		}),
+		'plan',
+		'save',
+		'ticket'
+	)
+	assert.equal(saved.code, 0, saved.output)
+	await ok('run', 'begin', 'run-1', 'ticket@1', '--build', 'b1', '--instance', 'local')
+	rmSync(join(workspace, 'reset-ran.txt'), { force: true })
+	const resumed = await ok('run', 'resume', 'run-1')
+	assert.equal(resumed.status, 'completed')
+	assert.equal(readFileSync(join(workspace, 'reset-ran.txt'), 'utf8'), 'yes')
+	const byTest = Object.fromEntries(resumed.tests.map((item: { testId: string }) => [item.testId, item]))
+	assert.equal(byTest.T1.reset, 'ran before this attempt')
+	assert.equal(byTest.T2.reset, undefined)
+	await ok('setup', '--url', app.baseUrl, '--target', 'shop', '--instance', 'local', '--reset', 'external')
+	await ok('run', 'begin', 'run-2', 'ticket@1', '--build', 'b2', '--instance', 'local')
+	const asked = await ok('run', 'resume', 'run-2')
+	assert.equal(asked.status, 'needs_decision')
+	assert.match(asked.reasons[0], /T1/)
+	assert.match(asked.hint, /run resume run-2 --error T1/)
 })

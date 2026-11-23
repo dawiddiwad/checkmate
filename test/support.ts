@@ -227,9 +227,10 @@ export function plan(store: Store, planId = 'checkout', value: PlanCandidate = c
 export const promotionDelta = {
 	tests: {
 		T2: {
-			assertions: {
-				A2: { check: 'totalPLN equals 240.', checkKind: 'deterministic' as const },
-			},
+			assertions: [
+				{ check: 'The response status is HTTP 200.', checkKind: 'deterministic' as const },
+				{ check: 'totalPLN equals 240.', checkKind: 'deterministic' as const },
+			],
 		},
 	},
 }

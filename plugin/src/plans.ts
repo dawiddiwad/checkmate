@@ -125,9 +125,18 @@ export function openPlan(
 	})
 }
 
+// A typed ID such as BS42 for BS-42 names the one plan whose ID is the same after case and punctuation are removed.
+function similarPlanHint(store: Store, planId: string) {
+	const key = (id: string) => id.toLowerCase().replace(/[^a-z0-9]/g, '')
+	const matches = all<{ plan_id: string }>(store, 'SELECT plan_id FROM plan_requests').filter(
+		(row) => key(row.plan_id) === key(planId)
+	)
+	return matches.length === 1 ? `Did you mean ${matches[0].plan_id}? Use that exact ID.` : undefined
+}
+
 export function planRequest(store: Store, planId: string) {
 	const row = one<RequestRow>(store, 'SELECT * FROM plan_requests WHERE plan_id = ?', planId)
-	requireCondition(row, `Unknown plan: ${planId}. Run plan open first.`)
+	requireCondition(row, `Unknown plan: ${planId}. Run plan open first.`, similarPlanHint(store, planId))
 	const request: PlanRequest = JSON.parse(row.body)
 	return { request, target: targetRevision(store, row.target_id, row.target_revision) }
 }
@@ -782,19 +791,59 @@ export function revisePlan(
 			base.plan,
 			decisions.map((decision) => decision.gap_id)
 		).map((test) => test.id)
+		const onlyAffected = `Change only the tests that the pending decisions affect: ${affected.join(', ') || 'none'}.`
+		for (const [id, change] of Object.entries(delta.requirements ?? {})) {
+			if (change.remove) continue
+			const existing = draft.requirements.find((requirement) => requirement.id === id)
+			if (existing) {
+				if (change.text !== undefined) existing.text = change.text
+				if (change.source !== undefined) existing.source = change.source
+				if (change.area !== undefined) existing.area = change.area
+				continue
+			}
+			requireWellFormed(
+				change.text !== undefined && change.source !== undefined,
+				`New requirement ${id} needs text and source`,
+				`Send {"requirements": {"${id}": {"text": "<the requirement>", "source": "<file or conversation>"}}}.`
+			)
+			draft.requirements.push({
+				id,
+				text: change.text!,
+				source: change.source!,
+				...(change.area ? { area: change.area } : {}),
+			})
+		}
 		const removedTests: string[] = []
 		for (const [testId, change] of Object.entries(delta.tests)) {
 			const test = draft.tests.find((test) => test.id === testId)
-			const onlyAffected = `Change only the tests that the pending decisions affect: ${affected.join(', ') || 'none'}.`
-			requireWellFormed(test, `Unknown test in delta: ${testId}`, onlyAffected)
+			if (change.remove) {
+				requireWellFormed(test, `Unknown test in delta: ${testId}`, onlyAffected)
+				requireCondition(
+					affected.includes(testId),
+					`Test ${testId} is not affected by a pending decision. A revision changes only affected tests.`,
+					onlyAffected
+				)
+				removedTests.push(testId)
+				continue
+			}
+			if (!test) {
+				draft.tests.push(newTest(draft, testId, change, usedAssertionIds(store, input.planId, testId)))
+				continue
+			}
 			requireCondition(
 				affected.includes(testId),
 				`Test ${testId} is not affected by a pending decision. A revision changes only affected tests.`,
 				onlyAffected
 			)
-			if (change.remove) removedTests.push(testId)
-			else applyTestChange(test, change, usedAssertionIds(store, input.planId, testId))
+			replaceTest(test, change, usedAssertionIds(store, input.planId, testId))
 		}
+		for (const test of draft.tests)
+			for (const assertion of test.assertions)
+				requireWellFormed(
+					!compoundCheck(assertion.check),
+					`Assertion ${test.id}.${assertion.id} checks more than one value: "${assertion.check}"`,
+					'Send one assertion for each value. Each assertion checks one expected value, so split the check into two assertions.'
+				)
 		const removedRequirements = removeRequirements(draft, delta.requirements ?? {}, removedTests)
 		if (removedTests.length) removeTests(draft, removedTests)
 		for (const test of draft.tests)
@@ -854,34 +903,64 @@ function usedAssertionIds(store: Store, planId: string, testId: string) {
 	).map((row) => row.id)
 }
 
-function applyTestChange(test: Test, change: PlanDelta['tests'][string], used: string[]) {
-	if (change.action !== undefined) test.action = change.action
+// The delta sends each affected test whole. The code keeps an assertion's ID when its check text is unchanged.
+type TestChange = NonNullable<PlanDelta['tests'][string]>
+function replaceTest(test: Test, change: TestChange, used: string[]) {
+	if (change.title !== undefined) test.title = change.title
+	if (change.requirementIds !== undefined) test.requirementIds = change.requirementIds
+	if (change.capability !== undefined) test.capability = change.capability
+	if (change.operations !== undefined) test.operations = change.operations
+	if (change.dependsOn !== undefined) test.dependsOn = change.dependsOn
 	if (change.preconditions !== undefined) test.preconditions = change.preconditions
-	const existingIds = test.assertions.map((existing) => existing.id)
-	const current = `${test.id} has assertions: ${existingIds.join(', ') || 'none'}.`
-	for (const [id, assertion] of Object.entries(change.assertions ?? {})) {
-		const position = test.assertions.findIndex((existing) => existing.id === id)
-		if (assertion === null) {
-			requireWellFormed(
-				position >= 0,
-				`Cannot remove unknown assertion ${test.id}.${id}`,
-				`${current} Remove only one of those IDs, with null.`
-			)
-			test.assertions.splice(position, 1)
-		} else if (position >= 0) test.assertions[position] = { ...test.assertions[position], ...assertion }
-		else {
-			requireWellFormed(
-				!used.includes(id),
-				`Assertion ID ${test.id}.${id} was used in an earlier revision. Use a new ID.`
-			)
-			requireWellFormed(
-				assertion.check !== undefined && assertion.checkKind !== undefined,
-				`New assertion ${test.id}.${id} needs check and checkKind`,
-				`${current} For a new assertion, send {"check": "<expected text or value>", "checkKind": "deterministic"} under a new ID. To change an existing one, send only the changed field under its current ID.`
-			)
-			test.assertions.push({ id, check: assertion.check, checkKind: assertion.checkKind })
+	if (change.action !== undefined) test.action = change.action
+	if (change.assertions === undefined) return
+	const previous = test.assertions
+	const issued: string[] = []
+	test.assertions = change.assertions.map((item) => {
+		const kept = previous.find((existing) => existing.check === item.check)
+		const id = kept?.id ?? unusedId('A', [...used, ...issued])
+		issued.push(id)
+		return {
+			id,
+			check: item.check,
+			checkKind: item.checkKind,
+			...(item.observe !== undefined ? { observe: item.observe } : {}),
+			...(item.expected !== undefined ? { expected: item.expected } : {}),
 		}
-	}
+	})
+}
+
+function newTest(
+	draft: Pick<Plan, 'requirements' | 'tests' | 'gaps'>,
+	id: string,
+	change: TestChange,
+	used: string[]
+): Test {
+	const missing = ['title', 'requirementIds', 'capability', 'operations', 'action', 'assertions'].filter(
+		(field) => change[field as keyof TestChange] === undefined
+	)
+	requireWellFormed(
+		missing.length === 0,
+		`New test ${id} needs ${missing.join(', ')}`,
+		`Send the whole test: {"tests": {"${id}": {"title": "...", "requirementIds": ["R1"], "capability": "http", "operations": ["read"], "action": "...", "assertions": [{"check": "<one expected value>", "checkKind": "deterministic"}]}}}.`
+	)
+	const test = {
+		id,
+		title: '',
+		requirementIds: [],
+		capability: '',
+		operations: [],
+		readiness: 'ready',
+		gapIds: [],
+		dependsOn: [],
+		preconditions: [],
+		action: '',
+		assertions: [],
+	} as unknown as Test
+	replaceTest(test, change, used)
+	test.gapIds = draft.gaps.filter((gap) => gap.testIds.includes(id)).map((gap) => gap.id)
+	test.readiness = testReadiness(draft.gaps, test)
+	return test
 }
 
 export function approvePlan(store: Store, actor: string | undefined, input: Verdict) {

@@ -444,7 +444,17 @@ function seedRevision(store: Store) {
 	minutesAgo(125)
 	revisePlan(store, agent, {
 		planId: 'checkout',
-		delta: { tests: { T2: { assertions: { A2: { check: 'totalPLN equals 240.' } } } } },
+		delta: {
+			tests: {
+				T2: {
+					assertions: [
+						{ check: 'The response status is HTTP 200.', checkKind: 'deterministic' },
+						{ check: 'totalPLN equals 240.', checkKind: 'deterministic' },
+						{ check: 'No loyalty line in the quote.', checkKind: 'deterministic' },
+					],
+				},
+			},
+		},
 	})
 	minutesAgo(110)
 	approvePlan(store, human, {
@@ -486,8 +496,8 @@ function seedCheckoutRun(store: Store) {
 		},
 	})
 	check(store, 'run-7', 'T2.A1', 'passed', 'HTTP 200', ['T2-quote-status.json', quote])
-	const failed = check(store, 'run-7', 'T2.A2', 'failed', 'totalPLN = 220', ['T2-quote.json', quote])
-	check(store, 'run-7', 'T2.A3', 'passed', 'No loyalty line in the quote.', [
+	const failed = check(store, 'run-7', 'T2.A4', 'failed', 'totalPLN = 220', ['T2-quote.json', quote])
+	check(store, 'run-7', 'T2.A5', 'passed', 'No loyalty line in the quote.', [
 		'T2-quote-lines.txt',
 		'Lines: SPRING40 −160 PLN\nNo loyalty line.\n',
 	])
@@ -497,7 +507,7 @@ function seedCheckoutRun(store: Store) {
 			id: 'F1',
 			type: 'defect',
 			severity: 'high',
-			assertionIds: ['T2.A2'],
+			assertionIds: ['T2.A4'],
 			requirementIds: ['R2'],
 			title: 'The promotion stacks with the loyalty credit',
 			expected: 'totalPLN is 240: the promotion replaces the loyalty credit.',

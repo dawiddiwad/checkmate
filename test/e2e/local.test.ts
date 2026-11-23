@@ -530,7 +530,7 @@ test('Pre-allow only the Checkmate commands that a chat may run — a shell chai
 	for (const command of refused) assert.equal(chatCommandAllowed(command, [cli]), false, command)
 })
 
-test('Name the existing assertion IDs when a revise delta uses an unknown one — the planner guessed IDs.', async (t) => {
+test('Revise a test whole — the code keeps an assertion ID whose check is unchanged and refuses a compound check.', async (t) => {
 	const workspace = directory(t)
 	const { chmodSync, copyFileSync, mkdirSync } = await import('node:fs')
 	const { delimiter } = await import('node:path')
@@ -631,18 +631,45 @@ test('Name the existing assertion IDs when a revise delta uses an unknown one �
 		'--rationale',
 		'Owner decision.',
 	])
-	const guessed = await inputCommand(
+	const compound = await inputCommand(
 		workspace,
 		env,
-		JSON.stringify({ tests: { T2: { assertions: { A9: null } } } }),
+		JSON.stringify({
+			tests: {
+				T2: {
+					assertions: [{ check: 'The quote is 240 and the total is 260.', checkKind: 'deterministic' }],
+				},
+			},
+		}),
 		'plan',
 		'revise',
 		'ticket'
 	)
-	assert.equal(guessed.code, 1, guessed.output)
-	assert.match(guessed.output, /T2 has assertions: A1/)
+	assert.equal(compound.code, 1, compound.output)
+	assert.match(compound.output, /checks more than one value/)
+	const revised = await ok(['plan', 'revise', 'ticket'], {
+		tests: {
+			T2: {
+				assertions: [
+					{ check: 'The newest item is first.', checkKind: 'deterministic' },
+					{ check: 'The list has at most 10 items.', checkKind: 'deterministic' },
+				],
+			},
+		},
+	})
+	assert.equal(revised.status, 'completed', JSON.stringify(revised))
+	const [{ body: stored }] = (
+		await ok(['query', "SELECT body FROM plan_revisions WHERE plan_id = 'ticket' AND revision = 2"])
+	).rows
+	const t2 = JSON.parse(stored).tests.find((test: { id: string }) => test.id === 'T2')
+	assert.deepEqual(
+		t2.assertions.map((assertion: { id: string; check: string }) => [assertion.id, assertion.check]),
+		[
+			['A1', 'The newest item is first.'],
+			['A2', 'The list has at most 10 items.'],
+		]
+	)
 })
-
 test('Read a worker reply with one JSON object among its words — a low-tier worker added a sentence around the JSON.', async () => {
 	const launcher = '../../cli/src/launcher.ts'
 	const { readPiResponse } = (await import(launcher)) as {

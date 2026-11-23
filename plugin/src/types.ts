@@ -184,24 +184,29 @@ export type PlanDelta = {
 	requirements?: Record<
 		string,
 		{
-			remove: boolean
+			remove?: boolean
+			text?: string
+			source?: string
+			area?: string
 		}
 	>
 	tests: Record<
 		string,
 		{
 			remove?: boolean
-			action?: string
+			title?: string
+			requirementIds?: Array<string>
+			capability?: string
+			operations?: Array<string>
+			dependsOn?: Array<string>
 			preconditions?: Array<string>
-			assertions?: Record<
-				string,
-				{
-					check?: string
-					checkKind?: 'deterministic' | 'agent_observation'
-					observe?: string
-					expected?: string
-				} | null
-			>
+			action?: string
+			assertions?: Array<{
+				check: string
+				checkKind: 'deterministic' | 'agent_observation'
+				observe?: string
+				expected?: string
+			}>
 		}
 	>
 }

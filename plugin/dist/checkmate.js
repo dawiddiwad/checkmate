@@ -848,26 +848,26 @@ function base32(value2, length) {
 // plugin/src/validators.js
 var validators_exports = {};
 __export(validators_exports, {
-  finding: () => zs,
-  gap: () => Os,
-  instance: () => Zs,
-  journalCriterion: () => _s,
-  journalDefect: () => Ns,
-  journalEntry: () => $s,
-  journalIssue: () => Ts,
+  finding: () => As,
+  gap: () => zs,
+  instance: () => Os,
+  journalCriterion: () => Zs,
+  journalDefect: () => _s,
+  journalEntry: () => Ns,
+  journalIssue: () => $s,
   journalNote: () => Ls,
-  journalObservation: () => xs,
-  journalQuestion: () => Ds,
-  journalTopic: () => Vs,
-  journalVerdict: () => Gs,
-  plan: () => Fs,
-  planCandidate: () => Es,
-  planDelta: () => Rs,
-  planPatch: () => Cs,
-  planRequest: () => Ks,
-  profile: () => Ws,
-  response: () => Ss,
-  result: () => Bs
+  journalObservation: () => Ts,
+  journalQuestion: () => xs,
+  journalTopic: () => Ds,
+  journalVerdict: () => Vs,
+  plan: () => Cs,
+  planCandidate: () => Gs,
+  planDelta: () => Ks,
+  planPatch: () => Es,
+  planRequest: () => Rs,
+  profile: () => Fs,
+  response: () => Ws,
+  result: () => Ss
 });
 var Y = (a, t) => () => {
   try {
@@ -880,32 +880,32 @@ var me = Y((J) => {
   "use strict";
   Object.defineProperty(J, "__esModule", { value: true });
   function oe(a) {
-    let t = a.length, $ = 0, _ = 0, T;
-    for (; _ < t; ) $++, T = a.charCodeAt(_++), T >= 55296 && T <= 56319 && _ < t && (T = a.charCodeAt(_), (T & 64512) === 56320 && _++);
+    let t = a.length, $ = 0, _ = 0, L;
+    for (; _ < t; ) $++, L = a.charCodeAt(_++), L >= 55296 && L <= 56319 && _ < t && (L = a.charCodeAt(_), (L & 64512) === 56320 && _++);
     return $;
   }
   J.default = oe;
   oe.code = 'require("ajv/dist/runtime/ucs2length").default';
 });
-var ue = Y((Is, le) => {
+var ue = Y((bs, le) => {
   "use strict";
   le.exports = function a(t, $) {
     if (t === $) return true;
     if (t && $ && typeof t == "object" && typeof $ == "object") {
       if (t.constructor !== $.constructor) return false;
-      var _, T, e;
+      var _, L, e;
       if (Array.isArray(t)) {
         if (_ = t.length, _ != $.length) return false;
-        for (T = _; T-- !== 0; ) if (!a(t[T], $[T])) return false;
+        for (L = _; L-- !== 0; ) if (!a(t[L], $[L])) return false;
         return true;
       }
       if (t.constructor === RegExp) return t.source === $.source && t.flags === $.flags;
       if (t.valueOf !== Object.prototype.valueOf) return t.valueOf() === $.valueOf();
       if (t.toString !== Object.prototype.toString) return t.toString() === $.toString();
       if (e = Object.keys(t), _ = e.length, _ !== Object.keys($).length) return false;
-      for (T = _; T-- !== 0; ) if (!Object.prototype.hasOwnProperty.call($, e[T])) return false;
-      for (T = _; T-- !== 0; ) {
-        var s = e[T];
+      for (L = _; L-- !== 0; ) if (!Object.prototype.hasOwnProperty.call($, e[L])) return false;
+      for (L = _; L-- !== 0; ) {
+        var s = e[L];
         if (!a(t[s], $[s])) return false;
       }
       return true;
@@ -920,25 +920,25 @@ var ce = Y((ee) => {
   de.code = 'require("ajv/dist/runtime/equal").default';
   ee.default = de;
 });
-var ve = Y((C) => {
+var ve = Y((R) => {
   "use strict";
-  Object.defineProperty(C, "__esModule", { value: true });
-  C.formatNames = C.fastFormats = C.fullFormats = void 0;
-  function R(a, t) {
+  Object.defineProperty(R, "__esModule", { value: true });
+  R.formatNames = R.fastFormats = R.fullFormats = void 0;
+  function E(a, t) {
     return { validate: a, compare: t };
   }
-  C.fullFormats = { date: R(ge, ie), time: R(te(true), ae), "date-time": R(he(true), we), "iso-time": R(te(), Pe), "iso-date-time": R(he(), ke), duration: /^P(?!$)((\d+Y)?(\d+M)?(\d+D)?(T(?=\d)(\d+H)?(\d+M)?(\d+S)?)?|(\d+W)?)$/, uri: ss, "uri-reference": /^(?:[a-z][a-z0-9+\-.]*:)?(?:\/?\/(?:(?:[a-z0-9\-._~!$&'()*+,;=:]|%[0-9a-f]{2})*@)?(?:\[(?:(?:(?:(?:[0-9a-f]{1,4}:){6}|::(?:[0-9a-f]{1,4}:){5}|(?:[0-9a-f]{1,4})?::(?:[0-9a-f]{1,4}:){4}|(?:(?:[0-9a-f]{1,4}:){0,1}[0-9a-f]{1,4})?::(?:[0-9a-f]{1,4}:){3}|(?:(?:[0-9a-f]{1,4}:){0,2}[0-9a-f]{1,4})?::(?:[0-9a-f]{1,4}:){2}|(?:(?:[0-9a-f]{1,4}:){0,3}[0-9a-f]{1,4})?::[0-9a-f]{1,4}:|(?:(?:[0-9a-f]{1,4}:){0,4}[0-9a-f]{1,4})?::)(?:[0-9a-f]{1,4}:[0-9a-f]{1,4}|(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d\d?))|(?:(?:[0-9a-f]{1,4}:){0,5}[0-9a-f]{1,4})?::[0-9a-f]{1,4}|(?:(?:[0-9a-f]{1,4}:){0,6}[0-9a-f]{1,4})?::)|[Vv][0-9a-f]+\.[a-z0-9\-._~!$&'()*+,;=:]+)\]|(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d\d?)|(?:[a-z0-9\-._~!$&'"()*+,;=]|%[0-9a-f]{2})*)(?::\d*)?(?:\/(?:[a-z0-9\-._~!$&'"()*+,;=:@]|%[0-9a-f]{2})*)*|\/(?:(?:[a-z0-9\-._~!$&'"()*+,;=:@]|%[0-9a-f]{2})+(?:\/(?:[a-z0-9\-._~!$&'"()*+,;=:@]|%[0-9a-f]{2})*)*)?|(?:[a-z0-9\-._~!$&'"()*+,;=:@]|%[0-9a-f]{2})+(?:\/(?:[a-z0-9\-._~!$&'"()*+,;=:@]|%[0-9a-f]{2})*)*)?(?:\?(?:[a-z0-9\-._~!$&'"()*+,;=:@/?]|%[0-9a-f]{2})*)?(?:#(?:[a-z0-9\-._~!$&'"()*+,;=:@/?]|%[0-9a-f]{2})*)?$/i, "uri-template": /^(?:(?:[^\x00-\x20"'<>%\\^`{|}]|%[0-9a-f]{2})|\{[+#./;?&=,!@|]?(?:[a-z0-9_]|%[0-9a-f]{2})+(?::[1-9][0-9]{0,3}|\*)?(?:,(?:[a-z0-9_]|%[0-9a-f]{2})+(?::[1-9][0-9]{0,3}|\*)?)*\})*$/i, url: /^(?:https?|ftp):\/\/(?:\S+(?::\S*)?@)?(?:(?!(?:10|127)(?:\.\d{1,3}){3})(?!(?:169\.254|192\.168)(?:\.\d{1,3}){2})(?!172\.(?:1[6-9]|2\d|3[0-1])(?:\.\d{1,3}){2})(?:[1-9]\d?|1\d\d|2[01]\d|22[0-3])(?:\.(?:1?\d{1,2}|2[0-4]\d|25[0-5])){2}(?:\.(?:[1-9]\d?|1\d\d|2[0-4]\d|25[0-4]))|(?:(?:[a-z0-9\u{00a1}-\u{ffff}]+-)*[a-z0-9\u{00a1}-\u{ffff}]+)(?:\.(?:[a-z0-9\u{00a1}-\u{ffff}]+-)*[a-z0-9\u{00a1}-\u{ffff}]+)*(?:\.(?:[a-z\u{00a1}-\u{ffff}]{2,})))(?::\d{2,5})?(?:\/[^\s]*)?$/iu, email: /^[a-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[a-z0-9!#$%&'*+/=?^_`{|}~-]+)*@(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/i, hostname: /^(?=.{1,253}\.?$)[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[-0-9a-z]{0,61}[0-9a-z])?)*\.?$/i, ipv4: /^(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)$/, ipv6: /^((([0-9a-f]{1,4}:){7}([0-9a-f]{1,4}|:))|(([0-9a-f]{1,4}:){6}(:[0-9a-f]{1,4}|((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3})|:))|(([0-9a-f]{1,4}:){5}(((:[0-9a-f]{1,4}){1,2})|:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3})|:))|(([0-9a-f]{1,4}:){4}(((:[0-9a-f]{1,4}){1,3})|((:[0-9a-f]{1,4})?:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}))|:))|(([0-9a-f]{1,4}:){3}(((:[0-9a-f]{1,4}){1,4})|((:[0-9a-f]{1,4}){0,2}:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}))|:))|(([0-9a-f]{1,4}:){2}(((:[0-9a-f]{1,4}){1,5})|((:[0-9a-f]{1,4}){0,3}:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}))|:))|(([0-9a-f]{1,4}:){1}(((:[0-9a-f]{1,4}){1,6})|((:[0-9a-f]{1,4}){0,4}:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}))|:))|(:(((:[0-9a-f]{1,4}){1,7})|((:[0-9a-f]{1,4}){0,5}:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}))|:)))$/i, regex: os, uuid: /^(?:urn:uuid:)?[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i, "json-pointer": /^(?:\/(?:[^~/]|~0|~1)*)*$/, "json-pointer-uri-fragment": /^#(?:\/(?:[a-z0-9_\-.!$&'()*+,;:=@]|%[0-9a-f]{2}|~0|~1)*)*$/i, "relative-json-pointer": /^(?:0|[1-9][0-9]*)(?:#|(?:\/(?:[^~/]|~0|~1)*)*)$/, byte: ts, int32: { type: "number", validate: as }, int64: { type: "number", validate: ns }, float: { type: "number", validate: ye }, double: { type: "number", validate: ye }, password: true, binary: true };
-  C.fastFormats = { ...C.fullFormats, date: R(/^\d\d\d\d-[0-1]\d-[0-3]\d$/, ie), time: R(/^(?:[0-2]\d:[0-5]\d:[0-5]\d|23:59:60)(?:\.\d+)?(?:z|[+-]\d\d(?::?\d\d)?)$/i, ae), "date-time": R(/^\d\d\d\d-[0-1]\d-[0-3]\dt(?:[0-2]\d:[0-5]\d:[0-5]\d|23:59:60)(?:\.\d+)?(?:z|[+-]\d\d(?::?\d\d)?)$/i, we), "iso-time": R(/^(?:[0-2]\d:[0-5]\d:[0-5]\d|23:59:60)(?:\.\d+)?(?:z|[+-]\d\d(?::?\d\d)?)?$/i, Pe), "iso-date-time": R(/^\d\d\d\d-[0-1]\d-[0-3]\d[t\s](?:[0-2]\d:[0-5]\d:[0-5]\d|23:59:60)(?:\.\d+)?(?:z|[+-]\d\d(?::?\d\d)?)?$/i, ke), uri: /^(?:[a-z][a-z0-9+\-.]*:)(?:\/?\/)?[^\s]*$/i, "uri-reference": /^(?:(?:[a-z][a-z0-9+\-.]*:)?\/?\/)?(?:[^\\\s#][^\s#]*)?(?:#[^\\\s]*)?$/i, email: /^[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$/i };
-  C.formatNames = Object.keys(C.fullFormats);
-  function Qe(a) {
+  R.fullFormats = { date: E(ge, ie), time: E(te(true), ae), "date-time": E(he(true), we), "iso-time": E(te(), Pe), "iso-date-time": E(he(), ke), duration: /^P(?!$)((\d+Y)?(\d+M)?(\d+D)?(T(?=\d)(\d+H)?(\d+M)?(\d+S)?)?|(\d+W)?)$/, uri: rs, "uri-reference": /^(?:[a-z][a-z0-9+\-.]*:)?(?:\/?\/(?:(?:[a-z0-9\-._~!$&'()*+,;=:]|%[0-9a-f]{2})*@)?(?:\[(?:(?:(?:(?:[0-9a-f]{1,4}:){6}|::(?:[0-9a-f]{1,4}:){5}|(?:[0-9a-f]{1,4})?::(?:[0-9a-f]{1,4}:){4}|(?:(?:[0-9a-f]{1,4}:){0,1}[0-9a-f]{1,4})?::(?:[0-9a-f]{1,4}:){3}|(?:(?:[0-9a-f]{1,4}:){0,2}[0-9a-f]{1,4})?::(?:[0-9a-f]{1,4}:){2}|(?:(?:[0-9a-f]{1,4}:){0,3}[0-9a-f]{1,4})?::[0-9a-f]{1,4}:|(?:(?:[0-9a-f]{1,4}:){0,4}[0-9a-f]{1,4})?::)(?:[0-9a-f]{1,4}:[0-9a-f]{1,4}|(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d\d?))|(?:(?:[0-9a-f]{1,4}:){0,5}[0-9a-f]{1,4})?::[0-9a-f]{1,4}|(?:(?:[0-9a-f]{1,4}:){0,6}[0-9a-f]{1,4})?::)|[Vv][0-9a-f]+\.[a-z0-9\-._~!$&'()*+,;=:]+)\]|(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d\d?)|(?:[a-z0-9\-._~!$&'"()*+,;=]|%[0-9a-f]{2})*)(?::\d*)?(?:\/(?:[a-z0-9\-._~!$&'"()*+,;=:@]|%[0-9a-f]{2})*)*|\/(?:(?:[a-z0-9\-._~!$&'"()*+,;=:@]|%[0-9a-f]{2})+(?:\/(?:[a-z0-9\-._~!$&'"()*+,;=:@]|%[0-9a-f]{2})*)*)?|(?:[a-z0-9\-._~!$&'"()*+,;=:@]|%[0-9a-f]{2})+(?:\/(?:[a-z0-9\-._~!$&'"()*+,;=:@]|%[0-9a-f]{2})*)*)?(?:\?(?:[a-z0-9\-._~!$&'"()*+,;=:@/?]|%[0-9a-f]{2})*)?(?:#(?:[a-z0-9\-._~!$&'"()*+,;=:@/?]|%[0-9a-f]{2})*)?$/i, "uri-template": /^(?:(?:[^\x00-\x20"'<>%\\^`{|}]|%[0-9a-f]{2})|\{[+#./;?&=,!@|]?(?:[a-z0-9_]|%[0-9a-f]{2})+(?::[1-9][0-9]{0,3}|\*)?(?:,(?:[a-z0-9_]|%[0-9a-f]{2})+(?::[1-9][0-9]{0,3}|\*)?)*\})*$/i, url: /^(?:https?|ftp):\/\/(?:\S+(?::\S*)?@)?(?:(?!(?:10|127)(?:\.\d{1,3}){3})(?!(?:169\.254|192\.168)(?:\.\d{1,3}){2})(?!172\.(?:1[6-9]|2\d|3[0-1])(?:\.\d{1,3}){2})(?:[1-9]\d?|1\d\d|2[01]\d|22[0-3])(?:\.(?:1?\d{1,2}|2[0-4]\d|25[0-5])){2}(?:\.(?:[1-9]\d?|1\d\d|2[0-4]\d|25[0-4]))|(?:(?:[a-z0-9\u{00a1}-\u{ffff}]+-)*[a-z0-9\u{00a1}-\u{ffff}]+)(?:\.(?:[a-z0-9\u{00a1}-\u{ffff}]+-)*[a-z0-9\u{00a1}-\u{ffff}]+)*(?:\.(?:[a-z\u{00a1}-\u{ffff}]{2,})))(?::\d{2,5})?(?:\/[^\s]*)?$/iu, email: /^[a-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[a-z0-9!#$%&'*+/=?^_`{|}~-]+)*@(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/i, hostname: /^(?=.{1,253}\.?$)[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[-0-9a-z]{0,61}[0-9a-z])?)*\.?$/i, ipv4: /^(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)$/, ipv6: /^((([0-9a-f]{1,4}:){7}([0-9a-f]{1,4}|:))|(([0-9a-f]{1,4}:){6}(:[0-9a-f]{1,4}|((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3})|:))|(([0-9a-f]{1,4}:){5}(((:[0-9a-f]{1,4}){1,2})|:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3})|:))|(([0-9a-f]{1,4}:){4}(((:[0-9a-f]{1,4}){1,3})|((:[0-9a-f]{1,4})?:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}))|:))|(([0-9a-f]{1,4}:){3}(((:[0-9a-f]{1,4}){1,4})|((:[0-9a-f]{1,4}){0,2}:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}))|:))|(([0-9a-f]{1,4}:){2}(((:[0-9a-f]{1,4}){1,5})|((:[0-9a-f]{1,4}){0,3}:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}))|:))|(([0-9a-f]{1,4}:){1}(((:[0-9a-f]{1,4}){1,6})|((:[0-9a-f]{1,4}){0,4}:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}))|:))|(:(((:[0-9a-f]{1,4}){1,7})|((:[0-9a-f]{1,4}){0,5}:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}))|:)))$/i, regex: ls, uuid: /^(?:urn:uuid:)?[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i, "json-pointer": /^(?:\/(?:[^~/]|~0|~1)*)*$/, "json-pointer-uri-fragment": /^#(?:\/(?:[a-z0-9_\-.!$&'()*+,;:=@]|%[0-9a-f]{2}|~0|~1)*)*$/i, "relative-json-pointer": /^(?:0|[1-9][0-9]*)(?:#|(?:\/(?:[^~/]|~0|~1)*)*)$/, byte: is, int32: { type: "number", validate: ps }, int64: { type: "number", validate: os }, float: { type: "number", validate: ye }, double: { type: "number", validate: ye }, password: true, binary: true };
+  R.fastFormats = { ...R.fullFormats, date: E(/^\d\d\d\d-[0-1]\d-[0-3]\d$/, ie), time: E(/^(?:[0-2]\d:[0-5]\d:[0-5]\d|23:59:60)(?:\.\d+)?(?:z|[+-]\d\d(?::?\d\d)?)$/i, ae), "date-time": E(/^\d\d\d\d-[0-1]\d-[0-3]\dt(?:[0-2]\d:[0-5]\d:[0-5]\d|23:59:60)(?:\.\d+)?(?:z|[+-]\d\d(?::?\d\d)?)$/i, we), "iso-time": E(/^(?:[0-2]\d:[0-5]\d:[0-5]\d|23:59:60)(?:\.\d+)?(?:z|[+-]\d\d(?::?\d\d)?)?$/i, Pe), "iso-date-time": E(/^\d\d\d\d-[0-1]\d-[0-3]\d[t\s](?:[0-2]\d:[0-5]\d:[0-5]\d|23:59:60)(?:\.\d+)?(?:z|[+-]\d\d(?::?\d\d)?)?$/i, ke), uri: /^(?:[a-z][a-z0-9+\-.]*:)(?:\/?\/)?[^\s]*$/i, "uri-reference": /^(?:(?:[a-z][a-z0-9+\-.]*:)?\/?\/)?(?:[^\\\s#][^\s#]*)?(?:#[^\\\s]*)?$/i, email: /^[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$/i };
+  R.formatNames = Object.keys(R.fullFormats);
+  function Xe(a) {
     return a % 4 === 0 && (a % 100 !== 0 || a % 400 === 0);
   }
-  var Ue = /^(\d\d\d\d)-(\d\d)-(\d\d)$/, Xe = [0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  var Je = /^(\d\d\d\d)-(\d\d)-(\d\d)$/, es = [0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
   function ge(a) {
-    let t = Ue.exec(a);
+    let t = Je.exec(a);
     if (!t) return false;
-    let $ = +t[1], _ = +t[2], T = +t[3];
-    return _ >= 1 && _ <= 12 && T >= 1 && T <= (_ === 2 && Qe($) ? 29 : Xe[_]);
+    let $ = +t[1], _ = +t[2], L = +t[3];
+    return _ >= 1 && _ <= 12 && L >= 1 && L <= (_ === 2 && Xe($) ? 29 : es[_]);
   }
   function ie(a, t) {
     if (a && t) return a > t ? 1 : a < t ? -1 : 0;
@@ -948,11 +948,11 @@ var ve = Y((C) => {
     return function($) {
       let _ = se.exec($);
       if (!_) return false;
-      let T = +_[1], e = +_[2], s = +_[3], w = _[4], n = _[5] === "-" ? -1 : 1, r = +(_[6] || 0), l = +(_[7] || 0);
-      if (r > 23 || l > 59 || a && !w) return false;
-      if (T <= 23 && e <= 59 && s < 60) return true;
-      let d = e - l * n, c = T - r * n - (d < 0 ? 1 : 0);
-      return (c === 23 || c === -1) && (d === 59 || d === -1) && s < 61;
+      let L = +_[1], e = +_[2], s = +_[3], w = _[4], n = _[5] === "-" ? -1 : 1, r = +(_[6] || 0), m = +(_[7] || 0);
+      if (r > 23 || m > 59 || a && !w) return false;
+      if (L <= 23 && e <= 59 && s < 60) return true;
+      let c = e - m * n, d = L - r * n - (c < 0 ? 1 : 0);
+      return (d === 23 || d === -1) && (c === 59 || c === -1) && s < 61;
     };
   }
   function ae(a, t) {
@@ -969,8 +969,8 @@ var ve = Y((C) => {
   function he(a) {
     let t = te(a);
     return function(_) {
-      let T = _.split(re);
-      return T.length === 2 && ge(T[0]) && t(T[1]);
+      let L = _.split(re);
+      return L.length === 2 && ge(L[0]) && t(L[1]);
     };
   }
   function we(a, t) {
@@ -980,30 +980,30 @@ var ve = Y((C) => {
   }
   function ke(a, t) {
     if (!(a && t)) return;
-    let [$, _] = a.split(re), [T, e] = t.split(re), s = ie($, T);
+    let [$, _] = a.split(re), [L, e] = t.split(re), s = ie($, L);
     if (s !== void 0) return s || ae(_, e);
   }
-  var Je = /\/|:/, es = /^(?:[a-z][a-z0-9+\-.]*:)(?:\/?\/(?:(?:[a-z0-9\-._~!$&'()*+,;=:]|%[0-9a-f]{2})*@)?(?:\[(?:(?:(?:(?:[0-9a-f]{1,4}:){6}|::(?:[0-9a-f]{1,4}:){5}|(?:[0-9a-f]{1,4})?::(?:[0-9a-f]{1,4}:){4}|(?:(?:[0-9a-f]{1,4}:){0,1}[0-9a-f]{1,4})?::(?:[0-9a-f]{1,4}:){3}|(?:(?:[0-9a-f]{1,4}:){0,2}[0-9a-f]{1,4})?::(?:[0-9a-f]{1,4}:){2}|(?:(?:[0-9a-f]{1,4}:){0,3}[0-9a-f]{1,4})?::[0-9a-f]{1,4}:|(?:(?:[0-9a-f]{1,4}:){0,4}[0-9a-f]{1,4})?::)(?:[0-9a-f]{1,4}:[0-9a-f]{1,4}|(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d\d?))|(?:(?:[0-9a-f]{1,4}:){0,5}[0-9a-f]{1,4})?::[0-9a-f]{1,4}|(?:(?:[0-9a-f]{1,4}:){0,6}[0-9a-f]{1,4})?::)|[Vv][0-9a-f]+\.[a-z0-9\-._~!$&'()*+,;=:]+)\]|(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d\d?)|(?:[a-z0-9\-._~!$&'()*+,;=]|%[0-9a-f]{2})*)(?::\d*)?(?:\/(?:[a-z0-9\-._~!$&'()*+,;=:@]|%[0-9a-f]{2})*)*|\/(?:(?:[a-z0-9\-._~!$&'()*+,;=:@]|%[0-9a-f]{2})+(?:\/(?:[a-z0-9\-._~!$&'()*+,;=:@]|%[0-9a-f]{2})*)*)?|(?:[a-z0-9\-._~!$&'()*+,;=:@]|%[0-9a-f]{2})+(?:\/(?:[a-z0-9\-._~!$&'()*+,;=:@]|%[0-9a-f]{2})*)*)(?:\?(?:[a-z0-9\-._~!$&'()*+,;=:@/?]|%[0-9a-f]{2})*)?(?:#(?:[a-z0-9\-._~!$&'()*+,;=:@/?]|%[0-9a-f]{2})*)?$/i;
-  function ss(a) {
-    return Je.test(a) && es.test(a);
+  var ss = /\/|:/, ts = /^(?:[a-z][a-z0-9+\-.]*:)(?:\/?\/(?:(?:[a-z0-9\-._~!$&'()*+,;=:]|%[0-9a-f]{2})*@)?(?:\[(?:(?:(?:(?:[0-9a-f]{1,4}:){6}|::(?:[0-9a-f]{1,4}:){5}|(?:[0-9a-f]{1,4})?::(?:[0-9a-f]{1,4}:){4}|(?:(?:[0-9a-f]{1,4}:){0,1}[0-9a-f]{1,4})?::(?:[0-9a-f]{1,4}:){3}|(?:(?:[0-9a-f]{1,4}:){0,2}[0-9a-f]{1,4})?::(?:[0-9a-f]{1,4}:){2}|(?:(?:[0-9a-f]{1,4}:){0,3}[0-9a-f]{1,4})?::[0-9a-f]{1,4}:|(?:(?:[0-9a-f]{1,4}:){0,4}[0-9a-f]{1,4})?::)(?:[0-9a-f]{1,4}:[0-9a-f]{1,4}|(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d\d?))|(?:(?:[0-9a-f]{1,4}:){0,5}[0-9a-f]{1,4})?::[0-9a-f]{1,4}|(?:(?:[0-9a-f]{1,4}:){0,6}[0-9a-f]{1,4})?::)|[Vv][0-9a-f]+\.[a-z0-9\-._~!$&'()*+,;=:]+)\]|(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d\d?)|(?:[a-z0-9\-._~!$&'()*+,;=]|%[0-9a-f]{2})*)(?::\d*)?(?:\/(?:[a-z0-9\-._~!$&'()*+,;=:@]|%[0-9a-f]{2})*)*|\/(?:(?:[a-z0-9\-._~!$&'()*+,;=:@]|%[0-9a-f]{2})+(?:\/(?:[a-z0-9\-._~!$&'()*+,;=:@]|%[0-9a-f]{2})*)*)?|(?:[a-z0-9\-._~!$&'()*+,;=:@]|%[0-9a-f]{2})+(?:\/(?:[a-z0-9\-._~!$&'()*+,;=:@]|%[0-9a-f]{2})*)*)(?:\?(?:[a-z0-9\-._~!$&'()*+,;=:@/?]|%[0-9a-f]{2})*)?(?:#(?:[a-z0-9\-._~!$&'()*+,;=:@/?]|%[0-9a-f]{2})*)?$/i;
+  function rs(a) {
+    return ss.test(a) && ts.test(a);
   }
   var fe = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/gm;
-  function ts(a) {
+  function is(a) {
     return fe.lastIndex = 0, fe.test(a);
   }
-  var rs = -(2 ** 31), is = 2 ** 31 - 1;
-  function as(a) {
-    return Number.isInteger(a) && a <= is && a >= rs;
+  var as = -(2 ** 31), ns = 2 ** 31 - 1;
+  function ps(a) {
+    return Number.isInteger(a) && a <= ns && a >= as;
   }
-  function ns(a) {
+  function os(a) {
     return Number.isInteger(a);
   }
   function ye() {
     return true;
   }
-  var ps = /[^\\]\\Z/;
-  function os(a) {
-    if (ps.test(a)) return false;
+  var ms = /[^\\]\\Z/;
+  function ls(a) {
+    if (ms.test(a)) return false;
     try {
       return new RegExp(a), true;
     } catch {
@@ -1011,15 +1011,15 @@ var ve = Y((C) => {
     }
   }
 });
-var zs = Oe;
+var As = _e;
 var ne = { $schema: "http://json-schema.org/draft-07/schema#", $id: "finding.schema.json", type: "object", properties: { id: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, type: { enum: ["defect", "potential_issue"] }, severity: { enum: ["low", "medium", "high", "critical"] }, assertionIds: { type: "array", items: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}\\.[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 0, uniqueItems: true }, requirementIds: { type: "array", items: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 0, uniqueItems: true }, title: { type: "string", minLength: 1 }, expected: { type: "string", minLength: 1 }, observed: { type: "string", minLength: 1 }, reproduction: { type: "array", items: { type: "string", minLength: 1 }, minItems: 1, uniqueItems: true }, evidenceIds: { type: "array", items: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 0, uniqueItems: true }, metadata: { $ref: "plan.schema.json#/definitions/metadata" } }, required: ["id", "type", "severity", "assertionIds", "requirementIds", "title", "expected", "observed", "reproduction", "evidenceIds"], additionalProperties: false };
 var F = { type: "object", propertyNames: { pattern: "^[A-Za-z][A-Za-z0-9_.-]{0,63}$" }, additionalProperties: { type: ["string", "number", "boolean"], maxLength: 500 }, maxProperties: 20 };
-var E = Object.prototype.hasOwnProperty;
+var K = Object.prototype.hasOwnProperty;
 var A = me().default;
 var Z = new RegExp("^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$", "u");
-var ze = new RegExp("^[A-Za-z0-9][A-Za-z0-9_-]{0,95}\\.[A-Za-z0-9][A-Za-z0-9_-]{0,95}$", "u");
+var Ze = new RegExp("^[A-Za-z0-9][A-Za-z0-9_-]{0,95}\\.[A-Za-z0-9][A-Za-z0-9_-]{0,95}$", "u");
 var W = new RegExp("^[A-Za-z][A-Za-z0-9_.-]{0,63}$", "u");
-function Oe(a, { instancePath: t = "", parentData: $, parentDataProperty: _, rootData: T = a } = {}) {
+function _e(a, { instancePath: t = "", parentData: $, parentDataProperty: _, rootData: L = a } = {}) {
   let e = null, s = 0;
   if (a && typeof a == "object" && !Array.isArray(a)) {
     if (a.id === void 0) {
@@ -1062,7 +1062,7 @@ function Oe(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
       let n = { instancePath: t, schemaPath: "#/required", keyword: "required", params: { missingProperty: "evidenceIds" }, message: "must have required property 'evidenceIds'" };
       e === null ? e = [n] : e.push(n), s++;
     }
-    for (let n in a) if (!E.call(ne.properties, n)) {
+    for (let n in a) if (!K.call(ne.properties, n)) {
       let r = { instancePath: t, schemaPath: "#/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: n }, message: "must NOT have additional properties" };
       e === null ? e = [r] : e.push(r), s++;
     }
@@ -1096,35 +1096,35 @@ function Oe(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
       let n = a.assertionIds;
       if (Array.isArray(n)) {
         if (n.length < 0) {
-          let c = { instancePath: t + "/assertionIds", schemaPath: "#/properties/assertionIds/minItems", keyword: "minItems", params: { limit: 0 }, message: "must NOT have fewer than 0 items" };
-          e === null ? e = [c] : e.push(c), s++;
+          let d = { instancePath: t + "/assertionIds", schemaPath: "#/properties/assertionIds/minItems", keyword: "minItems", params: { limit: 0 }, message: "must NOT have fewer than 0 items" };
+          e === null ? e = [d] : e.push(d), s++;
         }
         let r = n.length;
-        for (let c = 0; c < r; c++) {
-          let p = n[c];
+        for (let d = 0; d < r; d++) {
+          let p = n[d];
           if (typeof p == "string") {
-            if (!ze.test(p)) {
-              let u = { instancePath: t + "/assertionIds/" + c, schemaPath: "#/properties/assertionIds/items/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}\\.[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}\\.[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
+            if (!Ze.test(p)) {
+              let u = { instancePath: t + "/assertionIds/" + d, schemaPath: "#/properties/assertionIds/items/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}\\.[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}\\.[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
               e === null ? e = [u] : e.push(u), s++;
             }
           } else {
-            let u = { instancePath: t + "/assertionIds/" + c, schemaPath: "#/properties/assertionIds/items/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+            let u = { instancePath: t + "/assertionIds/" + d, schemaPath: "#/properties/assertionIds/items/type", keyword: "type", params: { type: "string" }, message: "must be string" };
             e === null ? e = [u] : e.push(u), s++;
           }
         }
-        let l = n.length, d;
-        if (l > 1) {
-          let c = {};
-          for (; l--; ) {
-            let p = n[l];
+        let m = n.length, c;
+        if (m > 1) {
+          let d = {};
+          for (; m--; ) {
+            let p = n[m];
             if (typeof p == "string") {
-              if (typeof c[p] == "number") {
-                d = c[p];
-                let u = { instancePath: t + "/assertionIds", schemaPath: "#/properties/assertionIds/uniqueItems", keyword: "uniqueItems", params: { i: l, j: d }, message: "must NOT have duplicate items (items ## " + d + " and " + l + " are identical)" };
+              if (typeof d[p] == "number") {
+                c = d[p];
+                let u = { instancePath: t + "/assertionIds", schemaPath: "#/properties/assertionIds/uniqueItems", keyword: "uniqueItems", params: { i: m, j: c }, message: "must NOT have duplicate items (items ## " + c + " and " + m + " are identical)" };
                 e === null ? e = [u] : e.push(u), s++;
                 break;
               }
-              c[p] = l;
+              d[p] = m;
             }
           }
         }
@@ -1137,35 +1137,35 @@ function Oe(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
       let n = a.requirementIds;
       if (Array.isArray(n)) {
         if (n.length < 0) {
-          let c = { instancePath: t + "/requirementIds", schemaPath: "#/properties/requirementIds/minItems", keyword: "minItems", params: { limit: 0 }, message: "must NOT have fewer than 0 items" };
-          e === null ? e = [c] : e.push(c), s++;
+          let d = { instancePath: t + "/requirementIds", schemaPath: "#/properties/requirementIds/minItems", keyword: "minItems", params: { limit: 0 }, message: "must NOT have fewer than 0 items" };
+          e === null ? e = [d] : e.push(d), s++;
         }
         let r = n.length;
-        for (let c = 0; c < r; c++) {
-          let p = n[c];
+        for (let d = 0; d < r; d++) {
+          let p = n[d];
           if (typeof p == "string") {
             if (!Z.test(p)) {
-              let u = { instancePath: t + "/requirementIds/" + c, schemaPath: "#/properties/requirementIds/items/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
+              let u = { instancePath: t + "/requirementIds/" + d, schemaPath: "#/properties/requirementIds/items/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
               e === null ? e = [u] : e.push(u), s++;
             }
           } else {
-            let u = { instancePath: t + "/requirementIds/" + c, schemaPath: "#/properties/requirementIds/items/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+            let u = { instancePath: t + "/requirementIds/" + d, schemaPath: "#/properties/requirementIds/items/type", keyword: "type", params: { type: "string" }, message: "must be string" };
             e === null ? e = [u] : e.push(u), s++;
           }
         }
-        let l = n.length, d;
-        if (l > 1) {
-          let c = {};
-          for (; l--; ) {
-            let p = n[l];
+        let m = n.length, c;
+        if (m > 1) {
+          let d = {};
+          for (; m--; ) {
+            let p = n[m];
             if (typeof p == "string") {
-              if (typeof c[p] == "number") {
-                d = c[p];
-                let u = { instancePath: t + "/requirementIds", schemaPath: "#/properties/requirementIds/uniqueItems", keyword: "uniqueItems", params: { i: l, j: d }, message: "must NOT have duplicate items (items ## " + d + " and " + l + " are identical)" };
+              if (typeof d[p] == "number") {
+                c = d[p];
+                let u = { instancePath: t + "/requirementIds", schemaPath: "#/properties/requirementIds/uniqueItems", keyword: "uniqueItems", params: { i: m, j: c }, message: "must NOT have duplicate items (items ## " + c + " and " + m + " are identical)" };
                 e === null ? e = [u] : e.push(u), s++;
                 break;
               }
-              c[p] = l;
+              d[p] = m;
             }
           }
         }
@@ -1214,35 +1214,35 @@ function Oe(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
       let n = a.reproduction;
       if (Array.isArray(n)) {
         if (n.length < 1) {
-          let c = { instancePath: t + "/reproduction", schemaPath: "#/properties/reproduction/minItems", keyword: "minItems", params: { limit: 1 }, message: "must NOT have fewer than 1 items" };
-          e === null ? e = [c] : e.push(c), s++;
+          let d = { instancePath: t + "/reproduction", schemaPath: "#/properties/reproduction/minItems", keyword: "minItems", params: { limit: 1 }, message: "must NOT have fewer than 1 items" };
+          e === null ? e = [d] : e.push(d), s++;
         }
         let r = n.length;
-        for (let c = 0; c < r; c++) {
-          let p = n[c];
+        for (let d = 0; d < r; d++) {
+          let p = n[d];
           if (typeof p == "string") {
             if (A(p) < 1) {
-              let u = { instancePath: t + "/reproduction/" + c, schemaPath: "#/properties/reproduction/items/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
+              let u = { instancePath: t + "/reproduction/" + d, schemaPath: "#/properties/reproduction/items/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
               e === null ? e = [u] : e.push(u), s++;
             }
           } else {
-            let u = { instancePath: t + "/reproduction/" + c, schemaPath: "#/properties/reproduction/items/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+            let u = { instancePath: t + "/reproduction/" + d, schemaPath: "#/properties/reproduction/items/type", keyword: "type", params: { type: "string" }, message: "must be string" };
             e === null ? e = [u] : e.push(u), s++;
           }
         }
-        let l = n.length, d;
-        if (l > 1) {
-          let c = {};
-          for (; l--; ) {
-            let p = n[l];
+        let m = n.length, c;
+        if (m > 1) {
+          let d = {};
+          for (; m--; ) {
+            let p = n[m];
             if (typeof p == "string") {
-              if (typeof c[p] == "number") {
-                d = c[p];
-                let u = { instancePath: t + "/reproduction", schemaPath: "#/properties/reproduction/uniqueItems", keyword: "uniqueItems", params: { i: l, j: d }, message: "must NOT have duplicate items (items ## " + d + " and " + l + " are identical)" };
+              if (typeof d[p] == "number") {
+                c = d[p];
+                let u = { instancePath: t + "/reproduction", schemaPath: "#/properties/reproduction/uniqueItems", keyword: "uniqueItems", params: { i: m, j: c }, message: "must NOT have duplicate items (items ## " + c + " and " + m + " are identical)" };
                 e === null ? e = [u] : e.push(u), s++;
                 break;
               }
-              c[p] = l;
+              d[p] = m;
             }
           }
         }
@@ -1255,35 +1255,35 @@ function Oe(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
       let n = a.evidenceIds;
       if (Array.isArray(n)) {
         if (n.length < 0) {
-          let c = { instancePath: t + "/evidenceIds", schemaPath: "#/properties/evidenceIds/minItems", keyword: "minItems", params: { limit: 0 }, message: "must NOT have fewer than 0 items" };
-          e === null ? e = [c] : e.push(c), s++;
+          let d = { instancePath: t + "/evidenceIds", schemaPath: "#/properties/evidenceIds/minItems", keyword: "minItems", params: { limit: 0 }, message: "must NOT have fewer than 0 items" };
+          e === null ? e = [d] : e.push(d), s++;
         }
         let r = n.length;
-        for (let c = 0; c < r; c++) {
-          let p = n[c];
+        for (let d = 0; d < r; d++) {
+          let p = n[d];
           if (typeof p == "string") {
             if (!Z.test(p)) {
-              let u = { instancePath: t + "/evidenceIds/" + c, schemaPath: "#/properties/evidenceIds/items/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
+              let u = { instancePath: t + "/evidenceIds/" + d, schemaPath: "#/properties/evidenceIds/items/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
               e === null ? e = [u] : e.push(u), s++;
             }
           } else {
-            let u = { instancePath: t + "/evidenceIds/" + c, schemaPath: "#/properties/evidenceIds/items/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+            let u = { instancePath: t + "/evidenceIds/" + d, schemaPath: "#/properties/evidenceIds/items/type", keyword: "type", params: { type: "string" }, message: "must be string" };
             e === null ? e = [u] : e.push(u), s++;
           }
         }
-        let l = n.length, d;
-        if (l > 1) {
-          let c = {};
-          for (; l--; ) {
-            let p = n[l];
+        let m = n.length, c;
+        if (m > 1) {
+          let d = {};
+          for (; m--; ) {
+            let p = n[m];
             if (typeof p == "string") {
-              if (typeof c[p] == "number") {
-                d = c[p];
-                let u = { instancePath: t + "/evidenceIds", schemaPath: "#/properties/evidenceIds/uniqueItems", keyword: "uniqueItems", params: { i: l, j: d }, message: "must NOT have duplicate items (items ## " + d + " and " + l + " are identical)" };
+              if (typeof d[p] == "number") {
+                c = d[p];
+                let u = { instancePath: t + "/evidenceIds", schemaPath: "#/properties/evidenceIds/uniqueItems", keyword: "uniqueItems", params: { i: m, j: c }, message: "must NOT have duplicate items (items ## " + c + " and " + m + " are identical)" };
                 e === null ? e = [u] : e.push(u), s++;
                 break;
               }
-              c[p] = l;
+              d[p] = m;
             }
           }
         }
@@ -1300,26 +1300,26 @@ function Oe(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
           e === null ? e = [r] : e.push(r), s++;
         }
         for (let r in n) {
-          let l = s;
+          let m = s;
           if (typeof r == "string" && !W.test(r)) {
-            let d = { instancePath: t + "/metadata", schemaPath: "plan.schema.json#/definitions/metadata/propertyNames/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z][A-Za-z0-9_.-]{0,63}$" }, message: 'must match pattern "^[A-Za-z][A-Za-z0-9_.-]{0,63}$"', propertyName: r };
-            e === null ? e = [d] : e.push(d), s++;
+            let c = { instancePath: t + "/metadata", schemaPath: "plan.schema.json#/definitions/metadata/propertyNames/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z][A-Za-z0-9_.-]{0,63}$" }, message: 'must match pattern "^[A-Za-z][A-Za-z0-9_.-]{0,63}$"', propertyName: r };
+            e === null ? e = [c] : e.push(c), s++;
           }
-          var w = l === s;
+          var w = m === s;
           if (!w) {
-            let d = { instancePath: t + "/metadata", schemaPath: "plan.schema.json#/definitions/metadata/propertyNames", keyword: "propertyNames", params: { propertyName: r }, message: "property name must be valid" };
-            e === null ? e = [d] : e.push(d), s++;
+            let c = { instancePath: t + "/metadata", schemaPath: "plan.schema.json#/definitions/metadata/propertyNames", keyword: "propertyNames", params: { propertyName: r }, message: "property name must be valid" };
+            e === null ? e = [c] : e.push(c), s++;
           }
         }
         for (let r in n) {
-          let l = n[r];
-          if (typeof l != "string" && !(typeof l == "number" && isFinite(l)) && typeof l != "boolean") {
-            let d = { instancePath: t + "/metadata/" + r.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "plan.schema.json#/definitions/metadata/additionalProperties/type", keyword: "type", params: { type: F.additionalProperties.type }, message: "must be string,number,boolean" };
-            e === null ? e = [d] : e.push(d), s++;
+          let m = n[r];
+          if (typeof m != "string" && !(typeof m == "number" && isFinite(m)) && typeof m != "boolean") {
+            let c = { instancePath: t + "/metadata/" + r.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "plan.schema.json#/definitions/metadata/additionalProperties/type", keyword: "type", params: { type: F.additionalProperties.type }, message: "must be string,number,boolean" };
+            e === null ? e = [c] : e.push(c), s++;
           }
-          if (typeof l == "string" && A(l) > 500) {
-            let d = { instancePath: t + "/metadata/" + r.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "plan.schema.json#/definitions/metadata/additionalProperties/maxLength", keyword: "maxLength", params: { limit: 500 }, message: "must NOT have more than 500 characters" };
-            e === null ? e = [d] : e.push(d), s++;
+          if (typeof m == "string" && A(m) > 500) {
+            let c = { instancePath: t + "/metadata/" + r.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "plan.schema.json#/definitions/metadata/additionalProperties/maxLength", keyword: "maxLength", params: { limit: 500 }, message: "must NOT have more than 500 characters" };
+            e === null ? e = [c] : e.push(c), s++;
           }
         }
       } else {
@@ -1331,12 +1331,12 @@ function Oe(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
     let n = { instancePath: t, schemaPath: "#/type", keyword: "type", params: { type: "object" }, message: "must be object" };
     e === null ? e = [n] : e.push(n), s++;
   }
-  return Oe.errors = e, s === 0;
+  return _e.errors = e, s === 0;
 }
-var Os = Ze;
+var zs = Ne;
 var B = { $schema: "http://json-schema.org/draft-07/schema#", $id: "gap.schema.json", type: "object", properties: { id: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, severity: { enum: ["blocking", "non_blocking"] }, status: { enum: ["open", "resolved", "deferred", "not_needed"] }, requirementIds: { type: "array", items: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 0, uniqueItems: true }, testIds: { type: "array", items: { type: "string", pattern: "^([A-Za-z0-9][A-Za-z0-9_-]{0,95}:)?[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 0, uniqueItems: true }, question: { type: "string", minLength: 1 }, consequence: { type: "string", minLength: 1 }, decisionId: { anyOf: [{ type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, { type: "null" }] } }, required: ["id", "severity", "status", "requirementIds", "testIds", "question", "consequence", "decisionId"], additionalProperties: false };
 var M = new RegExp("^([A-Za-z0-9][A-Za-z0-9_-]{0,95}:)?[A-Za-z0-9][A-Za-z0-9_-]{0,95}$", "u");
-function Ze(a, { instancePath: t = "", parentData: $, parentDataProperty: _, rootData: T = a } = {}) {
+function Ne(a, { instancePath: t = "", parentData: $, parentDataProperty: _, rootData: L = a } = {}) {
   let e = null, s = 0;
   if (a && typeof a == "object" && !Array.isArray(a)) {
     if (a.id === void 0) {
@@ -1405,35 +1405,35 @@ function Ze(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
       let n = a.requirementIds;
       if (Array.isArray(n)) {
         if (n.length < 0) {
-          let c = { instancePath: t + "/requirementIds", schemaPath: "#/properties/requirementIds/minItems", keyword: "minItems", params: { limit: 0 }, message: "must NOT have fewer than 0 items" };
-          e === null ? e = [c] : e.push(c), s++;
+          let d = { instancePath: t + "/requirementIds", schemaPath: "#/properties/requirementIds/minItems", keyword: "minItems", params: { limit: 0 }, message: "must NOT have fewer than 0 items" };
+          e === null ? e = [d] : e.push(d), s++;
         }
         let r = n.length;
-        for (let c = 0; c < r; c++) {
-          let p = n[c];
+        for (let d = 0; d < r; d++) {
+          let p = n[d];
           if (typeof p == "string") {
             if (!Z.test(p)) {
-              let u = { instancePath: t + "/requirementIds/" + c, schemaPath: "#/properties/requirementIds/items/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
+              let u = { instancePath: t + "/requirementIds/" + d, schemaPath: "#/properties/requirementIds/items/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
               e === null ? e = [u] : e.push(u), s++;
             }
           } else {
-            let u = { instancePath: t + "/requirementIds/" + c, schemaPath: "#/properties/requirementIds/items/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+            let u = { instancePath: t + "/requirementIds/" + d, schemaPath: "#/properties/requirementIds/items/type", keyword: "type", params: { type: "string" }, message: "must be string" };
             e === null ? e = [u] : e.push(u), s++;
           }
         }
-        let l = n.length, d;
-        if (l > 1) {
-          let c = {};
-          for (; l--; ) {
-            let p = n[l];
+        let m = n.length, c;
+        if (m > 1) {
+          let d = {};
+          for (; m--; ) {
+            let p = n[m];
             if (typeof p == "string") {
-              if (typeof c[p] == "number") {
-                d = c[p];
-                let u = { instancePath: t + "/requirementIds", schemaPath: "#/properties/requirementIds/uniqueItems", keyword: "uniqueItems", params: { i: l, j: d }, message: "must NOT have duplicate items (items ## " + d + " and " + l + " are identical)" };
+              if (typeof d[p] == "number") {
+                c = d[p];
+                let u = { instancePath: t + "/requirementIds", schemaPath: "#/properties/requirementIds/uniqueItems", keyword: "uniqueItems", params: { i: m, j: c }, message: "must NOT have duplicate items (items ## " + c + " and " + m + " are identical)" };
                 e === null ? e = [u] : e.push(u), s++;
                 break;
               }
-              c[p] = l;
+              d[p] = m;
             }
           }
         }
@@ -1446,35 +1446,35 @@ function Ze(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
       let n = a.testIds;
       if (Array.isArray(n)) {
         if (n.length < 0) {
-          let c = { instancePath: t + "/testIds", schemaPath: "#/properties/testIds/minItems", keyword: "minItems", params: { limit: 0 }, message: "must NOT have fewer than 0 items" };
-          e === null ? e = [c] : e.push(c), s++;
+          let d = { instancePath: t + "/testIds", schemaPath: "#/properties/testIds/minItems", keyword: "minItems", params: { limit: 0 }, message: "must NOT have fewer than 0 items" };
+          e === null ? e = [d] : e.push(d), s++;
         }
         let r = n.length;
-        for (let c = 0; c < r; c++) {
-          let p = n[c];
+        for (let d = 0; d < r; d++) {
+          let p = n[d];
           if (typeof p == "string") {
             if (!M.test(p)) {
-              let u = { instancePath: t + "/testIds/" + c, schemaPath: "#/properties/testIds/items/pattern", keyword: "pattern", params: { pattern: "^([A-Za-z0-9][A-Za-z0-9_-]{0,95}:)?[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^([A-Za-z0-9][A-Za-z0-9_-]{0,95}:)?[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
+              let u = { instancePath: t + "/testIds/" + d, schemaPath: "#/properties/testIds/items/pattern", keyword: "pattern", params: { pattern: "^([A-Za-z0-9][A-Za-z0-9_-]{0,95}:)?[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^([A-Za-z0-9][A-Za-z0-9_-]{0,95}:)?[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
               e === null ? e = [u] : e.push(u), s++;
             }
           } else {
-            let u = { instancePath: t + "/testIds/" + c, schemaPath: "#/properties/testIds/items/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+            let u = { instancePath: t + "/testIds/" + d, schemaPath: "#/properties/testIds/items/type", keyword: "type", params: { type: "string" }, message: "must be string" };
             e === null ? e = [u] : e.push(u), s++;
           }
         }
-        let l = n.length, d;
-        if (l > 1) {
-          let c = {};
-          for (; l--; ) {
-            let p = n[l];
+        let m = n.length, c;
+        if (m > 1) {
+          let d = {};
+          for (; m--; ) {
+            let p = n[m];
             if (typeof p == "string") {
-              if (typeof c[p] == "number") {
-                d = c[p];
-                let u = { instancePath: t + "/testIds", schemaPath: "#/properties/testIds/uniqueItems", keyword: "uniqueItems", params: { i: l, j: d }, message: "must NOT have duplicate items (items ## " + d + " and " + l + " are identical)" };
+              if (typeof d[p] == "number") {
+                c = d[p];
+                let u = { instancePath: t + "/testIds", schemaPath: "#/properties/testIds/uniqueItems", keyword: "uniqueItems", params: { i: m, j: c }, message: "must NOT have duplicate items (items ## " + c + " and " + m + " are identical)" };
                 e === null ? e = [u] : e.push(u), s++;
                 break;
               }
-              c[p] = l;
+              d[p] = m;
             }
           }
         }
@@ -1508,40 +1508,40 @@ function Ze(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
       }
     }
     if (a.decisionId !== void 0) {
-      let n = a.decisionId, r = s, l = false, d = s;
+      let n = a.decisionId, r = s, m = false, c = s;
       if (typeof n == "string") {
         if (!Z.test(n)) {
-          let c = { instancePath: t + "/decisionId", schemaPath: "#/properties/decisionId/anyOf/0/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
-          e === null ? e = [c] : e.push(c), s++;
+          let d = { instancePath: t + "/decisionId", schemaPath: "#/properties/decisionId/anyOf/0/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
+          e === null ? e = [d] : e.push(d), s++;
         }
       } else {
-        let c = { instancePath: t + "/decisionId", schemaPath: "#/properties/decisionId/anyOf/0/type", keyword: "type", params: { type: "string" }, message: "must be string" };
-        e === null ? e = [c] : e.push(c), s++;
+        let d = { instancePath: t + "/decisionId", schemaPath: "#/properties/decisionId/anyOf/0/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+        e === null ? e = [d] : e.push(d), s++;
       }
-      var w = d === s;
-      if (l = l || w, !l) {
-        let c = s;
+      var w = c === s;
+      if (m = m || w, !m) {
+        let d = s;
         if (n !== null) {
           let u = { instancePath: t + "/decisionId", schemaPath: "#/properties/decisionId/anyOf/1/type", keyword: "type", params: { type: "null" }, message: "must be null" };
           e === null ? e = [u] : e.push(u), s++;
         }
-        var w = c === s;
-        l = l || w;
+        var w = d === s;
+        m = m || w;
       }
-      if (l) s = r, e !== null && (r ? e.length = r : e = null);
+      if (m) s = r, e !== null && (r ? e.length = r : e = null);
       else {
-        let c = { instancePath: t + "/decisionId", schemaPath: "#/properties/decisionId/anyOf", keyword: "anyOf", params: {}, message: "must match a schema in anyOf" };
-        e === null ? e = [c] : e.push(c), s++;
+        let d = { instancePath: t + "/decisionId", schemaPath: "#/properties/decisionId/anyOf", keyword: "anyOf", params: {}, message: "must match a schema in anyOf" };
+        e === null ? e = [d] : e.push(d), s++;
       }
     }
   } else {
     let n = { instancePath: t, schemaPath: "#/type", keyword: "type", params: { type: "object" }, message: "must be object" };
     e === null ? e = [n] : e.push(n), s++;
   }
-  return Ze.errors = e, s === 0;
+  return Ne.errors = e, s === 0;
 }
-var Zs = _e;
-function _e(a, { instancePath: t = "", parentData: $, parentDataProperty: _, rootData: T = a } = {}) {
+var Os = $e;
+function $e(a, { instancePath: t = "", parentData: $, parentDataProperty: _, rootData: L = a } = {}) {
   let e = null, s = 0;
   if (a && typeof a == "object" && !Array.isArray(a)) {
     if (a.entries === void 0) {
@@ -1560,31 +1560,31 @@ function _e(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
           e === null ? e = [r] : e.push(r), s++;
         }
         for (let r in n) {
-          let l = s;
+          let m = s;
           if (typeof r == "string" && !Z.test(r)) {
-            let d = { instancePath: t + "/entries", schemaPath: "#/properties/entries/propertyNames/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"', propertyName: r };
-            e === null ? e = [d] : e.push(d), s++;
+            let c = { instancePath: t + "/entries", schemaPath: "#/properties/entries/propertyNames/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"', propertyName: r };
+            e === null ? e = [c] : e.push(c), s++;
           }
-          var w = l === s;
+          var w = m === s;
           if (!w) {
-            let d = { instancePath: t + "/entries", schemaPath: "#/properties/entries/propertyNames", keyword: "propertyNames", params: { propertyName: r }, message: "property name must be valid" };
-            e === null ? e = [d] : e.push(d), s++;
+            let c = { instancePath: t + "/entries", schemaPath: "#/properties/entries/propertyNames", keyword: "propertyNames", params: { propertyName: r }, message: "property name must be valid" };
+            e === null ? e = [c] : e.push(c), s++;
           }
         }
         for (let r in n) {
-          let l = n[r];
-          if (typeof l == "string") {
-            if (A(l) > 2e3) {
-              let d = { instancePath: t + "/entries/" + r.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "#/properties/entries/additionalProperties/maxLength", keyword: "maxLength", params: { limit: 2e3 }, message: "must NOT have more than 2000 characters" };
-              e === null ? e = [d] : e.push(d), s++;
+          let m = n[r];
+          if (typeof m == "string") {
+            if (A(m) > 2e3) {
+              let c = { instancePath: t + "/entries/" + r.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "#/properties/entries/additionalProperties/maxLength", keyword: "maxLength", params: { limit: 2e3 }, message: "must NOT have more than 2000 characters" };
+              e === null ? e = [c] : e.push(c), s++;
             }
-            if (A(l) < 1) {
-              let d = { instancePath: t + "/entries/" + r.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "#/properties/entries/additionalProperties/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
-              e === null ? e = [d] : e.push(d), s++;
+            if (A(m) < 1) {
+              let c = { instancePath: t + "/entries/" + r.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "#/properties/entries/additionalProperties/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
+              e === null ? e = [c] : e.push(c), s++;
             }
           } else {
-            let d = { instancePath: t + "/entries/" + r.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "#/properties/entries/additionalProperties/type", keyword: "type", params: { type: "string" }, message: "must be string" };
-            e === null ? e = [d] : e.push(d), s++;
+            let c = { instancePath: t + "/entries/" + r.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "#/properties/entries/additionalProperties/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+            e === null ? e = [c] : e.push(c), s++;
           }
         }
       } else {
@@ -1612,39 +1612,39 @@ function _e(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
       let n = a.references;
       if (Array.isArray(n)) {
         if (n.length < 0) {
-          let c = { instancePath: t + "/references", schemaPath: "#/properties/references/minItems", keyword: "minItems", params: { limit: 0 }, message: "must NOT have fewer than 0 items" };
-          e === null ? e = [c] : e.push(c), s++;
+          let d = { instancePath: t + "/references", schemaPath: "#/properties/references/minItems", keyword: "minItems", params: { limit: 0 }, message: "must NOT have fewer than 0 items" };
+          e === null ? e = [d] : e.push(d), s++;
         }
         let r = n.length;
-        for (let c = 0; c < r; c++) {
-          let p = n[c];
+        for (let d = 0; d < r; d++) {
+          let p = n[d];
           if (typeof p == "string") {
             if (A(p) > 200) {
-              let u = { instancePath: t + "/references/" + c, schemaPath: "#/properties/references/items/maxLength", keyword: "maxLength", params: { limit: 200 }, message: "must NOT have more than 200 characters" };
+              let u = { instancePath: t + "/references/" + d, schemaPath: "#/properties/references/items/maxLength", keyword: "maxLength", params: { limit: 200 }, message: "must NOT have more than 200 characters" };
               e === null ? e = [u] : e.push(u), s++;
             }
             if (A(p) < 1) {
-              let u = { instancePath: t + "/references/" + c, schemaPath: "#/properties/references/items/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
+              let u = { instancePath: t + "/references/" + d, schemaPath: "#/properties/references/items/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
               e === null ? e = [u] : e.push(u), s++;
             }
           } else {
-            let u = { instancePath: t + "/references/" + c, schemaPath: "#/properties/references/items/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+            let u = { instancePath: t + "/references/" + d, schemaPath: "#/properties/references/items/type", keyword: "type", params: { type: "string" }, message: "must be string" };
             e === null ? e = [u] : e.push(u), s++;
           }
         }
-        let l = n.length, d;
-        if (l > 1) {
-          let c = {};
-          for (; l--; ) {
-            let p = n[l];
+        let m = n.length, c;
+        if (m > 1) {
+          let d = {};
+          for (; m--; ) {
+            let p = n[m];
             if (typeof p == "string") {
-              if (typeof c[p] == "number") {
-                d = c[p];
-                let u = { instancePath: t + "/references", schemaPath: "#/properties/references/uniqueItems", keyword: "uniqueItems", params: { i: l, j: d }, message: "must NOT have duplicate items (items ## " + d + " and " + l + " are identical)" };
+              if (typeof d[p] == "number") {
+                c = d[p];
+                let u = { instancePath: t + "/references", schemaPath: "#/properties/references/uniqueItems", keyword: "uniqueItems", params: { i: m, j: c }, message: "must NOT have duplicate items (items ## " + c + " and " + m + " are identical)" };
                 e === null ? e = [u] : e.push(u), s++;
                 break;
               }
-              c[p] = l;
+              d[p] = m;
             }
           }
         }
@@ -1657,12 +1657,12 @@ function _e(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
     let n = { instancePath: t, schemaPath: "#/type", keyword: "type", params: { type: "object" }, message: "must be object" };
     e === null ? e = [n] : e.push(n), s++;
   }
-  return _e.errors = e, s === 0;
+  return $e.errors = e, s === 0;
 }
-var _s = Ne;
+var Zs = Le;
 var qe = { $schema: "http://json-schema.org/draft-07/schema#", $id: "journal-criterion.schema.json", description: "A rule or an acceptance criterion that the change must meet.", type: "object", properties: { kind: { const: "criterion" }, id: { $ref: "journal-entry.schema.json#/definitions/id" }, build: { $ref: "journal-entry.schema.json#/definitions/build" }, supersedes: { $ref: "journal-entry.schema.json#/definitions/supersedes" }, rule: { $ref: "journal-entry.schema.json#/definitions/rule" }, text: { description: "The rule.", type: "string", minLength: 1 }, source: { description: "Where the rule comes from, for example ticket.md#AC2 or a question ID.", type: "string", minLength: 1 }, verdict: { description: "ok when the observed behaviour meets the rule. wrong when the observed behaviour contradicts the rule. Omit it when the rule remains unverified.", enum: ["ok", "wrong"] }, saw: { description: "The specific product behaviour that the test session observed for this rule. Required for ok and wrong in a recorder reply.", type: "string", minLength: 1 }, area: { $ref: "journal-entry.schema.json#/definitions/area" } }, required: ["kind", "text"], additionalProperties: false };
 var S = new RegExp("^[A-Za-z0-9][A-Za-z0-9_.-]{0,95}$", "u");
-function Ne(a, { instancePath: t = "", parentData: $, parentDataProperty: _, rootData: T = a } = {}) {
+function Le(a, { instancePath: t = "", parentData: $, parentDataProperty: _, rootData: L = a } = {}) {
   let e = null, s = 0;
   if (a && typeof a == "object" && !Array.isArray(a)) {
     if (a.kind === void 0) {
@@ -1673,7 +1673,7 @@ function Ne(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
       let w = { instancePath: t, schemaPath: "#/required", keyword: "required", params: { missingProperty: "text" }, message: "must have required property 'text'" };
       e === null ? e = [w] : e.push(w), s++;
     }
-    for (let w in a) if (!E.call(qe.properties, w)) {
+    for (let w in a) if (!K.call(qe.properties, w)) {
       let n = { instancePath: t, schemaPath: "#/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: w }, message: "must NOT have additional properties" };
       e === null ? e = [n] : e.push(n), s++;
     }
@@ -1788,12 +1788,12 @@ function Ne(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
     let w = { instancePath: t, schemaPath: "#/type", keyword: "type", params: { type: "object" }, message: "must be object" };
     e === null ? e = [w] : e.push(w), s++;
   }
-  return Ne.errors = e, s === 0;
+  return Le.errors = e, s === 0;
 }
-var Ns = Te;
+var _s = xe;
 var be = { $schema: "http://json-schema.org/draft-07/schema#", $id: "journal-defect.schema.json", description: "A thing that is wrong on this build. With saw, value, or via, it is also the observation that shows it: do not log that observation again.", type: "object", properties: { kind: { const: "defect" }, id: { $ref: "journal-entry.schema.json#/definitions/id" }, build: { $ref: "journal-entry.schema.json#/definitions/build" }, supersedes: { $ref: "journal-entry.schema.json#/definitions/supersedes" }, rule: { $ref: "journal-entry.schema.json#/definitions/rule" }, title: { description: "What is wrong.", type: "string", minLength: 1 }, expected: { description: "The correct result and its source.", type: "string", minLength: 1 }, actual: { description: "What you saw.", type: "string", minLength: 1 }, severity: { description: "The severity.", enum: ["critical", "high", "medium", "low"] }, about: { $ref: "journal-entry.schema.json#/definitions/about" }, steps: { $ref: "journal-entry.schema.json#/definitions/steps" }, saw: { $ref: "journal-entry.schema.json#/definitions/saw" }, value: { $ref: "journal-entry.schema.json#/definitions/value" }, via: { $ref: "journal-entry.schema.json#/definitions/via" }, evidence: { description: "The file that shows the defect (a screenshot, a response, a log), or the text that you saw.", $ref: "journal-entry.schema.json#/definitions/evidence" }, links: { description: "The IDs of the observations, criteria, or questions that show it.", type: "array", items: { type: "string", minLength: 1 } }, suspected: { description: "true when you are not sure.", type: "boolean" }, question: { description: "The question that settles a suspected defect.", type: "string", minLength: 1 } }, required: ["kind", "build", "title", "expected", "actual", "severity"], additionalProperties: false };
-var $e = { description: "The entry point that you used.", enum: ["ui", "api", "code", "other"] };
-function Te(a, { instancePath: t = "", parentData: $, parentDataProperty: _, rootData: T = a } = {}) {
+var Te = { description: "The entry point that you used.", enum: ["ui", "api", "code", "other"] };
+function xe(a, { instancePath: t = "", parentData: $, parentDataProperty: _, rootData: L = a } = {}) {
   let e = null, s = 0;
   if (a && typeof a == "object" && !Array.isArray(a)) {
     if (a.kind === void 0) {
@@ -1820,9 +1820,9 @@ function Te(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
       let r = { instancePath: t, schemaPath: "#/required", keyword: "required", params: { missingProperty: "severity" }, message: "must have required property 'severity'" };
       e === null ? e = [r] : e.push(r), s++;
     }
-    for (let r in a) if (!E.call(be.properties, r)) {
-      let l = { instancePath: t, schemaPath: "#/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: r }, message: "must NOT have additional properties" };
-      e === null ? e = [l] : e.push(l), s++;
+    for (let r in a) if (!K.call(be.properties, r)) {
+      let m = { instancePath: t, schemaPath: "#/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: r }, message: "must NOT have additional properties" };
+      e === null ? e = [m] : e.push(m), s++;
     }
     if (a.kind !== void 0 && a.kind !== "defect") {
       let r = { instancePath: t + "/kind", schemaPath: "#/properties/kind/const", keyword: "const", params: { allowedValue: "defect" }, message: "must be equal to constant" };
@@ -1832,107 +1832,107 @@ function Te(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
       let r = a.id;
       if (typeof r == "string") {
         if (!Z.test(r)) {
-          let l = { instancePath: t + "/id", schemaPath: "journal-entry.schema.json#/definitions/id/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
-          e === null ? e = [l] : e.push(l), s++;
+          let m = { instancePath: t + "/id", schemaPath: "journal-entry.schema.json#/definitions/id/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
+          e === null ? e = [m] : e.push(m), s++;
         }
       } else {
-        let l = { instancePath: t + "/id", schemaPath: "journal-entry.schema.json#/definitions/id/type", keyword: "type", params: { type: "string" }, message: "must be string" };
-        e === null ? e = [l] : e.push(l), s++;
+        let m = { instancePath: t + "/id", schemaPath: "journal-entry.schema.json#/definitions/id/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+        e === null ? e = [m] : e.push(m), s++;
       }
     }
     if (a.build !== void 0) {
       let r = a.build;
       if (typeof r == "string") {
         if (!S.test(r)) {
-          let l = { instancePath: t + "/build", schemaPath: "journal-entry.schema.json#/definitions/build/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_.-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_.-]{0,95}$"' };
-          e === null ? e = [l] : e.push(l), s++;
+          let m = { instancePath: t + "/build", schemaPath: "journal-entry.schema.json#/definitions/build/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_.-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_.-]{0,95}$"' };
+          e === null ? e = [m] : e.push(m), s++;
         }
       } else {
-        let l = { instancePath: t + "/build", schemaPath: "journal-entry.schema.json#/definitions/build/type", keyword: "type", params: { type: "string" }, message: "must be string" };
-        e === null ? e = [l] : e.push(l), s++;
+        let m = { instancePath: t + "/build", schemaPath: "journal-entry.schema.json#/definitions/build/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+        e === null ? e = [m] : e.push(m), s++;
       }
     }
     if (a.supersedes !== void 0) {
       let r = a.supersedes;
       if (typeof r == "string") {
         if (!Z.test(r)) {
-          let l = { instancePath: t + "/supersedes", schemaPath: "journal-entry.schema.json#/definitions/supersedes/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
-          e === null ? e = [l] : e.push(l), s++;
+          let m = { instancePath: t + "/supersedes", schemaPath: "journal-entry.schema.json#/definitions/supersedes/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
+          e === null ? e = [m] : e.push(m), s++;
         }
       } else {
-        let l = { instancePath: t + "/supersedes", schemaPath: "journal-entry.schema.json#/definitions/supersedes/type", keyword: "type", params: { type: "string" }, message: "must be string" };
-        e === null ? e = [l] : e.push(l), s++;
+        let m = { instancePath: t + "/supersedes", schemaPath: "journal-entry.schema.json#/definitions/supersedes/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+        e === null ? e = [m] : e.push(m), s++;
       }
     }
     if (a.rule !== void 0) {
       let r = a.rule;
       if (typeof r == "string") {
         if (!Z.test(r)) {
-          let l = { instancePath: t + "/rule", schemaPath: "journal-entry.schema.json#/definitions/rule/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
-          e === null ? e = [l] : e.push(l), s++;
+          let m = { instancePath: t + "/rule", schemaPath: "journal-entry.schema.json#/definitions/rule/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
+          e === null ? e = [m] : e.push(m), s++;
         }
       } else {
-        let l = { instancePath: t + "/rule", schemaPath: "journal-entry.schema.json#/definitions/rule/type", keyword: "type", params: { type: "string" }, message: "must be string" };
-        e === null ? e = [l] : e.push(l), s++;
+        let m = { instancePath: t + "/rule", schemaPath: "journal-entry.schema.json#/definitions/rule/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+        e === null ? e = [m] : e.push(m), s++;
       }
     }
     if (a.title !== void 0) {
       let r = a.title;
       if (typeof r == "string") {
         if (A(r) < 1) {
-          let l = { instancePath: t + "/title", schemaPath: "#/properties/title/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
-          e === null ? e = [l] : e.push(l), s++;
+          let m = { instancePath: t + "/title", schemaPath: "#/properties/title/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
+          e === null ? e = [m] : e.push(m), s++;
         }
       } else {
-        let l = { instancePath: t + "/title", schemaPath: "#/properties/title/type", keyword: "type", params: { type: "string" }, message: "must be string" };
-        e === null ? e = [l] : e.push(l), s++;
+        let m = { instancePath: t + "/title", schemaPath: "#/properties/title/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+        e === null ? e = [m] : e.push(m), s++;
       }
     }
     if (a.expected !== void 0) {
       let r = a.expected;
       if (typeof r == "string") {
         if (A(r) < 1) {
-          let l = { instancePath: t + "/expected", schemaPath: "#/properties/expected/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
-          e === null ? e = [l] : e.push(l), s++;
+          let m = { instancePath: t + "/expected", schemaPath: "#/properties/expected/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
+          e === null ? e = [m] : e.push(m), s++;
         }
       } else {
-        let l = { instancePath: t + "/expected", schemaPath: "#/properties/expected/type", keyword: "type", params: { type: "string" }, message: "must be string" };
-        e === null ? e = [l] : e.push(l), s++;
+        let m = { instancePath: t + "/expected", schemaPath: "#/properties/expected/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+        e === null ? e = [m] : e.push(m), s++;
       }
     }
     if (a.actual !== void 0) {
       let r = a.actual;
       if (typeof r == "string") {
         if (A(r) < 1) {
-          let l = { instancePath: t + "/actual", schemaPath: "#/properties/actual/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
-          e === null ? e = [l] : e.push(l), s++;
+          let m = { instancePath: t + "/actual", schemaPath: "#/properties/actual/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
+          e === null ? e = [m] : e.push(m), s++;
         }
       } else {
-        let l = { instancePath: t + "/actual", schemaPath: "#/properties/actual/type", keyword: "type", params: { type: "string" }, message: "must be string" };
-        e === null ? e = [l] : e.push(l), s++;
+        let m = { instancePath: t + "/actual", schemaPath: "#/properties/actual/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+        e === null ? e = [m] : e.push(m), s++;
       }
     }
     if (a.severity !== void 0) {
       let r = a.severity;
       if (!(r === "critical" || r === "high" || r === "medium" || r === "low")) {
-        let l = { instancePath: t + "/severity", schemaPath: "#/properties/severity/enum", keyword: "enum", params: { allowedValues: be.properties.severity.enum }, message: "must be equal to one of the allowed values" };
-        e === null ? e = [l] : e.push(l), s++;
+        let m = { instancePath: t + "/severity", schemaPath: "#/properties/severity/enum", keyword: "enum", params: { allowedValues: be.properties.severity.enum }, message: "must be equal to one of the allowed values" };
+        e === null ? e = [m] : e.push(m), s++;
       }
     }
     if (a.about !== void 0) {
       let r = a.about;
       if (typeof r == "string") {
         if (A(r) < 1) {
-          let l = { instancePath: t + "/about", schemaPath: "journal-entry.schema.json#/definitions/about/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
-          e === null ? e = [l] : e.push(l), s++;
+          let m = { instancePath: t + "/about", schemaPath: "journal-entry.schema.json#/definitions/about/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
+          e === null ? e = [m] : e.push(m), s++;
         }
       } else {
-        let l = { instancePath: t + "/about", schemaPath: "journal-entry.schema.json#/definitions/about/type", keyword: "type", params: { type: "string" }, message: "must be string" };
-        e === null ? e = [l] : e.push(l), s++;
+        let m = { instancePath: t + "/about", schemaPath: "journal-entry.schema.json#/definitions/about/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+        e === null ? e = [m] : e.push(m), s++;
       }
     }
     if (a.steps !== void 0) {
-      let r = a.steps, l = s, d = false, c = s;
+      let r = a.steps, m = s, c = false, d = s;
       if (typeof r == "string") {
         if (A(r) < 1) {
           let p = { instancePath: t + "/steps", schemaPath: "journal-entry.schema.json#/definitions/steps/anyOf/0/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
@@ -1942,8 +1942,8 @@ function Te(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
         let p = { instancePath: t + "/steps", schemaPath: "journal-entry.schema.json#/definitions/steps/anyOf/0/type", keyword: "type", params: { type: "string" }, message: "must be string" };
         e === null ? e = [p] : e.push(p), s++;
       }
-      var w = c === s;
-      if (d = d || w, !d) {
+      var w = d === s;
+      if (c = c || w, !c) {
         let p = s;
         if (Array.isArray(r)) {
           if (r.length < 1) {
@@ -1952,15 +1952,15 @@ function Te(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
           }
           let i = r.length;
           for (let h = 0; h < i; h++) {
-            let m = r[h];
-            if (typeof m == "string") {
-              if (A(m) < 1) {
-                let o = { instancePath: t + "/steps/" + h, schemaPath: "journal-entry.schema.json#/definitions/steps/anyOf/1/items/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
-                e === null ? e = [o] : e.push(o), s++;
+            let o = r[h];
+            if (typeof o == "string") {
+              if (A(o) < 1) {
+                let l = { instancePath: t + "/steps/" + h, schemaPath: "journal-entry.schema.json#/definitions/steps/anyOf/1/items/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
+                e === null ? e = [l] : e.push(l), s++;
               }
             } else {
-              let o = { instancePath: t + "/steps/" + h, schemaPath: "journal-entry.schema.json#/definitions/steps/anyOf/1/items/type", keyword: "type", params: { type: "string" }, message: "must be string" };
-              e === null ? e = [o] : e.push(o), s++;
+              let l = { instancePath: t + "/steps/" + h, schemaPath: "journal-entry.schema.json#/definitions/steps/anyOf/1/items/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+              e === null ? e = [l] : e.push(l), s++;
             }
           }
         } else {
@@ -1968,9 +1968,9 @@ function Te(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
           e === null ? e = [i] : e.push(i), s++;
         }
         var w = p === s;
-        d = d || w;
+        c = c || w;
       }
-      if (d) s = l, e !== null && (l ? e.length = l : e = null);
+      if (c) s = m, e !== null && (m ? e.length = m : e = null);
       else {
         let p = { instancePath: t + "/steps", schemaPath: "journal-entry.schema.json#/definitions/steps/anyOf", keyword: "anyOf", params: {}, message: "must match a schema in anyOf" };
         e === null ? e = [p] : e.push(p), s++;
@@ -1980,35 +1980,35 @@ function Te(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
       let r = a.saw;
       if (typeof r == "string") {
         if (A(r) < 1) {
-          let l = { instancePath: t + "/saw", schemaPath: "journal-entry.schema.json#/definitions/saw/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
-          e === null ? e = [l] : e.push(l), s++;
+          let m = { instancePath: t + "/saw", schemaPath: "journal-entry.schema.json#/definitions/saw/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
+          e === null ? e = [m] : e.push(m), s++;
         }
       } else {
-        let l = { instancePath: t + "/saw", schemaPath: "journal-entry.schema.json#/definitions/saw/type", keyword: "type", params: { type: "string" }, message: "must be string" };
-        e === null ? e = [l] : e.push(l), s++;
+        let m = { instancePath: t + "/saw", schemaPath: "journal-entry.schema.json#/definitions/saw/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+        e === null ? e = [m] : e.push(m), s++;
       }
     }
     if (a.value !== void 0) {
       let r = a.value;
       if (typeof r == "string") {
         if (A(r) < 1) {
-          let l = { instancePath: t + "/value", schemaPath: "journal-entry.schema.json#/definitions/value/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
-          e === null ? e = [l] : e.push(l), s++;
+          let m = { instancePath: t + "/value", schemaPath: "journal-entry.schema.json#/definitions/value/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
+          e === null ? e = [m] : e.push(m), s++;
         }
       } else {
-        let l = { instancePath: t + "/value", schemaPath: "journal-entry.schema.json#/definitions/value/type", keyword: "type", params: { type: "string" }, message: "must be string" };
-        e === null ? e = [l] : e.push(l), s++;
+        let m = { instancePath: t + "/value", schemaPath: "journal-entry.schema.json#/definitions/value/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+        e === null ? e = [m] : e.push(m), s++;
       }
     }
     if (a.via !== void 0) {
       let r = a.via;
       if (!(r === "ui" || r === "api" || r === "code" || r === "other")) {
-        let l = { instancePath: t + "/via", schemaPath: "journal-entry.schema.json#/definitions/via/enum", keyword: "enum", params: { allowedValues: $e.enum }, message: "must be equal to one of the allowed values" };
-        e === null ? e = [l] : e.push(l), s++;
+        let m = { instancePath: t + "/via", schemaPath: "journal-entry.schema.json#/definitions/via/enum", keyword: "enum", params: { allowedValues: Te.enum }, message: "must be equal to one of the allowed values" };
+        e === null ? e = [m] : e.push(m), s++;
       }
     }
     if (a.evidence !== void 0) {
-      let r = a.evidence, l = s, d = false, c = s;
+      let r = a.evidence, m = s, c = false, d = s;
       if (typeof r == "string") {
         if (A(r) < 1) {
           let p = { instancePath: t + "/evidence", schemaPath: "journal-entry.schema.json#/definitions/evidence/anyOf/0/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
@@ -2018,8 +2018,8 @@ function Te(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
         let p = { instancePath: t + "/evidence", schemaPath: "journal-entry.schema.json#/definitions/evidence/anyOf/0/type", keyword: "type", params: { type: "string" }, message: "must be string" };
         e === null ? e = [p] : e.push(p), s++;
       }
-      var n = c === s;
-      if (d = d || n, !d) {
+      var n = d === s;
+      if (c = c || n, !c) {
         let p = s;
         if (Array.isArray(r)) {
           if (r.length < 1) {
@@ -2028,15 +2028,15 @@ function Te(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
           }
           let i = r.length;
           for (let h = 0; h < i; h++) {
-            let m = r[h];
-            if (typeof m == "string") {
-              if (A(m) < 1) {
-                let o = { instancePath: t + "/evidence/" + h, schemaPath: "journal-entry.schema.json#/definitions/evidence/anyOf/1/items/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
-                e === null ? e = [o] : e.push(o), s++;
+            let o = r[h];
+            if (typeof o == "string") {
+              if (A(o) < 1) {
+                let l = { instancePath: t + "/evidence/" + h, schemaPath: "journal-entry.schema.json#/definitions/evidence/anyOf/1/items/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
+                e === null ? e = [l] : e.push(l), s++;
               }
             } else {
-              let o = { instancePath: t + "/evidence/" + h, schemaPath: "journal-entry.schema.json#/definitions/evidence/anyOf/1/items/type", keyword: "type", params: { type: "string" }, message: "must be string" };
-              e === null ? e = [o] : e.push(o), s++;
+              let l = { instancePath: t + "/evidence/" + h, schemaPath: "journal-entry.schema.json#/definitions/evidence/anyOf/1/items/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+              e === null ? e = [l] : e.push(l), s++;
             }
           }
         } else {
@@ -2044,9 +2044,9 @@ function Te(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
           e === null ? e = [i] : e.push(i), s++;
         }
         var n = p === s;
-        d = d || n;
+        c = c || n;
       }
-      if (d) s = l, e !== null && (l ? e.length = l : e = null);
+      if (c) s = m, e !== null && (m ? e.length = m : e = null);
       else {
         let p = { instancePath: t + "/evidence", schemaPath: "journal-entry.schema.json#/definitions/evidence/anyOf", keyword: "anyOf", params: {}, message: "must match a schema in anyOf" };
         e === null ? e = [p] : e.push(p), s++;
@@ -2055,22 +2055,22 @@ function Te(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
     if (a.links !== void 0) {
       let r = a.links;
       if (Array.isArray(r)) {
-        let l = r.length;
-        for (let d = 0; d < l; d++) {
-          let c = r[d];
-          if (typeof c == "string") {
-            if (A(c) < 1) {
-              let p = { instancePath: t + "/links/" + d, schemaPath: "#/properties/links/items/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
+        let m = r.length;
+        for (let c = 0; c < m; c++) {
+          let d = r[c];
+          if (typeof d == "string") {
+            if (A(d) < 1) {
+              let p = { instancePath: t + "/links/" + c, schemaPath: "#/properties/links/items/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
               e === null ? e = [p] : e.push(p), s++;
             }
           } else {
-            let p = { instancePath: t + "/links/" + d, schemaPath: "#/properties/links/items/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+            let p = { instancePath: t + "/links/" + c, schemaPath: "#/properties/links/items/type", keyword: "type", params: { type: "string" }, message: "must be string" };
             e === null ? e = [p] : e.push(p), s++;
           }
         }
       } else {
-        let l = { instancePath: t + "/links", schemaPath: "#/properties/links/type", keyword: "type", params: { type: "array" }, message: "must be array" };
-        e === null ? e = [l] : e.push(l), s++;
+        let m = { instancePath: t + "/links", schemaPath: "#/properties/links/type", keyword: "type", params: { type: "array" }, message: "must be array" };
+        e === null ? e = [m] : e.push(m), s++;
       }
     }
     if (a.suspected !== void 0 && typeof a.suspected != "boolean") {
@@ -2081,23 +2081,23 @@ function Te(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
       let r = a.question;
       if (typeof r == "string") {
         if (A(r) < 1) {
-          let l = { instancePath: t + "/question", schemaPath: "#/properties/question/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
-          e === null ? e = [l] : e.push(l), s++;
+          let m = { instancePath: t + "/question", schemaPath: "#/properties/question/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
+          e === null ? e = [m] : e.push(m), s++;
         }
       } else {
-        let l = { instancePath: t + "/question", schemaPath: "#/properties/question/type", keyword: "type", params: { type: "string" }, message: "must be string" };
-        e === null ? e = [l] : e.push(l), s++;
+        let m = { instancePath: t + "/question", schemaPath: "#/properties/question/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+        e === null ? e = [m] : e.push(m), s++;
       }
     }
   } else {
     let r = { instancePath: t, schemaPath: "#/type", keyword: "type", params: { type: "object" }, message: "must be object" };
     e === null ? e = [r] : e.push(r), s++;
   }
-  return Te.errors = e, s === 0;
+  return xe.errors = e, s === 0;
 }
-var $s = Le;
-var ms = { $schema: "http://json-schema.org/draft-07/schema#", $id: "journal-entry.schema.json", description: "Checkmate saves each valid entry, and refuses each invalid entry alone. Nothing is deleted.", type: "object", properties: { kind: { description: "The kind.", enum: ["criterion", "observation", "defect", "question", "verdict", "note", "issue", "topic"] }, id: { $ref: "journal-entry.schema.json#/definitions/id" }, build: { $ref: "journal-entry.schema.json#/definitions/build" }, supersedes: { $ref: "journal-entry.schema.json#/definitions/supersedes" } }, required: ["kind"], examples: [[{ kind: "criterion", id: "C1", rule: "R2", text: "5 or more items get 10% off.", source: "ticket.md#AC2", verdict: "wrong" }, { kind: "observation", id: "O1", about: "C1", steps: "Add 4 pens in the cart", saw: "Total 40.00", value: "40.00", verdict: "ok", via: "ui" }, { kind: "defect", id: "D1", rule: "R2", title: "No discount at 5 items", expected: "45.00 (AC2)", actual: "Total 50.00", severity: "high", links: ["C1"], steps: "Add 5 pens in the cart", value: "50.00", via: "ui", evidence: "cart-5.png" }]], definitions: { id: { description: "Your ID, for example D1. Without it, Checkmate gives one.", type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, build: { description: "The build that you tested. Checkmate gives the build of the exploration.", type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_.-]{0,95}$" }, supersedes: { description: "The ID of an earlier entry of the same kind. This entry replaces it and keeps its ID.", type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, rule: { description: "The ID of the plan rule, for example R2, or outside.", type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, about: { description: "A criterion ID, a question ID, a diff area, or free text.", type: "string", minLength: 1 }, area: { description: "A changed area, for example src/cart.js.", type: "string", minLength: 1 }, steps: { description: "What you did.", anyOf: [{ type: "string", minLength: 1 }, { type: "array", items: { type: "string", minLength: 1 }, minItems: 1 }] }, saw: { description: "What you saw.", type: "string", minLength: 1 }, value: { description: "The exact value to compare on a later build, for example 45.00 or HTTP 409.", type: "string", minLength: 1 }, via: { description: "The entry point that you used.", enum: ["ui", "api", "code", "other"] }, evidence: { description: "A workspace file or the text that you saw, or an array of them.", anyOf: [{ type: "string", minLength: 1 }, { type: "array", items: { type: "string", minLength: 1 }, minItems: 1 }] } } };
-function Le(a, { instancePath: t = "", parentData: $, parentDataProperty: _, rootData: T = a } = {}) {
+var Ns = De;
+var us = { $schema: "http://json-schema.org/draft-07/schema#", $id: "journal-entry.schema.json", description: "Checkmate saves each valid entry, and refuses each invalid entry alone. Nothing is deleted.", type: "object", properties: { kind: { description: "The kind.", enum: ["criterion", "observation", "defect", "question", "verdict", "note", "issue", "topic"] }, id: { $ref: "journal-entry.schema.json#/definitions/id" }, build: { $ref: "journal-entry.schema.json#/definitions/build" }, supersedes: { $ref: "journal-entry.schema.json#/definitions/supersedes" } }, required: ["kind"], examples: [[{ kind: "criterion", id: "C1", rule: "R2", text: "5 or more items get 10% off.", source: "ticket.md#AC2", verdict: "wrong" }, { kind: "observation", id: "O1", about: "C1", steps: "Add 4 pens in the cart", saw: "Total 40.00", value: "40.00", verdict: "ok", via: "ui" }, { kind: "defect", id: "D1", rule: "R2", title: "No discount at 5 items", expected: "45.00 (AC2)", actual: "Total 50.00", severity: "high", links: ["C1"], steps: "Add 5 pens in the cart", value: "50.00", via: "ui", evidence: "cart-5.png" }]], definitions: { id: { description: "Your ID, for example D1. Without it, Checkmate gives one.", type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, build: { description: "The build that you tested. Checkmate gives the build of the exploration.", type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_.-]{0,95}$" }, supersedes: { description: "The ID of an earlier entry of the same kind. This entry replaces it and keeps its ID.", type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, rule: { description: "The ID of the plan rule, for example R2, or outside.", type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, about: { description: "A criterion ID, a question ID, a diff area, or free text.", type: "string", minLength: 1 }, area: { description: "A changed area, for example src/cart.js.", type: "string", minLength: 1 }, steps: { description: "What you did.", anyOf: [{ type: "string", minLength: 1 }, { type: "array", items: { type: "string", minLength: 1 }, minItems: 1 }] }, saw: { description: "What you saw.", type: "string", minLength: 1 }, value: { description: "The exact value to compare on a later build, for example 45.00 or HTTP 409.", type: "string", minLength: 1 }, via: { description: "The entry point that you used.", enum: ["ui", "api", "code", "other"] }, evidence: { description: "A workspace file or the text that you saw, or an array of them.", anyOf: [{ type: "string", minLength: 1 }, { type: "array", items: { type: "string", minLength: 1 }, minItems: 1 }] } } };
+function De(a, { instancePath: t = "", parentData: $, parentDataProperty: _, rootData: L = a } = {}) {
   let e = null, s = 0;
   if (a && typeof a == "object" && !Array.isArray(a)) {
     if (a.kind === void 0) {
@@ -2107,7 +2107,7 @@ function Le(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
     if (a.kind !== void 0) {
       let w = a.kind;
       if (!(w === "criterion" || w === "observation" || w === "defect" || w === "question" || w === "verdict" || w === "note" || w === "issue" || w === "topic")) {
-        let n = { instancePath: t + "/kind", schemaPath: "#/properties/kind/enum", keyword: "enum", params: { allowedValues: ms.properties.kind.enum }, message: "must be equal to one of the allowed values" };
+        let n = { instancePath: t + "/kind", schemaPath: "#/properties/kind/enum", keyword: "enum", params: { allowedValues: us.properties.kind.enum }, message: "must be equal to one of the allowed values" };
         e === null ? e = [n] : e.push(n), s++;
       }
     }
@@ -2151,11 +2151,11 @@ function Le(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
     let w = { instancePath: t, schemaPath: "#/type", keyword: "type", params: { type: "object" }, message: "must be object" };
     e === null ? e = [w] : e.push(w), s++;
   }
-  return Le.errors = e, s === 0;
+  return De.errors = e, s === 0;
 }
-var Ts = xe;
-var ls = { $schema: "http://json-schema.org/draft-07/schema#", $id: "journal-issue.schema.json", description: "One defect that one or more defect entries report. A defect that is in no issue is its own issue. On a later build, the status of the issue is the result of most verdicts on that build. With a tie, it is fixed and disputed. With one verdict, it is that result and single. An observation of the verifier with confirms or refutes on that build sets the status.", type: "object", properties: { kind: { const: "issue" }, id: { $ref: "journal-entry.schema.json#/definitions/id" }, build: { $ref: "journal-entry.schema.json#/definitions/build" }, supersedes: { $ref: "journal-entry.schema.json#/definitions/supersedes" }, title: { description: "What is wrong, in one line.", type: "string", minLength: 1 }, severity: { description: "The severity.", enum: ["critical", "high", "medium", "low"] }, reports: { description: "The full IDs of the defect entries that describe this defect, for example a1/D1.", type: "array", items: { type: "string", minLength: 1 }, minItems: 1 }, note: { description: "Why these reports are one defect.", type: "string", minLength: 1 } }, required: ["kind", "title", "severity", "reports"], additionalProperties: false, examples: [{ kind: "issue", title: "No discount at 5 items", severity: "high", reports: ["a1/D1", "a3/D2"], note: "The same total of 50.00 for 5 items." }] };
-function xe(a, { instancePath: t = "", parentData: $, parentDataProperty: _, rootData: T = a } = {}) {
+var $s = Ve;
+var ds = { $schema: "http://json-schema.org/draft-07/schema#", $id: "journal-issue.schema.json", description: "One defect that one or more defect entries report. A defect that is in no issue is its own issue. On a later build, the status of the issue is the result of most verdicts on that build. With a tie, it is fixed and disputed. With one verdict, it is that result and single. An observation of the verifier with confirms or refutes on that build sets the status.", type: "object", properties: { kind: { const: "issue" }, id: { $ref: "journal-entry.schema.json#/definitions/id" }, build: { $ref: "journal-entry.schema.json#/definitions/build" }, supersedes: { $ref: "journal-entry.schema.json#/definitions/supersedes" }, title: { description: "What is wrong, in one line.", type: "string", minLength: 1 }, severity: { description: "The severity.", enum: ["critical", "high", "medium", "low"] }, reports: { description: "The full IDs of the defect entries that describe this defect, for example a1/D1.", type: "array", items: { type: "string", minLength: 1 }, minItems: 1 }, note: { description: "Why these reports are one defect.", type: "string", minLength: 1 } }, required: ["kind", "title", "severity", "reports"], additionalProperties: false, examples: [{ kind: "issue", title: "No discount at 5 items", severity: "high", reports: ["a1/D1", "a3/D2"], note: "The same total of 50.00 for 5 items." }] };
+function Ve(a, { instancePath: t = "", parentData: $, parentDataProperty: _, rootData: L = a } = {}) {
   let e = null, s = 0;
   if (a && typeof a == "object" && !Array.isArray(a)) {
     if (a.kind === void 0) {
@@ -2233,7 +2233,7 @@ function xe(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
     if (a.severity !== void 0) {
       let w = a.severity;
       if (!(w === "critical" || w === "high" || w === "medium" || w === "low")) {
-        let n = { instancePath: t + "/severity", schemaPath: "#/properties/severity/enum", keyword: "enum", params: { allowedValues: ls.properties.severity.enum }, message: "must be equal to one of the allowed values" };
+        let n = { instancePath: t + "/severity", schemaPath: "#/properties/severity/enum", keyword: "enum", params: { allowedValues: ds.properties.severity.enum }, message: "must be equal to one of the allowed values" };
         e === null ? e = [n] : e.push(n), s++;
       }
     }
@@ -2246,15 +2246,15 @@ function xe(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
         }
         let n = w.length;
         for (let r = 0; r < n; r++) {
-          let l = w[r];
-          if (typeof l == "string") {
-            if (A(l) < 1) {
-              let d = { instancePath: t + "/reports/" + r, schemaPath: "#/properties/reports/items/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
-              e === null ? e = [d] : e.push(d), s++;
+          let m = w[r];
+          if (typeof m == "string") {
+            if (A(m) < 1) {
+              let c = { instancePath: t + "/reports/" + r, schemaPath: "#/properties/reports/items/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
+              e === null ? e = [c] : e.push(c), s++;
             }
           } else {
-            let d = { instancePath: t + "/reports/" + r, schemaPath: "#/properties/reports/items/type", keyword: "type", params: { type: "string" }, message: "must be string" };
-            e === null ? e = [d] : e.push(d), s++;
+            let c = { instancePath: t + "/reports/" + r, schemaPath: "#/properties/reports/items/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+            e === null ? e = [c] : e.push(c), s++;
           }
         }
       } else {
@@ -2278,10 +2278,10 @@ function xe(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
     let w = { instancePath: t, schemaPath: "#/type", keyword: "type", params: { type: "object" }, message: "must be object" };
     e === null ? e = [w] : e.push(w), s++;
   }
-  return xe.errors = e, s === 0;
+  return Ve.errors = e, s === 0;
 }
-var Ls = De;
-function De(a, { instancePath: t = "", parentData: $, parentDataProperty: _, rootData: T = a } = {}) {
+var Ls = Ge;
+function Ge(a, { instancePath: t = "", parentData: $, parentDataProperty: _, rootData: L = a } = {}) {
   let e = null, s = 0;
   if (a && typeof a == "object" && !Array.isArray(a)) {
     if (a.kind === void 0) {
@@ -2373,19 +2373,19 @@ function De(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
       }
     }
     if (a.evidence !== void 0) {
-      let n = a.evidence, r = s, l = false, d = s;
+      let n = a.evidence, r = s, m = false, c = s;
       if (typeof n == "string") {
         if (A(n) < 1) {
-          let c = { instancePath: t + "/evidence", schemaPath: "journal-entry.schema.json#/definitions/evidence/anyOf/0/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
-          e === null ? e = [c] : e.push(c), s++;
+          let d = { instancePath: t + "/evidence", schemaPath: "journal-entry.schema.json#/definitions/evidence/anyOf/0/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
+          e === null ? e = [d] : e.push(d), s++;
         }
       } else {
-        let c = { instancePath: t + "/evidence", schemaPath: "journal-entry.schema.json#/definitions/evidence/anyOf/0/type", keyword: "type", params: { type: "string" }, message: "must be string" };
-        e === null ? e = [c] : e.push(c), s++;
+        let d = { instancePath: t + "/evidence", schemaPath: "journal-entry.schema.json#/definitions/evidence/anyOf/0/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+        e === null ? e = [d] : e.push(d), s++;
       }
-      var w = d === s;
-      if (l = l || w, !l) {
-        let c = s;
+      var w = c === s;
+      if (m = m || w, !m) {
+        let d = s;
         if (Array.isArray(n)) {
           if (n.length < 1) {
             let i = { instancePath: t + "/evidence", schemaPath: "journal-entry.schema.json#/definitions/evidence/anyOf/1/minItems", keyword: "minItems", params: { limit: 1 }, message: "must NOT have fewer than 1 items" };
@@ -2396,37 +2396,37 @@ function De(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
             let h = n[i];
             if (typeof h == "string") {
               if (A(h) < 1) {
-                let m = { instancePath: t + "/evidence/" + i, schemaPath: "journal-entry.schema.json#/definitions/evidence/anyOf/1/items/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
-                e === null ? e = [m] : e.push(m), s++;
+                let o = { instancePath: t + "/evidence/" + i, schemaPath: "journal-entry.schema.json#/definitions/evidence/anyOf/1/items/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
+                e === null ? e = [o] : e.push(o), s++;
               }
             } else {
-              let m = { instancePath: t + "/evidence/" + i, schemaPath: "journal-entry.schema.json#/definitions/evidence/anyOf/1/items/type", keyword: "type", params: { type: "string" }, message: "must be string" };
-              e === null ? e = [m] : e.push(m), s++;
+              let o = { instancePath: t + "/evidence/" + i, schemaPath: "journal-entry.schema.json#/definitions/evidence/anyOf/1/items/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+              e === null ? e = [o] : e.push(o), s++;
             }
           }
         } else {
           let u = { instancePath: t + "/evidence", schemaPath: "journal-entry.schema.json#/definitions/evidence/anyOf/1/type", keyword: "type", params: { type: "array" }, message: "must be array" };
           e === null ? e = [u] : e.push(u), s++;
         }
-        var w = c === s;
-        l = l || w;
+        var w = d === s;
+        m = m || w;
       }
-      if (l) s = r, e !== null && (r ? e.length = r : e = null);
+      if (m) s = r, e !== null && (r ? e.length = r : e = null);
       else {
-        let c = { instancePath: t + "/evidence", schemaPath: "journal-entry.schema.json#/definitions/evidence/anyOf", keyword: "anyOf", params: {}, message: "must match a schema in anyOf" };
-        e === null ? e = [c] : e.push(c), s++;
+        let d = { instancePath: t + "/evidence", schemaPath: "journal-entry.schema.json#/definitions/evidence/anyOf", keyword: "anyOf", params: {}, message: "must match a schema in anyOf" };
+        e === null ? e = [d] : e.push(d), s++;
       }
     }
   } else {
     let n = { instancePath: t, schemaPath: "#/type", keyword: "type", params: { type: "object" }, message: "must be object" };
     e === null ? e = [n] : e.push(n), s++;
   }
-  return De.errors = e, s === 0;
+  return Ge.errors = e, s === 0;
 }
-var xs = Ve;
+var Ts = Ke;
 var Ie = { $schema: "http://json-schema.org/draft-07/schema#", $id: "journal-observation.schema.json", description: "What you did and what you saw.", type: "object", properties: { kind: { const: "observation" }, id: { $ref: "journal-entry.schema.json#/definitions/id" }, build: { $ref: "journal-entry.schema.json#/definitions/build" }, supersedes: { $ref: "journal-entry.schema.json#/definitions/supersedes" }, about: { $ref: "journal-entry.schema.json#/definitions/about" }, steps: { $ref: "journal-entry.schema.json#/definitions/steps" }, saw: { $ref: "journal-entry.schema.json#/definitions/saw" }, value: { $ref: "journal-entry.schema.json#/definitions/value" }, repeats: { description: "The ID of an earlier observation that you did again.", type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_/-]{0,191}$" }, verdict: { description: "ok when the result is correct. wrong when it is not.", enum: ["ok", "wrong"] }, via: { $ref: "journal-entry.schema.json#/definitions/via" }, evidence: { $ref: "journal-entry.schema.json#/definitions/evidence" }, confirms: { description: "The ID of an issue or a defect that you did again and saw, for example a1/D3. On the build where it was found, it confirms the issue. On a later build, it sets the status of the issue on that build to not_fixed.", type: "string", minLength: 1 }, refutes: { description: "The ID of an issue or a defect that you did again and did not see. On the build where it was found, it refutes the issue. On a later build, it sets the status of the issue on that build to fixed.", type: "string", minLength: 1 } }, required: ["kind", "build", "saw"], additionalProperties: false, examples: [{ kind: "observation", confirms: "a1/D3", steps: "Add 5 pens in the cart", saw: "Total 50.00, no discount", via: "ui", evidence: "evidence/cart-5.png" }] };
-var us = new RegExp("^[A-Za-z0-9][A-Za-z0-9_/-]{0,191}$", "u");
-function Ve(a, { instancePath: t = "", parentData: $, parentDataProperty: _, rootData: T = a } = {}) {
+var cs = new RegExp("^[A-Za-z0-9][A-Za-z0-9_/-]{0,191}$", "u");
+function Ke(a, { instancePath: t = "", parentData: $, parentDataProperty: _, rootData: L = a } = {}) {
   let e = null, s = 0;
   if (a && typeof a == "object" && !Array.isArray(a)) {
     if (a.kind === void 0) {
@@ -2441,9 +2441,9 @@ function Ve(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
       let r = { instancePath: t, schemaPath: "#/required", keyword: "required", params: { missingProperty: "saw" }, message: "must have required property 'saw'" };
       e === null ? e = [r] : e.push(r), s++;
     }
-    for (let r in a) if (!E.call(Ie.properties, r)) {
-      let l = { instancePath: t, schemaPath: "#/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: r }, message: "must NOT have additional properties" };
-      e === null ? e = [l] : e.push(l), s++;
+    for (let r in a) if (!K.call(Ie.properties, r)) {
+      let m = { instancePath: t, schemaPath: "#/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: r }, message: "must NOT have additional properties" };
+      e === null ? e = [m] : e.push(m), s++;
     }
     if (a.kind !== void 0 && a.kind !== "observation") {
       let r = { instancePath: t + "/kind", schemaPath: "#/properties/kind/const", keyword: "const", params: { allowedValue: "observation" }, message: "must be equal to constant" };
@@ -2453,52 +2453,52 @@ function Ve(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
       let r = a.id;
       if (typeof r == "string") {
         if (!Z.test(r)) {
-          let l = { instancePath: t + "/id", schemaPath: "journal-entry.schema.json#/definitions/id/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
-          e === null ? e = [l] : e.push(l), s++;
+          let m = { instancePath: t + "/id", schemaPath: "journal-entry.schema.json#/definitions/id/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
+          e === null ? e = [m] : e.push(m), s++;
         }
       } else {
-        let l = { instancePath: t + "/id", schemaPath: "journal-entry.schema.json#/definitions/id/type", keyword: "type", params: { type: "string" }, message: "must be string" };
-        e === null ? e = [l] : e.push(l), s++;
+        let m = { instancePath: t + "/id", schemaPath: "journal-entry.schema.json#/definitions/id/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+        e === null ? e = [m] : e.push(m), s++;
       }
     }
     if (a.build !== void 0) {
       let r = a.build;
       if (typeof r == "string") {
         if (!S.test(r)) {
-          let l = { instancePath: t + "/build", schemaPath: "journal-entry.schema.json#/definitions/build/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_.-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_.-]{0,95}$"' };
-          e === null ? e = [l] : e.push(l), s++;
+          let m = { instancePath: t + "/build", schemaPath: "journal-entry.schema.json#/definitions/build/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_.-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_.-]{0,95}$"' };
+          e === null ? e = [m] : e.push(m), s++;
         }
       } else {
-        let l = { instancePath: t + "/build", schemaPath: "journal-entry.schema.json#/definitions/build/type", keyword: "type", params: { type: "string" }, message: "must be string" };
-        e === null ? e = [l] : e.push(l), s++;
+        let m = { instancePath: t + "/build", schemaPath: "journal-entry.schema.json#/definitions/build/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+        e === null ? e = [m] : e.push(m), s++;
       }
     }
     if (a.supersedes !== void 0) {
       let r = a.supersedes;
       if (typeof r == "string") {
         if (!Z.test(r)) {
-          let l = { instancePath: t + "/supersedes", schemaPath: "journal-entry.schema.json#/definitions/supersedes/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
-          e === null ? e = [l] : e.push(l), s++;
+          let m = { instancePath: t + "/supersedes", schemaPath: "journal-entry.schema.json#/definitions/supersedes/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
+          e === null ? e = [m] : e.push(m), s++;
         }
       } else {
-        let l = { instancePath: t + "/supersedes", schemaPath: "journal-entry.schema.json#/definitions/supersedes/type", keyword: "type", params: { type: "string" }, message: "must be string" };
-        e === null ? e = [l] : e.push(l), s++;
+        let m = { instancePath: t + "/supersedes", schemaPath: "journal-entry.schema.json#/definitions/supersedes/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+        e === null ? e = [m] : e.push(m), s++;
       }
     }
     if (a.about !== void 0) {
       let r = a.about;
       if (typeof r == "string") {
         if (A(r) < 1) {
-          let l = { instancePath: t + "/about", schemaPath: "journal-entry.schema.json#/definitions/about/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
-          e === null ? e = [l] : e.push(l), s++;
+          let m = { instancePath: t + "/about", schemaPath: "journal-entry.schema.json#/definitions/about/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
+          e === null ? e = [m] : e.push(m), s++;
         }
       } else {
-        let l = { instancePath: t + "/about", schemaPath: "journal-entry.schema.json#/definitions/about/type", keyword: "type", params: { type: "string" }, message: "must be string" };
-        e === null ? e = [l] : e.push(l), s++;
+        let m = { instancePath: t + "/about", schemaPath: "journal-entry.schema.json#/definitions/about/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+        e === null ? e = [m] : e.push(m), s++;
       }
     }
     if (a.steps !== void 0) {
-      let r = a.steps, l = s, d = false, c = s;
+      let r = a.steps, m = s, c = false, d = s;
       if (typeof r == "string") {
         if (A(r) < 1) {
           let p = { instancePath: t + "/steps", schemaPath: "journal-entry.schema.json#/definitions/steps/anyOf/0/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
@@ -2508,8 +2508,8 @@ function Ve(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
         let p = { instancePath: t + "/steps", schemaPath: "journal-entry.schema.json#/definitions/steps/anyOf/0/type", keyword: "type", params: { type: "string" }, message: "must be string" };
         e === null ? e = [p] : e.push(p), s++;
       }
-      var w = c === s;
-      if (d = d || w, !d) {
+      var w = d === s;
+      if (c = c || w, !c) {
         let p = s;
         if (Array.isArray(r)) {
           if (r.length < 1) {
@@ -2518,15 +2518,15 @@ function Ve(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
           }
           let i = r.length;
           for (let h = 0; h < i; h++) {
-            let m = r[h];
-            if (typeof m == "string") {
-              if (A(m) < 1) {
-                let o = { instancePath: t + "/steps/" + h, schemaPath: "journal-entry.schema.json#/definitions/steps/anyOf/1/items/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
-                e === null ? e = [o] : e.push(o), s++;
+            let o = r[h];
+            if (typeof o == "string") {
+              if (A(o) < 1) {
+                let l = { instancePath: t + "/steps/" + h, schemaPath: "journal-entry.schema.json#/definitions/steps/anyOf/1/items/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
+                e === null ? e = [l] : e.push(l), s++;
               }
             } else {
-              let o = { instancePath: t + "/steps/" + h, schemaPath: "journal-entry.schema.json#/definitions/steps/anyOf/1/items/type", keyword: "type", params: { type: "string" }, message: "must be string" };
-              e === null ? e = [o] : e.push(o), s++;
+              let l = { instancePath: t + "/steps/" + h, schemaPath: "journal-entry.schema.json#/definitions/steps/anyOf/1/items/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+              e === null ? e = [l] : e.push(l), s++;
             }
           }
         } else {
@@ -2534,9 +2534,9 @@ function Ve(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
           e === null ? e = [i] : e.push(i), s++;
         }
         var w = p === s;
-        d = d || w;
+        c = c || w;
       }
-      if (d) s = l, e !== null && (l ? e.length = l : e = null);
+      if (c) s = m, e !== null && (m ? e.length = m : e = null);
       else {
         let p = { instancePath: t + "/steps", schemaPath: "journal-entry.schema.json#/definitions/steps/anyOf", keyword: "anyOf", params: {}, message: "must match a schema in anyOf" };
         e === null ? e = [p] : e.push(p), s++;
@@ -2546,54 +2546,54 @@ function Ve(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
       let r = a.saw;
       if (typeof r == "string") {
         if (A(r) < 1) {
-          let l = { instancePath: t + "/saw", schemaPath: "journal-entry.schema.json#/definitions/saw/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
-          e === null ? e = [l] : e.push(l), s++;
+          let m = { instancePath: t + "/saw", schemaPath: "journal-entry.schema.json#/definitions/saw/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
+          e === null ? e = [m] : e.push(m), s++;
         }
       } else {
-        let l = { instancePath: t + "/saw", schemaPath: "journal-entry.schema.json#/definitions/saw/type", keyword: "type", params: { type: "string" }, message: "must be string" };
-        e === null ? e = [l] : e.push(l), s++;
+        let m = { instancePath: t + "/saw", schemaPath: "journal-entry.schema.json#/definitions/saw/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+        e === null ? e = [m] : e.push(m), s++;
       }
     }
     if (a.value !== void 0) {
       let r = a.value;
       if (typeof r == "string") {
         if (A(r) < 1) {
-          let l = { instancePath: t + "/value", schemaPath: "journal-entry.schema.json#/definitions/value/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
-          e === null ? e = [l] : e.push(l), s++;
+          let m = { instancePath: t + "/value", schemaPath: "journal-entry.schema.json#/definitions/value/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
+          e === null ? e = [m] : e.push(m), s++;
         }
       } else {
-        let l = { instancePath: t + "/value", schemaPath: "journal-entry.schema.json#/definitions/value/type", keyword: "type", params: { type: "string" }, message: "must be string" };
-        e === null ? e = [l] : e.push(l), s++;
+        let m = { instancePath: t + "/value", schemaPath: "journal-entry.schema.json#/definitions/value/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+        e === null ? e = [m] : e.push(m), s++;
       }
     }
     if (a.repeats !== void 0) {
       let r = a.repeats;
       if (typeof r == "string") {
-        if (!us.test(r)) {
-          let l = { instancePath: t + "/repeats", schemaPath: "#/properties/repeats/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_/-]{0,191}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_/-]{0,191}$"' };
-          e === null ? e = [l] : e.push(l), s++;
+        if (!cs.test(r)) {
+          let m = { instancePath: t + "/repeats", schemaPath: "#/properties/repeats/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_/-]{0,191}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_/-]{0,191}$"' };
+          e === null ? e = [m] : e.push(m), s++;
         }
       } else {
-        let l = { instancePath: t + "/repeats", schemaPath: "#/properties/repeats/type", keyword: "type", params: { type: "string" }, message: "must be string" };
-        e === null ? e = [l] : e.push(l), s++;
+        let m = { instancePath: t + "/repeats", schemaPath: "#/properties/repeats/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+        e === null ? e = [m] : e.push(m), s++;
       }
     }
     if (a.verdict !== void 0) {
       let r = a.verdict;
       if (!(r === "ok" || r === "wrong")) {
-        let l = { instancePath: t + "/verdict", schemaPath: "#/properties/verdict/enum", keyword: "enum", params: { allowedValues: Ie.properties.verdict.enum }, message: "must be equal to one of the allowed values" };
-        e === null ? e = [l] : e.push(l), s++;
+        let m = { instancePath: t + "/verdict", schemaPath: "#/properties/verdict/enum", keyword: "enum", params: { allowedValues: Ie.properties.verdict.enum }, message: "must be equal to one of the allowed values" };
+        e === null ? e = [m] : e.push(m), s++;
       }
     }
     if (a.via !== void 0) {
       let r = a.via;
       if (!(r === "ui" || r === "api" || r === "code" || r === "other")) {
-        let l = { instancePath: t + "/via", schemaPath: "journal-entry.schema.json#/definitions/via/enum", keyword: "enum", params: { allowedValues: $e.enum }, message: "must be equal to one of the allowed values" };
-        e === null ? e = [l] : e.push(l), s++;
+        let m = { instancePath: t + "/via", schemaPath: "journal-entry.schema.json#/definitions/via/enum", keyword: "enum", params: { allowedValues: Te.enum }, message: "must be equal to one of the allowed values" };
+        e === null ? e = [m] : e.push(m), s++;
       }
     }
     if (a.evidence !== void 0) {
-      let r = a.evidence, l = s, d = false, c = s;
+      let r = a.evidence, m = s, c = false, d = s;
       if (typeof r == "string") {
         if (A(r) < 1) {
           let p = { instancePath: t + "/evidence", schemaPath: "journal-entry.schema.json#/definitions/evidence/anyOf/0/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
@@ -2603,8 +2603,8 @@ function Ve(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
         let p = { instancePath: t + "/evidence", schemaPath: "journal-entry.schema.json#/definitions/evidence/anyOf/0/type", keyword: "type", params: { type: "string" }, message: "must be string" };
         e === null ? e = [p] : e.push(p), s++;
       }
-      var n = c === s;
-      if (d = d || n, !d) {
+      var n = d === s;
+      if (c = c || n, !c) {
         let p = s;
         if (Array.isArray(r)) {
           if (r.length < 1) {
@@ -2613,15 +2613,15 @@ function Ve(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
           }
           let i = r.length;
           for (let h = 0; h < i; h++) {
-            let m = r[h];
-            if (typeof m == "string") {
-              if (A(m) < 1) {
-                let o = { instancePath: t + "/evidence/" + h, schemaPath: "journal-entry.schema.json#/definitions/evidence/anyOf/1/items/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
-                e === null ? e = [o] : e.push(o), s++;
+            let o = r[h];
+            if (typeof o == "string") {
+              if (A(o) < 1) {
+                let l = { instancePath: t + "/evidence/" + h, schemaPath: "journal-entry.schema.json#/definitions/evidence/anyOf/1/items/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
+                e === null ? e = [l] : e.push(l), s++;
               }
             } else {
-              let o = { instancePath: t + "/evidence/" + h, schemaPath: "journal-entry.schema.json#/definitions/evidence/anyOf/1/items/type", keyword: "type", params: { type: "string" }, message: "must be string" };
-              e === null ? e = [o] : e.push(o), s++;
+              let l = { instancePath: t + "/evidence/" + h, schemaPath: "journal-entry.schema.json#/definitions/evidence/anyOf/1/items/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+              e === null ? e = [l] : e.push(l), s++;
             }
           }
         } else {
@@ -2629,9 +2629,9 @@ function Ve(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
           e === null ? e = [i] : e.push(i), s++;
         }
         var n = p === s;
-        d = d || n;
+        c = c || n;
       }
-      if (d) s = l, e !== null && (l ? e.length = l : e = null);
+      if (c) s = m, e !== null && (m ? e.length = m : e = null);
       else {
         let p = { instancePath: t + "/evidence", schemaPath: "journal-entry.schema.json#/definitions/evidence/anyOf", keyword: "anyOf", params: {}, message: "must match a schema in anyOf" };
         e === null ? e = [p] : e.push(p), s++;
@@ -2641,35 +2641,35 @@ function Ve(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
       let r = a.confirms;
       if (typeof r == "string") {
         if (A(r) < 1) {
-          let l = { instancePath: t + "/confirms", schemaPath: "#/properties/confirms/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
-          e === null ? e = [l] : e.push(l), s++;
+          let m = { instancePath: t + "/confirms", schemaPath: "#/properties/confirms/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
+          e === null ? e = [m] : e.push(m), s++;
         }
       } else {
-        let l = { instancePath: t + "/confirms", schemaPath: "#/properties/confirms/type", keyword: "type", params: { type: "string" }, message: "must be string" };
-        e === null ? e = [l] : e.push(l), s++;
+        let m = { instancePath: t + "/confirms", schemaPath: "#/properties/confirms/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+        e === null ? e = [m] : e.push(m), s++;
       }
     }
     if (a.refutes !== void 0) {
       let r = a.refutes;
       if (typeof r == "string") {
         if (A(r) < 1) {
-          let l = { instancePath: t + "/refutes", schemaPath: "#/properties/refutes/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
-          e === null ? e = [l] : e.push(l), s++;
+          let m = { instancePath: t + "/refutes", schemaPath: "#/properties/refutes/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
+          e === null ? e = [m] : e.push(m), s++;
         }
       } else {
-        let l = { instancePath: t + "/refutes", schemaPath: "#/properties/refutes/type", keyword: "type", params: { type: "string" }, message: "must be string" };
-        e === null ? e = [l] : e.push(l), s++;
+        let m = { instancePath: t + "/refutes", schemaPath: "#/properties/refutes/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+        e === null ? e = [m] : e.push(m), s++;
       }
     }
   } else {
     let r = { instancePath: t, schemaPath: "#/type", keyword: "type", params: { type: "object" }, message: "must be object" };
     e === null ? e = [r] : e.push(r), s++;
   }
-  return Ve.errors = e, s === 0;
+  return Ke.errors = e, s === 0;
 }
-var Ds = Ge;
-var ds = { $schema: "http://json-schema.org/draft-07/schema#", $id: "journal-question.schema.json", description: "A question for the product owner. Ask one question in each entry. Ask about each rule, limit, and case that the sources leave open.", type: "object", properties: { kind: { const: "question" }, id: { $ref: "journal-entry.schema.json#/definitions/id" }, build: { $ref: "journal-entry.schema.json#/definitions/build" }, supersedes: { $ref: "journal-entry.schema.json#/definitions/supersedes" }, rule: { $ref: "journal-entry.schema.json#/definitions/rule" }, question: { description: "The question.", type: "string", minLength: 1 }, actual: { description: "What the build does now, in one sentence.", type: "string", minLength: 1 }, about: { $ref: "journal-entry.schema.json#/definitions/about" }, blocking: { description: "true only when you could not test a part of the change without the answer.", type: "boolean" } }, required: ["kind", "question"], additionalProperties: false };
-function Ge(a, { instancePath: t = "", parentData: $, parentDataProperty: _, rootData: T = a } = {}) {
+var xs = Ee;
+var hs = { $schema: "http://json-schema.org/draft-07/schema#", $id: "journal-question.schema.json", description: "A question for the product owner. Ask one question in each entry. Ask about each rule, limit, and case that the sources leave open.", type: "object", properties: { kind: { const: "question" }, id: { $ref: "journal-entry.schema.json#/definitions/id" }, build: { $ref: "journal-entry.schema.json#/definitions/build" }, supersedes: { $ref: "journal-entry.schema.json#/definitions/supersedes" }, rule: { $ref: "journal-entry.schema.json#/definitions/rule" }, question: { description: "The question.", type: "string", minLength: 1 }, actual: { description: "What the build does now, in one sentence.", type: "string", minLength: 1 }, about: { $ref: "journal-entry.schema.json#/definitions/about" }, blocking: { description: "true only when you could not test a part of the change without the answer.", type: "boolean" } }, required: ["kind", "question"], additionalProperties: false };
+function Ee(a, { instancePath: t = "", parentData: $, parentDataProperty: _, rootData: L = a } = {}) {
   let e = null, s = 0;
   if (a && typeof a == "object" && !Array.isArray(a)) {
     if (a.kind === void 0) {
@@ -2680,7 +2680,7 @@ function Ge(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
       let w = { instancePath: t, schemaPath: "#/required", keyword: "required", params: { missingProperty: "question" }, message: "must have required property 'question'" };
       e === null ? e = [w] : e.push(w), s++;
     }
-    for (let w in a) if (!E.call(ds.properties, w)) {
+    for (let w in a) if (!K.call(hs.properties, w)) {
       let n = { instancePath: t, schemaPath: "#/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: w }, message: "must NOT have additional properties" };
       e === null ? e = [n] : e.push(n), s++;
     }
@@ -2780,11 +2780,11 @@ function Ge(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
     let w = { instancePath: t, schemaPath: "#/type", keyword: "type", params: { type: "object" }, message: "must be object" };
     e === null ? e = [w] : e.push(w), s++;
   }
-  return Ge.errors = e, s === 0;
+  return Ee.errors = e, s === 0;
 }
-var Vs = Ee;
-var cs = new RegExp("^\\S+( \\S+){0,2}$", "u");
-function Ee(a, { instancePath: t = "", parentData: $, parentDataProperty: _, rootData: T = a } = {}) {
+var Ds = Re;
+var fs = new RegExp("^\\S+( \\S+){0,2}$", "u");
+function Re(a, { instancePath: t = "", parentData: $, parentDataProperty: _, rootData: L = a } = {}) {
   let e = null, s = 0;
   if (a && typeof a == "object" && !Array.isArray(a)) {
     if (a.kind === void 0) {
@@ -2862,7 +2862,7 @@ function Ee(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
           let n = { instancePath: t + "/label", schemaPath: "#/properties/label/maxLength", keyword: "maxLength", params: { limit: 40 }, message: "must NOT have more than 40 characters" };
           e === null ? e = [n] : e.push(n), s++;
         }
-        if (!cs.test(w)) {
+        if (!fs.test(w)) {
           let n = { instancePath: t + "/label", schemaPath: "#/properties/label/pattern", keyword: "pattern", params: { pattern: "^\\S+( \\S+){0,2}$" }, message: 'must match pattern "^\\S+( \\S+){0,2}$"' };
           e === null ? e = [n] : e.push(n), s++;
         }
@@ -2880,15 +2880,15 @@ function Ee(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
         }
         let n = w.length;
         for (let r = 0; r < n; r++) {
-          let l = w[r];
-          if (typeof l == "string") {
-            if (A(l) < 1) {
-              let d = { instancePath: t + "/members/" + r, schemaPath: "#/properties/members/items/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
-              e === null ? e = [d] : e.push(d), s++;
+          let m = w[r];
+          if (typeof m == "string") {
+            if (A(m) < 1) {
+              let c = { instancePath: t + "/members/" + r, schemaPath: "#/properties/members/items/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
+              e === null ? e = [c] : e.push(c), s++;
             }
           } else {
-            let d = { instancePath: t + "/members/" + r, schemaPath: "#/properties/members/items/type", keyword: "type", params: { type: "string" }, message: "must be string" };
-            e === null ? e = [d] : e.push(d), s++;
+            let c = { instancePath: t + "/members/" + r, schemaPath: "#/properties/members/items/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+            e === null ? e = [c] : e.push(c), s++;
           }
         }
       } else {
@@ -2900,11 +2900,11 @@ function Ee(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
     let w = { instancePath: t, schemaPath: "#/type", keyword: "type", params: { type: "object" }, message: "must be object" };
     e === null ? e = [w] : e.push(w), s++;
   }
-  return Ee.errors = e, s === 0;
+  return Re.errors = e, s === 0;
 }
-var Gs = Re;
-var hs = { $schema: "http://json-schema.org/draft-07/schema#", $id: "journal-verdict.schema.json", description: "The result of a retest of an earlier defect on this build, or the reason it could not be retested.", type: "object", properties: { kind: { const: "verdict" }, id: { $ref: "journal-entry.schema.json#/definitions/id" }, build: { $ref: "journal-entry.schema.json#/definitions/build" }, supersedes: { $ref: "journal-entry.schema.json#/definitions/supersedes" }, defect: { description: "The ID of the earlier defect or issue.", type: "string", minLength: 1 }, result: { description: "Use fixed or not_fixed for an observed result. Use not_retested when the retest did not give an observed result.", enum: ["fixed", "not_fixed", "not_retested"] }, saw: { description: "What you saw, or the reason for not_retested.", type: "string", minLength: 1 }, evidence: { $ref: "journal-entry.schema.json#/definitions/evidence" } }, required: ["kind", "build", "defect", "result"], additionalProperties: false };
-function Re(a, { instancePath: t = "", parentData: $, parentDataProperty: _, rootData: T = a } = {}) {
+var Vs = Ce;
+var ys = { $schema: "http://json-schema.org/draft-07/schema#", $id: "journal-verdict.schema.json", description: "The result of a retest of an earlier defect on this build, or the reason it could not be retested.", type: "object", properties: { kind: { const: "verdict" }, id: { $ref: "journal-entry.schema.json#/definitions/id" }, build: { $ref: "journal-entry.schema.json#/definitions/build" }, supersedes: { $ref: "journal-entry.schema.json#/definitions/supersedes" }, defect: { description: "The ID of the earlier defect or issue.", type: "string", minLength: 1 }, result: { description: "Use fixed or not_fixed for an observed result. Use not_retested when the retest did not give an observed result.", enum: ["fixed", "not_fixed", "not_retested"] }, saw: { description: "What you saw, or the reason for not_retested.", type: "string", minLength: 1 }, evidence: { $ref: "journal-entry.schema.json#/definitions/evidence" } }, required: ["kind", "build", "defect", "result"], additionalProperties: false };
+function Ce(a, { instancePath: t = "", parentData: $, parentDataProperty: _, rootData: L = a } = {}) {
   let e = null, s = 0;
   if (a && typeof a == "object" && !Array.isArray(a)) {
     if (a.kind === void 0) {
@@ -2982,7 +2982,7 @@ function Re(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
     if (a.result !== void 0) {
       let n = a.result;
       if (!(n === "fixed" || n === "not_fixed" || n === "not_retested")) {
-        let r = { instancePath: t + "/result", schemaPath: "#/properties/result/enum", keyword: "enum", params: { allowedValues: hs.properties.result.enum }, message: "must be equal to one of the allowed values" };
+        let r = { instancePath: t + "/result", schemaPath: "#/properties/result/enum", keyword: "enum", params: { allowedValues: ys.properties.result.enum }, message: "must be equal to one of the allowed values" };
         e === null ? e = [r] : e.push(r), s++;
       }
     }
@@ -2999,19 +2999,19 @@ function Re(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
       }
     }
     if (a.evidence !== void 0) {
-      let n = a.evidence, r = s, l = false, d = s;
+      let n = a.evidence, r = s, m = false, c = s;
       if (typeof n == "string") {
         if (A(n) < 1) {
-          let c = { instancePath: t + "/evidence", schemaPath: "journal-entry.schema.json#/definitions/evidence/anyOf/0/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
-          e === null ? e = [c] : e.push(c), s++;
+          let d = { instancePath: t + "/evidence", schemaPath: "journal-entry.schema.json#/definitions/evidence/anyOf/0/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
+          e === null ? e = [d] : e.push(d), s++;
         }
       } else {
-        let c = { instancePath: t + "/evidence", schemaPath: "journal-entry.schema.json#/definitions/evidence/anyOf/0/type", keyword: "type", params: { type: "string" }, message: "must be string" };
-        e === null ? e = [c] : e.push(c), s++;
+        let d = { instancePath: t + "/evidence", schemaPath: "journal-entry.schema.json#/definitions/evidence/anyOf/0/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+        e === null ? e = [d] : e.push(d), s++;
       }
-      var w = d === s;
-      if (l = l || w, !l) {
-        let c = s;
+      var w = c === s;
+      if (m = m || w, !m) {
+        let d = s;
         if (Array.isArray(n)) {
           if (n.length < 1) {
             let i = { instancePath: t + "/evidence", schemaPath: "journal-entry.schema.json#/definitions/evidence/anyOf/1/minItems", keyword: "minItems", params: { limit: 1 }, message: "must NOT have fewer than 1 items" };
@@ -3022,161 +3022,161 @@ function Re(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
             let h = n[i];
             if (typeof h == "string") {
               if (A(h) < 1) {
-                let m = { instancePath: t + "/evidence/" + i, schemaPath: "journal-entry.schema.json#/definitions/evidence/anyOf/1/items/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
-                e === null ? e = [m] : e.push(m), s++;
+                let o = { instancePath: t + "/evidence/" + i, schemaPath: "journal-entry.schema.json#/definitions/evidence/anyOf/1/items/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
+                e === null ? e = [o] : e.push(o), s++;
               }
             } else {
-              let m = { instancePath: t + "/evidence/" + i, schemaPath: "journal-entry.schema.json#/definitions/evidence/anyOf/1/items/type", keyword: "type", params: { type: "string" }, message: "must be string" };
-              e === null ? e = [m] : e.push(m), s++;
+              let o = { instancePath: t + "/evidence/" + i, schemaPath: "journal-entry.schema.json#/definitions/evidence/anyOf/1/items/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+              e === null ? e = [o] : e.push(o), s++;
             }
           }
         } else {
           let u = { instancePath: t + "/evidence", schemaPath: "journal-entry.schema.json#/definitions/evidence/anyOf/1/type", keyword: "type", params: { type: "array" }, message: "must be array" };
           e === null ? e = [u] : e.push(u), s++;
         }
-        var w = c === s;
-        l = l || w;
+        var w = d === s;
+        m = m || w;
       }
-      if (l) s = r, e !== null && (r ? e.length = r : e = null);
+      if (m) s = r, e !== null && (r ? e.length = r : e = null);
       else {
-        let c = { instancePath: t + "/evidence", schemaPath: "journal-entry.schema.json#/definitions/evidence/anyOf", keyword: "anyOf", params: {}, message: "must match a schema in anyOf" };
-        e === null ? e = [c] : e.push(c), s++;
+        let d = { instancePath: t + "/evidence", schemaPath: "journal-entry.schema.json#/definitions/evidence/anyOf", keyword: "anyOf", params: {}, message: "must match a schema in anyOf" };
+        e === null ? e = [d] : e.push(d), s++;
       }
     }
   } else {
     let n = { instancePath: t, schemaPath: "#/type", keyword: "type", params: { type: "object" }, message: "must be object" };
     e === null ? e = [n] : e.push(n), s++;
   }
-  return Re.errors = e, s === 0;
+  return Ce.errors = e, s === 0;
 }
-var Es = Ke;
-var fs = { $schema: "http://json-schema.org/draft-07/schema#", $id: "plan-candidate.schema.json", type: "object", properties: { requirements: { $ref: "plan.schema.json#/properties/requirements" }, tests: { type: "array", items: { type: "object", properties: { id: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, title: { type: "string", minLength: 1, maxLength: 200 }, requirementIds: { type: "array", items: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 1, uniqueItems: true }, capability: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, operations: { type: "array", items: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 1, uniqueItems: true }, dependsOn: { type: "array", items: { type: "string", pattern: "^([A-Za-z0-9][A-Za-z0-9_-]{0,95}:)?[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 0, uniqueItems: true }, preconditions: { type: "array", items: { type: "string", minLength: 1 }, minItems: 0, uniqueItems: true }, action: { type: "string", minLength: 1 }, assertions: { type: "array", items: { $ref: "plan.schema.json#/definitions/assertion" }, minItems: 0, uniqueItems: true }, metadata: { $ref: "plan.schema.json#/definitions/metadata" } }, required: ["id", "title", "requirementIds", "capability", "operations", "dependsOn", "preconditions", "action", "assertions"], additionalProperties: false }, minItems: 0, uniqueItems: true }, gaps: { type: "array", items: { $ref: "gap.schema.json" }, minItems: 0, uniqueItems: true } }, required: ["tests", "gaps"], additionalProperties: false };
-var Ce = { type: "object", properties: { id: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, check: { type: "string", minLength: 1 }, checkKind: { enum: ["deterministic", "agent_observation"] }, observe: { type: "string", minLength: 1 }, expected: { type: "string", minLength: 1 } }, required: ["id", "check", "checkKind"], additionalProperties: false };
+var Gs = We;
+var gs = { $schema: "http://json-schema.org/draft-07/schema#", $id: "plan-candidate.schema.json", type: "object", properties: { requirements: { $ref: "plan.schema.json#/properties/requirements" }, tests: { type: "array", items: { type: "object", properties: { id: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, title: { type: "string", minLength: 1, maxLength: 200 }, requirementIds: { type: "array", items: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 1, uniqueItems: true }, capability: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, operations: { type: "array", items: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 1, uniqueItems: true }, dependsOn: { type: "array", items: { type: "string", pattern: "^([A-Za-z0-9][A-Za-z0-9_-]{0,95}:)?[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 0, uniqueItems: true }, preconditions: { type: "array", items: { type: "string", minLength: 1 }, minItems: 0, uniqueItems: true }, action: { type: "string", minLength: 1 }, assertions: { type: "array", items: { $ref: "plan.schema.json#/definitions/assertion" }, minItems: 0, uniqueItems: true }, metadata: { $ref: "plan.schema.json#/definitions/metadata" } }, required: ["id", "title", "requirementIds", "capability", "operations", "dependsOn", "preconditions", "action", "assertions"], additionalProperties: false }, minItems: 0, uniqueItems: true }, gaps: { type: "array", items: { $ref: "gap.schema.json" }, minItems: 0, uniqueItems: true } }, required: ["tests", "gaps"], additionalProperties: false };
+var Fe = { type: "object", properties: { id: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, check: { type: "string", minLength: 1 }, checkKind: { enum: ["deterministic", "agent_observation"] }, observe: { type: "string", minLength: 1 }, expected: { type: "string", minLength: 1 } }, required: ["id", "check", "checkKind"], additionalProperties: false };
 var D = ce().default;
-function Q(a, { instancePath: t = "", parentData: $, parentDataProperty: _, rootData: T = a } = {}) {
+function Q(a, { instancePath: t = "", parentData: $, parentDataProperty: _, rootData: L = a } = {}) {
   let e = null, s = 0;
   if (Array.isArray(a)) {
     if (a.length < 1) {
-      let d = { instancePath: t, schemaPath: "#/minItems", keyword: "minItems", params: { limit: 1 }, message: "must NOT have fewer than 1 items" };
-      e === null ? e = [d] : e.push(d), s++;
+      let c = { instancePath: t, schemaPath: "#/minItems", keyword: "minItems", params: { limit: 1 }, message: "must NOT have fewer than 1 items" };
+      e === null ? e = [c] : e.push(c), s++;
     }
     let n = a.length;
-    for (let d = 0; d < n; d++) {
-      let c = a[d];
-      if (c && typeof c == "object" && !Array.isArray(c)) {
-        if (c.id === void 0) {
-          let p = { instancePath: t + "/" + d, schemaPath: "#/items/required", keyword: "required", params: { missingProperty: "id" }, message: "must have required property 'id'" };
+    for (let c = 0; c < n; c++) {
+      let d = a[c];
+      if (d && typeof d == "object" && !Array.isArray(d)) {
+        if (d.id === void 0) {
+          let p = { instancePath: t + "/" + c, schemaPath: "#/items/required", keyword: "required", params: { missingProperty: "id" }, message: "must have required property 'id'" };
           e === null ? e = [p] : e.push(p), s++;
         }
-        if (c.text === void 0) {
-          let p = { instancePath: t + "/" + d, schemaPath: "#/items/required", keyword: "required", params: { missingProperty: "text" }, message: "must have required property 'text'" };
+        if (d.text === void 0) {
+          let p = { instancePath: t + "/" + c, schemaPath: "#/items/required", keyword: "required", params: { missingProperty: "text" }, message: "must have required property 'text'" };
           e === null ? e = [p] : e.push(p), s++;
         }
-        if (c.source === void 0) {
-          let p = { instancePath: t + "/" + d, schemaPath: "#/items/required", keyword: "required", params: { missingProperty: "source" }, message: "must have required property 'source'" };
+        if (d.source === void 0) {
+          let p = { instancePath: t + "/" + c, schemaPath: "#/items/required", keyword: "required", params: { missingProperty: "source" }, message: "must have required property 'source'" };
           e === null ? e = [p] : e.push(p), s++;
         }
-        for (let p in c) if (!(p === "id" || p === "text" || p === "source" || p === "area" || p === "metadata")) {
-          let u = { instancePath: t + "/" + d, schemaPath: "#/items/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: p }, message: "must NOT have additional properties" };
+        for (let p in d) if (!(p === "id" || p === "text" || p === "source" || p === "area" || p === "metadata")) {
+          let u = { instancePath: t + "/" + c, schemaPath: "#/items/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: p }, message: "must NOT have additional properties" };
           e === null ? e = [u] : e.push(u), s++;
         }
-        if (c.id !== void 0) {
-          let p = c.id;
+        if (d.id !== void 0) {
+          let p = d.id;
           if (typeof p == "string") {
             if (!Z.test(p)) {
-              let u = { instancePath: t + "/" + d + "/id", schemaPath: "#/items/properties/id/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
+              let u = { instancePath: t + "/" + c + "/id", schemaPath: "#/items/properties/id/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
               e === null ? e = [u] : e.push(u), s++;
             }
           } else {
-            let u = { instancePath: t + "/" + d + "/id", schemaPath: "#/items/properties/id/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+            let u = { instancePath: t + "/" + c + "/id", schemaPath: "#/items/properties/id/type", keyword: "type", params: { type: "string" }, message: "must be string" };
             e === null ? e = [u] : e.push(u), s++;
           }
         }
-        if (c.text !== void 0) {
-          let p = c.text;
+        if (d.text !== void 0) {
+          let p = d.text;
           if (typeof p == "string") {
             if (A(p) < 1) {
-              let u = { instancePath: t + "/" + d + "/text", schemaPath: "#/items/properties/text/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
+              let u = { instancePath: t + "/" + c + "/text", schemaPath: "#/items/properties/text/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
               e === null ? e = [u] : e.push(u), s++;
             }
           } else {
-            let u = { instancePath: t + "/" + d + "/text", schemaPath: "#/items/properties/text/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+            let u = { instancePath: t + "/" + c + "/text", schemaPath: "#/items/properties/text/type", keyword: "type", params: { type: "string" }, message: "must be string" };
             e === null ? e = [u] : e.push(u), s++;
           }
         }
-        if (c.source !== void 0) {
-          let p = c.source;
+        if (d.source !== void 0) {
+          let p = d.source;
           if (typeof p == "string") {
             if (A(p) < 1) {
-              let u = { instancePath: t + "/" + d + "/source", schemaPath: "#/items/properties/source/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
+              let u = { instancePath: t + "/" + c + "/source", schemaPath: "#/items/properties/source/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
               e === null ? e = [u] : e.push(u), s++;
             }
           } else {
-            let u = { instancePath: t + "/" + d + "/source", schemaPath: "#/items/properties/source/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+            let u = { instancePath: t + "/" + c + "/source", schemaPath: "#/items/properties/source/type", keyword: "type", params: { type: "string" }, message: "must be string" };
             e === null ? e = [u] : e.push(u), s++;
           }
         }
-        if (c.area !== void 0) {
-          let p = c.area;
+        if (d.area !== void 0) {
+          let p = d.area;
           if (typeof p == "string") {
             if (A(p) > 40) {
-              let u = { instancePath: t + "/" + d + "/area", schemaPath: "#/items/properties/area/maxLength", keyword: "maxLength", params: { limit: 40 }, message: "must NOT have more than 40 characters" };
+              let u = { instancePath: t + "/" + c + "/area", schemaPath: "#/items/properties/area/maxLength", keyword: "maxLength", params: { limit: 40 }, message: "must NOT have more than 40 characters" };
               e === null ? e = [u] : e.push(u), s++;
             }
             if (A(p) < 1) {
-              let u = { instancePath: t + "/" + d + "/area", schemaPath: "#/items/properties/area/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
+              let u = { instancePath: t + "/" + c + "/area", schemaPath: "#/items/properties/area/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
               e === null ? e = [u] : e.push(u), s++;
             }
           } else {
-            let u = { instancePath: t + "/" + d + "/area", schemaPath: "#/items/properties/area/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+            let u = { instancePath: t + "/" + c + "/area", schemaPath: "#/items/properties/area/type", keyword: "type", params: { type: "string" }, message: "must be string" };
             e === null ? e = [u] : e.push(u), s++;
           }
         }
-        if (c.metadata !== void 0) {
-          let p = c.metadata;
+        if (d.metadata !== void 0) {
+          let p = d.metadata;
           if (p && typeof p == "object" && !Array.isArray(p)) {
             if (Object.keys(p).length > 20) {
-              let u = { instancePath: t + "/" + d + "/metadata", schemaPath: "#/definitions/metadata/maxProperties", keyword: "maxProperties", params: { limit: 20 }, message: "must NOT have more than 20 properties" };
+              let u = { instancePath: t + "/" + c + "/metadata", schemaPath: "#/definitions/metadata/maxProperties", keyword: "maxProperties", params: { limit: 20 }, message: "must NOT have more than 20 properties" };
               e === null ? e = [u] : e.push(u), s++;
             }
             for (let u in p) {
               let i = s;
               if (typeof u == "string" && !W.test(u)) {
-                let h = { instancePath: t + "/" + d + "/metadata", schemaPath: "#/definitions/metadata/propertyNames/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z][A-Za-z0-9_.-]{0,63}$" }, message: 'must match pattern "^[A-Za-z][A-Za-z0-9_.-]{0,63}$"', propertyName: u };
+                let h = { instancePath: t + "/" + c + "/metadata", schemaPath: "#/definitions/metadata/propertyNames/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z][A-Za-z0-9_.-]{0,63}$" }, message: 'must match pattern "^[A-Za-z][A-Za-z0-9_.-]{0,63}$"', propertyName: u };
                 e === null ? e = [h] : e.push(h), s++;
               }
               var w = i === s;
               if (!w) {
-                let h = { instancePath: t + "/" + d + "/metadata", schemaPath: "#/definitions/metadata/propertyNames", keyword: "propertyNames", params: { propertyName: u }, message: "property name must be valid" };
+                let h = { instancePath: t + "/" + c + "/metadata", schemaPath: "#/definitions/metadata/propertyNames", keyword: "propertyNames", params: { propertyName: u }, message: "property name must be valid" };
                 e === null ? e = [h] : e.push(h), s++;
               }
             }
             for (let u in p) {
               let i = p[u];
               if (typeof i != "string" && !(typeof i == "number" && isFinite(i)) && typeof i != "boolean") {
-                let h = { instancePath: t + "/" + d + "/metadata/" + u.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "#/definitions/metadata/additionalProperties/type", keyword: "type", params: { type: F.additionalProperties.type }, message: "must be string,number,boolean" };
+                let h = { instancePath: t + "/" + c + "/metadata/" + u.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "#/definitions/metadata/additionalProperties/type", keyword: "type", params: { type: F.additionalProperties.type }, message: "must be string,number,boolean" };
                 e === null ? e = [h] : e.push(h), s++;
               }
               if (typeof i == "string" && A(i) > 500) {
-                let h = { instancePath: t + "/" + d + "/metadata/" + u.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "#/definitions/metadata/additionalProperties/maxLength", keyword: "maxLength", params: { limit: 500 }, message: "must NOT have more than 500 characters" };
+                let h = { instancePath: t + "/" + c + "/metadata/" + u.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "#/definitions/metadata/additionalProperties/maxLength", keyword: "maxLength", params: { limit: 500 }, message: "must NOT have more than 500 characters" };
                 e === null ? e = [h] : e.push(h), s++;
               }
             }
           } else {
-            let u = { instancePath: t + "/" + d + "/metadata", schemaPath: "#/definitions/metadata/type", keyword: "type", params: { type: "object" }, message: "must be object" };
+            let u = { instancePath: t + "/" + c + "/metadata", schemaPath: "#/definitions/metadata/type", keyword: "type", params: { type: "object" }, message: "must be object" };
             e === null ? e = [u] : e.push(u), s++;
           }
         }
       } else {
-        let p = { instancePath: t + "/" + d, schemaPath: "#/items/type", keyword: "type", params: { type: "object" }, message: "must be object" };
+        let p = { instancePath: t + "/" + c, schemaPath: "#/items/type", keyword: "type", params: { type: "object" }, message: "must be object" };
         e === null ? e = [p] : e.push(p), s++;
       }
     }
-    let r = a.length, l;
+    let r = a.length, m;
     if (r > 1) {
-      e: for (; r--; ) for (l = r; l--; ) if (D(a[r], a[l])) {
-        let d = { instancePath: t, schemaPath: "#/uniqueItems", keyword: "uniqueItems", params: { i: r, j: l }, message: "must NOT have duplicate items (items ## " + l + " and " + r + " are identical)" };
-        e === null ? e = [d] : e.push(d), s++;
+      e: for (; r--; ) for (m = r; m--; ) if (D(a[r], a[m])) {
+        let c = { instancePath: t, schemaPath: "#/uniqueItems", keyword: "uniqueItems", params: { i: r, j: m }, message: "must NOT have duplicate items (items ## " + m + " and " + r + " are identical)" };
+        e === null ? e = [c] : e.push(c), s++;
         break e;
       }
     }
@@ -3186,7 +3186,7 @@ function Q(a, { instancePath: t = "", parentData: $, parentDataProperty: _, root
   }
   return Q.errors = e, s === 0;
 }
-function Ke(a, { instancePath: t = "", parentData: $, parentDataProperty: _, rootData: T = a } = {}) {
+function We(a, { instancePath: t = "", parentData: $, parentDataProperty: _, rootData: L = a } = {}) {
   let e = null, s = 0;
   if (a && typeof a == "object" && !Array.isArray(a)) {
     if (a.tests === void 0) {
@@ -3198,18 +3198,18 @@ function Ke(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
       e === null ? e = [r] : e.push(r), s++;
     }
     for (let r in a) if (!(r === "requirements" || r === "tests" || r === "gaps")) {
-      let l = { instancePath: t, schemaPath: "#/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: r }, message: "must NOT have additional properties" };
-      e === null ? e = [l] : e.push(l), s++;
+      let m = { instancePath: t, schemaPath: "#/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: r }, message: "must NOT have additional properties" };
+      e === null ? e = [m] : e.push(m), s++;
     }
-    if (a.requirements !== void 0 && (Q(a.requirements, { instancePath: t + "/requirements", parentData: a, parentDataProperty: "requirements", rootData: T }) || (e = e === null ? Q.errors : e.concat(Q.errors), s = e.length)), a.tests !== void 0) {
+    if (a.requirements !== void 0 && (Q(a.requirements, { instancePath: t + "/requirements", parentData: a, parentDataProperty: "requirements", rootData: L }) || (e = e === null ? Q.errors : e.concat(Q.errors), s = e.length)), a.tests !== void 0) {
       let r = a.tests;
       if (Array.isArray(r)) {
         if (r.length < 0) {
           let p = { instancePath: t + "/tests", schemaPath: "#/properties/tests/minItems", keyword: "minItems", params: { limit: 0 }, message: "must NOT have fewer than 0 items" };
           e === null ? e = [p] : e.push(p), s++;
         }
-        let l = r.length;
-        for (let p = 0; p < l; p++) {
+        let m = r.length;
+        for (let p = 0; p < m; p++) {
           let u = r[p];
           if (u && typeof u == "object" && !Array.isArray(u)) {
             if (u.id === void 0) {
@@ -3248,7 +3248,7 @@ function Ke(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
               let i = { instancePath: t + "/tests/" + p, schemaPath: "#/properties/tests/items/required", keyword: "required", params: { missingProperty: "assertions" }, message: "must have required property 'assertions'" };
               e === null ? e = [i] : e.push(i), s++;
             }
-            for (let i in u) if (!E.call(fs.properties.tests.items.properties, i)) {
+            for (let i in u) if (!K.call(gs.properties.tests.items.properties, i)) {
               let h = { instancePath: t + "/tests/" + p, schemaPath: "#/properties/tests/items/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: i }, message: "must NOT have additional properties" };
               e === null ? e = [h] : e.push(h), s++;
             }
@@ -3289,9 +3289,9 @@ function Ke(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
                 }
                 let h = i.length;
                 for (let g = 0; g < h; g++) {
-                  let v = i[g];
-                  if (typeof v == "string") {
-                    if (!Z.test(v)) {
+                  let b = i[g];
+                  if (typeof b == "string") {
+                    if (!Z.test(b)) {
                       let f = { instancePath: t + "/tests/" + p + "/requirementIds/" + g, schemaPath: "#/properties/tests/items/properties/requirementIds/items/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
                       e === null ? e = [f] : e.push(f), s++;
                     }
@@ -3300,19 +3300,19 @@ function Ke(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
                     e === null ? e = [f] : e.push(f), s++;
                   }
                 }
-                let m = i.length, o;
-                if (m > 1) {
+                let o = i.length, l;
+                if (o > 1) {
                   let g = {};
-                  for (; m--; ) {
-                    let v = i[m];
-                    if (typeof v == "string") {
-                      if (typeof g[v] == "number") {
-                        o = g[v];
-                        let f = { instancePath: t + "/tests/" + p + "/requirementIds", schemaPath: "#/properties/tests/items/properties/requirementIds/uniqueItems", keyword: "uniqueItems", params: { i: m, j: o }, message: "must NOT have duplicate items (items ## " + o + " and " + m + " are identical)" };
+                  for (; o--; ) {
+                    let b = i[o];
+                    if (typeof b == "string") {
+                      if (typeof g[b] == "number") {
+                        l = g[b];
+                        let f = { instancePath: t + "/tests/" + p + "/requirementIds", schemaPath: "#/properties/tests/items/properties/requirementIds/uniqueItems", keyword: "uniqueItems", params: { i: o, j: l }, message: "must NOT have duplicate items (items ## " + l + " and " + o + " are identical)" };
                         e === null ? e = [f] : e.push(f), s++;
                         break;
                       }
-                      g[v] = m;
+                      g[b] = o;
                     }
                   }
                 }
@@ -3342,9 +3342,9 @@ function Ke(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
                 }
                 let h = i.length;
                 for (let g = 0; g < h; g++) {
-                  let v = i[g];
-                  if (typeof v == "string") {
-                    if (!Z.test(v)) {
+                  let b = i[g];
+                  if (typeof b == "string") {
+                    if (!Z.test(b)) {
                       let f = { instancePath: t + "/tests/" + p + "/operations/" + g, schemaPath: "#/properties/tests/items/properties/operations/items/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
                       e === null ? e = [f] : e.push(f), s++;
                     }
@@ -3353,19 +3353,19 @@ function Ke(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
                     e === null ? e = [f] : e.push(f), s++;
                   }
                 }
-                let m = i.length, o;
-                if (m > 1) {
+                let o = i.length, l;
+                if (o > 1) {
                   let g = {};
-                  for (; m--; ) {
-                    let v = i[m];
-                    if (typeof v == "string") {
-                      if (typeof g[v] == "number") {
-                        o = g[v];
-                        let f = { instancePath: t + "/tests/" + p + "/operations", schemaPath: "#/properties/tests/items/properties/operations/uniqueItems", keyword: "uniqueItems", params: { i: m, j: o }, message: "must NOT have duplicate items (items ## " + o + " and " + m + " are identical)" };
+                  for (; o--; ) {
+                    let b = i[o];
+                    if (typeof b == "string") {
+                      if (typeof g[b] == "number") {
+                        l = g[b];
+                        let f = { instancePath: t + "/tests/" + p + "/operations", schemaPath: "#/properties/tests/items/properties/operations/uniqueItems", keyword: "uniqueItems", params: { i: o, j: l }, message: "must NOT have duplicate items (items ## " + l + " and " + o + " are identical)" };
                         e === null ? e = [f] : e.push(f), s++;
                         break;
                       }
-                      g[v] = m;
+                      g[b] = o;
                     }
                   }
                 }
@@ -3383,9 +3383,9 @@ function Ke(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
                 }
                 let h = i.length;
                 for (let g = 0; g < h; g++) {
-                  let v = i[g];
-                  if (typeof v == "string") {
-                    if (!M.test(v)) {
+                  let b = i[g];
+                  if (typeof b == "string") {
+                    if (!M.test(b)) {
                       let f = { instancePath: t + "/tests/" + p + "/dependsOn/" + g, schemaPath: "#/properties/tests/items/properties/dependsOn/items/pattern", keyword: "pattern", params: { pattern: "^([A-Za-z0-9][A-Za-z0-9_-]{0,95}:)?[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^([A-Za-z0-9][A-Za-z0-9_-]{0,95}:)?[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
                       e === null ? e = [f] : e.push(f), s++;
                     }
@@ -3394,19 +3394,19 @@ function Ke(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
                     e === null ? e = [f] : e.push(f), s++;
                   }
                 }
-                let m = i.length, o;
-                if (m > 1) {
+                let o = i.length, l;
+                if (o > 1) {
                   let g = {};
-                  for (; m--; ) {
-                    let v = i[m];
-                    if (typeof v == "string") {
-                      if (typeof g[v] == "number") {
-                        o = g[v];
-                        let f = { instancePath: t + "/tests/" + p + "/dependsOn", schemaPath: "#/properties/tests/items/properties/dependsOn/uniqueItems", keyword: "uniqueItems", params: { i: m, j: o }, message: "must NOT have duplicate items (items ## " + o + " and " + m + " are identical)" };
+                  for (; o--; ) {
+                    let b = i[o];
+                    if (typeof b == "string") {
+                      if (typeof g[b] == "number") {
+                        l = g[b];
+                        let f = { instancePath: t + "/tests/" + p + "/dependsOn", schemaPath: "#/properties/tests/items/properties/dependsOn/uniqueItems", keyword: "uniqueItems", params: { i: o, j: l }, message: "must NOT have duplicate items (items ## " + l + " and " + o + " are identical)" };
                         e === null ? e = [f] : e.push(f), s++;
                         break;
                       }
-                      g[v] = m;
+                      g[b] = o;
                     }
                   }
                 }
@@ -3424,9 +3424,9 @@ function Ke(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
                 }
                 let h = i.length;
                 for (let g = 0; g < h; g++) {
-                  let v = i[g];
-                  if (typeof v == "string") {
-                    if (A(v) < 1) {
+                  let b = i[g];
+                  if (typeof b == "string") {
+                    if (A(b) < 1) {
                       let f = { instancePath: t + "/tests/" + p + "/preconditions/" + g, schemaPath: "#/properties/tests/items/properties/preconditions/items/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
                       e === null ? e = [f] : e.push(f), s++;
                     }
@@ -3435,19 +3435,19 @@ function Ke(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
                     e === null ? e = [f] : e.push(f), s++;
                   }
                 }
-                let m = i.length, o;
-                if (m > 1) {
+                let o = i.length, l;
+                if (o > 1) {
                   let g = {};
-                  for (; m--; ) {
-                    let v = i[m];
-                    if (typeof v == "string") {
-                      if (typeof g[v] == "number") {
-                        o = g[v];
-                        let f = { instancePath: t + "/tests/" + p + "/preconditions", schemaPath: "#/properties/tests/items/properties/preconditions/uniqueItems", keyword: "uniqueItems", params: { i: m, j: o }, message: "must NOT have duplicate items (items ## " + o + " and " + m + " are identical)" };
+                  for (; o--; ) {
+                    let b = i[o];
+                    if (typeof b == "string") {
+                      if (typeof g[b] == "number") {
+                        l = g[b];
+                        let f = { instancePath: t + "/tests/" + p + "/preconditions", schemaPath: "#/properties/tests/items/properties/preconditions/uniqueItems", keyword: "uniqueItems", params: { i: o, j: l }, message: "must NOT have duplicate items (items ## " + l + " and " + o + " are identical)" };
                         e === null ? e = [f] : e.push(f), s++;
                         break;
                       }
-                      g[v] = m;
+                      g[b] = o;
                     }
                   }
                 }
@@ -3477,26 +3477,26 @@ function Ke(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
                 }
                 let h = i.length;
                 for (let g = 0; g < h; g++) {
-                  let v = i[g];
-                  if (v && typeof v == "object" && !Array.isArray(v)) {
-                    if (v.id === void 0) {
+                  let b = i[g];
+                  if (b && typeof b == "object" && !Array.isArray(b)) {
+                    if (b.id === void 0) {
                       let f = { instancePath: t + "/tests/" + p + "/assertions/" + g, schemaPath: "plan.schema.json#/definitions/assertion/required", keyword: "required", params: { missingProperty: "id" }, message: "must have required property 'id'" };
                       e === null ? e = [f] : e.push(f), s++;
                     }
-                    if (v.check === void 0) {
+                    if (b.check === void 0) {
                       let f = { instancePath: t + "/tests/" + p + "/assertions/" + g, schemaPath: "plan.schema.json#/definitions/assertion/required", keyword: "required", params: { missingProperty: "check" }, message: "must have required property 'check'" };
                       e === null ? e = [f] : e.push(f), s++;
                     }
-                    if (v.checkKind === void 0) {
+                    if (b.checkKind === void 0) {
                       let f = { instancePath: t + "/tests/" + p + "/assertions/" + g, schemaPath: "plan.schema.json#/definitions/assertion/required", keyword: "required", params: { missingProperty: "checkKind" }, message: "must have required property 'checkKind'" };
                       e === null ? e = [f] : e.push(f), s++;
                     }
-                    for (let f in v) if (!(f === "id" || f === "check" || f === "checkKind" || f === "observe" || f === "expected")) {
+                    for (let f in b) if (!(f === "id" || f === "check" || f === "checkKind" || f === "observe" || f === "expected")) {
                       let q = { instancePath: t + "/tests/" + p + "/assertions/" + g, schemaPath: "plan.schema.json#/definitions/assertion/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: f }, message: "must NOT have additional properties" };
                       e === null ? e = [q] : e.push(q), s++;
                     }
-                    if (v.id !== void 0) {
-                      let f = v.id;
+                    if (b.id !== void 0) {
+                      let f = b.id;
                       if (typeof f == "string") {
                         if (!Z.test(f)) {
                           let q = { instancePath: t + "/tests/" + p + "/assertions/" + g + "/id", schemaPath: "plan.schema.json#/definitions/assertion/properties/id/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
@@ -3507,8 +3507,8 @@ function Ke(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
                         e === null ? e = [q] : e.push(q), s++;
                       }
                     }
-                    if (v.check !== void 0) {
-                      let f = v.check;
+                    if (b.check !== void 0) {
+                      let f = b.check;
                       if (typeof f == "string") {
                         if (A(f) < 1) {
                           let q = { instancePath: t + "/tests/" + p + "/assertions/" + g + "/check", schemaPath: "plan.schema.json#/definitions/assertion/properties/check/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
@@ -3519,15 +3519,15 @@ function Ke(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
                         e === null ? e = [q] : e.push(q), s++;
                       }
                     }
-                    if (v.checkKind !== void 0) {
-                      let f = v.checkKind;
+                    if (b.checkKind !== void 0) {
+                      let f = b.checkKind;
                       if (!(f === "deterministic" || f === "agent_observation")) {
-                        let q = { instancePath: t + "/tests/" + p + "/assertions/" + g + "/checkKind", schemaPath: "plan.schema.json#/definitions/assertion/properties/checkKind/enum", keyword: "enum", params: { allowedValues: Ce.properties.checkKind.enum }, message: "must be equal to one of the allowed values" };
+                        let q = { instancePath: t + "/tests/" + p + "/assertions/" + g + "/checkKind", schemaPath: "plan.schema.json#/definitions/assertion/properties/checkKind/enum", keyword: "enum", params: { allowedValues: Fe.properties.checkKind.enum }, message: "must be equal to one of the allowed values" };
                         e === null ? e = [q] : e.push(q), s++;
                       }
                     }
-                    if (v.observe !== void 0) {
-                      let f = v.observe;
+                    if (b.observe !== void 0) {
+                      let f = b.observe;
                       if (typeof f == "string") {
                         if (A(f) < 1) {
                           let q = { instancePath: t + "/tests/" + p + "/assertions/" + g + "/observe", schemaPath: "plan.schema.json#/definitions/assertion/properties/observe/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
@@ -3538,8 +3538,8 @@ function Ke(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
                         e === null ? e = [q] : e.push(q), s++;
                       }
                     }
-                    if (v.expected !== void 0) {
-                      let f = v.expected;
+                    if (b.expected !== void 0) {
+                      let f = b.expected;
                       if (typeof f == "string") {
                         if (A(f) < 1) {
                           let q = { instancePath: t + "/tests/" + p + "/assertions/" + g + "/expected", schemaPath: "plan.schema.json#/definitions/assertion/properties/expected/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
@@ -3555,10 +3555,10 @@ function Ke(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
                     e === null ? e = [f] : e.push(f), s++;
                   }
                 }
-                let m = i.length, o;
-                if (m > 1) {
-                  e: for (; m--; ) for (o = m; o--; ) if (D(i[m], i[o])) {
-                    let g = { instancePath: t + "/tests/" + p + "/assertions", schemaPath: "#/properties/tests/items/properties/assertions/uniqueItems", keyword: "uniqueItems", params: { i: m, j: o }, message: "must NOT have duplicate items (items ## " + o + " and " + m + " are identical)" };
+                let o = i.length, l;
+                if (o > 1) {
+                  e: for (; o--; ) for (l = o; l--; ) if (D(i[o], i[l])) {
+                    let g = { instancePath: t + "/tests/" + p + "/assertions", schemaPath: "#/properties/tests/items/properties/assertions/uniqueItems", keyword: "uniqueItems", params: { i: o, j: l }, message: "must NOT have duplicate items (items ## " + l + " and " + o + " are identical)" };
                     e === null ? e = [g] : e.push(g), s++;
                     break e;
                   }
@@ -3576,26 +3576,26 @@ function Ke(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
                   e === null ? e = [h] : e.push(h), s++;
                 }
                 for (let h in i) {
-                  let m = s;
+                  let o = s;
                   if (typeof h == "string" && !W.test(h)) {
-                    let o = { instancePath: t + "/tests/" + p + "/metadata", schemaPath: "plan.schema.json#/definitions/metadata/propertyNames/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z][A-Za-z0-9_.-]{0,63}$" }, message: 'must match pattern "^[A-Za-z][A-Za-z0-9_.-]{0,63}$"', propertyName: h };
-                    e === null ? e = [o] : e.push(o), s++;
+                    let l = { instancePath: t + "/tests/" + p + "/metadata", schemaPath: "plan.schema.json#/definitions/metadata/propertyNames/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z][A-Za-z0-9_.-]{0,63}$" }, message: 'must match pattern "^[A-Za-z][A-Za-z0-9_.-]{0,63}$"', propertyName: h };
+                    e === null ? e = [l] : e.push(l), s++;
                   }
-                  var w = m === s;
+                  var w = o === s;
                   if (!w) {
-                    let o = { instancePath: t + "/tests/" + p + "/metadata", schemaPath: "plan.schema.json#/definitions/metadata/propertyNames", keyword: "propertyNames", params: { propertyName: h }, message: "property name must be valid" };
-                    e === null ? e = [o] : e.push(o), s++;
+                    let l = { instancePath: t + "/tests/" + p + "/metadata", schemaPath: "plan.schema.json#/definitions/metadata/propertyNames", keyword: "propertyNames", params: { propertyName: h }, message: "property name must be valid" };
+                    e === null ? e = [l] : e.push(l), s++;
                   }
                 }
                 for (let h in i) {
-                  let m = i[h];
-                  if (typeof m != "string" && !(typeof m == "number" && isFinite(m)) && typeof m != "boolean") {
-                    let o = { instancePath: t + "/tests/" + p + "/metadata/" + h.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "plan.schema.json#/definitions/metadata/additionalProperties/type", keyword: "type", params: { type: F.additionalProperties.type }, message: "must be string,number,boolean" };
-                    e === null ? e = [o] : e.push(o), s++;
+                  let o = i[h];
+                  if (typeof o != "string" && !(typeof o == "number" && isFinite(o)) && typeof o != "boolean") {
+                    let l = { instancePath: t + "/tests/" + p + "/metadata/" + h.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "plan.schema.json#/definitions/metadata/additionalProperties/type", keyword: "type", params: { type: F.additionalProperties.type }, message: "must be string,number,boolean" };
+                    e === null ? e = [l] : e.push(l), s++;
                   }
-                  if (typeof m == "string" && A(m) > 500) {
-                    let o = { instancePath: t + "/tests/" + p + "/metadata/" + h.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "plan.schema.json#/definitions/metadata/additionalProperties/maxLength", keyword: "maxLength", params: { limit: 500 }, message: "must NOT have more than 500 characters" };
-                    e === null ? e = [o] : e.push(o), s++;
+                  if (typeof o == "string" && A(o) > 500) {
+                    let l = { instancePath: t + "/tests/" + p + "/metadata/" + h.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "plan.schema.json#/definitions/metadata/additionalProperties/maxLength", keyword: "maxLength", params: { limit: 500 }, message: "must NOT have more than 500 characters" };
+                    e === null ? e = [l] : e.push(l), s++;
                   }
                 }
               } else {
@@ -3608,17 +3608,17 @@ function Ke(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
             e === null ? e = [i] : e.push(i), s++;
           }
         }
-        let d = r.length, c;
-        if (d > 1) {
-          e: for (; d--; ) for (c = d; c--; ) if (D(r[d], r[c])) {
-            let p = { instancePath: t + "/tests", schemaPath: "#/properties/tests/uniqueItems", keyword: "uniqueItems", params: { i: d, j: c }, message: "must NOT have duplicate items (items ## " + c + " and " + d + " are identical)" };
+        let c = r.length, d;
+        if (c > 1) {
+          e: for (; c--; ) for (d = c; d--; ) if (D(r[c], r[d])) {
+            let p = { instancePath: t + "/tests", schemaPath: "#/properties/tests/uniqueItems", keyword: "uniqueItems", params: { i: c, j: d }, message: "must NOT have duplicate items (items ## " + d + " and " + c + " are identical)" };
             e === null ? e = [p] : e.push(p), s++;
             break e;
           }
         }
       } else {
-        let l = { instancePath: t + "/tests", schemaPath: "#/properties/tests/type", keyword: "type", params: { type: "array" }, message: "must be array" };
-        e === null ? e = [l] : e.push(l), s++;
+        let m = { instancePath: t + "/tests", schemaPath: "#/properties/tests/type", keyword: "type", params: { type: "array" }, message: "must be array" };
+        e === null ? e = [m] : e.push(m), s++;
       }
     }
     if (a.gaps !== void 0) {
@@ -3628,8 +3628,8 @@ function Ke(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
           let p = { instancePath: t + "/gaps", schemaPath: "#/properties/gaps/minItems", keyword: "minItems", params: { limit: 0 }, message: "must NOT have fewer than 0 items" };
           e === null ? e = [p] : e.push(p), s++;
         }
-        let l = r.length;
-        for (let p = 0; p < l; p++) {
+        let m = r.length;
+        for (let p = 0; p < m; p++) {
           let u = r[p];
           if (u && typeof u == "object" && !Array.isArray(u)) {
             if (u.id === void 0) {
@@ -3703,9 +3703,9 @@ function Ke(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
                 }
                 let h = i.length;
                 for (let g = 0; g < h; g++) {
-                  let v = i[g];
-                  if (typeof v == "string") {
-                    if (!Z.test(v)) {
+                  let b = i[g];
+                  if (typeof b == "string") {
+                    if (!Z.test(b)) {
                       let f = { instancePath: t + "/gaps/" + p + "/requirementIds/" + g, schemaPath: "gap.schema.json/properties/requirementIds/items/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
                       e === null ? e = [f] : e.push(f), s++;
                     }
@@ -3714,19 +3714,19 @@ function Ke(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
                     e === null ? e = [f] : e.push(f), s++;
                   }
                 }
-                let m = i.length, o;
-                if (m > 1) {
+                let o = i.length, l;
+                if (o > 1) {
                   let g = {};
-                  for (; m--; ) {
-                    let v = i[m];
-                    if (typeof v == "string") {
-                      if (typeof g[v] == "number") {
-                        o = g[v];
-                        let f = { instancePath: t + "/gaps/" + p + "/requirementIds", schemaPath: "gap.schema.json/properties/requirementIds/uniqueItems", keyword: "uniqueItems", params: { i: m, j: o }, message: "must NOT have duplicate items (items ## " + o + " and " + m + " are identical)" };
+                  for (; o--; ) {
+                    let b = i[o];
+                    if (typeof b == "string") {
+                      if (typeof g[b] == "number") {
+                        l = g[b];
+                        let f = { instancePath: t + "/gaps/" + p + "/requirementIds", schemaPath: "gap.schema.json/properties/requirementIds/uniqueItems", keyword: "uniqueItems", params: { i: o, j: l }, message: "must NOT have duplicate items (items ## " + l + " and " + o + " are identical)" };
                         e === null ? e = [f] : e.push(f), s++;
                         break;
                       }
-                      g[v] = m;
+                      g[b] = o;
                     }
                   }
                 }
@@ -3744,9 +3744,9 @@ function Ke(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
                 }
                 let h = i.length;
                 for (let g = 0; g < h; g++) {
-                  let v = i[g];
-                  if (typeof v == "string") {
-                    if (!M.test(v)) {
+                  let b = i[g];
+                  if (typeof b == "string") {
+                    if (!M.test(b)) {
                       let f = { instancePath: t + "/gaps/" + p + "/testIds/" + g, schemaPath: "gap.schema.json/properties/testIds/items/pattern", keyword: "pattern", params: { pattern: "^([A-Za-z0-9][A-Za-z0-9_-]{0,95}:)?[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^([A-Za-z0-9][A-Za-z0-9_-]{0,95}:)?[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
                       e === null ? e = [f] : e.push(f), s++;
                     }
@@ -3755,19 +3755,19 @@ function Ke(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
                     e === null ? e = [f] : e.push(f), s++;
                   }
                 }
-                let m = i.length, o;
-                if (m > 1) {
+                let o = i.length, l;
+                if (o > 1) {
                   let g = {};
-                  for (; m--; ) {
-                    let v = i[m];
-                    if (typeof v == "string") {
-                      if (typeof g[v] == "number") {
-                        o = g[v];
-                        let f = { instancePath: t + "/gaps/" + p + "/testIds", schemaPath: "gap.schema.json/properties/testIds/uniqueItems", keyword: "uniqueItems", params: { i: m, j: o }, message: "must NOT have duplicate items (items ## " + o + " and " + m + " are identical)" };
+                  for (; o--; ) {
+                    let b = i[o];
+                    if (typeof b == "string") {
+                      if (typeof g[b] == "number") {
+                        l = g[b];
+                        let f = { instancePath: t + "/gaps/" + p + "/testIds", schemaPath: "gap.schema.json/properties/testIds/uniqueItems", keyword: "uniqueItems", params: { i: o, j: l }, message: "must NOT have duplicate items (items ## " + l + " and " + o + " are identical)" };
                         e === null ? e = [f] : e.push(f), s++;
                         break;
                       }
-                      g[v] = m;
+                      g[b] = o;
                     }
                   }
                 }
@@ -3801,7 +3801,7 @@ function Ke(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
               }
             }
             if (u.decisionId !== void 0) {
-              let i = u.decisionId, h = s, m = false, o = s;
+              let i = u.decisionId, h = s, o = false, l = s;
               if (typeof i == "string") {
                 if (!Z.test(i)) {
                   let g = { instancePath: t + "/gaps/" + p + "/decisionId", schemaPath: "gap.schema.json/properties/decisionId/anyOf/0/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
@@ -3811,17 +3811,17 @@ function Ke(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
                 let g = { instancePath: t + "/gaps/" + p + "/decisionId", schemaPath: "gap.schema.json/properties/decisionId/anyOf/0/type", keyword: "type", params: { type: "string" }, message: "must be string" };
                 e === null ? e = [g] : e.push(g), s++;
               }
-              var n = o === s;
-              if (m = m || n, !m) {
+              var n = l === s;
+              if (o = o || n, !o) {
                 let g = s;
                 if (i !== null) {
                   let f = { instancePath: t + "/gaps/" + p + "/decisionId", schemaPath: "gap.schema.json/properties/decisionId/anyOf/1/type", keyword: "type", params: { type: "null" }, message: "must be null" };
                   e === null ? e = [f] : e.push(f), s++;
                 }
                 var n = g === s;
-                m = m || n;
+                o = o || n;
               }
-              if (m) s = h, e !== null && (h ? e.length = h : e = null);
+              if (o) s = h, e !== null && (h ? e.length = h : e = null);
               else {
                 let g = { instancePath: t + "/gaps/" + p + "/decisionId", schemaPath: "gap.schema.json/properties/decisionId/anyOf", keyword: "anyOf", params: {}, message: "must match a schema in anyOf" };
                 e === null ? e = [g] : e.push(g), s++;
@@ -3832,325 +3832,409 @@ function Ke(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
             e === null ? e = [i] : e.push(i), s++;
           }
         }
-        let d = r.length, c;
-        if (d > 1) {
-          e: for (; d--; ) for (c = d; c--; ) if (D(r[d], r[c])) {
-            let p = { instancePath: t + "/gaps", schemaPath: "#/properties/gaps/uniqueItems", keyword: "uniqueItems", params: { i: d, j: c }, message: "must NOT have duplicate items (items ## " + c + " and " + d + " are identical)" };
+        let c = r.length, d;
+        if (c > 1) {
+          e: for (; c--; ) for (d = c; d--; ) if (D(r[c], r[d])) {
+            let p = { instancePath: t + "/gaps", schemaPath: "#/properties/gaps/uniqueItems", keyword: "uniqueItems", params: { i: c, j: d }, message: "must NOT have duplicate items (items ## " + d + " and " + c + " are identical)" };
             e === null ? e = [p] : e.push(p), s++;
             break e;
           }
         }
       } else {
-        let l = { instancePath: t + "/gaps", schemaPath: "#/properties/gaps/type", keyword: "type", params: { type: "array" }, message: "must be array" };
-        e === null ? e = [l] : e.push(l), s++;
+        let m = { instancePath: t + "/gaps", schemaPath: "#/properties/gaps/type", keyword: "type", params: { type: "array" }, message: "must be array" };
+        e === null ? e = [m] : e.push(m), s++;
       }
     }
   } else {
     let r = { instancePath: t, schemaPath: "#/type", keyword: "type", params: { type: "object" }, message: "must be object" };
     e === null ? e = [r] : e.push(r), s++;
   }
-  return Ke.errors = e, s === 0;
+  return We.errors = e, s === 0;
 }
-var Rs = Fe;
-var ys = { $schema: "http://json-schema.org/draft-07/schema#", $id: "plan-delta.schema.json", type: "object", properties: { requirements: { type: "object", propertyNames: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, additionalProperties: { type: "object", properties: { remove: { type: "boolean" } }, required: ["remove"], additionalProperties: false } }, tests: { type: "object", propertyNames: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, additionalProperties: { type: "object", properties: { remove: { type: "boolean" }, action: { type: "string", minLength: 1 }, preconditions: { type: "array", items: { type: "string", minLength: 1 }, minItems: 0, uniqueItems: true }, assertions: { type: "object", propertyNames: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, additionalProperties: { anyOf: [{ type: "object", properties: { check: { type: "string", minLength: 1 }, checkKind: { enum: ["deterministic", "agent_observation"] }, observe: { type: "string", minLength: 1 }, expected: { type: "string", minLength: 1 } }, additionalProperties: false, minProperties: 1 }, { type: "null" }] }, minProperties: 1 } }, additionalProperties: false, minProperties: 1 } } }, required: ["tests"], additionalProperties: false };
-function Fe(a, { instancePath: t = "", parentData: $, parentDataProperty: _, rootData: T = a } = {}) {
+var Ks = Se;
+var je = { $schema: "http://json-schema.org/draft-07/schema#", $id: "plan-delta.schema.json", type: "object", properties: { requirements: { type: "object", propertyNames: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, additionalProperties: { type: "object", properties: { remove: { type: "boolean" }, text: { type: "string", minLength: 1 }, source: { type: "string", minLength: 1 }, area: { type: "string", minLength: 1, maxLength: 40 } }, additionalProperties: false, minProperties: 1 } }, tests: { type: "object", propertyNames: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, additionalProperties: { type: "object", properties: { remove: { type: "boolean" }, title: { type: "string", minLength: 1 }, requirementIds: { type: "array", items: { type: "string", minLength: 1 } }, capability: { type: "string", minLength: 1 }, operations: { type: "array", items: { type: "string", minLength: 1 } }, dependsOn: { type: "array", items: { type: "string", minLength: 1 } }, preconditions: { type: "array", items: { type: "string", minLength: 1 } }, action: { type: "string", minLength: 1 }, assertions: { type: "array", items: { type: "object", properties: { check: { type: "string", minLength: 1 }, checkKind: { type: "string", enum: ["deterministic", "agent_observation"] }, observe: { type: "string", minLength: 1 }, expected: { type: "string", minLength: 1 } }, required: ["check", "checkKind"], additionalProperties: false } } }, additionalProperties: false, minProperties: 1 } } }, required: ["tests"], additionalProperties: false };
+function Se(a, { instancePath: t = "", parentData: $, parentDataProperty: _, rootData: L = a } = {}) {
   let e = null, s = 0;
   if (a && typeof a == "object" && !Array.isArray(a)) {
     if (a.tests === void 0) {
-      let d = { instancePath: t, schemaPath: "#/required", keyword: "required", params: { missingProperty: "tests" }, message: "must have required property 'tests'" };
-      e === null ? e = [d] : e.push(d), s++;
+      let r = { instancePath: t, schemaPath: "#/required", keyword: "required", params: { missingProperty: "tests" }, message: "must have required property 'tests'" };
+      e === null ? e = [r] : e.push(r), s++;
     }
-    for (let d in a) if (!(d === "requirements" || d === "tests")) {
-      let c = { instancePath: t, schemaPath: "#/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: d }, message: "must NOT have additional properties" };
-      e === null ? e = [c] : e.push(c), s++;
+    for (let r in a) if (!(r === "requirements" || r === "tests")) {
+      let m = { instancePath: t, schemaPath: "#/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: r }, message: "must NOT have additional properties" };
+      e === null ? e = [m] : e.push(m), s++;
     }
     if (a.requirements !== void 0) {
-      let d = a.requirements;
-      if (d && typeof d == "object" && !Array.isArray(d)) {
-        for (let c in d) {
-          let p = s;
-          if (typeof c == "string" && !Z.test(c)) {
-            let u = { instancePath: t + "/requirements", schemaPath: "#/properties/requirements/propertyNames/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"', propertyName: c };
-            e === null ? e = [u] : e.push(u), s++;
+      let r = a.requirements;
+      if (r && typeof r == "object" && !Array.isArray(r)) {
+        for (let m in r) {
+          let c = s;
+          if (typeof m == "string" && !Z.test(m)) {
+            let d = { instancePath: t + "/requirements", schemaPath: "#/properties/requirements/propertyNames/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"', propertyName: m };
+            e === null ? e = [d] : e.push(d), s++;
           }
-          var w = p === s;
+          var w = c === s;
           if (!w) {
-            let u = { instancePath: t + "/requirements", schemaPath: "#/properties/requirements/propertyNames", keyword: "propertyNames", params: { propertyName: c }, message: "property name must be valid" };
-            e === null ? e = [u] : e.push(u), s++;
+            let d = { instancePath: t + "/requirements", schemaPath: "#/properties/requirements/propertyNames", keyword: "propertyNames", params: { propertyName: m }, message: "property name must be valid" };
+            e === null ? e = [d] : e.push(d), s++;
           }
         }
-        for (let c in d) {
-          let p = d[c];
-          if (p && typeof p == "object" && !Array.isArray(p)) {
-            if (p.remove === void 0) {
-              let u = { instancePath: t + "/requirements/" + c.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "#/properties/requirements/additionalProperties/required", keyword: "required", params: { missingProperty: "remove" }, message: "must have required property 'remove'" };
-              e === null ? e = [u] : e.push(u), s++;
+        for (let m in r) {
+          let c = r[m];
+          if (c && typeof c == "object" && !Array.isArray(c)) {
+            if (Object.keys(c).length < 1) {
+              let d = { instancePath: t + "/requirements/" + m.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "#/properties/requirements/additionalProperties/minProperties", keyword: "minProperties", params: { limit: 1 }, message: "must NOT have fewer than 1 properties" };
+              e === null ? e = [d] : e.push(d), s++;
             }
-            for (let u in p) if (u !== "remove") {
-              let i = { instancePath: t + "/requirements/" + c.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "#/properties/requirements/additionalProperties/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: u }, message: "must NOT have additional properties" };
-              e === null ? e = [i] : e.push(i), s++;
+            for (let d in c) if (!(d === "remove" || d === "text" || d === "source" || d === "area")) {
+              let p = { instancePath: t + "/requirements/" + m.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "#/properties/requirements/additionalProperties/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: d }, message: "must NOT have additional properties" };
+              e === null ? e = [p] : e.push(p), s++;
             }
-            if (p.remove !== void 0 && typeof p.remove != "boolean") {
-              let u = { instancePath: t + "/requirements/" + c.replace(/~/g, "~0").replace(/\//g, "~1") + "/remove", schemaPath: "#/properties/requirements/additionalProperties/properties/remove/type", keyword: "type", params: { type: "boolean" }, message: "must be boolean" };
-              e === null ? e = [u] : e.push(u), s++;
+            if (c.remove !== void 0 && typeof c.remove != "boolean") {
+              let d = { instancePath: t + "/requirements/" + m.replace(/~/g, "~0").replace(/\//g, "~1") + "/remove", schemaPath: "#/properties/requirements/additionalProperties/properties/remove/type", keyword: "type", params: { type: "boolean" }, message: "must be boolean" };
+              e === null ? e = [d] : e.push(d), s++;
+            }
+            if (c.text !== void 0) {
+              let d = c.text;
+              if (typeof d == "string") {
+                if (A(d) < 1) {
+                  let p = { instancePath: t + "/requirements/" + m.replace(/~/g, "~0").replace(/\//g, "~1") + "/text", schemaPath: "#/properties/requirements/additionalProperties/properties/text/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
+                  e === null ? e = [p] : e.push(p), s++;
+                }
+              } else {
+                let p = { instancePath: t + "/requirements/" + m.replace(/~/g, "~0").replace(/\//g, "~1") + "/text", schemaPath: "#/properties/requirements/additionalProperties/properties/text/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+                e === null ? e = [p] : e.push(p), s++;
+              }
+            }
+            if (c.source !== void 0) {
+              let d = c.source;
+              if (typeof d == "string") {
+                if (A(d) < 1) {
+                  let p = { instancePath: t + "/requirements/" + m.replace(/~/g, "~0").replace(/\//g, "~1") + "/source", schemaPath: "#/properties/requirements/additionalProperties/properties/source/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
+                  e === null ? e = [p] : e.push(p), s++;
+                }
+              } else {
+                let p = { instancePath: t + "/requirements/" + m.replace(/~/g, "~0").replace(/\//g, "~1") + "/source", schemaPath: "#/properties/requirements/additionalProperties/properties/source/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+                e === null ? e = [p] : e.push(p), s++;
+              }
+            }
+            if (c.area !== void 0) {
+              let d = c.area;
+              if (typeof d == "string") {
+                if (A(d) > 40) {
+                  let p = { instancePath: t + "/requirements/" + m.replace(/~/g, "~0").replace(/\//g, "~1") + "/area", schemaPath: "#/properties/requirements/additionalProperties/properties/area/maxLength", keyword: "maxLength", params: { limit: 40 }, message: "must NOT have more than 40 characters" };
+                  e === null ? e = [p] : e.push(p), s++;
+                }
+                if (A(d) < 1) {
+                  let p = { instancePath: t + "/requirements/" + m.replace(/~/g, "~0").replace(/\//g, "~1") + "/area", schemaPath: "#/properties/requirements/additionalProperties/properties/area/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
+                  e === null ? e = [p] : e.push(p), s++;
+                }
+              } else {
+                let p = { instancePath: t + "/requirements/" + m.replace(/~/g, "~0").replace(/\//g, "~1") + "/area", schemaPath: "#/properties/requirements/additionalProperties/properties/area/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+                e === null ? e = [p] : e.push(p), s++;
+              }
             }
           } else {
-            let u = { instancePath: t + "/requirements/" + c.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "#/properties/requirements/additionalProperties/type", keyword: "type", params: { type: "object" }, message: "must be object" };
-            e === null ? e = [u] : e.push(u), s++;
+            let d = { instancePath: t + "/requirements/" + m.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "#/properties/requirements/additionalProperties/type", keyword: "type", params: { type: "object" }, message: "must be object" };
+            e === null ? e = [d] : e.push(d), s++;
           }
         }
       } else {
-        let c = { instancePath: t + "/requirements", schemaPath: "#/properties/requirements/type", keyword: "type", params: { type: "object" }, message: "must be object" };
-        e === null ? e = [c] : e.push(c), s++;
+        let m = { instancePath: t + "/requirements", schemaPath: "#/properties/requirements/type", keyword: "type", params: { type: "object" }, message: "must be object" };
+        e === null ? e = [m] : e.push(m), s++;
       }
     }
     if (a.tests !== void 0) {
-      let d = a.tests;
-      if (d && typeof d == "object" && !Array.isArray(d)) {
-        for (let c in d) {
-          let p = s;
-          if (typeof c == "string" && !Z.test(c)) {
-            let u = { instancePath: t + "/tests", schemaPath: "#/properties/tests/propertyNames/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"', propertyName: c };
-            e === null ? e = [u] : e.push(u), s++;
+      let r = a.tests;
+      if (r && typeof r == "object" && !Array.isArray(r)) {
+        for (let m in r) {
+          let c = s;
+          if (typeof m == "string" && !Z.test(m)) {
+            let d = { instancePath: t + "/tests", schemaPath: "#/properties/tests/propertyNames/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"', propertyName: m };
+            e === null ? e = [d] : e.push(d), s++;
           }
-          var n = p === s;
+          var n = c === s;
           if (!n) {
-            let u = { instancePath: t + "/tests", schemaPath: "#/properties/tests/propertyNames", keyword: "propertyNames", params: { propertyName: c }, message: "property name must be valid" };
-            e === null ? e = [u] : e.push(u), s++;
+            let d = { instancePath: t + "/tests", schemaPath: "#/properties/tests/propertyNames", keyword: "propertyNames", params: { propertyName: m }, message: "property name must be valid" };
+            e === null ? e = [d] : e.push(d), s++;
           }
         }
-        for (let c in d) {
-          let p = d[c];
-          if (p && typeof p == "object" && !Array.isArray(p)) {
-            if (Object.keys(p).length < 1) {
-              let u = { instancePath: t + "/tests/" + c.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "#/properties/tests/additionalProperties/minProperties", keyword: "minProperties", params: { limit: 1 }, message: "must NOT have fewer than 1 properties" };
-              e === null ? e = [u] : e.push(u), s++;
+        for (let m in r) {
+          let c = r[m];
+          if (c && typeof c == "object" && !Array.isArray(c)) {
+            if (Object.keys(c).length < 1) {
+              let d = { instancePath: t + "/tests/" + m.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "#/properties/tests/additionalProperties/minProperties", keyword: "minProperties", params: { limit: 1 }, message: "must NOT have fewer than 1 properties" };
+              e === null ? e = [d] : e.push(d), s++;
             }
-            for (let u in p) if (!(u === "remove" || u === "action" || u === "preconditions" || u === "assertions")) {
-              let i = { instancePath: t + "/tests/" + c.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "#/properties/tests/additionalProperties/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: u }, message: "must NOT have additional properties" };
-              e === null ? e = [i] : e.push(i), s++;
+            for (let d in c) if (!K.call(je.properties.tests.additionalProperties.properties, d)) {
+              let p = { instancePath: t + "/tests/" + m.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "#/properties/tests/additionalProperties/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: d }, message: "must NOT have additional properties" };
+              e === null ? e = [p] : e.push(p), s++;
             }
-            if (p.remove !== void 0 && typeof p.remove != "boolean") {
-              let u = { instancePath: t + "/tests/" + c.replace(/~/g, "~0").replace(/\//g, "~1") + "/remove", schemaPath: "#/properties/tests/additionalProperties/properties/remove/type", keyword: "type", params: { type: "boolean" }, message: "must be boolean" };
-              e === null ? e = [u] : e.push(u), s++;
+            if (c.remove !== void 0 && typeof c.remove != "boolean") {
+              let d = { instancePath: t + "/tests/" + m.replace(/~/g, "~0").replace(/\//g, "~1") + "/remove", schemaPath: "#/properties/tests/additionalProperties/properties/remove/type", keyword: "type", params: { type: "boolean" }, message: "must be boolean" };
+              e === null ? e = [d] : e.push(d), s++;
             }
-            if (p.action !== void 0) {
-              let u = p.action;
-              if (typeof u == "string") {
-                if (A(u) < 1) {
-                  let i = { instancePath: t + "/tests/" + c.replace(/~/g, "~0").replace(/\//g, "~1") + "/action", schemaPath: "#/properties/tests/additionalProperties/properties/action/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
-                  e === null ? e = [i] : e.push(i), s++;
+            if (c.title !== void 0) {
+              let d = c.title;
+              if (typeof d == "string") {
+                if (A(d) < 1) {
+                  let p = { instancePath: t + "/tests/" + m.replace(/~/g, "~0").replace(/\//g, "~1") + "/title", schemaPath: "#/properties/tests/additionalProperties/properties/title/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
+                  e === null ? e = [p] : e.push(p), s++;
                 }
               } else {
-                let i = { instancePath: t + "/tests/" + c.replace(/~/g, "~0").replace(/\//g, "~1") + "/action", schemaPath: "#/properties/tests/additionalProperties/properties/action/type", keyword: "type", params: { type: "string" }, message: "must be string" };
-                e === null ? e = [i] : e.push(i), s++;
+                let p = { instancePath: t + "/tests/" + m.replace(/~/g, "~0").replace(/\//g, "~1") + "/title", schemaPath: "#/properties/tests/additionalProperties/properties/title/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+                e === null ? e = [p] : e.push(p), s++;
               }
             }
-            if (p.preconditions !== void 0) {
-              let u = p.preconditions;
-              if (Array.isArray(u)) {
-                if (u.length < 0) {
-                  let o = { instancePath: t + "/tests/" + c.replace(/~/g, "~0").replace(/\//g, "~1") + "/preconditions", schemaPath: "#/properties/tests/additionalProperties/properties/preconditions/minItems", keyword: "minItems", params: { limit: 0 }, message: "must NOT have fewer than 0 items" };
-                  e === null ? e = [o] : e.push(o), s++;
-                }
-                let i = u.length;
-                for (let o = 0; o < i; o++) {
-                  let g = u[o];
-                  if (typeof g == "string") {
-                    if (A(g) < 1) {
-                      let v = { instancePath: t + "/tests/" + c.replace(/~/g, "~0").replace(/\//g, "~1") + "/preconditions/" + o, schemaPath: "#/properties/tests/additionalProperties/properties/preconditions/items/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
-                      e === null ? e = [v] : e.push(v), s++;
+            if (c.requirementIds !== void 0) {
+              let d = c.requirementIds;
+              if (Array.isArray(d)) {
+                let p = d.length;
+                for (let u = 0; u < p; u++) {
+                  let i = d[u];
+                  if (typeof i == "string") {
+                    if (A(i) < 1) {
+                      let h = { instancePath: t + "/tests/" + m.replace(/~/g, "~0").replace(/\//g, "~1") + "/requirementIds/" + u, schemaPath: "#/properties/tests/additionalProperties/properties/requirementIds/items/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
+                      e === null ? e = [h] : e.push(h), s++;
                     }
                   } else {
-                    let v = { instancePath: t + "/tests/" + c.replace(/~/g, "~0").replace(/\//g, "~1") + "/preconditions/" + o, schemaPath: "#/properties/tests/additionalProperties/properties/preconditions/items/type", keyword: "type", params: { type: "string" }, message: "must be string" };
-                    e === null ? e = [v] : e.push(v), s++;
-                  }
-                }
-                let h = u.length, m;
-                if (h > 1) {
-                  let o = {};
-                  for (; h--; ) {
-                    let g = u[h];
-                    if (typeof g == "string") {
-                      if (typeof o[g] == "number") {
-                        m = o[g];
-                        let v = { instancePath: t + "/tests/" + c.replace(/~/g, "~0").replace(/\//g, "~1") + "/preconditions", schemaPath: "#/properties/tests/additionalProperties/properties/preconditions/uniqueItems", keyword: "uniqueItems", params: { i: h, j: m }, message: "must NOT have duplicate items (items ## " + m + " and " + h + " are identical)" };
-                        e === null ? e = [v] : e.push(v), s++;
-                        break;
-                      }
-                      o[g] = h;
-                    }
+                    let h = { instancePath: t + "/tests/" + m.replace(/~/g, "~0").replace(/\//g, "~1") + "/requirementIds/" + u, schemaPath: "#/properties/tests/additionalProperties/properties/requirementIds/items/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+                    e === null ? e = [h] : e.push(h), s++;
                   }
                 }
               } else {
-                let i = { instancePath: t + "/tests/" + c.replace(/~/g, "~0").replace(/\//g, "~1") + "/preconditions", schemaPath: "#/properties/tests/additionalProperties/properties/preconditions/type", keyword: "type", params: { type: "array" }, message: "must be array" };
-                e === null ? e = [i] : e.push(i), s++;
+                let p = { instancePath: t + "/tests/" + m.replace(/~/g, "~0").replace(/\//g, "~1") + "/requirementIds", schemaPath: "#/properties/tests/additionalProperties/properties/requirementIds/type", keyword: "type", params: { type: "array" }, message: "must be array" };
+                e === null ? e = [p] : e.push(p), s++;
               }
             }
-            if (p.assertions !== void 0) {
-              let u = p.assertions;
-              if (u && typeof u == "object" && !Array.isArray(u)) {
-                if (Object.keys(u).length < 1) {
-                  let i = { instancePath: t + "/tests/" + c.replace(/~/g, "~0").replace(/\//g, "~1") + "/assertions", schemaPath: "#/properties/tests/additionalProperties/properties/assertions/minProperties", keyword: "minProperties", params: { limit: 1 }, message: "must NOT have fewer than 1 properties" };
-                  e === null ? e = [i] : e.push(i), s++;
+            if (c.capability !== void 0) {
+              let d = c.capability;
+              if (typeof d == "string") {
+                if (A(d) < 1) {
+                  let p = { instancePath: t + "/tests/" + m.replace(/~/g, "~0").replace(/\//g, "~1") + "/capability", schemaPath: "#/properties/tests/additionalProperties/properties/capability/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
+                  e === null ? e = [p] : e.push(p), s++;
                 }
-                for (let i in u) {
-                  let h = s;
-                  if (typeof i == "string" && !Z.test(i)) {
-                    let m = { instancePath: t + "/tests/" + c.replace(/~/g, "~0").replace(/\//g, "~1") + "/assertions", schemaPath: "#/properties/tests/additionalProperties/properties/assertions/propertyNames/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"', propertyName: i };
-                    e === null ? e = [m] : e.push(m), s++;
-                  }
-                  var r = h === s;
-                  if (!r) {
-                    let m = { instancePath: t + "/tests/" + c.replace(/~/g, "~0").replace(/\//g, "~1") + "/assertions", schemaPath: "#/properties/tests/additionalProperties/properties/assertions/propertyNames", keyword: "propertyNames", params: { propertyName: i }, message: "property name must be valid" };
-                    e === null ? e = [m] : e.push(m), s++;
-                  }
-                }
-                for (let i in u) {
-                  let h = u[i], m = s, o = false, g = s;
-                  if (h && typeof h == "object" && !Array.isArray(h)) {
-                    if (Object.keys(h).length < 1) {
-                      let v = { instancePath: t + "/tests/" + c.replace(/~/g, "~0").replace(/\//g, "~1") + "/assertions/" + i.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "#/properties/tests/additionalProperties/properties/assertions/additionalProperties/anyOf/0/minProperties", keyword: "minProperties", params: { limit: 1 }, message: "must NOT have fewer than 1 properties" };
-                      e === null ? e = [v] : e.push(v), s++;
-                    }
-                    for (let v in h) if (!(v === "check" || v === "checkKind" || v === "observe" || v === "expected")) {
-                      let f = { instancePath: t + "/tests/" + c.replace(/~/g, "~0").replace(/\//g, "~1") + "/assertions/" + i.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "#/properties/tests/additionalProperties/properties/assertions/additionalProperties/anyOf/0/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: v }, message: "must NOT have additional properties" };
-                      e === null ? e = [f] : e.push(f), s++;
-                    }
-                    if (h.check !== void 0) {
-                      let v = h.check;
-                      if (typeof v == "string") {
-                        if (A(v) < 1) {
-                          let f = { instancePath: t + "/tests/" + c.replace(/~/g, "~0").replace(/\//g, "~1") + "/assertions/" + i.replace(/~/g, "~0").replace(/\//g, "~1") + "/check", schemaPath: "#/properties/tests/additionalProperties/properties/assertions/additionalProperties/anyOf/0/properties/check/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
-                          e === null ? e = [f] : e.push(f), s++;
-                        }
-                      } else {
-                        let f = { instancePath: t + "/tests/" + c.replace(/~/g, "~0").replace(/\//g, "~1") + "/assertions/" + i.replace(/~/g, "~0").replace(/\//g, "~1") + "/check", schemaPath: "#/properties/tests/additionalProperties/properties/assertions/additionalProperties/anyOf/0/properties/check/type", keyword: "type", params: { type: "string" }, message: "must be string" };
-                        e === null ? e = [f] : e.push(f), s++;
-                      }
-                    }
-                    if (h.checkKind !== void 0) {
-                      let v = h.checkKind;
-                      if (!(v === "deterministic" || v === "agent_observation")) {
-                        let f = { instancePath: t + "/tests/" + c.replace(/~/g, "~0").replace(/\//g, "~1") + "/assertions/" + i.replace(/~/g, "~0").replace(/\//g, "~1") + "/checkKind", schemaPath: "#/properties/tests/additionalProperties/properties/assertions/additionalProperties/anyOf/0/properties/checkKind/enum", keyword: "enum", params: { allowedValues: ys.properties.tests.additionalProperties.properties.assertions.additionalProperties.anyOf[0].properties.checkKind.enum }, message: "must be equal to one of the allowed values" };
-                        e === null ? e = [f] : e.push(f), s++;
-                      }
-                    }
-                    if (h.observe !== void 0) {
-                      let v = h.observe;
-                      if (typeof v == "string") {
-                        if (A(v) < 1) {
-                          let f = { instancePath: t + "/tests/" + c.replace(/~/g, "~0").replace(/\//g, "~1") + "/assertions/" + i.replace(/~/g, "~0").replace(/\//g, "~1") + "/observe", schemaPath: "#/properties/tests/additionalProperties/properties/assertions/additionalProperties/anyOf/0/properties/observe/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
-                          e === null ? e = [f] : e.push(f), s++;
-                        }
-                      } else {
-                        let f = { instancePath: t + "/tests/" + c.replace(/~/g, "~0").replace(/\//g, "~1") + "/assertions/" + i.replace(/~/g, "~0").replace(/\//g, "~1") + "/observe", schemaPath: "#/properties/tests/additionalProperties/properties/assertions/additionalProperties/anyOf/0/properties/observe/type", keyword: "type", params: { type: "string" }, message: "must be string" };
-                        e === null ? e = [f] : e.push(f), s++;
-                      }
-                    }
-                    if (h.expected !== void 0) {
-                      let v = h.expected;
-                      if (typeof v == "string") {
-                        if (A(v) < 1) {
-                          let f = { instancePath: t + "/tests/" + c.replace(/~/g, "~0").replace(/\//g, "~1") + "/assertions/" + i.replace(/~/g, "~0").replace(/\//g, "~1") + "/expected", schemaPath: "#/properties/tests/additionalProperties/properties/assertions/additionalProperties/anyOf/0/properties/expected/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
-                          e === null ? e = [f] : e.push(f), s++;
-                        }
-                      } else {
-                        let f = { instancePath: t + "/tests/" + c.replace(/~/g, "~0").replace(/\//g, "~1") + "/assertions/" + i.replace(/~/g, "~0").replace(/\//g, "~1") + "/expected", schemaPath: "#/properties/tests/additionalProperties/properties/assertions/additionalProperties/anyOf/0/properties/expected/type", keyword: "type", params: { type: "string" }, message: "must be string" };
-                        e === null ? e = [f] : e.push(f), s++;
-                      }
+              } else {
+                let p = { instancePath: t + "/tests/" + m.replace(/~/g, "~0").replace(/\//g, "~1") + "/capability", schemaPath: "#/properties/tests/additionalProperties/properties/capability/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+                e === null ? e = [p] : e.push(p), s++;
+              }
+            }
+            if (c.operations !== void 0) {
+              let d = c.operations;
+              if (Array.isArray(d)) {
+                let p = d.length;
+                for (let u = 0; u < p; u++) {
+                  let i = d[u];
+                  if (typeof i == "string") {
+                    if (A(i) < 1) {
+                      let h = { instancePath: t + "/tests/" + m.replace(/~/g, "~0").replace(/\//g, "~1") + "/operations/" + u, schemaPath: "#/properties/tests/additionalProperties/properties/operations/items/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
+                      e === null ? e = [h] : e.push(h), s++;
                     }
                   } else {
-                    let v = { instancePath: t + "/tests/" + c.replace(/~/g, "~0").replace(/\//g, "~1") + "/assertions/" + i.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "#/properties/tests/additionalProperties/properties/assertions/additionalProperties/anyOf/0/type", keyword: "type", params: { type: "object" }, message: "must be object" };
-                    e === null ? e = [v] : e.push(v), s++;
-                  }
-                  var l = g === s;
-                  if (o = o || l, !o) {
-                    let v = s;
-                    if (h !== null) {
-                      let q = { instancePath: t + "/tests/" + c.replace(/~/g, "~0").replace(/\//g, "~1") + "/assertions/" + i.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "#/properties/tests/additionalProperties/properties/assertions/additionalProperties/anyOf/1/type", keyword: "type", params: { type: "null" }, message: "must be null" };
-                      e === null ? e = [q] : e.push(q), s++;
-                    }
-                    var l = v === s;
-                    o = o || l;
-                  }
-                  if (o) s = m, e !== null && (m ? e.length = m : e = null);
-                  else {
-                    let v = { instancePath: t + "/tests/" + c.replace(/~/g, "~0").replace(/\//g, "~1") + "/assertions/" + i.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "#/properties/tests/additionalProperties/properties/assertions/additionalProperties/anyOf", keyword: "anyOf", params: {}, message: "must match a schema in anyOf" };
-                    e === null ? e = [v] : e.push(v), s++;
+                    let h = { instancePath: t + "/tests/" + m.replace(/~/g, "~0").replace(/\//g, "~1") + "/operations/" + u, schemaPath: "#/properties/tests/additionalProperties/properties/operations/items/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+                    e === null ? e = [h] : e.push(h), s++;
                   }
                 }
               } else {
-                let i = { instancePath: t + "/tests/" + c.replace(/~/g, "~0").replace(/\//g, "~1") + "/assertions", schemaPath: "#/properties/tests/additionalProperties/properties/assertions/type", keyword: "type", params: { type: "object" }, message: "must be object" };
-                e === null ? e = [i] : e.push(i), s++;
+                let p = { instancePath: t + "/tests/" + m.replace(/~/g, "~0").replace(/\//g, "~1") + "/operations", schemaPath: "#/properties/tests/additionalProperties/properties/operations/type", keyword: "type", params: { type: "array" }, message: "must be array" };
+                e === null ? e = [p] : e.push(p), s++;
+              }
+            }
+            if (c.dependsOn !== void 0) {
+              let d = c.dependsOn;
+              if (Array.isArray(d)) {
+                let p = d.length;
+                for (let u = 0; u < p; u++) {
+                  let i = d[u];
+                  if (typeof i == "string") {
+                    if (A(i) < 1) {
+                      let h = { instancePath: t + "/tests/" + m.replace(/~/g, "~0").replace(/\//g, "~1") + "/dependsOn/" + u, schemaPath: "#/properties/tests/additionalProperties/properties/dependsOn/items/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
+                      e === null ? e = [h] : e.push(h), s++;
+                    }
+                  } else {
+                    let h = { instancePath: t + "/tests/" + m.replace(/~/g, "~0").replace(/\//g, "~1") + "/dependsOn/" + u, schemaPath: "#/properties/tests/additionalProperties/properties/dependsOn/items/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+                    e === null ? e = [h] : e.push(h), s++;
+                  }
+                }
+              } else {
+                let p = { instancePath: t + "/tests/" + m.replace(/~/g, "~0").replace(/\//g, "~1") + "/dependsOn", schemaPath: "#/properties/tests/additionalProperties/properties/dependsOn/type", keyword: "type", params: { type: "array" }, message: "must be array" };
+                e === null ? e = [p] : e.push(p), s++;
+              }
+            }
+            if (c.preconditions !== void 0) {
+              let d = c.preconditions;
+              if (Array.isArray(d)) {
+                let p = d.length;
+                for (let u = 0; u < p; u++) {
+                  let i = d[u];
+                  if (typeof i == "string") {
+                    if (A(i) < 1) {
+                      let h = { instancePath: t + "/tests/" + m.replace(/~/g, "~0").replace(/\//g, "~1") + "/preconditions/" + u, schemaPath: "#/properties/tests/additionalProperties/properties/preconditions/items/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
+                      e === null ? e = [h] : e.push(h), s++;
+                    }
+                  } else {
+                    let h = { instancePath: t + "/tests/" + m.replace(/~/g, "~0").replace(/\//g, "~1") + "/preconditions/" + u, schemaPath: "#/properties/tests/additionalProperties/properties/preconditions/items/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+                    e === null ? e = [h] : e.push(h), s++;
+                  }
+                }
+              } else {
+                let p = { instancePath: t + "/tests/" + m.replace(/~/g, "~0").replace(/\//g, "~1") + "/preconditions", schemaPath: "#/properties/tests/additionalProperties/properties/preconditions/type", keyword: "type", params: { type: "array" }, message: "must be array" };
+                e === null ? e = [p] : e.push(p), s++;
+              }
+            }
+            if (c.action !== void 0) {
+              let d = c.action;
+              if (typeof d == "string") {
+                if (A(d) < 1) {
+                  let p = { instancePath: t + "/tests/" + m.replace(/~/g, "~0").replace(/\//g, "~1") + "/action", schemaPath: "#/properties/tests/additionalProperties/properties/action/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
+                  e === null ? e = [p] : e.push(p), s++;
+                }
+              } else {
+                let p = { instancePath: t + "/tests/" + m.replace(/~/g, "~0").replace(/\//g, "~1") + "/action", schemaPath: "#/properties/tests/additionalProperties/properties/action/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+                e === null ? e = [p] : e.push(p), s++;
+              }
+            }
+            if (c.assertions !== void 0) {
+              let d = c.assertions;
+              if (Array.isArray(d)) {
+                let p = d.length;
+                for (let u = 0; u < p; u++) {
+                  let i = d[u];
+                  if (i && typeof i == "object" && !Array.isArray(i)) {
+                    if (i.check === void 0) {
+                      let h = { instancePath: t + "/tests/" + m.replace(/~/g, "~0").replace(/\//g, "~1") + "/assertions/" + u, schemaPath: "#/properties/tests/additionalProperties/properties/assertions/items/required", keyword: "required", params: { missingProperty: "check" }, message: "must have required property 'check'" };
+                      e === null ? e = [h] : e.push(h), s++;
+                    }
+                    if (i.checkKind === void 0) {
+                      let h = { instancePath: t + "/tests/" + m.replace(/~/g, "~0").replace(/\//g, "~1") + "/assertions/" + u, schemaPath: "#/properties/tests/additionalProperties/properties/assertions/items/required", keyword: "required", params: { missingProperty: "checkKind" }, message: "must have required property 'checkKind'" };
+                      e === null ? e = [h] : e.push(h), s++;
+                    }
+                    for (let h in i) if (!(h === "check" || h === "checkKind" || h === "observe" || h === "expected")) {
+                      let o = { instancePath: t + "/tests/" + m.replace(/~/g, "~0").replace(/\//g, "~1") + "/assertions/" + u, schemaPath: "#/properties/tests/additionalProperties/properties/assertions/items/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: h }, message: "must NOT have additional properties" };
+                      e === null ? e = [o] : e.push(o), s++;
+                    }
+                    if (i.check !== void 0) {
+                      let h = i.check;
+                      if (typeof h == "string") {
+                        if (A(h) < 1) {
+                          let o = { instancePath: t + "/tests/" + m.replace(/~/g, "~0").replace(/\//g, "~1") + "/assertions/" + u + "/check", schemaPath: "#/properties/tests/additionalProperties/properties/assertions/items/properties/check/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
+                          e === null ? e = [o] : e.push(o), s++;
+                        }
+                      } else {
+                        let o = { instancePath: t + "/tests/" + m.replace(/~/g, "~0").replace(/\//g, "~1") + "/assertions/" + u + "/check", schemaPath: "#/properties/tests/additionalProperties/properties/assertions/items/properties/check/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+                        e === null ? e = [o] : e.push(o), s++;
+                      }
+                    }
+                    if (i.checkKind !== void 0) {
+                      let h = i.checkKind;
+                      if (typeof h != "string") {
+                        let o = { instancePath: t + "/tests/" + m.replace(/~/g, "~0").replace(/\//g, "~1") + "/assertions/" + u + "/checkKind", schemaPath: "#/properties/tests/additionalProperties/properties/assertions/items/properties/checkKind/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+                        e === null ? e = [o] : e.push(o), s++;
+                      }
+                      if (!(h === "deterministic" || h === "agent_observation")) {
+                        let o = { instancePath: t + "/tests/" + m.replace(/~/g, "~0").replace(/\//g, "~1") + "/assertions/" + u + "/checkKind", schemaPath: "#/properties/tests/additionalProperties/properties/assertions/items/properties/checkKind/enum", keyword: "enum", params: { allowedValues: je.properties.tests.additionalProperties.properties.assertions.items.properties.checkKind.enum }, message: "must be equal to one of the allowed values" };
+                        e === null ? e = [o] : e.push(o), s++;
+                      }
+                    }
+                    if (i.observe !== void 0) {
+                      let h = i.observe;
+                      if (typeof h == "string") {
+                        if (A(h) < 1) {
+                          let o = { instancePath: t + "/tests/" + m.replace(/~/g, "~0").replace(/\//g, "~1") + "/assertions/" + u + "/observe", schemaPath: "#/properties/tests/additionalProperties/properties/assertions/items/properties/observe/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
+                          e === null ? e = [o] : e.push(o), s++;
+                        }
+                      } else {
+                        let o = { instancePath: t + "/tests/" + m.replace(/~/g, "~0").replace(/\//g, "~1") + "/assertions/" + u + "/observe", schemaPath: "#/properties/tests/additionalProperties/properties/assertions/items/properties/observe/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+                        e === null ? e = [o] : e.push(o), s++;
+                      }
+                    }
+                    if (i.expected !== void 0) {
+                      let h = i.expected;
+                      if (typeof h == "string") {
+                        if (A(h) < 1) {
+                          let o = { instancePath: t + "/tests/" + m.replace(/~/g, "~0").replace(/\//g, "~1") + "/assertions/" + u + "/expected", schemaPath: "#/properties/tests/additionalProperties/properties/assertions/items/properties/expected/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
+                          e === null ? e = [o] : e.push(o), s++;
+                        }
+                      } else {
+                        let o = { instancePath: t + "/tests/" + m.replace(/~/g, "~0").replace(/\//g, "~1") + "/assertions/" + u + "/expected", schemaPath: "#/properties/tests/additionalProperties/properties/assertions/items/properties/expected/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+                        e === null ? e = [o] : e.push(o), s++;
+                      }
+                    }
+                  } else {
+                    let h = { instancePath: t + "/tests/" + m.replace(/~/g, "~0").replace(/\//g, "~1") + "/assertions/" + u, schemaPath: "#/properties/tests/additionalProperties/properties/assertions/items/type", keyword: "type", params: { type: "object" }, message: "must be object" };
+                    e === null ? e = [h] : e.push(h), s++;
+                  }
+                }
+              } else {
+                let p = { instancePath: t + "/tests/" + m.replace(/~/g, "~0").replace(/\//g, "~1") + "/assertions", schemaPath: "#/properties/tests/additionalProperties/properties/assertions/type", keyword: "type", params: { type: "array" }, message: "must be array" };
+                e === null ? e = [p] : e.push(p), s++;
               }
             }
           } else {
-            let u = { instancePath: t + "/tests/" + c.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "#/properties/tests/additionalProperties/type", keyword: "type", params: { type: "object" }, message: "must be object" };
-            e === null ? e = [u] : e.push(u), s++;
+            let d = { instancePath: t + "/tests/" + m.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "#/properties/tests/additionalProperties/type", keyword: "type", params: { type: "object" }, message: "must be object" };
+            e === null ? e = [d] : e.push(d), s++;
           }
         }
       } else {
-        let c = { instancePath: t + "/tests", schemaPath: "#/properties/tests/type", keyword: "type", params: { type: "object" }, message: "must be object" };
-        e === null ? e = [c] : e.push(c), s++;
+        let m = { instancePath: t + "/tests", schemaPath: "#/properties/tests/type", keyword: "type", params: { type: "object" }, message: "must be object" };
+        e === null ? e = [m] : e.push(m), s++;
       }
     }
   } else {
-    let d = { instancePath: t, schemaPath: "#/type", keyword: "type", params: { type: "object" }, message: "must be object" };
-    e === null ? e = [d] : e.push(d), s++;
+    let r = { instancePath: t, schemaPath: "#/type", keyword: "type", params: { type: "object" }, message: "must be object" };
+    e === null ? e = [r] : e.push(r), s++;
   }
-  return Fe.errors = e, s === 0;
+  return Se.errors = e, s === 0;
 }
-var Cs = We;
-var gs = { $schema: "http://json-schema.org/draft-07/schema#", $id: "plan-patch.schema.json", type: "object", properties: { requirements: { type: "object", propertyNames: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, additionalProperties: { anyOf: [{ type: "object", properties: { text: { type: "string", minLength: 1 }, source: { type: "string", minLength: 1 }, area: { type: "string", minLength: 1, maxLength: 40 }, metadata: { $ref: "plan.schema.json#/definitions/metadata" } }, additionalProperties: false, minProperties: 1 }, { type: "null" }] } }, tests: { type: "object", propertyNames: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, additionalProperties: { anyOf: [{ type: "object", properties: { title: { $ref: "plan-candidate.schema.json#/properties/tests/items/properties/title" }, requirementIds: { $ref: "plan-candidate.schema.json#/properties/tests/items/properties/requirementIds" }, capability: { $ref: "plan-candidate.schema.json#/properties/tests/items/properties/capability" }, operations: { $ref: "plan-candidate.schema.json#/properties/tests/items/properties/operations" }, dependsOn: { $ref: "plan-candidate.schema.json#/properties/tests/items/properties/dependsOn" }, preconditions: { $ref: "plan-candidate.schema.json#/properties/tests/items/properties/preconditions" }, action: { $ref: "plan-candidate.schema.json#/properties/tests/items/properties/action" }, assertions: { $ref: "plan-delta.schema.json#/properties/tests/additionalProperties/properties/assertions" }, metadata: { $ref: "plan.schema.json#/definitions/metadata" } }, additionalProperties: false, minProperties: 1 }, { type: "null" }] } }, gaps: { type: "object", propertyNames: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, additionalProperties: { anyOf: [{ type: "object", properties: { severity: { $ref: "gap.schema.json#/properties/severity" }, requirementIds: { $ref: "gap.schema.json#/properties/requirementIds" }, testIds: { $ref: "gap.schema.json#/properties/testIds" }, question: { $ref: "gap.schema.json#/properties/question" }, consequence: { $ref: "gap.schema.json#/properties/consequence" } }, additionalProperties: false, minProperties: 1 }, { type: "null" }] } } }, additionalProperties: false, minProperties: 1 };
-var Ps = { type: "object", propertyNames: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, additionalProperties: { anyOf: [{ type: "object", properties: { check: { type: "string", minLength: 1 }, checkKind: { enum: ["deterministic", "agent_observation"] }, observe: { type: "string", minLength: 1 }, expected: { type: "string", minLength: 1 } }, additionalProperties: false, minProperties: 1 }, { type: "null" }] }, minProperties: 1 };
-var ws = { enum: ["blocking", "non_blocking"] };
-function We(a, { instancePath: t = "", parentData: $, parentDataProperty: _, rootData: T = a } = {}) {
+var Es = Be;
+var Ae = { $schema: "http://json-schema.org/draft-07/schema#", $id: "plan-patch.schema.json", type: "object", properties: { requirements: { type: "object", propertyNames: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, additionalProperties: { anyOf: [{ type: "object", properties: { text: { type: "string", minLength: 1 }, source: { type: "string", minLength: 1 }, area: { type: "string", minLength: 1, maxLength: 40 }, metadata: { $ref: "plan.schema.json#/definitions/metadata" } }, additionalProperties: false, minProperties: 1 }, { type: "null" }] } }, tests: { type: "object", propertyNames: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, additionalProperties: { anyOf: [{ type: "object", properties: { title: { $ref: "plan-candidate.schema.json#/properties/tests/items/properties/title" }, requirementIds: { $ref: "plan-candidate.schema.json#/properties/tests/items/properties/requirementIds" }, capability: { $ref: "plan-candidate.schema.json#/properties/tests/items/properties/capability" }, operations: { $ref: "plan-candidate.schema.json#/properties/tests/items/properties/operations" }, dependsOn: { $ref: "plan-candidate.schema.json#/properties/tests/items/properties/dependsOn" }, preconditions: { $ref: "plan-candidate.schema.json#/properties/tests/items/properties/preconditions" }, action: { $ref: "plan-candidate.schema.json#/properties/tests/items/properties/action" }, assertions: { type: "object", propertyNames: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, additionalProperties: { anyOf: [{ type: "object", properties: { check: { type: "string", minLength: 1 }, checkKind: { enum: ["deterministic", "agent_observation"] }, observe: { type: "string", minLength: 1 }, expected: { type: "string", minLength: 1 } }, additionalProperties: false, minProperties: 1 }, { type: "null" }] }, minProperties: 1 }, metadata: { $ref: "plan.schema.json#/definitions/metadata" } }, additionalProperties: false, minProperties: 1 }, { type: "null" }] } }, gaps: { type: "object", propertyNames: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, additionalProperties: { anyOf: [{ type: "object", properties: { severity: { $ref: "gap.schema.json#/properties/severity" }, requirementIds: { $ref: "gap.schema.json#/properties/requirementIds" }, testIds: { $ref: "gap.schema.json#/properties/testIds" }, question: { $ref: "gap.schema.json#/properties/question" }, consequence: { $ref: "gap.schema.json#/properties/consequence" } }, additionalProperties: false, minProperties: 1 }, { type: "null" }] } } }, additionalProperties: false, minProperties: 1 };
+var Ps = { enum: ["blocking", "non_blocking"] };
+function Be(a, { instancePath: t = "", parentData: $, parentDataProperty: _, rootData: L = a } = {}) {
   let e = null, s = 0;
   if (a && typeof a == "object" && !Array.isArray(a)) {
     if (Object.keys(a).length < 1) {
-      let m = { instancePath: t, schemaPath: "#/minProperties", keyword: "minProperties", params: { limit: 1 }, message: "must NOT have fewer than 1 properties" };
-      e === null ? e = [m] : e.push(m), s++;
-    }
-    for (let m in a) if (!(m === "requirements" || m === "tests" || m === "gaps")) {
-      let o = { instancePath: t, schemaPath: "#/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: m }, message: "must NOT have additional properties" };
+      let o = { instancePath: t, schemaPath: "#/minProperties", keyword: "minProperties", params: { limit: 1 }, message: "must NOT have fewer than 1 properties" };
       e === null ? e = [o] : e.push(o), s++;
     }
+    for (let o in a) if (!(o === "requirements" || o === "tests" || o === "gaps")) {
+      let l = { instancePath: t, schemaPath: "#/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: o }, message: "must NOT have additional properties" };
+      e === null ? e = [l] : e.push(l), s++;
+    }
     if (a.requirements !== void 0) {
-      let m = a.requirements;
-      if (m && typeof m == "object" && !Array.isArray(m)) {
-        for (let o in m) {
+      let o = a.requirements;
+      if (o && typeof o == "object" && !Array.isArray(o)) {
+        for (let l in o) {
           let g = s;
-          if (typeof o == "string" && !Z.test(o)) {
-            let v = { instancePath: t + "/requirements", schemaPath: "#/properties/requirements/propertyNames/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"', propertyName: o };
-            e === null ? e = [v] : e.push(v), s++;
+          if (typeof l == "string" && !Z.test(l)) {
+            let b = { instancePath: t + "/requirements", schemaPath: "#/properties/requirements/propertyNames/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"', propertyName: l };
+            e === null ? e = [b] : e.push(b), s++;
           }
           var w = g === s;
           if (!w) {
-            let v = { instancePath: t + "/requirements", schemaPath: "#/properties/requirements/propertyNames", keyword: "propertyNames", params: { propertyName: o }, message: "property name must be valid" };
-            e === null ? e = [v] : e.push(v), s++;
+            let b = { instancePath: t + "/requirements", schemaPath: "#/properties/requirements/propertyNames", keyword: "propertyNames", params: { propertyName: l }, message: "property name must be valid" };
+            e === null ? e = [b] : e.push(b), s++;
           }
         }
-        for (let o in m) {
-          let g = m[o], v = s, f = false, q = s;
+        for (let l in o) {
+          let g = o[l], b = s, f = false, q = s;
           if (g && typeof g == "object" && !Array.isArray(g)) {
             if (Object.keys(g).length < 1) {
-              let y = { instancePath: t + "/requirements/" + o.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "#/properties/requirements/additionalProperties/anyOf/0/minProperties", keyword: "minProperties", params: { limit: 1 }, message: "must NOT have fewer than 1 properties" };
+              let y = { instancePath: t + "/requirements/" + l.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "#/properties/requirements/additionalProperties/anyOf/0/minProperties", keyword: "minProperties", params: { limit: 1 }, message: "must NOT have fewer than 1 properties" };
               e === null ? e = [y] : e.push(y), s++;
             }
             for (let y in g) if (!(y === "text" || y === "source" || y === "area" || y === "metadata")) {
-              let P2 = { instancePath: t + "/requirements/" + o.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "#/properties/requirements/additionalProperties/anyOf/0/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: y }, message: "must NOT have additional properties" };
+              let P2 = { instancePath: t + "/requirements/" + l.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "#/properties/requirements/additionalProperties/anyOf/0/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: y }, message: "must NOT have additional properties" };
               e === null ? e = [P2] : e.push(P2), s++;
             }
             if (g.text !== void 0) {
               let y = g.text;
               if (typeof y == "string") {
                 if (A(y) < 1) {
-                  let P2 = { instancePath: t + "/requirements/" + o.replace(/~/g, "~0").replace(/\//g, "~1") + "/text", schemaPath: "#/properties/requirements/additionalProperties/anyOf/0/properties/text/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
+                  let P2 = { instancePath: t + "/requirements/" + l.replace(/~/g, "~0").replace(/\//g, "~1") + "/text", schemaPath: "#/properties/requirements/additionalProperties/anyOf/0/properties/text/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
                   e === null ? e = [P2] : e.push(P2), s++;
                 }
               } else {
-                let P2 = { instancePath: t + "/requirements/" + o.replace(/~/g, "~0").replace(/\//g, "~1") + "/text", schemaPath: "#/properties/requirements/additionalProperties/anyOf/0/properties/text/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+                let P2 = { instancePath: t + "/requirements/" + l.replace(/~/g, "~0").replace(/\//g, "~1") + "/text", schemaPath: "#/properties/requirements/additionalProperties/anyOf/0/properties/text/type", keyword: "type", params: { type: "string" }, message: "must be string" };
                 e === null ? e = [P2] : e.push(P2), s++;
               }
             }
@@ -4158,11 +4242,11 @@ function We(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
               let y = g.source;
               if (typeof y == "string") {
                 if (A(y) < 1) {
-                  let P2 = { instancePath: t + "/requirements/" + o.replace(/~/g, "~0").replace(/\//g, "~1") + "/source", schemaPath: "#/properties/requirements/additionalProperties/anyOf/0/properties/source/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
+                  let P2 = { instancePath: t + "/requirements/" + l.replace(/~/g, "~0").replace(/\//g, "~1") + "/source", schemaPath: "#/properties/requirements/additionalProperties/anyOf/0/properties/source/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
                   e === null ? e = [P2] : e.push(P2), s++;
                 }
               } else {
-                let P2 = { instancePath: t + "/requirements/" + o.replace(/~/g, "~0").replace(/\//g, "~1") + "/source", schemaPath: "#/properties/requirements/additionalProperties/anyOf/0/properties/source/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+                let P2 = { instancePath: t + "/requirements/" + l.replace(/~/g, "~0").replace(/\//g, "~1") + "/source", schemaPath: "#/properties/requirements/additionalProperties/anyOf/0/properties/source/type", keyword: "type", params: { type: "string" }, message: "must be string" };
                 e === null ? e = [P2] : e.push(P2), s++;
               }
             }
@@ -4170,15 +4254,15 @@ function We(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
               let y = g.area;
               if (typeof y == "string") {
                 if (A(y) > 40) {
-                  let P2 = { instancePath: t + "/requirements/" + o.replace(/~/g, "~0").replace(/\//g, "~1") + "/area", schemaPath: "#/properties/requirements/additionalProperties/anyOf/0/properties/area/maxLength", keyword: "maxLength", params: { limit: 40 }, message: "must NOT have more than 40 characters" };
+                  let P2 = { instancePath: t + "/requirements/" + l.replace(/~/g, "~0").replace(/\//g, "~1") + "/area", schemaPath: "#/properties/requirements/additionalProperties/anyOf/0/properties/area/maxLength", keyword: "maxLength", params: { limit: 40 }, message: "must NOT have more than 40 characters" };
                   e === null ? e = [P2] : e.push(P2), s++;
                 }
                 if (A(y) < 1) {
-                  let P2 = { instancePath: t + "/requirements/" + o.replace(/~/g, "~0").replace(/\//g, "~1") + "/area", schemaPath: "#/properties/requirements/additionalProperties/anyOf/0/properties/area/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
+                  let P2 = { instancePath: t + "/requirements/" + l.replace(/~/g, "~0").replace(/\//g, "~1") + "/area", schemaPath: "#/properties/requirements/additionalProperties/anyOf/0/properties/area/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
                   e === null ? e = [P2] : e.push(P2), s++;
                 }
               } else {
-                let P2 = { instancePath: t + "/requirements/" + o.replace(/~/g, "~0").replace(/\//g, "~1") + "/area", schemaPath: "#/properties/requirements/additionalProperties/anyOf/0/properties/area/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+                let P2 = { instancePath: t + "/requirements/" + l.replace(/~/g, "~0").replace(/\//g, "~1") + "/area", schemaPath: "#/properties/requirements/additionalProperties/anyOf/0/properties/area/type", keyword: "type", params: { type: "string" }, message: "must be string" };
                 e === null ? e = [P2] : e.push(P2), s++;
               }
             }
@@ -4186,101 +4270,101 @@ function We(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
               let y = g.metadata;
               if (y && typeof y == "object" && !Array.isArray(y)) {
                 if (Object.keys(y).length > 20) {
-                  let P2 = { instancePath: t + "/requirements/" + o.replace(/~/g, "~0").replace(/\//g, "~1") + "/metadata", schemaPath: "plan.schema.json#/definitions/metadata/maxProperties", keyword: "maxProperties", params: { limit: 20 }, message: "must NOT have more than 20 properties" };
+                  let P2 = { instancePath: t + "/requirements/" + l.replace(/~/g, "~0").replace(/\//g, "~1") + "/metadata", schemaPath: "plan.schema.json#/definitions/metadata/maxProperties", keyword: "maxProperties", params: { limit: 20 }, message: "must NOT have more than 20 properties" };
                   e === null ? e = [P2] : e.push(P2), s++;
                 }
                 for (let P2 in y) {
                   let z = s;
                   if (typeof P2 == "string" && !W.test(P2)) {
-                    let I = { instancePath: t + "/requirements/" + o.replace(/~/g, "~0").replace(/\//g, "~1") + "/metadata", schemaPath: "plan.schema.json#/definitions/metadata/propertyNames/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z][A-Za-z0-9_.-]{0,63}$" }, message: 'must match pattern "^[A-Za-z][A-Za-z0-9_.-]{0,63}$"', propertyName: P2 };
+                    let I = { instancePath: t + "/requirements/" + l.replace(/~/g, "~0").replace(/\//g, "~1") + "/metadata", schemaPath: "plan.schema.json#/definitions/metadata/propertyNames/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z][A-Za-z0-9_.-]{0,63}$" }, message: 'must match pattern "^[A-Za-z][A-Za-z0-9_.-]{0,63}$"', propertyName: P2 };
                     e === null ? e = [I] : e.push(I), s++;
                   }
                   var n = z === s;
                   if (!n) {
-                    let I = { instancePath: t + "/requirements/" + o.replace(/~/g, "~0").replace(/\//g, "~1") + "/metadata", schemaPath: "plan.schema.json#/definitions/metadata/propertyNames", keyword: "propertyNames", params: { propertyName: P2 }, message: "property name must be valid" };
+                    let I = { instancePath: t + "/requirements/" + l.replace(/~/g, "~0").replace(/\//g, "~1") + "/metadata", schemaPath: "plan.schema.json#/definitions/metadata/propertyNames", keyword: "propertyNames", params: { propertyName: P2 }, message: "property name must be valid" };
                     e === null ? e = [I] : e.push(I), s++;
                   }
                 }
                 for (let P2 in y) {
                   let z = y[P2];
                   if (typeof z != "string" && !(typeof z == "number" && isFinite(z)) && typeof z != "boolean") {
-                    let I = { instancePath: t + "/requirements/" + o.replace(/~/g, "~0").replace(/\//g, "~1") + "/metadata/" + P2.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "plan.schema.json#/definitions/metadata/additionalProperties/type", keyword: "type", params: { type: F.additionalProperties.type }, message: "must be string,number,boolean" };
+                    let I = { instancePath: t + "/requirements/" + l.replace(/~/g, "~0").replace(/\//g, "~1") + "/metadata/" + P2.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "plan.schema.json#/definitions/metadata/additionalProperties/type", keyword: "type", params: { type: F.additionalProperties.type }, message: "must be string,number,boolean" };
                     e === null ? e = [I] : e.push(I), s++;
                   }
                   if (typeof z == "string" && A(z) > 500) {
-                    let I = { instancePath: t + "/requirements/" + o.replace(/~/g, "~0").replace(/\//g, "~1") + "/metadata/" + P2.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "plan.schema.json#/definitions/metadata/additionalProperties/maxLength", keyword: "maxLength", params: { limit: 500 }, message: "must NOT have more than 500 characters" };
+                    let I = { instancePath: t + "/requirements/" + l.replace(/~/g, "~0").replace(/\//g, "~1") + "/metadata/" + P2.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "plan.schema.json#/definitions/metadata/additionalProperties/maxLength", keyword: "maxLength", params: { limit: 500 }, message: "must NOT have more than 500 characters" };
                     e === null ? e = [I] : e.push(I), s++;
                   }
                 }
               } else {
-                let P2 = { instancePath: t + "/requirements/" + o.replace(/~/g, "~0").replace(/\//g, "~1") + "/metadata", schemaPath: "plan.schema.json#/definitions/metadata/type", keyword: "type", params: { type: "object" }, message: "must be object" };
+                let P2 = { instancePath: t + "/requirements/" + l.replace(/~/g, "~0").replace(/\//g, "~1") + "/metadata", schemaPath: "plan.schema.json#/definitions/metadata/type", keyword: "type", params: { type: "object" }, message: "must be object" };
                 e === null ? e = [P2] : e.push(P2), s++;
               }
             }
           } else {
-            let y = { instancePath: t + "/requirements/" + o.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "#/properties/requirements/additionalProperties/anyOf/0/type", keyword: "type", params: { type: "object" }, message: "must be object" };
+            let y = { instancePath: t + "/requirements/" + l.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "#/properties/requirements/additionalProperties/anyOf/0/type", keyword: "type", params: { type: "object" }, message: "must be object" };
             e === null ? e = [y] : e.push(y), s++;
           }
           var r = q === s;
           if (f = f || r, !f) {
             let y = s;
             if (g !== null) {
-              let z = { instancePath: t + "/requirements/" + o.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "#/properties/requirements/additionalProperties/anyOf/1/type", keyword: "type", params: { type: "null" }, message: "must be null" };
+              let z = { instancePath: t + "/requirements/" + l.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "#/properties/requirements/additionalProperties/anyOf/1/type", keyword: "type", params: { type: "null" }, message: "must be null" };
               e === null ? e = [z] : e.push(z), s++;
             }
             var r = y === s;
             f = f || r;
           }
-          if (f) s = v, e !== null && (v ? e.length = v : e = null);
+          if (f) s = b, e !== null && (b ? e.length = b : e = null);
           else {
-            let y = { instancePath: t + "/requirements/" + o.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "#/properties/requirements/additionalProperties/anyOf", keyword: "anyOf", params: {}, message: "must match a schema in anyOf" };
+            let y = { instancePath: t + "/requirements/" + l.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "#/properties/requirements/additionalProperties/anyOf", keyword: "anyOf", params: {}, message: "must match a schema in anyOf" };
             e === null ? e = [y] : e.push(y), s++;
           }
         }
       } else {
-        let o = { instancePath: t + "/requirements", schemaPath: "#/properties/requirements/type", keyword: "type", params: { type: "object" }, message: "must be object" };
-        e === null ? e = [o] : e.push(o), s++;
+        let l = { instancePath: t + "/requirements", schemaPath: "#/properties/requirements/type", keyword: "type", params: { type: "object" }, message: "must be object" };
+        e === null ? e = [l] : e.push(l), s++;
       }
     }
     if (a.tests !== void 0) {
-      let m = a.tests;
-      if (m && typeof m == "object" && !Array.isArray(m)) {
-        for (let o in m) {
+      let o = a.tests;
+      if (o && typeof o == "object" && !Array.isArray(o)) {
+        for (let l in o) {
           let g = s;
-          if (typeof o == "string" && !Z.test(o)) {
-            let v = { instancePath: t + "/tests", schemaPath: "#/properties/tests/propertyNames/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"', propertyName: o };
-            e === null ? e = [v] : e.push(v), s++;
+          if (typeof l == "string" && !Z.test(l)) {
+            let b = { instancePath: t + "/tests", schemaPath: "#/properties/tests/propertyNames/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"', propertyName: l };
+            e === null ? e = [b] : e.push(b), s++;
           }
-          var l = g === s;
-          if (!l) {
-            let v = { instancePath: t + "/tests", schemaPath: "#/properties/tests/propertyNames", keyword: "propertyNames", params: { propertyName: o }, message: "property name must be valid" };
-            e === null ? e = [v] : e.push(v), s++;
+          var m = g === s;
+          if (!m) {
+            let b = { instancePath: t + "/tests", schemaPath: "#/properties/tests/propertyNames", keyword: "propertyNames", params: { propertyName: l }, message: "property name must be valid" };
+            e === null ? e = [b] : e.push(b), s++;
           }
         }
-        for (let o in m) {
-          let g = m[o], v = s, f = false, q = s;
+        for (let l in o) {
+          let g = o[l], b = s, f = false, q = s;
           if (g && typeof g == "object" && !Array.isArray(g)) {
             if (Object.keys(g).length < 1) {
-              let y = { instancePath: t + "/tests/" + o.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "#/properties/tests/additionalProperties/anyOf/0/minProperties", keyword: "minProperties", params: { limit: 1 }, message: "must NOT have fewer than 1 properties" };
+              let y = { instancePath: t + "/tests/" + l.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "#/properties/tests/additionalProperties/anyOf/0/minProperties", keyword: "minProperties", params: { limit: 1 }, message: "must NOT have fewer than 1 properties" };
               e === null ? e = [y] : e.push(y), s++;
             }
-            for (let y in g) if (!E.call(gs.properties.tests.additionalProperties.anyOf[0].properties, y)) {
-              let P2 = { instancePath: t + "/tests/" + o.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "#/properties/tests/additionalProperties/anyOf/0/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: y }, message: "must NOT have additional properties" };
+            for (let y in g) if (!K.call(Ae.properties.tests.additionalProperties.anyOf[0].properties, y)) {
+              let P2 = { instancePath: t + "/tests/" + l.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "#/properties/tests/additionalProperties/anyOf/0/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: y }, message: "must NOT have additional properties" };
               e === null ? e = [P2] : e.push(P2), s++;
             }
             if (g.title !== void 0) {
               let y = g.title;
               if (typeof y == "string") {
                 if (A(y) > 200) {
-                  let P2 = { instancePath: t + "/tests/" + o.replace(/~/g, "~0").replace(/\//g, "~1") + "/title", schemaPath: "plan-candidate.schema.json#/properties/tests/items/properties/title/maxLength", keyword: "maxLength", params: { limit: 200 }, message: "must NOT have more than 200 characters" };
+                  let P2 = { instancePath: t + "/tests/" + l.replace(/~/g, "~0").replace(/\//g, "~1") + "/title", schemaPath: "plan-candidate.schema.json#/properties/tests/items/properties/title/maxLength", keyword: "maxLength", params: { limit: 200 }, message: "must NOT have more than 200 characters" };
                   e === null ? e = [P2] : e.push(P2), s++;
                 }
                 if (A(y) < 1) {
-                  let P2 = { instancePath: t + "/tests/" + o.replace(/~/g, "~0").replace(/\//g, "~1") + "/title", schemaPath: "plan-candidate.schema.json#/properties/tests/items/properties/title/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
+                  let P2 = { instancePath: t + "/tests/" + l.replace(/~/g, "~0").replace(/\//g, "~1") + "/title", schemaPath: "plan-candidate.schema.json#/properties/tests/items/properties/title/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
                   e === null ? e = [P2] : e.push(P2), s++;
                 }
               } else {
-                let P2 = { instancePath: t + "/tests/" + o.replace(/~/g, "~0").replace(/\//g, "~1") + "/title", schemaPath: "plan-candidate.schema.json#/properties/tests/items/properties/title/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+                let P2 = { instancePath: t + "/tests/" + l.replace(/~/g, "~0").replace(/\//g, "~1") + "/title", schemaPath: "plan-candidate.schema.json#/properties/tests/items/properties/title/type", keyword: "type", params: { type: "string" }, message: "must be string" };
                 e === null ? e = [P2] : e.push(P2), s++;
               }
             }
@@ -4288,7 +4372,7 @@ function We(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
               let y = g.requirementIds;
               if (Array.isArray(y)) {
                 if (y.length < 1) {
-                  let k = { instancePath: t + "/tests/" + o.replace(/~/g, "~0").replace(/\//g, "~1") + "/requirementIds", schemaPath: "plan-candidate.schema.json#/properties/tests/items/properties/requirementIds/minItems", keyword: "minItems", params: { limit: 1 }, message: "must NOT have fewer than 1 items" };
+                  let k = { instancePath: t + "/tests/" + l.replace(/~/g, "~0").replace(/\//g, "~1") + "/requirementIds", schemaPath: "plan-candidate.schema.json#/properties/tests/items/properties/requirementIds/minItems", keyword: "minItems", params: { limit: 1 }, message: "must NOT have fewer than 1 items" };
                   e === null ? e = [k] : e.push(k), s++;
                 }
                 let P2 = y.length;
@@ -4296,12 +4380,12 @@ function We(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
                   let j = y[k];
                   if (typeof j == "string") {
                     if (!Z.test(j)) {
-                      let b = { instancePath: t + "/tests/" + o.replace(/~/g, "~0").replace(/\//g, "~1") + "/requirementIds/" + k, schemaPath: "plan-candidate.schema.json#/properties/tests/items/properties/requirementIds/items/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
-                      e === null ? e = [b] : e.push(b), s++;
+                      let v = { instancePath: t + "/tests/" + l.replace(/~/g, "~0").replace(/\//g, "~1") + "/requirementIds/" + k, schemaPath: "plan-candidate.schema.json#/properties/tests/items/properties/requirementIds/items/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
+                      e === null ? e = [v] : e.push(v), s++;
                     }
                   } else {
-                    let b = { instancePath: t + "/tests/" + o.replace(/~/g, "~0").replace(/\//g, "~1") + "/requirementIds/" + k, schemaPath: "plan-candidate.schema.json#/properties/tests/items/properties/requirementIds/items/type", keyword: "type", params: { type: "string" }, message: "must be string" };
-                    e === null ? e = [b] : e.push(b), s++;
+                    let v = { instancePath: t + "/tests/" + l.replace(/~/g, "~0").replace(/\//g, "~1") + "/requirementIds/" + k, schemaPath: "plan-candidate.schema.json#/properties/tests/items/properties/requirementIds/items/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+                    e === null ? e = [v] : e.push(v), s++;
                   }
                 }
                 let z = y.length, I;
@@ -4312,8 +4396,8 @@ function We(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
                     if (typeof j == "string") {
                       if (typeof k[j] == "number") {
                         I = k[j];
-                        let b = { instancePath: t + "/tests/" + o.replace(/~/g, "~0").replace(/\//g, "~1") + "/requirementIds", schemaPath: "plan-candidate.schema.json#/properties/tests/items/properties/requirementIds/uniqueItems", keyword: "uniqueItems", params: { i: z, j: I }, message: "must NOT have duplicate items (items ## " + I + " and " + z + " are identical)" };
-                        e === null ? e = [b] : e.push(b), s++;
+                        let v = { instancePath: t + "/tests/" + l.replace(/~/g, "~0").replace(/\//g, "~1") + "/requirementIds", schemaPath: "plan-candidate.schema.json#/properties/tests/items/properties/requirementIds/uniqueItems", keyword: "uniqueItems", params: { i: z, j: I }, message: "must NOT have duplicate items (items ## " + I + " and " + z + " are identical)" };
+                        e === null ? e = [v] : e.push(v), s++;
                         break;
                       }
                       k[j] = z;
@@ -4321,7 +4405,7 @@ function We(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
                   }
                 }
               } else {
-                let P2 = { instancePath: t + "/tests/" + o.replace(/~/g, "~0").replace(/\//g, "~1") + "/requirementIds", schemaPath: "plan-candidate.schema.json#/properties/tests/items/properties/requirementIds/type", keyword: "type", params: { type: "array" }, message: "must be array" };
+                let P2 = { instancePath: t + "/tests/" + l.replace(/~/g, "~0").replace(/\//g, "~1") + "/requirementIds", schemaPath: "plan-candidate.schema.json#/properties/tests/items/properties/requirementIds/type", keyword: "type", params: { type: "array" }, message: "must be array" };
                 e === null ? e = [P2] : e.push(P2), s++;
               }
             }
@@ -4329,11 +4413,11 @@ function We(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
               let y = g.capability;
               if (typeof y == "string") {
                 if (!Z.test(y)) {
-                  let P2 = { instancePath: t + "/tests/" + o.replace(/~/g, "~0").replace(/\//g, "~1") + "/capability", schemaPath: "plan-candidate.schema.json#/properties/tests/items/properties/capability/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
+                  let P2 = { instancePath: t + "/tests/" + l.replace(/~/g, "~0").replace(/\//g, "~1") + "/capability", schemaPath: "plan-candidate.schema.json#/properties/tests/items/properties/capability/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
                   e === null ? e = [P2] : e.push(P2), s++;
                 }
               } else {
-                let P2 = { instancePath: t + "/tests/" + o.replace(/~/g, "~0").replace(/\//g, "~1") + "/capability", schemaPath: "plan-candidate.schema.json#/properties/tests/items/properties/capability/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+                let P2 = { instancePath: t + "/tests/" + l.replace(/~/g, "~0").replace(/\//g, "~1") + "/capability", schemaPath: "plan-candidate.schema.json#/properties/tests/items/properties/capability/type", keyword: "type", params: { type: "string" }, message: "must be string" };
                 e === null ? e = [P2] : e.push(P2), s++;
               }
             }
@@ -4341,7 +4425,7 @@ function We(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
               let y = g.operations;
               if (Array.isArray(y)) {
                 if (y.length < 1) {
-                  let k = { instancePath: t + "/tests/" + o.replace(/~/g, "~0").replace(/\//g, "~1") + "/operations", schemaPath: "plan-candidate.schema.json#/properties/tests/items/properties/operations/minItems", keyword: "minItems", params: { limit: 1 }, message: "must NOT have fewer than 1 items" };
+                  let k = { instancePath: t + "/tests/" + l.replace(/~/g, "~0").replace(/\//g, "~1") + "/operations", schemaPath: "plan-candidate.schema.json#/properties/tests/items/properties/operations/minItems", keyword: "minItems", params: { limit: 1 }, message: "must NOT have fewer than 1 items" };
                   e === null ? e = [k] : e.push(k), s++;
                 }
                 let P2 = y.length;
@@ -4349,12 +4433,12 @@ function We(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
                   let j = y[k];
                   if (typeof j == "string") {
                     if (!Z.test(j)) {
-                      let b = { instancePath: t + "/tests/" + o.replace(/~/g, "~0").replace(/\//g, "~1") + "/operations/" + k, schemaPath: "plan-candidate.schema.json#/properties/tests/items/properties/operations/items/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
-                      e === null ? e = [b] : e.push(b), s++;
+                      let v = { instancePath: t + "/tests/" + l.replace(/~/g, "~0").replace(/\//g, "~1") + "/operations/" + k, schemaPath: "plan-candidate.schema.json#/properties/tests/items/properties/operations/items/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
+                      e === null ? e = [v] : e.push(v), s++;
                     }
                   } else {
-                    let b = { instancePath: t + "/tests/" + o.replace(/~/g, "~0").replace(/\//g, "~1") + "/operations/" + k, schemaPath: "plan-candidate.schema.json#/properties/tests/items/properties/operations/items/type", keyword: "type", params: { type: "string" }, message: "must be string" };
-                    e === null ? e = [b] : e.push(b), s++;
+                    let v = { instancePath: t + "/tests/" + l.replace(/~/g, "~0").replace(/\//g, "~1") + "/operations/" + k, schemaPath: "plan-candidate.schema.json#/properties/tests/items/properties/operations/items/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+                    e === null ? e = [v] : e.push(v), s++;
                   }
                 }
                 let z = y.length, I;
@@ -4365,8 +4449,8 @@ function We(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
                     if (typeof j == "string") {
                       if (typeof k[j] == "number") {
                         I = k[j];
-                        let b = { instancePath: t + "/tests/" + o.replace(/~/g, "~0").replace(/\//g, "~1") + "/operations", schemaPath: "plan-candidate.schema.json#/properties/tests/items/properties/operations/uniqueItems", keyword: "uniqueItems", params: { i: z, j: I }, message: "must NOT have duplicate items (items ## " + I + " and " + z + " are identical)" };
-                        e === null ? e = [b] : e.push(b), s++;
+                        let v = { instancePath: t + "/tests/" + l.replace(/~/g, "~0").replace(/\//g, "~1") + "/operations", schemaPath: "plan-candidate.schema.json#/properties/tests/items/properties/operations/uniqueItems", keyword: "uniqueItems", params: { i: z, j: I }, message: "must NOT have duplicate items (items ## " + I + " and " + z + " are identical)" };
+                        e === null ? e = [v] : e.push(v), s++;
                         break;
                       }
                       k[j] = z;
@@ -4374,7 +4458,7 @@ function We(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
                   }
                 }
               } else {
-                let P2 = { instancePath: t + "/tests/" + o.replace(/~/g, "~0").replace(/\//g, "~1") + "/operations", schemaPath: "plan-candidate.schema.json#/properties/tests/items/properties/operations/type", keyword: "type", params: { type: "array" }, message: "must be array" };
+                let P2 = { instancePath: t + "/tests/" + l.replace(/~/g, "~0").replace(/\//g, "~1") + "/operations", schemaPath: "plan-candidate.schema.json#/properties/tests/items/properties/operations/type", keyword: "type", params: { type: "array" }, message: "must be array" };
                 e === null ? e = [P2] : e.push(P2), s++;
               }
             }
@@ -4382,7 +4466,7 @@ function We(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
               let y = g.dependsOn;
               if (Array.isArray(y)) {
                 if (y.length < 0) {
-                  let k = { instancePath: t + "/tests/" + o.replace(/~/g, "~0").replace(/\//g, "~1") + "/dependsOn", schemaPath: "plan-candidate.schema.json#/properties/tests/items/properties/dependsOn/minItems", keyword: "minItems", params: { limit: 0 }, message: "must NOT have fewer than 0 items" };
+                  let k = { instancePath: t + "/tests/" + l.replace(/~/g, "~0").replace(/\//g, "~1") + "/dependsOn", schemaPath: "plan-candidate.schema.json#/properties/tests/items/properties/dependsOn/minItems", keyword: "minItems", params: { limit: 0 }, message: "must NOT have fewer than 0 items" };
                   e === null ? e = [k] : e.push(k), s++;
                 }
                 let P2 = y.length;
@@ -4390,12 +4474,12 @@ function We(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
                   let j = y[k];
                   if (typeof j == "string") {
                     if (!M.test(j)) {
-                      let b = { instancePath: t + "/tests/" + o.replace(/~/g, "~0").replace(/\//g, "~1") + "/dependsOn/" + k, schemaPath: "plan-candidate.schema.json#/properties/tests/items/properties/dependsOn/items/pattern", keyword: "pattern", params: { pattern: "^([A-Za-z0-9][A-Za-z0-9_-]{0,95}:)?[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^([A-Za-z0-9][A-Za-z0-9_-]{0,95}:)?[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
-                      e === null ? e = [b] : e.push(b), s++;
+                      let v = { instancePath: t + "/tests/" + l.replace(/~/g, "~0").replace(/\//g, "~1") + "/dependsOn/" + k, schemaPath: "plan-candidate.schema.json#/properties/tests/items/properties/dependsOn/items/pattern", keyword: "pattern", params: { pattern: "^([A-Za-z0-9][A-Za-z0-9_-]{0,95}:)?[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^([A-Za-z0-9][A-Za-z0-9_-]{0,95}:)?[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
+                      e === null ? e = [v] : e.push(v), s++;
                     }
                   } else {
-                    let b = { instancePath: t + "/tests/" + o.replace(/~/g, "~0").replace(/\//g, "~1") + "/dependsOn/" + k, schemaPath: "plan-candidate.schema.json#/properties/tests/items/properties/dependsOn/items/type", keyword: "type", params: { type: "string" }, message: "must be string" };
-                    e === null ? e = [b] : e.push(b), s++;
+                    let v = { instancePath: t + "/tests/" + l.replace(/~/g, "~0").replace(/\//g, "~1") + "/dependsOn/" + k, schemaPath: "plan-candidate.schema.json#/properties/tests/items/properties/dependsOn/items/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+                    e === null ? e = [v] : e.push(v), s++;
                   }
                 }
                 let z = y.length, I;
@@ -4406,8 +4490,8 @@ function We(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
                     if (typeof j == "string") {
                       if (typeof k[j] == "number") {
                         I = k[j];
-                        let b = { instancePath: t + "/tests/" + o.replace(/~/g, "~0").replace(/\//g, "~1") + "/dependsOn", schemaPath: "plan-candidate.schema.json#/properties/tests/items/properties/dependsOn/uniqueItems", keyword: "uniqueItems", params: { i: z, j: I }, message: "must NOT have duplicate items (items ## " + I + " and " + z + " are identical)" };
-                        e === null ? e = [b] : e.push(b), s++;
+                        let v = { instancePath: t + "/tests/" + l.replace(/~/g, "~0").replace(/\//g, "~1") + "/dependsOn", schemaPath: "plan-candidate.schema.json#/properties/tests/items/properties/dependsOn/uniqueItems", keyword: "uniqueItems", params: { i: z, j: I }, message: "must NOT have duplicate items (items ## " + I + " and " + z + " are identical)" };
+                        e === null ? e = [v] : e.push(v), s++;
                         break;
                       }
                       k[j] = z;
@@ -4415,7 +4499,7 @@ function We(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
                   }
                 }
               } else {
-                let P2 = { instancePath: t + "/tests/" + o.replace(/~/g, "~0").replace(/\//g, "~1") + "/dependsOn", schemaPath: "plan-candidate.schema.json#/properties/tests/items/properties/dependsOn/type", keyword: "type", params: { type: "array" }, message: "must be array" };
+                let P2 = { instancePath: t + "/tests/" + l.replace(/~/g, "~0").replace(/\//g, "~1") + "/dependsOn", schemaPath: "plan-candidate.schema.json#/properties/tests/items/properties/dependsOn/type", keyword: "type", params: { type: "array" }, message: "must be array" };
                 e === null ? e = [P2] : e.push(P2), s++;
               }
             }
@@ -4423,7 +4507,7 @@ function We(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
               let y = g.preconditions;
               if (Array.isArray(y)) {
                 if (y.length < 0) {
-                  let k = { instancePath: t + "/tests/" + o.replace(/~/g, "~0").replace(/\//g, "~1") + "/preconditions", schemaPath: "plan-candidate.schema.json#/properties/tests/items/properties/preconditions/minItems", keyword: "minItems", params: { limit: 0 }, message: "must NOT have fewer than 0 items" };
+                  let k = { instancePath: t + "/tests/" + l.replace(/~/g, "~0").replace(/\//g, "~1") + "/preconditions", schemaPath: "plan-candidate.schema.json#/properties/tests/items/properties/preconditions/minItems", keyword: "minItems", params: { limit: 0 }, message: "must NOT have fewer than 0 items" };
                   e === null ? e = [k] : e.push(k), s++;
                 }
                 let P2 = y.length;
@@ -4431,12 +4515,12 @@ function We(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
                   let j = y[k];
                   if (typeof j == "string") {
                     if (A(j) < 1) {
-                      let b = { instancePath: t + "/tests/" + o.replace(/~/g, "~0").replace(/\//g, "~1") + "/preconditions/" + k, schemaPath: "plan-candidate.schema.json#/properties/tests/items/properties/preconditions/items/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
-                      e === null ? e = [b] : e.push(b), s++;
+                      let v = { instancePath: t + "/tests/" + l.replace(/~/g, "~0").replace(/\//g, "~1") + "/preconditions/" + k, schemaPath: "plan-candidate.schema.json#/properties/tests/items/properties/preconditions/items/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
+                      e === null ? e = [v] : e.push(v), s++;
                     }
                   } else {
-                    let b = { instancePath: t + "/tests/" + o.replace(/~/g, "~0").replace(/\//g, "~1") + "/preconditions/" + k, schemaPath: "plan-candidate.schema.json#/properties/tests/items/properties/preconditions/items/type", keyword: "type", params: { type: "string" }, message: "must be string" };
-                    e === null ? e = [b] : e.push(b), s++;
+                    let v = { instancePath: t + "/tests/" + l.replace(/~/g, "~0").replace(/\//g, "~1") + "/preconditions/" + k, schemaPath: "plan-candidate.schema.json#/properties/tests/items/properties/preconditions/items/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+                    e === null ? e = [v] : e.push(v), s++;
                   }
                 }
                 let z = y.length, I;
@@ -4447,8 +4531,8 @@ function We(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
                     if (typeof j == "string") {
                       if (typeof k[j] == "number") {
                         I = k[j];
-                        let b = { instancePath: t + "/tests/" + o.replace(/~/g, "~0").replace(/\//g, "~1") + "/preconditions", schemaPath: "plan-candidate.schema.json#/properties/tests/items/properties/preconditions/uniqueItems", keyword: "uniqueItems", params: { i: z, j: I }, message: "must NOT have duplicate items (items ## " + I + " and " + z + " are identical)" };
-                        e === null ? e = [b] : e.push(b), s++;
+                        let v = { instancePath: t + "/tests/" + l.replace(/~/g, "~0").replace(/\//g, "~1") + "/preconditions", schemaPath: "plan-candidate.schema.json#/properties/tests/items/properties/preconditions/uniqueItems", keyword: "uniqueItems", params: { i: z, j: I }, message: "must NOT have duplicate items (items ## " + I + " and " + z + " are identical)" };
+                        e === null ? e = [v] : e.push(v), s++;
                         break;
                       }
                       k[j] = z;
@@ -4456,7 +4540,7 @@ function We(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
                   }
                 }
               } else {
-                let P2 = { instancePath: t + "/tests/" + o.replace(/~/g, "~0").replace(/\//g, "~1") + "/preconditions", schemaPath: "plan-candidate.schema.json#/properties/tests/items/properties/preconditions/type", keyword: "type", params: { type: "array" }, message: "must be array" };
+                let P2 = { instancePath: t + "/tests/" + l.replace(/~/g, "~0").replace(/\//g, "~1") + "/preconditions", schemaPath: "plan-candidate.schema.json#/properties/tests/items/properties/preconditions/type", keyword: "type", params: { type: "array" }, message: "must be array" };
                 e === null ? e = [P2] : e.push(P2), s++;
               }
             }
@@ -4464,11 +4548,11 @@ function We(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
               let y = g.action;
               if (typeof y == "string") {
                 if (A(y) < 1) {
-                  let P2 = { instancePath: t + "/tests/" + o.replace(/~/g, "~0").replace(/\//g, "~1") + "/action", schemaPath: "plan-candidate.schema.json#/properties/tests/items/properties/action/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
+                  let P2 = { instancePath: t + "/tests/" + l.replace(/~/g, "~0").replace(/\//g, "~1") + "/action", schemaPath: "plan-candidate.schema.json#/properties/tests/items/properties/action/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
                   e === null ? e = [P2] : e.push(P2), s++;
                 }
               } else {
-                let P2 = { instancePath: t + "/tests/" + o.replace(/~/g, "~0").replace(/\//g, "~1") + "/action", schemaPath: "plan-candidate.schema.json#/properties/tests/items/properties/action/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+                let P2 = { instancePath: t + "/tests/" + l.replace(/~/g, "~0").replace(/\//g, "~1") + "/action", schemaPath: "plan-candidate.schema.json#/properties/tests/items/properties/action/type", keyword: "type", params: { type: "string" }, message: "must be string" };
                 e === null ? e = [P2] : e.push(P2), s++;
               }
             }
@@ -4476,18 +4560,18 @@ function We(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
               let y = g.assertions;
               if (y && typeof y == "object" && !Array.isArray(y)) {
                 if (Object.keys(y).length < 1) {
-                  let P2 = { instancePath: t + "/tests/" + o.replace(/~/g, "~0").replace(/\//g, "~1") + "/assertions", schemaPath: "plan-delta.schema.json#/properties/tests/additionalProperties/properties/assertions/minProperties", keyword: "minProperties", params: { limit: 1 }, message: "must NOT have fewer than 1 properties" };
+                  let P2 = { instancePath: t + "/tests/" + l.replace(/~/g, "~0").replace(/\//g, "~1") + "/assertions", schemaPath: "#/properties/tests/additionalProperties/anyOf/0/properties/assertions/minProperties", keyword: "minProperties", params: { limit: 1 }, message: "must NOT have fewer than 1 properties" };
                   e === null ? e = [P2] : e.push(P2), s++;
                 }
                 for (let P2 in y) {
                   let z = s;
                   if (typeof P2 == "string" && !Z.test(P2)) {
-                    let I = { instancePath: t + "/tests/" + o.replace(/~/g, "~0").replace(/\//g, "~1") + "/assertions", schemaPath: "plan-delta.schema.json#/properties/tests/additionalProperties/properties/assertions/propertyNames/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"', propertyName: P2 };
+                    let I = { instancePath: t + "/tests/" + l.replace(/~/g, "~0").replace(/\//g, "~1") + "/assertions", schemaPath: "#/properties/tests/additionalProperties/anyOf/0/properties/assertions/propertyNames/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"', propertyName: P2 };
                     e === null ? e = [I] : e.push(I), s++;
                   }
-                  var d = z === s;
-                  if (!d) {
-                    let I = { instancePath: t + "/tests/" + o.replace(/~/g, "~0").replace(/\//g, "~1") + "/assertions", schemaPath: "plan-delta.schema.json#/properties/tests/additionalProperties/properties/assertions/propertyNames", keyword: "propertyNames", params: { propertyName: P2 }, message: "property name must be valid" };
+                  var c = z === s;
+                  if (!c) {
+                    let I = { instancePath: t + "/tests/" + l.replace(/~/g, "~0").replace(/\//g, "~1") + "/assertions", schemaPath: "#/properties/tests/additionalProperties/anyOf/0/properties/assertions/propertyNames", keyword: "propertyNames", params: { propertyName: P2 }, message: "property name must be valid" };
                     e === null ? e = [I] : e.push(I), s++;
                   }
                 }
@@ -4495,78 +4579,78 @@ function We(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
                   let z = y[P2], I = s, k = false, j = s;
                   if (z && typeof z == "object" && !Array.isArray(z)) {
                     if (Object.keys(z).length < 1) {
-                      let b = { instancePath: t + "/tests/" + o.replace(/~/g, "~0").replace(/\//g, "~1") + "/assertions/" + P2.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "plan-delta.schema.json#/properties/tests/additionalProperties/properties/assertions/additionalProperties/anyOf/0/minProperties", keyword: "minProperties", params: { limit: 1 }, message: "must NOT have fewer than 1 properties" };
-                      e === null ? e = [b] : e.push(b), s++;
+                      let v = { instancePath: t + "/tests/" + l.replace(/~/g, "~0").replace(/\//g, "~1") + "/assertions/" + P2.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "#/properties/tests/additionalProperties/anyOf/0/properties/assertions/additionalProperties/anyOf/0/minProperties", keyword: "minProperties", params: { limit: 1 }, message: "must NOT have fewer than 1 properties" };
+                      e === null ? e = [v] : e.push(v), s++;
                     }
-                    for (let b in z) if (!(b === "check" || b === "checkKind" || b === "observe" || b === "expected")) {
-                      let O = { instancePath: t + "/tests/" + o.replace(/~/g, "~0").replace(/\//g, "~1") + "/assertions/" + P2.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "plan-delta.schema.json#/properties/tests/additionalProperties/properties/assertions/additionalProperties/anyOf/0/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: b }, message: "must NOT have additional properties" };
+                    for (let v in z) if (!(v === "check" || v === "checkKind" || v === "observe" || v === "expected")) {
+                      let O = { instancePath: t + "/tests/" + l.replace(/~/g, "~0").replace(/\//g, "~1") + "/assertions/" + P2.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "#/properties/tests/additionalProperties/anyOf/0/properties/assertions/additionalProperties/anyOf/0/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: v }, message: "must NOT have additional properties" };
                       e === null ? e = [O] : e.push(O), s++;
                     }
                     if (z.check !== void 0) {
-                      let b = z.check;
-                      if (typeof b == "string") {
-                        if (A(b) < 1) {
-                          let O = { instancePath: t + "/tests/" + o.replace(/~/g, "~0").replace(/\//g, "~1") + "/assertions/" + P2.replace(/~/g, "~0").replace(/\//g, "~1") + "/check", schemaPath: "plan-delta.schema.json#/properties/tests/additionalProperties/properties/assertions/additionalProperties/anyOf/0/properties/check/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
+                      let v = z.check;
+                      if (typeof v == "string") {
+                        if (A(v) < 1) {
+                          let O = { instancePath: t + "/tests/" + l.replace(/~/g, "~0").replace(/\//g, "~1") + "/assertions/" + P2.replace(/~/g, "~0").replace(/\//g, "~1") + "/check", schemaPath: "#/properties/tests/additionalProperties/anyOf/0/properties/assertions/additionalProperties/anyOf/0/properties/check/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
                           e === null ? e = [O] : e.push(O), s++;
                         }
                       } else {
-                        let O = { instancePath: t + "/tests/" + o.replace(/~/g, "~0").replace(/\//g, "~1") + "/assertions/" + P2.replace(/~/g, "~0").replace(/\//g, "~1") + "/check", schemaPath: "plan-delta.schema.json#/properties/tests/additionalProperties/properties/assertions/additionalProperties/anyOf/0/properties/check/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+                        let O = { instancePath: t + "/tests/" + l.replace(/~/g, "~0").replace(/\//g, "~1") + "/assertions/" + P2.replace(/~/g, "~0").replace(/\//g, "~1") + "/check", schemaPath: "#/properties/tests/additionalProperties/anyOf/0/properties/assertions/additionalProperties/anyOf/0/properties/check/type", keyword: "type", params: { type: "string" }, message: "must be string" };
                         e === null ? e = [O] : e.push(O), s++;
                       }
                     }
                     if (z.checkKind !== void 0) {
-                      let b = z.checkKind;
-                      if (!(b === "deterministic" || b === "agent_observation")) {
-                        let O = { instancePath: t + "/tests/" + o.replace(/~/g, "~0").replace(/\//g, "~1") + "/assertions/" + P2.replace(/~/g, "~0").replace(/\//g, "~1") + "/checkKind", schemaPath: "plan-delta.schema.json#/properties/tests/additionalProperties/properties/assertions/additionalProperties/anyOf/0/properties/checkKind/enum", keyword: "enum", params: { allowedValues: Ps.additionalProperties.anyOf[0].properties.checkKind.enum }, message: "must be equal to one of the allowed values" };
+                      let v = z.checkKind;
+                      if (!(v === "deterministic" || v === "agent_observation")) {
+                        let O = { instancePath: t + "/tests/" + l.replace(/~/g, "~0").replace(/\//g, "~1") + "/assertions/" + P2.replace(/~/g, "~0").replace(/\//g, "~1") + "/checkKind", schemaPath: "#/properties/tests/additionalProperties/anyOf/0/properties/assertions/additionalProperties/anyOf/0/properties/checkKind/enum", keyword: "enum", params: { allowedValues: Ae.properties.tests.additionalProperties.anyOf[0].properties.assertions.additionalProperties.anyOf[0].properties.checkKind.enum }, message: "must be equal to one of the allowed values" };
                         e === null ? e = [O] : e.push(O), s++;
                       }
                     }
                     if (z.observe !== void 0) {
-                      let b = z.observe;
-                      if (typeof b == "string") {
-                        if (A(b) < 1) {
-                          let O = { instancePath: t + "/tests/" + o.replace(/~/g, "~0").replace(/\//g, "~1") + "/assertions/" + P2.replace(/~/g, "~0").replace(/\//g, "~1") + "/observe", schemaPath: "plan-delta.schema.json#/properties/tests/additionalProperties/properties/assertions/additionalProperties/anyOf/0/properties/observe/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
+                      let v = z.observe;
+                      if (typeof v == "string") {
+                        if (A(v) < 1) {
+                          let O = { instancePath: t + "/tests/" + l.replace(/~/g, "~0").replace(/\//g, "~1") + "/assertions/" + P2.replace(/~/g, "~0").replace(/\//g, "~1") + "/observe", schemaPath: "#/properties/tests/additionalProperties/anyOf/0/properties/assertions/additionalProperties/anyOf/0/properties/observe/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
                           e === null ? e = [O] : e.push(O), s++;
                         }
                       } else {
-                        let O = { instancePath: t + "/tests/" + o.replace(/~/g, "~0").replace(/\//g, "~1") + "/assertions/" + P2.replace(/~/g, "~0").replace(/\//g, "~1") + "/observe", schemaPath: "plan-delta.schema.json#/properties/tests/additionalProperties/properties/assertions/additionalProperties/anyOf/0/properties/observe/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+                        let O = { instancePath: t + "/tests/" + l.replace(/~/g, "~0").replace(/\//g, "~1") + "/assertions/" + P2.replace(/~/g, "~0").replace(/\//g, "~1") + "/observe", schemaPath: "#/properties/tests/additionalProperties/anyOf/0/properties/assertions/additionalProperties/anyOf/0/properties/observe/type", keyword: "type", params: { type: "string" }, message: "must be string" };
                         e === null ? e = [O] : e.push(O), s++;
                       }
                     }
                     if (z.expected !== void 0) {
-                      let b = z.expected;
-                      if (typeof b == "string") {
-                        if (A(b) < 1) {
-                          let O = { instancePath: t + "/tests/" + o.replace(/~/g, "~0").replace(/\//g, "~1") + "/assertions/" + P2.replace(/~/g, "~0").replace(/\//g, "~1") + "/expected", schemaPath: "plan-delta.schema.json#/properties/tests/additionalProperties/properties/assertions/additionalProperties/anyOf/0/properties/expected/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
+                      let v = z.expected;
+                      if (typeof v == "string") {
+                        if (A(v) < 1) {
+                          let O = { instancePath: t + "/tests/" + l.replace(/~/g, "~0").replace(/\//g, "~1") + "/assertions/" + P2.replace(/~/g, "~0").replace(/\//g, "~1") + "/expected", schemaPath: "#/properties/tests/additionalProperties/anyOf/0/properties/assertions/additionalProperties/anyOf/0/properties/expected/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
                           e === null ? e = [O] : e.push(O), s++;
                         }
                       } else {
-                        let O = { instancePath: t + "/tests/" + o.replace(/~/g, "~0").replace(/\//g, "~1") + "/assertions/" + P2.replace(/~/g, "~0").replace(/\//g, "~1") + "/expected", schemaPath: "plan-delta.schema.json#/properties/tests/additionalProperties/properties/assertions/additionalProperties/anyOf/0/properties/expected/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+                        let O = { instancePath: t + "/tests/" + l.replace(/~/g, "~0").replace(/\//g, "~1") + "/assertions/" + P2.replace(/~/g, "~0").replace(/\//g, "~1") + "/expected", schemaPath: "#/properties/tests/additionalProperties/anyOf/0/properties/assertions/additionalProperties/anyOf/0/properties/expected/type", keyword: "type", params: { type: "string" }, message: "must be string" };
                         e === null ? e = [O] : e.push(O), s++;
                       }
                     }
                   } else {
-                    let b = { instancePath: t + "/tests/" + o.replace(/~/g, "~0").replace(/\//g, "~1") + "/assertions/" + P2.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "plan-delta.schema.json#/properties/tests/additionalProperties/properties/assertions/additionalProperties/anyOf/0/type", keyword: "type", params: { type: "object" }, message: "must be object" };
-                    e === null ? e = [b] : e.push(b), s++;
+                    let v = { instancePath: t + "/tests/" + l.replace(/~/g, "~0").replace(/\//g, "~1") + "/assertions/" + P2.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "#/properties/tests/additionalProperties/anyOf/0/properties/assertions/additionalProperties/anyOf/0/type", keyword: "type", params: { type: "object" }, message: "must be object" };
+                    e === null ? e = [v] : e.push(v), s++;
                   }
-                  var c = j === s;
-                  if (k = k || c, !k) {
-                    let b = s;
+                  var d = j === s;
+                  if (k = k || d, !k) {
+                    let v = s;
                     if (z !== null) {
-                      let N = { instancePath: t + "/tests/" + o.replace(/~/g, "~0").replace(/\//g, "~1") + "/assertions/" + P2.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "plan-delta.schema.json#/properties/tests/additionalProperties/properties/assertions/additionalProperties/anyOf/1/type", keyword: "type", params: { type: "null" }, message: "must be null" };
+                      let N = { instancePath: t + "/tests/" + l.replace(/~/g, "~0").replace(/\//g, "~1") + "/assertions/" + P2.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "#/properties/tests/additionalProperties/anyOf/0/properties/assertions/additionalProperties/anyOf/1/type", keyword: "type", params: { type: "null" }, message: "must be null" };
                       e === null ? e = [N] : e.push(N), s++;
                     }
-                    var c = b === s;
-                    k = k || c;
+                    var d = v === s;
+                    k = k || d;
                   }
                   if (k) s = I, e !== null && (I ? e.length = I : e = null);
                   else {
-                    let b = { instancePath: t + "/tests/" + o.replace(/~/g, "~0").replace(/\//g, "~1") + "/assertions/" + P2.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "plan-delta.schema.json#/properties/tests/additionalProperties/properties/assertions/additionalProperties/anyOf", keyword: "anyOf", params: {}, message: "must match a schema in anyOf" };
-                    e === null ? e = [b] : e.push(b), s++;
+                    let v = { instancePath: t + "/tests/" + l.replace(/~/g, "~0").replace(/\//g, "~1") + "/assertions/" + P2.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "#/properties/tests/additionalProperties/anyOf/0/properties/assertions/additionalProperties/anyOf", keyword: "anyOf", params: {}, message: "must match a schema in anyOf" };
+                    e === null ? e = [v] : e.push(v), s++;
                   }
                 }
               } else {
-                let P2 = { instancePath: t + "/tests/" + o.replace(/~/g, "~0").replace(/\//g, "~1") + "/assertions", schemaPath: "plan-delta.schema.json#/properties/tests/additionalProperties/properties/assertions/type", keyword: "type", params: { type: "object" }, message: "must be object" };
+                let P2 = { instancePath: t + "/tests/" + l.replace(/~/g, "~0").replace(/\//g, "~1") + "/assertions", schemaPath: "#/properties/tests/additionalProperties/anyOf/0/properties/assertions/type", keyword: "type", params: { type: "object" }, message: "must be object" };
                 e === null ? e = [P2] : e.push(P2), s++;
               }
             }
@@ -4574,92 +4658,92 @@ function We(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
               let y = g.metadata;
               if (y && typeof y == "object" && !Array.isArray(y)) {
                 if (Object.keys(y).length > 20) {
-                  let P2 = { instancePath: t + "/tests/" + o.replace(/~/g, "~0").replace(/\//g, "~1") + "/metadata", schemaPath: "plan.schema.json#/definitions/metadata/maxProperties", keyword: "maxProperties", params: { limit: 20 }, message: "must NOT have more than 20 properties" };
+                  let P2 = { instancePath: t + "/tests/" + l.replace(/~/g, "~0").replace(/\//g, "~1") + "/metadata", schemaPath: "plan.schema.json#/definitions/metadata/maxProperties", keyword: "maxProperties", params: { limit: 20 }, message: "must NOT have more than 20 properties" };
                   e === null ? e = [P2] : e.push(P2), s++;
                 }
                 for (let P2 in y) {
                   let z = s;
                   if (typeof P2 == "string" && !W.test(P2)) {
-                    let I = { instancePath: t + "/tests/" + o.replace(/~/g, "~0").replace(/\//g, "~1") + "/metadata", schemaPath: "plan.schema.json#/definitions/metadata/propertyNames/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z][A-Za-z0-9_.-]{0,63}$" }, message: 'must match pattern "^[A-Za-z][A-Za-z0-9_.-]{0,63}$"', propertyName: P2 };
+                    let I = { instancePath: t + "/tests/" + l.replace(/~/g, "~0").replace(/\//g, "~1") + "/metadata", schemaPath: "plan.schema.json#/definitions/metadata/propertyNames/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z][A-Za-z0-9_.-]{0,63}$" }, message: 'must match pattern "^[A-Za-z][A-Za-z0-9_.-]{0,63}$"', propertyName: P2 };
                     e === null ? e = [I] : e.push(I), s++;
                   }
                   var p = z === s;
                   if (!p) {
-                    let I = { instancePath: t + "/tests/" + o.replace(/~/g, "~0").replace(/\//g, "~1") + "/metadata", schemaPath: "plan.schema.json#/definitions/metadata/propertyNames", keyword: "propertyNames", params: { propertyName: P2 }, message: "property name must be valid" };
+                    let I = { instancePath: t + "/tests/" + l.replace(/~/g, "~0").replace(/\//g, "~1") + "/metadata", schemaPath: "plan.schema.json#/definitions/metadata/propertyNames", keyword: "propertyNames", params: { propertyName: P2 }, message: "property name must be valid" };
                     e === null ? e = [I] : e.push(I), s++;
                   }
                 }
                 for (let P2 in y) {
                   let z = y[P2];
                   if (typeof z != "string" && !(typeof z == "number" && isFinite(z)) && typeof z != "boolean") {
-                    let I = { instancePath: t + "/tests/" + o.replace(/~/g, "~0").replace(/\//g, "~1") + "/metadata/" + P2.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "plan.schema.json#/definitions/metadata/additionalProperties/type", keyword: "type", params: { type: F.additionalProperties.type }, message: "must be string,number,boolean" };
+                    let I = { instancePath: t + "/tests/" + l.replace(/~/g, "~0").replace(/\//g, "~1") + "/metadata/" + P2.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "plan.schema.json#/definitions/metadata/additionalProperties/type", keyword: "type", params: { type: F.additionalProperties.type }, message: "must be string,number,boolean" };
                     e === null ? e = [I] : e.push(I), s++;
                   }
                   if (typeof z == "string" && A(z) > 500) {
-                    let I = { instancePath: t + "/tests/" + o.replace(/~/g, "~0").replace(/\//g, "~1") + "/metadata/" + P2.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "plan.schema.json#/definitions/metadata/additionalProperties/maxLength", keyword: "maxLength", params: { limit: 500 }, message: "must NOT have more than 500 characters" };
+                    let I = { instancePath: t + "/tests/" + l.replace(/~/g, "~0").replace(/\//g, "~1") + "/metadata/" + P2.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "plan.schema.json#/definitions/metadata/additionalProperties/maxLength", keyword: "maxLength", params: { limit: 500 }, message: "must NOT have more than 500 characters" };
                     e === null ? e = [I] : e.push(I), s++;
                   }
                 }
               } else {
-                let P2 = { instancePath: t + "/tests/" + o.replace(/~/g, "~0").replace(/\//g, "~1") + "/metadata", schemaPath: "plan.schema.json#/definitions/metadata/type", keyword: "type", params: { type: "object" }, message: "must be object" };
+                let P2 = { instancePath: t + "/tests/" + l.replace(/~/g, "~0").replace(/\//g, "~1") + "/metadata", schemaPath: "plan.schema.json#/definitions/metadata/type", keyword: "type", params: { type: "object" }, message: "must be object" };
                 e === null ? e = [P2] : e.push(P2), s++;
               }
             }
           } else {
-            let y = { instancePath: t + "/tests/" + o.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "#/properties/tests/additionalProperties/anyOf/0/type", keyword: "type", params: { type: "object" }, message: "must be object" };
+            let y = { instancePath: t + "/tests/" + l.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "#/properties/tests/additionalProperties/anyOf/0/type", keyword: "type", params: { type: "object" }, message: "must be object" };
             e === null ? e = [y] : e.push(y), s++;
           }
           var u = q === s;
           if (f = f || u, !f) {
             let y = s;
             if (g !== null) {
-              let z = { instancePath: t + "/tests/" + o.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "#/properties/tests/additionalProperties/anyOf/1/type", keyword: "type", params: { type: "null" }, message: "must be null" };
+              let z = { instancePath: t + "/tests/" + l.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "#/properties/tests/additionalProperties/anyOf/1/type", keyword: "type", params: { type: "null" }, message: "must be null" };
               e === null ? e = [z] : e.push(z), s++;
             }
             var u = y === s;
             f = f || u;
           }
-          if (f) s = v, e !== null && (v ? e.length = v : e = null);
+          if (f) s = b, e !== null && (b ? e.length = b : e = null);
           else {
-            let y = { instancePath: t + "/tests/" + o.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "#/properties/tests/additionalProperties/anyOf", keyword: "anyOf", params: {}, message: "must match a schema in anyOf" };
+            let y = { instancePath: t + "/tests/" + l.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "#/properties/tests/additionalProperties/anyOf", keyword: "anyOf", params: {}, message: "must match a schema in anyOf" };
             e === null ? e = [y] : e.push(y), s++;
           }
         }
       } else {
-        let o = { instancePath: t + "/tests", schemaPath: "#/properties/tests/type", keyword: "type", params: { type: "object" }, message: "must be object" };
-        e === null ? e = [o] : e.push(o), s++;
+        let l = { instancePath: t + "/tests", schemaPath: "#/properties/tests/type", keyword: "type", params: { type: "object" }, message: "must be object" };
+        e === null ? e = [l] : e.push(l), s++;
       }
     }
     if (a.gaps !== void 0) {
-      let m = a.gaps;
-      if (m && typeof m == "object" && !Array.isArray(m)) {
-        for (let o in m) {
+      let o = a.gaps;
+      if (o && typeof o == "object" && !Array.isArray(o)) {
+        for (let l in o) {
           let g = s;
-          if (typeof o == "string" && !Z.test(o)) {
-            let v = { instancePath: t + "/gaps", schemaPath: "#/properties/gaps/propertyNames/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"', propertyName: o };
-            e === null ? e = [v] : e.push(v), s++;
+          if (typeof l == "string" && !Z.test(l)) {
+            let b = { instancePath: t + "/gaps", schemaPath: "#/properties/gaps/propertyNames/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"', propertyName: l };
+            e === null ? e = [b] : e.push(b), s++;
           }
           var i = g === s;
           if (!i) {
-            let v = { instancePath: t + "/gaps", schemaPath: "#/properties/gaps/propertyNames", keyword: "propertyNames", params: { propertyName: o }, message: "property name must be valid" };
-            e === null ? e = [v] : e.push(v), s++;
+            let b = { instancePath: t + "/gaps", schemaPath: "#/properties/gaps/propertyNames", keyword: "propertyNames", params: { propertyName: l }, message: "property name must be valid" };
+            e === null ? e = [b] : e.push(b), s++;
           }
         }
-        for (let o in m) {
-          let g = m[o], v = s, f = false, q = s;
+        for (let l in o) {
+          let g = o[l], b = s, f = false, q = s;
           if (g && typeof g == "object" && !Array.isArray(g)) {
             if (Object.keys(g).length < 1) {
-              let y = { instancePath: t + "/gaps/" + o.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "#/properties/gaps/additionalProperties/anyOf/0/minProperties", keyword: "minProperties", params: { limit: 1 }, message: "must NOT have fewer than 1 properties" };
+              let y = { instancePath: t + "/gaps/" + l.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "#/properties/gaps/additionalProperties/anyOf/0/minProperties", keyword: "minProperties", params: { limit: 1 }, message: "must NOT have fewer than 1 properties" };
               e === null ? e = [y] : e.push(y), s++;
             }
             for (let y in g) if (!(y === "severity" || y === "requirementIds" || y === "testIds" || y === "question" || y === "consequence")) {
-              let P2 = { instancePath: t + "/gaps/" + o.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "#/properties/gaps/additionalProperties/anyOf/0/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: y }, message: "must NOT have additional properties" };
+              let P2 = { instancePath: t + "/gaps/" + l.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "#/properties/gaps/additionalProperties/anyOf/0/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: y }, message: "must NOT have additional properties" };
               e === null ? e = [P2] : e.push(P2), s++;
             }
             if (g.severity !== void 0) {
               let y = g.severity;
               if (!(y === "blocking" || y === "non_blocking")) {
-                let P2 = { instancePath: t + "/gaps/" + o.replace(/~/g, "~0").replace(/\//g, "~1") + "/severity", schemaPath: "gap.schema.json#/properties/severity/enum", keyword: "enum", params: { allowedValues: ws.enum }, message: "must be equal to one of the allowed values" };
+                let P2 = { instancePath: t + "/gaps/" + l.replace(/~/g, "~0").replace(/\//g, "~1") + "/severity", schemaPath: "gap.schema.json#/properties/severity/enum", keyword: "enum", params: { allowedValues: Ps.enum }, message: "must be equal to one of the allowed values" };
                 e === null ? e = [P2] : e.push(P2), s++;
               }
             }
@@ -4667,7 +4751,7 @@ function We(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
               let y = g.requirementIds;
               if (Array.isArray(y)) {
                 if (y.length < 0) {
-                  let k = { instancePath: t + "/gaps/" + o.replace(/~/g, "~0").replace(/\//g, "~1") + "/requirementIds", schemaPath: "gap.schema.json#/properties/requirementIds/minItems", keyword: "minItems", params: { limit: 0 }, message: "must NOT have fewer than 0 items" };
+                  let k = { instancePath: t + "/gaps/" + l.replace(/~/g, "~0").replace(/\//g, "~1") + "/requirementIds", schemaPath: "gap.schema.json#/properties/requirementIds/minItems", keyword: "minItems", params: { limit: 0 }, message: "must NOT have fewer than 0 items" };
                   e === null ? e = [k] : e.push(k), s++;
                 }
                 let P2 = y.length;
@@ -4675,12 +4759,12 @@ function We(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
                   let j = y[k];
                   if (typeof j == "string") {
                     if (!Z.test(j)) {
-                      let b = { instancePath: t + "/gaps/" + o.replace(/~/g, "~0").replace(/\//g, "~1") + "/requirementIds/" + k, schemaPath: "gap.schema.json#/properties/requirementIds/items/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
-                      e === null ? e = [b] : e.push(b), s++;
+                      let v = { instancePath: t + "/gaps/" + l.replace(/~/g, "~0").replace(/\//g, "~1") + "/requirementIds/" + k, schemaPath: "gap.schema.json#/properties/requirementIds/items/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
+                      e === null ? e = [v] : e.push(v), s++;
                     }
                   } else {
-                    let b = { instancePath: t + "/gaps/" + o.replace(/~/g, "~0").replace(/\//g, "~1") + "/requirementIds/" + k, schemaPath: "gap.schema.json#/properties/requirementIds/items/type", keyword: "type", params: { type: "string" }, message: "must be string" };
-                    e === null ? e = [b] : e.push(b), s++;
+                    let v = { instancePath: t + "/gaps/" + l.replace(/~/g, "~0").replace(/\//g, "~1") + "/requirementIds/" + k, schemaPath: "gap.schema.json#/properties/requirementIds/items/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+                    e === null ? e = [v] : e.push(v), s++;
                   }
                 }
                 let z = y.length, I;
@@ -4691,8 +4775,8 @@ function We(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
                     if (typeof j == "string") {
                       if (typeof k[j] == "number") {
                         I = k[j];
-                        let b = { instancePath: t + "/gaps/" + o.replace(/~/g, "~0").replace(/\//g, "~1") + "/requirementIds", schemaPath: "gap.schema.json#/properties/requirementIds/uniqueItems", keyword: "uniqueItems", params: { i: z, j: I }, message: "must NOT have duplicate items (items ## " + I + " and " + z + " are identical)" };
-                        e === null ? e = [b] : e.push(b), s++;
+                        let v = { instancePath: t + "/gaps/" + l.replace(/~/g, "~0").replace(/\//g, "~1") + "/requirementIds", schemaPath: "gap.schema.json#/properties/requirementIds/uniqueItems", keyword: "uniqueItems", params: { i: z, j: I }, message: "must NOT have duplicate items (items ## " + I + " and " + z + " are identical)" };
+                        e === null ? e = [v] : e.push(v), s++;
                         break;
                       }
                       k[j] = z;
@@ -4700,7 +4784,7 @@ function We(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
                   }
                 }
               } else {
-                let P2 = { instancePath: t + "/gaps/" + o.replace(/~/g, "~0").replace(/\//g, "~1") + "/requirementIds", schemaPath: "gap.schema.json#/properties/requirementIds/type", keyword: "type", params: { type: "array" }, message: "must be array" };
+                let P2 = { instancePath: t + "/gaps/" + l.replace(/~/g, "~0").replace(/\//g, "~1") + "/requirementIds", schemaPath: "gap.schema.json#/properties/requirementIds/type", keyword: "type", params: { type: "array" }, message: "must be array" };
                 e === null ? e = [P2] : e.push(P2), s++;
               }
             }
@@ -4708,7 +4792,7 @@ function We(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
               let y = g.testIds;
               if (Array.isArray(y)) {
                 if (y.length < 0) {
-                  let k = { instancePath: t + "/gaps/" + o.replace(/~/g, "~0").replace(/\//g, "~1") + "/testIds", schemaPath: "gap.schema.json#/properties/testIds/minItems", keyword: "minItems", params: { limit: 0 }, message: "must NOT have fewer than 0 items" };
+                  let k = { instancePath: t + "/gaps/" + l.replace(/~/g, "~0").replace(/\//g, "~1") + "/testIds", schemaPath: "gap.schema.json#/properties/testIds/minItems", keyword: "minItems", params: { limit: 0 }, message: "must NOT have fewer than 0 items" };
                   e === null ? e = [k] : e.push(k), s++;
                 }
                 let P2 = y.length;
@@ -4716,12 +4800,12 @@ function We(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
                   let j = y[k];
                   if (typeof j == "string") {
                     if (!M.test(j)) {
-                      let b = { instancePath: t + "/gaps/" + o.replace(/~/g, "~0").replace(/\//g, "~1") + "/testIds/" + k, schemaPath: "gap.schema.json#/properties/testIds/items/pattern", keyword: "pattern", params: { pattern: "^([A-Za-z0-9][A-Za-z0-9_-]{0,95}:)?[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^([A-Za-z0-9][A-Za-z0-9_-]{0,95}:)?[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
-                      e === null ? e = [b] : e.push(b), s++;
+                      let v = { instancePath: t + "/gaps/" + l.replace(/~/g, "~0").replace(/\//g, "~1") + "/testIds/" + k, schemaPath: "gap.schema.json#/properties/testIds/items/pattern", keyword: "pattern", params: { pattern: "^([A-Za-z0-9][A-Za-z0-9_-]{0,95}:)?[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^([A-Za-z0-9][A-Za-z0-9_-]{0,95}:)?[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
+                      e === null ? e = [v] : e.push(v), s++;
                     }
                   } else {
-                    let b = { instancePath: t + "/gaps/" + o.replace(/~/g, "~0").replace(/\//g, "~1") + "/testIds/" + k, schemaPath: "gap.schema.json#/properties/testIds/items/type", keyword: "type", params: { type: "string" }, message: "must be string" };
-                    e === null ? e = [b] : e.push(b), s++;
+                    let v = { instancePath: t + "/gaps/" + l.replace(/~/g, "~0").replace(/\//g, "~1") + "/testIds/" + k, schemaPath: "gap.schema.json#/properties/testIds/items/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+                    e === null ? e = [v] : e.push(v), s++;
                   }
                 }
                 let z = y.length, I;
@@ -4732,8 +4816,8 @@ function We(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
                     if (typeof j == "string") {
                       if (typeof k[j] == "number") {
                         I = k[j];
-                        let b = { instancePath: t + "/gaps/" + o.replace(/~/g, "~0").replace(/\//g, "~1") + "/testIds", schemaPath: "gap.schema.json#/properties/testIds/uniqueItems", keyword: "uniqueItems", params: { i: z, j: I }, message: "must NOT have duplicate items (items ## " + I + " and " + z + " are identical)" };
-                        e === null ? e = [b] : e.push(b), s++;
+                        let v = { instancePath: t + "/gaps/" + l.replace(/~/g, "~0").replace(/\//g, "~1") + "/testIds", schemaPath: "gap.schema.json#/properties/testIds/uniqueItems", keyword: "uniqueItems", params: { i: z, j: I }, message: "must NOT have duplicate items (items ## " + I + " and " + z + " are identical)" };
+                        e === null ? e = [v] : e.push(v), s++;
                         break;
                       }
                       k[j] = z;
@@ -4741,7 +4825,7 @@ function We(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
                   }
                 }
               } else {
-                let P2 = { instancePath: t + "/gaps/" + o.replace(/~/g, "~0").replace(/\//g, "~1") + "/testIds", schemaPath: "gap.schema.json#/properties/testIds/type", keyword: "type", params: { type: "array" }, message: "must be array" };
+                let P2 = { instancePath: t + "/gaps/" + l.replace(/~/g, "~0").replace(/\//g, "~1") + "/testIds", schemaPath: "gap.schema.json#/properties/testIds/type", keyword: "type", params: { type: "array" }, message: "must be array" };
                 e === null ? e = [P2] : e.push(P2), s++;
               }
             }
@@ -4749,11 +4833,11 @@ function We(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
               let y = g.question;
               if (typeof y == "string") {
                 if (A(y) < 1) {
-                  let P2 = { instancePath: t + "/gaps/" + o.replace(/~/g, "~0").replace(/\//g, "~1") + "/question", schemaPath: "gap.schema.json#/properties/question/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
+                  let P2 = { instancePath: t + "/gaps/" + l.replace(/~/g, "~0").replace(/\//g, "~1") + "/question", schemaPath: "gap.schema.json#/properties/question/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
                   e === null ? e = [P2] : e.push(P2), s++;
                 }
               } else {
-                let P2 = { instancePath: t + "/gaps/" + o.replace(/~/g, "~0").replace(/\//g, "~1") + "/question", schemaPath: "gap.schema.json#/properties/question/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+                let P2 = { instancePath: t + "/gaps/" + l.replace(/~/g, "~0").replace(/\//g, "~1") + "/question", schemaPath: "gap.schema.json#/properties/question/type", keyword: "type", params: { type: "string" }, message: "must be string" };
                 e === null ? e = [P2] : e.push(P2), s++;
               }
             }
@@ -4761,48 +4845,48 @@ function We(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
               let y = g.consequence;
               if (typeof y == "string") {
                 if (A(y) < 1) {
-                  let P2 = { instancePath: t + "/gaps/" + o.replace(/~/g, "~0").replace(/\//g, "~1") + "/consequence", schemaPath: "gap.schema.json#/properties/consequence/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
+                  let P2 = { instancePath: t + "/gaps/" + l.replace(/~/g, "~0").replace(/\//g, "~1") + "/consequence", schemaPath: "gap.schema.json#/properties/consequence/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
                   e === null ? e = [P2] : e.push(P2), s++;
                 }
               } else {
-                let P2 = { instancePath: t + "/gaps/" + o.replace(/~/g, "~0").replace(/\//g, "~1") + "/consequence", schemaPath: "gap.schema.json#/properties/consequence/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+                let P2 = { instancePath: t + "/gaps/" + l.replace(/~/g, "~0").replace(/\//g, "~1") + "/consequence", schemaPath: "gap.schema.json#/properties/consequence/type", keyword: "type", params: { type: "string" }, message: "must be string" };
                 e === null ? e = [P2] : e.push(P2), s++;
               }
             }
           } else {
-            let y = { instancePath: t + "/gaps/" + o.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "#/properties/gaps/additionalProperties/anyOf/0/type", keyword: "type", params: { type: "object" }, message: "must be object" };
+            let y = { instancePath: t + "/gaps/" + l.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "#/properties/gaps/additionalProperties/anyOf/0/type", keyword: "type", params: { type: "object" }, message: "must be object" };
             e === null ? e = [y] : e.push(y), s++;
           }
           var h = q === s;
           if (f = f || h, !f) {
             let y = s;
             if (g !== null) {
-              let z = { instancePath: t + "/gaps/" + o.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "#/properties/gaps/additionalProperties/anyOf/1/type", keyword: "type", params: { type: "null" }, message: "must be null" };
+              let z = { instancePath: t + "/gaps/" + l.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "#/properties/gaps/additionalProperties/anyOf/1/type", keyword: "type", params: { type: "null" }, message: "must be null" };
               e === null ? e = [z] : e.push(z), s++;
             }
             var h = y === s;
             f = f || h;
           }
-          if (f) s = v, e !== null && (v ? e.length = v : e = null);
+          if (f) s = b, e !== null && (b ? e.length = b : e = null);
           else {
-            let y = { instancePath: t + "/gaps/" + o.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "#/properties/gaps/additionalProperties/anyOf", keyword: "anyOf", params: {}, message: "must match a schema in anyOf" };
+            let y = { instancePath: t + "/gaps/" + l.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "#/properties/gaps/additionalProperties/anyOf", keyword: "anyOf", params: {}, message: "must match a schema in anyOf" };
             e === null ? e = [y] : e.push(y), s++;
           }
         }
       } else {
-        let o = { instancePath: t + "/gaps", schemaPath: "#/properties/gaps/type", keyword: "type", params: { type: "object" }, message: "must be object" };
-        e === null ? e = [o] : e.push(o), s++;
+        let l = { instancePath: t + "/gaps", schemaPath: "#/properties/gaps/type", keyword: "type", params: { type: "object" }, message: "must be object" };
+        e === null ? e = [l] : e.push(l), s++;
       }
     }
   } else {
-    let m = { instancePath: t, schemaPath: "#/type", keyword: "type", params: { type: "object" }, message: "must be object" };
-    e === null ? e = [m] : e.push(m), s++;
+    let o = { instancePath: t, schemaPath: "#/type", keyword: "type", params: { type: "object" }, message: "must be object" };
+    e === null ? e = [o] : e.push(o), s++;
   }
-  return We.errors = e, s === 0;
+  return Be.errors = e, s === 0;
 }
-var Ks = Se;
-var ks = { $schema: "http://json-schema.org/draft-07/schema#", $id: "plan-request.schema.json", type: "object", properties: { objective: { type: "string", minLength: 1 }, requirements: { type: "array", items: { type: "object", properties: { id: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, text: { type: "string", minLength: 1 }, source: { type: "string", minLength: 1 }, area: { type: "string", minLength: 1, maxLength: 40 }, metadata: { $ref: "plan.schema.json#/definitions/metadata" } }, required: ["id", "text", "source"], additionalProperties: false }, minItems: 1, uniqueItems: true }, sourceContext: { type: "array", items: { type: "object", properties: { uri: { type: "string", minLength: 1 }, content: { type: "string", minLength: 1 } }, required: ["uri", "content"], additionalProperties: false }, minItems: 0, uniqueItems: true }, context: { type: "object", properties: { sources: { type: "array", items: { type: "string", minLength: 1 }, minItems: 0, uniqueItems: true }, instructions: { type: "string", minLength: 1 } }, required: ["sources"], additionalProperties: false }, tools: { type: "array", items: { anyOf: [{ type: "string", minLength: 1 }, { type: "object", properties: { name: { type: "string", minLength: 1 }, kind: { enum: ["cli", "mcp", "skill"] }, purpose: { type: "string", minLength: 1 } }, required: ["name", "kind", "purpose"], additionalProperties: false }] }, minItems: 0, uniqueItems: true } }, required: ["objective"], additionalProperties: false };
-function Se(a, { instancePath: t = "", parentData: $, parentDataProperty: _, rootData: T = a } = {}) {
+var Rs = Me;
+var ws = { $schema: "http://json-schema.org/draft-07/schema#", $id: "plan-request.schema.json", type: "object", properties: { objective: { type: "string", minLength: 1 }, requirements: { type: "array", items: { type: "object", properties: { id: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, text: { type: "string", minLength: 1 }, source: { type: "string", minLength: 1 }, area: { type: "string", minLength: 1, maxLength: 40 }, metadata: { $ref: "plan.schema.json#/definitions/metadata" } }, required: ["id", "text", "source"], additionalProperties: false }, minItems: 1, uniqueItems: true }, sourceContext: { type: "array", items: { type: "object", properties: { uri: { type: "string", minLength: 1 }, content: { type: "string", minLength: 1 } }, required: ["uri", "content"], additionalProperties: false }, minItems: 0, uniqueItems: true }, context: { type: "object", properties: { sources: { type: "array", items: { type: "string", minLength: 1 }, minItems: 0, uniqueItems: true }, instructions: { type: "string", minLength: 1 } }, required: ["sources"], additionalProperties: false }, tools: { type: "array", items: { anyOf: [{ type: "string", minLength: 1 }, { type: "object", properties: { name: { type: "string", minLength: 1 }, kind: { enum: ["cli", "mcp", "skill"] }, purpose: { type: "string", minLength: 1 } }, required: ["name", "kind", "purpose"], additionalProperties: false }] }, minItems: 0, uniqueItems: true } }, required: ["objective"], additionalProperties: false };
+function Me(a, { instancePath: t = "", parentData: $, parentDataProperty: _, rootData: L = a } = {}) {
   let e = null, s = 0;
   if (a && typeof a == "object" && !Array.isArray(a)) {
     if (a.objective === void 0) {
@@ -4810,19 +4894,19 @@ function Se(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
       e === null ? e = [r] : e.push(r), s++;
     }
     for (let r in a) if (!(r === "objective" || r === "requirements" || r === "sourceContext" || r === "context" || r === "tools")) {
-      let l = { instancePath: t, schemaPath: "#/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: r }, message: "must NOT have additional properties" };
-      e === null ? e = [l] : e.push(l), s++;
+      let m = { instancePath: t, schemaPath: "#/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: r }, message: "must NOT have additional properties" };
+      e === null ? e = [m] : e.push(m), s++;
     }
     if (a.objective !== void 0) {
       let r = a.objective;
       if (typeof r == "string") {
         if (A(r) < 1) {
-          let l = { instancePath: t + "/objective", schemaPath: "#/properties/objective/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
-          e === null ? e = [l] : e.push(l), s++;
+          let m = { instancePath: t + "/objective", schemaPath: "#/properties/objective/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
+          e === null ? e = [m] : e.push(m), s++;
         }
       } else {
-        let l = { instancePath: t + "/objective", schemaPath: "#/properties/objective/type", keyword: "type", params: { type: "string" }, message: "must be string" };
-        e === null ? e = [l] : e.push(l), s++;
+        let m = { instancePath: t + "/objective", schemaPath: "#/properties/objective/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+        e === null ? e = [m] : e.push(m), s++;
       }
     }
     if (a.requirements !== void 0) {
@@ -4832,8 +4916,8 @@ function Se(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
           let p = { instancePath: t + "/requirements", schemaPath: "#/properties/requirements/minItems", keyword: "minItems", params: { limit: 1 }, message: "must NOT have fewer than 1 items" };
           e === null ? e = [p] : e.push(p), s++;
         }
-        let l = r.length;
-        for (let p = 0; p < l; p++) {
+        let m = r.length;
+        for (let p = 0; p < m; p++) {
           let u = r[p];
           if (u && typeof u == "object" && !Array.isArray(u)) {
             if (u.id === void 0) {
@@ -4912,26 +4996,26 @@ function Se(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
                   e === null ? e = [h] : e.push(h), s++;
                 }
                 for (let h in i) {
-                  let m = s;
+                  let o = s;
                   if (typeof h == "string" && !W.test(h)) {
-                    let o = { instancePath: t + "/requirements/" + p + "/metadata", schemaPath: "plan.schema.json#/definitions/metadata/propertyNames/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z][A-Za-z0-9_.-]{0,63}$" }, message: 'must match pattern "^[A-Za-z][A-Za-z0-9_.-]{0,63}$"', propertyName: h };
-                    e === null ? e = [o] : e.push(o), s++;
+                    let l = { instancePath: t + "/requirements/" + p + "/metadata", schemaPath: "plan.schema.json#/definitions/metadata/propertyNames/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z][A-Za-z0-9_.-]{0,63}$" }, message: 'must match pattern "^[A-Za-z][A-Za-z0-9_.-]{0,63}$"', propertyName: h };
+                    e === null ? e = [l] : e.push(l), s++;
                   }
-                  var w = m === s;
+                  var w = o === s;
                   if (!w) {
-                    let o = { instancePath: t + "/requirements/" + p + "/metadata", schemaPath: "plan.schema.json#/definitions/metadata/propertyNames", keyword: "propertyNames", params: { propertyName: h }, message: "property name must be valid" };
-                    e === null ? e = [o] : e.push(o), s++;
+                    let l = { instancePath: t + "/requirements/" + p + "/metadata", schemaPath: "plan.schema.json#/definitions/metadata/propertyNames", keyword: "propertyNames", params: { propertyName: h }, message: "property name must be valid" };
+                    e === null ? e = [l] : e.push(l), s++;
                   }
                 }
                 for (let h in i) {
-                  let m = i[h];
-                  if (typeof m != "string" && !(typeof m == "number" && isFinite(m)) && typeof m != "boolean") {
-                    let o = { instancePath: t + "/requirements/" + p + "/metadata/" + h.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "plan.schema.json#/definitions/metadata/additionalProperties/type", keyword: "type", params: { type: F.additionalProperties.type }, message: "must be string,number,boolean" };
-                    e === null ? e = [o] : e.push(o), s++;
+                  let o = i[h];
+                  if (typeof o != "string" && !(typeof o == "number" && isFinite(o)) && typeof o != "boolean") {
+                    let l = { instancePath: t + "/requirements/" + p + "/metadata/" + h.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "plan.schema.json#/definitions/metadata/additionalProperties/type", keyword: "type", params: { type: F.additionalProperties.type }, message: "must be string,number,boolean" };
+                    e === null ? e = [l] : e.push(l), s++;
                   }
-                  if (typeof m == "string" && A(m) > 500) {
-                    let o = { instancePath: t + "/requirements/" + p + "/metadata/" + h.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "plan.schema.json#/definitions/metadata/additionalProperties/maxLength", keyword: "maxLength", params: { limit: 500 }, message: "must NOT have more than 500 characters" };
-                    e === null ? e = [o] : e.push(o), s++;
+                  if (typeof o == "string" && A(o) > 500) {
+                    let l = { instancePath: t + "/requirements/" + p + "/metadata/" + h.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "plan.schema.json#/definitions/metadata/additionalProperties/maxLength", keyword: "maxLength", params: { limit: 500 }, message: "must NOT have more than 500 characters" };
+                    e === null ? e = [l] : e.push(l), s++;
                   }
                 }
               } else {
@@ -4944,17 +5028,17 @@ function Se(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
             e === null ? e = [i] : e.push(i), s++;
           }
         }
-        let d = r.length, c;
-        if (d > 1) {
-          e: for (; d--; ) for (c = d; c--; ) if (D(r[d], r[c])) {
-            let p = { instancePath: t + "/requirements", schemaPath: "#/properties/requirements/uniqueItems", keyword: "uniqueItems", params: { i: d, j: c }, message: "must NOT have duplicate items (items ## " + c + " and " + d + " are identical)" };
+        let c = r.length, d;
+        if (c > 1) {
+          e: for (; c--; ) for (d = c; d--; ) if (D(r[c], r[d])) {
+            let p = { instancePath: t + "/requirements", schemaPath: "#/properties/requirements/uniqueItems", keyword: "uniqueItems", params: { i: c, j: d }, message: "must NOT have duplicate items (items ## " + d + " and " + c + " are identical)" };
             e === null ? e = [p] : e.push(p), s++;
             break e;
           }
         }
       } else {
-        let l = { instancePath: t + "/requirements", schemaPath: "#/properties/requirements/type", keyword: "type", params: { type: "array" }, message: "must be array" };
-        e === null ? e = [l] : e.push(l), s++;
+        let m = { instancePath: t + "/requirements", schemaPath: "#/properties/requirements/type", keyword: "type", params: { type: "array" }, message: "must be array" };
+        e === null ? e = [m] : e.push(m), s++;
       }
     }
     if (a.sourceContext !== void 0) {
@@ -4964,8 +5048,8 @@ function Se(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
           let p = { instancePath: t + "/sourceContext", schemaPath: "#/properties/sourceContext/minItems", keyword: "minItems", params: { limit: 0 }, message: "must NOT have fewer than 0 items" };
           e === null ? e = [p] : e.push(p), s++;
         }
-        let l = r.length;
-        for (let p = 0; p < l; p++) {
+        let m = r.length;
+        for (let p = 0; p < m; p++) {
           let u = r[p];
           if (u && typeof u == "object" && !Array.isArray(u)) {
             if (u.uri === void 0) {
@@ -5009,40 +5093,40 @@ function Se(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
             e === null ? e = [i] : e.push(i), s++;
           }
         }
-        let d = r.length, c;
-        if (d > 1) {
-          e: for (; d--; ) for (c = d; c--; ) if (D(r[d], r[c])) {
-            let p = { instancePath: t + "/sourceContext", schemaPath: "#/properties/sourceContext/uniqueItems", keyword: "uniqueItems", params: { i: d, j: c }, message: "must NOT have duplicate items (items ## " + c + " and " + d + " are identical)" };
+        let c = r.length, d;
+        if (c > 1) {
+          e: for (; c--; ) for (d = c; d--; ) if (D(r[c], r[d])) {
+            let p = { instancePath: t + "/sourceContext", schemaPath: "#/properties/sourceContext/uniqueItems", keyword: "uniqueItems", params: { i: c, j: d }, message: "must NOT have duplicate items (items ## " + d + " and " + c + " are identical)" };
             e === null ? e = [p] : e.push(p), s++;
             break e;
           }
         }
       } else {
-        let l = { instancePath: t + "/sourceContext", schemaPath: "#/properties/sourceContext/type", keyword: "type", params: { type: "array" }, message: "must be array" };
-        e === null ? e = [l] : e.push(l), s++;
+        let m = { instancePath: t + "/sourceContext", schemaPath: "#/properties/sourceContext/type", keyword: "type", params: { type: "array" }, message: "must be array" };
+        e === null ? e = [m] : e.push(m), s++;
       }
     }
     if (a.context !== void 0) {
       let r = a.context;
       if (r && typeof r == "object" && !Array.isArray(r)) {
         if (r.sources === void 0) {
-          let l = { instancePath: t + "/context", schemaPath: "#/properties/context/required", keyword: "required", params: { missingProperty: "sources" }, message: "must have required property 'sources'" };
-          e === null ? e = [l] : e.push(l), s++;
+          let m = { instancePath: t + "/context", schemaPath: "#/properties/context/required", keyword: "required", params: { missingProperty: "sources" }, message: "must have required property 'sources'" };
+          e === null ? e = [m] : e.push(m), s++;
         }
-        for (let l in r) if (!(l === "sources" || l === "instructions")) {
-          let d = { instancePath: t + "/context", schemaPath: "#/properties/context/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: l }, message: "must NOT have additional properties" };
-          e === null ? e = [d] : e.push(d), s++;
+        for (let m in r) if (!(m === "sources" || m === "instructions")) {
+          let c = { instancePath: t + "/context", schemaPath: "#/properties/context/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: m }, message: "must NOT have additional properties" };
+          e === null ? e = [c] : e.push(c), s++;
         }
         if (r.sources !== void 0) {
-          let l = r.sources;
-          if (Array.isArray(l)) {
-            if (l.length < 0) {
+          let m = r.sources;
+          if (Array.isArray(m)) {
+            if (m.length < 0) {
               let u = { instancePath: t + "/context/sources", schemaPath: "#/properties/context/properties/sources/minItems", keyword: "minItems", params: { limit: 0 }, message: "must NOT have fewer than 0 items" };
               e === null ? e = [u] : e.push(u), s++;
             }
-            let d = l.length;
-            for (let u = 0; u < d; u++) {
-              let i = l[u];
+            let c = m.length;
+            for (let u = 0; u < c; u++) {
+              let i = m[u];
               if (typeof i == "string") {
                 if (A(i) < 1) {
                   let h = { instancePath: t + "/context/sources/" + u, schemaPath: "#/properties/context/properties/sources/items/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
@@ -5053,42 +5137,42 @@ function Se(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
                 e === null ? e = [h] : e.push(h), s++;
               }
             }
-            let c = l.length, p;
-            if (c > 1) {
+            let d = m.length, p;
+            if (d > 1) {
               let u = {};
-              for (; c--; ) {
-                let i = l[c];
+              for (; d--; ) {
+                let i = m[d];
                 if (typeof i == "string") {
                   if (typeof u[i] == "number") {
                     p = u[i];
-                    let h = { instancePath: t + "/context/sources", schemaPath: "#/properties/context/properties/sources/uniqueItems", keyword: "uniqueItems", params: { i: c, j: p }, message: "must NOT have duplicate items (items ## " + p + " and " + c + " are identical)" };
+                    let h = { instancePath: t + "/context/sources", schemaPath: "#/properties/context/properties/sources/uniqueItems", keyword: "uniqueItems", params: { i: d, j: p }, message: "must NOT have duplicate items (items ## " + p + " and " + d + " are identical)" };
                     e === null ? e = [h] : e.push(h), s++;
                     break;
                   }
-                  u[i] = c;
+                  u[i] = d;
                 }
               }
             }
           } else {
-            let d = { instancePath: t + "/context/sources", schemaPath: "#/properties/context/properties/sources/type", keyword: "type", params: { type: "array" }, message: "must be array" };
-            e === null ? e = [d] : e.push(d), s++;
+            let c = { instancePath: t + "/context/sources", schemaPath: "#/properties/context/properties/sources/type", keyword: "type", params: { type: "array" }, message: "must be array" };
+            e === null ? e = [c] : e.push(c), s++;
           }
         }
         if (r.instructions !== void 0) {
-          let l = r.instructions;
-          if (typeof l == "string") {
-            if (A(l) < 1) {
-              let d = { instancePath: t + "/context/instructions", schemaPath: "#/properties/context/properties/instructions/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
-              e === null ? e = [d] : e.push(d), s++;
+          let m = r.instructions;
+          if (typeof m == "string") {
+            if (A(m) < 1) {
+              let c = { instancePath: t + "/context/instructions", schemaPath: "#/properties/context/properties/instructions/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
+              e === null ? e = [c] : e.push(c), s++;
             }
           } else {
-            let d = { instancePath: t + "/context/instructions", schemaPath: "#/properties/context/properties/instructions/type", keyword: "type", params: { type: "string" }, message: "must be string" };
-            e === null ? e = [d] : e.push(d), s++;
+            let c = { instancePath: t + "/context/instructions", schemaPath: "#/properties/context/properties/instructions/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+            e === null ? e = [c] : e.push(c), s++;
           }
         }
       } else {
-        let l = { instancePath: t + "/context", schemaPath: "#/properties/context/type", keyword: "type", params: { type: "object" }, message: "must be object" };
-        e === null ? e = [l] : e.push(l), s++;
+        let m = { instancePath: t + "/context", schemaPath: "#/properties/context/type", keyword: "type", params: { type: "object" }, message: "must be object" };
+        e === null ? e = [m] : e.push(m), s++;
       }
     }
     if (a.tools !== void 0) {
@@ -5098,42 +5182,42 @@ function Se(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
           let p = { instancePath: t + "/tools", schemaPath: "#/properties/tools/minItems", keyword: "minItems", params: { limit: 0 }, message: "must NOT have fewer than 0 items" };
           e === null ? e = [p] : e.push(p), s++;
         }
-        let l = r.length;
-        for (let p = 0; p < l; p++) {
-          let u = r[p], i = s, h = false, m = s;
+        let m = r.length;
+        for (let p = 0; p < m; p++) {
+          let u = r[p], i = s, h = false, o = s;
           if (typeof u == "string") {
             if (A(u) < 1) {
-              let o = { instancePath: t + "/tools/" + p, schemaPath: "#/properties/tools/items/anyOf/0/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
-              e === null ? e = [o] : e.push(o), s++;
+              let l = { instancePath: t + "/tools/" + p, schemaPath: "#/properties/tools/items/anyOf/0/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
+              e === null ? e = [l] : e.push(l), s++;
             }
           } else {
-            let o = { instancePath: t + "/tools/" + p, schemaPath: "#/properties/tools/items/anyOf/0/type", keyword: "type", params: { type: "string" }, message: "must be string" };
-            e === null ? e = [o] : e.push(o), s++;
+            let l = { instancePath: t + "/tools/" + p, schemaPath: "#/properties/tools/items/anyOf/0/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+            e === null ? e = [l] : e.push(l), s++;
           }
-          var n = m === s;
+          var n = o === s;
           if (h = h || n, !h) {
-            let o = s;
+            let l = s;
             if (u && typeof u == "object" && !Array.isArray(u)) {
               if (u.name === void 0) {
-                let v = { instancePath: t + "/tools/" + p, schemaPath: "#/properties/tools/items/anyOf/1/required", keyword: "required", params: { missingProperty: "name" }, message: "must have required property 'name'" };
-                e === null ? e = [v] : e.push(v), s++;
+                let b = { instancePath: t + "/tools/" + p, schemaPath: "#/properties/tools/items/anyOf/1/required", keyword: "required", params: { missingProperty: "name" }, message: "must have required property 'name'" };
+                e === null ? e = [b] : e.push(b), s++;
               }
               if (u.kind === void 0) {
-                let v = { instancePath: t + "/tools/" + p, schemaPath: "#/properties/tools/items/anyOf/1/required", keyword: "required", params: { missingProperty: "kind" }, message: "must have required property 'kind'" };
-                e === null ? e = [v] : e.push(v), s++;
+                let b = { instancePath: t + "/tools/" + p, schemaPath: "#/properties/tools/items/anyOf/1/required", keyword: "required", params: { missingProperty: "kind" }, message: "must have required property 'kind'" };
+                e === null ? e = [b] : e.push(b), s++;
               }
               if (u.purpose === void 0) {
-                let v = { instancePath: t + "/tools/" + p, schemaPath: "#/properties/tools/items/anyOf/1/required", keyword: "required", params: { missingProperty: "purpose" }, message: "must have required property 'purpose'" };
-                e === null ? e = [v] : e.push(v), s++;
+                let b = { instancePath: t + "/tools/" + p, schemaPath: "#/properties/tools/items/anyOf/1/required", keyword: "required", params: { missingProperty: "purpose" }, message: "must have required property 'purpose'" };
+                e === null ? e = [b] : e.push(b), s++;
               }
-              for (let v in u) if (!(v === "name" || v === "kind" || v === "purpose")) {
-                let f = { instancePath: t + "/tools/" + p, schemaPath: "#/properties/tools/items/anyOf/1/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: v }, message: "must NOT have additional properties" };
+              for (let b in u) if (!(b === "name" || b === "kind" || b === "purpose")) {
+                let f = { instancePath: t + "/tools/" + p, schemaPath: "#/properties/tools/items/anyOf/1/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: b }, message: "must NOT have additional properties" };
                 e === null ? e = [f] : e.push(f), s++;
               }
               if (u.name !== void 0) {
-                let v = u.name;
-                if (typeof v == "string") {
-                  if (A(v) < 1) {
+                let b = u.name;
+                if (typeof b == "string") {
+                  if (A(b) < 1) {
                     let f = { instancePath: t + "/tools/" + p + "/name", schemaPath: "#/properties/tools/items/anyOf/1/properties/name/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
                     e === null ? e = [f] : e.push(f), s++;
                   }
@@ -5143,16 +5227,16 @@ function Se(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
                 }
               }
               if (u.kind !== void 0) {
-                let v = u.kind;
-                if (!(v === "cli" || v === "mcp" || v === "skill")) {
-                  let f = { instancePath: t + "/tools/" + p + "/kind", schemaPath: "#/properties/tools/items/anyOf/1/properties/kind/enum", keyword: "enum", params: { allowedValues: ks.properties.tools.items.anyOf[1].properties.kind.enum }, message: "must be equal to one of the allowed values" };
+                let b = u.kind;
+                if (!(b === "cli" || b === "mcp" || b === "skill")) {
+                  let f = { instancePath: t + "/tools/" + p + "/kind", schemaPath: "#/properties/tools/items/anyOf/1/properties/kind/enum", keyword: "enum", params: { allowedValues: ws.properties.tools.items.anyOf[1].properties.kind.enum }, message: "must be equal to one of the allowed values" };
                   e === null ? e = [f] : e.push(f), s++;
                 }
               }
               if (u.purpose !== void 0) {
-                let v = u.purpose;
-                if (typeof v == "string") {
-                  if (A(v) < 1) {
+                let b = u.purpose;
+                if (typeof b == "string") {
+                  if (A(b) < 1) {
                     let f = { instancePath: t + "/tools/" + p + "/purpose", schemaPath: "#/properties/tools/items/anyOf/1/properties/purpose/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
                     e === null ? e = [f] : e.push(f), s++;
                   }
@@ -5162,42 +5246,42 @@ function Se(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
                 }
               }
             } else {
-              let v = { instancePath: t + "/tools/" + p, schemaPath: "#/properties/tools/items/anyOf/1/type", keyword: "type", params: { type: "object" }, message: "must be object" };
-              e === null ? e = [v] : e.push(v), s++;
+              let b = { instancePath: t + "/tools/" + p, schemaPath: "#/properties/tools/items/anyOf/1/type", keyword: "type", params: { type: "object" }, message: "must be object" };
+              e === null ? e = [b] : e.push(b), s++;
             }
-            var n = o === s;
+            var n = l === s;
             h = h || n;
           }
           if (h) s = i, e !== null && (i ? e.length = i : e = null);
           else {
-            let o = { instancePath: t + "/tools/" + p, schemaPath: "#/properties/tools/items/anyOf", keyword: "anyOf", params: {}, message: "must match a schema in anyOf" };
-            e === null ? e = [o] : e.push(o), s++;
+            let l = { instancePath: t + "/tools/" + p, schemaPath: "#/properties/tools/items/anyOf", keyword: "anyOf", params: {}, message: "must match a schema in anyOf" };
+            e === null ? e = [l] : e.push(l), s++;
           }
         }
-        let d = r.length, c;
-        if (d > 1) {
-          e: for (; d--; ) for (c = d; c--; ) if (D(r[d], r[c])) {
-            let p = { instancePath: t + "/tools", schemaPath: "#/properties/tools/uniqueItems", keyword: "uniqueItems", params: { i: d, j: c }, message: "must NOT have duplicate items (items ## " + c + " and " + d + " are identical)" };
+        let c = r.length, d;
+        if (c > 1) {
+          e: for (; c--; ) for (d = c; d--; ) if (D(r[c], r[d])) {
+            let p = { instancePath: t + "/tools", schemaPath: "#/properties/tools/uniqueItems", keyword: "uniqueItems", params: { i: c, j: d }, message: "must NOT have duplicate items (items ## " + d + " and " + c + " are identical)" };
             e === null ? e = [p] : e.push(p), s++;
             break e;
           }
         }
       } else {
-        let l = { instancePath: t + "/tools", schemaPath: "#/properties/tools/type", keyword: "type", params: { type: "array" }, message: "must be array" };
-        e === null ? e = [l] : e.push(l), s++;
+        let m = { instancePath: t + "/tools", schemaPath: "#/properties/tools/type", keyword: "type", params: { type: "array" }, message: "must be array" };
+        e === null ? e = [m] : e.push(m), s++;
       }
     }
   } else {
     let r = { instancePath: t, schemaPath: "#/type", keyword: "type", params: { type: "object" }, message: "must be object" };
     e === null ? e = [r] : e.push(r), s++;
   }
-  return Se.errors = e, s === 0;
+  return Me.errors = e, s === 0;
 }
-var Fs = Be;
+var Cs = He;
 var pe = { $schema: "http://json-schema.org/draft-07/schema#", $id: "plan.schema.json", type: "object", properties: { contractVersion: { const: "toolkit-2" }, planId: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, revision: { type: "integer", minimum: 1 }, previousRevision: { anyOf: [{ type: "integer", minimum: 1 }, { type: "null" }] }, target: { type: "object", properties: { targetId: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, revision: { type: "integer", minimum: 1 }, sha256: { type: "string", pattern: "^[a-f0-9]{64}$" } }, required: ["targetId", "revision", "sha256"], additionalProperties: false }, objective: { type: "string", minLength: 1 }, requirements: { type: "array", items: { type: "object", properties: { id: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, text: { type: "string", minLength: 1 }, source: { type: "string", minLength: 1 }, area: { type: "string", minLength: 1, maxLength: 40 }, metadata: { $ref: "#/definitions/metadata" } }, required: ["id", "text", "source"], additionalProperties: false }, minItems: 1, uniqueItems: true }, tests: { type: "array", items: { $ref: "#/definitions/test" }, minItems: 0, uniqueItems: true }, gaps: { type: "array", items: { $ref: "gap.schema.json" }, minItems: 0, uniqueItems: true }, assumptions: { type: "array", items: { type: "object", properties: { decisionId: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, text: { type: "string", minLength: 1 } }, required: ["decisionId", "text"], additionalProperties: false }, minItems: 0, uniqueItems: true }, decisions: { type: "array", items: { type: "object", properties: { id: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, gapId: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, kind: { enum: ["clarify", "accept_assumption", "defer"] }, actor: { type: "string", minLength: 1 }, rationale: { type: "string", minLength: 1 }, value: { type: "string", minLength: 1 }, source: { anyOf: [{ type: "string", minLength: 1 }, { type: "null" }] } }, required: ["id", "gapId", "kind", "actor", "rationale", "value", "source"], additionalProperties: false }, minItems: 0, uniqueItems: true }, removals: { description: "Each removal of tests: who removed which tests, why, in which revision, and the gaps that it closed. Earlier revisions keep the removed tests.", type: "array", items: { type: "object", properties: { revision: { type: "integer", minimum: 1 }, actor: { type: "string", minLength: 1 }, rationale: { type: "string", minLength: 1 }, testIds: { type: "array", items: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 1 }, closedGaps: { type: "array", items: { type: "object", properties: { gapId: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, reason: { type: "string", minLength: 1 } }, required: ["gapId", "reason"], additionalProperties: false } } }, required: ["revision", "actor", "rationale", "testIds", "closedGaps"], additionalProperties: false } }, coverage: { type: "array", items: { type: "object", properties: { requirementId: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, testIds: { type: "array", items: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 0, uniqueItems: true }, status: { enum: ["planned", "blocked", "deferred"] } }, required: ["requirementId", "testIds", "status"], additionalProperties: false }, minItems: 1, uniqueItems: true } }, required: ["contractVersion", "planId", "revision", "previousRevision", "target", "objective", "requirements", "tests", "gaps", "assumptions", "decisions", "coverage"], additionalProperties: false, definitions: { test: { type: "object", properties: { id: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, title: { type: "string", minLength: 1, maxLength: 200 }, requirementIds: { type: "array", items: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 1, uniqueItems: true }, capability: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, operations: { type: "array", items: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 1, uniqueItems: true }, readiness: { enum: ["ready", "blocked", "deferred"] }, gapIds: { type: "array", items: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 0, uniqueItems: true }, dependsOn: { type: "array", items: { type: "string", pattern: "^([A-Za-z0-9][A-Za-z0-9_-]{0,95}:)?[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 0, uniqueItems: true }, preconditions: { type: "array", items: { type: "string", minLength: 1 }, minItems: 0, uniqueItems: true }, action: { type: "string", minLength: 1 }, assertions: { type: "array", items: { $ref: "#/definitions/assertion" }, minItems: 0, uniqueItems: true }, metadata: { $ref: "#/definitions/metadata" } }, required: ["id", "title", "requirementIds", "capability", "operations", "readiness", "gapIds", "dependsOn", "preconditions", "action", "assertions"], additionalProperties: false }, assertion: { type: "object", properties: { id: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, check: { type: "string", minLength: 1 }, checkKind: { enum: ["deterministic", "agent_observation"] }, observe: { type: "string", minLength: 1 }, expected: { type: "string", minLength: 1 } }, required: ["id", "check", "checkKind"], additionalProperties: false }, metadata: { type: "object", propertyNames: { pattern: "^[A-Za-z][A-Za-z0-9_.-]{0,63}$" }, additionalProperties: { type: ["string", "number", "boolean"], maxLength: 500 }, maxProperties: 20 } } };
 var U = new RegExp("^[a-f0-9]{64}$", "u");
-var je = { type: "object", properties: { id: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, title: { type: "string", minLength: 1, maxLength: 200 }, requirementIds: { type: "array", items: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 1, uniqueItems: true }, capability: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, operations: { type: "array", items: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 1, uniqueItems: true }, readiness: { enum: ["ready", "blocked", "deferred"] }, gapIds: { type: "array", items: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 0, uniqueItems: true }, dependsOn: { type: "array", items: { type: "string", pattern: "^([A-Za-z0-9][A-Za-z0-9_-]{0,95}:)?[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 0, uniqueItems: true }, preconditions: { type: "array", items: { type: "string", minLength: 1 }, minItems: 0, uniqueItems: true }, action: { type: "string", minLength: 1 }, assertions: { type: "array", items: { $ref: "#/definitions/assertion" }, minItems: 0, uniqueItems: true }, metadata: { $ref: "#/definitions/metadata" } }, required: ["id", "title", "requirementIds", "capability", "operations", "readiness", "gapIds", "dependsOn", "preconditions", "action", "assertions"], additionalProperties: false };
-function X(a, { instancePath: t = "", parentData: $, parentDataProperty: _, rootData: T = a } = {}) {
+var ze = { type: "object", properties: { id: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, title: { type: "string", minLength: 1, maxLength: 200 }, requirementIds: { type: "array", items: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 1, uniqueItems: true }, capability: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, operations: { type: "array", items: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 1, uniqueItems: true }, readiness: { enum: ["ready", "blocked", "deferred"] }, gapIds: { type: "array", items: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 0, uniqueItems: true }, dependsOn: { type: "array", items: { type: "string", pattern: "^([A-Za-z0-9][A-Za-z0-9_-]{0,95}:)?[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 0, uniqueItems: true }, preconditions: { type: "array", items: { type: "string", minLength: 1 }, minItems: 0, uniqueItems: true }, action: { type: "string", minLength: 1 }, assertions: { type: "array", items: { $ref: "#/definitions/assertion" }, minItems: 0, uniqueItems: true }, metadata: { $ref: "#/definitions/metadata" } }, required: ["id", "title", "requirementIds", "capability", "operations", "readiness", "gapIds", "dependsOn", "preconditions", "action", "assertions"], additionalProperties: false };
+function X(a, { instancePath: t = "", parentData: $, parentDataProperty: _, rootData: L = a } = {}) {
   let e = null, s = 0;
   if (a && typeof a == "object" && !Array.isArray(a)) {
     if (a.id === void 0) {
@@ -5244,7 +5328,7 @@ function X(a, { instancePath: t = "", parentData: $, parentDataProperty: _, root
       let n = { instancePath: t, schemaPath: "#/required", keyword: "required", params: { missingProperty: "assertions" }, message: "must have required property 'assertions'" };
       e === null ? e = [n] : e.push(n), s++;
     }
-    for (let n in a) if (!E.call(je.properties, n)) {
+    for (let n in a) if (!K.call(ze.properties, n)) {
       let r = { instancePath: t, schemaPath: "#/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: n }, message: "must NOT have additional properties" };
       e === null ? e = [r] : e.push(r), s++;
     }
@@ -5280,35 +5364,35 @@ function X(a, { instancePath: t = "", parentData: $, parentDataProperty: _, root
       let n = a.requirementIds;
       if (Array.isArray(n)) {
         if (n.length < 1) {
-          let c = { instancePath: t + "/requirementIds", schemaPath: "#/properties/requirementIds/minItems", keyword: "minItems", params: { limit: 1 }, message: "must NOT have fewer than 1 items" };
-          e === null ? e = [c] : e.push(c), s++;
+          let d = { instancePath: t + "/requirementIds", schemaPath: "#/properties/requirementIds/minItems", keyword: "minItems", params: { limit: 1 }, message: "must NOT have fewer than 1 items" };
+          e === null ? e = [d] : e.push(d), s++;
         }
         let r = n.length;
-        for (let c = 0; c < r; c++) {
-          let p = n[c];
+        for (let d = 0; d < r; d++) {
+          let p = n[d];
           if (typeof p == "string") {
             if (!Z.test(p)) {
-              let u = { instancePath: t + "/requirementIds/" + c, schemaPath: "#/properties/requirementIds/items/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
+              let u = { instancePath: t + "/requirementIds/" + d, schemaPath: "#/properties/requirementIds/items/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
               e === null ? e = [u] : e.push(u), s++;
             }
           } else {
-            let u = { instancePath: t + "/requirementIds/" + c, schemaPath: "#/properties/requirementIds/items/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+            let u = { instancePath: t + "/requirementIds/" + d, schemaPath: "#/properties/requirementIds/items/type", keyword: "type", params: { type: "string" }, message: "must be string" };
             e === null ? e = [u] : e.push(u), s++;
           }
         }
-        let l = n.length, d;
-        if (l > 1) {
-          let c = {};
-          for (; l--; ) {
-            let p = n[l];
+        let m = n.length, c;
+        if (m > 1) {
+          let d = {};
+          for (; m--; ) {
+            let p = n[m];
             if (typeof p == "string") {
-              if (typeof c[p] == "number") {
-                d = c[p];
-                let u = { instancePath: t + "/requirementIds", schemaPath: "#/properties/requirementIds/uniqueItems", keyword: "uniqueItems", params: { i: l, j: d }, message: "must NOT have duplicate items (items ## " + d + " and " + l + " are identical)" };
+              if (typeof d[p] == "number") {
+                c = d[p];
+                let u = { instancePath: t + "/requirementIds", schemaPath: "#/properties/requirementIds/uniqueItems", keyword: "uniqueItems", params: { i: m, j: c }, message: "must NOT have duplicate items (items ## " + c + " and " + m + " are identical)" };
                 e === null ? e = [u] : e.push(u), s++;
                 break;
               }
-              c[p] = l;
+              d[p] = m;
             }
           }
         }
@@ -5333,35 +5417,35 @@ function X(a, { instancePath: t = "", parentData: $, parentDataProperty: _, root
       let n = a.operations;
       if (Array.isArray(n)) {
         if (n.length < 1) {
-          let c = { instancePath: t + "/operations", schemaPath: "#/properties/operations/minItems", keyword: "minItems", params: { limit: 1 }, message: "must NOT have fewer than 1 items" };
-          e === null ? e = [c] : e.push(c), s++;
+          let d = { instancePath: t + "/operations", schemaPath: "#/properties/operations/minItems", keyword: "minItems", params: { limit: 1 }, message: "must NOT have fewer than 1 items" };
+          e === null ? e = [d] : e.push(d), s++;
         }
         let r = n.length;
-        for (let c = 0; c < r; c++) {
-          let p = n[c];
+        for (let d = 0; d < r; d++) {
+          let p = n[d];
           if (typeof p == "string") {
             if (!Z.test(p)) {
-              let u = { instancePath: t + "/operations/" + c, schemaPath: "#/properties/operations/items/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
+              let u = { instancePath: t + "/operations/" + d, schemaPath: "#/properties/operations/items/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
               e === null ? e = [u] : e.push(u), s++;
             }
           } else {
-            let u = { instancePath: t + "/operations/" + c, schemaPath: "#/properties/operations/items/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+            let u = { instancePath: t + "/operations/" + d, schemaPath: "#/properties/operations/items/type", keyword: "type", params: { type: "string" }, message: "must be string" };
             e === null ? e = [u] : e.push(u), s++;
           }
         }
-        let l = n.length, d;
-        if (l > 1) {
-          let c = {};
-          for (; l--; ) {
-            let p = n[l];
+        let m = n.length, c;
+        if (m > 1) {
+          let d = {};
+          for (; m--; ) {
+            let p = n[m];
             if (typeof p == "string") {
-              if (typeof c[p] == "number") {
-                d = c[p];
-                let u = { instancePath: t + "/operations", schemaPath: "#/properties/operations/uniqueItems", keyword: "uniqueItems", params: { i: l, j: d }, message: "must NOT have duplicate items (items ## " + d + " and " + l + " are identical)" };
+              if (typeof d[p] == "number") {
+                c = d[p];
+                let u = { instancePath: t + "/operations", schemaPath: "#/properties/operations/uniqueItems", keyword: "uniqueItems", params: { i: m, j: c }, message: "must NOT have duplicate items (items ## " + c + " and " + m + " are identical)" };
                 e === null ? e = [u] : e.push(u), s++;
                 break;
               }
-              c[p] = l;
+              d[p] = m;
             }
           }
         }
@@ -5373,7 +5457,7 @@ function X(a, { instancePath: t = "", parentData: $, parentDataProperty: _, root
     if (a.readiness !== void 0) {
       let n = a.readiness;
       if (!(n === "ready" || n === "blocked" || n === "deferred")) {
-        let r = { instancePath: t + "/readiness", schemaPath: "#/properties/readiness/enum", keyword: "enum", params: { allowedValues: je.properties.readiness.enum }, message: "must be equal to one of the allowed values" };
+        let r = { instancePath: t + "/readiness", schemaPath: "#/properties/readiness/enum", keyword: "enum", params: { allowedValues: ze.properties.readiness.enum }, message: "must be equal to one of the allowed values" };
         e === null ? e = [r] : e.push(r), s++;
       }
     }
@@ -5381,35 +5465,35 @@ function X(a, { instancePath: t = "", parentData: $, parentDataProperty: _, root
       let n = a.gapIds;
       if (Array.isArray(n)) {
         if (n.length < 0) {
-          let c = { instancePath: t + "/gapIds", schemaPath: "#/properties/gapIds/minItems", keyword: "minItems", params: { limit: 0 }, message: "must NOT have fewer than 0 items" };
-          e === null ? e = [c] : e.push(c), s++;
+          let d = { instancePath: t + "/gapIds", schemaPath: "#/properties/gapIds/minItems", keyword: "minItems", params: { limit: 0 }, message: "must NOT have fewer than 0 items" };
+          e === null ? e = [d] : e.push(d), s++;
         }
         let r = n.length;
-        for (let c = 0; c < r; c++) {
-          let p = n[c];
+        for (let d = 0; d < r; d++) {
+          let p = n[d];
           if (typeof p == "string") {
             if (!Z.test(p)) {
-              let u = { instancePath: t + "/gapIds/" + c, schemaPath: "#/properties/gapIds/items/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
+              let u = { instancePath: t + "/gapIds/" + d, schemaPath: "#/properties/gapIds/items/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
               e === null ? e = [u] : e.push(u), s++;
             }
           } else {
-            let u = { instancePath: t + "/gapIds/" + c, schemaPath: "#/properties/gapIds/items/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+            let u = { instancePath: t + "/gapIds/" + d, schemaPath: "#/properties/gapIds/items/type", keyword: "type", params: { type: "string" }, message: "must be string" };
             e === null ? e = [u] : e.push(u), s++;
           }
         }
-        let l = n.length, d;
-        if (l > 1) {
-          let c = {};
-          for (; l--; ) {
-            let p = n[l];
+        let m = n.length, c;
+        if (m > 1) {
+          let d = {};
+          for (; m--; ) {
+            let p = n[m];
             if (typeof p == "string") {
-              if (typeof c[p] == "number") {
-                d = c[p];
-                let u = { instancePath: t + "/gapIds", schemaPath: "#/properties/gapIds/uniqueItems", keyword: "uniqueItems", params: { i: l, j: d }, message: "must NOT have duplicate items (items ## " + d + " and " + l + " are identical)" };
+              if (typeof d[p] == "number") {
+                c = d[p];
+                let u = { instancePath: t + "/gapIds", schemaPath: "#/properties/gapIds/uniqueItems", keyword: "uniqueItems", params: { i: m, j: c }, message: "must NOT have duplicate items (items ## " + c + " and " + m + " are identical)" };
                 e === null ? e = [u] : e.push(u), s++;
                 break;
               }
-              c[p] = l;
+              d[p] = m;
             }
           }
         }
@@ -5422,35 +5506,35 @@ function X(a, { instancePath: t = "", parentData: $, parentDataProperty: _, root
       let n = a.dependsOn;
       if (Array.isArray(n)) {
         if (n.length < 0) {
-          let c = { instancePath: t + "/dependsOn", schemaPath: "#/properties/dependsOn/minItems", keyword: "minItems", params: { limit: 0 }, message: "must NOT have fewer than 0 items" };
-          e === null ? e = [c] : e.push(c), s++;
+          let d = { instancePath: t + "/dependsOn", schemaPath: "#/properties/dependsOn/minItems", keyword: "minItems", params: { limit: 0 }, message: "must NOT have fewer than 0 items" };
+          e === null ? e = [d] : e.push(d), s++;
         }
         let r = n.length;
-        for (let c = 0; c < r; c++) {
-          let p = n[c];
+        for (let d = 0; d < r; d++) {
+          let p = n[d];
           if (typeof p == "string") {
             if (!M.test(p)) {
-              let u = { instancePath: t + "/dependsOn/" + c, schemaPath: "#/properties/dependsOn/items/pattern", keyword: "pattern", params: { pattern: "^([A-Za-z0-9][A-Za-z0-9_-]{0,95}:)?[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^([A-Za-z0-9][A-Za-z0-9_-]{0,95}:)?[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
+              let u = { instancePath: t + "/dependsOn/" + d, schemaPath: "#/properties/dependsOn/items/pattern", keyword: "pattern", params: { pattern: "^([A-Za-z0-9][A-Za-z0-9_-]{0,95}:)?[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^([A-Za-z0-9][A-Za-z0-9_-]{0,95}:)?[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
               e === null ? e = [u] : e.push(u), s++;
             }
           } else {
-            let u = { instancePath: t + "/dependsOn/" + c, schemaPath: "#/properties/dependsOn/items/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+            let u = { instancePath: t + "/dependsOn/" + d, schemaPath: "#/properties/dependsOn/items/type", keyword: "type", params: { type: "string" }, message: "must be string" };
             e === null ? e = [u] : e.push(u), s++;
           }
         }
-        let l = n.length, d;
-        if (l > 1) {
-          let c = {};
-          for (; l--; ) {
-            let p = n[l];
+        let m = n.length, c;
+        if (m > 1) {
+          let d = {};
+          for (; m--; ) {
+            let p = n[m];
             if (typeof p == "string") {
-              if (typeof c[p] == "number") {
-                d = c[p];
-                let u = { instancePath: t + "/dependsOn", schemaPath: "#/properties/dependsOn/uniqueItems", keyword: "uniqueItems", params: { i: l, j: d }, message: "must NOT have duplicate items (items ## " + d + " and " + l + " are identical)" };
+              if (typeof d[p] == "number") {
+                c = d[p];
+                let u = { instancePath: t + "/dependsOn", schemaPath: "#/properties/dependsOn/uniqueItems", keyword: "uniqueItems", params: { i: m, j: c }, message: "must NOT have duplicate items (items ## " + c + " and " + m + " are identical)" };
                 e === null ? e = [u] : e.push(u), s++;
                 break;
               }
-              c[p] = l;
+              d[p] = m;
             }
           }
         }
@@ -5463,35 +5547,35 @@ function X(a, { instancePath: t = "", parentData: $, parentDataProperty: _, root
       let n = a.preconditions;
       if (Array.isArray(n)) {
         if (n.length < 0) {
-          let c = { instancePath: t + "/preconditions", schemaPath: "#/properties/preconditions/minItems", keyword: "minItems", params: { limit: 0 }, message: "must NOT have fewer than 0 items" };
-          e === null ? e = [c] : e.push(c), s++;
+          let d = { instancePath: t + "/preconditions", schemaPath: "#/properties/preconditions/minItems", keyword: "minItems", params: { limit: 0 }, message: "must NOT have fewer than 0 items" };
+          e === null ? e = [d] : e.push(d), s++;
         }
         let r = n.length;
-        for (let c = 0; c < r; c++) {
-          let p = n[c];
+        for (let d = 0; d < r; d++) {
+          let p = n[d];
           if (typeof p == "string") {
             if (A(p) < 1) {
-              let u = { instancePath: t + "/preconditions/" + c, schemaPath: "#/properties/preconditions/items/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
+              let u = { instancePath: t + "/preconditions/" + d, schemaPath: "#/properties/preconditions/items/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
               e === null ? e = [u] : e.push(u), s++;
             }
           } else {
-            let u = { instancePath: t + "/preconditions/" + c, schemaPath: "#/properties/preconditions/items/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+            let u = { instancePath: t + "/preconditions/" + d, schemaPath: "#/properties/preconditions/items/type", keyword: "type", params: { type: "string" }, message: "must be string" };
             e === null ? e = [u] : e.push(u), s++;
           }
         }
-        let l = n.length, d;
-        if (l > 1) {
-          let c = {};
-          for (; l--; ) {
-            let p = n[l];
+        let m = n.length, c;
+        if (m > 1) {
+          let d = {};
+          for (; m--; ) {
+            let p = n[m];
             if (typeof p == "string") {
-              if (typeof c[p] == "number") {
-                d = c[p];
-                let u = { instancePath: t + "/preconditions", schemaPath: "#/properties/preconditions/uniqueItems", keyword: "uniqueItems", params: { i: l, j: d }, message: "must NOT have duplicate items (items ## " + d + " and " + l + " are identical)" };
+              if (typeof d[p] == "number") {
+                c = d[p];
+                let u = { instancePath: t + "/preconditions", schemaPath: "#/properties/preconditions/uniqueItems", keyword: "uniqueItems", params: { i: m, j: c }, message: "must NOT have duplicate items (items ## " + c + " and " + m + " are identical)" };
                 e === null ? e = [u] : e.push(u), s++;
                 break;
               }
-              c[p] = l;
+              d[p] = m;
             }
           }
         }
@@ -5516,38 +5600,38 @@ function X(a, { instancePath: t = "", parentData: $, parentDataProperty: _, root
       let n = a.assertions;
       if (Array.isArray(n)) {
         if (n.length < 0) {
-          let c = { instancePath: t + "/assertions", schemaPath: "#/properties/assertions/minItems", keyword: "minItems", params: { limit: 0 }, message: "must NOT have fewer than 0 items" };
-          e === null ? e = [c] : e.push(c), s++;
+          let d = { instancePath: t + "/assertions", schemaPath: "#/properties/assertions/minItems", keyword: "minItems", params: { limit: 0 }, message: "must NOT have fewer than 0 items" };
+          e === null ? e = [d] : e.push(d), s++;
         }
         let r = n.length;
-        for (let c = 0; c < r; c++) {
-          let p = n[c];
+        for (let d = 0; d < r; d++) {
+          let p = n[d];
           if (p && typeof p == "object" && !Array.isArray(p)) {
             if (p.id === void 0) {
-              let u = { instancePath: t + "/assertions/" + c, schemaPath: "#/definitions/assertion/required", keyword: "required", params: { missingProperty: "id" }, message: "must have required property 'id'" };
+              let u = { instancePath: t + "/assertions/" + d, schemaPath: "#/definitions/assertion/required", keyword: "required", params: { missingProperty: "id" }, message: "must have required property 'id'" };
               e === null ? e = [u] : e.push(u), s++;
             }
             if (p.check === void 0) {
-              let u = { instancePath: t + "/assertions/" + c, schemaPath: "#/definitions/assertion/required", keyword: "required", params: { missingProperty: "check" }, message: "must have required property 'check'" };
+              let u = { instancePath: t + "/assertions/" + d, schemaPath: "#/definitions/assertion/required", keyword: "required", params: { missingProperty: "check" }, message: "must have required property 'check'" };
               e === null ? e = [u] : e.push(u), s++;
             }
             if (p.checkKind === void 0) {
-              let u = { instancePath: t + "/assertions/" + c, schemaPath: "#/definitions/assertion/required", keyword: "required", params: { missingProperty: "checkKind" }, message: "must have required property 'checkKind'" };
+              let u = { instancePath: t + "/assertions/" + d, schemaPath: "#/definitions/assertion/required", keyword: "required", params: { missingProperty: "checkKind" }, message: "must have required property 'checkKind'" };
               e === null ? e = [u] : e.push(u), s++;
             }
             for (let u in p) if (!(u === "id" || u === "check" || u === "checkKind" || u === "observe" || u === "expected")) {
-              let i = { instancePath: t + "/assertions/" + c, schemaPath: "#/definitions/assertion/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: u }, message: "must NOT have additional properties" };
+              let i = { instancePath: t + "/assertions/" + d, schemaPath: "#/definitions/assertion/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: u }, message: "must NOT have additional properties" };
               e === null ? e = [i] : e.push(i), s++;
             }
             if (p.id !== void 0) {
               let u = p.id;
               if (typeof u == "string") {
                 if (!Z.test(u)) {
-                  let i = { instancePath: t + "/assertions/" + c + "/id", schemaPath: "#/definitions/assertion/properties/id/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
+                  let i = { instancePath: t + "/assertions/" + d + "/id", schemaPath: "#/definitions/assertion/properties/id/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
                   e === null ? e = [i] : e.push(i), s++;
                 }
               } else {
-                let i = { instancePath: t + "/assertions/" + c + "/id", schemaPath: "#/definitions/assertion/properties/id/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+                let i = { instancePath: t + "/assertions/" + d + "/id", schemaPath: "#/definitions/assertion/properties/id/type", keyword: "type", params: { type: "string" }, message: "must be string" };
                 e === null ? e = [i] : e.push(i), s++;
               }
             }
@@ -5555,18 +5639,18 @@ function X(a, { instancePath: t = "", parentData: $, parentDataProperty: _, root
               let u = p.check;
               if (typeof u == "string") {
                 if (A(u) < 1) {
-                  let i = { instancePath: t + "/assertions/" + c + "/check", schemaPath: "#/definitions/assertion/properties/check/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
+                  let i = { instancePath: t + "/assertions/" + d + "/check", schemaPath: "#/definitions/assertion/properties/check/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
                   e === null ? e = [i] : e.push(i), s++;
                 }
               } else {
-                let i = { instancePath: t + "/assertions/" + c + "/check", schemaPath: "#/definitions/assertion/properties/check/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+                let i = { instancePath: t + "/assertions/" + d + "/check", schemaPath: "#/definitions/assertion/properties/check/type", keyword: "type", params: { type: "string" }, message: "must be string" };
                 e === null ? e = [i] : e.push(i), s++;
               }
             }
             if (p.checkKind !== void 0) {
               let u = p.checkKind;
               if (!(u === "deterministic" || u === "agent_observation")) {
-                let i = { instancePath: t + "/assertions/" + c + "/checkKind", schemaPath: "#/definitions/assertion/properties/checkKind/enum", keyword: "enum", params: { allowedValues: Ce.properties.checkKind.enum }, message: "must be equal to one of the allowed values" };
+                let i = { instancePath: t + "/assertions/" + d + "/checkKind", schemaPath: "#/definitions/assertion/properties/checkKind/enum", keyword: "enum", params: { allowedValues: Fe.properties.checkKind.enum }, message: "must be equal to one of the allowed values" };
                 e === null ? e = [i] : e.push(i), s++;
               }
             }
@@ -5574,11 +5658,11 @@ function X(a, { instancePath: t = "", parentData: $, parentDataProperty: _, root
               let u = p.observe;
               if (typeof u == "string") {
                 if (A(u) < 1) {
-                  let i = { instancePath: t + "/assertions/" + c + "/observe", schemaPath: "#/definitions/assertion/properties/observe/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
+                  let i = { instancePath: t + "/assertions/" + d + "/observe", schemaPath: "#/definitions/assertion/properties/observe/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
                   e === null ? e = [i] : e.push(i), s++;
                 }
               } else {
-                let i = { instancePath: t + "/assertions/" + c + "/observe", schemaPath: "#/definitions/assertion/properties/observe/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+                let i = { instancePath: t + "/assertions/" + d + "/observe", schemaPath: "#/definitions/assertion/properties/observe/type", keyword: "type", params: { type: "string" }, message: "must be string" };
                 e === null ? e = [i] : e.push(i), s++;
               }
             }
@@ -5586,24 +5670,24 @@ function X(a, { instancePath: t = "", parentData: $, parentDataProperty: _, root
               let u = p.expected;
               if (typeof u == "string") {
                 if (A(u) < 1) {
-                  let i = { instancePath: t + "/assertions/" + c + "/expected", schemaPath: "#/definitions/assertion/properties/expected/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
+                  let i = { instancePath: t + "/assertions/" + d + "/expected", schemaPath: "#/definitions/assertion/properties/expected/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
                   e === null ? e = [i] : e.push(i), s++;
                 }
               } else {
-                let i = { instancePath: t + "/assertions/" + c + "/expected", schemaPath: "#/definitions/assertion/properties/expected/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+                let i = { instancePath: t + "/assertions/" + d + "/expected", schemaPath: "#/definitions/assertion/properties/expected/type", keyword: "type", params: { type: "string" }, message: "must be string" };
                 e === null ? e = [i] : e.push(i), s++;
               }
             }
           } else {
-            let u = { instancePath: t + "/assertions/" + c, schemaPath: "#/definitions/assertion/type", keyword: "type", params: { type: "object" }, message: "must be object" };
+            let u = { instancePath: t + "/assertions/" + d, schemaPath: "#/definitions/assertion/type", keyword: "type", params: { type: "object" }, message: "must be object" };
             e === null ? e = [u] : e.push(u), s++;
           }
         }
-        let l = n.length, d;
-        if (l > 1) {
-          e: for (; l--; ) for (d = l; d--; ) if (D(n[l], n[d])) {
-            let c = { instancePath: t + "/assertions", schemaPath: "#/properties/assertions/uniqueItems", keyword: "uniqueItems", params: { i: l, j: d }, message: "must NOT have duplicate items (items ## " + d + " and " + l + " are identical)" };
-            e === null ? e = [c] : e.push(c), s++;
+        let m = n.length, c;
+        if (m > 1) {
+          e: for (; m--; ) for (c = m; c--; ) if (D(n[m], n[c])) {
+            let d = { instancePath: t + "/assertions", schemaPath: "#/properties/assertions/uniqueItems", keyword: "uniqueItems", params: { i: m, j: c }, message: "must NOT have duplicate items (items ## " + c + " and " + m + " are identical)" };
+            e === null ? e = [d] : e.push(d), s++;
             break e;
           }
         }
@@ -5620,26 +5704,26 @@ function X(a, { instancePath: t = "", parentData: $, parentDataProperty: _, root
           e === null ? e = [r] : e.push(r), s++;
         }
         for (let r in n) {
-          let l = s;
+          let m = s;
           if (typeof r == "string" && !W.test(r)) {
-            let d = { instancePath: t + "/metadata", schemaPath: "#/definitions/metadata/propertyNames/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z][A-Za-z0-9_.-]{0,63}$" }, message: 'must match pattern "^[A-Za-z][A-Za-z0-9_.-]{0,63}$"', propertyName: r };
-            e === null ? e = [d] : e.push(d), s++;
+            let c = { instancePath: t + "/metadata", schemaPath: "#/definitions/metadata/propertyNames/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z][A-Za-z0-9_.-]{0,63}$" }, message: 'must match pattern "^[A-Za-z][A-Za-z0-9_.-]{0,63}$"', propertyName: r };
+            e === null ? e = [c] : e.push(c), s++;
           }
-          var w = l === s;
+          var w = m === s;
           if (!w) {
-            let d = { instancePath: t + "/metadata", schemaPath: "#/definitions/metadata/propertyNames", keyword: "propertyNames", params: { propertyName: r }, message: "property name must be valid" };
-            e === null ? e = [d] : e.push(d), s++;
+            let c = { instancePath: t + "/metadata", schemaPath: "#/definitions/metadata/propertyNames", keyword: "propertyNames", params: { propertyName: r }, message: "property name must be valid" };
+            e === null ? e = [c] : e.push(c), s++;
           }
         }
         for (let r in n) {
-          let l = n[r];
-          if (typeof l != "string" && !(typeof l == "number" && isFinite(l)) && typeof l != "boolean") {
-            let d = { instancePath: t + "/metadata/" + r.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "#/definitions/metadata/additionalProperties/type", keyword: "type", params: { type: F.additionalProperties.type }, message: "must be string,number,boolean" };
-            e === null ? e = [d] : e.push(d), s++;
+          let m = n[r];
+          if (typeof m != "string" && !(typeof m == "number" && isFinite(m)) && typeof m != "boolean") {
+            let c = { instancePath: t + "/metadata/" + r.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "#/definitions/metadata/additionalProperties/type", keyword: "type", params: { type: F.additionalProperties.type }, message: "must be string,number,boolean" };
+            e === null ? e = [c] : e.push(c), s++;
           }
-          if (typeof l == "string" && A(l) > 500) {
-            let d = { instancePath: t + "/metadata/" + r.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "#/definitions/metadata/additionalProperties/maxLength", keyword: "maxLength", params: { limit: 500 }, message: "must NOT have more than 500 characters" };
-            e === null ? e = [d] : e.push(d), s++;
+          if (typeof m == "string" && A(m) > 500) {
+            let c = { instancePath: t + "/metadata/" + r.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "#/definitions/metadata/additionalProperties/maxLength", keyword: "maxLength", params: { limit: 500 }, message: "must NOT have more than 500 characters" };
+            e === null ? e = [c] : e.push(c), s++;
           }
         }
       } else {
@@ -5653,137 +5737,137 @@ function X(a, { instancePath: t = "", parentData: $, parentDataProperty: _, root
   }
   return X.errors = e, s === 0;
 }
-function Be(a, { instancePath: t = "", parentData: $, parentDataProperty: _, rootData: T = a } = {}) {
+function He(a, { instancePath: t = "", parentData: $, parentDataProperty: _, rootData: L = a } = {}) {
   let e = null, s = 0;
   if (a && typeof a == "object" && !Array.isArray(a)) {
     if (a.contractVersion === void 0) {
-      let d = { instancePath: t, schemaPath: "#/required", keyword: "required", params: { missingProperty: "contractVersion" }, message: "must have required property 'contractVersion'" };
-      e === null ? e = [d] : e.push(d), s++;
-    }
-    if (a.planId === void 0) {
-      let d = { instancePath: t, schemaPath: "#/required", keyword: "required", params: { missingProperty: "planId" }, message: "must have required property 'planId'" };
-      e === null ? e = [d] : e.push(d), s++;
-    }
-    if (a.revision === void 0) {
-      let d = { instancePath: t, schemaPath: "#/required", keyword: "required", params: { missingProperty: "revision" }, message: "must have required property 'revision'" };
-      e === null ? e = [d] : e.push(d), s++;
-    }
-    if (a.previousRevision === void 0) {
-      let d = { instancePath: t, schemaPath: "#/required", keyword: "required", params: { missingProperty: "previousRevision" }, message: "must have required property 'previousRevision'" };
-      e === null ? e = [d] : e.push(d), s++;
-    }
-    if (a.target === void 0) {
-      let d = { instancePath: t, schemaPath: "#/required", keyword: "required", params: { missingProperty: "target" }, message: "must have required property 'target'" };
-      e === null ? e = [d] : e.push(d), s++;
-    }
-    if (a.objective === void 0) {
-      let d = { instancePath: t, schemaPath: "#/required", keyword: "required", params: { missingProperty: "objective" }, message: "must have required property 'objective'" };
-      e === null ? e = [d] : e.push(d), s++;
-    }
-    if (a.requirements === void 0) {
-      let d = { instancePath: t, schemaPath: "#/required", keyword: "required", params: { missingProperty: "requirements" }, message: "must have required property 'requirements'" };
-      e === null ? e = [d] : e.push(d), s++;
-    }
-    if (a.tests === void 0) {
-      let d = { instancePath: t, schemaPath: "#/required", keyword: "required", params: { missingProperty: "tests" }, message: "must have required property 'tests'" };
-      e === null ? e = [d] : e.push(d), s++;
-    }
-    if (a.gaps === void 0) {
-      let d = { instancePath: t, schemaPath: "#/required", keyword: "required", params: { missingProperty: "gaps" }, message: "must have required property 'gaps'" };
-      e === null ? e = [d] : e.push(d), s++;
-    }
-    if (a.assumptions === void 0) {
-      let d = { instancePath: t, schemaPath: "#/required", keyword: "required", params: { missingProperty: "assumptions" }, message: "must have required property 'assumptions'" };
-      e === null ? e = [d] : e.push(d), s++;
-    }
-    if (a.decisions === void 0) {
-      let d = { instancePath: t, schemaPath: "#/required", keyword: "required", params: { missingProperty: "decisions" }, message: "must have required property 'decisions'" };
-      e === null ? e = [d] : e.push(d), s++;
-    }
-    if (a.coverage === void 0) {
-      let d = { instancePath: t, schemaPath: "#/required", keyword: "required", params: { missingProperty: "coverage" }, message: "must have required property 'coverage'" };
-      e === null ? e = [d] : e.push(d), s++;
-    }
-    for (let d in a) if (!E.call(pe.properties, d)) {
-      let c = { instancePath: t, schemaPath: "#/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: d }, message: "must NOT have additional properties" };
+      let c = { instancePath: t, schemaPath: "#/required", keyword: "required", params: { missingProperty: "contractVersion" }, message: "must have required property 'contractVersion'" };
       e === null ? e = [c] : e.push(c), s++;
     }
-    if (a.contractVersion !== void 0 && a.contractVersion !== "toolkit-2") {
-      let d = { instancePath: t + "/contractVersion", schemaPath: "#/properties/contractVersion/const", keyword: "const", params: { allowedValue: "toolkit-2" }, message: "must be equal to constant" };
+    if (a.planId === void 0) {
+      let c = { instancePath: t, schemaPath: "#/required", keyword: "required", params: { missingProperty: "planId" }, message: "must have required property 'planId'" };
+      e === null ? e = [c] : e.push(c), s++;
+    }
+    if (a.revision === void 0) {
+      let c = { instancePath: t, schemaPath: "#/required", keyword: "required", params: { missingProperty: "revision" }, message: "must have required property 'revision'" };
+      e === null ? e = [c] : e.push(c), s++;
+    }
+    if (a.previousRevision === void 0) {
+      let c = { instancePath: t, schemaPath: "#/required", keyword: "required", params: { missingProperty: "previousRevision" }, message: "must have required property 'previousRevision'" };
+      e === null ? e = [c] : e.push(c), s++;
+    }
+    if (a.target === void 0) {
+      let c = { instancePath: t, schemaPath: "#/required", keyword: "required", params: { missingProperty: "target" }, message: "must have required property 'target'" };
+      e === null ? e = [c] : e.push(c), s++;
+    }
+    if (a.objective === void 0) {
+      let c = { instancePath: t, schemaPath: "#/required", keyword: "required", params: { missingProperty: "objective" }, message: "must have required property 'objective'" };
+      e === null ? e = [c] : e.push(c), s++;
+    }
+    if (a.requirements === void 0) {
+      let c = { instancePath: t, schemaPath: "#/required", keyword: "required", params: { missingProperty: "requirements" }, message: "must have required property 'requirements'" };
+      e === null ? e = [c] : e.push(c), s++;
+    }
+    if (a.tests === void 0) {
+      let c = { instancePath: t, schemaPath: "#/required", keyword: "required", params: { missingProperty: "tests" }, message: "must have required property 'tests'" };
+      e === null ? e = [c] : e.push(c), s++;
+    }
+    if (a.gaps === void 0) {
+      let c = { instancePath: t, schemaPath: "#/required", keyword: "required", params: { missingProperty: "gaps" }, message: "must have required property 'gaps'" };
+      e === null ? e = [c] : e.push(c), s++;
+    }
+    if (a.assumptions === void 0) {
+      let c = { instancePath: t, schemaPath: "#/required", keyword: "required", params: { missingProperty: "assumptions" }, message: "must have required property 'assumptions'" };
+      e === null ? e = [c] : e.push(c), s++;
+    }
+    if (a.decisions === void 0) {
+      let c = { instancePath: t, schemaPath: "#/required", keyword: "required", params: { missingProperty: "decisions" }, message: "must have required property 'decisions'" };
+      e === null ? e = [c] : e.push(c), s++;
+    }
+    if (a.coverage === void 0) {
+      let c = { instancePath: t, schemaPath: "#/required", keyword: "required", params: { missingProperty: "coverage" }, message: "must have required property 'coverage'" };
+      e === null ? e = [c] : e.push(c), s++;
+    }
+    for (let c in a) if (!K.call(pe.properties, c)) {
+      let d = { instancePath: t, schemaPath: "#/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: c }, message: "must NOT have additional properties" };
       e === null ? e = [d] : e.push(d), s++;
     }
+    if (a.contractVersion !== void 0 && a.contractVersion !== "toolkit-2") {
+      let c = { instancePath: t + "/contractVersion", schemaPath: "#/properties/contractVersion/const", keyword: "const", params: { allowedValue: "toolkit-2" }, message: "must be equal to constant" };
+      e === null ? e = [c] : e.push(c), s++;
+    }
     if (a.planId !== void 0) {
-      let d = a.planId;
-      if (typeof d == "string") {
-        if (!Z.test(d)) {
-          let c = { instancePath: t + "/planId", schemaPath: "#/properties/planId/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
-          e === null ? e = [c] : e.push(c), s++;
+      let c = a.planId;
+      if (typeof c == "string") {
+        if (!Z.test(c)) {
+          let d = { instancePath: t + "/planId", schemaPath: "#/properties/planId/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
+          e === null ? e = [d] : e.push(d), s++;
         }
       } else {
-        let c = { instancePath: t + "/planId", schemaPath: "#/properties/planId/type", keyword: "type", params: { type: "string" }, message: "must be string" };
-        e === null ? e = [c] : e.push(c), s++;
+        let d = { instancePath: t + "/planId", schemaPath: "#/properties/planId/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+        e === null ? e = [d] : e.push(d), s++;
       }
     }
     if (a.revision !== void 0) {
-      let d = a.revision;
-      if (!(typeof d == "number" && !(d % 1) && !isNaN(d) && isFinite(d))) {
-        let c = { instancePath: t + "/revision", schemaPath: "#/properties/revision/type", keyword: "type", params: { type: "integer" }, message: "must be integer" };
-        e === null ? e = [c] : e.push(c), s++;
+      let c = a.revision;
+      if (!(typeof c == "number" && !(c % 1) && !isNaN(c) && isFinite(c))) {
+        let d = { instancePath: t + "/revision", schemaPath: "#/properties/revision/type", keyword: "type", params: { type: "integer" }, message: "must be integer" };
+        e === null ? e = [d] : e.push(d), s++;
       }
-      if (typeof d == "number" && isFinite(d) && (d < 1 || isNaN(d))) {
-        let c = { instancePath: t + "/revision", schemaPath: "#/properties/revision/minimum", keyword: "minimum", params: { comparison: ">=", limit: 1 }, message: "must be >= 1" };
-        e === null ? e = [c] : e.push(c), s++;
+      if (typeof c == "number" && isFinite(c) && (c < 1 || isNaN(c))) {
+        let d = { instancePath: t + "/revision", schemaPath: "#/properties/revision/minimum", keyword: "minimum", params: { comparison: ">=", limit: 1 }, message: "must be >= 1" };
+        e === null ? e = [d] : e.push(d), s++;
       }
     }
     if (a.previousRevision !== void 0) {
-      let d = a.previousRevision, c = s, p = false, u = s;
-      if (!(typeof d == "number" && !(d % 1) && !isNaN(d) && isFinite(d))) {
+      let c = a.previousRevision, d = s, p = false, u = s;
+      if (!(typeof c == "number" && !(c % 1) && !isNaN(c) && isFinite(c))) {
         let i = { instancePath: t + "/previousRevision", schemaPath: "#/properties/previousRevision/anyOf/0/type", keyword: "type", params: { type: "integer" }, message: "must be integer" };
         e === null ? e = [i] : e.push(i), s++;
       }
-      if (typeof d == "number" && isFinite(d) && (d < 1 || isNaN(d))) {
+      if (typeof c == "number" && isFinite(c) && (c < 1 || isNaN(c))) {
         let i = { instancePath: t + "/previousRevision", schemaPath: "#/properties/previousRevision/anyOf/0/minimum", keyword: "minimum", params: { comparison: ">=", limit: 1 }, message: "must be >= 1" };
         e === null ? e = [i] : e.push(i), s++;
       }
       var w = u === s;
       if (p = p || w, !p) {
         let i = s;
-        if (d !== null) {
-          let m = { instancePath: t + "/previousRevision", schemaPath: "#/properties/previousRevision/anyOf/1/type", keyword: "type", params: { type: "null" }, message: "must be null" };
-          e === null ? e = [m] : e.push(m), s++;
+        if (c !== null) {
+          let o = { instancePath: t + "/previousRevision", schemaPath: "#/properties/previousRevision/anyOf/1/type", keyword: "type", params: { type: "null" }, message: "must be null" };
+          e === null ? e = [o] : e.push(o), s++;
         }
         var w = i === s;
         p = p || w;
       }
-      if (p) s = c, e !== null && (c ? e.length = c : e = null);
+      if (p) s = d, e !== null && (d ? e.length = d : e = null);
       else {
         let i = { instancePath: t + "/previousRevision", schemaPath: "#/properties/previousRevision/anyOf", keyword: "anyOf", params: {}, message: "must match a schema in anyOf" };
         e === null ? e = [i] : e.push(i), s++;
       }
     }
     if (a.target !== void 0) {
-      let d = a.target;
-      if (d && typeof d == "object" && !Array.isArray(d)) {
-        if (d.targetId === void 0) {
-          let c = { instancePath: t + "/target", schemaPath: "#/properties/target/required", keyword: "required", params: { missingProperty: "targetId" }, message: "must have required property 'targetId'" };
-          e === null ? e = [c] : e.push(c), s++;
+      let c = a.target;
+      if (c && typeof c == "object" && !Array.isArray(c)) {
+        if (c.targetId === void 0) {
+          let d = { instancePath: t + "/target", schemaPath: "#/properties/target/required", keyword: "required", params: { missingProperty: "targetId" }, message: "must have required property 'targetId'" };
+          e === null ? e = [d] : e.push(d), s++;
         }
-        if (d.revision === void 0) {
-          let c = { instancePath: t + "/target", schemaPath: "#/properties/target/required", keyword: "required", params: { missingProperty: "revision" }, message: "must have required property 'revision'" };
-          e === null ? e = [c] : e.push(c), s++;
+        if (c.revision === void 0) {
+          let d = { instancePath: t + "/target", schemaPath: "#/properties/target/required", keyword: "required", params: { missingProperty: "revision" }, message: "must have required property 'revision'" };
+          e === null ? e = [d] : e.push(d), s++;
         }
-        if (d.sha256 === void 0) {
-          let c = { instancePath: t + "/target", schemaPath: "#/properties/target/required", keyword: "required", params: { missingProperty: "sha256" }, message: "must have required property 'sha256'" };
-          e === null ? e = [c] : e.push(c), s++;
+        if (c.sha256 === void 0) {
+          let d = { instancePath: t + "/target", schemaPath: "#/properties/target/required", keyword: "required", params: { missingProperty: "sha256" }, message: "must have required property 'sha256'" };
+          e === null ? e = [d] : e.push(d), s++;
         }
-        for (let c in d) if (!(c === "targetId" || c === "revision" || c === "sha256")) {
-          let p = { instancePath: t + "/target", schemaPath: "#/properties/target/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: c }, message: "must NOT have additional properties" };
+        for (let d in c) if (!(d === "targetId" || d === "revision" || d === "sha256")) {
+          let p = { instancePath: t + "/target", schemaPath: "#/properties/target/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: d }, message: "must NOT have additional properties" };
           e === null ? e = [p] : e.push(p), s++;
         }
-        if (d.targetId !== void 0) {
-          let c = d.targetId;
-          if (typeof c == "string") {
-            if (!Z.test(c)) {
+        if (c.targetId !== void 0) {
+          let d = c.targetId;
+          if (typeof d == "string") {
+            if (!Z.test(d)) {
               let p = { instancePath: t + "/target/targetId", schemaPath: "#/properties/target/properties/targetId/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
               e === null ? e = [p] : e.push(p), s++;
             }
@@ -5792,21 +5876,21 @@ function Be(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
             e === null ? e = [p] : e.push(p), s++;
           }
         }
-        if (d.revision !== void 0) {
-          let c = d.revision;
-          if (!(typeof c == "number" && !(c % 1) && !isNaN(c) && isFinite(c))) {
+        if (c.revision !== void 0) {
+          let d = c.revision;
+          if (!(typeof d == "number" && !(d % 1) && !isNaN(d) && isFinite(d))) {
             let p = { instancePath: t + "/target/revision", schemaPath: "#/properties/target/properties/revision/type", keyword: "type", params: { type: "integer" }, message: "must be integer" };
             e === null ? e = [p] : e.push(p), s++;
           }
-          if (typeof c == "number" && isFinite(c) && (c < 1 || isNaN(c))) {
+          if (typeof d == "number" && isFinite(d) && (d < 1 || isNaN(d))) {
             let p = { instancePath: t + "/target/revision", schemaPath: "#/properties/target/properties/revision/minimum", keyword: "minimum", params: { comparison: ">=", limit: 1 }, message: "must be >= 1" };
             e === null ? e = [p] : e.push(p), s++;
           }
         }
-        if (d.sha256 !== void 0) {
-          let c = d.sha256;
-          if (typeof c == "string") {
-            if (!U.test(c)) {
+        if (c.sha256 !== void 0) {
+          let d = c.sha256;
+          if (typeof d == "string") {
+            if (!U.test(d)) {
               let p = { instancePath: t + "/target/sha256", schemaPath: "#/properties/target/properties/sha256/pattern", keyword: "pattern", params: { pattern: "^[a-f0-9]{64}$" }, message: 'must match pattern "^[a-f0-9]{64}$"' };
               e === null ? e = [p] : e.push(p), s++;
             }
@@ -5816,259 +5900,259 @@ function Be(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
           }
         }
       } else {
-        let c = { instancePath: t + "/target", schemaPath: "#/properties/target/type", keyword: "type", params: { type: "object" }, message: "must be object" };
-        e === null ? e = [c] : e.push(c), s++;
+        let d = { instancePath: t + "/target", schemaPath: "#/properties/target/type", keyword: "type", params: { type: "object" }, message: "must be object" };
+        e === null ? e = [d] : e.push(d), s++;
       }
     }
     if (a.objective !== void 0) {
-      let d = a.objective;
-      if (typeof d == "string") {
-        if (A(d) < 1) {
-          let c = { instancePath: t + "/objective", schemaPath: "#/properties/objective/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
-          e === null ? e = [c] : e.push(c), s++;
+      let c = a.objective;
+      if (typeof c == "string") {
+        if (A(c) < 1) {
+          let d = { instancePath: t + "/objective", schemaPath: "#/properties/objective/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
+          e === null ? e = [d] : e.push(d), s++;
         }
       } else {
-        let c = { instancePath: t + "/objective", schemaPath: "#/properties/objective/type", keyword: "type", params: { type: "string" }, message: "must be string" };
-        e === null ? e = [c] : e.push(c), s++;
+        let d = { instancePath: t + "/objective", schemaPath: "#/properties/objective/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+        e === null ? e = [d] : e.push(d), s++;
       }
     }
     if (a.requirements !== void 0) {
-      let d = a.requirements;
-      if (Array.isArray(d)) {
-        if (d.length < 1) {
+      let c = a.requirements;
+      if (Array.isArray(c)) {
+        if (c.length < 1) {
           let i = { instancePath: t + "/requirements", schemaPath: "#/properties/requirements/minItems", keyword: "minItems", params: { limit: 1 }, message: "must NOT have fewer than 1 items" };
           e === null ? e = [i] : e.push(i), s++;
         }
-        let c = d.length;
-        for (let i = 0; i < c; i++) {
-          let h = d[i];
+        let d = c.length;
+        for (let i = 0; i < d; i++) {
+          let h = c[i];
           if (h && typeof h == "object" && !Array.isArray(h)) {
             if (h.id === void 0) {
-              let m = { instancePath: t + "/requirements/" + i, schemaPath: "#/properties/requirements/items/required", keyword: "required", params: { missingProperty: "id" }, message: "must have required property 'id'" };
-              e === null ? e = [m] : e.push(m), s++;
-            }
-            if (h.text === void 0) {
-              let m = { instancePath: t + "/requirements/" + i, schemaPath: "#/properties/requirements/items/required", keyword: "required", params: { missingProperty: "text" }, message: "must have required property 'text'" };
-              e === null ? e = [m] : e.push(m), s++;
-            }
-            if (h.source === void 0) {
-              let m = { instancePath: t + "/requirements/" + i, schemaPath: "#/properties/requirements/items/required", keyword: "required", params: { missingProperty: "source" }, message: "must have required property 'source'" };
-              e === null ? e = [m] : e.push(m), s++;
-            }
-            for (let m in h) if (!(m === "id" || m === "text" || m === "source" || m === "area" || m === "metadata")) {
-              let o = { instancePath: t + "/requirements/" + i, schemaPath: "#/properties/requirements/items/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: m }, message: "must NOT have additional properties" };
+              let o = { instancePath: t + "/requirements/" + i, schemaPath: "#/properties/requirements/items/required", keyword: "required", params: { missingProperty: "id" }, message: "must have required property 'id'" };
               e === null ? e = [o] : e.push(o), s++;
             }
+            if (h.text === void 0) {
+              let o = { instancePath: t + "/requirements/" + i, schemaPath: "#/properties/requirements/items/required", keyword: "required", params: { missingProperty: "text" }, message: "must have required property 'text'" };
+              e === null ? e = [o] : e.push(o), s++;
+            }
+            if (h.source === void 0) {
+              let o = { instancePath: t + "/requirements/" + i, schemaPath: "#/properties/requirements/items/required", keyword: "required", params: { missingProperty: "source" }, message: "must have required property 'source'" };
+              e === null ? e = [o] : e.push(o), s++;
+            }
+            for (let o in h) if (!(o === "id" || o === "text" || o === "source" || o === "area" || o === "metadata")) {
+              let l = { instancePath: t + "/requirements/" + i, schemaPath: "#/properties/requirements/items/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: o }, message: "must NOT have additional properties" };
+              e === null ? e = [l] : e.push(l), s++;
+            }
             if (h.id !== void 0) {
-              let m = h.id;
-              if (typeof m == "string") {
-                if (!Z.test(m)) {
-                  let o = { instancePath: t + "/requirements/" + i + "/id", schemaPath: "#/properties/requirements/items/properties/id/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
-                  e === null ? e = [o] : e.push(o), s++;
+              let o = h.id;
+              if (typeof o == "string") {
+                if (!Z.test(o)) {
+                  let l = { instancePath: t + "/requirements/" + i + "/id", schemaPath: "#/properties/requirements/items/properties/id/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
+                  e === null ? e = [l] : e.push(l), s++;
                 }
               } else {
-                let o = { instancePath: t + "/requirements/" + i + "/id", schemaPath: "#/properties/requirements/items/properties/id/type", keyword: "type", params: { type: "string" }, message: "must be string" };
-                e === null ? e = [o] : e.push(o), s++;
+                let l = { instancePath: t + "/requirements/" + i + "/id", schemaPath: "#/properties/requirements/items/properties/id/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+                e === null ? e = [l] : e.push(l), s++;
               }
             }
             if (h.text !== void 0) {
-              let m = h.text;
-              if (typeof m == "string") {
-                if (A(m) < 1) {
-                  let o = { instancePath: t + "/requirements/" + i + "/text", schemaPath: "#/properties/requirements/items/properties/text/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
-                  e === null ? e = [o] : e.push(o), s++;
+              let o = h.text;
+              if (typeof o == "string") {
+                if (A(o) < 1) {
+                  let l = { instancePath: t + "/requirements/" + i + "/text", schemaPath: "#/properties/requirements/items/properties/text/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
+                  e === null ? e = [l] : e.push(l), s++;
                 }
               } else {
-                let o = { instancePath: t + "/requirements/" + i + "/text", schemaPath: "#/properties/requirements/items/properties/text/type", keyword: "type", params: { type: "string" }, message: "must be string" };
-                e === null ? e = [o] : e.push(o), s++;
+                let l = { instancePath: t + "/requirements/" + i + "/text", schemaPath: "#/properties/requirements/items/properties/text/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+                e === null ? e = [l] : e.push(l), s++;
               }
             }
             if (h.source !== void 0) {
-              let m = h.source;
-              if (typeof m == "string") {
-                if (A(m) < 1) {
-                  let o = { instancePath: t + "/requirements/" + i + "/source", schemaPath: "#/properties/requirements/items/properties/source/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
-                  e === null ? e = [o] : e.push(o), s++;
+              let o = h.source;
+              if (typeof o == "string") {
+                if (A(o) < 1) {
+                  let l = { instancePath: t + "/requirements/" + i + "/source", schemaPath: "#/properties/requirements/items/properties/source/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
+                  e === null ? e = [l] : e.push(l), s++;
                 }
               } else {
-                let o = { instancePath: t + "/requirements/" + i + "/source", schemaPath: "#/properties/requirements/items/properties/source/type", keyword: "type", params: { type: "string" }, message: "must be string" };
-                e === null ? e = [o] : e.push(o), s++;
+                let l = { instancePath: t + "/requirements/" + i + "/source", schemaPath: "#/properties/requirements/items/properties/source/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+                e === null ? e = [l] : e.push(l), s++;
               }
             }
             if (h.area !== void 0) {
-              let m = h.area;
-              if (typeof m == "string") {
-                if (A(m) > 40) {
-                  let o = { instancePath: t + "/requirements/" + i + "/area", schemaPath: "#/properties/requirements/items/properties/area/maxLength", keyword: "maxLength", params: { limit: 40 }, message: "must NOT have more than 40 characters" };
-                  e === null ? e = [o] : e.push(o), s++;
+              let o = h.area;
+              if (typeof o == "string") {
+                if (A(o) > 40) {
+                  let l = { instancePath: t + "/requirements/" + i + "/area", schemaPath: "#/properties/requirements/items/properties/area/maxLength", keyword: "maxLength", params: { limit: 40 }, message: "must NOT have more than 40 characters" };
+                  e === null ? e = [l] : e.push(l), s++;
                 }
-                if (A(m) < 1) {
-                  let o = { instancePath: t + "/requirements/" + i + "/area", schemaPath: "#/properties/requirements/items/properties/area/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
-                  e === null ? e = [o] : e.push(o), s++;
+                if (A(o) < 1) {
+                  let l = { instancePath: t + "/requirements/" + i + "/area", schemaPath: "#/properties/requirements/items/properties/area/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
+                  e === null ? e = [l] : e.push(l), s++;
                 }
               } else {
-                let o = { instancePath: t + "/requirements/" + i + "/area", schemaPath: "#/properties/requirements/items/properties/area/type", keyword: "type", params: { type: "string" }, message: "must be string" };
-                e === null ? e = [o] : e.push(o), s++;
+                let l = { instancePath: t + "/requirements/" + i + "/area", schemaPath: "#/properties/requirements/items/properties/area/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+                e === null ? e = [l] : e.push(l), s++;
               }
             }
             if (h.metadata !== void 0) {
-              let m = h.metadata;
-              if (m && typeof m == "object" && !Array.isArray(m)) {
-                if (Object.keys(m).length > 20) {
-                  let o = { instancePath: t + "/requirements/" + i + "/metadata", schemaPath: "#/definitions/metadata/maxProperties", keyword: "maxProperties", params: { limit: 20 }, message: "must NOT have more than 20 properties" };
-                  e === null ? e = [o] : e.push(o), s++;
+              let o = h.metadata;
+              if (o && typeof o == "object" && !Array.isArray(o)) {
+                if (Object.keys(o).length > 20) {
+                  let l = { instancePath: t + "/requirements/" + i + "/metadata", schemaPath: "#/definitions/metadata/maxProperties", keyword: "maxProperties", params: { limit: 20 }, message: "must NOT have more than 20 properties" };
+                  e === null ? e = [l] : e.push(l), s++;
                 }
-                for (let o in m) {
+                for (let l in o) {
                   let g = s;
-                  if (typeof o == "string" && !W.test(o)) {
-                    let v = { instancePath: t + "/requirements/" + i + "/metadata", schemaPath: "#/definitions/metadata/propertyNames/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z][A-Za-z0-9_.-]{0,63}$" }, message: 'must match pattern "^[A-Za-z][A-Za-z0-9_.-]{0,63}$"', propertyName: o };
-                    e === null ? e = [v] : e.push(v), s++;
+                  if (typeof l == "string" && !W.test(l)) {
+                    let b = { instancePath: t + "/requirements/" + i + "/metadata", schemaPath: "#/definitions/metadata/propertyNames/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z][A-Za-z0-9_.-]{0,63}$" }, message: 'must match pattern "^[A-Za-z][A-Za-z0-9_.-]{0,63}$"', propertyName: l };
+                    e === null ? e = [b] : e.push(b), s++;
                   }
                   var n = g === s;
                   if (!n) {
-                    let v = { instancePath: t + "/requirements/" + i + "/metadata", schemaPath: "#/definitions/metadata/propertyNames", keyword: "propertyNames", params: { propertyName: o }, message: "property name must be valid" };
-                    e === null ? e = [v] : e.push(v), s++;
+                    let b = { instancePath: t + "/requirements/" + i + "/metadata", schemaPath: "#/definitions/metadata/propertyNames", keyword: "propertyNames", params: { propertyName: l }, message: "property name must be valid" };
+                    e === null ? e = [b] : e.push(b), s++;
                   }
                 }
-                for (let o in m) {
-                  let g = m[o];
+                for (let l in o) {
+                  let g = o[l];
                   if (typeof g != "string" && !(typeof g == "number" && isFinite(g)) && typeof g != "boolean") {
-                    let v = { instancePath: t + "/requirements/" + i + "/metadata/" + o.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "#/definitions/metadata/additionalProperties/type", keyword: "type", params: { type: F.additionalProperties.type }, message: "must be string,number,boolean" };
-                    e === null ? e = [v] : e.push(v), s++;
+                    let b = { instancePath: t + "/requirements/" + i + "/metadata/" + l.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "#/definitions/metadata/additionalProperties/type", keyword: "type", params: { type: F.additionalProperties.type }, message: "must be string,number,boolean" };
+                    e === null ? e = [b] : e.push(b), s++;
                   }
                   if (typeof g == "string" && A(g) > 500) {
-                    let v = { instancePath: t + "/requirements/" + i + "/metadata/" + o.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "#/definitions/metadata/additionalProperties/maxLength", keyword: "maxLength", params: { limit: 500 }, message: "must NOT have more than 500 characters" };
-                    e === null ? e = [v] : e.push(v), s++;
+                    let b = { instancePath: t + "/requirements/" + i + "/metadata/" + l.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "#/definitions/metadata/additionalProperties/maxLength", keyword: "maxLength", params: { limit: 500 }, message: "must NOT have more than 500 characters" };
+                    e === null ? e = [b] : e.push(b), s++;
                   }
                 }
               } else {
-                let o = { instancePath: t + "/requirements/" + i + "/metadata", schemaPath: "#/definitions/metadata/type", keyword: "type", params: { type: "object" }, message: "must be object" };
-                e === null ? e = [o] : e.push(o), s++;
+                let l = { instancePath: t + "/requirements/" + i + "/metadata", schemaPath: "#/definitions/metadata/type", keyword: "type", params: { type: "object" }, message: "must be object" };
+                e === null ? e = [l] : e.push(l), s++;
               }
             }
           } else {
-            let m = { instancePath: t + "/requirements/" + i, schemaPath: "#/properties/requirements/items/type", keyword: "type", params: { type: "object" }, message: "must be object" };
-            e === null ? e = [m] : e.push(m), s++;
+            let o = { instancePath: t + "/requirements/" + i, schemaPath: "#/properties/requirements/items/type", keyword: "type", params: { type: "object" }, message: "must be object" };
+            e === null ? e = [o] : e.push(o), s++;
           }
         }
-        let p = d.length, u;
+        let p = c.length, u;
         if (p > 1) {
-          e: for (; p--; ) for (u = p; u--; ) if (D(d[p], d[u])) {
+          e: for (; p--; ) for (u = p; u--; ) if (D(c[p], c[u])) {
             let i = { instancePath: t + "/requirements", schemaPath: "#/properties/requirements/uniqueItems", keyword: "uniqueItems", params: { i: p, j: u }, message: "must NOT have duplicate items (items ## " + u + " and " + p + " are identical)" };
             e === null ? e = [i] : e.push(i), s++;
             break e;
           }
         }
       } else {
-        let c = { instancePath: t + "/requirements", schemaPath: "#/properties/requirements/type", keyword: "type", params: { type: "array" }, message: "must be array" };
-        e === null ? e = [c] : e.push(c), s++;
+        let d = { instancePath: t + "/requirements", schemaPath: "#/properties/requirements/type", keyword: "type", params: { type: "array" }, message: "must be array" };
+        e === null ? e = [d] : e.push(d), s++;
       }
     }
     if (a.tests !== void 0) {
-      let d = a.tests;
-      if (Array.isArray(d)) {
-        if (d.length < 0) {
+      let c = a.tests;
+      if (Array.isArray(c)) {
+        if (c.length < 0) {
           let i = { instancePath: t + "/tests", schemaPath: "#/properties/tests/minItems", keyword: "minItems", params: { limit: 0 }, message: "must NOT have fewer than 0 items" };
           e === null ? e = [i] : e.push(i), s++;
         }
-        let c = d.length;
-        for (let i = 0; i < c; i++) X(d[i], { instancePath: t + "/tests/" + i, parentData: d, parentDataProperty: i, rootData: T }) || (e = e === null ? X.errors : e.concat(X.errors), s = e.length);
-        let p = d.length, u;
+        let d = c.length;
+        for (let i = 0; i < d; i++) X(c[i], { instancePath: t + "/tests/" + i, parentData: c, parentDataProperty: i, rootData: L }) || (e = e === null ? X.errors : e.concat(X.errors), s = e.length);
+        let p = c.length, u;
         if (p > 1) {
-          e: for (; p--; ) for (u = p; u--; ) if (D(d[p], d[u])) {
+          e: for (; p--; ) for (u = p; u--; ) if (D(c[p], c[u])) {
             let i = { instancePath: t + "/tests", schemaPath: "#/properties/tests/uniqueItems", keyword: "uniqueItems", params: { i: p, j: u }, message: "must NOT have duplicate items (items ## " + u + " and " + p + " are identical)" };
             e === null ? e = [i] : e.push(i), s++;
             break e;
           }
         }
       } else {
-        let c = { instancePath: t + "/tests", schemaPath: "#/properties/tests/type", keyword: "type", params: { type: "array" }, message: "must be array" };
-        e === null ? e = [c] : e.push(c), s++;
+        let d = { instancePath: t + "/tests", schemaPath: "#/properties/tests/type", keyword: "type", params: { type: "array" }, message: "must be array" };
+        e === null ? e = [d] : e.push(d), s++;
       }
     }
     if (a.gaps !== void 0) {
-      let d = a.gaps;
-      if (Array.isArray(d)) {
-        if (d.length < 0) {
+      let c = a.gaps;
+      if (Array.isArray(c)) {
+        if (c.length < 0) {
           let i = { instancePath: t + "/gaps", schemaPath: "#/properties/gaps/minItems", keyword: "minItems", params: { limit: 0 }, message: "must NOT have fewer than 0 items" };
           e === null ? e = [i] : e.push(i), s++;
         }
-        let c = d.length;
-        for (let i = 0; i < c; i++) {
-          let h = d[i];
+        let d = c.length;
+        for (let i = 0; i < d; i++) {
+          let h = c[i];
           if (h && typeof h == "object" && !Array.isArray(h)) {
             if (h.id === void 0) {
-              let m = { instancePath: t + "/gaps/" + i, schemaPath: "gap.schema.json/required", keyword: "required", params: { missingProperty: "id" }, message: "must have required property 'id'" };
-              e === null ? e = [m] : e.push(m), s++;
-            }
-            if (h.severity === void 0) {
-              let m = { instancePath: t + "/gaps/" + i, schemaPath: "gap.schema.json/required", keyword: "required", params: { missingProperty: "severity" }, message: "must have required property 'severity'" };
-              e === null ? e = [m] : e.push(m), s++;
-            }
-            if (h.status === void 0) {
-              let m = { instancePath: t + "/gaps/" + i, schemaPath: "gap.schema.json/required", keyword: "required", params: { missingProperty: "status" }, message: "must have required property 'status'" };
-              e === null ? e = [m] : e.push(m), s++;
-            }
-            if (h.requirementIds === void 0) {
-              let m = { instancePath: t + "/gaps/" + i, schemaPath: "gap.schema.json/required", keyword: "required", params: { missingProperty: "requirementIds" }, message: "must have required property 'requirementIds'" };
-              e === null ? e = [m] : e.push(m), s++;
-            }
-            if (h.testIds === void 0) {
-              let m = { instancePath: t + "/gaps/" + i, schemaPath: "gap.schema.json/required", keyword: "required", params: { missingProperty: "testIds" }, message: "must have required property 'testIds'" };
-              e === null ? e = [m] : e.push(m), s++;
-            }
-            if (h.question === void 0) {
-              let m = { instancePath: t + "/gaps/" + i, schemaPath: "gap.schema.json/required", keyword: "required", params: { missingProperty: "question" }, message: "must have required property 'question'" };
-              e === null ? e = [m] : e.push(m), s++;
-            }
-            if (h.consequence === void 0) {
-              let m = { instancePath: t + "/gaps/" + i, schemaPath: "gap.schema.json/required", keyword: "required", params: { missingProperty: "consequence" }, message: "must have required property 'consequence'" };
-              e === null ? e = [m] : e.push(m), s++;
-            }
-            if (h.decisionId === void 0) {
-              let m = { instancePath: t + "/gaps/" + i, schemaPath: "gap.schema.json/required", keyword: "required", params: { missingProperty: "decisionId" }, message: "must have required property 'decisionId'" };
-              e === null ? e = [m] : e.push(m), s++;
-            }
-            for (let m in h) if (!(m === "id" || m === "severity" || m === "status" || m === "requirementIds" || m === "testIds" || m === "question" || m === "consequence" || m === "decisionId")) {
-              let o = { instancePath: t + "/gaps/" + i, schemaPath: "gap.schema.json/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: m }, message: "must NOT have additional properties" };
+              let o = { instancePath: t + "/gaps/" + i, schemaPath: "gap.schema.json/required", keyword: "required", params: { missingProperty: "id" }, message: "must have required property 'id'" };
               e === null ? e = [o] : e.push(o), s++;
             }
+            if (h.severity === void 0) {
+              let o = { instancePath: t + "/gaps/" + i, schemaPath: "gap.schema.json/required", keyword: "required", params: { missingProperty: "severity" }, message: "must have required property 'severity'" };
+              e === null ? e = [o] : e.push(o), s++;
+            }
+            if (h.status === void 0) {
+              let o = { instancePath: t + "/gaps/" + i, schemaPath: "gap.schema.json/required", keyword: "required", params: { missingProperty: "status" }, message: "must have required property 'status'" };
+              e === null ? e = [o] : e.push(o), s++;
+            }
+            if (h.requirementIds === void 0) {
+              let o = { instancePath: t + "/gaps/" + i, schemaPath: "gap.schema.json/required", keyword: "required", params: { missingProperty: "requirementIds" }, message: "must have required property 'requirementIds'" };
+              e === null ? e = [o] : e.push(o), s++;
+            }
+            if (h.testIds === void 0) {
+              let o = { instancePath: t + "/gaps/" + i, schemaPath: "gap.schema.json/required", keyword: "required", params: { missingProperty: "testIds" }, message: "must have required property 'testIds'" };
+              e === null ? e = [o] : e.push(o), s++;
+            }
+            if (h.question === void 0) {
+              let o = { instancePath: t + "/gaps/" + i, schemaPath: "gap.schema.json/required", keyword: "required", params: { missingProperty: "question" }, message: "must have required property 'question'" };
+              e === null ? e = [o] : e.push(o), s++;
+            }
+            if (h.consequence === void 0) {
+              let o = { instancePath: t + "/gaps/" + i, schemaPath: "gap.schema.json/required", keyword: "required", params: { missingProperty: "consequence" }, message: "must have required property 'consequence'" };
+              e === null ? e = [o] : e.push(o), s++;
+            }
+            if (h.decisionId === void 0) {
+              let o = { instancePath: t + "/gaps/" + i, schemaPath: "gap.schema.json/required", keyword: "required", params: { missingProperty: "decisionId" }, message: "must have required property 'decisionId'" };
+              e === null ? e = [o] : e.push(o), s++;
+            }
+            for (let o in h) if (!(o === "id" || o === "severity" || o === "status" || o === "requirementIds" || o === "testIds" || o === "question" || o === "consequence" || o === "decisionId")) {
+              let l = { instancePath: t + "/gaps/" + i, schemaPath: "gap.schema.json/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: o }, message: "must NOT have additional properties" };
+              e === null ? e = [l] : e.push(l), s++;
+            }
             if (h.id !== void 0) {
-              let m = h.id;
-              if (typeof m == "string") {
-                if (!Z.test(m)) {
-                  let o = { instancePath: t + "/gaps/" + i + "/id", schemaPath: "gap.schema.json/properties/id/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
-                  e === null ? e = [o] : e.push(o), s++;
+              let o = h.id;
+              if (typeof o == "string") {
+                if (!Z.test(o)) {
+                  let l = { instancePath: t + "/gaps/" + i + "/id", schemaPath: "gap.schema.json/properties/id/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
+                  e === null ? e = [l] : e.push(l), s++;
                 }
               } else {
-                let o = { instancePath: t + "/gaps/" + i + "/id", schemaPath: "gap.schema.json/properties/id/type", keyword: "type", params: { type: "string" }, message: "must be string" };
-                e === null ? e = [o] : e.push(o), s++;
+                let l = { instancePath: t + "/gaps/" + i + "/id", schemaPath: "gap.schema.json/properties/id/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+                e === null ? e = [l] : e.push(l), s++;
               }
             }
             if (h.severity !== void 0) {
-              let m = h.severity;
-              if (!(m === "blocking" || m === "non_blocking")) {
-                let o = { instancePath: t + "/gaps/" + i + "/severity", schemaPath: "gap.schema.json/properties/severity/enum", keyword: "enum", params: { allowedValues: B.properties.severity.enum }, message: "must be equal to one of the allowed values" };
-                e === null ? e = [o] : e.push(o), s++;
+              let o = h.severity;
+              if (!(o === "blocking" || o === "non_blocking")) {
+                let l = { instancePath: t + "/gaps/" + i + "/severity", schemaPath: "gap.schema.json/properties/severity/enum", keyword: "enum", params: { allowedValues: B.properties.severity.enum }, message: "must be equal to one of the allowed values" };
+                e === null ? e = [l] : e.push(l), s++;
               }
             }
             if (h.status !== void 0) {
-              let m = h.status;
-              if (!(m === "open" || m === "resolved" || m === "deferred" || m === "not_needed")) {
-                let o = { instancePath: t + "/gaps/" + i + "/status", schemaPath: "gap.schema.json/properties/status/enum", keyword: "enum", params: { allowedValues: B.properties.status.enum }, message: "must be equal to one of the allowed values" };
-                e === null ? e = [o] : e.push(o), s++;
+              let o = h.status;
+              if (!(o === "open" || o === "resolved" || o === "deferred" || o === "not_needed")) {
+                let l = { instancePath: t + "/gaps/" + i + "/status", schemaPath: "gap.schema.json/properties/status/enum", keyword: "enum", params: { allowedValues: B.properties.status.enum }, message: "must be equal to one of the allowed values" };
+                e === null ? e = [l] : e.push(l), s++;
               }
             }
             if (h.requirementIds !== void 0) {
-              let m = h.requirementIds;
-              if (Array.isArray(m)) {
-                if (m.length < 0) {
+              let o = h.requirementIds;
+              if (Array.isArray(o)) {
+                if (o.length < 0) {
                   let f = { instancePath: t + "/gaps/" + i + "/requirementIds", schemaPath: "gap.schema.json/properties/requirementIds/minItems", keyword: "minItems", params: { limit: 0 }, message: "must NOT have fewer than 0 items" };
                   e === null ? e = [f] : e.push(f), s++;
                 }
-                let o = m.length;
-                for (let f = 0; f < o; f++) {
-                  let q = m[f];
+                let l = o.length;
+                for (let f = 0; f < l; f++) {
+                  let q = o[f];
                   if (typeof q == "string") {
                     if (!Z.test(q)) {
                       let y = { instancePath: t + "/gaps/" + i + "/requirementIds/" + f, schemaPath: "gap.schema.json/properties/requirementIds/items/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
@@ -6079,15 +6163,15 @@ function Be(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
                     e === null ? e = [y] : e.push(y), s++;
                   }
                 }
-                let g = m.length, v;
+                let g = o.length, b;
                 if (g > 1) {
                   let f = {};
                   for (; g--; ) {
-                    let q = m[g];
+                    let q = o[g];
                     if (typeof q == "string") {
                       if (typeof f[q] == "number") {
-                        v = f[q];
-                        let y = { instancePath: t + "/gaps/" + i + "/requirementIds", schemaPath: "gap.schema.json/properties/requirementIds/uniqueItems", keyword: "uniqueItems", params: { i: g, j: v }, message: "must NOT have duplicate items (items ## " + v + " and " + g + " are identical)" };
+                        b = f[q];
+                        let y = { instancePath: t + "/gaps/" + i + "/requirementIds", schemaPath: "gap.schema.json/properties/requirementIds/uniqueItems", keyword: "uniqueItems", params: { i: g, j: b }, message: "must NOT have duplicate items (items ## " + b + " and " + g + " are identical)" };
                         e === null ? e = [y] : e.push(y), s++;
                         break;
                       }
@@ -6096,20 +6180,20 @@ function Be(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
                   }
                 }
               } else {
-                let o = { instancePath: t + "/gaps/" + i + "/requirementIds", schemaPath: "gap.schema.json/properties/requirementIds/type", keyword: "type", params: { type: "array" }, message: "must be array" };
-                e === null ? e = [o] : e.push(o), s++;
+                let l = { instancePath: t + "/gaps/" + i + "/requirementIds", schemaPath: "gap.schema.json/properties/requirementIds/type", keyword: "type", params: { type: "array" }, message: "must be array" };
+                e === null ? e = [l] : e.push(l), s++;
               }
             }
             if (h.testIds !== void 0) {
-              let m = h.testIds;
-              if (Array.isArray(m)) {
-                if (m.length < 0) {
+              let o = h.testIds;
+              if (Array.isArray(o)) {
+                if (o.length < 0) {
                   let f = { instancePath: t + "/gaps/" + i + "/testIds", schemaPath: "gap.schema.json/properties/testIds/minItems", keyword: "minItems", params: { limit: 0 }, message: "must NOT have fewer than 0 items" };
                   e === null ? e = [f] : e.push(f), s++;
                 }
-                let o = m.length;
-                for (let f = 0; f < o; f++) {
-                  let q = m[f];
+                let l = o.length;
+                for (let f = 0; f < l; f++) {
+                  let q = o[f];
                   if (typeof q == "string") {
                     if (!M.test(q)) {
                       let y = { instancePath: t + "/gaps/" + i + "/testIds/" + f, schemaPath: "gap.schema.json/properties/testIds/items/pattern", keyword: "pattern", params: { pattern: "^([A-Za-z0-9][A-Za-z0-9_-]{0,95}:)?[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^([A-Za-z0-9][A-Za-z0-9_-]{0,95}:)?[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
@@ -6120,15 +6204,15 @@ function Be(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
                     e === null ? e = [y] : e.push(y), s++;
                   }
                 }
-                let g = m.length, v;
+                let g = o.length, b;
                 if (g > 1) {
                   let f = {};
                   for (; g--; ) {
-                    let q = m[g];
+                    let q = o[g];
                     if (typeof q == "string") {
                       if (typeof f[q] == "number") {
-                        v = f[q];
-                        let y = { instancePath: t + "/gaps/" + i + "/testIds", schemaPath: "gap.schema.json/properties/testIds/uniqueItems", keyword: "uniqueItems", params: { i: g, j: v }, message: "must NOT have duplicate items (items ## " + v + " and " + g + " are identical)" };
+                        b = f[q];
+                        let y = { instancePath: t + "/gaps/" + i + "/testIds", schemaPath: "gap.schema.json/properties/testIds/uniqueItems", keyword: "uniqueItems", params: { i: g, j: b }, message: "must NOT have duplicate items (items ## " + b + " and " + g + " are identical)" };
                         e === null ? e = [y] : e.push(y), s++;
                         break;
                       }
@@ -6137,38 +6221,38 @@ function Be(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
                   }
                 }
               } else {
-                let o = { instancePath: t + "/gaps/" + i + "/testIds", schemaPath: "gap.schema.json/properties/testIds/type", keyword: "type", params: { type: "array" }, message: "must be array" };
-                e === null ? e = [o] : e.push(o), s++;
+                let l = { instancePath: t + "/gaps/" + i + "/testIds", schemaPath: "gap.schema.json/properties/testIds/type", keyword: "type", params: { type: "array" }, message: "must be array" };
+                e === null ? e = [l] : e.push(l), s++;
               }
             }
             if (h.question !== void 0) {
-              let m = h.question;
-              if (typeof m == "string") {
-                if (A(m) < 1) {
-                  let o = { instancePath: t + "/gaps/" + i + "/question", schemaPath: "gap.schema.json/properties/question/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
-                  e === null ? e = [o] : e.push(o), s++;
+              let o = h.question;
+              if (typeof o == "string") {
+                if (A(o) < 1) {
+                  let l = { instancePath: t + "/gaps/" + i + "/question", schemaPath: "gap.schema.json/properties/question/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
+                  e === null ? e = [l] : e.push(l), s++;
                 }
               } else {
-                let o = { instancePath: t + "/gaps/" + i + "/question", schemaPath: "gap.schema.json/properties/question/type", keyword: "type", params: { type: "string" }, message: "must be string" };
-                e === null ? e = [o] : e.push(o), s++;
+                let l = { instancePath: t + "/gaps/" + i + "/question", schemaPath: "gap.schema.json/properties/question/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+                e === null ? e = [l] : e.push(l), s++;
               }
             }
             if (h.consequence !== void 0) {
-              let m = h.consequence;
-              if (typeof m == "string") {
-                if (A(m) < 1) {
-                  let o = { instancePath: t + "/gaps/" + i + "/consequence", schemaPath: "gap.schema.json/properties/consequence/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
-                  e === null ? e = [o] : e.push(o), s++;
+              let o = h.consequence;
+              if (typeof o == "string") {
+                if (A(o) < 1) {
+                  let l = { instancePath: t + "/gaps/" + i + "/consequence", schemaPath: "gap.schema.json/properties/consequence/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
+                  e === null ? e = [l] : e.push(l), s++;
                 }
               } else {
-                let o = { instancePath: t + "/gaps/" + i + "/consequence", schemaPath: "gap.schema.json/properties/consequence/type", keyword: "type", params: { type: "string" }, message: "must be string" };
-                e === null ? e = [o] : e.push(o), s++;
+                let l = { instancePath: t + "/gaps/" + i + "/consequence", schemaPath: "gap.schema.json/properties/consequence/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+                e === null ? e = [l] : e.push(l), s++;
               }
             }
             if (h.decisionId !== void 0) {
-              let m = h.decisionId, o = s, g = false, v = s;
-              if (typeof m == "string") {
-                if (!Z.test(m)) {
+              let o = h.decisionId, l = s, g = false, b = s;
+              if (typeof o == "string") {
+                if (!Z.test(o)) {
                   let f = { instancePath: t + "/gaps/" + i + "/decisionId", schemaPath: "gap.schema.json/properties/decisionId/anyOf/0/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
                   e === null ? e = [f] : e.push(f), s++;
                 }
@@ -6176,219 +6260,219 @@ function Be(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
                 let f = { instancePath: t + "/gaps/" + i + "/decisionId", schemaPath: "gap.schema.json/properties/decisionId/anyOf/0/type", keyword: "type", params: { type: "string" }, message: "must be string" };
                 e === null ? e = [f] : e.push(f), s++;
               }
-              var r = v === s;
+              var r = b === s;
               if (g = g || r, !g) {
                 let f = s;
-                if (m !== null) {
+                if (o !== null) {
                   let y = { instancePath: t + "/gaps/" + i + "/decisionId", schemaPath: "gap.schema.json/properties/decisionId/anyOf/1/type", keyword: "type", params: { type: "null" }, message: "must be null" };
                   e === null ? e = [y] : e.push(y), s++;
                 }
                 var r = f === s;
                 g = g || r;
               }
-              if (g) s = o, e !== null && (o ? e.length = o : e = null);
+              if (g) s = l, e !== null && (l ? e.length = l : e = null);
               else {
                 let f = { instancePath: t + "/gaps/" + i + "/decisionId", schemaPath: "gap.schema.json/properties/decisionId/anyOf", keyword: "anyOf", params: {}, message: "must match a schema in anyOf" };
                 e === null ? e = [f] : e.push(f), s++;
               }
             }
           } else {
-            let m = { instancePath: t + "/gaps/" + i, schemaPath: "gap.schema.json/type", keyword: "type", params: { type: "object" }, message: "must be object" };
-            e === null ? e = [m] : e.push(m), s++;
+            let o = { instancePath: t + "/gaps/" + i, schemaPath: "gap.schema.json/type", keyword: "type", params: { type: "object" }, message: "must be object" };
+            e === null ? e = [o] : e.push(o), s++;
           }
         }
-        let p = d.length, u;
+        let p = c.length, u;
         if (p > 1) {
-          e: for (; p--; ) for (u = p; u--; ) if (D(d[p], d[u])) {
+          e: for (; p--; ) for (u = p; u--; ) if (D(c[p], c[u])) {
             let i = { instancePath: t + "/gaps", schemaPath: "#/properties/gaps/uniqueItems", keyword: "uniqueItems", params: { i: p, j: u }, message: "must NOT have duplicate items (items ## " + u + " and " + p + " are identical)" };
             e === null ? e = [i] : e.push(i), s++;
             break e;
           }
         }
       } else {
-        let c = { instancePath: t + "/gaps", schemaPath: "#/properties/gaps/type", keyword: "type", params: { type: "array" }, message: "must be array" };
-        e === null ? e = [c] : e.push(c), s++;
+        let d = { instancePath: t + "/gaps", schemaPath: "#/properties/gaps/type", keyword: "type", params: { type: "array" }, message: "must be array" };
+        e === null ? e = [d] : e.push(d), s++;
       }
     }
     if (a.assumptions !== void 0) {
-      let d = a.assumptions;
-      if (Array.isArray(d)) {
-        if (d.length < 0) {
+      let c = a.assumptions;
+      if (Array.isArray(c)) {
+        if (c.length < 0) {
           let i = { instancePath: t + "/assumptions", schemaPath: "#/properties/assumptions/minItems", keyword: "minItems", params: { limit: 0 }, message: "must NOT have fewer than 0 items" };
           e === null ? e = [i] : e.push(i), s++;
         }
-        let c = d.length;
-        for (let i = 0; i < c; i++) {
-          let h = d[i];
+        let d = c.length;
+        for (let i = 0; i < d; i++) {
+          let h = c[i];
           if (h && typeof h == "object" && !Array.isArray(h)) {
             if (h.decisionId === void 0) {
-              let m = { instancePath: t + "/assumptions/" + i, schemaPath: "#/properties/assumptions/items/required", keyword: "required", params: { missingProperty: "decisionId" }, message: "must have required property 'decisionId'" };
-              e === null ? e = [m] : e.push(m), s++;
-            }
-            if (h.text === void 0) {
-              let m = { instancePath: t + "/assumptions/" + i, schemaPath: "#/properties/assumptions/items/required", keyword: "required", params: { missingProperty: "text" }, message: "must have required property 'text'" };
-              e === null ? e = [m] : e.push(m), s++;
-            }
-            for (let m in h) if (!(m === "decisionId" || m === "text")) {
-              let o = { instancePath: t + "/assumptions/" + i, schemaPath: "#/properties/assumptions/items/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: m }, message: "must NOT have additional properties" };
+              let o = { instancePath: t + "/assumptions/" + i, schemaPath: "#/properties/assumptions/items/required", keyword: "required", params: { missingProperty: "decisionId" }, message: "must have required property 'decisionId'" };
               e === null ? e = [o] : e.push(o), s++;
             }
+            if (h.text === void 0) {
+              let o = { instancePath: t + "/assumptions/" + i, schemaPath: "#/properties/assumptions/items/required", keyword: "required", params: { missingProperty: "text" }, message: "must have required property 'text'" };
+              e === null ? e = [o] : e.push(o), s++;
+            }
+            for (let o in h) if (!(o === "decisionId" || o === "text")) {
+              let l = { instancePath: t + "/assumptions/" + i, schemaPath: "#/properties/assumptions/items/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: o }, message: "must NOT have additional properties" };
+              e === null ? e = [l] : e.push(l), s++;
+            }
             if (h.decisionId !== void 0) {
-              let m = h.decisionId;
-              if (typeof m == "string") {
-                if (!Z.test(m)) {
-                  let o = { instancePath: t + "/assumptions/" + i + "/decisionId", schemaPath: "#/properties/assumptions/items/properties/decisionId/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
-                  e === null ? e = [o] : e.push(o), s++;
+              let o = h.decisionId;
+              if (typeof o == "string") {
+                if (!Z.test(o)) {
+                  let l = { instancePath: t + "/assumptions/" + i + "/decisionId", schemaPath: "#/properties/assumptions/items/properties/decisionId/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
+                  e === null ? e = [l] : e.push(l), s++;
                 }
               } else {
-                let o = { instancePath: t + "/assumptions/" + i + "/decisionId", schemaPath: "#/properties/assumptions/items/properties/decisionId/type", keyword: "type", params: { type: "string" }, message: "must be string" };
-                e === null ? e = [o] : e.push(o), s++;
+                let l = { instancePath: t + "/assumptions/" + i + "/decisionId", schemaPath: "#/properties/assumptions/items/properties/decisionId/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+                e === null ? e = [l] : e.push(l), s++;
               }
             }
             if (h.text !== void 0) {
-              let m = h.text;
-              if (typeof m == "string") {
-                if (A(m) < 1) {
-                  let o = { instancePath: t + "/assumptions/" + i + "/text", schemaPath: "#/properties/assumptions/items/properties/text/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
-                  e === null ? e = [o] : e.push(o), s++;
+              let o = h.text;
+              if (typeof o == "string") {
+                if (A(o) < 1) {
+                  let l = { instancePath: t + "/assumptions/" + i + "/text", schemaPath: "#/properties/assumptions/items/properties/text/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
+                  e === null ? e = [l] : e.push(l), s++;
                 }
               } else {
-                let o = { instancePath: t + "/assumptions/" + i + "/text", schemaPath: "#/properties/assumptions/items/properties/text/type", keyword: "type", params: { type: "string" }, message: "must be string" };
-                e === null ? e = [o] : e.push(o), s++;
+                let l = { instancePath: t + "/assumptions/" + i + "/text", schemaPath: "#/properties/assumptions/items/properties/text/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+                e === null ? e = [l] : e.push(l), s++;
               }
             }
           } else {
-            let m = { instancePath: t + "/assumptions/" + i, schemaPath: "#/properties/assumptions/items/type", keyword: "type", params: { type: "object" }, message: "must be object" };
-            e === null ? e = [m] : e.push(m), s++;
+            let o = { instancePath: t + "/assumptions/" + i, schemaPath: "#/properties/assumptions/items/type", keyword: "type", params: { type: "object" }, message: "must be object" };
+            e === null ? e = [o] : e.push(o), s++;
           }
         }
-        let p = d.length, u;
+        let p = c.length, u;
         if (p > 1) {
-          e: for (; p--; ) for (u = p; u--; ) if (D(d[p], d[u])) {
+          e: for (; p--; ) for (u = p; u--; ) if (D(c[p], c[u])) {
             let i = { instancePath: t + "/assumptions", schemaPath: "#/properties/assumptions/uniqueItems", keyword: "uniqueItems", params: { i: p, j: u }, message: "must NOT have duplicate items (items ## " + u + " and " + p + " are identical)" };
             e === null ? e = [i] : e.push(i), s++;
             break e;
           }
         }
       } else {
-        let c = { instancePath: t + "/assumptions", schemaPath: "#/properties/assumptions/type", keyword: "type", params: { type: "array" }, message: "must be array" };
-        e === null ? e = [c] : e.push(c), s++;
+        let d = { instancePath: t + "/assumptions", schemaPath: "#/properties/assumptions/type", keyword: "type", params: { type: "array" }, message: "must be array" };
+        e === null ? e = [d] : e.push(d), s++;
       }
     }
     if (a.decisions !== void 0) {
-      let d = a.decisions;
-      if (Array.isArray(d)) {
-        if (d.length < 0) {
+      let c = a.decisions;
+      if (Array.isArray(c)) {
+        if (c.length < 0) {
           let i = { instancePath: t + "/decisions", schemaPath: "#/properties/decisions/minItems", keyword: "minItems", params: { limit: 0 }, message: "must NOT have fewer than 0 items" };
           e === null ? e = [i] : e.push(i), s++;
         }
-        let c = d.length;
-        for (let i = 0; i < c; i++) {
-          let h = d[i];
+        let d = c.length;
+        for (let i = 0; i < d; i++) {
+          let h = c[i];
           if (h && typeof h == "object" && !Array.isArray(h)) {
             if (h.id === void 0) {
-              let m = { instancePath: t + "/decisions/" + i, schemaPath: "#/properties/decisions/items/required", keyword: "required", params: { missingProperty: "id" }, message: "must have required property 'id'" };
-              e === null ? e = [m] : e.push(m), s++;
-            }
-            if (h.gapId === void 0) {
-              let m = { instancePath: t + "/decisions/" + i, schemaPath: "#/properties/decisions/items/required", keyword: "required", params: { missingProperty: "gapId" }, message: "must have required property 'gapId'" };
-              e === null ? e = [m] : e.push(m), s++;
-            }
-            if (h.kind === void 0) {
-              let m = { instancePath: t + "/decisions/" + i, schemaPath: "#/properties/decisions/items/required", keyword: "required", params: { missingProperty: "kind" }, message: "must have required property 'kind'" };
-              e === null ? e = [m] : e.push(m), s++;
-            }
-            if (h.actor === void 0) {
-              let m = { instancePath: t + "/decisions/" + i, schemaPath: "#/properties/decisions/items/required", keyword: "required", params: { missingProperty: "actor" }, message: "must have required property 'actor'" };
-              e === null ? e = [m] : e.push(m), s++;
-            }
-            if (h.rationale === void 0) {
-              let m = { instancePath: t + "/decisions/" + i, schemaPath: "#/properties/decisions/items/required", keyword: "required", params: { missingProperty: "rationale" }, message: "must have required property 'rationale'" };
-              e === null ? e = [m] : e.push(m), s++;
-            }
-            if (h.value === void 0) {
-              let m = { instancePath: t + "/decisions/" + i, schemaPath: "#/properties/decisions/items/required", keyword: "required", params: { missingProperty: "value" }, message: "must have required property 'value'" };
-              e === null ? e = [m] : e.push(m), s++;
-            }
-            if (h.source === void 0) {
-              let m = { instancePath: t + "/decisions/" + i, schemaPath: "#/properties/decisions/items/required", keyword: "required", params: { missingProperty: "source" }, message: "must have required property 'source'" };
-              e === null ? e = [m] : e.push(m), s++;
-            }
-            for (let m in h) if (!(m === "id" || m === "gapId" || m === "kind" || m === "actor" || m === "rationale" || m === "value" || m === "source")) {
-              let o = { instancePath: t + "/decisions/" + i, schemaPath: "#/properties/decisions/items/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: m }, message: "must NOT have additional properties" };
+              let o = { instancePath: t + "/decisions/" + i, schemaPath: "#/properties/decisions/items/required", keyword: "required", params: { missingProperty: "id" }, message: "must have required property 'id'" };
               e === null ? e = [o] : e.push(o), s++;
             }
+            if (h.gapId === void 0) {
+              let o = { instancePath: t + "/decisions/" + i, schemaPath: "#/properties/decisions/items/required", keyword: "required", params: { missingProperty: "gapId" }, message: "must have required property 'gapId'" };
+              e === null ? e = [o] : e.push(o), s++;
+            }
+            if (h.kind === void 0) {
+              let o = { instancePath: t + "/decisions/" + i, schemaPath: "#/properties/decisions/items/required", keyword: "required", params: { missingProperty: "kind" }, message: "must have required property 'kind'" };
+              e === null ? e = [o] : e.push(o), s++;
+            }
+            if (h.actor === void 0) {
+              let o = { instancePath: t + "/decisions/" + i, schemaPath: "#/properties/decisions/items/required", keyword: "required", params: { missingProperty: "actor" }, message: "must have required property 'actor'" };
+              e === null ? e = [o] : e.push(o), s++;
+            }
+            if (h.rationale === void 0) {
+              let o = { instancePath: t + "/decisions/" + i, schemaPath: "#/properties/decisions/items/required", keyword: "required", params: { missingProperty: "rationale" }, message: "must have required property 'rationale'" };
+              e === null ? e = [o] : e.push(o), s++;
+            }
+            if (h.value === void 0) {
+              let o = { instancePath: t + "/decisions/" + i, schemaPath: "#/properties/decisions/items/required", keyword: "required", params: { missingProperty: "value" }, message: "must have required property 'value'" };
+              e === null ? e = [o] : e.push(o), s++;
+            }
+            if (h.source === void 0) {
+              let o = { instancePath: t + "/decisions/" + i, schemaPath: "#/properties/decisions/items/required", keyword: "required", params: { missingProperty: "source" }, message: "must have required property 'source'" };
+              e === null ? e = [o] : e.push(o), s++;
+            }
+            for (let o in h) if (!(o === "id" || o === "gapId" || o === "kind" || o === "actor" || o === "rationale" || o === "value" || o === "source")) {
+              let l = { instancePath: t + "/decisions/" + i, schemaPath: "#/properties/decisions/items/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: o }, message: "must NOT have additional properties" };
+              e === null ? e = [l] : e.push(l), s++;
+            }
             if (h.id !== void 0) {
-              let m = h.id;
-              if (typeof m == "string") {
-                if (!Z.test(m)) {
-                  let o = { instancePath: t + "/decisions/" + i + "/id", schemaPath: "#/properties/decisions/items/properties/id/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
-                  e === null ? e = [o] : e.push(o), s++;
+              let o = h.id;
+              if (typeof o == "string") {
+                if (!Z.test(o)) {
+                  let l = { instancePath: t + "/decisions/" + i + "/id", schemaPath: "#/properties/decisions/items/properties/id/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
+                  e === null ? e = [l] : e.push(l), s++;
                 }
               } else {
-                let o = { instancePath: t + "/decisions/" + i + "/id", schemaPath: "#/properties/decisions/items/properties/id/type", keyword: "type", params: { type: "string" }, message: "must be string" };
-                e === null ? e = [o] : e.push(o), s++;
+                let l = { instancePath: t + "/decisions/" + i + "/id", schemaPath: "#/properties/decisions/items/properties/id/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+                e === null ? e = [l] : e.push(l), s++;
               }
             }
             if (h.gapId !== void 0) {
-              let m = h.gapId;
-              if (typeof m == "string") {
-                if (!Z.test(m)) {
-                  let o = { instancePath: t + "/decisions/" + i + "/gapId", schemaPath: "#/properties/decisions/items/properties/gapId/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
-                  e === null ? e = [o] : e.push(o), s++;
+              let o = h.gapId;
+              if (typeof o == "string") {
+                if (!Z.test(o)) {
+                  let l = { instancePath: t + "/decisions/" + i + "/gapId", schemaPath: "#/properties/decisions/items/properties/gapId/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
+                  e === null ? e = [l] : e.push(l), s++;
                 }
               } else {
-                let o = { instancePath: t + "/decisions/" + i + "/gapId", schemaPath: "#/properties/decisions/items/properties/gapId/type", keyword: "type", params: { type: "string" }, message: "must be string" };
-                e === null ? e = [o] : e.push(o), s++;
+                let l = { instancePath: t + "/decisions/" + i + "/gapId", schemaPath: "#/properties/decisions/items/properties/gapId/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+                e === null ? e = [l] : e.push(l), s++;
               }
             }
             if (h.kind !== void 0) {
-              let m = h.kind;
-              if (!(m === "clarify" || m === "accept_assumption" || m === "defer")) {
-                let o = { instancePath: t + "/decisions/" + i + "/kind", schemaPath: "#/properties/decisions/items/properties/kind/enum", keyword: "enum", params: { allowedValues: pe.properties.decisions.items.properties.kind.enum }, message: "must be equal to one of the allowed values" };
-                e === null ? e = [o] : e.push(o), s++;
+              let o = h.kind;
+              if (!(o === "clarify" || o === "accept_assumption" || o === "defer")) {
+                let l = { instancePath: t + "/decisions/" + i + "/kind", schemaPath: "#/properties/decisions/items/properties/kind/enum", keyword: "enum", params: { allowedValues: pe.properties.decisions.items.properties.kind.enum }, message: "must be equal to one of the allowed values" };
+                e === null ? e = [l] : e.push(l), s++;
               }
             }
             if (h.actor !== void 0) {
-              let m = h.actor;
-              if (typeof m == "string") {
-                if (A(m) < 1) {
-                  let o = { instancePath: t + "/decisions/" + i + "/actor", schemaPath: "#/properties/decisions/items/properties/actor/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
-                  e === null ? e = [o] : e.push(o), s++;
+              let o = h.actor;
+              if (typeof o == "string") {
+                if (A(o) < 1) {
+                  let l = { instancePath: t + "/decisions/" + i + "/actor", schemaPath: "#/properties/decisions/items/properties/actor/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
+                  e === null ? e = [l] : e.push(l), s++;
                 }
               } else {
-                let o = { instancePath: t + "/decisions/" + i + "/actor", schemaPath: "#/properties/decisions/items/properties/actor/type", keyword: "type", params: { type: "string" }, message: "must be string" };
-                e === null ? e = [o] : e.push(o), s++;
+                let l = { instancePath: t + "/decisions/" + i + "/actor", schemaPath: "#/properties/decisions/items/properties/actor/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+                e === null ? e = [l] : e.push(l), s++;
               }
             }
             if (h.rationale !== void 0) {
-              let m = h.rationale;
-              if (typeof m == "string") {
-                if (A(m) < 1) {
-                  let o = { instancePath: t + "/decisions/" + i + "/rationale", schemaPath: "#/properties/decisions/items/properties/rationale/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
-                  e === null ? e = [o] : e.push(o), s++;
+              let o = h.rationale;
+              if (typeof o == "string") {
+                if (A(o) < 1) {
+                  let l = { instancePath: t + "/decisions/" + i + "/rationale", schemaPath: "#/properties/decisions/items/properties/rationale/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
+                  e === null ? e = [l] : e.push(l), s++;
                 }
               } else {
-                let o = { instancePath: t + "/decisions/" + i + "/rationale", schemaPath: "#/properties/decisions/items/properties/rationale/type", keyword: "type", params: { type: "string" }, message: "must be string" };
-                e === null ? e = [o] : e.push(o), s++;
+                let l = { instancePath: t + "/decisions/" + i + "/rationale", schemaPath: "#/properties/decisions/items/properties/rationale/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+                e === null ? e = [l] : e.push(l), s++;
               }
             }
             if (h.value !== void 0) {
-              let m = h.value;
-              if (typeof m == "string") {
-                if (A(m) < 1) {
-                  let o = { instancePath: t + "/decisions/" + i + "/value", schemaPath: "#/properties/decisions/items/properties/value/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
-                  e === null ? e = [o] : e.push(o), s++;
+              let o = h.value;
+              if (typeof o == "string") {
+                if (A(o) < 1) {
+                  let l = { instancePath: t + "/decisions/" + i + "/value", schemaPath: "#/properties/decisions/items/properties/value/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
+                  e === null ? e = [l] : e.push(l), s++;
                 }
               } else {
-                let o = { instancePath: t + "/decisions/" + i + "/value", schemaPath: "#/properties/decisions/items/properties/value/type", keyword: "type", params: { type: "string" }, message: "must be string" };
-                e === null ? e = [o] : e.push(o), s++;
+                let l = { instancePath: t + "/decisions/" + i + "/value", schemaPath: "#/properties/decisions/items/properties/value/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+                e === null ? e = [l] : e.push(l), s++;
               }
             }
             if (h.source !== void 0) {
-              let m = h.source, o = s, g = false, v = s;
-              if (typeof m == "string") {
-                if (A(m) < 1) {
+              let o = h.source, l = s, g = false, b = s;
+              if (typeof o == "string") {
+                if (A(o) < 1) {
                   let f = { instancePath: t + "/decisions/" + i + "/source", schemaPath: "#/properties/decisions/items/properties/source/anyOf/0/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
                   e === null ? e = [f] : e.push(f), s++;
                 }
@@ -6396,46 +6480,46 @@ function Be(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
                 let f = { instancePath: t + "/decisions/" + i + "/source", schemaPath: "#/properties/decisions/items/properties/source/anyOf/0/type", keyword: "type", params: { type: "string" }, message: "must be string" };
                 e === null ? e = [f] : e.push(f), s++;
               }
-              var l = v === s;
-              if (g = g || l, !g) {
+              var m = b === s;
+              if (g = g || m, !g) {
                 let f = s;
-                if (m !== null) {
+                if (o !== null) {
                   let y = { instancePath: t + "/decisions/" + i + "/source", schemaPath: "#/properties/decisions/items/properties/source/anyOf/1/type", keyword: "type", params: { type: "null" }, message: "must be null" };
                   e === null ? e = [y] : e.push(y), s++;
                 }
-                var l = f === s;
-                g = g || l;
+                var m = f === s;
+                g = g || m;
               }
-              if (g) s = o, e !== null && (o ? e.length = o : e = null);
+              if (g) s = l, e !== null && (l ? e.length = l : e = null);
               else {
                 let f = { instancePath: t + "/decisions/" + i + "/source", schemaPath: "#/properties/decisions/items/properties/source/anyOf", keyword: "anyOf", params: {}, message: "must match a schema in anyOf" };
                 e === null ? e = [f] : e.push(f), s++;
               }
             }
           } else {
-            let m = { instancePath: t + "/decisions/" + i, schemaPath: "#/properties/decisions/items/type", keyword: "type", params: { type: "object" }, message: "must be object" };
-            e === null ? e = [m] : e.push(m), s++;
+            let o = { instancePath: t + "/decisions/" + i, schemaPath: "#/properties/decisions/items/type", keyword: "type", params: { type: "object" }, message: "must be object" };
+            e === null ? e = [o] : e.push(o), s++;
           }
         }
-        let p = d.length, u;
+        let p = c.length, u;
         if (p > 1) {
-          e: for (; p--; ) for (u = p; u--; ) if (D(d[p], d[u])) {
+          e: for (; p--; ) for (u = p; u--; ) if (D(c[p], c[u])) {
             let i = { instancePath: t + "/decisions", schemaPath: "#/properties/decisions/uniqueItems", keyword: "uniqueItems", params: { i: p, j: u }, message: "must NOT have duplicate items (items ## " + u + " and " + p + " are identical)" };
             e === null ? e = [i] : e.push(i), s++;
             break e;
           }
         }
       } else {
-        let c = { instancePath: t + "/decisions", schemaPath: "#/properties/decisions/type", keyword: "type", params: { type: "array" }, message: "must be array" };
-        e === null ? e = [c] : e.push(c), s++;
+        let d = { instancePath: t + "/decisions", schemaPath: "#/properties/decisions/type", keyword: "type", params: { type: "array" }, message: "must be array" };
+        e === null ? e = [d] : e.push(d), s++;
       }
     }
     if (a.removals !== void 0) {
-      let d = a.removals;
-      if (Array.isArray(d)) {
-        let c = d.length;
-        for (let p = 0; p < c; p++) {
-          let u = d[p];
+      let c = a.removals;
+      if (Array.isArray(c)) {
+        let d = c.length;
+        for (let p = 0; p < d; p++) {
+          let u = c[p];
           if (u && typeof u == "object" && !Array.isArray(u)) {
             if (u.revision === void 0) {
               let i = { instancePath: t + "/removals/" + p, schemaPath: "#/properties/removals/items/required", keyword: "required", params: { missingProperty: "revision" }, message: "must have required property 'revision'" };
@@ -6500,19 +6584,19 @@ function Be(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
               let i = u.testIds;
               if (Array.isArray(i)) {
                 if (i.length < 1) {
-                  let m = { instancePath: t + "/removals/" + p + "/testIds", schemaPath: "#/properties/removals/items/properties/testIds/minItems", keyword: "minItems", params: { limit: 1 }, message: "must NOT have fewer than 1 items" };
-                  e === null ? e = [m] : e.push(m), s++;
+                  let o = { instancePath: t + "/removals/" + p + "/testIds", schemaPath: "#/properties/removals/items/properties/testIds/minItems", keyword: "minItems", params: { limit: 1 }, message: "must NOT have fewer than 1 items" };
+                  e === null ? e = [o] : e.push(o), s++;
                 }
                 let h = i.length;
-                for (let m = 0; m < h; m++) {
-                  let o = i[m];
-                  if (typeof o == "string") {
-                    if (!Z.test(o)) {
-                      let g = { instancePath: t + "/removals/" + p + "/testIds/" + m, schemaPath: "#/properties/removals/items/properties/testIds/items/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
+                for (let o = 0; o < h; o++) {
+                  let l = i[o];
+                  if (typeof l == "string") {
+                    if (!Z.test(l)) {
+                      let g = { instancePath: t + "/removals/" + p + "/testIds/" + o, schemaPath: "#/properties/removals/items/properties/testIds/items/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
                       e === null ? e = [g] : e.push(g), s++;
                     }
                   } else {
-                    let g = { instancePath: t + "/removals/" + p + "/testIds/" + m, schemaPath: "#/properties/removals/items/properties/testIds/items/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+                    let g = { instancePath: t + "/removals/" + p + "/testIds/" + o, schemaPath: "#/properties/removals/items/properties/testIds/items/type", keyword: "type", params: { type: "string" }, message: "must be string" };
                     e === null ? e = [g] : e.push(g), s++;
                   }
                 }
@@ -6525,47 +6609,47 @@ function Be(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
               let i = u.closedGaps;
               if (Array.isArray(i)) {
                 let h = i.length;
-                for (let m = 0; m < h; m++) {
-                  let o = i[m];
-                  if (o && typeof o == "object" && !Array.isArray(o)) {
-                    if (o.gapId === void 0) {
-                      let g = { instancePath: t + "/removals/" + p + "/closedGaps/" + m, schemaPath: "#/properties/removals/items/properties/closedGaps/items/required", keyword: "required", params: { missingProperty: "gapId" }, message: "must have required property 'gapId'" };
+                for (let o = 0; o < h; o++) {
+                  let l = i[o];
+                  if (l && typeof l == "object" && !Array.isArray(l)) {
+                    if (l.gapId === void 0) {
+                      let g = { instancePath: t + "/removals/" + p + "/closedGaps/" + o, schemaPath: "#/properties/removals/items/properties/closedGaps/items/required", keyword: "required", params: { missingProperty: "gapId" }, message: "must have required property 'gapId'" };
                       e === null ? e = [g] : e.push(g), s++;
                     }
-                    if (o.reason === void 0) {
-                      let g = { instancePath: t + "/removals/" + p + "/closedGaps/" + m, schemaPath: "#/properties/removals/items/properties/closedGaps/items/required", keyword: "required", params: { missingProperty: "reason" }, message: "must have required property 'reason'" };
+                    if (l.reason === void 0) {
+                      let g = { instancePath: t + "/removals/" + p + "/closedGaps/" + o, schemaPath: "#/properties/removals/items/properties/closedGaps/items/required", keyword: "required", params: { missingProperty: "reason" }, message: "must have required property 'reason'" };
                       e === null ? e = [g] : e.push(g), s++;
                     }
-                    for (let g in o) if (!(g === "gapId" || g === "reason")) {
-                      let v = { instancePath: t + "/removals/" + p + "/closedGaps/" + m, schemaPath: "#/properties/removals/items/properties/closedGaps/items/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: g }, message: "must NOT have additional properties" };
-                      e === null ? e = [v] : e.push(v), s++;
+                    for (let g in l) if (!(g === "gapId" || g === "reason")) {
+                      let b = { instancePath: t + "/removals/" + p + "/closedGaps/" + o, schemaPath: "#/properties/removals/items/properties/closedGaps/items/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: g }, message: "must NOT have additional properties" };
+                      e === null ? e = [b] : e.push(b), s++;
                     }
-                    if (o.gapId !== void 0) {
-                      let g = o.gapId;
+                    if (l.gapId !== void 0) {
+                      let g = l.gapId;
                       if (typeof g == "string") {
                         if (!Z.test(g)) {
-                          let v = { instancePath: t + "/removals/" + p + "/closedGaps/" + m + "/gapId", schemaPath: "#/properties/removals/items/properties/closedGaps/items/properties/gapId/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
-                          e === null ? e = [v] : e.push(v), s++;
+                          let b = { instancePath: t + "/removals/" + p + "/closedGaps/" + o + "/gapId", schemaPath: "#/properties/removals/items/properties/closedGaps/items/properties/gapId/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
+                          e === null ? e = [b] : e.push(b), s++;
                         }
                       } else {
-                        let v = { instancePath: t + "/removals/" + p + "/closedGaps/" + m + "/gapId", schemaPath: "#/properties/removals/items/properties/closedGaps/items/properties/gapId/type", keyword: "type", params: { type: "string" }, message: "must be string" };
-                        e === null ? e = [v] : e.push(v), s++;
+                        let b = { instancePath: t + "/removals/" + p + "/closedGaps/" + o + "/gapId", schemaPath: "#/properties/removals/items/properties/closedGaps/items/properties/gapId/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+                        e === null ? e = [b] : e.push(b), s++;
                       }
                     }
-                    if (o.reason !== void 0) {
-                      let g = o.reason;
+                    if (l.reason !== void 0) {
+                      let g = l.reason;
                       if (typeof g == "string") {
                         if (A(g) < 1) {
-                          let v = { instancePath: t + "/removals/" + p + "/closedGaps/" + m + "/reason", schemaPath: "#/properties/removals/items/properties/closedGaps/items/properties/reason/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
-                          e === null ? e = [v] : e.push(v), s++;
+                          let b = { instancePath: t + "/removals/" + p + "/closedGaps/" + o + "/reason", schemaPath: "#/properties/removals/items/properties/closedGaps/items/properties/reason/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
+                          e === null ? e = [b] : e.push(b), s++;
                         }
                       } else {
-                        let v = { instancePath: t + "/removals/" + p + "/closedGaps/" + m + "/reason", schemaPath: "#/properties/removals/items/properties/closedGaps/items/properties/reason/type", keyword: "type", params: { type: "string" }, message: "must be string" };
-                        e === null ? e = [v] : e.push(v), s++;
+                        let b = { instancePath: t + "/removals/" + p + "/closedGaps/" + o + "/reason", schemaPath: "#/properties/removals/items/properties/closedGaps/items/properties/reason/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+                        e === null ? e = [b] : e.push(b), s++;
                       }
                     }
                   } else {
-                    let g = { instancePath: t + "/removals/" + p + "/closedGaps/" + m, schemaPath: "#/properties/removals/items/properties/closedGaps/items/type", keyword: "type", params: { type: "object" }, message: "must be object" };
+                    let g = { instancePath: t + "/removals/" + p + "/closedGaps/" + o, schemaPath: "#/properties/removals/items/properties/closedGaps/items/type", keyword: "type", params: { type: "object" }, message: "must be object" };
                     e === null ? e = [g] : e.push(g), s++;
                   }
                 }
@@ -6580,59 +6664,59 @@ function Be(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
           }
         }
       } else {
-        let c = { instancePath: t + "/removals", schemaPath: "#/properties/removals/type", keyword: "type", params: { type: "array" }, message: "must be array" };
-        e === null ? e = [c] : e.push(c), s++;
+        let d = { instancePath: t + "/removals", schemaPath: "#/properties/removals/type", keyword: "type", params: { type: "array" }, message: "must be array" };
+        e === null ? e = [d] : e.push(d), s++;
       }
     }
     if (a.coverage !== void 0) {
-      let d = a.coverage;
-      if (Array.isArray(d)) {
-        if (d.length < 1) {
+      let c = a.coverage;
+      if (Array.isArray(c)) {
+        if (c.length < 1) {
           let i = { instancePath: t + "/coverage", schemaPath: "#/properties/coverage/minItems", keyword: "minItems", params: { limit: 1 }, message: "must NOT have fewer than 1 items" };
           e === null ? e = [i] : e.push(i), s++;
         }
-        let c = d.length;
-        for (let i = 0; i < c; i++) {
-          let h = d[i];
+        let d = c.length;
+        for (let i = 0; i < d; i++) {
+          let h = c[i];
           if (h && typeof h == "object" && !Array.isArray(h)) {
             if (h.requirementId === void 0) {
-              let m = { instancePath: t + "/coverage/" + i, schemaPath: "#/properties/coverage/items/required", keyword: "required", params: { missingProperty: "requirementId" }, message: "must have required property 'requirementId'" };
-              e === null ? e = [m] : e.push(m), s++;
-            }
-            if (h.testIds === void 0) {
-              let m = { instancePath: t + "/coverage/" + i, schemaPath: "#/properties/coverage/items/required", keyword: "required", params: { missingProperty: "testIds" }, message: "must have required property 'testIds'" };
-              e === null ? e = [m] : e.push(m), s++;
-            }
-            if (h.status === void 0) {
-              let m = { instancePath: t + "/coverage/" + i, schemaPath: "#/properties/coverage/items/required", keyword: "required", params: { missingProperty: "status" }, message: "must have required property 'status'" };
-              e === null ? e = [m] : e.push(m), s++;
-            }
-            for (let m in h) if (!(m === "requirementId" || m === "testIds" || m === "status")) {
-              let o = { instancePath: t + "/coverage/" + i, schemaPath: "#/properties/coverage/items/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: m }, message: "must NOT have additional properties" };
+              let o = { instancePath: t + "/coverage/" + i, schemaPath: "#/properties/coverage/items/required", keyword: "required", params: { missingProperty: "requirementId" }, message: "must have required property 'requirementId'" };
               e === null ? e = [o] : e.push(o), s++;
             }
+            if (h.testIds === void 0) {
+              let o = { instancePath: t + "/coverage/" + i, schemaPath: "#/properties/coverage/items/required", keyword: "required", params: { missingProperty: "testIds" }, message: "must have required property 'testIds'" };
+              e === null ? e = [o] : e.push(o), s++;
+            }
+            if (h.status === void 0) {
+              let o = { instancePath: t + "/coverage/" + i, schemaPath: "#/properties/coverage/items/required", keyword: "required", params: { missingProperty: "status" }, message: "must have required property 'status'" };
+              e === null ? e = [o] : e.push(o), s++;
+            }
+            for (let o in h) if (!(o === "requirementId" || o === "testIds" || o === "status")) {
+              let l = { instancePath: t + "/coverage/" + i, schemaPath: "#/properties/coverage/items/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: o }, message: "must NOT have additional properties" };
+              e === null ? e = [l] : e.push(l), s++;
+            }
             if (h.requirementId !== void 0) {
-              let m = h.requirementId;
-              if (typeof m == "string") {
-                if (!Z.test(m)) {
-                  let o = { instancePath: t + "/coverage/" + i + "/requirementId", schemaPath: "#/properties/coverage/items/properties/requirementId/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
-                  e === null ? e = [o] : e.push(o), s++;
+              let o = h.requirementId;
+              if (typeof o == "string") {
+                if (!Z.test(o)) {
+                  let l = { instancePath: t + "/coverage/" + i + "/requirementId", schemaPath: "#/properties/coverage/items/properties/requirementId/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
+                  e === null ? e = [l] : e.push(l), s++;
                 }
               } else {
-                let o = { instancePath: t + "/coverage/" + i + "/requirementId", schemaPath: "#/properties/coverage/items/properties/requirementId/type", keyword: "type", params: { type: "string" }, message: "must be string" };
-                e === null ? e = [o] : e.push(o), s++;
+                let l = { instancePath: t + "/coverage/" + i + "/requirementId", schemaPath: "#/properties/coverage/items/properties/requirementId/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+                e === null ? e = [l] : e.push(l), s++;
               }
             }
             if (h.testIds !== void 0) {
-              let m = h.testIds;
-              if (Array.isArray(m)) {
-                if (m.length < 0) {
+              let o = h.testIds;
+              if (Array.isArray(o)) {
+                if (o.length < 0) {
                   let f = { instancePath: t + "/coverage/" + i + "/testIds", schemaPath: "#/properties/coverage/items/properties/testIds/minItems", keyword: "minItems", params: { limit: 0 }, message: "must NOT have fewer than 0 items" };
                   e === null ? e = [f] : e.push(f), s++;
                 }
-                let o = m.length;
-                for (let f = 0; f < o; f++) {
-                  let q = m[f];
+                let l = o.length;
+                for (let f = 0; f < l; f++) {
+                  let q = o[f];
                   if (typeof q == "string") {
                     if (!Z.test(q)) {
                       let y = { instancePath: t + "/coverage/" + i + "/testIds/" + f, schemaPath: "#/properties/coverage/items/properties/testIds/items/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
@@ -6643,15 +6727,15 @@ function Be(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
                     e === null ? e = [y] : e.push(y), s++;
                   }
                 }
-                let g = m.length, v;
+                let g = o.length, b;
                 if (g > 1) {
                   let f = {};
                   for (; g--; ) {
-                    let q = m[g];
+                    let q = o[g];
                     if (typeof q == "string") {
                       if (typeof f[q] == "number") {
-                        v = f[q];
-                        let y = { instancePath: t + "/coverage/" + i + "/testIds", schemaPath: "#/properties/coverage/items/properties/testIds/uniqueItems", keyword: "uniqueItems", params: { i: g, j: v }, message: "must NOT have duplicate items (items ## " + v + " and " + g + " are identical)" };
+                        b = f[q];
+                        let y = { instancePath: t + "/coverage/" + i + "/testIds", schemaPath: "#/properties/coverage/items/properties/testIds/uniqueItems", keyword: "uniqueItems", params: { i: g, j: b }, message: "must NOT have duplicate items (items ## " + b + " and " + g + " are identical)" };
                         e === null ? e = [y] : e.push(y), s++;
                         break;
                       }
@@ -6660,44 +6744,44 @@ function Be(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
                   }
                 }
               } else {
-                let o = { instancePath: t + "/coverage/" + i + "/testIds", schemaPath: "#/properties/coverage/items/properties/testIds/type", keyword: "type", params: { type: "array" }, message: "must be array" };
-                e === null ? e = [o] : e.push(o), s++;
+                let l = { instancePath: t + "/coverage/" + i + "/testIds", schemaPath: "#/properties/coverage/items/properties/testIds/type", keyword: "type", params: { type: "array" }, message: "must be array" };
+                e === null ? e = [l] : e.push(l), s++;
               }
             }
             if (h.status !== void 0) {
-              let m = h.status;
-              if (!(m === "planned" || m === "blocked" || m === "deferred")) {
-                let o = { instancePath: t + "/coverage/" + i + "/status", schemaPath: "#/properties/coverage/items/properties/status/enum", keyword: "enum", params: { allowedValues: pe.properties.coverage.items.properties.status.enum }, message: "must be equal to one of the allowed values" };
-                e === null ? e = [o] : e.push(o), s++;
+              let o = h.status;
+              if (!(o === "planned" || o === "blocked" || o === "deferred")) {
+                let l = { instancePath: t + "/coverage/" + i + "/status", schemaPath: "#/properties/coverage/items/properties/status/enum", keyword: "enum", params: { allowedValues: pe.properties.coverage.items.properties.status.enum }, message: "must be equal to one of the allowed values" };
+                e === null ? e = [l] : e.push(l), s++;
               }
             }
           } else {
-            let m = { instancePath: t + "/coverage/" + i, schemaPath: "#/properties/coverage/items/type", keyword: "type", params: { type: "object" }, message: "must be object" };
-            e === null ? e = [m] : e.push(m), s++;
+            let o = { instancePath: t + "/coverage/" + i, schemaPath: "#/properties/coverage/items/type", keyword: "type", params: { type: "object" }, message: "must be object" };
+            e === null ? e = [o] : e.push(o), s++;
           }
         }
-        let p = d.length, u;
+        let p = c.length, u;
         if (p > 1) {
-          e: for (; p--; ) for (u = p; u--; ) if (D(d[p], d[u])) {
+          e: for (; p--; ) for (u = p; u--; ) if (D(c[p], c[u])) {
             let i = { instancePath: t + "/coverage", schemaPath: "#/properties/coverage/uniqueItems", keyword: "uniqueItems", params: { i: p, j: u }, message: "must NOT have duplicate items (items ## " + u + " and " + p + " are identical)" };
             e === null ? e = [i] : e.push(i), s++;
             break e;
           }
         }
       } else {
-        let c = { instancePath: t + "/coverage", schemaPath: "#/properties/coverage/type", keyword: "type", params: { type: "array" }, message: "must be array" };
-        e === null ? e = [c] : e.push(c), s++;
+        let d = { instancePath: t + "/coverage", schemaPath: "#/properties/coverage/type", keyword: "type", params: { type: "array" }, message: "must be array" };
+        e === null ? e = [d] : e.push(d), s++;
       }
     }
   } else {
-    let d = { instancePath: t, schemaPath: "#/type", keyword: "type", params: { type: "object" }, message: "must be object" };
-    e === null ? e = [d] : e.push(d), s++;
+    let c = { instancePath: t, schemaPath: "#/type", keyword: "type", params: { type: "object" }, message: "must be object" };
+    e === null ? e = [c] : e.push(c), s++;
   }
-  return Be.errors = e, s === 0;
+  return He.errors = e, s === 0;
 }
-var Ws = Me;
-var K = { $schema: "http://json-schema.org/draft-07/schema#", $id: "profile.schema.json", type: "object", properties: { contractVersion: { const: "toolkit-2" }, targetId: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, revision: { type: "integer", minimum: 1 }, entryPoints: { type: "array", items: { type: "object", properties: { name: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, kind: { enum: ["url", "command", "value"] }, purpose: { type: "string", minLength: 1 } }, required: ["name", "kind", "purpose"], additionalProperties: false }, minItems: 1, uniqueItems: true }, capabilities: { type: "array", items: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 1, uniqueItems: true }, tools: { type: "array", items: { type: "object", properties: { name: { type: "string", minLength: 1 }, kind: { enum: ["cli", "mcp", "skill"] }, purpose: { type: "string", minLength: 1 }, version: { type: "string", minLength: 1 }, reachable: { type: "boolean" } }, required: ["name", "kind", "purpose", "reachable"], additionalProperties: false }, minItems: 0, uniqueItems: true }, authentication: { type: "object", properties: { kind: { enum: ["none", "environment", "browser_session"] }, references: { type: "array", items: { type: "string", minLength: 1 }, minItems: 0, uniqueItems: true } }, required: ["kind", "references"], additionalProperties: false }, allowedOperations: { type: "array", items: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 1, uniqueItems: true }, startup: { type: "object", properties: { owner: { enum: ["factory", "checkmate"] }, command: { anyOf: [{ type: "array", items: { type: "string", minLength: 1 }, minItems: 1, uniqueItems: true }, { type: "null" }] } }, required: ["owner", "command"], additionalProperties: false }, cleanup: { type: "string", minLength: 1 }, reset: { type: "object", properties: { owner: { enum: ["checkmate", "external"] }, command: { anyOf: [{ type: "array", items: { type: "string", minLength: 1 }, minItems: 1, uniqueItems: true }, { type: "null" }] } }, required: ["owner", "command"], additionalProperties: false }, readyForLiveExecution: { type: "boolean" }, explore: { type: "object", properties: { level: { enum: ["smoke", "normal", "deep"] }, explorers: { type: "integer", minimum: 1, maximum: 10 } }, additionalProperties: false }, approvals: { type: "object", properties: { plan: { enum: ["required", "none"] }, result: { enum: ["required", "none"] } }, required: ["plan", "result"], additionalProperties: false } }, required: ["contractVersion", "targetId", "revision", "entryPoints", "capabilities", "tools", "authentication", "allowedOperations", "startup", "cleanup", "readyForLiveExecution"], additionalProperties: false };
-function Me(a, { instancePath: t = "", parentData: $, parentDataProperty: _, rootData: T = a } = {}) {
+var Fs = Ye;
+var C = { $schema: "http://json-schema.org/draft-07/schema#", $id: "profile.schema.json", type: "object", properties: { contractVersion: { const: "toolkit-2" }, targetId: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, revision: { type: "integer", minimum: 1 }, entryPoints: { type: "array", items: { type: "object", properties: { name: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, kind: { enum: ["url", "command", "value"] }, purpose: { type: "string", minLength: 1 } }, required: ["name", "kind", "purpose"], additionalProperties: false }, minItems: 1, uniqueItems: true }, capabilities: { type: "array", items: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 1, uniqueItems: true }, tools: { type: "array", items: { type: "object", properties: { name: { type: "string", minLength: 1 }, kind: { enum: ["cli", "mcp", "skill"] }, purpose: { type: "string", minLength: 1 }, version: { type: "string", minLength: 1 }, reachable: { type: "boolean" } }, required: ["name", "kind", "purpose", "reachable"], additionalProperties: false }, minItems: 0, uniqueItems: true }, authentication: { type: "object", properties: { kind: { enum: ["none", "environment", "browser_session"] }, references: { type: "array", items: { type: "string", minLength: 1 }, minItems: 0, uniqueItems: true } }, required: ["kind", "references"], additionalProperties: false }, allowedOperations: { type: "array", items: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 1, uniqueItems: true }, startup: { type: "object", properties: { owner: { enum: ["factory", "checkmate"] }, command: { anyOf: [{ type: "array", items: { type: "string", minLength: 1 }, minItems: 1, uniqueItems: true }, { type: "null" }] } }, required: ["owner", "command"], additionalProperties: false }, cleanup: { type: "string", minLength: 1 }, reset: { type: "object", properties: { owner: { enum: ["checkmate", "external"] }, command: { anyOf: [{ type: "array", items: { type: "string", minLength: 1 }, minItems: 1, uniqueItems: true }, { type: "null" }] } }, required: ["owner", "command"], additionalProperties: false }, readyForLiveExecution: { type: "boolean" }, explore: { type: "object", properties: { level: { enum: ["smoke", "normal", "deep"] }, explorers: { type: "integer", minimum: 1, maximum: 10 } }, additionalProperties: false }, approvals: { type: "object", properties: { plan: { enum: ["required", "none"] }, result: { enum: ["required", "none"] } }, required: ["plan", "result"], additionalProperties: false } }, required: ["contractVersion", "targetId", "revision", "entryPoints", "capabilities", "tools", "authentication", "allowedOperations", "startup", "cleanup", "readyForLiveExecution"], additionalProperties: false };
+function Ye(a, { instancePath: t = "", parentData: $, parentDataProperty: _, rootData: L = a } = {}) {
   let e = null, s = 0;
   if (a && typeof a == "object" && !Array.isArray(a)) {
     if (a.contractVersion === void 0) {
@@ -6744,9 +6828,9 @@ function Me(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
       let r = { instancePath: t, schemaPath: "#/required", keyword: "required", params: { missingProperty: "readyForLiveExecution" }, message: "must have required property 'readyForLiveExecution'" };
       e === null ? e = [r] : e.push(r), s++;
     }
-    for (let r in a) if (!E.call(K.properties, r)) {
-      let l = { instancePath: t, schemaPath: "#/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: r }, message: "must NOT have additional properties" };
-      e === null ? e = [l] : e.push(l), s++;
+    for (let r in a) if (!K.call(C.properties, r)) {
+      let m = { instancePath: t, schemaPath: "#/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: r }, message: "must NOT have additional properties" };
+      e === null ? e = [m] : e.push(m), s++;
     }
     if (a.contractVersion !== void 0 && a.contractVersion !== "toolkit-2") {
       let r = { instancePath: t + "/contractVersion", schemaPath: "#/properties/contractVersion/const", keyword: "const", params: { allowedValue: "toolkit-2" }, message: "must be equal to constant" };
@@ -6756,23 +6840,23 @@ function Me(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
       let r = a.targetId;
       if (typeof r == "string") {
         if (!Z.test(r)) {
-          let l = { instancePath: t + "/targetId", schemaPath: "#/properties/targetId/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
-          e === null ? e = [l] : e.push(l), s++;
+          let m = { instancePath: t + "/targetId", schemaPath: "#/properties/targetId/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
+          e === null ? e = [m] : e.push(m), s++;
         }
       } else {
-        let l = { instancePath: t + "/targetId", schemaPath: "#/properties/targetId/type", keyword: "type", params: { type: "string" }, message: "must be string" };
-        e === null ? e = [l] : e.push(l), s++;
+        let m = { instancePath: t + "/targetId", schemaPath: "#/properties/targetId/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+        e === null ? e = [m] : e.push(m), s++;
       }
     }
     if (a.revision !== void 0) {
       let r = a.revision;
       if (!(typeof r == "number" && !(r % 1) && !isNaN(r) && isFinite(r))) {
-        let l = { instancePath: t + "/revision", schemaPath: "#/properties/revision/type", keyword: "type", params: { type: "integer" }, message: "must be integer" };
-        e === null ? e = [l] : e.push(l), s++;
+        let m = { instancePath: t + "/revision", schemaPath: "#/properties/revision/type", keyword: "type", params: { type: "integer" }, message: "must be integer" };
+        e === null ? e = [m] : e.push(m), s++;
       }
       if (typeof r == "number" && isFinite(r) && (r < 1 || isNaN(r))) {
-        let l = { instancePath: t + "/revision", schemaPath: "#/properties/revision/minimum", keyword: "minimum", params: { comparison: ">=", limit: 1 }, message: "must be >= 1" };
-        e === null ? e = [l] : e.push(l), s++;
+        let m = { instancePath: t + "/revision", schemaPath: "#/properties/revision/minimum", keyword: "minimum", params: { comparison: ">=", limit: 1 }, message: "must be >= 1" };
+        e === null ? e = [m] : e.push(m), s++;
       }
     }
     if (a.entryPoints !== void 0) {
@@ -6782,8 +6866,8 @@ function Me(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
           let p = { instancePath: t + "/entryPoints", schemaPath: "#/properties/entryPoints/minItems", keyword: "minItems", params: { limit: 1 }, message: "must NOT have fewer than 1 items" };
           e === null ? e = [p] : e.push(p), s++;
         }
-        let l = r.length;
-        for (let p = 0; p < l; p++) {
+        let m = r.length;
+        for (let p = 0; p < m; p++) {
           let u = r[p];
           if (u && typeof u == "object" && !Array.isArray(u)) {
             if (u.name === void 0) {
@@ -6817,7 +6901,7 @@ function Me(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
             if (u.kind !== void 0) {
               let i = u.kind;
               if (!(i === "url" || i === "command" || i === "value")) {
-                let h = { instancePath: t + "/entryPoints/" + p + "/kind", schemaPath: "#/properties/entryPoints/items/properties/kind/enum", keyword: "enum", params: { allowedValues: K.properties.entryPoints.items.properties.kind.enum }, message: "must be equal to one of the allowed values" };
+                let h = { instancePath: t + "/entryPoints/" + p + "/kind", schemaPath: "#/properties/entryPoints/items/properties/kind/enum", keyword: "enum", params: { allowedValues: C.properties.entryPoints.items.properties.kind.enum }, message: "must be equal to one of the allowed values" };
                 e === null ? e = [h] : e.push(h), s++;
               }
             }
@@ -6838,17 +6922,17 @@ function Me(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
             e === null ? e = [i] : e.push(i), s++;
           }
         }
-        let d = r.length, c;
-        if (d > 1) {
-          e: for (; d--; ) for (c = d; c--; ) if (D(r[d], r[c])) {
-            let p = { instancePath: t + "/entryPoints", schemaPath: "#/properties/entryPoints/uniqueItems", keyword: "uniqueItems", params: { i: d, j: c }, message: "must NOT have duplicate items (items ## " + c + " and " + d + " are identical)" };
+        let c = r.length, d;
+        if (c > 1) {
+          e: for (; c--; ) for (d = c; d--; ) if (D(r[c], r[d])) {
+            let p = { instancePath: t + "/entryPoints", schemaPath: "#/properties/entryPoints/uniqueItems", keyword: "uniqueItems", params: { i: c, j: d }, message: "must NOT have duplicate items (items ## " + d + " and " + c + " are identical)" };
             e === null ? e = [p] : e.push(p), s++;
             break e;
           }
         }
       } else {
-        let l = { instancePath: t + "/entryPoints", schemaPath: "#/properties/entryPoints/type", keyword: "type", params: { type: "array" }, message: "must be array" };
-        e === null ? e = [l] : e.push(l), s++;
+        let m = { instancePath: t + "/entryPoints", schemaPath: "#/properties/entryPoints/type", keyword: "type", params: { type: "array" }, message: "must be array" };
+        e === null ? e = [m] : e.push(m), s++;
       }
     }
     if (a.capabilities !== void 0) {
@@ -6858,8 +6942,8 @@ function Me(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
           let p = { instancePath: t + "/capabilities", schemaPath: "#/properties/capabilities/minItems", keyword: "minItems", params: { limit: 1 }, message: "must NOT have fewer than 1 items" };
           e === null ? e = [p] : e.push(p), s++;
         }
-        let l = r.length;
-        for (let p = 0; p < l; p++) {
+        let m = r.length;
+        for (let p = 0; p < m; p++) {
           let u = r[p];
           if (typeof u == "string") {
             if (!Z.test(u)) {
@@ -6871,25 +6955,25 @@ function Me(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
             e === null ? e = [i] : e.push(i), s++;
           }
         }
-        let d = r.length, c;
-        if (d > 1) {
+        let c = r.length, d;
+        if (c > 1) {
           let p = {};
-          for (; d--; ) {
-            let u = r[d];
+          for (; c--; ) {
+            let u = r[c];
             if (typeof u == "string") {
               if (typeof p[u] == "number") {
-                c = p[u];
-                let i = { instancePath: t + "/capabilities", schemaPath: "#/properties/capabilities/uniqueItems", keyword: "uniqueItems", params: { i: d, j: c }, message: "must NOT have duplicate items (items ## " + c + " and " + d + " are identical)" };
+                d = p[u];
+                let i = { instancePath: t + "/capabilities", schemaPath: "#/properties/capabilities/uniqueItems", keyword: "uniqueItems", params: { i: c, j: d }, message: "must NOT have duplicate items (items ## " + d + " and " + c + " are identical)" };
                 e === null ? e = [i] : e.push(i), s++;
                 break;
               }
-              p[u] = d;
+              p[u] = c;
             }
           }
         }
       } else {
-        let l = { instancePath: t + "/capabilities", schemaPath: "#/properties/capabilities/type", keyword: "type", params: { type: "array" }, message: "must be array" };
-        e === null ? e = [l] : e.push(l), s++;
+        let m = { instancePath: t + "/capabilities", schemaPath: "#/properties/capabilities/type", keyword: "type", params: { type: "array" }, message: "must be array" };
+        e === null ? e = [m] : e.push(m), s++;
       }
     }
     if (a.tools !== void 0) {
@@ -6899,8 +6983,8 @@ function Me(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
           let p = { instancePath: t + "/tools", schemaPath: "#/properties/tools/minItems", keyword: "minItems", params: { limit: 0 }, message: "must NOT have fewer than 0 items" };
           e === null ? e = [p] : e.push(p), s++;
         }
-        let l = r.length;
-        for (let p = 0; p < l; p++) {
+        let m = r.length;
+        for (let p = 0; p < m; p++) {
           let u = r[p];
           if (u && typeof u == "object" && !Array.isArray(u)) {
             if (u.name === void 0) {
@@ -6938,7 +7022,7 @@ function Me(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
             if (u.kind !== void 0) {
               let i = u.kind;
               if (!(i === "cli" || i === "mcp" || i === "skill")) {
-                let h = { instancePath: t + "/tools/" + p + "/kind", schemaPath: "#/properties/tools/items/properties/kind/enum", keyword: "enum", params: { allowedValues: K.properties.tools.items.properties.kind.enum }, message: "must be equal to one of the allowed values" };
+                let h = { instancePath: t + "/tools/" + p + "/kind", schemaPath: "#/properties/tools/items/properties/kind/enum", keyword: "enum", params: { allowedValues: C.properties.tools.items.properties.kind.enum }, message: "must be equal to one of the allowed values" };
                 e === null ? e = [h] : e.push(h), s++;
               }
             }
@@ -6975,51 +7059,51 @@ function Me(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
             e === null ? e = [i] : e.push(i), s++;
           }
         }
-        let d = r.length, c;
-        if (d > 1) {
-          e: for (; d--; ) for (c = d; c--; ) if (D(r[d], r[c])) {
-            let p = { instancePath: t + "/tools", schemaPath: "#/properties/tools/uniqueItems", keyword: "uniqueItems", params: { i: d, j: c }, message: "must NOT have duplicate items (items ## " + c + " and " + d + " are identical)" };
+        let c = r.length, d;
+        if (c > 1) {
+          e: for (; c--; ) for (d = c; d--; ) if (D(r[c], r[d])) {
+            let p = { instancePath: t + "/tools", schemaPath: "#/properties/tools/uniqueItems", keyword: "uniqueItems", params: { i: c, j: d }, message: "must NOT have duplicate items (items ## " + d + " and " + c + " are identical)" };
             e === null ? e = [p] : e.push(p), s++;
             break e;
           }
         }
       } else {
-        let l = { instancePath: t + "/tools", schemaPath: "#/properties/tools/type", keyword: "type", params: { type: "array" }, message: "must be array" };
-        e === null ? e = [l] : e.push(l), s++;
+        let m = { instancePath: t + "/tools", schemaPath: "#/properties/tools/type", keyword: "type", params: { type: "array" }, message: "must be array" };
+        e === null ? e = [m] : e.push(m), s++;
       }
     }
     if (a.authentication !== void 0) {
       let r = a.authentication;
       if (r && typeof r == "object" && !Array.isArray(r)) {
         if (r.kind === void 0) {
-          let l = { instancePath: t + "/authentication", schemaPath: "#/properties/authentication/required", keyword: "required", params: { missingProperty: "kind" }, message: "must have required property 'kind'" };
-          e === null ? e = [l] : e.push(l), s++;
+          let m = { instancePath: t + "/authentication", schemaPath: "#/properties/authentication/required", keyword: "required", params: { missingProperty: "kind" }, message: "must have required property 'kind'" };
+          e === null ? e = [m] : e.push(m), s++;
         }
         if (r.references === void 0) {
-          let l = { instancePath: t + "/authentication", schemaPath: "#/properties/authentication/required", keyword: "required", params: { missingProperty: "references" }, message: "must have required property 'references'" };
-          e === null ? e = [l] : e.push(l), s++;
+          let m = { instancePath: t + "/authentication", schemaPath: "#/properties/authentication/required", keyword: "required", params: { missingProperty: "references" }, message: "must have required property 'references'" };
+          e === null ? e = [m] : e.push(m), s++;
         }
-        for (let l in r) if (!(l === "kind" || l === "references")) {
-          let d = { instancePath: t + "/authentication", schemaPath: "#/properties/authentication/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: l }, message: "must NOT have additional properties" };
-          e === null ? e = [d] : e.push(d), s++;
+        for (let m in r) if (!(m === "kind" || m === "references")) {
+          let c = { instancePath: t + "/authentication", schemaPath: "#/properties/authentication/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: m }, message: "must NOT have additional properties" };
+          e === null ? e = [c] : e.push(c), s++;
         }
         if (r.kind !== void 0) {
-          let l = r.kind;
-          if (!(l === "none" || l === "environment" || l === "browser_session")) {
-            let d = { instancePath: t + "/authentication/kind", schemaPath: "#/properties/authentication/properties/kind/enum", keyword: "enum", params: { allowedValues: K.properties.authentication.properties.kind.enum }, message: "must be equal to one of the allowed values" };
-            e === null ? e = [d] : e.push(d), s++;
+          let m = r.kind;
+          if (!(m === "none" || m === "environment" || m === "browser_session")) {
+            let c = { instancePath: t + "/authentication/kind", schemaPath: "#/properties/authentication/properties/kind/enum", keyword: "enum", params: { allowedValues: C.properties.authentication.properties.kind.enum }, message: "must be equal to one of the allowed values" };
+            e === null ? e = [c] : e.push(c), s++;
           }
         }
         if (r.references !== void 0) {
-          let l = r.references;
-          if (Array.isArray(l)) {
-            if (l.length < 0) {
+          let m = r.references;
+          if (Array.isArray(m)) {
+            if (m.length < 0) {
               let u = { instancePath: t + "/authentication/references", schemaPath: "#/properties/authentication/properties/references/minItems", keyword: "minItems", params: { limit: 0 }, message: "must NOT have fewer than 0 items" };
               e === null ? e = [u] : e.push(u), s++;
             }
-            let d = l.length;
-            for (let u = 0; u < d; u++) {
-              let i = l[u];
+            let c = m.length;
+            for (let u = 0; u < c; u++) {
+              let i = m[u];
               if (typeof i == "string") {
                 if (A(i) < 1) {
                   let h = { instancePath: t + "/authentication/references/" + u, schemaPath: "#/properties/authentication/properties/references/items/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
@@ -7030,30 +7114,30 @@ function Me(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
                 e === null ? e = [h] : e.push(h), s++;
               }
             }
-            let c = l.length, p;
-            if (c > 1) {
+            let d = m.length, p;
+            if (d > 1) {
               let u = {};
-              for (; c--; ) {
-                let i = l[c];
+              for (; d--; ) {
+                let i = m[d];
                 if (typeof i == "string") {
                   if (typeof u[i] == "number") {
                     p = u[i];
-                    let h = { instancePath: t + "/authentication/references", schemaPath: "#/properties/authentication/properties/references/uniqueItems", keyword: "uniqueItems", params: { i: c, j: p }, message: "must NOT have duplicate items (items ## " + p + " and " + c + " are identical)" };
+                    let h = { instancePath: t + "/authentication/references", schemaPath: "#/properties/authentication/properties/references/uniqueItems", keyword: "uniqueItems", params: { i: d, j: p }, message: "must NOT have duplicate items (items ## " + p + " and " + d + " are identical)" };
                     e === null ? e = [h] : e.push(h), s++;
                     break;
                   }
-                  u[i] = c;
+                  u[i] = d;
                 }
               }
             }
           } else {
-            let d = { instancePath: t + "/authentication/references", schemaPath: "#/properties/authentication/properties/references/type", keyword: "type", params: { type: "array" }, message: "must be array" };
-            e === null ? e = [d] : e.push(d), s++;
+            let c = { instancePath: t + "/authentication/references", schemaPath: "#/properties/authentication/properties/references/type", keyword: "type", params: { type: "array" }, message: "must be array" };
+            e === null ? e = [c] : e.push(c), s++;
           }
         }
       } else {
-        let l = { instancePath: t + "/authentication", schemaPath: "#/properties/authentication/type", keyword: "type", params: { type: "object" }, message: "must be object" };
-        e === null ? e = [l] : e.push(l), s++;
+        let m = { instancePath: t + "/authentication", schemaPath: "#/properties/authentication/type", keyword: "type", params: { type: "object" }, message: "must be object" };
+        e === null ? e = [m] : e.push(m), s++;
       }
     }
     if (a.allowedOperations !== void 0) {
@@ -7063,8 +7147,8 @@ function Me(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
           let p = { instancePath: t + "/allowedOperations", schemaPath: "#/properties/allowedOperations/minItems", keyword: "minItems", params: { limit: 1 }, message: "must NOT have fewer than 1 items" };
           e === null ? e = [p] : e.push(p), s++;
         }
-        let l = r.length;
-        for (let p = 0; p < l; p++) {
+        let m = r.length;
+        for (let p = 0; p < m; p++) {
           let u = r[p];
           if (typeof u == "string") {
             if (!Z.test(u)) {
@@ -7076,82 +7160,82 @@ function Me(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
             e === null ? e = [i] : e.push(i), s++;
           }
         }
-        let d = r.length, c;
-        if (d > 1) {
+        let c = r.length, d;
+        if (c > 1) {
           let p = {};
-          for (; d--; ) {
-            let u = r[d];
+          for (; c--; ) {
+            let u = r[c];
             if (typeof u == "string") {
               if (typeof p[u] == "number") {
-                c = p[u];
-                let i = { instancePath: t + "/allowedOperations", schemaPath: "#/properties/allowedOperations/uniqueItems", keyword: "uniqueItems", params: { i: d, j: c }, message: "must NOT have duplicate items (items ## " + c + " and " + d + " are identical)" };
+                d = p[u];
+                let i = { instancePath: t + "/allowedOperations", schemaPath: "#/properties/allowedOperations/uniqueItems", keyword: "uniqueItems", params: { i: c, j: d }, message: "must NOT have duplicate items (items ## " + d + " and " + c + " are identical)" };
                 e === null ? e = [i] : e.push(i), s++;
                 break;
               }
-              p[u] = d;
+              p[u] = c;
             }
           }
         }
       } else {
-        let l = { instancePath: t + "/allowedOperations", schemaPath: "#/properties/allowedOperations/type", keyword: "type", params: { type: "array" }, message: "must be array" };
-        e === null ? e = [l] : e.push(l), s++;
+        let m = { instancePath: t + "/allowedOperations", schemaPath: "#/properties/allowedOperations/type", keyword: "type", params: { type: "array" }, message: "must be array" };
+        e === null ? e = [m] : e.push(m), s++;
       }
     }
     if (a.startup !== void 0) {
       let r = a.startup;
       if (r && typeof r == "object" && !Array.isArray(r)) {
         if (r.owner === void 0) {
-          let l = { instancePath: t + "/startup", schemaPath: "#/properties/startup/required", keyword: "required", params: { missingProperty: "owner" }, message: "must have required property 'owner'" };
-          e === null ? e = [l] : e.push(l), s++;
+          let m = { instancePath: t + "/startup", schemaPath: "#/properties/startup/required", keyword: "required", params: { missingProperty: "owner" }, message: "must have required property 'owner'" };
+          e === null ? e = [m] : e.push(m), s++;
         }
         if (r.command === void 0) {
-          let l = { instancePath: t + "/startup", schemaPath: "#/properties/startup/required", keyword: "required", params: { missingProperty: "command" }, message: "must have required property 'command'" };
-          e === null ? e = [l] : e.push(l), s++;
+          let m = { instancePath: t + "/startup", schemaPath: "#/properties/startup/required", keyword: "required", params: { missingProperty: "command" }, message: "must have required property 'command'" };
+          e === null ? e = [m] : e.push(m), s++;
         }
-        for (let l in r) if (!(l === "owner" || l === "command")) {
-          let d = { instancePath: t + "/startup", schemaPath: "#/properties/startup/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: l }, message: "must NOT have additional properties" };
-          e === null ? e = [d] : e.push(d), s++;
+        for (let m in r) if (!(m === "owner" || m === "command")) {
+          let c = { instancePath: t + "/startup", schemaPath: "#/properties/startup/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: m }, message: "must NOT have additional properties" };
+          e === null ? e = [c] : e.push(c), s++;
         }
         if (r.owner !== void 0) {
-          let l = r.owner;
-          if (!(l === "factory" || l === "checkmate")) {
-            let d = { instancePath: t + "/startup/owner", schemaPath: "#/properties/startup/properties/owner/enum", keyword: "enum", params: { allowedValues: K.properties.startup.properties.owner.enum }, message: "must be equal to one of the allowed values" };
-            e === null ? e = [d] : e.push(d), s++;
+          let m = r.owner;
+          if (!(m === "factory" || m === "checkmate")) {
+            let c = { instancePath: t + "/startup/owner", schemaPath: "#/properties/startup/properties/owner/enum", keyword: "enum", params: { allowedValues: C.properties.startup.properties.owner.enum }, message: "must be equal to one of the allowed values" };
+            e === null ? e = [c] : e.push(c), s++;
           }
         }
         if (r.command !== void 0) {
-          let l = r.command, d = s, c = false, p = s;
-          if (Array.isArray(l)) {
-            if (l.length < 1) {
-              let m = { instancePath: t + "/startup/command", schemaPath: "#/properties/startup/properties/command/anyOf/0/minItems", keyword: "minItems", params: { limit: 1 }, message: "must NOT have fewer than 1 items" };
-              e === null ? e = [m] : e.push(m), s++;
+          let m = r.command, c = s, d = false, p = s;
+          if (Array.isArray(m)) {
+            if (m.length < 1) {
+              let o = { instancePath: t + "/startup/command", schemaPath: "#/properties/startup/properties/command/anyOf/0/minItems", keyword: "minItems", params: { limit: 1 }, message: "must NOT have fewer than 1 items" };
+              e === null ? e = [o] : e.push(o), s++;
             }
-            let u = l.length;
-            for (let m = 0; m < u; m++) {
-              let o = l[m];
-              if (typeof o == "string") {
-                if (A(o) < 1) {
-                  let g = { instancePath: t + "/startup/command/" + m, schemaPath: "#/properties/startup/properties/command/anyOf/0/items/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
+            let u = m.length;
+            for (let o = 0; o < u; o++) {
+              let l = m[o];
+              if (typeof l == "string") {
+                if (A(l) < 1) {
+                  let g = { instancePath: t + "/startup/command/" + o, schemaPath: "#/properties/startup/properties/command/anyOf/0/items/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
                   e === null ? e = [g] : e.push(g), s++;
                 }
               } else {
-                let g = { instancePath: t + "/startup/command/" + m, schemaPath: "#/properties/startup/properties/command/anyOf/0/items/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+                let g = { instancePath: t + "/startup/command/" + o, schemaPath: "#/properties/startup/properties/command/anyOf/0/items/type", keyword: "type", params: { type: "string" }, message: "must be string" };
                 e === null ? e = [g] : e.push(g), s++;
               }
             }
-            let i = l.length, h;
+            let i = m.length, h;
             if (i > 1) {
-              let m = {};
+              let o = {};
               for (; i--; ) {
-                let o = l[i];
-                if (typeof o == "string") {
-                  if (typeof m[o] == "number") {
-                    h = m[o];
+                let l = m[i];
+                if (typeof l == "string") {
+                  if (typeof o[l] == "number") {
+                    h = o[l];
                     let g = { instancePath: t + "/startup/command", schemaPath: "#/properties/startup/properties/command/anyOf/0/uniqueItems", keyword: "uniqueItems", params: { i, j: h }, message: "must NOT have duplicate items (items ## " + h + " and " + i + " are identical)" };
                     e === null ? e = [g] : e.push(g), s++;
                     break;
                   }
-                  m[o] = i;
+                  o[l] = i;
                 }
               }
             }
@@ -7160,93 +7244,93 @@ function Me(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
             e === null ? e = [u] : e.push(u), s++;
           }
           var w = p === s;
-          if (c = c || w, !c) {
+          if (d = d || w, !d) {
             let u = s;
-            if (l !== null) {
+            if (m !== null) {
               let h = { instancePath: t + "/startup/command", schemaPath: "#/properties/startup/properties/command/anyOf/1/type", keyword: "type", params: { type: "null" }, message: "must be null" };
               e === null ? e = [h] : e.push(h), s++;
             }
             var w = u === s;
-            c = c || w;
+            d = d || w;
           }
-          if (c) s = d, e !== null && (d ? e.length = d : e = null);
+          if (d) s = c, e !== null && (c ? e.length = c : e = null);
           else {
             let u = { instancePath: t + "/startup/command", schemaPath: "#/properties/startup/properties/command/anyOf", keyword: "anyOf", params: {}, message: "must match a schema in anyOf" };
             e === null ? e = [u] : e.push(u), s++;
           }
         }
       } else {
-        let l = { instancePath: t + "/startup", schemaPath: "#/properties/startup/type", keyword: "type", params: { type: "object" }, message: "must be object" };
-        e === null ? e = [l] : e.push(l), s++;
+        let m = { instancePath: t + "/startup", schemaPath: "#/properties/startup/type", keyword: "type", params: { type: "object" }, message: "must be object" };
+        e === null ? e = [m] : e.push(m), s++;
       }
     }
     if (a.cleanup !== void 0) {
       let r = a.cleanup;
       if (typeof r == "string") {
         if (A(r) < 1) {
-          let l = { instancePath: t + "/cleanup", schemaPath: "#/properties/cleanup/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
-          e === null ? e = [l] : e.push(l), s++;
+          let m = { instancePath: t + "/cleanup", schemaPath: "#/properties/cleanup/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
+          e === null ? e = [m] : e.push(m), s++;
         }
       } else {
-        let l = { instancePath: t + "/cleanup", schemaPath: "#/properties/cleanup/type", keyword: "type", params: { type: "string" }, message: "must be string" };
-        e === null ? e = [l] : e.push(l), s++;
+        let m = { instancePath: t + "/cleanup", schemaPath: "#/properties/cleanup/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+        e === null ? e = [m] : e.push(m), s++;
       }
     }
     if (a.reset !== void 0) {
       let r = a.reset;
       if (r && typeof r == "object" && !Array.isArray(r)) {
         if (r.owner === void 0) {
-          let l = { instancePath: t + "/reset", schemaPath: "#/properties/reset/required", keyword: "required", params: { missingProperty: "owner" }, message: "must have required property 'owner'" };
-          e === null ? e = [l] : e.push(l), s++;
+          let m = { instancePath: t + "/reset", schemaPath: "#/properties/reset/required", keyword: "required", params: { missingProperty: "owner" }, message: "must have required property 'owner'" };
+          e === null ? e = [m] : e.push(m), s++;
         }
         if (r.command === void 0) {
-          let l = { instancePath: t + "/reset", schemaPath: "#/properties/reset/required", keyword: "required", params: { missingProperty: "command" }, message: "must have required property 'command'" };
-          e === null ? e = [l] : e.push(l), s++;
+          let m = { instancePath: t + "/reset", schemaPath: "#/properties/reset/required", keyword: "required", params: { missingProperty: "command" }, message: "must have required property 'command'" };
+          e === null ? e = [m] : e.push(m), s++;
         }
-        for (let l in r) if (!(l === "owner" || l === "command")) {
-          let d = { instancePath: t + "/reset", schemaPath: "#/properties/reset/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: l }, message: "must NOT have additional properties" };
-          e === null ? e = [d] : e.push(d), s++;
+        for (let m in r) if (!(m === "owner" || m === "command")) {
+          let c = { instancePath: t + "/reset", schemaPath: "#/properties/reset/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: m }, message: "must NOT have additional properties" };
+          e === null ? e = [c] : e.push(c), s++;
         }
         if (r.owner !== void 0) {
-          let l = r.owner;
-          if (!(l === "checkmate" || l === "external")) {
-            let d = { instancePath: t + "/reset/owner", schemaPath: "#/properties/reset/properties/owner/enum", keyword: "enum", params: { allowedValues: K.properties.reset.properties.owner.enum }, message: "must be equal to one of the allowed values" };
-            e === null ? e = [d] : e.push(d), s++;
+          let m = r.owner;
+          if (!(m === "checkmate" || m === "external")) {
+            let c = { instancePath: t + "/reset/owner", schemaPath: "#/properties/reset/properties/owner/enum", keyword: "enum", params: { allowedValues: C.properties.reset.properties.owner.enum }, message: "must be equal to one of the allowed values" };
+            e === null ? e = [c] : e.push(c), s++;
           }
         }
         if (r.command !== void 0) {
-          let l = r.command, d = s, c = false, p = s;
-          if (Array.isArray(l)) {
-            if (l.length < 1) {
-              let m = { instancePath: t + "/reset/command", schemaPath: "#/properties/reset/properties/command/anyOf/0/minItems", keyword: "minItems", params: { limit: 1 }, message: "must NOT have fewer than 1 items" };
-              e === null ? e = [m] : e.push(m), s++;
+          let m = r.command, c = s, d = false, p = s;
+          if (Array.isArray(m)) {
+            if (m.length < 1) {
+              let o = { instancePath: t + "/reset/command", schemaPath: "#/properties/reset/properties/command/anyOf/0/minItems", keyword: "minItems", params: { limit: 1 }, message: "must NOT have fewer than 1 items" };
+              e === null ? e = [o] : e.push(o), s++;
             }
-            let u = l.length;
-            for (let m = 0; m < u; m++) {
-              let o = l[m];
-              if (typeof o == "string") {
-                if (A(o) < 1) {
-                  let g = { instancePath: t + "/reset/command/" + m, schemaPath: "#/properties/reset/properties/command/anyOf/0/items/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
+            let u = m.length;
+            for (let o = 0; o < u; o++) {
+              let l = m[o];
+              if (typeof l == "string") {
+                if (A(l) < 1) {
+                  let g = { instancePath: t + "/reset/command/" + o, schemaPath: "#/properties/reset/properties/command/anyOf/0/items/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
                   e === null ? e = [g] : e.push(g), s++;
                 }
               } else {
-                let g = { instancePath: t + "/reset/command/" + m, schemaPath: "#/properties/reset/properties/command/anyOf/0/items/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+                let g = { instancePath: t + "/reset/command/" + o, schemaPath: "#/properties/reset/properties/command/anyOf/0/items/type", keyword: "type", params: { type: "string" }, message: "must be string" };
                 e === null ? e = [g] : e.push(g), s++;
               }
             }
-            let i = l.length, h;
+            let i = m.length, h;
             if (i > 1) {
-              let m = {};
+              let o = {};
               for (; i--; ) {
-                let o = l[i];
-                if (typeof o == "string") {
-                  if (typeof m[o] == "number") {
-                    h = m[o];
+                let l = m[i];
+                if (typeof l == "string") {
+                  if (typeof o[l] == "number") {
+                    h = o[l];
                     let g = { instancePath: t + "/reset/command", schemaPath: "#/properties/reset/properties/command/anyOf/0/uniqueItems", keyword: "uniqueItems", params: { i, j: h }, message: "must NOT have duplicate items (items ## " + h + " and " + i + " are identical)" };
                     e === null ? e = [g] : e.push(g), s++;
                     break;
                   }
-                  m[o] = i;
+                  o[l] = i;
                 }
               }
             }
@@ -7255,24 +7339,24 @@ function Me(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
             e === null ? e = [u] : e.push(u), s++;
           }
           var n = p === s;
-          if (c = c || n, !c) {
+          if (d = d || n, !d) {
             let u = s;
-            if (l !== null) {
+            if (m !== null) {
               let h = { instancePath: t + "/reset/command", schemaPath: "#/properties/reset/properties/command/anyOf/1/type", keyword: "type", params: { type: "null" }, message: "must be null" };
               e === null ? e = [h] : e.push(h), s++;
             }
             var n = u === s;
-            c = c || n;
+            d = d || n;
           }
-          if (c) s = d, e !== null && (d ? e.length = d : e = null);
+          if (d) s = c, e !== null && (c ? e.length = c : e = null);
           else {
             let u = { instancePath: t + "/reset/command", schemaPath: "#/properties/reset/properties/command/anyOf", keyword: "anyOf", params: {}, message: "must match a schema in anyOf" };
             e === null ? e = [u] : e.push(u), s++;
           }
         }
       } else {
-        let l = { instancePath: t + "/reset", schemaPath: "#/properties/reset/type", keyword: "type", params: { type: "object" }, message: "must be object" };
-        e === null ? e = [l] : e.push(l), s++;
+        let m = { instancePath: t + "/reset", schemaPath: "#/properties/reset/type", keyword: "type", params: { type: "object" }, message: "must be object" };
+        e === null ? e = [m] : e.push(m), s++;
       }
     }
     if (a.readyForLiveExecution !== void 0 && typeof a.readyForLiveExecution != "boolean") {
@@ -7282,82 +7366,82 @@ function Me(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
     if (a.explore !== void 0) {
       let r = a.explore;
       if (r && typeof r == "object" && !Array.isArray(r)) {
-        for (let l in r) if (!(l === "level" || l === "explorers")) {
-          let d = { instancePath: t + "/explore", schemaPath: "#/properties/explore/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: l }, message: "must NOT have additional properties" };
-          e === null ? e = [d] : e.push(d), s++;
+        for (let m in r) if (!(m === "level" || m === "explorers")) {
+          let c = { instancePath: t + "/explore", schemaPath: "#/properties/explore/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: m }, message: "must NOT have additional properties" };
+          e === null ? e = [c] : e.push(c), s++;
         }
         if (r.level !== void 0) {
-          let l = r.level;
-          if (!(l === "smoke" || l === "normal" || l === "deep")) {
-            let d = { instancePath: t + "/explore/level", schemaPath: "#/properties/explore/properties/level/enum", keyword: "enum", params: { allowedValues: K.properties.explore.properties.level.enum }, message: "must be equal to one of the allowed values" };
-            e === null ? e = [d] : e.push(d), s++;
+          let m = r.level;
+          if (!(m === "smoke" || m === "normal" || m === "deep")) {
+            let c = { instancePath: t + "/explore/level", schemaPath: "#/properties/explore/properties/level/enum", keyword: "enum", params: { allowedValues: C.properties.explore.properties.level.enum }, message: "must be equal to one of the allowed values" };
+            e === null ? e = [c] : e.push(c), s++;
           }
         }
         if (r.explorers !== void 0) {
-          let l = r.explorers;
-          if (!(typeof l == "number" && !(l % 1) && !isNaN(l) && isFinite(l))) {
-            let d = { instancePath: t + "/explore/explorers", schemaPath: "#/properties/explore/properties/explorers/type", keyword: "type", params: { type: "integer" }, message: "must be integer" };
-            e === null ? e = [d] : e.push(d), s++;
+          let m = r.explorers;
+          if (!(typeof m == "number" && !(m % 1) && !isNaN(m) && isFinite(m))) {
+            let c = { instancePath: t + "/explore/explorers", schemaPath: "#/properties/explore/properties/explorers/type", keyword: "type", params: { type: "integer" }, message: "must be integer" };
+            e === null ? e = [c] : e.push(c), s++;
           }
-          if (typeof l == "number" && isFinite(l)) {
-            if (l > 10 || isNaN(l)) {
-              let d = { instancePath: t + "/explore/explorers", schemaPath: "#/properties/explore/properties/explorers/maximum", keyword: "maximum", params: { comparison: "<=", limit: 10 }, message: "must be <= 10" };
-              e === null ? e = [d] : e.push(d), s++;
+          if (typeof m == "number" && isFinite(m)) {
+            if (m > 10 || isNaN(m)) {
+              let c = { instancePath: t + "/explore/explorers", schemaPath: "#/properties/explore/properties/explorers/maximum", keyword: "maximum", params: { comparison: "<=", limit: 10 }, message: "must be <= 10" };
+              e === null ? e = [c] : e.push(c), s++;
             }
-            if (l < 1 || isNaN(l)) {
-              let d = { instancePath: t + "/explore/explorers", schemaPath: "#/properties/explore/properties/explorers/minimum", keyword: "minimum", params: { comparison: ">=", limit: 1 }, message: "must be >= 1" };
-              e === null ? e = [d] : e.push(d), s++;
+            if (m < 1 || isNaN(m)) {
+              let c = { instancePath: t + "/explore/explorers", schemaPath: "#/properties/explore/properties/explorers/minimum", keyword: "minimum", params: { comparison: ">=", limit: 1 }, message: "must be >= 1" };
+              e === null ? e = [c] : e.push(c), s++;
             }
           }
         }
       } else {
-        let l = { instancePath: t + "/explore", schemaPath: "#/properties/explore/type", keyword: "type", params: { type: "object" }, message: "must be object" };
-        e === null ? e = [l] : e.push(l), s++;
+        let m = { instancePath: t + "/explore", schemaPath: "#/properties/explore/type", keyword: "type", params: { type: "object" }, message: "must be object" };
+        e === null ? e = [m] : e.push(m), s++;
       }
     }
     if (a.approvals !== void 0) {
       let r = a.approvals;
       if (r && typeof r == "object" && !Array.isArray(r)) {
         if (r.plan === void 0) {
-          let l = { instancePath: t + "/approvals", schemaPath: "#/properties/approvals/required", keyword: "required", params: { missingProperty: "plan" }, message: "must have required property 'plan'" };
-          e === null ? e = [l] : e.push(l), s++;
+          let m = { instancePath: t + "/approvals", schemaPath: "#/properties/approvals/required", keyword: "required", params: { missingProperty: "plan" }, message: "must have required property 'plan'" };
+          e === null ? e = [m] : e.push(m), s++;
         }
         if (r.result === void 0) {
-          let l = { instancePath: t + "/approvals", schemaPath: "#/properties/approvals/required", keyword: "required", params: { missingProperty: "result" }, message: "must have required property 'result'" };
-          e === null ? e = [l] : e.push(l), s++;
+          let m = { instancePath: t + "/approvals", schemaPath: "#/properties/approvals/required", keyword: "required", params: { missingProperty: "result" }, message: "must have required property 'result'" };
+          e === null ? e = [m] : e.push(m), s++;
         }
-        for (let l in r) if (!(l === "plan" || l === "result")) {
-          let d = { instancePath: t + "/approvals", schemaPath: "#/properties/approvals/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: l }, message: "must NOT have additional properties" };
-          e === null ? e = [d] : e.push(d), s++;
+        for (let m in r) if (!(m === "plan" || m === "result")) {
+          let c = { instancePath: t + "/approvals", schemaPath: "#/properties/approvals/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: m }, message: "must NOT have additional properties" };
+          e === null ? e = [c] : e.push(c), s++;
         }
         if (r.plan !== void 0) {
-          let l = r.plan;
-          if (!(l === "required" || l === "none")) {
-            let d = { instancePath: t + "/approvals/plan", schemaPath: "#/properties/approvals/properties/plan/enum", keyword: "enum", params: { allowedValues: K.properties.approvals.properties.plan.enum }, message: "must be equal to one of the allowed values" };
-            e === null ? e = [d] : e.push(d), s++;
+          let m = r.plan;
+          if (!(m === "required" || m === "none")) {
+            let c = { instancePath: t + "/approvals/plan", schemaPath: "#/properties/approvals/properties/plan/enum", keyword: "enum", params: { allowedValues: C.properties.approvals.properties.plan.enum }, message: "must be equal to one of the allowed values" };
+            e === null ? e = [c] : e.push(c), s++;
           }
         }
         if (r.result !== void 0) {
-          let l = r.result;
-          if (!(l === "required" || l === "none")) {
-            let d = { instancePath: t + "/approvals/result", schemaPath: "#/properties/approvals/properties/result/enum", keyword: "enum", params: { allowedValues: K.properties.approvals.properties.result.enum }, message: "must be equal to one of the allowed values" };
-            e === null ? e = [d] : e.push(d), s++;
+          let m = r.result;
+          if (!(m === "required" || m === "none")) {
+            let c = { instancePath: t + "/approvals/result", schemaPath: "#/properties/approvals/properties/result/enum", keyword: "enum", params: { allowedValues: C.properties.approvals.properties.result.enum }, message: "must be equal to one of the allowed values" };
+            e === null ? e = [c] : e.push(c), s++;
           }
         }
       } else {
-        let l = { instancePath: t + "/approvals", schemaPath: "#/properties/approvals/type", keyword: "type", params: { type: "object" }, message: "must be object" };
-        e === null ? e = [l] : e.push(l), s++;
+        let m = { instancePath: t + "/approvals", schemaPath: "#/properties/approvals/type", keyword: "type", params: { type: "object" }, message: "must be object" };
+        e === null ? e = [m] : e.push(m), s++;
       }
     }
   } else {
     let r = { instancePath: t, schemaPath: "#/type", keyword: "type", params: { type: "object" }, message: "must be object" };
     e === null ? e = [r] : e.push(r), s++;
   }
-  return Me.errors = e, s === 0;
+  return Ye.errors = e, s === 0;
 }
-var Ss = He;
-var vs = { $schema: "http://json-schema.org/draft-07/schema#", $id: "response.schema.json", type: "object", properties: { status: { enum: ["completed", "needs_decision", "interrupted", "operational_error", "rejected"] }, subject: { type: "string", minLength: 1 }, reasons: { type: "array", items: { type: "string", minLength: 1 }, minItems: 0, uniqueItems: true } }, required: ["status", "subject", "reasons"], additionalProperties: false };
-function He(a, { instancePath: t = "", parentData: $, parentDataProperty: _, rootData: T = a } = {}) {
+var Ws = Qe;
+var ks = { $schema: "http://json-schema.org/draft-07/schema#", $id: "response.schema.json", type: "object", properties: { status: { enum: ["completed", "needs_decision", "interrupted", "operational_error", "rejected"] }, subject: { type: "string", minLength: 1 }, reasons: { type: "array", items: { type: "string", minLength: 1 }, minItems: 0, uniqueItems: true } }, required: ["status", "subject", "reasons"], additionalProperties: false };
+function Qe(a, { instancePath: t = "", parentData: $, parentDataProperty: _, rootData: L = a } = {}) {
   let e = null, s = 0;
   if (a && typeof a == "object" && !Array.isArray(a)) {
     if (a.status === void 0) {
@@ -7379,7 +7463,7 @@ function He(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
     if (a.status !== void 0) {
       let w = a.status;
       if (!(w === "completed" || w === "needs_decision" || w === "interrupted" || w === "operational_error" || w === "rejected")) {
-        let n = { instancePath: t + "/status", schemaPath: "#/properties/status/enum", keyword: "enum", params: { allowedValues: vs.properties.status.enum }, message: "must be equal to one of the allowed values" };
+        let n = { instancePath: t + "/status", schemaPath: "#/properties/status/enum", keyword: "enum", params: { allowedValues: ks.properties.status.enum }, message: "must be equal to one of the allowed values" };
         e === null ? e = [n] : e.push(n), s++;
       }
     }
@@ -7399,35 +7483,35 @@ function He(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
       let w = a.reasons;
       if (Array.isArray(w)) {
         if (w.length < 0) {
-          let d = { instancePath: t + "/reasons", schemaPath: "#/properties/reasons/minItems", keyword: "minItems", params: { limit: 0 }, message: "must NOT have fewer than 0 items" };
-          e === null ? e = [d] : e.push(d), s++;
+          let c = { instancePath: t + "/reasons", schemaPath: "#/properties/reasons/minItems", keyword: "minItems", params: { limit: 0 }, message: "must NOT have fewer than 0 items" };
+          e === null ? e = [c] : e.push(c), s++;
         }
         let n = w.length;
-        for (let d = 0; d < n; d++) {
-          let c = w[d];
-          if (typeof c == "string") {
-            if (A(c) < 1) {
-              let p = { instancePath: t + "/reasons/" + d, schemaPath: "#/properties/reasons/items/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
+        for (let c = 0; c < n; c++) {
+          let d = w[c];
+          if (typeof d == "string") {
+            if (A(d) < 1) {
+              let p = { instancePath: t + "/reasons/" + c, schemaPath: "#/properties/reasons/items/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
               e === null ? e = [p] : e.push(p), s++;
             }
           } else {
-            let p = { instancePath: t + "/reasons/" + d, schemaPath: "#/properties/reasons/items/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+            let p = { instancePath: t + "/reasons/" + c, schemaPath: "#/properties/reasons/items/type", keyword: "type", params: { type: "string" }, message: "must be string" };
             e === null ? e = [p] : e.push(p), s++;
           }
         }
-        let r = w.length, l;
+        let r = w.length, m;
         if (r > 1) {
-          let d = {};
+          let c = {};
           for (; r--; ) {
-            let c = w[r];
-            if (typeof c == "string") {
-              if (typeof d[c] == "number") {
-                l = d[c];
-                let p = { instancePath: t + "/reasons", schemaPath: "#/properties/reasons/uniqueItems", keyword: "uniqueItems", params: { i: r, j: l }, message: "must NOT have duplicate items (items ## " + l + " and " + r + " are identical)" };
+            let d = w[r];
+            if (typeof d == "string") {
+              if (typeof c[d] == "number") {
+                m = c[d];
+                let p = { instancePath: t + "/reasons", schemaPath: "#/properties/reasons/uniqueItems", keyword: "uniqueItems", params: { i: r, j: m }, message: "must NOT have duplicate items (items ## " + m + " and " + r + " are identical)" };
                 e === null ? e = [p] : e.push(p), s++;
                 break;
               }
-              d[c] = r;
+              c[d] = r;
             }
           }
         }
@@ -7440,129 +7524,129 @@ function He(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
     let w = { instancePath: t, schemaPath: "#/type", keyword: "type", params: { type: "object" }, message: "must be object" };
     e === null ? e = [w] : e.push(w), s++;
   }
-  return He.errors = e, s === 0;
+  return Qe.errors = e, s === 0;
 }
-var Bs = Ye;
+var Ss = Ue;
 var G = { $schema: "http://json-schema.org/draft-07/schema#", $id: "result.schema.json", type: "object", properties: { contractVersion: { const: "toolkit-2" }, runId: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, plan: { type: "object", properties: { planId: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, revision: { type: "integer", minimum: 1 }, sha256: { type: "string", pattern: "^[a-f0-9]{64}$" } }, required: ["planId", "revision", "sha256"], additionalProperties: false }, target: { type: "object", properties: { targetId: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, revision: { type: "integer", minimum: 1 }, sha256: { type: "string", pattern: "^[a-f0-9]{64}$" } }, required: ["targetId", "revision", "sha256"], additionalProperties: false }, instanceId: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, applicationBuild: { type: "string", minLength: 1 }, selectedTestIds: { type: "array", items: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 1, uniqueItems: true }, retestOf: { anyOf: [{ type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, { type: "null" }] }, startedAt: { type: "string", format: "date-time" }, finishedAt: { type: "string", format: "date-time" }, attempts: { type: "integer", minimum: 1 }, completion: { enum: ["completed", "interrupted", "operational_error"] }, completionCause: { enum: ["deadline", "host_stopped", "tool_unavailable", null] }, completionReason: { anyOf: [{ type: "string", minLength: 1 }, { type: "null" }] }, tests: { type: "array", items: { type: "object", properties: { testId: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, outcome: { enum: ["passed", "failed", "inconclusive", "blocked", "not_run", "error"] }, cause: { enum: ["deadline"] }, reason: { anyOf: [{ type: "string", minLength: 1 }, { type: "null" }] }, assertions: { type: "array", items: { type: "object", properties: { assertionId: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, check: { type: "string", minLength: 1 }, checkKind: { enum: ["deterministic", "agent_observation"] }, result: { enum: ["passed", "failed", "inconclusive", "not_checked"] }, observed: { anyOf: [{ type: "string", minLength: 1 }, { type: "null" }] }, reason: { anyOf: [{ type: "string", minLength: 1 }, { type: "null" }] }, evidenceIds: { type: "array", items: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 0, uniqueItems: true } }, required: ["assertionId", "check", "checkKind", "result", "observed", "reason", "evidenceIds"], additionalProperties: false }, minItems: 0, uniqueItems: true } }, required: ["testId", "outcome", "reason", "assertions"], additionalProperties: false }, minItems: 1, uniqueItems: true }, findings: { type: "array", items: { type: "object", if: { properties: { type: { const: "defect" } } }, then: { properties: { evidenceIds: { type: "array", minItems: 1 }, testIds: { type: "array", minItems: 1 }, assertionIds: { type: "array", minItems: 1 } } }, properties: { id: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, type: { enum: ["defect", "potential_issue"] }, severity: { enum: ["low", "medium", "high", "critical"] }, requirementIds: { type: "array", items: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 0, uniqueItems: true }, title: { type: "string", minLength: 1 }, expected: { type: "string", minLength: 1 }, observed: { type: "string", minLength: 1 }, reproduction: { type: "array", items: { type: "string", minLength: 1 }, minItems: 1, uniqueItems: true }, evidenceIds: { type: "array", items: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 0, uniqueItems: true }, testIds: { type: "array", items: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 0, uniqueItems: true }, assertionIds: { type: "array", items: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}\\.[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 0, uniqueItems: true }, metadata: { $ref: "plan.schema.json#/definitions/metadata" } }, required: ["id", "type", "severity", "requirementIds", "title", "expected", "observed", "reproduction", "evidenceIds", "testIds", "assertionIds"], additionalProperties: false }, minItems: 0, uniqueItems: true }, newGaps: { type: "array", items: { $ref: "gap.schema.json" }, minItems: 0, uniqueItems: true }, evidence: { type: "array", items: { type: "object", properties: { id: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, testId: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, assertionId: { anyOf: [{ type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, { type: "null" }] }, kind: { enum: ["observation", "http_exchange", "screenshot", "trace"] }, name: { type: "string", minLength: 1 }, mediaType: { type: "string", minLength: 1 }, sha256: { type: "string", pattern: "^[a-f0-9]{64}$" }, size: { type: "integer", minimum: 0 } }, required: ["id", "testId", "assertionId", "kind", "name", "mediaType", "sha256", "size"], additionalProperties: false }, minItems: 0, uniqueItems: true }, cleanup: { type: "object", properties: { status: { enum: ["completed", "failed", "not_applicable"] }, reason: { type: "string", minLength: 1 } }, required: ["status", "reason"], additionalProperties: false }, coverage: { type: "object", properties: { status: { enum: ["complete", "partial", "not_executed"] }, requirements: { type: "array", items: { type: "object", properties: { requirementId: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, status: { enum: ["tested", "deferred", "uncovered"] }, testIds: { type: "array", items: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 0, uniqueItems: true }, reason: { anyOf: [{ type: "string", minLength: 1 }, { type: "null" }] } }, required: ["requirementId", "status", "testIds", "reason"], additionalProperties: false }, minItems: 1, uniqueItems: true } }, required: ["status", "requirements"], additionalProperties: false } }, required: ["contractVersion", "runId", "plan", "target", "instanceId", "applicationBuild", "selectedTestIds", "retestOf", "startedAt", "finishedAt", "attempts", "completion", "tests", "findings", "newGaps", "evidence", "cleanup", "coverage"], additionalProperties: false };
-var Ae = ve().fullFormats["date-time"];
-function Ye(a, { instancePath: t = "", parentData: $, parentDataProperty: _, rootData: T = a } = {}) {
+var Oe = ve().fullFormats["date-time"];
+function Ue(a, { instancePath: t = "", parentData: $, parentDataProperty: _, rootData: L = a } = {}) {
   let e = null, s = 0;
   if (a && typeof a == "object" && !Array.isArray(a)) {
     if (a.contractVersion === void 0) {
-      let m = { instancePath: t, schemaPath: "#/required", keyword: "required", params: { missingProperty: "contractVersion" }, message: "must have required property 'contractVersion'" };
-      e === null ? e = [m] : e.push(m), s++;
-    }
-    if (a.runId === void 0) {
-      let m = { instancePath: t, schemaPath: "#/required", keyword: "required", params: { missingProperty: "runId" }, message: "must have required property 'runId'" };
-      e === null ? e = [m] : e.push(m), s++;
-    }
-    if (a.plan === void 0) {
-      let m = { instancePath: t, schemaPath: "#/required", keyword: "required", params: { missingProperty: "plan" }, message: "must have required property 'plan'" };
-      e === null ? e = [m] : e.push(m), s++;
-    }
-    if (a.target === void 0) {
-      let m = { instancePath: t, schemaPath: "#/required", keyword: "required", params: { missingProperty: "target" }, message: "must have required property 'target'" };
-      e === null ? e = [m] : e.push(m), s++;
-    }
-    if (a.instanceId === void 0) {
-      let m = { instancePath: t, schemaPath: "#/required", keyword: "required", params: { missingProperty: "instanceId" }, message: "must have required property 'instanceId'" };
-      e === null ? e = [m] : e.push(m), s++;
-    }
-    if (a.applicationBuild === void 0) {
-      let m = { instancePath: t, schemaPath: "#/required", keyword: "required", params: { missingProperty: "applicationBuild" }, message: "must have required property 'applicationBuild'" };
-      e === null ? e = [m] : e.push(m), s++;
-    }
-    if (a.selectedTestIds === void 0) {
-      let m = { instancePath: t, schemaPath: "#/required", keyword: "required", params: { missingProperty: "selectedTestIds" }, message: "must have required property 'selectedTestIds'" };
-      e === null ? e = [m] : e.push(m), s++;
-    }
-    if (a.retestOf === void 0) {
-      let m = { instancePath: t, schemaPath: "#/required", keyword: "required", params: { missingProperty: "retestOf" }, message: "must have required property 'retestOf'" };
-      e === null ? e = [m] : e.push(m), s++;
-    }
-    if (a.startedAt === void 0) {
-      let m = { instancePath: t, schemaPath: "#/required", keyword: "required", params: { missingProperty: "startedAt" }, message: "must have required property 'startedAt'" };
-      e === null ? e = [m] : e.push(m), s++;
-    }
-    if (a.finishedAt === void 0) {
-      let m = { instancePath: t, schemaPath: "#/required", keyword: "required", params: { missingProperty: "finishedAt" }, message: "must have required property 'finishedAt'" };
-      e === null ? e = [m] : e.push(m), s++;
-    }
-    if (a.attempts === void 0) {
-      let m = { instancePath: t, schemaPath: "#/required", keyword: "required", params: { missingProperty: "attempts" }, message: "must have required property 'attempts'" };
-      e === null ? e = [m] : e.push(m), s++;
-    }
-    if (a.completion === void 0) {
-      let m = { instancePath: t, schemaPath: "#/required", keyword: "required", params: { missingProperty: "completion" }, message: "must have required property 'completion'" };
-      e === null ? e = [m] : e.push(m), s++;
-    }
-    if (a.tests === void 0) {
-      let m = { instancePath: t, schemaPath: "#/required", keyword: "required", params: { missingProperty: "tests" }, message: "must have required property 'tests'" };
-      e === null ? e = [m] : e.push(m), s++;
-    }
-    if (a.findings === void 0) {
-      let m = { instancePath: t, schemaPath: "#/required", keyword: "required", params: { missingProperty: "findings" }, message: "must have required property 'findings'" };
-      e === null ? e = [m] : e.push(m), s++;
-    }
-    if (a.newGaps === void 0) {
-      let m = { instancePath: t, schemaPath: "#/required", keyword: "required", params: { missingProperty: "newGaps" }, message: "must have required property 'newGaps'" };
-      e === null ? e = [m] : e.push(m), s++;
-    }
-    if (a.evidence === void 0) {
-      let m = { instancePath: t, schemaPath: "#/required", keyword: "required", params: { missingProperty: "evidence" }, message: "must have required property 'evidence'" };
-      e === null ? e = [m] : e.push(m), s++;
-    }
-    if (a.cleanup === void 0) {
-      let m = { instancePath: t, schemaPath: "#/required", keyword: "required", params: { missingProperty: "cleanup" }, message: "must have required property 'cleanup'" };
-      e === null ? e = [m] : e.push(m), s++;
-    }
-    if (a.coverage === void 0) {
-      let m = { instancePath: t, schemaPath: "#/required", keyword: "required", params: { missingProperty: "coverage" }, message: "must have required property 'coverage'" };
-      e === null ? e = [m] : e.push(m), s++;
-    }
-    for (let m in a) if (!E.call(G.properties, m)) {
-      let o = { instancePath: t, schemaPath: "#/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: m }, message: "must NOT have additional properties" };
+      let o = { instancePath: t, schemaPath: "#/required", keyword: "required", params: { missingProperty: "contractVersion" }, message: "must have required property 'contractVersion'" };
       e === null ? e = [o] : e.push(o), s++;
     }
+    if (a.runId === void 0) {
+      let o = { instancePath: t, schemaPath: "#/required", keyword: "required", params: { missingProperty: "runId" }, message: "must have required property 'runId'" };
+      e === null ? e = [o] : e.push(o), s++;
+    }
+    if (a.plan === void 0) {
+      let o = { instancePath: t, schemaPath: "#/required", keyword: "required", params: { missingProperty: "plan" }, message: "must have required property 'plan'" };
+      e === null ? e = [o] : e.push(o), s++;
+    }
+    if (a.target === void 0) {
+      let o = { instancePath: t, schemaPath: "#/required", keyword: "required", params: { missingProperty: "target" }, message: "must have required property 'target'" };
+      e === null ? e = [o] : e.push(o), s++;
+    }
+    if (a.instanceId === void 0) {
+      let o = { instancePath: t, schemaPath: "#/required", keyword: "required", params: { missingProperty: "instanceId" }, message: "must have required property 'instanceId'" };
+      e === null ? e = [o] : e.push(o), s++;
+    }
+    if (a.applicationBuild === void 0) {
+      let o = { instancePath: t, schemaPath: "#/required", keyword: "required", params: { missingProperty: "applicationBuild" }, message: "must have required property 'applicationBuild'" };
+      e === null ? e = [o] : e.push(o), s++;
+    }
+    if (a.selectedTestIds === void 0) {
+      let o = { instancePath: t, schemaPath: "#/required", keyword: "required", params: { missingProperty: "selectedTestIds" }, message: "must have required property 'selectedTestIds'" };
+      e === null ? e = [o] : e.push(o), s++;
+    }
+    if (a.retestOf === void 0) {
+      let o = { instancePath: t, schemaPath: "#/required", keyword: "required", params: { missingProperty: "retestOf" }, message: "must have required property 'retestOf'" };
+      e === null ? e = [o] : e.push(o), s++;
+    }
+    if (a.startedAt === void 0) {
+      let o = { instancePath: t, schemaPath: "#/required", keyword: "required", params: { missingProperty: "startedAt" }, message: "must have required property 'startedAt'" };
+      e === null ? e = [o] : e.push(o), s++;
+    }
+    if (a.finishedAt === void 0) {
+      let o = { instancePath: t, schemaPath: "#/required", keyword: "required", params: { missingProperty: "finishedAt" }, message: "must have required property 'finishedAt'" };
+      e === null ? e = [o] : e.push(o), s++;
+    }
+    if (a.attempts === void 0) {
+      let o = { instancePath: t, schemaPath: "#/required", keyword: "required", params: { missingProperty: "attempts" }, message: "must have required property 'attempts'" };
+      e === null ? e = [o] : e.push(o), s++;
+    }
+    if (a.completion === void 0) {
+      let o = { instancePath: t, schemaPath: "#/required", keyword: "required", params: { missingProperty: "completion" }, message: "must have required property 'completion'" };
+      e === null ? e = [o] : e.push(o), s++;
+    }
+    if (a.tests === void 0) {
+      let o = { instancePath: t, schemaPath: "#/required", keyword: "required", params: { missingProperty: "tests" }, message: "must have required property 'tests'" };
+      e === null ? e = [o] : e.push(o), s++;
+    }
+    if (a.findings === void 0) {
+      let o = { instancePath: t, schemaPath: "#/required", keyword: "required", params: { missingProperty: "findings" }, message: "must have required property 'findings'" };
+      e === null ? e = [o] : e.push(o), s++;
+    }
+    if (a.newGaps === void 0) {
+      let o = { instancePath: t, schemaPath: "#/required", keyword: "required", params: { missingProperty: "newGaps" }, message: "must have required property 'newGaps'" };
+      e === null ? e = [o] : e.push(o), s++;
+    }
+    if (a.evidence === void 0) {
+      let o = { instancePath: t, schemaPath: "#/required", keyword: "required", params: { missingProperty: "evidence" }, message: "must have required property 'evidence'" };
+      e === null ? e = [o] : e.push(o), s++;
+    }
+    if (a.cleanup === void 0) {
+      let o = { instancePath: t, schemaPath: "#/required", keyword: "required", params: { missingProperty: "cleanup" }, message: "must have required property 'cleanup'" };
+      e === null ? e = [o] : e.push(o), s++;
+    }
+    if (a.coverage === void 0) {
+      let o = { instancePath: t, schemaPath: "#/required", keyword: "required", params: { missingProperty: "coverage" }, message: "must have required property 'coverage'" };
+      e === null ? e = [o] : e.push(o), s++;
+    }
+    for (let o in a) if (!K.call(G.properties, o)) {
+      let l = { instancePath: t, schemaPath: "#/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: o }, message: "must NOT have additional properties" };
+      e === null ? e = [l] : e.push(l), s++;
+    }
     if (a.contractVersion !== void 0 && a.contractVersion !== "toolkit-2") {
-      let m = { instancePath: t + "/contractVersion", schemaPath: "#/properties/contractVersion/const", keyword: "const", params: { allowedValue: "toolkit-2" }, message: "must be equal to constant" };
-      e === null ? e = [m] : e.push(m), s++;
+      let o = { instancePath: t + "/contractVersion", schemaPath: "#/properties/contractVersion/const", keyword: "const", params: { allowedValue: "toolkit-2" }, message: "must be equal to constant" };
+      e === null ? e = [o] : e.push(o), s++;
     }
     if (a.runId !== void 0) {
-      let m = a.runId;
-      if (typeof m == "string") {
-        if (!Z.test(m)) {
-          let o = { instancePath: t + "/runId", schemaPath: "#/properties/runId/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
-          e === null ? e = [o] : e.push(o), s++;
+      let o = a.runId;
+      if (typeof o == "string") {
+        if (!Z.test(o)) {
+          let l = { instancePath: t + "/runId", schemaPath: "#/properties/runId/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
+          e === null ? e = [l] : e.push(l), s++;
         }
       } else {
-        let o = { instancePath: t + "/runId", schemaPath: "#/properties/runId/type", keyword: "type", params: { type: "string" }, message: "must be string" };
-        e === null ? e = [o] : e.push(o), s++;
+        let l = { instancePath: t + "/runId", schemaPath: "#/properties/runId/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+        e === null ? e = [l] : e.push(l), s++;
       }
     }
     if (a.plan !== void 0) {
-      let m = a.plan;
-      if (m && typeof m == "object" && !Array.isArray(m)) {
-        if (m.planId === void 0) {
-          let o = { instancePath: t + "/plan", schemaPath: "#/properties/plan/required", keyword: "required", params: { missingProperty: "planId" }, message: "must have required property 'planId'" };
-          e === null ? e = [o] : e.push(o), s++;
+      let o = a.plan;
+      if (o && typeof o == "object" && !Array.isArray(o)) {
+        if (o.planId === void 0) {
+          let l = { instancePath: t + "/plan", schemaPath: "#/properties/plan/required", keyword: "required", params: { missingProperty: "planId" }, message: "must have required property 'planId'" };
+          e === null ? e = [l] : e.push(l), s++;
         }
-        if (m.revision === void 0) {
-          let o = { instancePath: t + "/plan", schemaPath: "#/properties/plan/required", keyword: "required", params: { missingProperty: "revision" }, message: "must have required property 'revision'" };
-          e === null ? e = [o] : e.push(o), s++;
+        if (o.revision === void 0) {
+          let l = { instancePath: t + "/plan", schemaPath: "#/properties/plan/required", keyword: "required", params: { missingProperty: "revision" }, message: "must have required property 'revision'" };
+          e === null ? e = [l] : e.push(l), s++;
         }
-        if (m.sha256 === void 0) {
-          let o = { instancePath: t + "/plan", schemaPath: "#/properties/plan/required", keyword: "required", params: { missingProperty: "sha256" }, message: "must have required property 'sha256'" };
-          e === null ? e = [o] : e.push(o), s++;
+        if (o.sha256 === void 0) {
+          let l = { instancePath: t + "/plan", schemaPath: "#/properties/plan/required", keyword: "required", params: { missingProperty: "sha256" }, message: "must have required property 'sha256'" };
+          e === null ? e = [l] : e.push(l), s++;
         }
-        for (let o in m) if (!(o === "planId" || o === "revision" || o === "sha256")) {
-          let g = { instancePath: t + "/plan", schemaPath: "#/properties/plan/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: o }, message: "must NOT have additional properties" };
+        for (let l in o) if (!(l === "planId" || l === "revision" || l === "sha256")) {
+          let g = { instancePath: t + "/plan", schemaPath: "#/properties/plan/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: l }, message: "must NOT have additional properties" };
           e === null ? e = [g] : e.push(g), s++;
         }
-        if (m.planId !== void 0) {
-          let o = m.planId;
-          if (typeof o == "string") {
-            if (!Z.test(o)) {
+        if (o.planId !== void 0) {
+          let l = o.planId;
+          if (typeof l == "string") {
+            if (!Z.test(l)) {
               let g = { instancePath: t + "/plan/planId", schemaPath: "#/properties/plan/properties/planId/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
               e === null ? e = [g] : e.push(g), s++;
             }
@@ -7571,21 +7655,21 @@ function Ye(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
             e === null ? e = [g] : e.push(g), s++;
           }
         }
-        if (m.revision !== void 0) {
-          let o = m.revision;
-          if (!(typeof o == "number" && !(o % 1) && !isNaN(o) && isFinite(o))) {
+        if (o.revision !== void 0) {
+          let l = o.revision;
+          if (!(typeof l == "number" && !(l % 1) && !isNaN(l) && isFinite(l))) {
             let g = { instancePath: t + "/plan/revision", schemaPath: "#/properties/plan/properties/revision/type", keyword: "type", params: { type: "integer" }, message: "must be integer" };
             e === null ? e = [g] : e.push(g), s++;
           }
-          if (typeof o == "number" && isFinite(o) && (o < 1 || isNaN(o))) {
+          if (typeof l == "number" && isFinite(l) && (l < 1 || isNaN(l))) {
             let g = { instancePath: t + "/plan/revision", schemaPath: "#/properties/plan/properties/revision/minimum", keyword: "minimum", params: { comparison: ">=", limit: 1 }, message: "must be >= 1" };
             e === null ? e = [g] : e.push(g), s++;
           }
         }
-        if (m.sha256 !== void 0) {
-          let o = m.sha256;
-          if (typeof o == "string") {
-            if (!U.test(o)) {
+        if (o.sha256 !== void 0) {
+          let l = o.sha256;
+          if (typeof l == "string") {
+            if (!U.test(l)) {
               let g = { instancePath: t + "/plan/sha256", schemaPath: "#/properties/plan/properties/sha256/pattern", keyword: "pattern", params: { pattern: "^[a-f0-9]{64}$" }, message: 'must match pattern "^[a-f0-9]{64}$"' };
               e === null ? e = [g] : e.push(g), s++;
             }
@@ -7595,33 +7679,33 @@ function Ye(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
           }
         }
       } else {
-        let o = { instancePath: t + "/plan", schemaPath: "#/properties/plan/type", keyword: "type", params: { type: "object" }, message: "must be object" };
-        e === null ? e = [o] : e.push(o), s++;
+        let l = { instancePath: t + "/plan", schemaPath: "#/properties/plan/type", keyword: "type", params: { type: "object" }, message: "must be object" };
+        e === null ? e = [l] : e.push(l), s++;
       }
     }
     if (a.target !== void 0) {
-      let m = a.target;
-      if (m && typeof m == "object" && !Array.isArray(m)) {
-        if (m.targetId === void 0) {
-          let o = { instancePath: t + "/target", schemaPath: "#/properties/target/required", keyword: "required", params: { missingProperty: "targetId" }, message: "must have required property 'targetId'" };
-          e === null ? e = [o] : e.push(o), s++;
+      let o = a.target;
+      if (o && typeof o == "object" && !Array.isArray(o)) {
+        if (o.targetId === void 0) {
+          let l = { instancePath: t + "/target", schemaPath: "#/properties/target/required", keyword: "required", params: { missingProperty: "targetId" }, message: "must have required property 'targetId'" };
+          e === null ? e = [l] : e.push(l), s++;
         }
-        if (m.revision === void 0) {
-          let o = { instancePath: t + "/target", schemaPath: "#/properties/target/required", keyword: "required", params: { missingProperty: "revision" }, message: "must have required property 'revision'" };
-          e === null ? e = [o] : e.push(o), s++;
+        if (o.revision === void 0) {
+          let l = { instancePath: t + "/target", schemaPath: "#/properties/target/required", keyword: "required", params: { missingProperty: "revision" }, message: "must have required property 'revision'" };
+          e === null ? e = [l] : e.push(l), s++;
         }
-        if (m.sha256 === void 0) {
-          let o = { instancePath: t + "/target", schemaPath: "#/properties/target/required", keyword: "required", params: { missingProperty: "sha256" }, message: "must have required property 'sha256'" };
-          e === null ? e = [o] : e.push(o), s++;
+        if (o.sha256 === void 0) {
+          let l = { instancePath: t + "/target", schemaPath: "#/properties/target/required", keyword: "required", params: { missingProperty: "sha256" }, message: "must have required property 'sha256'" };
+          e === null ? e = [l] : e.push(l), s++;
         }
-        for (let o in m) if (!(o === "targetId" || o === "revision" || o === "sha256")) {
-          let g = { instancePath: t + "/target", schemaPath: "#/properties/target/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: o }, message: "must NOT have additional properties" };
+        for (let l in o) if (!(l === "targetId" || l === "revision" || l === "sha256")) {
+          let g = { instancePath: t + "/target", schemaPath: "#/properties/target/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: l }, message: "must NOT have additional properties" };
           e === null ? e = [g] : e.push(g), s++;
         }
-        if (m.targetId !== void 0) {
-          let o = m.targetId;
-          if (typeof o == "string") {
-            if (!Z.test(o)) {
+        if (o.targetId !== void 0) {
+          let l = o.targetId;
+          if (typeof l == "string") {
+            if (!Z.test(l)) {
               let g = { instancePath: t + "/target/targetId", schemaPath: "#/properties/target/properties/targetId/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
               e === null ? e = [g] : e.push(g), s++;
             }
@@ -7630,21 +7714,21 @@ function Ye(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
             e === null ? e = [g] : e.push(g), s++;
           }
         }
-        if (m.revision !== void 0) {
-          let o = m.revision;
-          if (!(typeof o == "number" && !(o % 1) && !isNaN(o) && isFinite(o))) {
+        if (o.revision !== void 0) {
+          let l = o.revision;
+          if (!(typeof l == "number" && !(l % 1) && !isNaN(l) && isFinite(l))) {
             let g = { instancePath: t + "/target/revision", schemaPath: "#/properties/target/properties/revision/type", keyword: "type", params: { type: "integer" }, message: "must be integer" };
             e === null ? e = [g] : e.push(g), s++;
           }
-          if (typeof o == "number" && isFinite(o) && (o < 1 || isNaN(o))) {
+          if (typeof l == "number" && isFinite(l) && (l < 1 || isNaN(l))) {
             let g = { instancePath: t + "/target/revision", schemaPath: "#/properties/target/properties/revision/minimum", keyword: "minimum", params: { comparison: ">=", limit: 1 }, message: "must be >= 1" };
             e === null ? e = [g] : e.push(g), s++;
           }
         }
-        if (m.sha256 !== void 0) {
-          let o = m.sha256;
-          if (typeof o == "string") {
-            if (!U.test(o)) {
+        if (o.sha256 !== void 0) {
+          let l = o.sha256;
+          if (typeof l == "string") {
+            if (!U.test(l)) {
               let g = { instancePath: t + "/target/sha256", schemaPath: "#/properties/target/properties/sha256/pattern", keyword: "pattern", params: { pattern: "^[a-f0-9]{64}$" }, message: 'must match pattern "^[a-f0-9]{64}$"' };
               e === null ? e = [g] : e.push(g), s++;
             }
@@ -7654,44 +7738,44 @@ function Ye(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
           }
         }
       } else {
-        let o = { instancePath: t + "/target", schemaPath: "#/properties/target/type", keyword: "type", params: { type: "object" }, message: "must be object" };
-        e === null ? e = [o] : e.push(o), s++;
+        let l = { instancePath: t + "/target", schemaPath: "#/properties/target/type", keyword: "type", params: { type: "object" }, message: "must be object" };
+        e === null ? e = [l] : e.push(l), s++;
       }
     }
     if (a.instanceId !== void 0) {
-      let m = a.instanceId;
-      if (typeof m == "string") {
-        if (!Z.test(m)) {
-          let o = { instancePath: t + "/instanceId", schemaPath: "#/properties/instanceId/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
-          e === null ? e = [o] : e.push(o), s++;
+      let o = a.instanceId;
+      if (typeof o == "string") {
+        if (!Z.test(o)) {
+          let l = { instancePath: t + "/instanceId", schemaPath: "#/properties/instanceId/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
+          e === null ? e = [l] : e.push(l), s++;
         }
       } else {
-        let o = { instancePath: t + "/instanceId", schemaPath: "#/properties/instanceId/type", keyword: "type", params: { type: "string" }, message: "must be string" };
-        e === null ? e = [o] : e.push(o), s++;
+        let l = { instancePath: t + "/instanceId", schemaPath: "#/properties/instanceId/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+        e === null ? e = [l] : e.push(l), s++;
       }
     }
     if (a.applicationBuild !== void 0) {
-      let m = a.applicationBuild;
-      if (typeof m == "string") {
-        if (A(m) < 1) {
-          let o = { instancePath: t + "/applicationBuild", schemaPath: "#/properties/applicationBuild/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
-          e === null ? e = [o] : e.push(o), s++;
+      let o = a.applicationBuild;
+      if (typeof o == "string") {
+        if (A(o) < 1) {
+          let l = { instancePath: t + "/applicationBuild", schemaPath: "#/properties/applicationBuild/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
+          e === null ? e = [l] : e.push(l), s++;
         }
       } else {
-        let o = { instancePath: t + "/applicationBuild", schemaPath: "#/properties/applicationBuild/type", keyword: "type", params: { type: "string" }, message: "must be string" };
-        e === null ? e = [o] : e.push(o), s++;
+        let l = { instancePath: t + "/applicationBuild", schemaPath: "#/properties/applicationBuild/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+        e === null ? e = [l] : e.push(l), s++;
       }
     }
     if (a.selectedTestIds !== void 0) {
-      let m = a.selectedTestIds;
-      if (Array.isArray(m)) {
-        if (m.length < 1) {
+      let o = a.selectedTestIds;
+      if (Array.isArray(o)) {
+        if (o.length < 1) {
           let f = { instancePath: t + "/selectedTestIds", schemaPath: "#/properties/selectedTestIds/minItems", keyword: "minItems", params: { limit: 1 }, message: "must NOT have fewer than 1 items" };
           e === null ? e = [f] : e.push(f), s++;
         }
-        let o = m.length;
-        for (let f = 0; f < o; f++) {
-          let q = m[f];
+        let l = o.length;
+        for (let f = 0; f < l; f++) {
+          let q = o[f];
           if (typeof q == "string") {
             if (!Z.test(q)) {
               let y = { instancePath: t + "/selectedTestIds/" + f, schemaPath: "#/properties/selectedTestIds/items/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
@@ -7702,15 +7786,15 @@ function Ye(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
             e === null ? e = [y] : e.push(y), s++;
           }
         }
-        let g = m.length, v;
+        let g = o.length, b;
         if (g > 1) {
           let f = {};
           for (; g--; ) {
-            let q = m[g];
+            let q = o[g];
             if (typeof q == "string") {
               if (typeof f[q] == "number") {
-                v = f[q];
-                let y = { instancePath: t + "/selectedTestIds", schemaPath: "#/properties/selectedTestIds/uniqueItems", keyword: "uniqueItems", params: { i: g, j: v }, message: "must NOT have duplicate items (items ## " + v + " and " + g + " are identical)" };
+                b = f[q];
+                let y = { instancePath: t + "/selectedTestIds", schemaPath: "#/properties/selectedTestIds/uniqueItems", keyword: "uniqueItems", params: { i: g, j: b }, message: "must NOT have duplicate items (items ## " + b + " and " + g + " are identical)" };
                 e === null ? e = [y] : e.push(y), s++;
                 break;
               }
@@ -7719,14 +7803,14 @@ function Ye(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
           }
         }
       } else {
-        let o = { instancePath: t + "/selectedTestIds", schemaPath: "#/properties/selectedTestIds/type", keyword: "type", params: { type: "array" }, message: "must be array" };
-        e === null ? e = [o] : e.push(o), s++;
+        let l = { instancePath: t + "/selectedTestIds", schemaPath: "#/properties/selectedTestIds/type", keyword: "type", params: { type: "array" }, message: "must be array" };
+        e === null ? e = [l] : e.push(l), s++;
       }
     }
     if (a.retestOf !== void 0) {
-      let m = a.retestOf, o = s, g = false, v = s;
-      if (typeof m == "string") {
-        if (!Z.test(m)) {
+      let o = a.retestOf, l = s, g = false, b = s;
+      if (typeof o == "string") {
+        if (!Z.test(o)) {
           let f = { instancePath: t + "/retestOf", schemaPath: "#/properties/retestOf/anyOf/0/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
           e === null ? e = [f] : e.push(f), s++;
         }
@@ -7734,75 +7818,75 @@ function Ye(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
         let f = { instancePath: t + "/retestOf", schemaPath: "#/properties/retestOf/anyOf/0/type", keyword: "type", params: { type: "string" }, message: "must be string" };
         e === null ? e = [f] : e.push(f), s++;
       }
-      var w = v === s;
+      var w = b === s;
       if (g = g || w, !g) {
         let f = s;
-        if (m !== null) {
+        if (o !== null) {
           let y = { instancePath: t + "/retestOf", schemaPath: "#/properties/retestOf/anyOf/1/type", keyword: "type", params: { type: "null" }, message: "must be null" };
           e === null ? e = [y] : e.push(y), s++;
         }
         var w = f === s;
         g = g || w;
       }
-      if (g) s = o, e !== null && (o ? e.length = o : e = null);
+      if (g) s = l, e !== null && (l ? e.length = l : e = null);
       else {
         let f = { instancePath: t + "/retestOf", schemaPath: "#/properties/retestOf/anyOf", keyword: "anyOf", params: {}, message: "must match a schema in anyOf" };
         e === null ? e = [f] : e.push(f), s++;
       }
     }
     if (a.startedAt !== void 0) {
-      let m = a.startedAt;
-      if (typeof m == "string") {
-        if (!Ae.validate(m)) {
-          let o = { instancePath: t + "/startedAt", schemaPath: "#/properties/startedAt/format", keyword: "format", params: { format: "date-time" }, message: 'must match format "date-time"' };
-          e === null ? e = [o] : e.push(o), s++;
+      let o = a.startedAt;
+      if (typeof o == "string") {
+        if (!Oe.validate(o)) {
+          let l = { instancePath: t + "/startedAt", schemaPath: "#/properties/startedAt/format", keyword: "format", params: { format: "date-time" }, message: 'must match format "date-time"' };
+          e === null ? e = [l] : e.push(l), s++;
         }
       } else {
-        let o = { instancePath: t + "/startedAt", schemaPath: "#/properties/startedAt/type", keyword: "type", params: { type: "string" }, message: "must be string" };
-        e === null ? e = [o] : e.push(o), s++;
+        let l = { instancePath: t + "/startedAt", schemaPath: "#/properties/startedAt/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+        e === null ? e = [l] : e.push(l), s++;
       }
     }
     if (a.finishedAt !== void 0) {
-      let m = a.finishedAt;
-      if (typeof m == "string") {
-        if (!Ae.validate(m)) {
-          let o = { instancePath: t + "/finishedAt", schemaPath: "#/properties/finishedAt/format", keyword: "format", params: { format: "date-time" }, message: 'must match format "date-time"' };
-          e === null ? e = [o] : e.push(o), s++;
+      let o = a.finishedAt;
+      if (typeof o == "string") {
+        if (!Oe.validate(o)) {
+          let l = { instancePath: t + "/finishedAt", schemaPath: "#/properties/finishedAt/format", keyword: "format", params: { format: "date-time" }, message: 'must match format "date-time"' };
+          e === null ? e = [l] : e.push(l), s++;
         }
       } else {
-        let o = { instancePath: t + "/finishedAt", schemaPath: "#/properties/finishedAt/type", keyword: "type", params: { type: "string" }, message: "must be string" };
-        e === null ? e = [o] : e.push(o), s++;
+        let l = { instancePath: t + "/finishedAt", schemaPath: "#/properties/finishedAt/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+        e === null ? e = [l] : e.push(l), s++;
       }
     }
     if (a.attempts !== void 0) {
-      let m = a.attempts;
-      if (!(typeof m == "number" && !(m % 1) && !isNaN(m) && isFinite(m))) {
-        let o = { instancePath: t + "/attempts", schemaPath: "#/properties/attempts/type", keyword: "type", params: { type: "integer" }, message: "must be integer" };
-        e === null ? e = [o] : e.push(o), s++;
+      let o = a.attempts;
+      if (!(typeof o == "number" && !(o % 1) && !isNaN(o) && isFinite(o))) {
+        let l = { instancePath: t + "/attempts", schemaPath: "#/properties/attempts/type", keyword: "type", params: { type: "integer" }, message: "must be integer" };
+        e === null ? e = [l] : e.push(l), s++;
       }
-      if (typeof m == "number" && isFinite(m) && (m < 1 || isNaN(m))) {
-        let o = { instancePath: t + "/attempts", schemaPath: "#/properties/attempts/minimum", keyword: "minimum", params: { comparison: ">=", limit: 1 }, message: "must be >= 1" };
-        e === null ? e = [o] : e.push(o), s++;
+      if (typeof o == "number" && isFinite(o) && (o < 1 || isNaN(o))) {
+        let l = { instancePath: t + "/attempts", schemaPath: "#/properties/attempts/minimum", keyword: "minimum", params: { comparison: ">=", limit: 1 }, message: "must be >= 1" };
+        e === null ? e = [l] : e.push(l), s++;
       }
     }
     if (a.completion !== void 0) {
-      let m = a.completion;
-      if (!(m === "completed" || m === "interrupted" || m === "operational_error")) {
-        let o = { instancePath: t + "/completion", schemaPath: "#/properties/completion/enum", keyword: "enum", params: { allowedValues: G.properties.completion.enum }, message: "must be equal to one of the allowed values" };
-        e === null ? e = [o] : e.push(o), s++;
+      let o = a.completion;
+      if (!(o === "completed" || o === "interrupted" || o === "operational_error")) {
+        let l = { instancePath: t + "/completion", schemaPath: "#/properties/completion/enum", keyword: "enum", params: { allowedValues: G.properties.completion.enum }, message: "must be equal to one of the allowed values" };
+        e === null ? e = [l] : e.push(l), s++;
       }
     }
     if (a.completionCause !== void 0) {
-      let m = a.completionCause;
-      if (!(m === "deadline" || m === "host_stopped" || m === "tool_unavailable" || m === null)) {
-        let o = { instancePath: t + "/completionCause", schemaPath: "#/properties/completionCause/enum", keyword: "enum", params: { allowedValues: G.properties.completionCause.enum }, message: "must be equal to one of the allowed values" };
-        e === null ? e = [o] : e.push(o), s++;
+      let o = a.completionCause;
+      if (!(o === "deadline" || o === "host_stopped" || o === "tool_unavailable" || o === null)) {
+        let l = { instancePath: t + "/completionCause", schemaPath: "#/properties/completionCause/enum", keyword: "enum", params: { allowedValues: G.properties.completionCause.enum }, message: "must be equal to one of the allowed values" };
+        e === null ? e = [l] : e.push(l), s++;
       }
     }
     if (a.completionReason !== void 0) {
-      let m = a.completionReason, o = s, g = false, v = s;
-      if (typeof m == "string") {
-        if (A(m) < 1) {
+      let o = a.completionReason, l = s, g = false, b = s;
+      if (typeof o == "string") {
+        if (A(o) < 1) {
           let f = { instancePath: t + "/completionReason", schemaPath: "#/properties/completionReason/anyOf/0/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
           e === null ? e = [f] : e.push(f), s++;
         }
@@ -7810,32 +7894,32 @@ function Ye(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
         let f = { instancePath: t + "/completionReason", schemaPath: "#/properties/completionReason/anyOf/0/type", keyword: "type", params: { type: "string" }, message: "must be string" };
         e === null ? e = [f] : e.push(f), s++;
       }
-      var n = v === s;
+      var n = b === s;
       if (g = g || n, !g) {
         let f = s;
-        if (m !== null) {
+        if (o !== null) {
           let y = { instancePath: t + "/completionReason", schemaPath: "#/properties/completionReason/anyOf/1/type", keyword: "type", params: { type: "null" }, message: "must be null" };
           e === null ? e = [y] : e.push(y), s++;
         }
         var n = f === s;
         g = g || n;
       }
-      if (g) s = o, e !== null && (o ? e.length = o : e = null);
+      if (g) s = l, e !== null && (l ? e.length = l : e = null);
       else {
         let f = { instancePath: t + "/completionReason", schemaPath: "#/properties/completionReason/anyOf", keyword: "anyOf", params: {}, message: "must match a schema in anyOf" };
         e === null ? e = [f] : e.push(f), s++;
       }
     }
     if (a.tests !== void 0) {
-      let m = a.tests;
-      if (Array.isArray(m)) {
-        if (m.length < 1) {
+      let o = a.tests;
+      if (Array.isArray(o)) {
+        if (o.length < 1) {
           let f = { instancePath: t + "/tests", schemaPath: "#/properties/tests/minItems", keyword: "minItems", params: { limit: 1 }, message: "must NOT have fewer than 1 items" };
           e === null ? e = [f] : e.push(f), s++;
         }
-        let o = m.length;
-        for (let f = 0; f < o; f++) {
-          let q = m[f];
+        let l = o.length;
+        for (let f = 0; f < l; f++) {
+          let q = o[f];
           if (q && typeof q == "object" && !Array.isArray(q)) {
             if (q.testId === void 0) {
               let y = { instancePath: t + "/tests/" + f, schemaPath: "#/properties/tests/items/required", keyword: "required", params: { missingProperty: "testId" }, message: "must have required property 'testId'" };
@@ -7895,8 +7979,8 @@ function Ye(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
               if (z = z || r, !z) {
                 let k = s;
                 if (y !== null) {
-                  let b = { instancePath: t + "/tests/" + f + "/reason", schemaPath: "#/properties/tests/items/properties/reason/anyOf/1/type", keyword: "type", params: { type: "null" }, message: "must be null" };
-                  e === null ? e = [b] : e.push(b), s++;
+                  let v = { instancePath: t + "/tests/" + f + "/reason", schemaPath: "#/properties/tests/items/properties/reason/anyOf/1/type", keyword: "type", params: { type: "null" }, message: "must be null" };
+                  e === null ? e = [v] : e.push(v), s++;
                 }
                 var r = k === s;
                 z = z || r;
@@ -7919,41 +8003,41 @@ function Ye(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
                   let j = y[k];
                   if (j && typeof j == "object" && !Array.isArray(j)) {
                     if (j.assertionId === void 0) {
-                      let b = { instancePath: t + "/tests/" + f + "/assertions/" + k, schemaPath: "#/properties/tests/items/properties/assertions/items/required", keyword: "required", params: { missingProperty: "assertionId" }, message: "must have required property 'assertionId'" };
-                      e === null ? e = [b] : e.push(b), s++;
+                      let v = { instancePath: t + "/tests/" + f + "/assertions/" + k, schemaPath: "#/properties/tests/items/properties/assertions/items/required", keyword: "required", params: { missingProperty: "assertionId" }, message: "must have required property 'assertionId'" };
+                      e === null ? e = [v] : e.push(v), s++;
                     }
                     if (j.check === void 0) {
-                      let b = { instancePath: t + "/tests/" + f + "/assertions/" + k, schemaPath: "#/properties/tests/items/properties/assertions/items/required", keyword: "required", params: { missingProperty: "check" }, message: "must have required property 'check'" };
-                      e === null ? e = [b] : e.push(b), s++;
+                      let v = { instancePath: t + "/tests/" + f + "/assertions/" + k, schemaPath: "#/properties/tests/items/properties/assertions/items/required", keyword: "required", params: { missingProperty: "check" }, message: "must have required property 'check'" };
+                      e === null ? e = [v] : e.push(v), s++;
                     }
                     if (j.checkKind === void 0) {
-                      let b = { instancePath: t + "/tests/" + f + "/assertions/" + k, schemaPath: "#/properties/tests/items/properties/assertions/items/required", keyword: "required", params: { missingProperty: "checkKind" }, message: "must have required property 'checkKind'" };
-                      e === null ? e = [b] : e.push(b), s++;
+                      let v = { instancePath: t + "/tests/" + f + "/assertions/" + k, schemaPath: "#/properties/tests/items/properties/assertions/items/required", keyword: "required", params: { missingProperty: "checkKind" }, message: "must have required property 'checkKind'" };
+                      e === null ? e = [v] : e.push(v), s++;
                     }
                     if (j.result === void 0) {
-                      let b = { instancePath: t + "/tests/" + f + "/assertions/" + k, schemaPath: "#/properties/tests/items/properties/assertions/items/required", keyword: "required", params: { missingProperty: "result" }, message: "must have required property 'result'" };
-                      e === null ? e = [b] : e.push(b), s++;
+                      let v = { instancePath: t + "/tests/" + f + "/assertions/" + k, schemaPath: "#/properties/tests/items/properties/assertions/items/required", keyword: "required", params: { missingProperty: "result" }, message: "must have required property 'result'" };
+                      e === null ? e = [v] : e.push(v), s++;
                     }
                     if (j.observed === void 0) {
-                      let b = { instancePath: t + "/tests/" + f + "/assertions/" + k, schemaPath: "#/properties/tests/items/properties/assertions/items/required", keyword: "required", params: { missingProperty: "observed" }, message: "must have required property 'observed'" };
-                      e === null ? e = [b] : e.push(b), s++;
+                      let v = { instancePath: t + "/tests/" + f + "/assertions/" + k, schemaPath: "#/properties/tests/items/properties/assertions/items/required", keyword: "required", params: { missingProperty: "observed" }, message: "must have required property 'observed'" };
+                      e === null ? e = [v] : e.push(v), s++;
                     }
                     if (j.reason === void 0) {
-                      let b = { instancePath: t + "/tests/" + f + "/assertions/" + k, schemaPath: "#/properties/tests/items/properties/assertions/items/required", keyword: "required", params: { missingProperty: "reason" }, message: "must have required property 'reason'" };
-                      e === null ? e = [b] : e.push(b), s++;
+                      let v = { instancePath: t + "/tests/" + f + "/assertions/" + k, schemaPath: "#/properties/tests/items/properties/assertions/items/required", keyword: "required", params: { missingProperty: "reason" }, message: "must have required property 'reason'" };
+                      e === null ? e = [v] : e.push(v), s++;
                     }
                     if (j.evidenceIds === void 0) {
-                      let b = { instancePath: t + "/tests/" + f + "/assertions/" + k, schemaPath: "#/properties/tests/items/properties/assertions/items/required", keyword: "required", params: { missingProperty: "evidenceIds" }, message: "must have required property 'evidenceIds'" };
-                      e === null ? e = [b] : e.push(b), s++;
+                      let v = { instancePath: t + "/tests/" + f + "/assertions/" + k, schemaPath: "#/properties/tests/items/properties/assertions/items/required", keyword: "required", params: { missingProperty: "evidenceIds" }, message: "must have required property 'evidenceIds'" };
+                      e === null ? e = [v] : e.push(v), s++;
                     }
-                    for (let b in j) if (!(b === "assertionId" || b === "check" || b === "checkKind" || b === "result" || b === "observed" || b === "reason" || b === "evidenceIds")) {
-                      let O = { instancePath: t + "/tests/" + f + "/assertions/" + k, schemaPath: "#/properties/tests/items/properties/assertions/items/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: b }, message: "must NOT have additional properties" };
+                    for (let v in j) if (!(v === "assertionId" || v === "check" || v === "checkKind" || v === "result" || v === "observed" || v === "reason" || v === "evidenceIds")) {
+                      let O = { instancePath: t + "/tests/" + f + "/assertions/" + k, schemaPath: "#/properties/tests/items/properties/assertions/items/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: v }, message: "must NOT have additional properties" };
                       e === null ? e = [O] : e.push(O), s++;
                     }
                     if (j.assertionId !== void 0) {
-                      let b = j.assertionId;
-                      if (typeof b == "string") {
-                        if (!Z.test(b)) {
+                      let v = j.assertionId;
+                      if (typeof v == "string") {
+                        if (!Z.test(v)) {
                           let O = { instancePath: t + "/tests/" + f + "/assertions/" + k + "/assertionId", schemaPath: "#/properties/tests/items/properties/assertions/items/properties/assertionId/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
                           e === null ? e = [O] : e.push(O), s++;
                         }
@@ -7963,9 +8047,9 @@ function Ye(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
                       }
                     }
                     if (j.check !== void 0) {
-                      let b = j.check;
-                      if (typeof b == "string") {
-                        if (A(b) < 1) {
+                      let v = j.check;
+                      if (typeof v == "string") {
+                        if (A(v) < 1) {
                           let O = { instancePath: t + "/tests/" + f + "/assertions/" + k + "/check", schemaPath: "#/properties/tests/items/properties/assertions/items/properties/check/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
                           e === null ? e = [O] : e.push(O), s++;
                         }
@@ -7975,23 +8059,23 @@ function Ye(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
                       }
                     }
                     if (j.checkKind !== void 0) {
-                      let b = j.checkKind;
-                      if (!(b === "deterministic" || b === "agent_observation")) {
+                      let v = j.checkKind;
+                      if (!(v === "deterministic" || v === "agent_observation")) {
                         let O = { instancePath: t + "/tests/" + f + "/assertions/" + k + "/checkKind", schemaPath: "#/properties/tests/items/properties/assertions/items/properties/checkKind/enum", keyword: "enum", params: { allowedValues: G.properties.tests.items.properties.assertions.items.properties.checkKind.enum }, message: "must be equal to one of the allowed values" };
                         e === null ? e = [O] : e.push(O), s++;
                       }
                     }
                     if (j.result !== void 0) {
-                      let b = j.result;
-                      if (!(b === "passed" || b === "failed" || b === "inconclusive" || b === "not_checked")) {
+                      let v = j.result;
+                      if (!(v === "passed" || v === "failed" || v === "inconclusive" || v === "not_checked")) {
                         let O = { instancePath: t + "/tests/" + f + "/assertions/" + k + "/result", schemaPath: "#/properties/tests/items/properties/assertions/items/properties/result/enum", keyword: "enum", params: { allowedValues: G.properties.tests.items.properties.assertions.items.properties.result.enum }, message: "must be equal to one of the allowed values" };
                         e === null ? e = [O] : e.push(O), s++;
                       }
                     }
                     if (j.observed !== void 0) {
-                      let b = j.observed, O = s, N = false, L = s;
-                      if (typeof b == "string") {
-                        if (A(b) < 1) {
+                      let v = j.observed, O = s, N = false, T = s;
+                      if (typeof v == "string") {
+                        if (A(v) < 1) {
                           let x = { instancePath: t + "/tests/" + f + "/assertions/" + k + "/observed", schemaPath: "#/properties/tests/items/properties/assertions/items/properties/observed/anyOf/0/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
                           e === null ? e = [x] : e.push(x), s++;
                         }
@@ -7999,15 +8083,15 @@ function Ye(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
                         let x = { instancePath: t + "/tests/" + f + "/assertions/" + k + "/observed", schemaPath: "#/properties/tests/items/properties/assertions/items/properties/observed/anyOf/0/type", keyword: "type", params: { type: "string" }, message: "must be string" };
                         e === null ? e = [x] : e.push(x), s++;
                       }
-                      var l = L === s;
-                      if (N = N || l, !N) {
+                      var m = T === s;
+                      if (N = N || m, !N) {
                         let x = s;
-                        if (b !== null) {
+                        if (v !== null) {
                           let V = { instancePath: t + "/tests/" + f + "/assertions/" + k + "/observed", schemaPath: "#/properties/tests/items/properties/assertions/items/properties/observed/anyOf/1/type", keyword: "type", params: { type: "null" }, message: "must be null" };
                           e === null ? e = [V] : e.push(V), s++;
                         }
-                        var l = x === s;
-                        N = N || l;
+                        var m = x === s;
+                        N = N || m;
                       }
                       if (N) s = O, e !== null && (O ? e.length = O : e = null);
                       else {
@@ -8016,9 +8100,9 @@ function Ye(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
                       }
                     }
                     if (j.reason !== void 0) {
-                      let b = j.reason, O = s, N = false, L = s;
-                      if (typeof b == "string") {
-                        if (A(b) < 1) {
+                      let v = j.reason, O = s, N = false, T = s;
+                      if (typeof v == "string") {
+                        if (A(v) < 1) {
                           let x = { instancePath: t + "/tests/" + f + "/assertions/" + k + "/reason", schemaPath: "#/properties/tests/items/properties/assertions/items/properties/reason/anyOf/0/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
                           e === null ? e = [x] : e.push(x), s++;
                         }
@@ -8026,15 +8110,15 @@ function Ye(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
                         let x = { instancePath: t + "/tests/" + f + "/assertions/" + k + "/reason", schemaPath: "#/properties/tests/items/properties/assertions/items/properties/reason/anyOf/0/type", keyword: "type", params: { type: "string" }, message: "must be string" };
                         e === null ? e = [x] : e.push(x), s++;
                       }
-                      var d = L === s;
-                      if (N = N || d, !N) {
+                      var c = T === s;
+                      if (N = N || c, !N) {
                         let x = s;
-                        if (b !== null) {
+                        if (v !== null) {
                           let V = { instancePath: t + "/tests/" + f + "/assertions/" + k + "/reason", schemaPath: "#/properties/tests/items/properties/assertions/items/properties/reason/anyOf/1/type", keyword: "type", params: { type: "null" }, message: "must be null" };
                           e === null ? e = [V] : e.push(V), s++;
                         }
-                        var d = x === s;
-                        N = N || d;
+                        var c = x === s;
+                        N = N || c;
                       }
                       if (N) s = O, e !== null && (O ? e.length = O : e = null);
                       else {
@@ -8043,15 +8127,15 @@ function Ye(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
                       }
                     }
                     if (j.evidenceIds !== void 0) {
-                      let b = j.evidenceIds;
-                      if (Array.isArray(b)) {
-                        if (b.length < 0) {
+                      let v = j.evidenceIds;
+                      if (Array.isArray(v)) {
+                        if (v.length < 0) {
                           let x = { instancePath: t + "/tests/" + f + "/assertions/" + k + "/evidenceIds", schemaPath: "#/properties/tests/items/properties/assertions/items/properties/evidenceIds/minItems", keyword: "minItems", params: { limit: 0 }, message: "must NOT have fewer than 0 items" };
                           e === null ? e = [x] : e.push(x), s++;
                         }
-                        let O = b.length;
+                        let O = v.length;
                         for (let x = 0; x < O; x++) {
-                          let H = b[x];
+                          let H = v[x];
                           if (typeof H == "string") {
                             if (!Z.test(H)) {
                               let V = { instancePath: t + "/tests/" + f + "/assertions/" + k + "/evidenceIds/" + x, schemaPath: "#/properties/tests/items/properties/assertions/items/properties/evidenceIds/items/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
@@ -8062,15 +8146,15 @@ function Ye(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
                             e === null ? e = [V] : e.push(V), s++;
                           }
                         }
-                        let N = b.length, L;
+                        let N = v.length, T;
                         if (N > 1) {
                           let x = {};
                           for (; N--; ) {
-                            let H = b[N];
+                            let H = v[N];
                             if (typeof H == "string") {
                               if (typeof x[H] == "number") {
-                                L = x[H];
-                                let V = { instancePath: t + "/tests/" + f + "/assertions/" + k + "/evidenceIds", schemaPath: "#/properties/tests/items/properties/assertions/items/properties/evidenceIds/uniqueItems", keyword: "uniqueItems", params: { i: N, j: L }, message: "must NOT have duplicate items (items ## " + L + " and " + N + " are identical)" };
+                                T = x[H];
+                                let V = { instancePath: t + "/tests/" + f + "/assertions/" + k + "/evidenceIds", schemaPath: "#/properties/tests/items/properties/assertions/items/properties/evidenceIds/uniqueItems", keyword: "uniqueItems", params: { i: N, j: T }, message: "must NOT have duplicate items (items ## " + T + " and " + N + " are identical)" };
                                 e === null ? e = [V] : e.push(V), s++;
                                 break;
                               }
@@ -8084,8 +8168,8 @@ function Ye(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
                       }
                     }
                   } else {
-                    let b = { instancePath: t + "/tests/" + f + "/assertions/" + k, schemaPath: "#/properties/tests/items/properties/assertions/items/type", keyword: "type", params: { type: "object" }, message: "must be object" };
-                    e === null ? e = [b] : e.push(b), s++;
+                    let v = { instancePath: t + "/tests/" + f + "/assertions/" + k, schemaPath: "#/properties/tests/items/properties/assertions/items/type", keyword: "type", params: { type: "object" }, message: "must be object" };
+                    e === null ? e = [v] : e.push(v), s++;
                   }
                 }
                 let z = y.length, I;
@@ -8106,76 +8190,76 @@ function Ye(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
             e === null ? e = [y] : e.push(y), s++;
           }
         }
-        let g = m.length, v;
+        let g = o.length, b;
         if (g > 1) {
-          e: for (; g--; ) for (v = g; v--; ) if (D(m[g], m[v])) {
-            let f = { instancePath: t + "/tests", schemaPath: "#/properties/tests/uniqueItems", keyword: "uniqueItems", params: { i: g, j: v }, message: "must NOT have duplicate items (items ## " + v + " and " + g + " are identical)" };
+          e: for (; g--; ) for (b = g; b--; ) if (D(o[g], o[b])) {
+            let f = { instancePath: t + "/tests", schemaPath: "#/properties/tests/uniqueItems", keyword: "uniqueItems", params: { i: g, j: b }, message: "must NOT have duplicate items (items ## " + b + " and " + g + " are identical)" };
             e === null ? e = [f] : e.push(f), s++;
             break e;
           }
         }
       } else {
-        let o = { instancePath: t + "/tests", schemaPath: "#/properties/tests/type", keyword: "type", params: { type: "array" }, message: "must be array" };
-        e === null ? e = [o] : e.push(o), s++;
+        let l = { instancePath: t + "/tests", schemaPath: "#/properties/tests/type", keyword: "type", params: { type: "array" }, message: "must be array" };
+        e === null ? e = [l] : e.push(l), s++;
       }
     }
     if (a.findings !== void 0) {
-      let m = a.findings;
-      if (Array.isArray(m)) {
-        if (m.length < 0) {
+      let o = a.findings;
+      if (Array.isArray(o)) {
+        if (o.length < 0) {
           let f = { instancePath: t + "/findings", schemaPath: "#/properties/findings/minItems", keyword: "minItems", params: { limit: 0 }, message: "must NOT have fewer than 0 items" };
           e === null ? e = [f] : e.push(f), s++;
         }
-        let o = m.length;
-        for (let f = 0; f < o; f++) {
-          let q = m[f], y = s, P2 = true, z = s;
+        let l = o.length;
+        for (let f = 0; f < l; f++) {
+          let q = o[f], y = s, P2 = true, z = s;
           if (q && typeof q == "object" && !Array.isArray(q) && q.type !== void 0 && q.type !== "defect") {
             let I = {};
             e === null ? e = [I] : e.push(I), s++;
           }
-          var c = z === s;
-          if (s = y, e !== null && (y ? e.length = y : e = null), c) {
+          var d = z === s;
+          if (s = y, e !== null && (y ? e.length = y : e = null), d) {
             let I = s;
             if (q && typeof q == "object" && !Array.isArray(q)) {
               if (q.evidenceIds !== void 0) {
                 let j = q.evidenceIds;
                 if (Array.isArray(j)) {
                   if (j.length < 1) {
-                    let b = { instancePath: t + "/findings/" + f + "/evidenceIds", schemaPath: "#/properties/findings/items/then/properties/evidenceIds/minItems", keyword: "minItems", params: { limit: 1 }, message: "must NOT have fewer than 1 items" };
-                    e === null ? e = [b] : e.push(b), s++;
+                    let v = { instancePath: t + "/findings/" + f + "/evidenceIds", schemaPath: "#/properties/findings/items/then/properties/evidenceIds/minItems", keyword: "minItems", params: { limit: 1 }, message: "must NOT have fewer than 1 items" };
+                    e === null ? e = [v] : e.push(v), s++;
                   }
                 } else {
-                  let b = { instancePath: t + "/findings/" + f + "/evidenceIds", schemaPath: "#/properties/findings/items/then/properties/evidenceIds/type", keyword: "type", params: { type: "array" }, message: "must be array" };
-                  e === null ? e = [b] : e.push(b), s++;
+                  let v = { instancePath: t + "/findings/" + f + "/evidenceIds", schemaPath: "#/properties/findings/items/then/properties/evidenceIds/type", keyword: "type", params: { type: "array" }, message: "must be array" };
+                  e === null ? e = [v] : e.push(v), s++;
                 }
               }
               if (q.testIds !== void 0) {
                 let j = q.testIds;
                 if (Array.isArray(j)) {
                   if (j.length < 1) {
-                    let b = { instancePath: t + "/findings/" + f + "/testIds", schemaPath: "#/properties/findings/items/then/properties/testIds/minItems", keyword: "minItems", params: { limit: 1 }, message: "must NOT have fewer than 1 items" };
-                    e === null ? e = [b] : e.push(b), s++;
+                    let v = { instancePath: t + "/findings/" + f + "/testIds", schemaPath: "#/properties/findings/items/then/properties/testIds/minItems", keyword: "minItems", params: { limit: 1 }, message: "must NOT have fewer than 1 items" };
+                    e === null ? e = [v] : e.push(v), s++;
                   }
                 } else {
-                  let b = { instancePath: t + "/findings/" + f + "/testIds", schemaPath: "#/properties/findings/items/then/properties/testIds/type", keyword: "type", params: { type: "array" }, message: "must be array" };
-                  e === null ? e = [b] : e.push(b), s++;
+                  let v = { instancePath: t + "/findings/" + f + "/testIds", schemaPath: "#/properties/findings/items/then/properties/testIds/type", keyword: "type", params: { type: "array" }, message: "must be array" };
+                  e === null ? e = [v] : e.push(v), s++;
                 }
               }
               if (q.assertionIds !== void 0) {
                 let j = q.assertionIds;
                 if (Array.isArray(j)) {
                   if (j.length < 1) {
-                    let b = { instancePath: t + "/findings/" + f + "/assertionIds", schemaPath: "#/properties/findings/items/then/properties/assertionIds/minItems", keyword: "minItems", params: { limit: 1 }, message: "must NOT have fewer than 1 items" };
-                    e === null ? e = [b] : e.push(b), s++;
+                    let v = { instancePath: t + "/findings/" + f + "/assertionIds", schemaPath: "#/properties/findings/items/then/properties/assertionIds/minItems", keyword: "minItems", params: { limit: 1 }, message: "must NOT have fewer than 1 items" };
+                    e === null ? e = [v] : e.push(v), s++;
                   }
                 } else {
-                  let b = { instancePath: t + "/findings/" + f + "/assertionIds", schemaPath: "#/properties/findings/items/then/properties/assertionIds/type", keyword: "type", params: { type: "array" }, message: "must be array" };
-                  e === null ? e = [b] : e.push(b), s++;
+                  let v = { instancePath: t + "/findings/" + f + "/assertionIds", schemaPath: "#/properties/findings/items/then/properties/assertionIds/type", keyword: "type", params: { type: "array" }, message: "must be array" };
+                  e === null ? e = [v] : e.push(v), s++;
                 }
               }
             }
-            var c = I === s;
-            P2 = c;
+            var d = I === s;
+            P2 = d;
           }
           if (!P2) {
             let I = { instancePath: t + "/findings/" + f, schemaPath: "#/properties/findings/items/if", keyword: "if", params: { failingKeyword: "then" }, message: 'must match "then" schema' };
@@ -8226,7 +8310,7 @@ function Ye(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
               let I = { instancePath: t + "/findings/" + f, schemaPath: "#/properties/findings/items/required", keyword: "required", params: { missingProperty: "assertionIds" }, message: "must have required property 'assertionIds'" };
               e === null ? e = [I] : e.push(I), s++;
             }
-            for (let I in q) if (!E.call(G.properties.findings.items.properties, I)) {
+            for (let I in q) if (!K.call(G.properties.findings.items.properties, I)) {
               let k = { instancePath: t + "/findings/" + f, schemaPath: "#/properties/findings/items/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: I }, message: "must NOT have additional properties" };
               e === null ? e = [k] : e.push(k), s++;
             }
@@ -8268,24 +8352,24 @@ function Ye(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
                   let N = I[O];
                   if (typeof N == "string") {
                     if (!Z.test(N)) {
-                      let L = { instancePath: t + "/findings/" + f + "/requirementIds/" + O, schemaPath: "#/properties/findings/items/properties/requirementIds/items/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
-                      e === null ? e = [L] : e.push(L), s++;
+                      let T = { instancePath: t + "/findings/" + f + "/requirementIds/" + O, schemaPath: "#/properties/findings/items/properties/requirementIds/items/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
+                      e === null ? e = [T] : e.push(T), s++;
                     }
                   } else {
-                    let L = { instancePath: t + "/findings/" + f + "/requirementIds/" + O, schemaPath: "#/properties/findings/items/properties/requirementIds/items/type", keyword: "type", params: { type: "string" }, message: "must be string" };
-                    e === null ? e = [L] : e.push(L), s++;
+                    let T = { instancePath: t + "/findings/" + f + "/requirementIds/" + O, schemaPath: "#/properties/findings/items/properties/requirementIds/items/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+                    e === null ? e = [T] : e.push(T), s++;
                   }
                 }
-                let j = I.length, b;
+                let j = I.length, v;
                 if (j > 1) {
                   let O = {};
                   for (; j--; ) {
                     let N = I[j];
                     if (typeof N == "string") {
                       if (typeof O[N] == "number") {
-                        b = O[N];
-                        let L = { instancePath: t + "/findings/" + f + "/requirementIds", schemaPath: "#/properties/findings/items/properties/requirementIds/uniqueItems", keyword: "uniqueItems", params: { i: j, j: b }, message: "must NOT have duplicate items (items ## " + b + " and " + j + " are identical)" };
-                        e === null ? e = [L] : e.push(L), s++;
+                        v = O[N];
+                        let T = { instancePath: t + "/findings/" + f + "/requirementIds", schemaPath: "#/properties/findings/items/properties/requirementIds/uniqueItems", keyword: "uniqueItems", params: { i: j, j: v }, message: "must NOT have duplicate items (items ## " + v + " and " + j + " are identical)" };
+                        e === null ? e = [T] : e.push(T), s++;
                         break;
                       }
                       O[N] = j;
@@ -8345,24 +8429,24 @@ function Ye(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
                   let N = I[O];
                   if (typeof N == "string") {
                     if (A(N) < 1) {
-                      let L = { instancePath: t + "/findings/" + f + "/reproduction/" + O, schemaPath: "#/properties/findings/items/properties/reproduction/items/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
-                      e === null ? e = [L] : e.push(L), s++;
+                      let T = { instancePath: t + "/findings/" + f + "/reproduction/" + O, schemaPath: "#/properties/findings/items/properties/reproduction/items/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
+                      e === null ? e = [T] : e.push(T), s++;
                     }
                   } else {
-                    let L = { instancePath: t + "/findings/" + f + "/reproduction/" + O, schemaPath: "#/properties/findings/items/properties/reproduction/items/type", keyword: "type", params: { type: "string" }, message: "must be string" };
-                    e === null ? e = [L] : e.push(L), s++;
+                    let T = { instancePath: t + "/findings/" + f + "/reproduction/" + O, schemaPath: "#/properties/findings/items/properties/reproduction/items/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+                    e === null ? e = [T] : e.push(T), s++;
                   }
                 }
-                let j = I.length, b;
+                let j = I.length, v;
                 if (j > 1) {
                   let O = {};
                   for (; j--; ) {
                     let N = I[j];
                     if (typeof N == "string") {
                       if (typeof O[N] == "number") {
-                        b = O[N];
-                        let L = { instancePath: t + "/findings/" + f + "/reproduction", schemaPath: "#/properties/findings/items/properties/reproduction/uniqueItems", keyword: "uniqueItems", params: { i: j, j: b }, message: "must NOT have duplicate items (items ## " + b + " and " + j + " are identical)" };
-                        e === null ? e = [L] : e.push(L), s++;
+                        v = O[N];
+                        let T = { instancePath: t + "/findings/" + f + "/reproduction", schemaPath: "#/properties/findings/items/properties/reproduction/uniqueItems", keyword: "uniqueItems", params: { i: j, j: v }, message: "must NOT have duplicate items (items ## " + v + " and " + j + " are identical)" };
+                        e === null ? e = [T] : e.push(T), s++;
                         break;
                       }
                       O[N] = j;
@@ -8386,24 +8470,24 @@ function Ye(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
                   let N = I[O];
                   if (typeof N == "string") {
                     if (!Z.test(N)) {
-                      let L = { instancePath: t + "/findings/" + f + "/evidenceIds/" + O, schemaPath: "#/properties/findings/items/properties/evidenceIds/items/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
-                      e === null ? e = [L] : e.push(L), s++;
+                      let T = { instancePath: t + "/findings/" + f + "/evidenceIds/" + O, schemaPath: "#/properties/findings/items/properties/evidenceIds/items/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
+                      e === null ? e = [T] : e.push(T), s++;
                     }
                   } else {
-                    let L = { instancePath: t + "/findings/" + f + "/evidenceIds/" + O, schemaPath: "#/properties/findings/items/properties/evidenceIds/items/type", keyword: "type", params: { type: "string" }, message: "must be string" };
-                    e === null ? e = [L] : e.push(L), s++;
+                    let T = { instancePath: t + "/findings/" + f + "/evidenceIds/" + O, schemaPath: "#/properties/findings/items/properties/evidenceIds/items/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+                    e === null ? e = [T] : e.push(T), s++;
                   }
                 }
-                let j = I.length, b;
+                let j = I.length, v;
                 if (j > 1) {
                   let O = {};
                   for (; j--; ) {
                     let N = I[j];
                     if (typeof N == "string") {
                       if (typeof O[N] == "number") {
-                        b = O[N];
-                        let L = { instancePath: t + "/findings/" + f + "/evidenceIds", schemaPath: "#/properties/findings/items/properties/evidenceIds/uniqueItems", keyword: "uniqueItems", params: { i: j, j: b }, message: "must NOT have duplicate items (items ## " + b + " and " + j + " are identical)" };
-                        e === null ? e = [L] : e.push(L), s++;
+                        v = O[N];
+                        let T = { instancePath: t + "/findings/" + f + "/evidenceIds", schemaPath: "#/properties/findings/items/properties/evidenceIds/uniqueItems", keyword: "uniqueItems", params: { i: j, j: v }, message: "must NOT have duplicate items (items ## " + v + " and " + j + " are identical)" };
+                        e === null ? e = [T] : e.push(T), s++;
                         break;
                       }
                       O[N] = j;
@@ -8427,24 +8511,24 @@ function Ye(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
                   let N = I[O];
                   if (typeof N == "string") {
                     if (!Z.test(N)) {
-                      let L = { instancePath: t + "/findings/" + f + "/testIds/" + O, schemaPath: "#/properties/findings/items/properties/testIds/items/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
-                      e === null ? e = [L] : e.push(L), s++;
+                      let T = { instancePath: t + "/findings/" + f + "/testIds/" + O, schemaPath: "#/properties/findings/items/properties/testIds/items/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
+                      e === null ? e = [T] : e.push(T), s++;
                     }
                   } else {
-                    let L = { instancePath: t + "/findings/" + f + "/testIds/" + O, schemaPath: "#/properties/findings/items/properties/testIds/items/type", keyword: "type", params: { type: "string" }, message: "must be string" };
-                    e === null ? e = [L] : e.push(L), s++;
+                    let T = { instancePath: t + "/findings/" + f + "/testIds/" + O, schemaPath: "#/properties/findings/items/properties/testIds/items/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+                    e === null ? e = [T] : e.push(T), s++;
                   }
                 }
-                let j = I.length, b;
+                let j = I.length, v;
                 if (j > 1) {
                   let O = {};
                   for (; j--; ) {
                     let N = I[j];
                     if (typeof N == "string") {
                       if (typeof O[N] == "number") {
-                        b = O[N];
-                        let L = { instancePath: t + "/findings/" + f + "/testIds", schemaPath: "#/properties/findings/items/properties/testIds/uniqueItems", keyword: "uniqueItems", params: { i: j, j: b }, message: "must NOT have duplicate items (items ## " + b + " and " + j + " are identical)" };
-                        e === null ? e = [L] : e.push(L), s++;
+                        v = O[N];
+                        let T = { instancePath: t + "/findings/" + f + "/testIds", schemaPath: "#/properties/findings/items/properties/testIds/uniqueItems", keyword: "uniqueItems", params: { i: j, j: v }, message: "must NOT have duplicate items (items ## " + v + " and " + j + " are identical)" };
+                        e === null ? e = [T] : e.push(T), s++;
                         break;
                       }
                       O[N] = j;
@@ -8467,25 +8551,25 @@ function Ye(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
                 for (let O = 0; O < k; O++) {
                   let N = I[O];
                   if (typeof N == "string") {
-                    if (!ze.test(N)) {
-                      let L = { instancePath: t + "/findings/" + f + "/assertionIds/" + O, schemaPath: "#/properties/findings/items/properties/assertionIds/items/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}\\.[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}\\.[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
-                      e === null ? e = [L] : e.push(L), s++;
+                    if (!Ze.test(N)) {
+                      let T = { instancePath: t + "/findings/" + f + "/assertionIds/" + O, schemaPath: "#/properties/findings/items/properties/assertionIds/items/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}\\.[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}\\.[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
+                      e === null ? e = [T] : e.push(T), s++;
                     }
                   } else {
-                    let L = { instancePath: t + "/findings/" + f + "/assertionIds/" + O, schemaPath: "#/properties/findings/items/properties/assertionIds/items/type", keyword: "type", params: { type: "string" }, message: "must be string" };
-                    e === null ? e = [L] : e.push(L), s++;
+                    let T = { instancePath: t + "/findings/" + f + "/assertionIds/" + O, schemaPath: "#/properties/findings/items/properties/assertionIds/items/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+                    e === null ? e = [T] : e.push(T), s++;
                   }
                 }
-                let j = I.length, b;
+                let j = I.length, v;
                 if (j > 1) {
                   let O = {};
                   for (; j--; ) {
                     let N = I[j];
                     if (typeof N == "string") {
                       if (typeof O[N] == "number") {
-                        b = O[N];
-                        let L = { instancePath: t + "/findings/" + f + "/assertionIds", schemaPath: "#/properties/findings/items/properties/assertionIds/uniqueItems", keyword: "uniqueItems", params: { i: j, j: b }, message: "must NOT have duplicate items (items ## " + b + " and " + j + " are identical)" };
-                        e === null ? e = [L] : e.push(L), s++;
+                        v = O[N];
+                        let T = { instancePath: t + "/findings/" + f + "/assertionIds", schemaPath: "#/properties/findings/items/properties/assertionIds/uniqueItems", keyword: "uniqueItems", params: { i: j, j: v }, message: "must NOT have duplicate items (items ## " + v + " and " + j + " are identical)" };
+                        e === null ? e = [T] : e.push(T), s++;
                         break;
                       }
                       O[N] = j;
@@ -8507,24 +8591,24 @@ function Ye(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
                 for (let k in I) {
                   let j = s;
                   if (typeof k == "string" && !W.test(k)) {
-                    let b = { instancePath: t + "/findings/" + f + "/metadata", schemaPath: "plan.schema.json#/definitions/metadata/propertyNames/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z][A-Za-z0-9_.-]{0,63}$" }, message: 'must match pattern "^[A-Za-z][A-Za-z0-9_.-]{0,63}$"', propertyName: k };
-                    e === null ? e = [b] : e.push(b), s++;
+                    let v = { instancePath: t + "/findings/" + f + "/metadata", schemaPath: "plan.schema.json#/definitions/metadata/propertyNames/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z][A-Za-z0-9_.-]{0,63}$" }, message: 'must match pattern "^[A-Za-z][A-Za-z0-9_.-]{0,63}$"', propertyName: k };
+                    e === null ? e = [v] : e.push(v), s++;
                   }
                   var p = j === s;
                   if (!p) {
-                    let b = { instancePath: t + "/findings/" + f + "/metadata", schemaPath: "plan.schema.json#/definitions/metadata/propertyNames", keyword: "propertyNames", params: { propertyName: k }, message: "property name must be valid" };
-                    e === null ? e = [b] : e.push(b), s++;
+                    let v = { instancePath: t + "/findings/" + f + "/metadata", schemaPath: "plan.schema.json#/definitions/metadata/propertyNames", keyword: "propertyNames", params: { propertyName: k }, message: "property name must be valid" };
+                    e === null ? e = [v] : e.push(v), s++;
                   }
                 }
                 for (let k in I) {
                   let j = I[k];
                   if (typeof j != "string" && !(typeof j == "number" && isFinite(j)) && typeof j != "boolean") {
-                    let b = { instancePath: t + "/findings/" + f + "/metadata/" + k.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "plan.schema.json#/definitions/metadata/additionalProperties/type", keyword: "type", params: { type: F.additionalProperties.type }, message: "must be string,number,boolean" };
-                    e === null ? e = [b] : e.push(b), s++;
+                    let v = { instancePath: t + "/findings/" + f + "/metadata/" + k.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "plan.schema.json#/definitions/metadata/additionalProperties/type", keyword: "type", params: { type: F.additionalProperties.type }, message: "must be string,number,boolean" };
+                    e === null ? e = [v] : e.push(v), s++;
                   }
                   if (typeof j == "string" && A(j) > 500) {
-                    let b = { instancePath: t + "/findings/" + f + "/metadata/" + k.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "plan.schema.json#/definitions/metadata/additionalProperties/maxLength", keyword: "maxLength", params: { limit: 500 }, message: "must NOT have more than 500 characters" };
-                    e === null ? e = [b] : e.push(b), s++;
+                    let v = { instancePath: t + "/findings/" + f + "/metadata/" + k.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "plan.schema.json#/definitions/metadata/additionalProperties/maxLength", keyword: "maxLength", params: { limit: 500 }, message: "must NOT have more than 500 characters" };
+                    e === null ? e = [v] : e.push(v), s++;
                   }
                 }
               } else {
@@ -8537,29 +8621,29 @@ function Ye(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
             e === null ? e = [I] : e.push(I), s++;
           }
         }
-        let g = m.length, v;
+        let g = o.length, b;
         if (g > 1) {
-          e: for (; g--; ) for (v = g; v--; ) if (D(m[g], m[v])) {
-            let f = { instancePath: t + "/findings", schemaPath: "#/properties/findings/uniqueItems", keyword: "uniqueItems", params: { i: g, j: v }, message: "must NOT have duplicate items (items ## " + v + " and " + g + " are identical)" };
+          e: for (; g--; ) for (b = g; b--; ) if (D(o[g], o[b])) {
+            let f = { instancePath: t + "/findings", schemaPath: "#/properties/findings/uniqueItems", keyword: "uniqueItems", params: { i: g, j: b }, message: "must NOT have duplicate items (items ## " + b + " and " + g + " are identical)" };
             e === null ? e = [f] : e.push(f), s++;
             break e;
           }
         }
       } else {
-        let o = { instancePath: t + "/findings", schemaPath: "#/properties/findings/type", keyword: "type", params: { type: "array" }, message: "must be array" };
-        e === null ? e = [o] : e.push(o), s++;
+        let l = { instancePath: t + "/findings", schemaPath: "#/properties/findings/type", keyword: "type", params: { type: "array" }, message: "must be array" };
+        e === null ? e = [l] : e.push(l), s++;
       }
     }
     if (a.newGaps !== void 0) {
-      let m = a.newGaps;
-      if (Array.isArray(m)) {
-        if (m.length < 0) {
+      let o = a.newGaps;
+      if (Array.isArray(o)) {
+        if (o.length < 0) {
           let f = { instancePath: t + "/newGaps", schemaPath: "#/properties/newGaps/minItems", keyword: "minItems", params: { limit: 0 }, message: "must NOT have fewer than 0 items" };
           e === null ? e = [f] : e.push(f), s++;
         }
-        let o = m.length;
-        for (let f = 0; f < o; f++) {
-          let q = m[f];
+        let l = o.length;
+        for (let f = 0; f < l; f++) {
+          let q = o[f];
           if (q && typeof q == "object" && !Array.isArray(q)) {
             if (q.id === void 0) {
               let y = { instancePath: t + "/newGaps/" + f, schemaPath: "gap.schema.json/required", keyword: "required", params: { missingProperty: "id" }, message: "must have required property 'id'" };
@@ -8635,12 +8719,12 @@ function Ye(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
                   let j = y[k];
                   if (typeof j == "string") {
                     if (!Z.test(j)) {
-                      let b = { instancePath: t + "/newGaps/" + f + "/requirementIds/" + k, schemaPath: "gap.schema.json/properties/requirementIds/items/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
-                      e === null ? e = [b] : e.push(b), s++;
+                      let v = { instancePath: t + "/newGaps/" + f + "/requirementIds/" + k, schemaPath: "gap.schema.json/properties/requirementIds/items/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
+                      e === null ? e = [v] : e.push(v), s++;
                     }
                   } else {
-                    let b = { instancePath: t + "/newGaps/" + f + "/requirementIds/" + k, schemaPath: "gap.schema.json/properties/requirementIds/items/type", keyword: "type", params: { type: "string" }, message: "must be string" };
-                    e === null ? e = [b] : e.push(b), s++;
+                    let v = { instancePath: t + "/newGaps/" + f + "/requirementIds/" + k, schemaPath: "gap.schema.json/properties/requirementIds/items/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+                    e === null ? e = [v] : e.push(v), s++;
                   }
                 }
                 let z = y.length, I;
@@ -8651,8 +8735,8 @@ function Ye(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
                     if (typeof j == "string") {
                       if (typeof k[j] == "number") {
                         I = k[j];
-                        let b = { instancePath: t + "/newGaps/" + f + "/requirementIds", schemaPath: "gap.schema.json/properties/requirementIds/uniqueItems", keyword: "uniqueItems", params: { i: z, j: I }, message: "must NOT have duplicate items (items ## " + I + " and " + z + " are identical)" };
-                        e === null ? e = [b] : e.push(b), s++;
+                        let v = { instancePath: t + "/newGaps/" + f + "/requirementIds", schemaPath: "gap.schema.json/properties/requirementIds/uniqueItems", keyword: "uniqueItems", params: { i: z, j: I }, message: "must NOT have duplicate items (items ## " + I + " and " + z + " are identical)" };
+                        e === null ? e = [v] : e.push(v), s++;
                         break;
                       }
                       k[j] = z;
@@ -8676,12 +8760,12 @@ function Ye(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
                   let j = y[k];
                   if (typeof j == "string") {
                     if (!M.test(j)) {
-                      let b = { instancePath: t + "/newGaps/" + f + "/testIds/" + k, schemaPath: "gap.schema.json/properties/testIds/items/pattern", keyword: "pattern", params: { pattern: "^([A-Za-z0-9][A-Za-z0-9_-]{0,95}:)?[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^([A-Za-z0-9][A-Za-z0-9_-]{0,95}:)?[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
-                      e === null ? e = [b] : e.push(b), s++;
+                      let v = { instancePath: t + "/newGaps/" + f + "/testIds/" + k, schemaPath: "gap.schema.json/properties/testIds/items/pattern", keyword: "pattern", params: { pattern: "^([A-Za-z0-9][A-Za-z0-9_-]{0,95}:)?[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^([A-Za-z0-9][A-Za-z0-9_-]{0,95}:)?[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
+                      e === null ? e = [v] : e.push(v), s++;
                     }
                   } else {
-                    let b = { instancePath: t + "/newGaps/" + f + "/testIds/" + k, schemaPath: "gap.schema.json/properties/testIds/items/type", keyword: "type", params: { type: "string" }, message: "must be string" };
-                    e === null ? e = [b] : e.push(b), s++;
+                    let v = { instancePath: t + "/newGaps/" + f + "/testIds/" + k, schemaPath: "gap.schema.json/properties/testIds/items/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+                    e === null ? e = [v] : e.push(v), s++;
                   }
                 }
                 let z = y.length, I;
@@ -8692,8 +8776,8 @@ function Ye(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
                     if (typeof j == "string") {
                       if (typeof k[j] == "number") {
                         I = k[j];
-                        let b = { instancePath: t + "/newGaps/" + f + "/testIds", schemaPath: "gap.schema.json/properties/testIds/uniqueItems", keyword: "uniqueItems", params: { i: z, j: I }, message: "must NOT have duplicate items (items ## " + I + " and " + z + " are identical)" };
-                        e === null ? e = [b] : e.push(b), s++;
+                        let v = { instancePath: t + "/newGaps/" + f + "/testIds", schemaPath: "gap.schema.json/properties/testIds/uniqueItems", keyword: "uniqueItems", params: { i: z, j: I }, message: "must NOT have duplicate items (items ## " + I + " and " + z + " are identical)" };
+                        e === null ? e = [v] : e.push(v), s++;
                         break;
                       }
                       k[j] = z;
@@ -8744,8 +8828,8 @@ function Ye(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
               if (z = z || u, !z) {
                 let k = s;
                 if (y !== null) {
-                  let b = { instancePath: t + "/newGaps/" + f + "/decisionId", schemaPath: "gap.schema.json/properties/decisionId/anyOf/1/type", keyword: "type", params: { type: "null" }, message: "must be null" };
-                  e === null ? e = [b] : e.push(b), s++;
+                  let v = { instancePath: t + "/newGaps/" + f + "/decisionId", schemaPath: "gap.schema.json/properties/decisionId/anyOf/1/type", keyword: "type", params: { type: "null" }, message: "must be null" };
+                  e === null ? e = [v] : e.push(v), s++;
                 }
                 var u = k === s;
                 z = z || u;
@@ -8761,29 +8845,29 @@ function Ye(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
             e === null ? e = [y] : e.push(y), s++;
           }
         }
-        let g = m.length, v;
+        let g = o.length, b;
         if (g > 1) {
-          e: for (; g--; ) for (v = g; v--; ) if (D(m[g], m[v])) {
-            let f = { instancePath: t + "/newGaps", schemaPath: "#/properties/newGaps/uniqueItems", keyword: "uniqueItems", params: { i: g, j: v }, message: "must NOT have duplicate items (items ## " + v + " and " + g + " are identical)" };
+          e: for (; g--; ) for (b = g; b--; ) if (D(o[g], o[b])) {
+            let f = { instancePath: t + "/newGaps", schemaPath: "#/properties/newGaps/uniqueItems", keyword: "uniqueItems", params: { i: g, j: b }, message: "must NOT have duplicate items (items ## " + b + " and " + g + " are identical)" };
             e === null ? e = [f] : e.push(f), s++;
             break e;
           }
         }
       } else {
-        let o = { instancePath: t + "/newGaps", schemaPath: "#/properties/newGaps/type", keyword: "type", params: { type: "array" }, message: "must be array" };
-        e === null ? e = [o] : e.push(o), s++;
+        let l = { instancePath: t + "/newGaps", schemaPath: "#/properties/newGaps/type", keyword: "type", params: { type: "array" }, message: "must be array" };
+        e === null ? e = [l] : e.push(l), s++;
       }
     }
     if (a.evidence !== void 0) {
-      let m = a.evidence;
-      if (Array.isArray(m)) {
-        if (m.length < 0) {
+      let o = a.evidence;
+      if (Array.isArray(o)) {
+        if (o.length < 0) {
           let f = { instancePath: t + "/evidence", schemaPath: "#/properties/evidence/minItems", keyword: "minItems", params: { limit: 0 }, message: "must NOT have fewer than 0 items" };
           e === null ? e = [f] : e.push(f), s++;
         }
-        let o = m.length;
-        for (let f = 0; f < o; f++) {
-          let q = m[f];
+        let l = o.length;
+        for (let f = 0; f < l; f++) {
+          let q = o[f];
           if (q && typeof q == "object" && !Array.isArray(q)) {
             if (q.id === void 0) {
               let y = { instancePath: t + "/evidence/" + f, schemaPath: "#/properties/evidence/items/required", keyword: "required", params: { missingProperty: "id" }, message: "must have required property 'id'" };
@@ -8860,8 +8944,8 @@ function Ye(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
               if (z = z || i, !z) {
                 let k = s;
                 if (y !== null) {
-                  let b = { instancePath: t + "/evidence/" + f + "/assertionId", schemaPath: "#/properties/evidence/items/properties/assertionId/anyOf/1/type", keyword: "type", params: { type: "null" }, message: "must be null" };
-                  e === null ? e = [b] : e.push(b), s++;
+                  let v = { instancePath: t + "/evidence/" + f + "/assertionId", schemaPath: "#/properties/evidence/items/properties/assertionId/anyOf/1/type", keyword: "type", params: { type: "null" }, message: "must be null" };
+                  e === null ? e = [v] : e.push(v), s++;
                 }
                 var i = k === s;
                 z = z || i;
@@ -8931,45 +9015,45 @@ function Ye(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
             e === null ? e = [y] : e.push(y), s++;
           }
         }
-        let g = m.length, v;
+        let g = o.length, b;
         if (g > 1) {
-          e: for (; g--; ) for (v = g; v--; ) if (D(m[g], m[v])) {
-            let f = { instancePath: t + "/evidence", schemaPath: "#/properties/evidence/uniqueItems", keyword: "uniqueItems", params: { i: g, j: v }, message: "must NOT have duplicate items (items ## " + v + " and " + g + " are identical)" };
+          e: for (; g--; ) for (b = g; b--; ) if (D(o[g], o[b])) {
+            let f = { instancePath: t + "/evidence", schemaPath: "#/properties/evidence/uniqueItems", keyword: "uniqueItems", params: { i: g, j: b }, message: "must NOT have duplicate items (items ## " + b + " and " + g + " are identical)" };
             e === null ? e = [f] : e.push(f), s++;
             break e;
           }
         }
       } else {
-        let o = { instancePath: t + "/evidence", schemaPath: "#/properties/evidence/type", keyword: "type", params: { type: "array" }, message: "must be array" };
-        e === null ? e = [o] : e.push(o), s++;
+        let l = { instancePath: t + "/evidence", schemaPath: "#/properties/evidence/type", keyword: "type", params: { type: "array" }, message: "must be array" };
+        e === null ? e = [l] : e.push(l), s++;
       }
     }
     if (a.cleanup !== void 0) {
-      let m = a.cleanup;
-      if (m && typeof m == "object" && !Array.isArray(m)) {
-        if (m.status === void 0) {
-          let o = { instancePath: t + "/cleanup", schemaPath: "#/properties/cleanup/required", keyword: "required", params: { missingProperty: "status" }, message: "must have required property 'status'" };
-          e === null ? e = [o] : e.push(o), s++;
+      let o = a.cleanup;
+      if (o && typeof o == "object" && !Array.isArray(o)) {
+        if (o.status === void 0) {
+          let l = { instancePath: t + "/cleanup", schemaPath: "#/properties/cleanup/required", keyword: "required", params: { missingProperty: "status" }, message: "must have required property 'status'" };
+          e === null ? e = [l] : e.push(l), s++;
         }
-        if (m.reason === void 0) {
-          let o = { instancePath: t + "/cleanup", schemaPath: "#/properties/cleanup/required", keyword: "required", params: { missingProperty: "reason" }, message: "must have required property 'reason'" };
-          e === null ? e = [o] : e.push(o), s++;
+        if (o.reason === void 0) {
+          let l = { instancePath: t + "/cleanup", schemaPath: "#/properties/cleanup/required", keyword: "required", params: { missingProperty: "reason" }, message: "must have required property 'reason'" };
+          e === null ? e = [l] : e.push(l), s++;
         }
-        for (let o in m) if (!(o === "status" || o === "reason")) {
-          let g = { instancePath: t + "/cleanup", schemaPath: "#/properties/cleanup/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: o }, message: "must NOT have additional properties" };
+        for (let l in o) if (!(l === "status" || l === "reason")) {
+          let g = { instancePath: t + "/cleanup", schemaPath: "#/properties/cleanup/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: l }, message: "must NOT have additional properties" };
           e === null ? e = [g] : e.push(g), s++;
         }
-        if (m.status !== void 0) {
-          let o = m.status;
-          if (!(o === "completed" || o === "failed" || o === "not_applicable")) {
+        if (o.status !== void 0) {
+          let l = o.status;
+          if (!(l === "completed" || l === "failed" || l === "not_applicable")) {
             let g = { instancePath: t + "/cleanup/status", schemaPath: "#/properties/cleanup/properties/status/enum", keyword: "enum", params: { allowedValues: G.properties.cleanup.properties.status.enum }, message: "must be equal to one of the allowed values" };
             e === null ? e = [g] : e.push(g), s++;
           }
         }
-        if (m.reason !== void 0) {
-          let o = m.reason;
-          if (typeof o == "string") {
-            if (A(o) < 1) {
+        if (o.reason !== void 0) {
+          let l = o.reason;
+          if (typeof l == "string") {
+            if (A(l) < 1) {
               let g = { instancePath: t + "/cleanup/reason", schemaPath: "#/properties/cleanup/properties/reason/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
               e === null ? e = [g] : e.push(g), s++;
             }
@@ -8979,42 +9063,42 @@ function Ye(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
           }
         }
       } else {
-        let o = { instancePath: t + "/cleanup", schemaPath: "#/properties/cleanup/type", keyword: "type", params: { type: "object" }, message: "must be object" };
-        e === null ? e = [o] : e.push(o), s++;
+        let l = { instancePath: t + "/cleanup", schemaPath: "#/properties/cleanup/type", keyword: "type", params: { type: "object" }, message: "must be object" };
+        e === null ? e = [l] : e.push(l), s++;
       }
     }
     if (a.coverage !== void 0) {
-      let m = a.coverage;
-      if (m && typeof m == "object" && !Array.isArray(m)) {
-        if (m.status === void 0) {
-          let o = { instancePath: t + "/coverage", schemaPath: "#/properties/coverage/required", keyword: "required", params: { missingProperty: "status" }, message: "must have required property 'status'" };
-          e === null ? e = [o] : e.push(o), s++;
+      let o = a.coverage;
+      if (o && typeof o == "object" && !Array.isArray(o)) {
+        if (o.status === void 0) {
+          let l = { instancePath: t + "/coverage", schemaPath: "#/properties/coverage/required", keyword: "required", params: { missingProperty: "status" }, message: "must have required property 'status'" };
+          e === null ? e = [l] : e.push(l), s++;
         }
-        if (m.requirements === void 0) {
-          let o = { instancePath: t + "/coverage", schemaPath: "#/properties/coverage/required", keyword: "required", params: { missingProperty: "requirements" }, message: "must have required property 'requirements'" };
-          e === null ? e = [o] : e.push(o), s++;
+        if (o.requirements === void 0) {
+          let l = { instancePath: t + "/coverage", schemaPath: "#/properties/coverage/required", keyword: "required", params: { missingProperty: "requirements" }, message: "must have required property 'requirements'" };
+          e === null ? e = [l] : e.push(l), s++;
         }
-        for (let o in m) if (!(o === "status" || o === "requirements")) {
-          let g = { instancePath: t + "/coverage", schemaPath: "#/properties/coverage/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: o }, message: "must NOT have additional properties" };
+        for (let l in o) if (!(l === "status" || l === "requirements")) {
+          let g = { instancePath: t + "/coverage", schemaPath: "#/properties/coverage/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: l }, message: "must NOT have additional properties" };
           e === null ? e = [g] : e.push(g), s++;
         }
-        if (m.status !== void 0) {
-          let o = m.status;
-          if (!(o === "complete" || o === "partial" || o === "not_executed")) {
+        if (o.status !== void 0) {
+          let l = o.status;
+          if (!(l === "complete" || l === "partial" || l === "not_executed")) {
             let g = { instancePath: t + "/coverage/status", schemaPath: "#/properties/coverage/properties/status/enum", keyword: "enum", params: { allowedValues: G.properties.coverage.properties.status.enum }, message: "must be equal to one of the allowed values" };
             e === null ? e = [g] : e.push(g), s++;
           }
         }
-        if (m.requirements !== void 0) {
-          let o = m.requirements;
-          if (Array.isArray(o)) {
-            if (o.length < 1) {
+        if (o.requirements !== void 0) {
+          let l = o.requirements;
+          if (Array.isArray(l)) {
+            if (l.length < 1) {
               let q = { instancePath: t + "/coverage/requirements", schemaPath: "#/properties/coverage/properties/requirements/minItems", keyword: "minItems", params: { limit: 1 }, message: "must NOT have fewer than 1 items" };
               e === null ? e = [q] : e.push(q), s++;
             }
-            let g = o.length;
+            let g = l.length;
             for (let q = 0; q < g; q++) {
-              let y = o[q];
+              let y = l[q];
               if (y && typeof y == "object" && !Array.isArray(y)) {
                 if (y.requirementId === void 0) {
                   let P2 = { instancePath: t + "/coverage/requirements/" + q, schemaPath: "#/properties/coverage/properties/requirements/items/required", keyword: "required", params: { missingProperty: "requirementId" }, message: "must have required property 'requirementId'" };
@@ -9064,9 +9148,9 @@ function Ye(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
                     }
                     let z = P2.length;
                     for (let j = 0; j < z; j++) {
-                      let b = P2[j];
-                      if (typeof b == "string") {
-                        if (!Z.test(b)) {
+                      let v = P2[j];
+                      if (typeof v == "string") {
+                        if (!Z.test(v)) {
                           let O = { instancePath: t + "/coverage/requirements/" + q + "/testIds/" + j, schemaPath: "#/properties/coverage/properties/requirements/items/properties/testIds/items/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
                           e === null ? e = [O] : e.push(O), s++;
                         }
@@ -9079,15 +9163,15 @@ function Ye(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
                     if (I > 1) {
                       let j = {};
                       for (; I--; ) {
-                        let b = P2[I];
-                        if (typeof b == "string") {
-                          if (typeof j[b] == "number") {
-                            k = j[b];
+                        let v = P2[I];
+                        if (typeof v == "string") {
+                          if (typeof j[v] == "number") {
+                            k = j[v];
                             let O = { instancePath: t + "/coverage/requirements/" + q + "/testIds", schemaPath: "#/properties/coverage/properties/requirements/items/properties/testIds/uniqueItems", keyword: "uniqueItems", params: { i: I, j: k }, message: "must NOT have duplicate items (items ## " + k + " and " + I + " are identical)" };
                             e === null ? e = [O] : e.push(O), s++;
                             break;
                           }
-                          j[b] = I;
+                          j[v] = I;
                         }
                       }
                     }
@@ -9128,10 +9212,10 @@ function Ye(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
                 e === null ? e = [P2] : e.push(P2), s++;
               }
             }
-            let v = o.length, f;
-            if (v > 1) {
-              e: for (; v--; ) for (f = v; f--; ) if (D(o[v], o[f])) {
-                let q = { instancePath: t + "/coverage/requirements", schemaPath: "#/properties/coverage/properties/requirements/uniqueItems", keyword: "uniqueItems", params: { i: v, j: f }, message: "must NOT have duplicate items (items ## " + f + " and " + v + " are identical)" };
+            let b = l.length, f;
+            if (b > 1) {
+              e: for (; b--; ) for (f = b; f--; ) if (D(l[b], l[f])) {
+                let q = { instancePath: t + "/coverage/requirements", schemaPath: "#/properties/coverage/properties/requirements/uniqueItems", keyword: "uniqueItems", params: { i: b, j: f }, message: "must NOT have duplicate items (items ## " + f + " and " + b + " are identical)" };
                 e === null ? e = [q] : e.push(q), s++;
                 break e;
               }
@@ -9142,15 +9226,15 @@ function Ye(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
           }
         }
       } else {
-        let o = { instancePath: t + "/coverage", schemaPath: "#/properties/coverage/type", keyword: "type", params: { type: "object" }, message: "must be object" };
-        e === null ? e = [o] : e.push(o), s++;
+        let l = { instancePath: t + "/coverage", schemaPath: "#/properties/coverage/type", keyword: "type", params: { type: "object" }, message: "must be object" };
+        e === null ? e = [l] : e.push(l), s++;
       }
     }
   } else {
-    let m = { instancePath: t, schemaPath: "#/type", keyword: "type", params: { type: "object" }, message: "must be object" };
-    e === null ? e = [m] : e.push(m), s++;
+    let o = { instancePath: t, schemaPath: "#/type", keyword: "type", params: { type: "object" }, message: "must be object" };
+    e === null ? e = [o] : e.push(o), s++;
   }
-  return Ye.errors = e, s === 0;
+  return Ue.errors = e, s === 0;
 }
 
 // plugin/src/pi.ts
@@ -12317,9 +12401,16 @@ function openPlan(store, actor, input) {
     return { reply: completed(planId, { ...data, recorded: true }), subjects: [`plan:${planId}`, "inbox"] };
   });
 }
+function similarPlanHint(store, planId) {
+  const key = (id2) => id2.toLowerCase().replace(/[^a-z0-9]/g, "");
+  const matches = all(store, "SELECT plan_id FROM plan_requests").filter(
+    (row2) => key(row2.plan_id) === key(planId)
+  );
+  return matches.length === 1 ? `Did you mean ${matches[0].plan_id}? Use that exact ID.` : void 0;
+}
 function planRequest(store, planId) {
   const row2 = one(store, "SELECT * FROM plan_requests WHERE plan_id = ?", planId);
-  requireCondition(row2, `Unknown plan: ${planId}. Run plan open first.`);
+  requireCondition(row2, `Unknown plan: ${planId}. Run plan open first.`, similarPlanHint(store, planId));
   const request2 = JSON.parse(row2.body);
   return { request: request2, target: targetRevision(store, row2.target_id, row2.target_revision) };
 }
@@ -12879,19 +12970,59 @@ function revisePlan(store, actor, input) {
       base.plan,
       decisions.map((decision) => decision.gap_id)
     ).map((test) => test.id);
+    const onlyAffected = `Change only the tests that the pending decisions affect: ${affected.join(", ") || "none"}.`;
+    for (const [id2, change2] of Object.entries(delta.requirements ?? {})) {
+      if (change2.remove) continue;
+      const existing = draft.requirements.find((requirement) => requirement.id === id2);
+      if (existing) {
+        if (change2.text !== void 0) existing.text = change2.text;
+        if (change2.source !== void 0) existing.source = change2.source;
+        if (change2.area !== void 0) existing.area = change2.area;
+        continue;
+      }
+      requireWellFormed(
+        change2.text !== void 0 && change2.source !== void 0,
+        `New requirement ${id2} needs text and source`,
+        `Send {"requirements": {"${id2}": {"text": "<the requirement>", "source": "<file or conversation>"}}}.`
+      );
+      draft.requirements.push({
+        id: id2,
+        text: change2.text,
+        source: change2.source,
+        ...change2.area ? { area: change2.area } : {}
+      });
+    }
     const removedTests2 = [];
     for (const [testId, change2] of Object.entries(delta.tests)) {
       const test = draft.tests.find((test2) => test2.id === testId);
-      const onlyAffected = `Change only the tests that the pending decisions affect: ${affected.join(", ") || "none"}.`;
-      requireWellFormed(test, `Unknown test in delta: ${testId}`, onlyAffected);
+      if (change2.remove) {
+        requireWellFormed(test, `Unknown test in delta: ${testId}`, onlyAffected);
+        requireCondition(
+          affected.includes(testId),
+          `Test ${testId} is not affected by a pending decision. A revision changes only affected tests.`,
+          onlyAffected
+        );
+        removedTests2.push(testId);
+        continue;
+      }
+      if (!test) {
+        draft.tests.push(newTest(draft, testId, change2, usedAssertionIds(store, input.planId, testId)));
+        continue;
+      }
       requireCondition(
         affected.includes(testId),
         `Test ${testId} is not affected by a pending decision. A revision changes only affected tests.`,
         onlyAffected
       );
-      if (change2.remove) removedTests2.push(testId);
-      else applyTestChange(test, change2, usedAssertionIds(store, input.planId, testId));
+      replaceTest(test, change2, usedAssertionIds(store, input.planId, testId));
     }
+    for (const test of draft.tests)
+      for (const assertion of test.assertions)
+        requireWellFormed(
+          !compoundCheck(assertion.check),
+          `Assertion ${test.id}.${assertion.id} checks more than one value: "${assertion.check}"`,
+          "Send one assertion for each value. Each assertion checks one expected value, so split the check into two assertions."
+        );
     const removedRequirements = removeRequirements(draft, delta.requirements ?? {}, removedTests2);
     if (removedTests2.length) removeTests(draft, removedTests2);
     for (const test of draft.tests)
@@ -12940,34 +13071,56 @@ function usedAssertionIds(store, planId, testId) {
     testId
   ).map((row2) => row2.id);
 }
-function applyTestChange(test, change, used) {
-  if (change.action !== void 0) test.action = change.action;
+function replaceTest(test, change, used) {
+  if (change.title !== void 0) test.title = change.title;
+  if (change.requirementIds !== void 0) test.requirementIds = change.requirementIds;
+  if (change.capability !== void 0) test.capability = change.capability;
+  if (change.operations !== void 0) test.operations = change.operations;
+  if (change.dependsOn !== void 0) test.dependsOn = change.dependsOn;
   if (change.preconditions !== void 0) test.preconditions = change.preconditions;
-  const existingIds = test.assertions.map((existing) => existing.id);
-  const current2 = `${test.id} has assertions: ${existingIds.join(", ") || "none"}.`;
-  for (const [id2, assertion] of Object.entries(change.assertions ?? {})) {
-    const position = test.assertions.findIndex((existing) => existing.id === id2);
-    if (assertion === null) {
-      requireWellFormed(
-        position >= 0,
-        `Cannot remove unknown assertion ${test.id}.${id2}`,
-        `${current2} Remove only one of those IDs, with null.`
-      );
-      test.assertions.splice(position, 1);
-    } else if (position >= 0) test.assertions[position] = { ...test.assertions[position], ...assertion };
-    else {
-      requireWellFormed(
-        !used.includes(id2),
-        `Assertion ID ${test.id}.${id2} was used in an earlier revision. Use a new ID.`
-      );
-      requireWellFormed(
-        assertion.check !== void 0 && assertion.checkKind !== void 0,
-        `New assertion ${test.id}.${id2} needs check and checkKind`,
-        `${current2} For a new assertion, send {"check": "<expected text or value>", "checkKind": "deterministic"} under a new ID. To change an existing one, send only the changed field under its current ID.`
-      );
-      test.assertions.push({ id: id2, check: assertion.check, checkKind: assertion.checkKind });
-    }
-  }
+  if (change.action !== void 0) test.action = change.action;
+  if (change.assertions === void 0) return;
+  const previous = test.assertions;
+  const issued = [];
+  test.assertions = change.assertions.map((item) => {
+    const kept = previous.find((existing) => existing.check === item.check);
+    const id2 = kept?.id ?? unusedId("A", [...used, ...issued]);
+    issued.push(id2);
+    return {
+      id: id2,
+      check: item.check,
+      checkKind: item.checkKind,
+      ...item.observe !== void 0 ? { observe: item.observe } : {},
+      ...item.expected !== void 0 ? { expected: item.expected } : {}
+    };
+  });
+}
+function newTest(draft, id2, change, used) {
+  const missing = ["title", "requirementIds", "capability", "operations", "action", "assertions"].filter(
+    (field4) => change[field4] === void 0
+  );
+  requireWellFormed(
+    missing.length === 0,
+    `New test ${id2} needs ${missing.join(", ")}`,
+    `Send the whole test: {"tests": {"${id2}": {"title": "...", "requirementIds": ["R1"], "capability": "http", "operations": ["read"], "action": "...", "assertions": [{"check": "<one expected value>", "checkKind": "deterministic"}]}}}.`
+  );
+  const test = {
+    id: id2,
+    title: "",
+    requirementIds: [],
+    capability: "",
+    operations: [],
+    readiness: "ready",
+    gapIds: [],
+    dependsOn: [],
+    preconditions: [],
+    action: "",
+    assertions: []
+  };
+  replaceTest(test, change, used);
+  test.gapIds = draft.gaps.filter((gap) => gap.testIds.includes(id2)).map((gap) => gap.id);
+  test.readiness = testReadiness(draft.gaps, test);
+  return test;
 }
 function approvePlan(store, actor, input) {
   return decidePlan(store, actor, input, "approved");
@@ -17774,7 +17927,7 @@ async function launchExplorers(store, actor, explorationId, launch, env, catalog
         ...call.stderr ? { stderr: call.stderr } : {},
         ...hint ? { hint } : {},
         ...usageOf(calls),
-        ...durations.length ? { durationMs: durations.reduce((total, ms2) => total + ms2, 0) } : {}
+        ...durations.length ? { durationMs: durations.reduce((total, ms) => total + ms, 0) } : {}
       }
     });
   }
@@ -22309,8 +22462,8 @@ function metadataList(values = {}) {
 function plural(count2, one3, many = `${one3}s`) {
   return `${count2} ${count2 === 1 ? one3 : many}`;
 }
-function duration2(ms2) {
-  const seconds2 = Math.round(ms2 / 1e3);
+function duration2(ms) {
+  const seconds2 = Math.round(ms / 1e3);
   if (seconds2 < 60) return `${seconds2} s`;
   const minutes = Math.floor(seconds2 / 60);
   if (minutes < 60) return `${minutes} min ${seconds2 % 60} s`;
@@ -41200,7 +41353,8 @@ function stagePrompt(stage, subject, execution, workspace2) {
       `Plan: ${subject}. Read the pending decisions with \`checkmate plan pending ${subject}\`.`,
       "Change only the tests that the decisions affect. Give each ready test at least one assertion. A test without an assertion is not ready.",
       'When a decision has no expected value, add an assertion with "checkKind": "agent_observation" that records the behavior.',
-      'Change an assertion under its current ID, and send only the changed field. Remove an assertion only when its ID is listed on the test. A new assertion needs "check" and "checkKind".',
+      'Send each changed test whole: title, requirementIds, capability, operations, dependsOn, preconditions, action, and assertions as a list of {"check", "checkKind"}. Give one value in each check. For a deterministic check that compares a value, also send "observe" (what the page or API shows) and "expected" (the value to compare). Do not send assertion IDs; the code keeps them.',
+      'A new requirement needs "text" and "source". A test that a decision drops is removed with {"remove": true}.',
       "Send the delta as one line of JSON in the heredoc, with double quotes, no comments, and no Markdown.",
       'When a decision says a criterion is dropped, removed, or out of scope, remove it. Remove its requirement and its tests in the same delta, for example {"requirements": {"R2": {"remove": true}}, "tests": {"T2": {"remove": true}}}. Do not rewrite a test for another criterion to match it.',
       `Save the next revision with \`checkmate plan revise ${subject}\`. Do not answer gaps.`

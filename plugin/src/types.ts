@@ -409,6 +409,7 @@ export type Profile = {
 			  }
 			| null
 		timeoutSeconds?: number
+		perTest?: boolean
 	}
 	readyForLiveExecution: boolean
 	explore?: {

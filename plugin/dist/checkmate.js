@@ -6958,7 +6958,7 @@ function He(p, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
   return He.errors = e, s === 0;
 }
 var Fs = Ye;
-var C = { $schema: "http://json-schema.org/draft-07/schema#", $id: "profile.schema.json", type: "object", properties: { contractVersion: { const: "toolkit-2" }, targetId: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, revision: { type: "integer", minimum: 1 }, entryPoints: { type: "array", items: { type: "object", properties: { name: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, kind: { enum: ["url", "command", "value"] }, purpose: { type: "string", minLength: 1 } }, required: ["name", "kind", "purpose"], additionalProperties: false }, minItems: 1, uniqueItems: true }, capabilities: { type: "array", items: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 1, uniqueItems: true }, tools: { type: "array", items: { type: "object", properties: { name: { type: "string", minLength: 1 }, kind: { enum: ["cli", "mcp", "skill"] }, purpose: { type: "string", minLength: 1 }, version: { type: "string", minLength: 1 }, executable: { type: "string", minLength: 1 }, reachable: { type: "boolean" } }, required: ["name", "kind", "purpose", "reachable"], additionalProperties: false }, minItems: 0, uniqueItems: true }, authentication: { type: "object", properties: { kind: { enum: ["none", "environment", "browser_session"] }, references: { type: "array", items: { type: "string", minLength: 1 }, minItems: 0, uniqueItems: true } }, required: ["kind", "references"], additionalProperties: false }, allowedOperations: { type: "array", items: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 1, uniqueItems: true }, startup: { type: "object", properties: { owner: { enum: ["factory", "checkmate"] }, command: { anyOf: [{ type: "array", items: { type: "string", minLength: 1 }, minItems: 1, uniqueItems: true }, { type: "null" }] } }, required: ["owner", "command"], additionalProperties: false }, cleanup: { type: "string", minLength: 1 }, reset: { type: "object", properties: { owner: { enum: ["checkmate", "environment", "isolation"] }, command: { anyOf: [{ type: "array", items: { type: "string", minLength: 1 }, minItems: 1 }, { type: "null" }] }, cleanup: { anyOf: [{ type: "array", items: { type: "string", minLength: 1 }, minItems: 1 }, { type: "null" }] }, policy: { anyOf: [{ type: "object", properties: { text: { type: "string", minLength: 1 } }, required: ["text"], additionalProperties: false }, { type: "object", properties: { path: { type: "string", minLength: 1 } }, required: ["path"], additionalProperties: false }, { type: "null" }] }, timeoutSeconds: { type: "integer", minimum: 1, maximum: 3600 } }, required: ["owner", "command"], additionalProperties: false }, readyForLiveExecution: { type: "boolean" }, explore: { type: "object", properties: { level: { enum: ["smoke", "normal", "deep"] }, explorers: { type: "integer", minimum: 1, maximum: 10 } }, additionalProperties: false }, approvals: { type: "object", properties: { plan: { enum: ["required", "none"] }, result: { enum: ["required", "none"] } }, required: ["plan", "result"], additionalProperties: false } }, required: ["contractVersion", "targetId", "revision", "entryPoints", "capabilities", "tools", "authentication", "allowedOperations", "startup", "cleanup", "readyForLiveExecution"], additionalProperties: false };
+var C = { $schema: "http://json-schema.org/draft-07/schema#", $id: "profile.schema.json", type: "object", properties: { contractVersion: { const: "toolkit-2" }, targetId: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, revision: { type: "integer", minimum: 1 }, entryPoints: { type: "array", items: { type: "object", properties: { name: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, kind: { enum: ["url", "command", "value"] }, purpose: { type: "string", minLength: 1 } }, required: ["name", "kind", "purpose"], additionalProperties: false }, minItems: 1, uniqueItems: true }, capabilities: { type: "array", items: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 1, uniqueItems: true }, tools: { type: "array", items: { type: "object", properties: { name: { type: "string", minLength: 1 }, kind: { enum: ["cli", "mcp", "skill"] }, purpose: { type: "string", minLength: 1 }, version: { type: "string", minLength: 1 }, executable: { type: "string", minLength: 1 }, reachable: { type: "boolean" } }, required: ["name", "kind", "purpose", "reachable"], additionalProperties: false }, minItems: 0, uniqueItems: true }, authentication: { type: "object", properties: { kind: { enum: ["none", "environment", "browser_session"] }, references: { type: "array", items: { type: "string", minLength: 1 }, minItems: 0, uniqueItems: true } }, required: ["kind", "references"], additionalProperties: false }, allowedOperations: { type: "array", items: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 1, uniqueItems: true }, startup: { type: "object", properties: { owner: { enum: ["factory", "checkmate"] }, command: { anyOf: [{ type: "array", items: { type: "string", minLength: 1 }, minItems: 1, uniqueItems: true }, { type: "null" }] } }, required: ["owner", "command"], additionalProperties: false }, cleanup: { type: "string", minLength: 1 }, reset: { type: "object", properties: { owner: { enum: ["checkmate", "environment", "isolation"] }, command: { anyOf: [{ type: "array", items: { type: "string", minLength: 1 }, minItems: 1 }, { type: "null" }] }, cleanup: { anyOf: [{ type: "array", items: { type: "string", minLength: 1 }, minItems: 1 }, { type: "null" }] }, policy: { anyOf: [{ type: "object", properties: { text: { type: "string", minLength: 1 } }, required: ["text"], additionalProperties: false }, { type: "object", properties: { path: { type: "string", minLength: 1 } }, required: ["path"], additionalProperties: false }, { type: "null" }] }, timeoutSeconds: { type: "integer", minimum: 1, maximum: 3600 }, perTest: { type: "boolean" } }, required: ["owner", "command"], additionalProperties: false }, readyForLiveExecution: { type: "boolean" }, explore: { type: "object", properties: { level: { enum: ["smoke", "normal", "deep"] }, explorers: { type: "integer", minimum: 1, maximum: 10 } }, additionalProperties: false }, approvals: { type: "object", properties: { plan: { enum: ["required", "none"] }, result: { enum: ["required", "none"] } }, required: ["plan", "result"], additionalProperties: false } }, required: ["contractVersion", "targetId", "revision", "entryPoints", "capabilities", "tools", "authentication", "allowedOperations", "startup", "cleanup", "readyForLiveExecution"], additionalProperties: false };
 function Ye(p, { instancePath: t = "", parentData: $, parentDataProperty: _, rootData: L = p } = {}) {
   let e = null, s = 0;
   if (p && typeof p == "object" && !Array.isArray(p)) {
@@ -7477,7 +7477,7 @@ function Ye(p, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
           let m = { instancePath: t + "/reset", schemaPath: "#/properties/reset/required", keyword: "required", params: { missingProperty: "command" }, message: "must have required property 'command'" };
           e === null ? e = [m] : e.push(m), s++;
         }
-        for (let m in l) if (!(m === "owner" || m === "command" || m === "cleanup" || m === "policy" || m === "timeoutSeconds")) {
+        for (let m in l) if (!(m === "owner" || m === "command" || m === "cleanup" || m === "policy" || m === "timeoutSeconds" || m === "perTest")) {
           let i = { instancePath: t + "/reset", schemaPath: "#/properties/reset/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: m }, message: "must NOT have additional properties" };
           e === null ? e = [i] : e.push(i), s++;
         }
@@ -7656,6 +7656,10 @@ function Ye(p, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
               e === null ? e = [i] : e.push(i), s++;
             }
           }
+        }
+        if (l.perTest !== void 0 && typeof l.perTest != "boolean") {
+          let m = { instancePath: t + "/reset/perTest", schemaPath: "#/properties/reset/properties/perTest/type", keyword: "type", params: { type: "boolean" }, message: "must be boolean" };
+          e === null ? e = [m] : e.push(m), s++;
         }
       } else {
         let m = { instancePath: t + "/reset", schemaPath: "#/properties/reset/type", keyword: "type", params: { type: "object" }, message: "must be object" };
@@ -11200,12 +11204,18 @@ function dataOf(input) {
   );
   const hooks = {
     ...input.cleanup ? { cleanup: resetCommand(input.cleanup) } : {},
-    ...input.hookTimeout ? { timeoutSeconds: input.hookTimeout } : {}
+    ...input.hookTimeout ? { timeoutSeconds: input.hookTimeout } : {},
+    ...input.resetPerTest === "off" ? { perTest: false } : {}
   };
+  requireCondition(
+    input.resetPerTest === void 0 || input.resetPerTest === "on" || input.resetPerTest === "off",
+    `Unknown --reset-per-test ${input.resetPerTest}.`,
+    "Use --reset-per-test on (the default) or off, for a reset that is slow."
+  );
   if (!input.data) {
     requireCondition(
       !Object.keys(hooks).length || input.reset,
-      "--cleanup and --hook-timeout apply to a reset or a data kind.",
+      "--cleanup, --hook-timeout and --reset-per-test apply to a reset or a data kind.",
       'Give --reset "<command>" or --data environment|isolation with --policy.'
     );
     return input.reset ? { owner: "checkmate", command: resetCommand(input.reset), policy: null, ...hooks } : void 0;
@@ -14389,7 +14399,13 @@ function retestDefects(store, runId) {
   const byRun = new Map(results.map((result) => [result.runId, result]));
   const chain = [];
   for (let id2 = runId; id2 && !chain.includes(id2); id2 = byRun.get(id2)?.retestOf ?? null) chain.push(id2);
-  return openDefects(results, rejectedRuns(store, plan_id)).filter((defect) => chain.includes(defect.runId)).map(({ runId: runId2, finding }) => ({ runId: runId2, findingId: finding.id, title: finding.title, testIds: finding.testIds }));
+  return openDefects(results, rejectedRuns(store, plan_id)).filter((defect) => chain.includes(defect.runId)).map(({ runId: runId2, finding }) => ({
+    runId: runId2,
+    findingId: finding.id,
+    title: finding.title,
+    testIds: finding.testIds,
+    assertionIds: finding.assertionIds
+  }));
 }
 function dependencyBlock(store, reference2, build) {
   const { planId, testId } = testReference(reference2);
@@ -15314,7 +15330,7 @@ function finish(store, actor, input) {
         "Cleanup failed, so the run cannot be completed",
         "Finish with --completion operational_error."
       );
-      for (const verdict of retestVerdicts(run2, outcomes))
+      for (const verdict of retestVerdicts(run2, outcomes, runAssertions(store, input.runId)))
         for (const testId of verdict.testIds.filter((id2) => selected.includes(id2)))
           requireCondition(
             outcomes.get(testId).outcome !== "not_run",
@@ -15441,12 +15457,19 @@ function defectHint(store, run2, row2, findings) {
   };
   return `Record the defect with checkmate run finding ${run2.row.run_id}. Send this JSON on standard input in a quoted heredoc, with your values: ${JSON.stringify(finding)}. Then run run finish again. A recorded result is final: when you think it is wrong, still record the defect and say why in observed. The oracle can reject it.`;
 }
-function retestVerdicts(run2, outcomes) {
+function retestVerdicts(run2, outcomes, assertions) {
   return (run2.request.retestDefects ?? []).map((defect) => {
-    const tested = defect.testIds.map((id2) => outcomes.get(id2)?.outcome);
-    const verdict = tested.includes("failed") ? "not_fixed" : tested.every((outcome) => outcome === "passed") ? "fixed" : "not_retested";
+    const verdict = defect.assertionIds?.length ? assertionVerdict(defect.assertionIds.map((id2) => assertions.get(id2)?.result)) : testVerdict(defect.testIds.map((id2) => outcomes.get(id2)?.outcome));
     return { ...defect, runId: defect.runId ?? run2.request.retestOf, verdict };
   });
+}
+function assertionVerdict(results) {
+  if (results.includes("failed")) return "not_fixed";
+  return results.every((result) => result === "passed") ? "fixed" : "not_retested";
+}
+function testVerdict(outcomes) {
+  if (outcomes.includes("failed")) return "not_fixed";
+  return outcomes.every((outcome) => outcome === "passed") ? "fixed" : "not_retested";
 }
 function outcomeCounts(tests) {
   const counts2 = {};
@@ -21423,7 +21446,7 @@ function latestRetest(store, planId, record) {
   );
   if (!row2) return null;
   const run2 = runState(store, row2.run_id);
-  const verdicts = retestVerdicts(run2, runOutcomes(store, row2.run_id));
+  const verdicts = retestVerdicts(run2, runOutcomes(store, row2.run_id), runAssertions(store, row2.run_id));
   const open = verdicts.some(
     (item) => record.defects.some((defect) => defect.runId === item.runId && defect.finding.id === item.findingId)
   );
@@ -21628,7 +21651,7 @@ function runDetail(store, runId) {
     tests,
     warnings: finished ? [] : runOverlapWarnings(store, runId),
     findings: verdictFindings(store, runId),
-    retest: retestVerdicts(run2, outcomes),
+    retest: retestVerdicts(run2, outcomes, runAssertions(store, runId)),
     newGaps: runGaps(store, runId),
     result: finished ? {
       sha256: finished.sha256,
@@ -23096,7 +23119,7 @@ function runReport(store, runId) {
     planApproval: { state: approvalLabel(approval), latest: approval.latest },
     plan: { planId, revision: revision2, objective, requirements, tests, gaps, decisions, assumptions },
     inline: inline2,
-    retest: retestVerdicts(run2, runOutcomes(store, runId)),
+    retest: retestVerdicts(run2, runOutcomes(store, runId), runAssertions(store, runId)),
     times: testTimes(store, runId)
   };
 }
@@ -41130,7 +41153,8 @@ var commands = {
       policy: "value",
       "policy-file": "value",
       cleanup: "value",
-      "hook-timeout": { min: 1, max: 3600 }
+      "hook-timeout": { min: 1, max: 3600 },
+      "reset-per-test": "value"
     },
     required: ["url"],
     write: true,
@@ -41146,6 +41170,7 @@ var commands = {
       policyFile: value(args, "policy-file"),
       cleanup: value(args, "cleanup"),
       hookTimeout: integer(args, "hook-timeout"),
+      resetPerTest: value(args, "reset-per-test"),
       env
     }),
     print: (reply) => ({
@@ -43013,6 +43038,13 @@ function recordMissingDefects(workspace2, runId, testId, actor) {
 function closeWithin(workspace2, actor, input) {
   return withStore(workspace2, (store) => closeTest(store, actor, input));
 }
+function resetBeforeTest(workspace2, subject, profile, test) {
+  if (profile.reset?.owner !== "checkmate" || profile.reset.perTest === false) return;
+  const request2 = withStore(workspace2, (store) => runState(store, subject).request);
+  if (test.dependsOn.some((id2) => request2.selectedTestIds.includes(id2))) return;
+  const marker = request2.marker ?? withStore(workspace2, (store) => markerFor(store, subject));
+  runPrepare(workspace2, profile.reset, marker);
+}
 async function delegateByTest(workspace2, subject, options3, harness, env, execution) {
   const workerActor = `${harness}:execute`;
   const usageCalls = [];
@@ -43040,6 +43072,7 @@ async function delegateByTest(workspace2, subject, options3, harness, env, execu
         reason: "The deadline is used up before this test ran."
       });
     } else {
+      resetBeforeTest(workspace2, subject, execution.profile, view.test);
       let note = "The worker returned no result.";
       for (let attempt = 1; attempt <= testAttempts; attempt++) {
         const child = await runTestChild(workspace2, options3, execution, harness, env, view.test, view.remaining);

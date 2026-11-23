@@ -11,7 +11,7 @@ The plugin CLI is `${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js`. Run `checkmate <com
 
 ## Quick setup
 
-When the oracle gives a URL, run `checkmate setup --url <url>`. Add `--target <id>`, `--instance <name>`, `--operations <a,b>`, `--environment <text>`, or `--reset <command>`, `--data environment|isolation`, `--policy`, `--policy-file`, `--cleanup`, or `--hook-timeout` only when the oracle or the project gives them. When testers can change data and no reset is recorded, ask the oracle for the reset command, or for `factory`, and then run setup again with `--reset`. Do not ask for a value that has a default. Report each `assumed:` line, so that the oracle can correct it. Ask only for a missing URL, credentials, or the operations of a production instance. Use the steps below only for full control.
+When the oracle gives a URL, run `checkmate setup --url <url>`. Add `--target <id>`, `--instance <name>`, `--operations <a,b>`, `--environment <text>`, or `--reset <command>`, `--data environment|isolation`, `--policy`, `--policy-file`, `--cleanup`, `--hook-timeout`, or `--reset-per-test off` only when the oracle or the project gives them. When testers can change data and no reset is recorded, ask the oracle for the reset command, or for `factory`, and then run setup again with `--reset`. Do not ask for a value that has a default. Report each `assumed:` line, so that the oracle can correct it. Ask only for a missing URL, credentials, or the operations of a production instance. Use the steps below only for full control.
 
 ## Ask the person
 

@@ -1280,7 +1280,7 @@ function latestRetest(store: Store, planId: string, record: ReturnType<typeof pl
 	)
 	if (!row) return null
 	const run = runState(store, row.run_id)
-	const verdicts = retestVerdicts(run, runOutcomes(store, row.run_id))
+	const verdicts = retestVerdicts(run, runOutcomes(store, row.run_id), runAssertions(store, row.run_id))
 	const open = verdicts.some((item) =>
 		record.defects.some((defect) => defect.runId === item.runId && defect.finding.id === item.findingId)
 	)
@@ -1509,7 +1509,7 @@ export function runDetail(store: Store, runId: string) {
 		tests,
 		warnings: finished ? [] : runOverlapWarnings(store, runId),
 		findings: verdictFindings(store, runId),
-		retest: retestVerdicts(run, outcomes),
+		retest: retestVerdicts(run, outcomes, runAssertions(store, runId)),
 		newGaps: runGaps(store, runId),
 		result: finished
 			? {

@@ -207,6 +207,9 @@
 					"type": "integer",
 					"minimum": 1,
 					"maximum": 3600
+				},
+				"perTest": {
+					"type": "boolean"
 				}
 			},
 			"required": ["owner", "command"],

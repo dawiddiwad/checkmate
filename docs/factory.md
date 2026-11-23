@@ -405,6 +405,8 @@ Two optional hooks run with any kind:
 
 Setup also takes `--hook-timeout <seconds>` (default 120). A prepare that fails or times out stops the run before any test, and the command output shows the reason.
 
+A reset command runs before each test that does not continue an earlier test of the same run, so one test's records do not change another test's counts. A test that depends on an earlier test in the run runs after it with no reset between. Setup takes `--reset-per-test off` for a reset that is too slow to run before each test. Then the reset runs only once, before the run.
+
 Every hook gets `CHECKMATE_MARKER` in its environment. The marker is `qa-<runId>` for a run and `qa-<explorationId>` for an exploration. Name every record that the hook creates with the marker, so cleanup can find it.
 
 Standard output of prepare, up to 8 KB, becomes facts for the run. The children receive it in their prompts, and `run show --json` shows it in `request.facts`. Write only facts that are safe to show: test user names and record IDs. Never write a secret, a password, or a token. Reports show the kind and the policy. They do not show the hooks.

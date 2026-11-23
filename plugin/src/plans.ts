@@ -1746,7 +1746,13 @@ export function openDefects(results: Result[], rejected: Set<string>) {
 	})
 }
 
-export type RetestDefect = { runId?: string; findingId: string; title: string; testIds: string[] }
+export type RetestDefect = {
+	runId?: string
+	findingId: string
+	title: string
+	testIds: string[]
+	assertionIds?: string[]
+}
 
 export function retestDefects(store: Store, runId: string): RetestDefect[] {
 	const { plan_id } = one<{ plan_id: string }>(store, 'SELECT plan_id FROM runs WHERE run_id = ?', runId)!
@@ -1756,7 +1762,13 @@ export function retestDefects(store: Store, runId: string): RetestDefect[] {
 	for (let id: string | null = runId; id && !chain.includes(id); id = byRun.get(id)?.retestOf ?? null) chain.push(id)
 	return openDefects(results, rejectedRuns(store, plan_id))
 		.filter((defect) => chain.includes(defect.runId))
-		.map(({ runId, finding }) => ({ runId, findingId: finding.id, title: finding.title, testIds: finding.testIds }))
+		.map(({ runId, finding }) => ({
+			runId,
+			findingId: finding.id,
+			title: finding.title,
+			testIds: finding.testIds,
+			assertionIds: finding.assertionIds,
+		}))
 }
 
 export function dependencyBlock(store: Store, reference: string, build: string | null): string | null {

@@ -7,7 +7,15 @@ import type { Approval } from './plans.ts'
 import type { ApprovalLabel } from './views.ts'
 import { requireChoice, requireCondition, revisionReference } from './contracts.ts'
 import { planApproval, planRevision } from './plans.ts'
-import { outcomeCounts, resultAcceptance, retestVerdicts, runOutcomes, runResult, runState } from './runs.ts'
+import {
+	outcomeCounts,
+	resultAcceptance,
+	retestVerdicts,
+	runAssertions,
+	runOutcomes,
+	runResult,
+	runState,
+} from './runs.ts'
 import { approvalLabel, evidenceBytes } from './views.ts'
 import { explorationReport } from './explorers.ts'
 
@@ -715,7 +723,7 @@ export function runReport(store: Store, runId: string): RunReport {
 		planApproval: { state: approvalLabel(approval), latest: approval.latest },
 		plan: { planId, revision, objective, requirements, tests, gaps, decisions, assumptions },
 		inline,
-		retest: retestVerdicts(run, runOutcomes(store, runId)),
+		retest: retestVerdicts(run, runOutcomes(store, runId), runAssertions(store, runId)),
 		times: testTimes(store, runId),
 	}
 }

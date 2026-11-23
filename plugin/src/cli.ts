@@ -1354,6 +1354,7 @@ const commands: Record<string, Command> = {
 			'policy-file': 'value',
 			cleanup: 'value',
 			'hook-timeout': { min: 1, max: 3600 },
+			'reset-per-test': 'value',
 		},
 		required: ['url'],
 		write: true,
@@ -1370,6 +1371,7 @@ const commands: Record<string, Command> = {
 				policyFile: value(args, 'policy-file'),
 				cleanup: value(args, 'cleanup'),
 				hookTimeout: integer(args, 'hook-timeout'),
+				resetPerTest: value(args, 'reset-per-test'),
 				env,
 			}),
 		print: (reply) => ({

@@ -539,6 +539,7 @@ export type SetupInput = {
 	policyFile?: string
 	cleanup?: string
 	hookTimeout?: number
+	resetPerTest?: string
 	env: Record<string, string | undefined>
 	answered?: boolean
 }
@@ -637,11 +638,17 @@ export function dataOf(input: SetupInput): Profile['reset'] | undefined {
 	const hooks = {
 		...(input.cleanup ? { cleanup: resetCommand(input.cleanup) } : {}),
 		...(input.hookTimeout ? { timeoutSeconds: input.hookTimeout } : {}),
+		...(input.resetPerTest === 'off' ? { perTest: false } : {}),
 	}
+	requireCondition(
+		input.resetPerTest === undefined || input.resetPerTest === 'on' || input.resetPerTest === 'off',
+		`Unknown --reset-per-test ${input.resetPerTest}.`,
+		'Use --reset-per-test on (the default) or off, for a reset that is slow.'
+	)
 	if (!input.data) {
 		requireCondition(
 			!Object.keys(hooks).length || input.reset,
-			'--cleanup and --hook-timeout apply to a reset or a data kind.',
+			'--cleanup, --hook-timeout and --reset-per-test apply to a reset or a data kind.',
 			'Give --reset "<command>" or --data environment|isolation with --policy.'
 		)
 		return input.reset

@@ -1012,7 +1012,7 @@ function finish(store: Store, actor: string | undefined, input: FinishInput) {
 				'Cleanup failed, so the run cannot be completed',
 				'Finish with --completion operational_error.'
 			)
-			for (const verdict of retestVerdicts(run, outcomes))
+			for (const verdict of retestVerdicts(run, outcomes, runAssertions(store, input.runId)))
 				for (const testId of verdict.testIds.filter((id) => selected.includes(id)))
 					requireCondition(
 						outcomes.get(testId)!.outcome !== 'not_run',
@@ -1152,16 +1152,29 @@ function defectHint(store: Store, run: RunState, row: AssertionRow, findings: Re
 
 export type RetestVerdict = 'fixed' | 'not_fixed' | 'not_retested'
 
-export function retestVerdicts(run: RunState, outcomes: Map<string, OutcomeRow>) {
+// A defect is judged by the assertions it was recorded against, so a failing sibling assertion on the same test does not count.
+export function retestVerdicts(
+	run: RunState,
+	outcomes: Map<string, OutcomeRow>,
+	assertions: Map<string, AssertionRow>
+) {
 	return (run.request.retestDefects ?? []).map((defect) => {
-		const tested = defect.testIds.map((id) => outcomes.get(id)?.outcome)
-		const verdict: RetestVerdict = tested.includes('failed')
-			? 'not_fixed'
-			: tested.every((outcome) => outcome === 'passed')
-				? 'fixed'
-				: 'not_retested'
+		const verdict = defect.assertionIds?.length
+			? assertionVerdict(defect.assertionIds.map((id) => assertions.get(id)?.result))
+			: testVerdict(defect.testIds.map((id) => outcomes.get(id)?.outcome))
 		return { ...defect, runId: defect.runId ?? run.request.retestOf!, verdict }
 	})
+}
+
+function assertionVerdict(results: Array<AssertionRow['result'] | undefined>): RetestVerdict {
+	if (results.includes('failed')) return 'not_fixed'
+	return results.every((result) => result === 'passed') ? 'fixed' : 'not_retested'
+}
+
+// A defect recorded before assertions were named has only its tests to judge by.
+function testVerdict(outcomes: Array<string | undefined>): RetestVerdict {
+	if (outcomes.includes('failed')) return 'not_fixed'
+	return outcomes.every((outcome) => outcome === 'passed') ? 'fixed' : 'not_retested'
 }
 
 export function outcomeCounts(tests: ResultTest[]) {

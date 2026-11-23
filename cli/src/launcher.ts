@@ -18,7 +18,7 @@ import { migrationTests, planRequest, planTools } from '../../plugin/src/plans.t
 import { plannedRequest } from '../../plugin/src/routes.ts'
 import { signalChild, trackGroup } from '../../plugin/src/processes.ts'
 import { workspaceEnv } from '../../plugin/src/settings.ts'
-import { dataRules } from '../../plugin/src/resets.ts'
+import { dataRules, markerFor, runPrepare } from '../../plugin/src/resets.ts'
 import type { ChildCall } from '../../plugin/src/sessions.ts'
 import {
 	childOutputLimit,
@@ -929,6 +929,16 @@ function closeWithin(workspace: string, actor: string, input: CloseInput) {
 	return withStore(workspace, (store) => closeTest(store, actor, input))
 }
 
+// The reset command restores the seed data before each test, so one test's records do not change another test's counts.
+// A test that depends on an earlier test in this run continues that test's state, so it runs without a reset before it.
+function resetBeforeTest(workspace: string, subject: string, profile: Profile, test: Test) {
+	if (profile.reset?.owner !== 'checkmate' || profile.reset.perTest === false) return
+	const request = withStore(workspace, (store) => runState(store, subject).request)
+	if (test.dependsOn.some((id) => request.selectedTestIds.includes(id))) return
+	const marker = request.marker ?? withStore(workspace, (store) => markerFor(store, subject))
+	runPrepare(workspace, profile.reset, marker)
+}
+
 async function delegateByTest(
 	workspace: string,
 	subject: string,
@@ -963,6 +973,7 @@ async function delegateByTest(
 				reason: 'The deadline is used up before this test ran.',
 			})
 		} else {
+			resetBeforeTest(workspace, subject, execution.profile, view.test)
 			let note = 'The worker returned no result.'
 			for (let attempt = 1; attempt <= testAttempts; attempt++) {
 				const child = await runTestChild(workspace, options, execution, harness, env, view.test, view.remaining)

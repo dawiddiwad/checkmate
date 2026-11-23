@@ -23501,10 +23501,12 @@ var storedTestsNone = "none, testers use earlier results when available";
 function hasRequest(store, planId) {
   return Boolean(one(store, "SELECT 1 FROM plan_requests WHERE plan_id = ?", planId));
 }
-function autoMode(store, planId) {
+function autoMode(store, planId, build) {
   const explored = one(store, "SELECT 1 FROM explorations WHERE plan_id = ?", planId);
   const checked = one(store, "SELECT 1 FROM runs r JOIN results s ON s.run_id = r.run_id WHERE r.plan_id = ?", planId);
-  return explored || checked ? "regression" : "exploratory";
+  const revised = one(store, "SELECT 1 FROM latest_plans WHERE plan_id = ?", planId);
+  const ready = build && revised ? readySelection(store, planRevision(store, planId).plan, build).tests.length > 0 : false;
+  return explored || checked || ready ? "regression" : "exploratory";
 }
 function nextRunId(store) {
   return unusedId(
@@ -23600,6 +23602,13 @@ function runTest(store, actor, given, env, preferSavedModel = false) {
   const build = given.build ?? defaultBuild(store.workspace);
   if (!given.build) assumed.push(`build=${build}`);
   const input = { ...given, build };
+  const known = all(store, "SELECT DISTINCT plan_id FROM latest_plans").find(
+    (row2) => row2.plan_id.toLowerCase() === input.planId.toLowerCase()
+  );
+  if (known && known.plan_id !== input.planId) {
+    assumed.push(`plan=${known.plan_id} (the name ${input.planId} matches it, letter case aside)`);
+    input.planId = known.plan_id;
+  }
   const newRequest = !hasRequest(store, input.planId);
   if (newRequest) {
     requireIdentifier(input.planId, "plan ID");
@@ -23630,7 +23639,7 @@ function runTest(store, actor, given, env, preferSavedModel = false) {
     if (!input.session) requireChild(env, selectedHarness(env));
     openRequest(store, actor, input, env, assumed);
   }
-  const mode = input.mode && input.mode !== "auto" ? input.mode : autoMode(store, input.planId);
+  const mode = input.mode && input.mode !== "auto" ? input.mode : autoMode(store, input.planId, input.build);
   const explored = startExploration(
     store,
     actor,

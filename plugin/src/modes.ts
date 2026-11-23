@@ -5,7 +5,7 @@ import type { Charter } from './explorations.ts'
 import { all, one } from './store.ts'
 import { Refusal, requireIdentifier, requireWellFormed, unusedId, validate } from './contracts.ts'
 import { changeOf, changedFiles, upstreamBase } from './change.ts'
-import { openPlan } from './plans.ts'
+import { openPlan, planRevision, readySelection } from './plans.ts'
 import { beginRun } from './runs.ts'
 import { startExploration } from './explorers.ts'
 import { selectedHarness } from './pi.ts'
@@ -39,10 +39,14 @@ export function hasRequest(store: Store, planId: string) {
 	return Boolean(one(store, 'SELECT 1 FROM plan_requests WHERE plan_id = ?', planId))
 }
 
-export function autoMode(store: Store, planId: string) {
+// A plan with ready stored tests on the build is run, not explored: that is the route the person expects.
+export function autoMode(store: Store, planId: string, build?: string) {
 	const explored = one(store, 'SELECT 1 FROM explorations WHERE plan_id = ?', planId)
 	const checked = one(store, 'SELECT 1 FROM runs r JOIN results s ON s.run_id = r.run_id WHERE r.plan_id = ?', planId)
-	return explored || checked ? 'regression' : 'exploratory'
+	const revised = one(store, 'SELECT 1 FROM latest_plans WHERE plan_id = ?', planId)
+	const ready =
+		build && revised ? readySelection(store, planRevision(store, planId).plan, build).tests.length > 0 : false
+	return explored || checked || ready ? 'regression' : 'exploratory'
 }
 
 function nextRunId(store: Store) {
@@ -152,6 +156,14 @@ export function runTest(
 	const build = given.build ?? defaultBuild(store.workspace)
 	if (!given.build) assumed.push(`build=${build}`)
 	const input = { ...given, build }
+	// A plan name in another letter case is the same plan: the record keeps the name it was opened with.
+	const known = all<{ plan_id: string }>(store, 'SELECT DISTINCT plan_id FROM latest_plans').find(
+		(row) => row.plan_id.toLowerCase() === input.planId.toLowerCase()
+	)
+	if (known && known.plan_id !== input.planId) {
+		assumed.push(`plan=${known.plan_id} (the name ${input.planId} matches it, letter case aside)`)
+		input.planId = known.plan_id
+	}
 	const newRequest = !hasRequest(store, input.planId)
 	if (newRequest) {
 		requireIdentifier(input.planId, 'plan ID')
@@ -184,7 +196,7 @@ export function runTest(
 		if (!input.session) requireChild(env, selectedHarness(env))
 		openRequest(store, actor, input, env, assumed)
 	}
-	const mode = input.mode && input.mode !== 'auto' ? input.mode : autoMode(store, input.planId)
+	const mode = input.mode && input.mode !== 'auto' ? input.mode : autoMode(store, input.planId, input.build)
 	const explored = startExploration(
 		store,
 		actor,

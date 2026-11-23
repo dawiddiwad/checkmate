@@ -635,19 +635,21 @@ const commands: Record<string, Command> = {
 		}),
 	},
 	'plan open': {
-		positionals: ['planId'],
+		positionals: ['planId?'],
 		flags: { target: 'value', objective: 'value', source: 'repeat', instructions: 'value' },
 		required: ['target'],
 		write: true,
 		stdin: true,
 		run: (store, args, { actor, stdin }) =>
 			openPlan(store, actor, {
-				planId: value(args, 'planId')!,
+				planId: value(args, 'planId'),
 				target: value(args, 'target')!,
 				request: planRequestInput(args, stdin),
 			}),
 		print: (reply) => ({
 			facts: {
+				planId: reply.data.planId,
+				...(reply.data.planIdFrom ? { planIdFrom: reply.data.planIdFrom } : {}),
 				target: reply.data.target,
 				recorded: reply.data.recorded,
 				plannedFrom: (reply.data.sources as string[]).length
@@ -2387,16 +2389,27 @@ function parse(name: string, tokens: string[]) {
 		args[rest.slice(0, -3)] = positionals.splice(command.positionals.length - 1)
 		positionals.push('')
 	}
-	if (positionals.length !== command.positionals.length)
+	const optional = command.positionals.at(-1)?.endsWith('?') ? 1 : 0
+	const required = command.positionals.length - optional
+	if (positionals.length < required || positionals.length > command.positionals.length)
 		throw wrong(
-			`${name} needs ${command.positionals.length} argument(s), not ${positionals.length}: ${command.positionals.map((positional) => `<${positional}>`).join(' ') || 'none'}`
+			`${name} needs ${required === command.positionals.length ? required : `${required} to ${command.positionals.length}`} argument(s), not ${positionals.length}: ${command.positionals.map(positionalLabel).join(' ') || 'none'}`
 		)
 	for (const flag of command.required ?? []) if (!(flag in args)) throw wrong(`Missing --${flag}`)
 	command.positionals.forEach((positional, i) => {
-		if (positional !== rest) args[positional] = positionals[i]
+		if (positional !== rest) args[positionalName(positional)] = positionals[i]
 	})
 	command.check?.(args)
 	return args
+}
+
+// A positional named "planId?" may be left out. Its value is then undefined.
+function positionalName(positional: string) {
+	return positional.replace(/\?$/, '')
+}
+
+function positionalLabel(positional: string) {
+	return positional.endsWith('?') ? `[${positionalName(positional)}]` : `<${positional}>`
 }
 
 function placeholder(kind: FlagKind) {
@@ -2414,7 +2427,7 @@ function usage(name: string) {
 	return [
 		'Usage: checkmate',
 		name,
-		...command.positionals.map((positional) => `<${positional}>`),
+		...command.positionals.map(positionalLabel),
 		...flags,
 		...(command.write ? ['[--actor <name>]'] : []),
 		...(command.stdin ? ["<<'EOF' <json> EOF"] : []),
@@ -2493,7 +2506,10 @@ export function run(argv: string[], io: Io): Outcome {
 		return { code: 1, output: format(refused('invalid_request', name, error), json) }
 	}
 	const command = commands[name]
-	const subject = command.positionals.length && name !== 'query' ? String(args[command.positionals[0]]) : name
+	const subject =
+		command.positionals.length && name !== 'query'
+			? String(args[positionalName(command.positionals[0])] ?? name)
+			: name
 	const workspace = resolve(io.cwd, value(args, 'workspace') ?? '.')
 	let store: Store | undefined
 	try {

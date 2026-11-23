@@ -11534,6 +11534,7 @@ function compoundCheck(check) {
   const clauses = check.split(/\band\b|;/i);
   return clauses.filter((clause) => /\d/.test(clause)).length > 1;
 }
+var maxGapRequirements = 2;
 function planCheck(value2) {
   const plan = validate("plan", value2);
   const requirements = index(plan.requirements, "id", "requirement");
@@ -11548,6 +11549,12 @@ function planCheck(value2) {
     return planId === null;
   });
   for (const gap of plan.gaps) {
+    const namesEach = gap.requirementIds.every((id2) => new RegExp(`(?<![\\w-])${id2}(?![\\w-])`).test(gap.question));
+    requireWellFormed(
+      gap.requirementIds.length <= maxGapRequirements || namesEach,
+      `Gap ${gap.id} covers ${gap.requirementIds.length} requirements with one question. Write tests for ${gap.requirementIds.join(", ")}; raise a gap only where you can state the missing fact for each one.`,
+      `Name each requirement in the question, for example "${gap.requirementIds[0]}: <the missing fact>", or give each requirement its own gap.`
+    );
     references(gap.requirementIds, requirements, `requirement in gap ${gap.id}`);
     references(localReferences(gap.testIds), tests, `test in gap ${gap.id}`);
     if (gap.status === "open") requireWellFormed(gap.decisionId === null, `Open gap ${gap.id} has a decision`);
@@ -11628,7 +11635,7 @@ function planCheck(value2) {
     requireWellFormed(
       plan.tests.some((test) => test.requirementIds.includes(requirement.id)) || plan.gaps.some((gap) => gap.requirementIds.includes(requirement.id)),
       `Requirement ${requirement.id} has no test or gap`,
-      `Add a test whose requirementIds include ${requirement.id}, or an open gap whose requirementIds include ${requirement.id}. A test that is not ready still counts. Remove the requirement if the ticket does not state it.`
+      `Add a test whose requirementIds include ${requirement.id}. A test that is not ready still counts. Example, added to the tests: {"id": "T9", "title": "<what the test checks>", "requirementIds": ["${requirement.id}"], "capability": "<a target capability>", "operations": ["<an allowed operation>"], "dependsOn": [], "preconditions": [], "action": "<the step>", "assertions": [{"id": "A1", "check": "<the expected text>", "checkKind": "deterministic", "observe": "<what the page or API shows>", "expected": "<the value>"}]}. Open a gap for ${requirement.id} only when a fact is missing that the test cannot proceed without. Remove the requirement if the ticket does not state it.`
     );
   requireWellFormed(same(plan.coverage, planCoverage(plan)), "Plan coverage is inconsistent");
   return plan;
@@ -11740,7 +11747,7 @@ function resultCoverage(plan, tests, newGaps) {
 
 // plugin/src/plans.ts
 import { existsSync as existsSync6, readFileSync as readFileSync6 } from "node:fs";
-import { join as join6 } from "node:path";
+import { basename, extname, join as join6 } from "node:path";
 
 // plugin/src/rules.ts
 import { readFileSync as readFileSync4, realpathSync as realpathSync2, statSync as statSync2 } from "node:fs";
@@ -12937,6 +12944,22 @@ function permanentSelection(store, planId, requested) {
 // plugin/src/plans.ts
 var decisionKinds = ["clarify", "accept_assumption", "defer"];
 var partialModes = ["wait_for_resolution", "ready_only"];
+function suggestedPlanId(workspace2, sources) {
+  const [source] = sources;
+  requireWellFormed(
+    source !== void 0,
+    "Name the plan: plan open <planId> --target <target>@<revision>.",
+    "Or give a --source file and leave out <planId>, and the ID comes from the ticket key or the file name."
+  );
+  let text2;
+  try {
+    text2 = readFileSync6(join6(workspace2, source), "utf8");
+  } catch {
+    text2 = "";
+  }
+  const key = text2.match(/\b[A-Za-z][A-Za-z0-9]*-\d+\b/)?.[0] ?? basename(source, extname(source));
+  return key.toLowerCase().replace(/[^a-z0-9_-]+/g, "-");
+}
 function requireUnnamedSources(workspace2, sources) {
   const named = new Set(sources.map((source) => source.replace(/^\.\//, "")));
   for (const source of sources) {
@@ -12959,8 +12982,7 @@ function requireUnnamedSources(workspace2, sources) {
   }
 }
 function openPlan(store, actor, input) {
-  return write(store, { actor, command: "plan open", subject: input.planId, input }, (operationId) => {
-    const planId = requireIdentifier(input.planId, "plan ID");
+  return write(store, { actor, command: "plan open", subject: input.planId ?? "", input }, (operationId) => {
     const target = revisionReference(requireText(input.target, "target (--target)"), "target reference");
     requireWellFormed(target.revision !== null, `Name the target revision: --target ${target.id}@<revision>`);
     const profile = targetRevision(store, target.id, target.revision).profile;
@@ -12987,10 +13009,14 @@ function openPlan(store, actor, input) {
     const names = planTools(request2, profile).map((tool) => tool.name);
     requireWellFormed(new Set(names).size === names.length, "Duplicate tool name in the plan request");
     const body = canonical(request2);
+    const sources = request2.context?.sources ?? [];
+    const planId = requireIdentifier(input.planId ?? suggestedPlanId(store.workspace, sources), "plan ID");
     const data = {
       planId,
+      // The reply says where the ID came from, so the person can see it and pass it next time.
+      ...input.planId ? {} : { planIdFrom: sources[0] },
       target: `${target.id}@${target.revision}`,
-      sources: request2.context?.sources ?? []
+      sources
     };
     const existing = one(store, "SELECT * FROM plan_requests WHERE plan_id = ?", planId);
     if (existing) {
@@ -14419,7 +14445,7 @@ function diffPlan(store, input) {
 
 // plugin/src/runs.ts
 import { mkdirSync as mkdirSync3, readFileSync as readFileSync7, realpathSync as realpathSync4, rmSync as rmSync3, statSync as statSync4 } from "node:fs";
-import { basename, extname, isAbsolute as isAbsolute3, join as join7, resolve as resolve3, sep as sep3 } from "node:path";
+import { basename as basename2, extname as extname2, isAbsolute as isAbsolute3, join as join7, resolve as resolve3, sep as sep3 } from "node:path";
 import { randomUUID } from "node:crypto";
 
 // plugin/src/routes.ts
@@ -14780,10 +14806,10 @@ function readEvidence(store, runId, spec2) {
   const stats = statSync4(real);
   requireWellFormed(stats.isFile(), `Evidence must be a file: ${name2}`);
   requireWellFormed(stats.size <= maxEvidenceBytes2, `Evidence file exceeds 32 MiB: ${name2}`);
-  const extension = extname(name2).toLowerCase();
+  const extension = extname2(name2).toLowerCase();
   return {
     path,
-    name: basename(name2),
+    name: basename2(name2),
     kind: match ? match[2] : kindByExtension[extension] ?? "observation",
     mediaType: mediaTypes[extension] ?? "application/octet-stream",
     bytes: readFileSync7(real)
@@ -22894,7 +22920,7 @@ function exportExploration(store, explorationId, format3) {
 import { createReadStream, realpathSync as realpathSync5 } from "node:fs";
 import { readdir } from "node:fs/promises";
 import { homedir as homedir2 } from "node:os";
-import { basename as basename2, join as join13, resolve as resolve5 } from "node:path";
+import { basename as basename3, join as join13, resolve as resolve5 } from "node:path";
 import { createInterface as createInterface2 } from "node:readline";
 async function readUsage(path, workspace2, session) {
   const stream = createReadStream(path, { encoding: "utf8" });
@@ -22905,7 +22931,7 @@ async function readUsage(path, workspace2, session) {
       const entry = JSON.parse(line);
       if (!usage2) {
         if (entry.type !== "session" || entry.id !== session || realpathSync5(entry.cwd) !== workspace2) return;
-        usage2 = { parent: entry.parentSession ? basename2(entry.parentSession) : null, messages: /* @__PURE__ */ new Map() };
+        usage2 = { parent: entry.parentSession ? basename3(entry.parentSession) : null, messages: /* @__PURE__ */ new Map() };
       } else if (entry.type === "message") {
         const cost = piMessageCost(entry.message);
         if (cost === void 0) continue;
@@ -22966,7 +22992,7 @@ async function recoverPiCosts(store, env) {
     const session = await load(phase.session);
     if (!session) continue;
     const parent = phase.parent ? await load(phase.parent) : void 0;
-    if (phase.parent && (!parent || session.parent !== basename2(paths.get(phase.parent)))) continue;
+    if (phase.parent && (!parent || session.parent !== basename3(paths.get(phase.parent)))) continue;
     if (!phase.parent && session.parent) continue;
     let total = 0;
     let reported = false;
@@ -40195,7 +40221,7 @@ var commands = {
     })
   },
   "plan open": {
-    positionals: ["planId"],
+    positionals: ["planId?"],
     flags: { target: "value", objective: "value", source: "repeat", instructions: "value" },
     required: ["target"],
     write: true,
@@ -40207,6 +40233,8 @@ var commands = {
     }),
     print: (reply) => ({
       facts: {
+        planId: reply.data.planId,
+        ...reply.data.planIdFrom ? { planIdFrom: reply.data.planIdFrom } : {},
         target: reply.data.target,
         recorded: reply.data.recorded,
         plannedFrom: reply.data.sources.length ? reply.data.sources.join(", ") : "no source files"
@@ -41816,16 +41844,24 @@ function parse(name2, tokens) {
     args[rest.slice(0, -3)] = positionals.splice(command.positionals.length - 1);
     positionals.push("");
   }
-  if (positionals.length !== command.positionals.length)
+  const optional = command.positionals.at(-1)?.endsWith("?") ? 1 : 0;
+  const required = command.positionals.length - optional;
+  if (positionals.length < required || positionals.length > command.positionals.length)
     throw wrong(
-      `${name2} needs ${command.positionals.length} argument(s), not ${positionals.length}: ${command.positionals.map((positional) => `<${positional}>`).join(" ") || "none"}`
+      `${name2} needs ${required === command.positionals.length ? required : `${required} to ${command.positionals.length}`} argument(s), not ${positionals.length}: ${command.positionals.map(positionalLabel).join(" ") || "none"}`
     );
   for (const flag of command.required ?? []) if (!(flag in args)) throw wrong(`Missing --${flag}`);
   command.positionals.forEach((positional, i) => {
-    if (positional !== rest) args[positional] = positionals[i];
+    if (positional !== rest) args[positionalName(positional)] = positionals[i];
   });
   command.check?.(args);
   return args;
+}
+function positionalName(positional) {
+  return positional.replace(/\?$/, "");
+}
+function positionalLabel(positional) {
+  return positional.endsWith("?") ? `[${positionalName(positional)}]` : `<${positional}>`;
 }
 function placeholder(kind) {
   if (Array.isArray(kind)) return kind.join("|");
@@ -41841,7 +41877,7 @@ function usage(name2) {
   return [
     "Usage: checkmate",
     name2,
-    ...command.positionals.map((positional) => `<${positional}>`),
+    ...command.positionals.map(positionalLabel),
     ...flags,
     ...command.write ? ["[--actor <name>]"] : [],
     ...command.stdin ? ["<<'EOF' <json> EOF"] : []
@@ -41914,7 +41950,7 @@ function run(argv, io) {
     return { code: 1, output: format2(refused("invalid_request", name2, error), json) };
   }
   const command = commands[name2];
-  const subject = command.positionals.length && name2 !== "query" ? String(args[command.positionals[0]]) : name2;
+  const subject = command.positionals.length && name2 !== "query" ? String(args[positionalName(command.positionals[0])] ?? name2) : name2;
   const workspace2 = resolve9(io.cwd, value(args, "workspace") ?? ".");
   let store;
   try {
@@ -42386,22 +42422,23 @@ function stagePrompt(stage, subject, execution, workspace2) {
     return [
       `Plan: ${subject}. Read the request with \`checkmate plan request ${subject}\`.`,
       "If the request lists context sources, read them with the listed tools. Draft requirements only when the request has none.",
-      "Write an open blocking gap for each vague term that changes an expected value, for example a threshold, a rounding step, or a scope word. Do not pick the value yourself.",
-      'Plan regression tests only for existing rules that the sources state, with expected values from the sources. Mark each with "metadata": { "type": "regression" }.',
+      'Write one test for each requirement. A test is the default. A criterion that states a behaviour has an observable expectation: write it with the simplest kind that fits, for example a status code, contains or absent text, one-of, at least or at most, or type. Mark each with "metadata": { "type": "regression" }.',
+      "Raise a gap only for a criterion that is ambiguous, contradictory, or missing a fact that its test cannot proceed without. Name that one criterion and its requirement in the question, and state the exact question. Do not pick the value yourself. A gap that covers more than one requirement must name each requirement in its question, or you give each requirement its own gap.",
+      "Where the outcome is real but code cannot compare it, write an agent_observation assertion that says what to observe. Do not raise a gap for it.",
       'Each assertion checks one expected value. Write one assertion for each value. Do not join two values with "and" or ";" in one check.',
       'Write each assertion with the exact expected text or value from the sources, for example: The page shows "1 book" when one book is stored. Do not write a general description such as "pluralizes correctly".',
       'Each deterministic assertion names the observed item in "observe" and the expected value in "expected", and keeps the check text. Every deterministic check needs both. For a value that holds the run marker, write {{marker}} in "expected", for example {{marker}}-T1. {{marker}} works in every kind, for example contains:{{marker}}-T1. The marker already starts with qa-, so never write qa- before {{marker}}. For a shape or a range use type:number, type:non-empty, one-of:A|B, matches:<regex>, at least:N or at most:N. For presence or absence use contains:TEXT or absent:TEXT, never a sentence that starts with "not". Never write a type word or a <placeholder> as a value. A judgment that has no value to compare is "checkKind": "agent_observation". Example: {"id":"A1","check":"The kettle price shown on the product page is 240 PLN.","checkKind":"deterministic","observe":"the price value labelled Price on the product page","expected":"240 PLN"}.',
-      "A ready assertion must be observable through the target with the test action. Name in the action every input the check depends on, for example a query parameter or a date. When the target cannot show the value, write an open blocking gap for it, or an agent_observation.",
+      "A ready assertion must be observable through the target with the test action. Name in the action every input the check depends on, for example a query parameter or a date. When the target cannot show the value, write an agent_observation for it.",
       "Make each test create its own data or use a unique value such as {{marker}}-<testId>, where {{marker}} is the run marker placeholder. Do not rely on seed data.",
       "You can read the running application read-only (open a list page or send a GET) to check preconditions. Do not submit forms or change data.",
-      `Save revision 1 with \`checkmate plan save ${subject}\` before 75% of the deadline is used. A plan with open gaps is a correct result. Do not run test actions.`
+      `Save revision 1 with \`checkmate plan save ${subject}\` before 75% of the deadline is used. A plan with a gap for a real missing fact is a correct result, and the tests for the other criteria still count. Do not run test actions.`
     ];
   if (stage === "revise")
     return [
       `Plan: ${subject}. Read the pending decisions with \`checkmate plan pending ${subject}\`. With no pending decision, the revision migrates the checks to the current shape: read the plan with \`checkmate plan show ${subject} --json\`.`,
       "Change only the tests that the decisions affect. Give each ready test at least one assertion. A test without an assertion is not ready.",
       'When a migration has no pending decision, change only the tests with a deterministic check without "observe" and "expected", or with a check that states more than one value. Give each migrated deterministic check "observe" and "expected", and split a check that states more than one value into one assertion for each value. Do not invent an expected value that the sources do not state.',
-      'When a split or an expected value needs a decision, send that test with "assertions": [] and raise a gap: {"gaps": {"G-<testId>": {"question": "<the decision>", "consequence": "<what stays untested>", "testIds": ["<testId>"]}}}. Do not answer gaps.',
+      'When a split or an expected value needs a decision, keep the assertions the sources state and raise a gap only for the one missing fact: {"gaps": {"G-<testId>": {"question": "<the decision>", "consequence": "<what stays untested>", "testIds": ["<testId>"]}}}. Do not answer gaps.',
       'When a decision has no expected value, add an assertion with "checkKind": "agent_observation" that records the behavior.',
       'Send each changed test whole: title, requirementIds, capability, operations, dependsOn, preconditions, action, and assertions as a list of {"check", "checkKind", "observe", "expected"}. Every deterministic check needs "observe" (what the page or API shows) and "expected" (the single value to compare). A deterministic check without them is refused at save. If you cannot give an expected value, use "checkKind": "agent_observation" instead. Give one value in each check. Do not send assertion IDs; the code keeps them.',
       'A new requirement needs "text" and "source". A test that a decision drops is removed with {"remove": true}.',

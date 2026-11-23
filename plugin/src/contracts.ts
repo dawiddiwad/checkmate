@@ -296,6 +296,9 @@ export function compoundCheck(check: string) {
 	return clauses.filter((clause) => /\d/.test(clause)).length > 1
 }
 
+// A gap may cover this many requirements without naming each one in its question.
+const maxGapRequirements = 2
+
 export function planCheck(value: unknown): Plan {
 	const plan = validate('plan', value)
 	const requirements = index(plan.requirements, 'id', 'requirement')
@@ -311,6 +314,13 @@ export function planCheck(value: unknown): Plan {
 			return planId === null
 		})
 	for (const gap of plan.gaps) {
+		// One question for several requirements hides the criteria that need a test. Each one must be named.
+		const namesEach = gap.requirementIds.every((id) => new RegExp(`(?<![\\w-])${id}(?![\\w-])`).test(gap.question))
+		requireWellFormed(
+			gap.requirementIds.length <= maxGapRequirements || namesEach,
+			`Gap ${gap.id} covers ${gap.requirementIds.length} requirements with one question. Write tests for ${gap.requirementIds.join(', ')}; raise a gap only where you can state the missing fact for each one.`,
+			`Name each requirement in the question, for example "${gap.requirementIds[0]}: <the missing fact>", or give each requirement its own gap.`
+		)
 		references(gap.requirementIds, requirements, `requirement in gap ${gap.id}`)
 		references(localReferences(gap.testIds), tests, `test in gap ${gap.id}`)
 		if (gap.status === 'open') requireWellFormed(gap.decisionId === null, `Open gap ${gap.id} has a decision`)
@@ -392,7 +402,7 @@ export function planCheck(value: unknown): Plan {
 			plan.tests.some((test) => test.requirementIds.includes(requirement.id)) ||
 				plan.gaps.some((gap) => gap.requirementIds.includes(requirement.id)),
 			`Requirement ${requirement.id} has no test or gap`,
-			`Add a test whose requirementIds include ${requirement.id}, or an open gap whose requirementIds include ${requirement.id}. A test that is not ready still counts. Remove the requirement if the ticket does not state it.`
+			`Add a test whose requirementIds include ${requirement.id}. A test that is not ready still counts. Example, added to the tests: {"id": "T9", "title": "<what the test checks>", "requirementIds": ["${requirement.id}"], "capability": "<a target capability>", "operations": ["<an allowed operation>"], "dependsOn": [], "preconditions": [], "action": "<the step>", "assertions": [{"id": "A1", "check": "<the expected text>", "checkKind": "deterministic", "observe": "<what the page or API shows>", "expected": "<the value>"}]}. Open a gap for ${requirement.id} only when a fact is missing that the test cannot proceed without. Remove the requirement if the ticket does not state it.`
 		)
 	requireWellFormed(same(plan.coverage, planCoverage(plan)), 'Plan coverage is inconsistent')
 	return plan

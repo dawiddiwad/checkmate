@@ -1,5 +1,5 @@
 import { existsSync, readFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { basename, extname, join } from 'node:path'
 import type { Gap, Plan, PlanCandidate, PlanDelta, PlanPatch, PlanRequest, Profile, Result } from './types.ts'
 import type { Change, Reply, Store } from './store.ts'
 import { answerQuestion } from './journal.ts'
@@ -72,6 +72,24 @@ type DecisionRow = {
 export const decisionKinds = ['clarify', 'accept_assumption', 'defer'] as const
 export const partialModes = ['wait_for_resolution', 'ready_only'] as const
 
+// A ticket key such as BS-42 names the plan. Without a key, the first source's file name does.
+function suggestedPlanId(workspace: string, sources: string[]) {
+	const [source] = sources
+	requireWellFormed(
+		source !== undefined,
+		'Name the plan: plan open <planId> --target <target>@<revision>.',
+		'Or give a --source file and leave out <planId>, and the ID comes from the ticket key or the file name.'
+	)
+	let text: string
+	try {
+		text = readFileSync(join(workspace, source), 'utf8')
+	} catch {
+		text = ''
+	}
+	const key = text.match(/\b[A-Za-z][A-Za-z0-9]*-\d+\b/)?.[0] ?? basename(source, extname(source))
+	return key.toLowerCase().replace(/[^a-z0-9_-]+/g, '-')
+}
+
 // A source that mentions another local file is a truncated plan when that file is not named. Refuse, and name the file.
 export function requireUnnamedSources(workspace: string, sources: string[]) {
 	const named = new Set(sources.map((source) => source.replace(/^\.\//, '')))
@@ -98,10 +116,9 @@ export function requireUnnamedSources(workspace: string, sources: string[]) {
 export function openPlan(
 	store: Store,
 	actor: string | undefined,
-	input: { planId: string; target: string; request: unknown }
+	input: { planId?: string; target: string; request: unknown }
 ) {
-	return write(store, { actor, command: 'plan open', subject: input.planId, input }, (operationId) => {
-		const planId = requireIdentifier(input.planId, 'plan ID')
+	return write(store, { actor, command: 'plan open', subject: input.planId ?? '', input }, (operationId) => {
 		const target = revisionReference(requireText(input.target, 'target (--target)'), 'target reference')
 		requireWellFormed(target.revision !== null, `Name the target revision: --target ${target.id}@<revision>`)
 		const profile = targetRevision(store, target.id, target.revision).profile
@@ -128,10 +145,14 @@ export function openPlan(
 		const names = planTools(request, profile).map((tool) => tool.name)
 		requireWellFormed(new Set(names).size === names.length, 'Duplicate tool name in the plan request')
 		const body = canonical(request)
+		const sources = request.context?.sources ?? []
+		const planId = requireIdentifier(input.planId ?? suggestedPlanId(store.workspace, sources), 'plan ID')
 		const data = {
 			planId,
+			// The reply says where the ID came from, so the person can see it and pass it next time.
+			...(input.planId ? {} : { planIdFrom: sources[0] }),
 			target: `${target.id}@${target.revision}`,
-			sources: request.context?.sources ?? [],
+			sources,
 		}
 		const existing = one<RequestRow>(store, 'SELECT * FROM plan_requests WHERE plan_id = ?', planId)
 		if (existing) {

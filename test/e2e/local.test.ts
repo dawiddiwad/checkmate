@@ -617,6 +617,95 @@ test('Refuse a plan built from one source when another named local file is missi
 	assert.deepEqual(opened.sources, ['ticket.md', 'acceptance.md'])
 })
 
+test('Plan open takes the plan ID from the ticket key, and a gap that covers several requirements names each one.', async (t) => {
+	const workspace = directory(t)
+	const { chmodSync, copyFileSync, mkdirSync } = await import('node:fs')
+	const { delimiter } = await import('node:path')
+	const bin = join(workspace, 'bin')
+	mkdirSync(bin)
+	copyFileSync(join(root, 'test/e2e/delegate-host.mjs'), join(bin, 'claude'))
+	chmodSync(join(bin, 'claude'), 0o755)
+	const env = {
+		...process.env,
+		PATH: `${bin}${delimiter}${process.env.PATH}`,
+		CHECKMATE_ACTOR: 'oracle',
+		CHECKMATE_HARNESS: 'claude',
+		QA_STAGE: 'setup',
+		QA_LIE: '0',
+	}
+	const ok = async (args: string[], input?: unknown) => {
+		const result = await inputCommand(workspace, env, input === undefined ? '' : JSON.stringify(input), ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	await ok([
+		'target',
+		'open',
+		'shop',
+		'--entry-point',
+		'web:url:Shop HTTP API.',
+		'--capabilities',
+		'http',
+		'--operations',
+		'read_catalog',
+	])
+	await ok(['delegate', 'setup', 'shop', '--allow', 'Read'])
+	writeFileSync(
+		join(workspace, 'ticket.md'),
+		'# BS-42\n\n1. The quote is 240.\n2. The list is newest first.\n3. The title is trimmed.\n'
+	)
+	const opened = await ok([
+		'plan',
+		'open',
+		'--target',
+		'shop@1',
+		'--objective',
+		'Check the quote.',
+		'--source',
+		'ticket.md',
+	])
+	assert.equal(opened.planId, 'bs-42')
+	assert.equal(opened.planIdFrom, 'ticket.md')
+
+	const gap = (question: string) => ({
+		requirements: [
+			{ id: 'R1', text: 'The quote is 240.', source: 'ticket.md' },
+			{ id: 'R2', text: 'The list is newest first.', source: 'ticket.md' },
+			{ id: 'R3', text: 'The title is trimmed.', source: 'ticket.md' },
+		],
+		tests: [],
+		gaps: [
+			{
+				id: 'G1',
+				severity: 'blocking',
+				status: 'open',
+				requirementIds: ['R1', 'R2', 'R3'],
+				testIds: [],
+				question,
+				consequence: 'These criteria stay untested.',
+				decisionId: null,
+			},
+		],
+	})
+	const refused = await inputCommand(
+		workspace,
+		env,
+		JSON.stringify(gap('Which value applies?')),
+		'plan',
+		'save',
+		'bs-42'
+	)
+	assert.equal(refused.code, 1, refused.output)
+	assert.match(refused.output, /covers 3 requirements with one question/)
+	assert.match(refused.output, /Write tests for R1, R2, R3/)
+	assert.match(refused.output, /R1: <the missing fact>/)
+
+	await ok(
+		['plan', 'save', 'bs-42'],
+		gap('R1: which quote applies? R2: which order applies? R3: which trimming applies?')
+	)
+})
+
 test('Drop a criterion with no open question — scope drop records the drop, and revise applies it under the same check.', async (t) => {
 	const workspace = directory(t)
 	const { chmodSync, copyFileSync, mkdirSync } = await import('node:fs')

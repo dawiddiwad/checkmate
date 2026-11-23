@@ -1625,6 +1625,7 @@ const cli = plugin + '/dist/checkmate.js'
 const run = (args, input) => execFileSync(process.execPath, [cli, ...args], {input, encoding:'utf8'})
 const input = readFileSync(0, 'utf8')
 if (args.includes('stream-json')) {
+  require('node:fs').appendFileSync('chat-args.jsonl', JSON.stringify(args) + '\\n')
   const instructions = args[args.indexOf('--append-system-prompt') + 1]
   if (!input.includes('execute the fixture run') || !instructions.includes('When the person asks you to run or retest stored tests')) throw Error('Wrong request or workflow')
   run(['run','begin','ui-run','ticket@1','--build','fixed','--instance','local','--tests','T1'])
@@ -1688,6 +1689,21 @@ if (args.includes('stream-json')) {
 	assert(result, 'UI chat did not produce a result')
 	assert.equal(result.tests[0].outcome, 'passed')
 	assert.equal((await ok('run', 'show', 'ui-run')).build, 'fixed')
+	const calls: string[][] = readFileSync(join(workspace, 'chat-args.jsonl'), 'utf8')
+		.trim()
+		.split('\n')
+		.map((line) => JSON.parse(line))
+	const chatArgs = calls.find((args) => args.includes('--allowedTools')) ?? []
+	const allowed: string[] = chatArgs.flatMap((arg, index) => (chatArgs[index - 1] === '--allowedTools' ? [arg] : []))
+	assert(
+		allowed.some((rule) => /^Bash\(node ".*checkmate\.js" plan show:\*\)$/.test(rule)),
+		'Chat must allow exact read commands'
+	)
+	assert(
+		allowed.some((rule) => /^Bash\(node ".*checkmate\.js" gap answer:\*\)$/.test(rule)),
+		'Chat must allow the gap answer write'
+	)
+	assert(!allowed.some((rule) => /run begin/.test(rule)), 'Chat must not pre-allow commands that touch the target')
 	assert.deepEqual(
 		(await ok('query', "SELECT actor FROM operations WHERE command='run check' AND status='completed'")).rows,
 		[{ actor: 'claude:execute' }]

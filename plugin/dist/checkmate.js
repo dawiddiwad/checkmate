@@ -9866,6 +9866,45 @@ function requestSystemPrompt(checkmate, harness = "claude") {
 ${workflow}`
   ].join(" ");
 }
+var chatReadCommands = [
+  "status",
+  "inbox",
+  "log",
+  "target list",
+  "target show",
+  "plan show",
+  "plan list",
+  "plan diff",
+  "plan pending",
+  "plan promotions",
+  "run show",
+  "run list",
+  "run gate",
+  "finding list",
+  "claim list",
+  "spec status",
+  "explore show",
+  "explore status",
+  "explore levels",
+  "explore permissions"
+];
+var chatRecordCommands = [
+  "gap answer",
+  "plan edit",
+  "plan revise",
+  "plan save",
+  "plan adopt-gaps",
+  "plan approve",
+  "plan reject",
+  "result accept",
+  "result reject",
+  "claim accept",
+  "claim reject",
+  "claim handoff"
+];
+function chatAllowRules(checkmate) {
+  return [...chatReadCommands, ...chatRecordCommands].map((command) => `Bash(node "${checkmate}" ${command}:*)`);
+}
 function requestArgs(session) {
   return [
     "-p",
@@ -9880,7 +9919,8 @@ function requestArgs(session) {
     JSON.stringify(hookSettings(session.hook)),
     "--append-system-prompt",
     requestSystemPrompt(session.checkmate),
-    ...session.model ? ["--model", session.model] : []
+    ...session.model ? ["--model", session.model] : [],
+    ...chatAllowRules(session.checkmate).flatMap((rule) => ["--allowedTools", rule])
   ];
 }
 function requestPrompt(text2, screen) {
@@ -35028,6 +35068,10 @@ function origin(request2) {
 					>` : page ? html2`<a href="${page[1]}">${page[0]}</a>` : "";
   return start ? html2`<p class="help">Started from ${start}.</p>` : "";
 }
+function commandOf(input, tool) {
+  const command = typeof input === "object" && input !== null ? input.command : void 0;
+  return typeof command === "string" ? command : tool;
+}
 function turn(store, request2, context, number, back) {
   const permissions = explorationPermissions(store, request2.id).filter((item) => !item.decision);
   const failure = request2.state === "failed" ? failureText(request2) : null;
@@ -35059,7 +35103,14 @@ function turn(store, request2, context, number, back) {
 			${request2.reply ? html2`<div class="chat-markdown" data-chat-content>${chatMarkdown(request2.reply)}</div>` : ""}
 			${request2.state === "waiting" ? html2`<p class="help">Waiting for another chat to finish.</p>` : ""}
 			${request2.state === "running" ? html2`<p class="help">Working…</p>` : ""}
-			${permissions.map((item) => html2`<p class="banner warn">Waiting for permission. <a href="${requestHref(item, back)}">Answer it</a></p>`)}
+			${permissions.map(
+    (item) => html2`<p class="banner warn" data-chat-waiting>
+						Waiting for your permission. The chat asks to run
+						<code>${commandOf(item.input, item.tool)}</code>.
+						<a href="${requestHref(item, back)}">Answer it</a>. If no one answers in about 10 minutes,
+						Checkmate denies the command and the reply goes on without it.
+					</p>`
+  )}
 			${request2.activity.length ? html2`<details data-open-key="activity:${request2.id}">
 							<summary>Activity (${request2.activity.length})</summary>
 							<ol class="sp-activity">

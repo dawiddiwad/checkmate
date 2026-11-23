@@ -641,6 +641,49 @@ export function requestSystemPrompt(checkmate: string, harness: Harness = 'claud
 	].join(' ')
 }
 
+// Checkmate commands that a chat may run without asking: the read-only ones, and the
+// record writes that the person asks for in chat. Each rule names one exact subcommand.
+const chatReadCommands = [
+	'status',
+	'inbox',
+	'log',
+	'target list',
+	'target show',
+	'plan show',
+	'plan list',
+	'plan diff',
+	'plan pending',
+	'plan promotions',
+	'run show',
+	'run list',
+	'run gate',
+	'finding list',
+	'claim list',
+	'spec status',
+	'explore show',
+	'explore status',
+	'explore levels',
+	'explore permissions',
+]
+const chatRecordCommands = [
+	'gap answer',
+	'plan edit',
+	'plan revise',
+	'plan save',
+	'plan adopt-gaps',
+	'plan approve',
+	'plan reject',
+	'result accept',
+	'result reject',
+	'claim accept',
+	'claim reject',
+	'claim handoff',
+]
+
+export function chatAllowRules(checkmate: string) {
+	return [...chatReadCommands, ...chatRecordCommands].map((command) => `Bash(node "${checkmate}" ${command}:*)`)
+}
+
 export function requestArgs(session: RequestSession) {
 	return [
 		'-p',
@@ -656,6 +699,7 @@ export function requestArgs(session: RequestSession) {
 		'--append-system-prompt',
 		requestSystemPrompt(session.checkmate),
 		...(session.model ? ['--model', session.model] : []),
+		...chatAllowRules(session.checkmate).flatMap((rule) => ['--allowedTools', rule]),
 	]
 }
 

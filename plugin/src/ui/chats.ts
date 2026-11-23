@@ -83,6 +83,11 @@ function origin(request: RequestRecord) {
 	return start ? html`<p class="help">Started from ${start}.</p>` : ''
 }
 
+function commandOf(input: unknown, tool: string) {
+	const command = typeof input === 'object' && input !== null ? (input as { command?: unknown }).command : undefined
+	return typeof command === 'string' ? command : tool
+}
+
 function turn(store: Store, request: RequestRecord, context: Context, number: number, back: string) {
 	const permissions = explorationPermissions(store, request.id).filter((item) => !item.decision)
 	const failure = request.state === 'failed' ? failureText(request) : null
@@ -114,7 +119,15 @@ function turn(store: Store, request: RequestRecord, context: Context, number: nu
 			${request.reply ? html`<div class="chat-markdown" data-chat-content>${chatMarkdown(request.reply)}</div>` : ''}
 			${request.state === 'waiting' ? html`<p class="help">Waiting for another chat to finish.</p>` : ''}
 			${request.state === 'running' ? html`<p class="help">Working…</p>` : ''}
-			${permissions.map((item) => html`<p class="banner warn">Waiting for permission. <a href="${requestHref(item, back)}">Answer it</a></p>`)}
+			${permissions.map(
+				(item) =>
+					html`<p class="banner warn" data-chat-waiting>
+						Waiting for your permission. The chat asks to run
+						<code>${commandOf(item.input, item.tool)}</code>.
+						<a href="${requestHref(item, back)}">Answer it</a>. If no one answers in about 10 minutes,
+						Checkmate denies the command and the reply goes on without it.
+					</p>`
+			)}
 			${
 				request.activity.length
 					? html`<details data-open-key="activity:${request.id}">

@@ -4017,7 +4017,8 @@ test('Report a different checkmate build on PATH — the session runs a stale pl
 		encoding: 'utf8',
 	})
 	assert.equal(result.status, 0, result.stderr)
-	assert.match(result.stdout, /^0\.7\.2 build [0-9a-f]{12}$/m)
+	const { version } = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'))
+	assert.match(result.stdout, new RegExp(`^${version} build [0-9a-f]{12}$`, 'm'))
 	assert.match(result.stdout, /^warning: the checkmate on PATH is build [0-9a-f]{12} at .*checkmate\.js/m)
 })
 

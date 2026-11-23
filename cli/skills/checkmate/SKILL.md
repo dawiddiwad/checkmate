@@ -13,6 +13,7 @@ Use the CLI in this package. Resolve `../../src/main.ts` from the directory of t
    - Otherwise, setup is not the end. Report the target in one line, then go on to step 3 or 4 with the person's ticket or change.
 3. For a ticket, an acceptance-criteria file, or a request to test a change, run this step now. Do not run `--help` first; the command below is the one to use. Run `plan open <planId> --target <targetId>@<revision> --objective "<objective>" --source <file>`. Then run `delegate plan <planId>`. Show the open gaps. Ask the oracle for decisions.
 4. For an exploratory test, run `test <planId> --source <file> --allow Read --allow Bash`. Add `--level smoke|normal|deep` when the person selects a level. Run `explore wait <explorationId> --timeout 90`. If it still shows `recording`, run the same command again. When it shows `completed`, run `explore show <explorationId>`. Do not wait longer than 90 seconds in one command.
+5. For the stored tests of a plan on a build, do not use `test`. Run `status <planId>`. Use its `next` line, `run begin <runId> <planId>@<revision> --build <build> --partial ready_only`. Pick a new run ID. Then follow "Continue a run".
 
 ## Answer questions and revise the plan
 

@@ -1761,11 +1761,24 @@ export function explorationStatus(store: Store, explorationId: string) {
 	}
 }
 
+// A paused exploration waits for the person, so waiting on it only burns the timeout.
+function pausedWait(explorationId: string, status: ReturnType<typeof explorationStatus>): Reply {
+	const next = status.path === 'session' ? 'next' : 'wait'
+	return {
+		status: 'needs_decision',
+		subject: explorationId,
+		reasons: [`Exploration ${explorationId} is paused: ${status.paused}`],
+		hint: `Get the answer from the person. Then run checkmate explore ${next} ${explorationId}.`,
+		data: { ...status, outcome: 'paused' },
+	}
+}
+
 export function waitExploration(store: Store, explorationId: string, timeoutSeconds: number): Reply {
 	const until = Date.now() + timeoutSeconds * 1000
 	for (;;) {
 		const status = explorationStatus(store, explorationId)
 		const ended = ['completed', 'failed', 'stopped', 'interrupted', 'open'].includes(status.state)
+		if (!ended && status.paused) return pausedWait(explorationId, status)
 		if (ended || Date.now() >= until) {
 			const outcome = status.state === 'completed' ? 'done' : ended ? 'failed' : 'timeout'
 			const events = explorationEvents(store, explorationId)

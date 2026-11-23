@@ -621,6 +621,45 @@ test('Interrupt the supervisor and retry safely — orphan workers or duplicate 
 	assert.deepEqual(counts.rows, [{ targets: 1, plans: 1, attempts: 2 }])
 })
 
+test('Wait on a paused exploration — the driver burns the timeout instead of answering the pause.', async (t) => {
+	const workspace = directory(t)
+	writeFileSync(join(workspace, 'ticket.md'), 'The promotion quote is 240 PLN.\n')
+	const app = await fixture()
+	t.after(() => app.close())
+	const host = fakeClaude(t, {}, 'claude')
+	const env = {
+		...process.env,
+		...host.env,
+		CHECKMATE_ACTOR: 'oracle',
+		CHECKMATE_HARNESS: 'claude',
+		QA_APP_URL: app.baseUrl,
+		QA_WORKSPACE: workspace,
+		QA_CLI: binary,
+	}
+	const ok = async (...args: string[]) => {
+		const result = await command(workspace, env, ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	const started = await ok(
+		'test',
+		'cart',
+		'--url',
+		app.baseUrl,
+		'--source',
+		'ticket.md',
+		'--build',
+		'broken',
+		'--session'
+	)
+	await ok('explore', 'pause', started.explorationId, '--reason', 'Shipping rule needs a decision.')
+	const began = Date.now()
+	const waited = await ok('explore', 'wait', started.explorationId, '--timeout', '60')
+	assert.ok(Date.now() - began < 30000, 'a paused exploration must return at once')
+	assert.equal(waited.outcome, 'paused')
+	assert.match(waited.hint, new RegExp(`checkmate explore next ${started.explorationId}`))
+})
+
 test('Answer, revise, and approve the named revision — execution against the wrong revision.', async (t) => {
 	const workspace = directory(t)
 	const { chmodSync, copyFileSync, mkdirSync } = await import('node:fs')

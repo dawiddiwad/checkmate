@@ -4681,3 +4681,81 @@ test('Execute a run with a short deadline — the worker runs its test; no test 
 	assert.equal(gated.code, 0, gated.output)
 	assert.equal(gated.body.gate.state, 'passed')
 })
+
+test('Name the owed cleanup of a run that never finished — status gives the exact command, and it removes the marked data.', async (t) => {
+	const workspace = directory(t)
+	writeFileSync(join(workspace, 'ticket.md'), 'An order can be created.\n')
+	writeFileSync(
+		join(workspace, 'cleanup.mjs'),
+		"import { writeFileSync } from 'node:fs'\nwriteFileSync('cleaned.txt', process.env.CHECKMATE_MARKER)\n"
+	)
+	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle', CHECKMATE_HARNESS: 'pi' }
+	const ok = async (...args: string[]) => {
+		const result = await command(workspace, env, ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	const app = await fixture()
+	t.after(() => app.close())
+	await ok(
+		'setup',
+		'--url',
+		app.baseUrl,
+		'--target',
+		'shop',
+		'--data',
+		'isolation',
+		'--policy',
+		'Use the test users only.',
+		'--cleanup',
+		'node cleanup.mjs'
+	)
+	await ok(
+		'plan',
+		'open',
+		'ticket',
+		'--target',
+		'shop@1',
+		'--objective',
+		'Read the catalog.',
+		'--source',
+		'ticket.md'
+	)
+	const saved = await inputCommand(
+		workspace,
+		env,
+		JSON.stringify({
+			requirements: [{ id: 'R1', text: 'The catalog is listed.', source: 'ticket.md' }],
+			tests: [
+				{
+					id: 'T1',
+					title: 'Read the catalog',
+					requirementIds: ['R1'],
+					capability: 'http',
+					operations: ['read_catalog'],
+					dependsOn: [],
+					preconditions: [],
+					action: 'Read the catalog.',
+					assertions: [{ id: 'A1', check: 'The catalog is listed.', checkKind: 'agent_observation' }],
+				},
+			],
+			gaps: [],
+		}),
+		'plan',
+		'save',
+		'ticket'
+	)
+	assert.equal(saved.code, 0, saved.output)
+	await ok('run', 'begin', 'run-1', 'ticket@1', '--build', 'b1', '--instance', 'local')
+	assert.equal(existsSync(join(workspace, 'cleaned.txt')), false)
+	const status = await ok('status', 'ticket')
+	assert.ok(status.next.includes('Cleanup owed by run-1: checkmate cleanup run-1'), JSON.stringify(status.next))
+	const cleaned = await ok('cleanup', 'run-1')
+	assert.equal(cleaned.status, 'completed')
+	assert.match(readFileSync(join(workspace, 'cleaned.txt'), 'utf8'), /^qa-[a-z0-9]+-run-1$/)
+	const after = await ok('status', 'ticket')
+	assert.equal(
+		after.next.some((line: string) => line.startsWith('Cleanup owed by')),
+		false
+	)
+})

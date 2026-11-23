@@ -19784,6 +19784,23 @@ function permissionClosedCause(store, request2) {
   if (!request2.fromRequest && interruptedSupervisor(explorationEvents(store, request2.askerId))) return "interrupted";
 }
 
+// plugin/src/cleanups.ts
+var runningStates = ["starting", "testing", "recording", "verifying", "following"];
+function settleEnded(store) {
+  const ended = owedCleanups(store).map((item) => item.id).filter((id2) => {
+    if (runResult(store, id2)) return true;
+    try {
+      return !runningStates.includes(explorationStatus(store, id2).state);
+    } catch {
+      return false;
+    }
+  });
+  return ended.length ? settleCleanups(store, ended) : [];
+}
+function owedLines(store) {
+  return owedCleanups(store).map((item) => `Cleanup owed by ${item.id}: checkmate cleanup ${item.id}`);
+}
+
 // plugin/src/views.ts
 import { existsSync as existsSync7 } from "node:fs";
 import { join as join10 } from "node:path";
@@ -20316,7 +20333,7 @@ function planStatus(store, planId, harness = workspaceHarness(store)) {
   return {
     ...status,
     rules: rulesLine(store, planId),
-    next,
+    next: [...next, ...owedLines(store)],
     legacyChecks: legacy,
     qa,
     data: planDataSummary(store, planId)
@@ -41022,6 +41039,24 @@ var commands = {
     }),
     print: (reply) => ({ facts: { ready: reply.data.ready, sha256: reply.data.sha256 } })
   },
+  cleanup: {
+    positionals: ["ownerId"],
+    write: true,
+    run: (store, args) => {
+      const id2 = value(args, "ownerId");
+      const owed = owedCleanups(store).some((item) => item.id === id2);
+      requireCondition(
+        owed,
+        `No cleanup is owed by ${id2}.`,
+        "Run checkmate status <planId> to see the owed cleanups."
+      );
+      const failures = settleCleanups(store, [id2]);
+      return failures.length ? refused("rejected", id2, new Error(failures.join(". "))) : completed(id2, { cleanup: "ran", owner: id2 });
+    },
+    print: (reply) => ({
+      facts: { owner: reply.data.owner ?? reply.subject, cleanup: reply.data.cleanup ?? "failed" }
+    })
+  },
   query: {
     positionals: ["sql"],
     readOnly: true,
@@ -41459,6 +41494,7 @@ function run(argv, io) {
     store = command.readOnly ? openReadOnlyStore(workspace2) : openStore(workspace2);
     store.via = requestOfEnv(io.env);
     const actor = command.write ? value(args, "actor") ?? defaultActor(workspace2, io.env) : void 0;
+    if (["run begin", "explore start", "test"].includes(name2)) settleEnded(store);
     const reply = command.run(store, args, {
       actor,
       stdin: () => readJson2(io.stdin()),

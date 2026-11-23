@@ -57,6 +57,7 @@ import {
 import type { RunRow } from './runs.ts'
 import { findInstance, instanceList, targetRevision } from './targets.ts'
 import { findingsRunId } from './findingsRun.ts'
+import { owedLines } from './cleanups.ts'
 import { dataSummary } from './resets.ts'
 import { planRules, rulesLine } from './rules.ts'
 import { workspaceHarness } from './settings.ts'
@@ -765,7 +766,7 @@ export function planStatus(store: Store, planId: string, harness = workspaceHarn
 	return {
 		...status,
 		rules: rulesLine(store, planId),
-		next,
+		next: [...next, ...owedLines(store)],
 		legacyChecks: legacy,
 		qa,
 		data: planDataSummary(store, planId),

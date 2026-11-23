@@ -111,6 +111,8 @@ import { dirname, join, resolve } from 'node:path'
 import { constants } from 'node:sqlite'
 import { piCopyWarnings, versionLines } from './build.ts'
 import { storeExplorationFindings } from './findingsRun.ts'
+import { settleEnded } from './cleanups.ts'
+import { owedCleanups, settleCleanups } from './resets.ts'
 
 type FlagKind = 'value' | 'list' | 'repeat' | 'switch' | readonly string[] | { min: number; max: number }
 type Args = Record<string, string | string[] | boolean>
@@ -1917,6 +1919,26 @@ const commands: Record<string, Command> = {
 			}),
 		print: (reply) => ({ facts: { ready: reply.data.ready, sha256: reply.data.sha256 } }),
 	},
+	cleanup: {
+		positionals: ['ownerId'],
+		write: true,
+		run: (store, args) => {
+			const id = value(args, 'ownerId')!
+			const owed = owedCleanups(store).some((item) => item.id === id)
+			requireCondition(
+				owed,
+				`No cleanup is owed by ${id}.`,
+				'Run checkmate status <planId> to see the owed cleanups.'
+			)
+			const failures = settleCleanups(store, [id])
+			return failures.length
+				? refused('rejected', id, new Error(failures.join('. ')))
+				: completed(id, { cleanup: 'ran', owner: id })
+		},
+		print: (reply) => ({
+			facts: { owner: reply.data.owner ?? reply.subject, cleanup: reply.data.cleanup ?? 'failed' },
+		}),
+	},
 	query: {
 		positionals: ['sql'],
 		readOnly: true,
@@ -2415,6 +2437,7 @@ export function run(argv: string[], io: Io): Outcome {
 		store = command.readOnly ? openReadOnlyStore(workspace) : openStore(workspace)
 		store.via = requestOfEnv(io.env)
 		const actor = command.write ? (value(args, 'actor') ?? defaultActor(workspace, io.env)) : undefined
+		if (['run begin', 'explore start', 'test'].includes(name)) settleEnded(store)
 		const reply = command.run(store, args, {
 			actor,
 			stdin: () => readJson(io.stdin()),

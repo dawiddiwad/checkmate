@@ -485,7 +485,7 @@ function stagePrompt(stage: Stage, subject: string, execution: Execution | null,
 			'If the request lists context sources, read them with the listed tools. Draft requirements only when the request has none.',
 			'Write one test for each requirement. A test is the default. A criterion that states a behaviour has an observable expectation: write it with the simplest kind that fits, for example a status code, contains or absent text, one-of, at least or at most, or type. Mark each with "metadata": { "type": "regression" }.',
 			'Raise a gap only for a criterion that is ambiguous, contradictory, or missing a fact that its test cannot proceed without. Name that one criterion and its requirement in the question, and state the exact question. Do not pick the value yourself. A gap that covers more than one requirement must name each requirement in its question, or you give each requirement its own gap.',
-			'Where the outcome is real but code cannot compare it, write an agent_observation assertion that says what to observe. Do not raise a gap for it.',
+			'Use agent_observation only for a visual or wording judgment that no value states. An order, a count, a status code, a presence, or an absence has a value: observe the first item, the count, the status, or the text, and use the deterministic kind. Do not raise a gap for a judgment.',
 			'Each assertion checks one expected value. Write one assertion for each value. Do not join two values with "and" or ";" in one check.',
 			'Write each assertion with the exact expected text or value from the sources, for example: The page shows "1 book" when one book is stored. Do not write a general description such as "pluralizes correctly".',
 			'Each deterministic assertion names the observed item in "observe" and the expected value in "expected", and keeps the check text. Every deterministic check needs both. For a value that holds the run marker, write {{marker}} in "expected", for example {{marker}}-T1. {{marker}} works in every kind, for example contains:{{marker}}-T1. The marker already starts with qa-, so never write qa- before {{marker}}. For a shape or a range use type:number, type:non-empty, one-of:A|B, matches:<regex>, at least:N or at most:N. For presence or absence use contains:TEXT or absent:TEXT, never a sentence that starts with "not". Never write a type word or a <placeholder> as a value. A judgment that has no value to compare is "checkKind": "agent_observation". Example: {"id":"A1","check":"The kettle price shown on the product page is 240 PLN.","checkKind":"deterministic","observe":"the price value labelled Price on the product page","expected":"240 PLN"}.',
@@ -1148,10 +1148,13 @@ export async function delegate(
 		} catch (error) {
 			failure = workerFailure(error)
 		}
-		if (failure || run) break
+		// An unreadable reply can still follow a refused save, so only other failures stop the loop.
+		if (run || (failure && !(failure instanceof InvalidPiResponse))) break
 		if (withStore(workspace, (store) => verify(store, stage, subject, after, workerActor)) !== null) break
 		// Retry only a refused save. A plan that already has revision 1 cannot take a second save.
-		rejected = claimed?.reasons ?? []
+		// When the reply gives no reason, the refusal recorded by the save is the reason.
+		const refused = withStore(workspace, (store) => lastRefusal(store, stage, after, workerActor))
+		rejected = claimed?.reasons.length ? claimed.reasons : refused ? [refused] : []
 		const planned = withStore(workspace, (store) =>
 			one(store, 'SELECT 1 FROM plan_revisions WHERE plan_id = ?', subject)
 		)

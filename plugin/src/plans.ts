@@ -90,23 +90,25 @@ function suggestedPlanId(workspace: string, sources: string[]) {
 	return key.toLowerCase().replace(/[^a-z0-9_-]+/g, '-')
 }
 
-// A source that mentions another local file is a truncated plan when that file is not named. Refuse, and name the file.
-export function requireUnnamedSources(workspace: string, sources: string[]) {
+// A source or the objective that mentions another local file is a truncated plan when that file is not named. Refuse, and name the file.
+export function requireUnnamedSources(workspace: string, sources: string[], objective: string) {
 	const named = new Set(sources.map((source) => source.replace(/^\.\//, '')))
+	const mentions: Array<[string, string]> = [['The objective', objective]]
 	for (const source of sources) {
-		let text: string
 		try {
-			text = readFileSync(join(workspace, source), 'utf8')
+			mentions.push([source, readFileSync(join(workspace, source), 'utf8')])
 		} catch {
-			continue
+			// An unreadable source is reported when the planner reads it.
 		}
+	}
+	for (const [origin, text] of mentions) {
 		for (const match of text.matchAll(/[A-Za-z0-9_./-]+\.(?:md|txt|json|csv|ya?ml|feature|html)\b/g)) {
 			const file = match[0].replace(/^\.\//, '')
-			if (named.has(file) || !existsSync(join(workspace, file)) || file === source) continue
+			if (named.has(file) || !existsSync(join(workspace, file)) || file === origin) continue
 			const all = [...sources, file]
 			requireWellFormed(
 				false,
-				`${source} refers to ${file}, which exists and was not named as a source. The plan would be built from ${sources.join(', ')} only.`,
+				`${origin} refers to ${file}, which exists and was not named as a source. The plan would be built from ${sources.join(', ') || 'no source'} only.`,
 				`Open the plan again with every source: checkmate plan open <planId> --target <target>@<revision> ${all.map((item) => `--source ${item}`).join(' ')}.`
 			)
 		}
@@ -128,7 +130,7 @@ export function openPlan(
 			'A plan request needs requirements or context sources'
 		)
 		index(request.requirements ?? [], 'id', 'requirement')
-		requireUnnamedSources(store.workspace, request.context?.sources ?? [])
+		requireUnnamedSources(store.workspace, request.context?.sources ?? [], request.objective)
 		for (const tool of request.tools ?? [])
 			if (typeof tool === 'string')
 				requireWellFormed(

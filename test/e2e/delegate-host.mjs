@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { execFileSync } from 'node:child_process'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 const args = process.argv.slice(2)
 const plugin = args[args.indexOf('--plugin-dir') + 1]
 if (!plugin) throw Error('Plugin was not supplied')
@@ -68,6 +68,54 @@ if (process.env.QA_STAGE === 'setup') {
 		],
 		gaps: [],
 	})
+} else if (process.env.QA_STAGE === 'plan-retry') {
+	// The first save leaves R2 without a test, and the reply gives no reason. The retry must carry the refusal.
+	const attempt = existsSync('plan-attempts.txt') ? Number(readFileSync('plan-attempts.txt', 'utf8')) + 1 : 1
+	writeFileSync('plan-attempts.txt', String(attempt))
+	const quote = {
+		id: 'T1',
+		title: 'Quote',
+		requirementIds: ['R1'],
+		capability: 'http',
+		operations: ['read_catalog'],
+		dependsOn: [],
+		preconditions: [],
+		action: 'Read the quote.',
+		assertions: [
+			{ id: 'A1', check: 'The quote is 240.', checkKind: 'deterministic', observe: 'the quote', expected: '240' },
+		],
+	}
+	const requirements = [
+		{ id: 'R1', text: 'The quote is 240.', source: 'ticket.md' },
+		{ id: 'R2', text: 'The list is newest first.', source: 'ticket.md' },
+	]
+	if (attempt === 1) {
+		try {
+			run(['plan', 'save', 'ticket'], { requirements, tests: [quote], gaps: [] })
+		} catch {
+			// The save is refused on purpose. The refusal is recorded.
+		}
+		result = { status: 'needs_decision', subject: 'ticket', reasons: [] }
+	} else {
+		if (!prompt.includes('Requirement R2 has no test or gap')) throw Error('The retry does not carry the refusal')
+		const newest = {
+			...quote,
+			id: 'T2',
+			title: 'Order',
+			requirementIds: ['R2'],
+			assertions: [
+				{
+					id: 'A1',
+					check: 'The list is newest first.',
+					checkKind: 'deterministic',
+					observe: 'the order',
+					expected: 'newest first',
+				},
+			],
+		}
+		run(['plan', 'save', 'ticket'], { requirements, tests: [quote, newest], gaps: [] })
+		result = { status: 'completed', subject: 'ticket', reasons: [] }
+	}
 } else if (process.env.QA_STAGE === 'permanent') {
 	const testId = /Test (T\d+):/.exec(prompt)[1]
 	if (!prompt.includes('This is a permanent run') || !prompt.includes('Do not explore'))

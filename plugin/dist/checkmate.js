@@ -12965,22 +12965,23 @@ function suggestedPlanId(workspace2, sources) {
   const key = text2.match(/\b[A-Za-z][A-Za-z0-9]*-\d+\b/)?.[0] ?? basename(source, extname(source));
   return key.toLowerCase().replace(/[^a-z0-9_-]+/g, "-");
 }
-function requireUnnamedSources(workspace2, sources) {
+function requireUnnamedSources(workspace2, sources, objective) {
   const named = new Set(sources.map((source) => source.replace(/^\.\//, "")));
+  const mentions = [["The objective", objective]];
   for (const source of sources) {
-    let text2;
     try {
-      text2 = readFileSync6(join6(workspace2, source), "utf8");
+      mentions.push([source, readFileSync6(join6(workspace2, source), "utf8")]);
     } catch {
-      continue;
     }
+  }
+  for (const [origin2, text2] of mentions) {
     for (const match of text2.matchAll(/[A-Za-z0-9_./-]+\.(?:md|txt|json|csv|ya?ml|feature|html)\b/g)) {
       const file = match[0].replace(/^\.\//, "");
-      if (named.has(file) || !existsSync6(join6(workspace2, file)) || file === source) continue;
+      if (named.has(file) || !existsSync6(join6(workspace2, file)) || file === origin2) continue;
       const all2 = [...sources, file];
       requireWellFormed(
         false,
-        `${source} refers to ${file}, which exists and was not named as a source. The plan would be built from ${sources.join(", ")} only.`,
+        `${origin2} refers to ${file}, which exists and was not named as a source. The plan would be built from ${sources.join(", ") || "no source"} only.`,
         `Open the plan again with every source: checkmate plan open <planId> --target <target>@<revision> ${all2.map((item) => `--source ${item}`).join(" ")}.`
       );
     }
@@ -12997,7 +12998,7 @@ function openPlan(store, actor, input) {
       "A plan request needs requirements or context sources"
     );
     index(request2.requirements ?? [], "id", "requirement");
-    requireUnnamedSources(store.workspace, request2.context?.sources ?? []);
+    requireUnnamedSources(store.workspace, request2.context?.sources ?? [], request2.objective);
     for (const tool of request2.tools ?? [])
       if (typeof tool === "string")
         requireWellFormed(
@@ -42557,7 +42558,7 @@ function stagePrompt(stage, subject, execution, workspace2) {
       "If the request lists context sources, read them with the listed tools. Draft requirements only when the request has none.",
       'Write one test for each requirement. A test is the default. A criterion that states a behaviour has an observable expectation: write it with the simplest kind that fits, for example a status code, contains or absent text, one-of, at least or at most, or type. Mark each with "metadata": { "type": "regression" }.',
       "Raise a gap only for a criterion that is ambiguous, contradictory, or missing a fact that its test cannot proceed without. Name that one criterion and its requirement in the question, and state the exact question. Do not pick the value yourself. A gap that covers more than one requirement must name each requirement in its question, or you give each requirement its own gap.",
-      "Where the outcome is real but code cannot compare it, write an agent_observation assertion that says what to observe. Do not raise a gap for it.",
+      "Use agent_observation only for a visual or wording judgment that no value states. An order, a count, a status code, a presence, or an absence has a value: observe the first item, the count, the status, or the text, and use the deterministic kind. Do not raise a gap for a judgment.",
       'Each assertion checks one expected value. Write one assertion for each value. Do not join two values with "and" or ";" in one check.',
       'Write each assertion with the exact expected text or value from the sources, for example: The page shows "1 book" when one book is stored. Do not write a general description such as "pluralizes correctly".',
       'Each deterministic assertion names the observed item in "observe" and the expected value in "expected", and keeps the check text. Every deterministic check needs both. For a value that holds the run marker, write {{marker}} in "expected", for example {{marker}}-T1. {{marker}} works in every kind, for example contains:{{marker}}-T1. The marker already starts with qa-, so never write qa- before {{marker}}. For a shape or a range use type:number, type:non-empty, one-of:A|B, matches:<regex>, at least:N or at most:N. For presence or absence use contains:TEXT or absent:TEXT, never a sentence that starts with "not". Never write a type word or a <placeholder> as a value. A judgment that has no value to compare is "checkKind": "agent_observation". Example: {"id":"A1","check":"The kettle price shown on the product page is 240 PLN.","checkKind":"deterministic","observe":"the price value labelled Price on the product page","expected":"240 PLN"}.',
@@ -43081,9 +43082,10 @@ async function delegate(workspace2, stage, subject, options3) {
     } catch (error) {
       failure = workerFailure(error);
     }
-    if (failure || run2) break;
+    if (run2 || failure && !(failure instanceof InvalidPiResponse)) break;
     if (withStore(workspace2, (store) => verify(store, stage, subject, after, workerActor)) !== null) break;
-    rejected = claimed?.reasons ?? [];
+    const refused2 = withStore(workspace2, (store) => lastRefusal(store, stage, after, workerActor));
+    rejected = claimed?.reasons.length ? claimed.reasons : refused2 ? [refused2] : [];
     const planned = withStore(
       workspace2,
       (store) => one2(store, "SELECT 1 FROM plan_revisions WHERE plan_id = ?", subject)

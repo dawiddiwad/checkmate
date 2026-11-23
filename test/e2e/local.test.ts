@@ -6180,3 +6180,109 @@ test('Refuse a detached claude delegate without --allow before it starts — the
 	assert.doesNotMatch(result.stdout, /"status":"running"/)
 	assert.equal(existsSync(join(workspace, '.checkmate', 'tmp', 'delegate-revise-SHOP-1.json.started')), false)
 })
+
+test('Retry a refused plan save once when the reply gives no reason — the retry carries the refusal from the record.', async (t) => {
+	const workspace = directory(t)
+	const { chmodSync, copyFileSync, mkdirSync } = await import('node:fs')
+	const { delimiter } = await import('node:path')
+	const bin = join(workspace, 'bin')
+	mkdirSync(bin)
+	copyFileSync(join(root, 'test/e2e/delegate-host.mjs'), join(bin, 'claude'))
+	chmodSync(join(bin, 'claude'), 0o755)
+	const env = {
+		...process.env,
+		PATH: `${bin}${delimiter}${process.env.PATH}`,
+		CHECKMATE_ACTOR: 'oracle',
+		CHECKMATE_HARNESS: 'claude',
+		QA_STAGE: 'setup',
+		QA_LIE: '0',
+	}
+	const ok = async (args: string[], input?: unknown) => {
+		const result = await inputCommand(workspace, env, input === undefined ? '' : JSON.stringify(input), ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	await ok([
+		'target',
+		'open',
+		'shop',
+		'--entry-point',
+		'web:url:Shop HTTP API.',
+		'--capabilities',
+		'http',
+		'--operations',
+		'read_catalog',
+	])
+	await ok(['delegate', 'setup', 'shop', '--allow', 'Read'])
+	writeFileSync(join(workspace, 'ticket.md'), '# Ticket\n\n1. The quote is 240.\n2. The list is newest first.\n')
+	await ok([
+		'plan',
+		'open',
+		'ticket',
+		'--target',
+		'shop@1',
+		'--objective',
+		'Check the quote.',
+		'--source',
+		'ticket.md',
+	])
+	env.QA_STAGE = 'plan-retry'
+	const planned = await command(workspace, env, 'delegate', 'plan', 'ticket', '--allow', 'Read')
+	assert.equal(planned.code, 0, planned.output)
+	assert.equal(planned.body.status, 'completed', planned.output)
+	assert.equal(readFileSync(join(workspace, 'plan-attempts.txt'), 'utf8'), '2')
+	assert.equal((await ok(['query', 'SELECT count(*) AS n FROM plan_revisions'])).rows[0].n, 1)
+})
+
+test('Refuse a plan open whose objective names another local file that is not a source.', async (t) => {
+	const workspace = directory(t)
+	const { chmodSync, copyFileSync, mkdirSync } = await import('node:fs')
+	const { delimiter } = await import('node:path')
+	const bin = join(workspace, 'bin')
+	mkdirSync(bin)
+	copyFileSync(join(root, 'test/e2e/delegate-host.mjs'), join(bin, 'claude'))
+	chmodSync(join(bin, 'claude'), 0o755)
+	const env = {
+		...process.env,
+		PATH: `${bin}${delimiter}${process.env.PATH}`,
+		CHECKMATE_ACTOR: 'oracle',
+		CHECKMATE_HARNESS: 'claude',
+		QA_STAGE: 'setup',
+		QA_LIE: '0',
+	}
+	const ok = async (args: string[]) => {
+		const result = await inputCommand(workspace, env, '', ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	await ok([
+		'target',
+		'open',
+		'shop',
+		'--entry-point',
+		'web:url:Shop HTTP API.',
+		'--capabilities',
+		'http',
+		'--operations',
+		'read_catalog',
+	])
+	await ok(['delegate', 'setup', 'shop', '--allow', 'Read'])
+	writeFileSync(join(workspace, 'ticket.md'), '# Ticket\n\n1. The quote is 240.\n')
+	writeFileSync(join(workspace, 'acceptance.md'), '2. The list is newest first.\n')
+	const refused = await command(
+		workspace,
+		env,
+		'plan',
+		'open',
+		'ticket',
+		'--target',
+		'shop@1',
+		'--objective',
+		'Check the quote and the criteria in acceptance.md.',
+		'--source',
+		'ticket.md'
+	)
+	assert.equal(refused.code, 1, refused.output)
+	assert.match(refused.output, /The objective refers to acceptance\.md/)
+	assert.match(refused.output, /--source acceptance\.md/)
+})

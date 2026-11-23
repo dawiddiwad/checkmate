@@ -498,6 +498,7 @@ export function storeEdit(
 	}
 	if (frozen) {
 		const change = storeRevision(store, draft, operationId)
+		applyEditResult(change)
 		change.reply.data.edit = 'new_revision'
 		change.reply.data.reason = frozen
 		if (removal) {
@@ -517,9 +518,18 @@ export function storeEdit(
 		plan.revision
 	)
 	const change = revisionChange(plan, sha256)
+	applyEditResult(change)
 	change.reply.data.edit = 'in_place'
 	change.reply.data.previousSha256 = base.sha256
 	return change
+}
+
+// A plan edit that was applied reports completed. Its open gaps are warnings, and the plan state is a separate field.
+function applyEditResult(change: Change) {
+	const open = change.reply.status === 'needs_decision' ? change.reply.reasons : []
+	change.reply.status = 'completed'
+	change.reply.reasons = open.map((reason) => `warning: ${reason}`)
+	change.reply.data.planState = open.length ? 'needs_decision' : 'ready'
 }
 
 function patchedCandidate(plan: Plan, patch: PlanPatch): Required<PlanCandidate> {
@@ -657,8 +667,8 @@ function candidateRequirements(request: PlanRequest, drafted: Plan['requirements
 	index(drafted, 'id', 'requirement')
 	requireWellFormed(
 		criteria.length < 2 || drafted.length >= criteria.length,
-		`The sources list ${criteria.length} numbered criteria and the plan has ${drafted.length} requirements. Write one requirement for each criterion, with its test or gap.`,
-		`Criteria: ${criteria.map((criterion, index) => `${index + 1}. ${criterion}`).join(' ')}`
+		`The sources list ${criteria.length} numbered criteria, but the plan has ${drafted.length} requirements. The plan was opened with: ${sources.join(', ')}. If a source file is missing from the plan, open a new plan ID with every source: checkmate plan open <new-plan-id> --target <target>@<revision> ${sources.map((source) => `--source ${source}`).join(' ')} --source <missing-file>.`,
+		`Write one requirement for each criterion, with its test or gap. Criteria: ${criteria.map((criterion, index) => `${index + 1}. ${criterion}`).join(' ')}`
 	)
 	for (const requirement of drafted)
 		requireWellFormed(

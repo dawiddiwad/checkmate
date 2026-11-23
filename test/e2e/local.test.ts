@@ -415,6 +415,127 @@ test('Remove only what the answer drops — a revise that also removed R5 and T4
 	assert.deepEqual(unrequestedRemovals(new Set(['R6']), new Set(['T6']), ['R5', 'R6'], ['T4', 'T6']), ['R5', 'T4'])
 })
 
+test('An applied plan edit with an open gap reports completed, with the gap as a warning and the plan state apart.', async (t) => {
+	const workspace = directory(t)
+	const { chmodSync, copyFileSync, mkdirSync } = await import('node:fs')
+	const { delimiter } = await import('node:path')
+	const bin = join(workspace, 'bin')
+	mkdirSync(bin)
+	copyFileSync(join(root, 'test/e2e/delegate-host.mjs'), join(bin, 'claude'))
+	chmodSync(join(bin, 'claude'), 0o755)
+	const env = {
+		...process.env,
+		PATH: `${bin}${delimiter}${process.env.PATH}`,
+		CHECKMATE_ACTOR: 'oracle',
+		CHECKMATE_HARNESS: 'claude',
+		QA_STAGE: 'setup',
+		QA_LIE: '0',
+	}
+	const ok = async (args: string[], input?: unknown) => {
+		const result = await inputCommand(workspace, env, input === undefined ? '' : JSON.stringify(input), ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	await ok([
+		'target',
+		'open',
+		'shop',
+		'--entry-point',
+		'web:url:Shop HTTP API.',
+		'--capabilities',
+		'http',
+		'--operations',
+		'read_catalog',
+	])
+	await ok(['delegate', 'setup', 'shop', '--allow', 'Read'])
+	writeFileSync(join(workspace, 'ticket.md'), '# Ticket\n\n1. The quote is 240.\n2. The list is newest first.\n')
+	await ok([
+		'plan',
+		'open',
+		'ticket',
+		'--target',
+		'shop@1',
+		'--objective',
+		'Check the quote.',
+		'--source',
+		'ticket.md',
+	])
+	await ok(['plan', 'save', 'ticket'], {
+		requirements: [
+			{ id: 'R1', text: 'The quote is 240.', source: 'ticket.md' },
+			{ id: 'R2', text: 'The list is newest first.', source: 'ticket.md' },
+		],
+		tests: [
+			{
+				id: 'T1',
+				title: 'Quote',
+				requirementIds: ['R1'],
+				capability: 'http',
+				operations: ['read_catalog'],
+				dependsOn: [],
+				preconditions: [],
+				action: 'Read the quote.',
+				assertions: [
+					{
+						id: 'A1',
+						check: 'The quote is 240.',
+						checkKind: 'deterministic',
+						observe: 'quote',
+						expected: '240',
+					},
+				],
+			},
+		],
+		gaps: [
+			{
+				id: 'G1',
+				severity: 'blocking',
+				status: 'open',
+				requirementIds: ['R2'],
+				testIds: [],
+				question: 'Is the list newest first?',
+				consequence: 'Unknown.',
+				decisionId: null,
+			},
+		],
+	})
+	const edited = await inputCommand(
+		workspace,
+		env,
+		JSON.stringify({
+			tests: {
+				T1b: {
+					title: 'Quote again',
+					requirementIds: ['R1'],
+					capability: 'http',
+					operations: ['read_catalog'],
+					action: 'Read the quote again.',
+					assertions: { A1: { check: 'The quote is 240 again.', checkKind: 'agent_observation' } },
+				},
+			},
+		}),
+		'plan',
+		'edit',
+		'ticket@1',
+		'--patch',
+		'--rationale',
+		'Add a test for R1.'
+	)
+	assert.equal(edited.code, 0, edited.output)
+	assert.equal(edited.body.status, 'completed', JSON.stringify(edited.body))
+	assert.equal(edited.body.planState, 'needs_decision')
+	assert.match(edited.body.reasons.join('\n'), /warning: G1/)
+})
+
+test('Detach a delegate and wait for it — the reply says running until the work finishes.', async (t) => {
+	const workspace = directory(t)
+	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle', CHECKMATE_HARNESS: 'pi' }
+	const started = await command(workspace, env, 'delegate', 'plan', 'ticket', '--detach')
+	assert.equal(started.body.status, 'running', started.output)
+	const waited = await command(workspace, env, 'delegate', 'wait', 'plan', 'ticket', '--timeout', '60')
+	assert.notEqual(waited.body.status, 'running', waited.output)
+})
+
 test('Find the criterion a drop answer names from its wording — the planner did not link the gap to it.', async () => {
 	const path = '../../plugin/src/plans.ts'
 	const { droppedRequirement } = (await import(path)) as {

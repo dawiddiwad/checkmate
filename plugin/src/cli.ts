@@ -2489,7 +2489,7 @@ function exitCodeOf(name: string, args: Args, reply: Reply) {
 		const blocking = status.gaps.some((gap) => gap.severity === 'blocking')
 		if (status.waitsOn === 'oracle' || blocking) return blockedOnDecisionExitCode
 	}
-	return reply.status === 'completed' || reply.status === 'needs_decision' ? 0 : 1
+	return reply.status === 'completed' || reply.status === 'needs_decision' || reply.status === 'running' ? 0 : 1
 }
 
 export function uiOptions(tokens: string[], cwd: string) {

@@ -174,7 +174,7 @@ function detachDelegate(tokens: string[]) {
 	writeFileSync(file + '.started', String(Date.now()))
 	print(
 		{
-			status: 'completed',
+			status: 'running',
 			subject,
 			reasons: [`delegate ${stage} ${subject} started in the background and is still running.`],
 			operation: null,
@@ -195,7 +195,7 @@ function waitDelegate(tokens: string[]) {
 	if (!existsSync(file)) {
 		print(
 			{
-				status: 'completed',
+				status: 'running',
 				subject,
 				reasons: [
 					`delegate ${stage} ${subject} has not finished within ${limit / 1000} seconds; it is still running.`,

@@ -13137,6 +13137,7 @@ function storeEdit(store, operationId, base, value2, removal) {
   }
   if (frozen) {
     const change2 = storeRevision(store, draft, operationId);
+    applyEditResult(change2);
     change2.reply.data.edit = "new_revision";
     change2.reply.data.reason = frozen;
     if (removal) {
@@ -13156,9 +13157,16 @@ function storeEdit(store, operationId, base, value2, removal) {
     plan.revision
   );
   const change = revisionChange(plan, sha256);
+  applyEditResult(change);
   change.reply.data.edit = "in_place";
   change.reply.data.previousSha256 = base.sha256;
   return change;
+}
+function applyEditResult(change) {
+  const open = change.reply.status === "needs_decision" ? change.reply.reasons : [];
+  change.reply.status = "completed";
+  change.reply.reasons = open.map((reason) => `warning: ${reason}`);
+  change.reply.data.planState = open.length ? "needs_decision" : "ready";
 }
 function patchedCandidate(plan, patch) {
   const candidate = planCandidate(structuredClone(plan));
@@ -13285,8 +13293,8 @@ function candidateRequirements(request2, drafted, criteria) {
   index(drafted, "id", "requirement");
   requireWellFormed(
     criteria.length < 2 || drafted.length >= criteria.length,
-    `The sources list ${criteria.length} numbered criteria and the plan has ${drafted.length} requirements. Write one requirement for each criterion, with its test or gap.`,
-    `Criteria: ${criteria.map((criterion, index2) => `${index2 + 1}. ${criterion}`).join(" ")}`
+    `The sources list ${criteria.length} numbered criteria, but the plan has ${drafted.length} requirements. The plan was opened with: ${sources.join(", ")}. If a source file is missing from the plan, open a new plan ID with every source: checkmate plan open <new-plan-id> --target <target>@<revision> ${sources.map((source) => `--source ${source}`).join(" ")} --source <missing-file>.`,
+    `Write one requirement for each criterion, with its test or gap. Criteria: ${criteria.map((criterion, index2) => `${index2 + 1}. ${criterion}`).join(" ")}`
   );
   for (const requirement of drafted)
     requireWellFormed(
@@ -41635,7 +41643,7 @@ function exitCodeOf(name2, args, reply) {
     const blocking = status.gaps.some((gap) => gap.severity === "blocking");
     if (status.waitsOn === "oracle" || blocking) return blockedOnDecisionExitCode;
   }
-  return reply.status === "completed" || reply.status === "needs_decision" ? 0 : 1;
+  return reply.status === "completed" || reply.status === "needs_decision" || reply.status === "running" ? 0 : 1;
 }
 function uiOptions(tokens, cwd) {
   const values = {};
@@ -42961,7 +42969,7 @@ function detachDelegate(tokens) {
   writeFileSync7(file + ".started", String(Date.now()));
   print(
     {
-      status: "completed",
+      status: "running",
       subject,
       reasons: [`delegate ${stage} ${subject} started in the background and is still running.`],
       operation: null,
@@ -42981,7 +42989,7 @@ function waitDelegate(tokens) {
   if (!existsSync11(file)) {
     print(
       {
-        status: "completed",
+        status: "running",
         subject,
         reasons: [
           `delegate ${stage} ${subject} has not finished within ${limit / 1e3} seconds; it is still running.`

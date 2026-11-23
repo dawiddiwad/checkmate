@@ -61,7 +61,8 @@ if (process.env.QA_STAGE === 'setup') {
 		gaps: [],
 	})
 } else if (process.env.QA_STAGE === 'permanent') {
-	if (!prompt.includes('Permanent-only run from ticket@3') || !prompt.includes('Do not explore'))
+	const testId = /Test (T\d+):/.exec(prompt)[1]
+	if (!prompt.includes('This is a permanent run') || !prompt.includes('Do not explore'))
 		throw Error('Permanent-only instructions missing')
 	const detail = run(['run', 'show', 'permanent-1'])
 	if (
@@ -78,7 +79,7 @@ if (process.env.QA_STAGE === 'setup') {
 			'run',
 			'check',
 			'permanent-1',
-			'T1',
+			testId,
 			'A1',
 			'--result',
 			'passed',
@@ -89,18 +90,8 @@ if (process.env.QA_STAGE === 'setup') {
 		],
 		'HTTP 200: 240'
 	)
-	run(['run', 'close', 'permanent-1', 'T1'])
-	result = run([
-		'run',
-		'finish',
-		'permanent-1',
-		'--completion',
-		'completed',
-		'--cleanup',
-		'completed',
-		'--cleanup-reason',
-		'No test data.',
-	])
+	run(['run', 'close', 'permanent-1', testId])
+	result = { status: 'completed', subject: 'permanent-1', reasons: [] }
 } else throw Error('Unknown fixture stage')
 console.log(
 	JSON.stringify({

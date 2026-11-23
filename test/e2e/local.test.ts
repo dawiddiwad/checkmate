@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict'
 import { execFileSync, spawn, spawnSync } from 'node:child_process'
 import { once } from 'node:events'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:http'
 import { createInterface } from 'node:readline'
-import { join } from 'node:path'
+import { delimiter, join } from 'node:path'
 import { gunzipSync } from 'node:zlib'
 import { DatabaseSync } from 'node:sqlite'
 import test from 'node:test'
@@ -3139,4 +3139,73 @@ test('Refuse a run that can change data without a reset, then run the recorded r
 	assert.equal(existsSync(join(workspace, 'reset-ran.txt')), false)
 	await ok('run', 'begin', 'run-1', 'ticket@1', '--build', 'b1', '--instance', 'local')
 	assert.equal(readFileSync(join(workspace, 'reset-ran.txt'), 'utf8'), 'yes')
+})
+
+test('Record each test with its own worker — a silent worker is retried once, then its test is closed as error and dependent tests are blocked.', async (t) => {
+	const workspace = directory(t)
+	writeFileSync(join(workspace, 'ticket.md'), 'The quote is 240.\n')
+	const app = await fixture()
+	t.after(() => app.close())
+	app.fix()
+	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle' }
+	const ok = async (args: string[], value?: object) => {
+		const result = await inputCommand(workspace, env, value ? JSON.stringify(value) : '', ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	await ok(['setup', '--url', app.baseUrl, '--target', 'shop'])
+	await ok([
+		'plan',
+		'open',
+		'ticket',
+		'--target',
+		'shop@1',
+		'--objective',
+		'Check the ticket.',
+		'--source',
+		'ticket.md',
+	])
+	const test = (id: string, dependsOn: string[] = []) => ({
+		capability: 'http',
+		operations: ['read_catalog'],
+		dependsOn,
+		preconditions: [],
+		id,
+		title: `Quote ${id}`,
+		requirementIds: ['R1'],
+		action: 'Read the quote.',
+		assertions: [{ id: 'A1', check: 'The quote is 240.', checkKind: 'deterministic' }],
+	})
+	await ok(['plan', 'save', 'ticket'], {
+		requirements: [{ id: 'R1', text: 'The quote is 240.', source: 'ticket.md' }],
+		tests: [test('T1'), test('T2'), test('T3'), test('T4', ['T3'])],
+		gaps: [],
+	})
+	await ok(['plan', 'approve', 'ticket@1', '--rationale', 'Run the rule.'])
+	await ok(['run', 'begin', 'run-1', 'ticket@1', '--build', 'b1', '--partial', 'ready_only'])
+	const bin = directory(t)
+	copyFileSync(join(root, 'test/e2e/per-test-host.mjs'), join(bin, 'pi'))
+	chmodSync(join(bin, 'pi'), 0o755)
+	const log = join(directory(t), 'prompts.log')
+	const piEnv = {
+		...env,
+		PATH: `${bin}${delimiter}${process.env.PATH}`,
+		CHECKMATE_HARNESS: 'pi',
+		FAKE_PI_LOG: log,
+		FAKE_CHECKMATE_CLI: binary,
+		FAKE_RUN: 'run-1',
+	}
+	const delegated = await inputCommand(workspace, piEnv, '', 'delegate', 'execute', 'run-1')
+	assert.equal(delegated.body.status, 'operational_error', delegated.output)
+	assert.deepEqual(readFileSync(log, 'utf8').trim().split('\n'), ['T1', 'T2', 'T2', 'T3', 'T3'])
+	const outcomes = await ok([
+		'query',
+		"SELECT test_id, outcome FROM outcomes WHERE run_id = 'run-1' ORDER BY test_id",
+	])
+	assert.deepEqual(outcomes.rows, [
+		{ test_id: 'T1', outcome: 'passed' },
+		{ test_id: 'T2', outcome: 'passed' },
+		{ test_id: 'T3', outcome: 'error' },
+		{ test_id: 'T4', outcome: 'blocked' },
+	])
 })

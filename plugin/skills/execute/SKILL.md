@@ -104,7 +104,11 @@ After the selected tests, probe the rules of the selected tests for a few cases 
 2. Run `checkmate run finish <runId> --actor claude:execute --completion <completed|operational_error|interrupted> --cleanup <completed|failed|not_applicable> --cleanup-reason "<text>"`.
    - `completed`: every selected test is closed, and none is `error`.
    - `operational_error`: every selected test is closed first. Use it when tools failed for all tests. A test that failed for a tool closes as `error` with the tool output as evidence.
-   - `interrupted`: only when the deadline is used up, the host stopped the run, or a tool that every test needs is missing. Add `--cause deadline|host_stopped|tool_unavailable --reason "<text>"`.
+   - `interrupted`: add `--cause <cause> --reason "<text>"`. Use one of these causes only:
+     - `deadline`: refused until 90% of the deadline is used. A refusal is not the end of the run. Keep running the open tests.
+     - `host_stopped`: the host or the oracle stopped the run.
+     - `tool_unavailable`: a tool that every open test needs is missing.
+   - A refused finish changes nothing. Read its reason, and continue with the open tests.
    - A blocking gap closes only its tests. It does not finish the run.
 3. Return the status and the reasons of the `run finish` output.
 

@@ -29,6 +29,10 @@ function composer(context: Context, action: string, selection: RequestSelection,
 				</select></label
 			>
 			<label
+				>Search models
+				<input type="search" data-chat-model-search autocomplete="off" placeholder="Provider or name"
+			/></label>
+			<label
 				>Model
 				<select name="model" data-chat-model>
 					<option value="">Host default</option>

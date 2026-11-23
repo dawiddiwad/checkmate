@@ -754,6 +754,27 @@ test('Pre-allow only the Checkmate commands that a chat may run — a shell chai
 	for (const command of refused) assert.equal(chatCommandAllowed(command, [cli]), false, command)
 })
 
+test('Order the chat models with the primary provider first and luna first, and decline an off-topic chat — a search still reaches every model.', async () => {
+	const { chatModelOrder } = await import('../../plugin/src/model-catalog.ts')
+	const { requestSystemPrompt } = await import('../../plugin/src/sessions.ts')
+	const catalog = {
+		models: [
+			{ value: 'anthropic/claude-x', label: 'claude-x' },
+			{ value: 'openai-codex/gpt-5.6-sol', label: 'gpt-5.6-sol' },
+			{ value: 'openai-codex/gpt-6-luna', label: 'gpt-6-luna' },
+		],
+		defaultModel: { value: 'openai-codex/gpt-6-luna', label: 'gpt-6-luna' },
+	}
+	const ordered = chatModelOrder(catalog)
+	assert.equal(ordered.primary, 'openai-codex')
+	assert.deepEqual(
+		ordered.models.map((model) => model.value),
+		['openai-codex/gpt-6-luna', 'openai-codex/gpt-5.6-sol', 'anthropic/claude-x']
+	)
+	assert.equal(chatModelOrder({ models: [{ value: 'claude-a', label: 'a' }] }).primary, null)
+	assert.match(requestSystemPrompt('/workspace/cli/src/main.ts', 'pi'), /decline in one sentence/)
+})
+
 test('Revise a test whole — the code keeps an assertion ID whose check is unchanged and refuses a compound check.', async (t) => {
 	const workspace = directory(t)
 	const { chmodSync, copyFileSync, mkdirSync } = await import('node:fs')

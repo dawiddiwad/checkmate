@@ -10270,6 +10270,7 @@ function requestSystemPrompt(checkmate, harness = "claude") {
   return [
     "This conversation comes from the Checkmate web UI.",
     "Answer what the person asked. When you change the record, say what changed.",
+    "Answer questions about testing in general and about this workspace. For any other topic, decline in one sentence, say that you help with testing, and offer one Checkmate action. Do not answer the other topic.",
     "Ask a question when you need the person to decide or clarify.",
     "Write replies in Markdown. Link each Checkmate record you mention with a descriptive label and its relative UI path. Use IDs from the workspace records, including the explorer prefix for questions and defects. Do not guess links.",
     "UI paths: plan /plans/<planId>, revision /plans/<planId>@<revision>, stored test or requirement /plans/<planId>@<revision>#<id>, run /runs/<runId>, exploration /explorations/<explorationId>.",
@@ -16249,6 +16250,18 @@ function piModels(stdout) {
     const value2 = `${provider}/${model}`;
     return [{ value: value2, label: value2 }];
   });
+}
+function chatModelOrder(catalog2) {
+  const fallback = catalog2.models[0]?.value;
+  const source = catalog2.defaultModel?.value ?? fallback ?? "";
+  const slash = source.indexOf("/");
+  const primary = slash > 0 ? source.slice(0, slash) : null;
+  const group = (model) => primary && model.value.startsWith(`${primary}/`) ? 0 : 1;
+  const luna = (model) => /luna/i.test(model.value) ? 0 : 1;
+  const models = [...catalog2.models].sort(
+    (a, b) => group(a) - group(b) || luna(a) - luna(b) || a.value.localeCompare(b.value)
+  );
+  return { models, primary };
 }
 async function discoverModelCatalog(harness, workspace2, env, retryForEffort = false) {
   const program = requireChild(env, harness);
@@ -36140,6 +36153,10 @@ function composer(context, action2, selection, screen = "", back = "") {
 				</select></label
 			>
 			<label
+				>Search models
+				<input type="search" data-chat-model-search autocomplete="off" placeholder="Provider or name"
+			/></label>
+			<label
 				>Model
 				<select name="model" data-chat-model>
 					<option value="">Host default</option>
@@ -37837,7 +37854,7 @@ data: ${matched.join(",") || "*"}
       const models = await catalogFor(harness, chat && request2.url.searchParams.get("hostDefault") === "1");
       if (!chat && selectedHarness(launchEnv()) !== harness)
         return sendJson(409, { error: "The coding harness changed. Reload the page." });
-      return sendJson(200, models);
+      return sendJson(200, chat ? { ...models, ...chatModelOrder(models) } : models);
     } catch {
       return sendJson(503, { error: "Could not load models. Try again." });
     }

@@ -75,7 +75,7 @@ import type { StopDelays } from '../sessions.ts'
 import { liveUi, removeUiFile, requireChild, workspaceHookToken, writeUiFile } from '../sessions.ts'
 import { selectedHarness } from '../pi.ts'
 import type { Harness } from '../pi.ts'
-import { discoverModelCatalog } from '../model-catalog.ts'
+import { chatModelOrder, discoverModelCatalog } from '../model-catalog.ts'
 import { launchPlan } from '../explorers.ts'
 import { maxAreaCharacters, outsideRule, planRules, ticketFile } from '../rules.ts'
 import { ruleMap } from '../rulemap.ts'
@@ -1729,7 +1729,7 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 			const models = await catalogFor(harness, chat && request.url.searchParams.get('hostDefault') === '1')
 			if (!chat && selectedHarness(launchEnv()) !== harness)
 				return sendJson(409, { error: 'The coding harness changed. Reload the page.' })
-			return sendJson(200, models)
+			return sendJson(200, chat ? { ...models, ...chatModelOrder(models) } : models)
 		} catch {
 			return sendJson(503, { error: 'Could not load models. Try again.' })
 		}

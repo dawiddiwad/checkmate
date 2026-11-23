@@ -197,6 +197,21 @@ function piModels(stdout: string): ModelOption[] | undefined {
 	})
 }
 
+// The chat picker shows the provider of the host's default model first, and luna models first in it.
+// The client filters the rest by a search. A value without a provider prefix has no primary group.
+export function chatModelOrder(catalog: ModelCatalog): { models: ModelOption[]; primary: string | null } {
+	const fallback = catalog.models[0]?.value
+	const source = catalog.defaultModel?.value ?? fallback ?? ''
+	const slash = source.indexOf('/')
+	const primary = slash > 0 ? source.slice(0, slash) : null
+	const group = (model: ModelOption) => (primary && model.value.startsWith(`${primary}/`) ? 0 : 1)
+	const luna = (model: ModelOption) => (/luna/i.test(model.value) ? 0 : 1)
+	const models = [...catalog.models].sort(
+		(a, b) => group(a) - group(b) || luna(a) - luna(b) || a.value.localeCompare(b.value)
+	)
+	return { models, primary }
+}
+
 export async function discoverModelCatalog(
 	harness: Harness,
 	workspace: string,

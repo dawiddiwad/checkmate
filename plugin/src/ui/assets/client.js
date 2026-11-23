@@ -3512,9 +3512,23 @@ for (const form of document.querySelectorAll('[data-chat-composer]')) {
 	const error = form.querySelector('[data-chat-error]')
 	const submit = form.querySelector('[type=submit]')
 	let sendingChat = false
+	const search = form.querySelector('[data-chat-model-search]')
 	let models = []
+	let primary = null
 	let defaultModel = null
 	let sequence = 0
+	// The primary provider's models show first. A search filters all models.
+	function showModels() {
+		const query = search.value.trim().toLowerCase()
+		const shown = query || !primary ? models : models.filter((item) => item.value.startsWith(`${primary}/`))
+		const matches = query ? models.filter((item) => `${item.value} ${item.label}`.toLowerCase().includes(query)) : shown
+		setModelOptions(model, shown, query, 'Host default')
+		status.textContent = query && !matches.length ? 'No model matches this search.' : ''
+	}
+	search.addEventListener('input', () => {
+		showModels()
+		showEffort()
+	})
 	function showEffort() {
 		const selected = models.find((item) => item.value === (model.value || defaultModel))
 		const levels = selected?.effortLevels ?? []
@@ -3536,13 +3550,14 @@ for (const form of document.querySelectorAll('[data-chat-composer]')) {
 			if (!response.ok) throw new Error(data.error || 'Could not load models.')
 			if (ticket !== sequence) return
 			models = data.models
+			primary = data.primary ?? null
 			defaultModel = data.defaultModel?.value ?? null
-			setModelOptions(model, models, '', 'Host default')
+			showModels()
 			showEffort()
-			status.textContent = ''
 		} catch (error) {
 			if (ticket !== sequence) return
 			models = []
+			primary = null
 			setModelOptions(model, [], '', 'Host default')
 			showEffort()
 			status.textContent = error.message || 'Could not load models.'

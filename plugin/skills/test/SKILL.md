@@ -74,6 +74,7 @@ Run `checkmate target list`. When it shows no target:
 
 ## Loop
 
+0. When the reply of `test` has `run=<runId>`, the stored tests of that run come first. Follow the execute skill now, `/checkmate:execute <runId>`, and then come back here. Do not start the explorers before the stored run has been executed.
 1. Run `checkmate explore next <explorationId>`. Each line after line 1 is one action:
    - `start <name> <step> agent=<type> description="<description>" prompt="<prompt>"`: start an agent with the Agent tool. Set `subagent_type` to `<type>` and `description` to `<description>`. Give the prompt exactly.
    - `message <name> <step> agent=<agent id> prompt="<prompt>"`: send the prompt exactly to that agent with the SendMessage tool. When you do not have SendMessage, load it with ToolSearch.

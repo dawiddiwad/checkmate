@@ -3521,7 +3521,9 @@ for (const form of document.querySelectorAll('[data-chat-composer]')) {
 	function showModels() {
 		const query = search.value.trim().toLowerCase()
 		const shown = query || !primary ? models : models.filter((item) => item.value.startsWith(`${primary}/`))
-		const matches = query ? models.filter((item) => `${item.value} ${item.label}`.toLowerCase().includes(query)) : shown
+		const matches = query
+			? models.filter((item) => `${item.value} ${item.label}`.toLowerCase().includes(query))
+			: shown
 		setModelOptions(model, shown, query, 'Host default')
 		status.textContent = query && !matches.length ? 'No model matches this search.' : ''
 	}

@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import type { Gap, Plan, PlanCandidate, PlanDelta, PlanPatch, PlanRequest, Profile, Result } from './types.ts'
 import type { Change, Reply, Store } from './store.ts'
 import { answerQuestion } from './journal.ts'
@@ -598,7 +600,11 @@ export function savePlan(store: Store, actor: string | undefined, input: { planI
 			`Plan ${input.planId} has revision 1. Use plan edit, or gap answer and plan revise, to change it.`
 		)
 		const candidate = validate('plan-candidate', input.candidate)
-		const requirements = candidateRequirements(request, candidate.requirements)
+		const requirements = candidateRequirements(
+			request,
+			candidate.requirements,
+			sourceCriteria(store.workspace, request)
+		)
 		return storeRevision(
 			store,
 			{
@@ -619,7 +625,23 @@ export function savePlan(store: Store, actor: string | undefined, input: { planI
 	})
 }
 
-function candidateRequirements(request: PlanRequest, drafted: Plan['requirements'] | undefined) {
+// Numbered lines in the context sources are the criteria. The plan must cover each one with a requirement.
+function sourceCriteria(workspace: string, request: PlanRequest) {
+	return (request.context?.sources ?? []).flatMap((source) => {
+		try {
+			return readFileSync(join(workspace, source), 'utf8')
+				.split('\n')
+				.flatMap((line) => {
+					const match = /^\s*\d+[.)]\s+(.+?)\s*$/.exec(line)
+					return match ? [match[1]] : []
+				})
+		} catch {
+			return []
+		}
+	})
+}
+
+function candidateRequirements(request: PlanRequest, drafted: Plan['requirements'] | undefined, criteria: string[]) {
 	if (request.requirements?.length) {
 		requireWellFormed(
 			!drafted,
@@ -633,6 +655,11 @@ function candidateRequirements(request: PlanRequest, drafted: Plan['requirements
 		`The plan request has no requirements. Draft them from the context sources: ${sources.join(', ')}`
 	)
 	index(drafted, 'id', 'requirement')
+	requireWellFormed(
+		criteria.length < 2 || drafted.length >= criteria.length,
+		`The sources list ${criteria.length} numbered criteria and the plan has ${drafted.length} requirements. Write one requirement for each criterion, with its test or gap.`,
+		`Criteria: ${criteria.map((criterion, index) => `${index + 1}. ${criterion}`).join(' ')}`
+	)
 	for (const requirement of drafted)
 		requireWellFormed(
 			sources.some((source) => requirement.source.startsWith(source)),
@@ -889,6 +916,23 @@ export function revisePlan(
 				`Ready test ${test.id} needs one or more assertions`,
 				`Add an assertion to ${test.id} in the delta: {"tests": {"${test.id}": {"assertions": {"${unusedId('A', usedAssertionIds(store, input.planId, test.id))}": {"check": "<expected result>", "checkKind": "deterministic"}}}}}. When no decision or source gives an expected value, use "checkKind": "agent_observation" with a check that records the behavior and checks only what the sources state.`
 			)
+		// An answer that drops a criterion must leave its requirement out of the revision. A kept one is refused, not saved.
+		for (const decision of decisions) {
+			if (
+				decision.kind !== 'clarify' ||
+				!/\b(drop|dropped|drops|remove|removed|out of scope)\b/i.test(decision.value)
+			)
+				continue
+			const gap = draft.gaps.find((gap) => gap.id === decision.gap_id)!
+			const kept = gap.requirementIds.filter((id) =>
+				draft.requirements.some((requirement) => requirement.id === id)
+			)
+			requireWellFormed(
+				kept.length === 0,
+				`The answer to ${gap.id} drops ${kept.join(', ')}, but the revision still has ${kept.length === 1 ? 'it' : 'them'}.`,
+				`Remove ${kept.join(', ')} in the delta with {"requirements": {"${kept[0]}": {"remove": true}}} and remove its tests with {"tests": {"<testId>": {"remove": true}}}.`
+			)
+		}
 		const change = storeRevision(store, draft, operationId)
 		for (const decision of decisions)
 			execute(store, 'UPDATE decisions SET applied_revision = ? WHERE id = ?', draft.revision, decision.id)

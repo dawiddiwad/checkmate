@@ -11,7 +11,7 @@ Use the CLI in this package. Resolve `../../src/main.ts` from the directory of t
 2. For a new target, ask for the running URL. For a remote URL, confirm the environment and permitted operations. Run `setup --url <url>`. Give the confirmed `--environment` and `--operations` for production. Record only a reference for credentials.
    - When the person asks only for setup or a reachability check, stop after setup. Report the target, instance, reachability, and each `assumed:` line. Do not start a plan or a test.
    - Otherwise, setup is not the end. Report the target in one line, then go on to step 3 or 4 with the person's ticket or change.
-3. For a ticket, an acceptance-criteria file, or a request to test a change, run this step now. A `delegate` command can run for several minutes. Give its shell call a timeout of at least 600 seconds. If the shell call times out, run `status <planId>` before you run the command again; the planner may have finished. Do not run `--help` first; the command below is the one to use. Run `plan open <planId> --target <targetId>@<revision> --objective "<objective>" --source <file>`. Then run `delegate plan <planId>`. Show the open gaps. Ask the oracle for decisions.
+3. For a ticket, an acceptance-criteria file, or a request to test a change, run this step now. Run `plan open <planId> --target <targetId>@<revision> --objective "<objective>" --source <file>`. Then run `delegate plan <planId> --detach`. It starts the planner and returns at once. Then run `delegate wait plan <planId> --timeout 90`. While the reply says the planner is still running, run `delegate wait` again. Do not start the planner a second time. Show the open gaps. Ask the oracle for decisions.
 4. For an exploratory test, run `test <planId> --source <file> --allow Read --allow Bash`. Add `--level smoke|normal|deep` when the person selects a level. Run `explore wait <explorationId> --timeout 90`. If it still shows `recording`, run the same command again. When it shows `completed`, run `explore show <explorationId>`. Do not wait longer than 90 seconds in one command.
 5. For the stored tests of a plan on a build, do not use `test`. Run `status <planId>`. Use its `next` line, `run begin <runId> <planId>@<revision> --build <build> --partial ready_only`. Pick a new run ID. Then follow "Continue a run".
 
@@ -21,7 +21,7 @@ Use this when the person answers open gaps, or asks you to change the plan.
 
 1. Run `plan show <planId> --gaps open`. It lists each open gap with its ID, for example `G1`. Use these IDs in the next step.
 2. For each gap that the person answered, run `gap answer <planId> <gapId> --kind <clarify|accept_assumption|defer> --value "<answer>" --source <file> --rationale "<why>"`. Use the person's words for `--value`. Use `--source` for the file that states the answer.
-3. Run `delegate revise <planId>`. The planner writes the next revision. Do not write a plan JSON yourself.
+3. Run `delegate revise <planId> --detach`, then `delegate wait revise <planId> --timeout 90` until the reply names the result. The planner writes the next revision. Do not write a plan JSON yourself.
 4. Run `status <planId>` and `plan show <planId>`. Report the new revision and any gap that is still open.
 5. When the status says `needs_approval`, run `plan approve <planId@revision> --rationale "<why>"` only after the person approves that revision.
 

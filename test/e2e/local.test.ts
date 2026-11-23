@@ -427,6 +427,20 @@ test('Drop a criterion by revise — a dropped criterion stayed ready and needed
 		'--source',
 		'ticket.md',
 	])
+	const partial = await inputCommand(
+		workspace,
+		env,
+		JSON.stringify({
+			requirements: [{ id: 'R1', text: 'The quote is 240.', source: 'ticket.md' }],
+			tests: [],
+			gaps: [],
+		}),
+		'plan',
+		'save',
+		'ticket'
+	)
+	assert.equal(partial.code, 1, partial.output)
+	assert.match(partial.output, /sources list 2 numbered criteria/)
 	await ok(['plan', 'save', 'ticket'], {
 		requirements: [
 			{ id: 'R1', text: 'The quote is 240.', source: 'ticket.md' },
@@ -509,6 +523,16 @@ test('Drop a criterion by revise — a dropped criterion stayed ready and needed
 	)
 	assert.equal(refused.code, 1, refused.output)
 	assert.match(refused.output, /still has tests: T2/)
+	const keeps = await inputCommand(
+		workspace,
+		env,
+		JSON.stringify({ tests: { T2: { remove: true } } }),
+		'plan',
+		'revise',
+		'ticket'
+	)
+	assert.equal(keeps.code, 1, keeps.output)
+	assert.match(keeps.output, /drops R2, but the revision still has it/)
 	const revised = await ok(['plan', 'revise', 'ticket'], {
 		requirements: { R2: { remove: true } },
 		tests: { T2: { remove: true } },

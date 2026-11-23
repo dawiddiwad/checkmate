@@ -3,10 +3,10 @@ import type { PlanCandidate, PlanRequest, Profile } from '../plugin/src/types.ts
 import type { Status, Store } from '../plugin/src/store.ts'
 import type { ChildCall } from '../plugin/src/sessions.ts'
 import assert from 'node:assert/strict'
-import { cpSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { cpSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { delimiter, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { closeStore, openStore, write } from '../plugin/src/store.ts'
 import { addInstance, instanceList, openTarget, saveTarget } from '../plugin/src/targets.ts'
@@ -58,6 +58,25 @@ export function endProcessesIn(workspace: string) {
 		} catch {}
 	}
 }
+// Setup asks for a Chrome config when a browser tool is on PATH. A browser tool beside npm or node
+// on a developer PATH would then fail every setup, so the e2e files link the other tools into one folder.
+export function pathWithoutBrowserTool() {
+	const folder = directory()
+	const linked = new Set<string>()
+	for (const dir of (process.env.PATH ?? '').split(delimiter)) {
+		let names: string[] = []
+		try {
+			names = readdirSync(dir)
+		} catch {}
+		for (const name of names) {
+			if (name === 'playwright-cli' || linked.has(name)) continue
+			linked.add(name)
+			symlinkSync(join(dir, name), join(folder, name))
+		}
+	}
+	return folder
+}
+
 export function directory(t?: TestContext) {
 	const path = mkdtempSync(join(tmpdir(), 'checkmate-test-'))
 	t?.after(() => {

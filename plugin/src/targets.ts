@@ -16,6 +16,8 @@ import {
 import { executableOnPath } from './sessions.ts'
 import { changesData, resetCommand } from './resets.ts'
 import { spawnSync } from 'node:child_process'
+import { existsSync, readFileSync } from 'node:fs'
+import { join } from 'node:path'
 
 export type ToolKind = Profile['tools'][number]['kind']
 export type RequestedTool = { name: string; kind: ToolKind; purpose: string }
@@ -568,6 +570,30 @@ function toolVersion(path: string) {
 	return /[0-9]+(\.[0-9]+)+/.exec(line)?.[0]
 }
 
+const browserConfig = join('.playwright', 'cli.config.json')
+
+// The browser tool drives the Chrome or Chromium named in the workspace config.
+// Setup refuses early when that executable is missing or does not run.
+function browserExecutable(workspace: string) {
+	const path = join(workspace, browserConfig)
+	const config = existsSync(path) ? JSON.parse(readFileSync(path, 'utf8')) : {}
+	const executable: unknown = config.browser?.launchOptions?.executablePath
+	const hint = `Add the executable to ${browserConfig}, for example {"browser":{"browserName":"chromium","launchOptions":{"executablePath":"/path/to/Google Chrome"}}}, then run setup again.`
+	requireCondition(
+		typeof executable === 'string' && executable !== '',
+		`The browser tool needs a Chrome or Chromium executable, and ${browserConfig} names none.`,
+		hint
+	)
+	const run = spawnSync(executable, ['--version'], { timeout: 10000 })
+	requireCondition(run.status === 0, `The browser executable ${executable} does not run with --version.`, hint)
+	return executable
+}
+
+// The next command that clears a profile saved while the application was not answering.
+export function readinessHint(store: Store, targetId: string) {
+	return `Clear it with checkmate setup --url ${targetWebUrl(store, targetId)} --target ${targetId} while the application answers, then run again.`
+}
+
 function urlAnswers(url: string) {
 	if (!/^https?:\/\//i.test(url)) return true
 	const check = spawnSync(
@@ -666,6 +692,7 @@ export function setupTarget(store: Store, actor: string | undefined, input: Setu
 		`Instance ${instanceId} is a production instance. ${anyTestOperation} is not permitted on it.`,
 		productionHint
 	)
+	const executable = browser ? browserExecutable(store.workspace) : undefined
 	const tools = [
 		{
 			name: 'node',
@@ -674,13 +701,14 @@ export function setupTarget(store: Store, actor: string | undefined, input: Setu
 			version: process.version.slice(1),
 			reachable: true,
 		},
-		...(browser
+		...(browser && executable
 			? [
 					{
 						name: 'playwright-cli',
 						kind: 'cli' as const,
 						purpose: 'Drive the browser.',
 						...(toolVersion(browser) ? { version: toolVersion(browser) } : {}),
+						executable,
 						reachable: true,
 					},
 				]
@@ -716,12 +744,21 @@ export function setupTarget(store: Store, actor: string | undefined, input: Setu
 				...(reset ? { reset } : {}),
 			},
 		})
-	else if (reset && JSON.stringify(targetRevision(store, targetId).profile.reset) !== JSON.stringify(reset)) {
+	else {
+		// A profile saved while the application was down stays not ready until setup sees it answer.
 		const latest = targetRevision(store, targetId)
-		saveTarget(store, actor, {
-			targetId,
-			profile: { ...latest.profile, revision: latest.revision + 1, reset },
-		})
+		const resetChanged = Boolean(reset) && JSON.stringify(latest.profile.reset) !== JSON.stringify(reset)
+		const becameReady = reachable && !latest.profile.readyForLiveExecution
+		if (resetChanged || becameReady)
+			saveTarget(store, actor, {
+				targetId,
+				profile: {
+					...latest.profile,
+					revision: latest.revision + 1,
+					...(resetChanged ? { reset } : {}),
+					readyForLiveExecution: latest.profile.readyForLiveExecution || reachable,
+				},
+			})
 	}
 	const instance = addInstance(store, actor, {
 		targetId,

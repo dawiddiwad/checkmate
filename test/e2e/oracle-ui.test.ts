@@ -10,7 +10,18 @@ import { pathToFileURL } from 'node:url'
 import { chromium, type Browser, type BrowserContext } from 'playwright-core'
 import { closeStore, openStore } from '../../plugin/src/store.ts'
 import { seedDemo } from '../../scripts/ui-demo.ts'
-import { actor, directory, root, store, target, plan, evidenceFile, ready, endProcessesIn } from '../support.ts'
+import {
+	actor,
+	directory,
+	pathWithoutBrowserTool,
+	root,
+	store,
+	target,
+	plan,
+	evidenceFile,
+	ready,
+	endProcessesIn,
+} from '../support.ts'
 import { openTest, launched, entries, done, ended, stacks } from '../explorations.ts'
 import { asking, bash, allOf, openOf, plainBody, waitOpen } from '../permissions.ts'
 import { planDetail } from '../../plugin/src/index.ts'
@@ -168,7 +179,7 @@ console.log(JSON.stringify({type:'agent_settled',aborted:false}))
 `
 	)
 	chmodSync(host, 0o755)
-	const env = { PATH: `${bin}:${process.env.PATH}`, CHECKMATE_HARNESS: 'pi' }
+	const env = { PATH: `${bin}:${pathWithoutBrowserTool()}`, CHECKMATE_HARNESS: 'pi' }
 	must(workspace, ['setup', '--url', url, '--target', 'ticket', '--operations', 'read_catalog'], env)
 	must(
 		workspace,

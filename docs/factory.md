@@ -17,7 +17,7 @@ When asked, Checkmate starts workers through the configured host. It does not ch
 - Use Node.js 24.12.0 or later and install the CLI with `npm install -g @xoxoai/checkmate`.
 - Run commands in the workspace that contains `.checkmate/checkmate.db`, or pass `--workspace <path>`.
 - Configure Claude Code or Pi on `PATH` for delegated stages.
-- Install Playwright CLI when a test uses a browser.
+- Install Playwright CLI when a test uses a browser. Name a Chrome or Chromium executable in `.playwright/cli.config.json` under `browser.launchOptions.executablePath`; `checkmate setup` refuses without it. API-only targets need neither.
 - Give `delegate` the tools that the stage needs. The host enforces those permissions.
 
 For Claude Code, use `--allow` for each required tool. For Pi, set `CHECKMATE_HARNESS=pi` and omit `--allow` and `--claude-arg` from delegate commands. Pi reads standard input until it ends, so run `pi -p` with `< /dev/null`. Each delegated test runs in its own Pi process with the Checkmate build of its parent. Give a project package approval with `pi --approve` or remove a stale global copy. See [Start Checkmate](start.md#use-a-host-plugin).

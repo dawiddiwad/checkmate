@@ -4,7 +4,7 @@ import type { Gap, Plan, PlanCandidate, PlanDelta, PlanPatch, PlanRequest, Profi
 import type { Change, Reply, Store } from './store.ts'
 import { answerQuestion } from './journal.ts'
 import { patchRules, requireHeldRules } from './rules.ts'
-import { operationAllowed, targetWebUrl } from './targets.ts'
+import { operationAllowed, readinessHint, targetWebUrl } from './targets.ts'
 import { dataSummary, requireDataFor } from './resets.ts'
 import { all, canonical, completed, digest, execute, one, ulid, write } from './store.ts'
 import type { PlanDraft, Test } from './contracts.ts'
@@ -1295,9 +1295,11 @@ export function gate(store: Store, input: GateInput) {
 				reasons.push(`Retest of ${input.retestOf} must select ${id}: ${why}`)
 				hints.push(`Add ${id} to --tests.`)
 			}
-	if (!target.profile.readyForLiveExecution) {
-		reasons.push(`Target prerequisites are not ready: ${plan.target.targetId}@${plan.target.revision}`)
-		hints.push(`The setup stage must save a ready profile for ${plan.target.targetId}.`)
+	// Readiness belongs to the latest profile: setup saves a new revision when the application answers.
+	const live = targetRevision(store, plan.target.targetId)
+	if (!live.profile.readyForLiveExecution) {
+		reasons.push(`Target prerequisites are not ready: ${plan.target.targetId}@${live.revision}`)
+		hints.push(readinessHint(store, plan.target.targetId))
 	}
 	const approval = planApproval(store, plan, revision.sha256)
 	if (permanent ? approval.rejected : approval.policy === 'required' && !approval.approved) {

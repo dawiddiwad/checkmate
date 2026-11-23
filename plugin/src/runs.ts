@@ -32,7 +32,7 @@ import {
 	planRunGaps,
 	recordApproval,
 } from './plans.ts'
-import { findInstance, runInstance, targetRevision } from './targets.ts'
+import { findInstance, readinessHint, runInstance, targetRevision } from './targets.ts'
 import { changesData, markerFor, owe, runPrepare, settleCleanups } from './resets.ts'
 import { addPlanBuild } from './journal.ts'
 import { permanentSelection } from './permanent.ts'
@@ -1153,7 +1153,7 @@ export function resumeRun(store: Store, actor: string | undefined, input: Resume
 		requireCondition(
 			target.profile.readyForLiveExecution,
 			`Target prerequisites are not ready: ${run.row.target_id}@${target.revision}`,
-			`The setup stage must save a ready profile for ${run.row.target_id}.`
+			readinessHint(store, run.row.target_id)
 		)
 		const checked = gate(store, {
 			reference: `${run.plan.planId}@${run.plan.revision}`,

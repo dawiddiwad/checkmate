@@ -3,14 +3,18 @@ import { execFileSync, spawn, spawnSync } from 'node:child_process'
 import { once } from 'node:events'
 import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:http'
+import type { AddressInfo } from 'node:net'
 import { createInterface } from 'node:readline'
 import { delimiter, join } from 'node:path'
 import { gunzipSync } from 'node:zlib'
 import { DatabaseSync } from 'node:sqlite'
 import test from 'node:test'
-import { directory, root } from '../support.ts'
+import { directory, pathWithoutBrowserTool, root } from '../support.ts'
 import { fakeClaude } from '../claude.ts'
 import { fixture } from '../fixture.ts'
+
+// These scenarios leave the browser tool out of PATH; the browser test adds its own stub.
+process.env.PATH = pathWithoutBrowserTool()
 
 const project = directory()
 let binary = ''
@@ -4812,4 +4816,141 @@ test('Name the owed cleanup of a run that never finished — status gives the ex
 		after.next.some((line: string) => line.startsWith('Cleanup owed by')),
 		false
 	)
+})
+
+test('Setup with the application up clears a profile saved while it was down — every run refused as not ready.', async (t) => {
+	const workspace = directory(t)
+	writeFileSync(join(workspace, 'ticket.md'), 'An order can be created.\n')
+	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle', CHECKMATE_HARNESS: 'pi' }
+	// Reserve a loopback port and leave it closed for the first setup.
+	const probe = createServer()
+	probe.listen(0, '127.0.0.1')
+	await once(probe, 'listening')
+	const port = (probe.address() as AddressInfo).port
+	probe.close()
+	await once(probe, 'close')
+	const url = `http://127.0.0.1:${port}`
+	const down = await command(workspace, env, 'setup', '--url', url, '--target', 'shop')
+	assert.equal(down.code, 0, down.output)
+	assert.equal(down.body.ready, false, down.output)
+	assert.equal(down.body.instanceReachable, false, down.output)
+	const opened = await command(
+		workspace,
+		env,
+		'plan',
+		'open',
+		'ticket',
+		'--target',
+		'shop@1',
+		'--objective',
+		'Create an order.',
+		'--source',
+		'ticket.md'
+	)
+	assert.equal(opened.code, 0, opened.output)
+	const saved = await inputCommand(
+		workspace,
+		env,
+		JSON.stringify({
+			requirements: [{ id: 'R1', text: 'An order can be created.', source: 'ticket.md' }],
+			tests: [
+				{
+					id: 'T1',
+					title: 'Read the catalog',
+					requirementIds: ['R1'],
+					capability: 'http',
+					operations: ['read_catalog'],
+					dependsOn: [],
+					preconditions: [],
+					action: 'Read the catalog.',
+					assertions: [{ id: 'A1', check: 'The catalog is listed.', checkKind: 'agent_observation' }],
+				},
+			],
+			gaps: [],
+		}),
+		'plan',
+		'save',
+		'ticket'
+	)
+	assert.equal(saved.code, 0, saved.output)
+	const refused = await command(
+		workspace,
+		env,
+		'run',
+		'begin',
+		'run-1',
+		'ticket@1',
+		'--build',
+		'b1',
+		'--instance',
+		'local'
+	)
+	assert.equal(refused.body.status, 'needs_decision', refused.output)
+	assert.match(refused.output, /Target prerequisites are not ready/)
+	assert.match(refused.output, new RegExp(`checkmate setup --url ${url} --target shop`))
+	const server = createServer((_request, response) => response.end('ok'))
+	server.listen(port, '127.0.0.1')
+	await once(server, 'listening')
+	t.after(() => server.close())
+	const up = await command(workspace, env, 'setup', '--url', url, '--target', 'shop')
+	assert.equal(up.code, 0, up.output)
+	assert.equal(up.body.ready, true, up.output)
+	const profile = await command(workspace, env, 'target', 'show', 'shop')
+	assert.equal(profile.body.profile.readyForLiveExecution, true)
+	assert.equal(profile.body.profile.revision, 2)
+	const began = await command(
+		workspace,
+		env,
+		'run',
+		'begin',
+		'run-1',
+		'ticket@1',
+		'--build',
+		'b1',
+		'--instance',
+		'local'
+	)
+	assert.equal(began.body.status, 'completed', began.output)
+})
+
+test('Setup needs a runnable Chrome or Chromium for the browser tool — API-only targets need none.', async (t) => {
+	const workspace = directory(t)
+	const bin = directory(t)
+	const app = await fixture()
+	t.after(() => app.close())
+	const tool = join(bin, 'playwright-cli')
+	writeFileSync(tool, '#!/bin/sh\necho 1.0.0\n')
+	chmodSync(tool, 0o755)
+	const env = {
+		...process.env,
+		PATH: `${bin}${delimiter}${process.env.PATH}`,
+		CHECKMATE_ACTOR: 'oracle',
+		CHECKMATE_HARNESS: 'pi',
+	}
+	const setup = (run: NodeJS.ProcessEnv = env) =>
+		command(workspace, run, 'setup', '--url', app.baseUrl, '--target', 'shop')
+	const missing = await setup()
+	assert.equal(missing.code, 1, missing.output)
+	assert.match(missing.output, /needs a Chrome or Chromium executable/)
+	assert.match(missing.output, /\.playwright\/cli\.config\.json/)
+	const config = join(workspace, '.playwright', 'cli.config.json')
+	mkdirSync(join(workspace, '.playwright'))
+	const broken = join(workspace, 'broken-chrome')
+	writeFileSync(broken, '#!/bin/sh\nexit 3\n')
+	chmodSync(broken, 0o755)
+	writeFileSync(config, JSON.stringify({ browser: { launchOptions: { executablePath: broken } } }))
+	const notRunning = await setup()
+	assert.equal(notRunning.code, 1, notRunning.output)
+	assert.match(notRunning.output, /does not run with --version/)
+	const chrome = join(workspace, 'fake-chrome')
+	writeFileSync(chrome, '#!/bin/sh\necho "Chromium 124.0.6367.60"\n')
+	chmodSync(chrome, 0o755)
+	writeFileSync(config, JSON.stringify({ browser: { launchOptions: { executablePath: chrome } } }))
+	const ready = await setup()
+	assert.equal(ready.code, 0, ready.output)
+	const profile = await command(workspace, env, 'target', 'show', 'shop')
+	const recorded = profile.body.profile.tools.find((entry: { name: string }) => entry.name === 'playwright-cli')
+	assert.equal(recorded.executable, chrome)
+	const apiOnly = await setup({ ...process.env, PATH: '', CHECKMATE_ACTOR: 'oracle', CHECKMATE_HARNESS: 'pi' })
+	assert.equal(apiOnly.code, 0, apiOnly.output)
 })

@@ -383,6 +383,7 @@ export type Profile = {
 		kind: 'cli' | 'mcp' | 'skill'
 		purpose: string
 		version?: string
+		executable?: string
 		reachable: boolean
 	}>
 	authentication: {

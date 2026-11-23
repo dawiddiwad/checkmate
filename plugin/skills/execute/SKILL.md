@@ -9,6 +9,8 @@ The plugin CLI is `${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js`. Run `checkmate <com
 
 The prompt names the run ID, the instance, the selected tests, the browser session, and the deadline. The parent began the run. Do not run `run gate` or `run begin`.
 
+A run that an earlier session started and that stopped is resumed with `checkmate run resume <runId>` before you execute it. Then this skill continues that same run. Do not test the application outside the run, and do not run the tests by hand.
+
 ## Start
 
 1. Run `checkmate run show <runId>`. Note the selected tests, each `retest` line, and `onNewBlocker`.

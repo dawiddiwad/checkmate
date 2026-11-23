@@ -9,6 +9,19 @@ The plugin CLI is `${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js`. Run `checkmate <com
 
 You are the operator. You do not test. Checkmate gives you actions, and you carry them out with agents of this session. Checkmate writes the task of each agent. Do not write a task. Do not give an agent other instructions. Do not test yourself.
 
+## Route first
+
+Before you start a test, choose the route. Name the plan and the build in your reply.
+
+- Use a plan only when the person named it, or when exactly one plan is in flight. Say which plan you use. When none is named and no plan is in flight, ask. Do not make up a plan name from the ticket for an existing plan.
+- Ask for the build when the person does not give one. Do not invent a build name.
+- When the plan has ready stored tests and the person asks to test it on a build, do not run `test`. Run the stored tests: `checkmate status <planId>` shows the revision and the ready tests. Then run `checkmate run begin <runId> <planId>@<revision> --build <build> --partial ready_only`, and follow `/checkmate:execute <runId>`.
+- Use `test` for a ticket, a change, or a plan with no stored tests.
+- An interrupted run, one that `status` or `run show` reports as `started` with its process stopped: run `checkmate run resume <runId>`, then `delegate execute <runId>` as the execute skill says. Never test the application by hand for that run, and never use curl as a test.
+- Do not end your turn while a command you started in the background, a delegate, or an exploration is running. Wait with `checkmate delegate wait <stage> <id> --timeout 90`, or `checkmate explore wait <id> --timeout 540`, and repeat while it reports `running`. Report a result only from a command whose output you read.
+
+Where things are: the ticket, the sources, and the application notes are in the workspace folder, by the file name the plan gives. Records are in `.checkmate/`, and you read them with checkmate commands. Never search the disk (`find /`, or the home folder) for a ticket, a source, or a record.
+
 ## Ask the person
 
 When you need a decision from the person, the choices are few, and the `AskUserQuestion` tool is in your tool list, ask with that tool. Use one call with at most 4 questions and 2 to 4 options for each question. Put the recommended option first, and add "(Recommended)" to its label. Give each question a header of at most 12 characters. Give each option one line that says what happens. Do not add an "Other" option. The tool adds it.

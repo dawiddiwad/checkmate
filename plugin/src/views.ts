@@ -1120,7 +1120,11 @@ function checkStatus(store: Store, planId: string, harness: Harness) {
 				'run_in_progress',
 				'qa',
 				openRuns.map((run) => `${run.runId} is started on build ${run.build} on instance ${run.instanceId}`),
-				openRuns.map((run) => delegateCommand(harness, 'execute', run.runId))
+				// A started run whose process stopped is resumed first; resume rechecks it and runs no test action.
+				openRuns.flatMap((run) => [
+					`checkmate run resume ${run.runId}`,
+					delegateCommand(harness, 'execute', run.runId),
+				])
 			)
 		if (pendingDecisions.length)
 			return loop(

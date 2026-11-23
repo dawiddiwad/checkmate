@@ -39,7 +39,7 @@ import { permanentSelection } from './permanent.ts'
 import { mkdirSync, readFileSync, realpathSync, rmSync, statSync } from 'node:fs'
 import { basename, extname, isAbsolute, join, resolve, sep } from 'node:path'
 import { randomUUID } from 'node:crypto'
-import { expectationMatches, looksShellExpanded, repeatsExpectation } from './expectation.ts'
+import { expectationMatches, looksShellExpanded, looksTruncatedMoney, repeatsExpectation } from './expectation.ts'
 import { plannedRequest, requestMatches } from './routes.ts'
 
 export type RunRow = {
@@ -675,6 +675,14 @@ export function checkAssertion(store: Store, actor: string | undefined, input: C
 			)
 		}
 		const observed = optionalText(input.observed, 'observation (--observed)')
+		const evidenceText = (input.evidence ?? [])
+			.map((item) => (typeof item === 'string' ? item : item.text))
+			.join('\n')
+		requireWellFormed(
+			observed === null || !looksTruncatedMoney(observed, assertion.expected, evidenceText),
+			`The observed value "${observed}" looks like a money amount whose currency sign the shell removed.`,
+			"Record --observed in single quotes, for example --observed '$5.00', so the shell passes the value unchanged. Or write the value to a file and pass --observed-file."
+		)
 		requireWellFormed(
 			observed === null || !looksShellExpanded(observed),
 			`The observed value "${observed}" looks like a shell path, not the value. The shell expanded it before Checkmate got it.`,

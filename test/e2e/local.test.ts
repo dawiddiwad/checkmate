@@ -6286,3 +6286,145 @@ test('Refuse a plan open whose objective names another local file that is not a 
 	assert.match(refused.output, /The objective refers to acceptance\.md/)
 	assert.match(refused.output, /--source acceptance\.md/)
 })
+
+test('A money value whose sign the shell removed is refused — .00 against a $ expectation — and --observed-file keeps $5.00 unchanged.', async (t) => {
+	const workspace = directory(t)
+	writeFileSync(join(workspace, 'ticket.md'), 'The shipping price is $5.00.\n')
+	const app = await fixture()
+	t.after(() => app.close())
+	app.fix()
+	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle' }
+	const ok = async (args: string[], value?: object) => {
+		const result = await inputCommand(workspace, env, value ? JSON.stringify(value) : '', ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	await ok(['setup', '--url', app.baseUrl, '--target', 'shop'])
+	await ok([
+		'plan',
+		'open',
+		'ticket',
+		'--target',
+		'shop@1',
+		'--objective',
+		'Check the shipping price.',
+		'--source',
+		'ticket.md',
+	])
+	await ok(['plan', 'save', 'ticket'], {
+		requirements: [{ id: 'R1', text: 'The shipping price is $5.00.', source: 'ticket.md' }],
+		tests: [
+			{
+				capability: 'http',
+				operations: ['read_catalog'],
+				dependsOn: [],
+				preconditions: [],
+				id: 'T1',
+				title: 'Shipping',
+				requirementIds: ['R1'],
+				action: 'Read the shipping price.',
+				assertions: [
+					{
+						id: 'A1',
+						check: 'The shipping price is $5.00.',
+						checkKind: 'deterministic',
+						observe: 'the shipping price',
+						expected: '$5.00',
+					},
+				],
+			},
+		],
+		gaps: [],
+	})
+	await ok(['plan', 'approve', 'ticket@1', '--rationale', 'Run the rule.'])
+	await ok(['run', 'begin', 'run-1', 'ticket@1', '--build', 'b1', '--partial', 'ready_only'])
+	const truncated = await inputCommand(
+		workspace,
+		env,
+		'',
+		'run',
+		'check',
+		'run-1',
+		'T1',
+		'A1',
+		'--observed',
+		'.00',
+		'--evidence',
+		'-'
+	)
+	assert.equal(truncated.code, 1, truncated.output)
+	assert.match(truncated.body.reasons.join(' '), /currency sign the shell removed/)
+	assert.match(truncated.body.hint, /--observed-file/)
+	writeFileSync(join(workspace, 'observed.txt'), '$5.00\n')
+	const fromFile = await inputCommand(
+		workspace,
+		env,
+		'$5.00',
+		'run',
+		'check',
+		'run-1',
+		'T1',
+		'A1',
+		'--observed-file',
+		'observed.txt',
+		'--evidence',
+		'-'
+	)
+	assert.equal(fromFile.body.result, 'passed', fromFile.output)
+})
+
+test('--observed and --observed-file cannot both give the observed value.', async (t) => {
+	const workspace = directory(t)
+	writeFileSync(join(workspace, 'ticket.md'), 'The fee is 0.\n')
+	const app = await fixture()
+	t.after(() => app.close())
+	app.fix()
+	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle' }
+	const ok = async (args: string[], value?: object) => {
+		const result = await inputCommand(workspace, env, value ? JSON.stringify(value) : '', ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	await ok(['setup', '--url', app.baseUrl, '--target', 'shop'])
+	await ok(['plan', 'open', 'ticket', '--target', 'shop@1', '--objective', 'Check the fee.', '--source', 'ticket.md'])
+	await ok(['plan', 'save', 'ticket'], {
+		requirements: [{ id: 'R1', text: 'The fee is 0.', source: 'ticket.md' }],
+		tests: [
+			{
+				capability: 'http',
+				operations: ['read_catalog'],
+				dependsOn: [],
+				preconditions: [],
+				id: 'T1',
+				title: 'Fee',
+				requirementIds: ['R1'],
+				action: 'Read the fee.',
+				assertions: [
+					{ id: 'A1', check: 'The fee is 0.', checkKind: 'deterministic', observe: 'the fee', expected: '0' },
+				],
+			},
+		],
+		gaps: [],
+	})
+	await ok(['plan', 'approve', 'ticket@1', '--rationale', 'Run the rule.'])
+	await ok(['run', 'begin', 'run-1', 'ticket@1', '--build', 'b1', '--partial', 'ready_only'])
+	writeFileSync(join(workspace, 'fee.txt'), '0\n')
+	const both = await inputCommand(
+		workspace,
+		env,
+		'',
+		'run',
+		'check',
+		'run-1',
+		'T1',
+		'A1',
+		'--observed',
+		'0',
+		'--observed-file',
+		'fee.txt',
+		'--evidence',
+		'-'
+	)
+	assert.equal(both.code, 1, both.output)
+	assert.match(both.body.reasons.join(' '), /either --observed or --observed-file/)
+})

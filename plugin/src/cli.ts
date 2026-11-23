@@ -1005,7 +1005,14 @@ const commands: Record<string, Command> = {
 	},
 	'run check': {
 		positionals: ['runId', 'testId', 'assertionId'],
-		flags: { result: assertionResults, observed: 'value', request: 'value', reason: 'value', evidence: 'repeat' },
+		flags: {
+			result: assertionResults,
+			observed: 'value',
+			'observed-file': 'value',
+			request: 'value',
+			reason: 'value',
+			evidence: 'repeat',
+		},
 		write: true,
 		run: (store, args, context) =>
 			checkAssertion(store, context.actor, {
@@ -1013,7 +1020,7 @@ const commands: Record<string, Command> = {
 				testId: value(args, 'testId')!,
 				assertionId: value(args, 'assertionId')!,
 				result: value(args, 'result'),
-				observed: value(args, 'observed'),
+				observed: observedValue(args),
 				request: value(args, 'request'),
 				reason: value(args, 'reason'),
 				evidence: evidence(args, context),
@@ -2171,6 +2178,18 @@ function testLines(test: Plan['tests'][number]) {
 		...test.preconditions.map((precondition) => [test.id, 'precondition', precondition]),
 		...test.assertions.map((assertion) => [`${test.id}.${assertion.id}`, assertion.checkKind, assertion.check]),
 	]
+}
+
+// --observed-file reads the value from a file the child wrote with a quoted heredoc: the shell expands nothing.
+function observedValue(args: Args) {
+	const file = value(args, 'observed-file')
+	if (file === undefined) return value(args, 'observed')
+	requireWellFormed(
+		value(args, 'observed') === undefined,
+		'Give either --observed or --observed-file, not both.',
+		'Use --observed-file when the value holds a dollar sign or a backtick.'
+	)
+	return readFileSync(file, 'utf8').replace(/\r?\n$/, '')
 }
 
 function printPlan(reply: Reply): Printed {

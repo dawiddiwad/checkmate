@@ -88,6 +88,13 @@ export function looksShellExpanded(observed: string): boolean {
 	return /(^|\s)\/(usr\/)?bin\/(ba|z|da)?sh(\s|$)/.test(observed.trim()) || /^(bash|sh|zsh)$/.test(observed.trim())
 }
 
+// A money value whose currency sign the shell removed: "$5.00" inside double quotes arrives as ".00". The check
+// applies when the expected value or the evidence carries a currency sign.
+export function looksTruncatedMoney(observed: string, expected: string | undefined, evidence: string): boolean {
+	const currency = /[$€£¥]/.test(expected ?? '') || /[$€£¥]/.test(evidence)
+	return currency && /^\.\d/.test(observed.trim())
+}
+
 // An observed value that is a type word or a rule is the expectation echoed, not something that was seen.
 export function repeatsExpectation(observed: string): boolean {
 	const value = observed.trim().toLowerCase()

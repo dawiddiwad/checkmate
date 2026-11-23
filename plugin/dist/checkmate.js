@@ -905,6 +905,10 @@ function expectationMatches(observed, expected, marker) {
 function looksShellExpanded(observed) {
   return /(^|\s)\/(usr\/)?bin\/(ba|z|da)?sh(\s|$)/.test(observed.trim()) || /^(bash|sh|zsh)$/.test(observed.trim());
 }
+function looksTruncatedMoney(observed, expected, evidence3) {
+  const currency = /[$€£¥]/.test(expected ?? "") || /[$€£¥]/.test(evidence3);
+  return currency && /^\.\d/.test(observed.trim());
+}
 function repeatsExpectation(observed) {
   const value2 = observed.trim().toLowerCase();
   return typeWords.includes(value2) || /^(type|one-of|matches|at least|at most|contains|absent):/.test(value2);
@@ -14933,6 +14937,12 @@ function checkAssertion(store, actor, input) {
       );
     }
     const observed = optionalText(input.observed, "observation (--observed)");
+    const evidenceText2 = (input.evidence ?? []).map((item) => typeof item === "string" ? item : item.text).join("\n");
+    requireWellFormed(
+      observed === null || !looksTruncatedMoney(observed, assertion.expected, evidenceText2),
+      `The observed value "${observed}" looks like a money amount whose currency sign the shell removed.`,
+      "Record --observed in single quotes, for example --observed '$5.00', so the shell passes the value unchanged. Or write the value to a file and pass --observed-file."
+    );
     requireWellFormed(
       observed === null || !looksShellExpanded(observed),
       `The observed value "${observed}" looks like a shell path, not the value. The shell expanded it before Checkmate got it.`,
@@ -40689,14 +40699,21 @@ var commands = {
   },
   "run check": {
     positionals: ["runId", "testId", "assertionId"],
-    flags: { result: assertionResults, observed: "value", request: "value", reason: "value", evidence: "repeat" },
+    flags: {
+      result: assertionResults,
+      observed: "value",
+      "observed-file": "value",
+      request: "value",
+      reason: "value",
+      evidence: "repeat"
+    },
     write: true,
     run: (store, args, context) => checkAssertion(store, context.actor, {
       runId: value(args, "runId"),
       testId: value(args, "testId"),
       assertionId: value(args, "assertionId"),
       result: value(args, "result"),
-      observed: value(args, "observed"),
+      observed: observedValue(args),
       request: value(args, "request"),
       reason: value(args, "reason"),
       evidence: evidence2(args, context)
@@ -41791,6 +41808,16 @@ function testLines(test) {
     ...test.preconditions.map((precondition) => [test.id, "precondition", precondition]),
     ...test.assertions.map((assertion) => [`${test.id}.${assertion.id}`, assertion.checkKind, assertion.check])
   ];
+}
+function observedValue(args) {
+  const file = value(args, "observed-file");
+  if (file === void 0) return value(args, "observed");
+  requireWellFormed(
+    value(args, "observed") === void 0,
+    "Give either --observed or --observed-file, not both.",
+    "Use --observed-file when the value holds a dollar sign or a backtick."
+  );
+  return readFileSync14(file, "utf8").replace(/\r?\n$/, "");
 }
 function printPlan(reply) {
   const facts3 = { sha256: short3(reply.data.sha256) };

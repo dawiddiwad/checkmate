@@ -41335,7 +41335,15 @@ function commandName(argv) {
     if (commands[words4.slice(0, count2).join(" ")]) return words4.slice(0, count2).join(" ");
   throw unknownCommand(words4);
 }
+var movedCommands = { "run accept": "result accept", "run reject": "result reject" };
 function unknownCommand(words4) {
+  const moved = movedCommands[words4.slice(0, 2).join(" ")];
+  if (moved)
+    return new Refusal(
+      "malformed",
+      `Unknown command: ${words4.join(" ")}`,
+      `Use ${moved} <runId> --rationale "<why>". Run checkmate --help for the usage of each command.`
+    );
   const groups = words4.map((_, i) => {
     const prefix = words4.slice(0, words4.length - i).join(" ");
     return Object.keys(commands).filter((name2) => name2.startsWith(`${prefix} `));

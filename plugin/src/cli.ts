@@ -2266,7 +2266,17 @@ function commandName(argv: string[]) {
 	throw unknownCommand(words)
 }
 
+// People say "run accept" or "run reject" for the result of a run. The command is "result accept" or "result reject".
+const movedCommands: Record<string, string> = { 'run accept': 'result accept', 'run reject': 'result reject' }
+
 function unknownCommand(words: string[]) {
+	const moved = movedCommands[words.slice(0, 2).join(' ')]
+	if (moved)
+		return new Refusal(
+			'malformed',
+			`Unknown command: ${words.join(' ')}`,
+			`Use ${moved} <runId> --rationale "<why>". Run checkmate --help for the usage of each command.`
+		)
 	const groups = words.map((_, i) => {
 		const prefix = words.slice(0, words.length - i).join(' ')
 		return Object.keys(commands).filter((name) => name.startsWith(`${prefix} `))

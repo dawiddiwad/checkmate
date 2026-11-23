@@ -81,6 +81,21 @@ test('Install packed npm CLI and open the empty UI — installed assets or skill
 	}
 })
 
+test('Point run accept and run reject to the result command — a wrong command name leaves the record unchanged.', async (t) => {
+	const workspace = directory(t)
+	const result = spawnSync(
+		process.execPath,
+		[binary, 'run', 'reject', 'run-1', '--rationale', 'The evidence is wrong.'],
+		{
+			cwd: workspace,
+			encoding: 'utf8',
+		}
+	)
+	assert.equal(result.status, 1)
+	assert.match(result.stdout + result.stderr, /Unknown command: run reject/)
+	assert.match(result.stdout + result.stderr, /Use result reject <runId> --rationale/)
+})
+
 test('Recover after missing host or missing ticket source — unexplained partial records or duplicates.', async (t) => {
 	const workspace = directory(t)
 	const env = { ...process.env, PATH: '', CHECKMATE_HARNESS: 'pi', CHECKMATE_ACTOR: 'oracle' }

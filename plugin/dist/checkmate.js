@@ -485,6 +485,20 @@ CREATE TABLE journal_entries (
 `;
 var addedTables = [
   {
+    // A correction of a recorded check. The first result stays in assertion_results; the last correction counts.
+    ddl: `CREATE TABLE assertion_corrections (
+	run_id TEXT NOT NULL REFERENCES runs(run_id),
+	test_id TEXT NOT NULL,
+	assertion_id TEXT NOT NULL,
+	attempt INTEGER NOT NULL,
+	result TEXT NOT NULL,
+	observed TEXT,
+	reason TEXT NOT NULL,
+	recorded_at TEXT NOT NULL,
+	operation_id TEXT NOT NULL ${operationReference}
+) STRICT;`
+  },
+  {
     ddl: `CREATE TABLE plan_promotions (
 	plan_id TEXT NOT NULL,
 	source_revision INTEGER NOT NULL,
@@ -908,6 +922,18 @@ function looksShellExpanded(observed) {
 function looksTruncatedMoney(observed, expected, evidence3) {
   const currency = /[$€£¥]/.test(expected ?? "") || /[$€£¥]/.test(evidence3);
   return currency && /^\.\d/.test(observed.trim());
+}
+function expectsBareValue(expected) {
+  return expected !== void 0 && /^\$?-?\d+(\.\d+)?$/.test(expected.trim());
+}
+function isBareValue(observed) {
+  return /^\$?-?\d+(\.\d+)?$/.test(observed.trim());
+}
+function wrappedValue(observed, expected) {
+  if (!expectsBareValue(expected)) return void 0;
+  const kind = /^\$/.test(expected.trim()) ? /\$-?\d+(?:\.\d+)?/g : /-?\d+(?:\.\d+)?/g;
+  const found = observed.trim().match(kind) ?? [];
+  return found.length === 1 ? found[0] : void 0;
 }
 function repeatsExpectation(observed) {
   const value2 = observed.trim().toLowerCase();
@@ -14681,7 +14707,12 @@ function runOutcomes(store, runId) {
 }
 function runAssertions(store, runId) {
   const rows2 = all(store, "SELECT * FROM assertion_results WHERE run_id = ? ORDER BY rowid", runId);
-  return new Map(rows2.map((row2) => [`${row2.test_id}.${row2.assertion_id}`, row2]));
+  const corrections = all(
+    store,
+    "SELECT * FROM assertion_corrections WHERE run_id = ? ORDER BY rowid",
+    runId
+  );
+  return new Map([...rows2, ...corrections].map((row2) => [`${row2.test_id}.${row2.assertion_id}`, row2]));
 }
 function runEvidence(store, runId) {
   return all(
@@ -14968,33 +14999,41 @@ function checkedResult(given, assertion, observed) {
   );
   return result;
 }
-function requestCheck(action2, sent) {
-  const planned = plannedRequest(action2);
-  if (!planned) return;
-  requireWellFormed(
-    sent,
-    `Give --request with the request you sent: ${planned.method} ${planned.path}.`,
-    "A value observed without the planned request is not an observation of it."
-  );
-  requireWellFormed(
-    requestMatches(planned, sent),
-    `The request ${sent} does not match the planned request ${planned.method} ${planned.path}.`,
-    "Send the planned request. A request that misses the route is not an observation of the value."
-  );
-}
-function decidedResult(given, assertion, observed, marker) {
-  requireWellFormed(
-    given === void 0 || given === "not_checked",
-    `${assertion.id} takes its result from --observed. Give --observed with the value of "${assertion.observe}", and no --result.`,
-    "Record not_checked with --reason only when the value cannot be observed."
-  );
-  if (given === "not_checked") return "not_checked";
-  requireWellFormed(observed, `Give --observed with the value of "${assertion.observe}".`);
-  requireWellFormed(
-    !repeatsExpectation(observed),
-    `The observed value "${observed}" repeats the rule of the expected value, not a value that was observed.`,
-    `Give the value you see for "${assertion.observe}" on the page or in the response, not the rule.`
-  );
+function structuredResult(input, test, assertion, observed, marker) {
+  const planned = plannedRequest(test.action);
+  const reasons2 = [];
+  if (input.result !== void 0 && input.result !== "not_checked")
+    reasons2.push(
+      `${assertion.id} takes its result from --observed. Give --observed with the value of "${assertion.observe}", and no --result.`
+    );
+  if (planned && !input.request)
+    reasons2.push(`Give --request with the request you sent: ${planned.method} ${planned.path}.`);
+  else if (planned && !requestMatches(planned, input.request))
+    reasons2.push(
+      `The request ${input.request} does not match the planned request ${planned.method} ${planned.path}. A request that misses the route is not an observation of the value.`
+    );
+  const bare = observed === null ? void 0 : wrappedValue(observed, assertion.expected);
+  if (input.result !== "not_checked") {
+    if (observed === null) reasons2.push(`Give --observed with the value of "${assertion.observe}".`);
+    else if (repeatsExpectation(observed))
+      reasons2.push(
+        `The observed value "${observed}" repeats the rule of the expected value, not a value that was observed. Give the value you see for "${assertion.observe}" on the page or in the response, not the rule.`
+      );
+    else if (expectsBareValue(assertion.expected) && !isBareValue(observed) && /\d/.test(observed))
+      reasons2.push(
+        bare ? `The observed value "${observed}" holds ${bare} inside other words. Give only the value.` : `The observed value "${observed}" is not a bare value. Give only the value of "${assertion.observe}".`
+      );
+  }
+  if (reasons2.length) {
+    const command = [
+      `checkmate run check ${input.runId} ${test.id} ${assertion.id}`,
+      `--observed '${bare ?? observed ?? "<the value you saw>"}'`,
+      planned ? `--request '${planned.method} ${planned.path}'` : "",
+      "--evidence -"
+    ].filter(Boolean).join(" ");
+    requireWellFormed(false, reasons2.join(" "), `Send one corrected call: ${command}`);
+  }
+  if (input.result === "not_checked") return "not_checked";
   return expectationMatches(observed, assertion.expected, marker) ? "passed" : "failed";
 }
 function checkAssertion(store, actor, input) {
@@ -15010,9 +15049,10 @@ function checkAssertion(store, actor, input) {
       `Use one of: ${test.assertions.map((item) => item.id).join(", ")}.`
     );
     requireOpen(store, input.runId, test.id);
-    requireCondition(
-      !runAssertions(store, input.runId).has(`${test.id}.${assertion.id}`),
-      `Assertion ${test.id}.${assertion.id} has a result. An assertion result is final.`
+    const prior = runAssertions(store, input.runId).get(`${test.id}.${assertion.id}`);
+    requireWellFormed(
+      !prior || input.reason !== void 0,
+      `Assertion ${test.id}.${assertion.id} has a result (${prior?.result}). Record the correction with --reason "<why the earlier result was wrong>". The earlier result stays in the record.`
     );
     const outcomes = runOutcomes(store, input.runId);
     for (const dependency of test.dependsOn.filter((id2) => !id2.includes(":"))) {
@@ -15036,7 +15076,7 @@ function checkAssertion(store, actor, input) {
       "Record --observed in single quotes, for example --observed '$0', so the shell passes the value unchanged."
     );
     const reason = optionalText(input.reason, "reason (--reason)");
-    const result = assertion.expected === void 0 ? checkedResult(input.result, assertion, observed) : (requestCheck(test.action, input.request), decidedResult(input.result, assertion, observed, run2.request.marker ?? ""));
+    const result = assertion.expected === void 0 ? checkedResult(input.result, assertion, observed) : structuredResult(input, test, assertion, observed, run2.request.marker ?? "");
     files2 = evidenceFiles(store, input.runId, `${test.id}-${assertion.id}`, input.evidence);
     if (result !== "not_checked")
       requireWellFormed(
@@ -15051,9 +15091,10 @@ function checkAssertion(store, actor, input) {
       );
     if (result === "not_checked")
       requireWellFormed(reason, "A not_checked result needs a reason (--reason) that says why it was not checked");
+    const table2 = prior ? "assertion_corrections" : "assertion_results";
     execute(
       store,
-      "INSERT INTO assertion_results (run_id, test_id, assertion_id, attempt, result, observed, reason, recorded_at, operation_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      `INSERT INTO ${table2} (run_id, test_id, assertion_id, attempt, result, observed, reason, recorded_at, operation_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       input.runId,
       test.id,
       assertion.id,
@@ -42961,8 +43002,8 @@ function testPrompt(execution, workspace2, test, actor, pluginRoot2) {
     ...plannedRequest(test.action) ? [
       `The action names a request. Give --request with the method and path of the request you sent, with the planned method ${plannedRequest(text2(test.action)).method} and the planned path ${plannedRequest(text2(test.action)).path}. A request that misses the planned route is not an observation.`
     ] : [],
-    `Record each assertion: ${cli} run check ${runId} ${test.id} <assertion ID> --actor ${actor} --observed '<only the observed value, for example $5.00 or 300 PLN>' --evidence - <<'EOF'`,
-    "Put --observed and --request values in single quotes. Inside double quotes the shell expands $ and backticks: $5.00 becomes .00 and $0 becomes a shell path.",
+    `Record each assertion: ${cli} run check ${runId} ${test.id} <assertion ID> --actor ${actor} --observed '<only the bare value: for a status code 200, for an amount $5.00>'${plannedRequest(test.action) ? " --request '<method and path you sent>'" : ""} --evidence - <<'EOF'`,
+    "Put --observed and --request values in single quotes. Inside double quotes the shell expands $ and backticks: $5.00 becomes .00 and $0 becomes a shell path. Give only the bare value in --observed: HTTP 200 is refused, 200 is accepted.",
     "then the raw tool output that shows it, copied, then EOF. Use two words for the IDs: T1 A1. Give only the value of the observed item, not the whole line.",
     'For an assertion with an expected value, do not decide passed or failed: the code compares the observed value with the expected value. For an assertion without one, decide it with --result and --observed. When you cannot observe the value, record not_checked with --reason "<why>" and no --observed. A page error (for example HTTP 404) or a failed tool means the value is not observed: record not_checked for each assertion of that test with --reason, record no defect for it, and close the test as error. A value that the page shows as "not found" is not an observed value.',
     `For each failed assertion, record a defect: ${cli} run finding ${runId} --actor ${actor} <<'EOF' with {"id":"F-${test.id}-1","type":"defect","severity":"medium","assertionIds":["${test.id}.<assertion ID>"],"requirementIds":${JSON.stringify(test.requirementIds)},"title":"<short title>","expected":"<check>","observed":"<observed value>","reproduction":["<request or steps>"],"evidenceIds":["<evidence ID printed by run check>"]} then EOF.`,

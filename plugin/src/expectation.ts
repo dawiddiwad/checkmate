@@ -95,6 +95,23 @@ export function looksTruncatedMoney(observed: string, expected: string | undefin
 	return currency && /^\.\d/.test(observed.trim())
 }
 
+// An expected value that is a bare number or amount, such as 200 or $5.00. Only an observed value of that form is compared.
+export function expectsBareValue(expected: string | undefined): boolean {
+	return expected !== undefined && /^\$?-?\d+(\.\d+)?$/.test(expected.trim())
+}
+
+export function isBareValue(observed: string): boolean {
+	return /^\$?-?\d+(\.\d+)?$/.test(observed.trim())
+}
+
+// The one bare number or amount inside words, such as 200 in "HTTP 200" or $5.00 in "Shipping: $5.00".
+export function wrappedValue(observed: string, expected: string | undefined): string | undefined {
+	if (!expectsBareValue(expected)) return undefined
+	const kind = /^\$/.test(expected!.trim()) ? /\$-?\d+(?:\.\d+)?/g : /-?\d+(?:\.\d+)?/g
+	const found = observed.trim().match(kind) ?? []
+	return found.length === 1 ? found[0] : undefined
+}
+
 // An observed value that is a type word or a rule is the expectation echoed, not something that was seen.
 export function repeatsExpectation(observed: string): boolean {
 	const value = observed.trim().toLowerCase()

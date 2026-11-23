@@ -7385,3 +7385,305 @@ test('A delegated run resets the data before each test that does not continue an
 	assert.equal(resets.length, 3, resets.join(' | '))
 	assert.ok(resets.every((marker) => marker.length > 0))
 })
+
+test('A wrapped observed value is refused with the bare value to send, and nothing is recorded — HTTP 200 for an expected 200.', async (t) => {
+	const workspace = directory(t)
+	writeFileSync(join(workspace, 'ticket.md'), 'The quote is 240.\n')
+	const app = await fixture()
+	t.after(() => app.close())
+	app.fix()
+	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle' }
+	const ok = async (args: string[], value?: unknown) => {
+		const result = await inputCommand(workspace, env, value === undefined ? '' : JSON.stringify(value), ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	await ok([
+		'setup',
+		'--url',
+		app.baseUrl,
+		'--target',
+		'shop',
+		'--data',
+		'environment',
+		'--policy',
+		'The test fixture keeps no records.',
+	])
+	await ok([
+		'plan',
+		'open',
+		'ticket',
+		'--target',
+		'shop@1',
+		'--objective',
+		'Check the quote.',
+		'--source',
+		'ticket.md',
+	])
+	await ok(['plan', 'save', 'ticket'], {
+		requirements: [{ id: 'R1', text: 'The quote is 240.', source: 'ticket.md' }],
+		tests: [
+			{
+				capability: 'http',
+				operations: ['read_catalog'],
+				dependsOn: [],
+				preconditions: [],
+				id: 'T1',
+				title: 'Quote',
+				requirementIds: ['R1'],
+				action: 'Read quote.',
+				assertions: [
+					{
+						id: 'A1',
+						check: 'The quote is 240.',
+						checkKind: 'deterministic',
+						observe: 'the quote total',
+						expected: '240',
+					},
+				],
+			},
+		],
+		gaps: [],
+	})
+	await ok(['plan', 'approve', 'ticket@1', '--rationale', 'Run the rules.'])
+	await ok(['run', 'begin', 'run-1', 'ticket@1', '--build', 'fixed', '--tests', 'T1'])
+	const wrapped = await inputCommand(
+		workspace,
+		env,
+		'quote',
+		'run',
+		'check',
+		'run-1',
+		'T1',
+		'A1',
+		'--observed',
+		'Total 240 PLN',
+		'--evidence',
+		'-'
+	)
+	assert.equal(wrapped.code, 1, wrapped.output)
+	assert.match(wrapped.body.reasons.join(' '), /holds 240 inside other words/)
+	assert.match(wrapped.body.hint, /--observed '240'/)
+	const stored = await ok(['query', "SELECT count(*) AS n FROM assertion_results WHERE run_id = 'run-1'"])
+	assert.equal(stored.rows[0].n, 0)
+	const bare = await inputCommand(
+		workspace,
+		env,
+		'quote',
+		'run',
+		'check',
+		'run-1',
+		'T1',
+		'A1',
+		'--observed',
+		'240',
+		'--evidence',
+		'-'
+	)
+	assert.equal(bare.body.result, 'passed', bare.output)
+})
+
+test('A structured check missing --request and carrying a --result is refused in one message, with the whole corrected command.', async (t) => {
+	const workspace = directory(t)
+	writeFileSync(join(workspace, 'ticket.md'), 'The quote is 240.\n')
+	const app = await fixture()
+	t.after(() => app.close())
+	app.fix()
+	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle' }
+	const ok = async (args: string[], value?: unknown) => {
+		const result = await inputCommand(workspace, env, value === undefined ? '' : JSON.stringify(value), ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	await ok([
+		'setup',
+		'--url',
+		app.baseUrl,
+		'--target',
+		'shop',
+		'--data',
+		'environment',
+		'--policy',
+		'The test fixture keeps no records.',
+	])
+	await ok([
+		'plan',
+		'open',
+		'ticket',
+		'--target',
+		'shop@1',
+		'--objective',
+		'Check the quote.',
+		'--source',
+		'ticket.md',
+	])
+	await ok(['plan', 'save', 'ticket'], {
+		requirements: [{ id: 'R1', text: 'The quote is 240.', source: 'ticket.md' }],
+		tests: [
+			{
+				capability: 'http',
+				operations: ['read_catalog'],
+				dependsOn: [],
+				preconditions: [],
+				id: 'T1',
+				title: 'Quote',
+				requirementIds: ['R1'],
+				action: 'Read quote: GET /quote.',
+				assertions: [
+					{
+						id: 'A1',
+						check: 'The quote is 240.',
+						checkKind: 'deterministic',
+						observe: 'the quote total',
+						expected: '240',
+					},
+				],
+			},
+		],
+		gaps: [],
+	})
+	await ok(['plan', 'approve', 'ticket@1', '--rationale', 'Run the rules.'])
+	await ok(['run', 'begin', 'run-1', 'ticket@1', '--build', 'fixed', '--tests', 'T1'])
+	const both = await inputCommand(
+		workspace,
+		env,
+		'quote',
+		'run',
+		'check',
+		'run-1',
+		'T1',
+		'A1',
+		'--result',
+		'passed',
+		'--observed',
+		'240',
+		'--evidence',
+		'-'
+	)
+	assert.equal(both.code, 1, both.output)
+	assert.match(both.body.reasons.join(' '), /takes its result from --observed/)
+	assert.match(both.body.reasons.join(' '), /Give --request with the request you sent: GET \/quote/)
+	assert.match(both.body.hint, /--request 'GET \/quote'/)
+	assert.match(both.body.hint, /--observed '240'/)
+})
+
+test('A check is corrected while its test is open — a reason is required, and the earlier result stays in the record.', async (t) => {
+	const workspace = directory(t)
+	writeFileSync(join(workspace, 'ticket.md'), 'The quote is 240.\n')
+	const app = await fixture()
+	t.after(() => app.close())
+	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle' }
+	const ok = async (args: string[], value?: unknown) => {
+		const result = await inputCommand(workspace, env, value === undefined ? '' : JSON.stringify(value), ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	await ok([
+		'setup',
+		'--url',
+		app.baseUrl,
+		'--target',
+		'shop',
+		'--data',
+		'environment',
+		'--policy',
+		'The test fixture keeps no records.',
+	])
+	await ok([
+		'plan',
+		'open',
+		'ticket',
+		'--target',
+		'shop@1',
+		'--objective',
+		'Check the quote.',
+		'--source',
+		'ticket.md',
+	])
+	await ok(['plan', 'save', 'ticket'], {
+		requirements: [{ id: 'R1', text: 'The quote is 240.', source: 'ticket.md' }],
+		tests: [
+			{
+				capability: 'http',
+				operations: ['read_catalog'],
+				dependsOn: [],
+				preconditions: [],
+				id: 'T1',
+				title: 'Quote',
+				requirementIds: ['R1'],
+				action: 'Read quote.',
+				assertions: [
+					{
+						id: 'A1',
+						check: 'The quote is 240.',
+						checkKind: 'deterministic',
+						observe: 'the quote total',
+						expected: '240',
+					},
+				],
+			},
+		],
+		gaps: [],
+	})
+	await ok(['plan', 'approve', 'ticket@1', '--rationale', 'Run the rules.'])
+	await ok(['run', 'begin', 'run-1', 'ticket@1', '--build', 'fixed', '--tests', 'T1'])
+	app.fix()
+	await inputCommand(
+		workspace,
+		env,
+		'220',
+		'run',
+		'check',
+		'run-1',
+		'T1',
+		'A1',
+		'--observed',
+		'220',
+		'--evidence',
+		'-'
+	)
+	const noReason = await inputCommand(
+		workspace,
+		env,
+		'240',
+		'run',
+		'check',
+		'run-1',
+		'T1',
+		'A1',
+		'--observed',
+		'240',
+		'--evidence',
+		'-'
+	)
+	assert.equal(noReason.code, 1, noReason.output)
+	assert.match(noReason.body.reasons.join(' '), /Record the correction with --reason/)
+	const corrected = await inputCommand(
+		workspace,
+		env,
+		'240',
+		'run',
+		'check',
+		'run-1',
+		'T1',
+		'A1',
+		'--observed',
+		'240',
+		'--reason',
+		'I read 220 from the first request, which was the broken build.',
+		'--evidence',
+		'-'
+	)
+	assert.equal(corrected.body.result, 'passed', corrected.output)
+	const first = await ok([
+		'query',
+		"SELECT result FROM assertion_results WHERE run_id = 'run-1' AND assertion_id = 'A1'",
+	])
+	assert.equal(first.rows[0].result, 'failed')
+	const history = await ok([
+		'query',
+		"SELECT result, reason FROM assertion_corrections WHERE run_id = 'run-1' AND assertion_id = 'A1'",
+	])
+	assert.equal(history.rows[0].result, 'passed')
+	assert.equal(history.rows[0].reason, 'I read 220 from the first request, which was the broken build.')
+})

@@ -227,6 +227,20 @@ CREATE TABLE journal_entries (
 `
 const addedTables = [
 	{
+		// A correction of a recorded check. The first result stays in assertion_results; the last correction counts.
+		ddl: `CREATE TABLE assertion_corrections (
+	run_id TEXT NOT NULL REFERENCES runs(run_id),
+	test_id TEXT NOT NULL,
+	assertion_id TEXT NOT NULL,
+	attempt INTEGER NOT NULL,
+	result TEXT NOT NULL,
+	observed TEXT,
+	reason TEXT NOT NULL,
+	recorded_at TEXT NOT NULL,
+	operation_id TEXT NOT NULL ${operationReference}
+) STRICT;`,
+	},
+	{
 		ddl: `CREATE TABLE plan_promotions (
 	plan_id TEXT NOT NULL,
 	source_revision INTEGER NOT NULL,

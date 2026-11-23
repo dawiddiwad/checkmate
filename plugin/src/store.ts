@@ -437,7 +437,23 @@ export function busyTimeout(value = process.env.CHECKMATE_BUSY_TIMEOUT_MS) {
 	return value !== undefined && /^[1-9][0-9]*$/.test(value) && milliseconds <= 2147483647 ? milliseconds : 30000
 }
 
+// A first open can switch the database to WAL while another process reads it. SQLite then fails at once
+// after the busy timeout. Nothing changes in that case, so the open retries a few times.
+const openAttempts = 3
+const openRetryMilliseconds = 250
+
 export function openStore(workspace: string): Store {
+	for (let attempt = 1; ; attempt++) {
+		try {
+			return openStoreOnce(workspace)
+		} catch (error) {
+			if (!isBusy(error) || attempt >= openAttempts) throw error
+			Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, openRetryMilliseconds)
+		}
+	}
+}
+
+function openStoreOnce(workspace: string): Store {
 	const path = databasePath(workspace)
 	mkdirSync(join(workspace, '.checkmate'), { recursive: true })
 	const db = new DatabaseSync(path)

@@ -14,7 +14,12 @@ import { piArgs, piResult, resolvePiModelArgs, selectedHarness } from '../../plu
 import { planRequest, planTools } from '../../plugin/src/plans.ts'
 import { workspaceEnv } from '../../plugin/src/settings.ts'
 import type { ChildCall } from '../../plugin/src/sessions.ts'
-import { childOutputLimit, executableOnPath, pluginRoot as bundledPluginRoot, usageOf } from '../../plugin/src/sessions.ts'
+import {
+	childOutputLimit,
+	executableOnPath,
+	pluginRoot as bundledPluginRoot,
+	usageOf,
+} from '../../plugin/src/sessions.ts'
 import { write } from '../../plugin/src/store.ts'
 import type { PlanRequest } from '../../plugin/src/types.ts'
 import { spawn } from 'node:child_process'
@@ -436,6 +441,9 @@ function stagePrompt(stage: Stage, subject: string, execution: Execution | null)
 	if (stage === 'revise')
 		return [
 			`Plan: ${subject}. Read the pending decisions with \`checkmate plan pending ${subject}\`.`,
+			'Change only the tests that the decisions affect. Give each ready test at least one assertion. A test without an assertion is not ready.',
+			'When a decision has no expected value, add an assertion with "checkKind": "agent_observation" that records the behavior.',
+			'When a decision says a criterion is dropped, removed, or out of scope, remove it. Remove its requirement and its tests in the same delta, for example {"requirements": {"R2": {"remove": true}}, "tests": {"T2": {"remove": true}}}. Do not rewrite a test for another criterion to match it.',
 			`Save the next revision with \`checkmate plan revise ${subject}\`. Do not answer gaps.`,
 		]
 	const { run, profile, planRequest: planning, clock, rejected } = execution!

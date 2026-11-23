@@ -955,14 +955,21 @@ function loopStatus(store: Store, planId: string, harness: Harness) {
 						`${incomplete.explorationId} ${incomplete.state} on build ${incomplete.build}${incomplete.reason ? `: ${incomplete.reason}` : ''}`,
 					]
 				: [`${incomplete.explorationId} is ${incomplete.state} on build ${incomplete.build}`]
+		// Without a saved revision only an exploratory test can run. Say so, and name the step that makes stored tests.
+		const unplanned = base.revision === null
 		return {
 			...base,
 			...extra,
 			...loop(
 				'ready_to_test',
 				'qa',
-				why,
-				!incomplete || failed ? [`checkmate test ${planId} --allow Read --allow Bash`] : after
+				[...(unplanned ? ['Plan has no saved revision. Only an exploratory test can run.'] : []), ...why],
+				[
+					...(!incomplete || failed ? [`checkmate test ${planId} --allow Read --allow Bash`] : after),
+					...(unplanned
+						? [`For stored tests, plan the ticket first: ${delegateCommand(harness, 'plan', planId)}`]
+						: []),
+				]
 			),
 		}
 	}

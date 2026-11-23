@@ -179,9 +179,16 @@ export type PlanCandidate = {
 }
 
 export type PlanDelta = {
+	requirements?: Record<
+		string,
+		{
+			remove: boolean
+		}
+	>
 	tests: Record<
 		string,
 		{
+			remove?: boolean
 			action?: string
 			preconditions?: Array<string>
 			assertions?: Record<

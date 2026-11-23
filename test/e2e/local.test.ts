@@ -267,6 +267,164 @@ test('Explore a clean fixture — invented defect or missing observed coverage.'
 	assert.match(criterion.body, /240/)
 })
 
+test('Open a database that another process reads while it switches to WAL — parallel first command fails.', async (t) => {
+	const workspace = directory(t)
+	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle', CHECKMATE_BUSY_TIMEOUT_MS: '100' }
+	mkdirSync(join(workspace, '.checkmate'), { recursive: true })
+	const path = join(workspace, '.checkmate', 'checkmate.db')
+	new DatabaseSync(path).close()
+	// A rollback-mode database that another process reads cannot switch to WAL at once. The holder keeps its read lock for 600 ms.
+	const holder = spawn(
+		process.execPath,
+		[
+			'-e',
+			`const { DatabaseSync } = require('node:sqlite'); const db = new DatabaseSync(process.argv[1]);
+db.exec('BEGIN; SELECT count(*) FROM sqlite_master'); console.log('locked');
+Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 600); db.exec('COMMIT'); db.close()`,
+			path,
+		],
+		{ stdio: ['ignore', 'pipe', 'inherit'] }
+	)
+	t.after(() => holder.kill())
+	const [line] = (await once(holder.stdout, 'data')) as [Buffer]
+	assert.match(line.toString(), /locked/)
+	const result = await command(workspace, env, 'target', 'list')
+	assert.equal(result.code, 0, result.output)
+	assert.equal(result.body.status, 'completed')
+})
+
+test('Drop a criterion by revise — a dropped criterion stayed ready and needed a manual plan edit.', async (t) => {
+	const workspace = directory(t)
+	const { chmodSync, copyFileSync, mkdirSync } = await import('node:fs')
+	const { delimiter } = await import('node:path')
+	const bin = join(workspace, 'bin')
+	mkdirSync(bin)
+	copyFileSync(join(root, 'test/e2e/delegate-host.mjs'), join(bin, 'claude'))
+	chmodSync(join(bin, 'claude'), 0o755)
+	const env = {
+		...process.env,
+		PATH: `${bin}${delimiter}${process.env.PATH}`,
+		CHECKMATE_ACTOR: 'oracle',
+		CHECKMATE_HARNESS: 'claude',
+		QA_STAGE: 'setup',
+		QA_LIE: '0',
+	}
+	const ok = async (args: string[], input?: unknown) => {
+		const result = await inputCommand(workspace, env, input === undefined ? '' : JSON.stringify(input), ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	await ok([
+		'target',
+		'open',
+		'shop',
+		'--entry-point',
+		'web:url:Shop HTTP API.',
+		'--capabilities',
+		'http',
+		'--operations',
+		'read_catalog',
+	])
+	await ok(['delegate', 'setup', 'shop', '--allow', 'Read'])
+	writeFileSync(join(workspace, 'ticket.md'), '# Ticket\n\n1. The quote is 240.\n2. The list is newest first.\n')
+	await ok([
+		'plan',
+		'open',
+		'ticket',
+		'--target',
+		'shop@1',
+		'--objective',
+		'Check the quote.',
+		'--source',
+		'ticket.md',
+	])
+	await ok(['plan', 'save', 'ticket'], {
+		requirements: [
+			{ id: 'R1', text: 'The quote is 240.', source: 'ticket.md' },
+			{ id: 'R2', text: 'The list is newest first.', source: 'ticket.md' },
+		],
+		tests: [
+			{
+				id: 'T1',
+				title: 'Quote',
+				requirementIds: ['R1'],
+				capability: 'http',
+				operations: ['read_catalog'],
+				dependsOn: [],
+				preconditions: [],
+				action: 'Read the quote.',
+				assertions: [{ id: 'A1', check: 'The quote is 240.', checkKind: 'deterministic' }],
+			},
+			{
+				id: 'T2',
+				title: 'Order',
+				requirementIds: ['R2'],
+				capability: 'http',
+				operations: ['read_catalog'],
+				dependsOn: [],
+				preconditions: [],
+				action: 'Read the list.',
+				assertions: [{ id: 'A1', check: 'The newest item is first.', checkKind: 'deterministic' }],
+			},
+		],
+		gaps: [
+			{
+				id: 'G1',
+				severity: 'blocking',
+				status: 'open',
+				requirementIds: ['R2'],
+				testIds: ['T2'],
+				question: 'Is the list newest first or sorted by title?',
+				consequence: 'The order test is unknown.',
+				decisionId: null,
+			},
+		],
+	})
+	await ok([
+		'gap',
+		'answer',
+		'ticket',
+		'G1',
+		'--kind',
+		'clarify',
+		'--value',
+		'Drop the newest-first criterion. The list is out of scope.',
+		'--source',
+		'oracle',
+		'--rationale',
+		'Owner dropped the criterion.',
+	])
+	const refused = await inputCommand(
+		workspace,
+		env,
+		JSON.stringify({ requirements: { R2: { remove: true } }, tests: {} }),
+		'plan',
+		'revise',
+		'ticket'
+	)
+	assert.equal(refused.code, 1, refused.output)
+	assert.match(refused.output, /still has tests: T2/)
+	const revised = await ok(['plan', 'revise', 'ticket'], {
+		requirements: { R2: { remove: true } },
+		tests: { T2: { remove: true } },
+	})
+	assert.deepEqual(revised.removed, { tests: ['T2'], requirements: ['R2'] })
+	const [{ body }] = (
+		await ok(['query', "SELECT body FROM plan_revisions WHERE plan_id = 'ticket' AND revision = 2"])
+	).rows
+	const plan = JSON.parse(body)
+	assert.deepEqual(
+		plan.tests.map((test: { id: string }) => test.id),
+		['T1']
+	)
+	assert.deepEqual(
+		plan.requirements.map((requirement: { id: string }) => requirement.id),
+		['R1']
+	)
+	assert.deepEqual(plan.gaps[0].testIds, [])
+	assert.deepEqual(plan.gaps[0].requirementIds, [])
+})
+
 test('Retry a held database transaction — lost or duplicate edits.', async (t) => {
 	const workspace = directory(t)
 	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle', CHECKMATE_BUSY_TIMEOUT_MS: '100' }
@@ -1045,6 +1203,13 @@ test('Delegate setup and plan and verify the record — prose or mismatched acto
 	assert.equal(liar.code, 1, liar.output)
 	assert.match(liar.output, /no plan save/i)
 	assert.equal((await ok('query', 'SELECT count(*) AS n FROM plan_revisions')).rows[0].n, 0)
+	const unplanned = await ok('status', 'ticket')
+	assert.equal(unplanned.revision, null)
+	assert.match(unplanned.why.join('\n'), /no saved revision/)
+	assert.ok(
+		unplanned.next.some((line: string) => /delegate plan ticket/.test(line)),
+		unplanned.next.join('\n')
+	)
 	const wrongWorkspace = directory(t)
 	const { cpSync } = await import('node:fs')
 	cpSync(join(workspace, '.checkmate'), join(wrongWorkspace, '.checkmate'), { recursive: true })

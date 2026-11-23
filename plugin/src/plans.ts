@@ -780,6 +780,7 @@ export function revisePlan(
 			base.plan,
 			decisions.map((decision) => decision.gap_id)
 		).map((test) => test.id)
+		const removedTests: string[] = []
 		for (const [testId, change] of Object.entries(delta.tests)) {
 			const test = draft.tests.find((test) => test.id === testId)
 			const onlyAffected = `Change only the tests that the pending decisions affect: ${affected.join(', ') || 'none'}.`
@@ -789,8 +790,11 @@ export function revisePlan(
 				`Test ${testId} is not affected by a pending decision. A revision changes only affected tests.`,
 				onlyAffected
 			)
-			applyTestChange(test, change, usedAssertionIds(store, input.planId, testId))
+			if (change.remove) removedTests.push(testId)
+			else applyTestChange(test, change, usedAssertionIds(store, input.planId, testId))
 		}
+		const removedRequirements = removeRequirements(draft, delta.requirements ?? {}, removedTests)
+		if (removedTests.length) removeTests(draft, removedTests)
 		for (const test of draft.tests)
 			requireWellFormed(
 				test.assertions.length > 0 || testReadiness(draft.gaps, test) !== 'ready',
@@ -801,8 +805,42 @@ export function revisePlan(
 		for (const decision of decisions)
 			execute(store, 'UPDATE decisions SET applied_revision = ? WHERE id = ?', draft.revision, decision.id)
 		change.reply.data.applied = decisions.map((decision) => decision.id)
+		change.reply.data.removed = { tests: removedTests, requirements: removedRequirements }
 		return change
 	})
+}
+
+// A requirement goes only when its tests go in the same delta. Gaps and dependencies drop the removed IDs.
+function removeRequirements(
+	draft: Pick<Plan, 'requirements' | 'tests' | 'gaps'>,
+	requested: Record<string, { remove?: boolean }>,
+	removedTests: string[]
+) {
+	const removed: string[] = []
+	for (const [id, change] of Object.entries(requested)) {
+		requireWellFormed(
+			draft.requirements.some((requirement) => requirement.id === id),
+			`Unknown requirement in delta: ${id}`
+		)
+		if (!change.remove) continue
+		const kept = draft.tests
+			.filter((test) => test.requirementIds.includes(id) && !removedTests.includes(test.id))
+			.map((test) => test.id)
+		requireCondition(
+			kept.length === 0,
+			`Requirement ${id} still has tests: ${kept.join(', ')}. Remove those tests in the same delta.`
+		)
+		removed.push(id)
+	}
+	draft.requirements = draft.requirements.filter((requirement) => !removed.includes(requirement.id))
+	for (const gap of draft.gaps) gap.requirementIds = gap.requirementIds.filter((id) => !removed.includes(id))
+	return removed
+}
+
+function removeTests(draft: Pick<Plan, 'tests' | 'gaps'>, removedTests: string[]) {
+	draft.tests = draft.tests.filter((test) => !removedTests.includes(test.id))
+	for (const test of draft.tests) test.dependsOn = test.dependsOn.filter((id) => !removedTests.includes(id))
+	for (const gap of draft.gaps) gap.testIds = gap.testIds.filter((id) => !removedTests.includes(id))
 }
 
 function usedAssertionIds(store: Store, planId: string, testId: string) {

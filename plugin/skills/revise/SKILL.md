@@ -36,6 +36,7 @@ The plugin CLI is `${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js`. Run `checkmate <com
 Rules:
 
 - Change only tests that `plan pending` prints. Change only `action`, `preconditions`, and `assertions`.
+- When a decision drops a criterion or puts it out of scope, remove its requirement and its tests in the same delta: `"requirements": { "R2": { "remove": true } }` and `"tests": { "T2": { "remove": true } }`. A requirement stays while any of its tests stays.
 - Keep each test independent. A changed precondition creates its own data. It does not use the records of another test.
 - A delta does not change `metadata`. The team fields of each test stay in the next revision. Do not put team fields in a check. To change `metadata`, the oracle uses `plan edit --patch`.
 - In `assertions`, a known ID changes that assertion. A new ID adds an assertion. `null` removes an assertion. Do not reuse a removed ID.

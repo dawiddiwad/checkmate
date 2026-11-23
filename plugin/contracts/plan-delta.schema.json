@@ -3,6 +3,22 @@
 	"$id": "plan-delta.schema.json",
 	"type": "object",
 	"properties": {
+		"requirements": {
+			"type": "object",
+			"propertyNames": {
+				"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+			},
+			"additionalProperties": {
+				"type": "object",
+				"properties": {
+					"remove": {
+						"type": "boolean"
+					}
+				},
+				"required": ["remove"],
+				"additionalProperties": false
+			}
+		},
 		"tests": {
 			"type": "object",
 			"propertyNames": {
@@ -11,6 +27,9 @@
 			"additionalProperties": {
 				"type": "object",
 				"properties": {
+					"remove": {
+						"type": "boolean"
+					},
 					"action": {
 						"type": "string",
 						"minLength": 1

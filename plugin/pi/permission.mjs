@@ -1,3 +1,5 @@
+import { request as httpRequest } from 'node:http'
+
 // Chat turns may run these Checkmate commands without asking. Anything else still asks the person.
 // A segment is allowed only when it runs the Checkmate CLI at a listed path with an allowed subcommand.
 const readOnly = [
@@ -96,6 +98,39 @@ export function chatCommandAllowed(command, clis) {
 	})
 }
 
+// fetch ends a request after 5 minutes without response headers, whatever the signal says.
+// A person may take up to 10 minutes to answer a permission, so the hook uses node:http, which only
+// applies the socket timeout.
+function post(hook, kind, body, timeout) {
+	return new Promise((resolve, reject) => {
+		const text = JSON.stringify(body)
+		const request = httpRequest(
+			`http://127.0.0.1:${hook.port}/hooks/${kind}/${hook.explorationId}/${hook.who}`,
+			{
+				method: 'POST',
+				headers: {
+					Authorization: `Bearer ${hook.token}`,
+					'Content-Type': 'application/json',
+					'Content-Length': Buffer.byteLength(text),
+				},
+				timeout,
+			},
+			(response) => {
+				let received = ''
+				response.setEncoding('utf8')
+				response.on('data', (chunk) => (received += chunk))
+				response.on('end', () =>
+					resolve({ ok: response.statusCode >= 200 && response.statusCode < 300, text: received })
+				)
+				response.on('error', reject)
+			}
+		)
+		request.on('timeout', () => request.destroy(new Error('The permission request timed out.')))
+		request.on('error', reject)
+		request.end(text)
+	})
+}
+
 export default function (pi) {
 	pi.registerCommand('checkmate-permission-ready', { handler: async () => {} })
 	pi.on('tool_call', async (event, ctx) => {
@@ -109,22 +144,15 @@ export default function (pi) {
 				!/^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$/.test(hook.who)
 			)
 				throw new Error('Invalid hook')
-			const base = `http://127.0.0.1:${hook.port}/hooks`
 			const body = { tool_name: event.toolName, tool_input: event.input, cwd: ctx.cwd }
-			const send = (kind, name, timeout) =>
-				fetch(`${base}/${kind}/${hook.explorationId}/${hook.who}`, {
-					method: 'POST',
-					headers: { Authorization: `Bearer ${hook.token}`, 'Content-Type': 'application/json' },
-					body: JSON.stringify({ ...body, hook_event_name: name }),
-					signal: AbortSignal.timeout(timeout),
-				})
+			const send = (kind, name, timeout) => post(hook, kind, { ...body, hook_event_name: name }, timeout)
 			await send('activity', 'PreToolUse', 5000).catch(() => {})
 			if (Array.isArray(hook.allow) && hook.allow.includes(event.toolName)) return
 			if (hook.chat === true && event.toolName === 'bash' && chatCommandAllowed(event.input?.command, hook.clis))
 				return
 			const response = await send('permission', 'PermissionRequest', 600000)
 			if (!response.ok) throw new Error('Permission request failed')
-			const answer = await response.json()
+			const answer = JSON.parse(response.text)
 			const decision = answer?.hookSpecificOutput?.decision
 			if (decision?.behavior === 'allow') return
 			return { block: true, reason: decision?.message || 'Permission was not granted.' }

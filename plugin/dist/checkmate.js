@@ -13353,6 +13353,14 @@ function requireChangedChecks(store, plan, previous) {
     (test) => softProblems(test, plan.requirements).map((problem) => ({ test, problem }))
   );
   const uncovered = uncoveredRequirements(plan);
+  const covered = plan.requirements.length - uncovered.length;
+  const hasRevision = one(store, "SELECT 1 FROM plan_revisions WHERE plan_id = ?", plan.planId);
+  if (!hasRevision && covered * 2 < plan.requirements.length && priorSoftRefusal(store, plan.planId))
+    requireWellFormed(
+      false,
+      `Planning did not produce tests after two attempts: ${covered} of ${plan.requirements.length} criteria have tests. Nothing was saved as the plan.`,
+      `Plan again: checkmate delegate plan ${plan.planId} --detach. Each criterion needs at least one test.`
+    );
   if (!problems.length && !uncovered.length || priorSoftRefusal(store, plan.planId)) return;
   const controls = changed.filter(
     (test) => problems.some((item) => item.test === test && item.problem.reason === "needs_control")
@@ -43495,8 +43503,9 @@ async function delegate(workspace2, stage, subject, options3) {
   let usage2 = {};
   let attempted = false;
   const timeoutSeconds = options3.timeoutSeconds ?? (execution ? Math.max(1, execution.clock.remainingSeconds) : defaultTimeoutSeconds);
-  const maxRounds = run2 ? 1 : 2;
+  const maxRounds = run2 ? 1 : 3;
   let rejected = [];
+  let attempts = 0;
   for (let round = 1; round <= maxRounds; round++) {
     try {
       const executable = harness === "pi" ? options3.pi ?? "pi" : options3.claude ?? "claude";
@@ -43521,6 +43530,7 @@ async function delegate(workspace2, stage, subject, options3) {
         rejected
       );
       attempted = true;
+      attempts = round;
       const result = await launchWorker(executable, args, {
         cwd: workspace2,
         prompt: instructions,
@@ -43552,7 +43562,8 @@ async function delegate(workspace2, stage, subject, options3) {
   if (reportedSubject && !subjectMatches(reportedSubject, subject))
     failure = new Error(`Worker response names ${reportedSubject}, not ${subject}`);
   const cleanup2 = run2 && browser ? await closeBrowser(workspace2, run2.browser_session, options3.playwright ?? "playwright-cli") : null;
-  const extra = [...cleanup2 ? [cleanup2] : [], ...run2 ? [resumeReason(subject)] : []];
+  const replanned = attempts > 1 && !run2 ? [`Planning ran ${attempts} times: an earlier draft had too few tests and was not saved as the plan.`] : [];
+  const extra = [...cleanup2 ? [cleanup2] : [], ...run2 ? [resumeReason(subject)] : [], ...replanned];
   const receipt = (verified, refusal) => {
     if (verified && (!failure || failure instanceof InvalidPiResponse))
       return {

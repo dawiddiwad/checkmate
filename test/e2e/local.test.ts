@@ -8605,3 +8605,55 @@ test('Resume an interrupted run whose remaining tests only read data — no deci
 	assert.doesNotMatch(resumed.output, /Actions may have occurred/, resumed.output)
 	assert.notEqual(resumed.body.status, 'needs_decision', resumed.output)
 })
+
+test('A plan whose second attempt still has tests for fewer than half of its criteria is not saved.', async (t) => {
+	const workspace = directory(t)
+	const { chmodSync, copyFileSync, mkdirSync } = await import('node:fs')
+	const { delimiter } = await import('node:path')
+	const bin = join(workspace, 'bin')
+	mkdirSync(bin)
+	copyFileSync(join(root, 'test/e2e/delegate-host.mjs'), join(bin, 'claude'))
+	chmodSync(join(bin, 'claude'), 0o755)
+	const env = {
+		...process.env,
+		PATH: `${bin}${delimiter}${process.env.PATH}`,
+		CHECKMATE_ACTOR: 'oracle',
+		CHECKMATE_HARNESS: 'claude',
+		QA_STAGE: 'setup',
+		QA_LIE: '0',
+	}
+	const ok = async (args: string[]) => {
+		const result = await inputCommand(workspace, env, '', ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	await ok([
+		'target',
+		'open',
+		'shop',
+		'--entry-point',
+		'web:url:Shop HTTP API.',
+		'--capabilities',
+		'http',
+		'--operations',
+		'read_catalog',
+	])
+	await ok(['delegate', 'setup', 'shop', '--allow', 'Read'])
+	writeFileSync(
+		join(workspace, 'ticket.md'),
+		'# Ticket\n\n1. The quote is 240.\n2. The list is newest first.\n3. The title is trimmed.\n'
+	)
+	await ok(['plan', 'open', 'ticket', '--target', 'shop@1', '--objective', 'Check.', '--source', 'ticket.md'])
+	const requirements = [
+		{ id: 'R1', text: 'The quote is 240.', source: 'ticket.md' },
+		{ id: 'R2', text: 'The list is newest first.', source: 'ticket.md' },
+		{ id: 'R3', text: 'The title is trimmed.', source: 'ticket.md' },
+	]
+	const empty = { requirements, tests: [], gaps: [] }
+	const first = await inputCommand(workspace, env, JSON.stringify(empty), 'plan', 'save', 'ticket')
+	assert.equal(first.code, 1, first.output)
+	const second = await inputCommand(workspace, env, JSON.stringify(empty), 'plan', 'save', 'ticket')
+	assert.equal(second.code, 1, second.output)
+	assert.match(second.output, /did not produce tests after two attempts/)
+	assert.equal((await ok(['query', 'SELECT count(*) AS n FROM plan_revisions'])).rows[0].n, 0)
+})

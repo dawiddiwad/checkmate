@@ -1119,8 +1119,10 @@ export async function delegate(
 	const timeoutSeconds =
 		options.timeoutSeconds ?? (execution ? Math.max(1, execution.clock.remainingSeconds) : defaultTimeoutSeconds)
 	// A plan or revise stage gets one corrective round when its save is refused. The refusal reasons go into the prompt.
-	const maxRounds = run ? 1 : 2
+	// A plan gets its first attempt, one corrective round, and one fresh attempt when the saved draft has too few tests.
+	const maxRounds = run ? 1 : 3
 	let rejected: string[] = []
+	let attempts = 0
 	for (let round = 1; round <= maxRounds; round++) {
 		try {
 			const executable = harness === 'pi' ? (options.pi ?? 'pi') : (options.claude ?? 'claude')
@@ -1148,6 +1150,7 @@ export async function delegate(
 				rejected
 			)
 			attempted = true
+			attempts = round
 			const result = await launchWorker(executable, args, {
 				cwd: workspace,
 				prompt: instructions,
@@ -1185,7 +1188,11 @@ export async function delegate(
 		run && browser
 			? await closeBrowser(workspace, run.browser_session, options.playwright ?? 'playwright-cli')
 			: null
-	const extra = [...(cleanup ? [cleanup] : []), ...(run ? [resumeReason(subject)] : [])]
+	const replanned =
+		attempts > 1 && !run
+			? [`Planning ran ${attempts} times: an earlier draft had too few tests and was not saved as the plan.`]
+			: []
+	const extra = [...(cleanup ? [cleanup] : []), ...(run ? [resumeReason(subject)] : []), ...replanned]
 	const receipt = (verified: Verified | null, refusal: string | null): DelegateResponse => {
 		if (verified && (!failure || failure instanceof InvalidPiResponse))
 			return {

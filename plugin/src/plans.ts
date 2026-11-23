@@ -333,6 +333,14 @@ function requireChangedChecks(store: Store, plan: Plan, previous: Plan | undefin
 		softProblems(test, plan.requirements).map((problem) => ({ test, problem }))
 	)
 	const uncovered = uncoveredRequirements(plan)
+	const covered = plan.requirements.length - uncovered.length
+	const hasRevision = one(store, 'SELECT 1 FROM plan_revisions WHERE plan_id = ?', plan.planId)
+	if (!hasRevision && covered * 2 < plan.requirements.length && priorSoftRefusal(store, plan.planId))
+		requireWellFormed(
+			false,
+			`Planning did not produce tests after two attempts: ${covered} of ${plan.requirements.length} criteria have tests. Nothing was saved as the plan.`,
+			`Plan again: checkmate delegate plan ${plan.planId} --detach. Each criterion needs at least one test.`
+		)
 	if ((!problems.length && !uncovered.length) || priorSoftRefusal(store, plan.planId)) return
 	const controls = changed.filter((test) =>
 		problems.some((item) => item.test === test && item.problem.reason === 'needs_control')

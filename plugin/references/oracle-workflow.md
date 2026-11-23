@@ -7,13 +7,13 @@ description: Set up a QA target, plan or run tests, and inspect evidence with Ch
 
 Use the CLI in this package. Resolve `../../src/main.ts` from the directory of this skill. If that file is absent, use `../../dist/checkmate.js`. Run each command in the project workspace as `CHECKMATE_HARNESS=pi node "<absolute CLI path>" <command>`. Keep the provider, model, credentials, and tool policy in Pi.
 
-1. Run `target list` and `plan list`. Use an existing target or plan when it matches the request.
+1. Run `target list` and `plan list`. Use an existing plan only when the person names it or names its ticket. Use an existing target only when the person names it or it is the only target.
 2. For a new target, ask for the running URL. For a remote URL, confirm the environment and permitted operations. Run `setup --url <url>`. Give the confirmed `--environment` and `--operations` for production. Record only a reference for credentials.
    - When the person asks only for setup or a reachability check, stop after setup. Report the target, instance, reachability, and each `assumed:` line. Do not start a plan or a test.
    - Otherwise, setup is not the end. Report the target in one line, then go on to step 3 or 4 with the person's ticket or change.
 3. For a ticket, an acceptance-criteria file, or a request to test a change, run this step now. Run `plan open <planId> --target <targetId>@<revision> --objective "<objective>" --source <file>`. Then run `delegate plan <planId> --detach`. It starts the planner and returns at once. Then run `delegate wait plan <planId> --timeout 90`. While the reply says the planner is still running, run `delegate wait` again. Do not start the planner a second time. Show the open gaps. Ask the oracle for decisions.
 4. For an exploratory test, run `test <planId> --source <file> --allow Read --allow Bash`. Add `--level smoke|normal|deep` when the person selects a level. Run `explore wait <explorationId> --timeout 90`. If it still shows `recording`, run the same command again. When it shows `completed`, run `explore show <explorationId>`. Do not wait longer than 90 seconds in one command.
-5. For the stored tests of a plan on a build, do not use `test`. Run `status <planId>`. Use its `next` line, `run begin <runId> <planId>@<revision> --build <build> --partial ready_only`. Pick a new run ID. Then follow "Continue a run".
+5. For the stored tests of a plan on a build, do not use `test`. Run `status <planId>`. Use its `next` line, `run begin <runId> <planId>@<revision> --build <build> --partial ready_only`. Use the build that the person names. If the person names no build, ask for it. Do not invent a build name. Pick a new run ID. Then follow "Continue a run".
 
 ## Answer questions and revise the plan
 
@@ -29,8 +29,9 @@ Do not use `plan edit --patch` to answer a gap. Do not guess the JSON shape of a
 
 ## Add or remove a test directly
 
-Use this only when the person asks for a test change that no open gap covers. Send the JSON in a heredoc. Give `--rationale`.
+Use this only when the person asks for a test change that no open gap covers. When the person asks you to add, change, or drop a test, use this section. Do not run `run begin` or any test for it. A run starts only when the person asks to run tests. Send the JSON in a heredoc. Give `--rationale`.
 
+- A new test needs a requirement. If the plan has no requirement for it, add the requirement in the same JSON with `text` and `source`: `{"requirements": {"R7": {"text": "<the rule, one sentence>", "source": "conversation"}}, "tests": {...}}`. Do not read the schema files. Do not invent other field names.
 - Add a test. Use a new test ID. Give every field: `{"tests": {"T10": {"title": "...", "requirementIds": ["R5"], "capability": "browser", "operations": ["any_test_operation"], "dependsOn": [], "preconditions": [], "action": "...", "assertions": {"A1": {"check": "...", "checkKind": "deterministic"}}}}}`. Run `checkmate plan edit <planId>@<revision> --patch --rationale "<why>" <<'EOF'`, then the JSON, then `EOF`.
 - Remove a test and its requirement together: `{"requirements": {"R6": null}, "tests": {"T6": null}}`. A requirement without a test or an open gap is refused.
 - Each assertion check states the exact expected text or value, for example `The page shows "1 book".`

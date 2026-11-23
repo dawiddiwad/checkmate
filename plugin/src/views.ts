@@ -20,7 +20,7 @@ import {
 	shortName,
 } from './journal.ts'
 import { all, canonical, digest, one } from './store.ts'
-import { requireChoice, requireCondition, unverifiedAssertions } from './contracts.ts'
+import { requireChoice, requireCondition, uncoveredRequirements, unverifiedAssertions } from './contracts.ts'
 import { openPermissions } from './permissions.ts'
 import {
 	approvalState,
@@ -279,7 +279,10 @@ export function planList(store: Store): PlanListRow[] {
 
 // Deterministic checks without observe and expected. Code cannot verify them; a revise migrates them.
 export function legacyChecks(plan: Plan) {
-	return plan.tests.flatMap((test) => unverifiedAssertions(test, plan.requirements).map((id) => `${test.id}.${id}`))
+	return [
+		...plan.tests.flatMap((test) => unverifiedAssertions(test, plan.requirements).map((id) => `${test.id}.${id}`)),
+		...uncoveredRequirements(plan).map((id) => `${id} needs_test`),
+	]
 }
 
 export function planDetail(store: Store, planId: string, revision: number | null = null) {
@@ -2107,9 +2110,12 @@ export function runGate(store: Store, runId: string) {
 		!detail.result || errored.length > 0 || completion === 'operational_error' || completion === 'interrupted'
 	const coverage = detail.result?.coverage.status ?? null
 	const partial = coverage !== 'complete'
-	const unverified = plan.tests
-		.filter((test) => detail.request.selectedTestIds.includes(test.id))
-		.flatMap((test) => unverifiedAssertions(test, plan.requirements).map((id) => `${test.id}.${id}`))
+	const unverified = [
+		...plan.tests
+			.filter((test) => detail.request.selectedTestIds.includes(test.id))
+			.flatMap((test) => unverifiedAssertions(test, plan.requirements).map((id) => `${test.id}.${id}`)),
+		...uncoveredRequirements(plan).map((id) => `${id} needs_test`),
+	]
 	const verdict = failed.length
 		? { code: 1, state: 'defects' }
 		: couldNotTest

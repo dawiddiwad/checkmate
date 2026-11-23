@@ -7835,3 +7835,95 @@ test('A required field needs a check that leaves it empty for each field; the te
 	const status = await command(workspace, env, 'status', 'ticket')
 	assert.match(status.output, /T1\.A1 needs_required/)
 })
+
+test('An uncovered requirement and an oversized test are refused once, then saved and flagged by status.', async (t) => {
+	const workspace = directory(t)
+	const { chmodSync, copyFileSync, mkdirSync } = await import('node:fs')
+	const { delimiter } = await import('node:path')
+	const bin = join(workspace, 'bin')
+	mkdirSync(bin)
+	copyFileSync(join(root, 'test/e2e/delegate-host.mjs'), join(bin, 'claude'))
+	chmodSync(join(bin, 'claude'), 0o755)
+	const env = {
+		...process.env,
+		PATH: `${bin}${delimiter}${process.env.PATH}`,
+		CHECKMATE_ACTOR: 'oracle',
+		CHECKMATE_HARNESS: 'claude',
+		QA_STAGE: 'setup',
+		QA_LIE: '0',
+	}
+	const ok = async (args: string[]) => {
+		const result = await inputCommand(workspace, env, '', ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	await ok([
+		'target',
+		'open',
+		'shop',
+		'--entry-point',
+		'web:url:Shop HTTP API.',
+		'--capabilities',
+		'http',
+		'--operations',
+		'read_catalog',
+	])
+	await ok(['delegate', 'setup', 'shop', '--allow', 'Read'])
+	writeFileSync(join(workspace, 'ticket.md'), '# Ticket\n\n1. The quote is 240.\n2. The list is newest first.\n')
+	await ok(['plan', 'open', 'ticket', '--target', 'shop@1', '--objective', 'Check.', '--source', 'ticket.md'])
+	const assertion = (id: string, check: string) => ({
+		id,
+		check,
+		checkKind: 'deterministic',
+		observe: 'the value',
+		expected: 'x',
+	})
+	const quote = {
+		id: 'T1',
+		title: 'Quote',
+		requirementIds: ['R1'],
+		capability: 'http',
+		operations: ['read_catalog'],
+		dependsOn: [],
+		preconditions: [],
+		action: 'Read the quote.',
+		assertions: [assertion('A1', 'The quote is 240.')],
+	}
+	const candidate = {
+		requirements: [
+			{ id: 'R1', text: 'The quote is 240.', source: 'ticket.md' },
+			{ id: 'R2', text: 'The list is newest first.', source: 'ticket.md' },
+		],
+		tests: [quote],
+		gaps: [],
+	}
+	const first = await inputCommand(workspace, env, JSON.stringify(candidate), 'plan', 'save', 'ticket')
+	assert.equal(first.code, 1, first.output)
+	assert.match(first.output, /Requirement R2 has no test or gap/)
+	assert.match(first.output, /Skeleton for R2/)
+	const saved = await inputCommand(workspace, env, JSON.stringify(candidate), 'plan', 'save', 'ticket')
+	assert.equal(saved.code, 0, saved.output)
+	assert.match(saved.output, /1 of 2 criteria have tests; 1 still need tests/)
+	const status = await command(workspace, env, 'status', 'ticket')
+	assert.match(status.output, /R2 needs_test/)
+
+	const overRefused = await inputCommand(
+		workspace,
+		env,
+		JSON.stringify({
+			requirements: {
+				R3: { text: 'The title is trimmed.', source: 'ticket.md' },
+				R4: { text: 'The price has no tax.', source: 'ticket.md' },
+			},
+			tests: { T1: { requirementIds: ['R1', 'R2', 'R3', 'R4'] } },
+		}),
+		'plan',
+		'edit',
+		'ticket@1',
+		'--patch',
+		'--rationale',
+		'Widen T1.'
+	)
+	assert.equal(overRefused.code, 1, overRefused.output)
+	assert.match(overRefused.output, /serves 4 requirements/)
+})

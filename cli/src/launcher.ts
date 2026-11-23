@@ -483,6 +483,7 @@ function stagePrompt(stage: Stage, subject: string, execution: Execution | null,
 		return [
 			`Plan: ${subject}. Read the request with \`checkmate plan request ${subject}\`.`,
 			'If the request lists context sources, read them with the listed tools. Draft requirements only when the request has none.',
+			'A test serves one requirement, or a small related group of at most three. Do not put every criterion in one test: one failure would hide the rest.',
 			'Write one test for each requirement. A test is the default. A criterion that states a behaviour has an observable expectation: write it with the simplest kind that fits, for example a status code, contains or absent text, one-of, at least or at most, or type. Mark each with "metadata": { "type": "regression" }.',
 			'Raise a gap only for a criterion that is ambiguous, contradictory, or missing a fact that its test cannot proceed without. Name that one criterion and its requirement in the question, and state the exact question. Do not pick the value yourself. A gap that covers more than one requirement must name each requirement in its question, or you give each requirement its own gap.',
 			'Use agent_observation only for a visual or wording judgment that no value states. An order, a count, a status code, a presence, or an absence has a value: observe the first item, the count, the status, or the text, and use the deterministic kind. Do not raise a gap for a judgment.',

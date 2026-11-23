@@ -11635,6 +11635,7 @@ function pageOnlyStateChange(test) {
   const changes = /\b(add|apply|clear|delete|remove|save|update)\b/i.test(test.action);
   return changes && test.assertions.length > 0 && test.assertions.every((assertion) => assertion.observeFrom === "page");
 }
+var maxRequirementsPerTest = 3;
 function requiredFieldCount(text2) {
   const list3 = text2.match(/\(([^)]*)\)/)?.[1];
   if (list3) return list3.split(/,|\band\b/i).filter((part) => part.trim()).length;
@@ -11651,6 +11652,11 @@ function missingOmitChecks(test, requirements) {
   ).length;
   return omits < fields;
 }
+function uncoveredRequirements(plan) {
+  return plan.requirements.filter(
+    (requirement) => !plan.tests.some((test) => test.requirementIds.includes(requirement.id)) && !plan.gaps.some((gap) => gap.requirementIds.includes(requirement.id))
+  ).map((requirement) => requirement.id);
+}
 function softProblems(test, requirements) {
   const problems = [];
   const refusal = uncontrolledRefusal(test);
@@ -11660,6 +11666,12 @@ function softProblems(test, requirements) {
   for (const assertion of test.assertions)
     if (rangeWithoutInput(assertion.check))
       problems.push({ id: assertion.id, reason: "needs_input", check: assertion.check });
+  if (test.requirementIds.length > maxRequirementsPerTest)
+    problems.push({
+      id: test.assertions[0]?.id ?? "",
+      reason: "needs_split",
+      check: test.requirementIds.join(", ")
+    });
   if (missingOmitChecks(test, requirements))
     problems.push({ id: test.assertions[0]?.id ?? "", reason: "needs_required", check: "a required field" });
   return problems;
@@ -11766,12 +11778,6 @@ function planCheck(value2) {
         `Add an assertion to ${test.id}, for example {"id": "A1", "check": "<expected result>", "checkKind": "deterministic"}. If the expected result is unknown, record an open blocking gap for ${test.id}.`
       );
   }
-  for (const requirement of plan.requirements)
-    requireWellFormed(
-      plan.tests.some((test) => test.requirementIds.includes(requirement.id)) || plan.gaps.some((gap) => gap.requirementIds.includes(requirement.id)),
-      `Requirement ${requirement.id} has no test or gap`,
-      `Add a test whose requirementIds include ${requirement.id}. A test that is not ready still counts. Example, added to the tests: {"id": "T9", "title": "<what the test checks>", "requirementIds": ["${requirement.id}"], "capability": "<a target capability>", "operations": ["<an allowed operation>"], "dependsOn": [], "preconditions": [], "action": "<the step>", "assertions": [{"id": "A1", "check": "<the expected text>", "checkKind": "deterministic", "observe": "<what the page or API shows>", "expected": "<the value>"}]}. Open a gap for ${requirement.id} only when a fact is missing that the test cannot proceed without. Remove the requirement if the ticket does not state it.`
-    );
   requireWellFormed(same(plan.coverage, planCoverage(plan)), "Plan coverage is inconsistent");
   return plan;
 }
@@ -13234,7 +13240,9 @@ var softRefusalTexts = [
   "positive control",
   "reads it from the source",
   "names no input value",
-  "covers a required field"
+  "covers a required field",
+  "has no test or gap",
+  "serves"
 ];
 function priorSoftRefusal(store, planId) {
   const last = one(
@@ -13255,6 +13263,8 @@ function softReason(test, problem) {
     return `Test ${test.id} expects a refusal (${problem.check}) but has no positive control: nothing shows that the same request succeeds.`;
   if (problem.reason === "needs_source_check")
     return `Test ${test.id} changes state ("${test.action}") but no check reads it from the source.`;
+  if (problem.reason === "needs_split")
+    return `Test ${test.id} serves ${problem.check.split(", ").length} requirements (${problem.check}): a test serves one requirement or a group of at most three.`;
   if (problem.reason === "needs_required")
     return `Test ${test.id} covers a required field but has no check that leaves each required field empty and names the refusal.`;
   return `Check ${test.id}.${problem.id} states a range but names no input value: "${problem.check}"`;
@@ -13294,20 +13304,30 @@ function requireChangedChecks(store, plan, previous) {
   const before = new Map((previous?.tests ?? []).map((test) => [test.id, test]));
   const changed = plan.tests.filter((test) => {
     const old = before.get(test.id);
-    return !old || old.action !== test.action || canonical(old.assertions) !== canonical(test.assertions);
+    return !old || old.action !== test.action || canonical(old.assertions) !== canonical(test.assertions) || canonical(old.requirementIds) !== canonical(test.requirementIds);
   });
   const problems = changed.flatMap(
     (test) => softProblems(test, plan.requirements).map((problem) => ({ test, problem }))
   );
-  if (!problems.length || priorSoftRefusal(store, plan.planId)) return;
+  const uncovered = uncoveredRequirements(plan);
+  if (!problems.length && !uncovered.length || priorSoftRefusal(store, plan.planId)) return;
   const controls = changed.filter(
     (test) => problems.some((item) => item.test === test && item.problem.reason === "needs_control")
   );
-  requireWellFormed(
-    false,
-    problems.map((item) => softReason(item.test, item.problem)).join(" "),
-    controls.length ? `Corrected test${controls.length > 1 ? "s" : ""}, with the control first: ${controls.map((test) => JSON.stringify(correctedTest(test))).join(" ")} Save again. A test that still lacks a control is saved as not ready: plan show names it.` : "Correct each named check and save again. A check that still breaks the rule is saved as not ready: plan show names it."
-  );
+  const reasons2 = [
+    ...problems.map((item) => softReason(item.test, item.problem)),
+    ...uncovered.length ? [`Requirement ${uncovered.join(", ")} has no test or gap.`] : []
+  ];
+  const corrections = [
+    ...controls.length ? [
+      `Corrected test${controls.length > 1 ? "s" : ""}, with the control first: ${controls.map((test) => JSON.stringify(correctedTest(test))).join(" ")}`
+    ] : [],
+    ...uncovered.map(
+      (id2) => `Skeleton for ${id2}: {"id": "T${id2.replace(/\D/g, "")}", "title": "<what the test checks>", "requirementIds": ["${id2}"], "capability": "<a target capability>", "operations": ["<an allowed operation>"], "dependsOn": [], "preconditions": [], "action": "<the step>", "assertions": [{"id": "A1", "check": "<${id2} as one checkable value>", "checkKind": "deterministic", "observe": "<what is observed>", "expected": "<value>"}]}`
+    ),
+    "Save again. A check or requirement that still breaks the rule is saved as not ready: plan show names it."
+  ];
+  requireWellFormed(false, reasons2.join(" "), corrections.join(" "));
 }
 function checkedRevision(store, draft) {
   const plan = planCheck(derivePlan(draft));
@@ -13321,7 +13341,11 @@ function checkedRevision(store, draft) {
 }
 function revisionChange(plan, sha256) {
   const blockers = plan.gaps.filter((gap) => gap.status === "open" && gap.severity === "blocking");
-  const warnings = dependencyWarnings(plan);
+  const missing = uncoveredRequirements(plan);
+  const coverage2 = missing.length ? [
+    `${plan.requirements.length - missing.length} of ${plan.requirements.length} criteria have tests; ${missing.length} still need tests: run checkmate delegate revise ${plan.planId}`
+  ] : [];
+  const warnings = [...dependencyWarnings(plan), ...coverage2];
   return {
     reply: {
       status: blockers.length ? "needs_decision" : "completed",
@@ -13700,7 +13724,8 @@ function candidateRequirements(request2, drafted, criteria) {
   const sources = request2.context?.sources ?? [];
   requireWellFormed(
     drafted?.length,
-    `The plan request has no requirements. Draft them from the context sources: ${sources.join(", ")}`
+    `The plan request has no requirements. Draft them from the context sources: ${sources.join(", ")}`,
+    `Send the requirements as the numbered criteria of the source, for example: ${JSON.stringify(criteria.slice(0, 3).map((text2, i) => ({ id: `R${i + 1}`, text: text2, source: sources[0] })))}`
   );
   index(drafted, "id", "requirement");
   requireWellFormed(
@@ -20781,7 +20806,10 @@ function planList(store) {
   return [...drafted, ...requested].sort((a, b) => a.planId.localeCompare(b.planId));
 }
 function legacyChecks(plan) {
-  return plan.tests.flatMap((test) => unverifiedAssertions(test, plan.requirements).map((id2) => `${test.id}.${id2}`));
+  return [
+    ...plan.tests.flatMap((test) => unverifiedAssertions(test, plan.requirements).map((id2) => `${test.id}.${id2}`)),
+    ...uncoveredRequirements(plan).map((id2) => `${id2} needs_test`)
+  ];
 }
 function planDetail(store, planId, revision2 = null) {
   const selected = planRevision(store, planId, revision2);
@@ -22246,7 +22274,10 @@ function runGate(store, runId) {
   const couldNotTest = !detail.result || errored.length > 0 || completion === "operational_error" || completion === "interrupted";
   const coverage2 = detail.result?.coverage.status ?? null;
   const partial = coverage2 !== "complete";
-  const unverified = plan.tests.filter((test) => detail.request.selectedTestIds.includes(test.id)).flatMap((test) => unverifiedAssertions(test, plan.requirements).map((id2) => `${test.id}.${id2}`));
+  const unverified = [
+    ...plan.tests.filter((test) => detail.request.selectedTestIds.includes(test.id)).flatMap((test) => unverifiedAssertions(test, plan.requirements).map((id2) => `${test.id}.${id2}`)),
+    ...uncoveredRequirements(plan).map((id2) => `${id2} needs_test`)
+  ];
   const verdict = failed2.length ? { code: 1, state: "defects" } : couldNotTest ? { code: 2, state: "could_not_test" } : openGaps.length ? { code: 3, state: "blocked_on_oracle" } : partial ? { code: 2, state: "partial_coverage" } : unverified.length ? { code: 2, state: "unverified_checks" } : { code: 0, state: "passed" };
   const judgedByAgent = detail.tests.flatMap((test) => test.assertions).filter((assertion) => assertion.checkKind === "agent_observation" && assertion.result !== null).length;
   return { ...verdict, failed: failed2, errored, openGaps, completion, coverage: coverage2, unverified, judgedByAgent };
@@ -42878,6 +42909,7 @@ function stagePrompt(stage, subject, execution, workspace2) {
     return [
       `Plan: ${subject}. Read the request with \`checkmate plan request ${subject}\`.`,
       "If the request lists context sources, read them with the listed tools. Draft requirements only when the request has none.",
+      "A test serves one requirement, or a small related group of at most three. Do not put every criterion in one test: one failure would hide the rest.",
       'Write one test for each requirement. A test is the default. A criterion that states a behaviour has an observable expectation: write it with the simplest kind that fits, for example a status code, contains or absent text, one-of, at least or at most, or type. Mark each with "metadata": { "type": "regression" }.',
       "Raise a gap only for a criterion that is ambiguous, contradictory, or missing a fact that its test cannot proceed without. Name that one criterion and its requirement in the question, and state the exact question. Do not pick the value yourself. A gap that covers more than one requirement must name each requirement in its question, or you give each requirement its own gap.",
       "Use agent_observation only for a visual or wording judgment that no value states. An order, a count, a status code, a presence, or an absence has a value: observe the first item, the count, the status, or the text, and use the deterministic kind. Do not raise a gap for a judgment.",

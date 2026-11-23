@@ -7,7 +7,7 @@ import { patchRules, requireHeldRules } from './rules.ts'
 import { operationAllowed, readinessHint, targetWebUrl } from './targets.ts'
 import { dataSummary, requireDataFor } from './resets.ts'
 import { all, canonical, completed, digest, execute, one, ulid, write } from './store.ts'
-import { softProblems } from './contracts.ts'
+import { softProblems, uncoveredRequirements } from './contracts.ts'
 import type { PlanDraft, Test } from './contracts.ts'
 import {
 	approvalPolicy,
@@ -254,6 +254,8 @@ const softRefusalTexts = [
 	'reads it from the source',
 	'names no input value',
 	'covers a required field',
+	'has no test or gap',
+	'serves',
 ]
 
 function priorSoftRefusal(store: Store, planId: string) {
@@ -276,6 +278,8 @@ function softReason(test: Plan['tests'][number], problem: ReturnType<typeof soft
 		return `Test ${test.id} expects a refusal (${problem.check}) but has no positive control: nothing shows that the same request succeeds.`
 	if (problem.reason === 'needs_source_check')
 		return `Test ${test.id} changes state ("${test.action}") but no check reads it from the source.`
+	if (problem.reason === 'needs_split')
+		return `Test ${test.id} serves ${problem.check.split(', ').length} requirements (${problem.check}): a test serves one requirement or a group of at most three.`
 	if (problem.reason === 'needs_required')
 		return `Test ${test.id} covers a required field but has no check that leaves each required field empty and names the refusal.`
 	return `Check ${test.id}.${problem.id} states a range but names no input value: "${problem.check}"`
@@ -318,22 +322,38 @@ function requireChangedChecks(store: Store, plan: Plan, previous: Plan | undefin
 	const before = new Map((previous?.tests ?? []).map((test) => [test.id, test]))
 	const changed = plan.tests.filter((test) => {
 		const old = before.get(test.id)
-		return !old || old.action !== test.action || canonical(old.assertions) !== canonical(test.assertions)
+		return (
+			!old ||
+			old.action !== test.action ||
+			canonical(old.assertions) !== canonical(test.assertions) ||
+			canonical(old.requirementIds) !== canonical(test.requirementIds)
+		)
 	})
 	const problems = changed.flatMap((test) =>
 		softProblems(test, plan.requirements).map((problem) => ({ test, problem }))
 	)
-	if (!problems.length || priorSoftRefusal(store, plan.planId)) return
+	const uncovered = uncoveredRequirements(plan)
+	if ((!problems.length && !uncovered.length) || priorSoftRefusal(store, plan.planId)) return
 	const controls = changed.filter((test) =>
 		problems.some((item) => item.test === test && item.problem.reason === 'needs_control')
 	)
-	requireWellFormed(
-		false,
-		problems.map((item) => softReason(item.test, item.problem)).join(' '),
-		controls.length
-			? `Corrected test${controls.length > 1 ? 's' : ''}, with the control first: ${controls.map((test) => JSON.stringify(correctedTest(test))).join(' ')} Save again. A test that still lacks a control is saved as not ready: plan show names it.`
-			: 'Correct each named check and save again. A check that still breaks the rule is saved as not ready: plan show names it.'
-	)
+	const reasons = [
+		...problems.map((item) => softReason(item.test, item.problem)),
+		...(uncovered.length ? [`Requirement ${uncovered.join(', ')} has no test or gap.`] : []),
+	]
+	const corrections = [
+		...(controls.length
+			? [
+					`Corrected test${controls.length > 1 ? 's' : ''}, with the control first: ${controls.map((test) => JSON.stringify(correctedTest(test))).join(' ')}`,
+				]
+			: []),
+		...uncovered.map(
+			(id) =>
+				`Skeleton for ${id}: {"id": "T${id.replace(/\D/g, '')}", "title": "<what the test checks>", "requirementIds": ["${id}"], "capability": "<a target capability>", "operations": ["<an allowed operation>"], "dependsOn": [], "preconditions": [], "action": "<the step>", "assertions": [{"id": "A1", "check": "<${id} as one checkable value>", "checkKind": "deterministic", "observe": "<what is observed>", "expected": "<value>"}]}`
+		),
+		'Save again. A check or requirement that still breaks the rule is saved as not ready: plan show names it.',
+	]
+	requireWellFormed(false, reasons.join(' '), corrections.join(' '))
 }
 
 function checkedRevision(store: Store, draft: PlanDraft) {
@@ -349,7 +369,13 @@ function checkedRevision(store: Store, draft: PlanDraft) {
 
 function revisionChange(plan: Plan, sha256: string): Change {
 	const blockers = plan.gaps.filter((gap) => gap.status === 'open' && gap.severity === 'blocking')
-	const warnings = dependencyWarnings(plan)
+	const missing = uncoveredRequirements(plan)
+	const coverage = missing.length
+		? [
+				`${plan.requirements.length - missing.length} of ${plan.requirements.length} criteria have tests; ${missing.length} still need tests: run checkmate delegate revise ${plan.planId}`,
+			]
+		: []
+	const warnings = [...dependencyWarnings(plan), ...coverage]
 	return {
 		reply: {
 			status: blockers.length ? 'needs_decision' : 'completed',
@@ -804,7 +830,8 @@ function candidateRequirements(request: PlanRequest, drafted: Plan['requirements
 	const sources = request.context?.sources ?? []
 	requireWellFormed(
 		drafted?.length,
-		`The plan request has no requirements. Draft them from the context sources: ${sources.join(', ')}`
+		`The plan request has no requirements. Draft them from the context sources: ${sources.join(', ')}`,
+		`Send the requirements as the numbered criteria of the source, for example: ${JSON.stringify(criteria.slice(0, 3).map((text, i) => ({ id: `R${i + 1}`, text, source: sources[0] })))}`
 	)
 	index(drafted, 'id', 'requirement')
 	requireWellFormed(

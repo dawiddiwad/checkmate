@@ -335,6 +335,9 @@ export function pageOnlyStateChange(test: { action: string; assertions: Array<{ 
 	)
 }
 
+// A test serves one requirement or a small related group. One test with many requirements hides which one fails.
+const maxRequirementsPerTest = 3
+
 // A criterion that names required fields needs one check per field that leaves that field empty and names the refusal.
 // The fields are the parenthesised list, or the parts joined by "and". A test with fewer such checks than fields is flagged.
 function requiredFieldCount(text: string) {
@@ -356,11 +359,22 @@ export function missingOmitChecks(test: Plan['tests'][number], requirements: Pla
 	return omits < fields
 }
 
+// A requirement with no test and no gap is not covered. Save-then-flag: the plan saves, and status names the requirement.
+export function uncoveredRequirements(plan: Pick<Plan, 'requirements' | 'tests' | 'gaps'>) {
+	return plan.requirements
+		.filter(
+			(requirement) =>
+				!plan.tests.some((test) => test.requirementIds.includes(requirement.id)) &&
+				!plan.gaps.some((gap) => gap.requirementIds.includes(requirement.id))
+		)
+		.map((requirement) => requirement.id)
+}
+
 // The soft rules refuse a first save and save the test as not ready on the next attempt. Each names its reason.
 export function softProblems(test: Plan['tests'][number], requirements: Plan['requirements']) {
 	const problems: Array<{
 		id: string
-		reason: 'needs_control' | 'needs_source_check' | 'needs_input' | 'needs_required'
+		reason: 'needs_control' | 'needs_source_check' | 'needs_input' | 'needs_required' | 'needs_split'
 		check: string
 	}> = []
 	const refusal = uncontrolledRefusal(test)
@@ -370,6 +384,12 @@ export function softProblems(test: Plan['tests'][number], requirements: Plan['re
 	for (const assertion of test.assertions)
 		if (rangeWithoutInput(assertion.check))
 			problems.push({ id: assertion.id, reason: 'needs_input', check: assertion.check })
+	if (test.requirementIds.length > maxRequirementsPerTest)
+		problems.push({
+			id: test.assertions[0]?.id ?? '',
+			reason: 'needs_split',
+			check: test.requirementIds.join(', '),
+		})
 	if (missingOmitChecks(test, requirements))
 		problems.push({ id: test.assertions[0]?.id ?? '', reason: 'needs_required', check: 'a required field' })
 	return problems
@@ -481,13 +501,6 @@ export function planCheck(value: unknown): Plan {
 				`Add an assertion to ${test.id}, for example {"id": "A1", "check": "<expected result>", "checkKind": "deterministic"}. If the expected result is unknown, record an open blocking gap for ${test.id}.`
 			)
 	}
-	for (const requirement of plan.requirements)
-		requireWellFormed(
-			plan.tests.some((test) => test.requirementIds.includes(requirement.id)) ||
-				plan.gaps.some((gap) => gap.requirementIds.includes(requirement.id)),
-			`Requirement ${requirement.id} has no test or gap`,
-			`Add a test whose requirementIds include ${requirement.id}. A test that is not ready still counts. Example, added to the tests: {"id": "T9", "title": "<what the test checks>", "requirementIds": ["${requirement.id}"], "capability": "<a target capability>", "operations": ["<an allowed operation>"], "dependsOn": [], "preconditions": [], "action": "<the step>", "assertions": [{"id": "A1", "check": "<the expected text>", "checkKind": "deterministic", "observe": "<what the page or API shows>", "expected": "<the value>"}]}. Open a gap for ${requirement.id} only when a fact is missing that the test cannot proceed without. Remove the requirement if the ticket does not state it.`
-		)
 	requireWellFormed(same(plan.coverage, planCoverage(plan)), 'Plan coverage is inconsistent')
 	return plan
 }

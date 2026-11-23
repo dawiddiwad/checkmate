@@ -673,7 +673,7 @@ test(
 				testId: 'T1',
 				assertionId: 'A1',
 				result: 'passed',
-				observed: marker,
+				observed: `${marker} The confirmation shows 400 PLN.`,
 				evidence: [{ text: marker }],
 			})
 			checkAssertion(opened, actor, {
@@ -693,7 +693,7 @@ test(
 			})
 			return (evidence.data.evidenceIds as string[])[0]
 		}
-		record('old-run', 'build-old', 'OLD_BUILD_EVIDENCE must not appear in the selected report.')
+		record('old-run', 'build-old', 'OLD_BUILD_EVIDENCE totalPLN=240 must not appear in the selected report.')
 		const evidenceId = record('current-run', 'build-current', 'CURRENT_BUILD_EVIDENCE: HTTP 200, totalPLN=240.')
 		closeStore(opened)
 		const { url, server } = await startUi(t, workspace)

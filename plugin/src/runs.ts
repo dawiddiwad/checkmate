@@ -608,6 +608,12 @@ export function checkAssertion(store: Store, actor: string | undefined, input: C
 		const result = requireChoice(input.result, assertionResults, 'result (--result)')
 		const observed = optionalText(input.observed, 'observation (--observed)')
 		const reason = optionalText(input.reason, 'reason (--reason)')
+		const unseen = (assertion.check.match(/\d+(\.\d+)?/g) ?? []).filter((value) => !observed?.includes(value))
+		requireCondition(
+			result !== 'passed' || !unseen.length,
+			`The observed value does not show ${unseen.join(', ')}, which the check names.`,
+			'Record failed when the observed value differs from the check. Record passed only when the observed value shows each value of the check.'
+		)
 		files = evidenceFiles(store, input.runId, `${test.id}-${assertion.id}`, input.evidence)
 		if (result !== 'not_checked')
 			requireWellFormed(
@@ -693,6 +699,11 @@ export function closeTest(store: Store, actor: string | undefined, input: CloseI
 			requireWellFormed(
 				outcome === 'error' || !input.evidence?.length,
 				'--evidence applies only with --outcome error'
+			)
+			requireCondition(
+				outcome !== 'error' || input.evidence?.length || recorded.length,
+				'An error close needs the output of the failed tool.',
+				`Run the failed tool once. Then close with --outcome error --reason "<cause>" --evidence - and send the tool output on standard input.`
 			)
 			files = evidenceFiles(store, input.runId, test.id, input.evidence)
 		}
@@ -864,6 +875,11 @@ function finish(store: Store, actor: string | undefined, input: FinishInput) {
 		const selected = run.request.selectedTestIds
 		const attempt = currentAttempt(store, input.runId)
 		const unclosed = selected.filter((id) => !runOutcomes(store, input.runId).has(id))
+		requireCondition(
+			completion !== 'operational_error' || !unclosed.length,
+			`Selected tests are not closed: ${unclosed.join(', ')}. Finish with operational_error only after every test is closed.`,
+			'Run each open test. Close it with its result, or with --outcome error --reason "<cause>" --evidence - and the output of the failed tool. For a deadline or a stopped host, finish as interrupted with --cause.'
+		)
 		if (completion === 'completed')
 			requireCondition(
 				!unclosed.length,

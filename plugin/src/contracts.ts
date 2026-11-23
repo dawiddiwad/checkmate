@@ -280,6 +280,11 @@ export function derivePlan(draft: PlanDraft): Plan {
 	return { ...draft, requirements, tests, coverage: planCoverage({ ...draft, requirements, tests }) }
 }
 
+export function compoundCheck(check: string) {
+	const clauses = check.split(/\band\b|;/i)
+	return clauses.filter((clause) => /\d/.test(clause)).length > 1
+}
+
 export function planCheck(value: unknown): Plan {
 	const plan = validate('plan', value)
 	const requirements = index(plan.requirements, 'id', 'requirement')
@@ -335,6 +340,12 @@ export function planCheck(value: unknown): Plan {
 		references(test.gapIds, gaps, `gap in test ${test.id}`)
 		references(localReferences(test.dependsOn), tests, `dependency of test ${test.id}`)
 		index(test.assertions, 'id', `assertion in test ${test.id}`)
+		for (const assertion of test.assertions)
+			requireWellFormed(
+				!compoundCheck(assertion.check),
+				`Assertion ${test.id}.${assertion.id} checks more than one value.`,
+				`Split it into one assertion for each value, for example {"id": "A2", "check": "<second expected value>", "checkKind": "deterministic"}. Keep one expected value in each check.`
+			)
 		requireWellFormed(
 			same(
 				test.gapIds,

@@ -302,6 +302,7 @@ export function childArgs(context: ChildContext, own: string[], allow: string[] 
 		const args = own[0] === '--resume' ? ['--session', ...own.slice(1)] : own
 		return piArgs(
 			[
+				'--no-extensions',
 				...(context.piArgs ?? []),
 				'--no-context-files',
 				'--no-skills',

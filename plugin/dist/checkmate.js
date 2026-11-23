@@ -9589,6 +9589,7 @@ function childArgs(context, own, allow = []) {
     const args = own[0] === "--resume" ? ["--session", ...own.slice(1)] : own;
     return piArgs(
       [
+        "--no-extensions",
         ...context.piArgs ?? [],
         "--no-context-files",
         "--no-skills",
@@ -10687,6 +10688,10 @@ function derivePlan(draft) {
   const requirements = draft.requirements.map(withoutEmptyMetadata);
   return { ...draft, requirements, tests, coverage: planCoverage({ ...draft, requirements, tests }) };
 }
+function compoundCheck(check) {
+  const clauses = check.split(/\band\b|;/i);
+  return clauses.filter((clause) => /\d/.test(clause)).length > 1;
+}
 function planCheck(value2) {
   const plan = validate("plan", value2);
   const requirements = index(plan.requirements, "id", "requirement");
@@ -10741,6 +10746,12 @@ function planCheck(value2) {
     references(test.gapIds, gaps, `gap in test ${test.id}`);
     references(localReferences(test.dependsOn), tests, `dependency of test ${test.id}`);
     index(test.assertions, "id", `assertion in test ${test.id}`);
+    for (const assertion of test.assertions)
+      requireWellFormed(
+        !compoundCheck(assertion.check),
+        `Assertion ${test.id}.${assertion.id} checks more than one value.`,
+        `Split it into one assertion for each value, for example {"id": "A2", "check": "<second expected value>", "checkKind": "deterministic"}. Keep one expected value in each check.`
+      );
     requireWellFormed(
       same(
         test.gapIds,
@@ -13678,6 +13689,12 @@ function checkAssertion(store, actor, input) {
     const result = requireChoice(input.result, assertionResults, "result (--result)");
     const observed = optionalText(input.observed, "observation (--observed)");
     const reason = optionalText(input.reason, "reason (--reason)");
+    const unseen = (assertion.check.match(/\d+(\.\d+)?/g) ?? []).filter((value2) => !observed?.includes(value2));
+    requireCondition(
+      result !== "passed" || !unseen.length,
+      `The observed value does not show ${unseen.join(", ")}, which the check names.`,
+      "Record failed when the observed value differs from the check. Record passed only when the observed value shows each value of the check."
+    );
     files2 = evidenceFiles(store, input.runId, `${test.id}-${assertion.id}`, input.evidence);
     if (result !== "not_checked")
       requireWellFormed(
@@ -13759,6 +13776,11 @@ function closeTest(store, actor, input) {
       requireWellFormed(
         outcome === "error" || !input.evidence?.length,
         "--evidence applies only with --outcome error"
+      );
+      requireCondition(
+        outcome !== "error" || input.evidence?.length || recorded2.length,
+        "An error close needs the output of the failed tool.",
+        `Run the failed tool once. Then close with --outcome error --reason "<cause>" --evidence - and send the tool output on standard input.`
       );
       files2 = evidenceFiles(store, input.runId, test.id, input.evidence);
     }
@@ -13919,6 +13941,11 @@ function finish(store, actor, input) {
     const selected = run2.request.selectedTestIds;
     const attempt = currentAttempt(store, input.runId);
     const unclosed = selected.filter((id2) => !runOutcomes(store, input.runId).has(id2));
+    requireCondition(
+      completion !== "operational_error" || !unclosed.length,
+      `Selected tests are not closed: ${unclosed.join(", ")}. Finish with operational_error only after every test is closed.`,
+      'Run each open test. Close it with its result, or with --outcome error --reason "<cause>" --evidence - and the output of the failed tool. For a deadline or a stopped host, finish as interrupted with --cause.'
+    );
     if (completion === "completed")
       requireCondition(
         !unclosed.length,
@@ -40508,6 +40535,7 @@ function stagePrompt(stage, subject, execution) {
       "If the request lists context sources, read them with the listed tools. Draft requirements only when the request has none.",
       "Write an open blocking gap for each vague term that changes an expected value, for example a threshold, a rounding step, or a scope word. Do not pick the value yourself.",
       'Plan regression tests only for existing rules that the sources state, with expected values from the sources. Mark each with "metadata": { "type": "regression" }.',
+      'Each assertion checks one expected value. Write one assertion for each value. Do not join two values with "and" or ";" in one check.',
       "Make each test create its own data or use a unique value such as qa-<runId>-<testId>. Do not rely on seed data.",
       "You can read the running application read-only (open a list page or send a GET) to check preconditions. Do not submit forms or change data.",
       `Save revision 1 with \`checkmate plan save ${subject}\` before 75% of the deadline is used. A plan with open gaps is a correct result. Do not run test actions.`
@@ -40571,7 +40599,7 @@ var finalCommand = {
   revise: "plan revise",
   execute: "run finish"
 };
-function prompt(stage, subject, workspace2, pluginRoot2, execution, timeoutSeconds, harness) {
+function prompt(stage, subject, workspace2, pluginRoot2, execution, timeoutSeconds, harness, round = 1) {
   const skill = join17(pluginRoot2, "skills", stage, "SKILL.md");
   const workflow = join17(pluginRoot2, "references", "workflow.md");
   const cliPath = join17(pluginRoot2, "dist", "checkmate.js");
@@ -40590,6 +40618,9 @@ function prompt(stage, subject, workspace2, pluginRoot2, execution, timeoutSecon
     `Workspace: ${workspace2}. Run Checkmate commands from this directory. Add \`--actor ${harness}:${stage}\` to each write.`,
     `\`checkmate <command>\` means \`${cliCommand} <command>\`.`,
     ...stagePrompt(stage, subject, execution),
+    ...round > 1 ? [
+      `Continuation ${round} of this run. An earlier worker stopped before every selected test was closed. Run checkmate run show ${subject} and continue with the tests that are still open. Do not repeat a closed test.`
+    ] : [],
     ...stage === "execute" ? [] : [`Deadline: ${timeoutSeconds} seconds from now (${deadline} UTC). Check the time with \`date -u\`.`],
     "Write to the database only through Checkmate commands. Do not ask the oracle. Do not wait for the oracle.",
     stage === "execute" ? "Do not change source code, project files, or the configuration of the application. Test data through the allowed operations and the declared reset are part of a test." : "Do not change source code or project files.",
@@ -40647,6 +40678,15 @@ function recordAttempt(store, stage, subject, harness, response, usage2, executi
     return false;
   }
 }
+function stillOpen(workspace2, runId) {
+  return withStore(workspace2, (store) => {
+    try {
+      return runClock(store, startedRun2(store, runId)).remainingSeconds > 60;
+    } catch {
+      return false;
+    }
+  });
+}
 async function delegate(workspace2, stage, subject, options3) {
   workspace2 = resolve9(workspace2);
   if (!stages.includes(stage)) refuse2(`Unknown stage: ${stage}. Use one of: ${stages.join(", ")}.`, "malformed");
@@ -40679,38 +40719,57 @@ async function delegate(workspace2, stage, subject, options3) {
   const browser = execution ? usesPlaywright(execution.profile) : false;
   const pluginRoot2 = options3.pluginRoot ?? defaultPluginRoot();
   const workerActor = `${harness}:${stage}`;
-  const timeoutSeconds = options3.timeoutSeconds ?? (execution ? Math.max(1, execution.clock.remainingSeconds) : defaultTimeoutSeconds);
   let claimed;
   let failure;
   let usage2 = {};
   let attempted = false;
-  try {
-    const executable = harness === "pi" ? options3.pi ?? "pi" : options3.claude ?? "claude";
-    const args = harness === "pi" ? resolvePiModelArgs(
-      executable,
-      piArgs(["--no-session", "--no-mcp", "--no-skills", "--tools", "read,bash"], env),
-      workspace2,
-      env
-    ) : workerArgs(pluginRoot2, options3.allowedTools, options3.claudeArgs);
-    const instructions = prompt(stage, subject, workspace2, pluginRoot2, execution, timeoutSeconds, harness);
-    attempted = true;
-    const result = await launchWorker(executable, args, {
-      cwd: workspace2,
-      prompt: instructions,
-      timeoutSeconds,
-      harness,
-      env: {
-        ...env,
-        CHECKMATE_ACTOR: workerActor,
-        ...run2 ? { PLAYWRIGHT_MCP_OUTPUT_DIR: join17(workspace2, ".checkmate", "tmp", subject) } : {}
-      }
-    });
-    claimed = result.response;
-    failure = result.failure;
-    usage2 = result.usage;
-  } catch (error) {
-    failure = workerFailure(error);
+  const usageCalls = [];
+  const maxRounds = run2 ? 3 : 1;
+  for (let round = 1; round <= maxRounds; round++) {
+    const clock2 = round === 1 || !run2 ? execution?.clock : withStore(workspace2, (store) => runClock(store, run2));
+    const timeoutSeconds = options3.timeoutSeconds ?? (clock2 ? Math.max(1, clock2.remainingSeconds) : defaultTimeoutSeconds);
+    try {
+      const executable = harness === "pi" ? options3.pi ?? "pi" : options3.claude ?? "claude";
+      const args = harness === "pi" ? resolvePiModelArgs(
+        executable,
+        piArgs(
+          ["--no-extensions", "--no-session", "--no-mcp", "--no-skills", "--tools", "read,bash"],
+          env
+        ),
+        workspace2,
+        env
+      ) : workerArgs(pluginRoot2, options3.allowedTools, options3.claudeArgs);
+      const instructions = prompt(
+        stage,
+        subject,
+        workspace2,
+        pluginRoot2,
+        execution,
+        timeoutSeconds,
+        harness,
+        round
+      );
+      attempted = true;
+      const result = await launchWorker(executable, args, {
+        cwd: workspace2,
+        prompt: instructions,
+        timeoutSeconds,
+        harness,
+        env: {
+          ...env,
+          CHECKMATE_ACTOR: workerActor,
+          ...run2 ? { PLAYWRIGHT_MCP_OUTPUT_DIR: join17(workspace2, ".checkmate", "tmp", subject) } : {}
+        }
+      });
+      claimed = result.response;
+      failure = result.failure;
+      usageCalls.push(result.usage);
+    } catch (error) {
+      failure = workerFailure(error);
+    }
+    if (failure || !run2 || !stillOpen(workspace2, subject)) break;
   }
+  usage2 = usageOf(usageCalls);
   const reportedSubject = claimed?.subject ?? (failure instanceof InvalidPiResponse ? failure.reportedSubject : void 0);
   if (reportedSubject && !subjectMatches(reportedSubject, subject))
     failure = new Error(`Worker response names ${reportedSubject}, not ${subject}`);

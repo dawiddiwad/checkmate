@@ -1378,6 +1378,31 @@ test('Run ready tests and report blocked tests — partial execution misreported
 		'ticket.md',
 	])
 	const common = { capability: 'http', operations: ['read_catalog'], dependsOn: [], preconditions: [] }
+	const compound = await inputCommand(
+		workspace,
+		env,
+		JSON.stringify({
+			requirements: [{ id: 'R1', text: 'The quote is 240.', source: 'ticket.md' }],
+			tests: [
+				{
+					...common,
+					id: 'T1',
+					title: 'Quote',
+					requirementIds: ['R1'],
+					action: 'Read the quote.',
+					assertions: [
+						{ id: 'A1', check: 'The quote is 240 and the refund is 30 days.', checkKind: 'deterministic' },
+					],
+				},
+			],
+			gaps: [],
+		}),
+		'plan',
+		'save',
+		'ticket'
+	)
+	assert.equal(compound.code, 1, compound.output)
+	assert.match(compound.output, /checks more than one value/)
 	await ok(['plan', 'save', 'ticket'], {
 		requirements: [
 			{ id: 'R1', text: 'The quote is 240.', source: 'ticket.md' },
@@ -1420,6 +1445,55 @@ test('Run ready tests and report blocked tests — partial execution misreported
 	assert.deepEqual(started.leftOut, [{ testId: 'T2', reason: 'blocked by G1' }])
 	const quote = await (await fetch(`${app.baseUrl}/quote?promotion=true&loyalty=true`)).json()
 	assert.equal(quote.totalPLN, 240)
+	const bareError = await inputCommand(
+		workspace,
+		env,
+		'',
+		'run',
+		'close',
+		'run-1',
+		'T1',
+		'--outcome',
+		'error',
+		'--reason',
+		'Browser did not open the page'
+	)
+	assert.equal(bareError.code, 1, bareError.output)
+	assert.match(bareError.output, /needs the output of the failed tool/)
+	const giveUp = await inputCommand(
+		workspace,
+		env,
+		'',
+		'run',
+		'finish',
+		'run-1',
+		'--completion',
+		'operational_error',
+		'--cleanup',
+		'not_applicable',
+		'--cleanup-reason',
+		'No test ran.'
+	)
+	assert.equal(giveUp.code, 1, giveUp.output)
+	assert.match(giveUp.output, /Selected tests are not closed: T1/)
+	const wrongValue = await inputCommand(
+		workspace,
+		env,
+		JSON.stringify(quote),
+		'run',
+		'check',
+		'run-1',
+		'T1',
+		'A1',
+		'--result',
+		'passed',
+		'--observed',
+		'Price: 300',
+		'--evidence',
+		'-'
+	)
+	assert.equal(wrongValue.code, 1, wrongValue.output)
+	assert.match(wrongValue.output, /does not show 240/)
 	const checked = await inputCommand(
 		workspace,
 		env,

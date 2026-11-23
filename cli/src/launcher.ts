@@ -434,6 +434,7 @@ function stagePrompt(stage: Stage, subject: string, execution: Execution | null)
 			'If the request lists context sources, read them with the listed tools. Draft requirements only when the request has none.',
 			'Write an open blocking gap for each vague term that changes an expected value, for example a threshold, a rounding step, or a scope word. Do not pick the value yourself.',
 			'Plan regression tests only for existing rules that the sources state, with expected values from the sources. Mark each with "metadata": { "type": "regression" }.',
+			'Each assertion checks one expected value. Write one assertion for each value. Do not join two values with "and" or ";" in one check.',
 			'Make each test create its own data or use a unique value such as qa-<runId>-<testId>. Do not rely on seed data.',
 			'You can read the running application read-only (open a list page or send a GET) to check preconditions. Do not submit forms or change data.',
 			`Save revision 1 with \`checkmate plan save ${subject}\` before 75% of the deadline is used. A plan with open gaps is a correct result. Do not run test actions.`,
@@ -522,7 +523,8 @@ function prompt(
 	pluginRoot: string,
 	execution: Execution | null,
 	timeoutSeconds: number,
-	harness: Harness
+	harness: Harness,
+	round = 1
 ) {
 	const skill = join(pluginRoot, 'skills', stage, 'SKILL.md')
 	const workflow = join(pluginRoot, 'references', 'workflow.md')
@@ -550,6 +552,11 @@ function prompt(
 		`Workspace: ${workspace}. Run Checkmate commands from this directory. Add \`--actor ${harness}:${stage}\` to each write.`,
 		`\`checkmate <command>\` means \`${cliCommand} <command>\`.`,
 		...stagePrompt(stage, subject, execution),
+		...(round > 1
+			? [
+					`Continuation ${round} of this run. An earlier worker stopped before every selected test was closed. Run checkmate run show ${subject} and continue with the tests that are still open. Do not repeat a closed test.`,
+				]
+			: []),
 		...(stage === 'execute'
 			? []
 			: [`Deadline: ${timeoutSeconds} seconds from now (${deadline} UTC). Check the time with \`date -u\`.`]),
@@ -626,6 +633,16 @@ function recordAttempt(
 	}
 }
 
+function stillOpen(workspace: string, runId: string) {
+	return withStore(workspace, (store) => {
+		try {
+			return runClock(store, startedRun(store, runId)).remainingSeconds > 60
+		} catch {
+			return false
+		}
+	})
+}
+
 export async function delegate(
 	workspace: string,
 	stage: Stage,
@@ -665,42 +682,61 @@ export async function delegate(
 	const browser = execution ? usesPlaywright(execution.profile) : false
 	const pluginRoot = options.pluginRoot ?? defaultPluginRoot()
 	const workerActor = `${harness}:${stage}`
-	const timeoutSeconds =
-		options.timeoutSeconds ?? (execution ? Math.max(1, execution.clock.remainingSeconds) : defaultTimeoutSeconds)
 	let claimed: WorkerResponse | undefined
 	let failure: Error | undefined
 	let usage: WorkerUsage = {}
 	let attempted = false
-	try {
-		const executable = harness === 'pi' ? (options.pi ?? 'pi') : (options.claude ?? 'claude')
-		const args =
-			harness === 'pi'
-				? resolvePiModelArgs(
-						executable,
-						piArgs(['--no-session', '--no-mcp', '--no-skills', '--tools', 'read,bash'], env),
-						workspace,
-						env
-					)
-				: workerArgs(pluginRoot, options.allowedTools, options.claudeArgs)
-		const instructions = prompt(stage, subject, workspace, pluginRoot, execution, timeoutSeconds, harness)
-		attempted = true
-		const result = await launchWorker(executable, args, {
-			cwd: workspace,
-			prompt: instructions,
-			timeoutSeconds,
-			harness,
-			env: {
-				...env,
-				CHECKMATE_ACTOR: workerActor,
-				...(run ? { PLAYWRIGHT_MCP_OUTPUT_DIR: join(workspace, '.checkmate', 'tmp', subject) } : {}),
-			},
-		})
-		claimed = result.response
-		failure = result.failure
-		usage = result.usage
-	} catch (error) {
-		failure = workerFailure(error)
+	const usageCalls: WorkerUsage[] = []
+	const maxRounds = run ? 3 : 1
+	for (let round = 1; round <= maxRounds; round++) {
+		const clock = round === 1 || !run ? execution?.clock : withStore(workspace, (store) => runClock(store, run))
+		const timeoutSeconds =
+			options.timeoutSeconds ?? (clock ? Math.max(1, clock.remainingSeconds) : defaultTimeoutSeconds)
+		try {
+			const executable = harness === 'pi' ? (options.pi ?? 'pi') : (options.claude ?? 'claude')
+			const args =
+				harness === 'pi'
+					? resolvePiModelArgs(
+							executable,
+							piArgs(
+								['--no-extensions', '--no-session', '--no-mcp', '--no-skills', '--tools', 'read,bash'],
+								env
+							),
+							workspace,
+							env
+						)
+					: workerArgs(pluginRoot, options.allowedTools, options.claudeArgs)
+			const instructions = prompt(
+				stage,
+				subject,
+				workspace,
+				pluginRoot,
+				execution,
+				timeoutSeconds,
+				harness,
+				round
+			)
+			attempted = true
+			const result = await launchWorker(executable, args, {
+				cwd: workspace,
+				prompt: instructions,
+				timeoutSeconds,
+				harness,
+				env: {
+					...env,
+					CHECKMATE_ACTOR: workerActor,
+					...(run ? { PLAYWRIGHT_MCP_OUTPUT_DIR: join(workspace, '.checkmate', 'tmp', subject) } : {}),
+				},
+			})
+			claimed = result.response
+			failure = result.failure
+			usageCalls.push(result.usage)
+		} catch (error) {
+			failure = workerFailure(error)
+		}
+		if (failure || !run || !stillOpen(workspace, subject)) break
 	}
+	usage = usageOf(usageCalls)
 	const reportedSubject =
 		claimed?.subject ?? (failure instanceof InvalidPiResponse ? failure.reportedSubject : undefined)
 	if (reportedSubject && !subjectMatches(reportedSubject, subject))

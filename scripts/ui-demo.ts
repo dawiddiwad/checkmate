@@ -132,6 +132,13 @@ const loginCandidate: PlanCandidate = {
 					expected: '423',
 				},
 				{ id: 'A2', check: 'The response names the unlock time.', checkKind: 'agent_observation' },
+				{
+					id: 'A3',
+					check: 'A sign-in with the right password for another fixture customer returns HTTP 200.',
+					checkKind: 'deterministic',
+					observe: 'the HTTP status of that sign-in',
+					expected: '200',
+				},
 			],
 		},
 	],
@@ -447,6 +454,10 @@ function seedLoginRun(store: Store) {
 	check(store, 'run-3', 'T2.A2', 'passed', 'Body says "Try again at 14:41."', [
 		'T2-lockout-body.txt',
 		'Your account is locked. Try again at 14:41.\n',
+	])
+	check(store, 'run-3', 'T2.A3', undefined, '200', [
+		'T2-control.json',
+		json({ request: { customer: 'other@example.test' }, response: { status: 200 } }),
 	])
 	closeTest(store, agent, { runId: 'run-3', testId: 'T2' })
 	minutesAgo(180)

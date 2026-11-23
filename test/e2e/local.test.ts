@@ -5789,6 +5789,13 @@ test('Decide a check only for the request that was sent — a request that misse
 						observe: 'the HTTP status of the response',
 						expected: '404',
 					},
+					{
+						id: 'A2',
+						check: 'The same request for an existing id returns 200.',
+						checkKind: 'deterministic',
+						observe: 'the HTTP status of the request for an existing id',
+						expected: '200',
+					},
 				],
 			},
 		],
@@ -6440,4 +6447,78 @@ test('Hint the test skill for a request to test a change — the hint misses a t
 	assert.equal(hint('run the unit tests'), null)
 	assert.equal(hint('fix the failing test in cart.test.ts'), null)
 	assert.equal(hint('why is CI red on the test job?'), null)
+})
+
+test('Refuse a refusal check with no positive control, and save it with one — a route miss cannot pass as the refusal.', async (t) => {
+	const workspace = directory(t)
+	const { chmodSync, copyFileSync, mkdirSync } = await import('node:fs')
+	const { delimiter } = await import('node:path')
+	const bin = join(workspace, 'bin')
+	mkdirSync(bin)
+	copyFileSync(join(root, 'test/e2e/delegate-host.mjs'), join(bin, 'claude'))
+	chmodSync(join(bin, 'claude'), 0o755)
+	const env = {
+		...process.env,
+		PATH: `${bin}${delimiter}${process.env.PATH}`,
+		CHECKMATE_ACTOR: 'oracle',
+		CHECKMATE_HARNESS: 'claude',
+		QA_STAGE: 'setup',
+		QA_LIE: '0',
+	}
+	const ok = async (args: string[]) => {
+		const result = await inputCommand(workspace, env, '', ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	await ok([
+		'target',
+		'open',
+		'shop',
+		'--entry-point',
+		'web:url:Shop HTTP API.',
+		'--capabilities',
+		'http',
+		'--operations',
+		'read_catalog',
+	])
+	await ok(['delegate', 'setup', 'shop', '--allow', 'Read'])
+	writeFileSync(join(workspace, 'ticket.md'), '# Ticket\n\n1. DELETE of an unknown id returns 404.\n')
+	await ok(['plan', 'open', 'ticket', '--target', 'shop@1', '--objective', 'Check delete.', '--source', 'ticket.md'])
+	const test = (assertions: object[]) => ({
+		requirements: [{ id: 'R1', text: 'DELETE of an unknown id returns 404.', source: 'ticket.md' }],
+		tests: [
+			{
+				id: 'T1',
+				title: 'Delete an unknown id',
+				requirementIds: ['R1'],
+				capability: 'http',
+				operations: ['read_catalog'],
+				dependsOn: [],
+				preconditions: [],
+				action: 'DELETE /api/notes/999999.',
+				assertions,
+			},
+		],
+		gaps: [],
+	})
+	const refusal = {
+		id: 'A1',
+		check: 'DELETE of id 999999 returns 404.',
+		checkKind: 'deterministic',
+		observe: 'HTTP status',
+		expected: '404',
+	}
+	const control = {
+		id: 'A2',
+		check: 'DELETE of an existing id returns 200.',
+		checkKind: 'deterministic',
+		observe: 'HTTP status',
+		expected: '200',
+	}
+	const refused = await inputCommand(workspace, env, JSON.stringify(test([refusal])), 'plan', 'save', 'ticket')
+	assert.equal(refused.code, 1, refused.output)
+	assert.match(refused.output, /no positive control/)
+	assert.match(refused.output, /expected.{0,12}200/)
+	const saved = await inputCommand(workspace, env, JSON.stringify(test([refusal, control])), 'plan', 'save', 'ticket')
+	assert.equal(saved.code, 0, saved.output)
 })

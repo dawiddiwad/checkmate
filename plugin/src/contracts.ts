@@ -361,6 +361,18 @@ export function planCheck(value: unknown): Plan {
 		references(test.gapIds, gaps, `gap in test ${test.id}`)
 		references(localReferences(test.dependsOn), tests, `dependency of test ${test.id}`)
 		index(test.assertions, 'id', `assertion in test ${test.id}`)
+		// A refusal of a request also passes when the route is missed. A test that expects one needs a 2xx control in the same test.
+		const httpAction = /\b(GET|POST|PUT|PATCH|DELETE)\b/.test(test.action)
+		const refusal = test.assertions.find(
+			(assertion) =>
+				/^4\d\d$/.test(assertion.expected ?? '') || (httpAction && /^absent:/.test(assertion.expected ?? ''))
+		)
+		const control = test.assertions.some((assertion) => /^2\d\d$/.test(assertion.expected ?? ''))
+		requireWellFormed(
+			!refusal || control,
+			`Test ${test.id} expects a refusal (${refusal?.check}) but has no positive control: nothing shows that the same request succeeds.`,
+			`Add a control to ${test.id} for the same route with a valid value, for example {"id": "A2", "check": "The same request for an existing id returns 200.", "checkKind": "deterministic", "observe": "HTTP status of the request for an existing id", "expected": "200"}. Keep the refusal, and use a well-formed value of the same shape for it.`
+		)
 		for (const assertion of test.assertions)
 			requireWellFormed(
 				!compoundCheck(assertion.check),

@@ -11604,6 +11604,16 @@ function planCheck(value2) {
     references(test.gapIds, gaps, `gap in test ${test.id}`);
     references(localReferences(test.dependsOn), tests, `dependency of test ${test.id}`);
     index(test.assertions, "id", `assertion in test ${test.id}`);
+    const httpAction = /\b(GET|POST|PUT|PATCH|DELETE)\b/.test(test.action);
+    const refusal = test.assertions.find(
+      (assertion) => /^4\d\d$/.test(assertion.expected ?? "") || httpAction && /^absent:/.test(assertion.expected ?? "")
+    );
+    const control = test.assertions.some((assertion) => /^2\d\d$/.test(assertion.expected ?? ""));
+    requireWellFormed(
+      !refusal || control,
+      `Test ${test.id} expects a refusal (${refusal?.check}) but has no positive control: nothing shows that the same request succeeds.`,
+      `Add a control to ${test.id} for the same route with a valid value, for example {"id": "A2", "check": "The same request for an existing id returns 200.", "checkKind": "deterministic", "observe": "HTTP status of the request for an existing id", "expected": "200"}. Keep the refusal, and use a well-formed value of the same shape for it.`
+    );
     for (const assertion of test.assertions)
       requireWellFormed(
         !compoundCheck(assertion.check),
@@ -42589,6 +42599,7 @@ function stagePrompt(stage, subject, execution, workspace2) {
       'Each assertion checks one expected value. Write one assertion for each value. Do not join two values with "and" or ";" in one check.',
       'Write each assertion with the exact expected text or value from the sources, for example: The page shows "1 book" when one book is stored. Do not write a general description such as "pluralizes correctly".',
       'Each deterministic assertion names the observed item in "observe" and the expected value in "expected", and keeps the check text. Every deterministic check needs both. For a value that holds the run marker, write {{marker}} in "expected", for example {{marker}}-T1. {{marker}} works in every kind, for example contains:{{marker}}-T1. The marker already starts with qa-, so never write qa- before {{marker}}. For a shape or a range use type:number, type:non-empty, one-of:A|B, matches:<regex>, at least:N or at most:N. For presence or absence use contains:TEXT or absent:TEXT, never a sentence that starts with "not". Never write a type word or a <placeholder> as a value. A judgment that has no value to compare is "checkKind": "agent_observation". Example: {"id":"A1","check":"The kettle price shown on the product page is 240 PLN.","checkKind":"deterministic","observe":"the price value labelled Price on the product page","expected":"240 PLN"}.',
+      'A negative check ("unknown", "missing", "not found", "not allowed", "wrong token") uses a well-formed value of the same shape as a valid one: an id of the right type that does not exist, or a syntactically valid wrong token. The same test also has a positive control: the same request with a valid value returns 2xx, so a route miss cannot pass as the refusal. Example: T6 A1 "DELETE /api/notes/999999 returns 404." with expected "404", and A2 "DELETE /api/notes/<existing id> returns 200." with expected "200".',
       "A ready assertion must be observable through the target with the test action. Name in the action every input the check depends on, for example a query parameter or a date. When the target cannot show the value, write an agent_observation for it.",
       "Make each test create its own data or use a unique value such as {{marker}}-<testId>, where {{marker}} is the run marker placeholder. Do not rely on seed data.",
       "You can read the running application read-only (open a list page or send a GET) to check preconditions. Do not submit forms or change data.",

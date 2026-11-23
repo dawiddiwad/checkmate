@@ -2158,7 +2158,17 @@ function printPlan(reply: Reply): Printed {
 			...(detail.latestRevision !== detail.revision ? { latest: detail.latestRevision } : {}),
 		},
 		lines: [
-			...plan.requirements.map((requirement) => [requirement.id, coverage.get(requirement.id), requirement.text]),
+			...plan.requirements.map((requirement) => {
+				const tests = plan.tests
+					.filter((test) => test.requirementIds.includes(requirement.id))
+					.map((test) => test.id)
+				const gaps = plan.gaps.filter((gap) => gap.requirementIds.includes(requirement.id)).map((gap) => gap.id)
+				const covering =
+					tests.length || gaps.length
+						? `tests ${tests.join(',') || 'none'}; gaps ${gaps.join(',') || 'none'}`
+						: 'NOT COVERED: no test or gap'
+				return [requirement.id, coverage.get(requirement.id), requirement.text, covering]
+			}),
 			...plan.tests.map((test) => [test.id, test.readiness, test.capability, test.title]),
 			...plan.gaps.map((gap) => [gap.id, gap.severity, gap.status, gap.question]),
 			...plan.decisions.map((decision) => [

@@ -397,6 +397,20 @@ Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 600); db.exec('COMM
 	assert.equal(result.body.status, 'completed')
 })
 
+test('Remove only what the answer drops — a revise that also removed R5 and T4 was refused as an over-drop.', async () => {
+	const path = '../../plugin/src/plans.ts'
+	const { unrequestedRemovals } = (await import(path)) as {
+		unrequestedRemovals: (
+			dropped: Set<string>,
+			droppedTests: Set<string>,
+			requirements: string[],
+			tests: string[]
+		) => string[]
+	}
+	assert.deepEqual(unrequestedRemovals(new Set(['R6']), new Set(['T6']), ['R6'], ['T6']), [])
+	assert.deepEqual(unrequestedRemovals(new Set(['R6']), new Set(['T6']), ['R5', 'R6'], ['T4', 'T6']), ['R5', 'T4'])
+})
+
 test('Find the criterion a drop answer names from its wording — the planner did not link the gap to it.', async () => {
 	const path = '../../plugin/src/plans.ts'
 	const { droppedRequirement } = (await import(path)) as {

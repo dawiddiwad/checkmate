@@ -845,6 +845,19 @@ export function droppedRequirement(requirements: Plan['requirements'], value: st
 	return scored[0].id
 }
 
+// The removed requirements and tests that no drop answer named. An empty list means the removals match the answers.
+export function unrequestedRemovals(
+	dropped: Set<string>,
+	droppedTests: Set<string>,
+	removedRequirements: string[],
+	removedTests: string[]
+) {
+	return [
+		...removedRequirements.filter((id) => !dropped.has(id)),
+		...removedTests.filter((id) => !droppedTests.has(id)),
+	]
+}
+
 export function revisePlan(
 	store: Store,
 	actor: string | undefined,
@@ -953,6 +966,22 @@ export function revisePlan(
 		}
 		const removedRequirements = removeRequirements(draft, delta.requirements ?? {}, removedTests)
 		if (removedTests.length) removeTests(draft, removedTests)
+		// Only what a drop answer names may be removed. A removal that no answer asked for is refused, not saved.
+		const dropped = new Set(
+			decisions
+				.filter((decision) => decision.kind === 'clarify' && dropWording.test(decision.value))
+				.map((decision) => droppedRequirement(base.plan.requirements, decision.value))
+				.filter((id): id is string => id !== null)
+		)
+		const droppedTests = new Set(
+			base.plan.tests.filter((test) => test.requirementIds.some((id) => dropped.has(id))).map((test) => test.id)
+		)
+		for (const id of unrequestedRemovals(dropped, droppedTests, removedRequirements, removedTests))
+			requireWellFormed(
+				false,
+				`The revision removes ${id}, which no answer drops.`,
+				`Keep ${id}. Send only the requirements and tests that the answers drop, with {"remove": true}.`
+			)
 		for (const test of draft.tests)
 			requireWellFormed(
 				test.assertions.length > 0 || testReadiness(draft.gaps, test) !== 'ready',

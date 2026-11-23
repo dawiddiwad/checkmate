@@ -13407,6 +13407,12 @@ function droppedRequirement(requirements, value2) {
   if (!scored.length || scored.length > 1 && scored[0].score === scored[1].score) return null;
   return scored[0].id;
 }
+function unrequestedRemovals(dropped, droppedTests, removedRequirements, removedTests2) {
+  return [
+    ...removedRequirements.filter((id2) => !dropped.has(id2)),
+    ...removedTests2.filter((id2) => !droppedTests.has(id2))
+  ];
+}
 function revisePlan(store, actor, input) {
   return write(store, { actor, command: "plan revise", subject: input.planId, input }, (operationId) => {
     const base = planRevision(store, input.planId);
@@ -13507,6 +13513,18 @@ function revisePlan(store, actor, input) {
     }
     const removedRequirements = removeRequirements(draft, delta.requirements ?? {}, removedTests2);
     if (removedTests2.length) removeTests(draft, removedTests2);
+    const dropped = new Set(
+      decisions.filter((decision) => decision.kind === "clarify" && dropWording.test(decision.value)).map((decision) => droppedRequirement(base.plan.requirements, decision.value)).filter((id2) => id2 !== null)
+    );
+    const droppedTests = new Set(
+      base.plan.tests.filter((test) => test.requirementIds.some((id2) => dropped.has(id2))).map((test) => test.id)
+    );
+    for (const id2 of unrequestedRemovals(dropped, droppedTests, removedRequirements, removedTests2))
+      requireWellFormed(
+        false,
+        `The revision removes ${id2}, which no answer drops.`,
+        `Keep ${id2}. Send only the requirements and tests that the answers drop, with {"remove": true}.`
+      );
     for (const test of draft.tests)
       requireWellFormed(
         test.assertions.length > 0 || testReadiness(draft.gaps, test) !== "ready",
@@ -41283,7 +41301,12 @@ function printPlan(reply) {
       ...detail.latestRevision !== detail.revision ? { latest: detail.latestRevision } : {}
     },
     lines: [
-      ...plan.requirements.map((requirement) => [requirement.id, coverage2.get(requirement.id), requirement.text]),
+      ...plan.requirements.map((requirement) => {
+        const tests = plan.tests.filter((test) => test.requirementIds.includes(requirement.id)).map((test) => test.id);
+        const gaps = plan.gaps.filter((gap) => gap.requirementIds.includes(requirement.id)).map((gap) => gap.id);
+        const covering = tests.length || gaps.length ? `tests ${tests.join(",") || "none"}; gaps ${gaps.join(",") || "none"}` : "NOT COVERED: no test or gap";
+        return [requirement.id, coverage2.get(requirement.id), requirement.text, covering];
+      }),
       ...plan.tests.map((test) => [test.id, test.readiness, test.capability, test.title]),
       ...plan.gaps.map((gap) => [gap.id, gap.severity, gap.status, gap.question]),
       ...plan.decisions.map((decision) => [

@@ -42,7 +42,7 @@ Checkmate does not start the application. The host controls models, credentials,
 8. Open Settings and choose a configured harness if the default is not correct.
 9. Select **Start the test**.
 
-The setup form records the URL, the environment, the permitted test operations, and the data kind. A run that can change data needs a data kind. Checkmate saves the target, plan, runs, decisions, and evidence in the local record.
+The setup form records the URL, the environment, the permitted test operations, and the data kind: a reset command, a reset by the environment, or isolation. A run that can change data needs a data kind. Without it, Checkmate refuses the run and names the fix. [Data kinds](factory.md#data-kinds-prepare-and-cleanup) gives the options. Checkmate saves the target, plan, runs, decisions, and evidence in the local record.
 
 ## Check the result
 

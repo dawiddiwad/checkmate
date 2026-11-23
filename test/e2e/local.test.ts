@@ -397,6 +397,26 @@ Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 600); db.exec('COMM
 	assert.equal(result.body.status, 'completed')
 })
 
+test('Find the criterion a drop answer names from its wording — the planner did not link the gap to it.', async () => {
+	const path = '../../plugin/src/plans.ts'
+	const { droppedRequirement } = (await import(path)) as {
+		droppedRequirement: (requirements: Array<{ id: string; text: string }>, value: string) => string | null
+	}
+	const requirements = [
+		{ id: 'R6', text: 'List sorted by title ascending.' },
+		{ id: 'R7', text: 'List shows newest books first.' },
+	]
+	assert.equal(droppedRequirement(requirements, 'Drop the newest-first criterion. The list is out of scope.'), 'R7')
+	assert.equal(
+		droppedRequirement(
+			requirements,
+			'The list is sorted by title ascending, and the newest-first criterion is out of scope, so drop it.'
+		),
+		'R7'
+	)
+	assert.equal(droppedRequirement(requirements, 'Drop the list.'), null)
+})
+
 test('Drop a criterion by revise — a dropped criterion stayed ready and needed a manual plan edit.', async (t) => {
 	const workspace = directory(t)
 	const { chmodSync, copyFileSync, mkdirSync } = await import('node:fs')

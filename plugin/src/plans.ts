@@ -632,7 +632,7 @@ function sourceCriteria(workspace: string, request: PlanRequest) {
 			return readFileSync(join(workspace, source), 'utf8')
 				.split('\n')
 				.flatMap((line) => {
-					const match = /^\s*\d+[.)]\s+(.+?)\s*$/.exec(line)
+					const match = /^\s*(?:\d+[.)]|[-*])\s+(.+?)\s*$/.exec(line)
 					return match ? [match[1]] : []
 				})
 		} catch {
@@ -802,6 +802,49 @@ export function migrationTests(plan: Plan) {
 
 export const migrationReason = 'migrate checks to the current shape'
 
+// A drop answer names a criterion in the clauses that contain its drop word. The requirement whose text shares the most of
+// those words is the one it drops. A tie or no shared word means the requirement is not identified.
+const dropWording = /\b(drop|dropped|drops|remove|removed)\b/i
+const dropStopWords = new Set([
+	'drop',
+	'dropped',
+	'drops',
+	'remove',
+	'removed',
+	'criterion',
+	'criteria',
+	'scope',
+	'that',
+	'this',
+	'with',
+	'from',
+	'then',
+	'should',
+	'there',
+	'their',
+	'have',
+	'been',
+	'will',
+])
+function wordsOf(text: string) {
+	return new Set((text.toLowerCase().match(/[a-z]{4,}/g) ?? []).filter((word) => !dropStopWords.has(word)))
+}
+export function droppedRequirement(requirements: Plan['requirements'], value: string): string | null {
+	const clauses = value
+		.split(/[.;,]|\band\b|\bso\b/i)
+		.filter((clause) => dropWording.test(clause) || /\bout of scope\b/i.test(clause))
+	const words = wordsOf(clauses.join(' '))
+	const scored = requirements
+		.map((requirement) => ({
+			id: requirement.id,
+			score: [...wordsOf(requirement.text)].filter((word) => words.has(word)).length,
+		}))
+		.filter((item) => item.score > 0)
+		.sort((a, b) => b.score - a.score)
+	if (!scored.length || (scored.length > 1 && scored[0].score === scored[1].score)) return null
+	return scored[0].id
+}
+
 export function revisePlan(
 	store: Store,
 	actor: string | undefined,
@@ -916,18 +959,27 @@ export function revisePlan(
 				`Ready test ${test.id} needs one or more assertions`,
 				`Add an assertion to ${test.id} in the delta: {"tests": {"${test.id}": {"assertions": {"${unusedId('A', usedAssertionIds(store, input.planId, test.id))}": {"check": "<expected result>", "checkKind": "deterministic"}}}}}. When no decision or source gives an expected value, use "checkKind": "agent_observation" with a check that records the behavior and checks only what the sources state.`
 			)
-		// An answer that drops a criterion must leave its requirement out of the revision. A kept one is refused, not saved.
+		// An answer that drops a criterion must leave that requirement and its tests out of the revision. The requirement
+		// is found from the answer's own wording, not from the planner's gap links.
 		for (const decision of decisions) {
-			if (decision.kind !== 'clarify' || !/\b(drop|dropped|drops|remove|removed)\b/i.test(decision.value))
-				continue
+			if (decision.kind !== 'clarify' || !dropWording.test(decision.value)) continue
 			const gap = draft.gaps.find((gap) => gap.id === decision.gap_id)!
-			const kept = gap.requirementIds.filter((id) =>
-				draft.requirements.some((requirement) => requirement.id === id)
-			)
+			const target = droppedRequirement(base.plan.requirements, decision.value)
+			const listed = base.plan.requirements
+				.map((requirement) => `${requirement.id} "${requirement.text}"`)
+				.join('; ')
 			requireWellFormed(
-				kept.length === 0,
-				`The answer to ${gap.id} drops ${kept.join(', ')}, but the revision still has ${kept.length === 1 ? 'it' : 'them'}.`,
-				`Remove ${kept.join(', ')} in the delta with {"requirements": {"${kept[0]}": {"remove": true}}} and remove its tests with {"tests": {"<testId>": {"remove": true}}}.`
+				target !== null,
+				`The answer to ${gap.id} drops a criterion, but no requirement matches its wording. Requirements: ${listed}.`,
+				`Name the requirement the answer removes, and remove it with {"requirements": {"<id>": {"remove": true}}} and its tests with {"tests": {"<testId>": {"remove": true}}}.`
+			)
+			const kept =
+				draft.requirements.some((requirement) => requirement.id === target) ||
+				draft.tests.some((test) => test.requirementIds.includes(target!))
+			requireWellFormed(
+				!kept,
+				`The answer to ${gap.id} drops ${target}, but the revision still has it.`,
+				`Remove ${target} with {"requirements": {"${target}": {"remove": true}}} and remove its tests with {"tests": {"<testId>": {"remove": true}}}.`
 			)
 		}
 		const change = storeRevision(store, draft, operationId)

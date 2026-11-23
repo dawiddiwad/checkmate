@@ -13219,7 +13219,7 @@ function sourceCriteria(workspace2, request2) {
   return (request2.context?.sources ?? []).flatMap((source) => {
     try {
       return readFileSync5(join5(workspace2, source), "utf8").split("\n").flatMap((line) => {
-        const match = /^\s*\d+[.)]\s+(.+?)\s*$/.exec(line);
+        const match = /^\s*(?:\d+[.)]|[-*])\s+(.+?)\s*$/.exec(line);
         return match ? [match[1]] : [];
       });
     } catch {
@@ -13372,6 +13372,41 @@ function migrationTests(plan) {
   ).map((test) => test.id);
 }
 var migrationReason = "migrate checks to the current shape";
+var dropWording = /\b(drop|dropped|drops|remove|removed)\b/i;
+var dropStopWords = /* @__PURE__ */ new Set([
+  "drop",
+  "dropped",
+  "drops",
+  "remove",
+  "removed",
+  "criterion",
+  "criteria",
+  "scope",
+  "that",
+  "this",
+  "with",
+  "from",
+  "then",
+  "should",
+  "there",
+  "their",
+  "have",
+  "been",
+  "will"
+]);
+function wordsOf2(text2) {
+  return new Set((text2.toLowerCase().match(/[a-z]{4,}/g) ?? []).filter((word) => !dropStopWords.has(word)));
+}
+function droppedRequirement(requirements, value2) {
+  const clauses = value2.split(/[.;,]|\band\b|\bso\b/i).filter((clause) => dropWording.test(clause) || /\bout of scope\b/i.test(clause));
+  const words4 = wordsOf2(clauses.join(" "));
+  const scored = requirements.map((requirement) => ({
+    id: requirement.id,
+    score: [...wordsOf2(requirement.text)].filter((word) => words4.has(word)).length
+  })).filter((item) => item.score > 0).sort((a, b) => b.score - a.score);
+  if (!scored.length || scored.length > 1 && scored[0].score === scored[1].score) return null;
+  return scored[0].id;
+}
 function revisePlan(store, actor, input) {
   return write(store, { actor, command: "plan revise", subject: input.planId, input }, (operationId) => {
     const base = planRevision(store, input.planId);
@@ -13479,16 +13514,20 @@ function revisePlan(store, actor, input) {
         `Add an assertion to ${test.id} in the delta: {"tests": {"${test.id}": {"assertions": {"${unusedId("A", usedAssertionIds(store, input.planId, test.id))}": {"check": "<expected result>", "checkKind": "deterministic"}}}}}. When no decision or source gives an expected value, use "checkKind": "agent_observation" with a check that records the behavior and checks only what the sources state.`
       );
     for (const decision of decisions) {
-      if (decision.kind !== "clarify" || !/\b(drop|dropped|drops|remove|removed)\b/i.test(decision.value))
-        continue;
+      if (decision.kind !== "clarify" || !dropWording.test(decision.value)) continue;
       const gap = draft.gaps.find((gap2) => gap2.id === decision.gap_id);
-      const kept = gap.requirementIds.filter(
-        (id2) => draft.requirements.some((requirement) => requirement.id === id2)
-      );
+      const target = droppedRequirement(base.plan.requirements, decision.value);
+      const listed = base.plan.requirements.map((requirement) => `${requirement.id} "${requirement.text}"`).join("; ");
       requireWellFormed(
-        kept.length === 0,
-        `The answer to ${gap.id} drops ${kept.join(", ")}, but the revision still has ${kept.length === 1 ? "it" : "them"}.`,
-        `Remove ${kept.join(", ")} in the delta with {"requirements": {"${kept[0]}": {"remove": true}}} and remove its tests with {"tests": {"<testId>": {"remove": true}}}.`
+        target !== null,
+        `The answer to ${gap.id} drops a criterion, but no requirement matches its wording. Requirements: ${listed}.`,
+        `Name the requirement the answer removes, and remove it with {"requirements": {"<id>": {"remove": true}}} and its tests with {"tests": {"<testId>": {"remove": true}}}.`
+      );
+      const kept = draft.requirements.some((requirement) => requirement.id === target) || draft.tests.some((test) => test.requirementIds.includes(target));
+      requireWellFormed(
+        !kept,
+        `The answer to ${gap.id} drops ${target}, but the revision still has it.`,
+        `Remove ${target} with {"requirements": {"${target}": {"remove": true}}} and remove its tests with {"tests": {"<testId>": {"remove": true}}}.`
       );
     }
     const change = storeRevision(store, draft, operationId);

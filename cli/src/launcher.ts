@@ -14,7 +14,7 @@ import { piArgs, piResult, resolvePiModelArgs, selectedHarness } from '../../plu
 import { planRequest, planTools } from '../../plugin/src/plans.ts'
 import { workspaceEnv } from '../../plugin/src/settings.ts'
 import type { ChildCall } from '../../plugin/src/sessions.ts'
-import { childOutputLimit, pluginRoot as bundledPluginRoot, usageOf } from '../../plugin/src/sessions.ts'
+import { childOutputLimit, executableOnPath, pluginRoot as bundledPluginRoot, usageOf } from '../../plugin/src/sessions.ts'
 import { write } from '../../plugin/src/store.ts'
 import type { PlanRequest } from '../../plugin/src/types.ts'
 import { spawn } from 'node:child_process'
@@ -450,7 +450,10 @@ function stagePrompt(stage: Stage, subject: string, execution: Execution | null)
 		(defect) => `${defect.testIds.join(',')} (${defect.runId ?? request.retestOf}/${defect.findingId})`
 	)
 	const sources = planning.context?.sources ?? []
-	const tools = planTools(planning, profile).map(({ name, kind }) => `${name} (${kind})`)
+	const tools = planTools(planning, profile).map(({ name, kind }) => {
+		if (kind !== 'cli') return `${name} (${kind})`
+		return `${name} (${kind}, ${executableOnPath(name, process.env) ? 'on PATH' : 'not on PATH'})`
+	})
 	return [
 		`Run: ${subject}. The parent began the run. Do not run \`run gate\` or \`run begin\`.`,
 		`Plan revision: ${run.plan_id}@${run.plan_revision}. Target: ${run.target_id}@${run.target_revision}. Build: ${run.application_build}.`,
@@ -464,7 +467,7 @@ function stagePrompt(stage: Stage, subject: string, execution: Execution | null)
 			? [`Plan request instructions: ${planning.context.instructions}`]
 			: []),
 		`Plan tools: ${tools.join(', ') || 'none declared'}.`,
-		'Use Bash for CLI tools. Check for an executable on PATH before you report a CLI tool as missing. The host controls tool access and permissions.',
+		'Use Bash for CLI tools. A CLI tool marked "not on PATH" is missing: close each test that needs it as error. The host controls tool access and permissions.',
 		`Allowed test operations: ${profile.allowedOperations.join(', ')}.`,
 		`Instance: ${run.instance_id}. Read its entry values with \`checkmate target show ${run.target_id} --instance ${run.instance_id}\`. Run a command entry at test time. Do not write its output anywhere: not as a value, in evidence, in --observed, in a finding, or in a gap.`,
 		...(run.retired

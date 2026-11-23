@@ -32,7 +32,7 @@ import {
 	planRunGaps,
 	recordApproval,
 } from './plans.ts'
-import { findInstance, readinessHint, runInstance, targetRevision } from './targets.ts'
+import { findInstance, instanceForBuildHint, readinessHint, runInstance, targetRevision } from './targets.ts'
 import { changesData, markerFor, owe, runPrepare, settleCleanups } from './resets.ts'
 import { addPlanBuild } from './journal.ts'
 import { permanentSelection } from './permanent.ts'
@@ -43,6 +43,7 @@ import {
 	expectationMatches,
 	expectsBareValue,
 	isBareValue,
+	unitNotObserved,
 	looksShellExpanded,
 	looksTruncatedMoney,
 	repeatsExpectation,
@@ -114,12 +115,17 @@ export type BeginInput = {
 }
 export type EvidenceInput = string | { text: string; kind?: string }
 type Assertion = Test['assertions'][number]
+// The observed value of a check whose text or element was not on the page after the action.
+export const absentObservation = '(absent)'
+
 export type CheckInput = {
 	runId: string
 	testId: string
 	assertionId: string
 	result?: string
 	observed?: string
+	// The text or element the check names is not on the page after the action, and the page was read.
+	absent?: boolean
 	request?: string
 	reason?: string
 	evidence?: EvidenceInput[]
@@ -409,6 +415,11 @@ function begin(
 					}
 				: input
 			const instance = runInstance(store, plannedTarget(store, requested.reference), input.instance)
+			requireCondition(
+				!instance.build || instance.build === input.build,
+				`Instance ${instance.targetId}/${instance.instanceId} serves build ${instance.build}, not ${input.build}. A run names the build its instance serves.`,
+				instanceForBuildHint(store, instance.targetId, input.build)
+			)
 			const checked = gate(store, { ...requested, instance: instance.instanceId })
 			if (checked.reply.status !== 'completed') {
 				const reasons = [refusalReasons.prohibited, ...checked.reply.reasons]
@@ -708,7 +719,18 @@ export function checkAssertion(store: Store, actor: string | undefined, input: C
 					: undefined
 			)
 		}
-		const observed = optionalText(input.observed, 'observation (--observed)')
+		requireWellFormed(
+			!input.absent || input.observed === undefined,
+			'--absent and --observed do not go together',
+			'Use --absent when the page was read and the text or element is not on it. Use --observed with the value when it is there.'
+		)
+		requireWellFormed(
+			!input.absent || assertion.expected !== undefined,
+			`--absent applies to a structured check. ${test.id}.${assertion.id} has no expected value.`,
+			'Record the result with --result and --observed.'
+		)
+		// The page was read and the value is not on it: the observed value is absent, and the code compares it.
+		const observed = input.absent ? absentObservation : optionalText(input.observed, 'observation (--observed)')
 		const evidenceText = (input.evidence ?? [])
 			.map((item) => (typeof item === 'string' ? item : item.text))
 			.join('\n')
@@ -741,6 +763,12 @@ export function checkAssertion(store: Store, actor: string | undefined, input: C
 			)
 		if (result === 'not_checked')
 			requireWellFormed(reason, 'A not_checked result needs a reason (--reason) that says why it was not checked')
+		// The amounts match, but the observed value has no unit the expected value names. The record says so.
+		const unit =
+			result === 'passed' && observed !== null && assertion.expected !== undefined
+				? unitNotObserved(observed, assertion.expected)
+				: undefined
+		const recorded = reason ?? (unit ? `The unit ${unit} was not observed; the amounts match.` : null)
 		// The first result goes to assertion_results, which keeps it. A correction goes to assertion_corrections.
 		const table = prior ? 'assertion_corrections' : 'assertion_results'
 		execute(
@@ -752,7 +780,7 @@ export function checkAssertion(store: Store, actor: string | undefined, input: C
 			currentAttempt(store, input.runId),
 			result,
 			observed,
-			reason,
+			recorded,
 			at,
 			operationId
 		)

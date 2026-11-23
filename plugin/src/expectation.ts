@@ -57,9 +57,38 @@ function loose(text: string) {
 	return text.toLowerCase().replace(/\s+/g, ' ').trim()
 }
 
-// Case, spaces and commas are ignored: "240 PLN" and "240PLN" name the same value.
+// An amount with an optional unit or currency sign: "240 PLN", "$5.00", "240". The unit is the sign or the word after the number.
+function splitAmount(text: string): { amount: number; unit: string } | undefined {
+	const match = /^(\$|€|£|¥)?\s*(-?\d[\d,]*(?:\.\d+)?)\s*(\$|€|£|¥|[A-Za-z]{2,4})?$/.exec(text.trim())
+	if (!match) return undefined
+	return { amount: Number(match[2].replaceAll(',', '')), unit: match[1] ?? match[3] ?? '' }
+}
+
+// A unit on one side and a bare number on the other compare as numbers: the unit was not observed, which the
+// caller records. Units on both sides must match. Two bare numbers compare as text, as before.
+function amountSame(observed: string, expected: string): boolean | undefined {
+	const seen = splitAmount(observed)
+	const wanted = splitAmount(expected)
+	if (!seen || !wanted || (!seen.unit && !wanted.unit)) return undefined
+	if (seen.unit && wanted.unit && seen.unit !== wanted.unit) return false
+	return seen.amount === wanted.amount
+}
+
+// The unit the expected value names and the observed value does not carry, for the record. Undefined when none.
+export function unitNotObserved(observed: string, expected: string | undefined): string | undefined {
+	const wanted = expected === undefined ? undefined : splitAmount(expected)
+	const seen = splitAmount(observed)
+	return wanted?.unit && seen && !seen.unit ? wanted.unit : undefined
+}
+
+// Case, spaces, commas and a closing full stop, question mark, exclamation mark, semicolon or colon are not part of the value:
+// "240 PLN" and "240PLN" name the same value, and "Title is required." is the message "Title is required".
 function plainSame(observed: string, expected: string) {
-	const normal = (text: string) => text.toLowerCase().replace(/[\s,]/g, '')
+	const normal = (text: string) =>
+		text
+			.toLowerCase()
+			.replace(/[\s,]/g, '')
+			.replace(/[.!?;:]+$/, '')
 	return normal(observed) === normal(expected)
 }
 
@@ -80,7 +109,8 @@ export function expectationMatches(observed: string, expected: string, marker: s
 	if (rule.startsWith('at most:')) return Number(value) <= Number(rule.slice('at most:'.length))
 	if (rule.startsWith('contains:')) return loose(value).includes(loose(rule.slice('contains:'.length)))
 	if (rule.startsWith('absent:')) return !loose(value).includes(loose(rule.slice('absent:'.length)))
-	return plainSame(value, expected.replaceAll(markerPlaceholder, marker))
+	const plain = expected.replaceAll(markerPlaceholder, marker)
+	return amountSame(value, plain) ?? plainSame(value, plain)
 }
 
 // A shell path where a value was expected: the shell expanded a $ or a backtick inside double quotes.
@@ -115,5 +145,5 @@ export function wrappedValue(observed: string, expected: string | undefined): st
 // An observed value that is a type word or a rule is the expectation echoed, not something that was seen.
 export function repeatsExpectation(observed: string): boolean {
 	const value = observed.trim().toLowerCase()
-	return typeWords.includes(value) || /^(type|one-of|matches|at least|at most|contains|absent):/.test(value)
+	return typeWords.includes(value) || /^(type|one-of|matches|at least|at most|contains|absent|present):/.test(value)
 }

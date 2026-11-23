@@ -26,6 +26,7 @@ export type Gap = {
 export type Instance = {
 	entries: Record<string, string>
 	environment?: string
+	build?: string
 	references?: Array<string>
 }
 

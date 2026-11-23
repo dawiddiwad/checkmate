@@ -7927,3 +7927,489 @@ test('An uncovered requirement and an oversized test are refused once, then save
 	assert.equal(overRefused.code, 1, overRefused.output)
 	assert.match(overRefused.output, /serves 4 requirements/)
 })
+
+test('A message that is absent after the page was read is a failed result, not an error — --absent is compared, and it is refused with --observed or on a check without an expected value.', async (t) => {
+	const workspace = directory(t)
+	writeFileSync(join(workspace, 'ticket.md'), 'An empty title shows a message and adds no book.\n')
+	const app = await fixture()
+	t.after(() => app.close())
+	app.fix()
+	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle' }
+	const ok = async (args: string[], value?: unknown) => {
+		const result = await inputCommand(workspace, env, value === undefined ? '' : JSON.stringify(value), ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	await ok([
+		'setup',
+		'--url',
+		app.baseUrl,
+		'--target',
+		'shop',
+		'--data',
+		'environment',
+		'--policy',
+		'The test fixture keeps no records.',
+	])
+	await ok([
+		'plan',
+		'open',
+		'ticket',
+		'--target',
+		'shop@1',
+		'--objective',
+		'Check the empty title.',
+		'--source',
+		'ticket.md',
+	])
+	await ok(['plan', 'save', 'ticket'], {
+		requirements: [{ id: 'R1', text: 'An empty title shows a message and adds no book.', source: 'ticket.md' }],
+		tests: [
+			{
+				capability: 'http',
+				operations: ['read_catalog'],
+				dependsOn: [],
+				preconditions: [],
+				id: 'T1',
+				title: 'Empty title',
+				requirementIds: ['R1'],
+				action: 'Read the empty-title response.',
+				assertions: [
+					{
+						id: 'A1',
+						check: 'The page shows "Title is required".',
+						checkKind: 'deterministic',
+						observe: 'the validation message',
+						expected: 'Title is required',
+					},
+					{
+						id: 'A2',
+						check: 'No book with author Writer-T3 is added.',
+						checkKind: 'deterministic',
+						observe: 'the list entries with author Writer-T3',
+						expected: 'absent:Writer-T3',
+					},
+					{ id: 'A3', check: 'The page shows a message.', checkKind: 'agent_observation' },
+				],
+			},
+		],
+		gaps: [],
+	})
+	await ok(['plan', 'approve', 'ticket@1', '--rationale', 'Run the rules.'])
+	await ok(['run', 'begin', 'run-1', 'ticket@1', '--build', 'defective', '--tests', 'T1'])
+	const both = await inputCommand(
+		workspace,
+		env,
+		'page',
+		'run',
+		'check',
+		'run-1',
+		'T1',
+		'A1',
+		'--absent',
+		'--observed',
+		'none',
+		'--evidence',
+		'-'
+	)
+	assert.equal(both.code, 1, both.output)
+	assert.match(both.body.reasons.join(' '), /--absent and --observed do not go together/)
+	const legacy = await inputCommand(
+		workspace,
+		env,
+		'page',
+		'run',
+		'check',
+		'run-1',
+		'T1',
+		'A3',
+		'--absent',
+		'--result',
+		'failed',
+		'--evidence',
+		'-'
+	)
+	assert.equal(legacy.code, 1, legacy.output)
+	assert.match(legacy.body.reasons.join(' '), /applies to a structured check/)
+	const missing = await inputCommand(
+		workspace,
+		env,
+		'page',
+		'run',
+		'check',
+		'run-1',
+		'T1',
+		'A1',
+		'--absent',
+		'--evidence',
+		'-'
+	)
+	assert.equal(missing.body.result, 'failed', missing.output)
+	const kept = await inputCommand(
+		workspace,
+		env,
+		'page',
+		'run',
+		'check',
+		'run-1',
+		'T1',
+		'A2',
+		'--absent',
+		'--evidence',
+		'-'
+	)
+	assert.equal(kept.body.result, 'passed', kept.output)
+	const stored = await ok([
+		'query',
+		"SELECT assertion_id, result, observed FROM assertion_results WHERE run_id = 'run-1' ORDER BY assertion_id",
+	])
+	assert.deepEqual(stored.rows, [
+		{ assertion_id: 'A1', result: 'failed', observed: '(absent)' },
+		{ assertion_id: 'A2', result: 'passed', observed: '(absent)' },
+	])
+})
+
+test('A message with a closing full stop matches its expected text, and a rule word copied as the observed value is refused.', async (t) => {
+	const workspace = directory(t)
+	writeFileSync(join(workspace, 'ticket.md'), 'An empty title shows the message "Enter a title".\n')
+	const app = await fixture()
+	t.after(() => app.close())
+	app.fix()
+	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle' }
+	const ok = async (args: string[], value?: unknown) => {
+		const result = await inputCommand(workspace, env, value === undefined ? '' : JSON.stringify(value), ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	await ok([
+		'setup',
+		'--url',
+		app.baseUrl,
+		'--target',
+		'shop',
+		'--data',
+		'environment',
+		'--policy',
+		'The test fixture keeps no records.',
+	])
+	await ok([
+		'plan',
+		'open',
+		'ticket',
+		'--target',
+		'shop@1',
+		'--objective',
+		'Check the message.',
+		'--source',
+		'ticket.md',
+	])
+	await ok(['plan', 'save', 'ticket'], {
+		requirements: [{ id: 'R1', text: 'An empty title shows the message "Enter a title".', source: 'ticket.md' }],
+		tests: [
+			{
+				capability: 'http',
+				operations: ['read_catalog'],
+				dependsOn: [],
+				preconditions: [],
+				id: 'T1',
+				title: 'Message',
+				requirementIds: ['R1'],
+				action: 'Read the empty-title response.',
+				assertions: [
+					{
+						id: 'A1',
+						check: 'The page shows "Enter a title".',
+						checkKind: 'deterministic',
+						observe: 'the validation message',
+						expected: 'Enter a title',
+					},
+					{
+						id: 'A2',
+						check: 'No book with author Writer-T3 is added.',
+						checkKind: 'deterministic',
+						observe: 'the list entries with author Writer-T3',
+						expected: 'absent:Writer-T3',
+					},
+				],
+			},
+		],
+		gaps: [],
+	})
+	await ok(['plan', 'approve', 'ticket@1', '--rationale', 'Run the rules.'])
+	await ok(['run', 'begin', 'run-1', 'ticket@1', '--build', 'defective', '--tests', 'T1'])
+	const message = await inputCommand(
+		workspace,
+		env,
+		'page',
+		'run',
+		'check',
+		'run-1',
+		'T1',
+		'A1',
+		'--observed',
+		'Enter a title.',
+		'--evidence',
+		'-'
+	)
+	assert.equal(message.body.result, 'passed', message.output)
+	const echoed = await inputCommand(
+		workspace,
+		env,
+		'page',
+		'run',
+		'check',
+		'run-1',
+		'T1',
+		'A2',
+		'--observed',
+		'present:Writer-T3',
+		'--evidence',
+		'-'
+	)
+	assert.equal(echoed.code, 1, echoed.output)
+	assert.match(echoed.body.reasons.join(' '), /repeats the rule of the expected value/)
+})
+
+test('A unit on one side and a bare number on the other compare as numbers, and the record names the unit not observed — two units must match.', async (t) => {
+	const workspace = directory(t)
+	writeFileSync(join(workspace, 'ticket.md'), 'The kettle costs 240 PLN and the shipping costs $5.00.\n')
+	const app = await fixture()
+	t.after(() => app.close())
+	app.fix()
+	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle' }
+	const ok = async (args: string[], value?: unknown) => {
+		const result = await inputCommand(workspace, env, value === undefined ? '' : JSON.stringify(value), ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	const structured = (id: string, expected: string) => ({
+		id,
+		check: `The value is ${expected}.`,
+		checkKind: 'deterministic',
+		observe: 'the price',
+		expected,
+	})
+	await ok([
+		'setup',
+		'--url',
+		app.baseUrl,
+		'--target',
+		'shop',
+		'--data',
+		'environment',
+		'--policy',
+		'The test fixture keeps no records.',
+	])
+	await ok([
+		'plan',
+		'open',
+		'ticket',
+		'--target',
+		'shop@1',
+		'--objective',
+		'Check the prices.',
+		'--source',
+		'ticket.md',
+	])
+	await ok(['plan', 'save', 'ticket'], {
+		requirements: [
+			{ id: 'R1', text: 'The kettle costs 240 PLN and the shipping costs $5.00.', source: 'ticket.md' },
+		],
+		tests: [
+			{
+				capability: 'http',
+				operations: ['read_catalog'],
+				dependsOn: [],
+				preconditions: [],
+				id: 'T1',
+				title: 'Prices',
+				requirementIds: ['R1'],
+				action: 'Read the prices.',
+				assertions: [
+					structured('A1', '240 PLN'),
+					structured('A2', '$5.00'),
+					structured('A3', '240 PLN'),
+					structured('A4', '240 PLN'),
+				],
+			},
+		],
+		gaps: [],
+	})
+	await ok(['plan', 'approve', 'ticket@1', '--rationale', 'Run the rules.'])
+	await ok(['run', 'begin', 'run-1', 'ticket@1', '--build', 'fixed', '--tests', 'T1'])
+	const bare = await inputCommand(
+		workspace,
+		env,
+		'price',
+		'run',
+		'check',
+		'run-1',
+		'T1',
+		'A1',
+		'--observed',
+		'240',
+		'--evidence',
+		'-'
+	)
+	assert.equal(bare.body.result, 'passed', bare.output)
+	const shipping = await inputCommand(
+		workspace,
+		env,
+		'price',
+		'run',
+		'check',
+		'run-1',
+		'T1',
+		'A2',
+		'--observed',
+		'5',
+		'--evidence',
+		'-'
+	)
+	assert.equal(shipping.body.result, 'passed', shipping.output)
+	const otherUnit = await inputCommand(
+		workspace,
+		env,
+		'price',
+		'run',
+		'check',
+		'run-1',
+		'T1',
+		'A3',
+		'--observed',
+		'240 EUR',
+		'--evidence',
+		'-'
+	)
+	assert.equal(otherUnit.body.result, 'failed', otherUnit.output)
+	const otherAmount = await inputCommand(
+		workspace,
+		env,
+		'price',
+		'run',
+		'check',
+		'run-1',
+		'T1',
+		'A4',
+		'--observed',
+		'241',
+		'--evidence',
+		'-'
+	)
+	assert.equal(otherAmount.body.result, 'failed', otherAmount.output)
+	const record = await ok([
+		'query',
+		"SELECT assertion_id, result, reason FROM assertion_results WHERE run_id = 'run-1' ORDER BY assertion_id",
+	])
+	assert.equal(record.rows[0].reason, 'The unit PLN was not observed; the amounts match.')
+	assert.equal(record.rows[1].reason, 'The unit $ was not observed; the amounts match.')
+})
+
+test('A run that names a build its instance does not serve is refused at begin, with the instance that serves it or the command that adds one.', async (t) => {
+	const workspace = directory(t)
+	writeFileSync(join(workspace, 'ticket.md'), 'The quote is 240.\n')
+	const app = await fixture()
+	t.after(() => app.close())
+	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle' }
+	const ok = async (args: string[], value?: unknown) => {
+		const result = await inputCommand(workspace, env, value === undefined ? '' : JSON.stringify(value), ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	await ok([
+		'setup',
+		'--url',
+		app.baseUrl,
+		'--target',
+		'shop',
+		'--data',
+		'environment',
+		'--policy',
+		'The test fixture keeps no records.',
+	])
+	await ok([
+		'target',
+		'instance',
+		'add',
+		'shop',
+		'build-two',
+		'--entry',
+		`web=${app.baseUrl}`,
+		'--build',
+		'shop-build-2',
+	])
+	await ok([
+		'plan',
+		'open',
+		'ticket',
+		'--target',
+		'shop@1',
+		'--objective',
+		'Check the quote.',
+		'--source',
+		'ticket.md',
+	])
+	await ok(['plan', 'save', 'ticket'], {
+		requirements: [{ id: 'R1', text: 'The quote is 240.', source: 'ticket.md' }],
+		tests: [
+			{
+				capability: 'http',
+				operations: ['read_catalog'],
+				dependsOn: [],
+				preconditions: [],
+				id: 'T1',
+				title: 'Quote',
+				requirementIds: ['R1'],
+				action: 'Read quote.',
+				assertions: [
+					{
+						id: 'A1',
+						check: 'The quote is 240.',
+						checkKind: 'deterministic',
+						observe: 'the quote total',
+						expected: '240',
+					},
+				],
+			},
+		],
+		gaps: [],
+	})
+	await ok(['plan', 'approve', 'ticket@1', '--rationale', 'Run the rules.'])
+	const wrong = await inputCommand(
+		workspace,
+		env,
+		'',
+		'run',
+		'begin',
+		'run-1',
+		'ticket@1',
+		'--build',
+		'shop-build-1',
+		'--instance',
+		'build-two',
+		'--tests',
+		'T1'
+	)
+	assert.equal(wrong.code, 1, wrong.output)
+	assert.match(wrong.body.reasons.join(' '), /serves build shop-build-2, not shop-build-1/)
+	assert.match(
+		wrong.body.hint ?? '',
+		/target instance add shop <name> --entry web=<URL of shop-build-1> --build shop-build-1/
+	)
+	const right = await inputCommand(
+		workspace,
+		env,
+		'',
+		'run',
+		'begin',
+		'run-1',
+		'ticket@1',
+		'--build',
+		'shop-build-2',
+		'--instance',
+		'build-two',
+		'--tests',
+		'T1'
+	)
+	assert.equal(right.code, 0, right.output)
+})

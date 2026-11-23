@@ -204,9 +204,10 @@ function instanceInput(args: Args, stdin: () => unknown) {
 	const entries = list(args, 'entry')
 	const environment = value(args, 'environment')
 	const references = list(args, 'reference')
+	const build = value(args, 'build')
 	if (entries === undefined) {
 		requireWellFormed(
-			environment === undefined && !references,
+			environment === undefined && !references && build === undefined,
 			'Give --entry with --environment and --reference, or send the instance on standard input'
 		)
 		return stdin()
@@ -223,6 +224,7 @@ function instanceInput(args: Args, stdin: () => unknown) {
 		entries: values,
 		...(environment === undefined ? {} : { environment }),
 		...(references ? { references } : {}),
+		...(build === undefined ? {} : { build }),
 	}
 }
 
@@ -577,7 +579,7 @@ const commands: Record<string, Command> = {
 	},
 	'target instance add': {
 		positionals: ['targetId', 'instanceId'],
-		flags: { entry: 'repeat', environment: 'value', reference: 'repeat' },
+		flags: { entry: 'repeat', environment: 'value', reference: 'repeat', build: 'value' },
 		write: true,
 		stdin: true,
 		run: (store, args, { actor, stdin }) =>
@@ -1009,6 +1011,7 @@ const commands: Record<string, Command> = {
 			result: assertionResults,
 			observed: 'value',
 			'observed-file': 'value',
+			absent: 'switch',
 			request: 'value',
 			reason: 'value',
 			evidence: 'repeat',
@@ -1021,6 +1024,7 @@ const commands: Record<string, Command> = {
 				assertionId: value(args, 'assertionId')!,
 				result: value(args, 'result'),
 				observed: observedValue(args),
+				absent: Boolean(args.absent),
 				request: value(args, 'request'),
 				reason: value(args, 'reason'),
 				evidence: evidence(args, context),

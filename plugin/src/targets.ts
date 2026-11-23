@@ -35,6 +35,8 @@ export type InstanceRecord = {
 	entries: Record<string, string>
 	environment: string | null
 	references: string[]
+	// The build this instance serves, when the person declared it. Undeclared, any run may name any build.
+	build: string | null
 	addedAt: string
 	addedBy: string
 	retired: { at: string; actor: string } | null
@@ -358,6 +360,7 @@ export function instanceCheck(entryPoints: EntryPoint[], value: unknown): Instan
 			? {}
 			: { environment: requireText(instance.environment, 'environment').trim() }),
 		references,
+		...(instance.build === undefined ? {} : { build: requireText(instance.build, 'build').trim() }),
 	}
 }
 
@@ -469,6 +472,7 @@ function instanceRecord(store: Store, targetId: string, row: InstanceRow): Insta
 		entries: Object.fromEntries(order.map((name) => [name, body.entries[name]])),
 		environment: body.environment ?? null,
 		references: body.references ?? [],
+		build: body.build ?? null,
 		addedAt: row.at,
 		addedBy: row.actor,
 		retired: retired ? { at: retired.at, actor: retired.actor } : null,
@@ -504,6 +508,17 @@ export function findInstance(store: Store, targetId: string, instanceId: string)
 		`Add the build with checkmate target instance add ${targetId} ${instanceId} --entry web=<URL of that build>, then run again. A run that can change data also needs the data kind of ${targetId}: ask the person for it, and do not write a reset command, a policy, or a hook.`
 	)
 	return instanceRecord(store, targetId, row)
+}
+
+// What to do when a run names a build that its instance does not serve: an instance that serves the build, or the command that adds one.
+export function instanceForBuildHint(store: Store, targetId: string, build: string | undefined): string {
+	const serving = instanceList(store, targetId).filter((instance) => !instance.retired && instance.build === build)
+	if (serving.length)
+		return `Run on an instance that serves ${build}: ${serving.map((instance) => `--instance ${instance.instanceId}`).join(' or ')}.`
+	const entries = targetRequest(store, targetId)
+		.entryPoints.map((entry) => `${entry.name}=<URL of ${build}>`)
+		.join(' ')
+	return `Add an instance for ${build}: checkmate target instance add ${targetId} <name> --entry ${entries} --build ${build}.`
 }
 
 export function runInstance(store: Store, targetId: string, instanceId: string | undefined): InstanceRecord {

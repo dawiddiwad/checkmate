@@ -27,6 +27,7 @@ playwright-cli -s=<session> close
 - After each action, snapshot again and read the value from that snapshot.
 - If a reference is not in the snapshot, wait one second, snapshot again, and retry once.
 - If the reference is still missing, close the test as error. Give the snapshot excerpt as evidence. Do not record a defect.
+- A text or element that a check names is not on the snapshot after the action: record it with `run check --absent` and the snapshot excerpt as evidence. The code compares the absence with the expected value. This is a result, not an error.
 
 A browser config can select an installed executable:
 

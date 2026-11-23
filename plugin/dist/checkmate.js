@@ -898,8 +898,25 @@ function expectationHint(check) {
 function loose(text2) {
   return text2.toLowerCase().replace(/\s+/g, " ").trim();
 }
+function splitAmount(text2) {
+  const match = /^(\$|€|£|¥)?\s*(-?\d[\d,]*(?:\.\d+)?)\s*(\$|€|£|¥|[A-Za-z]{2,4})?$/.exec(text2.trim());
+  if (!match) return void 0;
+  return { amount: Number(match[2].replaceAll(",", "")), unit: match[1] ?? match[3] ?? "" };
+}
+function amountSame(observed, expected) {
+  const seen = splitAmount(observed);
+  const wanted = splitAmount(expected);
+  if (!seen || !wanted || !seen.unit && !wanted.unit) return void 0;
+  if (seen.unit && wanted.unit && seen.unit !== wanted.unit) return false;
+  return seen.amount === wanted.amount;
+}
+function unitNotObserved(observed, expected) {
+  const wanted = expected === void 0 ? void 0 : splitAmount(expected);
+  const seen = splitAmount(observed);
+  return wanted?.unit && seen && !seen.unit ? wanted.unit : void 0;
+}
 function plainSame(observed, expected) {
-  const normal = (text2) => text2.toLowerCase().replace(/[\s,]/g, "");
+  const normal = (text2) => text2.toLowerCase().replace(/[\s,]/g, "").replace(/[.!?;:]+$/, "");
   return normal(observed) === normal(expected);
 }
 function expectationMatches(observed, expected, marker) {
@@ -914,7 +931,8 @@ function expectationMatches(observed, expected, marker) {
   if (rule.startsWith("at most:")) return Number(value2) <= Number(rule.slice("at most:".length));
   if (rule.startsWith("contains:")) return loose(value2).includes(loose(rule.slice("contains:".length)));
   if (rule.startsWith("absent:")) return !loose(value2).includes(loose(rule.slice("absent:".length)));
-  return plainSame(value2, expected.replaceAll(markerPlaceholder, marker));
+  const plain = expected.replaceAll(markerPlaceholder, marker);
+  return amountSame(value2, plain) ?? plainSame(value2, plain);
 }
 function looksShellExpanded(observed) {
   return /(^|\s)\/(usr\/)?bin\/(ba|z|da)?sh(\s|$)/.test(observed.trim()) || /^(bash|sh|zsh)$/.test(observed.trim());
@@ -937,7 +955,7 @@ function wrappedValue(observed, expected) {
 }
 function repeatsExpectation(observed) {
   const value2 = observed.trim().toLowerCase();
-  return typeWords.includes(value2) || /^(type|one-of|matches|at least|at most|contains|absent):/.test(value2);
+  return typeWords.includes(value2) || /^(type|one-of|matches|at least|at most|contains|absent|present):/.test(value2);
 }
 
 // plugin/src/validators.js
@@ -1643,7 +1661,7 @@ function Le(p, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
       let o = { instancePath: t, schemaPath: "#/required", keyword: "required", params: { missingProperty: "entries" }, message: "must have required property 'entries'" };
       e === null ? e = [o] : e.push(o), s++;
     }
-    for (let o in p) if (!(o === "entries" || o === "environment" || o === "references")) {
+    for (let o in p) if (!(o === "entries" || o === "environment" || o === "build" || o === "references")) {
       let u = { instancePath: t, schemaPath: "#/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: o }, message: "must NOT have additional properties" };
       e === null ? e = [u] : e.push(u), s++;
     }
@@ -1700,6 +1718,22 @@ function Le(p, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
         }
       } else {
         let u = { instancePath: t + "/environment", schemaPath: "#/properties/environment/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+        e === null ? e = [u] : e.push(u), s++;
+      }
+    }
+    if (p.build !== void 0) {
+      let o = p.build;
+      if (typeof o == "string") {
+        if (A(o) > 200) {
+          let u = { instancePath: t + "/build", schemaPath: "#/properties/build/maxLength", keyword: "maxLength", params: { limit: 200 }, message: "must NOT have more than 200 characters" };
+          e === null ? e = [u] : e.push(u), s++;
+        }
+        if (A(o) < 1) {
+          let u = { instancePath: t + "/build", schemaPath: "#/properties/build/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
+          e === null ? e = [u] : e.push(u), s++;
+        }
+      } else {
+        let u = { instancePath: t + "/build", schemaPath: "#/properties/build/type", keyword: "type", params: { type: "string" }, message: "must be string" };
         e === null ? e = [u] : e.push(u), s++;
       }
     }
@@ -11033,7 +11067,8 @@ function instanceCheck(entryPoints, value2) {
   return {
     entries,
     ...instance.environment === void 0 ? {} : { environment: requireText(instance.environment, "environment").trim() },
-    references: references2
+    references: references2,
+    ...instance.build === void 0 ? {} : { build: requireText(instance.build, "build").trim() }
   };
 }
 function addInstance(store, actor, input) {
@@ -11131,6 +11166,7 @@ function instanceRecord(store, targetId, row2) {
     entries: Object.fromEntries(order.map((name2) => [name2, body.entries[name2]])),
     environment: body.environment ?? null,
     references: body.references ?? [],
+    build: body.build ?? null,
     addedAt: row2.at,
     addedBy: row2.actor,
     retired: retired ? { at: retired.at, actor: retired.actor } : null
@@ -11163,6 +11199,13 @@ function findInstance(store, targetId, instanceId) {
     `Add the build with checkmate target instance add ${targetId} ${instanceId} --entry web=<URL of that build>, then run again. A run that can change data also needs the data kind of ${targetId}: ask the person for it, and do not write a reset command, a policy, or a hook.`
   );
   return instanceRecord(store, targetId, row2);
+}
+function instanceForBuildHint(store, targetId, build) {
+  const serving = instanceList(store, targetId).filter((instance) => !instance.retired && instance.build === build);
+  if (serving.length)
+    return `Run on an instance that serves ${build}: ${serving.map((instance) => `--instance ${instance.instanceId}`).join(" or ")}.`;
+  const entries = targetRequest(store, targetId).entryPoints.map((entry) => `${entry.name}=<URL of ${build}>`).join(" ");
+  return `Add an instance for ${build}: checkmate target instance add ${targetId} <name> --entry ${entries} --build ${build}.`;
 }
 function runInstance(store, targetId, instanceId) {
   if (instanceId !== void 0) {
@@ -14735,6 +14778,7 @@ function requestMatches(planned, sent) {
 }
 
 // plugin/src/runs.ts
+var absentObservation = "(absent)";
 var maxEvidenceBytes2 = 32 * 1024 * 1024;
 var assertionResults = ["passed", "failed", "inconclusive", "not_checked"];
 var closeOutcomes = ["blocked", "not_run", "error"];
@@ -14953,6 +14997,11 @@ function begin(store, actor, input, permanent) {
         permanent: selection.reference
       } : input;
       const instance = runInstance(store, plannedTarget(store, requested.reference), input.instance);
+      requireCondition(
+        !instance.build || instance.build === input.build,
+        `Instance ${instance.targetId}/${instance.instanceId} serves build ${instance.build}, not ${input.build}. A run names the build its instance serves.`,
+        instanceForBuildHint(store, instance.targetId, input.build)
+      );
       const checked = gate(store, { ...requested, instance: instance.instanceId });
       if (checked.reply.status !== "completed") {
         const reasons2 = [refusalReasons.prohibited, ...checked.reply.reasons];
@@ -15209,7 +15258,17 @@ function checkAssertion(store, actor, input) {
         outcome ? `Close ${test.id} as blocked: checkmate run close ${input.runId} ${test.id} --outcome blocked --reason "Prerequisite ${dependency} is ${outcome}"` : void 0
       );
     }
-    const observed = optionalText(input.observed, "observation (--observed)");
+    requireWellFormed(
+      !input.absent || input.observed === void 0,
+      "--absent and --observed do not go together",
+      "Use --absent when the page was read and the text or element is not on it. Use --observed with the value when it is there."
+    );
+    requireWellFormed(
+      !input.absent || assertion.expected !== void 0,
+      `--absent applies to a structured check. ${test.id}.${assertion.id} has no expected value.`,
+      "Record the result with --result and --observed."
+    );
+    const observed = input.absent ? absentObservation : optionalText(input.observed, "observation (--observed)");
     const evidenceText2 = (input.evidence ?? []).map((item) => typeof item === "string" ? item : item.text).join("\n");
     requireWellFormed(
       observed === null || !looksTruncatedMoney(observed, assertion.expected, evidenceText2),
@@ -15237,6 +15296,8 @@ function checkAssertion(store, actor, input) {
       );
     if (result === "not_checked")
       requireWellFormed(reason, "A not_checked result needs a reason (--reason) that says why it was not checked");
+    const unit = result === "passed" && observed !== null && assertion.expected !== void 0 ? unitNotObserved(observed, assertion.expected) : void 0;
+    const recorded2 = reason ?? (unit ? `The unit ${unit} was not observed; the amounts match.` : null);
     const table2 = prior ? "assertion_corrections" : "assertion_results";
     execute(
       store,
@@ -15247,7 +15308,7 @@ function checkAssertion(store, actor, input) {
       currentAttempt(store, input.runId),
       result,
       observed,
-      reason,
+      recorded2,
       at,
       operationId
     );
@@ -40292,9 +40353,10 @@ function instanceInput(args, stdin) {
   const entries = list2(args, "entry");
   const environment = value(args, "environment");
   const references2 = list2(args, "reference");
+  const build = value(args, "build");
   if (entries === void 0) {
     requireWellFormed(
-      environment === void 0 && !references2,
+      environment === void 0 && !references2 && build === void 0,
       "Give --entry with --environment and --reference, or send the instance on standard input"
     );
     return stdin();
@@ -40310,7 +40372,8 @@ function instanceInput(args, stdin) {
   return {
     entries: values,
     ...environment === void 0 ? {} : { environment },
-    ...references2 ? { references: references2 } : {}
+    ...references2 ? { references: references2 } : {},
+    ...build === void 0 ? {} : { build }
   };
 }
 function instanceLines(instance) {
@@ -40646,7 +40709,7 @@ var commands = {
   },
   "target instance add": {
     positionals: ["targetId", "instanceId"],
-    flags: { entry: "repeat", environment: "value", reference: "repeat" },
+    flags: { entry: "repeat", environment: "value", reference: "repeat", build: "value" },
     write: true,
     stdin: true,
     run: (store, args, { actor, stdin }) => addInstance(store, actor, {
@@ -41036,6 +41099,7 @@ var commands = {
       result: assertionResults,
       observed: "value",
       "observed-file": "value",
+      absent: "switch",
       request: "value",
       reason: "value",
       evidence: "repeat"
@@ -41047,6 +41111,7 @@ var commands = {
       assertionId: value(args, "assertionId"),
       result: value(args, "result"),
       observed: observedValue(args),
+      absent: Boolean(args.absent),
       request: value(args, "request"),
       reason: value(args, "reason"),
       evidence: evidence2(args, context)
@@ -43118,7 +43183,7 @@ function contextLines(execution, workspace2, cli, tools) {
   const browser = usesPlaywright(profile);
   return [
     ...sources.length ? [
-      `Source files: ${sources.map((source) => resolve10(workspace2, source)).join(", ")}. Read them with the read tool. Do not search the file system.`
+      `Source files: ${sources.map((source) => resolve10(workspace2, source)).join(", ")}. Read them with the read tool. Do not search the file system: do not use rg, grep, or find.`
     ] : [],
     `Tools: ${tools.join(", ")}. Use Bash for CLI tools. A tool marked "not on PATH" is missing: close the test as error.`,
     ...browser ? [
@@ -43168,7 +43233,7 @@ function testPrompt(execution, workspace2, test, actor, pluginRoot2) {
     `Record each assertion: ${cli} run check ${runId} ${test.id} <assertion ID> --actor ${actor} --observed '<only the bare value: for a status code 200, for an amount $5.00>'${plannedRequest(test.action) ? " --request '<method and path you sent>'" : ""} --evidence - <<'EOF'`,
     "Put --observed and --request values in single quotes. Inside double quotes the shell expands $ and backticks: $5.00 becomes .00 and $0 becomes a shell path. Give only the bare value in --observed: HTTP 200 is refused, 200 is accepted.",
     "then the raw tool output that shows it, copied, then EOF. Use two words for the IDs: T1 A1. Give only the value of the observed item, not the whole line.",
-    'For an assertion with an expected value, do not decide passed or failed: the code compares the observed value with the expected value. For an assertion without one, decide it with --result and --observed. When you cannot observe the value, record not_checked with --reason "<why>" and no --observed. A page error (for example HTTP 404) or a failed tool means the value is not observed: record not_checked for each assertion of that test with --reason, record no defect for it, and close the test as error. A value that the page shows as "not found" is not an observed value.',
+    'For an assertion with an expected value, do not decide passed or failed: the code compares the observed value with the expected value. For an assertion without one, decide it with --result and --observed. A message or value the page shows is an observed value: record it with --observed, even when it says "not found". When the page was read after the action and the text or element the check names is not on it, record --absent instead of --observed, with the snapshot excerpt as evidence. The code compares that absence with the expected value. Record an error only when the action could not be performed or the page could not be read: then record not_checked for each assertion of that test with --reason, record no defect for it, and close the test as error. When you cannot observe the value for another reason, record not_checked with --reason "<why>" and no --observed.',
     `For each failed assertion, record a defect: ${cli} run finding ${runId} --actor ${actor} <<'EOF' with {"id":"F-${test.id}-1","type":"defect","severity":"medium","assertionIds":["${test.id}.<assertion ID>"],"requirementIds":${JSON.stringify(test.requirementIds)},"title":"<short title>","expected":"<check>","observed":"<observed value>","reproduction":["<request or steps>"],"evidenceIds":["<evidence ID printed by run check>"]} then EOF.`,
     `Then close the test: ${cli} run close ${runId} ${test.id} --actor ${actor}.`,
     `If a tool fails or the action cannot run: ${cli} run close ${runId} ${test.id} --actor ${actor} --outcome error --reason "<cause>" --evidence - <<'EOF' with the failed tool output, then EOF. A browser that cannot start, or a locator that times out before the page loads, is a tool failure, not an app defect: close the test as error and record no defect for it.`,

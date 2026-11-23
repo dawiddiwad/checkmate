@@ -17,7 +17,7 @@ Choose the route in this order. Name the plan and the build in your reply.
 2. Build: when the person gives no build, ask for it before any run. Do not invent a build name.
 3. Status: run `checkmate status <planId>` for the plan. Read its state and its ready tests.
 4. Choose:
-   - The state is `ready_to_run` (ready stored tests exist) and the person asks to test the plan or the build: do not run `test`. Run `checkmate run begin <runId> <planId>@<revision> --build <build> --partial ready_only`, then follow `/checkmate:execute <runId>`.
+   - The status lists ready tests (state `ready_to_run`, or `needs_answers` with some tests ready) and the person asks to test the plan or the build: do not run `test`. Open gaps do not stop the stored tests that are ready. Run `checkmate run begin <runId> <planId>@<revision> --build <build> --partial ready_only`, then follow `/checkmate:execute <runId>`.
    - The state is `started` (a run stopped): run `checkmate run resume <runId>`, then `delegate execute <runId>` as the execute skill says. Never test the application by hand for that run, and never use curl as a test.
    - A ticket, a change, or a plan with no stored tests: run `test` as in Start.
 5. Waits: do not end your turn while a command you started in the background, a delegate, or an exploration is running. Wait with `checkmate delegate wait <stage> <id> --timeout 90`, or `checkmate explore wait <id> --timeout 540`, and repeat while it reports `running`. Report a result only from a command whose output you read.

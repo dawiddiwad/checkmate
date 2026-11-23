@@ -808,7 +808,7 @@ function testPrompt(execution: Execution, workspace: string, test: Test, actor: 
 		...contextLines(execution, workspace, cli, tools),
 		...(plannedRequest(test.action)
 			? [
-					`The action names a request. Give --request with the method and path of the request you sent, with the planned method ${plannedRequest(test.action)!.method} and a path of the planned shape ${plannedRequest(test.action)!.path}. A request that misses the planned route is not an observation.`,
+					`The action names a request. Give --request with the method and path of the request you sent, with the planned method ${plannedRequest(text(test.action))!.method} and the planned path ${plannedRequest(text(test.action))!.path}. A request that misses the planned route is not an observation.`,
 				]
 			: []),
 		`Record each assertion: ${cli} run check ${runId} ${test.id} <assertion ID> --actor ${actor} --observed "<only the observed value, for example 300 PLN>" --evidence - <<'EOF'`,

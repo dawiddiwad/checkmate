@@ -11,21 +11,45 @@ export const markerPlaceholder = '{{marker}}'
 
 const typeWords = ['number', 'numeric', 'non-empty', 'nonempty', 'text', 'string', 'any', 'anything']
 
-// The reason to refuse an expected value at plan save, or undefined when it is well formed.
+// The reason to refuse an expected value at plan save, or undefined when it is well formed. Each reason names
+// the corrected value, so the planner can write the check again without guessing.
 export function expectationError(expected: string): string | undefined {
 	const value = expected.trim()
-	if (typeWords.includes(value.toLowerCase())) return `The expected value "${expected}" is a type word, not a value.`
+	if (typeWords.includes(value.toLowerCase()))
+		return `The expected value "${expected}" is a type word, not a value. Write type:number for a number, type:non-empty for text that must be present, or the value itself, for example "3" or "Title is required".`
 	if (/^(matches|one-of|type|at least|at most|contains|absent):/.test(value)) return undefined
 	if (/^not\s/i.test(value))
-		return `The expected value "${expected}" states an absence in words. Write it as absent:<text>.`
+		return `The expected value "${expected}" states an absence in words. Write it as absent:<text>, for example absent:${value.replace(/^not\s+/i, '')}.`
 	const placeholder = value.replaceAll(markerPlaceholder, '')
 	if (/[<>]/.test(placeholder) || /[{}]/.test(placeholder))
-		return `The expected value "${expected}" holds a placeholder. Only ${markerPlaceholder} is a placeholder.`
+		return `The expected value "${expected}" holds a placeholder. Only ${markerPlaceholder} is a placeholder: write ${markerPlaceholder}-T1 for a value with the run marker, not qa-<runId>-T1.`
 	return undefined
 }
 
-export function expectationHint() {
-	return `Write the run marker as ${markerPlaceholder}, for example ${markerPlaceholder}-T1. For a shape or a range use type:number, type:non-empty, one-of:A|B, matches:<regex>, at least:N or at most:N. For presence or absence use contains:TEXT or absent:TEXT. Never a type word as a value.`
+// Working examples for a check, so a refusal shows the corrected shape for the same check.
+export function expectationExample(check: string) {
+	const text = check.toLowerCase()
+	if (/\bcase\b|letter case|ignores? case|case-insensitive/.test(text))
+		return `"observe": "the titles in the result list", "expected": "contains:${markerPlaceholder}-<title>"`
+	if (
+		/\babsent|\bnot (listed|added|shown|present|returned)|\bdoes not (list|show|contain|add)|\bno (book|note|record|item|price)|\bis not added|\bnot be added/.test(
+			text
+		)
+	)
+		return `"observe": "the list entries", "expected": "absent:<text that must not appear>"`
+	if (/\b(count|how many|number of|total|items?)\b/.test(text) && !/\bid\b/.test(text))
+		return `"observe": "the count field", "expected": "3" or "at least:3"`
+	if (/\bnumeric\b|\bnumber\b|\bid\b/.test(text))
+		return `"observe": "the value of the field", "expected": "type:number"`
+	if (/\b\d{3}\b/.test(text) && /status|http|returns|answers|respon|refus|reject|error/.test(text))
+		return `"observe": "the HTTP status of the response", "expected": "401" or "one-of:400|422"`
+	if (/\bmessage\b|\bshows? the text\b|\bis required\b/.test(text))
+		return `"observe": "the message on the page", "expected": "<the message as shown, for example Title is required>"`
+	return `"observe": "<the value you see>", "expected": "<the value the check states>"`
+}
+
+export function expectationHint(check: string) {
+	return `Working example for this check: ${expectationExample(check)}. The run marker is ${markerPlaceholder}. For a shape or a range use type:number, type:non-empty, one-of:A|B, matches:<regex>, at least:N or at most:N. For presence or absence use contains:TEXT or absent:TEXT. Never a type word as a value.`
 }
 
 // Case and runs of spaces are ignored in text that contains or lacks a value.

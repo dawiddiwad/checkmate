@@ -13,7 +13,7 @@ import type {
 } from './types.ts'
 import type { Reply } from './store.ts'
 import { canonical } from './store.ts'
-import { expectationError, expectationHint } from './expectation.ts'
+import { expectationError, expectationExample, expectationHint } from './expectation.ts'
 import * as validators from './validators.js'
 import { operationAllowed } from './targets.ts'
 
@@ -361,13 +361,13 @@ export function planCheck(value: unknown): Plan {
 			requireWellFormed(
 				assertion.expected === undefined || !expectationError(assertion.expected),
 				`Assertion ${test.id}.${assertion.id} has an expected value that code cannot compare. ${assertion.expected === undefined ? '' : expectationError(assertion.expected)}`,
-				expectationHint()
+				expectationHint(assertion.check)
 			)
 		for (const assertion of test.assertions)
 			requireWellFormed(
 				!unverifiedCheck(assertion),
 				`Assertion ${test.id}.${assertion.id} is a deterministic check without an observed item and an expected value: ${assertion.check}`,
-				`Give the shape: {"id": "${assertion.id}", "check": "${assertion.check}", "checkKind": "deterministic", "observe": "<what is observed>", "expected": "<the value>"}. A check that no value can be compared for is {"checkKind": "agent_observation"}, which the agent judges and the report says so.`
+				`Working example for this check: ${expectationExample(assertion.check)}. A value that no source states is {"checkKind": "agent_observation"}, which the agent judges and the report says so.`
 			)
 		requireWellFormed(
 			same(

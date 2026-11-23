@@ -4,7 +4,10 @@ export type PlannedRequest = { method: string; path: string }
 
 export function plannedRequest(action: string): PlannedRequest | null {
 	const match = /\b(GET|POST|PUT|PATCH|DELETE)\s+(\/[^\s,;)"'`]*)/.exec(action)
-	return match ? { method: match[1], path: match[2] } : null
+	if (!match) return null
+	// The run marker in a path is one segment, and the sentence's full stop is not part of the path.
+	const path = match[2].replaceAll('{{marker}}', '<id>').replace(/[.:]+$/, '')
+	return { method: match[1], path }
 }
 
 function pathPattern(path: string) {

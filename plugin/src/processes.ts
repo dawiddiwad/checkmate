@@ -26,10 +26,12 @@ export function signalRecordedGroup(pid: number, born: number | undefined, signa
 		process.stderr.write(`checkmate: not sending ${signal} to process group ${pid}: its start cannot be verified\n`)
 		return false
 	}
+	// Members are read before the signal, so a process that shares the group and dies with it is in the record.
+	const members = groupMembers(pid)
 	try {
 		process.kill(-pid, signal)
 		process.stderr.write(
-			`checkmate: sent ${signal} to process group ${pid} (leader started ${new Date(born!).toISOString()})\n`
+			`checkmate: sent ${signal} to process group ${pid} (leader started ${new Date(born!).toISOString()}); members: ${members.join(' | ') || 'none'}\n`
 		)
 		return true
 	} catch {
@@ -48,4 +50,17 @@ export function trackGroup(child: ChildProcess) {
 export function signalChild(child: ChildProcess, signal: NodeJS.Signals) {
 	if (child.pid === undefined || child.exitCode !== null || child.signalCode !== null) return
 	signalRecordedGroup(child.pid, startedGroups.get(child), signal)
+}
+
+// The members of group pgid right now: pid, session and command. Logged at every signal, so a process that
+// shares the group, such as a target app started inside a child's shell, is visible in the record.
+export function groupMembers(pgid: number): string[] {
+	const result = spawnSync('ps', ['-g', String(pgid), '-o', 'pid=,sess=,comm='], {
+		encoding: 'utf8',
+		env: { ...process.env, LC_ALL: 'C' },
+	})
+	return (result.stdout ?? '')
+		.split('\n')
+		.map((line) => line.trim())
+		.filter(Boolean)
 }

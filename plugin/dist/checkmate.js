@@ -850,17 +850,36 @@ var markerPlaceholder = "{{marker}}";
 var typeWords = ["number", "numeric", "non-empty", "nonempty", "text", "string", "any", "anything"];
 function expectationError(expected) {
   const value2 = expected.trim();
-  if (typeWords.includes(value2.toLowerCase())) return `The expected value "${expected}" is a type word, not a value.`;
+  if (typeWords.includes(value2.toLowerCase()))
+    return `The expected value "${expected}" is a type word, not a value. Write type:number for a number, type:non-empty for text that must be present, or the value itself, for example "3" or "Title is required".`;
   if (/^(matches|one-of|type|at least|at most|contains|absent):/.test(value2)) return void 0;
   if (/^not\s/i.test(value2))
-    return `The expected value "${expected}" states an absence in words. Write it as absent:<text>.`;
+    return `The expected value "${expected}" states an absence in words. Write it as absent:<text>, for example absent:${value2.replace(/^not\s+/i, "")}.`;
   const placeholder2 = value2.replaceAll(markerPlaceholder, "");
   if (/[<>]/.test(placeholder2) || /[{}]/.test(placeholder2))
-    return `The expected value "${expected}" holds a placeholder. Only ${markerPlaceholder} is a placeholder.`;
+    return `The expected value "${expected}" holds a placeholder. Only ${markerPlaceholder} is a placeholder: write ${markerPlaceholder}-T1 for a value with the run marker, not qa-<runId>-T1.`;
   return void 0;
 }
-function expectationHint() {
-  return `Write the run marker as ${markerPlaceholder}, for example ${markerPlaceholder}-T1. For a shape or a range use type:number, type:non-empty, one-of:A|B, matches:<regex>, at least:N or at most:N. For presence or absence use contains:TEXT or absent:TEXT. Never a type word as a value.`;
+function expectationExample(check) {
+  const text2 = check.toLowerCase();
+  if (/\bcase\b|letter case|ignores? case|case-insensitive/.test(text2))
+    return `"observe": "the titles in the result list", "expected": "contains:${markerPlaceholder}-<title>"`;
+  if (/\babsent|\bnot (listed|added|shown|present|returned)|\bdoes not (list|show|contain|add)|\bno (book|note|record|item|price)|\bis not added|\bnot be added/.test(
+    text2
+  ))
+    return `"observe": "the list entries", "expected": "absent:<text that must not appear>"`;
+  if (/\b(count|how many|number of|total|items?)\b/.test(text2) && !/\bid\b/.test(text2))
+    return `"observe": "the count field", "expected": "3" or "at least:3"`;
+  if (/\bnumeric\b|\bnumber\b|\bid\b/.test(text2))
+    return `"observe": "the value of the field", "expected": "type:number"`;
+  if (/\b\d{3}\b/.test(text2) && /status|http|returns|answers|respon|refus|reject|error/.test(text2))
+    return `"observe": "the HTTP status of the response", "expected": "401" or "one-of:400|422"`;
+  if (/\bmessage\b|\bshows? the text\b|\bis required\b/.test(text2))
+    return `"observe": "the message on the page", "expected": "<the message as shown, for example Title is required>"`;
+  return `"observe": "<the value you see>", "expected": "<the value the check states>"`;
+}
+function expectationHint(check) {
+  return `Working example for this check: ${expectationExample(check)}. The run marker is ${markerPlaceholder}. For a shape or a range use type:number, type:non-empty, one-of:A|B, matches:<regex>, at least:N or at most:N. For presence or absence use contains:TEXT or absent:TEXT. Never a type word as a value.`;
 }
 function loose(text2) {
   return text2.toLowerCase().replace(/\s+/g, " ").trim();
@@ -9536,10 +9555,11 @@ function signalRecordedGroup(pid, born, signal) {
 `);
     return false;
   }
+  const members = groupMembers(pid);
   try {
     process.kill(-pid, signal);
     process.stderr.write(
-      `checkmate: sent ${signal} to process group ${pid} (leader started ${new Date(born).toISOString()})
+      `checkmate: sent ${signal} to process group ${pid} (leader started ${new Date(born).toISOString()}); members: ${members.join(" | ") || "none"}
 `
     );
     return true;
@@ -9554,6 +9574,13 @@ function trackGroup(child) {
 function signalChild(child, signal) {
   if (child.pid === void 0 || child.exitCode !== null || child.signalCode !== null) return;
   signalRecordedGroup(child.pid, startedGroups.get(child), signal);
+}
+function groupMembers(pgid) {
+  const result = spawnSync("ps", ["-g", String(pgid), "-o", "pid=,sess=,comm="], {
+    encoding: "utf8",
+    env: { ...process.env, LC_ALL: "C" }
+  });
+  return (result.stdout ?? "").split("\n").map((line) => line.trim()).filter(Boolean);
 }
 
 // plugin/src/pi.ts
@@ -11571,13 +11598,13 @@ function planCheck(value2) {
       requireWellFormed(
         assertion.expected === void 0 || !expectationError(assertion.expected),
         `Assertion ${test.id}.${assertion.id} has an expected value that code cannot compare. ${assertion.expected === void 0 ? "" : expectationError(assertion.expected)}`,
-        expectationHint()
+        expectationHint(assertion.check)
       );
     for (const assertion of test.assertions)
       requireWellFormed(
         !unverifiedCheck(assertion),
         `Assertion ${test.id}.${assertion.id} is a deterministic check without an observed item and an expected value: ${assertion.check}`,
-        `Give the shape: {"id": "${assertion.id}", "check": "${assertion.check}", "checkKind": "deterministic", "observe": "<what is observed>", "expected": "<the value>"}. A check that no value can be compared for is {"checkKind": "agent_observation"}, which the agent judges and the report says so.`
+        `Working example for this check: ${expectationExample(assertion.check)}. A value that no source states is {"checkKind": "agent_observation"}, which the agent judges and the report says so.`
       );
     requireWellFormed(
       same(
@@ -14398,7 +14425,9 @@ import { randomUUID } from "node:crypto";
 // plugin/src/routes.ts
 function plannedRequest(action2) {
   const match = /\b(GET|POST|PUT|PATCH|DELETE)\s+(\/[^\s,;)"'`]*)/.exec(action2);
-  return match ? { method: match[1], path: match[2] } : null;
+  if (!match) return null;
+  const path = match[2].replaceAll("{{marker}}", "<id>").replace(/[.:]+$/, "");
+  return { method: match[1], path };
 }
 function pathPattern(path) {
   const parts = path.split(/(<[^>]+>|\{[^}]+\})/);
@@ -42595,7 +42624,7 @@ function testPrompt(execution, workspace2, test, actor, pluginRoot2) {
     ),
     ...contextLines(execution, workspace2, cli, tools),
     ...plannedRequest(test.action) ? [
-      `The action names a request. Give --request with the method and path of the request you sent, with the planned method ${plannedRequest(test.action).method} and a path of the planned shape ${plannedRequest(test.action).path}. A request that misses the planned route is not an observation.`
+      `The action names a request. Give --request with the method and path of the request you sent, with the planned method ${plannedRequest(text2(test.action)).method} and the planned path ${plannedRequest(text2(test.action)).path}. A request that misses the planned route is not an observation.`
     ] : [],
     `Record each assertion: ${cli} run check ${runId} ${test.id} <assertion ID> --actor ${actor} --observed "<only the observed value, for example 300 PLN>" --evidence - <<'EOF'`,
     "then the raw tool output that shows it, copied, then EOF. Use two words for the IDs: T1 A1. Give only the value of the observed item, not the whole line.",

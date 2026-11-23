@@ -20,7 +20,7 @@ When asked, Checkmate starts workers through the configured host. It does not ch
 - Install Playwright CLI when a test uses a browser.
 - Give `delegate` the tools that the stage needs. The host enforces those permissions.
 
-For Claude Code, use `--allow` for each required tool. For Pi, set `CHECKMATE_HARNESS=pi` and omit `--allow` and `--claude-arg` from delegate commands.
+For Claude Code, use `--allow` for each required tool. For Pi, set `CHECKMATE_HARNESS=pi` and omit `--allow` and `--claude-arg` from delegate commands. Pi reads standard input until it ends, so run `pi -p` with `< /dev/null`. Each delegated test runs in its own Pi process with the Checkmate build of its parent. Give a project package approval with `pi --approve` or remove a stale global copy. See [Start Checkmate](start.md#use-a-host-plugin).
 
 Read [CLI and record reference](reference.md) for global options and exact command forms. Check `checkmate --help` for the installed version.
 

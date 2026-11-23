@@ -3209,3 +3209,82 @@ test('Record each test with its own worker — a silent worker is retried once, 
 		{ test_id: 'T4', outcome: 'blocked' },
 	])
 })
+
+test('Refuse a run on a plan that holds a compound assertion — a stored check with two values passed against one page.', async (t) => {
+	const workspace = directory(t)
+	writeFileSync(join(workspace, 'ticket.md'), 'The quote is 240.\n')
+	const app = await fixture()
+	t.after(() => app.close())
+	app.fix()
+	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle' }
+	const ok = async (args: string[], value?: object) => {
+		const result = await inputCommand(workspace, env, value ? JSON.stringify(value) : '', ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	await ok(['setup', '--url', app.baseUrl, '--target', 'shop'])
+	await ok([
+		'plan',
+		'open',
+		'ticket',
+		'--target',
+		'shop@1',
+		'--objective',
+		'Check the ticket.',
+		'--source',
+		'ticket.md',
+	])
+	await ok(['plan', 'save', 'ticket'], {
+		requirements: [{ id: 'R1', text: 'The quote is 240.', source: 'ticket.md' }],
+		tests: [
+			{
+				capability: 'http',
+				operations: ['read_catalog'],
+				dependsOn: [],
+				preconditions: [],
+				id: 'T1',
+				title: 'Quote',
+				requirementIds: ['R1'],
+				action: 'Read the quote.',
+				assertions: [{ id: 'A1', check: 'The quote is 240.', checkKind: 'deterministic' }],
+			},
+		],
+		gaps: [],
+	})
+	await ok(['plan', 'approve', 'ticket@1', '--rationale', 'Run the rule.'])
+	const database = new DatabaseSync(join(workspace, '.checkmate', 'checkmate.db'))
+	for (const trigger of database
+		.prepare("SELECT name FROM sqlite_master WHERE type = 'trigger' AND tbl_name = 'plan_revisions'")
+		.all() as Array<{ name: string }>)
+		database.exec(`DROP TRIGGER ${trigger.name}`)
+	const body = (
+		database.prepare("SELECT body FROM plan_revisions WHERE plan_id = 'ticket' AND revision = 1").get() as {
+			body: string
+		}
+	).body
+	database
+		.prepare("UPDATE plan_revisions SET body = ? WHERE plan_id = 'ticket' AND revision = 1")
+		.run(body.replaceAll('"check":"The quote is 240."', '"check":"The quote is 240 and the refund is 30 days."'))
+	database.close()
+	const gated = await inputCommand(workspace, env, '', 'run', 'gate', 'ticket@1', '--build', 'b1')
+	assert.equal(gated.body.status, 'needs_decision', gated.output)
+	assert.match(gated.output, /checks more than one value/)
+	assert.match(gated.output, /delegate revise ticket/)
+})
+
+test('Report a second Checkmate package that Pi declares — a stale copy loads beside this build without a warning.', async (t) => {
+	const workspace = directory(t)
+	const agent = directory(t)
+	mkdirSync(join(workspace, '.pi'))
+	writeFileSync(
+		join(workspace, '.pi', 'settings.json'),
+		JSON.stringify({ packages: ['git:github.com/dawiddiwad/checkmate@wip/refactor-team-blue'] })
+	)
+	const env = { ...process.env, PI_CODING_AGENT_DIR: agent }
+	const version = spawnSync(process.execPath, [binary, '--version'], { cwd: workspace, env, encoding: 'utf8' })
+	assert.equal(version.status, 0, version.stderr)
+	assert.match(
+		version.stdout + version.stderr,
+		/warning: Pi declares another Checkmate package at project scope: git:github\.com\/dawiddiwad\/checkmate@wip\/refactor-team-blue\. .*pi remove git:github\.com\/dawiddiwad\/checkmate@wip\/refactor-team-blue -l/
+	)
+})

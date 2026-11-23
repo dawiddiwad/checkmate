@@ -56,7 +56,33 @@ async function runUi(workspace, stop) {
 	}
 }
 
+function versionWarnings(cwd) {
+	const cli = fileURLToPath(existsSync(sourceCli) ? repositoryCli : installedCli)
+	return new Promise((resolveWarnings) => {
+		const child = spawn('node', [cli, '--version'], { cwd, env: process.env, stdio: ['ignore', 'pipe', 'ignore'] })
+		let output = ''
+		child.stdout.on('data', (bytes) => (output += bytes))
+		const timer = setTimeout(() => {
+			child.kill()
+			resolveWarnings([])
+		}, 10_000)
+		child.on('error', () => {
+			clearTimeout(timer)
+			resolveWarnings([])
+		})
+		child.on('close', () => {
+			clearTimeout(timer)
+			resolveWarnings(output.split('\n').filter((line) => line.startsWith('warning:')))
+		})
+	})
+}
+
 export default function checkmate(pi) {
+	pi.on('session_start', async (_event, ctx) => {
+		const warnings = await versionWarnings(ctx.cwd)
+		if (warnings.length) ctx.ui?.notify?.(warnings.join('\n'), 'warning')
+	})
+
 	pi.registerCommand('checkmate', {
 		description: 'Set up a QA target, plan or run tests, and inspect evidence',
 		handler: async (args, ctx) => {

@@ -108,7 +108,7 @@ import { specFinding, specHandoff, specReview, specStatus } from './spec.ts'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { constants } from 'node:sqlite'
-import { versionLines } from './build.ts'
+import { piCopyWarnings, versionLines } from './build.ts'
 
 type FlagKind = 'value' | 'list' | 'repeat' | 'switch' | readonly string[] | { min: number; max: number }
 type Args = Record<string, string | string[] | boolean>
@@ -2475,5 +2475,6 @@ export async function main(argv: string[]) {
 		stdin: () => readFileSync(0, 'utf8'),
 	})
 	process.stdout.write(outcome.output + '\n')
+	for (const line of piCopyWarnings(import.meta.url, process.env, process.cwd())) process.stderr.write(line + '\n')
 	process.exitCode = outcome.code
 }

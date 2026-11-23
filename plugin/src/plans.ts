@@ -17,6 +17,7 @@ import {
 	planCheck,
 	planTargetCheck,
 	references,
+	compoundCheck,
 	requireChoice,
 	requireCondition,
 	requireIdentifier,
@@ -1066,6 +1067,13 @@ export function gate(store: Store, input: GateInput) {
 	const runGaps = partial === 'wait_for_resolution' ? blockingRunGaps(store, plan.planId) : []
 	for (const id of selected) {
 		const test = tests.get(id)!
+		for (const assertion of test.assertions)
+			if (compoundCheck(assertion.check)) {
+				reasons.push(`Assertion ${id}.${assertion.id} checks more than one value: ${assertion.check}`)
+				hints.push(
+					`Revise the plan so that each assertion checks one value: checkmate delegate revise ${plan.planId}.`
+				)
+			}
 		if (test.readiness !== 'ready') {
 			reasons.push(`Test is not ready: ${id}`)
 			hints.push(`Remove ${id} from --tests, or leave out --tests and add --partial ready_only.`)

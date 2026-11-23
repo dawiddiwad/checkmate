@@ -83,4 +83,23 @@ pi install npm:@xoxoai/checkmate
 
 Open the project in Pi and use `/checkmate <objective>` or `/checkmate-ui`.
 
+For one project only, install into the project:
+
+```sh
+pi install npm:@xoxoai/checkmate -l
+```
+
+Pi loads a project package only after it approves the folder. Start Pi with `--approve`, or approve the folder when Pi asks. Until then, Pi loads a global copy if one is installed.
+
+Checkmate prints a `warning:` line when Pi declares another Checkmate package. Remove the copy you do not use:
+
+```sh
+pi remove <source>        # global copy
+pi remove <source> -l     # project copy
+```
+
+Run `checkmate --version` to see the build that runs and the copy on PATH.
+
+For a headless run (`pi -p`), close standard input or redirect it from `/dev/null`. Pi reads standard input until it ends, so a run with open input waits forever.
+
 The plugin and npm CLI use the same local record. See [Factory workflows](factory.md) when a factory controls each stage directly.

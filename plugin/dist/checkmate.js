@@ -13013,6 +13013,13 @@ function gate(store, input) {
   const runGaps2 = partial === "wait_for_resolution" ? blockingRunGaps(store, plan.planId) : [];
   for (const id2 of selected) {
     const test = tests.get(id2);
+    for (const assertion of test.assertions)
+      if (compoundCheck(assertion.check)) {
+        reasons2.push(`Assertion ${id2}.${assertion.id} checks more than one value: ${assertion.check}`);
+        hints.push(
+          `Revise the plan so that each assertion checks one value: checkmate delegate revise ${plan.planId}.`
+        );
+      }
     if (test.readiness !== "ready") {
       reasons2.push(`Test is not ready: ${id2}`);
       hints.push(`Remove ${id2} from --tests, or leave out --tests and add --partial ready_only.`);
@@ -15284,7 +15291,7 @@ function piOption(model) {
 var piCatalogTimeout = 1e4;
 function piRpcCatalog(program, workspace2, env, timeout) {
   const provider = !env.CHECKMATE_PI_MODEL?.trim() ? env.CHECKMATE_PI_PROVIDER?.trim().toLowerCase() : void 0;
-  return new Promise((resolve11) => {
+  return new Promise((resolve12) => {
     const host = spawn2(program, ["--no-mcp", "--no-session", "--mode", "rpc", ...piModelArgs(env)], {
       cwd: workspace2,
       env,
@@ -15302,7 +15309,7 @@ function piRpcCatalog(program, workspace2, env, timeout) {
     function finish2(timedOut = false) {
       clearTimeout(timer);
       lines2.close();
-      resolve11({ value: models && catalog(models, model), timedOut });
+      resolve12({ value: models && catalog(models, model), timedOut });
     }
     host.once("error", () => finish2());
     host.once("close", () => finish2());
@@ -15357,7 +15364,7 @@ async function discoverModelCatalog(harness, workspace2, env, retryForEffort = f
   const name2 = isPi ? "Pi" : "Claude Code";
   const args = isPi ? ["--no-mcp", "--list-models"] : claudeArgs;
   const input = isPi ? "" : JSON.stringify({ type: "control_request", request_id: requestId, request: { subtype: "initialize" } }) + "\n";
-  return new Promise((resolve11, reject) => {
+  return new Promise((resolve12, reject) => {
     const host = execFile(
       program,
       args,
@@ -15366,7 +15373,7 @@ async function discoverModelCatalog(harness, workspace2, env, retryForEffort = f
         if (!error) {
           const models = isPi ? piModels(stdout) : void 0;
           const result = isPi ? models && catalog(models) : claudeModels(stdout);
-          if (result) return resolve11(result);
+          if (result) return resolve12(result);
         }
         reject(new Error(`${name2} could not list models. Check the host configuration.`));
       }
@@ -22769,7 +22776,7 @@ function activityLine2(tool, input, cwd) {
   return line.length > lineLimit ? `${line.slice(0, lineLimit - 1)}\u2026` : line;
 }
 function readJson(req) {
-  return new Promise((resolve11) => {
+  return new Promise((resolve12) => {
     const chunks = [];
     let length = 0;
     req.on("data", (chunk) => {
@@ -22778,12 +22785,12 @@ function readJson(req) {
     });
     req.on("end", () => {
       try {
-        resolve11(length > maxBody ? null : JSON.parse(Buffer.concat(chunks).toString("utf8")));
+        resolve12(length > maxBody ? null : JSON.parse(Buffer.concat(chunks).toString("utf8")));
       } catch {
-        resolve11(null);
+        resolve12(null);
       }
     });
-    req.on("error", () => resolve11(null));
+    req.on("error", () => resolve12(null));
   });
 }
 function refuse(res) {
@@ -29246,11 +29253,11 @@ function streamPi(program, args, prompt2, cwd, env, extension, sessionId, onLine
       } else onLine(line);
     }
   });
-  const finished = new Promise((resolve11) => {
+  const finished = new Promise((resolve12) => {
     child.on("close", (status, signal) => {
       clearTimeout(timeout);
       for (const timer of timers) clearTimeout(timer);
-      resolve11({
+      resolve12({
         status,
         signal,
         stderr,
@@ -29676,7 +29683,7 @@ function uiMarker(workspace2) {
   return null;
 }
 function requestProof(url, headers) {
-  return new Promise((resolve11, reject) => {
+  return new Promise((resolve12, reject) => {
     const req = request(
       url,
       { method: "POST", agent: false, headers, signal: AbortSignal.timeout(2e3) },
@@ -29690,7 +29697,7 @@ function requestProof(url, headers) {
         res.on("error", reject);
         res.on(
           "end",
-          () => resolve11({ status: res.statusCode ?? 0, body, proof: res.headers["x-checkmate-proof"] })
+          () => resolve12({ status: res.statusCode ?? 0, body, proof: res.headers["x-checkmate-proof"] })
         );
       }
     );
@@ -30753,9 +30760,9 @@ var tlds_default = "biz|com|edu|gov|net|org|pro|web|xxx|aero|asia|coop|info|muse
 function unpackTlds() {
   const result = tlds_default.split("|");
   tlds_2ch.split("|").forEach((item) => {
-    const sep4 = item.indexOf(":");
-    const prefix = item.slice(0, sep4);
-    for (const suffix of item.slice(sep4 + 1)) result.push(prefix + suffix);
+    const sep5 = item.indexOf(":");
+    const prefix = item.slice(0, sep5);
+    for (const suffix of item.slice(sep5 + 1)) result.push(prefix + suffix);
   });
   return result;
 }
@@ -35493,7 +35500,7 @@ function cookie(name2, value2, maxAge = 60 * 60 * 24 * 365) {
   return `${name2}=${encodeURIComponent(value2)}; Path=/; Max-Age=${maxAge}; HttpOnly; SameSite=Strict`;
 }
 function readForm(req) {
-  return new Promise((resolve11, reject) => {
+  return new Promise((resolve12, reject) => {
     const chunks = [];
     let length = 0;
     req.on("data", (chunk) => {
@@ -35502,7 +35509,7 @@ function readForm(req) {
     });
     req.on(
       "end",
-      () => resolve11(length > maxForm ? null : new URLSearchParams(Buffer.concat(chunks).toString("utf8")))
+      () => resolve12(length > maxForm ? null : new URLSearchParams(Buffer.concat(chunks).toString("utf8")))
     );
     req.on("error", reject);
   });
@@ -37534,11 +37541,11 @@ data: ${matched.join(",") || "*"}
     clearInterval(supervisorWatch);
     for (const client of clients) client.res.end();
     clients.clear();
-    await new Promise((resolve11) => {
+    await new Promise((resolve12) => {
       const forceClose = setTimeout(() => server.closeAllConnections(), 1e3);
       server.close(() => {
         clearTimeout(forceClose);
-        resolve11();
+        resolve12();
       });
     });
     closeStore(watch);
@@ -37546,11 +37553,11 @@ data: ${matched.join(",") || "*"}
     if (port) removeUiFile(options3.workspace, port);
   }
   try {
-    await new Promise((resolve11, reject) => {
+    await new Promise((resolve12, reject) => {
       server.once("error", reject);
       server.listen(options3.port ?? 0, "127.0.0.1", () => {
         server.off("error", reject);
-        resolve11();
+        resolve12();
       });
     });
     const address = server.address();
@@ -38364,13 +38371,14 @@ function specHandoff(store, actor, input) {
 
 // plugin/src/cli.ts
 import { mkdirSync as mkdirSync10, readFileSync as readFileSync11, writeFileSync as writeFileSync6 } from "node:fs";
-import { dirname as dirname4, join as join17, resolve as resolve8 } from "node:path";
+import { dirname as dirname4, join as join17, resolve as resolve9 } from "node:path";
 import { constants as constants2 } from "node:sqlite";
 
 // plugin/src/build.ts
 import { createHash as createHash2 } from "node:crypto";
 import { existsSync as existsSync8, readdirSync as readdirSync3, readFileSync as readFileSync10, realpathSync as realpathSync8, statSync as statSync6 } from "node:fs";
-import { dirname as dirname3, join as join16 } from "node:path";
+import { homedir as homedir3 } from "node:os";
+import { dirname as dirname3, isAbsolute as isAbsolute3, join as join16, resolve as resolve8, sep as sep4 } from "node:path";
 import { fileURLToPath as fileURLToPath3 } from "node:url";
 var instructionFolders = ["agents", "contracts", "references", "skills"];
 function pluginRootOf(bundle) {
@@ -38399,15 +38407,45 @@ function versionLines(version3, bundle, env) {
   const digest2 = buildDigest(running3);
   const lines2 = [`${version3} build ${digest2}`, `running ${running3}`];
   const onPath = executableOnPath("checkmate", env);
-  if (!onPath) return lines2;
-  const resolved2 = realpathSync8(onPath);
-  const other = buildDigest(resolved2);
-  if (other !== digest2) {
-    lines2.push(
-      `warning: the checkmate on PATH is build ${other} at ${resolved2}. This build is ${digest2}. Commands run by this session use ${running3}.`
-    );
+  if (onPath) {
+    const resolved2 = realpathSync8(onPath);
+    const other = buildDigest(resolved2);
+    if (other !== digest2) {
+      lines2.push(
+        `warning: the checkmate on PATH is build ${other} at ${resolved2}. This build is ${digest2}. Commands run by this session use ${running3}.`
+      );
+    }
   }
-  return lines2;
+  return [...lines2, ...piCopyWarnings(bundle, env, process.cwd())];
+}
+function piDeclarations(env, cwd) {
+  const agentDirectory = env.PI_CODING_AGENT_DIR?.trim() || join16(homedir3(), ".pi", "agent");
+  const files2 = [
+    ["global", join16(agentDirectory, "settings.json")],
+    ["project", join16(cwd, ".pi", "settings.json")]
+  ];
+  return files2.flatMap(([scope, file]) => {
+    if (!existsSync8(file)) return [];
+    let packages;
+    try {
+      packages = JSON.parse(readFileSync10(file, "utf8")).packages;
+    } catch {
+      return [];
+    }
+    if (!Array.isArray(packages)) return [];
+    return packages.map((entry) => typeof entry === "string" ? entry : entry?.source).filter((source) => typeof source === "string" && /checkmate/i.test(source)).map((source) => ({ scope, source }));
+  });
+}
+function packageRootOf(file) {
+  let folder = dirname3(file);
+  while (!existsSync8(join16(folder, "package.json")) && dirname3(folder) !== folder) folder = dirname3(folder);
+  return folder;
+}
+function piCopyWarnings(bundle, env, cwd) {
+  const root = packageRootOf(fileURLToPath3(bundle));
+  return piDeclarations(env, cwd).filter(({ source }) => !(isAbsolute3(source) && (resolve8(source) + sep4).startsWith(root + sep4))).map(
+    ({ scope, source }) => `warning: Pi declares another Checkmate package at ${scope} scope: ${source}. This build runs from ${root}. Remove it with: pi remove ${source}${scope === "project" ? " -l" : ""}. A project package loads only after Pi approves the folder: start Pi with --approve, or approve the folder when Pi asks.`
+  );
 }
 
 // plugin/src/cli.ts
@@ -40262,7 +40300,7 @@ function printPlan(reply) {
   };
 }
 function writeOutput(store, out, content) {
-  const path = resolve8(store.workspace, out);
+  const path = resolve9(store.workspace, out);
   mkdirSync10(dirname4(path), { recursive: true });
   try {
     writeFileSync6(path, content, { flag: "wx" });
@@ -40471,7 +40509,7 @@ function run(argv, io) {
   }
   const command = commands[name2];
   const subject = command.positionals.length && name2 !== "query" ? String(args[command.positionals[0]]) : name2;
-  const workspace2 = resolve8(io.cwd, value(args, "workspace") ?? ".");
+  const workspace2 = resolve9(io.cwd, value(args, "workspace") ?? ".");
   let store;
   try {
     store = command.readOnly ? openReadOnlyStore(workspace2) : openStore(workspace2);
@@ -40533,7 +40571,7 @@ function uiOptions(tokens, cwd) {
     `Invalid --port: ${values.port}. Use 0 to 65535.`
   );
   requireWellFormed(!stop || port === void 0 && !newHookToken, "Use --stop with --workspace or --json only.");
-  return { workspace: resolve8(cwd, values.workspace ?? "."), port, newHookToken, stop };
+  return { workspace: resolve9(cwd, values.workspace ?? "."), port, newHookToken, stop };
 }
 async function serveUi(tokens) {
   const json = tokens.includes("--json");
@@ -40597,13 +40635,14 @@ async function main(argv) {
     stdin: () => readFileSync11(0, "utf8")
   });
   process.stdout.write(outcome.output + "\n");
+  for (const line of piCopyWarnings(import.meta.url, process.env, process.cwd())) process.stderr.write(line + "\n");
   process.exitCode = outcome.code;
 }
 
 // cli/src/launcher.ts
 import { spawn as spawn5 } from "node:child_process";
 import { readFileSync as readFileSync12 } from "node:fs";
-import { join as join18, resolve as resolve9 } from "node:path";
+import { join as join18, resolve as resolve10 } from "node:path";
 var stages = ["setup", "plan", "revise", "execute"];
 var defaultTimeoutSeconds = 300;
 var minimumRules = ["Read", "Bash"];
@@ -40943,7 +40982,7 @@ function stagePrompt(stage, subject, execution, workspace2) {
     `Run: ${subject}. The parent began the run. Do not run \`run gate\` or \`run begin\`.`,
     `Plan revision: ${run2.plan_id}@${run2.plan_revision}. Target: ${run2.target_id}@${run2.target_revision}. Build: ${run2.application_build}.`,
     ...sources.length ? [
-      `Source files: ${sources.map((source) => resolve9(workspace2, source)).join(", ")}. Read them with the read tool at these paths. Do not search the file system with rg or find: the paths are complete.`
+      `Source files: ${sources.map((source) => resolve10(workspace2, source)).join(", ")}. Read them with the read tool at these paths. Do not search the file system with rg or find: the paths are complete.`
     ] : [],
     ...!request2.permanent && planning.context?.instructions ? [`Plan request instructions: ${planning.context.instructions}`] : [],
     `Plan tools: ${tools.join(", ") || "none declared"}.`,
@@ -41103,7 +41142,7 @@ function testPrompt(execution, workspace2, test, actor, pluginRoot2) {
     "Assertions:",
     ...test.assertions.map((assertion) => `${assertion.id}: ${assertion.check}`),
     ...sources.length ? [
-      `Source files: ${sources.map((source) => resolve9(workspace2, source)).join(", ")}. Read them with the read tool. Do not search the file system.`
+      `Source files: ${sources.map((source) => resolve10(workspace2, source)).join(", ")}. Read them with the read tool. Do not search the file system.`
     ] : [],
     `Tools: ${tools.join(", ")}. Use Bash for CLI tools. A tool marked "not on PATH" is missing: close the test as error.`,
     ...browser ? [
@@ -41279,7 +41318,7 @@ async function delegateByTest(workspace2, subject, options3, harness, env, execu
   return recorded2 ? response : { ...response, usageWarning };
 }
 async function delegate(workspace2, stage, subject, options3) {
-  workspace2 = resolve9(workspace2);
+  workspace2 = resolve10(workspace2);
   if (!stages.includes(stage)) refuse2(`Unknown stage: ${stage}. Use one of: ${stages.join(", ")}.`, "malformed");
   const { after, execution, harness, env } = withStore(workspace2, (store) => {
     const env2 = workspaceEnv(store, process.env);
@@ -41395,9 +41434,9 @@ async function delegate(workspace2, stage, subject, options3) {
 }
 
 // cli/src/spec.ts
-import { resolve as resolve10 } from "node:path";
+import { resolve as resolve11 } from "node:path";
 function exploreSpec(workspace2, reference2, timeoutSeconds) {
-  workspace2 = resolve10(workspace2);
+  workspace2 = resolve11(workspace2);
   const parsed = revisionReference(requireText(reference2, "plan reference"), "plan reference");
   requireWellFormed(parsed.revision !== null, `Name the ticket plan revision: ${parsed.id}@<revision>`);
   const store = openStore(workspace2);

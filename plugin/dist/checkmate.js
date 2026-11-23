@@ -11635,7 +11635,23 @@ function pageOnlyStateChange(test) {
   const changes = /\b(add|apply|clear|delete|remove|save|update)\b/i.test(test.action);
   return changes && test.assertions.length > 0 && test.assertions.every((assertion) => assertion.observeFrom === "page");
 }
-function softProblems(test) {
+function requiredFieldCount(text2) {
+  const list3 = text2.match(/\(([^)]*)\)/)?.[1];
+  if (list3) return list3.split(/,|\band\b/i).filter((part) => part.trim()).length;
+  return text2.split(/\band\b/i).length;
+}
+function missingOmitChecks(test, requirements) {
+  const required = requirements.filter(
+    (requirement) => test.requirementIds.includes(requirement.id) && /\b(required|mandatory)\b/i.test(requirement.text)
+  );
+  if (!required.length) return false;
+  const fields = Math.max(...required.map((requirement) => requiredFieldCount(requirement.text)));
+  const omits = test.assertions.filter(
+    (assertion) => /\b(empty|missing|blank|without|omit\w*)\b/i.test(assertion.check)
+  ).length;
+  return omits < fields;
+}
+function softProblems(test, requirements) {
   const problems = [];
   const refusal = uncontrolledRefusal(test);
   if (refusal) problems.push({ id: refusal.id, reason: "needs_control", check: refusal.check });
@@ -11644,12 +11660,14 @@ function softProblems(test) {
   for (const assertion of test.assertions)
     if (rangeWithoutInput(assertion.check))
       problems.push({ id: assertion.id, reason: "needs_input", check: assertion.check });
+  if (missingOmitChecks(test, requirements))
+    problems.push({ id: test.assertions[0]?.id ?? "", reason: "needs_required", check: "a required field" });
   return problems;
 }
-function unverifiedAssertions(test) {
+function unverifiedAssertions(test, requirements) {
   return [
     ...test.assertions.filter((assertion) => unverifiedCheck(assertion)).map((assertion) => assertion.id),
-    ...softProblems(test).map((problem) => `${problem.id} ${problem.reason}`)
+    ...softProblems(test, requirements).map((problem) => `${problem.id} ${problem.reason}`)
   ];
 }
 function planCheck(value2) {
@@ -13212,7 +13230,12 @@ function latestPlans(store) {
   );
   return new Map(rows2.map((row2) => [row2.plan_id, JSON.parse(row2.body)]));
 }
-var softRefusalTexts = ["positive control", "reads it from the source", "names no input value"];
+var softRefusalTexts = [
+  "positive control",
+  "reads it from the source",
+  "names no input value",
+  "covers a required field"
+];
 function priorSoftRefusal(store, planId) {
   const last = one(
     store,
@@ -13232,6 +13255,8 @@ function softReason(test, problem) {
     return `Test ${test.id} expects a refusal (${problem.check}) but has no positive control: nothing shows that the same request succeeds.`;
   if (problem.reason === "needs_source_check")
     return `Test ${test.id} changes state ("${test.action}") but no check reads it from the source.`;
+  if (problem.reason === "needs_required")
+    return `Test ${test.id} covers a required field but has no check that leaves each required field empty and names the refusal.`;
   return `Check ${test.id}.${problem.id} states a range but names no input value: "${problem.check}"`;
 }
 function correctedTest(test) {
@@ -13271,7 +13296,9 @@ function requireChangedChecks(store, plan, previous) {
     const old = before.get(test.id);
     return !old || old.action !== test.action || canonical(old.assertions) !== canonical(test.assertions);
   });
-  const problems = changed.flatMap((test) => softProblems(test).map((problem) => ({ test, problem })));
+  const problems = changed.flatMap(
+    (test) => softProblems(test, plan.requirements).map((problem) => ({ test, problem }))
+  );
   if (!problems.length || priorSoftRefusal(store, plan.planId)) return;
   const controls = changed.filter(
     (test) => problems.some((item) => item.test === test && item.problem.reason === "needs_control")
@@ -20754,7 +20781,7 @@ function planList(store) {
   return [...drafted, ...requested].sort((a, b) => a.planId.localeCompare(b.planId));
 }
 function legacyChecks(plan) {
-  return plan.tests.flatMap((test) => unverifiedAssertions(test).map((id2) => `${test.id}.${id2}`));
+  return plan.tests.flatMap((test) => unverifiedAssertions(test, plan.requirements).map((id2) => `${test.id}.${id2}`));
 }
 function planDetail(store, planId, revision2 = null) {
   const selected = planRevision(store, planId, revision2);
@@ -22219,7 +22246,7 @@ function runGate(store, runId) {
   const couldNotTest = !detail.result || errored.length > 0 || completion === "operational_error" || completion === "interrupted";
   const coverage2 = detail.result?.coverage.status ?? null;
   const partial = coverage2 !== "complete";
-  const unverified = plan.tests.filter((test) => detail.request.selectedTestIds.includes(test.id)).flatMap((test) => unverifiedAssertions(test).map((id2) => `${test.id}.${id2}`));
+  const unverified = plan.tests.filter((test) => detail.request.selectedTestIds.includes(test.id)).flatMap((test) => unverifiedAssertions(test, plan.requirements).map((id2) => `${test.id}.${id2}`));
   const verdict = failed2.length ? { code: 1, state: "defects" } : couldNotTest ? { code: 2, state: "could_not_test" } : openGaps.length ? { code: 3, state: "blocked_on_oracle" } : partial ? { code: 2, state: "partial_coverage" } : unverified.length ? { code: 2, state: "unverified_checks" } : { code: 0, state: "passed" };
   const judgedByAgent = detail.tests.flatMap((test) => test.assertions).filter((assertion) => assertion.checkKind === "agent_observation" && assertion.result !== null).length;
   return { ...verdict, failed: failed2, errored, openGaps, completion, coverage: coverage2, unverified, judgedByAgent };
@@ -42861,6 +42888,7 @@ function stagePrompt(stage, subject, execution, workspace2) {
       'A rule that states a range or a limit has one assertion for each side: the value below the lower bound, the lower bound, the upper bound, and the value above the upper bound. Each names its input, for example "quantity 0 returns HTTP 400.", and has its own expected value.',
       'An assertion on a state-changing action (add, apply, clear, delete, save) checks the source of truth: the API response, or the stored state after a reload. A visible page alone does not show that the state changed. Set "observeFrom" to "api" for a check of the API response, or to "reload" for a check after a reload. Use "page" only for a check that is not a state change. A state-changing test whose checks are all page is refused once and then saved as not ready.',
       'A test that creates data names it {{marker}}-<testId>. A count or list check scopes to that name, for example "the list shows 1 item named {{marker}}-T2".',
+      'When a criterion says a field or input is required, the plan has one assertion for each required field: it submits with that field empty and the other fields valid, and checks the refusal that the criterion names. Keep the valid case too. Example: "Submitting with an empty author returns HTTP 400." with expected "400".',
       "A ready assertion must be observable through the target with the test action. Name in the action every input the check depends on, for example a query parameter or a date. When the target cannot show the value, write an agent_observation for it.",
       "Make each test create its own data or use a unique value such as {{marker}}-<testId>, where {{marker}} is the run marker placeholder. Do not rely on seed data.",
       "You can read the running application read-only (open a list page or send a GET) to check preconditions. Do not submit forms or change data.",

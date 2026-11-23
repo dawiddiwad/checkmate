@@ -335,11 +335,32 @@ export function pageOnlyStateChange(test: { action: string; assertions: Array<{ 
 	)
 }
 
+// A criterion that names required fields needs one check per field that leaves that field empty and names the refusal.
+// The fields are the parenthesised list, or the parts joined by "and". A test with fewer such checks than fields is flagged.
+function requiredFieldCount(text: string) {
+	const list = text.match(/\(([^)]*)\)/)?.[1]
+	if (list) return list.split(/,|\band\b/i).filter((part) => part.trim()).length
+	return text.split(/\band\b/i).length
+}
+
+export function missingOmitChecks(test: Plan['tests'][number], requirements: Plan['requirements']) {
+	const required = requirements.filter(
+		(requirement) =>
+			test.requirementIds.includes(requirement.id) && /\b(required|mandatory)\b/i.test(requirement.text)
+	)
+	if (!required.length) return false
+	const fields = Math.max(...required.map((requirement) => requiredFieldCount(requirement.text)))
+	const omits = test.assertions.filter((assertion) =>
+		/\b(empty|missing|blank|without|omit\w*)\b/i.test(assertion.check)
+	).length
+	return omits < fields
+}
+
 // The soft rules refuse a first save and save the test as not ready on the next attempt. Each names its reason.
-export function softProblems(test: Plan['tests'][number]) {
+export function softProblems(test: Plan['tests'][number], requirements: Plan['requirements']) {
 	const problems: Array<{
 		id: string
-		reason: 'needs_control' | 'needs_source_check' | 'needs_input'
+		reason: 'needs_control' | 'needs_source_check' | 'needs_input' | 'needs_required'
 		check: string
 	}> = []
 	const refusal = uncontrolledRefusal(test)
@@ -349,14 +370,16 @@ export function softProblems(test: Plan['tests'][number]) {
 	for (const assertion of test.assertions)
 		if (rangeWithoutInput(assertion.check))
 			problems.push({ id: assertion.id, reason: 'needs_input', check: assertion.check })
+	if (missingOmitChecks(test, requirements))
+		problems.push({ id: test.assertions[0]?.id ?? '', reason: 'needs_required', check: 'a required field' })
 	return problems
 }
 
 // A check that code cannot decide yet, named by its assertion ID and reason: legacy checks and soft problems.
-export function unverifiedAssertions(test: Plan['tests'][number]) {
+export function unverifiedAssertions(test: Plan['tests'][number], requirements: Plan['requirements']) {
 	return [
 		...test.assertions.filter((assertion) => unverifiedCheck(assertion)).map((assertion) => assertion.id),
-		...softProblems(test).map((problem) => `${problem.id} ${problem.reason}`),
+		...softProblems(test, requirements).map((problem) => `${problem.id} ${problem.reason}`),
 	]
 }
 

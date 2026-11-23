@@ -7756,3 +7756,82 @@ test('A refusal check without a control is refused once, then saved as not ready
 	const status = await command(workspace, env, 'status', 'ticket')
 	assert.match(status.output, /T1\.A1 needs_control/)
 })
+
+test('A required field needs a check that leaves it empty for each field; the test is refused once, then saved as not ready.', async (t) => {
+	const workspace = directory(t)
+	const { chmodSync, copyFileSync, mkdirSync } = await import('node:fs')
+	const { delimiter } = await import('node:path')
+	const bin = join(workspace, 'bin')
+	mkdirSync(bin)
+	copyFileSync(join(root, 'test/e2e/delegate-host.mjs'), join(bin, 'claude'))
+	chmodSync(join(bin, 'claude'), 0o755)
+	const env = {
+		...process.env,
+		PATH: `${bin}${delimiter}${process.env.PATH}`,
+		CHECKMATE_ACTOR: 'oracle',
+		CHECKMATE_HARNESS: 'claude',
+		QA_STAGE: 'setup',
+		QA_LIE: '0',
+	}
+	const ok = async (args: string[]) => {
+		const result = await inputCommand(workspace, env, '', ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	await ok([
+		'target',
+		'open',
+		'shop',
+		'--entry-point',
+		'web:url:Shop HTTP API.',
+		'--capabilities',
+		'http',
+		'--operations',
+		'read_catalog',
+	])
+	await ok(['delegate', 'setup', 'shop', '--allow', 'Read'])
+	writeFileSync(join(workspace, 'ticket.md'), '# Ticket\n\n1. Title and author are required.\n')
+	await ok([
+		'plan',
+		'open',
+		'ticket',
+		'--target',
+		'shop@1',
+		'--objective',
+		'Check the form.',
+		'--source',
+		'ticket.md',
+	])
+	const candidate = {
+		requirements: [{ id: 'R1', text: 'Title and author are required.', source: 'ticket.md' }],
+		tests: [
+			{
+				id: 'T1',
+				title: 'Empty title',
+				requirementIds: ['R1'],
+				capability: 'http',
+				operations: ['read_catalog'],
+				dependsOn: [],
+				preconditions: [],
+				action: 'POST /api/books with an empty title.',
+				assertions: [
+					{
+						id: 'A1',
+						check: 'Submitting with an empty title returns HTTP 400.',
+						checkKind: 'deterministic',
+						observe: 'HTTP status',
+						expected: '400',
+					},
+				],
+			},
+		],
+		gaps: [],
+	}
+	const first = await inputCommand(workspace, env, JSON.stringify(candidate), 'plan', 'save', 'ticket')
+	assert.equal(first.code, 1, first.output)
+	assert.match(first.output, /covers a required field/)
+	const second = await inputCommand(workspace, env, JSON.stringify(candidate), 'plan', 'save', 'ticket')
+	assert.equal(second.code, 0, second.output)
+	const status = await command(workspace, env, 'status', 'ticket')
+	assert.match(status.output, /T1\.A1 needs_required/)
+})

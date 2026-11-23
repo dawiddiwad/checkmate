@@ -249,7 +249,12 @@ export function latestPlans(store: Store) {
 
 // A soft rule refuses the first save, with a corrected example. The next save of the same plan saves, and the test is not
 // ready: status and plan show name its reason and the fix. Only the tests that a save adds or changes are checked.
-const softRefusalTexts = ['positive control', 'reads it from the source', 'names no input value']
+const softRefusalTexts = [
+	'positive control',
+	'reads it from the source',
+	'names no input value',
+	'covers a required field',
+]
 
 function priorSoftRefusal(store: Store, planId: string) {
 	const last = one<{ id: number | null }>(
@@ -271,6 +276,8 @@ function softReason(test: Plan['tests'][number], problem: ReturnType<typeof soft
 		return `Test ${test.id} expects a refusal (${problem.check}) but has no positive control: nothing shows that the same request succeeds.`
 	if (problem.reason === 'needs_source_check')
 		return `Test ${test.id} changes state ("${test.action}") but no check reads it from the source.`
+	if (problem.reason === 'needs_required')
+		return `Test ${test.id} covers a required field but has no check that leaves each required field empty and names the refusal.`
 	return `Check ${test.id}.${problem.id} states a range but names no input value: "${problem.check}"`
 }
 
@@ -313,7 +320,9 @@ function requireChangedChecks(store: Store, plan: Plan, previous: Plan | undefin
 		const old = before.get(test.id)
 		return !old || old.action !== test.action || canonical(old.assertions) !== canonical(test.assertions)
 	})
-	const problems = changed.flatMap((test) => softProblems(test).map((problem) => ({ test, problem })))
+	const problems = changed.flatMap((test) =>
+		softProblems(test, plan.requirements).map((problem) => ({ test, problem }))
+	)
 	if (!problems.length || priorSoftRefusal(store, plan.planId)) return
 	const controls = changed.filter((test) =>
 		problems.some((item) => item.test === test && item.problem.reason === 'needs_control')

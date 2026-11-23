@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Gap, Plan, PlanCandidate, PlanDelta, PlanPatch, PlanRequest, Profile, Result } from './types.ts'
 import type { Change, Reply, Store } from './store.ts'
@@ -72,6 +72,29 @@ type DecisionRow = {
 export const decisionKinds = ['clarify', 'accept_assumption', 'defer'] as const
 export const partialModes = ['wait_for_resolution', 'ready_only'] as const
 
+// A source that mentions another local file is a truncated plan when that file is not named. Refuse, and name the file.
+export function requireUnnamedSources(workspace: string, sources: string[]) {
+	const named = new Set(sources.map((source) => source.replace(/^\.\//, '')))
+	for (const source of sources) {
+		let text: string
+		try {
+			text = readFileSync(join(workspace, source), 'utf8')
+		} catch {
+			continue
+		}
+		for (const match of text.matchAll(/[A-Za-z0-9_./-]+\.(?:md|txt|json|csv|ya?ml|feature|html)\b/g)) {
+			const file = match[0].replace(/^\.\//, '')
+			if (named.has(file) || !existsSync(join(workspace, file)) || file === source) continue
+			const all = [...sources, file]
+			requireWellFormed(
+				false,
+				`${source} refers to ${file}, which exists and was not named as a source. The plan would be built from ${sources.join(', ')} only.`,
+				`Open the plan again with every source: checkmate plan open <planId> --target <target>@<revision> ${all.map((item) => `--source ${item}`).join(' ')}.`
+			)
+		}
+	}
+}
+
 export function openPlan(
 	store: Store,
 	actor: string | undefined,
@@ -88,6 +111,7 @@ export function openPlan(
 			'A plan request needs requirements or context sources'
 		)
 		index(request.requirements ?? [], 'id', 'requirement')
+		requireUnnamedSources(store.workspace, request.context?.sources ?? [])
 		for (const tool of request.tools ?? [])
 			if (typeof tool === 'string')
 				requireWellFormed(
@@ -104,7 +128,11 @@ export function openPlan(
 		const names = planTools(request, profile).map((tool) => tool.name)
 		requireWellFormed(new Set(names).size === names.length, 'Duplicate tool name in the plan request')
 		const body = canonical(request)
-		const data = { planId, target: `${target.id}@${target.revision}` }
+		const data = {
+			planId,
+			target: `${target.id}@${target.revision}`,
+			sources: request.context?.sources ?? [],
+		}
 		const existing = one<RequestRow>(store, 'SELECT * FROM plan_requests WHERE plan_id = ?', planId)
 		if (existing) {
 			requireCondition(
@@ -684,6 +712,47 @@ function pendingDecisions(store: Store, planId: string) {
 		'SELECT * FROM decisions WHERE plan_id = ? AND applied_revision IS NULL ORDER BY rowid',
 		planId
 	)
+}
+
+// A person can drop a requirement with no open question. The drop is recorded as a gap answer against a new gap for that
+// requirement, so revise applies it with the same two-way check. Two writes: the gap, then the answer.
+export function scopeDrop(
+	store: Store,
+	actor: string | undefined,
+	input: { planId: string; requirementId: string; source: string; rationale: string }
+) {
+	const plan = planRevision(store, input.planId).plan
+	const requirement = plan.requirements.find((item) => item.id === input.requirementId)
+	requireWellFormed(requirement, `Unknown requirement ${input.requirementId} in plan ${input.planId}.`)
+	const gapId = unusedId(
+		'G',
+		plan.gaps.map((gap) => gap.id)
+	)
+	const tests = plan.tests.filter((test) => test.requirementIds.includes(requirement!.id)).map((test) => test.id)
+	const added = patchPlan(store, actor, {
+		reference: `${input.planId}@${plan.revision}`,
+		patch: {
+			gaps: {
+				[gapId]: {
+					severity: 'blocking',
+					requirementIds: [requirement!.id],
+					testIds: tests,
+					question: `Drop ${requirement!.id} "${requirement!.text}" from the plan?`,
+					consequence: 'The requirement and its tests leave the plan on the next revision.',
+				},
+			},
+		},
+		rationale: input.rationale,
+	})
+	if (added.status !== 'completed') return added
+	return answerGap(store, actor, {
+		planId: input.planId,
+		gapId,
+		kind: 'clarify',
+		value: `Drop ${requirement!.id} "${requirement!.text}". ${input.rationale}`,
+		source: input.source,
+		rationale: input.rationale,
+	})
 }
 
 export function answerGap(store: Store, actor: string | undefined, input: GapAnswer) {

@@ -42,6 +42,7 @@ import {
 	decisionKinds,
 	partialModes,
 	planRequest,
+	scopeDrop,
 } from './plans.ts'
 import {
 	assertionResults,
@@ -627,7 +628,15 @@ const commands: Record<string, Command> = {
 				target: value(args, 'target')!,
 				request: planRequestInput(args, stdin),
 			}),
-		print: (reply) => ({ facts: { target: reply.data.target, recorded: reply.data.recorded } }),
+		print: (reply) => ({
+			facts: {
+				target: reply.data.target,
+				recorded: reply.data.recorded,
+				plannedFrom: (reply.data.sources as string[]).length
+					? (reply.data.sources as string[]).join(', ')
+					: 'no source files',
+			},
+		}),
 	},
 	'plan request': {
 		positionals: ['planId'],
@@ -767,6 +776,20 @@ const commands: Record<string, Command> = {
 				],
 			}
 		},
+	},
+	'scope drop': {
+		positionals: ['planId', 'requirementId'],
+		flags: { source: 'value', rationale: 'value' },
+		required: ['source', 'rationale'],
+		write: true,
+		run: (store, args, { actor }) =>
+			scopeDrop(store, actor, {
+				planId: value(args, 'planId')!,
+				requirementId: value(args, 'requirementId')!,
+				source: value(args, 'source')!,
+				rationale: value(args, 'rationale')!,
+			}),
+		print: (reply) => ({ facts: { recorded: reply.data.recorded ?? true } }),
 	},
 	'gap answer': {
 		positionals: ['planId', 'gapId'],
@@ -2155,6 +2178,7 @@ function printPlan(reply: Reply): Printed {
 		facts: {
 			...facts,
 			approval: detail.approval.state,
+			plannedFrom: detail.plannedFrom.length ? detail.plannedFrom.join(', ') : 'no source files',
 			...(detail.latestRevision !== detail.revision ? { latest: detail.latestRevision } : {}),
 		},
 		lines: [

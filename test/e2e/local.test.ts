@@ -536,6 +536,181 @@ test('Detach a delegate and wait for it — the reply says running until the wor
 	assert.notEqual(waited.body.status, 'running', waited.output)
 })
 
+test('Refuse a plan built from one source when another named local file is missing from the request — a truncated plan.', async (t) => {
+	const workspace = directory(t)
+	const { chmodSync, copyFileSync, mkdirSync } = await import('node:fs')
+	const { delimiter } = await import('node:path')
+	const bin = join(workspace, 'bin')
+	mkdirSync(bin)
+	copyFileSync(join(root, 'test/e2e/delegate-host.mjs'), join(bin, 'claude'))
+	chmodSync(join(bin, 'claude'), 0o755)
+	const env = {
+		...process.env,
+		PATH: `${bin}${delimiter}${process.env.PATH}`,
+		CHECKMATE_ACTOR: 'oracle',
+		CHECKMATE_HARNESS: 'claude',
+		QA_STAGE: 'setup',
+		QA_LIE: '0',
+	}
+	const ok = async (args: string[]) => {
+		const result = await command(workspace, env, ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	await ok([
+		'target',
+		'open',
+		'shop',
+		'--entry-point',
+		'web:url:Shop HTTP API.',
+		'--capabilities',
+		'http',
+		'--operations',
+		'read_catalog',
+	])
+	await ok(['delegate', 'setup', 'shop', '--allow', 'Read'])
+	writeFileSync(join(workspace, 'ticket.md'), '# Ticket\n\nThe acceptance criteria are in acceptance.md.\n')
+	writeFileSync(join(workspace, 'acceptance.md'), '1. The quote is 240.\n')
+	const refused = await command(
+		workspace,
+		env,
+		'plan',
+		'open',
+		'ticket',
+		'--target',
+		'shop@1',
+		'--objective',
+		'Check the quote.',
+		'--source',
+		'ticket.md'
+	)
+	assert.equal(refused.code, 1, refused.output)
+	assert.match(refused.output, /refers to acceptance\.md/)
+	const opened = await ok([
+		'plan',
+		'open',
+		'ticket',
+		'--target',
+		'shop@1',
+		'--objective',
+		'Check the quote.',
+		'--source',
+		'ticket.md',
+		'--source',
+		'acceptance.md',
+	])
+	assert.deepEqual(opened.sources, ['ticket.md', 'acceptance.md'])
+})
+
+test('Drop a criterion with no open question — scope drop records the drop, and revise applies it under the same check.', async (t) => {
+	const workspace = directory(t)
+	const { chmodSync, copyFileSync, mkdirSync } = await import('node:fs')
+	const { delimiter } = await import('node:path')
+	const bin = join(workspace, 'bin')
+	mkdirSync(bin)
+	copyFileSync(join(root, 'test/e2e/delegate-host.mjs'), join(bin, 'claude'))
+	chmodSync(join(bin, 'claude'), 0o755)
+	const env = {
+		...process.env,
+		PATH: `${bin}${delimiter}${process.env.PATH}`,
+		CHECKMATE_ACTOR: 'oracle',
+		CHECKMATE_HARNESS: 'claude',
+		QA_STAGE: 'setup',
+		QA_LIE: '0',
+	}
+	const ok = async (args: string[], input?: unknown) => {
+		const result = await inputCommand(workspace, env, input === undefined ? '' : JSON.stringify(input), ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	await ok([
+		'target',
+		'open',
+		'shop',
+		'--entry-point',
+		'web:url:Shop HTTP API.',
+		'--capabilities',
+		'http',
+		'--operations',
+		'read_catalog',
+	])
+	await ok(['delegate', 'setup', 'shop', '--allow', 'Read'])
+	writeFileSync(join(workspace, 'ticket.md'), '# Ticket\n\n1. The quote is 240.\n2. The list is newest first.\n')
+	await ok([
+		'plan',
+		'open',
+		'ticket',
+		'--target',
+		'shop@1',
+		'--objective',
+		'Check the quote.',
+		'--source',
+		'ticket.md',
+	])
+	await ok(['plan', 'save', 'ticket'], {
+		requirements: [
+			{ id: 'R1', text: 'The quote is 240.', source: 'ticket.md' },
+			{ id: 'R2', text: 'The list is newest first.', source: 'ticket.md' },
+		],
+		tests: [
+			{
+				id: 'T1',
+				title: 'Quote',
+				requirementIds: ['R1'],
+				capability: 'http',
+				operations: ['read_catalog'],
+				dependsOn: [],
+				preconditions: [],
+				action: 'Read the quote.',
+				assertions: [
+					{
+						id: 'A1',
+						check: 'The quote is 240.',
+						checkKind: 'deterministic',
+						observe: 'quote',
+						expected: '240',
+					},
+				],
+			},
+			{
+				id: 'T2',
+				title: 'Order',
+				requirementIds: ['R2'],
+				capability: 'http',
+				operations: ['read_catalog'],
+				dependsOn: [],
+				preconditions: [],
+				action: 'Read the list.',
+				assertions: [{ id: 'A1', check: 'The newest item is first.', checkKind: 'agent_observation' }],
+			},
+		],
+		gaps: [],
+	})
+	const scoped = await ok([
+		'scope',
+		'drop',
+		'ticket',
+		'R2',
+		'--source',
+		'ticket.md',
+		'--rationale',
+		'Owner dropped the ordering criterion.',
+	])
+	assert.equal(scoped.status, 'completed', JSON.stringify(scoped))
+	const revised = await ok(['plan', 'revise', 'ticket'], {
+		requirements: { R2: { remove: true } },
+		tests: { T2: { remove: true } },
+	})
+	assert.equal(revised.status, 'completed', JSON.stringify(revised))
+	const [{ body }] = (
+		await ok(['query', "SELECT body FROM plan_revisions WHERE plan_id = 'ticket' AND revision = 2"])
+	).rows
+	assert.deepEqual(
+		JSON.parse(body).requirements.map((requirement: { id: string }) => requirement.id),
+		['R1']
+	)
+})
+
 test('Find the criterion a drop answer names from its wording — the planner did not link the gap to it.', async () => {
 	const path = '../../plugin/src/plans.ts'
 	const { droppedRequirement } = (await import(path)) as {

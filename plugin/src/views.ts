@@ -311,6 +311,12 @@ export function planDetail(store: Store, planId: string, revision: number | null
 		latestRevision: latest.plan.revision,
 		sha256: selected.sha256,
 		approval: { state: approvalLabel(approval), policy: approval.policy, latest: approval.latest },
+		plannedFrom:
+			(
+				JSON.parse(
+					one<{ body: string }>(store, 'SELECT body FROM plan_requests WHERE plan_id = ?', planId)!.body
+				) as { context?: { sources?: string[] } }
+			).context?.sources ?? [],
 		pendingDecisions: pending,
 		legacyChecks: legacyChecks(selected.plan),
 		plan: selected.plan,

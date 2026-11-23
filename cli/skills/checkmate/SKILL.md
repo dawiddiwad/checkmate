@@ -25,7 +25,7 @@ Use this when the person answers open gaps, or asks you to change the plan.
 4. Run `status <planId>` and `plan show <planId>`. Report the new revision and any gap that is still open.
 5. When the status says `needs_approval`, run `plan approve <planId@revision> --rationale "<why>"` only after the person approves that revision.
 
-Do not use `plan edit --patch` to answer a gap. Do not guess the JSON shape of a plan change. If `delegate revise` refuses, report each `reason:` and ask the person for the missing value.
+To drop a requirement that the person names and that no open gap covers, run `scope drop <planId> <requirementId> --source <file> --rationale "<why>"`, then `delegate revise <planId>` as above. Use the source file the person named, or the message if it is the only source. Do not use `plan edit --patch` to answer a gap or to drop a requirement. Do not guess the JSON shape of a plan change. If `delegate revise` refuses, report each `reason:` and ask the person for the missing value.
 
 ## Add or remove a test directly
 

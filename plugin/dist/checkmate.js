@@ -11596,7 +11596,7 @@ function resultCoverage(plan, tests, newGaps) {
 }
 
 // plugin/src/plans.ts
-import { readFileSync as readFileSync6 } from "node:fs";
+import { existsSync as existsSync6, readFileSync as readFileSync6 } from "node:fs";
 import { join as join6 } from "node:path";
 
 // plugin/src/rules.ts
@@ -12794,6 +12794,27 @@ function permanentSelection(store, planId, requested) {
 // plugin/src/plans.ts
 var decisionKinds = ["clarify", "accept_assumption", "defer"];
 var partialModes = ["wait_for_resolution", "ready_only"];
+function requireUnnamedSources(workspace2, sources) {
+  const named = new Set(sources.map((source) => source.replace(/^\.\//, "")));
+  for (const source of sources) {
+    let text2;
+    try {
+      text2 = readFileSync6(join6(workspace2, source), "utf8");
+    } catch {
+      continue;
+    }
+    for (const match of text2.matchAll(/[A-Za-z0-9_./-]+\.(?:md|txt|json|csv|ya?ml|feature|html)\b/g)) {
+      const file = match[0].replace(/^\.\//, "");
+      if (named.has(file) || !existsSync6(join6(workspace2, file)) || file === source) continue;
+      const all2 = [...sources, file];
+      requireWellFormed(
+        false,
+        `${source} refers to ${file}, which exists and was not named as a source. The plan would be built from ${sources.join(", ")} only.`,
+        `Open the plan again with every source: checkmate plan open <planId> --target <target>@<revision> ${all2.map((item) => `--source ${item}`).join(" ")}.`
+      );
+    }
+  }
+}
 function openPlan(store, actor, input) {
   return write(store, { actor, command: "plan open", subject: input.planId, input }, (operationId) => {
     const planId = requireIdentifier(input.planId, "plan ID");
@@ -12806,6 +12827,7 @@ function openPlan(store, actor, input) {
       "A plan request needs requirements or context sources"
     );
     index(request2.requirements ?? [], "id", "requirement");
+    requireUnnamedSources(store.workspace, request2.context?.sources ?? []);
     for (const tool of request2.tools ?? [])
       if (typeof tool === "string")
         requireWellFormed(
@@ -12822,7 +12844,11 @@ function openPlan(store, actor, input) {
     const names = planTools(request2, profile).map((tool) => tool.name);
     requireWellFormed(new Set(names).size === names.length, "Duplicate tool name in the plan request");
     const body = canonical(request2);
-    const data = { planId, target: `${target.id}@${target.revision}` };
+    const data = {
+      planId,
+      target: `${target.id}@${target.revision}`,
+      sources: request2.context?.sources ?? []
+    };
     const existing = one(store, "SELECT * FROM plan_requests WHERE plan_id = ?", planId);
     if (existing) {
       requireCondition(
@@ -13310,6 +13336,40 @@ function pendingDecisions(store, planId) {
     "SELECT * FROM decisions WHERE plan_id = ? AND applied_revision IS NULL ORDER BY rowid",
     planId
   );
+}
+function scopeDrop(store, actor, input) {
+  const plan = planRevision(store, input.planId).plan;
+  const requirement = plan.requirements.find((item) => item.id === input.requirementId);
+  requireWellFormed(requirement, `Unknown requirement ${input.requirementId} in plan ${input.planId}.`);
+  const gapId = unusedId(
+    "G",
+    plan.gaps.map((gap) => gap.id)
+  );
+  const tests = plan.tests.filter((test) => test.requirementIds.includes(requirement.id)).map((test) => test.id);
+  const added = patchPlan(store, actor, {
+    reference: `${input.planId}@${plan.revision}`,
+    patch: {
+      gaps: {
+        [gapId]: {
+          severity: "blocking",
+          requirementIds: [requirement.id],
+          testIds: tests,
+          question: `Drop ${requirement.id} "${requirement.text}" from the plan?`,
+          consequence: "The requirement and its tests leave the plan on the next revision."
+        }
+      }
+    },
+    rationale: input.rationale
+  });
+  if (added.status !== "completed") return added;
+  return answerGap(store, actor, {
+    planId: input.planId,
+    gapId,
+    kind: "clarify",
+    value: `Drop ${requirement.id} "${requirement.text}". ${input.rationale}`,
+    source: input.source,
+    rationale: input.rationale
+  });
 }
 function answerGap(store, actor, input) {
   return write(store, { actor, command: "gap answer", subject: input.planId, input }, (operationId, at, actor2) => {
@@ -17328,7 +17388,7 @@ function verifierBrief(items, entries, operations, dataPrefix, answer2) {
 
 // plugin/src/recorder.ts
 import { randomUUID as randomUUID3 } from "node:crypto";
-import { existsSync as existsSync6, mkdirSync as mkdirSync5, readFileSync as readFileSync8, rmSync as rmSync4, writeFileSync as writeFileSync3 } from "node:fs";
+import { existsSync as existsSync7, mkdirSync as mkdirSync5, readFileSync as readFileSync8, rmSync as rmSync4, writeFileSync as writeFileSync3 } from "node:fs";
 import { join as join9 } from "node:path";
 var defaultRecorderTimeout = 600;
 var reservedExplorers = ["rules", "merge", "verify"];
@@ -17610,7 +17670,7 @@ function recordLocked(store, operation, input, plan, env, cwd, started) {
   const dropped = [];
   const unknownRules = [];
   const work = join9(store.workspace, workFolder(exploration2.exploration_id, plan.explorer));
-  const evidenceCwd = existsSync6(work) ? work : cwd;
+  const evidenceCwd = existsSync7(work) ? work : cwd;
   const log = (entries) => logReply(
     store,
     actor,
@@ -18034,7 +18094,7 @@ function upstreamBase(repository) {
 import { spawn as spawn3, spawnSync as spawnSync6 } from "node:child_process";
 import { randomUUID as randomUUID4 } from "node:crypto";
 import {
-  existsSync as existsSync7,
+  existsSync as existsSync8,
   mkdirSync as mkdirSync6,
   openSync,
   readdirSync as readdirSync2,
@@ -18214,7 +18274,7 @@ function keepWorkFiles(store, actor, explorationId, explorer, phase) {
   const folder = join10(store.workspace, workFolder(explorationId, explorer));
   const files2 = keptFiles.flatMap((name2) => {
     const path = join10(folder, name2);
-    return existsSync7(path) ? [{ name: name2, bytes: readFileSync9(path) }] : [];
+    return existsSync8(path) ? [{ name: name2, bytes: readFileSync9(path) }] : [];
   });
   if (!files2.length) return;
   const input = { explorer, phase, files: files2.map((file) => file.name) };
@@ -18231,12 +18291,12 @@ function keepWorkFiles(store, actor, explorationId, explorer, phase) {
   });
 }
 function removeIfEmpty(folder) {
-  if (existsSync7(folder) && !readdirSync2(folder).length) rmdirSync2(folder);
+  if (existsSync8(folder) && !readdirSync2(folder).length) rmdirSync2(folder);
 }
 var browserFolder = ".playwright-cli";
 function keepBrowserFolder(store, explorationId) {
   const from = join10(store.workspace, browserFolder);
-  if (startOf(explorationEvents(store, explorationId))?.browserFolder !== false || !existsSync7(from)) return;
+  if (startOf(explorationEvents(store, explorationId))?.browserFolder !== false || !existsSync8(from)) return;
   const to = join10(store.workspace, workFolder(explorationId), browserFolder);
   mkdirSync6(join10(to, ".."), { recursive: true });
   rmSync5(to, { recursive: true, force: true });
@@ -18312,7 +18372,7 @@ function startExploration(store, actor, given, env, preferSavedModel = false) {
         detail: {
           ...launch,
           dataRules: rules,
-          browserFolder: existsSync7(join10(store.workspace, browserFolder))
+          browserFolder: existsSync8(join10(store.workspace, browserFolder))
         }
       },
       operationId,
@@ -19310,7 +19370,7 @@ function stopExploration(store, actor, input) {
   const explorer = input.explorer;
   const reply = recordStop(store, actor, input);
   const left = endStopped(store, id2, explorer);
-  const kept = explorer === void 0 && existsSync7(join10(store.workspace, workFolder(id2))) ? workFolder(id2) : null;
+  const kept = explorer === void 0 && existsSync8(join10(store.workspace, workFolder(id2))) ? workFolder(id2) : null;
   return {
     ...reply,
     status: left.length ? "operational_error" : "completed",
@@ -19462,7 +19522,7 @@ function explorationStatus(store, explorationId) {
     explorers,
     phases: events.filter((item) => ["merge", "verify", "follow", "followed"].includes(item.step)).map((item) => ({ step: item.step, status: item.status, detail: item.detail })),
     doneHint: done?.detail.hint ?? null,
-    workFolder: (["failed", "stopped", "interrupted"].includes(state) || ["failed", "stopped", "interrupted"].includes(follow ?? "")) && existsSync7(join10(store.workspace, workFolder(row2.exploration_id))) ? workFolder(row2.exploration_id) : null,
+    workFolder: (["failed", "stopped", "interrupted"].includes(state) || ["failed", "stopped", "interrupted"].includes(follow ?? "")) && existsSync8(join10(store.workspace, workFolder(row2.exploration_id))) ? workFolder(row2.exploration_id) : null,
     reason: done?.detail.reason ?? (state === "stopped" ? stopReason(events) : state === "interrupted" ? "The supervisor stopped before the end." : null)
   };
 }
@@ -19923,7 +19983,7 @@ function owedLines(store) {
 }
 
 // plugin/src/views.ts
-import { existsSync as existsSync8 } from "node:fs";
+import { existsSync as existsSync9 } from "node:fs";
 import { join as join11 } from "node:path";
 function approvalLabel(state) {
   if (state.approved) return "approved";
@@ -20121,6 +20181,9 @@ function planDetail(store, planId, revision2 = null) {
     latestRevision: latest.plan.revision,
     sha256: selected.sha256,
     approval: { state: approvalLabel(approval), policy: approval.policy, latest: approval.latest },
+    plannedFrom: JSON.parse(
+      one(store, "SELECT body FROM plan_requests WHERE plan_id = ?", planId).body
+    ).context?.sources ?? [],
     pendingDecisions: pending,
     legacyChecks: legacyChecks(selected.plan),
     plan: selected.plan,
@@ -20190,7 +20253,7 @@ function mergedQuestions(store, planId) {
 }
 function explorationData(store, status) {
   const log = `.checkmate/tmp/explore-${status.explorationId}.log`;
-  return [...status.workFolder ? [status.workFolder] : [], ...existsSync8(join11(store.workspace, log)) ? [log] : []];
+  return [...status.workFolder ? [status.workFolder] : [], ...existsSync9(join11(store.workspace, log)) ? [log] : []];
 }
 function planHasRevision(store, planId) {
   return Boolean(one(store, "SELECT 1 FROM plan_revisions WHERE plan_id = ?", planId));
@@ -22770,7 +22833,7 @@ async function recoverPiCosts(store, env) {
 // plugin/src/ui/server.ts
 import { createServer } from "node:http";
 import { randomBytes as randomBytes4 } from "node:crypto";
-import { existsSync as existsSync9, readFileSync as readFileSync11, realpathSync as realpathSync7 } from "node:fs";
+import { existsSync as existsSync10, readFileSync as readFileSync11, realpathSync as realpathSync7 } from "node:fs";
 import { fileURLToPath as fileURLToPath2 } from "node:url";
 
 // plugin/src/modes.ts
@@ -36484,7 +36547,7 @@ var maxForm = 256 * 1024;
 function directory(candidates, file) {
   for (const candidate of candidates) {
     const path = fileURLToPath2(new URL(candidate, import.meta.url));
-    if (existsSync9(path + file)) return path;
+    if (existsSync10(path + file)) return path;
   }
   throw new Error(`Checkmate UI files are missing: ${file} not found in ${candidates.join(", ")}`);
 }
@@ -39407,17 +39470,17 @@ import { constants as constants2 } from "node:sqlite";
 
 // plugin/src/build.ts
 import { createHash as createHash2 } from "node:crypto";
-import { existsSync as existsSync10, readdirSync as readdirSync3, readFileSync as readFileSync13, realpathSync as realpathSync8, statSync as statSync6 } from "node:fs";
+import { existsSync as existsSync11, readdirSync as readdirSync3, readFileSync as readFileSync13, realpathSync as realpathSync8, statSync as statSync6 } from "node:fs";
 import { homedir as homedir3 } from "node:os";
 import { dirname as dirname3, isAbsolute as isAbsolute4, join as join19, resolve as resolve8, sep as sep4 } from "node:path";
 import { fileURLToPath as fileURLToPath3 } from "node:url";
 var instructionFolders = ["agents", "contracts", "references", "skills"];
 function pluginRootOf(bundle) {
   const moduleRoot2 = dirname3(dirname3(bundle));
-  return existsSync10(join19(moduleRoot2, ".claude-plugin", "plugin.json")) ? moduleRoot2 : join19(moduleRoot2, "plugin");
+  return existsSync11(join19(moduleRoot2, ".claude-plugin", "plugin.json")) ? moduleRoot2 : join19(moduleRoot2, "plugin");
 }
 function filesUnder(folder) {
-  if (!existsSync10(folder)) return [];
+  if (!existsSync11(folder)) return [];
   return readdirSync3(folder).sort().flatMap((name2) => {
     const path = join19(folder, name2);
     return statSync6(path).isDirectory() ? filesUnder(path) : [path];
@@ -39456,7 +39519,7 @@ function piDeclarations(env, cwd) {
     ["project", join19(cwd, ".pi", "settings.json")]
   ];
   return files2.flatMap(([scope, file]) => {
-    if (!existsSync10(file)) return [];
+    if (!existsSync11(file)) return [];
     let packages;
     try {
       packages = JSON.parse(readFileSync13(file, "utf8")).packages;
@@ -39469,7 +39532,7 @@ function piDeclarations(env, cwd) {
 }
 function packageRootOf(file) {
   let folder = dirname3(file);
-  while (!existsSync10(join19(folder, "package.json")) && dirname3(folder) !== folder) folder = dirname3(folder);
+  while (!existsSync11(join19(folder, "package.json")) && dirname3(folder) !== folder) folder = dirname3(folder);
   return folder;
 }
 function piCopyWarnings(bundle, env, cwd) {
@@ -39937,7 +40000,13 @@ var commands = {
       target: value(args, "target"),
       request: planRequestInput(args, stdin)
     }),
-    print: (reply) => ({ facts: { target: reply.data.target, recorded: reply.data.recorded } })
+    print: (reply) => ({
+      facts: {
+        target: reply.data.target,
+        recorded: reply.data.recorded,
+        plannedFrom: reply.data.sources.length ? reply.data.sources.join(", ") : "no source files"
+      }
+    })
   },
   "plan request": {
     positionals: ["planId"],
@@ -40055,6 +40124,19 @@ var commands = {
         ]
       };
     }
+  },
+  "scope drop": {
+    positionals: ["planId", "requirementId"],
+    flags: { source: "value", rationale: "value" },
+    required: ["source", "rationale"],
+    write: true,
+    run: (store, args, { actor }) => scopeDrop(store, actor, {
+      planId: value(args, "planId"),
+      requirementId: value(args, "requirementId"),
+      source: value(args, "source"),
+      rationale: value(args, "rationale")
+    }),
+    print: (reply) => ({ facts: { recorded: reply.data.recorded ?? true } })
   },
   "gap answer": {
     positionals: ["planId", "gapId"],
@@ -41366,6 +41448,7 @@ function printPlan(reply) {
     facts: {
       ...facts3,
       approval: detail.approval.state,
+      plannedFrom: detail.plannedFrom.length ? detail.plannedFrom.join(", ") : "no source files",
       ...detail.latestRevision !== detail.revision ? { latest: detail.latestRevision } : {}
     },
     lines: [
@@ -42850,7 +42933,7 @@ ${source.text}`)
 }
 
 // cli/src/main.ts
-import { existsSync as existsSync11, mkdirSync as mkdirSync11, openSync as openSync2, readFileSync as readFileSync16, rmSync as rmSync9, writeFileSync as writeFileSync7 } from "node:fs";
+import { existsSync as existsSync12, mkdirSync as mkdirSync11, openSync as openSync2, readFileSync as readFileSync16, rmSync as rmSync9, writeFileSync as writeFileSync7 } from "node:fs";
 import { spawn as spawn6 } from "node:child_process";
 import { join as join22 } from "node:path";
 import { fileURLToPath as fileURLToPath4 } from "node:url";
@@ -42859,7 +42942,7 @@ var delegateSpecUsage = "checkmate delegate spec <planId@revision> [--timeout <s
 var delegateHarnessUsage = "With Pi, omit --allow and --claude-arg. Claude requires --allow <rule> and accepts --claude-arg <arg>. CHECKMATE_HARNESS overrides the workspace harness. The default is Claude. delegate spec uses no tools and needs no --allow.";
 function version2() {
   const plugin = new URL("../.claude-plugin/plugin.json", import.meta.url);
-  const manifest = existsSync11(plugin) ? plugin : new URL("../package.json", import.meta.url);
+  const manifest = existsSync12(plugin) ? plugin : new URL("../package.json", import.meta.url);
   return versionLines(
     JSON.parse(readFileSync16(manifest, "utf8")).version,
     import.meta.url,
@@ -43002,8 +43085,8 @@ function waitDelegate(tokens) {
   const file = resultFile(workspace2, stage, subject);
   const limit = (seconds(parsed.values.timeout, "timeout") ?? 90) * 1e3;
   const until = Date.now() + limit;
-  while (!existsSync11(file) && Date.now() < until) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 500);
-  if (!existsSync11(file)) {
+  while (!existsSync12(file) && Date.now() < until) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 500);
+  if (!existsSync12(file)) {
     print(
       {
         status: "running",

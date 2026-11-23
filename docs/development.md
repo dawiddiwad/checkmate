@@ -48,4 +48,4 @@ The root package is private. The published CLI package is `cli/`. The build bund
 
 ## Documentation media
 
-Run `node scripts/build-cli.ts`, then set `CHECKMATE_BROWSER_EXECUTABLE` and run `node scripts/capture-docs-ui.ts` to capture the current review UI with disposable sample records. Run `node scripts/render-onboarding.ts` with FFmpeg and Claude Code on `PATH` to rebuild the onboarding GIF. It runs the CLI on a demo shop (`scripts/onboarding/shop.mjs`) with live Claude calls, then records the review UI in Chromium. The planner writes different gaps on each run, so the recorder answers the gaps it finds in the record.
+Run `node scripts/build-cli.ts`, then set `CHECKMATE_BROWSER_EXECUTABLE` and run `node scripts/capture-docs-ui.ts` to capture the current review UI with disposable sample records. Run `node scripts/render-onboarding.ts` with FFmpeg and Claude Code on `PATH` to rebuild the onboarding GIF. It renders the factory storyboard in `docs/media/onboarding.html`, then records the review UI in Chromium on the sample records of `scripts/ui-demo.ts`. The chat scenes call Claude Code.

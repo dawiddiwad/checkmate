@@ -94,6 +94,9 @@
 												"expected": {
 													"type": "string",
 													"minLength": 1
+												},
+												"observeFrom": {
+													"enum": ["page", "reload", "api"]
 												}
 											},
 											"additionalProperties": false,

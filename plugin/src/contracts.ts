@@ -326,11 +326,37 @@ export function rangeWithoutInput(check: string) {
 	return range && input && !named
 }
 
-// The checks that code cannot decide yet: legacy checks and refusals without a control. Each is named by its assertion ID.
+// A state-changing action is shown only by a check that reads the state from its source. A test whose checks are all
+// explicitly page-only is flagged; a test that does not say observeFrom is left alone.
+export function pageOnlyStateChange(test: { action: string; assertions: Array<{ observeFrom?: string }> }) {
+	const changes = /\b(add|apply|clear|delete|remove|save|update)\b/i.test(test.action)
+	return (
+		changes && test.assertions.length > 0 && test.assertions.every((assertion) => assertion.observeFrom === 'page')
+	)
+}
+
+// The soft rules refuse a first save and save the test as not ready on the next attempt. Each names its reason.
+export function softProblems(test: Plan['tests'][number]) {
+	const problems: Array<{
+		id: string
+		reason: 'needs_control' | 'needs_source_check' | 'needs_input'
+		check: string
+	}> = []
+	const refusal = uncontrolledRefusal(test)
+	if (refusal) problems.push({ id: refusal.id, reason: 'needs_control', check: refusal.check })
+	if (pageOnlyStateChange(test))
+		problems.push({ id: test.assertions[0].id, reason: 'needs_source_check', check: test.action })
+	for (const assertion of test.assertions)
+		if (rangeWithoutInput(assertion.check))
+			problems.push({ id: assertion.id, reason: 'needs_input', check: assertion.check })
+	return problems
+}
+
+// A check that code cannot decide yet, named by its assertion ID and reason: legacy checks and soft problems.
 export function unverifiedAssertions(test: Plan['tests'][number]) {
 	return [
 		...test.assertions.filter((assertion) => unverifiedCheck(assertion)).map((assertion) => assertion.id),
-		...(uncontrolledRefusal(test) ? [uncontrolledRefusal(test)!.id] : []),
+		...softProblems(test).map((problem) => `${problem.id} ${problem.reason}`),
 	]
 }
 

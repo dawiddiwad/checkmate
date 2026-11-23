@@ -7,7 +7,7 @@ import { patchRules, requireHeldRules } from './rules.ts'
 import { operationAllowed, readinessHint, targetWebUrl } from './targets.ts'
 import { dataSummary, requireDataFor } from './resets.ts'
 import { all, canonical, completed, digest, execute, one, ulid, write } from './store.ts'
-import { rangeWithoutInput, uncontrolledRefusal } from './contracts.ts'
+import { softProblems } from './contracts.ts'
 import type { PlanDraft, Test } from './contracts.ts'
 import {
 	approvalPolicy,
@@ -247,32 +247,91 @@ export function latestPlans(store: Store) {
 	return new Map(rows.map((row) => [row.plan_id, JSON.parse(row.body) as Plan]))
 }
 
-// A test that an edit adds or changes must show a positive control for its refusal. Older tests are flagged, not refused.
-function requireChangedControls(plan: Plan, previous: Plan | undefined) {
-	const before = new Map((previous?.tests ?? []).map((test) => [test.id, test]))
-	for (const test of plan.tests) {
-		const old = before.get(test.id)
-		if (old && old.action === test.action && canonical(old.assertions) === canonical(test.assertions)) continue
-		const range = test.assertions.find((assertion) => rangeWithoutInput(assertion.check))
-		requireWellFormed(
-			!range,
-			`Check ${test.id}.${range?.id} states a range but names no input value: "${range?.check}"`,
-			`Write one assertion for each side of the range, each naming its input: for quantity 0, 1, 10 and 11, for example {"id": "A2", "check": "quantity 0 returns HTTP 400.", "checkKind": "deterministic", "observe": "HTTP status for quantity 0", "expected": "400"}. Give the lower bound, the upper bound, the value below and the value above, each with its own expected result.`
-		)
-		const refusal = uncontrolledRefusal(test)
-		requireWellFormed(
-			!refusal,
-			`Test ${test.id} expects a refusal (${refusal?.check}) but has no positive control: nothing shows that the same request succeeds.`,
-			`Add a control to ${test.id} for the same route with a valid value, for example {"id": "A2", "check": "The same request for an existing id returns 200.", "checkKind": "deterministic", "observe": "HTTP status of the request for an existing id", "expected": "200"}. Keep the refusal, and use a well-formed value of the same shape for it.`
-		)
+// A soft rule refuses the first save, with a corrected example. The next save of the same plan saves, and the test is not
+// ready: status and plan show name its reason and the fix. Only the tests that a save adds or changes are checked.
+const softRefusalTexts = ['positive control', 'reads it from the source', 'names no input value']
+
+function priorSoftRefusal(store: Store, planId: string) {
+	const last = one<{ id: number | null }>(
+		store,
+		"SELECT max(rowid) AS id FROM operations WHERE subjects LIKE ? AND command = 'plan save' AND status = 'completed'",
+		`%"plan:${planId}"%`
+	)
+	const refused = all<{ response: string }>(
+		store,
+		"SELECT response FROM operations WHERE response LIKE ? AND command = 'plan save' AND status = 'rejected' AND rowid > ?",
+		`%"subject":"${planId}"%`,
+		last?.id ?? 0
+	)
+	return refused.some((row) => softRefusalTexts.some((text) => row.response.includes(text)))
+}
+
+function softReason(test: Plan['tests'][number], problem: ReturnType<typeof softProblems>[number]) {
+	if (problem.reason === 'needs_control')
+		return `Test ${test.id} expects a refusal (${problem.check}) but has no positive control: nothing shows that the same request succeeds.`
+	if (problem.reason === 'needs_source_check')
+		return `Test ${test.id} changes state ("${test.action}") but no check reads it from the source.`
+	return `Check ${test.id}.${problem.id} states a range but names no input value: "${problem.check}"`
+}
+
+// The complete corrected test: the control first, then the refusal, so the next save has both.
+function correctedTest(test: Plan['tests'][number]) {
+	const next = Math.max(0, ...test.assertions.map((assertion) => Number(assertion.id.replace(/\D/g, '')) || 0)) + 1
+	const control = {
+		id: `A${next}`,
+		check: 'The same request with a valid value returns 200.',
+		checkKind: 'deterministic',
+		observe: 'HTTP status of the same request with a valid value',
+		expected: '200',
 	}
+	return {
+		id: test.id,
+		title: test.title,
+		requirementIds: test.requirementIds,
+		capability: test.capability,
+		operations: test.operations,
+		dependsOn: test.dependsOn,
+		preconditions: test.preconditions,
+		action: test.action,
+		assertions: [
+			control,
+			...test.assertions.map(({ id, check, checkKind, observe, expected, observeFrom }) => ({
+				id,
+				check,
+				checkKind,
+				observe,
+				expected,
+				observeFrom,
+			})),
+		],
+	}
+}
+
+function requireChangedChecks(store: Store, plan: Plan, previous: Plan | undefined) {
+	const before = new Map((previous?.tests ?? []).map((test) => [test.id, test]))
+	const changed = plan.tests.filter((test) => {
+		const old = before.get(test.id)
+		return !old || old.action !== test.action || canonical(old.assertions) !== canonical(test.assertions)
+	})
+	const problems = changed.flatMap((test) => softProblems(test).map((problem) => ({ test, problem })))
+	if (!problems.length || priorSoftRefusal(store, plan.planId)) return
+	const controls = changed.filter((test) =>
+		problems.some((item) => item.test === test && item.problem.reason === 'needs_control')
+	)
+	requireWellFormed(
+		false,
+		problems.map((item) => softReason(item.test, item.problem)).join(' '),
+		controls.length
+			? `Corrected test${controls.length > 1 ? 's' : ''}, with the control first: ${controls.map((test) => JSON.stringify(correctedTest(test))).join(' ')} Save again. A test that still lacks a control is saved as not ready: plan show names it.`
+			: 'Correct each named check and save again. A check that still breaks the rule is saved as not ready: plan show names it.'
+	)
 }
 
 function checkedRevision(store: Store, draft: PlanDraft) {
 	const plan = planCheck(derivePlan(draft))
 	planTargetCheck(plan, targetRevision(store, plan.target.targetId, plan.target.revision).profile)
 	const others = latestPlans(store)
-	requireChangedControls(plan, others.get(plan.planId))
+	requireChangedChecks(store, plan, others.get(plan.planId))
 	others.delete(plan.planId)
 	dependencyCheck(plan, others)
 	const body = canonical(plan)

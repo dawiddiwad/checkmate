@@ -3771,3 +3771,43 @@ test('Show a legacy plan — status and plan show name checks saved without an e
 	assert.equal(status.code, 0, status.output)
 	assert.deepEqual(status.body.legacyChecks, ['T1.A1'])
 })
+
+test('Execute a legacy check — the worker is told to decide its result with --result, because the code has no expected value.', async (t) => {
+	const workspace = directory(t)
+	mkdirSync(join(workspace, '.checkmate'))
+	writeFileSync(
+		join(workspace, '.checkmate/checkmate.db'),
+		gunzipSync(readFileSync(join(root, 'test/e2e/fixtures/workspace-39d33f7.db.gz')))
+	)
+	const app = await fixture()
+	t.after(() => app.close())
+	app.fix()
+	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle' }
+	const ok = async (...args: string[]) => {
+		const result = await command(workspace, env, ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	await ok('target', 'instance', 'add', 'shop', 'local', '--entry', `web=${app.baseUrl}`)
+	await ok('plan', 'approve', 'ticket@1', '--rationale', 'Run the rule.')
+	await ok('run', 'begin', 'run-1', 'ticket@1', '--build', 'fixed', '--instance', 'local', '--tests', 'T1')
+	const bin = directory(t)
+	copyFileSync(join(root, 'test/e2e/per-test-host.mjs'), join(bin, 'pi'))
+	chmodSync(join(bin, 'pi'), 0o755)
+	const prompts = join(directory(t), 'prompts.txt')
+	const piEnv = {
+		...env,
+		PATH: `${bin}${delimiter}${process.env.PATH}`,
+		CHECKMATE_HARNESS: 'pi',
+		FAKE_PI_LOG: join(directory(t), 'log.txt'),
+		FAKE_PI_PROMPTS: prompts,
+		FAKE_CHECKMATE_CLI: binary,
+		FAKE_RUN: 'run-1',
+	}
+	await inputCommand(workspace, piEnv, '', 'delegate', 'execute', 'run-1')
+	assert(
+		readFileSync(prompts, 'utf8').includes(
+			'A1: The quote is 240. This assertion has no expected value: decide it with --result passed, failed or inconclusive.'
+		)
+	)
+})

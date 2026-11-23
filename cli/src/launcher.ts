@@ -774,13 +774,13 @@ function testPrompt(execution: Execution, workspace: string, test: Test, actor: 
 		'Assertions:',
 		...test.assertions.map((assertion) =>
 			assertion.expected === undefined
-				? `${assertion.id}: ${assertion.check}`
+				? `${assertion.id}: ${assertion.check} This assertion has no expected value: decide it with --result passed, failed or inconclusive.`
 				: `${assertion.id}: observe ${assertion.observe}. Expected value: ${assertion.expected}.`
 		),
 		...contextLines(execution, workspace, cli, tools),
 		`Record each assertion: ${cli} run check ${runId} ${test.id} <assertion ID> --actor ${actor} --observed "<only the observed value, for example 300 PLN>" --evidence - <<'EOF'`,
 		'then the raw tool output that shows it, copied, then EOF. Use two words for the IDs: T1 A1. Give only the value of the observed item, not the whole line.',
-		'Do not decide passed or failed. The code compares the observed value with the expected value. When you cannot observe the value, record not_checked with --reason "<why>" and no --observed.',
+		'For an assertion with an expected value, do not decide passed or failed: the code compares the observed value with the expected value. For an assertion without one, decide it with --result and --observed. When you cannot observe the value, record not_checked with --reason "<why>" and no --observed.',
 		`For each failed assertion, record a defect: ${cli} run finding ${runId} --actor ${actor} <<'EOF' with {"id":"F-${test.id}-1","type":"defect","severity":"medium","assertionIds":["${test.id}.<assertion ID>"],"requirementIds":${JSON.stringify(test.requirementIds)},"title":"<short title>","expected":"<check>","observed":"<observed value>","reproduction":["<request or steps>"],"evidenceIds":["<evidence ID printed by run check>"]} then EOF.`,
 		`Then close the test: ${cli} run close ${runId} ${test.id} --actor ${actor}.`,
 		`If a tool fails or the action cannot run: ${cli} run close ${runId} ${test.id} --actor ${actor} --outcome error --reason "<cause>" --evidence - <<'EOF' with the failed tool output, then EOF.`,

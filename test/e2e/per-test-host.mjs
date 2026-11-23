@@ -2,6 +2,7 @@
 import { appendFileSync, readFileSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
 const prompt = readFileSync(0, 'utf8')
+if (process.env.FAKE_PI_PROMPTS) appendFileSync(process.env.FAKE_PI_PROMPTS, prompt)
 const runId = process.env.FAKE_RUN
 const cli = (args, input = '') =>
 	execFileSync(process.execPath, [process.env.FAKE_CHECKMATE_CLI, ...args], { encoding: 'utf8', input })

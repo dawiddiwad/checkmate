@@ -589,6 +589,19 @@ export function changesOf(store: Store, requestId: string): RequestChange[] {
 	})
 }
 
+// Turns may run in different chats at once, up to this many. Turns in one chat run one at a time.
+export const maxRunningTurns = 3
+
+// What a waiting turn waits behind, from the record: the earlier turn in its chat, or the running turns.
+export function waitingBehind(store: Store, request: RequestRecord) {
+	const running = allRequests(store).filter((item) => item.state === 'running')
+	if (running.some((item) => item.conversation === request.conversation))
+		return 'Waiting for the turn before it in this chat to finish.'
+	if (running.length >= maxRunningTurns)
+		return `Waiting: ${running.length} chats are working, and up to ${maxRunningTurns} run at once.`
+	return 'Waiting for a turn to start.'
+}
+
 export function staleRequests(store: Store) {
 	for (const request of allRequests(store))
 		if (request.state === 'running' || request.state === 'waiting')

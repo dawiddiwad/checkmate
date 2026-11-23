@@ -665,6 +665,7 @@ const chatReadCommands = [
 	'explore status',
 	'explore levels',
 	'explore permissions',
+	'explore wait',
 ]
 const chatRecordCommands = [
 	'gap answer',
@@ -679,6 +680,8 @@ const chatRecordCommands = [
 	'claim accept',
 	'claim reject',
 	'claim handoff',
+	'delegate revise',
+	'delegate wait',
 ]
 
 // The model quotes the script path with double or single quotes, so each command has both forms.
@@ -687,6 +690,29 @@ export function chatAllowRules(checkmate: string) {
 		`Bash(node "${checkmate}" ${command}:*)`,
 		`Bash(node '${checkmate}' ${command}:*)`,
 	])
+}
+
+// A chat turn also gets the record of what it saved, after each Checkmate command.
+function chatHookSettings(session: RequestSession) {
+	const settings = hookSettings(session.hook)
+	const changes = join(pluginRoot, 'claude', 'changes.mjs')
+	return {
+		...settings,
+		hooks: {
+			...settings.hooks,
+			PostToolUse: [
+				{
+					matcher: 'Bash',
+					hooks: [
+						{
+							type: 'command',
+							command: `node '${changes.replaceAll("'", "'\\''")}' '${session.checkmate.replaceAll("'", "'\\''")}'`,
+						},
+					],
+				},
+			],
+		},
+	}
 }
 
 export function requestArgs(session: RequestSession) {
@@ -699,8 +725,10 @@ export function requestArgs(session: RequestSession) {
 		session.sessionId,
 		'--plugin-dir',
 		pluginRoot,
+		'--tools',
+		'Read,Bash',
 		'--settings',
-		JSON.stringify(hookSettings(session.hook)),
+		JSON.stringify(chatHookSettings(session)),
 		'--append-system-prompt',
 		requestSystemPrompt(session.checkmate),
 		...(session.model ? ['--model', session.model] : []),

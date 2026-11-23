@@ -33,6 +33,7 @@ import {
 	changesOf,
 	chatHistory,
 	chatOf,
+	maxRunningTurns,
 	recordRequestEvent,
 	requestActor,
 	requestOf,
@@ -180,6 +181,7 @@ export function readStreamLine(line: string, harness: 'claude' | 'pi' = 'claude'
 
 type Running = {
 	id: string
+	conversation: string
 	actor: string
 	harness: 'claude' | 'pi'
 	child: StreamedClaude | null
@@ -217,7 +219,7 @@ export function createRequester(store: Store, options: RequesterOptions): Reques
 	const log = options.log ?? ((line: string) => process.stderr.write(`checkmate ui: ${line}\n`))
 	const delays = options.delays ?? defaultStopDelays
 	const queue: string[] = []
-	let running: Running | null = null
+	const running = new Map<string, Running>()
 	let closing = false
 
 	function guarded(action: () => void) {
@@ -326,6 +328,7 @@ export function createRequester(store: Store, options: RequesterOptions): Reques
 	function launch(request: RequestRecord) {
 		const run: Running = {
 			id: request.id,
+			conversation: request.conversation,
 			actor: requestActor(request.asker, request.id),
 			harness: request.harness,
 			child: null,
@@ -337,7 +340,7 @@ export function createRequester(store: Store, options: RequesterOptions): Reques
 			reason: '',
 			done: Promise.resolve(),
 		}
-		running = run
+		running.set(run.id, run)
 		let program: string
 		let modelArgs: string[] = []
 		let modelId = request.modelId
@@ -454,17 +457,24 @@ This conversation is about plan ${reference}. Use the plan and its records as th
 
 	function finish(run: Running, end: Awaited<StreamedClaude['finished']> | null) {
 		conclude(run, end)
-		if (running === run) running = null
+		running.delete(run.id)
 		next()
 	}
 
+	// Start the queued turns that may run now: up to maxRunningTurns, and at most one per chat.
 	function next() {
-		if (running || closing) return
-		const id = queue.shift()
-		if (!id) return
-		const request = requestOf(store, id)
-		if (request?.state === 'waiting') launch(request)
-		else next()
+		if (closing) return
+		for (const id of [...queue]) {
+			if (running.size >= maxRunningTurns) return
+			const request = requestOf(store, id)
+			if (request?.state !== 'waiting') {
+				queue.splice(queue.indexOf(id), 1)
+				continue
+			}
+			if ([...running.values()].some((run) => run.conversation === request.conversation)) continue
+			queue.splice(queue.indexOf(id), 1)
+			launch(request)
+		}
 	}
 
 	function enqueue(
@@ -504,12 +514,13 @@ This conversation is about plan ${reference}. Use the plan and its records as th
 			return enqueue(actor, text, context, chatId, selection)
 		},
 		stop(actor, requestId, reason) {
-			if (running?.id === requestId) {
-				if (running.stopping) return
-				running.stopping = 'stopped'
-				running.reason = reason || 'Stopped by you.'
+			const run = running.get(requestId)
+			if (run) {
+				if (run.stopping) return
+				run.stopping = 'stopped'
+				run.reason = reason || 'Stopped by you.'
 				stopRequestRecord(store, actor, requestId, reason)
-				running.child?.stop()
+				run.child?.stop()
 				return
 			}
 			const at = queue.indexOf(requestId)
@@ -530,12 +541,14 @@ This conversation is about plan ${reference}. Use the plan and its records as th
 						changes: [],
 					})
 				)
-			const run = running as Running | null
-			if (!run) return
-			run.stopping ??= 'interrupted'
-			if (run.stopping === 'interrupted') run.reason = 'The UI stopped before this turn ended.'
-			run.child?.stop()
-			await run.done
+			// Stopping the UI server ends its chat children. Closing a browser does not reach this.
+			const active = [...running.values()]
+			for (const run of active) {
+				run.stopping ??= 'interrupted'
+				if (run.stopping === 'interrupted') run.reason = 'The UI stopped before this turn ended.'
+				run.child?.stop()
+			}
+			await Promise.all(active.map((run) => run.done))
 		},
 	}
 }

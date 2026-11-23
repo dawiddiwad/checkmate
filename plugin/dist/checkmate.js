@@ -10344,7 +10344,8 @@ var chatReadCommands = [
   "explore show",
   "explore status",
   "explore levels",
-  "explore permissions"
+  "explore permissions",
+  "explore wait"
 ];
 var chatRecordCommands = [
   "gap answer",
@@ -10358,13 +10359,36 @@ var chatRecordCommands = [
   "result reject",
   "claim accept",
   "claim reject",
-  "claim handoff"
+  "claim handoff",
+  "delegate revise",
+  "delegate wait"
 ];
 function chatAllowRules(checkmate) {
   return [...chatReadCommands, ...chatRecordCommands].flatMap((command) => [
     `Bash(node "${checkmate}" ${command}:*)`,
     `Bash(node '${checkmate}' ${command}:*)`
   ]);
+}
+function chatHookSettings(session) {
+  const settings = hookSettings(session.hook);
+  const changes = join2(pluginRoot, "claude", "changes.mjs");
+  return {
+    ...settings,
+    hooks: {
+      ...settings.hooks,
+      PostToolUse: [
+        {
+          matcher: "Bash",
+          hooks: [
+            {
+              type: "command",
+              command: `node '${changes.replaceAll("'", "'\\''")}' '${session.checkmate.replaceAll("'", "'\\''")}'`
+            }
+          ]
+        }
+      ]
+    }
+  };
 }
 function requestArgs(session) {
   return [
@@ -10376,8 +10400,10 @@ function requestArgs(session) {
     session.sessionId,
     "--plugin-dir",
     pluginRoot,
+    "--tools",
+    "Read,Bash",
     "--settings",
-    JSON.stringify(hookSettings(session.hook)),
+    JSON.stringify(chatHookSettings(session)),
     "--append-system-prompt",
     requestSystemPrompt(session.checkmate),
     ...session.model ? ["--model", session.model] : [],
@@ -15822,6 +15848,15 @@ function changesOf(store, requestId2) {
       href: record ? `${recordPaths[record[1]]}${subject}` : null
     };
   });
+}
+var maxRunningTurns = 3;
+function waitingBehind(store, request2) {
+  const running3 = allRequests(store).filter((item) => item.state === "running");
+  if (running3.some((item) => item.conversation === request2.conversation))
+    return "Waiting for the turn before it in this chat to finish.";
+  if (running3.length >= maxRunningTurns)
+    return `Waiting: ${running3.length} chats are working, and up to ${maxRunningTurns} run at once.`;
+  return "Waiting for a turn to start.";
 }
 function staleRequests(store) {
   for (const request2 of allRequests(store))
@@ -30550,7 +30585,7 @@ function createRequester(store, options3) {
 `));
   const delays = options3.delays ?? defaultStopDelays;
   const queue = [];
-  let running3 = null;
+  const running3 = /* @__PURE__ */ new Map();
   let closing = false;
   function guarded(action2) {
     try {
@@ -30635,6 +30670,7 @@ function createRequester(store, options3) {
   function launch(request2) {
     const run2 = {
       id: request2.id,
+      conversation: request2.conversation,
       actor: requestActor(request2.asker, request2.id),
       harness: request2.harness,
       child: null,
@@ -30646,7 +30682,7 @@ function createRequester(store, options3) {
       reason: "",
       done: Promise.resolve()
     };
-    running3 = run2;
+    running3.set(run2.id, run2);
     let program;
     let modelArgs = [];
     let modelId = request2.modelId;
@@ -30743,16 +30779,22 @@ This conversation is about plan ${reference2}. Use the plan and its records as t
   }
   function finish2(run2, end) {
     conclude(run2, end);
-    if (running3 === run2) running3 = null;
+    running3.delete(run2.id);
     next();
   }
   function next() {
-    if (running3 || closing) return;
-    const id2 = queue.shift();
-    if (!id2) return;
-    const request2 = requestOf(store, id2);
-    if (request2?.state === "waiting") launch(request2);
-    else next();
+    if (closing) return;
+    for (const id2 of [...queue]) {
+      if (running3.size >= maxRunningTurns) return;
+      const request2 = requestOf(store, id2);
+      if (request2?.state !== "waiting") {
+        queue.splice(queue.indexOf(id2), 1);
+        continue;
+      }
+      if ([...running3.values()].some((run2) => run2.conversation === request2.conversation)) continue;
+      queue.splice(queue.indexOf(id2), 1);
+      launch(request2);
+    }
   }
   function enqueue(actor, text2, context, chatId2, selection) {
     const previous = chatId2 ? chatOf(store, chatId2)?.turns.at(-1) : void 0;
@@ -30781,12 +30823,13 @@ This conversation is about plan ${reference2}. Use the plan and its records as t
       return enqueue(actor, text2, context, chatId2, selection);
     },
     stop(actor, requestId2, reason) {
-      if (running3?.id === requestId2) {
-        if (running3.stopping) return;
-        running3.stopping = "stopped";
-        running3.reason = reason || "Stopped by you.";
+      const run2 = running3.get(requestId2);
+      if (run2) {
+        if (run2.stopping) return;
+        run2.stopping = "stopped";
+        run2.reason = reason || "Stopped by you.";
         stopRequestRecord(store, actor, requestId2, reason);
-        running3.child?.stop();
+        run2.child?.stop();
         return;
       }
       const at = queue.indexOf(requestId2);
@@ -30807,12 +30850,13 @@ This conversation is about plan ${reference2}. Use the plan and its records as t
             changes: []
           })
         );
-      const run2 = running3;
-      if (!run2) return;
-      run2.stopping ??= "interrupted";
-      if (run2.stopping === "interrupted") run2.reason = "The UI stopped before this turn ended.";
-      run2.child?.stop();
-      await run2.done;
+      const active = [...running3.values()];
+      for (const run2 of active) {
+        run2.stopping ??= "interrupted";
+        if (run2.stopping === "interrupted") run2.reason = "The UI stopped before this turn ended.";
+        run2.child?.stop();
+      }
+      await Promise.all(active.map((run2) => run2.done));
     }
   };
 }
@@ -36393,7 +36437,7 @@ function turn(store, request2, context, number, back) {
 			</div>
 			${request2.reply ? html2`<div class="chat-markdown" data-chat-content>${chatMarkdown(request2.reply)}</div>` : ""}
 			${["answered", "failed", "stopped", "interrupted"].includes(request2.state) ? savedThisTurn(request2.changes) : ""}
-			${request2.state === "waiting" ? html2`<p class="help">Waiting for another chat to finish.</p>` : ""}
+			${request2.state === "waiting" ? html2`<p class="help" data-chat-waiting-behind>${waitingBehind(store, request2)}</p>` : ""}
 			${request2.state === "running" ? html2`<p class="help">Working…</p>` : ""}
 			${permissions.map(
     (item) => html2`<p class="banner warn" data-chat-waiting>

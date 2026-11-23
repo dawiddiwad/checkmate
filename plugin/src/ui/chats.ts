@@ -3,7 +3,7 @@ import type { Chat, RequestRecord, RequestSelection } from '../requests.ts'
 import type { Env } from '../sessions.ts'
 import type { Html } from './html.ts'
 import type { Context, Page } from './layout.ts'
-import { chatOf, isUnread, listedChats } from '../requests.ts'
+import { chatOf, isUnread, listedChats, waitingBehind } from '../requests.ts'
 import { explorationPermissions } from '../permissions.ts'
 import { ago, costText, glyph, html, pill, time } from './html.ts'
 import { emptyNotice, heading } from './layout.ts'
@@ -136,7 +136,7 @@ function turn(store: Store, request: RequestRecord, context: Context, number: nu
 			</div>
 			${request.reply ? html`<div class="chat-markdown" data-chat-content>${chatMarkdown(request.reply)}</div>` : ''}
 			${['answered', 'failed', 'stopped', 'interrupted'].includes(request.state) ? savedThisTurn(request.changes) : ''}
-			${request.state === 'waiting' ? html`<p class="help">Waiting for another chat to finish.</p>` : ''}
+			${request.state === 'waiting' ? html`<p class="help" data-chat-waiting-behind>${waitingBehind(store, request)}</p>` : ''}
 			${request.state === 'running' ? html`<p class="help">Working…</p>` : ''}
 			${permissions.map(
 				(item) =>

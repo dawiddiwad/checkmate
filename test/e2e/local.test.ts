@@ -5758,3 +5758,117 @@ test('Decide a check only for the request that was sent — a request that misse
 	assert.equal(sent.code, 0, sent.output)
 	assert.equal(sent.body.result, 'passed')
 })
+
+test(
+	'Run turns of two chats together and stop one — the other chat keeps working, and a second turn waits for its own chat.',
+	{ timeout: 60000 },
+	async (t) => {
+		const workspace = directory(t)
+		const host = fakeClaude(t, { request: '!hang', models: [{ value: 'sonnet', displayName: 'Sonnet' }] })
+		const env = { ...process.env, ...host.env, CHECKMATE_HARNESS: 'claude' }
+		const server = spawn(process.execPath, [binary, 'ui', '--port', '0', '--json'], { cwd: workspace, env })
+		t.after(() => {
+			if (server.exitCode === null) server.kill('SIGTERM')
+		})
+		const [first] = (await once(server.stdout, 'data')) as [Buffer]
+		const url = JSON.parse(first.toString().split('\n')[0]).url as string
+		assert(url)
+		const html = await (await fetch(new URL('/chats', url))).text()
+		const csrf = /name="csrf" value="([0-9a-f]+)"/.exec(html)?.[1]
+		assert(csrf)
+		const headers = { 'content-type': 'application/x-www-form-urlencoded', cookie: 'checkmate_actor=oracle' }
+		const send = async (path: string, text: string) => {
+			const response = await fetch(new URL(path, url), {
+				method: 'POST',
+				redirect: 'manual',
+				headers,
+				body: new URLSearchParams({ csrf, text, model: 'sonnet', harness: 'claude' }),
+			})
+			assert.equal(response.status, 303, await response.text())
+			return response.headers.get('location')!
+		}
+		const turns = async () => {
+			const rows = (
+				await command(
+					workspace,
+					env,
+					'query',
+					'SELECT request_id AS id, conversation, text FROM requests ORDER BY rowid'
+				)
+			).body.rows as Array<{ id: string; conversation: string; text: string }>
+			const events = (
+				await command(
+					workspace,
+					env,
+					'query',
+					"SELECT request_id AS id, status FROM request_events WHERE step = 'state' ORDER BY rowid"
+				)
+			).body.rows as Array<{ id: string; status: string }>
+			const state = new Map(events.map((event) => [event.id, event.status]))
+			return rows.map((row) => ({ ...row, state: state.get(row.id) ?? 'none' }))
+		}
+		const until = async (check: () => Promise<boolean>) => {
+			const deadline = Date.now() + 15000
+			while (Date.now() < deadline) {
+				if (await check()) return
+				await new Promise((resolve) => setTimeout(resolve, 50))
+			}
+			throw Error('Condition did not hold in time')
+		}
+		const chatA = await send('/chats', 'Chat A first.')
+		await send('/chats', 'Chat B first.')
+		await until(async () => (await turns()).filter((turn) => turn.state === 'running').length === 2)
+		await send(`${chatA}/turns`, 'Chat A second.')
+		const beforeStop = await turns()
+		const aFirst = beforeStop.find((turn) => turn.text === 'Chat A first.')!
+		const aSecond = beforeStop.find((turn) => turn.text === 'Chat A second.')!
+		const bFirst = beforeStop.find((turn) => turn.text === 'Chat B first.')!
+		assert.equal(aSecond.state, 'waiting')
+		const page = await (await fetch(new URL(chatA, url))).text()
+		assert.match(page, /Waiting for the turn before it in this chat to finish/)
+		const stop = await fetch(new URL(`/requests/${aFirst.id}/stop`, url), {
+			method: 'POST',
+			redirect: 'manual',
+			headers,
+			body: new URLSearchParams({ csrf, return: chatA, reason: 'Enough.' }),
+		})
+		assert.equal(stop.status, 303)
+		await until(async () => (await turns()).find((turn) => turn.id === aFirst.id)?.state === 'stopped')
+		await until(async () => (await turns()).find((turn) => turn.id === aSecond.id)?.state === 'running')
+		const after = await turns()
+		assert.equal(after.find((turn) => turn.id === bFirst.id)?.state, 'running')
+		const calls = host.called().filter((item: { role: string }) => item.role === 'request')
+		const pids = calls.map((call: { pid: number }) => call.pid)
+		server.kill('SIGTERM')
+		await once(server, 'exit')
+		for (const pid of pids)
+			assert.throws(() => process.kill(pid, 0), /ESRCH/, `child ${pid} still runs after the UI stopped`)
+	}
+)
+
+test('Give a Claude chat turn only Read and Bash, the saved-this-turn hook, and the delegate and explore rules it needs.', async () => {
+	const { chatAllowRules, requestArgs } = await import('../../plugin/src/sessions.ts')
+	const cli = '/workspace/cli/src/main.ts'
+	const args = requestArgs({
+		sessionId: 's1',
+		resume: false,
+		hook: { port: 4100, token: 'token', explorationId: 'request', who: 'R1' },
+		model: null,
+		checkmate: cli,
+	})
+	assert.equal(args[args.indexOf('--tools') + 1], 'Read,Bash')
+	const settings = JSON.parse(args[args.indexOf('--settings') + 1]) as {
+		hooks: { PostToolUse: Array<{ matcher: string; hooks: Array<{ type: string; command: string }> }> }
+	}
+	assert.equal(settings.hooks.PostToolUse[0].matcher, 'Bash')
+	assert.match(settings.hooks.PostToolUse[0].hooks[0].command, /changes\.mjs/)
+	assert.ok(settings.hooks.PostToolUse[0].hooks[0].command.endsWith(`'${cli}'`))
+	const rules = chatAllowRules(cli)
+	assert.ok(rules.includes(`Bash(node "${cli}" delegate wait:*)`))
+	assert.ok(rules.includes(`Bash(node '${cli}' delegate revise:*)`))
+	assert.ok(rules.includes(`Bash(node "${cli}" explore wait:*)`))
+	assert.equal(
+		rules.some((rule) => rule.includes('run begin')),
+		false
+	)
+})

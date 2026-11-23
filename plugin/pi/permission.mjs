@@ -26,6 +26,7 @@ const readOnly = [
 const recordWrites = [
 	['gap', 'answer'],
 	['delegate', 'revise'],
+	['delegate', 'wait'],
 ]
 const planBodies = [
 	['plan', 'edit'],

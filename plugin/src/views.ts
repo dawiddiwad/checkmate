@@ -45,7 +45,8 @@ import {
 	runAssertions,
 	runClock,
 	runEvidence,
-	runFindings,
+	isVerdict,
+	verdictFindings,
 	runGaps,
 	runOutcomes,
 	runOverlapWarnings,
@@ -1472,7 +1473,7 @@ export function runDetail(store: Store, runId: string) {
 						assertionId: assertion.id,
 						check: assertion.check,
 						checkKind: assertion.checkKind,
-						result: row?.result ?? null,
+						result: closed?.outcome === 'error' ? 'not_checked' : (row?.result ?? null),
 						observed: row?.observed ?? null,
 						reason: row?.reason ?? null,
 						evidence: evidence.filter(
@@ -1504,7 +1505,7 @@ export function runDetail(store: Store, runId: string) {
 		attempts,
 		tests,
 		warnings: finished ? [] : runOverlapWarnings(store, runId),
-		findings: runFindings(store, runId),
+		findings: verdictFindings(store, runId),
 		retest: retestVerdicts(run, outcomes),
 		newGaps: runGaps(store, runId),
 		result: finished
@@ -1542,6 +1543,7 @@ export function findingList(store: Store, filters: { planId?: string; open?: boo
 			: []
 	)
 	return rows
+		.filter((row) => isVerdict(JSON.parse(row.body), runOutcomes(store, row.run_id)))
 		.map((row) => {
 			const finding = JSON.parse(row.body) as Result['findings'][number]
 			return {

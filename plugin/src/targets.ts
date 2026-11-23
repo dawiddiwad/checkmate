@@ -496,7 +496,11 @@ export function findInstance(store: Store, targetId: string, instanceId: string)
 		targetId,
 		instanceId
 	)
-	requireCondition(row, `Unknown instance: ${targetId}/${instanceId}. Run target instance list ${targetId}.`)
+	requireCondition(
+		row,
+		`Unknown instance: ${targetId}/${instanceId}. Run target instance list ${targetId}.`,
+		`Add the build with checkmate target instance add ${targetId} ${instanceId} --entry web=<URL of that build>, then run again. A run that can change data also needs the data kind of ${targetId}: ask the person for it, and do not write a reset command, a policy, or a hook.`
+	)
 	return instanceRecord(store, targetId, row)
 }
 

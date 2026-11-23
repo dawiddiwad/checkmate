@@ -286,6 +286,16 @@ export function runFindings(store: Store, runId: string): Result['findings'] {
 	)
 }
 
+// A test closed as error observed nothing. A defect that names only such tests is not a verdict; it stays stored.
+export function isVerdict(finding: Result['findings'][number], outcomes: ReturnType<typeof runOutcomes>) {
+	return finding.type !== 'defect' || !finding.testIds.every((id) => outcomes.get(id)?.outcome === 'error')
+}
+
+export function verdictFindings(store: Store, runId: string): Result['findings'] {
+	const outcomes = runOutcomes(store, runId)
+	return runFindings(store, runId).filter((finding) => isVerdict(finding, outcomes))
+}
+
 export function runGaps(store: Store, runId: string): Gap[] {
 	return all<{ body: string }>(store, 'SELECT body FROM run_gaps WHERE run_id = ? ORDER BY rowid', runId).map((row) =>
 		JSON.parse(row.body)

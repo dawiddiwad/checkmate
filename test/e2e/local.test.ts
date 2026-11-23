@@ -4532,3 +4532,152 @@ test('Run a cleanup command when a run finishes — a failed cleanup is reported
 	const verdict = await ok('run', 'show', 'run-2')
 	assert.equal(verdict.tests.find((item: { testId: string }) => item.testId === 'T1').outcome, 'passed')
 })
+
+test('Close a test as error after a check on a value it did not observe — the check reads not_checked and its defect is no verdict.', async (t) => {
+	const workspace = directory(t)
+	mkdirSync(join(workspace, '.checkmate'))
+	writeFileSync(
+		join(workspace, '.checkmate/checkmate.db'),
+		gunzipSync(readFileSync(join(root, 'test/e2e/fixtures/workspace-migrated.db.gz')))
+	)
+	const app = await fixture()
+	t.after(() => app.close())
+	app.fix()
+	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle' }
+	const ok = async (args: string[], value?: object) => {
+		const result = await inputCommand(workspace, env, value ? JSON.stringify(value) : '', ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	await ok(['target', 'instance', 'add', 'shop', 'local', '--entry', `web=${app.baseUrl}`])
+	await ok(['plan', 'approve', 'ticket@1', '--rationale', 'Run the rule.'])
+	await ok(['run', 'begin', 'run-1', 'ticket@1', '--build', 'fixed', '--instance', 'local', '--tests', 'T1'])
+	const checked = await inputCommand(
+		workspace,
+		env,
+		'HTTP 404 Not Found: page text not found.',
+		'run',
+		'check',
+		'run-1',
+		'T1',
+		'A1',
+		'--observed',
+		'not found',
+		'--evidence',
+		'-'
+	)
+	assert.equal(checked.code, 0, checked.output)
+	await ok(['run', 'finding', 'run-1'], {
+		id: 'F-T1-1',
+		type: 'defect',
+		severity: 'medium',
+		assertionIds: ['T1.A1'],
+		requirementIds: ['R1'],
+		title: 'Quote not shown',
+		expected: '240',
+		observed: 'not found',
+		reproduction: ['Open the product page.'],
+		evidenceIds: checked.body.evidenceIds,
+	})
+	const closed = await inputCommand(
+		workspace,
+		env,
+		'HTTP 404 Not Found: page text not found.',
+		'run',
+		'close',
+		'run-1',
+		'T1',
+		'--outcome',
+		'error',
+		'--reason',
+		'Product page returned HTTP 404.',
+		'--evidence',
+		'-'
+	)
+	assert.equal(closed.code, 0, closed.output)
+	const shown = await command(workspace, env, 'run', 'show', 'run-1')
+	assert.equal(shown.code, 0, shown.output)
+	assert.equal(shown.body.tests[0].outcome, 'error')
+	assert.equal(shown.body.tests[0].assertions[0].result, 'not_checked')
+	assert.deepEqual(shown.body.findings, [])
+	const gated = await command(workspace, env, 'run', 'show', 'run-1', '--gate')
+	assert.equal(gated.code, 2, gated.output)
+	assert.equal(gated.body.gate.state, 'could_not_test')
+})
+
+test('Begin a run on an instance that is not added — the refusal names the add command and says the person gives the data kind.', async (t) => {
+	const workspace = directory(t)
+	mkdirSync(join(workspace, '.checkmate'))
+	writeFileSync(
+		join(workspace, '.checkmate/checkmate.db'),
+		gunzipSync(readFileSync(join(root, 'test/e2e/fixtures/workspace-migrated.db.gz')))
+	)
+	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle' }
+	await command(workspace, env, 'plan', 'approve', 'ticket@1', '--rationale', 'Run the rule.')
+	const refused = await command(
+		workspace,
+		env,
+		'run',
+		'begin',
+		'run-1',
+		'ticket@1',
+		'--build',
+		'b1',
+		'--instance',
+		'local'
+	)
+	assert.equal(refused.code, 1, refused.output)
+	assert.match(refused.body.reasons.join(' '), /Unknown instance: shop\/local/)
+	assert.match(refused.body.hint, /checkmate target instance add shop local --entry web=/)
+	assert.match(refused.body.hint, /ask the person for it/)
+})
+
+test('Execute a run with a short deadline — the worker runs its test; no test is closed as deadline before the deadline is used.', async (t) => {
+	const workspace = directory(t)
+	mkdirSync(join(workspace, '.checkmate'))
+	writeFileSync(
+		join(workspace, '.checkmate/checkmate.db'),
+		gunzipSync(readFileSync(join(root, 'test/e2e/fixtures/workspace-migrated.db.gz')))
+	)
+	const app = await fixture()
+	t.after(() => app.close())
+	app.fix()
+	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle' }
+	const ok = async (args: string[]) => {
+		const result = await inputCommand(workspace, env, '', ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	await ok(['target', 'instance', 'add', 'shop', 'local', '--entry', `web=${app.baseUrl}`])
+	await ok(['plan', 'approve', 'ticket@1', '--rationale', 'Run the rule.'])
+	await ok([
+		'run',
+		'begin',
+		'run-1',
+		'ticket@1',
+		'--build',
+		'fixed',
+		'--instance',
+		'local',
+		'--tests',
+		'T1',
+		'--timeout',
+		'30',
+	])
+	const bin = directory(t)
+	copyFileSync(join(root, 'test/e2e/per-test-host.mjs'), join(bin, 'pi'))
+	chmodSync(join(bin, 'pi'), 0o755)
+	const piEnv = {
+		...env,
+		PATH: `${bin}${delimiter}${process.env.PATH}`,
+		CHECKMATE_HARNESS: 'pi',
+		FAKE_PI_LOG: join(directory(t), 'log.txt'),
+		FAKE_CHECKMATE_CLI: binary,
+		FAKE_RUN: 'run-1',
+	}
+	const delegated = await inputCommand(workspace, piEnv, '', 'delegate', 'execute', 'run-1')
+	assert.equal(delegated.body.status, 'completed', delegated.output)
+	const gated = await command(workspace, env, 'run', 'show', 'run-1', '--gate')
+	assert.equal(gated.code, 0, gated.output)
+	assert.equal(gated.body.gate.state, 'passed')
+})

@@ -10935,7 +10935,11 @@ function findInstance(store, targetId, instanceId) {
     targetId,
     instanceId
   );
-  requireCondition(row2, `Unknown instance: ${targetId}/${instanceId}. Run target instance list ${targetId}.`);
+  requireCondition(
+    row2,
+    `Unknown instance: ${targetId}/${instanceId}. Run target instance list ${targetId}.`,
+    `Add the build with checkmate target instance add ${targetId} ${instanceId} --entry web=<URL of that build>, then run again. A run that can change data also needs the data kind of ${targetId}: ask the person for it, and do not write a reset command, a policy, or a hook.`
+  );
   return instanceRecord(store, targetId, row2);
 }
 function runInstance(store, targetId, instanceId) {
@@ -14236,6 +14240,13 @@ function runFindings(store, runId) {
   return all(store, "SELECT body FROM findings WHERE run_id = ? ORDER BY rowid", runId).map(
     (row2) => JSON.parse(row2.body)
   );
+}
+function isVerdict(finding, outcomes) {
+  return finding.type !== "defect" || !finding.testIds.every((id2) => outcomes.get(id2)?.outcome === "error");
+}
+function verdictFindings(store, runId) {
+  const outcomes = runOutcomes(store, runId);
+  return runFindings(store, runId).filter((finding) => isVerdict(finding, outcomes));
 }
 function runGaps(store, runId) {
   return all(store, "SELECT body FROM run_gaps WHERE run_id = ? ORDER BY rowid", runId).map(
@@ -20948,7 +20959,7 @@ function runDetail(store, runId) {
           assertionId: assertion.id,
           check: assertion.check,
           checkKind: assertion.checkKind,
-          result: row2?.result ?? null,
+          result: closed?.outcome === "error" ? "not_checked" : row2?.result ?? null,
           observed: row2?.observed ?? null,
           reason: row2?.reason ?? null,
           evidence: evidence3.filter(
@@ -20980,7 +20991,7 @@ function runDetail(store, runId) {
     attempts,
     tests,
     warnings: finished ? [] : runOverlapWarnings(store, runId),
-    findings: runFindings(store, runId),
+    findings: verdictFindings(store, runId),
     retest: retestVerdicts(run2, outcomes),
     newGaps: runGaps(store, runId),
     result: finished ? {
@@ -21012,7 +21023,7 @@ function findingList(store, filters = {}) {
       )
     ) : []
   );
-  return rows2.map((row2) => {
+  return rows2.filter((row2) => isVerdict(JSON.parse(row2.body), runOutcomes(store, row2.run_id))).map((row2) => {
     const finding = JSON.parse(row2.body);
     return {
       runId: row2.run_id,
@@ -42081,7 +42092,8 @@ function testView(store, runId, testId) {
     test,
     closed: outcomes.has(testId),
     blocker: blocked ?? null,
-    remaining: runClock(store, state.row).remainingSeconds
+    remaining: runClock(store, state.row).remainingSeconds,
+    reserveSeconds: Math.min(60, Math.round(state.row.deadline_seconds * (1 - deadlineShare)))
   };
 }
 function toolStatus(request2, profile) {
@@ -42140,7 +42152,7 @@ function testPrompt(execution, workspace2, test, actor, pluginRoot2) {
     ...contextLines(execution, workspace2, cli, tools),
     `Record each assertion: ${cli} run check ${runId} ${test.id} <assertion ID> --actor ${actor} --observed "<only the observed value, for example 300 PLN>" --evidence - <<'EOF'`,
     "then the raw tool output that shows it, copied, then EOF. Use two words for the IDs: T1 A1. Give only the value of the observed item, not the whole line.",
-    'For an assertion with an expected value, do not decide passed or failed: the code compares the observed value with the expected value. For an assertion without one, decide it with --result and --observed. When you cannot observe the value, record not_checked with --reason "<why>" and no --observed.',
+    'For an assertion with an expected value, do not decide passed or failed: the code compares the observed value with the expected value. For an assertion without one, decide it with --result and --observed. When you cannot observe the value, record not_checked with --reason "<why>" and no --observed. A page error (for example HTTP 404) or a failed tool means the value is not observed: record not_checked for each assertion of that test with --reason, record no defect for it, and close the test as error. A value that the page shows as "not found" is not an observed value.',
     `For each failed assertion, record a defect: ${cli} run finding ${runId} --actor ${actor} <<'EOF' with {"id":"F-${test.id}-1","type":"defect","severity":"medium","assertionIds":["${test.id}.<assertion ID>"],"requirementIds":${JSON.stringify(test.requirementIds)},"title":"<short title>","expected":"<check>","observed":"<observed value>","reproduction":["<request or steps>"],"evidenceIds":["<evidence ID printed by run check>"]} then EOF.`,
     `Then close the test: ${cli} run close ${runId} ${test.id} --actor ${actor}.`,
     `If a tool fails or the action cannot run: ${cli} run close ${runId} ${test.id} --actor ${actor} --outcome error --reason "<cause>" --evidence - <<'EOF' with the failed tool output, then EOF.`,
@@ -42238,7 +42250,7 @@ async function delegateByTest(workspace2, subject, options3, harness, env, execu
         outcome: "blocked",
         reason: `Prerequisite ${view.blocker.dependency} is ${view.blocker.outcome}`
       });
-    else if (view.remaining <= 60) {
+    else if (view.remaining <= view.reserveSeconds) {
       deadlineStopped = true;
       closeWithin(workspace2, workerActor, {
         runId: subject,

@@ -16,6 +16,7 @@ import type { Harness } from '../../plugin/src/pi.ts'
 import { piArgs, piResult, resolvePiModelArgs, selectedHarness } from '../../plugin/src/pi.ts'
 import { migrationTests, planRequest, planTools } from '../../plugin/src/plans.ts'
 import { plannedRequest } from '../../plugin/src/routes.ts'
+import { signalChild, trackGroup } from '../../plugin/src/processes.ts'
 import { workspaceEnv } from '../../plugin/src/settings.ts'
 import { dataRules } from '../../plugin/src/resets.ts'
 import type { ChildCall } from '../../plugin/src/sessions.ts'
@@ -251,16 +252,13 @@ function launchWorker(
 			stdio: ['pipe', 'pipe', 'pipe'],
 			detached: true,
 		})
+		trackGroup(child)
 		const output: Buffer[] = []
 		let outputBytes = 0
 		let errors = ''
 		let failure: Error | undefined
 		let killTimer: ReturnType<typeof setTimeout> | undefined
-		const kill = (signal: NodeJS.Signals) => {
-			try {
-				process.kill(-child.pid!, signal)
-			} catch {}
-		}
+		const kill = (signal: NodeJS.Signals) => signalChild(child, signal)
 		const stop = (reason: string) => {
 			failure ??= new Error(reason)
 			kill('SIGTERM')

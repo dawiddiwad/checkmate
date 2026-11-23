@@ -9514,8 +9514,50 @@ function Ue(p, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
   return Ue.errors = e, s === 0;
 }
 
-// plugin/src/pi.ts
+// plugin/src/processes.ts
 import { spawnSync } from "node:child_process";
+function startOfGroup(pid) {
+  if (!Number.isInteger(pid) || pid <= 1) return void 0;
+  const result = spawnSync("ps", ["-p", String(pid), "-o", "pgid=", "-o", "lstart="], {
+    encoding: "utf8",
+    env: { ...process.env, LC_ALL: "C" }
+  });
+  const [group, ...started] = (result.stdout ?? "").trim().split(/\s+/);
+  if (Number(group) !== pid) return void 0;
+  const born = Date.parse(started.join(" "));
+  return Number.isFinite(born) ? born : void 0;
+}
+function isRecordedGroup(pid, born) {
+  return born !== void 0 && startOfGroup(pid) === born;
+}
+function signalRecordedGroup(pid, born, signal) {
+  if (!isRecordedGroup(pid, born)) {
+    process.stderr.write(`checkmate: not sending ${signal} to process group ${pid}: its start cannot be verified
+`);
+    return false;
+  }
+  try {
+    process.kill(-pid, signal);
+    process.stderr.write(
+      `checkmate: sent ${signal} to process group ${pid} (leader started ${new Date(born).toISOString()})
+`
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
+var startedGroups = /* @__PURE__ */ new WeakMap();
+function trackGroup(child) {
+  if (child.pid !== void 0) startedGroups.set(child, startOfGroup(child.pid));
+}
+function signalChild(child, signal) {
+  if (child.pid === void 0 || child.exitCode !== null || child.signalCode !== null) return;
+  signalRecordedGroup(child.pid, startedGroups.get(child), signal);
+}
+
+// plugin/src/pi.ts
+import { spawnSync as spawnSync2 } from "node:child_process";
 import { STATUS_CODES } from "node:http";
 import { stripVTControlCharacters } from "node:util";
 function selectedHarness(env = process.env) {
@@ -9566,7 +9608,7 @@ function resolvePiModelArgs(program, args, cwd, env) {
   if (!provider) return args;
   const index2 = args.indexOf("--models");
   const scope = args[index2 + 1];
-  const host = spawnSync(program, ["--no-mcp", "--no-session", "--mode", "rpc", "--models", scope], {
+  const host = spawnSync2(program, ["--no-mcp", "--no-session", "--mode", "rpc", "--models", scope], {
     cwd,
     env,
     encoding: "utf8",
@@ -9805,7 +9847,7 @@ function piResult(output, error, status, signal) {
 
 // plugin/src/sessions.ts
 import { randomBytes as randomBytes2 } from "node:crypto";
-import { spawn, spawnSync as spawnSync2 } from "node:child_process";
+import { spawn, spawnSync as spawnSync3 } from "node:child_process";
 import {
   accessSync,
   chmodSync,
@@ -9931,7 +9973,7 @@ function uiFilePath(workspace2) {
 }
 function zombie(pid) {
   if (process.platform === "darwin") {
-    const processState = spawnSync2("/bin/ps", ["-o", "state=", "-p", String(pid)], { encoding: "utf8" });
+    const processState = spawnSync3("/bin/ps", ["-o", "state=", "-p", String(pid)], { encoding: "utf8" });
     return processState.stdout?.trimStart().startsWith("Z") === true;
   }
   try {
@@ -10170,7 +10212,7 @@ function callChild(executable, args, prompt2, cwd, env, seconds2, harness = "cla
   const commandArgs = harness === "pi" ? piLaunchArgs(executable, args, cwd, env) : args;
   if (!Array.isArray(commandArgs)) return commandArgs;
   const limit = childOutputLimit(harness);
-  const child = spawnSync2(executable, commandArgs, {
+  const child = spawnSync3(executable, commandArgs, {
     cwd,
     env,
     input: prompt2,
@@ -10226,10 +10268,7 @@ function replyArray(text2) {
 var liveChildren = /* @__PURE__ */ new Set();
 var endGraceMilliseconds = 1500;
 function killGroup(child, signal) {
-  try {
-    process.kill(-child.pid, signal);
-  } catch {
-  }
+  signalChild(child, signal);
 }
 async function endLaunchedChildren() {
   const ending = [...liveChildren];
@@ -10255,6 +10294,7 @@ function launchChild(executable, args, prompt2, cwd, env, seconds2, onStart, har
   const limit = childOutputLimit(harness);
   return new Promise((resolvePromise) => {
     const child = spawn(executable, commandArgs, { cwd, env, stdio: ["pipe", "pipe", "pipe"], detached: true });
+    trackGroup(child);
     child.stdout.setEncoding("utf8");
     liveChildren.add(child);
     if (child.pid) onStart?.(child.pid);
@@ -10418,6 +10458,7 @@ Starting context: the person opened the chat from ${screen}. Use this when relev
 var defaultStopDelays = { terminate: 5e3, kill: endGraceMilliseconds };
 function streamClaude(claude, args, prompt2, cwd, env, onLine, delays = defaultStopDelays) {
   const child = spawn(claude, args, { cwd, env, stdio: ["pipe", "pipe", "pipe"], detached: true });
+  trackGroup(child);
   child.stdout.setEncoding("utf8");
   liveChildren.add(child);
   const timers = [];
@@ -10461,7 +10502,7 @@ function streamClaude(claude, args, prompt2, cwd, env, onLine, delays = defaultS
 }
 
 // plugin/src/resets.ts
-import { spawnSync as spawnSync3 } from "node:child_process";
+import { spawnSync as spawnSync4 } from "node:child_process";
 import { existsSync as existsSync3, readFileSync as readFileSync2 } from "node:fs";
 import { isAbsolute, join as join3 } from "node:path";
 var readPrefixes = ["read_", "list_", "get_", "view_"];
@@ -10508,7 +10549,7 @@ function hookSeconds(reset) {
   return reset.timeoutSeconds ?? defaultHookSeconds;
 }
 function runHook(workspace2, command, marker, reset, phase) {
-  const result = spawnSync3(command[0], command.slice(1), {
+  const result = spawnSync4(command[0], command.slice(1), {
     cwd: workspace2,
     encoding: "utf8",
     timeout: hookSeconds(reset) * 1e3,
@@ -10573,7 +10614,7 @@ function settleCleanups(store, ids2) {
   const owed = owedCleanups(store);
   for (const item of owed.filter((entry) => !ids2.includes(entry.id))) kept.push(item);
   for (const item of owed.filter((entry) => ids2.includes(entry.id))) {
-    const result = spawnSync3(item.command[0], item.command.slice(1), {
+    const result = spawnSync4(item.command[0], item.command.slice(1), {
       cwd: item.workspace,
       encoding: "utf8",
       timeout: item.timeoutSeconds * 1e3,
@@ -10610,7 +10651,7 @@ function dataSummary(workspace2, reset) {
 }
 
 // plugin/src/targets.ts
-import { spawnSync as spawnSync4 } from "node:child_process";
+import { spawnSync as spawnSync5 } from "node:child_process";
 import { existsSync as existsSync4, readFileSync as readFileSync3 } from "node:fs";
 import { join as join4 } from "node:path";
 var anyTestOperation = "any_test_operation";
@@ -11061,7 +11102,7 @@ function isLocalAddress(url) {
   return first === 127 || first === 10 || first === 192 && second === 168 || first === 172 && second >= 16 && second <= 31;
 }
 function toolVersion(path) {
-  const run2 = spawnSync4(path, ["--version"], { encoding: "utf8", timeout: 5e3 });
+  const run2 = spawnSync5(path, ["--version"], { encoding: "utf8", timeout: 5e3 });
   const line = run2.status === 0 ? run2.stdout.trim().split("\n")[0] : "";
   return /[0-9]+(\.[0-9]+)+/.exec(line)?.[0];
 }
@@ -11076,7 +11117,7 @@ function browserExecutable(workspace2) {
     `The browser tool needs a Chrome or Chromium executable, and ${browserConfig} names none.`,
     hint
   );
-  const run2 = spawnSync4(executable, ["--version"], { timeout: 1e4 });
+  const run2 = spawnSync5(executable, ["--version"], { timeout: 1e4 });
   requireCondition(run2.status === 0, `The browser executable ${executable} does not run with --version.`, hint);
   return executable;
 }
@@ -11085,7 +11126,7 @@ function readinessHint(store, targetId) {
 }
 function urlAnswers(url) {
   if (!/^https?:\/\//i.test(url)) return true;
-  const check = spawnSync4(
+  const check = spawnSync5(
     process.execPath,
     [
       "-e",
@@ -18151,11 +18192,11 @@ function storeExplorationFindings(store, actor, explorationId) {
 }
 
 // plugin/src/change.ts
-import { spawnSync as spawnSync5 } from "node:child_process";
+import { spawnSync as spawnSync6 } from "node:child_process";
 import { relative as relative2, resolve as resolve4 } from "node:path";
 var refHint = "Give --since a commit, a branch, or a tag of the repository. Give --repo <dir> when the code is in a subfolder. Or give the changed files with --scope.";
 function git(cwd, args) {
-  const out = spawnSync5("git", args, { cwd, encoding: "utf8" });
+  const out = spawnSync6("git", args, { cwd, encoding: "utf8" });
   return out.status === 0 ? out.stdout.trim() : void 0;
 }
 function commit(cwd, ref) {
@@ -18186,7 +18227,7 @@ function changeOf(workspace2, input) {
   };
 }
 function changedFiles(workspace2, change) {
-  const diff = spawnSync5("git", ["diff", "--name-only", ...change.range, "--"], {
+  const diff = spawnSync6("git", ["diff", "--name-only", ...change.range, "--"], {
     cwd: resolve4(workspace2, change.repo),
     encoding: "utf8"
   });
@@ -18202,12 +18243,12 @@ function upstreamBase(repository) {
   const branch = git(repository, ["symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"]);
   const head = commit(repository, "HEAD");
   if (!branch || !head || commit(repository, branch) === head) return void 0;
-  const ancestor = spawnSync5("git", ["merge-base", "--is-ancestor", branch, "HEAD"], { cwd: repository });
+  const ancestor = spawnSync6("git", ["merge-base", "--is-ancestor", branch, "HEAD"], { cwd: repository });
   return ancestor.status === 0 ? branch : void 0;
 }
 
 // plugin/src/explorers.ts
-import { spawn as spawn3, spawnSync as spawnSync6 } from "node:child_process";
+import { spawn as spawn3, spawnSync as spawnSync7 } from "node:child_process";
 import { randomUUID as randomUUID4 } from "node:crypto";
 import {
   existsSync as existsSync8,
@@ -18365,7 +18406,7 @@ function explorerWork(store, explorationId, explorer, count2) {
 }
 var strayIgnored = [".checkmate", ".playwright-cli"];
 function topLevelNames(workspace2) {
-  const status = spawnSync6("git", ["status", "--porcelain", "--untracked-files=normal"], {
+  const status = spawnSync7("git", ["status", "--porcelain", "--untracked-files=normal"], {
     cwd: workspace2,
     encoding: "utf8"
   });
@@ -18540,14 +18581,15 @@ function startOf(events) {
 }
 function noteChild(store, actor, explorationId, explorer) {
   return (pid) => {
-    const born = groupBirth(pid);
+    const born = startOfGroup(pid);
     event(store, actor, explorationId, {
       step: "child",
       explorer,
       status: "started",
       detail: { pid, ...born ? { born } : {} }
     });
-    if (explorer && testerStopOf(explorationEvents(store, explorationId), explorer)) endGroup(pid, "SIGTERM");
+    if (explorer && testerStopOf(explorationEvents(store, explorationId), explorer))
+      signalRecordedGroup(pid, born, "SIGTERM");
   };
 }
 function failureHint(launch, call, testerModel) {
@@ -18964,7 +19006,7 @@ async function driveExploration(workspace2, explorationId, env) {
       step: "supervisor",
       explorer: null,
       status: "started",
-      detail: { pid: process.pid }
+      detail: { pid: process.pid, born: startOfGroup(process.pid) }
     });
     const started = startOf(explorationEvents(store, explorationId));
     if (!started) throw new Refusal("prohibited", `Exploration ${explorationId} has no start.`);
@@ -19178,7 +19220,7 @@ async function driveFollow(workspace2, explorationId, env) {
       step: "supervisor",
       explorer: null,
       status: "started",
-      detail: { pid: process.pid }
+      detail: { pid: process.pid, born: startOfGroup(process.pid) }
     });
     const events = explorationEvents(store, explorationId);
     if (stopOf(events)) return;
@@ -19305,11 +19347,8 @@ async function driveFollow(workspace2, explorationId, env) {
 var stopWaitMilliseconds = 5e3;
 var killWaitMilliseconds = 2e3;
 var stopPollMilliseconds = 50;
-function endGroup(pid, signal) {
-  try {
-    process.kill(-pid, signal);
-  } catch {
-  }
+function recordedBirth(event2) {
+  return typeof event2.detail.born === "number" ? event2.detail.born : void 0;
 }
 function waitUntil(done, milliseconds) {
   const until = Date.now() + milliseconds;
@@ -19318,27 +19357,20 @@ function waitUntil(done, milliseconds) {
   return done();
 }
 function childPids(events, explorer) {
-  const pids = events.filter((item) => item.step === "child" && (explorer === void 0 || item.explorer === explorer)).map((item) => item.detail.pid);
-  return explorer === void 0 ? [...new Set(pids)] : pids.slice(-1);
+  const children = events.filter((item) => item.step === "child" && (explorer === void 0 || item.explorer === explorer)).map((item) => ({ pid: item.detail.pid, born: recordedBirth(item) }));
+  return explorer === void 0 ? [...new Map(children.map((item) => [item.pid, item])).values()] : children.slice(-1);
 }
-function endProcesses(all2, alive = running) {
-  const pids = all2.filter(alive);
-  for (const pid of pids) endGroup(pid, "SIGTERM");
-  if (!waitUntil(() => !pids.some(alive), stopWaitMilliseconds)) {
-    for (const pid of pids.filter(alive)) endGroup(pid, "SIGKILL");
-    waitUntil(() => !pids.some(alive), killWaitMilliseconds);
+function isOwned(item) {
+  return isRecordedGroup(item.pid, item.born);
+}
+function endProcesses(all2) {
+  const owned = all2.filter(isOwned);
+  for (const item of owned) signalRecordedGroup(item.pid, item.born, "SIGTERM");
+  if (!waitUntil(() => !owned.some(isOwned), stopWaitMilliseconds)) {
+    for (const item of owned.filter(isOwned)) signalRecordedGroup(item.pid, item.born, "SIGKILL");
+    waitUntil(() => !owned.some(isOwned), killWaitMilliseconds);
   }
-  return pids.filter(alive);
-}
-function groupBirth(pid) {
-  const result = spawnSync6("ps", ["-p", String(pid), "-o", "pgid=", "-o", "lstart="], {
-    encoding: "utf8",
-    env: { ...process.env, LC_ALL: "C" }
-  });
-  const [group, ...started] = (result.stdout ?? "").trim().split(/\s+/);
-  if (Number(group) !== pid) return void 0;
-  const born = Date.parse(started.join(" "));
-  return Number.isFinite(born) ? born : void 0;
+  return owned.filter(isOwned);
 }
 function interruptedSupervisor(events) {
   const follow = events.findLastIndex((item) => item.step === "follow");
@@ -19357,16 +19389,7 @@ function recoverWorkers(store, id2) {
     const pid = child.detail.pid;
     if (child.step === "child" && typeof pid === "number" && pid > 1) workers.set(pid, child);
   }
-  const alive = (pid) => {
-    if (!running(pid)) return false;
-    const born = groupBirth(pid);
-    if (born === void 0) return false;
-    const child = workers.get(pid);
-    if (typeof child.detail.born === "number") return child.detail.born === born;
-    const age2 = Date.parse(child.at) - born;
-    return age2 >= 0 && age2 < 6e4;
-  };
-  const left = endProcesses([...workers.keys()], alive);
+  const left = endProcesses([...workers].map(([pid, child]) => ({ pid, born: recordedBirth(child) })));
   requireCondition(
     !left.length,
     `Workers of ${id2} are still alive: ${left.join(", ")}. No replacement started.`,
@@ -19430,8 +19453,9 @@ function recordStop(store, actor, input) {
   });
 }
 function stoppedProcesses(events, explorer) {
-  const supervisor = explorer === void 0 ? events.findLast((item) => item.step === "supervisor")?.detail.pid : null;
-  return { supervisor: typeof supervisor === "number" ? [supervisor] : [], children: childPids(events, explorer) };
+  const found = explorer === void 0 ? events.findLast((item) => item.step === "supervisor") : void 0;
+  const supervisor = typeof found?.detail.pid === "number" ? [{ pid: found.detail.pid, born: recordedBirth(found) }] : [];
+  return { supervisor, children: childPids(events, explorer) };
 }
 function stopPending(events, explorer = null) {
   const stop = events.findLast((item) => item.step === "stop" && item.explorer === explorer);
@@ -19439,12 +19463,12 @@ function stopPending(events, explorer = null) {
   const end = events.slice(events.lastIndexOf(stop) + 1).find((item) => item.step === "stop-end" && item.explorer === explorer);
   if (end) return false;
   const { supervisor, children } = stoppedProcesses(events, explorer ?? void 0);
-  return [...supervisor, ...children].some(running);
+  return [...supervisor, ...children].some((item) => running(item.pid));
 }
 function endStopped(store, explorationId, explorer) {
   const events = explorationEvents(store, explorationId);
   const { supervisor, children } = stoppedProcesses(events, explorer);
-  const left = [...endProcesses(supervisor), ...endProcesses(children.filter(running))];
+  const left = [...endProcesses(supervisor), ...endProcesses(children)].map((item) => item.pid);
   if (explorer === void 0) keepBrowserFolder(store, explorationId);
   return left;
 }
@@ -22953,7 +22977,7 @@ import { existsSync as existsSync10, readFileSync as readFileSync11, realpathSyn
 import { fileURLToPath as fileURLToPath2 } from "node:url";
 
 // plugin/src/modes.ts
-import { spawnSync as spawnSync7 } from "node:child_process";
+import { spawnSync as spawnSync8 } from "node:child_process";
 import { resolve as resolve6 } from "node:path";
 var testModes = ["exploratory", "regression", "auto"];
 var storedTestsNone = "none, testers use earlier results when available";
@@ -22972,7 +22996,7 @@ function nextRunId(store) {
   );
 }
 function gitBuild(workspace2) {
-  const head = spawnSync7("git", ["rev-parse", "--short", "HEAD"], { cwd: workspace2, encoding: "utf8" });
+  const head = spawnSync8("git", ["rev-parse", "--short", "HEAD"], { cwd: workspace2, encoding: "utf8" });
   return head.status === 0 ? head.stdout.trim() || void 0 : void 0;
 }
 function dateBuild(now = /* @__PURE__ */ new Date()) {
@@ -30378,6 +30402,7 @@ import { join as join16 } from "node:path";
 import { spawn as spawn4 } from "node:child_process";
 function streamPi(program, args, prompt2, cwd, env, extension, sessionId, onLine, delays) {
   const child = spawn4(program, args, { cwd, env, stdio: ["pipe", "pipe", "pipe"], detached: true });
+  trackGroup(child);
   child.stdout.setEncoding("utf8");
   let pending = "";
   let stderr = "";
@@ -30390,12 +30415,7 @@ function streamPi(program, args, prompt2, cwd, env, extension, sessionId, onLine
   const timers = [];
   const send2 = (value2) => child.stdin.write(`${JSON.stringify(value2)}
 `);
-  const kill = (signal) => {
-    try {
-      process.kill(-child.pid, signal);
-    } catch {
-    }
-  };
+  const kill = (signal) => signalChild(child, signal);
   let closing = false;
   const shutdown = () => {
     if (closing) return;
@@ -42143,17 +42163,13 @@ function launchWorker(executable, args, options3) {
       stdio: ["pipe", "pipe", "pipe"],
       detached: true
     });
+    trackGroup(child);
     const output = [];
     let outputBytes = 0;
     let errors = "";
     let failure;
     let killTimer;
-    const kill = (signal) => {
-      try {
-        process.kill(-child.pid, signal);
-      } catch {
-      }
-    };
+    const kill = (signal) => signalChild(child, signal);
     const stop = (reason) => {
       failure ??= new Error(reason);
       kill("SIGTERM");

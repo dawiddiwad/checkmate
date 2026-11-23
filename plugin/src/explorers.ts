@@ -42,6 +42,7 @@ import {
 import { checkedRules, ruleSources, rulesNeeded, saveRules } from './rules.ts'
 import { findInstance, targetRevision, targetWebUrl } from './targets.ts'
 import { dataRules, markerFor, owe, requireDataFor, runPrepare, settleCleanups } from './resets.ts'
+import { isRecordedGroup, signalRecordedGroup, startOfGroup } from './processes.ts'
 import { storeFindingsRun } from './findingsRun.ts'
 import { changeOf, changedFiles } from './change.ts'
 import {
@@ -498,14 +499,15 @@ export function startOf(events: ExplorationEvent[]) {
 
 function noteChild(store: Store, actor: string, explorationId: string, explorer: string | null) {
 	return (pid: number) => {
-		const born = groupBirth(pid)
+		const born = startOfGroup(pid)
 		event(store, actor, explorationId, {
 			step: 'child',
 			explorer,
 			status: 'started',
 			detail: { pid, ...(born ? { born } : {}) },
 		})
-		if (explorer && testerStopOf(explorationEvents(store, explorationId), explorer)) endGroup(pid, 'SIGTERM')
+		if (explorer && testerStopOf(explorationEvents(store, explorationId), explorer))
+			signalRecordedGroup(pid, born, 'SIGTERM')
 	}
 }
 
@@ -983,7 +985,7 @@ export async function driveExploration(workspace: string, explorationId: string,
 			step: 'supervisor',
 			explorer: null,
 			status: 'started',
-			detail: { pid: process.pid },
+			detail: { pid: process.pid, born: startOfGroup(process.pid) },
 		})
 		const started = startOf(explorationEvents(store, explorationId))
 		if (!started) throw new Refusal('prohibited', `Exploration ${explorationId} has no start.`)
@@ -1249,7 +1251,7 @@ export async function driveFollow(workspace: string, explorationId: string, env:
 			step: 'supervisor',
 			explorer: null,
 			status: 'started',
-			detail: { pid: process.pid },
+			detail: { pid: process.pid, born: startOfGroup(process.pid) },
 		})
 		const events = explorationEvents(store, explorationId)
 		if (stopOf(events)) return
@@ -1396,10 +1398,11 @@ const stopWaitMilliseconds = 5000
 const killWaitMilliseconds = 2000
 const stopPollMilliseconds = 50
 
-function endGroup(pid: number, signal: NodeJS.Signals) {
-	try {
-		process.kill(-pid, signal)
-	} catch {}
+// A process this exploration started, with its start time as recorded at start. Only a verified start is signalled.
+type Owned = { pid: number; born?: number }
+
+function recordedBirth(event: ExplorationEvent): number | undefined {
+	return typeof event.detail.born === 'number' ? event.detail.born : undefined
 }
 
 function waitUntil(done: () => boolean, milliseconds: number) {
@@ -1409,32 +1412,26 @@ function waitUntil(done: () => boolean, milliseconds: number) {
 	return done()
 }
 
-function childPids(events: ExplorationEvent[], explorer?: string) {
-	const pids = events
+function childPids(events: ExplorationEvent[], explorer?: string): Owned[] {
+	const children: Owned[] = events
 		.filter((item) => item.step === 'child' && (explorer === undefined || item.explorer === explorer))
-		.map((item) => item.detail.pid as number)
-	return explorer === undefined ? [...new Set(pids)] : pids.slice(-1)
+		.map((item) => ({ pid: item.detail.pid as number, born: recordedBirth(item) }))
+	return explorer === undefined ? [...new Map(children.map((item) => [item.pid, item])).values()] : children.slice(-1)
 }
 
-function endProcesses(all: number[], alive: (pid: number) => boolean = running) {
-	const pids = all.filter(alive)
-	for (const pid of pids) endGroup(pid, 'SIGTERM')
-	if (!waitUntil(() => !pids.some(alive), stopWaitMilliseconds)) {
-		for (const pid of pids.filter(alive)) endGroup(pid, 'SIGKILL')
-		waitUntil(() => !pids.some(alive), killWaitMilliseconds)
+function isOwned(item: Owned) {
+	return isRecordedGroup(item.pid, item.born)
+}
+
+// Ends the processes that are still the recorded ones. A process whose start cannot be verified is not signalled.
+function endProcesses(all: Owned[]): Owned[] {
+	const owned = all.filter(isOwned)
+	for (const item of owned) signalRecordedGroup(item.pid, item.born, 'SIGTERM')
+	if (!waitUntil(() => !owned.some(isOwned), stopWaitMilliseconds)) {
+		for (const item of owned.filter(isOwned)) signalRecordedGroup(item.pid, item.born, 'SIGKILL')
+		waitUntil(() => !owned.some(isOwned), killWaitMilliseconds)
 	}
-	return pids.filter(alive)
-}
-
-function groupBirth(pid: number) {
-	const result = spawnSync('ps', ['-p', String(pid), '-o', 'pgid=', '-o', 'lstart='], {
-		encoding: 'utf8',
-		env: { ...process.env, LC_ALL: 'C' },
-	})
-	const [group, ...started] = (result.stdout ?? '').trim().split(/\s+/)
-	if (Number(group) !== pid) return undefined
-	const born = Date.parse(started.join(' '))
-	return Number.isFinite(born) ? born : undefined
+	return owned.filter(isOwned)
 }
 
 export function interruptedSupervisor(events: ExplorationEvent[]) {
@@ -1455,16 +1452,7 @@ function recoverWorkers(store: Store, id: string) {
 		const pid = child.detail.pid
 		if (child.step === 'child' && typeof pid === 'number' && pid > 1) workers.set(pid, child)
 	}
-	const alive = (pid: number) => {
-		if (!running(pid)) return false
-		const born = groupBirth(pid)
-		if (born === undefined) return false
-		const child = workers.get(pid)!
-		if (typeof child.detail.born === 'number') return child.detail.born === born
-		const age = Date.parse(child.at) - born
-		return age >= 0 && age < 60_000
-	}
-	const left = endProcesses([...workers.keys()], alive)
+	const left = endProcesses([...workers].map(([pid, child]) => ({ pid, born: recordedBirth(child) })))
 	requireCondition(
 		!left.length,
 		`Workers of ${id} are still alive: ${left.join(', ')}. No replacement started.`,
@@ -1533,9 +1521,10 @@ export function recordStop(store: Store, actor: string | undefined, input: StopI
 }
 
 function stoppedProcesses(events: ExplorationEvent[], explorer?: string) {
-	const supervisor =
-		explorer === undefined ? (events.findLast((item) => item.step === 'supervisor')?.detail.pid as number) : null
-	return { supervisor: typeof supervisor === 'number' ? [supervisor] : [], children: childPids(events, explorer) }
+	const found = explorer === undefined ? events.findLast((item) => item.step === 'supervisor') : undefined
+	const supervisor: Owned[] =
+		typeof found?.detail.pid === 'number' ? [{ pid: found.detail.pid, born: recordedBirth(found) }] : []
+	return { supervisor, children: childPids(events, explorer) }
 }
 
 export function stopPending(events: ExplorationEvent[], explorer: string | null = null) {
@@ -1546,13 +1535,13 @@ export function stopPending(events: ExplorationEvent[], explorer: string | null 
 		.find((item) => item.step === 'stop-end' && item.explorer === explorer)
 	if (end) return false
 	const { supervisor, children } = stoppedProcesses(events, explorer ?? undefined)
-	return [...supervisor, ...children].some(running)
+	return [...supervisor, ...children].some((item) => running(item.pid))
 }
 
 export function endStopped(store: Store, explorationId: string, explorer?: string) {
 	const events = explorationEvents(store, explorationId)
 	const { supervisor, children } = stoppedProcesses(events, explorer)
-	const left = [...endProcesses(supervisor), ...endProcesses(children.filter(running))]
+	const left = [...endProcesses(supervisor), ...endProcesses(children)].map((item) => item.pid)
 	if (explorer === undefined) keepBrowserFolder(store, explorationId)
 	return left
 }

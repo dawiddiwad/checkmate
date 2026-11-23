@@ -1,4 +1,5 @@
 import { Refusal } from './contracts.ts'
+import { signalChild, trackGroup } from './processes.ts'
 import { piArgs, piResult, resolvePiModelArgs } from './pi.ts'
 import type { Harness } from './pi.ts'
 import { randomBytes } from 'node:crypto'
@@ -520,9 +521,7 @@ const liveChildren = new Set<ChildProcess>()
 const endGraceMilliseconds = 1500
 
 function killGroup(child: ChildProcess, signal: NodeJS.Signals) {
-	try {
-		process.kill(-child.pid!, signal)
-	} catch {}
+	signalChild(child, signal)
 }
 
 export async function endLaunchedChildren() {
@@ -560,6 +559,7 @@ export function launchChild(
 	const limit = childOutputLimit(harness)
 	return new Promise((resolvePromise) => {
 		const child = spawn(executable, commandArgs, { cwd, env, stdio: ['pipe', 'pipe', 'pipe'], detached: true })
+		trackGroup(child)
 		child.stdout.setEncoding('utf8')
 		liveChildren.add(child)
 		if (child.pid) onStart?.(child.pid)
@@ -763,6 +763,7 @@ export function streamClaude(
 	delays: StopDelays = defaultStopDelays
 ): StreamedClaude {
 	const child = spawn(claude, args, { cwd, env, stdio: ['pipe', 'pipe', 'pipe'], detached: true })
+	trackGroup(child)
 	child.stdout.setEncoding('utf8')
 	liveChildren.add(child)
 	const timers: NodeJS.Timeout[] = []

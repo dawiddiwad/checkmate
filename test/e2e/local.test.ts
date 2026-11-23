@@ -5872,3 +5872,29 @@ test('Give a Claude chat turn only Read and Bash, the saved-this-turn hook, and 
 		false
 	)
 })
+
+test('Signal a process group only as it was recorded — a PID whose group leader has another start time, or no recorded start, is not signalled.', async () => {
+	const { startOfGroup, signalRecordedGroup, signalChild, trackGroup } =
+		(await import('../../plugin/src/processes.ts')) as typeof import('../../plugin/src/processes.ts')
+	const sleeper = spawn('sleep', ['30'], { detached: true, stdio: 'ignore' })
+	await once(sleeper, 'spawn')
+	const pid = sleeper.pid!
+	const born = startOfGroup(pid)
+	assert.notEqual(born, undefined)
+	// A start recorded for another process: the PID was reused, so nothing is signalled and the process keeps running.
+	assert.equal(signalRecordedGroup(pid, born! - 60_000, 'SIGTERM'), false)
+	assert.equal(startOfGroup(pid), born)
+	// No recorded start: nothing can be verified, so nothing is signalled.
+	assert.equal(signalRecordedGroup(pid, undefined, 'SIGTERM'), false)
+	assert.equal(startOfGroup(pid), born)
+	// The recorded start of this process: signalled.
+	assert.equal(signalRecordedGroup(pid, born, 'SIGTERM'), true)
+	const [, signal] = await once(sleeper, 'exit')
+	assert.equal(signal, 'SIGTERM')
+	// A child that has exited is never signalled, whatever PID it had.
+	const quick = spawn('true', [], { detached: true, stdio: 'ignore' })
+	await once(quick, 'spawn')
+	trackGroup(quick)
+	await once(quick, 'exit')
+	assert.doesNotThrow(() => signalChild(quick, 'SIGKILL'))
+})

@@ -23701,6 +23701,22 @@ function runTest(store, actor, given, env, preferSavedModel = false) {
     openRequest(store, actor, input, env, assumed);
   }
   const mode = input.mode && input.mode !== "auto" ? input.mode : autoMode(store, input.planId, input.build);
+  const check = mode === "regression" ? checkRun(store, actor, input) : { run: null, skipped: [] };
+  const chosenBy = input.mode && input.mode !== "auto" ? "flag" : "auto";
+  if (check.run && chosenBy === "auto") {
+    const execute2 = `Execute the stored tests of ${check.run.runId}: ${given.session ? `/checkmate:execute ${check.run.runId}, or ` : ""}${delegateCommand(selectedHarness(env), "execute", check.run.runId)}`;
+    return completed(input.planId, {
+      planId: input.planId,
+      mode,
+      chosenBy,
+      run: check.run,
+      checkSkipped: check.skipped,
+      ...check.storedTests ? { storedTests: check.storedTests } : {},
+      ...check.warnings?.length ? { warnings: check.warnings } : {},
+      assumed,
+      next: [execute2]
+    });
+  }
   const explored = startExploration(
     store,
     actor,
@@ -23709,13 +23725,12 @@ function runTest(store, actor, given, env, preferSavedModel = false) {
     preferSavedModel
   );
   const charter = explored.data.charter;
-  const check = mode === "regression" ? checkRun(store, actor, input) : { run: null, skipped: [] };
   return {
     ...explored,
     data: {
       ...explored.data,
       mode,
-      chosenBy: input.mode && input.mode !== "auto" ? "flag" : "auto",
+      chosenBy,
       scope: charter.scope,
       run: check.run,
       checkSkipped: check.skipped,

@@ -2,7 +2,7 @@ import type { Reply, Store } from './store.ts'
 import type { Env } from './sessions.ts'
 import type { StartInput } from './explorers.ts'
 import type { Charter } from './explorations.ts'
-import { all, one } from './store.ts'
+import { all, completed, one } from './store.ts'
 import { Refusal, requireIdentifier, requireWellFormed, unusedId, validate } from './contracts.ts'
 import { changeOf, changedFiles, upstreamBase } from './change.ts'
 import { openPlan, planRevision, readySelection } from './plans.ts'
@@ -197,6 +197,26 @@ export function runTest(
 		openRequest(store, actor, input, env, assumed)
 	}
 	const mode = input.mode && input.mode !== 'auto' ? input.mode : autoMode(store, input.planId, input.build)
+	const check: ReturnType<typeof checkRun> =
+		mode === 'regression' ? checkRun(store, actor, input) : { run: null, skipped: [] }
+	const chosenBy = input.mode && input.mode !== 'auto' ? 'flag' : 'auto'
+	// A test that routes to a stored run starts only the run. A separate exploration needs --mode exploratory.
+	if (check.run && chosenBy === 'auto') {
+		const execute = `Execute the stored tests of ${check.run.runId}: ${given.session ? `/checkmate:execute ${check.run.runId}, or ` : ''}${delegateCommand(selectedHarness(env), 'execute', check.run.runId)}`
+		return completed(input.planId, {
+			planId: input.planId,
+			mode,
+			chosenBy,
+			run: check.run,
+			checkSkipped: check.skipped,
+			...((check as { storedTests?: object }).storedTests
+				? { storedTests: (check as { storedTests?: object }).storedTests }
+				: {}),
+			...(check.warnings?.length ? { warnings: check.warnings } : {}),
+			assumed,
+			next: [execute],
+		})
+	}
 	const explored = startExploration(
 		store,
 		actor,
@@ -205,14 +225,12 @@ export function runTest(
 		preferSavedModel
 	)
 	const charter = explored.data.charter as Charter
-	const check: ReturnType<typeof checkRun> =
-		mode === 'regression' ? checkRun(store, actor, input) : { run: null, skipped: [] }
 	return {
 		...explored,
 		data: {
 			...explored.data,
 			mode,
-			chosenBy: input.mode && input.mode !== 'auto' ? 'flag' : 'auto',
+			chosenBy,
 			scope: charter.scope,
 			run: check.run,
 			checkSkipped: check.skipped,

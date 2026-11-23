@@ -271,7 +271,18 @@ test('Record a defect with replayable evidence — report text cannot become a r
 	assert.equal((await (await fetch(`${app.baseUrl}/quote?promotion=true&loyalty=true`)).json()).totalPLN, 220)
 	assert.match(JSON.stringify(await ok('explore', 'show', start.explorationId)), /220/)
 	app.fix()
-	const without = await ok('test', 'cart', '--build', 'fixed', '--level', 'smoke', '--allow', 'Read')
+	const without = await ok(
+		'test',
+		'cart',
+		'--mode',
+		'exploratory',
+		'--build',
+		'fixed',
+		'--level',
+		'smoke',
+		'--allow',
+		'Read'
+	)
 	assert.equal((await ok('explore', 'wait', without.explorationId, '--timeout', '60')).state, 'completed')
 	const beforeAnswer = await ok(
 		'query',
@@ -292,7 +303,18 @@ test('Record a defect with replayable evidence — report text cannot become a r
 		'--rationale',
 		'Product decision.'
 	)
-	const after = await ok('test', 'cart', '--build', 'fixed', '--level', 'smoke', '--allow', 'Read')
+	const after = await ok(
+		'test',
+		'cart',
+		'--mode',
+		'exploratory',
+		'--build',
+		'fixed',
+		'--level',
+		'smoke',
+		'--allow',
+		'Read'
+	)
 	assert.equal((await ok('explore', 'wait', after.explorationId, '--timeout', '60')).state, 'completed')
 	const latest = await ok('query', 'SELECT exploration_id, build, kind, body FROM journal_entries ORDER BY rowid')
 	const criterion = latest.rows.find(
@@ -1651,7 +1673,18 @@ test('Show disputed/failed retest without closing a claim — unresolved defect 
 	)
 	assert.equal((await ok('explore', 'wait', first.explorationId, '--timeout', '60')).state, 'completed')
 	env.QA_RETEST = '1'
-	const second = await ok('test', 'cart', '--build', 'still-broken', '--level', 'smoke', '--allow', 'Read')
+	const second = await ok(
+		'test',
+		'cart',
+		'--mode',
+		'exploratory',
+		'--build',
+		'still-broken',
+		'--level',
+		'smoke',
+		'--allow',
+		'Read'
+	)
 	assert.equal((await ok('explore', 'wait', second.explorationId, '--timeout', '60')).state, 'completed')
 	const claims = (await ok('claim', 'list', 'cart')).claims
 	assert.equal(claims.length, 1)
@@ -1662,6 +1695,8 @@ test('Show disputed/failed retest without closing a claim — unresolved defect 
 	const disputed = await ok(
 		'test',
 		'cart',
+		'--mode',
+		'exploratory',
 		'--build',
 		'flaky',
 		'--level',
@@ -8412,4 +8447,161 @@ test('A run that names a build its instance does not serve is refused at begin, 
 		'T1'
 	)
 	assert.equal(right.code, 0, right.output)
+})
+
+test('Start only the stored run when test routes to a plan with ready stored tests — no exploration starts beside it.', async (t) => {
+	const workspace = directory(t)
+	writeFileSync(join(workspace, 'ticket.md'), 'The catalog is listed.\n')
+	const app = await fixture()
+	t.after(() => app.close())
+	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle', CHECKMATE_HARNESS: 'pi' }
+	const setup = await command(
+		workspace,
+		env,
+		'setup',
+		'--url',
+		app.baseUrl,
+		'--target',
+		'shop',
+		'--data',
+		'environment',
+		'--policy',
+		'The fixture keeps no records.'
+	)
+	assert.equal(setup.code, 0, setup.output)
+	const opened = await command(
+		workspace,
+		env,
+		'plan',
+		'open',
+		'ticket',
+		'--target',
+		'shop@1',
+		'--objective',
+		'List the catalog.',
+		'--source',
+		'ticket.md'
+	)
+	assert.equal(opened.code, 0, opened.output)
+	const saved = await inputCommand(
+		workspace,
+		env,
+		JSON.stringify({
+			requirements: [{ id: 'R1', text: 'The catalog is listed.', source: 'ticket.md' }],
+			tests: [
+				{
+					id: 'T1',
+					title: 'Read the catalog',
+					requirementIds: ['R1'],
+					capability: 'http',
+					operations: ['read_catalog'],
+					dependsOn: [],
+					preconditions: [],
+					action: 'Read the catalog.',
+					assertions: [{ id: 'A1', check: 'The catalog is listed.', checkKind: 'agent_observation' }],
+				},
+			],
+			gaps: [],
+		}),
+		'plan',
+		'save',
+		'ticket'
+	)
+	assert.equal(saved.code, 0, saved.output)
+	const routed = await command(
+		workspace,
+		env,
+		'test',
+		'ticket',
+		'--build',
+		'b1',
+		'--session',
+		'--allow',
+		'Read',
+		'--allow',
+		'Bash'
+	)
+	assert.equal(routed.code, 0, routed.output)
+	assert.match(routed.output, /"mode":"regression"/, routed.output)
+	assert.match(routed.output, /"run":\{"runId":"run-/, routed.output)
+	assert.match(routed.output, /Execute the stored tests of run-/, routed.output)
+	const explorations = await command(workspace, env, 'query', 'SELECT count(*) AS n FROM explorations')
+	assert.deepEqual(explorations.body.rows, [{ n: 0 }])
+})
+
+test('Resume an interrupted run whose remaining tests only read data — no decision is asked under an environment data policy.', async (t) => {
+	const workspace = directory(t)
+	writeFileSync(join(workspace, 'ticket.md'), 'The catalog is listed.\n')
+	const app = await fixture()
+	t.after(() => app.close())
+	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle', CHECKMATE_HARNESS: 'pi' }
+	const setup = await command(
+		workspace,
+		env,
+		'setup',
+		'--url',
+		app.baseUrl,
+		'--target',
+		'shop',
+		'--data',
+		'environment',
+		'--policy',
+		'The fixture keeps no records.'
+	)
+	assert.equal(setup.code, 0, setup.output)
+	const opened = await command(
+		workspace,
+		env,
+		'plan',
+		'open',
+		'ticket',
+		'--target',
+		'shop@1',
+		'--objective',
+		'List the catalog.',
+		'--source',
+		'ticket.md'
+	)
+	assert.equal(opened.code, 0, opened.output)
+	const saved = await inputCommand(
+		workspace,
+		env,
+		JSON.stringify({
+			requirements: [{ id: 'R1', text: 'The catalog is listed.', source: 'ticket.md' }],
+			tests: [
+				{
+					id: 'T1',
+					title: 'Read the catalog',
+					requirementIds: ['R1'],
+					capability: 'http',
+					operations: ['read_catalog'],
+					dependsOn: [],
+					preconditions: [],
+					action: 'Read the catalog.',
+					assertions: [{ id: 'A1', check: 'The catalog is listed.', checkKind: 'agent_observation' }],
+				},
+			],
+			gaps: [],
+		}),
+		'plan',
+		'save',
+		'ticket'
+	)
+	assert.equal(saved.code, 0, saved.output)
+	const began = await command(
+		workspace,
+		env,
+		'run',
+		'begin',
+		'run-1',
+		'ticket@1',
+		'--build',
+		'b1',
+		'--instance',
+		'local'
+	)
+	assert.equal(began.code, 0, began.output)
+	const resumed = await command(workspace, env, 'run', 'resume', 'run-1')
+	assert.doesNotMatch(resumed.output, /Actions may have occurred/, resumed.output)
+	assert.notEqual(resumed.body.status, 'needs_decision', resumed.output)
 })

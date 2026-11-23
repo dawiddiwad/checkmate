@@ -35,8 +35,8 @@ function composer(context: Context, action: string, selection: RequestSelection,
 			<label
 				>Model
 				<select name="model" data-chat-model>
-					<option value="">Host default</option>
 					${model ? html`<option value="${model}" selected>${model}</option>` : ''}
+					<option value="">Host default</option>
 				</select></label
 			>
 			<label hidden

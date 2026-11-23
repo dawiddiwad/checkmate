@@ -36620,8 +36620,8 @@ function composer(context, action2, selection, screen = "", back = "") {
 			<label
 				>Model
 				<select name="model" data-chat-model>
-					<option value="">Host default</option>
 					${model ? html2`<option value="${model}" selected>${model}</option>` : ""}
+					<option value="">Host default</option>
 				</select></label
 			>
 			<label hidden

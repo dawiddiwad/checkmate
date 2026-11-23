@@ -3362,13 +3362,15 @@ function newOption(label, value) {
 
 function setModelOptions(select, models, query, defaultLabel) {
 	const selected = select.value
-	const options = [newOption(defaultLabel, '')]
+	// The list comes first; the host default is the last entry.
+	const options = []
 	if (selected && !models.some((model) => model.value === selected))
 		options.push(newOption(`${selected} (not in list)`, selected))
 	for (const model of models) {
 		if (model.value === selected || !query || `${model.value} ${model.label}`.toLowerCase().includes(query))
 			options.push(newOption(model.label, model.value))
 	}
+	options.push(newOption(defaultLabel, ''))
 	select.replaceChildren(...options)
 	select.value = selected
 }

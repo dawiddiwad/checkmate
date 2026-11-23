@@ -29,7 +29,7 @@ To drop a requirement that the person names and that no open gap covers, run `sc
 
 ## Add or remove a test directly
 
-Use this only when the person asks for a test change that no open gap covers. When the person asks you to add, change, or drop a test, use this section. Do not run `run begin` or any test for it. A run starts only when the person asks to run tests. Send the JSON in a heredoc. Give `--rationale`.
+Use this when the person asks you to add, change, or drop a test. An open gap does not block a test that its requirement does not depend on. Do not wait for a gap answer for such a test. A test on a requirement that an open gap blocks waits for the gap answer. Do not run `run begin` or any test for it. A run starts only when the person asks to run tests. Send the JSON in a heredoc. Give `--rationale`.
 
 - A new test needs a requirement. If the plan has no requirement for it, add the requirement in the same JSON with `text` and `source`: `{"requirements": {"R7": {"text": "<the rule, one sentence>", "source": "conversation"}}, "tests": {...}}`. Do not read the schema files. Do not invent other field names.
 - Add a test. Use a new test ID. Give every field: `{"tests": {"T10": {"title": "...", "requirementIds": ["R5"], "capability": "browser", "operations": ["any_test_operation"], "dependsOn": [], "preconditions": [], "action": "...", "assertions": {"A1": {"check": "...", "checkKind": "deterministic"}}}}}`. Run `checkmate plan edit <planId>@<revision> --patch --rationale "<why>" <<'EOF'`, then the JSON, then `EOF`.

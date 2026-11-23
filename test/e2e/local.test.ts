@@ -6428,3 +6428,16 @@ test('--observed and --observed-file cannot both give the observed value.', asyn
 	assert.equal(both.code, 1, both.output)
 	assert.match(both.body.reasons.join(' '), /either --observed or --observed-file/)
 })
+
+test('Hint the test skill for a request to test a change — the hint misses a test request or fires on development test work.', () => {
+	const hook = join(root, 'plugin', 'hooks', 'route-hint.mjs')
+	const hint = (prompt: string) => {
+		const output = execFileSync(process.execPath, [hook], { input: JSON.stringify({ prompt }), encoding: 'utf8' })
+		return output ? JSON.parse(output).hookSpecificOutput.additionalContext : null
+	}
+	assert.match(hint('QA the new checkout flow in ticket.md on localhost:4191'), /checkmate:test/)
+	assert.match(hint('Verify the latest build against the acceptance criteria in ticket.md'), /checkmate:test/)
+	assert.equal(hint('run the unit tests'), null)
+	assert.equal(hint('fix the failing test in cart.test.ts'), null)
+	assert.equal(hint('why is CI red on the test job?'), null)
+})

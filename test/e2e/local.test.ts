@@ -8673,3 +8673,117 @@ test('delegate wait settles a detached delegate that stopped without a reply —
 	assert.equal(waited.body.status, 'operational_error', waited.output)
 	assert.match(waited.output, /stopped before it wrote a reply/)
 })
+
+test('A retest carries the defect of its own run, even when a later run on another build passed the test.', async (t) => {
+	const workspace = directory(t)
+	writeFileSync(join(workspace, 'ticket.md'), 'The quote is 240.\n')
+	const app = await fixture()
+	t.after(() => app.close())
+	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle' }
+	const ok = async (args: string[], value?: unknown) => {
+		const result = await inputCommand(workspace, env, value === undefined ? '' : JSON.stringify(value), ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	await ok([
+		'setup',
+		'--url',
+		app.baseUrl,
+		'--target',
+		'shop',
+		'--data',
+		'environment',
+		'--policy',
+		'The test fixture keeps no records.',
+	])
+	await ok([
+		'plan',
+		'open',
+		'ticket',
+		'--target',
+		'shop@1',
+		'--objective',
+		'Check the quote.',
+		'--source',
+		'ticket.md',
+	])
+	await ok(['plan', 'save', 'ticket'], {
+		requirements: [{ id: 'R1', text: 'The quote is 240.', source: 'ticket.md' }],
+		tests: [
+			{
+				capability: 'http',
+				operations: ['read_catalog'],
+				dependsOn: [],
+				preconditions: [],
+				id: 'T1',
+				title: 'Quote',
+				requirementIds: ['R1'],
+				action: 'Read quote.',
+				assertions: [
+					{
+						id: 'A1',
+						check: 'The quote is 240.',
+						checkKind: 'deterministic',
+						observe: 'the quote total',
+						expected: '240',
+					},
+				],
+			},
+		],
+		gaps: [],
+	})
+	await ok(['plan', 'approve', 'ticket@1', '--rationale', 'Run the rules.'])
+	await ok(['run', 'begin', 'run-1', 'ticket@1', '--build', 'broken', '--tests', 'T1'])
+	const broken = await (await fetch(`${app.baseUrl}/quote?promotion=true&loyalty=true`)).json()
+	assert.equal(broken.totalPLN, 220)
+	const wrong = await ok(['run', 'check', 'run-1', 'T1', 'A1', '--observed', '220', '--evidence', '-'], broken)
+	await ok(['run', 'finding', 'run-1'], {
+		id: 'F1',
+		type: 'defect',
+		severity: 'high',
+		assertionIds: ['T1.A1'],
+		requirementIds: ['R1'],
+		title: 'Wrong quote',
+		expected: '240',
+		observed: '220',
+		reproduction: ['Read quote.'],
+		evidenceIds: wrong.evidenceIds,
+	})
+	await ok(['run', 'close', 'run-1', 'T1'])
+	await ok([
+		'run',
+		'finish',
+		'run-1',
+		'--completion',
+		'completed',
+		'--cleanup',
+		'completed',
+		'--cleanup-reason',
+		'No test data.',
+	])
+	app.fix()
+	await ok(['run', 'begin', 'run-2', 'ticket@1', '--build', 'other', '--tests', 'T1'])
+	const passed = await ok(
+		['run', 'check', 'run-2', 'T1', 'A1', '--observed', '240', '--evidence', '-'],
+		await (await fetch(`${app.baseUrl}/quote?promotion=true&loyalty=true`)).json()
+	)
+	assert.equal(passed.result, 'passed')
+	await ok(['run', 'close', 'run-2', 'T1'])
+	await ok([
+		'run',
+		'finish',
+		'run-2',
+		'--completion',
+		'completed',
+		'--cleanup',
+		'completed',
+		'--cleanup-reason',
+		'No test data.',
+	])
+	await ok(['run', 'begin', 'run-3', 'ticket@1', '--build', 'third', '--retest-of', 'run-1', '--tests', 'T1'])
+	const retest = await ok(['run', 'show', 'run-3', '--json'])
+	assert.deepEqual(
+		retest.request.retestDefects.map((defect: { findingId: string }) => defect.findingId),
+		['F1']
+	)
+})

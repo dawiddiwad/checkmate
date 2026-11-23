@@ -14638,7 +14638,10 @@ function retestDefects(store, runId) {
   const byRun = new Map(results.map((result) => [result.runId, result]));
   const chain = [];
   for (let id2 = runId; id2 && !chain.includes(id2); id2 = byRun.get(id2)?.retestOf ?? null) chain.push(id2);
-  return openDefects(results, rejectedRuns(store, plan_id)).filter((defect) => chain.includes(defect.runId)).map(({ runId: runId2, finding }) => ({
+  return openDefects(
+    results.filter((result) => chain.includes(result.runId)),
+    rejectedRuns(store, plan_id)
+  ).filter((defect) => chain.includes(defect.runId)).map(({ runId: runId2, finding }) => ({
     runId: runId2,
     findingId: finding.id,
     title: finding.title,

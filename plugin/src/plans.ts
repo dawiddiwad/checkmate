@@ -1877,7 +1877,12 @@ export function retestDefects(store: Store, runId: string): RetestDefect[] {
 	const byRun = new Map(results.map((result) => [result.runId, result]))
 	const chain: string[] = []
 	for (let id: string | null = runId; id && !chain.includes(id); id = byRun.get(id)?.retestOf ?? null) chain.push(id)
-	return openDefects(results, rejectedRuns(store, plan_id))
+	// A defect is judged by the runs of its own retest chain. A later run on another build that passed the test does not
+	// retire the defect for a retest of the run that recorded it.
+	return openDefects(
+		results.filter((result) => chain.includes(result.runId)),
+		rejectedRuns(store, plan_id)
+	)
 		.filter((defect) => chain.includes(defect.runId))
 		.map(({ runId, finding }) => ({
 			runId,

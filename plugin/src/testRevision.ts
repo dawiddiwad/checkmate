@@ -73,9 +73,10 @@ export function saveFirstRevision(store: Store, actor: string | undefined, planI
 			assertions: [{ id: 'A1', check: rule.text, checkKind: 'agent_observation' }],
 		})
 	}
-	for (const entry of entries.filter((item) => item.kind === 'question' && item.id)) {
+	// Each tester numbers its own questions, so the IDs repeat. The gap IDs are numbered here.
+	for (const [index, entry] of entries.filter((item) => item.kind === 'question').entries()) {
 		gaps.push({
-			id: entry.id!,
+			id: `Q${index + 1}`,
 			severity: entry.blocking ? 'blocking' : 'non_blocking',
 			status: 'open',
 			requirementIds: rules.some((rule) => rule.id === entry.rule) ? [entry.rule!] : [],

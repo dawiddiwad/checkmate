@@ -10192,7 +10192,10 @@ var chatRecordCommands = [
   "claim handoff"
 ];
 function chatAllowRules(checkmate) {
-  return [...chatReadCommands, ...chatRecordCommands].map((command) => `Bash(node "${checkmate}" ${command}:*)`);
+  return [...chatReadCommands, ...chatRecordCommands].flatMap((command) => [
+    `Bash(node "${checkmate}" ${command}:*)`,
+    `Bash(node '${checkmate}' ${command}:*)`
+  ]);
 }
 function requestArgs(session) {
   return [
@@ -15624,9 +15627,9 @@ function saveFirstRevision(store, actor, planId, explorationId) {
       assertions: [{ id: "A1", check: rule.text, checkKind: "agent_observation" }]
     });
   }
-  for (const entry of entries.filter((item) => item.kind === "question" && item.id)) {
+  for (const [index2, entry] of entries.filter((item) => item.kind === "question").entries()) {
     gaps.push({
-      id: entry.id,
+      id: `Q${index2 + 1}`,
       severity: entry.blocking ? "blocking" : "non_blocking",
       status: "open",
       requirementIds: rules.some((rule) => rule.id === entry.rule) ? [entry.rule] : [],

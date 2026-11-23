@@ -1983,6 +1983,10 @@ if (args.includes('stream-json')) {
 		allowed.some((rule) => /^Bash\(node ".*checkmate\.js" gap answer:\*\)$/.test(rule)),
 		'Chat must allow the gap answer write'
 	)
+	assert(
+		allowed.some((rule) => /^Bash\(node '.*checkmate\.js' plan show:\*\)$/.test(rule)),
+		'Chat must allow the single-quoted form the model uses'
+	)
 	assert(!allowed.some((rule) => /run begin/.test(rule)), 'Chat must not pre-allow commands that touch the target')
 	assert.deepEqual(
 		(await ok('query', "SELECT actor FROM operations WHERE command='run check' AND status='completed'")).rows,

@@ -680,8 +680,12 @@ const chatRecordCommands = [
 	'claim handoff',
 ]
 
+// The model quotes the script path with double or single quotes, so each command has both forms.
 export function chatAllowRules(checkmate: string) {
-	return [...chatReadCommands, ...chatRecordCommands].map((command) => `Bash(node "${checkmate}" ${command}:*)`)
+	return [...chatReadCommands, ...chatRecordCommands].flatMap((command) => [
+		`Bash(node "${checkmate}" ${command}:*)`,
+		`Bash(node '${checkmate}' ${command}:*)`,
+	])
 }
 
 export function requestArgs(session: RequestSession) {

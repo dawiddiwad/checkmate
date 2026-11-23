@@ -40419,7 +40419,10 @@ function stagePrompt(stage, subject, execution) {
     (defect) => `${defect.testIds.join(",")} (${defect.runId ?? request2.retestOf}/${defect.findingId})`
   );
   const sources = planning.context?.sources ?? [];
-  const tools = planTools(planning, profile).map(({ name: name2, kind }) => `${name2} (${kind})`);
+  const tools = planTools(planning, profile).map(({ name: name2, kind }) => {
+    if (kind !== "cli") return `${name2} (${kind})`;
+    return `${name2} (${kind}, ${executableOnPath(name2, process.env) ? "on PATH" : "not on PATH"})`;
+  });
   return [
     `Run: ${subject}. The parent began the run. Do not run \`run gate\` or \`run begin\`.`,
     `Plan revision: ${run2.plan_id}@${run2.plan_revision}. Target: ${run2.target_id}@${run2.target_revision}. Build: ${run2.application_build}.`,
@@ -40429,7 +40432,7 @@ function stagePrompt(stage, subject, execution) {
     ] : [],
     ...!request2.permanent && planning.context?.instructions ? [`Plan request instructions: ${planning.context.instructions}`] : [],
     `Plan tools: ${tools.join(", ") || "none declared"}.`,
-    "Use Bash for CLI tools. Check for an executable on PATH before you report a CLI tool as missing. The host controls tool access and permissions.",
+    'Use Bash for CLI tools. A CLI tool marked "not on PATH" is missing: close each test that needs it as error. The host controls tool access and permissions.',
     `Allowed test operations: ${profile.allowedOperations.join(", ")}.`,
     `Instance: ${run2.instance_id}. Read its entry values with \`checkmate target show ${run2.target_id} --instance ${run2.instance_id}\`. Run a command entry at test time. Do not write its output anywhere: not as a value, in evidence, in --observed, in a finding, or in a gap.`,
     ...run2.retired ? [

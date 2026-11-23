@@ -180,7 +180,15 @@ export function candidate(): PlanCandidate {
 				dependsOn: ['T1'],
 				preconditions: ['Cart with 400 PLN and 20 PLN loyalty.'],
 				action: 'Apply the promotion and read the quote.',
-				assertions: [{ id: 'A1', check: 'The response status is HTTP 200.', checkKind: 'deterministic' }],
+				assertions: [
+					{
+						id: 'A1',
+						check: 'The response status is HTTP 200.',
+						checkKind: 'deterministic',
+						observe: 'the value stated by the check',
+						expected: '200',
+					},
+				],
 			},
 			{
 				id: 'T3',
@@ -228,8 +236,18 @@ export const promotionDelta = {
 	tests: {
 		T2: {
 			assertions: [
-				{ check: 'The response status is HTTP 200.', checkKind: 'deterministic' as const },
-				{ check: 'totalPLN equals 240.', checkKind: 'deterministic' as const },
+				{
+					check: 'The response status is HTTP 200.',
+					checkKind: 'deterministic' as const,
+					observe: 'the HTTP status of the quote',
+					expected: '200',
+				},
+				{
+					check: 'totalPLN equals 240.',
+					checkKind: 'deterministic' as const,
+					observe: 'totalPLN in the quote',
+					expected: '240',
+				},
 			],
 		},
 	},

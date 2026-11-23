@@ -55,7 +55,15 @@ if (process.env.QA_STAGE === 'setup') {
 				dependsOn: [],
 				preconditions: [],
 				action: 'Read the quote.',
-				assertions: [{ id: 'A1', check: 'The quote is 240.', checkKind: 'deterministic' }],
+				assertions: [
+					{
+						id: 'A1',
+						check: 'The quote is 240.',
+						checkKind: 'deterministic',
+						observe: 'the value stated by the check',
+						expected: '240',
+					},
+				],
 			},
 		],
 		gaps: [],
@@ -75,19 +83,7 @@ if (process.env.QA_STAGE === 'setup') {
 	const quote = await response.json()
 	if (response.status !== 200 || quote.totalPLN !== 240) throw Error('The selected build does not pass')
 	run(
-		[
-			'run',
-			'check',
-			'permanent-1',
-			testId,
-			'A1',
-			'--result',
-			'passed',
-			'--observed',
-			String(quote.totalPLN),
-			'--evidence',
-			'-',
-		],
+		['run', 'check', 'permanent-1', testId, 'A1', '--observed', String(quote.totalPLN), '--evidence', '-'],
 		'HTTP 200: 240'
 	)
 	run(['run', 'close', 'permanent-1', testId])

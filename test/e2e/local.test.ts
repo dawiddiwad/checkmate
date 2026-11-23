@@ -434,7 +434,15 @@ test('Drop a criterion by revise — a dropped criterion stayed ready and needed
 				dependsOn: [],
 				preconditions: [],
 				action: 'Read the quote.',
-				assertions: [{ id: 'A1', check: 'The quote is 240.', checkKind: 'deterministic' }],
+				assertions: [
+					{
+						id: 'A1',
+						check: 'The quote is 240.',
+						checkKind: 'deterministic',
+						observe: 'the value stated by the check',
+						expected: '240',
+					},
+				],
 			},
 			{
 				id: 'T2',
@@ -590,7 +598,15 @@ test('Revise a test whole — the code keeps an assertion ID whose check is unch
 				dependsOn: [],
 				preconditions: [],
 				action: 'Read the quote.',
-				assertions: [{ id: 'A1', check: 'The quote is 240.', checkKind: 'deterministic' }],
+				assertions: [
+					{
+						id: 'A1',
+						check: 'The quote is 240.',
+						checkKind: 'deterministic',
+						observe: 'the value stated by the check',
+						expected: '240',
+					},
+				],
 			},
 			{
 				id: 'T2',
@@ -652,7 +668,12 @@ test('Revise a test whole — the code keeps an assertion ID whose check is unch
 			T2: {
 				assertions: [
 					{ check: 'The newest item is first.', checkKind: 'deterministic' },
-					{ check: 'The list has at most 10 items.', checkKind: 'deterministic' },
+					{
+						check: 'The list has at most 10 items.',
+						checkKind: 'deterministic',
+						observe: 'the number of items in the list',
+						expected: '10',
+					},
 				],
 			},
 		},
@@ -1162,7 +1183,15 @@ test('Answer, revise, and approve the named revision — execution against the w
 				dependsOn: [],
 				preconditions: [],
 				action: 'Read the quote.',
-				assertions: [{ id: 'A1', check: 'The quote is 240.', checkKind: 'deterministic' }],
+				assertions: [
+					{
+						id: 'A1',
+						check: 'The quote is 240.',
+						checkKind: 'deterministic',
+						observe: 'the value stated by the check',
+						expected: '240',
+					},
+				],
 			},
 		],
 		gaps: [],
@@ -1256,7 +1285,7 @@ test('Answer, revise, and approve the named revision — execution against the w
 	const broken = await (await fetch(`${app.baseUrl}/quote?promotion=true&loyalty=true`)).json()
 	assert.equal(broken.totalPLN, 220)
 	const failure = await run(
-		['run', 'check', 'run-1', 'T1', 'A1', '--result', 'failed', '--observed', '220', '--evidence', '-'],
+		['run', 'check', 'run-1', 'T1', 'A1', '--observed', '220', '--evidence', '-'],
 		'HTTP 200: 220'
 	)
 	await run(
@@ -1338,10 +1367,7 @@ test('Answer, revise, and approve the named revision — execution against the w
 		'--retest-of',
 		'run-1',
 	])
-	await run(
-		['run', 'check', 'run-2', 'T1', 'A1', '--result', 'passed', '--observed', '240', '--evidence', '-'],
-		'HTTP 200: 240'
-	)
+	await run(['run', 'check', 'run-2', 'T1', 'A1', '--observed', '240', '--evidence', '-'], 'HTTP 200: 240')
 	await run(['run', 'close', 'run-2', 'T1'])
 	await run([
 		'run',
@@ -1694,7 +1720,15 @@ test('Run ready tests and report blocked tests — partial execution misreported
 				title: 'Quote',
 				requirementIds: ['R1'],
 				action: 'Read the quote.',
-				assertions: [{ id: 'A1', check: 'The quote is 240.', checkKind: 'deterministic' }],
+				assertions: [
+					{
+						id: 'A1',
+						check: 'The quote is 240.',
+						checkKind: 'deterministic',
+						observe: 'the value stated by the check',
+						expected: '240',
+					},
+				],
 			},
 			{
 				...common,
@@ -1755,24 +1789,6 @@ test('Run ready tests and report blocked tests — partial execution misreported
 	)
 	assert.equal(giveUp.code, 1, giveUp.output)
 	assert.match(giveUp.output, /Selected tests are not closed: T1/)
-	const wrongValue = await inputCommand(
-		workspace,
-		env,
-		JSON.stringify(quote),
-		'run',
-		'check',
-		'run-1',
-		'T1',
-		'A1',
-		'--result',
-		'passed',
-		'--observed',
-		'Price: 300',
-		'--evidence',
-		'-'
-	)
-	assert.equal(wrongValue.code, 1, wrongValue.output)
-	assert.match(wrongValue.output, /does not show 240/)
 	const checked = await inputCommand(
 		workspace,
 		env,
@@ -1782,8 +1798,6 @@ test('Run ready tests and report blocked tests — partial execution misreported
 		'run-1',
 		'T1',
 		'A1',
-		'--result',
-		'passed',
 		'--observed',
 		String(quote.totalPLN),
 		'--evidence',
@@ -2628,7 +2642,15 @@ test('Run a narrow retest with prerequisites and regressions — uncovered tests
 				id: 'T2',
 				title: 'Quote',
 				dependsOn: ['T1'],
-				assertions: [{ id: 'A1', check: 'The quote is 240.', checkKind: 'deterministic' }],
+				assertions: [
+					{
+						id: 'A1',
+						check: 'The quote is 240.',
+						checkKind: 'deterministic',
+						observe: 'the value stated by the check',
+						expected: '240',
+					},
+				],
 			},
 			{
 				...common,
@@ -2644,10 +2666,7 @@ test('Run a narrow retest with prerequisites and regressions — uncovered tests
 	await ok(['run', 'begin', 'run-1', 'ticket@1', '--build', 'broken', '--tests', 'T1,T2'])
 	const quote = await (await fetch(`${app.baseUrl}/quote?promotion=true&loyalty=true`)).json()
 	assert.equal(quote.totalPLN, 220)
-	await ok(
-		['run', 'check', 'run-1', 'T1', 'A1', '--result', 'passed', '--observed', 'HTTP 200', '--evidence', '-'],
-		quote
-	)
+	await ok(['run', 'check', 'run-1', 'T1', 'A1', '--result', 'passed', '--observed', '200', '--evidence', '-'], quote)
 	await ok(['run', 'close', 'run-1', 'T1'])
 	const checked = await inputCommand(
 		workspace,
@@ -2658,8 +2677,6 @@ test('Run a narrow retest with prerequisites and regressions — uncovered tests
 		'run-1',
 		'T2',
 		'A1',
-		'--result',
-		'failed',
 		'--observed',
 		'220',
 		'--evidence',
@@ -2724,10 +2741,9 @@ test('Run a narrow retest with prerequisites and regressions — uncovered tests
 	])
 	assert.deepEqual(begun.tests, ['T1', 'T2'])
 	for (const id of ['T1', 'T2']) {
-		await ok(
-			['run', 'check', 'run-2', id, 'A1', '--result', 'passed', '--observed', '240', '--evidence', '-'],
-			fixed
-		)
+		// T1 is a legacy check without expected, so it still takes --result; T2 decides from --observed.
+		const result = id === 'T1' ? ['--result', 'passed'] : []
+		await ok(['run', 'check', 'run-2', id, 'A1', ...result, '--observed', '240', '--evidence', '-'], fixed)
 		await ok(['run', 'close', 'run-2', id])
 	}
 	await ok([
@@ -3151,7 +3167,15 @@ test('Export a partial run with blocked tests as skipped — green CI hides the 
 		dependsOn: [],
 		preconditions: [],
 		action: 'Read the quote.',
-		assertions: [{ id: 'A1', check: 'The quote is 240.', checkKind: 'deterministic' }],
+		assertions: [
+			{
+				id: 'A1',
+				check: 'The quote is 240.',
+				checkKind: 'deterministic',
+				observe: 'the value stated by the check',
+				expected: '240',
+			},
+		],
 	})
 	await ok(['plan', 'save', 'ticket'], {
 		requirements: [{ id: 'R1', text: 'The quote is 240.', source: 'ticket.md' }],
@@ -3201,8 +3225,6 @@ test('Export a partial run with blocked tests as skipped — green CI hides the 
 		'run-1',
 		'T1',
 		'A1',
-		'--result',
-		'passed',
 		'--observed',
 		'240',
 		'--evidence',
@@ -3350,7 +3372,15 @@ test('Record each test with its own worker — a silent worker is retried once, 
 		title: `Quote ${id}`,
 		requirementIds: ['R1'],
 		action: 'Read the quote.',
-		assertions: [{ id: 'A1', check: 'The quote is 240.', checkKind: 'deterministic' }],
+		assertions: [
+			{
+				id: 'A1',
+				check: 'The quote is 240.',
+				checkKind: 'deterministic',
+				observe: 'the value stated by the check',
+				expected: '240',
+			},
+		],
 	})
 	await ok(['plan', 'save', 'ticket'], {
 		requirements: [{ id: 'R1', text: 'The quote is 240.', source: 'ticket.md' }],
@@ -3430,7 +3460,15 @@ test('Refuse a run on a plan that holds a compound assertion — a stored check 
 				title: 'Quote',
 				requirementIds: ['R1'],
 				action: 'Read the quote.',
-				assertions: [{ id: 'A1', check: 'The quote is 240.', checkKind: 'deterministic' }],
+				assertions: [
+					{
+						id: 'A1',
+						check: 'The quote is 240.',
+						checkKind: 'deterministic',
+						observe: 'the value stated by the check',
+						expected: '240',
+					},
+				],
 			},
 		],
 		gaps: [],
@@ -3689,7 +3727,15 @@ test('Finish a run whose deadline is used up as interrupted with cause deadline 
 				title: 'Quote',
 				requirementIds: ['R1'],
 				action: 'Read the quote.',
-				assertions: [{ id: 'A1', check: 'The quote is 240.', checkKind: 'deterministic' }],
+				assertions: [
+					{
+						id: 'A1',
+						check: 'The quote is 240.',
+						checkKind: 'deterministic',
+						observe: 'the value stated by the check',
+						expected: '240',
+					},
+				],
 			},
 		],
 		gaps: [],
@@ -3708,4 +3754,20 @@ test('Finish a run whose deadline is used up as interrupted with cause deadline 
 	assert.equal(delegated.body.status, 'interrupted', delegated.output)
 	const outcomes = await ok(['query', "SELECT test_id, outcome FROM outcomes WHERE run_id = 'run-1'"])
 	assert.deepEqual(outcomes.rows, [{ test_id: 'T1', outcome: 'not_run' }])
+})
+
+test('Show a legacy plan — status and plan show name checks saved without an expected value and the revise command.', async (t) => {
+	const workspace = directory(t)
+	mkdirSync(join(workspace, '.checkmate'))
+	writeFileSync(
+		join(workspace, '.checkmate/checkmate.db'),
+		gunzipSync(readFileSync(join(root, 'test/e2e/fixtures/workspace-39d33f7.db.gz')))
+	)
+	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle' }
+	const shown = await command(workspace, env, 'plan', 'show', 'ticket')
+	assert.equal(shown.code, 0, shown.output)
+	assert.deepEqual(shown.body.legacyChecks, ['T1.A1'])
+	const status = await command(workspace, env, 'status', 'ticket')
+	assert.equal(status.code, 0, status.output)
+	assert.deepEqual(status.body.legacyChecks, ['T1.A1'])
 })

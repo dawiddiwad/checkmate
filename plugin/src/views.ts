@@ -20,7 +20,7 @@ import {
 	shortName,
 } from './journal.ts'
 import { all, canonical, digest, one } from './store.ts'
-import { requireChoice, requireCondition } from './contracts.ts'
+import { requireChoice, requireCondition, unstructuredValue } from './contracts.ts'
 import { openPermissions } from './permissions.ts'
 import {
 	approvalState,
@@ -274,6 +274,15 @@ export function planList(store: Store): PlanListRow[] {
 	return [...drafted, ...requested].sort((a, b) => a.planId.localeCompare(b.planId))
 }
 
+// Checks saved before observe/expected. Revising the test adds them; the same rule refuses new plans.
+export function legacyChecks(plan: Plan) {
+	return plan.tests.flatMap((test) =>
+		test.metadata?.harvestedFrom === undefined
+			? test.assertions.filter((assertion) => unstructuredValue(assertion)).map((assertion) => `${test.id}.${assertion.id}`)
+			: []
+	)
+}
+
 export function planDetail(store: Store, planId: string, revision: number | null = null) {
 	const selected = planRevision(store, planId, revision)
 	const latest = planRevision(store, planId)
@@ -300,6 +309,7 @@ export function planDetail(store: Store, planId: string, revision: number | null
 		sha256: selected.sha256,
 		approval: { state: approvalLabel(approval), policy: approval.policy, latest: approval.latest },
 		pendingDecisions: pending,
+		legacyChecks: legacyChecks(selected.plan),
 		plan: selected.plan,
 		runs: runList(store, { planId }).map((run) => ({
 			runId: run.runId,
@@ -743,7 +753,8 @@ export function planStatus(store: Store, planId: string, harness = workspaceHarn
 		follow: followActions.map((item) => ({ ...item, available: item.recommended && !running })),
 		actions,
 	}
-	return { ...status, rules: rulesLine(store, planId), next, qa }
+	const legacy = planHasRevision(store, planId) ? legacyChecks(planRevision(store, planId).plan) : []
+	return { ...status, rules: rulesLine(store, planId), next, legacyChecks: legacy, qa }
 }
 
 function loopStatus(store: Store, planId: string, harness: Harness) {

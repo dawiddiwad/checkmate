@@ -10962,6 +10962,9 @@ function derivePlan(draft) {
   const requirements = draft.requirements.map(withoutEmptyMetadata);
   return { ...draft, requirements, tests, coverage: planCoverage({ ...draft, requirements, tests }) };
 }
+function unstructuredValue(assertion) {
+  return assertion.checkKind === "deterministic" && assertion.expected === void 0 && /\d/.test(assertion.check);
+}
 function compoundCheck(check) {
   const clauses = check.split(/\band\b|;/i);
   return clauses.filter((clause) => /\d/.test(clause)).length > 1;
@@ -11025,6 +11028,12 @@ function planCheck(value2) {
         !compoundCheck(assertion.check),
         `Assertion ${test.id}.${assertion.id} checks more than one value.`,
         `Split it into one assertion for each value, for example {"id": "A2", "check": "<second expected value>", "checkKind": "deterministic"}. Keep one expected value in each check.`
+      );
+    for (const assertion of test.assertions)
+      requireWellFormed(
+        test.metadata?.harvestedFrom !== void 0 || !unstructuredValue(assertion),
+        `Assertion ${test.id}.${assertion.id} states a value without the observed item and the expected value: ${assertion.check}`,
+        `Give the shape: {"id": "${assertion.id}", "check": "${assertion.check}", "checkKind": "deterministic", "observe": "<what is observed>", "expected": "<the value>"}.`
       );
     requireWellFormed(
       same(
@@ -19459,6 +19468,11 @@ function planList(store) {
   }));
   return [...drafted, ...requested].sort((a, b) => a.planId.localeCompare(b.planId));
 }
+function legacyChecks(plan) {
+  return plan.tests.flatMap(
+    (test) => test.metadata?.harvestedFrom === void 0 ? test.assertions.filter((assertion) => unstructuredValue(assertion)).map((assertion) => `${test.id}.${assertion.id}`) : []
+  );
+}
 function planDetail(store, planId, revision2 = null) {
   const selected = planRevision(store, planId, revision2);
   const latest = planRevision(store, planId);
@@ -19482,6 +19496,7 @@ function planDetail(store, planId, revision2 = null) {
     sha256: selected.sha256,
     approval: { state: approvalLabel(approval), policy: approval.policy, latest: approval.latest },
     pendingDecisions: pending,
+    legacyChecks: legacyChecks(selected.plan),
     plan: selected.plan,
     runs: runList(store, { planId }).map((run2) => ({
       runId: run2.runId,
@@ -19804,7 +19819,8 @@ function planStatus(store, planId, harness = workspaceHarness(store)) {
     follow: followActions.map((item) => ({ ...item, available: item.recommended && !running3 })),
     actions
   };
-  return { ...status, rules: rulesLine(store, planId), next, qa };
+  const legacy = planHasRevision(store, planId) ? legacyChecks(planRevision(store, planId).plan) : [];
+  return { ...status, rules: rulesLine(store, planId), next, legacyChecks: legacy, qa };
 }
 function loopStatus(store, planId, harness) {
   const base = checkStatus(store, planId, harness);
@@ -39049,6 +39065,7 @@ var commands = {
           ...status.why.map((line) => ["why", line]),
           ...status.rules ? [["rules", status.rules]] : [],
           ...status.next.map((line) => ["next", line]),
+          ...legacyLine(status.legacyChecks, reply.subject),
           ...status.openRuns.map((run2) => [
             run2.runId,
             "started",
@@ -40661,9 +40678,13 @@ function printPlan(reply) {
         decision.value,
         decision.rationale
       ]),
-      ...decisionLines(detail.approval.latest)
+      ...decisionLines(detail.approval.latest),
+      ...legacyLine(detail.legacyChecks, plan.planId)
     ]
   };
+}
+function legacyLine(checks, planId) {
+  return checks.length > 0 ? [["legacy", checks.join(" "), `revise with: checkmate plan revise ${planId}`]] : [];
 }
 function writeOutput(store, out, content) {
   const path = resolve9(store.workspace, out);

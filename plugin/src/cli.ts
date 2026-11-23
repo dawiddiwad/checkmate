@@ -406,6 +406,7 @@ const commands: Record<string, Command> = {
 					...status.why.map((line) => ['why', line]),
 					...(status.rules ? [['rules', status.rules]] : []),
 					...status.next.map((line) => ['next', line]),
+					...legacyLine(status.legacyChecks, reply.subject),
 					...status.openRuns.map((run) => [
 						run.runId,
 						'started',
@@ -2126,8 +2127,13 @@ function printPlan(reply: Reply): Printed {
 				decision.rationale,
 			]),
 			...decisionLines(detail.approval.latest),
+			...legacyLine(detail.legacyChecks, plan.planId),
 		],
 	}
+}
+
+function legacyLine(checks: string[], planId: string) {
+	return checks.length > 0 ? [['legacy', checks.join(' '), `revise with: checkmate plan revise ${planId}`]] : []
 }
 
 function writeOutput(store: Store, out: string, content: string | Uint8Array) {

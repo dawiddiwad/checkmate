@@ -283,6 +283,11 @@ export function derivePlan(draft: PlanDraft): Plan {
 	return { ...draft, requirements, tests, coverage: planCoverage({ ...draft, requirements, tests }) }
 }
 
+// A deterministic check that states a value needs the observed item and the expected value.
+export function unstructuredValue(assertion: { check: string; checkKind: string; expected?: string }) {
+	return assertion.checkKind === 'deterministic' && assertion.expected === undefined && /\d/.test(assertion.check)
+}
+
 export function compoundCheck(check: string) {
 	const clauses = check.split(/\band\b|;/i)
 	return clauses.filter((clause) => /\d/.test(clause)).length > 1
@@ -348,6 +353,12 @@ export function planCheck(value: unknown): Plan {
 				!compoundCheck(assertion.check),
 				`Assertion ${test.id}.${assertion.id} checks more than one value.`,
 				`Split it into one assertion for each value, for example {"id": "A2", "check": "<second expected value>", "checkKind": "deterministic"}. Keep one expected value in each check.`
+			)
+		for (const assertion of test.assertions)
+			requireWellFormed(
+				test.metadata?.harvestedFrom !== undefined || !unstructuredValue(assertion),
+				`Assertion ${test.id}.${assertion.id} states a value without the observed item and the expected value: ${assertion.check}`,
+				`Give the shape: {"id": "${assertion.id}", "check": "${assertion.check}", "checkKind": "deterministic", "observe": "<what is observed>", "expected": "<the value>"}.`
 			)
 		requireWellFormed(
 			same(

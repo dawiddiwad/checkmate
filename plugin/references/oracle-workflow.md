@@ -47,6 +47,8 @@ When the person asks you to run or retest stored tests, continue until you execu
 - When the person or `status` names an existing pending run, run `run show <runId>`. If it is still started, run `delegate execute <runId>`. If it is finished, report its recorded result; do not execute it again or create a replacement run.
 - Keep the exact plan revision, build, instance, selected tests, and retest link shown by `run show`. Do not substitute a newer revision, another build, or another instance. A retest needs a new run begun on the requested fixed build with `--retest-of <earlierRunId>`.
 - Run `delegate execute` without `--allow` or `--claude-arg`. Pi controls its own tools and permissions. Do not widen them to work around a refusal.
+- `delegate execute` can run for several minutes. Give its shell call a timeout of at least 600 seconds. If the call times out, run `run show <runId>`. A run that is still `started` has not ended.
+- When a run is `started` but its process stopped, run `run resume <runId>` first. It rechecks the instance, profile, and run gate, and it does not run test actions. Then run `delegate execute <runId>`.
 
 If a command refuses or returns `needs_decision`, report its actual status, each `reason:`, and its `hint:` when present. Give the next command or ask for the missing decision or value. Before you say what changed in the record, run `plan show` or `status` and report the state that it shows. A refusal that a later command fixed is not the final state. Do not invent an ID or say that execution started. After `delegate execute` completes, run `run show <runId>` and report the recorded test outcomes, evidence, gaps, and next decision. A completed command does not mean that every test passed.
 

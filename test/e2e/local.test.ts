@@ -580,6 +580,7 @@ test('Pre-allow only the Checkmate commands that a chat may run — a shell chai
 		`node "${cli}" target list && node "${cli}" plan list`,
 		`CHECKMATE_HARNESS=pi node "${cli}" gap answer BS-42 G1 --kind clarify --value 'drop it' --source ticket.md --rationale 'owner'`,
 		`node "${cli}" plan revise BS-42 --actor pi:revise <<'EOF'\n{"tests":{}}\nEOF`,
+		`node "${cli}" plan edit BS-42@1 --patch --rationale 'drop it' <<'EOF'\n{"tests":{}}\nEOF\nnode "${cli}" plan show BS-42`,
 	]
 	const refused = [
 		`node "${cli}" run begin run-1 BS-42@1 --build b1`,
@@ -588,6 +589,7 @@ test('Pre-allow only the Checkmate commands that a chat may run — a shell chai
 		`node "${cli}" status $(id)`,
 		`node "/other/cli/src/main.ts" status`,
 		`node "${cli}" plan revise BS-42 <<'EOF'\n{}\nEOF\nrm -rf x`,
+		`node "${cli}" plan edit BS-42@1 --patch <<'EOF'\n{}\nEOF\nnode "${cli}" run begin run-2 BS-42@1 --build b1`,
 	]
 	for (const command of allowed) assert.equal(chatCommandAllowed(command, [cli]), true, command)
 	for (const command of refused) assert.equal(chatCommandAllowed(command, [cli]), false, command)

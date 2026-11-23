@@ -78,17 +78,28 @@ export function chatCommandAllowed(command, clis) {
 	if (typeof command !== 'string' || !Array.isArray(clis)) return false
 	let text = command
 	let body = null
+	let after = []
 	const at = text.indexOf(heredocMarker)
 	if (at >= 0) {
+		// The body ends at the first EOF line. Commands may follow it on later lines.
 		const tail = text.slice(at + heredocMarker.length)
-		if (!tail.endsWith('\nEOF')) return false
-		body = tail.slice(0, -'\nEOF'.length)
+		const end = tail.indexOf('\nEOF')
+		if (end < 0) return false
+		const rest = tail.slice(end + '\nEOF'.length)
+		if (rest !== '' && !rest.startsWith('\n')) return false
+		body = tail.slice(0, end)
 		if (body.split('\n').includes('EOF')) return false
 		text = text.slice(0, at).trimEnd()
+		after = rest
+			.split('\n')
+			.slice(1)
+			.flatMap((line) => line.split(' && '))
 	}
 	const segments = text.split(' && ')
-	if (segments.length === 0 || segments.some((segment) => segment.trim() === '')) return false
-	return segments.every((segment, index) => {
+	if (segments.some((segment) => segment.trim() === '')) return false
+	const commands = [...segments, ...after]
+	if (commands.some((segment) => segment.trim() === '')) return false
+	return commands.every((segment, index) => {
 		const tokens = words(segment)
 		if (!tokens) return false
 		const lead = tokens[0] === 'CHECKMATE_HARNESS=pi' ? 1 : 0

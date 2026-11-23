@@ -111,4 +111,4 @@ Run a decision only when the oracle tells you the decision in this session:
 
 Do not change a state. Do not remove a claim.
 
-To start the testers as processes, for example in CI, run `checkmate test <planId> --allow Read --allow Bash` without `--session`, and then `checkmate explore wait <explorationId>`.
+To start the testers as processes, for example in CI, run `checkmate test <planId> --allow Read --allow Bash` without `--session`, and then `checkmate explore wait <explorationId> --timeout 540`. A shell command stops after about 10 minutes. When the reply is `interrupted`, the testers still run. Run the same wait command again until the reply is `completed` or `operational_error`. Do not wrap the command in `timeout`. It is not on macOS.

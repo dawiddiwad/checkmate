@@ -41519,7 +41519,8 @@ function exitCodeOf(name2, args, reply) {
     return reply.data.gate.code;
   if (name2 === "status" && args["fail-on-blocked"] && reply.status === "completed") {
     const status = reply.data;
-    if (status.waitsOn === "oracle") return blockedOnDecisionExitCode;
+    const blocking = status.gaps.some((gap) => gap.severity === "blocking");
+    if (status.waitsOn === "oracle" || blocking) return blockedOnDecisionExitCode;
   }
   return reply.status === "completed" || reply.status === "needs_decision" ? 0 : 1;
 }

@@ -337,28 +337,25 @@ Before a pipeline starts the next step, check the owner:
 checkmate status shop-12 --fail-on-blocked
 ```
 
-Exit code 3 means that the plan waits on the oracle. Read the questions with `checkmate status shop-12` and stop.
+Exit code 3 means an open blocking gap, or a wait on the oracle (see the table in the exit codes section). Read the questions with `checkmate status shop-12` and stop.
 
-## Gate a pipeline on a run
+## Exit codes for a pipeline
 
-Use one command for a CI job. It does not change the record:
+Use this one table in CI. Each command has its own row set. Read the exit code and the `reason:` lines, or the JSON fields named here.
 
-```sh
-checkmate run show <runId> --gate
-```
+| Command                                           | 0                                                              | 1                                                                                                                                                                                                                      | 2                                                                                                                                                                                   | 3                                                                      |
+| ------------------------------------------------- | -------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| `checkmate run show <runId> --gate`               | `passed`: every selected test passed, and coverage is complete | `defects`: a test failed                                                                                                                                                                                               | `could_not_test`, `partial_coverage`, or `unverified_checks`: a test could not run, the run did not finish, a test was not selected, or a deterministic check has no expected value | `blocked_on_oracle`: an open blocking gap waits for an oracle decision |
+| `checkmate status <planId> --fail-on-blocked`     | No open blocking gap, and the plan does not wait on the oracle | The command was rejected                                                                                                                                                                                               | (not used)                                                                                                                                                                          | An open blocking gap, or the plan waits on the oracle                  |
+| `checkmate status <planId>` (no flag)             | Always, for a readable plan                                    | The command was rejected                                                                                                                                                                                               | (not used)                                                                                                                                                                          | (not used)                                                             |
+| `checkmate run gate <planId@rev> --build <build>` | The run can begin                                              | Refused: no test is ready, a data policy is missing, the target is not ready, the plan is not approved, or an assertion has a compound check. With `--partial wait_for_resolution`, an open blocking gap also refuses. | (not used)                                                                                                                                                                          | (not used)                                                             |
+| Any other command                                 | Completed or `needs_decision`                                  | Rejected or an operational error                                                                                                                                                                                       | (not used)                                                                                                                                                                          | (not used)                                                             |
 
-The command exits with one code:
+A failed test outranks the other codes in `run show --gate`. Partial coverage never exits 0. A run with a deterministic check that the code did not verify never exits 0. The gate names the checks and the revise command. The gate also reports how many verdicts the agent judged (`judgedByAgent`), because those pass without a value comparison.
 
-| Exit | Gate state                                                   | Meaning                                                                                                                                                                                                |
-| ---- | ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| 0    | `passed`                                                     | Every selected test passed, and coverage is complete.                                                                                                                                                  |
-| 1    | `defects`                                                    | A test failed: the product has defects. JUnit lists them as `<failure>`.                                                                                                                               |
-| 2    | `could_not_test`, `partial_coverage`, or `unverified_checks` | A test could not run, the run is not finished, some tests were not selected, or a deterministic check has no expected value. JUnit lists the errors as `<error>` and the blocked tests as `<skipped>`. |
-| 3    | `blocked_on_oracle`                                          | An open blocking gap waits for an oracle decision.                                                                                                                                                     |
+Code 3 always means the same thing: an open blocking gap waits for a decision. A plan with an open blocking gap exits 3 with `--fail-on-blocked`, even when its ready tests can run. Read `waitsOn` in the status to see whether the oracle or QA acts next.
 
-A failed test outranks the other codes. Partial coverage never exits 0. A run with a deterministic check that code did not verify never exits 0; the gate names the checks and the revise command. The gate also reports how many verdicts the agent judged (`judgedByAgent`), because those pass without a value comparison.
-
-Sample GitHub Actions step:
+Sample GitHub Actions step for a run:
 
 ```yaml
 - name: Gate on the Checkmate run

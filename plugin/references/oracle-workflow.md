@@ -10,6 +10,7 @@ Use the CLI in this package. Resolve `../../src/main.ts` from the directory of t
 1. Run `target list` and `plan list`. Use an existing target or plan when it matches the request.
 2. For a new target, ask for the running URL. For a remote URL, confirm the environment and permitted operations. Run `setup --url <url>`. Give the confirmed `--environment` and `--operations` for production. Record only a reference for credentials.
    - When the person asks only for setup or a reachability check, stop after setup. Report the target, instance, reachability, and each `assumed:` line. Do not start a plan or a test.
+   - Otherwise, setup is not the end. Report the target in one line, then go on to step 3 or 4 with the person's ticket or change.
 3. For a test plan, run `plan open <planId> --target <targetId>@<revision> --objective "<objective>" --source <file>`. Then run `delegate plan <planId>`. Show the open gaps. Ask the oracle for decisions.
 4. For an exploratory test, run `test <planId> --source <file> --allow Read --allow Bash`. Add `--level smoke|normal|deep` when the person selects a level. Run `explore wait <explorationId> --timeout 90`. If it still shows `recording`, run the same command again. When it shows `completed`, run `explore show <explorationId>`. Do not wait longer than 90 seconds in one command.
 

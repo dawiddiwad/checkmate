@@ -59,6 +59,14 @@
 										},
 										"checkKind": {
 											"enum": ["deterministic", "agent_observation"]
+										},
+										"observe": {
+											"type": "string",
+											"minLength": 1
+										},
+										"expected": {
+											"type": "string",
+											"minLength": 1
 										}
 									},
 									"additionalProperties": false,

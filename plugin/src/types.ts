@@ -163,6 +163,8 @@ export type PlanCandidate = {
 			id: string
 			check: string
 			checkKind: 'deterministic' | 'agent_observation'
+			observe?: string
+			expected?: string
 		}>
 		metadata?: Record<string, string | number | boolean>
 	}>
@@ -196,6 +198,8 @@ export type PlanDelta = {
 				{
 					check?: string
 					checkKind?: 'deterministic' | 'agent_observation'
+					observe?: string
+					expected?: string
 				} | null
 			>
 		}
@@ -227,6 +231,8 @@ export type PlanPatch = {
 				{
 					check?: string
 					checkKind?: 'deterministic' | 'agent_observation'
+					observe?: string
+					expected?: string
 				} | null
 			>
 			metadata?: Record<string, string | number | boolean>
@@ -304,6 +310,8 @@ export type Plan = {
 			id: string
 			check: string
 			checkKind: 'deterministic' | 'agent_observation'
+			observe?: string
+			expected?: string
 		}>
 		metadata?: Record<string, string | number | boolean>
 	}>

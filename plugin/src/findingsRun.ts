@@ -80,3 +80,15 @@ export function storeFindingsRun(store: Store, actor: string | undefined, explor
 	})
 	return { runId, reason: finished.reasons.join(' ') }
 }
+
+export function storeExplorationFindings(store: Store, actor: string | undefined, explorationId: string): Reply {
+	const stored = storeFindingsRun(store, actor, explorationId)
+	const subject = explorationId
+	if (stored.runId) return { status: 'completed', subject, reasons: [], data: { runId: stored.runId } }
+	return {
+		status: 'completed',
+		subject,
+		reasons: [stored.reason ?? 'No findings run was stored.'],
+		data: { runId: null, reason: stored.reason },
+	}
+}

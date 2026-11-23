@@ -2051,3 +2051,32 @@ function storedRunNext(store: Store, explorationId: string) {
 		? `The defects are stored in run ${runId}. Export its report: checkmate export run ${runId} --format junit --out <file>`
 		: `Optional, at any time: keep the claims as stored tests: checkmate harvest ${explorationId}`
 }
+
+// One pipeline gate for a run. 0: every selected test passed with complete coverage.
+// 1: product failures (a test failed). 2: could not test: an error, an unfinished or
+// interrupted run, or partial coverage. 3: blocked on an oracle decision (open blocking gap).
+// A failed test wins over the other codes, because it is a verdict on the product.
+export function runGate(store: Store, runId: string) {
+	const detail = runDetail(store, runId)
+	const plan = runState(store, runId).plan
+	const failed = detail.tests.filter((test) => test.outcome === 'failed').map((test) => test.testId)
+	const errored = detail.tests.filter((test) => test.outcome === 'error').map((test) => test.testId)
+	const openGaps = plan.gaps
+		.filter((gap) => gap.status === 'open' && gap.severity === 'blocking')
+		.map((gap) => gap.id)
+	const completion = detail.result?.completion ?? null
+	const couldNotTest =
+		!detail.result || errored.length > 0 || completion === 'operational_error' || completion === 'interrupted'
+	const coverage = detail.result?.coverage.status ?? null
+	const partial = coverage !== 'complete'
+	const verdict = failed.length
+		? { code: 1, state: 'defects' }
+		: couldNotTest
+			? { code: 2, state: 'could_not_test' }
+			: openGaps.length
+				? { code: 3, state: 'blocked_on_oracle' }
+				: partial
+					? { code: 2, state: 'partial_coverage' }
+					: { code: 0, state: 'passed' }
+	return { ...verdict, failed, errored, openGaps, completion, coverage }
+}

@@ -101,11 +101,12 @@ export type BeginInput = {
 	retestOf?: string | null
 }
 export type EvidenceInput = string | { text: string; kind?: string }
+type Assertion = Test['assertions'][number]
 export type CheckInput = {
 	runId: string
 	testId: string
 	assertionId: string
-	result: string
+	result?: string
 	observed?: string
 	reason?: string
 	evidence?: EvidenceInput[]
@@ -577,6 +578,36 @@ function requireOpen(store: Store, runId: string, testId: string) {
 	requireCondition(!closed, `Test ${testId} is closed as ${closed?.outcome}. A test outcome is final.`)
 }
 
+// A legacy assertion (no expected value) keeps the child's result and the number guard.
+function checkedResult(given: string | undefined, assertion: Assertion, observed: string | null) {
+	const result = requireChoice(given, assertionResults, 'result (--result)')
+	const unseen = (assertion.check.match(/\d+(\.\d+)?/g) ?? []).filter((value) => !observed?.includes(value))
+	requireCondition(
+		result !== 'passed' || !unseen.length,
+		`The observed value does not show ${unseen.join(', ')}, which the check names.`,
+		'Record failed when the observed value differs from the check. Record passed only when the observed value shows each value of the check.'
+	)
+	return result
+}
+
+// A structured assertion names the observed item and the expected value. The code compares
+// the observed value with the expected value. The child gives only the observed value.
+function decidedResult(given: string | undefined, assertion: Assertion, observed: string | null) {
+	requireWellFormed(
+		given === undefined || given === 'not_checked',
+		`${assertion.id} takes its result from --observed. Give --observed with the value of "${assertion.observe}", and no --result.`,
+		'Record not_checked with --reason only when the value cannot be observed.'
+	)
+	if (given === 'not_checked') return 'not_checked'
+	requireWellFormed(observed, `Give --observed with the value of "${assertion.observe}".`)
+	return sameValue(observed!, assertion.expected!) ? 'passed' : 'failed'
+}
+
+function sameValue(observed: string, expected: string) {
+	const normal = (text: string) => text.toLowerCase().replace(/[\s,]/g, '')
+	return normal(observed) === normal(expected)
+}
+
 export function checkAssertion(store: Store, actor: string | undefined, input: CheckInput) {
 	let files: EvidenceFile[] = []
 	const reply = write(store, { actor, command: 'run check', subject: input.runId, input }, (operationId, at) => {
@@ -607,15 +638,12 @@ export function checkAssertion(store: Store, actor: string | undefined, input: C
 					: undefined
 			)
 		}
-		const result = requireChoice(input.result, assertionResults, 'result (--result)')
 		const observed = optionalText(input.observed, 'observation (--observed)')
 		const reason = optionalText(input.reason, 'reason (--reason)')
-		const unseen = (assertion.check.match(/\d+(\.\d+)?/g) ?? []).filter((value) => !observed?.includes(value))
-		requireCondition(
-			result !== 'passed' || !unseen.length,
-			`The observed value does not show ${unseen.join(', ')}, which the check names.`,
-			'Record failed when the observed value differs from the check. Record passed only when the observed value shows each value of the check.'
-		)
+		const result =
+			assertion.expected === undefined
+				? checkedResult(input.result, assertion, observed)
+				: decidedResult(input.result, assertion, observed)
 		files = evidenceFiles(store, input.runId, `${test.id}-${assertion.id}`, input.evidence)
 		if (result !== 'not_checked')
 			requireWellFormed(

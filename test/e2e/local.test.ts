@@ -3346,6 +3346,9 @@ test('Record each test with its own worker — a silent worker is retried once, 
 	}
 	const delegated = await inputCommand(workspace, piEnv, '', 'delegate', 'execute', 'run-1')
 	assert.equal(delegated.body.status, 'operational_error', delegated.output)
+	const gated = await inputCommand(workspace, env, '', 'run', 'show', 'run-1', '--gate')
+	assert.equal(gated.code, 2, gated.output)
+	assert.equal(gated.body.gate.state, 'could_not_test')
 	assert.deepEqual(readFileSync(log, 'utf8').trim().split('\n'), ['T1', 'T2', 'T2', 'T3', 'T3', 'PROBE'])
 	const probed = await ok([
 		'query',
@@ -3441,4 +3444,115 @@ test('Report a second Checkmate package that Pi declares — a stale copy loads 
 		version.stdout + version.stderr,
 		/warning: Pi declares another Checkmate package at project scope: git:github\.com\/dawiddiwad\/checkmate@wip\/refactor-team-blue\. .*pi remove git:github\.com\/dawiddiwad\/checkmate@wip\/refactor-team-blue -l/
 	)
+})
+
+test('Decide a structured assertion by comparing the observed value with the expected value — a child never records passed for a value it did not see.', async (t) => {
+	const workspace = directory(t)
+	writeFileSync(join(workspace, 'ticket.md'), 'The kettle price is 240 PLN.\n')
+	const app = await fixture()
+	t.after(() => app.close())
+	app.fix()
+	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle' }
+	const ok = async (args: string[], value?: object) => {
+		const result = await inputCommand(workspace, env, value ? JSON.stringify(value) : '', ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	await ok(['setup', '--url', app.baseUrl, '--target', 'shop'])
+	await ok([
+		'plan',
+		'open',
+		'ticket',
+		'--target',
+		'shop@1',
+		'--objective',
+		'Check the price.',
+		'--source',
+		'ticket.md',
+	])
+	const structured = (id: string, observe: string, expected: string) => ({
+		id,
+		check: `The kettle price shown is ${expected}.`,
+		checkKind: 'deterministic',
+		observe,
+		expected,
+	})
+	await ok(['plan', 'save', 'ticket'], {
+		requirements: [{ id: 'R1', text: 'The kettle price is 240 PLN.', source: 'ticket.md' }],
+		tests: [
+			{
+				capability: 'http',
+				operations: ['read_catalog'],
+				dependsOn: [],
+				preconditions: [],
+				id: 'T1',
+				title: 'Price',
+				requirementIds: ['R1'],
+				action: 'Read the price.',
+				assertions: [
+					structured('A1', 'the price value labelled Price', '240 PLN'),
+					structured('A2', 'the unit price in the quote', '240 PLN'),
+				],
+			},
+		],
+		gaps: [],
+	})
+	await ok(['plan', 'approve', 'ticket@1', '--rationale', 'Run the rule.'])
+	await ok(['run', 'begin', 'run-1', 'ticket@1', '--build', 'b1', '--partial', 'ready_only'])
+	const refused = await inputCommand(
+		workspace,
+		env,
+		'Price: 240 PLN',
+		'run',
+		'check',
+		'run-1',
+		'T1',
+		'A1',
+		'--result',
+		'passed',
+		'--observed',
+		'240 PLN',
+		'--evidence',
+		'-'
+	)
+	assert.equal(refused.code, 1, refused.output)
+	assert.match(refused.output, /takes its result from --observed/)
+	const shown = await inputCommand(
+		workspace,
+		env,
+		'Price: 300 PLN',
+		'run',
+		'check',
+		'run-1',
+		'T1',
+		'A1',
+		'--observed',
+		'300 PLN',
+		'--evidence',
+		'-'
+	)
+	assert.equal(shown.code, 0, shown.output)
+	const quoted = await inputCommand(
+		workspace,
+		env,
+		'unitPrice: 240 PLN',
+		'run',
+		'check',
+		'run-1',
+		'T1',
+		'A2',
+		'--observed',
+		'240 PLN',
+		'--evidence',
+		'-'
+	)
+	assert.equal(quoted.code, 0, quoted.output)
+	const results = await ok([
+		'query',
+		"SELECT assertion_id, result FROM assertion_results WHERE run_id = 'run-1' ORDER BY assertion_id",
+	])
+	assert.deepEqual(results.rows, [
+		{ assertion_id: 'A1', result: 'failed' },
+		{ assertion_id: 'A2', result: 'passed' },
+	])
 })

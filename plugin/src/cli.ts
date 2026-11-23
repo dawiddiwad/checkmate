@@ -73,6 +73,7 @@ import {
 	roles,
 	runDetail,
 	runList,
+	runGate,
 } from './views.ts'
 import { exportExploration, exportPlan, exportRun, explorationFormats, formats, runFormats } from './render.ts'
 import { startUi } from './ui/server.ts'
@@ -109,6 +110,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { constants } from 'node:sqlite'
 import { piCopyWarnings, versionLines } from './build.ts'
+import { storeExplorationFindings } from './findingsRun.ts'
 
 type FlagKind = 'value' | 'list' | 'repeat' | 'switch' | readonly string[] | { min: number; max: number }
 type Args = Record<string, string | string[] | boolean>
@@ -288,6 +290,16 @@ function explorationLines(reply: Reply): Printed {
 				...(typeof item.reason === 'string' && item.reason ? [`reason=${item.reason}`] : []),
 			]),
 			...(status.paused ? [['paused', status.paused, 'waits_on=oracle']] : []),
+			...(status.phases ?? [])
+				.filter(
+					(item) =>
+						item.step === 'done' && (item.detail.findingsRun !== undefined || item.detail.findingsReason)
+				)
+				.map((item) => [
+					'findings',
+					item.detail.findingsRun ? 'stored' : 'not_stored',
+					String(item.detail.findingsRun ?? item.detail.findingsReason),
+				]),
 			...status.explorers.flatMap((item) => item.stderr.map((line) => [item.explorer, 'stderr', line])),
 			...(status.phases ?? []).map((item) => [
 				item.step,
@@ -945,14 +957,13 @@ const commands: Record<string, Command> = {
 	'run check': {
 		positionals: ['runId', 'testId', 'assertionId'],
 		flags: { result: assertionResults, observed: 'value', reason: 'value', evidence: 'repeat' },
-		required: ['result'],
 		write: true,
 		run: (store, args, context) =>
 			checkAssertion(store, context.actor, {
 				runId: value(args, 'runId')!,
 				testId: value(args, 'testId')!,
 				assertionId: value(args, 'assertionId')!,
-				result: value(args, 'result')!,
+				result: value(args, 'result'),
 				observed: value(args, 'observed'),
 				reason: value(args, 'reason'),
 				evidence: evidence(args, context),
@@ -1063,7 +1074,7 @@ const commands: Record<string, Command> = {
 	},
 	'run show': {
 		positionals: ['runId'],
-		flags: { tests: 'list' },
+		flags: { tests: 'list', gate: 'switch' },
 		readOnly: true,
 		run: (store, args) => {
 			const detail = runDetail(store, value(args, 'runId')!)
@@ -1075,7 +1086,8 @@ const commands: Record<string, Command> = {
 					`Use one of: ${detail.tests.map((test) => test.testId).join(', ')}.`
 				)
 			const tests = detail.tests.filter((test) => !selected || selected.includes(test.testId))
-			return completed(detail.runId, { ...detail, tests })
+			const gate = args.gate ? runGate(store, detail.runId) : undefined
+			return completed(detail.runId, { ...detail, tests, ...(gate ? { gate } : {}) })
 		},
 		print: (reply) => {
 			const detail = reply.data as ReturnType<typeof runDetail>
@@ -1538,6 +1550,12 @@ const commands: Record<string, Command> = {
 		run: (store, args, { actor }) =>
 			stepsStarted(store, actor, value(args, 'explorationId')!, args.names as string[]),
 		print: (reply) => ({ facts: { started: reply.data.started } }),
+	},
+	'explore findings': {
+		positionals: ['explorationId'],
+		write: true,
+		run: (store, args, { actor }) => storeExplorationFindings(store, actor, value(args, 'explorationId')!),
+		print: (reply) => ({ facts: { run: reply.data.runId ?? '-', reason: reply.data.reason ?? '-' } }),
 	},
 	'explore pause': {
 		positionals: ['explorationId'],
@@ -2370,6 +2388,8 @@ export function run(argv: string[], io: Io): Outcome {
 export const blockedOnDecisionExitCode = 3
 
 function exitCodeOf(name: string, args: Args, reply: Reply) {
+	if (name === 'run show' && args.gate && reply.status === 'completed')
+		return (reply.data.gate as { code: number }).code
 	if (name === 'status' && args['fail-on-blocked'] && reply.status === 'completed') {
 		const status = reply.data as ReturnType<typeof planStatus>
 		if (status.waitsOn === 'oracle') return blockedOnDecisionExitCode

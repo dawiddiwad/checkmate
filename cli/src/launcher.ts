@@ -470,6 +470,7 @@ function stagePrompt(stage: Stage, subject: string, execution: Execution | null,
 			'Plan regression tests only for existing rules that the sources state, with expected values from the sources. Mark each with "metadata": { "type": "regression" }.',
 			'Each assertion checks one expected value. Write one assertion for each value. Do not join two values with "and" or ";" in one check.',
 			'Write each assertion with the exact expected text or value from the sources, for example: The page shows "1 book" when one book is stored. Do not write a general description such as "pluralizes correctly".',
+			'Each deterministic assertion names the observed item in "observe" and the expected value in "expected", and keeps the check text. Example: {"id":"A1","check":"The kettle price shown on the product page is 240 PLN.","checkKind":"deterministic","observe":"the price value labelled Price on the product page","expected":"240 PLN"}.',
 			'A ready assertion must be observable through the target with the test action. Name in the action every input the check depends on, for example a query parameter or a date. When the target cannot show the value, write an open blocking gap for it, or an agent_observation.',
 			'Make each test create its own data or use a unique value such as qa-<runId>-<testId>. Do not rely on seed data.',
 			'You can read the running application read-only (open a list page or send a GET) to check preconditions. Do not submit forms or change data.',
@@ -770,11 +771,15 @@ function testPrompt(execution: Execution, workspace: string, test: Test, actor: 
 		`Action: ${test.action}`,
 		...(test.preconditions.length ? [`Preconditions: ${test.preconditions.join(' ')}`] : []),
 		'Assertions:',
-		...test.assertions.map((assertion) => `${assertion.id}: ${assertion.check}`),
+		...test.assertions.map((assertion) =>
+			assertion.expected === undefined
+				? `${assertion.id}: ${assertion.check}`
+				: `${assertion.id}: observe ${assertion.observe}. Expected value: ${assertion.expected}.`
+		),
 		...contextLines(execution, workspace, cli, tools),
-		`Record each assertion: ${cli} run check ${runId} ${test.id} <assertion ID> --actor ${actor} --result passed|failed|not_checked --observed "<observed value>" --evidence - <<'EOF'`,
-		'then the tool output, copied, then EOF. Use the observed value as the text to compare. Use two words for the IDs: T1 A1.',
-		'Record passed only when the observed value contains every value of the check. Record failed when it does not. Use not_checked with --reason "<why>" when you cannot observe the value.',
+		`Record each assertion: ${cli} run check ${runId} ${test.id} <assertion ID> --actor ${actor} --observed "<only the observed value, for example 300 PLN>" --evidence - <<'EOF'`,
+		'then the raw tool output that shows it, copied, then EOF. Use two words for the IDs: T1 A1. Give only the value of the observed item, not the whole line.',
+		'Do not decide passed or failed. The code compares the observed value with the expected value. When you cannot observe the value, record not_checked with --reason "<why>" and no --observed.',
 		`For each failed assertion, record a defect: ${cli} run finding ${runId} --actor ${actor} <<'EOF' with {"id":"F-${test.id}-1","type":"defect","severity":"medium","assertionIds":["${test.id}.<assertion ID>"],"requirementIds":${JSON.stringify(test.requirementIds)},"title":"<short title>","expected":"<check>","observed":"<observed value>","reproduction":["<request or steps>"],"evidenceIds":["<evidence ID printed by run check>"]} then EOF.`,
 		`Then close the test: ${cli} run close ${runId} ${test.id} --actor ${actor}.`,
 		`If a tool fails or the action cannot run: ${cli} run close ${runId} ${test.id} --actor ${actor} --outcome error --reason "<cause>" --evidence - <<'EOF' with the failed tool output, then EOF.`,

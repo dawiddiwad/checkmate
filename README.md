@@ -6,9 +6,9 @@
 
 Checkmate turns a ticket into tests. It records each run, its evidence, open questions, and oracle decisions in one local SQLite record. Agents and people use the same record.
 
-The recording runs the real CLI against a demo shop. A ticket becomes a plan, the gaps are answered, and a run finds a defect and gates the result. The last scenes show the review UI.
+The illustration shows the build-first loop. The last scenes show the review UI on sample records.
 
-[![A terminal walkthrough of a ticket becoming a plan with two gaps, the answers and a revision, a run where one child tests each test and finds a defect, and the gate. The final scenes show the review UI: the home page, the plan, the run with its defect, the built-in chat that answers and records a decision, the model picker, and the status.](docs/img/onboarding.gif)](docs/img/onboarding.gif)
+[![A build-first QA loop: the planner records gaps, the oracle answers and approves the plan, the factory builds b1, QA explores and runs one child per test, and the gate exits 1 on a defect. The factory builds b2, QA retests, the gate passes, and the oracle accepts and promotes the tests. The review UI then shows the plan, the run with its defect, a chat that answers and records a gap answer, the model picker, and the next step.](docs/img/onboarding.gif)](docs/img/onboarding.gif)
 
 ## Start in a project
 
@@ -30,18 +30,17 @@ For delegated planning or testing, configure Claude Code or Pi in the host. The 
 
 ## Choose a path
 
-The planner defines tests. QA runs them on a named build. The oracle answers gaps, approves plans, and accepts recorded results. The factory builds and fixes the application.
+| You are                           | Do this                                                                                                                                              |
+| --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A developer testing a change      | Run `npx checkmate ui` and choose **New change**. [Local QA](docs/local-qa.md)                                                                       |
+| A Claude Code user                | Install the plugin, then ask `/checkmate:test` to test your ticket. [Plugin setup](docs/start.md#use-a-host-plugin)                                  |
+| A Pi user                         | Run `pi install npm:@xoxoai/checkmate -l`, then `/checkmate <ticket>`. [Plugin setup](docs/start.md#use-a-host-plugin)                               |
+| The person who answers questions  | Open **Needs you** in the review UI, or run `checkmate inbox`. [Answer a gap](docs/local-qa.md#answer-a-gap-and-continue)                            |
+| Running Checkmate in CI           | Run `checkmate test` on each build. Fail the job with `checkmate run show <runId> --gate`. [Pipeline](docs/factory.md#one-shot-qa-with-a-stored-run) |
+| Testing a system you cannot reset | Set up with `--data isolation --policy-file <file>`. [Data kinds](docs/factory.md#data-kinds-prepare-and-cleanup)                                    |
+| A contributor                     | Run `npm ci`, then `npm run phase:verify`. [Develop](docs/development.md)                                                                            |
 
-| You are                                             | Do this                                                                                                                                                                                                                      |
-| --------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| A developer who tests a change locally              | Run `npx checkmate ui` in the project, then choose **New change**. See [Local QA](docs/local-qa.md).                                                                                                                         |
-| An oracle who answers gaps and accepts results      | Run `checkmate inbox`, then `checkmate status <planId>`. See [Answer a gap](docs/local-qa.md#answer-a-gap-and-continue).                                                                                                     |
-| A Claude Code user                                  | Run `/plugin marketplace add dawiddiwad/checkmate`, then `/plugin install checkmate@checkmate`. Then use `/checkmate:test`. See [Use a host plugin](docs/start.md#use-a-host-plugin).                                        |
-| A Pi user                                           | Run `pi install npm:@xoxoai/checkmate -l` in the project, then `/checkmate <objective>`. See [Use a host plugin](docs/start.md#use-a-host-plugin).                                                                           |
-| A team that runs Checkmate unattended in a pipeline | Run `checkmate test` on one build, then gate the run with `checkmate run show <runId> --gate`. See [One-shot QA](docs/factory.md#one-shot-qa-with-a-stored-run) and [exit codes](docs/factory.md#exit-codes-for-a-pipeline). |
-| Someone who tests a system that cannot be reset     | Give the data kind at setup: `--data isolation --policy-file <file>`. See [Data kinds](docs/factory.md#data-kinds-prepare-and-cleanup).                                                                                      |
-| Anyone who needs a command, state, or contract      | Run `checkmate --help`. See [CLI and record reference](docs/reference.md).                                                                                                                                                   |
-| A contributor                                       | Install Pi and Chromium, then run `npm ci` and `npm run phase:verify`. See [Develop Checkmate](docs/development.md).                                                                                                         |
+Every command and state: [CLI and record reference](docs/reference.md).
 
 ## License
 

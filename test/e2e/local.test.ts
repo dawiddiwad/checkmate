@@ -2122,7 +2122,7 @@ invoke(['run', 'finish', 'pi-ui-run', '--completion', 'completed', '--cleanup', 
 	assert.equal(proof.rows.length, 1)
 	assert.deepEqual([proof.rows[0].test_id, proof.rows[0].assertion_id], ['T1', 'A1'])
 	assert.match(proof.rows[0].contents, /240/)
-	assert.equal(workerStep, 2)
+	assert.equal(workerStep, 3)
 	assert.equal(uiExecutionStep, 3)
 	assert.equal((await piQuery('SELECT count(*) AS n FROM runs')).rows[0].n, 1)
 	const runOps = (
@@ -2157,7 +2157,7 @@ invoke(['run', 'finish', 'pi-ui-run', '--completion', 'completed', '--cleanup', 
 	assert.match(JSON.stringify(piResult), /240/)
 	assert.ok(providerRequests.every((item) => item.body.model === 'fixture'))
 	assert.equal(providerRequests.filter((item) => item.ui).length, 4)
-	assert.equal(providerRequests.filter((item) => item.kind === 'worker').length, 2)
+	assert.equal(providerRequests.filter((item) => item.kind === 'worker').length, 3)
 	assert.deepEqual(providerErrors, [])
 	piUi.kill('SIGTERM')
 	await once(piUi, 'close')
@@ -3197,7 +3197,12 @@ test('Record each test with its own worker — a silent worker is retried once, 
 	}
 	const delegated = await inputCommand(workspace, piEnv, '', 'delegate', 'execute', 'run-1')
 	assert.equal(delegated.body.status, 'operational_error', delegated.output)
-	assert.deepEqual(readFileSync(log, 'utf8').trim().split('\n'), ['T1', 'T2', 'T2', 'T3', 'T3'])
+	assert.deepEqual(readFileSync(log, 'utf8').trim().split('\n'), ['T1', 'T2', 'T2', 'T3', 'T3', 'PROBE'])
+	const probed = await ok([
+		'query',
+		"SELECT count(*) AS n FROM findings WHERE run_id = 'run-1' AND body LIKE '%\"potential_issue\"%'",
+	])
+	assert.equal(probed.rows[0].n, 1)
 	const outcomes = await ok([
 		'query',
 		"SELECT test_id, outcome FROM outcomes WHERE run_id = 'run-1' ORDER BY test_id",

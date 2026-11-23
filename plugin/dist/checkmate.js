@@ -41128,16 +41128,47 @@ function testView(store, runId, testId) {
     remaining: runClock(store, state.row).remainingSeconds
   };
 }
+function toolStatus(request2, profile) {
+  return planTools(request2, profile).map(({ name: name2, kind }) => {
+    if (kind !== "cli") return `${name2} (${kind})`;
+    return `${name2} (${kind}, ${executableOnPath(name2, process.env) ? "on PATH" : "not on PATH"})`;
+  });
+}
+function contextLines(execution, workspace2, cli, tools) {
+  const { run: run2, profile, planRequest: planning } = execution;
+  const runId = run2.run_id;
+  const sources = planning.context?.sources ?? [];
+  const browser = usesPlaywright(profile);
+  return [
+    ...sources.length ? [
+      `Source files: ${sources.map((source) => resolve10(workspace2, source)).join(", ")}. Read them with the read tool. Do not search the file system.`
+    ] : [],
+    `Tools: ${tools.join(", ")}. Use Bash for CLI tools. A tool marked "not on PATH" is missing: close the test as error.`,
+    ...browser ? [
+      `Browser session: ${run2.browser_session}. Open the page: PLAYWRIGHT_MCP_OUTPUT_DIR=.checkmate/tmp/${runId} playwright-cli -s=${run2.browser_session} open <url>. Read the page text: playwright-cli -s=${run2.browser_session} snapshot. Do not close the browser session. The factory closes it.`
+    ] : [],
+    `HTTP: node --input-type=module -e 'const r = await fetch("<url><path>", { signal: AbortSignal.timeout(10000) }); console.log(JSON.stringify({ status: r.status, body: await r.text() }))'`
+  ];
+}
+function probePrompt(execution, workspace2, actor, pluginRoot2) {
+  const { run: run2 } = execution;
+  const cli = `node '${join18(pluginRoot2, "dist", "checkmate.js").replaceAll("'", "'\\''")}'`;
+  const runId = run2.run_id;
+  return [
+    "This is a delegated Checkmate exploration probe. The selected tests are done. Probe for defects that the plan does not check. Do not record passed or failed results. Do not close tests. Do not run run gate, run begin, or run finish.",
+    `Checkmate commands: ${cli} <command>. Run them from the workspace.`,
+    `Run: ${runId}. Plan: ${run2.plan_id}@${run2.plan_revision}. Build: ${run2.application_build}. Instance: ${run2.instance_id}. Run \`${cli} target show ${run2.target_id} --instance ${run2.instance_id}\` once for the entry values. Use the url entry for every action. Do not write entry values into evidence.`,
+    "Make at most 10 probe actions. Probe the rules of the selected tests: a value at a limit, the other entry point, extra spaces, a total in a second view. Use only the instance entries and new data.",
+    ...contextLines(execution, workspace2, cli, toolStatus(execution.planRequest, execution.profile)),
+    `Record a probe finding only when a probe contradicts a value that a source or a check states: ${cli} run finding ${runId} --actor ${actor} <<'EOF' with {"id":"P-1","type":"potential_issue","severity":"medium","assertionIds":[],"requirementIds":[],"title":"<short title>","expected":"<the stated value>","observed":"<probe output>","reproduction":["<probe steps>"],"evidenceIds":[]} then EOF. Record nothing for a probe that shows correct behaviour.`,
+    `In your final answer, return only one JSON object: {"status":"completed","subject":"${runId}","reasons":[]}.`
+  ].join("\n\n");
+}
 function testPrompt(execution, workspace2, test, actor, pluginRoot2) {
   const { run: run2, profile, planRequest: planning } = execution;
   const cli = `node '${join18(pluginRoot2, "dist", "checkmate.js").replaceAll("'", "'\\''")}'`;
   const runId = run2.run_id;
-  const tools = planTools(planning, profile).map(({ name: name2, kind }) => {
-    if (kind !== "cli") return `${name2} (${kind})`;
-    return `${name2} (${kind}, ${executableOnPath(name2, process.env) ? "on PATH" : "not on PATH"})`;
-  });
-  const sources = planning.context?.sources ?? [];
-  const browser = usesPlaywright(profile);
+  const tools = toolStatus(planning, profile);
   return [
     `This is a delegated Checkmate execute step. Record the result of test ${test.id} only. Do not run other tests. Do not run run gate, run begin, or run finish.`,
     `Checkmate commands: ${cli} <command>. Run them from the workspace.`,
@@ -41148,14 +41179,7 @@ function testPrompt(execution, workspace2, test, actor, pluginRoot2) {
     ...test.preconditions.length ? [`Preconditions: ${test.preconditions.join(" ")}`] : [],
     "Assertions:",
     ...test.assertions.map((assertion) => `${assertion.id}: ${assertion.check}`),
-    ...sources.length ? [
-      `Source files: ${sources.map((source) => resolve10(workspace2, source)).join(", ")}. Read them with the read tool. Do not search the file system.`
-    ] : [],
-    `Tools: ${tools.join(", ")}. Use Bash for CLI tools. A tool marked "not on PATH" is missing: close the test as error.`,
-    ...browser ? [
-      `Browser session: ${run2.browser_session}. Open the page: PLAYWRIGHT_MCP_OUTPUT_DIR=.checkmate/tmp/${runId} playwright-cli -s=${run2.browser_session} open <url>. Read the page text: playwright-cli -s=${run2.browser_session} snapshot. Do not close the browser session. The factory closes it.`
-    ] : [],
-    `HTTP: node --input-type=module -e 'const r = await fetch("<url><path>", { signal: AbortSignal.timeout(10000) }); console.log(JSON.stringify({ status: r.status, body: await r.text() }))'`,
+    ...contextLines(execution, workspace2, cli, tools),
     `Record each assertion: ${cli} run check ${runId} ${test.id} <assertion ID> --actor ${actor} --result passed|failed|not_checked --observed "<observed value>" --evidence - <<'EOF'`,
     "then the tool output, copied, then EOF. Use the observed value as the text to compare. Use two words for the IDs: T1 A1.",
     'Record passed only when the observed value contains every value of the check. Record failed when it does not. Use not_checked with --reason "<why>" when you cannot observe the value.',
@@ -41167,6 +41191,17 @@ function testPrompt(execution, workspace2, test, actor, pluginRoot2) {
   ].join("\n\n");
 }
 async function runTestChild(workspace2, options3, execution, harness, env, test, remaining) {
+  return runChild(
+    workspace2,
+    options3,
+    execution,
+    harness,
+    env,
+    (actor, pluginRoot2) => testPrompt(execution, workspace2, test, actor, pluginRoot2),
+    remaining
+  );
+}
+async function runChild(workspace2, options3, execution, harness, env, prompt2, remaining) {
   const pluginRoot2 = options3.pluginRoot ?? defaultPluginRoot();
   const executable = harness === "pi" ? options3.pi ?? "pi" : options3.claude ?? "claude";
   const workerActor = `${harness}:execute`;
@@ -41180,7 +41215,7 @@ async function runTestChild(workspace2, options3, execution, harness, env, test,
   try {
     const result = await launchWorker(executable, args, {
       cwd: workspace2,
-      prompt: testPrompt(execution, workspace2, test, workerActor, pluginRoot2),
+      prompt: prompt2(workerActor, pluginRoot2),
       timeoutSeconds,
       harness,
       env: {
@@ -41277,6 +41312,22 @@ async function delegateByTest(workspace2, subject, options3, harness, env, execu
           evidence: [{ text: note }]
         });
     }
+  }
+  const probeTime = withStore(workspace2, (store) => {
+    const state = runState(store, subject);
+    return { permanent: Boolean(state.request.permanent), remaining: runClock(store, state.row).remainingSeconds };
+  });
+  if (!stopped && !probeTime.permanent && probeTime.remaining > 120) {
+    const probe = await runChild(
+      workspace2,
+      options3,
+      execution,
+      harness,
+      env,
+      (actor, pluginRoot2) => probePrompt(execution, workspace2, actor, pluginRoot2),
+      probeTime.remaining
+    );
+    usageCalls.push(probe.usage);
   }
   if (stopped) {
     const usage3 = usageOf(usageCalls);

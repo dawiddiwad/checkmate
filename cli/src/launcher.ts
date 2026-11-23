@@ -679,28 +679,19 @@ function testView(store: Store, runId: string, testId: string): TestView {
 	}
 }
 
-function testPrompt(execution: Execution, workspace: string, test: Test, actor: string, pluginRoot: string) {
-	const { run, profile, planRequest: planning } = execution
-	const cli = `node '${join(pluginRoot, 'dist', 'checkmate.js').replaceAll("'", "'\\''")}'`
-	const runId = run.run_id
-	const tools = planTools(planning, profile).map(({ name, kind }) => {
+function toolStatus(request: PlanRequest, profile: Profile) {
+	return planTools(request, profile).map(({ name, kind }) => {
 		if (kind !== 'cli') return `${name} (${kind})`
 		return `${name} (${kind}, ${executableOnPath(name, process.env) ? 'on PATH' : 'not on PATH'})`
 	})
+}
+
+function contextLines(execution: Execution, workspace: string, cli: string, tools: string[]) {
+	const { run, profile, planRequest: planning } = execution
+	const runId = run.run_id
 	const sources = planning.context?.sources ?? []
 	const browser = usesPlaywright(profile)
 	return [
-		`This is a delegated Checkmate execute step. Record the result of test ${test.id} only. Do not run other tests. Do not run run gate, run begin, or run finish.`,
-		`Checkmate commands: ${cli} <command>. Run them from the workspace.`,
-		...(JSON.parse(run.request).permanent
-			? ['This is a permanent run. Run only this test. Do not explore, probe, or record gaps.']
-			: []),
-		`Run: ${runId}. Plan: ${run.plan_id}@${run.plan_revision}. Build: ${run.application_build}. Instance: ${run.instance_id}. Run \`${cli} target show ${run.target_id} --instance ${run.instance_id}\` once for the entry values. Use the url entry for every action. Do not write entry values into evidence.`,
-		`Test ${test.id}: ${test.title}`,
-		`Action: ${test.action}`,
-		...(test.preconditions.length ? [`Preconditions: ${test.preconditions.join(' ')}`] : []),
-		'Assertions:',
-		...test.assertions.map((assertion) => `${assertion.id}: ${assertion.check}`),
 		...(sources.length
 			? [
 					`Source files: ${sources.map((source) => resolve(workspace, source)).join(', ')}. Read them with the read tool. Do not search the file system.`,
@@ -713,6 +704,42 @@ function testPrompt(execution: Execution, workspace: string, test: Test, actor: 
 				]
 			: []),
 		`HTTP: node --input-type=module -e 'const r = await fetch("<url><path>", { signal: AbortSignal.timeout(10000) }); console.log(JSON.stringify({ status: r.status, body: await r.text() }))'`,
+	]
+}
+
+function probePrompt(execution: Execution, workspace: string, actor: string, pluginRoot: string) {
+	const { run } = execution
+	const cli = `node '${join(pluginRoot, 'dist', 'checkmate.js').replaceAll("'", "'\\''")}'`
+	const runId = run.run_id
+	return [
+		'This is a delegated Checkmate exploration probe. The selected tests are done. Probe for defects that the plan does not check. Do not record passed or failed results. Do not close tests. Do not run run gate, run begin, or run finish.',
+		`Checkmate commands: ${cli} <command>. Run them from the workspace.`,
+		`Run: ${runId}. Plan: ${run.plan_id}@${run.plan_revision}. Build: ${run.application_build}. Instance: ${run.instance_id}. Run \`${cli} target show ${run.target_id} --instance ${run.instance_id}\` once for the entry values. Use the url entry for every action. Do not write entry values into evidence.`,
+		'Make at most 10 probe actions. Probe the rules of the selected tests: a value at a limit, the other entry point, extra spaces, a total in a second view. Use only the instance entries and new data.',
+		...contextLines(execution, workspace, cli, toolStatus(execution.planRequest, execution.profile)),
+		`Record a probe finding only when a probe contradicts a value that a source or a check states: ${cli} run finding ${runId} --actor ${actor} <<'EOF' with {"id":"P-1","type":"potential_issue","severity":"medium","assertionIds":[],"requirementIds":[],"title":"<short title>","expected":"<the stated value>","observed":"<probe output>","reproduction":["<probe steps>"],"evidenceIds":[]} then EOF. Record nothing for a probe that shows correct behaviour.`,
+		`In your final answer, return only one JSON object: {"status":"completed","subject":"${runId}","reasons":[]}.`,
+	].join('\n\n')
+}
+
+function testPrompt(execution: Execution, workspace: string, test: Test, actor: string, pluginRoot: string) {
+	const { run, profile, planRequest: planning } = execution
+	const cli = `node '${join(pluginRoot, 'dist', 'checkmate.js').replaceAll("'", "'\\''")}'`
+	const runId = run.run_id
+	const tools = toolStatus(planning, profile)
+	return [
+		`This is a delegated Checkmate execute step. Record the result of test ${test.id} only. Do not run other tests. Do not run run gate, run begin, or run finish.`,
+		`Checkmate commands: ${cli} <command>. Run them from the workspace.`,
+		...(JSON.parse(run.request).permanent
+			? ['This is a permanent run. Run only this test. Do not explore, probe, or record gaps.']
+			: []),
+		`Run: ${runId}. Plan: ${run.plan_id}@${run.plan_revision}. Build: ${run.application_build}. Instance: ${run.instance_id}. Run \`${cli} target show ${run.target_id} --instance ${run.instance_id}\` once for the entry values. Use the url entry for every action. Do not write entry values into evidence.`,
+		`Test ${test.id}: ${test.title}`,
+		`Action: ${test.action}`,
+		...(test.preconditions.length ? [`Preconditions: ${test.preconditions.join(' ')}`] : []),
+		'Assertions:',
+		...test.assertions.map((assertion) => `${assertion.id}: ${assertion.check}`),
+		...contextLines(execution, workspace, cli, tools),
 		`Record each assertion: ${cli} run check ${runId} ${test.id} <assertion ID> --actor ${actor} --result passed|failed|not_checked --observed "<observed value>" --evidence - <<'EOF'`,
 		'then the tool output, copied, then EOF. Use the observed value as the text to compare. Use two words for the IDs: T1 A1.',
 		'Record passed only when the observed value contains every value of the check. Record failed when it does not. Use not_checked with --reason "<why>" when you cannot observe the value.',
@@ -733,6 +760,26 @@ async function runTestChild(
 	test: Test,
 	remaining: number
 ) {
+	return runChild(
+		workspace,
+		options,
+		execution,
+		harness,
+		env,
+		(actor, pluginRoot) => testPrompt(execution, workspace, test, actor, pluginRoot),
+		remaining
+	)
+}
+
+async function runChild(
+	workspace: string,
+	options: DelegateOptions,
+	execution: Execution,
+	harness: Harness,
+	env: NodeJS.ProcessEnv,
+	prompt: (actor: string, pluginRoot: string) => string,
+	remaining: number
+) {
 	const pluginRoot = options.pluginRoot ?? defaultPluginRoot()
 	const executable = harness === 'pi' ? (options.pi ?? 'pi') : (options.claude ?? 'claude')
 	const workerActor = `${harness}:execute`
@@ -749,7 +796,7 @@ async function runTestChild(
 	try {
 		const result = await launchWorker(executable, args, {
 			cwd: workspace,
-			prompt: testPrompt(execution, workspace, test, workerActor, pluginRoot),
+			prompt: prompt(workerActor, pluginRoot),
 			timeoutSeconds,
 			harness,
 			env: {
@@ -860,6 +907,22 @@ async function delegateByTest(
 					evidence: [{ text: note }],
 				})
 		}
+	}
+	const probeTime = withStore(workspace, (store) => {
+		const state = runState(store, subject)
+		return { permanent: Boolean(state.request.permanent), remaining: runClock(store, state.row).remainingSeconds }
+	})
+	if (!stopped && !probeTime.permanent && probeTime.remaining > 120) {
+		const probe = await runChild(
+			workspace,
+			options,
+			execution,
+			harness,
+			env,
+			(actor, pluginRoot) => probePrompt(execution, workspace, actor, pluginRoot),
+			probeTime.remaining
+		)
+		usageCalls.push(probe.usage)
 	}
 	if (stopped) {
 		const usage = usageOf(usageCalls)

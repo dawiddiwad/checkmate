@@ -42821,7 +42821,7 @@ function contextLines(execution, workspace2, cli, tools) {
     ] : [],
     `Tools: ${tools.join(", ")}. Use Bash for CLI tools. A tool marked "not on PATH" is missing: close the test as error.`,
     ...browser ? [
-      `Browser session: ${run2.browser_session}. Open the page: PLAYWRIGHT_MCP_OUTPUT_DIR=.checkmate/tmp/${runId} playwright-cli -s=${run2.browser_session} open <url>. Read the page text: playwright-cli -s=${run2.browser_session} snapshot. Do not close the browser session. The factory closes it.`
+      `Browser session: ${run2.browser_session}. Open the page: PLAYWRIGHT_MCP_OUTPUT_DIR=.checkmate/tmp/${runId} playwright-cli -s=${run2.browser_session} open <url>. Then snapshot: playwright-cli -s=${run2.browser_session} snapshot. Act only by an element ref from the latest snapshot, for example playwright-cli -s=${run2.browser_session} fill e5 "text" or click e8. Never invent a selector or a label name. If the snapshot has no controls, wait one second and snapshot again. After each action, snapshot again and read the value from that snapshot. If a ref is not in the snapshot, wait one second, snapshot again, and retry once. If it is still missing, close the test as error with the snapshot excerpt as evidence. Do not close the browser session. The factory closes it.`
     ] : [],
     `HTTP: node --input-type=module -e 'const r = await fetch("<url><path>", { signal: AbortSignal.timeout(10000) }); console.log(JSON.stringify({ status: r.status, body: await r.text() }))'`
   ];

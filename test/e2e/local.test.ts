@@ -6585,3 +6585,89 @@ test('Show the Saved-this-turn list without test progress — a run shows its st
 		['run begin run-2', 'recorded 2 findings in run-2', 'answered SHOP-1/G1']
 	)
 })
+
+test('The per-test browser recipe acts only by element refs from a snapshot, waits and retries once, and closes a missing ref as error.', async (t) => {
+	const workspace = directory(t)
+	writeFileSync(join(workspace, 'ticket.md'), 'The shop page is reachable.\n')
+	const app = await fixture()
+	t.after(() => app.close())
+	const bin = directory(t)
+	const tool = join(bin, 'playwright-cli')
+	writeFileSync(tool, '#!/bin/sh\necho 1.0.0\n')
+	chmodSync(tool, 0o755)
+	const chrome = join(workspace, 'fake-chrome')
+	writeFileSync(chrome, '#!/bin/sh\necho "Chromium 124.0.6367.60"\n')
+	chmodSync(chrome, 0o755)
+	mkdirSync(join(workspace, '.playwright'))
+	writeFileSync(
+		join(workspace, '.playwright', 'cli.config.json'),
+		JSON.stringify({ browser: { launchOptions: { executablePath: chrome } } })
+	)
+	const env = {
+		...process.env,
+		PATH: `${bin}${delimiter}${process.env.PATH}`,
+		CHECKMATE_ACTOR: 'oracle',
+		CHECKMATE_HARNESS: 'pi',
+	}
+	const ok = async (args: string[], value?: object) => {
+		const result = await inputCommand(workspace, env, value ? JSON.stringify(value) : '', ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	await ok(['setup', '--url', app.baseUrl, '--target', 'shop'])
+	await ok([
+		'plan',
+		'open',
+		'ticket',
+		'--target',
+		'shop@1',
+		'--objective',
+		'Check the page.',
+		'--source',
+		'ticket.md',
+	])
+	await ok(['plan', 'save', 'ticket'], {
+		requirements: [{ id: 'R1', text: 'The shop page is reachable.', source: 'ticket.md' }],
+		tests: [
+			{
+				capability: 'http',
+				operations: ['read_catalog'],
+				dependsOn: [],
+				preconditions: [],
+				id: 'T1',
+				title: 'Page',
+				requirementIds: ['R1'],
+				action: 'Read the page.',
+				assertions: [
+					{
+						id: 'A1',
+						check: 'The page is reachable.',
+						checkKind: 'deterministic',
+						observe: 'the page status',
+						expected: 'reachable',
+					},
+				],
+			},
+		],
+		gaps: [],
+	})
+	await ok(['plan', 'approve', 'ticket@1', '--rationale', 'Run the rule.'])
+	await ok(['run', 'begin', 'run-1', 'ticket@1', '--build', 'b1', '--partial', 'ready_only'])
+	copyFileSync(join(root, 'test/e2e/per-test-host.mjs'), join(bin, 'pi'))
+	chmodSync(join(bin, 'pi'), 0o755)
+	const prompts = join(directory(t), 'prompts.txt')
+	const piEnv = {
+		...env,
+		FAKE_PI_LOG: join(directory(t), 'log.txt'),
+		FAKE_PI_PROMPTS: prompts,
+		FAKE_CHECKMATE_CLI: binary,
+		FAKE_RUN: 'run-1',
+	}
+	const delegated = await inputCommand(workspace, piEnv, '', 'delegate', 'execute', 'run-1')
+	assert.equal(delegated.body.status, 'completed', delegated.output)
+	const recipe = readFileSync(prompts, 'utf8')
+	assert.match(recipe, /Act only by an element ref from the latest snapshot/)
+	assert.match(recipe, /Never invent a selector or a label name/)
+	assert.match(recipe, /wait one second, snapshot again, and retry once/)
+	assert.match(recipe, /close the test as error with the snapshot excerpt as evidence/)
+})

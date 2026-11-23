@@ -41503,6 +41503,7 @@ async function delegateByTest(workspace2, subject, options3, harness, env, execu
   const usageCalls = [];
   const notes = [];
   let stopped;
+  let deadlineStopped = false;
   const order = withStore(workspace2, (store) => testOrder(runState(store, subject)));
   for (const testId of order) {
     const view = withStore(workspace2, (store) => testView(store, subject, testId));
@@ -41514,7 +41515,8 @@ async function delegateByTest(workspace2, subject, options3, harness, env, execu
         outcome: "blocked",
         reason: `Prerequisite ${view.blocker.dependency} is ${view.blocker.outcome}`
       });
-    else if (view.remaining <= 60)
+    else if (view.remaining <= 60) {
+      deadlineStopped = true;
       closeWithin(workspace2, workerActor, {
         runId: subject,
         testId,
@@ -41522,7 +41524,7 @@ async function delegateByTest(workspace2, subject, options3, harness, env, execu
         cause: "deadline",
         reason: "The deadline is used up before this test ran."
       });
-    else {
+    } else {
       let note = "The worker returned no result.";
       for (let attempt = 1; attempt <= testAttempts; attempt++) {
         const child = await runTestChild(workspace2, options3, execution, harness, env, view.test, view.remaining);
@@ -41587,11 +41589,16 @@ async function delegateByTest(workspace2, subject, options3, harness, env, execu
     (store) => [...runOutcomes(store, subject).values()].some((outcome) => outcome.outcome === "error")
   );
   const finished = withStore(workspace2, (store) => runState(store, subject).finished);
+  const expired = deadlineStopped || withStore(
+    workspace2,
+    (store) => [...runOutcomes(store, subject).values()].some((item) => item.outcome === "not_run")
+  );
   const reply = finished ? { status: "completed", subject, reasons: ["The worker already finished the run."] } : withStore(
     workspace2,
     (store) => finishRun(store, workerActor, {
       runId: subject,
-      completion: hasError ? "operational_error" : "completed",
+      completion: expired ? "interrupted" : hasError ? "operational_error" : "completed",
+      ...expired ? { cause: "deadline", reason: "The deadline is used up before every selected test ran." } : {},
       cleanup: cleanup2 ? "failed" : browser ? "completed" : "not_applicable",
       cleanupReason: cleanup2 ?? (browser ? "The browser session was closed." : "No browser was used.")
     })

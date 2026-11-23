@@ -3625,3 +3625,60 @@ test('Resume a run with a test that may have changed data — a recorded reset r
 	assert.match(asked.reasons[0], /T1/)
 	assert.match(asked.hint, /run resume run-2 --error T1/)
 })
+
+test('Finish a run whose deadline is used up as interrupted with cause deadline — tests closed on the deadline are not refused as completed.', async (t) => {
+	const workspace = directory(t)
+	writeFileSync(join(workspace, 'ticket.md'), 'The quote is 240.\n')
+	const app = await fixture()
+	t.after(() => app.close())
+	app.fix()
+	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle' }
+	const ok = async (args: string[], value?: object) => {
+		const result = await inputCommand(workspace, env, value ? JSON.stringify(value) : '', ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	await ok(['setup', '--url', app.baseUrl, '--target', 'shop'])
+	await ok([
+		'plan',
+		'open',
+		'ticket',
+		'--target',
+		'shop@1',
+		'--objective',
+		'Check the ticket.',
+		'--source',
+		'ticket.md',
+	])
+	await ok(['plan', 'save', 'ticket'], {
+		requirements: [{ id: 'R1', text: 'The quote is 240.', source: 'ticket.md' }],
+		tests: [
+			{
+				capability: 'http',
+				operations: ['read_catalog'],
+				dependsOn: [],
+				preconditions: [],
+				id: 'T1',
+				title: 'Quote',
+				requirementIds: ['R1'],
+				action: 'Read the quote.',
+				assertions: [{ id: 'A1', check: 'The quote is 240.', checkKind: 'deterministic' }],
+			},
+		],
+		gaps: [],
+	})
+	await ok(['plan', 'approve', 'ticket@1', '--rationale', 'Run the rule.'])
+	await ok(['run', 'begin', 'run-1', 'ticket@1', '--build', 'b1', '--partial', 'ready_only', '--timeout', '1'])
+	await new Promise((resolve) => setTimeout(resolve, 2500))
+	const delegated = await inputCommand(
+		workspace,
+		{ ...env, CHECKMATE_HARNESS: 'pi' },
+		'',
+		'delegate',
+		'execute',
+		'run-1'
+	)
+	assert.equal(delegated.body.status, 'interrupted', delegated.output)
+	const outcomes = await ok(['query', "SELECT test_id, outcome FROM outcomes WHERE run_id = 'run-1'"])
+	assert.deepEqual(outcomes.rows, [{ test_id: 'T1', outcome: 'not_run' }])
+})

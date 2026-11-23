@@ -900,6 +900,7 @@ async function delegateByTest(
 	const usageCalls: WorkerUsage[] = []
 	const notes: string[] = []
 	let stopped: Error | undefined
+	let deadlineStopped = false
 	const order = withStore(workspace, (store) => testOrder(runState(store, subject)))
 	for (const testId of order) {
 		const view = withStore(workspace, (store) => testView(store, subject, testId))
@@ -911,7 +912,8 @@ async function delegateByTest(
 				outcome: 'blocked',
 				reason: `Prerequisite ${view.blocker.dependency} is ${view.blocker.outcome}`,
 			})
-		else if (view.remaining <= 60)
+		else if (view.remaining <= 60) {
+			deadlineStopped = true
 			closeWithin(workspace, workerActor, {
 				runId: subject,
 				testId,
@@ -919,7 +921,7 @@ async function delegateByTest(
 				cause: 'deadline',
 				reason: 'The deadline is used up before this test ran.',
 			})
-		else {
+		} else {
 			let note = 'The worker returned no result.'
 			for (let attempt = 1; attempt <= testAttempts; attempt++) {
 				const child = await runTestChild(workspace, options, execution, harness, env, view.test, view.remaining)
@@ -984,12 +986,20 @@ async function delegateByTest(
 		[...runOutcomes(store, subject).values()].some((outcome) => outcome.outcome === 'error')
 	)
 	const finished = withStore(workspace, (store) => runState(store, subject).finished)
+	const expired =
+		deadlineStopped ||
+		withStore(workspace, (store) =>
+			[...runOutcomes(store, subject).values()].some((item) => item.outcome === 'not_run')
+		)
 	const reply = finished
 		? { status: 'completed' as const, subject, reasons: ['The worker already finished the run.'] }
 		: withStore(workspace, (store) =>
 				finishRun(store, workerActor, {
 					runId: subject,
-					completion: hasError ? 'operational_error' : 'completed',
+					completion: expired ? 'interrupted' : hasError ? 'operational_error' : 'completed',
+					...(expired
+						? { cause: 'deadline', reason: 'The deadline is used up before every selected test ran.' }
+						: {}),
 					cleanup: cleanup ? 'failed' : browser ? 'completed' : 'not_applicable',
 					cleanupReason: cleanup ?? (browser ? 'The browser session was closed.' : 'No browser was used.'),
 				})

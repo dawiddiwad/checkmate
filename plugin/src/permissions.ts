@@ -57,7 +57,7 @@ export const closedText: Record<ClosedCause, string> = {
 	'ui-stopped': 'the UI stopped',
 	stopped: 'the tester or the run stopped',
 	interrupted: 'the run supervisor stopped before the end',
-	disconnected: 'the tester did not wait any more',
+	disconnected: 'the asking session stopped waiting',
 }
 
 const maxText = 2000

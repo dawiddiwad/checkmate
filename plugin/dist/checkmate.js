@@ -19425,7 +19425,7 @@ var closedText = {
   "ui-stopped": "the UI stopped",
   stopped: "the tester or the run stopped",
   interrupted: "the run supervisor stopped before the end",
-  disconnected: "the tester did not wait any more"
+  disconnected: "the asking session stopped waiting"
 };
 var maxText = 2e3;
 var requestStep = "permission";

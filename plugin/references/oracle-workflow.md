@@ -21,7 +21,7 @@ Use this when the person answers open gaps, or asks you to change the plan.
 
 1. Run `plan show <planId> --gaps open`. It lists each open gap with its ID, for example `G1`. Use these IDs in the next step.
 2. For each gap that the person answered, run `gap answer <planId> <gapId> --kind <clarify|accept_assumption|defer> --value "<answer>" --source <source> --rationale "<why>"`. Use the person's words for `--value`. For an answer that the person gave in this conversation, use `--source conversation`. Use `--source <file>` only for a file in the workspace that states the answer. Do not write a file to hold an answer.
-3. Run `delegate revise <planId> --detach`, then `delegate wait revise <planId> --timeout 90` until the reply names the result. The planner writes the next revision. Do not write a plan JSON yourself.
+3. Run `delegate revise <planId> --detach`, then `delegate wait revise <planId> --timeout 90`. The planner writes the next revision. While the reply status is `running`, run the `delegate wait` command from its hint again. A status other than `running` is the result. Do not write a plan JSON yourself.
 4. Run `status <planId>` and `plan show <planId>`. Report the new revision and any gap that is still open.
 5. When the status says `needs_approval`, run `plan approve <planId@revision> --rationale "<why>"` only after the person approves that revision.
 

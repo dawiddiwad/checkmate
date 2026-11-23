@@ -104,6 +104,10 @@
 									"type": "string",
 									"minLength": 1
 								},
+								"request": {
+									"type": "string",
+									"pattern": "^(GET|POST|PUT|PATCH|DELETE) /"
+								},
 								"observeFrom": {
 									"enum": ["page", "reload", "api"]
 								}

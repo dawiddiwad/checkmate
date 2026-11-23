@@ -15,7 +15,7 @@ import {
 import type { Harness } from '../../plugin/src/pi.ts'
 import { piArgs, piResult, resolvePiModelArgs, selectedHarness } from '../../plugin/src/pi.ts'
 import { migrationTests, notReadyReasons, planRequest, planTools } from '../../plugin/src/plans.ts'
-import { plannedRequest } from '../../plugin/src/routes.ts'
+import { checkRequest, plannedRequest } from '../../plugin/src/routes.ts'
 import { signalChild, trackGroup } from '../../plugin/src/processes.ts'
 import { workspaceEnv } from '../../plugin/src/settings.ts'
 import { dataRules, markerFor, runPrepare } from '../../plugin/src/resets.ts'
@@ -489,7 +489,7 @@ function stagePrompt(stage: Stage, subject: string, execution: Execution | null,
 			'Use agent_observation only for a visual or wording judgment that no value states. An order, a count, a status code, a presence, or an absence has a value: observe the first item, the count, the status, or the text, and use the deterministic kind. Do not raise a gap for a judgment.',
 			'Each assertion checks one expected value. Write one assertion for each value. Do not join two values with "and" or ";" in one check.',
 			'Write each assertion with the exact expected text or value from the sources, for example: The page shows "1 book" when one book is stored. Do not write a general description such as "pluralizes correctly".',
-			'Each deterministic assertion names the observed item in "observe" and the expected value in "expected", and keeps the check text. Every deterministic check needs both. For a value that holds the run marker, write {{marker}} in "expected", for example {{marker}}-T1. {{marker}} works in every kind, for example contains:{{marker}}-T1. The marker already starts with qa-, so never write qa- before {{marker}}. For a shape or a range use type:number, type:non-empty, one-of:A|B, matches:<regex>, at least:N or at most:N. For presence or absence use contains:TEXT or absent:TEXT, never a sentence that starts with "not". Never write a type word or a <placeholder> as a value. A judgment that has no value to compare is "checkKind": "agent_observation". Example: {"id":"A1","check":"The kettle price shown on the product page is 240 PLN.","checkKind":"deterministic","observe":"the price value labelled Price on the product page","expected":"240 PLN"}.',
+			'Each deterministic assertion names the observed item in "observe" and the expected value in "expected", and keeps the check text. A check that decides an HTTP request names it in "request" as METHOD /path, for example "request":"GET /api/notes"; a test with a 2xx control and a refused request names the request of each check separately. Every deterministic check needs both. For a value that holds the run marker, write {{marker}} in "expected", for example {{marker}}-T1. {{marker}} works in every kind, for example contains:{{marker}}-T1. The marker already starts with qa-, so never write qa- before {{marker}}. For a shape or a range use type:number, type:non-empty, one-of:A|B, matches:<regex>, at least:N or at most:N. For presence or absence use contains:TEXT or absent:TEXT, never a sentence that starts with "not". Never write a type word or a <placeholder> as a value. A judgment that has no value to compare is "checkKind": "agent_observation". Example: {"id":"A1","check":"The kettle price shown on the product page is 240 PLN.","checkKind":"deterministic","observe":"the price value labelled Price on the product page","expected":"240 PLN"}.',
 			'A negative check ("unknown", "missing", "not found", "not allowed", "wrong token") uses a well-formed value of the same shape as a valid one: an id of the right type that does not exist, or a syntactically valid wrong token. The same test also has a positive control: the same request with a valid value returns 2xx, so a route miss cannot pass as the refusal. Example: T6 A1 "DELETE /api/notes/999999 returns 404." with expected "404", and A2 "DELETE /api/notes/<existing id> returns 200." with expected "200".',
 			'A rule that states a range or a limit has one assertion for each side: the value below the lower bound, the lower bound, the upper bound, and the value above the upper bound. Each names its input, for example "quantity 0 returns HTTP 400.", and has its own expected value.',
 			'An assertion on a state-changing action (add, apply, clear, delete, save) checks the source of truth: the API response, or the stored state after a reload. A visible page alone does not show that the state changed. Set "observeFrom" to "api" for a check of the API response, or to "reload" for a check after a reload. Use "page" only for a check that is not a state change. A state-changing test whose checks are all page is refused once and then saved as not ready.',
@@ -787,6 +787,19 @@ function probePrompt(execution: Execution, workspace: string, actor: string, plu
 	].join('\n\n')
 }
 
+// The request each check decides, so the child sends it and gives it with --request. A test with a control and a
+// refusal names one request per check; the example shows that shape.
+function requestLines(test: Test, text: (value: string) => string) {
+	const lines = test.assertions.flatMap((assertion) => {
+		const planned = checkRequest(text(test.action), assertion.request && text(assertion.request))
+		return planned ? [`${test.id}.${assertion.id} ${planned.method} ${planned.path}`] : []
+	})
+	if (!lines.length) return []
+	return [
+		`Each check decides its own request. Give --request with the method and path of the request you sent for that check, as planned: ${lines.join('; ')}. A request that misses the planned route of its check is not an observation. A test with a control and a refusal sends two requests: the control (2xx) and then the refused request. Record the control check with the control's --request and the refused check with the refused request's --request.`,
+	]
+}
+
 function testPrompt(execution: Execution, workspace: string, test: Test, actor: string, pluginRoot: string) {
 	const { run, profile, planRequest: planning } = execution
 	const cli = `cd '${workspace.replaceAll("'", "'\\''")}' && node '${join(pluginRoot, 'dist', 'checkmate.js').replaceAll("'", "'\\''")}'`
@@ -813,12 +826,8 @@ function testPrompt(execution: Execution, workspace: string, test: Test, actor: 
 				: `${assertion.id}: observe ${text(assertion.observe ?? '')}. Expected value: ${text(assertion.expected)}.`
 		),
 		...contextLines(execution, workspace, cli, tools),
-		...(plannedRequest(test.action)
-			? [
-					`The action names a request. Give --request with the method and path of the request you sent, with the planned method ${plannedRequest(text(test.action))!.method} and the planned path ${plannedRequest(text(test.action))!.path}. A request that misses the planned route is not an observation.`,
-				]
-			: []),
-		`Record each assertion: ${cli} run check ${runId} ${test.id} <assertion ID> --actor ${actor} --observed '<only the bare value: for a status code 200, for an amount $5.00>'${plannedRequest(test.action) ? " --request '<method and path you sent>'" : ''} --evidence - <<'EOF'`,
+		...requestLines(test, text),
+		`Record each assertion: ${cli} run check ${runId} ${test.id} <assertion ID> --actor ${actor} --observed '<only the bare value: for a status code 200, for an amount $5.00>'${plannedRequest(test.action) || test.assertions.some((assertion) => assertion.request) ? " --request '<method and path you sent for this check>'" : ''} --evidence - <<'EOF'`,
 		'Put --observed and --request values in single quotes. Inside double quotes the shell expands $ and backticks: $5.00 becomes .00 and $0 becomes a shell path. Give only the bare value in --observed: HTTP 200 is refused, 200 is accepted.',
 		'then the raw tool output that shows it, copied, then EOF. Use two words for the IDs: T1 A1. Give only the value of the observed item, not the whole line.',
 		'For an assertion with an expected value, do not decide passed or failed: the code compares the observed value with the expected value. For an assertion without one, decide it with --result and --observed. A message or value the page shows is an observed value: record it with --observed, even when it says "not found". When the page was read after the action and the text or element the check names is not on it, record --absent instead of --observed, with the snapshot excerpt as evidence. The code compares that absence with the expected value. Record an error only when the action could not be performed or the page could not be read: then record not_checked for each assertion of that test with --reason, record no defect for it, and close the test as error. When you cannot observe the value for another reason, record not_checked with --reason "<why>" and no --observed.',

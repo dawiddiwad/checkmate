@@ -8787,3 +8787,211 @@ test('A retest carries the defect of its own run, even when a later run on anoth
 		['F1']
 	)
 })
+
+test('Each check is matched to the request it names — a control and a refusal in one test, where the refusal is not the first request of the action.', async (t) => {
+	const workspace = directory(t)
+	writeFileSync(
+		join(workspace, 'ticket.md'),
+		'A note is created with a token, and a request without a token is refused.\n'
+	)
+	const app = await fixture()
+	t.after(() => app.close())
+	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle' }
+	const ok = async (args: string[], value?: unknown) => {
+		const result = await inputCommand(workspace, env, value === undefined ? '' : JSON.stringify(value), ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	await ok([
+		'setup',
+		'--url',
+		app.baseUrl,
+		'--target',
+		'shop',
+		'--data',
+		'environment',
+		'--policy',
+		'The test fixture keeps no records.',
+	])
+	await ok([
+		'plan',
+		'open',
+		'ticket',
+		'--target',
+		'shop@1',
+		'--objective',
+		'Check the notes.',
+		'--source',
+		'ticket.md',
+	])
+	await ok(['plan', 'save', 'ticket'], {
+		requirements: [
+			{
+				id: 'R1',
+				text: 'A note is created with a token, and a request without a token is refused.',
+				source: 'ticket.md',
+			},
+		],
+		tests: [
+			{
+				capability: 'http',
+				operations: ['read_catalog'],
+				dependsOn: [],
+				preconditions: [],
+				id: 'T1',
+				title: 'Notes with and without a token',
+				requirementIds: ['R1'],
+				action: 'POST /api/notes with a valid token, then GET /api/notes without a token.',
+				assertions: [
+					{
+						id: 'A1',
+						check: 'The create with a valid token returns 201.',
+						checkKind: 'deterministic',
+						observe: 'the status of the create request',
+						expected: '201',
+						request: 'POST /api/notes',
+					},
+					{
+						id: 'A2',
+						check: 'The read without a token returns 401.',
+						checkKind: 'deterministic',
+						observe: 'the status of the read request',
+						expected: '401',
+						request: 'GET /api/notes',
+					},
+				],
+			},
+		],
+		gaps: [],
+	})
+	await ok(['plan', 'approve', 'ticket@1', '--rationale', 'Run the rules.'])
+	await ok(['run', 'begin', 'run-1', 'ticket@1', '--build', 'fixed', '--tests', 'T1'])
+	const wrong = await inputCommand(
+		workspace,
+		env,
+		'refused',
+		'run',
+		'check',
+		'run-1',
+		'T1',
+		'A2',
+		'--observed',
+		'401',
+		'--request',
+		'POST /api/notes',
+		'--evidence',
+		'-'
+	)
+	assert.equal(wrong.code, 1, wrong.output)
+	assert.match(wrong.body.reasons.join(' '), /does not match the planned request GET \/api\/notes/)
+	const read = await inputCommand(
+		workspace,
+		env,
+		'refused',
+		'run',
+		'check',
+		'run-1',
+		'T1',
+		'A2',
+		'--observed',
+		'401',
+		'--request',
+		'GET /api/notes',
+		'--evidence',
+		'-'
+	)
+	assert.equal(read.body.result, 'passed', read.output)
+	const create = await inputCommand(
+		workspace,
+		env,
+		'created',
+		'run',
+		'check',
+		'run-1',
+		'T1',
+		'A1',
+		'--observed',
+		'201',
+		'--request',
+		'POST /api/notes',
+		'--evidence',
+		'-'
+	)
+	assert.equal(create.body.result, 'passed', create.output)
+})
+
+test('A test that expects a refusal and has no 2xx control is not ready — the gate names it and the fix.', async (t) => {
+	const workspace = directory(t)
+	writeFileSync(join(workspace, 'ticket.md'), 'A request without a token is refused.\n')
+	const app = await fixture()
+	t.after(() => app.close())
+	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle' }
+	const ok = async (args: string[], value?: unknown) => {
+		const result = await inputCommand(workspace, env, value === undefined ? '' : JSON.stringify(value), ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	await ok([
+		'setup',
+		'--url',
+		app.baseUrl,
+		'--target',
+		'shop',
+		'--data',
+		'environment',
+		'--policy',
+		'The test fixture keeps no records.',
+	])
+	await ok([
+		'plan',
+		'open',
+		'ticket',
+		'--target',
+		'shop@1',
+		'--objective',
+		'Check the refusal.',
+		'--source',
+		'ticket.md',
+	])
+	const refusal = {
+		requirements: [{ id: 'R1', text: 'A request without a token is refused.', source: 'ticket.md' }],
+		tests: [
+			{
+				capability: 'http',
+				operations: ['read_catalog'],
+				dependsOn: [],
+				preconditions: [],
+				id: 'T1',
+				title: 'Refusal',
+				requirementIds: ['R1'],
+				action: 'GET /api/notes without a token.',
+				assertions: [
+					{
+						id: 'A1',
+						check: 'The read without a token returns 401.',
+						checkKind: 'deterministic',
+						observe: 'the status of the read request',
+						expected: '401',
+						request: 'GET /api/notes',
+					},
+				],
+			},
+		],
+		gaps: [],
+	}
+	await inputCommand(workspace, env, JSON.stringify(refusal), 'plan', 'save', 'ticket')
+	await ok(['plan', 'save', 'ticket'], refusal)
+	await ok(['plan', 'approve', 'ticket@1', '--rationale', 'Run the rules.'])
+	await ok(['run', 'begin', 'run-1', 'ticket@1', '--build', 'fixed', '--tests', 'T1'])
+	const gated = spawnSync(process.execPath, [binary, 'run', 'show', 'run-1', '--gate'], {
+		cwd: workspace,
+		env,
+		encoding: 'utf8',
+	})
+	const text = gated.stdout + gated.stderr
+	assert.equal(gated.status, 2, text)
+	assert.match(text, /not ready \(needs_control\): T1\.A1/)
+	assert.match(text, /add a check with a 2xx expected value and the request that succeeds on the same route/)
+	assert.match(text, /checkmate delegate revise ticket/)
+	assert.doesNotMatch(text, /without an expected value/)
+})

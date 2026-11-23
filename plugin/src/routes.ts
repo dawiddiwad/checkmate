@@ -10,6 +10,12 @@ export function plannedRequest(action: string): PlannedRequest | null {
 	return { method: match[1], path }
 }
 
+// The request a check decides: the request its assertion names, else the first request of the test's action.
+// A test with a control and a refusal names one request per check, so each check is matched to its own request.
+export function checkRequest(action: string, named: string | undefined): PlannedRequest | null {
+	return (named ? plannedRequest(named) : null) ?? plannedRequest(action)
+}
+
 function pathPattern(path: string) {
 	const parts = path.split(/(<[^>]+>|\{[^}]+\})/)
 	const source = parts

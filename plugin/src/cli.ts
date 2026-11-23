@@ -2263,17 +2263,36 @@ function printPlan(reply: Reply): Printed {
 
 type GateReason = { unverified: string[] }
 
-// A run that has a deterministic check without an expected value is not green: name the checks and the revise command.
+// The fix for each soft problem a test can carry. A run with any of them is not green.
+const softFixes: Record<string, string> = {
+	needs_control: 'add a check with a 2xx expected value and the request that succeeds on the same route',
+	needs_split: 'split the test so that each test serves at most three requirements',
+	needs_required: 'add a check that leaves each required field empty and names the refusal',
+	needs_source_check: 'add a check that reads the changed state from the source',
+	needs_input: 'name the input value in the range check',
+}
+
+// A run is not green while a check is unverified. Each reason names its checks and the fix for them.
 function gateReasonLines(gate: GateReason | undefined, planId: string) {
-	return gate && gate.unverified.length > 0
-		? [
-				[
-					'reason',
-					`deterministic checks without an expected value: ${gate.unverified.join(' ')}`,
-					`revise with: checkmate delegate revise ${planId}`,
-				],
-			]
-		: []
+	if (!gate) return []
+	const legacy = gate.unverified.filter((entry) => !/ needs_/.test(entry))
+	const lines: string[][] = []
+	if (legacy.length)
+		lines.push([
+			'reason',
+			`deterministic checks without an expected value: ${legacy.join(' ')}`,
+			`revise with: checkmate plan revise ${planId}`,
+		])
+	for (const [reason, fix] of Object.entries(softFixes)) {
+		const named = gate.unverified.filter((entry) => entry.endsWith(` ${reason}`))
+		if (named.length)
+			lines.push([
+				'reason',
+				`not ready (${reason}): ${named.map((entry) => entry.slice(0, entry.length - reason.length - 1)).join(' ')}`,
+				`${fix}. Then revise with: checkmate delegate revise ${planId}`,
+			])
+	}
+	return lines
 }
 
 function legacyLine(checks: string[], planId: string) {

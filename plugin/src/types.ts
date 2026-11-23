@@ -166,6 +166,7 @@ export type PlanCandidate = {
 			checkKind: 'deterministic' | 'agent_observation'
 			observe?: string
 			expected?: string
+			request?: string
 			observeFrom?: 'page' | 'reload' | 'api'
 		}>
 		metadata?: Record<string, string | number | boolean>
@@ -208,6 +209,7 @@ export type PlanDelta = {
 				checkKind: 'deterministic' | 'agent_observation'
 				observe?: string
 				expected?: string
+				request?: string
 				observeFrom?: 'page' | 'reload' | 'api'
 			}>
 		}
@@ -249,6 +251,7 @@ export type PlanPatch = {
 					checkKind?: 'deterministic' | 'agent_observation'
 					observe?: string
 					expected?: string
+					request?: string
 					observeFrom?: 'page' | 'reload' | 'api'
 				} | null
 			>
@@ -329,6 +332,7 @@ export type Plan = {
 			checkKind: 'deterministic' | 'agent_observation'
 			observe?: string
 			expected?: string
+			request?: string
 			observeFrom?: 'page' | 'reload' | 'api'
 		}>
 		metadata?: Record<string, string | number | boolean>

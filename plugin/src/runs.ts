@@ -49,7 +49,7 @@ import {
 	repeatsExpectation,
 	wrappedValue,
 } from './expectation.ts'
-import { plannedRequest, requestMatches } from './routes.ts'
+import { checkRequest, requestMatches } from './routes.ts'
 
 export type RunRow = {
 	run_id: string
@@ -645,7 +645,7 @@ function structuredResult(
 	observed: string | null,
 	marker: string
 ) {
-	const planned = plannedRequest(test.action)
+	const planned = checkRequest(test.action, assertion.request)
 	const reasons: string[] = []
 	if (input.result !== undefined && input.result !== 'not_checked')
 		reasons.push(

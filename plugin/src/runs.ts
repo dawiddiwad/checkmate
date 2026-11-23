@@ -34,6 +34,7 @@ import {
 } from './plans.ts'
 import { findInstance, runInstance, targetRevision } from './targets.ts'
 import { addPlanBuild } from './journal.ts'
+import { permanentSelection } from './permanent.ts'
 import { mkdirSync, readFileSync, realpathSync, rmSync, statSync } from 'node:fs'
 import { basename, extname, isAbsolute, join, resolve, sep } from 'node:path'
 import { randomUUID } from 'node:crypto'
@@ -59,6 +60,7 @@ export type RunRequest = {
 	timeoutSeconds: number
 	retestOf: string | null
 	retestDefects?: RetestDefect[]
+	permanent?: { reference: string; sourceRevision: number; resultSha256: string }
 }
 export type RunState = { row: RunRow; request: RunRequest; plan: Plan; finished: boolean }
 export type OutcomeRow = {
@@ -181,6 +183,21 @@ export function runState(store: Store, runId: string): RunState {
 	}
 }
 
+export function requirePermanentSelection(store: Store, runId: string) {
+	const run = runState(store, runId)
+	const saved = run.request.permanent
+	if (!saved) return
+	const selected = permanentSelection(store, run.row.plan_id, saved.reference)
+	requireCondition(
+		selected.revision === run.row.plan_revision &&
+			selected.snapshotSha256 === run.row.plan_sha256 &&
+			selected.sourceRevision === saved.sourceRevision &&
+			selected.resultSha256 === saved.resultSha256 &&
+			JSON.stringify(selected.tests) === JSON.stringify(run.request.selectedTestIds),
+		`Run ${runId} no longer matches its permanent promotion.`
+	)
+}
+
 function startedRun(store: Store, runId: string) {
 	const run = runState(store, runId)
 	requireCondition(
@@ -291,9 +308,49 @@ export function runOverlapWarnings(store: Store, runId: string) {
 }
 
 export function beginRun(store: Store, actor: string | undefined, input: BeginInput) {
+	return begin(store, actor, input)
+}
+
+export function beginPermanentRun(
+	store: Store,
+	actor: string | undefined,
+	input: {
+		runId: string
+		planId: string
+		build: string
+		instance?: string
+		promotion?: string
+		timeoutSeconds?: number
+	}
+) {
+	return begin(
+		store,
+		actor,
+		{
+			runId: input.runId,
+			reference: input.planId,
+			build: input.build,
+			instance: input.instance,
+			timeoutSeconds: input.timeoutSeconds,
+		},
+		input
+	)
+}
+
+function begin(
+	store: Store,
+	actor: string | undefined,
+	input: BeginInput,
+	permanent?: { planId: string; promotion?: string }
+) {
 	const reply = write(
 		store,
-		{ actor, command: 'run begin', subject: input.runId, input },
+		{
+			actor,
+			command: permanent ? 'run permanent' : 'run begin',
+			subject: input.runId,
+			input: permanent ? { ...input, ...permanent } : input,
+		},
 		(operationId, at, actor) => {
 			const runId = requireIdentifier(input.runId, 'run ID')
 			requireCondition(
@@ -310,8 +367,18 @@ export function beginRun(store: Store, actor: string | undefined, input: BeginIn
 				Number.isInteger(timeoutSeconds) && timeoutSeconds > 0 && timeoutSeconds <= 3600,
 				`Invalid timeout: ${timeoutSeconds}. Use 1 to 3600 seconds.`
 			)
-			const instance = runInstance(store, plannedTarget(store, input.reference), input.instance)
-			const checked = gate(store, { ...input, instance: instance.instanceId })
+			const selection = permanent ? permanentSelection(store, permanent.planId, permanent.promotion) : null
+			const requested = selection
+				? {
+						...input,
+						reference: selection.reference,
+						tests: selection.tests,
+						partial: 'wait_for_resolution',
+						permanent: selection.reference,
+					}
+				: input
+			const instance = runInstance(store, plannedTarget(store, requested.reference), input.instance)
+			const checked = gate(store, { ...requested, instance: instance.instanceId })
 			if (checked.reply.status !== 'completed') {
 				const reasons = [refusalReasons.prohibited, ...checked.reply.reasons]
 				return {
@@ -327,6 +394,15 @@ export function beginRun(store: Store, actor: string | undefined, input: BeginIn
 				timeoutSeconds,
 				retestOf: input.retestOf ?? null,
 				...(input.retestOf ? { retestDefects: checked.retestDefects } : {}),
+				...(selection
+					? {
+							permanent: {
+								reference: selection.reference,
+								sourceRevision: selection.sourceRevision,
+								resultSha256: selection.resultSha256,
+							},
+						}
+					: {}),
 			}
 			const browserSession = `cm-${randomUUID()}`
 			execute(
@@ -367,6 +443,7 @@ export function beginRun(store: Store, actor: string | undefined, input: BeginIn
 					deadline: new Date(Date.parse(at) + timeoutSeconds * 1000).toISOString(),
 					evidenceDirectory: evidenceDirectory(runId),
 					warnings: runOverlapWarnings(store, runId),
+					...(selection ? { permanent: request.permanent, build: checked.build } : {}),
 				}),
 				subjects: [`run:${runId}`, `plan:${plan.planId}`],
 			}
@@ -502,6 +579,7 @@ export function checkAssertion(store: Store, actor: string | undefined, input: C
 	let files: EvidenceFile[] = []
 	const reply = write(store, { actor, command: 'run check', subject: input.runId, input }, (operationId, at) => {
 		const run = startedRun(store, input.runId)
+		if (run.request.permanent) requirePermanentSelection(store, input.runId)
 		const test = selectedTest(run, input.testId)
 		const assertion = test.assertions.find((assertion) => assertion.id === input.assertionId)
 		requireWellFormed(
@@ -577,6 +655,7 @@ export function closeTest(store: Store, actor: string | undefined, input: CloseI
 	let files: EvidenceFile[] = []
 	const reply = write(store, { actor, command: 'run close', subject: input.runId, input }, (operationId, at) => {
 		const run = startedRun(store, input.runId)
+		if (run.request.permanent && input.outcome === undefined) requirePermanentSelection(store, input.runId)
 		const test = selectedTest(run, input.testId)
 		requireOpen(store, input.runId, test.id)
 		const results = runAssertions(store, input.runId)
@@ -642,6 +721,10 @@ export function recordFinding(store: Store, actor: string | undefined, input: { 
 	return write(store, { actor, command: 'run finding', subject: input.runId, input }, (operationId) => {
 		const run = startedRun(store, input.runId)
 		const finding = validate('finding', input.finding)
+		requireCondition(
+			!run.request.permanent || finding.type === 'defect',
+			'A permanent run records only defects of its selected tests.'
+		)
 		const findingIds = runFindings(store, input.runId).map((item) => item.id)
 		requireCondition(
 			!findingIds.includes(finding.id),
@@ -707,6 +790,10 @@ export function recordFinding(store: Store, actor: string | undefined, input: { 
 export function recordGap(store: Store, actor: string | undefined, input: { runId: string; gap: unknown }) {
 	return write(store, { actor, command: 'run gap', subject: input.runId, input }, (operationId) => {
 		const run = startedRun(store, input.runId)
+		requireCondition(
+			!run.request.permanent,
+			'A permanent run does not discover gaps. Close the affected test as blocked with its reason.'
+		)
 		const gap = validate('gap', input.gap)
 		requireWellFormed(
 			gap.status === 'open' && gap.decisionId === null,
@@ -796,6 +883,12 @@ function finish(store: Store, actor: string | undefined, input: FinishInput) {
 				operationId
 			)
 		const outcomes = runOutcomes(store, input.runId)
+		if (
+			run.request.permanent &&
+			completion === 'completed' &&
+			[...outcomes.values()].some((item) => item.outcome === 'passed')
+		)
+			requirePermanentSelection(store, input.runId)
 		const results = runAssertions(store, input.runId)
 		const findings = runFindings(store, input.runId)
 		const newGaps = runGaps(store, input.runId)
@@ -836,7 +929,9 @@ function finish(store: Store, actor: string | undefined, input: FinishInput) {
 						id.includes(':')
 							? dependencyBlock(store, id, run.row.application_build) !== null
 							: outcomes.get(id)?.outcome !== 'passed'
-					) || newGaps.some((gap) => gap.severity === 'blocking')
+					) ||
+					newGaps.some((gap) => gap.severity === 'blocking') ||
+					(Boolean(run.request.permanent) && outcome === 'blocked' && Boolean(outcomes.get(test.id)?.reason))
 				requireCondition(
 					cause,
 					`Selected test ${test.id} is ${outcome} without a cause. A completed run needs a prerequisite that did not pass, or a new blocking gap.`,
@@ -1003,6 +1098,7 @@ export function resumeRun(store: Store, actor: string | undefined, input: Resume
 			instance: run.row.instance_id,
 			partial: run.request.partialExecution,
 			retestOf: run.request.retestOf,
+			...(run.request.permanent ? { permanent: run.request.permanent.reference } : {}),
 		})
 		const outcomes = runOutcomes(store, input.runId)
 		const openTests = run.plan.tests.filter(

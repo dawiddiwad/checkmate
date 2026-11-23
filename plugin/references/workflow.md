@@ -1,5 +1,7 @@
 # Stage rules
 
+> **Agent only:** This file contains repository or workflow instructions for coding agents.
+
 Checkmate keeps targets, plans, decisions, runs, and evidence in `.checkmate/checkmate.db` in the application workspace.
 Run every command from the application workspace with the absolute path of the plugin CLI:
 

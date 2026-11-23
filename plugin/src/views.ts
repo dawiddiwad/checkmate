@@ -707,8 +707,42 @@ function foundEntries(
 const overlaid: LoopState[] = ['needs_plan', 'ready_to_run', 'nothing_to_run', 'needs_retest', 'passed', 'accepted']
 
 export function planStatus(store: Store, planId: string, harness = workspaceHarness(store)) {
-	const { follows, ...status } = loopStatus(store, planId, harness)
-	return { ...status, rules: rulesLine(store, planId), next: [...follows, ...status.next] }
+	const { follows, followActions, ...status } = loopStatus(store, planId, harness)
+	const next = [...follows, ...status.next]
+	const active = status.explorations.find((item) => runningExploration.includes(item.state))
+	const running = Boolean(active)
+	const actions = next.map((text) => {
+		const follow = followActions.find((item) => item.text === text)
+		return follow
+			? { kind: 'follow' as const, ...follow, available: !running }
+			: { kind: 'instruction' as const, text }
+	})
+	const qa = {
+		build: buildOrder(store, planId).at(-1)?.build ?? status.latestRun?.build ?? null,
+		activeBuild: active?.build ?? null,
+		state: status.state,
+		waitsOn: status.waitsOn,
+		reasons: status.why,
+		blockers: [
+			...status.gaps
+				.filter((gap) => gap.severity === 'blocking')
+				.map((gap) => ({ kind: 'gap', id: gap.gapId, text: gap.question })),
+			...status.questions
+				.filter((question) => question.blocking)
+				.map((question) => ({ kind: 'question', id: question.id, text: question.question })),
+			...status.pendingDecisions.map((decision) => ({
+				kind: 'decision',
+				id: decision.id,
+				text: `Gap ${decision.gapId} has a pending ${decision.kind} decision`,
+			})),
+			...status.claims
+				.filter((claim) => oracleStates.includes(claim.state) || factoryStates.includes(claim.state))
+				.map((claim) => ({ kind: 'claim', id: claim.claimId, text: claim.title })),
+		],
+		follow: followActions.map((item) => ({ ...item, available: item.recommended && !running })),
+		actions,
+	}
+	return { ...status, rules: rulesLine(store, planId), next, qa }
 }
 
 function loopStatus(store: Store, planId: string, harness: Harness) {
@@ -741,14 +775,25 @@ function loopStatus(store: Store, planId: string, harness: Harness) {
 			for (const id of knownAnswerIds) knownAnswers.add(id)
 		}
 	}
-	const follows = followSources.flatMap((item) => {
-		const count = followCount(store, item.explorationId, knownAnswers)
-		return count
-			? [
-					`${amount(count, 'unused answer')} of ${item.explorationId}: checkmate explore follow ${item.explorationId}`,
-				]
-			: []
+	const followActions = explorations.map((item) => {
+		const eligibleCount = startOf(explorationEvents(store, item.explorationId))
+			? followCount(store, item.explorationId)
+			: 0
+		const count =
+			eligibleCount && followSources.includes(item) ? followCount(store, item.explorationId, knownAnswers) : 0
+		return {
+			explorationId: item.explorationId,
+			build: item.build,
+			state: item.state,
+			eligible: eligibleCount > 0,
+			unusedAnswers: eligibleCount,
+			recommended: count > 0,
+			count,
+			command: `checkmate explore follow ${item.explorationId}`,
+			text: `${amount(count, 'unused answer')} of ${item.explorationId}: checkmate explore follow ${item.explorationId}`,
+		}
 	})
+	const follows = followActions.filter((item) => item.recommended).map((item) => item.text)
 	const keep = mergedEntries(store, planId)
 	const claims = planClaims(store, planId, keep)
 		.filter((claim) => claim.open)
@@ -763,7 +808,7 @@ function loopStatus(store: Store, planId: string, harness: Harness) {
 			handoff: claim.handoff,
 		}))
 	const questions = planQuestions(store, planId, keep).filter((question) => question.answer === null)
-	const extra = { explorations, claims, questions, follows }
+	const extra = { explorations, claims, questions, follows, followActions }
 	if (!overlaid.includes(base.state)) return { ...base, ...extra }
 	const running = explorations.filter((item) => runningExploration.includes(item.state))
 	const paused = running.filter((item) => item.paused)

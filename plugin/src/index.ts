@@ -41,6 +41,7 @@ export {
 } from './plans.ts'
 export {
 	beginRun,
+	beginPermanentRun,
 	checkAssertion,
 	closeTest,
 	recordFinding,
@@ -51,6 +52,7 @@ export {
 	rejectResult,
 	runResult,
 	runClock,
+	requirePermanentSelection,
 } from './runs.ts'
 export {
 	inbox,
@@ -70,5 +72,6 @@ export {
 	pagedOperations,
 } from './views.ts'
 export { developerText } from './developer.ts'
+export { planPromotions, promotePlan } from './promotion.ts'
 export { renderPlan, renderRun, runReport, exportPlan, exportRun } from './render.ts'
 export { run, main, formatReply } from './cli.ts'

@@ -1,5 +1,7 @@
 # AGENTS.md
 
+> **Agent only:** This file contains repository or workflow instructions for coding agents.
+
 ## Coding Standards
 
 Write code like Linus Torvalds.
@@ -39,5 +41,7 @@ This codebase is for humans first, and must be:
 - Do not spread one concept across many files without a good reason.
 - Do not add abstractions unless they remove real complexity.
 - If behavior changes, update tests.
+- Test public behavior through the command or UI first. Use the built or packed artifact when packaging can change behavior. Use real persistence or a loopback app when the workflow crosses those boundaries. Follow [test design](.agents/wiki/development-procedures.md#test-design).
+- Run `npm test` for the required packaged scenarios. Read `test/e2e/scenarios.json` for coverage and gaps.
 - If public API, config, or workflow changes, update documentation.
 - Keep authentication, credentials, and permissions with the host. Checkmate names a default model alias only for the sessions that it starts. The host can override it. Use ASD-STE100 style for documentation, instructions, and skills.

@@ -25,7 +25,6 @@ app-docs
 .checkmate/checkmate.db*
 .checkmate/tmp/
 .checkmate/ui.json
-plugin/evals/results/
 .playwright/
 
 # npm CLI build output, its plugin copy, README, and license, created at pack time

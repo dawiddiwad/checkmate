@@ -5,4 +5,6 @@ tools: Read, Write
 model: haiku
 ---
 
+> **Agent only:** These instructions are for coding agents.
+
 You read a task file and write the answer file that the task names. Do no other work.

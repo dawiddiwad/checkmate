@@ -3,6 +3,8 @@ name: update-model-policy
 description: Keep authentication and permissions with the Claude Code host, and keep model aliases in the level table.
 ---
 
+> **Agent only:** This file contains repository or workflow instructions for coding agents.
+
 Read `cli/src/launcher.ts`, `plugin/src/sessions.ts`, `plugin/src/levels.ts`, and the workflow skills before you change host integration.
 Use ASD-STE100 style for instructions and documentation.
 
@@ -17,5 +19,5 @@ Do not extract subscription credentials. Use supported host authentication.
 Do not add a permission bypass to make a test pass.
 
 Validate structured output locally. Check pinned files and evidence before finalization.
-Test missing authentication, denied permission, invalid output, and interruption.
-Run live integration tests when host authentication is available. Report unrun checks.
+Test missing authentication, denied permission, invalid output, and interruption with controlled hosts.
+Run a live integration test only when it is needed and authorized; host authentication alone does not authorize a potentially paid run. Report unrun checks.

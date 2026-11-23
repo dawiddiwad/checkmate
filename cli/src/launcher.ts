@@ -1,5 +1,14 @@
 import type { Profile, Reply, Status, Store } from '../../plugin/src/index.ts'
-import { Refusal, closeStore, isBusy, openRejections, openStore, runClock, validate } from '../../plugin/src/index.ts'
+import {
+	Refusal,
+	closeStore,
+	isBusy,
+	openRejections,
+	openStore,
+	requirePermanentSelection,
+	runClock,
+	validate,
+} from '../../plugin/src/index.ts'
 import type { Harness } from '../../plugin/src/pi.ts'
 import { piArgs, piResult, resolvePiModelArgs, selectedHarness } from '../../plugin/src/pi.ts'
 import { planRequest, planTools } from '../../plugin/src/plans.ts'
@@ -369,7 +378,10 @@ function checkSubject(store: Store, stage: Stage, subject: string) {
 		if (!pendingDecisions(store, subject))
 			refuse(`Plan ${subject} has no pending decision. Record one with \`checkmate gap answer\`.`)
 	}
-	if (stage === 'execute') startedRun(store, subject)
+	if (stage === 'execute') {
+		startedRun(store, subject)
+		requirePermanentSelection(store, subject)
+	}
 }
 
 function verify(store: Store, stage: Stage, subject: string, after: number, actor: string): Verified | null {
@@ -432,6 +444,7 @@ function stagePrompt(stage: Stage, subject: string, execution: Execution | null)
 		onNewBlocker: string
 		retestOf: string | null
 		retestDefects?: Array<{ runId?: string; findingId: string; testIds: string[] }>
+		permanent?: { reference: string }
 	}
 	const earlier = (request.retestDefects ?? []).map(
 		(defect) => `${defect.testIds.join(',')} (${defect.runId ?? request.retestOf}/${defect.findingId})`
@@ -447,7 +460,9 @@ function stagePrompt(stage: Stage, subject: string, execution: Execution | null)
 					'Read local source files with Read or Bash. Use these sources for the tests that need them.',
 				]
 			: []),
-		...(planning.context?.instructions ? [`Plan request instructions: ${planning.context.instructions}`] : []),
+		...(!request.permanent && planning.context?.instructions
+			? [`Plan request instructions: ${planning.context.instructions}`]
+			: []),
 		`Plan tools: ${tools.join(', ') || 'none declared'}.`,
 		'Use Bash for CLI tools. Check for an executable on PATH before you report a CLI tool as missing. The host controls tool access and permissions.',
 		`Allowed test operations: ${profile.allowedOperations.join(', ')}.`,
@@ -458,6 +473,11 @@ function stagePrompt(stage: Stage, subject: string, execution: Execution | null)
 				]
 			: []),
 		`Selected tests: ${request.selectedTestIds.join(',')}.`,
+		...(request.permanent
+			? [
+					`Permanent-only run from ${request.permanent.reference}. Execute only these selected tests. Do not explore, probe, discover, generate rules or tests, or record new gaps. Close a blocked test with its reason.`,
+				]
+			: []),
 		`New blocker policy: ${blockerPolicy[request.onNewBlocker] ?? request.onNewBlocker}`,
 		...(earlier.length
 			? [
@@ -466,7 +486,7 @@ function stagePrompt(stage: Stage, subject: string, execution: Execution | null)
 			: []),
 		...resetLines(profile),
 		`Each test owns its data. For a unique value, use qa-${subject}-<testId>. When a precondition fails, adapt the test data within the intent of the test before you record a blocking gap. Start the --observed of each assertion of that test with "Data changed: <what>."`,
-		...rejected.map(
+		...(request.permanent ? [] : rejected).map(
 			(item) => `The oracle rejected ${item.runId}: ${item.rationale.replace(/\.$/, '')}. Address it.`
 		),
 		`Browser session: ${run.browser_session}. Send text evidence with \`--evidence -\`. Binary evidence directory: .checkmate/tmp/${subject}/.`,

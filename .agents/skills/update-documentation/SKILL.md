@@ -3,6 +3,8 @@ name: update-documentation
 description: Keep Checkmate contracts, workflows, examples, and documentation consistent.
 ---
 
+> **Agent only:** This file contains repository or workflow instructions for coding agents.
+
 Read the changed code and tests before editing documentation.
 Use ASD-STE100 style. Use short sentences, consistent terms, and explicit steps.
 

@@ -3,6 +3,8 @@ name: execute
 description: Run the stored tests of a Checkmate run ID such as run-1, or retest that run on a new build. Use when the test skill hands over a run, or the oracle names a run or a plan revision to run. A request to test a change goes to the test skill.
 ---
 
+> **Agent only:** This file contains repository or workflow instructions for coding agents.
+
 Read `${CLAUDE_PLUGIN_ROOT}/references/workflow.md`. It has the command rules, the actor rules, and the safety rules. In the same session as the oracle, also read `${CLAUDE_PLUGIN_ROOT}/references/session.md`: it tells you how to begin a run and how to report.
 
 The plugin CLI is `${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js`. Run `checkmate <command>` as `node "${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js" <command>`. Write the absolute path. Do not write a shell variable in its place.
@@ -24,8 +26,8 @@ The delegated prompt also lists the plan request sources and instructions, the p
    3. Make the test data. Read [Test data and reset](#test-data-and-reset). When a precondition fails, adapt the data.
    4. Do the action. Record each assertion with `run check`. Read [Assertion results](#assertion-results).
    5. Close the test with `checkmate run close <runId> <testId> --actor claude:execute`. Checkmate calculates the outcome.
-   6. When something unknown blocks the test, record a gap, close the test as `blocked`, and go to the next test. When a tool or access fails, close the test as `error`, and go to the next test. Do not stop the run.
-5. Probe the edge cases. Read [Exploration](#exploration).
+   6. When something unknown blocks the test, record a gap, close the test as `blocked`, and go to the next test. For `mode=permanent`, close the test as `blocked` with the reason and do not record a gap. When a tool or access fails, close the test as `error`, and go to the next test. Do not stop the run.
+5. Unless `run show` gives `mode=permanent`, probe the edge cases. Read [Exploration](#exploration).
 6. Record a defect finding for each failed assertion. Read [Findings and gaps](#findings-and-gaps).
 7. Finish the run. Read [Finish](#finish). Always end with `run finish`, also when no test passed.
 
@@ -94,6 +96,8 @@ EOF
 For a test that you did not start, run `checkmate run close <runId> <testId> --actor claude:execute --outcome blocked|not_run|error --reason "<cause>"`. Use `blocked` for a failed prerequisite or a new blocking gap. Use `error` for a tool or access failure. Add `--cause deadline` only under the [time](#time) rule.
 
 ## Exploration
+
+For `mode=permanent`, do not explore, probe, discover, or generate rules or tests. Run only the selected tests.
 
 After the planned tests, probe the rules of the selected tests for defects that the plan does not check. For example: a value exactly at a threshold, upper case or extra whitespace, the other entry point (API or UI), the state after a removal or an undo, or a total or count in a second view.
 

@@ -53,6 +53,7 @@ import {
 	newBlockerPolicies,
 	acceptResult,
 	beginRun,
+	beginPermanentRun,
 	checkAssertion,
 	closeTest,
 	finishRun,
@@ -102,6 +103,8 @@ import { doneSteps, nextActions, pauseRun, stepDone, stepsStarted } from './agen
 import { levelNames, testLevels } from './levels.ts'
 import { runTest, testModes } from './modes.ts'
 import { harvestExploration } from './harvest.ts'
+import { planPromotions, promotePlan } from './promotion.ts'
+import { specFinding, specHandoff, specReview, specStatus } from './spec.ts'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { constants } from 'node:sqlite'
@@ -244,7 +247,7 @@ function leftOutLines(reply: Reply) {
 }
 
 function explorationLines(reply: Reply): Printed {
-	const status = reply.data as Partial<ReturnType<typeof explorationStatus>> & { outcome?: string }
+	const status = reply.data as Partial<ReturnType<typeof explorationStatus>> & { outcome?: string; next?: string[] }
 	if (!status.explorers) return {}
 	return {
 		facts: {
@@ -267,8 +270,11 @@ function explorationLines(reply: Reply): Printed {
 			follow: status.follow ?? undefined,
 			followReason: status.followReason ?? undefined,
 			path: status.path === 'session' ? 'session' : undefined,
+			target: status.targetId,
+			instance: status.instanceId,
 		},
 		lines: [
+			...(status.next ?? []).map((command) => ['next', command]),
 			...status.explorers.map((item) => [
 				item.explorer,
 				status.path === 'session' ? `agent=${item.session ?? '-'}` : (item.session ?? '-'),
@@ -643,6 +649,47 @@ const commands: Record<string, Command> = {
 			savePlan(store, actor, { planId: value(args, 'planId')!, candidate: stdin() }),
 		print: (reply) => ({ facts: { sha256: short(reply.data.sha256) } }),
 	},
+	'plan promote': {
+		positionals: ['reference'],
+		flags: { run: 'value', build: 'value', rationale: 'value' },
+		required: ['run', 'build', 'rationale'],
+		write: true,
+		run: (store, args, { actor }) =>
+			promotePlan(store, actor, {
+				reference: value(args, 'reference')!,
+				runId: value(args, 'run')!,
+				build: value(args, 'build')!,
+				rationale: value(args, 'rationale')!,
+			}),
+		print: (reply) => ({
+			facts: {
+				build: reply.data.build,
+				run: reply.data.runId,
+				tests: reply.data.tests,
+				recorded: reply.data.recorded,
+			},
+		}),
+	},
+	'plan promotions': {
+		positionals: ['planId'],
+		readOnly: true,
+		run: (store, args) =>
+			completed(value(args, 'planId')!, { promotions: planPromotions(store, value(args, 'planId')!) }),
+		print: (reply) => ({
+			lines: (reply.data.promotions as ReturnType<typeof planPromotions>).map((item) => [
+				`${item.planId}@${item.revision}`,
+				`source=${item.sourceRevision}`,
+				`build=${item.build}`,
+				`run=${item.runId}`,
+				`sha256=${short(item.resultSha256)}`,
+				`accepted=${item.accepted}`,
+				`tests=${item.tests.join(',')}`,
+				`actor=${item.actor}`,
+				item.at,
+				item.rationale,
+			]),
+		}),
+	},
 	'plan show': {
 		positionals: ['reference'],
 		flags: { tests: 'list', fields: 'list', gaps: ['open', 'all'] },
@@ -864,6 +911,35 @@ const commands: Record<string, Command> = {
 			lines: leftOutLines(reply),
 		}),
 	},
+	'run permanent': {
+		positionals: ['runId', 'planId'],
+		flags: { build: 'value', instance: 'value', promotion: 'value', timeout: { min: 1, max: 3600 } },
+		required: ['build'],
+		write: true,
+		run: (store, args, { actor }) =>
+			beginPermanentRun(store, actor, {
+				runId: value(args, 'runId')!,
+				planId: value(args, 'planId')!,
+				build: value(args, 'build')!,
+				instance: value(args, 'instance'),
+				promotion: value(args, 'promotion'),
+				timeoutSeconds: integer(args, 'timeout'),
+			}),
+		print: (reply) => ({
+			facts: {
+				plan: reply.data.plan,
+				build: reply.data.build,
+				instance: reply.data.instanceId,
+				tests: reply.data.tests,
+				startedAt: reply.data.startedAt,
+				browserSession: reply.data.browserSession,
+				deadlineSeconds: reply.data.deadlineSeconds,
+				deadline: reply.data.deadline,
+				evidenceDirectory: reply.data.evidenceDirectory,
+			},
+			lines: leftOutLines(reply),
+		}),
+	},
 	'run check': {
 		positionals: ['runId', 'testId', 'assertionId'],
 		flags: { result: assertionResults, observed: 'value', reason: 'value', evidence: 'repeat' },
@@ -1004,6 +1080,7 @@ const commands: Record<string, Command> = {
 			return {
 				facts: {
 					state: detail.state,
+					mode: detail.request.permanent ? 'permanent' : undefined,
 					plan: `${detail.planId}@${detail.revision}`,
 					build: detail.build,
 					instance: detail.instance.instanceId,
@@ -1722,6 +1799,62 @@ const commands: Record<string, Command> = {
 				operation.rowid,
 			]),
 		}),
+	},
+	'spec finding': {
+		positionals: ['reference', 'gapId'],
+		flags: { kind: ['question', 'gap', 'defect'], source: 'value', evidence: 'value', 'expect-sha': 'value' },
+		required: ['kind', 'source', 'evidence', 'expect-sha'],
+		write: true,
+		run: (store, args, { actor }) =>
+			specFinding(store, actor, {
+				reference: value(args, 'reference')!,
+				gapId: value(args, 'gapId')!,
+				kind: value(args, 'kind')!,
+				source: value(args, 'source')!,
+				evidence: value(args, 'evidence')!,
+				sha256: value(args, 'expect-sha')!,
+			}),
+	},
+	'spec review': {
+		positionals: ['reference'],
+		flags: { source: 'value', evidence: 'value', rationale: 'value', 'expect-sha': 'value' },
+		required: ['source', 'evidence', 'rationale', 'expect-sha'],
+		write: true,
+		run: (store, args, { actor }) =>
+			specReview(store, actor, {
+				reference: value(args, 'reference')!,
+				source: value(args, 'source')!,
+				evidence: value(args, 'evidence')!,
+				rationale: value(args, 'rationale')!,
+				sha256: value(args, 'expect-sha')!,
+			}),
+	},
+	'spec status': {
+		positionals: ['reference'],
+		readOnly: true,
+		run: (store, args) => {
+			const status = specStatus(store, value(args, 'reference')!)
+			return {
+				status: status.ready ? 'completed' : 'needs_decision',
+				subject: value(args, 'reference')!,
+				reasons: status.reasons,
+				data: status,
+			}
+		},
+		print: (reply) => ({ facts: { ready: reply.data.ready, sha256: reply.data.sha256 } }),
+	},
+	'spec handoff': {
+		positionals: ['reference'],
+		flags: { rationale: 'value', 'expect-sha': 'value' },
+		required: ['rationale', 'expect-sha'],
+		write: true,
+		run: (store, args, { actor }) =>
+			specHandoff(store, actor, {
+				reference: value(args, 'reference')!,
+				rationale: value(args, 'rationale')!,
+				sha256: value(args, 'expect-sha')!,
+			}),
+		print: (reply) => ({ facts: { ready: reply.data.ready, sha256: reply.data.sha256 } }),
 	},
 	query: {
 		positionals: ['sql'],

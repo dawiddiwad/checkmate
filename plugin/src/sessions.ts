@@ -123,7 +123,7 @@ export const reservedClaudeArgs = [
 
 export function checkmateScript() {
 	const own = fileURLToPath(import.meta.url)
-	return own.endsWith('.ts') ? join(pluginRoot, 'bin', 'checkmate.ts') : own
+	return own.endsWith('.ts') ? join(pluginRoot, '..', 'cli', 'src', 'main.ts') : own
 }
 
 export function claudeConfigDir(env: Env) {
@@ -615,7 +615,18 @@ export type RequestSession = {
 
 export const requestHookName = 'request'
 
-export function requestSystemPrompt(checkmate: string) {
+export function requestSystemPrompt(checkmate: string, harness: Harness = 'claude') {
+	const skill = readFileSync(join(pluginRoot, 'references', 'oracle-workflow.md'), 'utf8')
+	const start = skill.indexOf('1. Run `target list`')
+	if (start < 0) throw new Error('The Checkmate oracle workflow is missing. Reinstall the plugin.')
+	const workflow = skill
+		.slice(start)
+		.replace(
+			'- Run `delegate execute` without `--allow` or `--claude-arg`. Pi controls its own tools and permissions. Do not widen them to work around a refusal.',
+			harness === 'pi'
+				? '- Run `delegate execute` without `--allow` or `--claude-arg`. Pi controls its own tools and permissions. Do not widen them to work around a refusal.'
+				: '- Use the configured Claude permissions for `delegate execute`. Do not widen them to work around a refusal.'
+		)
 	return [
 		'This conversation comes from the Checkmate web UI.',
 		'Answer what the person asked. When you change the record, say what changed.',
@@ -624,7 +635,8 @@ export function requestSystemPrompt(checkmate: string) {
 		'UI paths: plan /plans/<planId>, revision /plans/<planId>@<revision>, stored test or requirement /plans/<planId>@<revision>#<id>, run /runs/<runId>, exploration /explorations/<explorationId>.',
 		'For a tester question use /plans/<planId>?view=all&item=q%3A<testerId>%2F<questionId>. For a defect use the same path with c%3A instead. For a plan gap use /plans/<planId>@<revision>/gaps/<gapId>. For a run test or finding use /runs/<runId>?item=test%3A<testId> or /runs/<runId>?item=finding%3A<findingId>.',
 		'Use Markdown image syntax for screenshots. Run evidence uses /evidence/<evidenceId>. Exploration claim evidence uses /explorations/<explorationId>/claims/<testerId>/<claimId>/evidence/<zeroBasedIndex>.',
-		`To change a record, use the checkmate command line of this workspace: node ${checkmate} <command>.`,
+		`To change a record, use the checkmate command line of this workspace: node '${checkmate.replaceAll("'", "'\\''")}' <command>.`,
+		`Follow this Checkmate workflow using the command path above:\n${workflow}`,
 	].join(' ')
 }
 

@@ -9,8 +9,15 @@ import { planRequest } from '../plans.ts'
 import { approvalPolicy } from '../contracts.ts'
 import { storableDefects } from '../harvest.ts'
 import { oracleStates } from '../journal.ts'
-import { followCount } from '../explorers.ts'
-import { mergedClaims, mergedQuestions, needsYou, planDetail, planExplorations, planHasRevision } from '../views.ts'
+import {
+	mergedClaims,
+	mergedQuestions,
+	needsYou,
+	planDetail,
+	planExplorations,
+	planHasRevision,
+	planStatus,
+} from '../views.ts'
 import { planCost } from '../costs.ts'
 import { age, asList, costText, glyph, html, plural, words } from './html.ts'
 import { crumbBar } from './layout.ts'
@@ -226,7 +233,7 @@ function permissionItem(item: Permission): Item {
 	}
 }
 
-export function reviewOf(store: Store, planId: string) {
+export function reviewOf(store: Store, planId: string, harness?: Context['harness']) {
 	const map = ruleMap(store, planId)
 	const details = new Map(claimDetails(store, planId).map((detail) => [detail.id, detail]))
 	const waiting = needsYou(store).items.filter((item) => item.planId === planId)
@@ -249,11 +256,12 @@ export function reviewOf(store: Store, planId: string) {
 	const explorations = planExplorations(store, planId)
 	const latest = planHasRevision(store, planId) ? planDetail(store, planId) : null
 	const running = explorations.find((item) => item.running) ?? null
-	const last = explorations.at(-1)
-	const answers = last && !running ? followCount(store, last.explorationId) : 0
+	const qa = planStatus(store, planId, harness).qa
+	const answers = qa.follow.find((item) => item.available) ?? null
 	return {
 		phase: running ? phaseOf(explorationEvents(store, running.explorationId), running.state) : null,
-		answers: last && answers ? { explorationId: last.explorationId, build: last.build, count: answers } : null,
+		answers,
+		qa,
 		planId,
 		objective: request.objective,
 		target: `${target.profile.targetId}@${target.revision}`,
@@ -821,11 +829,11 @@ const cellWords: Record<CellStatus, [string, string]> = {
 
 function buildHeadline(review: Review, defects: number, critical: number) {
 	if (review.running)
-		return `Build ${review.running.build} is under test now by ${plural(review.running.explorers ?? 0, 'tester')}.`
+		return `Build ${review.qa.activeBuild} is under test now by ${plural(review.running.explorers ?? 0, 'tester')}.`
 	const last = review.explorations.at(-1)
 	if (last && (last.state === 'stopped' || last.state === 'interrupted'))
 		return `The test of build ${last.build} was ${last.state}.`
-	const build = review.map.builds.at(-1)?.build
+	const build = review.map.builds.length ? review.qa.build : null
 	if (build) return `Build ${build}: ${plural(defects, 'open defect')}${critical ? `, ${critical} critical` : ''}.`
 	const run = review.latestFinalizedRun
 	if (!run) return 'No build is tested yet.'
@@ -1074,7 +1082,7 @@ export function reviewPage(
 	refusal: Refusal | null = null,
 	notice: string | null = null
 ): Page {
-	const review = reviewOf(store, planId)
+	const review = reviewOf(store, planId, context.harness)
 	const views = viewsOf(review)
 	const asked = params.get('view') ?? 'needs'
 	const current = views.includes(asked) ? asked : 'needs'
@@ -1125,6 +1133,7 @@ export function reviewPage(
 				class="sp-review"
 				data-review
 				data-plan="${planId}"
+				data-qa-status="${JSON.stringify(review.qa)}"
 				data-region="review"
 				${item ? html`data-open="${item.key}"` : ''}
 			>

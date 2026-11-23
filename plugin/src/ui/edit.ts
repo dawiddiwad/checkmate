@@ -316,7 +316,12 @@ export function editPage(
 	const needsApproval = detail.approval.policy !== 'none'
 	const next = revision + 1
 	const save = frozen ? `Save as ${planId}@${next}` : 'Save changes'
-	const why = frozen === 'run' ? `A run uses ${subject}.` : `${subject} is approved.`
+	const why =
+		frozen === 'run'
+			? `A run uses ${subject}.`
+			: frozen === 'promotion'
+				? `${subject} was promoted.`
+				: `${subject} is approved.`
 	const notice = frozen
 		? banner(
 				'warn',

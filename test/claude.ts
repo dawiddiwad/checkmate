@@ -19,6 +19,7 @@ if (after('--input-format') === 'stream-json' && args.includes('--no-session-per
 	process.exit(0)
 }
 if (after('--mode') === 'rpc' && args.includes('--no-session')) {
+	if (process.env.FAKE_CLAUDE_REPLAY) appendFileSync(process.env.FAKE_CLAUDE_CALL, JSON.stringify({ role: 'catalog', pid: process.pid }) + '\\n')
 	const lines = require('node:readline').createInterface({ input: process.stdin })
 	const replies = JSON.parse(readFileSync(process.env.FAKE_CLAUDE_REPLIES, 'utf8'))
 	const models = replies.models ?? []
@@ -63,11 +64,18 @@ const env = Object.keys(process.env).filter((name) => name.startsWith('CHECKMATE
 const work = process.env.PLAYWRIGHT_MCP_OUTPUT_DIR
 const files = { explorer: 'plan.md', tester: 'report.md', follower: 'follow-up-report.md' }
 if (work && files[role]) writeFileSync(join(work, files[role]), role + ' of ' + process.env.PLAYWRIGHT_CLI_SESSION + '\\n')
-appendFileSync(process.env.FAKE_CLAUDE_CALL, JSON.stringify({ role, args, prompt, cwd: process.cwd(), env, work, session, actor: process.env.CHECKMATE_ACTOR }) + '\\n')
+if (process.env.FAKE_FOLLOW_STRAY && role === 'follower') writeFileSync('follow-stray.txt', 'Follow-up stray.')
+appendFileSync(process.env.FAKE_CLAUDE_CALL, JSON.stringify({ role, args, prompt, cwd: process.cwd(), env, work, session, pid: process.pid, actor: process.env.CHECKMATE_ACTOR }) + '\\n')
 const replies = JSON.parse(readFileSync(process.env.FAKE_CLAUDE_REPLIES, 'utf8'))
 const chosen = replies[role]
 const reply = chosen && typeof chosen === 'object' && !Array.isArray(chosen) ? chosen[resumed ?? ''] ?? chosen['*'] ?? (streamed ? chosen : undefined) : chosen
-if (streamed) {
+const replayPath = role === 'rules' ? process.env.FAKE_RULES_REPLAY : (role === 'tester' || role === 'recorder') ? process.env.FAKE_CLAUDE_REPLAY : undefined
+if (replayPath) {
+	import(require('node:url').pathToFileURL(replayPath).href)
+		.then(({ replay }) => replay(role, role === 'recorder' ? resumed : session, prompt))
+		.then((result) => finish(typeof result === 'string' ? result : JSON.stringify(result)))
+		.catch((error) => { process.stderr.write(String(error)); process.exitCode = 1 })
+} else if (streamed) {
 	streamRequest(reply).then(() => process.exit(0))
 } else if (reply === '!fail') {
 	process.stderr.write('API error: overloaded\\n')
@@ -87,6 +95,10 @@ else if (reply === '!model') {
 }
 else if (reply === '!stubborn') {
 	process.on('SIGTERM', () => {})
+	setTimeout(() => {}, 60000)
+} else if (reply === '!partial-sleep') {
+	if (!pi) throw Error('Partial replay requires Pi')
+	emit({ type: 'message_end', message: { role: 'assistant', provider: 'fixture', model: 'partial', stopReason: 'stop', content: [{ type: 'text', text: 'Partial observation.' }], usage: { cost: { total: 0.125 } } } })
 	setTimeout(() => {}, 60000)
 } else if (reply === '!sleep') setTimeout(() => {}, 60000)
 else if (reply === '!ask') askHooks().then(() => finish('Done.'))

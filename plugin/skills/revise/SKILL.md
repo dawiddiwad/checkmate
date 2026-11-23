@@ -3,6 +3,8 @@ name: revise
 description: Apply recorded oracle answers to a Checkmate plan and save the next revision. Not for testing: a request to test goes to the test skill.
 ---
 
+> **Agent only:** This file contains repository or workflow instructions for coding agents.
+
 Read `${CLAUDE_PLUGIN_ROOT}/references/workflow.md`. It has the command rules, the actor rules, and the safety rules. In the same session as the oracle, also read `${CLAUDE_PLUGIN_ROOT}/references/session.md`: it tells you how to report.
 
 The plugin CLI is `${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js`. Run `checkmate <command>` as `node "${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js" <command>`. Write the absolute path. Do not write a shell variable in its place.

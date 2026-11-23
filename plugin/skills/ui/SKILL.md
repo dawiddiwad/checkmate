@@ -3,6 +3,8 @@ name: ui
 description: Start the Checkmate review UI for the workspace in the background and print its URL.
 ---
 
+> **Agent only:** This file contains repository or workflow instructions for coding agents.
+
 Read `${CLAUDE_PLUGIN_ROOT}/references/workflow.md` for the command rules and `${CLAUDE_PLUGIN_ROOT}/references/session.md` for the report format.
 
 The plugin CLI is `${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js`. Run `checkmate <command>` as `node "${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js" <command>`. Write the absolute path. Do not write a shell variable in its place.

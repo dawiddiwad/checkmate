@@ -1,5 +1,7 @@
 # Same-session rules
 
+> **Agent only:** This file contains repository or workflow instructions for coding agents.
+
 Read this file only in the same session as the oracle. A delegated stage or a sub-agent does not read it.
 
 ## Read the current state first

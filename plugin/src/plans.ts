@@ -29,6 +29,7 @@ import {
 	validate,
 } from './contracts.ts'
 import { findInstance, targetRevision, toolCheck } from './targets.ts'
+import { permanentSelection } from './permanent.ts'
 
 export type PlanRevision = { plan: Plan; sha256: string }
 export type PlanTool = Omit<Profile['tools'][number], 'reachable'> & { reachable?: boolean }
@@ -49,6 +50,7 @@ export type GateInput = {
 	instance?: string
 	partial?: string
 	retestOf?: string | null
+	permanent?: string
 }
 export type PatchOperation = { op: 'add' | 'remove' | 'replace'; path: string; value?: unknown }
 type RequestRow = { plan_id: string; target_id: string; target_revision: number; body: string }
@@ -227,6 +229,8 @@ export function planCandidate(plan: Plan): Required<PlanCandidate> {
 
 export function frozenRevision(store: Store, planId: string, revision: number) {
 	if (one(store, 'SELECT 1 FROM runs WHERE plan_id = ? AND plan_revision = ?', planId, revision)) return 'run'
+	if (one(store, 'SELECT 1 FROM plan_promotions WHERE plan_id = ? AND promoted_revision = ?', planId, revision))
+		return 'promotion'
 	const approved = one(
 		store,
 		"SELECT 1 FROM approvals WHERE subject_kind = 'plan' AND subject_id = ? AND verdict = 'approved'",
@@ -964,7 +968,14 @@ export function gate(store: Store, input: GateInput) {
 	const revision = planRevision(store, reference.id, reference.revision)
 	const { plan } = revision
 	const subject = `${plan.planId}@${plan.revision}`
-	latestCheck(store, plan.planId, plan.revision)
+	const permanent = input.permanent ? permanentSelection(store, plan.planId, input.permanent) : null
+	if (permanent) {
+		requireCondition(permanent.revision === plan.revision, `Run must use ${permanent.reference}.`)
+		requireCondition(
+			JSON.stringify(input.tests) === JSON.stringify(permanent.tests),
+			`Permanent run must select exactly the tests of ${permanent.reference}.`
+		)
+	} else latestCheck(store, plan.planId, plan.revision)
 	const target = targetRevision(store, plan.target.targetId, plan.target.revision)
 	const build = requireText(input.build, 'application build (--build)')
 	const partial = requireChoice(input.partial ?? 'ready_only', partialModes, 'partial execution (--partial)')
@@ -997,7 +1008,7 @@ export function gate(store: Store, input: GateInput) {
 		hints.push(`The setup stage must save a ready profile for ${plan.target.targetId}.`)
 	}
 	const approval = planApproval(store, plan, revision.sha256)
-	if (approval.policy === 'required' && !approval.approved) {
+	if (permanent ? approval.rejected : approval.policy === 'required' && !approval.approved) {
 		reasons.push(`Plan ${subject} is not approved`)
 		hints.push(`The oracle must approve ${subject}. ${status}`)
 	}

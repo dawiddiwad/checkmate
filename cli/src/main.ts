@@ -6,7 +6,7 @@ import { delegate, minimumRules, stages } from './launcher.ts'
 import { selectedHarness } from '../../plugin/src/pi.ts'
 import { exploreSpec } from './spec.ts'
 import { existsSync, mkdirSync, openSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { spawn } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -181,6 +181,7 @@ function detachDelegate(tokens: string[]) {
 	)
 	child.unref()
 	writeFileSync(file + '.started', String(Date.now()))
+	writeFileSync(file + '.pid', String(child.pid))
 	print(
 		{
 			status: 'running',
@@ -193,6 +194,25 @@ function detachDelegate(tokens: string[]) {
 	)
 }
 
+// A detached delegate is alive when its recorded PID runs a delegate command that started after the record was written.
+// A PID that was reused by another process is not alive.
+function delegateAlive(file: string) {
+	if (!existsSync(file + '.pid') || !existsSync(file + '.started')) return false
+	const pid = Number(readFileSync(file + '.pid', 'utf8'))
+	if (!Number.isInteger(pid) || pid <= 0) return false
+	try {
+		process.kill(pid, 0)
+	} catch {
+		return false
+	}
+	const ps = spawnSync('ps', ['-p', String(pid), '-o', 'lstart=,command='], { encoding: 'utf8' })
+	const line = ps.stdout.trim()
+	if (!line.includes('delegate')) return false
+	const started = Number(readFileSync(file + '.started', 'utf8'))
+	const processStarted = Date.parse(line.slice(0, 24))
+	return Number.isNaN(processStarted) || processStarted >= started - 5000
+}
+
 function waitDelegate(tokens: string[]) {
 	const parsed = parse(tokens.slice(1), ['timeout', 'workspace'])
 	const [stage, subject] = parsed.positionals as [Stage, string]
@@ -200,7 +220,24 @@ function waitDelegate(tokens: string[]) {
 	const file = resultFile(workspace, stage, subject)
 	const limit = (seconds(parsed.values.timeout, 'timeout') ?? 90) * 1000
 	const until = Date.now() + limit
-	while (!existsSync(file) && Date.now() < until) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 500)
+	while (!existsSync(file) && Date.now() < until && delegateAlive(file))
+		Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 500)
+	if (!existsSync(file) && !delegateAlive(file)) {
+		// The delegate stopped without a reply. Settle the record: it is not running, and the plan record says what was saved.
+		rmSync(file + '.started', { force: true })
+		rmSync(file + '.pid', { force: true })
+		print(
+			{
+				status: 'operational_error',
+				subject,
+				reasons: [`delegate ${stage} ${subject} stopped before it wrote a reply. It is not running.`],
+				operation: null,
+				hint: `Run checkmate status ${subject} to read what was saved. Then run checkmate delegate ${stage} ${subject} --detach again if nothing was saved.`,
+			},
+			true
+		)
+		return
+	}
 	if (!existsSync(file)) {
 		print(
 			{
@@ -219,6 +256,7 @@ function waitDelegate(tokens: string[]) {
 	const text = readFileSync(file, 'utf8')
 	rmSync(file, { force: true })
 	rmSync(file + '.started', { force: true })
+	rmSync(file + '.pid', { force: true })
 	rmSync(file + '.log', { force: true })
 	process.stdout.write(text.endsWith('\n') ? text : text + '\n')
 }

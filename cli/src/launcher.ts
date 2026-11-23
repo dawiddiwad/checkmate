@@ -14,7 +14,7 @@ import {
 } from '../../plugin/src/index.ts'
 import type { Harness } from '../../plugin/src/pi.ts'
 import { piArgs, piResult, resolvePiModelArgs, selectedHarness } from '../../plugin/src/pi.ts'
-import { migrationTests, planRequest, planTools } from '../../plugin/src/plans.ts'
+import { migrationTests, notReadyReasons, planRequest, planTools } from '../../plugin/src/plans.ts'
 import { plannedRequest } from '../../plugin/src/routes.ts'
 import { signalChild, trackGroup } from '../../plugin/src/processes.ts'
 import { workspaceEnv } from '../../plugin/src/settings.ts'
@@ -1228,6 +1228,8 @@ export async function delegate(
 		return withStore(workspace, (store) => {
 			const refusal = lastRefusal(store, stage, after, workerActor)
 			const response = receipt(verify(store, stage, subject, after, workerActor), refusal)
+			if (stage === 'plan' && response.status === 'completed')
+				response.reasons.push(...notReadyReasons(store, subject))
 			const recorded = !attempted || recordAttempt(store, stage, subject, harness, response, usage, execution)
 			return { ...response, ...usage, ...(recorded ? {} : { usageWarning }) }
 		})

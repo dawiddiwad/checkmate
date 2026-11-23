@@ -13230,6 +13230,18 @@ function similarPlanHint(store, planId) {
   );
   return matches.length === 1 ? `Did you mean ${matches[0].plan_id}? Use that exact ID.` : void 0;
 }
+function notReadyReasons(store, planId) {
+  const row2 = one(store, "SELECT body FROM latest_plans WHERE plan_id = ?", planId);
+  if (!row2) return [];
+  const plan = JSON.parse(row2.body);
+  const lines2 = [
+    ...plan.tests.flatMap(
+      (test) => unverifiedAssertions(test, plan.requirements).map((id2) => `Not ready: ${test.id}.${id2}`)
+    ),
+    ...uncoveredRequirements(plan).map((id2) => `Not ready: ${id2} has no test`)
+  ];
+  return lines2.length ? [...lines2, `Next: checkmate plan revise ${planId} with the fix for each line above.`] : [];
+}
 function planRequest(store, planId) {
   const row2 = one(store, "SELECT * FROM plan_requests WHERE plan_id = ?", planId);
   requireCondition(row2, `Unknown plan: ${planId}. Run plan open first.`, similarPlanHint(store, planId));
@@ -43597,6 +43609,8 @@ async function delegate(workspace2, stage, subject, options3) {
     return withStore(workspace2, (store) => {
       const refusal = lastRefusal(store, stage, after, workerActor);
       const response = receipt(verify(store, stage, subject, after, workerActor), refusal);
+      if (stage === "plan" && response.status === "completed")
+        response.reasons.push(...notReadyReasons(store, subject));
       const recorded2 = !attempted || recordAttempt(store, stage, subject, harness, response, usage2, execution);
       return { ...response, ...usage2, ...recorded2 ? {} : { usageWarning } };
     });
@@ -43793,7 +43807,7 @@ ${source.text}`)
 
 // cli/src/main.ts
 import { existsSync as existsSync12, mkdirSync as mkdirSync11, openSync as openSync2, readFileSync as readFileSync16, rmSync as rmSync9, writeFileSync as writeFileSync7 } from "node:fs";
-import { spawn as spawn6 } from "node:child_process";
+import { spawn as spawn6, spawnSync as spawnSync9 } from "node:child_process";
 import { join as join22 } from "node:path";
 import { fileURLToPath as fileURLToPath4 } from "node:url";
 var delegateUsage = "checkmate delegate <setup|plan|revise|execute> <targetId|planId|planId|runId> [--timeout <seconds>]";
@@ -43933,6 +43947,7 @@ function detachDelegate(tokens) {
   );
   child.unref();
   writeFileSync7(file + ".started", String(Date.now()));
+  writeFileSync7(file + ".pid", String(child.pid));
   print(
     {
       status: "running",
@@ -43944,6 +43959,22 @@ function detachDelegate(tokens) {
     true
   );
 }
+function delegateAlive(file) {
+  if (!existsSync12(file + ".pid") || !existsSync12(file + ".started")) return false;
+  const pid = Number(readFileSync16(file + ".pid", "utf8"));
+  if (!Number.isInteger(pid) || pid <= 0) return false;
+  try {
+    process.kill(pid, 0);
+  } catch {
+    return false;
+  }
+  const ps = spawnSync9("ps", ["-p", String(pid), "-o", "lstart=,command="], { encoding: "utf8" });
+  const line = ps.stdout.trim();
+  if (!line.includes("delegate")) return false;
+  const started = Number(readFileSync16(file + ".started", "utf8"));
+  const processStarted = Date.parse(line.slice(0, 24));
+  return Number.isNaN(processStarted) || processStarted >= started - 5e3;
+}
 function waitDelegate(tokens) {
   const parsed = parse2(tokens.slice(1), ["timeout", "workspace"]);
   const [stage, subject] = parsed.positionals;
@@ -43951,7 +43982,23 @@ function waitDelegate(tokens) {
   const file = resultFile(workspace2, stage, subject);
   const limit = (seconds(parsed.values.timeout, "timeout") ?? 90) * 1e3;
   const until = Date.now() + limit;
-  while (!existsSync12(file) && Date.now() < until) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 500);
+  while (!existsSync12(file) && Date.now() < until && delegateAlive(file))
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 500);
+  if (!existsSync12(file) && !delegateAlive(file)) {
+    rmSync9(file + ".started", { force: true });
+    rmSync9(file + ".pid", { force: true });
+    print(
+      {
+        status: "operational_error",
+        subject,
+        reasons: [`delegate ${stage} ${subject} stopped before it wrote a reply. It is not running.`],
+        operation: null,
+        hint: `Run checkmate status ${subject} to read what was saved. Then run checkmate delegate ${stage} ${subject} --detach again if nothing was saved.`
+      },
+      true
+    );
+    return;
+  }
   if (!existsSync12(file)) {
     print(
       {
@@ -43970,6 +44017,7 @@ function waitDelegate(tokens) {
   const text2 = readFileSync16(file, "utf8");
   rmSync9(file, { force: true });
   rmSync9(file + ".started", { force: true });
+  rmSync9(file + ".pid", { force: true });
   rmSync9(file + ".log", { force: true });
   process.stdout.write(text2.endsWith("\n") ? text2 : text2 + "\n");
 }

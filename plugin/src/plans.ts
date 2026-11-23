@@ -7,7 +7,7 @@ import { patchRules, requireHeldRules } from './rules.ts'
 import { operationAllowed, readinessHint, targetWebUrl } from './targets.ts'
 import { dataSummary, requireDataFor } from './resets.ts'
 import { all, canonical, completed, digest, execute, one, ulid, write } from './store.ts'
-import { softProblems, uncoveredRequirements } from './contracts.ts'
+import { softProblems, uncoveredRequirements, unverifiedAssertions } from './contracts.ts'
 import type { PlanDraft, Test } from './contracts.ts'
 import {
 	approvalPolicy,
@@ -187,6 +187,20 @@ function similarPlanHint(store: Store, planId: string) {
 		(row) => key(row.plan_id) === key(planId)
 	)
 	return matches.length === 1 ? `Did you mean ${matches[0].plan_id}? Use that exact ID.` : undefined
+}
+
+// The lines a driver needs to act on a saved plan: each check or requirement that is not ready, and the command to fix it.
+export function notReadyReasons(store: Store, planId: string) {
+	const row = one<{ body: string }>(store, 'SELECT body FROM latest_plans WHERE plan_id = ?', planId)
+	if (!row) return []
+	const plan = JSON.parse(row.body) as Plan
+	const lines = [
+		...plan.tests.flatMap((test) =>
+			unverifiedAssertions(test, plan.requirements).map((id) => `Not ready: ${test.id}.${id}`)
+		),
+		...uncoveredRequirements(plan).map((id) => `Not ready: ${id} has no test`),
+	]
+	return lines.length ? [...lines, `Next: checkmate plan revise ${planId} with the fix for each line above.`] : []
 }
 
 export function planRequest(store: Store, planId: string) {

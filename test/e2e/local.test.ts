@@ -8657,3 +8657,19 @@ test('A plan whose second attempt still has tests for fewer than half of its cri
 	assert.match(second.output, /did not produce tests after two attempts/)
 	assert.equal((await ok(['query', 'SELECT count(*) AS n FROM plan_revisions'])).rows[0].n, 0)
 })
+
+test('delegate wait settles a detached delegate that stopped without a reply — it does not report running for ever.', async (t) => {
+	const workspace = directory(t)
+	const { spawnSync } = await import('node:child_process')
+	const { mkdirSync } = await import('node:fs')
+	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle', CHECKMATE_HARNESS: 'claude' }
+	mkdirSync(join(workspace, '.checkmate', 'tmp'), { recursive: true })
+	const file = join(workspace, '.checkmate', 'tmp', 'delegate-plan-ticket.json')
+	const exited = spawnSync(process.execPath, ['-e', '0'])
+	writeFileSync(file + '.started', String(Date.now()))
+	writeFileSync(file + '.pid', String(exited.pid))
+	const waited = await command(workspace, env, 'delegate', 'wait', 'plan', 'ticket', '--timeout', '30')
+	assert.equal(waited.code, 1, waited.output)
+	assert.equal(waited.body.status, 'operational_error', waited.output)
+	assert.match(waited.output, /stopped before it wrote a reply/)
+})

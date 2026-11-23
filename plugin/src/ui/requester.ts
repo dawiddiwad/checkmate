@@ -415,7 +415,9 @@ export function createRequester(store: Store, options: RequesterOptions): Reques
 			CHECKMATE_HARNESS: run.harness,
 			[requestVariable]: request.id,
 			[hookTokenName]: options.hookToken,
-			...(run.harness === 'pi' ? { CHECKMATE_PI_HOOK: JSON.stringify(hook) } : {}),
+			...(run.harness === 'pi'
+				? { CHECKMATE_PI_HOOK: JSON.stringify({ ...hook, chat: true, clis: [checkmateScript()] }) }
+				: {}),
 		}
 		const history = resume ? '' : chatHistory(earlier)
 		const text = history

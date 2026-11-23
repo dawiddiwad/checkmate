@@ -519,7 +519,14 @@ export function listedRequests(store: Store) {
 	return [...requests.filter(isUnread), ...requests.filter((request) => !isUnread(request))]
 }
 
-type ChangeRow = { at: string; command: string; arguments: string; subjects: string; subject: string }
+type ChangeRow = {
+	at: string
+	command: string
+	arguments: string
+	subjects: string
+	subject: string
+	response: string
+}
 
 const recordPaths: Record<string, string> = {
 	plan: '/plans/',
@@ -528,7 +535,13 @@ const recordPaths: Record<string, string> = {
 	target: '/settings/targets/',
 }
 
-function describeChange(command: string, subject: string, input: Record<string, unknown>) {
+function removedText(removed: unknown) {
+	const found = removed as { requirements?: string[]; tests?: string[] } | undefined
+	const parts = [...(found?.requirements ?? []), ...(found?.tests ?? [])]
+	return parts.length ? `, removed ${parts.join(', ')}` : ''
+}
+
+function describeChange(command: string, subject: string, input: Record<string, unknown>, removed?: unknown) {
 	const named = (ids: unknown) =>
 		Array.isArray(ids) ? ids.map((id) => `${subject}/${String(id)}`).join(', ') : subject
 	if (command === 'claim handoff') return `${input.undo ? 'took back' : 'handed over'} ${named(input.claimIds)}`
@@ -537,7 +550,7 @@ function describeChange(command: string, subject: string, input: Record<string, 
 	if (command === 'claim reject') return `rejected ${subject}/${String(input.claimId)}`
 	if (command === 'plan edit') return `edited plan ${subject}`
 	if (command === 'plan save') return `saved plan ${subject}`
-	if (command === 'plan revise') return `revised plan ${subject}`
+	if (command === 'plan revise') return `revised plan ${subject}${removedText(removed)}`
 	if (command === 'plan open') return `opened plan ${subject}`
 	if (command === 'setting set') return `changed the setting ${subject}`
 	return `${command} ${subject}`
@@ -550,16 +563,24 @@ export function operationCountOf(store: Store, requestId: string) {
 export function changesOf(store: Store, requestId: string): RequestChange[] {
 	return all<ChangeRow>(
 		store,
-		`SELECT at, command, arguments, subjects, json_extract(response, '$.subject') AS subject
-		FROM operations WHERE via = ? AND status = 'completed' ORDER BY rowid`,
+		`SELECT at, command, arguments, subjects, response, json_extract(response, '$.subject') AS subject
+		FROM operations
+		WHERE via = ? AND (status = 'completed' OR json_extract(response, '$.data.revision') IS NOT NULL)
+		ORDER BY rowid`,
 		requestId
 	).map((row) => {
 		const record = (JSON.parse(row.subjects) as string[])
 			.map((subject) => /^(plan|run|exploration|target):(.+)$/.exec(subject))
 			.find((found) => found)
 		const subject = record ? record[2] : row.subject
+		const data = (JSON.parse(row.response) as { data?: { removed?: unknown } }).data
 		return {
-			text: describeChange(row.command, subject, JSON.parse(row.arguments) as Record<string, unknown>),
+			text: describeChange(
+				row.command,
+				subject,
+				JSON.parse(row.arguments) as Record<string, unknown>,
+				data?.removed
+			),
 			command: row.command,
 			subject,
 			at: row.at,

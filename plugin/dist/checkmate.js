@@ -12847,10 +12847,16 @@ function usedAssertionIds(store, planId, testId) {
 function applyTestChange(test, change, used) {
   if (change.action !== void 0) test.action = change.action;
   if (change.preconditions !== void 0) test.preconditions = change.preconditions;
+  const existingIds = test.assertions.map((existing) => existing.id);
+  const current2 = `${test.id} has assertions: ${existingIds.join(", ") || "none"}.`;
   for (const [id2, assertion] of Object.entries(change.assertions ?? {})) {
     const position = test.assertions.findIndex((existing) => existing.id === id2);
     if (assertion === null) {
-      requireWellFormed(position >= 0, `Cannot remove unknown assertion ${test.id}.${id2}`);
+      requireWellFormed(
+        position >= 0,
+        `Cannot remove unknown assertion ${test.id}.${id2}`,
+        `${current2} Remove only one of those IDs, with null.`
+      );
       test.assertions.splice(position, 1);
     } else if (position >= 0) test.assertions[position] = { ...test.assertions[position], ...assertion };
     else {
@@ -12860,7 +12866,8 @@ function applyTestChange(test, change, used) {
       );
       requireWellFormed(
         assertion.check !== void 0 && assertion.checkKind !== void 0,
-        `New assertion ${test.id}.${id2} needs check and checkKind`
+        `New assertion ${test.id}.${id2} needs check and checkKind`,
+        `${current2} For a new assertion, send {"check": "<expected text or value>", "checkKind": "deterministic"} under a new ID. To change an existing one, send only the changed field under its current ID.`
       );
       test.assertions.push({ id: id2, check: assertion.check, checkKind: assertion.checkKind });
     }
@@ -14753,7 +14760,12 @@ var recordPaths = {
   exploration: "/explorations/",
   target: "/settings/targets/"
 };
-function describeChange(command, subject, input) {
+function removedText(removed) {
+  const found = removed;
+  const parts = [...found?.requirements ?? [], ...found?.tests ?? []];
+  return parts.length ? `, removed ${parts.join(", ")}` : "";
+}
+function describeChange(command, subject, input, removed) {
   const named = (ids2) => Array.isArray(ids2) ? ids2.map((id2) => `${subject}/${String(id2)}`).join(", ") : subject;
   if (command === "claim handoff") return `${input.undo ? "took back" : "handed over"} ${named(input.claimIds)}`;
   if (command === "gap answer") return `answered ${subject}/${String(input.gapId)}`;
@@ -14761,7 +14773,7 @@ function describeChange(command, subject, input) {
   if (command === "claim reject") return `rejected ${subject}/${String(input.claimId)}`;
   if (command === "plan edit") return `edited plan ${subject}`;
   if (command === "plan save") return `saved plan ${subject}`;
-  if (command === "plan revise") return `revised plan ${subject}`;
+  if (command === "plan revise") return `revised plan ${subject}${removedText(removed)}`;
   if (command === "plan open") return `opened plan ${subject}`;
   if (command === "setting set") return `changed the setting ${subject}`;
   return `${command} ${subject}`;
@@ -14772,14 +14784,22 @@ function operationCountOf(store, requestId2) {
 function changesOf(store, requestId2) {
   return all(
     store,
-    `SELECT at, command, arguments, subjects, json_extract(response, '$.subject') AS subject
-		FROM operations WHERE via = ? AND status = 'completed' ORDER BY rowid`,
+    `SELECT at, command, arguments, subjects, response, json_extract(response, '$.subject') AS subject
+		FROM operations
+		WHERE via = ? AND (status = 'completed' OR json_extract(response, '$.data.revision') IS NOT NULL)
+		ORDER BY rowid`,
     requestId2
   ).map((row2) => {
     const record = JSON.parse(row2.subjects).map((subject2) => /^(plan|run|exploration|target):(.+)$/.exec(subject2)).find((found) => found);
     const subject = record ? record[2] : row2.subject;
+    const data = JSON.parse(row2.response).data;
     return {
-      text: describeChange(row2.command, subject, JSON.parse(row2.arguments)),
+      text: describeChange(
+        row2.command,
+        subject,
+        JSON.parse(row2.arguments),
+        data?.removed
+      ),
       command: row2.command,
       subject,
       at: row2.at,
@@ -29550,7 +29570,7 @@ function createRequester(store, options3) {
       CHECKMATE_HARNESS: run2.harness,
       [requestVariable]: request2.id,
       [hookTokenName]: options3.hookToken,
-      ...run2.harness === "pi" ? { CHECKMATE_PI_HOOK: JSON.stringify(hook) } : {}
+      ...run2.harness === "pi" ? { CHECKMATE_PI_HOOK: JSON.stringify({ ...hook, chat: true, clis: [checkmateScript()] }) } : {}
     };
     const history2 = resume ? "" : chatHistory(earlier);
     const text2 = history2 ? `${request2.text}
@@ -40734,11 +40754,18 @@ function readPiResponse(result) {
   if (result.failure) throw new Error(result.failure[1]);
   const text2 = String(result.result).trim();
   const fenced = /^```(?:json)?[ \t]*\r?\n([\s\S]*)\r?\n```$/i.exec(text2);
+  const object = text2.match(/\{[\s\S]*\}/)?.[0];
   let response;
   try {
     response = JSON.parse(fenced?.[1] ?? text2);
   } catch {
-    throw new InvalidPiResponse("Pi did not return a JSON response");
+    try {
+      response = JSON.parse(object ?? "");
+    } catch {
+      throw new InvalidPiResponse(
+        `Pi did not return a JSON response. Its reply began: ${JSON.stringify(text2.slice(0, 200))}`
+      );
+    }
   }
   try {
     return validate("response", response);
@@ -40927,6 +40954,18 @@ function checkSubject(store, stage, subject) {
     requirePermanentSelection(store, subject);
   }
 }
+function lastRefusal(store, stage, after, actor) {
+  const { command } = verifiedBy[stage];
+  const row2 = one2(
+    store,
+    `SELECT response FROM operations WHERE rowid > ? AND actor = ? AND command = ? AND status != 'completed' ORDER BY rowid DESC LIMIT 1`,
+    after,
+    actor,
+    command
+  );
+  const reasons2 = row2 ? JSON.parse(row2.response).reasons ?? [] : [];
+  return reasons2.length ? `${command} was refused: ${reasons2.join(" ")}` : null;
+}
 function verify(store, stage, subject, after, actor) {
   const { command, key } = verifiedBy[stage];
   const row2 = one2(
@@ -40962,6 +41001,7 @@ function stagePrompt(stage, subject, execution, workspace2) {
       "Write an open blocking gap for each vague term that changes an expected value, for example a threshold, a rounding step, or a scope word. Do not pick the value yourself.",
       'Plan regression tests only for existing rules that the sources state, with expected values from the sources. Mark each with "metadata": { "type": "regression" }.',
       'Each assertion checks one expected value. Write one assertion for each value. Do not join two values with "and" or ";" in one check.',
+      'Write each assertion with the exact expected text or value from the sources, for example: The page shows "1 book" when one book is stored. Do not write a general description such as "pluralizes correctly".',
       "A ready assertion must be observable through the target with the test action. Name in the action every input the check depends on, for example a query parameter or a date. When the target cannot show the value, write an open blocking gap for it, or an agent_observation.",
       "Make each test create its own data or use a unique value such as qa-<runId>-<testId>. Do not rely on seed data.",
       "You can read the running application read-only (open a list page or send a GET) to check preconditions. Do not submit forms or change data.",
@@ -40972,6 +41012,8 @@ function stagePrompt(stage, subject, execution, workspace2) {
       `Plan: ${subject}. Read the pending decisions with \`checkmate plan pending ${subject}\`.`,
       "Change only the tests that the decisions affect. Give each ready test at least one assertion. A test without an assertion is not ready.",
       'When a decision has no expected value, add an assertion with "checkKind": "agent_observation" that records the behavior.',
+      'Change an assertion under its current ID, and send only the changed field. Remove an assertion only when its ID is listed on the test. A new assertion needs "check" and "checkKind".',
+      "Send the delta as one line of JSON in the heredoc, with double quotes, no comments, and no Markdown.",
       'When a decision says a criterion is dropped, removed, or out of scope, remove it. Remove its requirement and its tests in the same delta, for example {"requirements": {"R2": {"remove": true}}, "tests": {"T2": {"remove": true}}}. Do not rewrite a test for another criterion to match it.',
       `Save the next revision with \`checkmate plan revise ${subject}\`. Do not answer gaps.`
     ];
@@ -41025,7 +41067,7 @@ var finalCommand = {
   revise: "plan revise",
   execute: "run finish"
 };
-function prompt(stage, subject, workspace2, pluginRoot2, execution, timeoutSeconds, harness) {
+function prompt(stage, subject, workspace2, pluginRoot2, execution, timeoutSeconds, harness, round = 1, rejected = []) {
   const skill = join18(pluginRoot2, "skills", stage, "SKILL.md");
   const workflow = join18(pluginRoot2, "references", "workflow.md");
   const cliPath = join18(pluginRoot2, "dist", "checkmate.js");
@@ -41044,6 +41086,9 @@ function prompt(stage, subject, workspace2, pluginRoot2, execution, timeoutSecon
     `Workspace: ${workspace2}. Run Checkmate commands from this directory. Add \`--actor ${harness}:${stage}\` to each write.`,
     `\`checkmate <command>\` means \`${cliCommand} <command>\`.`,
     ...stagePrompt(stage, subject, execution, workspace2),
+    ...round > 1 && !execution ? [
+      `Correction. The earlier save was refused: ${rejected.join(" ") || "no reason was given"} Read the refusal, fix only the refused part, and save again with \`checkmate ${verifiedBy[stage].command} ${subject}\`. Every requirement needs a test or an open gap.`
+    ] : [],
     ...stage === "execute" ? [] : [`Deadline: ${timeoutSeconds} seconds from now (${deadline} UTC). Check the time with \`date -u\`.`],
     "Write to the database only through Checkmate commands. Do not ask the oracle. Do not wait for the oracle.",
     stage === "execute" ? "Do not change source code, project files, or the configuration of the application. Test data through the allowed operations and the declared reset are part of a test." : "Do not change source code or project files.",
@@ -41413,42 +41458,64 @@ async function delegate(workspace2, stage, subject, options3) {
   let usage2 = {};
   let attempted = false;
   const timeoutSeconds = options3.timeoutSeconds ?? (execution ? Math.max(1, execution.clock.remainingSeconds) : defaultTimeoutSeconds);
-  try {
-    const executable = harness === "pi" ? options3.pi ?? "pi" : options3.claude ?? "claude";
-    const args = harness === "pi" ? resolvePiModelArgs(
-      executable,
-      piArgs(
-        ["--no-extensions", "--no-session", "--no-mcp", "--no-skills", "--tools", "read,bash"],
+  const maxRounds = run2 ? 1 : 2;
+  let rejected = [];
+  for (let round = 1; round <= maxRounds; round++) {
+    try {
+      const executable = harness === "pi" ? options3.pi ?? "pi" : options3.claude ?? "claude";
+      const args = harness === "pi" ? resolvePiModelArgs(
+        executable,
+        piArgs(
+          ["--no-extensions", "--no-session", "--no-mcp", "--no-skills", "--tools", "read,bash"],
+          env
+        ),
+        workspace2,
         env
-      ),
+      ) : workerArgs(pluginRoot2, options3.allowedTools, options3.claudeArgs);
+      const instructions = prompt(
+        stage,
+        subject,
+        workspace2,
+        pluginRoot2,
+        execution,
+        timeoutSeconds,
+        harness,
+        round,
+        rejected
+      );
+      attempted = true;
+      const result = await launchWorker(executable, args, {
+        cwd: workspace2,
+        prompt: instructions,
+        timeoutSeconds,
+        harness,
+        env: {
+          ...env,
+          CHECKMATE_ACTOR: workerActor,
+          ...run2 ? { PLAYWRIGHT_MCP_OUTPUT_DIR: join18(workspace2, ".checkmate", "tmp", subject) } : {}
+        }
+      });
+      claimed = result.response;
+      failure = result.failure;
+      usage2 = result.usage;
+    } catch (error) {
+      failure = workerFailure(error);
+    }
+    if (failure || run2) break;
+    if (withStore(workspace2, (store) => verify(store, stage, subject, after, workerActor)) !== null) break;
+    rejected = claimed?.reasons ?? [];
+    const planned = withStore(
       workspace2,
-      env
-    ) : workerArgs(pluginRoot2, options3.allowedTools, options3.claudeArgs);
-    const instructions = prompt(stage, subject, workspace2, pluginRoot2, execution, timeoutSeconds, harness);
-    attempted = true;
-    const result = await launchWorker(executable, args, {
-      cwd: workspace2,
-      prompt: instructions,
-      timeoutSeconds,
-      harness,
-      env: {
-        ...env,
-        CHECKMATE_ACTOR: workerActor,
-        ...run2 ? { PLAYWRIGHT_MCP_OUTPUT_DIR: join18(workspace2, ".checkmate", "tmp", subject) } : {}
-      }
-    });
-    claimed = result.response;
-    failure = result.failure;
-    usage2 = result.usage;
-  } catch (error) {
-    failure = workerFailure(error);
+      (store) => one2(store, "SELECT 1 FROM plan_revisions WHERE plan_id = ?", subject)
+    );
+    if (!rejected.length || stage === "plan" && planned) break;
   }
   const reportedSubject = claimed?.subject ?? (failure instanceof InvalidPiResponse ? failure.reportedSubject : void 0);
   if (reportedSubject && !subjectMatches(reportedSubject, subject))
     failure = new Error(`Worker response names ${reportedSubject}, not ${subject}`);
   const cleanup2 = run2 && browser ? await closeBrowser(workspace2, run2.browser_session, options3.playwright ?? "playwright-cli") : null;
   const extra = [...cleanup2 ? [cleanup2] : [], ...run2 ? [resumeReason(subject)] : []];
-  const receipt = (verified) => {
+  const receipt = (verified, refusal) => {
     if (verified && (!failure || failure instanceof InvalidPiResponse))
       return {
         status: verified.reply.status,
@@ -41460,7 +41527,12 @@ async function delegate(workspace2, stage, subject, options3) {
       };
     if (failure) {
       const status = /deadline|interrupted/.test(failure.message) ? "interrupted" : "operational_error";
-      return { status, subject, reasons: [failure.message, ...verified ? [] : extra], operation: null };
+      return {
+        status,
+        subject,
+        reasons: [failure.message, ...refusal && !verified ? [refusal] : [], ...verified ? [] : extra],
+        operation: null
+      };
     }
     if (!run2 && claimed.status === "needs_decision" && claimed.reasons.length)
       return { status: "needs_decision", subject, reasons: claimed.reasons, operation: null };
@@ -41474,7 +41546,8 @@ async function delegate(workspace2, stage, subject, options3) {
   };
   try {
     return withStore(workspace2, (store) => {
-      const response = receipt(verify(store, stage, subject, after, workerActor));
+      const refusal = lastRefusal(store, stage, after, workerActor);
+      const response = receipt(verify(store, stage, subject, after, workerActor), refusal);
       const recorded2 = !attempted || recordAttempt(store, stage, subject, harness, response, usage2, execution);
       return { ...response, ...usage2, ...recorded2 ? {} : { usageWarning } };
     });

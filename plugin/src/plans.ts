@@ -857,10 +857,16 @@ function usedAssertionIds(store: Store, planId: string, testId: string) {
 function applyTestChange(test: Test, change: PlanDelta['tests'][string], used: string[]) {
 	if (change.action !== undefined) test.action = change.action
 	if (change.preconditions !== undefined) test.preconditions = change.preconditions
+	const existingIds = test.assertions.map((existing) => existing.id)
+	const current = `${test.id} has assertions: ${existingIds.join(', ') || 'none'}.`
 	for (const [id, assertion] of Object.entries(change.assertions ?? {})) {
 		const position = test.assertions.findIndex((existing) => existing.id === id)
 		if (assertion === null) {
-			requireWellFormed(position >= 0, `Cannot remove unknown assertion ${test.id}.${id}`)
+			requireWellFormed(
+				position >= 0,
+				`Cannot remove unknown assertion ${test.id}.${id}`,
+				`${current} Remove only one of those IDs, with null.`
+			)
 			test.assertions.splice(position, 1)
 		} else if (position >= 0) test.assertions[position] = { ...test.assertions[position], ...assertion }
 		else {
@@ -870,7 +876,8 @@ function applyTestChange(test: Test, change: PlanDelta['tests'][string], used: s
 			)
 			requireWellFormed(
 				assertion.check !== undefined && assertion.checkKind !== undefined,
-				`New assertion ${test.id}.${id} needs check and checkKind`
+				`New assertion ${test.id}.${id} needs check and checkKind`,
+				`${current} For a new assertion, send {"check": "<expected text or value>", "checkKind": "deterministic"} under a new ID. To change an existing one, send only the changed field under its current ID.`
 			)
 			test.assertions.push({ id, check: assertion.check, checkKind: assertion.checkKind })
 		}

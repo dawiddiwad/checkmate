@@ -506,6 +506,155 @@ test('Drop a criterion by revise — a dropped criterion stayed ready and needed
 	assert.deepEqual(plan.gaps[0].requirementIds, [])
 })
 
+test('Pre-allow only the Checkmate commands that a chat may run — a shell chain or a run start passed without a person.', async () => {
+	const permission = '../../plugin/pi/permission.mjs'
+	const { chatCommandAllowed } = (await import(permission)) as {
+		chatCommandAllowed: (command: string, clis: string[]) => boolean
+	}
+	const cli = '/workspace/cli/src/main.ts'
+	const allowed = [
+		`CHECKMATE_HARNESS=pi node "${cli}" status BS-42`,
+		`node "${cli}" target list && node "${cli}" plan list`,
+		`CHECKMATE_HARNESS=pi node "${cli}" gap answer BS-42 G1 --kind clarify --value 'drop it' --source ticket.md --rationale 'owner'`,
+		`node "${cli}" plan revise BS-42 --actor pi:revise <<'EOF'\n{"tests":{}}\nEOF`,
+	]
+	const refused = [
+		`node "${cli}" run begin run-1 BS-42@1 --build b1`,
+		`node "${cli}" delegate execute run-1`,
+		`node "${cli}" status BS-42; rm -rf .checkmate`,
+		`node "${cli}" status $(id)`,
+		`node "/other/cli/src/main.ts" status`,
+		`node "${cli}" plan revise BS-42 <<'EOF'\n{}\nEOF\nrm -rf x`,
+	]
+	for (const command of allowed) assert.equal(chatCommandAllowed(command, [cli]), true, command)
+	for (const command of refused) assert.equal(chatCommandAllowed(command, [cli]), false, command)
+})
+
+test('Name the existing assertion IDs when a revise delta uses an unknown one — the planner guessed IDs.', async (t) => {
+	const workspace = directory(t)
+	const { chmodSync, copyFileSync, mkdirSync } = await import('node:fs')
+	const { delimiter } = await import('node:path')
+	const bin = join(workspace, 'bin')
+	mkdirSync(bin)
+	copyFileSync(join(root, 'test/e2e/delegate-host.mjs'), join(bin, 'claude'))
+	chmodSync(join(bin, 'claude'), 0o755)
+	const env = {
+		...process.env,
+		PATH: `${bin}${delimiter}${process.env.PATH}`,
+		CHECKMATE_ACTOR: 'oracle',
+		CHECKMATE_HARNESS: 'claude',
+		QA_STAGE: 'setup',
+		QA_LIE: '0',
+	}
+	const ok = async (args: string[], input?: unknown) => {
+		const result = await inputCommand(workspace, env, input === undefined ? '' : JSON.stringify(input), ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	await ok([
+		'target',
+		'open',
+		'shop',
+		'--entry-point',
+		'web:url:Shop HTTP API.',
+		'--capabilities',
+		'http',
+		'--operations',
+		'read_catalog',
+	])
+	await ok(['delegate', 'setup', 'shop', '--allow', 'Read'])
+	writeFileSync(join(workspace, 'ticket.md'), '# Ticket\n\n1. The quote is 240.\n2. The list is newest first.\n')
+	await ok([
+		'plan',
+		'open',
+		'ticket',
+		'--target',
+		'shop@1',
+		'--objective',
+		'Check the quote.',
+		'--source',
+		'ticket.md',
+	])
+	await ok(['plan', 'save', 'ticket'], {
+		requirements: [
+			{ id: 'R1', text: 'The quote is 240.', source: 'ticket.md' },
+			{ id: 'R2', text: 'The list is newest first.', source: 'ticket.md' },
+		],
+		tests: [
+			{
+				id: 'T1',
+				title: 'Quote',
+				requirementIds: ['R1'],
+				capability: 'http',
+				operations: ['read_catalog'],
+				dependsOn: [],
+				preconditions: [],
+				action: 'Read the quote.',
+				assertions: [{ id: 'A1', check: 'The quote is 240.', checkKind: 'deterministic' }],
+			},
+			{
+				id: 'T2',
+				title: 'Order',
+				requirementIds: ['R2'],
+				capability: 'http',
+				operations: ['read_catalog'],
+				dependsOn: [],
+				preconditions: [],
+				action: 'Read the list.',
+				assertions: [{ id: 'A1', check: 'The newest item is first.', checkKind: 'deterministic' }],
+			},
+		],
+		gaps: [
+			{
+				id: 'G1',
+				severity: 'blocking',
+				status: 'open',
+				requirementIds: ['R2'],
+				testIds: ['T2'],
+				question: 'Is the list newest first?',
+				consequence: 'The order test is unknown.',
+				decisionId: null,
+			},
+		],
+	})
+	await ok([
+		'gap',
+		'answer',
+		'ticket',
+		'G1',
+		'--kind',
+		'clarify',
+		'--value',
+		'Keep newest first.',
+		'--source',
+		'oracle',
+		'--rationale',
+		'Owner decision.',
+	])
+	const guessed = await inputCommand(
+		workspace,
+		env,
+		JSON.stringify({ tests: { T2: { assertions: { A9: null } } } }),
+		'plan',
+		'revise',
+		'ticket'
+	)
+	assert.equal(guessed.code, 1, guessed.output)
+	assert.match(guessed.output, /T2 has assertions: A1/)
+})
+
+test('Read a worker reply with one JSON object among its words — a low-tier worker added a sentence around the JSON.', async () => {
+	const launcher = '../../cli/src/launcher.ts'
+	const { readPiResponse } = (await import(launcher)) as {
+		readPiResponse: (result: { result: unknown; failure?: [string, string] }) => { status: string; subject: string }
+	}
+	const wrapped = readPiResponse({
+		result: 'Recorded the revision.\n{"status":"completed","subject":"BS-42","reasons":[]}\nDone.',
+	})
+	assert.deepEqual(wrapped, { status: 'completed', subject: 'BS-42', reasons: [] })
+	assert.throws(() => readPiResponse({ result: 'I revised the plan.' }), /did not return a JSON response/)
+})
+
 test('Retry a held database transaction — lost or duplicate edits.', async (t) => {
 	const workspace = directory(t)
 	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle', CHECKMATE_BUSY_TIMEOUT_MS: '100' }

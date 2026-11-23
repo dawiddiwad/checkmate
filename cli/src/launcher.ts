@@ -176,15 +176,23 @@ class InvalidPiResponse extends Error {
 	}
 }
 
-function readPiResponse(result: ChildCall) {
+export function readPiResponse(result: ChildCall) {
 	if (result.failure) throw new Error(result.failure[1])
 	const text = String(result.result).trim()
 	const fenced = /^```(?:json)?[ \t]*\r?\n([\s\S]*)\r?\n```$/i.exec(text)
+	// A low-tier worker often adds a sentence around its JSON. Take the outermost object, then validate it strictly.
+	const object = text.match(/\{[\s\S]*\}/)?.[0]
 	let response: unknown
 	try {
 		response = JSON.parse(fenced?.[1] ?? text)
 	} catch {
-		throw new InvalidPiResponse('Pi did not return a JSON response')
+		try {
+			response = JSON.parse(object ?? '')
+		} catch {
+			throw new InvalidPiResponse(
+				`Pi did not return a JSON response. Its reply began: ${JSON.stringify(text.slice(0, 200))}`
+			)
+		}
 	}
 	try {
 		return validate('response', response) as WorkerResponse
@@ -401,6 +409,20 @@ function checkSubject(store: Store, stage: Stage, subject: string) {
 	}
 }
 
+// The reasons of the worker's last refused record command. They explain a reply that is not JSON.
+function lastRefusal(store: Store, stage: Stage, after: number, actor: string): string | null {
+	const { command } = verifiedBy[stage]
+	const row = one<{ response: string }>(
+		store,
+		`SELECT response FROM operations WHERE rowid > ? AND actor = ? AND command = ? AND status != 'completed' ORDER BY rowid DESC LIMIT 1`,
+		after,
+		actor,
+		command
+	)
+	const reasons = row ? ((JSON.parse(row.response) as { reasons?: string[] }).reasons ?? []) : []
+	return reasons.length ? `${command} was refused: ${reasons.join(' ')}` : null
+}
+
 function verify(store: Store, stage: Stage, subject: string, after: number, actor: string): Verified | null {
 	const { command, key } = verifiedBy[stage]
 	const row = one<{ id: string; response: string }>(
@@ -447,6 +469,7 @@ function stagePrompt(stage: Stage, subject: string, execution: Execution | null,
 			'Write an open blocking gap for each vague term that changes an expected value, for example a threshold, a rounding step, or a scope word. Do not pick the value yourself.',
 			'Plan regression tests only for existing rules that the sources state, with expected values from the sources. Mark each with "metadata": { "type": "regression" }.',
 			'Each assertion checks one expected value. Write one assertion for each value. Do not join two values with "and" or ";" in one check.',
+			'Write each assertion with the exact expected text or value from the sources, for example: The page shows "1 book" when one book is stored. Do not write a general description such as "pluralizes correctly".',
 			'A ready assertion must be observable through the target with the test action. Name in the action every input the check depends on, for example a query parameter or a date. When the target cannot show the value, write an open blocking gap for it, or an agent_observation.',
 			'Make each test create its own data or use a unique value such as qa-<runId>-<testId>. Do not rely on seed data.',
 			'You can read the running application read-only (open a list page or send a GET) to check preconditions. Do not submit forms or change data.',
@@ -457,6 +480,8 @@ function stagePrompt(stage: Stage, subject: string, execution: Execution | null,
 			`Plan: ${subject}. Read the pending decisions with \`checkmate plan pending ${subject}\`.`,
 			'Change only the tests that the decisions affect. Give each ready test at least one assertion. A test without an assertion is not ready.',
 			'When a decision has no expected value, add an assertion with "checkKind": "agent_observation" that records the behavior.',
+			'Change an assertion under its current ID, and send only the changed field. Remove an assertion only when its ID is listed on the test. A new assertion needs "check" and "checkKind".',
+			'Send the delta as one line of JSON in the heredoc, with double quotes, no comments, and no Markdown.',
 			'When a decision says a criterion is dropped, removed, or out of scope, remove it. Remove its requirement and its tests in the same delta, for example {"requirements": {"R2": {"remove": true}}, "tests": {"T2": {"remove": true}}}. Do not rewrite a test for another criterion to match it.',
 			`Save the next revision with \`checkmate plan revise ${subject}\`. Do not answer gaps.`,
 		]
@@ -535,7 +560,9 @@ function prompt(
 	pluginRoot: string,
 	execution: Execution | null,
 	timeoutSeconds: number,
-	harness: Harness
+	harness: Harness,
+	round = 1,
+	rejected: string[] = []
 ) {
 	const skill = join(pluginRoot, 'skills', stage, 'SKILL.md')
 	const workflow = join(pluginRoot, 'references', 'workflow.md')
@@ -563,6 +590,11 @@ function prompt(
 		`Workspace: ${workspace}. Run Checkmate commands from this directory. Add \`--actor ${harness}:${stage}\` to each write.`,
 		`\`checkmate <command>\` means \`${cliCommand} <command>\`.`,
 		...stagePrompt(stage, subject, execution, workspace),
+		...(round > 1 && !execution
+			? [
+					`Correction. The earlier save was refused: ${rejected.join(' ') || 'no reason was given'} Read the refusal, fix only the refused part, and save again with \`checkmate ${verifiedBy[stage].command} ${subject}\`. Every requirement needs a test or an open gap.`,
+				]
+			: []),
 		...(stage === 'execute'
 			? []
 			: [`Deadline: ${timeoutSeconds} seconds from now (${deadline} UTC). Check the time with \`date -u\`.`]),
@@ -1017,38 +1049,61 @@ export async function delegate(
 	let attempted = false
 	const timeoutSeconds =
 		options.timeoutSeconds ?? (execution ? Math.max(1, execution.clock.remainingSeconds) : defaultTimeoutSeconds)
-	try {
-		const executable = harness === 'pi' ? (options.pi ?? 'pi') : (options.claude ?? 'claude')
-		const args =
-			harness === 'pi'
-				? resolvePiModelArgs(
-						executable,
-						piArgs(
-							['--no-extensions', '--no-session', '--no-mcp', '--no-skills', '--tools', 'read,bash'],
+	// A plan or revise stage gets one corrective round when its save is refused. The refusal reasons go into the prompt.
+	const maxRounds = run ? 1 : 2
+	let rejected: string[] = []
+	for (let round = 1; round <= maxRounds; round++) {
+		try {
+			const executable = harness === 'pi' ? (options.pi ?? 'pi') : (options.claude ?? 'claude')
+			const args =
+				harness === 'pi'
+					? resolvePiModelArgs(
+							executable,
+							piArgs(
+								['--no-extensions', '--no-session', '--no-mcp', '--no-skills', '--tools', 'read,bash'],
+								env
+							),
+							workspace,
 							env
-						),
-						workspace,
-						env
-					)
-				: workerArgs(pluginRoot, options.allowedTools, options.claudeArgs)
-		const instructions = prompt(stage, subject, workspace, pluginRoot, execution, timeoutSeconds, harness)
-		attempted = true
-		const result = await launchWorker(executable, args, {
-			cwd: workspace,
-			prompt: instructions,
-			timeoutSeconds,
-			harness,
-			env: {
-				...env,
-				CHECKMATE_ACTOR: workerActor,
-				...(run ? { PLAYWRIGHT_MCP_OUTPUT_DIR: join(workspace, '.checkmate', 'tmp', subject) } : {}),
-			},
-		})
-		claimed = result.response
-		failure = result.failure
-		usage = result.usage
-	} catch (error) {
-		failure = workerFailure(error)
+						)
+					: workerArgs(pluginRoot, options.allowedTools, options.claudeArgs)
+			const instructions = prompt(
+				stage,
+				subject,
+				workspace,
+				pluginRoot,
+				execution,
+				timeoutSeconds,
+				harness,
+				round,
+				rejected
+			)
+			attempted = true
+			const result = await launchWorker(executable, args, {
+				cwd: workspace,
+				prompt: instructions,
+				timeoutSeconds,
+				harness,
+				env: {
+					...env,
+					CHECKMATE_ACTOR: workerActor,
+					...(run ? { PLAYWRIGHT_MCP_OUTPUT_DIR: join(workspace, '.checkmate', 'tmp', subject) } : {}),
+				},
+			})
+			claimed = result.response
+			failure = result.failure
+			usage = result.usage
+		} catch (error) {
+			failure = workerFailure(error)
+		}
+		if (failure || run) break
+		if (withStore(workspace, (store) => verify(store, stage, subject, after, workerActor)) !== null) break
+		// Retry only a refused save. A plan that already has revision 1 cannot take a second save.
+		rejected = claimed?.reasons ?? []
+		const planned = withStore(workspace, (store) =>
+			one(store, 'SELECT 1 FROM plan_revisions WHERE plan_id = ?', subject)
+		)
+		if (!rejected.length || (stage === 'plan' && planned)) break
 	}
 	const reportedSubject =
 		claimed?.subject ?? (failure instanceof InvalidPiResponse ? failure.reportedSubject : undefined)
@@ -1059,7 +1114,7 @@ export async function delegate(
 			? await closeBrowser(workspace, run.browser_session, options.playwright ?? 'playwright-cli')
 			: null
 	const extra = [...(cleanup ? [cleanup] : []), ...(run ? [resumeReason(subject)] : [])]
-	const receipt = (verified: Verified | null): DelegateResponse => {
+	const receipt = (verified: Verified | null, refusal: string | null): DelegateResponse => {
 		if (verified && (!failure || failure instanceof InvalidPiResponse))
 			return {
 				status: verified.reply.status,
@@ -1071,7 +1126,12 @@ export async function delegate(
 			}
 		if (failure) {
 			const status = /deadline|interrupted/.test(failure.message) ? 'interrupted' : 'operational_error'
-			return { status, subject, reasons: [failure.message, ...(verified ? [] : extra)], operation: null }
+			return {
+				status,
+				subject,
+				reasons: [failure.message, ...(refusal && !verified ? [refusal] : []), ...(verified ? [] : extra)],
+				operation: null,
+			}
 		}
 		if (!run && claimed!.status === 'needs_decision' && claimed!.reasons.length)
 			return { status: 'needs_decision', subject, reasons: claimed!.reasons, operation: null }
@@ -1087,7 +1147,8 @@ export async function delegate(
 	}
 	try {
 		return withStore(workspace, (store) => {
-			const response = receipt(verify(store, stage, subject, after, workerActor))
+			const refusal = lastRefusal(store, stage, after, workerActor)
+			const response = receipt(verify(store, stage, subject, after, workerActor), refusal)
 			const recorded = !attempted || recordAttempt(store, stage, subject, harness, response, usage, execution)
 			return { ...response, ...usage, ...(recorded ? {} : { usageWarning }) }
 		})

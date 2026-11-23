@@ -27,6 +27,16 @@ Use this when the person answers open gaps, or asks you to change the plan.
 
 Do not use `plan edit --patch` to answer a gap. Do not guess the JSON shape of a plan change. If `delegate revise` refuses, report each `reason:` and ask the person for the missing value.
 
+## Add or remove a test directly
+
+Use this only when the person asks for a test change that no open gap covers. Send the JSON in a heredoc. Give `--rationale`.
+
+- Add a test. Use a new test ID. Give every field: `{"tests": {"T10": {"title": "...", "requirementIds": ["R5"], "capability": "browser", "operations": ["any_test_operation"], "dependsOn": [], "preconditions": [], "action": "...", "assertions": {"A1": {"check": "...", "checkKind": "deterministic"}}}}}`. Run `checkmate plan edit <planId>@<revision> --patch --rationale "<why>" <<'EOF'`, then the JSON, then `EOF`.
+- Remove a test and its requirement together: `{"requirements": {"R6": null}, "tests": {"T6": null}}`. A requirement without a test or an open gap is refused.
+- Each assertion check states the exact expected text or value, for example `The page shows "1 book".`
+
+If `plan edit` refuses, report each `reason:` and ask the person before you try another shape.
+
 ## Continue a run
 
 When the person asks you to run or retest stored tests, continue until you execute the run that Checkmate began.

@@ -640,6 +640,8 @@ export function requestSystemPrompt(checkmate: string, harness: Harness = 'claud
 		`To change a record, use the checkmate command line of this workspace: node '${checkmate.replaceAll("'", "'\\''")}' <command>.`,
 		'Run one Checkmate command per shell call, with the full command line above. Do not use a shell variable or the bare name checkmate. Do not chain commands with && or ;, and do not pipe or filter the output. Read the output as printed, or add --json.',
 		'Read a ticket or other source from the workspace folder, by the file name the plan gives. Do not search the disk for it.',
+		'Before you record a gap answer, read the gap question in plan show. Record the answer only when it responds to that question. If it does not, record nothing, say which gap the person means or that none matches, and ask.',
+		'Name files by their path relative to the workspace folder. Never print an absolute path.',
 		`Follow this Checkmate workflow using the command path above:\n${workflow}`,
 	].join(' ')
 }

@@ -7,7 +7,7 @@ import { streamPi } from './pi-request.ts'
 import type { ChildCall, Env, StopDelays, StreamedClaude } from '../sessions.ts'
 import type { RequestContext, RequestRecord, RequestSelection } from '../requests.ts'
 import type { ModelCatalog } from '../model-catalog.ts'
-import { effortArgs, resolvedEffort } from '../model-catalog.ts'
+import { claudeDefaultModel, effortArgs, resolvedEffort } from '../model-catalog.ts'
 import { Refusal, requireWellFormed } from '../contracts.ts'
 import { requestVariable } from '../actor.ts'
 import {
@@ -84,7 +84,9 @@ export function chatPreferences(
 				: { CHECKMATE_PI_MODEL: undefined, CHECKMATE_PI_PROVIDER: undefined }
 	const model = inherited
 		? inherited.model
-		: (harness === 'pi' ? piEnv.CHECKMATE_PI_MODEL?.trim() : (requestedModel ?? requestModelText(store))) || null
+		: (harness === 'pi'
+				? piEnv.CHECKMATE_PI_MODEL?.trim()
+				: (requestedModel ?? (requestModelText(store) || claudeDefaultModel))) || null
 	const provider = inherited
 		? inherited.provider
 		: harness === 'pi'

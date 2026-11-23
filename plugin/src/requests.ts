@@ -545,7 +545,7 @@ function describeChange(command: string, subject: string, input: Record<string, 
 	const named = (ids: unknown) =>
 		Array.isArray(ids) ? ids.map((id) => `${subject}/${String(id)}`).join(', ') : subject
 	if (command === 'claim handoff') return `${input.undo ? 'took back' : 'handed over'} ${named(input.claimIds)}`
-	if (command === 'gap answer') return `answered ${subject}/${String(input.gapId)}`
+	if (command === 'gap answer') return `answered ${subject}/${String(input.gapId)} with "${String(input.value)}"`
 	if (command === 'claim accept') return `accepted ${subject}/${String(input.claimId)}`
 	if (command === 'claim reject') return `rejected ${subject}/${String(input.claimId)}`
 	if (command === 'plan edit') return `edited plan ${subject}`
@@ -558,6 +558,18 @@ function describeChange(command: string, subject: string, input: Record<string, 
 
 export function operationCountOf(store: Store, requestId: string) {
 	return one<{ count: number }>(store, 'SELECT count(*) AS count FROM operations WHERE via = ?', requestId)!.count
+}
+
+// The question of a gap in the latest revision of its plan.
+function gapQuestion(store: Store, planId: string, gapId: string) {
+	return (
+		one<{ question: string | null }>(
+			store,
+			`SELECT json_extract(gap, '$.question') AS question FROM plan_gaps WHERE plan_id = ? AND gap_id = ? ORDER BY revision DESC LIMIT 1`,
+			planId,
+			gapId
+		)?.question ?? null
+	)
 }
 
 export function changesOf(store: Store, requestId: string): RequestChange[] {
@@ -575,13 +587,16 @@ export function changesOf(store: Store, requestId: string): RequestChange[] {
 				.find((found) => found)
 			const subject = record ? record[2] : row.subject
 			const data = (JSON.parse(row.response) as { data?: { removed?: unknown } }).data
+			const input = JSON.parse(row.arguments) as Record<string, unknown>
+			// The question next to a recorded answer shows a wrong pairing: the person can see what the answer answered.
+			const question =
+				row.command === 'gap answer' && record?.[1] === 'plan'
+					? gapQuestion(store, subject, String(input.gapId))
+					: null
 			return {
-				text: describeChange(
-					row.command,
-					subject,
-					JSON.parse(row.arguments) as Record<string, unknown>,
-					data?.removed
-				),
+				text:
+					describeChange(row.command, subject, input, data?.removed) +
+					(question ? `. The gap asks: ${question}` : ''),
 				command: row.command,
 				subject,
 				at: row.at,

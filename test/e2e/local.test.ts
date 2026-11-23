@@ -6671,3 +6671,113 @@ test('The per-test browser recipe acts only by element refs from a snapshot, wai
 	assert.match(recipe, /wait one second, snapshot again, and retry once/)
 	assert.match(recipe, /close the test as error with the snapshot excerpt as evidence/)
 })
+
+test('Show the gap question beside a recorded answer in the saved list — an answer to another question is visible.', async (t) => {
+	const workspace = directory(t)
+	writeFileSync(join(workspace, 'ticket.md'), 'The list is newest first.\n')
+	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle', CHECKMATE_HARNESS: 'pi' }
+	await command(
+		workspace,
+		env,
+		'setup',
+		'--url',
+		'http://127.0.0.1:9',
+		'--target',
+		'shop',
+		'--data',
+		'isolation',
+		'--policy',
+		'Test users only.'
+	)
+	const opened = await command(
+		workspace,
+		env,
+		'plan',
+		'open',
+		'ticket',
+		'--target',
+		'shop@1',
+		'--objective',
+		'List order.',
+		'--source',
+		'ticket.md'
+	)
+	assert.equal(opened.code, 0, opened.output)
+	const saved = await inputCommand(
+		workspace,
+		env,
+		JSON.stringify({
+			requirements: [{ id: 'R1', text: 'The list is newest first.', source: 'ticket.md' }],
+			tests: [
+				{
+					id: 'T1',
+					title: 'List order',
+					requirementIds: ['R1'],
+					capability: 'http',
+					operations: ['read_catalog'],
+					dependsOn: [],
+					preconditions: [],
+					action: 'Read the list.',
+					assertions: [{ id: 'A1', check: 'The list is shown.', checkKind: 'agent_observation' }],
+				},
+			],
+			gaps: [
+				{
+					id: 'G1',
+					severity: 'blocking',
+					status: 'open',
+					requirementIds: ['R1'],
+					testIds: [],
+					question: 'Is the list newest first?',
+					consequence: 'Unknown.',
+					decisionId: null,
+				},
+			],
+		}),
+		'plan',
+		'save',
+		'ticket'
+	)
+	assert.equal(saved.code, 0, saved.output)
+	const chatEnv = { ...env, CHECKMATE_REQUEST: 'R1' }
+	const answered = await command(
+		workspace,
+		chatEnv,
+		'gap',
+		'answer',
+		'ticket',
+		'G1',
+		'--kind',
+		'clarify',
+		'--value',
+		'Yes, newest first',
+		'--source',
+		'ticket.md',
+		'--rationale',
+		'Owner.'
+	)
+	assert.equal(answered.code, 0, answered.output)
+	const changes = spawnSync(process.execPath, [binary, 'chat', 'changes'], {
+		cwd: workspace,
+		encoding: 'utf8',
+		env: chatEnv,
+	})
+	assert.equal(changes.status, 0, changes.stdout + changes.stderr)
+	assert.match(
+		changes.stdout,
+		/answered ticket\/G1 with "Yes, newest first"\. The gap asks: Is the list newest first\?/
+	)
+})
+
+test('Put Haiku 5.5 first in the Claude model list, and keep the older Haiku below it.', async () => {
+	const { chatModelOrder } = await import('../../plugin/src/model-catalog.ts')
+	const order = chatModelOrder({
+		models: [
+			{ value: 'claude-haiku-4-5-20251001', label: 'Haiku 4.5 (older)' },
+			{ value: 'sonnet', label: 'Sonnet 5.5' },
+			{ value: 'haiku', label: 'Haiku 5.5' },
+		],
+	}).models.map((model) => model.value)
+	assert.equal(order[0], 'haiku')
+	assert.ok(order.indexOf('claude-haiku-4-5-20251001') > order.indexOf('haiku'))
+})

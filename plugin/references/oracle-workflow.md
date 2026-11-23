@@ -19,6 +19,8 @@ Use the CLI in this package. Resolve `../../src/main.ts` from the directory of t
 
 Use this when the person answers open gaps, or asks you to change the plan.
 
+Before any `gap answer`, read the gap question in `plan show`. Record the answer only when it responds to that question. If it does not, record nothing. Say which gap the person means, or that no gap matches, and ask. Never record a person's words as the answer to a gap they do not address.
+
 1. Run `plan show <planId> --gaps open`. It lists each open gap with its ID, for example `G1`. Use these IDs in the next step.
 2. For each gap that the person answered, run `gap answer <planId> <gapId> --kind <clarify|accept_assumption|defer> --value "<answer>" --source <source> --rationale "<why>"`. Use the person's words for `--value`. For an answer that the person gave in this conversation, use `--source conversation`. Use `--source <file>` only for a file in the workspace that states the answer. Do not write a file to hold an answer.
 3. Run `delegate revise <planId> --detach`, then `delegate wait revise <planId> --timeout 90`. The planner writes the next revision. While the reply status is `running`, run the `delegate wait` command from its hint again. A status other than `running` is the result. Do not write a plan JSON yourself.

@@ -10396,6 +10396,8 @@ function requestSystemPrompt(checkmate, harness = "claude") {
     `To change a record, use the checkmate command line of this workspace: node '${checkmate.replaceAll("'", "'\\''")}' <command>.`,
     "Run one Checkmate command per shell call, with the full command line above. Do not use a shell variable or the bare name checkmate. Do not chain commands with && or ;, and do not pipe or filter the output. Read the output as printed, or add --json.",
     "Read a ticket or other source from the workspace folder, by the file name the plan gives. Do not search the disk for it.",
+    "Before you record a gap answer, read the gap question in plan show. Record the answer only when it responds to that question. If it does not, record nothing, say which gap the person means or that none matches, and ask.",
+    "Name files by their path relative to the workspace folder. Never print an absolute path.",
     `Follow this Checkmate workflow using the command path above:
 ${workflow}`
   ].join(" ");
@@ -15938,7 +15940,7 @@ function removedText(removed) {
 function describeChange(command, subject, input, removed) {
   const named = (ids2) => Array.isArray(ids2) ? ids2.map((id2) => `${subject}/${String(id2)}`).join(", ") : subject;
   if (command === "claim handoff") return `${input.undo ? "took back" : "handed over"} ${named(input.claimIds)}`;
-  if (command === "gap answer") return `answered ${subject}/${String(input.gapId)}`;
+  if (command === "gap answer") return `answered ${subject}/${String(input.gapId)} with "${String(input.value)}"`;
   if (command === "claim accept") return `accepted ${subject}/${String(input.claimId)}`;
   if (command === "claim reject") return `rejected ${subject}/${String(input.claimId)}`;
   if (command === "plan edit") return `edited plan ${subject}`;
@@ -15950,6 +15952,14 @@ function describeChange(command, subject, input, removed) {
 }
 function operationCountOf(store, requestId2) {
   return one(store, "SELECT count(*) AS count FROM operations WHERE via = ?", requestId2).count;
+}
+function gapQuestion(store, planId, gapId) {
+  return one(
+    store,
+    `SELECT json_extract(gap, '$.question') AS question FROM plan_gaps WHERE plan_id = ? AND gap_id = ? ORDER BY revision DESC LIMIT 1`,
+    planId,
+    gapId
+  )?.question ?? null;
 }
 function changesOf(store, requestId2) {
   return summarizeChanges(
@@ -15964,13 +15974,10 @@ function changesOf(store, requestId2) {
       const record = JSON.parse(row2.subjects).map((subject2) => /^(plan|run|exploration|target):(.+)$/.exec(subject2)).find((found) => found);
       const subject = record ? record[2] : row2.subject;
       const data = JSON.parse(row2.response).data;
+      const input = JSON.parse(row2.arguments);
+      const question = row2.command === "gap answer" && record?.[1] === "plan" ? gapQuestion(store, subject, String(input.gapId)) : null;
       return {
-        text: describeChange(
-          row2.command,
-          subject,
-          JSON.parse(row2.arguments),
-          data?.removed
-        ),
+        text: describeChange(row2.command, subject, input, data?.removed) + (question ? `. The gap asks: ${question}` : ""),
         command: row2.command,
         subject,
         at: row2.at,
@@ -16489,10 +16496,12 @@ function claudeModels(stdout) {
       if (typeof model?.value !== "string" || !model.value) return [];
       const advertised = model.supportedEffortLevels;
       const levels = model.supportsEffort !== false && Array.isArray(advertised) ? effortLevels.claude.filter((level) => advertised.includes(level)) : [];
+      const name2 = typeof model.displayName === "string" ? model.displayName : model.value;
+      const label = /haiku/i.test(model.value) && model.value !== claudeDefaultModel ? `${name2} (older)` : name2;
       return [
         {
           value: model.value,
-          label: typeof model.displayName === "string" ? model.displayName : model.value,
+          label,
           ...levels.length ? { effortLevels: levels } : {}
         }
       ];
@@ -16577,6 +16586,7 @@ function piModels(stdout) {
     return [{ value: value2, label: value2 }];
   });
 }
+var claudeDefaultModel = "haiku";
 function chatModelOrder(catalog2) {
   const fallback = catalog2.models[0]?.value;
   const source = catalog2.defaultModel?.value ?? fallback ?? "";
@@ -16584,8 +16594,9 @@ function chatModelOrder(catalog2) {
   const primary = slash > 0 ? source.slice(0, slash) : null;
   const group = (model) => primary && model.value.startsWith(`${primary}/`) ? 0 : 1;
   const luna = (model) => /luna/i.test(model.value) ? 0 : 1;
+  const preferred = (model) => model.value === claudeDefaultModel ? 0 : 1;
   const models = [...catalog2.models].sort(
-    (a, b) => group(a) - group(b) || luna(a) - luna(b) || a.value.localeCompare(b.value)
+    (a, b) => preferred(a) - preferred(b) || group(a) - group(b) || luna(a) - luna(b) || a.value.localeCompare(b.value)
   );
   return { models, primary };
 }
@@ -30746,7 +30757,7 @@ function chatPreferences(store, env, options3 = {}, previous) {
   const requestedModel = options3.model?.trim();
   if (requestedModel !== void 0) requireModel(harness, requestedModel);
   const piEnv = requestedModel === void 0 ? piRequestModelEnv(store, env) : requestedModel ? piModelEnv(env, requestedModel, requestedModel.includes("/")) : { CHECKMATE_PI_MODEL: void 0, CHECKMATE_PI_PROVIDER: void 0 };
-  const model = inherited ? inherited.model : (harness === "pi" ? piEnv.CHECKMATE_PI_MODEL?.trim() : requestedModel ?? requestModelText(store)) || null;
+  const model = inherited ? inherited.model : (harness === "pi" ? piEnv.CHECKMATE_PI_MODEL?.trim() : requestedModel ?? (requestModelText(store) || claudeDefaultModel)) || null;
   const provider = inherited ? inherited.provider : harness === "pi" ? piEnv.CHECKMATE_PI_PROVIDER?.trim() || null : null;
   const selectedEffort = options3.effort ?? (inherited ? inherited.effort ?? "" : requestEffortText(store, harness));
   const effort = options3.catalog ? resolvedEffort(harness, options3.catalog, model ?? "", selectedEffort, provider ?? void 0) ?? null : selectedEffort || null;

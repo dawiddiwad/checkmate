@@ -13,7 +13,7 @@ export function requireResetFor(profile: Profile, operations: string[], subject:
 	requireCondition(
 		!changing.length || profile.reset,
 		`${subject} can change data (${changing.join(', ')}), and target ${profile.targetId} has no reset.`,
-		`Record the reset. Give the command that restores the seed data: checkmate setup --url ${url} --reset "<command>". When the data never changes, or the factory resets it before each run: checkmate setup --url ${url} --reset factory.`
+		`Record the reset. Give the command that restores the seed data: checkmate setup --url ${url} --reset "<command>". When the data never changes, or a person or the factory resets it outside Checkmate: checkmate setup --url ${url} --reset external.`
 	)
 }
 
@@ -30,6 +30,6 @@ export function runReset(workspace: string, profile: Profile) {
 
 export function resetCommand(text: string) {
 	const words = text.trim().split(/\s+/).filter(Boolean)
-	requireCondition(words.length, 'The reset command is empty. Give a command, or factory.')
+	requireCondition(words.length, 'The reset command is empty. Give a command, or external.')
 	return words
 }

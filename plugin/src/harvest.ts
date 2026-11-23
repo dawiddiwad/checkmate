@@ -34,6 +34,12 @@ function linkedCriterion(entry: Row | undefined, criteria: Map<string, Row>) {
 	return ids.map((id) => criteria.get(id)).find(Boolean)
 }
 
+// The assertion keeps its first clause. The finding keeps the whole expected value.
+function oneCheck(expected: string) {
+	const first = expected.split(/\band\b|;/i)[0].trim()
+	return first.endsWith('.') ? first : `${first}.`
+}
+
 function drafts(store: Store, explorationId: string, observations: boolean): Draft[] {
 	const row = explorationRow(store, explorationId)
 	const state = journal(store, row.plan_id)
@@ -52,7 +58,7 @@ function drafts(store: Store, explorationId: string, observations: boolean): Dra
 				requirement: criterion?.text ?? claim.expected,
 				source: criterion?.source ?? `exploration:${explorationId}/${claim.id}`,
 				action: stepsText(claim.steps ?? undefined, claim.title),
-				check: claim.expected,
+				check: oneCheck(claim.expected),
 				deterministic: false,
 				via: report?.via,
 				basis: 'claim',

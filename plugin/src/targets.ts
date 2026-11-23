@@ -592,8 +592,8 @@ export function requireAnswer(answered: boolean, url: string) {
 }
 
 function resetOf(text: string): Profile['reset'] {
-	return text === 'factory'
-		? { owner: 'factory', command: null }
+	return text === 'external'
+		? { owner: 'external', command: null }
 		: { owner: 'checkmate', command: resetCommand(text) }
 }
 
@@ -689,6 +689,10 @@ export function setupTarget(store: Store, actor: string | undefined, input: Setu
 	const latest = targetRevision(store, targetId)
 	const needsReset = !latest.profile.reset && latest.profile.allowedOperations.some(changesData)
 	if (needsReset) assumed.push('reset=none: testers may change data, so a run or an exploration needs a reset')
+	if (latest.profile.reset?.owner === 'external')
+		assumed.push(
+			'reset=external: Checkmate does not reset data. The factory or a person resets it outside Checkmate.'
+		)
 	return completed(targetId, {
 		targetId,
 		revision: latest.revision,

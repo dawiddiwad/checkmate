@@ -322,12 +322,12 @@ Use `checkmate test` in a pipeline for QA on one build. It plans, explores, and 
 
 ```sh
 checkmate test shop-12 --url http://127.0.0.1:4101 --source ticket.md \
-  --build shop-build-2 --reset factory --allow Read --allow Bash
+  --build shop-build-2 --reset external --allow Read --allow Bash
 checkmate explore wait x-1 --timeout 540
 checkmate export run findings-x-1 --format junit --out junit.xml
 ```
 
-Replace `x-1` with the exploration ID in the `test` reply. Repeat `explore wait` while it prints `interrupted`. An exploration that can change data needs a reset. Give `--reset "<command>"` with a command that restores the seed data, or `--reset factory` when the factory resets the data before each run. Checkmate refuses the exploration without a reset.
+Replace `x-1` with the exploration ID in the `test` reply. Repeat `explore wait` while it prints `interrupted`. An exploration that can change data needs a reset. Give `--reset "<command>"` with a command that restores the seed data, or `--reset external` when a person or the factory resets the data outside Checkmate. With `external`, Checkmate does not reset the data, and setup says so. Checkmate refuses the exploration without a reset. Checkmate runs the recorded command before the exploration starts, and not again during `explore follow`: the first reset applies to the follow-ups.
 
 The run ID is `findings-<explorationId>`. Each defect is one failed test. The other tests of the plan are not selected. The JUnit file marks each unselected test as `skipped` with its reason, for example the open gap that blocks it.
 

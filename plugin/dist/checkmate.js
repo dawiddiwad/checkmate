@@ -6600,7 +6600,7 @@ function Be(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
   return Be.errors = e, s === 0;
 }
 var Ws = Me;
-var K = { $schema: "http://json-schema.org/draft-07/schema#", $id: "profile.schema.json", type: "object", properties: { contractVersion: { const: "toolkit-2" }, targetId: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, revision: { type: "integer", minimum: 1 }, entryPoints: { type: "array", items: { type: "object", properties: { name: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, kind: { enum: ["url", "command", "value"] }, purpose: { type: "string", minLength: 1 } }, required: ["name", "kind", "purpose"], additionalProperties: false }, minItems: 1, uniqueItems: true }, capabilities: { type: "array", items: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 1, uniqueItems: true }, tools: { type: "array", items: { type: "object", properties: { name: { type: "string", minLength: 1 }, kind: { enum: ["cli", "mcp", "skill"] }, purpose: { type: "string", minLength: 1 }, version: { type: "string", minLength: 1 }, reachable: { type: "boolean" } }, required: ["name", "kind", "purpose", "reachable"], additionalProperties: false }, minItems: 0, uniqueItems: true }, authentication: { type: "object", properties: { kind: { enum: ["none", "environment", "browser_session"] }, references: { type: "array", items: { type: "string", minLength: 1 }, minItems: 0, uniqueItems: true } }, required: ["kind", "references"], additionalProperties: false }, allowedOperations: { type: "array", items: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 1, uniqueItems: true }, startup: { type: "object", properties: { owner: { enum: ["factory", "checkmate"] }, command: { anyOf: [{ type: "array", items: { type: "string", minLength: 1 }, minItems: 1, uniqueItems: true }, { type: "null" }] } }, required: ["owner", "command"], additionalProperties: false }, cleanup: { type: "string", minLength: 1 }, reset: { type: "object", properties: { owner: { enum: ["factory", "checkmate"] }, command: { anyOf: [{ type: "array", items: { type: "string", minLength: 1 }, minItems: 1, uniqueItems: true }, { type: "null" }] } }, required: ["owner", "command"], additionalProperties: false }, readyForLiveExecution: { type: "boolean" }, explore: { type: "object", properties: { level: { enum: ["smoke", "normal", "deep"] }, explorers: { type: "integer", minimum: 1, maximum: 10 } }, additionalProperties: false }, approvals: { type: "object", properties: { plan: { enum: ["required", "none"] }, result: { enum: ["required", "none"] } }, required: ["plan", "result"], additionalProperties: false } }, required: ["contractVersion", "targetId", "revision", "entryPoints", "capabilities", "tools", "authentication", "allowedOperations", "startup", "cleanup", "readyForLiveExecution"], additionalProperties: false };
+var K = { $schema: "http://json-schema.org/draft-07/schema#", $id: "profile.schema.json", type: "object", properties: { contractVersion: { const: "toolkit-2" }, targetId: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, revision: { type: "integer", minimum: 1 }, entryPoints: { type: "array", items: { type: "object", properties: { name: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, kind: { enum: ["url", "command", "value"] }, purpose: { type: "string", minLength: 1 } }, required: ["name", "kind", "purpose"], additionalProperties: false }, minItems: 1, uniqueItems: true }, capabilities: { type: "array", items: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 1, uniqueItems: true }, tools: { type: "array", items: { type: "object", properties: { name: { type: "string", minLength: 1 }, kind: { enum: ["cli", "mcp", "skill"] }, purpose: { type: "string", minLength: 1 }, version: { type: "string", minLength: 1 }, reachable: { type: "boolean" } }, required: ["name", "kind", "purpose", "reachable"], additionalProperties: false }, minItems: 0, uniqueItems: true }, authentication: { type: "object", properties: { kind: { enum: ["none", "environment", "browser_session"] }, references: { type: "array", items: { type: "string", minLength: 1 }, minItems: 0, uniqueItems: true } }, required: ["kind", "references"], additionalProperties: false }, allowedOperations: { type: "array", items: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 1, uniqueItems: true }, startup: { type: "object", properties: { owner: { enum: ["factory", "checkmate"] }, command: { anyOf: [{ type: "array", items: { type: "string", minLength: 1 }, minItems: 1, uniqueItems: true }, { type: "null" }] } }, required: ["owner", "command"], additionalProperties: false }, cleanup: { type: "string", minLength: 1 }, reset: { type: "object", properties: { owner: { enum: ["checkmate", "external"] }, command: { anyOf: [{ type: "array", items: { type: "string", minLength: 1 }, minItems: 1, uniqueItems: true }, { type: "null" }] } }, required: ["owner", "command"], additionalProperties: false }, readyForLiveExecution: { type: "boolean" }, explore: { type: "object", properties: { level: { enum: ["smoke", "normal", "deep"] }, explorers: { type: "integer", minimum: 1, maximum: 10 } }, additionalProperties: false }, approvals: { type: "object", properties: { plan: { enum: ["required", "none"] }, result: { enum: ["required", "none"] } }, required: ["plan", "result"], additionalProperties: false } }, required: ["contractVersion", "targetId", "revision", "entryPoints", "capabilities", "tools", "authentication", "allowedOperations", "startup", "cleanup", "readyForLiveExecution"], additionalProperties: false };
 function Me(a, { instancePath: t = "", parentData: $, parentDataProperty: _, rootData: T = a } = {}) {
   let e = null, s = 0;
   if (a && typeof a == "object" && !Array.isArray(a)) {
@@ -7113,7 +7113,7 @@ function Me(a, { instancePath: t = "", parentData: $, parentDataProperty: _, roo
         }
         if (r.owner !== void 0) {
           let l = r.owner;
-          if (!(l === "factory" || l === "checkmate")) {
+          if (!(l === "checkmate" || l === "external")) {
             let d = { instancePath: t + "/reset/owner", schemaPath: "#/properties/reset/properties/owner/enum", keyword: "enum", params: { allowedValues: K.properties.reset.properties.owner.enum }, message: "must be equal to one of the allowed values" };
             e === null ? e = [d] : e.push(d), s++;
           }
@@ -9984,7 +9984,7 @@ function requireResetFor(profile, operations, subject, url) {
   requireCondition(
     !changing.length || profile.reset,
     `${subject} can change data (${changing.join(", ")}), and target ${profile.targetId} has no reset.`,
-    `Record the reset. Give the command that restores the seed data: checkmate setup --url ${url} --reset "<command>". When the data never changes, or the factory resets it before each run: checkmate setup --url ${url} --reset factory.`
+    `Record the reset. Give the command that restores the seed data: checkmate setup --url ${url} --reset "<command>". When the data never changes, or a person or the factory resets it outside Checkmate: checkmate setup --url ${url} --reset external.`
   );
 }
 function runReset(workspace2, profile) {
@@ -9999,7 +9999,7 @@ function runReset(workspace2, profile) {
 }
 function resetCommand(text2) {
   const words4 = text2.trim().split(/\s+/).filter(Boolean);
-  requireCondition(words4.length, "The reset command is empty. Give a command, or factory.");
+  requireCondition(words4.length, "The reset command is empty. Give a command, or external.");
   return words4;
 }
 
@@ -10483,7 +10483,7 @@ function requireAnswer(answered, url) {
   );
 }
 function resetOf(text2) {
-  return text2 === "factory" ? { owner: "factory", command: null } : { owner: "checkmate", command: resetCommand(text2) };
+  return text2 === "external" ? { owner: "external", command: null } : { owner: "checkmate", command: resetCommand(text2) };
 }
 function setupAssumptions(input) {
   const assumed = [];
@@ -10574,6 +10574,10 @@ function setupTarget(store, actor, input) {
   const latest = targetRevision(store, targetId);
   const needsReset = !latest.profile.reset && latest.profile.allowedOperations.some(changesData);
   if (needsReset) assumed.push("reset=none: testers may change data, so a run or an exploration needs a reset");
+  if (latest.profile.reset?.owner === "external")
+    assumed.push(
+      "reset=external: Checkmate does not reset data. The factory or a person resets it outside Checkmate."
+    );
   return completed(targetId, {
     targetId,
     revision: latest.revision,
@@ -16783,6 +16787,10 @@ function linkedCriterion(entry, criteria) {
   const ids2 = [...entry?.links ?? [], ...(entry?.about ?? "").split(/[\s,;]+/)];
   return ids2.map((id2) => criteria.get(id2)).find(Boolean);
 }
+function oneCheck(expected) {
+  const first = expected.split(/\band\b|;/i)[0].trim();
+  return first.endsWith(".") ? first : `${first}.`;
+}
 function drafts(store, explorationId, observations) {
   const row2 = explorationRow(store, explorationId);
   const state = journal(store, row2.plan_id);
@@ -16799,7 +16807,7 @@ function drafts(store, explorationId, observations) {
       requirement: criterion?.text ?? claim.expected,
       source: criterion?.source ?? `exploration:${explorationId}/${claim.id}`,
       action: stepsText(claim.steps ?? void 0, claim.title),
-      check: claim.expected,
+      check: oneCheck(claim.expected),
       deterministic: false,
       via: report?.via,
       basis: "claim"
@@ -40879,10 +40887,9 @@ function resetLines(profile) {
   if (!reset) return [];
   const command = reset.command ? reset.command.map((line) => `\`${line}\``).join(", then ") : "no command recorded";
   const instead = "When a test needs a fresh state, adapt the test data, or record a blocking gap that asks for the reset.";
-  if (reset.owner === "factory") return [`Reset: the factory owns it (${command}). Do not run it. ${instead}`];
-  if (!reset.command) return [`Reset: QA owns it, but no command recorded. ${instead}`];
+  if (reset.owner === "external") return [`Reset: outside Checkmate. Checkmate does not reset the data. ${instead}`];
   return [
-    `Reset: ${command}. The profile authorizes it. Run it exactly as recorded, only between tests, and only before a test whose preconditions say that it needs a fresh state. Do not run it before a test that uses the data of its dependsOn tests.`
+    `Reset: ${command}. Checkmate runs it before the run begins and before each exploration starts. Do not run it yourself. Do not run it between tests. A reset removes the data of earlier tests in the run. Do not run it before a test that uses the data of its dependsOn tests.`
   ];
 }
 var blockerPolicy = {

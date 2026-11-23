@@ -375,7 +375,7 @@ export type Profile = {
 	}
 	cleanup: string
 	reset?: {
-		owner: 'factory' | 'checkmate'
+		owner: 'checkmate' | 'external'
 		command: Array<string> | null
 	}
 	readyForLiveExecution: boolean

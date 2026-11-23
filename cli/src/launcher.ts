@@ -355,10 +355,9 @@ function resetLines(profile: Profile) {
 	const command = reset.command ? reset.command.map((line) => `\`${line}\``).join(', then ') : 'no command recorded'
 	const instead =
 		'When a test needs a fresh state, adapt the test data, or record a blocking gap that asks for the reset.'
-	if (reset.owner === 'factory') return [`Reset: the factory owns it (${command}). Do not run it. ${instead}`]
-	if (!reset.command) return [`Reset: QA owns it, but no command recorded. ${instead}`]
+	if (reset.owner === 'external') return [`Reset: outside Checkmate. Checkmate does not reset the data. ${instead}`]
 	return [
-		`Reset: ${command}. The profile authorizes it. Run it exactly as recorded, only between tests, and only before a test whose preconditions say that it needs a fresh state. Do not run it before a test that uses the data of its dependsOn tests.`,
+		`Reset: ${command}. Checkmate runs it before the run begins and before each exploration starts. Do not run it yourself. Do not run it between tests. A reset removes the data of earlier tests in the run. Do not run it before a test that uses the data of its dependsOn tests.`,
 	]
 }
 

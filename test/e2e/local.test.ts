@@ -90,7 +90,7 @@ test('Recover after missing host or missing ticket source — unexplained partia
 		'--url',
 		'http://127.0.0.1:9',
 		'--reset',
-		'factory',
+		'external',
 		'--build',
 		'b1',
 		'--allow',
@@ -146,7 +146,7 @@ test('Keep a defect stored while a question about its rule waits — the finding
 		'--url',
 		app.baseUrl,
 		'--reset',
-		'factory',
+		'external',
 		'--source',
 		'ticket.md',
 		'--build',
@@ -205,7 +205,7 @@ test('Record a defect with replayable evidence — report text cannot become a r
 		'--url',
 		app.baseUrl,
 		'--reset',
-		'factory',
+		'external',
 		'--source',
 		'ticket.md',
 		'--build',
@@ -327,7 +327,7 @@ test('Explore a clean fixture — invented defect or missing observed coverage.'
 		'--url',
 		app.baseUrl,
 		'--reset',
-		'factory',
+		'external',
 		'--source',
 		'ticket.md',
 		'--build',
@@ -578,7 +578,7 @@ test('Pick an active instance and refuse unsafe defaults — mutation scope or s
 		assert.equal(result.code, 0, result.output)
 		return result.body
 	}
-	await ok('setup', '--url', app.baseUrl, '--target', 'shop', '--instance', 'local', '--reset', 'factory')
+	await ok('setup', '--url', app.baseUrl, '--target', 'shop', '--instance', 'local', '--reset', 'external')
 	await ok('target', 'instance', 'add', 'shop', 'staging', '--entry', `web=${staging.baseUrl}`)
 	await ok('target', 'instance', 'retire', 'shop', 'local')
 	const args = [
@@ -635,7 +635,7 @@ test('Keep incomplete criteria unverified — false green.', async (t) => {
 		'--url',
 		app.baseUrl,
 		'--reset',
-		'factory',
+		'external',
 		'--source',
 		'ticket.md',
 		'--build',
@@ -696,7 +696,7 @@ test('Merge duplicate findings and preserve evidence — defect inflated or uniq
 		'--url',
 		app.baseUrl,
 		'--reset',
-		'factory',
+		'external',
 		'--source',
 		'ticket.md',
 		'--build',
@@ -762,7 +762,7 @@ test('Show disputed/failed retest without closing a claim — unresolved defect 
 		'--url',
 		url,
 		'--reset',
-		'factory',
+		'external',
 		'--source',
 		'ticket.md',
 		'--build',
@@ -827,7 +827,7 @@ test('Interrupt the supervisor and retry safely — orphan workers or duplicate 
 		'--url',
 		app.baseUrl,
 		'--reset',
-		'factory',
+		'external',
 		'--source',
 		'ticket.md',
 		'--build',
@@ -901,7 +901,7 @@ test('Wait on a paused exploration — the driver burns the timeout instead of a
 		'--url',
 		app.baseUrl,
 		'--reset',
-		'factory',
+		'external',
 		'--source',
 		'ticket.md',
 		'--build',
@@ -948,7 +948,7 @@ test('Answer, revise, and approve the named revision — execution against the w
 		startup: { owner: 'factory', command: null },
 		cleanup: 'No test data.',
 		readyForLiveExecution: true,
-		reset: { owner: 'factory', command: null },
+		reset: { owner: 'external', command: null },
 		approvals: { plan: 'required', result: 'required' },
 	}
 	await ok([
@@ -1356,7 +1356,7 @@ test('Stop only one tester and keep the others running — sibling workers kille
 		'--url',
 		app.baseUrl,
 		'--reset',
-		'factory',
+		'external',
 		'--source',
 		'ticket.md',
 		'--build',
@@ -1429,7 +1429,7 @@ test('Show a safe provider failure and retained partial usage — secret visible
 		'--url',
 		app.baseUrl,
 		'--reset',
-		'factory',
+		'external',
 		'--source',
 		'ticket.md',
 		'--build',
@@ -1468,7 +1468,7 @@ test('Run ready tests and report blocked tests — partial execution misreported
 		assert.equal(result.code, 0, result.output)
 		return result.body
 	}
-	await ok(['setup', '--url', app.baseUrl, '--target', 'shop', '--reset', 'factory'])
+	await ok(['setup', '--url', app.baseUrl, '--target', 'shop', '--reset', 'external'])
 	await ok([
 		'plan',
 		'open',
@@ -2417,7 +2417,7 @@ test('Run a narrow retest with prerequisites and regressions — uncovered tests
 		assert.equal(result.code, 0, result.output)
 		return result.body
 	}
-	await ok(['setup', '--url', app.baseUrl, '--target', 'shop', '--reset', 'factory'])
+	await ok(['setup', '--url', app.baseUrl, '--target', 'shop', '--reset', 'external'])
 	await ok([
 		'plan',
 		'open',
@@ -2951,7 +2951,7 @@ test('Export a partial run with blocked tests as skipped — green CI hides the 
 		startup: { owner: 'factory', command: null },
 		cleanup: 'No test data.',
 		readyForLiveExecution: true,
-		reset: { owner: 'factory', command: null },
+		reset: { owner: 'external', command: null },
 		approvals: { plan: 'none', result: 'none' },
 	})
 	await ok(['target', 'instance', 'add', 'shop', 'local', '--entry', `web=${app.baseUrl}`])

@@ -13,7 +13,7 @@ A plan request has an `objective`, and `requirements` or `context.sources`, or b
 
 Save the plan with `plan save` before 75% of the deadline is used, also when it is not complete. A saved plan with gaps is better than no plan.
 
-When `checkmate target list` shows no target, or `plan open` refuses with `Unknown target profile`, create the target first. Give the URL of the application, then run `checkmate setup --url <url>`. Use the `targetId@1` that it prints in `--target`. Do not write `target open` with your own `--operations`. The setup skill has the details.
+When `checkmate target list` shows no target, or `plan open` refuses with `Unknown target profile`, create the target first. Setup sends one read check to the URL. It is not a test. A request not to test the application does not stop setup. Give the URL of the application, then run `checkmate setup --url <url>`. Use the `targetId@1` that it prints in `--target`. Do not write `target open` with your own `--operations`. The setup skill has the details.
 
 ## Steps
 
@@ -32,9 +32,12 @@ When `checkmate target list` shows no target, or `plan open` refuses with `Unkno
    - Each test creates its records or uses a unique value such as `qa-<runId>-<testId>`. No test needs a seed record to be unused or unchanged.
    - Each test has `"dependsOn": []`, unless it uses a record that another test creates.
    - No assertion uses a value that you chose. Each unknown value has an open blocking gap.
+   - Each price, fee, or amount in the sources states its currency, whether tax is included, and its rounding. Each one that does not has an open gap.
 10. Send the candidate in a heredoc: `checkmate plan save <planId> --actor claude:plan <<'EOF'`, the JSON, then `EOF`.
 11. If the command refuses the candidate, correct it and do step 10 again.
 12. Return the response of `plan save`. A `needs_decision` status with gap questions is a correct result.
+
+Do not ask the person a question during planning, and do not wait for an answer. A missing value is an open gap in the plan. A missing permission or source is a `needs_decision` return with its reason. After step 12, stop. Do not search the files to find a cause for a refusal. Run the hint.
 
 This example shows test-owned data, a regression test, and a boundary test with a gap:
 

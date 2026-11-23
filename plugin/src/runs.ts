@@ -33,7 +33,7 @@ import {
 	recordApproval,
 } from './plans.ts'
 import { findInstance, runInstance, targetRevision } from './targets.ts'
-import { changesData, runReset } from './resets.ts'
+import { changesData, markerFor, owe, runPrepare, settleCleanups } from './resets.ts'
 import { addPlanBuild } from './journal.ts'
 import { permanentSelection } from './permanent.ts'
 import { mkdirSync, readFileSync, realpathSync, rmSync, statSync } from 'node:fs'
@@ -62,6 +62,8 @@ export type RunRequest = {
 	retestOf: string | null
 	retestDefects?: RetestDefect[]
 	permanent?: { reference: string; sourceRevision: number; resultSha256: string }
+	facts?: string
+	marker?: string
 }
 export type RunState = { row: RunRow; request: RunRequest; plan: Plan; finished: boolean }
 export type OutcomeRow = {
@@ -389,11 +391,16 @@ function begin(
 				}
 			}
 			const { plan, sha256 } = checked.revision
-			runReset(store.workspace, targetRevision(store, plan.target.targetId).profile)
+			const dataProfile = targetRevision(store, plan.target.targetId).profile
+			const marker = markerFor(store, runId)
+			const facts = runPrepare(store.workspace, dataProfile.reset, marker)
+			owe(store, runId, dataProfile.reset)
 			const request: RunRequest = {
 				selectedTestIds: checked.tests,
 				partialExecution: checked.partial,
 				onNewBlocker,
+				...(facts ? { facts } : {}),
+				marker,
 				timeoutSeconds,
 				retestOf: input.retestOf ?? null,
 				...(input.retestOf ? { retestDefects: checked.retestDefects } : {}),
@@ -878,7 +885,8 @@ export function recordGap(store: Store, actor: string | undefined, input: { runI
 export function finishRun(store: Store, actor: string | undefined, input: FinishInput) {
 	const reply = finish(store, actor, input)
 	removeTemporaryDirectory(store, input.runId)
-	return reply
+	const cleanupFailures = settleCleanups(store, [input.runId])
+	return cleanupFailures.length ? { ...reply, data: { ...reply.data, cleanupFailures } } : reply
 }
 
 function finish(store: Store, actor: string | undefined, input: FinishInput) {
@@ -1168,20 +1176,22 @@ export function resumeRun(store: Store, actor: string | undefined, input: Resume
 			}
 		const changing = openTests.filter((test) => !stalled.includes(test.id) && test.operations.some(changesData))
 		const reset = target.profile.reset
-		if (changing.length && reset?.owner !== 'checkmate')
+		if (changing.length && reset?.owner === 'environment')
 			return {
 				reply: {
 					status: 'needs_decision',
 					subject: input.runId,
 					reasons: [
-						`Actions may have occurred in ${changing.map((test) => test.id).join(', ')}, and Checkmate cannot reset the data of ${run.row.target_id} (${reset ? `reset owner ${reset.owner}` : 'no reset recorded'}).`,
+						`Actions may have occurred in ${changing.map((test) => test.id).join(', ')}, and Checkmate cannot reset the data of ${run.row.target_id} (${reset ? `data kind ${reset.owner}` : 'no data policy recorded'}).`,
 					],
 					hint: `Decide for each test. Close it as error with a reason: checkmate run resume ${input.runId} --error ${changing.map((test) => test.id).join(',')} --reason "<why>". Or restore the data outside Checkmate, then run checkmate run resume ${input.runId} again.`,
 					data: {},
 				},
 				subjects: [],
 			}
-		if (changing.length) runReset(store.workspace, target.profile)
+		if (changing.length && reset?.owner === 'checkmate')
+			runPrepare(store.workspace, reset, run.request.marker ?? markerFor(store, input.runId))
+		if (changing.length) owe(store, input.runId, reset)
 		const attempt = currentAttempt(store, input.runId) + 1
 		execute(
 			store,

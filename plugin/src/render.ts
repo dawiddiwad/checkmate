@@ -1,6 +1,8 @@
 import type { Plan, Result } from './types.ts'
 import type { Store } from './store.ts'
 import { all } from './store.ts'
+import { dataSummary } from './resets.ts'
+import { targetRevision } from './targets.ts'
 import type { Approval } from './plans.ts'
 import type { ApprovalLabel } from './views.ts'
 import { requireChoice, requireCondition, revisionReference } from './contracts.ts'
@@ -22,6 +24,7 @@ type EvidenceItem = { label: string; name: string; mediaType: string; size: numb
 export type Format = 'md' | 'html' | 'json'
 export type RunFormat = Format | 'junit'
 export type RunReport = {
+	data: ReturnType<typeof dataSummary>
 	result: Result
 	sha256: string
 	acceptance: { state: ApprovalLabel; latest: Approval | null }
@@ -271,6 +274,7 @@ function runDocument(report: RunReport): Report {
 				['Run', result.runId],
 				['Objective', plan.objective],
 				['Application build', result.applicationBuild],
+				['Data', `${report.data.kind}${report.data.policy ? `. Policy: ${report.data.policy}` : ''}`],
 				['Plan', `${result.plan.planId}@${result.plan.revision}`],
 				['Target profile', `${result.target.targetId}@${result.target.revision}`],
 				['Instance', result.instanceId],
@@ -640,6 +644,8 @@ function junit(report: RunReport) {
 		xmlProperties([
 			['runId', result.runId],
 			['build', result.applicationBuild],
+			['dataKind', report.data.kind],
+			['dataPolicy', report.data.policy ?? ''],
 			['instance', result.instanceId],
 			['target', `${result.target.targetId}@${result.target.revision}`],
 			['completion', result.completion],
@@ -699,6 +705,10 @@ export function runReport(store: Store, runId: string): RunReport {
 			: { text: bytes.toString('utf8') }
 	}
 	return {
+		data: dataSummary(
+			store.workspace,
+			targetRevision(store, run.row.target_id, run.row.target_revision).profile.reset
+		),
 		result: finished.result,
 		sha256: finished.sha256,
 		acceptance: { state: approvalLabel(state), latest: state.latest },

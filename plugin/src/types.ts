@@ -396,8 +396,18 @@ export type Profile = {
 	}
 	cleanup: string
 	reset?: {
-		owner: 'checkmate' | 'external'
+		owner: 'checkmate' | 'environment' | 'isolation'
 		command: Array<string> | null
+		cleanup?: Array<string> | null
+		policy?:
+			| {
+					text: string
+			  }
+			| {
+					path: string
+			  }
+			| null
+		timeoutSeconds?: number
 	}
 	readyForLiveExecution: boolean
 	explore?: {

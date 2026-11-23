@@ -3,7 +3,7 @@ import type { Change, Reply, Store } from './store.ts'
 import { answerQuestion } from './journal.ts'
 import { patchRules, requireHeldRules } from './rules.ts'
 import { operationAllowed, targetWebUrl } from './targets.ts'
-import { requireResetFor } from './resets.ts'
+import { dataSummary, requireDataFor } from './resets.ts'
 import { all, canonical, completed, digest, execute, one, ulid, write } from './store.ts'
 import type { PlanDraft, Test } from './contracts.ts'
 import {
@@ -161,6 +161,7 @@ export function showPlanRequest(store: Store, planId: string) {
 		tools: planTools(request, target.profile),
 		capabilities: target.profile.capabilities,
 		allowedOperations: target.profile.allowedOperations,
+		data: dataSummary(store.workspace, target.profile.reset),
 	})
 }
 
@@ -1150,7 +1151,7 @@ export function gate(store: Store, input: GateInput) {
 	const selection =
 		input.tests === undefined && partial === 'ready_only' ? ready! : givenSelection(input.tests, tests, subject)
 	const selected = selection.tests
-	requireResetFor(
+	requireDataFor(
 		targetRevision(store, target.profile.targetId).profile,
 		selected.flatMap((id) => tests.get(id)?.operations ?? []),
 		`Run ${subject}`,

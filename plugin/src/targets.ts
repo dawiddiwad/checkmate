@@ -528,6 +528,11 @@ export type SetupInput = {
 	operations?: string[]
 	environment?: string
 	reset?: string
+	data?: string
+	policy?: string
+	policyFile?: string
+	cleanup?: string
+	hookTimeout?: number
 	env: Record<string, string | undefined>
 	answered?: boolean
 }
@@ -591,10 +596,44 @@ export function requireAnswer(answered: boolean, url: string) {
 	)
 }
 
-function resetOf(text: string): Profile['reset'] {
-	return text === 'external'
-		? { owner: 'external', command: null }
-		: { owner: 'checkmate', command: resetCommand(text) }
+// The data kind of a target. A reset command runs before each run (kind checkmate). Environment and
+// isolation keep data safe without a reset by Checkmate, so they need a policy that the person gives.
+export function dataOf(input: SetupInput): Profile['reset'] | undefined {
+	requireCondition(
+		input.reset !== 'external',
+		'The value external is no longer accepted.',
+		'Use --data environment or --data isolation with --policy "<text>" or --policy-file <path>.'
+	)
+	const hooks = {
+		...(input.cleanup ? { cleanup: resetCommand(input.cleanup) } : {}),
+		...(input.hookTimeout ? { timeoutSeconds: input.hookTimeout } : {}),
+	}
+	if (!input.data) {
+		requireCondition(
+			!Object.keys(hooks).length || input.reset,
+			'--cleanup and --hook-timeout apply to a reset or a data kind.',
+			'Give --reset "<command>" or --data environment|isolation with --policy.'
+		)
+		return input.reset
+			? { owner: 'checkmate', command: resetCommand(input.reset), policy: null, ...hooks }
+			: undefined
+	}
+	requireCondition(
+		input.data === 'environment' || input.data === 'isolation',
+		`Unknown data kind ${input.data}.`,
+		'Use --data environment or --data isolation.'
+	)
+	requireCondition(
+		Boolean(input.policy || input.policyFile),
+		`Data kind ${input.data} needs a data policy.`,
+		'Give the policy text with --policy "<text>", or the path of your own file with --policy-file <path>.'
+	)
+	return {
+		owner: input.data,
+		command: input.reset ? resetCommand(input.reset) : null,
+		policy: input.policy ? { text: input.policy } : { path: input.policyFile! },
+		...hooks,
+	}
 }
 
 export function setupAssumptions(input: SetupInput) {
@@ -654,7 +693,7 @@ export function setupTarget(store: Store, actor: string | undefined, input: Setu
 	)
 	const reachable = input.answered ?? urlAnswers(url)
 	if (!reachable && !saved) assumed.push(`ready=false (${url} did not answer)`)
-	const reset = input.reset ? resetOf(input.reset) : undefined
+	const reset = dataOf(input)
 	if (!saved)
 		saveTarget(store, actor, {
 			targetId,
@@ -688,10 +727,14 @@ export function setupTarget(store: Store, actor: string | undefined, input: Setu
 	if (instance.status !== 'completed') return instance
 	const latest = targetRevision(store, targetId)
 	const needsReset = !latest.profile.reset && latest.profile.allowedOperations.some(changesData)
-	if (needsReset) assumed.push('reset=none: testers may change data, so a run or an exploration needs a reset')
-	if (latest.profile.reset?.owner === 'external')
+	if (needsReset)
+		assumed.push('data=none recorded: testers may change data, so a run or an exploration needs a data policy.')
+	const kind = latest.profile.reset
+	if (kind)
 		assumed.push(
-			'reset=external: Checkmate does not reset data. The factory or a person resets it outside Checkmate.'
+			kind.owner === 'checkmate'
+				? `data=reset command: Checkmate runs ${kind.command?.join(' ')} before each run and exploration.`
+				: `data=${kind.owner}: Checkmate does not reset data. ${kind.owner === 'isolation' ? 'Testers work by isolation under the data policy.' : 'The environment gives each run fresh data.'}`
 		)
 	return completed(targetId, {
 		targetId,
@@ -703,7 +746,9 @@ export function setupTarget(store: Store, actor: string | undefined, input: Setu
 		ready: latest.profile.readyForLiveExecution,
 		instanceReachable: reachable,
 		...(needsReset
-			? { next: `Record the reset: checkmate setup --url ${url} --reset "<command that restores the seed data>"` }
+			? {
+					next: `Ask the person for the data policy. Give the command that restores the seed data: checkmate setup --url ${url} --reset "<command>". Or give --data environment|isolation with --policy "<text>". Do not write them yourself.`,
+				}
 			: !latest.profile.readyForLiveExecution
 				? {
 						next: `Recheck the target prerequisites and save a new profile: checkmate delegate setup ${targetId}`,

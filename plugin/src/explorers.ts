@@ -41,7 +41,7 @@ import {
 } from './briefs.ts'
 import { checkedRules, ruleSources, rulesNeeded, saveRules } from './rules.ts'
 import { findInstance, targetRevision, targetWebUrl } from './targets.ts'
-import { requireResetFor, runReset } from './resets.ts'
+import { dataRules, markerFor, owe, requireDataFor, runPrepare, settleCleanups } from './resets.ts'
 import { storeFindingsRun } from './findingsRun.ts'
 import { changeOf, changedFiles } from './change.ts'
 import {
@@ -95,6 +95,7 @@ export type StartInput = OpenInput & {
 	session?: boolean
 }
 export type Launch = {
+	dataRules?: string[]
 	studySeconds: number
 	testSeconds: number
 	level: TestLevel
@@ -405,13 +406,16 @@ export function startExploration(
 			: insertExploration(store, input, operationId, at)
 		const row = explorationRow(store, opened.explorationId)
 		const exploredProfile = targetRevision(store, row.target_id).profile
-		requireResetFor(
+		requireDataFor(
 			exploredProfile,
 			exploredProfile.allowedOperations,
 			`Exploration ${row.exploration_id}`,
 			targetWebUrl(store, row.target_id)
 		)
-		runReset(store.workspace, exploredProfile)
+		const marker = markerFor(store, opened.explorationId)
+		const facts = runPrepare(store.workspace, exploredProfile.reset, marker)
+		owe(store, opened.explorationId, exploredProfile.reset)
+		const rules = dataRules(store.workspace, exploredProfile.reset, marker, facts)
 		const savedModel = input.session ? '' : testerModelText(store, selectedHarness(env))
 		const savedEffort = input.session ? '' : testerEffortText(store, selectedHarness(env))
 		const launch = launchPlan(
@@ -429,7 +433,11 @@ export function startExploration(
 				step: 'start',
 				explorer: null,
 				status: 'started',
-				detail: { ...launch, browserFolder: existsSync(join(store.workspace, browserFolder)) },
+				detail: {
+					...launch,
+					dataRules: rules,
+					browserFolder: existsSync(join(store.workspace, browserFolder)),
+				},
 			},
 			operationId,
 			at
@@ -627,10 +635,16 @@ async function launchExplorers(
 		)
 		const work = explorerWork(store, explorationId, explorer, launch.explorers)
 		const { folder, grant } = work
-		const brief = explorerBrief(opened.charter, entries, `qa-${explorationId}-${explorer}-`, folder, {
-			study: launch.studySeconds,
-			test: launch.testSeconds,
-		})
+		const brief = explorerBrief(
+			{ ...opened.charter, dataRules: launch.dataRules },
+			entries,
+			`qa-${explorationId}-${explorer}-`,
+			folder,
+			{
+				study: launch.studySeconds,
+				test: launch.testSeconds,
+			}
+		)
 		event(store, actor, explorationId, {
 			step: 'launch',
 			explorer,
@@ -1060,6 +1074,7 @@ export async function driveExploration(workspace: string, explorationId: string,
 			detail: { reason: error instanceof Error ? error.message : String(error) },
 		})
 	} finally {
+		settleCleanups(store, [explorationId])
 		closeStore(store)
 	}
 }

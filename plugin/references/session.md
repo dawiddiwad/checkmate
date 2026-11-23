@@ -80,7 +80,7 @@ An overlap warning names the other run and the shared open tests on the instance
 
 - After a rejected result: run `checkmate status <planId>` first. A `why` line `<runId> was rejected by <actor>: <rationale>` gives the reason of the oracle. Do the retest so that it addresses the rationale. When the rationale needs a plan change, stop and tell the oracle.
 - Stalled run: run `checkmate run resume <runId> --actor claude:execute`. It checks the instance, the latest target profile, and the gate. When it gives `rejected`, stop and report the reasons. When it gives `completed`, check only the assertions that it lists. The oracle decides about tests marked `Actions may have occurred`.
-- A reset with owner `external`: Checkmate does not reset the data. Ask the oracle for the reset before a test that needs a fresh state. Checkmate runs a `checkmate` reset only before a run begins or an exploration starts. `explore follow` does not run it again: the first reset of the exploration applies to its follow-ups.
+- A data kind `environment` or `isolation`: Checkmate does not reset the data. Ask the oracle for the data policy before a test that changes data. Checkmate runs a reset command (`--reset`) only before a run begins or an exploration starts. `explore follow` does not run it again.
 
 ## Report to the oracle
 

@@ -403,6 +403,7 @@ const commands: Record<string, Command> = {
 					run: status.latestRun?.runId,
 				},
 				lines: [
+					...(status.data.policy ? [[`data policy: ${status.data.policy}`]] : []),
 					...status.why.map((line) => ['why', line]),
 					...(status.rules ? [['rules', status.rules]] : []),
 					...status.next.map((line) => ['next', line]),
@@ -640,10 +641,12 @@ const commands: Record<string, Command> = {
 				tools: PlanTool[]
 				capabilities: string[]
 				allowedOperations: string[]
+				data: { kind: string; policy: string | null }
 			}
 			return {
-				facts: { target: data.target },
+				facts: { target: data.target, data: data.data.kind },
 				lines: [
+					...(data.data.policy ? [['data policy', data.data.policy]] : []),
 					['objective', data.objective],
 					...data.requirements.map((requirement) => [requirement.id, requirement.text, requirement.source]),
 					...data.context.sources.map((source) => ['source', source]),
@@ -1100,6 +1103,7 @@ const commands: Record<string, Command> = {
 						(reply.data.gate as { unverified?: string[] } | undefined)?.unverified?.join(',') || undefined,
 					judgedByAgent: (reply.data.gate as { judgedByAgent?: number } | undefined)?.judgedByAgent,
 					mode: detail.request.permanent ? 'permanent' : undefined,
+					data: detail.data.kind,
 					plan: `${detail.planId}@${detail.revision}`,
 					build: detail.build,
 					instance: detail.instance.instanceId,
@@ -1110,6 +1114,7 @@ const commands: Record<string, Command> = {
 				},
 				lines: [
 					...gateReasonLines(reply.data.gate as GateReason | undefined, detail.planId),
+					...(detail.data.policy ? [[`data policy: ${detail.data.policy}`]] : []),
 					[
 						'time',
 						`deadline=${detail.clock.deadline}`,
@@ -1291,6 +1296,11 @@ const commands: Record<string, Command> = {
 			operations: 'list',
 			environment: 'value',
 			reset: 'value',
+			data: 'value',
+			policy: 'value',
+			'policy-file': 'value',
+			cleanup: 'value',
+			'hook-timeout': { min: 1, max: 3600 },
 		},
 		required: ['url'],
 		write: true,
@@ -1302,6 +1312,11 @@ const commands: Record<string, Command> = {
 				operations: list(args, 'operations'),
 				environment: value(args, 'environment'),
 				reset: value(args, 'reset'),
+				data: value(args, 'data'),
+				policy: value(args, 'policy'),
+				policyFile: value(args, 'policy-file'),
+				cleanup: value(args, 'cleanup'),
+				hookTimeout: integer(args, 'hook-timeout'),
 				env,
 			}),
 		print: (reply) => ({
@@ -1337,6 +1352,11 @@ const commands: Record<string, Command> = {
 			scope: 'list',
 			url: 'value',
 			reset: 'value',
+			data: 'value',
+			policy: 'value',
+			'policy-file': 'value',
+			cleanup: 'value',
+			'hook-timeout': { min: 1, max: 3600 },
 			repo: 'value',
 			session: 'switch',
 		},
@@ -1365,6 +1385,11 @@ const commands: Record<string, Command> = {
 					scope: list(args, 'scope'),
 					url: value(args, 'url'),
 					reset: value(args, 'reset'),
+					data: value(args, 'data'),
+					policy: value(args, 'policy'),
+					policyFile: value(args, 'policy-file'),
+					cleanup: value(args, 'cleanup'),
+					hookTimeout: integer(args, 'hook-timeout'),
 					repo: value(args, 'repo'),
 					session: args.session === true,
 				},

@@ -89,8 +89,10 @@ test('Recover after missing host or missing ticket source — unexplained partia
 		'cart',
 		'--url',
 		'http://127.0.0.1:9',
-		'--reset',
-		'external',
+		'--data',
+		'environment',
+		'--policy',
+		'The test fixture keeps no records.',
 		'--build',
 		'b1',
 		'--allow',
@@ -145,8 +147,10 @@ test('Keep a defect stored while a question about its rule waits — the finding
 		'cart',
 		'--url',
 		app.baseUrl,
-		'--reset',
-		'external',
+		'--data',
+		'environment',
+		'--policy',
+		'The test fixture keeps no records.',
 		'--source',
 		'ticket.md',
 		'--build',
@@ -204,8 +208,10 @@ test('Record a defect with replayable evidence — report text cannot become a r
 		'cart',
 		'--url',
 		app.baseUrl,
-		'--reset',
-		'external',
+		'--data',
+		'environment',
+		'--policy',
+		'The test fixture keeps no records.',
 		'--source',
 		'ticket.md',
 		'--build',
@@ -326,8 +332,10 @@ test('Explore a clean fixture — invented defect or missing observed coverage.'
 		'cart',
 		'--url',
 		app.baseUrl,
-		'--reset',
-		'external',
+		'--data',
+		'environment',
+		'--policy',
+		'The test fixture keeps no records.',
 		'--source',
 		'ticket.md',
 		'--build',
@@ -796,7 +804,19 @@ test('Pick an active instance and refuse unsafe defaults — mutation scope or s
 		assert.equal(result.code, 0, result.output)
 		return result.body
 	}
-	await ok('setup', '--url', app.baseUrl, '--target', 'shop', '--instance', 'local', '--reset', 'external')
+	await ok(
+		'setup',
+		'--url',
+		app.baseUrl,
+		'--target',
+		'shop',
+		'--instance',
+		'local',
+		'--data',
+		'environment',
+		'--policy',
+		'The test fixture keeps no records.'
+	)
 	await ok('target', 'instance', 'add', 'shop', 'staging', '--entry', `web=${staging.baseUrl}`)
 	await ok('target', 'instance', 'retire', 'shop', 'local')
 	const args = [
@@ -852,8 +872,10 @@ test('Keep incomplete criteria unverified — false green.', async (t) => {
 		'cart',
 		'--url',
 		app.baseUrl,
-		'--reset',
-		'external',
+		'--data',
+		'environment',
+		'--policy',
+		'The test fixture keeps no records.',
 		'--source',
 		'ticket.md',
 		'--build',
@@ -913,8 +935,10 @@ test('Merge duplicate findings and preserve evidence — defect inflated or uniq
 		'cart',
 		'--url',
 		app.baseUrl,
-		'--reset',
-		'external',
+		'--data',
+		'environment',
+		'--policy',
+		'The test fixture keeps no records.',
 		'--source',
 		'ticket.md',
 		'--build',
@@ -979,8 +1003,10 @@ test('Show disputed/failed retest without closing a claim — unresolved defect 
 		'cart',
 		'--url',
 		url,
-		'--reset',
-		'external',
+		'--data',
+		'environment',
+		'--policy',
+		'The test fixture keeps no records.',
 		'--source',
 		'ticket.md',
 		'--build',
@@ -1044,8 +1070,10 @@ test('Interrupt the supervisor and retry safely — orphan workers or duplicate 
 		'cart',
 		'--url',
 		app.baseUrl,
-		'--reset',
-		'external',
+		'--data',
+		'environment',
+		'--policy',
+		'The test fixture keeps no records.',
 		'--source',
 		'ticket.md',
 		'--build',
@@ -1118,8 +1146,10 @@ test('Wait on a paused exploration — the driver burns the timeout instead of a
 		'cart',
 		'--url',
 		app.baseUrl,
-		'--reset',
-		'external',
+		'--data',
+		'environment',
+		'--policy',
+		'The test fixture keeps no records.',
 		'--source',
 		'ticket.md',
 		'--build',
@@ -1166,7 +1196,7 @@ test('Answer, revise, and approve the named revision — execution against the w
 		startup: { owner: 'factory', command: null },
 		cleanup: 'No test data.',
 		readyForLiveExecution: true,
-		reset: { owner: 'external', command: null },
+		reset: { owner: 'environment', command: null, policy: { text: 'The test fixture keeps no records.' } },
 		approvals: { plan: 'required', result: 'required' },
 	}
 	await ok([
@@ -1578,8 +1608,10 @@ test('Stop only one tester and keep the others running — sibling workers kille
 		'cart',
 		'--url',
 		app.baseUrl,
-		'--reset',
-		'external',
+		'--data',
+		'environment',
+		'--policy',
+		'The test fixture keeps no records.',
 		'--source',
 		'ticket.md',
 		'--build',
@@ -1651,8 +1683,10 @@ test('Show a safe provider failure and retained partial usage — secret visible
 		'cart',
 		'--url',
 		app.baseUrl,
-		'--reset',
-		'external',
+		'--data',
+		'environment',
+		'--policy',
+		'The test fixture keeps no records.',
 		'--source',
 		'ticket.md',
 		'--build',
@@ -1691,7 +1725,17 @@ test('Run ready tests and report blocked tests — partial execution misreported
 		assert.equal(result.code, 0, result.output)
 		return result.body
 	}
-	await ok(['setup', '--url', app.baseUrl, '--target', 'shop', '--reset', 'external'])
+	await ok([
+		'setup',
+		'--url',
+		app.baseUrl,
+		'--target',
+		'shop',
+		'--data',
+		'environment',
+		'--policy',
+		'The test fixture keeps no records.',
+	])
 	await ok([
 		'plan',
 		'open',
@@ -2632,7 +2676,17 @@ test('Run a narrow retest with prerequisites and regressions — uncovered tests
 		assert.equal(result.code, 0, result.output)
 		return result.body
 	}
-	await ok(['setup', '--url', app.baseUrl, '--target', 'shop', '--reset', 'external'])
+	await ok([
+		'setup',
+		'--url',
+		app.baseUrl,
+		'--target',
+		'shop',
+		'--data',
+		'environment',
+		'--policy',
+		'The test fixture keeps no records.',
+	])
 	await ok([
 		'plan',
 		'open',
@@ -3164,7 +3218,7 @@ test('Export a partial run with blocked tests as skipped — green CI hides the 
 		startup: { owner: 'factory', command: null },
 		cleanup: 'No test data.',
 		readyForLiveExecution: true,
-		reset: { owner: 'external', command: null },
+		reset: { owner: 'environment', command: null, policy: { text: 'The test fixture keeps no records.' } },
 		approvals: { plan: 'none', result: 'none' },
 	})
 	await ok(['target', 'instance', 'add', 'shop', 'local', '--entry', `web=${app.baseUrl}`])
@@ -3359,8 +3413,8 @@ test('Refuse a run that can change data without a reset, then run the recorded r
 		'local'
 	)
 	assert.equal(refused.code, 1, refused.output)
-	assert.match(refused.output, /can change data \(create_fixture_order\), and target shop has no reset/)
-	assert.match(refused.output, /checkmate setup --url .* --reset/)
+	assert.match(refused.output, /can change data \(create_fixture_order\), and target shop has no data policy/)
+	assert.match(refused.output, /--reset \\?"<command>/)
 	await ok('setup', '--url', app.baseUrl, '--target', 'shop', '--instance', 'local', '--reset', 'node reset.mjs')
 	await ok('run', 'gate', 'ticket@1', '--build', 'b1')
 	assert.equal(existsSync(join(workspace, 'reset-ran.txt')), false)
@@ -3728,7 +3782,19 @@ test('Resume a run with a test that may have changed data — a recorded reset r
 	const byTest = Object.fromEntries(resumed.tests.map((item: { testId: string }) => [item.testId, item]))
 	assert.equal(byTest.T1.reset, 'ran before this attempt')
 	assert.equal(byTest.T2.reset, undefined)
-	await ok('setup', '--url', app.baseUrl, '--target', 'shop', '--instance', 'local', '--reset', 'external')
+	await ok(
+		'setup',
+		'--url',
+		app.baseUrl,
+		'--target',
+		'shop',
+		'--instance',
+		'local',
+		'--data',
+		'environment',
+		'--policy',
+		'The test fixture keeps no records.'
+	)
 	await ok('run', 'begin', 'run-2', 'ticket@1', '--build', 'b2', '--instance', 'local')
 	const asked = await ok('run', 'resume', 'run-2')
 	assert.equal(asked.status, 'needs_decision')
@@ -4098,4 +4164,347 @@ test('Revise a check that needs a decision to split — the test is blocked by a
 		gaps.map((gap: { id: string; status: string }) => [gap.id, gap.status]),
 		[['G-T1', 'open']]
 	)
+})
+
+test('Set a data kind with a policy — setup refuses a kind without one, and run show prints the kind and the policy.', async (t) => {
+	const workspace = directory(t)
+	writeFileSync(join(workspace, 'ticket.md'), 'An order can be created.\n')
+	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle', CHECKMATE_HARNESS: 'pi' }
+	const ok = async (...args: string[]) => {
+		const result = await command(workspace, env, ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	const app = await fixture()
+	t.after(() => app.close())
+	const missing = await command(
+		workspace,
+		env,
+		'setup',
+		'--url',
+		app.baseUrl,
+		'--target',
+		'shop',
+		'--data',
+		'isolation'
+	)
+	assert.equal(missing.code, 1, missing.output)
+	assert.match(missing.output, /needs a data policy/)
+	await ok(
+		'setup',
+		'--url',
+		app.baseUrl,
+		'--target',
+		'shop',
+		'--data',
+		'isolation',
+		'--policy',
+		'Use the test users only.'
+	)
+	const profile = await ok('target', 'show', 'shop')
+	assert.equal(profile.profile.reset.owner, 'isolation')
+	assert.deepEqual(profile.profile.reset.policy, { text: 'Use the test users only.' })
+	await ok('plan', 'open', 'ticket', '--target', 'shop@1', '--objective', 'Create an order.', '--source', 'ticket.md')
+	const saved = await inputCommand(
+		workspace,
+		env,
+		JSON.stringify({
+			requirements: [{ id: 'R1', text: 'An order can be created.', source: 'ticket.md' }],
+			tests: [
+				{
+					id: 'T1',
+					title: 'Read the catalog',
+					requirementIds: ['R1'],
+					capability: 'http',
+					operations: ['read_catalog'],
+					dependsOn: [],
+					preconditions: [],
+					action: 'Read the catalog.',
+					assertions: [{ id: 'A1', check: 'The catalog is listed.', checkKind: 'agent_observation' }],
+				},
+			],
+			gaps: [],
+		}),
+		'plan',
+		'save',
+		'ticket'
+	)
+	assert.equal(saved.code, 0, saved.output)
+	await ok('run', 'begin', 'run-1', 'ticket@1', '--build', 'b1', '--instance', 'local')
+	const shown = await command(workspace, env, 'run', 'show', 'run-1')
+	assert.equal(shown.body.data.policy, 'Use the test users only.')
+	assert.match(shown.body.data.kind, /^isolation/)
+})
+
+test('Run a prepare command before a run — its facts reach the run, and a failed prepare stops the run with its reason.', async (t) => {
+	const workspace = directory(t)
+	writeFileSync(join(workspace, 'ticket.md'), 'An order can be created.\n')
+	writeFileSync(
+		join(workspace, 'prepare.mjs'),
+		"import { writeFileSync } from 'node:fs'\nwriteFileSync('prepared-marker.txt', process.env.CHECKMATE_MARKER)\nconsole.log(`test user qa-user-${process.env.CHECKMATE_MARKER}`)\n"
+	)
+	writeFileSync(join(workspace, 'fail.mjs'), 'process.exit(3)\n')
+	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle', CHECKMATE_HARNESS: 'pi' }
+	const ok = async (...args: string[]) => {
+		const result = await command(workspace, env, ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	const app = await fixture()
+	t.after(() => app.close())
+	await ok(
+		'setup',
+		'--url',
+		app.baseUrl,
+		'--target',
+		'shop',
+		'--data',
+		'isolation',
+		'--policy',
+		'Use the test users only.',
+		'--reset',
+		'node prepare.mjs'
+	)
+	await ok('plan', 'open', 'ticket', '--target', 'shop@1', '--objective', 'Create an order.', '--source', 'ticket.md')
+	const saved = await inputCommand(
+		workspace,
+		env,
+		JSON.stringify({
+			requirements: [{ id: 'R1', text: 'An order can be created.', source: 'ticket.md' }],
+			tests: [
+				{
+					id: 'T1',
+					title: 'Read the catalog',
+					requirementIds: ['R1'],
+					capability: 'http',
+					operations: ['read_catalog'],
+					dependsOn: [],
+					preconditions: [],
+					action: 'Read the catalog.',
+					assertions: [{ id: 'A1', check: 'The catalog is listed.', checkKind: 'agent_observation' }],
+				},
+			],
+			gaps: [],
+		}),
+		'plan',
+		'save',
+		'ticket'
+	)
+	assert.equal(saved.code, 0, saved.output)
+	await ok('run', 'begin', 'run-1', 'ticket@1', '--build', 'b1', '--instance', 'local')
+	assert.match(readFileSync(join(workspace, 'prepared-marker.txt'), 'utf8'), /^qa-[a-z0-9]+-run-1$/)
+	const detail = await ok('run', 'show', 'run-1')
+	assert.match(detail.request.facts, /test user qa-user-qa-[a-z0-9]+-run-1/)
+	await ok(
+		'setup',
+		'--url',
+		app.baseUrl,
+		'--target',
+		'shop',
+		'--data',
+		'isolation',
+		'--policy',
+		'Use the test users only.',
+		'--reset',
+		'node fail.mjs'
+	)
+	const failed = await command(
+		workspace,
+		env,
+		'run',
+		'begin',
+		'run-2',
+		'ticket@1',
+		'--build',
+		'b2',
+		'--instance',
+		'local'
+	)
+	assert.equal(failed.code, 1, failed.output)
+	assert.match(failed.output, /prepare command node fail\.mjs exited with code 3/)
+	assert.match(failed.output, /Checkmate started no test/)
+	const absent = await command(workspace, env, 'run', 'show', 'run-2')
+	assert.equal(absent.code, 1, absent.output)
+})
+
+test('Run a cleanup command when a run finishes — a failed cleanup is reported and the verdict stays.', async (t) => {
+	const workspace = directory(t)
+	writeFileSync(join(workspace, 'ticket.md'), 'An order can be created.\n')
+	writeFileSync(
+		join(workspace, 'cleanup.mjs'),
+		"import { writeFileSync } from 'node:fs'\nwriteFileSync('cleaned.txt', process.env.CHECKMATE_MARKER)\n"
+	)
+	writeFileSync(join(workspace, 'cleanup-fail.mjs'), 'process.exit(4)\n')
+	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle', CHECKMATE_HARNESS: 'pi' }
+	const ok = async (...args: string[]) => {
+		const result = await command(workspace, env, ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	const app = await fixture()
+	t.after(() => app.close())
+	await ok(
+		'setup',
+		'--url',
+		app.baseUrl,
+		'--target',
+		'shop',
+		'--data',
+		'isolation',
+		'--policy',
+		'Use the test users only.',
+		'--cleanup',
+		'node cleanup.mjs'
+	)
+	await ok(
+		'plan',
+		'open',
+		'ticket',
+		'--target',
+		'shop@1',
+		'--objective',
+		'Read the catalog.',
+		'--source',
+		'ticket.md'
+	)
+	const saved = await inputCommand(
+		workspace,
+		env,
+		JSON.stringify({
+			requirements: [{ id: 'R1', text: 'The catalog is listed.', source: 'ticket.md' }],
+			tests: [
+				{
+					id: 'T1',
+					title: 'Read the catalog',
+					requirementIds: ['R1'],
+					capability: 'http',
+					operations: ['read_catalog'],
+					dependsOn: [],
+					preconditions: [],
+					action: 'Read the catalog.',
+					assertions: [{ id: 'A1', check: 'The catalog is listed.', checkKind: 'agent_observation' }],
+				},
+			],
+			gaps: [],
+		}),
+		'plan',
+		'save',
+		'ticket'
+	)
+	assert.equal(saved.code, 0, saved.output)
+	await ok('run', 'begin', 'run-1', 'ticket@1', '--build', 'b1', '--instance', 'local')
+	const check = await inputCommand(
+		workspace,
+		env,
+		'HTTP 200',
+		'run',
+		'check',
+		'run-1',
+		'T1',
+		'A1',
+		'--result',
+		'passed',
+		'--observed',
+		'listed',
+		'--evidence',
+		'-'
+	)
+	assert.equal(check.code, 0, check.output)
+	await ok('run', 'close', 'run-1', 'T1')
+	const finished = await ok(
+		'run',
+		'finish',
+		'run-1',
+		'--completion',
+		'completed',
+		'--cleanup',
+		'completed',
+		'--cleanup-reason',
+		'The run kept no work folder.'
+	)
+	assert.equal(finished.status, 'completed')
+	assert.match(readFileSync(join(workspace, 'cleaned.txt'), 'utf8'), /^qa-[a-z0-9]+-run-1$/)
+	await ok(
+		'setup',
+		'--url',
+		app.baseUrl,
+		'--target',
+		'shop',
+		'--data',
+		'isolation',
+		'--policy',
+		'Use the test users only.',
+		'--cleanup',
+		'node cleanup-fail.mjs'
+	)
+	await ok(
+		'plan',
+		'open',
+		'ticket2',
+		'--target',
+		'shop@2',
+		'--objective',
+		'Read the catalog.',
+		'--source',
+		'ticket.md'
+	)
+	const saved2 = await inputCommand(
+		workspace,
+		env,
+		JSON.stringify({
+			requirements: [{ id: 'R1', text: 'The catalog is listed.', source: 'ticket.md' }],
+			tests: [
+				{
+					id: 'T1',
+					title: 'Read the catalog',
+					requirementIds: ['R1'],
+					capability: 'http',
+					operations: ['read_catalog'],
+					dependsOn: [],
+					preconditions: [],
+					action: 'Read the catalog.',
+					assertions: [{ id: 'A1', check: 'The catalog is listed.', checkKind: 'agent_observation' }],
+				},
+			],
+			gaps: [],
+		}),
+		'plan',
+		'save',
+		'ticket2'
+	)
+	assert.equal(saved2.code, 0, saved2.output)
+	await ok('run', 'begin', 'run-2', 'ticket2@1', '--build', 'b2', '--instance', 'local')
+	const check2 = await inputCommand(
+		workspace,
+		env,
+		'HTTP 200',
+		'run',
+		'check',
+		'run-2',
+		'T1',
+		'A1',
+		'--result',
+		'passed',
+		'--observed',
+		'listed',
+		'--evidence',
+		'-'
+	)
+	assert.equal(check2.code, 0, check2.output)
+	await ok('run', 'close', 'run-2', 'T1')
+	const finished2 = await ok(
+		'run',
+		'finish',
+		'run-2',
+		'--completion',
+		'completed',
+		'--cleanup',
+		'completed',
+		'--cleanup-reason',
+		'The run kept no work folder.'
+	)
+	assert.equal(finished2.status, 'completed')
+	assert.match(JSON.stringify(finished2), /cleanupFailures/)
+	const verdict = await ok('run', 'show', 'run-2')
+	assert.equal(verdict.tests.find((item: { testId: string }) => item.testId === 'T1').outcome, 'passed')
 })

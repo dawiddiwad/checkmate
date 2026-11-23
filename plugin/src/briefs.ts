@@ -328,6 +328,7 @@ export function explorerBrief(
 					'The owner of the product has not answered your questions yet. Use the sources where they decide the point, and report the rest as unclear.',
 				]),
 		...diff,
+		...(charter.dataRules ?? []),
 		'A defect needs a rule of the sources that the behaviour contradicts. Behaviour that the sources do not define is an unclear point, not a defect.',
 		'A defect that contradicts a rule of the sources can be high or critical. Any other defect is at most medium.',
 		testDataText(dataPrefix),

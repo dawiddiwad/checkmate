@@ -54,8 +54,9 @@ import {
 	runState,
 } from './runs.ts'
 import type { RunRow } from './runs.ts'
-import { findInstance, instanceList } from './targets.ts'
+import { findInstance, instanceList, targetRevision } from './targets.ts'
 import { findingsRunId } from './findingsRun.ts'
+import { dataSummary } from './resets.ts'
 import { planRules, rulesLine } from './rules.ts'
 import { workspaceHarness } from './settings.ts'
 import { existsSync } from 'node:fs'
@@ -717,6 +718,12 @@ function foundEntries(
 }
 const overlaid: LoopState[] = ['needs_plan', 'ready_to_run', 'nothing_to_run', 'needs_retest', 'passed', 'accepted']
 
+function planDataSummary(store: Store, planId: string) {
+	const row = one<{ target_id: string }>(store, 'SELECT target_id FROM plan_requests WHERE plan_id = ?', planId)
+	if (!row) return dataSummary(store.workspace, null)
+	return dataSummary(store.workspace, targetRevision(store, row.target_id).profile.reset)
+}
+
 export function planStatus(store: Store, planId: string, harness = workspaceHarness(store)) {
 	const { follows, followActions, ...status } = loopStatus(store, planId, harness)
 	const next = [...follows, ...status.next]
@@ -754,7 +761,14 @@ export function planStatus(store: Store, planId: string, harness = workspaceHarn
 		actions,
 	}
 	const legacy = planHasRevision(store, planId) ? legacyChecks(planRevision(store, planId).plan) : []
-	return { ...status, rules: rulesLine(store, planId), next, legacyChecks: legacy, qa }
+	return {
+		...status,
+		rules: rulesLine(store, planId),
+		next,
+		legacyChecks: legacy,
+		qa,
+		data: planDataSummary(store, planId),
+	}
 }
 
 function loopStatus(store: Store, planId: string, harness: Harness) {
@@ -1469,6 +1483,10 @@ export function runDetail(store: Store, runId: string) {
 			}
 		})
 	return {
+		data: dataSummary(
+			store.workspace,
+			targetRevision(store, run.row.target_id, run.row.target_revision).profile.reset
+		),
 		runId,
 		...(runUsages(store, { runId }).get(runId) ?? noRunUsage),
 		planId: run.row.plan_id,

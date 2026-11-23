@@ -15,6 +15,7 @@ import type { Harness } from '../../plugin/src/pi.ts'
 import { piArgs, piResult, resolvePiModelArgs, selectedHarness } from '../../plugin/src/pi.ts'
 import { migrationTests, planRequest, planTools } from '../../plugin/src/plans.ts'
 import { workspaceEnv } from '../../plugin/src/settings.ts'
+import { dataRules } from '../../plugin/src/resets.ts'
 import type { ChildCall } from '../../plugin/src/sessions.ts'
 import {
 	childOutputLimit,
@@ -363,16 +364,10 @@ function usesPlaywright(profile: Profile) {
 	return profile.tools.some((tool) => tool.name === 'playwright-cli' && tool.kind === 'cli')
 }
 
-function resetLines(profile: Profile) {
-	const reset = profile.reset
-	if (!reset) return []
-	const command = reset.command ? reset.command.map((line) => `\`${line}\``).join(', then ') : 'no command recorded'
-	const instead =
-		'When a test needs a fresh state, adapt the test data, or record a blocking gap that asks for the reset.'
-	if (reset.owner === 'external') return [`Reset: outside Checkmate. Checkmate does not reset the data. ${instead}`]
-	return [
-		`Reset: ${command}. Checkmate runs it before the run begins and before each exploration starts. Do not run it yourself. Do not run it between tests. A reset removes the data of earlier tests in the run. Do not run it before a test that uses the data of its dependsOn tests.`,
-	]
+function dataLines(workspace: string, profile: Profile, runId: string, marker: string, facts?: string) {
+	return dataRules(workspace, profile.reset, marker, facts ?? '').map(
+		(line) => `${line} Do not write a policy or a hook yourself.`
+	)
 }
 
 const blockerPolicy: Record<string, string> = {
@@ -500,6 +495,8 @@ function stagePrompt(stage: Stage, subject: string, execution: Execution | null,
 	const { run, profile, planRequest: planning, clock, rejected } = execution!
 	const request = JSON.parse(run.request) as {
 		selectedTestIds: string[]
+		facts?: string
+		marker?: string
 		onNewBlocker: string
 		retestOf: string | null
 		retestDefects?: Array<{ runId?: string; findingId: string; testIds: string[] }>
@@ -545,7 +542,7 @@ function stagePrompt(stage: Stage, subject: string, execution: Execution | null,
 					`Retest of ${request.retestOf}. Run the tests of the open defects first: ${earlier.join('; ')}. When one fails again, record a new defect finding in this run. Checkmate calculates the verdict.`,
 				]
 			: []),
-		...resetLines(profile),
+		...dataLines(workspace, profile, subject, request.marker ?? `qa-${subject}`, request.facts),
 		`Each test owns its data. For a unique value, use qa-${subject}-<testId>. When a precondition fails, adapt the test data within the intent of the test before you record a blocking gap. Start the --observed of each assertion of that test with "Data changed: <what>."`,
 		...(request.permanent ? [] : rejected).map(
 			(item) => `The oracle rejected ${item.runId}: ${item.rationale.replace(/\.$/, '')}. Address it.`

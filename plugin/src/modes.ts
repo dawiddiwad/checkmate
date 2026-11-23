@@ -22,6 +22,11 @@ export type TestInput = Omit<StartInput, 'mode' | 'scope' | 'build'> & {
 	build?: string
 	url?: string
 	reset?: string
+	data?: string
+	policy?: string
+	policyFile?: string
+	cleanup?: string
+	hookTimeout?: number
 	mode?: string
 	objective?: string
 	target?: string
@@ -78,7 +83,17 @@ function chosenTarget(store: Store, actor: string | undefined, input: TestInput,
 		'The store has no target. Give the URL of the application with --url.',
 		`checkmate test ${input.planId} --url <url> --source <ticket file>`
 	)
-	const set = setupTarget(store, actor, { url: input.url!, instanceId: input.instance, reset: input.reset, env })
+	const set = setupTarget(store, actor, {
+		url: input.url!,
+		instanceId: input.instance,
+		reset: input.reset,
+		data: input.data,
+		policy: input.policy,
+		policyFile: input.policyFile,
+		cleanup: input.cleanup,
+		hookTimeout: input.hookTimeout,
+		env,
+	})
 	assumed.push(...((set.data.assumed ?? []) as string[]))
 	return set.data.targetId as string
 }

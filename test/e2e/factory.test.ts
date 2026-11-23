@@ -129,7 +129,7 @@ test('Factory pins a ticket to built previews, retains failed evidence, and prom
 			startup: { owner: 'factory', command: null },
 			cleanup: 'Factory stops the preview.',
 			readyForLiveExecution: true,
-			reset: { owner: 'external', command: null },
+			reset: { owner: 'environment', command: null, policy: { text: 'The test fixture keeps no records.' } },
 			approvals: { plan: 'required', result: 'required' },
 		})
 	)

@@ -322,12 +322,12 @@ Use `checkmate test` in a pipeline for QA on one build. It plans, explores, and 
 
 ```sh
 checkmate test shop-12 --url http://127.0.0.1:4101 --source ticket.md \
-  --build shop-build-2 --reset external --allow Read --allow Bash
+  --build shop-build-2 --data environment --policy "The shop keeps no data." --allow Read --allow Bash
 checkmate explore wait x-1 --timeout 540
 checkmate export run findings-x-1 --format junit --out junit.xml
 ```
 
-Replace `x-1` with the exploration ID in the `test` reply. Repeat `explore wait` while it prints `interrupted`. An exploration that can change data needs a reset. Give `--reset "<command>"` with a command that restores the seed data, or `--reset external` when a person or the factory resets the data outside Checkmate. With `external`, Checkmate does not reset the data, and setup says so. Checkmate refuses the exploration without a reset. Checkmate runs the recorded command before the exploration starts, and not again during `explore follow`: the first reset applies to the follow-ups.
+Replace `x-1` with the exploration ID in the `test` reply. Repeat `explore wait` while it prints `interrupted`. An exploration that can change data needs a data kind. Give `--reset "<command>"` with a command that restores the seed data, or `--data environment|isolation --policy "<text>"` when the environment or the testers' isolation keeps the data safe. Checkmate refuses the exploration without one. Checkmate refuses the exploration without a reset. Checkmate runs the recorded command before the exploration starts, and not again during `explore follow`: the first reset applies to the follow-ups.
 
 The run ID is `findings-<explorationId>`. Each defect is one failed test. The other tests of the plan are not selected. The JUnit file marks each unselected test as `skipped` with its reason, for example the open gap that blocks it.
 
@@ -386,3 +386,40 @@ A deterministic assertion names what is observed and the expected value separate
 The child records only the observed value with `run check --observed "300 PLN"`. The code compares it with `expected` and records `passed` or `failed`. `--result` is refused for these assertions. A value that cannot be observed is recorded as `not_checked` with `--reason`.
 
 A deterministic check without an `expected` value is not verified by code. Plan save refuses it, `run begin` refuses a plan that holds one, and `checkmate delegate revise <planId>` migrates it to the current shape without an oracle decision. A check that cannot be split without a decision raises a blocking gap instead. Use `agent_observation` for a judgment that has no value to compare.
+
+Older plans with check text only still run, but the gate reports them as checks the code cannot compare. Revise the plan to give each comparable value an `observe` and an `expected`.
+
+## Data kinds, prepare, and cleanup
+
+A target records how its data stays safe. Setup asks for one of three kinds:
+
+| Kind                     | Setup                                  | What Checkmate does                                                                |
+| ------------------------ | -------------------------------------- | ---------------------------------------------------------------------------------- |
+| Reset command            | `--reset "<command>"`                  | Runs the command before each run and exploration.                                  |
+| Reset by the environment | `--data environment --policy "<text>"` | Runs nothing. The pipeline gives each run fresh data.                              |
+| Isolation                | `--data isolation --policy "<text>"`   | Runs nothing. Testers create their own records and use the users the policy names. |
+
+The policy is text, or `--policy-file <path>` for a file that you own. Checkmate reads the file each time it needs the policy. The policy is a binding rule for every tester, explorer, and execute child. The planner sees it too.
+
+Two optional hooks run with any kind:
+
+- `--reset "<command>"` is the prepare hook. It runs before each run begins and before each exploration starts. It does not run before `explore follow`.
+- `--cleanup "<command>"` runs when the run or exploration ends. It runs also after an interrupted run when the run is finished or resumed and finished. A cleanup that fails is listed in the finish reply as `cleanupFailures`. It does not change a test verdict.
+
+Setup also takes `--hook-timeout <seconds>` (default 120). A prepare that fails or times out stops the run before any test, and the command output shows the reason.
+
+Every hook gets `CHECKMATE_MARKER` in its environment. The marker is `qa-<runId>` for a run and `qa-<explorationId>` for an exploration. Name every record that the hook creates with the marker, so cleanup can find it.
+
+Standard output of prepare, up to 8 KB, becomes facts for the run. The children receive it in their prompts, and `run show --json` shows it in `request.facts`. Write only facts that are safe to show: test user names and record IDs. Never write a secret, a password, or a token. Reports show the kind and the policy. They do not show the hooks.
+
+A hook is a shell command. It can call a script, or start a headless agent that uses your own skill. Checkmate does not drive a skill itself.
+
+Example for a Salesforce-style sandbox that cannot be reset: the policy says to create records with the marker in their names, to use the listed test users, and never to change a record that the run did not create. The prepare hook creates the test users and prints their IDs as facts. The cleanup hook deletes every record whose name contains the marker.
+
+```sh
+checkmate setup --url https://sandbox.example.test --target crm --data isolation \
+  --policy-file ./qa-policy.md --reset "node scripts/prepare-sandbox.mjs" \
+  --cleanup "node scripts/cleanup-sandbox.mjs"
+```
+
+A driver never writes a command, a policy, or a hook to get past a refusal. Ask the person for them.

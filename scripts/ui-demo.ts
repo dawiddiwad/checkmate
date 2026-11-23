@@ -78,7 +78,7 @@ export function profile(): Profile {
 		startup: { owner: 'factory', command: null },
 		cleanup: 'Close the run browser session. The fixture stores no records.',
 		readyForLiveExecution: true,
-		reset: { owner: 'external', command: null },
+		reset: { owner: 'environment', command: null, policy: { text: 'The test fixture keeps no records.' } },
 		approvals: { plan: 'required', result: 'required' },
 	}
 }

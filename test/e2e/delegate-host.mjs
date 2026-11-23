@@ -37,7 +37,7 @@ if (process.env.QA_STAGE === 'setup') {
 		startup: { owner: 'factory', command: null },
 		cleanup: 'No test data.',
 		readyForLiveExecution: true,
-		reset: { owner: 'external', command: null },
+		reset: { owner: 'environment', command: null, policy: { text: 'The test fixture keeps no records.' } },
 		approvals: { plan: 'required', result: 'required' },
 	})
 } else if (process.env.QA_STAGE === 'plan') {

@@ -11,7 +11,7 @@ The plugin CLI is `${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js`. Run `checkmate <com
 
 ## Quick setup
 
-When the oracle gives a URL, run `checkmate setup --url <url>`. Add `--target <id>`, `--instance <name>`, `--operations <a,b>`, `--environment <text>`, or `--reset <command|external>` only when the oracle gives them. When testers can change data and no reset is recorded, ask the oracle for the reset command, or for `factory`, and then run setup again with `--reset`. Do not ask for a value that has a default. Report each `assumed:` line, so that the oracle can correct it. Ask only for a missing URL, credentials, or the operations of a production instance. Use the steps below only for full control.
+When the oracle gives a URL, run `checkmate setup --url <url>`. Add `--target <id>`, `--instance <name>`, `--operations <a,b>`, `--environment <text>`, or `--reset <command>`, `--data environment|isolation`, `--policy`, `--policy-file`, `--cleanup`, or `--hook-timeout` only when the oracle or the project gives them. When testers can change data and no reset is recorded, ask the oracle for the reset command, or for `factory`, and then run setup again with `--reset`. Do not ask for a value that has a default. Report each `assumed:` line, so that the oracle can correct it. Ask only for a missing URL, credentials, or the operations of a production instance. Use the steps below only for full control.
 
 ## Ask the person
 
@@ -109,6 +109,6 @@ An instance is one place where the target runs, for example `local`, `uat`, or `
 - Set `readyForLiveExecution` to `true` only when every requested tool is reachable and every target check passed. Else set `false`. Checkmate refuses `true` when a requested tool is not reachable.
 - Checkmate records the tools and checks the profile. It does not enforce permissions. The host controls them.
 - Use `revision` 1 for a new profile. Use the latest revision plus 1 for a changed profile.
-- Record the reset with `--reset`. Checkmate runs the command before each run and each exploration. Give `--reset "<command>"` when the oracle gives a command that restores the seed data, for example `--reset "npm run db:reset"`. Give `--reset external` when a person or the factory resets the data outside Checkmate. The profile then has owner `external` and no command. Checkmate does not reset the data in that case, and setup says so. Checkmate refuses a run or an exploration that can change data when no reset is recorded. Ask the oracle for the reset in the same session. The profile then has `"reset": { "owner": "checkmate", "command": ["npm", "run", "db:reset"] }` or `"reset": { "owner": "external", "command": null }`.
+- Record the data kind. A reset command (`--reset`) is the common case: Checkmate runs it before each run and exploration. A kind `environment` or `isolation` needs a data policy from the person: `--policy "<text>"` or `--policy-file <path>` of their own file. Checkmate does not reset data for these kinds. Ask the person for the command or the policy. Do not write a command, a policy, or a hook yourself.
 - Do not add `approvals` unless the oracle asked for a policy. The default needs no plan approval and no result acceptance.
 - Add `explore` only when the oracle gives a default test level or a number of explorers, for example `"explore": { "level": "smoke" }`.

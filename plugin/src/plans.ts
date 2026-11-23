@@ -7,7 +7,7 @@ import { patchRules, requireHeldRules } from './rules.ts'
 import { operationAllowed, readinessHint, targetWebUrl } from './targets.ts'
 import { dataSummary, requireDataFor } from './resets.ts'
 import { all, canonical, completed, digest, execute, one, ulid, write } from './store.ts'
-import { uncontrolledRefusal } from './contracts.ts'
+import { rangeWithoutInput, uncontrolledRefusal } from './contracts.ts'
 import type { PlanDraft, Test } from './contracts.ts'
 import {
 	approvalPolicy,
@@ -253,6 +253,12 @@ function requireChangedControls(plan: Plan, previous: Plan | undefined) {
 	for (const test of plan.tests) {
 		const old = before.get(test.id)
 		if (old && old.action === test.action && canonical(old.assertions) === canonical(test.assertions)) continue
+		const range = test.assertions.find((assertion) => rangeWithoutInput(assertion.check))
+		requireWellFormed(
+			!range,
+			`Check ${test.id}.${range?.id} states a range but names no input value: "${range?.check}"`,
+			`Write one assertion for each side of the range, each naming its input: for quantity 0, 1, 10 and 11, for example {"id": "A2", "check": "quantity 0 returns HTTP 400.", "checkKind": "deterministic", "observe": "HTTP status for quantity 0", "expected": "400"}. Give the lower bound, the upper bound, the value below and the value above, each with its own expected result.`
+		)
 		const refusal = uncontrolledRefusal(test)
 		requireWellFormed(
 			!refusal,
@@ -764,6 +770,29 @@ export function scopeDrop(
 	const plan = planRevision(store, input.planId).plan
 	const requirement = plan.requirements.find((item) => item.id === input.requirementId)
 	requireWellFormed(requirement, `Unknown requirement ${input.requirementId} in plan ${input.planId}.`)
+	// An open gap on the dropped requirement is closed by this decision, so no gap is left on a removed requirement.
+	const covering = plan.gaps.filter((gap) => gap.status === 'open' && gap.requirementIds.includes(requirement!.id))
+	requireWellFormed(
+		covering.every((gap) => gap.requirementIds.length === 1),
+		`A gap covers ${requirement!.id} and other requirements. Answer it with gap answer first, then drop ${requirement!.id}.`,
+		`checkmate gap answer ${input.planId} <gapId> --kind clarify --value "<answer>" --source <file>`
+	)
+	const value = `Drop ${requirement!.id} "${requirement!.text}". ${input.rationale}`
+	if (covering.length) {
+		let reply: Reply | undefined
+		for (const gap of covering) {
+			reply = answerGap(store, actor, {
+				planId: input.planId,
+				gapId: gap.id,
+				kind: 'clarify',
+				value,
+				source: input.source,
+				rationale: input.rationale,
+			})
+			if (reply.status !== 'completed') return reply
+		}
+		return reply!
+	}
 	const gapId = unusedId(
 		'G',
 		plan.gaps.map((gap) => gap.id)
@@ -789,7 +818,7 @@ export function scopeDrop(
 		planId: input.planId,
 		gapId,
 		kind: 'clarify',
-		value: `Drop ${requirement!.id} "${requirement!.text}". ${input.rationale}`,
+		value,
 		source: input.source,
 		rationale: input.rationale,
 	})

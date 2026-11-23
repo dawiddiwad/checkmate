@@ -11555,6 +11555,14 @@ function uncontrolledRefusal(test) {
   const control = test.assertions.some((assertion) => /^2\d\d$/.test(assertion.expected ?? ""));
   return refusal && !control ? refusal : void 0;
 }
+function rangeWithoutInput(check) {
+  const range = /\b(outside|between|at most|at least|from -?\d+(\.\d+)? to -?\d+)/i.test(check);
+  const named = /\b(?!(?:outside|between|above|below|under|over|least|most|than|to|and|or|from|of|is|returns?|http|status|at)\b)[a-z][a-z-]*\s+-?\d+(\.\d+)?\b/i.test(
+    check
+  );
+  const input = /\b(quantity|amount|value|price|size|length|page|limit|input|number)\b/i.test(check);
+  return range && input && !named;
+}
 function unverifiedAssertions(test) {
   return [
     ...test.assertions.filter((assertion) => unverifiedCheck(assertion)).map((assertion) => assertion.id),
@@ -13126,6 +13134,12 @@ function requireChangedControls(plan, previous) {
   for (const test of plan.tests) {
     const old = before.get(test.id);
     if (old && old.action === test.action && canonical(old.assertions) === canonical(test.assertions)) continue;
+    const range = test.assertions.find((assertion) => rangeWithoutInput(assertion.check));
+    requireWellFormed(
+      !range,
+      `Check ${test.id}.${range?.id} states a range but names no input value: "${range?.check}"`,
+      `Write one assertion for each side of the range, each naming its input: for quantity 0, 1, 10 and 11, for example {"id": "A2", "check": "quantity 0 returns HTTP 400.", "checkKind": "deterministic", "observe": "HTTP status for quantity 0", "expected": "400"}. Give the lower bound, the upper bound, the value below and the value above, each with its own expected result.`
+    );
     const refusal = uncontrolledRefusal(test);
     requireWellFormed(
       !refusal,
@@ -13551,6 +13565,28 @@ function scopeDrop(store, actor, input) {
   const plan = planRevision(store, input.planId).plan;
   const requirement = plan.requirements.find((item) => item.id === input.requirementId);
   requireWellFormed(requirement, `Unknown requirement ${input.requirementId} in plan ${input.planId}.`);
+  const covering = plan.gaps.filter((gap) => gap.status === "open" && gap.requirementIds.includes(requirement.id));
+  requireWellFormed(
+    covering.every((gap) => gap.requirementIds.length === 1),
+    `A gap covers ${requirement.id} and other requirements. Answer it with gap answer first, then drop ${requirement.id}.`,
+    `checkmate gap answer ${input.planId} <gapId> --kind clarify --value "<answer>" --source <file>`
+  );
+  const value2 = `Drop ${requirement.id} "${requirement.text}". ${input.rationale}`;
+  if (covering.length) {
+    let reply;
+    for (const gap of covering) {
+      reply = answerGap(store, actor, {
+        planId: input.planId,
+        gapId: gap.id,
+        kind: "clarify",
+        value: value2,
+        source: input.source,
+        rationale: input.rationale
+      });
+      if (reply.status !== "completed") return reply;
+    }
+    return reply;
+  }
   const gapId = unusedId(
     "G",
     plan.gaps.map((gap) => gap.id)
@@ -13576,7 +13612,7 @@ function scopeDrop(store, actor, input) {
     planId: input.planId,
     gapId,
     kind: "clarify",
-    value: `Drop ${requirement.id} "${requirement.text}". ${input.rationale}`,
+    value: value2,
     source: input.source,
     rationale: input.rationale
   });
@@ -42654,6 +42690,9 @@ function stagePrompt(stage, subject, execution, workspace2) {
       'Write each assertion with the exact expected text or value from the sources, for example: The page shows "1 book" when one book is stored. Do not write a general description such as "pluralizes correctly".',
       'Each deterministic assertion names the observed item in "observe" and the expected value in "expected", and keeps the check text. Every deterministic check needs both. For a value that holds the run marker, write {{marker}} in "expected", for example {{marker}}-T1. {{marker}} works in every kind, for example contains:{{marker}}-T1. The marker already starts with qa-, so never write qa- before {{marker}}. For a shape or a range use type:number, type:non-empty, one-of:A|B, matches:<regex>, at least:N or at most:N. For presence or absence use contains:TEXT or absent:TEXT, never a sentence that starts with "not". Never write a type word or a <placeholder> as a value. A judgment that has no value to compare is "checkKind": "agent_observation". Example: {"id":"A1","check":"The kettle price shown on the product page is 240 PLN.","checkKind":"deterministic","observe":"the price value labelled Price on the product page","expected":"240 PLN"}.',
       'A negative check ("unknown", "missing", "not found", "not allowed", "wrong token") uses a well-formed value of the same shape as a valid one: an id of the right type that does not exist, or a syntactically valid wrong token. The same test also has a positive control: the same request with a valid value returns 2xx, so a route miss cannot pass as the refusal. Example: T6 A1 "DELETE /api/notes/999999 returns 404." with expected "404", and A2 "DELETE /api/notes/<existing id> returns 200." with expected "200".',
+      'A rule that states a range or a limit has one assertion for each side: the value below the lower bound, the lower bound, the upper bound, and the value above the upper bound. Each names its input, for example "quantity 0 returns HTTP 400.", and has its own expected value.',
+      "An assertion on a state-changing action (add, apply, clear, delete, save) checks the source of truth: the API response, or the stored state after a reload. A visible page alone does not show that the state changed. Where the target has an HTTP entry, use it for the state check.",
+      'A test that creates data names it {{marker}}-<testId>. A count or list check scopes to that name, for example "the list shows 1 item named {{marker}}-T2".',
       "A ready assertion must be observable through the target with the test action. Name in the action every input the check depends on, for example a query parameter or a date. When the target cannot show the value, write an agent_observation for it.",
       "Make each test create its own data or use a unique value such as {{marker}}-<testId>, where {{marker}} is the run marker placeholder. Do not rely on seed data.",
       "You can read the running application read-only (open a list page or send a GET) to check preconditions. Do not submit forms or change data.",

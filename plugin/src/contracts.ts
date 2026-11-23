@@ -314,6 +314,18 @@ export function uncontrolledRefusal(test: {
 	return refusal && !control ? refusal : undefined
 }
 
+// A range on an input names the input value it tests, for example "quantity 0", so that a build that accepts an
+// out-of-range value fails the check. "quantity outside 1 to 10" names no input value. A count of output is not an input.
+export function rangeWithoutInput(check: string) {
+	const range = /\b(outside|between|at most|at least|from -?\d+(\.\d+)? to -?\d+)/i.test(check)
+	const named =
+		/\b(?!(?:outside|between|above|below|under|over|least|most|than|to|and|or|from|of|is|returns?|http|status|at)\b)[a-z][a-z-]*\s+-?\d+(\.\d+)?\b/i.test(
+			check
+		)
+	const input = /\b(quantity|amount|value|price|size|length|page|limit|input|number)\b/i.test(check)
+	return range && input && !named
+}
+
 // The checks that code cannot decide yet: legacy checks and refusals without a control. Each is named by its assertion ID.
 export function unverifiedAssertions(test: Plan['tests'][number]) {
 	return [

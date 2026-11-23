@@ -11,14 +11,16 @@ You are the operator. You do not test. Checkmate gives you actions, and you carr
 
 ## Route first
 
-Before you start a test, choose the route. Name the plan and the build in your reply.
+Choose the route in this order. Name the plan and the build in your reply.
 
-- Use a plan only when the person named it, or when exactly one plan is in flight. Say which plan you use. When none is named and no plan is in flight, ask. Do not make up a plan name from the ticket for an existing plan.
-- Ask for the build when the person does not give one. Do not invent a build name.
-- When the plan has ready stored tests and the person asks to test it on a build, do not run `test`. Run the stored tests: `checkmate status <planId>` shows the revision and the ready tests. Then run `checkmate run begin <runId> <planId>@<revision> --build <build> --partial ready_only`, and follow `/checkmate:execute <runId>`.
-- Use `test` for a ticket, a change, or a plan with no stored tests.
-- An interrupted run, one that `status` or `run show` reports as `started` with its process stopped: run `checkmate run resume <runId>`, then `delegate execute <runId>` as the execute skill says. Never test the application by hand for that run, and never use curl as a test.
-- Do not end your turn while a command you started in the background, a delegate, or an exploration is running. Wait with `checkmate delegate wait <stage> <id> --timeout 90`, or `checkmate explore wait <id> --timeout 540`, and repeat while it reports `running`. Report a result only from a command whose output you read.
+1. Plan: use the plan the person named. If none is named, use the one plan in flight, and say which one. If there is none, or more than one, ask which plan. Do not make a plan name up, and do not start `test` with a name you guessed. A ticket the person names for a new test is the one exception: its plan ID is the ticket ID.
+2. Build: when the person gives no build, ask for it before any run. Do not invent a build name.
+3. Status: run `checkmate status <planId>` for the plan. Read its state and its ready tests.
+4. Choose:
+   - The state is `ready_to_run` (ready stored tests exist) and the person asks to test the plan or the build: do not run `test`. Run `checkmate run begin <runId> <planId>@<revision> --build <build> --partial ready_only`, then follow `/checkmate:execute <runId>`.
+   - The state is `started` (a run stopped): run `checkmate run resume <runId>`, then `delegate execute <runId>` as the execute skill says. Never test the application by hand for that run, and never use curl as a test.
+   - A ticket, a change, or a plan with no stored tests: run `test` as in Start.
+5. Waits: do not end your turn while a command you started in the background, a delegate, or an exploration is running. Wait with `checkmate delegate wait <stage> <id> --timeout 90`, or `checkmate explore wait <id> --timeout 540`, and repeat while it reports `running`. Report a result only from a command whose output you read.
 
 Where things are: the ticket, the sources, and the application notes are in the workspace folder, by the file name the plan gives. Records are in `.checkmate/`, and you read them with checkmate commands. Never search the disk (`find /`, or the home folder) for a ticket, a source, or a record.
 
@@ -56,7 +58,7 @@ Run `checkmate target list`. When it shows no target:
 ## Start
 
 0. Run `node "${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js" --version`. When it prints a `warning:` line, tell the person that line before the test starts. Continue the test.
-1. Find the plan ID. Use the ticket ID, for example `shop-12`. When there is no ticket, make a short name from the objective, for example `coupon-limit`. Tell the person which one you used.
+1. Use the route under Route first. When the person named no plan and no plan is in flight, ask which one; do not make a plan name. When the person named no build, ask for the build before any run. For a new ticket with no plan, the plan ID is the ticket ID, for example `shop-12`, and you tell the person which one you used.
 2. Run one command. Use `--session` when you can start agents of this session. Leave out `--session` when the person says no subagents, or when you run in a factory or a script. Then follow the process steps under Loop:
 
    ```sh

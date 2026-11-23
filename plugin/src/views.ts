@@ -20,7 +20,7 @@ import {
 	shortName,
 } from './journal.ts'
 import { all, canonical, digest, one } from './store.ts'
-import { requireChoice, requireCondition, unverifiedCheck } from './contracts.ts'
+import { requireChoice, requireCondition, unverifiedAssertions } from './contracts.ts'
 import { openPermissions } from './permissions.ts'
 import {
 	approvalState,
@@ -279,11 +279,7 @@ export function planList(store: Store): PlanListRow[] {
 
 // Deterministic checks without observe and expected. Code cannot verify them; a revise migrates them.
 export function legacyChecks(plan: Plan) {
-	return plan.tests.flatMap((test) =>
-		test.assertions
-			.filter((assertion) => unverifiedCheck(assertion))
-			.map((assertion) => `${test.id}.${assertion.id}`)
-	)
+	return plan.tests.flatMap((test) => unverifiedAssertions(test).map((id) => `${test.id}.${id}`))
 }
 
 export function planDetail(store: Store, planId: string, revision: number | null = null) {
@@ -2109,11 +2105,7 @@ export function runGate(store: Store, runId: string) {
 	const partial = coverage !== 'complete'
 	const unverified = plan.tests
 		.filter((test) => detail.request.selectedTestIds.includes(test.id))
-		.flatMap((test) =>
-			test.assertions
-				.filter((assertion) => unverifiedCheck(assertion))
-				.map((assertion) => `${test.id}.${assertion.id}`)
-		)
+		.flatMap((test) => unverifiedAssertions(test).map((id) => `${test.id}.${id}`))
 	const verdict = failed.length
 		? { code: 1, state: 'defects' }
 		: couldNotTest

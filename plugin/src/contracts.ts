@@ -299,6 +299,29 @@ export function compoundCheck(check: string) {
 // A gap may cover this many requirements without naming each one in its question.
 const maxGapRequirements = 2
 
+// A refusal of a request also passes when the route is missed. A test that expects one needs a 2xx control in the same test.
+// Returns the refusal assertion of a test that has none, else undefined.
+export function uncontrolledRefusal(test: {
+	action: string
+	assertions: Array<{ id: string; expected?: string; check: string }>
+}) {
+	const httpAction = /\b(GET|POST|PUT|PATCH|DELETE)\b/.test(test.action)
+	const refusal = test.assertions.find(
+		(assertion) =>
+			/^4\d\d$/.test(assertion.expected ?? '') || (httpAction && /^absent:/.test(assertion.expected ?? ''))
+	)
+	const control = test.assertions.some((assertion) => /^2\d\d$/.test(assertion.expected ?? ''))
+	return refusal && !control ? refusal : undefined
+}
+
+// The checks that code cannot decide yet: legacy checks and refusals without a control. Each is named by its assertion ID.
+export function unverifiedAssertions(test: Plan['tests'][number]) {
+	return [
+		...test.assertions.filter((assertion) => unverifiedCheck(assertion)).map((assertion) => assertion.id),
+		...(uncontrolledRefusal(test) ? [uncontrolledRefusal(test)!.id] : []),
+	]
+}
+
 export function planCheck(value: unknown): Plan {
 	const plan = validate('plan', value)
 	const requirements = index(plan.requirements, 'id', 'requirement')
@@ -361,18 +384,6 @@ export function planCheck(value: unknown): Plan {
 		references(test.gapIds, gaps, `gap in test ${test.id}`)
 		references(localReferences(test.dependsOn), tests, `dependency of test ${test.id}`)
 		index(test.assertions, 'id', `assertion in test ${test.id}`)
-		// A refusal of a request also passes when the route is missed. A test that expects one needs a 2xx control in the same test.
-		const httpAction = /\b(GET|POST|PUT|PATCH|DELETE)\b/.test(test.action)
-		const refusal = test.assertions.find(
-			(assertion) =>
-				/^4\d\d$/.test(assertion.expected ?? '') || (httpAction && /^absent:/.test(assertion.expected ?? ''))
-		)
-		const control = test.assertions.some((assertion) => /^2\d\d$/.test(assertion.expected ?? ''))
-		requireWellFormed(
-			!refusal || control,
-			`Test ${test.id} expects a refusal (${refusal?.check}) but has no positive control: nothing shows that the same request succeeds.`,
-			`Add a control to ${test.id} for the same route with a valid value, for example {"id": "A2", "check": "The same request for an existing id returns 200.", "checkKind": "deterministic", "observe": "HTTP status of the request for an existing id", "expected": "200"}. Keep the refusal, and use a well-formed value of the same shape for it.`
-		)
 		for (const assertion of test.assertions)
 			requireWellFormed(
 				!compoundCheck(assertion.check),

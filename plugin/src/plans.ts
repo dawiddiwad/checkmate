@@ -7,6 +7,7 @@ import { patchRules, requireHeldRules } from './rules.ts'
 import { operationAllowed, readinessHint, targetWebUrl } from './targets.ts'
 import { dataSummary, requireDataFor } from './resets.ts'
 import { all, canonical, completed, digest, execute, one, ulid, write } from './store.ts'
+import { uncontrolledRefusal } from './contracts.ts'
 import type { PlanDraft, Test } from './contracts.ts'
 import {
 	approvalPolicy,
@@ -246,10 +247,26 @@ export function latestPlans(store: Store) {
 	return new Map(rows.map((row) => [row.plan_id, JSON.parse(row.body) as Plan]))
 }
 
+// A test that an edit adds or changes must show a positive control for its refusal. Older tests are flagged, not refused.
+function requireChangedControls(plan: Plan, previous: Plan | undefined) {
+	const before = new Map((previous?.tests ?? []).map((test) => [test.id, test]))
+	for (const test of plan.tests) {
+		const old = before.get(test.id)
+		if (old && old.action === test.action && canonical(old.assertions) === canonical(test.assertions)) continue
+		const refusal = uncontrolledRefusal(test)
+		requireWellFormed(
+			!refusal,
+			`Test ${test.id} expects a refusal (${refusal?.check}) but has no positive control: nothing shows that the same request succeeds.`,
+			`Add a control to ${test.id} for the same route with a valid value, for example {"id": "A2", "check": "The same request for an existing id returns 200.", "checkKind": "deterministic", "observe": "HTTP status of the request for an existing id", "expected": "200"}. Keep the refusal, and use a well-formed value of the same shape for it.`
+		)
+	}
+}
+
 function checkedRevision(store: Store, draft: PlanDraft) {
 	const plan = planCheck(derivePlan(draft))
 	planTargetCheck(plan, targetRevision(store, plan.target.targetId, plan.target.revision).profile)
 	const others = latestPlans(store)
+	requireChangedControls(plan, others.get(plan.planId))
 	others.delete(plan.planId)
 	dependencyCheck(plan, others)
 	const body = canonical(plan)

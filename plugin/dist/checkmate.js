@@ -11547,6 +11547,20 @@ function compoundCheck(check) {
   return clauses.filter((clause) => /\d/.test(clause)).length > 1;
 }
 var maxGapRequirements = 2;
+function uncontrolledRefusal(test) {
+  const httpAction = /\b(GET|POST|PUT|PATCH|DELETE)\b/.test(test.action);
+  const refusal = test.assertions.find(
+    (assertion) => /^4\d\d$/.test(assertion.expected ?? "") || httpAction && /^absent:/.test(assertion.expected ?? "")
+  );
+  const control = test.assertions.some((assertion) => /^2\d\d$/.test(assertion.expected ?? ""));
+  return refusal && !control ? refusal : void 0;
+}
+function unverifiedAssertions(test) {
+  return [
+    ...test.assertions.filter((assertion) => unverifiedCheck(assertion)).map((assertion) => assertion.id),
+    ...uncontrolledRefusal(test) ? [uncontrolledRefusal(test).id] : []
+  ];
+}
 function planCheck(value2) {
   const plan = validate("plan", value2);
   const requirements = index(plan.requirements, "id", "requirement");
@@ -11607,16 +11621,6 @@ function planCheck(value2) {
     references(test.gapIds, gaps, `gap in test ${test.id}`);
     references(localReferences(test.dependsOn), tests, `dependency of test ${test.id}`);
     index(test.assertions, "id", `assertion in test ${test.id}`);
-    const httpAction = /\b(GET|POST|PUT|PATCH|DELETE)\b/.test(test.action);
-    const refusal = test.assertions.find(
-      (assertion) => /^4\d\d$/.test(assertion.expected ?? "") || httpAction && /^absent:/.test(assertion.expected ?? "")
-    );
-    const control = test.assertions.some((assertion) => /^2\d\d$/.test(assertion.expected ?? ""));
-    requireWellFormed(
-      !refusal || control,
-      `Test ${test.id} expects a refusal (${refusal?.check}) but has no positive control: nothing shows that the same request succeeds.`,
-      `Add a control to ${test.id} for the same route with a valid value, for example {"id": "A2", "check": "The same request for an existing id returns 200.", "checkKind": "deterministic", "observe": "HTTP status of the request for an existing id", "expected": "200"}. Keep the refusal, and use a well-formed value of the same shape for it.`
-    );
     for (const assertion of test.assertions)
       requireWellFormed(
         !compoundCheck(assertion.check),
@@ -13117,10 +13121,24 @@ function latestPlans(store) {
   );
   return new Map(rows2.map((row2) => [row2.plan_id, JSON.parse(row2.body)]));
 }
+function requireChangedControls(plan, previous) {
+  const before = new Map((previous?.tests ?? []).map((test) => [test.id, test]));
+  for (const test of plan.tests) {
+    const old = before.get(test.id);
+    if (old && old.action === test.action && canonical(old.assertions) === canonical(test.assertions)) continue;
+    const refusal = uncontrolledRefusal(test);
+    requireWellFormed(
+      !refusal,
+      `Test ${test.id} expects a refusal (${refusal?.check}) but has no positive control: nothing shows that the same request succeeds.`,
+      `Add a control to ${test.id} for the same route with a valid value, for example {"id": "A2", "check": "The same request for an existing id returns 200.", "checkKind": "deterministic", "observe": "HTTP status of the request for an existing id", "expected": "200"}. Keep the refusal, and use a well-formed value of the same shape for it.`
+    );
+  }
+}
 function checkedRevision(store, draft) {
   const plan = planCheck(derivePlan(draft));
   planTargetCheck(plan, targetRevision(store, plan.target.targetId, plan.target.revision).profile);
   const others = latestPlans(store);
+  requireChangedControls(plan, others.get(plan.planId));
   others.delete(plan.planId);
   dependencyCheck(plan, others);
   const body = canonical(plan);
@@ -20538,9 +20556,7 @@ function planList(store) {
   return [...drafted, ...requested].sort((a, b) => a.planId.localeCompare(b.planId));
 }
 function legacyChecks(plan) {
-  return plan.tests.flatMap(
-    (test) => test.assertions.filter((assertion) => unverifiedCheck(assertion)).map((assertion) => `${test.id}.${assertion.id}`)
-  );
+  return plan.tests.flatMap((test) => unverifiedAssertions(test).map((id2) => `${test.id}.${id2}`));
 }
 function planDetail(store, planId, revision2 = null) {
   const selected = planRevision(store, planId, revision2);
@@ -22001,9 +22017,7 @@ function runGate(store, runId) {
   const couldNotTest = !detail.result || errored.length > 0 || completion === "operational_error" || completion === "interrupted";
   const coverage2 = detail.result?.coverage.status ?? null;
   const partial = coverage2 !== "complete";
-  const unverified = plan.tests.filter((test) => detail.request.selectedTestIds.includes(test.id)).flatMap(
-    (test) => test.assertions.filter((assertion) => unverifiedCheck(assertion)).map((assertion) => `${test.id}.${assertion.id}`)
-  );
+  const unverified = plan.tests.filter((test) => detail.request.selectedTestIds.includes(test.id)).flatMap((test) => unverifiedAssertions(test).map((id2) => `${test.id}.${id2}`));
   const verdict = failed2.length ? { code: 1, state: "defects" } : couldNotTest ? { code: 2, state: "could_not_test" } : openGaps.length ? { code: 3, state: "blocked_on_oracle" } : partial ? { code: 2, state: "partial_coverage" } : unverified.length ? { code: 2, state: "unverified_checks" } : { code: 0, state: "passed" };
   const judgedByAgent = detail.tests.flatMap((test) => test.assertions).filter((assertion) => assertion.checkKind === "agent_observation" && assertion.result !== null).length;
   return { ...verdict, failed: failed2, errored, openGaps, completion, coverage: coverage2, unverified, judgedByAgent };

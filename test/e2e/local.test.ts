@@ -6781,3 +6781,156 @@ test('Put Haiku 5.5 first in the Claude model list, and keep the older Haiku bel
 	assert.equal(order[0], 'haiku')
 	assert.ok(order.indexOf('claude-haiku-4-5-20251001') > order.indexOf('haiku'))
 })
+
+test('An edit that removes a test is not refused for an older test without a control; the older test is flagged, and a new refusal still needs one.', async (t) => {
+	const workspace = directory(t)
+	const { chmodSync, copyFileSync, mkdirSync } = await import('node:fs')
+	const { delimiter } = await import('node:path')
+	const { DatabaseSync } = await import('node:sqlite')
+	const bin = join(workspace, 'bin')
+	mkdirSync(bin)
+	copyFileSync(join(root, 'test/e2e/delegate-host.mjs'), join(bin, 'claude'))
+	chmodSync(join(bin, 'claude'), 0o755)
+	const env = {
+		...process.env,
+		PATH: `${bin}${delimiter}${process.env.PATH}`,
+		CHECKMATE_ACTOR: 'oracle',
+		CHECKMATE_HARNESS: 'claude',
+		QA_STAGE: 'setup',
+		QA_LIE: '0',
+	}
+	const ok = async (args: string[], input = '') => {
+		const result = await inputCommand(workspace, env, input, ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	await ok([
+		'target',
+		'open',
+		'shop',
+		'--entry-point',
+		'web:url:Shop HTTP API.',
+		'--capabilities',
+		'http',
+		'--operations',
+		'read_catalog',
+	])
+	await ok(['delegate', 'setup', 'shop', '--allow', 'Read'])
+	writeFileSync(
+		join(workspace, 'ticket.md'),
+		'# Ticket\n\n1. DELETE of an unknown id returns 404.\n2. The list is newest first.\n'
+	)
+	await ok(['plan', 'open', 'ticket', '--target', 'shop@1', '--objective', 'Check delete.', '--source', 'ticket.md'])
+	const control = {
+		id: 'A2',
+		check: 'The same request for an existing id returns 200.',
+		checkKind: 'deterministic',
+		observe: 'HTTP status',
+		expected: '200',
+	}
+	const refusal = {
+		id: 'A1',
+		check: 'DELETE of id 999999 returns 404.',
+		checkKind: 'deterministic',
+		observe: 'HTTP status',
+		expected: '404',
+	}
+	await ok(
+		['plan', 'save', 'ticket'],
+		JSON.stringify({
+			requirements: [
+				{ id: 'R1', text: 'DELETE of an unknown id returns 404.', source: 'ticket.md' },
+				{ id: 'R2', text: 'The list is newest first.', source: 'ticket.md' },
+			],
+			tests: [
+				{
+					id: 'T1',
+					title: 'Delete unknown',
+					requirementIds: ['R1'],
+					capability: 'http',
+					operations: ['read_catalog'],
+					dependsOn: [],
+					preconditions: [],
+					action: 'DELETE /api/notes/999999.',
+					assertions: [refusal, control],
+				},
+				{
+					id: 'T2',
+					title: 'List',
+					requirementIds: ['R2'],
+					capability: 'http',
+					operations: ['read_catalog'],
+					dependsOn: [],
+					preconditions: [],
+					action: 'GET /api/notes.',
+					assertions: [
+						{
+							id: 'A1',
+							check: 'The list is newest first.',
+							checkKind: 'deterministic',
+							observe: 'the order of titles',
+							expected: 'newest first',
+						},
+					],
+				},
+			],
+			gaps: [],
+		})
+	)
+	// The state of a plan saved before the control rule: T1 has no control.
+	const database = new DatabaseSync(join(workspace, '.checkmate', 'checkmate.db'))
+	const row = database.prepare("SELECT body FROM plan_revisions WHERE plan_id = 'ticket' AND revision = 1").get() as {
+		body: string
+	}
+	const body = JSON.parse(row.body)
+	body.tests[0].assertions = body.tests[0].assertions.filter((assertion: { id: string }) => assertion.id !== 'A2')
+	database
+		.prepare("UPDATE plan_revisions SET body = ? WHERE plan_id = 'ticket' AND revision = 1")
+		.run(JSON.stringify(body))
+	database.close()
+
+	const removed = await ok(
+		['plan', 'edit', 'ticket@1', '--patch', '--rationale', 'Drop the list test.'],
+		JSON.stringify({ requirements: { R2: null }, tests: { T2: null } })
+	)
+	assert.equal(removed.status, 'completed', JSON.stringify(removed))
+
+	const status = await command(workspace, env, 'status', 'ticket')
+	assert.equal(status.code, 0, status.output)
+	assert.match(status.output, /legacy.*T1\.A1/)
+
+	const added = await inputCommand(
+		workspace,
+		env,
+		JSON.stringify({
+			requirements: { R3: { text: 'A second unknown id returns 404.', source: 'ticket.md' } },
+			tests: {
+				T3: {
+					title: 'Second unknown',
+					requirementIds: ['R3'],
+					capability: 'http',
+					operations: ['read_catalog'],
+					dependsOn: [],
+					preconditions: [],
+					action: 'DELETE /api/notes/888888.',
+					assertions: {
+						A1: {
+							check: 'DELETE of id 888888 returns 404.',
+							checkKind: 'deterministic',
+							observe: 'HTTP status',
+							expected: '404',
+						},
+					},
+				},
+			},
+		}),
+		'plan',
+		'edit',
+		'ticket@2',
+		'--patch',
+		'--rationale',
+		'Add a refusal.'
+	)
+	assert.equal(added.code, 1, added.output)
+	assert.match(added.output, /no positive control/)
+})

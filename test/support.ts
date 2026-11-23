@@ -169,12 +169,12 @@ export function candidate(): PlanCandidate {
 				assertions: [
 					{ id: 'A1', check: 'The confirmation shows 400 PLN.', checkKind: 'agent_observation' },
 					{
-					id: 'A2',
-					check: 'The order has one item.',
-					checkKind: 'deterministic',
-					observe: 'the number of line items in the order',
-					expected: '1',
-				},
+						id: 'A2',
+						check: 'The order has one item.',
+						checkKind: 'deterministic',
+						observe: 'the number of line items in the order',
+						expected: '1',
+					},
 				],
 			},
 			{

@@ -48,19 +48,7 @@ const attempt = readFileSync(process.env.FAKE_PI_LOG, 'utf8')
 	.filter((line) => line === testId).length
 if (testId === 'T1' || (testId === 'T2' && attempt === 2)) {
 	cli(
-		[
-			'run',
-			'check',
-			runId,
-			testId,
-			'A1',
-			'--actor',
-			'pi:execute',
-			'--observed',
-			'240',
-			'--evidence',
-			'-',
-		],
+		['run', 'check', runId, testId, 'A1', '--actor', 'pi:execute', '--observed', '240', '--evidence', '-'],
 		'Quote is 240.'
 	)
 	cli(['run', 'close', runId, testId, '--actor', 'pi:execute'])

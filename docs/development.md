@@ -28,7 +28,7 @@ Run the full gate:
 npm run phase:verify
 ```
 
-It runs type and generated-file checks, lint, Prettier, and `npm test`. The test command builds and packs the CLI, installs it into disposable workspaces, and runs 36 required end-to-end cases with real SQLite, loopback applications, controlled hosts, Pi, and Chromium. It fails when a prerequisite is missing, a required case is absent, or a case skips. CI runs `npm run phase:verify`.
+It runs type and generated-file checks, lint, Prettier, and `npm test`. The test command builds and packs the CLI, installs it into disposable workspaces, and runs 121 end-to-end cases with real SQLite, loopback applications, controlled hosts, Pi, and Chromium. It fails when a prerequisite is missing, a case is absent, or a case skips. CI runs `npm run phase:verify`.
 
 The 42-scenario proposal map is [test/e2e/scenarios.json](../test/e2e/scenarios.json). Some historical Factory campaign behavior is outside this checkout. The local external Factory fixture does not verify Factory checkout, archive, budget, or campaign ownership. Tests use controlled hosts; they do not test live model judgment or require paid model calls.
 
@@ -48,4 +48,4 @@ The root package is private. The published CLI package is `cli/`. The build bund
 
 ## Documentation media
 
-Run `node scripts/build-cli.ts`, then set `CHECKMATE_BROWSER_EXECUTABLE` and run `node scripts/capture-docs-ui.ts` to capture the current review UI with disposable sample records. Run `node scripts/render-onboarding.ts` with FFmpeg on `PATH` to rebuild the onboarding GIF. The final scene uses the captured UI; the earlier workflow is an illustration.
+Run `node scripts/build-cli.ts`, then set `CHECKMATE_BROWSER_EXECUTABLE` and run `node scripts/capture-docs-ui.ts` to capture the current review UI with disposable sample records. Run `node scripts/render-onboarding.ts` with FFmpeg and Claude Code on `PATH` to rebuild the onboarding GIF. It runs the CLI on a demo shop (`scripts/onboarding/shop.mjs`) with live Claude calls, then records the review UI in Chromium. The planner writes different gaps on each run, so the recorder answers the gaps it finds in the record.

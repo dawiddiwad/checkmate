@@ -13,11 +13,13 @@ Checkmate does not start the application. The host controls models, credentials,
 
 ## Install and open the review UI
 
-1. Install the CLI:
+1. Install the CLI in the project:
 
    ```sh
-   npm install -g @xoxoai/checkmate
+   npm install --save-dev @xoxoai/checkmate
    ```
+
+   A global install also works: `npm install -g @xoxoai/checkmate`. Then run `checkmate` instead of `npx checkmate`.
 
 2. Change to the application workspace:
 
@@ -28,8 +30,10 @@ Checkmate does not start the application. The host controls models, credentials,
 3. Start the review UI:
 
    ```sh
-   checkmate ui
+   npx checkmate ui
    ```
+
+`checkmate --version` prints the build that runs. A `warning:` line names another build on `PATH`. Remove the copy that you do not use, for example `npm uninstall -g @xoxoai/checkmate`.
 
 4. Open the URL in the command output.
 5. If no target exists, enter the app URL in **Set up the application** and submit the form. The new-change form then opens.
@@ -38,7 +42,7 @@ Checkmate does not start the application. The host controls models, credentials,
 8. Open Settings and choose a configured harness if the default is not correct.
 9. Select **Start the test**.
 
-The setup form records the URL, environment, and permitted test operations. Checkmate saves the target, plan, runs, decisions, and evidence in the local record.
+The setup form records the URL, the environment, the permitted test operations, and the data kind. A run that can change data needs a data kind. Checkmate saves the target, plan, runs, decisions, and evidence in the local record.
 
 ## Check the result
 

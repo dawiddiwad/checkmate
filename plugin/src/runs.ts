@@ -39,6 +39,8 @@ import { permanentSelection } from './permanent.ts'
 import { mkdirSync, readFileSync, realpathSync, rmSync, statSync } from 'node:fs'
 import { basename, extname, isAbsolute, join, resolve, sep } from 'node:path'
 import { randomUUID } from 'node:crypto'
+import { expectationMatches, repeatsExpectation } from './expectation.ts'
+import { plannedRequest, requestMatches } from './routes.ts'
 
 export type RunRow = {
 	run_id: string
@@ -110,6 +112,7 @@ export type CheckInput = {
 	assertionId: string
 	result?: string
 	observed?: string
+	request?: string
 	reason?: string
 	evidence?: EvidenceInput[]
 }
@@ -609,7 +612,23 @@ function checkedResult(given: string | undefined, assertion: Assertion, observed
 
 // A structured assertion names the observed item and the expected value. The code compares
 // the observed value with the expected value. The child gives only the observed value.
-function decidedResult(given: string | undefined, assertion: Assertion, observed: string | null) {
+// A structured check whose test names a request is decided only for the request that was sent.
+function requestCheck(action: string, sent: string | undefined) {
+	const planned = plannedRequest(action)
+	if (!planned) return
+	requireWellFormed(
+		sent,
+		`Give --request with the request you sent: ${planned.method} ${planned.path}.`,
+		'A value observed without the planned request is not an observation of it.'
+	)
+	requireWellFormed(
+		requestMatches(planned, sent!),
+		`The request ${sent} does not match the planned request ${planned.method} ${planned.path}.`,
+		'Send the planned request. A request that misses the route is not an observation of the value.'
+	)
+}
+
+function decidedResult(given: string | undefined, assertion: Assertion, observed: string | null, marker: string) {
 	requireWellFormed(
 		given === undefined || given === 'not_checked',
 		`${assertion.id} takes its result from --observed. Give --observed with the value of "${assertion.observe}", and no --result.`,
@@ -617,12 +636,12 @@ function decidedResult(given: string | undefined, assertion: Assertion, observed
 	)
 	if (given === 'not_checked') return 'not_checked'
 	requireWellFormed(observed, `Give --observed with the value of "${assertion.observe}".`)
-	return sameValue(observed!, assertion.expected!) ? 'passed' : 'failed'
-}
-
-function sameValue(observed: string, expected: string) {
-	const normal = (text: string) => text.toLowerCase().replace(/[\s,]/g, '')
-	return normal(observed) === normal(expected)
+	requireWellFormed(
+		!repeatsExpectation(observed!),
+		`The observed value "${observed}" repeats the rule of the expected value, not a value that was observed.`,
+		`Give the value you see for "${assertion.observe}" on the page or in the response, not the rule.`
+	)
+	return expectationMatches(observed!, assertion.expected!, marker) ? 'passed' : 'failed'
 }
 
 export function checkAssertion(store: Store, actor: string | undefined, input: CheckInput) {
@@ -660,7 +679,8 @@ export function checkAssertion(store: Store, actor: string | undefined, input: C
 		const result =
 			assertion.expected === undefined
 				? checkedResult(input.result, assertion, observed)
-				: decidedResult(input.result, assertion, observed)
+				: (requestCheck(test.action, input.request),
+					decidedResult(input.result, assertion, observed, run.request.marker ?? ''))
 		files = evidenceFiles(store, input.runId, `${test.id}-${assertion.id}`, input.evidence)
 		if (result !== 'not_checked')
 			requireWellFormed(

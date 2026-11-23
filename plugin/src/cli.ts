@@ -1003,7 +1003,7 @@ const commands: Record<string, Command> = {
 	},
 	'run check': {
 		positionals: ['runId', 'testId', 'assertionId'],
-		flags: { result: assertionResults, observed: 'value', reason: 'value', evidence: 'repeat' },
+		flags: { result: assertionResults, observed: 'value', request: 'value', reason: 'value', evidence: 'repeat' },
 		write: true,
 		run: (store, args, context) =>
 			checkAssertion(store, context.actor, {
@@ -1012,6 +1012,7 @@ const commands: Record<string, Command> = {
 				assertionId: value(args, 'assertionId')!,
 				result: value(args, 'result'),
 				observed: value(args, 'observed'),
+				request: value(args, 'request'),
 				reason: value(args, 'reason'),
 				evidence: evidence(args, context),
 			}),

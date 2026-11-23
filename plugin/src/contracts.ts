@@ -13,6 +13,7 @@ import type {
 } from './types.ts'
 import type { Reply } from './store.ts'
 import { canonical } from './store.ts'
+import { expectationError, expectationHint } from './expectation.ts'
 import * as validators from './validators.js'
 import { operationAllowed } from './targets.ts'
 
@@ -355,6 +356,12 @@ export function planCheck(value: unknown): Plan {
 				!compoundCheck(assertion.check),
 				`Assertion ${test.id}.${assertion.id} checks more than one value.`,
 				`Split it into one assertion for each value, for example {"id": "A2", "check": "<second expected value>", "checkKind": "deterministic"}. Keep one expected value in each check.`
+			)
+		for (const assertion of test.assertions)
+			requireWellFormed(
+				assertion.expected === undefined || !expectationError(assertion.expected),
+				`Assertion ${test.id}.${assertion.id} has an expected value that code cannot compare. ${assertion.expected === undefined ? '' : expectationError(assertion.expected)}`,
+				expectationHint()
 			)
 		for (const assertion of test.assertions)
 			requireWellFormed(

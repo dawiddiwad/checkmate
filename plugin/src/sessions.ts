@@ -684,6 +684,7 @@ const chatRecordCommands = [
 	'claim handoff',
 	'delegate revise',
 	'delegate wait',
+	'scope drop',
 ]
 
 // The model quotes the script path with double or single quotes, so each command has both forms.

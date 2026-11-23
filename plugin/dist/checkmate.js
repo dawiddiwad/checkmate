@@ -10437,7 +10437,8 @@ var chatRecordCommands = [
   "claim reject",
   "claim handoff",
   "delegate revise",
-  "delegate wait"
+  "delegate wait",
+  "scope drop"
 ];
 function chatAllowRules(checkmate) {
   return [...chatReadCommands, ...chatRecordCommands].flatMap((command) => [
@@ -15951,30 +15952,52 @@ function operationCountOf(store, requestId2) {
   return one(store, "SELECT count(*) AS count FROM operations WHERE via = ?", requestId2).count;
 }
 function changesOf(store, requestId2) {
-  return all(
-    store,
-    `SELECT at, command, arguments, subjects, response, json_extract(response, '$.subject') AS subject
+  return summarizeChanges(
+    all(
+      store,
+      `SELECT at, command, arguments, subjects, response, json_extract(response, '$.subject') AS subject
 		FROM operations
 		WHERE via = ? AND (status = 'completed' OR json_extract(response, '$.data.revision') IS NOT NULL)
 		ORDER BY rowid`,
-    requestId2
-  ).map((row2) => {
-    const record = JSON.parse(row2.subjects).map((subject2) => /^(plan|run|exploration|target):(.+)$/.exec(subject2)).find((found) => found);
-    const subject = record ? record[2] : row2.subject;
-    const data = JSON.parse(row2.response).data;
-    return {
-      text: describeChange(
-        row2.command,
+      requestId2
+    ).map((row2) => {
+      const record = JSON.parse(row2.subjects).map((subject2) => /^(plan|run|exploration|target):(.+)$/.exec(subject2)).find((found) => found);
+      const subject = record ? record[2] : row2.subject;
+      const data = JSON.parse(row2.response).data;
+      return {
+        text: describeChange(
+          row2.command,
+          subject,
+          JSON.parse(row2.arguments),
+          data?.removed
+        ),
+        command: row2.command,
         subject,
-        JSON.parse(row2.arguments),
-        data?.removed
-      ),
-      command: row2.command,
-      subject,
-      at: row2.at,
-      href: record ? `${recordPaths[record[1]]}${subject}` : null
-    };
-  });
+        at: row2.at,
+        href: record ? `${recordPaths[record[1]]}${subject}` : null
+      };
+    })
+  );
+}
+function summarizeChanges(changes) {
+  const counts2 = /* @__PURE__ */ new Map();
+  for (const change of changes)
+    if (change.command === "run finding") counts2.set(change.subject, (counts2.get(change.subject) ?? 0) + 1);
+  const summary = [];
+  for (const change of changes) {
+    if (change.command === "run check" || change.command === "run close") continue;
+    if (change.command !== "run finding") {
+      summary.push(change);
+      continue;
+    }
+    if (summary.some((item) => item.command === "run finding" && item.subject === change.subject)) continue;
+    const count2 = counts2.get(change.subject) ?? 1;
+    summary.push({
+      ...change,
+      text: `recorded ${count2} ${count2 === 1 ? "finding" : "findings"} in ${change.subject}`
+    });
+  }
+  return summary;
 }
 var maxRunningTurns = 3;
 function waitingBehind(store, request2) {
@@ -19849,7 +19872,8 @@ var readOnly = [
 var recordWrites = [
   ["gap", "answer"],
   ["delegate", "revise"],
-  ["delegate", "wait"]
+  ["delegate", "wait"],
+  ["scope", "drop"]
 ];
 var planBodies = [
   ["plan", "edit"],
@@ -30843,7 +30867,10 @@ function createRequester(store, options3) {
     };
     guarded(() => {
       const changes = changesOf(store, run2.id);
-      const cost = run2.harness === "pi" ? { costUsd: end?.costUsd, costPartial: end?.costPartial, observedModels: end?.observedModels } : claudeTurnCost(run2);
+      const cost = run2.harness === "pi" ? { costUsd: end?.costUsd, costPartial: end?.costPartial, observedModels: end?.observedModels } : {
+        ...claudeTurnCost(run2),
+        ...run2.observedModels.length ? { observedModels: run2.observedModels } : {}
+      };
       setRequestState(store, run2.id, outcome.state, { ...outcome.detail, ...cost, costScope: "turn", changes });
     });
   }
@@ -30890,6 +30917,7 @@ function createRequester(store, options3) {
           const usage2 = found.value.model_usage_since_last_result;
           if (usage2 && typeof usage2 === "object" && !Array.isArray(usage2)) {
             const charges = Object.values(usage2).map((model) => reportedClaudeCost(model?.costUSD));
+            run2.observedModels = [.../* @__PURE__ */ new Set([...run2.observedModels, ...Object.keys(usage2)])];
             run2.claudeCosts.push(charges.length ? costOf(charges) : { costUsd: 0 });
           } else if (run2.claudeCosts.length) run2.claudeCosts.push({});
         }
@@ -30905,6 +30933,7 @@ function createRequester(store, options3) {
       child: null,
       result: null,
       claudeCosts: [],
+      observedModels: [],
       resume: false,
       broken: false,
       stopping: null,

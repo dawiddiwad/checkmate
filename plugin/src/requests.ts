@@ -561,32 +561,56 @@ export function operationCountOf(store: Store, requestId: string) {
 }
 
 export function changesOf(store: Store, requestId: string): RequestChange[] {
-	return all<ChangeRow>(
-		store,
-		`SELECT at, command, arguments, subjects, response, json_extract(response, '$.subject') AS subject
+	return summarizeChanges(
+		all<ChangeRow>(
+			store,
+			`SELECT at, command, arguments, subjects, response, json_extract(response, '$.subject') AS subject
 		FROM operations
 		WHERE via = ? AND (status = 'completed' OR json_extract(response, '$.data.revision') IS NOT NULL)
 		ORDER BY rowid`,
-		requestId
-	).map((row) => {
-		const record = (JSON.parse(row.subjects) as string[])
-			.map((subject) => /^(plan|run|exploration|target):(.+)$/.exec(subject))
-			.find((found) => found)
-		const subject = record ? record[2] : row.subject
-		const data = (JSON.parse(row.response) as { data?: { removed?: unknown } }).data
-		return {
-			text: describeChange(
-				row.command,
+			requestId
+		).map((row) => {
+			const record = (JSON.parse(row.subjects) as string[])
+				.map((subject) => /^(plan|run|exploration|target):(.+)$/.exec(subject))
+				.find((found) => found)
+			const subject = record ? record[2] : row.subject
+			const data = (JSON.parse(row.response) as { data?: { removed?: unknown } }).data
+			return {
+				text: describeChange(
+					row.command,
+					subject,
+					JSON.parse(row.arguments) as Record<string, unknown>,
+					data?.removed
+				),
+				command: row.command,
 				subject,
-				JSON.parse(row.arguments) as Record<string, unknown>,
-				data?.removed
-			),
-			command: row.command,
-			subject,
-			at: row.at,
-			href: record ? `${recordPaths[record[1]]}${subject}` : null,
+				at: row.at,
+				href: record ? `${recordPaths[record[1]]}${subject}` : null,
+			}
+		})
+	)
+}
+
+// The Saved-this-turn list shows record changes. Test progress is not one, and the findings of one run count as one line.
+export function summarizeChanges(changes: RequestChange[]): RequestChange[] {
+	const counts = new Map<string, number>()
+	for (const change of changes)
+		if (change.command === 'run finding') counts.set(change.subject, (counts.get(change.subject) ?? 0) + 1)
+	const summary: RequestChange[] = []
+	for (const change of changes) {
+		if (change.command === 'run check' || change.command === 'run close') continue
+		if (change.command !== 'run finding') {
+			summary.push(change)
+			continue
 		}
-	})
+		if (summary.some((item) => item.command === 'run finding' && item.subject === change.subject)) continue
+		const count = counts.get(change.subject) ?? 1
+		summary.push({
+			...change,
+			text: `recorded ${count} ${count === 1 ? 'finding' : 'findings'} in ${change.subject}`,
+		})
+	}
+	return summary
 }
 
 // Turns may run in different chats at once, up to this many. Turns in one chat run one at a time.

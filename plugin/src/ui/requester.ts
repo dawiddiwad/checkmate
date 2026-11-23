@@ -187,6 +187,7 @@ type Running = {
 	child: StreamedClaude | null
 	result: Record<string, unknown> | null
 	claudeCosts: Array<Pick<ChildCall, 'costUsd' | 'costPartial'>>
+	observedModels: string[]
 	resume: boolean
 	broken: boolean
 	stopping: 'stopped' | 'interrupted' | null
@@ -269,7 +270,10 @@ export function createRequester(store: Store, options: RequesterOptions): Reques
 			const cost =
 				run.harness === 'pi'
 					? { costUsd: end?.costUsd, costPartial: end?.costPartial, observedModels: end?.observedModels }
-					: claudeTurnCost(run)
+					: {
+							...claudeTurnCost(run),
+							...(run.observedModels.length ? { observedModels: run.observedModels } : {}),
+						}
 			setRequestState(store, run.id, outcome.state, { ...outcome.detail, ...cost, costScope: 'turn', changes })
 		})
 	}
@@ -318,6 +322,7 @@ export function createRequester(store: Store, options: RequesterOptions): Reques
 					const usage = found.value.model_usage_since_last_result
 					if (usage && typeof usage === 'object' && !Array.isArray(usage)) {
 						const charges = Object.values(usage).map((model) => reportedClaudeCost(model?.costUSD))
+						run.observedModels = [...new Set([...run.observedModels, ...Object.keys(usage)])]
 						run.claudeCosts.push(charges.length ? costOf(charges) : { costUsd: 0 })
 					} else if (run.claudeCosts.length) run.claudeCosts.push({})
 				}
@@ -334,6 +339,7 @@ export function createRequester(store: Store, options: RequesterOptions): Reques
 			child: null,
 			result: null,
 			claudeCosts: [],
+			observedModels: [],
 			resume: false,
 			broken: false,
 			stopping: null,

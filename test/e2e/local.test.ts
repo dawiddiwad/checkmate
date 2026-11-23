@@ -5965,6 +5965,7 @@ test('Give a Claude chat turn only Read and Bash, the saved-this-turn hook, and 
 	assert.ok(rules.includes(`Bash(node "${cli}" delegate wait:*)`))
 	assert.ok(rules.includes(`Bash(node '${cli}' delegate revise:*)`))
 	assert.ok(rules.includes(`Bash(node "${cli}" explore wait:*)`))
+	assert.ok(rules.includes(`Bash(node "${cli}" scope drop:*)`))
 	assert.equal(
 		rules.some((rule) => rule.includes('run begin')),
 		false
@@ -6172,6 +6173,7 @@ test('A chat turn runs its Checkmate record commands without a prompt — a here
 	assert.equal(asked(edit), true)
 	assert.equal(asked(`node '${cli}' status SHOP-1; rm -rf .checkmate`), false)
 	assert.equal(asked(`node '${cli}' run begin run-1 SHOP-1@1 --build b1`), false)
+	assert.equal(asked(`node '${cli}' scope drop SHOP-1 R4 --source conversation --rationale 'Dropped in chat.'`), true)
 })
 
 test('Refuse a detached claude delegate without --allow before it starts — the reply is not started and then refused.', async (t) => {
@@ -6521,4 +6523,65 @@ test('Refuse a refusal check with no positive control, and save it with one — 
 	assert.match(refused.output, /expected.{0,12}200/)
 	const saved = await inputCommand(workspace, env, JSON.stringify(test([refusal, control])), 'plan', 'save', 'ticket')
 	assert.equal(saved.code, 0, saved.output)
+})
+
+test(
+	'Record the models a Claude chat turn reports — the answered turn shows the model it ran.',
+	{ timeout: 45000 },
+	async (t) => {
+		const workspace = directory(t)
+		const host = fakeClaude(t, {
+			request: { result: 'Checked.', currentUsage: { 'claude-haiku-5-5': { costUSD: 0.02 } } },
+			models: [{ value: 'haiku', displayName: 'Haiku 5.5' }],
+		})
+		const env = { ...process.env, ...host.env, CHECKMATE_HARNESS: 'claude' }
+		const server = spawn(process.execPath, [binary, 'ui', '--port', '0', '--json'], { cwd: workspace, env })
+		t.after(() => {
+			if (server.exitCode === null) server.kill('SIGTERM')
+		})
+		const [first] = (await once(server.stdout, 'data')) as [Buffer]
+		const url = JSON.parse(first.toString().split('\n')[0]).url as string
+		const html = await (await fetch(new URL('/chats', url))).text()
+		const csrf = /name="csrf" value="([0-9a-f]+)"/.exec(html)?.[1]
+		assert(csrf)
+		const response = await fetch(new URL('/chats', url), {
+			method: 'POST',
+			redirect: 'manual',
+			headers: { 'content-type': 'application/x-www-form-urlencoded', cookie: 'checkmate_actor=oracle' },
+			body: new URLSearchParams({ csrf, text: 'Which model ran?', model: 'haiku', harness: 'claude' }),
+		})
+		assert.equal(response.status, 303, await response.text())
+		let state: { detail: string } | undefined
+		for (let tries = 0; tries < 200 && !state; tries++) {
+			await new Promise((resolve) => setTimeout(resolve, 50))
+			const rows = (
+				await command(
+					workspace,
+					env,
+					'query',
+					"SELECT detail FROM request_events WHERE step='state' AND status='answered' ORDER BY rowid"
+				)
+			).body.rows as Array<{ detail: string }>
+			state = rows[0]
+		}
+		assert.ok(state, 'The chat turn did not answer')
+		assert.deepEqual(JSON.parse(state.detail).observedModels, ['claude-haiku-5-5'])
+	}
+)
+
+test('Show the Saved-this-turn list without test progress — a run shows its start and one line for its findings.', async () => {
+	const { summarizeChanges } = await import('../../plugin/src/requests.ts')
+	const change = (command: string, subject: string, text: string) => ({ text, command, subject, at: '', href: null })
+	const summary = summarizeChanges([
+		change('run begin', 'run-2', 'run begin run-2'),
+		change('run check', 'run-2', 'run check run-2'),
+		change('run finding', 'run-2', 'run finding run-2'),
+		change('run close', 'run-2', 'run close run-2'),
+		change('run finding', 'run-2', 'run finding run-2'),
+		change('gap answer', 'SHOP-1', 'answered SHOP-1/G1'),
+	])
+	assert.deepEqual(
+		summary.map((item) => item.text),
+		['run begin run-2', 'recorded 2 findings in run-2', 'answered SHOP-1/G1']
+	)
 })

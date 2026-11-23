@@ -27,6 +27,7 @@ const recordWrites = [
 	['gap', 'answer'],
 	['delegate', 'revise'],
 	['delegate', 'wait'],
+	['scope', 'drop'],
 ]
 const planBodies = [
 	['plan', 'edit'],

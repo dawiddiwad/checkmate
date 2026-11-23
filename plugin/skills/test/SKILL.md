@@ -1,6 +1,6 @@
 ---
 name: test
-description: Main entry for testing with Checkmate. Use for any request to test, QA, check, verify, or retest a change, a ticket, or a build, also when the acceptance criteria are in a file such as ticket.md. Starts independent testers and records what they find.
+description: Use first for any request to test, QA, check, verify, or retest a change, a ticket, a feature, or a build, or to see whether it meets its acceptance criteria or still works. For example "test the change in ticket.md", "QA the cart", "check SHOP-12 is done", "does the cart pass the ticket", "make sure the coupon works", or "retest after my fix". Do not answer from the ticket or edit the code first. Checkmate starts the testers and records what they find.
 ---
 
 > **Agent only:** This file contains repository or workflow instructions for coding agents.

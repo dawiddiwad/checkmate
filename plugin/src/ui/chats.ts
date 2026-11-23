@@ -52,6 +52,20 @@ function composer(context: Context, action: string, selection: RequestSelection,
 	</form>`
 }
 
+// The record decides what this turn saved. The reply text does not.
+function savedThisTurn(changes: RequestRecord['changes']) {
+	if (!changes.length) return html`<p class="help" data-chat-saved>Saved this turn: nothing.</p>`
+	return html`<div class="chat-saved" data-chat-saved>
+		<p class="help">Saved this turn</p>
+		<ul>
+			${changes.map(
+				(change) =>
+					html`<li>${change.href ? html`<a href="${change.href}">${change.text}</a>` : change.text}</li>`
+			)}
+		</ul>
+	</div>`
+}
+
 function title(text: string) {
 	const line = text.split('\n')[0]
 	return line.length > 80 ? `${line.slice(0, 79).trimEnd()}…` : line
@@ -121,6 +135,7 @@ function turn(store: Store, request: RequestRecord, context: Context, number: nu
 				>
 			</div>
 			${request.reply ? html`<div class="chat-markdown" data-chat-content>${chatMarkdown(request.reply)}</div>` : ''}
+			${['answered', 'failed', 'stopped', 'interrupted'].includes(request.state) ? savedThisTurn(request.changes) : ''}
 			${request.state === 'waiting' ? html`<p class="help">Waiting for another chat to finish.</p>` : ''}
 			${request.state === 'running' ? html`<p class="help">Working…</p>` : ''}
 			${permissions.map(

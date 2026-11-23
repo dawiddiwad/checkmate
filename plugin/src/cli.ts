@@ -80,6 +80,7 @@ import { exportExploration, exportPlan, exportRun, explorationFormats, formats, 
 import { startUi } from './ui/server.ts'
 import { contactUi, withUiStartupLock } from './ui/lifecycle.ts'
 import { defaultActor, requestOfEnv } from './actor.ts'
+import { changesOf } from './requests.ts'
 import { explorationModes, openExploration } from './explorations.ts'
 import type { Claim } from './journal.ts'
 import { decideClaim, handOffClaims, logEntries, planClaims, readEntries } from './journal.ts'
@@ -326,6 +327,23 @@ const commands: Record<string, Command> = {
 	init: {
 		positionals: [],
 		run: (store) => completed('.checkmate/checkmate.db', { path: store.path }),
+	},
+	'chat changes': {
+		positionals: [],
+		readOnly: true,
+		run: (store, _args, context) => {
+			const request = requestOfEnv(context.env)
+			requireCondition(request, 'Saved changes need a chat request. Run this from a chat turn.')
+			return completed('chat changes', { changes: changesOf(store, request!) })
+		},
+		print: (reply) => {
+			const changes = reply.data.changes as ReturnType<typeof changesOf>
+			return {
+				lines: changes.length
+					? [['Saved this turn:'], ...changes.map((change) => [`- ${change.text}`])]
+					: [['Saved this turn: nothing.']],
+			}
+		},
 	},
 	inbox: {
 		positionals: [],

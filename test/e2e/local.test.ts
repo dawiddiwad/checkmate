@@ -100,6 +100,21 @@ test('Point run accept and run reject to the result command — a wrong command 
 	assert.match(result.stdout + result.stderr, /Use result reject <runId> --rationale/)
 })
 
+test('Tell a chat turn what it saved from the record — a turn with no write reports nothing saved, and a refused command saves nothing.', async (t) => {
+	const workspace = directory(t)
+	execFileSync(process.execPath, [binary, 'init'], { cwd: workspace, encoding: 'utf8' })
+	const result = spawnSync(process.execPath, [binary, 'chat', 'changes'], {
+		cwd: workspace,
+		encoding: 'utf8',
+		env: { ...process.env, CHECKMATE_REQUEST: 'R1' },
+	})
+	assert.equal(result.status, 0, result.stdout + result.stderr)
+	assert.match(result.stdout, /Saved this turn: nothing\./)
+	const refused = spawnSync(process.execPath, [binary, 'chat', 'changes'], { cwd: workspace, encoding: 'utf8' })
+	assert.equal(refused.status, 1)
+	assert.match(refused.stdout + refused.stderr, /Saved changes need a chat request/)
+})
+
 test('Recover after missing host or missing ticket source — unexplained partial records or duplicates.', async (t) => {
 	const workspace = directory(t)
 	const env = { ...process.env, PATH: '', CHECKMATE_HARNESS: 'pi', CHECKMATE_ACTOR: 'oracle' }

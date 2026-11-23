@@ -30613,6 +30613,10 @@ function createRequester(store, options3) {
       sessionId,
       "--extension",
       extension,
+      "--extension",
+      join16(pluginRoot, "pi", "changes.mjs"),
+      "--tools",
+      "read,bash",
       "--append-system-prompt",
       requestSystemPrompt(checkmateScript(), "pi")
     ] : [
@@ -36238,6 +36242,17 @@ function composer(context, action2, selection, screen = "", back = "") {
 		<p class="form-error" data-chat-error role="alert" hidden></p>
 	</form>`;
 }
+function savedThisTurn(changes) {
+  if (!changes.length) return html2`<p class="help" data-chat-saved>Saved this turn: nothing.</p>`;
+  return html2`<div class="chat-saved" data-chat-saved>
+		<p class="help">Saved this turn</p>
+		<ul>
+			${changes.map(
+    (change) => html2`<li>${change.href ? html2`<a href="${change.href}">${change.text}</a>` : change.text}</li>`
+  )}
+		</ul>
+	</div>`;
+}
 function title(text2) {
   const line = text2.split("\n")[0];
   return line.length > 80 ? `${line.slice(0, 79).trimEnd()}\u2026` : line;
@@ -36296,6 +36311,7 @@ function turn(store, request2, context, number, back) {
 				>
 			</div>
 			${request2.reply ? html2`<div class="chat-markdown" data-chat-content>${chatMarkdown(request2.reply)}</div>` : ""}
+			${["answered", "failed", "stopped", "interrupted"].includes(request2.state) ? savedThisTurn(request2.changes) : ""}
 			${request2.state === "waiting" ? html2`<p class="help">Waiting for another chat to finish.</p>` : ""}
 			${request2.state === "running" ? html2`<p class="help">Working…</p>` : ""}
 			${permissions.map(
@@ -39713,6 +39729,21 @@ var commands = {
   init: {
     positionals: [],
     run: (store) => completed(".checkmate/checkmate.db", { path: store.path })
+  },
+  "chat changes": {
+    positionals: [],
+    readOnly: true,
+    run: (store, _args, context) => {
+      const request2 = requestOfEnv(context.env);
+      requireCondition(request2, "Saved changes need a chat request. Run this from a chat turn.");
+      return completed("chat changes", { changes: changesOf(store, request2) });
+    },
+    print: (reply) => {
+      const changes = reply.data.changes;
+      return {
+        lines: changes.length ? [["Saved this turn:"], ...changes.map((change) => [`- ${change.text}`])] : [["Saved this turn: nothing."]]
+      };
+    }
   },
   inbox: {
     positionals: [],

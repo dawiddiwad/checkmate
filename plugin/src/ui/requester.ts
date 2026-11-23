@@ -395,6 +395,10 @@ export function createRequester(store: Store, options: RequesterOptions): Reques
 						sessionId,
 						'--extension',
 						extension,
+						'--extension',
+						join(pluginRoot, 'pi', 'changes.mjs'),
+						'--tools',
+						'read,bash',
 						'--append-system-prompt',
 						requestSystemPrompt(checkmateScript(), 'pi'),
 					]

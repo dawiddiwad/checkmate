@@ -32,12 +32,24 @@ import {
 	planRunGaps,
 	recordApproval,
 } from './plans.ts'
-import { findInstance, runInstance, targetRevision } from './targets.ts'
+import { findInstance, instanceForBuildHint, readinessHint, runInstance, targetRevision } from './targets.ts'
+import { changesData, markerFor, owe, runPrepare, settleCleanups } from './resets.ts'
 import { addPlanBuild } from './journal.ts'
 import { permanentSelection } from './permanent.ts'
 import { mkdirSync, readFileSync, realpathSync, rmSync, statSync } from 'node:fs'
 import { basename, extname, isAbsolute, join, resolve, sep } from 'node:path'
 import { randomUUID } from 'node:crypto'
+import {
+	expectationMatches,
+	expectsBareValue,
+	isBareValue,
+	unitNotObserved,
+	looksShellExpanded,
+	looksTruncatedMoney,
+	repeatsExpectation,
+	wrappedValue,
+} from './expectation.ts'
+import { checkRequest, requestMatches } from './routes.ts'
 
 export type RunRow = {
 	run_id: string
@@ -61,6 +73,8 @@ export type RunRequest = {
 	retestOf: string | null
 	retestDefects?: RetestDefect[]
 	permanent?: { reference: string; sourceRevision: number; resultSha256: string }
+	facts?: string
+	marker?: string
 }
 export type RunState = { row: RunRow; request: RunRequest; plan: Plan; finished: boolean }
 export type OutcomeRow = {
@@ -100,12 +114,19 @@ export type BeginInput = {
 	retestOf?: string | null
 }
 export type EvidenceInput = string | { text: string; kind?: string }
+type Assertion = Test['assertions'][number]
+// The observed value of a check whose text or element was not on the page after the action.
+export const absentObservation = '(absent)'
+
 export type CheckInput = {
 	runId: string
 	testId: string
 	assertionId: string
-	result: string
+	result?: string
 	observed?: string
+	// The text or element the check names is not on the page after the action, and the page was read.
+	absent?: boolean
+	request?: string
 	reason?: string
 	evidence?: EvidenceInput[]
 }
@@ -265,7 +286,13 @@ export function runOutcomes(store: Store, runId: string) {
 
 export function runAssertions(store: Store, runId: string) {
 	const rows = all<AssertionRow>(store, 'SELECT * FROM assertion_results WHERE run_id = ? ORDER BY rowid', runId)
-	return new Map(rows.map((row) => [`${row.test_id}.${row.assertion_id}`, row]))
+	// A correction comes after the result it corrects, so the last row for an assertion is its current result.
+	const corrections = all<AssertionRow>(
+		store,
+		'SELECT * FROM assertion_corrections WHERE run_id = ? ORDER BY rowid',
+		runId
+	)
+	return new Map([...rows, ...corrections].map((row) => [`${row.test_id}.${row.assertion_id}`, row]))
 }
 
 export function runEvidence(store: Store, runId: string) {
@@ -280,6 +307,16 @@ export function runFindings(store: Store, runId: string): Result['findings'] {
 	return all<{ body: string }>(store, 'SELECT body FROM findings WHERE run_id = ? ORDER BY rowid', runId).map((row) =>
 		JSON.parse(row.body)
 	)
+}
+
+// A test closed as error observed nothing. A defect that names only such tests is not a verdict; it stays stored.
+export function isVerdict(finding: Result['findings'][number], outcomes: ReturnType<typeof runOutcomes>) {
+	return finding.type !== 'defect' || !finding.testIds.every((id) => outcomes.get(id)?.outcome === 'error')
+}
+
+export function verdictFindings(store: Store, runId: string): Result['findings'] {
+	const outcomes = runOutcomes(store, runId)
+	return runFindings(store, runId).filter((finding) => isVerdict(finding, outcomes))
 }
 
 export function runGaps(store: Store, runId: string): Gap[] {
@@ -378,6 +415,11 @@ function begin(
 					}
 				: input
 			const instance = runInstance(store, plannedTarget(store, requested.reference), input.instance)
+			requireCondition(
+				!instance.build || instance.build === input.build,
+				`Instance ${instance.targetId}/${instance.instanceId} serves build ${instance.build}, not ${input.build}. A run names the build its instance serves.`,
+				instanceForBuildHint(store, instance.targetId, input.build)
+			)
 			const checked = gate(store, { ...requested, instance: instance.instanceId })
 			if (checked.reply.status !== 'completed') {
 				const reasons = [refusalReasons.prohibited, ...checked.reply.reasons]
@@ -387,10 +429,16 @@ function begin(
 				}
 			}
 			const { plan, sha256 } = checked.revision
+			const dataProfile = targetRevision(store, plan.target.targetId).profile
+			const marker = markerFor(store, runId)
+			const facts = runPrepare(store.workspace, dataProfile.reset, marker)
+			owe(store, runId, dataProfile.reset)
 			const request: RunRequest = {
 				selectedTestIds: checked.tests,
 				partialExecution: checked.partial,
 				onNewBlocker,
+				...(facts ? { facts } : {}),
+				marker,
 				timeoutSeconds,
 				retestOf: input.retestOf ?? null,
 				...(input.retestOf ? { retestDefects: checked.retestDefects } : {}),
@@ -575,6 +623,70 @@ function requireOpen(store: Store, runId: string, testId: string) {
 	requireCondition(!closed, `Test ${testId} is closed as ${closed?.outcome}. A test outcome is final.`)
 }
 
+// A legacy assertion (no expected value) keeps the child's result and the number guard.
+function checkedResult(given: string | undefined, assertion: Assertion, observed: string | null) {
+	const result = requireChoice(given, assertionResults, 'result (--result)')
+	const unseen = (assertion.check.match(/\d+(\.\d+)?/g) ?? []).filter((value) => !observed?.includes(value))
+	requireCondition(
+		result !== 'passed' || !unseen.length,
+		`The observed value does not show ${unseen.join(', ')}, which the check names.`,
+		'Record failed when the observed value differs from the check. Record passed only when the observed value shows each value of the check.'
+	)
+	return result
+}
+
+// A structured assertion names the observed item and the expected value. The code compares the observed value with the
+// expected value, and the child gives only the observed value. Every problem with the call is refused at once, with one
+// corrected command, so the child fixes the call in one retry.
+function structuredResult(
+	input: CheckInput,
+	test: Test,
+	assertion: Assertion,
+	observed: string | null,
+	marker: string
+) {
+	const planned = checkRequest(test.action, assertion.request)
+	const reasons: string[] = []
+	if (input.result !== undefined && input.result !== 'not_checked')
+		reasons.push(
+			`${assertion.id} takes its result from --observed. Give --observed with the value of "${assertion.observe}", and no --result.`
+		)
+	if (planned && !input.request)
+		reasons.push(`Give --request with the request you sent: ${planned.method} ${planned.path}.`)
+	else if (planned && !requestMatches(planned, input.request!))
+		reasons.push(
+			`The request ${input.request} does not match the planned request ${planned.method} ${planned.path}. A request that misses the route is not an observation of the value.`
+		)
+	const bare = observed === null ? undefined : wrappedValue(observed, assertion.expected)
+	if (input.result !== 'not_checked') {
+		if (observed === null) reasons.push(`Give --observed with the value of "${assertion.observe}".`)
+		else if (repeatsExpectation(observed))
+			reasons.push(
+				`The observed value "${observed}" repeats the rule of the expected value, not a value that was observed. Give the value you see for "${assertion.observe}" on the page or in the response, not the rule.`
+			)
+		// A number wrapped in words, such as HTTP 200, is refused: the value is sent bare. Text with no number is compared as given.
+		else if (expectsBareValue(assertion.expected) && !isBareValue(observed) && /\d/.test(observed))
+			reasons.push(
+				bare
+					? `The observed value "${observed}" holds ${bare} inside other words. Give only the value.`
+					: `The observed value "${observed}" is not a bare value. Give only the value of "${assertion.observe}".`
+			)
+	}
+	if (reasons.length) {
+		const command = [
+			`checkmate run check ${input.runId} ${test.id} ${assertion.id}`,
+			`--observed '${bare ?? observed ?? '<the value you saw>'}'`,
+			planned ? `--request '${planned.method} ${planned.path}'` : '',
+			'--evidence -',
+		]
+			.filter(Boolean)
+			.join(' ')
+		requireWellFormed(false, reasons.join(' '), `Send one corrected call: ${command}`)
+	}
+	if (input.result === 'not_checked') return 'not_checked'
+	return expectationMatches(observed!, assertion.expected!, marker) ? 'passed' : 'failed'
+}
+
 export function checkAssertion(store: Store, actor: string | undefined, input: CheckInput) {
 	let files: EvidenceFile[] = []
 	const reply = write(store, { actor, command: 'run check', subject: input.runId, input }, (operationId, at) => {
@@ -588,9 +700,11 @@ export function checkAssertion(store: Store, actor: string | undefined, input: C
 			`Use one of: ${test.assertions.map((item) => item.id).join(', ')}.`
 		)
 		requireOpen(store, input.runId, test.id)
-		requireCondition(
-			!runAssertions(store, input.runId).has(`${test.id}.${assertion.id}`),
-			`Assertion ${test.id}.${assertion.id} has a result. An assertion result is final.`
+		// A check can be corrected while the test is open. The earlier result stays in the record; the last one counts.
+		const prior = runAssertions(store, input.runId).get(`${test.id}.${assertion.id}`)
+		requireWellFormed(
+			!prior || input.reason !== undefined,
+			`Assertion ${test.id}.${assertion.id} has a result (${prior?.result}). Record the correction with --reason "<why the earlier result was wrong>". The earlier result stays in the record.`
 		)
 		const outcomes = runOutcomes(store, input.runId)
 		for (const dependency of test.dependsOn.filter((id) => !id.includes(':'))) {
@@ -605,9 +719,36 @@ export function checkAssertion(store: Store, actor: string | undefined, input: C
 					: undefined
 			)
 		}
-		const result = requireChoice(input.result, assertionResults, 'result (--result)')
-		const observed = optionalText(input.observed, 'observation (--observed)')
+		requireWellFormed(
+			!input.absent || input.observed === undefined,
+			'--absent and --observed do not go together',
+			'Use --absent when the page was read and the text or element is not on it. Use --observed with the value when it is there.'
+		)
+		requireWellFormed(
+			!input.absent || assertion.expected !== undefined,
+			`--absent applies to a structured check. ${test.id}.${assertion.id} has no expected value.`,
+			'Record the result with --result and --observed.'
+		)
+		// The page was read and the value is not on it: the observed value is absent, and the code compares it.
+		const observed = input.absent ? absentObservation : optionalText(input.observed, 'observation (--observed)')
+		const evidenceText = (input.evidence ?? [])
+			.map((item) => (typeof item === 'string' ? item : item.text))
+			.join('\n')
+		requireWellFormed(
+			observed === null || !looksTruncatedMoney(observed, assertion.expected, evidenceText),
+			`The observed value "${observed}" looks like a money amount whose currency sign the shell removed.`,
+			"Record --observed in single quotes, for example --observed '$5.00', so the shell passes the value unchanged. Or write the value to a file and pass --observed-file."
+		)
+		requireWellFormed(
+			observed === null || !looksShellExpanded(observed),
+			`The observed value "${observed}" looks like a shell path, not the value. The shell expanded it before Checkmate got it.`,
+			"Record --observed in single quotes, for example --observed '$0', so the shell passes the value unchanged."
+		)
 		const reason = optionalText(input.reason, 'reason (--reason)')
+		const result =
+			assertion.expected === undefined
+				? checkedResult(input.result, assertion, observed)
+				: structuredResult(input, test, assertion, observed, run.request.marker ?? '')
 		files = evidenceFiles(store, input.runId, `${test.id}-${assertion.id}`, input.evidence)
 		if (result !== 'not_checked')
 			requireWellFormed(
@@ -622,16 +763,24 @@ export function checkAssertion(store: Store, actor: string | undefined, input: C
 			)
 		if (result === 'not_checked')
 			requireWellFormed(reason, 'A not_checked result needs a reason (--reason) that says why it was not checked')
+		// The amounts match, but the observed value has no unit the expected value names. The record says so.
+		const unit =
+			result === 'passed' && observed !== null && assertion.expected !== undefined
+				? unitNotObserved(observed, assertion.expected)
+				: undefined
+		const recorded = reason ?? (unit ? `The unit ${unit} was not observed; the amounts match.` : null)
+		// The first result goes to assertion_results, which keeps it. A correction goes to assertion_corrections.
+		const table = prior ? 'assertion_corrections' : 'assertion_results'
 		execute(
 			store,
-			'INSERT INTO assertion_results (run_id, test_id, assertion_id, attempt, result, observed, reason, recorded_at, operation_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+			`INSERT INTO ${table} (run_id, test_id, assertion_id, attempt, result, observed, reason, recorded_at, operation_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			input.runId,
 			test.id,
 			assertion.id,
 			currentAttempt(store, input.runId),
 			result,
 			observed,
-			reason,
+			recorded,
 			at,
 			operationId
 		)
@@ -693,6 +842,11 @@ export function closeTest(store: Store, actor: string | undefined, input: CloseI
 			requireWellFormed(
 				outcome === 'error' || !input.evidence?.length,
 				'--evidence applies only with --outcome error'
+			)
+			requireCondition(
+				outcome !== 'error' || input.evidence?.length || recorded.length,
+				'An error close needs the output of the failed tool.',
+				`Run the failed tool once. Then close with --outcome error --reason "<cause>" --evidence - and send the tool output on standard input.`
 			)
 			files = evidenceFiles(store, input.runId, test.id, input.evidence)
 		}
@@ -837,7 +991,8 @@ export function recordGap(store: Store, actor: string | undefined, input: { runI
 export function finishRun(store: Store, actor: string | undefined, input: FinishInput) {
 	const reply = finish(store, actor, input)
 	removeTemporaryDirectory(store, input.runId)
-	return reply
+	const cleanupFailures = settleCleanups(store, [input.runId])
+	return cleanupFailures.length ? { ...reply, data: { ...reply.data, cleanupFailures } } : reply
 }
 
 function finish(store: Store, actor: string | undefined, input: FinishInput) {
@@ -864,6 +1019,11 @@ function finish(store: Store, actor: string | undefined, input: FinishInput) {
 		const selected = run.request.selectedTestIds
 		const attempt = currentAttempt(store, input.runId)
 		const unclosed = selected.filter((id) => !runOutcomes(store, input.runId).has(id))
+		requireCondition(
+			completion !== 'operational_error' || !unclosed.length,
+			`Selected tests are not closed: ${unclosed.join(', ')}. Finish with operational_error only after every test is closed.`,
+			'Run each open test. Close it with its result, or with --outcome error --reason "<cause>" --evidence - and the output of the failed tool. For a deadline or a stopped host, finish as interrupted with --cause.'
+		)
 		if (completion === 'completed')
 			requireCondition(
 				!unclosed.length,
@@ -915,7 +1075,7 @@ function finish(store: Store, actor: string | undefined, input: FinishInput) {
 				'Cleanup failed, so the run cannot be completed',
 				'Finish with --completion operational_error.'
 			)
-			for (const verdict of retestVerdicts(run, outcomes))
+			for (const verdict of retestVerdicts(run, outcomes, runAssertions(store, input.runId)))
 				for (const testId of verdict.testIds.filter((id) => selected.includes(id)))
 					requireCondition(
 						outcomes.get(testId)!.outcome !== 'not_run',
@@ -1055,16 +1215,29 @@ function defectHint(store: Store, run: RunState, row: AssertionRow, findings: Re
 
 export type RetestVerdict = 'fixed' | 'not_fixed' | 'not_retested'
 
-export function retestVerdicts(run: RunState, outcomes: Map<string, OutcomeRow>) {
+// A defect is judged by the assertions it was recorded against, so a failing sibling assertion on the same test does not count.
+export function retestVerdicts(
+	run: RunState,
+	outcomes: Map<string, OutcomeRow>,
+	assertions: Map<string, AssertionRow>
+) {
 	return (run.request.retestDefects ?? []).map((defect) => {
-		const tested = defect.testIds.map((id) => outcomes.get(id)?.outcome)
-		const verdict: RetestVerdict = tested.includes('failed')
-			? 'not_fixed'
-			: tested.every((outcome) => outcome === 'passed')
-				? 'fixed'
-				: 'not_retested'
+		const verdict = defect.assertionIds?.length
+			? assertionVerdict(defect.assertionIds.map((id) => assertions.get(id)?.result))
+			: testVerdict(defect.testIds.map((id) => outcomes.get(id)?.outcome))
 		return { ...defect, runId: defect.runId ?? run.request.retestOf!, verdict }
 	})
+}
+
+function assertionVerdict(results: Array<AssertionRow['result'] | undefined>): RetestVerdict {
+	if (results.includes('failed')) return 'not_fixed'
+	return results.every((result) => result === 'passed') ? 'fixed' : 'not_retested'
+}
+
+// A defect recorded before assertions were named has only its tests to judge by.
+function testVerdict(outcomes: Array<string | undefined>): RetestVerdict {
+	if (outcomes.includes('failed')) return 'not_fixed'
+	return outcomes.every((outcome) => outcome === 'passed') ? 'fixed' : 'not_retested'
 }
 
 export function outcomeCounts(tests: ResultTest[]) {
@@ -1089,7 +1262,7 @@ export function resumeRun(store: Store, actor: string | undefined, input: Resume
 		requireCondition(
 			target.profile.readyForLiveExecution,
 			`Target prerequisites are not ready: ${run.row.target_id}@${target.revision}`,
-			`The setup stage must save a ready profile for ${run.row.target_id}.`
+			readinessHint(store, run.row.target_id)
 		)
 		const checked = gate(store, {
 			reference: `${run.plan.planId}@${run.plan.revision}`,
@@ -1120,6 +1293,24 @@ export function resumeRun(store: Store, actor: string | undefined, input: Resume
 				},
 				subjects: [],
 			}
+		const changing = openTests.filter((test) => !stalled.includes(test.id) && test.operations.some(changesData))
+		const reset = target.profile.reset
+		if (changing.length && reset?.owner === 'environment')
+			return {
+				reply: {
+					status: 'needs_decision',
+					subject: input.runId,
+					reasons: [
+						`Actions may have occurred in ${changing.map((test) => test.id).join(', ')}, and Checkmate cannot reset the data of ${run.row.target_id} (${reset ? `data kind ${reset.owner}` : 'no data policy recorded'}).`,
+					],
+					hint: `Decide for each test. Close it as error with a reason: checkmate run resume ${input.runId} --error ${changing.map((test) => test.id).join(',')} --reason "<why>". Or restore the data outside Checkmate, then run checkmate run resume ${input.runId} again.`,
+					data: {},
+				},
+				subjects: [],
+			}
+		if (changing.length && reset?.owner === 'checkmate')
+			runPrepare(store.workspace, reset, run.request.marker ?? markerFor(store, input.runId))
+		if (changing.length) owe(store, input.runId, reset)
 		const attempt = currentAttempt(store, input.runId) + 1
 		execute(
 			store,
@@ -1149,7 +1340,7 @@ export function resumeRun(store: Store, actor: string | undefined, input: Resume
 			.filter((test) => !stalled.includes(test.id))
 			.map((test) => ({
 				testId: test.id,
-				warning: 'Actions may have occurred',
+				...(changing.includes(test) ? { reset: 'ran before this attempt' } : {}),
 				recorded: test.assertions.filter((assertion) => results.has(`${test.id}.${assertion.id}`)).length,
 				assertions: test.assertions.filter((assertion) => !results.has(`${test.id}.${assertion.id}`)),
 			}))

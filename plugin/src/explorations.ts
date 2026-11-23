@@ -14,6 +14,7 @@ import { join } from 'node:path'
 export const explorationModes = ['exploratory', 'regression'] as const
 export type Charter = {
 	goal: string
+	dataRules?: string[]
 	requirements: Array<{ id: string; text: string }>
 	decisions?: Array<Pick<Plan['decisions'][number], 'gapId' | 'kind' | 'value' | 'source'> & { question: string }>
 	sources: string[]

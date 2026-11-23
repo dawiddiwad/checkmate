@@ -94,10 +94,13 @@ function claudeModels(stdout: string): ModelCatalog | undefined {
 				model.supportsEffort !== false && Array.isArray(advertised)
 					? effortLevels.claude.filter((level) => advertised.includes(level))
 					: []
+			const name = typeof model.displayName === 'string' ? model.displayName : model.value
+			// An older Haiku stays in the list, labelled as older and below Haiku 5.5.
+			const label = /haiku/i.test(model.value) && model.value !== claudeDefaultModel ? `${name} (older)` : name
 			return [
 				{
 					value: model.value,
-					label: typeof model.displayName === 'string' ? model.displayName : model.value,
+					label,
 					...(levels.length ? { effortLevels: levels } : {}),
 				},
 			]
@@ -195,6 +198,27 @@ function piModels(stdout: string): ModelOption[] | undefined {
 		const value = `${provider}/${model}`
 		return [{ value, label: value }]
 	})
+}
+
+// The chat picker shows the provider of the host's default model first, and luna models first in it.
+// The client filters the rest by a search. A value without a provider prefix has no primary group.
+// The Claude model a chat uses when none is chosen. Its picker label is Haiku 5.5.
+export const claudeDefaultModel = 'haiku'
+
+export function chatModelOrder(catalog: ModelCatalog): { models: ModelOption[]; primary: string | null } {
+	const fallback = catalog.models[0]?.value
+	const source = catalog.defaultModel?.value ?? fallback ?? ''
+	const slash = source.indexOf('/')
+	const primary = slash > 0 ? source.slice(0, slash) : null
+	const group = (model: ModelOption) => (primary && model.value.startsWith(`${primary}/`) ? 0 : 1)
+	const luna = (model: ModelOption) => (/luna/i.test(model.value) ? 0 : 1)
+	// Haiku 5.5 is the Claude default, so it comes first.
+	const preferred = (model: ModelOption) => (model.value === claudeDefaultModel ? 0 : 1)
+	const models = [...catalog.models].sort(
+		(a, b) =>
+			preferred(a) - preferred(b) || group(a) - group(b) || luna(a) - luna(b) || a.value.localeCompare(b.value)
+	)
+	return { models, primary }
 }
 
 export async function discoverModelCatalog(

@@ -20,7 +20,7 @@ import {
 	shortName,
 } from './journal.ts'
 import { all, canonical, digest, one } from './store.ts'
-import { requireChoice, requireCondition } from './contracts.ts'
+import { requireChoice, requireCondition, uncoveredRequirements, unverifiedAssertions } from './contracts.ts'
 import { openPermissions } from './permissions.ts'
 import {
 	approvalState,
@@ -45,7 +45,8 @@ import {
 	runAssertions,
 	runClock,
 	runEvidence,
-	runFindings,
+	isVerdict,
+	verdictFindings,
 	runGaps,
 	runOutcomes,
 	runOverlapWarnings,
@@ -54,7 +55,10 @@ import {
 	runState,
 } from './runs.ts'
 import type { RunRow } from './runs.ts'
-import { findInstance, instanceList } from './targets.ts'
+import { findInstance, instanceList, targetRevision } from './targets.ts'
+import { findingsRunId } from './findingsRun.ts'
+import { owedLines } from './cleanups.ts'
+import { dataSummary } from './resets.ts'
 import { planRules, rulesLine } from './rules.ts'
 import { workspaceHarness } from './settings.ts'
 import { existsSync } from 'node:fs'
@@ -273,6 +277,14 @@ export function planList(store: Store): PlanListRow[] {
 	return [...drafted, ...requested].sort((a, b) => a.planId.localeCompare(b.planId))
 }
 
+// Deterministic checks without observe and expected. Code cannot verify them; a revise migrates them.
+export function legacyChecks(plan: Plan) {
+	return [
+		...plan.tests.flatMap((test) => unverifiedAssertions(test, plan.requirements).map((id) => `${test.id}.${id}`)),
+		...uncoveredRequirements(plan).map((id) => `${id} needs_test`),
+	]
+}
+
 export function planDetail(store: Store, planId: string, revision: number | null = null) {
 	const selected = planRevision(store, planId, revision)
 	const latest = planRevision(store, planId)
@@ -298,7 +310,14 @@ export function planDetail(store: Store, planId: string, revision: number | null
 		latestRevision: latest.plan.revision,
 		sha256: selected.sha256,
 		approval: { state: approvalLabel(approval), policy: approval.policy, latest: approval.latest },
+		plannedFrom:
+			(
+				JSON.parse(
+					one<{ body: string }>(store, 'SELECT body FROM plan_requests WHERE plan_id = ?', planId)!.body
+				) as { context?: { sources?: string[] } }
+			).context?.sources ?? [],
 		pendingDecisions: pending,
+		legacyChecks: legacyChecks(selected.plan),
 		plan: selected.plan,
 		runs: runList(store, { planId }).map((run) => ({
 			runId: run.runId,
@@ -706,6 +725,12 @@ function foundEntries(
 }
 const overlaid: LoopState[] = ['needs_plan', 'ready_to_run', 'nothing_to_run', 'needs_retest', 'passed', 'accepted']
 
+function planDataSummary(store: Store, planId: string) {
+	const row = one<{ target_id: string }>(store, 'SELECT target_id FROM plan_requests WHERE plan_id = ?', planId)
+	if (!row) return dataSummary(store.workspace, null)
+	return dataSummary(store.workspace, targetRevision(store, row.target_id).profile.reset)
+}
+
 export function planStatus(store: Store, planId: string, harness = workspaceHarness(store)) {
 	const { follows, followActions, ...status } = loopStatus(store, planId, harness)
 	const next = [...follows, ...status.next]
@@ -742,7 +767,15 @@ export function planStatus(store: Store, planId: string, harness = workspaceHarn
 		follow: followActions.map((item) => ({ ...item, available: item.recommended && !running })),
 		actions,
 	}
-	return { ...status, rules: rulesLine(store, planId), next, qa }
+	const legacy = planHasRevision(store, planId) ? legacyChecks(planRevision(store, planId).plan) : []
+	return {
+		...status,
+		rules: rulesLine(store, planId),
+		next: [...next, ...owedLines(store)],
+		legacyChecks: legacy,
+		qa,
+		data: planDataSummary(store, planId),
+	}
 }
 
 function loopStatus(store: Store, planId: string, harness: Harness) {
@@ -881,9 +914,7 @@ function loopStatus(store: Store, planId: string, harness: Harness) {
 				]
 			: []),
 		`Retest on the next build: checkmate test ${planId} --build <new build> --allow Read --allow Bash`,
-		...(finished && fixes.length
-			? [`Optional, at any time: keep the claims as stored tests: checkmate harvest ${finished.explorationId}`]
-			: []),
+		...(finished && fixes.length ? [storedRunNext(store, finished.explorationId)] : []),
 	]
 	if (fixes.length)
 		return { ...base, ...extra, ...loop('defects_open', 'factory', [amount(fixes.length, 'open claim')], after) }
@@ -955,14 +986,21 @@ function loopStatus(store: Store, planId: string, harness: Harness) {
 						`${incomplete.explorationId} ${incomplete.state} on build ${incomplete.build}${incomplete.reason ? `: ${incomplete.reason}` : ''}`,
 					]
 				: [`${incomplete.explorationId} is ${incomplete.state} on build ${incomplete.build}`]
+		// Without a saved revision only an exploratory test can run. Say so, and name the step that makes stored tests.
+		const unplanned = base.revision === null
 		return {
 			...base,
 			...extra,
 			...loop(
 				'ready_to_test',
 				'qa',
-				why,
-				!incomplete || failed ? [`checkmate test ${planId} --allow Read --allow Bash`] : after
+				[...(unplanned ? ['Plan has no saved revision. Only an exploratory test can run.'] : []), ...why],
+				[
+					...(!incomplete || failed ? [`checkmate test ${planId} --allow Read --allow Bash`] : after),
+					...(unplanned
+						? [`For stored tests, plan the ticket first: ${delegateCommand(harness, 'plan', planId)}`]
+						: []),
+				]
 			),
 		}
 	}
@@ -1085,7 +1123,11 @@ function checkStatus(store: Store, planId: string, harness: Harness) {
 				'run_in_progress',
 				'qa',
 				openRuns.map((run) => `${run.runId} is started on build ${run.build} on instance ${run.instanceId}`),
-				openRuns.map((run) => delegateCommand(harness, 'execute', run.runId))
+				// A started run whose process stopped is resumed first; resume rechecks it and runs no test action.
+				openRuns.flatMap((run) => [
+					`checkmate run resume ${run.runId}`,
+					delegateCommand(harness, 'execute', run.runId),
+				])
 			)
 		if (pendingDecisions.length)
 			return loop(
@@ -1245,7 +1287,7 @@ function latestRetest(store: Store, planId: string, record: ReturnType<typeof pl
 	)
 	if (!row) return null
 	const run = runState(store, row.run_id)
-	const verdicts = retestVerdicts(run, runOutcomes(store, row.run_id))
+	const verdicts = retestVerdicts(run, runOutcomes(store, row.run_id), runAssertions(store, row.run_id))
 	const open = verdicts.some((item) =>
 		record.defects.some((defect) => defect.runId === item.runId && defect.finding.id === item.findingId)
 	)
@@ -1441,7 +1483,7 @@ export function runDetail(store: Store, runId: string) {
 						assertionId: assertion.id,
 						check: assertion.check,
 						checkKind: assertion.checkKind,
-						result: row?.result ?? null,
+						result: closed?.outcome === 'error' ? 'not_checked' : (row?.result ?? null),
 						observed: row?.observed ?? null,
 						reason: row?.reason ?? null,
 						evidence: evidence.filter(
@@ -1452,6 +1494,10 @@ export function runDetail(store: Store, runId: string) {
 			}
 		})
 	return {
+		data: dataSummary(
+			store.workspace,
+			targetRevision(store, run.row.target_id, run.row.target_revision).profile.reset
+		),
 		runId,
 		...(runUsages(store, { runId }).get(runId) ?? noRunUsage),
 		planId: run.row.plan_id,
@@ -1469,8 +1515,8 @@ export function runDetail(store: Store, runId: string) {
 		attempts,
 		tests,
 		warnings: finished ? [] : runOverlapWarnings(store, runId),
-		findings: runFindings(store, runId),
-		retest: retestVerdicts(run, outcomes),
+		findings: verdictFindings(store, runId),
+		retest: retestVerdicts(run, outcomes, runAssertions(store, runId)),
 		newGaps: runGaps(store, runId),
 		result: finished
 			? {
@@ -1507,6 +1553,7 @@ export function findingList(store: Store, filters: { planId?: string; open?: boo
 			: []
 	)
 	return rows
+		.filter((row) => isVerdict(JSON.parse(row.body), runOutcomes(store, row.run_id)))
 		.map((row) => {
 			const finding = JSON.parse(row.body) as Result['findings'][number]
 			return {
@@ -2036,4 +2083,53 @@ export function claimsAcross(store: Store) {
 			}))
 		)
 		.sort((a, b) => b.foundAt.localeCompare(a.foundAt))
+}
+
+function storedRunNext(store: Store, explorationId: string) {
+	const runId = findingsRunId(explorationId)
+	const stored = one(store, 'SELECT 1 FROM runs WHERE run_id = ?', runId)
+	return stored
+		? `The defects are stored in run ${runId}. Export its report: checkmate export run ${runId} --format junit --out <file>`
+		: `Optional, at any time: keep the claims as stored tests: checkmate harvest ${explorationId}`
+}
+
+// One pipeline gate for a run. 0: every selected test passed with complete coverage.
+// 1: product failures (a test failed). 2: could not test: an error, an unfinished or
+// interrupted run, or partial coverage. 3: blocked on an oracle decision (open blocking gap).
+// A failed test wins over the other codes, because it is a verdict on the product.
+export function runGate(store: Store, runId: string) {
+	const detail = runDetail(store, runId)
+	const plan = runState(store, runId).plan
+	const failed = detail.tests.filter((test) => test.outcome === 'failed').map((test) => test.testId)
+	const errored = detail.tests.filter((test) => test.outcome === 'error').map((test) => test.testId)
+	const openGaps = plan.gaps
+		.filter((gap) => gap.status === 'open' && gap.severity === 'blocking')
+		.map((gap) => gap.id)
+	const completion = detail.result?.completion ?? null
+	const couldNotTest =
+		!detail.result || errored.length > 0 || completion === 'operational_error' || completion === 'interrupted'
+	const coverage = detail.result?.coverage.status ?? null
+	const partial = coverage !== 'complete'
+	const unverified = [
+		...plan.tests
+			.filter((test) => detail.request.selectedTestIds.includes(test.id))
+			.flatMap((test) => unverifiedAssertions(test, plan.requirements).map((id) => `${test.id}.${id}`)),
+		...uncoveredRequirements(plan).map((id) => `${id} needs_test`),
+	]
+	const verdict = failed.length
+		? { code: 1, state: 'defects' }
+		: couldNotTest
+			? { code: 2, state: 'could_not_test' }
+			: openGaps.length
+				? { code: 3, state: 'blocked_on_oracle' }
+				: partial
+					? { code: 2, state: 'partial_coverage' }
+					: unverified.length
+						? { code: 2, state: 'unverified_checks' }
+						: { code: 0, state: 'passed' }
+	// Agent observations may pass; the gate says how many verdicts the agent judged.
+	const judgedByAgent = detail.tests
+		.flatMap((test) => test.assertions)
+		.filter((assertion) => assertion.checkKind === 'agent_observation' && assertion.result !== null).length
+	return { ...verdict, failed, errored, openGaps, completion, coverage, unverified, judgedByAgent }
 }

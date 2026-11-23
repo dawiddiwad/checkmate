@@ -9,7 +9,7 @@ Use this path when a person makes the decisions and an installed host does the p
 - Install Node.js 24.12.0 or later and the Checkmate CLI. Follow [Start Checkmate](start.md).
 - Start the application on a local URL that the workspace can reach.
 - Configure Claude Code or Pi if Checkmate will delegate planning or QA. A person can make oracle decisions without a model.
-- Install Playwright CLI only if the tests use a browser.
+- Install Playwright CLI only if the tests use a browser. Name a Chrome or Chromium executable in `.playwright/cli.config.json` under `browser.launchOptions.executablePath`. Setup refuses a browser target without it.
 
 ## Start a change
 
@@ -33,6 +33,8 @@ The first-run form sets up the target and its local instance. Checkmate records 
 If setup says the app is unreachable, start it or correct the URL, then submit the form again. If a source file is missing, add it to the workspace and retry. Do not continue with a guessed source or build.
 
 ## Answer a gap and continue
+
+A test saves plan revision 1 when the plan has no revision. The rules of the sources become its requirements, each checked rule becomes a test, and each open question becomes a gap. Status then names the gaps that wait for you.
 
 Run the inbox to find work that waits for the oracle:
 
@@ -101,6 +103,8 @@ checkmate run show run-2
 Replace the example plan revision and run IDs with the current values. The `run-1` commands above use the same IDs as this example. For Pi, omit `--allow`. The old run remains unchanged. Accept the new result only after you inspect its evidence and retest verdicts.
 
 Activity lists tests, follow-ups, and chat messages. Open an entry to inspect its status.
+
+A chat can read the plan and answer a gap or edit a plan without a prompt. It runs only the Checkmate commands for reading records and for the record writes that you ask for in the chat. Any other command, and any command that changes the application, waits for your permission. If nobody answers in about 10 minutes, Checkmate denies the command and the reply goes on without it.
 
 [![Activity shows a completed test for the checkout build](media/ui/activity.png)](media/ui/activity.png)
 

@@ -26,6 +26,7 @@ export type Gap = {
 export type Instance = {
 	entries: Record<string, string>
 	environment?: string
+	build?: string
 	references?: Array<string>
 }
 
@@ -163,6 +164,10 @@ export type PlanCandidate = {
 			id: string
 			check: string
 			checkKind: 'deterministic' | 'agent_observation'
+			observe?: string
+			expected?: string
+			request?: string
+			observeFrom?: 'page' | 'reload' | 'api'
 		}>
 		metadata?: Record<string, string | number | boolean>
 	}>
@@ -179,18 +184,42 @@ export type PlanCandidate = {
 }
 
 export type PlanDelta = {
+	requirements?: Record<
+		string,
+		{
+			remove?: boolean
+			text?: string
+			source?: string
+			area?: string
+		}
+	>
 	tests: Record<
 		string,
 		{
-			action?: string
+			remove?: boolean
+			title?: string
+			requirementIds?: Array<string>
+			capability?: string
+			operations?: Array<string>
+			dependsOn?: Array<string>
 			preconditions?: Array<string>
-			assertions?: Record<
-				string,
-				{
-					check?: string
-					checkKind?: 'deterministic' | 'agent_observation'
-				} | null
-			>
+			action?: string
+			assertions?: Array<{
+				check: string
+				checkKind: 'deterministic' | 'agent_observation'
+				observe?: string
+				expected?: string
+				request?: string
+				observeFrom?: 'page' | 'reload' | 'api'
+			}>
+		}
+	>
+	gaps?: Record<
+		string,
+		{
+			question: string
+			consequence: string
+			testIds: Array<string>
 		}
 	>
 }
@@ -220,6 +249,10 @@ export type PlanPatch = {
 				{
 					check?: string
 					checkKind?: 'deterministic' | 'agent_observation'
+					observe?: string
+					expected?: string
+					request?: string
+					observeFrom?: 'page' | 'reload' | 'api'
 				} | null
 			>
 			metadata?: Record<string, string | number | boolean>
@@ -297,6 +330,10 @@ export type Plan = {
 			id: string
 			check: string
 			checkKind: 'deterministic' | 'agent_observation'
+			observe?: string
+			expected?: string
+			request?: string
+			observeFrom?: 'page' | 'reload' | 'api'
 		}>
 		metadata?: Record<string, string | number | boolean>
 	}>
@@ -355,6 +392,7 @@ export type Profile = {
 		kind: 'cli' | 'mcp' | 'skill'
 		purpose: string
 		version?: string
+		executable?: string
 		reachable: boolean
 	}>
 	authentication: {
@@ -368,8 +406,19 @@ export type Profile = {
 	}
 	cleanup: string
 	reset?: {
-		owner: 'factory' | 'checkmate'
+		owner: 'checkmate' | 'environment' | 'isolation'
 		command: Array<string> | null
+		cleanup?: Array<string> | null
+		policy?:
+			| {
+					text: string
+			  }
+			| {
+					path: string
+			  }
+			| null
+		timeoutSeconds?: number
+		perTest?: boolean
 	}
 	readyForLiveExecution: boolean
 	explore?: {

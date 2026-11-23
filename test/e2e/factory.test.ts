@@ -129,6 +129,7 @@ test('Factory pins a ticket to built previews, retains failed evidence, and prom
 			startup: { owner: 'factory', command: null },
 			cleanup: 'Factory stops the preview.',
 			readyForLiveExecution: true,
+			reset: { owner: 'environment', command: null, policy: { text: 'The test fixture keeps no records.' } },
 			approvals: { plan: 'required', result: 'required' },
 		})
 	)
@@ -156,7 +157,15 @@ test('Factory pins a ticket to built previews, retains failed evidence, and prom
 				dependsOn: [],
 				preconditions: [],
 				action: 'GET /quote on the pinned build.',
-				assertions: [{ id: 'A1', check: 'totalPLN is 240', checkKind: 'deterministic' }],
+				assertions: [
+					{
+						id: 'A1',
+						check: 'totalPLN is 240',
+						checkKind: 'deterministic',
+						observe: 'the value stated by the check',
+						expected: '240',
+					},
+				],
 			},
 		],
 		gaps: [
@@ -218,7 +227,7 @@ test('Factory pins a ticket to built previews, retains failed evidence, and prom
 	const failed = ok(
 		archive,
 		'tester',
-		['run', 'check', 'run-1', 'T1', 'A1', '--result', 'failed', '--observed', '220', '--evidence', '-'],
+		['run', 'check', 'run-1', 'T1', 'A1', '--observed', '220', '--evidence', '-'],
 		'GET /quote on build-001 returned HTTP 200: {"totalPLN":220}'
 	)
 	ok(
@@ -290,7 +299,7 @@ test('Factory pins a ticket to built previews, retains failed evidence, and prom
 	const passed = ok(
 		archive,
 		'tester',
-		['run', 'check', 'run-2', 'T1', 'A1', '--result', 'passed', '--observed', '240', '--evidence', '-'],
+		['run', 'check', 'run-2', 'T1', 'A1', '--observed', '240', '--evidence', '-'],
 		'GET /quote on build-002 returned HTTP 200: {"totalPLN":240}'
 	)
 	ok(archive, 'tester', ['run', 'close', 'run-2', 'T1'])

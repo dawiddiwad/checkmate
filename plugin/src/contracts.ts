@@ -13,6 +13,7 @@ import type {
 } from './types.ts'
 import type { Reply } from './store.ts'
 import { canonical } from './store.ts'
+import { expectationError, expectationExample, expectationHint } from './expectation.ts'
 import * as validators from './validators.js'
 import { operationAllowed } from './targets.ts'
 
@@ -140,7 +141,8 @@ function schemaError(path: string, error: SchemaError) {
 	if (error.keyword === 'type') return `${path} must be ${typeList([error.params.type ?? []].flat())}`
 	if (error.keyword === 'additionalProperties')
 		return `${path} has unknown field "${error.params.additionalProperty}"`
-	if (error.keyword === 'required') return `${path} needs field "${error.params.missingProperty}"`
+	if (error.keyword === 'required')
+		return `${path} needs field "${error.params.missingProperty}"${error.params.missingProperty === 'decisionId' ? ' (use null for an open gap)' : ''}`
 	if (error.keyword === 'enum') return `${path} must be one of: ${error.params.allowedValues?.join(', ')}`
 	if (error.propertyName !== undefined) return `${path} field name "${error.propertyName}" ${error.message}`
 	return `${path} ${error.message}`
@@ -238,7 +240,10 @@ export function gapsAffecting(gaps: Gap[], test: Pick<Test, 'id' | 'requirementI
 	)
 }
 
-export function testReadiness(gaps: Gap[], test: Pick<Test, 'id' | 'requirementIds'>): Test['readiness'] {
+// A defect that the test observed is ready to record. Its open gaps stay on the test and status shows them.
+// A planned test waits for every gap that affects it.
+export function testReadiness(gaps: Gap[], test: Pick<Test, 'id' | 'requirementIds' | 'metadata'>): Test['readiness'] {
+	if (test.metadata?.harvestedFrom) return 'ready'
 	const affected = gapsAffecting(gaps, test)
 	if (affected.some((gap) => gap.status === 'deferred' && gap.severity === 'blocking')) return 'deferred'
 	if (affected.some((gap) => gap.status === 'open' && gap.severity === 'blocking')) return 'blocked'
@@ -280,6 +285,124 @@ export function derivePlan(draft: PlanDraft): Plan {
 	return { ...draft, requirements, tests, coverage: planCoverage({ ...draft, requirements, tests }) }
 }
 
+// A deterministic check compares a value, so code decides it from the observed item and the expected value.
+// A deterministic check without an expected value is not verified by code: it is a legacy check.
+export function unverifiedCheck(assertion: { checkKind: string; expected?: string }) {
+	return assertion.checkKind === 'deterministic' && assertion.expected === undefined
+}
+
+export function compoundCheck(check: string) {
+	const clauses = check.split(/\band\b|;/i)
+	return clauses.filter((clause) => /\d/.test(clause)).length > 1
+}
+
+// A gap may cover this many requirements without naming each one in its question.
+const maxGapRequirements = 2
+
+// A refusal of a request also passes when the route is missed. A test that expects one needs a 2xx control in the same test.
+// Returns the refusal assertion of a test that has none, else undefined.
+export function uncontrolledRefusal(test: {
+	action: string
+	assertions: Array<{ id: string; expected?: string; check: string }>
+}) {
+	const httpAction = /\b(GET|POST|PUT|PATCH|DELETE)\b/.test(test.action)
+	const refusal = test.assertions.find(
+		(assertion) =>
+			/^4\d\d$/.test(assertion.expected ?? '') || (httpAction && /^absent:/.test(assertion.expected ?? ''))
+	)
+	const control = test.assertions.some((assertion) => /^2\d\d$/.test(assertion.expected ?? ''))
+	return refusal && !control ? refusal : undefined
+}
+
+// A range on an input names the input value it tests, for example "quantity 0", so that a build that accepts an
+// out-of-range value fails the check. "quantity outside 1 to 10" names no input value. A count of output is not an input.
+export function rangeWithoutInput(check: string) {
+	const range = /\b(outside|between|at most|at least|from -?\d+(\.\d+)? to -?\d+)/i.test(check)
+	const named =
+		/\b(?!(?:outside|between|above|below|under|over|least|most|than|to|and|or|from|of|is|returns?|http|status|at)\b)[a-z][a-z-]*\s+-?\d+(\.\d+)?\b/i.test(
+			check
+		)
+	const input = /\b(quantity|amount|value|price|size|length|page|limit|input|number)\b/i.test(check)
+	return range && input && !named
+}
+
+// A state-changing action is shown only by a check that reads the state from its source. A test whose checks are all
+// explicitly page-only is flagged; a test that does not say observeFrom is left alone.
+export function pageOnlyStateChange(test: { action: string; assertions: Array<{ observeFrom?: string }> }) {
+	const changes = /\b(add|apply|clear|delete|remove|save|update)\b/i.test(test.action)
+	return (
+		changes && test.assertions.length > 0 && test.assertions.every((assertion) => assertion.observeFrom === 'page')
+	)
+}
+
+// A test serves one requirement or a small related group. One test with many requirements hides which one fails.
+const maxRequirementsPerTest = 3
+
+// A criterion that names required fields needs one check per field that leaves that field empty and names the refusal.
+// The fields are the parenthesised list, or the parts joined by "and". A test with fewer such checks than fields is flagged.
+function requiredFieldCount(text: string) {
+	const list = text.match(/\(([^)]*)\)/)?.[1]
+	if (list) return list.split(/,|\band\b/i).filter((part) => part.trim()).length
+	return text.split(/\band\b/i).length
+}
+
+export function missingOmitChecks(test: Plan['tests'][number], requirements: Plan['requirements']) {
+	const required = requirements.filter(
+		(requirement) =>
+			test.requirementIds.includes(requirement.id) && /\b(required|mandatory)\b/i.test(requirement.text)
+	)
+	if (!required.length) return false
+	const fields = Math.max(...required.map((requirement) => requiredFieldCount(requirement.text)))
+	const omits = test.assertions.filter((assertion) =>
+		/\b(empty|missing|blank|without|omit\w*)\b/i.test(assertion.check)
+	).length
+	return omits < fields
+}
+
+// A requirement with no test and no gap is not covered. Save-then-flag: the plan saves, and status names the requirement.
+export function uncoveredRequirements(plan: Pick<Plan, 'requirements' | 'tests' | 'gaps'>) {
+	return plan.requirements
+		.filter(
+			(requirement) =>
+				!plan.tests.some((test) => test.requirementIds.includes(requirement.id)) &&
+				!plan.gaps.some((gap) => gap.requirementIds.includes(requirement.id))
+		)
+		.map((requirement) => requirement.id)
+}
+
+// The soft rules refuse a first save and save the test as not ready on the next attempt. Each names its reason.
+export function softProblems(test: Plan['tests'][number], requirements: Plan['requirements']) {
+	const problems: Array<{
+		id: string
+		reason: 'needs_control' | 'needs_source_check' | 'needs_input' | 'needs_required' | 'needs_split'
+		check: string
+	}> = []
+	const refusal = uncontrolledRefusal(test)
+	if (refusal) problems.push({ id: refusal.id, reason: 'needs_control', check: refusal.check })
+	if (pageOnlyStateChange(test))
+		problems.push({ id: test.assertions[0].id, reason: 'needs_source_check', check: test.action })
+	for (const assertion of test.assertions)
+		if (rangeWithoutInput(assertion.check))
+			problems.push({ id: assertion.id, reason: 'needs_input', check: assertion.check })
+	if (test.requirementIds.length > maxRequirementsPerTest)
+		problems.push({
+			id: test.assertions[0]?.id ?? '',
+			reason: 'needs_split',
+			check: test.requirementIds.join(', '),
+		})
+	if (missingOmitChecks(test, requirements))
+		problems.push({ id: test.assertions[0]?.id ?? '', reason: 'needs_required', check: 'a required field' })
+	return problems
+}
+
+// A check that code cannot decide yet, named by its assertion ID and reason: legacy checks and soft problems.
+export function unverifiedAssertions(test: Plan['tests'][number], requirements: Plan['requirements']) {
+	return [
+		...test.assertions.filter((assertion) => unverifiedCheck(assertion)).map((assertion) => assertion.id),
+		...softProblems(test, requirements).map((problem) => `${problem.id} ${problem.reason}`),
+	]
+}
+
 export function planCheck(value: unknown): Plan {
 	const plan = validate('plan', value)
 	const requirements = index(plan.requirements, 'id', 'requirement')
@@ -295,6 +418,13 @@ export function planCheck(value: unknown): Plan {
 			return planId === null
 		})
 	for (const gap of plan.gaps) {
+		// One question for several requirements hides the criteria that need a test. Each one must be named.
+		const namesEach = gap.requirementIds.every((id) => new RegExp(`(?<![\\w-])${id}(?![\\w-])`).test(gap.question))
+		requireWellFormed(
+			gap.requirementIds.length <= maxGapRequirements || namesEach,
+			`Gap ${gap.id} covers ${gap.requirementIds.length} requirements with one question. Write tests for ${gap.requirementIds.join(', ')}; raise a gap only where you can state the missing fact for each one.`,
+			`Name each requirement in the question, for example "${gap.requirementIds[0]}: <the missing fact>", or give each requirement its own gap.`
+		)
 		references(gap.requirementIds, requirements, `requirement in gap ${gap.id}`)
 		references(localReferences(gap.testIds), tests, `test in gap ${gap.id}`)
 		if (gap.status === 'open') requireWellFormed(gap.decisionId === null, `Open gap ${gap.id} has a decision`)
@@ -335,6 +465,24 @@ export function planCheck(value: unknown): Plan {
 		references(test.gapIds, gaps, `gap in test ${test.id}`)
 		references(localReferences(test.dependsOn), tests, `dependency of test ${test.id}`)
 		index(test.assertions, 'id', `assertion in test ${test.id}`)
+		for (const assertion of test.assertions)
+			requireWellFormed(
+				!compoundCheck(assertion.check),
+				`Assertion ${test.id}.${assertion.id} checks more than one value.`,
+				`Split it into one assertion for each value, for example {"id": "A2", "check": "<second expected value>", "checkKind": "deterministic"}. Keep one expected value in each check.`
+			)
+		for (const assertion of test.assertions)
+			requireWellFormed(
+				assertion.expected === undefined || !expectationError(assertion.expected),
+				`Assertion ${test.id}.${assertion.id} has an expected value that code cannot compare. ${assertion.expected === undefined ? '' : expectationError(assertion.expected)}`,
+				expectationHint(assertion.check)
+			)
+		for (const assertion of test.assertions)
+			requireWellFormed(
+				!unverifiedCheck(assertion),
+				`Assertion ${test.id}.${assertion.id} is a deterministic check without an observed item and an expected value: ${assertion.check}`,
+				`Working example for this check: ${expectationExample(assertion.check)}. A value that no source states is {"checkKind": "agent_observation"}, which the agent judges and the report says so.`
+			)
 		requireWellFormed(
 			same(
 				test.gapIds,
@@ -353,12 +501,6 @@ export function planCheck(value: unknown): Plan {
 				`Add an assertion to ${test.id}, for example {"id": "A1", "check": "<expected result>", "checkKind": "deterministic"}. If the expected result is unknown, record an open blocking gap for ${test.id}.`
 			)
 	}
-	for (const requirement of plan.requirements)
-		requireWellFormed(
-			plan.tests.some((test) => test.requirementIds.includes(requirement.id)) ||
-				plan.gaps.some((gap) => gap.requirementIds.includes(requirement.id)),
-			`Requirement ${requirement.id} has no test or gap`
-		)
 	requireWellFormed(same(plan.coverage, planCoverage(plan)), 'Plan coverage is inconsistent')
 	return plan
 }

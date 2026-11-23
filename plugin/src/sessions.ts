@@ -1,4 +1,5 @@
 import { Refusal } from './contracts.ts'
+import { signalChild, trackGroup } from './processes.ts'
 import { piArgs, piResult, resolvePiModelArgs } from './pi.ts'
 import type { Harness } from './pi.ts'
 import { randomBytes } from 'node:crypto'
@@ -302,6 +303,7 @@ export function childArgs(context: ChildContext, own: string[], allow: string[] 
 		const args = own[0] === '--resume' ? ['--session', ...own.slice(1)] : own
 		return piArgs(
 			[
+				'--no-extensions',
 				...(context.piArgs ?? []),
 				'--no-context-files',
 				'--no-skills',
@@ -519,9 +521,7 @@ const liveChildren = new Set<ChildProcess>()
 const endGraceMilliseconds = 1500
 
 function killGroup(child: ChildProcess, signal: NodeJS.Signals) {
-	try {
-		process.kill(-child.pid!, signal)
-	} catch {}
+	signalChild(child, signal)
 }
 
 export async function endLaunchedChildren() {
@@ -559,6 +559,7 @@ export function launchChild(
 	const limit = childOutputLimit(harness)
 	return new Promise((resolvePromise) => {
 		const child = spawn(executable, commandArgs, { cwd, env, stdio: ['pipe', 'pipe', 'pipe'], detached: true })
+		trackGroup(child)
 		child.stdout.setEncoding('utf8')
 		liveChildren.add(child)
 		if (child.pid) onStart?.(child.pid)
@@ -630,14 +631,93 @@ export function requestSystemPrompt(checkmate: string, harness: Harness = 'claud
 	return [
 		'This conversation comes from the Checkmate web UI.',
 		'Answer what the person asked. When you change the record, say what changed.',
+		'Answer questions about testing in general and about this workspace. For any other topic, decline in one sentence, say that you help with testing, and offer one Checkmate action. Do not answer the other topic.',
 		'Ask a question when you need the person to decide or clarify.',
 		'Write replies in Markdown. Link each Checkmate record you mention with a descriptive label and its relative UI path. Use IDs from the workspace records, including the explorer prefix for questions and defects. Do not guess links.',
 		'UI paths: plan /plans/<planId>, revision /plans/<planId>@<revision>, stored test or requirement /plans/<planId>@<revision>#<id>, run /runs/<runId>, exploration /explorations/<explorationId>.',
 		'For a tester question use /plans/<planId>?view=all&item=q%3A<testerId>%2F<questionId>. For a defect use the same path with c%3A instead. For a plan gap use /plans/<planId>@<revision>/gaps/<gapId>. For a run test or finding use /runs/<runId>?item=test%3A<testId> or /runs/<runId>?item=finding%3A<findingId>.',
 		'Use Markdown image syntax for screenshots. Run evidence uses /evidence/<evidenceId>. Exploration claim evidence uses /explorations/<explorationId>/claims/<testerId>/<claimId>/evidence/<zeroBasedIndex>.',
 		`To change a record, use the checkmate command line of this workspace: node '${checkmate.replaceAll("'", "'\\''")}' <command>.`,
+		'Run one Checkmate command per shell call, with the full command line above. Do not use a shell variable or the bare name checkmate. Do not chain commands with && or ;, and do not pipe or filter the output. Read the output as printed, or add --json.',
+		'Read a ticket or other source from the workspace folder, by the file name the plan gives. Do not search the disk for it.',
+		'Before you record a gap answer, read the gap question in plan show. Record the answer only when it responds to that question. If it does not, record nothing, say which gap the person means or that none matches, and ask.',
+		'Name files by their path relative to the workspace folder. Never print an absolute path.',
 		`Follow this Checkmate workflow using the command path above:\n${workflow}`,
 	].join(' ')
+}
+
+// Checkmate commands that a chat may run without asking: the read-only ones, and the
+// record writes that the person asks for in chat. Each rule names one exact subcommand.
+const chatReadCommands = [
+	'status',
+	'inbox',
+	'log',
+	'target list',
+	'target show',
+	'plan show',
+	'plan list',
+	'plan diff',
+	'plan pending',
+	'plan promotions',
+	'run show',
+	'run list',
+	'run gate',
+	'finding list',
+	'claim list',
+	'spec status',
+	'explore show',
+	'explore status',
+	'explore levels',
+	'explore permissions',
+	'explore wait',
+]
+const chatRecordCommands = [
+	'gap answer',
+	'plan edit',
+	'plan revise',
+	'plan save',
+	'plan adopt-gaps',
+	'plan approve',
+	'plan reject',
+	'result accept',
+	'result reject',
+	'claim accept',
+	'claim reject',
+	'claim handoff',
+	'delegate revise',
+	'delegate wait',
+	'scope drop',
+]
+
+// The model quotes the script path with double or single quotes, so each command has both forms.
+export function chatAllowRules(checkmate: string) {
+	return [...chatReadCommands, ...chatRecordCommands].flatMap((command) => [
+		`Bash(node "${checkmate}" ${command}:*)`,
+		`Bash(node '${checkmate}' ${command}:*)`,
+	])
+}
+
+// A chat turn also gets the record of what it saved, after each Checkmate command.
+function chatHookSettings(session: RequestSession) {
+	const settings = hookSettings(session.hook)
+	const changes = join(pluginRoot, 'claude', 'changes.mjs')
+	return {
+		...settings,
+		hooks: {
+			...settings.hooks,
+			PostToolUse: [
+				{
+					matcher: 'Bash',
+					hooks: [
+						{
+							type: 'command',
+							command: `node '${changes.replaceAll("'", "'\\''")}' '${session.checkmate.replaceAll("'", "'\\''")}'`,
+						},
+					],
+				},
+			],
+		},
+	}
 }
 
 export function requestArgs(session: RequestSession) {
@@ -650,11 +730,14 @@ export function requestArgs(session: RequestSession) {
 		session.sessionId,
 		'--plugin-dir',
 		pluginRoot,
+		'--tools',
+		'Read,Bash',
 		'--settings',
-		JSON.stringify(hookSettings(session.hook)),
+		JSON.stringify(chatHookSettings(session)),
 		'--append-system-prompt',
 		requestSystemPrompt(session.checkmate),
 		...(session.model ? ['--model', session.model] : []),
+		...chatAllowRules(session.checkmate).flatMap((rule) => ['--allowedTools', rule]),
 	]
 }
 
@@ -685,6 +768,7 @@ export function streamClaude(
 	delays: StopDelays = defaultStopDelays
 ): StreamedClaude {
 	const child = spawn(claude, args, { cwd, env, stdio: ['pipe', 'pipe', 'pipe'], detached: true })
+	trackGroup(child)
 	child.stdout.setEncoding('utf8')
 	liveChildren.add(child)
 	const timers: NodeJS.Timeout[] = []

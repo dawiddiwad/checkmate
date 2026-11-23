@@ -71,7 +71,47 @@
 								"$ref": "plan-candidate.schema.json#/properties/tests/items/properties/action"
 							},
 							"assertions": {
-								"$ref": "plan-delta.schema.json#/properties/tests/additionalProperties/properties/assertions"
+								"type": "object",
+								"propertyNames": {
+									"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+								},
+								"additionalProperties": {
+									"anyOf": [
+										{
+											"type": "object",
+											"properties": {
+												"check": {
+													"type": "string",
+													"minLength": 1
+												},
+												"checkKind": {
+													"enum": ["deterministic", "agent_observation"]
+												},
+												"observe": {
+													"type": "string",
+													"minLength": 1
+												},
+												"expected": {
+													"type": "string",
+													"minLength": 1
+												},
+												"request": {
+													"type": "string",
+													"pattern": "^(GET|POST|PUT|PATCH|DELETE) /"
+												},
+												"observeFrom": {
+													"enum": ["page", "reload", "api"]
+												}
+											},
+											"additionalProperties": false,
+											"minProperties": 1
+										},
+										{
+											"type": "null"
+										}
+									]
+								},
+								"minProperties": 1
 							},
 							"metadata": {
 								"$ref": "plan.schema.json#/definitions/metadata"

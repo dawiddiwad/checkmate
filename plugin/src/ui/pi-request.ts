@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process'
+import { signalChild, trackGroup } from '../processes.ts'
 import type { PiEvent } from '../pi.ts'
 import { piTurnUsage } from '../pi.ts'
 import type { Env, StopDelays, StreamEnd, StreamedClaude } from '../sessions.ts'
@@ -15,6 +16,7 @@ export function streamPi(
 	delays: StopDelays
 ): StreamedClaude {
 	const child = spawn(program, args, { cwd, env, stdio: ['pipe', 'pipe', 'pipe'], detached: true })
+	trackGroup(child)
 	child.stdout.setEncoding('utf8')
 	let pending = ''
 	let stderr = ''
@@ -26,11 +28,7 @@ export function streamPi(
 	const usage = piTurnUsage()
 	const timers: NodeJS.Timeout[] = []
 	const send = (value: unknown) => child.stdin.write(`${JSON.stringify(value)}\n`)
-	const kill = (signal: NodeJS.Signals) => {
-		try {
-			process.kill(-child.pid!, signal)
-		} catch {}
-	}
+	const kill = (signal: NodeJS.Signals) => signalChild(child, signal)
 	let closing = false
 	const shutdown = () => {
 		if (closing) return

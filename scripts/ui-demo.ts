@@ -78,6 +78,7 @@ export function profile(): Profile {
 		startup: { owner: 'factory', command: null },
 		cleanup: 'Close the run browser session. The fixture stores no records.',
 		readyForLiveExecution: true,
+		reset: { owner: 'environment', command: null, policy: { text: 'The test fixture keeps no records.' } },
 		approvals: { plan: 'required', result: 'required' },
 	}
 }
@@ -104,7 +105,13 @@ const loginCandidate: PlanCandidate = {
 			action: 'Open the sign-in page, enter valid credentials, and submit.',
 			assertions: [
 				{ id: 'A1', check: 'The account page shows the customer name.', checkKind: 'agent_observation' },
-				{ id: 'A2', check: 'The session cookie has the HttpOnly flag.', checkKind: 'deterministic' },
+				{
+					id: 'A2',
+					check: 'The session cookie has the HttpOnly flag.',
+					checkKind: 'deterministic',
+					observe: 'the Set-Cookie attributes of the session cookie',
+					expected: 'HttpOnly',
+				},
 			],
 		},
 		{
@@ -117,8 +124,21 @@ const loginCandidate: PlanCandidate = {
 			preconditions: ['Fixture customer ben@example.test has no failed attempts.'],
 			action: 'Send six sign-in requests with a wrong password.',
 			assertions: [
-				{ id: 'A1', check: 'The sixth attempt returns HTTP 423.', checkKind: 'deterministic' },
+				{
+					id: 'A1',
+					check: 'The sixth attempt returns HTTP 423.',
+					checkKind: 'deterministic',
+					observe: 'the HTTP status of the sixth attempt',
+					expected: '423',
+				},
 				{ id: 'A2', check: 'The response names the unlock time.', checkKind: 'agent_observation' },
+				{
+					id: 'A3',
+					check: 'A sign-in with the right password for another fixture customer returns HTTP 200.',
+					checkKind: 'deterministic',
+					observe: 'the HTTP status of that sign-in',
+					expected: '200',
+				},
 			],
 		},
 	],
@@ -158,7 +178,13 @@ const checkoutCandidate: PlanCandidate = {
 			action: 'Add the 400 PLN item, complete checkout, and read the confirmation.',
 			assertions: [
 				{ id: 'A1', check: 'The confirmation shows a total of 400 PLN.', checkKind: 'agent_observation' },
-				{ id: 'A2', check: 'The order API returns one line item.', checkKind: 'deterministic' },
+				{
+					id: 'A2',
+					check: 'The order API returns one line item.',
+					checkKind: 'deterministic',
+					observe: 'the number of line items in the order API response',
+					expected: '1',
+				},
 			],
 		},
 		{
@@ -172,9 +198,27 @@ const checkoutCandidate: PlanCandidate = {
 			action: 'Apply the code SPRING40 and read the quote.',
 			metadata: { priority: 'high', component: 'pricing', xrayKey: 'SHOP-T7' },
 			assertions: [
-				{ id: 'A1', check: 'The response status is HTTP 200.', checkKind: 'deterministic' },
-				{ id: 'A2', check: 'totalPLN equals 220.', checkKind: 'deterministic' },
-				{ id: 'A3', check: 'The quote does not list the loyalty discount.', checkKind: 'deterministic' },
+				{
+					id: 'A1',
+					check: 'The response status is HTTP 200.',
+					checkKind: 'deterministic',
+					observe: 'the HTTP status of the quote',
+					expected: '200',
+				},
+				{
+					id: 'A2',
+					check: 'totalPLN equals 220.',
+					checkKind: 'deterministic',
+					observe: 'totalPLN in the quote',
+					expected: '220',
+				},
+				{
+					id: 'A3',
+					check: 'The quote does not list the loyalty discount.',
+					checkKind: 'deterministic',
+					observe: 'the discount lines in the quote',
+					expected: 'none',
+				},
 			],
 		},
 		{
@@ -259,7 +303,13 @@ const searchCandidate: PlanCandidate = {
 			action: 'Search for "lamp" and read the first five results.',
 			assertions: [
 				{ id: 'A1', check: 'The first three results are lamps.', checkKind: 'agent_observation' },
-				{ id: 'A2', check: 'The result count is 12.', checkKind: 'deterministic' },
+				{
+					id: 'A2',
+					check: 'The result count is 12.',
+					checkKind: 'deterministic',
+					observe: 'the result count',
+					expected: '12',
+				},
 			],
 		},
 		{
@@ -350,7 +400,7 @@ function check(
 	store: Store,
 	runId: string,
 	reference: string,
-	result: 'passed' | 'failed' | 'inconclusive',
+	result: 'passed' | 'failed' | 'inconclusive' | undefined,
 	observed: string,
 	file: [string, string | Buffer],
 	reason?: string
@@ -392,18 +442,22 @@ function seedLoginRun(store: Store) {
 		'T1-account.png',
 		pageShot('account'),
 	])
-	check(store, 'run-3', 'T1.A2', 'passed', 'Set-Cookie: sid=…; HttpOnly; SameSite=Lax', [
+	check(store, 'run-3', 'T1.A2', undefined, 'HttpOnly', [
 		'T1-cookie.txt',
 		'Set-Cookie: sid=redacted; Path=/; HttpOnly; SameSite=Lax\n',
 	])
 	closeTest(store, agent, { runId: 'run-3', testId: 'T1' })
-	check(store, 'run-3', 'T2.A1', 'passed', 'HTTP 423 Locked on attempt 6', [
+	check(store, 'run-3', 'T2.A1', undefined, '423', [
 		'T2-lockout.json',
 		json({ request: { attempt: 6 }, response: { status: 423 } }),
 	])
 	check(store, 'run-3', 'T2.A2', 'passed', 'Body says "Try again at 14:41."', [
 		'T2-lockout-body.txt',
 		'Your account is locked. Try again at 14:41.\n',
+	])
+	check(store, 'run-3', 'T2.A3', undefined, '200', [
+		'T2-control.json',
+		json({ request: { customer: 'other@example.test' }, response: { status: 200 } }),
 	])
 	closeTest(store, agent, { runId: 'run-3', testId: 'T2' })
 	minutesAgo(180)
@@ -443,7 +497,32 @@ function seedRevision(store: Store) {
 	minutesAgo(125)
 	revisePlan(store, agent, {
 		planId: 'checkout',
-		delta: { tests: { T2: { assertions: { A2: { check: 'totalPLN equals 240.' } } } } },
+		delta: {
+			tests: {
+				T2: {
+					assertions: [
+						{
+							check: 'The response status is HTTP 200.',
+							checkKind: 'deterministic',
+							observe: 'the HTTP status of the quote',
+							expected: '200',
+						},
+						{
+							check: 'totalPLN equals 240.',
+							checkKind: 'deterministic',
+							observe: 'totalPLN in the quote',
+							expected: '240',
+						},
+						{
+							check: 'No loyalty line in the quote.',
+							checkKind: 'deterministic',
+							observe: 'the discount lines in the quote',
+							expected: 'none',
+						},
+					],
+				},
+			},
+		},
 	})
 	minutesAgo(110)
 	approvePlan(store, human, {
@@ -466,7 +545,7 @@ function seedCheckoutRun(store: Store) {
 		'T1-confirmation.png',
 		pageShot('confirmation'),
 	])
-	check(store, 'run-7', 'T1.A2', 'passed', 'lineItems has 1 entry.', [
+	check(store, 'run-7', 'T1.A2', undefined, '1', [
 		'T1-order.json',
 		json({ orderId: 'fx-1042', lineItems: [{ sku: 'LAMP-01', quantity: 1, pricePLN: 400 }], totalPLN: 400 }),
 	])
@@ -484,9 +563,9 @@ function seedCheckoutRun(store: Store) {
 			},
 		},
 	})
-	check(store, 'run-7', 'T2.A1', 'passed', 'HTTP 200', ['T2-quote-status.json', quote])
-	const failed = check(store, 'run-7', 'T2.A2', 'failed', 'totalPLN = 220', ['T2-quote.json', quote])
-	check(store, 'run-7', 'T2.A3', 'passed', 'No loyalty line in the quote.', [
+	check(store, 'run-7', 'T2.A1', undefined, '200', ['T2-quote-status.json', quote])
+	const failed = check(store, 'run-7', 'T2.A4', undefined, '220', ['T2-quote.json', quote])
+	check(store, 'run-7', 'T2.A5', undefined, 'none', [
 		'T2-quote-lines.txt',
 		'Lines: SPRING40 −160 PLN\nNo loyalty line.\n',
 	])
@@ -496,7 +575,7 @@ function seedCheckoutRun(store: Store) {
 			id: 'F1',
 			type: 'defect',
 			severity: 'high',
-			assertionIds: ['T2.A2'],
+			assertionIds: ['T2.A4'],
 			requirementIds: ['R2'],
 			title: 'The promotion stacks with the loyalty credit',
 			expected: 'totalPLN is 240: the promotion replaces the loyalty credit.',
@@ -563,7 +642,15 @@ const accountCandidate: PlanCandidate = {
 			dependsOn: [],
 			preconditions: ['Signed in as anna@example.test.'],
 			action: 'Open the profile page and save a new display name.',
-			assertions: [{ id: 'A1', check: 'The header shows the new name.', checkKind: 'deterministic' }],
+			assertions: [
+				{
+					id: 'A1',
+					check: 'The header shows the new name.',
+					checkKind: 'deterministic',
+					observe: 'the name shown in the header after the save',
+					expected: 'Anna Nowak',
+				},
+			],
 		},
 	],
 	gaps: [],

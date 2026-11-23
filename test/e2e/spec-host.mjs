@@ -2,6 +2,7 @@
 import { readFileSync } from 'node:fs'
 const args = process.argv.slice(2)
 if (!args.includes('--no-tools') || !args.includes('--no-mcp')) throw Error('Reviewer received tools')
+if (!args.includes('--no-extensions')) throw Error('Reviewer loaded global extensions')
 if (Object.keys(process.env).some((key) => key.startsWith('CHECKMATE_'))) throw Error('Reviewer inherited authority')
 const prompt = readFileSync(0, 'utf8')
 if (!prompt.includes('The quote is 240. Does the promotion replace loyalty?')) throw Error('Ticket missing')

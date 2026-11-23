@@ -1,9 +1,14 @@
 import type { Stage, DelegateResponse } from './launcher.ts'
 import type { Reply } from '../../plugin/src/index.ts'
 import { busyReason, formatReply, isBusy, main as core, refused, run as coreRun } from '../../plugin/src/index.ts'
-import { delegate, stages } from './launcher.ts'
+import { versionLines } from '../../plugin/src/build.ts'
+import { delegate, minimumRules, stages } from './launcher.ts'
+import { selectedHarness } from '../../plugin/src/pi.ts'
 import { exploreSpec } from './spec.ts'
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, mkdirSync, openSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { spawn, spawnSync } from 'node:child_process'
+import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 type Parsed = {
 	positionals: string[]
@@ -23,7 +28,11 @@ const delegateHarnessUsage =
 function version() {
 	const plugin = new URL('../.claude-plugin/plugin.json', import.meta.url)
 	const manifest = existsSync(plugin) ? plugin : new URL('../package.json', import.meta.url)
-	return JSON.parse(readFileSync(manifest, 'utf8')).version as string
+	return versionLines(
+		JSON.parse(readFileSync(manifest, 'utf8')).version as string,
+		import.meta.url,
+		process.env
+	).join('\n')
 }
 
 function help(json: boolean) {
@@ -134,7 +143,127 @@ export function parseDelegate(tokens: string[]) {
 	return parsed
 }
 
+// A planning or revise run can outlast a shell call. --detach starts it in the background and writes its JSON reply
+// to a file. `delegate wait <stage> <subject>` reads that file for a bounded time and says `running` if it is not done.
+function resultFile(workspace: string, stage: string, subject: string) {
+	return join(workspace, '.checkmate', 'tmp', `delegate-${stage}-${subject}.json`)
+}
+
+function detachDelegate(tokens: string[]) {
+	const rest = tokens.filter((token) => token !== '--detach')
+	const parsed = parseDelegate(rest.filter((token) => token !== '--json'))
+	const [stage, subject] = parsed.positionals as [Stage, string]
+	const workspace = parsed.values.workspace ?? process.cwd()
+	// A background run starts before delegate checks its rules, so a claude run without --allow is refused here, before it starts.
+	if (selectedHarness(process.env) === 'claude' && !parsed.allow.length)
+		return refuse(
+			'rejected',
+			subject,
+			`delegate needs --allow rules. Minimum: ${minimumRules.join(', ')}`,
+			tokens.includes('--json')
+		)
+	const file = resultFile(workspace, stage, subject)
+	mkdirSync(join(workspace, '.checkmate', 'tmp'), { recursive: true })
+	rmSync(file, { force: true })
+	// The reply goes to a temporary file and is renamed only when the delegate has finished, so wait never reads a partial reply.
+	const quote = (text: string) => `'${text.replaceAll("'", "'\\''")}'`
+	const command = [process.execPath, fileURLToPath(import.meta.url), 'delegate', ...rest, '--json']
+		.map(quote)
+		.join(' ')
+	const child = spawn(
+		'/bin/sh',
+		['-c', `${command} > ${quote(file + '.tmp')}; mv ${quote(file + '.tmp')} ${quote(file)}`],
+		{
+			cwd: workspace,
+			detached: true,
+			stdio: ['ignore', 'ignore', openSync(file + '.log', 'w')],
+		}
+	)
+	child.unref()
+	writeFileSync(file + '.started', String(Date.now()))
+	writeFileSync(file + '.pid', String(child.pid))
+	print(
+		{
+			status: 'running',
+			subject,
+			reasons: [`delegate ${stage} ${subject} started in the background and is still running.`],
+			operation: null,
+			hint: `Run checkmate delegate wait ${stage} ${subject} --timeout 90 until it reports completed or refused.`,
+		},
+		true
+	)
+}
+
+// A detached delegate is alive when its recorded PID runs a delegate command that started after the record was written.
+// A PID that was reused by another process is not alive.
+function delegateAlive(file: string) {
+	if (!existsSync(file + '.pid') || !existsSync(file + '.started')) return false
+	const pid = Number(readFileSync(file + '.pid', 'utf8'))
+	if (!Number.isInteger(pid) || pid <= 0) return false
+	try {
+		process.kill(pid, 0)
+	} catch {
+		return false
+	}
+	const ps = spawnSync('ps', ['-p', String(pid), '-o', 'lstart=,command='], { encoding: 'utf8' })
+	const line = ps.stdout.trim()
+	if (!line.includes('delegate')) return false
+	const started = Number(readFileSync(file + '.started', 'utf8'))
+	const processStarted = Date.parse(line.slice(0, 24))
+	return Number.isNaN(processStarted) || processStarted >= started - 5000
+}
+
+function waitDelegate(tokens: string[]) {
+	const parsed = parse(tokens.slice(1), ['timeout', 'workspace'])
+	const [stage, subject] = parsed.positionals as [Stage, string]
+	const workspace = parsed.values.workspace ?? process.cwd()
+	const file = resultFile(workspace, stage, subject)
+	const limit = (seconds(parsed.values.timeout, 'timeout') ?? 90) * 1000
+	const until = Date.now() + limit
+	while (!existsSync(file) && Date.now() < until && delegateAlive(file))
+		Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 500)
+	if (!existsSync(file) && !delegateAlive(file)) {
+		// The delegate stopped without a reply. Settle the record: it is not running, and the plan record says what was saved.
+		rmSync(file + '.started', { force: true })
+		rmSync(file + '.pid', { force: true })
+		print(
+			{
+				status: 'operational_error',
+				subject,
+				reasons: [`delegate ${stage} ${subject} stopped before it wrote a reply. It is not running.`],
+				operation: null,
+				hint: `Run checkmate status ${subject} to read what was saved. Then run checkmate delegate ${stage} ${subject} --detach again if nothing was saved.`,
+			},
+			true
+		)
+		return
+	}
+	if (!existsSync(file)) {
+		print(
+			{
+				status: 'running',
+				subject,
+				reasons: [
+					`delegate ${stage} ${subject} has not finished within ${limit / 1000} seconds; it is still running.`,
+				],
+				operation: null,
+				hint: `Run checkmate delegate wait ${stage} ${subject} --timeout 90 again. Do not start the delegate again.`,
+			},
+			true
+		)
+		return
+	}
+	const text = readFileSync(file, 'utf8')
+	rmSync(file, { force: true })
+	rmSync(file + '.started', { force: true })
+	rmSync(file + '.pid', { force: true })
+	rmSync(file + '.log', { force: true })
+	process.stdout.write(text.endsWith('\n') ? text : text + '\n')
+}
+
 async function runDelegate(tokens: string[]) {
+	if (tokens[0] === 'wait') return waitDelegate(tokens)
+	if (tokens.includes('--detach')) return detachDelegate(tokens)
 	if (/^(pi|claude):(setup|plan|revise|execute)$/.test(process.env.CHECKMATE_ACTOR ?? ''))
 		return refuse(
 			'rejected',

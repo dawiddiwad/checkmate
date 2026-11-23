@@ -8,6 +8,7 @@ import { all, closeStore, completed, one, openStore, saveBlob, write } from './s
 import { Refusal, requireChoice, requireCondition, requireWellFormed } from './contracts.ts'
 import { addEvent, exploration, explorationEvents, insertExploration, workFolder } from './explorations.ts'
 import type { Refused } from './journal.ts'
+import { firstRevision } from './testRevision.ts'
 import {
 	explorationRow,
 	joinClaims,
@@ -39,7 +40,10 @@ import {
 	verifierRepairPrompt,
 } from './briefs.ts'
 import { checkedRules, ruleSources, rulesNeeded, saveRules } from './rules.ts'
-import { findInstance, targetRevision } from './targets.ts'
+import { findInstance, targetRevision, targetWebUrl } from './targets.ts'
+import { dataRules, markerFor, owe, requireDataFor, runPrepare, settleCleanups } from './resets.ts'
+import { isRecordedGroup, signalRecordedGroup, startOfGroup } from './processes.ts'
+import { storeFindingsRun } from './findingsRun.ts'
 import { changeOf, changedFiles } from './change.ts'
 import {
 	checkClaudeArgs,
@@ -92,6 +96,7 @@ export type StartInput = OpenInput & {
 	session?: boolean
 }
 export type Launch = {
+	dataRules?: string[]
 	studySeconds: number
 	testSeconds: number
 	level: TestLevel
@@ -401,6 +406,17 @@ export function startExploration(
 			? finishable(store, input.explorationId)
 			: insertExploration(store, input, operationId, at)
 		const row = explorationRow(store, opened.explorationId)
+		const exploredProfile = targetRevision(store, row.target_id).profile
+		requireDataFor(
+			exploredProfile,
+			exploredProfile.allowedOperations,
+			`Exploration ${row.exploration_id}`,
+			targetWebUrl(store, row.target_id)
+		)
+		const marker = markerFor(store, opened.explorationId)
+		const facts = runPrepare(store.workspace, exploredProfile.reset, marker)
+		owe(store, opened.explorationId, exploredProfile.reset)
+		const rules = dataRules(store.workspace, exploredProfile.reset, marker, facts)
 		const savedModel = input.session ? '' : testerModelText(store, selectedHarness(env))
 		const savedEffort = input.session ? '' : testerEffortText(store, selectedHarness(env))
 		const launch = launchPlan(
@@ -418,7 +434,11 @@ export function startExploration(
 				step: 'start',
 				explorer: null,
 				status: 'started',
-				detail: { ...launch, browserFolder: existsSync(join(store.workspace, browserFolder)) },
+				detail: {
+					...launch,
+					dataRules: rules,
+					browserFolder: existsSync(join(store.workspace, browserFolder)),
+				},
 			},
 			operationId,
 			at
@@ -479,14 +499,15 @@ export function startOf(events: ExplorationEvent[]) {
 
 function noteChild(store: Store, actor: string, explorationId: string, explorer: string | null) {
 	return (pid: number) => {
-		const born = groupBirth(pid)
+		const born = startOfGroup(pid)
 		event(store, actor, explorationId, {
 			step: 'child',
 			explorer,
 			status: 'started',
 			detail: { pid, ...(born ? { born } : {}) },
 		})
-		if (explorer && testerStopOf(explorationEvents(store, explorationId), explorer)) endGroup(pid, 'SIGTERM')
+		if (explorer && testerStopOf(explorationEvents(store, explorationId), explorer))
+			signalRecordedGroup(pid, born, 'SIGTERM')
 	}
 }
 
@@ -616,10 +637,16 @@ async function launchExplorers(
 		)
 		const work = explorerWork(store, explorationId, explorer, launch.explorers)
 		const { folder, grant } = work
-		const brief = explorerBrief(opened.charter, entries, `qa-${explorationId}-${explorer}-`, folder, {
-			study: launch.studySeconds,
-			test: launch.testSeconds,
-		})
+		const brief = explorerBrief(
+			{ ...opened.charter, dataRules: launch.dataRules },
+			entries,
+			`qa-${explorationId}-${explorer}-`,
+			folder,
+			{
+				study: launch.studySeconds,
+				test: launch.testSeconds,
+			}
+		)
 		event(store, actor, explorationId, {
 			step: 'launch',
 			explorer,
@@ -941,6 +968,14 @@ function hasSavedEffort(launch: Launch) {
 	return Boolean(launch.effort || Object.values(launch.testerEfforts ?? {}).some(Boolean))
 }
 
+function storeFindings(store: Store, actor: string, explorationId: string) {
+	try {
+		return storeFindingsRun(store, actor, explorationId)
+	} catch (error) {
+		return { runId: null, reason: error instanceof Error ? error.message : String(error) }
+	}
+}
+
 export async function driveExploration(workspace: string, explorationId: string, env: Env) {
 	exitOnSignal()
 	const store = openStore(workspace)
@@ -950,7 +985,7 @@ export async function driveExploration(workspace: string, explorationId: string,
 			step: 'supervisor',
 			explorer: null,
 			status: 'started',
-			detail: { pid: process.pid },
+			detail: { pid: process.pid, born: startOfGroup(process.pid) },
 		})
 		const started = startOf(explorationEvents(store, explorationId))
 		if (!started) throw new Refusal('prohibited', `Exploration ${explorationId} has no start.`)
@@ -1003,12 +1038,23 @@ export async function driveExploration(workspace: string, explorationId: string,
 			if (launch.verifier) await verifyClaims(store, actor, explorationId, launch, env)
 			removeWork(store, explorationId)
 		} else keepBrowserFolder(store, explorationId)
+		const revision = ok
+			? firstRevision(store, actor, explorationRow(store, explorationId).plan_id, explorationId)
+			: null
+		const findings =
+			ok && explorationStatus(store, explorationId).path !== 'session'
+				? storeFindings(store, actor, explorationId)
+				: null
 		event(store, actor, explorationId, {
 			step: 'done',
 			explorer: null,
 			status: ok ? 'completed' : 'failed',
 			detail: {
 				recorded: ok,
+				...(findings
+					? { findingsRun: findings.runId, ...(findings.reason ? { findingsReason: findings.reason } : {}) }
+					: {}),
+				...(revision?.reason ? { revisionReason: revision.reason } : {}),
 				...(ok
 					? {}
 					: {
@@ -1030,6 +1076,7 @@ export async function driveExploration(workspace: string, explorationId: string,
 			detail: { reason: error instanceof Error ? error.message : String(error) },
 		})
 	} finally {
+		settleCleanups(store, [explorationId])
 		closeStore(store)
 	}
 }
@@ -1204,7 +1251,7 @@ export async function driveFollow(workspace: string, explorationId: string, env:
 			step: 'supervisor',
 			explorer: null,
 			status: 'started',
-			detail: { pid: process.pid },
+			detail: { pid: process.pid, born: startOfGroup(process.pid) },
 		})
 		const events = explorationEvents(store, explorationId)
 		if (stopOf(events)) return
@@ -1351,10 +1398,11 @@ const stopWaitMilliseconds = 5000
 const killWaitMilliseconds = 2000
 const stopPollMilliseconds = 50
 
-function endGroup(pid: number, signal: NodeJS.Signals) {
-	try {
-		process.kill(-pid, signal)
-	} catch {}
+// A process this exploration started, with its start time as recorded at start. Only a verified start is signalled.
+type Owned = { pid: number; born?: number }
+
+function recordedBirth(event: ExplorationEvent): number | undefined {
+	return typeof event.detail.born === 'number' ? event.detail.born : undefined
 }
 
 function waitUntil(done: () => boolean, milliseconds: number) {
@@ -1364,32 +1412,26 @@ function waitUntil(done: () => boolean, milliseconds: number) {
 	return done()
 }
 
-function childPids(events: ExplorationEvent[], explorer?: string) {
-	const pids = events
+function childPids(events: ExplorationEvent[], explorer?: string): Owned[] {
+	const children: Owned[] = events
 		.filter((item) => item.step === 'child' && (explorer === undefined || item.explorer === explorer))
-		.map((item) => item.detail.pid as number)
-	return explorer === undefined ? [...new Set(pids)] : pids.slice(-1)
+		.map((item) => ({ pid: item.detail.pid as number, born: recordedBirth(item) }))
+	return explorer === undefined ? [...new Map(children.map((item) => [item.pid, item])).values()] : children.slice(-1)
 }
 
-function endProcesses(all: number[], alive: (pid: number) => boolean = running) {
-	const pids = all.filter(alive)
-	for (const pid of pids) endGroup(pid, 'SIGTERM')
-	if (!waitUntil(() => !pids.some(alive), stopWaitMilliseconds)) {
-		for (const pid of pids.filter(alive)) endGroup(pid, 'SIGKILL')
-		waitUntil(() => !pids.some(alive), killWaitMilliseconds)
+function isOwned(item: Owned) {
+	return isRecordedGroup(item.pid, item.born)
+}
+
+// Ends the processes that are still the recorded ones. A process whose start cannot be verified is not signalled.
+function endProcesses(all: Owned[]): Owned[] {
+	const owned = all.filter(isOwned)
+	for (const item of owned) signalRecordedGroup(item.pid, item.born, 'SIGTERM')
+	if (!waitUntil(() => !owned.some(isOwned), stopWaitMilliseconds)) {
+		for (const item of owned.filter(isOwned)) signalRecordedGroup(item.pid, item.born, 'SIGKILL')
+		waitUntil(() => !owned.some(isOwned), killWaitMilliseconds)
 	}
-	return pids.filter(alive)
-}
-
-function groupBirth(pid: number) {
-	const result = spawnSync('ps', ['-p', String(pid), '-o', 'pgid=', '-o', 'lstart='], {
-		encoding: 'utf8',
-		env: { ...process.env, LC_ALL: 'C' },
-	})
-	const [group, ...started] = (result.stdout ?? '').trim().split(/\s+/)
-	if (Number(group) !== pid) return undefined
-	const born = Date.parse(started.join(' '))
-	return Number.isFinite(born) ? born : undefined
+	return owned.filter(isOwned)
 }
 
 export function interruptedSupervisor(events: ExplorationEvent[]) {
@@ -1410,16 +1452,7 @@ function recoverWorkers(store: Store, id: string) {
 		const pid = child.detail.pid
 		if (child.step === 'child' && typeof pid === 'number' && pid > 1) workers.set(pid, child)
 	}
-	const alive = (pid: number) => {
-		if (!running(pid)) return false
-		const born = groupBirth(pid)
-		if (born === undefined) return false
-		const child = workers.get(pid)!
-		if (typeof child.detail.born === 'number') return child.detail.born === born
-		const age = Date.parse(child.at) - born
-		return age >= 0 && age < 60_000
-	}
-	const left = endProcesses([...workers.keys()], alive)
+	const left = endProcesses([...workers].map(([pid, child]) => ({ pid, born: recordedBirth(child) })))
 	requireCondition(
 		!left.length,
 		`Workers of ${id} are still alive: ${left.join(', ')}. No replacement started.`,
@@ -1488,9 +1521,10 @@ export function recordStop(store: Store, actor: string | undefined, input: StopI
 }
 
 function stoppedProcesses(events: ExplorationEvent[], explorer?: string) {
-	const supervisor =
-		explorer === undefined ? (events.findLast((item) => item.step === 'supervisor')?.detail.pid as number) : null
-	return { supervisor: typeof supervisor === 'number' ? [supervisor] : [], children: childPids(events, explorer) }
+	const found = explorer === undefined ? events.findLast((item) => item.step === 'supervisor') : undefined
+	const supervisor: Owned[] =
+		typeof found?.detail.pid === 'number' ? [{ pid: found.detail.pid, born: recordedBirth(found) }] : []
+	return { supervisor, children: childPids(events, explorer) }
 }
 
 export function stopPending(events: ExplorationEvent[], explorer: string | null = null) {
@@ -1501,13 +1535,13 @@ export function stopPending(events: ExplorationEvent[], explorer: string | null 
 		.find((item) => item.step === 'stop-end' && item.explorer === explorer)
 	if (end) return false
 	const { supervisor, children } = stoppedProcesses(events, explorer ?? undefined)
-	return [...supervisor, ...children].some(running)
+	return [...supervisor, ...children].some((item) => running(item.pid))
 }
 
 export function endStopped(store: Store, explorationId: string, explorer?: string) {
 	const events = explorationEvents(store, explorationId)
 	const { supervisor, children } = stoppedProcesses(events, explorer)
-	const left = [...endProcesses(supervisor), ...endProcesses(children.filter(running))]
+	const left = [...endProcesses(supervisor), ...endProcesses(children)].map((item) => item.pid)
 	if (explorer === undefined) keepBrowserFolder(store, explorationId)
 	return left
 }
@@ -1761,11 +1795,24 @@ export function explorationStatus(store: Store, explorationId: string) {
 	}
 }
 
+// A paused exploration waits for the person, so waiting on it only burns the timeout.
+function pausedWait(explorationId: string, status: ReturnType<typeof explorationStatus>): Reply {
+	const next = status.path === 'session' ? 'next' : 'wait'
+	return {
+		status: 'needs_decision',
+		subject: explorationId,
+		reasons: [`Exploration ${explorationId} is paused: ${status.paused}`],
+		hint: `Get the answer from the person. Then run checkmate explore ${next} ${explorationId}.`,
+		data: { ...status, outcome: 'paused' },
+	}
+}
+
 export function waitExploration(store: Store, explorationId: string, timeoutSeconds: number): Reply {
 	const until = Date.now() + timeoutSeconds * 1000
 	for (;;) {
 		const status = explorationStatus(store, explorationId)
 		const ended = ['completed', 'failed', 'stopped', 'interrupted', 'open'].includes(status.state)
+		if (!ended && status.paused) return pausedWait(explorationId, status)
 		if (ended || Date.now() >= until) {
 			const outcome = status.state === 'completed' ? 'done' : ended ? 'failed' : 'timeout'
 			const events = explorationEvents(store, explorationId)
@@ -1777,6 +1824,11 @@ export function waitExploration(store: Store, explorationId: string, timeoutSeco
 			const hints = [
 				...status.explorers.flatMap((item) => (item.hint ? [item.hint] : [])),
 				...(status.doneHint ? [status.doneHint] : []),
+				...(outcome === 'done'
+					? [
+							`Next: checkmate status ${status.planId}. If it says waitsOn=oracle, stop here and report its open questions with the command that answers them. Do not wait again, search files, or schedule a wakeup.`,
+						]
+					: []),
 			]
 			return {
 				status: outcome === 'done' ? 'completed' : outcome === 'timeout' ? 'interrupted' : 'operational_error',

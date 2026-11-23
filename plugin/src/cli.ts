@@ -42,6 +42,7 @@ import {
 	decisionKinds,
 	partialModes,
 	planRequest,
+	scopeDrop,
 } from './plans.ts'
 import {
 	assertionResults,
@@ -73,11 +74,13 @@ import {
 	roles,
 	runDetail,
 	runList,
+	runGate,
 } from './views.ts'
 import { exportExploration, exportPlan, exportRun, explorationFormats, formats, runFormats } from './render.ts'
 import { startUi } from './ui/server.ts'
 import { contactUi, withUiStartupLock } from './ui/lifecycle.ts'
 import { defaultActor, requestOfEnv } from './actor.ts'
+import { changesOf } from './requests.ts'
 import { explorationModes, openExploration } from './explorations.ts'
 import type { Claim } from './journal.ts'
 import { decideClaim, handOffClaims, logEntries, planClaims, readEntries } from './journal.ts'
@@ -108,6 +111,10 @@ import { specFinding, specHandoff, specReview, specStatus } from './spec.ts'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { constants } from 'node:sqlite'
+import { piCopyWarnings, versionLines } from './build.ts'
+import { storeExplorationFindings } from './findingsRun.ts'
+import { settleEnded } from './cleanups.ts'
+import { owedCleanups, settleCleanups } from './resets.ts'
 
 type FlagKind = 'value' | 'list' | 'repeat' | 'switch' | readonly string[] | { min: number; max: number }
 type Args = Record<string, string | string[] | boolean>
@@ -197,9 +204,10 @@ function instanceInput(args: Args, stdin: () => unknown) {
 	const entries = list(args, 'entry')
 	const environment = value(args, 'environment')
 	const references = list(args, 'reference')
+	const build = value(args, 'build')
 	if (entries === undefined) {
 		requireWellFormed(
-			environment === undefined && !references,
+			environment === undefined && !references && build === undefined,
 			'Give --entry with --environment and --reference, or send the instance on standard input'
 		)
 		return stdin()
@@ -216,6 +224,7 @@ function instanceInput(args: Args, stdin: () => unknown) {
 		entries: values,
 		...(environment === undefined ? {} : { environment }),
 		...(references ? { references } : {}),
+		...(build === undefined ? {} : { build }),
 	}
 }
 
@@ -287,6 +296,16 @@ function explorationLines(reply: Reply): Printed {
 				...(typeof item.reason === 'string' && item.reason ? [`reason=${item.reason}`] : []),
 			]),
 			...(status.paused ? [['paused', status.paused, 'waits_on=oracle']] : []),
+			...(status.phases ?? [])
+				.filter(
+					(item) =>
+						item.step === 'done' && (item.detail.findingsRun !== undefined || item.detail.findingsReason)
+				)
+				.map((item) => [
+					'findings',
+					item.detail.findingsRun ? 'stored' : 'not_stored',
+					String(item.detail.findingsRun ?? item.detail.findingsReason),
+				]),
 			...status.explorers.flatMap((item) => item.stderr.map((line) => [item.explorer, 'stderr', line])),
 			...(status.phases ?? []).map((item) => [
 				item.step,
@@ -310,6 +329,23 @@ const commands: Record<string, Command> = {
 	init: {
 		positionals: [],
 		run: (store) => completed('.checkmate/checkmate.db', { path: store.path }),
+	},
+	'chat changes': {
+		positionals: [],
+		readOnly: true,
+		run: (store, _args, context) => {
+			const request = requestOfEnv(context.env)
+			requireCondition(request, 'Saved changes need a chat request. Run this from a chat turn.')
+			return completed('chat changes', { changes: changesOf(store, request!) })
+		},
+		print: (reply) => {
+			const changes = reply.data.changes as ReturnType<typeof changesOf>
+			return {
+				lines: changes.length
+					? [['Saved this turn:'], ...changes.map((change) => [`- ${change.text}`])]
+					: [['Saved this turn: nothing.']],
+			}
+		},
 	},
 	inbox: {
 		positionals: [],
@@ -373,6 +409,7 @@ const commands: Record<string, Command> = {
 	},
 	status: {
 		positionals: ['planId'],
+		flags: { 'fail-on-blocked': 'switch' },
 		readOnly: true,
 		run: (store, args, { env }) => {
 			const planId = value(args, 'planId')!
@@ -389,9 +426,11 @@ const commands: Record<string, Command> = {
 					run: status.latestRun?.runId,
 				},
 				lines: [
+					...(status.data.policy ? [[`data policy: ${status.data.policy}`]] : []),
 					...status.why.map((line) => ['why', line]),
 					...(status.rules ? [['rules', status.rules]] : []),
 					...status.next.map((line) => ['next', line]),
+					...legacyLine(status.legacyChecks, reply.subject),
 					...status.openRuns.map((run) => [
 						run.runId,
 						'started',
@@ -540,7 +579,7 @@ const commands: Record<string, Command> = {
 	},
 	'target instance add': {
 		positionals: ['targetId', 'instanceId'],
-		flags: { entry: 'repeat', environment: 'value', reference: 'repeat' },
+		flags: { entry: 'repeat', environment: 'value', reference: 'repeat', build: 'value' },
 		write: true,
 		stdin: true,
 		run: (store, args, { actor, stdin }) =>
@@ -598,18 +637,28 @@ const commands: Record<string, Command> = {
 		}),
 	},
 	'plan open': {
-		positionals: ['planId'],
+		positionals: ['planId?'],
 		flags: { target: 'value', objective: 'value', source: 'repeat', instructions: 'value' },
 		required: ['target'],
 		write: true,
 		stdin: true,
 		run: (store, args, { actor, stdin }) =>
 			openPlan(store, actor, {
-				planId: value(args, 'planId')!,
+				planId: value(args, 'planId'),
 				target: value(args, 'target')!,
 				request: planRequestInput(args, stdin),
 			}),
-		print: (reply) => ({ facts: { target: reply.data.target, recorded: reply.data.recorded } }),
+		print: (reply) => ({
+			facts: {
+				planId: reply.data.planId,
+				...(reply.data.planIdFrom ? { planIdFrom: reply.data.planIdFrom } : {}),
+				target: reply.data.target,
+				recorded: reply.data.recorded,
+				plannedFrom: (reply.data.sources as string[]).length
+					? (reply.data.sources as string[]).join(', ')
+					: 'no source files',
+			},
+		}),
 	},
 	'plan request': {
 		positionals: ['planId'],
@@ -625,10 +674,12 @@ const commands: Record<string, Command> = {
 				tools: PlanTool[]
 				capabilities: string[]
 				allowedOperations: string[]
+				data: { kind: string; policy: string | null }
 			}
 			return {
-				facts: { target: data.target },
+				facts: { target: data.target, data: data.data.kind },
 				lines: [
+					...(data.data.policy ? [['data policy', data.data.policy]] : []),
 					['objective', data.objective],
 					...data.requirements.map((requirement) => [requirement.id, requirement.text, requirement.source]),
 					...data.context.sources.map((source) => ['source', source]),
@@ -747,6 +798,20 @@ const commands: Record<string, Command> = {
 				],
 			}
 		},
+	},
+	'scope drop': {
+		positionals: ['planId', 'requirementId'],
+		flags: { source: 'value', rationale: 'value' },
+		required: ['source', 'rationale'],
+		write: true,
+		run: (store, args, { actor }) =>
+			scopeDrop(store, actor, {
+				planId: value(args, 'planId')!,
+				requirementId: value(args, 'requirementId')!,
+				source: value(args, 'source')!,
+				rationale: value(args, 'rationale')!,
+			}),
+		print: (reply) => ({ facts: { recorded: reply.data.recorded ?? true } }),
 	},
 	'gap answer': {
 		positionals: ['planId', 'gapId'],
@@ -942,16 +1007,25 @@ const commands: Record<string, Command> = {
 	},
 	'run check': {
 		positionals: ['runId', 'testId', 'assertionId'],
-		flags: { result: assertionResults, observed: 'value', reason: 'value', evidence: 'repeat' },
-		required: ['result'],
+		flags: {
+			result: assertionResults,
+			observed: 'value',
+			'observed-file': 'value',
+			absent: 'switch',
+			request: 'value',
+			reason: 'value',
+			evidence: 'repeat',
+		},
 		write: true,
 		run: (store, args, context) =>
 			checkAssertion(store, context.actor, {
 				runId: value(args, 'runId')!,
 				testId: value(args, 'testId')!,
 				assertionId: value(args, 'assertionId')!,
-				result: value(args, 'result')!,
-				observed: value(args, 'observed'),
+				result: value(args, 'result'),
+				observed: observedValue(args),
+				absent: Boolean(args.absent),
+				request: value(args, 'request'),
 				reason: value(args, 'reason'),
 				evidence: evidence(args, context),
 			}),
@@ -1061,7 +1135,7 @@ const commands: Record<string, Command> = {
 	},
 	'run show': {
 		positionals: ['runId'],
-		flags: { tests: 'list' },
+		flags: { tests: 'list', gate: 'switch' },
 		readOnly: true,
 		run: (store, args) => {
 			const detail = runDetail(store, value(args, 'runId')!)
@@ -1073,14 +1147,20 @@ const commands: Record<string, Command> = {
 					`Use one of: ${detail.tests.map((test) => test.testId).join(', ')}.`
 				)
 			const tests = detail.tests.filter((test) => !selected || selected.includes(test.testId))
-			return completed(detail.runId, { ...detail, tests })
+			const gate = args.gate ? runGate(store, detail.runId) : undefined
+			return completed(detail.runId, { ...detail, tests, ...(gate ? { gate } : {}) })
 		},
 		print: (reply) => {
 			const detail = reply.data as ReturnType<typeof runDetail>
 			return {
 				facts: {
 					state: detail.state,
+					gate: (reply.data.gate as { state: string } | undefined)?.state,
+					unverified:
+						(reply.data.gate as { unverified?: string[] } | undefined)?.unverified?.join(',') || undefined,
+					judgedByAgent: (reply.data.gate as { judgedByAgent?: number } | undefined)?.judgedByAgent,
 					mode: detail.request.permanent ? 'permanent' : undefined,
+					data: detail.data.kind,
 					plan: `${detail.planId}@${detail.revision}`,
 					build: detail.build,
 					instance: detail.instance.instanceId,
@@ -1090,6 +1170,8 @@ const commands: Record<string, Command> = {
 					acceptance: detail.result?.acceptance,
 				},
 				lines: [
+					...gateReasonLines(reply.data.gate as GateReason | undefined, detail.planId),
+					...(detail.data.policy ? [[`data policy: ${detail.data.policy}`]] : []),
 					[
 						'time',
 						`deadline=${detail.clock.deadline}`,
@@ -1264,7 +1346,20 @@ const commands: Record<string, Command> = {
 	},
 	setup: {
 		positionals: [],
-		flags: { url: 'value', target: 'value', instance: 'value', operations: 'list', environment: 'value' },
+		flags: {
+			url: 'value',
+			target: 'value',
+			instance: 'value',
+			operations: 'list',
+			environment: 'value',
+			reset: 'value',
+			data: 'value',
+			policy: 'value',
+			'policy-file': 'value',
+			cleanup: 'value',
+			'hook-timeout': { min: 1, max: 3600 },
+			'reset-per-test': 'value',
+		},
 		required: ['url'],
 		write: true,
 		run: (store, args, { actor, env }) =>
@@ -1274,6 +1369,13 @@ const commands: Record<string, Command> = {
 				instanceId: value(args, 'instance'),
 				operations: list(args, 'operations'),
 				environment: value(args, 'environment'),
+				reset: value(args, 'reset'),
+				data: value(args, 'data'),
+				policy: value(args, 'policy'),
+				policyFile: value(args, 'policy-file'),
+				cleanup: value(args, 'cleanup'),
+				hookTimeout: integer(args, 'hook-timeout'),
+				resetPerTest: value(args, 'reset-per-test'),
 				env,
 			}),
 		print: (reply) => ({
@@ -1308,6 +1410,12 @@ const commands: Record<string, Command> = {
 			until: 'value',
 			scope: 'list',
 			url: 'value',
+			reset: 'value',
+			data: 'value',
+			policy: 'value',
+			'policy-file': 'value',
+			cleanup: 'value',
+			'hook-timeout': { min: 1, max: 3600 },
 			repo: 'value',
 			session: 'switch',
 		},
@@ -1335,6 +1443,12 @@ const commands: Record<string, Command> = {
 					until: value(args, 'until'),
 					scope: list(args, 'scope'),
 					url: value(args, 'url'),
+					reset: value(args, 'reset'),
+					data: value(args, 'data'),
+					policy: value(args, 'policy'),
+					policyFile: value(args, 'policy-file'),
+					cleanup: value(args, 'cleanup'),
+					hookTimeout: integer(args, 'hook-timeout'),
 					repo: value(args, 'repo'),
 					session: args.session === true,
 				},
@@ -1526,6 +1640,12 @@ const commands: Record<string, Command> = {
 		run: (store, args, { actor }) =>
 			stepsStarted(store, actor, value(args, 'explorationId')!, args.names as string[]),
 		print: (reply) => ({ facts: { started: reply.data.started } }),
+	},
+	'explore findings': {
+		positionals: ['explorationId'],
+		write: true,
+		run: (store, args, { actor }) => storeExplorationFindings(store, actor, value(args, 'explorationId')!),
+		print: (reply) => ({ facts: { run: reply.data.runId ?? '-', reason: reply.data.reason ?? '-' } }),
 	},
 	'explore pause': {
 		positionals: ['explorationId'],
@@ -1856,6 +1976,26 @@ const commands: Record<string, Command> = {
 			}),
 		print: (reply) => ({ facts: { ready: reply.data.ready, sha256: reply.data.sha256 } }),
 	},
+	cleanup: {
+		positionals: ['ownerId'],
+		write: true,
+		run: (store, args) => {
+			const id = value(args, 'ownerId')!
+			const owed = owedCleanups(store).some((item) => item.id === id)
+			requireCondition(
+				owed,
+				`No cleanup is owed by ${id}.`,
+				'Run checkmate status <planId> to see the owed cleanups.'
+			)
+			const failures = settleCleanups(store, [id])
+			return failures.length
+				? refused('rejected', id, new Error(failures.join('. ')))
+				: completed(id, { cleanup: 'ran', owner: id })
+		},
+		print: (reply) => ({
+			facts: { owner: reply.data.owner ?? reply.subject, cleanup: reply.data.cleanup ?? 'failed' },
+		}),
+	},
 	query: {
 		positionals: ['sql'],
 		readOnly: true,
@@ -2046,6 +2186,18 @@ function testLines(test: Plan['tests'][number]) {
 	]
 }
 
+// --observed-file reads the value from a file the child wrote with a quoted heredoc: the shell expands nothing.
+function observedValue(args: Args) {
+	const file = value(args, 'observed-file')
+	if (file === undefined) return value(args, 'observed')
+	requireWellFormed(
+		value(args, 'observed') === undefined,
+		'Give either --observed or --observed-file, not both.',
+		'Use --observed-file when the value holds a dollar sign or a backtick.'
+	)
+	return readFileSync(file, 'utf8').replace(/\r?\n$/, '')
+}
+
 function printPlan(reply: Reply): Printed {
 	const facts = { sha256: short(reply.data.sha256) }
 	if (reply.data.fields) {
@@ -2072,10 +2224,21 @@ function printPlan(reply: Reply): Printed {
 		facts: {
 			...facts,
 			approval: detail.approval.state,
+			plannedFrom: detail.plannedFrom.length ? detail.plannedFrom.join(', ') : 'no source files',
 			...(detail.latestRevision !== detail.revision ? { latest: detail.latestRevision } : {}),
 		},
 		lines: [
-			...plan.requirements.map((requirement) => [requirement.id, coverage.get(requirement.id), requirement.text]),
+			...plan.requirements.map((requirement) => {
+				const tests = plan.tests
+					.filter((test) => test.requirementIds.includes(requirement.id))
+					.map((test) => test.id)
+				const gaps = plan.gaps.filter((gap) => gap.requirementIds.includes(requirement.id)).map((gap) => gap.id)
+				const covering =
+					tests.length || gaps.length
+						? `tests ${tests.join(',') || 'none'}; gaps ${gaps.join(',') || 'none'}`
+						: 'NOT COVERED: no test or gap'
+				return [requirement.id, coverage.get(requirement.id), requirement.text, covering]
+			}),
 			...plan.tests.map((test) => [test.id, test.readiness, test.capability, test.title]),
 			...plan.gaps.map((gap) => [gap.id, gap.severity, gap.status, gap.question]),
 			...plan.decisions.map((decision) => [
@@ -2093,8 +2256,47 @@ function printPlan(reply: Reply): Printed {
 				decision.rationale,
 			]),
 			...decisionLines(detail.approval.latest),
+			...legacyLine(detail.legacyChecks, plan.planId),
 		],
 	}
+}
+
+type GateReason = { unverified: string[] }
+
+// The fix for each soft problem a test can carry. A run with any of them is not green.
+const softFixes: Record<string, string> = {
+	needs_control: 'add a check with a 2xx expected value and the request that succeeds on the same route',
+	needs_split: 'split the test so that each test serves at most three requirements',
+	needs_required: 'add a check that leaves each required field empty and names the refusal',
+	needs_source_check: 'add a check that reads the changed state from the source',
+	needs_input: 'name the input value in the range check',
+}
+
+// A run is not green while a check is unverified. Each reason names its checks and the fix for them.
+function gateReasonLines(gate: GateReason | undefined, planId: string) {
+	if (!gate) return []
+	const legacy = gate.unverified.filter((entry) => !/ needs_/.test(entry))
+	const lines: string[][] = []
+	if (legacy.length)
+		lines.push([
+			'reason',
+			`deterministic checks without an expected value: ${legacy.join(' ')}`,
+			`revise with: checkmate plan revise ${planId}`,
+		])
+	for (const [reason, fix] of Object.entries(softFixes)) {
+		const named = gate.unverified.filter((entry) => entry.endsWith(` ${reason}`))
+		if (named.length)
+			lines.push([
+				'reason',
+				`not ready (${reason}): ${named.map((entry) => entry.slice(0, entry.length - reason.length - 1)).join(' ')}`,
+				`${fix}. Then revise with: checkmate delegate revise ${planId}`,
+			])
+	}
+	return lines
+}
+
+function legacyLine(checks: string[], planId: string) {
+	return checks.length > 0 ? [['legacy', checks.join(' '), `revise with: checkmate plan revise ${planId}`]] : []
 }
 
 function writeOutput(store: Store, out: string, content: string | Uint8Array) {
@@ -2163,7 +2365,17 @@ function commandName(argv: string[]) {
 	throw unknownCommand(words)
 }
 
+// People say "run accept" or "run reject" for the result of a run. The command is "result accept" or "result reject".
+const movedCommands: Record<string, string> = { 'run accept': 'result accept', 'run reject': 'result reject' }
+
 function unknownCommand(words: string[]) {
+	const moved = movedCommands[words.slice(0, 2).join(' ')]
+	if (moved)
+		return new Refusal(
+			'malformed',
+			`Unknown command: ${words.join(' ')}`,
+			`Use ${moved} <runId> --rationale "<why>". Run checkmate --help for the usage of each command.`
+		)
 	const groups = words.map((_, i) => {
 		const prefix = words.slice(0, words.length - i).join(' ')
 		return Object.keys(commands).filter((name) => name.startsWith(`${prefix} `))
@@ -2221,16 +2433,27 @@ function parse(name: string, tokens: string[]) {
 		args[rest.slice(0, -3)] = positionals.splice(command.positionals.length - 1)
 		positionals.push('')
 	}
-	if (positionals.length !== command.positionals.length)
+	const optional = command.positionals.at(-1)?.endsWith('?') ? 1 : 0
+	const required = command.positionals.length - optional
+	if (positionals.length < required || positionals.length > command.positionals.length)
 		throw wrong(
-			`${name} needs ${command.positionals.length} argument(s), not ${positionals.length}: ${command.positionals.map((positional) => `<${positional}>`).join(' ') || 'none'}`
+			`${name} needs ${required === command.positionals.length ? required : `${required} to ${command.positionals.length}`} argument(s), not ${positionals.length}: ${command.positionals.map(positionalLabel).join(' ') || 'none'}`
 		)
 	for (const flag of command.required ?? []) if (!(flag in args)) throw wrong(`Missing --${flag}`)
 	command.positionals.forEach((positional, i) => {
-		if (positional !== rest) args[positional] = positionals[i]
+		if (positional !== rest) args[positionalName(positional)] = positionals[i]
 	})
 	command.check?.(args)
 	return args
+}
+
+// A positional named "planId?" may be left out. Its value is then undefined.
+function positionalName(positional: string) {
+	return positional.replace(/\?$/, '')
+}
+
+function positionalLabel(positional: string) {
+	return positional.endsWith('?') ? `[${positionalName(positional)}]` : `<${positional}>`
 }
 
 function placeholder(kind: FlagKind) {
@@ -2248,7 +2471,7 @@ function usage(name: string) {
 	return [
 		'Usage: checkmate',
 		name,
-		...command.positionals.map((positional) => `<${positional}>`),
+		...command.positionals.map(positionalLabel),
 		...flags,
 		...(command.write ? ['[--actor <name>]'] : []),
 		...(command.stdin ? ["<<'EOF' <json> EOF"] : []),
@@ -2282,7 +2505,8 @@ function commandHelp(argv: string[]): Reply {
 }
 
 function version() {
-	return JSON.parse(readFileSync(join(pluginRoot, '.claude-plugin', 'plugin.json'), 'utf8')).version as string
+	const manifest = JSON.parse(readFileSync(join(pluginRoot, '.claude-plugin', 'plugin.json'), 'utf8'))
+	return versionLines(manifest.version as string, import.meta.url, process.env).join('\n')
 }
 
 function readJson(text: string) {
@@ -2326,13 +2550,17 @@ export function run(argv: string[], io: Io): Outcome {
 		return { code: 1, output: format(refused('invalid_request', name, error), json) }
 	}
 	const command = commands[name]
-	const subject = command.positionals.length && name !== 'query' ? String(args[command.positionals[0]]) : name
+	const subject =
+		command.positionals.length && name !== 'query'
+			? String(args[positionalName(command.positionals[0])] ?? name)
+			: name
 	const workspace = resolve(io.cwd, value(args, 'workspace') ?? '.')
 	let store: Store | undefined
 	try {
 		store = command.readOnly ? openReadOnlyStore(workspace) : openStore(workspace)
 		store.via = requestOfEnv(io.env)
 		const actor = command.write ? (value(args, 'actor') ?? defaultActor(workspace, io.env)) : undefined
+		if (['run begin', 'explore start', 'test'].includes(name)) settleEnded(store)
 		const reply = command.run(store, args, {
 			actor,
 			stdin: () => readJson(io.stdin()),
@@ -2340,7 +2568,7 @@ export function run(argv: string[], io: Io): Outcome {
 			cwd: io.cwd,
 			env: io.env,
 		})
-		const code = reply.status === 'completed' || reply.status === 'needs_decision' ? 0 : 1
+		const code = exitCodeOf(name, args, reply)
 		if (!json && typeof reply.data.content === 'string')
 			return { code, output: reply.data.content.replace(/\n$/, '') }
 		return { code, output: format(reply, json, command.print) }
@@ -2352,6 +2580,19 @@ export function run(argv: string[], io: Io): Outcome {
 	} finally {
 		if (store) closeStore(store)
 	}
+}
+
+export const blockedOnDecisionExitCode = 3
+
+function exitCodeOf(name: string, args: Args, reply: Reply) {
+	if (name === 'run show' && args.gate && reply.status === 'completed')
+		return (reply.data.gate as { code: number }).code
+	if (name === 'status' && args['fail-on-blocked'] && reply.status === 'completed') {
+		const status = reply.data as ReturnType<typeof planStatus>
+		const blocking = status.gaps.some((gap) => gap.severity === 'blocking')
+		if (status.waitsOn === 'oracle' || blocking) return blockedOnDecisionExitCode
+	}
+	return reply.status === 'completed' || reply.status === 'needs_decision' || reply.status === 'running' ? 0 : 1
 }
 
 export function uiOptions(tokens: string[], cwd: string) {
@@ -2452,5 +2693,6 @@ export async function main(argv: string[]) {
 		stdin: () => readFileSync(0, 'utf8'),
 	})
 	process.stdout.write(outcome.output + '\n')
+	for (const line of piCopyWarnings(import.meta.url, process.env, process.cwd())) process.stderr.write(line + '\n')
 	process.exitCode = outcome.code
 }

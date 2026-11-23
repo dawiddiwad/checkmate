@@ -7,7 +7,7 @@ Checkmate records tests and decisions for one project in `.checkmate/checkmate.d
 - Node.js 24.12.0 or later.
 - For local runtime QA, a running application with a URL reachable from the workspace.
 - Claude Code or Pi, configured in its host, for delegated planning and test work.
-- Playwright CLI on `PATH` only when the test uses a browser.
+- Playwright CLI on `PATH` only when the test uses a browser. Then also a Chrome or Chromium executable that runs, named in `.playwright/cli.config.json` under `browser.launchOptions.executablePath`. `checkmate setup` refuses early when it is missing and names the fix.
 
 Checkmate does not start the application. The host controls models, credentials, tools, and permissions.
 
@@ -57,6 +57,24 @@ Claude Code users can install the plugin without the npm CLI:
 
 Open the project in Claude Code and use `/checkmate:test`.
 
+To run a local build from a checkout, start Claude Code with its plugin directory:
+
+```sh
+claude --plugin-dir /path/to/checkmate/plugin
+```
+
+This loads the checkout for that session only. It wins over an installed copy, and the installed copy does not load beside it.
+
+A user-level `checkmate@checkmate` plugin also changes the result. A project-level install with the same plugin ID loses to it. Check the installed plugins with `claude plugin list`. Update the user-level copy with `claude plugin update checkmate@checkmate`. Remove it with `claude plugin uninstall checkmate@checkmate`.
+
+Check which build runs:
+
+```sh
+checkmate --version
+```
+
+The first line shows the build digest of the running plugin. A `warning:` line means that the `checkmate` on `PATH` is another build.
+
 Pi users can install the published package:
 
 ```sh
@@ -64,5 +82,24 @@ pi install npm:@xoxoai/checkmate
 ```
 
 Open the project in Pi and use `/checkmate <objective>` or `/checkmate-ui`.
+
+For one project only, install into the project:
+
+```sh
+pi install npm:@xoxoai/checkmate -l
+```
+
+Pi loads a project package only after it approves the folder. Start Pi with `--approve`, or approve the folder when Pi asks. Until then, Pi loads a global copy if one is installed.
+
+Checkmate prints a `warning:` line when Pi declares another Checkmate package. Remove the copy you do not use:
+
+```sh
+pi remove <source>        # global copy
+pi remove <source> -l     # project copy
+```
+
+Run `checkmate --version` to see the build that runs and the copy on PATH.
+
+For a headless run (`pi -p`), close standard input or redirect it from `/dev/null`. Pi reads standard input until it ends, so a run with open input waits forever.
 
 The plugin and npm CLI use the same local record. See [Factory workflows](factory.md) when a factory controls each stage directly.

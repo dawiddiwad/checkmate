@@ -5,7 +5,7 @@ import { existsSync, mkdirSync, rmdirSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 
 export type Status =
-	'completed' | 'needs_decision' | 'interrupted' | 'operational_error' | 'rejected' | 'invalid_request'
+	'completed' | 'needs_decision' | 'interrupted' | 'operational_error' | 'rejected' | 'invalid_request' | 'running'
 export type Reply = {
 	status: Status
 	subject: string
@@ -227,6 +227,20 @@ CREATE TABLE journal_entries (
 `
 const addedTables = [
 	{
+		// A correction of a recorded check. The first result stays in assertion_results; the last correction counts.
+		ddl: `CREATE TABLE assertion_corrections (
+	run_id TEXT NOT NULL REFERENCES runs(run_id),
+	test_id TEXT NOT NULL,
+	assertion_id TEXT NOT NULL,
+	attempt INTEGER NOT NULL,
+	result TEXT NOT NULL,
+	observed TEXT,
+	reason TEXT NOT NULL,
+	recorded_at TEXT NOT NULL,
+	operation_id TEXT NOT NULL ${operationReference}
+) STRICT;`,
+	},
+	{
 		ddl: `CREATE TABLE plan_promotions (
 	plan_id TEXT NOT NULL,
 	source_revision INTEGER NOT NULL,
@@ -437,7 +451,23 @@ export function busyTimeout(value = process.env.CHECKMATE_BUSY_TIMEOUT_MS) {
 	return value !== undefined && /^[1-9][0-9]*$/.test(value) && milliseconds <= 2147483647 ? milliseconds : 30000
 }
 
+// A first open can switch the database to WAL while another process reads it. SQLite then fails at once
+// after the busy timeout. Nothing changes in that case, so the open retries a few times.
+const openAttempts = 3
+const openRetryMilliseconds = 250
+
 export function openStore(workspace: string): Store {
+	for (let attempt = 1; ; attempt++) {
+		try {
+			return openStoreOnce(workspace)
+		} catch (error) {
+			if (!isBusy(error) || attempt >= openAttempts) throw error
+			Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, openRetryMilliseconds)
+		}
+	}
+}
+
+function openStoreOnce(workspace: string): Store {
 	const path = databasePath(workspace)
 	mkdirSync(join(workspace, '.checkmate'), { recursive: true })
 	const db = new DatabaseSync(path)

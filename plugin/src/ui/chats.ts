@@ -3,7 +3,7 @@ import type { Chat, RequestRecord, RequestSelection } from '../requests.ts'
 import type { Env } from '../sessions.ts'
 import type { Html } from './html.ts'
 import type { Context, Page } from './layout.ts'
-import { chatOf, isUnread, listedChats } from '../requests.ts'
+import { chatOf, isUnread, listedChats, waitingBehind } from '../requests.ts'
 import { explorationPermissions } from '../permissions.ts'
 import { ago, costText, glyph, html, pill, time } from './html.ts'
 import { emptyNotice, heading } from './layout.ts'
@@ -29,10 +29,14 @@ function composer(context: Context, action: string, selection: RequestSelection,
 				</select></label
 			>
 			<label
+				>Search models
+				<input type="search" data-chat-model-search autocomplete="off" placeholder="Provider or name"
+			/></label>
+			<label
 				>Model
 				<select name="model" data-chat-model>
-					<option value="">Host default</option>
 					${model ? html`<option value="${model}" selected>${model}</option>` : ''}
+					<option value="">Host default</option>
 				</select></label
 			>
 			<label hidden
@@ -46,6 +50,20 @@ function composer(context: Context, action: string, selection: RequestSelection,
 		<p class="help" data-chat-model-status aria-live="polite"></p>
 		<p class="form-error" data-chat-error role="alert" hidden></p>
 	</form>`
+}
+
+// The record decides what this turn saved. The reply text does not.
+function savedThisTurn(changes: RequestRecord['changes']) {
+	if (!changes.length) return html`<p class="help" data-chat-saved>Saved this turn: nothing.</p>`
+	return html`<div class="chat-saved" data-chat-saved>
+		<p class="help">Saved this turn</p>
+		<ul>
+			${changes.map(
+				(change) =>
+					html`<li>${change.href ? html`<a href="${change.href}">${change.text}</a>` : change.text}</li>`
+			)}
+		</ul>
+	</div>`
 }
 
 function title(text: string) {
@@ -83,6 +101,11 @@ function origin(request: RequestRecord) {
 	return start ? html`<p class="help">Started from ${start}.</p>` : ''
 }
 
+function commandOf(input: unknown, tool: string) {
+	const command = typeof input === 'object' && input !== null ? (input as { command?: unknown }).command : undefined
+	return typeof command === 'string' ? command : tool
+}
+
 function turn(store: Store, request: RequestRecord, context: Context, number: number, back: string) {
 	const permissions = explorationPermissions(store, request.id).filter((item) => !item.decision)
 	const failure = request.state === 'failed' ? failureText(request) : null
@@ -112,9 +135,18 @@ function turn(store: Store, request: RequestRecord, context: Context, number: nu
 				>
 			</div>
 			${request.reply ? html`<div class="chat-markdown" data-chat-content>${chatMarkdown(request.reply)}</div>` : ''}
-			${request.state === 'waiting' ? html`<p class="help">Waiting for another chat to finish.</p>` : ''}
+			${['answered', 'failed', 'stopped', 'interrupted'].includes(request.state) ? savedThisTurn(request.changes) : ''}
+			${request.state === 'waiting' ? html`<p class="help" data-chat-waiting-behind>${waitingBehind(store, request)}</p>` : ''}
 			${request.state === 'running' ? html`<p class="help">Working…</p>` : ''}
-			${permissions.map((item) => html`<p class="banner warn">Waiting for permission. <a href="${requestHref(item, back)}">Answer it</a></p>`)}
+			${permissions.map(
+				(item) =>
+					html`<p class="banner warn" data-chat-waiting>
+						Waiting for your permission. The chat asks to run
+						<code>${commandOf(item.input, item.tool)}</code>.
+						<a href="${requestHref(item, back)}">Answer it</a>. If no one answers in about 10 minutes,
+						Checkmate denies the command and the reply goes on without it.
+					</p>`
+			)}
 			${
 				request.activity.length
 					? html`<details data-open-key="activity:${request.id}">

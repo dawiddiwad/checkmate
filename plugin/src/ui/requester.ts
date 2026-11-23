@@ -7,7 +7,7 @@ import { streamPi } from './pi-request.ts'
 import type { ChildCall, Env, StopDelays, StreamedClaude } from '../sessions.ts'
 import type { RequestContext, RequestRecord, RequestSelection } from '../requests.ts'
 import type { ModelCatalog } from '../model-catalog.ts'
-import { effortArgs, resolvedEffort } from '../model-catalog.ts'
+import { claudeDefaultModel, effortArgs, resolvedEffort } from '../model-catalog.ts'
 import { Refusal, requireWellFormed } from '../contracts.ts'
 import { requestVariable } from '../actor.ts'
 import {
@@ -33,6 +33,7 @@ import {
 	changesOf,
 	chatHistory,
 	chatOf,
+	maxRunningTurns,
 	recordRequestEvent,
 	requestActor,
 	requestOf,
@@ -83,7 +84,9 @@ export function chatPreferences(
 				: { CHECKMATE_PI_MODEL: undefined, CHECKMATE_PI_PROVIDER: undefined }
 	const model = inherited
 		? inherited.model
-		: (harness === 'pi' ? piEnv.CHECKMATE_PI_MODEL?.trim() : (requestedModel ?? requestModelText(store))) || null
+		: (harness === 'pi'
+				? piEnv.CHECKMATE_PI_MODEL?.trim()
+				: (requestedModel ?? (requestModelText(store) || claudeDefaultModel))) || null
 	const provider = inherited
 		? inherited.provider
 		: harness === 'pi'
@@ -180,11 +183,13 @@ export function readStreamLine(line: string, harness: 'claude' | 'pi' = 'claude'
 
 type Running = {
 	id: string
+	conversation: string
 	actor: string
 	harness: 'claude' | 'pi'
 	child: StreamedClaude | null
 	result: Record<string, unknown> | null
 	claudeCosts: Array<Pick<ChildCall, 'costUsd' | 'costPartial'>>
+	observedModels: string[]
 	resume: boolean
 	broken: boolean
 	stopping: 'stopped' | 'interrupted' | null
@@ -217,7 +222,7 @@ export function createRequester(store: Store, options: RequesterOptions): Reques
 	const log = options.log ?? ((line: string) => process.stderr.write(`checkmate ui: ${line}\n`))
 	const delays = options.delays ?? defaultStopDelays
 	const queue: string[] = []
-	let running: Running | null = null
+	const running = new Map<string, Running>()
 	let closing = false
 
 	function guarded(action: () => void) {
@@ -267,7 +272,10 @@ export function createRequester(store: Store, options: RequesterOptions): Reques
 			const cost =
 				run.harness === 'pi'
 					? { costUsd: end?.costUsd, costPartial: end?.costPartial, observedModels: end?.observedModels }
-					: claudeTurnCost(run)
+					: {
+							...claudeTurnCost(run),
+							...(run.observedModels.length ? { observedModels: run.observedModels } : {}),
+						}
 			setRequestState(store, run.id, outcome.state, { ...outcome.detail, ...cost, costScope: 'turn', changes })
 		})
 	}
@@ -316,6 +324,7 @@ export function createRequester(store: Store, options: RequesterOptions): Reques
 					const usage = found.value.model_usage_since_last_result
 					if (usage && typeof usage === 'object' && !Array.isArray(usage)) {
 						const charges = Object.values(usage).map((model) => reportedClaudeCost(model?.costUSD))
+						run.observedModels = [...new Set([...run.observedModels, ...Object.keys(usage)])]
 						run.claudeCosts.push(charges.length ? costOf(charges) : { costUsd: 0 })
 					} else if (run.claudeCosts.length) run.claudeCosts.push({})
 				}
@@ -326,18 +335,20 @@ export function createRequester(store: Store, options: RequesterOptions): Reques
 	function launch(request: RequestRecord) {
 		const run: Running = {
 			id: request.id,
+			conversation: request.conversation,
 			actor: requestActor(request.asker, request.id),
 			harness: request.harness,
 			child: null,
 			result: null,
 			claudeCosts: [],
+			observedModels: [],
 			resume: false,
 			broken: false,
 			stopping: null,
 			reason: '',
 			done: Promise.resolve(),
 		}
-		running = run
+		running.set(run.id, run)
 		let program: string
 		let modelArgs: string[] = []
 		let modelId = request.modelId
@@ -395,6 +406,10 @@ export function createRequester(store: Store, options: RequesterOptions): Reques
 						sessionId,
 						'--extension',
 						extension,
+						'--extension',
+						join(pluginRoot, 'pi', 'changes.mjs'),
+						'--tools',
+						'read,bash',
 						'--append-system-prompt',
 						requestSystemPrompt(checkmateScript(), 'pi'),
 					]
@@ -415,7 +430,9 @@ export function createRequester(store: Store, options: RequesterOptions): Reques
 			CHECKMATE_HARNESS: run.harness,
 			[requestVariable]: request.id,
 			[hookTokenName]: options.hookToken,
-			...(run.harness === 'pi' ? { CHECKMATE_PI_HOOK: JSON.stringify(hook) } : {}),
+			...(run.harness === 'pi'
+				? { CHECKMATE_PI_HOOK: JSON.stringify({ ...hook, chat: true, clis: [checkmateScript()] }) }
+				: {}),
 		}
 		const history = resume ? '' : chatHistory(earlier)
 		const text = history
@@ -448,17 +465,24 @@ This conversation is about plan ${reference}. Use the plan and its records as th
 
 	function finish(run: Running, end: Awaited<StreamedClaude['finished']> | null) {
 		conclude(run, end)
-		if (running === run) running = null
+		running.delete(run.id)
 		next()
 	}
 
+	// Start the queued turns that may run now: up to maxRunningTurns, and at most one per chat.
 	function next() {
-		if (running || closing) return
-		const id = queue.shift()
-		if (!id) return
-		const request = requestOf(store, id)
-		if (request?.state === 'waiting') launch(request)
-		else next()
+		if (closing) return
+		for (const id of [...queue]) {
+			if (running.size >= maxRunningTurns) return
+			const request = requestOf(store, id)
+			if (request?.state !== 'waiting') {
+				queue.splice(queue.indexOf(id), 1)
+				continue
+			}
+			if ([...running.values()].some((run) => run.conversation === request.conversation)) continue
+			queue.splice(queue.indexOf(id), 1)
+			launch(request)
+		}
 	}
 
 	function enqueue(
@@ -498,12 +522,13 @@ This conversation is about plan ${reference}. Use the plan and its records as th
 			return enqueue(actor, text, context, chatId, selection)
 		},
 		stop(actor, requestId, reason) {
-			if (running?.id === requestId) {
-				if (running.stopping) return
-				running.stopping = 'stopped'
-				running.reason = reason || 'Stopped by you.'
+			const run = running.get(requestId)
+			if (run) {
+				if (run.stopping) return
+				run.stopping = 'stopped'
+				run.reason = reason || 'Stopped by you.'
 				stopRequestRecord(store, actor, requestId, reason)
-				running.child?.stop()
+				run.child?.stop()
 				return
 			}
 			const at = queue.indexOf(requestId)
@@ -524,12 +549,14 @@ This conversation is about plan ${reference}. Use the plan and its records as th
 						changes: [],
 					})
 				)
-			const run = running as Running | null
-			if (!run) return
-			run.stopping ??= 'interrupted'
-			if (run.stopping === 'interrupted') run.reason = 'The UI stopped before this turn ended.'
-			run.child?.stop()
-			await run.done
+			// Stopping the UI server ends its chat children. Closing a browser does not reach this.
+			const active = [...running.values()]
+			for (const run of active) {
+				run.stopping ??= 'interrupted'
+				if (run.stopping === 'interrupted') run.reason = 'The UI stopped before this turn ended.'
+				run.child?.stop()
+			}
+			await Promise.all(active.map((run) => run.done))
 		},
 	}
 }

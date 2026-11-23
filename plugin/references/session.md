@@ -38,7 +38,13 @@ Before you answer a question about targets, plans, tests, gaps, runs, or results
 
 When `target request`, `plan request`, or `run show` refuses with `Unknown ...`, record the subject from the oracle's message.
 
-- Setup:
+- Setup: when the oracle gives the URL of the application, run the quick setup. It records the target and its first instance:
+
+  ```sh
+  checkmate setup --url <url>
+  ```
+
+  Report the `assumed:` lines. Use `target open` below only when the oracle names the operations, the tools, or other choices:
 
   ```sh
   checkmate target open <targetId> --entry-point "web:url:Storefront." --capabilities browser,http \
@@ -74,7 +80,7 @@ An overlap warning names the other run and the shared open tests on the instance
 
 - After a rejected result: run `checkmate status <planId>` first. A `why` line `<runId> was rejected by <actor>: <rationale>` gives the reason of the oracle. Do the retest so that it addresses the rationale. When the rationale needs a plan change, stop and tell the oracle.
 - Stalled run: run `checkmate run resume <runId> --actor claude:execute`. It checks the instance, the latest target profile, and the gate. When it gives `rejected`, stop and report the reasons. When it gives `completed`, check only the assertions that it lists. The oracle decides about tests marked `Actions may have occurred`.
-- A reset with owner `factory`: ask the oracle for the reset before a test that needs a fresh state.
+- A data kind `environment` or `isolation`: Checkmate does not reset the data. Ask the oracle for the data policy before a test that changes data. Checkmate runs a reset command (`--reset`) only before a run begins or an exploration starts. `explore follow` does not run it again.
 
 ## Report to the oracle
 

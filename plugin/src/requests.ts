@@ -519,7 +519,14 @@ export function listedRequests(store: Store) {
 	return [...requests.filter(isUnread), ...requests.filter((request) => !isUnread(request))]
 }
 
-type ChangeRow = { at: string; command: string; arguments: string; subjects: string; subject: string }
+type ChangeRow = {
+	at: string
+	command: string
+	arguments: string
+	subjects: string
+	subject: string
+	response: string
+}
 
 const recordPaths: Record<string, string> = {
 	plan: '/plans/',
@@ -528,16 +535,22 @@ const recordPaths: Record<string, string> = {
 	target: '/settings/targets/',
 }
 
-function describeChange(command: string, subject: string, input: Record<string, unknown>) {
+function removedText(removed: unknown) {
+	const found = removed as { requirements?: string[]; tests?: string[] } | undefined
+	const parts = [...(found?.requirements ?? []), ...(found?.tests ?? [])]
+	return parts.length ? `, removed ${parts.join(', ')}` : ''
+}
+
+function describeChange(command: string, subject: string, input: Record<string, unknown>, removed?: unknown) {
 	const named = (ids: unknown) =>
 		Array.isArray(ids) ? ids.map((id) => `${subject}/${String(id)}`).join(', ') : subject
 	if (command === 'claim handoff') return `${input.undo ? 'took back' : 'handed over'} ${named(input.claimIds)}`
-	if (command === 'gap answer') return `answered ${subject}/${String(input.gapId)}`
+	if (command === 'gap answer') return `answered ${subject}/${String(input.gapId)} with "${String(input.value)}"`
 	if (command === 'claim accept') return `accepted ${subject}/${String(input.claimId)}`
 	if (command === 'claim reject') return `rejected ${subject}/${String(input.claimId)}`
 	if (command === 'plan edit') return `edited plan ${subject}`
 	if (command === 'plan save') return `saved plan ${subject}`
-	if (command === 'plan revise') return `revised plan ${subject}`
+	if (command === 'plan revise') return `revised plan ${subject}${removedText(removed)}`
 	if (command === 'plan open') return `opened plan ${subject}`
 	if (command === 'setting set') return `changed the setting ${subject}`
 	return `${command} ${subject}`
@@ -547,25 +560,85 @@ export function operationCountOf(store: Store, requestId: string) {
 	return one<{ count: number }>(store, 'SELECT count(*) AS count FROM operations WHERE via = ?', requestId)!.count
 }
 
+// The question of a gap in the latest revision of its plan.
+function gapQuestion(store: Store, planId: string, gapId: string) {
+	return (
+		one<{ question: string | null }>(
+			store,
+			`SELECT json_extract(gap, '$.question') AS question FROM plan_gaps WHERE plan_id = ? AND gap_id = ? ORDER BY revision DESC LIMIT 1`,
+			planId,
+			gapId
+		)?.question ?? null
+	)
+}
+
 export function changesOf(store: Store, requestId: string): RequestChange[] {
-	return all<ChangeRow>(
-		store,
-		`SELECT at, command, arguments, subjects, json_extract(response, '$.subject') AS subject
-		FROM operations WHERE via = ? AND status = 'completed' ORDER BY rowid`,
-		requestId
-	).map((row) => {
-		const record = (JSON.parse(row.subjects) as string[])
-			.map((subject) => /^(plan|run|exploration|target):(.+)$/.exec(subject))
-			.find((found) => found)
-		const subject = record ? record[2] : row.subject
-		return {
-			text: describeChange(row.command, subject, JSON.parse(row.arguments) as Record<string, unknown>),
-			command: row.command,
-			subject,
-			at: row.at,
-			href: record ? `${recordPaths[record[1]]}${subject}` : null,
+	return summarizeChanges(
+		all<ChangeRow>(
+			store,
+			`SELECT at, command, arguments, subjects, response, json_extract(response, '$.subject') AS subject
+		FROM operations
+		WHERE via = ? AND (status = 'completed' OR json_extract(response, '$.data.revision') IS NOT NULL)
+		ORDER BY rowid`,
+			requestId
+		).map((row) => {
+			const record = (JSON.parse(row.subjects) as string[])
+				.map((subject) => /^(plan|run|exploration|target):(.+)$/.exec(subject))
+				.find((found) => found)
+			const subject = record ? record[2] : row.subject
+			const data = (JSON.parse(row.response) as { data?: { removed?: unknown } }).data
+			const input = JSON.parse(row.arguments) as Record<string, unknown>
+			// The question next to a recorded answer shows a wrong pairing: the person can see what the answer answered.
+			const question =
+				row.command === 'gap answer' && record?.[1] === 'plan'
+					? gapQuestion(store, subject, String(input.gapId))
+					: null
+			return {
+				text:
+					describeChange(row.command, subject, input, data?.removed) +
+					(question ? `. The gap asks: ${question}` : ''),
+				command: row.command,
+				subject,
+				at: row.at,
+				href: record ? `${recordPaths[record[1]]}${subject}` : null,
+			}
+		})
+	)
+}
+
+// The Saved-this-turn list shows record changes. Test progress is not one, and the findings of one run count as one line.
+export function summarizeChanges(changes: RequestChange[]): RequestChange[] {
+	const counts = new Map<string, number>()
+	for (const change of changes)
+		if (change.command === 'run finding') counts.set(change.subject, (counts.get(change.subject) ?? 0) + 1)
+	const summary: RequestChange[] = []
+	for (const change of changes) {
+		if (change.command === 'run check' || change.command === 'run close') continue
+		if (change.command !== 'run finding') {
+			summary.push(change)
+			continue
 		}
-	})
+		if (summary.some((item) => item.command === 'run finding' && item.subject === change.subject)) continue
+		const count = counts.get(change.subject) ?? 1
+		summary.push({
+			...change,
+			text: `recorded ${count} ${count === 1 ? 'finding' : 'findings'} in ${change.subject}`,
+		})
+	}
+	return summary
+}
+
+// Turns may run in different chats at once, up to this many. Turns in one chat run one at a time.
+export const maxRunningTurns = 3
+
+// What a waiting turn waits behind, from the record: the earlier turn in its chat, or the running turns.
+export function waitingBehind(store: Store, request: RequestRecord) {
+	const running = allRequests(store).filter((item) => item.state === 'running')
+	if (running.some((item) => item.conversation === request.conversation))
+		return 'Waiting for the turn before it in this chat to finish.'
+	if (running.length >= maxRunningTurns)
+		return `Waiting: ${running.length} chats are working, and up to ${maxRunningTurns} run at once.`
+	return 'Waiting for a turn to start.'
 }
 
 export function staleRequests(store: Store) {

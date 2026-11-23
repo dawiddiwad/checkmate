@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { execFileSync } from 'node:child_process'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 const args = process.argv.slice(2)
 const plugin = args[args.indexOf('--plugin-dir') + 1]
 if (!plugin) throw Error('Plugin was not supplied')
@@ -37,6 +37,7 @@ if (process.env.QA_STAGE === 'setup') {
 		startup: { owner: 'factory', command: null },
 		cleanup: 'No test data.',
 		readyForLiveExecution: true,
+		reset: { owner: 'environment', command: null, policy: { text: 'The test fixture keeps no records.' } },
 		approvals: { plan: 'required', result: 'required' },
 	})
 } else if (process.env.QA_STAGE === 'plan') {
@@ -54,13 +55,70 @@ if (process.env.QA_STAGE === 'setup') {
 				dependsOn: [],
 				preconditions: [],
 				action: 'Read the quote.',
-				assertions: [{ id: 'A1', check: 'The quote is 240.', checkKind: 'deterministic' }],
+				assertions: [
+					{
+						id: 'A1',
+						check: 'The quote is 240.',
+						checkKind: 'deterministic',
+						observe: 'the value stated by the check',
+						expected: '240',
+					},
+				],
 			},
 		],
 		gaps: [],
 	})
+} else if (process.env.QA_STAGE === 'plan-retry') {
+	// The first save leaves R2 without a test, and the reply gives no reason. The retry must carry the refusal.
+	const attempt = existsSync('plan-attempts.txt') ? Number(readFileSync('plan-attempts.txt', 'utf8')) + 1 : 1
+	writeFileSync('plan-attempts.txt', String(attempt))
+	const quote = {
+		id: 'T1',
+		title: 'Quote',
+		requirementIds: ['R1'],
+		capability: 'http',
+		operations: ['read_catalog'],
+		dependsOn: [],
+		preconditions: [],
+		action: 'Read the quote.',
+		assertions: [
+			{ id: 'A1', check: 'The quote is 240.', checkKind: 'deterministic', observe: 'the quote', expected: '240' },
+		],
+	}
+	const requirements = [
+		{ id: 'R1', text: 'The quote is 240.', source: 'ticket.md' },
+		{ id: 'R2', text: 'The list is newest first.', source: 'ticket.md' },
+	]
+	if (attempt === 1) {
+		try {
+			run(['plan', 'save', 'ticket'], { requirements, tests: [quote], gaps: [] })
+		} catch {
+			// The save is refused on purpose. The refusal is recorded.
+		}
+		result = { status: 'needs_decision', subject: 'ticket', reasons: [] }
+	} else {
+		if (!prompt.includes('Requirement R2 has no test or gap')) throw Error('The retry does not carry the refusal')
+		const newest = {
+			...quote,
+			id: 'T2',
+			title: 'Order',
+			requirementIds: ['R2'],
+			assertions: [
+				{
+					id: 'A1',
+					check: 'The list is newest first.',
+					checkKind: 'deterministic',
+					observe: 'the order',
+					expected: 'newest first',
+				},
+			],
+		}
+		run(['plan', 'save', 'ticket'], { requirements, tests: [quote, newest], gaps: [] })
+		result = { status: 'completed', subject: 'ticket', reasons: [] }
+	}
 } else if (process.env.QA_STAGE === 'permanent') {
-	if (!prompt.includes('Permanent-only run from ticket@3') || !prompt.includes('Do not explore'))
+	const testId = /Test (T\d+):/.exec(prompt)[1]
+	if (!prompt.includes('This is a permanent run') || !prompt.includes('Do not explore'))
 		throw Error('Permanent-only instructions missing')
 	const detail = run(['run', 'show', 'permanent-1'])
 	if (
@@ -73,33 +131,11 @@ if (process.env.QA_STAGE === 'setup') {
 	const quote = await response.json()
 	if (response.status !== 200 || quote.totalPLN !== 240) throw Error('The selected build does not pass')
 	run(
-		[
-			'run',
-			'check',
-			'permanent-1',
-			'T1',
-			'A1',
-			'--result',
-			'passed',
-			'--observed',
-			String(quote.totalPLN),
-			'--evidence',
-			'-',
-		],
+		['run', 'check', 'permanent-1', testId, 'A1', '--observed', String(quote.totalPLN), '--evidence', '-'],
 		'HTTP 200: 240'
 	)
-	run(['run', 'close', 'permanent-1', 'T1'])
-	result = run([
-		'run',
-		'finish',
-		'permanent-1',
-		'--completion',
-		'completed',
-		'--cleanup',
-		'completed',
-		'--cleanup-reason',
-		'No test data.',
-	])
+	run(['run', 'close', 'permanent-1', testId])
+	result = { status: 'completed', subject: 'permanent-1', reasons: [] }
 } else throw Error('Unknown fixture stage')
 console.log(
 	JSON.stringify({

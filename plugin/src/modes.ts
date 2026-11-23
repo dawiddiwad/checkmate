@@ -2,10 +2,10 @@ import type { Reply, Store } from './store.ts'
 import type { Env } from './sessions.ts'
 import type { StartInput } from './explorers.ts'
 import type { Charter } from './explorations.ts'
-import { all, one } from './store.ts'
+import { all, completed, one } from './store.ts'
 import { Refusal, requireIdentifier, requireWellFormed, unusedId, validate } from './contracts.ts'
 import { changeOf, changedFiles, upstreamBase } from './change.ts'
-import { openPlan } from './plans.ts'
+import { openPlan, planRevision, readySelection } from './plans.ts'
 import { beginRun } from './runs.ts'
 import { startExploration } from './explorers.ts'
 import { selectedHarness } from './pi.ts'
@@ -21,6 +21,12 @@ export const storedTestsNone = 'none, testers use earlier results when available
 export type TestInput = Omit<StartInput, 'mode' | 'scope' | 'build'> & {
 	build?: string
 	url?: string
+	reset?: string
+	data?: string
+	policy?: string
+	policyFile?: string
+	cleanup?: string
+	hookTimeout?: number
 	mode?: string
 	objective?: string
 	target?: string
@@ -33,10 +39,14 @@ export function hasRequest(store: Store, planId: string) {
 	return Boolean(one(store, 'SELECT 1 FROM plan_requests WHERE plan_id = ?', planId))
 }
 
-export function autoMode(store: Store, planId: string) {
+// A plan with ready stored tests on the build is run, not explored: that is the route the person expects.
+export function autoMode(store: Store, planId: string, build?: string) {
 	const explored = one(store, 'SELECT 1 FROM explorations WHERE plan_id = ?', planId)
 	const checked = one(store, 'SELECT 1 FROM runs r JOIN results s ON s.run_id = r.run_id WHERE r.plan_id = ?', planId)
-	return explored || checked ? 'regression' : 'exploratory'
+	const revised = one(store, 'SELECT 1 FROM latest_plans WHERE plan_id = ?', planId)
+	const ready =
+		build && revised ? readySelection(store, planRevision(store, planId).plan, build).tests.length > 0 : false
+	return explored || checked || ready ? 'regression' : 'exploratory'
 }
 
 function nextRunId(store: Store) {
@@ -77,7 +87,17 @@ function chosenTarget(store: Store, actor: string | undefined, input: TestInput,
 		'The store has no target. Give the URL of the application with --url.',
 		`checkmate test ${input.planId} --url <url> --source <ticket file>`
 	)
-	const set = setupTarget(store, actor, { url: input.url!, instanceId: input.instance, env })
+	const set = setupTarget(store, actor, {
+		url: input.url!,
+		instanceId: input.instance,
+		reset: input.reset,
+		data: input.data,
+		policy: input.policy,
+		policyFile: input.policyFile,
+		cleanup: input.cleanup,
+		hookTimeout: input.hookTimeout,
+		env,
+	})
 	assumed.push(...((set.data.assumed ?? []) as string[]))
 	return set.data.targetId as string
 }
@@ -136,6 +156,14 @@ export function runTest(
 	const build = given.build ?? defaultBuild(store.workspace)
 	if (!given.build) assumed.push(`build=${build}`)
 	const input = { ...given, build }
+	// A plan name in another letter case is the same plan: the record keeps the name it was opened with.
+	const known = all<{ plan_id: string }>(store, 'SELECT DISTINCT plan_id FROM latest_plans').find(
+		(row) => row.plan_id.toLowerCase() === input.planId.toLowerCase()
+	)
+	if (known && known.plan_id !== input.planId) {
+		assumed.push(`plan=${known.plan_id} (the name ${input.planId} matches it, letter case aside)`)
+		input.planId = known.plan_id
+	}
 	const newRequest = !hasRequest(store, input.planId)
 	if (newRequest) {
 		requireIdentifier(input.planId, 'plan ID')
@@ -168,7 +196,27 @@ export function runTest(
 		if (!input.session) requireChild(env, selectedHarness(env))
 		openRequest(store, actor, input, env, assumed)
 	}
-	const mode = input.mode && input.mode !== 'auto' ? input.mode : autoMode(store, input.planId)
+	const mode = input.mode && input.mode !== 'auto' ? input.mode : autoMode(store, input.planId, input.build)
+	const check: ReturnType<typeof checkRun> =
+		mode === 'regression' ? checkRun(store, actor, input) : { run: null, skipped: [] }
+	const chosenBy = input.mode && input.mode !== 'auto' ? 'flag' : 'auto'
+	// A test that routes to a stored run starts only the run. A separate exploration needs --mode exploratory.
+	if (check.run && chosenBy === 'auto') {
+		const execute = `Execute the stored tests of ${check.run.runId}: ${given.session ? `/checkmate:execute ${check.run.runId}, or ` : ''}${delegateCommand(selectedHarness(env), 'execute', check.run.runId)}`
+		return completed(input.planId, {
+			planId: input.planId,
+			mode,
+			chosenBy,
+			run: check.run,
+			checkSkipped: check.skipped,
+			...((check as { storedTests?: object }).storedTests
+				? { storedTests: (check as { storedTests?: object }).storedTests }
+				: {}),
+			...(check.warnings?.length ? { warnings: check.warnings } : {}),
+			assumed,
+			next: [execute],
+		})
+	}
 	const explored = startExploration(
 		store,
 		actor,
@@ -177,14 +225,12 @@ export function runTest(
 		preferSavedModel
 	)
 	const charter = explored.data.charter as Charter
-	const check: ReturnType<typeof checkRun> =
-		mode === 'regression' ? checkRun(store, actor, input) : { run: null, skipped: [] }
 	return {
 		...explored,
 		data: {
 			...explored.data,
 			mode,
-			chosenBy: input.mode && input.mode !== 'auto' ? 'flag' : 'auto',
+			chosenBy,
 			scope: charter.scope,
 			run: check.run,
 			checkSkipped: check.skipped,

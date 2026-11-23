@@ -1,16 +1,20 @@
 import assert from 'node:assert/strict'
-import { execFileSync, spawn } from 'node:child_process'
+import { execFileSync, spawn, spawnSync } from 'node:child_process'
 import { once } from 'node:events'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:http'
+import type { AddressInfo } from 'node:net'
 import { createInterface } from 'node:readline'
-import { join } from 'node:path'
+import { delimiter, join } from 'node:path'
 import { gunzipSync } from 'node:zlib'
 import { DatabaseSync } from 'node:sqlite'
 import test from 'node:test'
-import { directory, root } from '../support.ts'
+import { directory, pathWithoutBrowserTool, root } from '../support.ts'
 import { fakeClaude } from '../claude.ts'
 import { fixture } from '../fixture.ts'
+
+// These scenarios leave the browser tool out of PATH; the browser test adds its own stub.
+process.env.PATH = pathWithoutBrowserTool()
 
 const project = directory()
 let binary = ''
@@ -81,10 +85,53 @@ test('Install packed npm CLI and open the empty UI — installed assets or skill
 	}
 })
 
+test('Point run accept and run reject to the result command — a wrong command name leaves the record unchanged.', async (t) => {
+	const workspace = directory(t)
+	const result = spawnSync(
+		process.execPath,
+		[binary, 'run', 'reject', 'run-1', '--rationale', 'The evidence is wrong.'],
+		{
+			cwd: workspace,
+			encoding: 'utf8',
+		}
+	)
+	assert.equal(result.status, 1)
+	assert.match(result.stdout + result.stderr, /Unknown command: run reject/)
+	assert.match(result.stdout + result.stderr, /Use result reject <runId> --rationale/)
+})
+
+test('Tell a chat turn what it saved from the record — a turn with no write reports nothing saved, and a refused command saves nothing.', async (t) => {
+	const workspace = directory(t)
+	execFileSync(process.execPath, [binary, 'init'], { cwd: workspace, encoding: 'utf8' })
+	const result = spawnSync(process.execPath, [binary, 'chat', 'changes'], {
+		cwd: workspace,
+		encoding: 'utf8',
+		env: { ...process.env, CHECKMATE_REQUEST: 'R1' },
+	})
+	assert.equal(result.status, 0, result.stdout + result.stderr)
+	assert.match(result.stdout, /Saved this turn: nothing\./)
+	const refused = spawnSync(process.execPath, [binary, 'chat', 'changes'], { cwd: workspace, encoding: 'utf8' })
+	assert.equal(refused.status, 1)
+	assert.match(refused.stdout + refused.stderr, /Saved changes need a chat request/)
+})
+
 test('Recover after missing host or missing ticket source — unexplained partial records or duplicates.', async (t) => {
 	const workspace = directory(t)
 	const env = { ...process.env, PATH: '', CHECKMATE_HARNESS: 'pi', CHECKMATE_ACTOR: 'oracle' }
-	const base = ['test', 'cart', '--url', 'http://127.0.0.1:9', '--build', 'b1', '--allow', 'Read']
+	const base = [
+		'test',
+		'cart',
+		'--url',
+		'http://127.0.0.1:9',
+		'--data',
+		'environment',
+		'--policy',
+		'The test fixture keeps no records.',
+		'--build',
+		'b1',
+		'--allow',
+		'Read',
+	]
 	const source = await command(workspace, env, ...base, '--objective', 'Check the cart.')
 	assert.equal(source.code, 1)
 	assert.match(source.output, /needs requirements or context sources/)
@@ -100,6 +147,68 @@ test('Recover after missing host or missing ticket source — unexplained partia
 	)
 	assert.equal(result.code, 0, result.output)
 	assert.deepEqual(result.body.rows, [{ targets: 0, plans: 0, explorations: 0, operations: 0 }])
+})
+
+test('Keep a defect stored while a question about its rule waits — the finding is lost or the run is refused.', async (t) => {
+	const workspace = directory(t)
+	writeFileSync(join(workspace, 'ticket.md'), 'The promotion quote is 240 PLN.\n')
+	const app = await fixture()
+	t.after(() => app.close())
+	const host = fakeClaude(
+		t,
+		{ rules: [{ id: 'R1', text: 'The promotion quote is 240 PLN.', source: 'ticket.md', area: 'Promotion' }] },
+		'pi'
+	)
+	const env = {
+		...process.env,
+		...host.env,
+		CHECKMATE_ACTOR: 'oracle',
+		CHECKMATE_HARNESS: 'pi',
+		FAKE_CLAUDE_REPLAY: join(root, 'test/local-replay.mjs'),
+		QA_REPLAY_DIR: directory(t),
+		QA_APP_URL: app.baseUrl,
+		QA_WORKSPACE: workspace,
+		QA_CLI: binary,
+		QA_QUESTION_RULE: 'R1',
+	}
+	const ok = async (...args: string[]) => {
+		const result = await command(workspace, env, ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	const start = await ok(
+		'test',
+		'cart',
+		'--url',
+		app.baseUrl,
+		'--data',
+		'environment',
+		'--policy',
+		'The test fixture keeps no records.',
+		'--source',
+		'ticket.md',
+		'--build',
+		'broken',
+		'--level',
+		'smoke',
+		'--allow',
+		'Read'
+	)
+	assert.equal((await ok('explore', 'wait', start.explorationId, '--timeout', '60')).state, 'completed')
+	const status = await ok('status', 'cart')
+	assert.deepEqual([status.state, status.waitsOn], ['needs_answers', 'oracle'])
+	const shown = await ok('plan', 'show', 'cart')
+	const observed = shown.plan.tests.find(
+		(test: { metadata?: { harvestedFrom?: string } }) => test.metadata?.harvestedFrom
+	)
+	assert.equal(observed.readiness, 'ready', 'An observed defect is ready to record')
+	assert.deepEqual(
+		observed.gapIds,
+		['UR1', 'Q1'],
+		'Status must still name the waiting question and the unchecked rule'
+	)
+	await ok('export', 'run', `findings-${start.explorationId}`, '--format', 'junit', '--out', 'findings.xml')
+	assert.match(readFileSync(join(workspace, 'findings.xml'), 'utf8'), /<failure/)
 })
 
 test('Record a defect with replayable evidence — report text cannot become a reviewable claim.', async (t) => {
@@ -133,6 +242,10 @@ test('Record a defect with replayable evidence — report text cannot become a r
 		'cart',
 		'--url',
 		app.baseUrl,
+		'--data',
+		'environment',
+		'--policy',
+		'The test fixture keeps no records.',
 		'--source',
 		'ticket.md',
 		'--build',
@@ -144,7 +257,13 @@ test('Record a defect with replayable evidence — report text cannot become a r
 	)
 	assert.equal((await ok('explore', 'wait', start.explorationId, '--timeout', '60')).state, 'completed')
 	const status = await ok('status', 'cart')
-	assert.deepEqual([status.state, status.waitsOn], ['needs_triage', 'oracle'])
+	assert.deepEqual([status.state, status.waitsOn], ['needs_answers', 'oracle'])
+	const revision = await ok('plan', 'show', 'cart')
+	assert.equal(revision.revision, 1, 'The test flow must save revision 1')
+	await ok('export', 'run', `findings-${start.explorationId}`, '--format', 'junit', '--out', 'findings.xml')
+	const findingsXml = readFileSync(join(workspace, 'findings.xml'), 'utf8')
+	assert.match(findingsXml, /<failure/)
+	assert.match(findingsXml, /Wrong quote|defect/i)
 	const records = await ok('query', 'SELECT exploration_id, build, kind, body FROM journal_entries ORDER BY rowid')
 	const defect = records.rows.find((row: { kind: string }) => row.kind === 'defect')
 	assert.deepEqual([defect.exploration_id, defect.build], [start.explorationId, 'broken'])
@@ -152,7 +271,18 @@ test('Record a defect with replayable evidence — report text cannot become a r
 	assert.equal((await (await fetch(`${app.baseUrl}/quote?promotion=true&loyalty=true`)).json()).totalPLN, 220)
 	assert.match(JSON.stringify(await ok('explore', 'show', start.explorationId)), /220/)
 	app.fix()
-	const without = await ok('test', 'cart', '--build', 'fixed', '--level', 'smoke', '--allow', 'Read')
+	const without = await ok(
+		'test',
+		'cart',
+		'--mode',
+		'exploratory',
+		'--build',
+		'fixed',
+		'--level',
+		'smoke',
+		'--allow',
+		'Read'
+	)
 	assert.equal((await ok('explore', 'wait', without.explorationId, '--timeout', '60')).state, 'completed')
 	const beforeAnswer = await ok(
 		'query',
@@ -173,7 +303,18 @@ test('Record a defect with replayable evidence — report text cannot become a r
 		'--rationale',
 		'Product decision.'
 	)
-	const after = await ok('test', 'cart', '--build', 'fixed', '--level', 'smoke', '--allow', 'Read')
+	const after = await ok(
+		'test',
+		'cart',
+		'--mode',
+		'exploratory',
+		'--build',
+		'fixed',
+		'--level',
+		'smoke',
+		'--allow',
+		'Read'
+	)
 	assert.equal((await ok('explore', 'wait', after.explorationId, '--timeout', '60')).state, 'completed')
 	const latest = await ok('query', 'SELECT exploration_id, build, kind, body FROM journal_entries ORDER BY rowid')
 	const criterion = latest.rows.find(
@@ -247,6 +388,10 @@ test('Explore a clean fixture — invented defect or missing observed coverage.'
 		'cart',
 		'--url',
 		app.baseUrl,
+		'--data',
+		'environment',
+		'--policy',
+		'The test fixture keeps no records.',
 		'--source',
 		'ticket.md',
 		'--build',
@@ -265,6 +410,981 @@ test('Explore a clean fixture — invented defect or missing observed coverage.'
 		['clean', 'R1', 'ok']
 	)
 	assert.match(criterion.body, /240/)
+})
+
+test('Open a database that another process reads while it switches to WAL — parallel first command fails.', async (t) => {
+	const workspace = directory(t)
+	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle', CHECKMATE_BUSY_TIMEOUT_MS: '100' }
+	mkdirSync(join(workspace, '.checkmate'), { recursive: true })
+	const path = join(workspace, '.checkmate', 'checkmate.db')
+	new DatabaseSync(path).close()
+	// A rollback-mode database that another process reads cannot switch to WAL at once. The holder keeps its read lock for 600 ms.
+	const holder = spawn(
+		process.execPath,
+		[
+			'-e',
+			`const { DatabaseSync } = require('node:sqlite'); const db = new DatabaseSync(process.argv[1]);
+db.exec('BEGIN; SELECT count(*) FROM sqlite_master'); console.log('locked');
+Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 600); db.exec('COMMIT'); db.close()`,
+			path,
+		],
+		{ stdio: ['ignore', 'pipe', 'inherit'] }
+	)
+	t.after(() => holder.kill())
+	const [line] = (await once(holder.stdout, 'data')) as [Buffer]
+	assert.match(line.toString(), /locked/)
+	const result = await command(workspace, env, 'target', 'list')
+	assert.equal(result.code, 0, result.output)
+	assert.equal(result.body.status, 'completed')
+})
+
+test('Remove only what the answer drops — a revise that also removed R5 and T4 was refused as an over-drop.', async () => {
+	const path = '../../plugin/src/plans.ts'
+	const { unrequestedRemovals } = (await import(path)) as {
+		unrequestedRemovals: (
+			dropped: Set<string>,
+			droppedTests: Set<string>,
+			requirements: string[],
+			tests: string[]
+		) => string[]
+	}
+	assert.deepEqual(unrequestedRemovals(new Set(['R6']), new Set(['T6']), ['R6'], ['T6']), [])
+	assert.deepEqual(unrequestedRemovals(new Set(['R6']), new Set(['T6']), ['R5', 'R6'], ['T4', 'T6']), ['R5', 'T4'])
+})
+
+test('An applied plan edit with an open gap reports completed, with the gap as a warning and the plan state apart.', async (t) => {
+	const workspace = directory(t)
+	const { chmodSync, copyFileSync, mkdirSync } = await import('node:fs')
+	const { delimiter } = await import('node:path')
+	const bin = join(workspace, 'bin')
+	mkdirSync(bin)
+	copyFileSync(join(root, 'test/e2e/delegate-host.mjs'), join(bin, 'claude'))
+	chmodSync(join(bin, 'claude'), 0o755)
+	const env = {
+		...process.env,
+		PATH: `${bin}${delimiter}${process.env.PATH}`,
+		CHECKMATE_ACTOR: 'oracle',
+		CHECKMATE_HARNESS: 'claude',
+		QA_STAGE: 'setup',
+		QA_LIE: '0',
+	}
+	const ok = async (args: string[], input?: unknown) => {
+		const result = await inputCommand(workspace, env, input === undefined ? '' : JSON.stringify(input), ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	await ok([
+		'target',
+		'open',
+		'shop',
+		'--entry-point',
+		'web:url:Shop HTTP API.',
+		'--capabilities',
+		'http',
+		'--operations',
+		'read_catalog',
+	])
+	await ok(['delegate', 'setup', 'shop', '--allow', 'Read'])
+	writeFileSync(join(workspace, 'ticket.md'), '# Ticket\n\n1. The quote is 240.\n2. The list is newest first.\n')
+	await ok([
+		'plan',
+		'open',
+		'ticket',
+		'--target',
+		'shop@1',
+		'--objective',
+		'Check the quote.',
+		'--source',
+		'ticket.md',
+	])
+	await ok(['plan', 'save', 'ticket'], {
+		requirements: [
+			{ id: 'R1', text: 'The quote is 240.', source: 'ticket.md' },
+			{ id: 'R2', text: 'The list is newest first.', source: 'ticket.md' },
+		],
+		tests: [
+			{
+				id: 'T1',
+				title: 'Quote',
+				requirementIds: ['R1'],
+				capability: 'http',
+				operations: ['read_catalog'],
+				dependsOn: [],
+				preconditions: [],
+				action: 'Read the quote.',
+				assertions: [
+					{
+						id: 'A1',
+						check: 'The quote is 240.',
+						checkKind: 'deterministic',
+						observe: 'quote',
+						expected: '240',
+					},
+				],
+			},
+		],
+		gaps: [
+			{
+				id: 'G1',
+				severity: 'blocking',
+				status: 'open',
+				requirementIds: ['R2'],
+				testIds: [],
+				question: 'Is the list newest first?',
+				consequence: 'Unknown.',
+				decisionId: null,
+			},
+		],
+	})
+	const edited = await inputCommand(
+		workspace,
+		env,
+		JSON.stringify({
+			tests: {
+				T1b: {
+					title: 'Quote again',
+					requirementIds: ['R1'],
+					capability: 'http',
+					operations: ['read_catalog'],
+					action: 'Read the quote again.',
+					assertions: { A1: { check: 'The quote is 240 again.', checkKind: 'agent_observation' } },
+				},
+			},
+		}),
+		'plan',
+		'edit',
+		'ticket@1',
+		'--patch',
+		'--rationale',
+		'Add a test for R1.'
+	)
+	assert.equal(edited.code, 0, edited.output)
+	assert.equal(edited.body.status, 'completed', JSON.stringify(edited.body))
+	assert.equal(edited.body.planState, 'needs_decision')
+	assert.match(edited.body.reasons.join('\n'), /warning: G1/)
+})
+
+test('Detach a delegate and wait for it — the reply says running until the work finishes.', async (t) => {
+	const workspace = directory(t)
+	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle', CHECKMATE_HARNESS: 'pi' }
+	const started = await command(workspace, env, 'delegate', 'plan', 'ticket', '--detach')
+	assert.equal(started.body.status, 'running', started.output)
+	const waited = await command(workspace, env, 'delegate', 'wait', 'plan', 'ticket', '--timeout', '60')
+	assert.notEqual(waited.body.status, 'running', waited.output)
+})
+
+test('Refuse a plan built from one source when another named local file is missing from the request — a truncated plan.', async (t) => {
+	const workspace = directory(t)
+	const { chmodSync, copyFileSync, mkdirSync } = await import('node:fs')
+	const { delimiter } = await import('node:path')
+	const bin = join(workspace, 'bin')
+	mkdirSync(bin)
+	copyFileSync(join(root, 'test/e2e/delegate-host.mjs'), join(bin, 'claude'))
+	chmodSync(join(bin, 'claude'), 0o755)
+	const env = {
+		...process.env,
+		PATH: `${bin}${delimiter}${process.env.PATH}`,
+		CHECKMATE_ACTOR: 'oracle',
+		CHECKMATE_HARNESS: 'claude',
+		QA_STAGE: 'setup',
+		QA_LIE: '0',
+	}
+	const ok = async (args: string[]) => {
+		const result = await command(workspace, env, ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	await ok([
+		'target',
+		'open',
+		'shop',
+		'--entry-point',
+		'web:url:Shop HTTP API.',
+		'--capabilities',
+		'http',
+		'--operations',
+		'read_catalog',
+	])
+	await ok(['delegate', 'setup', 'shop', '--allow', 'Read'])
+	writeFileSync(join(workspace, 'ticket.md'), '# Ticket\n\nThe acceptance criteria are in acceptance.md.\n')
+	writeFileSync(join(workspace, 'acceptance.md'), '1. The quote is 240.\n')
+	const refused = await command(
+		workspace,
+		env,
+		'plan',
+		'open',
+		'ticket',
+		'--target',
+		'shop@1',
+		'--objective',
+		'Check the quote.',
+		'--source',
+		'ticket.md'
+	)
+	assert.equal(refused.code, 1, refused.output)
+	assert.match(refused.output, /refers to acceptance\.md/)
+	const opened = await ok([
+		'plan',
+		'open',
+		'ticket',
+		'--target',
+		'shop@1',
+		'--objective',
+		'Check the quote.',
+		'--source',
+		'ticket.md',
+		'--source',
+		'acceptance.md',
+	])
+	assert.deepEqual(opened.sources, ['ticket.md', 'acceptance.md'])
+})
+
+test('Plan open takes the plan ID from the ticket key, and a gap that covers several requirements names each one.', async (t) => {
+	const workspace = directory(t)
+	const { chmodSync, copyFileSync, mkdirSync } = await import('node:fs')
+	const { delimiter } = await import('node:path')
+	const bin = join(workspace, 'bin')
+	mkdirSync(bin)
+	copyFileSync(join(root, 'test/e2e/delegate-host.mjs'), join(bin, 'claude'))
+	chmodSync(join(bin, 'claude'), 0o755)
+	const env = {
+		...process.env,
+		PATH: `${bin}${delimiter}${process.env.PATH}`,
+		CHECKMATE_ACTOR: 'oracle',
+		CHECKMATE_HARNESS: 'claude',
+		QA_STAGE: 'setup',
+		QA_LIE: '0',
+	}
+	const ok = async (args: string[], input?: unknown) => {
+		const result = await inputCommand(workspace, env, input === undefined ? '' : JSON.stringify(input), ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	await ok([
+		'target',
+		'open',
+		'shop',
+		'--entry-point',
+		'web:url:Shop HTTP API.',
+		'--capabilities',
+		'http',
+		'--operations',
+		'read_catalog',
+	])
+	await ok(['delegate', 'setup', 'shop', '--allow', 'Read'])
+	writeFileSync(
+		join(workspace, 'ticket.md'),
+		'# BS-42\n\n1. The quote is 240.\n2. The list is newest first.\n3. The title is trimmed.\n'
+	)
+	const opened = await ok([
+		'plan',
+		'open',
+		'--target',
+		'shop@1',
+		'--objective',
+		'Check the quote.',
+		'--source',
+		'ticket.md',
+	])
+	assert.equal(opened.planId, 'bs-42')
+	assert.equal(opened.planIdFrom, 'ticket.md')
+
+	const gap = (question: string) => ({
+		requirements: [
+			{ id: 'R1', text: 'The quote is 240.', source: 'ticket.md' },
+			{ id: 'R2', text: 'The list is newest first.', source: 'ticket.md' },
+			{ id: 'R3', text: 'The title is trimmed.', source: 'ticket.md' },
+		],
+		tests: [],
+		gaps: [
+			{
+				id: 'G1',
+				severity: 'blocking',
+				status: 'open',
+				requirementIds: ['R1', 'R2', 'R3'],
+				testIds: [],
+				question,
+				consequence: 'These criteria stay untested.',
+				decisionId: null,
+			},
+		],
+	})
+	const refused = await inputCommand(
+		workspace,
+		env,
+		JSON.stringify(gap('Which value applies?')),
+		'plan',
+		'save',
+		'bs-42'
+	)
+	assert.equal(refused.code, 1, refused.output)
+	assert.match(refused.output, /covers 3 requirements with one question/)
+	assert.match(refused.output, /Write tests for R1, R2, R3/)
+	assert.match(refused.output, /R1: <the missing fact>/)
+
+	await ok(
+		['plan', 'save', 'bs-42'],
+		gap('R1: which quote applies? R2: which order applies? R3: which trimming applies?')
+	)
+})
+
+test('Drop a criterion with no open question — scope drop records the drop, and revise applies it under the same check.', async (t) => {
+	const workspace = directory(t)
+	const { chmodSync, copyFileSync, mkdirSync } = await import('node:fs')
+	const { delimiter } = await import('node:path')
+	const bin = join(workspace, 'bin')
+	mkdirSync(bin)
+	copyFileSync(join(root, 'test/e2e/delegate-host.mjs'), join(bin, 'claude'))
+	chmodSync(join(bin, 'claude'), 0o755)
+	const env = {
+		...process.env,
+		PATH: `${bin}${delimiter}${process.env.PATH}`,
+		CHECKMATE_ACTOR: 'oracle',
+		CHECKMATE_HARNESS: 'claude',
+		QA_STAGE: 'setup',
+		QA_LIE: '0',
+	}
+	const ok = async (args: string[], input?: unknown) => {
+		const result = await inputCommand(workspace, env, input === undefined ? '' : JSON.stringify(input), ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	await ok([
+		'target',
+		'open',
+		'shop',
+		'--entry-point',
+		'web:url:Shop HTTP API.',
+		'--capabilities',
+		'http',
+		'--operations',
+		'read_catalog',
+	])
+	await ok(['delegate', 'setup', 'shop', '--allow', 'Read'])
+	writeFileSync(join(workspace, 'ticket.md'), '# Ticket\n\n1. The quote is 240.\n2. The list is newest first.\n')
+	await ok([
+		'plan',
+		'open',
+		'ticket',
+		'--target',
+		'shop@1',
+		'--objective',
+		'Check the quote.',
+		'--source',
+		'ticket.md',
+	])
+	await ok(['plan', 'save', 'ticket'], {
+		requirements: [
+			{ id: 'R1', text: 'The quote is 240.', source: 'ticket.md' },
+			{ id: 'R2', text: 'The list is newest first.', source: 'ticket.md' },
+		],
+		tests: [
+			{
+				id: 'T1',
+				title: 'Quote',
+				requirementIds: ['R1'],
+				capability: 'http',
+				operations: ['read_catalog'],
+				dependsOn: [],
+				preconditions: [],
+				action: 'Read the quote.',
+				assertions: [
+					{
+						id: 'A1',
+						check: 'The quote is 240.',
+						checkKind: 'deterministic',
+						observe: 'quote',
+						expected: '240',
+					},
+				],
+			},
+			{
+				id: 'T2',
+				title: 'Order',
+				requirementIds: ['R2'],
+				capability: 'http',
+				operations: ['read_catalog'],
+				dependsOn: [],
+				preconditions: [],
+				action: 'Read the list.',
+				assertions: [{ id: 'A1', check: 'The newest item is first.', checkKind: 'agent_observation' }],
+			},
+		],
+		gaps: [],
+	})
+	const scoped = await ok([
+		'scope',
+		'drop',
+		'ticket',
+		'R2',
+		'--source',
+		'ticket.md',
+		'--rationale',
+		'Owner dropped the ordering criterion.',
+	])
+	assert.equal(scoped.status, 'completed', JSON.stringify(scoped))
+	const revised = await ok(['plan', 'revise', 'ticket'], {
+		requirements: { R2: { remove: true } },
+		tests: { T2: { remove: true } },
+	})
+	assert.equal(revised.status, 'completed', JSON.stringify(revised))
+	const [{ body }] = (
+		await ok(['query', "SELECT body FROM plan_revisions WHERE plan_id = 'ticket' AND revision = 2"])
+	).rows
+	assert.deepEqual(
+		JSON.parse(body).requirements.map((requirement: { id: string }) => requirement.id),
+		['R1']
+	)
+})
+
+test('Drop a criterion that an open gap covers — the drop closes the gap with its decision, and no open gap is left on the removed criterion.', async (t) => {
+	const workspace = directory(t)
+	const { chmodSync, copyFileSync, mkdirSync } = await import('node:fs')
+	const { delimiter } = await import('node:path')
+	const bin = join(workspace, 'bin')
+	mkdirSync(bin)
+	copyFileSync(join(root, 'test/e2e/delegate-host.mjs'), join(bin, 'claude'))
+	chmodSync(join(bin, 'claude'), 0o755)
+	const env = {
+		...process.env,
+		PATH: `${bin}${delimiter}${process.env.PATH}`,
+		CHECKMATE_ACTOR: 'oracle',
+		CHECKMATE_HARNESS: 'claude',
+		QA_STAGE: 'setup',
+		QA_LIE: '0',
+	}
+	const ok = async (args: string[], input?: unknown) => {
+		const result = await inputCommand(workspace, env, input === undefined ? '' : JSON.stringify(input), ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	await ok([
+		'target',
+		'open',
+		'shop',
+		'--entry-point',
+		'web:url:Shop HTTP API.',
+		'--capabilities',
+		'http',
+		'--operations',
+		'read_catalog',
+	])
+	await ok(['delegate', 'setup', 'shop', '--allow', 'Read'])
+	writeFileSync(join(workspace, 'ticket.md'), '# Ticket\n\n1. The quote is 240.\n2. The list is newest first.\n')
+	await ok([
+		'plan',
+		'open',
+		'ticket',
+		'--target',
+		'shop@1',
+		'--objective',
+		'Check the quote.',
+		'--source',
+		'ticket.md',
+	])
+	await ok(['plan', 'save', 'ticket'], {
+		requirements: [
+			{ id: 'R1', text: 'The quote is 240.', source: 'ticket.md' },
+			{ id: 'R2', text: 'The list is newest first.', source: 'ticket.md' },
+		],
+		tests: [
+			{
+				id: 'T1',
+				title: 'Quote',
+				requirementIds: ['R1'],
+				capability: 'http',
+				operations: ['read_catalog'],
+				dependsOn: [],
+				preconditions: [],
+				action: 'Read the quote.',
+				assertions: [
+					{
+						id: 'A1',
+						check: 'The quote is 240.',
+						checkKind: 'deterministic',
+						observe: 'quote',
+						expected: '240',
+					},
+				],
+			},
+			{
+				id: 'T2',
+				title: 'Order',
+				requirementIds: ['R2'],
+				capability: 'http',
+				operations: ['read_catalog'],
+				dependsOn: [],
+				preconditions: [],
+				action: 'Read the list.',
+				assertions: [{ id: 'A1', check: 'The newest item is first.', checkKind: 'agent_observation' }],
+			},
+		],
+		gaps: [
+			{
+				id: 'G9',
+				severity: 'blocking',
+				status: 'open',
+				requirementIds: ['R2'],
+				testIds: [],
+				question: 'Which order applies to R2?',
+				consequence: 'The order check stays untested.',
+				decisionId: null,
+			},
+		],
+	})
+	const scoped = await ok([
+		'scope',
+		'drop',
+		'ticket',
+		'R2',
+		'--source',
+		'ticket.md',
+		'--rationale',
+		'Owner dropped the ordering criterion.',
+	])
+	assert.equal(scoped.status, 'completed', JSON.stringify(scoped))
+	const revised = await ok(['plan', 'revise', 'ticket'], {
+		requirements: { R2: { remove: true } },
+		tests: { T2: { remove: true } },
+	})
+	assert.equal(revised.status, 'completed', JSON.stringify(revised))
+	const [{ body }] = (
+		await ok(['query', "SELECT body FROM plan_revisions WHERE plan_id = 'ticket' AND revision = 2"])
+	).rows
+	assert.deepEqual(
+		JSON.parse(body).requirements.map((requirement: { id: string }) => requirement.id),
+		['R1']
+	)
+	const gaps = JSON.parse(body).gaps as Array<{
+		id: string
+		status: string
+		requirementIds: string[]
+		decisionId: string | null
+	}>
+	const closed = gaps.find((gap) => gap.id === 'G9')
+	assert.equal(closed?.status, 'resolved', JSON.stringify(gaps))
+	assert.notEqual(closed?.decisionId, null)
+	assert.deepEqual(
+		gaps.filter((gap) => gap.requirementIds.includes('R2')).map((gap) => gap.id),
+		[]
+	)
+})
+
+test('Find the criterion a drop answer names from its wording — the planner did not link the gap to it.', async () => {
+	const path = '../../plugin/src/plans.ts'
+	const { droppedRequirement } = (await import(path)) as {
+		droppedRequirement: (requirements: Array<{ id: string; text: string }>, value: string) => string | null
+	}
+	const requirements = [
+		{ id: 'R6', text: 'List sorted by title ascending.' },
+		{ id: 'R7', text: 'List shows newest books first.' },
+	]
+	assert.equal(droppedRequirement(requirements, 'Drop the newest-first criterion. The list is out of scope.'), 'R7')
+	assert.equal(
+		droppedRequirement(
+			requirements,
+			'The list is sorted by title ascending, and the newest-first criterion is out of scope, so drop it.'
+		),
+		'R7'
+	)
+	assert.equal(droppedRequirement(requirements, 'Drop the list.'), null)
+})
+
+test('Drop a criterion by revise — a dropped criterion stayed ready and needed a manual plan edit.', async (t) => {
+	const workspace = directory(t)
+	const { chmodSync, copyFileSync, mkdirSync } = await import('node:fs')
+	const { delimiter } = await import('node:path')
+	const bin = join(workspace, 'bin')
+	mkdirSync(bin)
+	copyFileSync(join(root, 'test/e2e/delegate-host.mjs'), join(bin, 'claude'))
+	chmodSync(join(bin, 'claude'), 0o755)
+	const env = {
+		...process.env,
+		PATH: `${bin}${delimiter}${process.env.PATH}`,
+		CHECKMATE_ACTOR: 'oracle',
+		CHECKMATE_HARNESS: 'claude',
+		QA_STAGE: 'setup',
+		QA_LIE: '0',
+	}
+	const ok = async (args: string[], input?: unknown) => {
+		const result = await inputCommand(workspace, env, input === undefined ? '' : JSON.stringify(input), ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	await ok([
+		'target',
+		'open',
+		'shop',
+		'--entry-point',
+		'web:url:Shop HTTP API.',
+		'--capabilities',
+		'http',
+		'--operations',
+		'read_catalog',
+	])
+	await ok(['delegate', 'setup', 'shop', '--allow', 'Read'])
+	writeFileSync(join(workspace, 'ticket.md'), '# Ticket\n\n1. The quote is 240.\n2. The list is newest first.\n')
+	await ok([
+		'plan',
+		'open',
+		'ticket',
+		'--target',
+		'shop@1',
+		'--objective',
+		'Check the quote.',
+		'--source',
+		'ticket.md',
+	])
+	const partial = await inputCommand(
+		workspace,
+		env,
+		JSON.stringify({
+			requirements: [{ id: 'R1', text: 'The quote is 240.', source: 'ticket.md' }],
+			tests: [],
+			gaps: [],
+		}),
+		'plan',
+		'save',
+		'ticket'
+	)
+	assert.equal(partial.code, 1, partial.output)
+	assert.match(partial.output, /sources list 2 numbered criteria/)
+	await ok(['plan', 'save', 'ticket'], {
+		requirements: [
+			{ id: 'R1', text: 'The quote is 240.', source: 'ticket.md' },
+			{ id: 'R2', text: 'The list is newest first.', source: 'ticket.md' },
+		],
+		tests: [
+			{
+				id: 'T1',
+				title: 'Quote',
+				requirementIds: ['R1'],
+				capability: 'http',
+				operations: ['read_catalog'],
+				dependsOn: [],
+				preconditions: [],
+				action: 'Read the quote.',
+				assertions: [
+					{
+						id: 'A1',
+						check: 'The quote is 240.',
+						checkKind: 'deterministic',
+						observe: 'the value stated by the check',
+						expected: '240',
+					},
+				],
+			},
+			{
+				id: 'T2',
+				title: 'Order',
+				requirementIds: ['R2'],
+				capability: 'http',
+				operations: ['read_catalog'],
+				dependsOn: [],
+				preconditions: [],
+				action: 'Read the list.',
+				assertions: [
+					{
+						id: 'A1',
+						check: 'The newest item is first.',
+						checkKind: 'deterministic',
+						observe: 'the first item in the list',
+						expected: 'newest',
+					},
+				],
+			},
+		],
+		gaps: [
+			{
+				id: 'G1',
+				severity: 'blocking',
+				status: 'open',
+				requirementIds: ['R2'],
+				testIds: ['T2'],
+				question: 'Is the list newest first or sorted by title?',
+				consequence: 'The order test is unknown.',
+				decisionId: null,
+			},
+		],
+	})
+	await ok([
+		'gap',
+		'answer',
+		'ticket',
+		'G1',
+		'--kind',
+		'clarify',
+		'--value',
+		'Drop the newest-first criterion. The list is out of scope.',
+		'--source',
+		'oracle',
+		'--rationale',
+		'Owner dropped the criterion.',
+	])
+	const refused = await inputCommand(
+		workspace,
+		env,
+		JSON.stringify({ requirements: { R2: { remove: true } }, tests: {} }),
+		'plan',
+		'revise',
+		'ticket'
+	)
+	assert.equal(refused.code, 1, refused.output)
+	assert.match(refused.output, /still has tests: T2/)
+	const keeps = await inputCommand(
+		workspace,
+		env,
+		JSON.stringify({ tests: { T2: { remove: true } } }),
+		'plan',
+		'revise',
+		'ticket'
+	)
+	assert.equal(keeps.code, 1, keeps.output)
+	assert.match(keeps.output, /drops R2, but the revision still has it/)
+	const revised = await ok(['plan', 'revise', 'ticket'], {
+		requirements: { R2: { remove: true } },
+		tests: { T2: { remove: true } },
+	})
+	assert.deepEqual(revised.removed, { tests: ['T2'], requirements: ['R2'] })
+	const [{ body }] = (
+		await ok(['query', "SELECT body FROM plan_revisions WHERE plan_id = 'ticket' AND revision = 2"])
+	).rows
+	const plan = JSON.parse(body)
+	assert.deepEqual(
+		plan.tests.map((test: { id: string }) => test.id),
+		['T1']
+	)
+	assert.deepEqual(
+		plan.requirements.map((requirement: { id: string }) => requirement.id),
+		['R1']
+	)
+	assert.deepEqual(plan.gaps[0].testIds, [])
+	assert.deepEqual(plan.gaps[0].requirementIds, [])
+})
+
+test('Pre-allow only the Checkmate commands that a chat may run — a shell chain or a run start passed without a person.', async () => {
+	const permission = '../../plugin/pi/permission.mjs'
+	const { chatCommandAllowed } = (await import(permission)) as {
+		chatCommandAllowed: (command: string, clis: string[]) => boolean
+	}
+	const cli = '/workspace/cli/src/main.ts'
+	const allowed = [
+		`CHECKMATE_HARNESS=pi node "${cli}" status BS-42`,
+		`node "${cli}" target list && node "${cli}" plan list`,
+		`CHECKMATE_HARNESS=pi node "${cli}" gap answer BS-42 G1 --kind clarify --value 'drop it' --source ticket.md --rationale 'owner'`,
+		`node "${cli}" plan revise BS-42 --actor pi:revise <<'EOF'\n{"tests":{}}\nEOF`,
+		`node "${cli}" plan edit BS-42@1 --patch --rationale 'drop it' <<'EOF'\n{"tests":{}}\nEOF\nnode "${cli}" plan show BS-42`,
+	]
+	const refused = [
+		`node "${cli}" run begin run-1 BS-42@1 --build b1`,
+		`node "${cli}" delegate execute run-1`,
+		`node "${cli}" status BS-42; rm -rf .checkmate`,
+		`node "${cli}" status $(id)`,
+		`node "/other/cli/src/main.ts" status`,
+		`node "${cli}" plan revise BS-42 <<'EOF'\n{}\nEOF\nrm -rf x`,
+		`node "${cli}" plan edit BS-42@1 --patch <<'EOF'\n{}\nEOF\nnode "${cli}" run begin run-2 BS-42@1 --build b1`,
+	]
+	for (const command of allowed) assert.equal(chatCommandAllowed(command, [cli]), true, command)
+	for (const command of refused) assert.equal(chatCommandAllowed(command, [cli]), false, command)
+})
+
+test('Order the chat models with the primary provider first and luna first, and decline an off-topic chat — a search still reaches every model.', async () => {
+	const { chatModelOrder } = await import('../../plugin/src/model-catalog.ts')
+	const { requestSystemPrompt } = await import('../../plugin/src/sessions.ts')
+	const catalog = {
+		models: [
+			{ value: 'anthropic/claude-x', label: 'claude-x' },
+			{ value: 'openai-codex/gpt-5.6-sol', label: 'gpt-5.6-sol' },
+			{ value: 'openai-codex/gpt-6-luna', label: 'gpt-6-luna' },
+		],
+		defaultModel: { value: 'openai-codex/gpt-6-luna', label: 'gpt-6-luna' },
+	}
+	const ordered = chatModelOrder(catalog)
+	assert.equal(ordered.primary, 'openai-codex')
+	assert.deepEqual(
+		ordered.models.map((model) => model.value),
+		['openai-codex/gpt-6-luna', 'openai-codex/gpt-5.6-sol', 'anthropic/claude-x']
+	)
+	assert.equal(chatModelOrder({ models: [{ value: 'claude-a', label: 'a' }] }).primary, null)
+	assert.match(requestSystemPrompt('/workspace/cli/src/main.ts', 'pi'), /decline in one sentence/)
+})
+
+test('Revise a test whole — the code keeps an assertion ID whose check is unchanged and refuses a compound check.', async (t) => {
+	const workspace = directory(t)
+	const { chmodSync, copyFileSync, mkdirSync } = await import('node:fs')
+	const { delimiter } = await import('node:path')
+	const bin = join(workspace, 'bin')
+	mkdirSync(bin)
+	copyFileSync(join(root, 'test/e2e/delegate-host.mjs'), join(bin, 'claude'))
+	chmodSync(join(bin, 'claude'), 0o755)
+	const env = {
+		...process.env,
+		PATH: `${bin}${delimiter}${process.env.PATH}`,
+		CHECKMATE_ACTOR: 'oracle',
+		CHECKMATE_HARNESS: 'claude',
+		QA_STAGE: 'setup',
+		QA_LIE: '0',
+	}
+	const ok = async (args: string[], input?: unknown) => {
+		const result = await inputCommand(workspace, env, input === undefined ? '' : JSON.stringify(input), ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	await ok([
+		'target',
+		'open',
+		'shop',
+		'--entry-point',
+		'web:url:Shop HTTP API.',
+		'--capabilities',
+		'http',
+		'--operations',
+		'read_catalog',
+	])
+	await ok(['delegate', 'setup', 'shop', '--allow', 'Read'])
+	writeFileSync(join(workspace, 'ticket.md'), '# Ticket\n\n1. The quote is 240.\n2. The list is newest first.\n')
+	await ok([
+		'plan',
+		'open',
+		'ticket',
+		'--target',
+		'shop@1',
+		'--objective',
+		'Check the quote.',
+		'--source',
+		'ticket.md',
+	])
+	await ok(['plan', 'save', 'ticket'], {
+		requirements: [
+			{ id: 'R1', text: 'The quote is 240.', source: 'ticket.md' },
+			{ id: 'R2', text: 'The list is newest first.', source: 'ticket.md' },
+		],
+		tests: [
+			{
+				id: 'T1',
+				title: 'Quote',
+				requirementIds: ['R1'],
+				capability: 'http',
+				operations: ['read_catalog'],
+				dependsOn: [],
+				preconditions: [],
+				action: 'Read the quote.',
+				assertions: [
+					{
+						id: 'A1',
+						check: 'The quote is 240.',
+						checkKind: 'deterministic',
+						observe: 'the value stated by the check',
+						expected: '240',
+					},
+				],
+			},
+			{
+				id: 'T2',
+				title: 'Order',
+				requirementIds: ['R2'],
+				capability: 'http',
+				operations: ['read_catalog'],
+				dependsOn: [],
+				preconditions: [],
+				action: 'Read the list.',
+				assertions: [
+					{
+						id: 'A1',
+						check: 'The newest item is first.',
+						checkKind: 'deterministic',
+						observe: 'the first item in the list',
+						expected: 'newest',
+					},
+				],
+			},
+		],
+		gaps: [
+			{
+				id: 'G1',
+				severity: 'blocking',
+				status: 'open',
+				requirementIds: ['R2'],
+				testIds: ['T2'],
+				question: 'Is the list newest first?',
+				consequence: 'The order test is unknown.',
+				decisionId: null,
+			},
+		],
+	})
+	await ok([
+		'gap',
+		'answer',
+		'ticket',
+		'G1',
+		'--kind',
+		'clarify',
+		'--value',
+		'Keep newest first.',
+		'--source',
+		'oracle',
+		'--rationale',
+		'Owner decision.',
+	])
+	const compound = await inputCommand(
+		workspace,
+		env,
+		JSON.stringify({
+			tests: {
+				T2: {
+					assertions: [{ check: 'The quote is 240 and the total is 260.', checkKind: 'deterministic' }],
+				},
+			},
+		}),
+		'plan',
+		'revise',
+		'ticket'
+	)
+	assert.equal(compound.code, 1, compound.output)
+	assert.match(compound.output, /checks more than one value/)
+	const revised = await ok(['plan', 'revise', 'ticket'], {
+		tests: {
+			T2: {
+				assertions: [
+					{
+						check: 'The newest item is first.',
+						checkKind: 'deterministic',
+						observe: 'the first item in the list',
+						expected: 'newest',
+					},
+					{
+						check: 'The list has at most 10 items.',
+						checkKind: 'deterministic',
+						observe: 'the number of items in the list',
+						expected: '10',
+					},
+				],
+			},
+		},
+	})
+	assert.equal(revised.status, 'completed', JSON.stringify(revised))
+	const [{ body: stored }] = (
+		await ok(['query', "SELECT body FROM plan_revisions WHERE plan_id = 'ticket' AND revision = 2"])
+	).rows
+	const t2 = JSON.parse(stored).tests.find((test: { id: string }) => test.id === 'T2')
+	assert.deepEqual(
+		t2.assertions.map((assertion: { id: string; check: string }) => [assertion.id, assertion.check]),
+		[
+			['A1', 'The newest item is first.'],
+			['A2', 'The list has at most 10 items.'],
+		]
+	)
+})
+test('Read a worker reply with one JSON object among its words — a low-tier worker added a sentence around the JSON.', async () => {
+	const launcher = '../../cli/src/launcher.ts'
+	const { readPiResponse } = (await import(launcher)) as {
+		readPiResponse: (result: { result: unknown; failure?: [string, string] }) => { status: string; subject: string }
+	}
+	const wrapped = readPiResponse({
+		result: 'Recorded the revision.\n{"status":"completed","subject":"BS-42","reasons":[]}\nDone.',
+	})
+	assert.deepEqual(wrapped, { status: 'completed', subject: 'BS-42', reasons: [] })
+	assert.throws(() => readPiResponse({ result: 'I revised the plan.' }), /did not return a JSON response/)
 })
 
 test('Retry a held database transaction — lost or duplicate edits.', async (t) => {
@@ -339,7 +1459,19 @@ test('Pick an active instance and refuse unsafe defaults — mutation scope or s
 		assert.equal(result.code, 0, result.output)
 		return result.body
 	}
-	await ok('setup', '--url', app.baseUrl, '--target', 'shop', '--instance', 'local')
+	await ok(
+		'setup',
+		'--url',
+		app.baseUrl,
+		'--target',
+		'shop',
+		'--instance',
+		'local',
+		'--data',
+		'environment',
+		'--policy',
+		'The test fixture keeps no records.'
+	)
 	await ok('target', 'instance', 'add', 'shop', 'staging', '--entry', `web=${staging.baseUrl}`)
 	await ok('target', 'instance', 'retire', 'shop', 'local')
 	const args = [
@@ -395,6 +1527,10 @@ test('Keep incomplete criteria unverified — false green.', async (t) => {
 		'cart',
 		'--url',
 		app.baseUrl,
+		'--data',
+		'environment',
+		'--policy',
+		'The test fixture keeps no records.',
 		'--source',
 		'ticket.md',
 		'--build',
@@ -409,8 +1545,15 @@ test('Keep incomplete criteria unverified — false green.', async (t) => {
 	assert.equal(records.rows.length, 1)
 	assert.equal(JSON.parse(records.rows[0].body).verdict, undefined)
 	const status = await ok('status', 'cart')
-	assert.equal(status.state, 'ready_to_test')
-	assert.match(status.why.join(' '), /R1.*unobserved/)
+	assert.equal(status.state, 'nothing_to_run')
+	const revision = await ok('plan', 'show', 'cart')
+	assert.ok(
+		revision.plan.gaps.some(
+			(gap: { requirementIds: string[]; question: string }) =>
+				gap.requirementIds.includes('R1') && /R1 was not checked/.test(gap.question)
+		),
+		'The unobserved rule must stay open as a gap'
+	)
 })
 
 test('Merge duplicate findings and preserve evidence — defect inflated or unique evidence dropped.', async (t) => {
@@ -447,6 +1590,10 @@ test('Merge duplicate findings and preserve evidence — defect inflated or uniq
 		'cart',
 		'--url',
 		app.baseUrl,
+		'--data',
+		'environment',
+		'--policy',
+		'The test fixture keeps no records.',
 		'--source',
 		'ticket.md',
 		'--build',
@@ -511,6 +1658,10 @@ test('Show disputed/failed retest without closing a claim — unresolved defect 
 		'cart',
 		'--url',
 		url,
+		'--data',
+		'environment',
+		'--policy',
+		'The test fixture keeps no records.',
 		'--source',
 		'ticket.md',
 		'--build',
@@ -522,7 +1673,18 @@ test('Show disputed/failed retest without closing a claim — unresolved defect 
 	)
 	assert.equal((await ok('explore', 'wait', first.explorationId, '--timeout', '60')).state, 'completed')
 	env.QA_RETEST = '1'
-	const second = await ok('test', 'cart', '--build', 'still-broken', '--level', 'smoke', '--allow', 'Read')
+	const second = await ok(
+		'test',
+		'cart',
+		'--mode',
+		'exploratory',
+		'--build',
+		'still-broken',
+		'--level',
+		'smoke',
+		'--allow',
+		'Read'
+	)
 	assert.equal((await ok('explore', 'wait', second.explorationId, '--timeout', '60')).state, 'completed')
 	const claims = (await ok('claim', 'list', 'cart')).claims
 	assert.equal(claims.length, 1)
@@ -533,6 +1695,8 @@ test('Show disputed/failed retest without closing a claim — unresolved defect 
 	const disputed = await ok(
 		'test',
 		'cart',
+		'--mode',
+		'exploratory',
 		'--build',
 		'flaky',
 		'--level',
@@ -574,6 +1738,10 @@ test('Interrupt the supervisor and retry safely — orphan workers or duplicate 
 		'cart',
 		'--url',
 		app.baseUrl,
+		'--data',
+		'environment',
+		'--policy',
+		'The test fixture keeps no records.',
 		'--source',
 		'ticket.md',
 		'--build',
@@ -621,6 +1789,49 @@ test('Interrupt the supervisor and retry safely — orphan workers or duplicate 
 	assert.deepEqual(counts.rows, [{ targets: 1, plans: 1, attempts: 2 }])
 })
 
+test('Wait on a paused exploration — the driver burns the timeout instead of answering the pause.', async (t) => {
+	const workspace = directory(t)
+	writeFileSync(join(workspace, 'ticket.md'), 'The promotion quote is 240 PLN.\n')
+	const app = await fixture()
+	t.after(() => app.close())
+	const host = fakeClaude(t, {}, 'claude')
+	const env = {
+		...process.env,
+		...host.env,
+		CHECKMATE_ACTOR: 'oracle',
+		CHECKMATE_HARNESS: 'claude',
+		QA_APP_URL: app.baseUrl,
+		QA_WORKSPACE: workspace,
+		QA_CLI: binary,
+	}
+	const ok = async (...args: string[]) => {
+		const result = await command(workspace, env, ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	const started = await ok(
+		'test',
+		'cart',
+		'--url',
+		app.baseUrl,
+		'--data',
+		'environment',
+		'--policy',
+		'The test fixture keeps no records.',
+		'--source',
+		'ticket.md',
+		'--build',
+		'broken',
+		'--session'
+	)
+	await ok('explore', 'pause', started.explorationId, '--reason', 'Shipping rule needs a decision.')
+	const began = Date.now()
+	const waited = await ok('explore', 'wait', started.explorationId, '--timeout', '60')
+	assert.ok(Date.now() - began < 30000, 'a paused exploration must return at once')
+	assert.equal(waited.outcome, 'paused')
+	assert.match(waited.hint, new RegExp(`checkmate explore next ${started.explorationId}`))
+})
+
 test('Answer, revise, and approve the named revision — execution against the wrong revision.', async (t) => {
 	const workspace = directory(t)
 	const { chmodSync, copyFileSync, mkdirSync } = await import('node:fs')
@@ -653,6 +1864,7 @@ test('Answer, revise, and approve the named revision — execution against the w
 		startup: { owner: 'factory', command: null },
 		cleanup: 'No test data.',
 		readyForLiveExecution: true,
+		reset: { owner: 'environment', command: null, policy: { text: 'The test fixture keeps no records.' } },
 		approvals: { plan: 'required', result: 'required' },
 	}
 	await ok([
@@ -690,7 +1902,15 @@ test('Answer, revise, and approve the named revision — execution against the w
 				dependsOn: [],
 				preconditions: [],
 				action: 'Read the quote.',
-				assertions: [{ id: 'A1', check: 'The quote is 240.', checkKind: 'deterministic' }],
+				assertions: [
+					{
+						id: 'A1',
+						check: 'The quote is 240.',
+						checkKind: 'deterministic',
+						observe: 'the value stated by the check',
+						expected: '240',
+					},
+				],
 			},
 		],
 		gaps: [],
@@ -784,7 +2004,7 @@ test('Answer, revise, and approve the named revision — execution against the w
 	const broken = await (await fetch(`${app.baseUrl}/quote?promotion=true&loyalty=true`)).json()
 	assert.equal(broken.totalPLN, 220)
 	const failure = await run(
-		['run', 'check', 'run-1', 'T1', 'A1', '--result', 'failed', '--observed', '220', '--evidence', '-'],
+		['run', 'check', 'run-1', 'T1', 'A1', '--observed', '220', '--evidence', '-'],
 		'HTTP 200: 220'
 	)
 	await run(
@@ -866,10 +2086,7 @@ test('Answer, revise, and approve the named revision — execution against the w
 		'--retest-of',
 		'run-1',
 	])
-	await run(
-		['run', 'check', 'run-2', 'T1', 'A1', '--result', 'passed', '--observed', '240', '--evidence', '-'],
-		'HTTP 200: 240'
-	)
+	await run(['run', 'check', 'run-2', 'T1', 'A1', '--observed', '240', '--evidence', '-'], 'HTTP 200: 240')
 	await run(['run', 'close', 'run-2', 'T1'])
 	await run([
 		'run',
@@ -970,6 +2187,22 @@ test('Delegate setup and plan and verify the record — prose or mismatched acto
 		assert.equal(result.code, 0, result.output)
 		return result.body
 	}
+	const noTarget = await command(
+		workspace,
+		env,
+		'plan',
+		'open',
+		'ticket',
+		'--target',
+		'shop@1',
+		'--objective',
+		'Check the quote.',
+		'--source',
+		'ticket.md'
+	)
+	assert.equal(noTarget.code, 1, noTarget.output)
+	assert.match(noTarget.output, /Unknown target profile: shop@1/)
+	assert.match(noTarget.output, /checkmate setup --url <url>/)
 	await ok(
 		'target',
 		'open',
@@ -990,6 +2223,13 @@ test('Delegate setup and plan and verify the record — prose or mismatched acto
 	assert.equal(liar.code, 1, liar.output)
 	assert.match(liar.output, /no plan save/i)
 	assert.equal((await ok('query', 'SELECT count(*) AS n FROM plan_revisions')).rows[0].n, 0)
+	const unplanned = await ok('status', 'ticket')
+	assert.equal(unplanned.revision, null)
+	assert.match(unplanned.why.join('\n'), /no saved revision/)
+	assert.ok(
+		unplanned.next.some((line: string) => /delegate plan ticket/.test(line)),
+		unplanned.next.join('\n')
+	)
 	const wrongWorkspace = directory(t)
 	const { cpSync } = await import('node:fs')
 	cpSync(join(workspace, '.checkmate'), join(wrongWorkspace, '.checkmate'), { recursive: true })
@@ -1036,6 +2276,10 @@ test('Stop only one tester and keep the others running — sibling workers kille
 		'cart',
 		'--url',
 		app.baseUrl,
+		'--data',
+		'environment',
+		'--policy',
+		'The test fixture keeps no records.',
 		'--source',
 		'ticket.md',
 		'--build',
@@ -1107,6 +2351,10 @@ test('Show a safe provider failure and retained partial usage — secret visible
 		'cart',
 		'--url',
 		app.baseUrl,
+		'--data',
+		'environment',
+		'--policy',
+		'The test fixture keeps no records.',
 		'--source',
 		'ticket.md',
 		'--build',
@@ -1145,7 +2393,17 @@ test('Run ready tests and report blocked tests — partial execution misreported
 		assert.equal(result.code, 0, result.output)
 		return result.body
 	}
-	await ok(['setup', '--url', app.baseUrl, '--target', 'shop'])
+	await ok([
+		'setup',
+		'--url',
+		app.baseUrl,
+		'--target',
+		'shop',
+		'--data',
+		'environment',
+		'--policy',
+		'The test fixture keeps no records.',
+	])
 	await ok([
 		'plan',
 		'open',
@@ -1158,6 +2416,31 @@ test('Run ready tests and report blocked tests — partial execution misreported
 		'ticket.md',
 	])
 	const common = { capability: 'http', operations: ['read_catalog'], dependsOn: [], preconditions: [] }
+	const compound = await inputCommand(
+		workspace,
+		env,
+		JSON.stringify({
+			requirements: [{ id: 'R1', text: 'The quote is 240.', source: 'ticket.md' }],
+			tests: [
+				{
+					...common,
+					id: 'T1',
+					title: 'Quote',
+					requirementIds: ['R1'],
+					action: 'Read the quote.',
+					assertions: [
+						{ id: 'A1', check: 'The quote is 240 and the refund is 30 days.', checkKind: 'deterministic' },
+					],
+				},
+			],
+			gaps: [],
+		}),
+		'plan',
+		'save',
+		'ticket'
+	)
+	assert.equal(compound.code, 1, compound.output)
+	assert.match(compound.output, /checks more than one value/)
 	await ok(['plan', 'save', 'ticket'], {
 		requirements: [
 			{ id: 'R1', text: 'The quote is 240.', source: 'ticket.md' },
@@ -1170,7 +2453,15 @@ test('Run ready tests and report blocked tests — partial execution misreported
 				title: 'Quote',
 				requirementIds: ['R1'],
 				action: 'Read the quote.',
-				assertions: [{ id: 'A1', check: 'The quote is 240.', checkKind: 'deterministic' }],
+				assertions: [
+					{
+						id: 'A1',
+						check: 'The quote is 240.',
+						checkKind: 'deterministic',
+						observe: 'the value stated by the check',
+						expected: '240',
+					},
+				],
 			},
 			{
 				...common,
@@ -1200,6 +2491,37 @@ test('Run ready tests and report blocked tests — partial execution misreported
 	assert.deepEqual(started.leftOut, [{ testId: 'T2', reason: 'blocked by G1' }])
 	const quote = await (await fetch(`${app.baseUrl}/quote?promotion=true&loyalty=true`)).json()
 	assert.equal(quote.totalPLN, 240)
+	const bareError = await inputCommand(
+		workspace,
+		env,
+		'',
+		'run',
+		'close',
+		'run-1',
+		'T1',
+		'--outcome',
+		'error',
+		'--reason',
+		'Browser did not open the page'
+	)
+	assert.equal(bareError.code, 1, bareError.output)
+	assert.match(bareError.output, /needs the output of the failed tool/)
+	const giveUp = await inputCommand(
+		workspace,
+		env,
+		'',
+		'run',
+		'finish',
+		'run-1',
+		'--completion',
+		'operational_error',
+		'--cleanup',
+		'not_applicable',
+		'--cleanup-reason',
+		'No test ran.'
+	)
+	assert.equal(giveUp.code, 1, giveUp.output)
+	assert.match(giveUp.output, /Selected tests are not closed: T1/)
 	const checked = await inputCommand(
 		workspace,
 		env,
@@ -1209,8 +2531,6 @@ test('Run ready tests and report blocked tests — partial execution misreported
 		'run-1',
 		'T1',
 		'A1',
-		'--result',
-		'passed',
 		'--observed',
 		String(quote.totalPLN),
 		'--evidence',
@@ -1247,13 +2567,16 @@ test('Discover the packaged Claude plugin and invoke its entry — broken plugin
 	const manifest = JSON.parse(readFileSync(join(plugin, '.claude-plugin/plugin.json'), 'utf8'))
 	assert.equal(manifest.name, 'checkmate')
 	const entry = join(plugin, 'dist/checkmate.js')
-	assert.equal(execFileSync(process.execPath, [entry, '--version'], { encoding: 'utf8' }).trim(), manifest.version)
+	assert.match(
+		execFileSync(process.execPath, [entry, '--version'], { encoding: 'utf8' }),
+		new RegExp(`^${manifest.version} build [0-9a-f]{12}\n`)
+	)
 	const packageManifest = JSON.parse(
 		readFileSync(join(project, 'node_modules/@xoxoai/checkmate/package.json'), 'utf8')
 	)
-	assert.equal(
-		execFileSync(process.execPath, [binary, '--version'], { encoding: 'utf8' }).trim(),
-		packageManifest.version
+	assert.match(
+		execFileSync(process.execPath, [binary, '--version'], { encoding: 'utf8' }),
+		new RegExp(`^${packageManifest.version} build [0-9a-f]{12}\n`)
 	)
 	assert.equal(manifest.version, packageManifest.version)
 	assert.match(execFileSync(process.execPath, [entry, '--help'], { encoding: 'utf8' }), /delegate/)
@@ -1276,7 +2599,7 @@ test('Execute a plan chat through the packaged UI — a begun run must reach its
 	mkdirSync(join(workspace, '.checkmate'))
 	writeFileSync(
 		join(workspace, '.checkmate/checkmate.db'),
-		gunzipSync(readFileSync(join(root, 'test/e2e/fixtures/workspace-39d33f7.db.gz')))
+		gunzipSync(readFileSync(join(root, 'test/e2e/fixtures/workspace-migrated.db.gz')))
 	)
 	const app = await fixture()
 	t.after(() => app.close())
@@ -1294,6 +2617,7 @@ const cli = plugin + '/dist/checkmate.js'
 const run = (args, input) => execFileSync(process.execPath, [cli, ...args], {input, encoding:'utf8'})
 const input = readFileSync(0, 'utf8')
 if (args.includes('stream-json')) {
+  require('node:fs').appendFileSync('chat-args.jsonl', JSON.stringify(args) + '\\n')
   const instructions = args[args.indexOf('--append-system-prompt') + 1]
   if (!input.includes('execute the fixture run') || !instructions.includes('When the person asks you to run or retest stored tests')) throw Error('Wrong request or workflow')
   run(['run','begin','ui-run','ticket@1','--build','fixed','--instance','local','--tests','T1'])
@@ -1302,7 +2626,7 @@ if (args.includes('stream-json')) {
 } else {
   fetch(process.env.QA_APP_URL + '/quote?promotion=true&loyalty=true').then(r => r.json()).then(quote => {
     if (quote.totalPLN !== 240 || !input.includes('ui-run')) throw Error('Wrong build or run')
-    run(['run','check','ui-run','T1','A1','--result','passed','--observed','240','--evidence','-'], JSON.stringify(quote))
+    run(['run','check','ui-run','T1','A1','--observed','240','--evidence','-'], JSON.stringify(quote))
     run(['run','close','ui-run','T1'])
     run(['run','finish','ui-run','--completion','completed','--cleanup','completed','--cleanup-reason','No test data.'])
     console.log(JSON.stringify({type:'result',subtype:'success',structured_output:{status:'completed',subject:'ui-run',reasons:[]}}))
@@ -1357,6 +2681,25 @@ if (args.includes('stream-json')) {
 	assert(result, 'UI chat did not produce a result')
 	assert.equal(result.tests[0].outcome, 'passed')
 	assert.equal((await ok('run', 'show', 'ui-run')).build, 'fixed')
+	const calls: string[][] = readFileSync(join(workspace, 'chat-args.jsonl'), 'utf8')
+		.trim()
+		.split('\n')
+		.map((line) => JSON.parse(line))
+	const chatArgs = calls.find((args) => args.includes('--allowedTools')) ?? []
+	const allowed: string[] = chatArgs.flatMap((arg, index) => (chatArgs[index - 1] === '--allowedTools' ? [arg] : []))
+	assert(
+		allowed.some((rule) => /^Bash\(node ".*checkmate\.js" plan show:\*\)$/.test(rule)),
+		'Chat must allow exact read commands'
+	)
+	assert(
+		allowed.some((rule) => /^Bash\(node ".*checkmate\.js" gap answer:\*\)$/.test(rule)),
+		'Chat must allow the gap answer write'
+	)
+	assert(
+		allowed.some((rule) => /^Bash\(node '.*checkmate\.js' plan show:\*\)$/.test(rule)),
+		'Chat must allow the single-quoted form the model uses'
+	)
+	assert(!allowed.some((rule) => /run begin/.test(rule)), 'Chat must not pre-allow commands that touch the target')
 	assert.deepEqual(
 		(await ok('query', "SELECT actor FROM operations WHERE command='run check' AND status='completed'")).rows,
 		[{ actor: 'claude:execute' }]
@@ -1398,7 +2741,7 @@ require('node:readline').createInterface({input:process.stdin}).on('line', line 
 	mkdirSync(join(piWorkspace, '.checkmate'))
 	writeFileSync(
 		join(piWorkspace, '.checkmate/checkmate.db'),
-		gunzipSync(readFileSync(join(root, 'test/e2e/fixtures/workspace-39d33f7.db.gz')))
+		gunzipSync(readFileSync(join(root, 'test/e2e/fixtures/workspace-migrated.db.gz')))
 	)
 	const installed = join(project, 'node_modules/@xoxoai/checkmate')
 	const fullCli = join(installed, 'dist/checkmate.js')
@@ -1421,7 +2764,7 @@ const response = await fetch(${JSON.stringify(`${app.baseUrl}/quote?promotion=tr
 const quote = await response.json()
 if (response.status !== 200 || quote.totalPLN !== 240) throw Error('The fixed loopback build did not return 240 PLN.')
 const invoke = (args, input = '') => execFileSync(process.execPath, [cli, ...args], { input, encoding: 'utf8', stdio: ['pipe', 'pipe', 'inherit'] })
-invoke(['run', 'check', 'pi-ui-run', 'T1', 'A1', '--result', 'passed', '--observed', String(quote.totalPLN), '--evidence', '-'], JSON.stringify({ status: response.status, quote }))
+invoke(['run', 'check', 'pi-ui-run', 'T1', 'A1', '--observed', String(quote.totalPLN), '--evidence', '-'], JSON.stringify({ status: response.status, quote }))
 invoke(['run', 'close', 'pi-ui-run', 'T1'])
 invoke(['run', 'finish', 'pi-ui-run', '--completion', 'completed', '--cleanup', 'completed', '--cleanup-reason', 'No test data.'])
 `
@@ -1706,7 +3049,7 @@ invoke(['run', 'finish', 'pi-ui-run', '--completion', 'completed', '--cleanup', 
 	assert.equal(proof.rows.length, 1)
 	assert.deepEqual([proof.rows[0].test_id, proof.rows[0].assertion_id], ['T1', 'A1'])
 	assert.match(proof.rows[0].contents, /240/)
-	assert.equal(workerStep, 2)
+	assert.equal(workerStep, 3)
 	assert.equal(uiExecutionStep, 3)
 	assert.equal((await piQuery('SELECT count(*) AS n FROM runs')).rows[0].n, 1)
 	const runOps = (
@@ -1741,7 +3084,7 @@ invoke(['run', 'finish', 'pi-ui-run', '--completion', 'completed', '--cleanup', 
 	assert.match(JSON.stringify(piResult), /240/)
 	assert.ok(providerRequests.every((item) => item.body.model === 'fixture'))
 	assert.equal(providerRequests.filter((item) => item.ui).length, 4)
-	assert.equal(providerRequests.filter((item) => item.kind === 'worker').length, 2)
+	assert.equal(providerRequests.filter((item) => item.kind === 'worker').length, 3)
 	assert.deepEqual(providerErrors, [])
 	piUi.kill('SIGTERM')
 	await once(piUi, 'close')
@@ -1752,7 +3095,7 @@ test('Execute a request through Pi RPC — a begun run must reach its worker.', 
 	mkdirSync(join(workspace, '.checkmate'))
 	writeFileSync(
 		join(workspace, '.checkmate/checkmate.db'),
-		gunzipSync(readFileSync(join(root, 'test/e2e/fixtures/workspace-39d33f7.db.gz')))
+		gunzipSync(readFileSync(join(root, 'test/e2e/fixtures/workspace-migrated.db.gz')))
 	)
 	const app = await fixture()
 	t.after(() => app.close())
@@ -1770,7 +3113,7 @@ if (!input.includes('pi-run')) throw Error('Wrong run')
 const run = (args, input) => execFileSync(process.execPath, [process.env.QA_CLI, ...args], {input, encoding:'utf8'})
 fetch(process.env.QA_APP_URL + '/quote?promotion=true&loyalty=true').then(r => r.json()).then(quote => {
   if (quote.totalPLN !== 240) throw Error('Wrong build')
-  run(['run','check','pi-run','T1','A1','--result','passed','--observed','240','--evidence','-'], JSON.stringify(quote))
+  run(['run','check','pi-run','T1','A1','--observed','240','--evidence','-'], JSON.stringify(quote))
   run(['run','close','pi-run','T1'])
   run(['run','finish','pi-run','--completion','completed','--cleanup','completed','--cleanup-reason','No test data.'])
   const result = JSON.stringify({status:'completed',subject:'pi-run',reasons:[]})
@@ -2001,7 +3344,17 @@ test('Run a narrow retest with prerequisites and regressions — uncovered tests
 		assert.equal(result.code, 0, result.output)
 		return result.body
 	}
-	await ok(['setup', '--url', app.baseUrl, '--target', 'shop'])
+	await ok([
+		'setup',
+		'--url',
+		app.baseUrl,
+		'--target',
+		'shop',
+		'--data',
+		'environment',
+		'--policy',
+		'The test fixture keeps no records.',
+	])
 	await ok([
 		'plan',
 		'open',
@@ -2029,21 +3382,37 @@ test('Run a narrow retest with prerequisites and regressions — uncovered tests
 				title: 'Prerequisite',
 				dependsOn: [],
 				metadata: { type: 'regression' },
-				assertions: [{ id: 'A1', check: 'Service responds.', checkKind: 'deterministic' }],
+				assertions: [
+					{
+						id: 'A1',
+						check: 'Service responds.',
+						checkKind: 'deterministic',
+						observe: 'the HTTP status of the service',
+						expected: '200',
+					},
+				],
 			},
 			{
 				...common,
 				id: 'T2',
 				title: 'Quote',
 				dependsOn: ['T1'],
-				assertions: [{ id: 'A1', check: 'The quote is 240.', checkKind: 'deterministic' }],
+				assertions: [
+					{
+						id: 'A1',
+						check: 'The quote is 240.',
+						checkKind: 'deterministic',
+						observe: 'the value stated by the check',
+						expected: '240',
+					},
+				],
 			},
 			{
 				...common,
 				id: 'T3',
 				title: 'Unrelated',
 				dependsOn: [],
-				assertions: [{ id: 'A1', check: 'The quote is positive.', checkKind: 'deterministic' }],
+				assertions: [{ id: 'A1', check: 'The quote is positive.', checkKind: 'agent_observation' }],
 			},
 		],
 		gaps: [],
@@ -2052,10 +3421,7 @@ test('Run a narrow retest with prerequisites and regressions — uncovered tests
 	await ok(['run', 'begin', 'run-1', 'ticket@1', '--build', 'broken', '--tests', 'T1,T2'])
 	const quote = await (await fetch(`${app.baseUrl}/quote?promotion=true&loyalty=true`)).json()
 	assert.equal(quote.totalPLN, 220)
-	await ok(
-		['run', 'check', 'run-1', 'T1', 'A1', '--result', 'passed', '--observed', 'HTTP 200', '--evidence', '-'],
-		quote
-	)
+	await ok(['run', 'check', 'run-1', 'T1', 'A1', '--observed', '200', '--evidence', '-'], quote)
 	await ok(['run', 'close', 'run-1', 'T1'])
 	const checked = await inputCommand(
 		workspace,
@@ -2066,8 +3432,6 @@ test('Run a narrow retest with prerequisites and regressions — uncovered tests
 		'run-1',
 		'T2',
 		'A1',
-		'--result',
-		'failed',
 		'--observed',
 		'220',
 		'--evidence',
@@ -2132,10 +3496,9 @@ test('Run a narrow retest with prerequisites and regressions — uncovered tests
 	])
 	assert.deepEqual(begun.tests, ['T1', 'T2'])
 	for (const id of ['T1', 'T2']) {
-		await ok(
-			['run', 'check', 'run-2', id, 'A1', '--result', 'passed', '--observed', '240', '--evidence', '-'],
-			fixed
-		)
+		// T1 checks the HTTP status of the service, T2 the quote total.
+		const observed = id === 'T1' ? '200' : '240'
+		await ok(['run', 'check', 'run-2', id, 'A1', '--observed', observed, '--evidence', '-'], fixed)
 		await ok(['run', 'close', 'run-2', id])
 	}
 	await ok([
@@ -2202,7 +3565,7 @@ test('Run a two-instance matrix and accept each latest result — one pass masks
 	mkdirSync(join(workspace, '.checkmate'))
 	writeFileSync(
 		join(workspace, '.checkmate/checkmate.db'),
-		gunzipSync(readFileSync(join(root, 'test/e2e/fixtures/workspace-39d33f7.db.gz')))
+		gunzipSync(readFileSync(join(root, 'test/e2e/fixtures/workspace-migrated.db.gz')))
 	)
 	const a = await fixture()
 	const b = await fixture()
@@ -2227,19 +3590,7 @@ test('Run a two-instance matrix and accept each latest result — one pass masks
 		const observed = await (await fetch(`${app.baseUrl}/quote?promotion=true&loyalty=true`)).json()
 		assert.equal(observed.totalPLN, expected)
 		const checked = await ok(
-			[
-				'run',
-				'check',
-				run,
-				'T1',
-				'A1',
-				'--result',
-				expected === 240 ? 'passed' : 'failed',
-				'--observed',
-				String(expected),
-				'--evidence',
-				'-',
-			],
+			['run', 'check', run, 'T1', 'A1', '--observed', String(expected), '--evidence', '-'],
 			JSON.stringify(observed)
 		)
 		if (expected === 220)
@@ -2300,7 +3651,10 @@ test('Resume a structured run after a worker deadline — outcomes lost or gate 
 	}
 	const entry = join(plugin, 'dist/checkmate.js')
 	const manifest = JSON.parse(readFileSync(join(plugin, '.claude-plugin/plugin.json'), 'utf8'))
-	assert.equal(execFileSync(process.execPath, [entry, '--version'], { encoding: 'utf8' }).trim(), manifest.version)
+	assert.match(
+		execFileSync(process.execPath, [entry, '--version'], { encoding: 'utf8' }),
+		new RegExp(`^${manifest.version} build [0-9a-f]{12}\n`)
+	)
 	assert(existsSync(join(plugin, 'pi/permission.mjs')))
 	const ui = spawn(process.execPath, [entry, 'ui', '--port', '0'], { cwd: directory(t), env: process.env })
 	try {
@@ -2315,7 +3669,7 @@ test('Resume a structured run after a worker deadline — outcomes lost or gate 
 	mkdirSync(join(workspace, '.checkmate'))
 	writeFileSync(
 		join(workspace, '.checkmate/checkmate.db'),
-		gunzipSync(readFileSync(join(root, 'test/e2e/fixtures/workspace-39d33f7.db.gz')))
+		gunzipSync(readFileSync(join(root, 'test/e2e/fixtures/workspace-migrated.db.gz')))
 	)
 	const app = await fixture()
 	t.after(() => app.close())
@@ -2333,7 +3687,7 @@ const plugin = process.argv[process.argv.indexOf('--plugin-dir') + 1]
 writeFileSync('worker.pid', String(process.pid))
 fetch(process.env.QA_APP_URL + '/quote?promotion=true&loyalty=true').then(r => r.json()).then(quote => {
   if (quote.totalPLN !== 240) throw Error('Bad build')
-  if (!process.env.QA_FINISH) execFileSync(process.execPath, [plugin + '/dist/checkmate.js', 'run', 'check', 'run-1', 'T1', 'A1', '--result', 'passed', '--observed', '240', '--evidence', '-'], { input: JSON.stringify(quote), stdio: ['pipe', 'pipe', 'inherit'] })
+  if (!process.env.QA_FINISH) execFileSync(process.execPath, [plugin + '/dist/checkmate.js', 'run', 'check', 'run-1', 'T1', 'A1', '--observed', '240', '--evidence', '-'], { input: JSON.stringify(quote), stdio: ['pipe', 'pipe', 'inherit'] })
   if (process.env.QA_FINISH) {
     execFileSync(process.execPath, [plugin + '/dist/checkmate.js', 'run', 'close', 'run-1', 'T1'])
     execFileSync(process.execPath, [plugin + '/dist/checkmate.js', 'run', 'finish', 'run-1', '--completion', 'completed', '--cleanup', 'completed', '--cleanup-reason', 'No test data.'])
@@ -2497,3 +3851,5147 @@ test(
 		)
 	}
 )
+
+test('Export a partial run with blocked tests as skipped — green CI hides the open gap.', async (t) => {
+	const workspace = directory(t)
+	writeFileSync(join(workspace, 'ticket.md'), 'The quote is 240. The promotion replaces loyalty.\n')
+	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle', CHECKMATE_HARNESS: 'pi' }
+	const ok = async (args: string[], value?: object) => {
+		const result = await inputCommand(workspace, env, value ? JSON.stringify(value) : '', ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	const app = await fixture()
+	t.after(() => app.close())
+	await ok([
+		'target',
+		'open',
+		'shop',
+		'--entry-point',
+		'web:url:Shop HTTP API.',
+		'--capabilities',
+		'http',
+		'--operations',
+		'read_catalog',
+	])
+	await ok(['target', 'save', 'shop'], {
+		contractVersion: 'toolkit-2',
+		targetId: 'shop',
+		revision: 1,
+		entryPoints: [{ name: 'web', kind: 'url', purpose: 'Shop HTTP API.' }],
+		capabilities: ['http'],
+		tools: [],
+		authentication: { kind: 'none', references: [] },
+		allowedOperations: ['read_catalog'],
+		startup: { owner: 'factory', command: null },
+		cleanup: 'No test data.',
+		readyForLiveExecution: true,
+		reset: { owner: 'environment', command: null, policy: { text: 'The test fixture keeps no records.' } },
+		approvals: { plan: 'none', result: 'none' },
+	})
+	await ok(['target', 'instance', 'add', 'shop', 'local', '--entry', `web=${app.baseUrl}`])
+	await ok([
+		'plan',
+		'open',
+		'ticket',
+		'--target',
+		'shop@1',
+		'--objective',
+		'Check the quote.',
+		'--source',
+		'ticket.md',
+	])
+	const test = (id: string, title: string) => ({
+		id,
+		title,
+		requirementIds: ['R1'],
+		capability: 'http',
+		operations: ['read_catalog'],
+		dependsOn: [],
+		preconditions: [],
+		action: 'Read the quote.',
+		assertions: [
+			{
+				id: 'A1',
+				check: 'The quote is 240.',
+				checkKind: 'deterministic',
+				observe: 'the value stated by the check',
+				expected: '240',
+			},
+		],
+	})
+	await ok(['plan', 'save', 'ticket'], {
+		requirements: [{ id: 'R1', text: 'The quote is 240.', source: 'ticket.md' }],
+		tests: [test('T1', 'Quote'), { ...test('T2', 'Promotion with loyalty'), assertions: [] }],
+		gaps: [
+			{
+				id: 'G1',
+				severity: 'blocking',
+				status: 'open',
+				requirementIds: [],
+				testIds: ['T2'],
+				question: 'Does the promotion replace loyalty?',
+				consequence: 'The expected total of T2 is unknown.',
+				decisionId: null,
+			},
+		],
+	})
+	await ok(['plan', 'open', 'held', '--target', 'shop@1', '--objective', 'Check the quote.', '--source', 'ticket.md'])
+	await ok(['plan', 'save', 'held'], {
+		requirements: [{ id: 'R1', text: 'The quote is 240.', source: 'ticket.md' }],
+		tests: [test('T1', 'Promotion with loyalty')],
+		gaps: [
+			{
+				id: 'G1',
+				severity: 'blocking',
+				status: 'open',
+				requirementIds: [],
+				testIds: ['T1'],
+				question: 'Does the promotion replace loyalty?',
+				consequence: 'The expected total of T1 is unknown.',
+				decisionId: null,
+			},
+		],
+	})
+	const waiting = await command(workspace, env, 'status', 'ticket')
+	assert.equal(waiting.code, 0, waiting.output)
+	const withGap = await command(workspace, env, 'status', 'ticket', '--fail-on-blocked')
+	assert.equal(withGap.code, 3, withGap.output)
+	assert.equal(withGap.body.waitsOn, 'qa')
+	const blocked = await command(workspace, env, 'status', 'held', '--fail-on-blocked')
+	assert.equal(blocked.code, 3, blocked.output)
+	assert.equal(blocked.body.waitsOn, 'oracle')
+	await ok(['run', 'begin', 'run-1', 'ticket@1', '--build', 'b1', '--instance', 'local', '--partial', 'ready_only'])
+	const check = await inputCommand(
+		workspace,
+		env,
+		'HTTP 200: 240',
+		'run',
+		'check',
+		'run-1',
+		'T1',
+		'A1',
+		'--observed',
+		'240',
+		'--evidence',
+		'-'
+	)
+	assert.equal(check.code, 0, check.output)
+	await ok(['run', 'close', 'run-1', 'T1'])
+	await ok([
+		'run',
+		'finish',
+		'run-1',
+		'--completion',
+		'completed',
+		'--cleanup',
+		'completed',
+		'--cleanup-reason',
+		'No test data.',
+	])
+	await ok(['export', 'run', 'run-1', '--format', 'junit', '--out', 'partial.xml'])
+	const junit = readFileSync(join(workspace, 'partial.xml'), 'utf8')
+	assert.match(junit, /<testsuites name="run-1" tests="2" failures="0" errors="0" skipped="1"/)
+	assert.match(
+		junit,
+		/<testcase classname="ticket" name="T2"[^>]*>\s*<properties>[\s\S]*?<skipped message="blocked by open gap G1: Does the promotion replace loyalty\?"/
+	)
+	assert.match(junit, /name="coverage" value="partial"/)
+})
+
+test('Report a different checkmate build on PATH — the session runs a stale plugin without a warning.', async (t) => {
+	const workspace = directory(t)
+	const { chmodSync, copyFileSync, mkdirSync, appendFileSync } = await import('node:fs')
+	const { delimiter } = await import('node:path')
+	const other = join(workspace, 'other')
+	mkdirSync(other)
+	const copy = join(other, 'checkmate.js')
+	copyFileSync(join(root, 'plugin/dist/checkmate.js'), copy)
+	appendFileSync(copy, '\n// a different build\n')
+	chmodSync(copy, 0o755)
+	const { symlinkSync } = await import('node:fs')
+	symlinkSync(copy, join(other, 'checkmate'))
+	const result = spawnSync(process.execPath, [join(root, 'plugin/dist/checkmate.js'), '--version'], {
+		cwd: workspace,
+		env: { ...process.env, PATH: `${other}${delimiter}${process.env.PATH}` },
+		encoding: 'utf8',
+	})
+	assert.equal(result.status, 0, result.stderr)
+	assert.match(result.stdout, /^0\.7\.2 build [0-9a-f]{12}$/m)
+	assert.match(result.stdout, /^warning: the checkmate on PATH is build [0-9a-f]{12} at .*checkmate\.js/m)
+})
+
+test('Refuse a run that can change data without a reset, then run the recorded reset before it begins — testers start from clean data.', async (t) => {
+	const workspace = directory(t)
+	writeFileSync(join(workspace, 'ticket.md'), 'An order can be created.\n')
+	writeFileSync(
+		join(workspace, 'reset.mjs'),
+		"import { writeFileSync } from 'node:fs'\nwriteFileSync('reset-ran.txt', 'yes')\n"
+	)
+	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle', CHECKMATE_HARNESS: 'pi' }
+	const ok = async (...args: string[]) => {
+		const result = await command(workspace, env, ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	const app = await fixture()
+	t.after(() => app.close())
+	await ok('setup', '--url', app.baseUrl, '--target', 'shop', '--instance', 'local')
+	await ok('plan', 'open', 'ticket', '--target', 'shop@1', '--objective', 'Create an order.', '--source', 'ticket.md')
+	const saved = await inputCommand(
+		workspace,
+		env,
+		JSON.stringify({
+			requirements: [{ id: 'R1', text: 'An order can be created.', source: 'ticket.md' }],
+			tests: [
+				{
+					id: 'T1',
+					title: 'Create an order',
+					requirementIds: ['R1'],
+					capability: 'http',
+					operations: ['create_fixture_order'],
+					dependsOn: [],
+					preconditions: [],
+					action: 'Create an order.',
+					assertions: [
+						{
+							id: 'A1',
+							check: 'The order is created.',
+							checkKind: 'deterministic',
+							observe: 'the order status in the create response',
+							expected: 'created',
+						},
+					],
+				},
+			],
+			gaps: [],
+		}),
+		'plan',
+		'save',
+		'ticket'
+	)
+	assert.equal(saved.code, 0, saved.output)
+	const refused = await command(
+		workspace,
+		env,
+		'run',
+		'begin',
+		'run-1',
+		'ticket@1',
+		'--build',
+		'b1',
+		'--instance',
+		'local'
+	)
+	assert.equal(refused.code, 1, refused.output)
+	assert.match(refused.output, /can change data \(create_fixture_order\), and target shop has no data policy/)
+	assert.match(refused.output, /--reset \\?"<command>/)
+	await ok('setup', '--url', app.baseUrl, '--target', 'shop', '--instance', 'local', '--reset', 'node reset.mjs')
+	await ok('run', 'gate', 'ticket@1', '--build', 'b1')
+	assert.equal(existsSync(join(workspace, 'reset-ran.txt')), false)
+	await ok('run', 'begin', 'run-1', 'ticket@1', '--build', 'b1', '--instance', 'local')
+	assert.equal(readFileSync(join(workspace, 'reset-ran.txt'), 'utf8'), 'yes')
+})
+
+test('Record each test with its own worker — a silent worker is retried once, then its test is closed as error and dependent tests are blocked.', async (t) => {
+	const workspace = directory(t)
+	writeFileSync(join(workspace, 'ticket.md'), 'The quote is 240.\n')
+	const app = await fixture()
+	t.after(() => app.close())
+	app.fix()
+	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle' }
+	const ok = async (args: string[], value?: object) => {
+		const result = await inputCommand(workspace, env, value ? JSON.stringify(value) : '', ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	await ok(['setup', '--url', app.baseUrl, '--target', 'shop'])
+	await ok([
+		'plan',
+		'open',
+		'ticket',
+		'--target',
+		'shop@1',
+		'--objective',
+		'Check the ticket.',
+		'--source',
+		'ticket.md',
+	])
+	const test = (id: string, dependsOn: string[] = []) => ({
+		capability: 'http',
+		operations: ['read_catalog'],
+		dependsOn,
+		preconditions: [],
+		id,
+		title: `Quote ${id}`,
+		requirementIds: ['R1'],
+		action: 'Read the quote.',
+		assertions: [
+			{
+				id: 'A1',
+				check: 'The quote is 240.',
+				checkKind: 'deterministic',
+				observe: 'the value stated by the check',
+				expected: '240',
+			},
+		],
+	})
+	await ok(['plan', 'save', 'ticket'], {
+		requirements: [{ id: 'R1', text: 'The quote is 240.', source: 'ticket.md' }],
+		tests: [test('T1'), test('T2'), test('T3'), test('T4', ['T3'])],
+		gaps: [],
+	})
+	await ok(['plan', 'approve', 'ticket@1', '--rationale', 'Run the rule.'])
+	await ok(['run', 'begin', 'run-1', 'ticket@1', '--build', 'b1', '--partial', 'ready_only'])
+	const bin = directory(t)
+	copyFileSync(join(root, 'test/e2e/per-test-host.mjs'), join(bin, 'pi'))
+	chmodSync(join(bin, 'pi'), 0o755)
+	const log = join(directory(t), 'prompts.log')
+	const piEnv = {
+		...env,
+		PATH: `${bin}${delimiter}${process.env.PATH}`,
+		CHECKMATE_HARNESS: 'pi',
+		FAKE_PI_LOG: log,
+		FAKE_CHECKMATE_CLI: binary,
+		FAKE_RUN: 'run-1',
+	}
+	const delegated = await inputCommand(workspace, piEnv, '', 'delegate', 'execute', 'run-1')
+	assert.equal(delegated.body.status, 'operational_error', delegated.output)
+	const gated = await inputCommand(workspace, env, '', 'run', 'show', 'run-1', '--gate')
+	assert.equal(gated.code, 2, gated.output)
+	assert.equal(gated.body.gate.state, 'could_not_test')
+	assert.deepEqual(readFileSync(log, 'utf8').trim().split('\n'), ['T1', 'T2', 'T2', 'T3', 'T3', 'PROBE'])
+	const probed = await ok([
+		'query',
+		"SELECT count(*) AS n FROM findings WHERE run_id = 'run-1' AND body LIKE '%\"potential_issue\"%'",
+	])
+	assert.equal(probed.rows[0].n, 1)
+	const outcomes = await ok([
+		'query',
+		"SELECT test_id, outcome FROM outcomes WHERE run_id = 'run-1' ORDER BY test_id",
+	])
+	assert.deepEqual(outcomes.rows, [
+		{ test_id: 'T1', outcome: 'passed' },
+		{ test_id: 'T2', outcome: 'passed' },
+		{ test_id: 'T3', outcome: 'error' },
+		{ test_id: 'T4', outcome: 'blocked' },
+	])
+})
+
+test('Refuse a run on a plan that holds a compound assertion — a stored check with two values passed against one page.', async (t) => {
+	const workspace = directory(t)
+	writeFileSync(join(workspace, 'ticket.md'), 'The quote is 240.\n')
+	const app = await fixture()
+	t.after(() => app.close())
+	app.fix()
+	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle' }
+	const ok = async (args: string[], value?: object) => {
+		const result = await inputCommand(workspace, env, value ? JSON.stringify(value) : '', ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	await ok(['setup', '--url', app.baseUrl, '--target', 'shop'])
+	await ok([
+		'plan',
+		'open',
+		'ticket',
+		'--target',
+		'shop@1',
+		'--objective',
+		'Check the ticket.',
+		'--source',
+		'ticket.md',
+	])
+	await ok(['plan', 'save', 'ticket'], {
+		requirements: [{ id: 'R1', text: 'The quote is 240.', source: 'ticket.md' }],
+		tests: [
+			{
+				capability: 'http',
+				operations: ['read_catalog'],
+				dependsOn: [],
+				preconditions: [],
+				id: 'T1',
+				title: 'Quote',
+				requirementIds: ['R1'],
+				action: 'Read the quote.',
+				assertions: [
+					{
+						id: 'A1',
+						check: 'The quote is 240.',
+						checkKind: 'deterministic',
+						observe: 'the value stated by the check',
+						expected: '240',
+					},
+				],
+			},
+		],
+		gaps: [],
+	})
+	await ok(['plan', 'approve', 'ticket@1', '--rationale', 'Run the rule.'])
+	const database = new DatabaseSync(join(workspace, '.checkmate', 'checkmate.db'))
+	for (const trigger of database
+		.prepare("SELECT name FROM sqlite_master WHERE type = 'trigger' AND tbl_name = 'plan_revisions'")
+		.all() as Array<{ name: string }>)
+		database.exec(`DROP TRIGGER ${trigger.name}`)
+	const body = (
+		database.prepare("SELECT body FROM plan_revisions WHERE plan_id = 'ticket' AND revision = 1").get() as {
+			body: string
+		}
+	).body
+	database
+		.prepare("UPDATE plan_revisions SET body = ? WHERE plan_id = 'ticket' AND revision = 1")
+		.run(body.replaceAll('"check":"The quote is 240."', '"check":"The quote is 240 and the refund is 30 days."'))
+	database.close()
+	const gated = await inputCommand(workspace, env, '', 'run', 'gate', 'ticket@1', '--build', 'b1')
+	assert.equal(gated.body.status, 'needs_decision', gated.output)
+	assert.match(gated.output, /checks more than one value/)
+	assert.match(gated.output, /delegate revise ticket/)
+})
+
+test('Report a second Checkmate package that Pi declares — a stale copy loads beside this build without a warning.', async (t) => {
+	const workspace = directory(t)
+	const agent = directory(t)
+	mkdirSync(join(workspace, '.pi'))
+	writeFileSync(
+		join(workspace, '.pi', 'settings.json'),
+		JSON.stringify({ packages: ['git:github.com/dawiddiwad/checkmate@wip/refactor-team-blue'] })
+	)
+	const env = { ...process.env, PI_CODING_AGENT_DIR: agent }
+	const version = spawnSync(process.execPath, [binary, '--version'], { cwd: workspace, env, encoding: 'utf8' })
+	assert.equal(version.status, 0, version.stderr)
+	assert.match(
+		version.stdout + version.stderr,
+		/warning: Pi declares another Checkmate package at project scope: git:github\.com\/dawiddiwad\/checkmate@wip\/refactor-team-blue\. .*pi remove git:github\.com\/dawiddiwad\/checkmate@wip\/refactor-team-blue -l/
+	)
+})
+
+test('Decide a structured assertion by comparing the observed value with the expected value — a child never records passed for a value it did not see.', async (t) => {
+	const workspace = directory(t)
+	writeFileSync(join(workspace, 'ticket.md'), 'The kettle price is 240 PLN.\n')
+	const app = await fixture()
+	t.after(() => app.close())
+	app.fix()
+	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle' }
+	const ok = async (args: string[], value?: object) => {
+		const result = await inputCommand(workspace, env, value ? JSON.stringify(value) : '', ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	await ok(['setup', '--url', app.baseUrl, '--target', 'shop'])
+	await ok([
+		'plan',
+		'open',
+		'ticket',
+		'--target',
+		'shop@1',
+		'--objective',
+		'Check the price.',
+		'--source',
+		'ticket.md',
+	])
+	const structured = (id: string, observe: string, expected: string) => ({
+		id,
+		check: `The kettle price shown is ${expected}.`,
+		checkKind: 'deterministic',
+		observe,
+		expected,
+	})
+	await ok(['plan', 'save', 'ticket'], {
+		requirements: [{ id: 'R1', text: 'The kettle price is 240 PLN.', source: 'ticket.md' }],
+		tests: [
+			{
+				capability: 'http',
+				operations: ['read_catalog'],
+				dependsOn: [],
+				preconditions: [],
+				id: 'T1',
+				title: 'Price',
+				requirementIds: ['R1'],
+				action: 'Read the price.',
+				assertions: [
+					structured('A1', 'the price value labelled Price', '240 PLN'),
+					structured('A2', 'the unit price in the quote', '240 PLN'),
+				],
+			},
+		],
+		gaps: [],
+	})
+	await ok(['plan', 'approve', 'ticket@1', '--rationale', 'Run the rule.'])
+	await ok(['run', 'begin', 'run-1', 'ticket@1', '--build', 'b1', '--partial', 'ready_only'])
+	const refused = await inputCommand(
+		workspace,
+		env,
+		'Price: 240 PLN',
+		'run',
+		'check',
+		'run-1',
+		'T1',
+		'A1',
+		'--result',
+		'passed',
+		'--observed',
+		'240 PLN',
+		'--evidence',
+		'-'
+	)
+	assert.equal(refused.code, 1, refused.output)
+	assert.match(refused.output, /takes its result from --observed/)
+	const shown = await inputCommand(
+		workspace,
+		env,
+		'Price: 300 PLN',
+		'run',
+		'check',
+		'run-1',
+		'T1',
+		'A1',
+		'--observed',
+		'300 PLN',
+		'--evidence',
+		'-'
+	)
+	assert.equal(shown.code, 0, shown.output)
+	const quoted = await inputCommand(
+		workspace,
+		env,
+		'unitPrice: 240 PLN',
+		'run',
+		'check',
+		'run-1',
+		'T1',
+		'A2',
+		'--observed',
+		'240 PLN',
+		'--evidence',
+		'-'
+	)
+	assert.equal(quoted.code, 0, quoted.output)
+	const results = await ok([
+		'query',
+		"SELECT assertion_id, result FROM assertion_results WHERE run_id = 'run-1' ORDER BY assertion_id",
+	])
+	assert.deepEqual(results.rows, [
+		{ assertion_id: 'A1', result: 'failed' },
+		{ assertion_id: 'A2', result: 'passed' },
+	])
+})
+
+test('Resume a run with a test that may have changed data — a recorded reset runs again, an external reset asks the oracle.', async (t) => {
+	const workspace = directory(t)
+	writeFileSync(join(workspace, 'ticket.md'), 'An order can be created.\n')
+	writeFileSync(
+		join(workspace, 'reset.mjs'),
+		"import { writeFileSync } from 'node:fs'\nwriteFileSync('reset-ran.txt', 'yes')\n"
+	)
+	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle', CHECKMATE_HARNESS: 'pi' }
+	const ok = async (...args: string[]) => {
+		const result = await command(workspace, env, ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	const app = await fixture()
+	t.after(() => app.close())
+	await ok('setup', '--url', app.baseUrl, '--target', 'shop', '--instance', 'local', '--reset', 'node reset.mjs')
+	await ok('plan', 'open', 'ticket', '--target', 'shop@1', '--objective', 'Create an order.', '--source', 'ticket.md')
+	const saved = await inputCommand(
+		workspace,
+		env,
+		JSON.stringify({
+			requirements: [{ id: 'R1', text: 'An order can be created.', source: 'ticket.md' }],
+			tests: [
+				{
+					id: 'T1',
+					title: 'Create an order',
+					requirementIds: ['R1'],
+					capability: 'http',
+					operations: ['create_fixture_order'],
+					dependsOn: [],
+					preconditions: [],
+					action: 'Create an order.',
+					assertions: [
+						{
+							id: 'A1',
+							check: 'The order is created.',
+							checkKind: 'deterministic',
+							observe: 'the order status in the create response',
+							expected: 'created',
+						},
+					],
+				},
+				{
+					id: 'T2',
+					title: 'Read the catalog',
+					requirementIds: ['R1'],
+					capability: 'http',
+					operations: ['read_catalog'],
+					dependsOn: [],
+					preconditions: [],
+					action: 'Read the catalog.',
+					assertions: [
+						{
+							id: 'A1',
+							check: 'The catalog is listed.',
+							checkKind: 'deterministic',
+							observe: 'the catalog list in the response',
+							expected: 'listed',
+						},
+					],
+				},
+			],
+			gaps: [],
+		}),
+		'plan',
+		'save',
+		'ticket'
+	)
+	assert.equal(saved.code, 0, saved.output)
+	await ok('run', 'begin', 'run-1', 'ticket@1', '--build', 'b1', '--instance', 'local')
+	rmSync(join(workspace, 'reset-ran.txt'), { force: true })
+	const resumed = await ok('run', 'resume', 'run-1')
+	assert.equal(resumed.status, 'completed')
+	assert.equal(readFileSync(join(workspace, 'reset-ran.txt'), 'utf8'), 'yes')
+	const byTest = Object.fromEntries(resumed.tests.map((item: { testId: string }) => [item.testId, item]))
+	assert.equal(byTest.T1.reset, 'ran before this attempt')
+	assert.equal(byTest.T2.reset, undefined)
+	await ok(
+		'setup',
+		'--url',
+		app.baseUrl,
+		'--target',
+		'shop',
+		'--instance',
+		'local',
+		'--data',
+		'environment',
+		'--policy',
+		'The test fixture keeps no records.'
+	)
+	await ok('run', 'begin', 'run-2', 'ticket@1', '--build', 'b2', '--instance', 'local')
+	const asked = await ok('run', 'resume', 'run-2')
+	assert.equal(asked.status, 'needs_decision')
+	assert.match(asked.reasons[0], /T1/)
+	assert.match(asked.hint, /run resume run-2 --error T1/)
+})
+
+test('Finish a run whose deadline is used up as interrupted with cause deadline — tests closed on the deadline are not refused as completed.', async (t) => {
+	const workspace = directory(t)
+	writeFileSync(join(workspace, 'ticket.md'), 'The quote is 240.\n')
+	const app = await fixture()
+	t.after(() => app.close())
+	app.fix()
+	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle' }
+	const ok = async (args: string[], value?: object) => {
+		const result = await inputCommand(workspace, env, value ? JSON.stringify(value) : '', ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	await ok(['setup', '--url', app.baseUrl, '--target', 'shop'])
+	await ok([
+		'plan',
+		'open',
+		'ticket',
+		'--target',
+		'shop@1',
+		'--objective',
+		'Check the ticket.',
+		'--source',
+		'ticket.md',
+	])
+	await ok(['plan', 'save', 'ticket'], {
+		requirements: [{ id: 'R1', text: 'The quote is 240.', source: 'ticket.md' }],
+		tests: [
+			{
+				capability: 'http',
+				operations: ['read_catalog'],
+				dependsOn: [],
+				preconditions: [],
+				id: 'T1',
+				title: 'Quote',
+				requirementIds: ['R1'],
+				action: 'Read the quote.',
+				assertions: [
+					{
+						id: 'A1',
+						check: 'The quote is 240.',
+						checkKind: 'deterministic',
+						observe: 'the value stated by the check',
+						expected: '240',
+					},
+				],
+			},
+		],
+		gaps: [],
+	})
+	await ok(['plan', 'approve', 'ticket@1', '--rationale', 'Run the rule.'])
+	await ok(['run', 'begin', 'run-1', 'ticket@1', '--build', 'b1', '--partial', 'ready_only', '--timeout', '1'])
+	await new Promise((resolve) => setTimeout(resolve, 2500))
+	const delegated = await inputCommand(
+		workspace,
+		{ ...env, CHECKMATE_HARNESS: 'pi' },
+		'',
+		'delegate',
+		'execute',
+		'run-1'
+	)
+	assert.equal(delegated.body.status, 'interrupted', delegated.output)
+	const outcomes = await ok(['query', "SELECT test_id, outcome FROM outcomes WHERE run_id = 'run-1'"])
+	assert.deepEqual(outcomes.rows, [{ test_id: 'T1', outcome: 'not_run' }])
+})
+
+test('Show a legacy plan — status and plan show name checks saved without an expected value and the revise command.', async (t) => {
+	const workspace = directory(t)
+	mkdirSync(join(workspace, '.checkmate'))
+	writeFileSync(
+		join(workspace, '.checkmate/checkmate.db'),
+		gunzipSync(readFileSync(join(root, 'test/e2e/fixtures/workspace-39d33f7.db.gz')))
+	)
+	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle' }
+	const shown = await command(workspace, env, 'plan', 'show', 'ticket')
+	assert.equal(shown.code, 0, shown.output)
+	assert.deepEqual(shown.body.legacyChecks, ['T1.A1'])
+	const status = await command(workspace, env, 'status', 'ticket')
+	assert.equal(status.code, 0, status.output)
+	assert.deepEqual(status.body.legacyChecks, ['T1.A1'])
+})
+
+test('Refuse a run on a legacy check, then migrate it by revise without a decision — the check gets its expected value, no worker decides it.', async (t) => {
+	const workspace = directory(t)
+	mkdirSync(join(workspace, '.checkmate'))
+	writeFileSync(
+		join(workspace, '.checkmate/checkmate.db'),
+		gunzipSync(readFileSync(join(root, 'test/e2e/fixtures/workspace-39d33f7.db.gz')))
+	)
+	const app = await fixture()
+	t.after(() => app.close())
+	app.fix()
+	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle' }
+	const ok = async (...args: string[]) => {
+		const result = await command(workspace, env, ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	await ok('target', 'instance', 'add', 'shop', 'local', '--entry', `web=${app.baseUrl}`)
+	await ok('plan', 'approve', 'ticket@1', '--rationale', 'Run the rule.')
+	const refused = await command(
+		workspace,
+		env,
+		'run',
+		'begin',
+		'run-1',
+		'ticket@1',
+		'--build',
+		'fixed',
+		'--instance',
+		'local',
+		'--tests',
+		'T1'
+	)
+	assert.equal(refused.body.status, 'needs_decision', refused.output)
+	assert.match(refused.body.reasons.join(' '), /T1\.A1 is a deterministic check without an expected value/)
+	assert.match(refused.body.hint, /checkmate delegate revise ticket/)
+	const migrated = await inputCommand(
+		workspace,
+		env,
+		JSON.stringify({
+			tests: {
+				T1: {
+					assertions: [
+						{
+							check: 'The quote is 240.',
+							checkKind: 'deterministic',
+							observe: 'the value stated by the check',
+							expected: '240',
+						},
+					],
+				},
+			},
+		}),
+		'plan',
+		'revise',
+		'ticket'
+	)
+	assert.equal(migrated.code, 0, migrated.output)
+	assert.equal(migrated.body.reason, 'migrate checks to the current shape')
+	await ok('plan', 'approve', 'ticket@2', '--rationale', 'Run the migrated rule.')
+	await ok('run', 'begin', 'run-1', 'ticket@2', '--build', 'fixed', '--instance', 'local', '--tests', 'T1')
+})
+
+test('Save a deterministic check only with an expected value — the kind decides, not a digit; an agent observation names no value and the gate counts its verdict.', async (t) => {
+	const workspace = directory(t)
+	writeFileSync(join(workspace, 'ticket.md'), 'The quote is 240 and the order has one item.\n')
+	const app = await fixture()
+	t.after(() => app.close())
+	app.fix()
+	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle' }
+	const ok = async (args: string[], value?: object) => {
+		const result = await inputCommand(workspace, env, value ? JSON.stringify(value) : '', ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	await ok(['setup', '--url', app.baseUrl, '--target', 'shop'])
+	await ok([
+		'plan',
+		'open',
+		'ticket',
+		'--target',
+		'shop@1',
+		'--objective',
+		'Check the quote.',
+		'--source',
+		'ticket.md',
+	])
+	const plan = (assertions: object[][]) => ({
+		requirements: [{ id: 'R1', text: 'The quote is 240 and the order has one item.', source: 'ticket.md' }],
+		tests: [
+			{
+				capability: 'http',
+				operations: ['read_catalog'],
+				dependsOn: [],
+				preconditions: [],
+				id: 'T1',
+				title: 'Quote',
+				requirementIds: ['R1'],
+				action: 'Read the quote.',
+				assertions: assertions[0],
+			},
+			{
+				capability: 'http',
+				operations: ['read_catalog'],
+				dependsOn: [],
+				preconditions: [],
+				id: 'T2',
+				title: 'Order',
+				requirementIds: ['R1'],
+				action: 'Read the order.',
+				assertions: assertions[1],
+			},
+		],
+		gaps: [],
+	})
+	const refused = await inputCommand(
+		workspace,
+		env,
+		JSON.stringify(
+			plan([
+				[
+					{
+						id: 'A1',
+						check: 'The quote is 240.',
+						checkKind: 'deterministic',
+						observe: 'the quote total',
+						expected: '240',
+					},
+				],
+				[{ id: 'A1', check: 'The order has one item.', checkKind: 'deterministic' }],
+			])
+		),
+		'plan',
+		'save',
+		'ticket'
+	)
+	assert.equal(refused.code, 1, refused.output)
+	assert.match(
+		refused.body.reasons.join(' '),
+		/T2\.A1 is a deterministic check without an observed item and an expected value/
+	)
+	assert.match(refused.body.hint, /agent_observation/)
+	await ok(
+		['plan', 'save', 'ticket'],
+		plan([
+			[
+				{
+					id: 'A1',
+					check: 'The quote is 240.',
+					checkKind: 'deterministic',
+					observe: 'the quote total',
+					expected: '240',
+				},
+			],
+			[{ id: 'A1', check: 'The order has one item.', checkKind: 'agent_observation' }],
+		])
+	)
+	await ok(['plan', 'approve', 'ticket@1', '--rationale', 'Run the rule.'])
+	await ok(['run', 'begin', 'run-1', 'ticket@1', '--build', 'fixed', '--partial', 'ready_only'])
+	await ok(['run', 'check', 'run-1', 'T1', 'A1', '--observed', '240', '--evidence', '-'], { totalPLN: 240 })
+	await ok(['run', 'close', 'run-1', 'T1'])
+	await ok(['run', 'check', 'run-1', 'T2', 'A1', '--result', 'passed', '--observed', 'one item', '--evidence', '-'], {
+		lines: 1,
+	})
+	await ok(['run', 'close', 'run-1', 'T2'])
+	await ok([
+		'run',
+		'finish',
+		'run-1',
+		'--completion',
+		'completed',
+		'--cleanup',
+		'completed',
+		'--cleanup-reason',
+		'No test data.',
+	])
+	const gated = await command(workspace, env, 'run', 'show', 'run-1', '--gate')
+	assert.equal(gated.code, 0, gated.output)
+	assert.equal(gated.body.gate.state, 'passed')
+	assert.equal(gated.body.gate.judgedByAgent, 1)
+})
+
+test('Gate a run with a deterministic check that code did not verify — the run is not green and names the checks and the revise command.', async (t) => {
+	const workspace = directory(t)
+	mkdirSync(join(workspace, '.checkmate'))
+	writeFileSync(
+		join(workspace, '.checkmate/checkmate.db'),
+		gunzipSync(readFileSync(join(root, 'test/e2e/fixtures/workspace-migrated.db.gz')))
+	)
+	const app = await fixture()
+	t.after(() => app.close())
+	app.fix()
+	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle' }
+	const ok = async (...args: string[]) => {
+		const result = await command(workspace, env, ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	await ok('target', 'instance', 'add', 'shop', 'local', '--entry', `web=${app.baseUrl}`)
+	await ok('plan', 'approve', 'ticket@1', '--rationale', 'Run the rule.')
+	await ok('run', 'begin', 'run-1', 'ticket@1', '--build', 'fixed', '--instance', 'local', '--tests', 'T1')
+	await inputCommand(
+		workspace,
+		env,
+		'{"totalPLN":240}',
+		'run',
+		'check',
+		'run-1',
+		'T1',
+		'A1',
+		'--observed',
+		'240',
+		'--evidence',
+		'-'
+	)
+	await ok('run', 'close', 'run-1', 'T1')
+	await ok(
+		'run',
+		'finish',
+		'run-1',
+		'--completion',
+		'completed',
+		'--cleanup',
+		'completed',
+		'--cleanup-reason',
+		'No test data.'
+	)
+	const database = new DatabaseSync(join(workspace, '.checkmate', 'checkmate.db'))
+	for (const trigger of database
+		.prepare("SELECT name FROM sqlite_master WHERE type = 'trigger' AND tbl_name = 'plan_revisions'")
+		.all() as Array<{ name: string }>)
+		database.exec(`DROP TRIGGER ${trigger.name}`)
+	const body = (
+		database.prepare("SELECT body FROM plan_revisions WHERE plan_id = 'ticket' AND revision = 1").get() as {
+			body: string
+		}
+	).body
+	database
+		.prepare("UPDATE plan_revisions SET body = ? WHERE plan_id = 'ticket' AND revision = 1")
+		.run(body.replaceAll(',"expected":"240"', '').replaceAll(',"observe":"the value stated by the check"', ''))
+	database.close()
+	const gated = await command(workspace, env, 'run', 'show', 'run-1', '--gate')
+	assert.equal(gated.code, 2, gated.output)
+	assert.equal(gated.body.gate.state, 'unverified_checks')
+	assert.deepEqual(gated.body.gate.unverified, ['T1.A1'])
+})
+
+test('Revise a check that needs a decision to split — the test is blocked by a gap and keeps no check; no oracle decision is needed for the rest.', async (t) => {
+	const workspace = directory(t)
+	mkdirSync(join(workspace, '.checkmate'))
+	writeFileSync(
+		join(workspace, '.checkmate/checkmate.db'),
+		gunzipSync(readFileSync(join(root, 'test/e2e/fixtures/workspace-39d33f7.db.gz')))
+	)
+	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle' }
+	const revised = await inputCommand(
+		workspace,
+		env,
+		JSON.stringify({
+			tests: { T1: { assertions: [] } },
+			gaps: {
+				'G-T1': {
+					question: 'Which price does the quote show for the promotion?',
+					consequence: 'T1 stays untested until the oracle answers.',
+					testIds: ['T1'],
+				},
+			},
+		}),
+		'plan',
+		'revise',
+		'ticket'
+	)
+	assert.equal(revised.code, 0, revised.output)
+	assert.equal(revised.body.reason, 'migrate checks to the current shape')
+	const shown = await command(workspace, env, 'plan', 'show', 'ticket@2')
+	assert.equal(shown.code, 0, shown.output)
+	assert.deepEqual(shown.body.legacyChecks, [])
+	const gaps = shown.body.plan.gaps
+	assert.deepEqual(
+		gaps.map((gap: { id: string; status: string }) => [gap.id, gap.status]),
+		[['G-T1', 'open']]
+	)
+})
+
+test('Set a data kind with a policy — setup refuses a kind without one, and run show prints the kind and the policy.', async (t) => {
+	const workspace = directory(t)
+	writeFileSync(join(workspace, 'ticket.md'), 'An order can be created.\n')
+	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle', CHECKMATE_HARNESS: 'pi' }
+	const ok = async (...args: string[]) => {
+		const result = await command(workspace, env, ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	const app = await fixture()
+	t.after(() => app.close())
+	const missing = await command(
+		workspace,
+		env,
+		'setup',
+		'--url',
+		app.baseUrl,
+		'--target',
+		'shop',
+		'--data',
+		'isolation'
+	)
+	assert.equal(missing.code, 1, missing.output)
+	assert.match(missing.output, /needs a data policy/)
+	await ok(
+		'setup',
+		'--url',
+		app.baseUrl,
+		'--target',
+		'shop',
+		'--data',
+		'isolation',
+		'--policy',
+		'Use the test users only.'
+	)
+	const profile = await ok('target', 'show', 'shop')
+	assert.equal(profile.profile.reset.owner, 'isolation')
+	assert.deepEqual(profile.profile.reset.policy, { text: 'Use the test users only.' })
+	await ok('plan', 'open', 'ticket', '--target', 'shop@1', '--objective', 'Create an order.', '--source', 'ticket.md')
+	const saved = await inputCommand(
+		workspace,
+		env,
+		JSON.stringify({
+			requirements: [{ id: 'R1', text: 'An order can be created.', source: 'ticket.md' }],
+			tests: [
+				{
+					id: 'T1',
+					title: 'Read the catalog',
+					requirementIds: ['R1'],
+					capability: 'http',
+					operations: ['read_catalog'],
+					dependsOn: [],
+					preconditions: [],
+					action: 'Read the catalog.',
+					assertions: [{ id: 'A1', check: 'The catalog is listed.', checkKind: 'agent_observation' }],
+				},
+			],
+			gaps: [],
+		}),
+		'plan',
+		'save',
+		'ticket'
+	)
+	assert.equal(saved.code, 0, saved.output)
+	await ok('run', 'begin', 'run-1', 'ticket@1', '--build', 'b1', '--instance', 'local')
+	const shown = await command(workspace, env, 'run', 'show', 'run-1')
+	assert.equal(shown.body.data.policy, 'Use the test users only.')
+	assert.match(shown.body.data.kind, /^isolation/)
+})
+
+test('Run a prepare command before a run — its facts reach the run, and a failed prepare stops the run with its reason.', async (t) => {
+	const workspace = directory(t)
+	writeFileSync(join(workspace, 'ticket.md'), 'An order can be created.\n')
+	writeFileSync(
+		join(workspace, 'prepare.mjs'),
+		"import { writeFileSync } from 'node:fs'\nwriteFileSync('prepared-marker.txt', process.env.CHECKMATE_MARKER)\nconsole.log(`test user qa-user-${process.env.CHECKMATE_MARKER}`)\n"
+	)
+	writeFileSync(join(workspace, 'fail.mjs'), 'process.exit(3)\n')
+	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle', CHECKMATE_HARNESS: 'pi' }
+	const ok = async (...args: string[]) => {
+		const result = await command(workspace, env, ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	const app = await fixture()
+	t.after(() => app.close())
+	await ok(
+		'setup',
+		'--url',
+		app.baseUrl,
+		'--target',
+		'shop',
+		'--data',
+		'isolation',
+		'--policy',
+		'Use the test users only.',
+		'--reset',
+		'node prepare.mjs'
+	)
+	await ok('plan', 'open', 'ticket', '--target', 'shop@1', '--objective', 'Create an order.', '--source', 'ticket.md')
+	const saved = await inputCommand(
+		workspace,
+		env,
+		JSON.stringify({
+			requirements: [{ id: 'R1', text: 'An order can be created.', source: 'ticket.md' }],
+			tests: [
+				{
+					id: 'T1',
+					title: 'Read the catalog',
+					requirementIds: ['R1'],
+					capability: 'http',
+					operations: ['read_catalog'],
+					dependsOn: [],
+					preconditions: [],
+					action: 'Read the catalog.',
+					assertions: [{ id: 'A1', check: 'The catalog is listed.', checkKind: 'agent_observation' }],
+				},
+			],
+			gaps: [],
+		}),
+		'plan',
+		'save',
+		'ticket'
+	)
+	assert.equal(saved.code, 0, saved.output)
+	await ok('run', 'begin', 'run-1', 'ticket@1', '--build', 'b1', '--instance', 'local')
+	assert.match(readFileSync(join(workspace, 'prepared-marker.txt'), 'utf8'), /^qa-[a-z0-9]+-run-1$/)
+	const detail = await ok('run', 'show', 'run-1')
+	assert.match(detail.request.facts, /test user qa-user-qa-[a-z0-9]+-run-1/)
+	await ok(
+		'setup',
+		'--url',
+		app.baseUrl,
+		'--target',
+		'shop',
+		'--data',
+		'isolation',
+		'--policy',
+		'Use the test users only.',
+		'--reset',
+		'node fail.mjs'
+	)
+	const failed = await command(
+		workspace,
+		env,
+		'run',
+		'begin',
+		'run-2',
+		'ticket@1',
+		'--build',
+		'b2',
+		'--instance',
+		'local'
+	)
+	assert.equal(failed.code, 1, failed.output)
+	assert.match(failed.output, /prepare command node fail\.mjs exited with code 3/)
+	assert.match(failed.output, /Checkmate started no test/)
+	const absent = await command(workspace, env, 'run', 'show', 'run-2')
+	assert.equal(absent.code, 1, absent.output)
+})
+
+test('Run a cleanup command when a run finishes — a failed cleanup is reported and the verdict stays.', async (t) => {
+	const workspace = directory(t)
+	writeFileSync(join(workspace, 'ticket.md'), 'An order can be created.\n')
+	writeFileSync(
+		join(workspace, 'cleanup.mjs'),
+		"import { writeFileSync } from 'node:fs'\nwriteFileSync('cleaned.txt', process.env.CHECKMATE_MARKER)\n"
+	)
+	writeFileSync(join(workspace, 'cleanup-fail.mjs'), 'process.exit(4)\n')
+	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle', CHECKMATE_HARNESS: 'pi' }
+	const ok = async (...args: string[]) => {
+		const result = await command(workspace, env, ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	const app = await fixture()
+	t.after(() => app.close())
+	await ok(
+		'setup',
+		'--url',
+		app.baseUrl,
+		'--target',
+		'shop',
+		'--data',
+		'isolation',
+		'--policy',
+		'Use the test users only.',
+		'--cleanup',
+		'node cleanup.mjs'
+	)
+	await ok(
+		'plan',
+		'open',
+		'ticket',
+		'--target',
+		'shop@1',
+		'--objective',
+		'Read the catalog.',
+		'--source',
+		'ticket.md'
+	)
+	const saved = await inputCommand(
+		workspace,
+		env,
+		JSON.stringify({
+			requirements: [{ id: 'R1', text: 'The catalog is listed.', source: 'ticket.md' }],
+			tests: [
+				{
+					id: 'T1',
+					title: 'Read the catalog',
+					requirementIds: ['R1'],
+					capability: 'http',
+					operations: ['read_catalog'],
+					dependsOn: [],
+					preconditions: [],
+					action: 'Read the catalog.',
+					assertions: [{ id: 'A1', check: 'The catalog is listed.', checkKind: 'agent_observation' }],
+				},
+			],
+			gaps: [],
+		}),
+		'plan',
+		'save',
+		'ticket'
+	)
+	assert.equal(saved.code, 0, saved.output)
+	await ok('run', 'begin', 'run-1', 'ticket@1', '--build', 'b1', '--instance', 'local')
+	const check = await inputCommand(
+		workspace,
+		env,
+		'HTTP 200',
+		'run',
+		'check',
+		'run-1',
+		'T1',
+		'A1',
+		'--result',
+		'passed',
+		'--observed',
+		'listed',
+		'--evidence',
+		'-'
+	)
+	assert.equal(check.code, 0, check.output)
+	await ok('run', 'close', 'run-1', 'T1')
+	const finished = await ok(
+		'run',
+		'finish',
+		'run-1',
+		'--completion',
+		'completed',
+		'--cleanup',
+		'completed',
+		'--cleanup-reason',
+		'The run kept no work folder.'
+	)
+	assert.equal(finished.status, 'completed')
+	assert.match(readFileSync(join(workspace, 'cleaned.txt'), 'utf8'), /^qa-[a-z0-9]+-run-1$/)
+	await ok(
+		'setup',
+		'--url',
+		app.baseUrl,
+		'--target',
+		'shop',
+		'--data',
+		'isolation',
+		'--policy',
+		'Use the test users only.',
+		'--cleanup',
+		'node cleanup-fail.mjs'
+	)
+	await ok(
+		'plan',
+		'open',
+		'ticket2',
+		'--target',
+		'shop@2',
+		'--objective',
+		'Read the catalog.',
+		'--source',
+		'ticket.md'
+	)
+	const saved2 = await inputCommand(
+		workspace,
+		env,
+		JSON.stringify({
+			requirements: [{ id: 'R1', text: 'The catalog is listed.', source: 'ticket.md' }],
+			tests: [
+				{
+					id: 'T1',
+					title: 'Read the catalog',
+					requirementIds: ['R1'],
+					capability: 'http',
+					operations: ['read_catalog'],
+					dependsOn: [],
+					preconditions: [],
+					action: 'Read the catalog.',
+					assertions: [{ id: 'A1', check: 'The catalog is listed.', checkKind: 'agent_observation' }],
+				},
+			],
+			gaps: [],
+		}),
+		'plan',
+		'save',
+		'ticket2'
+	)
+	assert.equal(saved2.code, 0, saved2.output)
+	await ok('run', 'begin', 'run-2', 'ticket2@1', '--build', 'b2', '--instance', 'local')
+	const check2 = await inputCommand(
+		workspace,
+		env,
+		'HTTP 200',
+		'run',
+		'check',
+		'run-2',
+		'T1',
+		'A1',
+		'--result',
+		'passed',
+		'--observed',
+		'listed',
+		'--evidence',
+		'-'
+	)
+	assert.equal(check2.code, 0, check2.output)
+	await ok('run', 'close', 'run-2', 'T1')
+	const finished2 = await ok(
+		'run',
+		'finish',
+		'run-2',
+		'--completion',
+		'completed',
+		'--cleanup',
+		'completed',
+		'--cleanup-reason',
+		'The run kept no work folder.'
+	)
+	assert.equal(finished2.status, 'completed')
+	assert.match(JSON.stringify(finished2), /cleanupFailures/)
+	const verdict = await ok('run', 'show', 'run-2')
+	assert.equal(verdict.tests.find((item: { testId: string }) => item.testId === 'T1').outcome, 'passed')
+})
+
+test('Close a test as error after a check on a value it did not observe — the check reads not_checked and its defect is no verdict.', async (t) => {
+	const workspace = directory(t)
+	mkdirSync(join(workspace, '.checkmate'))
+	writeFileSync(
+		join(workspace, '.checkmate/checkmate.db'),
+		gunzipSync(readFileSync(join(root, 'test/e2e/fixtures/workspace-migrated.db.gz')))
+	)
+	const app = await fixture()
+	t.after(() => app.close())
+	app.fix()
+	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle' }
+	const ok = async (args: string[], value?: object) => {
+		const result = await inputCommand(workspace, env, value ? JSON.stringify(value) : '', ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	await ok(['target', 'instance', 'add', 'shop', 'local', '--entry', `web=${app.baseUrl}`])
+	await ok(['plan', 'approve', 'ticket@1', '--rationale', 'Run the rule.'])
+	await ok(['run', 'begin', 'run-1', 'ticket@1', '--build', 'fixed', '--instance', 'local', '--tests', 'T1'])
+	const checked = await inputCommand(
+		workspace,
+		env,
+		'HTTP 404 Not Found: page text not found.',
+		'run',
+		'check',
+		'run-1',
+		'T1',
+		'A1',
+		'--observed',
+		'not found',
+		'--evidence',
+		'-'
+	)
+	assert.equal(checked.code, 0, checked.output)
+	await ok(['run', 'finding', 'run-1'], {
+		id: 'F-T1-1',
+		type: 'defect',
+		severity: 'medium',
+		assertionIds: ['T1.A1'],
+		requirementIds: ['R1'],
+		title: 'Quote not shown',
+		expected: '240',
+		observed: 'not found',
+		reproduction: ['Open the product page.'],
+		evidenceIds: checked.body.evidenceIds,
+	})
+	const closed = await inputCommand(
+		workspace,
+		env,
+		'HTTP 404 Not Found: page text not found.',
+		'run',
+		'close',
+		'run-1',
+		'T1',
+		'--outcome',
+		'error',
+		'--reason',
+		'Product page returned HTTP 404.',
+		'--evidence',
+		'-'
+	)
+	assert.equal(closed.code, 0, closed.output)
+	const shown = await command(workspace, env, 'run', 'show', 'run-1')
+	assert.equal(shown.code, 0, shown.output)
+	assert.equal(shown.body.tests[0].outcome, 'error')
+	assert.equal(shown.body.tests[0].assertions[0].result, 'not_checked')
+	assert.deepEqual(shown.body.findings, [])
+	const gated = await command(workspace, env, 'run', 'show', 'run-1', '--gate')
+	assert.equal(gated.code, 2, gated.output)
+	assert.equal(gated.body.gate.state, 'could_not_test')
+})
+
+test('Begin a run on an instance that is not added — the refusal names the add command and says the person gives the data kind.', async (t) => {
+	const workspace = directory(t)
+	mkdirSync(join(workspace, '.checkmate'))
+	writeFileSync(
+		join(workspace, '.checkmate/checkmate.db'),
+		gunzipSync(readFileSync(join(root, 'test/e2e/fixtures/workspace-migrated.db.gz')))
+	)
+	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle' }
+	await command(workspace, env, 'plan', 'approve', 'ticket@1', '--rationale', 'Run the rule.')
+	const refused = await command(
+		workspace,
+		env,
+		'run',
+		'begin',
+		'run-1',
+		'ticket@1',
+		'--build',
+		'b1',
+		'--instance',
+		'local'
+	)
+	assert.equal(refused.code, 1, refused.output)
+	assert.match(refused.body.reasons.join(' '), /Unknown instance: shop\/local/)
+	assert.match(refused.body.hint, /checkmate target instance add shop local --entry web=/)
+	assert.match(refused.body.hint, /ask the person for it/)
+})
+
+test('Execute a run with a short deadline — the worker runs its test; no test is closed as deadline before the deadline is used.', async (t) => {
+	const workspace = directory(t)
+	mkdirSync(join(workspace, '.checkmate'))
+	writeFileSync(
+		join(workspace, '.checkmate/checkmate.db'),
+		gunzipSync(readFileSync(join(root, 'test/e2e/fixtures/workspace-migrated.db.gz')))
+	)
+	const app = await fixture()
+	t.after(() => app.close())
+	app.fix()
+	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle' }
+	const ok = async (args: string[]) => {
+		const result = await inputCommand(workspace, env, '', ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	await ok(['target', 'instance', 'add', 'shop', 'local', '--entry', `web=${app.baseUrl}`])
+	await ok(['plan', 'approve', 'ticket@1', '--rationale', 'Run the rule.'])
+	await ok([
+		'run',
+		'begin',
+		'run-1',
+		'ticket@1',
+		'--build',
+		'fixed',
+		'--instance',
+		'local',
+		'--tests',
+		'T1',
+		'--timeout',
+		'30',
+	])
+	const bin = directory(t)
+	copyFileSync(join(root, 'test/e2e/per-test-host.mjs'), join(bin, 'pi'))
+	chmodSync(join(bin, 'pi'), 0o755)
+	const piEnv = {
+		...env,
+		PATH: `${bin}${delimiter}${process.env.PATH}`,
+		CHECKMATE_HARNESS: 'pi',
+		FAKE_PI_LOG: join(directory(t), 'log.txt'),
+		FAKE_PI_PROMPTS: join(directory(t), 'prompts.txt'),
+		FAKE_CHECKMATE_CLI: binary,
+		FAKE_RUN: 'run-1',
+	}
+	const delegated = await inputCommand(workspace, piEnv, '', 'delegate', 'execute', 'run-1')
+	assert.equal(delegated.body.status, 'completed', delegated.output)
+	// Every child command runs from the workspace, whatever directory the child's shell is in.
+	assert.match(readFileSync(piEnv.FAKE_PI_PROMPTS, 'utf8'), /cd '[^']*' && node /)
+	// A value with a dollar sign is given in single quotes, so the shell does not expand it.
+	assert.match(readFileSync(piEnv.FAKE_PI_PROMPTS, 'utf8'), /single quotes/)
+	const gated = await command(workspace, env, 'run', 'show', 'run-1', '--gate')
+	assert.equal(gated.code, 0, gated.output)
+	assert.equal(gated.body.gate.state, 'passed')
+})
+
+test('Name the owed cleanup of a run that never finished — status gives the exact command, and it removes the marked data.', async (t) => {
+	const workspace = directory(t)
+	writeFileSync(join(workspace, 'ticket.md'), 'An order can be created.\n')
+	writeFileSync(
+		join(workspace, 'cleanup.mjs'),
+		"import { writeFileSync } from 'node:fs'\nwriteFileSync('cleaned.txt', process.env.CHECKMATE_MARKER)\n"
+	)
+	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle', CHECKMATE_HARNESS: 'pi' }
+	const ok = async (...args: string[]) => {
+		const result = await command(workspace, env, ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	const app = await fixture()
+	t.after(() => app.close())
+	await ok(
+		'setup',
+		'--url',
+		app.baseUrl,
+		'--target',
+		'shop',
+		'--data',
+		'isolation',
+		'--policy',
+		'Use the test users only.',
+		'--cleanup',
+		'node cleanup.mjs'
+	)
+	await ok(
+		'plan',
+		'open',
+		'ticket',
+		'--target',
+		'shop@1',
+		'--objective',
+		'Read the catalog.',
+		'--source',
+		'ticket.md'
+	)
+	const saved = await inputCommand(
+		workspace,
+		env,
+		JSON.stringify({
+			requirements: [{ id: 'R1', text: 'The catalog is listed.', source: 'ticket.md' }],
+			tests: [
+				{
+					id: 'T1',
+					title: 'Read the catalog',
+					requirementIds: ['R1'],
+					capability: 'http',
+					operations: ['read_catalog'],
+					dependsOn: [],
+					preconditions: [],
+					action: 'Read the catalog.',
+					assertions: [{ id: 'A1', check: 'The catalog is listed.', checkKind: 'agent_observation' }],
+				},
+			],
+			gaps: [],
+		}),
+		'plan',
+		'save',
+		'ticket'
+	)
+	assert.equal(saved.code, 0, saved.output)
+	await ok('run', 'begin', 'run-1', 'ticket@1', '--build', 'b1', '--instance', 'local')
+	assert.equal(existsSync(join(workspace, 'cleaned.txt')), false)
+	const status = await ok('status', 'ticket')
+	assert.ok(status.next.includes('Cleanup owed by run-1: checkmate cleanup run-1'), JSON.stringify(status.next))
+	const cleaned = await ok('cleanup', 'run-1')
+	assert.equal(cleaned.status, 'completed')
+	assert.match(readFileSync(join(workspace, 'cleaned.txt'), 'utf8'), /^qa-[a-z0-9]+-run-1$/)
+	const after = await ok('status', 'ticket')
+	assert.equal(
+		after.next.some((line: string) => line.startsWith('Cleanup owed by')),
+		false
+	)
+})
+
+test('Setup with the application up clears a profile saved while it was down — every run refused as not ready.', async (t) => {
+	const workspace = directory(t)
+	writeFileSync(join(workspace, 'ticket.md'), 'An order can be created.\n')
+	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle', CHECKMATE_HARNESS: 'pi' }
+	// Reserve a loopback port and leave it closed for the first setup.
+	const probe = createServer()
+	probe.listen(0, '127.0.0.1')
+	await once(probe, 'listening')
+	const port = (probe.address() as AddressInfo).port
+	probe.close()
+	await once(probe, 'close')
+	const url = `http://127.0.0.1:${port}`
+	const down = await command(workspace, env, 'setup', '--url', url, '--target', 'shop')
+	assert.equal(down.code, 0, down.output)
+	assert.equal(down.body.ready, false, down.output)
+	assert.equal(down.body.instanceReachable, false, down.output)
+	const opened = await command(
+		workspace,
+		env,
+		'plan',
+		'open',
+		'ticket',
+		'--target',
+		'shop@1',
+		'--objective',
+		'Create an order.',
+		'--source',
+		'ticket.md'
+	)
+	assert.equal(opened.code, 0, opened.output)
+	const saved = await inputCommand(
+		workspace,
+		env,
+		JSON.stringify({
+			requirements: [{ id: 'R1', text: 'An order can be created.', source: 'ticket.md' }],
+			tests: [
+				{
+					id: 'T1',
+					title: 'Read the catalog',
+					requirementIds: ['R1'],
+					capability: 'http',
+					operations: ['read_catalog'],
+					dependsOn: [],
+					preconditions: [],
+					action: 'Read the catalog.',
+					assertions: [{ id: 'A1', check: 'The catalog is listed.', checkKind: 'agent_observation' }],
+				},
+			],
+			gaps: [],
+		}),
+		'plan',
+		'save',
+		'ticket'
+	)
+	assert.equal(saved.code, 0, saved.output)
+	const refused = await command(
+		workspace,
+		env,
+		'run',
+		'begin',
+		'run-1',
+		'ticket@1',
+		'--build',
+		'b1',
+		'--instance',
+		'local'
+	)
+	assert.equal(refused.body.status, 'needs_decision', refused.output)
+	assert.match(refused.output, /Target prerequisites are not ready/)
+	assert.match(refused.output, new RegExp(`checkmate setup --url ${url} --target shop`))
+	const server = createServer((_request, response) => response.end('ok'))
+	server.listen(port, '127.0.0.1')
+	await once(server, 'listening')
+	t.after(() => server.close())
+	const up = await command(workspace, env, 'setup', '--url', url, '--target', 'shop')
+	assert.equal(up.code, 0, up.output)
+	assert.equal(up.body.ready, true, up.output)
+	const profile = await command(workspace, env, 'target', 'show', 'shop')
+	assert.equal(profile.body.profile.readyForLiveExecution, true)
+	assert.equal(profile.body.profile.revision, 2)
+	const began = await command(
+		workspace,
+		env,
+		'run',
+		'begin',
+		'run-1',
+		'ticket@1',
+		'--build',
+		'b1',
+		'--instance',
+		'local'
+	)
+	assert.equal(began.body.status, 'completed', began.output)
+})
+
+test('Setup needs a runnable Chrome or Chromium for the browser tool — API-only targets need none.', async (t) => {
+	const workspace = directory(t)
+	const bin = directory(t)
+	const app = await fixture()
+	t.after(() => app.close())
+	const tool = join(bin, 'playwright-cli')
+	writeFileSync(tool, '#!/bin/sh\necho 1.0.0\n')
+	chmodSync(tool, 0o755)
+	const env = {
+		...process.env,
+		PATH: `${bin}${delimiter}${process.env.PATH}`,
+		CHECKMATE_ACTOR: 'oracle',
+		CHECKMATE_HARNESS: 'pi',
+	}
+	const setup = (run: NodeJS.ProcessEnv = env) =>
+		command(workspace, run, 'setup', '--url', app.baseUrl, '--target', 'shop')
+	const missing = await setup()
+	assert.equal(missing.code, 1, missing.output)
+	assert.match(missing.output, /needs a Chrome or Chromium executable/)
+	// The driver asks the person for the browser; it does not write the config itself.
+	assert.match(missing.output, /Ask the person for the path of a Chrome or Chromium executable/)
+	assert.match(missing.output, /Do not write this file yourself/)
+	assert.match(missing.output, /\.playwright\/cli\.config\.json/)
+	const config = join(workspace, '.playwright', 'cli.config.json')
+	mkdirSync(join(workspace, '.playwright'))
+	const broken = join(workspace, 'broken-chrome')
+	writeFileSync(broken, '#!/bin/sh\nexit 3\n')
+	chmodSync(broken, 0o755)
+	writeFileSync(config, JSON.stringify({ browser: { launchOptions: { executablePath: broken } } }))
+	const notRunning = await setup()
+	assert.equal(notRunning.code, 1, notRunning.output)
+	assert.match(notRunning.output, /does not run with --version/)
+	const chrome = join(workspace, 'fake-chrome')
+	writeFileSync(chrome, '#!/bin/sh\necho "Chromium 124.0.6367.60"\n')
+	chmodSync(chrome, 0o755)
+	writeFileSync(config, JSON.stringify({ browser: { launchOptions: { executablePath: chrome } } }))
+	const ready = await setup()
+	assert.equal(ready.code, 0, ready.output)
+	const profile = await command(workspace, env, 'target', 'show', 'shop')
+	const recorded = profile.body.profile.tools.find((entry: { name: string }) => entry.name === 'playwright-cli')
+	assert.equal(recorded.executable, chrome)
+	const apiOnly = await setup({ ...process.env, PATH: '', CHECKMATE_ACTOR: 'oracle', CHECKMATE_HARNESS: 'pi' })
+	assert.equal(apiOnly.code, 0, apiOnly.output)
+})
+
+test('Compare an expected value by its kind — the run marker is substituted by code, a shape or a range is decided by code, and a type word or a placeholder is refused at save.', async (t) => {
+	const workspace = directory(t)
+	writeFileSync(join(workspace, 'ticket.md'), 'Each record has a title, a count, and at least three items.\n')
+	const app = await fixture()
+	t.after(() => app.close())
+	app.fix()
+	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle' }
+	const ok = async (args: string[], value?: object) => {
+		const result = await inputCommand(workspace, env, value ? JSON.stringify(value) : '', ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	await ok(['setup', '--url', app.baseUrl, '--target', 'shop'])
+	await ok([
+		'plan',
+		'open',
+		'ticket',
+		'--target',
+		'shop@1',
+		'--objective',
+		'Check the records.',
+		'--source',
+		'ticket.md',
+	])
+	const planWith = (expected: string[]) => ({
+		requirements: [
+			{ id: 'R1', text: 'Each record has a title, a count, and at least three items.', source: 'ticket.md' },
+		],
+		tests: [
+			{
+				capability: 'http',
+				operations: ['read_catalog'],
+				dependsOn: [],
+				preconditions: [],
+				id: 'T1',
+				title: 'Record',
+				requirementIds: ['R1'],
+				action: 'Read the record.',
+				assertions: [
+					{
+						id: 'A1',
+						check: 'The title is the run record title.',
+						checkKind: 'deterministic',
+						observe: 'the title',
+						expected: expected[0],
+					},
+					{
+						id: 'A2',
+						check: 'The count is a number.',
+						checkKind: 'deterministic',
+						observe: 'the count',
+						expected: expected[1],
+					},
+					{
+						id: 'A3',
+						check: 'The item count is at least 3.',
+						checkKind: 'deterministic',
+						observe: 'the item count',
+						expected: expected[2],
+					},
+				],
+			},
+		],
+		gaps: [],
+	})
+	const refusedWord = await inputCommand(
+		workspace,
+		env,
+		JSON.stringify(planWith(['{{marker}}-T1', 'numeric', 'at least:3'])),
+		'plan',
+		'save',
+		'ticket'
+	)
+	assert.equal(refusedWord.code, 1, refusedWord.output)
+	assert.match(refusedWord.body.reasons.join(' '), /"numeric" is a type word/)
+	assert.match(refusedWord.body.hint, /type:number/)
+	const refusedPlaceholder = await inputCommand(
+		workspace,
+		env,
+		JSON.stringify(planWith(['qa-<runId>-T1', 'type:number', 'at least:3'])),
+		'plan',
+		'save',
+		'ticket'
+	)
+	assert.equal(refusedPlaceholder.code, 1, refusedPlaceholder.output)
+	assert.match(refusedPlaceholder.body.reasons.join(' '), /holds a placeholder/)
+	await ok(['plan', 'save', 'ticket'], planWith(['{{marker}}-T1', 'type:number', 'at least:3']))
+	await ok(['plan', 'approve', 'ticket@1', '--rationale', 'Run the rule.'])
+	await ok(['run', 'begin', 'run-1', 'ticket@1', '--build', 'b1', '--partial', 'ready_only'])
+	const marker = JSON.parse(
+		(await ok(['query', "SELECT request FROM runs WHERE run_id = 'run-1'"])).rows[0].request
+	).marker
+	assert.match(marker, /^qa-/)
+	// The record title carries the run marker: the child names its record with the marker, so code must match it.
+	const titled = await inputCommand(
+		workspace,
+		env,
+		`${marker}-T1`,
+		'run',
+		'check',
+		'run-1',
+		'T1',
+		'A1',
+		'--observed',
+		`${marker}-T1`,
+		'--evidence',
+		'-'
+	)
+	assert.equal(titled.code, 0, titled.output)
+	assert.equal(titled.body.result, 'passed')
+	const numbered = await inputCommand(
+		workspace,
+		env,
+		'count 2',
+		'run',
+		'check',
+		'run-1',
+		'T1',
+		'A2',
+		'--observed',
+		'2',
+		'--evidence',
+		'-'
+	)
+	assert.equal(numbered.body.result, 'passed')
+	const ranged = await inputCommand(
+		workspace,
+		env,
+		'items 2',
+		'run',
+		'check',
+		'run-1',
+		'T1',
+		'A3',
+		'--observed',
+		'2',
+		'--evidence',
+		'-'
+	)
+	assert.equal(ranged.body.result, 'failed')
+})
+
+test('A child names its record with the run marker — a title with another run ID is a value that differs, not a passing title.', async (t) => {
+	const workspace = directory(t)
+	writeFileSync(join(workspace, 'ticket.md'), 'The record title carries the run marker.\n')
+	const app = await fixture()
+	t.after(() => app.close())
+	app.fix()
+	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle' }
+	const ok = async (args: string[], value?: object) => {
+		const result = await inputCommand(workspace, env, value ? JSON.stringify(value) : '', ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	await ok(['setup', '--url', app.baseUrl, '--target', 'shop'])
+	await ok([
+		'plan',
+		'open',
+		'ticket',
+		'--target',
+		'shop@1',
+		'--objective',
+		'Check the title.',
+		'--source',
+		'ticket.md',
+	])
+	await ok(['plan', 'save', 'ticket'], {
+		requirements: [{ id: 'R1', text: 'The record title carries the run marker.', source: 'ticket.md' }],
+		tests: [
+			{
+				capability: 'http',
+				operations: ['read_catalog'],
+				dependsOn: [],
+				preconditions: [],
+				id: 'T1',
+				title: 'Title',
+				requirementIds: ['R1'],
+				action: 'Read the title.',
+				assertions: [
+					{
+						id: 'A1',
+						check: 'The title is the run marker and T1.',
+						checkKind: 'deterministic',
+						observe: 'the title',
+						expected: '{{marker}}-T1',
+					},
+				],
+			},
+		],
+		gaps: [],
+	})
+	await ok(['plan', 'approve', 'ticket@1', '--rationale', 'Run the rule.'])
+	await ok(['run', 'begin', 'run-1', 'ticket@1', '--build', 'b1', '--partial', 'ready_only'])
+	const marker = JSON.parse(
+		(await ok(['query', "SELECT request FROM runs WHERE run_id = 'run-1'"])).rows[0].request
+	).marker
+	const other = await inputCommand(
+		workspace,
+		env,
+		'other',
+		'run',
+		'check',
+		'run-1',
+		'T1',
+		'A1',
+		'--observed',
+		'qa-otherrun-T1',
+		'--evidence',
+		'-'
+	)
+	assert.equal(other.body.result, 'failed')
+	assert.notEqual(marker, 'qa-otherrun-T1')
+})
+
+test('Compare absence by its kind — absent:TEXT passes when the observed value does not contain TEXT, and a sentence that starts with not is refused at save.', async (t) => {
+	const workspace = directory(t)
+	writeFileSync(join(workspace, 'ticket.md'), 'The product page shows no price of 300 PLN.\n')
+	const app = await fixture()
+	t.after(() => app.close())
+	app.fix()
+	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle' }
+	const ok = async (args: string[], value?: object) => {
+		const result = await inputCommand(workspace, env, value ? JSON.stringify(value) : '', ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	await ok(['setup', '--url', app.baseUrl, '--target', 'shop'])
+	await ok([
+		'plan',
+		'open',
+		'ticket',
+		'--target',
+		'shop@1',
+		'--objective',
+		'Check the page.',
+		'--source',
+		'ticket.md',
+	])
+	const planWith = (expected: string) => ({
+		requirements: [{ id: 'R1', text: 'The product page shows no price of 300 PLN.', source: 'ticket.md' }],
+		tests: [
+			{
+				capability: 'http',
+				operations: ['read_catalog'],
+				dependsOn: [],
+				preconditions: [],
+				id: 'T1',
+				title: 'Page',
+				requirementIds: ['R1'],
+				action: 'Read the page.',
+				assertions: [
+					{
+						id: 'A1',
+						check: 'The product page shows no price of 300 PLN.',
+						checkKind: 'deterministic',
+						observe: 'all price values on the page',
+						expected,
+					},
+				],
+			},
+		],
+		gaps: [],
+	})
+	const refused = await inputCommand(
+		workspace,
+		env,
+		JSON.stringify(planWith('not 300 PLN')),
+		'plan',
+		'save',
+		'ticket'
+	)
+	assert.equal(refused.code, 1, refused.output)
+	assert.match(refused.body.reasons.join(' '), /states an absence in words/)
+	await ok(['plan', 'save', 'ticket'], planWith('absent:300 PLN'))
+	await ok(['plan', 'approve', 'ticket@1', '--rationale', 'Run the rule.'])
+	await ok(['run', 'begin', 'run-1', 'ticket@1', '--build', 'b1', '--partial', 'ready_only'])
+	const absent = await inputCommand(
+		workspace,
+		env,
+		'240 PLN, 240 PLN',
+		'run',
+		'check',
+		'run-1',
+		'T1',
+		'A1',
+		'--observed',
+		'240 PLN, 240 PLN',
+		'--evidence',
+		'-'
+	)
+	assert.equal(absent.body.result, 'passed')
+})
+
+test('Compare the run marker inside absence and presence — code substitutes {{marker}} in absent: and contains:, so a value with the run marker is not absent.', async (t) => {
+	const workspace = directory(t)
+	writeFileSync(join(workspace, 'ticket.md'), 'No book with the run marker is added.\n')
+	const app = await fixture()
+	t.after(() => app.close())
+	app.fix()
+	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle' }
+	const ok = async (args: string[], value?: object) => {
+		const result = await inputCommand(workspace, env, value ? JSON.stringify(value) : '', ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	await ok(['setup', '--url', app.baseUrl, '--target', 'shop'])
+	await ok([
+		'plan',
+		'open',
+		'ticket',
+		'--target',
+		'shop@1',
+		'--objective',
+		'Check the list.',
+		'--source',
+		'ticket.md',
+	])
+	await ok(['plan', 'save', 'ticket'], {
+		requirements: [{ id: 'R1', text: 'No book with the run marker is added.', source: 'ticket.md' }],
+		tests: [
+			{
+				capability: 'http',
+				operations: ['read_catalog'],
+				dependsOn: [],
+				preconditions: [],
+				id: 'T1',
+				title: 'List',
+				requirementIds: ['R1'],
+				action: 'Read the list.',
+				assertions: [
+					{
+						id: 'A1',
+						check: 'No book with the run marker is added.',
+						checkKind: 'deterministic',
+						observe: 'list entries',
+						expected: 'absent:{{marker}}-T1',
+					},
+				],
+			},
+		],
+		gaps: [],
+	})
+	await ok(['plan', 'approve', 'ticket@1', '--rationale', 'Run the rule.'])
+	await ok(['run', 'begin', 'run-1', 'ticket@1', '--build', 'b1', '--partial', 'ready_only'])
+	const marker = JSON.parse(
+		(await ok(['query', "SELECT request FROM runs WHERE run_id = 'run-1'"])).rows[0].request
+	).marker
+	const added = await inputCommand(
+		workspace,
+		env,
+		`${marker}-T1`,
+		'run',
+		'check',
+		'run-1',
+		'T1',
+		'A1',
+		'--observed',
+		`${marker}-T1 book`,
+		'--evidence',
+		'-'
+	)
+	assert.equal(added.body.result, 'failed', added.output)
+})
+
+test('Decide a check only for the request that was sent — a request that misses the planned route is refused, not recorded as an observation.', async (t) => {
+	const workspace = directory(t)
+	writeFileSync(join(workspace, 'ticket.md'), 'Deleting an unknown note returns 404.\n')
+	const app = await fixture()
+	t.after(() => app.close())
+	app.fix()
+	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle' }
+	const ok = async (args: string[], value?: object) => {
+		const result = await inputCommand(workspace, env, value ? JSON.stringify(value) : '', ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	await ok(['setup', '--url', app.baseUrl, '--target', 'shop'])
+	await ok([
+		'plan',
+		'open',
+		'ticket',
+		'--target',
+		'shop@1',
+		'--objective',
+		'Check the delete.',
+		'--source',
+		'ticket.md',
+	])
+	await ok(['plan', 'save', 'ticket'], {
+		requirements: [{ id: 'R1', text: 'Deleting an unknown note returns 404.', source: 'ticket.md' }],
+		tests: [
+			{
+				capability: 'http',
+				operations: ['read_catalog'],
+				dependsOn: [],
+				preconditions: [],
+				id: 'T1',
+				title: 'Delete unknown',
+				requirementIds: ['R1'],
+				action: 'Send DELETE /api/notes/<id> with an id that does not exist.',
+				assertions: [
+					{
+						id: 'A1',
+						check: 'The response status is 404.',
+						checkKind: 'deterministic',
+						observe: 'the HTTP status of the response',
+						expected: '404',
+					},
+					{
+						id: 'A2',
+						check: 'The same request for an existing id returns 200.',
+						checkKind: 'deterministic',
+						observe: 'the HTTP status of the request for an existing id',
+						expected: '200',
+					},
+				],
+			},
+		],
+		gaps: [],
+	})
+	await ok(['plan', 'approve', 'ticket@1', '--rationale', 'Run the rule.'])
+	await ok(['run', 'begin', 'run-1', 'ticket@1', '--build', 'b1', '--partial', 'ready_only'])
+	const bare = await inputCommand(
+		workspace,
+		env,
+		'404',
+		'run',
+		'check',
+		'run-1',
+		'T1',
+		'A1',
+		'--observed',
+		'404',
+		'--evidence',
+		'-'
+	)
+	assert.equal(bare.code, 1, bare.output)
+	assert.match(bare.body.reasons.join(' '), /Give --request with the request you sent: DELETE \/api\/notes\/<id>/)
+	const missed = await inputCommand(
+		workspace,
+		env,
+		'404',
+		'run',
+		'check',
+		'run-1',
+		'T1',
+		'A1',
+		'--request',
+		'DELETE /api/note/99',
+		'--observed',
+		'404',
+		'--evidence',
+		'-'
+	)
+	assert.equal(missed.code, 1, missed.output)
+	assert.match(missed.body.reasons.join(' '), /does not match the planned request DELETE \/api\/notes\/<id>/)
+	const sent = await inputCommand(
+		workspace,
+		env,
+		'404',
+		'run',
+		'check',
+		'run-1',
+		'T1',
+		'A1',
+		'--request',
+		'DELETE /api/notes/99',
+		'--observed',
+		'404',
+		'--evidence',
+		'-'
+	)
+	assert.equal(sent.code, 0, sent.output)
+	assert.equal(sent.body.result, 'passed')
+})
+
+test(
+	'Run turns of two chats together and stop one — the other chat keeps working, and a second turn waits for its own chat.',
+	{ timeout: 60000 },
+	async (t) => {
+		const workspace = directory(t)
+		const host = fakeClaude(t, { request: '!hang', models: [{ value: 'sonnet', displayName: 'Sonnet' }] })
+		const env = { ...process.env, ...host.env, CHECKMATE_HARNESS: 'claude' }
+		const server = spawn(process.execPath, [binary, 'ui', '--port', '0', '--json'], { cwd: workspace, env })
+		t.after(() => {
+			if (server.exitCode === null) server.kill('SIGTERM')
+		})
+		const [first] = (await once(server.stdout, 'data')) as [Buffer]
+		const url = JSON.parse(first.toString().split('\n')[0]).url as string
+		assert(url)
+		const html = await (await fetch(new URL('/chats', url))).text()
+		const csrf = /name="csrf" value="([0-9a-f]+)"/.exec(html)?.[1]
+		assert(csrf)
+		const headers = { 'content-type': 'application/x-www-form-urlencoded', cookie: 'checkmate_actor=oracle' }
+		const send = async (path: string, text: string) => {
+			const response = await fetch(new URL(path, url), {
+				method: 'POST',
+				redirect: 'manual',
+				headers,
+				body: new URLSearchParams({ csrf, text, model: 'sonnet', harness: 'claude' }),
+			})
+			assert.equal(response.status, 303, await response.text())
+			return response.headers.get('location')!
+		}
+		const turns = async () => {
+			const rows = (
+				await command(
+					workspace,
+					env,
+					'query',
+					'SELECT request_id AS id, conversation, text FROM requests ORDER BY rowid'
+				)
+			).body.rows as Array<{ id: string; conversation: string; text: string }>
+			const events = (
+				await command(
+					workspace,
+					env,
+					'query',
+					"SELECT request_id AS id, status FROM request_events WHERE step = 'state' ORDER BY rowid"
+				)
+			).body.rows as Array<{ id: string; status: string }>
+			const state = new Map(events.map((event) => [event.id, event.status]))
+			return rows.map((row) => ({ ...row, state: state.get(row.id) ?? 'none' }))
+		}
+		const until = async (check: () => Promise<boolean>) => {
+			const deadline = Date.now() + 15000
+			while (Date.now() < deadline) {
+				if (await check()) return
+				await new Promise((resolve) => setTimeout(resolve, 50))
+			}
+			throw Error('Condition did not hold in time')
+		}
+		const chatA = await send('/chats', 'Chat A first.')
+		await send('/chats', 'Chat B first.')
+		await until(async () => (await turns()).filter((turn) => turn.state === 'running').length === 2)
+		await send(`${chatA}/turns`, 'Chat A second.')
+		const beforeStop = await turns()
+		const aFirst = beforeStop.find((turn) => turn.text === 'Chat A first.')!
+		const aSecond = beforeStop.find((turn) => turn.text === 'Chat A second.')!
+		const bFirst = beforeStop.find((turn) => turn.text === 'Chat B first.')!
+		assert.equal(aSecond.state, 'waiting')
+		const page = await (await fetch(new URL(chatA, url))).text()
+		assert.match(page, /Waiting for the turn before it in this chat to finish/)
+		const stop = await fetch(new URL(`/requests/${aFirst.id}/stop`, url), {
+			method: 'POST',
+			redirect: 'manual',
+			headers,
+			body: new URLSearchParams({ csrf, return: chatA, reason: 'Enough.' }),
+		})
+		assert.equal(stop.status, 303)
+		await until(async () => (await turns()).find((turn) => turn.id === aFirst.id)?.state === 'stopped')
+		await until(async () => (await turns()).find((turn) => turn.id === aSecond.id)?.state === 'running')
+		const after = await turns()
+		assert.equal(after.find((turn) => turn.id === bFirst.id)?.state, 'running')
+		const calls = host.called().filter((item: { role: string }) => item.role === 'request')
+		const pids = calls.map((call: { pid: number }) => call.pid)
+		server.kill('SIGTERM')
+		await once(server, 'exit')
+		for (const pid of pids)
+			assert.throws(() => process.kill(pid, 0), /ESRCH/, `child ${pid} still runs after the UI stopped`)
+	}
+)
+
+test('Give a Claude chat turn only Read and Bash, the saved-this-turn hook, and the delegate and explore rules it needs.', async () => {
+	const { chatAllowRules, requestArgs } = await import('../../plugin/src/sessions.ts')
+	const cli = '/workspace/cli/src/main.ts'
+	const args = requestArgs({
+		sessionId: 's1',
+		resume: false,
+		hook: { port: 4100, token: 'token', explorationId: 'request', who: 'R1' },
+		model: null,
+		checkmate: cli,
+	})
+	assert.equal(args[args.indexOf('--tools') + 1], 'Read,Bash')
+	const settings = JSON.parse(args[args.indexOf('--settings') + 1]) as {
+		hooks: { PostToolUse: Array<{ matcher: string; hooks: Array<{ type: string; command: string }> }> }
+	}
+	assert.equal(settings.hooks.PostToolUse[0].matcher, 'Bash')
+	assert.match(settings.hooks.PostToolUse[0].hooks[0].command, /changes\.mjs/)
+	assert.ok(settings.hooks.PostToolUse[0].hooks[0].command.endsWith(`'${cli}'`))
+	const rules = chatAllowRules(cli)
+	assert.ok(rules.includes(`Bash(node "${cli}" delegate wait:*)`))
+	assert.ok(rules.includes(`Bash(node '${cli}' delegate revise:*)`))
+	assert.ok(rules.includes(`Bash(node "${cli}" explore wait:*)`))
+	assert.ok(rules.includes(`Bash(node "${cli}" scope drop:*)`))
+	assert.equal(
+		rules.some((rule) => rule.includes('run begin')),
+		false
+	)
+})
+
+test('Signal a process group only as it was recorded — a PID whose group leader has another start time, or no recorded start, is not signalled.', async () => {
+	const { startOfGroup, signalRecordedGroup, signalChild, trackGroup } =
+		(await import('../../plugin/src/processes.ts')) as typeof import('../../plugin/src/processes.ts')
+	const sleeper = spawn('sleep', ['30'], { detached: true, stdio: 'ignore' })
+	await once(sleeper, 'spawn')
+	const pid = sleeper.pid!
+	const born = startOfGroup(pid)
+	assert.notEqual(born, undefined)
+	// A start recorded for another process: the PID was reused, so nothing is signalled and the process keeps running.
+	assert.equal(signalRecordedGroup(pid, born! - 60_000, 'SIGTERM'), false)
+	assert.equal(startOfGroup(pid), born)
+	// No recorded start: nothing can be verified, so nothing is signalled.
+	assert.equal(signalRecordedGroup(pid, undefined, 'SIGTERM'), false)
+	assert.equal(startOfGroup(pid), born)
+	// The recorded start of this process: signalled.
+	assert.equal(signalRecordedGroup(pid, born, 'SIGTERM'), true)
+	const [, signal] = await once(sleeper, 'exit')
+	assert.equal(signal, 'SIGTERM')
+	// A child that has exited is never signalled, whatever PID it had.
+	const quick = spawn('true', [], { detached: true, stdio: 'ignore' })
+	await once(quick, 'spawn')
+	trackGroup(quick)
+	await once(quick, 'exit')
+	assert.doesNotThrow(() => signalChild(quick, 'SIGKILL'))
+})
+
+test('Record an observed value with $ and backticks unchanged — the CLI gets the value as given, and a shell path where a value was expected is refused.', async (t) => {
+	const workspace = directory(t)
+	writeFileSync(join(workspace, 'ticket.md'), 'The shipping price is $5.00. The fee is $0 for pickup.\n')
+	const app = await fixture()
+	t.after(() => app.close())
+	app.fix()
+	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle' }
+	const ok = async (args: string[], value?: object) => {
+		const result = await inputCommand(workspace, env, value ? JSON.stringify(value) : '', ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	await ok(['setup', '--url', app.baseUrl, '--target', 'shop'])
+	await ok([
+		'plan',
+		'open',
+		'ticket',
+		'--target',
+		'shop@1',
+		'--objective',
+		'Check the prices.',
+		'--source',
+		'ticket.md',
+	])
+	await ok(['plan', 'save', 'ticket'], {
+		requirements: [
+			{ id: 'R1', text: 'The shipping price is $5.00. The fee is $0 for pickup.', source: 'ticket.md' },
+		],
+		tests: [
+			{
+				capability: 'http',
+				operations: ['read_catalog'],
+				dependsOn: [],
+				preconditions: [],
+				id: 'T1',
+				title: 'Prices',
+				requirementIds: ['R1'],
+				action: 'Read the prices.',
+				assertions: [
+					{
+						id: 'A1',
+						check: 'The shipping price is $5.00.',
+						checkKind: 'deterministic',
+						observe: 'the shipping price',
+						expected: '$5.00',
+					},
+					{
+						id: 'A2',
+						check: 'The pickup fee is $0.',
+						checkKind: 'deterministic',
+						observe: 'the pickup fee',
+						expected: '$0',
+					},
+				],
+			},
+		],
+		gaps: [],
+	})
+	await ok(['plan', 'approve', 'ticket@1', '--rationale', 'Run the rule.'])
+	await ok(['run', 'begin', 'run-1', 'ticket@1', '--build', 'b1', '--partial', 'ready_only'])
+	const shipping = await inputCommand(
+		workspace,
+		env,
+		'$5.00',
+		'run',
+		'check',
+		'run-1',
+		'T1',
+		'A1',
+		'--observed',
+		'$5.00',
+		'--evidence',
+		'-'
+	)
+	assert.equal(shipping.body.result, 'passed', shipping.output)
+	const fee = await inputCommand(
+		workspace,
+		env,
+		'$0',
+		'run',
+		'check',
+		'run-1',
+		'T1',
+		'A2',
+		'--observed',
+		'$0',
+		'--evidence',
+		'-'
+	)
+	assert.equal(fee.body.result, 'passed', fee.output)
+})
+
+test('A shell path recorded as an observed value is refused, with the single-quote form to send instead.', async (t) => {
+	const workspace = directory(t)
+	writeFileSync(join(workspace, 'ticket.md'), 'The fee is $0.\n')
+	const app = await fixture()
+	t.after(() => app.close())
+	app.fix()
+	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle' }
+	const ok = async (args: string[], value?: object) => {
+		const result = await inputCommand(workspace, env, value ? JSON.stringify(value) : '', ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	await ok(['setup', '--url', app.baseUrl, '--target', 'shop'])
+	await ok(['plan', 'open', 'ticket', '--target', 'shop@1', '--objective', 'Check the fee.', '--source', 'ticket.md'])
+	await ok(['plan', 'save', 'ticket'], {
+		requirements: [{ id: 'R1', text: 'The fee is $0.', source: 'ticket.md' }],
+		tests: [
+			{
+				capability: 'http',
+				operations: ['read_catalog'],
+				dependsOn: [],
+				preconditions: [],
+				id: 'T1',
+				title: 'Fee',
+				requirementIds: ['R1'],
+				action: 'Read the fee.',
+				assertions: [
+					{
+						id: 'A1',
+						check: 'The fee is $0.',
+						checkKind: 'deterministic',
+						observe: 'the fee',
+						expected: '$0',
+					},
+				],
+			},
+		],
+		gaps: [],
+	})
+	await ok(['plan', 'approve', 'ticket@1', '--rationale', 'Run the rule.'])
+	await ok(['run', 'begin', 'run-1', 'ticket@1', '--build', 'b1', '--partial', 'ready_only'])
+	const mangled = await inputCommand(
+		workspace,
+		env,
+		'$0',
+		'run',
+		'check',
+		'run-1',
+		'T1',
+		'A1',
+		'--observed',
+		'/bin/bash',
+		'--evidence',
+		'-'
+	)
+	assert.equal(mangled.code, 1, mangled.output)
+	assert.match(mangled.body.reasons.join(' '), /looks like a shell path/)
+	assert.match(mangled.body.hint, /single quotes/)
+})
+
+test('A chat turn runs its Checkmate record commands without a prompt — a heredoc body is allowed, and a chained command with rm is still asked.', async (t) => {
+	const workspace = directory(t)
+	execFileSync(process.execPath, [binary, 'init'], { cwd: workspace, encoding: 'utf8' })
+	const { openStore, closeStore } = await import('../../plugin/src/store.ts')
+	const { askRequest } = await import('../../plugin/src/requests.ts')
+	const { requestPermission } = await import('../../plugin/src/permissions.ts')
+	const store = openStore(workspace)
+	t.after(() => closeStore(store))
+	const cli = '/workspace/cli/src/main.ts'
+	const id = askRequest(store, 'oracle', { text: 'Add a test.', context: { planId: null, record: null } })
+	const asked = (command: string) =>
+		requestPermission(store, {
+			askerId: id,
+			who: id,
+			tool: 'Bash',
+			input: { command },
+			suggestions: [],
+			checkmate: cli,
+		}).byRule
+	const edit = `node '${cli}' plan edit SHOP-1@1 --patch --rationale 'Add the 51 case.' <<'EOF'\n{"tests":{}}\nEOF`
+	assert.equal(asked(edit), true)
+	assert.equal(asked(`node '${cli}' status SHOP-1; rm -rf .checkmate`), false)
+	assert.equal(asked(`node '${cli}' run begin run-1 SHOP-1@1 --build b1`), false)
+	assert.equal(asked(`node '${cli}' scope drop SHOP-1 R4 --source conversation --rationale 'Dropped in chat.'`), true)
+})
+
+test('Refuse a detached claude delegate without --allow before it starts — the reply is not started and then refused.', async (t) => {
+	const workspace = directory(t)
+	execFileSync(process.execPath, [binary, 'init'], { cwd: workspace, encoding: 'utf8' })
+	const result = spawnSync(process.execPath, [binary, 'delegate', 'revise', 'SHOP-1', '--detach', '--json'], {
+		cwd: workspace,
+		encoding: 'utf8',
+		env: { ...process.env, CHECKMATE_HARNESS: 'claude', CHECKMATE_ACTOR: 'oracle' },
+	})
+	assert.match(result.stdout, /"status":"rejected"/, result.stdout + result.stderr)
+	assert.match(result.stdout, /delegate needs --allow rules\. Minimum: Read, Bash/)
+	assert.doesNotMatch(result.stdout, /"status":"running"/)
+	assert.equal(existsSync(join(workspace, '.checkmate', 'tmp', 'delegate-revise-SHOP-1.json.started')), false)
+})
+
+test('Retry a refused plan save once when the reply gives no reason — the retry carries the refusal from the record.', async (t) => {
+	const workspace = directory(t)
+	const { chmodSync, copyFileSync, mkdirSync } = await import('node:fs')
+	const { delimiter } = await import('node:path')
+	const bin = join(workspace, 'bin')
+	mkdirSync(bin)
+	copyFileSync(join(root, 'test/e2e/delegate-host.mjs'), join(bin, 'claude'))
+	chmodSync(join(bin, 'claude'), 0o755)
+	const env = {
+		...process.env,
+		PATH: `${bin}${delimiter}${process.env.PATH}`,
+		CHECKMATE_ACTOR: 'oracle',
+		CHECKMATE_HARNESS: 'claude',
+		QA_STAGE: 'setup',
+		QA_LIE: '0',
+	}
+	const ok = async (args: string[], input?: unknown) => {
+		const result = await inputCommand(workspace, env, input === undefined ? '' : JSON.stringify(input), ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	await ok([
+		'target',
+		'open',
+		'shop',
+		'--entry-point',
+		'web:url:Shop HTTP API.',
+		'--capabilities',
+		'http',
+		'--operations',
+		'read_catalog',
+	])
+	await ok(['delegate', 'setup', 'shop', '--allow', 'Read'])
+	writeFileSync(join(workspace, 'ticket.md'), '# Ticket\n\n1. The quote is 240.\n2. The list is newest first.\n')
+	await ok([
+		'plan',
+		'open',
+		'ticket',
+		'--target',
+		'shop@1',
+		'--objective',
+		'Check the quote.',
+		'--source',
+		'ticket.md',
+	])
+	env.QA_STAGE = 'plan-retry'
+	const planned = await command(workspace, env, 'delegate', 'plan', 'ticket', '--allow', 'Read')
+	assert.equal(planned.code, 0, planned.output)
+	assert.equal(planned.body.status, 'completed', planned.output)
+	assert.equal(readFileSync(join(workspace, 'plan-attempts.txt'), 'utf8'), '2')
+	assert.equal((await ok(['query', 'SELECT count(*) AS n FROM plan_revisions'])).rows[0].n, 1)
+})
+
+test('Refuse a plan open whose objective names another local file that is not a source.', async (t) => {
+	const workspace = directory(t)
+	const { chmodSync, copyFileSync, mkdirSync } = await import('node:fs')
+	const { delimiter } = await import('node:path')
+	const bin = join(workspace, 'bin')
+	mkdirSync(bin)
+	copyFileSync(join(root, 'test/e2e/delegate-host.mjs'), join(bin, 'claude'))
+	chmodSync(join(bin, 'claude'), 0o755)
+	const env = {
+		...process.env,
+		PATH: `${bin}${delimiter}${process.env.PATH}`,
+		CHECKMATE_ACTOR: 'oracle',
+		CHECKMATE_HARNESS: 'claude',
+		QA_STAGE: 'setup',
+		QA_LIE: '0',
+	}
+	const ok = async (args: string[]) => {
+		const result = await inputCommand(workspace, env, '', ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	await ok([
+		'target',
+		'open',
+		'shop',
+		'--entry-point',
+		'web:url:Shop HTTP API.',
+		'--capabilities',
+		'http',
+		'--operations',
+		'read_catalog',
+	])
+	await ok(['delegate', 'setup', 'shop', '--allow', 'Read'])
+	writeFileSync(join(workspace, 'ticket.md'), '# Ticket\n\n1. The quote is 240.\n')
+	writeFileSync(join(workspace, 'acceptance.md'), '2. The list is newest first.\n')
+	const refused = await command(
+		workspace,
+		env,
+		'plan',
+		'open',
+		'ticket',
+		'--target',
+		'shop@1',
+		'--objective',
+		'Check the quote and the criteria in acceptance.md.',
+		'--source',
+		'ticket.md'
+	)
+	assert.equal(refused.code, 1, refused.output)
+	assert.match(refused.output, /The objective refers to acceptance\.md/)
+	assert.match(refused.output, /--source acceptance\.md/)
+})
+
+test('A money value whose sign the shell removed is refused — .00 against a $ expectation — and --observed-file keeps $5.00 unchanged.', async (t) => {
+	const workspace = directory(t)
+	writeFileSync(join(workspace, 'ticket.md'), 'The shipping price is $5.00.\n')
+	const app = await fixture()
+	t.after(() => app.close())
+	app.fix()
+	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle' }
+	const ok = async (args: string[], value?: object) => {
+		const result = await inputCommand(workspace, env, value ? JSON.stringify(value) : '', ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	await ok(['setup', '--url', app.baseUrl, '--target', 'shop'])
+	await ok([
+		'plan',
+		'open',
+		'ticket',
+		'--target',
+		'shop@1',
+		'--objective',
+		'Check the shipping price.',
+		'--source',
+		'ticket.md',
+	])
+	await ok(['plan', 'save', 'ticket'], {
+		requirements: [{ id: 'R1', text: 'The shipping price is $5.00.', source: 'ticket.md' }],
+		tests: [
+			{
+				capability: 'http',
+				operations: ['read_catalog'],
+				dependsOn: [],
+				preconditions: [],
+				id: 'T1',
+				title: 'Shipping',
+				requirementIds: ['R1'],
+				action: 'Read the shipping price.',
+				assertions: [
+					{
+						id: 'A1',
+						check: 'The shipping price is $5.00.',
+						checkKind: 'deterministic',
+						observe: 'the shipping price',
+						expected: '$5.00',
+					},
+				],
+			},
+		],
+		gaps: [],
+	})
+	await ok(['plan', 'approve', 'ticket@1', '--rationale', 'Run the rule.'])
+	await ok(['run', 'begin', 'run-1', 'ticket@1', '--build', 'b1', '--partial', 'ready_only'])
+	const truncated = await inputCommand(
+		workspace,
+		env,
+		'',
+		'run',
+		'check',
+		'run-1',
+		'T1',
+		'A1',
+		'--observed',
+		'.00',
+		'--evidence',
+		'-'
+	)
+	assert.equal(truncated.code, 1, truncated.output)
+	assert.match(truncated.body.reasons.join(' '), /currency sign the shell removed/)
+	assert.match(truncated.body.hint, /--observed-file/)
+	writeFileSync(join(workspace, 'observed.txt'), '$5.00\n')
+	const fromFile = await inputCommand(
+		workspace,
+		env,
+		'$5.00',
+		'run',
+		'check',
+		'run-1',
+		'T1',
+		'A1',
+		'--observed-file',
+		'observed.txt',
+		'--evidence',
+		'-'
+	)
+	assert.equal(fromFile.body.result, 'passed', fromFile.output)
+})
+
+test('--observed and --observed-file cannot both give the observed value.', async (t) => {
+	const workspace = directory(t)
+	writeFileSync(join(workspace, 'ticket.md'), 'The fee is 0.\n')
+	const app = await fixture()
+	t.after(() => app.close())
+	app.fix()
+	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle' }
+	const ok = async (args: string[], value?: object) => {
+		const result = await inputCommand(workspace, env, value ? JSON.stringify(value) : '', ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	await ok(['setup', '--url', app.baseUrl, '--target', 'shop'])
+	await ok(['plan', 'open', 'ticket', '--target', 'shop@1', '--objective', 'Check the fee.', '--source', 'ticket.md'])
+	await ok(['plan', 'save', 'ticket'], {
+		requirements: [{ id: 'R1', text: 'The fee is 0.', source: 'ticket.md' }],
+		tests: [
+			{
+				capability: 'http',
+				operations: ['read_catalog'],
+				dependsOn: [],
+				preconditions: [],
+				id: 'T1',
+				title: 'Fee',
+				requirementIds: ['R1'],
+				action: 'Read the fee.',
+				assertions: [
+					{ id: 'A1', check: 'The fee is 0.', checkKind: 'deterministic', observe: 'the fee', expected: '0' },
+				],
+			},
+		],
+		gaps: [],
+	})
+	await ok(['plan', 'approve', 'ticket@1', '--rationale', 'Run the rule.'])
+	await ok(['run', 'begin', 'run-1', 'ticket@1', '--build', 'b1', '--partial', 'ready_only'])
+	writeFileSync(join(workspace, 'fee.txt'), '0\n')
+	const both = await inputCommand(
+		workspace,
+		env,
+		'',
+		'run',
+		'check',
+		'run-1',
+		'T1',
+		'A1',
+		'--observed',
+		'0',
+		'--observed-file',
+		'fee.txt',
+		'--evidence',
+		'-'
+	)
+	assert.equal(both.code, 1, both.output)
+	assert.match(both.body.reasons.join(' '), /either --observed or --observed-file/)
+})
+
+test('Hint the test skill for a request to test a change — the hint misses a test request or fires on development test work.', () => {
+	const hook = join(root, 'plugin', 'hooks', 'route-hint.mjs')
+	const hint = (prompt: string) => {
+		const output = execFileSync(process.execPath, [hook], { input: JSON.stringify({ prompt }), encoding: 'utf8' })
+		return output ? JSON.parse(output).hookSpecificOutput.additionalContext : null
+	}
+	assert.match(hint('QA the new checkout flow in ticket.md on localhost:4191'), /checkmate:test/)
+	assert.match(hint('Verify the latest build against the acceptance criteria in ticket.md'), /checkmate:test/)
+	assert.equal(hint('run the unit tests'), null)
+	assert.equal(hint('fix the failing test in cart.test.ts'), null)
+	assert.equal(hint('why is CI red on the test job?'), null)
+})
+
+test('Refuse a refusal check with no positive control, and save it with one — a route miss cannot pass as the refusal.', async (t) => {
+	const workspace = directory(t)
+	const { chmodSync, copyFileSync, mkdirSync } = await import('node:fs')
+	const { delimiter } = await import('node:path')
+	const bin = join(workspace, 'bin')
+	mkdirSync(bin)
+	copyFileSync(join(root, 'test/e2e/delegate-host.mjs'), join(bin, 'claude'))
+	chmodSync(join(bin, 'claude'), 0o755)
+	const env = {
+		...process.env,
+		PATH: `${bin}${delimiter}${process.env.PATH}`,
+		CHECKMATE_ACTOR: 'oracle',
+		CHECKMATE_HARNESS: 'claude',
+		QA_STAGE: 'setup',
+		QA_LIE: '0',
+	}
+	const ok = async (args: string[]) => {
+		const result = await inputCommand(workspace, env, '', ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	await ok([
+		'target',
+		'open',
+		'shop',
+		'--entry-point',
+		'web:url:Shop HTTP API.',
+		'--capabilities',
+		'http',
+		'--operations',
+		'read_catalog',
+	])
+	await ok(['delegate', 'setup', 'shop', '--allow', 'Read'])
+	writeFileSync(join(workspace, 'ticket.md'), '# Ticket\n\n1. DELETE of an unknown id returns 404.\n')
+	await ok(['plan', 'open', 'ticket', '--target', 'shop@1', '--objective', 'Check delete.', '--source', 'ticket.md'])
+	const test = (assertions: object[]) => ({
+		requirements: [{ id: 'R1', text: 'DELETE of an unknown id returns 404.', source: 'ticket.md' }],
+		tests: [
+			{
+				id: 'T1',
+				title: 'Delete an unknown id',
+				requirementIds: ['R1'],
+				capability: 'http',
+				operations: ['read_catalog'],
+				dependsOn: [],
+				preconditions: [],
+				action: 'DELETE /api/notes/999999.',
+				assertions,
+			},
+		],
+		gaps: [],
+	})
+	const refusal = {
+		id: 'A1',
+		check: 'DELETE of id 999999 returns 404.',
+		checkKind: 'deterministic',
+		observe: 'HTTP status',
+		expected: '404',
+	}
+	const control = {
+		id: 'A2',
+		check: 'DELETE of an existing id returns 200.',
+		checkKind: 'deterministic',
+		observe: 'HTTP status',
+		expected: '200',
+	}
+	const refused = await inputCommand(workspace, env, JSON.stringify(test([refusal])), 'plan', 'save', 'ticket')
+	assert.equal(refused.code, 1, refused.output)
+	assert.match(refused.output, /no positive control/)
+	assert.match(refused.output, /expected.{0,12}200/)
+	const saved = await inputCommand(workspace, env, JSON.stringify(test([refusal, control])), 'plan', 'save', 'ticket')
+	assert.equal(saved.code, 0, saved.output)
+})
+
+test(
+	'Record the models a Claude chat turn reports — the answered turn shows the model it ran.',
+	{ timeout: 45000 },
+	async (t) => {
+		const workspace = directory(t)
+		const host = fakeClaude(t, {
+			request: { result: 'Checked.', currentUsage: { 'claude-haiku-5-5': { costUSD: 0.02 } } },
+			models: [{ value: 'haiku', displayName: 'Haiku 5.5' }],
+		})
+		const env = { ...process.env, ...host.env, CHECKMATE_HARNESS: 'claude' }
+		const server = spawn(process.execPath, [binary, 'ui', '--port', '0', '--json'], { cwd: workspace, env })
+		t.after(() => {
+			if (server.exitCode === null) server.kill('SIGTERM')
+		})
+		const [first] = (await once(server.stdout, 'data')) as [Buffer]
+		const url = JSON.parse(first.toString().split('\n')[0]).url as string
+		const html = await (await fetch(new URL('/chats', url))).text()
+		const csrf = /name="csrf" value="([0-9a-f]+)"/.exec(html)?.[1]
+		assert(csrf)
+		const response = await fetch(new URL('/chats', url), {
+			method: 'POST',
+			redirect: 'manual',
+			headers: { 'content-type': 'application/x-www-form-urlencoded', cookie: 'checkmate_actor=oracle' },
+			body: new URLSearchParams({ csrf, text: 'Which model ran?', model: 'haiku', harness: 'claude' }),
+		})
+		assert.equal(response.status, 303, await response.text())
+		let state: { detail: string } | undefined
+		for (let tries = 0; tries < 200 && !state; tries++) {
+			await new Promise((resolve) => setTimeout(resolve, 50))
+			const rows = (
+				await command(
+					workspace,
+					env,
+					'query',
+					"SELECT detail FROM request_events WHERE step='state' AND status='answered' ORDER BY rowid"
+				)
+			).body.rows as Array<{ detail: string }>
+			state = rows[0]
+		}
+		assert.ok(state, 'The chat turn did not answer')
+		assert.deepEqual(JSON.parse(state.detail).observedModels, ['claude-haiku-5-5'])
+	}
+)
+
+test('Show the Saved-this-turn list without test progress — a run shows its start and one line for its findings.', async () => {
+	const { summarizeChanges } = await import('../../plugin/src/requests.ts')
+	const change = (command: string, subject: string, text: string) => ({ text, command, subject, at: '', href: null })
+	const summary = summarizeChanges([
+		change('run begin', 'run-2', 'run begin run-2'),
+		change('run check', 'run-2', 'run check run-2'),
+		change('run finding', 'run-2', 'run finding run-2'),
+		change('run close', 'run-2', 'run close run-2'),
+		change('run finding', 'run-2', 'run finding run-2'),
+		change('gap answer', 'SHOP-1', 'answered SHOP-1/G1'),
+	])
+	assert.deepEqual(
+		summary.map((item) => item.text),
+		['run begin run-2', 'recorded 2 findings in run-2', 'answered SHOP-1/G1']
+	)
+})
+
+test('The per-test browser recipe acts only by element refs from a snapshot, waits and retries once, and closes a missing ref as error.', async (t) => {
+	const workspace = directory(t)
+	writeFileSync(join(workspace, 'ticket.md'), 'The shop page is reachable.\n')
+	const app = await fixture()
+	t.after(() => app.close())
+	const bin = directory(t)
+	const tool = join(bin, 'playwright-cli')
+	writeFileSync(tool, '#!/bin/sh\necho 1.0.0\n')
+	chmodSync(tool, 0o755)
+	const chrome = join(workspace, 'fake-chrome')
+	writeFileSync(chrome, '#!/bin/sh\necho "Chromium 124.0.6367.60"\n')
+	chmodSync(chrome, 0o755)
+	mkdirSync(join(workspace, '.playwright'))
+	writeFileSync(
+		join(workspace, '.playwright', 'cli.config.json'),
+		JSON.stringify({ browser: { launchOptions: { executablePath: chrome } } })
+	)
+	const env = {
+		...process.env,
+		PATH: `${bin}${delimiter}${process.env.PATH}`,
+		CHECKMATE_ACTOR: 'oracle',
+		CHECKMATE_HARNESS: 'pi',
+	}
+	const ok = async (args: string[], value?: object) => {
+		const result = await inputCommand(workspace, env, value ? JSON.stringify(value) : '', ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	await ok(['setup', '--url', app.baseUrl, '--target', 'shop'])
+	await ok([
+		'plan',
+		'open',
+		'ticket',
+		'--target',
+		'shop@1',
+		'--objective',
+		'Check the page.',
+		'--source',
+		'ticket.md',
+	])
+	await ok(['plan', 'save', 'ticket'], {
+		requirements: [{ id: 'R1', text: 'The shop page is reachable.', source: 'ticket.md' }],
+		tests: [
+			{
+				capability: 'http',
+				operations: ['read_catalog'],
+				dependsOn: [],
+				preconditions: [],
+				id: 'T1',
+				title: 'Page',
+				requirementIds: ['R1'],
+				action: 'Read the page.',
+				assertions: [
+					{
+						id: 'A1',
+						check: 'The page is reachable.',
+						checkKind: 'deterministic',
+						observe: 'the page status',
+						expected: 'reachable',
+					},
+				],
+			},
+		],
+		gaps: [],
+	})
+	await ok(['plan', 'approve', 'ticket@1', '--rationale', 'Run the rule.'])
+	await ok(['run', 'begin', 'run-1', 'ticket@1', '--build', 'b1', '--partial', 'ready_only'])
+	copyFileSync(join(root, 'test/e2e/per-test-host.mjs'), join(bin, 'pi'))
+	chmodSync(join(bin, 'pi'), 0o755)
+	const prompts = join(directory(t), 'prompts.txt')
+	const piEnv = {
+		...env,
+		FAKE_PI_LOG: join(directory(t), 'log.txt'),
+		FAKE_PI_PROMPTS: prompts,
+		FAKE_CHECKMATE_CLI: binary,
+		FAKE_RUN: 'run-1',
+	}
+	const delegated = await inputCommand(workspace, piEnv, '', 'delegate', 'execute', 'run-1')
+	assert.equal(delegated.body.status, 'completed', delegated.output)
+	const recipe = readFileSync(prompts, 'utf8')
+	assert.match(recipe, /Act only by an element ref from the latest snapshot/)
+	assert.match(recipe, /Never invent a selector or a label name/)
+	assert.match(recipe, /wait one second, snapshot again, and retry once/)
+	assert.match(recipe, /close the test as error with the snapshot excerpt as evidence/)
+})
+
+test('Show the gap question beside a recorded answer in the saved list — an answer to another question is visible.', async (t) => {
+	const workspace = directory(t)
+	writeFileSync(join(workspace, 'ticket.md'), 'The list is newest first.\n')
+	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle', CHECKMATE_HARNESS: 'pi' }
+	await command(
+		workspace,
+		env,
+		'setup',
+		'--url',
+		'http://127.0.0.1:9',
+		'--target',
+		'shop',
+		'--data',
+		'isolation',
+		'--policy',
+		'Test users only.'
+	)
+	const opened = await command(
+		workspace,
+		env,
+		'plan',
+		'open',
+		'ticket',
+		'--target',
+		'shop@1',
+		'--objective',
+		'List order.',
+		'--source',
+		'ticket.md'
+	)
+	assert.equal(opened.code, 0, opened.output)
+	const saved = await inputCommand(
+		workspace,
+		env,
+		JSON.stringify({
+			requirements: [{ id: 'R1', text: 'The list is newest first.', source: 'ticket.md' }],
+			tests: [
+				{
+					id: 'T1',
+					title: 'List order',
+					requirementIds: ['R1'],
+					capability: 'http',
+					operations: ['read_catalog'],
+					dependsOn: [],
+					preconditions: [],
+					action: 'Read the list.',
+					assertions: [{ id: 'A1', check: 'The list is shown.', checkKind: 'agent_observation' }],
+				},
+			],
+			gaps: [
+				{
+					id: 'G1',
+					severity: 'blocking',
+					status: 'open',
+					requirementIds: ['R1'],
+					testIds: [],
+					question: 'Is the list newest first?',
+					consequence: 'Unknown.',
+					decisionId: null,
+				},
+			],
+		}),
+		'plan',
+		'save',
+		'ticket'
+	)
+	assert.equal(saved.code, 0, saved.output)
+	const chatEnv = { ...env, CHECKMATE_REQUEST: 'R1' }
+	const answered = await command(
+		workspace,
+		chatEnv,
+		'gap',
+		'answer',
+		'ticket',
+		'G1',
+		'--kind',
+		'clarify',
+		'--value',
+		'Yes, newest first',
+		'--source',
+		'ticket.md',
+		'--rationale',
+		'Owner.'
+	)
+	assert.equal(answered.code, 0, answered.output)
+	const changes = spawnSync(process.execPath, [binary, 'chat', 'changes'], {
+		cwd: workspace,
+		encoding: 'utf8',
+		env: chatEnv,
+	})
+	assert.equal(changes.status, 0, changes.stdout + changes.stderr)
+	assert.match(
+		changes.stdout,
+		/answered ticket\/G1 with "Yes, newest first"\. The gap asks: Is the list newest first\?/
+	)
+})
+
+test('Put Haiku 5.5 first in the Claude model list, and keep the older Haiku below it.', async () => {
+	const { chatModelOrder } = await import('../../plugin/src/model-catalog.ts')
+	const order = chatModelOrder({
+		models: [
+			{ value: 'claude-haiku-4-5-20251001', label: 'Haiku 4.5 (older)' },
+			{ value: 'sonnet', label: 'Sonnet 5.5' },
+			{ value: 'haiku', label: 'Haiku 5.5' },
+		],
+	}).models.map((model) => model.value)
+	assert.equal(order[0], 'haiku')
+	assert.ok(order.indexOf('claude-haiku-4-5-20251001') > order.indexOf('haiku'))
+})
+
+test('An edit that removes a test is not refused for an older test without a control; the older test is flagged, and a new refusal still needs one.', async (t) => {
+	const workspace = directory(t)
+	const { chmodSync, copyFileSync, mkdirSync } = await import('node:fs')
+	const { delimiter } = await import('node:path')
+	const { DatabaseSync } = await import('node:sqlite')
+	const bin = join(workspace, 'bin')
+	mkdirSync(bin)
+	copyFileSync(join(root, 'test/e2e/delegate-host.mjs'), join(bin, 'claude'))
+	chmodSync(join(bin, 'claude'), 0o755)
+	const env = {
+		...process.env,
+		PATH: `${bin}${delimiter}${process.env.PATH}`,
+		CHECKMATE_ACTOR: 'oracle',
+		CHECKMATE_HARNESS: 'claude',
+		QA_STAGE: 'setup',
+		QA_LIE: '0',
+	}
+	const ok = async (args: string[], input = '') => {
+		const result = await inputCommand(workspace, env, input, ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	await ok([
+		'target',
+		'open',
+		'shop',
+		'--entry-point',
+		'web:url:Shop HTTP API.',
+		'--capabilities',
+		'http',
+		'--operations',
+		'read_catalog',
+	])
+	await ok(['delegate', 'setup', 'shop', '--allow', 'Read'])
+	writeFileSync(
+		join(workspace, 'ticket.md'),
+		'# Ticket\n\n1. DELETE of an unknown id returns 404.\n2. The list is newest first.\n'
+	)
+	await ok(['plan', 'open', 'ticket', '--target', 'shop@1', '--objective', 'Check delete.', '--source', 'ticket.md'])
+	const control = {
+		id: 'A2',
+		check: 'The same request for an existing id returns 200.',
+		checkKind: 'deterministic',
+		observe: 'HTTP status',
+		expected: '200',
+	}
+	const refusal = {
+		id: 'A1',
+		check: 'DELETE of id 999999 returns 404.',
+		checkKind: 'deterministic',
+		observe: 'HTTP status',
+		expected: '404',
+	}
+	await ok(
+		['plan', 'save', 'ticket'],
+		JSON.stringify({
+			requirements: [
+				{ id: 'R1', text: 'DELETE of an unknown id returns 404.', source: 'ticket.md' },
+				{ id: 'R2', text: 'The list is newest first.', source: 'ticket.md' },
+			],
+			tests: [
+				{
+					id: 'T1',
+					title: 'Delete unknown',
+					requirementIds: ['R1'],
+					capability: 'http',
+					operations: ['read_catalog'],
+					dependsOn: [],
+					preconditions: [],
+					action: 'DELETE /api/notes/999999.',
+					assertions: [refusal, control],
+				},
+				{
+					id: 'T2',
+					title: 'List',
+					requirementIds: ['R2'],
+					capability: 'http',
+					operations: ['read_catalog'],
+					dependsOn: [],
+					preconditions: [],
+					action: 'GET /api/notes.',
+					assertions: [
+						{
+							id: 'A1',
+							check: 'The list is newest first.',
+							checkKind: 'deterministic',
+							observe: 'the order of titles',
+							expected: 'newest first',
+						},
+					],
+				},
+			],
+			gaps: [],
+		})
+	)
+	// The state of a plan saved before the control rule: T1 has no control.
+	const database = new DatabaseSync(join(workspace, '.checkmate', 'checkmate.db'))
+	const row = database.prepare("SELECT body FROM plan_revisions WHERE plan_id = 'ticket' AND revision = 1").get() as {
+		body: string
+	}
+	const body = JSON.parse(row.body)
+	body.tests[0].assertions = body.tests[0].assertions.filter((assertion: { id: string }) => assertion.id !== 'A2')
+	database
+		.prepare("UPDATE plan_revisions SET body = ? WHERE plan_id = 'ticket' AND revision = 1")
+		.run(JSON.stringify(body))
+	database.close()
+
+	const removed = await ok(
+		['plan', 'edit', 'ticket@1', '--patch', '--rationale', 'Drop the list test.'],
+		JSON.stringify({ requirements: { R2: null }, tests: { T2: null } })
+	)
+	assert.equal(removed.status, 'completed', JSON.stringify(removed))
+
+	const status = await command(workspace, env, 'status', 'ticket')
+	assert.equal(status.code, 0, status.output)
+	assert.match(status.output, /legacy.*T1\.A1/)
+
+	const added = await inputCommand(
+		workspace,
+		env,
+		JSON.stringify({
+			requirements: { R3: { text: 'A second unknown id returns 404.', source: 'ticket.md' } },
+			tests: {
+				T3: {
+					title: 'Second unknown',
+					requirementIds: ['R3'],
+					capability: 'http',
+					operations: ['read_catalog'],
+					dependsOn: [],
+					preconditions: [],
+					action: 'DELETE /api/notes/888888.',
+					assertions: {
+						A1: {
+							check: 'DELETE of id 888888 returns 404.',
+							checkKind: 'deterministic',
+							observe: 'HTTP status',
+							expected: '404',
+						},
+					},
+				},
+			},
+		}),
+		'plan',
+		'edit',
+		'ticket@2',
+		'--patch',
+		'--rationale',
+		'Add a refusal.'
+	)
+	assert.equal(added.code, 1, added.output)
+	assert.match(added.output, /no positive control/)
+})
+
+test('Refuse a range check that names no input value, and save the same range with one assertion for each side.', async (t) => {
+	const workspace = directory(t)
+	const { chmodSync, copyFileSync, mkdirSync } = await import('node:fs')
+	const { delimiter } = await import('node:path')
+	const bin = join(workspace, 'bin')
+	mkdirSync(bin)
+	copyFileSync(join(root, 'test/e2e/delegate-host.mjs'), join(bin, 'claude'))
+	chmodSync(join(bin, 'claude'), 0o755)
+	const env = {
+		...process.env,
+		PATH: `${bin}${delimiter}${process.env.PATH}`,
+		CHECKMATE_ACTOR: 'oracle',
+		CHECKMATE_HARNESS: 'claude',
+		QA_STAGE: 'setup',
+		QA_LIE: '0',
+	}
+	const ok = async (args: string[]) => {
+		const result = await inputCommand(workspace, env, '', ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	await ok([
+		'target',
+		'open',
+		'shop',
+		'--entry-point',
+		'web:url:Shop HTTP API.',
+		'--capabilities',
+		'http',
+		'--operations',
+		'read_catalog',
+	])
+	await ok(['delegate', 'setup', 'shop', '--allow', 'Read'])
+	writeFileSync(join(workspace, 'ticket.md'), '# Ticket\n\n1. Quantity is an integer from 1 to 10.\n')
+	await ok([
+		'plan',
+		'open',
+		'ticket',
+		'--target',
+		'shop@1',
+		'--objective',
+		'Check quantity.',
+		'--source',
+		'ticket.md',
+	])
+	const candidate = (assertions: object[]) => ({
+		requirements: [{ id: 'R1', text: 'Quantity is an integer from 1 to 10.', source: 'ticket.md' }],
+		tests: [
+			{
+				id: 'T1',
+				title: 'Quantity range',
+				requirementIds: ['R1'],
+				capability: 'http',
+				operations: ['read_catalog'],
+				dependsOn: [],
+				preconditions: [],
+				action: 'POST /api/cart with the quantity.',
+				assertions,
+			},
+		],
+		gaps: [],
+	})
+	const refused = await inputCommand(
+		workspace,
+		env,
+		JSON.stringify(
+			candidate([
+				{
+					id: 'A1',
+					check: 'HTTP 400 for quantity outside 1 to 10.',
+					checkKind: 'deterministic',
+					observe: 'HTTP status',
+					expected: '400',
+				},
+			])
+		),
+		'plan',
+		'save',
+		'ticket'
+	)
+	assert.equal(refused.code, 1, refused.output)
+	assert.match(refused.output, /names no input value/)
+	const side = (id: string, check: string, expected: string) => ({
+		id,
+		check,
+		checkKind: 'deterministic',
+		observe: 'HTTP status',
+		expected,
+	})
+	const saved = await inputCommand(
+		workspace,
+		env,
+		JSON.stringify(
+			candidate([
+				side('A1', 'quantity 0 returns HTTP 400.', '400'),
+				side('A2', 'quantity 1 returns HTTP 200.', '200'),
+				side('A3', 'quantity 10 returns HTTP 200.', '200'),
+				side('A4', 'quantity 11 returns HTTP 400.', '400'),
+			])
+		),
+		'plan',
+		'save',
+		'ticket'
+	)
+	assert.equal(saved.code, 0, saved.output)
+})
+
+test('A retest verdict follows the assertions its defect was recorded against — a failing sibling assertion on the same test does not make the defect not fixed.', async (t) => {
+	const workspace = directory(t)
+	writeFileSync(join(workspace, 'ticket.md'), 'The quote is 240 and shows no 999.\n')
+	const app = await fixture()
+	t.after(() => app.close())
+	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle' }
+	const ok = async (args: string[], value?: unknown) => {
+		const result = await inputCommand(workspace, env, value === undefined ? '' : JSON.stringify(value), ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	await ok([
+		'setup',
+		'--url',
+		app.baseUrl,
+		'--target',
+		'shop',
+		'--data',
+		'environment',
+		'--policy',
+		'The test fixture keeps no records.',
+	])
+	await ok([
+		'plan',
+		'open',
+		'ticket',
+		'--target',
+		'shop@1',
+		'--objective',
+		'Check the quote.',
+		'--source',
+		'ticket.md',
+	])
+	await ok(['plan', 'save', 'ticket'], {
+		requirements: [{ id: 'R1', text: 'The quote is 240 and shows no 999.', source: 'ticket.md' }],
+		tests: [
+			{
+				capability: 'http',
+				operations: ['read_catalog'],
+				dependsOn: [],
+				preconditions: [],
+				id: 'T1',
+				title: 'Quote',
+				requirementIds: ['R1'],
+				action: 'Read quote.',
+				assertions: [
+					{
+						id: 'A1',
+						check: 'The quote is 240.',
+						checkKind: 'deterministic',
+						observe: 'the value stated by the check',
+						expected: '240',
+					},
+					{
+						id: 'A2',
+						check: 'The quote shows no 999.',
+						checkKind: 'deterministic',
+						observe: 'the value stated by the check',
+						expected: 'absent:999',
+					},
+				],
+			},
+		],
+		gaps: [],
+	})
+	await ok(['plan', 'approve', 'ticket@1', '--rationale', 'Run the rules.'])
+	await ok(['run', 'begin', 'run-1', 'ticket@1', '--build', 'broken', '--tests', 'T1'])
+	const broken = await (await fetch(`${app.baseUrl}/quote?promotion=true&loyalty=true`)).json()
+	assert.equal(broken.totalPLN, 220)
+	const brokenCheck = await ok(['run', 'check', 'run-1', 'T1', 'A1', '--observed', '220', '--evidence', '-'], broken)
+	await ok(['run', 'check', 'run-1', 'T1', 'A2', '--observed', '220', '--evidence', '-'], broken)
+	await ok(['run', 'finding', 'run-1'], {
+		id: 'F1',
+		type: 'defect',
+		severity: 'high',
+		assertionIds: ['T1.A1'],
+		requirementIds: ['R1'],
+		title: 'Wrong quote',
+		expected: '240',
+		observed: '220',
+		reproduction: ['Read quote.'],
+		evidenceIds: brokenCheck.evidenceIds,
+	})
+	await ok(['run', 'close', 'run-1', 'T1'])
+	await ok([
+		'run',
+		'finish',
+		'run-1',
+		'--completion',
+		'completed',
+		'--cleanup',
+		'completed',
+		'--cleanup-reason',
+		'No test data.',
+	])
+	app.fix()
+	const fixed = await (await fetch(`${app.baseUrl}/quote?promotion=true&loyalty=true`)).json()
+	assert.equal(fixed.totalPLN, 240)
+	await ok(['run', 'begin', 'run-2', 'ticket@1', '--build', 'fixed', '--retest-of', 'run-1', '--tests', 'T1'])
+	await ok(['run', 'check', 'run-2', 'T1', 'A1', '--observed', '240', '--evidence', '-'], fixed)
+	// A2 fails on the fixed build. F1 is about A1 only, so its retest verdict is fixed.
+	const wrongCheck = await ok(['run', 'check', 'run-2', 'T1', 'A2', '--observed', '999', '--evidence', '-'], fixed)
+	await ok(['run', 'finding', 'run-2'], {
+		id: 'F2',
+		type: 'defect',
+		severity: 'low',
+		assertionIds: ['T1.A2'],
+		requirementIds: ['R1'],
+		title: 'Quote shows 999',
+		expected: 'no 999',
+		observed: '999',
+		reproduction: ['Read quote.'],
+		evidenceIds: wrongCheck.evidenceIds,
+	})
+	await ok(['run', 'close', 'run-2', 'T1'])
+	await ok([
+		'run',
+		'finish',
+		'run-2',
+		'--completion',
+		'completed',
+		'--cleanup',
+		'completed',
+		'--cleanup-reason',
+		'No test data.',
+	])
+	const shown = await ok(['run', 'show', 'run-2', '--json'])
+	assert.deepEqual(
+		shown.retest.map((item: { findingId: string; verdict: string }) => [item.findingId, item.verdict]),
+		[['F1', 'fixed']]
+	)
+})
+
+test('A delegated run resets the data before each test that does not continue an earlier test — a test that depends on one runs after it with no reset between.', async (t) => {
+	const workspace = directory(t)
+	const binDir = directory(t)
+	writeFileSync(join(workspace, 'ticket.md'), 'The quote is 240.\n')
+	writeFileSync(
+		join(workspace, 'reset.mjs'),
+		"import { appendFileSync } from 'node:fs'\nappendFileSync('resets.log', `${process.env.CHECKMATE_MARKER}\\n`)\n"
+	)
+	const app = await fixture()
+	t.after(() => app.close())
+	app.fix()
+	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle', CHECKMATE_HARNESS: 'pi' }
+	const ok = async (args: string[], value?: unknown) => {
+		const result = await inputCommand(workspace, env, value === undefined ? '' : JSON.stringify(value), ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	await ok(['setup', '--url', app.baseUrl, '--target', 'shop', '--reset', 'node reset.mjs'])
+	await ok([
+		'plan',
+		'open',
+		'ticket',
+		'--target',
+		'shop@1',
+		'--objective',
+		'Check the quote.',
+		'--source',
+		'ticket.md',
+	])
+	const common = {
+		requirementIds: ['R1'],
+		capability: 'http',
+		operations: ['read_catalog'],
+		preconditions: [],
+		action: 'Read quote.',
+	}
+	const quoteAssertion = {
+		check: 'The quote is 240.',
+		checkKind: 'deterministic',
+		observe: 'the value stated by the check',
+		expected: '240',
+	}
+	await ok(['plan', 'save', 'ticket'], {
+		requirements: [{ id: 'R1', text: 'The quote is 240.', source: 'ticket.md' }],
+		tests: [
+			{ ...common, id: 'T1', title: 'First', dependsOn: [], assertions: [{ id: 'A1', ...quoteAssertion }] },
+			{ ...common, id: 'T2', title: 'Second', dependsOn: [], assertions: [{ id: 'A1', ...quoteAssertion }] },
+			{
+				...common,
+				id: 'T3',
+				title: 'Continues first',
+				dependsOn: ['T1'],
+				assertions: [{ id: 'A1', ...quoteAssertion }],
+			},
+		],
+		gaps: [],
+	})
+	await ok(['plan', 'approve', 'ticket@1', '--rationale', 'Run the rules.'])
+	await ok(['run', 'begin', 'run-1', 'ticket@1', '--build', 'fixed', '--tests', 'T1,T2,T3'])
+	copyFileSync(join(root, 'test/e2e/per-test-host.mjs'), join(binDir, 'pi'))
+	chmodSync(join(binDir, 'pi'), 0o755)
+	const piEnv = {
+		...env,
+		PATH: `${binDir}${delimiter}${process.env.PATH}`,
+		FAKE_PI_LOG: join(directory(t), 'log.txt'),
+		FAKE_CHECKMATE_CLI: binary,
+		FAKE_RUN: 'run-1',
+	}
+	await inputCommand(workspace, piEnv, '', 'delegate', 'execute', 'run-1')
+	// The run begin reset (the plan's operations change data) plus one before T1 and one before T2. T3 continues T1, so it has none.
+	const resets = readFileSync(join(workspace, 'resets.log'), 'utf8').trim().split('\n')
+	assert.equal(resets.length, 3, resets.join(' | '))
+	assert.ok(resets.every((marker) => marker.length > 0))
+})
+
+test('A wrapped observed value is refused with the bare value to send, and nothing is recorded — HTTP 200 for an expected 200.', async (t) => {
+	const workspace = directory(t)
+	writeFileSync(join(workspace, 'ticket.md'), 'The quote is 240.\n')
+	const app = await fixture()
+	t.after(() => app.close())
+	app.fix()
+	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle' }
+	const ok = async (args: string[], value?: unknown) => {
+		const result = await inputCommand(workspace, env, value === undefined ? '' : JSON.stringify(value), ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	await ok([
+		'setup',
+		'--url',
+		app.baseUrl,
+		'--target',
+		'shop',
+		'--data',
+		'environment',
+		'--policy',
+		'The test fixture keeps no records.',
+	])
+	await ok([
+		'plan',
+		'open',
+		'ticket',
+		'--target',
+		'shop@1',
+		'--objective',
+		'Check the quote.',
+		'--source',
+		'ticket.md',
+	])
+	await ok(['plan', 'save', 'ticket'], {
+		requirements: [{ id: 'R1', text: 'The quote is 240.', source: 'ticket.md' }],
+		tests: [
+			{
+				capability: 'http',
+				operations: ['read_catalog'],
+				dependsOn: [],
+				preconditions: [],
+				id: 'T1',
+				title: 'Quote',
+				requirementIds: ['R1'],
+				action: 'Read quote.',
+				assertions: [
+					{
+						id: 'A1',
+						check: 'The quote is 240.',
+						checkKind: 'deterministic',
+						observe: 'the quote total',
+						expected: '240',
+					},
+				],
+			},
+		],
+		gaps: [],
+	})
+	await ok(['plan', 'approve', 'ticket@1', '--rationale', 'Run the rules.'])
+	await ok(['run', 'begin', 'run-1', 'ticket@1', '--build', 'fixed', '--tests', 'T1'])
+	const wrapped = await inputCommand(
+		workspace,
+		env,
+		'quote',
+		'run',
+		'check',
+		'run-1',
+		'T1',
+		'A1',
+		'--observed',
+		'Total 240 PLN',
+		'--evidence',
+		'-'
+	)
+	assert.equal(wrapped.code, 1, wrapped.output)
+	assert.match(wrapped.body.reasons.join(' '), /holds 240 inside other words/)
+	assert.match(wrapped.body.hint, /--observed '240'/)
+	const stored = await ok(['query', "SELECT count(*) AS n FROM assertion_results WHERE run_id = 'run-1'"])
+	assert.equal(stored.rows[0].n, 0)
+	const bare = await inputCommand(
+		workspace,
+		env,
+		'quote',
+		'run',
+		'check',
+		'run-1',
+		'T1',
+		'A1',
+		'--observed',
+		'240',
+		'--evidence',
+		'-'
+	)
+	assert.equal(bare.body.result, 'passed', bare.output)
+})
+
+test('A structured check missing --request and carrying a --result is refused in one message, with the whole corrected command.', async (t) => {
+	const workspace = directory(t)
+	writeFileSync(join(workspace, 'ticket.md'), 'The quote is 240.\n')
+	const app = await fixture()
+	t.after(() => app.close())
+	app.fix()
+	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle' }
+	const ok = async (args: string[], value?: unknown) => {
+		const result = await inputCommand(workspace, env, value === undefined ? '' : JSON.stringify(value), ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	await ok([
+		'setup',
+		'--url',
+		app.baseUrl,
+		'--target',
+		'shop',
+		'--data',
+		'environment',
+		'--policy',
+		'The test fixture keeps no records.',
+	])
+	await ok([
+		'plan',
+		'open',
+		'ticket',
+		'--target',
+		'shop@1',
+		'--objective',
+		'Check the quote.',
+		'--source',
+		'ticket.md',
+	])
+	await ok(['plan', 'save', 'ticket'], {
+		requirements: [{ id: 'R1', text: 'The quote is 240.', source: 'ticket.md' }],
+		tests: [
+			{
+				capability: 'http',
+				operations: ['read_catalog'],
+				dependsOn: [],
+				preconditions: [],
+				id: 'T1',
+				title: 'Quote',
+				requirementIds: ['R1'],
+				action: 'Read quote: GET /quote.',
+				assertions: [
+					{
+						id: 'A1',
+						check: 'The quote is 240.',
+						checkKind: 'deterministic',
+						observe: 'the quote total',
+						expected: '240',
+					},
+				],
+			},
+		],
+		gaps: [],
+	})
+	await ok(['plan', 'approve', 'ticket@1', '--rationale', 'Run the rules.'])
+	await ok(['run', 'begin', 'run-1', 'ticket@1', '--build', 'fixed', '--tests', 'T1'])
+	const both = await inputCommand(
+		workspace,
+		env,
+		'quote',
+		'run',
+		'check',
+		'run-1',
+		'T1',
+		'A1',
+		'--result',
+		'passed',
+		'--observed',
+		'240',
+		'--evidence',
+		'-'
+	)
+	assert.equal(both.code, 1, both.output)
+	assert.match(both.body.reasons.join(' '), /takes its result from --observed/)
+	assert.match(both.body.reasons.join(' '), /Give --request with the request you sent: GET \/quote/)
+	assert.match(both.body.hint, /--request 'GET \/quote'/)
+	assert.match(both.body.hint, /--observed '240'/)
+})
+
+test('A check is corrected while its test is open — a reason is required, and the earlier result stays in the record.', async (t) => {
+	const workspace = directory(t)
+	writeFileSync(join(workspace, 'ticket.md'), 'The quote is 240.\n')
+	const app = await fixture()
+	t.after(() => app.close())
+	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle' }
+	const ok = async (args: string[], value?: unknown) => {
+		const result = await inputCommand(workspace, env, value === undefined ? '' : JSON.stringify(value), ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	await ok([
+		'setup',
+		'--url',
+		app.baseUrl,
+		'--target',
+		'shop',
+		'--data',
+		'environment',
+		'--policy',
+		'The test fixture keeps no records.',
+	])
+	await ok([
+		'plan',
+		'open',
+		'ticket',
+		'--target',
+		'shop@1',
+		'--objective',
+		'Check the quote.',
+		'--source',
+		'ticket.md',
+	])
+	await ok(['plan', 'save', 'ticket'], {
+		requirements: [{ id: 'R1', text: 'The quote is 240.', source: 'ticket.md' }],
+		tests: [
+			{
+				capability: 'http',
+				operations: ['read_catalog'],
+				dependsOn: [],
+				preconditions: [],
+				id: 'T1',
+				title: 'Quote',
+				requirementIds: ['R1'],
+				action: 'Read quote.',
+				assertions: [
+					{
+						id: 'A1',
+						check: 'The quote is 240.',
+						checkKind: 'deterministic',
+						observe: 'the quote total',
+						expected: '240',
+					},
+				],
+			},
+		],
+		gaps: [],
+	})
+	await ok(['plan', 'approve', 'ticket@1', '--rationale', 'Run the rules.'])
+	await ok(['run', 'begin', 'run-1', 'ticket@1', '--build', 'fixed', '--tests', 'T1'])
+	app.fix()
+	await inputCommand(
+		workspace,
+		env,
+		'220',
+		'run',
+		'check',
+		'run-1',
+		'T1',
+		'A1',
+		'--observed',
+		'220',
+		'--evidence',
+		'-'
+	)
+	const noReason = await inputCommand(
+		workspace,
+		env,
+		'240',
+		'run',
+		'check',
+		'run-1',
+		'T1',
+		'A1',
+		'--observed',
+		'240',
+		'--evidence',
+		'-'
+	)
+	assert.equal(noReason.code, 1, noReason.output)
+	assert.match(noReason.body.reasons.join(' '), /Record the correction with --reason/)
+	const corrected = await inputCommand(
+		workspace,
+		env,
+		'240',
+		'run',
+		'check',
+		'run-1',
+		'T1',
+		'A1',
+		'--observed',
+		'240',
+		'--reason',
+		'I read 220 from the first request, which was the broken build.',
+		'--evidence',
+		'-'
+	)
+	assert.equal(corrected.body.result, 'passed', corrected.output)
+	const first = await ok([
+		'query',
+		"SELECT result FROM assertion_results WHERE run_id = 'run-1' AND assertion_id = 'A1'",
+	])
+	assert.equal(first.rows[0].result, 'failed')
+	const history = await ok([
+		'query',
+		"SELECT result, reason FROM assertion_corrections WHERE run_id = 'run-1' AND assertion_id = 'A1'",
+	])
+	assert.equal(history.rows[0].result, 'passed')
+	assert.equal(history.rows[0].reason, 'I read 220 from the first request, which was the broken build.')
+})
+
+test('A refusal check without a control is refused once, then saved as not ready with its reason — status names it.', async (t) => {
+	const workspace = directory(t)
+	const { chmodSync, copyFileSync, mkdirSync } = await import('node:fs')
+	const { delimiter } = await import('node:path')
+	const bin = join(workspace, 'bin')
+	mkdirSync(bin)
+	copyFileSync(join(root, 'test/e2e/delegate-host.mjs'), join(bin, 'claude'))
+	chmodSync(join(bin, 'claude'), 0o755)
+	const env = {
+		...process.env,
+		PATH: `${bin}${delimiter}${process.env.PATH}`,
+		CHECKMATE_ACTOR: 'oracle',
+		CHECKMATE_HARNESS: 'claude',
+		QA_STAGE: 'setup',
+		QA_LIE: '0',
+	}
+	const ok = async (args: string[]) => {
+		const result = await inputCommand(workspace, env, '', ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	await ok([
+		'target',
+		'open',
+		'shop',
+		'--entry-point',
+		'web:url:Shop HTTP API.',
+		'--capabilities',
+		'http',
+		'--operations',
+		'read_catalog',
+	])
+	await ok(['delegate', 'setup', 'shop', '--allow', 'Read'])
+	writeFileSync(join(workspace, 'ticket.md'), '# Ticket\n\n1. DELETE of an unknown id returns 404.\n')
+	await ok(['plan', 'open', 'ticket', '--target', 'shop@1', '--objective', 'Check delete.', '--source', 'ticket.md'])
+	const candidate = {
+		requirements: [{ id: 'R1', text: 'DELETE of an unknown id returns 404.', source: 'ticket.md' }],
+		tests: [
+			{
+				id: 'T1',
+				title: 'Delete an unknown id',
+				requirementIds: ['R1'],
+				capability: 'http',
+				operations: ['read_catalog'],
+				dependsOn: [],
+				preconditions: [],
+				action: 'DELETE /api/notes/999999.',
+				assertions: [
+					{
+						id: 'A1',
+						check: 'DELETE of id 999999 returns 404.',
+						checkKind: 'deterministic',
+						observe: 'HTTP status',
+						expected: '404',
+					},
+				],
+			},
+		],
+		gaps: [],
+	}
+	const first = await inputCommand(workspace, env, JSON.stringify(candidate), 'plan', 'save', 'ticket')
+	assert.equal(first.code, 1, first.output)
+	assert.match(first.output, /no positive control/)
+	const second = await inputCommand(workspace, env, JSON.stringify(candidate), 'plan', 'save', 'ticket')
+	assert.equal(second.code, 0, second.output)
+	const status = await command(workspace, env, 'status', 'ticket')
+	assert.match(status.output, /T1\.A1 needs_control/)
+})
+
+test('A required field needs a check that leaves it empty for each field; the test is refused once, then saved as not ready.', async (t) => {
+	const workspace = directory(t)
+	const { chmodSync, copyFileSync, mkdirSync } = await import('node:fs')
+	const { delimiter } = await import('node:path')
+	const bin = join(workspace, 'bin')
+	mkdirSync(bin)
+	copyFileSync(join(root, 'test/e2e/delegate-host.mjs'), join(bin, 'claude'))
+	chmodSync(join(bin, 'claude'), 0o755)
+	const env = {
+		...process.env,
+		PATH: `${bin}${delimiter}${process.env.PATH}`,
+		CHECKMATE_ACTOR: 'oracle',
+		CHECKMATE_HARNESS: 'claude',
+		QA_STAGE: 'setup',
+		QA_LIE: '0',
+	}
+	const ok = async (args: string[]) => {
+		const result = await inputCommand(workspace, env, '', ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	await ok([
+		'target',
+		'open',
+		'shop',
+		'--entry-point',
+		'web:url:Shop HTTP API.',
+		'--capabilities',
+		'http',
+		'--operations',
+		'read_catalog',
+	])
+	await ok(['delegate', 'setup', 'shop', '--allow', 'Read'])
+	writeFileSync(join(workspace, 'ticket.md'), '# Ticket\n\n1. Title and author are required.\n')
+	await ok([
+		'plan',
+		'open',
+		'ticket',
+		'--target',
+		'shop@1',
+		'--objective',
+		'Check the form.',
+		'--source',
+		'ticket.md',
+	])
+	const candidate = {
+		requirements: [{ id: 'R1', text: 'Title and author are required.', source: 'ticket.md' }],
+		tests: [
+			{
+				id: 'T1',
+				title: 'Empty title',
+				requirementIds: ['R1'],
+				capability: 'http',
+				operations: ['read_catalog'],
+				dependsOn: [],
+				preconditions: [],
+				action: 'POST /api/books with an empty title.',
+				assertions: [
+					{
+						id: 'A1',
+						check: 'Submitting with an empty title returns HTTP 400.',
+						checkKind: 'deterministic',
+						observe: 'HTTP status',
+						expected: '400',
+					},
+				],
+			},
+		],
+		gaps: [],
+	}
+	const first = await inputCommand(workspace, env, JSON.stringify(candidate), 'plan', 'save', 'ticket')
+	assert.equal(first.code, 1, first.output)
+	assert.match(first.output, /covers a required field/)
+	const second = await inputCommand(workspace, env, JSON.stringify(candidate), 'plan', 'save', 'ticket')
+	assert.equal(second.code, 0, second.output)
+	const status = await command(workspace, env, 'status', 'ticket')
+	assert.match(status.output, /T1\.A1 needs_required/)
+})
+
+test('An uncovered requirement and an oversized test are refused once, then saved and flagged by status.', async (t) => {
+	const workspace = directory(t)
+	const { chmodSync, copyFileSync, mkdirSync } = await import('node:fs')
+	const { delimiter } = await import('node:path')
+	const bin = join(workspace, 'bin')
+	mkdirSync(bin)
+	copyFileSync(join(root, 'test/e2e/delegate-host.mjs'), join(bin, 'claude'))
+	chmodSync(join(bin, 'claude'), 0o755)
+	const env = {
+		...process.env,
+		PATH: `${bin}${delimiter}${process.env.PATH}`,
+		CHECKMATE_ACTOR: 'oracle',
+		CHECKMATE_HARNESS: 'claude',
+		QA_STAGE: 'setup',
+		QA_LIE: '0',
+	}
+	const ok = async (args: string[]) => {
+		const result = await inputCommand(workspace, env, '', ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	await ok([
+		'target',
+		'open',
+		'shop',
+		'--entry-point',
+		'web:url:Shop HTTP API.',
+		'--capabilities',
+		'http',
+		'--operations',
+		'read_catalog',
+	])
+	await ok(['delegate', 'setup', 'shop', '--allow', 'Read'])
+	writeFileSync(join(workspace, 'ticket.md'), '# Ticket\n\n1. The quote is 240.\n2. The list is newest first.\n')
+	await ok(['plan', 'open', 'ticket', '--target', 'shop@1', '--objective', 'Check.', '--source', 'ticket.md'])
+	const assertion = (id: string, check: string) => ({
+		id,
+		check,
+		checkKind: 'deterministic',
+		observe: 'the value',
+		expected: 'x',
+	})
+	const quote = {
+		id: 'T1',
+		title: 'Quote',
+		requirementIds: ['R1'],
+		capability: 'http',
+		operations: ['read_catalog'],
+		dependsOn: [],
+		preconditions: [],
+		action: 'Read the quote.',
+		assertions: [assertion('A1', 'The quote is 240.')],
+	}
+	const candidate = {
+		requirements: [
+			{ id: 'R1', text: 'The quote is 240.', source: 'ticket.md' },
+			{ id: 'R2', text: 'The list is newest first.', source: 'ticket.md' },
+		],
+		tests: [quote],
+		gaps: [],
+	}
+	const first = await inputCommand(workspace, env, JSON.stringify(candidate), 'plan', 'save', 'ticket')
+	assert.equal(first.code, 1, first.output)
+	assert.match(first.output, /Requirement R2 has no test or gap/)
+	assert.match(first.output, /Skeleton for R2/)
+	const saved = await inputCommand(workspace, env, JSON.stringify(candidate), 'plan', 'save', 'ticket')
+	assert.equal(saved.code, 0, saved.output)
+	assert.match(saved.output, /1 of 2 criteria have tests; 1 still need tests/)
+	const status = await command(workspace, env, 'status', 'ticket')
+	assert.match(status.output, /R2 needs_test/)
+
+	const overRefused = await inputCommand(
+		workspace,
+		env,
+		JSON.stringify({
+			requirements: {
+				R3: { text: 'The title is trimmed.', source: 'ticket.md' },
+				R4: { text: 'The price has no tax.', source: 'ticket.md' },
+			},
+			tests: { T1: { requirementIds: ['R1', 'R2', 'R3', 'R4'] } },
+		}),
+		'plan',
+		'edit',
+		'ticket@1',
+		'--patch',
+		'--rationale',
+		'Widen T1.'
+	)
+	assert.equal(overRefused.code, 1, overRefused.output)
+	assert.match(overRefused.output, /serves 4 requirements/)
+})
+
+test('A message that is absent after the page was read is a failed result, not an error — --absent is compared, and it is refused with --observed or on a check without an expected value.', async (t) => {
+	const workspace = directory(t)
+	writeFileSync(join(workspace, 'ticket.md'), 'An empty title shows a message and adds no book.\n')
+	const app = await fixture()
+	t.after(() => app.close())
+	app.fix()
+	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle' }
+	const ok = async (args: string[], value?: unknown) => {
+		const result = await inputCommand(workspace, env, value === undefined ? '' : JSON.stringify(value), ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	await ok([
+		'setup',
+		'--url',
+		app.baseUrl,
+		'--target',
+		'shop',
+		'--data',
+		'environment',
+		'--policy',
+		'The test fixture keeps no records.',
+	])
+	await ok([
+		'plan',
+		'open',
+		'ticket',
+		'--target',
+		'shop@1',
+		'--objective',
+		'Check the empty title.',
+		'--source',
+		'ticket.md',
+	])
+	await ok(['plan', 'save', 'ticket'], {
+		requirements: [{ id: 'R1', text: 'An empty title shows a message and adds no book.', source: 'ticket.md' }],
+		tests: [
+			{
+				capability: 'http',
+				operations: ['read_catalog'],
+				dependsOn: [],
+				preconditions: [],
+				id: 'T1',
+				title: 'Empty title',
+				requirementIds: ['R1'],
+				action: 'Read the empty-title response.',
+				assertions: [
+					{
+						id: 'A1',
+						check: 'The page shows "Title is required".',
+						checkKind: 'deterministic',
+						observe: 'the validation message',
+						expected: 'Title is required',
+					},
+					{
+						id: 'A2',
+						check: 'No book with author Writer-T3 is added.',
+						checkKind: 'deterministic',
+						observe: 'the list entries with author Writer-T3',
+						expected: 'absent:Writer-T3',
+					},
+					{ id: 'A3', check: 'The page shows a message.', checkKind: 'agent_observation' },
+				],
+			},
+		],
+		gaps: [],
+	})
+	await ok(['plan', 'approve', 'ticket@1', '--rationale', 'Run the rules.'])
+	await ok(['run', 'begin', 'run-1', 'ticket@1', '--build', 'defective', '--tests', 'T1'])
+	const both = await inputCommand(
+		workspace,
+		env,
+		'page',
+		'run',
+		'check',
+		'run-1',
+		'T1',
+		'A1',
+		'--absent',
+		'--observed',
+		'none',
+		'--evidence',
+		'-'
+	)
+	assert.equal(both.code, 1, both.output)
+	assert.match(both.body.reasons.join(' '), /--absent and --observed do not go together/)
+	const legacy = await inputCommand(
+		workspace,
+		env,
+		'page',
+		'run',
+		'check',
+		'run-1',
+		'T1',
+		'A3',
+		'--absent',
+		'--result',
+		'failed',
+		'--evidence',
+		'-'
+	)
+	assert.equal(legacy.code, 1, legacy.output)
+	assert.match(legacy.body.reasons.join(' '), /applies to a structured check/)
+	const missing = await inputCommand(
+		workspace,
+		env,
+		'page',
+		'run',
+		'check',
+		'run-1',
+		'T1',
+		'A1',
+		'--absent',
+		'--evidence',
+		'-'
+	)
+	assert.equal(missing.body.result, 'failed', missing.output)
+	const kept = await inputCommand(
+		workspace,
+		env,
+		'page',
+		'run',
+		'check',
+		'run-1',
+		'T1',
+		'A2',
+		'--absent',
+		'--evidence',
+		'-'
+	)
+	assert.equal(kept.body.result, 'passed', kept.output)
+	const stored = await ok([
+		'query',
+		"SELECT assertion_id, result, observed FROM assertion_results WHERE run_id = 'run-1' ORDER BY assertion_id",
+	])
+	assert.deepEqual(stored.rows, [
+		{ assertion_id: 'A1', result: 'failed', observed: '(absent)' },
+		{ assertion_id: 'A2', result: 'passed', observed: '(absent)' },
+	])
+})
+
+test('A message with a closing full stop matches its expected text, and a rule word copied as the observed value is refused.', async (t) => {
+	const workspace = directory(t)
+	writeFileSync(join(workspace, 'ticket.md'), 'An empty title shows the message "Enter a title".\n')
+	const app = await fixture()
+	t.after(() => app.close())
+	app.fix()
+	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle' }
+	const ok = async (args: string[], value?: unknown) => {
+		const result = await inputCommand(workspace, env, value === undefined ? '' : JSON.stringify(value), ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	await ok([
+		'setup',
+		'--url',
+		app.baseUrl,
+		'--target',
+		'shop',
+		'--data',
+		'environment',
+		'--policy',
+		'The test fixture keeps no records.',
+	])
+	await ok([
+		'plan',
+		'open',
+		'ticket',
+		'--target',
+		'shop@1',
+		'--objective',
+		'Check the message.',
+		'--source',
+		'ticket.md',
+	])
+	await ok(['plan', 'save', 'ticket'], {
+		requirements: [{ id: 'R1', text: 'An empty title shows the message "Enter a title".', source: 'ticket.md' }],
+		tests: [
+			{
+				capability: 'http',
+				operations: ['read_catalog'],
+				dependsOn: [],
+				preconditions: [],
+				id: 'T1',
+				title: 'Message',
+				requirementIds: ['R1'],
+				action: 'Read the empty-title response.',
+				assertions: [
+					{
+						id: 'A1',
+						check: 'The page shows "Enter a title".',
+						checkKind: 'deterministic',
+						observe: 'the validation message',
+						expected: 'Enter a title',
+					},
+					{
+						id: 'A2',
+						check: 'No book with author Writer-T3 is added.',
+						checkKind: 'deterministic',
+						observe: 'the list entries with author Writer-T3',
+						expected: 'absent:Writer-T3',
+					},
+				],
+			},
+		],
+		gaps: [],
+	})
+	await ok(['plan', 'approve', 'ticket@1', '--rationale', 'Run the rules.'])
+	await ok(['run', 'begin', 'run-1', 'ticket@1', '--build', 'defective', '--tests', 'T1'])
+	const message = await inputCommand(
+		workspace,
+		env,
+		'page',
+		'run',
+		'check',
+		'run-1',
+		'T1',
+		'A1',
+		'--observed',
+		'Enter a title.',
+		'--evidence',
+		'-'
+	)
+	assert.equal(message.body.result, 'passed', message.output)
+	const echoed = await inputCommand(
+		workspace,
+		env,
+		'page',
+		'run',
+		'check',
+		'run-1',
+		'T1',
+		'A2',
+		'--observed',
+		'present:Writer-T3',
+		'--evidence',
+		'-'
+	)
+	assert.equal(echoed.code, 1, echoed.output)
+	assert.match(echoed.body.reasons.join(' '), /repeats the rule of the expected value/)
+})
+
+test('A unit on one side and a bare number on the other compare as numbers, and the record names the unit not observed — two units must match.', async (t) => {
+	const workspace = directory(t)
+	writeFileSync(join(workspace, 'ticket.md'), 'The kettle costs 240 PLN and the shipping costs $5.00.\n')
+	const app = await fixture()
+	t.after(() => app.close())
+	app.fix()
+	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle' }
+	const ok = async (args: string[], value?: unknown) => {
+		const result = await inputCommand(workspace, env, value === undefined ? '' : JSON.stringify(value), ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	const structured = (id: string, expected: string) => ({
+		id,
+		check: `The value is ${expected}.`,
+		checkKind: 'deterministic',
+		observe: 'the price',
+		expected,
+	})
+	await ok([
+		'setup',
+		'--url',
+		app.baseUrl,
+		'--target',
+		'shop',
+		'--data',
+		'environment',
+		'--policy',
+		'The test fixture keeps no records.',
+	])
+	await ok([
+		'plan',
+		'open',
+		'ticket',
+		'--target',
+		'shop@1',
+		'--objective',
+		'Check the prices.',
+		'--source',
+		'ticket.md',
+	])
+	await ok(['plan', 'save', 'ticket'], {
+		requirements: [
+			{ id: 'R1', text: 'The kettle costs 240 PLN and the shipping costs $5.00.', source: 'ticket.md' },
+		],
+		tests: [
+			{
+				capability: 'http',
+				operations: ['read_catalog'],
+				dependsOn: [],
+				preconditions: [],
+				id: 'T1',
+				title: 'Prices',
+				requirementIds: ['R1'],
+				action: 'Read the prices.',
+				assertions: [
+					structured('A1', '240 PLN'),
+					structured('A2', '$5.00'),
+					structured('A3', '240 PLN'),
+					structured('A4', '240 PLN'),
+				],
+			},
+		],
+		gaps: [],
+	})
+	await ok(['plan', 'approve', 'ticket@1', '--rationale', 'Run the rules.'])
+	await ok(['run', 'begin', 'run-1', 'ticket@1', '--build', 'fixed', '--tests', 'T1'])
+	const bare = await inputCommand(
+		workspace,
+		env,
+		'price',
+		'run',
+		'check',
+		'run-1',
+		'T1',
+		'A1',
+		'--observed',
+		'240',
+		'--evidence',
+		'-'
+	)
+	assert.equal(bare.body.result, 'passed', bare.output)
+	const shipping = await inputCommand(
+		workspace,
+		env,
+		'price',
+		'run',
+		'check',
+		'run-1',
+		'T1',
+		'A2',
+		'--observed',
+		'5',
+		'--evidence',
+		'-'
+	)
+	assert.equal(shipping.body.result, 'passed', shipping.output)
+	const otherUnit = await inputCommand(
+		workspace,
+		env,
+		'price',
+		'run',
+		'check',
+		'run-1',
+		'T1',
+		'A3',
+		'--observed',
+		'240 EUR',
+		'--evidence',
+		'-'
+	)
+	assert.equal(otherUnit.body.result, 'failed', otherUnit.output)
+	const otherAmount = await inputCommand(
+		workspace,
+		env,
+		'price',
+		'run',
+		'check',
+		'run-1',
+		'T1',
+		'A4',
+		'--observed',
+		'241',
+		'--evidence',
+		'-'
+	)
+	assert.equal(otherAmount.body.result, 'failed', otherAmount.output)
+	const record = await ok([
+		'query',
+		"SELECT assertion_id, result, reason FROM assertion_results WHERE run_id = 'run-1' ORDER BY assertion_id",
+	])
+	assert.equal(record.rows[0].reason, 'The unit PLN was not observed; the amounts match.')
+	assert.equal(record.rows[1].reason, 'The unit $ was not observed; the amounts match.')
+})
+
+test('A run that names a build its instance does not serve is refused at begin, with the instance that serves it or the command that adds one.', async (t) => {
+	const workspace = directory(t)
+	writeFileSync(join(workspace, 'ticket.md'), 'The quote is 240.\n')
+	const app = await fixture()
+	t.after(() => app.close())
+	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle' }
+	const ok = async (args: string[], value?: unknown) => {
+		const result = await inputCommand(workspace, env, value === undefined ? '' : JSON.stringify(value), ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	await ok([
+		'setup',
+		'--url',
+		app.baseUrl,
+		'--target',
+		'shop',
+		'--data',
+		'environment',
+		'--policy',
+		'The test fixture keeps no records.',
+	])
+	await ok([
+		'target',
+		'instance',
+		'add',
+		'shop',
+		'build-two',
+		'--entry',
+		`web=${app.baseUrl}`,
+		'--build',
+		'shop-build-2',
+	])
+	await ok([
+		'plan',
+		'open',
+		'ticket',
+		'--target',
+		'shop@1',
+		'--objective',
+		'Check the quote.',
+		'--source',
+		'ticket.md',
+	])
+	await ok(['plan', 'save', 'ticket'], {
+		requirements: [{ id: 'R1', text: 'The quote is 240.', source: 'ticket.md' }],
+		tests: [
+			{
+				capability: 'http',
+				operations: ['read_catalog'],
+				dependsOn: [],
+				preconditions: [],
+				id: 'T1',
+				title: 'Quote',
+				requirementIds: ['R1'],
+				action: 'Read quote.',
+				assertions: [
+					{
+						id: 'A1',
+						check: 'The quote is 240.',
+						checkKind: 'deterministic',
+						observe: 'the quote total',
+						expected: '240',
+					},
+				],
+			},
+		],
+		gaps: [],
+	})
+	await ok(['plan', 'approve', 'ticket@1', '--rationale', 'Run the rules.'])
+	const wrong = await inputCommand(
+		workspace,
+		env,
+		'',
+		'run',
+		'begin',
+		'run-1',
+		'ticket@1',
+		'--build',
+		'shop-build-1',
+		'--instance',
+		'build-two',
+		'--tests',
+		'T1'
+	)
+	assert.equal(wrong.code, 1, wrong.output)
+	assert.match(wrong.body.reasons.join(' '), /serves build shop-build-2, not shop-build-1/)
+	assert.match(
+		wrong.body.hint ?? '',
+		/target instance add shop <name> --entry web=<URL of shop-build-1> --build shop-build-1/
+	)
+	const right = await inputCommand(
+		workspace,
+		env,
+		'',
+		'run',
+		'begin',
+		'run-1',
+		'ticket@1',
+		'--build',
+		'shop-build-2',
+		'--instance',
+		'build-two',
+		'--tests',
+		'T1'
+	)
+	assert.equal(right.code, 0, right.output)
+})
+
+test('Start only the stored run when test routes to a plan with ready stored tests — no exploration starts beside it.', async (t) => {
+	const workspace = directory(t)
+	writeFileSync(join(workspace, 'ticket.md'), 'The catalog is listed.\n')
+	const app = await fixture()
+	t.after(() => app.close())
+	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle', CHECKMATE_HARNESS: 'pi' }
+	const setup = await command(
+		workspace,
+		env,
+		'setup',
+		'--url',
+		app.baseUrl,
+		'--target',
+		'shop',
+		'--data',
+		'environment',
+		'--policy',
+		'The fixture keeps no records.'
+	)
+	assert.equal(setup.code, 0, setup.output)
+	const opened = await command(
+		workspace,
+		env,
+		'plan',
+		'open',
+		'ticket',
+		'--target',
+		'shop@1',
+		'--objective',
+		'List the catalog.',
+		'--source',
+		'ticket.md'
+	)
+	assert.equal(opened.code, 0, opened.output)
+	const saved = await inputCommand(
+		workspace,
+		env,
+		JSON.stringify({
+			requirements: [{ id: 'R1', text: 'The catalog is listed.', source: 'ticket.md' }],
+			tests: [
+				{
+					id: 'T1',
+					title: 'Read the catalog',
+					requirementIds: ['R1'],
+					capability: 'http',
+					operations: ['read_catalog'],
+					dependsOn: [],
+					preconditions: [],
+					action: 'Read the catalog.',
+					assertions: [{ id: 'A1', check: 'The catalog is listed.', checkKind: 'agent_observation' }],
+				},
+			],
+			gaps: [],
+		}),
+		'plan',
+		'save',
+		'ticket'
+	)
+	assert.equal(saved.code, 0, saved.output)
+	const routed = await command(
+		workspace,
+		env,
+		'test',
+		'ticket',
+		'--build',
+		'b1',
+		'--session',
+		'--allow',
+		'Read',
+		'--allow',
+		'Bash'
+	)
+	assert.equal(routed.code, 0, routed.output)
+	assert.match(routed.output, /"mode":"regression"/, routed.output)
+	assert.match(routed.output, /"run":\{"runId":"run-/, routed.output)
+	assert.match(routed.output, /Execute the stored tests of run-/, routed.output)
+	const explorations = await command(workspace, env, 'query', 'SELECT count(*) AS n FROM explorations')
+	assert.deepEqual(explorations.body.rows, [{ n: 0 }])
+})
+
+test('Resume an interrupted run whose remaining tests only read data — no decision is asked under an environment data policy.', async (t) => {
+	const workspace = directory(t)
+	writeFileSync(join(workspace, 'ticket.md'), 'The catalog is listed.\n')
+	const app = await fixture()
+	t.after(() => app.close())
+	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle', CHECKMATE_HARNESS: 'pi' }
+	const setup = await command(
+		workspace,
+		env,
+		'setup',
+		'--url',
+		app.baseUrl,
+		'--target',
+		'shop',
+		'--data',
+		'environment',
+		'--policy',
+		'The fixture keeps no records.'
+	)
+	assert.equal(setup.code, 0, setup.output)
+	const opened = await command(
+		workspace,
+		env,
+		'plan',
+		'open',
+		'ticket',
+		'--target',
+		'shop@1',
+		'--objective',
+		'List the catalog.',
+		'--source',
+		'ticket.md'
+	)
+	assert.equal(opened.code, 0, opened.output)
+	const saved = await inputCommand(
+		workspace,
+		env,
+		JSON.stringify({
+			requirements: [{ id: 'R1', text: 'The catalog is listed.', source: 'ticket.md' }],
+			tests: [
+				{
+					id: 'T1',
+					title: 'Read the catalog',
+					requirementIds: ['R1'],
+					capability: 'http',
+					operations: ['read_catalog'],
+					dependsOn: [],
+					preconditions: [],
+					action: 'Read the catalog.',
+					assertions: [{ id: 'A1', check: 'The catalog is listed.', checkKind: 'agent_observation' }],
+				},
+			],
+			gaps: [],
+		}),
+		'plan',
+		'save',
+		'ticket'
+	)
+	assert.equal(saved.code, 0, saved.output)
+	const began = await command(
+		workspace,
+		env,
+		'run',
+		'begin',
+		'run-1',
+		'ticket@1',
+		'--build',
+		'b1',
+		'--instance',
+		'local'
+	)
+	assert.equal(began.code, 0, began.output)
+	const resumed = await command(workspace, env, 'run', 'resume', 'run-1')
+	assert.doesNotMatch(resumed.output, /Actions may have occurred/, resumed.output)
+	assert.notEqual(resumed.body.status, 'needs_decision', resumed.output)
+})
+
+test('A plan whose second attempt still has tests for fewer than half of its criteria is not saved.', async (t) => {
+	const workspace = directory(t)
+	const { chmodSync, copyFileSync, mkdirSync } = await import('node:fs')
+	const { delimiter } = await import('node:path')
+	const bin = join(workspace, 'bin')
+	mkdirSync(bin)
+	copyFileSync(join(root, 'test/e2e/delegate-host.mjs'), join(bin, 'claude'))
+	chmodSync(join(bin, 'claude'), 0o755)
+	const env = {
+		...process.env,
+		PATH: `${bin}${delimiter}${process.env.PATH}`,
+		CHECKMATE_ACTOR: 'oracle',
+		CHECKMATE_HARNESS: 'claude',
+		QA_STAGE: 'setup',
+		QA_LIE: '0',
+	}
+	const ok = async (args: string[]) => {
+		const result = await inputCommand(workspace, env, '', ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	await ok([
+		'target',
+		'open',
+		'shop',
+		'--entry-point',
+		'web:url:Shop HTTP API.',
+		'--capabilities',
+		'http',
+		'--operations',
+		'read_catalog',
+	])
+	await ok(['delegate', 'setup', 'shop', '--allow', 'Read'])
+	writeFileSync(
+		join(workspace, 'ticket.md'),
+		'# Ticket\n\n1. The quote is 240.\n2. The list is newest first.\n3. The title is trimmed.\n'
+	)
+	await ok(['plan', 'open', 'ticket', '--target', 'shop@1', '--objective', 'Check.', '--source', 'ticket.md'])
+	const requirements = [
+		{ id: 'R1', text: 'The quote is 240.', source: 'ticket.md' },
+		{ id: 'R2', text: 'The list is newest first.', source: 'ticket.md' },
+		{ id: 'R3', text: 'The title is trimmed.', source: 'ticket.md' },
+	]
+	const empty = { requirements, tests: [], gaps: [] }
+	const first = await inputCommand(workspace, env, JSON.stringify(empty), 'plan', 'save', 'ticket')
+	assert.equal(first.code, 1, first.output)
+	const second = await inputCommand(workspace, env, JSON.stringify(empty), 'plan', 'save', 'ticket')
+	assert.equal(second.code, 1, second.output)
+	assert.match(second.output, /did not produce tests after two attempts/)
+	assert.equal((await ok(['query', 'SELECT count(*) AS n FROM plan_revisions'])).rows[0].n, 0)
+})
+
+test('delegate wait settles a detached delegate that stopped without a reply — it does not report running for ever.', async (t) => {
+	const workspace = directory(t)
+	const { spawnSync } = await import('node:child_process')
+	const { mkdirSync } = await import('node:fs')
+	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle', CHECKMATE_HARNESS: 'claude' }
+	mkdirSync(join(workspace, '.checkmate', 'tmp'), { recursive: true })
+	const file = join(workspace, '.checkmate', 'tmp', 'delegate-plan-ticket.json')
+	const exited = spawnSync(process.execPath, ['-e', '0'])
+	writeFileSync(file + '.started', String(Date.now()))
+	writeFileSync(file + '.pid', String(exited.pid))
+	const waited = await command(workspace, env, 'delegate', 'wait', 'plan', 'ticket', '--timeout', '30')
+	assert.equal(waited.code, 1, waited.output)
+	assert.equal(waited.body.status, 'operational_error', waited.output)
+	assert.match(waited.output, /stopped before it wrote a reply/)
+})
+
+test('A retest carries the defect of its own run, even when a later run on another build passed the test.', async (t) => {
+	const workspace = directory(t)
+	writeFileSync(join(workspace, 'ticket.md'), 'The quote is 240.\n')
+	const app = await fixture()
+	t.after(() => app.close())
+	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle' }
+	const ok = async (args: string[], value?: unknown) => {
+		const result = await inputCommand(workspace, env, value === undefined ? '' : JSON.stringify(value), ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	await ok([
+		'setup',
+		'--url',
+		app.baseUrl,
+		'--target',
+		'shop',
+		'--data',
+		'environment',
+		'--policy',
+		'The test fixture keeps no records.',
+	])
+	await ok([
+		'plan',
+		'open',
+		'ticket',
+		'--target',
+		'shop@1',
+		'--objective',
+		'Check the quote.',
+		'--source',
+		'ticket.md',
+	])
+	await ok(['plan', 'save', 'ticket'], {
+		requirements: [{ id: 'R1', text: 'The quote is 240.', source: 'ticket.md' }],
+		tests: [
+			{
+				capability: 'http',
+				operations: ['read_catalog'],
+				dependsOn: [],
+				preconditions: [],
+				id: 'T1',
+				title: 'Quote',
+				requirementIds: ['R1'],
+				action: 'Read quote.',
+				assertions: [
+					{
+						id: 'A1',
+						check: 'The quote is 240.',
+						checkKind: 'deterministic',
+						observe: 'the quote total',
+						expected: '240',
+					},
+				],
+			},
+		],
+		gaps: [],
+	})
+	await ok(['plan', 'approve', 'ticket@1', '--rationale', 'Run the rules.'])
+	await ok(['run', 'begin', 'run-1', 'ticket@1', '--build', 'broken', '--tests', 'T1'])
+	const broken = await (await fetch(`${app.baseUrl}/quote?promotion=true&loyalty=true`)).json()
+	assert.equal(broken.totalPLN, 220)
+	const wrong = await ok(['run', 'check', 'run-1', 'T1', 'A1', '--observed', '220', '--evidence', '-'], broken)
+	await ok(['run', 'finding', 'run-1'], {
+		id: 'F1',
+		type: 'defect',
+		severity: 'high',
+		assertionIds: ['T1.A1'],
+		requirementIds: ['R1'],
+		title: 'Wrong quote',
+		expected: '240',
+		observed: '220',
+		reproduction: ['Read quote.'],
+		evidenceIds: wrong.evidenceIds,
+	})
+	await ok(['run', 'close', 'run-1', 'T1'])
+	await ok([
+		'run',
+		'finish',
+		'run-1',
+		'--completion',
+		'completed',
+		'--cleanup',
+		'completed',
+		'--cleanup-reason',
+		'No test data.',
+	])
+	app.fix()
+	await ok(['run', 'begin', 'run-2', 'ticket@1', '--build', 'other', '--tests', 'T1'])
+	const passed = await ok(
+		['run', 'check', 'run-2', 'T1', 'A1', '--observed', '240', '--evidence', '-'],
+		await (await fetch(`${app.baseUrl}/quote?promotion=true&loyalty=true`)).json()
+	)
+	assert.equal(passed.result, 'passed')
+	await ok(['run', 'close', 'run-2', 'T1'])
+	await ok([
+		'run',
+		'finish',
+		'run-2',
+		'--completion',
+		'completed',
+		'--cleanup',
+		'completed',
+		'--cleanup-reason',
+		'No test data.',
+	])
+	await ok(['run', 'begin', 'run-3', 'ticket@1', '--build', 'third', '--retest-of', 'run-1', '--tests', 'T1'])
+	const retest = await ok(['run', 'show', 'run-3', '--json'])
+	assert.deepEqual(
+		retest.request.retestDefects.map((defect: { findingId: string }) => defect.findingId),
+		['F1']
+	)
+})
+
+test('Each check is matched to the request it names — a control and a refusal in one test, where the refusal is not the first request of the action.', async (t) => {
+	const workspace = directory(t)
+	writeFileSync(
+		join(workspace, 'ticket.md'),
+		'A note is created with a token, and a request without a token is refused.\n'
+	)
+	const app = await fixture()
+	t.after(() => app.close())
+	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle' }
+	const ok = async (args: string[], value?: unknown) => {
+		const result = await inputCommand(workspace, env, value === undefined ? '' : JSON.stringify(value), ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	await ok([
+		'setup',
+		'--url',
+		app.baseUrl,
+		'--target',
+		'shop',
+		'--data',
+		'environment',
+		'--policy',
+		'The test fixture keeps no records.',
+	])
+	await ok([
+		'plan',
+		'open',
+		'ticket',
+		'--target',
+		'shop@1',
+		'--objective',
+		'Check the notes.',
+		'--source',
+		'ticket.md',
+	])
+	await ok(['plan', 'save', 'ticket'], {
+		requirements: [
+			{
+				id: 'R1',
+				text: 'A note is created with a token, and a request without a token is refused.',
+				source: 'ticket.md',
+			},
+		],
+		tests: [
+			{
+				capability: 'http',
+				operations: ['read_catalog'],
+				dependsOn: [],
+				preconditions: [],
+				id: 'T1',
+				title: 'Notes with and without a token',
+				requirementIds: ['R1'],
+				action: 'POST /api/notes with a valid token, then GET /api/notes without a token.',
+				assertions: [
+					{
+						id: 'A1',
+						check: 'The create with a valid token returns 201.',
+						checkKind: 'deterministic',
+						observe: 'the status of the create request',
+						expected: '201',
+						request: 'POST /api/notes',
+					},
+					{
+						id: 'A2',
+						check: 'The read without a token returns 401.',
+						checkKind: 'deterministic',
+						observe: 'the status of the read request',
+						expected: '401',
+						request: 'GET /api/notes',
+					},
+				],
+			},
+		],
+		gaps: [],
+	})
+	await ok(['plan', 'approve', 'ticket@1', '--rationale', 'Run the rules.'])
+	await ok(['run', 'begin', 'run-1', 'ticket@1', '--build', 'fixed', '--tests', 'T1'])
+	const wrong = await inputCommand(
+		workspace,
+		env,
+		'refused',
+		'run',
+		'check',
+		'run-1',
+		'T1',
+		'A2',
+		'--observed',
+		'401',
+		'--request',
+		'POST /api/notes',
+		'--evidence',
+		'-'
+	)
+	assert.equal(wrong.code, 1, wrong.output)
+	assert.match(wrong.body.reasons.join(' '), /does not match the planned request GET \/api\/notes/)
+	const read = await inputCommand(
+		workspace,
+		env,
+		'refused',
+		'run',
+		'check',
+		'run-1',
+		'T1',
+		'A2',
+		'--observed',
+		'401',
+		'--request',
+		'GET /api/notes',
+		'--evidence',
+		'-'
+	)
+	assert.equal(read.body.result, 'passed', read.output)
+	const create = await inputCommand(
+		workspace,
+		env,
+		'created',
+		'run',
+		'check',
+		'run-1',
+		'T1',
+		'A1',
+		'--observed',
+		'201',
+		'--request',
+		'POST /api/notes',
+		'--evidence',
+		'-'
+	)
+	assert.equal(create.body.result, 'passed', create.output)
+})
+
+test('A test that expects a refusal and has no 2xx control is not ready — the gate names it and the fix.', async (t) => {
+	const workspace = directory(t)
+	writeFileSync(join(workspace, 'ticket.md'), 'A request without a token is refused.\n')
+	const app = await fixture()
+	t.after(() => app.close())
+	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle' }
+	const ok = async (args: string[], value?: unknown) => {
+		const result = await inputCommand(workspace, env, value === undefined ? '' : JSON.stringify(value), ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	await ok([
+		'setup',
+		'--url',
+		app.baseUrl,
+		'--target',
+		'shop',
+		'--data',
+		'environment',
+		'--policy',
+		'The test fixture keeps no records.',
+	])
+	await ok([
+		'plan',
+		'open',
+		'ticket',
+		'--target',
+		'shop@1',
+		'--objective',
+		'Check the refusal.',
+		'--source',
+		'ticket.md',
+	])
+	const refusal = {
+		requirements: [{ id: 'R1', text: 'A request without a token is refused.', source: 'ticket.md' }],
+		tests: [
+			{
+				capability: 'http',
+				operations: ['read_catalog'],
+				dependsOn: [],
+				preconditions: [],
+				id: 'T1',
+				title: 'Refusal',
+				requirementIds: ['R1'],
+				action: 'GET /api/notes without a token.',
+				assertions: [
+					{
+						id: 'A1',
+						check: 'The read without a token returns 401.',
+						checkKind: 'deterministic',
+						observe: 'the status of the read request',
+						expected: '401',
+						request: 'GET /api/notes',
+					},
+				],
+			},
+		],
+		gaps: [],
+	}
+	await inputCommand(workspace, env, JSON.stringify(refusal), 'plan', 'save', 'ticket')
+	await ok(['plan', 'save', 'ticket'], refusal)
+	await ok(['plan', 'approve', 'ticket@1', '--rationale', 'Run the rules.'])
+	await ok(['run', 'begin', 'run-1', 'ticket@1', '--build', 'fixed', '--tests', 'T1'])
+	const gated = spawnSync(process.execPath, [binary, 'run', 'show', 'run-1', '--gate'], {
+		cwd: workspace,
+		env,
+		encoding: 'utf8',
+	})
+	const text = gated.stdout + gated.stderr
+	assert.equal(gated.status, 2, text)
+	assert.match(text, /not ready \(needs_control\): T1\.A1/)
+	assert.match(text, /add a check with a 2xx expected value and the request that succeeds on the same route/)
+	assert.match(text, /checkmate delegate revise ticket/)
+	assert.doesNotMatch(text, /without an expected value/)
+})

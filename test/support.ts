@@ -3,10 +3,10 @@ import type { PlanCandidate, PlanRequest, Profile } from '../plugin/src/types.ts
 import type { Status, Store } from '../plugin/src/store.ts'
 import type { ChildCall } from '../plugin/src/sessions.ts'
 import assert from 'node:assert/strict'
-import { cpSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { cpSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { delimiter, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { closeStore, openStore, write } from '../plugin/src/store.ts'
 import { addInstance, instanceList, openTarget, saveTarget } from '../plugin/src/targets.ts'
@@ -58,6 +58,25 @@ export function endProcessesIn(workspace: string) {
 		} catch {}
 	}
 }
+// Setup asks for a Chrome config when a browser tool is on PATH. A browser tool beside npm or node
+// on a developer PATH would then fail every setup, so the e2e files link the other tools into one folder.
+export function pathWithoutBrowserTool() {
+	const folder = directory()
+	const linked = new Set<string>()
+	for (const dir of (process.env.PATH ?? '').split(delimiter)) {
+		let names: string[] = []
+		try {
+			names = readdirSync(dir)
+		} catch {}
+		for (const name of names) {
+			if (name === 'playwright-cli' || linked.has(name)) continue
+			linked.add(name)
+			symlinkSync(join(dir, name), join(folder, name))
+		}
+	}
+	return folder
+}
+
 export function directory(t?: TestContext) {
 	const path = mkdtempSync(join(tmpdir(), 'checkmate-test-'))
 	t?.after(() => {
@@ -117,6 +136,7 @@ export function profile(overrides: Partial<Profile> = {}): Profile {
 		startup: { owner: 'factory', command: null },
 		cleanup: 'Close the run browser session. The fixture stores no records.',
 		readyForLiveExecution: true,
+		reset: { owner: 'environment', command: null, policy: { text: 'The test fixture keeps no records.' } },
 		approvals: { plan: 'required', result: 'required' },
 		...overrides,
 	}
@@ -167,7 +187,13 @@ export function candidate(): PlanCandidate {
 				action: 'Complete checkout and read the confirmation.',
 				assertions: [
 					{ id: 'A1', check: 'The confirmation shows 400 PLN.', checkKind: 'agent_observation' },
-					{ id: 'A2', check: 'The order has one item.', checkKind: 'deterministic' },
+					{
+						id: 'A2',
+						check: 'The order has one item.',
+						checkKind: 'deterministic',
+						observe: 'the number of line items in the order',
+						expected: '1',
+					},
 				],
 			},
 			{
@@ -179,7 +205,15 @@ export function candidate(): PlanCandidate {
 				dependsOn: ['T1'],
 				preconditions: ['Cart with 400 PLN and 20 PLN loyalty.'],
 				action: 'Apply the promotion and read the quote.',
-				assertions: [{ id: 'A1', check: 'The response status is HTTP 200.', checkKind: 'deterministic' }],
+				assertions: [
+					{
+						id: 'A1',
+						check: 'The response status is HTTP 200.',
+						checkKind: 'deterministic',
+						observe: 'the value stated by the check',
+						expected: '200',
+					},
+				],
 			},
 			{
 				id: 'T3',
@@ -226,9 +260,20 @@ export function plan(store: Store, planId = 'checkout', value: PlanCandidate = c
 export const promotionDelta = {
 	tests: {
 		T2: {
-			assertions: {
-				A2: { check: 'totalPLN equals 240.', checkKind: 'deterministic' as const },
-			},
+			assertions: [
+				{
+					check: 'The response status is HTTP 200.',
+					checkKind: 'deterministic' as const,
+					observe: 'the HTTP status of the quote',
+					expected: '200',
+				},
+				{
+					check: 'totalPLN equals 240.',
+					checkKind: 'deterministic' as const,
+					observe: 'totalPLN in the quote',
+					expected: '240',
+				},
+			],
 		},
 	},
 }

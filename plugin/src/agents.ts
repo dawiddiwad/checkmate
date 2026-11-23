@@ -36,6 +36,7 @@ import {
 	verifyInput,
 } from './explorers.ts'
 import { lastEntry, recordAnswer, recordTask } from './recorder.ts'
+import { firstRevision } from './testRevision.ts'
 import { replyArray } from './sessions.ts'
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
@@ -407,11 +408,18 @@ function finishPhase(store: Store, actor: string, explorationId: string, phase: 
 	if (recorded) removeWork(store, explorationId)
 	else keepBrowserFolder(store, explorationId)
 	if (!phase.follow) {
+		const revision = recorded
+			? firstRevision(store, actor, explorationRow(store, explorationId).plan_id, explorationId)
+			: null
 		addOutcome(store, actor, explorationId, {
 			step: 'done',
 			explorer: null,
 			status: recorded ? 'completed' : 'failed',
-			detail: { recorded, ...(recorded ? {} : { reason: 'No explorer session was recorded.' }) },
+			detail: {
+				recorded,
+				...(recorded ? {} : { reason: 'No explorer session was recorded.' }),
+				...(revision?.reason ? { revisionReason: revision.reason } : {}),
+			},
 		})
 		return
 	}

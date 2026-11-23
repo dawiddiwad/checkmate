@@ -16,8 +16,7 @@ type Draft = {
 	requirement: string
 	source: string
 	action: string
-	check: string
-	deterministic: boolean
+	checks: string[]
 	via: string | undefined
 	basis: 'claim' | 'observed'
 }
@@ -32,6 +31,15 @@ function stepsText(steps: string | string[] | undefined, fallback: string) {
 function linkedCriterion(entry: Row | undefined, criteria: Map<string, Row>) {
 	const ids = [...(entry?.links ?? []), ...(entry?.about ?? '').split(/[\s,;]+/)]
 	return ids.map((id) => criteria.get(id)).find(Boolean)
+}
+
+// One assertion for each clause of an expected value. Every clause stays; none is dropped.
+function checksOf(expected: string) {
+	const clauses = expected
+		.split(/\band\b|;/i)
+		.map((clause) => clause.trim())
+		.filter(Boolean)
+	return (clauses.length ? clauses : [expected]).map((clause) => (clause.endsWith('.') ? clause : `${clause}.`))
 }
 
 function drafts(store: Store, explorationId: string, observations: boolean): Draft[] {
@@ -52,8 +60,7 @@ function drafts(store: Store, explorationId: string, observations: boolean): Dra
 				requirement: criterion?.text ?? claim.expected,
 				source: criterion?.source ?? `exploration:${explorationId}/${claim.id}`,
 				action: stepsText(claim.steps ?? undefined, claim.title),
-				check: claim.expected,
-				deterministic: false,
+				checks: checksOf(claim.expected),
 				via: report?.via,
 				basis: 'claim',
 			}
@@ -70,8 +77,7 @@ function drafts(store: Store, explorationId: string, observations: boolean): Dra
 						requirement: criterion?.text ?? entry.saw!,
 						source: criterion?.source ?? `exploration:${explorationId}/${entry.id}`,
 						action: stepsText(entry.steps, entry.saw!),
-						check: entry.value !== undefined ? `The result is ${entry.value}.` : entry.saw!,
-						deterministic: entry.value !== undefined,
+						checks: [entry.value !== undefined ? `The result is ${entry.value}.` : entry.saw!],
 						via: entry.via,
 						basis: 'observed',
 					}
@@ -159,7 +165,12 @@ function harvested(
 			preconditions: [`Make new test data that starts with qa-<runId>-${id}.`],
 			action: item.action,
 			assertions: [
-				{ id: 'A1', check: item.check, checkKind: item.deterministic ? 'deterministic' : 'agent_observation' },
+				...item.checks.map((check, index) => ({
+					id: `A${index + 1}`,
+					check,
+					// Harvested checks have no expected value, so the agent judges them.
+					checkKind: 'agent_observation' as const,
+				})),
 			],
 			metadata: {
 				type: 'regression',

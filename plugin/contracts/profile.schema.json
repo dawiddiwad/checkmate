@@ -66,6 +66,10 @@
 						"type": "string",
 						"minLength": 1
 					},
+					"executable": {
+						"type": "string",
+						"minLength": 1
+					},
 					"reachable": {
 						"type": "boolean"
 					}
@@ -138,7 +142,7 @@
 			"type": "object",
 			"properties": {
 				"owner": {
-					"enum": ["factory", "checkmate"]
+					"enum": ["checkmate", "environment", "isolation"]
 				},
 				"command": {
 					"anyOf": [
@@ -148,13 +152,64 @@
 								"type": "string",
 								"minLength": 1
 							},
-							"minItems": 1,
-							"uniqueItems": true
+							"minItems": 1
 						},
 						{
 							"type": "null"
 						}
 					]
+				},
+				"cleanup": {
+					"anyOf": [
+						{
+							"type": "array",
+							"items": {
+								"type": "string",
+								"minLength": 1
+							},
+							"minItems": 1
+						},
+						{
+							"type": "null"
+						}
+					]
+				},
+				"policy": {
+					"anyOf": [
+						{
+							"type": "object",
+							"properties": {
+								"text": {
+									"type": "string",
+									"minLength": 1
+								}
+							},
+							"required": ["text"],
+							"additionalProperties": false
+						},
+						{
+							"type": "object",
+							"properties": {
+								"path": {
+									"type": "string",
+									"minLength": 1
+								}
+							},
+							"required": ["path"],
+							"additionalProperties": false
+						},
+						{
+							"type": "null"
+						}
+					]
+				},
+				"timeoutSeconds": {
+					"type": "integer",
+					"minimum": 1,
+					"maximum": 3600
+				},
+				"perTest": {
+					"type": "boolean"
 				}
 			},
 			"required": ["owner", "command"],

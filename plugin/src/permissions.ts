@@ -5,6 +5,7 @@ import { interruptedSupervisor } from './explorers.ts'
 import { addRequestEvent, isRequestId, requestOf, requestStopped } from './requests.ts'
 import { requireChoice, requireCondition, requireWellFormed } from './contracts.ts'
 import { explorerActor } from './recorder.ts'
+import { chatCommandAllowed } from '../pi/permission.mjs'
 
 export const permissionDecisions = ['allow', 'allow-kind', 'allow-tool', 'always', 'deny', 'stop'] as const
 export type PermissionChoice = (typeof permissionDecisions)[number]
@@ -50,6 +51,8 @@ export type PermissionRequestInput = {
 	input: unknown
 	suggestions: Suggestion[]
 	cwd?: string
+	// The Checkmate command line of this workspace, for a chat turn's own command.
+	checkmate?: string
 }
 
 export const closedText: Record<ClosedCause, string> = {
@@ -57,7 +60,7 @@ export const closedText: Record<ClosedCause, string> = {
 	'ui-stopped': 'the UI stopped',
 	stopped: 'the tester or the run stopped',
 	interrupted: 'the run supervisor stopped before the end',
-	disconnected: 'the tester did not wait any more',
+	disconnected: 'the asking session stopped waiting',
 }
 
 const maxText = 2000
@@ -279,6 +282,11 @@ function ruleInForce(store: Store, askerId: string, tool: string, suggestions: S
 	)
 }
 
+function commandOf(input: unknown) {
+	const command = (input as { command?: unknown } | null)?.command
+	return typeof command === 'string' ? command : undefined
+}
+
 export function requestPermission(store: Store, input: PermissionRequestInput) {
 	const fromRequest = isRequestId(store, input.askerId)
 	const tester =
@@ -336,8 +344,32 @@ export function requestPermission(store: Store, input: PermissionRequestInput) {
 				operationId,
 				at
 			)
+		// A chat turn may run its Checkmate commands without asking, the same as the Pi chat. The whole command is checked:
+		// a heredoc body or a chained command is allowed only when every part is a listed Checkmate command.
+		const chatAllowed =
+			!force &&
+			fromRequest &&
+			input.tool === 'Bash' &&
+			input.checkmate !== undefined &&
+			chatCommandAllowed(commandOf(input.input), [input.checkmate])
+		if (chatAllowed)
+			addDecision(
+				store,
+				request,
+				'allow',
+				{
+					by: 'checkmate',
+					text: 'allowed: a Checkmate command that a chat may run',
+					reason: null,
+					rule: null,
+					setBy: null,
+					cause: null,
+				},
+				operationId,
+				at
+			)
 		return {
-			reply: completed(input.askerId, { id, byRule: Boolean(force) }),
+			reply: completed(input.askerId, { id, byRule: Boolean(force) || chatAllowed }),
 			subjects: [fromRequest ? `request:${input.askerId}` : `exploration:${input.askerId}`, 'permissions'],
 		}
 	}).data as { id: string; byRule: boolean }

@@ -10,7 +10,18 @@ import { pathToFileURL } from 'node:url'
 import { chromium, type Browser, type BrowserContext } from 'playwright-core'
 import { closeStore, openStore } from '../../plugin/src/store.ts'
 import { seedDemo } from '../../scripts/ui-demo.ts'
-import { actor, directory, root, store, target, plan, evidenceFile, ready, endProcessesIn } from '../support.ts'
+import {
+	actor,
+	directory,
+	pathWithoutBrowserTool,
+	root,
+	store,
+	target,
+	plan,
+	evidenceFile,
+	ready,
+	endProcessesIn,
+} from '../support.ts'
 import { openTest, launched, entries, done, ended, stacks } from '../explorations.ts'
 import { asking, bash, allOf, openOf, plainBody, waitOpen } from '../permissions.ts'
 import { planDetail } from '../../plugin/src/index.ts'
@@ -168,7 +179,7 @@ console.log(JSON.stringify({type:'agent_settled',aborted:false}))
 `
 	)
 	chmodSync(host, 0o755)
-	const env = { PATH: `${bin}:${process.env.PATH}`, CHECKMATE_HARNESS: 'pi' }
+	const env = { PATH: `${bin}:${pathWithoutBrowserTool()}`, CHECKMATE_HARNESS: 'pi' }
 	must(workspace, ['setup', '--url', url, '--target', 'ticket', '--operations', 'read_catalog'], env)
 	must(
 		workspace,
@@ -187,7 +198,15 @@ console.log(JSON.stringify({type:'agent_settled',aborted:false}))
 				dependsOn: [],
 				preconditions: [],
 				action: 'Read the quote.',
-				assertions: [{ id: 'A1', check: 'Quote is 240.', checkKind: 'deterministic' }],
+				assertions: [
+					{
+						id: 'A1',
+						check: 'Quote is 240.',
+						checkKind: 'deterministic',
+						observe: 'the value stated by the check',
+						expected: '240',
+					},
+				],
 			},
 		],
 		gaps: [
@@ -673,15 +692,14 @@ test(
 				testId: 'T1',
 				assertionId: 'A1',
 				result: 'passed',
-				observed: marker,
+				observed: `${marker} The confirmation shows 400 PLN.`,
 				evidence: [{ text: marker }],
 			})
 			checkAssertion(opened, actor, {
 				runId,
 				testId: 'T1',
 				assertionId: 'A2',
-				result: 'passed',
-				observed: `${build} order record is correct`,
+				observed: '1',
 				evidence: [{ text: `${build} order record is correct` }],
 			})
 			closeTest(opened, actor, { runId, testId: 'T1' })
@@ -693,7 +711,7 @@ test(
 			})
 			return (evidence.data.evidenceIds as string[])[0]
 		}
-		record('old-run', 'build-old', 'OLD_BUILD_EVIDENCE must not appear in the selected report.')
+		record('old-run', 'build-old', 'OLD_BUILD_EVIDENCE totalPLN=240 must not appear in the selected report.')
 		const evidenceId = record('current-run', 'build-current', 'CURRENT_BUILD_EVIDENCE: HTTP 200, totalPLN=240.')
 		closeStore(opened)
 		const { url, server } = await startUi(t, workspace)

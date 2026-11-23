@@ -10854,7 +10854,8 @@ function schemaError(path, error) {
   if (error.keyword === "type") return `${path} must be ${typeList([error.params.type ?? []].flat())}`;
   if (error.keyword === "additionalProperties")
     return `${path} has unknown field "${error.params.additionalProperty}"`;
-  if (error.keyword === "required") return `${path} needs field "${error.params.missingProperty}"`;
+  if (error.keyword === "required")
+    return `${path} needs field "${error.params.missingProperty}"${error.params.missingProperty === "decisionId" ? " (use null for an open gap)" : ""}`;
   if (error.keyword === "enum") return `${path} must be one of: ${error.params.allowedValues?.join(", ")}`;
   if (error.propertyName !== void 0) return `${path} field name "${error.propertyName}" ${error.message}`;
   return `${path} ${error.message}`;
@@ -11056,7 +11057,8 @@ function planCheck(value2) {
   for (const requirement of plan.requirements)
     requireWellFormed(
       plan.tests.some((test) => test.requirementIds.includes(requirement.id)) || plan.gaps.some((gap) => gap.requirementIds.includes(requirement.id)),
-      `Requirement ${requirement.id} has no test or gap`
+      `Requirement ${requirement.id} has no test or gap`,
+      `Add a test whose requirementIds include ${requirement.id}, or an open gap whose requirementIds include ${requirement.id}. A test that is not ready still counts. Remove the requirement if the ticket does not state it.`
     );
   requireWellFormed(same(plan.coverage, planCoverage(plan)), "Plan coverage is inconsistent");
   return plan;
@@ -41374,7 +41376,7 @@ function stagePrompt(stage, subject, execution, workspace2) {
       `Plan: ${subject}. Read the pending decisions with \`checkmate plan pending ${subject}\`.`,
       "Change only the tests that the decisions affect. Give each ready test at least one assertion. A test without an assertion is not ready.",
       'When a decision has no expected value, add an assertion with "checkKind": "agent_observation" that records the behavior.',
-      'Send each changed test whole: title, requirementIds, capability, operations, dependsOn, preconditions, action, and assertions as a list of {"check", "checkKind"}. Give one value in each check. For a deterministic check that compares a value, also send "observe" (what the page or API shows) and "expected" (the value to compare). Do not send assertion IDs; the code keeps them.',
+      'Send each changed test whole: title, requirementIds, capability, operations, dependsOn, preconditions, action, and assertions as a list of {"check", "checkKind", "observe", "expected"}. Every deterministic check needs "observe" (what the page or API shows) and "expected" (the single value to compare). A deterministic check without them is refused at save. If you cannot give an expected value, use "checkKind": "agent_observation" instead. Give one value in each check. Do not send assertion IDs; the code keeps them.',
       'A new requirement needs "text" and "source". A test that a decision drops is removed with {"remove": true}.',
       "Send the delta as one line of JSON in the heredoc, with double quotes, no comments, and no Markdown.",
       'When a decision says a criterion is dropped, removed, or out of scope, remove it. Remove its requirement and its tests in the same delta, for example {"requirements": {"R2": {"remove": true}}, "tests": {"T2": {"remove": true}}}. Do not rewrite a test for another criterion to match it.',

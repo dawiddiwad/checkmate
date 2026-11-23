@@ -140,7 +140,8 @@ function schemaError(path: string, error: SchemaError) {
 	if (error.keyword === 'type') return `${path} must be ${typeList([error.params.type ?? []].flat())}`
 	if (error.keyword === 'additionalProperties')
 		return `${path} has unknown field "${error.params.additionalProperty}"`
-	if (error.keyword === 'required') return `${path} needs field "${error.params.missingProperty}"`
+	if (error.keyword === 'required')
+		return `${path} needs field "${error.params.missingProperty}"${error.params.missingProperty === 'decisionId' ? ' (use null for an open gap)' : ''}`
 	if (error.keyword === 'enum') return `${path} must be one of: ${error.params.allowedValues?.join(', ')}`
 	if (error.propertyName !== undefined) return `${path} field name "${error.propertyName}" ${error.message}`
 	return `${path} ${error.message}`
@@ -382,7 +383,8 @@ export function planCheck(value: unknown): Plan {
 		requireWellFormed(
 			plan.tests.some((test) => test.requirementIds.includes(requirement.id)) ||
 				plan.gaps.some((gap) => gap.requirementIds.includes(requirement.id)),
-			`Requirement ${requirement.id} has no test or gap`
+			`Requirement ${requirement.id} has no test or gap`,
+			`Add a test whose requirementIds include ${requirement.id}, or an open gap whose requirementIds include ${requirement.id}. A test that is not ready still counts. Remove the requirement if the ticket does not state it.`
 		)
 	requireWellFormed(same(plan.coverage, planCoverage(plan)), 'Plan coverage is inconsistent')
 	return plan

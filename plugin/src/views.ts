@@ -669,6 +669,7 @@ export function explorationLive(store: Store, explorationId: string, now = Date.
 		followReason: status.followReason,
 		path: status.path,
 		paused: status.paused,
+		warnings: status.warnings ?? [],
 		data: explorationData(store, status),
 		explorers: status.explorers.map((item) => explorerLive(store, explorationId, events, item, running, now)),
 		phases: phaseRows(events, status, startOf(events)?.verifier ?? null),

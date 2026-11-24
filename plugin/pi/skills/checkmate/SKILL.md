@@ -16,6 +16,8 @@ Use native `checkmate_*` tools. They take named arguments and return the recorde
 
 Use the named plan or the only plan in progress. Ask when more than one plan matches or when the person has not given the build. Keep the default level, tester count and deadlines unless the person asks to change them. For exploration, call `checkmate_start_test` and wait for that exploration with `checkmate_test_status`. Stop at a decision for the oracle. For stored tests use `checkmate_begin_run` with a new ID and the named build. Give `retestOf` when the build fixes an earlier defect. Resume a stopped run with `checkmate_resume_run`.
 
+If an exploration reports that a host integration needs sign-in, say which integration was unavailable. Let the person sign in through Pi if they need it for another test.
+
 Use `checkmate_delegate_work` with stage `execute` and the run ID as subject. The worker reads the pinned instance, runs the selected tests and records the results. Report the recorded verdict, defects, and coverage. Read the run only if the result lacks those facts. Use `checkmate_inbox` for a request about all open work.
 
 ## Decisions of the oracle

@@ -38,6 +38,7 @@ export default function (pi) {
 		pi.on('tool_call', () => ({ block: true, reason: 'The Checkmate tool policy is missing or invalid.' }))
 		return
 	}
+	pi.registerCommand('checkmate-child-ready', { handler: async () => {} })
 	const files = policy.deny.flatMap((rule) => {
 		const match = /^Read\(\.\/(.*?)(\/\*\*|\*)\)$/.exec(rule)
 		return match ? [{ path: match[1], prefix: match[2] === '*' }] : []

@@ -28,6 +28,8 @@ The examples omit optional `--actor` and `--workspace` flags. Claude Code delega
 
 The Claude Code plugin serves Checkmate actions through its local MCP server. The Pi package registers the same actions as native tools. The host gives each tool its workspace and role. An action takes named arguments. Its result gives the recorded state or a refusal with reasons and a next action.
 
+Pi explorers use host tools and MCP servers for context when started by the extension or review UI, or when the CLI caller omits `--allow`. Their Checkmate actions are disabled. The tool policy limits built-in edits and writes to each tester's work folder. The review UI still asks about a call that its tool rules do not approve. Factory exploration with `--allow` and delegated stages use explicit tool sets.
+
 | Work                        | Tools with the `checkmate_` prefix                                                                                        |
 | --------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
 | Inspect or correct a target | `list_targets`, `show_target`, `setup`, `replace_instance`                                                                |

@@ -1,6 +1,6 @@
 import { Refusal } from './contracts.ts'
 import { signalChild, trackGroup } from './processes.ts'
-import { piArgs, piResult, resolvePiModelArgs } from './pi.ts'
+import { piArgs, piEvent, piResult, resolvePiModelArgs } from './pi.ts'
 import type { Harness } from './pi.ts'
 import { randomBytes } from 'node:crypto'
 import type { ChildProcess } from 'node:child_process'
@@ -28,6 +28,7 @@ export type ChildContext = {
 	claudeArgs: string[]
 	harness?: Harness
 	piArgs?: string[]
+	inheritPiTools?: boolean
 	deny?: string[]
 	work?: string
 	hook?: ChildHook
@@ -67,6 +68,7 @@ export type ChildCall = {
 	durationMs?: number
 	sessionId?: string
 	stderr?: string[]
+	warnings?: string[]
 }
 
 export function costOf(
@@ -278,7 +280,7 @@ export function piToolNames(rules: string[]) {
 }
 
 function piWorkTools(context: ChildContext, names: string[]) {
-	return context.work ? ['edit', 'write'].filter((name) => !names.includes(name)) : []
+	return context.work ? ['edit', 'write'].filter((name) => context.inheritPiTools || !names.includes(name)) : []
 }
 
 function piExtension(name: string) {
@@ -296,23 +298,22 @@ function piExtension(name: string) {
 export function childArgs(context: ChildContext, own: string[], allow: string[] = []) {
 	if (context.harness === 'pi') {
 		const names = piToolNames(allow)
-		const tools = [...names, ...piWorkTools(context, names)]
+		const scoped = piWorkTools(context, names)
+		const tools = context.inheritPiTools ? scoped : [...names, ...scoped]
 		const args = own[0] === '--resume' ? ['--session', ...own.slice(1)] : own
-		return piArgs(
-			[
-				'--no-extensions',
-				...(context.piArgs ?? []),
-				'--no-context-files',
-				'--no-skills',
-				'--no-prompt-templates',
-				'--no-tools',
-				...(tools.length ? ['--tools', tools.map((name) => `+${name}`).join(',')] : []),
-				...(context.deny?.length || context.work ? piExtension('child.mjs') : []),
-				...(context.hook ? piExtension('permission.mjs') : []),
-				...args,
-			],
-			{}
-		)
+		const launch = [
+			...(context.inheritPiTools ? [] : ['--no-extensions']),
+			...(context.piArgs ?? []),
+			'--no-context-files',
+			'--no-skills',
+			'--no-prompt-templates',
+			...(context.inheritPiTools ? [] : ['--no-tools']),
+			...(tools.length ? ['--tools', tools.map((name) => `+${name}`).join(',')] : []),
+			...(context.deny?.length || context.work ? piExtension('child.mjs') : []),
+			...(context.hook ? piExtension('permission.mjs') : []),
+			...args,
+		]
+		return context.inheritPiTools ? ['--mode', 'rpc', ...launch] : piArgs(launch, {})
 	}
 	const settings = {
 		...(context.hiddenPlugin ? { enabledPlugins: { [context.hiddenPlugin]: false } } : {}),
@@ -344,6 +345,7 @@ export function childEnv(env: Env, extra: Env = {}, hook?: ChildHook, context?: 
 	const scoped = piWorkTools(context, names)
 	return {
 		...base,
+		...(context.inheritPiTools ? { CHECKMATE_TOOL_ROLE: 'explorer' } : {}),
 		...(hook ? { CHECKMATE_PI_HOOK: JSON.stringify({ ...hook, allow: [...names, ...scoped] }) } : {}),
 		...(context.deny?.length || context.work
 			? { CHECKMATE_PI_POLICY: JSON.stringify({ deny: context.deny ?? [], work: context.work, scoped }) }
@@ -414,7 +416,7 @@ export function excerpt(text: unknown) {
 	return line ? `: ${line}` : ''
 }
 
-export function claudeResult(output: string, error: string, status: number | null, signal: string | null) {
+export function claudeResult(output: string, error: string, status: number | null, signal: string | null): ChildCall {
 	let parsed: Record<string, unknown> = {}
 	try {
 		const value = JSON.parse(output) as unknown
@@ -555,6 +557,7 @@ export function launchChild(
 ): Promise<ChildCall> {
 	const commandArgs = harness === 'pi' ? piLaunchArgs(executable, args, cwd, env) : args
 	if (!Array.isArray(commandArgs)) return Promise.resolve(commandArgs)
+	const rpc = harness === 'pi' && args[0] === '--mode' && args[1] === 'rpc'
 	const limit = childOutputLimit(harness)
 	return new Promise((resolvePromise) => {
 		const child = spawn(executable, commandArgs, { cwd, env, stdio: ['pipe', 'pipe', 'pipe'], detached: true })
@@ -563,6 +566,8 @@ export function launchChild(
 		liveChildren.add(child)
 		if (child.pid) onStart?.(child.pid)
 		let output = ''
+		let pending = ''
+		let rpcError: string | undefined
 		let errors = ''
 		let failure: ChildCall['failure']
 		let bytes = 0
@@ -584,12 +589,50 @@ export function launchChild(
 			if (bytes > limit.bytes)
 				stop(['operational_error', `${harness} output exceeded ${limit.mib} MiB. Checkmate stopped it.`])
 			else output += text
+			if (!rpc || failure) return
+			const lines = (pending + text).split('\n')
+			pending = lines.pop() ?? ''
+			for (const line of lines) {
+				const value = piEvent(line)
+				if (value?.type === 'response' && value.id === 'checkmate-child-ready') {
+					const commands = Array.isArray(value.data?.commands) ? value.data.commands : []
+					const loaded = (name: string, file: string) =>
+						commands.some(
+							(command) =>
+								command.name === name &&
+								command.source === 'extension' &&
+								command.sourceInfo?.path === join(pluginRoot, 'pi', file)
+						)
+					if (
+						!value.success ||
+						!loaded('checkmate-child-ready', 'child.mjs') ||
+						(env.CHECKMATE_PI_HOOK && !loaded('checkmate-permission-ready', 'permission.mjs'))
+					) {
+						rpcError = 'Pi did not load the Checkmate tool policy or permission hook.'
+						child.stdin.end()
+					} else send({ id: 'checkmate-child-prompt', type: 'prompt', message: prompt })
+				} else if (value?.type === 'response' && value.id === 'checkmate-child-prompt' && !value.success) {
+					rpcError = `Pi rejected the tester prompt${excerpt(value.error)}.`
+					child.stdin.end()
+				} else if (value?.type === 'agent_settled') child.stdin.end()
+				else if (
+					value?.type === 'extension_ui_request' &&
+					value.id &&
+					['select', 'confirm', 'input', 'editor'].includes(value.method ?? '')
+				) {
+					send({ type: 'extension_ui_response', id: value.id, cancelled: true })
+				}
+			}
 		})
 		child.stderr.on('data', (bytes: Buffer) => {
 			errors = (errors + bytes.toString()).slice(-16384)
 		})
 		child.stdin.on('error', () => {})
-		child.stdin.end(prompt)
+		const send = (value: object) => {
+			if (!child.stdin.writableEnded) child.stdin.write(`${JSON.stringify(value)}\n`)
+		}
+		if (rpc) send({ id: 'checkmate-child-ready', type: 'get_commands' })
+		else child.stdin.end(prompt)
 		child.on('error', (error) => {
 			failure ??= ['operational_error', `${harness} failed: ${'code' in error ? String(error.code) : 'unknown'}.`]
 		})
@@ -599,8 +642,13 @@ export function launchChild(
 			clearTimeout(killTimer)
 			const result = harness === 'pi' ? piResult : claudeResult
 			const parsed = result(output, errors, status, signal)
+			if (rpcError) failure = ['operational_error', rpcError]
 			const cost = usageOf(harness === 'pi' && failure ? [parsed, {}] : [parsed])
-			resolvePromise(failure ? { ...cost, failure } : parsed)
+			resolvePromise(
+				failure
+					? { ...cost, failure, ...(parsed.warnings?.length ? { warnings: parsed.warnings } : {}) }
+					: parsed
+			)
 		})
 	})
 }

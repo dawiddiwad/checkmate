@@ -95,6 +95,8 @@ pi install npm:@xoxoai/checkmate -l
 
 Pi loads a project package only after it approves the folder. Start Pi with `--approve`, or approve the folder when Pi asks. Until then, Pi loads a global copy if one is installed.
 
+Pi explorers started from the extension or review UI use the host tools and MCP servers available to the project. They start a fresh session and use integrations to gather context. The review UI reports a server that needs sign-in, and the tester continues with the available tools. Sign in through Pi before using that server in a test.
+
 Checkmate prints a `warning:` line when Pi declares another Checkmate package. Remove the copy you do not use:
 
 ```sh

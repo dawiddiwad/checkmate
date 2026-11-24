@@ -898,6 +898,7 @@ export function explorationPage(
 			</div>
 			<div data-region="exploration-banner">
 				${stateLine(store, live, run)}${strayLines(live)}${stepAsks(open)}${rulesLines(permissionRules(store, explorationId))}
+				${live.warnings.map((warning) => banner('warn', warning))}
 			</div>
 			${runActions(
 				context,

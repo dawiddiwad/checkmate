@@ -5,18 +5,16 @@ import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { chromium } from 'playwright-core'
 
-// Renders two GIFs: docs/img/onboarding.gif from docs/media/onboarding.html (the factory storyboard)
-// and docs/img/onboarding-calm.gif from docs/media/onboarding-calm.html (a slower, simpler version).
+// Renders docs/img/onboarding.gif from docs/media/onboarding.html: the factory storyboard.
 // FFmpeg must be on PATH, or set FFMPEG to its path.
 
 const root = process.cwd()
-const gifs = [
-	{ page: 'onboarding.html', output: 'onboarding.gif', width: 900, height: 756 },
-	{ page: 'onboarding-calm.html', output: 'onboarding-calm.gif', width: 900, height: 420 },
-]
+const output = join(root, 'docs/img/onboarding.gif')
 const executablePath = process.env.CHECKMATE_BROWSER_EXECUTABLE
 const ffmpeg = process.env.FFMPEG || 'ffmpeg'
 const fps = 8
+const width = 900
+const height = 756
 
 type Animation = { DURATION: number; measure: () => void; renderFrame: (seconds: number) => void }
 
@@ -24,22 +22,20 @@ if (!executablePath) throw Error('Set CHECKMATE_BROWSER_EXECUTABLE to Chromium.'
 if (spawnSync(ffmpeg, ['-version']).error) throw Error('Put FFmpeg on PATH, or set FFMPEG to its path.')
 
 const work = mkdtempSync(join(tmpdir(), 'checkmate-onboarding-'))
+const frames = join(work, 'frames')
+mkdirSync(frames)
 const browser = await chromium.launch({ executablePath, headless: true })
 try {
-	for (const gif of gifs) {
-		const frames = join(work, gif.output)
-		mkdirSync(frames)
-		const count = await renderFrames(gif, frames)
-		assemble(count, frames, join(root, 'docs/img', gif.output))
-	}
+	const count = await renderFrames()
+	assemble(count)
 } finally {
 	await browser.close()
 	rmSync(work, { recursive: true, force: true })
 }
 
-async function renderFrames(gif: (typeof gifs)[number], frames: string) {
-	const page = await browser.newPage({ viewport: { width: gif.width, height: gif.height }, deviceScaleFactor: 1 })
-	await page.goto(pathToFileURL(join(root, 'docs/media', gif.page)).href)
+async function renderFrames() {
+	const page = await browser.newPage({ viewport: { width, height }, deviceScaleFactor: 1 })
+	await page.goto(pathToFileURL(join(root, 'docs/media/onboarding.html')).href)
 	await page.evaluate(() => document.fonts.ready)
 	await page.evaluate(() => (window as unknown as Animation).measure())
 	const duration = await page.evaluate(() => (window as unknown as Animation).DURATION)
@@ -52,7 +48,7 @@ async function renderFrames(gif: (typeof gifs)[number], frames: string) {
 	return count
 }
 
-function assemble(count: number, frames: string, output: string) {
+function assemble(count: number) {
 	const result = spawnSync(
 		ffmpeg,
 		[

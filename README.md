@@ -4,11 +4,13 @@
 
 ### The QA system of record for an agent software factory.
 
-Checkmate turns a ticket into tests. It records each run, its evidence, open questions, and oracle decisions in one local SQLite record. Agents and people use the same record.
+[![npm version](https://img.shields.io/npm/v/%40xoxoai%2Fcheckmate)](https://www.npmjs.com/package/@xoxoai/checkmate)
 
-[![The QA loop on ticket SHOP-12: QA explores build b1 and finds 3 gaps and 2 defects. The oracle answers, the planner saves plan@2, and QA follows up. The oracle hands the defects to the factory. Build b2 has 1 defect and 2 new gaps; the oracle escalates the gaps to a human, the planner saves plan@3, and the factory delivers build b3. QA finds nothing new, the oracle accepts and promotes the tests, and a permanent run confirms them. Then three ways to run Checkmate: a solo developer with the Claude Code plugin or the Pi extension, a software factory that calls one command per stage and waits on exit 3, and a CI job that runs the promoted tests and fails on the gate.](docs/img/onboarding.gif)](docs/img/onboarding.gif)
+Checkmate turns a ticket into tests that an agent can run. It records the open questions, guides each test run, and keeps the evidence and every decision in one database. Agents and people read and write that record.
 
-The review UI shows what waits for you: open the evidence, decide findings, answer gaps, and ask the chat.
+[![The QA loop on ticket SHOP-12: QA explores build b1 and finds 3 gaps and 2 defects. The oracle answers, the planner saves plan@2, and QA follows up. The oracle hands the defects to the factory. Build b2 has 1 defect and 2 new gaps; the oracle escalates the gaps to a human, the planner saves plan@3, and the factory delivers build b3. QA finds nothing new, the oracle accepts and promotes the tests, and a permanent run confirms them.](docs/img/onboarding.gif)](docs/img/onboarding.gif)
+
+The Human review UI shows what waits for you: the evidence, findings and gaps. You can also chat with your harness directly.
 
 [![The review UI on sample records: the plans list with rules on two builds, the checkout plan on Needs you, a finding with its screenshot and JSON evidence accepted as a defect, a gap answered, a chat turn that saves a gap answer, and a list of more features.](docs/media/ui/review.gif)](docs/media/ui/review.gif)
 
@@ -21,11 +23,18 @@ The review UI shows what waits for you: open the evidence, decide findings, answ
 - Checkmate starts the planner and the testers through Claude Code or Pi. It does not change code or start the app.
 - Everything is kept in one SQLite file: `.checkmate/checkmate.db`.
 
-## Solo mode: the plugin in Claude Code or the extension in Pi
+## Current limitations
 
-You are the oracle. The plugin and the extension ship the CLI, so you do not need npm.
+This is work in progress. I am testing how far my own agentic QA workflows can go for a wider audience. The hardest part is balancing abstraction against capability and extensibility.
 
-In Claude Code:
+The idea: QA sits at the centre of the ticket lifecycle in a software factory and drives each iteration. It is not an afterthought at the far right end. This favours end-to-end testing and acceptance. Gaps and defects show up early, before the factory builds anything, because explorers first probe the real app and see how the planned change affects the user journey. It could raise quality and focus, and lower the cost of delivery, in line with business needs. In my experience, some requirements get simpler this way, or turn out to be redundant. That keeps the intent clear.
+
+- Explorers and testers do not inherit your host's tools, such as a Jira MCP server. In the plugin, a tester has only `Read`, `Write`, `Edit`, `Bash`, `Glob`, and `Grep`. In the CLI, an explorer has only the tools that you pass with `--allow`, and it cannot ask for more.
+- So plan first for now. The planner runs in your host, and it can read the Jira ticket and other sources.
+
+## Solo mode: Claude Code or Pi
+
+You are the oracle. The plugin and the extension ship the CLI.
 
 ```text
 /plugin marketplace add dawiddiwad/checkmate
@@ -34,13 +43,9 @@ In Claude Code:
 /checkmate:ui
 ```
 
-In Pi, run `pi install npm:@xoxoai/checkmate -l`, then use `/checkmate <request>` and `/checkmate-ui`.
+In Pi, run `pi install npm:@xoxoai/checkmate -l`, then use `/checkmate <request>` and `/checkmate-ui`. See [Start Checkmate](docs/start.md#use-a-host-plugin).
 
-The first test asks for the app URL and how its test data stays safe. A factory that runs its agents in Claude Code or Pi can work the same way. See [Start Checkmate](docs/start.md#use-a-host-plugin).
-
-## Team mode: the CLI in your factory
-
-Use the CLI on its own when your factory has its own harness, such as a CI/CD pipeline.
+## Team mode: the CLI in a factory or CI
 
 ```sh
 npm i -g @xoxoai/checkmate
@@ -52,10 +57,7 @@ checkmate delegate plan checkout --allow Read --allow Bash
 checkmate status checkout
 ```
 
-- Every target needs a data kind: `--data` with a policy, or a `--reset` command.
-- In a pipeline, `checkmate run show <runId> --gate` exits 0 only when every selected test passed, and `checkmate status <planId> --fail-on-blocked` exits 3 when the oracle must answer. See [Exit codes](docs/factory.md#exit-codes-for-a-pipeline).
-
-Both modes need Node.js 24.12.0 or later, and Claude Code or Pi for the planner and the testers. Browser tests also need Playwright CLI. See [Requirements](docs/start.md#requirements).
+For pipelines, see [Exit codes](docs/factory.md#exit-codes-for-a-pipeline). Both modes need Node.js 24.12.0 or later, and Claude Code or Pi: [Requirements](docs/start.md#requirements).
 
 ## Documentation
 

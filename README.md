@@ -27,6 +27,8 @@ The Human review UI shows what waits for you: the evidence, findings and gaps. Y
 
 This is work in progress. I am testing how far my own agentic QA workflows can go for a wider audience. The hardest part is balancing abstraction against capability and extensibility.
 
+The idea: QA sits at the centre of the ticket lifecycle in a software factory and drives each iteration. It is not an afterthought at the far right end. This favours end-to-end testing and acceptance. Gaps and defects show up early, before the factory builds anything, because explorers first probe the real app and see how the planned change affects the user journey. It could raise quality and focus, and lower the cost of delivery, in line with business needs. In my experience, some requirements get simpler this way, or turn out to be redundant. That keeps the intent clear.
+
 - Explorers and testers do not inherit your host's tools, such as a Jira MCP server. In the plugin, a tester has only `Read`, `Write`, `Edit`, `Bash`, `Glob`, and `Grep`. In the CLI, an explorer has only the tools that you pass with `--allow`, and it cannot ask for more.
 - So plan first for now. The planner runs in your host, and it can read the Jira ticket and other sources.
 

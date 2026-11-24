@@ -8,7 +8,7 @@
 			"name": "checkmate",
 			"source": "./plugin",
 			"description": "Plan tests, resolve gaps, and collect evidence.",
-			"version": "0.8.1"
+			"version": "0.8.2"
 		}
 	]
 }

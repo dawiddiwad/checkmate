@@ -1,28 +1,38 @@
 # Architecture
 
-Checkmate is a Claude Code plugin and a deterministic Node.js toolkit.
+> **Agent only:** This file contains repository or workflow instructions for coding agents.
+
+Checkmate includes a Claude Code plugin, a Pi package, and a deterministic Node.js toolkit. The workspace setting selects the host for new work. A CLI caller can override it with `CHECKMATE_HARNESS`. The UI uses the startup environment until a person saves a choice. Claude Code is the default. Opening the UI from Pi sets its live default to Pi. Pi owns its provider configuration and model selection. `plugin/src/pi.ts` builds Pi arguments and reads its event stream. `cli/extensions/checkmate.mjs` registers the Pi commands. `plugin/src/ui/lifecycle.ts` coordinates UI startup and verifies the server before reuse or shutdown. `cli/skills/checkmate/` defines the interactive workflow.
 
 `plugin/` is the installed plugin. It has no npm dependencies.
 
-- `plugin/skills/` contains the setup, plan, revise, execute, report, status, and ui workflows.
-- `plugin/references/workflow.md` has the shared stage rules: read state first, actor, modes, and the report format. `browser.md` and `http.md` are optional tool recipes.
+- `plugin/skills/` contains the test, setup, plan, revise, execute, report, status, and ui workflows. `test` is the main entry. `plugin/src/modes.ts` has the `test` command and its mode rule.
+- `plugin/references/workflow.md` has the stage rules that every stage reads: commands, actor, return, and safety. `session.md` has the same-session rules: read state first, modes, recording a request, beginning a run, and the report format. `browser.md` and `http.md` are optional tool recipes.
 - `plugin/contracts/` contains authoritative JSON Schemas.
 - `plugin/src/contracts.ts` checks document shape and plan relationships.
 - `plugin/src/store.ts` owns the SQLite database, transactions, and the operation log.
+- `plugin/src/spec.ts` records specification findings, reviews, and guarded handoffs in the operation log. It checks the current plan, decisions, approval, and local source digests without creating a build or a run.
+- `plugin/src/promotion.ts` checks an accepted run and records the permanent test snapshot of a ticket plan. The snapshot keeps its source revision, build, result digest, and test IDs.
+- `plugin/src/permanent.ts` selects the latest ticket promotion and checks its provenance and current acceptance. A permanent run uses that snapshot and does not discover tests or rules.
 - `plugin/src/targets.ts`, `plans.ts`, and `runs.ts` own the commands for targets and their instances, plans, and runs.
-- `plugin/src/views.ts` has the read models for the inbox, the lists, the detail pages, and the loop status of a plan. `plugin/src/actor.ts` finds the default actor.
+- `plugin/agents/` contains the `tester` and `clerk` agents of the session path. A Claude Code session starts them with the Agent tool.
+- `plugin/src/explorations.ts` owns explorations and their events. `journal.ts` owns the entries that recorders log. `recorder.ts` forks a test session to write its record. `explorers.ts` starts the explorers and the supervisor. Initial and follow-up turns share the work-folder and stray-file watchers and the child launch path; each keeps its own session and model policy. `sessions.ts` builds the clean-context arguments of each child session, with the permission and activity hooks when `.checkmate/ui.json` names a live UI. `permissions.ts` owns the permission requests of testers and of requests, their answers, and the rules of an exploration or of a conversation. `requests.ts` owns chat turns, starting context, and the changes that each turn made. The `conversation` column groups turns. Session events identify the native host session. `briefs.ts` has the text that these sessions get. `levels.ts` has the test levels. `agents.ts` has the session path: the actions for the agents of a host session, and the results of those agents. `harvest.ts` turns the claims of an exploration into stored tests. `rules.ts` owns the rules of a plan: the derived rules, their check, and their correction.
+- `plugin/src/views.ts` has the read models for the inbox, the lists, the detail pages, and the loop status of a plan. Its QA facts supply the same build, blockers, follow-up eligibility, and next actions to the CLI and the review page. `rulemap.ts` has the rule map of a plan and the details of its claims. `plugin/src/actor.ts` finds the default actor.
 - `plugin/src/cli.ts` parses arguments and prints compact or JSON output. `plugin/dist/checkmate.js` is its bundle.
 - `plugin/src/render.ts` generates the Markdown, HTML, and JSON exports.
-- `plugin/src/ui/` is the review UI: a `node:http` server on `127.0.0.1`, the pages, and the assets. `ui/settings.ts` has the Settings pages. `checkmate ui` starts it.
+- `plugin/src/ui/` is the review UI: a `node:http` server on `127.0.0.1`, the pages, and the assets. `ui/settings.ts` has the Settings pages. `ui/hooks.ts` has the hook routes that the sessions of a run and of a request call: it holds each permission request until a person answers, and keeps the activity line of each tester. `ui/chats.ts` renders Chats. `ui/requester.ts` runs one turn at a time, with Claude stream JSON or Pi RPC. It sends recent turns when a selection change needs a new native session. `checkmate ui` starts it.
+- The first chat turn gives the chat its validated plan context. The plan and global Chats views read the same turns. `costs.ts` adds the reported chat costs to the exploration costs for that plan.
 - `plugin/src/types.ts` and `plugin/src/validators.js` are generated from the schemas.
 
 `cli/` is the npm package `@xoxoai/checkmate`.
 
 - `cli/src/main.ts` handles `delegate` and passes every other command to the plugin CLI.
-- `cli/src/launcher.ts` starts the installed Claude CLI with the bundled plugin, checks its structured response, and then checks the database for the recorded change.
+- `cli/src/spec.ts` runs the no-tool specification reviewer and records its validated findings through the existing plan and specification APIs. `cli/src/launcher.ts` starts the selected coding harness with the stage instructions. It checks the worker reply and verifies the stage command, subject, and actor in the record. It records the host-reported model IDs and cost for the attempt.
 
 The repository root contains tests, scripts, documentation, and development tools.
 
-The host owns the agent loop, model, authentication, context, tools, and permissions. Checkmate records the tools of a target and a plan, and owns its contracts and record checks. These checks are not a sandbox.
+The host owns the agent loop, authentication, credentials, context, tools, and permissions. For Claude Code, Checkmate names a default model alias for the sessions that it starts: explorers, recorders, the merger, and the verifier. On the session path, the front matter of each agent in `plugin/agents/` names the model. The workspace tester model overrides the level default. A run can set a model for each tester. Its recorder uses the same model. The merger and verifier use the run model. An explicit CLI model takes precedence. The UI discovers models from the selected host through `plugin/src/model-catalog.ts`. The delegated stages get no model argument unless the host gives one. A new chat uses the workspace request settings, and the composer can override them for each turn. Checkmate sends an effort only when the host catalog advertises it for the selected model. It has the tools of the host session. Checkmate records the tools of a target and a plan, and owns its contracts and record checks. These checks are not a sandbox.
+
+A Pi provider-only override uses the current saved model for that provider or the model that Pi selects within that provider. The launch choice stays in the record. Pi events give the observed model IDs and any reported costs. Each phase and chat turn keeps the costs of its own calls.
 
 The oracle owns scope, decisions, and release decisions. The factory owns application startup and fixes. Target content cannot authorize a change to the request or plan.

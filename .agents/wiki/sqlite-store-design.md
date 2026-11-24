@@ -1,5 +1,7 @@
 # Design: SQLite store and npm CLI
 
+> **Agent only:** This file contains repository or workflow instructions for coding agents.
+
 Status: implemented. This is the original design record for implementers. The user manual is in `docs/`. Contract version: `toolkit-2`. Schema version: 2. All open questions of the first draft are resolved in section 3. Later changes are noted in the sections.
 
 ## 1. Goals
@@ -431,10 +433,13 @@ A test can name a test in another plan in `dependsOn`: `["T1", "login:T3"]`. A g
 
 ### Resume
 
-- `checkmate run resume <runId>` records a new attempt. It lists each selected test that is not closed, with the assertions that have no result.
+- `checkmate run resume <runId>` checks that the recorded instance is active and the latest target profile is ready. It runs the gate again with the original request in the same transaction as the attempt write.
+- With `ready_only`, it also refuses resume when an open test has a blocking run gap. QA can close the affected test and resume the other tests.
+- A refusal keeps the attempt, outcomes, and evidence. After a successful check, `run resume` records a new attempt and lists the open tests with their assertions that have no result.
 - Recorded assertion results stay. The agent checks only the assertions that have no result.
 - Checkmate does not repeat a test automatically. An agent can have done actions of a test that was not closed when the session stopped. The resume output shows each such test with the warning `Actions may have occurred`. The oracle decides to continue it or to record it as `error`.
 - `checkmate run resume <runId> --error T3,T4 --reason <text>` closes the named tests as `error` and records the new attempt in one step.
+- `run begin` and `run resume` return a warning for each started run of the same plan that shares open tests on the same target instance. `run show` and the run overview calculate the warning from current records.
 - A deadline or a worker failure in `delegate` does not finalize the run with `error` for every test, as `toolkit-1` does. The run stays `started`. Recorded outcomes stay. The response says to resume or finish.
 
 ### Result acceptance
@@ -524,12 +529,13 @@ The UI has one job: show the human what waits for a decision, and let them decid
 
 ### Visual language
 
-- **Mark.** Four squares in a row. The third square is filled. It appears in the page header.
-- **Type.** Space Grotesk for headings, Inter for text, and JetBrains Mono for IDs, digests, builds, and code. The plugin includes the WOFF2 files in `plugin/src/ui/assets/fonts/`. All three fonts use the SIL Open Font License 1.1. The UI does not load fonts from the internet, so it works offline and sends no request to another host.
-- **Color.** Neutral greys with a green tint, one deep-green accent, and white or near-black surfaces. Status colors (passed, failed, blocked, warning) are separate from the accent. The UI follows the system light or dark setting. A toggle in the header overrides it.
-- **Status in form and text.** Each status has an icon, a word, and a color, for example `✓ passed`, `✗ failed`, and `? inconclusive`. Color is never the only signal.
-- **Restraint.** Borders mark separate objects only. No shadows on lists. No animation except a short fade for toasts. The UI respects `prefers-reduced-motion`.
-- **Accessibility.** Contrast meets WCAG 2.2 AA in both themes. Each control has a label and a visible focus ring. Pages use landmarks and headings in order.
+- **Mark.** Four squares in a row. The third square is filled. It appears in the top bar.
+- **Layout.** A top bar, a navigator at the left on the pages of a plan, the centre, and a status bar with the path and the keys of the current place. The design is "Spine in Console".
+- **Type.** IBM Plex Sans for headings and text, and IBM Plex Mono for rows, labels, IDs, builds, and code. Labels are uppercase. The plugin includes the WOFF2 files in `plugin/src/ui/assets/fonts/` with their licence files. Both fonts use the SIL Open Font License 1.1. A system font stack is the fallback. The UI does not load fonts from the internet, so it works offline and sends no request to another host.
+- **Color.** A near-black or a light-grey ground, one cyan or teal accent for the highlight, and colour only for status and for what needs attention. The UI follows the system light or dark setting. A switch in the top bar overrides it.
+- **Status in form and text.** Each status has an icon or a word and a color, for example `✓ passed`, `✗ failed`, and `? inconclusive`. Color is never the only signal.
+- **Restraint.** One border width (1 px), one radius (2 px), no shadows, no glass. The UI respects `prefers-reduced-motion`.
+- **Accessibility.** Text contrast is at least 4.5:1 in both themes. The navigator is a tree, the lists are list boxes with one tab stop, and the highlighted row holds the focus.
 
 ### Pages
 

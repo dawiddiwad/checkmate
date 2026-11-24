@@ -26,6 +26,8 @@ import {
 	savePlan,
 	saveTarget,
 } from '../plugin/src/index.ts'
+import { openExploration } from '../plugin/src/explorations.ts'
+import { done, ended, event, launch, launched } from '../test/explorations.ts'
 
 export const human = 'qa-lead'
 export const agent = 'checkmate-agent'
@@ -43,8 +45,17 @@ class DemoDate extends RealDate {
 	}
 }
 
-function minutesAgo(minutes: number) {
+export function minutesAgo(minutes: number) {
 	offsetMinutes = minutes
+}
+
+export function withDemoClock(run: () => void) {
+	globalThis.Date = DemoDate as DateConstructor
+	try {
+		run()
+	} finally {
+		globalThis.Date = RealDate
+	}
 }
 
 export function profile(): Profile {
@@ -69,6 +80,8 @@ export function profile(): Profile {
 		startup: { owner: 'factory', command: null },
 		cleanup: 'Close the run browser session. The fixture stores no records.',
 		readyForLiveExecution: true,
+		reset: { owner: 'environment', command: null, policy: { text: 'The test fixture keeps no records.' } },
+		approvals: { plan: 'required', result: 'required' },
 	}
 }
 
@@ -94,7 +107,13 @@ const loginCandidate: PlanCandidate = {
 			action: 'Open the sign-in page, enter valid credentials, and submit.',
 			assertions: [
 				{ id: 'A1', check: 'The account page shows the customer name.', checkKind: 'agent_observation' },
-				{ id: 'A2', check: 'The session cookie has the HttpOnly flag.', checkKind: 'deterministic' },
+				{
+					id: 'A2',
+					check: 'The session cookie has the HttpOnly flag.',
+					checkKind: 'deterministic',
+					observe: 'the Set-Cookie attributes of the session cookie',
+					expected: 'HttpOnly',
+				},
 			],
 		},
 		{
@@ -107,8 +126,21 @@ const loginCandidate: PlanCandidate = {
 			preconditions: ['Fixture customer ben@example.test has no failed attempts.'],
 			action: 'Send six sign-in requests with a wrong password.',
 			assertions: [
-				{ id: 'A1', check: 'The sixth attempt returns HTTP 423.', checkKind: 'deterministic' },
+				{
+					id: 'A1',
+					check: 'The sixth attempt returns HTTP 423.',
+					checkKind: 'deterministic',
+					observe: 'the HTTP status of the sixth attempt',
+					expected: '423',
+				},
 				{ id: 'A2', check: 'The response names the unlock time.', checkKind: 'agent_observation' },
+				{
+					id: 'A3',
+					check: 'A sign-in with the right password for another fixture customer returns HTTP 200.',
+					checkKind: 'deterministic',
+					observe: 'the HTTP status of that sign-in',
+					expected: '200',
+				},
 			],
 		},
 	],
@@ -148,7 +180,13 @@ const checkoutCandidate: PlanCandidate = {
 			action: 'Add the 400 PLN item, complete checkout, and read the confirmation.',
 			assertions: [
 				{ id: 'A1', check: 'The confirmation shows a total of 400 PLN.', checkKind: 'agent_observation' },
-				{ id: 'A2', check: 'The order API returns one line item.', checkKind: 'deterministic' },
+				{
+					id: 'A2',
+					check: 'The order API returns one line item.',
+					checkKind: 'deterministic',
+					observe: 'the number of line items in the order API response',
+					expected: '1',
+				},
 			],
 		},
 		{
@@ -162,9 +200,27 @@ const checkoutCandidate: PlanCandidate = {
 			action: 'Apply the code SPRING40 and read the quote.',
 			metadata: { priority: 'high', component: 'pricing', xrayKey: 'SHOP-T7' },
 			assertions: [
-				{ id: 'A1', check: 'The response status is HTTP 200.', checkKind: 'deterministic' },
-				{ id: 'A2', check: 'totalPLN equals 220.', checkKind: 'deterministic' },
-				{ id: 'A3', check: 'The quote does not list the loyalty discount.', checkKind: 'deterministic' },
+				{
+					id: 'A1',
+					check: 'The response status is HTTP 200.',
+					checkKind: 'deterministic',
+					observe: 'the HTTP status of the quote',
+					expected: '200',
+				},
+				{
+					id: 'A2',
+					check: 'totalPLN equals 220.',
+					checkKind: 'deterministic',
+					observe: 'totalPLN in the quote',
+					expected: '220',
+				},
+				{
+					id: 'A3',
+					check: 'The quote does not list the loyalty discount.',
+					checkKind: 'deterministic',
+					observe: 'the discount lines in the quote',
+					expected: 'none',
+				},
 			],
 		},
 		{
@@ -249,7 +305,13 @@ const searchCandidate: PlanCandidate = {
 			action: 'Search for "lamp" and read the first five results.',
 			assertions: [
 				{ id: 'A1', check: 'The first three results are lamps.', checkKind: 'agent_observation' },
-				{ id: 'A2', check: 'The result count is 12.', checkKind: 'deterministic' },
+				{
+					id: 'A2',
+					check: 'The result count is 12.',
+					checkKind: 'deterministic',
+					observe: 'the result count',
+					expected: '12',
+				},
 			],
 		},
 		{
@@ -340,7 +402,7 @@ function check(
 	store: Store,
 	runId: string,
 	reference: string,
-	result: 'passed' | 'failed' | 'inconclusive',
+	result: 'passed' | 'failed' | 'inconclusive' | undefined,
 	observed: string,
 	file: [string, string | Buffer],
 	reason?: string
@@ -382,18 +444,22 @@ function seedLoginRun(store: Store) {
 		'T1-account.png',
 		pageShot('account'),
 	])
-	check(store, 'run-3', 'T1.A2', 'passed', 'Set-Cookie: sid=…; HttpOnly; SameSite=Lax', [
+	check(store, 'run-3', 'T1.A2', undefined, 'HttpOnly', [
 		'T1-cookie.txt',
 		'Set-Cookie: sid=redacted; Path=/; HttpOnly; SameSite=Lax\n',
 	])
 	closeTest(store, agent, { runId: 'run-3', testId: 'T1' })
-	check(store, 'run-3', 'T2.A1', 'passed', 'HTTP 423 Locked on attempt 6', [
+	check(store, 'run-3', 'T2.A1', undefined, '423', [
 		'T2-lockout.json',
 		json({ request: { attempt: 6 }, response: { status: 423 } }),
 	])
 	check(store, 'run-3', 'T2.A2', 'passed', 'Body says "Try again at 14:41."', [
 		'T2-lockout-body.txt',
 		'Your account is locked. Try again at 14:41.\n',
+	])
+	check(store, 'run-3', 'T2.A3', undefined, '200', [
+		'T2-control.json',
+		json({ request: { customer: 'other@example.test' }, response: { status: 200 } }),
 	])
 	closeTest(store, agent, { runId: 'run-3', testId: 'T2' })
 	minutesAgo(180)
@@ -433,7 +499,32 @@ function seedRevision(store: Store) {
 	minutesAgo(125)
 	revisePlan(store, agent, {
 		planId: 'checkout',
-		delta: { tests: { T2: { assertions: { A2: { check: 'totalPLN equals 240.' } } } } },
+		delta: {
+			tests: {
+				T2: {
+					assertions: [
+						{
+							check: 'The response status is HTTP 200.',
+							checkKind: 'deterministic',
+							observe: 'the HTTP status of the quote',
+							expected: '200',
+						},
+						{
+							check: 'totalPLN equals 240.',
+							checkKind: 'deterministic',
+							observe: 'totalPLN in the quote',
+							expected: '240',
+						},
+						{
+							check: 'No loyalty line in the quote.',
+							checkKind: 'deterministic',
+							observe: 'the discount lines in the quote',
+							expected: 'none',
+						},
+					],
+				},
+			},
+		},
 	})
 	minutesAgo(110)
 	approvePlan(store, human, {
@@ -456,7 +547,7 @@ function seedCheckoutRun(store: Store) {
 		'T1-confirmation.png',
 		pageShot('confirmation'),
 	])
-	check(store, 'run-7', 'T1.A2', 'passed', 'lineItems has 1 entry.', [
+	check(store, 'run-7', 'T1.A2', undefined, '1', [
 		'T1-order.json',
 		json({ orderId: 'fx-1042', lineItems: [{ sku: 'LAMP-01', quantity: 1, pricePLN: 400 }], totalPLN: 400 }),
 	])
@@ -474,9 +565,9 @@ function seedCheckoutRun(store: Store) {
 			},
 		},
 	})
-	check(store, 'run-7', 'T2.A1', 'passed', 'HTTP 200', ['T2-quote-status.json', quote])
-	const failed = check(store, 'run-7', 'T2.A2', 'failed', 'totalPLN = 220', ['T2-quote.json', quote])
-	check(store, 'run-7', 'T2.A3', 'passed', 'No loyalty line in the quote.', [
+	check(store, 'run-7', 'T2.A1', undefined, '200', ['T2-quote-status.json', quote])
+	const failed = check(store, 'run-7', 'T2.A4', undefined, '220', ['T2-quote.json', quote])
+	check(store, 'run-7', 'T2.A5', undefined, 'none', [
 		'T2-quote-lines.txt',
 		'Lines: SPRING40 −160 PLN\nNo loyalty line.\n',
 	])
@@ -486,7 +577,7 @@ function seedCheckoutRun(store: Store) {
 			id: 'F1',
 			type: 'defect',
 			severity: 'high',
-			assertionIds: ['T2.A2'],
+			assertionIds: ['T2.A4'],
 			requirementIds: ['R2'],
 			title: 'The promotion stacks with the loyalty credit',
 			expected: 'totalPLN is 240: the promotion replaces the loyalty credit.',
@@ -553,7 +644,15 @@ const accountCandidate: PlanCandidate = {
 			dependsOn: [],
 			preconditions: ['Signed in as anna@example.test.'],
 			action: 'Open the profile page and save a new display name.',
-			assertions: [{ id: 'A1', check: 'The header shows the new name.', checkKind: 'deterministic' }],
+			assertions: [
+				{
+					id: 'A1',
+					check: 'The header shows the new name.',
+					checkKind: 'deterministic',
+					observe: 'the name shown in the header after the save',
+					expected: 'Anna Nowak',
+				},
+			],
 		},
 	],
 	gaps: [],
@@ -608,47 +707,305 @@ function seedStartedRun(store: Store) {
 
 export function seedDemo(workspace: string) {
 	const store = openStore(workspace)
-	globalThis.Date = DemoDate as DateConstructor
 	try {
-		minutesAgo(5000)
-		const value = profile()
-		openTarget(store, agent, {
-			targetId: value.targetId,
-			entryPoints: value.entryPoints,
-			capabilities: value.capabilities,
-			allowedOperations: value.allowedOperations,
-		})
-		saveTarget(store, agent, { targetId: value.targetId, profile: value })
-		addInstance(store, agent, {
-			targetId: value.targetId,
-			instanceId: 'preview',
-			instance: { entries: { web: 'http://127.0.0.1:4100' }, environment: 'Old preview build' },
-		})
-		addInstance(store, agent, {
-			targetId: value.targetId,
-			instanceId: 'local',
-			instance: { entries: { web: 'http://127.0.0.1:4173' }, environment: 'Local fixture' },
-		})
-		addInstance(store, agent, {
-			targetId: value.targetId,
-			instanceId: 'staging',
-			instance: {
-				entries: { web: 'https://staging.shop.example' },
-				environment: 'Shared staging',
-				references: ['STAGING_LOGIN'],
-			},
-		})
-		retireInstance(store, agent, { targetId: value.targetId, instanceId: 'preview' })
-		seedLogin(store)
-		seedAccount(store)
-		seedCheckout(store)
-		seedLoginRun(store)
-		seedRevision(store)
-		seedSearch(store)
-		seedCheckoutRun(store)
-		seedStartedRun(store)
+		withDemoClock(() => seedAll(store))
 	} finally {
-		globalThis.Date = RealDate
+		closeStore(store)
+	}
+}
+
+function seedAll(store: Store) {
+	minutesAgo(5000)
+	const value = profile()
+	openTarget(store, agent, {
+		targetId: value.targetId,
+		entryPoints: value.entryPoints,
+		capabilities: value.capabilities,
+		allowedOperations: value.allowedOperations,
+	})
+	saveTarget(store, agent, { targetId: value.targetId, profile: value })
+	addInstance(store, agent, {
+		targetId: value.targetId,
+		instanceId: 'preview',
+		instance: { entries: { web: 'http://127.0.0.1:4100' }, environment: 'Old preview build' },
+	})
+	addInstance(store, agent, {
+		targetId: value.targetId,
+		instanceId: 'local',
+		instance: { entries: { web: 'http://127.0.0.1:4173' }, environment: 'Local fixture' },
+	})
+	addInstance(store, agent, {
+		targetId: value.targetId,
+		instanceId: 'staging',
+		instance: {
+			entries: { web: 'https://staging.shop.example' },
+			environment: 'Shared staging',
+			references: ['STAGING_LOGIN'],
+		},
+	})
+	retireInstance(store, agent, { targetId: value.targetId, instanceId: 'preview' })
+	seedLogin(store)
+	seedAccount(store)
+	seedCheckout(store)
+	seedLoginRun(store)
+	seedRevision(store)
+	seedSearch(store)
+	seedCheckoutRun(store)
+	seedStartedRun(store)
+}
+
+const showcasePlans: Array<{ planId: string; request: PlanRequest; tests: Array<[string, string, string]> }> = [
+	{
+		planId: 'shipping',
+		request: {
+			objective: 'Verify delivery fees and the delivery date on the confirmation.',
+			requirements: [
+				{ id: 'H1', text: 'Standard delivery is free above 200 PLN.', source: 'brief://shipping#free' },
+				{ id: 'H2', text: 'Express delivery costs 25 PLN.', source: 'brief://shipping#express' },
+				{ id: 'H3', text: 'The confirmation shows the delivery date.', source: 'brief://shipping#date' },
+			],
+			sourceContext: [{ uri: 'brief://shipping', content: 'Free standard delivery above 200 PLN.' }],
+		},
+		tests: [
+			['H1', 'Free standard delivery', 'The delivery fee is 0 PLN for a 240 PLN cart.'],
+			['H2', 'Express fee', 'The delivery fee is 25 PLN for express delivery.'],
+			['H3', 'Delivery date', 'The confirmation shows a delivery date.'],
+		],
+	},
+	{
+		planId: 'returns',
+		request: {
+			objective: 'Verify the return form and the return label.',
+			requirements: [
+				{
+					id: 'N1',
+					text: 'A customer can start a return from the order page.',
+					source: 'brief://returns#start',
+				},
+				{ id: 'N2', text: 'The return label is a PDF download.', source: 'brief://returns#label' },
+			],
+			sourceContext: [{ uri: 'brief://returns', content: 'Returns start from the order page.' }],
+		},
+		tests: [
+			['N1', 'Start a return', 'The order page opens the return form.'],
+			['N2', 'Return label', 'The label downloads as a PDF.'],
+		],
+	},
+]
+
+const coupons: PlanRequest = {
+	objective: 'Verify coupon codes: one per order, expiry, case, and totals.',
+	requirements: [
+		{ id: 'C1', text: 'One coupon applies per order.', source: 'ticket://SHOP-412#one' },
+		{ id: 'C2', text: 'An expired code is refused.', source: 'ticket://SHOP-412#expiry' },
+		{ id: 'C3', text: 'A code is not case sensitive.', source: 'ticket://SHOP-412#case' },
+		{ id: 'C4', text: 'A coupon never makes the total negative.', source: 'ticket://SHOP-412#total' },
+	],
+	sourceContext: [{ uri: 'ticket://SHOP-412', content: 'Coupon rules for checkout.' }],
+}
+
+function explore(
+	store: Store,
+	planId: string,
+	explorationId: string,
+	build: string,
+	minutes: number,
+	found: Record<string, unknown[]>
+) {
+	minutesAgo(minutes)
+	openExploration(store, 'checkmate', { planId, build, explorationId, instance: 'local' })
+	event(store, explorationId, { step: 'start', detail: { ...launch, explorers: Object.keys(found).length } })
+	event(store, explorationId, { step: 'supervisor', detail: { pid: process.pid } })
+	for (const explorer of Object.keys(found)) launched(store, explorationId, explorer)
+	minutesAgo(minutes - 20)
+	for (const [explorer, list] of Object.entries(found)) ended(store, explorationId, explorer, list)
+	minutesAgo(minutes - 30)
+	done(store, explorationId)
+}
+
+function criterion(id: string, rule: string, verdict: 'ok' | 'wrong', saw: string) {
+	return { kind: 'criterion', id, rule, text: `Checked ${rule}.`, verdict, saw }
+}
+
+function defect(id: string, rule: string, severity: string, title: string, expected: string, actual: string) {
+	return {
+		kind: 'defect',
+		id,
+		rule,
+		severity,
+		title,
+		expected,
+		actual,
+		steps: ['Open the shop.', 'Follow the rule.'],
+	}
+}
+
+function acceptedPlan(store: Store, plan: (typeof showcasePlans)[number], minutes: number, runId: string) {
+	minutesAgo(minutes)
+	openPlan(store, agent, { planId: plan.planId, target: 'shop-local@1', request: plan.request })
+	savePlan(store, agent, {
+		planId: plan.planId,
+		candidate: {
+			tests: plan.tests.map(([rule, title, check], index) => ({
+				id: `T${index + 1}`,
+				title,
+				requirementIds: [rule],
+				capability: 'browser',
+				operations: ['read_catalog'],
+				dependsOn: [],
+				preconditions: [],
+				action: `Check that ${check.charAt(0).toLowerCase()}${check.slice(1)}`,
+				assertions: [{ id: 'A1', check, checkKind: 'agent_observation' }],
+			})),
+			gaps: [],
+		},
+	})
+	minutesAgo(minutes - 10)
+	approvePlan(store, human, { reference: `${plan.planId}@1`, rationale: 'Each rule has a clear check.' })
+	const rules = plan.tests.map(([rule, , check]) => [rule, check])
+	explore(store, plan.planId, `${runId}-x1`, 'fixture-build-1', minutes - 30, {
+		e1: rules.map(([rule, check], index) =>
+			criterion(`C${index + 1}`, rule, index === 1 ? 'wrong' : 'ok', index === 1 ? 'Not yet.' : check)
+		),
+	})
+	explore(store, plan.planId, `${runId}-x2`, 'fixture-build-2', minutes - 120, {
+		e1: rules.map(([rule, check], index) => criterion(`C${index + 11}`, rule, 'ok', check)),
+	})
+	minutesAgo(minutes - 160)
+	beginRun(store, agent, { runId, reference: `${plan.planId}@1`, build: 'fixture-build-2', instance: 'local' })
+	plan.tests.forEach(([, , text], index) => {
+		check(store, runId, `T${index + 1}.A1`, 'passed', text, [`T${index + 1}.txt`, `${text}\n`])
+		closeTest(store, agent, { runId, testId: `T${index + 1}` })
+	})
+	finishRun(store, agent, {
+		runId,
+		completion: 'completed',
+		cleanup: 'completed',
+		cleanupReason: 'Nothing to clean.',
+	})
+	minutesAgo(minutes - 180)
+	acceptResult(store, human, { runId, rationale: 'Every check passed with evidence.' })
+}
+
+function seedShowcasePlans(store: Store, screenshot: Buffer) {
+	acceptedPlan(store, showcasePlans[0], 900, 'run-4')
+	acceptedPlan(store, showcasePlans[1], 700, 'run-5')
+	minutesAgo(2000)
+	openPlan(store, agent, { planId: 'coupons', target: 'shop-local@1', request: coupons })
+	explore(store, 'coupons', 'x-3', 'fixture-build-1', 1500, {
+		k1: [
+			criterion('C1', 'C2', 'ok', 'WINTER10 is refused after its end date.'),
+			criterion('C2', 'C3', 'wrong', 'spring40 is refused.'),
+			defect('D1', 'C1', 'critical', 'Two coupons stack on one order', 'One coupon applies.', 'Both apply.'),
+			defect('D2', 'C4', 'high', 'A large coupon gives a negative total', 'The total is 0 PLN.', '-40 PLN.'),
+		],
+	})
+	explore(store, 'coupons', 'x-4', 'fixture-build-2', 300, {
+		k1: [
+			{ kind: 'verdict', defect: 'D1', result: 'fixed' },
+			{ kind: 'verdict', defect: 'D2', result: 'not_fixed' },
+			criterion('C3', 'C1', 'ok', 'The second code is refused.'),
+			criterion('C4', 'C2', 'ok', 'WINTER10 is refused after its end date.'),
+			{
+				kind: 'question',
+				id: 'Q1',
+				rule: 'C3',
+				blocking: true,
+				question: 'Must a code with a trailing space still apply?',
+			},
+		],
+	})
+	explore(store, 'checkout', 'x-1', 'fixture-build-1', 400, {
+		q1: [
+			criterion('C1', 'R1', 'ok', 'Confirmation shows "Total: 400.00 PLN".'),
+			defect(
+				'D1',
+				'R2',
+				'high',
+				'The promotion stacks with the loyalty credit',
+				'Total 240 PLN.',
+				'Total 220 PLN.'
+			),
+			defect('D2', 'R4', 'medium', 'The checkout page has no promotion banner', 'A banner.', 'No banner.'),
+		],
+	})
+	explore(store, 'checkout', 'x-2', 'fixture-build-2', 60, {
+		q1: [
+			{ kind: 'verdict', defect: 'D1', result: 'not_fixed' },
+			{ kind: 'verdict', defect: 'D2', result: 'fixed' },
+			criterion('C2', 'R1', 'ok', 'Confirmation shows "Total: 400.00 PLN".'),
+			criterion('C3', 'R4', 'ok', 'Banner visible above the cart.'),
+		],
+		a1: [
+			{
+				kind: 'defect',
+				id: 'D1',
+				title: 'Two coupons stack',
+				severity: 'high',
+				expected: 'One coupon applies.',
+				actual: 'Both coupons apply.',
+				suspected: true,
+				steps: ['Add LAMP-01 (400 PLN) to the cart.', 'Apply SPRING40.', 'Apply WELCOME10.', 'Read the total.'],
+				evidence: [
+					evidence(store, 'x-2', 'a1-checkout.png', screenshot),
+					evidence(
+						store,
+						'x-2',
+						'a1-quote.json',
+						json({
+							request: { method: 'POST', path: '/api/quote', body: { codes: ['SPRING40', 'WELCOME10'] } },
+							response: {
+								status: 200,
+								body: {
+									subtotalPLN: 400,
+									discounts: [
+										{ code: 'SPRING40', amountPLN: 160 },
+										{ code: 'WELCOME10', amountPLN: 40 },
+									],
+									totalPLN: 200,
+								},
+							},
+						})
+					),
+				],
+			},
+		],
+	})
+}
+
+export function seedShowcase(workspace: string, screenshot: Buffer = pageShot('confirmation')) {
+	const store = openStore(workspace)
+	try {
+		withDemoClock(() => {
+			minutesAgo(5000)
+			const value = profile()
+			openTarget(store, agent, {
+				targetId: value.targetId,
+				entryPoints: value.entryPoints,
+				capabilities: value.capabilities,
+				allowedOperations: value.allowedOperations,
+			})
+			saveTarget(store, agent, { targetId: value.targetId, profile: value })
+			addInstance(store, agent, {
+				targetId: value.targetId,
+				instanceId: 'local',
+				instance: { entries: { web: 'http://127.0.0.1:4173' }, environment: 'Local fixture' },
+			})
+			addInstance(store, agent, {
+				targetId: value.targetId,
+				instanceId: 'staging',
+				instance: { entries: { web: 'https://staging.shop.example' }, environment: 'Shared staging' },
+			})
+			seedLogin(store)
+			seedCheckout(store)
+			seedLoginRun(store)
+			seedRevision(store)
+			seedSearch(store)
+			seedCheckoutRun(store)
+			seedStartedRun(store)
+			seedShowcasePlans(store, screenshot)
+		})
+	} finally {
 		closeStore(store)
 	}
 }

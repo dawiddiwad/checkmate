@@ -23,6 +23,3 @@ plugin/src/validators.js
 
 # Animation sources keep exact whitespace in their text.
 docs/media/*.html
-
-# Preserve exact bytes for the pinned documentation examples.
-docs/examples/

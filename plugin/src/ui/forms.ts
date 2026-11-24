@@ -1,6 +1,6 @@
 import type { Html } from './html.ts'
 import type { Context } from './layout.ts'
-import { html, short } from './html.ts'
+import { actorLimit, html, short } from './html.ts'
 import { banner } from './layout.ts'
 
 export type FormState = {
@@ -21,36 +21,66 @@ export type Verdict = {
 	reject: { value: string; label: string; confirm: string; summary: string }
 	staleMessage: string
 	intro?: Html | ''
+	extra?: Html
 }
 
 export function emptyState(): FormState {
 	return { values: {}, error: null, stale: null, confirm: false }
 }
 
-function hidden(context: Context, sha256: string, token = '') {
+export function hidden(context: Context, sha256: string, token = '') {
 	return html`<input type="hidden" name="csrf" value="${context.csrf}" />
 		<input type="hidden" name="sha" value="${sha256}" />
 		${token ? html`<input type="hidden" name="decision" value="${token}" />` : ''}`
 }
 
-function actorField(context: Context, state: FormState) {
+export function actorField(context: Context, state: FormState) {
 	if (context.actor) return ''
 	return html`<div class="field-group">
 		<label class="lab" for="actor">Your name</label>
-		<input id="actor" name="actor" required autocomplete="name" value="${state.values.actor ?? ''}" />
+		<input
+			id="actor"
+			name="actor"
+			required
+			maxlength="${actorLimit}"
+			autocomplete="name"
+			value="${state.values.actor ?? ''}"
+			data-missing="Enter your name. Checkmate records it with your decision."
+		/>
 		<p class="help">Checkmate asks once, keeps it in a cookie, and records it with each decision.</p>
 	</div>`
 }
 
-function messages(state: FormState) {
+export function messages(state: FormState) {
 	return html`${state.stale ? banner('warn', state.stale) : ''}
 	${state.error ? html`<p class="form-error" role="alert">${state.error}</p>` : ''}`
 }
 
-function rationaleField(state: FormState, placeholder: string) {
+export function keptText(state: FormState) {
+	const typed = state.values.value || state.values.rationale || ''
+	if (!typed.trim()) return ''
+	return html`<div class="kept" data-kept>
+		<p class="lab">Your text</p>
+		<blockquote>${typed}</blockquote>
+	</div>`
+}
+
+export function rationaleField(
+	state: FormState,
+	placeholder: string,
+	missing = 'Write a rationale. Checkmate records it with your decision.'
+) {
 	return html`<div class="field-group">
 		<label class="lab" for="rationale">Rationale</label>
-		<textarea id="rationale" name="rationale" rows="4" required data-rationale placeholder="${placeholder}">
+		<textarea
+			id="rationale"
+			name="rationale"
+			rows="4"
+			required
+			data-rationale
+			placeholder="${placeholder}"
+			data-missing="${missing}"
+		>
 ${state.values.rationale ?? ''}</textarea>
 	</div>`
 }
@@ -58,7 +88,7 @@ ${state.values.rationale ?? ''}</textarea>
 function confirmStep(context: Context, verdict: Verdict, state: FormState) {
 	const choice = state.values.verdict === verdict.reject.value ? verdict.reject : verdict.approve
 	return html`<form method="post" action="${verdict.action}" class="decision-form">
-		${hidden(context, verdict.sha256, verdict.token)}
+		${hidden(context, verdict.sha256, verdict.token)} ${verdict.extra ?? ''}
 		<input type="hidden" name="verdict" value="${choice.value}" />
 		<input type="hidden" name="rationale" value="${state.values.rationale ?? ''}" />
 		${context.actor ? '' : html`<input type="hidden" name="actor" value="${state.values.actor ?? ''}" />`}
@@ -87,7 +117,7 @@ function chooseStep(context: Context, verdict: Verdict, state: FormState) {
 			${choice.label}
 		</button>`
 	return html`<form method="post" action="${verdict.action}" class="decision-form" data-verdict-form>
-		${hidden(context, verdict.sha256, verdict.token)} ${actorField(context, state)}
+		${hidden(context, verdict.sha256, verdict.token)} ${verdict.extra ?? ''} ${actorField(context, state)}
 		${rationaleField(state, 'Why do you decide this?')}
 		<div class="confirm-box" data-confirm hidden>
 			<p class="lab">Confirm</p>
@@ -143,9 +173,10 @@ export type GapForm = {
 	action: string
 	cancel: string
 	sha256: string
-	title: Html
+	title: Html | ''
 	question: string
 	staleMessage: string
+	extra?: Html
 }
 
 export function gapPanel(context: Context, form: GapForm, state: FormState) {
@@ -158,30 +189,33 @@ export function gapPanel(context: Context, form: GapForm, state: FormState) {
 		data-stale-message="${form.staleMessage}"
 	>
 		<h2 class="lab" id="answer-title">Answer gap</h2>
-		<p class="subj">${form.title}</p>
-		<p class="help">${form.question}</p>
+		${form.title ? html`<p class="subj">${form.title}</p>` : ''}
+		${form.question ? html`<p class="help">${form.question}</p>` : ''}
 		<div data-stale-slot>${messages(state)}</div>
 		<form method="post" action="${form.action}" class="decision-form gap-form" data-gap-form>
-			${hidden(context, form.sha256)}
+			${hidden(context, form.sha256)} ${form.extra ?? ''}
 			<fieldset class="seg-field">
 				<legend class="lab">Kind of answer</legend>
 				<div class="seg">
 					${kinds.map(
 						(kind) =>
-							html`<input
+							html`<label
+								><input
 									type="radio"
 									id="kind-${kind.value}"
 									name="kind"
 									value="${kind.value}"
 									${selected === kind.value ? html`checked` : ''}
-								/><label for="kind-${kind.value}">${kind.label}</label>`
+								/>${kind.label}</label
+							>`
 					)}
 				</div>
 			</fieldset>
 			${kinds.map((kind) => html`<p class="help kind-help" data-kind="${kind.value}">${kind.help}</p>`)}
 			<div class="field-group">
 				<label class="lab" for="value">Answer</label>
-				<textarea id="value" name="value" rows="3" required>${state.values.value ?? ''}</textarea>
+				<textarea id="value" name="value" rows="3" required data-missing="Write the answer.">
+${state.values.value ?? ''}</textarea>
 			</div>
 			<div class="field-group source-field">
 				<label class="lab" for="source">Source <span class="req">required for Clarify</span></label>
@@ -191,10 +225,12 @@ export function gapPanel(context: Context, form: GapForm, state: FormState) {
 					value="${state.values.source ?? ''}"
 					placeholder="oracle://refund-policy#window"
 					data-source
+					data-missing="A clarification needs a source. Name where the answer comes from."
 				/>
 				<p class="help">Where the answer comes from: a document, a ticket, or a person.</p>
 			</div>
-			${rationaleField(state, 'Why is this the right answer?')} ${actorField(context, state)}
+			${rationaleField(state, 'Why is this the right answer?', 'Write a rationale. Checkmate records it with your answer.')}
+			${actorField(context, state)}
 			<div class="btns">
 				<button class="btn primary" data-needs-rationale>Record answer</button>
 				<a class="btn" href="${form.cancel}">Cancel</a>
@@ -213,4 +249,29 @@ export function recordPanel(title: string, content: Html, decided = '') {
 		<h2 class="lab" id="decide-title">${title}</h2>
 		${content}
 	</section>`
+}
+
+export function returnFields(item: { key: string }, back: string) {
+	return html`<input type="hidden" name="item" value="${item.key}" />
+		<input type="hidden" name="return" value="${back}" />`
+}
+
+export function sourceAndReason(context: Context, state: FormState, reasonLabel: string) {
+	const used = Boolean(state.values.source || state.values.rationale)
+	return html`<details class="more" data-more ${used ? html`open` : ''}>
+		<summary>Add source and reason</summary>
+		<div class="field-group">
+			<label class="lab" for="source">Source</label>
+			<input
+				id="source"
+				name="source"
+				value="${state.values.source ?? ''}"
+				placeholder="Default: ${context.actor ?? 'you'}, in the review UI"
+			/>
+		</div>
+		<div class="field-group">
+			<label class="lab" for="rationale">${reasonLabel}</label>
+			<textarea id="rationale" name="rationale" rows="2">${state.values.rationale ?? ''}</textarea>
+		</div>
+	</details>`
 }

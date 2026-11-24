@@ -1,0 +1,266 @@
+[
+	{
+		"number": 1,
+		"name": "Install packed npm CLI and open the empty UI — installed assets or skills missing.",
+		"status": "covered",
+		"test": "Install packed npm CLI and open the empty UI — installed assets or skills missing."
+	},
+	{
+		"number": 2,
+		"name": "Install the Pi package and route a request — wrong skill, workspace, or harness.",
+		"status": "covered",
+		"test": "Install the Pi package and route a request — wrong skill, workspace, or harness.",
+		"limit": "Pi routes the installed package to a deterministic loopback provider; model judgment is not tested."
+	},
+	{
+		"number": 3,
+		"name": "Discover the packaged Claude plugin and invoke its entry — broken plugin distribution.",
+		"status": "covered",
+		"test": "Discover the packaged Claude plugin and invoke its entry — broken plugin distribution.",
+		"limit": "The installed plugin bundle is invoked directly; a real Claude host is not exercised."
+	},
+	{
+		"number": 4,
+		"name": "Run a new ticket against a local URL — hidden assumptions or missing successful receipt.",
+		"status": "covered",
+		"test": "Record a defect with replayable evidence — report text cannot become a reviewable claim."
+	},
+	{
+		"number": 5,
+		"name": "Recover after missing host or missing ticket source — unexplained partial records or duplicates.",
+		"status": "covered",
+		"test": "Recover after missing host or missing ticket source — unexplained partial records or duplicates."
+	},
+	{
+		"number": 6,
+		"name": "Pick an active instance and refuse unsafe defaults — mutation scope or selected URL is wrong.",
+		"status": "covered",
+		"test": "Pick an active instance and refuse unsafe defaults — mutation scope or selected URL is wrong."
+	},
+	{
+		"number": 7,
+		"name": "Record a defect with replayable evidence — report text cannot become a reviewable claim.",
+		"status": "covered",
+		"test": "Record a defect with replayable evidence — report text cannot become a reviewable claim."
+	},
+	{
+		"number": 8,
+		"name": "Explore a clean fixture — invented defect or missing observed coverage.",
+		"status": "covered",
+		"test": "Explore a clean fixture — invented defect or missing observed coverage.",
+		"limit": "Controlled replay does not measure live model false positives."
+	},
+	{
+		"number": 9,
+		"name": "Keep incomplete criteria unverified — false green.",
+		"status": "covered",
+		"test": "Keep incomplete criteria unverified — false green."
+	},
+	{
+		"number": 10,
+		"name": "Merge duplicate findings and preserve evidence — defect inflated or unique evidence dropped.",
+		"status": "covered",
+		"test": "Merge duplicate findings and preserve evidence — defect inflated or unique evidence dropped."
+	},
+	{
+		"number": 11,
+		"name": "Run a fixed-build retest — old finding remains open or source build changes.",
+		"status": "covered",
+		"test": "Record a defect with replayable evidence — report text cannot become a reviewable claim."
+	},
+	{
+		"number": 12,
+		"name": "Show disputed/failed retest without closing a claim — unresolved defect reported fixed.",
+		"status": "covered",
+		"test": "Show disputed/failed retest without closing a claim — unresolved defect reported fixed."
+	},
+	{
+		"number": 13,
+		"name": "Answer a blocking question and update the next actor — stalled workflow.",
+		"status": "covered",
+		"test": "13–16 packaged oracle answers update the handoff, and the UI reflects the same record"
+	},
+	{
+		"number": 14,
+		"name": "Offer the same follow-up in CLI and UI — older eligible exploration omitted.",
+		"status": "covered",
+		"test": "14 CLI and UI expose the same eligible follow-up and omit a consumed answer"
+	},
+	{
+		"number": 15,
+		"name": "Test an answer and acknowledge successful consumption — repeated or lost follow-up.",
+		"status": "covered",
+		"test": "15 the UI follow-up consumes the oracle answer and records a durable completion"
+	},
+	{
+		"number": 16,
+		"name": "Approve, reject, and hand off review items — missing rationale, actor, or destination.",
+		"status": "covered",
+		"test": "16 review requires a rejection reason, accepts another finding, and hands it off"
+	},
+	{
+		"number": 17,
+		"name": "Refuse a stale decision without losing the draft — second operator overwrites first.",
+		"status": "covered",
+		"test": "17 an answered claim makes an open browser draft stale without losing its text"
+	},
+	{
+		"number": 18,
+		"name": "Review and download evidence from the keyboard — actionable finding inaccessible.",
+		"status": "covered",
+		"test": "18 keyboard review opens persisted finding evidence and returns to the claim"
+	},
+	{
+		"number": 19,
+		"name": "Delegate setup and plan and verify the record — prose or mismatched actor stands in for a receipt.",
+		"status": "covered",
+		"test": "Delegate setup and plan and verify the record — prose or mismatched actor stands in for a receipt."
+	},
+	{
+		"number": 20,
+		"name": "Answer, revise, and approve the named revision — execution against the wrong revision.",
+		"status": "covered",
+		"test": "Answer, revise, and approve the named revision — execution against the wrong revision."
+	},
+	{
+		"number": 21,
+		"name": "Run ready tests and report blocked tests — partial execution misreported complete.",
+		"status": "covered",
+		"test": "Run ready tests and report blocked tests — partial execution misreported complete."
+	},
+	{
+		"number": 22,
+		"name": "Finish with a finding and export JUnit/JSON — CI receives an incorrect outcome.",
+		"status": "covered",
+		"test": "Answer, revise, and approve the named revision — execution against the wrong revision."
+	},
+	{
+		"number": 23,
+		"name": "Run a narrow retest with prerequisites and regressions — uncovered tests silently accepted.",
+		"status": "covered",
+		"test": "Run a narrow retest with prerequisites and regressions — uncovered tests silently accepted."
+	},
+	{
+		"number": 24,
+		"name": "Run a two-instance matrix and accept each latest result — one pass masks another instance’s failure.",
+		"status": "covered",
+		"test": "Run a two-instance matrix and accept each latest result — one pass masks another instance’s failure."
+	},
+	{
+		"number": 25,
+		"name": "Request, allow, and deny a host tool through the UI — hung prompt or incorrect decision.",
+		"status": "covered",
+		"test": "25 one browser answer resolves a real host permission request",
+		"limit": "Packaged hook with synthetic host requests, not an authentic native permission prompt."
+	},
+	{
+		"number": 26,
+		"name": "Stop only one tester and keep the others running — sibling workers killed.",
+		"status": "covered",
+		"test": "Stop only one tester and keep the others running — sibling workers killed."
+	},
+	{
+		"number": 27,
+		"name": "Interrupt the supervisor and retry safely — orphan workers or duplicate testing.",
+		"status": "covered",
+		"test": "Interrupt the supervisor and retry safely — orphan workers or duplicate testing."
+	},
+	{
+		"number": 28,
+		"name": "Resume a structured run after a worker deadline — outcomes lost or gate bypassed.",
+		"status": "covered",
+		"test": "Resume a structured run after a worker deadline — outcomes lost or gate bypassed."
+	},
+	{
+		"number": 29,
+		"name": "Show a safe provider failure and retained partial usage — secret visible or usage silently zero.",
+		"status": "covered",
+		"test": "Show a safe provider failure and retained partial usage — secret visible or usage silently zero.",
+		"limit": "Controlled Pi stream; the local timeout is accelerated."
+	},
+	{
+		"number": 30,
+		"name": "Resume a chat turn and change its model — wrong native session, context, or charge.",
+		"status": "covered",
+		"test": "Resume a chat turn and change its model — wrong native session, context, or charge.",
+		"limit": "Controlled Claude protocol process; no live provider or model judgment."
+	},
+	{
+		"number": 31,
+		"name": "Trigger one fixed ticket with a pinned build — ambiguous input or wrong checkout.",
+		"status": "partial",
+		"reason": "The fixture binds a ticket hash to explicit build labels; a real Factory checkout and historical campaign trigger are not verified.",
+		"test": "Factory pins a ticket to built previews, retains failed evidence, and promotes only a passing retest"
+	},
+	{
+		"number": 32,
+		"name": "Pause for a human choice and resume from an archived campaign — lost decision or nonportable state.",
+		"status": "partial",
+		"reason": "A copied Checkmate workspace resumes after an oracle answer; historical campaign archive and resumption are unavailable.",
+		"test": "Factory pins a ticket to built previews, retains failed evidence, and promotes only a passing retest"
+	},
+	{
+		"number": 33,
+		"name": "Reach a real built preview with deterministic seed data — QA runs against an empty/wrong app.",
+		"status": "covered",
+		"test": "Factory pins a ticket to built previews, retains failed evidence, and promotes only a passing retest",
+		"limit": "A disposable external Factory fixture builds and seeds the preview; a production Factory is not exercised."
+	},
+	{
+		"number": 34,
+		"name": "Retain QA after a verification failure and label the failed check — bad candidate incorrectly promoted.",
+		"status": "partial",
+		"reason": "A failed QA assertion and its evidence prevent promotion; a separate Factory candidate-verification failure is not exercised.",
+		"test": "Factory pins a ticket to built previews, retains failed evidence, and promotes only a passing retest"
+	},
+	{
+		"number": 35,
+		"name": "Carry evidence into the fix and retest the next build — duplicated work or stale claims.",
+		"status": "partial",
+		"reason": "The broken result and evidence survive a fixed-build retest; the fixture does not prove a Factory consumed that evidence to produce the fix.",
+		"test": "Factory pins a ticket to built previews, retains failed evidence, and promotes only a passing retest"
+	},
+	{
+		"number": 36,
+		"name": "Stop on budget and close the preview and browser — unbounded loop, leaked processes, or unavailable evidence.",
+		"status": "partial",
+		"reason": "External previews are stopped and observed exiting, but the historical campaign budget and browser lifecycle owner are unavailable.",
+		"test": "Factory pins a ticket to built previews, retains failed evidence, and promotes only a passing retest"
+	},
+	{
+		"number": 37,
+		"name": "Open a previous version’s workspace read/write — existing work becomes inaccessible.",
+		"status": "covered",
+		"test": "Open a previous version’s workspace read/write — existing work becomes inaccessible."
+	},
+	{
+		"number": 38,
+		"name": "Retry a held database transaction — lost or duplicate edits.",
+		"status": "covered",
+		"test": "Retry a held database transaction — lost or duplicate edits."
+	},
+	{
+		"number": 39,
+		"name": "Reconnect live activity after a gap — review shows stale ownership or misses events.",
+		"status": "covered",
+		"test": "39 the packaged activity stream replays only events after its cursor"
+	},
+	{
+		"number": 40,
+		"name": "Find by current build and download report offline — wrong build or broken artifact.",
+		"status": "covered",
+		"test": "40 select the current build and download its evidence-backed report for offline review"
+	},
+	{
+		"number": 41,
+		"name": "Keep a refused form in a no-JS browser — data loss or unusable correction.",
+		"status": "covered",
+		"test": "41 no-JS refused decision keeps the entered text for correction"
+	},
+	{
+		"number": 42,
+		"name": "Recover a local UI restart with existing operation history — stuck Activity, hidden attempts, or divergent status.",
+		"status": "covered",
+		"test": "42 the packaged UI restarts and accepts a form using persisted record state"
+	}
+]

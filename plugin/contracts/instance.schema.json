@@ -20,6 +20,11 @@
 			"minLength": 1,
 			"maxLength": 500
 		},
+		"build": {
+			"type": "string",
+			"minLength": 1,
+			"maxLength": 200
+		},
 		"references": {
 			"type": "array",
 			"items": {

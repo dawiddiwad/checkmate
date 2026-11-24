@@ -1,0 +1,47 @@
+{
+	"$schema": "http://json-schema.org/draft-07/schema#",
+	"$id": "journal-criterion.schema.json",
+	"description": "A rule or an acceptance criterion that the change must meet.",
+	"type": "object",
+	"properties": {
+		"kind": {
+			"const": "criterion"
+		},
+		"id": {
+			"$ref": "journal-entry.schema.json#/definitions/id"
+		},
+		"build": {
+			"$ref": "journal-entry.schema.json#/definitions/build"
+		},
+		"supersedes": {
+			"$ref": "journal-entry.schema.json#/definitions/supersedes"
+		},
+		"rule": {
+			"$ref": "journal-entry.schema.json#/definitions/rule"
+		},
+		"text": {
+			"description": "The rule.",
+			"type": "string",
+			"minLength": 1
+		},
+		"source": {
+			"description": "Where the rule comes from, for example ticket.md#AC2 or a question ID.",
+			"type": "string",
+			"minLength": 1
+		},
+		"verdict": {
+			"description": "ok when the observed behaviour meets the rule. wrong when the observed behaviour contradicts the rule. Omit it when the rule remains unverified.",
+			"enum": ["ok", "wrong"]
+		},
+		"saw": {
+			"description": "The specific product behaviour that the test session observed for this rule. Required for ok and wrong in a recorder reply.",
+			"type": "string",
+			"minLength": 1
+		},
+		"area": {
+			"$ref": "journal-entry.schema.json#/definitions/area"
+		}
+	},
+	"required": ["kind", "text"],
+	"additionalProperties": false
+}

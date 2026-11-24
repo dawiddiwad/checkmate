@@ -1,5 +1,7 @@
 # HTTP recipe
 
+> **Agent only:** This file contains repository or workflow instructions for coding agents.
+
 Use this recipe when the plan lists the `node` tool for HTTP. For another HTTP tool, use the same rules for evidence.
 
 Use Node.js `fetch` with an explicit timeout.

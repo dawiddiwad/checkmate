@@ -45,7 +45,12 @@ const outputs = [
 			'\t\tinstancePath: string\n' +
 			'\t\tschemaPath: string\n' +
 			'\t\tkeyword: string\n' +
-			'\t\tparams: { additionalProperty?: string; allowedValues?: unknown[]; type?: string | string[] }\n' +
+			'\t\tparams: {\n' +
+			'\t\t\tadditionalProperty?: string\n' +
+			'\t\t\tallowedValues?: unknown[]\n' +
+			'\t\t\tmissingProperty?: string\n' +
+			'\t\t\ttype?: string | string[]\n' +
+			'\t\t}\n' +
 			'\t\tpropertyName?: string\n' +
 			'\t\tmessage?: string\n' +
 			'\t}> | null\n' +

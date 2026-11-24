@@ -1,0 +1,424 @@
+# Use Checkmate from a factory
+
+Use the npm CLI when a factory controls ticket intake, builds, and QA stages.
+
+| Role           | Owns                                                                              |
+| -------------- | --------------------------------------------------------------------------------- |
+| Oracle         | Answers, plan approvals, result decisions, and promotion.                         |
+| Planner and QA | Draft tests, run them, and record observations and evidence.                      |
+| Factory        | Checks out code, builds it, starts and resets the application, and fixes defects. |
+| Host           | Models, credentials, tools, and permissions.                                      |
+| Checkmate      | The shared SQLite record and workflow gates.                                      |
+
+When asked, Checkmate starts workers through the configured host. It does not check out code or start the application. Host permissions remain in the host. Checkmate gates use the records; they are not an operating-system sandbox.
+
+## Before you start
+
+- Use Node.js 24.12.0 or later and install the CLI with `npm install -g @xoxoai/checkmate`.
+- Run commands in the workspace that contains `.checkmate/checkmate.db`, or pass `--workspace <path>`.
+- Configure Claude Code or Pi on `PATH` for delegated stages.
+- Install Playwright CLI when a test uses a browser. Name a Chrome or Chromium executable in `.playwright/cli.config.json` under `browser.launchOptions.executablePath`; `checkmate setup` refuses without it. API-only targets need neither.
+- Give `delegate` the tools that the stage needs. The host enforces those permissions.
+
+For Claude Code, use `--allow` for each required tool. For Pi, set `CHECKMATE_HARNESS=pi` and omit `--allow` and `--claude-arg` from delegate commands. Pi reads standard input until it ends, so run `pi -p` with `< /dev/null`. Each delegated test runs in its own Pi process with the Checkmate build of its parent. Give a project package approval with `pi --approve` or remove a stale global copy. See [Start Checkmate](start.md#use-a-host-plugin).
+
+Read [CLI and record reference](reference.md) for global options and exact command forms. Check `checkmate --help` for the installed version.
+
+## Prepare a target profile
+
+Create and save a profile once for the intended capabilities. This example needs no running instance. Change its operations and approval policy for your application.
+
+```sh
+checkmate target open shop --entry-point "web:url:Shop API." \
+  --capabilities http --operations read_catalog
+checkmate target save shop <<'JSON'
+{
+  "contractVersion":"toolkit-2", "targetId":"shop", "revision":1,
+  "entryPoints":[{"name":"web","kind":"url","purpose":"Shop API."}],
+  "capabilities":["http"], "tools":[],
+  "authentication":{"kind":"none","references":[]},
+  "allowedOperations":["read_catalog"],
+  "startup":{"owner":"factory","command":null}, "cleanup":"No test data.",
+  "readyForLiveExecution":true, "approvals":{"plan":"required","result":"required"}
+}
+JSON
+```
+
+## Mode 1: review a ticket before a build
+
+Use this mode when the oracle needs to review requirements before an application or instance exists. Keep each source as a readable local file. This mode records specification evidence; it does not test a running application.
+
+The target profile describes intended capabilities and operations. Its `readyForLiveExecution` value does not start or verify an application. Add an actual instance only after the factory builds and starts the application.
+
+1. [Prepare a target profile](#prepare-a-target-profile). Do not add an instance yet.
+
+2. Save a local ticket source:
+
+   ```sh
+   printf '%s\n' 'The promotion quote is 240 PLN. Does it replace loyalty?' > ticket.md
+   ```
+
+3. Open a plan for the ticket:
+
+   ```sh
+   checkmate plan open SHOP-12 --target shop@1 \
+     --objective "Check the promotion quote." --source ticket.md
+   ```
+
+4. Save the rules, draft test, and open question:
+
+   ```sh
+   checkmate plan save SHOP-12 <<'JSON'
+   {
+     "requirements":[{"id":"R1","text":"The promotion quote is 240 PLN.","source":"ticket.md"}],
+     "tests":[{"id":"T1","title":"Promotion quote","requirementIds":["R1"],
+       "capability":"http","operations":["read_catalog"],"dependsOn":[],"preconditions":[],
+       "action":"Read the promotion quote.",
+       "assertions":[{"id":"A1","check":"The quote is 240 PLN.","checkKind":"deterministic"}]}],
+     "gaps":[{"id":"G1","severity":"blocking","status":"open","requirementIds":["R1"],
+       "testIds":["T1"],"question":"Does it replace loyalty?",
+       "consequence":"The combined quote is unclear.","decisionId":null}]
+   }
+   JSON
+   ```
+
+5. Review the local ticket source.
+6. Run a tool-free delegated review:
+
+   ```sh
+   checkmate delegate spec SHOP-12@1
+   ```
+
+   The delegated reviewer receives the current source files, plan revision, and applied oracle answers. It has no tools or application instance. It can record source-backed questions, gaps, and specification defects. It cannot answer, approve, or hand off.
+
+   To review without a delegated model, record a source-backed finding and review. A finding must name an open gap and quote a local source. Use the current plan digest for both commands:
+
+   ```sh
+   SHA=$(checkmate plan show SHOP-12@1 --json | node -pe "JSON.parse(require('fs').readFileSync(0)).sha256")
+   checkmate spec finding SHOP-12@1 G1 --kind question --source ticket.md \
+     --evidence "Does it replace loyalty?" --expect-sha "$SHA"
+   checkmate spec review SHOP-12@1 --source ticket.md \
+     --evidence "Does it replace loyalty?" \
+     --rationale "Reviewed the ticket and its open question." --expect-sha "$SHA"
+   ```
+
+7. Read the review status:
+
+   ```sh
+   checkmate spec status SHOP-12@1 --json
+   ```
+
+8. Answer the question:
+
+   ```sh
+   checkmate gap answer SHOP-12 G1 --kind clarify --source ticket.md \
+     --value "The promotion replaces loyalty." --rationale "Product owner decision."
+   ```
+
+9. Apply the answer in a new revision. For this example, the existing assertion already covers the answer:
+
+   ```sh
+   checkmate plan revise SHOP-12 <<'JSON'
+   {"tests":{}}
+   JSON
+   ```
+
+10. Review the new revision. Use `checkmate delegate spec SHOP-12@2`, or record a human review:
+
+    ```sh
+    SHA=$(checkmate plan show SHOP-12@2 --json | node -pe "JSON.parse(require('fs').readFileSync(0)).sha256")
+    checkmate spec review SHOP-12@2 --source ticket.md \
+      --evidence "Does it replace loyalty?" --rationale "Reviewed the applied answer." --expect-sha "$SHA"
+    ```
+
+11. Approve the revision when the target requires approval:
+
+    ```sh
+    checkmate plan approve SHOP-12@2 --rationale "Reviewed the resolved rules."
+    ```
+
+12. Record the handoff with the current digest:
+
+    ```sh
+    SHA=$(checkmate plan show SHOP-12@2 --json | node -pe "JSON.parse(require('fs').readFileSync(0)).sha256")
+    checkmate spec handoff SHOP-12@2 --expect-sha "$SHA" \
+      --rationale "Reviewed current sources and rules."
+    ```
+
+13. Read the handoff status:
+
+    ```sh
+    checkmate spec status SHOP-12@2 --json
+    ```
+
+The examples use revision 2. Replace it with the actual latest revision. A successful handoff returns `ready=true` and the current digest. The handoff refuses changed sources or revisions, missing current review, unresolved findings, open gaps, uncovered rules, and missing required approval. Correct the cause, review the current revision again, and retry. It does not start a build. Existing build-first commands do not require this optional handoff; the factory must check it before it acts on this mode. After handoff, the factory builds and starts the application. Continue from the instance step in [Mode 2](#mode-2-build-first-retest-and-promote) using the reviewed revision.
+
+When a source is external, keep a local copy before review. Checkmate verifies that evidence quotes match a local source; it does not judge whether the review is correct. Sources must be readable local files of at most 40,000 characters.
+
+## Mode 2: build first, retest, and promote
+
+Use this mode when the oracle can approve the ticket rules before the first build.
+
+1. [Prepare a target profile](#prepare-a-target-profile) when no matching target exists.
+
+2. Save the ticket source in the workspace as `ticket.md`.
+3. Open a plan:
+
+   ```sh
+   checkmate plan open SHOP-12 --target shop@1 \
+     --objective "Check the promotion quote." --source ticket.md
+   ```
+
+4. Ask the planner to write the rules and tests:
+
+   ```sh
+   checkmate delegate plan SHOP-12 --allow Read --allow Bash
+   ```
+
+5. Read the plan and its open gaps with `checkmate status SHOP-12`.
+6. Answer each gap that blocks a test.
+7. Ask the planner to apply answers in a new revision. Update the current revision number.
+8. Approve the latest revision when the target requires approval. Replace `SHOP-12@1` with the revision you reviewed:
+
+   ```sh
+   checkmate plan approve SHOP-12@1 --rationale "The ticket rules are correct."
+   ```
+
+9. Build the application and start it. Record a unique build ID.
+10. Add the running application as an active instance. Replace the example URL with its actual URL:
+
+    ```sh
+    checkmate target instance add shop local --entry "web=http://127.0.0.1:4173"
+    ```
+
+11. Set the plan ID and latest revision:
+
+    ```sh
+    PLAN=SHOP-12
+    REV=1
+    ```
+
+Replace `shop-build-1` and `shop-build-2` in the commands below with the IDs that the factory assigns to each build.
+
+12. Explore the first build. The host owns tool permissions. For Pi, use its tool names with `--allow`:
+
+    ```sh
+    checkmate explore start "$PLAN" --build shop-build-1 --instance local --allow Read --allow Bash
+    checkmate explore wait <explorationId>
+    ```
+
+    Replace `<explorationId>` with the ID in the start receipt. Resolve open questions before promotion.
+
+13. Start the first run on the first build. Select ready tests when the plan has open gaps:
+
+    ```sh
+    checkmate run begin run-1 "$PLAN@$REV" --build shop-build-1 \
+      --instance local --partial ready_only
+    checkmate delegate execute run-1 --allow Read --allow Bash
+    ```
+
+14. Read the first run and its evidence.
+15. If the first run found a gap, answer it.
+16. If you answered a gap, ask the planner to apply it in a new revision. Update `REV`.
+17. Approve the latest revision when the target requires approval.
+18. Accept the result when it records what QA observed. This applies even when it records a failure. Acceptance does not mean that the build passed.
+19. Give each real defect and its evidence to the factory.
+20. Build and start a distinct fixed build. Record its build ID.
+21. Retest the open defects and ready regression tests:
+
+    ```sh
+    checkmate explore start "$PLAN" --build shop-build-2 --instance local --allow Read --allow Bash
+    checkmate explore wait <explorationId>
+    checkmate run begin run-2 "$PLAN@$REV" --build shop-build-2 \
+      --instance local --partial ready_only --retest-of run-1
+    checkmate delegate execute run-2 --allow Read --allow Bash
+    checkmate run show run-2
+    ```
+
+22. Read the retest result and evidence. Retest any open exploration claims.
+    If any test still fails, give the new evidence to the factory. Build another distinct build and repeat the retest with a new run ID. Do not promote a failing run.
+23. When every test passes with evidence, accept the result:
+
+    ```sh
+    checkmate result accept run-2 --rationale "The fixed build passes the ticket rules."
+    ```
+
+24. Promote the passing tests:
+
+    ```sh
+    checkmate plan promote "$PLAN@$REV" --run run-2 --build shop-build-2 \
+      --rationale "Save these tests for this ticket."
+    checkmate plan promotions SHOP-12
+    ```
+
+Promotion is an explicit oracle decision. It requires the latest plan revision, the latest recorded build, a completed run on that revision and build, explicit result acceptance, evidence for every assertion, and a passing result for every test. Each rule must have a test. Resolve open gaps, questions, and claims first. One run must cover every test. Do not record another run or exploration before promotion. The promotion creates an immutable snapshot with its tests and provenance.
+
+To retest, use a new run ID and a distinct build. A run does not change the earlier run.
+
+## Mode 3: run only promoted tests
+
+Use permanent mode for recurring QA. The factory builds and starts the application, then gives the run an explicit build ID.
+
+1. List the promotions and choose the exact latest snapshot:
+
+   ```sh
+   checkmate plan promotions SHOP-12
+   ```
+
+2. Set the promotion ID from that output. This example uses `SHOP-12@5`:
+
+   ```sh
+   PROMOTION=SHOP-12@5
+   CURRENT_BUILD=shop-build-3
+   ```
+
+3. Start the permanent run on the current build:
+
+   ```sh
+   checkmate run permanent run-3 SHOP-12 --build "$CURRENT_BUILD" \
+     --instance local --promotion "$PROMOTION"
+   ```
+
+4. Delegate its execution:
+
+   ```sh
+   checkmate delegate execute run-3 --allow Read --allow Bash
+   ```
+
+5. Read the run and its selected promotion:
+
+   ```sh
+   checkmate run show run-3 --json
+   ```
+
+The CLI requires `--build`. `--promotion` is optional; use it to require one exact latest snapshot. Checkmate selects only the immutable tests in the promotion. A later draft cannot change that selection. Permanent mode starts no exploration and creates no discovery gaps or potential-issue findings.
+
+Checkmate refuses a missing, wrong-ticket, stale, empty, rejected, or withdrawn promotion before it starts the run or host. It does not fall back to an older snapshot. A rejected promoted revision or withdrawn source-result acceptance blocks new permanent runs. If the promotion is withdrawn before delegation or resume, Checkmate refuses those actions too. Check `checkmate plan promotions SHOP-12` and fix the current plan or result before you promote again.
+
+A permanent run can record failed assertions and evidence. Use a normal run to check new behavior. Follow Mode 2 to create a new promotion after a fix.
+
+## Read status and recover
+
+Run these commands when the next owner is unclear:
+
+```sh
+checkmate status SHOP-12
+checkmate inbox
+checkmate run show <runId>
+```
+
+Follow the `next` lines from status. If a run is still started after a host stop, read the open tests before you resume:
+
+```sh
+checkmate run resume <runId>
+checkmate delegate execute <runId> --allow Read --allow Bash
+```
+
+Resume checks the instance, target profile, and run gate. It records a new attempt and lists the open tests. It does not run test actions. When an action may have changed application data and cannot be checked safely, close that test as `error` with a reason. See [Local human-oracle QA](local-qa.md#review-a-result-and-retry) for the recovery steps.
+
+## One-shot QA with a stored run
+
+Use `checkmate test` in a pipeline for QA on one build. It plans, explores, and stores the defects as a run. The run needs no harvest step.
+
+```sh
+checkmate test shop-12 --url http://127.0.0.1:4101 --source ticket.md \
+  --build shop-build-2 --data environment --policy "The shop keeps no data." --allow Read --allow Bash
+checkmate explore wait x-1 --timeout 540
+checkmate export run findings-x-1 --format junit --out junit.xml
+```
+
+Replace `x-1` with the exploration ID in the `test` reply. Repeat `explore wait` while it prints `interrupted`. An exploration that can change data needs a data kind. Give `--reset "<command>"` with a command that restores the seed data, or `--data environment|isolation --policy "<text>"` when the environment or the testers' isolation keeps the data safe. Checkmate refuses the exploration without one. Checkmate refuses the exploration without a reset. Checkmate runs the recorded command before the exploration starts, and not again during `explore follow`: the first reset applies to the follow-ups.
+
+The run ID is `findings-<explorationId>`. Each defect is one failed test. The other tests of the plan are not selected. The JUnit file marks each unselected test as `skipped` with its reason, for example the open gap that blocks it.
+
+Before a pipeline starts the next step, check the owner:
+
+```sh
+checkmate status shop-12 --fail-on-blocked
+```
+
+Exit code 3 means an open blocking gap, or a wait on the oracle (see the table in the exit codes section). Read the questions with `checkmate status shop-12` and stop.
+
+## Exit codes for a pipeline
+
+Use this one table in CI. Each command has its own row set. Read the exit code and the `reason:` lines, or the JSON fields named here.
+
+| Command                                           | 0                                                              | 1                                                                                                                                                                                                                      | 2                                                                                                                                                                                   | 3                                                                      |
+| ------------------------------------------------- | -------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| `checkmate run show <runId> --gate`               | `passed`: every selected test passed, and coverage is complete | `defects`: a test failed                                                                                                                                                                                               | `could_not_test`, `partial_coverage`, or `unverified_checks`: a test could not run, the run did not finish, a test was not selected, or a deterministic check has no expected value | `blocked_on_oracle`: an open blocking gap waits for an oracle decision |
+| `checkmate status <planId> --fail-on-blocked`     | No open blocking gap, and the plan does not wait on the oracle | The command was rejected                                                                                                                                                                                               | (not used)                                                                                                                                                                          | An open blocking gap, or the plan waits on the oracle                  |
+| `checkmate status <planId>` (no flag)             | Always, for a readable plan                                    | The command was rejected                                                                                                                                                                                               | (not used)                                                                                                                                                                          | (not used)                                                             |
+| `checkmate run gate <planId@rev> --build <build>` | The run can begin                                              | Refused: no test is ready, a data policy is missing, the target is not ready, the plan is not approved, or an assertion has a compound check. With `--partial wait_for_resolution`, an open blocking gap also refuses. | (not used)                                                                                                                                                                          | (not used)                                                             |
+| Any other command                                 | Completed or `needs_decision`                                  | Rejected or an operational error                                                                                                                                                                                       | (not used)                                                                                                                                                                          | (not used)                                                             |
+
+A failed test outranks the other codes in `run show --gate`. Partial coverage never exits 0. A run with a deterministic check that the code did not verify never exits 0. The gate names the checks and the revise command. The gate also reports how many verdicts the agent judged (`judgedByAgent`), because those pass without a value comparison.
+
+Code 3 always means the same thing: an open blocking gap waits for a decision. A plan with an open blocking gap exits 3 with `--fail-on-blocked`, even when its ready tests can run. Read `waitsOn` in the status to see whether the oracle or QA acts next.
+
+Sample GitHub Actions step for a run:
+
+```yaml
+- name: Gate on the Checkmate run
+  run: |
+    checkmate export run "$RUN_ID" --format junit --out reports/junit.xml
+    checkmate run show "$RUN_ID" --gate
+```
+
+The step fails for every code except 0. The JUnit file tells a reader which tests failed and which could not run.
+
+## Assertions with an observed item and an expected value
+
+A deterministic assertion names what is observed and the expected value separately:
+
+```json
+{
+	"id": "A1",
+	"check": "The kettle price shown on the product page is 240 PLN.",
+	"checkKind": "deterministic",
+	"observe": "the kettle price on /",
+	"expected": "240 PLN"
+}
+```
+
+The child records only the observed value with `run check --observed "300 PLN"`. The code compares it with `expected` and records `passed` or `failed`. `--result` is refused for these assertions. A value that cannot be observed is recorded as `not_checked` with `--reason`.
+
+A deterministic check without an `expected` value is not verified by code. Plan save refuses it, `run begin` refuses a plan that holds one, and `checkmate delegate revise <planId>` migrates it to the current shape without an oracle decision. A check that cannot be split without a decision raises a blocking gap instead. Use `agent_observation` for a judgment that has no value to compare.
+
+Older plans with check text only still run, but the gate reports them as checks the code cannot compare. Revise the plan to give each comparable value an `observe` and an `expected`.
+
+## Data kinds, prepare, and cleanup
+
+A target records how its data stays safe. Setup asks for one of three kinds:
+
+| Kind                     | Setup                                  | What Checkmate does                                                                |
+| ------------------------ | -------------------------------------- | ---------------------------------------------------------------------------------- |
+| Reset command            | `--reset "<command>"`                  | Runs the command before each run and exploration.                                  |
+| Reset by the environment | `--data environment --policy "<text>"` | Runs nothing. The pipeline gives each run fresh data.                              |
+| Isolation                | `--data isolation --policy "<text>"`   | Runs nothing. Testers create their own records and use the users the policy names. |
+
+The policy is text, or `--policy-file <path>` for a file that you own. Checkmate reads the file each time it needs the policy. The policy is a binding rule for every tester, explorer, and execute child. The planner sees it too.
+
+Two optional hooks run with any kind:
+
+- `--reset "<command>"` is the prepare hook. It runs before each run begins and before each exploration starts. It does not run before `explore follow`.
+- `--cleanup "<command>"` runs when the run or exploration ends. It runs also after an interrupted run when the run is finished or resumed and finished. A cleanup that fails is listed in the finish reply as `cleanupFailures`. It does not change a test verdict.
+
+Setup also takes `--hook-timeout <seconds>` (default 120). A prepare that fails or times out stops the run before any test, and the command output shows the reason.
+
+A reset command runs before each test that does not continue an earlier test of the same run, so one test's records do not change another test's counts. A test that depends on an earlier test in the run runs after it with no reset between. Setup takes `--reset-per-test off` for a reset that is too slow to run before each test. Then the reset runs only once, before the run.
+
+Every hook gets `CHECKMATE_MARKER` in its environment. The marker is `qa-<runId>` for a run and `qa-<explorationId>` for an exploration. Name every record that the hook creates with the marker, so cleanup can find it.
+
+Standard output of prepare, up to 8 KB, becomes facts for the run. The children receive it in their prompts, and `run show --json` shows it in `request.facts`. Write only facts that are safe to show: test user names and record IDs. Never write a secret, a password, or a token. Reports show the kind and the policy. They do not show the hooks.
+
+A hook is a shell command. It can call a script, or start a headless agent that uses your own skill. Checkmate does not drive a skill itself.
+
+Example for a Salesforce-style sandbox that cannot be reset: the policy says to create records with the marker in their names, to use the listed test users, and never to change a record that the run did not create. The prepare hook creates the test users and prints their IDs as facts. The cleanup hook deletes every record whose name contains the marker.
+
+```sh
+checkmate setup --url https://sandbox.example.test --target crm --data isolation \
+  --policy-file ./qa-policy.md --reset "node scripts/prepare-sandbox.mjs" \
+  --cleanup "node scripts/cleanup-sandbox.mjs"
+```
+
+A driver never writes a command, a policy, or a hook to get past a refusal. Ask the person for them.

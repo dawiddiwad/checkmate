@@ -1,0 +1,69 @@
+{
+	"$schema": "http://json-schema.org/draft-07/schema#",
+	"$id": "journal-observation.schema.json",
+	"description": "What you did and what you saw.",
+	"type": "object",
+	"properties": {
+		"kind": {
+			"const": "observation"
+		},
+		"id": {
+			"$ref": "journal-entry.schema.json#/definitions/id"
+		},
+		"build": {
+			"$ref": "journal-entry.schema.json#/definitions/build"
+		},
+		"supersedes": {
+			"$ref": "journal-entry.schema.json#/definitions/supersedes"
+		},
+		"about": {
+			"$ref": "journal-entry.schema.json#/definitions/about"
+		},
+		"steps": {
+			"$ref": "journal-entry.schema.json#/definitions/steps"
+		},
+		"saw": {
+			"$ref": "journal-entry.schema.json#/definitions/saw"
+		},
+		"value": {
+			"$ref": "journal-entry.schema.json#/definitions/value"
+		},
+		"repeats": {
+			"description": "The ID of an earlier observation that you did again.",
+			"type": "string",
+			"pattern": "^[A-Za-z0-9][A-Za-z0-9_/-]{0,191}$"
+		},
+		"verdict": {
+			"description": "ok when the result is correct. wrong when it is not.",
+			"enum": ["ok", "wrong"]
+		},
+		"via": {
+			"$ref": "journal-entry.schema.json#/definitions/via"
+		},
+		"evidence": {
+			"$ref": "journal-entry.schema.json#/definitions/evidence"
+		},
+		"confirms": {
+			"description": "The ID of an issue or a defect that you did again and saw, for example a1/D3. On the build where it was found, it confirms the issue. On a later build, it sets the status of the issue on that build to not_fixed.",
+			"type": "string",
+			"minLength": 1
+		},
+		"refutes": {
+			"description": "The ID of an issue or a defect that you did again and did not see. On the build where it was found, it refutes the issue. On a later build, it sets the status of the issue on that build to fixed.",
+			"type": "string",
+			"minLength": 1
+		}
+	},
+	"required": ["kind", "build", "saw"],
+	"additionalProperties": false,
+	"examples": [
+		{
+			"kind": "observation",
+			"confirms": "a1/D3",
+			"steps": "Add 5 pens in the cart",
+			"saw": "Total 50.00, no discount",
+			"via": "ui",
+			"evidence": "evidence/cart-5.png"
+		}
+	]
+}

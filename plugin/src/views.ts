@@ -1,7 +1,27 @@
+import type { Harness } from './pi.ts'
 import type { Plan, Result } from './types.ts'
 import type { Store } from './store.ts'
+import type { Charter, ExplorationEvent } from './explorations.ts'
+import type { Evidence, Row } from './journal.ts'
+import type { ModelCost } from './costs.ts'
+import { noModelCost, noRunUsage, planCosts, planExplorationCosts, runUsages } from './costs.ts'
+import { explorationStatus, followCount, running as alive, startOf, stopOf, stopPending } from './explorers.ts'
+import { exploration, explorationEvents } from './explorations.ts'
+import {
+	buildOrder,
+	criterionCounts,
+	explorationRow,
+	factoryStates,
+	isTester,
+	journal,
+	oracleStates,
+	planClaims,
+	planQuestions,
+	shortName,
+} from './journal.ts'
 import { all, canonical, digest, one } from './store.ts'
-import { requireChoice, requireCondition } from './contracts.ts'
+import { requireChoice, requireCondition, uncoveredRequirements, unverifiedAssertions } from './contracts.ts'
+import { openPermissions } from './permissions.ts'
 import {
 	approvalState,
 	dependencyBlock,
@@ -12,26 +32,42 @@ import {
 	planRevision,
 	planRunGaps,
 	deferredPrerequisites,
+	finalizedResults,
+	openDefects,
 	readySelection,
+	rejectedRuns,
+	selectedOutcome,
+	supersedes,
 } from './plans.ts'
 import {
 	outcomeCounts,
 	resultAcceptance,
 	runAssertions,
+	runClock,
 	runEvidence,
-	runFindings,
+	isVerdict,
+	verdictFindings,
 	runGaps,
 	runOutcomes,
+	runOverlapWarnings,
+	retestVerdicts,
 	runResult,
 	runState,
 } from './runs.ts'
 import type { RunRow } from './runs.ts'
-import { findInstance, instanceList } from './targets.ts'
+import { findInstance, instanceList, targetRevision } from './targets.ts'
+import { findingsRunId } from './findingsRun.ts'
+import { owedLines } from './cleanups.ts'
+import { dataSummary } from './resets.ts'
+import { planRules, rulesLine } from './rules.ts'
+import { workspaceHarness } from './settings.ts'
+import { existsSync } from 'node:fs'
+import { join } from 'node:path'
 
 type RevisionRow = { plan_id: string; revision: number; sha256: string; body: string; at: string; actor: string }
 type ApprovalState = ReturnType<typeof approvalState>
 export type ApprovalLabel = 'approved' | 'rejected' | 'pending' | 'not_required'
-export type PlanListRow = {
+export type PlanListRow = ModelCost & {
 	planId: string
 	status: 'requested' | 'drafted'
 	revision: number | null
@@ -87,32 +123,63 @@ export function inbox(store: Store) {
 		).map((row) => `${row.plan_id}:${row.gap_id}`)
 	)
 	const revisions = latestRevisions(store)
-	const gaps = revisions
-		.flatMap((row) => [
-			...row.plan.gaps
-				.filter((gap) => gap.status === 'open' && !pending.has(`${row.plan_id}:${gap.id}`))
-				.map((gap) => ({
-					planId: row.plan_id,
-					revision: row.revision,
-					gapId: gap.id,
-					question: gap.question,
-					severity: gap.severity,
-					since: row.at,
-					runId: null as string | null,
-				})),
-			...planRunGaps(store, row.plan_id)
-				.filter((item) => !item.adopted)
-				.map((item) => ({
-					planId: row.plan_id,
-					revision: row.revision,
-					gapId: item.gap.id,
-					question: item.gap.question,
-					severity: item.gap.severity,
-					since: item.at,
-					runId: item.runId,
-				})),
-		])
-		.sort(bySince)
+	const gaps = revisions.flatMap((row) => [
+		...row.plan.gaps
+			.filter((gap) => gap.status === 'open' && !pending.has(`${row.plan_id}:${gap.id}`))
+			.map((gap) => ({
+				planId: row.plan_id,
+				revision: row.revision,
+				gapId: gap.id,
+				question: gap.question,
+				severity: gap.severity,
+				since: row.at,
+				runId: null as string | null,
+				explorationId: null as string | null,
+			})),
+		...planRunGaps(store, row.plan_id)
+			.filter((item) => !item.adopted)
+			.map((item) => ({
+				planId: row.plan_id,
+				revision: row.revision,
+				gapId: item.gap.id,
+				question: item.gap.question,
+				severity: item.gap.severity,
+				since: item.at,
+				runId: item.runId as string | null,
+				explorationId: null as string | null,
+			})),
+	])
+	const explored = exploredPlans(store)
+	const questions = explored.flatMap((planId) =>
+		mergedQuestions(store, planId)
+			.filter((question) => question.answer === null)
+			.map((question) => ({
+				planId,
+				revision: null as number | null,
+				gapId: question.id,
+				question: question.question,
+				severity: (question.blocking ? 'blocking' : 'non_blocking') as 'blocking' | 'non_blocking',
+				since: question.at,
+				runId: null as string | null,
+				explorationId: question.explorationId as string | null,
+			}))
+	)
+	const allGaps = [...gaps.map((gap) => ({ ...gap, revision: gap.revision as number | null })), ...questions].sort(
+		bySince
+	)
+	const claims = explored.flatMap((planId) =>
+		mergedClaims(store, planId)
+			.filter((claim) => claim.open && oracleStates.includes(claim.state))
+			.map((claim) => ({
+				planId,
+				claimId: claim.id,
+				explorationId: claim.explorationId,
+				state: claim.state,
+				severity: claim.severity,
+				title: claim.title,
+				reason: claim.reason,
+			}))
+	)
 	const plans = revisions
 		.map((row) => ({ row, approval: approvalLabel(planApproval(store, row.plan, row.sha256)) }))
 		.filter(({ approval }) => approval === 'pending' || approval === 'rejected')
@@ -127,7 +194,7 @@ export function inbox(store: Store) {
 		.sort(bySince)
 	const results = revisions.flatMap((row) => {
 		const runs = runList(store, { planId: row.plan_id })
-		const record = planRecord(store, row.plan, runs)
+		const record = planRecord(store, row.plan)
 		const waited = new Set([...record.supplied, ...record.defects.map((item) => item.runId)])
 		return runs
 			.filter((run) => waited.has(run.runId) && run.acceptance === 'pending')
@@ -145,7 +212,8 @@ export function inbox(store: Store) {
 				}
 			})
 	})
-	return { gaps, plans, results, requests: requestedPlans(store).sort(bySince) }
+	const requests = requestedPlans(store).filter((request) => !explored.includes(request.planId))
+	return { gaps: allGaps, plans, results, claims, requests: requests.sort(bySince) }
 }
 
 function selectedCounts(result: Result) {
@@ -162,6 +230,7 @@ function testCounts(plan: Plan) {
 }
 
 export function planList(store: Store): PlanListRow[] {
+	const costs = planCosts(store)
 	const drafted = latestRevisions(store).map((row): PlanListRow => {
 		const open = [
 			...row.plan.gaps.filter((gap) => gap.status === 'open'),
@@ -170,6 +239,7 @@ export function planList(store: Store): PlanListRow[] {
 				.map((item) => item.gap),
 		]
 		return {
+			...(costs.get(row.plan_id) ?? noModelCost),
 			planId: row.plan_id,
 			status: 'drafted',
 			revision: row.revision,
@@ -191,6 +261,7 @@ export function planList(store: Store): PlanListRow[] {
 		}
 	})
 	const requested = requestedPlans(store).map((request): PlanListRow => ({
+		...(costs.get(request.planId) ?? noModelCost),
 		planId: request.planId,
 		status: 'requested',
 		revision: null,
@@ -201,9 +272,17 @@ export function planList(store: Store): PlanListRow[] {
 		tests: { total: 0, ready: 0, blocked: 0, deferred: 0 },
 		approval: null,
 		blocked: [],
-		loop: { state: 'needs_plan', waitsOn: 'planner' },
+		loop: loopOf(store, request.planId),
 	}))
 	return [...drafted, ...requested].sort((a, b) => a.planId.localeCompare(b.planId))
+}
+
+// Deterministic checks without observe and expected. Code cannot verify them; a revise migrates them.
+export function legacyChecks(plan: Plan) {
+	return [
+		...plan.tests.flatMap((test) => unverifiedAssertions(test, plan.requirements).map((id) => `${test.id}.${id}`)),
+		...uncoveredRequirements(plan).map((id) => `${id} needs_test`),
+	]
 }
 
 export function planDetail(store: Store, planId: string, revision: number | null = null) {
@@ -231,7 +310,14 @@ export function planDetail(store: Store, planId: string, revision: number | null
 		latestRevision: latest.plan.revision,
 		sha256: selected.sha256,
 		approval: { state: approvalLabel(approval), policy: approval.policy, latest: approval.latest },
+		plannedFrom:
+			(
+				JSON.parse(
+					one<{ body: string }>(store, 'SELECT body FROM plan_requests WHERE plan_id = ?', planId)!.body
+				) as { context?: { sources?: string[] } }
+			).context?.sources ?? [],
 		pendingDecisions: pending,
+		legacyChecks: legacyChecks(selected.plan),
 		plan: selected.plan,
 		runs: runList(store, { planId }).map((run) => ({
 			runId: run.runId,
@@ -281,22 +367,660 @@ export type LoopState =
 	| 'awaits_acceptance'
 	| 'accepted'
 	| 'passed'
+	| 'exploring'
+	| 'needs_triage'
+	| 'ready_to_test'
 export type Role = 'planner' | 'oracle' | 'qa' | 'factory' | 'none'
 export const roles = ['planner', 'oracle', 'qa', 'factory', 'none'] as const
 
-export function planStatus(store: Store, planId: string) {
+export function exploredPlans(store: Store) {
+	return all<{ plan_id: string }>(store, 'SELECT DISTINCT plan_id FROM explorations ORDER BY plan_id').map(
+		(row) => row.plan_id
+	)
+}
+
+const runningExploration = ['starting', 'testing', 'recording', 'verifying', 'following']
+
+function mergedUpTo(events: ExplorationEvent[]) {
+	if (events.find((item) => item.step === 'done')?.status !== 'completed') return 0
+	const follow = events.findLastIndex((item) => item.step === 'follow')
+	if (follow === -1) return Infinity
+	const ended = events.slice(follow + 1).find((item) => item.step === 'followed')
+	return ended?.status === 'completed' ? Infinity : Number(events[follow].detail.after ?? 0)
+}
+
+const fromSession = (row: Row) => row.actor.startsWith('qa:')
+
+export function mergedEntries(store: Store, planId: string) {
+	const limits = new Map(
+		all<{ exploration_id: string }>(store, 'SELECT exploration_id FROM explorations WHERE plan_id = ?', planId).map(
+			(row) => [row.exploration_id, mergedUpTo(explorationEvents(store, row.exploration_id))]
+		)
+	)
+	return (row: Row) => {
+		const needsCompletion = fromSession(row) || (row.kind === 'criterion' && row.verdict === 'ok')
+		return !needsCompletion || row.seq <= (limits.get(row.explorationId) ?? 0)
+	}
+}
+
+export function mergedClaims(store: Store, planId: string) {
+	return planClaims(store, planId, mergedEntries(store, planId))
+}
+
+export function mergedQuestions(store: Store, planId: string) {
+	return planQuestions(store, planId, mergedEntries(store, planId))
+}
+
+function explorationData(store: Store, status: ReturnType<typeof explorationStatus>) {
+	const log = `.checkmate/tmp/explore-${status.explorationId}.log`
+	return [...(status.workFolder ? [status.workFolder] : []), ...(existsSync(join(store.workspace, log)) ? [log] : [])]
+}
+
+export function planHasRevision(store: Store, planId: string) {
+	return Boolean(one(store, 'SELECT 1 FROM plan_revisions WHERE plan_id = ?', planId))
+}
+
+export function planExplorations(store: Store, planId: string) {
+	const costs = planExplorationCosts(store, planId)
+	return all<{ exploration_id: string; started_at: string }>(
+		store,
+		'SELECT exploration_id, started_at FROM explorations WHERE plan_id = ? ORDER BY rowid',
+		planId
+	).map((row) => {
+		const status = explorationStatus(store, row.exploration_id)
+		const ended = ['failed', 'stopped', 'interrupted'].includes(status.state)
+		return {
+			...(costs.get(row.exploration_id) ?? noModelCost),
+			explorationId: status.explorationId,
+			state: status.state,
+			running: runningExploration.includes(status.state),
+			build: status.build,
+			instanceId: status.instanceId,
+			level: status.level,
+			explorers: status.explorerCount,
+			startedAt: row.started_at,
+			reason: ended ? status.reason : null,
+			hint: ended ? status.doneHint : null,
+			follow: status.follow,
+			followReason: status.followReason,
+			paused: status.paused,
+			data: explorationData(store, status),
+		}
+	})
+}
+
+type Explorer = ReturnType<typeof explorationStatus>['explorers'][number]
+
+const outcomeSteps = ['turn', 'end', 'follow-turn', 'record', 'repair']
+
+function sessionExplorerLive(events: ExplorationEvent[], item: Explorer, now: number) {
+	const own = events.filter(
+		(event) => event.explorer === item.explorer && ['action', 'started', ...outcomeSteps].includes(event.step)
+	)
+	const last = own.at(-1)
+	const action = own.findLast((event) => event.step === 'action')
+	const outcome = own.findLast((event) => outcomeSteps.includes(event.step))
+	const outcomeAction = outcome && own.slice(0, own.indexOf(outcome)).findLast((event) => event.step === 'action')
+	const state = !last
+		? null
+		: last.step === 'action'
+			? 'given'
+			: last.step === 'started'
+				? 'running'
+				: last.status === 'operational_error'
+					? 'failed'
+					: 'ended'
+	const files = events
+		.filter((event) => event.explorer === item.explorer && event.step === 'files')
+		.flatMap((event) =>
+			(event.detail.files as Array<{ name: string }>).map((file) => ({
+				phase: String(event.detail.phase),
+				name: file.name,
+			}))
+		)
+	const busy = state === 'given' || state === 'running'
+	const pause = events.findLast((event) => event.step === 'pause' || event.step === 'resume')
+	const pausedAt = busy && pause?.step === 'pause' ? pause.at : null
+	const span = (from: string, to: number) => Math.max(0, to - Date.parse(from))
+	return {
+		explorer: item.explorer,
+		model: null,
+		...noModelCost,
+		reason: item.reason,
+		hint: item.hint,
+		turn: (action?.detail.step as string | undefined) ?? null,
+		state,
+		startedAt: last?.at ?? null,
+		pausedAt,
+		elapsedMs: !last
+			? null
+			: busy
+				? span(last.at, pausedAt ? Date.parse(pausedAt) : now)
+				: outcome && outcomeAction
+					? span(outcomeAction.at, Date.parse(outcome.at))
+					: null,
+		activity:
+			typeof outcome?.detail.activity === 'string' && outcomeAction
+				? `${String(outcomeAction.detail.step)}: ${outcome.detail.activity}`
+				: null,
+		activityAt: typeof outcome?.detail.activity === 'string' && outcomeAction ? (outcome?.at ?? null) : null,
+		stray: item.stray,
+		recorded: item.recorded,
+		saved: item.saved,
+		files: state === 'given' || state === 'running' ? [] : files,
+	}
+}
+
+function explorerLive(
+	store: Store,
+	explorationId: string,
+	events: ExplorationEvent[],
+	item: Explorer,
+	running: boolean,
+	now: number
+) {
+	if (startOf(events)?.path === 'session') return sessionExplorerLive(events, item, now)
+	const own = events.filter((event) => event.explorer === item.explorer)
+	const launch = own.find((event) => event.step === 'launch' || event.step === 'action')
+	const end = own.findLast((event) => event.step === 'end')
+	const follow = events.findLastIndex((event) => event.step === 'follow')
+	const followed = events.slice(follow + 1)
+	const stoppedBy =
+		own.find((event) => event.step === 'stop') ??
+		(end?.status === 'completed' || follow !== -1 ? undefined : stopOf(events))
+	const followTurn = followed.find((event) => event.explorer === item.explorer && event.step === 'follow-turn')
+	const inFollow = follow !== -1 && item.session !== null
+	const turn = inFollow
+		? 'follow-up'
+		: end
+			? String(end.detail.turn ?? 'test')
+			: launch
+				? String(own.findLast((event) => event.step === 'turn')?.detail.turn ?? 'study')
+				: null
+	const startedAt = inFollow ? events[follow].at : (launch?.at ?? null)
+	const endedAt = inFollow ? (followTurn?.at ?? null) : (stoppedBy?.at ?? end?.at ?? null)
+	const stopped = followed.some((event) => event.step === 'followed') ? 'skipped' : 'stopped'
+	const state = inFollow
+		? (followTurn?.status ?? (running ? 'running' : stopped))
+		: stoppedBy
+			? stopPending(events, stoppedBy.explorer)
+				? 'stopping'
+				: 'stopped'
+			: (end?.status ?? (launch ? (running ? 'running' : 'stopped') : null))
+	const pause = events.findLast((event) => event.step === 'pause' || event.step === 'resume')
+	const pausedAt = running && !endedAt && pause?.step === 'pause' ? pause.at : null
+	const until = endedAt ? Date.parse(endedAt) : pausedAt ? Date.parse(pausedAt) : running ? now : null
+	const activity = own.findLast((event) => typeof event.detail.activity === 'string' && event.detail.activity)
+	const files = own
+		.filter((event) => event.step === 'files')
+		.flatMap((event) =>
+			(event.detail.files as Array<{ name: string }>).map((file) => ({
+				phase: String(event.detail.phase),
+				name: file.name,
+			}))
+		)
+	return {
+		explorer: item.explorer,
+		model: item.observedModels?.join(', ') ?? item.model,
+		costUsd: item.costUsd,
+		costPartial: item.costPartial,
+		reason: item.reason,
+		hint: item.hint,
+		turn,
+		state,
+		startedAt,
+		pausedAt,
+		elapsedMs: startedAt && until !== null ? Math.max(0, until - Date.parse(startedAt)) : null,
+		activity: (activity?.detail.activity as string | undefined) ?? null,
+		activityAt: activity?.at ?? null,
+		stray: item.stray,
+		recorded: item.recorded,
+		saved: item.saved,
+		files: running ? [] : files,
+	}
+}
+
+function phaseRows(events: ExplorationEvent[], status: ReturnType<typeof explorationStatus>, verifier: boolean | null) {
+	const state = status.state
+	const running = runningExploration.includes(state)
+	const later = running ? 'pending' : 'not_run'
+	const last = (step: string) => events.findLast((event) => event.step === step)
+	const reason = (event: ExplorationEvent | undefined) => (event?.detail.reason as string | undefined) ?? null
+	const records = events.filter((event) => event.step === 'record')
+	const refused = records.filter((event) => event.status !== 'completed')
+	const merge = last('merge')
+	const verify = last('verify')
+	return [
+		{
+			phase: 'record',
+			state: !records.length
+				? later
+				: state === 'recording'
+					? 'running'
+					: refused.length < records.length
+						? 'completed'
+						: 'failed',
+			reason: refused.length
+				? refused
+						.map(
+							(event) =>
+								`${event.explorer}: ${[event.detail.reasons ?? []].flat().join(' ') || event.status}`
+						)
+						.join(' ')
+				: null,
+		},
+		{ phase: 'merge', state: merge?.status ?? later, reason: reason(merge) },
+		{
+			phase: 'verify',
+			state: verify?.status ?? (verifier === false ? 'not_in_level' : state === 'verifying' ? 'running' : later),
+			reason: reason(verify),
+		},
+		{
+			phase: 'follow-up',
+			state: status.follow ?? 'not_run',
+			reason: status.followReason,
+		},
+	]
+}
+
+const phaseOf: Record<string, string> = {
+	starting: 'start',
+	testing: 'test',
+	recording: 'record and merge',
+	verifying: 'verify',
+	following: 'follow-up',
+}
+
+export function explorationLive(store: Store, explorationId: string, now = Date.now()) {
+	const status = explorationStatus(store, explorationId)
+	const opened = exploration(store, explorationId)
+	const events = explorationEvents(store, explorationId)
+	const running = runningExploration.includes(status.state)
+	const limit = mergedUpTo(events)
+	const kept = mergedEntries(store, status.planId)
+	const own = (item: { explorationId: string }) => item.explorationId === explorationId
+	const claims = planClaims(store, status.planId, kept).filter(own)
+	const questions = planQuestions(store, status.planId, kept).filter(own)
+	const found = foundEntries(store, status.planId, explorationId, limit, claims, questions)
+	const ended = ['failed', 'stopped', 'interrupted'].includes(status.state)
+	return {
+		costUsd: status.costUsd,
+		costPartial: status.costPartial,
+		explorationId,
+		planId: status.planId,
+		goal: opened.charter.goal,
+		build: status.build,
+		instanceId: status.instanceId,
+		mode: status.mode,
+		level: status.level,
+		explorerCount: status.explorerCount,
+		model: status.observedModels?.join(', ') ?? status.model,
+		startedAt: opened.started_at,
+		state: status.state,
+		running,
+		phase: phaseOf[status.state] ?? null,
+		stopping: stopPending(events),
+		stuck: events
+			.filter((event) => event.step === 'stop-end')
+			.flatMap((event) => event.detail.left as number[])
+			.filter(alive),
+		reason: ended ? status.reason : null,
+		follow: status.follow,
+		followReason: status.followReason,
+		path: status.path,
+		paused: status.paused,
+		data: explorationData(store, status),
+		explorers: status.explorers.map((item) => explorerLive(store, explorationId, events, item, running, now)),
+		phases: phaseRows(events, status, startOf(events)?.verifier ?? null),
+		unmerged: found.filter((entry) => !entry.merged),
+		found,
+		claims,
+		questions,
+	}
+}
+
+function foundEntries(
+	store: Store,
+	planId: string,
+	explorationId: string,
+	limit: number,
+	claims: ReturnType<typeof planClaims>,
+	questions: ReturnType<typeof planQuestions>
+) {
+	return journal(store, planId)
+		.team.filter(
+			(entry) =>
+				entry.explorationId === explorationId &&
+				isTester(entry.actor) &&
+				(entry.kind === 'question' || entry.kind === 'defect')
+		)
+		.map((entry) => {
+			const merged = entry.seq <= limit
+			return {
+				id: entry.id,
+				explorer: shortName(entry.actor),
+				kind: entry.kind,
+				text: (entry.kind === 'question' ? entry.question : entry.title) ?? '',
+				severity: entry.severity ?? null,
+				blocking: entry.blocking === true,
+				merged,
+				claimId: merged ? (claims.find((claim) => claim.reports.includes(entry.id))?.id ?? null) : null,
+				questionId: merged
+					? (questions.find((question) => question.id === entry.id || question.members.includes(entry.id))
+							?.id ?? null)
+					: null,
+				evidence: (entry.evidence ?? []).map((item, index) =>
+					'path' in item
+						? {
+								index,
+								name: fileName(item.path),
+								mediaType: mediaTypeOf(item.path),
+								size: item.size,
+								text: null,
+							}
+						: { index, name: 'What the tester saw', mediaType: 'text/plain', size: 0, text: item.text }
+				),
+			}
+		})
+}
+const overlaid: LoopState[] = ['needs_plan', 'ready_to_run', 'nothing_to_run', 'needs_retest', 'passed', 'accepted']
+
+function planDataSummary(store: Store, planId: string) {
+	const row = one<{ target_id: string }>(store, 'SELECT target_id FROM plan_requests WHERE plan_id = ?', planId)
+	if (!row) return dataSummary(store.workspace, null)
+	return dataSummary(store.workspace, targetRevision(store, row.target_id).profile.reset)
+}
+
+export function planStatus(store: Store, planId: string, harness = workspaceHarness(store)) {
+	const { follows, followActions, ...status } = loopStatus(store, planId, harness)
+	const next = [...follows, ...status.next]
+	const active = status.explorations.find((item) => runningExploration.includes(item.state))
+	const running = Boolean(active)
+	const actions = next.map((text) => {
+		const follow = followActions.find((item) => item.text === text)
+		return follow
+			? { kind: 'follow' as const, ...follow, available: !running }
+			: { kind: 'instruction' as const, text }
+	})
+	const qa = {
+		build: buildOrder(store, planId).at(-1)?.build ?? status.latestRun?.build ?? null,
+		activeBuild: active?.build ?? null,
+		state: status.state,
+		waitsOn: status.waitsOn,
+		reasons: status.why,
+		blockers: [
+			...status.gaps
+				.filter((gap) => gap.severity === 'blocking')
+				.map((gap) => ({ kind: 'gap', id: gap.gapId, text: gap.question })),
+			...status.questions
+				.filter((question) => question.blocking)
+				.map((question) => ({ kind: 'question', id: question.id, text: question.question })),
+			...status.pendingDecisions.map((decision) => ({
+				kind: 'decision',
+				id: decision.id,
+				text: `Gap ${decision.gapId} has a pending ${decision.kind} decision`,
+			})),
+			...status.claims
+				.filter((claim) => oracleStates.includes(claim.state) || factoryStates.includes(claim.state))
+				.map((claim) => ({ kind: 'claim', id: claim.claimId, text: claim.title })),
+		],
+		follow: followActions.map((item) => ({ ...item, available: item.recommended && !running })),
+		actions,
+	}
+	const legacy = planHasRevision(store, planId) ? legacyChecks(planRevision(store, planId).plan) : []
+	return {
+		...status,
+		rules: rulesLine(store, planId),
+		next: [...next, ...owedLines(store)],
+		legacyChecks: legacy,
+		qa,
+		data: planDataSummary(store, planId),
+	}
+}
+
+function loopStatus(store: Store, planId: string, harness: Harness) {
+	const base = checkStatus(store, planId, harness)
+	const explorations = all<{ exploration_id: string }>(
+		store,
+		'SELECT exploration_id FROM explorations WHERE plan_id = ? ORDER BY rowid',
+		planId
+	).map((row) => {
+		const status = explorationStatus(store, row.exploration_id)
+		return {
+			explorationId: status.explorationId,
+			build: status.build,
+			state: status.state,
+			reason: status.reason,
+			...(status.paused ? { paused: status.paused } : {}),
+		}
+	})
+	const latestBuild = base.revision === null ? buildOrder(store, planId).at(-1)?.build : undefined
+	const followSources = explorations.filter((item) => latestBuild === undefined || item.build === latestBuild)
+	const knownAnswers = new Set<string>()
+	if (latestBuild !== undefined) {
+		for (const { explorationId } of followSources) {
+			const { knownAnswerIds } = JSON.parse(explorationRow(store, explorationId).charter) as Charter
+			if (!knownAnswerIds?.length) continue
+			const events = explorationEvents(store, explorationId)
+			if (events.find((event) => event.step === 'done')?.status !== 'completed') continue
+			const launch = startOf(events)
+			if (!launch || launch.explorers <= 0) continue
+			for (const id of knownAnswerIds) knownAnswers.add(id)
+		}
+	}
+	const followActions = explorations.map((item) => {
+		const eligibleCount = startOf(explorationEvents(store, item.explorationId))
+			? followCount(store, item.explorationId)
+			: 0
+		const count =
+			eligibleCount && followSources.includes(item) ? followCount(store, item.explorationId, knownAnswers) : 0
+		return {
+			explorationId: item.explorationId,
+			build: item.build,
+			state: item.state,
+			eligible: eligibleCount > 0,
+			unusedAnswers: eligibleCount,
+			recommended: count > 0,
+			count,
+			command: `checkmate explore follow ${item.explorationId}`,
+			text: `${amount(count, 'unused answer')} of ${item.explorationId}: checkmate explore follow ${item.explorationId}`,
+		}
+	})
+	const follows = followActions.filter((item) => item.recommended).map((item) => item.text)
+	const keep = mergedEntries(store, planId)
+	const claims = planClaims(store, planId, keep)
+		.filter((claim) => claim.open)
+		.map((claim) => ({
+			claimId: claim.id,
+			explorationId: claim.explorationId,
+			build: claim.build,
+			state: claim.state,
+			severity: claim.severity,
+			title: claim.title,
+			reason: claim.reason,
+			handoff: claim.handoff,
+		}))
+	const questions = planQuestions(store, planId, keep).filter((question) => question.answer === null)
+	const extra = { explorations, claims, questions, follows, followActions }
+	if (!overlaid.includes(base.state)) return { ...base, ...extra }
+	const running = explorations.filter((item) => runningExploration.includes(item.state))
+	const paused = running.filter((item) => item.paused)
+	if (paused.length)
+		return {
+			...base,
+			...extra,
+			...loop(
+				'exploring',
+				'oracle',
+				paused.map((item) => `${item.explorationId} is paused: ${item.paused}`),
+				paused.map(
+					(item) =>
+						`Answer the operator in the Claude Code session. Then the operator runs checkmate explore next ${item.explorationId}`
+				)
+			),
+		}
+	if (running.length)
+		return {
+			...base,
+			...extra,
+			...loop(
+				'exploring',
+				'qa',
+				running.map((item) => `${item.explorationId} is ${item.state} on build ${item.build}`),
+				running.map(
+					(item) =>
+						`checkmate explore ${explorationStatus(store, item.explorationId).path === 'session' ? 'next' : 'wait'} ${item.explorationId}`
+				)
+			),
+		}
+	const triage = claims.filter((claim) => oracleStates.includes(claim.state))
+	const blocking = questions.filter((question) => question.blocking)
+	const answerQuestion = `checkmate gap answer ${planId} <questionId> --kind <kind> --value "<answer>" --source "<source>" --rationale "<why>"`
+	if (triage.length || blocking.length)
+		return {
+			...base,
+			...extra,
+			...loop(
+				'needs_triage',
+				'oracle',
+				[
+					...blocking.map((question) => `${question.id} blocks testing: ${question.question}`),
+					...triage.map((claim) => `${claim.claimId} is ${claim.state}: ${claim.title}`),
+				],
+				[
+					...(blocking.length ? [answerQuestion] : []),
+					...(triage.length ? [`checkmate claim accept|reject ${planId} <claimId> --rationale "<why>"`] : []),
+				]
+			),
+		}
+	const fixes = claims.filter((claim) => factoryStates.includes(claim.state))
+	const kept = fixes.filter((claim) => !claim.handoff).length
+	const last = explorations.at(-1)
+	const finished = explorations.filter((item) => item.state === 'completed').at(-1)
+	const after = [
+		...(fixes.length
+			? [
+					`${amount(fixes.length, 'confirmed or observed claim')} ready for the factory: checkmate claim list ${planId}`,
+				]
+			: []),
+		...(kept
+			? [
+					`${amount(kept, 'defect')} ${kept === 1 ? 'is' : 'are'} not handed over: checkmate claim handoff ${planId} <claimId...> --to "<who or what>"`,
+				]
+			: []),
+		...(questions.length
+			? [
+					`${amount(questions.length, 'open question')} can be answered at any time and do not block: ${answerQuestion}`,
+				]
+			: []),
+		`Retest on the next build: checkmate test ${planId} --build <new build> --allow Read --allow Bash`,
+		...(finished && fixes.length ? [storedRunNext(store, finished.explorationId)] : []),
+	]
+	if (fixes.length)
+		return { ...base, ...extra, ...loop('defects_open', 'factory', [amount(fixes.length, 'open claim')], after) }
+	if (base.state === 'needs_plan') {
+		const tested = explorations.findLast((item) => item.build === latestBuild)
+		if (last?.state === 'completed' && tested?.state === 'completed') {
+			const build = tested.build
+			const rules = planRules(store, planId).rules
+			const criteria = journal(store, planId, undefined, keep).team.filter(
+				(entry) => entry.kind === 'criterion' && entry.build === build
+			)
+			const coverage = rules.map(({ id }) => ({
+				id,
+				...criterionCounts(criteria.filter((entry) => entry.rule === id)),
+			}))
+			const missing = coverage.flatMap(({ id, right, wrong }) => {
+				if (wrong) return [`${id} has a wrong criterion on build ${build}`]
+				return right ? [] : [`${id} has no passing criterion on build ${build}`]
+			})
+			if (coverage.some(({ wrong }) => wrong))
+				return { ...base, ...extra, ...loop('ready_to_test', 'qa', missing, after) }
+			if (!rules.length || missing.length) {
+				const quoted = /^[\w./:@-]+$/.test(build) ? build : `'${build.replaceAll("'", "'\\''")}'`
+				const target = planRequest(store, planId).target.profile.targetId
+				const instances = instanceList(store, target).filter((instance) => !instance.retired)
+				const testedInstance = explorationRow(store, tested.explorationId).instance_id
+				const instance =
+					instances.length === 1
+						? ''
+						: ` --instance ${instances.some((item) => item.instanceId === testedInstance) ? testedInstance : '<instanceId>'}`
+				return {
+					...base,
+					...extra,
+					...loop('ready_to_test', 'qa', rules.length ? missing : ['No current rule to test'], [
+						`checkmate test ${planId} --build ${quoted}${instance} --allow Read --allow Bash`,
+						...(questions.length ? [answerQuestion] : []),
+					]),
+				}
+			}
+			if (follows.length)
+				return {
+					...base,
+					...extra,
+					...loop('ready_to_test', 'qa', [`Build ${build} has unused answers`], after),
+				}
+			if (questions.length)
+				return {
+					...base,
+					...extra,
+					...loop(
+						'needs_triage',
+						'oracle',
+						questions.map((question) => `${question.id} is open: ${question.question}`),
+						[answerQuestion]
+					),
+				}
+			return {
+				...base,
+				...extra,
+				...loop('passed', 'none', [`All ${amount(rules.length, 'current rule')} passed on build ${build}`], []),
+			}
+		}
+		const incomplete = last?.state === 'completed' ? tested : last
+		const failed = incomplete && ['failed', 'stopped', 'interrupted'].includes(incomplete.state)
+		const why = !incomplete
+			? ['No exploration yet']
+			: failed
+				? [
+						`${incomplete.explorationId} ${incomplete.state} on build ${incomplete.build}${incomplete.reason ? `: ${incomplete.reason}` : ''}`,
+					]
+				: [`${incomplete.explorationId} is ${incomplete.state} on build ${incomplete.build}`]
+		// Without a saved revision only an exploratory test can run. Say so, and name the step that makes stored tests.
+		const unplanned = base.revision === null
+		return {
+			...base,
+			...extra,
+			...loop(
+				'ready_to_test',
+				'qa',
+				[...(unplanned ? ['Plan has no saved revision. Only an exploratory test can run.'] : []), ...why],
+				[
+					...(!incomplete || failed ? [`checkmate test ${planId} --allow Read --allow Bash`] : after),
+					...(unplanned
+						? [`For stored tests, plan the ticket first: ${delegateCommand(harness, 'plan', planId)}`]
+						: []),
+				]
+			),
+		}
+	}
+	return { ...base, ...extra }
+}
+
+function checkStatus(store: Store, planId: string, harness: Harness) {
 	if (!one(store, 'SELECT 1 FROM plan_revisions WHERE plan_id = ?', planId)) {
 		planRequest(store, planId)
 		return {
 			planId,
 			revision: null,
-			...loop('needs_plan', 'planner', [], [delegateHint('plan', planId)]),
+			...loop('needs_plan', 'planner', [], [delegateCommand(harness, 'plan', planId)]),
 			approval: null,
 			gaps: [],
 			pendingDecisions: [],
 			latestRun: null,
 			openRuns: [],
 			defects: [],
+			retest: null,
 		}
 	}
 	const { plan, sha256 } = planRevision(store, planId)
@@ -329,9 +1053,10 @@ export function planStatus(store: Store, planId: string) {
 	const openRuns = runs
 		.filter((run) => run.state === 'started')
 		.map((run) => ({ runId: run.runId, build: run.build, instanceId: run.instanceId }))
-	const record = planRecord(store, plan, runs)
+	const record = planRecord(store, plan)
 	const finished = runs.find((run) => run.runId === record.results.at(-1)?.runId)
 	const latestRun = runs.at(-1) ?? null
+	const retest = latestRetest(store, planId, record)
 	const { ready, latest, supplied, rejected } = record
 	const defects = record.defects.map(({ runId, finding }) => ({
 		runId,
@@ -398,14 +1123,18 @@ export function planStatus(store: Store, planId: string) {
 				'run_in_progress',
 				'qa',
 				openRuns.map((run) => `${run.runId} is started on build ${run.build} on instance ${run.instanceId}`),
-				openRuns.map((run) => delegateHint('execute', run.runId))
+				// A started run whose process stopped is resumed first; resume rechecks it and runs no test action.
+				openRuns.flatMap((run) => [
+					`checkmate run resume ${run.runId}`,
+					delegateCommand(harness, 'execute', run.runId),
+				])
 			)
 		if (pendingDecisions.length)
 			return loop(
 				'needs_revision',
 				'planner',
 				pendingDecisions.map((item) => `${item.gapId} has a pending ${item.kind} decision`),
-				[delegateHint('revise', planId)]
+				[delegateCommand(harness, 'revise', planId)]
 			)
 		if (approval === 'rejected')
 			return loop(
@@ -546,7 +1275,23 @@ export function planStatus(store: Store, planId: string) {
 		latestRun,
 		openRuns,
 		defects,
+		retest,
 	}
+}
+
+function latestRetest(store: Store, planId: string, record: ReturnType<typeof planRecord>) {
+	const row = one<{ run_id: string }>(
+		store,
+		"SELECT run_id FROM runs WHERE plan_id = ? AND request ->> '$.retestOf' IS NOT NULL ORDER BY rowid DESC LIMIT 1",
+		planId
+	)
+	if (!row) return null
+	const run = runState(store, row.run_id)
+	const verdicts = retestVerdicts(run, runOutcomes(store, row.run_id), runAssertions(store, row.run_id))
+	const open = verdicts.some((item) =>
+		record.defects.some((defect) => defect.runId === item.runId && defect.finding.id === item.findingId)
+	)
+	return open || record.results.at(-1)?.runId === row.run_id ? { runId: row.run_id, verdicts } : null
 }
 
 function rejection(store: Store, kind: 'plan' | 'result', subject: string) {
@@ -557,7 +1302,7 @@ function rejection(store: Store, kind: 'plan' | 'result', subject: string) {
 export function openRejections(store: Store, planId: string) {
 	const { plan } = planRevision(store, planId)
 	const runs = runList(store, { planId })
-	const { ready, latest, rejected } = planRecord(store, plan, runs)
+	const { ready, latest, rejected } = planRecord(store, plan)
 	return runs
 		.filter((run) => rejected.has(run.runId))
 		.map((run) => ({
@@ -568,8 +1313,9 @@ export function openRejections(store: Store, planId: string) {
 		.filter((item) => item.testIds.length)
 }
 
-function delegateHint(stage: 'plan' | 'revise' | 'execute', subject: string) {
-	return `checkmate delegate ${stage} ${subject} --allow Read --allow Bash`
+export function delegateCommand(harness: Harness, stage: 'setup' | 'plan' | 'revise' | 'execute', subject: string) {
+	const rules = harness === 'claude' ? ' --allow Read --allow Bash' : ''
+	return `checkmate delegate ${stage} ${subject}${rules}`
 }
 
 function loopOf(store: Store, planId: string) {
@@ -577,21 +1323,9 @@ function loopOf(store: Store, planId: string) {
 	return { state, waitsOn }
 }
 
-function finalizedResults(store: Store, planId: string) {
-	return all<{ body: string }>(
-		store,
-		'SELECT s.body FROM results s JOIN runs r ON r.run_id = s.run_id WHERE r.plan_id = ? ORDER BY r.rowid',
-		planId
-	).map((row) => JSON.parse(row.body) as Result)
-}
-
-function rejectedRuns(store: Store, planId: string, runs = runList(store, { planId })) {
-	return new Set(runs.filter((run) => run.acceptance === 'rejected').map((run) => run.runId))
-}
-
-function planRecord(store: Store, plan: Plan, runs: ReturnType<typeof runList>) {
+function planRecord(store: Store, plan: Plan) {
 	const results = finalizedResults(store, plan.planId)
-	const rejected = rejectedRuns(store, plan.planId, runs)
+	const rejected = rejectedRuns(store, plan.planId)
 	const derived = deferredPrerequisites(plan)
 	const ready = plan.tests
 		.filter((test) => test.readiness === 'ready' && !derived.has(test.id))
@@ -604,11 +1338,6 @@ function planRecord(store: Store, plan: Plan, runs: ReturnType<typeof runList>) 
 		finding.testIds.some((testId) => ready.includes(testId))
 	)
 	return { results, rejected, ready, derived, latest, supplied, defects }
-}
-
-function selectedOutcome(result: Result, testId: string) {
-	if (!result.selectedTestIds.includes(testId)) return null
-	return result.tests.find((test) => test.testId === testId)?.outcome ?? null
 }
 
 function testDefinition(plan: Plan, test: Plan['tests'][number]) {
@@ -625,20 +1354,6 @@ function testDefinition(plan: Plan, test: Plan['tests'][number]) {
 			requirementIds,
 			requirements,
 		})
-	)
-}
-
-function retests(later: Result, earlier: Result, byRun: Map<string, Result>) {
-	for (let runId = later.retestOf; runId; runId = byRun.get(runId)?.retestOf ?? null)
-		if (runId === earlier.runId) return true
-	return false
-}
-
-function supersedes(later: Result, earlier: Result, byRun: Map<string, Result>) {
-	return (
-		later.instanceId === earlier.instanceId ||
-		later.applicationBuild !== earlier.applicationBuild ||
-		retests(later, earlier, byRun)
 	)
 }
 
@@ -661,31 +1376,6 @@ function latestOutcomes(store: Store, plan: Plan, results: Result[]) {
 		}
 	}
 	return latest
-}
-
-export function openDefects(results: Result[], rejected: Set<string>) {
-	const byRun = new Map(results.map((result) => [result.runId, result]))
-	const counted = results.filter((result) => !rejected.has(result.runId))
-	return counted.flatMap((result, i) => {
-		const later = counted.slice(i + 1).filter((run) => supersedes(run, result, byRun))
-		const fixed = (testIds: string[]) =>
-			later.some((run) => testIds.every((testId) => selectedOutcome(run, testId) === 'passed'))
-		const found = (testIds: string[]) =>
-			later.some(
-				(run) =>
-					retests(run, result, byRun) &&
-					run.findings.some(
-						(other) =>
-							other.type === 'defect' &&
-							other.testIds.some(
-								(testId) => testIds.includes(testId) && selectedOutcome(run, testId) === 'failed'
-							)
-					)
-			)
-		return result.findings
-			.filter((finding) => finding.type === 'defect' && !fixed(finding.testIds) && !found(finding.testIds))
-			.map((finding) => ({ runId: result.runId, finding }))
-	})
 }
 
 function amount(count: number, noun: string) {
@@ -712,6 +1402,7 @@ export function runList(store: Store, filters: { planId?: string; build?: string
 		filters.build ?? null,
 		filters.build ?? null
 	)
+	const usage = runUsages(store, filters)
 	return rows.map((row) => ({
 		runId: row.run_id,
 		planId: row.plan_id,
@@ -724,6 +1415,7 @@ export function runList(store: Store, filters: { planId?: string; build?: string
 		coverage: row.coverage,
 		sha256: row.sha256,
 		acceptance: row.sha256 ? approvalLabel(resultAcceptance(store, row, row.sha256)) : null,
+		...(usage.get(row.run_id) ?? noRunUsage),
 		counts: Object.fromEntries(
 			all<{ outcome: string; count: number }>(
 				store,
@@ -749,11 +1441,30 @@ export function runDetail(store: Store, runId: string) {
 		size: row.size,
 	}))
 	const finished = runResult(store, runId)
-	const attempts = all<{ attempt: number; started_at: string; actor: string }>(
+	const { attempt: _attempt, ...clock } = runClock(store, run.row, finished?.result.finishedAt)
+	const receipts = all<{ attempt: number | null; at: string; status: string }>(
+		store,
+		`SELECT json_extract(arguments, '$.attempt') AS attempt, at, status FROM operations
+		WHERE command = 'delegate execute' AND actor = 'checkmate:delegate' AND json_extract(arguments, '$.subject') = ?
+		ORDER BY rowid`,
+		runId
+	)
+	const starts = all<{ attempt: number; started_at: string; actor: string }>(
 		store,
 		'SELECT attempt, started_at, actor FROM run_attempts WHERE run_id = ? ORDER BY attempt',
 		runId
-	).map((row) => ({ attempt: row.attempt, startedAt: row.started_at, actor: row.actor }))
+	)
+	const attempts = starts.map(({ attempt, started_at, actor }) => {
+		const receipt = receipts.findLast(
+			(row) => row.attempt === attempt || (row.attempt === null && starts.length === 1)
+		)
+		return {
+			attempt,
+			startedAt: started_at,
+			actor,
+			...(receipt?.status === 'interrupted' ? { workerInterruptedAt: receipt.at } : {}),
+		}
+	})
 	const tests = run.plan.tests
 		.filter((test) => run.request.selectedTestIds.includes(test.id))
 		.map((test) => {
@@ -763,6 +1474,7 @@ export function runDetail(store: Store, runId: string) {
 				title: test.title,
 				metadata: test.metadata ?? {},
 				outcome: closed?.outcome ?? null,
+				cause: closed?.cause ?? null,
 				reason: closed?.reason ?? null,
 				evidence: evidence.filter((item) => item.testId === test.id && item.assertionId === null),
 				assertions: test.assertions.map((assertion) => {
@@ -771,7 +1483,7 @@ export function runDetail(store: Store, runId: string) {
 						assertionId: assertion.id,
 						check: assertion.check,
 						checkKind: assertion.checkKind,
-						result: row?.result ?? null,
+						result: closed?.outcome === 'error' ? 'not_checked' : (row?.result ?? null),
 						observed: row?.observed ?? null,
 						reason: row?.reason ?? null,
 						evidence: evidence.filter(
@@ -782,7 +1494,12 @@ export function runDetail(store: Store, runId: string) {
 			}
 		})
 	return {
+		data: dataSummary(
+			store.workspace,
+			targetRevision(store, run.row.target_id, run.row.target_revision).profile.reset
+		),
 		runId,
+		...(runUsages(store, { runId }).get(runId) ?? noRunUsage),
 		planId: run.row.plan_id,
 		revision: run.row.plan_revision,
 		planSha256: run.row.plan_sha256,
@@ -792,16 +1509,21 @@ export function runDetail(store: Store, runId: string) {
 		startedAt: run.row.started_at,
 		browserSession: run.row.browser_session,
 		deadlineSeconds: run.row.deadline_seconds,
+		clock,
 		request: run.request,
 		state: finished ? ('finalized' as const) : ('started' as const),
 		attempts,
 		tests,
-		findings: runFindings(store, runId),
+		warnings: finished ? [] : runOverlapWarnings(store, runId),
+		findings: verdictFindings(store, runId),
+		retest: retestVerdicts(run, outcomes, runAssertions(store, runId)),
 		newGaps: runGaps(store, runId),
 		result: finished
 			? {
 					sha256: finished.sha256,
 					completion: finished.result.completion,
+					completionCause: finished.result.completionCause ?? null,
+					completionReason: finished.result.completionReason ?? null,
 					coverage: finished.result.coverage,
 					cleanup: finished.result.cleanup,
 					finishedAt: finished.result.finishedAt,
@@ -831,6 +1553,7 @@ export function findingList(store: Store, filters: { planId?: string; open?: boo
 			: []
 	)
 	return rows
+		.filter((row) => isVerdict(JSON.parse(row.body), runOutcomes(store, row.run_id)))
 		.map((row) => {
 			const finding = JSON.parse(row.body) as Result['findings'][number]
 			return {
@@ -866,15 +1589,61 @@ type OperationRow = {
 	status: string
 	response: string
 	subjects: string
+	via: string | null
+	via_chat?: string | null
 }
 
-export function operationLog(store: Store, filters: { subject?: string; limit?: number; after?: number } = {}) {
+const displayedOperations = `(
+	SELECT operations.rowid, operations.id, operations.at, operations.status, operations.arguments, operations.response,
+		CASE
+			WHEN via_request.request_id IS NOT NULL AND substr(actor, -length(' via request ' || via)) = ' via request ' || via
+				THEN substr(actor, 1, length(actor) - length(' via request ' || via))
+			ELSE actor
+		END AS actor,
+		CASE
+			WHEN command = 'request ask' THEN 'chat send'
+			WHEN command = 'request conversation' THEN 'chat reset'
+			WHEN command GLOB 'request *' THEN 'chat ' || substr(command, 9)
+			WHEN command GLOB 'explore permission*'
+				AND EXISTS (SELECT 1 FROM json_each(operations.subjects) WHERE value GLOB 'request:*')
+				THEN 'chat ' || substr(command, 9)
+			ELSE command
+		END AS command,
+		NULL AS via,
+		via_request.conversation AS via_chat,
+		(SELECT json_group_array(subject) FROM (
+			SELECT subject FROM (
+				SELECT CASE
+					WHEN item.value GLOB 'request:*' THEN coalesce('chat:' || turn.conversation, 'chats')
+					WHEN item.value = 'requests' THEN 'chats'
+					ELSE item.value
+				END AS subject, item.key AS position
+				FROM json_each(operations.subjects) item
+				LEFT JOIN requests turn ON turn.request_id = substr(item.value, 9) AND item.value GLOB 'request:*'
+				UNION ALL
+				SELECT 'chat:' || via_request.conversation, json_array_length(operations.subjects)
+				WHERE via_request.conversation IS NOT NULL
+			) GROUP BY subject ORDER BY min(position)
+		)) AS subjects
+	FROM operations
+	LEFT JOIN requests via_request ON via_request.request_id = operations.via
+)`
+
+export function operationLog(
+	store: Store,
+	filters: { subject?: string; limit?: number; after?: number; display?: boolean } = {}
+) {
 	const limit = filters.limit ?? 50
 	requireCondition(Number.isInteger(limit) && limit > 0 && limit <= 1000, `Invalid limit: ${limit}. Use 1 to 1000.`)
+	const source = filters.display ? displayedOperations : 'operations'
+	const subjectFilter =
+		!filters.display && filters.subject?.startsWith('chat:')
+			? `id IN (SELECT id FROM ${displayedOperations} WHERE EXISTS (SELECT 1 FROM json_each(subjects) WHERE value = ?))`
+			: 'EXISTS (SELECT 1 FROM json_each(subjects) WHERE value = ?)'
 	return all<OperationRow>(
 		store,
-		`SELECT rowid, * FROM operations
-		WHERE (? IS NULL OR EXISTS (SELECT 1 FROM json_each(subjects) WHERE value = ?)) AND rowid > ?
+		`SELECT rowid, * FROM ${source}
+		WHERE (? IS NULL OR ${subjectFilter}) AND rowid > ?
 		ORDER BY rowid ${filters.after === undefined ? 'DESC' : 'ASC'} LIMIT ?`,
 		filters.subject ?? null,
 		filters.subject ?? null,
@@ -889,6 +1658,8 @@ function operationRow(row: OperationRow) {
 		id: row.id,
 		at: row.at,
 		actor: row.actor,
+		via: row.via,
+		...(row.via_chat === undefined ? {} : { viaChat: row.via_chat }),
 		command: row.command,
 		status: row.status,
 		subjects: JSON.parse(row.subjects) as string[],
@@ -1082,6 +1853,7 @@ export function pagedRuns(store: Store, query: ListQuery = {}) {
 		`${row.planId}@${row.revision}`,
 		row.build,
 		row.instanceId,
+		...row.observedModels,
 		...Object.entries(row.counts).map(([outcome, count]) => `${count} ${outcome}`),
 		row.completion,
 		row.coverage,
@@ -1116,12 +1888,14 @@ export function pagedOperations(
 		q: options.q,
 	}
 	const total = (
-		store.db.prepare(`SELECT count(*) AS total FROM operations ${where}`).get(parameters) as { total: number }
+		store.db.prepare(`SELECT count(*) AS total FROM ${displayedOperations} ${where}`).get(parameters) as {
+			total: number
+		}
 	).total
 	const direction = options.direction === 'asc' ? 'ASC' : 'DESC'
 	const rows = store.db
 		.prepare(
-			`SELECT rowid, * FROM operations ${where} ORDER BY ${logColumns[options.sort]} ${direction}, rowid ${direction} LIMIT :limit OFFSET :offset`
+			`SELECT * FROM ${displayedOperations} ${where} ORDER BY ${logColumns[options.sort]} ${direction}, rowid ${direction} LIMIT :limit OFFSET :offset`
 		)
 		.all({ ...parameters, limit: options.limit, offset: options.offset }) as OperationRow[]
 	return {
@@ -1132,4 +1906,230 @@ export function pagedOperations(
 		sort: options.sort,
 		direction: options.direction,
 	}
+}
+
+const severityOrder = ['critical', 'high', 'medium', 'low']
+
+export type QueueGroup = 'permissions' | 'blocking' | 'claims' | 'approvals' | 'questions'
+export type QueueItem = {
+	key: string
+	group: QueueGroup
+	kind: 'question' | 'gap' | 'claim' | 'plan' | 'result' | 'permission'
+	planId: string
+	id: string
+	title: string
+	since: string | null
+	severity: string | null
+	state: string | null
+	explorationId: string | null
+	runId: string | null
+	revision: number | null
+}
+
+export function needsYou(store: Store) {
+	const waiting = inbox(store)
+	const asked = (gap: (typeof waiting.gaps)[number]): QueueItem => ({
+		key: `${gap.explorationId ? 'question' : 'gap'}:${gap.planId}:${gap.gapId}`,
+		group: gap.severity === 'blocking' ? 'blocking' : 'questions',
+		kind: gap.explorationId ? 'question' : 'gap',
+		planId: gap.planId,
+		id: gap.gapId,
+		title: gap.question,
+		since: gap.since,
+		severity: gap.severity,
+		state: 'open',
+		explorationId: gap.explorationId,
+		runId: gap.runId,
+		revision: gap.revision,
+	})
+	const claims = waiting.claims
+		.map((claim): QueueItem => ({
+			key: `claim:${claim.planId}:${claim.claimId}`,
+			group: 'claims',
+			kind: 'claim',
+			planId: claim.planId,
+			id: claim.claimId,
+			title: claim.title,
+			since: null,
+			severity: claim.severity,
+			state: claim.state,
+			explorationId: claim.explorationId,
+			runId: null,
+			revision: null,
+		}))
+		.sort((a, b) => severityOrder.indexOf(a.severity!) - severityOrder.indexOf(b.severity!))
+	const plans = waiting.plans.map((plan): QueueItem => ({
+		key: `plan:${plan.planId}@${plan.revision}`,
+		group: 'approvals',
+		kind: 'plan',
+		planId: plan.planId,
+		id: `${plan.planId}@${plan.revision}`,
+		title: plan.summary,
+		since: plan.since,
+		severity: null,
+		state: plan.approval,
+		explorationId: null,
+		runId: null,
+		revision: plan.revision,
+	}))
+	const results = waiting.results.map((result): QueueItem => ({
+		key: `run:${result.runId}`,
+		group: 'approvals',
+		kind: 'result',
+		planId: result.planId,
+		id: result.runId,
+		title: `Result of ${result.planId}@${result.revision} on build ${result.build}`,
+		since: result.since,
+		severity: null,
+		state: 'pending',
+		explorationId: null,
+		runId: result.runId,
+		revision: result.revision,
+	}))
+	const gaps = waiting.gaps.map(asked)
+	const permissions = openPermissions(store).map((item): QueueItem => ({
+		key: `permission:${item.planId}:${item.askerId}/${item.id}`,
+		group: 'permissions',
+		kind: 'permission',
+		planId: item.planId ?? '',
+		id: `${item.askerId}/${item.id}`,
+		title: `${item.who} asks to use ${item.tool}`,
+		since: item.at,
+		severity: null,
+		state: 'open',
+		explorationId: item.fromRequest ? null : item.askerId,
+		runId: null,
+		revision: null,
+	}))
+	const items = [
+		...permissions,
+		...gaps.filter((item) => item.group === 'blocking'),
+		...claims,
+		...plans,
+		...results,
+		...gaps.filter((item) => item.group === 'questions'),
+	]
+	const explorations = exploredPlans(store).flatMap((planId) =>
+		planExplorations(store, planId).map((item) => ({ ...item, planId }))
+	)
+	return {
+		items,
+		urgent: items.filter((item) => item.group !== 'questions').length,
+		running: explorations.filter((item) => item.running),
+		failed: explorations.filter(
+			(item, index) =>
+				['failed', 'stopped', 'interrupted'].includes(item.state) &&
+				!explorations.slice(index + 1).some((later) => later.planId === item.planId)
+		),
+	}
+}
+
+const evidenceTypes: Record<string, string> = {
+	png: 'image/png',
+	jpg: 'image/jpeg',
+	jpeg: 'image/jpeg',
+	webp: 'image/webp',
+	gif: 'image/gif',
+	txt: 'text/plain',
+	log: 'text/plain',
+	md: 'text/markdown',
+	html: 'text/html',
+	json: 'application/json',
+}
+
+export function fileName(path: string) {
+	return path.slice(path.lastIndexOf('/') + 1)
+}
+
+export function mediaTypeOf(path: string) {
+	const extension = path.slice(path.lastIndexOf('.') + 1).toLowerCase()
+	return evidenceTypes[extension] ?? 'application/octet-stream'
+}
+
+function evidenceOf(store: Store, item: Evidence | undefined, what: string) {
+	requireCondition(item && 'path' in item, `Unknown evidence ${what}`)
+	const row = one<{ bytes: Uint8Array }>(store, 'SELECT bytes FROM blobs WHERE sha256 = ?', item.sha256)
+	requireCondition(row, `Unknown evidence ${what}`)
+	return { name: fileName(item.path), mediaType: mediaTypeOf(item.path), size: item.size, bytes: row.bytes }
+}
+
+export function claimEvidence(store: Store, planId: string, claimId: string, index: number) {
+	const claim = planClaims(store, planId).find((item) => item.id === claimId)
+	requireCondition(claim, `Unknown claim ${claimId} of plan ${planId}`)
+	return evidenceOf(store, claim.evidence[index], `${index} of claim ${claimId}`)
+}
+
+export function entryEvidence(store: Store, explorationId: string, entryId: string, index: number) {
+	const entry = journal(store, exploration(store, explorationId).plan_id).team.find(
+		(item) => item.explorationId === explorationId && item.id === entryId && isTester(item.actor)
+	)
+	requireCondition(entry, `Unknown entry ${entryId} of exploration ${explorationId}`)
+	return evidenceOf(store, entry.evidence?.[index], `${index} of entry ${entryId}`)
+}
+
+export function claimsAcross(store: Store) {
+	const started = new Map(
+		all<{ exploration_id: string; started_at: string }>(
+			store,
+			'SELECT exploration_id, started_at FROM explorations'
+		).map((row) => [row.exploration_id, row.started_at])
+	)
+	return exploredPlans(store)
+		.flatMap((planId) =>
+			mergedClaims(store, planId).map((claim) => ({
+				...claim,
+				planId,
+				foundAt: started.get(claim.explorationId) ?? '',
+			}))
+		)
+		.sort((a, b) => b.foundAt.localeCompare(a.foundAt))
+}
+
+function storedRunNext(store: Store, explorationId: string) {
+	const runId = findingsRunId(explorationId)
+	const stored = one(store, 'SELECT 1 FROM runs WHERE run_id = ?', runId)
+	return stored
+		? `The defects are stored in run ${runId}. Export its report: checkmate export run ${runId} --format junit --out <file>`
+		: `Optional, at any time: keep the claims as stored tests: checkmate harvest ${explorationId}`
+}
+
+// One pipeline gate for a run. 0: every selected test passed with complete coverage.
+// 1: product failures (a test failed). 2: could not test: an error, an unfinished or
+// interrupted run, or partial coverage. 3: blocked on an oracle decision (open blocking gap).
+// A failed test wins over the other codes, because it is a verdict on the product.
+export function runGate(store: Store, runId: string) {
+	const detail = runDetail(store, runId)
+	const plan = runState(store, runId).plan
+	const failed = detail.tests.filter((test) => test.outcome === 'failed').map((test) => test.testId)
+	const errored = detail.tests.filter((test) => test.outcome === 'error').map((test) => test.testId)
+	const openGaps = plan.gaps
+		.filter((gap) => gap.status === 'open' && gap.severity === 'blocking')
+		.map((gap) => gap.id)
+	const completion = detail.result?.completion ?? null
+	const couldNotTest =
+		!detail.result || errored.length > 0 || completion === 'operational_error' || completion === 'interrupted'
+	const coverage = detail.result?.coverage.status ?? null
+	const partial = coverage !== 'complete'
+	const unverified = [
+		...plan.tests
+			.filter((test) => detail.request.selectedTestIds.includes(test.id))
+			.flatMap((test) => unverifiedAssertions(test, plan.requirements).map((id) => `${test.id}.${id}`)),
+		...uncoveredRequirements(plan).map((id) => `${id} needs_test`),
+	]
+	const verdict = failed.length
+		? { code: 1, state: 'defects' }
+		: couldNotTest
+			? { code: 2, state: 'could_not_test' }
+			: openGaps.length
+				? { code: 3, state: 'blocked_on_oracle' }
+				: partial
+					? { code: 2, state: 'partial_coverage' }
+					: unverified.length
+						? { code: 2, state: 'unverified_checks' }
+						: { code: 0, state: 'passed' }
+	// Agent observations may pass; the gate says how many verdicts the agent judged.
+	const judgedByAgent = detail.tests
+		.flatMap((test) => test.assertions)
+		.filter((assertion) => assertion.checkKind === 'agent_observation' && assertion.result !== null).length
+	return { ...verdict, failed, errored, openGaps, completion, coverage, unverified, judgedByAgent }
 }

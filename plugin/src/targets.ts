@@ -9,9 +9,15 @@ import {
 	requireText,
 	revisionReference,
 	same,
+	slugId,
 	approvalPolicy,
 	validate,
 } from './contracts.ts'
+import { executableOnPath } from './sessions.ts'
+import { changesData, resetCommand } from './resets.ts'
+import { spawnSync } from 'node:child_process'
+import { existsSync, readFileSync } from 'node:fs'
+import { join } from 'node:path'
 
 export type ToolKind = Profile['tools'][number]['kind']
 export type RequestedTool = { name: string; kind: ToolKind; purpose: string }
@@ -29,10 +35,29 @@ export type InstanceRecord = {
 	entries: Record<string, string>
 	environment: string | null
 	references: string[]
+	// The build this instance serves, when the person declared it. Undeclared, any run may name any build.
+	build: string | null
 	addedAt: string
 	addedBy: string
 	retired: { at: string; actor: string } | null
 }
+
+export const anyTestOperation = 'any_test_operation'
+export const readOnlyOperation = 'read_only'
+export const readOnlyOperationText = 'You can only read. Do not create, change, or delete data in the application.'
+export const anyTestOperationText =
+	'You can do any action that the application offers to a test user, on test data, in this instance.'
+
+export function operationAllowed(profile: Pick<Profile, 'allowedOperations'>, operation: string) {
+	return profile.allowedOperations.includes(operation) || profile.allowedOperations.includes(anyTestOperation)
+}
+
+export function isProduction(instanceId: string, environment: string | null | undefined) {
+	return /^prod/i.test(instanceId) || /^prod/i.test(environment ?? '')
+}
+
+const productionHint =
+	'Give the allowed operations as an explicit list for a production instance, for example --operations read_catalog. Save a new profile revision with that list.'
 
 export const toolKinds = ['cli', 'mcp', 'skill'] as const
 export const entryPointKinds = ['url', 'command', 'value'] as const
@@ -171,6 +196,16 @@ function save(store: Store, actor: string | undefined, input: { targetId: string
 				`Tool ${tool.name} is ${tool.kind} in the profile, not ${requested.kind}`
 			)
 		}
+		if (profile.allowedOperations.includes(anyTestOperation)) {
+			const production = instanceList(store, profile.targetId).filter(
+				(instance) => !instance.retired && isProduction(instance.instanceId, instance.environment)
+			)
+			requireCondition(
+				!production.length,
+				`Target ${profile.targetId} has the production instance ${production[0]?.instanceId}. ${anyTestOperation} is not permitted with it.`,
+				productionHint
+			)
+		}
 		const unreachable = profile.tools
 			.filter((tool) => !tool.reachable && request.tools.some((requested) => requested.name === tool.name))
 			.map((tool) => `Requested tool ${tool.name} (${tool.kind}) is not reachable`)
@@ -224,7 +259,11 @@ export function targetRevision(store: Store, targetId: string, revision: number 
 		targetId,
 		...(revision === null ? [] : [revision])
 	)
-	requireCondition(row, `Unknown target profile: ${targetId}${revision === null ? '' : `@${revision}`}`)
+	requireCondition(
+		row,
+		`Unknown target profile: ${targetId}${revision === null ? '' : `@${revision}`}`,
+		'Create the target with checkmate setup --url <url>, or list the targets with checkmate target list.'
+	)
 	return { profile: JSON.parse(row.body), revision: row.revision, sha256: row.sha256 }
 }
 
@@ -321,6 +360,7 @@ export function instanceCheck(entryPoints: EntryPoint[], value: unknown): Instan
 			? {}
 			: { environment: requireText(instance.environment, 'environment').trim() }),
 		references,
+		...(instance.build === undefined ? {} : { build: requireText(instance.build, 'build').trim() }),
 	}
 }
 
@@ -334,6 +374,17 @@ export function addInstance(
 		const instanceId = requireIdentifier(input.instanceId, 'instance ID')
 		const instance = instanceCheck(request.entryPoints, input.instance)
 		const subject = `${input.targetId}/${instanceId}`
+		const latest = one<{ body: string }>(
+			store,
+			'SELECT body FROM profiles WHERE target_id = ? ORDER BY revision DESC LIMIT 1',
+			input.targetId
+		)
+		const operations = latest ? (JSON.parse(latest.body) as Profile).allowedOperations : request.allowedOperations
+		requireCondition(
+			!isProduction(instanceId, instance.environment) || !operations.includes(anyTestOperation),
+			`Instance ${subject} is a production instance. ${anyTestOperation} is not permitted on it.`,
+			productionHint
+		)
 		const existing = one<{ body: string }>(
 			store,
 			'SELECT body FROM instances WHERE target_id = ? AND instance_id = ?',
@@ -421,6 +472,7 @@ function instanceRecord(store: Store, targetId: string, row: InstanceRow): Insta
 		entries: Object.fromEntries(order.map((name) => [name, body.entries[name]])),
 		environment: body.environment ?? null,
 		references: body.references ?? [],
+		build: body.build ?? null,
 		addedAt: row.at,
 		addedBy: row.actor,
 		retired: retired ? { at: retired.at, actor: retired.actor } : null,
@@ -437,6 +489,10 @@ export function instanceList(store: Store, targetId: string): InstanceRecord[] {
 	).map((row) => instanceRecord(store, targetId, row))
 }
 
+export function targetWebUrl(store: Store, targetId: string) {
+	return instanceList(store, targetId).find((instance) => !instance.retired)?.entries.web ?? '<url>'
+}
+
 export function findInstance(store: Store, targetId: string, instanceId: string): InstanceRecord {
 	targetRequest(store, targetId)
 	const row = one<InstanceRow>(
@@ -446,8 +502,23 @@ export function findInstance(store: Store, targetId: string, instanceId: string)
 		targetId,
 		instanceId
 	)
-	requireCondition(row, `Unknown instance: ${targetId}/${instanceId}. Run target instance list ${targetId}.`)
+	requireCondition(
+		row,
+		`Unknown instance: ${targetId}/${instanceId}. Run target instance list ${targetId}.`,
+		`Add the build with checkmate target instance add ${targetId} ${instanceId} --entry web=<URL of that build>, then run again. A run that can change data also needs the data kind of ${targetId}: ask the person for it, and do not write a reset command, a policy, or a hook.`
+	)
 	return instanceRecord(store, targetId, row)
+}
+
+// What to do when a run names a build that its instance does not serve: an instance that serves the build, or the command that adds one.
+export function instanceForBuildHint(store: Store, targetId: string, build: string | undefined): string {
+	const serving = instanceList(store, targetId).filter((instance) => !instance.retired && instance.build === build)
+	if (serving.length)
+		return `Run on an instance that serves ${build}: ${serving.map((instance) => `--instance ${instance.instanceId}`).join(' or ')}.`
+	const entries = targetRequest(store, targetId)
+		.entryPoints.map((entry) => `${entry.name}=<URL of ${build}>`)
+		.join(' ')
+	return `Add an instance for ${build}: checkmate target instance add ${targetId} <name> --entry ${entries} --build ${build}.`
 }
 
 export function runInstance(store: Store, targetId: string, instanceId: string | undefined): InstanceRecord {
@@ -469,4 +540,289 @@ export function runInstance(store: Store, targetId: string, instanceId: string |
 		`Target ${targetId} has ${active.length} active instances: ${active.map((instance) => instance.instanceId).join(', ')}. Name one with --instance.`
 	)
 	return active[0]
+}
+
+export type SetupInput = {
+	url: string
+	targetId?: string
+	instanceId?: string
+	operations?: string[]
+	environment?: string
+	reset?: string
+	data?: string
+	policy?: string
+	policyFile?: string
+	cleanup?: string
+	hookTimeout?: number
+	resetPerTest?: string
+	env: Record<string, string | undefined>
+	answered?: boolean
+}
+
+export function urlTargetId(url: string) {
+	const parsed = URL.canParse(url) ? new URL(url) : null
+	const host = parsed ? [parsed.hostname, parsed.port].filter(Boolean).join('-') : ''
+	return slugId(host) || 'app'
+}
+
+export function isLocalAddress(url: string) {
+	if (!URL.canParse(url)) return false
+	const host = new URL(url).hostname.replace(/^\[|\]$/g, '').toLowerCase()
+	if (host === 'localhost' || host.endsWith('.localhost') || host === '::1') return true
+	const octets = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(host)?.slice(1).map(Number)
+	if (!octets || octets.some((octet) => octet > 255)) return false
+	const [first, second] = octets
+	return (
+		first === 127 ||
+		first === 10 ||
+		(first === 192 && second === 168) ||
+		(first === 172 && second >= 16 && second <= 31)
+	)
+}
+
+function toolVersion(path: string) {
+	const run = spawnSync(path, ['--version'], { encoding: 'utf8', timeout: 5000 })
+	const line = run.status === 0 ? run.stdout.trim().split('\n')[0] : ''
+	return /[0-9]+(\.[0-9]+)+/.exec(line)?.[0]
+}
+
+const browserConfig = join('.playwright', 'cli.config.json')
+
+// The browser tool drives the Chrome or Chromium named in the workspace config.
+// Setup refuses early when that executable is missing or does not run.
+function browserExecutable(workspace: string) {
+	const path = join(workspace, browserConfig)
+	const config = existsSync(path) ? JSON.parse(readFileSync(path, 'utf8')) : {}
+	const executable: unknown = config.browser?.launchOptions?.executablePath
+	// The person names the browser. The driver never picks one and never writes the config without their path.
+	const hint = `Ask the person for the path of a Chrome or Chromium executable. Write ${browserConfig} only with the path they give, for example {"browser":{"browserName":"chromium","launchOptions":{"executablePath":"<the path they give>"}}}, then run setup again. Do not write this file yourself, and do not pick a browser yourself.`
+	requireCondition(
+		typeof executable === 'string' && executable !== '',
+		`The browser tool needs a Chrome or Chromium executable, and ${browserConfig} names none.`,
+		hint
+	)
+	const run = spawnSync(executable, ['--version'], { timeout: 10000 })
+	requireCondition(
+		run.status === 0,
+		`The browser executable ${executable} does not run with --version. Ask the person for a different path.`,
+		hint
+	)
+	return executable
+}
+
+// The next command that clears a profile saved while the application was not answering.
+export function readinessHint(store: Store, targetId: string) {
+	return `Clear it with checkmate setup --url ${targetWebUrl(store, targetId)} --target ${targetId} while the application answers, then run again.`
+}
+
+function urlAnswers(url: string) {
+	if (!/^https?:\/\//i.test(url)) return true
+	const check = spawnSync(
+		process.execPath,
+		[
+			'-e',
+			'fetch(process.argv[1], { signal: AbortSignal.timeout(5000) }).then((r) => process.exit(r.status < 500 ? 0 : 1), () => process.exit(2))',
+			url,
+		],
+		{ timeout: 8000 }
+	)
+	return check.status === 0
+}
+
+export async function urlReachable(url: string) {
+	if (!/^https?:\/\//i.test(url)) return true
+	try {
+		const response = await fetch(url, { signal: AbortSignal.timeout(5000) })
+		return response.status < 500
+	} catch {
+		return false
+	}
+}
+
+export function requireAnswer(answered: boolean, url: string) {
+	requireCondition(
+		answered,
+		`The application did not answer at ${url}.`,
+		'Start the application, or check the address. Then set up the target again.'
+	)
+}
+
+// The data kind of a target. A reset command runs before each run (kind checkmate). Environment and
+// isolation keep data safe without a reset by Checkmate, so they need a policy that the person gives.
+export function dataOf(input: SetupInput): Profile['reset'] | undefined {
+	requireCondition(
+		input.reset !== 'external',
+		'The value external is no longer accepted.',
+		'Use --data environment or --data isolation with --policy "<text>" or --policy-file <path>.'
+	)
+	const hooks = {
+		...(input.cleanup ? { cleanup: resetCommand(input.cleanup) } : {}),
+		...(input.hookTimeout ? { timeoutSeconds: input.hookTimeout } : {}),
+		...(input.resetPerTest === 'off' ? { perTest: false } : {}),
+	}
+	requireCondition(
+		input.resetPerTest === undefined || input.resetPerTest === 'on' || input.resetPerTest === 'off',
+		`Unknown --reset-per-test ${input.resetPerTest}.`,
+		'Use --reset-per-test on (the default) or off, for a reset that is slow.'
+	)
+	if (!input.data) {
+		requireCondition(
+			!Object.keys(hooks).length || input.reset,
+			'--cleanup, --hook-timeout and --reset-per-test apply to a reset or a data kind.',
+			'Give --reset "<command>" or --data environment|isolation with --policy.'
+		)
+		return input.reset
+			? { owner: 'checkmate', command: resetCommand(input.reset), policy: null, ...hooks }
+			: undefined
+	}
+	requireCondition(
+		input.data === 'environment' || input.data === 'isolation',
+		`Unknown data kind ${input.data}.`,
+		'Use --data environment or --data isolation.'
+	)
+	requireCondition(
+		Boolean(input.policy || input.policyFile),
+		`Data kind ${input.data} needs a data policy.`,
+		'Give the policy text with --policy "<text>", or the path of your own file with --policy-file <path>.'
+	)
+	return {
+		owner: input.data,
+		command: input.reset ? resetCommand(input.reset) : null,
+		policy: input.policy ? { text: input.policy } : { path: input.policyFile! },
+		...hooks,
+	}
+}
+
+export function setupAssumptions(input: SetupInput) {
+	const assumed: string[] = []
+	const url = requireText(input.url, 'application URL (--url)')
+	const targetId = input.targetId ?? urlTargetId(url)
+	if (!input.targetId) assumed.push(`target=${targetId} (the host of the URL)`)
+	const instanceId = input.instanceId ?? 'local'
+	if (!input.instanceId) assumed.push('instance=local')
+	const browser = executableOnPath('playwright-cli', input.env)
+	const capabilities = browser ? ['browser', 'http'] : ['http']
+	assumed.push(
+		'entry point=web (url)',
+		`capabilities=${capabilities.join(',')} (${browser ? 'playwright-cli is on PATH' : 'no browser tool on PATH'})`
+	)
+	const allowedOperations = input.operations?.length ? input.operations : [anyTestOperation]
+	if (!input.operations?.length) assumed.push(`operations=${anyTestOperation}: ${anyTestOperationText}`)
+	assumed.push('authentication=none')
+	return { url, targetId, instanceId, browser, capabilities, allowedOperations, assumed }
+}
+
+export function setupTarget(store: Store, actor: string | undefined, input: SetupInput) {
+	const { url, targetId, instanceId, browser, capabilities, allowedOperations, assumed } = setupAssumptions(input)
+	requireCondition(
+		input.operations?.length || !isProduction(instanceId, input.environment),
+		`Instance ${instanceId} is a production instance. ${anyTestOperation} is not permitted on it.`,
+		productionHint
+	)
+	const executable = browser ? browserExecutable(store.workspace) : undefined
+	const tools = [
+		{
+			name: 'node',
+			kind: 'cli' as const,
+			purpose: 'Send HTTP requests.',
+			version: process.version.slice(1),
+			reachable: true,
+		},
+		...(browser && executable
+			? [
+					{
+						name: 'playwright-cli',
+						kind: 'cli' as const,
+						purpose: 'Drive the browser.',
+						...(toolVersion(browser) ? { version: toolVersion(browser) } : {}),
+						executable,
+						reachable: true,
+					},
+				]
+			: []),
+	]
+	const entryPoints = [{ name: 'web', kind: 'url' as const, purpose: 'The application.' }]
+	const known = one(store, 'SELECT 1 FROM target_requests WHERE target_id = ?', targetId)
+	if (!known) openTarget(store, actor, { targetId, entryPoints, capabilities, allowedOperations, tools: [] })
+	const request = targetRequest(store, targetId)
+	const saved = one<{ revision: number }>(
+		store,
+		'SELECT revision FROM profiles WHERE target_id = ? ORDER BY revision DESC LIMIT 1',
+		targetId
+	)
+	const reachable = input.answered ?? urlAnswers(url)
+	if (!reachable && !saved) assumed.push(`ready=false (${url} did not answer)`)
+	const reset = dataOf(input)
+	if (!saved)
+		saveTarget(store, actor, {
+			targetId,
+			profile: {
+				contractVersion: 'toolkit-2',
+				targetId,
+				revision: 1,
+				entryPoints: request.entryPoints,
+				capabilities: request.capabilities,
+				tools,
+				authentication: { kind: 'none', references: [] },
+				allowedOperations: request.allowedOperations,
+				startup: { owner: 'factory', command: null },
+				cleanup: 'Leave the test data. Remove it only when the application offers a way.',
+				readyForLiveExecution: reachable,
+				...(reset ? { reset } : {}),
+			},
+		})
+	else {
+		// A profile saved while the application was down stays not ready until setup sees it answer.
+		const latest = targetRevision(store, targetId)
+		const resetChanged = Boolean(reset) && JSON.stringify(latest.profile.reset) !== JSON.stringify(reset)
+		const becameReady = reachable && !latest.profile.readyForLiveExecution
+		if (resetChanged || becameReady)
+			saveTarget(store, actor, {
+				targetId,
+				profile: {
+					...latest.profile,
+					revision: latest.revision + 1,
+					...(resetChanged ? { reset } : {}),
+					readyForLiveExecution: latest.profile.readyForLiveExecution || reachable,
+				},
+			})
+	}
+	const instance = addInstance(store, actor, {
+		targetId,
+		instanceId,
+		instance: { entries: { web: url }, ...(input.environment ? { environment: input.environment } : {}) },
+	})
+	if (instance.status !== 'completed') return instance
+	const latest = targetRevision(store, targetId)
+	const needsReset = !latest.profile.reset && latest.profile.allowedOperations.some(changesData)
+	if (needsReset)
+		assumed.push('data=none recorded: testers may change data, so a run or an exploration needs a data policy.')
+	const kind = latest.profile.reset
+	if (kind)
+		assumed.push(
+			kind.owner === 'checkmate'
+				? `data=reset command: Checkmate runs ${kind.command?.join(' ')} before each run and exploration.`
+				: `data=${kind.owner}: Checkmate does not reset data. ${kind.owner === 'isolation' ? 'Testers work by isolation under the data policy.' : 'The environment gives each run fresh data.'}`
+		)
+	return completed(targetId, {
+		targetId,
+		revision: latest.revision,
+		instanceId,
+		url,
+		capabilities: latest.profile.capabilities,
+		allowedOperations: latest.profile.allowedOperations,
+		ready: latest.profile.readyForLiveExecution,
+		instanceReachable: reachable,
+		...(needsReset
+			? {
+					next: `Ask the person for the data policy. Give the command that restores the seed data: checkmate setup --url ${url} --reset "<command>". Or give --data environment|isolation with --policy "<text>". Do not write them yourself.`,
+				}
+			: !latest.profile.readyForLiveExecution
+				? {
+						next: `Recheck the target prerequisites and save a new profile: checkmate delegate setup ${targetId}`,
+					}
+				: {}),
+		created: !known,
+		assumed: known ? [] : assumed,
+	})
 }

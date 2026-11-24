@@ -1,18 +1,25 @@
 import type { SQLInputValue } from 'node:sqlite'
 import { DatabaseSync } from 'node:sqlite'
 import { createHash, randomBytes } from 'node:crypto'
-import { mkdirSync, rmdirSync, rmSync } from 'node:fs'
+import { existsSync, mkdirSync, rmdirSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 
 export type Status =
-	'completed' | 'needs_decision' | 'interrupted' | 'operational_error' | 'rejected' | 'invalid_request'
-export type Reply = { status: Status; subject: string; reasons: string[]; data: Record<string, unknown> }
+	'completed' | 'needs_decision' | 'interrupted' | 'operational_error' | 'rejected' | 'invalid_request' | 'running'
+export type Reply = {
+	status: Status
+	subject: string
+	reasons: string[]
+	refusal?: 'malformed' | 'prohibited'
+	hint?: string
+	data: Record<string, unknown>
+}
 export type Change = { reply: Reply; subjects: string[] }
-export type Store = { db: DatabaseSync; workspace: string; path: string }
+export type Store = { db: DatabaseSync; workspace: string; path: string; via?: string }
 export type Operation = { actor: string | undefined; command: string; subject: string; input: unknown }
 
 export const contractVersion = 'toolkit-2'
-const schemaVersion = '3'
+const schemaVersion = '7'
 
 const operationReference = 'REFERENCES operations(id) DEFERRABLE INITIALLY DEFERRED'
 const tables = `
@@ -25,7 +32,8 @@ CREATE TABLE operations (
 	arguments TEXT NOT NULL,
 	status TEXT NOT NULL,
 	response TEXT NOT NULL,
-	subjects TEXT NOT NULL
+	subjects TEXT NOT NULL,
+	via TEXT
 ) STRICT;
 CREATE TABLE blobs (sha256 TEXT PRIMARY KEY, size INTEGER NOT NULL, bytes BLOB NOT NULL) STRICT;
 CREATE TABLE target_requests (
@@ -181,6 +189,156 @@ CREATE TABLE results (
 	body TEXT NOT NULL,
 	operation_id TEXT NOT NULL ${operationReference}
 ) STRICT;
+`
+const explorationTables = `
+CREATE TABLE explorations (
+	exploration_id TEXT PRIMARY KEY,
+	plan_id TEXT NOT NULL REFERENCES plan_requests(plan_id),
+	plan_revision INTEGER,
+	target_id TEXT NOT NULL,
+	target_revision INTEGER NOT NULL,
+	instance_id TEXT NOT NULL,
+	build TEXT NOT NULL,
+	mode TEXT NOT NULL,
+	charter TEXT NOT NULL,
+	started_at TEXT NOT NULL,
+	operation_id TEXT NOT NULL ${operationReference},
+	FOREIGN KEY (target_id, target_revision) REFERENCES profiles(target_id, revision),
+	FOREIGN KEY (target_id, instance_id) REFERENCES instances(target_id, instance_id)
+) STRICT;
+CREATE TABLE exploration_events (
+	exploration_id TEXT NOT NULL REFERENCES explorations(exploration_id),
+	at TEXT NOT NULL,
+	step TEXT NOT NULL,
+	explorer TEXT,
+	status TEXT NOT NULL,
+	detail TEXT NOT NULL,
+	operation_id TEXT NOT NULL ${operationReference}
+) STRICT;
+CREATE TABLE journal_entries (
+	exploration_id TEXT NOT NULL REFERENCES explorations(exploration_id),
+	entry_id TEXT NOT NULL,
+	kind TEXT NOT NULL,
+	build TEXT,
+	body TEXT NOT NULL,
+	actor TEXT NOT NULL,
+	operation_id TEXT NOT NULL ${operationReference}
+) STRICT;
+`
+const addedTables = [
+	{
+		// A correction of a recorded check. The first result stays in assertion_results; the last correction counts.
+		ddl: `CREATE TABLE assertion_corrections (
+	run_id TEXT NOT NULL REFERENCES runs(run_id),
+	test_id TEXT NOT NULL,
+	assertion_id TEXT NOT NULL,
+	attempt INTEGER NOT NULL,
+	result TEXT NOT NULL,
+	observed TEXT,
+	reason TEXT NOT NULL,
+	recorded_at TEXT NOT NULL,
+	operation_id TEXT NOT NULL ${operationReference}
+) STRICT;`,
+	},
+	{
+		ddl: `CREATE TABLE plan_promotions (
+	plan_id TEXT NOT NULL,
+	source_revision INTEGER NOT NULL,
+	promoted_revision INTEGER NOT NULL,
+	build TEXT NOT NULL,
+	run_id TEXT NOT NULL REFERENCES runs(run_id),
+	result_sha256 TEXT NOT NULL,
+	tests TEXT NOT NULL,
+	rationale TEXT NOT NULL,
+	operation_id TEXT NOT NULL ${operationReference},
+	PRIMARY KEY (plan_id, source_revision),
+	CHECK (promoted_revision = source_revision + 1),
+	FOREIGN KEY (plan_id, source_revision) REFERENCES plan_revisions(plan_id, revision),
+	FOREIGN KEY (plan_id, promoted_revision) REFERENCES plan_revisions(plan_id, revision)
+) STRICT;`,
+		fill: '',
+	},
+	{
+		ddl: `CREATE TABLE exploration_event_costs (
+	source_operation_id TEXT NOT NULL REFERENCES operations(id),
+	step TEXT NOT NULL,
+	explorer TEXT NOT NULL,
+	cost_usd REAL NOT NULL CHECK(cost_usd >= 0),
+	partial INTEGER NOT NULL CHECK(partial IN (0, 1)),
+	operation_id TEXT NOT NULL ${operationReference},
+	PRIMARY KEY (source_operation_id, step, explorer)
+) STRICT;`,
+		fill: '',
+	},
+	{
+		ddl: `CREATE TABLE plan_rules (
+	plan_id TEXT NOT NULL REFERENCES plan_requests(plan_id),
+	origin TEXT NOT NULL,
+	body TEXT NOT NULL,
+	operation_id TEXT NOT NULL ${operationReference}
+) STRICT;`,
+		fill: '',
+	},
+	{
+		ddl: `CREATE TABLE plan_builds (
+	plan_id TEXT NOT NULL REFERENCES plan_requests(plan_id),
+	build TEXT NOT NULL,
+	first_tested_at TEXT NOT NULL,
+	operation_id TEXT NOT NULL ${operationReference},
+	PRIMARY KEY (plan_id, build)
+) STRICT;`,
+		fill: `INSERT OR IGNORE INTO plan_builds (plan_id, build, first_tested_at, operation_id)
+	SELECT plan_id, build, at, operation_id FROM (
+		SELECT plan_id, build, started_at AS at, operation_id, 0 AS kind, rowid AS position FROM explorations
+		UNION ALL
+		SELECT plan_id, application_build, started_at, operation_id, 1, rowid FROM runs
+	) ORDER BY at, kind, position;`,
+	},
+	{
+		ddl: `CREATE TABLE handoffs (
+	plan_id TEXT NOT NULL REFERENCES plan_requests(plan_id),
+	claim_id TEXT NOT NULL,
+	target TEXT,
+	actor TEXT NOT NULL,
+	at TEXT NOT NULL,
+	operation_id TEXT NOT NULL ${operationReference}
+) STRICT;`,
+		fill: '',
+	},
+	{
+		ddl: `CREATE TABLE workspace_settings (
+	name TEXT NOT NULL,
+	value TEXT NOT NULL,
+	operation_id TEXT NOT NULL ${operationReference}
+) STRICT;`,
+		fill: '',
+	},
+
+	{
+		ddl: `CREATE TABLE requests (
+	request_id TEXT PRIMARY KEY,
+	text TEXT NOT NULL,
+	context TEXT NOT NULL,
+	asker TEXT NOT NULL,
+	conversation TEXT NOT NULL,
+	asked_at TEXT NOT NULL,
+	operation_id TEXT NOT NULL ${operationReference}
+) STRICT;`,
+		fill: '',
+	},
+	{
+		ddl: `CREATE TABLE request_events (
+	request_id TEXT NOT NULL REFERENCES requests(request_id),
+	at TEXT NOT NULL,
+	step TEXT NOT NULL,
+	status TEXT NOT NULL,
+	detail TEXT NOT NULL,
+	operation_id TEXT NOT NULL ${operationReference}
+) STRICT;`,
+		fill: '',
+	},
+]
+const views = `
 CREATE VIEW latest_plans AS
 	SELECT p.* FROM plan_revisions p
 	WHERE p.revision = (SELECT max(revision) FROM plan_revisions WHERE plan_id = p.plan_id);
@@ -192,7 +350,7 @@ CREATE VIEW plan_gaps AS
 		g.value ->> '$.status' AS status, g.value ->> '$.severity' AS severity, g.value AS gap
 	FROM plan_revisions p, json_each(p.body, '$.gaps') g;
 `
-const tableNames = [...tables.matchAll(/CREATE TABLE (\w+)/g)].map((match) => match[1])
+const tableNamesOf = (ddl: string) => [...ddl.matchAll(/CREATE TABLE (\w+)/g)].map((match) => match[1])
 const decisionColumns = [
 	'id',
 	'plan_id',
@@ -224,13 +382,47 @@ function updateTrigger(table: string) {
 	return `CREATE TRIGGER ${table}_update BEFORE UPDATE ON ${table}
 	BEGIN SELECT RAISE(ABORT, 'Rows of ${table} are immutable'); END;`
 }
-const triggers = tableNames
-	.map(
-		(table) => `${updateTrigger(table)}
+const triggersOf = (ddl: string) =>
+	tableNamesOf(ddl)
+		.map(
+			(table) => `${updateTrigger(table)}
 CREATE TRIGGER ${table}_delete BEFORE DELETE ON ${table}
 	BEGIN SELECT RAISE(ABORT, 'Rows of ${table} are immutable'); END;`
-	)
-	.join('\n')
+		)
+		.join('\n')
+
+function setSchemaVersion(db: DatabaseSync, version: string) {
+	db.exec('DROP TRIGGER meta_update')
+	db.prepare("UPDATE meta SET value = ? WHERE key = 'schemaVersion'").run(version)
+	db.exec(updateTrigger('meta'))
+}
+
+function addExplorationTables(db: DatabaseSync) {
+	db.exec(explorationTables)
+	db.exec(triggersOf(explorationTables))
+	setSchemaVersion(db, '4')
+}
+
+function hasViaColumn(db: DatabaseSync) {
+	return Boolean(db.prepare("SELECT 1 FROM pragma_table_info('operations') WHERE name = 'via'").get())
+}
+
+function hasTable(db: DatabaseSync, name: string) {
+	return Boolean(db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(name))
+}
+
+function addMissingTables(db: DatabaseSync) {
+	for (const { ddl, fill } of addedTables) {
+		const [name] = tableNamesOf(ddl)
+		if (hasTable(db, name)) continue
+		db.exec(ddl)
+		db.exec(triggersOf(ddl))
+		if (fill) db.exec(fill)
+	}
+	db.exec(`CREATE TRIGGER IF NOT EXISTS promoted_plan_update BEFORE UPDATE ON plan_revisions
+	WHEN EXISTS (SELECT 1 FROM plan_promotions WHERE plan_id = OLD.plan_id AND promoted_revision = OLD.revision)
+	BEGIN SELECT RAISE(ABORT, 'Rows of promoted plan revisions are immutable'); END;`)
+}
 
 export function completed(subject: string, data: Record<string, unknown> = {}): Reply {
 	return { status: 'completed', subject, reasons: [], data }
@@ -259,7 +451,23 @@ export function busyTimeout(value = process.env.CHECKMATE_BUSY_TIMEOUT_MS) {
 	return value !== undefined && /^[1-9][0-9]*$/.test(value) && milliseconds <= 2147483647 ? milliseconds : 30000
 }
 
+// A first open can switch the database to WAL while another process reads it. SQLite then fails at once
+// after the busy timeout. Nothing changes in that case, so the open retries a few times.
+const openAttempts = 3
+const openRetryMilliseconds = 250
+
 export function openStore(workspace: string): Store {
+	for (let attempt = 1; ; attempt++) {
+		try {
+			return openStoreOnce(workspace)
+		} catch (error) {
+			if (!isBusy(error) || attempt >= openAttempts) throw error
+			Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, openRetryMilliseconds)
+		}
+	}
+}
+
+function openStoreOnce(workspace: string): Store {
 	const path = databasePath(workspace)
 	mkdirSync(join(workspace, '.checkmate'), { recursive: true })
 	const db = new DatabaseSync(path)
@@ -268,12 +476,19 @@ export function openStore(workspace: string): Store {
 		db.exec('PRAGMA journal_mode = WAL')
 		db.exec('PRAGMA foreign_keys = ON')
 		db.exec('BEGIN IMMEDIATE')
-		if (!db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'meta'").get()) {
-			db.exec(tables)
-			db.exec(triggers)
+		if (!hasTable(db, 'meta')) {
+			db.exec(tables + explorationTables + views)
+			db.exec(triggersOf(tables + explorationTables))
 			const insert = db.prepare('INSERT INTO meta (key, value) VALUES (?, ?)')
 			insert.run('contractVersion', contractVersion)
 			insert.run('schemaVersion', schemaVersion)
+		}
+		const version = String(versionOf(db))
+		if (version === '3') addExplorationTables(db)
+		if (['3', '4', '5', '6'].includes(version)) setSchemaVersion(db, schemaVersion)
+		if (['3', '4', '5', '6', schemaVersion].includes(version)) {
+			addMissingTables(db)
+			if (!hasViaColumn(db)) db.exec('ALTER TABLE operations ADD COLUMN via TEXT')
 		}
 		db.exec('COMMIT')
 	} catch (error) {
@@ -286,17 +501,38 @@ export function openStore(workspace: string): Store {
 
 export function openReadOnlyStore(workspace: string): Store {
 	const path = databasePath(workspace)
+	if (existsSync(path)) {
+		const db = new DatabaseSync(path, { readOnly: true })
+		try {
+			db.exec(`PRAGMA busy_timeout = ${busyTimeout()}`)
+			if (
+				hasTable(db, 'meta') &&
+				versionOf(db) === schemaVersion &&
+				hasViaColumn(db) &&
+				addedTables.every(({ ddl }) => hasTable(db, tableNamesOf(ddl)[0]))
+			)
+				return { db, workspace, path }
+		} catch (error) {
+			db.close()
+			throw error
+		}
+		db.close()
+	}
 	closeStore(openStore(workspace))
 	const db = new DatabaseSync(path, { readOnly: true })
 	db.exec(`PRAGMA busy_timeout = ${busyTimeout()}`)
 	return checkedStore(db, workspace, path)
 }
 
+function versionOf(db: DatabaseSync) {
+	return db.prepare("SELECT value FROM meta WHERE key = 'schemaVersion'").get()?.value
+}
+
 function checkedStore(db: DatabaseSync, workspace: string, path: string): Store {
-	const row = db.prepare("SELECT value FROM meta WHERE key = 'schemaVersion'").get()
-	if (row?.value !== schemaVersion) {
+	const version = versionOf(db)
+	if (version !== schemaVersion) {
 		db.close()
-		throw new Error(`Database ${path} has schema version ${row?.value ?? 'none'}. Expected ${schemaVersion}.`)
+		throw new Error(`Database ${path} has schema version ${version ?? 'none'}. Expected ${schemaVersion}.`)
 	}
 	return { db, workspace, path }
 }
@@ -356,7 +592,7 @@ function recordOperation(
 ) {
 	execute(
 		store,
-		'INSERT INTO operations (id, at, actor, command, arguments, status, response, subjects) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+		'INSERT INTO operations (id, at, actor, command, arguments, status, response, subjects, via) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
 		operation.id,
 		operation.at,
 		operation.actor,
@@ -364,7 +600,8 @@ function recordOperation(
 		canonical(operation.input ?? null),
 		reply.status,
 		canonical(reply),
-		canonical(subjects)
+		canonical(subjects),
+		store.via ?? null
 	)
 }
 
@@ -381,6 +618,12 @@ function sorted(value: unknown): unknown {
 				.map((key) => [key, sorted((value as Record<string, unknown>)[key])])
 		)
 	return value
+}
+
+export function saveBlob(store: Store, bytes: Uint8Array) {
+	const sha256 = digest(bytes)
+	execute(store, 'INSERT OR IGNORE INTO blobs (sha256, size, bytes) VALUES (?, ?, ?)', sha256, bytes.length, bytes)
+	return { sha256, size: bytes.length }
 }
 
 export function digest(content: string | Uint8Array) {

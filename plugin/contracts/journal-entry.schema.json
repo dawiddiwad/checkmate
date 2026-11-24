@@ -1,0 +1,138 @@
+{
+	"$schema": "http://json-schema.org/draft-07/schema#",
+	"$id": "journal-entry.schema.json",
+	"description": "Checkmate saves each valid entry, and refuses each invalid entry alone. Nothing is deleted.",
+	"type": "object",
+	"properties": {
+		"kind": {
+			"description": "The kind.",
+			"enum": ["criterion", "observation", "defect", "question", "verdict", "note", "issue", "topic"]
+		},
+		"id": {
+			"$ref": "journal-entry.schema.json#/definitions/id"
+		},
+		"build": {
+			"$ref": "journal-entry.schema.json#/definitions/build"
+		},
+		"supersedes": {
+			"$ref": "journal-entry.schema.json#/definitions/supersedes"
+		}
+	},
+	"required": ["kind"],
+	"examples": [
+		[
+			{
+				"kind": "criterion",
+				"id": "C1",
+				"rule": "R2",
+				"text": "5 or more items get 10% off.",
+				"source": "ticket.md#AC2",
+				"verdict": "wrong"
+			},
+			{
+				"kind": "observation",
+				"id": "O1",
+				"about": "C1",
+				"steps": "Add 4 pens in the cart",
+				"saw": "Total 40.00",
+				"value": "40.00",
+				"verdict": "ok",
+				"via": "ui"
+			},
+			{
+				"kind": "defect",
+				"id": "D1",
+				"rule": "R2",
+				"title": "No discount at 5 items",
+				"expected": "45.00 (AC2)",
+				"actual": "Total 50.00",
+				"severity": "high",
+				"links": ["C1"],
+				"steps": "Add 5 pens in the cart",
+				"value": "50.00",
+				"via": "ui",
+				"evidence": "cart-5.png"
+			}
+		]
+	],
+	"definitions": {
+		"id": {
+			"description": "Your ID, for example D1. Without it, Checkmate gives one.",
+			"type": "string",
+			"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+		},
+		"build": {
+			"description": "The build that you tested. Checkmate gives the build of the exploration.",
+			"type": "string",
+			"pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,95}$"
+		},
+		"supersedes": {
+			"description": "The ID of an earlier entry of the same kind. This entry replaces it and keeps its ID.",
+			"type": "string",
+			"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+		},
+		"rule": {
+			"description": "The ID of the plan rule, for example R2, or outside.",
+			"type": "string",
+			"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+		},
+		"about": {
+			"description": "A criterion ID, a question ID, a diff area, or free text.",
+			"type": "string",
+			"minLength": 1
+		},
+		"area": {
+			"description": "A changed area, for example src/cart.js.",
+			"type": "string",
+			"minLength": 1
+		},
+		"steps": {
+			"description": "What you did.",
+			"anyOf": [
+				{
+					"type": "string",
+					"minLength": 1
+				},
+				{
+					"type": "array",
+					"items": {
+						"type": "string",
+						"minLength": 1
+					},
+					"minItems": 1
+				}
+			]
+		},
+		"saw": {
+			"description": "What you saw.",
+			"type": "string",
+			"minLength": 1
+		},
+		"value": {
+			"description": "The exact value to compare on a later build, for example 45.00 or HTTP 409.",
+			"type": "string",
+			"minLength": 1
+		},
+		"via": {
+			"description": "The entry point that you used.",
+			"enum": ["ui", "api", "code", "other"]
+		},
+		"evidence": {
+			"description": "A workspace file or the text that you saw, or an array of them.",
+			"anyOf": [
+				{
+					"type": "string",
+					"minLength": 1
+				},
+				{
+					"type": "array",
+					"items": {
+						"type": "string",
+						"minLength": 1
+					},
+					"minItems": 1
+				}
+			]
+		}
+	}
+}

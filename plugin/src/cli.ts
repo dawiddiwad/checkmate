@@ -4,10 +4,19 @@ import type { EntryPoint, InstanceRecord, RequestedTool, TargetRequest } from '.
 import type { Approval, PlanTool } from './plans.ts'
 import type { EvidenceInput } from './runs.ts'
 import { busyReason, closeStore, completed, isBusy, openReadOnlyStore, openStore } from './store.ts'
-import { requireChoice, requireCondition, revisionReference } from './contracts.ts'
+import {
+	Refusal,
+	dependencyWarnings,
+	refused,
+	requireChoice,
+	requireCondition,
+	requireWellFormed,
+	revisionReference,
+} from './contracts.ts'
 import {
 	addInstance,
 	entryPointKinds,
+	setupTarget,
 	instanceList,
 	openTarget,
 	retireInstance,
@@ -32,15 +41,20 @@ import {
 	showPlanRequest,
 	decisionKinds,
 	partialModes,
+	planRequest,
+	scopeDrop,
 } from './plans.ts'
 import {
 	assertionResults,
 	cleanupStatuses,
+	closeCauses,
 	closeOutcomes,
 	completions,
+	interruptCauses,
 	newBlockerPolicies,
 	acceptResult,
 	beginRun,
+	beginPermanentRun,
 	checkAssertion,
 	closeTest,
 	finishRun,
@@ -60,17 +74,57 @@ import {
 	roles,
 	runDetail,
 	runList,
+	runGate,
 } from './views.ts'
-import { exportPlan, exportRun, formats, runFormats } from './render.ts'
+import { exportExploration, exportPlan, exportRun, explorationFormats, formats, runFormats } from './render.ts'
 import { startUi } from './ui/server.ts'
-import { defaultActor } from './actor.ts'
+import { contactUi, withUiStartupLock } from './ui/lifecycle.ts'
+import { defaultActor, requestOfEnv } from './actor.ts'
+import { changesOf } from './requests.ts'
+import { explorationModes, openExploration } from './explorations.ts'
+import type { Claim } from './journal.ts'
+import { decideClaim, handOffClaims, logEntries, planClaims, readEntries } from './journal.ts'
+import { defaultRecorderTimeout, recordSession } from './recorder.ts'
+import { checkClaudeArgs, liveUi, pluginRoot } from './sessions.ts'
+import { selectedHarness } from './pi.ts'
+import { workspaceEnv } from './settings.ts'
+import { decidePermission, explorationPermissions, permissionDecisions } from './permissions.ts'
+import { inputLine } from './ui/hooks.ts'
+import {
+	driveExploration,
+	endInBackground,
+	driveFollow,
+	explorationReport,
+	explorationStatus,
+	finishExploration,
+	startExploration,
+	startFollow,
+	stopExploration,
+	waitExploration,
+} from './explorers.ts'
+import { doneSteps, nextActions, pauseRun, stepDone, stepsStarted } from './agents.ts'
+import { levelNames, testLevels } from './levels.ts'
+import { runTest, testModes } from './modes.ts'
+import { harvestExploration } from './harvest.ts'
+import { planPromotions, promotePlan } from './promotion.ts'
+import { specFinding, specHandoff, specReview, specStatus } from './spec.ts'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { dirname, resolve } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import { constants } from 'node:sqlite'
+import { piCopyWarnings, versionLines } from './build.ts'
+import { storeExplorationFindings } from './findingsRun.ts'
+import { settleEnded } from './cleanups.ts'
+import { owedCleanups, settleCleanups } from './resets.ts'
 
 type FlagKind = 'value' | 'list' | 'repeat' | 'switch' | readonly string[] | { min: number; max: number }
 type Args = Record<string, string | string[] | boolean>
-type Context = { actor: string | undefined; stdin: () => unknown; text: () => string }
+type Context = {
+	actor: string | undefined
+	stdin: () => unknown
+	text: () => string
+	cwd: string
+	env: Record<string, string | undefined>
+}
 type Printed = { facts?: Record<string, unknown>; lines?: unknown[][] }
 type Command = {
 	positionals: string[]
@@ -116,9 +170,9 @@ function integer(args: Args, name: string) {
 
 function optionValue(token: string, kind: FlagKind, text: string) {
 	if (Array.isArray(kind))
-		requireCondition(kind.includes(text), `Invalid ${token}: ${text}. Use one of: ${kind.join(', ')}.`)
+		requireWellFormed(kind.includes(text), `Invalid ${token}: ${text}. Use one of: ${kind.join(', ')}.`)
 	else if (typeof kind === 'object' && 'min' in kind)
-		requireCondition(
+		requireWellFormed(
 			/^[0-9]+$/.test(text) && Number(text) >= kind.min && Number(text) <= kind.max,
 			`Invalid ${token}: ${text}. Use a whole number from ${kind.min} to ${kind.max}.`
 		)
@@ -133,13 +187,13 @@ function evidence(args: Args, context: Context): EvidenceInput[] | undefined {
 
 function toolSpec(spec: string): RequestedTool {
 	const match = /^(.+?):(cli|mcp|skill):(.+)$/.exec(spec)
-	requireCondition(match, `Invalid --tool: ${spec}. Use <name>:<cli|mcp|skill>:<purpose>.`)
+	requireWellFormed(match, `Invalid --tool: ${spec}. Use <name>:<cli|mcp|skill>:<purpose>.`)
 	return { name: match[1], kind: match[2] as RequestedTool['kind'], purpose: match[3] }
 }
 
 function entryPointSpec(spec: string): EntryPoint {
 	const match = /^([^:]+):([^:]+):(.+)$/.exec(spec)
-	requireCondition(
+	requireWellFormed(
 		match && (entryPointKinds as readonly string[]).includes(match[2]),
 		`Invalid --entry-point: ${spec}. Use <name>:<url|command|value>:<purpose>.`
 	)
@@ -150,9 +204,10 @@ function instanceInput(args: Args, stdin: () => unknown) {
 	const entries = list(args, 'entry')
 	const environment = value(args, 'environment')
 	const references = list(args, 'reference')
+	const build = value(args, 'build')
 	if (entries === undefined) {
-		requireCondition(
-			environment === undefined && !references,
+		requireWellFormed(
+			environment === undefined && !references && build === undefined,
 			'Give --entry with --environment and --reference, or send the instance on standard input'
 		)
 		return stdin()
@@ -160,15 +215,16 @@ function instanceInput(args: Args, stdin: () => unknown) {
 	const values: Record<string, string> = {}
 	for (const entry of entries) {
 		const at = entry.indexOf('=')
-		requireCondition(at > 0, `Invalid --entry: ${entry}. Use <entryPoint>=<value>.`)
+		requireWellFormed(at > 0, `Invalid --entry: ${entry}. Use <entryPoint>=<value>.`)
 		const name = entry.slice(0, at)
-		requireCondition(!(name in values), `Entry point ${name} is given twice`)
+		requireWellFormed(!(name in values), `Entry point ${name} is given twice`)
 		values[name] = entry.slice(at + 1)
 	}
 	return {
 		entries: values,
 		...(environment === undefined ? {} : { environment }),
 		...(references ? { references } : {}),
+		...(build === undefined ? {} : { build }),
 	}
 }
 
@@ -185,7 +241,7 @@ function planRequestInput(args: Args, stdin: () => unknown) {
 	const sources = list(args, 'source')
 	const instructions = value(args, 'instructions')
 	if (objective === undefined) {
-		requireCondition(
+		requireWellFormed(
 			!sources && instructions === undefined,
 			'Give --objective with --source and --instructions, or send the request on standard input'
 		)
@@ -199,6 +255,72 @@ function leftOutLines(reply: Reply) {
 	return leftOut.map((item) => [item.testId, 'left_out', item.reason])
 }
 
+function explorationLines(reply: Reply): Printed {
+	const status = reply.data as Partial<ReturnType<typeof explorationStatus>> & { outcome?: string; next?: string[] }
+	if (!status.explorers) return {}
+	return {
+		facts: {
+			state: status.state,
+			outcome: status.outcome,
+			plan: status.planId,
+			build: status.build,
+			level: status.level ?? undefined,
+			explorers: status.explorerCount ?? undefined,
+			model: status.model ?? undefined,
+			modelFrom: status.modelFrom ?? undefined,
+			costUsd: status.costUsd ?? undefined,
+			costPartial: status.costPartial ? true : undefined,
+			verifier: status.verifier ?? undefined,
+			since: status.since ?? undefined,
+			until: status.until ?? undefined,
+			studySeconds: status.studySeconds ?? undefined,
+			testSeconds: status.testSeconds ?? undefined,
+			workFolder: status.workFolder ?? undefined,
+			follow: status.follow ?? undefined,
+			followReason: status.followReason ?? undefined,
+			path: status.path === 'session' ? 'session' : undefined,
+			target: status.targetId,
+			instance: status.instanceId,
+		},
+		lines: [
+			...(status.next ?? []).map((command) => ['next', command]),
+			...status.explorers.map((item) => [
+				item.explorer,
+				status.path === 'session' ? `agent=${item.session ?? '-'}` : (item.session ?? '-'),
+				`ended=${item.ended ?? '-'}`,
+				`recorded=${item.recorded ?? '-'}`,
+				`saved=${item.saved}`,
+				...(item.observedModels?.length ? [`model=${item.observedModels.join(',')}`] : []),
+				...(item.costUsd === null ? [] : [`costUsd=${item.costUsd}`]),
+				...(item.costPartial ? ['costPartial=true'] : []),
+				...(typeof item.reason === 'string' && item.reason ? [`reason=${item.reason}`] : []),
+			]),
+			...(status.paused ? [['paused', status.paused, 'waits_on=oracle']] : []),
+			...(status.phases ?? [])
+				.filter(
+					(item) =>
+						item.step === 'done' && (item.detail.findingsRun !== undefined || item.detail.findingsReason)
+				)
+				.map((item) => [
+					'findings',
+					item.detail.findingsRun ? 'stored' : 'not_stored',
+					String(item.detail.findingsRun ?? item.detail.findingsReason),
+				]),
+			...status.explorers.flatMap((item) => item.stderr.map((line) => [item.explorer, 'stderr', line])),
+			...(status.phases ?? []).map((item) => [
+				item.step,
+				item.status,
+				...(item.detail.answers ? [`answers=${(item.detail.answers as string[]).length}`] : []),
+				...(item.detail.reason ? [item.detail.reason] : []),
+				...((item.detail.skipped ?? []) as string[]),
+				...(status.phases ?? []).flatMap((item) =>
+					((item.detail.stderr ?? []) as string[]).map((line) => [item.step, 'stderr', line])
+				),
+			]),
+		],
+	}
+}
+
 function short(sha256: unknown) {
 	return typeof sha256 === 'string' ? sha256.slice(0, 8) : sha256
 }
@@ -208,8 +330,26 @@ const commands: Record<string, Command> = {
 		positionals: [],
 		run: (store) => completed('.checkmate/checkmate.db', { path: store.path }),
 	},
+	'chat changes': {
+		positionals: [],
+		readOnly: true,
+		run: (store, _args, context) => {
+			const request = requestOfEnv(context.env)
+			requireCondition(request, 'Saved changes need a chat request. Run this from a chat turn.')
+			return completed('chat changes', { changes: changesOf(store, request!) })
+		},
+		print: (reply) => {
+			const changes = reply.data.changes as ReturnType<typeof changesOf>
+			return {
+				lines: changes.length
+					? [['Saved this turn:'], ...changes.map((change) => [`- ${change.text}`])]
+					: [['Saved this turn: nothing.']],
+			}
+		},
+	},
 	inbox: {
 		positionals: [],
+		readOnly: true,
 		run: (store) => completed('inbox', inbox(store)),
 		print: (reply) => {
 			const waiting = reply.data as ReturnType<typeof inbox>
@@ -218,19 +358,22 @@ const commands: Record<string, Command> = {
 					gaps: waiting.gaps.length,
 					plans: waiting.plans.length,
 					results: waiting.results.length,
+					claims: waiting.claims.length || undefined,
 					requests: waiting.requests.length,
 				},
 				lines: [
 					...waiting.gaps.map((gap) =>
-						gap.runId
-							? [
-									`${gap.planId}@${gap.revision}/${gap.gapId}`,
-									'run_gap',
-									gap.severity,
-									gap.runId,
-									gap.question,
-								]
-							: [`${gap.planId}@${gap.revision}/${gap.gapId}`, 'gap', gap.severity, gap.question]
+						gap.explorationId
+							? [`${gap.planId}/${gap.gapId}`, 'question', gap.severity, gap.explorationId, gap.question]
+							: gap.runId
+								? [
+										`${gap.planId}@${gap.revision}/${gap.gapId}`,
+										'run_gap',
+										gap.severity,
+										gap.runId,
+										gap.question,
+									]
+								: [`${gap.planId}@${gap.revision}/${gap.gapId}`, 'gap', gap.severity, gap.question]
 					),
 					...waiting.plans.map((plan) => [
 						`${plan.planId}@${plan.revision}`,
@@ -246,6 +389,14 @@ const commands: Record<string, Command> = {
 						result.coverage,
 						Object.entries(result.counts).map(([outcome, count]) => `${outcome}=${count}`),
 					]),
+					...waiting.claims.map((claim) => [
+						`${claim.planId}/${claim.claimId}`,
+						'claim',
+						claim.state,
+						claim.severity,
+						claim.title,
+						...(claim.reason ? [claim.reason] : []),
+					]),
 					...waiting.requests.map((request) => [
 						request.planId,
 						'requested',
@@ -258,9 +409,11 @@ const commands: Record<string, Command> = {
 	},
 	status: {
 		positionals: ['planId'],
-		run: (store, args) => {
+		flags: { 'fail-on-blocked': 'switch' },
+		readOnly: true,
+		run: (store, args, { env }) => {
 			const planId = value(args, 'planId')!
-			return completed(planId, planStatus(store, planId))
+			return completed(planId, planStatus(store, planId, selectedHarness(workspaceEnv(store, env))))
 		},
 		print: (reply) => {
 			const status = reply.data as ReturnType<typeof planStatus>
@@ -273,8 +426,11 @@ const commands: Record<string, Command> = {
 					run: status.latestRun?.runId,
 				},
 				lines: [
+					...(status.data.policy ? [[`data policy: ${status.data.policy}`]] : []),
 					...status.why.map((line) => ['why', line]),
+					...(status.rules ? [['rules', status.rules]] : []),
 					...status.next.map((line) => ['next', line]),
+					...legacyLine(status.legacyChecks, reply.subject),
 					...status.openRuns.map((run) => [
 						run.runId,
 						'started',
@@ -300,6 +456,28 @@ const commands: Record<string, Command> = {
 						defect.assertionIds,
 						defect.title,
 					]),
+					...status.explorations.map((item) => [item.explorationId, 'exploration', item.build, item.state]),
+					...status.questions.map((question) => [
+						question.id,
+						'question',
+						question.explorationId,
+						question.question,
+					]),
+					...status.claims.map((claim) => [
+						claim.claimId,
+						'claim',
+						claim.state,
+						claim.severity,
+						claim.title,
+						...(claim.reason ? [claim.reason] : []),
+					]),
+					...(status.retest?.verdicts ?? []).map((item) => [
+						`${item.runId}/${item.findingId}`,
+						'retest',
+						status.retest!.runId,
+						item.verdict,
+						item.title,
+					]),
 				],
 			}
 		},
@@ -321,6 +499,7 @@ const commands: Record<string, Command> = {
 	},
 	'target request': {
 		positionals: ['targetId'],
+		readOnly: true,
 		run: (store, args) => showTargetRequest(store, value(args, 'targetId')!),
 		print: (reply) => {
 			const request = reply.data.request as TargetRequest
@@ -344,6 +523,7 @@ const commands: Record<string, Command> = {
 	},
 	'target list': {
 		positionals: [],
+		readOnly: true,
 		run: (store) => completed('targets', { targets: targetList(store) }),
 		print: (reply) => ({
 			facts: { count: (reply.data.targets as unknown[]).length },
@@ -357,6 +537,7 @@ const commands: Record<string, Command> = {
 	'target show': {
 		positionals: ['reference'],
 		flags: { instance: 'value' },
+		readOnly: true,
 		run: (store, args) => showTarget(store, value(args, 'reference')!, value(args, 'instance')),
 		print: (reply) => {
 			const profile = reply.data.profile as Profile
@@ -375,6 +556,9 @@ const commands: Record<string, Command> = {
 					['capabilities', profile.capabilities],
 					['operations', profile.allowedOperations],
 					['approvals', `plan=${approvals.plan}`, `result=${approvals.result}`],
+					['startup', profile.startup.owner, ...(profile.startup.command ?? [null])],
+					['cleanup', profile.cleanup],
+					...(profile.reset ? [['reset', profile.reset.owner, ...(profile.reset.command ?? [null])]] : []),
 					...profile.tools.map((tool) => [
 						'tool',
 						tool.name,
@@ -395,7 +579,7 @@ const commands: Record<string, Command> = {
 	},
 	'target instance add': {
 		positionals: ['targetId', 'instanceId'],
-		flags: { entry: 'repeat', environment: 'value', reference: 'repeat' },
+		flags: { entry: 'repeat', environment: 'value', reference: 'repeat', build: 'value' },
 		write: true,
 		stdin: true,
 		run: (store, args, { actor, stdin }) =>
@@ -433,6 +617,7 @@ const commands: Record<string, Command> = {
 	},
 	'target instance list': {
 		positionals: ['targetId'],
+		readOnly: true,
 		run: (store, args) => {
 			const targetId = value(args, 'targetId')!
 			return completed(targetId, { instances: instanceList(store, targetId) })
@@ -452,21 +637,32 @@ const commands: Record<string, Command> = {
 		}),
 	},
 	'plan open': {
-		positionals: ['planId'],
+		positionals: ['planId?'],
 		flags: { target: 'value', objective: 'value', source: 'repeat', instructions: 'value' },
 		required: ['target'],
 		write: true,
 		stdin: true,
 		run: (store, args, { actor, stdin }) =>
 			openPlan(store, actor, {
-				planId: value(args, 'planId')!,
+				planId: value(args, 'planId'),
 				target: value(args, 'target')!,
 				request: planRequestInput(args, stdin),
 			}),
-		print: (reply) => ({ facts: { target: reply.data.target, recorded: reply.data.recorded } }),
+		print: (reply) => ({
+			facts: {
+				planId: reply.data.planId,
+				...(reply.data.planIdFrom ? { planIdFrom: reply.data.planIdFrom } : {}),
+				target: reply.data.target,
+				recorded: reply.data.recorded,
+				plannedFrom: (reply.data.sources as string[]).length
+					? (reply.data.sources as string[]).join(', ')
+					: 'no source files',
+			},
+		}),
 	},
 	'plan request': {
 		positionals: ['planId'],
+		readOnly: true,
 		run: (store, args) => showPlanRequest(store, value(args, 'planId')!),
 		print: (reply) => {
 			const data = reply.data as ReturnType<typeof showPlanRequest>['data'] & {
@@ -478,10 +674,12 @@ const commands: Record<string, Command> = {
 				tools: PlanTool[]
 				capabilities: string[]
 				allowedOperations: string[]
+				data: { kind: string; policy: string | null }
 			}
 			return {
-				facts: { target: data.target },
+				facts: { target: data.target, data: data.data.kind },
 				lines: [
+					...(data.data.policy ? [['data policy', data.data.policy]] : []),
 					['objective', data.objective],
 					...data.requirements.map((requirement) => [requirement.id, requirement.text, requirement.source]),
 					...data.context.sources.map((source) => ['source', source]),
@@ -502,15 +700,58 @@ const commands: Record<string, Command> = {
 			savePlan(store, actor, { planId: value(args, 'planId')!, candidate: stdin() }),
 		print: (reply) => ({ facts: { sha256: short(reply.data.sha256) } }),
 	},
+	'plan promote': {
+		positionals: ['reference'],
+		flags: { run: 'value', build: 'value', rationale: 'value' },
+		required: ['run', 'build', 'rationale'],
+		write: true,
+		run: (store, args, { actor }) =>
+			promotePlan(store, actor, {
+				reference: value(args, 'reference')!,
+				runId: value(args, 'run')!,
+				build: value(args, 'build')!,
+				rationale: value(args, 'rationale')!,
+			}),
+		print: (reply) => ({
+			facts: {
+				build: reply.data.build,
+				run: reply.data.runId,
+				tests: reply.data.tests,
+				recorded: reply.data.recorded,
+			},
+		}),
+	},
+	'plan promotions': {
+		positionals: ['planId'],
+		readOnly: true,
+		run: (store, args) =>
+			completed(value(args, 'planId')!, { promotions: planPromotions(store, value(args, 'planId')!) }),
+		print: (reply) => ({
+			lines: (reply.data.promotions as ReturnType<typeof planPromotions>).map((item) => [
+				`${item.planId}@${item.revision}`,
+				`source=${item.sourceRevision}`,
+				`build=${item.build}`,
+				`run=${item.runId}`,
+				`sha256=${short(item.resultSha256)}`,
+				`accepted=${item.accepted}`,
+				`tests=${item.tests.join(',')}`,
+				`actor=${item.actor}`,
+				item.at,
+				item.rationale,
+			]),
+		}),
+	},
 	'plan show': {
 		positionals: ['reference'],
 		flags: { tests: 'list', fields: 'list', gaps: ['open', 'all'] },
+		readOnly: true,
 		run: (store, args) => showPlan(store, args),
 		print: printPlan,
 	},
 	'plan list': {
 		positionals: [],
 		flags: { 'needs-decision': 'switch', 'awaiting-approval': 'switch', blocked: 'switch', 'waits-on': roles },
+		readOnly: true,
 		run: (store, args) => {
 			const waitsOn = value(args, 'waits-on')
 			const plans = planList(store).filter(
@@ -540,6 +781,7 @@ const commands: Record<string, Command> = {
 	},
 	'plan diff': {
 		positionals: ['planId', 'from', 'to'],
+		readOnly: true,
 		run: (store, args) =>
 			diffPlan(store, { planId: value(args, 'planId')!, from: value(args, 'from')!, to: value(args, 'to')! }),
 		print: (reply) => {
@@ -556,6 +798,20 @@ const commands: Record<string, Command> = {
 				],
 			}
 		},
+	},
+	'scope drop': {
+		positionals: ['planId', 'requirementId'],
+		flags: { source: 'value', rationale: 'value' },
+		required: ['source', 'rationale'],
+		write: true,
+		run: (store, args, { actor }) =>
+			scopeDrop(store, actor, {
+				planId: value(args, 'planId')!,
+				requirementId: value(args, 'requirementId')!,
+				source: value(args, 'source')!,
+				rationale: value(args, 'rationale')!,
+			}),
+		print: (reply) => ({ facts: { recorded: reply.data.recorded ?? true } }),
 	},
 	'gap answer': {
 		positionals: ['planId', 'gapId'],
@@ -577,6 +833,7 @@ const commands: Record<string, Command> = {
 			return {
 				facts: {
 					decision: reply.data.decisionId,
+					answer: reply.data.answerId,
 					gap: reply.data.gapId,
 					from: adopted?.runId,
 					revision: adopted?.revision,
@@ -587,6 +844,7 @@ const commands: Record<string, Command> = {
 	},
 	'plan pending': {
 		positionals: ['planId'],
+		readOnly: true,
 		run: (store, args) => showPending(store, value(args, 'planId')!),
 		print: (reply) => {
 			const data = reply.data as ReturnType<typeof showPending>['data'] & {
@@ -625,17 +883,20 @@ const commands: Record<string, Command> = {
 	},
 	'plan edit': {
 		positionals: ['reference'],
-		flags: { patch: 'switch', 'expect-sha': 'value' },
+		flags: { patch: 'switch', 'expect-sha': 'value', rationale: 'value' },
 		write: true,
 		stdin: true,
 		run: (store, args, { actor, stdin }) => {
 			const reference = value(args, 'reference')!
 			const expectSha256 = value(args, 'expect-sha')
+			const rationale = value(args, 'rationale')
 			return args.patch
-				? patchPlan(store, actor, { reference, patch: stdin(), expectSha256 })
-				: editPlan(store, actor, { reference, candidate: stdin(), expectSha256 })
+				? patchPlan(store, actor, { reference, patch: stdin(), expectSha256, rationale })
+				: editPlan(store, actor, { reference, candidate: stdin(), expectSha256, rationale })
 		},
-		print: (reply) => ({ facts: { sha256: short(reply.data.sha256), edit: reply.data.edit } }),
+		print: (reply) => ({
+			facts: { sha256: short(reply.data.sha256), edit: reply.data.edit, removed: reply.data.removed },
+		}),
 	},
 	'plan adopt-gaps': {
 		positionals: ['reference'],
@@ -663,6 +924,7 @@ const commands: Record<string, Command> = {
 		positionals: ['reference'],
 		flags: { tests: 'list', build: 'value', partial: partialModes, 'retest-of': 'value' },
 		required: ['build'],
+		readOnly: true,
 		run: (store, args) =>
 			gate(store, {
 				reference: value(args, 'reference')!,
@@ -708,6 +970,36 @@ const commands: Record<string, Command> = {
 				startedAt: reply.data.startedAt,
 				browserSession: reply.data.browserSession,
 				deadlineSeconds: reply.data.deadlineSeconds,
+				deadline: reply.data.deadline,
+				evidenceDirectory: reply.data.evidenceDirectory,
+			},
+			lines: leftOutLines(reply),
+		}),
+	},
+	'run permanent': {
+		positionals: ['runId', 'planId'],
+		flags: { build: 'value', instance: 'value', promotion: 'value', timeout: { min: 1, max: 3600 } },
+		required: ['build'],
+		write: true,
+		run: (store, args, { actor }) =>
+			beginPermanentRun(store, actor, {
+				runId: value(args, 'runId')!,
+				planId: value(args, 'planId')!,
+				build: value(args, 'build')!,
+				instance: value(args, 'instance'),
+				promotion: value(args, 'promotion'),
+				timeoutSeconds: integer(args, 'timeout'),
+			}),
+		print: (reply) => ({
+			facts: {
+				plan: reply.data.plan,
+				build: reply.data.build,
+				instance: reply.data.instanceId,
+				tests: reply.data.tests,
+				startedAt: reply.data.startedAt,
+				browserSession: reply.data.browserSession,
+				deadlineSeconds: reply.data.deadlineSeconds,
+				deadline: reply.data.deadline,
 				evidenceDirectory: reply.data.evidenceDirectory,
 			},
 			lines: leftOutLines(reply),
@@ -715,16 +1007,25 @@ const commands: Record<string, Command> = {
 	},
 	'run check': {
 		positionals: ['runId', 'testId', 'assertionId'],
-		flags: { result: assertionResults, observed: 'value', reason: 'value', evidence: 'repeat' },
-		required: ['result'],
+		flags: {
+			result: assertionResults,
+			observed: 'value',
+			'observed-file': 'value',
+			absent: 'switch',
+			request: 'value',
+			reason: 'value',
+			evidence: 'repeat',
+		},
 		write: true,
 		run: (store, args, context) =>
 			checkAssertion(store, context.actor, {
 				runId: value(args, 'runId')!,
 				testId: value(args, 'testId')!,
 				assertionId: value(args, 'assertionId')!,
-				result: value(args, 'result')!,
-				observed: value(args, 'observed'),
+				result: value(args, 'result'),
+				observed: observedValue(args),
+				absent: Boolean(args.absent),
+				request: value(args, 'request'),
 				reason: value(args, 'reason'),
 				evidence: evidence(args, context),
 			}),
@@ -735,13 +1036,14 @@ const commands: Record<string, Command> = {
 	},
 	'run close': {
 		positionals: ['runId', 'testId'],
-		flags: { outcome: closeOutcomes, reason: 'value', evidence: 'repeat' },
+		flags: { outcome: closeOutcomes, cause: closeCauses, reason: 'value', evidence: 'repeat' },
 		write: true,
 		run: (store, args, context) =>
 			closeTest(store, context.actor, {
 				runId: value(args, 'runId')!,
 				testId: value(args, 'testId')!,
 				outcome: value(args, 'outcome'),
+				cause: value(args, 'cause'),
 				reason: value(args, 'reason'),
 				evidence: evidence(args, context),
 			}),
@@ -767,13 +1069,21 @@ const commands: Record<string, Command> = {
 	},
 	'run finish': {
 		positionals: ['runId'],
-		flags: { completion: completions, cleanup: cleanupStatuses, 'cleanup-reason': 'value' },
+		flags: {
+			completion: completions,
+			cause: interruptCauses,
+			reason: 'value',
+			cleanup: cleanupStatuses,
+			'cleanup-reason': 'value',
+		},
 		required: ['completion', 'cleanup', 'cleanup-reason'],
 		write: true,
 		run: (store, args, { actor }) =>
 			finishRun(store, actor, {
 				runId: value(args, 'runId')!,
 				completion: value(args, 'completion')!,
+				cause: value(args, 'cause'),
+				reason: value(args, 'reason'),
 				cleanup: value(args, 'cleanup')!,
 				cleanupReason: value(args, 'cleanup-reason')!,
 			}),
@@ -793,9 +1103,11 @@ const commands: Record<string, Command> = {
 				reason: value(args, 'reason'),
 			}),
 		print: (reply) => {
+			if (reply.status !== 'completed') return {}
 			const data = reply.data as {
 				attempt: number
 				browserSession: string
+				deadline: string
 				evidenceDirectory: string
 				closed: string[]
 				tests: Array<{ testId: string; warning: string; assertions: Plan['tests'][number]['assertions'] }>
@@ -804,6 +1116,7 @@ const commands: Record<string, Command> = {
 				facts: {
 					attempt: data.attempt,
 					browserSession: data.browserSession,
+					deadline: data.deadline,
 					evidenceDirectory: data.evidenceDirectory,
 				},
 				lines: [
@@ -822,33 +1135,57 @@ const commands: Record<string, Command> = {
 	},
 	'run show': {
 		positionals: ['runId'],
-		flags: { tests: 'list' },
+		flags: { tests: 'list', gate: 'switch' },
+		readOnly: true,
 		run: (store, args) => {
 			const detail = runDetail(store, value(args, 'runId')!)
 			const selected = list(args, 'tests')
 			for (const id of selected ?? [])
-				requireCondition(
+				requireWellFormed(
 					detail.tests.some((test) => test.testId === id),
-					`Test ${id} is not selected in run ${detail.runId}`
+					`Test ${id} is not selected in run ${detail.runId}`,
+					`Use one of: ${detail.tests.map((test) => test.testId).join(', ')}.`
 				)
 			const tests = detail.tests.filter((test) => !selected || selected.includes(test.testId))
-			return completed(detail.runId, { ...detail, tests })
+			const gate = args.gate ? runGate(store, detail.runId) : undefined
+			return completed(detail.runId, { ...detail, tests, ...(gate ? { gate } : {}) })
 		},
 		print: (reply) => {
 			const detail = reply.data as ReturnType<typeof runDetail>
 			return {
 				facts: {
 					state: detail.state,
+					gate: (reply.data.gate as { state: string } | undefined)?.state,
+					unverified:
+						(reply.data.gate as { unverified?: string[] } | undefined)?.unverified?.join(',') || undefined,
+					judgedByAgent: (reply.data.gate as { judgedByAgent?: number } | undefined)?.judgedByAgent,
+					mode: detail.request.permanent ? 'permanent' : undefined,
+					data: detail.data.kind,
 					plan: `${detail.planId}@${detail.revision}`,
 					build: detail.build,
 					instance: detail.instance.instanceId,
 					completion: detail.result?.completion,
+					cause: detail.result?.completionCause ?? undefined,
 					coverage: detail.result?.coverage.status,
 					acceptance: detail.result?.acceptance,
 				},
 				lines: [
+					...gateReasonLines(reply.data.gate as GateReason | undefined, detail.planId),
+					...(detail.data.policy ? [[`data policy: ${detail.data.policy}`]] : []),
+					[
+						'time',
+						`deadline=${detail.clock.deadline}`,
+						`elapsed=${detail.clock.elapsedSeconds}s`,
+						`remaining=${detail.clock.remainingSeconds}s`,
+					],
 					...detail.tests.flatMap((test) => [
-						[test.testId, test.outcome ?? 'open', test.title, ...(test.reason ? [test.reason] : [])],
+						[
+							test.testId,
+							test.outcome ?? 'open',
+							test.title,
+							...(test.cause ? [`cause=${test.cause}`] : []),
+							...(test.reason ? [test.reason] : []),
+						],
 						...test.assertions.map((assertion) => [
 							`${test.testId}.${assertion.assertionId}`,
 							assertion.result ?? 'unchecked',
@@ -863,6 +1200,13 @@ const commands: Record<string, Command> = {
 						finding.assertionIds,
 						finding.title,
 					]),
+					...detail.retest.map((item) => [
+						`${item.runId}/${item.findingId}`,
+						'retest',
+						item.verdict,
+						item.testIds,
+						item.title,
+					]),
 					...detail.newGaps.map((gap) => [gap.id, gap.severity, gap.status, gap.question]),
 					...decisionLines(detail.result?.latestDecision),
 				],
@@ -872,6 +1216,7 @@ const commands: Record<string, Command> = {
 	'run list': {
 		positionals: [],
 		flags: { plan: 'value', build: 'value' },
+		readOnly: true,
 		run: (store, args) =>
 			completed('runs', { runs: runList(store, { planId: value(args, 'plan'), build: value(args, 'build') }) }),
 		print: (reply) => ({
@@ -891,6 +1236,7 @@ const commands: Record<string, Command> = {
 	'finding list': {
 		positionals: [],
 		flags: { plan: 'value', open: 'switch' },
+		readOnly: true,
 		run: (store, args) =>
 			completed('findings', {
 				findings: findingList(store, { planId: value(args, 'plan'), open: Boolean(args.open) }),
@@ -922,6 +1268,7 @@ const commands: Record<string, Command> = {
 		positionals: ['evidenceId'],
 		flags: { out: 'value' },
 		required: ['out'],
+		readOnly: true,
 		run: (store, args) => {
 			const evidence = evidenceBytes(store, value(args, 'evidenceId')!)
 			const out = writeOutput(store, value(args, 'out')!, evidence.bytes)
@@ -932,19 +1279,626 @@ const commands: Record<string, Command> = {
 	},
 	'export plan': exportCommand('reference', formats, exportPlan),
 	'export run': exportCommand('runId', runFormats, exportRun),
+	'export exploration': exportCommand('explorationId', explorationFormats, exportExploration),
+	'claim list': {
+		positionals: ['planId'],
+		flags: { all: 'switch' },
+		readOnly: true,
+		run: (store, args) => {
+			const planId = value(args, 'planId')!
+			planRequest(store, planId)
+			const claims = planClaims(store, planId).filter((claim) => args.all === true || claim.open)
+			return completed(planId, { claims })
+		},
+		print: (reply) => {
+			const claims = reply.data.claims as Claim[]
+			return {
+				facts: { claims: claims.length },
+				lines: claims.map((claim) => [
+					claim.id,
+					claim.state,
+					claim.severity,
+					`${claim.explorationId}@${claim.build}`,
+					claim.title,
+					`expected=${claim.expected}`,
+					`actual=${claim.actual}`,
+					...(claim.latestRetest === 'disputed' ? ['retest=disputed'] : []),
+					...(claim.handoff ? [`handed=${claim.handoff.to}`] : []),
+				]),
+			}
+		},
+	},
+	'claim handoff': {
+		positionals: ['planId', 'claimIds...'],
+		flags: { to: 'value', undo: 'switch' },
+		write: true,
+		run: (store, args, { actor }) =>
+			handOffClaims(store, actor, {
+				planId: value(args, 'planId')!,
+				claimIds: args.claimIds as string[],
+				to: value(args, 'to'),
+				undo: args.undo === true,
+			}),
+		print: (reply) => ({ facts: { claims: reply.data.claims, to: reply.data.to ?? undefined } }),
+	},
+	'claim accept': claimCommand('approved'),
+	'claim reject': claimCommand('rejected'),
+	harvest: {
+		positionals: ['explorationId'],
+		flags: { observations: 'switch' },
+		write: true,
+		run: (store, args, { actor }) =>
+			harvestExploration(store, actor, {
+				explorationId: value(args, 'explorationId')!,
+				observations: args.observations === true,
+			}),
+		print: (reply) => ({
+			facts: {
+				tests: reply.data.tests,
+				attached: (reply.data.attached as Array<{ test: string; rule: string }>).map(
+					(item) => `${item.test}:${item.rule}`
+				),
+				rules_with_tests: `${reply.data.rulesWithTests}/${reply.data.rules}`,
+				skipped: reply.data.skipped || undefined,
+				edit: reply.data.edit,
+			},
+		}),
+	},
+	setup: {
+		positionals: [],
+		flags: {
+			url: 'value',
+			target: 'value',
+			instance: 'value',
+			operations: 'list',
+			environment: 'value',
+			reset: 'value',
+			data: 'value',
+			policy: 'value',
+			'policy-file': 'value',
+			cleanup: 'value',
+			'hook-timeout': { min: 1, max: 3600 },
+			'reset-per-test': 'value',
+		},
+		required: ['url'],
+		write: true,
+		run: (store, args, { actor, env }) =>
+			setupTarget(store, actor, {
+				url: value(args, 'url')!,
+				targetId: value(args, 'target'),
+				instanceId: value(args, 'instance'),
+				operations: list(args, 'operations'),
+				environment: value(args, 'environment'),
+				reset: value(args, 'reset'),
+				data: value(args, 'data'),
+				policy: value(args, 'policy'),
+				policyFile: value(args, 'policy-file'),
+				cleanup: value(args, 'cleanup'),
+				hookTimeout: integer(args, 'hook-timeout'),
+				resetPerTest: value(args, 'reset-per-test'),
+				env,
+			}),
+		print: (reply) => ({
+			facts: {
+				revision: reply.data.revision,
+				instance: reply.data.instanceId,
+				capabilities: reply.data.capabilities,
+				operations: reply.data.allowedOperations,
+				profile_ready: reply.data.ready,
+				instance_reachable: reply.data.instanceReachable,
+			},
+			lines: reply.data.next ? [[reply.data.next]] : [],
+		}),
+	},
+	test: {
+		positionals: ['planId'],
+		flags: {
+			build: 'value',
+			mode: testModes,
+			level: levelNames,
+			explorers: { min: 1, max: 10 },
+			minutes: { min: 1, max: 240 },
+			instance: 'value',
+			allow: 'repeat',
+			'claude-arg': 'repeat',
+			timeout: { min: 60, max: 7200 },
+			objective: 'value',
+			target: 'value',
+			source: 'repeat',
+			instructions: 'value',
+			since: 'value',
+			until: 'value',
+			scope: 'list',
+			url: 'value',
+			reset: 'value',
+			data: 'value',
+			policy: 'value',
+			'policy-file': 'value',
+			cleanup: 'value',
+			'hook-timeout': { min: 1, max: 3600 },
+			repo: 'value',
+			session: 'switch',
+		},
+		write: true,
+		run: (store, args, { actor, env }) =>
+			runTest(
+				store,
+				actor,
+				{
+					planId: value(args, 'planId')!,
+					build: value(args, 'build'),
+					mode: value(args, 'mode'),
+					level: value(args, 'level'),
+					explorers: integer(args, 'explorers'),
+					minutes: integer(args, 'minutes'),
+					instance: value(args, 'instance'),
+					allow: list(args, 'allow') ?? [],
+					claudeArgs: list(args, 'claude-arg') ?? [],
+					timeoutSeconds: integer(args, 'timeout'),
+					objective: value(args, 'objective'),
+					target: value(args, 'target'),
+					sources: list(args, 'source'),
+					instructions: value(args, 'instructions'),
+					since: value(args, 'since'),
+					until: value(args, 'until'),
+					scope: list(args, 'scope'),
+					url: value(args, 'url'),
+					reset: value(args, 'reset'),
+					data: value(args, 'data'),
+					policy: value(args, 'policy'),
+					policyFile: value(args, 'policy-file'),
+					cleanup: value(args, 'cleanup'),
+					hookTimeout: integer(args, 'hook-timeout'),
+					repo: value(args, 'repo'),
+					session: args.session === true,
+				},
+				env
+			),
+		print: (reply) => {
+			const run = reply.data.run as { runId: string; tests: string[] } | null
+			return {
+				facts: {
+					plan: reply.data.planId,
+					build: reply.data.build,
+					mode: reply.data.mode,
+					level: reply.data.level,
+					explorers: reply.data.explorers,
+					model: reply.data.model ?? undefined,
+					verifier: reply.data.verifier,
+					path: reply.data.path === 'session' ? 'session' : undefined,
+					run: run?.runId,
+					tests: run?.tests,
+				},
+				lines: [
+					...(reply.data.storedTests ? [['stored_tests', reply.data.storedTests]] : []),
+					...(reply.data.checkSkipped as string[]).map((line) => ['check_skipped', line]),
+					...(reply.data.next as string[]).map((line) => ['next', line]),
+				],
+			}
+		},
+	},
+	'explore open': {
+		positionals: ['planId'],
+		flags: { build: 'value', instance: 'value', mode: explorationModes },
+		required: ['build'],
+		write: true,
+		run: (store, args, { actor }) =>
+			openExploration(store, actor, {
+				planId: value(args, 'planId')!,
+				build: value(args, 'build')!,
+				instance: value(args, 'instance'),
+				mode: value(args, 'mode'),
+			}),
+		print: (reply) => ({
+			facts: { plan: reply.data.planId, build: reply.data.build, instance: reply.data.instanceId },
+			lines: (reply.data.next as string[]).map((line) => ['next', line]),
+		}),
+	},
+	'explore start': {
+		positionals: ['planId'],
+		flags: {
+			build: 'value',
+			level: levelNames,
+			explorers: { min: 1, max: 10 },
+			minutes: { min: 1, max: 240 },
+			instance: 'value',
+			mode: explorationModes,
+			since: 'value',
+			until: 'value',
+			repo: 'value',
+			allow: 'repeat',
+			'claude-arg': 'repeat',
+			timeout: { min: 60, max: 7200 },
+		},
+		required: ['build'],
+		write: true,
+		run: (store, args, { actor, env }) =>
+			startExploration(
+				store,
+				actor,
+				{
+					planId: value(args, 'planId')!,
+					build: value(args, 'build')!,
+					instance: value(args, 'instance'),
+					mode: value(args, 'mode'),
+					level: value(args, 'level'),
+					explorers: integer(args, 'explorers'),
+					minutes: integer(args, 'minutes'),
+					since: value(args, 'since'),
+					until: value(args, 'until'),
+					repo: value(args, 'repo'),
+					allow: list(args, 'allow') ?? [],
+					claudeArgs: list(args, 'claude-arg') ?? [],
+					timeoutSeconds: integer(args, 'timeout'),
+				},
+				env
+			),
+		print: (reply) => ({
+			facts: {
+				plan: reply.data.planId,
+				build: reply.data.build,
+				level: reply.data.level,
+				explorers: reply.data.explorers,
+				model: reply.data.model,
+				verifier: reply.data.verifier,
+			},
+			lines: (reply.data.next as string[]).map((line) => ['next', line]),
+		}),
+	},
+	'explore finish': {
+		positionals: ['explorationId'],
+		flags: { level: levelNames, allow: 'repeat', 'claude-arg': 'repeat', timeout: { min: 60, max: 7200 } },
+		write: true,
+		run: (store, args, { actor, env }) =>
+			finishExploration(
+				store,
+				actor,
+				{
+					explorationId: value(args, 'explorationId')!,
+					level: value(args, 'level'),
+					allow: list(args, 'allow') ?? [],
+					claudeArgs: list(args, 'claude-arg') ?? [],
+					timeoutSeconds: integer(args, 'timeout'),
+				},
+				env
+			),
+		print: (reply) => ({
+			facts: {
+				plan: reply.data.planId,
+				build: reply.data.build,
+				level: reply.data.level,
+				verifier: reply.data.verifier,
+			},
+			lines: (reply.data.next as string[]).map((line) => ['next', line]),
+		}),
+	},
+	'explore follow': {
+		positionals: ['explorationId'],
+		flags: { allow: 'repeat', 'claude-arg': 'repeat', timeout: { min: 60, max: 7200 } },
+		write: true,
+		run: (store, args, { actor, env }) =>
+			startFollow(
+				store,
+				actor,
+				{
+					explorationId: value(args, 'explorationId')!,
+					allow: list(args, 'allow') ?? [],
+					claudeArgs: list(args, 'claude-arg') ?? [],
+					timeoutSeconds: integer(args, 'timeout'),
+				},
+				env
+			),
+		print: (reply) => ({
+			facts: {
+				plan: reply.data.planId,
+				build: reply.data.build,
+				answers: reply.data.answers,
+				followSeconds: reply.data.followSeconds,
+			},
+			lines: (reply.data.next as string[]).map((line) => ['next', line]),
+		}),
+	},
+	'explore next': {
+		positionals: ['explorationId'],
+		write: true,
+		run: (store, args, { actor }) => nextActions(store, actor, value(args, 'explorationId')!),
+		print: (reply) => ({
+			lines: ((reply.data.actions ?? []) as Array<{ line: string }>).map((item) => [item.line]),
+		}),
+	},
+	'explore done': {
+		positionals: ['explorationId', 'name', 'step'],
+		flags: { agent: 'value', failed: 'value', activity: 'value', 'reply-line': 'value' },
+		write: true,
+		check: (args) => {
+			requireChoice(value(args, 'step'), doneSteps, 'step')
+		},
+		run: (store, args, { actor }) =>
+			stepDone(store, actor, {
+				explorationId: value(args, 'explorationId')!,
+				name: value(args, 'name')!,
+				step: value(args, 'step')!,
+				agent: value(args, 'agent'),
+				failed: value(args, 'failed'),
+				activity: value(args, 'activity'),
+				replyLine: value(args, 'reply-line'),
+			}),
+		print: (reply) => ({
+			facts: {
+				name: reply.data.name,
+				event: reply.data.event,
+				state: reply.data.state,
+				saved: reply.data.saved,
+				refused: reply.data.refused,
+			},
+			lines: (reply.data.next as string[]).map((line) => ['next', line]),
+		}),
+	},
+	'explore started': {
+		positionals: ['explorationId', 'names...'],
+		write: true,
+		run: (store, args, { actor }) =>
+			stepsStarted(store, actor, value(args, 'explorationId')!, args.names as string[]),
+		print: (reply) => ({ facts: { started: reply.data.started } }),
+	},
+	'explore findings': {
+		positionals: ['explorationId'],
+		write: true,
+		run: (store, args, { actor }) => storeExplorationFindings(store, actor, value(args, 'explorationId')!),
+		print: (reply) => ({ facts: { run: reply.data.runId ?? '-', reason: reply.data.reason ?? '-' } }),
+	},
+	'explore pause': {
+		positionals: ['explorationId'],
+		flags: { reason: 'value' },
+		required: ['reason'],
+		write: true,
+		run: (store, args, { actor }) => pauseRun(store, actor, value(args, 'explorationId')!, value(args, 'reason')!),
+		print: (reply) => ({ facts: { reason: reply.data.reason, waitsOn: reply.data.waitsOn } }),
+	},
+	'explore stop': {
+		positionals: ['explorationId'],
+		flags: { explorer: 'value', reason: 'value' },
+		write: true,
+		run: (store, args, { actor }) =>
+			stopExploration(store, actor, {
+				explorationId: value(args, 'explorationId')!,
+				explorer: value(args, 'explorer'),
+				reason: value(args, 'reason'),
+			}),
+		print: (reply) => ({
+			facts: {
+				explorer: reply.data.explorer ?? undefined,
+				was: reply.data.was,
+				reason: reply.data.reason || undefined,
+				workFolder: reply.data.workFolder ?? undefined,
+				note: reply.data.note,
+			},
+			lines: [
+				...((reply.data.left as number[]) ?? []).map((pid) => ['alive', pid]),
+				...(reply.data.next as string[]).map((line) => ['next', line]),
+			],
+		}),
+	},
+	'explore permit': {
+		positionals: ['explorationId', 'requestId'],
+		flags: {
+			allow: 'switch',
+			'allow-kind': 'switch',
+			'allow-tool': 'switch',
+			always: 'switch',
+			deny: 'switch',
+			stop: 'switch',
+			reason: 'value',
+		},
+		write: true,
+		check: (args) =>
+			requireWellFormed(
+				permissionDecisions.filter((name) => args[name] === true).length === 1,
+				'Give one of --allow, --allow-kind, --allow-tool, --always, --deny, --stop.'
+			),
+		run: (store, args, { actor }) => {
+			requireCondition(
+				liveUi(store.workspace),
+				'No UI server runs for this folder, so no tester waits for an answer. Nothing changed.',
+				'Run checkmate ui in this folder.'
+			)
+			const explorationId = value(args, 'explorationId')!
+			return decidePermission(
+				store,
+				actor,
+				{
+					askerId: explorationId,
+					requestId: value(args, 'requestId')!,
+					decision: permissionDecisions.find((name) => args[name] === true)!,
+					reason: value(args, 'reason'),
+				},
+				(explorer, reason) =>
+					stopExploration(store, actor, { explorationId, explorer, reason: reason || undefined })
+			)
+		},
+		print: (reply) => ({ facts: { request: reply.data.requestId, decision: reply.data.decision } }),
+	},
+	'explore permissions': {
+		positionals: ['explorationId'],
+		readOnly: true,
+		run: (store, args) => {
+			const explorationId = value(args, 'explorationId')!
+			return completed(explorationId, { permissions: explorationPermissions(store, explorationId) })
+		},
+		print: (reply) => ({
+			lines: (reply.data.permissions as ReturnType<typeof explorationPermissions>).map((item) => [
+				item.id,
+				item.decision ? item.decision.text : 'open',
+				item.who,
+				item.tool,
+				inputLine(item.input),
+				...(item.rule ? [`rule=${item.rule}`] : []),
+			]),
+		}),
+	},
+	'explore show': {
+		positionals: ['explorationId'],
+		readOnly: true,
+		run: (store, args) => {
+			const explorationId = value(args, 'explorationId')!
+			return completed(explorationId, explorationReport(store, explorationId))
+		},
+		print: (reply) => {
+			const report = reply.data as ReturnType<typeof explorationReport>
+			const status = explorationLines(reply)
+			return {
+				facts: status.facts,
+				lines: [
+					...(status.lines ?? []),
+					...report.claims.map((claim) => [
+						claim.id,
+						'claim',
+						claim.state,
+						claim.severity,
+						claim.actors.join(','),
+						claim.title,
+						...(claim.reason ? [claim.reason] : []),
+						...(claim.handoff ? [`handed=${claim.handoff.to}`] : []),
+					]),
+					...report.questions.map((question) => [
+						question.id,
+						'question',
+						question.answer === null ? 'open' : 'answered',
+						question.question,
+						...(question.members.length > 1 ? [`members=${question.members.join(',')}`] : []),
+					]),
+					...report.retests.map((entry) => [
+						entry.id,
+						'verdict',
+						entry.defect,
+						entry.result,
+						...(entry.saw ? [entry.saw] : []),
+					]),
+					...report.criteria.map((criterion) => [criterion.id, 'criterion', criterion.text]),
+					...report.files.map((file) => [file.explorer, 'file', file.phase, file.name, `${file.size} bytes`]),
+				],
+			}
+		},
+	},
+	'explore status': {
+		positionals: ['explorationId'],
+		readOnly: true,
+		run: (store, args) => {
+			const explorationId = value(args, 'explorationId')!
+			return completed(explorationId, explorationStatus(store, explorationId))
+		},
+		print: explorationLines,
+	},
+	'explore wait': {
+		positionals: ['explorationId'],
+		flags: { timeout: { min: 1, max: 86400 } },
+		readOnly: true,
+		run: (store, args) => waitExploration(store, value(args, 'explorationId')!, integer(args, 'timeout') ?? 3600),
+		print: explorationLines,
+	},
+	'explore levels': {
+		positionals: [],
+		readOnly: true,
+		run: () => completed('levels', { levels: testLevels }),
+		print: (reply) => ({
+			lines: Object.entries(reply.data.levels as typeof testLevels).map(([name, level]) => [
+				name,
+				`explorers=${level.explorers}`,
+				`model=${level.model}`,
+				`verifier=${level.verifier}`,
+				`studySeconds=${level.studySeconds}`,
+				`testSeconds=${level.testSeconds}`,
+				`followSeconds=${level.followSeconds}`,
+			]),
+		}),
+	},
+	'explore log': {
+		positionals: ['explorationId'],
+		write: true,
+		stdin: true,
+		run: (store, args, { actor, text, cwd }) =>
+			logEntries(store, actor, {
+				explorationId: value(args, 'explorationId')!,
+				entries: readEntries(text()),
+				cwd,
+			}),
+		print: (reply) => ({
+			facts: {
+				saved: (reply.data.saved as unknown[]).length,
+				refused: (reply.data.refused as unknown[]).length,
+			},
+			lines: [
+				...(reply.data.saved as Array<{ id: string; kind: string }>).map((item) => [
+					item.id,
+					'saved',
+					item.kind,
+				]),
+				...(reply.data.refused as Array<{ index: number; reason: string }>).map((item) => [
+					`[${item.index}]`,
+					'refused',
+					item.reason,
+				]),
+			],
+		}),
+	},
+	record: {
+		positionals: ['explorationId'],
+		flags: {
+			explorer: 'value',
+			session: 'value',
+			timeout: { min: 1, max: 86400 },
+			'claude-arg': 'repeat',
+		},
+		required: ['explorer', 'session'],
+		write: true,
+		run: (store, args, { actor, cwd, env }) =>
+			recordSession(
+				store,
+				actor,
+				{
+					explorationId: value(args, 'explorationId')!,
+					explorer: value(args, 'explorer')!,
+					session: value(args, 'session')!,
+					timeoutSeconds: integer(args, 'timeout') ?? defaultRecorderTimeout,
+					claudeArgs: checkClaudeArgs(list(args, 'claude-arg') ?? []),
+				},
+				workspaceEnv(store, env),
+				cwd
+			),
+		print: (reply) => ({
+			facts: {
+				explorer: reply.data.explorer,
+				session: reply.data.session,
+				recorder: reply.data.recorder,
+				saved: reply.data.saved,
+				refused: reply.data.refused,
+				evidenceMissing: reply.data.evidenceMissing || undefined,
+				referencesDropped: reply.data.referencesDropped || undefined,
+				costUsd: reply.data.costUsd,
+				durationMs: reply.data.durationMs,
+			},
+			lines: Object.entries((reply.data.added ?? {}) as Record<string, number>).map(([kind, count]) => [
+				'added',
+				kind,
+				count,
+			]),
+		}),
+	},
 	log: {
 		positionals: [],
+		readOnly: true,
 		flags: { subject: 'value', limit: { min: 1, max: 1000 }, after: { min: 0, max: Number.MAX_SAFE_INTEGER } },
 		check: (args) => {
 			const subject = value(args, 'subject')
-			requireCondition(
-				subject === undefined || subject === 'inbox' || /^(target|plan|run):./.test(subject),
-				`Invalid --subject: ${subject}. Use target:<targetId>, plan:<planId>, run:<runId>, or inbox.`
+			requireWellFormed(
+				subject === undefined || subject === 'inbox' || /^(target|plan|run|chat):./.test(subject),
+				`Invalid --subject: ${subject}. Use target:<targetId>, plan:<planId>, run:<runId>, chat:<chatId>, or inbox.`
 			)
 		},
 		run: (store, args) => {
 			return completed('log', {
 				operations: operationLog(store, {
+					display: args.json !== true,
 					subject: value(args, 'subject'),
 					limit: integer(args, 'limit'),
 					after: integer(args, 'after'),
@@ -958,10 +1912,88 @@ const commands: Record<string, Command> = {
 				operation.actor,
 				operation.command,
 				operation.status,
-				operation.subjects,
+				operation.subjects.map((subject) =>
+					subject.startsWith('chat:') ? `/chats/${subject.slice(5)}` : subject
+				),
 				...rationaleOf(operation.arguments),
 				operation.rowid,
 			]),
+		}),
+	},
+	'spec finding': {
+		positionals: ['reference', 'gapId'],
+		flags: { kind: ['question', 'gap', 'defect'], source: 'value', evidence: 'value', 'expect-sha': 'value' },
+		required: ['kind', 'source', 'evidence', 'expect-sha'],
+		write: true,
+		run: (store, args, { actor }) =>
+			specFinding(store, actor, {
+				reference: value(args, 'reference')!,
+				gapId: value(args, 'gapId')!,
+				kind: value(args, 'kind')!,
+				source: value(args, 'source')!,
+				evidence: value(args, 'evidence')!,
+				sha256: value(args, 'expect-sha')!,
+			}),
+	},
+	'spec review': {
+		positionals: ['reference'],
+		flags: { source: 'value', evidence: 'value', rationale: 'value', 'expect-sha': 'value' },
+		required: ['source', 'evidence', 'rationale', 'expect-sha'],
+		write: true,
+		run: (store, args, { actor }) =>
+			specReview(store, actor, {
+				reference: value(args, 'reference')!,
+				source: value(args, 'source')!,
+				evidence: value(args, 'evidence')!,
+				rationale: value(args, 'rationale')!,
+				sha256: value(args, 'expect-sha')!,
+			}),
+	},
+	'spec status': {
+		positionals: ['reference'],
+		readOnly: true,
+		run: (store, args) => {
+			const status = specStatus(store, value(args, 'reference')!)
+			return {
+				status: status.ready ? 'completed' : 'needs_decision',
+				subject: value(args, 'reference')!,
+				reasons: status.reasons,
+				data: status,
+			}
+		},
+		print: (reply) => ({ facts: { ready: reply.data.ready, sha256: reply.data.sha256 } }),
+	},
+	'spec handoff': {
+		positionals: ['reference'],
+		flags: { rationale: 'value', 'expect-sha': 'value' },
+		required: ['rationale', 'expect-sha'],
+		write: true,
+		run: (store, args, { actor }) =>
+			specHandoff(store, actor, {
+				reference: value(args, 'reference')!,
+				rationale: value(args, 'rationale')!,
+				sha256: value(args, 'expect-sha')!,
+			}),
+		print: (reply) => ({ facts: { ready: reply.data.ready, sha256: reply.data.sha256 } }),
+	},
+	cleanup: {
+		positionals: ['ownerId'],
+		write: true,
+		run: (store, args) => {
+			const id = value(args, 'ownerId')!
+			const owed = owedCleanups(store).some((item) => item.id === id)
+			requireCondition(
+				owed,
+				`No cleanup is owed by ${id}.`,
+				'Run checkmate status <planId> to see the owed cleanups.'
+			)
+			const failures = settleCleanups(store, [id])
+			return failures.length
+				? refused('rejected', id, new Error(failures.join('. ')))
+				: completed(id, { cleanup: 'ran', owner: id })
+		},
+		print: (reply) => ({
+			facts: { owner: reply.data.owner ?? reply.subject, cleanup: reply.data.cleanup ?? 'failed' },
 		}),
 	},
 	query: {
@@ -1009,9 +2041,9 @@ function readOnly<T>(read: () => T): T {
 	try {
 		return read()
 	} catch (error) {
-		if (error instanceof Error && 'errcode' in error && [8, 23].includes(Number(error.errcode)))
-			throw new Error(readOnlyReason, { cause: error })
-		throw error
+		if (isBusy(error) || !(error instanceof Error) || !('errcode' in error)) throw error
+		if ([8, 23].includes(Number(error.errcode))) throw new Refusal('prohibited', readOnlyReason)
+		throw new Refusal('malformed', `SQL error: ${error.message}`, 'Send one valid SQLite SELECT statement.')
 	}
 }
 
@@ -1024,7 +2056,7 @@ function queryStatement(store: Store, sql: string) {
 	const statement = readOnly(() => store.db.prepare(sql))
 	requireCondition(statement.columns().length > 0, readOnlyReason)
 	const rest = sql.slice(statement.sourceSQL.length)
-	requireCondition(
+	requireWellFormed(
 		/^(\s|--[^\n]*|\/\*[\s\S]*?\*\/)*$/.test(rest),
 		'query runs one SQL statement. Send each statement in its own query.'
 	)
@@ -1040,6 +2072,7 @@ function exportCommand(
 		positionals: [positional],
 		flags: { format: choices, out: 'value' },
 		required: ['format'],
+		readOnly: true,
 		run: (store, args) => {
 			const subject = value(args, positional)!
 			const format = value(args, 'format')!
@@ -1049,6 +2082,23 @@ function exportCommand(
 			return completed(subject, { format, out: writeOutput(store, out, content) })
 		},
 		print: (reply) => ({ facts: { out: reply.data.out } }),
+	}
+}
+
+function claimCommand(verdict: 'approved' | 'rejected'): Command {
+	return {
+		positionals: ['planId', 'claimId'],
+		flags: { rationale: 'value' },
+		required: ['rationale'],
+		write: true,
+		run: (store, args, { actor }) =>
+			decideClaim(store, actor, {
+				planId: value(args, 'planId')!,
+				claimId: value(args, 'claimId')!,
+				verdict,
+				rationale: value(args, 'rationale')!,
+			}),
+		print: (reply) => ({ facts: { claim: reply.data.claimId, verdict: reply.data.verdict } }),
 	}
 }
 
@@ -1080,20 +2130,23 @@ function showPlan(store: Store, args: Args) {
 	const tests = list(args, 'tests')
 	const fields = list(args, 'fields')
 	const gaps = requireChoice(value(args, 'gaps') ?? 'all', ['open', 'all'] as const, 'gaps filter (--gaps)')
+	const warnings = dependencyWarnings(detail.plan)
+	const warned = warnings.length ? { warnings } : {}
 	if (!tests && !fields) {
 		const plan = {
 			...detail.plan,
 			gaps: detail.plan.gaps.filter((gap) => gaps === 'all' || gap.status === 'open'),
 		}
-		return completed(subject, { ...detail, plan })
+		return completed(subject, { ...detail, plan, ...warned })
 	}
 	for (const test of tests ?? [])
-		requireCondition(
+		requireWellFormed(
 			detail.plan.tests.some((item) => item.id === test),
-			`Unknown test in ${subject}: ${test}`
+			`Unknown test in ${subject}: ${test}`,
+			`Use one of: ${detail.plan.tests.map((item) => item.id).join(', ')}.`
 		)
 	for (const field of fields ?? [])
-		requireCondition(testFields.includes(field), `Unknown field: ${field}. Use: ${testFields.join(', ')}`)
+		requireWellFormed(testFields.includes(field), `Unknown field: ${field}. Use: ${testFields.join(', ')}`)
 	const picked = detail.plan.tests
 		.filter((test) => !tests || tests.includes(test.id))
 		.map((test) =>
@@ -1111,6 +2164,7 @@ function showPlan(store: Store, args: Args) {
 		sha256: detail.sha256,
 		fields: fields ?? ['readiness', 'capability', 'title'],
 		tests: picked,
+		...warned,
 	})
 }
 
@@ -1119,7 +2173,7 @@ function decisionLines(decision: Approval | null | undefined) {
 }
 
 function rationaleOf(input: unknown) {
-	const rationale = (input as { rationale?: unknown }).rationale
+	const rationale = (input as { rationale?: unknown } | null)?.rationale
 	return typeof rationale === 'string' && rationale ? [rationale] : []
 }
 
@@ -1130,6 +2184,18 @@ function testLines(test: Plan['tests'][number]) {
 		...test.preconditions.map((precondition) => [test.id, 'precondition', precondition]),
 		...test.assertions.map((assertion) => [`${test.id}.${assertion.id}`, assertion.checkKind, assertion.check]),
 	]
+}
+
+// --observed-file reads the value from a file the child wrote with a quoted heredoc: the shell expands nothing.
+function observedValue(args: Args) {
+	const file = value(args, 'observed-file')
+	if (file === undefined) return value(args, 'observed')
+	requireWellFormed(
+		value(args, 'observed') === undefined,
+		'Give either --observed or --observed-file, not both.',
+		'Use --observed-file when the value holds a dollar sign or a backtick.'
+	)
+	return readFileSync(file, 'utf8').replace(/\r?\n$/, '')
 }
 
 function printPlan(reply: Reply): Printed {
@@ -1158,10 +2224,21 @@ function printPlan(reply: Reply): Printed {
 		facts: {
 			...facts,
 			approval: detail.approval.state,
+			plannedFrom: detail.plannedFrom.length ? detail.plannedFrom.join(', ') : 'no source files',
 			...(detail.latestRevision !== detail.revision ? { latest: detail.latestRevision } : {}),
 		},
 		lines: [
-			...plan.requirements.map((requirement) => [requirement.id, coverage.get(requirement.id), requirement.text]),
+			...plan.requirements.map((requirement) => {
+				const tests = plan.tests
+					.filter((test) => test.requirementIds.includes(requirement.id))
+					.map((test) => test.id)
+				const gaps = plan.gaps.filter((gap) => gap.requirementIds.includes(requirement.id)).map((gap) => gap.id)
+				const covering =
+					tests.length || gaps.length
+						? `tests ${tests.join(',') || 'none'}; gaps ${gaps.join(',') || 'none'}`
+						: 'NOT COVERED: no test or gap'
+				return [requirement.id, coverage.get(requirement.id), requirement.text, covering]
+			}),
 			...plan.tests.map((test) => [test.id, test.readiness, test.capability, test.title]),
 			...plan.gaps.map((gap) => [gap.id, gap.severity, gap.status, gap.question]),
 			...plan.decisions.map((decision) => [
@@ -1179,8 +2256,47 @@ function printPlan(reply: Reply): Printed {
 				decision.rationale,
 			]),
 			...decisionLines(detail.approval.latest),
+			...legacyLine(detail.legacyChecks, plan.planId),
 		],
 	}
+}
+
+type GateReason = { unverified: string[] }
+
+// The fix for each soft problem a test can carry. A run with any of them is not green.
+const softFixes: Record<string, string> = {
+	needs_control: 'add a check with a 2xx expected value and the request that succeeds on the same route',
+	needs_split: 'split the test so that each test serves at most three requirements',
+	needs_required: 'add a check that leaves each required field empty and names the refusal',
+	needs_source_check: 'add a check that reads the changed state from the source',
+	needs_input: 'name the input value in the range check',
+}
+
+// A run is not green while a check is unverified. Each reason names its checks and the fix for them.
+function gateReasonLines(gate: GateReason | undefined, planId: string) {
+	if (!gate) return []
+	const legacy = gate.unverified.filter((entry) => !/ needs_/.test(entry))
+	const lines: string[][] = []
+	if (legacy.length)
+		lines.push([
+			'reason',
+			`deterministic checks without an expected value: ${legacy.join(' ')}`,
+			`revise with: checkmate plan revise ${planId}`,
+		])
+	for (const [reason, fix] of Object.entries(softFixes)) {
+		const named = gate.unverified.filter((entry) => entry.endsWith(` ${reason}`))
+		if (named.length)
+			lines.push([
+				'reason',
+				`not ready (${reason}): ${named.map((entry) => entry.slice(0, entry.length - reason.length - 1)).join(' ')}`,
+				`${fix}. Then revise with: checkmate delegate revise ${planId}`,
+			])
+	}
+	return lines
+}
+
+function legacyLine(checks: string[], planId: string) {
+	return checks.length > 0 ? [['legacy', checks.join(' '), `revise with: checkmate plan revise ${planId}`]] : []
 }
 
 function writeOutput(store: Store, out: string, content: string | Uint8Array) {
@@ -1208,16 +2324,27 @@ function compact(reply: Reply, printed: Printed) {
 	const facts = Object.entries(printed.facts ?? {})
 		.filter(([, field]) => field !== undefined)
 		.map(([key, field]) => `${key}=${cell(field)}`)
+	const warnings = (reply.data.warnings ?? []) as string[]
 	return [
-		[reply.status, reply.subject, ...facts].join(' '),
+		[reply.status, reply.subject, ...(reply.refusal ? [`refusal=${reply.refusal}`] : []), ...facts].join(' '),
 		...(printed.lines ?? []).map((line) => line.map(cell).join('\t')),
+		...warnings.map((warning) => `warning\t${cell(warning)}`),
+		...((reply.data.assumed ?? []) as string[]).map((value) => `assumed: ${cell(value)}`),
 		...reply.reasons.map((reason) => `reason: ${cell(reason)}`),
+		...(reply.hint ? [`hint: ${cell(reply.hint)}`] : []),
 	].join('\n')
 }
 
 function format(reply: Reply, json: boolean, print?: Command['print']) {
 	if (json)
-		return JSON.stringify({ status: reply.status, subject: reply.subject, reasons: reply.reasons, ...reply.data })
+		return JSON.stringify({
+			status: reply.status,
+			subject: reply.subject,
+			reasons: reply.reasons,
+			...(reply.refusal ? { refusal: reply.refusal } : {}),
+			...(reply.hint ? { hint: reply.hint } : {}),
+			...reply.data,
+		})
 	return compact(reply, print ? print(reply) : {})
 }
 
@@ -1235,7 +2362,32 @@ function commandName(argv: string[]) {
 	}
 	for (let count = words.length; count > 0; count--)
 		if (commands[words.slice(0, count).join(' ')]) return words.slice(0, count).join(' ')
-	throw new Error(`Unknown command: ${words.join(' ') || '(none)'}. Run checkmate --help.`)
+	throw unknownCommand(words)
+}
+
+// People say "run accept" or "run reject" for the result of a run. The command is "result accept" or "result reject".
+const movedCommands: Record<string, string> = { 'run accept': 'result accept', 'run reject': 'result reject' }
+
+function unknownCommand(words: string[]) {
+	const moved = movedCommands[words.slice(0, 2).join(' ')]
+	if (moved)
+		return new Refusal(
+			'malformed',
+			`Unknown command: ${words.join(' ')}`,
+			`Use ${moved} <runId> --rationale "<why>". Run checkmate --help for the usage of each command.`
+		)
+	const groups = words.map((_, i) => {
+		const prefix = words.slice(0, words.length - i).join(' ')
+		return Object.keys(commands).filter((name) => name.startsWith(`${prefix} `))
+	})
+	const names = groups.find((group) => group.length) ?? [
+		...new Set([...Object.keys(commands).map((name) => name.split(' ')[0]), 'ui']),
+	]
+	return new Refusal(
+		'malformed',
+		`Unknown command: ${words.join(' ') || '(none)'}`,
+		`Use one of: ${names.join(', ')}. Run checkmate --help for the usage of each command.`
+	)
 }
 
 function parse(name: string, tokens: string[]) {
@@ -1245,6 +2397,7 @@ function parse(name: string, tokens: string[]) {
 		...command.flags,
 		...(command.write ? { actor: 'value' as const } : {}),
 	}
+	const wrong = (message: string) => new Refusal('malformed', message, usage(name))
 	const args: Args = {}
 	const positionals: string[] = []
 	for (let i = 0; i < tokens.length; i++) {
@@ -1255,30 +2408,52 @@ function parse(name: string, tokens: string[]) {
 		}
 		const flag = token.slice(2)
 		const kind = flags[flag]
-		if (!kind) throw new Error(`Unknown option ${token} for ${name}. ${usage(name)}`)
+		if (!kind) throw wrong(`Unknown option ${token} for ${name}`)
 		if (kind === 'switch') {
 			args[flag] = true
 			continue
 		}
 		const next = tokens[++i]
-		if (next === undefined || next.startsWith('--')) throw new Error(`Missing value for ${token}`)
+		if (next === undefined || (next.startsWith('--') && flag !== 'claude-arg'))
+			throw wrong(`Missing value for ${token}`)
 		optionValue(token, kind, next)
 		if (kind !== 'list' && kind !== 'repeat') {
-			if (flag in args) throw new Error(`Option ${token} is given twice`)
+			if (flag in args) throw wrong(`Option ${token} is given twice`)
 			args[flag] = next
 		} else if (kind === 'list') {
-			if (flag in args) throw new Error(`Option ${token} is given twice`)
+			if (flag in args) throw wrong(`Option ${token} is given twice`)
 			args[flag] = next
 				.split(',')
 				.map((item) => item.trim())
 				.filter(Boolean)
 		} else args[flag] = [...((args[flag] as string[] | undefined) ?? []), next]
 	}
-	if (positionals.length !== command.positionals.length) throw new Error(usage(name))
-	for (const flag of command.required ?? []) if (!(flag in args)) throw new Error(`Missing --${flag}. ${usage(name)}`)
-	command.positionals.forEach((positional, i) => (args[positional] = positionals[i]))
+	const rest = command.positionals.at(-1)?.endsWith('...') ? command.positionals.at(-1)! : undefined
+	if (rest && positionals.length >= command.positionals.length) {
+		args[rest.slice(0, -3)] = positionals.splice(command.positionals.length - 1)
+		positionals.push('')
+	}
+	const optional = command.positionals.at(-1)?.endsWith('?') ? 1 : 0
+	const required = command.positionals.length - optional
+	if (positionals.length < required || positionals.length > command.positionals.length)
+		throw wrong(
+			`${name} needs ${required === command.positionals.length ? required : `${required} to ${command.positionals.length}`} argument(s), not ${positionals.length}: ${command.positionals.map(positionalLabel).join(' ') || 'none'}`
+		)
+	for (const flag of command.required ?? []) if (!(flag in args)) throw wrong(`Missing --${flag}`)
+	command.positionals.forEach((positional, i) => {
+		if (positional !== rest) args[positionalName(positional)] = positionals[i]
+	})
 	command.check?.(args)
 	return args
+}
+
+// A positional named "planId?" may be left out. Its value is then undefined.
+function positionalName(positional: string) {
+	return positional.replace(/\?$/, '')
+}
+
+function positionalLabel(positional: string) {
+	return positional.endsWith('?') ? `[${positionalName(positional)}]` : `<${positional}>`
 }
 
 function placeholder(kind: FlagKind) {
@@ -1296,21 +2471,23 @@ function usage(name: string) {
 	return [
 		'Usage: checkmate',
 		name,
-		...command.positionals.map((positional) => `<${positional}>`),
+		...command.positionals.map(positionalLabel),
 		...flags,
 		...(command.write ? ['[--actor <name>]'] : []),
-		...(command.stdin ? ['< payload.json'] : []),
+		...(command.stdin ? ["<<'EOF' <json> EOF"] : []),
 	].join(' ')
 }
 
-const uiUsage = 'Usage: checkmate ui [--port <value>]'
+const uiUsage = 'Usage: checkmate ui [--port <value>] [--new-hook-token]'
+const uiStopUsage = 'checkmate ui --stop'
 
 function help() {
 	return [
 		...Object.keys(commands).map((name) => usage(name).replace('Usage: ', '')),
 		uiUsage.replace('Usage: ', ''),
+		uiStopUsage,
 		'Options for every command: --workspace <path>, --json',
-	].join('\n')
+	]
 }
 
 function commandHelp(argv: string[]): Reply {
@@ -1320,31 +2497,42 @@ function commandHelp(argv: string[]): Reply {
 	)
 	for (let count = words.length; count > 0; count--) {
 		const prefix = words.slice(0, count).join(' ')
-		if (prefix === 'ui') return completed('ui', { usage: [uiUsage.replace('Usage: ', '')] })
+		if (prefix === 'ui') return completed('ui', { usage: [uiUsage.replace('Usage: ', ''), uiStopUsage] })
 		const names = Object.keys(commands).filter((name) => name === prefix || name.startsWith(`${prefix} `))
 		if (names.length) return completed(prefix, { usage: names.map((name) => usage(name).replace('Usage: ', '')) })
 	}
-	const reason = `Unknown command: ${words.join(' ') || '(none)'}. Run checkmate --help.`
-	return { status: 'invalid_request', subject: 'checkmate', reasons: [reason], data: { usage: [] } }
+	return { ...refused('invalid_request', 'checkmate', unknownCommand(words)), data: { usage: [] } }
 }
 
 function version() {
-	return JSON.parse(readFileSync(new URL('../.claude-plugin/plugin.json', import.meta.url), 'utf8')).version as string
+	const manifest = JSON.parse(readFileSync(join(pluginRoot, '.claude-plugin', 'plugin.json'), 'utf8'))
+	return versionLines(manifest.version as string, import.meta.url, process.env).join('\n')
 }
 
 function readJson(text: string) {
-	requireCondition(text.trim().length > 0, 'Missing JSON payload on standard input')
+	requireWellFormed(
+		text.trim().length > 0,
+		'Missing JSON payload on standard input',
+		"Send the JSON payload on standard input, in a quoted heredoc: checkmate <command> <arguments> <<'EOF', the JSON, then EOF"
+	)
 	try {
 		return JSON.parse(text) as unknown
 	} catch (error) {
-		throw new Error(`Standard input is not valid JSON: ${(error as Error).message}`, { cause: error })
+		throw new Refusal(
+			'malformed',
+			`Standard input is not valid JSON: ${(error as Error).message}`,
+			'Send one JSON object on standard input. Use double quotes for keys and strings, and no trailing commas.'
+		)
 	}
 }
 
 export function run(argv: string[], io: Io): Outcome {
 	if (argv[0] === '--version') return { code: 0, output: version() }
-	if (!argv.length || argv[0] === '--help') return { code: 0, output: help() }
 	const json = argv.includes('--json')
+	if (!argv.length || argv[0] === '--help' || (argv[0] === '--json' && argv[1] === '--help')) {
+		const usage = help()
+		return { code: 0, output: json ? format(completed('checkmate', { usage }), true) : usage.join('\n') }
+	}
 	if (argv.includes('--help')) {
 		const reply = commandHelp(argv)
 		const code = reply.status === 'completed' ? 0 : 1
@@ -1359,49 +2547,85 @@ export function run(argv: string[], io: Io): Outcome {
 		name = commandName(argv)
 		args = parse(name, argv.slice(name.split(' ').length))
 	} catch (error) {
-		const reply: Reply = { status: 'invalid_request', subject: name, reasons: [(error as Error).message], data: {} }
-		return { code: 1, output: format(reply, json) }
+		return { code: 1, output: format(refused('invalid_request', name, error), json) }
 	}
 	const command = commands[name]
-	const subject = command.positionals.length && name !== 'query' ? String(args[command.positionals[0]]) : name
+	const subject =
+		command.positionals.length && name !== 'query'
+			? String(args[positionalName(command.positionals[0])] ?? name)
+			: name
 	const workspace = resolve(io.cwd, value(args, 'workspace') ?? '.')
 	let store: Store | undefined
 	try {
 		store = command.readOnly ? openReadOnlyStore(workspace) : openStore(workspace)
+		store.via = requestOfEnv(io.env)
 		const actor = command.write ? (value(args, 'actor') ?? defaultActor(workspace, io.env)) : undefined
-		const reply = command.run(store, args, { actor, stdin: () => readJson(io.stdin()), text: io.stdin })
-		const code = reply.status === 'completed' || reply.status === 'needs_decision' ? 0 : 1
+		if (['run begin', 'explore start', 'test'].includes(name)) settleEnded(store)
+		const reply = command.run(store, args, {
+			actor,
+			stdin: () => readJson(io.stdin()),
+			text: io.stdin,
+			cwd: io.cwd,
+			env: io.env,
+		})
+		const code = exitCodeOf(name, args, reply)
 		if (!json && typeof reply.data.content === 'string')
 			return { code, output: reply.data.content.replace(/\n$/, '') }
 		return { code, output: format(reply, json, command.print) }
 	} catch (error) {
 		const reply: Reply = isBusy(error)
 			? { status: 'operational_error', subject, reasons: [(error as Error).message, busyReason], data: {} }
-			: { status: 'rejected', subject, reasons: [(error as Error).message], data: {} }
+			: refused('rejected', subject, error)
 		return { code: 1, output: format(reply, json) }
 	} finally {
 		if (store) closeStore(store)
 	}
 }
 
-function uiOptions(tokens: string[], cwd: string) {
+export const blockedOnDecisionExitCode = 3
+
+function exitCodeOf(name: string, args: Args, reply: Reply) {
+	if (name === 'run show' && args.gate && reply.status === 'completed')
+		return (reply.data.gate as { code: number }).code
+	if (name === 'status' && args['fail-on-blocked'] && reply.status === 'completed') {
+		const status = reply.data as ReturnType<typeof planStatus>
+		const blocking = status.gaps.some((gap) => gap.severity === 'blocking')
+		if (status.waitsOn === 'oracle' || blocking) return blockedOnDecisionExitCode
+	}
+	return reply.status === 'completed' || reply.status === 'needs_decision' || reply.status === 'running' ? 0 : 1
+}
+
+export function uiOptions(tokens: string[], cwd: string) {
 	const values: Record<string, string> = {}
+	let newHookToken = false
+	let stop = false
 	for (let i = 0; i < tokens.length; i++) {
 		const token = tokens[i]
 		if (token === '--json') continue
+		if (token === '--stop') {
+			stop = true
+			continue
+		}
+		if (token === '--new-hook-token') {
+			newHookToken = true
+			continue
+		}
 		const flag = token.startsWith('--') ? token.slice(2) : ''
-		if (!['workspace', 'port'].includes(flag)) throw new Error(`Unknown argument ${token} for ui. ${uiUsage}`)
+		if (!['workspace', 'port'].includes(flag))
+			throw new Refusal('malformed', `Unknown argument ${token} for ui`, uiUsage)
 		const next = tokens[++i]
-		if (next === undefined || next.startsWith('--')) throw new Error(`Missing value for ${token}`)
-		if (flag in values) throw new Error(`Option ${token} is given twice`)
+		if (next === undefined || next.startsWith('--'))
+			throw new Refusal('malformed', `Missing value for ${token}`, uiUsage)
+		if (flag in values) throw new Refusal('malformed', `Option ${token} is given twice`, uiUsage)
 		values[flag] = next
 	}
 	const port = values.port === undefined ? undefined : Number(values.port)
-	requireCondition(
+	requireWellFormed(
 		port === undefined || (/^[0-9]+$/.test(values.port) && port <= 65535),
 		`Invalid --port: ${values.port}. Use 0 to 65535.`
 	)
-	return { workspace: resolve(cwd, values.workspace ?? '.'), port }
+	requireWellFormed(!stop || (port === undefined && !newHookToken), 'Use --stop with --workspace or --json only.')
+	return { workspace: resolve(cwd, values.workspace ?? '.'), port, newHookToken, stop }
 }
 
 export async function serveUi(tokens: string[]) {
@@ -1410,30 +2634,65 @@ export async function serveUi(tokens: string[]) {
 	try {
 		options = uiOptions(tokens, process.cwd())
 	} catch (error) {
-		const reply: Reply = { status: 'invalid_request', subject: 'ui', reasons: [(error as Error).message], data: {} }
-		process.stdout.write(format(reply, json) + '\n')
+		process.stdout.write(format(refused('invalid_request', 'ui', error), json) + '\n')
 		process.exitCode = 1
 		return
 	}
-	const ui = await startUi(options)
-	process.stdout.write(
-		format(completed('ui', { url: ui.url }), json, (reply) => ({ facts: { url: reply.data.url } })) + '\n'
-	)
-	const stop = async () => {
-		await ui.close()
-		process.exit(0)
+	const fromPi = process.env.CHECKMATE_PI_UI === '1'
+	if (fromPi) delete process.env.CHECKMATE_PI_UI
+	try {
+		const data = await withUiStartupLock(options.workspace, async (workspace) => {
+			const action = options.stop ? 'stop' : fromPi ? 'open-pi' : 'status'
+			const active = await contactUi(workspace, action)
+			if (options.stop) return { stopped: Boolean(active) }
+			if (active) {
+				if (fromPi) return active
+				throw new Error(
+					`The Checkmate UI already runs at ${active.url} Use checkmate ui --stop before starting it again.`
+				)
+			}
+			const ui = await startUi({
+				...options,
+				workspace,
+				env: fromPi ? { ...process.env, CHECKMATE_HARNESS: 'pi' } : process.env,
+			})
+			const stop = async () => {
+				await ui.close()
+				process.exit(0)
+			}
+			process.once('SIGINT', stop)
+			process.once('SIGTERM', stop)
+			if (!fromPi) return { url: ui.url }
+			try {
+				const started = await contactUi(workspace, 'status')
+				if (!started) throw new Error('The new Checkmate UI did not respond.')
+				return started
+			} catch (error) {
+				await ui.close()
+				throw error
+			}
+		})
+		process.stdout.write(format(completed('ui', data), json, (reply) => ({ facts: reply.data })) + '\n')
+	} catch (error) {
+		process.stdout.write(format(refused('rejected', 'ui', error), json) + '\n')
+		process.exitCode = 1
 	}
-	process.once('SIGINT', stop)
-	process.once('SIGTERM', stop)
 }
 
 export async function main(argv: string[]) {
 	if (argv[0] === 'ui' && !argv.includes('--help')) return serveUi(argv.slice(1))
+	if (argv[0] === 'explore' && argv[1] === 'end' && argv[3] === '--workspace')
+		return endInBackground(argv[4], argv[2], argv[5] === '--explorer' ? argv[6] : undefined, process.env)
+	if (argv[0] === 'explore' && argv[1] === 'drive' && argv[3] === '--workspace')
+		return argv[5] === '--follow'
+			? driveFollow(argv[4], argv[2], process.env)
+			: driveExploration(argv[4], argv[2], process.env)
 	const outcome = run(argv, {
 		cwd: process.cwd(),
 		env: process.env,
 		stdin: () => readFileSync(0, 'utf8'),
 	})
 	process.stdout.write(outcome.output + '\n')
+	for (const line of piCopyWarnings(import.meta.url, process.env, process.cwd())) process.stderr.write(line + '\n')
 	process.exitCode = outcome.code
 }

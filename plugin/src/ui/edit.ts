@@ -1,9 +1,10 @@
 import type { Store } from '../store.ts'
+import { navigator, reviewOf } from './review.ts'
 import type { Html } from './html.ts'
 import type { Context, Page } from './layout.ts'
 import { frozenRevision, jsonPatch, planCandidate } from '../plans.ts'
 import { planDetail } from '../views.ts'
-import { html, short } from './html.ts'
+import { actorLimit, html, short } from './html.ts'
 import { banner, heading } from './layout.ts'
 
 type Candidate = ReturnType<typeof planCandidate>
@@ -17,9 +18,12 @@ export type EditState = {
 	json: string
 	actor: string
 	error: string | null
+	field?: string | null
 	stale: Html | null
 	unsaved: string | null
 	orig: string
+	removed: string[]
+	rationale: string
 }
 
 function words(values: string) {
@@ -70,6 +74,23 @@ export function candidateFromForm(base: Candidate, form: URLSearchParams): Candi
 	}
 }
 
+export function emptyField(base: Candidate, form: URLSearchParams) {
+	const fields = [
+		...base.requirements.flatMap((requirement, i) => [
+			[`r${i}.text`, `${requirement.id} Text`],
+			[`r${i}.source`, `${requirement.id} Source`],
+		]),
+		...base.tests.flatMap((test, i) => [
+			[`t${i}.title`, `${test.id} Title`],
+			[`t${i}.capability`, `${test.id} Capability`],
+			[`t${i}.action`, `${test.id} Action`],
+			...test.assertions.map((assertion, j) => [`t${i}.a${j}.check`, `${assertion.id}`]),
+		]),
+	]
+	const found = fields.find(([name]) => form.has(name) && !form.get(name)!.trim())
+	return found ? { name: found[0], label: found[1] } : null
+}
+
 export function candidateJson(candidate: unknown) {
 	return JSON.stringify(candidate, null, 2)
 }
@@ -87,7 +108,15 @@ function changeLines(before: Candidate, after: unknown) {
 		.join('\n')
 }
 
+export function removedTests(base: Candidate, candidate: unknown) {
+	const tests = (candidate as { tests?: unknown } | null)?.tests
+	if (!Array.isArray(tests)) return []
+	const kept = new Set(tests.map((test) => (test as { id?: unknown } | null)?.id))
+	return base.tests.map((test) => test.id).filter((id) => !kept.has(id))
+}
+
 export function ownChanges(form: URLSearchParams, fresh: Candidate) {
+	if (form.get('mode') === 'remove') return `${form.get('test') ?? ''}: removed`
 	const json = form.get('json') ?? ''
 	try {
 		const orig = JSON.parse(form.get('orig') ?? '') as Candidate
@@ -107,6 +136,17 @@ function unsavedPanel(unsaved: string) {
 		</p>
 		<pre class="code">${unsaved || 'You changed no values.'}</pre>
 	</section>`
+}
+
+function removalField(state: EditState) {
+	return html`<div class="field-group" data-removal${state.removed.length ? '' : html` hidden`}>
+		<label class="lab" for="removal">Reason for removal</label>
+		<p class="help" id="removal-help">
+			The edit removes <span class="mono" data-removal-tests>${state.removed.join(', ')}</span>. Checkmate records
+			who removed which tests and why.
+		</p>
+		<textarea id="removal" name="rationale" rows="2" aria-describedby="removal-help">${state.rationale}</textarea>
+	</div>`
 }
 
 function field(label: string, name: string, value: string, help = '') {
@@ -203,13 +243,14 @@ function coverageMatrix(candidate: Candidate) {
 							${candidate.tests.map(
 								(test) =>
 									html`<td>
-										<input
-											type="checkbox"
-											name="cover"
-											value="${test.id} ${requirement.id}"
-											aria-label="${test.id} covers ${requirement.id}"
-											${test.requirementIds.includes(requirement.id) ? html`checked` : ''}
-										/>
+										<label class="cell-check"
+											><input
+												type="checkbox"
+												name="cover"
+												value="${test.id} ${requirement.id}"
+												aria-label="${test.id} covers ${requirement.id}"
+												${test.requirementIds.includes(requirement.id) ? html`checked` : ''}
+										/></label>
 									</td>`
 							)}
 						</tr>`
@@ -230,11 +271,18 @@ function actorLine(context: Context, state: EditState, path: string, mode: strin
 	if (context.actor)
 		return html`<p class="help">
 			Saving as <strong>${context.actor}</strong>.
-			<a href="/actor?back=${encodeURIComponent(path)}">Change name</a>
+			<a class="tap" href="/actor?back=${encodeURIComponent(path)}">Change name</a>
 		</p>`
 	return html`<div class="field-group">
 		<label class="lab" for="actor-${mode}">Your name</label>
-		<input id="actor-${mode}" name="actor" required autocomplete="name" value="${state.actor}" />
+		<input
+			id="actor-${mode}"
+			name="actor"
+			required
+			maxlength="${actorLimit}"
+			autocomplete="name"
+			value="${state.actor}"
+		/>
 		<p class="help">Checkmate records it with the edit.</p>
 	</div>`
 }
@@ -253,7 +301,7 @@ export function editPage(
 	if (detail.revision !== detail.latestRevision)
 		return {
 			title,
-			section: 'plans',
+			section: 'home',
 			subjects: [`plan:${planId}`],
 			body: html`${heading(title, detail.plan.objective)}
 			${banner(
@@ -268,7 +316,12 @@ export function editPage(
 	const needsApproval = detail.approval.policy !== 'none'
 	const next = revision + 1
 	const save = frozen ? `Save as ${planId}@${next}` : 'Save changes'
-	const why = frozen === 'run' ? `A run uses ${subject}.` : `${subject} is approved.`
+	const why =
+		frozen === 'run'
+			? `A run uses ${subject}.`
+			: frozen === 'promotion'
+				? `${subject} was promoted.`
+				: `${subject} is approved.`
 	const notice = frozen
 		? banner(
 				'warn',
@@ -291,9 +344,11 @@ export function editPage(
 		stale: null,
 		unsaved: null,
 		orig: JSON.stringify(planCandidate(detail.plan)),
+		removed: [],
+		rationale: '',
 	}
 	const messages = html`${shown.stale ? banner('warn', shown.stale) : ''}
-	${shown.error ? html`<p class="form-error" role="alert">${shown.error}</p>` : ''}`
+	${shown.error ? html`<p class="form-error" role="alert" data-field="${shown.field ?? ''}">${shown.error}</p>` : ''}`
 	const buttons = (mode: string) =>
 		html`<div class="btns">
 				<button class="btn primary">${save}</button>
@@ -334,7 +389,13 @@ export function editPage(
 			</form>
 			<details class="edit-json" ${shown.mode === 'json' ? html`open` : ''}>
 				<summary>Edit as JSON</summary>
-				<form method="post" action="${path}" class="edit-form" data-edit-form>
+				<form
+					method="post"
+					action="${path}"
+					class="edit-form"
+					data-edit-form
+					data-test-ids="${detail.plan.tests.map((test) => test.id).join(' ')}"
+				>
 					${hidden(context, detail.sha256, 'json', shown.orig)}
 					<p class="help">
 						Add or remove requirements, tests, assertions, and gaps. The JSON has the fields of a plan
@@ -343,9 +404,23 @@ export function editPage(
 					</p>
 					<label class="sr-only" for="json">Plan candidate JSON</label>
 					<textarea id="json" name="json" rows="24" class="code" spellcheck="false">${shown.json}</textarea>
-					${buttons('json')}
+					${removalField(shown)} ${buttons('json')}
 				</form>
 			</details>
 		</div>`
-	return { title, section: 'plans', subjects: [`plan:${planId}`], body }
+	return {
+		title,
+		section: 'home',
+		subjects: [`plan:${planId}`],
+		body,
+		crumbs: [
+			['Plans', '/'],
+			[planId, `/plans/${planId}`],
+			[subject, `/plans/${subject}`],
+			['Edit', null],
+		],
+		back: `/plans/${subject}`,
+		address: `/plans/${subject}/edit`,
+		nav: navigator(reviewOf(store, planId), 'plan'),
+	}
 }

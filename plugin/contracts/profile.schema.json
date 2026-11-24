@@ -66,6 +66,10 @@
 						"type": "string",
 						"minLength": 1
 					},
+					"executable": {
+						"type": "string",
+						"minLength": 1
+					},
 					"reachable": {
 						"type": "boolean"
 					}
@@ -134,8 +138,99 @@
 			"type": "string",
 			"minLength": 1
 		},
+		"reset": {
+			"type": "object",
+			"properties": {
+				"owner": {
+					"enum": ["checkmate", "environment", "isolation"]
+				},
+				"command": {
+					"anyOf": [
+						{
+							"type": "array",
+							"items": {
+								"type": "string",
+								"minLength": 1
+							},
+							"minItems": 1
+						},
+						{
+							"type": "null"
+						}
+					]
+				},
+				"cleanup": {
+					"anyOf": [
+						{
+							"type": "array",
+							"items": {
+								"type": "string",
+								"minLength": 1
+							},
+							"minItems": 1
+						},
+						{
+							"type": "null"
+						}
+					]
+				},
+				"policy": {
+					"anyOf": [
+						{
+							"type": "object",
+							"properties": {
+								"text": {
+									"type": "string",
+									"minLength": 1
+								}
+							},
+							"required": ["text"],
+							"additionalProperties": false
+						},
+						{
+							"type": "object",
+							"properties": {
+								"path": {
+									"type": "string",
+									"minLength": 1
+								}
+							},
+							"required": ["path"],
+							"additionalProperties": false
+						},
+						{
+							"type": "null"
+						}
+					]
+				},
+				"timeoutSeconds": {
+					"type": "integer",
+					"minimum": 1,
+					"maximum": 3600
+				},
+				"perTest": {
+					"type": "boolean"
+				}
+			},
+			"required": ["owner", "command"],
+			"additionalProperties": false
+		},
 		"readyForLiveExecution": {
 			"type": "boolean"
+		},
+		"explore": {
+			"type": "object",
+			"properties": {
+				"level": {
+					"enum": ["smoke", "normal", "deep"]
+				},
+				"explorers": {
+					"type": "integer",
+					"minimum": 1,
+					"maximum": 10
+				}
+			},
+			"additionalProperties": false
 		},
 		"approvals": {
 			"type": "object",

@@ -1,6 +1,16 @@
 export type { Store, Reply, Status } from './store.ts'
+export type { Profile } from './types.ts'
 export { openStore, openReadOnlyStore, closeStore, canonical, digest, ulid, isBusy, busyReason } from './store.ts'
-export { validate, profileCheck, planCheck, planCoverage, resultCoverage, testOutcome } from './contracts.ts'
+export {
+	Refusal,
+	refused,
+	validate,
+	profileCheck,
+	planCheck,
+	planCoverage,
+	resultCoverage,
+	testOutcome,
+} from './contracts.ts'
 export {
 	openTarget,
 	saveTarget,
@@ -31,6 +41,7 @@ export {
 } from './plans.ts'
 export {
 	beginRun,
+	beginPermanentRun,
 	checkAssertion,
 	closeTest,
 	recordFinding,
@@ -40,6 +51,8 @@ export {
 	acceptResult,
 	rejectResult,
 	runResult,
+	runClock,
+	requirePermanentSelection,
 } from './runs.ts'
 export {
 	inbox,
@@ -58,5 +71,7 @@ export {
 	pagedRuns,
 	pagedOperations,
 } from './views.ts'
+export { developerText } from './developer.ts'
+export { planPromotions, promotePlan } from './promotion.ts'
 export { renderPlan, renderRun, runReport, exportPlan, exportRun } from './render.ts'
 export { run, main, formatReply } from './cli.ts'

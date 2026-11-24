@@ -1,6 +1,6 @@
 {
 	"name": "@xoxoai/checkmate",
-	"version": "0.7.4",
+	"version": "0.8.0",
 	"description": "The QA system of record for an agent software factory",
 	"keywords": [
 		"ai",
@@ -8,6 +8,7 @@
 		"ai-governance",
 		"claude-plugin",
 		"cli-tool",
+		"pi-package",
 		"sdlc",
 		"software-factory",
 		"test-automation"
@@ -29,7 +30,17 @@
 	"bin": {
 		"checkmate": "dist/checkmate.js"
 	},
+	"pi": {
+		"extensions": [
+			"./extensions/checkmate.mjs"
+		],
+		"skills": [
+			"./skills"
+		]
+	},
 	"files": [
+		"extensions",
+		"skills",
 		"dist",
 		"plugin",
 		"README.md",

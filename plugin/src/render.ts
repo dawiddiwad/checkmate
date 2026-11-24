@@ -1,12 +1,23 @@
 import type { Plan, Result } from './types.ts'
 import type { Store } from './store.ts'
 import { all } from './store.ts'
+import { dataSummary } from './resets.ts'
+import { targetRevision } from './targets.ts'
 import type { Approval } from './plans.ts'
 import type { ApprovalLabel } from './views.ts'
 import { requireChoice, requireCondition, revisionReference } from './contracts.ts'
 import { planApproval, planRevision } from './plans.ts'
-import { outcomeCounts, resultAcceptance, runResult, runState } from './runs.ts'
+import {
+	outcomeCounts,
+	resultAcceptance,
+	retestVerdicts,
+	runAssertions,
+	runOutcomes,
+	runResult,
+	runState,
+} from './runs.ts'
 import { approvalLabel, evidenceBytes } from './views.ts'
+import { explorationReport } from './explorers.ts'
 
 type Block =
 	| { heading: string; level?: 2 | 3 }
@@ -21,6 +32,7 @@ type EvidenceItem = { label: string; name: string; mediaType: string; size: numb
 export type Format = 'md' | 'html' | 'json'
 export type RunFormat = Format | 'junit'
 export type RunReport = {
+	data: ReturnType<typeof dataSummary>
 	result: Result
 	sha256: string
 	acceptance: { state: ApprovalLabel; latest: Approval | null }
@@ -30,6 +42,7 @@ export type RunReport = {
 		'planId' | 'revision' | 'objective' | 'requirements' | 'tests' | 'gaps' | 'decisions' | 'assumptions'
 	>
 	inline: Record<string, { image?: string; text?: string }>
+	retest: ReturnType<typeof retestVerdicts>
 	times: Record<string, number>
 }
 
@@ -269,6 +282,7 @@ function runDocument(report: RunReport): Report {
 				['Run', result.runId],
 				['Objective', plan.objective],
 				['Application build', result.applicationBuild],
+				['Data', `${report.data.kind}${report.data.policy ? `. Policy: ${report.data.policy}` : ''}`],
 				['Plan', `${result.plan.planId}@${result.plan.revision}`],
 				['Target profile', `${result.target.targetId}@${result.target.revision}`],
 				['Instance', result.instanceId],
@@ -276,12 +290,28 @@ function runDocument(report: RunReport): Report {
 				['Finished', result.finishedAt],
 				['Attempts', String(result.attempts)],
 				['Retest of', result.retestOf ?? none],
+				...(result.completionCause ? [['Completion cause', result.completionCause]] : []),
+				...(result.completionReason ? [['Completion reason', result.completionReason]] : []),
 				['Cleanup', `${result.cleanup.status}: ${result.cleanup.reason}`],
 				['Result digest', sha256],
 			],
 		},
 		{ heading: 'Acceptance' },
 		approvalBlock(acceptance, 'The target policy does not require acceptance.'),
+		...(report.retest.length
+			? ([
+					{ heading: 'Retest verdicts' },
+					{
+						table: ['Finding', 'Title', 'Verdict', 'Tests'],
+						rows: report.retest.map((item) => [
+							`${item.runId}/${item.findingId}`,
+							item.title,
+							item.verdict,
+							join(item.testIds),
+						]),
+					},
+				] as Block[])
+			: []),
 		{ heading: `Plan approval (${plan.planId}@${plan.revision})` },
 		approvalBlock(report.planApproval, 'The target policy does not require plan approval.'),
 		{ heading: 'Tests' },
@@ -294,7 +324,7 @@ function runDocument(report: RunReport): Report {
 					planned.get(test.testId)?.title ?? none,
 					test.outcome,
 					`${test.assertions.filter((assertion) => assertion.result === 'passed').length} of ${test.assertions.length} passed`,
-					test.reason ?? none,
+					test.cause ? `${test.cause}: ${test.reason}` : (test.reason ?? none),
 					pairs(planned.get(test.testId)?.metadata),
 				]),
 		},
@@ -571,20 +601,25 @@ function junitStatus(report: RunReport, test: Result['tests'][number]) {
 	)
 }
 
+function notSelectedReason(plan: RunReport['plan'], testId: string) {
+	const gap = plan.gaps.find((item) => item.status === 'open' && item.testIds.includes(testId))
+	return gap ? `blocked by open gap ${gap.id}: ${gap.question}` : 'not selected for this run'
+}
+
 function junit(report: RunReport) {
 	const { result, plan } = report
 	const tests = result.tests.filter((test) => result.selectedTestIds.includes(test.testId))
+	const notSelected = plan.tests.filter((test) => !result.selectedTestIds.includes(test.id))
 	const count = (...outcomes: string[]) => tests.filter((test) => outcomes.includes(test.outcome)).length
 	const totals = {
-		tests: tests.length,
+		tests: tests.length + notSelected.length,
 		failures: count('failed'),
 		errors: count('error', 'inconclusive'),
-		skipped: count('blocked', 'not_run'),
+		skipped: count('blocked', 'not_run') + notSelected.length,
 		time: (Date.parse(result.finishedAt) - Date.parse(result.startedAt)) / 1000,
 	}
-	const cases = tests.map((test) => {
-		const planned = plan.tests.find((item) => item.id === test.testId)!
-		const properties = xmlProperties([
+	const properties = (planned: RunReport['plan']['tests'][number]) =>
+		xmlProperties([
 			['title', planned.title],
 			['requirements', planned.requirementIds.join(',')],
 			...Object.entries(planned.metadata ?? {}).map(([key, value]): [string, string | number | boolean] => [
@@ -592,12 +627,21 @@ function junit(report: RunReport) {
 				value,
 			]),
 		])
+	const cases = tests.map((test) => {
+		const planned = plan.tests.find((item) => item.id === test.testId)!
 		return xmlTag(
 			'testcase',
 			{ classname: plan.planId, name: planned.id, time: report.times[test.testId] ?? 0 },
-			properties + junitStatus(report, test)
+			properties(planned) + junitStatus(report, test)
 		)
 	})
+	const skippedCases = notSelected.map((planned) =>
+		xmlTag(
+			'testcase',
+			{ classname: plan.planId, name: planned.id, time: 0 },
+			properties(planned) + xmlTag('skipped', { message: notSelectedReason(plan, planned.id) })
+		)
+	)
 	const suite = xmlTag(
 		'testsuite',
 		{
@@ -608,13 +652,23 @@ function junit(report: RunReport) {
 		xmlProperties([
 			['runId', result.runId],
 			['build', result.applicationBuild],
+			['dataKind', report.data.kind],
+			['dataPolicy', report.data.policy ?? ''],
 			['instance', result.instanceId],
 			['target', `${result.target.targetId}@${result.target.revision}`],
 			['completion', result.completion],
 			['coverage', result.coverage.status],
+			...report.retest.flatMap((item): Array<[string, string]> => {
+				const name = `retest.${item.runId}/${item.findingId}`
+				return [
+					[`${name}.verdict`, item.verdict],
+					[`${name}.title`, item.title],
+					[`${name}.tests`, item.testIds.join(',')],
+				]
+			}),
 		]) +
 			'\n' +
-			cases.join('\n') +
+			[...cases, ...skippedCases].join('\n') +
 			'\n'
 	)
 	return `<?xml version="1.0" encoding="UTF-8"?>\n${xmlTag('testsuites', { name: result.runId, ...totals }, suite)}\n`
@@ -659,12 +713,17 @@ export function runReport(store: Store, runId: string): RunReport {
 			: { text: bytes.toString('utf8') }
 	}
 	return {
+		data: dataSummary(
+			store.workspace,
+			targetRevision(store, run.row.target_id, run.row.target_revision).profile.reset
+		),
 		result: finished.result,
 		sha256: finished.sha256,
 		acceptance: { state: approvalLabel(state), latest: state.latest },
 		planApproval: { state: approvalLabel(approval), latest: approval.latest },
 		plan: { planId, revision, objective, requirements, tests, gaps, decisions, assumptions },
 		inline,
+		retest: retestVerdicts(run, runOutcomes(store, runId), runAssertions(store, runId)),
 		times: testTimes(store, runId),
 	}
 }
@@ -684,4 +743,52 @@ function testTimes(store: Store, runId: string) {
 
 export function exportRun(store: Store, runId: string, format: string) {
 	return renderRun(runReport(store, runId), requireChoice(format, runFormats, 'format (--format)'))
+}
+
+export const explorationFormats = ['md', 'json'] as const
+
+function mdCell(text: unknown) {
+	return String(text ?? '')
+		.replace(/\|/g, '\\|')
+		.replace(/\n/g, ' ')
+}
+
+export function exportExploration(store: Store, explorationId: string, format: string) {
+	const report = explorationReport(store, explorationId)
+	if (requireChoice(format, explorationFormats, 'format (--format)') === 'json')
+		return JSON.stringify(report, null, '\t') + '\n'
+	const lines = [
+		`# Exploration ${report.explorationId}`,
+		'',
+		`Plan ${report.planId}, build ${report.build}, instance ${report.instanceId}, mode ${report.mode}. State: ${report.state}.`,
+		`Level ${report.level ?? '-'}, ${report.explorerCount ?? 0} explorers, model ${report.model ?? '-'}, verifier ${report.verifier ?? '-'}.`,
+		'',
+		`Goal: ${report.charter.goal}`,
+		'',
+		'## Claims',
+		'',
+		'| Claim | State | Severity | Reporters | Title | Reason |',
+		'| --- | --- | --- | --- | --- | --- |',
+		...report.claims.map(
+			(claim) =>
+				`| ${mdCell(claim.id)} | ${claim.state} | ${claim.severity} | ${claim.actors.join(', ')} | ${mdCell(claim.title)} | ${mdCell(claim.reason)} |`
+		),
+		'',
+		'## Questions',
+		'',
+		...(report.questions.length
+			? report.questions.map(
+					(question) =>
+						`- ${question.id}: ${question.question}${question.answer ? ` Answer: ${question.answer}` : ''}`
+				)
+			: ['None.']),
+		'',
+		'## Explorers',
+		'',
+		...report.explorers.map(
+			(item) =>
+				`- ${item.explorer}: ended ${item.ended ?? '-'}, recorded ${item.recorded ?? '-'}, ${item.saved} entries`
+		),
+	]
+	return lines.join('\n') + '\n'
 }

@@ -65,6 +65,11 @@
 						"type": "string",
 						"minLength": 1
 					},
+					"area": {
+						"type": "string",
+						"minLength": 1,
+						"maxLength": 40
+					},
 					"metadata": {
 						"$ref": "#/definitions/metadata"
 					}
@@ -156,6 +161,37 @@
 			},
 			"minItems": 0,
 			"uniqueItems": true
+		},
+		"removals": {
+			"description": "Each removal of tests: who removed which tests, why, in which revision, and the gaps that it closed. Earlier revisions keep the removed tests.",
+			"type": "array",
+			"items": {
+				"type": "object",
+				"properties": {
+					"revision": { "type": "integer", "minimum": 1 },
+					"actor": { "type": "string", "minLength": 1 },
+					"rationale": { "type": "string", "minLength": 1 },
+					"testIds": {
+						"type": "array",
+						"items": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" },
+						"minItems": 1
+					},
+					"closedGaps": {
+						"type": "array",
+						"items": {
+							"type": "object",
+							"properties": {
+								"gapId": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" },
+								"reason": { "type": "string", "minLength": 1 }
+							},
+							"required": ["gapId", "reason"],
+							"additionalProperties": false
+						}
+					}
+				},
+				"required": ["revision", "actor", "rationale", "testIds", "closedGaps"],
+				"additionalProperties": false
+			}
 		},
 		"coverage": {
 			"type": "array",
@@ -310,6 +346,21 @@
 				},
 				"checkKind": {
 					"enum": ["deterministic", "agent_observation"]
+				},
+				"observe": {
+					"type": "string",
+					"minLength": 1
+				},
+				"expected": {
+					"type": "string",
+					"minLength": 1
+				},
+				"request": {
+					"type": "string",
+					"pattern": "^(GET|POST|PUT|PATCH|DELETE) /"
+				},
+				"observeFrom": {
+					"enum": ["page", "reload", "api"]
 				}
 			},
 			"required": ["id", "check", "checkKind"],

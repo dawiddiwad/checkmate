@@ -15,7 +15,7 @@ export type Finding = {
 export type Gap = {
 	id: string
 	severity: 'blocking' | 'non_blocking'
-	status: 'open' | 'resolved' | 'deferred'
+	status: 'open' | 'resolved' | 'deferred' | 'not_needed'
 	requirementIds: Array<string>
 	testIds: Array<string>
 	question: string
@@ -26,7 +26,121 @@ export type Gap = {
 export type Instance = {
 	entries: Record<string, string>
 	environment?: string
+	build?: string
 	references?: Array<string>
+}
+
+export type JournalCriterion = {
+	kind: 'criterion'
+	id?: string
+	build?: string
+	supersedes?: string
+	rule?: string
+	text: string
+	source?: string
+	verdict?: 'ok' | 'wrong'
+	saw?: string
+	area?: string
+}
+
+export type JournalDefect = {
+	kind: 'defect'
+	id?: string
+	build: string
+	supersedes?: string
+	rule?: string
+	title: string
+	expected: string
+	actual: string
+	severity: 'critical' | 'high' | 'medium' | 'low'
+	about?: string
+	steps?: string | Array<string>
+	saw?: string
+	value?: string
+	via?: 'ui' | 'api' | 'code' | 'other'
+	evidence?: string | Array<string>
+	links?: Array<string>
+	suspected?: boolean
+	question?: string
+}
+
+export type JournalEntry = {
+	kind: 'criterion' | 'observation' | 'defect' | 'question' | 'verdict' | 'note' | 'issue' | 'topic'
+	id?: string
+	build?: string
+	supersedes?: string
+}
+
+export type JournalIssue = {
+	kind: 'issue'
+	id?: string
+	build?: string
+	supersedes?: string
+	title: string
+	severity: 'critical' | 'high' | 'medium' | 'low'
+	reports: Array<string>
+	note?: string
+}
+
+export type JournalNote = {
+	kind: 'note'
+	id?: string
+	build?: string
+	supersedes?: string
+	text: string
+	about?: string
+	area?: string
+	evidence?: string | Array<string>
+}
+
+export type JournalObservation = {
+	kind: 'observation'
+	id?: string
+	build: string
+	supersedes?: string
+	about?: string
+	steps?: string | Array<string>
+	saw: string
+	value?: string
+	repeats?: string
+	verdict?: 'ok' | 'wrong'
+	via?: 'ui' | 'api' | 'code' | 'other'
+	evidence?: string | Array<string>
+	confirms?: string
+	refutes?: string
+}
+
+export type JournalQuestion = {
+	kind: 'question'
+	id?: string
+	build?: string
+	supersedes?: string
+	rule?: string
+	question: string
+	actual?: string
+	about?: string
+	blocking?: boolean
+}
+
+export type JournalTopic = {
+	kind: 'topic'
+	id?: string
+	build?: string
+	supersedes?: string
+	question: string
+	label?: string
+	members: Array<string>
+}
+
+export type JournalVerdict = {
+	kind: 'verdict'
+	id?: string
+	build: string
+	supersedes?: string
+	defect: string
+	result: 'fixed' | 'not_fixed' | 'not_retested'
+	saw?: string
+	evidence?: string | Array<string>
 }
 
 export type PlanCandidate = {
@@ -34,6 +148,7 @@ export type PlanCandidate = {
 		id: string
 		text: string
 		source: string
+		area?: string
 		metadata?: Record<string, string | number | boolean>
 	}>
 	tests: Array<{
@@ -49,13 +164,17 @@ export type PlanCandidate = {
 			id: string
 			check: string
 			checkKind: 'deterministic' | 'agent_observation'
+			observe?: string
+			expected?: string
+			request?: string
+			observeFrom?: 'page' | 'reload' | 'api'
 		}>
 		metadata?: Record<string, string | number | boolean>
 	}>
 	gaps: Array<{
 		id: string
 		severity: 'blocking' | 'non_blocking'
-		status: 'open' | 'resolved' | 'deferred'
+		status: 'open' | 'resolved' | 'deferred' | 'not_needed'
 		requirementIds: Array<string>
 		testIds: Array<string>
 		question: string
@@ -65,18 +184,42 @@ export type PlanCandidate = {
 }
 
 export type PlanDelta = {
+	requirements?: Record<
+		string,
+		{
+			remove?: boolean
+			text?: string
+			source?: string
+			area?: string
+		}
+	>
 	tests: Record<
 		string,
 		{
-			action?: string
+			remove?: boolean
+			title?: string
+			requirementIds?: Array<string>
+			capability?: string
+			operations?: Array<string>
+			dependsOn?: Array<string>
 			preconditions?: Array<string>
-			assertions?: Record<
-				string,
-				{
-					check?: string
-					checkKind?: 'deterministic' | 'agent_observation'
-				} | null
-			>
+			action?: string
+			assertions?: Array<{
+				check: string
+				checkKind: 'deterministic' | 'agent_observation'
+				observe?: string
+				expected?: string
+				request?: string
+				observeFrom?: 'page' | 'reload' | 'api'
+			}>
+		}
+	>
+	gaps?: Record<
+		string,
+		{
+			question: string
+			consequence: string
+			testIds: Array<string>
 		}
 	>
 }
@@ -87,6 +230,7 @@ export type PlanPatch = {
 		{
 			text?: string
 			source?: string
+			area?: string
 			metadata?: Record<string, string | number | boolean>
 		} | null
 	>
@@ -105,6 +249,10 @@ export type PlanPatch = {
 				{
 					check?: string
 					checkKind?: 'deterministic' | 'agent_observation'
+					observe?: string
+					expected?: string
+					request?: string
+					observeFrom?: 'page' | 'reload' | 'api'
 				} | null
 			>
 			metadata?: Record<string, string | number | boolean>
@@ -128,6 +276,7 @@ export type PlanRequest = {
 		id: string
 		text: string
 		source: string
+		area?: string
 		metadata?: Record<string, string | number | boolean>
 	}>
 	sourceContext?: Array<{
@@ -163,6 +312,7 @@ export type Plan = {
 		id: string
 		text: string
 		source: string
+		area?: string
 		metadata?: Record<string, string | number | boolean>
 	}>
 	tests: Array<{
@@ -180,13 +330,17 @@ export type Plan = {
 			id: string
 			check: string
 			checkKind: 'deterministic' | 'agent_observation'
+			observe?: string
+			expected?: string
+			request?: string
+			observeFrom?: 'page' | 'reload' | 'api'
 		}>
 		metadata?: Record<string, string | number | boolean>
 	}>
 	gaps: Array<{
 		id: string
 		severity: 'blocking' | 'non_blocking'
-		status: 'open' | 'resolved' | 'deferred'
+		status: 'open' | 'resolved' | 'deferred' | 'not_needed'
 		requirementIds: Array<string>
 		testIds: Array<string>
 		question: string
@@ -205,6 +359,16 @@ export type Plan = {
 		rationale: string
 		value: string
 		source: string | null
+	}>
+	removals?: Array<{
+		revision: number
+		actor: string
+		rationale: string
+		testIds: Array<string>
+		closedGaps: Array<{
+			gapId: string
+			reason: string
+		}>
 	}>
 	coverage: Array<{
 		requirementId: string
@@ -228,6 +392,7 @@ export type Profile = {
 		kind: 'cli' | 'mcp' | 'skill'
 		purpose: string
 		version?: string
+		executable?: string
 		reachable: boolean
 	}>
 	authentication: {
@@ -240,7 +405,26 @@ export type Profile = {
 		command: Array<string> | null
 	}
 	cleanup: string
+	reset?: {
+		owner: 'checkmate' | 'environment' | 'isolation'
+		command: Array<string> | null
+		cleanup?: Array<string> | null
+		policy?:
+			| {
+					text: string
+			  }
+			| {
+					path: string
+			  }
+			| null
+		timeoutSeconds?: number
+		perTest?: boolean
+	}
 	readyForLiveExecution: boolean
+	explore?: {
+		level?: 'smoke' | 'normal' | 'deep'
+		explorers?: number
+	}
 	approvals?: {
 		plan: 'required' | 'none'
 		result: 'required' | 'none'
@@ -274,9 +458,12 @@ export type Result = {
 	finishedAt: string
 	attempts: number
 	completion: 'completed' | 'interrupted' | 'operational_error'
+	completionCause?: 'deadline' | 'host_stopped' | 'tool_unavailable' | null
+	completionReason?: string | null
 	tests: Array<{
 		testId: string
 		outcome: 'passed' | 'failed' | 'inconclusive' | 'blocked' | 'not_run' | 'error'
+		cause?: 'deadline'
 		reason: string | null
 		assertions: Array<{
 			assertionId: string
@@ -305,7 +492,7 @@ export type Result = {
 	newGaps: Array<{
 		id: string
 		severity: 'blocking' | 'non_blocking'
-		status: 'open' | 'resolved' | 'deferred'
+		status: 'open' | 'resolved' | 'deferred' | 'not_needed'
 		requirementIds: Array<string>
 		testIds: Array<string>
 		question: string

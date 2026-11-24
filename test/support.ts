@@ -1,12 +1,14 @@
 import type { TestContext } from 'node:test'
 import type { PlanCandidate, PlanRequest, Profile } from '../plugin/src/types.ts'
-import type { Store } from '../plugin/src/store.ts'
+import type { Status, Store } from '../plugin/src/store.ts'
+import type { ChildCall } from '../plugin/src/sessions.ts'
 import assert from 'node:assert/strict'
-import { cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { cpSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { spawnSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { delimiter, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { closeStore, openStore } from '../plugin/src/store.ts'
+import { closeStore, openStore, write } from '../plugin/src/store.ts'
 import { addInstance, instanceList, openTarget, saveTarget } from '../plugin/src/targets.ts'
 import { answerGap, approvePlan, openPlan, planRevision, revisePlan, savePlan } from '../plugin/src/plans.ts'
 import {
@@ -30,9 +32,57 @@ export async function sandbox(t?: TestContext) {
 	return directory(t)
 }
 
+export function endProcessesIn(workspace: string) {
+	const pids =
+		process.platform === 'darwin'
+			? (
+					spawnSync('/usr/sbin/lsof', ['-nP', '-a', '-d', 'cwd', '-t', workspace], {
+						encoding: 'utf8',
+					}).stdout ?? ''
+				)
+					.trim()
+					.split(/\s+/)
+			: readdirSync('/proc').filter((pid) => {
+					try {
+						return realpathSync(`/proc/${pid}/cwd`) === workspace
+					} catch {
+						return false
+					}
+				})
+	for (const pid of pids.filter((pid) => /^[1-9]\d*$/.test(pid))) {
+		try {
+			process.kill(-Number(pid), 'SIGKILL')
+		} catch {}
+		try {
+			process.kill(Number(pid), 'SIGKILL')
+		} catch {}
+	}
+}
+// Setup asks for a Chrome config when a browser tool is on PATH. A browser tool beside npm or node
+// on a developer PATH would then fail every setup, so the e2e files link the other tools into one folder.
+export function pathWithoutBrowserTool() {
+	const folder = directory()
+	const linked = new Set<string>()
+	for (const dir of (process.env.PATH ?? '').split(delimiter)) {
+		let names: string[] = []
+		try {
+			names = readdirSync(dir)
+		} catch {}
+		for (const name of names) {
+			if (name === 'playwright-cli' || linked.has(name)) continue
+			linked.add(name)
+			symlinkSync(join(dir, name), join(folder, name))
+		}
+	}
+	return folder
+}
+
 export function directory(t?: TestContext) {
 	const path = mkdtempSync(join(tmpdir(), 'checkmate-test-'))
-	t?.after(() => rmSync(path, { recursive: true, force: true }))
+	t?.after(() => {
+		endProcessesIn(realpathSync(path))
+		rmSync(path, { recursive: true, force: true })
+	})
 	return path
 }
 
@@ -86,6 +136,8 @@ export function profile(overrides: Partial<Profile> = {}): Profile {
 		startup: { owner: 'factory', command: null },
 		cleanup: 'Close the run browser session. The fixture stores no records.',
 		readyForLiveExecution: true,
+		reset: { owner: 'environment', command: null, policy: { text: 'The test fixture keeps no records.' } },
+		approvals: { plan: 'required', result: 'required' },
 		...overrides,
 	}
 }
@@ -135,7 +187,13 @@ export function candidate(): PlanCandidate {
 				action: 'Complete checkout and read the confirmation.',
 				assertions: [
 					{ id: 'A1', check: 'The confirmation shows 400 PLN.', checkKind: 'agent_observation' },
-					{ id: 'A2', check: 'The order has one item.', checkKind: 'deterministic' },
+					{
+						id: 'A2',
+						check: 'The order has one item.',
+						checkKind: 'deterministic',
+						observe: 'the number of line items in the order',
+						expected: '1',
+					},
 				],
 			},
 			{
@@ -147,7 +205,15 @@ export function candidate(): PlanCandidate {
 				dependsOn: ['T1'],
 				preconditions: ['Cart with 400 PLN and 20 PLN loyalty.'],
 				action: 'Apply the promotion and read the quote.',
-				assertions: [{ id: 'A1', check: 'The response status is HTTP 200.', checkKind: 'deterministic' }],
+				assertions: [
+					{
+						id: 'A1',
+						check: 'The response status is HTTP 200.',
+						checkKind: 'deterministic',
+						observe: 'the value stated by the check',
+						expected: '200',
+					},
+				],
 			},
 			{
 				id: 'T3',
@@ -194,9 +260,20 @@ export function plan(store: Store, planId = 'checkout', value: PlanCandidate = c
 export const promotionDelta = {
 	tests: {
 		T2: {
-			assertions: {
-				A2: { check: 'totalPLN equals 240.', checkKind: 'deterministic' as const },
-			},
+			assertions: [
+				{
+					check: 'The response status is HTTP 200.',
+					checkKind: 'deterministic' as const,
+					observe: 'the HTTP status of the quote',
+					expected: '200',
+				},
+				{
+					check: 'totalPLN equals 240.',
+					checkKind: 'deterministic' as const,
+					observe: 'totalPLN in the quote',
+					expected: '240',
+				},
+			],
 		},
 	},
 }
@@ -244,6 +321,27 @@ export function begin(store: Store, runId = 'run-1', tests = ['T1', 'T2'], build
 	return reply
 }
 
+export function delegateUsageReceipt(
+	store: Store,
+	runId: string,
+	usage: Pick<ChildCall, 'observedModels' | 'costUsd' | 'costPartial'>,
+	status: Status = 'completed'
+) {
+	write(
+		store,
+		{
+			actor: 'checkmate:delegate',
+			command: 'delegate execute',
+			subject: runId,
+			input: { subject: runId, harness: 'pi' },
+		},
+		() => ({
+			reply: { status, subject: runId, reasons: [], data: { operation: null, ...usage } },
+			subjects: [`run:${runId}`],
+		})
+	)
+}
+
 export function check(
 	store: Store,
 	runId: string,
@@ -264,8 +362,8 @@ export function check(
 	})
 }
 
-export function passRun(store: Store, runId: string, build: string, tests = ['T1']) {
-	begin(store, runId, tests, build)
+export function passRun(store: Store, runId: string, build: string, tests = ['T1'], extra = {}) {
+	begin(store, runId, tests, build, extra)
 	for (const testId of tests) {
 		for (const assertionId of ['A1', 'A2']) check(store, runId, `${testId}.${assertionId}`, 'passed')
 		closeTest(store, actor, { runId, testId })
@@ -296,6 +394,25 @@ export function failT2(store: Store, runId: string) {
 		},
 	})
 	return reply
+}
+
+export function regressionPlan(store: Store) {
+	target(store)
+	const value = candidate()
+	value.tests[0].metadata = { type: 'regression' }
+	value.tests[1].dependsOn = []
+	plan(store, 'checkout', value)
+	revised(store)
+	approved(store)
+}
+
+export function defectRun(store: Store, runId: string, build: string, extra = {}) {
+	begin(store, runId, ['T1', 'T2'], build, extra)
+	for (const reference of ['T1.A1', 'T1.A2', 'T2.A1']) check(store, runId, reference, 'passed')
+	closeTest(store, actor, { runId, testId: 'T1' })
+	failT2(store, runId)
+	closeTest(store, actor, { runId, testId: 'T2' })
+	return finishRun(store, actor, { runId, completion: 'completed', cleanup: 'completed', cleanupReason: 'Closed.' })
 }
 
 export function accept(store: Store, runId: string) {
@@ -348,6 +465,10 @@ export function followHints(
 				command
 			)
 			assert.deepEqual(parseDelegate(args.slice(1)).allow, allow, command)
+			continue
+		}
+		if (args[0] === 'test') {
+			assert.deepEqual([args[1], args.includes('--allow')], [planId, true], command)
 			continue
 		}
 		const copy = directory(t)

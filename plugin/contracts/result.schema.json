@@ -91,6 +91,20 @@
 		"completion": {
 			"enum": ["completed", "interrupted", "operational_error"]
 		},
+		"completionCause": {
+			"enum": ["deadline", "host_stopped", "tool_unavailable", null]
+		},
+		"completionReason": {
+			"anyOf": [
+				{
+					"type": "string",
+					"minLength": 1
+				},
+				{
+					"type": "null"
+				}
+			]
+		},
 		"tests": {
 			"type": "array",
 			"items": {
@@ -102,6 +116,9 @@
 					},
 					"outcome": {
 						"enum": ["passed", "failed", "inconclusive", "blocked", "not_run", "error"]
+					},
+					"cause": {
+						"enum": ["deadline"]
 					},
 					"reason": {
 						"anyOf": [
@@ -182,6 +199,18 @@
 			"type": "array",
 			"items": {
 				"type": "object",
+				"if": {
+					"properties": {
+						"type": { "const": "defect" }
+					}
+				},
+				"then": {
+					"properties": {
+						"evidenceIds": { "type": "array", "minItems": 1 },
+						"testIds": { "type": "array", "minItems": 1 },
+						"assertionIds": { "type": "array", "minItems": 1 }
+					}
+				},
 				"properties": {
 					"id": {
 						"type": "string",
@@ -199,7 +228,7 @@
 							"type": "string",
 							"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
 						},
-						"minItems": 1,
+						"minItems": 0,
 						"uniqueItems": true
 					},
 					"title": {
@@ -229,7 +258,7 @@
 							"type": "string",
 							"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
 						},
-						"minItems": 1,
+						"minItems": 0,
 						"uniqueItems": true
 					},
 					"testIds": {
@@ -238,7 +267,7 @@
 							"type": "string",
 							"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
 						},
-						"minItems": 1,
+						"minItems": 0,
 						"uniqueItems": true
 					},
 					"assertionIds": {
@@ -247,7 +276,7 @@
 							"type": "string",
 							"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}\\.[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
 						},
-						"minItems": 1,
+						"minItems": 0,
 						"uniqueItems": true
 					},
 					"metadata": {

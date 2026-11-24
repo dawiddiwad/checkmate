@@ -1,0 +1,250 @@
+import type { Reply, Store } from './store.ts'
+import type { Env } from './sessions.ts'
+import type { StartInput } from './explorers.ts'
+import type { Charter } from './explorations.ts'
+import { all, completed, one } from './store.ts'
+import { Refusal, requireIdentifier, requireWellFormed, unusedId, validate } from './contracts.ts'
+import { changeOf, changedFiles, upstreamBase } from './change.ts'
+import { openPlan, planRevision, readySelection } from './plans.ts'
+import { beginRun } from './runs.ts'
+import { startExploration } from './explorers.ts'
+import { selectedHarness } from './pi.ts'
+import { workspaceEnv } from './settings.ts'
+import { setupTarget, targetRevision } from './targets.ts'
+import { delegateCommand } from './views.ts'
+import { spawnSync } from 'node:child_process'
+import { resolve } from 'node:path'
+import { requireChild } from './sessions.ts'
+
+export const testModes = ['exploratory', 'regression', 'auto'] as const
+export const storedTestsNone = 'none, testers use earlier results when available'
+export type TestInput = Omit<StartInput, 'mode' | 'scope' | 'build'> & {
+	build?: string
+	url?: string
+	reset?: string
+	data?: string
+	policy?: string
+	policyFile?: string
+	cleanup?: string
+	hookTimeout?: number
+	mode?: string
+	objective?: string
+	target?: string
+	sources?: string[]
+	instructions?: string
+	scope?: string[]
+}
+
+export function hasRequest(store: Store, planId: string) {
+	return Boolean(one(store, 'SELECT 1 FROM plan_requests WHERE plan_id = ?', planId))
+}
+
+// A plan with ready stored tests on the build is run, not explored: that is the route the person expects.
+export function autoMode(store: Store, planId: string, build?: string) {
+	const explored = one(store, 'SELECT 1 FROM explorations WHERE plan_id = ?', planId)
+	const checked = one(store, 'SELECT 1 FROM runs r JOIN results s ON s.run_id = r.run_id WHERE r.plan_id = ?', planId)
+	const revised = one(store, 'SELECT 1 FROM latest_plans WHERE plan_id = ?', planId)
+	const ready =
+		build && revised ? readySelection(store, planRevision(store, planId).plan, build).tests.length > 0 : false
+	return explored || checked || ready ? 'regression' : 'exploratory'
+}
+
+function nextRunId(store: Store) {
+	return unusedId(
+		'run-',
+		all<{ run_id: string }>(store, 'SELECT run_id FROM runs').map((row) => row.run_id)
+	)
+}
+
+function gitBuild(workspace: string) {
+	const head = spawnSync('git', ['rev-parse', '--short', 'HEAD'], { cwd: workspace, encoding: 'utf8' })
+	return head.status === 0 ? head.stdout.trim() || undefined : undefined
+}
+
+export function dateBuild(now = new Date()) {
+	return `local-${now.toISOString().slice(0, 16).replace(/[-:]/g, '').replace('T', '-')}`
+}
+
+export function defaultBuild(workspace: string) {
+	return gitBuild(workspace) ?? dateBuild()
+}
+
+function chosenTarget(store: Store, actor: string | undefined, input: TestInput, env: Env, assumed: string[]) {
+	if (input.target) return input.target
+	const targets = all<{ target_id: string }>(store, 'SELECT target_id FROM profiles GROUP BY target_id').map(
+		(row) => row.target_id
+	)
+	if (targets.length === 1) {
+		assumed.push(`target=${targets[0]} (the only target)`)
+		return targets[0]
+	}
+	requireWellFormed(
+		!targets.length,
+		`The store has ${targets.length} targets: ${targets.join(', ')}. Name one with --target.`
+	)
+	requireWellFormed(
+		input.url,
+		'The store has no target. Give the URL of the application with --url.',
+		`checkmate test ${input.planId} --url <url> --source <ticket file>`
+	)
+	const set = setupTarget(store, actor, {
+		url: input.url!,
+		instanceId: input.instance,
+		reset: input.reset,
+		data: input.data,
+		policy: input.policy,
+		policyFile: input.policyFile,
+		cleanup: input.cleanup,
+		hookTimeout: input.hookTimeout,
+		env,
+	})
+	assumed.push(...((set.data.assumed ?? []) as string[]))
+	return set.data.targetId as string
+}
+
+function openRequest(store: Store, actor: string | undefined, input: TestInput, env: Env, assumed: string[]) {
+	const sources = input.sources ?? []
+	requireWellFormed(
+		input.objective || sources.length,
+		`Unknown plan: ${input.planId}. Give the ticket or the criteria file with --source.`,
+		`checkmate test ${input.planId} --source <ticket file>`
+	)
+	const targetId = chosenTarget(store, actor, input, env, assumed)
+	const objective = input.objective ?? `Test the change that ${sources.join(', ')} describes.`
+	if (!input.objective) assumed.push(`objective=${objective}`)
+	const revision = targetRevision(store, targetId).revision
+	const opened = openPlan(store, actor, {
+		planId: input.planId,
+		target: `${targetId}@${revision}`,
+		request: {
+			objective,
+			context: { sources, ...(input.instructions ? { instructions: input.instructions } : {}) },
+		},
+	})
+	if (opened.status !== 'completed') throw new Refusal('malformed', opened.reasons.join(' '))
+}
+
+function checkRun(store: Store, actor: string | undefined, input: TestInput & { build: string }) {
+	const latest = one<{ revision: number }>(store, 'SELECT revision FROM latest_plans WHERE plan_id = ?', input.planId)
+	if (!latest) return { run: null, skipped: [], storedTests: storedTestsNone }
+	const runId = nextRunId(store)
+	const begun = beginRun(store, actor, {
+		runId,
+		reference: `${input.planId}@${latest.revision}`,
+		build: input.build,
+		instance: input.instance,
+		partial: 'ready_only',
+	})
+	if (begun.status !== 'completed')
+		return { run: null, skipped: begun.reasons.filter((reason) => !/^Refused/.test(reason)) }
+	return {
+		run: { runId, tests: begun.data.tests as string[] },
+		skipped: [],
+		warnings: begun.data.warnings as string[],
+	}
+}
+
+export function runTest(
+	store: Store,
+	actor: string | undefined,
+	given: TestInput,
+	env: Env,
+	preferSavedModel = false
+): Reply {
+	env = workspaceEnv(store, env)
+	const assumed: string[] = []
+	const build = given.build ?? defaultBuild(store.workspace)
+	if (!given.build) assumed.push(`build=${build}`)
+	const input = { ...given, build }
+	// A plan name in another letter case is the same plan: the record keeps the name it was opened with.
+	const known = all<{ plan_id: string }>(store, 'SELECT DISTINCT plan_id FROM latest_plans').find(
+		(row) => row.plan_id.toLowerCase() === input.planId.toLowerCase()
+	)
+	if (known && known.plan_id !== input.planId) {
+		assumed.push(`plan=${known.plan_id} (the name ${input.planId} matches it, letter case aside)`)
+		input.planId = known.plan_id
+	}
+	const newRequest = !hasRequest(store, input.planId)
+	if (newRequest) {
+		requireIdentifier(input.planId, 'plan ID')
+		const sources = input.sources ?? []
+		requireWellFormed(
+			input.objective || sources.length,
+			`Unknown plan: ${input.planId}. Give the ticket or the criteria file with --source.`,
+			`checkmate test ${input.planId} --source <ticket file>`
+		)
+		requireWellFormed(
+			sources.length,
+			'A plan request needs requirements or context sources',
+			`Give --source <ticket file>.`
+		)
+		validate('plan-request', {
+			objective: input.objective ?? `Test the change that ${sources.join(', ')} describes.`,
+			context: { sources, ...(input.instructions ? { instructions: input.instructions } : {}) },
+		})
+	}
+	const base = input.since ? undefined : upstreamBase(resolve(store.workspace, input.repo ?? '.'))
+	if (!input.since)
+		assumed.push(
+			base
+				? `since=${base} (the default branch of origin, behind the checked-out commit)`
+				: 'since=none (no diff is given: no --since, and no default branch of origin behind the checked-out commit)'
+		)
+	if (newRequest) {
+		const change = changeOf(store.workspace, { ...input, since: input.since ?? base })
+		if (change && !input.scope) changedFiles(store.workspace, change)
+		if (!input.session) requireChild(env, selectedHarness(env))
+		openRequest(store, actor, input, env, assumed)
+	}
+	const mode = input.mode && input.mode !== 'auto' ? input.mode : autoMode(store, input.planId, input.build)
+	const check: ReturnType<typeof checkRun> =
+		mode === 'regression' ? checkRun(store, actor, input) : { run: null, skipped: [] }
+	const chosenBy = input.mode && input.mode !== 'auto' ? 'flag' : 'auto'
+	// A test that routes to a stored run starts only the run. A separate exploration needs --mode exploratory.
+	if (check.run && chosenBy === 'auto') {
+		const execute = `Execute the stored tests of ${check.run.runId}: ${given.session ? `/checkmate:execute ${check.run.runId}, or ` : ''}${delegateCommand(selectedHarness(env), 'execute', check.run.runId)}`
+		return completed(input.planId, {
+			planId: input.planId,
+			mode,
+			chosenBy,
+			run: check.run,
+			checkSkipped: check.skipped,
+			...((check as { storedTests?: object }).storedTests
+				? { storedTests: (check as { storedTests?: object }).storedTests }
+				: {}),
+			...(check.warnings?.length ? { warnings: check.warnings } : {}),
+			assumed,
+			next: [execute],
+		})
+	}
+	const explored = startExploration(
+		store,
+		actor,
+		{ ...input, since: input.since ?? base, mode },
+		env,
+		preferSavedModel
+	)
+	const charter = explored.data.charter as Charter
+	return {
+		...explored,
+		data: {
+			...explored.data,
+			mode,
+			chosenBy,
+			scope: charter.scope,
+			run: check.run,
+			checkSkipped: check.skipped,
+			...(check.storedTests ? { storedTests: check.storedTests } : {}),
+			...(check.warnings?.length ? { warnings: check.warnings } : {}),
+			assumed,
+			next: [
+				...(check.run
+					? [
+							`Execute the stored tests of ${check.run.runId}: ${given.session ? `/checkmate:execute ${check.run.runId}, or ` : ''}${delegateCommand(selectedHarness(env), 'execute', check.run.runId)}`,
+						]
+					: []),
+				...(explored.data.next as string[]),
+			],
+		},
+	}
+}

@@ -4,6 +4,7 @@ import { createServer } from 'node:http'
 export async function fixture() {
 	let fixed = false
 	let actions = 0
+	let writes = 0
 	const server = createServer(async (request, response) => {
 		const url = new URL(request.url ?? '/', 'http://fixture')
 		response.setHeader('Content-Type', 'application/json')
@@ -12,11 +13,12 @@ export async function fixture() {
 			actions++
 			const promotion = url.searchParams.get('promotion') === 'true'
 			const loyalty = url.searchParams.get('loyalty') === 'true'
-			const totalPLN = promotion ? (loyalty && !fixed ? 220 : 240) : 400
+			const totalPLN = promotion ? (loyalty && !fixed ? 220 : 240) : loyalty ? 380 : 400
 			return response.end(JSON.stringify({ totalPLN }))
 		}
 		if (url.pathname === '/order' && request.method === 'POST') {
 			actions++
+			writes++
 			return response.end(JSON.stringify({ totalPLN: 400, status: 'confirmed' }))
 		}
 		if (url.pathname === '/') {
@@ -36,6 +38,9 @@ export async function fixture() {
 		},
 		actions() {
 			return actions
+		},
+		writes() {
+			return writes
 		},
 		async close() {
 			server.closeAllConnections()

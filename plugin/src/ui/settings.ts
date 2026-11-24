@@ -3,14 +3,24 @@ import type { Profile } from '../types.ts'
 import type { Html } from './html.ts'
 import type { Context, Page } from './layout.ts'
 import type { EntryPoint, InstanceRecord } from '../targets.ts'
+import { Refusal } from '../contracts.ts'
+import { requestEffortText, requestModelText, testerEffortText, testerModelText, workspaceUiEnv } from '../settings.ts'
+import { testLevels } from '../levels.ts'
+import { liveUi, requireChild } from '../sessions.ts'
+import { selectedHarness } from '../pi.ts'
+import type { Env } from '../sessions.ts'
 import { instanceList, targetHistory, targetList, targetRequest, targetRevision } from '../targets.ts'
 import { html, join, pill, plural, short, time } from './html.ts'
-import { banner, heading } from './layout.ts'
+import { banner, emptyNotice, heading } from './layout.ts'
 
-export type InstanceForm = { values: Record<string, string>; error: string | null }
+export type InstanceForm = { values: Record<string, string>; error: string | null; field?: string | null }
+export type RulesForm = { value: string; error: string }
 export type RetireState = { instanceId: string; error: string } | null
 
-const settingsPages = [{ path: '/settings/targets', label: 'Targets' }]
+const settingsPages = [
+	{ path: '/settings/targets', label: 'Targets' },
+	{ path: '/settings/harness', label: 'Coding harness' },
+]
 
 function settingsNav(current: string) {
 	return html`<nav class="settings-nav" aria-label="Settings pages">
@@ -28,11 +38,19 @@ function settingsNav(current: string) {
 }
 
 function settingsPage(current: string, title: string, subjects: string[], body: Html, status?: number): Page {
+	const target = title !== 'Targets' && title !== 'Coding harness'
 	return {
 		title,
 		section: 'settings',
 		subjects,
 		status,
+		crumbs: [
+			['Settings', '/settings/targets'],
+			...(target
+				? [['Targets', '/settings/targets'] as [string, string], [title, null] as [string, null]]
+				: [[title, null] as [string, null]]),
+		],
+		back: target ? '/settings/targets' : '/',
 		body: html`${settingsNav(current)} ${body}`,
 	}
 }
@@ -84,10 +102,7 @@ export function targetsPage(store: Store): Page {
 								</tbody>
 							</table>
 						</div>`
-					: html`<div class="empty">
-							<p class="empty-title">No target yet.</p>
-							<p>Record one with <code>checkmate target open</code>.</p>
-						</div>`
+					: emptyNotice('No target yet.', html`Record one with <code>checkmate target open</code>.`)
 			}
 		</div>`
 	return settingsPage('/settings/targets', 'Targets', ['*'], body)
@@ -118,7 +133,7 @@ function entryPointsTable(entryPoints: EntryPoint[]) {
 }
 
 function toolsTable(profile: Profile) {
-	if (!profile.tools.length) return html`<p class="empty-line">No tools.</p>`
+	if (!profile.tools.length) return html`<p class="none">No tools.</p>`
 	return html`<div class="scroll">
 		<table>
 			<thead>
@@ -170,23 +185,44 @@ function profileFacts(profile: Profile) {
 		<div>
 			<dt>Startup</dt>
 			<dd>
-				${profile.startup.owner}${profile.startup.command ? html` · <code>${profile.startup.command.join(' ')}</code>` : ''}
+				${profile.startup.owner}${profile.startup.command ? html` · <code>${profile.startup.command.join(' && ')}</code>` : ''}
 			</dd>
 		</div>
 		<div>
 			<dt>Cleanup</dt>
 			<dd>${profile.cleanup}</dd>
 		</div>
+		${
+			profile.reset
+				? html`<div>
+						<dt>Reset</dt>
+						<dd>
+							${profile.reset.owner}${profile.reset.command ? html` · <code>${profile.reset.command.join(' && ')}</code>` : ''}
+						</dd>
+					</div>`
+				: ''
+		}
 		<div>
-			<dt>Ready</dt>
-			<dd>${profile.readyForLiveExecution ? pill('ready') : pill('blocked', 'not ready')}</dd>
+			<dt>Profile readiness</dt>
+			<dd>
+				${
+					profile.readyForLiveExecution
+						? pill('ready')
+						: html`${pill('blocked', 'not ready')}
+								<p class="help">
+									Check the active instances below. Then run
+									<code>checkmate delegate setup ${profile.targetId}</code>
+									to recheck the prerequisites and save a profile revision.
+								</p>`
+				}
+			</dd>
 		</div>
 	</dl>`
 }
 
 function historyList(store: Store, targetId: string, shown: number) {
 	const revisions = targetHistory(store, targetId).reverse()
-	if (!revisions.length) return html`<p class="empty-line">No profile yet.</p>`
+	if (!revisions.length) return html`<p class="none">No profile yet.</p>`
 	return html`<ol class="history">
 		${revisions.map(
 			(item) =>
@@ -254,7 +290,7 @@ function retireControl(context: Context, targetId: string, instance: InstanceRec
 }
 
 function instancesTable(context: Context, targetId: string, instances: InstanceRecord[], retire: RetireState) {
-	if (!instances.length) return html`<p class="empty-line">No instance yet. Add one to start runs.</p>`
+	if (!instances.length) return html`<p class="none">No instance yet. Add one to start runs.</p>`
 	return html`<div class="scroll">
 		<table>
 			<thead>
@@ -298,7 +334,13 @@ function addForm(context: Context, targetId: string, entryPoints: EntryPoint[], 
 		<p class="help">
 			An instance is one place where the target runs. Adding one needs no new revision and no approval.
 		</p>
-		<div data-stale-slot>${form?.error ? html`<p class="form-error" role="alert">${form.error}</p>` : ''}</div>
+		<div data-stale-slot>
+			${
+				form?.error
+					? html`<p class="form-error" role="alert" data-field="${form.field ?? ''}">${form.error}</p>`
+					: ''
+			}
+		</div>
 		<form method="post" action="/settings/targets/${targetId}/instances" class="decision-form">
 			<input type="hidden" name="csrf" value="${context.csrf}" />
 			<div class="field-group">
@@ -412,7 +454,7 @@ export function targetPage(
 			</div>
 			<aside class="side" aria-label="Add instance">
 				${addForm(context, targetId, request.entryPoints, form)}
-				<p class="back"><a href="/settings/targets">← All targets</a></p>
+				<p class="back"><a href="/settings/targets">All targets</a></p>
 			</aside>
 		</div>`
 	return settingsPage(
@@ -437,4 +479,161 @@ export function instanceFromForm(entryPoints: EntryPoint[], form: URLSearchParam
 		...(environment ? { environment } : {}),
 		references,
 	}
+}
+
+function harnessProgram(env: Env) {
+	try {
+		const program = requireChild(env, selectedHarness(env))
+		return html`<code>${program}</code>`
+	} catch (error) {
+		if (!(error instanceof Refusal)) throw error
+		return html`<span class="form-error" role="status">${error.message} ${error.hint ?? ''}</span>`
+	}
+}
+
+export function harnessPage(
+	store: Store,
+	context: Context,
+	env: Env,
+	form: RulesForm | null = null,
+	model: RulesForm | null = null,
+	testerModel: RulesForm | null = null
+): Page {
+	const effectiveEnv = workspaceUiEnv(store, env)
+	const harness = selectedHarness(effectiveEnv)
+	const pi = harness === 'pi'
+	const testerValue = testerModel?.value ?? testerModelText(store, harness)
+	const requestValue = model?.value ?? requestModelText(store, harness)
+	const levelModels = [...new Set(Object.values(testLevels).map((level) => level.model))]
+	const testerDefault = !pi && levelModels.length === 1 ? levelModels[0] : ''
+	const body = html`${heading('Coding harness', null)}
+		<div class="panel">
+			<form method="post" action="/settings/harness/select" class="decision-form">
+				<input type="hidden" name="csrf" value="${context.csrf}" />
+				<div class="field-group">
+					<label class="lab" for="coding-harness">Program for this workspace</label>
+					<select id="coding-harness" name="harness">
+						<option value="claude" ${harness === 'claude' ? html`selected` : ''}>Claude Code</option>
+						<option value="pi" ${harness === 'pi' ? html`selected` : ''}>Pi</option>
+					</select>
+					<p class="help">Applies to new tests and chats in this workspace.</p>
+				</div>
+				<div class="btns"><button class="btn primary">Save the program</button></div>
+			</form>
+			<p id="harness-program">Current executable · ${harnessProgram(effectiveEnv)}</p>
+		</div>
+		<section class="panel" aria-labelledby="claude-rules">
+			<h2 class="lab" id="claude-rules">Tool rules of testers</h2>
+			<p class="help" data-key="permission-bash">
+				${pi ? 'With Bash, testers can run commands. Without it, they cannot use Bash.' : 'With Bash, testers run commands without asking. Without it, each command asks you here. A tester waits up to 10 minutes for an answer.'}
+			</p>
+			<p class="help" data-region="permission-hook">
+				${
+					liveUi(context.workspace)
+						? 'Testers that start now can ask you in this UI when a tool needs a permission.'
+						: 'Testers that start now cannot ask you. The UI of this folder does not run. A tool that needs a permission is denied.'
+				}
+			</p>
+			<form method="post" action="/settings/harness/rules" class="decision-form">
+				<input type="hidden" name="csrf" value="${context.csrf}" />
+				<input type="hidden" name="harness" value="${harness}" />
+				<div class="field-group">
+					<label class="lab" for="tester-rules">Default tools for new tests</label>
+					<input
+						id="tester-rules"
+						name="rules"
+						maxlength="400"
+						autocomplete="off"
+						value="${form?.value ?? context.testerRules}"
+						aria-describedby="tester-rules-help"
+						${form ? html`autofocus` : ''}
+					/>
+					<p class="help" id="tester-rules-help">
+						${pi ? 'Enter tool names separated by spaces, for example read bash.' : 'Enter tool rules separated by spaces, for example Read Bash.'}
+					</p>
+					${form ? html`<p class="form-error" role="alert" data-field="rules">${form.error}</p>` : ''}
+				</div>
+				<div class="btns"><button class="btn primary">Save the rules</button></div>
+			</form>
+		</section>
+		<section
+			class="panel"
+			aria-labelledby="model-settings"
+			data-model-catalog="${harness}"
+			data-tester-default="${testerDefault}"
+		>
+			<h2 class="lab" id="model-settings">Models</h2>
+			<p class="help">Choose a model for each kind of work. Choose a default or a model from the list.</p>
+			<p class="help" role="status" data-model-status>Loading models from ${pi ? 'Pi' : 'Claude Code'}…</p>
+			<button class="btn" type="button" data-model-refresh>Refresh models</button>
+			<div class="field-group">
+				<label class="lab" for="model-filter">Filter models</label>
+				<input id="model-filter" type="search" autocomplete="off" placeholder="Search available models" />
+			</div>
+			<form method="post" action="/settings/harness/models" class="decision-form">
+				<input type="hidden" name="csrf" value="${context.csrf}" />
+				<input type="hidden" name="harness" value="${harness}" />
+				<div class="field-group">
+					<label class="lab" for="tester-model">Model for testers</label>
+					<select id="tester-model" name="testerModel" aria-describedby="tester-model-help" data-model-select>
+						<option value="">${pi ? 'Pi default' : 'Test level default'}</option>
+						${testerValue ? html`<option value="${testerValue}" selected>${testerValue}</option>` : ''}
+					</select>
+					<p class="help" id="tester-model-help">
+						${pi ? 'The Pi default is the model configured in Pi.' : 'The test level selects its default model.'}
+					</p>
+					<p class="help" data-model-unavailable="tester-model" hidden></p>
+					<div hidden>
+						<label class="lab" for="tester-effort">Reasoning effort for testers</label>
+						<select
+							id="tester-effort"
+							name="testerEffort"
+							data-effort-for="tester-model"
+							data-saved-effort="${testerEffortText(store, harness)}"
+							disabled
+						></select>
+					</div>
+					${testerModel?.error ? html`<p class="form-error" role="alert" data-field="model">${testerModel.error}</p>` : ''}
+				</div>
+
+				<div class="field-group">
+					<label class="lab" for="request-model">Model for chats</label>
+					<select
+						id="request-model"
+						name="requestModel"
+						aria-describedby="request-model-help"
+						data-model-select
+					>
+						<option value="">${pi ? 'Pi default' : 'Claude Code default'}</option>
+						${requestValue ? html`<option value="${requestValue}" selected>${requestValue}</option>` : ''}
+					</select>
+					<p class="help" id="request-model-help">
+						The default is the model configured in ${pi ? 'Pi' : 'Claude Code'}.
+					</p>
+					<p class="help" data-model-unavailable="request-model" hidden></p>
+					<div hidden>
+						<label class="lab" for="request-effort">Reasoning effort for chats</label>
+						<select
+							id="request-effort"
+							name="requestEffort"
+							data-effort-for="request-model"
+							data-saved-effort="${requestEffortText(store, harness)}"
+							disabled
+						></select>
+					</div>
+					${model?.error ? html`<p class="form-error" role="alert" data-field="model">${model.error}</p>` : ''}
+				</div>
+				<div class="btns"><button class="btn primary">Save models</button></div>
+			</form>
+		</section>
+		<section class="panel" aria-labelledby="chat-settings">
+			<h2 class="lab" id="chat-settings">Chats</h2>
+
+			<p class="help">
+				New chats use ${pi ? 'Pi' : 'Claude Code'} and your chat model by default. Change the harness, model, or
+				effort for the next message in the chat.
+			</p>
+			<div class="btns"><a class="btn" href="/chats">Open Chats</a></div>
+		</section>`
+	return settingsPage('/settings/harness', 'Coding harness', ['*'], body)
 }

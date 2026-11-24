@@ -1,18 +1,31 @@
+import type { Harness } from '../pi.ts'
 import type { Html } from './html.ts'
-import { html } from './html.ts'
+import { glyph, html } from './html.ts'
+import { viewer } from './evidence.ts'
 
 export type Theme = 'system' | 'light' | 'dark'
-export type Section = 'inbox' | 'plans' | 'runs' | 'log' | 'settings' | null
+export type Section = 'home' | 'activity' | 'runs' | 'log' | 'settings' | 'chats' | null
 
 export type Context = {
+	harness: Harness
 	path: string
 	csrf: string
 	actor: string | null
 	theme: Theme
 	toast: string | null
-	inboxCount: number
+	queueCount: number
+	permissions: number
+	requests: {
+		running: string | null
+		runningChat?: string | null
+		unread: number
+		firstUnread: string | null
+		firstUnreadChat?: string | null
+	}
+	running: number
 	cursor: number
 	workspace: string
+	testerRules: string
 }
 
 export type Page = {
@@ -21,137 +34,207 @@ export type Page = {
 	subjects: string[]
 	body: Html
 	status?: number
+	crumbs?: Array<[string, string | null]>
+	nav?: Html
+	back?: string | null
+	address?: string
+	viewer?: boolean
+	drawer?: boolean
 }
 
-const nextTheme: Record<Theme, Theme> = { system: 'light', light: 'dark', dark: 'system' }
-const themeIcons = html`<svg class="ti ti-system" viewBox="0 0 16 16" aria-hidden="true">
-		<circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-width="1.5" />
-		<path d="M8 2a6 6 0 0 1 0 12z" fill="currentColor" />
-	</svg>
-	<svg class="ti ti-light" viewBox="0 0 16 16" aria-hidden="true">
-		<circle cx="8" cy="8" r="3" fill="currentColor" />
-		<path
-			d="M8 1v2M8 13v2M1 8h2M13 8h2M3 3l1.4 1.4M11.6 11.6 13 13M3 13l1.4-1.4M11.6 4.4 13 3"
-			stroke="currentColor"
-			stroke-width="1.5"
-			stroke-linecap="round"
-		/>
-	</svg>
-	<svg class="ti ti-dark" viewBox="0 0 16 16" aria-hidden="true">
-		<path d="M13.5 9.5A6 6 0 0 1 6.5 2.5a6 6 0 1 0 7 7z" fill="currentColor" />
-	</svg>`
-
-const gear = html`<svg class="gear" viewBox="0 0 16 16" aria-hidden="true">
-	<path
-		d="M5.86 3.2 6.21 1.34h3.58l.35 1.86.95.55 1.79-.63 1.78 3.09-1.44 1.24v1.1l1.44 1.24-1.78 3.09-1.79-.63-.95.55-.35 1.86H6.21l-.35-1.86-.95-.55-1.79.63-1.78-3.09 1.44-1.24v-1.1L1.34 6.21l1.78-3.09 1.79.63z"
-		fill="none"
-		stroke="currentColor"
-		stroke-width="1.5"
-		stroke-linejoin="round"
-	/>
-	<circle cx="8" cy="8" r="1.75" fill="none" stroke="currentColor" stroke-width="1.5" />
+const themeIcon = html`<svg viewBox="0 0 16 16" aria-hidden="true">
+	<circle cx="8" cy="8" r="6.5" fill="none" stroke="currentColor" stroke-width="1.5" />
+	<path d="M8 1.5a6.5 6.5 0 0 1 0 13z" fill="currentColor" />
 </svg>`
-
-function settingsLink(page: Page) {
-	const current = page.section === 'settings' ? html` aria-current="page"` : ''
-	return html`<a class="icon-btn" href="/settings" title="Settings" aria-label="Settings" ${current}>${gear}</a>`
-}
 
 export function mark() {
 	return html`<span class="mark" aria-hidden="true"><i></i><i></i><i class="on"></i><i></i></span>`
 }
 
-function navLink(context: Context, page: Page, section: Section, href: string, label: string, extra: Html | '' = '') {
-	const current = page.section === section ? html` aria-current="page"` : ''
-	return html`<li><a href="${href}" ${current}>${label}${extra}</a></li>`
-}
-
 function themeForm(context: Context) {
-	const next = nextTheme[context.theme]
+	const next = context.theme === 'dark' ? 'light' : 'dark'
 	return html`<form method="post" action="/theme" class="theme-form" data-theme-form>
 		<input type="hidden" name="csrf" value="${context.csrf}" />
 		<input type="hidden" name="back" value="${context.path}" />
 		<button
-			class="icon-btn"
+			class="sp-btn icon-btn"
 			name="theme"
 			value="${next}"
 			data-current="${context.theme}"
-			title="Theme: ${context.theme}. Switch to ${next}."
-			aria-label="Theme: ${context.theme}. Switch to ${next}."
+			title="Switch light and dark"
+			aria-label="Switch light and dark"
 		>
-			${themeIcons}
+			${themeIcon}
 		</button>
 	</form>`
 }
 
-function header(context: Context, page: Page) {
-	const count = html`<b class="count" data-region="nav-count">${context.inboxCount || ''}</b>`
+function header(context: Context) {
+	const back = encodeURIComponent(context.path)
 	const actor = context.actor
-		? html`<a class="actor" href="/actor?back=${encodeURIComponent(context.path)}" title="Change your name"
-				>actor: ${context.actor}</a
+		? html`<a class="actor" href="/actor?back=${back}" title="${context.actor}. Change your name"
+				>${context.actor}</a
 			>`
-		: html`<a class="actor" href="/actor?back=${encodeURIComponent(context.path)}">Set your name</a>`
-	return html`<header class="bar">
-		<div class="bar-in">
-			<a class="brand" href="/">${mark()}<span>checkmate</span></a>
-			<nav aria-label="Main">
-				<ul class="nav">
-					${navLink(context, page, 'inbox', '/', 'Inbox', count)}
-					${navLink(context, page, 'plans', '/plans', 'Plans')}
-					${navLink(context, page, 'runs', '/runs', 'Runs')} ${navLink(context, page, 'log', '/log', 'Log')}
-				</ul>
-			</nav>
+		: html`<a class="actor att" href="/actor?back=${back}">Set your name</a>`
+	return html`<header class="top">
+		<div class="top-in">
+			<a class="brand" href="/" aria-label="Checkmate, home">${mark()}<span>Checkmate</span></a>
+			<span class="top-fill"></span>
 			<div class="who">
-				<span class="live" data-live hidden>○ Connecting…</span>
+				<span class="live" data-live hidden>Connecting</span>
 				${actor} ${themeForm(context)}
-				<button
-					class="icon-btn"
-					type="button"
-					data-shortcuts-open
-					hidden
-					aria-label="Keyboard shortcuts"
-					title="Keyboard shortcuts (?)"
-				>
-					?
-				</button>
-				${settingsLink(page)}
 			</div>
 		</div>
 	</header>`
 }
 
-const shortcuts = html`<aside class="shortcuts" data-shortcuts hidden aria-labelledby="shortcuts-title">
-	<div class="shortcuts-head">
-		<h2 id="shortcuts-title">Keyboard shortcuts</h2>
-		<button class="icon-btn" type="button" data-shortcuts-close aria-label="Close shortcuts">×</button>
-	</div>
-	<dl>
-		<dt><kbd>/</kbd></dt>
-		<dd>Search or filter</dd>
-		<dt><kbd>j</kbd> <kbd>k</kbd></dt>
-		<dd>Next or previous item</dd>
-		<dt><kbd>Enter</kbd></dt>
-		<dd>Open the item</dd>
-		<dt><kbd>g</kbd> <kbd>i</kbd></dt>
-		<dd>Go to the inbox</dd>
-		<dt><kbd>Esc</kbd></dt>
-		<dd>Close the viewer or this panel</dd>
-		<dt><kbd>?</kbd></dt>
-		<dd>Show these shortcuts</dd>
-	</dl>
-</aside>`
+function statusLink(page: Page, section: Section, href: string, label: string) {
+	const current = page.section === section ? html` aria-current="page"` : ''
+	return html`<a class="sb-btn" href="${href}" ${current}>${label}</a>`
+}
 
-const viewer = html`<div class="viewer" data-viewer hidden role="dialog" aria-modal="true" aria-label="Evidence viewer">
-	<div class="viewer-bar">
-		<span class="viewer-name" data-viewer-name></span>
-		<a class="btn" data-viewer-open href="#" target="_blank" rel="noopener">Open original</a>
-		<button class="btn" type="button" data-viewer-close>Close <kbd>Esc</kbd></button>
-	</div>
-	<div class="viewer-body"><img data-viewer-image alt="" /></div>
-</div>`
+function statusBar(context: Context, page: Page) {
+	const path = page.crumbs?.length ? page.crumbs : [[page.title, null] as [string, null]]
+	const waiting = context.queueCount
+	return html`<footer class="statusbar" aria-label="Status bar">
+		<nav class="sb-where" aria-label="Where you are">
+			<ol>
+				${path.map(([label, href]) =>
+					href ? html`<li><a href="${href}">${label}</a></li>` : html`<li aria-current="page">${label}</li>`
+				)}
+			</ol>
+		</nav>
+		<span class="sb-links">
+			<a
+				class="sb-btn"
+				href="${context.requests.runningChat ? `/chats/${context.requests.runningChat}` : '/chats'}"
+				title="The chat that is active now"
+				data-region="request-link"
+				${context.requests.running ? '' : html`hidden`}
+				>${context.requests.running ? html`<span>Chat<span class="sb-long sb-running"> · working</span></span>` : ''}</a
+			>
+			<a
+				class="sb-btn att"
+				href="/permissions"
+				title="Permission requests of testers that wait for you"
+				data-region="permissions-link"
+				${context.permissions ? '' : html`hidden`}
+				>${context.permissions} ${context.permissions === 1 ? 'permission' : 'permissions'}</a
+			>
+			<a
+				class="sb-btn att"
+				href="${
+					context.requests.unread === 1 && context.requests.firstUnreadChat
+						? `/chats/${context.requests.firstUnreadChat}`
+						: '/chats'
+				}"
+				title="Unread updates in your chats"
+				aria-label="${context.requests.unread} unread chat updates"
+				data-region="replies-link"
+				${context.requests.unread ? '' : html`hidden`}
+				>${context.requests.unread ? html`<span>${context.requests.unread}<span class="sb-long"> unread</span></span>` : ''}</a
+			>
+			<a
+				class="sb-btn att"
+				href="/"
+				title="Items that wait for you in all plans"
+				data-region="nav-count"
+				${waiting ? '' : html`hidden`}
+				><span
+					>${waiting}<span class="sb-long"> ${waiting === 1 ? 'needs' : 'need'} you</span
+					><span class="sb-all"> · all plans</span></span
+				></a
+			>
+			<button class="sb-btn" type="button" data-find-open hidden>Find</button>
+			<button class="sb-btn" type="button" data-keys-open hidden>Keys</button>
+			<span class="sb-btn-set" data-wide
+				><a
+					class="sb-btn"
+					href="/activity"
+					data-region="activity-link"
+					${page.section === 'activity' ? html`aria-current="page"` : ''}
+					>${html`<span>Activity${context.running ? html`<span class="sb-long"> · ${context.running} running</span>` : ''}</span>`}</a
+				>
+				${statusLink(page, 'chats', '/chats', 'Chats')} ${statusLink(page, 'runs', '/runs', 'Runs')}
+				${statusLink(page, 'log', '/log', 'Log')} ${statusLink(page, 'settings', '/settings', 'Settings')}</span
+			>
+			<details class="sb-more menu" data-menu>
+				<summary class="sb-btn">More</summary>
+				<div class="menu-list">
+					<button type="button" data-find-open>Find</button
+					><a href="/activity" data-region="activity-menu"
+						>Activity${context.running ? ` · ${context.running} running` : ''}</a
+					><a href="/chats">Chats</a><a href="/runs">Runs</a><a href="/log">Log</a
+					><a href="/settings">Settings</a>
+				</div>
+			</details>
+		</span>
+		<span class="sb-say" aria-live="polite" data-say></span>
+		<span class="sb-keys" data-hints></span>
+	</footer>`
+}
+
+const dialogs = (harness: Harness) =>
+	html`<dialog class="sp-keys" data-keys aria-labelledby="keys-title">
+			<div class="sp-dh">
+				<h2 id="keys-title" class="sp-path">Keys</h2>
+				<button class="sp-btn" type="button" data-keys-close><kbd>Esc</kbd><span>Close</span></button>
+			</div>
+			<div data-keys-table></div>
+		</dialog>
+		<dialog class="sp-find" data-find data-harness="${harness}" aria-label="Find or ask">
+			<input
+				type="search"
+				data-find-input
+				aria-label="Find a plan, a defect, or a question. Or ask Checkmate."
+				autocomplete="off"
+			/>
+			<ul role="listbox" aria-label="Results" data-find-results></ul>
+			<p class="sp-find-none" data-find-none hidden>Nothing matches.</p>
+			<p class="sp-find-none" data-find-more hidden></p>
+			<p class="sp-find-none" data-find-asking role="status" hidden></p>
+			<p class="sp-find-none" data-find-error role="alert" hidden></p>
+			<div class="sp-foot">
+				<span><kbd>${glyph('↑')}</kbd><kbd>${glyph('↓')}</kbd>Choose</span
+				><span><kbd>Enter</kbd><span data-find-enter>Go</span></span
+				><span><kbd>Esc</kbd>Close</span>
+			</div>
+			<p class="sp-find-note" data-find-note>
+				Ask Checkmate starts ${harness === 'pi' ? 'Pi' : 'Claude Code'} on this computer. It can read this
+				workspace and change records.
+			</p>
+		</dialog>
+		<dialog class="sp-confirm" data-confirm aria-labelledby="confirm-title">
+			<div class="sp-dh"><h2 id="confirm-title" class="sp-path" data-confirm-title></h2></div>
+			<form method="dialog" class="sp-form sp-confirm-b" data-confirm-form>
+				<p class="sp-sub" data-confirm-text></p>
+				<div data-confirm-field hidden>
+					<label for="confirm-input" data-confirm-label></label>
+					<input id="confirm-input" autocomplete="off" />
+				</div>
+				<div class="btns">
+					<button class="sp-btn pri" value="yes" data-confirm-yes>
+						<kbd>Enter</kbd><span>Confirm</span>
+					</button>
+					<button class="sp-btn" value="no" data-confirm-no><kbd>Esc</kbd><span>Cancel</span></button>
+				</div>
+			</form>
+		</dialog>`
+
+export function parentOf(page: Page) {
+	if (page.back !== undefined) return page.back
+	const links = page.crumbs?.filter(([, href]) => href) ?? []
+	return links.at(-1)?.[1] ?? null
+}
+
+function cut(text: string) {
+	return text.length > 120 ? `${text.slice(0, 119)}…` : text
+}
 
 export function layout(context: Context, page: Page) {
 	const theme = context.theme === 'system' ? '' : html` data-theme="${context.theme}"`
+	const back = parentOf(page)
+	const main = html`<main id="main" class="sp-main" tabindex="-1">${page.body}</main>`
 	return html`<!doctype html>
 		<html lang="en" ${theme}>
 			<head>
@@ -160,31 +243,60 @@ export function layout(context: Context, page: Page) {
 				<meta name="color-scheme" content="light dark" />
 				<title>${page.title} · Checkmate</title>
 				<link rel="icon" href="/assets/favicon.svg" type="image/svg+xml" />
-				<link rel="preload" href="/assets/fonts/inter.woff2" as="font" type="font/woff2" crossorigin />
+				<link
+					rel="preload"
+					href="/assets/fonts/ibm-plex-mono-500.woff2"
+					as="font"
+					type="font/woff2"
+					crossorigin
+				/>
 				<link rel="stylesheet" href="/assets/style.css" />
 				<script src="/assets/client.js" defer></script>
 			</head>
-			<body data-subjects="${page.subjects.join(',')}" data-cursor="${context.cursor}">
+			<body
+				data-subjects="${page.subjects.join(',')}"
+				data-cursor="${context.cursor}"
+				${back ? html`data-back="${back}"` : ''}
+				${page.address ? html`data-address="${page.address}"` : ''}
+			>
 				<a class="skip" href="#main">Skip to content</a>
-				${header(context, page)}
-				<main id="main" tabindex="-1">${page.body}</main>
-				<footer class="foot">
-					<span>Workspace <code>${context.workspace}</code></span>
-					<span>Press <kbd>?</kbd> for keyboard shortcuts</span>
-				</footer>
-				${context.toast ? html`<div class="toast" role="status" data-toast>${context.toast}</div>` : ''}
+				${header(context)}
+				<div class="app${page.drawer ? ' with-drawer' : ''}">
+					${page.nav ? html`<div class="with-nav">${page.nav}${main}</div>` : main}
+				</div>
+				${statusBar(context, page)}
+				<div class="sp-saystrip" role="status" data-say-strip hidden></div>
+				${context.toast ? html`<div class="toast" role="status" data-toast title="${context.toast}">${cut(context.toast)}</div>` : ''}
 				<div class="sr-only" aria-live="polite" data-announcer></div>
-				${shortcuts} ${viewer}
+				${dialogs(context.harness)} ${page.viewer ? viewer : ''}
 			</body>
 		</html>`
 }
 
+export function crumbBar(crumbs: Page['crumbs']) {
+	if (!crumbs?.length) return html``
+	return html`<p class="sp-path">
+		${crumbs.map(([label, href], index) => [
+			index ? html` › ` : '',
+			href ? html`<a href="${href}">${label}</a>` : html`<span aria-current="page">${label}</span>`,
+		])}
+	</p>`
+}
+
 export function heading(title: Html | string, sub: Html | string | null = null, extra: Html | string = '') {
-	return html`<div class="page-head">
+	return html`<div class="sp-h">
 		<div>
 			<h1>${title}</h1>
-			${sub ? html`<p class="sub">${sub}</p>` : ''}
+			${sub ? html`<p class="sp-sub">${sub}</p>` : ''}
 		</div>
+		${extra}
+	</div>`
+}
+
+export function emptyNotice(what: string, next: Html | string, extra: Html | '' = '') {
+	return html`<div class="sp-empty">
+		<p><b>${what}</b></p>
+		<p>${next}</p>
 		${extra}
 	</div>`
 }
@@ -203,10 +315,10 @@ const downloadNames: Record<string, [string, string]> = {
 export function downloads(label: string, base: string, note: string, formats = ['html', 'md', 'json']) {
 	const item = (format: string) =>
 		html`<a href="${base}.${format}" download data-download="${format}"
-			>${downloadNames[format][0]} <span class="muted small">${downloadNames[format][1]}</span></a
+			>${downloadNames[format][0]} <span class="muted">${downloadNames[format][1]}</span></a
 		>`
 	return html`<details class="menu" data-menu>
-		<summary class="btn small" title="${note}">${label}</summary>
+		<summary class="sp-btn" title="${note}">${label}</summary>
 		<div class="menu-list">
 			${formats.map(item)}
 			<p class="menu-note">${note}</p>

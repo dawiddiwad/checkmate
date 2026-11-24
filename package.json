@@ -1,22 +1,29 @@
 {
 	"name": "@xoxoai/checkmate",
-	"version": "0.7.4",
-	"description": "Testing workflows and evidence contracts for Claude Code",
+	"version": "0.8.0",
+	"description": "Testing workflows and evidence contracts for Claude Code and Pi",
 	"type": "module",
+	"pi": {
+		"extensions": [
+			"./cli/extensions/checkmate.mjs"
+		],
+		"skills": [
+			"./cli/skills"
+		]
+	},
 	"engines": {
 		"node": ">=24.12.0"
 	},
 	"scripts": {
-		"test": "node --test test/*.test.ts",
-		"test:tools": "node --test test/tools.ts",
-		"test:live": "node test/live.ts && node test/live-session.ts",
+		"test": "node scripts/run-e2e.ts",
 		"type:check": "node scripts/generate-types.ts --check && node scripts/generate-validators.ts --check && node scripts/build-plugin.ts --check && tsc --noEmit",
 		"lint:check": "eslint plugin cli scripts test",
 		"format:check": "prettier . --check",
 		"format:fix": "prettier . --write",
-		"phase:verify": "npm run type:check && npm run lint:check && npm run format:check && npm test && node test/plugin.ts",
+		"phase:verify": "npm run type:check && npm run lint:check && npm run format:check && npm test",
 		"generate": "node scripts/generate-types.ts && node scripts/generate-validators.ts",
-		"build": "npm run generate && node scripts/build-plugin.ts"
+		"build": "npm run generate && node scripts/build-plugin.ts",
+		"ui:volume": "node scripts/ui-volume.ts"
 	},
 	"devDependencies": {
 		"@eslint/js": "10.0.1",
@@ -26,6 +33,7 @@
 		"ajv-formats": "3.0.1",
 		"esbuild": "0.28.2",
 		"eslint": "10.15.0",
+		"markdown-it": "15.0.3",
 		"playwright-core": "1.65.1",
 		"prettier": "3.10.1",
 		"typescript": "6.0.3",

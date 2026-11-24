@@ -1,0 +1,50 @@
+{
+	"$schema": "http://json-schema.org/draft-07/schema#",
+	"$id": "journal-topic.schema.json",
+	"description": "One question that two or more question entries ask. A question that is in no topic is its own topic. One answer to the topic answers each of its questions.",
+	"type": "object",
+	"properties": {
+		"kind": {
+			"const": "topic"
+		},
+		"id": {
+			"$ref": "journal-entry.schema.json#/definitions/id"
+		},
+		"build": {
+			"$ref": "journal-entry.schema.json#/definitions/build"
+		},
+		"supersedes": {
+			"$ref": "journal-entry.schema.json#/definitions/supersedes"
+		},
+		"question": {
+			"description": "The question, in one sentence, for the product owner.",
+			"type": "string",
+			"minLength": 1
+		},
+		"label": {
+			"description": "The topic in one to three words, for example Rounding.",
+			"type": "string",
+			"pattern": "^\\S+( \\S+){0,2}$",
+			"maxLength": 40
+		},
+		"members": {
+			"description": "The full IDs of the question entries that ask it, for example a1/Q2.",
+			"type": "array",
+			"items": {
+				"type": "string",
+				"minLength": 1
+			},
+			"minItems": 2
+		}
+	},
+	"required": ["kind", "question", "members"],
+	"additionalProperties": false,
+	"examples": [
+		{
+			"kind": "topic",
+			"question": "Which step rounds the discount, and to how many decimals?",
+			"label": "Rounding",
+			"members": ["a1/Q1", "a2/Q3", "a3/Q2"]
+		}
+	]
+}

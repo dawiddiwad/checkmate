@@ -13,6 +13,7 @@ dist
 **.tgz
 __pycache__/
 *.pyc
+.checkmate
 .playwright-cli
 .pi-meetings
 app-docs
@@ -23,6 +24,7 @@ app-docs
 # Local run state
 .checkmate/checkmate.db*
 .checkmate/tmp/
+.checkmate/ui.json
 .playwright/
 
 # npm CLI build output, its plugin copy, README, and license, created at pack time

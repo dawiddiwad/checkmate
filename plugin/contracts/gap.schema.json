@@ -11,7 +11,7 @@
 			"enum": ["blocking", "non_blocking"]
 		},
 		"status": {
-			"enum": ["open", "resolved", "deferred"]
+			"enum": ["open", "resolved", "deferred", "not_needed"]
 		},
 		"requirementIds": {
 			"type": "array",

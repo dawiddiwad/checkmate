@@ -25,7 +25,7 @@ The Human review UI shows what waits for you: the evidence, findings and gaps. Y
 
 ## Core Idea
 
-This is work in progress. I'm just exploring how far my real enterprise agentic QA workflows could be generalized. The biggest challenge is keeping the setup simple and abstract enough without sacrificing potential.
+Traditional control systems might regulate temperature, aircraft altitude or motor speed. The Checkmate-enabled factory attempts to regulate something much more abstract: the alignment of software behavior with human intent.
 
 QA sits at the center of the agentic dev lifecycle and indirectly drives each iteration through contracts, policies and a system of record, instead of being an afterthought at the end.
 
@@ -35,7 +35,11 @@ Early evidence shows that it helps the agentic loops to self-align better with t
 
 <img src="docs/img/core-idea-control-loop.png" width="420" alt="A closed-loop control analogy. Intent is the reference value. The factory is the controller. The software is the actual state. Checkmate and QA measure the divergence from evidence, failures and coverage, and feed it back to the controller. The oracle can clarify the reference. It is a conceptual analogy, not a formal model of Checkmate.">
 
-It is inspired by TDD/BDD concepts applied with a twist specific to the agentic era.
+At core it is a double-loop system. It is inspired by TDD/BDD concepts applied with a twist specific to the agentic era.
+
+A conventional control system usually attempts to minimize the difference between its output and a given reference value. But software development is different: often we discover that the reference value itself is wrong, and sometimes only after probing the system with tests and experiments. Chris Argyris and Donald Schön described a similar distinction in organizational learning. Single-loop learning corrects actions against existing objectives, whereas double-loop learning also questions the assumptions and objectives themselves.
+
+Checkmate's distinction between defects and gaps maps onto this concept.
 
 <img src="docs/img/core-idea-tdd-loop.png" width="420" alt="Two feedback loops. The traditional TDD loop goes red (a failing test), green (implementation), refactor (improve code), and back to red. Checkmate's broader loop goes: express intent as requirements, question intent for gaps and ambiguities, establish a contract with the oracle and planner, implement in the factory, observe reality with QA and evidence, and reconcile whether it is a defect or an intent gap. Reconcile feeds back into the contract. Validated behavior is accepted and promoted.">
 
@@ -52,16 +56,24 @@ Front-loading QA like this has clear benefits:
 
 ## Solo mode: Claude Code or Pi
 
-You are the oracle. The plugin and the extension ship the CLI.
+Claude Code:
 
 ```text
 /plugin marketplace add dawiddiwad/checkmate
 /plugin install checkmate@checkmate
-/checkmate:test the change in docs/checkout.md at http://127.0.0.1:4173
+/checkmate:test the change in JIRA-123 at http://127.0.0.1:4173
 /checkmate:ui
 ```
 
-In Pi, run `pi install npm:@xoxoai/checkmate -l`, then use `/checkmate <request>` and `/checkmate-ui`. See [Start Checkmate](docs/start.md#use-a-host-plugin).
+Pi:
+
+```
+pi install npm:@xoxoai/checkmate -l
+/checkmate test the change using checkmate in JIRA-123 at http://127.0.0.1:4173
+/checkmate-ui
+```
+
+You are the oracle. The plugin and the extension ship the CLI. See [Start Checkmate](docs/start.md#use-a-host-plugin).
 
 ## Team mode: the CLI in a factory or CI
 
@@ -70,7 +82,7 @@ npm i -g @xoxoai/checkmate
 checkmate setup --url http://127.0.0.1:4173 --target shop \
   --data environment --policy "Each run gets fresh data."
 checkmate plan open checkout --target shop@1 \
-  --objective "Verify checkout totals." --source docs/checkout.md
+  --objective "Verify checkout totals." --source JIRA-123
 checkmate delegate plan checkout --allow Read --allow Bash
 checkmate status checkout
 ```

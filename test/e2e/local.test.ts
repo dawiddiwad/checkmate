@@ -145,6 +145,53 @@ export default (pi) => pi.on('session_start', async (_event, ctx) => {
 	assert.deepEqual(inspectTools('clerk').tools, [])
 })
 
+test('Expose packaged Claude MCP tools by role and keep their workspace bound to the host.', async (t) => {
+	const workspace = directory(t)
+	const other = directory(t)
+	const app = await fixture()
+	t.after(() => app.close())
+	const mcpConfig = JSON.parse(readFileSync(join(project, 'node_modules/@xoxoai/checkmate/plugin/.mcp.json'), 'utf8'))
+	assert.deepEqual(mcpConfig.mcpServers.actions.args.slice(-1), ['mcp'])
+	const request = (id: number, method: string, params?: object) => ({ jsonrpc: '2.0', id, method, params })
+	const batches = async (role?: string) => {
+		const env = { ...process.env, CLAUDE_PROJECT_DIR: workspace, CHECKMATE_TOOL_ROLE: role }
+		const child = spawn(process.execPath, [binary, 'mcp'], { cwd: other, env })
+		const requests = [
+			request(1, 'initialize', { protocolVersion: '2025-06-18' }),
+			request(2, 'tools/list'),
+			request(3, 'tools/call', { name: 'checkmate_setup', arguments: { url: 'not-a-url' } }),
+			request(4, 'tools/call', {
+				name: 'checkmate_setup',
+				arguments: { url: app.baseUrl, targetId: 'fixture', operations: ['read_health'] },
+			}),
+		]
+		child.stdin.end(requests.map((value) => JSON.stringify(value)).join('\n') + '\n')
+		let output = ''
+		child.stdout.on('data', (bytes) => {
+			output += bytes
+		})
+		const [exit] = await once(child, 'close')
+		assert.equal(exit, 0, output)
+		return output
+			.trim()
+			.split('\n')
+			.map((line) => JSON.parse(line))
+	}
+	const [, inventory, invalid, saved] = await batches()
+	assert(inventory.result.tools.some((tool: { name: string }) => tool.name === 'checkmate_setup'))
+	assert.equal(invalid.result.structuredContent.refusal, 'malformed')
+	assert.equal(invalid.result.structuredContent.nextAction.action, 'setup')
+	assert.equal(saved.result.structuredContent.targetId, 'fixture')
+	assert.equal(existsSync(join(workspace, '.checkmate/checkmate.db')), true)
+	assert.equal(existsSync(join(other, '.checkmate/checkmate.db')), false)
+	const [, tester, refused] = await batches('execute')
+	assert(tester.result.tools.some((tool: { name: string }) => tool.name === 'checkmate_record_check'))
+	assert(!tester.result.tools.some((tool: { name: string }) => tool.name === 'checkmate_finish_run'))
+	assert.equal(refused.error.code, -32602)
+	const [, clerk] = await batches('clerk')
+	assert.deepEqual(clerk.result.tools, [])
+})
+
 test('Point run accept and run reject to the result command — a wrong command name leaves the record unchanged.', async (t) => {
 	const workspace = directory(t)
 	const result = spawnSync(
@@ -2798,6 +2845,10 @@ test('Discover the packaged Claude plugin and invoke its entry — broken plugin
 	const entry = join(plugin, 'dist/checkmate.js')
 	// The tester inherits the host tools. The clerk only reads a task and writes an answer.
 	assert.doesNotMatch(readFileSync(join(plugin, 'agents/tester.md'), 'utf8'), /^tools:/m)
+	assert.match(
+		readFileSync(join(plugin, 'agents/tester.md'), 'utf8'),
+		/^disallowedTools: mcp__plugin_checkmate_actions__\*$/m
+	)
 	assert.match(readFileSync(join(plugin, 'agents/clerk.md'), 'utf8'), /^tools: Read, Write$/m)
 	assert.match(
 		execFileSync(process.execPath, [entry, '--version'], { encoding: 'utf8' }),

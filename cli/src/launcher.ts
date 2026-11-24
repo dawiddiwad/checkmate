@@ -220,7 +220,7 @@ function checkClaudeArgs(claudeArgs: string[]) {
 	}
 }
 
-export function workerArgs(pluginRoot: string, allowedTools: string[], claudeArgs: string[] = []) {
+export function workerArgs(pluginRoot: string, allowedTools: string[], claudeArgs: string[] = [], role = '') {
 	const schema = readFileSync(join(pluginRoot, 'contracts', 'response.schema.json'), 'utf8')
 	const args = [
 		'-p',
@@ -236,6 +236,8 @@ export function workerArgs(pluginRoot: string, allowedTools: string[], claudeArg
 		'--no-session-persistence',
 	]
 	for (const rule of allowedTools) args.push('--allowedTools', rule)
+	for (const name of childActionTools(role))
+		args.push('--allowedTools', `mcp__plugin_checkmate_actions__checkmate_${name}`)
 	return args
 }
 
@@ -898,7 +900,7 @@ async function runChild(
 	const args =
 		harness === 'pi'
 			? resolvePiModelArgs(executable, piWorkerArgs(pluginRoot, role, env), workspace, env)
-			: workerArgs(pluginRoot, options.allowedTools, options.claudeArgs)
+			: workerArgs(pluginRoot, options.allowedTools, options.claudeArgs, role)
 	const timeoutSeconds = options.timeoutSeconds ?? Math.min(testSeconds, Math.max(1, remaining - 30))
 	try {
 		const result = await launchWorker(executable, args, {
@@ -1160,7 +1162,7 @@ export async function delegate(
 			const args =
 				harness === 'pi'
 					? resolvePiModelArgs(executable, piWorkerArgs(pluginRoot, stage, env), workspace, env)
-					: workerArgs(pluginRoot, options.allowedTools, options.claudeArgs)
+					: workerArgs(pluginRoot, options.allowedTools, options.claudeArgs, stage)
 			const instructions = prompt(
 				stage,
 				subject,

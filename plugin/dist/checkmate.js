@@ -19959,7 +19959,7 @@ function piOption(model) {
 var piCatalogTimeout = 1e4;
 function piRpcCatalog(program, workspace2, env, timeout) {
   const provider = !env.CHECKMATE_PI_MODEL?.trim() ? env.CHECKMATE_PI_PROVIDER?.trim().toLowerCase() : void 0;
-  return new Promise((resolve12) => {
+  return new Promise((resolve13) => {
     const host = spawn2(program, ["--no-mcp", "--no-session", "--mode", "rpc", ...piModelArgs(env)], {
       cwd: workspace2,
       env,
@@ -19977,7 +19977,7 @@ function piRpcCatalog(program, workspace2, env, timeout) {
     function finish2(timedOut = false) {
       clearTimeout(timer);
       lines2.close();
-      resolve12({ value: models && catalog(models, model), timedOut });
+      resolve13({ value: models && catalog(models, model), timedOut });
     }
     host.once("error", () => finish2());
     host.once("close", () => finish2());
@@ -20046,7 +20046,7 @@ async function discoverModelCatalog(harness, workspace2, env, retryForEffort = f
   const name2 = isPi ? "Pi" : "Claude Code";
   const args = isPi ? ["--no-mcp", "--list-models"] : claudeArgs;
   const input = isPi ? "" : JSON.stringify({ type: "control_request", request_id: requestId, request: { subtype: "initialize" } }) + "\n";
-  return new Promise((resolve12, reject) => {
+  return new Promise((resolve13, reject) => {
     const host = execFile(
       program,
       args,
@@ -20055,7 +20055,7 @@ async function discoverModelCatalog(harness, workspace2, env, retryForEffort = f
         if (!error) {
           const models = isPi ? piModels(stdout) : void 0;
           const result = isPi ? models && catalog(models) : claudeModels(stdout);
-          if (result) return resolve12(result);
+          if (result) return resolve13(result);
         }
         reject(new Error(`${name2} could not list models. Check the host configuration.`));
       }
@@ -27718,7 +27718,7 @@ function activityLine2(tool, input, cwd) {
   return line.length > lineLimit ? `${line.slice(0, lineLimit - 1)}\u2026` : line;
 }
 function readJson(req) {
-  return new Promise((resolve12) => {
+  return new Promise((resolve13) => {
     const chunks = [];
     let length = 0;
     req.on("data", (chunk) => {
@@ -27727,12 +27727,12 @@ function readJson(req) {
     });
     req.on("end", () => {
       try {
-        resolve12(length > maxBody ? null : JSON.parse(Buffer.concat(chunks).toString("utf8")));
+        resolve13(length > maxBody ? null : JSON.parse(Buffer.concat(chunks).toString("utf8")));
       } catch {
-        resolve12(null);
+        resolve13(null);
       }
     });
-    req.on("error", () => resolve12(null));
+    req.on("error", () => resolve13(null));
   });
 }
 function refuse(res) {
@@ -34164,11 +34164,11 @@ function streamPi(program, args, prompt2, cwd, env, extension, sessionId, onLine
       } else onLine(line);
     }
   });
-  const finished = new Promise((resolve12) => {
+  const finished = new Promise((resolve13) => {
     child.on("close", (status, signal) => {
       clearTimeout(timeout);
       for (const timer of timers) clearTimeout(timer);
-      resolve12({
+      resolve13({
         status,
         signal,
         stderr,
@@ -34612,7 +34612,7 @@ function uiMarker(workspace2) {
   return null;
 }
 function requestProof(url, headers) {
-  return new Promise((resolve12, reject) => {
+  return new Promise((resolve13, reject) => {
     const req = request(
       url,
       { method: "POST", agent: false, headers, signal: AbortSignal.timeout(2e3) },
@@ -34626,7 +34626,7 @@ function requestProof(url, headers) {
         res.on("error", reject);
         res.on(
           "end",
-          () => resolve12({ status: res.statusCode ?? 0, body, proof: res.headers["x-checkmate-proof"] })
+          () => resolve13({ status: res.statusCode ?? 0, body, proof: res.headers["x-checkmate-proof"] })
         );
       }
     );
@@ -40445,7 +40445,7 @@ function cookie(name2, value2, maxAge = 60 * 60 * 24 * 365) {
   return `${name2}=${encodeURIComponent(value2)}; Path=/; Max-Age=${maxAge}; HttpOnly; SameSite=Strict`;
 }
 function readForm(req) {
-  return new Promise((resolve12, reject) => {
+  return new Promise((resolve13, reject) => {
     const chunks = [];
     let length = 0;
     req.on("data", (chunk) => {
@@ -40454,7 +40454,7 @@ function readForm(req) {
     });
     req.on(
       "end",
-      () => resolve12(length > maxForm ? null : new URLSearchParams(Buffer.concat(chunks).toString("utf8")))
+      () => resolve13(length > maxForm ? null : new URLSearchParams(Buffer.concat(chunks).toString("utf8")))
     );
     req.on("error", reject);
   });
@@ -42486,11 +42486,11 @@ data: ${matched.join(",") || "*"}
     clearInterval(supervisorWatch);
     for (const client of clients) client.res.end();
     clients.clear();
-    await new Promise((resolve12) => {
+    await new Promise((resolve13) => {
       const forceClose = setTimeout(() => server.closeAllConnections(), 1e3);
       server.close(() => {
         clearTimeout(forceClose);
-        resolve12();
+        resolve13();
       });
     });
     closeStore(watch);
@@ -42498,11 +42498,11 @@ data: ${matched.join(",") || "*"}
     if (port) removeUiFile(options3.workspace, port);
   }
   try {
-    await new Promise((resolve12, reject) => {
+    await new Promise((resolve13, reject) => {
       server.once("error", reject);
       server.listen(options3.port ?? 0, "127.0.0.1", () => {
         server.off("error", reject);
-        resolve12();
+        resolve13();
       });
     });
     const address = server.address();
@@ -46169,7 +46169,7 @@ function checkClaudeArgs2(claudeArgs2) {
     refuse2(`--claude-arg ${arg} is not permitted. ${instead}`, "malformed");
   }
 }
-function workerArgs(pluginRoot2, allowedTools, claudeArgs2 = []) {
+function workerArgs(pluginRoot2, allowedTools, claudeArgs2 = [], role = "") {
   const schema = readFileSync16(join22(pluginRoot2, "contracts", "response.schema.json"), "utf8");
   const args = [
     "-p",
@@ -46185,6 +46185,8 @@ function workerArgs(pluginRoot2, allowedTools, claudeArgs2 = []) {
     "--no-session-persistence"
   ];
   for (const rule of allowedTools) args.push("--allowedTools", rule);
+  for (const name2 of childActionTools(role))
+    args.push("--allowedTools", `mcp__plugin_checkmate_actions__checkmate_${name2}`);
   return args;
 }
 function piWorkerArgs(pluginRoot2, role, env) {
@@ -46693,7 +46695,7 @@ async function runChild(workspace2, options3, execution, harness, env, prompt2, 
   const executable = harness === "pi" ? options3.pi ?? "pi" : options3.claude ?? "claude";
   const workerActor = `${harness}:execute`;
   const role = testId ? "execute" : "probe";
-  const args = harness === "pi" ? resolvePiModelArgs(executable, piWorkerArgs(pluginRoot2, role, env), workspace2, env) : workerArgs(pluginRoot2, options3.allowedTools, options3.claudeArgs);
+  const args = harness === "pi" ? resolvePiModelArgs(executable, piWorkerArgs(pluginRoot2, role, env), workspace2, env) : workerArgs(pluginRoot2, options3.allowedTools, options3.claudeArgs, role);
   const timeoutSeconds = options3.timeoutSeconds ?? Math.min(testSeconds, Math.max(1, remaining - 30));
   try {
     const result = await launchWorker(executable, args, {
@@ -46921,7 +46923,7 @@ async function delegate(workspace2, stage, subject, options3) {
   for (let round = 1; round <= maxRounds; round++) {
     try {
       const executable = harness === "pi" ? options3.pi ?? "pi" : options3.claude ?? "claude";
-      const args = harness === "pi" ? resolvePiModelArgs(executable, piWorkerArgs(pluginRoot2, stage, env), workspace2, env) : workerArgs(pluginRoot2, options3.allowedTools, options3.claudeArgs);
+      const args = harness === "pi" ? resolvePiModelArgs(executable, piWorkerArgs(pluginRoot2, stage, env), workspace2, env) : workerArgs(pluginRoot2, options3.allowedTools, options3.claudeArgs, stage);
       const instructions = prompt(
         stage,
         subject,
@@ -47204,6 +47206,66 @@ import { existsSync as existsSync11, mkdirSync as mkdirSync11, openSync as openS
 import { spawn as spawn6, spawnSync as spawnSync9 } from "node:child_process";
 import { join as join23 } from "node:path";
 import { fileURLToPath as fileURLToPath4 } from "node:url";
+
+// plugin/src/action-mcp.ts
+import { createInterface as createInterface3 } from "node:readline";
+import { resolve as resolve12 } from "node:path";
+var protocols = ["2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25"];
+async function serveActions() {
+  const env = { ...process.env, CHECKMATE_HARNESS: "claude", CHECKMATE_HOST_SESSION: "1" };
+  const workspace2 = resolve12(process.env.CLAUDE_PROJECT_DIR ?? process.cwd());
+  const tools = actionToolDefinitions(env);
+  const lines2 = createInterface3({ input: process.stdin, crlfDelay: Infinity });
+  function send2(id2, body) {
+    process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: id2, ...body }) + "\n");
+  }
+  let initialized = false;
+  for await (const line of lines2) {
+    let request2;
+    try {
+      request2 = JSON.parse(line);
+    } catch {
+      send2(null, { error: { code: -32700, message: "Invalid JSON" } });
+      continue;
+    }
+    if (!request2 || request2.jsonrpc !== "2.0" || typeof request2.method !== "string") {
+      send2(request2?.id ?? null, { error: { code: -32600, message: "Invalid JSON-RPC request" } });
+      continue;
+    }
+    const { id: id2, params, method } = request2;
+    if (id2 === void 0) continue;
+    if (method === "initialize") {
+      const protocolVersion = params?.protocolVersion ?? "";
+      initialized = true;
+      send2(id2, {
+        result: {
+          protocolVersion: protocols.includes(protocolVersion) ? protocolVersion : protocols.at(-1),
+          capabilities: { tools: {} },
+          serverInfo: { name: "checkmate", version: "1" }
+        }
+      });
+    } else if (method === "ping") send2(id2, { result: {} });
+    else if (!initialized) send2(id2, { error: { code: -32002, message: "Initialize the Checkmate server first" } });
+    else if (method === "tools/list") send2(id2, { result: { tools } });
+    else if (method === "tools/call") {
+      const name2 = params?.name;
+      if (!tools.some((tool) => tool.name === name2) || !name2) {
+        send2(id2, { error: { code: -32602, message: "Choose a Checkmate tool from tools/list" } });
+        continue;
+      }
+      const reply = callActionTool(name2, params?.arguments ?? {}, workspace2, env);
+      send2(id2, {
+        result: {
+          content: [{ type: "text", text: JSON.stringify(reply) }],
+          structuredContent: reply,
+          isError: ["rejected", "invalid_request", "operational_error"].includes(reply.status)
+        }
+      });
+    } else send2(id2, { error: { code: -32601, message: "Unknown method" } });
+  }
+}
+
+// cli/src/main.ts
 var delegateUsage = "checkmate delegate <setup|plan|revise|execute> <targetId|planId|planId|runId> [--timeout <seconds>]";
 var delegateSpecUsage = "checkmate delegate spec <planId@revision> [--timeout <seconds>]";
 var delegateHarnessUsage = "With Pi, omit --allow and --claude-arg. Claude requires --allow <rule> and accepts --claude-arg <arg>. CHECKMATE_HARNESS overrides the workspace harness. The default is Claude. delegate spec uses no tools and needs no --allow.";
@@ -47461,7 +47523,8 @@ async function runDelegate(tokens) {
 }
 if (import.meta.main) {
   const argv = process.argv.slice(2);
-  if (argv[0] === "--version") process.stdout.write(version2() + "\n");
+  if (argv[0] === "mcp" && argv.length === 1) await serveActions();
+  else if (argv[0] === "--version") process.stdout.write(version2() + "\n");
   else if (!argv.length || argv[0] === "--help" || argv[0] === "--json" && argv[1] === "--help")
     process.stdout.write(help2(argv.includes("--json")) + "\n");
   else if (argv[0] === "delegate") await runDelegate(argv.slice(1));

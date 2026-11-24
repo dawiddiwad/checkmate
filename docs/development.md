@@ -42,6 +42,29 @@ Use `npm test` to run only the packaged end-to-end suite after you install the s
 
 The root package is private. The published CLI package is `cli/`. The build bundles `cli/src/main.ts` into the plugin and copies the same executable, plugin, README, and license into the CLI package. Keep `LICENSE` and package metadata with the code.
 
+## Testing a branch before release
+
+A branch install needs no build step. The built CLI, `plugin/dist/checkmate.js`, is committed. Run `npm run build` and commit the result before you push. `npm run type:check` fails when the bundle is stale.
+
+Push the branch, then install it into a clean Claude Code or Pi setup:
+
+```sh
+claude plugin marketplace add dawiddiwad/checkmate@<branch>
+claude plugin install checkmate@checkmate
+pi install git:github.com/dawiddiwad/checkmate@<branch> -l
+```
+
+Check the build in each host:
+
+```sh
+node "<plugin root>/dist/checkmate.js" --version
+node .pi/git/github.com/dawiddiwad/checkmate/plugin/dist/checkmate.js --version
+```
+
+The Claude Code plugin root is under `~/.claude/plugins/cache/checkmate/checkmate/`. To keep your own setup clean, set `HOME` to a temporary folder first. Remove an old copy with `claude plugin uninstall checkmate@checkmate` or `pi remove <source> -l`.
+
+One difference remains. A branch install has no `checkmate` command on `PATH`. Run the CLI file as shown above, or use the host commands.
+
 ## Agent-only instructions
 
 > **Agent only:** Read [AGENTS.md](../AGENTS.md) and [development procedures](../.agents/wiki/development-procedures.md) before changing code or tests. They link to the coding standards, architecture, and task-specific skills. Runtime instructions for delegated tests live in the [test skill](../plugin/skills/test/SKILL.md) and [stage rules](../plugin/references/workflow.md). These files govern agent prompts; do not replace them with this guide.

@@ -13085,6 +13085,7 @@ import { homedir } from "node:os";
 import { delimiter, dirname, join as join2 } from "node:path";
 import { fileURLToPath } from "node:url";
 var hookTokenName = "CHECKMATE_HOOK_TOKEN";
+var checkmateActionTools = "mcp__plugin_checkmate_actions__*";
 var permissionTimeoutSeconds = 600;
 var activityTimeoutSeconds = 5;
 var storeDenyRules = [
@@ -13332,6 +13333,8 @@ function childArgs(context, own, allow = []) {
     ...Object.keys(settings).length ? ["--settings", JSON.stringify(settings)] : [],
     ...own,
     ...allow.flatMap((rule) => ["--allowedTools", rule]),
+    "--disallowedTools",
+    checkmateActionTools,
     "--output-format",
     "json",
     "--permission-prompts",
@@ -13664,7 +13667,7 @@ function requestArgs(session) {
     "--tools",
     "Read,Bash",
     "--disallowedTools",
-    "mcp__plugin_checkmate_actions__*",
+    checkmateActionTools,
     "--settings",
     JSON.stringify(chatHookSettings(session)),
     "--append-system-prompt",

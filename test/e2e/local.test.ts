@@ -194,6 +194,9 @@ test('Expose packaged Claude MCP tools by role and keep their workspace bound to
 	assert.equal(refused.error.code, -32602)
 	const [, clerk] = await batches('clerk')
 	assert.deepEqual(clerk.result.tools, [])
+	const { childArgs } = await import('../../plugin/src/sessions.ts')
+	const clean = childArgs({ harness: 'claude', hiddenPlugin: null, claudeArgs: [] }, [])
+	assert.equal(clean[clean.indexOf('--disallowedTools') + 1], 'mcp__plugin_checkmate_actions__*')
 })
 
 test('Point run accept and run reject to the result command — a wrong command name leaves the record unchanged.', async (t) => {

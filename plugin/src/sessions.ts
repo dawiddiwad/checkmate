@@ -35,6 +35,7 @@ export type ChildContext = {
 export type UiFile = { port: number; pid: number; hookToken: string }
 
 export const hookTokenName = 'CHECKMATE_HOOK_TOKEN'
+const checkmateActionTools = 'mcp__plugin_checkmate_actions__*'
 const permissionTimeoutSeconds = 600
 const activityTimeoutSeconds = 5
 
@@ -324,6 +325,8 @@ export function childArgs(context: ChildContext, own: string[], allow: string[] 
 		...(Object.keys(settings).length ? ['--settings', JSON.stringify(settings)] : []),
 		...own,
 		...allow.flatMap((rule) => ['--allowedTools', rule]),
+		'--disallowedTools',
+		checkmateActionTools,
 		'--output-format',
 		'json',
 		'--permission-prompts',
@@ -724,7 +727,7 @@ export function requestArgs(session: RequestSession) {
 		'--tools',
 		'Read,Bash',
 		'--disallowedTools',
-		'mcp__plugin_checkmate_actions__*',
+		checkmateActionTools,
 		'--settings',
 		JSON.stringify(chatHookSettings(session)),
 		'--append-system-prompt',

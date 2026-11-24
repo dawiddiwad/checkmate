@@ -14,74 +14,58 @@ The review UI shows what waits for you, here a blocking question that you answer
 
 ## In one minute
 
-- The **planner** turns a ticket into rules and tests with exact assertions. A deterministic check names what it observes and the value it expects, and code gives the verdict. Each unclear requirement becomes a gap.
-- The **oracle** answers gaps, approves plans, decides findings, accepts results, and promotes passing tests. The oracle is an agent or a person.
-- **QA** explores each build and runs each test in its own child, early and again on each new build. It records each result with its evidence, and it records defects and new gaps.
-- The **factory** builds the code, starts the application, and fixes defects. When asked, Checkmate starts the planner and the testers through the host, Claude Code or Pi. It does not change code or start the application.
-- The record is one SQLite file: `.checkmate/checkmate.db`. A human can make the oracle's decisions in the review UI or its chat at any time.
+- The **planner** turns a ticket into rules, tests, and open gaps.
+- The **oracle** answers gaps, approves plans, and accepts results. It is an agent or a person.
+- **QA** tests each build. Code compares each check with its expected value.
+- The **factory** builds the code and starts the app.
+- Checkmate starts the planner and the testers through Claude Code or Pi. It does not change code or start the app.
+- Everything is kept in one SQLite file: `.checkmate/checkmate.db`.
 
 ## Solo mode: the plugin in Claude Code or the extension in Pi
 
-You are the oracle. In Claude Code, install the plugin from the marketplace. You do not need npm: the plugin ships the CLI.
+You are the oracle. The plugin and the extension ship the CLI, so you do not need npm.
+
+In Claude Code:
 
 ```text
 /plugin marketplace add dawiddiwad/checkmate
 /plugin install checkmate@checkmate
-```
-
-Then test a change and open the review UI. The first test asks for the URL of the running application and how its test data stays safe, and sets up the target:
-
-```text
-/checkmate:test the checkout change in docs/checkout.md at http://127.0.0.1:4173
+/checkmate:test the change in docs/checkout.md at http://127.0.0.1:4173
 /checkmate:ui
 ```
 
-In Pi, install the extension in the project, then use `/checkmate <request>` and `/checkmate-ui`. The extension also ships the CLI.
+In Pi, run `pi install npm:@xoxoai/checkmate -l`, then use `/checkmate <request>` and `/checkmate-ui`.
 
-```sh
-pi install npm:@xoxoai/checkmate -l
-```
-
-A factory that runs its agents in Claude Code or Pi can use the plugin or the extension in the same way. Read [Start Checkmate](docs/start.md#use-a-host-plugin) and [Local QA with a human oracle](docs/local-qa.md).
+The first test asks for the app URL and how its test data stays safe. A factory that runs its agents in Claude Code or Pi can work the same way. See [Start Checkmate](docs/start.md#use-a-host-plugin).
 
 ## Team mode: the CLI in your factory
 
-Use the CLI on its own when your factory has its own harness, for example in CI/CD. Install the CLI:
+Use the CLI on its own when your factory has its own harness, such as a CI/CD pipeline.
 
 ```sh
 npm i -g @xoxoai/checkmate
-```
-
-Then set up a target with its data kind, open a plan for a ticket, and let a planner write it:
-
-```sh
 checkmate setup --url http://127.0.0.1:4173 --target shop \
-  --data environment --policy "The pipeline gives each run fresh data."
+  --data environment --policy "Each run gets fresh data."
 checkmate plan open checkout --target shop@1 \
   --objective "Verify checkout totals." --source docs/checkout.md
 checkmate delegate plan checkout --allow Read --allow Bash
 checkmate status checkout
 ```
 
-For one-shot QA in a pipeline, `checkmate test <planId>` plans, explores, stores the defects as the run `findings-<explorationId>`, and saves plan revision 1 when the plan has none. `checkmate run show <runId> --gate` exits 0 only when every selected test passed and coverage is complete. `checkmate status <planId> --fail-on-blocked` exits 3 when an open blocking gap exists or the plan waits on the oracle. Read [Use Checkmate from a factory](docs/factory.md).
+- Every target needs a data kind: `--data` with a policy, or a `--reset` command.
+- In a pipeline, `checkmate run show <runId> --gate` exits 0 only when every selected test passed, and `checkmate status <planId> --fail-on-blocked` exits 3 when the oracle must answer. See [Exit codes](docs/factory.md#exit-codes-for-a-pipeline).
 
-Both modes need Node.js 24.12.0 or later. The planner and the testers need Claude Code or Pi, configured in the host. The host owns models, credentials, tools, and permissions. For browser tests, install Playwright CLI (`npm i -g @playwright/cli`) and name a Chrome or Chromium executable in `.playwright/cli.config.json`. Setup refuses a browser target without it.
+Both modes need Node.js 24.12.0 or later, and Claude Code or Pi for the planner and the testers. Browser tests also need Playwright CLI. See [Requirements](docs/start.md#requirements).
 
 ## Documentation
 
-| To do this                                     | Read                                                                               |
-| ---------------------------------------------- | ---------------------------------------------------------------------------------- |
-| Test your work in Claude Code or Pi            | [Start Checkmate](docs/start.md)                                                   |
-| Connect Checkmate to your agents               | [Use Checkmate from a factory](docs/factory.md)                                    |
-| Answer gaps, approve plans, and accept results | [Local QA with a human oracle](docs/local-qa.md)                                   |
-| Make the decisions in the browser              | [Start a change in the review UI](docs/local-qa.md#start-a-change)                 |
-| Learn the roles and who owns what              | [Use Checkmate from a factory](docs/factory.md)                                    |
-| Find a command, a status, or a loop state      | [CLI and record reference](docs/reference.md)                                      |
-| Write a JSON payload                           | [Plans and contracts](docs/reference.md#plans-and-contracts)                       |
-| Read outcomes, the gate, and exit codes        | [Exit codes for a pipeline](docs/factory.md#exit-codes-for-a-pipeline)             |
-| Keep test data safe                            | [Data kinds, prepare, and cleanup](docs/factory.md#data-kinds-prepare-and-cleanup) |
-| Know what the database keeps, and its limits   | [Record and limits](docs/reference.md#record-and-limits)                           |
-| Build, test, or release Checkmate              | [Develop Checkmate](docs/development.md)                                           |
+| Topic                     | Read                                             |
+| ------------------------- | ------------------------------------------------ |
+| Install and a first test  | [Start Checkmate](docs/start.md)                 |
+| Local QA as the oracle    | [Local QA with a human oracle](docs/local-qa.md) |
+| Factories and CI          | [Use Checkmate from a factory](docs/factory.md)  |
+| Commands, states, records | [CLI and record reference](docs/reference.md)    |
+| Contributing              | [Develop Checkmate](docs/development.md)         |
 
 ## License
 

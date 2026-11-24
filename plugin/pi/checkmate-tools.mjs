@@ -9,7 +9,7 @@ export default function checkmateTools(pi) {
 			description: tool.description,
 			parameters: tool.inputSchema,
 			execute: async (_id, input, _signal, _onUpdate, ctx) => {
-				const reply = callActionTool(tool.name, input, ctx.cwd, env)
+				const reply = await callActionTool(tool.name, input, ctx.cwd, env)
 				return { content: [{ type: 'text', text: JSON.stringify(reply) }], details: reply }
 			},
 		})

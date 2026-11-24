@@ -41,7 +41,11 @@ type ActionContext = {
 }
 
 const handlers: {
-	[Name in ActionName]: (store: Store, input: NonNullable<Actions[Name]>, context: ActionContext) => Reply
+	[Name in Exclude<ActionName, 'delegate_work'>]: (
+		store: Store,
+		input: NonNullable<Actions[Name]>,
+		context: ActionContext
+	) => Reply
 } = {
 	setup: (store, input, { actor, env }) => setupTarget(store, actor, { ...input, env }),
 	replace_instance: (store, input, { actor }) => replaceInstance(store, actor, input),
@@ -142,15 +146,11 @@ const handlers: {
 	inbox: (store) => completed('inbox', inbox(store)),
 	next_tester_steps: (store, input, { actor }) => nextActions(store, actor, input.explorationId),
 	tester_steps_started: (store, input, { actor }) => stepsStarted(store, actor, input.explorationId, input.names),
-	tester_step_done: (store, input, { actor }) => stepDone(store, actor, input),
+	tester_step_done: (store, { agentId, failure, failureDetail, ...input }, { actor }) =>
+		stepDone(store, actor, { ...input, agent: agentId, failed: failure ? (failureDetail ?? failure) : undefined }),
 }
 
-export function performAction<Name extends ActionName>(
-	store: Store,
-	name: Name,
-	input: unknown,
-	context: ActionContext
-) {
+export function actionInput<Name extends ActionName>(name: Name, input: unknown) {
 	const problems = schemaProblems('actions', { [name]: input }, 'input').map((problem) => problem.text)
 	if (problems.length) {
 		const fields = input as { planId?: string; observed?: string; absent?: boolean } | null
@@ -166,9 +166,24 @@ export function performAction<Name extends ActionName>(
 				'--absent and --observed do not go together',
 				'Give absent when the page was read and the value is missing. Give observed when it is present.'
 			)
-		throw new Refusal('malformed', problems.join('. '), 'Correct the named fields and retry the action.')
+		const repair =
+			name === 'record_check' || name === 'close_test'
+				? 'Use evidence: [{text: "the actual response or observation", kind: "http_exchange"}]. For a fresh file in the run evidence directory, give {file, kind}. Correct any other named fields and retry.'
+				: name === 'tester_step_done'
+					? 'Give agentId from the Agent receipt and replyLine from its last line. Omit failure when the agent completed. Record product defects in the tester report.'
+					: 'Correct the named fields and retry the action.'
+		throw new Refusal('malformed', problems.join('. '), repair)
 	}
-	return handlers[name](store, input as NonNullable<Actions[Name]>, context)
+	return input as NonNullable<Actions[Name]>
+}
+
+export function performAction<Name extends Exclude<ActionName, 'delegate_work'>>(
+	store: Store,
+	name: Name,
+	input: unknown,
+	context: ActionContext
+) {
+	return handlers[name](store, actionInput(name, input), context)
 }
 
 export function actionRecovery(name: ActionName, reply: Reply) {

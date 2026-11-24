@@ -1,11 +1,15 @@
+import { delegate, type Stage } from '../../cli/src/launcher.ts'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { defaultActor, requestOfEnv } from './actor.ts'
-import { actionRecovery, performAction, type ActionName } from './actions.ts'
-import { refused } from './contracts.ts'
+import { actionInput, actionRecovery, performAction, type ActionName } from './actions.ts'
+import { Refusal, refused } from './contracts.ts'
+import { explorationStatus } from './explorers.ts'
 import { settleEnded } from './cleanups.ts'
+import { selectedHarness } from './pi.ts'
+import { ruleTokens, testerRulesText, workspaceEnv } from './settings.ts'
 import { pluginRoot, type Env } from './sessions.ts'
-import { busyReason, closeStore, isBusy, openReadOnlyStore, openStore, type Reply } from './store.ts'
+import { busyReason, closeStore, isBusy, openReadOnlyStore, openStore, completed, type Reply } from './store.ts'
 
 const readActions: ActionName[] = [
 	'list_targets',
@@ -28,9 +32,19 @@ const roles: Record<string, ActionName[]> = {
 	clerk: [],
 }
 
+const workerWrites = new Set<ActionName>([
+	'save_plan',
+	'revise_plan',
+	'record_check',
+	'close_test',
+	'record_finding',
+	'record_gap',
+	'finish_run',
+])
+
 function allowed(name: ActionName, env: Env) {
 	const role = env.CHECKMATE_TOOL_ROLE
-	return role === undefined || (roles[role] ?? []).includes(name)
+	return role === undefined ? !workerWrites.has(name) : (roles[role] ?? []).includes(name)
 }
 
 export function childActionTools(role: string) {
@@ -90,10 +104,54 @@ export function actionOutput(reply: Reply) {
 	return { ...envelope, ...data }
 }
 
-export function callActionTool(tool: string, input: unknown, workspace: string, env: Env) {
+async function startWorker(
+	workspace: string,
+	env: Env,
+	allowedTools: string[],
+	stage: Stage,
+	subject: string
+): Promise<Reply> {
+	try {
+		const { status, reasons, data, operation, usageWarning, costUsd, costPartial, observedModels } = await delegate(
+			workspace,
+			stage,
+			subject,
+			{
+				env,
+				allowedTools,
+				nativeTools: true,
+			}
+		)
+		return {
+			status,
+			subject,
+			reasons,
+			data: { ...data, operation, usageWarning, costUsd, costPartial, observedModels },
+		}
+	} catch (error) {
+		return refused('rejected', subject, error)
+	}
+}
+
+export async function callActionTool(tool: string, input: unknown, workspace: string, env: Env) {
 	const name = tool.replace(/^checkmate_/, '') as ActionName
 	if (!allowed(name, env) || !actionToolDefinitions(env).some((definition) => definition.name === tool))
-		return actionOutput(refused('rejected', tool, Error('This tool is unavailable in this Checkmate role.')))
+		return actionOutput(
+			actionRecovery(
+				workerWrites.has(name) && env.CHECKMATE_TOOL_ROLE === undefined ? 'delegate_work' : name,
+				refused(
+					'rejected',
+					tool,
+					new Refusal(
+						'prohibited',
+						'This tool is unavailable in this Checkmate role.',
+						workerWrites.has(name)
+							? 'Start the assigned Checkmate worker for this stage.'
+							: 'Choose a tool that is exposed to this session.'
+					)
+				)
+			)
+		)
 	let store
 	try {
 		const supplied = input as { planId?: unknown; runId?: unknown } | null
@@ -110,8 +168,50 @@ export function callActionTool(tool: string, input: unknown, workspace: string, 
 			)
 		store = readActions.includes(name) ? openReadOnlyStore(workspace) : openStore(workspace)
 		store.via = requestOfEnv(env)
+		if (name === 'delegate_work') {
+			const request = actionInput(name, input)
+			const harness = selectedHarness(workspaceEnv(store, env))
+			const tools = harness === 'claude' ? ruleTokens(testerRulesText(store, harness)) : []
+			closeStore(store)
+			store = undefined
+			return actionOutput(
+				actionRecovery(name, await startWorker(workspace, env, tools, request.stage, request.subject))
+			)
+		}
+		if (name === 'test_status') {
+			const { explorationId, waitSeconds } = actionInput(name, input)
+			if (waitSeconds !== undefined) {
+				const status = explorationStatus(store, explorationId)
+				if (
+					status.path === 'session' &&
+					!status.paused &&
+					!['completed', 'failed', 'stopped', 'interrupted', 'open'].includes(status.state)
+				)
+					return actionOutput(
+						completed(explorationId, {
+							...status,
+							nextAction: {
+								action: 'next_tester_steps',
+								instruction:
+									'Call checkmate_next_tester_steps and dispatch its actions with the Agent tool. A session exploration runs only when you dispatch its steps.',
+							},
+						})
+					)
+			}
+		}
 		if (name === 'begin_run' || name === 'start_test') settleEnded(store)
 		const reply = performAction(store, name, input, { actor: defaultActor(workspace, env), env })
+		if (name === 'answer_gap' && reply.status === 'completed' && reply.data.decisionId) {
+			const harness = selectedHarness(workspaceEnv(store, env))
+			const tools = harness === 'claude' ? ruleTokens(testerRulesText(store, harness)) : []
+			closeStore(store)
+			store = undefined
+			const revision = await startWorker(workspace, env, tools, 'revise', reply.subject)
+			return actionOutput({
+				...reply,
+				data: { ...reply.data, revision: actionOutput(actionRecovery('delegate_work', revision)) },
+			})
+		}
 		return actionOutput(actionRecovery(name, reply))
 	} catch (error) {
 		const reply: Reply = isBusy(error)

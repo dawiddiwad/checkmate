@@ -528,6 +528,39 @@ function insertReplacement(
 	}
 }
 
+// A replacement and its retirement share an operation. Map only the web
+// entries explicitly replaced by the selected instance, never every retired URL.
+export function correctedEntryText(store: Store, targetId: string, instanceId: string) {
+	const rows = all<{ before: string; after: string; instance_id: string; predecessor: string }>(
+		store,
+		`WITH RECURSIVE chain(instance_id, body, operation_id) AS (
+			SELECT instance_id, body, operation_id FROM instances WHERE target_id = ? AND instance_id = ?
+			UNION ALL
+			SELECT old.instance_id, old.body, old.operation_id FROM chain
+			JOIN instance_retirements r ON r.operation_id = chain.operation_id AND r.target_id = ?
+			JOIN instances old ON old.target_id = r.target_id AND old.instance_id = r.instance_id
+		)
+		SELECT json_extract(old.body, '$.entries.web') AS before,
+			json_extract(new.body, '$.entries.web') AS after, new.instance_id, old.instance_id AS predecessor
+		FROM chain new JOIN instance_retirements r ON r.operation_id = new.operation_id AND r.target_id = ?
+		JOIN chain old ON old.instance_id = r.instance_id`,
+		targetId,
+		instanceId,
+		targetId,
+		targetId
+	)
+	const endpoint = rows.find((row) => row.instance_id === instanceId)?.after
+	const replaced = rows
+		.map((row) => row.before)
+		.filter((url): url is string => Boolean(url && url !== endpoint))
+		.sort((a, b) => b.length - a.length)
+	if (!endpoint || !replaced.length) return (value: string) => value
+	const alternatives = replaced.map((url) => url.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')
+	// A named port is part of the entry, so :444 must not match :4444.
+	const entries = new RegExp(`(?:${alternatives})(?![A-Za-z0-9:-]|\\.[A-Za-z0-9])`, 'g')
+	return (value: string) => value.replace(entries, () => endpoint)
+}
+
 function retirement(store: Store, targetId: string, instanceId: string) {
 	return one<{ at: string; actor: string }>(
 		store,

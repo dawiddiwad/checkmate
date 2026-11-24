@@ -33,10 +33,15 @@ The Claude Code plugin serves Checkmate actions through its local MCP server. Th
 | Inspect or correct a target | `list_targets`, `show_target`, `setup`, `replace_instance`                                                                |
 | Plan and answer             | `open_plan`, `read_plan_request`, `save_plan`, `read_pending`, `revise_plan`, `edit_plan`, `answer_gap`                   |
 | Explore                     | `start_test`, `test_status`, `pause_test`, `follow_test`, `next_tester_steps`, `tester_steps_started`, `tester_step_done` |
-| Execute stored tests        | `begin_run`, `read_run`, `resume_run`, `record_check`, `close_test`, `record_finding`, `record_gap`, `finish_run`         |
+| Execute stored tests        | `begin_run`, `read_run`, `resume_run`, `record_check`, `close_test`, `record_finding`, `record_gap`                       |
+| Start an independent worker | `delegate_work`                                                                                                           |
 | Review state                | `status`, `inbox`                                                                                                         |
 
-Use the returned target, plan, and instance IDs for subsequent actions. To correct a web target, use setup with the `correct` field. To replace an instance, supply its complete entry values and other fields. Checkmate retains the original request, profile and instance for existing records.
+The operator opens requests and starts independent planners, revisers and testers. Only the assigned worker can save a plan or its revision, record a check, or close a test through a host tool. The launcher records the final stored run outcome. A plan gap answer starts a reviser immediately. A question from exploration is recorded for follow-up testing. Give the person's exact answer.
+
+Use the returned target, plan, and instance IDs for subsequent actions. To correct a web target, use setup with the `correct` field. To replace an instance, supply its complete entry values. A target correction applies to a plan before its first stored run. The first run pins the corrected profile. An exploration or run uses the replacement instance's URL in place of a superseded URL from that instance's history. Previously recorded runs retain their pinned profile and instance.
+
+For a structured check, give only the observed item, for example `"400"` for HTTP status. Give `absent: true` after a successful read when the item is missing. Put the response and request details in `evidence: [{text, kind}]`. To attach a file, use `[{file, kind}]` with a fresh file from the run evidence directory. A successful call consumes the file. An incomplete test closed as an operational error keeps its observations without requiring a defect finding. A completed tester step can report a product defect. Give a step failure only for an agent or host failure.
 
 The CLI still serves scripts, factory stages, review UI chat, exports, permanent runs, approvals, permissions, and recovery operations. Checkmate's CLI and host tools validate supported actions with the same [action schemas](../plugin/contracts/actions.schema.json). Factory grants and target credentials stay with the host.
 

@@ -165,7 +165,9 @@ function optionValue(token: string, kind: FlagKind, text: string) {
 function evidence(args: Args, context: Context): EvidenceInput[] | undefined {
 	return list(args, 'evidence')?.map((spec) => {
 		const match = /^-(?::(.+))?$/.exec(spec)
-		return match ? { text: context.text(), kind: match[1] } : spec
+		if (match) return { text: context.text(), kind: match[1] }
+		const file = /^(.*):(observation|http_exchange|screenshot|trace)$/.exec(spec)
+		return file ? { file: file[1], kind: file[2] } : { file: spec }
 	})
 }
 
@@ -1703,8 +1705,9 @@ const commands: Record<string, Command> = {
 					explorationId: value(args, 'explorationId'),
 					name: value(args, 'name'),
 					step: value(args, 'step'),
-					agent: value(args, 'agent'),
-					failed: value(args, 'failed'),
+					agentId: value(args, 'agent'),
+					failure: args['failed'] === undefined ? undefined : 'host_error',
+					failureDetail: value(args, 'failed'),
 					activity: value(args, 'activity'),
 					replyLine: value(args, 'reply-line'),
 				},

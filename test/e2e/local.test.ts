@@ -75,6 +75,36 @@ function invoke(entry: string, workspace: string, env: NodeJS.ProcessEnv, input:
 	)
 }
 
+async function mcpCalls(
+	workspace: string,
+	env: NodeJS.ProcessEnv,
+	calls: Array<[name: string, arguments_: object]>,
+	cwd = workspace
+) {
+	const child = spawn(process.execPath, [binary, 'mcp'], {
+		cwd,
+		env: { ...env, CLAUDE_PROJECT_DIR: workspace },
+		timeout: 70000,
+	})
+	const requests = [
+		{ method: 'initialize', params: { protocolVersion: '2025-06-18' } },
+		{ method: 'tools/list' },
+		...calls.map(([name, arguments_]) => ({ method: 'tools/call', params: { name, arguments: arguments_ } })),
+	]
+	child.stdin.end(
+		requests.map((request, index) => JSON.stringify({ jsonrpc: '2.0', id: index + 1, ...request })).join('\n') +
+			'\n'
+	)
+	let output = ''
+	child.stdout.on('data', (bytes) => (output += bytes))
+	const [exit] = await once(child, 'close')
+	assert.equal(exit, 0, output)
+	return output
+		.trim()
+		.split('\n')
+		.map((line) => JSON.parse(line))
+}
+
 test('Install packed npm CLI and open the empty UI — installed assets or skills missing.', async (t) => {
 	const workspace = directory(t)
 	const installed = join(project, 'node_modules/@xoxoai/checkmate')
@@ -111,7 +141,7 @@ import { writeFileSync } from 'node:fs'
 import { callActionTool } from ${JSON.stringify(pathToFileURL(join(packageRoot, 'dist/checkmate.js')).href)}
 export default (pi) => pi.on('session_start', async (_event, ctx) => {
 	const tools = pi.getAllTools().filter(tool => tool.name.startsWith('checkmate_')).map(tool => tool.name)
-	const refused = callActionTool('checkmate_setup', { url: 'not-a-url' }, ctx.cwd, process.env)
+	const refused = await callActionTool('checkmate_setup', { url: 'not-a-url' }, ctx.cwd, process.env)
 	writeFileSync(${JSON.stringify(inventory)}, JSON.stringify({ tools, refused }))
 })
 `
@@ -134,7 +164,7 @@ export default (pi) => pi.on('session_start', async (_event, ctx) => {
 	}
 	const main = inspectTools()
 	assert(main.tools.includes('checkmate_setup'))
-	assert(main.tools.includes('checkmate_record_check'))
+	assert(!main.tools.includes('checkmate_record_check'))
 	assert(main.tools.includes('checkmate_inbox'))
 	assert.equal(main.refused.refusal, 'malformed')
 	const cli = await command(workspace, env, 'setup', '--url', 'not-a-url')
@@ -156,31 +186,16 @@ test('Expose packaged Claude MCP tools by role and keep their workspace bound to
 	t.after(() => app.close())
 	const mcpConfig = JSON.parse(readFileSync(join(project, 'node_modules/@xoxoai/checkmate/plugin/.mcp.json'), 'utf8'))
 	assert.deepEqual(mcpConfig.mcpServers.actions.args.slice(-1), ['mcp'])
-	const request = (id: number, method: string, params?: object) => ({ jsonrpc: '2.0', id, method, params })
-	const batches = async (role?: string) => {
-		const env = { ...process.env, CLAUDE_PROJECT_DIR: workspace, CHECKMATE_TOOL_ROLE: role }
-		const child = spawn(process.execPath, [binary, 'mcp'], { cwd: other, env })
-		const requests = [
-			request(1, 'initialize', { protocolVersion: '2025-06-18' }),
-			request(2, 'tools/list'),
-			request(3, 'tools/call', { name: 'checkmate_setup', arguments: { url: 'not-a-url' } }),
-			request(4, 'tools/call', {
-				name: 'checkmate_setup',
-				arguments: { url: app.baseUrl, targetId: 'fixture', operations: ['read_health'] },
-			}),
-		]
-		child.stdin.end(requests.map((value) => JSON.stringify(value)).join('\n') + '\n')
-		let output = ''
-		child.stdout.on('data', (bytes) => {
-			output += bytes
-		})
-		const [exit] = await once(child, 'close')
-		assert.equal(exit, 0, output)
-		return output
-			.trim()
-			.split('\n')
-			.map((line) => JSON.parse(line))
-	}
+	const batches = (role?: string) =>
+		mcpCalls(
+			workspace,
+			{ ...process.env, CHECKMATE_TOOL_ROLE: role },
+			[
+				['checkmate_setup', { url: 'not-a-url' }],
+				['checkmate_setup', { url: app.baseUrl, targetId: 'fixture', operations: ['read_health'] }],
+			],
+			other
+		)
 	const [, inventory, invalid, saved] = await batches()
 	assert(inventory.result.tools.some((tool: { name: string }) => tool.name === 'checkmate_setup'))
 	assert.equal(invalid.result.structuredContent.refusal, 'malformed')
@@ -191,12 +206,78 @@ test('Expose packaged Claude MCP tools by role and keep their workspace bound to
 	const [, tester, refused] = await batches('execute')
 	assert(tester.result.tools.some((tool: { name: string }) => tool.name === 'checkmate_record_check'))
 	assert(!tester.result.tools.some((tool: { name: string }) => tool.name === 'checkmate_finish_run'))
-	assert.equal(refused.error.code, -32602)
+	assert.equal(refused.result.structuredContent.refusal, 'prohibited')
 	const [, clerk] = await batches('clerk')
 	assert.deepEqual(clerk.result.tools, [])
 	const { childArgs } = await import('../../plugin/src/sessions.ts')
 	const clean = childArgs({ harness: 'claude', hiddenPlugin: null, claudeArgs: [] }, [])
 	assert.equal(clean[clean.indexOf('--disallowedTools') + 1], 'mcp__plugin_checkmate_actions__*')
+})
+
+test('Delegate plan, apply an answer immediately, and record stored checks only from the assigned tester.', async (t) => {
+	const workspace = directory(t)
+	const app = await fixture()
+	t.after(() => app.close())
+	const bin = join(workspace, 'bin')
+	mkdirSync(bin)
+	copyFileSync(join(root, 'test/e2e/typed-worker.mjs'), join(bin, 'claude'))
+	chmodSync(join(bin, 'claude'), 0o755)
+	const env = { ...process.env, PATH: `${bin}${delimiter}${process.env.PATH}`, CHECKMATE_ACTOR: 'oracle' }
+	const [, inventory, ...responses] = await mcpCalls(workspace, env, [
+		['checkmate_setup', { url: app.baseUrl, targetId: 'shop', operations: ['read_health'] }],
+		[
+			'checkmate_open_plan',
+			{
+				target: 'shop',
+				planId: 'ticket',
+				request: {
+					objective: 'Check health.',
+					requirements: [{ id: 'R1', text: 'The health endpoint answers.', source: 'ticket.md' }],
+				},
+			},
+		],
+		['checkmate_delegate_work', { stage: 'plan', subject: 'ticket' }],
+		['checkmate_status', { planId: 'ticket' }],
+		[
+			'checkmate_answer_gap',
+			{
+				planId: 'ticket',
+				gapId: 'G1',
+				kind: 'clarify',
+				value: 'It returns HTTP 200.',
+				source: 'conversation',
+				rationale: 'The person answered.',
+			},
+		],
+		['checkmate_begin_run', { runId: 'r1', reference: 'ticket', build: 'b1' }],
+		['checkmate_record_check', { runId: 'r1', testId: 'T1', assertionId: 'A1', observed: '200' }],
+		['checkmate_delegate_work', { stage: 'execute', subject: 'r1' }],
+	])
+	assert(!inventory.result.tools.some((tool: { name: string }) => tool.name === 'checkmate_record_check'))
+	const [setup, opened, planned, waiting, answered, began, denied, executed] = responses.map(
+		(response) => response.result.structuredContent
+	)
+	assert.equal(setup.status, 'completed', JSON.stringify(setup))
+	assert.equal(opened.status, 'completed', JSON.stringify(opened))
+	assert(['completed', 'needs_decision'].includes(planned.status), JSON.stringify(planned))
+	assert.equal(waiting.waitsOn, 'oracle', JSON.stringify(waiting))
+	assert.equal(answered.revision.status, 'completed', JSON.stringify(answered))
+	assert.equal(began.status, 'completed', JSON.stringify(began))
+	assert.equal(denied.refusal, 'prohibited', JSON.stringify(denied))
+	assert.equal(executed.status, 'completed', JSON.stringify(executed))
+	const records = await command(
+		workspace,
+		env,
+		'query',
+		"SELECT command, actor FROM operations WHERE command IN ('plan save', 'plan revise', 'run check') AND status IN ('completed', 'needs_decision') ORDER BY rowid"
+	)
+	assert.deepEqual(records.body.rows, [
+		{ command: 'plan save', actor: 'claude:plan' },
+		{ command: 'plan revise', actor: 'claude:revise' },
+		{ command: 'run check', actor: 'claude:execute' },
+	])
+	const answer = await command(workspace, env, 'query', 'SELECT value FROM decisions')
+	assert.deepEqual(answer.body.rows, [{ value: 'It returns HTTP 200.' }])
 })
 
 test('Point run accept and run reject to the result command — a wrong command name leaves the record unchanged.', async (t) => {
@@ -1998,6 +2079,26 @@ test('Give a session tester the data rules of a read-only target — the test ta
 	for (const text of [study, task]) assert.match(text, /Data policy: Read only\. Never create or change a record\./)
 	assert.doesNotMatch(task, /make new records|Make a new record/)
 	assert.match(task, /Do not create, change, or delete a record/)
+	await ok('explore', 'started', id, 'a1')
+	writeFileSync(join(folder, 'report.md'), 'Defect: the catalog returned an incorrect status.\n')
+	const [, , malformed, refused, recorded] = await mcpCalls(workspace, env, [
+		[
+			'checkmate_tester_step_done',
+			{ explorationId: id, name: 'a1', step: 'test', agentId: 'tester-1', failure: 'Defect: HTTP 500' },
+		],
+		[
+			'checkmate_tester_step_done',
+			{ explorationId: id, name: 'a1', step: 'test', agentId: 'tester-1', failure: 'host_error' },
+		],
+		[
+			'checkmate_tester_step_done',
+			{ explorationId: id, name: 'a1', step: 'test', agentId: 'tester-1', replyLine: 'tester a1 test done' },
+		],
+	])
+	assert.equal(malformed.result.structuredContent.refusal, 'malformed')
+	assert.match(refused.result.structuredContent.nextAction.instruction, /product defects/)
+	assert.equal(recorded.result.structuredContent.status, 'completed')
+	assert.notEqual(recorded.result.structuredContent.state, 'operational_error')
 })
 
 test('Give a verifier the data rules of the target — the verifier brief had only the operation text and a prefix.', async () => {
@@ -3396,19 +3497,30 @@ test('Execute a request through Pi RPC — a begun run must reach its worker.', 
 	writeFileSync(
 		join(bin, 'pi'),
 		`#!/usr/bin/env node
-const { execFileSync } = require('node:child_process')
-const { readFileSync } = require('node:fs')
+const { readFileSync, realpathSync } = require('node:fs')
+const { pathToFileURL } = require('node:url')
 const input = readFileSync(0, 'utf8')
 if (!input.includes('pi-run')) throw Error('Wrong run')
-const run = (args, input) => execFileSync(process.execPath, [process.env.QA_CLI, ...args], {input, encoding:'utf8'})
-fetch(process.env.QA_APP_URL + '/quote?promotion=true&loyalty=true').then(r => r.json()).then(quote => {
-  if (quote.totalPLN !== 240) throw Error('Wrong build')
-  run(['run','check','pi-run','T1','A1','--observed','240','--evidence','-'], JSON.stringify(quote))
-  run(['run','close','pi-run','T1'])
-  run(['run','finish','pi-run','--completion','completed','--cleanup','completed','--cleanup-reason','No test data.'])
+async function main() {
+  const { callActionTool } = await import(pathToFileURL(realpathSync(process.env.QA_CLI)))
+  const role = process.env.CHECKMATE_TOOL_ROLE
+  if (role === 'execute') {
+    const call = async (name, fields) => {
+      const receipt = await callActionTool('checkmate_' + name, { runId: 'pi-run', ...fields }, process.cwd(), process.env)
+      if (receipt.status !== 'completed') throw Error(JSON.stringify(receipt))
+      return receipt
+    }
+    const detail = await call('read_run', { includePlan: true })
+    const response = await fetch(detail.instance.entries.web + '/quote?promotion=true&loyalty=true')
+    const quote = await response.json()
+    if (quote.totalPLN !== 240) throw Error('Wrong build')
+    await call('record_check', { testId: 'T1', assertionId: 'A1', observed: String(quote.totalPLN), evidence: [{ text: JSON.stringify(quote) }] })
+    await call('close_test', { testId: 'T1' })
+  } else if (role !== 'probe') throw Error('Wrong role: ' + role)
   const result = JSON.stringify({status:'completed',subject:'pi-run',reasons:[]})
   console.log(JSON.stringify({type:'agent_end',messages:[{role:'assistant',stopReason:'stop',content:[{type:'text',text:result}]}]}))
-}).catch(e => { console.error(e); process.exitCode = 1 })
+}
+main().catch(e => { console.error(e.message); process.exitCode = 1 })
 `,
 		{ mode: 0o755 }
 	)
@@ -3435,9 +3547,6 @@ fetch(process.env.QA_APP_URL + '/quote?promotion=true&loyalty=true').then(r => r
 	}
 	await ok('target', 'instance', 'add', 'shop', 'local', '--entry', `web=${app.baseUrl}`)
 	await ok('plan', 'approve', 'ticket@1', '--rationale', 'Run the rule.')
-	const shell = (value: string) => `'${value.replaceAll("'", "'\\''")}'`
-	const cli = `${shell(process.execPath)} ${shell(binary)}`
-	const operation = `${cli} run begin pi-run ticket@1 --build fixed --instance local --tests T1 && ${cli} delegate execute pi-run`
 	let calls = 0
 	let sawGuidance = false
 	const provider = createServer(async (req, res) => {
@@ -3448,26 +3557,38 @@ fetch(process.env.QA_APP_URL + '/quote?promotion=true&loyalty=true').then(r => r
 		if (calls === 1)
 			sawGuidance =
 				data.includes('execute the fixture run') &&
-				data.includes('When the person asks you to run or retest stored tests')
-		const delta =
-			calls === 1
-				? {
-						tool_calls: [
-							{
-								index: 0,
-								id: 'call_fixture',
-								type: 'function',
-								function: { name: 'bash', arguments: JSON.stringify({ command: operation }) },
-							},
-						],
-					}
-				: { content: 'The run finished.' }
+				data.includes('You are the operator. You do not test.') &&
+				request.tools.some(
+					(tool: { function: { name: string } }) => tool.function.name === 'checkmate_delegate_work'
+				) &&
+				!request.tools.some(
+					(tool: { function: { name: string } }) => tool.function.name === 'checkmate_record_check'
+				)
+		const action = [
+			[
+				'checkmate_begin_run',
+				{ runId: 'pi-run', reference: 'ticket', build: 'fixed', instance: 'local', tests: ['T1'] },
+			],
+			['checkmate_delegate_work', { stage: 'execute', subject: 'pi-run' }],
+		][calls - 1]
+		const delta = action
+			? {
+					tool_calls: [
+						{
+							index: 0,
+							id: `call_fixture_${calls}`,
+							type: 'function',
+							function: { name: action[0], arguments: JSON.stringify(action[1]) },
+						},
+					],
+				}
+			: { content: 'The run finished.' }
 		res.writeHead(200, { 'content-type': 'text/event-stream' })
 		res.write(
 			`data: ${JSON.stringify({ id: 'fixture', object: 'chat.completion.chunk', model: 'fixture', choices: [{ index: 0, delta, finish_reason: null }] })}\n\n`
 		)
 		res.write(
-			`data: ${JSON.stringify({ id: 'fixture', object: 'chat.completion.chunk', model: 'fixture', choices: [{ index: 0, delta: {}, finish_reason: calls === 1 ? 'tool_calls' : 'stop' }] })}\n\n`
+			`data: ${JSON.stringify({ id: 'fixture', object: 'chat.completion.chunk', model: 'fixture', choices: [{ index: 0, delta: {}, finish_reason: action ? 'tool_calls' : 'stop' }] })}\n\n`
 		)
 		res.end('data: [DONE]\n\n')
 		void request
@@ -3519,7 +3640,7 @@ fetch(process.env.QA_APP_URL + '/quote?promotion=true&loyalty=true').then(r => r
 		'Pi did not finish'
 	)
 	assert(sawGuidance, 'Pi did not receive the workflow skill')
-	assert(calls >= 2, 'Pi did not return the tool result to the provider')
+	assert(calls >= 3, 'Pi did not return the tool result to the provider')
 	const results = await ok('query', "SELECT body FROM results WHERE run_id='pi-run'")
 	assert.equal(JSON.parse(results.rows[0].body).tests[0].outcome, 'passed')
 	assert.equal((await ok('run', 'show', 'pi-run')).build, 'fixed')
@@ -3934,7 +4055,9 @@ test('Run a two-instance matrix and accept each latest result — one pass masks
 test('Correct a target in the packed CLI and keep the original run pinned.', async (t) => {
 	const workspace = directory(t)
 	const app = await fixture()
+	const fixed = await fixture()
 	t.after(() => app.close())
+	t.after(() => fixed.close())
 	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle' }
 	const ok = async (...args: string[]) => {
 		const result = await command(workspace, env, ...args)
@@ -4003,6 +4126,41 @@ test('Correct a target in the packed CLI and keep the original run pinned.', asy
 	)
 	assert.equal(saved.code, 0, saved.output)
 	await ok('run', 'begin', 'old-run', 'ticket@1', '--build', 'b1')
+	const draft = await inputCommand(
+		workspace,
+		env,
+		JSON.stringify({
+			objective: `Check the catalog at ${app.baseUrl}.`,
+			requirements: [{ id: 'R1', text: 'The catalog opens.', source: 'Ticket' }],
+		}),
+		'plan',
+		'open',
+		'unrun',
+		'--target',
+		'shop@1'
+	)
+	assert.equal(draft.code, 0, draft.output)
+	const originalPlan = await ok('plan', 'show', 'ticket@1')
+	const { readiness: _readiness, gapIds: _gapIds, ...originalTest } = originalPlan.plan.tests[0]
+	void _readiness
+	void _gapIds
+	const pending = await inputCommand(
+		workspace,
+		env,
+		JSON.stringify({
+			tests: [
+				{
+					...originalTest,
+					preconditions: [`Read the catalog at ${app.baseUrl}.`],
+				},
+			],
+			gaps: [],
+		}),
+		'plan',
+		'save',
+		'unrun'
+	)
+	assert.equal(pending.code, 0, pending.output)
 	const typo = await command(workspace, env, 'setup', '--correct', '--url', app.baseUrl, '--target', 'wrong-shop')
 	assert.equal(typo.code, 1)
 	assert.match(typo.body.nextAction.instruction, /retry with the existing target ID/)
@@ -4015,17 +4173,17 @@ test('Correct a target in the packed CLI and keep the original run pinned.', asy
 		'setup',
 		'--correct',
 		'--url',
-		app.baseUrl + '/health',
+		fixed.baseUrl,
 		'--target',
 		'shop',
 		'--operations',
-		'read_health',
+		'read_health,read_catalog',
 		'--build',
 		'b2',
 		'--environment',
 		'staging'
 	)
-	assert.deepEqual(corrected.allowedOperations, ['read_health'])
+	assert.deepEqual(corrected.allowedOperations, ['read_health', 'read_catalog'])
 	assert.notEqual(corrected.instanceId, 'local')
 	const before = await ok('target', 'show', 'shop@1', '--instance', 'local')
 	assert.deepEqual(before.profile.allowedOperations, ['read_catalog'])
@@ -4037,6 +4195,14 @@ test('Correct a target in the packed CLI and keep the original run pinned.', asy
 	assert.equal(oldRun.target, 'shop@1')
 	assert.equal(oldRun.instance.entries.web, app.baseUrl)
 	assert.equal(oldRun.execution.tests[0].action, 'GET /health.')
+	const explored = await ok('explore', 'open', 'unrun', '--build', 'b2')
+	assert.equal(explored.instanceId, corrected.instanceId)
+	assert.equal(explored.charter.goal, `Check the catalog at ${fixed.baseUrl}.`)
+	await ok('run', 'begin', 'corrected-run', 'unrun@1', '--build', 'b2')
+	const newRun = await ok('run', 'show', 'corrected-run', '--include-plan')
+	assert.equal(newRun.target, 'shop@2')
+	assert.equal(newRun.instance.entries.web, fixed.baseUrl)
+	assert.deepEqual(newRun.execution.tests[0].preconditions, [`Read the catalog at ${fixed.baseUrl}.`])
 	const invalid = await inputCommand(
 		workspace,
 		env,
@@ -4577,6 +4743,22 @@ test('Record each test with its own worker — a silent worker is retried once, 
 	})
 	await ok(['plan', 'approve', 'ticket@1', '--rationale', 'Run the rule.'])
 	await ok(['run', 'begin', 'run-1', 'ticket@1', '--build', 'b1', '--partial', 'ready_only'])
+	// An observation was recorded before the worker failed. It must not force a defect for a test closed as error.
+	const partial = await inputCommand(
+		workspace,
+		env,
+		'The observed quote was 235.',
+		'run',
+		'check',
+		'run-1',
+		'T3',
+		'A1',
+		'--observed',
+		'235',
+		'--evidence',
+		'-'
+	)
+	assert.equal(partial.body.result, 'failed', partial.output)
 	const bin = directory(t)
 	copyFileSync(join(root, 'test/e2e/per-test-host.mjs'), join(bin, 'pi'))
 	chmodSync(join(bin, 'pi'), 0o755)
@@ -4600,6 +4782,11 @@ test('Record each test with its own worker — a silent worker is retried once, 
 		"SELECT count(*) AS n FROM findings WHERE run_id = 'run-1' AND body LIKE '%\"potential_issue\"%'",
 	])
 	assert.equal(probed.rows[0].n, 1)
+	const findings = await ok([
+		'query',
+		"SELECT count(*) AS n FROM findings WHERE run_id = 'run-1' AND body LIKE '%T3.A1%'",
+	])
+	assert.equal(findings.rows[0].n, 0)
 	const outcomes = await ok([
 		'query',
 		"SELECT test_id, outcome FROM outcomes WHERE run_id = 'run-1' ORDER BY test_id",

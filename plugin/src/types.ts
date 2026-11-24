@@ -307,9 +307,12 @@ export type Actions = {
 		request?: string
 		reason?: string
 		evidence?: Array<
-			| string
 			| {
 					text: string
+					kind?: 'observation' | 'http_exchange' | 'screenshot' | 'trace'
+			  }
+			| {
+					file: string
 					kind?: 'observation' | 'http_exchange' | 'screenshot' | 'trace'
 			  }
 		>
@@ -321,9 +324,12 @@ export type Actions = {
 		cause?: 'deadline'
 		reason?: string
 		evidence?: Array<
-			| string
 			| {
 					text: string
+					kind?: 'observation' | 'http_exchange' | 'screenshot' | 'trace'
+			  }
+			| {
+					file: string
 					kind?: 'observation' | 'http_exchange' | 'screenshot' | 'trace'
 			  }
 		>
@@ -380,10 +386,11 @@ export type Actions = {
 		explorationId: string
 		name: string
 		step: 'study' | 'test' | 'record' | 'follow' | 'rules' | 'merge' | 'verify'
-		agent?: string
-		failed?: string
 		activity?: string
 		replyLine?: string
+		failure?: 'agent_unavailable' | 'agent_interrupted' | 'host_error'
+		failureDetail?: string
+		agentId?: string
 	}
 	follow_test?: {
 		explorationId: string
@@ -397,6 +404,10 @@ export type Actions = {
 		runId: string
 		error?: Array<string>
 		reason?: string
+	}
+	delegate_work?: {
+		stage: 'setup' | 'plan' | 'revise' | 'execute'
+		subject: string
 	}
 }
 

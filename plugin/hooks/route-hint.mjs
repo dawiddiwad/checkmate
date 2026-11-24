@@ -3,7 +3,7 @@
 // It never blocks the prompt: any error leaves the prompt unchanged.
 
 const hint =
-	'This request looks like a test of an application change. Use the checkmate:test skill, which runs Checkmate testers and records what they find.'
+	'This request looks like a test of an application change. Use the checkmate:test skill, which starts independent testers and records what they find. The operator does not test or use curl as a test.'
 
 // A request to test the application: a test verb with a change, ticket, build, feature or application noun.
 const testVerb =

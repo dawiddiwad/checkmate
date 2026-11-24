@@ -5,9 +5,11 @@ description: Write a stored Checkmate test plan: test cases with assertions, and
 
 > **Agent only:** This file contains repository or workflow instructions for coding agents.
 
-Use the Checkmate tools in the current session. Read the sources the oracle names.
+## Operator
 
-For a new plan, use the setup skill when there is no target. Call `checkmate_open_plan` with the target ID and a request object. Put the objective and all named sources in the request. Use `context.sources` for sources. Omit the plan ID when the first source names the ticket. Keep the returned plan ID. Setup sends a read check for reachability. A plan-only request does not authorize execution.
+Use the setup skill if there is no target. Call `checkmate_open_plan` with the target ID, the objective, and all named sources in `context.sources`. Do not put the target URL in the objective or checks. Testers use the stored instance for each build. Use the returned plan ID to call `checkmate_delegate_work` with stage `plan`. Report its saved plan and open questions. Stop for a plan-only request. Do not plan or test yourself.
+
+## Delegated planner
 
 1. Call `checkmate_read_plan_request` with the plan ID. It prints the objective, requirements, context sources, instructions, source context, tools, target capabilities, and allowed operations. When it refuses with `Unknown plan`, return `needs_decision` with the reason.
 2. Read each context source. Use the file tools of the host for a local file, and the listed tools for other sources. Follow the instructions. If you cannot read a source, stop. Return `needs_decision` with the source in the reason.
@@ -16,7 +18,7 @@ For a new plan, use the setup skill when there is no target. Call `checkmate_ope
 5. For each rule of the change, check the points in [Unknown points](#unknown-points). For a point that the sources do not settle and that a test cannot proceed without, write one open blocking gap with `"requirementIds": []` and the affected tests in `testIds`. Name the criterion and the one question in the gap `question`. Do not pick a value. The other tests still count.
 6. List the existing rules that a source states and that the change touches or is near. Read [Regression tests](#regression-tests). Plan one or more regression tests for each rule, with expected values from the source. Mark each with `"metadata": { "type": "regression" }`.
 7. Write the tests. Add the edge-case tests of each rule. Read [Edge cases](#edge-cases). Give each test a capability of the target and its own data. Read [Test data](#test-data). Use the shape of the example below.
-8. Check each precondition against an active instance, read-only. Call `checkmate_show_target` for the entry values of the active instance. Open a page that lists the records, or send a `GET` request. For a `command` entry, for example a one-time login URL, run the command exactly as recorded and use its output only for this check. Do not write the output in the plan. When a precondition does not agree with the base build, change the test data so that the test keeps its intent.
+8. Check each precondition against an active instance, read-only, when the instance is reachable. A target that is down does not block saving a plan from the sources. Do not guess a replacement URL. Call `checkmate_show_target` for the entry values of the active instance. Open a page that lists the records, or send a `GET` request. For a `command` entry, for example a one-time login URL, run the command exactly as recorded and use its output only for this check. Do not write the output in the plan. When a precondition does not agree with the base build, change the test data so that the test keeps its intent.
 9. Check the candidate before you save it. Correct it until each answer is yes:
    - Each requirement has one or more tests.
    - Each rule has edge-case tests. Each unknown point that a test cannot proceed without has an open blocking gap with `"requirementIds": []`.
@@ -24,10 +26,10 @@ For a new plan, use the setup skill when there is no target. Call `checkmate_ope
    - Each test creates its records or uses a unique value such as `{{marker}}-<testId>`. No test needs a seed record to be unused or unchanged.
    - Each test has `"dependsOn": []`, unless it uses a record that another test creates.
    - No assertion uses a value that you chose. An assertion with no value in the sources is an `agent_observation` or a test with a simpler check, not a gap, unless the test cannot proceed without the value.
-   - Each price, fee, or amount in the sources states its currency, whether tax is included, and its rounding. Each one that does not has an open gap.
+   - Check currency, tax, and rounding when they affect the expected value. Ask only for a fact that a planned test needs.
 10. Call `checkmate_save_plan` with the plan ID and the candidate object.
 11. If the tool refuses the candidate, use the returned reasons and next action to correct it.
-12. In a delegated stage or a sub-agent, return the response of `plan save`. In the same session, report as `session.md` says. A `needs_decision` status with gap questions is a correct result.
+12. In a delegated stage or a sub-agent, return the response of `checkmate_save_plan`. A `needs_decision` status with gap questions is a correct result.
 
 Do not ask the person a question during planning, and do not wait for an answer. A missing value is an open gap in the plan. A missing permission or source is a `needs_decision` return with its reason. After step 12, stop. Do not search the files to find a cause for a refusal. Run the hint.
 
@@ -115,7 +117,7 @@ Rules:
 A test with a value that you chose can pass on a wrong product. For each rule that the change touches, check these points:
 
 - Thresholds and boundaries: "over", "under", "at least", "up to", "after". Is the boundary value in or out?
-- Money: the currency, whether a price includes tax, which tax rate applies, and the rounding unit. A price such as "80 PLN" does not say whether tax is included. Raise that point when the ticket names prices and no tax rule.
+- Money: the currency, whether a price includes tax, which tax rate applies, and the rounding unit. Ask only when the missing rule affects an expected value. A price stated by the source can be checked as given.
 - Rounding and the order of operations: which step rounds, to what precision, and which rule applies first.
 - Stacking: does the rule combine with an existing rule, replace it, or come before it?
 - Scope words: "all", "each", "any", "selected", "related". Which records does the rule include?

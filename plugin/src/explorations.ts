@@ -3,8 +3,8 @@ import type { Plan } from './types.ts'
 import type { Change } from './change.ts'
 import { all, canonical, completed, execute, one, write } from './store.ts'
 import { requireChoice, requireIdentifier, requireText, unusedId } from './contracts.ts'
-import { planRequest, planTools } from './plans.ts'
-import { runInstance } from './targets.ts'
+import { executionTarget, planRequest, planTools } from './plans.ts'
+import { correctedEntryText, runInstance } from './targets.ts'
 import { explorationRules, planRules } from './rules.ts'
 import type { Claim } from './journal.ts'
 import { addPlanBuild, explorationRow, journal, planClaims, planQuestions } from './journal.ts'
@@ -50,11 +50,14 @@ function charterOf(
 	plan: Plan | undefined,
 	scope: string[],
 	change: Change | null,
+	instanceId: string,
 	knownState: { path: string; answerIds: string[] } | null
 ): Charter {
-	const { request, target } = planRequest(store, planId)
+	const { request, target: pinned } = planRequest(store, planId)
+	const target = executionTarget(store, planId, pinned.profile.targetId, pinned.revision)
+	const correct = correctedEntryText(store, target.profile.targetId, instanceId)
 	return {
-		goal: request.objective,
+		goal: correct(request.objective),
 		requirements: planRules(store, planId).rules.map(({ id, text }) => ({ id, text })),
 		decisions:
 			plan?.gaps.flatMap((gap) => {
@@ -65,7 +68,7 @@ function charterOf(
 				return [{ gapId, kind, question: gap.question, value, source }]
 			}) ?? [],
 		sources: request.context?.sources ?? [],
-		instructions: request.context?.instructions ?? null,
+		instructions: request.context?.instructions ? correct(request.context.instructions) : null,
 		capabilities: target.profile.capabilities,
 		operations: target.profile.allowedOperations,
 		tools: planTools(request, target.profile).map(({ name, purpose }) => ({ name, purpose })),
@@ -224,7 +227,8 @@ export type OpenInput = {
 
 export function insertExploration(store: Store, input: OpenInput, operationId: string, at: string) {
 	const planId = requireIdentifier(input.planId, 'plan ID')
-	const { target } = planRequest(store, planId)
+	const { target: pinned } = planRequest(store, planId)
+	const target = executionTarget(store, planId, pinned.profile.targetId, pinned.revision)
 	const build = requireText(input.build, 'application build (--build)')
 	const mode = requireChoice(input.mode ?? 'exploratory', explorationModes, 'mode (--mode)')
 	const instance = runInstance(store, target.profile.targetId, input.instance)
@@ -236,6 +240,7 @@ export function insertExploration(store: Store, input: OpenInput, operationId: s
 		revision?.plan,
 		input.scope ?? [],
 		input.change ?? null,
+		instance.instanceId,
 		writeKnownState(store, planId, explorationId, build)
 	)
 	execute(

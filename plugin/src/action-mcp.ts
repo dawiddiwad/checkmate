@@ -49,11 +49,11 @@ export async function serveActions() {
 		else if (method === 'tools/list') send(id, { result: { tools } })
 		else if (method === 'tools/call') {
 			const name = params?.name
-			if (!tools.some((tool) => tool.name === name) || !name) {
+			if (!name?.startsWith('checkmate_')) {
 				send(id, { error: { code: -32602, message: 'Choose a Checkmate tool from tools/list' } })
 				continue
 			}
-			const reply = callActionTool(name, params?.arguments ?? {}, workspace, env)
+			const reply = await callActionTool(name, params?.arguments ?? {}, workspace, env)
 			send(id, {
 				result: {
 					content: [{ type: 'text', text: JSON.stringify(reply) }],

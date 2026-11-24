@@ -415,7 +415,7 @@ function check(
 		result,
 		observed,
 		reason,
-		evidence: [evidence(store, runId, file[0], file[1])],
+		evidence: [{ file: evidence(store, runId, file[0], file[1]) }],
 	})
 }
 

@@ -11,6 +11,7 @@ import { existsSync, mkdirSync, openSync, readFileSync, rmSync, writeFileSync } 
 import { spawn, spawnSync } from 'node:child_process'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { actionInput } from '../../plugin/src/actions.ts'
 import { serveActions } from '../../plugin/src/action-mcp.ts'
 export { actionToolDefinitions, callActionTool } from '../../plugin/src/action-tools.ts'
 
@@ -299,6 +300,7 @@ async function runDelegate(tokens: string[]) {
 				parsed.json
 			)
 		}
+		actionInput('delegate_work', { stage, subject })
 		const response = await delegate(parsed.values.workspace ?? process.cwd(), stage, subject, {
 			allowedTools: parsed.allow,
 			claudeArgs: parsed.claudeArgs,

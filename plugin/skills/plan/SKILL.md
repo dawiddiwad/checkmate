@@ -5,26 +5,18 @@ description: Write a stored Checkmate test plan: test cases with assertions, and
 
 > **Agent only:** This file contains repository or workflow instructions for coding agents.
 
-Read `${CLAUDE_PLUGIN_ROOT}/references/workflow.md`. It has the command rules, the actor rules, and the safety rules. In the same session as the oracle, also read `${CLAUDE_PLUGIN_ROOT}/references/session.md`: it tells you how to record a missing request and how to report.
+Use the Checkmate tools in the current session. Read the sources the oracle names.
 
-The plugin CLI is `${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js`. Run `checkmate <command>` as `CHECKMATE_HOST_SESSION=1 node "${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js" <command>`. Write the absolute path. Do not write a shell variable in its place.
+For a new plan, use the setup skill when there is no target. Call `checkmate_open_plan` with the target ID and a request object. Put the objective and all named sources in the request. Use `context.sources` for sources. Omit the plan ID when the first source names the ticket. Keep the returned plan ID. Setup sends a read check for reachability. A plan-only request does not authorize execution.
 
-A plan request has an `objective`, and `requirements` or `context.sources`, or both. When it has requirements, the plan covers exactly these requirements. When it has only sources, you write the requirements from the sources. `plan request` prints the tools of this plan. Read a local file source, for example `ticket.md` or `docs/`, with the file tools of the host. Use the listed tools for other sources, for example a Jira ticket.
-
-Save the plan with `plan save` before 75% of the deadline is used, also when it is not complete. A saved plan with gaps is better than no plan. A plan with a test for each requirement is the goal; a gap is the exception.
-
-When `checkmate target list` shows no target, or `plan open` refuses with `Unknown target profile`, create the target first. Setup sends one read check to the URL. It is not a test. A request not to test the application does not stop setup. Give the URL of the application, then run `checkmate setup --url <url>`. Use the `targetId@1` that it prints in `--target`. Do not write `target open` with your own `--operations`. The setup skill has the details.
-
-## Steps
-
-1. Run `checkmate plan request <planId>`. It prints the objective, requirements, context sources, instructions, source context, tools, target capabilities, and allowed operations. When it refuses with `Unknown plan`, return `needs_decision` with the reason. In the same session, follow `session.md`.
+1. Call `checkmate_read_plan_request` with the plan ID. It prints the objective, requirements, context sources, instructions, source context, tools, target capabilities, and allowed operations. When it refuses with `Unknown plan`, return `needs_decision` with the reason.
 2. Read each context source. Use the file tools of the host for a local file, and the listed tools for other sources. Follow the instructions. If you cannot read a source, stop. Return `needs_decision` with the source in the reason.
 3. Read the project instructions, for example `AGENTS.md`, `CLAUDE.md`, and `README.md`. Find how to drive the application: through the UI, through an API, or both. Use this to choose the capability of each test. Read the product documentation that they name, for example `docs/`.
 4. If the request has no requirements, write them from the sources. Give each requirement an `id`, a `text`, and a `source` that starts with the context source, for example `jira:SHOP-12#ac-1`. Add `requirements` to the candidate.
 5. For each rule of the change, check the points in [Unknown points](#unknown-points). For a point that the sources do not settle and that a test cannot proceed without, write one open blocking gap with `"requirementIds": []` and the affected tests in `testIds`. Name the criterion and the one question in the gap `question`. Do not pick a value. The other tests still count.
 6. List the existing rules that a source states and that the change touches or is near. Read [Regression tests](#regression-tests). Plan one or more regression tests for each rule, with expected values from the source. Mark each with `"metadata": { "type": "regression" }`.
 7. Write the tests. Add the edge-case tests of each rule. Read [Edge cases](#edge-cases). Give each test a capability of the target and its own data. Read [Test data](#test-data). Use the shape of the example below.
-8. Check each precondition against an active instance, read-only. Run `checkmate target instance list <targetId>` for the entry values. Open a page that lists the records, or send a `GET` request. For a `command` entry, for example a one-time login URL, run the command exactly as recorded and use its output only for this check. Do not write the output in the plan. When a precondition does not agree with the base build, change the test data so that the test keeps its intent.
+8. Check each precondition against an active instance, read-only. Call `checkmate_show_target` for the entry values of the active instance. Open a page that lists the records, or send a `GET` request. For a `command` entry, for example a one-time login URL, run the command exactly as recorded and use its output only for this check. Do not write the output in the plan. When a precondition does not agree with the base build, change the test data so that the test keeps its intent.
 9. Check the candidate before you save it. Correct it until each answer is yes:
    - Each requirement has one or more tests.
    - Each rule has edge-case tests. Each unknown point that a test cannot proceed without has an open blocking gap with `"requirementIds": []`.
@@ -33,8 +25,8 @@ When `checkmate target list` shows no target, or `plan open` refuses with `Unkno
    - Each test has `"dependsOn": []`, unless it uses a record that another test creates.
    - No assertion uses a value that you chose. An assertion with no value in the sources is an `agent_observation` or a test with a simpler check, not a gap, unless the test cannot proceed without the value.
    - Each price, fee, or amount in the sources states its currency, whether tax is included, and its rounding. Each one that does not has an open gap.
-10. Send the candidate in a heredoc: `checkmate plan save <planId> --actor claude:plan <<'EOF'`, the JSON, then `EOF`.
-11. If the command refuses the candidate, correct it and do step 10 again.
+10. Call `checkmate_save_plan` with the plan ID and the candidate object.
+11. If the tool refuses the candidate, use the returned reasons and next action to correct it.
 12. In a delegated stage or a sub-agent, return the response of `plan save`. In the same session, report as `session.md` says. A `needs_decision` status with gap questions is a correct result.
 
 Do not ask the person a question during planning, and do not wait for an answer. A missing value is an open gap in the plan. A missing permission or source is a `needs_decision` return with its reason. After step 12, stop. Do not search the files to find a cause for a refusal. Run the hint.
@@ -164,4 +156,4 @@ Each test owns its data and runs alone. A test that uses shared data can fail be
 - Make each test create the records that it needs, in its `preconditions` or at the start of its `action`. Or make it use a free slot or a unique value, for example `{{marker}}-<testId>` or a date that no record uses.
 - Do not assume that seed data is unused or unchanged. Another test, an earlier run, or a person can change it.
 - Write `"dependsOn": []`. Name another test only when this test uses a record that the other test creates. When that test does not pass, this test is blocked.
-- When a test needs a fresh state that the test cannot make, write it in `preconditions`, for example `Fresh state: run the target reset first.` `checkmate target show <targetId>` prints the `reset` line of the target.
+- When a test needs a fresh state that the test cannot make, write it in `preconditions`, for example `Fresh state: run the target reset first.` `checkmate_show_target` returns the target data policy.

@@ -140,7 +140,11 @@ export default (pi) => pi.on('session_start', async (_event, ctx) => {
 	const cli = await command(workspace, env, 'setup', '--url', 'not-a-url')
 	assert.deepEqual(cli.body.nextAction, main.refused.nextAction)
 	const planner = inspectTools('plan')
-	assert.deepEqual(planner.tools.sort(), ['checkmate_read_plan_request', 'checkmate_save_plan'])
+	assert.deepEqual(planner.tools.sort(), [
+		'checkmate_read_plan_request',
+		'checkmate_save_plan',
+		'checkmate_show_target',
+	])
 	assert.match(planner.refused.reasons.join(' '), /unavailable/)
 	assert.deepEqual(inspectTools('clerk').tools, [])
 })
@@ -3608,8 +3612,8 @@ test(
 			])
 		)
 		assert.match(input, /inspect the checkout fixture/)
-		assert.match(input, /Run `target list` and `plan list`/)
-		assert.match(input, /Keep command lines, flags, and bundle paths out of replies/)
+		assert.match(input, /Use native `checkmate_\*` tools/)
+		assert.match(input, /"name":"checkmate_open_plan".*?"parameters":\{"type":"object"/)
 		assert.match(input, /Checkmate review UI/)
 		assert.match(input, /checkmate/i)
 		assert.ok(input.includes(workspace), 'Pi must route the request with the disposable workspace')
@@ -4018,6 +4022,10 @@ test('Correct a target in the packed CLI and keep the original run pinned.', asy
 	assert.equal(before.instance.build, 'b1')
 	const rows = await ok('query', "SELECT target_revision, instance_id FROM runs WHERE run_id = 'old-run'")
 	assert.deepEqual(rows.rows, [{ target_revision: 1, instance_id: 'local' }])
+	const oldRun = await ok('run', 'show', 'old-run', '--include-plan')
+	assert.equal(oldRun.target, 'shop@1')
+	assert.equal(oldRun.instance.entries.web, app.baseUrl)
+	assert.equal(oldRun.execution.tests[0].action, 'GET /health.')
 	const invalid = await inputCommand(
 		workspace,
 		env,

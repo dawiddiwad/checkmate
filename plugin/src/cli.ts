@@ -47,7 +47,6 @@ import {
 	acceptResult,
 	beginPermanentRun,
 	rejectResult,
-	resumeRun,
 } from './runs.ts'
 import {
 	evidenceBytes,
@@ -82,11 +81,10 @@ import {
 	explorationStatus,
 	finishExploration,
 	startExploration,
-	startFollow,
 	stopExploration,
 	waitExploration,
 } from './explorers.ts'
-import { doneSteps, pauseRun } from './agents.ts'
+import { doneSteps } from './agents.ts'
 import { levelNames, testLevels } from './levels.ts'
 import { testModes } from './modes.ts'
 import { harvestExploration } from './harvest.ts'
@@ -1155,15 +1153,21 @@ const commands: Record<string, Command> = {
 		}),
 	},
 	'run resume': {
+		action: 'resume_run',
 		positionals: ['runId'],
 		flags: { error: 'list', reason: 'value' },
 		write: true,
-		run: (store, args, { actor }) =>
-			resumeRun(store, actor, {
-				runId: value(args, 'runId')!,
-				error: list(args, 'error'),
-				reason: value(args, 'reason'),
-			}),
+		run: (store, args, context) =>
+			performAction(
+				store,
+				'resume_run',
+				{
+					runId: value(args, 'runId'),
+					error: list(args, 'error'),
+					reason: value(args, 'reason'),
+				},
+				context
+			),
 		print: (reply) => {
 			if (reply.status !== 'completed') return {}
 			const data = reply.data as {
@@ -1198,13 +1202,18 @@ const commands: Record<string, Command> = {
 	'run show': {
 		action: 'read_run',
 		positionals: ['runId'],
-		flags: { tests: 'list', gate: 'switch' },
+		flags: { tests: 'list', gate: 'switch', 'include-plan': 'switch' },
 		readOnly: true,
 		run: (store, args, context) =>
 			performAction(
 				store,
 				'read_run',
-				{ runId: value(args, 'runId'), tests: list(args, 'tests'), gate: Boolean(args['gate']) },
+				{
+					runId: value(args, 'runId'),
+					tests: list(args, 'tests'),
+					gate: Boolean(args.gate),
+					includePlan: Boolean(args['include-plan']),
+				},
 				context
 			),
 		print: (reply) => {
@@ -1644,20 +1653,19 @@ const commands: Record<string, Command> = {
 		}),
 	},
 	'explore follow': {
+		action: 'follow_test',
 		positionals: ['explorationId'],
 		flags: { allow: 'repeat', 'claude-arg': 'repeat', timeout: { min: 60, max: 7200 } },
 		write: true,
-		run: (store, args, { actor, env }) =>
-			startFollow(
+		run: (store, args, context) =>
+			performAction(
 				store,
-				actor,
+				'follow_test',
 				{
-					explorationId: value(args, 'explorationId')!,
-					allow: list(args, 'allow') ?? [],
-					claudeArgs: list(args, 'claude-arg') ?? [],
+					explorationId: value(args, 'explorationId'),
 					timeoutSeconds: integer(args, 'timeout'),
 				},
-				env
+				{ ...context, launch: { allow: list(args, 'allow') ?? [], claudeArgs: list(args, 'claude-arg') ?? [] } }
 			),
 		print: (reply) => ({
 			facts: {
@@ -1733,11 +1741,18 @@ const commands: Record<string, Command> = {
 		print: (reply) => ({ facts: { run: reply.data.runId ?? '-', reason: reply.data.reason ?? '-' } }),
 	},
 	'explore pause': {
+		action: 'pause_test',
 		positionals: ['explorationId'],
 		flags: { reason: 'value' },
 		required: ['reason'],
 		write: true,
-		run: (store, args, { actor }) => pauseRun(store, actor, value(args, 'explorationId')!, value(args, 'reason')!),
+		run: (store, args, context) =>
+			performAction(
+				store,
+				'pause_test',
+				{ explorationId: value(args, 'explorationId'), reason: value(args, 'reason') },
+				context
+			),
 		print: (reply) => ({ facts: { reason: reply.data.reason, waitsOn: reply.data.waitsOn } }),
 	},
 	'explore stop': {

@@ -9,24 +9,35 @@ import {
 	editPlan,
 	openPlan,
 	patchPlan,
+	planRevision,
 	revisePlan,
 	savePlan,
 	showPending,
 	showPlanRequest,
 } from './plans.ts'
-import { beginRun, checkAssertion, closeTest, finishRun, recordFinding, recordGap } from './runs.ts'
+import {
+	beginRun,
+	checkAssertion,
+	closeTest,
+	finishRun,
+	recordFinding,
+	recordGap,
+	resumeRun,
+	runState,
+} from './runs.ts'
 import { inbox, planStatus, runDetail, runGate } from './views.ts'
 import { selectedHarness } from './pi.ts'
 import { ruleTokens, testerRulesText, workspaceEnv } from './settings.ts'
 import { runTest } from './modes.ts'
-import { explorationReport, explorationStatus } from './explorers.ts'
-import { nextActions, stepDone, stepsStarted } from './agents.ts'
+import { explorationReport, explorationStatus, startFollow, waitExploration } from './explorers.ts'
+import { nextActions, pauseRun, stepDone, stepsStarted } from './agents.ts'
+import { dataRules } from './resets.ts'
 
 export type ActionName = keyof Actions
 type ActionContext = {
 	actor: string | undefined
 	env: Env
-	launch?: { allow: string[]; claudeArgs: string[]; session: boolean }
+	launch?: { allow: string[]; claudeArgs: string[]; session?: boolean }
 }
 
 const handlers: {
@@ -60,11 +71,36 @@ const handlers: {
 		return runTest(store, actor, { ...input, ...options }, env)
 	},
 	test_status: (store, input) =>
-		completed(
-			input.explorationId,
-			input.report ? explorationReport(store, input.explorationId) : explorationStatus(store, input.explorationId)
+		input.waitSeconds === undefined
+			? completed(
+					input.explorationId,
+					input.report
+						? explorationReport(store, input.explorationId)
+						: explorationStatus(store, input.explorationId)
+				)
+			: waitExploration(store, input.explorationId, input.waitSeconds),
+	follow_test: (store, input, { actor, env, launch }) =>
+		startFollow(
+			store,
+			actor,
+			{
+				...input,
+				allow: launch?.allow ?? [],
+				claudeArgs: launch?.claudeArgs ?? [],
+			},
+			env
 		),
-	begin_run: (store, input, { actor }) => beginRun(store, actor, { ...input, retestOf: input.retestOf ?? null }),
+	pause_test: (store, input, { actor }) => pauseRun(store, actor, input.explorationId, input.reason),
+	begin_run: (store, input, { actor }) => {
+		const reference = revisionReference(input.reference, 'plan reference')
+		const revision = reference.revision ?? planRevision(store, reference.id).plan.revision
+		return beginRun(store, actor, {
+			...input,
+			reference: `${reference.id}@${revision}`,
+			retestOf: input.retestOf ?? null,
+		})
+	},
+	resume_run: (store, input, { actor }) => resumeRun(store, actor, input),
 	read_run: (store, input) => {
 		const detail = runDetail(store, input.runId)
 		for (const id of input.tests ?? [])
@@ -75,7 +111,26 @@ const handlers: {
 			)
 		const tests = detail.tests.filter((test) => !input.tests || input.tests.includes(test.testId))
 		const gate = input.gate ? runGate(store, detail.runId) : undefined
-		return completed(detail.runId, { ...detail, tests, ...(gate ? { gate } : {}) })
+		let execution
+		if (input.includePlan) {
+			const run = runState(store, input.runId)
+			const profile = targetRevision(store, run.row.target_id, run.row.target_revision).profile
+			execution = {
+				tests: run.plan.tests.filter((test) => tests.some((selected) => selected.testId === test.id)),
+				dataRules: dataRules(
+					store.workspace,
+					profile.reset,
+					run.request.marker ?? run.row.run_id,
+					run.request.facts
+				),
+			}
+		}
+		return completed(detail.runId, {
+			...detail,
+			tests,
+			...(gate ? { gate } : {}),
+			...(execution ? { execution } : {}),
+		})
 	},
 	record_check: (store, input, { actor }) => checkAssertion(store, actor, input),
 	close_test: (store, input, { actor }) => closeTest(store, actor, input),
@@ -117,18 +172,38 @@ export function performAction<Name extends ActionName>(
 }
 
 export function actionRecovery(name: ActionName, reply: Reply) {
-	if (!['rejected', 'invalid_request', 'needs_decision', 'operational_error'].includes(reply.status)) return reply
+	if (!['rejected', 'invalid_request', 'needs_decision', 'operational_error', 'interrupted'].includes(reply.status))
+		return reply
+	const recheck: Partial<Record<ActionName, ActionName>> = {
+		replace_instance: 'show_target',
+		read_plan_request: 'inbox',
+		save_plan: 'read_plan_request',
+		edit_plan: 'status',
+		revise_plan: 'read_pending',
+		answer_gap: 'status',
+		begin_run: 'status',
+		resume_run: 'read_run',
+		record_check: 'read_run',
+		close_test: 'read_run',
+		record_finding: 'read_run',
+		record_gap: 'read_run',
+		finish_run: 'read_run',
+		status: 'inbox',
+		follow_test: 'test_status',
+	}
+	const recovery = reply.hint ?? (typeof reply.data.next === 'string' ? reply.data.next : undefined)
+	const next = recovery || reply.refusal === 'malformed' ? name : (recheck[name] ?? name)
 	return {
 		...reply,
 		data: {
 			...reply.data,
 			nextAction: {
-				action: name,
+				action: next,
 				instruction:
-					reply.hint ??
-					(typeof reply.data.next === 'string'
-						? reply.data.next
-						: 'Resolve the condition in reasons before retrying this action. Ask the oracle for any missing decision.'),
+					recovery ??
+					(next !== name
+						? `Read the current record with checkmate_${next} before retrying. Use the record ID in the request.`
+						: 'Resolve the condition in reasons before retrying. Ask the oracle for any missing decision.'),
 			},
 		},
 	}

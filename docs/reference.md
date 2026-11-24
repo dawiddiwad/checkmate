@@ -24,6 +24,22 @@ Use `checkmate --help` for the complete command list from the installed version.
 
 The examples omit optional `--actor` and `--workspace` flags. Claude Code delegation needs `--allow <rule>` for each required tool. Pi delegation uses `CHECKMATE_HARNESS=pi` and omits `--allow` and `--claude-arg`. The host enforces its own permissions.
 
+## Agent tools
+
+The Claude Code plugin serves Checkmate actions through its local MCP server. The Pi package registers the same actions as native tools. The host gives each tool its workspace and role. An action takes named arguments. Its result gives the recorded state or a refusal with reasons and a next action.
+
+| Work                        | Tools with the `checkmate_` prefix                                                                                        |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| Inspect or correct a target | `list_targets`, `show_target`, `setup`, `replace_instance`                                                                |
+| Plan and answer             | `open_plan`, `read_plan_request`, `save_plan`, `read_pending`, `revise_plan`, `edit_plan`, `answer_gap`                   |
+| Explore                     | `start_test`, `test_status`, `pause_test`, `follow_test`, `next_tester_steps`, `tester_steps_started`, `tester_step_done` |
+| Execute stored tests        | `begin_run`, `read_run`, `resume_run`, `record_check`, `close_test`, `record_finding`, `record_gap`, `finish_run`         |
+| Review state                | `status`, `inbox`                                                                                                         |
+
+Use the returned target, plan, and instance IDs for subsequent actions. To correct a web target, use setup with the `correct` field. To replace an instance, supply its complete entry values and other fields. Checkmate retains the original request, profile and instance for existing records.
+
+The CLI still serves scripts, factory stages, review UI chat, exports, permanent runs, approvals, permissions, and recovery operations. Checkmate's CLI and host tools validate supported actions with the same [action schemas](../plugin/contracts/actions.schema.json). Factory grants and target credentials stay with the host.
+
 ## Plans and contracts
 
 A plan revision contains requirements, tests, and gaps. A test names its rules, capability, operations, preconditions, action, and assertions. An assertion has a known expected value. An unknown expected value belongs in an open gap.

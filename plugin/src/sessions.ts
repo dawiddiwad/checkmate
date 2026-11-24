@@ -613,17 +613,12 @@ export type RequestSession = {
 export const requestHookName = 'request'
 
 export function requestSystemPrompt(checkmate: string, harness: Harness = 'claude') {
-	const skill = readFileSync(join(pluginRoot, 'pi', 'skills', 'checkmate', 'SKILL.md'), 'utf8')
-	const start = skill.indexOf('1. Run `target list`')
-	if (start < 0) throw new Error('The Checkmate oracle workflow is missing. Reinstall the plugin.')
-	const workflow = skill
-		.slice(start)
-		.replace(
-			'- Run `delegate execute` without `--allow` or `--claude-arg`. Pi controls its own tools and permissions. Do not widen them to work around a refusal.',
-			harness === 'pi'
-				? '- Run `delegate execute` without `--allow` or `--claude-arg`. Pi controls its own tools and permissions. Do not widen them to work around a refusal.'
-				: '- Use the configured Claude permissions for `delegate execute`. Do not widen them to work around a refusal.'
-		)
+	const workflow = readFileSync(join(pluginRoot, 'references', 'chat-workflow.md'), 'utf8').replace(
+		'- Run `delegate execute` without `--allow` or `--claude-arg`. Pi controls its own tools and permissions. Do not widen them to work around a refusal.',
+		harness === 'pi'
+			? '- Run `delegate execute` without `--allow` or `--claude-arg`. Pi controls its own tools and permissions. Do not widen them to work around a refusal.'
+			: '- Use the configured Claude permissions for `delegate execute`. Do not widen them to work around a refusal.'
+	)
 	return [
 		'This conversation comes from the Checkmate web UI.',
 		'Lead with the outcome. If a decision is needed, ask for it in plain words and link to the relevant page in the review UI. Keep Checkmate command lines, flags, and bundle paths out of replies. Use tool output only to decide what to do or report.',
@@ -728,6 +723,8 @@ export function requestArgs(session: RequestSession) {
 		pluginRoot,
 		'--tools',
 		'Read,Bash',
+		'--disallowedTools',
+		'mcp__plugin_checkmate_actions__*',
 		'--settings',
 		JSON.stringify(chatHookSettings(session)),
 		'--append-system-prompt',

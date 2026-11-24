@@ -19,8 +19,8 @@ const readActions: ActionName[] = [
 ]
 
 const roles: Record<string, ActionName[]> = {
-	setup: ['setup', 'show_target'],
-	plan: ['read_plan_request', 'save_plan'],
+	setup: ['show_target'],
+	plan: ['read_plan_request', 'show_target', 'save_plan'],
 	revise: ['read_pending', 'revise_plan'],
 	execute: ['show_target', 'read_run', 'record_check', 'close_test', 'record_finding', 'record_gap'],
 	probe: ['show_target', 'record_finding'],

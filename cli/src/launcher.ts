@@ -623,7 +623,7 @@ function prompt(
 		harness === 'pi'
 			? [
 					'Follow the Checkmate stage instructions and workflow below before you start.',
-					...[skill, workflow].map((path) =>
+					...(stage === 'setup' ? [workflow] : [skill, workflow]).map((path) =>
 						readFileSync(path, 'utf8')
 							.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, '')
 							.replaceAll(
@@ -636,11 +636,14 @@ function prompt(
 					),
 				]
 			: [
-					`Use the checkmate:${stage} skill from the loaded plugin. If you cannot load it, read ${skill} and ${workflow} with the Read tool before you start.`,
+					stage === 'setup'
+						? `Read ${workflow} with the Read tool. This stage completes a custom target request.`
+						: `Use the checkmate:${stage} skill from the loaded plugin. If you cannot load it, read ${skill} and ${workflow} with the Read tool before you start.`,
 				]
 	return [
 		`This is a delegated Checkmate ${stage} stage. ${instructions.join('\n\n')}`,
 		`Workspace: ${workspace}. Run Checkmate commands from this directory. Add \`--actor ${harness}:${stage}\` to each write.`,
+		'Use native Checkmate tools for the actions this role exposes. Use the CLI for the other factory actions.',
 		`\`checkmate <command>\` means \`${cliCommand} <command>\`.`,
 		...stagePrompt(stage, subject, execution, workspace),
 		...(round > 1 && !execution

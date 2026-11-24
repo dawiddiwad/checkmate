@@ -278,6 +278,7 @@ export type Actions = {
 	test_status?: {
 		explorationId: string
 		report?: boolean
+		waitSeconds?: number
 	}
 	begin_run?: {
 		runId: string
@@ -294,6 +295,7 @@ export type Actions = {
 		runId: string
 		tests?: Array<string>
 		gate?: boolean
+		includePlan?: boolean
 	}
 	record_check?: {
 		runId: string
@@ -382,6 +384,19 @@ export type Actions = {
 		failed?: string
 		activity?: string
 		replyLine?: string
+	}
+	follow_test?: {
+		explorationId: string
+		timeoutSeconds?: number
+	}
+	pause_test?: {
+		explorationId: string
+		reason: string
+	}
+	resume_run?: {
+		runId: string
+		error?: Array<string>
+		reason?: string
 	}
 }
 

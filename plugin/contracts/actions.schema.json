@@ -46,7 +46,7 @@
 	},
 	"properties": {
 		"setup": {
-			"description": "Set up a web target. Set correct to update its declared operations or replace the named instance when its values differ. Use the target and instance IDs returned in later actions.",
+			"description": "Set up a web target. Give targetId when the person names the target. Set correct to update operations or replace the named instance when its values differ. Use the returned IDs.",
 			"type": "object",
 			"additionalProperties": false,
 			"required": ["url"],
@@ -140,7 +140,7 @@
 			"required": ["reference"]
 		},
 		"open_plan": {
-			"description": "Register a test plan request. Use a target ID and omit planId to derive it from the first source.",
+			"description": "Register a plan request. Use a target ID. For a ticket file, give its path in request.context.sources. Omit planId to derive it from the first source. Omit tools to inherit the target profile; use a name string for a profile tool.",
 			"type": "object",
 			"additionalProperties": false,
 			"properties": {
@@ -169,7 +169,7 @@
 			"required": ["planId"]
 		},
 		"save_plan": {
-			"description": "Save the first plan candidate for the plan ID. Each deterministic assertion has an observed item and expected value.",
+			"description": "Save the first plan candidate. When the request gives requirements, omit candidate.requirements and use their IDs in tests and gaps. Each deterministic assertion has an observed item and expected value.",
 			"type": "object",
 			"additionalProperties": false,
 			"properties": {
@@ -371,6 +371,11 @@
 				},
 				"report": {
 					"type": "boolean"
+				},
+				"waitSeconds": {
+					"type": "integer",
+					"minimum": 1,
+					"maximum": 90
 				}
 			},
 			"required": ["explorationId"]
@@ -431,6 +436,10 @@
 				},
 				"gate": {
 					"type": "boolean"
+				},
+				"includePlan": {
+					"type": "boolean",
+					"description": "Include the action, preconditions, dependencies and checks of each selected test."
 				}
 			},
 			"required": ["runId"]
@@ -632,6 +641,56 @@
 				}
 			},
 			"required": ["explorationId", "name", "step"]
+		},
+		"follow_test": {
+			"type": "object",
+			"description": "Test the oracle answers that this exploration has not used yet.",
+			"additionalProperties": false,
+			"required": ["explorationId"],
+			"properties": {
+				"explorationId": {
+					"$ref": "#/definitions/id"
+				},
+				"timeoutSeconds": {
+					"type": "integer",
+					"minimum": 60,
+					"maximum": 7200
+				}
+			}
+		},
+		"pause_test": {
+			"type": "object",
+			"description": "Pause a session exploration while the oracle supplies an answer.",
+			"additionalProperties": false,
+			"required": ["explorationId", "reason"],
+			"properties": {
+				"explorationId": {
+					"$ref": "#/definitions/id"
+				},
+				"reason": {
+					"$ref": "#/definitions/text"
+				}
+			}
+		},
+		"resume_run": {
+			"type": "object",
+			"description": "Reopen an interrupted run for execution after checking the gate and instance.",
+			"additionalProperties": false,
+			"required": ["runId"],
+			"properties": {
+				"runId": {
+					"$ref": "#/definitions/id"
+				},
+				"error": {
+					"type": "array",
+					"items": {
+						"$ref": "#/definitions/id"
+					}
+				},
+				"reason": {
+					"$ref": "#/definitions/text"
+				}
+			}
 		}
 	}
 }

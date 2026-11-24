@@ -148,7 +148,8 @@ export function openPlan(
 				toolCheck(tool)
 				requireWellFormed(
 					!profile.tools.some((known) => known.name === tool.name),
-					`Tool ${tool.name} is in the target profile. Name it as a string.`
+					`Tool ${tool.name} is in the target profile. Name it as a string.`,
+					`Replace its object in request.tools with "${tool.name}", or omit tools to inherit the target's tools.`
 				)
 			}
 		const names = planTools(request, profile).map((tool) => tool.name)
@@ -851,7 +852,8 @@ function candidateRequirements(request: PlanRequest, drafted: Plan['requirements
 	if (request.requirements?.length) {
 		requireWellFormed(
 			!drafted,
-			'The plan request names the requirements. Do not add requirements to the candidate.'
+			'The plan request names the requirements. Do not add requirements to the candidate.',
+			'Remove candidate.requirements and save again. Keep the existing requirement IDs in each test or gap.'
 		)
 		return request.requirements
 	}

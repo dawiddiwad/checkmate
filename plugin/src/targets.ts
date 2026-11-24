@@ -810,7 +810,7 @@ function requireNoSetupConflict(
 		requireCondition(
 			sameSet(input.operations, stored.allowedOperations),
 			`Request conflict: target ${targetId} was opened with the operations ${stored.allowedOperations.join(', ')}. --operations asks for ${input.operations.join(', ')}. A request does not change.`,
-			`Run checkmate setup without --operations to keep the stored operations. Or open another target for the new operations: checkmate setup ${flags} --operations ${input.operations.join(',')}`
+			`To correct this target, retry setup with correct enabled (--correct). To keep its scope, omit operations. To open another target, use checkmate setup ${flags} --operations ${input.operations.join(',')}`
 		)
 	const operations =
 		(input.correct ? input.operations : undefined) ??
@@ -837,7 +837,7 @@ function requireNoSetupConflict(
 	)
 	if (!existing) return
 	const subject = `${targetId}/${instanceId}`
-	const next = `Give the instance a new ID: checkmate setup --url ${url} --target ${targetId} --instance <new-instance-id>`
+	const next = `To replace this instance, retry setup with correct enabled (--correct). To add a separate instance, give it a new ID: checkmate setup --url ${url} --target ${targetId} --instance <new-instance-id>`
 	requireCondition(!retirement(store, targetId, instanceId), `Instance conflict: ${subject} is retired.`, next)
 	requireCondition(
 		existing.body === canonical(wanted),

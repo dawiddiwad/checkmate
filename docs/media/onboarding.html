@@ -58,11 +58,6 @@
 	.return .lit { position: absolute; inset: 0; color: var(--amber); }
 	.badge { position: absolute; left: 450px; top: 300px; transform: translateX(-50%); font: 500 15px/28px var(--mono); color: var(--muted); background: var(--card); border: 1px dashed var(--human-line); border-radius: 14px; padding: 0 14px; white-space: nowrap; }
 	.badge .lit { position: absolute; inset: -1px; border: 1px solid var(--human); border-radius: 14px; background: #262b34; color: var(--text); padding: 0 14px; }
-	.counts { position: absolute; left: 716px; top: 52px; width: 168px; }
-	.counts h2 { margin: 0 0 6px; font: 600 14px/22px var(--mono); letter-spacing: 1.5px; color: var(--faint); }
-	.counts div { display: flex; justify-content: space-between; height: 30px; font: 500 16px/30px var(--display); color: var(--muted); }
-	.counts b { font: 600 17px/30px var(--mono); color: var(--text); }
-	.counts b.changed { color: var(--amber); }
 
 	.bar { position: absolute; left: 0; top: 0; width: 900px; height: 48px; background: var(--bg); border-bottom: 1px solid var(--line); z-index: 2; }
 	.caption { position: absolute; left: 16px; top: 0; font: 600 22px/48px var(--display); white-space: nowrap; }
@@ -70,28 +65,6 @@
 	.bar .mark { position: absolute; right: 18px; top: 17px; gap: 4px; }
 	.bar .mark i { width: 14px; height: 14px; }
 
-	.mode { position: absolute; inset: 0; background: var(--bg); z-index: 3; padding: 0 40px; }
-	.mode .kicker { position: absolute; left: 40px; top: 30px; font: 600 15px/24px var(--mono); letter-spacing: 1.5px; color: var(--faint); }
-	.mode .kicker b { color: var(--blue); font-weight: 600; }
-	.mode > .mark { position: absolute; right: 40px; top: 35px; gap: 4px; }
-	.mode > .mark i { width: 14px; height: 14px; }
-	.mode h1 { position: absolute; left: 40px; top: 70px; margin: 0; font: 600 36px/46px var(--display); }
-	.mode .lead { position: absolute; left: 40px; top: 122px; width: 820px; margin: 0; font: 400 20px/30px var(--body); color: var(--muted); }
-	.mode .lead b { color: var(--text); font-weight: 500; }
-	.term { position: absolute; left: 40px; width: 820px; background: var(--card); border: 1px solid var(--line-strong); border-radius: 10px; overflow: hidden; }
-	.term .head { height: 32px; padding: 0 14px; border-bottom: 1px solid var(--line); font: 600 14px/32px var(--mono); color: var(--faint); letter-spacing: 1px; }
-	.term pre { margin: 0; padding: 10px 14px 12px; font: 500 16px/27px var(--mono); color: var(--text); white-space: pre; }
-	.term pre span { display: block; }
-	.term i { font-style: normal; }
-	.term .p { color: var(--faint); }
-	.term .o { color: var(--muted); }
-	.term .k { color: var(--planner); }
-	.term .gap { color: var(--amber); }
-	.term .defect { color: var(--red); }
-	.term .gate { color: var(--bg); background: var(--amber); border-radius: 3px; padding: 0 8px; font-weight: 600; display: inline; }
-	.term .gate.bad { background: var(--red); }
-	.mode .docs { position: absolute; left: 40px; bottom: 24px; font: 500 15px/24px var(--mono); color: var(--faint); }
-	.mode .docs b { color: var(--blue); font-weight: 500; }
 </style>
 <main>
 	<div class="loop">
@@ -131,15 +104,6 @@
 		<div class="station factory" style="left: 570px; top: 270px">Factory<div class="lit" data-light="factory" style="background: var(--factory)">Factory</div></div>
 		<div class="station qa" style="left: 330px; top: 270px">QA<div class="lit" data-light="qa" style="background: var(--qa)">QA</div></div>
 		<div class="badge">human · checkmate ui<div class="lit" data-light="human">human · checkmate ui</div></div>
-		<div class="counts">
-			<h2>RECORD</h2>
-			<div>plan<b data-count="plan"></b></div>
-			<div>tests<b data-count="tests"></b></div>
-			<div>build<b data-count="build"></b></div>
-			<div>open gaps<b data-count="gaps"></b></div>
-			<div>open defects<b data-count="defects"></b></div>
-			<div>promoted<b data-count="promoted"></b></div>
-		</div>
 	</div>
 
 	<div class="swim">
@@ -241,60 +205,13 @@
 		<div class="mark"><i></i><i></i><i></i><i></i></div>
 	</div>
 
-	<section class="mode" data-length="7.5">
-		<div class="kicker">THREE WAYS TO RUN CHECKMATE · <b>1 / 3</b></div>
-		<div class="mark"><i></i><i></i><i></i><i></i></div>
-		<h1>Solo developer: <span class="oracle">plugin or Pi extension</span></h1>
-		<p class="lead"><b>Ask your agent to test a change.</b> You are the oracle: answer its questions in the chat or in the review UI.</p>
-		<div class="term" style="top: 196px"><div class="head">CLAUDE CODE</div><pre><span><i class="p">&gt; </i>/plugin marketplace add dawiddiwad/checkmate</span><span><i class="p">&gt; </i>/plugin install checkmate@checkmate</span><span><i class="p">&gt; </i><b class="k">/checkmate:test</b> the change in ticket.md</span></pre></div>
-		<div class="term" style="top: 346px" data-dt="1"><div class="head">PI</div><pre><span><i class="p">$ </i>pi install npm:@xoxoai/checkmate -l</span><span><i class="p">&gt; </i><b class="k">/checkmate</b> the change in ticket.md</span></pre></div>
-		<div class="term" style="top: 470px" data-dt="2"><div class="head">WHAT WAITS FOR YOU</div><pre><span><i class="p">$ </i>checkmate inbox</span><span class="o">completed inbox gaps=2 plans=1 results=1 requests=0</span><span class="gap">checkout@2/G2  gap     blocking  Which orders can a customer refund, and …</span><span class="o">run-7          result  checkout@2  fixture-build-2  partial  passed=1,failed=1,…</span></pre></div>
-		<div class="docs">Read: <b>docs/start.md</b> · <b>docs/local-qa.md</b></div>
-	</section>
 
-	<section class="mode" data-length="8">
-		<div class="kicker">THREE WAYS TO RUN CHECKMATE · <b>2 / 3</b></div>
-		<div class="mark"><i></i><i></i><i></i><i></i></div>
-		<h1>Software factory: <span class="planner">an AI workflow</span></h1>
-		<p class="lead"><b>Your workflow calls one command per stage.</b> It builds and fixes; Checkmate tells it when to wait for the oracle.</p>
-		<div class="term" style="top: 196px"><div class="head">FACTORY STAGES</div><pre><span><i class="p">$ </i>checkmate <b class="k">delegate plan</b> checkout --allow Read --allow Bash</span><span data-dt="0.8"><i class="p">$ </i>checkmate <b class="k">status</b> checkout --fail-on-blocked</span><span class="o" data-dt="1.3">completed checkout state=needs_answers waitsOn=oracle revision=2 …</span><span class="o" data-dt="1.3">why   1 open blocking gap</span><span class="gap" data-dt="1.3">G2    gap  blocking  Which orders can a customer refund, and for …</span><span data-dt="1.8"><b class="gate">exit 3</b>  <i class="o">the factory waits; the oracle answers G2</i></span><span data-dt="2.6"><i class="p">$ </i>checkmate <b class="k">run begin</b> run-8 checkout@2 --build fixture-build-3 \</span><span data-dt="2.6">    --instance local --partial ready_only --retest-of run-7</span><span data-dt="3.1"><i class="p">$ </i>checkmate <b class="k">delegate execute</b> run-8 --allow Read --allow Bash</span></pre></div>
-		<div class="docs">Read: <b>docs/factory.md</b></div>
-	</section>
 
-	<section class="mode" data-length="7">
-		<div class="kicker">THREE WAYS TO RUN CHECKMATE · <b>3 / 3</b></div>
-		<div class="mark"><i></i><i></i><i></i><i></i></div>
-		<h1>CI job: <span class="qa">agentic regression tests</span></h1>
-		<p class="lead"><b>Run the promoted tests on every build.</b> The gate fails the job on a defect and writes JUnit.</p>
-		<div class="term" style="top: 196px"><div class="head">.GITHUB/WORKFLOWS/QA.YML</div><pre><span><i class="p">- </i>name: Agentic regression tests</span><span>  run: |</span><span>    checkmate <b class="k">run permanent</b> "$RUN_ID" checkout --build "$BUILD" --instance local</span><span>    checkmate <b class="k">delegate execute</b> "$RUN_ID" --allow Read --allow Bash</span><span>    checkmate export run "$RUN_ID" --format junit --out reports/junit.xml</span><span>    checkmate <b class="k">run show</b> "$RUN_ID" <b class="k">--gate</b></span></pre></div>
-		<div class="term" style="top: 436px" data-dt="1.3"><div class="head">JOB LOG</div><pre><span class="o">completed run-7 state=finalized gate=defects … build=fixture-build-2</span><span class="o">T2.A4   failed  220</span><span class="defect">F1      defect  high  T2.A4  The promotion stacks with the loyalty credit</span><span data-dt="1.8"><b class="gate bad">exit 1</b>  <i class="o">the job fails; the JUnit file names the failed test</i></span></pre></div>
-		<div class="docs">Read: <b>docs/factory.md</b> · exit codes for a pipeline</div>
-	</section>
 </main>
 <script src="swimlane.js"></script>
 <script>
 	const fade = 0.3
 	const storyEnd = 52
-	const counts = [
-		[0, { plan: '–', tests: '–', build: '–', gaps: '0', defects: '0', promoted: '0' }],
-		[0.8, { plan: '@1' }],
-		[1.3, { tests: '4' }],
-		[3.6, { build: 'b1' }],
-		[6.2, { gaps: '3' }],
-		[6.8, { defects: '2' }],
-		[8.8, { gaps: '0' }],
-		[11.8, { plan: '@2' }],
-		[12.3, { tests: '5' }],
-		[22.2, { build: 'b2' }],
-		[26.2, { defects: '1' }],
-		[26.8, { gaps: '2' }],
-		[30.6, { gaps: '0' }],
-		[32.8, { plan: '@3' }],
-		[33.3, { tests: '6' }],
-		[37.7, { build: 'b3' }],
-		[40.8, { defects: '0' }],
-		[45.8, { promoted: '6' }],
-	]
 	const track = document.getElementById('track')
 	const ramp = (time, start, length) => Math.min(1, Math.max(0, (time - start) / length))
 	const ease = (t) => t * t * (3 - 2 * t)
@@ -355,43 +272,21 @@
 		})
 	}
 
-	const placeModes = () => {
-		let at = storyEnd
-		for (const mode of document.querySelectorAll('.mode')) {
-			mode.dataset.from = at
-			mode.dataset.to = at + Number(mode.dataset.length)
-			for (const element of mode.querySelectorAll('[data-dt]')) element.dataset.t = at + Number(element.dataset.dt)
-			at += Number(mode.dataset.length)
-		}
-		window.DURATION = at
-	}
-
-	const showCounts = (time) => {
-		for (const cell of document.querySelectorAll('[data-count]')) {
-			const key = cell.dataset.count
-			const [at, values] = counts.filter(([at, values]) => at <= time && key in values).pop()
-			cell.textContent = values[key]
-			cell.classList.toggle('changed', at > 0 && time - at < 1.5)
-		}
-	}
-
 	const visible = (time, start, end) => ramp(time, start, fade) * (1 - ramp(time, end - fade, fade))
 
 	window.measure = () => {
 		layOut()
 		drawSwimlane(track)
 		showGroups()
-		placeModes()
+		window.DURATION = storyEnd
 	}
 	window.renderFrame = (time) => {
 		track.style.transform = `translateX(${-panAt(time)}px)`
-		showCounts(time)
 		for (const element of document.querySelectorAll('[data-from]')) {
 			const from = Number(element.dataset.from)
 			const to = Number(element.dataset.to)
-			const length = element.classList.contains('mode') ? 0.01 : fade
-			const shown = from === 0 ? 1 : ramp(time, from, length)
-			const hidden = to >= window.DURATION ? 0 : ramp(time, to - length, length)
+			const shown = from === 0 ? 1 : ramp(time, from, fade)
+			const hidden = to >= window.DURATION ? 0 : ramp(time, to - fade, fade)
 			element.style.opacity = shown * (1 - hidden)
 		}
 		for (const element of document.querySelectorAll('[data-t]'))

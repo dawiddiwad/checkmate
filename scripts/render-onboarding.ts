@@ -5,8 +5,8 @@ import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { chromium } from 'playwright-core'
 
-// Renders docs/img/onboarding.gif from docs/media/onboarding.html: the factory storyboard,
-// then one scene for each way to run Checkmate. FFmpeg must be on PATH, or set FFMPEG to its path.
+// Renders docs/img/onboarding.gif from docs/media/onboarding.html: the factory storyboard.
+// FFmpeg must be on PATH, or set FFMPEG to its path.
 
 const root = process.cwd()
 const output = join(root, 'docs/img/onboarding.gif')

@@ -25,7 +25,7 @@ try {
 }
 const server = spawn(
 	process.execPath,
-	['cli/dist/checkmate.js', 'ui', '--port', '0', '--json', '--workspace', workspace],
+	['plugin/dist/checkmate.js', 'ui', '--port', '0', '--json', '--workspace', workspace],
 	{
 		cwd: process.cwd(),
 		stdio: ['ignore', 'pipe', 'inherit'],

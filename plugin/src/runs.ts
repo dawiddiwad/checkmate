@@ -32,7 +32,14 @@ import {
 	planRunGaps,
 	recordApproval,
 } from './plans.ts'
-import { findInstance, instanceForBuildHint, readinessHint, runInstance, targetRevision } from './targets.ts'
+import {
+	correctedEntryText,
+	findInstance,
+	instanceForBuildHint,
+	readinessHint,
+	runInstance,
+	targetRevision,
+} from './targets.ts'
 import { changesData, markerFor, owe, runPrepare, settleCleanups } from './resets.ts'
 import { addPlanBuild } from './journal.ts'
 import { permanentSelection } from './permanent.ts'
@@ -113,7 +120,7 @@ export type BeginInput = {
 	timeoutSeconds?: number
 	retestOf?: string | null
 }
-export type EvidenceInput = string | { text: string; kind?: string }
+export type EvidenceInput = { file: string; kind?: string } | { text: string; kind?: string }
 type Assertion = Test['assertions'][number]
 // The observed value of a check whose text or element was not on the page after the action.
 export const absentObservation = '(absent)'
@@ -196,10 +203,19 @@ export function runState(store: Store, runId: string): RunState {
 		row.plan_id,
 		row.plan_revision
 	)!
+	const content = JSON.parse(plan.body) as Plan
+	const correct = correctedEntryText(store, row.target_id, row.instance_id)
+	for (const test of content.tests) {
+		test.action = correct(test.action)
+		test.preconditions = test.preconditions.map(correct)
+		for (const assertion of test.assertions) {
+			if (assertion.request) assertion.request = correct(assertion.request)
+		}
+	}
 	return {
 		row,
 		request: JSON.parse(row.request),
-		plan: JSON.parse(plan.body),
+		plan: content,
 		finished: Boolean(one(store, 'SELECT 1 FROM results WHERE run_id = ?', runId)),
 	}
 }
@@ -461,7 +477,7 @@ function begin(
 				plan.revision,
 				sha256,
 				plan.target.targetId,
-				plan.target.revision,
+				checked.target.revision,
 				instance.instanceId,
 				checked.build,
 				canonical(request),
@@ -512,10 +528,7 @@ type EvidenceFile = { path: string | null; name: string; kind: string; mediaType
 const evidenceKinds = ['observation', 'http_exchange', 'screenshot', 'trace'] as const
 
 function textEvidence(input: { text: string; kind?: string }, name: string): EvidenceFile {
-	requireWellFormed(
-		typeof input.text === 'string' && input.text.trim().length > 0,
-		'Missing evidence text on standard input'
-	)
+	requireWellFormed(typeof input.text === 'string' && input.text.trim().length > 0, 'Missing evidence text')
 	const bytes = Buffer.from(input.text, 'utf8')
 	requireWellFormed(bytes.length <= maxEvidenceBytes, 'Evidence text exceeds 32 MiB')
 	let json = true
@@ -533,9 +546,11 @@ function textEvidence(input: { text: string; kind?: string }, name: string): Evi
 	}
 }
 
-function readEvidence(store: Store, runId: string, spec: string): EvidenceFile {
-	const match = /^(.*):(observation|http_exchange|screenshot|trace)$/.exec(spec)
-	const name = match ? match[1] : spec
+function readEvidence(
+	store: Store,
+	runId: string,
+	{ file: name, kind }: { file: string; kind?: string }
+): EvidenceFile {
 	requireWellFormed(name && !isAbsolute(name), `Evidence path must be relative to the workspace: ${name}`)
 	const directory = evidenceDirectory(runId)
 	let root: string
@@ -549,7 +564,11 @@ function readEvidence(store: Store, runId: string, spec: string): EvidenceFile {
 	try {
 		real = realpathSync(path)
 	} catch {
-		throw new Refusal('malformed', `Evidence file not found: ${name}`, `Save the file in ${directory} first.`)
+		throw new Refusal(
+			'malformed',
+			`Evidence file not found: ${name}`,
+			`Give inline evidence ({text, kind}), or capture a fresh file in ${directory}. A file is consumed on success.`
+		)
 	}
 	requireWellFormed(real.startsWith(root + sep), `Evidence file must be inside ${directory}: ${name}`)
 	const stats = statSync(real)
@@ -559,7 +578,7 @@ function readEvidence(store: Store, runId: string, spec: string): EvidenceFile {
 	return {
 		path,
 		name: basename(name),
-		kind: match ? match[2] : (kindByExtension[extension] ?? 'observation'),
+		kind: requireChoice(kind ?? kindByExtension[extension] ?? 'observation', evidenceKinds, 'evidence kind'),
 		mediaType: mediaTypes[extension] ?? 'application/octet-stream',
 		bytes: readFileSync(real),
 	}
@@ -601,12 +620,9 @@ function storeEvidence(
 }
 
 function evidenceFiles(store: Store, runId: string, name: string, specs: EvidenceInput[] = []) {
-	const files = specs.map((spec) =>
-		typeof spec === 'string' ? readEvidence(store, runId, spec) : textEvidence(spec, name)
-	)
+	const files = specs.map((spec) => ('file' in spec ? readEvidence(store, runId, spec) : textEvidence(spec, name)))
 	const paths = files.flatMap((file) => file.path ?? [])
 	requireWellFormed(new Set(paths).size === paths.length, 'An evidence file is listed twice')
-	requireWellFormed(files.length - paths.length <= 1, 'Give one evidence text on standard input')
 	return files
 }
 
@@ -647,6 +663,10 @@ function structuredResult(
 ) {
 	const planned = checkRequest(test.action, assertion.request)
 	const reasons: string[] = []
+	if (input.result === 'not_checked' && observed !== null)
+		reasons.push(
+			'The call gives an observed value. Omit result to let Checkmate compare it. Use not_checked only when you did not observe a value.'
+		)
 	if (input.result !== undefined && input.result !== 'not_checked')
 		reasons.push(
 			`${assertion.id} takes its result from --observed. Give --observed with the value of "${assertion.observe}", and no --result.`
@@ -684,7 +704,7 @@ function structuredResult(
 		requireWellFormed(false, reasons.join(' '), `Send one corrected call: ${command}`)
 	}
 	if (input.result === 'not_checked') return 'not_checked'
-	return expectationMatches(observed!, assertion.expected!, marker) ? 'passed' : 'failed'
+	return expectationMatches(observed!.trim(), assertion.expected!, marker) ? 'passed' : 'failed'
 }
 
 export function checkAssertion(store: Store, actor: string | undefined, input: CheckInput) {
@@ -731,9 +751,7 @@ export function checkAssertion(store: Store, actor: string | undefined, input: C
 		)
 		// The page was read and the value is not on it: the observed value is absent, and the code compares it.
 		const observed = input.absent ? absentObservation : optionalText(input.observed, 'observation (--observed)')
-		const evidenceText = (input.evidence ?? [])
-			.map((item) => (typeof item === 'string' ? item : item.text))
-			.join('\n')
+		const evidenceText = (input.evidence ?? []).map((item) => ('text' in item ? item.text : item.file)).join('\n')
 		requireWellFormed(
 			observed === null || !looksTruncatedMoney(observed, assertion.expected, evidenceText),
 			`The observed value "${observed}" looks like a money amount whose currency sign the shell removed.`,
@@ -1052,8 +1070,9 @@ function finish(store: Store, actor: string | undefined, input: FinishInput) {
 		const results = runAssertions(store, input.runId)
 		const findings = runFindings(store, input.runId)
 		const newGaps = runGaps(store, input.runId)
+		// A partial observation in a test closed as error does not establish a test verdict.
 		for (const row of results.values())
-			if (row.result === 'failed')
+			if (row.result === 'failed' && outcomes.get(row.test_id)?.outcome !== 'error')
 				requireCondition(
 					findings.some(
 						(finding) =>
@@ -1210,7 +1229,7 @@ function defectHint(store: Store, run: RunState, row: AssertionRow, findings: Re
 		reproduction: ['<step>'],
 		evidenceIds,
 	}
-	return `Record the defect with checkmate run finding ${run.row.run_id}. Send this JSON on standard input in a quoted heredoc, with your values: ${JSON.stringify(finding)}. Then run run finish again. A recorded result is final: when you think it is wrong, still record the defect and say why in observed. The oracle can reject it.`
+	return `Record the defect with checkmate run finding ${run.row.run_id}. Send this JSON on standard input in a quoted heredoc, with your values: ${JSON.stringify(finding)}. Then run run finish again. Record only a defect supported by evidence. If an invalid observation was recorded, report the recording error to the operator. Do not invent a defect.`
 }
 
 export type RetestVerdict = 'fixed' | 'not_fixed' | 'not_retested'

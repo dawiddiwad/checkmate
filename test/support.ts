@@ -358,7 +358,7 @@ export function check(
 		result,
 		observed: withEvidence ? (extra.observed ?? `Observed ${reference}`) : extra.observed,
 		reason: extra.reason ?? (result === 'inconclusive' || result === 'not_checked' ? 'Reason given.' : undefined),
-		evidence: withEvidence ? [evidenceFile(store, runId, `${reference}-${Math.random()}.txt`)] : [],
+		evidence: withEvidence ? [{ file: evidenceFile(store, runId, `${reference}-${Math.random()}.txt`) }] : [],
 	})
 }
 

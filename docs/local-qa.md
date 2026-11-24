@@ -9,7 +9,7 @@ Use this path when a person makes the decisions and an installed host does the p
 - Install Node.js 24.12.0 or later and the Checkmate CLI. Follow [Start Checkmate](start.md).
 - Start the application on a local URL that the workspace can reach.
 - Configure Claude Code or Pi if Checkmate will delegate planning or QA. A person can make oracle decisions without a model.
-- Install Playwright CLI only if the tests use a browser. Name a Chrome or Chromium executable in `.playwright/cli.config.json` under `browser.launchOptions.executablePath`. Setup refuses a browser target without it.
+- Install Playwright CLI only if the tests use a browser. Playwright CLI uses an installed Chrome, or a browser that `playwright-cli install-browser` installs. To use another browser, name its executable in `.playwright/cli.config.json` under `browser.launchOptions.executablePath`. Setup checks that this executable runs.
 
 ## Start a change
 

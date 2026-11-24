@@ -1,11 +1,13 @@
 import type { Instance, Profile } from './types.ts'
-import type { Store } from './store.ts'
+import type { Change, Store } from './store.ts'
+import { hostSession } from './actor.ts'
 import { all, canonical, completed, digest, execute, one, removeTemporaryDirectory, write } from './store.ts'
 import {
 	profileCheck,
 	requireChoice,
 	requireCondition,
 	requireIdentifier,
+	requireNotInputWord,
 	requireText,
 	revisionReference,
 	same,
@@ -68,32 +70,36 @@ export function openTarget(
 	actor: string | undefined,
 	input: Omit<TargetRequest, 'tools'> & { tools?: RequestedTool[] }
 ) {
-	return write(store, { actor, command: 'target open', subject: input.targetId, input }, (operationId) => {
-		const request = targetRequestCheck(input)
-		const existing = one<{ body: string }>(
-			store,
-			'SELECT body FROM target_requests WHERE target_id = ?',
-			request.targetId
+	return write(store, { actor, command: 'target open', subject: input.targetId, input }, (operationId) =>
+		insertRequest(store, operationId, input)
+	)
+}
+
+function insertRequest(
+	store: Store,
+	operationId: string,
+	input: Omit<TargetRequest, 'tools'> & { tools?: RequestedTool[] }
+): Change {
+	const request = targetRequestCheck(input)
+	const existing = currentRequest(store, request.targetId)
+	if (existing) {
+		requireCondition(
+			same(existing, request),
+			`Target ${request.targetId} is open with other values. Use a new target ID for a different scope.`
 		)
-		if (existing) {
-			requireCondition(
-				existing.body === canonical(request),
-				`Target ${request.targetId} is open with other values. Use a new target ID for a different scope.`
-			)
-			return { reply: completed(request.targetId, { request, recorded: false }), subjects: [] }
-		}
-		execute(
-			store,
-			'INSERT INTO target_requests (target_id, body, operation_id) VALUES (?, ?, ?)',
-			request.targetId,
-			canonical(request),
-			operationId
-		)
-		return {
-			reply: completed(request.targetId, { request, recorded: true }),
-			subjects: [`target:${request.targetId}`],
-		}
-	})
+		return { reply: completed(request.targetId, { request, recorded: false }), subjects: [] }
+	}
+	execute(
+		store,
+		'INSERT INTO target_requests (target_id, body, operation_id) VALUES (?, ?, ?)',
+		request.targetId,
+		canonical(request),
+		operationId
+	)
+	return {
+		reply: completed(request.targetId, { request, recorded: true }),
+		subjects: [`target:${request.targetId}`],
+	}
 }
 
 function targetRequestCheck(input: Omit<TargetRequest, 'tools'> & { tools?: RequestedTool[] }): TargetRequest {
@@ -152,10 +158,24 @@ export function toolCheck(tool: RequestedTool): RequestedTool {
 	}
 }
 
+const currentRequestBody = `coalesce(
+	(SELECT body FROM target_request_corrections WHERE target_id = r.target_id ORDER BY rowid DESC LIMIT 1),
+	r.body
+)`
+
+function currentRequest(store: Store, targetId: string): TargetRequest | undefined {
+	const row = one<{ body: string }>(
+		store,
+		`SELECT ${currentRequestBody} AS body FROM target_requests r WHERE r.target_id = ?`,
+		targetId
+	)
+	return row && JSON.parse(row.body)
+}
+
 export function targetRequest(store: Store, targetId: string): TargetRequest {
-	const row = one<{ body: string }>(store, 'SELECT body FROM target_requests WHERE target_id = ?', targetId)
-	requireCondition(row, `Unknown target: ${targetId}. Run target open first.`)
-	return JSON.parse(row.body)
+	const request = currentRequest(store, targetId)
+	requireCondition(request, `Unknown target: ${targetId}. Run target open first.`)
+	return request
 }
 
 export function showTargetRequest(store: Store, targetId: string) {
@@ -169,85 +189,89 @@ export function saveTarget(store: Store, actor: string | undefined, input: { tar
 }
 
 function save(store: Store, actor: string | undefined, input: { targetId: string; profile: unknown }) {
-	return write(store, { actor, command: 'target save', subject: input.targetId, input }, (operationId) => {
-		const request = targetRequest(store, input.targetId)
-		const profile = profileCheck(input.profile)
+	return write(store, { actor, command: 'target save', subject: input.targetId, input }, (operationId) =>
+		insertProfile(store, operationId, input)
+	)
+}
+
+function insertProfile(store: Store, operationId: string, input: { targetId: string; profile: unknown }): Change {
+	const request = targetRequest(store, input.targetId)
+	const profile = profileCheck(input.profile)
+	requireCondition(
+		profile.targetId === request.targetId,
+		`Profile targetId ${profile.targetId} differs from ${request.targetId}`
+	)
+	requireCondition(
+		same(profile.entryPoints, request.entryPoints),
+		'Profile entryPoints differ from the setup request'
+	)
+	requireCondition(
+		same(profile.capabilities, request.capabilities),
+		'Profile capabilities differ from the setup request'
+	)
+	requireCondition(
+		same(profile.allowedOperations, request.allowedOperations),
+		'Profile allowedOperations differ from the setup request'
+	)
+	for (const requested of request.tools) {
+		const tool = profile.tools.find((tool) => tool.name === requested.name)
+		requireCondition(tool, `Profile has no entry for the requested tool ${requested.name}`)
 		requireCondition(
-			profile.targetId === request.targetId,
-			`Profile targetId ${profile.targetId} differs from ${request.targetId}`
+			tool.kind === requested.kind,
+			`Tool ${tool.name} is ${tool.kind} in the profile, not ${requested.kind}`
+		)
+	}
+	if (profile.allowedOperations.includes(anyTestOperation)) {
+		const production = instanceList(store, profile.targetId).filter(
+			(instance) => !instance.retired && isProduction(instance.instanceId, instance.environment)
 		)
 		requireCondition(
-			same(profile.entryPoints, request.entryPoints),
-			'Profile entryPoints differ from the setup request'
+			!production.length,
+			`Target ${profile.targetId} has the production instance ${production[0]?.instanceId}. ${anyTestOperation} is not permitted with it.`,
+			productionHint
 		)
+	}
+	const unreachable = profile.tools
+		.filter((tool) => !tool.reachable && request.tools.some((requested) => requested.name === tool.name))
+		.map((tool) => `Requested tool ${tool.name} (${tool.kind}) is not reachable`)
+	requireCondition(
+		!unreachable.length || !profile.readyForLiveExecution,
+		`${unreachable.join('. ')}. Set readyForLiveExecution to false.`
+	)
+	const body = canonical(profile)
+	const latest = one<{ revision: number; body: string }>(
+		store,
+		'SELECT revision, body FROM profiles WHERE target_id = ? ORDER BY revision DESC LIMIT 1',
+		profile.targetId
+	)
+	const subject = `${profile.targetId}@${profile.revision}`
+	const reasons = profile.readyForLiveExecution
+		? []
+		: [...unreachable, 'Target prerequisites are not ready. Inspect the profile.']
+	const status = profile.readyForLiveExecution ? ('completed' as const) : ('needs_decision' as const)
+	const data = { targetId: profile.targetId, revision: profile.revision, sha256: digest(body) }
+	if (latest && latest.revision === profile.revision) {
 		requireCondition(
-			same(profile.capabilities, request.capabilities),
-			'Profile capabilities differ from the setup request'
+			latest.body === body,
+			`Profile ${subject} exists with other content. Save revision ${latest.revision + 1} for changes.`
 		)
-		requireCondition(
-			same(profile.allowedOperations, request.allowedOperations),
-			'Profile allowedOperations differ from the setup request'
-		)
-		for (const requested of request.tools) {
-			const tool = profile.tools.find((tool) => tool.name === requested.name)
-			requireCondition(tool, `Profile has no entry for the requested tool ${requested.name}`)
-			requireCondition(
-				tool.kind === requested.kind,
-				`Tool ${tool.name} is ${tool.kind} in the profile, not ${requested.kind}`
-			)
-		}
-		if (profile.allowedOperations.includes(anyTestOperation)) {
-			const production = instanceList(store, profile.targetId).filter(
-				(instance) => !instance.retired && isProduction(instance.instanceId, instance.environment)
-			)
-			requireCondition(
-				!production.length,
-				`Target ${profile.targetId} has the production instance ${production[0]?.instanceId}. ${anyTestOperation} is not permitted with it.`,
-				productionHint
-			)
-		}
-		const unreachable = profile.tools
-			.filter((tool) => !tool.reachable && request.tools.some((requested) => requested.name === tool.name))
-			.map((tool) => `Requested tool ${tool.name} (${tool.kind}) is not reachable`)
-		requireCondition(
-			!unreachable.length || !profile.readyForLiveExecution,
-			`${unreachable.join('. ')}. Set readyForLiveExecution to false.`
-		)
-		const body = canonical(profile)
-		const latest = one<{ revision: number; body: string }>(
-			store,
-			'SELECT revision, body FROM profiles WHERE target_id = ? ORDER BY revision DESC LIMIT 1',
-			profile.targetId
-		)
-		const subject = `${profile.targetId}@${profile.revision}`
-		const reasons = profile.readyForLiveExecution
-			? []
-			: [...unreachable, 'Target prerequisites are not ready. Inspect the profile.']
-		const status = profile.readyForLiveExecution ? ('completed' as const) : ('needs_decision' as const)
-		const data = { targetId: profile.targetId, revision: profile.revision, sha256: digest(body) }
-		if (latest && latest.revision === profile.revision) {
-			requireCondition(
-				latest.body === body,
-				`Profile ${subject} exists with other content. Save revision ${latest.revision + 1} for changes.`
-			)
-			return { reply: { status, subject, reasons, data: { ...data, recorded: false } }, subjects: [] }
-		}
-		const next = (latest?.revision ?? 0) + 1
-		requireCondition(profile.revision === next, `Profile revision must be ${next}, not ${profile.revision}`)
-		execute(
-			store,
-			'INSERT INTO profiles (target_id, revision, sha256, body, operation_id) VALUES (?, ?, ?, ?, ?)',
-			profile.targetId,
-			profile.revision,
-			data.sha256,
-			body,
-			operationId
-		)
-		return {
-			reply: { status, subject, reasons, data: { ...data, recorded: true } },
-			subjects: [`target:${profile.targetId}`],
-		}
-	})
+		return { reply: { status, subject, reasons, data: { ...data, recorded: false } }, subjects: [] }
+	}
+	const next = (latest?.revision ?? 0) + 1
+	requireCondition(profile.revision === next, `Profile revision must be ${next}, not ${profile.revision}`)
+	execute(
+		store,
+		'INSERT INTO profiles (target_id, revision, sha256, body, operation_id) VALUES (?, ?, ?, ?, ?)',
+		profile.targetId,
+		profile.revision,
+		data.sha256,
+		body,
+		operationId
+	)
+	return {
+		reply: { status, subject, reasons, data: { ...data, recorded: true } },
+		subjects: [`target:${profile.targetId}`],
+	}
 }
 
 export function targetRevision(store: Store, targetId: string, revision: number | null = null): TargetRevision {
@@ -284,7 +308,7 @@ export function showTarget(store: Store, reference: string, instanceId?: string)
 export function targetList(store: Store) {
 	return all<{ target_id: string; revision: number | null; body: string; instances: number }>(
 		store,
-		`SELECT r.target_id, r.body, (SELECT max(revision) FROM profiles p WHERE p.target_id = r.target_id) AS revision,
+		`SELECT r.target_id, ${currentRequestBody} AS body, (SELECT max(revision) FROM profiles p WHERE p.target_id = r.target_id) AS revision,
 			(SELECT count(*) FROM instances i WHERE i.target_id = r.target_id AND NOT EXISTS
 				(SELECT 1 FROM instance_retirements x WHERE x.target_id = i.target_id AND x.instance_id = i.instance_id))
 				AS instances
@@ -369,52 +393,65 @@ export function addInstance(
 	actor: string | undefined,
 	input: { targetId: string; instanceId: string; instance: unknown }
 ) {
-	return write(store, { actor, command: 'target instance add', subject: input.targetId, input }, (operationId) => {
-		const request = targetRequest(store, input.targetId)
-		const instanceId = requireIdentifier(input.instanceId, 'instance ID')
-		const instance = instanceCheck(request.entryPoints, input.instance)
-		const subject = `${input.targetId}/${instanceId}`
-		const latest = one<{ body: string }>(
-			store,
-			'SELECT body FROM profiles WHERE target_id = ? ORDER BY revision DESC LIMIT 1',
-			input.targetId
-		)
-		const operations = latest ? (JSON.parse(latest.body) as Profile).allowedOperations : request.allowedOperations
+	return write(store, { actor, command: 'target instance add', subject: input.targetId, input }, (operationId) =>
+		insertInstance(store, operationId, input)
+	)
+}
+
+function insertInstance(
+	store: Store,
+	operationId: string,
+	input: { targetId: string; instanceId: string; instance: unknown }
+): Change {
+	const request = targetRequest(store, input.targetId)
+	requireNotInputWord(
+		input.instanceId,
+		'instance ID',
+		"Give a name for the instance, for example local or staging: checkmate target instance add <targetId> <instanceId> <<'EOF'."
+	)
+	const instanceId = requireIdentifier(input.instanceId, 'instance ID')
+	const instance = instanceCheck(request.entryPoints, input.instance)
+	const subject = `${input.targetId}/${instanceId}`
+	const latest = one<{ body: string }>(
+		store,
+		'SELECT body FROM profiles WHERE target_id = ? ORDER BY revision DESC LIMIT 1',
+		input.targetId
+	)
+	const operations = latest ? (JSON.parse(latest.body) as Profile).allowedOperations : request.allowedOperations
+	requireCondition(
+		!isProduction(instanceId, instance.environment) || !operations.includes(anyTestOperation),
+		`Instance ${subject} is a production instance. ${anyTestOperation} is not permitted on it.`,
+		productionHint
+	)
+	const existing = one<{ body: string }>(
+		store,
+		'SELECT body FROM instances WHERE target_id = ? AND instance_id = ?',
+		input.targetId,
+		instanceId
+	)
+	if (existing) {
 		requireCondition(
-			!isProduction(instanceId, instance.environment) || !operations.includes(anyTestOperation),
-			`Instance ${subject} is a production instance. ${anyTestOperation} is not permitted on it.`,
-			productionHint
+			!retirement(store, input.targetId, instanceId),
+			`Instance ${subject} is retired. Use a new instance ID.`
 		)
-		const existing = one<{ body: string }>(
-			store,
-			'SELECT body FROM instances WHERE target_id = ? AND instance_id = ?',
-			input.targetId,
-			instanceId
+		requireCondition(
+			existing.body === canonical(instance),
+			`Instance ${subject} exists. An instance does not change. Use a new instance ID.`
 		)
-		if (existing) {
-			requireCondition(
-				!retirement(store, input.targetId, instanceId),
-				`Instance ${subject} is retired. Use a new instance ID.`
-			)
-			requireCondition(
-				existing.body === canonical(instance),
-				`Instance ${subject} exists. An instance does not change. Use a new instance ID.`
-			)
-			return { reply: completed(subject, { ...instance, instanceId, recorded: false }), subjects: [] }
-		}
-		execute(
-			store,
-			'INSERT INTO instances (target_id, instance_id, body, operation_id) VALUES (?, ?, ?, ?)',
-			input.targetId,
-			instanceId,
-			canonical(instance),
-			operationId
-		)
-		return {
-			reply: completed(subject, { ...instance, instanceId, recorded: true }),
-			subjects: [`target:${input.targetId}`],
-		}
-	})
+		return { reply: completed(subject, { ...instance, instanceId, recorded: false }), subjects: [] }
+	}
+	execute(
+		store,
+		'INSERT INTO instances (target_id, instance_id, body, operation_id) VALUES (?, ?, ?, ?)',
+		input.targetId,
+		instanceId,
+		canonical(instance),
+		operationId
+	)
+	return {
+		reply: completed(subject, { ...instance, instanceId, recorded: true }),
+		subjects: [`target:${input.targetId}`],
+	}
 }
 
 export function retireInstance(
@@ -422,32 +459,106 @@ export function retireInstance(
 	actor: string | undefined,
 	input: { targetId: string; instanceId: string }
 ) {
-	return write(store, { actor, command: 'target instance retire', subject: input.targetId, input }, (operationId) => {
-		const instance = findInstance(store, input.targetId, input.instanceId)
-		const subject = `${input.targetId}/${input.instanceId}`
-		if (instance.retired)
-			return {
-				reply: completed(subject, { instanceId: input.instanceId, recorded: false }),
-				subjects: [],
-			}
-		execute(
-			store,
-			'INSERT INTO instance_retirements (target_id, instance_id, operation_id) VALUES (?, ?, ?)',
-			input.targetId,
-			input.instanceId,
-			operationId
-		)
-		const startedRuns = all<{ run_id: string }>(
-			store,
-			'SELECT r.run_id FROM runs r LEFT JOIN results s ON s.run_id = r.run_id WHERE r.target_id = ? AND r.instance_id = ? AND s.run_id IS NULL ORDER BY r.rowid',
-			input.targetId,
-			input.instanceId
-		).map((row) => row.run_id)
+	return write(store, { actor, command: 'target instance retire', subject: input.targetId, input }, (operationId) =>
+		insertRetirement(store, operationId, input)
+	)
+}
+
+function insertRetirement(store: Store, operationId: string, input: { targetId: string; instanceId: string }): Change {
+	const instance = findInstance(store, input.targetId, input.instanceId)
+	const subject = `${input.targetId}/${input.instanceId}`
+	if (instance.retired)
 		return {
-			reply: completed(subject, { instanceId: input.instanceId, recorded: true, startedRuns }),
-			subjects: [`target:${input.targetId}`],
+			reply: completed(subject, { instanceId: input.instanceId, recorded: false }),
+			subjects: [],
 		}
-	})
+	execute(
+		store,
+		'INSERT INTO instance_retirements (target_id, instance_id, operation_id) VALUES (?, ?, ?)',
+		input.targetId,
+		input.instanceId,
+		operationId
+	)
+	const startedRuns = all<{ run_id: string }>(
+		store,
+		'SELECT r.run_id FROM runs r LEFT JOIN results s ON s.run_id = r.run_id WHERE r.target_id = ? AND r.instance_id = ? AND s.run_id IS NULL ORDER BY r.rowid',
+		input.targetId,
+		input.instanceId
+	).map((row) => row.run_id)
+	return {
+		reply: completed(subject, { instanceId: input.instanceId, recorded: true, startedRuns }),
+		subjects: [`target:${input.targetId}`],
+	}
+}
+
+export function replaceInstance(
+	store: Store,
+	actor: string | undefined,
+	input: { targetId: string; instanceId: string; instance: unknown }
+) {
+	return write(store, { actor, command: 'target instance replace', subject: input.targetId, input }, (operationId) =>
+		insertReplacement(store, operationId, input)
+	)
+}
+
+function insertReplacement(
+	store: Store,
+	operationId: string,
+	input: { targetId: string; instanceId: string; instance: unknown }
+): Change {
+	const old = findInstance(store, input.targetId, input.instanceId)
+	const request = targetRequest(store, input.targetId)
+	const instance = instanceCheck(request.entryPoints, input.instance)
+	const suffix = digest(canonical({ instanceId: old.instanceId, instance })).slice(0, 20)
+	const instanceId = `${old.instanceId.slice(0, 74)}-${suffix}`
+	const replacement = insertInstance(store, operationId, { targetId: input.targetId, instanceId, instance })
+	requireCondition(
+		!old.retired || !replacement.reply.data.recorded,
+		`Instance ${input.targetId}/${old.instanceId} is retired and was not replaced with these values.`,
+		'List the active instances and replace the one that has the wrong values.'
+	)
+	const retired = insertRetirement(store, operationId, input)
+	return {
+		reply: completed(replacement.reply.subject, {
+			...replacement.reply.data,
+			replaced: old.instanceId,
+			startedRuns: retired.reply.data.startedRuns ?? [],
+		}),
+		subjects: replacement.subjects,
+	}
+}
+
+// A replacement and its retirement share an operation. Map only the web
+// entries explicitly replaced by the selected instance, never every retired URL.
+export function correctedEntryText(store: Store, targetId: string, instanceId: string) {
+	const rows = all<{ before: string; after: string; instance_id: string; predecessor: string }>(
+		store,
+		`WITH RECURSIVE chain(instance_id, body, operation_id) AS (
+			SELECT instance_id, body, operation_id FROM instances WHERE target_id = ? AND instance_id = ?
+			UNION ALL
+			SELECT old.instance_id, old.body, old.operation_id FROM chain
+			JOIN instance_retirements r ON r.operation_id = chain.operation_id AND r.target_id = ?
+			JOIN instances old ON old.target_id = r.target_id AND old.instance_id = r.instance_id
+		)
+		SELECT json_extract(old.body, '$.entries.web') AS before,
+			json_extract(new.body, '$.entries.web') AS after, new.instance_id, old.instance_id AS predecessor
+		FROM chain new JOIN instance_retirements r ON r.operation_id = new.operation_id AND r.target_id = ?
+		JOIN chain old ON old.instance_id = r.instance_id`,
+		targetId,
+		instanceId,
+		targetId,
+		targetId
+	)
+	const endpoint = rows.find((row) => row.instance_id === instanceId)?.after
+	const replaced = rows
+		.map((row) => row.before)
+		.filter((url): url is string => Boolean(url && url !== endpoint))
+		.sort((a, b) => b.length - a.length)
+	if (!endpoint || !replaced.length) return (value: string) => value
+	const alternatives = replaced.map((url) => url.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')
+	// A named port is part of the entry, so :444 must not match :4444.
+	const entries = new RegExp(`(?:${alternatives})(?![A-Za-z0-9:-]|\\.[A-Za-z0-9])`, 'g')
+	return (value: string) => value.replace(entries, () => endpoint)
 }
 
 function retirement(store: Store, targetId: string, instanceId: string) {
@@ -548,6 +659,8 @@ export type SetupInput = {
 	instanceId?: string
 	operations?: string[]
 	environment?: string
+	build?: string
+	correct?: boolean
 	reset?: string
 	data?: string
 	policy?: string
@@ -588,24 +701,18 @@ function toolVersion(path: string) {
 
 const browserConfig = join('.playwright', 'cli.config.json')
 
-// The browser tool drives the Chrome or Chromium named in the workspace config.
-// Setup refuses early when that executable is missing or does not run.
+// playwright-cli launches a browser of its own when the config names no executable. A person who
+// names one gets it checked, so that a wrong path fails here and not in the middle of a run.
 function browserExecutable(workspace: string) {
 	const path = join(workspace, browserConfig)
 	const config = existsSync(path) ? JSON.parse(readFileSync(path, 'utf8')) : {}
 	const executable: unknown = config.browser?.launchOptions?.executablePath
-	// The person names the browser. The driver never picks one and never writes the config without their path.
-	const hint = `Ask the person for the path of a Chrome or Chromium executable. Write ${browserConfig} only with the path they give, for example {"browser":{"browserName":"chromium","launchOptions":{"executablePath":"<the path they give>"}}}, then run setup again. Do not write this file yourself, and do not pick a browser yourself.`
-	requireCondition(
-		typeof executable === 'string' && executable !== '',
-		`The browser tool needs a Chrome or Chromium executable, and ${browserConfig} names none.`,
-		hint
-	)
+	if (typeof executable !== 'string' || executable === '') return undefined
 	const run = spawnSync(executable, ['--version'], { timeout: 10000 })
 	requireCondition(
 		run.status === 0,
-		`The browser executable ${executable} does not run with --version. Ask the person for a different path.`,
-		hint
+		`The browser executable ${executable} in ${browserConfig} does not run with --version.`,
+		`Ask the person for a different path, or remove executablePath so that playwright-cli uses its own browser. Do not write ${browserConfig} yourself, and do not pick a browser yourself.`
 	)
 	return executable
 }
@@ -615,18 +722,25 @@ export function readinessHint(store: Store, targetId: string) {
 	return `Clear it with checkmate setup --url ${targetWebUrl(store, targetId)} --target ${targetId} while the application answers, then run again.`
 }
 
-function urlAnswers(url: string) {
-	if (!/^https?:\/\//i.test(url)) return true
-	const check = spawnSync(
-		process.execPath,
-		[
-			'-e',
-			'fetch(process.argv[1], { signal: AbortSignal.timeout(5000) }).then((r) => process.exit(r.status < 500 ? 0 : 1), () => process.exit(2))',
-			url,
-		],
-		{ timeout: 8000 }
-	)
-	return check.status === 0
+// One GET that follows redirects. Any answer below 500 counts: a 403 from bot protection still means
+// that the application is up. Node takes HTTP_PROXY and HTTPS_PROXY only with NODE_USE_ENV_PROXY, and
+// a sandbox or a company network often allows no other route. Returns why the check failed, or null.
+const urlCheckSeconds = 10
+const urlCheckScript = `
+fetch(process.argv[1], { signal: AbortSignal.timeout(${urlCheckSeconds * 1000}) }).then(
+	(r) => { if (r.status < 500) process.exit(0); console.log('HTTP ' + r.status); process.exit(1) },
+	(e) => { console.log(e.name === 'TimeoutError' ? 'no answer in ${urlCheckSeconds} seconds' : (e.cause?.code ?? e.name) + ': ' + (e.cause?.message ?? e.message)); process.exit(1) }
+)`
+
+function urlFailure(url: string, env: SetupInput['env']): string | null {
+	if (!/^https?:\/\//i.test(url)) return null
+	const check = spawnSync(process.execPath, ['-e', urlCheckScript, url], {
+		env: { ...env, NODE_USE_ENV_PROXY: '1' },
+		encoding: 'utf8',
+		timeout: (urlCheckSeconds + 5) * 1000,
+	})
+	if (check.status === 0) return null
+	return check.stdout.trim() || check.stderr.trim().split('\n').pop() || 'the check did not finish'
 }
 
 export async function urlReachable(url: string) {
@@ -712,13 +826,72 @@ export function setupAssumptions(input: SetupInput) {
 	return { url, targetId, instanceId, browser, capabilities, allowedOperations, assumed }
 }
 
-export function setupTarget(store: Store, actor: string | undefined, input: SetupInput) {
-	const { url, targetId, instanceId, browser, capabilities, allowedOperations, assumed } = setupAssumptions(input)
+function sameSet(a: string[], b: string[]) {
+	return same([...a].sort(), [...b].sort())
+}
+
+// A setup of a known target changes nothing that the request or an instance fixes. Refuse each such input before any write.
+function requireNoSetupConflict(
+	store: Store,
+	input: SetupInput,
+	setup: { url: string; targetId: string; instanceId: string },
+	stored: TargetRequest | null
+) {
+	const { url, targetId, instanceId } = setup
+	const flags = `--url ${url} --target <new-target-id>`
+	if (stored && input.operations?.length && !input.correct)
+		requireCondition(
+			sameSet(input.operations, stored.allowedOperations),
+			`Request conflict: target ${targetId} was opened with the operations ${stored.allowedOperations.join(', ')}. --operations asks for ${input.operations.join(', ')}. A request does not change.`,
+			`To correct this target, retry setup with correct enabled (--correct). To keep its scope, omit operations. To open another target, use checkmate setup ${flags} --operations ${input.operations.join(',')}`
+		)
+	const operations =
+		(input.correct ? input.operations : undefined) ??
+		stored?.allowedOperations ??
+		(input.operations?.length ? input.operations : [anyTestOperation])
 	requireCondition(
-		input.operations?.length || !isProduction(instanceId, input.environment),
-		`Instance ${instanceId} is a production instance. ${anyTestOperation} is not permitted on it.`,
-		productionHint
+		!isProduction(instanceId, input.environment) || !operations.includes(anyTestOperation),
+		`${stored ? `Request conflict: target ${targetId} allows ${anyTestOperation}, and ` : ''}Instance ${instanceId} is a production instance. ${anyTestOperation} is not permitted on it.`,
+		stored
+			? `The request of target ${targetId} does not change. Open another target with an explicit list: checkmate setup ${flags} --instance ${instanceId} --operations <a,b>`
+			: productionHint
 	)
+	if (!stored || input.correct) return
+	const wanted = instanceCheck(stored.entryPoints, {
+		entries: { web: url },
+		...(input.environment ? { environment: input.environment } : {}),
+		...(input.build ? { build: input.build } : {}),
+	})
+	const existing = one<{ body: string }>(
+		store,
+		'SELECT body FROM instances WHERE target_id = ? AND instance_id = ?',
+		targetId,
+		instanceId
+	)
+	if (!existing) return
+	const subject = `${targetId}/${instanceId}`
+	const next = `To replace this instance, retry setup with correct enabled (--correct). To add a separate instance, give it a new ID: checkmate setup --url ${url} --target ${targetId} --instance <new-instance-id>`
+	requireCondition(!retirement(store, targetId, instanceId), `Instance conflict: ${subject} is retired.`, next)
+	requireCondition(
+		existing.body === canonical(wanted),
+		`Instance conflict: ${subject} exists with other values (${instanceChange(JSON.parse(existing.body), wanted)}). An instance does not change. Nothing was saved.`,
+		`${next}. To read the stored instance: checkmate target show ${targetId} --instance ${instanceId}`
+	)
+}
+
+function instanceChange(stored: Instance, wanted: Instance) {
+	const changed = [
+		...Object.keys(wanted.entries).filter((name) => stored.entries[name] !== wanted.entries[name]),
+		...(stored.environment === wanted.environment ? [] : ['environment']),
+		...(stored.build === wanted.build ? [] : ['build']),
+	]
+	return `changed: ${changed.join(', ')}`
+}
+
+// One transaction holds the request, the profile revision, and the instance. A refusal saves none of them.
+export function setupTarget(store: Store, actor: string | undefined, input: SetupInput) {
+	const setup = setupAssumptions(input)
+	const { url, targetId, instanceId, browser, capabilities, allowedOperations, assumed } = setup
 	const executable = browser ? browserExecutable(store.workspace) : undefined
 	const tools = [
 		{
@@ -728,35 +901,79 @@ export function setupTarget(store: Store, actor: string | undefined, input: Setu
 			version: process.version.slice(1),
 			reachable: true,
 		},
-		...(browser && executable
+		...(browser
 			? [
 					{
 						name: 'playwright-cli',
 						kind: 'cli' as const,
 						purpose: 'Drive the browser.',
 						...(toolVersion(browser) ? { version: toolVersion(browser) } : {}),
-						executable,
+						...(executable ? { executable } : {}),
 						reachable: true,
 					},
 				]
 			: []),
 	]
 	const entryPoints = [{ name: 'web', kind: 'url' as const, purpose: 'The application.' }]
-	const known = one(store, 'SELECT 1 FROM target_requests WHERE target_id = ?', targetId)
-	if (!known) openTarget(store, actor, { targetId, entryPoints, capabilities, allowedOperations, tools: [] })
-	const request = targetRequest(store, targetId)
-	const saved = one<{ revision: number }>(
-		store,
-		'SELECT revision FROM profiles WHERE target_id = ? ORDER BY revision DESC LIMIT 1',
-		targetId
-	)
-	const reachable = input.answered ?? urlAnswers(url)
-	if (!reachable && !saved) assumed.push(`ready=false (${url} did not answer)`)
+	const failure = input.answered === undefined ? urlFailure(url, input.env) : input.answered ? null : 'not reachable'
+	const reachable = failure === null
 	const reset = dataOf(input)
-	if (!saved)
-		saveTarget(store, actor, {
-			targetId,
-			profile: {
+	const host = hostSession(input.env)
+	const recorded = { ...input, env: undefined }
+	let savedProfile = false
+	const reply = write(store, { actor, command: 'setup', subject: targetId, input: recorded }, (operationId) => {
+		const known = currentRequest(store, targetId)
+		requireCondition(
+			!input.correct || known,
+			`No target named ${targetId} exists to correct.`,
+			'List the targets and retry with the existing target ID. To create a target, use setup without correct.'
+		)
+		const existing = input.correct
+			? one<{ body: string }>(
+					store,
+					'SELECT body FROM instances WHERE target_id = ? AND instance_id = ?',
+					targetId,
+					instanceId
+				)
+			: undefined
+		const previous: Instance | undefined = existing && JSON.parse(existing.body)
+		const environment = input.environment ?? previous?.environment
+		const build = input.build ?? previous?.build
+		requireNoSetupConflict(store, { ...input, environment }, setup, known ?? null)
+		const subjects: string[] = []
+		if (!known) {
+			const opened = insertRequest(store, operationId, {
+				targetId,
+				entryPoints,
+				capabilities,
+				allowedOperations,
+				tools: [],
+			})
+			subjects.push(...opened.subjects)
+		}
+		let request = targetRequest(store, targetId)
+		const corrected = Boolean(
+			input.correct && input.operations && !sameSet(input.operations, request.allowedOperations)
+		)
+		if (corrected) {
+			request = targetRequestCheck({ ...request, allowedOperations })
+			execute(
+				store,
+				'INSERT INTO target_request_corrections (target_id, body, operation_id) VALUES (?, ?, ?)',
+				targetId,
+				canonical(request),
+				operationId
+			)
+		}
+		const saved = one<{ revision: number }>(
+			store,
+			'SELECT revision FROM profiles WHERE target_id = ? ORDER BY revision DESC LIMIT 1',
+			targetId
+		)
+		if (!reachable && !saved) assumed.push(`ready=false (${url} did not answer: ${failure})`)
+		let profile: unknown = null
+		if (!saved)
+			profile = {
 				contractVersion: 'toolkit-2',
 				targetId,
 				revision: 1,
@@ -769,60 +986,83 @@ export function setupTarget(store: Store, actor: string | undefined, input: Setu
 				cleanup: 'Leave the test data. Remove it only when the application offers a way.',
 				readyForLiveExecution: reachable,
 				...(reset ? { reset } : {}),
-			},
-		})
-	else {
-		// A profile saved while the application was down stays not ready until setup sees it answer.
-		const latest = targetRevision(store, targetId)
-		const resetChanged = Boolean(reset) && JSON.stringify(latest.profile.reset) !== JSON.stringify(reset)
-		const becameReady = reachable && !latest.profile.readyForLiveExecution
-		if (resetChanged || becameReady)
-			saveTarget(store, actor, {
-				targetId,
-				profile: {
+			}
+		else {
+			// A profile saved while the application was down stays not ready until setup sees it answer.
+			const latest = targetRevision(store, targetId)
+			const resetChanged = Boolean(reset) && canonical(latest.profile.reset) !== canonical(reset)
+			const becameReady = reachable && !latest.profile.readyForLiveExecution
+			if (resetChanged || becameReady || corrected)
+				profile = {
 					...latest.profile,
 					revision: latest.revision + 1,
 					...(resetChanged ? { reset } : {}),
+					allowedOperations: request.allowedOperations,
 					readyForLiveExecution: latest.profile.readyForLiveExecution || reachable,
-				},
-			})
-	}
-	const instance = addInstance(store, actor, {
-		targetId,
-		instanceId,
-		instance: { entries: { web: url }, ...(input.environment ? { environment: input.environment } : {}) },
-	})
-	if (instance.status !== 'completed') return instance
-	const latest = targetRevision(store, targetId)
-	const needsReset = !latest.profile.reset && latest.profile.allowedOperations.some(changesData)
-	if (needsReset)
-		assumed.push('data=none recorded: testers may change data, so a run or an exploration needs a data policy.')
-	const kind = latest.profile.reset
-	if (kind)
-		assumed.push(
-			kind.owner === 'checkmate'
-				? `data=reset command: Checkmate runs ${kind.command?.join(' ')} before each run and exploration.`
-				: `data=${kind.owner}: Checkmate does not reset data. ${kind.owner === 'isolation' ? 'Testers work by isolation under the data policy.' : 'The environment gives each run fresh data.'}`
-		)
-	return completed(targetId, {
-		targetId,
-		revision: latest.revision,
-		instanceId,
-		url,
-		capabilities: latest.profile.capabilities,
-		allowedOperations: latest.profile.allowedOperations,
-		ready: latest.profile.readyForLiveExecution,
-		instanceReachable: reachable,
-		...(needsReset
-			? {
-					next: `Ask the person for the data policy. Give the command that restores the seed data: checkmate setup --url ${url} --reset "<command>". Or give --data environment|isolation with --policy "<text>". Do not write them yourself.`,
 				}
-			: !latest.profile.readyForLiveExecution
-				? {
-						next: `Recheck the target prerequisites and save a new profile: checkmate delegate setup ${targetId}`,
-					}
-				: {}),
-		created: !known,
-		assumed: known ? [] : assumed,
+		}
+		if (profile) {
+			subjects.push(...insertProfile(store, operationId, { targetId, profile }).subjects)
+			savedProfile = true
+		}
+		const wanted = {
+			entries: { web: url },
+			...(environment ? { environment } : {}),
+			...(build ? { build } : {}),
+			...(previous?.references ? { references: previous.references } : {}),
+		}
+		const instanceInput = { targetId, instanceId, instance: wanted }
+		const instance =
+			previous && !same(previous, instanceCheck(request.entryPoints, wanted))
+				? insertReplacement(store, operationId, instanceInput)
+				: insertInstance(store, operationId, instanceInput)
+		subjects.push(...instance.subjects)
+		const latest = targetRevision(store, targetId)
+		const needsReset = !latest.profile.reset && latest.profile.allowedOperations.some(changesData)
+		if (needsReset)
+			assumed.push('data=none recorded: testers may change data, so a run or an exploration needs a data policy.')
+		const kind = latest.profile.reset
+		if (kind)
+			assumed.push(
+				kind.owner === 'checkmate'
+					? `data=reset command: Checkmate runs ${kind.command?.join(' ')} before each run and exploration.`
+					: `data=${kind.owner}: Checkmate does not reset data. ${kind.owner === 'isolation' ? 'Testers work by isolation under the data policy.' : 'The environment gives each run fresh data.'}`
+			)
+		return {
+			reply: completed(targetId, {
+				targetId,
+				revision: latest.revision,
+				instanceId: instance.reply.data.instanceId,
+				url,
+				capabilities: latest.profile.capabilities,
+				allowedOperations: latest.profile.allowedOperations,
+				ready: latest.profile.readyForLiveExecution,
+				instanceReachable: reachable,
+				...(!reachable
+					? {
+							next: host
+								? `The application did not answer at ${url}: ${failure}. Confirm the URL or make the application reachable.`
+								: `The application did not answer at ${url}: ${failure}. Fix the address or the network, then run checkmate setup --url ${url} --target ${targetId} again. A rerun with the same cause changes nothing.`,
+						}
+					: needsReset
+						? {
+								next: host
+									? 'The target needs a data policy. Ask how test data is reset or isolated.'
+									: `Ask the person for the data policy. Give the command that restores the seed data: checkmate setup --url ${url} --reset "<command>". Or give --data environment|isolation with --policy "<text>". Do not write them yourself.`,
+							}
+						: !latest.profile.readyForLiveExecution
+							? {
+									next: host
+										? 'The target profile is incomplete. Check the prerequisites and complete setup.'
+										: `Recheck the target prerequisites and save a new profile: checkmate delegate setup ${targetId}`,
+								}
+							: {}),
+				created: !known,
+				assumed: known ? [] : assumed,
+			}),
+			subjects,
+		}
 	})
+	if (savedProfile) removeTemporaryDirectory(store, `setup-${targetId}`)
+	return reply
 }

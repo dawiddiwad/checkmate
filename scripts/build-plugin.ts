@@ -4,9 +4,8 @@ import { fileURLToPath } from 'node:url'
 import assert from 'node:assert/strict'
 
 const output = new URL('../plugin/dist/checkmate.js', import.meta.url)
-const skill = new URL('../cli/skills/checkmate/SKILL.md', import.meta.url)
-const installedSkill = new URL('../plugin/references/oracle-workflow.md', import.meta.url)
 const bundle = await build({
+	absWorkingDir: fileURLToPath(new URL('..', import.meta.url)),
 	entryPoints: [fileURLToPath(new URL('../cli/src/main.ts', import.meta.url))],
 	bundle: true,
 	platform: 'node',
@@ -19,13 +18,7 @@ const bundle = await build({
 const text = bundle.outputFiles[0].text
 if (process.argv.includes('--check')) {
 	assert.equal(await readFile(output, 'utf8').catch(() => ''), text, 'Run npm run build')
-	assert.equal(
-		await readFile(installedSkill, 'utf8').catch(() => ''),
-		await readFile(skill, 'utf8'),
-		'Run npm run build'
-	)
 } else {
 	await mkdir(new URL('.', output), { recursive: true })
 	await writeFile(output, text)
-	await writeFile(installedSkill, await readFile(skill, 'utf8'))
 }

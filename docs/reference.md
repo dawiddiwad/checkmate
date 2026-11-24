@@ -4,23 +4,46 @@ Use `checkmate --help` for the complete command list from the installed version.
 
 ## Common sequence
 
-| Purpose                         | Command                                                                                        |
-| ------------------------------- | ---------------------------------------------------------------------------------------------- |
-| Set up a URL and local instance | `checkmate setup --url <url>`                                                                  |
-| Open a plan                     | `checkmate plan open <planId> --target <targetId@revision> --objective <text> --source <file>` |
-| Delegate a stage                | `checkmate delegate <setup\|plan\|revise\|execute> <subject>`                                  |
-| Review source requirements      | `checkmate delegate spec <planId@revision>`                                                    |
-| See the next owner and action   | `checkmate status <planId>`                                                                    |
-| Find work for the oracle        | `checkmate inbox`                                                                              |
-| Read new record operations      | `checkmate log --after <rowid> --json`                                                         |
-| Start a run on a named build    | `checkmate run begin <runId> <planId@revision> --build <build>`                                |
-| Run a permanent snapshot        | `checkmate run permanent <runId> <planId> --build <build>`                                     |
-| Accept or reject a result       | `checkmate result accept\|reject <runId> --rationale <text>`                                   |
-| Promote passing tests           | `checkmate plan promote <planId@revision> --run <runId> --build <build> --rationale <text>`    |
-| Export a report                 | `checkmate export run <runId> --format <md\|html\|json\|junit>`                                |
-| Start or stop the review UI     | `checkmate ui` or `checkmate ui --stop`                                                        |
+| Purpose                                            | Command                                                                                                                                           |
+| -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Set up a URL and local instance                    | `checkmate setup --url <url>`                                                                                                                     |
+| Correct the operations or endpoint of a web target | `checkmate setup --correct --target <targetId> --instance <instanceId> --url <url> [--operations <a,b>] [--environment <name>] [--build <build>]` |
+| Replace an instance                                | `checkmate target instance replace <targetId> <instanceId> --entry <name=value> [--environment <name>] [--build <build>]`                         |
+| Open a plan                                        | `checkmate plan open [planId] --target <targetId@revision> --objective <text> --source <file>`                                                    |
+| Delegate a stage                                   | `checkmate delegate <setup\|plan\|revise\|execute> <subject>`                                                                                     |
+| Review source requirements                         | `checkmate delegate spec <planId@revision>`                                                                                                       |
+| See the next owner and action                      | `checkmate status <planId>`                                                                                                                       |
+| Find work for the oracle                           | `checkmate inbox`                                                                                                                                 |
+| Read new record operations                         | `checkmate log --after <rowid> --json`                                                                                                            |
+| Start a run on a named build                       | `checkmate run begin <runId> <planId@revision> --build <build>`                                                                                   |
+| Run a permanent snapshot                           | `checkmate run permanent <runId> <planId> --build <build>`                                                                                        |
+| Accept or reject a result                          | `checkmate result accept\|reject <runId> --rationale <text>`                                                                                      |
+| Promote passing tests                              | `checkmate plan promote <planId@revision> --run <runId> --build <build> --rationale <text>`                                                       |
+| Export a report                                    | `checkmate export run <runId> --format <md\|html\|json\|junit>`                                                                                   |
+| Start or stop the review UI                        | `checkmate ui` or `checkmate ui --stop`                                                                                                           |
 
 The examples omit optional `--actor` and `--workspace` flags. Claude Code delegation needs `--allow <rule>` for each required tool. Pi delegation uses `CHECKMATE_HARNESS=pi` and omits `--allow` and `--claude-arg`. The host enforces its own permissions.
+
+## Agent tools
+
+The Claude Code plugin serves Checkmate actions through its local MCP server. The Pi package registers the same actions as native tools. The host gives each tool its workspace and role. An action takes named arguments. Its result gives the recorded state or a refusal with reasons and a next action.
+
+| Work                        | Tools with the `checkmate_` prefix                                                                                        |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| Inspect or correct a target | `list_targets`, `show_target`, `setup`, `replace_instance`                                                                |
+| Plan and answer             | `open_plan`, `read_plan_request`, `save_plan`, `read_pending`, `revise_plan`, `edit_plan`, `answer_gap`                   |
+| Explore                     | `start_test`, `test_status`, `pause_test`, `follow_test`, `next_tester_steps`, `tester_steps_started`, `tester_step_done` |
+| Execute stored tests        | `begin_run`, `read_run`, `resume_run`, `record_check`, `close_test`, `record_finding`, `record_gap`                       |
+| Start an independent worker | `delegate_work`                                                                                                           |
+| Review state                | `status`, `inbox`                                                                                                         |
+
+The operator opens requests and starts independent planners, revisers and testers. Only the assigned worker can save a plan or its revision, record a check, or close a test through a host tool. The launcher closes a test whose worker recorded all observed checks and records the final run outcome. A plan gap answer starts a reviser immediately. A question from exploration is recorded for follow-up testing. Give the person's exact answer.
+
+Use the returned target, plan, and instance IDs for subsequent actions. To correct a web target, use setup with the `correct` field. To replace an instance, supply its complete entry values. A target correction applies to a plan before its first stored run. The first run pins the corrected profile. An exploration or run uses the replacement instance's URL in place of a superseded URL from that instance's history. Previously recorded runs retain their pinned profile and instance.
+
+For a structured check, give only the observed item, for example `"400"` for HTTP status. Give `absent: true` after a successful read when the item is missing. Put the response and request details in `evidence: [{text, kind}]`. To attach a file, use `[{file, kind}]` with a fresh file from the run evidence directory. A successful call consumes the file. An incomplete test closed as an operational error keeps its observations without requiring a defect finding. A completed tester step can report a product defect. Give a step failure only for an agent or host failure.
+
+The CLI still serves scripts, factory stages, review UI chat, exports, permanent runs, approvals, permissions, and recovery operations. Checkmate's CLI and host tools validate supported actions with the same [action schemas](../plugin/contracts/actions.schema.json). Factory grants and target credentials stay with the host.
 
 ## Plans and contracts
 

@@ -1,19 +1,10 @@
----
-name: checkmate
-description: Set up a QA target, plan or run tests, and inspect evidence with Checkmate in Pi.
----
-
-> **Agent only:** This file contains repository or workflow instructions for coding agents.
-
-Use the CLI in this package. Resolve `../../src/main.ts` from the directory of this skill. If that file is absent, use `../../dist/checkmate.js`. Run each command in the project workspace as `CHECKMATE_HARNESS=pi node "<absolute CLI path>" <command>`. Keep the provider, model, credentials, and tool policy in Pi. Run one Checkmate command per shell call. Do not pipe, chain, or filter its output with another tool. Read the output as printed, or add `--json`.
-
 1. Run `target list` and `plan list`. Use an existing plan only when the person names it or names its ticket. Use an existing target only when the person names it or it is the only target.
-2. For a new target, ask for the running URL. For a remote URL, confirm the environment and permitted operations. Run `setup --url <url>`. Give the confirmed `--environment` and `--operations` for production. Record only a reference for credentials. If setup says a data policy is needed, ask the person how the data is reset or isolated. Do not write a policy, a reset command, or a hook yourself.
+2. For a new target, ask for the running URL. For a remote URL, confirm the environment and permitted operations. Run `setup --url <url>`. Give the confirmed `--environment` and `--operations` for production. Record only a reference for credentials. If setup says a data policy is needed, ask the person how the data is reset or isolated. Do not write a policy, a reset command, or a hook yourself. When setup refuses with `Request conflict` or `Instance conflict`, nothing was saved. A request and an instance do not change. Follow the hint: drop the changed flag, or use a new `--target` or a new `--instance`.
    - When the person asks only for setup or a reachability check, stop after setup. Report the target, instance, reachability, and each `assumed:` line. Do not start a plan or a test.
-   - Otherwise, setup is not the end. Report the target in one line, then go on to step 3 or 4 with the person's ticket or change.
-3. For a ticket, an acceptance-criteria file, or a request to test a change, run this step now. Run `plan open --target <targetId>@<revision> --objective "<objective>" --source <file>`. Leave out `<planId>`: Checkmate takes it from the ticket key, for example `BS-42`, or from the file name, and prints it as `planIdFrom`. Use that `planId` in the next commands. Pass every file that the person names as `--source`. Do not name a file in `--objective` unless it is a `--source`: `plan open` refuses it. Then run `delegate plan <planId> --detach`. It starts the planner and returns at once. Then run `delegate wait plan <planId> --timeout 90`. While the reply status is `running`, run the `delegate wait` command from its hint again. A status other than `running` is the result. Do not start the planner a second time. Show the open gaps. Ask the oracle for decisions.
+   - If the application did not answer, say why and ask the person to make it reachable or confirm the URL. If the profile needs a prerequisite or a data policy, ask only for the missing information. Continue with step 3 or 4 when the target is ready.
+3. For a ticket, an acceptance-criteria file, or a request to test a change, run this step now. Run `plan open --target <targetId>@<revision> --objective "<objective>" --source <file>`. Leave out `<planId>`: Checkmate takes it from the ticket key, for example `BS-42`, or from the file name, and prints it as `planIdFrom`. Use that `planId` in the next commands. To name the plan, put its ID first. Never write `stdin` or `-` as the plan ID. A request on standard input needs no word on the command line. Pass every file that the person names as `--source`. Do not name a file in `--objective` unless it is a `--source`: `plan open` refuses it. Then run `delegate plan <planId> --detach`. It starts the planner and returns at once. Then run `delegate wait plan <planId> --timeout 90`. While the reply status is `running`, run the `delegate wait` command from its hint again. A status other than `running` is the result. Do not start the planner a second time. Show the open gaps. Ask the oracle for decisions.
 4. For an exploratory test, run `test <planId> --source <file> --allow Read --allow Bash`. Add `--level smoke|normal|deep` when the person selects a level. Run `explore wait <explorationId> --timeout 90`. If it still shows `recording`, run the same command again. When it shows `completed`, run `explore show <explorationId>`. Do not wait longer than 90 seconds in one command.
-5. For the stored tests of a plan on a build, do not use `test`. The build that the person names decides the run. If the person names no build, ask for it. Do not invent a build name. Run `status <planId>` only to read the revision and the last run ID. Run `run begin <newRunId> <planId>@<revision> --build <build> --partial ready_only`, with a new run ID. Add `--retest-of <earlierRunId>` only when the person says the build contains a fix for a defect of that run. A run on a build with no fix, or a repeat of a run, is a new run without `--retest-of`. The `next` line of status may name `--retest-of`; use it only under this rule. Do not follow the `next` line of status instead of the person's build. Then follow "Continue a run".
+5. For the stored tests of a plan on a build, do not use `test`. The build that the person names decides the run. If the person names no build, ask for it. Do not invent a build name. Run `status <planId>` only to read the revision and the last run ID. Run `run begin <newRunId> <planId>@<revision> --build <build> --partial ready_only`, with a new run ID. Add `--retest-of <earlierRunId>` only when the person says the build contains a fix for a defect of that run. A run on a build with no fix, or a repeat of a run, is a new run without `--retest-of`. The `agent-only next` line of status may name `--retest-of`; use it only under this rule. Do not follow the `agent-only next` line of status instead of the person's build. Then follow "Continue a run".
 
 ## Answer questions and revise the plan
 
@@ -27,7 +18,7 @@ Before any `gap answer`, read the gap question in `plan show`. Record the answer
 4. Run `status <planId>` and `plan show <planId>`. Report the new revision and any gap that is still open.
 5. When the status says `needs_approval`, run `plan approve <planId@revision> --rationale "<why>"` only after the person approves that revision.
 
-To drop a requirement that the person names and that no open gap covers, run `scope drop <planId> <requirementId> --source <file> --rationale "<why>"`, then `delegate revise <planId>` as above. Use the source file the person named, or the message if it is the only source. Do not use `plan edit --patch` to answer a gap or to drop a requirement. Do not guess the JSON shape of a plan change. If `delegate revise` refuses, report each `reason:` and ask the person for the missing value.
+To drop a requirement that the person names and that no open gap covers, run `scope drop <planId> <requirementId> --source <file> --rationale "<why>"`, then `delegate revise <planId>` as above. Use the source file the person named, or the message if it is the only source. Do not use `plan edit --patch` to answer a gap or to drop a requirement. Do not guess the JSON shape of a plan change. If `delegate revise` refuses, explain the reason in plain words. Ask for the missing value when you need it.
 
 ## Add or remove a test directly
 
@@ -41,7 +32,7 @@ Use this when the person asks you to add, change, or drop a test. An open gap do
 - For a shape or a range, use one of: `type:number`, `type:non-empty`, `one-of:A|B`, `matches:<regex>`, `at least:N`, `at most:N`, `contains:TEXT`, `absent:TEXT`. Do not write a type word alone, such as `number`. Do not write a sentence that starts with `not`; write `absent:<text>` instead.
 - An agent_observation assertion has no `expected`. Its check states the observation, and the tester judges it.
 
-If `plan edit` refuses, report each `reason:` and ask the person before you try another shape.
+If `plan edit` refuses, explain the reason in plain words. Ask the person only when you need their input.
 
 ## Continue a run
 
@@ -55,9 +46,9 @@ When the person asks you to run or retest stored tests, continue until you execu
 - `delegate execute` can run for several minutes. Give its shell call a timeout of at least 600 seconds. If the call times out, run `run show <runId>`. A run that is still `started` has not ended.
 - When a run is `started` but its process stopped, run `run resume <runId>` first. It rechecks the instance, profile, and run gate, and it does not run test actions. Then run `delegate execute <runId>`.
 
-If a command refuses or returns `needs_decision`, report its actual status, each `reason:`, and its `hint:` when present. Give the next command or ask for the missing decision or value. Before you say what changed in the record, run `plan show` or `status` and report the state that it shows. A refusal that a later command fixed is not the final state. Do not invent an ID or say that execution started. After `delegate execute` completes, run `run show <runId>` and report the recorded test outcomes, evidence, gaps, and next decision. A completed command does not mean that every test passed.
+If a command refuses or needs a decision, explain why it stopped. Make any correction you can make yourself. If you need the person to decide or give a value, ask in plain words. Before you say what changed in the record, run `plan show` or `status` and report the state that it shows. A refusal that a later command fixed is not the final state. Do not invent an ID or say that execution started. After `delegate execute` completes, run `run show <runId>` and report the recorded test outcomes and any decision that is waiting on the run page. A completed command does not mean that every test passed.
 
-Read `status <planId>` when no run needs execution or after you report the run. Report the next action and its owner. A completed test command can record failed or blocked tests.
+Read `status <planId>` when no run needs execution or after you report the run. If someone needs to act, say who and what they need to do in plain words. A completed test command can record failed or blocked tests.
 
 ## Gate a run for CI
 
@@ -66,6 +57,6 @@ When the person asks you to gate a pipeline on a run, run `run show <runId> --ga
 - 0: every selected test passed, and coverage is complete.
 - 1: a test failed. The product has defects. Report each failed test ID with its `failed` result.
 - 2: a test could not run, the run is not finished, or coverage is partial. Report it as not tested. Do not call it passed.
-- 3: the plan waits on an oracle decision: an open blocking gap. Report the gap ID and the command that answers it.
+- 3: the plan waits on an oracle decision: an open blocking gap. Name the gap and say where to answer it in the review UI.
 
 Read the `gate=` line for the state name. A defect outranks the other codes.

@@ -1,9 +1,18 @@
 import assert from 'node:assert/strict'
 import { execFileSync, spawn, spawnSync } from 'node:child_process'
 import { once } from 'node:events'
-import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import {
+	chmodSync,
+	copyFileSync,
+	existsSync,
+	mkdirSync,
+	readFileSync,
+	realpathSync,
+	rmSync,
+	writeFileSync,
+} from 'node:fs'
 import { createServer } from 'node:http'
-import type { AddressInfo } from 'node:net'
+import { connect, type AddressInfo } from 'node:net'
 import { createInterface } from 'node:readline'
 import { delimiter, join } from 'node:path'
 import { gunzipSync } from 'node:zlib'
@@ -66,11 +75,44 @@ function invoke(entry: string, workspace: string, env: NodeJS.ProcessEnv, input:
 	)
 }
 
+async function mcpCalls(
+	workspace: string,
+	env: NodeJS.ProcessEnv,
+	calls: Array<[name: string, arguments_: object]>,
+	cwd = workspace
+) {
+	const child = spawn(process.execPath, [binary, 'mcp'], {
+		cwd,
+		env: { ...env, CLAUDE_PROJECT_DIR: workspace },
+		timeout: 70000,
+	})
+	const requests = [
+		{ method: 'initialize', params: { protocolVersion: '2025-06-18' } },
+		{ method: 'tools/list' },
+		...calls.map(([name, arguments_]) => ({ method: 'tools/call', params: { name, arguments: arguments_ } })),
+	]
+	child.stdin.end(
+		requests.map((request, index) => JSON.stringify({ jsonrpc: '2.0', id: index + 1, ...request })).join('\n') +
+			'\n'
+	)
+	let output = ''
+	child.stdout.on('data', (bytes) => (output += bytes))
+	const [exit] = await once(child, 'close')
+	assert.equal(exit, 0, output)
+	return output
+		.trim()
+		.split('\n')
+		.map((line) => JSON.parse(line))
+}
+
 test('Install packed npm CLI and open the empty UI — installed assets or skills missing.', async (t) => {
 	const workspace = directory(t)
 	const installed = join(project, 'node_modules/@xoxoai/checkmate')
-	assert(existsSync(join(installed, 'skills/checkmate/SKILL.md')))
-	assert(existsSync(join(installed, 'plugin/dist/checkmate.js')))
+	assert(existsSync(join(installed, 'plugin/pi/skills/checkmate/SKILL.md')))
+	const bundled = join(installed, 'plugin/dist/checkmate.js')
+	assert.equal(realpathSync(binary), realpathSync(bundled))
+	assert.deepEqual(readFileSync(bundled), readFileSync(join(root, 'plugin/dist/checkmate.js')))
+	assert.equal(existsSync(join(installed, 'dist/checkmate.js')), false)
 	const child = spawn(process.execPath, [binary, 'ui'], { cwd: workspace, env: process.env })
 	try {
 		const [data] = (await once(child.stdout, 'data')) as [Buffer]
@@ -83,6 +125,159 @@ test('Install packed npm CLI and open the empty UI — installed assets or skill
 		child.kill('SIGTERM')
 		await once(child, 'close')
 	}
+})
+
+test('Expose packaged Pi tools by role and validate the same setup input as the CLI.', async (t) => {
+	const workspace = directory(t)
+	const packageRoot = join(project, 'node_modules/@xoxoai/checkmate/plugin')
+	const extension = join(packageRoot, 'pi/checkmate-tools.mjs')
+	const inspect = join(workspace, 'inspect.mjs')
+	const inventory = join(workspace, 'inventory.json')
+	const { pathToFileURL } = await import('node:url')
+	writeFileSync(
+		inspect,
+		`
+import { writeFileSync } from 'node:fs'
+import { callActionTool } from ${JSON.stringify(pathToFileURL(join(packageRoot, 'dist/checkmate.js')).href)}
+export default (pi) => pi.on('session_start', async (_event, ctx) => {
+	const tools = pi.getAllTools().filter(tool => tool.name.startsWith('checkmate_')).map(tool => tool.name)
+	const refused = await callActionTool('checkmate_setup', { url: 'not-a-url' }, ctx.cwd, process.env)
+	writeFileSync(${JSON.stringify(inventory)}, JSON.stringify({ tools, refused }))
+})
+`
+	)
+	const env = { ...process.env, PI_CODING_AGENT_DIR: join(workspace, 'pi'), PI_OFFLINE: '1' }
+	const inspectTools = (role?: string) => {
+		const child = spawnSync(
+			'pi',
+			['--mode', 'rpc', '--no-session', '--no-extensions', '-e', extension, '-e', inspect],
+			{
+				cwd: workspace,
+				env: { ...env, CHECKMATE_TOOL_ROLE: role },
+				input: '{"type":"get_state"}\n',
+				encoding: 'utf8',
+				timeout: 15000,
+			}
+		)
+		assert.equal(child.status, 0, child.stderr)
+		return JSON.parse(readFileSync(inventory, 'utf8'))
+	}
+	const main = inspectTools()
+	assert(main.tools.includes('checkmate_setup'))
+	assert(!main.tools.includes('checkmate_record_check'))
+	assert(main.tools.includes('checkmate_inbox'))
+	assert.equal(main.refused.refusal, 'malformed')
+	const cli = await command(workspace, env, 'setup', '--url', 'not-a-url')
+	assert.deepEqual(cli.body.nextAction, main.refused.nextAction)
+	const planner = inspectTools('plan')
+	assert.deepEqual(planner.tools.sort(), [
+		'checkmate_read_plan_request',
+		'checkmate_save_plan',
+		'checkmate_show_target',
+	])
+	assert.match(planner.refused.reasons.join(' '), /unavailable/)
+	assert.deepEqual(inspectTools('clerk').tools, [])
+})
+
+test('Expose packaged Claude MCP tools by role and keep their workspace bound to the host.', async (t) => {
+	const workspace = directory(t)
+	const other = directory(t)
+	const app = await fixture()
+	t.after(() => app.close())
+	const mcpConfig = JSON.parse(readFileSync(join(project, 'node_modules/@xoxoai/checkmate/plugin/.mcp.json'), 'utf8'))
+	assert.deepEqual(mcpConfig.mcpServers.actions.args.slice(-1), ['mcp'])
+	const batches = (role?: string) =>
+		mcpCalls(
+			workspace,
+			{ ...process.env, CHECKMATE_TOOL_ROLE: role },
+			[
+				['checkmate_setup', { url: 'not-a-url' }],
+				['checkmate_setup', { url: app.baseUrl, targetId: 'fixture', operations: ['read_health'] }],
+			],
+			other
+		)
+	const [, inventory, invalid, saved] = await batches()
+	assert(inventory.result.tools.some((tool: { name: string }) => tool.name === 'checkmate_setup'))
+	assert.equal(invalid.result.structuredContent.refusal, 'malformed')
+	assert.equal(invalid.result.structuredContent.nextAction.action, 'setup')
+	assert.equal(saved.result.structuredContent.targetId, 'fixture')
+	assert.equal(existsSync(join(workspace, '.checkmate/checkmate.db')), true)
+	assert.equal(existsSync(join(other, '.checkmate/checkmate.db')), false)
+	const [, tester, refused] = await batches('execute')
+	assert(tester.result.tools.some((tool: { name: string }) => tool.name === 'checkmate_record_check'))
+	assert(!tester.result.tools.some((tool: { name: string }) => tool.name === 'checkmate_finish_run'))
+	assert.equal(refused.result.structuredContent.refusal, 'prohibited')
+	const [, clerk] = await batches('clerk')
+	assert.deepEqual(clerk.result.tools, [])
+	const { childArgs } = await import('../../plugin/src/sessions.ts')
+	const clean = childArgs({ harness: 'claude', hiddenPlugin: null, claudeArgs: [] }, [])
+	assert.equal(clean[clean.indexOf('--disallowedTools') + 1], 'mcp__plugin_checkmate_actions__*')
+})
+
+test('Delegate plan, apply an answer immediately, and record stored checks only from the assigned tester.', async (t) => {
+	const workspace = directory(t)
+	const app = await fixture()
+	t.after(() => app.close())
+	const bin = join(workspace, 'bin')
+	mkdirSync(bin)
+	copyFileSync(join(root, 'test/e2e/typed-worker.mjs'), join(bin, 'claude'))
+	chmodSync(join(bin, 'claude'), 0o755)
+	const env = { ...process.env, PATH: `${bin}${delimiter}${process.env.PATH}`, CHECKMATE_ACTOR: 'oracle' }
+	const [, inventory, ...responses] = await mcpCalls(workspace, env, [
+		['checkmate_setup', { url: app.baseUrl, targetId: 'shop', operations: ['read_health'] }],
+		[
+			'checkmate_open_plan',
+			{
+				target: 'shop',
+				planId: 'ticket',
+				request: {
+					objective: 'Check health.',
+					requirements: [{ id: 'R1', text: 'The health endpoint answers.', source: 'ticket.md' }],
+				},
+			},
+		],
+		['checkmate_delegate_work', { stage: 'plan', subject: 'ticket' }],
+		['checkmate_status', { planId: 'ticket' }],
+		[
+			'checkmate_answer_gap',
+			{
+				planId: 'ticket',
+				gapId: 'G1',
+				kind: 'clarify',
+				value: 'It returns HTTP 200.',
+				source: 'conversation',
+				rationale: 'The person answered.',
+			},
+		],
+		['checkmate_begin_run', { runId: 'r1', reference: 'ticket', build: 'b1' }],
+		['checkmate_record_check', { runId: 'r1', testId: 'T1', assertionId: 'A1', observed: '200' }],
+		['checkmate_delegate_work', { stage: 'execute', subject: 'r1' }],
+	])
+	assert(!inventory.result.tools.some((tool: { name: string }) => tool.name === 'checkmate_record_check'))
+	const [setup, opened, planned, waiting, answered, began, denied, executed] = responses.map(
+		(response) => response.result.structuredContent
+	)
+	assert.equal(setup.status, 'completed', JSON.stringify(setup))
+	assert.equal(opened.status, 'completed', JSON.stringify(opened))
+	assert(['completed', 'needs_decision'].includes(planned.status), JSON.stringify(planned))
+	assert.equal(waiting.waitsOn, 'oracle', JSON.stringify(waiting))
+	assert.equal(answered.revision.status, 'completed', JSON.stringify(answered))
+	assert.equal(began.status, 'completed', JSON.stringify(began))
+	assert.equal(denied.refusal, 'prohibited', JSON.stringify(denied))
+	assert.equal(executed.status, 'completed', JSON.stringify(executed))
+	const records = await command(
+		workspace,
+		env,
+		'query',
+		"SELECT command, actor FROM operations WHERE command IN ('plan save', 'plan revise', 'run check') AND status IN ('completed', 'needs_decision') ORDER BY rowid"
+	)
+	assert.deepEqual(records.body.rows, [
+		{ command: 'plan save', actor: 'claude:plan' },
+		{ command: 'plan revise', actor: 'claude:revise' },
+		{ command: 'run check', actor: 'claude:execute' },
+	])
+	const answer = await command(workspace, env, 'query', 'SELECT value FROM decisions')
+	assert.deepEqual(answer.body.rows, [{ value: 'It returns HTTP 200.' }])
 })
 
 test('Point run accept and run reject to the result command — a wrong command name leaves the record unchanged.', async (t) => {
@@ -98,6 +293,13 @@ test('Point run accept and run reject to the result command — a wrong command 
 	assert.equal(result.status, 1)
 	assert.match(result.stdout + result.stderr, /Unknown command: run reject/)
 	assert.match(result.stdout + result.stderr, /Use result reject <runId> --rationale/)
+	const host = spawnSync(process.execPath, [binary, 'run', 'reject', 'run-1'], {
+		cwd: workspace,
+		env: { ...process.env, CHECKMATE_HOST_SESSION: '1' },
+		encoding: 'utf8',
+	})
+	assert.equal(host.status, result.status)
+	assert.match(host.stdout, /^agent-only hint: Use result reject/m)
 })
 
 test('Tell a chat turn what it saved from the record — a turn with no write reports nothing saved, and a refused command saves nothing.', async (t) => {
@@ -1832,6 +2034,188 @@ test('Wait on a paused exploration — the driver burns the timeout instead of a
 	assert.match(waited.hint, new RegExp(`checkmate explore next ${started.explorationId}`))
 })
 
+test('Give a session tester the data rules of a read-only target — the test task told the tester to create records and left the policy out.', async (t) => {
+	const workspace = directory(t)
+	writeFileSync(join(workspace, 'ticket.md'), 'The catalog is listed.\n')
+	const app = await fixture()
+	t.after(() => app.close())
+	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle', CHECKMATE_HARNESS: 'claude' }
+	const ok = async (...args: string[]) => {
+		const result = await command(workspace, env, ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	await ok(
+		'setup',
+		'--url',
+		app.baseUrl,
+		'--target',
+		'shop',
+		'--operations',
+		'read_catalog',
+		'--data',
+		'environment',
+		'--policy',
+		'Read only. Never create or change a record.'
+	)
+	const started = await ok('test', 'ticket', '--source', 'ticket.md', '--build', 'b1', '--session')
+	const id = started.explorationId as string
+	await ok('explore', 'next', id)
+	await ok('explore', 'started', id, 'rules')
+	const rules = join(workspace, '.checkmate/work', id, 'rules/answer.json')
+	writeFileSync(
+		rules,
+		JSON.stringify([{ id: 'R1', text: 'The catalog is listed.', source: 'ticket.md#1', area: 'Catalog' }])
+	)
+	await ok('explore', 'done', id, 'rules', 'rules', '--agent', 'clerk-1')
+	await ok('explore', 'next', id)
+	await ok('explore', 'started', id, 'a1', 'a2')
+	writeFileSync(join(workspace, '.checkmate/work', id, 'a1/questions.md'), 'None\n')
+	await ok('explore', 'done', id, 'a1', 'study', '--agent', 'tester-1')
+	await ok('explore', 'next', id)
+	const folder = join(workspace, '.checkmate/work', id, 'a1')
+	const study = readFileSync(join(folder, 'task-study.md'), 'utf8')
+	const task = readFileSync(join(folder, 'task-test.md'), 'utf8')
+	for (const text of [study, task]) assert.match(text, /Data policy: Read only\. Never create or change a record\./)
+	assert.doesNotMatch(task, /make new records|Make a new record/)
+	assert.match(task, /Do not create, change, or delete a record/)
+	await ok('explore', 'started', id, 'a1')
+	writeFileSync(join(folder, 'report.md'), 'Defect: the catalog returned an incorrect status.\n')
+	const [, , malformed, refused, recorded] = await mcpCalls(workspace, env, [
+		[
+			'checkmate_tester_step_done',
+			{ explorationId: id, name: 'a1', step: 'test', agentId: 'tester-1', failure: 'Defect: HTTP 500' },
+		],
+		[
+			'checkmate_tester_step_done',
+			{ explorationId: id, name: 'a1', step: 'test', agentId: 'tester-1', failure: 'host_error' },
+		],
+		[
+			'checkmate_tester_step_done',
+			{ explorationId: id, name: 'a1', step: 'test', agentId: 'tester-1', replyLine: 'tester a1 test done' },
+		],
+	])
+	assert.equal(malformed.result.structuredContent.refusal, 'malformed')
+	assert.match(refused.result.structuredContent.nextAction.instruction, /product defects/)
+	assert.equal(recorded.result.structuredContent.status, 'completed')
+	assert.notEqual(recorded.result.structuredContent.state, 'operational_error')
+})
+
+test('Give a verifier the data rules of the target — the verifier brief had only the operation text and a prefix.', async () => {
+	const { verifierBrief } = await import('../../plugin/src/briefs.ts')
+	const items = [{ id: 'D1', title: 'Wrong total', expected: '10', actual: '12', steps: ['Open the cart.'] }]
+	const entries = [{ name: 'web', kind: 'url', purpose: 'The shop.', value: 'http://localhost:1' }]
+	const rules = ['Data: this target cannot be reset.', 'Data policy: Use the test users only.']
+	const restricted = verifierBrief(items, entries, ['read_catalog'], rules, 'qa-x-1-verify-')
+	assert.match(restricted, /Data policy: Use the test users only\./)
+	assert.match(restricted, /You can: read_catalog/)
+	assert.match(restricted, /Do not create, change, or delete a record/)
+	assert.doesNotMatch(restricted, /qa-x-1-verify-/)
+	const writing = verifierBrief(items, entries, ['create_order'], rules, 'qa-x-1-verify-')
+	assert.match(writing, /Data policy: Use the test users only\./)
+	assert.match(writing, /data rules allow it/)
+	assert.match(writing, /qa-x-1-verify-/)
+})
+
+test('Refuse a setup that conflicts with the stored request or instance — nothing is saved, and the reply names the part and the next action.', async (t) => {
+	const workspace = directory(t)
+	const app = await fixture()
+	const other = await fixture()
+	t.after(() => app.close())
+	t.after(() => other.close())
+	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle', CHECKMATE_HARNESS: 'claude' }
+	const setup = (...args: string[]) => command(workspace, env, 'setup', '--target', 'shop', ...args)
+	const stored = async () => {
+		const shown = await command(workspace, env, 'target', 'show', 'shop')
+		const counts = await command(workspace, env, 'query', 'SELECT count(*) AS profiles FROM profiles')
+		return { shown: shown.body, profiles: counts.body.rows[0].profiles }
+	}
+	const first = await setup('--url', app.baseUrl, '--operations', 'read_catalog,list_orders')
+	assert.equal(first.code, 0, first.output)
+	const same = await setup('--url', app.baseUrl, '--operations', 'list_orders,read_catalog')
+	assert.equal(same.code, 0, same.output)
+
+	const changed = await setup('--url', app.baseUrl, '--operations', 'read_catalog')
+	assert.equal(changed.code, 1, changed.output)
+	assert.match(
+		changed.output,
+		/Request conflict: target shop was opened with the operations read_catalog, list_orders/
+	)
+	assert.match(changed.body.hint, /--target <new-target-id> --operations read_catalog/)
+	assert.equal((await stored()).shown.revision, 1)
+
+	const policy = await setup(
+		'--url',
+		app.baseUrl,
+		'--data',
+		'environment',
+		'--policy',
+		'The fixture keeps no records.'
+	)
+	assert.equal(policy.code, 0, policy.output)
+	assert.equal(policy.body.revision, 2)
+	const before = await stored()
+
+	const both = await setup('--url', other.baseUrl, '--data', 'environment', '--policy', 'Another policy.')
+	assert.equal(both.code, 1, both.output)
+	assert.match(both.output, /Instance conflict: shop\/local exists with other values \(changed: web\)/)
+	assert.match(both.body.hint, /--instance <new-instance-id>/)
+	assert.deepEqual(await stored(), before)
+	assert.deepEqual(before.shown.profile.reset.policy, { text: 'The fixture keeps no records.' })
+
+	const renamed = await setup('--url', other.baseUrl, '--instance', 'second')
+	assert.equal(renamed.code, 0, renamed.output)
+	const production = await setup('--url', other.baseUrl, '--instance', 'prod-eu', '--environment', 'production')
+	assert.equal(production.code, 0, production.output)
+
+	const wild = await command(workspace, env, 'setup', '--target', 'wild', '--url', app.baseUrl)
+	assert.equal(wild.code, 0, wild.output)
+	const refused = await command(
+		workspace,
+		env,
+		'setup',
+		'--target',
+		'wild',
+		'--url',
+		other.baseUrl,
+		'--instance',
+		'prod-eu'
+	)
+	assert.equal(refused.code, 1, refused.output)
+	assert.match(refused.output, /Request conflict: target wild allows any_test_operation/)
+	assert.match(refused.body.hint, /--target <new-target-id>/)
+})
+
+test('Refuse stdin and - as a plan or instance ID — a request on standard input saved a plan named stdin.', async (t) => {
+	const workspace = directory(t)
+	writeFileSync(join(workspace, 'ticket.md'), 'The catalog is listed.\n')
+	const app = await fixture()
+	t.after(() => app.close())
+	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle', CHECKMATE_HARNESS: 'claude' }
+	const setup = await command(workspace, env, 'setup', '--url', app.baseUrl, '--target', 'shop')
+	assert.equal(setup.code, 0, setup.output)
+	const request = JSON.stringify({ objective: 'List the catalog.', context: { sources: ['ticket.md'] } })
+	for (const word of ['stdin', '-']) {
+		const refused = await inputCommand(workspace, env, request, 'plan', 'open', word, '--target', 'shop@1')
+		assert.equal(refused.code, 1, refused.output)
+		assert.match(refused.output, new RegExp(`${word} is not a valid plan ID`))
+		assert.match(refused.body.hint, /Leave out the plan ID/)
+		const instance = JSON.stringify({ entries: { web: app.baseUrl } })
+		const instanceRefused = await inputCommand(workspace, env, instance, 'target', 'instance', 'add', 'shop', word)
+		assert.equal(instanceRefused.code, 1, instanceRefused.output)
+		assert.match(instanceRefused.output, new RegExp(`${word} is not a valid instance ID`))
+	}
+	const none = await command(workspace, env, 'query', 'SELECT count(*) AS n FROM plan_requests')
+	assert.deepEqual(none.body.rows, [{ n: 0 }])
+	const derived = await inputCommand(workspace, env, request, 'plan', 'open', '--target', 'shop@1')
+	assert.equal(derived.code, 0, derived.output)
+	assert.equal(derived.body.planId, 'ticket')
+	assert.equal(derived.body.planIdFrom, 'ticket.md')
+	const named = await inputCommand(workspace, env, request, 'plan', 'open', 'checkout', '--target', 'shop@1')
+	assert.equal(named.code, 0, named.output)
+	assert.equal(named.body.planId, 'checkout')
+})
+
 test('Answer, revise, and approve the named revision — execution against the wrong revision.', async (t) => {
 	const workspace = directory(t)
 	const { chmodSync, copyFileSync, mkdirSync } = await import('node:fs')
@@ -2567,6 +2951,13 @@ test('Discover the packaged Claude plugin and invoke its entry — broken plugin
 	const manifest = JSON.parse(readFileSync(join(plugin, '.claude-plugin/plugin.json'), 'utf8'))
 	assert.equal(manifest.name, 'checkmate')
 	const entry = join(plugin, 'dist/checkmate.js')
+	// The tester inherits the host tools. The clerk only reads a task and writes an answer.
+	assert.doesNotMatch(readFileSync(join(plugin, 'agents/tester.md'), 'utf8'), /^tools:/m)
+	assert.match(
+		readFileSync(join(plugin, 'agents/tester.md'), 'utf8'),
+		/^disallowedTools: mcp__plugin_checkmate_actions__\*$/m
+	)
+	assert.match(readFileSync(join(plugin, 'agents/clerk.md'), 'utf8'), /^tools: Read, Write$/m)
 	assert.match(
 		execFileSync(process.execPath, [entry, '--version'], { encoding: 'utf8' }),
 		new RegExp(`^${manifest.version} build [0-9a-f]{12}\n`)
@@ -2744,7 +3135,7 @@ require('node:readline').createInterface({input:process.stdin}).on('line', line 
 		gunzipSync(readFileSync(join(root, 'test/e2e/fixtures/workspace-migrated.db.gz')))
 	)
 	const installed = join(project, 'node_modules/@xoxoai/checkmate')
-	const fullCli = join(installed, 'dist/checkmate.js')
+	const fullCli = join(installed, 'plugin/dist/checkmate.js')
 	assert.match(execFileSync(process.execPath, [fullCli, '--help'], { encoding: 'utf8' }), /checkmate delegate/)
 	const realPi = execFileSync('which', ['pi'], { encoding: 'utf8' }).trim()
 	const piHome = directory(t)
@@ -3106,19 +3497,30 @@ test('Execute a request through Pi RPC — a begun run must reach its worker.', 
 	writeFileSync(
 		join(bin, 'pi'),
 		`#!/usr/bin/env node
-const { execFileSync } = require('node:child_process')
-const { readFileSync } = require('node:fs')
+const { readFileSync, realpathSync } = require('node:fs')
+const { pathToFileURL } = require('node:url')
 const input = readFileSync(0, 'utf8')
 if (!input.includes('pi-run')) throw Error('Wrong run')
-const run = (args, input) => execFileSync(process.execPath, [process.env.QA_CLI, ...args], {input, encoding:'utf8'})
-fetch(process.env.QA_APP_URL + '/quote?promotion=true&loyalty=true').then(r => r.json()).then(quote => {
-  if (quote.totalPLN !== 240) throw Error('Wrong build')
-  run(['run','check','pi-run','T1','A1','--observed','240','--evidence','-'], JSON.stringify(quote))
-  run(['run','close','pi-run','T1'])
-  run(['run','finish','pi-run','--completion','completed','--cleanup','completed','--cleanup-reason','No test data.'])
+async function main() {
+  const { callActionTool } = await import(pathToFileURL(realpathSync(process.env.QA_CLI)))
+  const role = process.env.CHECKMATE_TOOL_ROLE
+  if (role === 'execute') {
+    const call = async (name, fields) => {
+      const receipt = await callActionTool('checkmate_' + name, { runId: 'pi-run', ...fields }, process.cwd(), process.env)
+      if (receipt.status !== 'completed') throw Error(JSON.stringify(receipt))
+      return receipt
+    }
+    const detail = await call('read_run', { includePlan: true })
+    const response = await fetch(detail.instance.entries.web + '/quote?promotion=true&loyalty=true')
+    const quote = await response.json()
+    if (quote.totalPLN !== 240) throw Error('Wrong build')
+    await call('record_check', { testId: 'T1', assertionId: 'A1', observed: String(quote.totalPLN), evidence: [{ text: JSON.stringify(quote) }] })
+    await call('close_test', { testId: 'T1' })
+  } else if (role !== 'probe') throw Error('Wrong role: ' + role)
   const result = JSON.stringify({status:'completed',subject:'pi-run',reasons:[]})
   console.log(JSON.stringify({type:'agent_end',messages:[{role:'assistant',stopReason:'stop',content:[{type:'text',text:result}]}]}))
-}).catch(e => { console.error(e); process.exitCode = 1 })
+}
+main().catch(e => { console.error(e.message); process.exitCode = 1 })
 `,
 		{ mode: 0o755 }
 	)
@@ -3145,9 +3547,6 @@ fetch(process.env.QA_APP_URL + '/quote?promotion=true&loyalty=true').then(r => r
 	}
 	await ok('target', 'instance', 'add', 'shop', 'local', '--entry', `web=${app.baseUrl}`)
 	await ok('plan', 'approve', 'ticket@1', '--rationale', 'Run the rule.')
-	const shell = (value: string) => `'${value.replaceAll("'", "'\\''")}'`
-	const cli = `${shell(process.execPath)} ${shell(binary)}`
-	const operation = `${cli} run begin pi-run ticket@1 --build fixed --instance local --tests T1 && ${cli} delegate execute pi-run`
 	let calls = 0
 	let sawGuidance = false
 	const provider = createServer(async (req, res) => {
@@ -3158,26 +3557,38 @@ fetch(process.env.QA_APP_URL + '/quote?promotion=true&loyalty=true').then(r => r
 		if (calls === 1)
 			sawGuidance =
 				data.includes('execute the fixture run') &&
-				data.includes('When the person asks you to run or retest stored tests')
-		const delta =
-			calls === 1
-				? {
-						tool_calls: [
-							{
-								index: 0,
-								id: 'call_fixture',
-								type: 'function',
-								function: { name: 'bash', arguments: JSON.stringify({ command: operation }) },
-							},
-						],
-					}
-				: { content: 'The run finished.' }
+				data.includes('You are the operator. You do not test.') &&
+				request.tools.some(
+					(tool: { function: { name: string } }) => tool.function.name === 'checkmate_delegate_work'
+				) &&
+				!request.tools.some(
+					(tool: { function: { name: string } }) => tool.function.name === 'checkmate_record_check'
+				)
+		const action = [
+			[
+				'checkmate_begin_run',
+				{ runId: 'pi-run', reference: 'ticket', build: 'fixed', instance: 'local', tests: ['T1'] },
+			],
+			['checkmate_delegate_work', { stage: 'execute', subject: 'pi-run' }],
+		][calls - 1]
+		const delta = action
+			? {
+					tool_calls: [
+						{
+							index: 0,
+							id: `call_fixture_${calls}`,
+							type: 'function',
+							function: { name: action[0], arguments: JSON.stringify(action[1]) },
+						},
+					],
+				}
+			: { content: 'The run finished.' }
 		res.writeHead(200, { 'content-type': 'text/event-stream' })
 		res.write(
 			`data: ${JSON.stringify({ id: 'fixture', object: 'chat.completion.chunk', model: 'fixture', choices: [{ index: 0, delta, finish_reason: null }] })}\n\n`
 		)
 		res.write(
-			`data: ${JSON.stringify({ id: 'fixture', object: 'chat.completion.chunk', model: 'fixture', choices: [{ index: 0, delta: {}, finish_reason: calls === 1 ? 'tool_calls' : 'stop' }] })}\n\n`
+			`data: ${JSON.stringify({ id: 'fixture', object: 'chat.completion.chunk', model: 'fixture', choices: [{ index: 0, delta: {}, finish_reason: action ? 'tool_calls' : 'stop' }] })}\n\n`
 		)
 		res.end('data: [DONE]\n\n')
 		void request
@@ -3229,7 +3640,7 @@ fetch(process.env.QA_APP_URL + '/quote?promotion=true&loyalty=true').then(r => r
 		'Pi did not finish'
 	)
 	assert(sawGuidance, 'Pi did not receive the workflow skill')
-	assert(calls >= 2, 'Pi did not return the tool result to the provider')
+	assert(calls >= 3, 'Pi did not return the tool result to the provider')
 	const results = await ok('query', "SELECT body FROM results WHERE run_id='pi-run'")
 	assert.equal(JSON.parse(results.rows[0].body).tests[0].outcome, 'passed')
 	assert.equal((await ok('run', 'show', 'pi-run')).build, 'fixed')
@@ -3325,7 +3736,9 @@ test(
 			])
 		)
 		assert.match(input, /inspect the checkout fixture/)
-		assert.match(input, /Run `target list` and `plan list`/)
+		assert.match(input, /Use native `checkmate_\*` tools/)
+		assert.match(input, /"name":"checkmate_open_plan".*?"parameters":\{"type":"object"/)
+		assert.match(input, /Checkmate review UI/)
 		assert.match(input, /checkmate/i)
 		assert.ok(input.includes(workspace), 'Pi must route the request with the disposable workspace')
 		child.stdin.end()
@@ -3637,6 +4050,192 @@ test('Run a two-instance matrix and accept each latest result — one pass masks
 			['run-b', 'passed'],
 		]
 	)
+})
+
+test('Correct a target in the packed CLI and keep the original run pinned.', async (t) => {
+	const workspace = directory(t)
+	const app = await fixture()
+	const fixed = await fixture()
+	t.after(() => app.close())
+	t.after(() => fixed.close())
+	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle' }
+	const ok = async (...args: string[]) => {
+		const result = await command(workspace, env, ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	const plan = await inputCommand(
+		workspace,
+		env,
+		JSON.stringify({
+			objective: 'Check the catalog.',
+			requirements: [{ id: 'R1', text: 'The catalog opens.', source: 'Ticket' }],
+		}),
+		'plan',
+		'open',
+		'ticket',
+		'--target',
+		'shop@1'
+	)
+	assert.equal(plan.code, 1)
+	await ok('setup', '--url', app.baseUrl, '--target', 'shop', '--operations', 'read_catalog', '--build', 'b1')
+	const opened = await inputCommand(
+		workspace,
+		env,
+		JSON.stringify({
+			objective: 'Check the catalog.',
+			requirements: [{ id: 'R1', text: 'The catalog opens.', source: 'Ticket' }],
+		}),
+		'plan',
+		'open',
+		'ticket',
+		'--target',
+		'shop@1'
+	)
+	assert.equal(opened.code, 0, opened.output)
+	const saved = await inputCommand(
+		workspace,
+		env,
+		JSON.stringify({
+			tests: [
+				{
+					id: 'T1',
+					title: 'Read the catalog',
+					requirementIds: ['R1'],
+					capability: 'http',
+					operations: ['read_catalog'],
+					dependsOn: [],
+					preconditions: [],
+					action: 'GET /health.',
+					assertions: [
+						{
+							id: 'A1',
+							check: 'The response status is 200.',
+							checkKind: 'deterministic',
+							observe: 'HTTP status',
+							expected: '200',
+						},
+					],
+				},
+			],
+			gaps: [],
+		}),
+		'plan',
+		'save',
+		'ticket'
+	)
+	assert.equal(saved.code, 0, saved.output)
+	await ok('run', 'begin', 'old-run', 'ticket@1', '--build', 'b1')
+	const draft = await inputCommand(
+		workspace,
+		env,
+		JSON.stringify({
+			objective: `Check the catalog at ${app.baseUrl}.`,
+			requirements: [{ id: 'R1', text: 'The catalog opens.', source: 'Ticket' }],
+		}),
+		'plan',
+		'open',
+		'unrun',
+		'--target',
+		'shop@1'
+	)
+	assert.equal(draft.code, 0, draft.output)
+	const originalPlan = await ok('plan', 'show', 'ticket@1')
+	const { readiness: _readiness, gapIds: _gapIds, ...originalTest } = originalPlan.plan.tests[0]
+	void _readiness
+	void _gapIds
+	const pending = await inputCommand(
+		workspace,
+		env,
+		JSON.stringify({
+			tests: [
+				{
+					...originalTest,
+					preconditions: [`Read the catalog at ${app.baseUrl}.`],
+				},
+			],
+			gaps: [],
+		}),
+		'plan',
+		'save',
+		'unrun'
+	)
+	assert.equal(pending.code, 0, pending.output)
+	const typo = await command(workspace, env, 'setup', '--correct', '--url', app.baseUrl, '--target', 'wrong-shop')
+	assert.equal(typo.code, 1)
+	assert.match(typo.body.nextAction.instruction, /retry with the existing target ID/)
+	const targets = await ok('target', 'list')
+	assert.deepEqual(
+		targets.targets.map((target: { targetId: string }) => target.targetId),
+		['shop']
+	)
+	const corrected = await ok(
+		'setup',
+		'--correct',
+		'--url',
+		fixed.baseUrl,
+		'--target',
+		'shop',
+		'--operations',
+		'read_health,read_catalog',
+		'--build',
+		'b2',
+		'--environment',
+		'staging'
+	)
+	assert.deepEqual(corrected.allowedOperations, ['read_health', 'read_catalog'])
+	assert.notEqual(corrected.instanceId, 'local')
+	const before = await ok('target', 'show', 'shop@1', '--instance', 'local')
+	assert.deepEqual(before.profile.allowedOperations, ['read_catalog'])
+	assert.equal(before.instance.entries.web, app.baseUrl)
+	assert.equal(before.instance.build, 'b1')
+	const rows = await ok('query', "SELECT target_revision, instance_id FROM runs WHERE run_id = 'old-run'")
+	assert.deepEqual(rows.rows, [{ target_revision: 1, instance_id: 'local' }])
+	const oldRun = await ok('run', 'show', 'old-run', '--include-plan')
+	assert.equal(oldRun.target, 'shop@1')
+	assert.equal(oldRun.instance.entries.web, app.baseUrl)
+	assert.equal(oldRun.execution.tests[0].action, 'GET /health.')
+	const explored = await ok('explore', 'open', 'unrun', '--build', 'b2')
+	assert.equal(explored.instanceId, corrected.instanceId)
+	assert.equal(explored.charter.goal, `Check the catalog at ${fixed.baseUrl}.`)
+	await ok('run', 'begin', 'corrected-run', 'unrun@1', '--build', 'b2')
+	const newRun = await ok('run', 'show', 'corrected-run', '--include-plan')
+	assert.equal(newRun.target, 'shop@2')
+	assert.equal(newRun.instance.entries.web, fixed.baseUrl)
+	assert.deepEqual(newRun.execution.tests[0].preconditions, [`Read the catalog at ${fixed.baseUrl}.`])
+	const invalid = await inputCommand(
+		workspace,
+		env,
+		JSON.stringify({ entries: {}, build: 2 }),
+		'target',
+		'instance',
+		'replace',
+		'shop',
+		corrected.instanceId
+	)
+	assert.equal(invalid.code, 1)
+	assert.equal(invalid.body.nextAction.action, 'replace_instance')
+	assert.match(invalid.output, /build must be string/)
+	const replaced = await ok(
+		'target',
+		'instance',
+		'replace',
+		'shop',
+		corrected.instanceId,
+		'--entry',
+		'web=' + app.baseUrl
+	)
+	const replay = await ok(
+		'target',
+		'instance',
+		'replace',
+		'shop',
+		corrected.instanceId,
+		'--entry',
+		'web=' + app.baseUrl
+	)
+	assert.equal(replay.instanceId, replaced.instanceId)
+	assert.equal(replay.recorded, false)
 })
 
 test('Resume a structured run after a worker deadline — outcomes lost or gate bypassed.', async (t) => {
@@ -4144,6 +4743,22 @@ test('Record each test with its own worker — a silent worker is retried once, 
 	})
 	await ok(['plan', 'approve', 'ticket@1', '--rationale', 'Run the rule.'])
 	await ok(['run', 'begin', 'run-1', 'ticket@1', '--build', 'b1', '--partial', 'ready_only'])
+	// An observation was recorded before the worker failed. It must not force a defect for a test closed as error.
+	const partial = await inputCommand(
+		workspace,
+		env,
+		'The observed quote was 235.',
+		'run',
+		'check',
+		'run-1',
+		'T3',
+		'A1',
+		'--observed',
+		'235',
+		'--evidence',
+		'-'
+	)
+	assert.equal(partial.body.result, 'failed', partial.output)
 	const bin = directory(t)
 	copyFileSync(join(root, 'test/e2e/per-test-host.mjs'), join(bin, 'pi'))
 	chmodSync(join(bin, 'pi'), 0o755)
@@ -4167,6 +4782,11 @@ test('Record each test with its own worker — a silent worker is retried once, 
 		"SELECT count(*) AS n FROM findings WHERE run_id = 'run-1' AND body LIKE '%\"potential_issue\"%'",
 	])
 	assert.equal(probed.rows[0].n, 1)
+	const findings = await ok([
+		'query',
+		"SELECT count(*) AS n FROM findings WHERE run_id = 'run-1' AND body LIKE '%T3.A1%'",
+	])
+	assert.equal(findings.rows[0].n, 0)
 	const outcomes = await ok([
 		'query',
 		"SELECT test_id, outcome FROM outcomes WHERE run_id = 'run-1' ORDER BY test_id",
@@ -5508,7 +6128,7 @@ test('Setup with the application up clears a profile saved while it was down —
 	assert.equal(began.body.status, 'completed', began.output)
 })
 
-test('Setup needs a runnable Chrome or Chromium for the browser tool — API-only targets need none.', async (t) => {
+test('Setup lets playwright-cli use its own browser and checks a browser executable only when the config names one — API-only targets need none.', async (t) => {
 	const workspace = directory(t)
 	const bin = directory(t)
 	const app = await fixture()
@@ -5524,13 +6144,17 @@ test('Setup needs a runnable Chrome or Chromium for the browser tool — API-onl
 	}
 	const setup = (run: NodeJS.ProcessEnv = env) =>
 		command(workspace, run, 'setup', '--url', app.baseUrl, '--target', 'shop')
-	const missing = await setup()
-	assert.equal(missing.code, 1, missing.output)
-	assert.match(missing.output, /needs a Chrome or Chromium executable/)
-	// The driver asks the person for the browser; it does not write the config itself.
-	assert.match(missing.output, /Ask the person for the path of a Chrome or Chromium executable/)
-	assert.match(missing.output, /Do not write this file yourself/)
-	assert.match(missing.output, /\.playwright\/cli\.config\.json/)
+	const toolOf = async () => {
+		const profile = await command(workspace, env, 'target', 'show', 'shop')
+		return profile.body.profile.tools.find((entry: { name: string }) => entry.name === 'playwright-cli')
+	}
+	// No config: the person is not asked for a browser path.
+	const own = await setup()
+	assert.equal(own.code, 0, own.output)
+	assert.doesNotMatch(own.output, /Chrome or Chromium/)
+	assert.equal((await toolOf()).reachable, true)
+	assert.equal((await toolOf()).executable, undefined)
+	// A config that names an executable that does not run is refused.
 	const config = join(workspace, '.playwright', 'cli.config.json')
 	mkdirSync(join(workspace, '.playwright'))
 	const broken = join(workspace, 'broken-chrome')
@@ -5540,17 +6164,106 @@ test('Setup needs a runnable Chrome or Chromium for the browser tool — API-onl
 	const notRunning = await setup()
 	assert.equal(notRunning.code, 1, notRunning.output)
 	assert.match(notRunning.output, /does not run with --version/)
+	assert.match(notRunning.output, /Do not write \.playwright\/cli\.config\.json yourself/)
+	// One that runs is recorded on the tool.
 	const chrome = join(workspace, 'fake-chrome')
 	writeFileSync(chrome, '#!/bin/sh\necho "Chromium 124.0.6367.60"\n')
 	chmodSync(chrome, 0o755)
 	writeFileSync(config, JSON.stringify({ browser: { launchOptions: { executablePath: chrome } } }))
-	const ready = await setup()
-	assert.equal(ready.code, 0, ready.output)
-	const profile = await command(workspace, env, 'target', 'show', 'shop')
-	const recorded = profile.body.profile.tools.find((entry: { name: string }) => entry.name === 'playwright-cli')
-	assert.equal(recorded.executable, chrome)
+	const named = await setup()
+	assert.equal(named.code, 0, named.output)
+	assert.equal(named.body.revision, 1)
 	const apiOnly = await setup({ ...process.env, PATH: '', CHECKMATE_ACTOR: 'oracle', CHECKMATE_HARNESS: 'pi' })
 	assert.equal(apiOnly.code, 0, apiOnly.output)
+})
+
+test('Setup says why the application did not answer, follows redirects, accepts a 403, and goes through the proxy of the environment.', async (t) => {
+	const workspace = directory(t)
+	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle', CHECKMATE_HARNESS: 'pi' }
+	const server = createServer((request, response) => {
+		if (request.url === '/search') return response.writeHead(301, { location: '/final' }).end()
+		if (request.url === '/final') return response.writeHead(403).end('bot protection')
+		response.writeHead(503).end('down')
+	})
+	server.listen(0, '127.0.0.1')
+	await once(server, 'listening')
+	t.after(() => server.close())
+	const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`
+	// A redirect to a 403 is an answer: the application is up.
+	const up = await command(workspace, env, 'setup', '--url', `${base}/search`, '--target', 'site')
+	assert.equal(up.code, 0, up.output)
+	assert.equal(up.body.instanceReachable, true, up.output)
+	// A 5xx names its status and what to do.
+	const down = await command(workspace, env, 'setup', '--url', `${base}/broken`, '--target', 'broken')
+	assert.equal(down.code, 0, down.output)
+	assert.equal(down.body.instanceReachable, false, down.output)
+	assert.match(down.output, /did not answer at .*\/broken: HTTP 503/)
+	assert.match(down.output, /A rerun with the same cause changes nothing/)
+	for (const harness of ['claude', 'pi']) {
+		const result = await command(
+			workspace,
+			{ ...env, CHECKMATE_HARNESS: harness, CHECKMATE_HOST_SESSION: '1' },
+			'setup',
+			'--url',
+			`${base}/broken`,
+			'--target',
+			'broken'
+		)
+		assert.equal(result.code, down.code, result.output)
+		assert.match(result.body.next, /HTTP 503.*Confirm the URL or make the application reachable/)
+		assert.doesNotMatch(result.body.next, /checkmate setup|--url/)
+	}
+	// A closed port names the connection error.
+	const closed = createServer()
+	closed.listen(0, '127.0.0.1')
+	await once(closed, 'listening')
+	const port = (closed.address() as AddressInfo).port
+	closed.close()
+	const refused = await command(workspace, env, 'setup', '--url', `http://127.0.0.1:${port}`, '--target', 'closed')
+	assert.match(refused.output, /did not answer at .*: ECONNREFUSED/)
+	// A host that only the proxy of the environment can reach still works: the proxy tunnels it to the server.
+	const tunneled: string[] = []
+	const proxy = createServer()
+	proxy.on('connect', (request, socket, head) => {
+		tunneled.push(request.url ?? '')
+		const upstream = connect((server.address() as AddressInfo).port, '127.0.0.1', () => {
+			socket.write('HTTP/1.1 200 Connection Established\r\n\r\n')
+			upstream.write(head)
+			upstream.pipe(socket)
+			socket.pipe(upstream)
+		})
+		upstream.on('error', () => socket.destroy())
+		socket.on('error', () => upstream.destroy())
+	})
+	proxy.listen(0, '127.0.0.1')
+	await once(proxy, 'listening')
+	t.after(() => proxy.close())
+	const viaProxy = await command(
+		workspace,
+		{ ...env, HTTP_PROXY: `http://127.0.0.1:${(proxy.address() as AddressInfo).port}` },
+		'setup',
+		'--url',
+		'http://no-such-host.invalid/search',
+		'--target',
+		'proxied'
+	)
+	assert.equal(viaProxy.body.instanceReachable, true, viaProxy.output)
+	// The redirect of /search opens a second tunnel.
+	assert.deepEqual(new Set(tunneled), new Set(['no-such-host.invalid:80']))
+})
+
+test('Setup run again with the same data policy saves no new revision.', async (t) => {
+	const workspace = directory(t)
+	const app = await fixture()
+	t.after(() => app.close())
+	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle', CHECKMATE_HARNESS: 'pi' }
+	const args = ['setup', '--url', app.baseUrl, '--target', 'shop', '--data', 'environment', '--policy', 'Read only.']
+	const first = await command(workspace, env, ...args)
+	assert.equal(first.body.revision, 1, first.output)
+	const second = await command(workspace, env, ...args)
+	assert.equal(second.body.revision, 1, second.output)
+	const changed = await command(workspace, env, ...args.slice(0, -1), 'Read only, no logins.')
+	assert.equal(changed.body.revision, 2, changed.output)
 })
 
 test('Compare an expected value by its kind — the run marker is substituted by code, a shape or a range is decided by code, and a type word or a placeholder is refused at save.', async (t) => {

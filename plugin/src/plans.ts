@@ -25,6 +25,7 @@ import {
 	requireChoice,
 	requireCondition,
 	requireIdentifier,
+	requireNotInputWord,
 	requireText,
 	requireWellFormed,
 	revisionReference,
@@ -35,6 +36,7 @@ import {
 	validate,
 } from './contracts.ts'
 import { findInstance, targetRevision, toolCheck } from './targets.ts'
+import { combinedMatchers } from './expectation.ts'
 import { permanentSelection } from './permanent.ts'
 
 export type PlanRevision = { plan: Plan; sha256: string }
@@ -122,6 +124,11 @@ export function openPlan(
 	input: { planId?: string; target: string; request: unknown }
 ) {
 	return write(store, { actor, command: 'plan open', subject: input.planId ?? '', input }, (operationId) => {
+		requireNotInputWord(
+			input.planId,
+			'plan ID',
+			"Leave out the plan ID to take it from the first source: checkmate plan open --target <target>@<revision> <<'EOF'. Or give the plan ID: checkmate plan open <planId> --target <target>@<revision> <<'EOF'."
+		)
 		const target = revisionReference(requireText(input.target, 'target (--target)'), 'target reference')
 		requireWellFormed(target.revision !== null, `Name the target revision: --target ${target.id}@<revision>`)
 		const profile = targetRevision(store, target.id, target.revision).profile
@@ -142,7 +149,8 @@ export function openPlan(
 				toolCheck(tool)
 				requireWellFormed(
 					!profile.tools.some((known) => known.name === tool.name),
-					`Tool ${tool.name} is in the target profile. Name it as a string.`
+					`Tool ${tool.name} is in the target profile. Name it as a string.`,
+					`Replace its object in request.tools with "${tool.name}", or omit tools to inherit the target's tools.`
 				)
 			}
 		const names = planTools(request, profile).map((tool) => tool.name)
@@ -208,6 +216,31 @@ export function planRequest(store: Store, planId: string) {
 	requireCondition(row, `Unknown plan: ${planId}. Run plan open first.`, similarPlanHint(store, planId))
 	const request: PlanRequest = JSON.parse(row.body)
 	return { request, target: targetRevision(store, row.target_id, row.target_revision) }
+}
+
+// A target correction applies to a plan until it records its first run. The
+// saved request and plan content stay immutable so earlier work remains auditable.
+export function executionTarget(store: Store, planId: string, targetId: string, revision: number) {
+	const first = one<{ target_revision: number }>(
+		store,
+		'SELECT target_revision FROM runs WHERE plan_id = ? AND target_id = ? ORDER BY rowid LIMIT 1',
+		planId,
+		targetId
+	)
+	if (first) return targetRevision(store, targetId, Math.max(revision, first.target_revision))
+	const corrected = one<{ revision: number }>(
+		store,
+		`SELECT p.revision FROM profiles p
+		JOIN operations o ON o.id = p.operation_id
+		JOIN plan_requests q ON q.plan_id = ? AND q.target_id = p.target_id
+		JOIN operations opened ON opened.id = q.operation_id
+		WHERE p.target_id = ? AND p.revision > ? AND o.command = 'setup' AND o.rowid > opened.rowid
+		AND json_extract(o.arguments, '$.correct') = 1 ORDER BY p.revision DESC LIMIT 1`,
+		planId,
+		targetId,
+		revision
+	)
+	return targetRevision(store, targetId, corrected?.revision ?? revision)
 }
 
 export function planTools(request: PlanRequest, profile: Profile): PlanTool[] {
@@ -845,7 +878,8 @@ function candidateRequirements(request: PlanRequest, drafted: Plan['requirements
 	if (request.requirements?.length) {
 		requireWellFormed(
 			!drafted,
-			'The plan request names the requirements. Do not add requirements to the candidate.'
+			'The plan request names the requirements. Do not add requirements to the candidate.',
+			'Remove candidate.requirements and save again. Keep the existing requirement IDs in each test or gap.'
 		)
 		return request.requirements
 	}
@@ -1060,7 +1094,12 @@ function decisionSnapshot(row: DecisionRow): Plan['decisions'][number] {
 export function migrationTests(plan: Plan) {
 	return plan.tests
 		.filter((test) =>
-			test.assertions.some((assertion) => unverifiedCheck(assertion) || compoundCheck(assertion.check))
+			test.assertions.some(
+				(assertion) =>
+					unverifiedCheck(assertion) ||
+					compoundCheck(assertion.check) ||
+					combinedMatchers(assertion.expected ?? '')
+			)
 		)
 		.map((test) => test.id)
 }
@@ -1527,7 +1566,9 @@ export function gate(store: Store, input: GateInput) {
 			`Permanent run must select exactly the tests of ${permanent.reference}.`
 		)
 	} else latestCheck(store, plan.planId, plan.revision)
-	const target = targetRevision(store, plan.target.targetId, plan.target.revision)
+	const target = permanent
+		? targetRevision(store, plan.target.targetId, plan.target.revision)
+		: executionTarget(store, plan.planId, plan.target.targetId, plan.target.revision)
 	const build = requireText(input.build, 'application build (--build)')
 	const partial = requireChoice(input.partial ?? 'ready_only', partialModes, 'partial execution (--partial)')
 	const tests = index(plan.tests, 'id', 'test')
@@ -1581,7 +1622,7 @@ export function gate(store: Store, input: GateInput) {
 	for (const id of selected) {
 		const test = tests.get(id)!
 		for (const assertion of test.assertions) {
-			if (compoundCheck(assertion.check)) {
+			if (compoundCheck(assertion.check) || combinedMatchers(assertion.expected ?? '')) {
 				reasons.push(`Assertion ${id}.${assertion.id} checks more than one value: ${assertion.check}`)
 				hints.push(
 					`Revise the plan so that each assertion checks one value: checkmate delegate revise ${plan.planId}.`

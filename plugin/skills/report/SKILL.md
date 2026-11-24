@@ -7,7 +7,7 @@ description: Export a Checkmate plan revision or run report as HTML, Markdown, o
 
 Read `${CLAUDE_PLUGIN_ROOT}/references/workflow.md` for the command rules and `${CLAUDE_PLUGIN_ROOT}/references/session.md` for the report format.
 
-The plugin CLI is `${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js`. Run `checkmate <command>` as `node "${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js" <command>`. Write the absolute path. Do not write a shell variable in its place.
+The plugin CLI is `${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js`. Run `checkmate <command>` as `CHECKMATE_HOST_SESSION=1 node "${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js" <command>`. Write the absolute path. Do not write a shell variable in its place.
 
 1. Choose the subject: a plan revision `<planId@rev>`, a run `<runId>`, or an exploration `<explorationId>`. When the oracle does not name it, run `checkmate run list` or `checkmate plan list`. When more than one subject fits, ask which one, as Ask the person says.
 2. Choose the format: `html`, `md`, or `json`. For a CI system or a test management tool, use `junit` for a run. A run report needs a finished run. A run report in HTML is self-contained. It has a print stylesheet, so the browser can save it as a clean PDF.
@@ -36,6 +36,6 @@ Do not rewrite outcomes, completion, or coverage. The renderer escapes untrusted
 
 When you need a decision from the person, the choices are few, and the `AskUserQuestion` tool is in your tool list, ask with that tool. Use one call with at most 4 questions and 2 to 4 options for each question. Put the recommended option first, and add "(Recommended)" to its label. Give each question a header of at most 12 characters. Give each option one line that says what happens. Do not add an "Other" option. The tool adds it.
 
-When the tool is not in your tool list, or your task came from an agent, a factory, or a script, do not use the tool. Write the question and its options in your reply as a short numbered list, or return `needs_decision` with the reason. An agent that is the oracle answers in text or with the CLI commands.
+When the tool is not in your tool list, or your task came from an agent, a factory, or a script, do not use the tool. Write the question and its options in your reply as a short numbered list, or return `needs_decision` with the reason. An agent that is the oracle can answer in text.
 
 For a value with no fixed choices, for example a URL or how to sign in, ask one short text question. Do not ask for a secret. Ask where it is kept.

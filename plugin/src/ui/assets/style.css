@@ -469,6 +469,9 @@ th {
 	font: 400 14px/20px var(--font-body);
 	color: var(--muted);
 }
+.sp-list > .sp-empty {
+	grid-column: 1 / -1;
+}
 .sp-empty b {
 	color: var(--ink);
 	font-weight: 600;

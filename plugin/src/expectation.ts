@@ -11,12 +11,25 @@ export const markerPlaceholder = '{{marker}}'
 
 const typeWords = ['number', 'numeric', 'non-empty', 'nonempty', 'text', 'string', 'any', 'anything']
 
+export function combinedMatchers(value: string) {
+	return /^(contains|absent|type|at least|at most):[^\n]*[;,]\s*(contains|absent|type|one-of|matches|at least|at most):/.test(
+		value.trim()
+	)
+}
+
 // The reason to refuse an expected value at plan save, or undefined when it is well formed. Each reason names
 // the corrected value, so the planner can write the check again without guessing.
 export function expectationError(expected: string): string | undefined {
 	const value = expected.trim()
 	if (typeWords.includes(value.toLowerCase()))
 		return `The expected value "${expected}" is a type word, not a value. Write type:number for a number, type:non-empty for text that must be present, or the value itself, for example "3" or "Title is required".`
+	// A matcher takes one value. Do not interpret a second matcher as text in the first.
+	if (
+		/^(contains|absent|type|at least|at most):[^\n]*[;,]\s*(contains|absent|type|one-of|matches|at least|at most):/.test(
+			value
+		)
+	)
+		return `The expected value "${expected}" combines two matchers. Split them into two assertions. For HTTP, give one assertion for the status (for example, expected "400") and one for the field or text in the body.`
 	if (/^(matches|one-of|type|at least|at most|contains|absent):/.test(value)) return undefined
 	if (/^not\s/i.test(value))
 		return `The expected value "${expected}" states an absence in words. Write it as absent:<text>, for example absent:${value.replace(/^not\s+/i, '')}.`

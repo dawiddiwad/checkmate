@@ -165,6 +165,15 @@ export function requireIdentifier(value: unknown, name: string): string {
 	return value
 }
 
+// A bare word on a command line is an ID. "stdin" and "-" name the input, not a record.
+export function requireNotInputWord(value: string | undefined, name: string, hint: string) {
+	requireWellFormed(
+		value !== 'stdin' && value !== '-',
+		`${value} is not a valid ${name}. Checkmate reads standard input without a word for it.`,
+		hint
+	)
+}
+
 export function requireText(value: unknown, name: string): string {
 	requireWellFormed(typeof value === 'string' && value.trim().length > 0, `Missing ${name}`)
 	return value

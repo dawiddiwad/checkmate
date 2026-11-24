@@ -6,17 +6,20 @@ Checkmate keeps targets, plans, decisions, runs, and evidence in `.checkmate/che
 Run every command from the application workspace with the absolute path of the plugin CLI:
 
 ```sh
-node "<plugin root>/dist/checkmate.js" <command>
+CHECKMATE_HOST_SESSION=1 node "<plugin root>/dist/checkmate.js" <command>
 ```
 
 The skill or the delegated prompt names the full command. In a skill, `checkmate <command>` means that command line.
 
 The oracle answers gaps, approves plans, and accepts results. In the same session as the oracle, also read `session.md` in this directory. A delegated stage or a sub-agent does not read it.
 
+In a reply to the oracle, give the outcome first. Ask for any decision you need in plain words and say where to make it in the review UI. Run Checkmate commands yourself. Keep command lines, flags, and bundle paths out of your reply.
+
 ## Commands
 
 - A command prints compact text. Line 1 is `<status> <subject>` with `key=value` facts. Each item is one line, ID first, tab-separated. `reason:` lines follow.
 - Add `--json` only when you need a field that the compact output does not show.
+- Use `agent-only next` and `agent-only hint` to choose your own action. Use JSON output as tool data.
 - Exit code 0 means `completed` or `needs_decision`. Exit code 1 means `rejected` or another failure. Read the status on line 1, not only the exit code. Read each `reason:` line.
 - `operational_error` with the reason `Another command holds the database lock` means that nothing changed. Run the same command again.
 - When a command is `rejected`, do not run it again unchanged. Read each `reason:` line and the `hint`. Correct the command or the payload, and run it again. Make up to 3 corrections. A refused write changes nothing.

@@ -28,7 +28,7 @@ Run the full gate:
 npm run phase:verify
 ```
 
-It runs type and generated-file checks, lint, Prettier, and `npm test`. The test command builds and packs the CLI, installs it into disposable workspaces, and runs 121 end-to-end cases with real SQLite, loopback applications, controlled hosts, Pi, and Chromium. It fails when a prerequisite is missing, a case is absent, or a case skips. CI runs `npm run phase:verify`.
+It runs type and generated-file checks, lint, Prettier, and `npm test`. The test command builds and packs the CLI, installs it into disposable workspaces, and runs 123 end-to-end cases with real SQLite, loopback applications, controlled hosts, Pi, and Chromium. It fails when a prerequisite is missing, a case is absent, or a case skips. CI runs `npm run phase:verify`.
 
 The 42-scenario proposal map is [test/e2e/scenarios.json](../test/e2e/scenarios.json). Some historical Factory campaign behavior is outside this checkout. The local external Factory fixture does not verify Factory checkout, archive, budget, or campaign ownership. Tests use controlled hosts; they do not test live model judgment or require paid model calls.
 
@@ -40,7 +40,32 @@ Use `npm test` to run only the packaged end-to-end suite after you install the s
 - `npm pack ./cli` runs the CLI package build and creates the installable tarball.
 - `npm run type:check`, `npm run lint:check`, and `npm run format:check` run the individual static checks.
 
-The root package is private. The published CLI package is `cli/`. The build bundles `cli/src/main.ts` into the plugin and copies the same executable, plugin, README, and license into the CLI package. Keep `LICENSE` and package metadata with the code.
+The root package is private. The published CLI package is `cli/`. The build bundles `cli/src/main.ts` into the plugin. The pack step copies the plugin, README, and license into the CLI package. Keep `LICENSE` and package metadata with the code.
+
+## Testing a branch before release
+
+A branch install needs no build step. Run `npm run build` and commit `plugin/dist/checkmate.js` before you push. `npm run type:check` fails when the bundle is stale.
+
+Claude Code runs `dist/checkmate.js` from its installed plugin. Pi loads its extension and skill from `plugin/pi/` in both the git checkout and the npm package. Both Pi entry points use `plugin/dist/checkmate.js`. The npm pack step copies `plugin/` into the package because npm packages cannot include files from a parent directory. The npm `checkmate` executable points to that copy too.
+
+Push the branch, then install it into a clean Claude Code or Pi setup:
+
+```sh
+claude plugin marketplace add dawiddiwad/checkmate@<branch>
+claude plugin install checkmate@checkmate
+pi install git:github.com/dawiddiwad/checkmate@<branch> -l
+```
+
+Check the build in each host:
+
+```sh
+node "<plugin root>/dist/checkmate.js" --version
+node .pi/git/github.com/dawiddiwad/checkmate/plugin/dist/checkmate.js --version
+```
+
+The Claude Code plugin root is under `~/.claude/plugins/cache/checkmate/checkmate/`. To keep your own setup clean, set `HOME` to a temporary folder first. Remove an old copy with `claude plugin uninstall checkmate@checkmate` or `pi remove <source> -l`.
+
+Use the host commands to test the conversation. The agent runs the bundled CLI and replies with the outcome and any decision it needs. The standalone npm CLI gives command hints to its callers.
 
 ## Agent-only instructions
 
@@ -48,4 +73,4 @@ The root package is private. The published CLI package is `cli/`. The build bund
 
 ## Documentation media
 
-Run `node scripts/build-cli.ts`, then set `CHECKMATE_BROWSER_EXECUTABLE` and run `node scripts/capture-docs-ui.ts` to capture the current review UI with disposable sample records. Set `CHECKMATE_BROWSER_EXECUTABLE` and run `node scripts/render-onboarding.ts` to rebuild the onboarding GIF. It needs a full FFmpeg on `PATH`, or the path to one in `FFMPEG`, for example the `ffmpeg-static` binary installed outside the repository. It renders `docs/media/onboarding.html`: the factory storyboard, then one scene for each way to run Checkmate. The commands in those scenes come from these docs, and their output comes from the CLI on the sample records of `scripts/ui-demo.ts`. Update the scenes when a command or its output changes. Set `CHECKMATE_BROWSER_EXECUTABLE` and run `node scripts/render-review-ui.ts` to rebuild the review UI GIF, `docs/media/ui/review.gif`. It records the real review UI in Chromium on the `seedShowcase` records of `scripts/ui-demo.ts`. It needs FFmpeg on `PATH` or in `FFMPEG`. Its chat scene asks a live Claude Code model, so Claude Code must be on `PATH`; the turn costs a few cents. The recorder fails when a decision, the evidence viewer, or the saved chat change does not show.
+Run `npm run build`. Set `CHECKMATE_BROWSER_EXECUTABLE` and run `node scripts/capture-docs-ui.ts` to capture the current review UI with disposable sample records. Set `CHECKMATE_BROWSER_EXECUTABLE` and run `node scripts/render-onboarding.ts` to rebuild the onboarding GIF. It needs a full FFmpeg on `PATH`, or the path to one in `FFMPEG`, for example the `ffmpeg-static` binary installed outside the repository. It renders `docs/media/onboarding.html`: the factory storyboard. The GIF ends after the factory part and has no record counters. Update the storyboard when the factory flow changes. Set `CHECKMATE_BROWSER_EXECUTABLE` and run `node scripts/render-review-ui.ts` to rebuild the review UI GIF, `docs/media/ui/review.gif`. It records the real review UI in Chromium on the `seedShowcase` records of `scripts/ui-demo.ts`. It needs FFmpeg on `PATH` or in `FFMPEG`. Its chat scene asks a live Claude Code model, so Claude Code must be on `PATH`; the turn costs a few cents. The recorder fails when a decision, the evidence viewer, or the saved chat change does not show.

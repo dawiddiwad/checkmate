@@ -4,13 +4,9 @@ import { homedir } from 'node:os'
 import { dirname, isAbsolute, join, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { executableOnPath } from './sessions.ts'
+import { hostSession } from './actor.ts'
 
-const instructionFolders = ['agents', 'contracts', 'references', 'skills']
-
-function pluginRootOf(bundle: string) {
-	const moduleRoot = dirname(dirname(bundle))
-	return existsSync(join(moduleRoot, '.claude-plugin', 'plugin.json')) ? moduleRoot : join(moduleRoot, 'plugin')
-}
+const instructionFolders = ['agents', 'contracts', 'pi', 'references', 'skills']
 
 function filesUnder(folder: string): string[] {
 	if (!existsSync(folder)) return []
@@ -23,7 +19,7 @@ function filesUnder(folder: string): string[] {
 }
 
 export function buildDigest(bundle: string) {
-	const root = pluginRootOf(bundle)
+	const root = dirname(dirname(bundle))
 	const hash = createHash('sha256').update(readFileSync(bundle))
 	for (const folder of instructionFolders) {
 		for (const path of filesUnder(join(root, folder))) {
@@ -43,7 +39,9 @@ export function versionLines(version: string, bundle: string, env: NodeJS.Proces
 		const other = buildDigest(resolved)
 		if (other !== digest) {
 			lines.push(
-				`warning: the checkmate on PATH is build ${other} at ${resolved}. This build is ${digest}. Commands run by this session use ${running}.`
+				hostSession(env)
+					? 'warning: The Checkmate command on your system is a different build. This session uses its bundled build.'
+					: `warning: the checkmate on PATH is build ${other} at ${resolved}. This build is ${digest}. Commands run by this session use ${running}.`
 			)
 		}
 	}
@@ -84,8 +82,9 @@ export function piCopyWarnings(bundle: string, env: NodeJS.ProcessEnv, cwd: stri
 	const root = packageRootOf(fileURLToPath(bundle))
 	return piDeclarations(env, cwd)
 		.filter(({ source }) => !(isAbsolute(source) && (resolve(source) + sep).startsWith(root + sep)))
-		.map(
-			({ scope, source }) =>
-				`warning: Pi declares another Checkmate package at ${scope} scope: ${source}. This build runs from ${root}. Remove it with: pi remove ${source}${scope === 'project' ? ' -l' : ''}. A project package loads only after Pi approves the folder: start Pi with --approve, or approve the folder when Pi asks.`
+		.map(({ scope, source }) =>
+			hostSession(env)
+				? `warning: Pi declares another Checkmate package at ${scope} scope. Choose which installation to keep in Pi.`
+				: `warning: Pi declares another Checkmate package at ${scope} scope: ${source}. This build runs from ${root}. Remove it with: pi remove ${source}${scope === 'project' ? ' -l' : ''}. A project package loads only after Pi approves the folder: start Pi with --approve, or approve the folder when Pi asks.`
 		)
 }

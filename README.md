@@ -25,12 +25,22 @@ The Human review UI shows what waits for you: the evidence, findings and gaps. Y
 
 ## Current limitations
 
-This is work in progress. I am testing how far my own agentic QA workflows can go for a wider audience. The hardest part is balancing abstraction against capability and extensibility.
+This is work in progress. I'm just exploring how far my real enterprise agentic QA workflows could be generalized. The biggest challenge is keeping the setup simple and abstract enough without sacrificing potential.
 
-The idea: QA sits at the centre of the ticket lifecycle in a software factory and drives each iteration. It is not an afterthought at the far right end. This favours end-to-end testing and acceptance. Gaps and defects show up early, before the factory builds anything, because explorers first probe the real app and see how the planned change affects the user journey. It could raise quality and focus, and lower the cost of delivery, in line with business needs. In my experience, some requirements get simpler this way, or turn out to be redundant. That keeps the intent clear.
+**The Core Idea**
 
-- Explorers and testers do not inherit your host's tools, such as a Jira MCP server. In the plugin, a tester has only `Read`, `Write`, `Edit`, `Bash`, `Glob`, and `Grep`. In the CLI, an explorer has only the tools that you pass with `--allow`, and it cannot ask for more.
-- So plan first for now. The planner runs in your host, and it can read the Jira ticket and other sources.
+QA sits at the center of the agentic dev lifecycle and indirectly drives each iteration through contracts, policies and a system of record, instead of being an afterthought at the end. Early evidence shows that it helps the agentic loops to self-align better with true intent. It is inspired by TDD/BDD concepts applied with a twist specific to the agentic era.
+
+Front-loading QA like this has clear benefits:
+
+- **Catches gaps and ambiguities early:** Defects and missing edge cases surface where agentic development is most critical, as the core idea becomes exponentially harder to adjust for agents with each commit.
+- **Sharpens requirements, reduces friction:** Planned features often become simpler - or some even turn out to be redundant - keeping the intent that matters.
+- **Lowers delivery costs:** Teams stay focused on real business needs and waste less time on late-stage or post-release fixes.
+
+**Current Constraints**
+
+- **Sub-agents don't inherit host tools:** Explorers and testers cannot access your host's integrations (such as a Jira MCP server). In the plugin, testers are limited to `Read`, `Write`, `Edit`, `Bash`, `Glob`, and `Grep`. In the CLI, explorers only get the tools you explicitly pass via `--allow` and cannot ask for more.
+- **Plan first, unless you accept the above limitations:** Because of those tool limits, start by running the **planner**. It runs directly in your host environment, so it can read Jira tickets and other external sources before handing tasks off to explorers and testers.
 
 ## Solo mode: Claude Code or Pi
 

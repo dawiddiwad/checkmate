@@ -5,6 +5,7 @@ import assert from 'node:assert/strict'
 
 const output = new URL('../plugin/dist/checkmate.js', import.meta.url)
 const bundle = await build({
+	absWorkingDir: fileURLToPath(new URL('..', import.meta.url)),
 	entryPoints: [fileURLToPath(new URL('../cli/src/main.ts', import.meta.url))],
 	bundle: true,
 	platform: 'node',

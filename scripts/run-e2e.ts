@@ -11,7 +11,7 @@ try {
 const pi = spawnSync('pi', ['--version'], { encoding: 'utf8' })
 if (pi.error || pi.status !== 0) throw Error('Install the Pi CLI and ensure pi --version works on PATH.')
 
-const build = spawnSync(process.execPath, ['scripts/build-cli.ts'], { stdio: 'inherit' })
+const build = spawnSync(process.execPath, ['../scripts/build-cli.ts'], { cwd: 'cli', stdio: 'inherit' })
 if (build.status !== 0) process.exit(build.status ?? 1)
 const files = ['test/e2e/factory.test.ts', 'test/e2e/local.test.ts', 'test/e2e/oracle-ui.test.ts']
 const result = spawnSync(process.execPath, ['--test', '--test-reporter=tap', ...files], {

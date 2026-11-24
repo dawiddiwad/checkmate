@@ -1914,6 +1914,75 @@ test('Give a verifier the data rules of the target — the verifier brief had on
 	assert.match(writing, /qa-x-1-verify-/)
 })
 
+test('Refuse a setup that conflicts with the stored request or instance — nothing is saved, and the reply names the part and the next action.', async (t) => {
+	const workspace = directory(t)
+	const app = await fixture()
+	const other = await fixture()
+	t.after(() => app.close())
+	t.after(() => other.close())
+	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle', CHECKMATE_HARNESS: 'claude' }
+	const setup = (...args: string[]) => command(workspace, env, 'setup', '--target', 'shop', ...args)
+	const stored = async () => {
+		const shown = await command(workspace, env, 'target', 'show', 'shop')
+		const counts = await command(workspace, env, 'query', 'SELECT count(*) AS profiles FROM profiles')
+		return { shown: shown.body, profiles: counts.body.rows[0].profiles }
+	}
+	const first = await setup('--url', app.baseUrl, '--operations', 'read_catalog,list_orders')
+	assert.equal(first.code, 0, first.output)
+	const same = await setup('--url', app.baseUrl, '--operations', 'list_orders,read_catalog')
+	assert.equal(same.code, 0, same.output)
+
+	const changed = await setup('--url', app.baseUrl, '--operations', 'read_catalog')
+	assert.equal(changed.code, 1, changed.output)
+	assert.match(
+		changed.output,
+		/Request conflict: target shop was opened with the operations read_catalog, list_orders/
+	)
+	assert.match(changed.body.hint, /--target <new-target-id> --operations read_catalog/)
+	assert.equal((await stored()).shown.revision, 1)
+
+	const policy = await setup(
+		'--url',
+		app.baseUrl,
+		'--data',
+		'environment',
+		'--policy',
+		'The fixture keeps no records.'
+	)
+	assert.equal(policy.code, 0, policy.output)
+	assert.equal(policy.body.revision, 2)
+	const before = await stored()
+
+	const both = await setup('--url', other.baseUrl, '--data', 'environment', '--policy', 'Another policy.')
+	assert.equal(both.code, 1, both.output)
+	assert.match(both.output, /Instance conflict: shop\/local exists with other values \(changed: web\)/)
+	assert.match(both.body.hint, /--instance <new-instance-id>/)
+	assert.deepEqual(await stored(), before)
+	assert.deepEqual(before.shown.profile.reset.policy, { text: 'The fixture keeps no records.' })
+
+	const renamed = await setup('--url', other.baseUrl, '--instance', 'second')
+	assert.equal(renamed.code, 0, renamed.output)
+	const production = await setup('--url', other.baseUrl, '--instance', 'prod-eu', '--environment', 'production')
+	assert.equal(production.code, 0, production.output)
+
+	const wild = await command(workspace, env, 'setup', '--target', 'wild', '--url', app.baseUrl)
+	assert.equal(wild.code, 0, wild.output)
+	const refused = await command(
+		workspace,
+		env,
+		'setup',
+		'--target',
+		'wild',
+		'--url',
+		other.baseUrl,
+		'--instance',
+		'prod-eu'
+	)
+	assert.equal(refused.code, 1, refused.output)
+	assert.match(refused.output, /Request conflict: target wild allows any_test_operation/)
+	assert.match(refused.body.hint, /--target <new-target-id>/)
+})
+
 test('Answer, revise, and approve the named revision — execution against the wrong revision.', async (t) => {
 	const workspace = directory(t)
 	const { chmodSync, copyFileSync, mkdirSync } = await import('node:fs')

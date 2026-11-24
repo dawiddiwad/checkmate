@@ -7,7 +7,7 @@ description: Answer where a Checkmate plan is in the loop, who it waits on, and 
 
 Read `${CLAUDE_PLUGIN_ROOT}/references/workflow.md` for the command rules and `${CLAUDE_PLUGIN_ROOT}/references/session.md` for the report format.
 
-The plugin CLI is `${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js`. Run `checkmate <command>` as `node "${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js" <command>`. Write the absolute path. Do not write a shell variable in its place.
+The plugin CLI is `${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js`. Run `checkmate <command>` as `CHECKMATE_HOST_SESSION=1 node "${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js" <command>`. Write the absolute path. Do not write a shell variable in its place.
 
 Checkmate stores no loop state. `checkmate status` derives it from the records. Do not read the database file with another tool. Do not look for scheduled jobs.
 
@@ -16,9 +16,6 @@ Checkmate stores no loop state. `checkmate status` derives it from the records. 
    When the oracle rejected a plan revision or a run result, a `why` line gives the decision: `<subject> was rejected by <actor>: <rationale>`. Report the rationale.
 3. If the question is about a run, also run `checkmate run show <runId>`. Its `decision` line gives the verdict, the actor, the time, and the rationale of the latest result decision. If the question is about all open work, also run `checkmate inbox`.
    When the plan has explorations, `status` also prints one `exploration` line for each exploration, one `question` line for each open question, and one `claim` line for each open claim: `<claimId> claim <state> <severity> <title> [<reason>]`. The state `ready_to_test` waits on QA to test or follow up. Read the `why` and `next` lines. The state `exploring` waits on QA: run `checkmate explore wait <explorationId>`. The state `needs_triage` waits on the oracle: it answers a question with `gap answer` or decides a claim with `claim accept|reject`. A plan can reach `passed` through exploration without a revision. Report the build in the `why` line.
-4. Report in the format of `session.md`:
-   - A table with one row for the plan: plan and revision, state, waits on, approval, and latest run. Add one row for each open run with its instance. Add one row for each open gap, pending decision, defect, or retest verdict that the status prints.
-   - `Done:` the commands that you ran. Say that you changed nothing.
-   - `Next:` who acts, from `waitsOn`, and each `next` command from the status. Give the `why` lines as the reason. When `waitsOn` is `none`, say that the loop is complete.
+4. Report the state and any decision that is waiting, as `session.md` says. Use the `why` and `waitsOn` fields. Read `agent-only next` to understand the possible action. Give the action in plain words.
 
-Do not change the records. Do not answer gaps, approve, or begin a run. Tell the oracle the command, or `/checkmate:ui`.
+Do not change the records. Do not answer gaps, approve, or begin a run.

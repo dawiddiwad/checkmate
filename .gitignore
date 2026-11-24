@@ -28,7 +28,6 @@ app-docs
 .playwright/
 
 # npm CLI build output, its plugin copy, README, and license, created at pack time
-cli/dist/
 cli/plugin/
 cli/README.md
 cli/LICENSE

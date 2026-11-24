@@ -7,7 +7,6 @@ export default [
 			'node_modules/**',
 			'dist/**',
 			'plugin/dist/**',
-			'cli/dist/**',
 			'cli/plugin/**',
 			'**/*.d.ts',
 			'plugin/src/validators.js',

@@ -4,12 +4,9 @@ import { join } from 'node:path'
 import { createInterface } from 'node:readline'
 import { fileURLToPath } from 'node:url'
 
-const installedCli = new URL('../plugin/dist/checkmate.js', import.meta.url)
-const repositoryCli = new URL('../../plugin/dist/checkmate.js', import.meta.url)
-const sourceCli = new URL('../src/main.ts', import.meta.url)
+const cli = fileURLToPath(new URL('../dist/checkmate.js', import.meta.url))
 
 async function runUi(workspace, stop) {
-	const cli = fileURLToPath(existsSync(sourceCli) ? repositoryCli : installedCli)
 	if (!existsSync(cli)) throw new Error('The Checkmate UI bundle is missing. Reinstall the Checkmate package.')
 	const folder = join(workspace, '.checkmate', 'tmp')
 	mkdirSync(folder, { recursive: true })
@@ -19,7 +16,7 @@ async function runUi(workspace, stop) {
 	try {
 		child = spawn('node', [cli, 'ui', '--json', ...(stop ? ['--stop'] : [])], {
 			cwd: workspace,
-			env: { ...process.env, CHECKMATE_PI_UI: '1' },
+			env: { ...process.env, CHECKMATE_PI_UI: '1', CHECKMATE_HOST_SESSION: '1' },
 			detached: true,
 			stdio: ['ignore', 'pipe', log],
 		})
@@ -57,9 +54,12 @@ async function runUi(workspace, stop) {
 }
 
 function versionWarnings(cwd) {
-	const cli = fileURLToPath(existsSync(sourceCli) ? repositoryCli : installedCli)
 	return new Promise((resolveWarnings) => {
-		const child = spawn('node', [cli, '--version'], { cwd, env: process.env, stdio: ['ignore', 'pipe', 'ignore'] })
+		const child = spawn('node', [cli, '--version'], {
+			cwd,
+			env: { ...process.env, CHECKMATE_HOST_SESSION: '1' },
+			stdio: ['ignore', 'pipe', 'ignore'],
+		})
 		let output = ''
 		child.stdout.on('data', (bytes) => (output += bytes))
 		const timer = setTimeout(() => {

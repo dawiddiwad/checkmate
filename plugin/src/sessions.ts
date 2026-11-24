@@ -9,7 +9,6 @@ import {
 	accessSync,
 	chmodSync,
 	constants,
-	existsSync,
 	mkdirSync,
 	readFileSync,
 	realpathSync,
@@ -93,10 +92,7 @@ export function usageOf(calls: Array<Pick<ChildCall, 'costUsd' | 'costPartial' |
 	return { ...costOf(calls), ...(observedModels.length ? { observedModels } : {}) }
 }
 
-const moduleRoot = dirname(dirname(fileURLToPath(import.meta.url)))
-export const pluginRoot = existsSync(join(moduleRoot, '.claude-plugin', 'plugin.json'))
-	? moduleRoot
-	: join(moduleRoot, 'plugin')
+export const pluginRoot = dirname(dirname(fileURLToPath(import.meta.url)))
 
 export function childOutputLimit(harness: Harness) {
 	const mib = harness === 'pi' ? 100 : 4
@@ -617,7 +613,7 @@ export type RequestSession = {
 export const requestHookName = 'request'
 
 export function requestSystemPrompt(checkmate: string, harness: Harness = 'claude') {
-	const skill = readFileSync(join(pluginRoot, 'references', 'oracle-workflow.md'), 'utf8')
+	const skill = readFileSync(join(pluginRoot, 'pi', 'skills', 'checkmate', 'SKILL.md'), 'utf8')
 	const start = skill.indexOf('1. Run `target list`')
 	if (start < 0) throw new Error('The Checkmate oracle workflow is missing. Reinstall the plugin.')
 	const workflow = skill
@@ -630,7 +626,7 @@ export function requestSystemPrompt(checkmate: string, harness: Harness = 'claud
 		)
 	return [
 		'This conversation comes from the Checkmate web UI.',
-		'Answer what the person asked. When you change the record, say what changed.',
+		'Lead with the outcome. If a decision is needed, ask for it in plain words and link to the relevant page in the review UI. Keep Checkmate command lines, flags, and bundle paths out of replies. Use tool output only to decide what to do or report.',
 		'Answer questions about testing in general and about this workspace. For any other topic, decline in one sentence, say that you help with testing, and offer one Checkmate action. Do not answer the other topic.',
 		'Ask a question when you need the person to decide or clarify.',
 		'Write replies in Markdown. Link each Checkmate record you mention with a descriptive label and its relative UI path. Use IDs from the workspace records, including the explorer prefix for questions and defects. Do not guess links.',

@@ -1,5 +1,6 @@
 import type { Instance, Profile } from './types.ts'
 import type { Store } from './store.ts'
+import { hostSession } from './actor.ts'
 import { all, canonical, completed, digest, execute, one, removeTemporaryDirectory, write } from './store.ts'
 import {
 	profileCheck,
@@ -796,6 +797,7 @@ export function setupTarget(store: Store, actor: string | undefined, input: Setu
 	})
 	if (instance.status !== 'completed') return instance
 	const latest = targetRevision(store, targetId)
+	const host = hostSession(input.env)
 	const needsReset = !latest.profile.reset && latest.profile.allowedOperations.some(changesData)
 	if (needsReset)
 		assumed.push('data=none recorded: testers may change data, so a run or an exploration needs a data policy.')
@@ -817,15 +819,21 @@ export function setupTarget(store: Store, actor: string | undefined, input: Setu
 		instanceReachable: reachable,
 		...(!reachable
 			? {
-					next: `The application did not answer at ${url}: ${failure}. Fix the address or the network, then run checkmate setup --url ${url} --target ${targetId} again. A rerun with the same cause changes nothing.`,
+					next: host
+						? `The application did not answer at ${url}: ${failure}. Confirm the URL or make the application reachable.`
+						: `The application did not answer at ${url}: ${failure}. Fix the address or the network, then run checkmate setup --url ${url} --target ${targetId} again. A rerun with the same cause changes nothing.`,
 				}
 			: needsReset
 				? {
-						next: `Ask the person for the data policy. Give the command that restores the seed data: checkmate setup --url ${url} --reset "<command>". Or give --data environment|isolation with --policy "<text>". Do not write them yourself.`,
+						next: host
+							? 'The target needs a data policy. Ask how test data is reset or isolated.'
+							: `Ask the person for the data policy. Give the command that restores the seed data: checkmate setup --url ${url} --reset "<command>". Or give --data environment|isolation with --policy "<text>". Do not write them yourself.`,
 					}
 				: !latest.profile.readyForLiveExecution
 					? {
-							next: `Recheck the target prerequisites and save a new profile: checkmate delegate setup ${targetId}`,
+							next: host
+								? 'The target profile is incomplete. Check the prerequisites and complete setup.'
+								: `Recheck the target prerequisites and save a new profile: checkmate delegate setup ${targetId}`,
 						}
 					: {}),
 		created: !known,

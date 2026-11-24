@@ -1,7 +1,16 @@
 import assert from 'node:assert/strict'
 import { execFileSync, spawn, spawnSync } from 'node:child_process'
 import { once } from 'node:events'
-import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import {
+	chmodSync,
+	copyFileSync,
+	existsSync,
+	mkdirSync,
+	readFileSync,
+	realpathSync,
+	rmSync,
+	writeFileSync,
+} from 'node:fs'
 import { createServer } from 'node:http'
 import { connect, type AddressInfo } from 'node:net'
 import { createInterface } from 'node:readline'
@@ -69,8 +78,11 @@ function invoke(entry: string, workspace: string, env: NodeJS.ProcessEnv, input:
 test('Install packed npm CLI and open the empty UI — installed assets or skills missing.', async (t) => {
 	const workspace = directory(t)
 	const installed = join(project, 'node_modules/@xoxoai/checkmate')
-	assert(existsSync(join(installed, 'skills/checkmate/SKILL.md')))
-	assert(existsSync(join(installed, 'plugin/dist/checkmate.js')))
+	assert(existsSync(join(installed, 'plugin/pi/skills/checkmate/SKILL.md')))
+	const bundled = join(installed, 'plugin/dist/checkmate.js')
+	assert.equal(realpathSync(binary), realpathSync(bundled))
+	assert.deepEqual(readFileSync(bundled), readFileSync(join(root, 'plugin/dist/checkmate.js')))
+	assert.equal(existsSync(join(installed, 'dist/checkmate.js')), false)
 	const child = spawn(process.execPath, [binary, 'ui'], { cwd: workspace, env: process.env })
 	try {
 		const [data] = (await once(child.stdout, 'data')) as [Buffer]
@@ -98,6 +110,13 @@ test('Point run accept and run reject to the result command — a wrong command 
 	assert.equal(result.status, 1)
 	assert.match(result.stdout + result.stderr, /Unknown command: run reject/)
 	assert.match(result.stdout + result.stderr, /Use result reject <runId> --rationale/)
+	const host = spawnSync(process.execPath, [binary, 'run', 'reject', 'run-1'], {
+		cwd: workspace,
+		env: { ...process.env, CHECKMATE_HOST_SESSION: '1' },
+		encoding: 'utf8',
+	})
+	assert.equal(host.status, result.status)
+	assert.match(host.stdout, /^agent-only hint: Use result reject/m)
 })
 
 test('Tell a chat turn what it saved from the record — a turn with no write reports nothing saved, and a refused command saves nothing.', async (t) => {
@@ -2744,7 +2763,7 @@ require('node:readline').createInterface({input:process.stdin}).on('line', line 
 		gunzipSync(readFileSync(join(root, 'test/e2e/fixtures/workspace-migrated.db.gz')))
 	)
 	const installed = join(project, 'node_modules/@xoxoai/checkmate')
-	const fullCli = join(installed, 'dist/checkmate.js')
+	const fullCli = join(installed, 'plugin/dist/checkmate.js')
 	assert.match(execFileSync(process.execPath, [fullCli, '--help'], { encoding: 'utf8' }), /checkmate delegate/)
 	const realPi = execFileSync('which', ['pi'], { encoding: 'utf8' }).trim()
 	const piHome = directory(t)
@@ -3326,6 +3345,8 @@ test(
 		)
 		assert.match(input, /inspect the checkout fixture/)
 		assert.match(input, /Run `target list` and `plan list`/)
+		assert.match(input, /Keep command lines, flags, and bundle paths out of replies/)
+		assert.match(input, /Checkmate review UI/)
 		assert.match(input, /checkmate/i)
 		assert.ok(input.includes(workspace), 'Pi must route the request with the disposable workspace')
 		child.stdin.end()
@@ -5579,6 +5600,20 @@ test('Setup says why the application did not answer, follows redirects, accepts 
 	assert.equal(down.body.instanceReachable, false, down.output)
 	assert.match(down.output, /did not answer at .*\/broken: HTTP 503/)
 	assert.match(down.output, /A rerun with the same cause changes nothing/)
+	for (const harness of ['claude', 'pi']) {
+		const result = await command(
+			workspace,
+			{ ...env, CHECKMATE_HARNESS: harness, CHECKMATE_HOST_SESSION: '1' },
+			'setup',
+			'--url',
+			`${base}/broken`,
+			'--target',
+			'broken'
+		)
+		assert.equal(result.code, down.code, result.output)
+		assert.match(result.body.next, /HTTP 503.*Confirm the URL or make the application reachable/)
+		assert.doesNotMatch(result.body.next, /checkmate setup|--url/)
+	}
 	// A closed port names the connection error.
 	const closed = createServer()
 	closed.listen(0, '127.0.0.1')

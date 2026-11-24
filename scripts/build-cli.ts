@@ -1,4 +1,4 @@
-import { cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { cp, readFile, rm, writeFile } from 'node:fs/promises'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { resolve } from 'node:path'
 
@@ -24,14 +24,12 @@ export function packageReadme(markdown: string, version: string) {
 
 async function buildCli() {
 	await import('./build-plugin.ts')
-	await mkdir(`${root}cli/dist`, { recursive: true })
-	await cp(`${root}plugin/dist/checkmate.js`, `${root}cli/dist/checkmate.js`)
 	await rm(`${root}cli/plugin`, { recursive: true, force: true })
 	await cp(`${root}plugin`, `${root}cli/plugin`, { recursive: true })
 	const version = JSON.parse(await readFile(`${root}cli/package.json`, 'utf8')).version
 	await writeFile(`${root}cli/README.md`, packageReadme(await readFile(`${root}README.md`, 'utf8'), version))
 	await cp(`${root}LICENSE`, `${root}cli/LICENSE`)
-	console.log('Built cli/dist/checkmate.js and copied plugin/, README.md, and LICENSE to cli/.')
+	console.log('Copied plugin/, README.md, and LICENSE to cli/.')
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) await buildCli()

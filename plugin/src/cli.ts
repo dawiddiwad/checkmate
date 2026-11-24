@@ -79,7 +79,7 @@ import {
 import { exportExploration, exportPlan, exportRun, explorationFormats, formats, runFormats } from './render.ts'
 import { startUi } from './ui/server.ts'
 import { contactUi, withUiStartupLock } from './ui/lifecycle.ts'
-import { defaultActor, requestOfEnv } from './actor.ts'
+import { defaultActor, hostSession, requestOfEnv } from './actor.ts'
 import { changesOf } from './requests.ts'
 import { explorationModes, openExploration } from './explorations.ts'
 import type { Claim } from './journal.ts'
@@ -2320,22 +2320,24 @@ function cell(field: unknown): string {
 	return String(field).replace(/\\/g, '\\\\').replace(/\t/g, '\\t').replace(/\r/g, '\\r').replace(/\n/g, '\\n')
 }
 
-function compact(reply: Reply, printed: Printed) {
+function compact(reply: Reply, printed: Printed, host: boolean) {
 	const facts = Object.entries(printed.facts ?? {})
 		.filter(([, field]) => field !== undefined)
 		.map(([key, field]) => `${key}=${cell(field)}`)
 	const warnings = (reply.data.warnings ?? []) as string[]
 	return [
 		[reply.status, reply.subject, ...(reply.refusal ? [`refusal=${reply.refusal}`] : []), ...facts].join(' '),
-		...(printed.lines ?? []).map((line) => line.map(cell).join('\t')),
+		...(printed.lines ?? []).map((line) =>
+			(host && line[0] === 'next' ? ['agent-only next', ...line.slice(1)] : line).map(cell).join('\t')
+		),
 		...warnings.map((warning) => `warning\t${cell(warning)}`),
 		...((reply.data.assumed ?? []) as string[]).map((value) => `assumed: ${cell(value)}`),
 		...reply.reasons.map((reason) => `reason: ${cell(reason)}`),
-		...(reply.hint ? [`hint: ${cell(reply.hint)}`] : []),
+		...(reply.hint ? [`${host ? 'agent-only hint' : 'hint'}: ${cell(reply.hint)}`] : []),
 	].join('\n')
 }
 
-function format(reply: Reply, json: boolean, print?: Command['print']) {
+function format(reply: Reply, json: boolean, print?: Command['print'], host = false) {
 	if (json)
 		return JSON.stringify({
 			status: reply.status,
@@ -2345,11 +2347,11 @@ function format(reply: Reply, json: boolean, print?: Command['print']) {
 			...(reply.hint ? { hint: reply.hint } : {}),
 			...reply.data,
 		})
-	return compact(reply, print ? print(reply) : {})
+	return compact(reply, print ? print(reply) : {}, host)
 }
 
-export function formatReply(name: string, reply: Reply, json: boolean) {
-	return format(reply, json, commands[name]?.print)
+export function formatReply(name: string, reply: Reply, json: boolean, host: boolean) {
+	return format(reply, json, commands[name]?.print, host)
 }
 
 const globalFlags: Record<string, FlagKind> = { workspace: 'value', json: 'switch' }
@@ -2529,6 +2531,7 @@ function readJson(text: string) {
 export function run(argv: string[], io: Io): Outcome {
 	if (argv[0] === '--version') return { code: 0, output: version() }
 	const json = argv.includes('--json')
+	const host = hostSession(io.env)
 	if (!argv.length || argv[0] === '--help' || (argv[0] === '--json' && argv[1] === '--help')) {
 		const usage = help()
 		return { code: 0, output: json ? format(completed('checkmate', { usage }), true) : usage.join('\n') }
@@ -2547,7 +2550,7 @@ export function run(argv: string[], io: Io): Outcome {
 		name = commandName(argv)
 		args = parse(name, argv.slice(name.split(' ').length))
 	} catch (error) {
-		return { code: 1, output: format(refused('invalid_request', name, error), json) }
+		return { code: 1, output: format(refused('invalid_request', name, error), json, undefined, host) }
 	}
 	const command = commands[name]
 	const subject =
@@ -2571,12 +2574,12 @@ export function run(argv: string[], io: Io): Outcome {
 		const code = exitCodeOf(name, args, reply)
 		if (!json && typeof reply.data.content === 'string')
 			return { code, output: reply.data.content.replace(/\n$/, '') }
-		return { code, output: format(reply, json, command.print) }
+		return { code, output: format(reply, json, command.print, host) }
 	} catch (error) {
 		const reply: Reply = isBusy(error)
 			? { status: 'operational_error', subject, reasons: [(error as Error).message, busyReason], data: {} }
 			: refused('rejected', subject, error)
-		return { code: 1, output: format(reply, json) }
+		return { code: 1, output: format(reply, json, undefined, host) }
 	} finally {
 		if (store) closeStore(store)
 	}
@@ -2630,11 +2633,12 @@ export function uiOptions(tokens: string[], cwd: string) {
 
 export async function serveUi(tokens: string[]) {
 	const json = tokens.includes('--json')
+	const host = hostSession(process.env)
 	let options: ReturnType<typeof uiOptions>
 	try {
 		options = uiOptions(tokens, process.cwd())
 	} catch (error) {
-		process.stdout.write(format(refused('invalid_request', 'ui', error), json) + '\n')
+		process.stdout.write(format(refused('invalid_request', 'ui', error), json, undefined, host) + '\n')
 		process.exitCode = 1
 		return
 	}
@@ -2647,9 +2651,8 @@ export async function serveUi(tokens: string[]) {
 			if (options.stop) return { stopped: Boolean(active) }
 			if (active) {
 				if (fromPi) return active
-				throw new Error(
-					`The Checkmate UI already runs at ${active.url} Use checkmate ui --stop before starting it again.`
-				)
+				const reason = `The Checkmate UI already runs at ${active.url}`
+				throw new Error(host ? reason : `${reason} Use checkmate ui --stop before starting it again.`)
 			}
 			const ui = await startUi({
 				...options,
@@ -2674,7 +2677,7 @@ export async function serveUi(tokens: string[]) {
 		})
 		process.stdout.write(format(completed('ui', data), json, (reply) => ({ facts: reply.data })) + '\n')
 	} catch (error) {
-		process.stdout.write(format(refused('rejected', 'ui', error), json) + '\n')
+		process.stdout.write(format(refused('rejected', 'ui', error), json, undefined, host) + '\n')
 		process.exitCode = 1
 	}
 }

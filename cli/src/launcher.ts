@@ -606,7 +606,10 @@ function prompt(
 					...[skill, workflow].map((path) =>
 						readFileSync(path, 'utf8')
 							.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, '')
-							.replaceAll('node "${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js"', () => cliCommand)
+							.replaceAll(
+								'CHECKMATE_HOST_SESSION=1 node "${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js"',
+								() => cliCommand
+							)
 							.replaceAll('${CLAUDE_PLUGIN_ROOT}', () => pluginRoot)
 							.replaceAll('claude:', 'pi:')
 							.trim()

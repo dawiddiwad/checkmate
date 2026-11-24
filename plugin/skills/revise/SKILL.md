@@ -7,7 +7,7 @@ description: Apply recorded oracle answers to a Checkmate plan and save the next
 
 Read `${CLAUDE_PLUGIN_ROOT}/references/workflow.md`. It has the command rules, the actor rules, and the safety rules. In the same session as the oracle, also read `${CLAUDE_PLUGIN_ROOT}/references/session.md`: it tells you how to report.
 
-The plugin CLI is `${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js`. Run `checkmate <command>` as `node "${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js" <command>`. Write the absolute path. Do not write a shell variable in its place.
+The plugin CLI is `${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js`. Run `checkmate <command>` as `CHECKMATE_HOST_SESSION=1 node "${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js" <command>`. Write the absolute path. Do not write a shell variable in its place.
 
 1. Run `checkmate plan pending <planId>`. It prints each pending decision with its ID, gap, kind, value, and rationale, then the affected gaps and tests with their assertions.
 2. If there is no pending decision, stop. Return `needs_decision` with the reason `No pending decision`.
@@ -16,7 +16,7 @@ The plugin CLI is `${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js`. Run `checkmate <com
 5. Send the delta in a heredoc: `checkmate plan revise <planId> --actor claude:revise <<'EOF'`, the JSON, then `EOF`.
 6. If the command refuses the delta, correct it and run step 5 again.
 7. Return the response of `plan revise`.
-8. In the same session, report to the oracle as `session.md` says. In `Next:`, name the plan approval: `checkmate plan approve <planId@rev> --rationale "<why>"`, or the review UI.
+8. In the same session, report to the oracle as `session.md` says. When the plan needs approval, ask for it and mention the plan page in the review UI.
 
 ```json
 {

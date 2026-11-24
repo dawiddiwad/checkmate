@@ -28,20 +28,17 @@
 	},
 	"type": "module",
 	"bin": {
-		"checkmate": "dist/checkmate.js"
+		"checkmate": "plugin/dist/checkmate.js"
 	},
 	"pi": {
 		"extensions": [
-			"./extensions/checkmate.mjs"
+			"./plugin/pi/checkmate.mjs"
 		],
 		"skills": [
-			"./skills"
+			"./plugin/pi/skills"
 		]
 	},
 	"files": [
-		"extensions",
-		"skills",
-		"dist",
 		"plugin",
 		"README.md",
 		"LICENSE"

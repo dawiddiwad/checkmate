@@ -5,7 +5,7 @@ description: Run the stored tests of a Checkmate run ID such as run-1, or retest
 
 > **Agent only:** This file contains repository or workflow instructions for coding agents.
 
-The plugin CLI is `${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js`. Run `checkmate <command>` as `node "${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js" <command>`. Write the absolute path. Do not write a shell variable in its place.
+The plugin CLI is `${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js`. Run `checkmate <command>` as `CHECKMATE_HOST_SESSION=1 node "${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js" <command>`. Write the absolute path. Do not write a shell variable in its place.
 
 The prompt names the run ID, the instance, the selected tests, the browser session, and the deadline. The parent began the run. Do not run `run gate` or `run begin`.
 
@@ -112,7 +112,7 @@ After the selected tests, probe the rules of the selected tests for a few cases 
      - `tool_unavailable`: a tool that every open test needs is missing.
    - A refused finish changes nothing. Read its reason, and continue with the open tests.
    - A blocking gap closes only its tests. It does not finish the run.
-3. Return the status and the reasons of the `run finish` output.
+3. In a delegated stage or a sub-agent, return the status and reasons of `run finish`. In the same session, report the recorded outcomes and any decision as `session.md` says.
 
 ## Test data
 

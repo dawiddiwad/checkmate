@@ -7,7 +7,7 @@ description: Set up a Checkmate target profile from a recorded setup request. Ch
 
 Read `${CLAUDE_PLUGIN_ROOT}/references/workflow.md`. It has the command rules, the actor rules, and the safety rules. In the same session as the oracle, also read `${CLAUDE_PLUGIN_ROOT}/references/session.md`: it tells you how to record a missing request and how to report.
 
-The plugin CLI is `${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js`. Run `checkmate <command>` as `node "${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js" <command>`. Write the absolute path. Do not write a shell variable in its place.
+The plugin CLI is `${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js`. Run `checkmate <command>` as `CHECKMATE_HOST_SESSION=1 node "${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js" <command>`. Write the absolute path. Do not write a shell variable in its place.
 
 ## Quick setup
 
@@ -17,7 +17,7 @@ When the oracle gives a URL, run `checkmate setup --url <url>`. Add `--target <i
 
 When you need a decision from the person, the choices are few, and the `AskUserQuestion` tool is in your tool list, ask with that tool. Use one call with at most 4 questions and 2 to 4 options for each question. Put the recommended option first, and add "(Recommended)" to its label. Give each question a header of at most 12 characters. Give each option one line that says what happens. Do not add an "Other" option. The tool adds it.
 
-When the tool is not in your tool list, or your task came from an agent, a factory, or a script, do not use the tool. Write the question and its options in your reply as a short numbered list, or return `needs_decision` with the reason. An agent that is the oracle answers in text or with the CLI commands.
+When the tool is not in your tool list, or your task came from an agent, a factory, or a script, do not use the tool. Write the question and its options in your reply as a short numbered list, or return `needs_decision` with the reason. An agent that is the oracle can answer in text.
 
 For a value with no fixed choices, for example a URL or how to sign in, ask one short text question. Do not ask for a secret. Ask where it is kept.
 
@@ -78,7 +78,7 @@ An instance is one place where the target runs, for example `local`, `uat`, or `
 
     Add `--reference <name>` for an authentication alias or an environment variable name. Do not write a credential value.
 
-15. Return the response of `target save`. In the same session, report to the oracle as `session.md` says.
+15. In a delegated stage or a sub-agent, return the response of `target save`. In the same session, report to the oracle as `session.md` says.
 
 ```json
 {

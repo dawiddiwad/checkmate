@@ -7,7 +7,7 @@ description: Write a stored Checkmate test plan: test cases with assertions, and
 
 Read `${CLAUDE_PLUGIN_ROOT}/references/workflow.md`. It has the command rules, the actor rules, and the safety rules. In the same session as the oracle, also read `${CLAUDE_PLUGIN_ROOT}/references/session.md`: it tells you how to record a missing request and how to report.
 
-The plugin CLI is `${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js`. Run `checkmate <command>` as `node "${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js" <command>`. Write the absolute path. Do not write a shell variable in its place.
+The plugin CLI is `${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js`. Run `checkmate <command>` as `CHECKMATE_HOST_SESSION=1 node "${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js" <command>`. Write the absolute path. Do not write a shell variable in its place.
 
 A plan request has an `objective`, and `requirements` or `context.sources`, or both. When it has requirements, the plan covers exactly these requirements. When it has only sources, you write the requirements from the sources. `plan request` prints the tools of this plan. Read a local file source, for example `ticket.md` or `docs/`, with the file tools of the host. Use the listed tools for other sources, for example a Jira ticket.
 
@@ -35,7 +35,7 @@ When `checkmate target list` shows no target, or `plan open` refuses with `Unkno
    - Each price, fee, or amount in the sources states its currency, whether tax is included, and its rounding. Each one that does not has an open gap.
 10. Send the candidate in a heredoc: `checkmate plan save <planId> --actor claude:plan <<'EOF'`, the JSON, then `EOF`.
 11. If the command refuses the candidate, correct it and do step 10 again.
-12. Return the response of `plan save`. A `needs_decision` status with gap questions is a correct result.
+12. In a delegated stage or a sub-agent, return the response of `plan save`. In the same session, report as `session.md` says. A `needs_decision` status with gap questions is a correct result.
 
 Do not ask the person a question during planning, and do not wait for an answer. A missing value is an open gap in the plan. A missing permission or source is a `needs_decision` return with its reason. After step 12, stop. Do not search the files to find a cause for a refusal. Run the hint.
 

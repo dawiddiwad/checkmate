@@ -8,6 +8,10 @@ export function requestOfEnv(env: Record<string, string | undefined>) {
 	return named && /^R[1-9][0-9]{0,8}$/.test(named) ? named : undefined
 }
 
+export function hostSession(env: NodeJS.ProcessEnv) {
+	return env.CHECKMATE_HOST_SESSION === '1' || requestOfEnv(env) !== undefined
+}
+
 export function defaultActor(workspace: string, env: Record<string, string | undefined>) {
 	const named = env.CHECKMATE_ACTOR?.trim()
 	if (named) return named

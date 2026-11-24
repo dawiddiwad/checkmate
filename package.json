@@ -5,10 +5,10 @@
 	"type": "module",
 	"pi": {
 		"extensions": [
-			"./cli/extensions/checkmate.mjs"
+			"./plugin/pi/checkmate.mjs"
 		],
 		"skills": [
-			"./cli/skills"
+			"./plugin/pi/skills"
 		]
 	},
 	"engines": {

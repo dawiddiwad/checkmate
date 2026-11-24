@@ -9681,6 +9681,37 @@ function Xe(p, { instancePath: t = "", parentData: N, parentDataProperty: _, roo
   return Xe.errors = e, s === 0;
 }
 
+// plugin/src/actor.ts
+import { execFileSync } from "node:child_process";
+import { userInfo } from "node:os";
+var requestVariable = "CHECKMATE_REQUEST";
+function requestOfEnv(env) {
+  const named = env[requestVariable]?.trim();
+  return named && /^R[1-9][0-9]{0,8}$/.test(named) ? named : void 0;
+}
+function hostSession(env) {
+  return env.CHECKMATE_HOST_SESSION === "1" || requestOfEnv(env) !== void 0;
+}
+function defaultActor(workspace2, env) {
+  const named = env.CHECKMATE_ACTOR?.trim();
+  if (named) return named;
+  try {
+    const name2 = execFileSync("git", ["config", "user.name"], {
+      cwd: workspace2,
+      env,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"]
+    }).trim();
+    if (name2) return name2;
+  } catch {
+  }
+  try {
+    return userInfo().username;
+  } catch {
+    return void 0;
+  }
+}
+
 // plugin/src/processes.ts
 import { spawnSync } from "node:child_process";
 function startOfGroup(pid) {
@@ -10027,7 +10058,6 @@ import {
   accessSync,
   chmodSync,
   constants,
-  existsSync as existsSync2,
   mkdirSync as mkdirSync2,
   readFileSync,
   realpathSync,
@@ -10080,8 +10110,7 @@ function usageOf(calls) {
   const observedModels2 = [...recent];
   return { ...costOf(calls), ...observedModels2.length ? { observedModels: observedModels2 } : {} };
 }
-var moduleRoot = dirname(dirname(fileURLToPath(import.meta.url)));
-var pluginRoot = existsSync2(join2(moduleRoot, ".claude-plugin", "plugin.json")) ? moduleRoot : join2(moduleRoot, "plugin");
+var pluginRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 function childOutputLimit(harness) {
   const mib = harness === "pi" ? 100 : 4;
   return { mib, bytes: mib * 1024 * 1024 };
@@ -10518,7 +10547,7 @@ function launchChild(executable, args, prompt2, cwd, env, seconds2, onStart, har
 }
 var requestHookName = "request";
 function requestSystemPrompt(checkmate, harness = "claude") {
-  const skill = readFileSync(join2(pluginRoot, "references", "oracle-workflow.md"), "utf8");
+  const skill = readFileSync(join2(pluginRoot, "pi", "skills", "checkmate", "SKILL.md"), "utf8");
   const start = skill.indexOf("1. Run `target list`");
   if (start < 0) throw new Error("The Checkmate oracle workflow is missing. Reinstall the plugin.");
   const workflow = skill.slice(start).replace(
@@ -10527,7 +10556,7 @@ function requestSystemPrompt(checkmate, harness = "claude") {
   );
   return [
     "This conversation comes from the Checkmate web UI.",
-    "Answer what the person asked. When you change the record, say what changed.",
+    "Lead with the outcome. If a decision is needed, ask for it in plain words and link to the relevant page in the review UI. Keep Checkmate command lines, flags, and bundle paths out of replies. Use tool output only to decide what to do or report.",
     "Answer questions about testing in general and about this workspace. For any other topic, decline in one sentence, say that you help with testing, and offer one Checkmate action. Do not answer the other topic.",
     "Ask a question when you need the person to decide or clarify.",
     "Write replies in Markdown. Link each Checkmate record you mention with a descriptive label and its relative UI path. Use IDs from the workspace records, including the explorer prefix for questions and defects. Do not guess links.",
@@ -10683,7 +10712,7 @@ function streamClaude(claude, args, prompt2, cwd, env, onLine, delays = defaultS
 
 // plugin/src/resets.ts
 import { spawnSync as spawnSync4 } from "node:child_process";
-import { existsSync as existsSync3, readFileSync as readFileSync2 } from "node:fs";
+import { existsSync as existsSync2, readFileSync as readFileSync2 } from "node:fs";
 import { isAbsolute, join as join3 } from "node:path";
 var readPrefixes = ["read_", "list_", "get_", "view_"];
 var defaultHookSeconds = 120;
@@ -10719,7 +10748,7 @@ function policyText(workspace2, reset) {
   if ("text" in policy) return policy.text;
   const path = isAbsolute(policy.path) ? policy.path : join3(workspace2, policy.path);
   requireCondition(
-    existsSync3(path),
+    existsSync2(path),
     `The data policy file ${policy.path} does not exist.`,
     "Give the file that holds the policy, or record the policy text with --policy."
   );
@@ -10832,7 +10861,7 @@ function dataSummary(workspace2, reset) {
 
 // plugin/src/targets.ts
 import { spawnSync as spawnSync5 } from "node:child_process";
-import { existsSync as existsSync4, readFileSync as readFileSync3 } from "node:fs";
+import { existsSync as existsSync3, readFileSync as readFileSync3 } from "node:fs";
 import { join as join4 } from "node:path";
 var anyTestOperation = "any_test_operation";
 var readOnlyOperation = "read_only";
@@ -11298,7 +11327,7 @@ function toolVersion(path) {
 var browserConfig = join4(".playwright", "cli.config.json");
 function browserExecutable(workspace2) {
   const path = join4(workspace2, browserConfig);
-  const config2 = existsSync4(path) ? JSON.parse(readFileSync3(path, "utf8")) : {};
+  const config2 = existsSync3(path) ? JSON.parse(readFileSync3(path, "utf8")) : {};
   const executable = config2.browser?.launchOptions?.executablePath;
   if (typeof executable !== "string" || executable === "") return void 0;
   const run2 = spawnSync5(executable, ["--version"], { timeout: 1e4 });
@@ -11483,6 +11512,7 @@ function setupTarget(store, actor, input) {
   });
   if (instance.status !== "completed") return instance;
   const latest = targetRevision(store, targetId);
+  const host = hostSession(input.env);
   const needsReset = !latest.profile.reset && latest.profile.allowedOperations.some(changesData);
   if (needsReset)
     assumed.push("data=none recorded: testers may change data, so a run or an exploration needs a data policy.");
@@ -11501,11 +11531,11 @@ function setupTarget(store, actor, input) {
     ready: latest.profile.readyForLiveExecution,
     instanceReachable: reachable,
     ...!reachable ? {
-      next: `The application did not answer at ${url}: ${failure}. Fix the address or the network, then run checkmate setup --url ${url} --target ${targetId} again. A rerun with the same cause changes nothing.`
+      next: host ? `The application did not answer at ${url}: ${failure}. Confirm the URL or make the application reachable.` : `The application did not answer at ${url}: ${failure}. Fix the address or the network, then run checkmate setup --url ${url} --target ${targetId} again. A rerun with the same cause changes nothing.`
     } : needsReset ? {
-      next: `Ask the person for the data policy. Give the command that restores the seed data: checkmate setup --url ${url} --reset "<command>". Or give --data environment|isolation with --policy "<text>". Do not write them yourself.`
+      next: host ? "The target needs a data policy. Ask how test data is reset or isolated." : `Ask the person for the data policy. Give the command that restores the seed data: checkmate setup --url ${url} --reset "<command>". Or give --data environment|isolation with --policy "<text>". Do not write them yourself.`
     } : !latest.profile.readyForLiveExecution ? {
-      next: `Recheck the target prerequisites and save a new profile: checkmate delegate setup ${targetId}`
+      next: host ? "The target profile is incomplete. Check the prerequisites and complete setup." : `Recheck the target prerequisites and save a new profile: checkmate delegate setup ${targetId}`
     } : {},
     created: !known,
     assumed: known ? [] : assumed
@@ -11980,7 +12010,7 @@ function resultCoverage(plan, tests, newGaps) {
 }
 
 // plugin/src/plans.ts
-import { existsSync as existsSync6, readFileSync as readFileSync6 } from "node:fs";
+import { existsSync as existsSync5, readFileSync as readFileSync6 } from "node:fs";
 import { basename, extname, join as join6 } from "node:path";
 
 // plugin/src/rules.ts
@@ -12193,7 +12223,7 @@ function rulesLine(store, planId) {
 }
 
 // plugin/src/journal.ts
-import { existsSync as existsSync5, readdirSync, readFileSync as readFileSync5, realpathSync as realpathSync3, statSync as statSync3 } from "node:fs";
+import { existsSync as existsSync4, readdirSync, readFileSync as readFileSync5, realpathSync as realpathSync3, statSync as statSync3 } from "node:fs";
 import { isAbsolute as isAbsolute2, join as join5, relative, resolve as resolve2, sep as sep2 } from "node:path";
 var entryKinds = [
   "criterion",
@@ -12367,7 +12397,7 @@ function onlyFileEndingWith(cwd, spec2) {
   return matches.length === 1 ? matches[0] : void 0;
 }
 function evidenceOf(store, spec2, cwd, missing) {
-  const found = [resolve2(cwd, spec2), resolve2(store.workspace, spec2)].find((path) => existsSync5(path)) ?? (missing && !isEvidenceText(spec2) ? onlyFileEndingWith(cwd, spec2) : void 0);
+  const found = [resolve2(cwd, spec2), resolve2(store.workspace, spec2)].find((path) => existsSync4(path)) ?? (missing && !isEvidenceText(spec2) ? onlyFileEndingWith(cwd, spec2) : void 0);
   if (found && (!missing || insideWorkspace(store, found))) {
     const name2 = relative(store.workspace, found);
     return { path: name2, ...saveBlob(store, evidenceFile(store, name2)) };
@@ -13206,7 +13236,7 @@ function requireUnnamedSources(workspace2, sources, objective) {
   for (const [origin2, text2] of mentions) {
     for (const match of text2.matchAll(/[A-Za-z0-9_./-]+\.(?:md|txt|json|csv|ya?ml|feature|html)\b/g)) {
       const file = match[0].replace(/^\.\//, "");
-      if (named.has(file) || !existsSync6(join6(workspace2, file)) || file === origin2) continue;
+      if (named.has(file) || !existsSync5(join6(workspace2, file)) || file === origin2) continue;
       const all2 = [...sources, file];
       requireWellFormed(
         false,
@@ -18070,7 +18100,7 @@ function verifierBrief(items, entries, operations, dataPrefix, answer2) {
 
 // plugin/src/recorder.ts
 import { randomUUID as randomUUID3 } from "node:crypto";
-import { existsSync as existsSync7, mkdirSync as mkdirSync5, readFileSync as readFileSync8, rmSync as rmSync4, writeFileSync as writeFileSync3 } from "node:fs";
+import { existsSync as existsSync6, mkdirSync as mkdirSync5, readFileSync as readFileSync8, rmSync as rmSync4, writeFileSync as writeFileSync3 } from "node:fs";
 import { join as join9 } from "node:path";
 var defaultRecorderTimeout = 600;
 var reservedExplorers = ["rules", "merge", "verify"];
@@ -18352,7 +18382,7 @@ function recordLocked(store, operation, input, plan, env, cwd, started) {
   const dropped = [];
   const unknownRules = [];
   const work = join9(store.workspace, workFolder(exploration2.exploration_id, plan.explorer));
-  const evidenceCwd = existsSync7(work) ? work : cwd;
+  const evidenceCwd = existsSync6(work) ? work : cwd;
   const log = (entries) => logReply(
     store,
     actor,
@@ -18776,7 +18806,7 @@ function upstreamBase(repository) {
 import { spawn as spawn3, spawnSync as spawnSync7 } from "node:child_process";
 import { randomUUID as randomUUID4 } from "node:crypto";
 import {
-  existsSync as existsSync8,
+  existsSync as existsSync7,
   mkdirSync as mkdirSync6,
   openSync,
   readdirSync as readdirSync2,
@@ -18956,7 +18986,7 @@ function keepWorkFiles(store, actor, explorationId, explorer, phase) {
   const folder = join10(store.workspace, workFolder(explorationId, explorer));
   const files2 = keptFiles.flatMap((name2) => {
     const path = join10(folder, name2);
-    return existsSync8(path) ? [{ name: name2, bytes: readFileSync9(path) }] : [];
+    return existsSync7(path) ? [{ name: name2, bytes: readFileSync9(path) }] : [];
   });
   if (!files2.length) return;
   const input = { explorer, phase, files: files2.map((file) => file.name) };
@@ -18973,12 +19003,12 @@ function keepWorkFiles(store, actor, explorationId, explorer, phase) {
   });
 }
 function removeIfEmpty(folder) {
-  if (existsSync8(folder) && !readdirSync2(folder).length) rmdirSync2(folder);
+  if (existsSync7(folder) && !readdirSync2(folder).length) rmdirSync2(folder);
 }
 var browserFolder = ".playwright-cli";
 function keepBrowserFolder(store, explorationId) {
   const from = join10(store.workspace, browserFolder);
-  if (startOf(explorationEvents(store, explorationId))?.browserFolder !== false || !existsSync8(from)) return;
+  if (startOf(explorationEvents(store, explorationId))?.browserFolder !== false || !existsSync7(from)) return;
   const to = join10(store.workspace, workFolder(explorationId), browserFolder);
   mkdirSync6(join10(to, ".."), { recursive: true });
   rmSync5(to, { recursive: true, force: true });
@@ -19054,7 +19084,7 @@ function startExploration(store, actor, given, env, preferSavedModel = false) {
         detail: {
           ...launch,
           dataRules: rules,
-          browserFolder: existsSync8(join10(store.workspace, browserFolder))
+          browserFolder: existsSync7(join10(store.workspace, browserFolder))
         }
       },
       operationId,
@@ -20035,7 +20065,7 @@ function stopExploration(store, actor, input) {
   const explorer = input.explorer;
   const reply = recordStop(store, actor, input);
   const left = endStopped(store, id2, explorer);
-  const kept = explorer === void 0 && existsSync8(join10(store.workspace, workFolder(id2))) ? workFolder(id2) : null;
+  const kept = explorer === void 0 && existsSync7(join10(store.workspace, workFolder(id2))) ? workFolder(id2) : null;
   return {
     ...reply,
     status: left.length ? "operational_error" : "completed",
@@ -20187,7 +20217,7 @@ function explorationStatus(store, explorationId) {
     explorers,
     phases: events.filter((item) => ["merge", "verify", "follow", "followed"].includes(item.step)).map((item) => ({ step: item.step, status: item.status, detail: item.detail })),
     doneHint: done?.detail.hint ?? null,
-    workFolder: (["failed", "stopped", "interrupted"].includes(state) || ["failed", "stopped", "interrupted"].includes(follow ?? "")) && existsSync8(join10(store.workspace, workFolder(row2.exploration_id))) ? workFolder(row2.exploration_id) : null,
+    workFolder: (["failed", "stopped", "interrupted"].includes(state) || ["failed", "stopped", "interrupted"].includes(follow ?? "")) && existsSync7(join10(store.workspace, workFolder(row2.exploration_id))) ? workFolder(row2.exploration_id) : null,
     reason: done?.detail.reason ?? (state === "stopped" ? stopReason(events) : state === "interrupted" ? "The supervisor stopped before the end." : null)
   };
 }
@@ -20771,7 +20801,7 @@ function owedLines(store) {
 }
 
 // plugin/src/views.ts
-import { existsSync as existsSync9 } from "node:fs";
+import { existsSync as existsSync8 } from "node:fs";
 import { join as join11 } from "node:path";
 function approvalLabel(state) {
   if (state.approved) return "approved";
@@ -21042,7 +21072,7 @@ function mergedQuestions(store, planId) {
 }
 function explorationData(store, status) {
   const log = `.checkmate/tmp/explore-${status.explorationId}.log`;
-  return [...status.workFolder ? [status.workFolder] : [], ...existsSync9(join11(store.workspace, log)) ? [log] : []];
+  return [...status.workFolder ? [status.workFolder] : [], ...existsSync8(join11(store.workspace, log)) ? [log] : []];
 }
 function planHasRevision(store, planId) {
   return Boolean(one(store, "SELECT 1 FROM plan_revisions WHERE plan_id = ?", planId));
@@ -23627,7 +23657,7 @@ async function recoverPiCosts(store, env) {
 // plugin/src/ui/server.ts
 import { createServer } from "node:http";
 import { randomBytes as randomBytes4 } from "node:crypto";
-import { existsSync as existsSync10, readFileSync as readFileSync11, realpathSync as realpathSync7 } from "node:fs";
+import { existsSync as existsSync9, readFileSync as readFileSync11, realpathSync as realpathSync7 } from "node:fs";
 import { fileURLToPath as fileURLToPath2 } from "node:url";
 
 // plugin/src/modes.ts
@@ -28469,34 +28499,6 @@ function claimPage(store, context, explorationId, claimId, state = null) {
 // plugin/src/ui/server.ts
 import { resolve as resolve7 } from "node:path";
 import { mkdirSync as mkdirSync8, rmSync as rmSync7, writeFileSync as writeFileSync4 } from "node:fs";
-
-// plugin/src/actor.ts
-import { execFileSync } from "node:child_process";
-import { userInfo } from "node:os";
-var requestVariable = "CHECKMATE_REQUEST";
-function requestOfEnv(env) {
-  const named = env[requestVariable]?.trim();
-  return named && /^R[1-9][0-9]{0,8}$/.test(named) ? named : void 0;
-}
-function defaultActor(workspace2, env) {
-  const named = env.CHECKMATE_ACTOR?.trim();
-  if (named) return named;
-  try {
-    const name2 = execFileSync("git", ["config", "user.name"], {
-      cwd: workspace2,
-      env,
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"]
-    }).trim();
-    if (name2) return name2;
-  } catch {
-  }
-  try {
-    return userInfo().username;
-  } catch {
-    return void 0;
-  }
-}
 
 // plugin/src/ui/bulk.ts
 var kindLabels = {
@@ -37392,7 +37394,7 @@ var maxForm = 256 * 1024;
 function directory(candidates, file) {
   for (const candidate of candidates) {
     const path = fileURLToPath2(new URL(candidate, import.meta.url));
-    if (existsSync10(path + file)) return path;
+    if (existsSync9(path + file)) return path;
   }
   throw new Error(`Checkmate UI files are missing: ${file} not found in ${candidates.join(", ")}`);
 }
@@ -40315,24 +40317,20 @@ import { constants as constants2 } from "node:sqlite";
 
 // plugin/src/build.ts
 import { createHash as createHash2 } from "node:crypto";
-import { existsSync as existsSync11, readdirSync as readdirSync3, readFileSync as readFileSync13, realpathSync as realpathSync8, statSync as statSync6 } from "node:fs";
+import { existsSync as existsSync10, readdirSync as readdirSync3, readFileSync as readFileSync13, realpathSync as realpathSync8, statSync as statSync6 } from "node:fs";
 import { homedir as homedir3 } from "node:os";
 import { dirname as dirname3, isAbsolute as isAbsolute4, join as join19, resolve as resolve8, sep as sep4 } from "node:path";
 import { fileURLToPath as fileURLToPath3 } from "node:url";
-var instructionFolders = ["agents", "contracts", "references", "skills"];
-function pluginRootOf(bundle) {
-  const moduleRoot2 = dirname3(dirname3(bundle));
-  return existsSync11(join19(moduleRoot2, ".claude-plugin", "plugin.json")) ? moduleRoot2 : join19(moduleRoot2, "plugin");
-}
+var instructionFolders = ["agents", "contracts", "pi", "references", "skills"];
 function filesUnder(folder) {
-  if (!existsSync11(folder)) return [];
+  if (!existsSync10(folder)) return [];
   return readdirSync3(folder).sort().flatMap((name2) => {
     const path = join19(folder, name2);
     return statSync6(path).isDirectory() ? filesUnder(path) : [path];
   });
 }
 function buildDigest(bundle) {
-  const root = pluginRootOf(bundle);
+  const root = dirname3(dirname3(bundle));
   const hash = createHash2("sha256").update(readFileSync13(bundle));
   for (const folder of instructionFolders) {
     for (const path of filesUnder(join19(root, folder))) {
@@ -40351,7 +40349,7 @@ function versionLines(version3, bundle, env) {
     const other = buildDigest(resolved2);
     if (other !== digest2) {
       lines2.push(
-        `warning: the checkmate on PATH is build ${other} at ${resolved2}. This build is ${digest2}. Commands run by this session use ${running3}.`
+        hostSession(env) ? "warning: The Checkmate command on your system is a different build. This session uses its bundled build." : `warning: the checkmate on PATH is build ${other} at ${resolved2}. This build is ${digest2}. Commands run by this session use ${running3}.`
       );
     }
   }
@@ -40364,7 +40362,7 @@ function piDeclarations(env, cwd) {
     ["project", join19(cwd, ".pi", "settings.json")]
   ];
   return files2.flatMap(([scope, file]) => {
-    if (!existsSync11(file)) return [];
+    if (!existsSync10(file)) return [];
     let packages;
     try {
       packages = JSON.parse(readFileSync13(file, "utf8")).packages;
@@ -40377,13 +40375,13 @@ function piDeclarations(env, cwd) {
 }
 function packageRootOf(file) {
   let folder = dirname3(file);
-  while (!existsSync11(join19(folder, "package.json")) && dirname3(folder) !== folder) folder = dirname3(folder);
+  while (!existsSync10(join19(folder, "package.json")) && dirname3(folder) !== folder) folder = dirname3(folder);
   return folder;
 }
 function piCopyWarnings(bundle, env, cwd) {
   const root = packageRootOf(fileURLToPath3(bundle));
   return piDeclarations(env, cwd).filter(({ source }) => !(isAbsolute4(source) && (resolve8(source) + sep4).startsWith(root + sep4))).map(
-    ({ scope, source }) => `warning: Pi declares another Checkmate package at ${scope} scope: ${source}. This build runs from ${root}. Remove it with: pi remove ${source}${scope === "project" ? " -l" : ""}. A project package loads only after Pi approves the folder: start Pi with --approve, or approve the folder when Pi asks.`
+    ({ scope, source }) => hostSession(env) ? `warning: Pi declares another Checkmate package at ${scope} scope. Choose which installation to keep in Pi.` : `warning: Pi declares another Checkmate package at ${scope} scope: ${source}. This build runs from ${root}. Remove it with: pi remove ${source}${scope === "project" ? " -l" : ""}. A project package loads only after Pi approves the folder: start Pi with --approve, or approve the folder when Pi asks.`
   );
 }
 
@@ -42415,19 +42413,21 @@ function cell2(field4) {
   if (typeof field4 === "object") return JSON.stringify(field4);
   return String(field4).replace(/\\/g, "\\\\").replace(/\t/g, "\\t").replace(/\r/g, "\\r").replace(/\n/g, "\\n");
 }
-function compact(reply, printed) {
+function compact(reply, printed, host) {
   const facts3 = Object.entries(printed.facts ?? {}).filter(([, field4]) => field4 !== void 0).map(([key, field4]) => `${key}=${cell2(field4)}`);
   const warnings = reply.data.warnings ?? [];
   return [
     [reply.status, reply.subject, ...reply.refusal ? [`refusal=${reply.refusal}`] : [], ...facts3].join(" "),
-    ...(printed.lines ?? []).map((line) => line.map(cell2).join("	")),
+    ...(printed.lines ?? []).map(
+      (line) => (host && line[0] === "next" ? ["agent-only next", ...line.slice(1)] : line).map(cell2).join("	")
+    ),
     ...warnings.map((warning) => `warning	${cell2(warning)}`),
     ...(reply.data.assumed ?? []).map((value2) => `assumed: ${cell2(value2)}`),
     ...reply.reasons.map((reason) => `reason: ${cell2(reason)}`),
-    ...reply.hint ? [`hint: ${cell2(reply.hint)}`] : []
+    ...reply.hint ? [`${host ? "agent-only hint" : "hint"}: ${cell2(reply.hint)}`] : []
   ].join("\n");
 }
-function format2(reply, json, print2) {
+function format2(reply, json, print2, host = false) {
   if (json)
     return JSON.stringify({
       status: reply.status,
@@ -42437,10 +42437,10 @@ function format2(reply, json, print2) {
       ...reply.hint ? { hint: reply.hint } : {},
       ...reply.data
     });
-  return compact(reply, print2 ? print2(reply) : {});
+  return compact(reply, print2 ? print2(reply) : {}, host);
 }
-function formatReply(name2, reply, json) {
-  return format2(reply, json, commands[name2]?.print);
+function formatReply(name2, reply, json, host) {
+  return format2(reply, json, commands[name2]?.print, host);
 }
 var globalFlags = { workspace: "value", json: "switch" };
 function commandName(argv) {
@@ -42600,6 +42600,7 @@ function readJson2(text2) {
 function run(argv, io) {
   if (argv[0] === "--version") return { code: 0, output: version() };
   const json = argv.includes("--json");
+  const host = hostSession(io.env);
   if (!argv.length || argv[0] === "--help" || argv[0] === "--json" && argv[1] === "--help") {
     const usage2 = help();
     return { code: 0, output: json ? format2(completed("checkmate", { usage: usage2 }), true) : usage2.join("\n") };
@@ -42618,7 +42619,7 @@ function run(argv, io) {
     name2 = commandName(argv);
     args = parse(name2, argv.slice(name2.split(" ").length));
   } catch (error) {
-    return { code: 1, output: format2(refused("invalid_request", name2, error), json) };
+    return { code: 1, output: format2(refused("invalid_request", name2, error), json, void 0, host) };
   }
   const command = commands[name2];
   const subject = command.positionals.length && name2 !== "query" ? String(args[positionalName(command.positionals[0])] ?? name2) : name2;
@@ -42639,10 +42640,10 @@ function run(argv, io) {
     const code2 = exitCodeOf(name2, args, reply);
     if (!json && typeof reply.data.content === "string")
       return { code: code2, output: reply.data.content.replace(/\n$/, "") };
-    return { code: code2, output: format2(reply, json, command.print) };
+    return { code: code2, output: format2(reply, json, command.print, host) };
   } catch (error) {
     const reply = isBusy(error) ? { status: "operational_error", subject, reasons: [error.message, busyReason], data: {} } : refused("rejected", subject, error);
-    return { code: 1, output: format2(reply, json) };
+    return { code: 1, output: format2(reply, json, void 0, host) };
   } finally {
     if (store) closeStore(store);
   }
@@ -42692,11 +42693,12 @@ function uiOptions(tokens, cwd) {
 }
 async function serveUi(tokens) {
   const json = tokens.includes("--json");
+  const host = hostSession(process.env);
   let options3;
   try {
     options3 = uiOptions(tokens, process.cwd());
   } catch (error) {
-    process.stdout.write(format2(refused("invalid_request", "ui", error), json) + "\n");
+    process.stdout.write(format2(refused("invalid_request", "ui", error), json, void 0, host) + "\n");
     process.exitCode = 1;
     return;
   }
@@ -42709,9 +42711,8 @@ async function serveUi(tokens) {
       if (options3.stop) return { stopped: Boolean(active) };
       if (active) {
         if (fromPi) return active;
-        throw new Error(
-          `The Checkmate UI already runs at ${active.url} Use checkmate ui --stop before starting it again.`
-        );
+        const reason = `The Checkmate UI already runs at ${active.url}`;
+        throw new Error(host ? reason : `${reason} Use checkmate ui --stop before starting it again.`);
       }
       const ui = await startUi({
         ...options3,
@@ -42736,7 +42737,7 @@ async function serveUi(tokens) {
     });
     process.stdout.write(format2(completed("ui", data), json, (reply) => ({ facts: reply.data })) + "\n");
   } catch (error) {
-    process.stdout.write(format2(refused("rejected", "ui", error), json) + "\n");
+    process.stdout.write(format2(refused("rejected", "ui", error), json, void 0, host) + "\n");
     process.exitCode = 1;
   }
 }
@@ -43182,7 +43183,10 @@ function prompt(stage, subject, workspace2, pluginRoot2, execution, timeoutSecon
   const instructions = harness === "pi" ? [
     "Follow the Checkmate stage instructions and workflow below before you start.",
     ...[skill, workflow].map(
-      (path) => readFileSync15(path, "utf8").replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, "").replaceAll('node "${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js"', () => cliCommand).replaceAll("${CLAUDE_PLUGIN_ROOT}", () => pluginRoot2).replaceAll("claude:", "pi:").trim()
+      (path) => readFileSync15(path, "utf8").replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, "").replaceAll(
+        'CHECKMATE_HOST_SESSION=1 node "${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js"',
+        () => cliCommand
+      ).replaceAll("${CLAUDE_PLUGIN_ROOT}", () => pluginRoot2).replaceAll("claude:", "pi:").trim()
     )
   ] : [
     `Use the checkmate:${stage} skill from the loaded plugin. If you cannot load it, read ${skill} and ${workflow} with the Read tool before you start.`
@@ -43889,7 +43893,7 @@ ${source.text}`)
 }
 
 // cli/src/main.ts
-import { existsSync as existsSync12, mkdirSync as mkdirSync11, openSync as openSync2, readFileSync as readFileSync16, rmSync as rmSync9, writeFileSync as writeFileSync7 } from "node:fs";
+import { existsSync as existsSync11, mkdirSync as mkdirSync11, openSync as openSync2, readFileSync as readFileSync16, rmSync as rmSync9, writeFileSync as writeFileSync7 } from "node:fs";
 import { spawn as spawn6, spawnSync as spawnSync9 } from "node:child_process";
 import { join as join22 } from "node:path";
 import { fileURLToPath as fileURLToPath4 } from "node:url";
@@ -43897,8 +43901,7 @@ var delegateUsage = "checkmate delegate <setup|plan|revise|execute> <targetId|pl
 var delegateSpecUsage = "checkmate delegate spec <planId@revision> [--timeout <seconds>]";
 var delegateHarnessUsage = "With Pi, omit --allow and --claude-arg. Claude requires --allow <rule> and accepts --claude-arg <arg>. CHECKMATE_HARNESS overrides the workspace harness. The default is Claude. delegate spec uses no tools and needs no --allow.";
 function version2() {
-  const plugin = new URL("../.claude-plugin/plugin.json", import.meta.url);
-  const manifest = existsSync12(plugin) ? plugin : new URL("../package.json", import.meta.url);
+  const manifest = join22(pluginRoot, ".claude-plugin", "plugin.json");
   return versionLines(
     JSON.parse(readFileSync16(manifest, "utf8")).version,
     import.meta.url,
@@ -43958,7 +43961,9 @@ function recorded(response, json) {
   const { operation, command, data, observedModels: observedModels2, costUsd, costPartial, usageWarning: usageWarning2, ...reply } = response;
   if (json)
     return JSON.stringify({ ...reply, ...data, operation, observedModels: observedModels2, costUsd, costPartial, usageWarning: usageWarning2 });
-  const [first, ...rest] = formatReply(command, { ...reply, data }, false).split("\n");
+  const [first, ...rest] = formatReply(command, { ...reply, data }, false, hostSession(process.env)).split(
+    "\n"
+  );
   return [[`${first} operation=${operation}`, ...usageFields(response)].join(" "), ...rest].join("\n");
 }
 function print(response, json) {
@@ -43971,7 +43976,7 @@ function print(response, json) {
       ...usageFields(response)
     ].join(" "),
     ...response.reasons.map((reason) => `reason: ${cell3(reason)}`),
-    ...response.hint ? [`hint: ${cell3(response.hint)}`] : []
+    ...response.hint ? [`${hostSession(process.env) ? "agent-only hint" : "hint"}: ${cell3(response.hint)}`] : []
   ].join("\n");
   const warning = !json && response.usageWarning ? `
 warning: ${cell3(response.usageWarning)}` : "";
@@ -44043,7 +44048,7 @@ function detachDelegate(tokens) {
   );
 }
 function delegateAlive(file) {
-  if (!existsSync12(file + ".pid") || !existsSync12(file + ".started")) return false;
+  if (!existsSync11(file + ".pid") || !existsSync11(file + ".started")) return false;
   const pid = Number(readFileSync16(file + ".pid", "utf8"));
   if (!Number.isInteger(pid) || pid <= 0) return false;
   try {
@@ -44065,9 +44070,9 @@ function waitDelegate(tokens) {
   const file = resultFile(workspace2, stage, subject);
   const limit = (seconds(parsed.values.timeout, "timeout") ?? 90) * 1e3;
   const until = Date.now() + limit;
-  while (!existsSync12(file) && Date.now() < until && delegateAlive(file))
+  while (!existsSync11(file) && Date.now() < until && delegateAlive(file))
     Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 500);
-  if (!existsSync12(file) && !delegateAlive(file)) {
+  if (!existsSync11(file) && !delegateAlive(file)) {
     rmSync9(file + ".started", { force: true });
     rmSync9(file + ".pid", { force: true });
     print(
@@ -44082,7 +44087,7 @@ function waitDelegate(tokens) {
     );
     return;
   }
-  if (!existsSync12(file)) {
+  if (!existsSync11(file)) {
     print(
       {
         status: "running",

@@ -5,7 +5,7 @@ description: Use first for any request to test, QA, check, verify, or retest a c
 
 > **Agent only:** This file contains repository or workflow instructions for coding agents.
 
-The plugin CLI is `${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js`. Run `checkmate <command>` as `node "${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js" <command>`. Write the absolute path. Do not write a shell variable in its place.
+The plugin CLI is `${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js`. Run `checkmate <command>` as `CHECKMATE_HOST_SESSION=1 node "${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js" <command>`. Write the absolute path. Do not write a shell variable in its place.
 
 You are the operator. You do not test. Checkmate gives you actions, and you carry them out with agents of this session. Checkmate writes the task of each agent. Do not write a task. Do not give an agent other instructions. Do not test yourself.
 
@@ -28,7 +28,7 @@ Where things are: the ticket, the sources, and the application notes are in the 
 
 When you need a decision from the person, the choices are few, and the `AskUserQuestion` tool is in your tool list, ask with that tool. Use one call with at most 4 questions and 2 to 4 options for each question. Put the recommended option first, and add "(Recommended)" to its label. Give each question a header of at most 12 characters. Give each option one line that says what happens. Do not add an "Other" option. The tool adds it.
 
-When the tool is not in your tool list, or your task came from an agent, a factory, or a script, do not use the tool. Write the question and its options in your reply as a short numbered list, or return `needs_decision` with the reason. An agent that is the oracle answers in text or with the CLI commands.
+When the tool is not in your tool list, or your task came from an agent, a factory, or a script, do not use the tool. Write the question and its options in your reply as a short numbered list, or return `needs_decision` with the reason. An agent that is the oracle can answer in text.
 
 For a value with no fixed choices, for example a URL or how to sign in, ask one short text question. Do not ask for a secret. Ask where it is kept.
 
@@ -42,7 +42,7 @@ Ask with the tool for:
 
 ## Refusals
 
-A refusal prints `reason:` and `hint:` lines. Run the command in the hint, with the values of your task. Do not read the source code or the plugin files to find the cause of a refusal. Do not choose `external` yourself to get past a refusal: use it only when the oracle says that a person or the factory resets the data outside Checkmate. Do not invent a reset command, for example `true`. Use the command that the oracle gave. When the oracle gave none, ask for it, or use `--reset external` when the data never changes or a person or the factory resets it outside Checkmate.
+A refusal prints `reason:` and `agent-only hint:` lines. Run the command in the hint, with the values of your task. Do not read the source code or the plugin files to find the cause of a refusal. Do not choose `external` yourself to get past a refusal: use it only when the oracle says that a person or the factory resets the data outside Checkmate. Do not invent a reset command, for example `true`. Use the command that the oracle gave. When the oracle gave none, ask for it, or use `--reset external` when the data never changes or a person or the factory resets it outside Checkmate.
 
 ## First run
 
@@ -57,7 +57,7 @@ Run `checkmate target list`. When it shows no target:
 
 ## Start
 
-0. Run `node "${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js" --version`. When it prints a `warning:` line, tell the person that line before the test starts. Continue the test.
+0. Run `checkmate --version`. When it prints a `warning:` line, tell the person that line before the test starts. Continue the test.
 1. Use the route under Route first. When the person named no plan and no plan is in flight, ask which one; do not make a plan name. When the person named no build, ask for the build before any run. For a new ticket with no plan, the plan ID is the ticket ID, for example `shop-12`, and you tell the person which one you used.
 2. Run one command. Use `--session` when you can start agents of this session. Leave out `--session` when the person says no subagents, or when you run in a factory or a script. Then follow the process steps under Loop:
 
@@ -68,8 +68,8 @@ Run `checkmate target list`. When it shows no target:
    - Add `--build`, `--objective`, `--target`, `--level smoke|normal|deep`, `--since <git ref>`, or `--until <git ref>` only when the person gives them.
    - When the application needs a login, add `--instructions "<how a tester signs in>"`. Do not write a secret value.
 
-3. When the command refuses, read the `reason:` lines and the `hint:` line. Correct the command and run it again.
-4. When the plan has no rules, the first `next` gives a `rules` action: the clerk derives the rules from the sources before the testers start.
+3. When the command refuses, read the `reason:` lines and the `agent-only hint:` line. Correct the command and run it again.
+4. When the plan has no rules, the clerk derives the rules from the sources before the testers start.
 5. A later build never needs a decision before the test. Start the test at once, also when the plan has no stored tests. Offer `harvest` only in the final report, as an option.
 
 ## Loop
@@ -80,7 +80,7 @@ Run `checkmate target list`. When it shows no target:
    - `message <name> <step> agent=<agent id> prompt="<prompt>"`: send the prompt exactly to that agent with the SendMessage tool. When you do not have SendMessage, load it with ToolSearch.
    - `wait`: an agent runs. Wait until it ends.
    - `finished`: go to Report.
-2. Carry out all the actions of one `next` in one message, so that the agents run at the same time. In the same message, run the command of the `hint:` line once: `checkmate explore started <explorationId> <names>`. It records that the agents run.
+2. Carry out all the actions of one `next` in one message, so that the agents run at the same time. In the same message, run the command of the `agent-only hint:` line once: `checkmate explore started <explorationId> <names>`. It records that the agents run.
 3. Tell the person in one line what runs, for example `3 testers study the change.`
 4. When an agent ends, find its tester and step. The description of the agent and the last line of its reply, for example `tester a2 study done`, name them. Use them, not the order of the results.
 5. Run `checkmate explore done <explorationId> <name> <step> --agent <agent id> --reply-line "<last line of the reply>" --activity "<what the agent did, in one line>"`. When the agent failed, or you cannot reach it, add `--failed "<reason>"`.
@@ -89,7 +89,7 @@ Run `checkmate target list`. When it shows no target:
 
 Before you ask the person anything in the middle of a run, record the pause: `checkmate explore pause <explorationId> --reason "<one line>"`. The next `next` or `done` clears it.
 
-When `done` refuses, read the `reason:` and `hint:` lines. Correct the command as the hint says, and continue. Do not stop to ask the person about a mistake in the agent IDs. `checkmate explore status <explorationId>` shows the agent ID of each tester.
+When `done` refuses, read the `reason:` and `agent-only hint:` lines. Correct the command as the hint says, and continue. Do not stop to ask the person about a mistake in the agent IDs. `checkmate explore status <explorationId>` shows the agent ID of each tester.
 
 When the person asks for another model, give it as the `model` parameter of the Agent tool.
 
@@ -97,15 +97,9 @@ When the person asks for another model, give it as the `model` parameter of the 
 
 1. Run `checkmate explore show <explorationId>` and `checkmate status <planId>`.
 2. When the reply of `test` had `run=<runId>`, run the stored tests of that run now: follow the execute skill, `/checkmate:execute <runId>`.
-3. Report to the person:
-   - A table of the claims: Claim, State, Severity, Title. Give the reason of an `unresolved` claim.
-   - A table of the open questions: Question ID, Question.
-   - The outcomes of the run, when there is one.
-   - Each `assumed:` line, so that the person can correct it.
-   - `Done:` one line. `Next:` the `next` lines of `status`, and who acts.
-   - The plan page of the review UI: `/checkmate:ui`.
+3. Report as `session.md` says. Lead with the outcome. Name relevant claims, run outcomes, and assumptions that need confirmation. Ask for any open decision in plain words and mention the relevant plan or run page in the review UI.
 
-When `next` gives `operational_error`, report the `reason:` and `hint:` lines.
+When `next` gives `operational_error`, explain why the test stopped and ask for any information you need to continue.
 
 ## Decisions of the oracle
 
@@ -134,4 +128,4 @@ Do not change a state. Do not remove a claim.
 
 To start the testers as processes, for example in CI, run `checkmate test <planId> --allow Read --allow Bash` without `--session`, and then `checkmate explore wait <explorationId> --timeout 540`. A shell command stops after about 10 minutes. When the reply is `interrupted`, the testers still run. Run the same wait command again until the reply is `completed` or `operational_error`. Do not wrap the command in `timeout`. It is not on macOS.
 
-When the wait reply is `completed`, run `checkmate status <planId>`. When it says `waitsOn=oracle`, stop. Report its open questions and the command that answers them. Do not wait again, search for files, or schedule a wakeup. The oracle decides, not you.
+When the wait reply is `completed`, run `checkmate status <planId>`. When it says `waitsOn=oracle`, stop. Report its open questions and where to answer them in the Checkmate review UI. Do not wait again, search for files, or schedule a wakeup. The oracle decides, not you.

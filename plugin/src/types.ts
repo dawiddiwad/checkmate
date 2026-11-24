@@ -1,3 +1,32 @@
+export type Actions = {
+	setup?: {
+		url: string
+		targetId?: string
+		instanceId?: string
+		operations?: Array<string>
+		environment?: string
+		build?: string
+		correct?: boolean
+		reset?: string
+		data?: 'environment' | 'isolation'
+		policy?: string
+		policyFile?: string
+		cleanup?: string
+		hookTimeout?: number
+		resetPerTest?: 'on' | 'off'
+	}
+	replace_instance?: {
+		targetId: string
+		instanceId: string
+		instance: {
+			entries: Record<string, string>
+			environment?: string
+			build?: string
+			references?: Array<string>
+		}
+	}
+}
+
 export type Finding = {
 	id: string
 	type: 'defect' | 'potential_issue'

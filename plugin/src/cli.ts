@@ -16,7 +16,6 @@ import {
 import {
 	addInstance,
 	entryPointKinds,
-	setupTarget,
 	instanceList,
 	openTarget,
 	retireInstance,
@@ -115,6 +114,7 @@ import { piCopyWarnings, versionLines } from './build.ts'
 import { storeExplorationFindings } from './findingsRun.ts'
 import { settleEnded } from './cleanups.ts'
 import { owedCleanups, settleCleanups } from './resets.ts'
+import { actionRecovery, performAction, type ActionName } from './actions.ts'
 
 type FlagKind = 'value' | 'list' | 'repeat' | 'switch' | readonly string[] | { min: number; max: number }
 type Args = Record<string, string | string[] | boolean>
@@ -127,6 +127,7 @@ type Context = {
 }
 type Printed = { facts?: Record<string, unknown>; lines?: unknown[][] }
 type Command = {
+	action?: ActionName
 	positionals: string[]
 	flags?: Record<string, FlagKind>
 	required?: string[]
@@ -596,6 +597,25 @@ const commands: Record<string, Command> = {
 				entry,
 			]),
 		}),
+	},
+	'target instance replace': {
+		action: 'replace_instance',
+		positionals: ['targetId', 'instanceId'],
+		flags: { entry: 'repeat', environment: 'value', reference: 'repeat', build: 'value' },
+		write: true,
+		stdin: true,
+		run: (store, args, context) =>
+			performAction(
+				store,
+				'replace_instance',
+				{
+					targetId: value(args, 'targetId'),
+					instanceId: value(args, 'instanceId'),
+					instance: instanceInput(args, context.stdin),
+				},
+				context
+			),
+		print: (reply) => ({ facts: { instance: reply.data.instanceId, replaced: reply.data.replaced } }),
 	},
 	'target instance retire': {
 		positionals: ['targetId', 'instanceId'],
@@ -1345,6 +1365,7 @@ const commands: Record<string, Command> = {
 		}),
 	},
 	setup: {
+		action: 'setup',
 		positionals: [],
 		flags: {
 			url: 'value',
@@ -1352,6 +1373,8 @@ const commands: Record<string, Command> = {
 			instance: 'value',
 			operations: 'list',
 			environment: 'value',
+			build: 'value',
+			correct: 'switch',
 			reset: 'value',
 			data: 'value',
 			policy: 'value',
@@ -1362,22 +1385,28 @@ const commands: Record<string, Command> = {
 		},
 		required: ['url'],
 		write: true,
-		run: (store, args, { actor, env }) =>
-			setupTarget(store, actor, {
-				url: value(args, 'url')!,
-				targetId: value(args, 'target'),
-				instanceId: value(args, 'instance'),
-				operations: list(args, 'operations'),
-				environment: value(args, 'environment'),
-				reset: value(args, 'reset'),
-				data: value(args, 'data'),
-				policy: value(args, 'policy'),
-				policyFile: value(args, 'policy-file'),
-				cleanup: value(args, 'cleanup'),
-				hookTimeout: integer(args, 'hook-timeout'),
-				resetPerTest: value(args, 'reset-per-test'),
-				env,
-			}),
+		run: (store, args, context) =>
+			performAction(
+				store,
+				'setup',
+				{
+					url: value(args, 'url')!,
+					targetId: value(args, 'target'),
+					instanceId: value(args, 'instance'),
+					operations: list(args, 'operations'),
+					environment: value(args, 'environment'),
+					build: value(args, 'build'),
+					correct: args.correct === true,
+					reset: value(args, 'reset'),
+					data: value(args, 'data'),
+					policy: value(args, 'policy'),
+					policyFile: value(args, 'policy-file'),
+					cleanup: value(args, 'cleanup'),
+					hookTimeout: integer(args, 'hook-timeout'),
+					resetPerTest: value(args, 'reset-per-test'),
+				},
+				context
+			),
 		print: (reply) => ({
 			facts: {
 				revision: reply.data.revision,
@@ -2550,7 +2579,9 @@ export function run(argv: string[], io: Io): Outcome {
 		name = commandName(argv)
 		args = parse(name, argv.slice(name.split(' ').length))
 	} catch (error) {
-		return { code: 1, output: format(refused('invalid_request', name, error), json, undefined, host) }
+		const reply = refused('invalid_request', name, error)
+		const action = commands[name]?.action
+		return { code: 1, output: format(action ? actionRecovery(action, reply) : reply, json, undefined, host) }
 	}
 	const command = commands[name]
 	const subject =
@@ -2564,13 +2595,14 @@ export function run(argv: string[], io: Io): Outcome {
 		store.via = requestOfEnv(io.env)
 		const actor = command.write ? (value(args, 'actor') ?? defaultActor(workspace, io.env)) : undefined
 		if (['run begin', 'explore start', 'test'].includes(name)) settleEnded(store)
-		const reply = command.run(store, args, {
+		let reply = command.run(store, args, {
 			actor,
 			stdin: () => readJson(io.stdin()),
 			text: io.stdin,
 			cwd: io.cwd,
 			env: io.env,
 		})
+		if (command.action) reply = actionRecovery(command.action, reply)
 		const code = exitCodeOf(name, args, reply)
 		if (!json && typeof reply.data.content === 'string')
 			return { code, output: reply.data.content.replace(/\n$/, '') }
@@ -2579,7 +2611,10 @@ export function run(argv: string[], io: Io): Outcome {
 		const reply: Reply = isBusy(error)
 			? { status: 'operational_error', subject, reasons: [(error as Error).message, busyReason], data: {} }
 			: refused('rejected', subject, error)
-		return { code: 1, output: format(reply, json, undefined, host) }
+		return {
+			code: 1,
+			output: format(command.action ? actionRecovery(command.action, reply) : reply, json, undefined, host),
+		}
 	} finally {
 		if (store) closeStore(store)
 	}

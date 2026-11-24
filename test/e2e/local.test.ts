@@ -3825,6 +3825,135 @@ test('Run a two-instance matrix and accept each latest result — one pass masks
 	)
 })
 
+test('Correct a target in the packed CLI and keep the original run pinned.', async (t) => {
+	const workspace = directory(t)
+	const app = await fixture()
+	t.after(() => app.close())
+	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle' }
+	const ok = async (...args: string[]) => {
+		const result = await command(workspace, env, ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	const plan = await inputCommand(
+		workspace,
+		env,
+		JSON.stringify({
+			objective: 'Check the catalog.',
+			requirements: [{ id: 'R1', text: 'The catalog opens.', source: 'Ticket' }],
+		}),
+		'plan',
+		'open',
+		'ticket',
+		'--target',
+		'shop@1'
+	)
+	assert.equal(plan.code, 1)
+	await ok('setup', '--url', app.baseUrl, '--target', 'shop', '--operations', 'read_catalog', '--build', 'b1')
+	const opened = await inputCommand(
+		workspace,
+		env,
+		JSON.stringify({
+			objective: 'Check the catalog.',
+			requirements: [{ id: 'R1', text: 'The catalog opens.', source: 'Ticket' }],
+		}),
+		'plan',
+		'open',
+		'ticket',
+		'--target',
+		'shop@1'
+	)
+	assert.equal(opened.code, 0, opened.output)
+	const saved = await inputCommand(
+		workspace,
+		env,
+		JSON.stringify({
+			tests: [
+				{
+					id: 'T1',
+					title: 'Read the catalog',
+					requirementIds: ['R1'],
+					capability: 'http',
+					operations: ['read_catalog'],
+					dependsOn: [],
+					preconditions: [],
+					action: 'GET /health.',
+					assertions: [
+						{
+							id: 'A1',
+							check: 'The response status is 200.',
+							checkKind: 'deterministic',
+							observe: 'HTTP status',
+							expected: '200',
+						},
+					],
+				},
+			],
+			gaps: [],
+		}),
+		'plan',
+		'save',
+		'ticket'
+	)
+	assert.equal(saved.code, 0, saved.output)
+	await ok('run', 'begin', 'old-run', 'ticket@1', '--build', 'b1')
+	const corrected = await ok(
+		'setup',
+		'--correct',
+		'--url',
+		app.baseUrl + '/health',
+		'--target',
+		'shop',
+		'--operations',
+		'read_health',
+		'--build',
+		'b2',
+		'--environment',
+		'staging'
+	)
+	assert.deepEqual(corrected.allowedOperations, ['read_health'])
+	assert.notEqual(corrected.instanceId, 'local')
+	const before = await ok('target', 'show', 'shop@1', '--instance', 'local')
+	assert.deepEqual(before.profile.allowedOperations, ['read_catalog'])
+	assert.equal(before.instance.entries.web, app.baseUrl)
+	assert.equal(before.instance.build, 'b1')
+	const rows = await ok('query', "SELECT target_revision, instance_id FROM runs WHERE run_id = 'old-run'")
+	assert.deepEqual(rows.rows, [{ target_revision: 1, instance_id: 'local' }])
+	const invalid = await inputCommand(
+		workspace,
+		env,
+		JSON.stringify({ entries: {}, build: 2 }),
+		'target',
+		'instance',
+		'replace',
+		'shop',
+		corrected.instanceId
+	)
+	assert.equal(invalid.code, 1)
+	assert.equal(invalid.body.nextAction.action, 'replace_instance')
+	assert.match(invalid.output, /build must be string/)
+	const replaced = await ok(
+		'target',
+		'instance',
+		'replace',
+		'shop',
+		corrected.instanceId,
+		'--entry',
+		'web=' + app.baseUrl
+	)
+	const replay = await ok(
+		'target',
+		'instance',
+		'replace',
+		'shop',
+		corrected.instanceId,
+		'--entry',
+		'web=' + app.baseUrl
+	)
+	assert.equal(replay.instanceId, replaced.instanceId)
+	assert.equal(replay.recorded, false)
+})
+
 test('Resume a structured run after a worker deadline — outcomes lost or gate bypassed.', async (t) => {
 	const workspace = directory(t)
 	const { cpSync } = await import('node:fs')

@@ -1,0 +1,100 @@
+{
+	"$schema": "http://json-schema.org/draft-07/schema#",
+	"$id": "actions.schema.json",
+	"type": "object",
+	"minProperties": 1,
+	"maxProperties": 1,
+	"additionalProperties": false,
+	"definitions": {
+		"text": {
+			"type": "string",
+			"minLength": 1,
+			"pattern": "\\S"
+		},
+		"id": {
+			"type": "string",
+			"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+		},
+		"url": {
+			"type": "string",
+			"format": "uri",
+			"pattern": "^https?://"
+		}
+	},
+	"properties": {
+		"setup": {
+			"description": "Set up a web target. Set correct to update its declared operations or replace the named instance when its values differ. Use the target and instance IDs returned in later actions.",
+			"type": "object",
+			"additionalProperties": false,
+			"required": ["url"],
+			"properties": {
+				"url": {
+					"$ref": "#/definitions/url"
+				},
+				"targetId": {
+					"$ref": "#/definitions/id"
+				},
+				"instanceId": {
+					"$ref": "#/definitions/id"
+				},
+				"operations": {
+					"type": "array",
+					"items": {
+						"$ref": "#/definitions/id"
+					},
+					"minItems": 1,
+					"uniqueItems": true
+				},
+				"environment": {
+					"$ref": "#/definitions/text"
+				},
+				"build": {
+					"$ref": "#/definitions/text"
+				},
+				"correct": {
+					"type": "boolean"
+				},
+				"reset": {
+					"$ref": "#/definitions/text"
+				},
+				"data": {
+					"enum": ["environment", "isolation"]
+				},
+				"policy": {
+					"$ref": "#/definitions/text"
+				},
+				"policyFile": {
+					"$ref": "#/definitions/text"
+				},
+				"cleanup": {
+					"$ref": "#/definitions/text"
+				},
+				"hookTimeout": {
+					"type": "integer",
+					"minimum": 1,
+					"maximum": 3600
+				},
+				"resetPerTest": {
+					"enum": ["on", "off"]
+				}
+			}
+		},
+		"replace_instance": {
+			"description": "Replace an instance with corrected entries, environment, references or build. Existing runs keep their original instance. Use the returned instance ID for new work.",
+			"type": "object",
+			"additionalProperties": false,
+			"required": ["targetId", "instanceId", "instance"],
+			"properties": {
+				"targetId": {
+					"$ref": "#/definitions/id"
+				},
+				"instanceId": {
+					"$ref": "#/definitions/id"
+				},
+				"instance": {
+					"$ref": "instance.schema.json"
+				}
+			}
+		}
+	}
+}

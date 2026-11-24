@@ -5,7 +5,7 @@ description: Set up a QA target, plan or run tests, and inspect evidence with Ch
 
 > **Agent only:** This file contains repository or workflow instructions for coding agents.
 
-Use the CLI in this package. Resolve `../../src/main.ts` from the directory of this skill. If that file is absent, use `../../dist/checkmate.js`. Run each command in the project workspace as `CHECKMATE_HARNESS=pi node "<absolute CLI path>" <command>`. Keep the provider, model, credentials, and tool policy in Pi. Run one Checkmate command per shell call. Do not pipe, chain, or filter its output with another tool. Read the output as printed, or add `--json`.
+Use the CLI in this package. Resolve `../../dist/checkmate.js` from the directory of this skill. If that file is absent, use `../../../plugin/dist/checkmate.js`. Run each command in the project workspace as `CHECKMATE_HARNESS=pi node "<absolute CLI path>" <command>`. Keep the provider, model, credentials, and tool policy in Pi. Run one Checkmate command per shell call. Do not pipe, chain, or filter its output with another tool. Read the output as printed, or add `--json`.
 
 1. Run `target list` and `plan list`. Use an existing plan only when the person names it or names its ticket. Use an existing target only when the person names it or it is the only target.
 2. For a new target, ask for the running URL. For a remote URL, confirm the environment and permitted operations. Run `setup --url <url>`. Give the confirmed `--environment` and `--operations` for production. Record only a reference for credentials. If setup says a data policy is needed, ask the person how the data is reset or isolated. Do not write a policy, a reset command, or a hook yourself.

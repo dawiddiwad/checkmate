@@ -35,4 +35,6 @@ The host owns the agent loop, authentication, credentials, context, tools, and p
 
 A Pi provider-only override uses the current saved model for that provider or the model that Pi selects within that provider. The launch choice stays in the record. Pi events give the observed model IDs and any reported costs. Each phase and chat turn keeps the costs of its own calls.
 
+Pi explorers with host tools start a fresh RPC session. RPC lets Checkmate report MCP sign-in failures and cancel interactive dialogs. The tool policy and the review UI permission hook still apply. A follow-up resumes the tester's session. The recorder, rules clerk, merger, and delegated stages use their own tool sets.
+
 The oracle owns scope, decisions, and release decisions. The factory owns application startup and fixes. Target content cannot authorize a change to the request or plan.

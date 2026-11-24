@@ -4,6 +4,7 @@ import type { ChildContext, ChildCall, Env } from './sessions.ts'
 import type { Charter, ExplorationEvent, OpenInput } from './explorations.ts'
 import type { TestLevel } from './levels.ts'
 import { explorationCost } from './costs.ts'
+import { hostSession } from './actor.ts'
 import { all, closeStore, completed, one, openStore, saveBlob, write } from './store.ts'
 import { Refusal, requireChoice, requireCondition, requireWellFormed } from './contracts.ts'
 import { addEvent, exploration, explorationEvents, insertExploration, workFolder } from './explorations.ts'
@@ -23,7 +24,15 @@ import {
 } from './journal.ts'
 import type { Harness } from './pi.ts'
 import { piErrorText, piModelArgs, piOverrideModelArgs, piSavedModelEnv, piStderr, selectedHarness } from './pi.ts'
-import { requireEffort, requireModel, testerEffortText, testerModelText, workspaceEnv } from './settings.ts'
+import {
+	requireEffort,
+	requireModel,
+	ruleTokens,
+	testerEffortText,
+	testerModelText,
+	testerRulesText,
+	workspaceEnv,
+} from './settings.ts'
 import type { ModelCatalog } from './model-catalog.ts'
 import { discoverModelCatalog, effortArgs, resolvedEffort } from './model-catalog.ts'
 import { defaultLevel, levelNames, storedLevel, testLevels } from './levels.ts'
@@ -94,6 +103,7 @@ export type StartInput = OpenInput & {
 	testerEfforts?: Record<string, string>
 	timeoutSeconds?: number
 	session?: boolean
+	inheritPiTools?: boolean
 }
 export type Launch = {
 	dataRules?: string[]
@@ -112,6 +122,7 @@ export type Launch = {
 	timeoutSeconds: number
 	pluginHidden: boolean
 	path?: 'session'
+	inheritPiTools?: boolean
 	browserFolder?: boolean
 }
 
@@ -203,6 +214,7 @@ export function launchPlan(
 		}
 	}
 	const harness = selectedHarness(env)
+	const inheritPiTools = harness === 'pi' && (input.inheritPiTools || hostSession(env) || !input.allow.length)
 	const names = explorerNames(explorers)
 	for (const [name, model] of testerModels) {
 		requireWellFormed(names.includes(name), `Unknown tester ${name} for this exploration.`)
@@ -230,7 +242,7 @@ export function launchPlan(
 	const model = selected ? savedModel : (host ?? (harness === 'pi' ? null : row.model))
 	const hiddenPlugin = harness === 'claude' ? installedPluginId(env) : null
 	requireWellFormed(
-		input.allow.length || (explorers === 0 && !row.verifier),
+		inheritPiTools || input.allow.length || (explorers === 0 && !row.verifier),
 		'Give the tool rules of the explorers and the verifier with --allow, for example --allow Read --allow Bash',
 		'The host owns the permissions. Without the review UI, an explorer cannot answer a permission prompt.'
 	)
@@ -254,6 +266,7 @@ export function launchPlan(
 			? { effort: savedEffort }
 			: {}),
 		allow: input.allow,
+		...(inheritPiTools ? { inheritPiTools } : {}),
 		studySeconds: row.studySeconds,
 		testSeconds,
 		timeoutSeconds:
@@ -427,6 +440,7 @@ export function startExploration(
 			preferSavedModel,
 			savedEffort
 		)
+		if (launch.inheritPiTools && !launch.allow.length) launch.allow = ruleTokens(testerRulesText(store, 'pi'))
 		addEvent(
 			store,
 			opened.explorationId,
@@ -595,7 +609,7 @@ async function watchedTurns<T>(
 	const watch = watchWork(store, actor, explorationId, explorer, initialTurn)
 	const turn = (tester: ChildContext, own: string[], prompt: string, name: string) => {
 		const hook = childHook(store.workspace, explorationId, explorer)
-		const context = { ...tester, deny: work.deny, hook, work: work.folder }
+		const context = { ...tester, deny: work.deny, hook, work: work.folder, inheritPiTools: launch.inheritPiTools }
 		return watchStray(store, actor, explorationId, explorer, name, () =>
 			launchChild(
 				executable,
@@ -694,6 +708,7 @@ async function launchExplorers(
 	const ended = await Promise.all(runs)
 	for (const { explorer, session, calls } of ended) {
 		const call = calls.find((item) => item.failure) ?? calls.at(-1)!
+		const warnings = [...new Set(calls.flatMap((item) => item.warnings ?? []))]
 		const hint = failureHint(launch, call, launch.testerModels?.[explorer])
 		if (launch.context.harness === 'pi' && call.failure)
 			console.error(`${explorationId}/${explorer} ${calls.length === 1 ? 'study' : 'test'}: ${call.failure[1]}`)
@@ -706,6 +721,7 @@ async function launchExplorers(
 				session,
 				...(call.failure ? { turn: calls.length === 1 ? 'study' : 'test', reason: call.failure[1] } : {}),
 				...(call.stderr ? { stderr: call.stderr } : {}),
+				...(warnings.length ? { warnings } : {}),
 				...(hint ? { hint } : {}),
 				...usageOf(calls),
 				...(durations.length ? { durationMs: durations.reduce((total, ms) => total + ms, 0) } : {}),
@@ -1143,7 +1159,9 @@ function retryCommand(store: Store, id: string, launch: Launch | undefined) {
 			command.push('--minutes', String(launch.testSeconds / 60))
 		for (const rule of launch.allow ?? []) command.push('--allow', rule)
 	}
-	const harness = launch ? `CHECKMATE_HARNESS=${launch.context?.harness ?? 'claude'} ` : ''
+	const harness = launch
+		? `CHECKMATE_HARNESS=${launch.context?.harness ?? 'claude'} ${launch.inheritPiTools ? 'CHECKMATE_HOST_SESSION=1 ' : ''}`
+		: ''
 	return (
 		harness +
 		command.map((word) => (/^[\w./:@-]+$/.test(word) ? word : `'${word.replaceAll("'", "'\\''")}'`)).join(' ')
@@ -1331,6 +1349,7 @@ export async function driveFollow(workspace: string, explorationId: string, env:
 					context: tester,
 					...(call.failure ? { reason: call.failure[1] } : {}),
 					...(call.stderr ? { stderr: call.stderr } : {}),
+					...(call.warnings ? { warnings: call.warnings } : {}),
 					...(hint ? { hint } : {}),
 					...usageOf([call]),
 				},
@@ -1743,8 +1762,10 @@ export function explorationStatus(store: Store, explorationId: string) {
 	const done = events.find((item) => item.step === 'done')
 	const followed = events.filter((item) => item.step === 'followed').at(-1)
 	const follow = followState(events)
+	const warnings = [...new Set(events.flatMap((item) => (item.detail.warnings ?? []) as string[]))]
 	return {
 		...explorationCost(events),
+		...(warnings.length ? { warnings } : {}),
 		explorationId: row.exploration_id,
 		planId: row.plan_id,
 		planRevision: row.plan_revision,

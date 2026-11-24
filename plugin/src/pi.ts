@@ -113,6 +113,10 @@ export type PiMessage = {
 export type PiEvent = {
 	type: string
 	id?: string
+	success?: boolean
+	error?: string
+	method?: string
+	data?: { commands?: Array<{ name?: string; source?: string; sourceInfo?: { path?: string } }> }
 	message?: PiMessage
 	messages?: PiMessage[]
 	willRetry?: boolean
@@ -317,9 +321,22 @@ export function piResult(output: string, error: string, status: number | null, s
 	let final: PiMessage | undefined
 	let latestError: PiMessage | undefined
 	const usage = piTurnUsage()
+	const warnings = new Set<string>()
 	for (const line of output.split('\n')) {
 		const event = piEvent(line)
 		if (event) usage.read(event)
+		const notification: unknown = event?.message
+		if (
+			event?.type === 'extension_ui_request' &&
+			event.method === 'notify' &&
+			typeof notification === 'string' &&
+			notification.startsWith('MCP servers need attention:\n')
+		) {
+			for (const line of notification.split('\n').slice(1)) {
+				const server = /^\s+([\w.-]+): needs sign-in$/.exec(line)?.[1]
+				if (server) warnings.add(`MCP server ${server} is unavailable because it needs sign-in.`)
+			}
+		}
 		if (event?.type === 'session' && typeof event.id === 'string') sessionId = event.id
 		if (event?.type === 'agent_start') {
 			final = undefined
@@ -368,6 +385,7 @@ export function piResult(output: string, error: string, status: number | null, s
 		: undefined
 	return {
 		failure,
+		...(warnings.size ? { warnings: [...warnings] } : {}),
 		...usage.finish(status !== 0 || Boolean(failure && final === undefined)),
 		...(tail.length ? { stderr: tail } : {}),
 		...(sessionId ? { sessionId } : {}),

@@ -200,7 +200,7 @@ Use this mode when the oracle can approve the ticket rules before the first buil
 
 Replace `shop-build-1` and `shop-build-2` in the commands below with the IDs that the factory assigns to each build.
 
-12. Explore the first build. The host owns tool permissions. For Pi, use its tool names with `--allow`:
+12. Explore the first build. The host owns tool permissions. Use `--allow` with Pi tool names to keep the factory exploration's tool list explicit. Without `--allow`, a Pi exploration uses the tools and MCP servers of the host for context:
 
     ```sh
     checkmate explore start "$PLAN" --build shop-build-1 --instance local --allow Read --allow Bash

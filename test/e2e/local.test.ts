@@ -214,6 +214,213 @@ test('Expose packaged Claude MCP tools by role and keep their workspace bound to
 	assert.equal(clean[clean.indexOf('--disallowedTools') + 1], 'mcp__plugin_checkmate_actions__*')
 })
 
+test('An unattended Pi explorer uses host MCP tools and reports a server that needs sign-in.', async (t) => {
+	const workspace = directory(t)
+	const home = directory(t)
+	const agent = join(home, 'agent')
+	mkdirSync(agent)
+	mkdirSync(join(workspace, '.checkmate'))
+	writeFileSync(
+		join(workspace, '.checkmate/checkmate.db'),
+		gunzipSync(readFileSync(join(root, 'test/e2e/fixtures/workspace-migrated.db.gz')))
+	)
+	writeFileSync(join(workspace, 'AGENTS.md'), 'CONTEXT_FILE_SENTINEL\n')
+	const requests: { messages: string; tools: string[] }[] = []
+	const methods: string[] = []
+	const permissions: string[] = []
+	let signInChallenges = 0
+	const tool = 'mcp__fixture__read_context'
+	const marker = 'Read-only ticket context from the host fixture.'
+	const provider = createServer(async (req, res) => {
+		if (req.url === '/private') {
+			signInChallenges++
+			res.writeHead(401, { 'www-authenticate': 'Bearer realm="fixture"' }).end()
+			return
+		}
+		if (req.url === '/health') {
+			res.writeHead(200).end('ready')
+			return
+		}
+		if (req.method !== 'POST') {
+			res.writeHead(405).end()
+			return
+		}
+		let input = ''
+		for await (const chunk of req) input += chunk
+		const body = JSON.parse(input)
+		if (req.url?.startsWith('/hooks/')) {
+			if (body.hook_event_name === 'PermissionRequest') permissions.push(body.tool_name)
+			res.writeHead(200, { 'content-type': 'application/json' }).end(
+				JSON.stringify({ hookSpecificOutput: { decision: { behavior: 'allow' } } })
+			)
+			return
+		}
+		if (req.url === '/mcp') {
+			methods.push(body.method)
+			const result =
+				body.method === 'initialize'
+					? {
+							protocolVersion: body.params.protocolVersion,
+							serverInfo: { name: 'fixture', version: '1' },
+							capabilities: { tools: {} },
+						}
+					: body.method === 'tools/list'
+						? {
+								tools: [
+									{
+										name: 'read_context',
+										description: 'Read ticket context.',
+										inputSchema: { type: 'object' },
+									},
+								],
+							}
+						: { content: [{ type: 'text', text: marker }] }
+			if (body.id === undefined) res.writeHead(202).end()
+			else
+				res.writeHead(200, { 'content-type': 'application/json' }).end(
+					JSON.stringify({ jsonrpc: '2.0', id: body.id, result })
+				)
+			return
+		}
+		const messages = JSON.stringify(body.messages)
+		const tools = (body.tools ?? []).map((entry: { function: { name: string } }) => entry.function.name)
+		requests.push({ messages, tools })
+		const user = JSON.stringify(body.messages.findLast((item: { role: string }) => item.role === 'user'))
+		const study = user.includes('A change of the application is ready for test')
+		const action = !study
+			? undefined
+			: tools.includes(tool) && !messages.includes(marker)
+				? { id: 'fixture-read', name: tool, arguments: '{}' }
+				: !messages.includes('fixture-write')
+					? {
+							id: 'fixture-write',
+							name: 'write',
+							arguments: JSON.stringify({ path: 'outside.txt', content: marker }),
+						}
+					: undefined
+		const delta = action
+			? {
+					tool_calls: [
+						{
+							index: 0,
+							id: action.id,
+							type: 'function',
+							function: { name: action.name, arguments: action.arguments },
+						},
+					],
+				}
+			: { content: user.includes('Now test the change') || study ? 'Finished the fixture turn.' : '[]' }
+		res.writeHead(200, { 'content-type': 'text/event-stream' })
+		for (const choice of [
+			{ delta: { role: 'assistant', ...delta }, finish_reason: null },
+			{ delta: {}, finish_reason: action ? 'tool_calls' : 'stop' },
+		])
+			res.write(
+				`data: ${JSON.stringify({ id: 'fixture', object: 'chat.completion.chunk', model: 'fixture', choices: [{ index: 0, ...choice }] })}\n\n`
+			)
+		res.end('data: [DONE]\n\n')
+	})
+	provider.listen(0, '127.0.0.1')
+	await once(provider, 'listening')
+	t.after(() => {
+		provider.closeAllConnections()
+		provider.close()
+	})
+	const url = `http://127.0.0.1:${(provider.address() as AddressInfo).port}`
+	writeFileSync(
+		join(workspace, '.checkmate/ui.json'),
+		JSON.stringify({ port: (provider.address() as AddressInfo).port, pid: process.pid, hookToken: '1'.repeat(64) })
+	)
+	writeFileSync(
+		join(agent, 'models.json'),
+		JSON.stringify({
+			providers: {
+				localfixture: {
+					baseUrl: `${url}/v1`,
+					api: 'openai-completions',
+					apiKey: 'fixture',
+					models: [{ id: 'fixture' }],
+				},
+			},
+		})
+	)
+	writeFileSync(
+		join(agent, 'mcp.json'),
+		JSON.stringify({
+			mcpServers: {
+				fixture: { url: `${url}/mcp`, exposure: 'direct' },
+				private: { url: `${url}/private`, exposure: 'direct' },
+			},
+		})
+	)
+	writeFileSync(
+		join(agent, 'settings.json'),
+		JSON.stringify({ packages: [join(project, 'node_modules/@xoxoai/checkmate')] })
+	)
+	const env = {
+		PATH: process.env.PATH,
+		HOME: home,
+		PI_CODING_AGENT_DIR: agent,
+		PI_OFFLINE: '1',
+		PI_TELEMETRY: '0',
+		CHECKMATE_HARNESS: 'pi',
+		CHECKMATE_PI_PROVIDER: 'localfixture',
+		CHECKMATE_PI_MODEL: 'fixture',
+		CHECKMATE_ACTOR: 'oracle',
+	}
+	const instance = await command(
+		workspace,
+		env,
+		'target',
+		'instance',
+		'add',
+		'shop',
+		'local',
+		'--entry',
+		`web=${url}/health`
+	)
+	assert.equal(instance.code, 0, instance.output)
+	const start = await command(
+		workspace,
+		env,
+		'explore',
+		'start',
+		'ticket',
+		'--build',
+		'fixture-build',
+		'--level',
+		'smoke',
+		'--timeout',
+		'60'
+	)
+	assert.equal(start.code, 0, start.output)
+	const status = await command(workspace, env, 'explore', 'wait', start.body.explorationId, '--timeout', '30')
+	assert.equal(status.body.explorers[0].ended, 'completed', status.output)
+	const explorer = requests.find(({ messages }) => messages.includes('A change of the application is ready for test'))
+	assert(explorer, status.output)
+	assert(explorer.tools.includes(tool), JSON.stringify(explorer.tools))
+	assert(!explorer.tools.some((name) => name.startsWith('checkmate_')))
+	assert.doesNotMatch(explorer.messages, /CONTEXT_FILE_SENTINEL/)
+	assert.match(explorer.messages, /only to gather context/)
+	assert(methods.includes('tools/list'))
+	assert(methods.includes('tools/call'))
+	assert.deepEqual(permissions, [tool])
+	assert(requests.some(({ messages }) => messages.includes(marker)))
+	assert(
+		requests.some(({ messages }) =>
+			messages.includes('This operation is outside the work of this Checkmate session.')
+		)
+	)
+	assert.equal(existsSync(join(workspace, 'outside.txt')), false)
+	assert(signInChallenges > 0)
+	assert.deepEqual(status.body.warnings, ['MCP server private is unavailable because it needs sign-in.'])
+	t.diagnostic(`Pi tester inventory offered ${tool}.`)
+	t.diagnostic(`MCP requests: ${methods.join(', ')}.`)
+	t.diagnostic(`Review UI permission request approved for ${permissions[0]}.`)
+	t.diagnostic(`Tool result returned to the tester: ${marker}`)
+	t.diagnostic(status.body.warnings[0])
+})
+
 test('Delegate plan, apply an answer immediately, and record stored checks only from the assigned tester.', async (t) => {
 	const workspace = directory(t)
 	const app = await fixture()

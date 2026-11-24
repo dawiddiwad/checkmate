@@ -1252,6 +1252,7 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 					mode: autoMode(store, planId),
 					allow: ruleTokens(form.get('rules') ?? ''),
 					claudeArgs: [],
+					inheritPiTools: true,
 					testerModels: testerChoicesFrom(form, 'testerModel'),
 					testerEfforts: testerChoicesFrom(form, 'testerEffort'),
 				},

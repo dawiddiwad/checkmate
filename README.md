@@ -23,13 +23,21 @@ The Human review UI shows what waits for you: the evidence, findings and gaps. Y
 - Checkmate starts the planner and the testers through Claude Code or Pi. It does not change code or start the app.
 - Everything is kept in one SQLite file: `.checkmate/checkmate.db`.
 
-## Current limitations
+## Core Idea
 
 This is work in progress. I'm just exploring how far my real enterprise agentic QA workflows could be generalized. The biggest challenge is keeping the setup simple and abstract enough without sacrificing potential.
 
-**The Core Idea**
+QA sits at the center of the agentic dev lifecycle and indirectly drives each iteration through contracts, policies and a system of record, instead of being an afterthought at the end.
 
-QA sits at the center of the agentic dev lifecycle and indirectly drives each iteration through contracts, policies and a system of record, instead of being an afterthought at the end. Early evidence shows that it helps the agentic loops to self-align better with true intent. It is inspired by TDD/BDD concepts applied with a twist specific to the agentic era.
+<img src="docs/img/core-idea-hub.png" width="420" alt="Two diagrams. Conventional agentic development is a line: intent, planning, coding, testing, with a loop from testing back to coding to fix failures. Checkmate-enabled development puts Checkmate in the centre, holding contracts, policies, evidence, decisions and the system of record. Human intent flows to the oracle, and the oracle connects to Checkmate. The planner and the QA agents connect to Checkmate on its sides. The factory connects below it, and its builds go to the QA agents.">
+
+Early evidence shows that it helps the agentic loops to self-align better with true intent.
+
+<img src="docs/img/core-idea-control-loop.png" width="420" alt="A closed-loop control analogy. Intent is the reference value. The factory is the controller. The software is the actual state. Checkmate and QA measure the divergence from evidence, failures and coverage, and feed it back to the controller. The oracle can clarify the reference. It is a conceptual analogy, not a formal model of Checkmate.">
+
+It is inspired by TDD/BDD concepts applied with a twist specific to the agentic era.
+
+<img src="docs/img/core-idea-tdd-loop.png" width="420" alt="Two feedback loops. The traditional TDD loop goes red (a failing test), green (implementation), refactor (improve code), and back to red. Checkmate's broader loop goes: express intent as requirements, question intent for gaps and ambiguities, establish a contract with the oracle and planner, implement in the factory, observe reality with QA and evidence, and reconcile whether it is a defect or an intent gap. Reconcile feeds back into the contract. Validated behavior is accepted and promoted.">
 
 Front-loading QA like this has clear benefits:
 
@@ -37,7 +45,7 @@ Front-loading QA like this has clear benefits:
 - **Sharpens requirements, reduces friction:** Planned features often become simpler - or some even turn out to be redundant - keeping the intent that matters.
 - **Lowers delivery costs:** Teams stay focused on real business needs and waste less time on late-stage or post-release fixes.
 
-**Current Constraints**
+## Limitations
 
 - **Sub-agents don't inherit host tools:** Explorers and testers cannot access your host's integrations (such as a Jira MCP server). In the plugin, testers are limited to `Read`, `Write`, `Edit`, `Bash`, `Glob`, and `Grep`. In the CLI, explorers only get the tools you explicitly pass via `--allow` and cannot ask for more.
 - **Plan first, unless you accept the above limitations:** Because of those tool limits, start by running the **planner**. It runs directly in your host environment, so it can read Jira tickets and other external sources before handing tasks off to explorers and testers.

@@ -19,6 +19,29 @@
 			"type": "string",
 			"format": "uri",
 			"pattern": "^https?://"
+		},
+		"evidence": {
+			"type": "array",
+			"items": {
+				"anyOf": [
+					{
+						"$ref": "#/definitions/text"
+					},
+					{
+						"type": "object",
+						"additionalProperties": false,
+						"required": ["text"],
+						"properties": {
+							"text": {
+								"type": "string"
+							},
+							"kind": {
+								"enum": ["observation", "http_exchange", "screenshot", "trace"]
+							}
+						}
+					}
+				]
+			}
 		}
 	},
 	"properties": {
@@ -95,6 +118,520 @@
 					"$ref": "instance.schema.json"
 				}
 			}
+		},
+		"list_targets": {
+			"description": "List configured targets and their active instances.",
+			"type": "object",
+			"additionalProperties": false,
+			"properties": {}
+		},
+		"show_target": {
+			"description": "Read a target profile and its instance entries. Use an instance ID from the current run or exploration.",
+			"type": "object",
+			"additionalProperties": false,
+			"properties": {
+				"reference": {
+					"$ref": "#/definitions/text"
+				},
+				"instance": {
+					"$ref": "#/definitions/text"
+				}
+			},
+			"required": ["reference"]
+		},
+		"open_plan": {
+			"description": "Register a test plan request. Use a target ID and omit planId to derive it from the first source.",
+			"type": "object",
+			"additionalProperties": false,
+			"properties": {
+				"target": {
+					"$ref": "#/definitions/text"
+				},
+				"planId": {
+					"type": "string",
+					"pattern": "^(?!stdin$)[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+				},
+				"request": {
+					"$ref": "plan-request.schema.json"
+				}
+			},
+			"required": ["target", "request"]
+		},
+		"read_plan_request": {
+			"description": "Read the plan objective, rules, sources, target capabilities, operations and tools.",
+			"type": "object",
+			"additionalProperties": false,
+			"properties": {
+				"planId": {
+					"$ref": "#/definitions/id"
+				}
+			},
+			"required": ["planId"]
+		},
+		"save_plan": {
+			"description": "Save the first plan candidate for the plan ID. Each deterministic assertion has an observed item and expected value.",
+			"type": "object",
+			"additionalProperties": false,
+			"properties": {
+				"planId": {
+					"$ref": "#/definitions/id"
+				},
+				"candidate": {
+					"$ref": "plan-candidate.schema.json"
+				}
+			},
+			"required": ["planId", "candidate"]
+		},
+		"edit_plan": {
+			"description": "Apply a focused patch or replace a candidate. Read the plan first and give the rationale.",
+			"type": "object",
+			"additionalProperties": false,
+			"properties": {
+				"reference": {
+					"$ref": "#/definitions/text"
+				},
+				"rationale": {
+					"$ref": "#/definitions/text"
+				},
+				"patch": {
+					"$ref": "plan-patch.schema.json"
+				},
+				"candidate": {
+					"$ref": "plan-candidate.schema.json"
+				},
+				"expectSha256": {
+					"$ref": "#/definitions/text"
+				}
+			},
+			"required": ["reference"],
+			"oneOf": [
+				{
+					"required": ["patch"]
+				},
+				{
+					"required": ["candidate"]
+				}
+			]
+		},
+		"read_pending": {
+			"description": "Read unanswered gaps, applied tests and oracle decisions waiting to be applied.",
+			"type": "object",
+			"additionalProperties": false,
+			"properties": {
+				"planId": {
+					"$ref": "#/definitions/id"
+				}
+			},
+			"required": ["planId"]
+		},
+		"revise_plan": {
+			"description": "Apply recorded oracle answers as a plan delta.",
+			"type": "object",
+			"additionalProperties": false,
+			"properties": {
+				"planId": {
+					"$ref": "#/definitions/id"
+				},
+				"delta": {
+					"$ref": "plan-delta.schema.json"
+				},
+				"expectSha256": {
+					"$ref": "#/definitions/text"
+				}
+			},
+			"required": ["planId", "delta"]
+		},
+		"answer_gap": {
+			"description": "Record an explicit oracle answer to the named gap.",
+			"type": "object",
+			"additionalProperties": false,
+			"properties": {
+				"planId": {
+					"$ref": "#/definitions/id"
+				},
+				"gapId": {
+					"$ref": "#/definitions/text"
+				},
+				"kind": {
+					"enum": ["clarify", "accept_assumption", "defer"]
+				},
+				"value": {
+					"$ref": "#/definitions/text"
+				},
+				"source": {
+					"$ref": "#/definitions/text"
+				},
+				"rationale": {
+					"$ref": "#/definitions/text"
+				},
+				"expectSha256": {
+					"$ref": "#/definitions/text"
+				}
+			},
+			"required": ["planId", "gapId", "kind", "value", "rationale"]
+		},
+		"start_test": {
+			"description": "Start exploration or select a stored run. Use a build that the person named. For a new exploratory plan, give its sources.",
+			"type": "object",
+			"additionalProperties": false,
+			"properties": {
+				"planId": {
+					"$ref": "#/definitions/id"
+				},
+				"build": {
+					"$ref": "#/definitions/text"
+				},
+				"mode": {
+					"enum": ["auto", "exploratory", "regression"]
+				},
+				"level": {
+					"enum": ["smoke", "normal", "deep"]
+				},
+				"explorers": {
+					"type": "integer",
+					"minimum": 1,
+					"maximum": 10
+				},
+				"minutes": {
+					"type": "integer",
+					"minimum": 1,
+					"maximum": 240
+				},
+				"instance": {
+					"$ref": "#/definitions/text"
+				},
+				"timeoutSeconds": {
+					"type": "integer",
+					"minimum": 60,
+					"maximum": 7200
+				},
+				"objective": {
+					"$ref": "#/definitions/text"
+				},
+				"target": {
+					"$ref": "#/definitions/text"
+				},
+				"sources": {
+					"type": "array",
+					"items": {
+						"$ref": "#/definitions/text"
+					}
+				},
+				"instructions": {
+					"$ref": "#/definitions/text"
+				},
+				"since": {
+					"$ref": "#/definitions/text"
+				},
+				"until": {
+					"$ref": "#/definitions/text"
+				},
+				"scope": {
+					"type": "array",
+					"items": {
+						"$ref": "#/definitions/text"
+					}
+				},
+				"url": {
+					"$ref": "#/definitions/url"
+				},
+				"reset": {
+					"$ref": "#/definitions/text"
+				},
+				"data": {
+					"enum": ["environment", "isolation"]
+				},
+				"policy": {
+					"$ref": "#/definitions/text"
+				},
+				"policyFile": {
+					"$ref": "#/definitions/text"
+				},
+				"cleanup": {
+					"$ref": "#/definitions/text"
+				},
+				"hookTimeout": {
+					"type": "integer",
+					"minimum": 1,
+					"maximum": 3600
+				},
+				"repo": {
+					"$ref": "#/definitions/text"
+				}
+			},
+			"required": ["planId"]
+		},
+		"test_status": {
+			"description": "Read an exploration state and, if requested, its findings and questions.",
+			"type": "object",
+			"additionalProperties": false,
+			"properties": {
+				"explorationId": {
+					"$ref": "#/definitions/id"
+				},
+				"report": {
+					"type": "boolean"
+				}
+			},
+			"required": ["explorationId"]
+		},
+		"begin_run": {
+			"description": "Begin stored tests on the named build and instance. Include retestOf only for a build that fixes an earlier defect.",
+			"type": "object",
+			"additionalProperties": false,
+			"properties": {
+				"runId": {
+					"$ref": "#/definitions/id"
+				},
+				"reference": {
+					"$ref": "#/definitions/text"
+				},
+				"build": {
+					"$ref": "#/definitions/text"
+				},
+				"instance": {
+					"$ref": "#/definitions/text"
+				},
+				"tests": {
+					"type": "array",
+					"items": {
+						"$ref": "#/definitions/id"
+					}
+				},
+				"partial": {
+					"enum": ["ready_only", "wait_for_resolution"]
+				},
+				"onNewBlocker": {
+					"enum": ["continue_independent", "return_to_oracle"]
+				},
+				"timeoutSeconds": {
+					"type": "integer",
+					"minimum": 1,
+					"maximum": 3600
+				},
+				"retestOf": {
+					"$ref": "#/definitions/id"
+				}
+			},
+			"required": ["runId", "reference", "build"]
+		},
+		"read_run": {
+			"description": "Read the selected tests, outcomes, instance and time remaining for a stored run.",
+			"type": "object",
+			"additionalProperties": false,
+			"properties": {
+				"runId": {
+					"$ref": "#/definitions/id"
+				},
+				"tests": {
+					"type": "array",
+					"items": {
+						"$ref": "#/definitions/id"
+					}
+				},
+				"gate": {
+					"type": "boolean"
+				}
+			},
+			"required": ["runId"]
+		},
+		"record_check": {
+			"description": "Record the literal observed value or absence and evidence. For structured checks, code decides the result.",
+			"type": "object",
+			"additionalProperties": false,
+			"properties": {
+				"runId": {
+					"$ref": "#/definitions/id"
+				},
+				"testId": {
+					"$ref": "#/definitions/id"
+				},
+				"assertionId": {
+					"$ref": "#/definitions/id"
+				},
+				"result": {
+					"enum": ["passed", "failed", "inconclusive", "not_checked"]
+				},
+				"observed": {
+					"$ref": "#/definitions/text"
+				},
+				"absent": {
+					"type": "boolean"
+				},
+				"request": {
+					"$ref": "#/definitions/text"
+				},
+				"reason": {
+					"$ref": "#/definitions/text"
+				},
+				"evidence": {
+					"$ref": "#/definitions/evidence"
+				}
+			},
+			"required": ["runId", "testId", "assertionId"],
+			"not": {
+				"required": ["observed", "absent"],
+				"properties": {
+					"absent": {
+						"const": true
+					}
+				}
+			}
+		},
+		"close_test": {
+			"description": "Close a stored test once its assertions are recorded or a blocker or tool failure is documented.",
+			"type": "object",
+			"additionalProperties": false,
+			"properties": {
+				"runId": {
+					"$ref": "#/definitions/id"
+				},
+				"testId": {
+					"$ref": "#/definitions/id"
+				},
+				"outcome": {
+					"enum": ["blocked", "not_run", "error"]
+				},
+				"cause": {
+					"enum": ["deadline"]
+				},
+				"reason": {
+					"$ref": "#/definitions/text"
+				},
+				"evidence": {
+					"$ref": "#/definitions/evidence"
+				}
+			},
+			"required": ["runId", "testId"]
+		},
+		"record_finding": {
+			"description": "Record a defect or potential issue with the assertion and evidence IDs, where applicable.",
+			"type": "object",
+			"additionalProperties": false,
+			"properties": {
+				"runId": {
+					"$ref": "#/definitions/id"
+				},
+				"finding": {
+					"$ref": "finding.schema.json"
+				}
+			},
+			"required": ["runId", "finding"]
+		},
+		"record_gap": {
+			"description": "Record a question from execution that blocks or limits a check.",
+			"type": "object",
+			"additionalProperties": false,
+			"properties": {
+				"runId": {
+					"$ref": "#/definitions/id"
+				},
+				"gap": {
+					"$ref": "gap.schema.json"
+				}
+			},
+			"required": ["runId", "gap"]
+		},
+		"finish_run": {
+			"description": "Finish a stored run after closing selected tests and recording cleanup.",
+			"type": "object",
+			"additionalProperties": false,
+			"properties": {
+				"runId": {
+					"$ref": "#/definitions/id"
+				},
+				"completion": {
+					"enum": ["completed", "interrupted", "operational_error"]
+				},
+				"cause": {
+					"enum": ["deadline", "host_stopped", "tool_unavailable"]
+				},
+				"reason": {
+					"$ref": "#/definitions/text"
+				},
+				"cleanup": {
+					"enum": ["completed", "failed", "not_applicable"]
+				},
+				"cleanupReason": {
+					"$ref": "#/definitions/text"
+				}
+			},
+			"required": ["runId", "completion", "cleanup", "cleanupReason"]
+		},
+		"status": {
+			"description": "Read a plan status, gaps, results, and the person who acts next.",
+			"type": "object",
+			"additionalProperties": false,
+			"properties": {
+				"planId": {
+					"$ref": "#/definitions/id"
+				}
+			},
+			"required": ["planId"]
+		},
+		"inbox": {
+			"description": "Read the oracle inbox for gaps, plans, claims and results.",
+			"type": "object",
+			"additionalProperties": false,
+			"properties": {}
+		},
+		"next_tester_steps": {
+			"description": "Read the tasks for the Oracle to dispatch to the session tester or clerk.",
+			"type": "object",
+			"additionalProperties": false,
+			"properties": {
+				"explorationId": {
+					"$ref": "#/definitions/id"
+				}
+			},
+			"required": ["explorationId"]
+		},
+		"tester_steps_started": {
+			"description": "Confirm which session tester or clerk tasks the host started.",
+			"type": "object",
+			"additionalProperties": false,
+			"properties": {
+				"explorationId": {
+					"$ref": "#/definitions/id"
+				},
+				"names": {
+					"type": "array",
+					"items": {
+						"$ref": "#/definitions/id"
+					},
+					"minItems": 1
+				}
+			},
+			"required": ["explorationId", "names"]
+		},
+		"tester_step_done": {
+			"description": "Record a completed session tester or clerk step after the host reports it finished.",
+			"type": "object",
+			"additionalProperties": false,
+			"properties": {
+				"explorationId": {
+					"$ref": "#/definitions/id"
+				},
+				"name": {
+					"$ref": "#/definitions/id"
+				},
+				"step": {
+					"enum": ["study", "test", "record", "follow", "rules", "merge", "verify"]
+				},
+				"agent": {
+					"$ref": "#/definitions/text"
+				},
+				"failed": {
+					"$ref": "#/definitions/text"
+				},
+				"activity": {
+					"$ref": "#/definitions/text"
+				},
+				"replyLine": {
+					"$ref": "#/definitions/text"
+				}
+			},
+			"required": ["explorationId", "name", "step"]
 		}
 	}
 }

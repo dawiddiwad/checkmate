@@ -36,6 +36,7 @@ function type(schema: Schema, file: string): string {
 	if (schema.type === 'array') return `Array<${type(schema.items!, file)}>`
 	if (schema.type === 'object' && !schema.properties)
 		return `Record<string, ${type(schema.additionalProperties as Schema, file)}>`
+	if (schema.type === 'object' && !Object.keys(schema.properties!).length) return 'Record<string, never>'
 	if (schema.type === 'object')
 		return `{\n${Object.entries(schema.properties!)
 			.map(

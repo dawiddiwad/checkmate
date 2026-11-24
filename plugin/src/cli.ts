@@ -20,22 +20,15 @@ import {
 	openTarget,
 	retireInstance,
 	saveTarget,
-	showTarget,
 	showTargetRequest,
 	targetList,
 } from './targets.ts'
 import {
 	adoptGaps,
-	answerGap,
 	approvePlan,
 	diffPlan,
-	editPlan,
 	gate,
-	openPlan,
-	patchPlan,
 	rejectPlan,
-	revisePlan,
-	savePlan,
 	showPending,
 	showPlanRequest,
 	decisionKinds,
@@ -52,13 +45,7 @@ import {
 	interruptCauses,
 	newBlockerPolicies,
 	acceptResult,
-	beginRun,
 	beginPermanentRun,
-	checkAssertion,
-	closeTest,
-	finishRun,
-	recordFinding,
-	recordGap,
 	rejectResult,
 	resumeRun,
 } from './runs.ts'
@@ -73,7 +60,6 @@ import {
 	roles,
 	runDetail,
 	runList,
-	runGate,
 } from './views.ts'
 import { exportExploration, exportPlan, exportRun, explorationFormats, formats, runFormats } from './render.ts'
 import { startUi } from './ui/server.ts'
@@ -85,7 +71,6 @@ import type { Claim } from './journal.ts'
 import { decideClaim, handOffClaims, logEntries, planClaims, readEntries } from './journal.ts'
 import { defaultRecorderTimeout, recordSession } from './recorder.ts'
 import { checkClaudeArgs, liveUi, pluginRoot } from './sessions.ts'
-import { selectedHarness } from './pi.ts'
 import { workspaceEnv } from './settings.ts'
 import { decidePermission, explorationPermissions, permissionDecisions } from './permissions.ts'
 import { inputLine } from './ui/hooks.ts'
@@ -101,9 +86,9 @@ import {
 	stopExploration,
 	waitExploration,
 } from './explorers.ts'
-import { doneSteps, nextActions, pauseRun, stepDone, stepsStarted } from './agents.ts'
+import { doneSteps, pauseRun } from './agents.ts'
 import { levelNames, testLevels } from './levels.ts'
-import { runTest, testModes } from './modes.ts'
+import { testModes } from './modes.ts'
 import { harvestExploration } from './harvest.ts'
 import { planPromotions, promotePlan } from './promotion.ts'
 import { specFinding, specHandoff, specReview, specStatus } from './spec.ts'
@@ -349,9 +334,10 @@ const commands: Record<string, Command> = {
 		},
 	},
 	inbox: {
+		action: 'inbox',
 		positionals: [],
 		readOnly: true,
-		run: (store) => completed('inbox', inbox(store)),
+		run: (store, _args, context) => performAction(store, 'inbox', {}, context),
 		print: (reply) => {
 			const waiting = reply.data as ReturnType<typeof inbox>
 			return {
@@ -409,13 +395,11 @@ const commands: Record<string, Command> = {
 		},
 	},
 	status: {
+		action: 'status',
 		positionals: ['planId'],
 		flags: { 'fail-on-blocked': 'switch' },
 		readOnly: true,
-		run: (store, args, { env }) => {
-			const planId = value(args, 'planId')!
-			return completed(planId, planStatus(store, planId, selectedHarness(workspaceEnv(store, env))))
-		},
+		run: (store, args, context) => performAction(store, 'status', { planId: value(args, 'planId') }, context),
 		print: (reply) => {
 			const status = reply.data as ReturnType<typeof planStatus>
 			return {
@@ -523,9 +507,10 @@ const commands: Record<string, Command> = {
 		print: (reply) => ({ facts: { sha256: short(reply.data.sha256), recorded: reply.data.recorded } }),
 	},
 	'target list': {
+		action: 'list_targets',
 		positionals: [],
 		readOnly: true,
-		run: (store) => completed('targets', { targets: targetList(store) }),
+		run: (store, _args, context) => performAction(store, 'list_targets', {}, context),
 		print: (reply) => ({
 			facts: { count: (reply.data.targets as unknown[]).length },
 			lines: (reply.data.targets as ReturnType<typeof targetList>).map((target) => [
@@ -536,10 +521,17 @@ const commands: Record<string, Command> = {
 		}),
 	},
 	'target show': {
+		action: 'show_target',
 		positionals: ['reference'],
 		flags: { instance: 'value' },
 		readOnly: true,
-		run: (store, args) => showTarget(store, value(args, 'reference')!, value(args, 'instance')),
+		run: (store, args, context) =>
+			performAction(
+				store,
+				'show_target',
+				{ reference: value(args, 'reference'), instance: value(args, 'instance') },
+				context
+			),
 		print: (reply) => {
 			const profile = reply.data.profile as Profile
 			const approvals = reply.data.approvals as { plan: string; result: string }
@@ -657,17 +649,23 @@ const commands: Record<string, Command> = {
 		}),
 	},
 	'plan open': {
+		action: 'open_plan',
 		positionals: ['planId?'],
 		flags: { target: 'value', objective: 'value', source: 'repeat', instructions: 'value' },
 		required: ['target'],
 		write: true,
 		stdin: true,
-		run: (store, args, { actor, stdin }) =>
-			openPlan(store, actor, {
-				planId: value(args, 'planId'),
-				target: value(args, 'target')!,
-				request: planRequestInput(args, stdin),
-			}),
+		run: (store, args, context) =>
+			performAction(
+				store,
+				'open_plan',
+				{
+					planId: value(args, 'planId'),
+					target: value(args, 'target'),
+					request: planRequestInput(args, context.stdin),
+				},
+				context
+			),
 		print: (reply) => ({
 			facts: {
 				planId: reply.data.planId,
@@ -681,9 +679,11 @@ const commands: Record<string, Command> = {
 		}),
 	},
 	'plan request': {
+		action: 'read_plan_request',
 		positionals: ['planId'],
 		readOnly: true,
-		run: (store, args) => showPlanRequest(store, value(args, 'planId')!),
+		run: (store, args, context) =>
+			performAction(store, 'read_plan_request', { planId: value(args, 'planId') }, context),
 		print: (reply) => {
 			const data = reply.data as ReturnType<typeof showPlanRequest>['data'] & {
 				target: string
@@ -713,11 +713,12 @@ const commands: Record<string, Command> = {
 		},
 	},
 	'plan save': {
+		action: 'save_plan',
 		positionals: ['planId'],
 		write: true,
 		stdin: true,
-		run: (store, args, { actor, stdin }) =>
-			savePlan(store, actor, { planId: value(args, 'planId')!, candidate: stdin() }),
+		run: (store, args, context) =>
+			performAction(store, 'save_plan', { planId: value(args, 'planId'), candidate: context.stdin() }, context),
 		print: (reply) => ({ facts: { sha256: short(reply.data.sha256) } }),
 	},
 	'plan promote': {
@@ -834,20 +835,26 @@ const commands: Record<string, Command> = {
 		print: (reply) => ({ facts: { recorded: reply.data.recorded ?? true } }),
 	},
 	'gap answer': {
+		action: 'answer_gap',
 		positionals: ['planId', 'gapId'],
 		flags: { kind: decisionKinds, value: 'value', source: 'value', rationale: 'value', 'expect-sha': 'value' },
 		required: ['kind', 'value', 'rationale'],
 		write: true,
-		run: (store, args, { actor }) =>
-			answerGap(store, actor, {
-				planId: value(args, 'planId')!,
-				gapId: value(args, 'gapId')!,
-				kind: value(args, 'kind')!,
-				value: value(args, 'value')!,
-				source: value(args, 'source') ?? null,
-				rationale: value(args, 'rationale')!,
-				expectSha256: value(args, 'expect-sha'),
-			}),
+		run: (store, args, context) =>
+			performAction(
+				store,
+				'answer_gap',
+				{
+					planId: value(args, 'planId'),
+					gapId: value(args, 'gapId'),
+					kind: value(args, 'kind'),
+					value: value(args, 'value'),
+					source: value(args, 'source'),
+					rationale: value(args, 'rationale'),
+					expectSha256: value(args, 'expect-sha'),
+				},
+				context
+			),
 		print: (reply) => {
 			const adopted = reply.data.adopted as { runId: string; revision: number; edit: string } | undefined
 			return {
@@ -863,9 +870,10 @@ const commands: Record<string, Command> = {
 		},
 	},
 	'plan pending': {
+		action: 'read_pending',
 		positionals: ['planId'],
 		readOnly: true,
-		run: (store, args) => showPending(store, value(args, 'planId')!),
+		run: (store, args, context) => performAction(store, 'read_pending', { planId: value(args, 'planId') }, context),
 		print: (reply) => {
 			const data = reply.data as ReturnType<typeof showPending>['data'] & {
 				decisions: Plan['decisions']
@@ -889,31 +897,38 @@ const commands: Record<string, Command> = {
 		},
 	},
 	'plan revise': {
+		action: 'revise_plan',
 		positionals: ['planId'],
 		flags: { 'expect-sha': 'value' },
 		write: true,
 		stdin: true,
-		run: (store, args, { actor, stdin }) =>
-			revisePlan(store, actor, {
-				planId: value(args, 'planId')!,
-				delta: stdin(),
-				expectSha256: value(args, 'expect-sha'),
-			}),
+		run: (store, args, context) =>
+			performAction(
+				store,
+				'revise_plan',
+				{ planId: value(args, 'planId'), delta: context.stdin(), expectSha256: value(args, 'expect-sha') },
+				context
+			),
 		print: (reply) => ({ facts: { sha256: short(reply.data.sha256) } }),
 	},
 	'plan edit': {
+		action: 'edit_plan',
 		positionals: ['reference'],
 		flags: { patch: 'switch', 'expect-sha': 'value', rationale: 'value' },
 		write: true,
 		stdin: true,
-		run: (store, args, { actor, stdin }) => {
-			const reference = value(args, 'reference')!
-			const expectSha256 = value(args, 'expect-sha')
-			const rationale = value(args, 'rationale')
-			return args.patch
-				? patchPlan(store, actor, { reference, patch: stdin(), expectSha256, rationale })
-				: editPlan(store, actor, { reference, candidate: stdin(), expectSha256, rationale })
-		},
+		run: (store, args, context) =>
+			performAction(
+				store,
+				'edit_plan',
+				{
+					reference: value(args, 'reference'),
+					rationale: value(args, 'rationale'),
+					expectSha256: value(args, 'expect-sha'),
+					...(args.patch ? { patch: context.stdin() } : { candidate: context.stdin() }),
+				},
+				context
+			),
 		print: (reply) => ({
 			facts: { sha256: short(reply.data.sha256), edit: reply.data.edit, removed: reply.data.removed },
 		}),
@@ -959,6 +974,7 @@ const commands: Record<string, Command> = {
 		}),
 	},
 	'run begin': {
+		action: 'begin_run',
 		positionals: ['runId', 'reference'],
 		flags: {
 			tests: 'list',
@@ -971,18 +987,23 @@ const commands: Record<string, Command> = {
 		},
 		required: ['build'],
 		write: true,
-		run: (store, args, { actor }) =>
-			beginRun(store, actor, {
-				runId: value(args, 'runId')!,
-				reference: value(args, 'reference')!,
-				tests: list(args, 'tests'),
-				build: value(args, 'build')!,
-				instance: value(args, 'instance'),
-				partial: value(args, 'partial'),
-				onNewBlocker: value(args, 'on-new-blocker'),
-				timeoutSeconds: integer(args, 'timeout'),
-				retestOf: value(args, 'retest-of') ?? null,
-			}),
+		run: (store, args, context) =>
+			performAction(
+				store,
+				'begin_run',
+				{
+					runId: value(args, 'runId'),
+					reference: value(args, 'reference'),
+					build: value(args, 'build'),
+					instance: value(args, 'instance'),
+					partial: value(args, 'partial'),
+					tests: list(args, 'tests'),
+					onNewBlocker: value(args, 'on-new-blocker'),
+					timeoutSeconds: integer(args, 'timeout'),
+					retestOf: value(args, 'retest-of'),
+				},
+				context
+			),
 		print: (reply) => ({
 			facts: {
 				instance: reply.data.instanceId,
@@ -1026,6 +1047,7 @@ const commands: Record<string, Command> = {
 		}),
 	},
 	'run check': {
+		action: 'record_check',
 		positionals: ['runId', 'testId', 'assertionId'],
 		flags: {
 			result: assertionResults,
@@ -1038,56 +1060,71 @@ const commands: Record<string, Command> = {
 		},
 		write: true,
 		run: (store, args, context) =>
-			checkAssertion(store, context.actor, {
-				runId: value(args, 'runId')!,
-				testId: value(args, 'testId')!,
-				assertionId: value(args, 'assertionId')!,
-				result: value(args, 'result'),
-				observed: observedValue(args),
-				absent: Boolean(args.absent),
-				request: value(args, 'request'),
-				reason: value(args, 'reason'),
-				evidence: evidence(args, context),
-			}),
+			performAction(
+				store,
+				'record_check',
+				{
+					runId: value(args, 'runId'),
+					testId: value(args, 'testId'),
+					assertionId: value(args, 'assertionId'),
+					result: value(args, 'result'),
+					request: value(args, 'request'),
+					reason: value(args, 'reason'),
+					observed: observedValue(args),
+					absent: Boolean(args['absent']),
+					evidence: evidence(args, context),
+				},
+				context
+			),
 		print: (reply) => ({
 			facts: { [`${reply.data.testId}.${reply.data.assertionId}`]: reply.data.result },
 			lines: (reply.data.evidenceIds as string[]).map((id) => [id, 'evidence']),
 		}),
 	},
 	'run close': {
+		action: 'close_test',
 		positionals: ['runId', 'testId'],
 		flags: { outcome: closeOutcomes, cause: closeCauses, reason: 'value', evidence: 'repeat' },
 		write: true,
 		run: (store, args, context) =>
-			closeTest(store, context.actor, {
-				runId: value(args, 'runId')!,
-				testId: value(args, 'testId')!,
-				outcome: value(args, 'outcome'),
-				cause: value(args, 'cause'),
-				reason: value(args, 'reason'),
-				evidence: evidence(args, context),
-			}),
+			performAction(
+				store,
+				'close_test',
+				{
+					runId: value(args, 'runId'),
+					testId: value(args, 'testId'),
+					outcome: value(args, 'outcome'),
+					cause: value(args, 'cause'),
+					reason: value(args, 'reason'),
+					evidence: evidence(args, context),
+				},
+				context
+			),
 		print: (reply) => ({
 			facts: { [String(reply.data.testId)]: reply.data.outcome },
 			lines: reply.data.reason ? [['reason', reply.data.reason]] : [],
 		}),
 	},
 	'run finding': {
+		action: 'record_finding',
 		positionals: ['runId'],
 		write: true,
 		stdin: true,
-		run: (store, args, { actor, stdin }) =>
-			recordFinding(store, actor, { runId: value(args, 'runId')!, finding: stdin() }),
+		run: (store, args, context) =>
+			performAction(store, 'record_finding', { runId: value(args, 'runId'), finding: context.stdin() }, context),
 		print: (reply) => ({ facts: { finding: reply.data.findingId, tests: reply.data.testIds } }),
 	},
 	'run gap': {
+		action: 'record_gap',
 		positionals: ['runId'],
 		write: true,
 		stdin: true,
-		run: (store, args, { actor, stdin }) => recordGap(store, actor, { runId: value(args, 'runId')!, gap: stdin() }),
+		run: (store, args, context) =>
+			performAction(store, 'record_gap', { runId: value(args, 'runId'), gap: context.stdin() }, context),
 		print: (reply) => ({ facts: { gap: reply.data.gapId } }),
 	},
 	'run finish': {
+		action: 'finish_run',
 		positionals: ['runId'],
 		flags: {
 			completion: completions,
@@ -1098,15 +1135,20 @@ const commands: Record<string, Command> = {
 		},
 		required: ['completion', 'cleanup', 'cleanup-reason'],
 		write: true,
-		run: (store, args, { actor }) =>
-			finishRun(store, actor, {
-				runId: value(args, 'runId')!,
-				completion: value(args, 'completion')!,
-				cause: value(args, 'cause'),
-				reason: value(args, 'reason'),
-				cleanup: value(args, 'cleanup')!,
-				cleanupReason: value(args, 'cleanup-reason')!,
-			}),
+		run: (store, args, context) =>
+			performAction(
+				store,
+				'finish_run',
+				{
+					runId: value(args, 'runId'),
+					completion: value(args, 'completion'),
+					cause: value(args, 'cause'),
+					reason: value(args, 'reason'),
+					cleanup: value(args, 'cleanup'),
+					cleanupReason: value(args, 'cleanup-reason'),
+				},
+				context
+			),
 		print: (reply) => ({
 			facts: { coverage: reply.data.coverage, sha256: short(reply.data.sha256) },
 			lines: Object.entries(reply.data.counts as Record<string, number>),
@@ -1154,22 +1196,17 @@ const commands: Record<string, Command> = {
 		},
 	},
 	'run show': {
+		action: 'read_run',
 		positionals: ['runId'],
 		flags: { tests: 'list', gate: 'switch' },
 		readOnly: true,
-		run: (store, args) => {
-			const detail = runDetail(store, value(args, 'runId')!)
-			const selected = list(args, 'tests')
-			for (const id of selected ?? [])
-				requireWellFormed(
-					detail.tests.some((test) => test.testId === id),
-					`Test ${id} is not selected in run ${detail.runId}`,
-					`Use one of: ${detail.tests.map((test) => test.testId).join(', ')}.`
-				)
-			const tests = detail.tests.filter((test) => !selected || selected.includes(test.testId))
-			const gate = args.gate ? runGate(store, detail.runId) : undefined
-			return completed(detail.runId, { ...detail, tests, ...(gate ? { gate } : {}) })
-		},
+		run: (store, args, context) =>
+			performAction(
+				store,
+				'read_run',
+				{ runId: value(args, 'runId'), tests: list(args, 'tests'), gate: Boolean(args['gate']) },
+				context
+			),
 		print: (reply) => {
 			const detail = reply.data as ReturnType<typeof runDetail>
 			return {
@@ -1420,6 +1457,7 @@ const commands: Record<string, Command> = {
 		}),
 	},
 	test: {
+		action: 'start_test',
 		positionals: ['planId'],
 		flags: {
 			build: 'value',
@@ -1449,39 +1487,43 @@ const commands: Record<string, Command> = {
 			session: 'switch',
 		},
 		write: true,
-		run: (store, args, { actor, env }) =>
-			runTest(
+		run: (store, args, context) =>
+			performAction(
 				store,
-				actor,
+				'start_test',
 				{
-					planId: value(args, 'planId')!,
+					planId: value(args, 'planId'),
 					build: value(args, 'build'),
 					mode: value(args, 'mode'),
 					level: value(args, 'level'),
-					explorers: integer(args, 'explorers'),
-					minutes: integer(args, 'minutes'),
 					instance: value(args, 'instance'),
-					allow: list(args, 'allow') ?? [],
-					claudeArgs: list(args, 'claude-arg') ?? [],
-					timeoutSeconds: integer(args, 'timeout'),
 					objective: value(args, 'objective'),
 					target: value(args, 'target'),
-					sources: list(args, 'source'),
 					instructions: value(args, 'instructions'),
 					since: value(args, 'since'),
 					until: value(args, 'until'),
-					scope: list(args, 'scope'),
 					url: value(args, 'url'),
 					reset: value(args, 'reset'),
 					data: value(args, 'data'),
 					policy: value(args, 'policy'),
-					policyFile: value(args, 'policy-file'),
 					cleanup: value(args, 'cleanup'),
-					hookTimeout: integer(args, 'hook-timeout'),
 					repo: value(args, 'repo'),
-					session: args.session === true,
+					explorers: integer(args, 'explorers'),
+					minutes: integer(args, 'minutes'),
+					timeoutSeconds: integer(args, 'timeout'),
+					sources: list(args, 'source'),
+					scope: list(args, 'scope'),
+					policyFile: value(args, 'policy-file'),
+					hookTimeout: integer(args, 'hook-timeout'),
 				},
-				env
+				{
+					...context,
+					launch: {
+						allow: list(args, 'allow') ?? [],
+						claudeArgs: list(args, 'claude-arg') ?? [],
+						session: Boolean(args.session),
+					},
+				}
 			),
 		print: (reply) => {
 			const run = reply.data.run as { runId: string; tests: string[] } | null
@@ -1628,30 +1670,38 @@ const commands: Record<string, Command> = {
 		}),
 	},
 	'explore next': {
+		action: 'next_tester_steps',
 		positionals: ['explorationId'],
 		write: true,
-		run: (store, args, { actor }) => nextActions(store, actor, value(args, 'explorationId')!),
+		run: (store, args, context) =>
+			performAction(store, 'next_tester_steps', { explorationId: value(args, 'explorationId') }, context),
 		print: (reply) => ({
 			lines: ((reply.data.actions ?? []) as Array<{ line: string }>).map((item) => [item.line]),
 		}),
 	},
 	'explore done': {
+		action: 'tester_step_done',
 		positionals: ['explorationId', 'name', 'step'],
 		flags: { agent: 'value', failed: 'value', activity: 'value', 'reply-line': 'value' },
 		write: true,
 		check: (args) => {
 			requireChoice(value(args, 'step'), doneSteps, 'step')
 		},
-		run: (store, args, { actor }) =>
-			stepDone(store, actor, {
-				explorationId: value(args, 'explorationId')!,
-				name: value(args, 'name')!,
-				step: value(args, 'step')!,
-				agent: value(args, 'agent'),
-				failed: value(args, 'failed'),
-				activity: value(args, 'activity'),
-				replyLine: value(args, 'reply-line'),
-			}),
+		run: (store, args, context) =>
+			performAction(
+				store,
+				'tester_step_done',
+				{
+					explorationId: value(args, 'explorationId'),
+					name: value(args, 'name'),
+					step: value(args, 'step'),
+					agent: value(args, 'agent'),
+					failed: value(args, 'failed'),
+					activity: value(args, 'activity'),
+					replyLine: value(args, 'reply-line'),
+				},
+				context
+			),
 		print: (reply) => ({
 			facts: {
 				name: reply.data.name,
@@ -1664,10 +1714,16 @@ const commands: Record<string, Command> = {
 		}),
 	},
 	'explore started': {
+		action: 'tester_steps_started',
 		positionals: ['explorationId', 'names...'],
 		write: true,
-		run: (store, args, { actor }) =>
-			stepsStarted(store, actor, value(args, 'explorationId')!, args.names as string[]),
+		run: (store, args, context) =>
+			performAction(
+				store,
+				'tester_steps_started',
+				{ explorationId: value(args, 'explorationId'), names: args.names },
+				context
+			),
 		print: (reply) => ({ facts: { started: reply.data.started } }),
 	},
 	'explore findings': {
@@ -1766,12 +1822,11 @@ const commands: Record<string, Command> = {
 		}),
 	},
 	'explore show': {
+		action: 'test_status',
 		positionals: ['explorationId'],
 		readOnly: true,
-		run: (store, args) => {
-			const explorationId = value(args, 'explorationId')!
-			return completed(explorationId, explorationReport(store, explorationId))
-		},
+		run: (store, args, context) =>
+			performAction(store, 'test_status', { explorationId: value(args, 'explorationId'), report: true }, context),
 		print: (reply) => {
 			const report = reply.data as ReturnType<typeof explorationReport>
 			const status = explorationLines(reply)
@@ -1810,12 +1865,11 @@ const commands: Record<string, Command> = {
 		},
 	},
 	'explore status': {
+		action: 'test_status',
 		positionals: ['explorationId'],
 		readOnly: true,
-		run: (store, args) => {
-			const explorationId = value(args, 'explorationId')!
-			return completed(explorationId, explorationStatus(store, explorationId))
-		},
+		run: (store, args, context) =>
+			performAction(store, 'test_status', { explorationId: value(args, 'explorationId') }, context),
 		print: explorationLines,
 	},
 	'explore wait': {

@@ -25,6 +25,364 @@ export type Actions = {
 			references?: Array<string>
 		}
 	}
+	list_targets?: Record<string, never>
+	show_target?: {
+		reference: string
+		instance?: string
+	}
+	open_plan?: {
+		target: string
+		planId?: string
+		request: {
+			objective: string
+			requirements?: Array<{
+				id: string
+				text: string
+				source: string
+				area?: string
+				metadata?: Record<string, string | number | boolean>
+			}>
+			sourceContext?: Array<{
+				uri: string
+				content: string
+			}>
+			context?: {
+				sources: Array<string>
+				instructions?: string
+			}
+			tools?: Array<
+				| string
+				| {
+						name: string
+						kind: 'cli' | 'mcp' | 'skill'
+						purpose: string
+				  }
+			>
+		}
+	}
+	read_plan_request?: {
+		planId: string
+	}
+	save_plan?: {
+		planId: string
+		candidate: {
+			requirements?: Array<{
+				id: string
+				text: string
+				source: string
+				area?: string
+				metadata?: Record<string, string | number | boolean>
+			}>
+			tests: Array<{
+				id: string
+				title: string
+				requirementIds: Array<string>
+				capability: string
+				operations: Array<string>
+				dependsOn: Array<string>
+				preconditions: Array<string>
+				action: string
+				assertions: Array<{
+					id: string
+					check: string
+					checkKind: 'deterministic' | 'agent_observation'
+					observe?: string
+					expected?: string
+					request?: string
+					observeFrom?: 'page' | 'reload' | 'api'
+				}>
+				metadata?: Record<string, string | number | boolean>
+			}>
+			gaps: Array<{
+				id: string
+				severity: 'blocking' | 'non_blocking'
+				status: 'open' | 'resolved' | 'deferred' | 'not_needed'
+				requirementIds: Array<string>
+				testIds: Array<string>
+				question: string
+				consequence: string
+				decisionId: string | null
+			}>
+		}
+	}
+	edit_plan?: {
+		reference: string
+		rationale?: string
+		patch?: {
+			requirements?: Record<
+				string,
+				{
+					text?: string
+					source?: string
+					area?: string
+					metadata?: Record<string, string | number | boolean>
+				} | null
+			>
+			tests?: Record<
+				string,
+				{
+					title?: string
+					requirementIds?: Array<string>
+					capability?: string
+					operations?: Array<string>
+					dependsOn?: Array<string>
+					preconditions?: Array<string>
+					action?: string
+					assertions?: Record<
+						string,
+						{
+							check?: string
+							checkKind?: 'deterministic' | 'agent_observation'
+							observe?: string
+							expected?: string
+							request?: string
+							observeFrom?: 'page' | 'reload' | 'api'
+						} | null
+					>
+					metadata?: Record<string, string | number | boolean>
+				} | null
+			>
+			gaps?: Record<
+				string,
+				{
+					severity?: 'blocking' | 'non_blocking'
+					requirementIds?: Array<string>
+					testIds?: Array<string>
+					question?: string
+					consequence?: string
+				} | null
+			>
+		}
+		candidate?: {
+			requirements?: Array<{
+				id: string
+				text: string
+				source: string
+				area?: string
+				metadata?: Record<string, string | number | boolean>
+			}>
+			tests: Array<{
+				id: string
+				title: string
+				requirementIds: Array<string>
+				capability: string
+				operations: Array<string>
+				dependsOn: Array<string>
+				preconditions: Array<string>
+				action: string
+				assertions: Array<{
+					id: string
+					check: string
+					checkKind: 'deterministic' | 'agent_observation'
+					observe?: string
+					expected?: string
+					request?: string
+					observeFrom?: 'page' | 'reload' | 'api'
+				}>
+				metadata?: Record<string, string | number | boolean>
+			}>
+			gaps: Array<{
+				id: string
+				severity: 'blocking' | 'non_blocking'
+				status: 'open' | 'resolved' | 'deferred' | 'not_needed'
+				requirementIds: Array<string>
+				testIds: Array<string>
+				question: string
+				consequence: string
+				decisionId: string | null
+			}>
+		}
+		expectSha256?: string
+	}
+	read_pending?: {
+		planId: string
+	}
+	revise_plan?: {
+		planId: string
+		delta: {
+			requirements?: Record<
+				string,
+				{
+					remove?: boolean
+					text?: string
+					source?: string
+					area?: string
+				}
+			>
+			tests: Record<
+				string,
+				{
+					remove?: boolean
+					title?: string
+					requirementIds?: Array<string>
+					capability?: string
+					operations?: Array<string>
+					dependsOn?: Array<string>
+					preconditions?: Array<string>
+					action?: string
+					assertions?: Array<{
+						check: string
+						checkKind: 'deterministic' | 'agent_observation'
+						observe?: string
+						expected?: string
+						request?: string
+						observeFrom?: 'page' | 'reload' | 'api'
+					}>
+				}
+			>
+			gaps?: Record<
+				string,
+				{
+					question: string
+					consequence: string
+					testIds: Array<string>
+				}
+			>
+		}
+		expectSha256?: string
+	}
+	answer_gap?: {
+		planId: string
+		gapId: string
+		kind: 'clarify' | 'accept_assumption' | 'defer'
+		value: string
+		source?: string
+		rationale: string
+		expectSha256?: string
+	}
+	start_test?: {
+		planId: string
+		build?: string
+		mode?: 'auto' | 'exploratory' | 'regression'
+		level?: 'smoke' | 'normal' | 'deep'
+		explorers?: number
+		minutes?: number
+		instance?: string
+		timeoutSeconds?: number
+		objective?: string
+		target?: string
+		sources?: Array<string>
+		instructions?: string
+		since?: string
+		until?: string
+		scope?: Array<string>
+		url?: string
+		reset?: string
+		data?: 'environment' | 'isolation'
+		policy?: string
+		policyFile?: string
+		cleanup?: string
+		hookTimeout?: number
+		repo?: string
+	}
+	test_status?: {
+		explorationId: string
+		report?: boolean
+	}
+	begin_run?: {
+		runId: string
+		reference: string
+		build: string
+		instance?: string
+		tests?: Array<string>
+		partial?: 'ready_only' | 'wait_for_resolution'
+		onNewBlocker?: 'continue_independent' | 'return_to_oracle'
+		timeoutSeconds?: number
+		retestOf?: string
+	}
+	read_run?: {
+		runId: string
+		tests?: Array<string>
+		gate?: boolean
+	}
+	record_check?: {
+		runId: string
+		testId: string
+		assertionId: string
+		result?: 'passed' | 'failed' | 'inconclusive' | 'not_checked'
+		observed?: string
+		absent?: boolean
+		request?: string
+		reason?: string
+		evidence?: Array<
+			| string
+			| {
+					text: string
+					kind?: 'observation' | 'http_exchange' | 'screenshot' | 'trace'
+			  }
+		>
+	}
+	close_test?: {
+		runId: string
+		testId: string
+		outcome?: 'blocked' | 'not_run' | 'error'
+		cause?: 'deadline'
+		reason?: string
+		evidence?: Array<
+			| string
+			| {
+					text: string
+					kind?: 'observation' | 'http_exchange' | 'screenshot' | 'trace'
+			  }
+		>
+	}
+	record_finding?: {
+		runId: string
+		finding: {
+			id: string
+			type: 'defect' | 'potential_issue'
+			severity: 'low' | 'medium' | 'high' | 'critical'
+			assertionIds: Array<string>
+			requirementIds: Array<string>
+			title: string
+			expected: string
+			observed: string
+			reproduction: Array<string>
+			evidenceIds: Array<string>
+			metadata?: Record<string, string | number | boolean>
+		}
+	}
+	record_gap?: {
+		runId: string
+		gap: {
+			id: string
+			severity: 'blocking' | 'non_blocking'
+			status: 'open' | 'resolved' | 'deferred' | 'not_needed'
+			requirementIds: Array<string>
+			testIds: Array<string>
+			question: string
+			consequence: string
+			decisionId: string | null
+		}
+	}
+	finish_run?: {
+		runId: string
+		completion: 'completed' | 'interrupted' | 'operational_error'
+		cause?: 'deadline' | 'host_stopped' | 'tool_unavailable'
+		reason?: string
+		cleanup: 'completed' | 'failed' | 'not_applicable'
+		cleanupReason: string
+	}
+	status?: {
+		planId: string
+	}
+	inbox?: Record<string, never>
+	next_tester_steps?: {
+		explorationId: string
+	}
+	tester_steps_started?: {
+		explorationId: string
+		names: Array<string>
+	}
+	tester_step_done?: {
+		explorationId: string
+		name: string
+		step: 'study' | 'test' | 'record' | 'follow' | 'rules' | 'merge' | 'verify'
+		agent?: string
+		failed?: string
+		activity?: string
+		replyLine?: string
+	}
 }
 
 export type Finding = {

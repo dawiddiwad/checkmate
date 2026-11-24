@@ -11,6 +11,7 @@ import { existsSync, mkdirSync, openSync, readFileSync, rmSync, writeFileSync } 
 import { spawn, spawnSync } from 'node:child_process'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+export { actionToolDefinitions, callActionTool } from '../../plugin/src/action-tools.ts'
 
 type Parsed = {
 	positionals: string[]

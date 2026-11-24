@@ -97,6 +97,54 @@ test('Install packed npm CLI and open the empty UI — installed assets or skill
 	}
 })
 
+test('Expose packaged Pi tools by role and validate the same setup input as the CLI.', async (t) => {
+	const workspace = directory(t)
+	const packageRoot = join(project, 'node_modules/@xoxoai/checkmate/plugin')
+	const extension = join(packageRoot, 'pi/checkmate-tools.mjs')
+	const inspect = join(workspace, 'inspect.mjs')
+	const inventory = join(workspace, 'inventory.json')
+	const { pathToFileURL } = await import('node:url')
+	writeFileSync(
+		inspect,
+		`
+import { writeFileSync } from 'node:fs'
+import { callActionTool } from ${JSON.stringify(pathToFileURL(join(packageRoot, 'dist/checkmate.js')).href)}
+export default (pi) => pi.on('session_start', async (_event, ctx) => {
+	const tools = pi.getAllTools().filter(tool => tool.name.startsWith('checkmate_')).map(tool => tool.name)
+	const refused = callActionTool('checkmate_setup', { url: 'not-a-url' }, ctx.cwd, process.env)
+	writeFileSync(${JSON.stringify(inventory)}, JSON.stringify({ tools, refused }))
+})
+`
+	)
+	const env = { ...process.env, PI_CODING_AGENT_DIR: join(workspace, 'pi'), PI_OFFLINE: '1' }
+	const inspectTools = (role?: string) => {
+		const child = spawnSync(
+			'pi',
+			['--mode', 'rpc', '--no-session', '--no-extensions', '-e', extension, '-e', inspect],
+			{
+				cwd: workspace,
+				env: { ...env, CHECKMATE_TOOL_ROLE: role },
+				input: '{"type":"get_state"}\n',
+				encoding: 'utf8',
+				timeout: 15000,
+			}
+		)
+		assert.equal(child.status, 0, child.stderr)
+		return JSON.parse(readFileSync(inventory, 'utf8'))
+	}
+	const main = inspectTools()
+	assert(main.tools.includes('checkmate_setup'))
+	assert(main.tools.includes('checkmate_record_check'))
+	assert(main.tools.includes('checkmate_inbox'))
+	assert.equal(main.refused.refusal, 'malformed')
+	const cli = await command(workspace, env, 'setup', '--url', 'not-a-url')
+	assert.deepEqual(cli.body.nextAction, main.refused.nextAction)
+	const planner = inspectTools('plan')
+	assert.deepEqual(planner.tools.sort(), ['checkmate_read_plan_request', 'checkmate_save_plan'])
+	assert.match(planner.refused.reasons.join(' '), /unavailable/)
+	assert.deepEqual(inspectTools('clerk').tools, [])
+})
+
 test('Point run accept and run reject to the result command — a wrong command name leaves the record unchanged.', async (t) => {
 	const workspace = directory(t)
 	const result = spawnSync(

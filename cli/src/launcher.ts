@@ -18,6 +18,7 @@ import { migrationTests, notReadyReasons, planRequest, planTools } from '../../p
 import { checkRequest, plannedRequest } from '../../plugin/src/routes.ts'
 import { signalChild, trackGroup } from '../../plugin/src/processes.ts'
 import { workspaceEnv } from '../../plugin/src/settings.ts'
+import { childActionTools } from '../../plugin/src/action-tools.ts'
 import { dataRules, markerFor, runPrepare } from '../../plugin/src/resets.ts'
 import type { ChildCall } from '../../plugin/src/sessions.ts'
 import {
@@ -236,6 +237,23 @@ export function workerArgs(pluginRoot: string, allowedTools: string[], claudeArg
 	]
 	for (const rule of allowedTools) args.push('--allowedTools', rule)
 	return args
+}
+
+function piWorkerArgs(pluginRoot: string, role: string, env: NodeJS.ProcessEnv) {
+	const tools = ['read', 'bash', ...childActionTools(role).map((name) => `checkmate_${name}`)]
+	return piArgs(
+		[
+			'--no-extensions',
+			'--no-session',
+			'--no-mcp',
+			'--no-skills',
+			'--extension',
+			join(pluginRoot, 'pi', 'checkmate-tools.mjs'),
+			'--tools',
+			tools.join(','),
+		],
+		env
+	)
 }
 
 function launchWorker(
@@ -858,7 +876,8 @@ async function runTestChild(
 		harness,
 		env,
 		(actor, pluginRoot) => testPrompt(execution, workspace, test, actor, pluginRoot),
-		remaining
+		remaining,
+		test.id
 	)
 }
 
@@ -869,19 +888,16 @@ async function runChild(
 	harness: Harness,
 	env: NodeJS.ProcessEnv,
 	prompt: (actor: string, pluginRoot: string) => string,
-	remaining: number
+	remaining: number,
+	testId?: string
 ) {
 	const pluginRoot = options.pluginRoot ?? defaultPluginRoot()
 	const executable = harness === 'pi' ? (options.pi ?? 'pi') : (options.claude ?? 'claude')
 	const workerActor = `${harness}:execute`
+	const role = testId ? 'execute' : 'probe'
 	const args =
 		harness === 'pi'
-			? resolvePiModelArgs(
-					executable,
-					piArgs(['--no-extensions', '--no-session', '--no-mcp', '--no-skills', '--tools', 'read,bash'], env),
-					workspace,
-					env
-				)
+			? resolvePiModelArgs(executable, piWorkerArgs(pluginRoot, role, env), workspace, env)
 			: workerArgs(pluginRoot, options.allowedTools, options.claudeArgs)
 	const timeoutSeconds = options.timeoutSeconds ?? Math.min(testSeconds, Math.max(1, remaining - 30))
 	try {
@@ -893,6 +909,9 @@ async function runChild(
 			env: {
 				...env,
 				CHECKMATE_ACTOR: workerActor,
+				CHECKMATE_TOOL_ROLE: role,
+				CHECKMATE_TOOL_SUBJECT: execution.run.run_id,
+				CHECKMATE_TOOL_TEST: testId,
 				CHECKMATE_MARKER: (JSON.parse(execution.run.request) as { marker?: string }).marker ?? '',
 				PLAYWRIGHT_MCP_OUTPUT_DIR: join(workspace, '.checkmate', 'tmp', execution.run.run_id),
 			},
@@ -1140,15 +1159,7 @@ export async function delegate(
 			const executable = harness === 'pi' ? (options.pi ?? 'pi') : (options.claude ?? 'claude')
 			const args =
 				harness === 'pi'
-					? resolvePiModelArgs(
-							executable,
-							piArgs(
-								['--no-extensions', '--no-session', '--no-mcp', '--no-skills', '--tools', 'read,bash'],
-								env
-							),
-							workspace,
-							env
-						)
+					? resolvePiModelArgs(executable, piWorkerArgs(pluginRoot, stage, env), workspace, env)
 					: workerArgs(pluginRoot, options.allowedTools, options.claudeArgs)
 			const instructions = prompt(
 				stage,
@@ -1171,6 +1182,8 @@ export async function delegate(
 				env: {
 					...env,
 					CHECKMATE_ACTOR: workerActor,
+					CHECKMATE_TOOL_ROLE: stage,
+					CHECKMATE_TOOL_SUBJECT: subject,
 					...(run ? { PLAYWRIGHT_MCP_OUTPUT_DIR: join(workspace, '.checkmate', 'tmp', subject) } : {}),
 				},
 			})

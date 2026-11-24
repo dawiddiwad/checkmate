@@ -20,7 +20,7 @@
 	.axis { position: absolute; left: 12px; top: 48px; font: 500 15px/24px var(--mono); color: var(--faint); }
 
 	.window { position: absolute; left: 105px; top: 0; width: 795px; height: 420px; overflow: hidden; }
-	.track { left: 0; top: 0; width: 2400px; height: 420px; }
+	.track { left: 0; top: 0; width: 4200px; height: 420px; }
 	.iteration { position: absolute; top: 48px; bottom: 0; border-left: 1px dashed var(--line-strong); }
 	.iteration span { position: absolute; left: 12px; top: 0; font: 600 15px/24px var(--mono); letter-spacing: 1.5px; color: var(--faint); white-space: nowrap; }
 
@@ -40,7 +40,8 @@
 	.ring-head { fill: var(--line-strong); }
 	.spoke { stroke: var(--blue-line); stroke-width: 2; stroke-dasharray: 4 4; }
 	.hot { stroke-width: 3; stroke-dasharray: 4 4; }
-	.change { fill: none; stroke: var(--amber); stroke-width: 4; stroke-linecap: round; }
+	.route { fill: none; stroke-width: 5; stroke-linecap: round; }
+	.change { fill: none; stroke: var(--amber); stroke-width: 5; stroke-linecap: round; }
 	.change.dim { stroke: var(--amber-line); stroke-width: 3; }
 	.station { position: absolute; width: 124px; height: 36px; margin: -18px 0 0 -62px; border: 2px solid var(--line-strong); border-radius: 8px; background: var(--card); font: 600 18px/32px var(--display); text-align: center; white-space: nowrap; }
 	.station .lit { position: absolute; inset: -2px; border-radius: 8px; color: var(--bg); line-height: 36px; }
@@ -48,7 +49,6 @@
 	.centre .top { display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 14px; border-bottom: 1px solid var(--blue-line); font: 600 17px var(--display); }
 	.centre .top .mark { gap: 3px; }
 	.centre .top .mark i { width: 11px; height: 11px; }
-	.centre .iter { position: absolute; right: 14px; top: 0; font: 500 14px/36px var(--mono); color: var(--muted); }
 	.group { position: absolute; left: 14px; top: 40px; right: 14px; }
 	.group div { display: flex; align-items: center; gap: 10px; height: 33px; font: 600 17px var(--mono); white-space: nowrap; }
 	.group i { width: 10px; height: 10px; border-radius: 2px; flex: none; }
@@ -58,9 +58,15 @@
 	.return .lit { position: absolute; inset: 0; color: var(--amber); }
 	.badge { position: absolute; left: 450px; top: 300px; transform: translateX(-50%); font: 500 15px/28px var(--mono); color: var(--muted); background: var(--card); border: 1px dashed var(--human-line); border-radius: 14px; padding: 0 14px; white-space: nowrap; }
 	.badge .lit { position: absolute; inset: -1px; border: 1px solid var(--human); border-radius: 14px; background: #262b34; color: var(--text); padding: 0 14px; }
+	.counts { position: absolute; left: 716px; top: 52px; width: 168px; }
+	.counts h2 { margin: 0 0 6px; font: 600 14px/22px var(--mono); letter-spacing: 1.5px; color: var(--faint); }
+	.counts div { display: flex; justify-content: space-between; height: 30px; font: 500 16px/30px var(--display); color: var(--muted); }
+	.counts b { font: 600 17px/30px var(--mono); color: var(--text); }
+	.counts b.changed { color: var(--amber); }
 
 	.bar { position: absolute; left: 0; top: 0; width: 900px; height: 48px; background: var(--bg); border-bottom: 1px solid var(--line); z-index: 2; }
 	.caption { position: absolute; left: 16px; top: 0; font: 600 22px/48px var(--display); white-space: nowrap; }
+	.caption i { font-style: normal; color: var(--faint); }
 	.bar .mark { position: absolute; right: 18px; top: 17px; gap: 4px; }
 	.bar .mark i { width: 14px; height: 14px; }
 
@@ -94,24 +100,30 @@
 			<path class="ring-head" d="M456 26 l-10 -6 v12 z" />
 			<path class="ring-head" d="M690 154 l-6 -10 h12 z" />
 			<path class="ring-head" d="M480 270 l10 -6 v12 z" />
-			<path class="ring-head" d="M210 142 l-6 10 h12 z" />
 			<path class="change dim" d="M268 270 H234 Q210 270 210 246 V50 Q210 26 234 26 H268" />
 			<path class="ring-head" style="fill: var(--amber-line)" d="M210 141 l-7 11 h14 z" />
+			<path class="route" data-light="top" style="stroke: var(--oracle)" d="M392 26 H508" />
+			<path data-light="top" style="fill: var(--oracle)" d="M460 26 l-13 -8 v16 z" />
+			<path class="route" data-light="right" style="stroke: var(--factory)" d="M632 26 H666 Q690 26 690 50 V246 Q690 270 666 270 H632" />
+			<path data-light="right" style="fill: var(--factory)" d="M690 158 l-8 -13 h16 z" />
+			<path class="route" data-light="bottom" style="stroke: var(--qa)" d="M508 270 H392" />
+			<path data-light="bottom" style="fill: var(--qa)" d="M476 270 l13 -8 v16 z" />
 			<path class="change" data-light="change" d="M268 270 H234 Q210 270 210 246 V50 Q210 26 234 26 H268" />
-			<path class="ring-head" data-light="change" style="fill: var(--amber)" d="M210 141 l-7 11 h14 z" />
+			<path data-light="change" style="fill: var(--amber)" d="M210 139 l-9 14 h18 z" />
 			<line class="spoke" x1="330" y1="44" x2="330" y2="58" />
 			<line class="spoke" x1="570" y1="44" x2="570" y2="58" />
 			<line class="spoke" x1="570" y1="252" x2="570" y2="234" />
 			<line class="spoke" x1="330" y1="252" x2="330" y2="234" />
 			<line class="spoke" x1="450" y1="234" x2="450" y2="300" />
+			<line class="hot" data-light="planner" style="stroke: var(--planner)" x1="330" y1="44" x2="330" y2="58" />
+			<line class="hot" data-light="oracle" style="stroke: var(--oracle)" x1="570" y1="44" x2="570" y2="58" />
+			<line class="hot" data-light="factory" style="stroke: var(--factory)" x1="570" y1="252" x2="570" y2="234" />
+			<line class="hot" data-light="qa" style="stroke: var(--qa)" x1="330" y1="252" x2="330" y2="234" />
 			<line class="hot" data-light="human" style="stroke: var(--human)" x1="450" y1="234" x2="450" y2="300" />
 		</svg>
 		<div class="return">new gaps or<br />plan change:<br />new revision<div class="lit" data-light="change">new gaps or<br />plan change:<br />new revision</div></div>
 		<div class="centre">
 			<div class="top"><span class="mark"><i></i><i></i><i></i><i></i></span>checkmate</div>
-			<div class="iter" data-from="0" data-to="10">plan</div>
-			<div class="iter" data-from="10" data-to="23">test</div>
-			<div class="iter" data-from="23" data-to="35.5">retest</div>
 			<div id="groups"></div>
 		</div>
 		<div class="station planner" style="left: 330px; top: 26px">Planner<div class="lit" data-light="planner" style="background: var(--planner)">Planner</div></div>
@@ -119,6 +131,15 @@
 		<div class="station factory" style="left: 570px; top: 270px">Factory<div class="lit" data-light="factory" style="background: var(--factory)">Factory</div></div>
 		<div class="station qa" style="left: 330px; top: 270px">QA<div class="lit" data-light="qa" style="background: var(--qa)">QA</div></div>
 		<div class="badge">human · checkmate ui<div class="lit" data-light="human">human · checkmate ui</div></div>
+		<div class="counts">
+			<h2>RECORD</h2>
+			<div>plan<b data-count="plan"></b></div>
+			<div>tests<b data-count="tests"></b></div>
+			<div>build<b data-count="build"></b></div>
+			<div>open gaps<b data-count="gaps"></b></div>
+			<div>open defects<b data-count="defects"></b></div>
+			<div>promoted<b data-count="promoted"></b></div>
+		</div>
 	</div>
 
 	<div class="swim">
@@ -133,92 +154,168 @@
 
 		<div class="window">
 			<div class="track" id="track">
-				<div class="iteration" style="left: 0" data-from="0" data-to="10.5"><span>PLAN &amp; DECIDE</span></div>
-				<div class="iteration" style="left: 690px" data-t="10"><span>BUILD &amp; TEST</span></div>
-				<div class="iteration" style="left: 1290px" data-t="23"><span>RETEST &amp; ACCEPT</span></div>
+				<div class="iteration" data-at="ticket" data-t="-1"><span>TICKET</span></div>
+				<div class="iteration" data-at="s2" data-t="3.6"><span>BUILD b1</span></div>
+				<div class="iteration" data-at="s9" data-t="22.2"><span>BUILD b2</span></div>
+				<div class="iteration" data-at="s14" data-t="37.7"><span>BUILD b3</span></div>
 
-				<div class="step ticket" id="ticket" style="left: 16px" data-t="-1">SHOP-12</div>
-				<div class="step planner" id="s1" style="left: 150px" data-role="planner" data-station="planner" data-t="-1">plan</div>
-				<div class="record plan" data-of="s1" data-row="0" data-t="-0.5">plan@1</div>
-				<div class="record gap" data-of="s1" data-row="1" data-t="-0.4">G1–G3 open</div>
-				<div class="step oracle" id="s2" style="left: 296px" data-role="oracle" data-station="oracle" data-t="5.3">gap answer</div>
-				<div class="record decision" data-of="s2" data-row="0" data-t="5.8">G1–G3 answered</div>
-				<div class="step planner" id="s3" style="left: 480px" data-role="planner" data-station="planner" data-t="6.9">revise</div>
-				<div class="record plan" data-of="s3" data-row="0" data-t="7.4">plan@2</div>
-				<div class="step oracle" id="s4" style="left: 584px" data-role="oracle" data-station="oracle" data-t="8.4">approve</div>
-				<div class="record decision" data-of="s4" data-row="0" data-t="8.9">✓ plan@2</div>
-				<div class="step factory" id="s5" style="left: 700px" data-role="factory" data-station="factory" data-t="11">build b1</div>
-				<div class="step qa" id="s5a" style="left: 830px" data-role="qa" data-station="qa" data-t="13">explore b1</div>
-				<div class="record" data-of="s5a" data-row="2" data-t="13.4">exploration b1</div>
-				<div class="step qa" id="s6" style="left: 1000px" data-role="qa" data-station="qa" data-t="15.5">test b1</div>
-				<div class="record" data-of="s6" data-row="0" data-t="16">run-1 <span class="ok">3 ✓</span> <span class="bad">1 ✗</span></div>
-				<div class="record defect" data-of="s6" data-row="1" data-t="16.5">F1 defect</div>
-				<div class="record" data-of="s6" data-row="2" data-t="17">gate: exit 1</div>
-				<div class="step factory" id="s7" style="left: 1120px" data-role="factory" data-station="factory" data-t="20.5">fix &amp; build b2</div>
-				<div class="step qa" id="s8" style="left: 1330px" data-role="qa" data-station="qa" data-t="24">retest b2</div>
-				<div class="record" data-of="s8" data-row="0" data-t="24.5">run-2 <span class="ok">4 ✓</span></div>
-				<div class="record" data-of="s8" data-row="1" data-t="25">retest-of run-1</div>
-				<div class="record accepted" data-of="s8" data-row="2" data-t="25.5">gate: exit 0</div>
-				<div class="step oracle" id="s9" style="left: 1550px" data-role="oracle" data-station="oracle" data-t="29">accept</div>
-				<div class="record accepted" data-of="s9" data-row="0" data-t="29.5">result accepted</div>
-				<div class="step oracle" id="s10" style="left: 1775px" data-role="oracle" data-station="oracle" data-t="32">promote</div>
-				<div class="record accepted" data-of="s10" data-row="0" data-t="32.5">permanent tests</div>
+				<div class="step ticket" id="ticket" data-t="-1">SHOP-12</div>
+				<div class="step planner" id="s1" data-role="planner" data-station="planner" data-t="0.2">plan</div>
+				<div class="record plan" data-of="s1" data-row="0" data-t="0.8">plan@1</div>
+				<div class="record" data-of="s1" data-row="1" data-t="1.3">4 tests</div>
+
+				<div class="step factory" id="s2" data-role="factory" data-station="factory" data-route="bottom" data-t="3.6">build b1</div>
+				<div class="step qa" id="s3" data-role="qa" data-station="qa" data-t="5">explore b1</div>
+				<div class="record" data-of="s3" data-row="0" data-t="5.5">exploration x-1</div>
+				<div class="record gap" data-of="s3" data-row="1" data-t="6.2">G1–G3 open</div>
+				<div class="record defect" data-of="s3" data-row="2" data-t="6.8">F1 F2 defects</div>
+
+				<div class="step oracle" id="s4" data-role="oracle" data-station="oracle" data-t="8.2">answer</div>
+				<div class="record decision" data-of="s4" data-row="0" data-t="8.8">G1–G3 answered</div>
+
+				<div class="step planner" id="s5" data-role="planner" data-station="planner" data-route="change" data-t="11.2">revise</div>
+				<div class="record plan" data-of="s5" data-row="0" data-t="11.8">plan@2</div>
+				<div class="record" data-of="s5" data-row="1" data-t="12.3">5 tests</div>
+
+				<div class="step qa" id="s6" data-role="qa" data-station="qa" data-t="13.7">follow up x-1</div>
+				<div class="record defect" data-of="s6" data-row="0" data-t="14.4">F1 F2 confirmed</div>
+
+				<div class="step oracle" id="s7" data-role="oracle" data-station="oracle" data-route="top" data-t="16.7">review</div>
+				<div class="record decision" data-of="s7" data-row="0" data-t="17.2">✓ plan@2</div>
+				<div class="record decision" data-of="s7" data-row="1" data-t="17.7">F1 F2 accepted</div>
+
+				<div class="step oracle" id="s8" data-role="oracle" data-station="oracle" data-route="right" data-t="19.7">hand off</div>
+				<div class="record" data-of="s8" data-row="0" data-t="20.2">F1 F2 → factory</div>
+
+				<div class="step factory" id="s9" data-role="factory" data-station="factory" data-route="bottom" data-t="22.2">fix · build b2</div>
+				<div class="step qa" id="s10" data-role="qa" data-station="qa" data-t="23.8">explore b2</div>
+				<div class="record" data-of="s10" data-row="0" data-t="24.3">exploration x-2</div>
+				<div class="record defect" data-of="s10" data-row="1" data-t="26.2">F3 defect</div>
+				<div class="record gap" data-of="s10" data-row="2" data-t="26.8">G4 G5 open</div>
+
+				<div class="step human" id="s11" data-role="human" data-station="oracle" data-t="29.2">escalate to a human</div>
+				<div class="record decision" data-of="s11" data-row="0" data-t="30.6">G4 G5 answered</div>
+
+				<div class="step planner" id="s12" data-role="planner" data-station="planner" data-route="change" data-t="32.2">revise</div>
+				<div class="record plan" data-of="s12" data-row="0" data-t="32.8">plan@3</div>
+				<div class="record" data-of="s12" data-row="1" data-t="33.3">6 tests</div>
+
+				<div class="step oracle" id="s13" data-role="oracle" data-station="oracle" data-route="top right" data-t="34.7">approve · hand off</div>
+				<div class="record decision" data-of="s13" data-row="0" data-t="35.2">✓ plan@3</div>
+				<div class="record" data-of="s13" data-row="1" data-t="35.7">F3 → factory</div>
+
+				<div class="step factory" id="s14" data-role="factory" data-station="factory" data-route="bottom" data-t="37.7">fix · build b3</div>
+				<div class="step qa" id="s15" data-role="qa" data-station="qa" data-t="40.2">explore · retest b3</div>
+				<div class="record" data-of="s15" data-row="0" data-t="40.8">x-3: 0 findings</div>
+				<div class="record" data-of="s15" data-row="1" data-t="41.5">run-3 <span class="ok">6 ✓</span></div>
+				<div class="record accepted" data-of="s15" data-row="2" data-t="42.2">gate: exit 0</div>
+
+				<div class="step oracle" id="s16" data-role="oracle" data-station="oracle" data-t="44.7">accept · promote</div>
+				<div class="record accepted" data-of="s16" data-row="0" data-t="45.2">result accepted</div>
+				<div class="record accepted" data-of="s16" data-row="1" data-t="45.8">6 permanent tests</div>
+
+				<div class="step qa" id="s17" data-role="qa" data-station="qa" data-t="48.2">permanent run b3</div>
+				<div class="record" data-of="s17" data-row="0" data-t="48.8">run-4 <span class="ok">6 ✓</span></div>
+				<div class="record accepted" data-of="s17" data-row="1" data-t="49.4">gate: exit 0</div>
 			</div>
 		</div>
 	</div>
 
 	<div class="bar">
-		<div class="caption" data-from="0" data-to="4.5">The planner records rules, tests, and open gaps.</div>
-		<div class="caption" data-from="4.5" data-to="10">The oracle answers. The planner revises; the oracle approves.</div>
-		<div class="caption" data-from="10" data-to="12.5">The factory builds b1. A reset gives each run clean data.</div>
-		<div class="caption" data-from="12.5" data-to="15">QA explores build b1.</div>
-		<div class="caption" data-from="15" data-to="20">QA runs one child per test. The gate exits 1 on a defect.</div>
-		<div class="caption" data-from="20" data-to="23.5">The factory fixes the defect and builds b2.</div>
-		<div class="caption" data-from="23.5" data-to="28.5">QA retests build b2. The gate passes.</div>
-		<div class="caption" data-from="28.5" data-to="31.5">The oracle accepts the passing result.</div>
-		<div class="caption" data-from="31.5" data-to="35.5">The oracle explicitly saves the permanent tests.</div>
+		<div class="caption" data-from="0" data-to="3.5"><i>1 ·</i> Ticket SHOP-12 comes in. The planner saves plan@1.</div>
+		<div class="caption" data-from="3.5" data-to="8"><i>2 ·</i> QA explores build b1: 3 gaps and 2 defects.</div>
+		<div class="caption" data-from="8" data-to="11"><i>3 ·</i> The oracle answers gaps G1–G3.</div>
+		<div class="caption" data-from="11" data-to="13.5"><i>4 ·</i> The answers change the plan: plan@2.</div>
+		<div class="caption" data-from="13.5" data-to="16.5"><i>4 ·</i> QA follows up with the answers.</div>
+		<div class="caption" data-from="16.5" data-to="19.5"><i>5 ·</i> The oracle reviews plan@2 and the defects.</div>
+		<div class="caption" data-from="19.5" data-to="22"><i>6 ·</i> The oracle hands F1 and F2 to the factory.</div>
+		<div class="caption" data-from="22" data-to="26"><i>7 ·</i> The factory fixes them. QA explores build b2.</div>
+		<div class="caption" data-from="26" data-to="29"><i>8 ·</i> Fewer defects, more gaps: 1 defect, 2 gaps.</div>
+		<div class="caption" data-from="29" data-to="32"><i>9 ·</i> The oracle escalates G4 and G5 to a human.</div>
+		<div class="caption" data-from="32" data-to="34.5"><i>9 ·</i> The answers change the plan: plan@3.</div>
+		<div class="caption" data-from="34.5" data-to="37.5"><i>9 ·</i> The oracle approves and hands F3 to the factory.</div>
+		<div class="caption" data-from="37.5" data-to="40"><i>10 ·</i> The factory delivers build b3.</div>
+		<div class="caption" data-from="40" data-to="44.5"><i>11 ·</i> QA explores and retests b3: no findings.</div>
+		<div class="caption" data-from="44.5" data-to="48"><i>12 ·</i> The oracle accepts and promotes the tests.</div>
+		<div class="caption" data-from="48" data-to="52"><i>13 ·</i> A permanent run confirms them on b3.</div>
 		<div class="mark"><i></i><i></i><i></i><i></i></div>
 	</div>
 
-	<section class="mode" data-from="35.5" data-to="43">
+	<section class="mode" data-length="7.5">
 		<div class="kicker">THREE WAYS TO RUN CHECKMATE · <b>1 / 3</b></div>
 		<div class="mark"><i></i><i></i><i></i><i></i></div>
 		<h1>Solo developer: <span class="oracle">plugin or Pi extension</span></h1>
 		<p class="lead"><b>Ask your agent to test a change.</b> You are the oracle: answer its questions in the chat or in the review UI.</p>
 		<div class="term" style="top: 196px"><div class="head">CLAUDE CODE</div><pre><span><i class="p">&gt; </i>/plugin marketplace add dawiddiwad/checkmate</span><span><i class="p">&gt; </i>/plugin install checkmate@checkmate</span><span><i class="p">&gt; </i><b class="k">/checkmate:test</b> the change in ticket.md</span></pre></div>
-		<div class="term" style="top: 346px" data-t="36.5"><div class="head">PI</div><pre><span><i class="p">$ </i>pi install npm:@xoxoai/checkmate -l</span><span><i class="p">&gt; </i><b class="k">/checkmate</b> the change in ticket.md</span></pre></div>
-		<div class="term" style="top: 470px" data-t="37.5"><div class="head">WHAT WAITS FOR YOU</div><pre><span><i class="p">$ </i>checkmate inbox</span><span class="o">completed inbox gaps=2 plans=1 results=1 requests=0</span><span class="gap">checkout@2/G2  gap     blocking  Which orders can a customer refund, and …</span><span class="o">run-7          result  checkout@2  fixture-build-2  partial  passed=1,failed=1,…</span></pre></div>
+		<div class="term" style="top: 346px" data-dt="1"><div class="head">PI</div><pre><span><i class="p">$ </i>pi install npm:@xoxoai/checkmate -l</span><span><i class="p">&gt; </i><b class="k">/checkmate</b> the change in ticket.md</span></pre></div>
+		<div class="term" style="top: 470px" data-dt="2"><div class="head">WHAT WAITS FOR YOU</div><pre><span><i class="p">$ </i>checkmate inbox</span><span class="o">completed inbox gaps=2 plans=1 results=1 requests=0</span><span class="gap">checkout@2/G2  gap     blocking  Which orders can a customer refund, and …</span><span class="o">run-7          result  checkout@2  fixture-build-2  partial  passed=1,failed=1,…</span></pre></div>
 		<div class="docs">Read: <b>docs/start.md</b> · <b>docs/local-qa.md</b></div>
 	</section>
 
-	<section class="mode" data-from="43" data-to="51">
+	<section class="mode" data-length="8">
 		<div class="kicker">THREE WAYS TO RUN CHECKMATE · <b>2 / 3</b></div>
 		<div class="mark"><i></i><i></i><i></i><i></i></div>
 		<h1>Software factory: <span class="planner">an AI workflow</span></h1>
 		<p class="lead"><b>Your workflow calls one command per stage.</b> It builds and fixes; Checkmate tells it when to wait for the oracle.</p>
-		<div class="term" style="top: 196px"><div class="head">FACTORY STAGES</div><pre><span><i class="p">$ </i>checkmate <b class="k">delegate plan</b> checkout --allow Read --allow Bash</span><span data-t="43.8"><i class="p">$ </i>checkmate <b class="k">status</b> checkout --fail-on-blocked</span><span class="o" data-t="44.3">completed checkout state=needs_answers waitsOn=oracle revision=2 …</span><span class="o" data-t="44.3">why   1 open blocking gap</span><span class="gap" data-t="44.3">G2    gap  blocking  Which orders can a customer refund, and for …</span><span data-t="44.8"><b class="gate">exit 3</b>  <i class="o">the factory waits; the oracle answers G2</i></span><span data-t="45.6"><i class="p">$ </i>checkmate <b class="k">run begin</b> run-8 checkout@2 --build fixture-build-3 \</span><span data-t="45.6">    --instance local --partial ready_only --retest-of run-7</span><span data-t="46.1"><i class="p">$ </i>checkmate <b class="k">delegate execute</b> run-8 --allow Read --allow Bash</span></pre></div>
+		<div class="term" style="top: 196px"><div class="head">FACTORY STAGES</div><pre><span><i class="p">$ </i>checkmate <b class="k">delegate plan</b> checkout --allow Read --allow Bash</span><span data-dt="0.8"><i class="p">$ </i>checkmate <b class="k">status</b> checkout --fail-on-blocked</span><span class="o" data-dt="1.3">completed checkout state=needs_answers waitsOn=oracle revision=2 …</span><span class="o" data-dt="1.3">why   1 open blocking gap</span><span class="gap" data-dt="1.3">G2    gap  blocking  Which orders can a customer refund, and for …</span><span data-dt="1.8"><b class="gate">exit 3</b>  <i class="o">the factory waits; the oracle answers G2</i></span><span data-dt="2.6"><i class="p">$ </i>checkmate <b class="k">run begin</b> run-8 checkout@2 --build fixture-build-3 \</span><span data-dt="2.6">    --instance local --partial ready_only --retest-of run-7</span><span data-dt="3.1"><i class="p">$ </i>checkmate <b class="k">delegate execute</b> run-8 --allow Read --allow Bash</span></pre></div>
 		<div class="docs">Read: <b>docs/factory.md</b></div>
 	</section>
 
-	<section class="mode" data-from="51" data-to="58">
+	<section class="mode" data-length="7">
 		<div class="kicker">THREE WAYS TO RUN CHECKMATE · <b>3 / 3</b></div>
 		<div class="mark"><i></i><i></i><i></i><i></i></div>
 		<h1>CI job: <span class="qa">agentic regression tests</span></h1>
 		<p class="lead"><b>Run the promoted tests on every build.</b> The gate fails the job on a defect and writes JUnit.</p>
 		<div class="term" style="top: 196px"><div class="head">.GITHUB/WORKFLOWS/QA.YML</div><pre><span><i class="p">- </i>name: Agentic regression tests</span><span>  run: |</span><span>    checkmate <b class="k">run permanent</b> "$RUN_ID" checkout --build "$BUILD" --instance local</span><span>    checkmate <b class="k">delegate execute</b> "$RUN_ID" --allow Read --allow Bash</span><span>    checkmate export run "$RUN_ID" --format junit --out reports/junit.xml</span><span>    checkmate <b class="k">run show</b> "$RUN_ID" <b class="k">--gate</b></span></pre></div>
-		<div class="term" style="top: 436px" data-t="52.3"><div class="head">JOB LOG</div><pre><span class="o">completed run-7 state=finalized gate=defects … build=fixture-build-2</span><span class="o">T2.A4   failed  220</span><span class="defect">F1      defect  high  T2.A4  The promotion stacks with the loyalty credit</span><span data-t="52.8"><b class="gate bad">exit 1</b>  <i class="o">the job fails; the JUnit file names the failed test</i></span></pre></div>
+		<div class="term" style="top: 436px" data-dt="1.3"><div class="head">JOB LOG</div><pre><span class="o">completed run-7 state=finalized gate=defects … build=fixture-build-2</span><span class="o">T2.A4   failed  220</span><span class="defect">F1      defect  high  T2.A4  The promotion stacks with the loyalty credit</span><span data-dt="1.8"><b class="gate bad">exit 1</b>  <i class="o">the job fails; the JUnit file names the failed test</i></span></pre></div>
 		<div class="docs">Read: <b>docs/factory.md</b> · exit codes for a pipeline</div>
 	</section>
 </main>
 <script src="swimlane.js"></script>
 <script>
 	const fade = 0.3
-	const teamEnd = 35.5
-	const pans = [[0, 0], [10, 0], [10.6, 140], [12.5, 140], [13, 300], [14.5, 300], [15.3, 450], [19, 450], [20, 700], [23, 700], [24, 1000], [28, 1000], [28.8, 1200]]
+	const storyEnd = 52
+	const counts = [
+		[0, { plan: '–', tests: '–', build: '–', gaps: '0', defects: '0', promoted: '0' }],
+		[0.8, { plan: '@1' }],
+		[1.3, { tests: '4' }],
+		[3.6, { build: 'b1' }],
+		[6.2, { gaps: '3' }],
+		[6.8, { defects: '2' }],
+		[8.8, { gaps: '0' }],
+		[11.8, { plan: '@2' }],
+		[12.3, { tests: '5' }],
+		[22.2, { build: 'b2' }],
+		[26.2, { defects: '1' }],
+		[26.8, { gaps: '2' }],
+		[30.6, { gaps: '0' }],
+		[32.8, { plan: '@3' }],
+		[33.3, { tests: '6' }],
+		[37.7, { build: 'b3' }],
+		[40.8, { defects: '0' }],
+		[45.8, { promoted: '6' }],
+	]
 	const track = document.getElementById('track')
 	const ramp = (time, start, length) => Math.min(1, Math.max(0, (time - start) / length))
 	const ease = (t) => t * t * (3 - 2 * t)
 	const spans = []
+	const pans = [[0, 0]]
+
+	const layOut = () => {
+		let left = 16
+		for (const step of track.querySelectorAll('.step')) {
+			step.style.left = `${left}px`
+			const records = [...track.querySelectorAll(`.record[data-of="${step.id}"]`)]
+			const right = Math.max(step.offsetWidth, ...records.map((record) => record.offsetWidth))
+			const end = left + right
+			left = end + 30
+			const shown = pans[pans.length - 1][1]
+			const time = Number(step.dataset.t)
+			if (end + 24 > shown + 795) pans.push([time - 0.7, shown], [time, end - 500])
+		}
+		for (const iteration of track.querySelectorAll('.iteration'))
+			iteration.style.left = `${document.getElementById(iteration.dataset.at).offsetLeft - 10}px`
+	}
 
 	const panAt = (time) => {
 		for (let index = 1; index < pans.length; index++) {
@@ -239,7 +336,7 @@
 		const steps = [...track.querySelectorAll('.step[data-station]')]
 		steps.forEach((step, index) => {
 			const start = Number(step.dataset.t)
-			const end = index + 1 < steps.length ? Number(steps[index + 1].dataset.t) : teamEnd
+			const end = index + 1 < steps.length ? Number(steps[index + 1].dataset.t) : storyEnd
 			const group = document.createElement('div')
 			group.className = 'group'
 			group.append(row(`<i style="background: var(--${step.dataset.role})"></i><span class="${step.dataset.role}">${step.textContent}</span>`))
@@ -252,20 +349,43 @@
 			if (!records.length) group.append(row('<i></i><span class="outside">factory action, outside the record</span>'))
 			document.getElementById('groups').append(group)
 			const lights = step.dataset.station.split(' ')
+			if (step.dataset.route) lights.push(...step.dataset.route.split(' '))
 			if (step.dataset.role === 'human') lights.push('human')
 			spans.push({ element: group, lights, start, end })
 		})
 	}
 
+	const placeModes = () => {
+		let at = storyEnd
+		for (const mode of document.querySelectorAll('.mode')) {
+			mode.dataset.from = at
+			mode.dataset.to = at + Number(mode.dataset.length)
+			for (const element of mode.querySelectorAll('[data-dt]')) element.dataset.t = at + Number(element.dataset.dt)
+			at += Number(mode.dataset.length)
+		}
+		window.DURATION = at
+	}
+
+	const showCounts = (time) => {
+		for (const cell of document.querySelectorAll('[data-count]')) {
+			const key = cell.dataset.count
+			const [at, values] = counts.filter(([at, values]) => at <= time && key in values).pop()
+			cell.textContent = values[key]
+			cell.classList.toggle('changed', at > 0 && time - at < 1.5)
+		}
+	}
+
 	const visible = (time, start, end) => ramp(time, start, fade) * (1 - ramp(time, end - fade, fade))
 
-	window.DURATION = 58
 	window.measure = () => {
+		layOut()
 		drawSwimlane(track)
 		showGroups()
+		placeModes()
 	}
 	window.renderFrame = (time) => {
 		track.style.transform = `translateX(${-panAt(time)}px)`
+		showCounts(time)
 		for (const element of document.querySelectorAll('[data-from]')) {
 			const from = Number(element.dataset.from)
 			const to = Number(element.dataset.to)

@@ -560,6 +560,7 @@ test(
 		])
 		done(opened, exp)
 		const key = `c:${mergedClaims(opened, 'checkout')[0].id}`
+		openTest(opened, 'checkout', 'no-tester-yet', 'broken-build')
 		closeStore(opened)
 		const ui = await startUi(t, workspace)
 		const { page } = await pageFor(t, ui.url)
@@ -573,6 +574,15 @@ test(
 		assert.match((await page.locator('.sp-viewer').textContent()) ?? '', /HTTP 200: totalPLN=220/)
 		await page.keyboard.press('Escape')
 		await page.locator('[data-drawer]').waitFor()
+		// A running test with no tester shows its empty state as one line across the list.
+		await page.goto(new URL('/explorations/no-tester-yet', ui.url).href)
+		const empty = page.locator('.sp-list > .sp-empty')
+		await empty.waitFor()
+		const list = await page.locator('.sp-list').first().boundingBox()
+		const line = await empty.boundingBox()
+		assert(list && line)
+		assert(line.width > list.width - 4, `The empty state is ${line.width}px wide in a list ${list.width}px wide.`)
+		assert(line.height < 80, `The empty state is ${line.height}px tall.`)
 	}
 )
 

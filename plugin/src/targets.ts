@@ -81,14 +81,10 @@ function insertRequest(
 	input: Omit<TargetRequest, 'tools'> & { tools?: RequestedTool[] }
 ): Change {
 	const request = targetRequestCheck(input)
-	const existing = one<{ body: string }>(
-		store,
-		'SELECT body FROM target_requests WHERE target_id = ?',
-		request.targetId
-	)
+	const existing = currentRequest(store, request.targetId)
 	if (existing) {
 		requireCondition(
-			existing.body === canonical(request),
+			same(existing, request),
 			`Target ${request.targetId} is open with other values. Use a new target ID for a different scope.`
 		)
 		return { reply: completed(request.targetId, { request, recorded: false }), subjects: [] }
@@ -162,10 +158,24 @@ export function toolCheck(tool: RequestedTool): RequestedTool {
 	}
 }
 
+const currentRequestBody = `coalesce(
+	(SELECT body FROM target_request_corrections WHERE target_id = r.target_id ORDER BY rowid DESC LIMIT 1),
+	r.body
+)`
+
+function currentRequest(store: Store, targetId: string): TargetRequest | undefined {
+	const row = one<{ body: string }>(
+		store,
+		`SELECT ${currentRequestBody} AS body FROM target_requests r WHERE r.target_id = ?`,
+		targetId
+	)
+	return row && JSON.parse(row.body)
+}
+
 export function targetRequest(store: Store, targetId: string): TargetRequest {
-	const row = one<{ body: string }>(store, 'SELECT body FROM target_requests WHERE target_id = ?', targetId)
-	requireCondition(row, `Unknown target: ${targetId}. Run target open first.`)
-	return JSON.parse(row.body)
+	const request = currentRequest(store, targetId)
+	requireCondition(request, `Unknown target: ${targetId}. Run target open first.`)
+	return request
 }
 
 export function showTargetRequest(store: Store, targetId: string) {
@@ -298,7 +308,7 @@ export function showTarget(store: Store, reference: string, instanceId?: string)
 export function targetList(store: Store) {
 	return all<{ target_id: string; revision: number | null; body: string; instances: number }>(
 		store,
-		`SELECT r.target_id, r.body, (SELECT max(revision) FROM profiles p WHERE p.target_id = r.target_id) AS revision,
+		`SELECT r.target_id, ${currentRequestBody} AS body, (SELECT max(revision) FROM profiles p WHERE p.target_id = r.target_id) AS revision,
 			(SELECT count(*) FROM instances i WHERE i.target_id = r.target_id AND NOT EXISTS
 				(SELECT 1 FROM instance_retirements x WHERE x.target_id = i.target_id AND x.instance_id = i.instance_id))
 				AS instances
@@ -449,32 +459,106 @@ export function retireInstance(
 	actor: string | undefined,
 	input: { targetId: string; instanceId: string }
 ) {
-	return write(store, { actor, command: 'target instance retire', subject: input.targetId, input }, (operationId) => {
-		const instance = findInstance(store, input.targetId, input.instanceId)
-		const subject = `${input.targetId}/${input.instanceId}`
-		if (instance.retired)
-			return {
-				reply: completed(subject, { instanceId: input.instanceId, recorded: false }),
-				subjects: [],
-			}
-		execute(
-			store,
-			'INSERT INTO instance_retirements (target_id, instance_id, operation_id) VALUES (?, ?, ?)',
-			input.targetId,
-			input.instanceId,
-			operationId
-		)
-		const startedRuns = all<{ run_id: string }>(
-			store,
-			'SELECT r.run_id FROM runs r LEFT JOIN results s ON s.run_id = r.run_id WHERE r.target_id = ? AND r.instance_id = ? AND s.run_id IS NULL ORDER BY r.rowid',
-			input.targetId,
-			input.instanceId
-		).map((row) => row.run_id)
+	return write(store, { actor, command: 'target instance retire', subject: input.targetId, input }, (operationId) =>
+		insertRetirement(store, operationId, input)
+	)
+}
+
+function insertRetirement(store: Store, operationId: string, input: { targetId: string; instanceId: string }): Change {
+	const instance = findInstance(store, input.targetId, input.instanceId)
+	const subject = `${input.targetId}/${input.instanceId}`
+	if (instance.retired)
 		return {
-			reply: completed(subject, { instanceId: input.instanceId, recorded: true, startedRuns }),
-			subjects: [`target:${input.targetId}`],
+			reply: completed(subject, { instanceId: input.instanceId, recorded: false }),
+			subjects: [],
 		}
-	})
+	execute(
+		store,
+		'INSERT INTO instance_retirements (target_id, instance_id, operation_id) VALUES (?, ?, ?)',
+		input.targetId,
+		input.instanceId,
+		operationId
+	)
+	const startedRuns = all<{ run_id: string }>(
+		store,
+		'SELECT r.run_id FROM runs r LEFT JOIN results s ON s.run_id = r.run_id WHERE r.target_id = ? AND r.instance_id = ? AND s.run_id IS NULL ORDER BY r.rowid',
+		input.targetId,
+		input.instanceId
+	).map((row) => row.run_id)
+	return {
+		reply: completed(subject, { instanceId: input.instanceId, recorded: true, startedRuns }),
+		subjects: [`target:${input.targetId}`],
+	}
+}
+
+export function replaceInstance(
+	store: Store,
+	actor: string | undefined,
+	input: { targetId: string; instanceId: string; instance: unknown }
+) {
+	return write(store, { actor, command: 'target instance replace', subject: input.targetId, input }, (operationId) =>
+		insertReplacement(store, operationId, input)
+	)
+}
+
+function insertReplacement(
+	store: Store,
+	operationId: string,
+	input: { targetId: string; instanceId: string; instance: unknown }
+): Change {
+	const old = findInstance(store, input.targetId, input.instanceId)
+	const request = targetRequest(store, input.targetId)
+	const instance = instanceCheck(request.entryPoints, input.instance)
+	const suffix = digest(canonical({ instanceId: old.instanceId, instance })).slice(0, 20)
+	const instanceId = `${old.instanceId.slice(0, 74)}-${suffix}`
+	const replacement = insertInstance(store, operationId, { targetId: input.targetId, instanceId, instance })
+	requireCondition(
+		!old.retired || !replacement.reply.data.recorded,
+		`Instance ${input.targetId}/${old.instanceId} is retired and was not replaced with these values.`,
+		'List the active instances and replace the one that has the wrong values.'
+	)
+	const retired = insertRetirement(store, operationId, input)
+	return {
+		reply: completed(replacement.reply.subject, {
+			...replacement.reply.data,
+			replaced: old.instanceId,
+			startedRuns: retired.reply.data.startedRuns ?? [],
+		}),
+		subjects: replacement.subjects,
+	}
+}
+
+// A replacement and its retirement share an operation. Map only the web
+// entries explicitly replaced by the selected instance, never every retired URL.
+export function correctedEntryText(store: Store, targetId: string, instanceId: string) {
+	const rows = all<{ before: string; after: string; instance_id: string; predecessor: string }>(
+		store,
+		`WITH RECURSIVE chain(instance_id, body, operation_id) AS (
+			SELECT instance_id, body, operation_id FROM instances WHERE target_id = ? AND instance_id = ?
+			UNION ALL
+			SELECT old.instance_id, old.body, old.operation_id FROM chain
+			JOIN instance_retirements r ON r.operation_id = chain.operation_id AND r.target_id = ?
+			JOIN instances old ON old.target_id = r.target_id AND old.instance_id = r.instance_id
+		)
+		SELECT json_extract(old.body, '$.entries.web') AS before,
+			json_extract(new.body, '$.entries.web') AS after, new.instance_id, old.instance_id AS predecessor
+		FROM chain new JOIN instance_retirements r ON r.operation_id = new.operation_id AND r.target_id = ?
+		JOIN chain old ON old.instance_id = r.instance_id`,
+		targetId,
+		instanceId,
+		targetId,
+		targetId
+	)
+	const endpoint = rows.find((row) => row.instance_id === instanceId)?.after
+	const replaced = rows
+		.map((row) => row.before)
+		.filter((url): url is string => Boolean(url && url !== endpoint))
+		.sort((a, b) => b.length - a.length)
+	if (!endpoint || !replaced.length) return (value: string) => value
+	const alternatives = replaced.map((url) => url.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')
+	// A named port is part of the entry, so :444 must not match :4444.
+	const entries = new RegExp(`(?:${alternatives})(?![A-Za-z0-9:-]|\\.[A-Za-z0-9])`, 'g')
+	return (value: string) => value.replace(entries, () => endpoint)
 }
 
 function retirement(store: Store, targetId: string, instanceId: string) {
@@ -575,6 +659,8 @@ export type SetupInput = {
 	instanceId?: string
 	operations?: string[]
 	environment?: string
+	build?: string
+	correct?: boolean
 	reset?: string
 	data?: string
 	policy?: string
@@ -753,13 +839,16 @@ function requireNoSetupConflict(
 ) {
 	const { url, targetId, instanceId } = setup
 	const flags = `--url ${url} --target <new-target-id>`
-	if (stored && input.operations?.length)
+	if (stored && input.operations?.length && !input.correct)
 		requireCondition(
 			sameSet(input.operations, stored.allowedOperations),
 			`Request conflict: target ${targetId} was opened with the operations ${stored.allowedOperations.join(', ')}. --operations asks for ${input.operations.join(', ')}. A request does not change.`,
-			`Run checkmate setup without --operations to keep the stored operations. Or open another target for the new operations: checkmate setup ${flags} --operations ${input.operations.join(',')}`
+			`To correct this target, retry setup with correct enabled (--correct). To keep its scope, omit operations. To open another target, use checkmate setup ${flags} --operations ${input.operations.join(',')}`
 		)
-	const operations = stored?.allowedOperations ?? (input.operations?.length ? input.operations : [anyTestOperation])
+	const operations =
+		(input.correct ? input.operations : undefined) ??
+		stored?.allowedOperations ??
+		(input.operations?.length ? input.operations : [anyTestOperation])
 	requireCondition(
 		!isProduction(instanceId, input.environment) || !operations.includes(anyTestOperation),
 		`${stored ? `Request conflict: target ${targetId} allows ${anyTestOperation}, and ` : ''}Instance ${instanceId} is a production instance. ${anyTestOperation} is not permitted on it.`,
@@ -767,10 +856,11 @@ function requireNoSetupConflict(
 			? `The request of target ${targetId} does not change. Open another target with an explicit list: checkmate setup ${flags} --instance ${instanceId} --operations <a,b>`
 			: productionHint
 	)
-	if (!stored) return
+	if (!stored || input.correct) return
 	const wanted = instanceCheck(stored.entryPoints, {
 		entries: { web: url },
 		...(input.environment ? { environment: input.environment } : {}),
+		...(input.build ? { build: input.build } : {}),
 	})
 	const existing = one<{ body: string }>(
 		store,
@@ -780,7 +870,7 @@ function requireNoSetupConflict(
 	)
 	if (!existing) return
 	const subject = `${targetId}/${instanceId}`
-	const next = `Give the instance a new ID: checkmate setup --url ${url} --target ${targetId} --instance <new-instance-id>`
+	const next = `To replace this instance, retry setup with correct enabled (--correct). To add a separate instance, give it a new ID: checkmate setup --url ${url} --target ${targetId} --instance <new-instance-id>`
 	requireCondition(!retirement(store, targetId, instanceId), `Instance conflict: ${subject} is retired.`, next)
 	requireCondition(
 		existing.body === canonical(wanted),
@@ -793,6 +883,7 @@ function instanceChange(stored: Instance, wanted: Instance) {
 	const changed = [
 		...Object.keys(wanted.entries).filter((name) => stored.entries[name] !== wanted.entries[name]),
 		...(stored.environment === wanted.environment ? [] : ['environment']),
+		...(stored.build === wanted.build ? [] : ['build']),
 	]
 	return `changed: ${changed.join(', ')}`
 }
@@ -831,8 +922,24 @@ export function setupTarget(store: Store, actor: string | undefined, input: Setu
 	const recorded = { ...input, env: undefined }
 	let savedProfile = false
 	const reply = write(store, { actor, command: 'setup', subject: targetId, input: recorded }, (operationId) => {
-		const known = one<{ body: string }>(store, 'SELECT body FROM target_requests WHERE target_id = ?', targetId)
-		requireNoSetupConflict(store, input, setup, known ? (JSON.parse(known.body) as TargetRequest) : null)
+		const known = currentRequest(store, targetId)
+		requireCondition(
+			!input.correct || known,
+			`No target named ${targetId} exists to correct.`,
+			'List the targets and retry with the existing target ID. To create a target, use setup without correct.'
+		)
+		const existing = input.correct
+			? one<{ body: string }>(
+					store,
+					'SELECT body FROM instances WHERE target_id = ? AND instance_id = ?',
+					targetId,
+					instanceId
+				)
+			: undefined
+		const previous: Instance | undefined = existing && JSON.parse(existing.body)
+		const environment = input.environment ?? previous?.environment
+		const build = input.build ?? previous?.build
+		requireNoSetupConflict(store, { ...input, environment }, setup, known ?? null)
 		const subjects: string[] = []
 		if (!known) {
 			const opened = insertRequest(store, operationId, {
@@ -844,7 +951,20 @@ export function setupTarget(store: Store, actor: string | undefined, input: Setu
 			})
 			subjects.push(...opened.subjects)
 		}
-		const request = targetRequest(store, targetId)
+		let request = targetRequest(store, targetId)
+		const corrected = Boolean(
+			input.correct && input.operations && !sameSet(input.operations, request.allowedOperations)
+		)
+		if (corrected) {
+			request = targetRequestCheck({ ...request, allowedOperations })
+			execute(
+				store,
+				'INSERT INTO target_request_corrections (target_id, body, operation_id) VALUES (?, ?, ?)',
+				targetId,
+				canonical(request),
+				operationId
+			)
+		}
 		const saved = one<{ revision: number }>(
 			store,
 			'SELECT revision FROM profiles WHERE target_id = ? ORDER BY revision DESC LIMIT 1',
@@ -872,11 +992,12 @@ export function setupTarget(store: Store, actor: string | undefined, input: Setu
 			const latest = targetRevision(store, targetId)
 			const resetChanged = Boolean(reset) && canonical(latest.profile.reset) !== canonical(reset)
 			const becameReady = reachable && !latest.profile.readyForLiveExecution
-			if (resetChanged || becameReady)
+			if (resetChanged || becameReady || corrected)
 				profile = {
 					...latest.profile,
 					revision: latest.revision + 1,
 					...(resetChanged ? { reset } : {}),
+					allowedOperations: request.allowedOperations,
 					readyForLiveExecution: latest.profile.readyForLiveExecution || reachable,
 				}
 		}
@@ -884,11 +1005,17 @@ export function setupTarget(store: Store, actor: string | undefined, input: Setu
 			subjects.push(...insertProfile(store, operationId, { targetId, profile }).subjects)
 			savedProfile = true
 		}
-		const instance = insertInstance(store, operationId, {
-			targetId,
-			instanceId,
-			instance: { entries: { web: url }, ...(input.environment ? { environment: input.environment } : {}) },
-		})
+		const wanted = {
+			entries: { web: url },
+			...(environment ? { environment } : {}),
+			...(build ? { build } : {}),
+			...(previous?.references ? { references: previous.references } : {}),
+		}
+		const instanceInput = { targetId, instanceId, instance: wanted }
+		const instance =
+			previous && !same(previous, instanceCheck(request.entryPoints, wanted))
+				? insertReplacement(store, operationId, instanceInput)
+				: insertInstance(store, operationId, instanceInput)
 		subjects.push(...instance.subjects)
 		const latest = targetRevision(store, targetId)
 		const needsReset = !latest.profile.reset && latest.profile.allowedOperations.some(changesData)
@@ -905,7 +1032,7 @@ export function setupTarget(store: Store, actor: string | undefined, input: Setu
 			reply: completed(targetId, {
 				targetId,
 				revision: latest.revision,
-				instanceId,
+				instanceId: instance.reply.data.instanceId,
 				url,
 				capabilities: latest.profile.capabilities,
 				allowedOperations: latest.profile.allowedOperations,

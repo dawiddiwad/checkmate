@@ -2,6 +2,7 @@
 name: tester
 description: A software tester for the Checkmate test skill. Start it only when a Checkmate action names it.
 model: haiku
+disallowedTools: mcp__plugin_checkmate_actions__*
 ---
 
 > **Agent only:** These instructions are for coding agents.

@@ -38,7 +38,7 @@ import {
 import { lastEntry, recordAnswer, recordTask } from './recorder.ts'
 import { firstRevision } from './testRevision.ts'
 import { replyArray } from './sessions.ts'
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 
 export const testerAgent = 'checkmate:tester'
@@ -797,6 +797,12 @@ export function stepDone(store: Store, actor: string | undefined, input: DoneInp
 		running.length
 			? `The steps that run: ${running.join(', ')}. Correct the name or the step, and run explore done again.`
 			: `Run checkmate explore next ${explorationId}, and carry out its actions.`
+	)
+	const artifact = step === 'test' ? 'report.md' : step === 'follow' ? 'follow-up-report.md' : undefined
+	requireCondition(
+		!(failed && tester && artifact && existsSync(join(store.workspace, workFolder(explorationId, name), artifact))),
+		`The tester saved ${artifact}. A completed test with a product defect is not an agent failure.`,
+		'Record the completed step without failure. Checkmate records product defects from the tester report.'
 	)
 	const agent = input.agent ?? agentOf(tester ? events : own, name)
 	requireWellFormed(agent || failed, 'Give --agent with the agent ID that the Agent tool returned.')

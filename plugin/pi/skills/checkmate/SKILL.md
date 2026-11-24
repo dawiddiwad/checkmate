@@ -1,73 +1,54 @@
 ---
 name: checkmate
-description: Set up a QA target, plan or run tests, and inspect evidence with Checkmate in Pi.
+description: Set up a QA target, save a plan, run tests, and inspect evidence with Checkmate in Pi.
 ---
 
-> **Agent only:** This file contains repository or workflow instructions for coding agents.
+Use native `checkmate_*` tools. They take named arguments and return the recorded state. You are the operator. You do not test. Never use curl as a test. Never run a reset yourself or invent a reset command. Report the outcome first, without tool names or internal paths. Ask the person only for a decision or missing value. For an oracle decision, give the relevant page in the Checkmate review UI.
 
-Use the CLI in this package. Resolve `../../../dist/checkmate.js` from the directory of this skill. Run each command in the project workspace as `CHECKMATE_HOST_SESSION=1 CHECKMATE_HARNESS=pi node "<absolute CLI path>" <command>`. Keep the provider, model, credentials, and tool policy in Pi. Run one Checkmate command per shell call. Read the output as printed, or add `--json`.
+## Set up and plan
 
-Lead with the outcome. Then ask only for the decision or information you need. Use plain words. For a decision about a gap, a plan, or a run, mention the relevant page in the Checkmate review UI. The person can also reply here. Run the Checkmate commands yourself. Keep command lines, flags, and bundle paths out of replies. Use agent-only hints and JSON output to decide your own actions.
+1. Use `checkmate_list_targets` when the task names no target. Ask for the running URL when needed. Confirm the environment and permitted operations for a remote target. Use `checkmate_setup`. When the app keeps no data, set `data` to `environment` and use the person’s policy text. For read-only tests use a specific operation, for example `read_quotes`. Use the reachability in the result. For updates, set `correct` to true and supply the existing target and instance IDs. Use `checkmate_replace_instance` for an instance with corrected entry values. Use the returned instance ID for new work.
+2. Report assumptions and readiness. Ask for the missing reset or isolation policy when data can change. Do not write a policy or a hook yourself. Stop for setup-only requests.
+3. For planning, call `checkmate_open_plan` with a target ID and a request object containing the objective and source files in `context.sources`. Give all sources the person named. Omit the plan ID to derive it from the first source. Use the returned plan ID.
+4. Call `checkmate_delegate_work` with stage `plan` and the plan ID. The planner reads the sources and saves the tests and gaps. Report the saved plan and questions. Stop for a plan-only request.
 
-1. Run `target list` and `plan list`. Use an existing plan only when the person names it or names its ticket. Use an existing target only when the person names it or it is the only target.
-2. For a new target, ask for the running URL. For a remote URL, confirm the environment and permitted operations. Run `setup --url <url>`. Give the confirmed `--environment` and `--operations` for production. Record only a reference for credentials. If setup says a data policy is needed, ask the person how the data is reset or isolated. Do not write a policy, a reset command, or a hook yourself. When setup refuses with `Request conflict` or `Instance conflict`, nothing was saved. A request and an instance do not change. Follow the hint: drop the changed flag, or use a new `--target` or a new `--instance`.
-   - When the person asks only for setup or a reachability check, stop after setup. Report the target, instance, reachability, and each `assumed:` line. Do not start a plan or a test.
-   - If the application did not answer, say why and ask the person to make it reachable or confirm the URL. If the profile needs a prerequisite or a data policy, ask only for the missing information. Continue with step 3 or 4 when the target is ready.
-3. For a ticket, an acceptance-criteria file, or a request to test a change, run this step now. Run `plan open --target <targetId>@<revision> --objective "<objective>" --source <file>`. Leave out `<planId>`: Checkmate takes it from the ticket key, for example `BS-42`, or from the file name, and prints it as `planIdFrom`. Use that `planId` in the next commands. To name the plan, put its ID first. Never write `stdin` or `-` as the plan ID. A request on standard input needs no word on the command line. Pass every file that the person names as `--source`. Do not name a file in `--objective` unless it is a `--source`: `plan open` refuses it. Then run `delegate plan <planId> --detach`. It starts the planner and returns at once. Then run `delegate wait plan <planId> --timeout 90`. While the reply status is `running`, run the `delegate wait` command from its hint again. A status other than `running` is the result. Do not start the planner a second time. Show the open gaps. Ask the oracle for decisions.
-4. For an exploratory test, run `test <planId> --source <file> --allow Read --allow Bash`. Add `--level smoke|normal|deep` when the person selects a level. Run `explore wait <explorationId> --timeout 90`. If it still shows `recording`, run the same command again. When it shows `completed`, run `explore show <explorationId>`. Do not wait longer than 90 seconds in one command.
-5. For the stored tests of a plan on a build, do not use `test`. The build that the person names decides the run. If the person names no build, ask for it. Do not invent a build name. Run `status <planId>` only to read the revision and the last run ID. Run `run begin <newRunId> <planId>@<revision> --build <build> --partial ready_only`, with a new run ID. Add `--retest-of <earlierRunId>` only when the person says the build contains a fix for a defect of that run. A run on a build with no fix, or a repeat of a run, is a new run without `--retest-of`. The `agent-only next` line of status may name `--retest-of`; use it only under this rule. Do not follow the `agent-only next` line of status instead of the person's build. Then follow "Continue a run".
+## Test and report
 
-## Answer questions and revise the plan
+Use the named plan or the only plan in progress. Ask when more than one plan matches or when the person has not given the build. Keep the default level, tester count and deadlines unless the person asks to change them. For exploration, call `checkmate_start_test` and wait for that exploration with `checkmate_test_status`. Stop at a decision for the oracle. For stored tests use `checkmate_begin_run` with a new ID and the named build. Give `retestOf` when the build fixes an earlier defect. Resume a stopped run with `checkmate_resume_run`.
 
-Use this when the person answers open gaps, or asks you to change the plan.
+Use `checkmate_delegate_work` with stage `execute` and the run ID as subject. The worker reads the pinned instance, runs the selected tests and records the results. Report the recorded verdict, defects, and coverage. Read the run only if the result lacks those facts. Use `checkmate_inbox` for a request about all open work.
 
-Before any `gap answer`, read the gap question in `plan show`. Record the answer only when it responds to that question. If it does not, record nothing. Say which gap the person means, or that no gap matches, and ask. Never record a person's words as the answer to a gap they do not address.
+## Decisions of the oracle
 
-1. Run `plan show <planId> --gaps open`. It lists each open gap with its ID, for example `G1`. Use these IDs in the next step.
-2. For each gap that the person answered, run `gap answer <planId> <gapId> --kind <clarify|accept_assumption|defer> --value "<answer>" --source <source> --rationale "<why>"`. Use the person's words for `--value`. For an answer that the person gave in this conversation, use `--source conversation`. Use `--source <file>` only for a file in the workspace that states the answer. Do not write a file to hold an answer.
-3. Run `delegate revise <planId> --detach`, then `delegate wait revise <planId> --timeout 90`. The planner writes the next revision. While the reply status is `running`, run the `delegate wait` command from its hint again. A status other than `running` is the result. Do not write a plan JSON yourself.
-4. Run `status <planId>` and `plan show <planId>`. Report the new revision and any gap that is still open.
-5. When the status says `needs_approval`, run `plan approve <planId@revision> --rationale "<why>"` only after the person approves that revision.
+Record an answer only when the person answered that question. Send their exact words and the source with `checkmate_answer_gap`. Do not infer a formula or a value. For a slash ID, record the exploration answer, then use `checkmate_follow_test` once for that exploration. For a plan gap, recording the answer starts a reviser. If status still shows `needs_revision` with a pending answer, delegate revise at once. When status says `waitsOn=oracle`, report the open questions and stop. Do not poll or answer them yourself.
 
-To drop a requirement that the person names and that no open gap covers, run `scope drop <planId> <requirementId> --source <file> --rationale "<why>"`, then `delegate revise <planId>` as above. Use the source file the person named, or the message if it is the only source. Do not use `plan edit --patch` to answer a gap or to drop a requirement. Do not guess the JSON shape of a plan change. If `delegate revise` refuses, explain the reason in plain words. Ask for the missing value when you need it.
+Only when the person asks, use the review UI to approve the plan, accept or reject a claim, or keep exploration claims as stored tests. Keep observations as tests only when the person asks, using the factory command `checkmate harvest <explorationId> --observations`. To drop a requirement with the person's decision, use the factory command `checkmate scope drop <planId> <requirementId> --source <source> --rationale <reason>`, then delegate revise. Never change a claim state by editing its record.
 
-## Add or remove a test directly
+## Ask the person
 
-Use this when the person asks you to add, change, or drop a test. An open gap does not block a test that its requirement does not depend on. Do not wait for a gap answer for such a test. A test on a requirement that an open gap blocks waits for the gap answer. Do not run `run begin` or any test for it. A run starts only when the person asks to run tests. Send the JSON in a heredoc. Give `--rationale`.
+When you need a decision from the person, the choices are few, and the `AskUserQuestion` tool is in your tool list, ask with that tool. Use one call with at most 4 questions and 2 to 4 options for each question. Put the recommended option first, and add "(Recommended)" to its label. Give each question a header of at most 12 characters. Give each option one line that says what happens. Do not add an "Other" option. The tool adds it.
 
-- A new test needs a requirement. If the plan has no requirement for it, add the requirement in the same JSON with `text` and `source`: `{"requirements": {"R7": {"text": "<the rule, one sentence>", "source": "conversation"}}, "tests": {...}}`. Do not read the schema files. Do not invent other field names.
-- Add a test. Use a new test ID. Give every field: `{"tests": {"T10": {"title": "...", "requirementIds": ["R5"], "capability": "browser", "operations": ["any_test_operation"], "dependsOn": [], "preconditions": [], "action": "...", "assertions": {"A1": {"check": "...", "checkKind": "deterministic", "observe": "<what is observed>", "expected": "<the value>"}}}}}`. The `expected` kinds are: plain text, `{{marker}}` (the run marker), `type:number`, `type:non-empty`, `one-of:A|B`, `matches:<regex>`, `at least:N`, `at most:N`, `contains:TEXT`, `absent:TEXT`. A check that no value can be compared for uses `"checkKind": "agent_observation"` and no `expected`. Run `checkmate plan edit <planId>@<revision> --patch --rationale "<why>" <<'EOF'`, then the JSON, then `EOF`.
-- Remove a test and its requirement together: `{"requirements": {"R6": null}, "tests": {"T6": null}}`. A requirement without a test or an open gap is refused.
-- Each assertion check says what to observe, for example `The page shows the book count.`
-- A deterministic assertion also needs `expected`, the value that code compares with what the record observed. Write `expected` as plain text for an exact value, for example `"240"`. Write `{{marker}}` where the run marker belongs, for example `"{{marker}}-T1"`.
-- For a shape or a range, use one of: `type:number`, `type:non-empty`, `one-of:A|B`, `matches:<regex>`, `at least:N`, `at most:N`, `contains:TEXT`, `absent:TEXT`. Do not write a type word alone, such as `number`. Do not write a sentence that starts with `not`; write `absent:<text>` instead.
-- An agent_observation assertion has no `expected`. Its check states the observation, and the tester judges it.
+When the tool is not in your tool list, or your task came from an agent, a factory, or a script, do not use the tool. Write the question and its options in your reply as a short numbered list, or return `needs_decision` with the reason. An agent that is the oracle can answer in text.
 
-If `plan edit` refuses, explain the reason in plain words. Ask the person only when you need their input.
+For a value with no fixed choices, for example a URL or how to sign in, ask one short text question. Do not ask for a secret. Ask where it is kept.
 
-## Continue a run
+Ask with the tool for:
 
-When the person asks you to run or retest stored tests, continue until you execute the run that Checkmate began.
+- The environment of a URL that is not local, and whether testers can make and change data there.
+- The target or the instance, when more than one exists.
+- The level, only when the person asks for a choice.
+- A decision in the middle of a run, for example stop, use another URL, or continue. Record the pause first.
+- Accept or reject of a `suspected` or `unresolved` claim, when the person asks to triage.
 
-- When `test` returns a `run=<runId>` field, run `delegate execute <runId>` with that exact ID. Do this even when `test` also started an exploration. A missing `run` field means there is no stored-test run to execute.
-- When `run begin` succeeds, use its run ID in `delegate execute <runId>`. Do not call `run begin` again to continue that run.
-- When the person or `status` names an existing pending run, run `run show <runId>`. If it is still started, run `delegate execute <runId>`. If it is finished, report its recorded result; do not execute it again or create a replacement run.
-- Keep the exact plan revision, build, instance, selected tests, and retest link shown by `run show`. Do not substitute a newer revision, another build, or another instance. A retest is a run on a new build that the person says contains a fix, begun with `--retest-of <earlierRunId>`. A rerun of the same code is a new run without `--retest-of`.
-- Run `delegate execute` without `--allow` or `--claude-arg`. Pi controls its own tools and permissions. Do not widen them to work around a refusal.
-- `delegate execute` can run for several minutes. Give its shell call a timeout of at least 600 seconds. If the call times out, run `run show <runId>`. A run that is still `started` has not ended.
-- When a run is `started` but its process stopped, run `run resume <runId>` first. It rechecks the instance, profile, and run gate, and it does not run test actions. Then run `delegate execute <runId>`.
+## Claims
 
-If a command refuses or needs a decision, explain why it stopped. Make any correction you can make yourself. If you need the person to decide or give a value, ask in plain words. Before you say what changed in the record, run `plan show` or `status` and report the state that it shows. A refusal that a later command fixed is not the final state. Do not invent an ID or say that execution started. After `delegate execute` completes, run `run show <runId>` and report the recorded test outcomes and any decision that is waiting on the run page. A completed command does not mean that every test passed.
+| State        | Meaning                                        | Who acts |
+| ------------ | ---------------------------------------------- | -------- |
+| `observed`   | One tester reported it with steps or evidence. | factory  |
+| `confirmed`  | Two testers reported it, or a verifier saw it. | factory  |
+| `suspected`  | The tester was not sure.                       | oracle   |
+| `unresolved` | The verifier did not see it.                   | oracle   |
+| `accepted`   | The oracle accepted it.                        | factory  |
+| `rejected`   | The oracle rejected it.                        | none     |
 
-Read `status <planId>` when no run needs execution or after you report the run. If someone needs to act, say who and what they need to do in plain words. A completed test command can record failed or blocked tests.
-
-## Gate a run for CI
-
-When the person asks you to gate a pipeline on a run, run `run show <runId> --gate` and use its exit code. It does not change the record.
-
-- 0: every selected test passed, and coverage is complete.
-- 1: a test failed. The product has defects. Report each failed test ID with its `failed` result.
-- 2: a test could not run, the run is not finished, or coverage is partial. Report it as not tested. Do not call it passed.
-- 3: the plan waits on an oracle decision: an open blocking gap. Name the gap and say where to answer it in the review UI.
-
-Read the `gate=` line for the state name. A defect outranks the other codes.
+Do not change a state. Do not remove a claim.

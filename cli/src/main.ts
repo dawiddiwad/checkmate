@@ -11,6 +11,9 @@ import { existsSync, mkdirSync, openSync, readFileSync, rmSync, writeFileSync } 
 import { spawn, spawnSync } from 'node:child_process'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { actionInput } from '../../plugin/src/actions.ts'
+import { serveActions } from '../../plugin/src/action-mcp.ts'
+export { actionToolDefinitions, callActionTool } from '../../plugin/src/action-tools.ts'
 
 type Parsed = {
 	positionals: string[]
@@ -297,6 +300,7 @@ async function runDelegate(tokens: string[]) {
 				parsed.json
 			)
 		}
+		actionInput('delegate_work', { stage, subject })
 		const response = await delegate(parsed.values.workspace ?? process.cwd(), stage, subject, {
 			allowedTools: parsed.allow,
 			claudeArgs: parsed.claudeArgs,
@@ -312,7 +316,8 @@ async function runDelegate(tokens: string[]) {
 
 if (import.meta.main) {
 	const argv = process.argv.slice(2)
-	if (argv[0] === '--version') process.stdout.write(version() + '\n')
+	if (argv[0] === 'mcp' && argv.length === 1) await serveActions()
+	else if (argv[0] === '--version') process.stdout.write(version() + '\n')
 	else if (!argv.length || argv[0] === '--help' || (argv[0] === '--json' && argv[1] === '--help'))
 		process.stdout.write(help(argv.includes('--json')) + '\n')
 	else if (argv[0] === 'delegate') await runDelegate(argv.slice(1))

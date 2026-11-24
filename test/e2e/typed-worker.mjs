@@ -80,9 +80,21 @@ if (stage === 'plan') {
 	assert.match(badEvidence.nextAction.instruction, /inline|text/)
 	const badValue = await call('record_check', { ...fields, observed: '200; {"ok":true}', evidence: [evidence] })
 	assert.equal(badValue.refusal, 'malformed')
-	const check = await ok('record_check', { ...fields, observed: String(response.status), evidence: [evidence] })
-	assert.equal(check.result, 'passed')
-	reply = await ok('close_test', { runId: subject, testId: fields.testId })
+	const unobserved = await call('record_check', {
+		...fields,
+		observed: '200',
+		result: 'not_checked',
+		reason: 'Placeholder',
+	})
+	assert.equal(unobserved.refusal, 'malformed')
+	assert.match(unobserved.reasons.join(' '), /observed value/)
+	reply = await ok('record_check', {
+		...fields,
+		observed: String(response.status),
+		evidence: [evidence, { text: 'Read-only check.' }],
+	})
+	assert.equal(reply.result, 'passed')
+	// The launcher closes a fully recorded test even if this worker did not close it.
 }
 console.log(
 	JSON.stringify({

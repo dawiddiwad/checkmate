@@ -163,7 +163,12 @@ function optionValue(token: string, kind: FlagKind, text: string) {
 }
 
 function evidence(args: Args, context: Context): EvidenceInput[] | undefined {
-	return list(args, 'evidence')?.map((spec) => {
+	const specs = list(args, 'evidence')
+	requireWellFormed(
+		(specs ?? []).filter((spec) => /^-(?::.+)?$/.test(spec)).length <= 1,
+		'Give one evidence text on standard input'
+	)
+	return specs?.map((spec) => {
 		const match = /^-(?::(.+))?$/.exec(spec)
 		if (match) return { text: context.text(), kind: match[1] }
 		const file = /^(.*):(observation|http_exchange|screenshot|trace)$/.exec(spec)

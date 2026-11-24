@@ -37,7 +37,7 @@ The Claude Code plugin serves Checkmate actions through its local MCP server. Th
 | Start an independent worker | `delegate_work`                                                                                                           |
 | Review state                | `status`, `inbox`                                                                                                         |
 
-The operator opens requests and starts independent planners, revisers and testers. Only the assigned worker can save a plan or its revision, record a check, or close a test through a host tool. The launcher records the final stored run outcome. A plan gap answer starts a reviser immediately. A question from exploration is recorded for follow-up testing. Give the person's exact answer.
+The operator opens requests and starts independent planners, revisers and testers. Only the assigned worker can save a plan or its revision, record a check, or close a test through a host tool. The launcher closes a test whose worker recorded all observed checks and records the final run outcome. A plan gap answer starts a reviser immediately. A question from exploration is recorded for follow-up testing. Give the person's exact answer.
 
 Use the returned target, plan, and instance IDs for subsequent actions. To correct a web target, use setup with the `correct` field. To replace an instance, supply its complete entry values. A target correction applies to a plan before its first stored run. The first run pins the corrected profile. An exploration or run uses the replacement instance's URL in place of a superseded URL from that instance's history. Previously recorded runs retain their pinned profile and instance.
 

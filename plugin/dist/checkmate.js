@@ -18571,7 +18571,6 @@ function evidenceFiles(store, runId, name2, specs = []) {
   const files2 = specs.map((spec2) => "file" in spec2 ? readEvidence(store, runId, spec2) : textEvidence(spec2, name2));
   const paths = files2.flatMap((file) => file.path ?? []);
   requireWellFormed(new Set(paths).size === paths.length, "An evidence file is listed twice");
-  requireWellFormed(files2.length - paths.length <= 1, "Give one evidence text on standard input");
   return files2;
 }
 function removeFiles(files2) {
@@ -18597,6 +18596,10 @@ function checkedResult(given, assertion, observed) {
 function structuredResult(input, test, assertion, observed, marker) {
   const planned = checkRequest(test.action, assertion.request);
   const reasons2 = [];
+  if (input.result === "not_checked" && observed !== null)
+    reasons2.push(
+      "The call gives an observed value. Omit result to let Checkmate compare it. Use not_checked only when you did not observe a value."
+    );
   if (input.result !== void 0 && input.result !== "not_checked")
     reasons2.push(
       `${assertion.id} takes its result from --observed. Give --observed with the value of "${assertion.observe}", and no --result.`
@@ -43884,7 +43887,12 @@ function optionValue(token, kind, text2) {
     );
 }
 function evidence2(args, context) {
-  return list2(args, "evidence")?.map((spec2) => {
+  const specs = list2(args, "evidence");
+  requireWellFormed(
+    (specs ?? []).filter((spec2) => /^-(?::.+)?$/.test(spec2)).length <= 1,
+    "Give one evidence text on standard input"
+  );
+  return specs?.map((spec2) => {
     const match = /^-(?::(.+))?$/.exec(spec2);
     if (match) return { text: context.text(), kind: match[1] };
     const file = /^(.*):(observation|http_exchange|screenshot|trace)$/.exec(spec2);
@@ -47173,7 +47181,7 @@ function nativeTestPrompt(execution, workspace2, test) {
     ] : [],
     'For every assertion that has expected, OMIT result. Checkmate compares the observed value itself. Give only the named value in observed, for example "400"; put the response body in evidence. When an assertion has no expected, give result only as your judgment of the recorded observation.',
     `Example structured call: checkmate_record_check {"runId":"${run2.run_id}","testId":"${test.id}","assertionId":"<assertion ID>","request":"GET /path?qty=0","observed":"400","evidence":[{"text":"GET /path?qty=0 returned HTTP 400","kind":"http_exchange"}]}. Use absent: true instead of observed only when the target was read and the asserted item is absent.`,
-    "For a refusal, correct the named fields and retry the same check. If the action or read could not run, close as error with its reason and evidence. After all checks are recorded, close with checkmate_close_test. Do not finish the run. The operator records the final result.",
+    "For a refusal, correct the named fields and retry the same check. If the action or read could not run, close as error with its reason and evidence. After all observed checks are recorded, return the result receipt. The launcher closes the test from those records. Use checkmate_close_test only if the action failed or is blocked. Do not record placeholders.",
     `Return only {"status":"completed","subject":"${run2.run_id}","reasons":[]} after recording the outcome.`
   ].join("\n\n");
 }
@@ -47308,7 +47316,18 @@ async function delegateByTest(workspace2, subject, options3, harness, env, execu
           stopped = child.failure;
           break;
         }
-        if (withStore(workspace2, (store) => runOutcomes(store, subject).has(testId))) break;
+        const closed = withStore(workspace2, (store) => {
+          if (runOutcomes(store, subject).has(testId)) return true;
+          if (!options3.nativeTools) return false;
+          const assertions = runAssertions(store, subject);
+          if (!view.test.assertions.every(({ id: id2 }) => {
+            const result = assertions.get(`${testId}.${id2}`)?.result;
+            return result !== void 0 && result !== "not_checked";
+          }))
+            return false;
+          return closeTest(store, workerActor, { runId: subject, testId }).status === "completed";
+        });
+        if (closed) break;
       }
       if (stopped) break;
       if (withStore(workspace2, (store) => runOutcomes(store, subject).has(testId)))

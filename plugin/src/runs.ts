@@ -623,7 +623,6 @@ function evidenceFiles(store: Store, runId: string, name: string, specs: Evidenc
 	const files = specs.map((spec) => ('file' in spec ? readEvidence(store, runId, spec) : textEvidence(spec, name)))
 	const paths = files.flatMap((file) => file.path ?? [])
 	requireWellFormed(new Set(paths).size === paths.length, 'An evidence file is listed twice')
-	requireWellFormed(files.length - paths.length <= 1, 'Give one evidence text on standard input')
 	return files
 }
 
@@ -664,6 +663,10 @@ function structuredResult(
 ) {
 	const planned = checkRequest(test.action, assertion.request)
 	const reasons: string[] = []
+	if (input.result === 'not_checked' && observed !== null)
+		reasons.push(
+			'The call gives an observed value. Omit result to let Checkmate compare it. Use not_checked only when you did not observe a value.'
+		)
 	if (input.result !== undefined && input.result !== 'not_checked')
 		reasons.push(
 			`${assertion.id} takes its result from --observed. Give --observed with the value of "${assertion.observe}", and no --result.`

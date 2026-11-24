@@ -7,7 +7,7 @@ Checkmate records tests and decisions for one project in `.checkmate/checkmate.d
 - Node.js 24.12.0 or later.
 - For local runtime QA, a running application with a URL reachable from the workspace.
 - Claude Code or Pi, configured in its host, for delegated planning and test work.
-- Playwright CLI on `PATH` only when the test uses a browser. Then also a Chrome or Chromium executable that runs, named in `.playwright/cli.config.json` under `browser.launchOptions.executablePath`. `checkmate setup` refuses early when it is missing and names the fix.
+- Playwright CLI on `PATH` only when the test uses a browser. Playwright CLI uses an installed Chrome, or a browser that `playwright-cli install-browser` installs. To use another browser, name its executable in `.playwright/cli.config.json` under `browser.launchOptions.executablePath`. `checkmate setup` checks that this executable runs.
 
 Checkmate does not start the application. The host controls models, credentials, tools, and permissions.
 

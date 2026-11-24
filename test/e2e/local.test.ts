@@ -3,7 +3,7 @@ import { execFileSync, spawn, spawnSync } from 'node:child_process'
 import { once } from 'node:events'
 import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:http'
-import type { AddressInfo } from 'node:net'
+import { connect, type AddressInfo } from 'node:net'
 import { createInterface } from 'node:readline'
 import { delimiter, join } from 'node:path'
 import { gunzipSync } from 'node:zlib'
@@ -5508,7 +5508,7 @@ test('Setup with the application up clears a profile saved while it was down —
 	assert.equal(began.body.status, 'completed', began.output)
 })
 
-test('Setup needs a runnable Chrome or Chromium for the browser tool — API-only targets need none.', async (t) => {
+test('Setup lets playwright-cli use its own browser and checks a browser executable only when the config names one — API-only targets need none.', async (t) => {
 	const workspace = directory(t)
 	const bin = directory(t)
 	const app = await fixture()
@@ -5524,13 +5524,17 @@ test('Setup needs a runnable Chrome or Chromium for the browser tool — API-onl
 	}
 	const setup = (run: NodeJS.ProcessEnv = env) =>
 		command(workspace, run, 'setup', '--url', app.baseUrl, '--target', 'shop')
-	const missing = await setup()
-	assert.equal(missing.code, 1, missing.output)
-	assert.match(missing.output, /needs a Chrome or Chromium executable/)
-	// The driver asks the person for the browser; it does not write the config itself.
-	assert.match(missing.output, /Ask the person for the path of a Chrome or Chromium executable/)
-	assert.match(missing.output, /Do not write this file yourself/)
-	assert.match(missing.output, /\.playwright\/cli\.config\.json/)
+	const toolOf = async () => {
+		const profile = await command(workspace, env, 'target', 'show', 'shop')
+		return profile.body.profile.tools.find((entry: { name: string }) => entry.name === 'playwright-cli')
+	}
+	// No config: the person is not asked for a browser path.
+	const own = await setup()
+	assert.equal(own.code, 0, own.output)
+	assert.doesNotMatch(own.output, /Chrome or Chromium/)
+	assert.equal((await toolOf()).reachable, true)
+	assert.equal((await toolOf()).executable, undefined)
+	// A config that names an executable that does not run is refused.
 	const config = join(workspace, '.playwright', 'cli.config.json')
 	mkdirSync(join(workspace, '.playwright'))
 	const broken = join(workspace, 'broken-chrome')
@@ -5540,17 +5544,92 @@ test('Setup needs a runnable Chrome or Chromium for the browser tool — API-onl
 	const notRunning = await setup()
 	assert.equal(notRunning.code, 1, notRunning.output)
 	assert.match(notRunning.output, /does not run with --version/)
+	assert.match(notRunning.output, /Do not write \.playwright\/cli\.config\.json yourself/)
+	// One that runs is recorded on the tool.
 	const chrome = join(workspace, 'fake-chrome')
 	writeFileSync(chrome, '#!/bin/sh\necho "Chromium 124.0.6367.60"\n')
 	chmodSync(chrome, 0o755)
 	writeFileSync(config, JSON.stringify({ browser: { launchOptions: { executablePath: chrome } } }))
-	const ready = await setup()
-	assert.equal(ready.code, 0, ready.output)
-	const profile = await command(workspace, env, 'target', 'show', 'shop')
-	const recorded = profile.body.profile.tools.find((entry: { name: string }) => entry.name === 'playwright-cli')
-	assert.equal(recorded.executable, chrome)
+	const named = await setup()
+	assert.equal(named.code, 0, named.output)
+	assert.equal(named.body.revision, 1)
 	const apiOnly = await setup({ ...process.env, PATH: '', CHECKMATE_ACTOR: 'oracle', CHECKMATE_HARNESS: 'pi' })
 	assert.equal(apiOnly.code, 0, apiOnly.output)
+})
+
+test('Setup says why the application did not answer, follows redirects, accepts a 403, and goes through the proxy of the environment.', async (t) => {
+	const workspace = directory(t)
+	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle', CHECKMATE_HARNESS: 'pi' }
+	const server = createServer((request, response) => {
+		if (request.url === '/search') return response.writeHead(301, { location: '/final' }).end()
+		if (request.url === '/final') return response.writeHead(403).end('bot protection')
+		response.writeHead(503).end('down')
+	})
+	server.listen(0, '127.0.0.1')
+	await once(server, 'listening')
+	t.after(() => server.close())
+	const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`
+	// A redirect to a 403 is an answer: the application is up.
+	const up = await command(workspace, env, 'setup', '--url', `${base}/search`, '--target', 'site')
+	assert.equal(up.code, 0, up.output)
+	assert.equal(up.body.instanceReachable, true, up.output)
+	// A 5xx names its status and what to do.
+	const down = await command(workspace, env, 'setup', '--url', `${base}/broken`, '--target', 'broken')
+	assert.equal(down.code, 0, down.output)
+	assert.equal(down.body.instanceReachable, false, down.output)
+	assert.match(down.output, /did not answer at .*\/broken: HTTP 503/)
+	assert.match(down.output, /A rerun with the same cause changes nothing/)
+	// A closed port names the connection error.
+	const closed = createServer()
+	closed.listen(0, '127.0.0.1')
+	await once(closed, 'listening')
+	const port = (closed.address() as AddressInfo).port
+	closed.close()
+	const refused = await command(workspace, env, 'setup', '--url', `http://127.0.0.1:${port}`, '--target', 'closed')
+	assert.match(refused.output, /did not answer at .*: ECONNREFUSED/)
+	// A host that only the proxy of the environment can reach still works: the proxy tunnels it to the server.
+	const tunneled: string[] = []
+	const proxy = createServer()
+	proxy.on('connect', (request, socket, head) => {
+		tunneled.push(request.url ?? '')
+		const upstream = connect((server.address() as AddressInfo).port, '127.0.0.1', () => {
+			socket.write('HTTP/1.1 200 Connection Established\r\n\r\n')
+			upstream.write(head)
+			upstream.pipe(socket)
+			socket.pipe(upstream)
+		})
+		upstream.on('error', () => socket.destroy())
+		socket.on('error', () => upstream.destroy())
+	})
+	proxy.listen(0, '127.0.0.1')
+	await once(proxy, 'listening')
+	t.after(() => proxy.close())
+	const viaProxy = await command(
+		workspace,
+		{ ...env, HTTP_PROXY: `http://127.0.0.1:${(proxy.address() as AddressInfo).port}` },
+		'setup',
+		'--url',
+		'http://no-such-host.invalid/search',
+		'--target',
+		'proxied'
+	)
+	assert.equal(viaProxy.body.instanceReachable, true, viaProxy.output)
+	// The redirect of /search opens a second tunnel.
+	assert.deepEqual(new Set(tunneled), new Set(['no-such-host.invalid:80']))
+})
+
+test('Setup run again with the same data policy saves no new revision.', async (t) => {
+	const workspace = directory(t)
+	const app = await fixture()
+	t.after(() => app.close())
+	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle', CHECKMATE_HARNESS: 'pi' }
+	const args = ['setup', '--url', app.baseUrl, '--target', 'shop', '--data', 'environment', '--policy', 'Read only.']
+	const first = await command(workspace, env, ...args)
+	assert.equal(first.body.revision, 1, first.output)
+	const second = await command(workspace, env, ...args)
+	assert.equal(second.body.revision, 1, second.output)
+	const changed = await command(workspace, env, ...args.slice(0, -1), 'Read only, no logins.')
+	assert.equal(changed.body.revision, 2, changed.output)
 })
 
 test('Compare an expected value by its kind — the run marker is substituted by code, a shape or a range is decided by code, and a type word or a placeholder is refused at save.', async (t) => {

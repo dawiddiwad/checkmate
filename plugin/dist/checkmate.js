@@ -11300,35 +11300,33 @@ function browserExecutable(workspace2) {
   const path = join4(workspace2, browserConfig);
   const config2 = existsSync4(path) ? JSON.parse(readFileSync3(path, "utf8")) : {};
   const executable = config2.browser?.launchOptions?.executablePath;
-  const hint = `Ask the person for the path of a Chrome or Chromium executable. Write ${browserConfig} only with the path they give, for example {"browser":{"browserName":"chromium","launchOptions":{"executablePath":"<the path they give>"}}}, then run setup again. Do not write this file yourself, and do not pick a browser yourself.`;
-  requireCondition(
-    typeof executable === "string" && executable !== "",
-    `The browser tool needs a Chrome or Chromium executable, and ${browserConfig} names none.`,
-    hint
-  );
+  if (typeof executable !== "string" || executable === "") return void 0;
   const run2 = spawnSync5(executable, ["--version"], { timeout: 1e4 });
   requireCondition(
     run2.status === 0,
-    `The browser executable ${executable} does not run with --version. Ask the person for a different path.`,
-    hint
+    `The browser executable ${executable} in ${browserConfig} does not run with --version.`,
+    `Ask the person for a different path, or remove executablePath so that playwright-cli uses its own browser. Do not write ${browserConfig} yourself, and do not pick a browser yourself.`
   );
   return executable;
 }
 function readinessHint(store, targetId) {
   return `Clear it with checkmate setup --url ${targetWebUrl(store, targetId)} --target ${targetId} while the application answers, then run again.`;
 }
-function urlAnswers(url) {
-  if (!/^https?:\/\//i.test(url)) return true;
-  const check = spawnSync5(
-    process.execPath,
-    [
-      "-e",
-      "fetch(process.argv[1], { signal: AbortSignal.timeout(5000) }).then((r) => process.exit(r.status < 500 ? 0 : 1), () => process.exit(2))",
-      url
-    ],
-    { timeout: 8e3 }
-  );
-  return check.status === 0;
+var urlCheckSeconds = 10;
+var urlCheckScript = `
+fetch(process.argv[1], { signal: AbortSignal.timeout(${urlCheckSeconds * 1e3}) }).then(
+	(r) => { if (r.status < 500) process.exit(0); console.log('HTTP ' + r.status); process.exit(1) },
+	(e) => { console.log(e.name === 'TimeoutError' ? 'no answer in ${urlCheckSeconds} seconds' : (e.cause?.code ?? e.name) + ': ' + (e.cause?.message ?? e.message)); process.exit(1) }
+)`;
+function urlFailure(url, env) {
+  if (!/^https?:\/\//i.test(url)) return null;
+  const check = spawnSync5(process.execPath, ["-e", urlCheckScript, url], {
+    env: { ...env, NODE_USE_ENV_PROXY: "1" },
+    encoding: "utf8",
+    timeout: (urlCheckSeconds + 5) * 1e3
+  });
+  if (check.status === 0) return null;
+  return check.stdout.trim() || check.stderr.trim().split("\n").pop() || "the check did not finish";
 }
 async function urlReachable(url) {
   if (!/^https?:\/\//i.test(url)) return true;
@@ -11421,13 +11419,13 @@ function setupTarget(store, actor, input) {
       version: process.version.slice(1),
       reachable: true
     },
-    ...browser && executable ? [
+    ...browser ? [
       {
         name: "playwright-cli",
         kind: "cli",
         purpose: "Drive the browser.",
         ...toolVersion(browser) ? { version: toolVersion(browser) } : {},
-        executable,
+        ...executable ? { executable } : {},
         reachable: true
       }
     ] : []
@@ -11441,8 +11439,9 @@ function setupTarget(store, actor, input) {
     "SELECT revision FROM profiles WHERE target_id = ? ORDER BY revision DESC LIMIT 1",
     targetId
   );
-  const reachable = input.answered ?? urlAnswers(url);
-  if (!reachable && !saved) assumed.push(`ready=false (${url} did not answer)`);
+  const failure = input.answered === void 0 ? urlFailure(url, input.env) : input.answered ? null : "not reachable";
+  const reachable = failure === null;
+  if (!reachable && !saved) assumed.push(`ready=false (${url} did not answer: ${failure})`);
   const reset = dataOf(input);
   if (!saved)
     saveTarget(store, actor, {
@@ -11464,7 +11463,7 @@ function setupTarget(store, actor, input) {
     });
   else {
     const latest2 = targetRevision(store, targetId);
-    const resetChanged = Boolean(reset) && JSON.stringify(latest2.profile.reset) !== JSON.stringify(reset);
+    const resetChanged = Boolean(reset) && canonical(latest2.profile.reset) !== canonical(reset);
     const becameReady = reachable && !latest2.profile.readyForLiveExecution;
     if (resetChanged || becameReady)
       saveTarget(store, actor, {
@@ -11501,7 +11500,9 @@ function setupTarget(store, actor, input) {
     allowedOperations: latest.profile.allowedOperations,
     ready: latest.profile.readyForLiveExecution,
     instanceReachable: reachable,
-    ...needsReset ? {
+    ...!reachable ? {
+      next: `The application did not answer at ${url}: ${failure}. Fix the address or the network, then run checkmate setup --url ${url} --target ${targetId} again. A rerun with the same cause changes nothing.`
+    } : needsReset ? {
       next: `Ask the person for the data policy. Give the command that restores the seed data: checkmate setup --url ${url} --reset "<command>". Or give --data environment|isolation with --policy "<text>". Do not write them yourself.`
     } : !latest.profile.readyForLiveExecution ? {
       next: `Recheck the target prerequisites and save a new profile: checkmate delegate setup ${targetId}`

@@ -588,24 +588,18 @@ function toolVersion(path: string) {
 
 const browserConfig = join('.playwright', 'cli.config.json')
 
-// The browser tool drives the Chrome or Chromium named in the workspace config.
-// Setup refuses early when that executable is missing or does not run.
+// playwright-cli launches a browser of its own when the config names no executable. A person who
+// names one gets it checked, so that a wrong path fails here and not in the middle of a run.
 function browserExecutable(workspace: string) {
 	const path = join(workspace, browserConfig)
 	const config = existsSync(path) ? JSON.parse(readFileSync(path, 'utf8')) : {}
 	const executable: unknown = config.browser?.launchOptions?.executablePath
-	// The person names the browser. The driver never picks one and never writes the config without their path.
-	const hint = `Ask the person for the path of a Chrome or Chromium executable. Write ${browserConfig} only with the path they give, for example {"browser":{"browserName":"chromium","launchOptions":{"executablePath":"<the path they give>"}}}, then run setup again. Do not write this file yourself, and do not pick a browser yourself.`
-	requireCondition(
-		typeof executable === 'string' && executable !== '',
-		`The browser tool needs a Chrome or Chromium executable, and ${browserConfig} names none.`,
-		hint
-	)
+	if (typeof executable !== 'string' || executable === '') return undefined
 	const run = spawnSync(executable, ['--version'], { timeout: 10000 })
 	requireCondition(
 		run.status === 0,
-		`The browser executable ${executable} does not run with --version. Ask the person for a different path.`,
-		hint
+		`The browser executable ${executable} in ${browserConfig} does not run with --version.`,
+		`Ask the person for a different path, or remove executablePath so that playwright-cli uses its own browser. Do not write ${browserConfig} yourself, and do not pick a browser yourself.`
 	)
 	return executable
 }
@@ -615,18 +609,25 @@ export function readinessHint(store: Store, targetId: string) {
 	return `Clear it with checkmate setup --url ${targetWebUrl(store, targetId)} --target ${targetId} while the application answers, then run again.`
 }
 
-function urlAnswers(url: string) {
-	if (!/^https?:\/\//i.test(url)) return true
-	const check = spawnSync(
-		process.execPath,
-		[
-			'-e',
-			'fetch(process.argv[1], { signal: AbortSignal.timeout(5000) }).then((r) => process.exit(r.status < 500 ? 0 : 1), () => process.exit(2))',
-			url,
-		],
-		{ timeout: 8000 }
-	)
-	return check.status === 0
+// One GET that follows redirects. Any answer below 500 counts: a 403 from bot protection still means
+// that the application is up. Node takes HTTP_PROXY and HTTPS_PROXY only with NODE_USE_ENV_PROXY, and
+// a sandbox or a company network often allows no other route. Returns why the check failed, or null.
+const urlCheckSeconds = 10
+const urlCheckScript = `
+fetch(process.argv[1], { signal: AbortSignal.timeout(${urlCheckSeconds * 1000}) }).then(
+	(r) => { if (r.status < 500) process.exit(0); console.log('HTTP ' + r.status); process.exit(1) },
+	(e) => { console.log(e.name === 'TimeoutError' ? 'no answer in ${urlCheckSeconds} seconds' : (e.cause?.code ?? e.name) + ': ' + (e.cause?.message ?? e.message)); process.exit(1) }
+)`
+
+function urlFailure(url: string, env: SetupInput['env']): string | null {
+	if (!/^https?:\/\//i.test(url)) return null
+	const check = spawnSync(process.execPath, ['-e', urlCheckScript, url], {
+		env: { ...env, NODE_USE_ENV_PROXY: '1' },
+		encoding: 'utf8',
+		timeout: (urlCheckSeconds + 5) * 1000,
+	})
+	if (check.status === 0) return null
+	return check.stdout.trim() || check.stderr.trim().split('\n').pop() || 'the check did not finish'
 }
 
 export async function urlReachable(url: string) {
@@ -728,14 +729,14 @@ export function setupTarget(store: Store, actor: string | undefined, input: Setu
 			version: process.version.slice(1),
 			reachable: true,
 		},
-		...(browser && executable
+		...(browser
 			? [
 					{
 						name: 'playwright-cli',
 						kind: 'cli' as const,
 						purpose: 'Drive the browser.',
 						...(toolVersion(browser) ? { version: toolVersion(browser) } : {}),
-						executable,
+						...(executable ? { executable } : {}),
 						reachable: true,
 					},
 				]
@@ -750,8 +751,9 @@ export function setupTarget(store: Store, actor: string | undefined, input: Setu
 		'SELECT revision FROM profiles WHERE target_id = ? ORDER BY revision DESC LIMIT 1',
 		targetId
 	)
-	const reachable = input.answered ?? urlAnswers(url)
-	if (!reachable && !saved) assumed.push(`ready=false (${url} did not answer)`)
+	const failure = input.answered === undefined ? urlFailure(url, input.env) : input.answered ? null : 'not reachable'
+	const reachable = failure === null
+	if (!reachable && !saved) assumed.push(`ready=false (${url} did not answer: ${failure})`)
 	const reset = dataOf(input)
 	if (!saved)
 		saveTarget(store, actor, {
@@ -774,7 +776,7 @@ export function setupTarget(store: Store, actor: string | undefined, input: Setu
 	else {
 		// A profile saved while the application was down stays not ready until setup sees it answer.
 		const latest = targetRevision(store, targetId)
-		const resetChanged = Boolean(reset) && JSON.stringify(latest.profile.reset) !== JSON.stringify(reset)
+		const resetChanged = Boolean(reset) && canonical(latest.profile.reset) !== canonical(reset)
 		const becameReady = reachable && !latest.profile.readyForLiveExecution
 		if (resetChanged || becameReady)
 			saveTarget(store, actor, {
@@ -813,15 +815,19 @@ export function setupTarget(store: Store, actor: string | undefined, input: Setu
 		allowedOperations: latest.profile.allowedOperations,
 		ready: latest.profile.readyForLiveExecution,
 		instanceReachable: reachable,
-		...(needsReset
+		...(!reachable
 			? {
-					next: `Ask the person for the data policy. Give the command that restores the seed data: checkmate setup --url ${url} --reset "<command>". Or give --data environment|isolation with --policy "<text>". Do not write them yourself.`,
+					next: `The application did not answer at ${url}: ${failure}. Fix the address or the network, then run checkmate setup --url ${url} --target ${targetId} again. A rerun with the same cause changes nothing.`,
 				}
-			: !latest.profile.readyForLiveExecution
+			: needsReset
 				? {
-						next: `Recheck the target prerequisites and save a new profile: checkmate delegate setup ${targetId}`,
+						next: `Ask the person for the data policy. Give the command that restores the seed data: checkmate setup --url ${url} --reset "<command>". Or give --data environment|isolation with --policy "<text>". Do not write them yourself.`,
 					}
-				: {}),
+				: !latest.profile.readyForLiveExecution
+					? {
+							next: `Recheck the target prerequisites and save a new profile: checkmate delegate setup ${targetId}`,
+						}
+					: {}),
 		created: !known,
 		assumed: known ? [] : assumed,
 	})

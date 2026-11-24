@@ -47,7 +47,7 @@ Front-loading QA like this has clear benefits:
 
 ## Limitations
 
-- **Sub-agents don't inherit host tools:** Explorers and testers cannot access your host's integrations (such as a Jira MCP server). In the plugin, testers are limited to `Read`, `Write`, `Edit`, `Bash`, `Glob`, and `Grep`. In the CLI, explorers only get the tools you explicitly pass via `--allow` and cannot ask for more.
+- **CLI sub-agents don't inherit host tools:** Explorers started by the CLI cannot access your host's integrations (such as a Jira MCP server). In the plugin, testers inherit the tools of your host session, including its integrations; only the clerk is limited to `Read` and `Write`. In the CLI, explorers only get the tools you explicitly pass via `--allow` and cannot ask for more.
 - **Plan first, unless you accept the above limitations:** Because of those tool limits, start by running the **planner**. It runs directly in your host environment, so it can read Jira tickets and other external sources before handing tasks off to explorers and testers.
 
 ## Solo mode: Claude Code or Pi

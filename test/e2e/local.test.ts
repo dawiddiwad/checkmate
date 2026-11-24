@@ -2748,6 +2748,9 @@ test('Discover the packaged Claude plugin and invoke its entry — broken plugin
 	const manifest = JSON.parse(readFileSync(join(plugin, '.claude-plugin/plugin.json'), 'utf8'))
 	assert.equal(manifest.name, 'checkmate')
 	const entry = join(plugin, 'dist/checkmate.js')
+	// The tester inherits the host tools. The clerk only reads a task and writes an answer.
+	assert.doesNotMatch(readFileSync(join(plugin, 'agents/tester.md'), 'utf8'), /^tools:/m)
+	assert.match(readFileSync(join(plugin, 'agents/clerk.md'), 'utf8'), /^tools: Read, Write$/m)
 	assert.match(
 		execFileSync(process.execPath, [entry, '--version'], { encoding: 'utf8' }),
 		new RegExp(`^${manifest.version} build [0-9a-f]{12}\n`)

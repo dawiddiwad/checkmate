@@ -7,6 +7,7 @@ import {
 	requireChoice,
 	requireCondition,
 	requireIdentifier,
+	requireNotInputWord,
 	requireText,
 	revisionReference,
 	same,
@@ -393,6 +394,11 @@ function insertInstance(
 	input: { targetId: string; instanceId: string; instance: unknown }
 ): Change {
 	const request = targetRequest(store, input.targetId)
+	requireNotInputWord(
+		input.instanceId,
+		'instance ID',
+		"Give a name for the instance, for example local or staging: checkmate target instance add <targetId> <instanceId> <<'EOF'."
+	)
 	const instanceId = requireIdentifier(input.instanceId, 'instance ID')
 	const instance = instanceCheck(request.entryPoints, input.instance)
 	const subject = `${input.targetId}/${instanceId}`

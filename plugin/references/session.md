@@ -53,16 +53,18 @@ When `target request`, `plan request`, or `run show` refuses with `Unknown ...`,
 
   Give `--entry-point <name>:<url|command|value>:<purpose>` once for each entry point. Give `--tool` once for each tool that the oracle names. Ask the oracle for a missing entry point, capability, or operation. Do not invent operations.
 
-- Plan: run `checkmate target show <targetId>` for the latest target revision. Then record the request. Give the ticket and the product documentation as sources:
+- Plan: run `checkmate target show <targetId>` for the latest target revision. Then record the request. Give the ticket and the product documentation as sources. Leave out the plan ID: Checkmate takes it from the first source and prints it as `planIdFrom`. Use that `planId` in the next commands:
 
   ```sh
-  checkmate plan open <planId> --target <targetId@rev> --objective "<from the oracle>" --source jira:SHOP-12 --source docs/checkout.md
+  checkmate plan open --target <targetId@rev> --objective "<from the oracle>" --source jira:SHOP-12 --source docs/checkout.md
   ```
 
-  To give requirements or tools, send the full request in a heredoc in place of the flags:
+  To name the plan, put its ID first, for example `checkmate plan open shop-12 --target <targetId@rev> ...`. Never write `stdin` or `-` as the plan ID. A bare word is a plan ID, and the command refuses these two words.
+
+  To give requirements or tools, send the full request in a heredoc in place of the flags. The heredoc is standard input: it has no word on the command line.
 
   ```sh
-  checkmate plan open <planId> --target <targetId@rev> <<'EOF'
+  checkmate plan open --target <targetId@rev> <<'EOF'
   { "objective": "<from the oracle>", "context": { "sources": ["docs/checkout.md"] } }
   EOF
   ```

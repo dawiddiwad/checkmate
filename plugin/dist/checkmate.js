@@ -11168,6 +11168,11 @@ function addInstance(store, actor, input) {
 }
 function insertInstance(store, operationId, input) {
   const request2 = targetRequest(store, input.targetId);
+  requireNotInputWord(
+    input.instanceId,
+    "instance ID",
+    "Give a name for the instance, for example local or staging: checkmate target instance add <targetId> <instanceId> <<'EOF'."
+  );
   const instanceId = requireIdentifier(input.instanceId, "instance ID");
   const instance = instanceCheck(request2.entryPoints, input.instance);
   const subject = `${input.targetId}/${instanceId}`;
@@ -11712,6 +11717,13 @@ function requireIdentifier(value2, name2) {
     `Invalid ${name2}: ${String(value2)}. Use 1 to 96 letters, digits, _ or -, starting with a letter or digit.`
   );
   return value2;
+}
+function requireNotInputWord(value2, name2, hint) {
+  requireWellFormed(
+    value2 !== "stdin" && value2 !== "-",
+    `${value2} is not a valid ${name2}. Checkmate reads standard input without a word for it.`,
+    hint
+  );
 }
 function requireText(value2, name2) {
   requireWellFormed(typeof value2 === "string" && value2.trim().length > 0, `Missing ${name2}`);
@@ -13324,6 +13336,11 @@ function requireUnnamedSources(workspace2, sources, objective) {
 }
 function openPlan(store, actor, input) {
   return write(store, { actor, command: "plan open", subject: input.planId ?? "", input }, (operationId) => {
+    requireNotInputWord(
+      input.planId,
+      "plan ID",
+      "Leave out the plan ID to take it from the first source: checkmate plan open --target <target>@<revision> <<'EOF'. Or give the plan ID: checkmate plan open <planId> --target <target>@<revision> <<'EOF'."
+    );
     const target = revisionReference(requireText(input.target, "target (--target)"), "target reference");
     requireWellFormed(target.revision !== null, `Name the target revision: --target ${target.id}@<revision>`);
     const profile = targetRevision(store, target.id, target.revision).profile;

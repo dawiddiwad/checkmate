@@ -7,7 +7,7 @@ Use `checkmate --help` for the complete command list from the installed version.
 | Purpose                         | Command                                                                                        |
 | ------------------------------- | ---------------------------------------------------------------------------------------------- |
 | Set up a URL and local instance | `checkmate setup --url <url>`                                                                  |
-| Open a plan                     | `checkmate plan open <planId> --target <targetId@revision> --objective <text> --source <file>` |
+| Open a plan                     | `checkmate plan open [planId] --target <targetId@revision> --objective <text> --source <file>` |
 | Delegate a stage                | `checkmate delegate <setup\|plan\|revise\|execute> <subject>`                                  |
 | Review source requirements      | `checkmate delegate spec <planId@revision>`                                                    |
 | See the next owner and action   | `checkmate status <planId>`                                                                    |

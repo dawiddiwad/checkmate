@@ -1983,6 +1983,36 @@ test('Refuse a setup that conflicts with the stored request or instance — noth
 	assert.match(refused.body.hint, /--target <new-target-id>/)
 })
 
+test('Refuse stdin and - as a plan or instance ID — a request on standard input saved a plan named stdin.', async (t) => {
+	const workspace = directory(t)
+	writeFileSync(join(workspace, 'ticket.md'), 'The catalog is listed.\n')
+	const app = await fixture()
+	t.after(() => app.close())
+	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle', CHECKMATE_HARNESS: 'claude' }
+	const setup = await command(workspace, env, 'setup', '--url', app.baseUrl, '--target', 'shop')
+	assert.equal(setup.code, 0, setup.output)
+	const request = JSON.stringify({ objective: 'List the catalog.', context: { sources: ['ticket.md'] } })
+	for (const word of ['stdin', '-']) {
+		const refused = await inputCommand(workspace, env, request, 'plan', 'open', word, '--target', 'shop@1')
+		assert.equal(refused.code, 1, refused.output)
+		assert.match(refused.output, new RegExp(`${word} is not a valid plan ID`))
+		assert.match(refused.body.hint, /Leave out the plan ID/)
+		const instance = JSON.stringify({ entries: { web: app.baseUrl } })
+		const instanceRefused = await inputCommand(workspace, env, instance, 'target', 'instance', 'add', 'shop', word)
+		assert.equal(instanceRefused.code, 1, instanceRefused.output)
+		assert.match(instanceRefused.output, new RegExp(`${word} is not a valid instance ID`))
+	}
+	const none = await command(workspace, env, 'query', 'SELECT count(*) AS n FROM plan_requests')
+	assert.deepEqual(none.body.rows, [{ n: 0 }])
+	const derived = await inputCommand(workspace, env, request, 'plan', 'open', '--target', 'shop@1')
+	assert.equal(derived.code, 0, derived.output)
+	assert.equal(derived.body.planId, 'ticket')
+	assert.equal(derived.body.planIdFrom, 'ticket.md')
+	const named = await inputCommand(workspace, env, request, 'plan', 'open', 'checkout', '--target', 'shop@1')
+	assert.equal(named.code, 0, named.output)
+	assert.equal(named.body.planId, 'checkout')
+})
+
 test('Answer, revise, and approve the named revision — execution against the wrong revision.', async (t) => {
 	const workspace = directory(t)
 	const { chmodSync, copyFileSync, mkdirSync } = await import('node:fs')

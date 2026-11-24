@@ -25,6 +25,7 @@ import {
 	requireChoice,
 	requireCondition,
 	requireIdentifier,
+	requireNotInputWord,
 	requireText,
 	requireWellFormed,
 	revisionReference,
@@ -122,6 +123,11 @@ export function openPlan(
 	input: { planId?: string; target: string; request: unknown }
 ) {
 	return write(store, { actor, command: 'plan open', subject: input.planId ?? '', input }, (operationId) => {
+		requireNotInputWord(
+			input.planId,
+			'plan ID',
+			"Leave out the plan ID to take it from the first source: checkmate plan open --target <target>@<revision> <<'EOF'. Or give the plan ID: checkmate plan open <planId> --target <target>@<revision> <<'EOF'."
+		)
 		const target = revisionReference(requireText(input.target, 'target (--target)'), 'target reference')
 		requireWellFormed(target.revision !== null, `Name the target revision: --target ${target.id}@<revision>`)
 		const profile = targetRevision(store, target.id, target.revision).profile

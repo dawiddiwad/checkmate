@@ -17952,8 +17952,10 @@ function entryPointLine(entry) {
     return `- ${entry.name}: run \`${entry.value}\` when you need it. ${entry.purpose} Do not write its output in your notes.`;
   return `- ${entry.name}: ${entry.value}. ${entry.purpose}`;
 }
-function testDataText(dataPrefix) {
-  return `Use the existing records of the application, and make new records when a case needs them. Start each name or value that you make with ${dataPrefix}.`;
+function testDataText(operations, dataPrefix) {
+  if (!operations.some(changesData))
+    return "Use only the existing records of the application. Do not create, change, or delete a record.";
+  return `Use the existing records of the application. Make a new record only when a case needs it and the data rules allow it. Start each name or value that you make with ${dataPrefix}.`;
 }
 function explorerBrief(charter, entries, dataPrefix, workFolder2, seconds2) {
   const change = charter.change;
@@ -17994,6 +17996,7 @@ function explorerBrief(charter, entries, dataPrefix, workFolder2, seconds2) {
     ...entries.map(entryPointLine),
     "",
     `${operationText(charter.operations)} Do not change the code, the configuration, or the deployment of the application.`,
+    ...charter.dataRules ?? [],
     ...charter.tools.length ? [
       `Tools you can use: ${charter.tools.map((tool) => tool.name).sort().join(", ")}.`
     ] : [],
@@ -18019,7 +18022,7 @@ function explorerBrief(charter, entries, dataPrefix, workFolder2, seconds2) {
     ...charter.dataRules ?? [],
     "A defect needs a rule of the sources that the behaviour contradicts. Behaviour that the sources do not define is an unclear point, not a defect.",
     "A defect that contradicts a rule of the sources can be high or critical. Any other defect is at most medium.",
-    testDataText(dataPrefix),
+    testDataText(charter.operations, dataPrefix),
     `Save the files that show a problem, for example screenshots or responses, in ${workFolder2}/.`,
     `Write ${workFolder2}/report.md: one section for each defect with title, severity, steps, expected result, actual result and evidence files. Number the defects D1, D2, and so on. List also what you tested and what is still unclear.`,
     ...charter.knownState ? [
@@ -18079,7 +18082,7 @@ function verifierReplyText(answer2) {
 function verifierRepairPrompt(answer2) {
   return answer2 ? `Your file has no JSON array that I can use. Do not test again. Now ${verifierReplyText(answer2)}` : `Your reply has no JSON array that I can use. Do not test again. Now ${verifierReplyText()} Use no tool.`;
 }
-function verifierBrief(items, entries, operations, dataPrefix, answer2) {
+function verifierBrief(items, entries, operations, dataRules2, dataPrefix, answer2) {
   return [
     "Reproduce each problem below on the application. Do not test other things.",
     "",
@@ -18087,7 +18090,8 @@ function verifierBrief(items, entries, operations, dataPrefix, answer2) {
     ...entries.map(entryPointLine),
     "",
     `${operationText(operations)} Do not change the code, the configuration, or the deployment of the application.`,
-    testDataText(dataPrefix),
+    ...dataRules2,
+    testDataText(operations, dataPrefix),
     "",
     "The problems:",
     ...items.map(
@@ -19482,6 +19486,7 @@ function verifyInput(store, explorationId, after = 0) {
     items,
     entries: entryValues(store, explorationId),
     operations: opened.charter.operations,
+    dataRules: startOf(explorationEvents(store, explorationId))?.dataRules ?? [],
     dataPrefix: `qa-${explorationId}-verify-`
   };
 }
@@ -19490,7 +19495,7 @@ async function verifyClaims(store, actor, explorationId, launch, env, after = 0)
   if (!input) return;
   const { items } = input;
   const session = randomUUID4();
-  const brief = verifierBrief(items, input.entries, input.operations, input.dataPrefix);
+  const brief = verifierBrief(items, input.entries, input.operations, input.dataRules, input.dataPrefix);
   const ask = (own, prompt2) => {
     const hook = childHook(store.workspace, explorationId, "verify");
     const context = { ...launch.context, deny: storeDenyRules, hook };
@@ -39619,7 +39624,7 @@ ${followEntriesText(answer2)}`,
   const opened = exploration(store, explorationId);
   const launch = startOf(explorationEvents(store, explorationId));
   const brief = explorerBrief(
-    opened.charter,
+    { ...opened.charter, dataRules: launch.dataRules },
     entryValues(store, explorationId),
     `qa-${explorationId}-${explorer}-`,
     folder,
@@ -39705,9 +39710,13 @@ function verifyAction(store, explorationId, round, phase) {
   });
   if (round === "repair") return action2("task-repair.md", verifierRepairPrompt(answer2));
   const input = verifyInput(store, explorationId, phase.follow?.after ?? 0);
-  return action2("task.md", verifierBrief(input.items, input.entries, input.operations, input.dataPrefix, answer2), {
-    ids: input.items.map((item) => item.id)
-  });
+  return action2(
+    "task.md",
+    verifierBrief(input.items, input.entries, input.operations, input.dataRules, input.dataPrefix, answer2),
+    {
+      ids: input.items.map((item) => item.id)
+    }
+  );
 }
 function promptOf2(action2) {
   return action2.name === "merge" || action2.name === "rules" ? `Read ${action2.task} and write your answer to ${action2.answer}.` : `Read ${action2.task} and do what it says.`;

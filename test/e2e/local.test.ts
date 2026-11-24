@@ -1851,6 +1851,69 @@ test('Wait on a paused exploration — the driver burns the timeout instead of a
 	assert.match(waited.hint, new RegExp(`checkmate explore next ${started.explorationId}`))
 })
 
+test('Give a session tester the data rules of a read-only target — the test task told the tester to create records and left the policy out.', async (t) => {
+	const workspace = directory(t)
+	writeFileSync(join(workspace, 'ticket.md'), 'The catalog is listed.\n')
+	const app = await fixture()
+	t.after(() => app.close())
+	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle', CHECKMATE_HARNESS: 'claude' }
+	const ok = async (...args: string[]) => {
+		const result = await command(workspace, env, ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	await ok(
+		'setup',
+		'--url',
+		app.baseUrl,
+		'--target',
+		'shop',
+		'--operations',
+		'read_catalog',
+		'--data',
+		'environment',
+		'--policy',
+		'Read only. Never create or change a record.'
+	)
+	const started = await ok('test', 'ticket', '--source', 'ticket.md', '--build', 'b1', '--session')
+	const id = started.explorationId as string
+	await ok('explore', 'next', id)
+	await ok('explore', 'started', id, 'rules')
+	const rules = join(workspace, '.checkmate/work', id, 'rules/answer.json')
+	writeFileSync(
+		rules,
+		JSON.stringify([{ id: 'R1', text: 'The catalog is listed.', source: 'ticket.md#1', area: 'Catalog' }])
+	)
+	await ok('explore', 'done', id, 'rules', 'rules', '--agent', 'clerk-1')
+	await ok('explore', 'next', id)
+	await ok('explore', 'started', id, 'a1', 'a2')
+	writeFileSync(join(workspace, '.checkmate/work', id, 'a1/questions.md'), 'None\n')
+	await ok('explore', 'done', id, 'a1', 'study', '--agent', 'tester-1')
+	await ok('explore', 'next', id)
+	const folder = join(workspace, '.checkmate/work', id, 'a1')
+	const study = readFileSync(join(folder, 'task-study.md'), 'utf8')
+	const task = readFileSync(join(folder, 'task-test.md'), 'utf8')
+	for (const text of [study, task]) assert.match(text, /Data policy: Read only\. Never create or change a record\./)
+	assert.doesNotMatch(task, /make new records|Make a new record/)
+	assert.match(task, /Do not create, change, or delete a record/)
+})
+
+test('Give a verifier the data rules of the target — the verifier brief had only the operation text and a prefix.', async () => {
+	const { verifierBrief } = await import('../../plugin/src/briefs.ts')
+	const items = [{ id: 'D1', title: 'Wrong total', expected: '10', actual: '12', steps: ['Open the cart.'] }]
+	const entries = [{ name: 'web', kind: 'url', purpose: 'The shop.', value: 'http://localhost:1' }]
+	const rules = ['Data: this target cannot be reset.', 'Data policy: Use the test users only.']
+	const restricted = verifierBrief(items, entries, ['read_catalog'], rules, 'qa-x-1-verify-')
+	assert.match(restricted, /Data policy: Use the test users only\./)
+	assert.match(restricted, /You can: read_catalog/)
+	assert.match(restricted, /Do not create, change, or delete a record/)
+	assert.doesNotMatch(restricted, /qa-x-1-verify-/)
+	const writing = verifierBrief(items, entries, ['create_order'], rules, 'qa-x-1-verify-')
+	assert.match(writing, /Data policy: Use the test users only\./)
+	assert.match(writing, /data rules allow it/)
+	assert.match(writing, /qa-x-1-verify-/)
+})
+
 test('Answer, revise, and approve the named revision — execution against the wrong revision.', async (t) => {
 	const workspace = directory(t)
 	const { chmodSync, copyFileSync, mkdirSync } = await import('node:fs')

@@ -187,7 +187,7 @@ function testerAction(store: Store, explorationId: string, explorer: string, due
 	const opened = exploration(store, explorationId)
 	const launch = startOf(explorationEvents(store, explorationId))!
 	const brief = explorerBrief(
-		opened.charter,
+		{ ...opened.charter, dataRules: launch.dataRules },
 		entryValues(store, explorationId),
 		`qa-${explorationId}-${explorer}-`,
 		folder,
@@ -274,9 +274,13 @@ function verifyAction(store: Store, explorationId: string, round: string, phase:
 	})
 	if (round === 'repair') return action('task-repair.md', verifierRepairPrompt(answer))
 	const input = verifyInput(store, explorationId, phase.follow?.after ?? 0)!
-	return action('task.md', verifierBrief(input.items, input.entries, input.operations, input.dataPrefix, answer), {
-		ids: input.items.map((item) => item.id),
-	})
+	return action(
+		'task.md',
+		verifierBrief(input.items, input.entries, input.operations, input.dataRules, input.dataPrefix, answer),
+		{
+			ids: input.items.map((item) => item.id),
+		}
+	)
 }
 
 function promptOf(action: Action) {

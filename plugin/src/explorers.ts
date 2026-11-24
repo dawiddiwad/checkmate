@@ -892,6 +892,7 @@ export function verifyInput(store: Store, explorationId: string, after = 0) {
 		items,
 		entries: entryValues(store, explorationId),
 		operations: opened.charter.operations,
+		dataRules: startOf(explorationEvents(store, explorationId))?.dataRules ?? [],
 		dataPrefix: `qa-${explorationId}-verify-`,
 	}
 }
@@ -901,7 +902,7 @@ async function verifyClaims(store: Store, actor: string, explorationId: string, 
 	if (!input) return
 	const { items } = input
 	const session = randomUUID()
-	const brief = verifierBrief(items, input.entries, input.operations, input.dataPrefix)
+	const brief = verifierBrief(items, input.entries, input.operations, input.dataRules, input.dataPrefix)
 	const ask = (own: string[], prompt: string) => {
 		const hook = childHook(store.workspace, explorationId, 'verify')
 		const context = { ...launch.context, deny: storeDenyRules, hook }

@@ -1,4 +1,5 @@
 import type { Charter } from './explorations.ts'
+import { changesData } from './resets.ts'
 import { anyTestOperation, anyTestOperationText, readOnlyOperation, readOnlyOperationText } from './targets.ts'
 import entrySchema from '../contracts/journal-entry.schema.json' with { type: 'json' }
 import criterionSchema from '../contracts/journal-criterion.schema.json' with { type: 'json' }
@@ -235,8 +236,11 @@ function entryPointLine(entry: EntryPointValue) {
 	return `- ${entry.name}: ${entry.value}. ${entry.purpose}`
 }
 
-function testDataText(dataPrefix: string) {
-	return `Use the existing records of the application, and make new records when a case needs them. Start each name or value that you make with ${dataPrefix}.`
+// A target that allows only read operations gets no test data. Otherwise the data rules decide.
+function testDataText(operations: string[], dataPrefix: string) {
+	if (!operations.some(changesData))
+		return 'Use only the existing records of the application. Do not create, change, or delete a record.'
+	return `Use the existing records of the application. Make a new record only when a case needs it and the data rules allow it. Start each name or value that you make with ${dataPrefix}.`
 }
 
 export function explorerBrief(
@@ -299,6 +303,7 @@ export function explorerBrief(
 		...entries.map(entryPointLine),
 		'',
 		`${operationText(charter.operations)} Do not change the code, the configuration, or the deployment of the application.`,
+		...(charter.dataRules ?? []),
 		...(charter.tools.length
 			? [
 					`Tools you can use: ${charter.tools
@@ -331,7 +336,7 @@ export function explorerBrief(
 		...(charter.dataRules ?? []),
 		'A defect needs a rule of the sources that the behaviour contradicts. Behaviour that the sources do not define is an unclear point, not a defect.',
 		'A defect that contradicts a rule of the sources can be high or critical. Any other defect is at most medium.',
-		testDataText(dataPrefix),
+		testDataText(charter.operations, dataPrefix),
 		`Save the files that show a problem, for example screenshots or responses, in ${workFolder}/.`,
 		`Write ${workFolder}/report.md: one section for each defect with title, severity, steps, expected result, actual result and evidence files. Number the defects D1, D2, and so on. List also what you tested and what is still unclear.`,
 		...(charter.knownState
@@ -432,6 +437,7 @@ export function verifierBrief(
 	items: VerifyItem[],
 	entries: EntryPointValue[],
 	operations: string[],
+	dataRules: string[],
 	dataPrefix: string,
 	answer?: string
 ) {
@@ -442,7 +448,8 @@ export function verifierBrief(
 		...entries.map(entryPointLine),
 		'',
 		`${operationText(operations)} Do not change the code, the configuration, or the deployment of the application.`,
-		testDataText(dataPrefix),
+		...dataRules,
+		testDataText(operations, dataPrefix),
 		'',
 		'The problems:',
 		...items.map(

@@ -14588,6 +14588,11 @@ function setupTarget(store, actor, input) {
   let savedProfile = false;
   const reply = write(store, { actor, command: "setup", subject: targetId, input: recorded2 }, (operationId) => {
     const known = currentRequest(store, targetId);
+    requireCondition(
+      !input.correct || known,
+      `No target named ${targetId} exists to correct.`,
+      "List the targets and retry with the existing target ID. To create a target, use setup without correct."
+    );
     const existing = input.correct ? one(
       store,
       "SELECT body FROM instances WHERE target_id = ? AND instance_id = ?",

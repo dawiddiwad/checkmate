@@ -890,6 +890,11 @@ export function setupTarget(store: Store, actor: string | undefined, input: Setu
 	let savedProfile = false
 	const reply = write(store, { actor, command: 'setup', subject: targetId, input: recorded }, (operationId) => {
 		const known = currentRequest(store, targetId)
+		requireCondition(
+			!input.correct || known,
+			`No target named ${targetId} exists to correct.`,
+			'List the targets and retry with the existing target ID. To create a target, use setup without correct.'
+		)
 		const existing = input.correct
 			? one<{ body: string }>(
 					store,

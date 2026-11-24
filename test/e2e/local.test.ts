@@ -4000,6 +4000,14 @@ test('Correct a target in the packed CLI and keep the original run pinned.', asy
 	)
 	assert.equal(saved.code, 0, saved.output)
 	await ok('run', 'begin', 'old-run', 'ticket@1', '--build', 'b1')
+	const typo = await command(workspace, env, 'setup', '--correct', '--url', app.baseUrl, '--target', 'wrong-shop')
+	assert.equal(typo.code, 1)
+	assert.match(typo.body.nextAction.instruction, /retry with the existing target ID/)
+	const targets = await ok('target', 'list')
+	assert.deepEqual(
+		targets.targets.map((target: { targetId: string }) => target.targetId),
+		['shop']
+	)
 	const corrected = await ok(
 		'setup',
 		'--correct',

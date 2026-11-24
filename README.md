@@ -8,9 +8,9 @@ Checkmate turns a ticket into tests. It records each run, its evidence, open que
 
 [![The QA loop on ticket SHOP-12: QA explores build b1 and finds 3 gaps and 2 defects. The oracle answers, the planner saves plan@2, and QA follows up. The oracle hands the defects to the factory. Build b2 has 1 defect and 2 new gaps; the oracle escalates the gaps to a human, the planner saves plan@3, and the factory delivers build b3. QA finds nothing new, the oracle accepts and promotes the tests, and a permanent run confirms them. Then three ways to run Checkmate: a solo developer with the Claude Code plugin or the Pi extension, a software factory that calls one command per stage and waits on exit 3, and a CI job that runs the promoted tests and fails on the gate.](docs/img/onboarding.gif)](docs/img/onboarding.gif)
 
-The review UI shows what waits for you, here a blocking question that you answer in the drawer before QA continues.
+The review UI shows what waits for you: open the evidence, decide findings, answer gaps, and ask the chat.
 
-[![The review UI with a blocking refund question open in the answer drawer.](docs/media/ui/review.png)](docs/media/ui/review.png)
+[![The review UI on sample records: the plans list with rules on two builds, the checkout plan on Needs you, a finding with its screenshot and JSON evidence accepted as a defect, a gap answered, a chat turn that saves a gap answer, and a list of more features.](docs/media/ui/review.gif)](docs/media/ui/review.gif)
 
 ## In one minute
 

@@ -6,11 +6,11 @@
 
 Checkmate turns a ticket into tests. It records each run, its evidence, open questions, and oracle decisions in one local SQLite record. Agents and people use the same record.
 
-[![A build-first QA loop: the planner records gaps, the oracle answers and approves the plan, the factory builds b1, QA explores and runs one child per test, and the gate exits 1 on a defect. The factory builds b2, QA retests, the gate passes, and the oracle accepts and promotes the tests. Then three ways to run Checkmate: a solo developer with the Claude Code plugin or the Pi extension, a software factory that calls one command per stage and waits on exit 3, and a CI job that runs the promoted tests and fails on the gate.](docs/img/onboarding.gif)](docs/img/onboarding.gif)
-
-[![The review UI with a blocking refund question open in the answer drawer.](docs/media/ui/review.png)](docs/media/ui/review.png)
+[![The QA loop on ticket SHOP-12: QA explores build b1 and finds 3 gaps and 2 defects. The oracle answers, the planner saves plan@2, and QA follows up. The oracle hands the defects to the factory. Build b2 has 1 defect and 2 new gaps; the oracle escalates the gaps to a human, the planner saves plan@3, and the factory delivers build b3. QA finds nothing new, the oracle accepts and promotes the tests, and a permanent run confirms them. Then three ways to run Checkmate: a solo developer with the Claude Code plugin or the Pi extension, a software factory that calls one command per stage and waits on exit 3, and a CI job that runs the promoted tests and fails on the gate.](docs/img/onboarding.gif)](docs/img/onboarding.gif)
 
 The review UI shows what waits for you, here a blocking question that you answer in the drawer before QA continues.
+
+[![The review UI with a blocking refund question open in the answer drawer.](docs/media/ui/review.png)](docs/media/ui/review.png)
 
 ## Start in a project
 
@@ -23,16 +23,17 @@ npx checkmate ui
 
 Open the printed URL. Set up the application if Checkmate asks, then choose **New change**. [Start Checkmate](docs/start.md) gives the requirements, the data kinds, and the host setup.
 
-## Where to go next
+## Parts of Checkmate
 
-- **Test a change on your own:** [Local QA](docs/local-qa.md).
-- **Use Claude Code or Pi:** run `/checkmate:test` or `/checkmate <ticket>`. [Use a host plugin](docs/start.md#use-a-host-plugin).
-- **Answer the questions as the oracle:** open **Needs you** or run `checkmate inbox`. [Answer a gap](docs/local-qa.md#answer-a-gap-and-continue).
-- **Drive Checkmate from a software factory:** [Factory workflows](docs/factory.md).
-- **Gate a CI job:** run `checkmate run show <runId> --gate`. [Exit codes for a pipeline](docs/factory.md#exit-codes-for-a-pipeline).
-- **Test a system that you cannot reset:** [Data kinds](docs/factory.md#data-kinds-prepare-and-cleanup).
-- **Look up a command or state:** [CLI and record reference](docs/reference.md).
-- **Contribute:** [Develop Checkmate](docs/development.md).
+Local workflows and factory workflows can both go through the Claude Code plugin or the Pi extension. Both ship the CLI, so many uses need no separate CLI install.
+
+**Claude Code plugin.** Run `/plugin marketplace add dawiddiwad/checkmate` and `/plugin install checkmate@checkmate`, then `/checkmate:test`. See [Use a host plugin](docs/start.md#use-a-host-plugin).
+
+**Pi extension.** Run `pi install npm:@xoxoai/checkmate -l`, then `/checkmate <ticket>` or `/checkmate-ui`. See [Use a host plugin](docs/start.md#use-a-host-plugin).
+
+**CLI.** Run `npm install --save-dev @xoxoai/checkmate`, then `npx checkmate --help`. Use the CLI on its own in the CI/CD workflows of a factory that does not use Claude Code or Pi and has its own harness. See [Factory workflows](docs/factory.md).
+
+More: [Local QA](docs/local-qa.md) · [CLI and record reference](docs/reference.md) · [Develop Checkmate](docs/development.md)
 
 ## License
 

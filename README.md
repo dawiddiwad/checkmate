@@ -51,7 +51,7 @@ Front-loading QA like this has clear benefits:
 
 ## Limitations
 
-- **CLI sub-agents don't inherit host tools:** Explorers started by the CLI cannot access your host's integrations (such as a Jira MCP server). In the plugin, testers inherit the tools of your host session, including its integrations; only the clerk is limited to `Read` and `Write`. In the CLI, explorers only get the tools you explicitly pass via `--allow` and cannot ask for more.
+- **CLI runs with `--allow` don't inherit host tools:** In the Claude Code plugin, testers inherit the tools of your host session, including its integrations (such as a Jira MCP server); only the clerk is limited to `Read` and `Write`. In Pi, explorers use the tools and MCP servers configured in your host. In a CLI run that passes `--allow`, explorers only get the tools you explicitly pass and cannot ask for more.
 - **Plan first, unless you accept the above limitations:** Because of those tool limits, start by running the **planner**. It runs directly in your host environment, so it can read Jira tickets and other external sources before handing tasks off to explorers and testers.
 
 ## Solo mode: Claude Code or Pi

@@ -679,10 +679,6 @@
 				"activity": {
 					"$ref": "#/definitions/text"
 				},
-				"replyLine": {
-					"type": "string",
-					"description": "The child’s last line, for example \"tester a1 test done\". Omit on host failure. Do not give the summary or product findings."
-				},
 				"failure": {
 					"enum": ["agent_unavailable", "agent_interrupted", "host_error"],
 					"description": "Only when the Agent tool could not start, reach, or complete the agent. Omit after a completed reply, even if it reports an application defect or a blocked check."
@@ -695,7 +691,7 @@
 					"type": "string",
 					"minLength": 1,
 					"pattern": "^[A-Za-z0-9_-]+$",
-					"description": "Copy the exact agentId from the Agent tool receipt. Do not give the agent type, for example checkmate:tester."
+					"description": "The assigned Agent tool receipt ID."
 				}
 			},
 			"required": ["explorationId", "name", "step"],

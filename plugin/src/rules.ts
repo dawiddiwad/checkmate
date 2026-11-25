@@ -1,7 +1,7 @@
 import type { Store } from './store.ts'
-import type { Plan, PlanPatch } from './types.ts'
+import type { Plan, PlanPatch, WorkerRule } from './types.ts'
 import { canonical, execute, one } from './store.ts'
-import { requireCondition, requireWellFormed } from './contracts.ts'
+import { requireCondition, requireWellFormed, schemaProblems } from './contracts.ts'
 import { newFields, patchList, planRequest } from './plans.ts'
 import { readFileSync, realpathSync, statSync } from 'node:fs'
 import { resolve, sep } from 'node:path'
@@ -13,9 +13,7 @@ export type RuleSource = { name: string; text: string | null }
 export const outsideRule = 'outside'
 export const defaultArea = 'Rules'
 export const maxAreaCharacters = 40
-const maxAreas = 9
 const maxSourceCharacters = 40000
-const ruleId = /^R[1-9][0-9]{0,3}$/
 
 export function storedRules(store: Store, planId: string) {
 	const row = one<{ origin: 'derived' | 'corrected' | 'harvested'; body: string }>(
@@ -120,34 +118,23 @@ export function checkedRules(reply: unknown[] | undefined, sources: string[]) {
 	const refusals: string[] = []
 	const areas = new Map<string, string>()
 	for (const [index, raw] of reply.entries()) {
-		const item = (raw && typeof raw === 'object' ? raw : {}) as Partial<Record<keyof Rule, unknown>>
-		const text = typeof item.text === 'string' ? item.text.trim() : ''
-		const source = typeof item.source === 'string' ? item.source.trim() : ''
-		const area = typeof item.area === 'string' ? item.area.trim() : ''
-		const problem =
-			typeof item.id !== 'string' || !ruleId.test(item.id)
-				? `"id" must be R1, R2, and so on`
-				: rules.some((rule) => rule.id === item.id)
-					? `the ID ${item.id} is in use`
-					: !text
-						? `"text" is missing`
-						: !sources.some((name) => source.startsWith(name))
-							? `"source" must start with one of: ${sources.join(', ')}`
-							: !area
-								? `"area" is missing`
-								: area.length > maxAreaCharacters
-									? `"area" must have at most ${maxAreaCharacters} characters`
-									: undefined
-		if (problem) {
-			refusals.push(`[${index}] ${problem}.`)
+		const path = `rules[${index}]`
+		const problems = schemaProblems('worker-rule', raw, path)
+		if (problems.length) {
+			refusals.push(...problems.map(({ text }) => `${text}.`))
 			continue
 		}
+		const item = raw as WorkerRule
+		const source = item.source.trim()
+		if (!sources.some((name) => source === name || source.startsWith(`${name}#`))) {
+			refusals.push(`${path}/source ${JSON.stringify(source)} must name one of ${sources.join(', ')}.`)
+			continue
+		}
+		const area = item.area.trim()
 		const key = area.toLowerCase()
 		if (!areas.has(key)) areas.set(key, area)
-		rules.push({ id: item.id as string, text, source, area: areas.get(key)! })
+		rules.push({ id: `R${rules.length + 1}`, text: item.text.trim(), source, area: areas.get(key)! })
 	}
-	if (areas.size > maxAreas)
-		refusals.push(`The rules have ${areas.size} areas. Use at most ${maxAreas} areas for the plan.`)
 	if (!rules.length && !refusals.length) refusals.push('The reply has no rule.')
 	return { rules, refusals }
 }
@@ -223,14 +210,7 @@ export function patchRules(store: Store, operationId: string, planId: string, pa
 		return item ? { ...item, ...change } : { id, ...newFields(`rule ${id}`, change, ['text', 'source']) }
 	}) as Rule[]
 	requireWellFormed(rules.length, `Keep at least one rule of plan ${planId}.`)
-	const areas = new Set<string>()
 	for (const rule of rules) requireWellFormed(rule.text.trim(), `The rule ${rule.id} needs text.`)
-	for (const rule of held ? withHeldRules(rules, held.rules) : rules)
-		areas.add((rule.area ?? defaultArea).toLowerCase())
-	requireWellFormed(
-		areas.size <= maxAreas,
-		`The rules have ${areas.size} areas. Use at most ${maxAreas} areas for the plan.`
-	)
 	const origin = stored.origin === 'harvested' ? 'harvested' : 'corrected'
 	saveRules(store, operationId, planId, rules, origin)
 	return {

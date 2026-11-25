@@ -72,7 +72,6 @@ export type DoneInput = {
 	agent?: string
 	failed?: string
 	activity?: string
-	replyLine?: string
 }
 
 const isStep = (item: ExplorationEvent) => item.step !== 'bind' && item.step !== 'started'
@@ -302,13 +301,6 @@ function descriptionOf(explorationId: string, action: Action) {
 	return `${explorationId} ${action.name} ${action.step}`
 }
 
-export const replyLimit =
-	'Keep all details in your files. Reply in three lines at most: what you did, the most important finding or blocker, and the number of questions or defects.'
-
-function replyLineOf(name: string, step: string) {
-	return clerkNames.includes(name) ? `${name} done` : `tester ${name} ${step} done`
-}
-
 function lineOf(explorationId: string, action: Action) {
 	const description = action.action === 'start' ? ` description="${descriptionOf(explorationId, action)}"` : ''
 	return `${action.action} ${action.name} ${action.step} agent=${action.to}${description} prompt="${promptOf(action)}"`
@@ -332,11 +324,7 @@ function answerNext(
 		{ actor, command: 'explore next', subject: explorationId, input: { explorationId } },
 		(operationId, at) => {
 			for (const action of actions) {
-				writeFile(
-					store,
-					action.task,
-					`${action.text.trimEnd()}\n\n${replyLimit}\nEnd your reply with this line: ${replyLineOf(action.name, action.step)}`
-				)
+				writeFile(store, action.task, action.text.trimEnd())
 				if (action.answer) rmSync(join(store.workspace, action.answer), { force: true })
 				addEvent(
 					store,
@@ -602,7 +590,9 @@ function rulesDone(
 ) {
 	const round = own.at(-1)!.detail.round as string
 	const plan = explorationRow(store, explorationId).plan_id
-	const names = ruleSources(store, plan).map((source) => source.name)
+	const names = ruleSources(store, plan)
+		.filter((source) => source.text !== null)
+		.map((source) => source.name)
 	const answer = `${workFolder(explorationId)}/rules/answer.json`
 	const checked = failed ? { rules: [], refusals: [] } : checkedRules(replyArray(readText(store, answer)), names)
 	if (!failed && round === 'rules' && checked.refusals.length)
@@ -627,7 +617,7 @@ function rulesDone(
 				...base,
 				rules: rules.length,
 				refused: checked.refusals.length,
-				...(rules.length ? {} : { reason: failed ?? checked.refusals.join(' ') }),
+				...(failed || checked.refusals.length ? { reason: failed ?? checked.refusals.join(' ') } : {}),
 			},
 		},
 		(operationId) => {
@@ -681,7 +671,7 @@ function verifyDone(
 	const first = own.find((item) => item.step === 'action')!
 	const ids = new Set(first.detail.ids as string[])
 	const answer = `${workFolder(explorationId)}/verify/answer.json`
-	const observations = failed ? [] : verifiedEntries(replyArray(readText(store, answer)), ids)
+	const { observations, refusals } = verifiedEntries(replyArray(failed ? undefined : readText(store, answer)), ids)
 	const outcome = (step: string, status: string, detail: Record<string, unknown>) =>
 		addOutcome(store, actor, explorationId, {
 			step,
@@ -698,13 +688,7 @@ function verifyDone(
 		{
 			items: ids.size,
 			verified: observations.length,
-			...(observations.length
-				? {}
-				: failed && round === 'verify'
-					? { reason: failed }
-					: {
-							reason: `The verifier gave no result, also after one repair${failed ? ` (${failed})` : ''}. The claims keep their states.`,
-						}),
+			...(refusals.length ? { reason: failed ?? refusals.join(' ') } : {}),
 		}
 	)
 }
@@ -746,18 +730,6 @@ function recordDone(
 	return reply
 }
 
-function checkReplyLine(explorationId: string, name: string, step: string, given: string | undefined) {
-	const line = given?.trim()
-	const match = line ? /^(?:tester (\S+) (\S+)|(rules|merge|verify)) done$/.exec(line) : null
-	if (!match) return
-	const [named, namedStep] = match[3] ? [match[3], match[3]] : [match[1], match[2]]
-	requireCondition(
-		named === name && (Boolean(match[3]) || namedStep === step),
-		`The reply line "${line}" names ${named} ${namedStep}, not ${name} ${step}.`,
-		`Record this reply for ${named}: checkmate explore done ${explorationId} ${named} ${namedStep} --agent <the agent ID of this reply> --reply-line "${line}". Then record the reply of ${name}.`
-	)
-}
-
 function lastStep(events: ExplorationEvent[], name: string) {
 	return events.findLast((item) => ownerOf(item) === name && item.step === 'action')?.detail.step as
 		string | undefined
@@ -769,7 +741,7 @@ function checkBinding(events: ExplorationEvent[], explorationId: string, name: s
 	requireCondition(
 		!other,
 		`Agent ${agent} is bound to ${other} in exploration ${explorationId}, not to ${name}.`,
-		`Give the agent ID of ${name}: the description and the last line of its reply name it. When ${other} has the wrong agent ID, correct it first: checkmate explore done ${explorationId} ${other} ${lastStep(events, other!)} --agent <the agent ID of ${other}>.`
+		`Give the Agent receipt ID for the assigned task ${explorationId} ${name}.`
 	)
 }
 
@@ -789,7 +761,6 @@ export function stepDone(store: Store, actor: string | undefined, input: DoneInp
 	const phase = phaseOf(events)
 	const own = (phase?.events ?? []).filter((item) => ownerOf(item) === name && isStep(item))
 	const last = own.at(-1)
-	checkReplyLine(explorationId, name, step, input.replyLine)
 	if (input.agent) checkBinding(events, explorationId, name, input.agent)
 	const tester = !clerkNames.includes(name)
 	if (tester && input.agent && last && last.step !== 'action' && lastStep(own, name) === step)

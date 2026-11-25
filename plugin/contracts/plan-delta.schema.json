@@ -154,5 +154,28 @@
 		}
 	},
 	"required": ["tests"],
-	"additionalProperties": false
+	"additionalProperties": false,
+	"examples": [
+		{
+			"tests": {
+				"T1": {
+					"title": "Read the order total",
+					"requirementIds": ["R1"],
+					"capability": "browser",
+					"operations": ["read_orders"],
+					"dependsOn": [],
+					"preconditions": [],
+					"action": "Open the order confirmation.",
+					"assertions": [
+						{
+							"check": "The order total is 240 PLN.",
+							"checkKind": "deterministic",
+							"observe": "Order total",
+							"expected": "240 PLN"
+						}
+					]
+				}
+			}
+		}
+	]
 }

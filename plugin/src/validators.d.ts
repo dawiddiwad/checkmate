@@ -35,3 +35,5 @@ export const planRequest: Validator
 export const profile: Validator
 export const response: Validator
 export const result: Validator
+export const verification: Validator
+export const workerRule: Validator

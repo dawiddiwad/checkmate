@@ -389,7 +389,6 @@ export type Actions = {
 		name: string
 		step: 'study' | 'test' | 'record' | 'follow' | 'rules' | 'merge' | 'verify'
 		activity?: string
-		replyLine?: string
 		failure?: 'agent_unavailable' | 'agent_interrupted' | 'host_error'
 		failureDetail?: string
 		agentId?: string
@@ -930,4 +929,16 @@ export type Result = {
 			reason: string | null
 		}>
 	}
+}
+
+export type Verification = {
+	id: string
+	seen: boolean
+	saw: string
+}
+
+export type WorkerRule = {
+	text: string
+	source: string
+	area: string
 }

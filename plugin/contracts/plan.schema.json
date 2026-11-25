@@ -68,6 +68,7 @@
 					"area": {
 						"type": "string",
 						"minLength": 1,
+						"pattern": "\\S",
 						"maxLength": 40
 					},
 					"metadata": {

@@ -22,6 +22,12 @@ for (const file of files) {
 	exports[file.slice(0, -'.schema.json'.length).replace(/-./g, (match) => match[1].toUpperCase())] = file
 }
 
+for (const file of ['worker-rule', 'verification', 'plan-candidate', 'plan-delta']) {
+	const schema = ajv.getSchema(`${file}.schema.json`)!
+	for (const example of (schema.schema as { examples: unknown[] }).examples)
+		assert(schema(example), `${file} example: ${ajv.errorsText(schema.errors)}`)
+}
+
 const bundle = await build({
 	stdin: {
 		contents: standaloneCode.default(ajv, exports),

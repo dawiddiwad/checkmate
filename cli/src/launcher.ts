@@ -21,6 +21,8 @@ import { checkRequest, plannedRequest } from '../../plugin/src/routes.ts'
 import { signalChild, trackGroup } from '../../plugin/src/processes.ts'
 import { savedModel, workspaceEnv, type SavedModel } from '../../plugin/src/settings.ts'
 import { childActionTools } from '../../plugin/src/action-tools.ts'
+import planCandidateSchema from '../../plugin/contracts/plan-candidate.schema.json' with { type: 'json' }
+import planDeltaSchema from '../../plugin/contracts/plan-delta.schema.json' with { type: 'json' }
 import { dataRules, markerFor, runPrepare } from '../../plugin/src/resets.ts'
 import type { ChildCall } from '../../plugin/src/sessions.ts'
 import {
@@ -666,7 +668,7 @@ function stagePrompt(stage: WorkerStage, subject: string, observeRule: string) {
 			'Use agent_observation only for a visual or wording judgment that no value states. An order, a count, a status code, a presence, or an absence has a value: observe the first item, the count, the status, or the text, and use the deterministic kind. Do not raise a gap for a judgment.',
 			'Each assertion checks one expected value. Write one assertion for each value. Do not join two values with "and" or ";" in one check.',
 			'Write each assertion with the exact expected text or value from the sources, for example: The page shows "1 book" when one book is stored. Do not write a general description such as "pluralizes correctly".',
-			'Each deterministic assertion names the observed item in "observe" and the expected value in "expected", and keeps the check text. A check that decides an HTTP request names it in "request" as METHOD /path, for example "request":"GET /api/notes"; a test with a 2xx control and a refused request names the request of each check separately. Every deterministic check needs both. For a value that holds the run marker, write {{marker}} in "expected", for example {{marker}}-T1. {{marker}} works in every kind, for example contains:{{marker}}-T1. The marker already starts with qa-, so never write qa- before {{marker}}. For a shape or a range use type:number, type:non-empty, one-of:A|B, matches:<regex>, at least:N or at most:N. For presence or absence use contains:TEXT or absent:TEXT, never a sentence that starts with "not". Never write a type word or a <placeholder> as a value. A judgment that has no value to compare is "checkKind": "agent_observation". Example: {"id":"A1","check":"The kettle price shown on the product page is 240 PLN.","checkKind":"deterministic","observe":"the price value labelled Price on the product page","expected":"240 PLN"}.',
+			`Example candidate: ${JSON.stringify(planCandidateSchema.examples[0])}`,
 			'A negative check ("unknown", "missing", "not found", "not allowed", "wrong token") uses a well-formed value of the same shape as a valid one: an id of the right type that does not exist, or a syntactically valid wrong token. The same test also has a positive control: the same request with a valid value returns 2xx, so a route miss cannot pass as the refusal. Example: T6 A1 "DELETE /api/notes/999999 returns 404." with expected "404", and A2 "DELETE /api/notes/<existing id> returns 200." with expected "200".',
 			'A rule that states a range or a limit has one assertion for each side: the value below the lower bound, the lower bound, the upper bound, and the value above the upper bound. Each names its input, for example "quantity 0 returns HTTP 400.", and has its own expected value.',
 			observeRule,
@@ -683,9 +685,7 @@ function stagePrompt(stage: WorkerStage, subject: string, observeRule: string) {
 		'When a migration has no pending decision, change only the tests with a deterministic check without "observe" and "expected", or with a check that states more than one value. Give each migrated deterministic check "observe" and "expected", and split a check that states more than one value into one assertion for each value. Do not invent an expected value that the sources do not state.',
 		'When a split or an expected value needs a decision, keep the assertions the sources state and raise a gap only for the one missing fact: {"gaps": {"G-<testId>": {"question": "<the decision>", "consequence": "<what stays untested>", "testIds": ["<testId>"]}}}. Do not answer gaps.',
 		'When a decision has no expected value, add an assertion with "checkKind": "agent_observation" that records the behavior.',
-		'Send each changed test whole: title, requirementIds, capability, operations, dependsOn, preconditions, action, and assertions as a list of {"check", "checkKind", "observe", "expected"}. Every deterministic check needs "observe" (what the page or API shows) and "expected" (the single value to compare). A deterministic check without them is refused at save. If you cannot give an expected value, use "checkKind": "agent_observation" instead. Give one value in each check. Do not send assertion IDs; the code keeps them.',
-		'A new requirement needs "text" and "source". A test that a decision drops is removed with {"remove": true}.',
-		'Send the delta as one line of JSON in the heredoc, with double quotes, no comments, and no Markdown.',
+		`Example delta: ${JSON.stringify(planDeltaSchema.examples[0])}`,
 		'When a decision says a criterion is dropped, removed, or out of scope, remove it. Remove its requirement and its tests in the same delta, for example {"requirements": {"R2": {"remove": true}}, "tests": {"T2": {"remove": true}}}. Do not rewrite a test for another criterion to match it.',
 		`Save the next revision with \`checkmate plan revise ${subject}\`. Do not answer gaps.`,
 	]
@@ -707,9 +707,11 @@ function nativePlanPrompt(
 ) {
 	const skill = readFileSync(join(pluginRoot, 'skills', stage, 'SKILL.md'), 'utf8')
 	const start = stage === 'plan' ? 'Read the plan request.' : 'Read the pending decisions.'
+	const example = stage === 'plan' ? planCandidateSchema.examples[0] : planDeltaSchema.examples[0]
 	return [
 		`You are the independent Checkmate ${stage} worker for ${subject}. ${start} Follow the delegated path below. Do not ask the oracle, answer a question, run a reset, or perform tests.`,
 		skill.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, ''),
+		`Example: ${JSON.stringify(example)}`,
 		...(stage === 'plan'
 			? [
 					observeRule,

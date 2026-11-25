@@ -85,6 +85,7 @@ Use the JSON Schemas as the contract:
 - [Target profile](../plugin/contracts/profile.schema.json) and [instance](../plugin/contracts/instance.schema.json).
 - [Run result](../plugin/contracts/result.schema.json), [finding](../plugin/contracts/finding.schema.json), and [gap](../plugin/contracts/gap.schema.json).
 - [Journal entries](../plugin/contracts/journal-entry.schema.json). Checkmate validates each entry before it adds the build from the exploration.
+- [Extracted rules](../plugin/contracts/worker-rule.schema.json) and [verification results](../plugin/contracts/verification.schema.json). Checkmate records valid items and reports refused items by index. It assigns rule IDs.
 
 An instance can declare which build it serves. A run or exploration can start on that instance only for that build.
 

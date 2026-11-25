@@ -180,7 +180,7 @@ export function actionInput<Name extends ActionName>(name: Name, input: unknown)
 			name === 'record_check' || name === 'close_test'
 				? 'Use evidence: [{text: "the actual response or observation", kind: "http_exchange"}]. For a fresh file in the run evidence directory, give {file, kind}. Correct any other named fields and retry.'
 				: name === 'tester_step_done'
-					? 'Give agentId from the Agent receipt and replyLine from its last line. Omit failure when the agent completed. Record product defects in the tester report.'
+					? 'Use the assigned Agent receipt. Record product defects in the tester report.'
 					: 'Correct the named fields and retry the action.'
 		throw new Refusal('malformed', problems.join('. '), repair)
 	}

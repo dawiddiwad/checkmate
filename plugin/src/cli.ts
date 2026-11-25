@@ -1726,7 +1726,7 @@ const commands: Record<string, Command> = {
 	'explore done': {
 		action: 'tester_step_done',
 		positionals: ['explorationId', 'name', 'step'],
-		flags: { agent: 'value', failed: 'value', activity: 'value', 'reply-line': 'value' },
+		flags: { agent: 'value', failed: 'value', activity: 'value' },
 		write: true,
 		check: (args) => {
 			requireChoice(value(args, 'step'), doneSteps, 'step')
@@ -1743,7 +1743,6 @@ const commands: Record<string, Command> = {
 					failure: args['failed'] === undefined ? undefined : 'host_error',
 					failureDetail: value(args, 'failed'),
 					activity: value(args, 'activity'),
-					replyLine: value(args, 'reply-line'),
 				},
 				context
 			),

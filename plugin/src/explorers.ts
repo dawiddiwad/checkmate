@@ -1,12 +1,20 @@
 import type { Reply, Store } from './store.ts'
-import type { Profile } from './types.ts'
+import type { Profile, Verification } from './types.ts'
 import type { ChildContext, ChildCall, Env } from './sessions.ts'
 import type { Charter, ExplorationEvent, OpenInput } from './explorations.ts'
 import type { TestLevel } from './levels.ts'
 import { explorationCost } from './costs.ts'
 import { hostSession } from './actor.ts'
 import { all, closeStore, completed, one, openStore, saveBlob, write } from './store.ts'
-import { Refusal, requireBuild, requireChoice, shellWord, requireCondition, requireWellFormed } from './contracts.ts'
+import {
+	Refusal,
+	requireBuild,
+	requireChoice,
+	shellWord,
+	requireCondition,
+	requireWellFormed,
+	schemaProblems,
+} from './contracts.ts'
 import { addEvent, exploration, explorationEvents, insertExploration, workFolder } from './explorations.ts'
 import type { Refused } from './journal.ts'
 import { firstRevision } from './testRevision.ts'
@@ -866,7 +874,7 @@ function deriveRules(store: Store, actor: string, explorationId: string, launch:
 	const opened = exploration(store, explorationId)
 	if (!rulesNeeded(store, opened.plan_id)) return
 	const sources = ruleSources(store, opened.plan_id)
-	const names = sources.map((source) => source.name)
+	const names = sources.filter((source) => source.text !== null).map((source) => source.name)
 	const session = randomUUID()
 	const call = (args: string[], prompt: string) => {
 		const hook = childHook(store.workspace, explorationId, 'rules')
@@ -899,7 +907,7 @@ function deriveRules(store: Store, actor: string, explorationId: string, launch:
 			calls: calls.length,
 			rules: checked.rules.length,
 			refused: checked.refusals.length,
-			...(checked.rules.length ? {} : { reason: failure?.[1] ?? checked.refusals.join(' ') }),
+			...(checked.refusals.length ? { reason: failure?.[1] ?? checked.refusals.join(' ') } : {}),
 			...(calls.some(authenticationFailed)
 				? { hint: launch.context.harness === 'pi' ? piAuthenticationHint : authenticationHint }
 				: {}),
@@ -915,12 +923,26 @@ function deriveRules(store: Store, actor: string, explorationId: string, launch:
 }
 
 export function verifiedEntries(reply: unknown[] | undefined, ids: Set<string>) {
-	return (reply ?? []).flatMap((raw) => {
-		const item = raw as { id?: unknown; seen?: unknown; saw?: unknown } | null
-		if (!item || typeof item.id !== 'string' || !ids.has(item.id) || typeof item.seen !== 'boolean') return []
-		const saw = typeof item.saw === 'string' && item.saw.trim() ? item.saw : item.seen ? 'Seen again.' : 'Not seen.'
-		return [{ kind: 'observation', saw, [item.seen ? 'confirms' : 'refutes']: item.id }]
-	})
+	const observations = []
+	const refusals = []
+	const missing = new Set(ids)
+	if (!reply) return { observations: [], refusals: ['Verification needs a JSON array.'] }
+	for (const [index, raw] of reply.entries()) {
+		const path = `verification[${index}]`
+		const problems = schemaProblems('verification', raw, path)
+		if (problems.length) {
+			refusals.push(...problems.map(({ text }) => `${text}.`))
+			continue
+		}
+		const { id, seen, saw } = raw as Verification
+		if (!missing.delete(id)) {
+			refusals.push(`${path}/id ${JSON.stringify(id)} must name a requested problem once.`)
+			continue
+		}
+		observations.push({ kind: 'observation', saw, [seen ? 'confirms' : 'refutes']: id })
+	}
+	if (missing.size) refusals.push(`Verification has no usable result for ${[...missing].join(', ')}.`)
+	return { observations, refusals }
 }
 
 export function verifyInput(store: Store, explorationId: string, after = 0) {
@@ -960,11 +982,12 @@ async function verifyClaims(store: Store, actor: string, explorationId: string, 
 	}
 	const ids = new Set(items.map((item) => item.id))
 	const calls = [await ask(['--session-id', session], brief)]
-	let observations = calls[0].failure ? [] : verifiedEntries(replyArray(calls[0].result), ids)
-	if (!calls[0].failure && !observations.length) {
+	let checked = verifiedEntries(replyArray(calls[0].failure ? undefined : calls[0].result), ids)
+	if (!calls[0].failure && !checked.observations.length) {
 		calls.push(await ask(['--resume', session], verifierRepairPrompt()))
-		observations = calls[1].failure ? [] : verifiedEntries(replyArray(calls[1].result), ids)
+		checked = verifiedEntries(replyArray(calls[1].failure ? undefined : calls[1].result), ids)
 	}
+	const { observations, refusals } = checked
 	if (observations.length) logEntries(store, verifierActor, { explorationId, entries: observations })
 	const failure = calls.find((call) => call.failure)?.failure
 	const stderr = calls.find((call) => call.stderr)?.stderr
@@ -976,13 +999,7 @@ async function verifyClaims(store: Store, actor: string, explorationId: string, 
 			session,
 			items: items.length,
 			verified: observations.length,
-			...(observations.length
-				? {}
-				: calls[0].failure
-					? { reason: calls[0].failure[1] }
-					: {
-							reason: `The verifier gave no result, also after one repair${failure ? ` (${failure[1]})` : ''}. The claims keep their states.`,
-						}),
+			...(refusals.length ? { reason: failure?.[1] ?? refusals.join(' ') } : {}),
 			...(stderr ? { stderr } : {}),
 			...(calls.some(authenticationFailed)
 				? { hint: launch.context.harness === 'pi' ? piAuthenticationHint : authenticationHint }

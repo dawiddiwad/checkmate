@@ -850,7 +850,7 @@ test('Keep a defect stored while a question about its rule waits — the finding
 	t.after(() => app.close())
 	const host = fakeClaude(
 		t,
-		{ rules: [{ id: 'R1', text: 'The promotion quote is 240 PLN.', source: 'ticket.md', area: 'Promotion' }] },
+		{ rules: [{ text: 'The promotion quote is 240 PLN.', source: 'ticket.md', area: 'Promotion' }] },
 		'pi'
 	)
 	const env = {
@@ -913,7 +913,18 @@ test('Record a defect with replayable evidence — report text cannot become a r
 	t.after(() => app.close())
 	const host = fakeClaude(
 		t,
-		{ rules: [{ id: 'R1', text: 'The promotion quote is 240 PLN.', source: 'ticket.md', area: 'Promotion' }] },
+		{
+			rules: 'Missing JSON.',
+			'rules-repair': [
+				{ text: 'The promotion quote is 240 PLN.', source: 'ticket.md', area: 'Promotion' },
+				{ text: 'An unrelated rule.', source: 'ticket.md.bak', area: 'Other' },
+			],
+			verifier: 'Missing JSON.',
+			repair: [
+				{ id: 'a1/D1', seen: true, saw: 'The quote was 220 PLN again.' },
+				{ id: 'a1/D1', seen: false, saw: 'Duplicate answer.' },
+			],
+		},
 		'pi'
 	)
 	const env = {
@@ -946,11 +957,24 @@ test('Record a defect with replayable evidence — report text cannot become a r
 		'--build',
 		'broken',
 		'--level',
-		'smoke',
+		'normal',
+		'--explorers',
+		'1',
 		'--allow',
 		'Read'
 	)
 	assert.equal((await ok('explore', 'wait', start.explorationId, '--timeout', '60')).state, 'completed')
+	const stages = (
+		await ok(
+			'query',
+			"SELECT step, detail FROM exploration_events WHERE step IN ('rules', 'verify') ORDER BY rowid"
+		)
+	).rows.map((row: { detail: string }) => JSON.parse(row.detail))
+	assert.equal(stages[0].calls, 2)
+	assert.equal(stages[0].rules, 1)
+	assert.match(stages[0].reason, /rules\[1\]\/source.*ticket\.md\.bak/)
+	assert.equal(stages[1].verified, 1)
+	assert.match(stages[1].reason, /verification\[1\]\/id.*a1\/D1/)
 	const status = await ok('status', 'cart')
 	assert.deepEqual([status.state, status.waitsOn], ['needs_answers', 'oracle'])
 	const revision = await ok('plan', 'show', 'cart')
@@ -1059,7 +1083,7 @@ test('Explore a clean fixture — invented defect or missing observed coverage.'
 	t.after(() => app.close())
 	const host = fakeClaude(
 		t,
-		{ rules: [{ id: 'R1', text: 'The promotion quote is 240 PLN.', source: 'ticket.md', area: 'Promotion' }] },
+		{ rules: [{ text: 'The promotion quote is 240 PLN.', source: 'ticket.md', area: 'Promotion' }] },
 		'pi'
 	)
 	const env = {
@@ -2202,7 +2226,7 @@ test('Keep incomplete criteria unverified — false green.', async (t) => {
 	t.after(() => app.close())
 	const host = fakeClaude(
 		t,
-		{ rules: [{ id: 'R1', text: 'The promotion quote is 240 PLN.', source: 'ticket.md', area: 'Promotion' }] },
+		{ rules: [{ text: 'The promotion quote is 240 PLN.', source: 'ticket.md', area: 'Promotion' }] },
 		'pi'
 	)
 	const env = {
@@ -2259,7 +2283,7 @@ test('Merge duplicate findings and preserve evidence — defect inflated or uniq
 	const host = fakeClaude(
 		t,
 		{
-			rules: [{ id: 'R1', text: 'The promotion quote is 240 PLN.', source: 'ticket.md', area: 'Promotion' }],
+			rules: [{ text: 'The promotion quote is 240 PLN.', source: 'ticket.md', area: 'Promotion' }],
 			merger: [
 				{ kind: 'issue', title: 'Promotion total is wrong', severity: 'high', reports: ['a1/D1', 'a2/D1'] },
 			],
@@ -2330,7 +2354,7 @@ test('Show disputed/failed retest without closing a claim — unresolved defect 
 	const url = `http://127.0.0.1:${address.port}`
 	const host = fakeClaude(
 		t,
-		{ rules: [{ id: 'R1', text: 'The promotion quote is 240 PLN.', source: 'ticket.md', area: 'Promotion' }] },
+		{ rules: [{ text: 'The promotion quote is 240 PLN.', source: 'ticket.md', area: 'Promotion' }] },
 		'pi'
 	)
 	const env = {
@@ -2556,11 +2580,20 @@ test('Give a session tester the data rules of a read-only target — the test ta
 	await ok('explore', 'next', id)
 	await ok('explore', 'started', id, 'rules')
 	const rules = join(workspace, '.checkmate/work', id, 'rules/answer.json')
+	writeFileSync(rules, 'Missing JSON.')
+	const rulesRepair = await ok('explore', 'done', id, 'rules', 'rules', '--agent', 'clerk-1')
+	assert.match(rulesRepair.refusals.join(' '), /JSON array/)
+	await ok('explore', 'next', id)
 	writeFileSync(
 		rules,
-		JSON.stringify([{ id: 'R1', text: 'The catalog is listed.', source: 'ticket.md#1', area: 'Catalog' }])
+		JSON.stringify([
+			{ text: 'The catalog is listed.', source: 'ticket.md#1', area: 'Catalog' },
+			{ id: 'R99', text: 'Another rule.', source: 'ticket.md', area: 'Catalog' },
+		])
 	)
-	await ok('explore', 'done', id, 'rules', 'rules', '--agent', 'clerk-1')
+	const rulesDone = await ok('explore', 'done', id, 'rules', 'rules', '--agent', 'clerk-1')
+	assert.equal(rulesDone.rules, 1)
+	assert.match(rulesDone.reason, /rules\[1\].*unknown field "id"/)
 	await ok('explore', 'next', id)
 	await ok('explore', 'started', id, 'a1', 'a2')
 	writeFileSync(join(workspace, '.checkmate/work', id, 'a1/questions.md'), 'None\n')
@@ -2590,15 +2623,46 @@ test('Give a session tester the data rules of a read-only target — the test ta
 			'checkmate_tester_step_done',
 			{ explorationId: id, name: 'a1', step: 'test', agentId: 'tester-1', failure: 'host_error' },
 		],
-		[
-			'checkmate_tester_step_done',
-			{ explorationId: id, name: 'a1', step: 'test', agentId: 'tester-1', replyLine: 'tester a1 test done' },
-		],
+		['checkmate_tester_step_done', { explorationId: id, name: 'a1', step: 'test', agentId: 'tester-1' }],
 	])
 	assert.equal(malformed.result.structuredContent.refusal, 'malformed')
 	assert.match(refused.result.structuredContent.nextAction.instruction, /product defects/)
 	assert.equal(recorded.result.structuredContent.status, 'completed')
 	assert.notEqual(recorded.result.structuredContent.state, 'operational_error')
+	await ok('explore', 'done', id, 'a2', 'study', '--failed', 'Agent unavailable')
+	await ok('explore', 'next', id)
+	writeFileSync(
+		join(folder, 'entries.json'),
+		JSON.stringify([
+			{
+				kind: 'defect',
+				title: 'Catalog failed',
+				expected: 'HTTP 200',
+				actual: 'HTTP 500',
+				severity: 'high',
+				rule: 'R1',
+			},
+		])
+	)
+	await ok('explore', 'done', id, 'a1', 'record', '--agent', 'tester-1')
+	await ok('explore', 'next', id)
+	const verification = join(workspace, '.checkmate/work', id, 'verify/answer.json')
+	writeFileSync(verification, 'Missing JSON.')
+	assert.equal((await ok('explore', 'done', id, 'verify', 'verify', '--agent', 'verifier-1')).event, 'verify-round')
+	await ok('explore', 'next', id)
+	writeFileSync(
+		verification,
+		JSON.stringify([
+			{ id: 'a1/D1', seen: true, saw: 'HTTP 500' },
+			{ id: 'a1/D1', seen: false },
+		])
+	)
+	const verified = await ok('explore', 'done', id, 'verify', 'verify', '--agent', 'verifier-1')
+	assert.equal(verified.verified, 1)
+	assert.match(verified.reason, /verification\[1\].*needs field "saw"/)
+	const rows = (await ok('query', "SELECT body FROM journal_entries WHERE actor = 'qa:verify'")).rows
+	assert.equal(rows.length, 1)
+	assert.equal(JSON.parse(rows[0].body).confirms, 'a1/D1')
 })
 
 test('Give a verifier the data rules of the target — the verifier brief had only the operation text and a prefix.', async () => {
@@ -12058,9 +12122,7 @@ test('A tester gets one of two Maestro recipes — the MCP server in a new proce
 		await ok(['explore', 'started', id, 'rules'])
 		writeFileSync(
 			join(workspace, '.checkmate/work', id, 'rules/answer.json'),
-			JSON.stringify([
-				{ id: 'R1', text: 'Character Preview is on by default.', source: 'ticket.md#1', area: 'Keyboard' },
-			])
+			JSON.stringify([{ text: 'Character Preview is on by default.', source: 'ticket.md#1', area: 'Keyboard' }])
 		)
 		await ok(['explore', 'done', id, 'rules', 'rules', '--agent', 'clerk-1'])
 		await ok(['explore', 'next', id])

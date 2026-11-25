@@ -24,6 +24,16 @@ Use `checkmate --help` for the complete command list from the installed version.
 
 The examples omit optional `--actor` and `--workspace` flags. Claude Code delegation needs `--allow <rule>` for each required tool. Pi delegation uses `CHECKMATE_HARNESS=pi` and omits `--allow` and `--claude-arg`. The host enforces its own permissions.
 
+Delegated workers use the models that you save on the Settings page of the review UI. The `delegate` command and the `delegate_work` tool use the same rules:
+
+- Execute workers and probes use the tester model and the tester effort.
+- Setup, plan, and revise workers use the chat model and the chat effort.
+- An empty model setting uses the default model of the harness.
+- An explicit model of the caller takes precedence over the setting and its effort: `--claude-arg --model <id>` for Claude Code, or `CHECKMATE_PI_MODEL` for Pi.
+- Checkmate sends a saved effort only when the host catalog advertises that effort for the model.
+
+If the host refuses the saved model before the worker writes, the worker runs again on the harness default. The other workers of the same delegate call also use the harness default. The reply then has a reason and `modelFallback`, with the saved model and the refusal of the host. The recorded attempt has the same `modelFallback`. `observedModels` gives the models that ran.
+
 ## Agent tools
 
 The Claude Code plugin serves Checkmate actions through its local MCP server. The Pi package registers the same actions as native tools. The host gives each tool its workspace and role. An action takes named arguments. Its result gives the recorded state or a refusal with reasons and a next action.

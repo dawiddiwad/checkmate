@@ -564,6 +564,10 @@ export function harnessPage(
 		>
 			<h2 class="lab" id="model-settings">Models</h2>
 			<p class="help">Choose a model for each kind of work. Choose a default or a model from the list.</p>
+			<p class="help">
+				If the coding harness cannot use a saved model, a delegated worker uses the harness default. The reply
+				says so.
+			</p>
 			<p class="help" role="status" data-model-status>Loading models from ${pi ? 'Pi' : 'Claude Code'}…</p>
 			<button class="btn" type="button" data-model-refresh>Refresh models</button>
 			<div class="field-group">
@@ -581,6 +585,7 @@ export function harnessPage(
 					</select>
 					<p class="help" id="tester-model-help">
 						${pi ? 'The Pi default is the model configured in Pi.' : 'The test level selects its default model.'}
+						Delegated execute workers also use this model${pi ? '' : ', or the Claude Code default'}.
 					</p>
 					<p class="help" data-model-unavailable="tester-model" hidden></p>
 					<div hidden>
@@ -608,7 +613,8 @@ export function harnessPage(
 						${requestValue ? html`<option value="${requestValue}" selected>${requestValue}</option>` : ''}
 					</select>
 					<p class="help" id="request-model-help">
-						The default is the model configured in ${pi ? 'Pi' : 'Claude Code'}.
+						The default is the model configured in ${pi ? 'Pi' : 'Claude Code'}. Delegated setup, plan, and
+						revise workers also use this model.
 					</p>
 					<p class="help" data-model-unavailable="request-model" hidden></p>
 					<div hidden>

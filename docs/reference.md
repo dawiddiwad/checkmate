@@ -1,5 +1,7 @@
 # CLI and record reference
 
+If Checkmate reports that the workspace database came from an older version, move the `.checkmate` folder aside. Run setup to start a fresh workspace.
+
 Use `checkmate --help` for the complete command list from the installed version. Add `--json` for structured output. Add `--workspace <path>` to use another project directory.
 
 ## Common sequence

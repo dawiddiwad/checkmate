@@ -252,7 +252,7 @@ test('An unattended Pi explorer uses host MCP tools and reports a server that ne
 	mkdirSync(join(workspace, '.checkmate'))
 	writeFileSync(
 		join(workspace, '.checkmate/checkmate.db'),
-		gunzipSync(readFileSync(join(root, 'test/e2e/fixtures/workspace-migrated.db.gz')))
+		gunzipSync(readFileSync(join(root, 'test/e2e/fixtures/workspace-plan.db.gz')))
 	)
 	writeFileSync(join(workspace, 'AGENTS.md'), 'CONTEXT_FILE_SENTINEL\n')
 	const requests: { messages: string; tools: string[] }[] = []
@@ -3368,7 +3368,7 @@ test('Execute a plan chat through the packaged UI — a begun run must reach its
 	mkdirSync(join(workspace, '.checkmate'))
 	writeFileSync(
 		join(workspace, '.checkmate/checkmate.db'),
-		gunzipSync(readFileSync(join(root, 'test/e2e/fixtures/workspace-migrated.db.gz')))
+		gunzipSync(readFileSync(join(root, 'test/e2e/fixtures/workspace-plan.db.gz')))
 	)
 	const app = await fixture()
 	t.after(() => app.close())
@@ -3510,7 +3510,7 @@ require('node:readline').createInterface({input:process.stdin}).on('line', line 
 	mkdirSync(join(piWorkspace, '.checkmate'))
 	writeFileSync(
 		join(piWorkspace, '.checkmate/checkmate.db'),
-		gunzipSync(readFileSync(join(root, 'test/e2e/fixtures/workspace-migrated.db.gz')))
+		gunzipSync(readFileSync(join(root, 'test/e2e/fixtures/workspace-plan.db.gz')))
 	)
 	const installed = join(project, 'node_modules/@xoxoai/checkmate')
 	const fullCli = join(installed, 'plugin/dist/checkmate.js')
@@ -3864,7 +3864,7 @@ test('Execute a request through Pi RPC — a begun run must reach its worker.', 
 	mkdirSync(join(workspace, '.checkmate'))
 	writeFileSync(
 		join(workspace, '.checkmate/checkmate.db'),
-		gunzipSync(readFileSync(join(root, 'test/e2e/fixtures/workspace-migrated.db.gz')))
+		gunzipSync(readFileSync(join(root, 'test/e2e/fixtures/workspace-plan.db.gz')))
 	)
 	const app = await fixture()
 	t.after(() => app.close())
@@ -4315,40 +4315,25 @@ test('Run a narrow retest with prerequisites and regressions — uncovered tests
 	)
 })
 
-test('Open a previous version’s workspace read/write — existing work becomes inaccessible.', async (t) => {
+test('Refuse an older workspace without changing its database.', async (t) => {
 	const workspace = directory(t)
 	mkdirSync(join(workspace, '.checkmate'))
 	const path = join(workspace, '.checkmate/checkmate.db')
-	// Created by the public CLI at 39d33f74138202987a627e119b49ef4ea50a9a57.
-	writeFileSync(path, gunzipSync(readFileSync(join(root, 'test/e2e/fixtures/workspace-39d33f7.db.gz'))))
-	const previous = new DatabaseSync(path)
-	assert.equal(previous.prepare("SELECT count(*) AS n FROM sqlite_master WHERE name = 'plan_promotions'").get()!.n, 0)
-	previous.close()
+	const original = gunzipSync(readFileSync(join(root, 'test/e2e/fixtures/workspace-before-tool-sessions.db.gz')))
+	writeFileSync(path, original)
 	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle' }
-	const before = await command(workspace, env, 'plan', 'show', 'ticket@1')
-	assert.equal(before.code, 0, before.output)
-	assert.match(before.output, /The quote is 240/)
-	const approval = await command(
-		workspace,
-		env,
-		'plan',
-		'approve',
-		'ticket@1',
-		'--rationale',
-		'Review the preserved plan.'
-	)
-	assert.equal(approval.code, 0, approval.output)
-	const after = await command(workspace, env, 'plan', 'show', 'ticket@1')
-	assert.equal(after.code, 0, after.output)
-	assert.match(after.output, /The quote is 240/)
-	const records = await command(
-		workspace,
-		env,
-		'query',
-		'SELECT (SELECT count(*) FROM plan_promotions) AS promotions, (SELECT count(*) FROM approvals) AS approvals'
-	)
-	assert.equal(records.code, 0, records.output)
-	assert.deepEqual(records.body.rows, [{ promotions: 0, approvals: 1 }])
+	for (const args of [
+		['run', 'show', 'run-1'],
+		['run', 'resume', 'run-1'],
+	]) {
+		const refused = await command(workspace, env, ...args)
+		assert.equal(refused.code, 1, refused.output)
+		assert.match(
+			refused.output,
+			/was created by an older version of Checkmate\. Move the .checkmate folder aside, then run setup to start fresh\./
+		)
+		assert.deepEqual(readFileSync(path), original)
+	}
 })
 
 test('Run a two-instance matrix and accept each latest result — one pass masks another instance’s failure.', async (t) => {
@@ -4356,7 +4341,7 @@ test('Run a two-instance matrix and accept each latest result — one pass masks
 	mkdirSync(join(workspace, '.checkmate'))
 	writeFileSync(
 		join(workspace, '.checkmate/checkmate.db'),
-		gunzipSync(readFileSync(join(root, 'test/e2e/fixtures/workspace-migrated.db.gz')))
+		gunzipSync(readFileSync(join(root, 'test/e2e/fixtures/workspace-plan.db.gz')))
 	)
 	const a = await fixture()
 	const b = await fixture()
@@ -4655,7 +4640,7 @@ test('Resume a structured run after a worker deadline — outcomes lost or gate 
 	mkdirSync(join(workspace, '.checkmate'))
 	writeFileSync(
 		join(workspace, '.checkmate/checkmate.db'),
-		gunzipSync(readFileSync(join(root, 'test/e2e/fixtures/workspace-migrated.db.gz')))
+		gunzipSync(readFileSync(join(root, 'test/e2e/fixtures/workspace-plan.db.gz')))
 	)
 	const app = await fixture()
 	t.after(() => app.close())
@@ -5559,7 +5544,7 @@ test('Show a legacy plan — status and plan show name checks saved without an e
 	mkdirSync(join(workspace, '.checkmate'))
 	writeFileSync(
 		join(workspace, '.checkmate/checkmate.db'),
-		gunzipSync(readFileSync(join(root, 'test/e2e/fixtures/workspace-39d33f7.db.gz')))
+		gunzipSync(readFileSync(join(root, 'test/e2e/fixtures/workspace-unstructured-check.db.gz')))
 	)
 	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle' }
 	const shown = await command(workspace, env, 'plan', 'show', 'ticket')
@@ -5575,7 +5560,7 @@ test('Refuse a run on a legacy check, then migrate it by revise without a decisi
 	mkdirSync(join(workspace, '.checkmate'))
 	writeFileSync(
 		join(workspace, '.checkmate/checkmate.db'),
-		gunzipSync(readFileSync(join(root, 'test/e2e/fixtures/workspace-39d33f7.db.gz')))
+		gunzipSync(readFileSync(join(root, 'test/e2e/fixtures/workspace-unstructured-check.db.gz')))
 	)
 	const app = await fixture()
 	t.after(() => app.close())
@@ -5756,7 +5741,7 @@ test('Gate a run with a deterministic check that code did not verify — the run
 	mkdirSync(join(workspace, '.checkmate'))
 	writeFileSync(
 		join(workspace, '.checkmate/checkmate.db'),
-		gunzipSync(readFileSync(join(root, 'test/e2e/fixtures/workspace-migrated.db.gz')))
+		gunzipSync(readFileSync(join(root, 'test/e2e/fixtures/workspace-plan.db.gz')))
 	)
 	const app = await fixture()
 	t.after(() => app.close())
@@ -5821,7 +5806,7 @@ test('Revise a check that needs a decision to split — the test is blocked by a
 	mkdirSync(join(workspace, '.checkmate'))
 	writeFileSync(
 		join(workspace, '.checkmate/checkmate.db'),
-		gunzipSync(readFileSync(join(root, 'test/e2e/fixtures/workspace-39d33f7.db.gz')))
+		gunzipSync(readFileSync(join(root, 'test/e2e/fixtures/workspace-unstructured-check.db.gz')))
 	)
 	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle' }
 	const revised = await inputCommand(
@@ -6201,7 +6186,7 @@ test('Close a test as error after a check on a value it did not observe — the 
 	mkdirSync(join(workspace, '.checkmate'))
 	writeFileSync(
 		join(workspace, '.checkmate/checkmate.db'),
-		gunzipSync(readFileSync(join(root, 'test/e2e/fixtures/workspace-migrated.db.gz')))
+		gunzipSync(readFileSync(join(root, 'test/e2e/fixtures/workspace-plan.db.gz')))
 	)
 	const app = await fixture()
 	t.after(() => app.close())
@@ -6273,7 +6258,7 @@ test('Begin a run on an instance that is not added — the refusal names the add
 	mkdirSync(join(workspace, '.checkmate'))
 	writeFileSync(
 		join(workspace, '.checkmate/checkmate.db'),
-		gunzipSync(readFileSync(join(root, 'test/e2e/fixtures/workspace-migrated.db.gz')))
+		gunzipSync(readFileSync(join(root, 'test/e2e/fixtures/workspace-plan.db.gz')))
 	)
 	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle' }
 	await command(workspace, env, 'plan', 'approve', 'ticket@1', '--rationale', 'Run the rule.')
@@ -6300,7 +6285,7 @@ test('Execute a run with a short deadline — the worker runs its test; no test 
 	mkdirSync(join(workspace, '.checkmate'))
 	writeFileSync(
 		join(workspace, '.checkmate/checkmate.db'),
-		gunzipSync(readFileSync(join(root, 'test/e2e/fixtures/workspace-migrated.db.gz')))
+		gunzipSync(readFileSync(join(root, 'test/e2e/fixtures/workspace-plan.db.gz')))
 	)
 	const app = await fixture()
 	t.after(() => app.close())
@@ -6355,7 +6340,7 @@ test('Run delegated Pi workers on the saved tester model — no setting sends no
 	mkdirSync(join(workspace, '.checkmate'))
 	writeFileSync(
 		join(workspace, '.checkmate/checkmate.db'),
-		gunzipSync(readFileSync(join(root, 'test/e2e/fixtures/workspace-migrated.db.gz')))
+		gunzipSync(readFileSync(join(root, 'test/e2e/fixtures/workspace-plan.db.gz')))
 	)
 	const app = await fixture()
 	t.after(() => app.close())
@@ -8679,60 +8664,6 @@ test('The per-test browser recipe acts only by element refs from a snapshot, wai
 		status: 'completed',
 		reason: 'The browser session was closed.',
 	})
-})
-
-test('A run begun by v0.8.2 keeps its stored browser session as the tool session — resume, delegated execute, and close use it.', async (t) => {
-	const workspace = directory(t)
-	mkdirSync(join(workspace, '.checkmate'))
-	writeFileSync(
-		join(workspace, '.checkmate/checkmate.db'),
-		gunzipSync(readFileSync(join(root, 'test/e2e/fixtures/workspace-run-v0.8.2.db.gz')))
-	)
-	const session = 'cm-23c127b4-93c9-492b-a4b9-c7a50182406c'
-	const bin = directory(t)
-	const toolLog = join(directory(t), 'tool.txt')
-	writeFileSync(join(bin, 'playwright-cli'), `#!/bin/sh\necho "$@" >> '${toolLog}'\necho 1.0.0\n`)
-	chmodSync(join(bin, 'playwright-cli'), 0o755)
-	copyFileSync(join(root, 'test/e2e/per-test-host.mjs'), join(bin, 'pi'))
-	chmodSync(join(bin, 'pi'), 0o755)
-	const env = {
-		...process.env,
-		PATH: `${bin}${delimiter}${process.env.PATH}`,
-		CHECKMATE_ACTOR: 'oracle',
-		CHECKMATE_HARNESS: 'pi',
-	}
-	const shown = await command(workspace, env, 'run', 'show', 'run-1')
-	assert.equal(shown.code, 0, shown.output)
-	assert.equal(shown.body.toolSession, session)
-	assert.equal('browserSession' in shown.body, false)
-	const resumed = await command(workspace, env, 'run', 'resume', 'run-1')
-	assert.equal(resumed.code, 0, resumed.output)
-	assert.equal(resumed.body.toolSession, session)
-	const prompts = join(directory(t), 'prompts.txt')
-	const children = join(directory(t), 'children.txt')
-	const delegated = await command(
-		workspace,
-		{
-			...env,
-			FAKE_PI_LOG: join(directory(t), 'log.txt'),
-			FAKE_PI_PROMPTS: prompts,
-			FAKE_PI_ENV: children,
-			FAKE_CHECKMATE_CLI: binary,
-			FAKE_RUN: 'run-1',
-		},
-		'delegate',
-		'execute',
-		'run-1'
-	)
-	assert.equal(delegated.body.status, 'completed', delegated.output)
-	assert.match(readFileSync(prompts, 'utf8'), new RegExp(`playwright-cli -s=${session} snapshot`))
-	assert.equal(JSON.parse(readFileSync(children, 'utf8').split('\n')[0]).PLAYWRIGHT_CLI_SESSION, session)
-	assert.match(readFileSync(toolLog, 'utf8'), new RegExp(`^-s=${session} close$`, 'm'))
-	const columns = await command(workspace, env, 'query', "SELECT name FROM pragma_table_info('runs')")
-	assert.equal(columns.code, 0, columns.output)
-	const names = columns.body.rows.map((row: { name: string }) => row.name)
-	assert(names.includes('tool_session'), columns.output)
-	assert(!names.includes('browser_session'), columns.output)
 })
 
 test('Show the gap question beside a recorded answer in the saved list — an answer to another question is visible.', async (t) => {

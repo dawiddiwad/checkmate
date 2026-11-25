@@ -722,6 +722,7 @@ function openStoreOnce(workspace2) {
   const db = new DatabaseSync(path);
   try {
     db.exec(`PRAGMA busy_timeout = ${busyTimeout()}`);
+    if (hasTable(db, "meta") && !hasToolSessionColumn(db)) refuseOlderDatabase(path);
     db.exec("PRAGMA journal_mode = WAL");
     db.exec("PRAGMA foreign_keys = ON");
     db.exec("BEGIN IMMEDIATE");
@@ -734,11 +735,10 @@ function openStoreOnce(workspace2) {
     }
     const version3 = String(versionOf(db));
     if (version3 === "3") addExplorationTables(db);
-    if (["3", "4", "5", "6", "7"].includes(version3)) setSchemaVersion(db, schemaVersion);
-    if (["3", "4", "5", "6", "7", schemaVersion].includes(version3)) {
+    if (["3", "4", "5", "6"].includes(version3)) setSchemaVersion(db, schemaVersion);
+    if (["3", "4", "5", "6", schemaVersion].includes(version3)) {
       addMissingTables(db);
       if (!hasViaColumn(db)) db.exec("ALTER TABLE operations ADD COLUMN via TEXT");
-      if (!hasToolSessionColumn(db)) db.exec("ALTER TABLE runs RENAME COLUMN browser_session TO tool_session");
     }
     db.exec("COMMIT");
   } catch (error) {
@@ -769,6 +769,11 @@ function openReadOnlyStore(workspace2) {
 }
 function versionOf(db) {
   return db.prepare("SELECT value FROM meta WHERE key = 'schemaVersion'").get()?.value;
+}
+function refuseOlderDatabase(path) {
+  throw new Error(
+    `Database ${path} was created by an older version of Checkmate. Move the .checkmate folder aside, then run setup to start fresh.`
+  );
 }
 function checkedStore(db, workspace2, path) {
   const version3 = versionOf(db);

@@ -229,9 +229,9 @@
 	},
 	{
 		"number": 37,
-		"name": "Open a previous version’s workspace read/write — existing work becomes inaccessible.",
+		"name": "Refuse an older workspace without changing its database.",
 		"status": "covered",
-		"test": "Open a previous version’s workspace read/write — existing work becomes inaccessible."
+		"test": "Refuse an older workspace without changing its database."
 	},
 	{
 		"number": 38,

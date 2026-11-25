@@ -416,7 +416,6 @@ function hasViaColumn(db: DatabaseSync) {
 	return Boolean(db.prepare("SELECT 1 FROM pragma_table_info('operations') WHERE name = 'via'").get())
 }
 
-// Schema 7 named the session of a run browser_session. It is the session of any test tool now.
 function hasToolSessionColumn(db: DatabaseSync) {
 	return Boolean(db.prepare("SELECT 1 FROM pragma_table_info('runs') WHERE name = 'tool_session'").get())
 }
@@ -487,6 +486,7 @@ function openStoreOnce(workspace: string): Store {
 	const db = new DatabaseSync(path)
 	try {
 		db.exec(`PRAGMA busy_timeout = ${busyTimeout()}`)
+		if (hasTable(db, 'meta') && !hasToolSessionColumn(db)) refuseOlderDatabase(path)
 		db.exec('PRAGMA journal_mode = WAL')
 		db.exec('PRAGMA foreign_keys = ON')
 		db.exec('BEGIN IMMEDIATE')
@@ -499,11 +499,10 @@ function openStoreOnce(workspace: string): Store {
 		}
 		const version = String(versionOf(db))
 		if (version === '3') addExplorationTables(db)
-		if (['3', '4', '5', '6', '7'].includes(version)) setSchemaVersion(db, schemaVersion)
-		if (['3', '4', '5', '6', '7', schemaVersion].includes(version)) {
+		if (['3', '4', '5', '6'].includes(version)) setSchemaVersion(db, schemaVersion)
+		if (['3', '4', '5', '6', schemaVersion].includes(version)) {
 			addMissingTables(db)
 			if (!hasViaColumn(db)) db.exec('ALTER TABLE operations ADD COLUMN via TEXT')
-			if (!hasToolSessionColumn(db)) db.exec('ALTER TABLE runs RENAME COLUMN browser_session TO tool_session')
 		}
 		db.exec('COMMIT')
 	} catch (error) {
@@ -542,6 +541,12 @@ export function openReadOnlyStore(workspace: string): Store {
 
 function versionOf(db: DatabaseSync) {
 	return db.prepare("SELECT value FROM meta WHERE key = 'schemaVersion'").get()?.value
+}
+
+function refuseOlderDatabase(path: string): never {
+	throw new Error(
+		`Database ${path} was created by an older version of Checkmate. Move the .checkmate folder aside, then run setup to start fresh.`
+	)
 }
 
 function checkedStore(db: DatabaseSync, workspace: string, path: string): Store {

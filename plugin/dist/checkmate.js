@@ -13006,13 +13006,13 @@ function providerMessage(text2) {
   try {
     const payload = JSON.parse(body);
     const messages2 = [payload.error?.message, payload.message, payload.error];
-    return messages2.find((message) => typeof message === "string") ?? "";
+    return messages2.find((message2) => typeof message2 === "string") ?? "";
   } catch {
     const primary = body.split(/"headers"\s*:/i, 1)[0];
-    const message = /"message"\s*:\s*("(?:\\.|[^"\\])*")/.exec(primary);
-    if (message) {
+    const message2 = /"message"\s*:\s*("(?:\\.|[^"\\])*")/.exec(primary);
+    if (message2) {
       try {
-        return JSON.parse(message[1]);
+        return JSON.parse(message2[1]);
       } catch {
       }
     }
@@ -13044,9 +13044,9 @@ function piErrorText(value2) {
 }
 function providerError(text2) {
   const response = /^(?:(?:Error|APIError):\s*)?(?:(?:HTTP(?: error)?|status(?: code)?)\s*)?([45][0-9]{2})(?:[ :]+|$)/i.exec(text2);
-  const message = safeMessage(providerMessage(response ? text2.slice(response[0].length) : text2));
-  if (!response) return message;
-  return `HTTP ${response[1]}: ${message || STATUS_CODES[Number(response[1])] || "Provider request failed."}`;
+  const message2 = safeMessage(providerMessage(response ? text2.slice(response[0].length) : text2));
+  if (!response) return message2;
+  return `HTTP ${response[1]}: ${message2 || STATUS_CODES[Number(response[1])] || "Provider request failed."}`;
 }
 function piStderr(text2) {
   return stderrTail(text2.split("\n").map(piErrorText).filter(Boolean).join("\n"));
@@ -13055,17 +13055,17 @@ function piModelId(provider, model) {
   if (typeof provider !== "string" || typeof model !== "string" || !provider.trim() || !model.trim()) return;
   return `${provider}/${model}`;
 }
-function piMessageModel(message) {
-  if (message?.role === "assistant") return piModelId(message.provider, message.model);
+function piMessageModel(message2) {
+  if (message2?.role === "assistant") return piModelId(message2.provider, message2.model);
 }
 function reportedCost(usage2) {
   const cost = usage2?.cost?.total;
   return typeof cost === "number" && Number.isFinite(cost) && cost >= 0 ? cost : null;
 }
-function piMessageCost(message) {
-  if (message?.role !== "assistant" && !(message?.role === "toolResult" && message.usage)) return void 0;
-  const cost = reportedCost(message.usage);
-  if (cost === 0 && message.usage?.totalTokens === 0 && (message.stopReason === "error" || message.stopReason === "aborted"))
+function piMessageCost(message2) {
+  if (message2?.role !== "assistant" && !(message2?.role === "toolResult" && message2.usage)) return void 0;
+  const cost = reportedCost(message2.usage);
+  if (cost === 0 && message2.usage?.totalTokens === 0 && (message2.stopReason === "error" || message2.stopReason === "aborted"))
     return null;
   return cost;
 }
@@ -13073,11 +13073,11 @@ function piTurnUsage() {
   const calls = [];
   let messages2 = [];
   let current2 = {};
-  function addMessage(message) {
-    const costUsd = piMessageCost(message);
+  function addMessage(message2) {
+    const costUsd = piMessageCost(message2);
     if (costUsd === void 0) return;
-    const model = piMessageModel(message);
-    if (message?.role === "assistant") {
+    const model = piMessageModel(message2);
+    if (message2?.role === "assistant") {
       messages2.push({
         observedModels: model ? [model] : current2.observedModels,
         costUsd: costUsd ?? current2.costUsd,
@@ -13100,11 +13100,11 @@ function piTurnUsage() {
           break;
         }
         case "message_update": {
-          const message = event2.message ?? event2.assistantMessageEvent?.partial;
-          const model = piMessageModel(message);
+          const message2 = event2.message ?? event2.assistantMessageEvent?.partial;
+          const model = piMessageModel(message2);
           if (model) current2.observedModels = [model];
-          const cost = event2.usage ? reportedCost(event2.usage) : piMessageCost(message);
-          if (cost !== null && cost !== void 0 && (cost !== 0 || (event2.usage ?? message?.usage)?.totalTokens))
+          const cost = event2.usage ? reportedCost(event2.usage) : piMessageCost(message2);
+          if (cost !== null && cost !== void 0 && (cost !== 0 || (event2.usage ?? message2?.usage)?.totalTokens))
             current2.costUsd = cost;
           break;
         }
@@ -13113,7 +13113,7 @@ function piTurnUsage() {
           break;
         case "agent_end":
           if (!messages2.length && Array.isArray(event2.messages))
-            for (const message of event2.messages) addMessage(message);
+            for (const message2 of event2.messages) addMessage(message2);
           calls.push(...messages2);
           messages2 = [];
           current2 = {};
@@ -13206,15 +13206,427 @@ function piResult(output, error, status, signal) {
   };
 }
 
+// plugin/src/tool-servers.ts
+import { spawn } from "node:child_process";
+import { mkdirSync as mkdirSync2 } from "node:fs";
+import { join as join3 } from "node:path";
+import { createInterface } from "node:readline";
+
+// plugin/src/recipes.ts
+import { existsSync as existsSync2, readdirSync, readFileSync } from "node:fs";
+import { join as join2 } from "node:path";
+var compatibleObserveFrom = { page: "view", reload: "state", api: "state" };
+var compatibleEvidence = ["observation", "http_exchange", "screenshot", "trace"];
+var compatibleExtensions = {
+  ".png": "screenshot",
+  ".jpg": "screenshot",
+  ".jpeg": "screenshot",
+  ".webp": "screenshot",
+  ".zip": "trace",
+  ".trace": "trace"
+};
+var compatibleSource = "accepted for all targets";
+var loaded;
+function isText(value2) {
+  return typeof value2 === "string" && value2.trim() !== "";
+}
+function readRecipe(folder, file) {
+  const refuse4 = (problem) => {
+    throw Error(`Tool recipe ${join2(folder, file)} is not valid: ${problem}`);
+  };
+  let recipe = {};
+  try {
+    recipe = JSON.parse(readFileSync(join2(folder, file), "utf8"));
+  } catch (error) {
+    refuse4(`it is not JSON (${error.message}).`);
+  }
+  if (typeof recipe !== "object" || recipe === null || Array.isArray(recipe)) refuse4("it is not a JSON object.");
+  if (!isText(recipe.name) || `${recipe.name}.json` !== file) refuse4("name must be the file name without .json.");
+  if (!isText(recipe.capability)) refuse4("capability must be a text.");
+  if (recipe.kind !== "cli" && recipe.kind !== "mcp") refuse4("kind must be cli or mcp.");
+  if (recipe.kind === "mcp") readServer(recipe, refuse4);
+  else if (recipe.server !== void 0 || recipe.tools !== void 0)
+    refuse4("server and tools are only for a recipe of kind mcp.");
+  if (!isText(recipe.purpose)) refuse4("purpose must be a text.");
+  if (recipe.detect !== "path" && recipe.detect !== "runtime") refuse4("detect must be path or runtime.");
+  const environment = recipe.environment;
+  if (typeof environment !== "object" || environment === null || Array.isArray(environment) || Object.values(environment).some((value2) => typeof value2 !== "string"))
+    refuse4("environment must be an object of texts.");
+  if (recipe.entryPoints !== void 0) readEntryPoints(recipe.entryPoints, refuse4);
+  if (recipe.reachable !== void 0) readReachable(recipe, refuse4);
+  if (recipe.shellInstruction !== void 0 && !isText(recipe.shellInstruction))
+    refuse4("shellInstruction must be a text when it is given.");
+  if (recipe.delegatedInstruction !== void 0 && !isText(recipe.delegatedInstruction))
+    refuse4("delegatedInstruction must be a text when it is given.");
+  if (recipe.closeSession !== void 0 && (!Array.isArray(recipe.closeSession) || !recipe.closeSession.length || !recipe.closeSession.every(isText)))
+    refuse4("closeSession must be a list of arguments when it is given.");
+  if (!Array.isArray(recipe.workspaceFolders) || !recipe.workspaceFolders.every(isText))
+    refuse4("workspaceFolders must be a list of folder names.");
+  const observeFrom = recipe.observeFrom;
+  if (typeof observeFrom !== "object" || observeFrom === null || Array.isArray(observeFrom) || !Object.keys(observeFrom).every(isValueName) || !Object.values(observeFrom).every((reading) => reading === "view" || reading === "state"))
+    refuse4("observeFrom must be an object that maps each value name to view or state.");
+  if (!Array.isArray(recipe.evidence) || !recipe.evidence.every(isValueName))
+    refuse4("evidence must be a list of evidence kind names.");
+  const extensions = recipe.evidenceExtensions;
+  if (extensions !== void 0 && (typeof extensions !== "object" || extensions === null || Array.isArray(extensions) || !Object.keys(extensions).every((extension) => /^\.[a-z0-9]{1,10}$/.test(extension)) || !Object.values(extensions).every(
+    (kind) => recipe.evidence?.includes(kind) || compatibleEvidence.includes(kind)
+  )))
+    refuse4("evidenceExtensions must map each file extension, for example .mp4, to an evidence kind of the recipe.");
+  if (!isText(recipe.usage) || !existsSync2(join2(folder, recipe.usage)))
+    refuse4("usage must name a file in the folder.");
+  return recipe;
+}
+function readEntryPoints(value2, refuse4) {
+  const entryPointProblem = "entryPoints must be a list of {name, kind (url, command, or value), purpose, pattern (optional regular expression)}.";
+  if (!Array.isArray(value2) || !value2.length) refuse4(entryPointProblem);
+  const names = /* @__PURE__ */ new Set();
+  for (const entry of value2) {
+    if (typeof entry !== "object" || entry === null || typeof entry.name !== "string" || !/^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$/.test(entry.name) || !["url", "command", "value"].includes(entry.kind) || !isText(entry.purpose) || Object.keys(entry).some((key) => !["name", "kind", "purpose", "pattern"].includes(key)))
+      refuse4(entryPointProblem);
+    if (names.has(entry.name)) refuse4(`entryPoints names ${entry.name} twice.`);
+    names.add(entry.name);
+    if (entry.pattern !== void 0) {
+      try {
+        if (!isText(entry.pattern)) throw Error("not a text");
+        new RegExp(entry.pattern);
+      } catch {
+        refuse4(`the pattern of entry point ${entry.name} is not a regular expression.`);
+      }
+    }
+  }
+}
+function readReachable(recipe, refuse4) {
+  const problem = 'reachable must be a list of {check: "http", entry} or {check: "command", run (list of arguments), contains (optional list of texts)}.';
+  const checks = recipe.reachable;
+  if (!Array.isArray(checks) || !checks.length) refuse4(problem);
+  const entries = (recipe.entryPoints ?? []).map((entry) => entry.name);
+  for (const check of checks) {
+    if (typeof check !== "object" || check === null) refuse4(problem);
+    if (check.check === "http") {
+      if (Object.keys(check).some((key) => key !== "check" && key !== "entry") || !isText(check.entry))
+        refuse4(problem);
+      if (!entries.includes(check.entry))
+        refuse4(`reachable names the entry ${check.entry}, which entryPoints does not give.`);
+    } else if (check.check === "command") {
+      if (Object.keys(check).some((key) => !["check", "run", "contains"].includes(key)) || !Array.isArray(check.run) || !check.run.length || !check.run.every(isText) || check.contains !== void 0 && (!Array.isArray(check.contains) || !check.contains.every(isText)))
+        refuse4(problem);
+    } else refuse4(problem);
+  }
+}
+function readServer(recipe, refuse4) {
+  const server = recipe.server;
+  if (typeof server !== "object" || server === null || Array.isArray(server) || Object.keys(server).some((key) => !["command", "args", "cwd"].includes(key)) || !isText(server.command) || !Array.isArray(server.args) || !server.args.every(isText) || !isText(server.cwd))
+    refuse4("server must be {command, args (list of arguments), cwd} for a recipe of kind mcp.");
+  if (!Array.isArray(recipe.tools) || !recipe.tools.length || !recipe.tools.every((name2) => typeof name2 === "string" && /^[A-Za-z0-9_-]{1,64}$/.test(name2)))
+    refuse4("tools must list the names of the server tools that a tester can call.");
+  if (recipe.closeSession !== void 0 || recipe.shellInstruction !== void 0)
+    refuse4("a recipe of kind mcp has no closeSession or shellInstruction: Checkmate stops its server.");
+  const refused2 = recipe.refusedArguments;
+  if (refused2 !== void 0 && (typeof refused2 !== "object" || refused2 === null || Array.isArray(refused2) || !Object.keys(refused2).every((tool) => recipe.tools?.includes(tool)) || !Object.values(refused2).every((names) => Array.isArray(names) && names.length && names.every(isText))))
+    refuse4("refusedArguments must map a tool of the recipe to the names of the arguments that it may not give.");
+  const entries = (recipe.entryPoints ?? []).map((entry) => entry.name);
+  const pinned2 = recipe.entryArguments;
+  if (pinned2 !== void 0 && (typeof pinned2 !== "object" || pinned2 === null || Array.isArray(pinned2) || !Object.keys(pinned2).every(isText) || !Object.values(pinned2).every((entry) => entries.includes(entry))))
+    refuse4("entryArguments must map an argument name to an entry point of the recipe.");
+}
+function isValueName(value2) {
+  return typeof value2 === "string" && /^[a-z][a-z0-9_]{0,39}$/.test(value2);
+}
+function readRecipes(folder) {
+  const found = readdirSync(folder).filter((file) => file.endsWith(".json")).sort().map((file) => readRecipe(folder, file));
+  const readings = new Map(
+    Object.entries(compatibleObserveFrom).map(([value2, reading]) => [
+      value2,
+      { reading, from: "the values accepted for all targets" }
+    ])
+  );
+  for (const recipe of found)
+    for (const [value2, reading] of Object.entries(recipe.observeFrom)) {
+      const known = readings.get(value2);
+      if (known && known.reading !== reading)
+        throw Error(
+          `Tool recipe ${join2(folder, `${recipe.name}.json`)} is not valid: observeFrom ${value2} is ${reading}, but it is ${known.reading} in ${known.from}.`
+        );
+      readings.set(value2, { reading, from: `recipe ${recipe.name}` });
+    }
+  const entryPoints = /* @__PURE__ */ new Map();
+  for (const recipe of found)
+    for (const entry of recipe.entryPoints ?? []) {
+      const text2 = JSON.stringify([entry.kind, entry.purpose, entry.pattern ?? null]);
+      const known = entryPoints.get(entry.name);
+      if (known && known.entry !== text2)
+        throw Error(
+          `Tool recipe ${join2(folder, `${recipe.name}.json`)} is not valid: entry point ${entry.name} differs from the one in ${known.from}.`
+        );
+      entryPoints.set(entry.name, { entry: text2, from: `recipe ${recipe.name}` });
+    }
+  const kinds3 = new Map(
+    Object.entries(compatibleExtensions).map(([extension, kind]) => [
+      extension,
+      { kind, from: "the kinds accepted for all targets" }
+    ])
+  );
+  for (const recipe of found)
+    for (const [extension, kind] of Object.entries(recipe.evidenceExtensions ?? {})) {
+      const known = kinds3.get(extension);
+      if (known && known.kind !== kind)
+        throw Error(
+          `Tool recipe ${join2(folder, `${recipe.name}.json`)} is not valid: evidenceExtensions ${extension} is ${kind}, but it is ${known.kind} in ${known.from}.`
+        );
+      kinds3.set(extension, { kind, from: `recipe ${recipe.name}` });
+    }
+  return found;
+}
+function recipes() {
+  loaded ??= readRecipes(join2(pluginRoot, "recipes"));
+  return loaded;
+}
+function filled(text2, values) {
+  return text2.replaceAll("{session}", values.session).replaceAll("{workFolder}", values.workFolder);
+}
+function testerEnvironment(values) {
+  return Object.fromEntries(
+    recipes().filter((recipe) => recipe.kind === "cli").flatMap(
+      (recipe) => Object.entries(recipe.environment).map(([name2, value2]) => [name2, filled(value2, values)])
+    )
+  );
+}
+function shellInstructions(values) {
+  return recipes().flatMap((recipe) => recipe.shellInstruction ? [filled(recipe.shellInstruction, values)] : []);
+}
+function recipesFor(toolNames2) {
+  return recipes().filter((recipe) => toolNames2.includes(recipe.name));
+}
+function toolExecutable(recipe) {
+  return recipe.server?.command ?? recipe.name;
+}
+function testerTools(toolNames2, attached) {
+  const given = recipesFor(toolNames2);
+  const dropped = given.filter((recipe) => {
+    const others = given.filter((other) => other !== recipe && other.capability === recipe.capability);
+    if (!others.length) return false;
+    return attached ? recipe.kind !== "mcp" && others.some((other) => other.kind === "mcp") : recipe.kind === "mcp";
+  });
+  return toolNames2.filter((name2) => !dropped.some((recipe) => recipe.name === name2));
+}
+function declaredEntryPoints() {
+  const found = /* @__PURE__ */ new Map();
+  for (const recipe of recipes()) for (const entry of recipe.entryPoints ?? []) found.set(entry.name, entry);
+  return found;
+}
+function fitsEntries(recipe, names) {
+  return (recipe.entryPoints ?? []).every((entry) => names.includes(entry.name));
+}
+function toolFolders() {
+  return recipes().flatMap((recipe) => recipe.workspaceFolders);
+}
+function usageFiles(toolNames2) {
+  return recipesFor(toolNames2).map((recipe) => join2(pluginRoot, "recipes", recipe.usage));
+}
+function choices(toolNames2, compatible, values) {
+  const found = new Map(compatible.map((value2) => [value2, [compatibleSource]]));
+  for (const recipe of recipesFor(toolNames2))
+    for (const value2 of values(recipe)) found.set(value2, [...found.get(value2) ?? [], `recipe ${recipe.name}`]);
+  return [...found].map(([value2, from]) => ({ value: value2, from }));
+}
+function observeFromChoices(toolNames2) {
+  return choices(toolNames2, Object.keys(compatibleObserveFrom), (recipe) => Object.keys(recipe.observeFrom));
+}
+function evidenceChoices(toolNames2) {
+  return choices(toolNames2, compatibleEvidence, (recipe) => recipe.evidence);
+}
+function allEvidence() {
+  return evidenceChoices(recipes().map((recipe) => recipe.name)).map((choice2) => choice2.value);
+}
+function observeFromValues(toolNames2) {
+  return recipesFor(toolNames2).flatMap(
+    (recipe) => Object.entries(recipe.observeFrom).map(([value2, reading]) => ({ value: value2, reading, tool: recipe.name }))
+  );
+}
+var readingText = {
+  view: "reads only what the tool shows now",
+  state: "reads the stored state"
+};
+function observeFromRule(toolNames2, quote = '"') {
+  const q2 = (value2) => `${quote}${value2}${quote}`;
+  const listed = observeFromValues(toolNames2).map(({ value: value2, reading }) => `${q2(value2)} (${reading}: ${readingText[reading]})`).join(", ");
+  return [
+    `An assertion on a state-changing action (add, apply, clear, delete, save) checks the source of truth: the stored state. What the tool shows now does not show that the state changed. Set ${q2("observeFrom")} to one of the values of the tools of this target: ${listed}.`,
+    "Use a state value for a check of a state change. Use a view value only for a check that is not a state change. A state-changing test whose checks all use a view value is refused once and then saved as not ready."
+  ].join(" ");
+}
+function observeReading(value2) {
+  return compatibleObserveFrom[value2] ?? recipes().find((recipe) => recipe.observeFrom[value2])?.observeFrom[value2];
+}
+function givenBy(value2) {
+  const names = recipes().filter((recipe) => value2 in recipe.observeFrom || recipe.evidence.includes(value2)).map((recipe) => `recipe ${recipe.name}`);
+  return names.length ? `${names.join(" and ")} ${names.length === 1 ? "gives" : "give"} it` : "no recipe gives it";
+}
+function choiceText(found) {
+  return found.map((choice2) => `${choice2.value} (${choice2.from.join(", ")})`).join(", ");
+}
+function evidenceKindOfFile(toolNames2, extension) {
+  const recipe = recipesFor(toolNames2).find((recipe2) => recipe2.evidenceExtensions?.[extension]);
+  return recipe?.evidenceExtensions?.[extension] ?? compatibleExtensions[extension];
+}
+
+// plugin/src/tool-servers.ts
+var stopGraceMilliseconds = 3e3;
+function serverName(recipe) {
+  return recipe.name.replaceAll("-", "_");
+}
+function attachedServers(toolNames2, values, script, entries) {
+  return recipesFor(testerTools(toolNames2, true)).filter((recipe) => recipe.kind === "mcp").map((recipe) => ({
+    name: serverName(recipe),
+    command: process.execPath,
+    args: [
+      script,
+      "tool-server",
+      recipe.name,
+      values.workFolder,
+      values.session,
+      ...[...new Set(Object.values(recipe.entryArguments ?? {}))].flatMap(
+        (entry) => entries[entry] ? [`${entry}=${entries[entry]}`] : []
+      )
+    ],
+    tools: recipe.tools.map((tool) => `mcp__${serverName(recipe)}__${tool}`)
+  }));
+}
+function claudeServerArgs(servers) {
+  if (!servers.length) return [];
+  const config2 = Object.fromEntries(
+    servers.map((server) => [server.name, { type: "stdio", command: server.command, args: server.args }])
+  );
+  return [
+    "--mcp-config",
+    JSON.stringify({ mcpServers: config2 }),
+    ...servers.flatMap((server) => server.tools.flatMap((tool) => ["--allowedTools", tool]))
+  ];
+}
+function piServerEnv(servers) {
+  if (!servers.length) return {};
+  const config2 = Object.fromEntries(
+    servers.map((server) => [server.name, { command: server.command, args: server.args, exposure: "direct" }])
+  );
+  return { CHECKMATE_TOOL_SERVERS: JSON.stringify(config2) };
+}
+function piServerExtension(pluginRoot2) {
+  return join3(pluginRoot2, "pi", "tool-servers.mjs");
+}
+function refusal(recipe, request2, entries) {
+  const tool = String(request2.params?.name);
+  if (!recipe.tools.includes(tool))
+    return `Tool ${tool} is not a tool of recipe ${recipe.name}. Its tools are ${recipe.tools.join(", ")}.`;
+  const input = request2.params.arguments ??= {};
+  const given = (recipe.refusedArguments?.[tool] ?? []).filter((name2) => input[name2] !== void 0);
+  if (given.length) return `Tool ${tool} does not take ${given.join(" or ")} in recipe ${recipe.name}.`;
+  for (const [name2, entry] of Object.entries(recipe.entryArguments ?? {})) {
+    const value2 = entries[entry];
+    if (value2 === void 0) continue;
+    if (input[name2] === void 0) input[name2] = value2;
+    else if (input[name2] !== value2) return `Give ${name2} ${value2}, the ${entry} entry of the instance.`;
+  }
+  return void 0;
+}
+function message(line) {
+  try {
+    const value2 = JSON.parse(line);
+    return typeof value2 === "object" && value2 !== null && !Array.isArray(value2) ? value2 : void 0;
+  } catch {
+    return void 0;
+  }
+}
+function serveToolServer(recipeName, workFolder2, session, pinned2) {
+  const entries = Object.fromEntries(
+    pinned2.map((item) => [item.slice(0, item.indexOf("=")), item.slice(item.indexOf("=") + 1)])
+  );
+  const recipe = recipes().find((item) => item.name === recipeName && item.kind === "mcp");
+  if (!recipe?.server || !workFolder2) {
+    process.stderr.write(
+      `checkmate tool-server: no recipe of kind mcp is named ${recipeName}, or no work folder.
+`
+    );
+    process.exit(2);
+  }
+  const values = { session, workFolder: workFolder2 };
+  const cwd = filled(recipe.server.cwd, values);
+  mkdirSync2(cwd, { recursive: true });
+  const environment = Object.entries(recipe.environment).map(([name2, value2]) => [name2, filled(value2, values)]);
+  const server = spawn(
+    recipe.server.command,
+    recipe.server.args.map((arg) => filled(arg, values)),
+    {
+      cwd,
+      env: { ...process.env, ...Object.fromEntries(environment) },
+      detached: true,
+      stdio: ["pipe", "pipe", "inherit"]
+    }
+  );
+  trackGroup(server);
+  const allowed2 = new Set(recipe.tools);
+  const lists = /* @__PURE__ */ new Set();
+  const send2 = (line) => process.stdout.write(`${line}
+`);
+  createInterface({ input: process.stdin }).on("line", (line) => {
+    const request2 = message(line);
+    if (request2?.method === "tools/list") lists.add(request2.id);
+    if (request2?.method === "tools/call") {
+      const refused2 = refusal(recipe, request2, entries);
+      if (refused2)
+        return send2(
+          JSON.stringify({ jsonrpc: "2.0", id: request2.id, error: { code: -32602, message: refused2 } })
+        );
+      line = JSON.stringify(request2);
+    }
+    if (server.stdin.writable) server.stdin.write(`${line}
+`);
+  }).on("close", stop);
+  createInterface({ input: server.stdout }).on("line", (line) => {
+    const reply = message(line);
+    if (reply && !reply.method && lists.has(reply.id) && Array.isArray(reply.result?.tools)) {
+      lists.delete(reply.id);
+      reply.result.tools = reply.result.tools.filter((tool) => allowed2.has(tool.name ?? ""));
+      return send2(JSON.stringify(reply));
+    }
+    send2(line);
+  });
+  server.stdin.on("error", () => {
+  });
+  server.on("error", (error) => {
+    process.stderr.write(`checkmate tool-server: cannot start ${recipe.server.command}: ${error.message}
+`);
+    process.exit(1);
+  });
+  server.on("exit", (code2) => {
+    try {
+      if (server.pid) process.kill(-server.pid, "SIGTERM");
+    } catch {
+    }
+    process.exit(code2 ?? 0);
+  });
+  let stopping = false;
+  function stop() {
+    if (stopping) return;
+    stopping = true;
+    server.stdin.end();
+    signalChild(server, "SIGTERM");
+    setTimeout(() => {
+      signalChild(server, "SIGKILL");
+      process.exit(0);
+    }, stopGraceMilliseconds);
+  }
+  for (const signal of ["SIGTERM", "SIGINT", "SIGHUP"]) process.on(signal, stop);
+}
+
 // plugin/src/sessions.ts
 import { randomBytes as randomBytes2 } from "node:crypto";
-import { spawn, spawnSync as spawnSync3 } from "node:child_process";
+import { spawn as spawn2, spawnSync as spawnSync3 } from "node:child_process";
 import {
   accessSync,
   chmodSync,
   constants,
-  mkdirSync as mkdirSync2,
-  readFileSync,
+  mkdirSync as mkdirSync3,
+  readFileSync as readFileSync2,
   realpathSync,
   rmSync as rmSync2,
   statSync,
@@ -13222,7 +13634,7 @@ import {
 } from "node:fs";
 import { createRequire } from "node:module";
 import { homedir } from "node:os";
-import { delimiter, dirname, join as join2 } from "node:path";
+import { delimiter, dirname, join as join4 } from "node:path";
 import { fileURLToPath } from "node:url";
 var hookTokenName = "CHECKMATE_HOOK_TOKEN";
 var checkmateActionTools = "mcp__plugin_checkmate_actions__*";
@@ -13291,10 +13703,10 @@ var reservedClaudeArgs = [
 ];
 function checkmateScript() {
   const own = fileURLToPath(import.meta.url);
-  return own.endsWith(".ts") ? join2(pluginRoot, "..", "cli", "src", "main.ts") : own;
+  return own.endsWith(".ts") ? join4(pluginRoot, "..", "cli", "src", "main.ts") : own;
 }
 function claudeConfigDir(env) {
-  return env.CLAUDE_CONFIG_DIR?.trim() || join2(homedir(), ".claude");
+  return env.CLAUDE_CONFIG_DIR?.trim() || join4(homedir(), ".claude");
 }
 function realPath(path) {
   try {
@@ -13306,7 +13718,7 @@ function realPath(path) {
 function installedPluginId(env, root = pluginRoot) {
   let installed;
   try {
-    installed = JSON.parse(readFileSync(join2(claudeConfigDir(env), "plugins", "installed_plugins.json"), "utf8"));
+    installed = JSON.parse(readFileSync2(join4(claudeConfigDir(env), "plugins", "installed_plugins.json"), "utf8"));
   } catch {
     return null;
   }
@@ -13329,7 +13741,7 @@ function checkClaudeArgs(claudeArgs2) {
   return claudeArgs2;
 }
 function uiFilePath(workspace2) {
-  return join2(workspace2, ".checkmate", "ui.json");
+  return join4(workspace2, ".checkmate", "ui.json");
 }
 function zombie(pid) {
   if (process.platform === "darwin") {
@@ -13337,7 +13749,7 @@ function zombie(pid) {
     return processState.stdout?.trimStart().startsWith("Z") === true;
   }
   try {
-    const stat = readFileSync(`/proc/${pid}/stat`, "utf8");
+    const stat = readFileSync2(`/proc/${pid}/stat`, "utf8");
     return stat[stat.lastIndexOf(") ") + 2] === "Z";
   } catch {
     return false;
@@ -13355,7 +13767,7 @@ function running(pid) {
 }
 function readUiFile(workspace2) {
   try {
-    const file = JSON.parse(readFileSync(uiFilePath(workspace2), "utf8"));
+    const file = JSON.parse(readFileSync2(uiFilePath(workspace2), "utf8"));
     const valid = Number.isInteger(file.port) && Number.isInteger(file.pid) && typeof file.hookToken === "string" && file.hookToken !== "";
     return valid ? file : null;
   } catch {
@@ -13367,7 +13779,7 @@ function liveUi(workspace2) {
   return file && running(file.pid) ? file : null;
 }
 function writeUiFile(workspace2, file) {
-  mkdirSync2(join2(workspace2, ".checkmate"), { recursive: true });
+  mkdirSync3(join4(workspace2, ".checkmate"), { recursive: true });
   writeFileSync(uiFilePath(workspace2), JSON.stringify(file), { mode: 384 });
   chmodSync(uiFilePath(workspace2), 384);
 }
@@ -13375,18 +13787,18 @@ function removeUiFile(workspace2, port) {
   if (readUiFile(workspace2)?.port === port) rmSync2(uiFilePath(workspace2), { force: true });
 }
 function hookTokenPath(workspace2) {
-  return join2(workspace2, ".checkmate", "hook-token");
+  return join4(workspace2, ".checkmate", "hook-token");
 }
 function workspaceHookToken(workspace2, renew = false) {
   if (!renew) {
     try {
-      const stored = readFileSync(hookTokenPath(workspace2), "utf8").trim();
+      const stored = readFileSync2(hookTokenPath(workspace2), "utf8").trim();
       if (/^[0-9a-f]{64}$/.test(stored)) return stored;
     } catch {
     }
   }
   const made = randomBytes2(32).toString("hex");
-  mkdirSync2(join2(workspace2, ".checkmate"), { recursive: true });
+  mkdirSync3(join4(workspace2, ".checkmate"), { recursive: true });
   writeFileSync(hookTokenPath(workspace2), made, { mode: 384 });
   chmodSync(hookTokenPath(workspace2), 384);
   return made;
@@ -13431,7 +13843,7 @@ function piWorkTools(context, names) {
   return context.work ? ["edit", "write"].filter((name2) => context.inheritPiTools || !names.includes(name2)) : [];
 }
 function piExtension(name2) {
-  const path = join2(pluginRoot, "pi", name2);
+  const path = join4(pluginRoot, "pi", name2);
   try {
     accessSync(path, constants.R_OK);
     const extension = createRequire(import.meta.url)(path);
@@ -13441,14 +13853,26 @@ function piExtension(name2) {
   }
   return ["--extension", path];
 }
+function serverTools(context) {
+  return (context.servers ?? []).flatMap((server) => server.tools);
+}
+function piServerArgs(context) {
+  if (!context.servers?.length) return [];
+  return [
+    ...context.inheritPiTools ? [] : ["--extension", "builtin:mcp"],
+    "--extension",
+    piServerExtension(pluginRoot)
+  ];
+}
 function childArgs(context, own, allow = []) {
   if (context.harness === "pi") {
     const names = piToolNames(allow);
     const scoped = piWorkTools(context, names);
-    const tools = context.inheritPiTools ? scoped : [...names, ...scoped];
+    const tools = context.inheritPiTools ? scoped : [...names, ...scoped, ...serverTools(context)];
     const args = own[0] === "--resume" ? ["--session", ...own.slice(1)] : own;
     const launch = [
       ...context.inheritPiTools ? [] : ["--no-extensions"],
+      ...piServerArgs(context),
       ...context.piArgs ?? [],
       "--no-context-files",
       "--no-skills",
@@ -13477,7 +13901,8 @@ function childArgs(context, own, allow = []) {
     "--output-format",
     "json",
     "--permission-prompts",
-    "none"
+    "none",
+    ...claudeServerArgs(context.servers ?? [])
   ];
 }
 function childEnv(env, extra = {}, hook, context, allow = []) {
@@ -13490,14 +13915,15 @@ function childEnv(env, extra = {}, hook, context, allow = []) {
   const scoped = piWorkTools(context, names);
   return {
     ...base,
+    ...piServerEnv(context.servers ?? []),
     ...context.inheritPiTools ? { CHECKMATE_TOOL_ROLE: "explorer" } : {},
-    ...hook ? { CHECKMATE_PI_HOOK: JSON.stringify({ ...hook, allow: [...names, ...scoped] }) } : {},
+    ...hook ? { CHECKMATE_PI_HOOK: JSON.stringify({ ...hook, allow: [...names, ...scoped, ...serverTools(context)] }) } : {},
     ...context.deny?.length || context.work ? { CHECKMATE_PI_POLICY: JSON.stringify({ deny: context.deny ?? [], work: context.work, scoped }) } : {}
   };
 }
 function executableOnPath(name2, env) {
   for (const directory2 of (env.PATH ?? "").split(delimiter).filter(Boolean)) {
-    const path = join2(directory2, name2);
+    const path = join4(directory2, name2);
     try {
       accessSync(path, constants.X_OK);
       if (statSync(path).isFile()) return path;
@@ -13656,7 +14082,7 @@ function launchChild(executable, args, prompt2, cwd, env, seconds2, onStart, har
   const rpc = harness === "pi" && args[0] === "--mode" && args[1] === "rpc";
   const limit = childOutputLimit(harness);
   return new Promise((resolvePromise) => {
-    const child = spawn(executable, commandArgs, { cwd, env, stdio: ["pipe", "pipe", "pipe"], detached: true });
+    const child = spawn2(executable, commandArgs, { cwd, env, stdio: ["pipe", "pipe", "pipe"], detached: true });
     trackGroup(child);
     child.stdout.setEncoding("utf8");
     liveChildren.add(child);
@@ -13693,7 +14119,7 @@ function launchChild(executable, args, prompt2, cwd, env, seconds2, onStart, har
         if (value2?.type === "response" && value2.id === "checkmate-child-ready") {
           const commands2 = Array.isArray(value2.data?.commands) ? value2.data.commands : [];
           const loaded2 = (name2, file) => commands2.some(
-            (command) => command.name === name2 && command.source === "extension" && command.sourceInfo?.path === join2(pluginRoot, "pi", file)
+            (command) => command.name === name2 && command.source === "extension" && command.sourceInfo?.path === join4(pluginRoot, "pi", file)
           );
           if (!value2.success || !loaded2("checkmate-child-ready", "child.mjs") || env.CHECKMATE_PI_HOOK && !loaded2("checkmate-permission-ready", "permission.mjs")) {
             rpcError = "Pi did not load the Checkmate tool policy or permission hook.";
@@ -13738,7 +14164,7 @@ function launchChild(executable, args, prompt2, cwd, env, seconds2, onStart, har
 }
 var requestHookName = "request";
 function requestSystemPrompt(checkmate, harness = "claude") {
-  const workflow = readFileSync(join2(pluginRoot, "references", "chat-workflow.md"), "utf8").replace(
+  const workflow = readFileSync2(join4(pluginRoot, "references", "chat-workflow.md"), "utf8").replace(
     "- Run `delegate execute` without `--allow` or `--claude-arg`. Pi controls its own tools and permissions. Do not widen them to work around a refusal.",
     harness === "pi" ? "- Run `delegate execute` without `--allow` or `--claude-arg`. Pi controls its own tools and permissions. Do not widen them to work around a refusal." : "- Use the configured Claude permissions for `delegate execute`. Do not widen them to work around a refusal."
   );
@@ -13808,7 +14234,7 @@ function chatAllowRules(checkmate) {
 }
 function chatHookSettings(session) {
   const settings = hookSettings(session.hook);
-  const changes = join2(pluginRoot, "claude", "changes.mjs");
+  const changes = join4(pluginRoot, "claude", "changes.mjs");
   return {
     ...settings,
     hooks: {
@@ -13856,7 +14282,7 @@ Starting context: the person opened the chat from ${screen}. Use this when relev
 }
 var defaultStopDelays = { terminate: 5e3, kill: endGraceMilliseconds };
 function streamClaude(claude, args, prompt2, cwd, env, onLine, delays = defaultStopDelays) {
-  const child = spawn(claude, args, { cwd, env, stdio: ["pipe", "pipe", "pipe"], detached: true });
+  const child = spawn2(claude, args, { cwd, env, stdio: ["pipe", "pipe", "pipe"], detached: true });
   trackGroup(child);
   child.stdout.setEncoding("utf8");
   liveChildren.add(child);
@@ -13902,8 +14328,8 @@ function streamClaude(claude, args, prompt2, cwd, env, onLine, delays = defaultS
 
 // plugin/src/resets.ts
 import { spawnSync as spawnSync4 } from "node:child_process";
-import { existsSync as existsSync2, readFileSync as readFileSync2 } from "node:fs";
-import { isAbsolute, join as join3 } from "node:path";
+import { existsSync as existsSync3, readFileSync as readFileSync3 } from "node:fs";
+import { isAbsolute, join as join5 } from "node:path";
 var readPrefixes = ["read_", "list_", "get_", "view_"];
 var defaultHookSeconds = 120;
 var hookOutputBytes = 8192;
@@ -13936,13 +14362,13 @@ function policyText(workspace2, reset) {
   const policy = reset?.policy;
   if (!policy) return null;
   if ("text" in policy) return policy.text;
-  const path = isAbsolute(policy.path) ? policy.path : join3(workspace2, policy.path);
+  const path = isAbsolute(policy.path) ? policy.path : join5(workspace2, policy.path);
   requireCondition(
-    existsSync2(path),
+    existsSync3(path),
     `The data policy file ${policy.path} does not exist.`,
     "Give the file that holds the policy, or record the policy text with --policy."
   );
-  return readFileSync2(path, "utf8").trim();
+  return readFileSync3(path, "utf8").trim();
 }
 function hookSeconds(reset) {
   return reset.timeoutSeconds ?? defaultHookSeconds;
@@ -14049,237 +14475,10 @@ function dataSummary(workspace2, reset) {
   };
 }
 
-// plugin/src/recipes.ts
-import { existsSync as existsSync3, readdirSync, readFileSync as readFileSync3 } from "node:fs";
-import { join as join4 } from "node:path";
-var compatibleObserveFrom = { page: "view", reload: "state", api: "state" };
-var compatibleEvidence = ["observation", "http_exchange", "screenshot", "trace"];
-var compatibleExtensions = {
-  ".png": "screenshot",
-  ".jpg": "screenshot",
-  ".jpeg": "screenshot",
-  ".webp": "screenshot",
-  ".zip": "trace",
-  ".trace": "trace"
-};
-var compatibleSource = "accepted for all targets";
-var loaded;
-function isText(value2) {
-  return typeof value2 === "string" && value2.trim() !== "";
-}
-function readRecipe(folder, file) {
-  const refuse4 = (problem) => {
-    throw Error(`Tool recipe ${join4(folder, file)} is not valid: ${problem}`);
-  };
-  let recipe = {};
-  try {
-    recipe = JSON.parse(readFileSync3(join4(folder, file), "utf8"));
-  } catch (error) {
-    refuse4(`it is not JSON (${error.message}).`);
-  }
-  if (typeof recipe !== "object" || recipe === null || Array.isArray(recipe)) refuse4("it is not a JSON object.");
-  if (!isText(recipe.name) || `${recipe.name}.json` !== file) refuse4("name must be the file name without .json.");
-  if (!isText(recipe.capability)) refuse4("capability must be a text.");
-  if (recipe.kind !== "cli") refuse4("kind must be cli.");
-  if (!isText(recipe.purpose)) refuse4("purpose must be a text.");
-  if (recipe.detect !== "path" && recipe.detect !== "runtime") refuse4("detect must be path or runtime.");
-  const environment = recipe.environment;
-  if (typeof environment !== "object" || environment === null || Array.isArray(environment) || Object.values(environment).some((value2) => typeof value2 !== "string"))
-    refuse4("environment must be an object of texts.");
-  if (recipe.entryPoints !== void 0) readEntryPoints(recipe.entryPoints, refuse4);
-  if (recipe.reachable !== void 0) readReachable(recipe, refuse4);
-  if (recipe.shellInstruction !== void 0 && !isText(recipe.shellInstruction))
-    refuse4("shellInstruction must be a text when it is given.");
-  if (recipe.delegatedInstruction !== void 0 && !isText(recipe.delegatedInstruction))
-    refuse4("delegatedInstruction must be a text when it is given.");
-  if (recipe.closeSession !== void 0 && (!Array.isArray(recipe.closeSession) || !recipe.closeSession.length || !recipe.closeSession.every(isText)))
-    refuse4("closeSession must be a list of arguments when it is given.");
-  if (!Array.isArray(recipe.workspaceFolders) || !recipe.workspaceFolders.every(isText))
-    refuse4("workspaceFolders must be a list of folder names.");
-  const observeFrom = recipe.observeFrom;
-  if (typeof observeFrom !== "object" || observeFrom === null || Array.isArray(observeFrom) || !Object.keys(observeFrom).every(isValueName) || !Object.values(observeFrom).every((reading) => reading === "view" || reading === "state"))
-    refuse4("observeFrom must be an object that maps each value name to view or state.");
-  if (!Array.isArray(recipe.evidence) || !recipe.evidence.every(isValueName))
-    refuse4("evidence must be a list of evidence kind names.");
-  const extensions = recipe.evidenceExtensions;
-  if (extensions !== void 0 && (typeof extensions !== "object" || extensions === null || Array.isArray(extensions) || !Object.keys(extensions).every((extension) => /^\.[a-z0-9]{1,10}$/.test(extension)) || !Object.values(extensions).every(
-    (kind) => recipe.evidence?.includes(kind) || compatibleEvidence.includes(kind)
-  )))
-    refuse4("evidenceExtensions must map each file extension, for example .mp4, to an evidence kind of the recipe.");
-  if (!isText(recipe.usage) || !existsSync3(join4(folder, recipe.usage)))
-    refuse4("usage must name a file in the folder.");
-  return recipe;
-}
-function readEntryPoints(value2, refuse4) {
-  const entryPointProblem = "entryPoints must be a list of {name, kind (url, command, or value), purpose, pattern (optional regular expression)}.";
-  if (!Array.isArray(value2) || !value2.length) refuse4(entryPointProblem);
-  const names = /* @__PURE__ */ new Set();
-  for (const entry of value2) {
-    if (typeof entry !== "object" || entry === null || typeof entry.name !== "string" || !/^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$/.test(entry.name) || !["url", "command", "value"].includes(entry.kind) || !isText(entry.purpose) || Object.keys(entry).some((key) => !["name", "kind", "purpose", "pattern"].includes(key)))
-      refuse4(entryPointProblem);
-    if (names.has(entry.name)) refuse4(`entryPoints names ${entry.name} twice.`);
-    names.add(entry.name);
-    if (entry.pattern !== void 0) {
-      try {
-        if (!isText(entry.pattern)) throw Error("not a text");
-        new RegExp(entry.pattern);
-      } catch {
-        refuse4(`the pattern of entry point ${entry.name} is not a regular expression.`);
-      }
-    }
-  }
-}
-function readReachable(recipe, refuse4) {
-  const problem = 'reachable must be a list of {check: "http", entry} or {check: "command", run (list of arguments), contains (optional list of texts)}.';
-  const checks = recipe.reachable;
-  if (!Array.isArray(checks) || !checks.length) refuse4(problem);
-  const entries = (recipe.entryPoints ?? []).map((entry) => entry.name);
-  for (const check of checks) {
-    if (typeof check !== "object" || check === null) refuse4(problem);
-    if (check.check === "http") {
-      if (Object.keys(check).some((key) => key !== "check" && key !== "entry") || !isText(check.entry))
-        refuse4(problem);
-      if (!entries.includes(check.entry))
-        refuse4(`reachable names the entry ${check.entry}, which entryPoints does not give.`);
-    } else if (check.check === "command") {
-      if (Object.keys(check).some((key) => !["check", "run", "contains"].includes(key)) || !Array.isArray(check.run) || !check.run.length || !check.run.every(isText) || check.contains !== void 0 && (!Array.isArray(check.contains) || !check.contains.every(isText)))
-        refuse4(problem);
-    } else refuse4(problem);
-  }
-}
-function isValueName(value2) {
-  return typeof value2 === "string" && /^[a-z][a-z0-9_]{0,39}$/.test(value2);
-}
-function readRecipes(folder) {
-  const found = readdirSync(folder).filter((file) => file.endsWith(".json")).sort().map((file) => readRecipe(folder, file));
-  const readings = new Map(
-    Object.entries(compatibleObserveFrom).map(([value2, reading]) => [
-      value2,
-      { reading, from: "the values accepted for all targets" }
-    ])
-  );
-  for (const recipe of found)
-    for (const [value2, reading] of Object.entries(recipe.observeFrom)) {
-      const known = readings.get(value2);
-      if (known && known.reading !== reading)
-        throw Error(
-          `Tool recipe ${join4(folder, `${recipe.name}.json`)} is not valid: observeFrom ${value2} is ${reading}, but it is ${known.reading} in ${known.from}.`
-        );
-      readings.set(value2, { reading, from: `recipe ${recipe.name}` });
-    }
-  const entryPoints = /* @__PURE__ */ new Map();
-  for (const recipe of found)
-    for (const entry of recipe.entryPoints ?? []) {
-      const text2 = JSON.stringify([entry.kind, entry.purpose, entry.pattern ?? null]);
-      const known = entryPoints.get(entry.name);
-      if (known && known.entry !== text2)
-        throw Error(
-          `Tool recipe ${join4(folder, `${recipe.name}.json`)} is not valid: entry point ${entry.name} differs from the one in ${known.from}.`
-        );
-      entryPoints.set(entry.name, { entry: text2, from: `recipe ${recipe.name}` });
-    }
-  const kinds3 = new Map(
-    Object.entries(compatibleExtensions).map(([extension, kind]) => [
-      extension,
-      { kind, from: "the kinds accepted for all targets" }
-    ])
-  );
-  for (const recipe of found)
-    for (const [extension, kind] of Object.entries(recipe.evidenceExtensions ?? {})) {
-      const known = kinds3.get(extension);
-      if (known && known.kind !== kind)
-        throw Error(
-          `Tool recipe ${join4(folder, `${recipe.name}.json`)} is not valid: evidenceExtensions ${extension} is ${kind}, but it is ${known.kind} in ${known.from}.`
-        );
-      kinds3.set(extension, { kind, from: `recipe ${recipe.name}` });
-    }
-  return found;
-}
-function recipes() {
-  loaded ??= readRecipes(join4(pluginRoot, "recipes"));
-  return loaded;
-}
-function filled(text2, values) {
-  return text2.replaceAll("{session}", values.session).replaceAll("{workFolder}", values.workFolder);
-}
-function testerEnvironment(values) {
-  return Object.fromEntries(
-    recipes().flatMap(
-      (recipe) => Object.entries(recipe.environment).map(([name2, value2]) => [name2, filled(value2, values)])
-    )
-  );
-}
-function shellInstructions(values) {
-  return recipes().flatMap((recipe) => recipe.shellInstruction ? [filled(recipe.shellInstruction, values)] : []);
-}
-function recipesFor(toolNames2) {
-  return recipes().filter((recipe) => toolNames2.includes(recipe.name));
-}
-function declaredEntryPoints() {
-  const found = /* @__PURE__ */ new Map();
-  for (const recipe of recipes()) for (const entry of recipe.entryPoints ?? []) found.set(entry.name, entry);
-  return found;
-}
-function fitsEntries(recipe, names) {
-  return (recipe.entryPoints ?? []).every((entry) => names.includes(entry.name));
-}
-function toolFolders() {
-  return recipes().flatMap((recipe) => recipe.workspaceFolders);
-}
-function usageFiles(toolNames2) {
-  return recipesFor(toolNames2).map((recipe) => join4(pluginRoot, "recipes", recipe.usage));
-}
-function choices(toolNames2, compatible, values) {
-  const found = new Map(compatible.map((value2) => [value2, [compatibleSource]]));
-  for (const recipe of recipesFor(toolNames2))
-    for (const value2 of values(recipe)) found.set(value2, [...found.get(value2) ?? [], `recipe ${recipe.name}`]);
-  return [...found].map(([value2, from]) => ({ value: value2, from }));
-}
-function observeFromChoices(toolNames2) {
-  return choices(toolNames2, Object.keys(compatibleObserveFrom), (recipe) => Object.keys(recipe.observeFrom));
-}
-function evidenceChoices(toolNames2) {
-  return choices(toolNames2, compatibleEvidence, (recipe) => recipe.evidence);
-}
-function allEvidence() {
-  return evidenceChoices(recipes().map((recipe) => recipe.name)).map((choice2) => choice2.value);
-}
-function observeFromValues(toolNames2) {
-  return recipesFor(toolNames2).flatMap(
-    (recipe) => Object.entries(recipe.observeFrom).map(([value2, reading]) => ({ value: value2, reading, tool: recipe.name }))
-  );
-}
-var readingText = {
-  view: "reads only what the tool shows now",
-  state: "reads the stored state"
-};
-function observeFromRule(toolNames2, quote = '"') {
-  const q2 = (value2) => `${quote}${value2}${quote}`;
-  const listed = observeFromValues(toolNames2).map(({ value: value2, reading }) => `${q2(value2)} (${reading}: ${readingText[reading]})`).join(", ");
-  return [
-    `An assertion on a state-changing action (add, apply, clear, delete, save) checks the source of truth: the stored state. What the tool shows now does not show that the state changed. Set ${q2("observeFrom")} to one of the values of the tools of this target: ${listed}.`,
-    "Use a state value for a check of a state change. Use a view value only for a check that is not a state change. A state-changing test whose checks all use a view value is refused once and then saved as not ready."
-  ].join(" ");
-}
-function observeReading(value2) {
-  return compatibleObserveFrom[value2] ?? recipes().find((recipe) => recipe.observeFrom[value2])?.observeFrom[value2];
-}
-function givenBy(value2) {
-  const names = recipes().filter((recipe) => value2 in recipe.observeFrom || recipe.evidence.includes(value2)).map((recipe) => `recipe ${recipe.name}`);
-  return names.length ? `${names.join(" and ")} ${names.length === 1 ? "gives" : "give"} it` : "no recipe gives it";
-}
-function choiceText(found) {
-  return found.map((choice2) => `${choice2.value} (${choice2.from.join(", ")})`).join(", ");
-}
-function evidenceKindOfFile(toolNames2, extension) {
-  const recipe = recipesFor(toolNames2).find((recipe2) => recipe2.evidenceExtensions?.[extension]);
-  return recipe?.evidenceExtensions?.[extension] ?? compatibleExtensions[extension];
-}
-
 // plugin/src/targets.ts
 import { spawnSync as spawnSync5 } from "node:child_process";
 import { existsSync as existsSync4, readFileSync as readFileSync4 } from "node:fs";
-import { join as join5 } from "node:path";
+import { join as join6 } from "node:path";
 var anyTestOperation = "any_test_operation";
 var readOnlyOperation = "read_only";
 var readOnlyOperationText = "You can only read. Do not create, change, or delete data in the application.";
@@ -14855,9 +15054,9 @@ function toolVersion(path) {
   const line = run2.status === 0 ? run2.stdout.trim().split("\n")[0] : "";
   return /[0-9]+(\.[0-9]+)+/.exec(line)?.[0];
 }
-var browserConfig = join5(".playwright", "cli.config.json");
+var browserConfig = join6(".playwright", "cli.config.json");
 function browserExecutable(workspace2) {
-  const path = join5(workspace2, browserConfig);
+  const path = join6(workspace2, browserConfig);
   const config2 = existsSync4(path) ? JSON.parse(readFileSync4(path, "utf8")) : {};
   const executable = config2.browser?.launchOptions?.executablePath;
   if (typeof executable !== "string" || executable === "") return void 0;
@@ -15035,7 +15234,7 @@ function fitEntries(entries, detected) {
 }
 function detectedTools(env) {
   return recipes().flatMap((recipe) => {
-    const path = recipe.detect === "runtime" ? process.execPath : executableOnPath(recipe.name, env);
+    const path = recipe.detect === "runtime" ? process.execPath : executableOnPath(toolExecutable(recipe), env);
     return path ? [{ recipe, path }] : [];
   });
 }
@@ -15066,10 +15265,14 @@ function setupAssumptions(input) {
   return { entries, entryPoints, targetId, instanceId, detected, capabilities, allowedOperations, assumed };
 }
 function pathTools(detected, entryNames) {
-  const found = detected.filter(({ recipe }) => recipe.detect === "path").map(({ recipe }) => recipe.name);
+  const found = [
+    ...new Set(
+      detected.filter(({ recipe }) => recipe.detect === "path").map(({ recipe }) => toolExecutable(recipe))
+    )
+  ];
   if (found.length) return `${found.join(" and ")} ${found.length === 1 ? "is" : "are"} on PATH`;
   const missing = recipes().filter((recipe) => recipe.detect === "path" && fitsEntries(recipe, entryNames));
-  return `no ${missing.map((recipe) => recipe.capability).join(" or ")} tool on PATH`;
+  return `no ${[...new Set(missing.map((recipe) => recipe.capability))].join(" or ")} tool on PATH`;
 }
 function sameSet(a, b) {
   return same([...a].sort(), [...b].sort());
@@ -15337,8 +15540,8 @@ var identifier = /^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$/;
 var Refusal = class extends Error {
   kind;
   hint;
-  constructor(kind, message, hint) {
-    super(message);
+  constructor(kind, message2, hint) {
+    super(message2);
     this.kind = kind;
     this.hint = hint;
   }
@@ -15348,22 +15551,22 @@ var refusalReasons = {
   prohibited: "Refused: prohibited in the current state."
 };
 function refused(status, subject, error) {
-  const refusal = status === "invalid_request" ? "malformed" : error instanceof Refusal ? error.kind : "prohibited";
+  const refusal2 = status === "invalid_request" ? "malformed" : error instanceof Refusal ? error.kind : "prohibited";
   const hint = error instanceof Refusal ? error.hint : void 0;
   return {
     status,
     subject,
-    reasons: [refusalReasons[refusal], error instanceof Error ? error.message : String(error)],
-    refusal,
+    reasons: [refusalReasons[refusal2], error instanceof Error ? error.message : String(error)],
+    refusal: refusal2,
     ...hint ? { hint } : {},
     data: {}
   };
 }
-function requireCondition(condition, message, hint) {
-  if (!condition) throw new Refusal("prohibited", message, hint);
+function requireCondition(condition, message2, hint) {
+  if (!condition) throw new Refusal("prohibited", message2, hint);
 }
-function requireWellFormed(condition, message, hint) {
-  if (!condition) throw new Refusal("malformed", message, hint);
+function requireWellFormed(condition, message2, hint) {
+  if (!condition) throw new Refusal("malformed", message2, hint);
 }
 function same(a, b) {
   return canonical(a) === canonical(b);
@@ -15537,11 +15740,11 @@ function compoundCheck(check) {
 var maxGapRequirements = 2;
 function uncontrolledRefusal(test) {
   const httpAction = /\b(GET|POST|PUT|PATCH|DELETE)\b/.test(test.action);
-  const refusal = test.assertions.find(
+  const refusal2 = test.assertions.find(
     (assertion) => /^4\d\d$/.test(assertion.expected ?? "") || httpAction && /^absent:/.test(assertion.expected ?? "")
   );
   const control = test.assertions.some((assertion) => /^2\d\d$/.test(assertion.expected ?? ""));
-  return refusal && !control ? refusal : void 0;
+  return refusal2 && !control ? refusal2 : void 0;
 }
 function rangeWithoutInput(check) {
   const range = /\b(outside|between|at most|at least|from -?\d+(\.\d+)? to -?\d+)/i.test(check);
@@ -15581,8 +15784,8 @@ function uncoveredRequirements(plan) {
 }
 function softProblems(test, requirements) {
   const problems = [];
-  const refusal = uncontrolledRefusal(test);
-  if (refusal) problems.push({ id: refusal.id, reason: "needs_control", check: refusal.check });
+  const refusal2 = uncontrolledRefusal(test);
+  if (refusal2) problems.push({ id: refusal2.id, reason: "needs_control", check: refusal2.check });
   if (pageOnlyStateChange(test))
     problems.push({ id: test.assertions[0].id, reason: "needs_source_check", check: test.action });
   for (const assertion of test.assertions)
@@ -15818,7 +16021,7 @@ function resultCoverage(plan, tests, newGaps) {
 
 // plugin/src/plans.ts
 import { existsSync as existsSync6, readFileSync as readFileSync7 } from "node:fs";
-import { basename, extname, join as join7 } from "node:path";
+import { basename, extname, join as join8 } from "node:path";
 
 // plugin/src/rules.ts
 import { readFileSync as readFileSync5, realpathSync as realpathSync2, statSync as statSync2 } from "node:fs";
@@ -16031,7 +16234,7 @@ function rulesLine(store, planId) {
 
 // plugin/src/journal.ts
 import { existsSync as existsSync5, readdirSync as readdirSync2, readFileSync as readFileSync6, realpathSync as realpathSync3, statSync as statSync3 } from "node:fs";
-import { isAbsolute as isAbsolute2, join as join6, relative, resolve as resolve2, sep as sep2 } from "node:path";
+import { isAbsolute as isAbsolute2, join as join7, relative, resolve as resolve2, sep as sep2 } from "node:path";
 var entryKinds = [
   "criterion",
   "observation",
@@ -16191,10 +16394,10 @@ function filesEndingWith(folder, segments, above = []) {
     if (item.isFile()) {
       const path = [...above, item.name];
       const tail = path.slice(-segments.length);
-      return tail.length === segments.length && tail.every((name2, index2) => name2 === segments[index2]) ? [join6(folder, item.name)] : [];
+      return tail.length === segments.length && tail.every((name2, index2) => name2 === segments[index2]) ? [join7(folder, item.name)] : [];
     }
     if (!item.isDirectory() || skippedFolders.includes(item.name)) return [];
-    return filesEndingWith(join6(folder, item.name), segments, [...above, item.name]);
+    return filesEndingWith(join7(folder, item.name), segments, [...above, item.name]);
   });
 }
 function onlyFileEndingWith(cwd, spec2) {
@@ -16231,8 +16434,8 @@ var Unreadable = class {
 var EntryRefusal = class extends Refusal {
   field;
   fix;
-  constructor(field4, message, hint, fix) {
-    super("malformed", message, hint);
+  constructor(field4, message2, hint, fix) {
+    super("malformed", message2, hint);
     this.field = field4;
     this.fix = fix;
   }
@@ -17024,7 +17227,7 @@ function suggestedPlanId(workspace2, sources) {
   );
   let text2;
   try {
-    text2 = readFileSync7(join7(workspace2, source), "utf8");
+    text2 = readFileSync7(join8(workspace2, source), "utf8");
   } catch {
     text2 = "";
   }
@@ -17036,14 +17239,14 @@ function requireUnnamedSources(workspace2, sources, objective) {
   const mentions = [["The objective", objective]];
   for (const source of sources) {
     try {
-      mentions.push([source, readFileSync7(join7(workspace2, source), "utf8")]);
+      mentions.push([source, readFileSync7(join8(workspace2, source), "utf8")]);
     } catch {
     }
   }
   for (const [origin2, text2] of mentions) {
     for (const match of text2.matchAll(/[A-Za-z0-9_./-]+\.(?:md|txt|json|csv|ya?ml|feature|html)\b/g)) {
       const file = match[0].replace(/^\.\//, "");
-      if (named.has(file) || !existsSync6(join7(workspace2, file)) || file === origin2) continue;
+      if (named.has(file) || !existsSync6(join8(workspace2, file)) || file === origin2) continue;
       const all2 = [...sources, file];
       requireWellFormed(
         false,
@@ -17683,7 +17886,7 @@ function savePlan(store, actor, input) {
 function sourceCriteria(workspace2, request2) {
   return (request2.context?.sources ?? []).flatMap((source) => {
     try {
-      return readFileSync7(join7(workspace2, source), "utf8").split("\n").flatMap((line) => {
+      return readFileSync7(join8(workspace2, source), "utf8").split("\n").flatMap((line) => {
         const match = /^\s*(?:\d+[.)]|[-*])\s+(.+?)\s*$/.exec(line);
         return match ? [match[1]] : [];
       });
@@ -18698,8 +18901,8 @@ function diffPlan(store, input) {
 }
 
 // plugin/src/runs.ts
-import { mkdirSync as mkdirSync3, readFileSync as readFileSync8, realpathSync as realpathSync4, rmSync as rmSync3, statSync as statSync4 } from "node:fs";
-import { basename as basename2, extname as extname2, isAbsolute as isAbsolute3, join as join8, resolve as resolve3, sep as sep3 } from "node:path";
+import { mkdirSync as mkdirSync4, readFileSync as readFileSync8, realpathSync as realpathSync4, rmSync as rmSync3, statSync as statSync4 } from "node:fs";
+import { basename as basename2, extname as extname2, isAbsolute as isAbsolute3, join as join9, resolve as resolve3, sep as sep3 } from "node:path";
 import { randomUUID } from "node:crypto";
 
 // plugin/src/routes.ts
@@ -19025,7 +19228,7 @@ function begin(store, actor, input, permanent) {
     }
   );
   if (reply.status === "completed")
-    mkdirSync3(join8(store.workspace, evidenceDirectory(input.runId)), { recursive: true });
+    mkdirSync4(join9(store.workspace, evidenceDirectory(input.runId)), { recursive: true });
   return reply;
 }
 function plannedTarget(store, text2) {
@@ -19071,7 +19274,7 @@ function readEvidence(store, runId, { file: name2, kind }, allowed2) {
   let root;
   let real;
   try {
-    root = realpathSync4(join8(store.workspace, directory2));
+    root = realpathSync4(join9(store.workspace, directory2));
   } catch {
     throw new Error(`Evidence directory ${directory2} does not exist`);
   }
@@ -20419,8 +20622,8 @@ function planExplorationCosts(store, planId) {
 }
 
 // plugin/src/explorations.ts
-import { mkdirSync as mkdirSync4, writeFileSync as writeFileSync2 } from "node:fs";
-import { join as join9 } from "node:path";
+import { mkdirSync as mkdirSync5, writeFileSync as writeFileSync2 } from "node:fs";
+import { join as join10 } from "node:path";
 var explorationModes = ["exploratory", "regression"];
 function latestRevision(store, planId) {
   const row2 = one(
@@ -20551,8 +20754,8 @@ function writeKnownState(store, planId, explorationId, build) {
     return null;
   const path = `${workFolder(explorationId)}/known-state.md`;
   const { text: text2, answerIds } = knownState(store, planId, build);
-  mkdirSync4(join9(store.workspace, workFolder(explorationId)), { recursive: true });
-  writeFileSync2(join9(store.workspace, path), text2);
+  mkdirSync5(join10(store.workspace, workFolder(explorationId)), { recursive: true });
+  writeFileSync2(join10(store.workspace, path), text2);
   return { path, answerIds };
 }
 function nextExplorationId(store) {
@@ -20735,8 +20938,8 @@ function candidateFor(request2, rules, tests, gaps) {
 }
 
 // plugin/src/model-catalog.ts
-import { execFile, spawn as spawn2 } from "node:child_process";
-import { createInterface } from "node:readline";
+import { execFile, spawn as spawn3 } from "node:child_process";
+import { createInterface as createInterface2 } from "node:readline";
 import { stripVTControlCharacters as stripVTControlCharacters2 } from "node:util";
 var effortLevels = {
   claude: ["low", "medium", "high", "xhigh", "max"],
@@ -20823,12 +21026,12 @@ var piCatalogTimeout = 1e4;
 function piRpcCatalog(program, workspace2, env, timeout) {
   const provider = !env.CHECKMATE_PI_MODEL?.trim() ? env.CHECKMATE_PI_PROVIDER?.trim().toLowerCase() : void 0;
   return new Promise((resolve13) => {
-    const host = spawn2(program, ["--no-mcp", "--no-session", "--mode", "rpc", ...piModelArgs(env)], {
+    const host = spawn3(program, ["--no-mcp", "--no-session", "--mode", "rpc", ...piModelArgs(env)], {
       cwd: workspace2,
       env,
       stdio: ["pipe", "pipe", "ignore"]
     });
-    const lines2 = createInterface({ input: host.stdout });
+    const lines2 = createInterface2({ input: host.stdout });
     let models;
     let model;
     let available = false;
@@ -21787,7 +21990,7 @@ function rulesPrompt(goal, sources, answer2) {
 function rulesRepairPrompt(refusals, answer2) {
   return [
     answer2 ? "These rules of your file were refused:" : "Checkmate refused these rules of your reply:",
-    ...refusals.map((refusal) => `- ${refusal}`),
+    ...refusals.map((refusal2) => `- ${refusal2}`),
     replyText("all the rules again, corrected", answer2)
   ].join("\n");
 }
@@ -21810,7 +22013,7 @@ function followEntriesText(answer2) {
 function repairPrompt(refusals, answer2) {
   const text2 = [
     answer2 ? "These entries of your file were refused:" : "Checkmate refused these entries of your reply:",
-    ...refusals.map((refusal) => `- ${refusal}`),
+    ...refusals.map((refusal2) => `- ${refusal2}`),
     answer2 ? `Write only one JSON array of the corrected entries to ${answer2}, and nothing else. Do not send the saved entries again.` : "Reply with only one JSON array of the corrected entries, and nothing else. Do not send the saved entries again. Use no tool."
   ].join("\n");
   return answer2 ? withoutName(text2) : text2;
@@ -21834,8 +22037,12 @@ function testDataText(operations, dataPrefix) {
     return "Use only the existing records of the application. Do not create, change, or delete a record.";
   return `Use the existing records of the application. Make a new record only when a case needs it and the data rules allow it. Start each name or value that you make with ${dataPrefix}.`;
 }
-function explorerBrief(charter, entries, dataPrefix, workFolder2, seconds2) {
+function explorerBrief(charter, entries, dataPrefix, workFolder2, seconds2, attached = true) {
   const change = charter.change;
+  const tools = testerTools(
+    charter.tools.map((tool) => tool.name),
+    attached
+  );
   const decisions = charter.decisions ?? [];
   const decisionInstructions = [
     "Use the applied oracle answers to settle open points in the sources. Keep deferred questions deferred.",
@@ -21875,10 +22082,8 @@ function explorerBrief(charter, entries, dataPrefix, workFolder2, seconds2) {
     hostContextRule,
     `${operationText(charter.operations)} Do not change the code, the configuration, or the deployment of the application.`,
     ...charter.dataRules ?? [],
-    ...charter.tools.length ? [
-      `Tools you can use: ${charter.tools.map((tool) => tool.name).sort().join(", ")}.`
-    ] : [],
-    ...usageLine(charter.tools.map((tool) => tool.name)),
+    ...tools.length ? [`Tools you can use: ${[...tools].sort().join(", ")}.`] : [],
+    ...usageLine(tools),
     ...charter.capabilities.some((capability) => capability === "http" || capability === "browser") ? [
       "A direct HTTP call is sufficient when it proves the behaviour. Use the browser when the page itself is what you test."
     ] : [],
@@ -21986,8 +22191,8 @@ function verifierBrief(items, entries, operations, dataRules2, dataPrefix, answe
 
 // plugin/src/recorder.ts
 import { randomUUID as randomUUID3 } from "node:crypto";
-import { existsSync as existsSync7, mkdirSync as mkdirSync5, readFileSync as readFileSync9, rmSync as rmSync4, writeFileSync as writeFileSync3 } from "node:fs";
-import { join as join10 } from "node:path";
+import { existsSync as existsSync7, mkdirSync as mkdirSync6, readFileSync as readFileSync9, rmSync as rmSync4, writeFileSync as writeFileSync3 } from "node:fs";
+import { join as join11 } from "node:path";
 var defaultRecorderTimeout = 600;
 var reservedExplorers = ["rules", "merge", "verify"];
 function explorerActor(explorer) {
@@ -22075,7 +22280,7 @@ function lockHolder(path) {
   }
 }
 function takeLock(path, until) {
-  mkdirSync5(join10(path, ".."), { recursive: true });
+  mkdirSync6(join11(path, ".."), { recursive: true });
   for (; ; ) {
     try {
       writeFileSync3(path, String(process.pid), { flag: "wx" });
@@ -22124,8 +22329,8 @@ function recordAnswer(store, input) {
   const missing = [...carried.missing];
   const dropped = [...carried.dropped];
   const unknownRules = [...carried.unknownRules ?? []];
-  const work = join10(store.workspace, workFolder(exploration2.exploration_id, input.explorer));
-  const given = input.failed ? void 0 : replyArray(readText(join10(store.workspace, input.answer)));
+  const work = join11(store.workspace, workFolder(exploration2.exploration_id, input.explorer));
+  const given = input.failed ? void 0 : replyArray(readText(join11(store.workspace, input.answer)));
   const fresh = given && newEntries(given, earlier);
   const repeated = input.round > 1 ? carried.repeated : given && fresh ? given.length - fresh.length : 0;
   const logged = fresh?.length ? logReply(
@@ -22150,7 +22355,7 @@ function recordAnswer(store, input) {
     ...input.failed ? [input.failed] : [],
     ...first || input.failed ? [] : ["The answer file of the tester has no JSON array of entries."],
     ...first && !saved && !repeated ? [`The tester added no entry to ${exploration2.exploration_id}.`] : [],
-    ...refusals.map((refusal) => `Refused: ${refusal}`)
+    ...refusals.map((refusal2) => `Refused: ${refusal2}`)
   ];
   return {
     repair: false,
@@ -22219,7 +22424,7 @@ function recordSession(store, actor, input, env, cwd) {
     });
   }
   const started = Date.now();
-  const lock = join10(store.workspace, ".checkmate", "tmp", `record-${plan.exploration.plan_id}-${plan.explorer}.lock`);
+  const lock = join11(store.workspace, ".checkmate", "tmp", `record-${plan.exploration.plan_id}-${plan.explorer}.lock`);
   if (!takeLock(lock, started + input.timeoutSeconds * 1e3))
     return write(store, operation, () => ({
       reply: {
@@ -22267,7 +22472,7 @@ function recordLocked(store, operation, input, plan, env, cwd, started) {
   const missing = [];
   const dropped = [];
   const unknownRules = [];
-  const work = join10(store.workspace, workFolder(exploration2.exploration_id, plan.explorer));
+  const work = join11(store.workspace, workFolder(exploration2.exploration_id, plan.explorer));
   const evidenceCwd = existsSync7(work) ? work : cwd;
   const log = (entries) => logReply(
     store,
@@ -22297,7 +22502,7 @@ function recordLocked(store, operation, input, plan, env, cwd, started) {
     ...calls.flatMap((call) => call.failure ? [call.failure[1]] : []),
     ...first || calls[0].failure ? [] : ["The reply of the recorder has no JSON array of entries."],
     ...first && !saved && !repeated ? [`The recorder added no entry to ${exploration2.exploration_id}.`] : [],
-    ...refusals.map((refusal) => `Refused: ${refusal}`)
+    ...refusals.map((refusal2) => `Refused: ${refusal2}`)
   ];
   const data = {
     explorationId: exploration2.exploration_id,
@@ -22689,11 +22894,11 @@ function upstreamBase(repository) {
 }
 
 // plugin/src/explorers.ts
-import { spawn as spawn3, spawnSync as spawnSync7 } from "node:child_process";
+import { spawn as spawn4, spawnSync as spawnSync7 } from "node:child_process";
 import { randomUUID as randomUUID4 } from "node:crypto";
 import {
   existsSync as existsSync8,
-  mkdirSync as mkdirSync6,
+  mkdirSync as mkdirSync7,
   openSync,
   readdirSync as readdirSync3,
   readFileSync as readFileSync10,
@@ -22702,7 +22907,7 @@ import {
   rmSync as rmSync5,
   statSync as statSync5
 } from "node:fs";
-import { join as join11 } from "node:path";
+import { join as join12 } from "node:path";
 var defaultExplorerTimeout = 1800;
 var pollMilliseconds = 500;
 var activityMilliseconds = 5e3;
@@ -22842,18 +23047,23 @@ function explorationToolIdentity(launch, explorationId, explorer) {
 }
 function explorerWork(store, explorationId, explorer, launch) {
   const folder = workFolder(explorationId, explorer);
-  mkdirSync6(join11(store.workspace, folder), { recursive: true });
+  mkdirSync7(join12(store.workspace, folder), { recursive: true });
   const others = explorerNames(launch.explorers).filter((name2) => name2 !== explorer);
   const { session, dataPrefix } = explorationToolIdentity(launch, explorationId, explorer);
+  const values = { session, workFolder: join12(store.workspace, folder) };
+  const tools = exploration(store, explorationId).charter.tools.map((tool) => tool.name);
   return {
     folder,
     dataPrefix,
     grant: [`Edit(/${folder}/**)`],
     deny: workDenyRules(others.map((name2) => workFolder(explorationId, name2))),
-    extraEnv: testerEnvironment({
-      session,
-      workFolder: join11(store.workspace, folder)
-    })
+    extraEnv: testerEnvironment(values),
+    servers: attachedServers(
+      tools,
+      values,
+      checkmateScript(),
+      Object.fromEntries(entryValues(store, explorationId).map((entry) => [entry.name, entry.value]))
+    )
   };
 }
 function topLevelNames(workspace2) {
@@ -22880,9 +23090,9 @@ async function watchStray(store, actor, explorationId, explorer, turn2, run2) {
 }
 var keptFiles = ["plan.md", "questions.md", "report.md", "follow-up-report.md"];
 function keepWorkFiles(store, actor, explorationId, explorer, phase) {
-  const folder = join11(store.workspace, workFolder(explorationId, explorer));
+  const folder = join12(store.workspace, workFolder(explorationId, explorer));
   const files2 = keptFiles.flatMap((name2) => {
-    const path = join11(folder, name2);
+    const path = join12(folder, name2);
     return existsSync8(path) ? [{ name: name2, bytes: readFileSync10(path) }] : [];
   });
   if (!files2.length) return;
@@ -22909,26 +23119,26 @@ function foldersBefore(launch) {
 function keepToolFolders(store, explorationId) {
   const before = foldersBefore(startOf(explorationEvents(store, explorationId)));
   for (const name2 of toolFolders()) {
-    const from = join11(store.workspace, name2);
+    const from = join12(store.workspace, name2);
     if (before.includes(name2) || !existsSync8(from)) continue;
-    const to = join11(store.workspace, workFolder(explorationId), name2);
-    mkdirSync6(join11(to, ".."), { recursive: true });
+    const to = join12(store.workspace, workFolder(explorationId), name2);
+    mkdirSync7(join12(to, ".."), { recursive: true });
     rmSync5(to, { recursive: true, force: true });
     renameSync(from, to);
   }
 }
 function removeWork(store, explorationId) {
   keepToolFolders(store, explorationId);
-  rmSync5(join11(store.workspace, workFolder(explorationId)), { recursive: true, force: true });
-  rmSync5(join11(store.workspace, ".checkmate", "tmp", `explore-${explorationId}.log`), { force: true });
-  removeIfEmpty(join11(store.workspace, ".checkmate", "work"));
-  removeIfEmpty(join11(store.workspace, ".checkmate", "tmp"));
+  rmSync5(join12(store.workspace, workFolder(explorationId)), { recursive: true, force: true });
+  rmSync5(join12(store.workspace, ".checkmate", "tmp", `explore-${explorationId}.log`), { force: true });
+  removeIfEmpty(join12(store.workspace, ".checkmate", "work"));
+  removeIfEmpty(join12(store.workspace, ".checkmate", "tmp"));
 }
 function startSupervisor(store, explorationId, actor, env, extra = []) {
-  const folder = join11(store.workspace, ".checkmate", "tmp");
-  mkdirSync6(folder, { recursive: true });
-  const log = openSync(join11(folder, `explore-${explorationId}.log`), "a");
-  const child = spawn3(
+  const folder = join12(store.workspace, ".checkmate", "tmp");
+  mkdirSync7(folder, { recursive: true });
+  const log = openSync(join12(folder, `explore-${explorationId}.log`), "a");
+  const child = spawn4(
     process.execPath,
     [checkmateScript(), "explore", "drive", explorationId, "--workspace", store.workspace, ...extra],
     {
@@ -22990,7 +23200,7 @@ function startExploration(store, actor, given, env, preferSavedModel = false) {
           ...launch,
           dataRules: rules,
           toolIdentities: Object.fromEntries(toolUsers.map((name2) => [name2, toolIdentity(marker, name2)])),
-          toolFoldersBefore: toolFolders().filter((name2) => existsSync8(join11(store.workspace, name2)))
+          toolFoldersBefore: toolFolders().filter((name2) => existsSync8(join12(store.workspace, name2)))
         }
       },
       operationId,
@@ -23071,7 +23281,7 @@ function entryValues(store, explorationId) {
 function workFiles(folder) {
   try {
     return new Map(
-      readdirSync3(folder, { withFileTypes: true }).filter((item) => item.isFile()).map((item) => [item.name, statSync5(join11(folder, item.name)).size])
+      readdirSync3(folder, { withFileTypes: true }).filter((item) => item.isFile()).map((item) => [item.name, statSync5(join12(folder, item.name)).size])
     );
   } catch {
     return /* @__PURE__ */ new Map();
@@ -23082,7 +23292,7 @@ function activityLine(turn2, changed, count2) {
   return `${turn2}: wrote ${named}. ${count2} ${count2 === 1 ? "file" : "files"} in the work folder.`;
 }
 function watchWork(store, actor, explorationId, explorer, turn2) {
-  const folder = join11(store.workspace, workFolder(explorationId, explorer));
+  const folder = join12(store.workspace, workFolder(explorationId, explorer));
   let known = workFiles(folder);
   const check = () => {
     const now = workFiles(folder);
@@ -23113,7 +23323,14 @@ async function watchedTurns(store, actor, explorationId, explorer, work, launch,
   const watch = watchWork(store, actor, explorationId, explorer, initialTurn);
   const turn2 = (tester, own, prompt2, name2) => {
     const hook = childHook(store.workspace, explorationId, explorer);
-    const context = { ...tester, deny: work.deny, hook, work: work.folder, inheritPiTools: launch.inheritPiTools };
+    const context = {
+      ...tester,
+      deny: work.deny,
+      hook,
+      work: work.folder,
+      inheritPiTools: launch.inheritPiTools,
+      servers: work.servers
+    };
     return watchStray(
       store,
       actor,
@@ -23946,10 +24163,10 @@ function endInBackground(workspace2, explorationId, explorer, env) {
   }
 }
 function startEnding(store, explorationId, actor, explorer, env) {
-  const folder = join11(store.workspace, ".checkmate", "tmp");
-  mkdirSync6(folder, { recursive: true });
-  const log = openSync(join11(folder, `explore-${explorationId}.log`), "a");
-  const child = spawn3(
+  const folder = join12(store.workspace, ".checkmate", "tmp");
+  mkdirSync7(folder, { recursive: true });
+  const log = openSync(join12(folder, `explore-${explorationId}.log`), "a");
+  const child = spawn4(
     process.execPath,
     [
       checkmateScript(),
@@ -23969,7 +24186,7 @@ function stopExploration(store, actor, input) {
   const explorer = input.explorer;
   const reply = recordStop(store, actor, input);
   const left = endStopped(store, id2, explorer);
-  const kept = explorer === void 0 && existsSync8(join11(store.workspace, workFolder(id2))) ? workFolder(id2) : null;
+  const kept = explorer === void 0 && existsSync8(join12(store.workspace, workFolder(id2))) ? workFolder(id2) : null;
   return {
     ...reply,
     status: left.length ? "operational_error" : "completed",
@@ -24123,7 +24340,7 @@ function explorationStatus(store, explorationId) {
     explorers,
     phases: events.filter((item) => ["merge", "verify", "follow", "followed"].includes(item.step)).map((item) => ({ step: item.step, status: item.status, detail: item.detail })),
     doneHint: done?.detail.hint ?? null,
-    workFolder: (["failed", "stopped", "interrupted"].includes(state) || ["failed", "stopped", "interrupted"].includes(follow ?? "")) && existsSync8(join11(store.workspace, workFolder(row2.exploration_id))) ? workFolder(row2.exploration_id) : null,
+    workFolder: (["failed", "stopped", "interrupted"].includes(state) || ["failed", "stopped", "interrupted"].includes(follow ?? "")) && existsSync8(join12(store.workspace, workFolder(row2.exploration_id))) ? workFolder(row2.exploration_id) : null,
     reason: done?.detail.reason ?? (state === "stopped" ? stopReason(events) : state === "interrupted" ? "The supervisor stopped before the end." : null)
   };
 }
@@ -24708,7 +24925,7 @@ function owedLines(store) {
 
 // plugin/src/views.ts
 import { existsSync as existsSync9 } from "node:fs";
-import { join as join12 } from "node:path";
+import { join as join13 } from "node:path";
 function approvalLabel(state) {
   if (state.approved) return "approved";
   if (state.rejected) return "rejected";
@@ -24978,7 +25195,7 @@ function mergedQuestions(store, planId) {
 }
 function explorationData(store, status) {
   const log = `.checkmate/tmp/explore-${status.explorationId}.log`;
-  return [...status.workFolder ? [status.workFolder] : [], ...existsSync9(join12(store.workspace, log)) ? [log] : []];
+  return [...status.workFolder ? [status.workFolder] : [], ...existsSync9(join13(store.workspace, log)) ? [log] : []];
 }
 function planHasRevision(store, planId) {
   return Boolean(one(store, "SELECT 1 FROM plan_revisions WHERE plan_id = ?", planId));
@@ -26821,8 +27038,8 @@ var tones = {
   not_executed: "muted"
 };
 var none = "\u2014";
-var join13 = (values) => values.length ? values.join(", ") : none;
-var pairs = (metadata = {}) => join13(Object.entries(metadata).map(([key, value2]) => `${key}=${value2}`));
+var join14 = (values) => values.length ? values.join(", ") : none;
+var pairs = (metadata = {}) => join14(Object.entries(metadata).map(([key, value2]) => `${key}=${value2}`));
 function markdownText(value2) {
   return value2.replace(/\\/g, "\\\\").replace(/([|[\]*_`])/g, "\\$1").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\r?\n/g, " ");
 }
@@ -26966,7 +27183,7 @@ function runDocument(report) {
   const { result, sha256, acceptance, plan } = report;
   const planned = new Map(plan.tests.map((test) => [test.id, test]));
   const evidence3 = new Map(result.evidence.map((entry) => [entry.id, entry]));
-  const files2 = (ids2) => join13(ids2.map((id2) => `${evidence3.get(id2)?.name ?? id2} (${id2})`));
+  const files2 = (ids2) => join14(ids2.map((id2) => `${evidence3.get(id2)?.name ?? id2} (${id2})`));
   const counts2 = outcomeCounts(result.tests.filter((test) => result.selectedTestIds.includes(test.testId)));
   const assertions = result.tests.flatMap((test) => test.assertions);
   const blocks = [
@@ -27016,7 +27233,7 @@ function runDocument(report) {
           `${item.runId}/${item.findingId}`,
           item.title,
           item.verdict,
-          join13(item.testIds)
+          join14(item.testIds)
         ])
       }
     ] : [],
@@ -27057,8 +27274,8 @@ function runDocument(report) {
     blocks.push({
       table: ["Field", "Value"],
       rows: [
-        ["Assertions", join13(finding.assertionIds)],
-        ["Requirements", join13(finding.requirementIds)],
+        ["Assertions", join14(finding.assertionIds)],
+        ["Requirements", join14(finding.requirementIds)],
         ["Expected", finding.expected],
         ["Observed", finding.observed],
         ["Evidence", files2(finding.evidenceIds)],
@@ -27077,8 +27294,8 @@ function runDocument(report) {
         gap.severity,
         gap.question,
         gap.consequence,
-        join13(gap.requirementIds),
-        join13(gap.testIds)
+        join14(gap.requirementIds),
+        join14(gap.testIds)
       ])
     });
   blocks.push({ heading: `Plan gaps and decisions (${plan.planId}@${plan.revision})` });
@@ -27139,7 +27356,7 @@ function runDocument(report) {
           row2.requirementId,
           requirement?.text ?? none,
           row2.status,
-          join13(row2.testIds),
+          join14(row2.testIds),
           row2.reason ?? none,
           pairs(requirement?.metadata)
         ];
@@ -27185,9 +27402,9 @@ function planReport(plan, sha256) {
         test.id,
         test.title,
         test.readiness,
-        join13(test.requirementIds),
-        join13(test.dependsOn),
-        join13(test.preconditions),
+        join14(test.requirementIds),
+        join14(test.dependsOn),
+        join14(test.preconditions),
         test.action,
         pairs(test.metadata)
       ])
@@ -27467,13 +27684,13 @@ function exportExploration(store, explorationId, format3) {
 import { createReadStream, realpathSync as realpathSync5 } from "node:fs";
 import { readdir } from "node:fs/promises";
 import { homedir as homedir2 } from "node:os";
-import { basename as basename3, join as join14, resolve as resolve5 } from "node:path";
-import { createInterface as createInterface2 } from "node:readline";
+import { basename as basename3, join as join15, resolve as resolve5 } from "node:path";
+import { createInterface as createInterface3 } from "node:readline";
 async function readUsage(path, workspace2, session) {
   const stream = createReadStream(path, { encoding: "utf8" });
   let usage2;
   try {
-    for await (const line of createInterface2({ input: stream, crlfDelay: Infinity })) {
+    for await (const line of createInterface3({ input: stream, crlfDelay: Infinity })) {
       if (!line.trim()) continue;
       const entry = JSON.parse(line);
       if (!usage2) {
@@ -27518,14 +27735,14 @@ async function recoverPiCosts(store, env) {
     workspace2,
     path.replace(/^~(?=$|[/\\])/, () => home)
   );
-  const agent = expand(env.PI_CODING_AGENT_DIR || join14(home, ".pi", "agent"));
+  const agent = expand(env.PI_CODING_AGENT_DIR || join15(home, ".pi", "agent"));
   const project = "--" + workspace2.replace(/^[/\\]/, "").replace(/[/\\:]/g, "-") + "--";
-  const folder = env.PI_CODING_AGENT_SESSION_DIR ? expand(env.PI_CODING_AGENT_SESSION_DIR) : join14(agent, "sessions", project);
+  const folder = env.PI_CODING_AGENT_SESSION_DIR ? expand(env.PI_CODING_AGENT_SESSION_DIR) : join15(agent, "sessions", project);
   const files2 = await readdir(folder, { withFileTypes: true }).catch(() => []);
   const paths = /* @__PURE__ */ new Map();
   for (const file of files2) {
     const id2 = /_([0-9a-f-]{36})\.jsonl$/i.exec(file.name)?.[1];
-    if (file.isFile() && id2) paths.set(id2, join14(folder, file.name));
+    if (file.isFile() && id2) paths.set(id2, join15(folder, file.name));
   }
   const sessions = /* @__PURE__ */ new Map();
   function load(id2) {
@@ -27792,7 +28009,7 @@ function html2(strings, ...values) {
   for (let i = 0; i < values.length; i++) text2 += piece(values[i]) + strings[i + 1];
   return { html: text2 };
 }
-function join15(items, separator2) {
+function join16(items, separator2) {
   return html2`${items.flatMap((item, i) => i ? [separator2, item] : [item])}`;
 }
 function money(costUsd) {
@@ -28849,8 +29066,8 @@ function asksFor(item) {
 }
 function askerPath(store, item) {
   if (!item.fromRequest) return { label: "Run", href: `/explorations/${item.askerId}`, fallback: "/activity" };
-  const message = requestOf(store, item.askerId);
-  const href = message ? `/chats/${message.conversation}` : "/chats";
+  const message2 = requestOf(store, item.askerId);
+  const href = message2 ? `/chats/${message2.conversation}` : "/chats";
   return { label: "Chat", href, fallback: href };
 }
 var things = {
@@ -29065,7 +29282,7 @@ function stateText(item) {
   const decision = item.decision;
   return decision.kind === "closed" ? `Closed: ${closedText[decision.cause]}.` : `Answered: ${decision.text}.`;
 }
-function permissionPage(store, context, askerId, requestId2, view, refusal) {
+function permissionPage(store, context, askerId, requestId2, view, refusal2) {
   const item = permissionOf(store, askerId, requestId2);
   if (!item) return null;
   const { from } = view;
@@ -29092,7 +29309,7 @@ function permissionPage(store, context, askerId, requestId2, view, refusal) {
       [item.id, null]
     ],
     back,
-    status: refusal ? 422 : 200,
+    status: refusal2 ? 422 : 200,
     body: html2`<div
 			class="sp-record"
 			data-region="permission-record"
@@ -29104,7 +29321,7 @@ function permissionPage(store, context, askerId, requestId2, view, refusal) {
 		>
 			${crumbBar([...item.planId ? [[item.planId, `/plans/${item.planId}`]] : [], [askerId, asker.href]])}
 			<div data-stale-slot>
-				${refusal && !refusal.field ? html2`<p class="form-error" role="alert">${refusal.error}</p>` : ""}
+				${refusal2 && !refusal2.field ? html2`<p class="form-error" role="alert">${refusal2.error}</p>` : ""}
 			</div>
 			<section class="sp-dhead" tabindex="-1" data-sub data-label="${name2}">
 				<div class="sp-pills">
@@ -29127,7 +29344,7 @@ function permissionPage(store, context, askerId, requestId2, view, refusal) {
 							<ol class="sp-optlist asks">
 								${choices2.map((choice2, index2) => html2`<li>${optionOf(context, item, from, choice2, index2 + 1)}<span class="help">${choice2.text}</span></li>`)}
 							</ol>
-							<div class="sp-c-extra" data-extra="deny" ${refusal?.field ? "" : html2`hidden`}>
+							<div class="sp-c-extra" data-extra="deny" ${refusal2?.field ? "" : html2`hidden`}>
 								<form
 									method="post"
 									action="${recordPath(item)}"
@@ -29144,8 +29361,8 @@ function permissionPage(store, context, askerId, requestId2, view, refusal) {
 										required
 										data-missing="Write the reason first. The tester gets it."
 									>
-${refusal?.reason ?? ""}</textarea>
-									${refusal?.field ? html2`<p class="form-error" role="alert" data-field="reason">${refusal.error}</p>` : ""}
+${refusal2?.reason ?? ""}</textarea>
+									${refusal2?.field ? html2`<p class="form-error" role="alert" data-field="reason">${refusal2.error}</p>` : ""}
 									<div class="btns">
 										<button class="sp-btn pri"><span>Deny</span></button>
 										<span class="small muted"
@@ -29606,7 +29823,7 @@ function logRow(row2) {
     html2`${pill(row2.status === "rejected" ? "rejected_operation" : row2.status, words2(row2.status))} ${time(row2.at)}`,
     [
       html2`${row2.actor}${via} ·
-			${subjects.length ? join15(subjects.map(subjectLink), " ") : html2`<span class="muted">no subject</span>`}`,
+			${subjects.length ? join16(subjects.map(subjectLink), " ") : html2`<span class="muted">no subject</span>`}`,
       ...row2.status === "rejected" ? [html2`<span class="reason">${reasons(row2.response).join(" ")}</span>`] : [],
       html2`<span class="mono muted">${row2.id}</span>`
     ]
@@ -30267,11 +30484,11 @@ function row(run2, n, now) {
 		<span class="sp-c-tag">${pill(run2.state)}</span>
 		<span class="sp-c-id" title="${run2.explorationId}">${run2.explorationId}</span>
 		<span class="sp-c-title ell" title="${title2}">${title2}</span>
-		<span class="sp-c-meta ell" title="${metaText(run2, now)}">${join16(meta(run2, now), " \xB7 ")}</span>
+		<span class="sp-c-meta ell" title="${metaText(run2, now)}">${join17(meta(run2, now), " \xB7 ")}</span>
 		${optionsBox(items)}
 	</div>`;
 }
-function join16(items, separator2) {
+function join17(items, separator2) {
   const shown2 = items.filter((item) => item !== null);
   return html2`${shown2.map((item, index2) => index2 ? html2`${separator2}${item}` : item)}`;
 }
@@ -30301,7 +30518,7 @@ function chatRow(turn2, n, now) {
 		<span class="sp-c-tag">${pill(turn2.state, turn2.state === "answered" ? "Completed" : void 0)}</span>
 		<span class="sp-c-id" title="${turn2.id}">${turn2.id}</span>
 		<span class="sp-c-title ell" title="${title2}">${title2}</span>
-		<span class="sp-c-meta ell" title="${metaText2}">${join16(meta2, " \xB7 ")}</span>
+		<span class="sp-c-meta ell" title="${metaText2}">${join17(meta2, " \xB7 ")}</span>
 	</div>`;
 }
 function activityPage(store, context, params, defaults) {
@@ -30540,10 +30757,10 @@ function approvalBody(item) {
 			>
 		</div>`;
 }
-function recordDrawer(store, context, review, item, view, refusal) {
+function recordDrawer(store, context, review, item, view, refusal2) {
   const list3 = reviewHref(review.planId, view, `&at=${encodeURIComponent(item.key)}&focus=list`);
   const base = reviewHref(review.planId, view, `&item=${encodeURIComponent(item.key)}`);
-  const state = refusal?.key === item.key ? refusal.state : null;
+  const state = refusal2?.key === item.key ? refusal2.state : null;
   const options3 = optionsOf({ ...context, path: list3 }, review, item);
   const body = item.claim ? claimBody(context, store, review, item, base, list3, state) : item.kind === "approval" ? approvalBody(item) : questionBody(context, review, item, list3, state);
   const when = item.claim ? null : item.question?.at ?? item.waiting?.since ?? null;
@@ -31478,21 +31695,21 @@ function panel(context, review, view, current2, cost) {
 		${view === "rules" ? rulesList(context, review) : listOf(context, review, view, groups, title2)}
 	</section>`;
 }
-function reviewPage(store, context, planId, params, refusal = null, notice = null) {
+function reviewPage(store, context, planId, params, refusal2 = null, notice = null) {
   const review = reviewOf(store, planId, context.harness);
   const views2 = viewsOf(review);
   const asked2 = params.get("view") ?? "needs";
   const current2 = views2.includes(asked2) ? asked2 : "needs";
   const chatting = params.has("chat") || params.get("newChat") === "1";
   const title2 = viewTitle(review, current2);
-  const key = refusal?.key ?? params.get("item");
-  const item = key && !(refusal?.subject && refusal.state.stale) ? review.items.find((each) => each.key === key && each.kind !== "permission") ?? null : null;
-  const refusedAnswer = refusal?.subject && !item ? html2`<section aria-labelledby="refused-answer">
-					<h2 id="refused-answer">Answer for ${refusal.subject}</h2>
-					${messages(refusal.state)}${keptText(refusal.state)}
+  const key = refusal2?.key ?? params.get("item");
+  const item = key && !(refusal2?.subject && refusal2.state.stale) ? review.items.find((each) => each.key === key && each.kind !== "permission") ?? null : null;
+  const refusedAnswer = refusal2?.subject && !item ? html2`<section aria-labelledby="refused-answer">
+					<h2 id="refused-answer">Answer for ${refusal2.subject}</h2>
+					${messages(refusal2.state)}${keptText(refusal2.state)}
 				</section>` : "";
   const file = params.get("file");
-  const record = item ? file !== null && /^[0-9]{1,3}$/.test(file) && item.claim ? evidenceViewer(store, review, item, current2, Number(file)) : recordDrawer(store, context, review, item, current2, refusal) : "";
+  const record = item ? file !== null && /^[0-9]{1,3}$/.test(file) && item.claim ? evidenceViewer(store, review, item, current2, Number(file)) : recordDrawer(store, context, review, item, current2, refusal2) : "";
   const cost = planCost(store, planId);
   const panels = views2.map((view) => panel(context, review, view, current2, costText(cost.costUsd, cost.costPartial)));
   return {
@@ -31503,7 +31720,7 @@ function reviewPage(store, context, planId, params, refusal = null, notice = nul
       "inbox",
       ...review.explorations.map((each) => `exploration:${each.explorationId}`)
     ],
-    status: refusal || notice ? 422 : 200,
+    status: refusal2 || notice ? 422 : 200,
     crumbs: [
       ["Plans", "/"],
       [planId, `/plans/${planId}`],
@@ -31645,7 +31862,7 @@ function claimEvidenceList2(store, planId, claim) {
 function dataLine(reason, data) {
   return html2`${reason ?? "No reason is recorded."}
 	${data.length ? html2` Its data:
-				${join15(
+				${join16(
     data.map((path) => html2`<code>${path}</code>`),
     ", "
   )}.` : ""}`;
@@ -32418,7 +32635,7 @@ function claimPage(store, context, explorationId, claimId, state = null) {
 
 // plugin/src/ui/server.ts
 import { resolve as resolve7 } from "node:path";
-import { mkdirSync as mkdirSync8, rmSync as rmSync7, writeFileSync as writeFileSync4 } from "node:fs";
+import { mkdirSync as mkdirSync9, rmSync as rmSync7, writeFileSync as writeFileSync4 } from "node:fs";
 
 // plugin/src/ui/bulk.ts
 var kindLabels = {
@@ -32877,7 +33094,7 @@ function testLink(planId, revision2, reference2) {
   return owner ? html2`<a class="mono" href="/plans/${owner}#${id2}">${reference2}</a>` : html2`<a class="mono" href="/plans/${planId}@${revision2}#${id2}">${reference2}</a>`;
 }
 function ids(values, link2) {
-  return values.length ? join15(values.map(link2), ", ") : html2`<span class="muted">none</span>`;
+  return values.length ? join16(values.map(link2), ", ") : html2`<span class="muted">none</span>`;
 }
 function facts2(rows2) {
   const shown2 = rows2.filter(([, value2]) => value2 !== false);
@@ -33966,7 +34183,7 @@ function findingRefs(detail, reference2) {
   const findings = detail.findings.filter((finding) => finding.assertionIds.includes(reference2));
   if (!findings.length) return "";
   return html2` ·
-	${join15(
+	${join16(
     findings.map(
       (finding) => html2`<a href="${runItemHref(detail.runId, `finding:${finding.id}`)}" data-go>finding ${finding.id}</a>`
     ),
@@ -34082,7 +34299,7 @@ function findingCard(store, detail, finding) {
 							</ol>` : ""}
 			<p class="muted small">
 				Assertions
-				${join15(
+				${join16(
     finding.assertionIds.map((id2) => assertionLink(detail.runId, id2)),
     ", "
   )}${finding.requirementIds.length ? ` \xB7 requirements ${finding.requirementIds.join(", ")}` : ""}
@@ -34513,7 +34730,7 @@ function none3(text2 = "none") {
   return html2`<span class="muted">${text2}</span>`;
 }
 function words4(items) {
-  return items.length ? join15(
+  return items.length ? join16(
     items.map((item) => html2`<code>${item}</code>`),
     " "
   ) : none3();
@@ -34678,7 +34895,7 @@ function entryList3(instance) {
 					<dt class="mono">${name2}</dt>
 					<dd>
 						<code
-							>${join15(
+							>${join16(
       value2.split(" ").map((word) => html2`<span class="word">${word}</span>`),
       " "
     )}</code
@@ -35030,12 +35247,12 @@ function harnessPage(store, context, env, form = null, model = null, testerModel
 
 // plugin/src/ui/requester.ts
 import { randomUUID as randomUUID5 } from "node:crypto";
-import { join as join17 } from "node:path";
+import { join as join18 } from "node:path";
 
 // plugin/src/ui/pi-request.ts
-import { spawn as spawn4 } from "node:child_process";
+import { spawn as spawn5 } from "node:child_process";
 function streamPi(program, args, prompt2, cwd, env, extension, sessionId, onLine, delays) {
-  const child = spawn4(program, args, { cwd, env, stdio: ["pipe", "pipe", "pipe"], detached: true });
+  const child = spawn5(program, args, { cwd, env, stdio: ["pipe", "pipe", "pipe"], detached: true });
   trackGroup(child);
   child.stdout.setEncoding("utf8");
   let pending = "";
@@ -35177,15 +35394,15 @@ function readStreamLine(line, harness = "claude") {
     if (event2.type === "tool_execution_start" && event2.toolName)
       return [{ kind: "tool", name: event2.toolName, input: event2.args, cwd: void 0 }];
     if (event2.type === "agent_end" && !event2.willRetry) {
-      const message = event2.messages?.at(-1);
-      const error = message?.role !== "assistant" || message.stopReason !== "stop";
-      const reply = message?.content?.flatMap((part) => part.type === "text" && part.text ? [part.text] : []).join("") ?? "";
+      const message2 = event2.messages?.at(-1);
+      const error = message2?.role !== "assistant" || message2.stopReason !== "stop";
+      const reply = message2?.content?.flatMap((part) => part.type === "text" && part.text ? [part.text] : []).join("") ?? "";
       return [
         {
           kind: "result",
           value: {
             is_error: error,
-            result: error ? piErrorText(message?.errorMessage) || "Pi did not complete the response." : reply
+            result: error ? piErrorText(message2?.errorMessage) || "Pi did not complete the response." : reply
           }
         }
       ];
@@ -35356,8 +35573,8 @@ function createRequester(store, options3) {
         if (!request2.model && request2.provider) modelId = `${modelArgs[1]}/${modelArgs[3]}`;
       }
     } catch (error) {
-      const refusal = error;
-      run2.reason = [refusal.message, refusal.hint].filter(Boolean).join(" ");
+      const refusal2 = error;
+      run2.reason = [refusal2.message, refusal2.hint].filter(Boolean).join(" ");
       guarded(() => setRequestState(store, run2.id, "running"));
       run2.done = Promise.resolve().then(() => finish2(run2, null));
       return;
@@ -35368,7 +35585,7 @@ function createRequester(store, options3) {
       explorationId: requestHookName,
       who: request2.id
     };
-    const extension = join17(pluginRoot, "pi", "permission.mjs");
+    const extension = join18(pluginRoot, "pi", "permission.mjs");
     const turns = chatOf(store, request2.conversation)?.turns ?? [];
     const earlier = turns.slice(
       0,
@@ -35390,7 +35607,7 @@ function createRequester(store, options3) {
       "--extension",
       extension,
       "--extension",
-      join17(pluginRoot, "pi", "changes.mjs"),
+      join18(pluginRoot, "pi", "changes.mjs"),
       "--tools",
       "read,bash",
       "--append-system-prompt",
@@ -35522,9 +35739,9 @@ This conversation is about plan ${reference2}. Use the plan and its records as t
 
 // plugin/src/ui/lifecycle.ts
 import { createHmac, randomBytes as randomBytes3, timingSafeEqual as timingSafeEqual2 } from "node:crypto";
-import { mkdirSync as mkdirSync7, readFileSync as readFileSync11, realpathSync as realpathSync6, rmSync as rmSync6 } from "node:fs";
+import { mkdirSync as mkdirSync8, readFileSync as readFileSync11, realpathSync as realpathSync6, rmSync as rmSync6 } from "node:fs";
 import { request } from "node:http";
-import { join as join18 } from "node:path";
+import { join as join19 } from "node:path";
 import { DatabaseSync as DatabaseSync2 } from "node:sqlite";
 import { setTimeout as delay } from "node:timers/promises";
 var lifecyclePath = "/internal/ui-lifecycle";
@@ -35532,9 +35749,9 @@ function lifecycleProof(token, workspace2, pid, action2, nonce, body) {
   return createHmac("sha256", token).update(JSON.stringify([workspace2, pid, action2, nonce, body])).digest("hex");
 }
 async function withUiStartupLock(workspace2, run2) {
-  const folder = join18(workspace2, ".checkmate", "tmp");
-  mkdirSync7(folder, { recursive: true });
-  const lock = new DatabaseSync2(join18(folder, "ui-startup.sqlite"));
+  const folder = join19(workspace2, ".checkmate", "tmp");
+  mkdirSync8(folder, { recursive: true });
+  const lock = new DatabaseSync2(join19(folder, "ui-startup.sqlite"));
   try {
     const deadline = Date.now() + 15e3;
     for (; ; ) {
@@ -41428,13 +41645,13 @@ function attachmentName(name2) {
   const plain = name2.replace(/[^A-Za-z0-9._-]/g, "_");
   return `filename="${plain}"; filename*=UTF-8''${encodeURIComponent(name2)}`;
 }
-function notFoundError(message) {
-  return /^Unknown|has no revision|not found/i.test(message);
+function notFoundError(message2) {
+  return /^Unknown|has no revision|not found/i.test(message2);
 }
 function plainMessage(error) {
-  const message = error instanceof Error ? error.message : String(error);
-  const schema = /^Invalid [\w-]+: (.+)$/.exec(message);
-  if (!schema || !/ must /.test(schema[1])) return message;
+  const message2 = error instanceof Error ? error.message : String(error);
+  const schema = /^Invalid [\w-]+: (.+)$/.exec(message2);
+  if (!schema || !/ must /.test(schema[1])) return message2;
   return schema[1].split(", ").map((problem) => {
     const [path, rule] = problem.split(/ must (.*)/);
     const place = path.split("/").slice(1).map(
@@ -41541,14 +41758,14 @@ data: ${matched.join(",") || "*"}
       Vary: "Cookie"
     });
   }
-  function errorPage(request2, status, title2, message) {
+  function errorPage(request2, status, title2, message2) {
     render(request2, {
       title: title2,
       section: null,
       subjects: ["inbox"],
       status,
       back: "/",
-      body: html2`${heading(title2, message)}
+      body: html2`${heading(title2, message2)}
 				<p class="actions">
 					<a class="btn primary" href="/">Needs you</a> <a class="btn" href="/plans">Plans</a>
 					<a class="btn" href="/runs">Runs</a>
@@ -41684,8 +41901,8 @@ data: ${matched.join(",") || "*"}
     if (pathname === "/chats") return render(request2, chatsPage(store, shown2, searchParams, env));
     const chat = routes.chatPage.exec(pathname);
     if (chat) return openChat(request2, chat[1]);
-    const message = routes.chatMessage.exec(pathname);
-    if (message) return messageRecord(request2, message[2], message[1]);
+    const message2 = routes.chatMessage.exec(pathname);
+    if (message2) return messageRecord(request2, message2[2], message2[1]);
     if (pathname === "/requests") return redirect(request2.res, "/chats");
     const askedRequest = routes.requestPage.exec(pathname);
     if (askedRequest) return messageRecord(request2, askedRequest[1]);
@@ -42132,7 +42349,7 @@ data: ${matched.join(",") || "*"}
     const undo = form.get("undo") === "1";
     const to = form.get("to")?.trim() ?? "";
     const back = safeBack(form.get("return") ?? `/plans/${planId}`);
-    const fail = (message) => redirect(request2.res, back, [...cookies, cookie("checkmate_toast", message, 60)]);
+    const fail = (message2) => redirect(request2.res, back, [...cookies, cookie("checkmate_toast", message2, 60)]);
     if (!undo && !to) return fail(`Name who takes ${named}. Nothing is recorded.`);
     try {
       handOffClaims(store, actor, { planId, claimIds, ...undo ? {} : { to }, undo });
@@ -42144,7 +42361,7 @@ data: ${matched.join(",") || "*"}
       cookie("checkmate_toast", undo ? `${named} not handed over` : `Handed ${named} over to ${to}`, 60)
     ]);
   }
-  function actionRefusal(request2, back, message, field4 = "") {
+  function actionRefusal(request2, back, message2, field4 = "") {
     render(request2, {
       title: "Nothing was done",
       section: "home",
@@ -42152,15 +42369,15 @@ data: ${matched.join(",") || "*"}
       status: 422,
       back,
       body: html2`${heading("Nothing was done")}
-				<p class="form-error" role="alert" ${field4 ? html2`data-field="${field4}"` : ""}>${message}</p>
+				<p class="form-error" role="alert" ${field4 ? html2`data-field="${field4}"` : ""}>${message2}</p>
 				<p class="actions"><a class="btn primary" href="${back}">Go back</a></p>`
     });
   }
   function engineText(error) {
-    const message = plainMessage(error);
-    if (/No claude executable/.test(message)) return `${claudeMissing.cause} ${claudeMissing.next}`;
+    const message2 = plainMessage(error);
+    if (/No claude executable/.test(message2)) return `${claudeMissing.cause} ${claudeMissing.next}`;
     const hint = error.hint;
-    return hint ? `${message} ${hint}` : message;
+    return hint ? `${message2} ${hint}` : message2;
   }
   function runningOf(planId) {
     return planExplorations(store, planId).find((item) => item.running);
@@ -42178,7 +42395,7 @@ data: ${matched.join(",") || "*"}
   function ruleChange(request2, form, planId, change) {
     const back = reviewHref(planId, "rules");
     const { origin: origin2 } = planRules(store, planId);
-    const refuse5 = (message, field4 = "") => actionRefusal(request2, back, message, field4);
+    const refuse5 = (message2, field4 = "") => actionRefusal(request2, back, message2, field4);
     if (origin2 !== "derived" && origin2 !== "corrected" && origin2 !== "harvested")
       return refuse5(`The rules of ${planId} do not come from the sources. Edit them in the plan editor.`);
     try {
@@ -42194,7 +42411,7 @@ data: ${matched.join(",") || "*"}
   function changeRule(request2, form, planId, ruleId2) {
     const back = reviewHref(planId, "rules");
     const { actor, cookies } = actorFrom(request2, form);
-    const refuse5 = (message, field4 = "") => actionRefusal(request2, back, message, field4);
+    const refuse5 = (message2, field4 = "") => actionRefusal(request2, back, message2, field4);
     const text2 = form.get("text")?.trim() ?? "";
     const area2 = form.get("newArea")?.trim() || form.get("area")?.trim() || "";
     if (!actor) return refuse5("Enter your name. Checkmate records it with the rule.");
@@ -42266,7 +42483,7 @@ data: ${matched.join(",") || "*"}
     const build = form.get("build")?.trim() ?? "";
     const level = form.get("level")?.trim() || "normal";
     const [typedSince, until, repo] = ["since", "until", "repo"].map((name2) => form.get(name2)?.trim() || void 0);
-    const refuse5 = (message, field4 = "") => actionRefusal(request2, back, message, field4);
+    const refuse5 = (message2, field4 = "") => actionRefusal(request2, back, message2, field4);
     if (!actor) return refuse5("Enter your name. Checkmate records it with the test.");
     if (form.has("harness") && form.get("harness") !== selectedHarness(launchEnv()))
       return refuse5("The coding harness changed. Reload the page and try again.");
@@ -42317,7 +42534,7 @@ data: ${matched.join(",") || "*"}
   function startAnswers(request2, form, planId) {
     const back = `/plans/${planId}`;
     const { actor, cookies } = actorFrom(request2, form);
-    const refuse5 = (message) => actionRefusal(request2, back, message);
+    const refuse5 = (message2) => actionRefusal(request2, back, message2);
     const explorationId = form.get("exploration") ?? "";
     if (!actor) return refuse5("Enter your name. Checkmate records it with the test.");
     if (planOfExploration(explorationId) !== planId)
@@ -42338,7 +42555,7 @@ data: ${matched.join(",") || "*"}
   function storeDefects(request2, form, planId) {
     const view = form.get("view") === "rules" ? "rules" : "all";
     const { actor, cookies } = actorFrom(request2, form);
-    const refuse5 = (message) => actionRefusal(request2, reviewHref(planId, view), message);
+    const refuse5 = (message2) => actionRefusal(request2, reviewHref(planId, view), message2);
     if (!actor) return refuse5("Enter your name. Checkmate records it with the tests.");
     const attached = [];
     try {
@@ -42369,7 +42586,7 @@ data: ${matched.join(",") || "*"}
   function stopRun(request2, form, explorationId, explorer) {
     const back = `/explorations/${explorationId}`;
     const { actor, cookies } = actorFrom(request2, form);
-    const refuse5 = (message) => actionRefusal(request2, back, message);
+    const refuse5 = (message2) => actionRefusal(request2, back, message2);
     if (!actor) return refuse5("Enter your name. Checkmate records it with the stop.");
     try {
       recordStop(store, actor, {
@@ -42411,7 +42628,7 @@ data: ${matched.join(",") || "*"}
     const from = sameSiteFrom(form.get("from"));
     const returnTo = form.get("return") ? safeBack(form.get("return")) : null;
     const name2 = `${explorationId}/${requestId2}`;
-    const refuse5 = (message) => {
+    const refuse5 = (message2) => {
       const found = permissionOf(store, explorationId, requestId2);
       const page = found && !found.decision ? permissionPage(
         store,
@@ -42420,13 +42637,13 @@ data: ${matched.join(",") || "*"}
         requestId2,
         { from, history: false },
         {
-          error: String(message),
+          error: String(message2),
           reason: form.get("reason") ?? "",
           field: form.get("decision") === "deny" && !form.get("reason")?.trim() ? "reason" : null
         }
       ) : null;
       if (page) return render(request2, page);
-      actionRefusal(request2, returnTo ?? from ?? "/activity", message);
+      actionRefusal(request2, returnTo ?? from ?? "/activity", message2);
     };
     if (!actor) return refuse5("Enter your name. Checkmate records it with the answer.");
     try {
@@ -42468,7 +42685,7 @@ data: ${matched.join(",") || "*"}
   function permitMany(request2, form) {
     const { actor, cookies } = actorFrom(request2, form);
     const back = safeBack(form.get("return"));
-    const refuse5 = (message) => actionRefusal(request2, back, message);
+    const refuse5 = (message2) => actionRefusal(request2, back, message2);
     const decision = form.get("decision");
     const reason = form.get("reason")?.trim() ?? "";
     const named = form.getAll("pick").map((pick) => /^permission:[^:]+:(.+)\/(P[1-9][0-9]{0,8})$/.exec(pick));
@@ -42572,10 +42789,10 @@ data: ${matched.join(",") || "*"}
     };
     const { actor, cookies } = actorFrom(request2, form);
     const back = path ? planDestination(id2) : id2 ? `/chats/${id2}` : safeBack(returned ?? "/chats");
-    const refuse5 = (message2) => actionRefusal(request2, back, message2);
+    const refuse5 = (message3) => actionRefusal(request2, back, message3);
     if (!actor) return refuse5("Enter your name to send a message.");
-    const message = form.get("text")?.trim() ?? "";
-    if (!message) return refuse5("Write a message first.");
+    const message2 = form.get("text")?.trim() ?? "";
+    if (!message2) return refuse5("Write a message first.");
     const picked = form.get("harness");
     if (picked !== null && picked !== "pi" && picked !== "claude") return refuse5("Choose a coding harness.");
     const fromFind = request2.url.pathname === "/requests";
@@ -42598,7 +42815,7 @@ data: ${matched.join(",") || "*"}
       const catalog2 = await catalogFor(harness, model === "").catch(() => void 0);
       const choices2 = { harness, model, effort, catalog: catalog2 };
       const scope = planId ? { planId, planRevision: planRevision2, record: null, planChat: true } : void 0;
-      const turn2 = chatId2 ? requester.followChat(actor, chatId2, message, choices2, scope) : requester.startChat(actor, message, scope ?? screenContext(store, screen, true), choices2);
+      const turn2 = chatId2 ? requester.followChat(actor, chatId2, message2, choices2, scope) : requester.startChat(actor, message2, scope ?? screenContext(store, screen, true), choices2);
       const conversation = requestOf(store, turn2).conversation;
       redirect(request2.res, path ? planDestination(conversation) : `/chats/${conversation}`, cookies);
     } catch (error) {
@@ -42621,7 +42838,7 @@ data: ${matched.join(",") || "*"}
     }
     const { actor, cookies } = actorFrom(request2, form);
     const back = safeBack(form.get("return") ?? "/requests");
-    const refuse5 = (message) => actionRefusal(request2, back, message);
+    const refuse5 = (message2) => actionRefusal(request2, back, message2);
     if (!actor) return refuse5("Enter your name to send a message.");
     const text2 = form.get("text")?.trim() ?? "";
     if (!text2) return refuse5("Write a message first.");
@@ -42883,7 +43100,7 @@ data: ${matched.join(",") || "*"}
   async function setUp(request2, form) {
     const back = "/setup";
     const { actor, cookies } = actorFrom(request2, form);
-    const refuse5 = (message, field4 = "") => actionRefusal(request2, back, message, field4);
+    const refuse5 = (message2, field4 = "") => actionRefusal(request2, back, message2, field4);
     const typedUrl = (form.get("url") ?? "").trim();
     const others = otherEntryValues(form);
     if (!actor) return refuse5("Enter your name. Checkmate records it with the target.");
@@ -42949,7 +43166,7 @@ data: ${matched.join(",") || "*"}
   function startChange(request2, form) {
     const back = "/new";
     const { actor, cookies } = actorFrom(request2, form);
-    const refuse5 = (message, field4 = "") => actionRefusal(request2, back, message, field4);
+    const refuse5 = (message2, field4 = "") => actionRefusal(request2, back, message2, field4);
     const text2 = form.get("text") ?? "";
     const typedFile = form.get("file")?.trim() ?? "";
     const planId = form.get("plan")?.trim() ?? "";
@@ -43009,13 +43226,13 @@ data: ${matched.join(",") || "*"}
         true
       );
     } catch (error) {
-      const message = engineText(error);
-      return refuse5(message, /tool rules/.test(message) ? "rules" : "");
+      const message2 = engineText(error);
+      return refuse5(message2, /tool rules/.test(message2) ? "rules" : "");
     }
     const kept = text2.trim() ? `.checkmate/sources/${planId}.md` : "";
     try {
       if (kept) {
-        mkdirSync8(resolve7(store.workspace, ".checkmate", "sources"), { recursive: true });
+        mkdirSync9(resolve7(store.workspace, ".checkmate", "sources"), { recursive: true });
         writeFileSync4(resolve7(store.workspace, kept), text2.endsWith("\n") ? text2 : `${text2}
 `);
       }
@@ -43145,7 +43362,7 @@ data: ${matched.join(",") || "*"}
     const { actor, cookies } = actorFrom(request2, form);
     const planId = runDetail(store, runId).planId;
     const sha = form.get("sha") ?? "";
-    const page = (message) => () => runPage(store, context(request2), runId, void 0, null, { gapId, message });
+    const page = (message2) => () => runPage(store, context(request2), runId, void 0, null, { gapId, message: message2 });
     if (!actor) return refuse4(request2, page("Enter your name. Checkmate records it with the change."), cookies);
     const latest = planDetail(store, planId);
     let adopted;
@@ -43157,9 +43374,9 @@ data: ${matched.join(",") || "*"}
         expectSha256: sha
       });
     } catch (error) {
-      const message = latest.sha256 === sha ? plainMessage(error) : html2`<strong>${planId} changed after you opened this page.</strong> ${gapId} was not brought into
+      const message2 = latest.sha256 === sha ? plainMessage(error) : html2`<strong>${planId} changed after you opened this page.</strong> ${gapId} was not brought into
 							the plan. Review the plan, then send again.`;
-      return refuse4(request2, page(message), cookies);
+      return refuse4(request2, page(message2), cookies);
     }
     redirect(request2.res, `/runs/${runId}?item=${encodeURIComponent(`gap:${gapId}`)}`, [
       ...cookies,
@@ -43442,10 +43659,10 @@ data: ${matched.join(",") || "*"}
       if (req.method === "POST") return await post(request2);
       send(res, 405, "text/plain; charset=utf-8", "Method not allowed.", { Allow: "GET, POST" });
     } catch (error) {
-      const message = plainMessage(error);
+      const message2 = plainMessage(error);
       if (res.headersSent) return res.end();
-      if (notFoundError(message)) return errorPage(request2, 404, "Not found", message);
-      errorPage(request2, 500, "Something went wrong", `Checkmate could not finish the request: ${message}`);
+      if (notFoundError(message2)) return errorPage(request2, 404, "Not found", message2);
+      errorPage(request2, 500, "Something went wrong", `Checkmate could not finish the request: ${message2}`);
     }
   }
   const server = createServer((req, res) => {
@@ -43495,8 +43712,8 @@ data: ${matched.join(",") || "*"}
 }
 
 // plugin/src/agents.ts
-import { existsSync as existsSync11, mkdirSync as mkdirSync9, readFileSync as readFileSync13, rmSync as rmSync8, writeFileSync as writeFileSync5 } from "node:fs";
-import { dirname as dirname2, join as join19 } from "node:path";
+import { existsSync as existsSync11, mkdirSync as mkdirSync10, readFileSync as readFileSync13, rmSync as rmSync8, writeFileSync as writeFileSync5 } from "node:fs";
+import { dirname as dirname2, join as join20 } from "node:path";
 var testerAgent = "checkmate:tester";
 var clerkAgent = "checkmate:clerk";
 var doneSteps = ["study", "test", "record", "follow", "rules", "merge", "verify"];
@@ -43606,12 +43823,13 @@ ${followEntriesText(answer2)}`,
     {
       study: launch.studySeconds,
       test: launch.testSeconds
-    }
+    },
+    false
   );
   if (due === "test") return action2("test", "task-test.md", brief.test);
   const shell3 = shellInstructions({
     session,
-    workFolder: join19(store.workspace, folder)
+    workFolder: join20(store.workspace, folder)
   });
   return action2(
     "study",
@@ -43712,8 +43930,8 @@ function lineOf(explorationId, action2) {
   return `${action2.action} ${action2.name} ${action2.step} agent=${action2.to}${description} prompt="${promptOf2(action2)}"`;
 }
 function writeFile(store, path, text2) {
-  const full = join19(store.workspace, path);
-  mkdirSync9(dirname2(full), { recursive: true });
+  const full = join20(store.workspace, path);
+  mkdirSync10(dirname2(full), { recursive: true });
   writeFileSync5(full, text2.endsWith("\n") ? text2 : `${text2}
 `);
 }
@@ -43731,7 +43949,7 @@ function answerNext(store, actor, explorationId, actions, word) {
 ${replyLimit}
 End your reply with this line: ${replyLineOf(action2.name, action2.step)}`
         );
-        if (action2.answer) rmSync8(join19(store.workspace, action2.answer), { force: true });
+        if (action2.answer) rmSync8(join20(store.workspace, action2.answer), { force: true });
         addEvent(
           store,
           explorationId,
@@ -43948,7 +44166,7 @@ function nextActions(store, actor, explorationId) {
 }
 function readText2(store, path) {
   try {
-    return readFileSync13(join19(store.workspace, path), "utf8");
+    return readFileSync13(join20(store.workspace, path), "utf8");
   } catch {
     return void 0;
   }
@@ -44121,7 +44339,7 @@ function stepDone(store, actor, input) {
   );
   const artifact = step === "test" ? "report.md" : step === "follow" ? "follow-up-report.md" : void 0;
   requireCondition(
-    !(failed2 && tester && artifact && existsSync11(join19(store.workspace, workFolder(explorationId, name2), artifact))),
+    !(failed2 && tester && artifact && existsSync11(join20(store.workspace, workFolder(explorationId, name2), artifact))),
     `The tester saved ${artifact}. A completed test with a product defect is not an agent failure.`,
     "Record the completed step without failure. Checkmate records product defects from the tester report."
   );
@@ -44305,21 +44523,21 @@ function specHandoff(store, actor, input) {
 }
 
 // plugin/src/cli.ts
-import { mkdirSync as mkdirSync10, readFileSync as readFileSync15, writeFileSync as writeFileSync6 } from "node:fs";
-import { dirname as dirname4, join as join21, resolve as resolve9 } from "node:path";
+import { mkdirSync as mkdirSync11, readFileSync as readFileSync15, writeFileSync as writeFileSync6 } from "node:fs";
+import { dirname as dirname4, join as join22, resolve as resolve9 } from "node:path";
 import { constants as constants2 } from "node:sqlite";
 
 // plugin/src/build.ts
 import { createHash as createHash2 } from "node:crypto";
 import { existsSync as existsSync12, readdirSync as readdirSync4, readFileSync as readFileSync14, realpathSync as realpathSync8, statSync as statSync6 } from "node:fs";
 import { homedir as homedir3 } from "node:os";
-import { dirname as dirname3, isAbsolute as isAbsolute4, join as join20, resolve as resolve8, sep as sep4 } from "node:path";
+import { dirname as dirname3, isAbsolute as isAbsolute4, join as join21, resolve as resolve8, sep as sep4 } from "node:path";
 import { fileURLToPath as fileURLToPath3 } from "node:url";
 var instructionFolders = ["agents", "contracts", "pi", "recipes", "references", "skills"];
 function filesUnder(folder) {
   if (!existsSync12(folder)) return [];
   return readdirSync4(folder).sort().flatMap((name2) => {
-    const path = join20(folder, name2);
+    const path = join21(folder, name2);
     return statSync6(path).isDirectory() ? filesUnder(path) : [path];
   });
 }
@@ -44327,7 +44545,7 @@ function buildDigest(bundle) {
   const root = dirname3(dirname3(bundle));
   const hash = createHash2("sha256").update(readFileSync14(bundle));
   for (const folder of instructionFolders) {
-    for (const path of filesUnder(join20(root, folder))) {
+    for (const path of filesUnder(join21(root, folder))) {
       hash.update(path.slice(root.length)).update(readFileSync14(path));
     }
   }
@@ -44350,10 +44568,10 @@ function versionLines(version3, bundle, env) {
   return [...lines2, ...piCopyWarnings(bundle, env, process.cwd())];
 }
 function piDeclarations(env, cwd) {
-  const agentDirectory = env.PI_CODING_AGENT_DIR?.trim() || join20(homedir3(), ".pi", "agent");
+  const agentDirectory = env.PI_CODING_AGENT_DIR?.trim() || join21(homedir3(), ".pi", "agent");
   const files2 = [
-    ["global", join20(agentDirectory, "settings.json")],
-    ["project", join20(cwd, ".pi", "settings.json")]
+    ["global", join21(agentDirectory, "settings.json")],
+    ["project", join21(cwd, ".pi", "settings.json")]
   ];
   return files2.flatMap(([scope, file]) => {
     if (!existsSync12(file)) return [];
@@ -44369,7 +44587,7 @@ function piDeclarations(env, cwd) {
 }
 function packageRootOf(file) {
   let folder = dirname3(file);
-  while (!existsSync12(join20(folder, "package.json")) && dirname3(folder) !== folder) folder = dirname3(folder);
+  while (!existsSync12(join21(folder, "package.json")) && dirname3(folder) !== folder) folder = dirname3(folder);
   return folder;
 }
 function piCopyWarnings(bundle, env, cwd) {
@@ -46684,7 +46902,7 @@ function legacyLine(checks, planId) {
 }
 function writeOutput(store, out, content) {
   const path = resolve9(store.workspace, out);
-  mkdirSync10(dirname4(path), { recursive: true });
+  mkdirSync11(dirname4(path), { recursive: true });
   try {
     writeFileSync6(path, content, { flag: "wx" });
   } catch (error) {
@@ -46770,7 +46988,7 @@ function parse(name2, tokens) {
     ...command.flags,
     ...command.write ? { actor: "value" } : {}
   };
-  const wrong = (message) => new Refusal("malformed", message, usage(name2));
+  const wrong = (message2) => new Refusal("malformed", message2, usage(name2));
   const args = {};
   const positionals = [];
   for (let i = 0; i < tokens.length; i++) {
@@ -46866,7 +47084,7 @@ function commandHelp(argv) {
   return { ...refused("invalid_request", "checkmate", unknownCommand(words5)), data: { usage: [] } };
 }
 function version() {
-  const manifest = JSON.parse(readFileSync15(join21(pluginRoot, ".claude-plugin", "plugin.json"), "utf8"));
+  const manifest = JSON.parse(readFileSync15(join22(pluginRoot, ".claude-plugin", "plugin.json"), "utf8"));
   return versionLines(manifest.version, import.meta.url, process.env).join("\n");
 }
 function readJson2(text2) {
@@ -47053,7 +47271,7 @@ async function main(argv) {
 
 // plugin/src/action-tools.ts
 import { readFileSync as readFileSync16 } from "node:fs";
-import { join as join22 } from "node:path";
+import { join as join23 } from "node:path";
 var readActions = [
   "list_targets",
   "show_target",
@@ -47094,7 +47312,7 @@ function schemaFiles() {
   return (name2) => {
     const cached = files2.get(name2);
     if (cached) return cached;
-    const parsed = JSON.parse(readFileSync16(join22(pluginRoot, "contracts", name2), "utf8"));
+    const parsed = JSON.parse(readFileSync16(join23(pluginRoot, "contracts", name2), "utf8"));
     files2.set(name2, parsed);
     return parsed;
   };
@@ -47233,9 +47451,9 @@ async function callActionTool(tool, input, workspace2, env) {
 }
 
 // cli/src/launcher.ts
-import { spawn as spawn5 } from "node:child_process";
+import { spawn as spawn6 } from "node:child_process";
 import { readFileSync as readFileSync17 } from "node:fs";
-import { join as join23, resolve as resolve10 } from "node:path";
+import { join as join24, resolve as resolve10 } from "node:path";
 var stages = ["setup", "plan", "revise", "execute"];
 var defaultTimeoutSeconds = 300;
 var minimumRules = ["Read", "Bash"];
@@ -47261,11 +47479,11 @@ function defaultPluginRoot() {
 }
 var unverifiedReason = "The worker may have written already. Read `checkmate status` or `checkmate log` before you run delegate again.";
 var usageWarning = "Checkmate could not record the delegated worker attempt.";
-function refuse2(message, kind = "prohibited") {
-  throw new Refusal(kind, message);
+function refuse2(message2, kind = "prohibited") {
+  throw new Refusal(kind, message2);
 }
-function excerpt2(message) {
-  const line = typeof message === "string" ? message.trim().split("\n")[0].slice(0, 200) : "";
+function excerpt2(message2) {
+  const line = typeof message2 === "string" ? message2.trim().split("\n")[0].slice(0, 200) : "";
   return line ? `: ${line}` : "";
 }
 function parseClaudeEnvelope(output) {
@@ -47306,8 +47524,8 @@ function readClaudeResponse(envelope) {
 }
 var InvalidPiResponse = class extends Error {
   reportedSubject;
-  constructor(message, response) {
-    super(message);
+  constructor(message2, response) {
+    super(message2);
     if (response && typeof response === "object" && "subject" in response && typeof response.subject === "string")
       this.reportedSubject = response.subject;
   }
@@ -47356,8 +47574,8 @@ function checkClaudeArgs2(claudeArgs2) {
     refuse2(`--claude-arg ${arg} is not permitted. ${instead}`, "malformed");
   }
 }
-function workerArgs(pluginRoot2, allowedTools, claudeArgs2 = [], role = "") {
-  const schema = readFileSync17(join23(pluginRoot2, "contracts", "response.schema.json"), "utf8");
+function workerArgs(pluginRoot2, allowedTools, claudeArgs2 = [], role = "", servers = []) {
+  const schema = readFileSync17(join24(pluginRoot2, "contracts", "response.schema.json"), "utf8");
   const args = [
     "-p",
     ...claudeArgs2,
@@ -47374,18 +47592,23 @@ function workerArgs(pluginRoot2, allowedTools, claudeArgs2 = [], role = "") {
   for (const rule of allowedTools) args.push("--allowedTools", rule);
   for (const name2 of childActionTools(role))
     args.push("--allowedTools", `mcp__plugin_checkmate_actions__checkmate_${name2}`);
-  return args;
+  return [...args, ...claudeServerArgs(servers)];
 }
-function piWorkerArgs(pluginRoot2, role, env, model) {
-  const tools = ["read", "bash", ...childActionTools(role).map((name2) => `checkmate_${name2}`)];
+function piWorkerArgs(pluginRoot2, role, env, model, servers = []) {
+  const tools = [
+    "read",
+    "bash",
+    ...childActionTools(role).map((name2) => `checkmate_${name2}`),
+    ...servers.flatMap((server) => server.tools)
+  ];
   return piArgs(
     [
       "--no-extensions",
       "--no-session",
-      "--no-mcp",
+      ...servers.length ? ["--extension", "builtin:mcp", "--extension", piServerExtension(pluginRoot2)] : ["--no-mcp"],
       "--no-skills",
       "--extension",
-      join23(pluginRoot2, "pi", "checkmate-tools.mjs"),
+      join24(pluginRoot2, "pi", "checkmate-tools.mjs"),
       "--tools",
       tools.join(","),
       ...model.refused ? [] : effortArgs("pi", model.effort)
@@ -47448,7 +47671,7 @@ function launchWorker(executable, args, options3) {
   if (process.platform === "win32") refuse2("The launcher supports Linux and macOS process groups");
   const limit = childOutputLimit(options3.harness ?? "claude");
   return new Promise((resolvePromise) => {
-    const child = spawn5(executable, args, {
+    const child = spawn6(executable, args, {
       cwd: options3.cwd,
       env: options3.env ?? process.env,
       stdio: ["pipe", "pipe", "pipe"],
@@ -47505,8 +47728,8 @@ function launchWorker(executable, args, options3) {
         const stopped = failure !== void 0;
         if (code2 !== 0) failure ??= new Error(`Worker exited with code ${code2}${excerpt2(errors)}`);
         const envelope = parseClaudeEnvelope(stdout);
-        const refusal = code2 !== 0 && !stopped ? claudeModelRefusal(envelope) : void 0;
-        if (refusal) failure = new ModelRefused(refusal);
+        const refusal2 = code2 !== 0 && !stopped ? claudeModelRefusal(envelope) : void 0;
+        if (refusal2) failure = new ModelRefused(refusal2);
         const reported = claudeUsage(envelope);
         usage2 = stopped ? usageOf([reported, {}]) : reported;
         if (failure) return resolvePromise({ usage: usage2, failure });
@@ -47554,10 +47777,18 @@ function runProfile(store, run2) {
   return JSON.parse(row2.body);
 }
 function toolNames(profile) {
-  return profile.tools.filter((tool) => tool.kind === "cli").map((tool) => tool.name);
+  const kindOf = (name2) => recipes().find((recipe) => recipe.name === name2)?.kind ?? "cli";
+  const names = profile.tools.filter((tool) => tool.kind === kindOf(tool.name)).map((tool) => tool.name);
+  return testerTools(names, true);
+}
+function workerServers(workspace2, execution, pluginRoot2) {
+  const script = join24(pluginRoot2, "dist", "checkmate.js");
+  const { target_id, instance_id } = execution.run;
+  const entries = withStore(workspace2, (store) => findInstance(store, target_id, instance_id).entries);
+  return attachedServers(toolNames(execution.profile), sessionValues(workspace2, execution.run), script, entries);
 }
 function sessionValues(workspace2, run2) {
-  return { session: run2.tool_session, workFolder: join23(workspace2, ".checkmate", "tmp", run2.run_id) };
+  return { session: run2.tool_session, workFolder: join24(workspace2, ".checkmate", "tmp", run2.run_id) };
 }
 function dataLines(workspace2, profile, runId, marker, facts3) {
   return dataRules(workspace2, profile.reset, marker, facts3 ?? "").map(
@@ -47688,7 +47919,7 @@ var finalCommand = {
   execute: "run finish"
 };
 function nativePlanPrompt(stage, subject, pluginRoot2, rejected, observeRule) {
-  const skill = readFileSync17(join23(pluginRoot2, "skills", stage, "SKILL.md"), "utf8");
+  const skill = readFileSync17(join24(pluginRoot2, "skills", stage, "SKILL.md"), "utf8");
   const start = stage === "plan" ? "Read the plan request." : "Read the pending decisions.";
   return [
     `You are the independent Checkmate ${stage} worker for ${subject}. ${start} Follow the delegated path below. Do not ask the oracle, answer a question, run a reset, or perform tests.`,
@@ -47699,9 +47930,9 @@ function nativePlanPrompt(stage, subject, pluginRoot2, rejected, observeRule) {
   ].join("\n\n");
 }
 function prompt(stage, subject, workspace2, pluginRoot2, timeoutSeconds, harness, round = 1, rejected = [], observeRule = "") {
-  const skill = join23(pluginRoot2, "skills", stage, "SKILL.md");
-  const workflow = join23(pluginRoot2, "references", "workflow.md");
-  const cliPath = join23(pluginRoot2, "dist", "checkmate.js");
+  const skill = join24(pluginRoot2, "skills", stage, "SKILL.md");
+  const workflow = join24(pluginRoot2, "references", "workflow.md");
+  const cliPath = join24(pluginRoot2, "dist", "checkmate.js");
   const cliCommand = `cd '${workspace2.replaceAll("'", "'\\''")}' && node '${cliPath.replaceAll("'", "'\\''")}'`;
   const deadline = new Date(Date.now() + timeoutSeconds * 1e3).toISOString();
   const instructions = harness === "pi" ? [
@@ -47754,7 +47985,7 @@ function closeToolSession(workspace2, recipe, values) {
   const name2 = `${recipe.capability[0].toUpperCase()}${recipe.capability.slice(1)} session ${values.session}`;
   const args = recipe.closeSession.map((arg) => filled(arg, values));
   return new Promise((resolveClose) => {
-    const child = spawn5(recipe.name, args, { cwd: workspace2, stdio: "ignore", timeout: 5e3 });
+    const child = spawn6(recipe.name, args, { cwd: workspace2, stdio: "ignore", timeout: 5e3 });
     child.on("error", () => resolveClose(`${name2} was not closed: the command is unavailable.`));
     child.on("close", (code2) => resolveClose(code2 === 0 ? null : `${name2} was not closed: exit code ${code2}.`));
   });
@@ -47781,7 +48012,8 @@ function recordAttempt(store, stage, subject, harness, response, usage2, executi
           data: {
             operation: response.operation,
             ...usage2,
-            ...response.modelFallback ? { modelFallback: response.modelFallback } : {}
+            ...response.modelFallback ? { modelFallback: response.modelFallback } : {},
+            ...execution ? { tools: toolNames(execution.profile) } : {}
           }
         },
         subjects: [`${kind}:${subject}`, ...execution ? [`plan:${execution.run.plan_id}`] : []]
@@ -47821,7 +48053,12 @@ function testView(store, runId, testId) {
   };
 }
 function toolStatus(request2, profile) {
-  return planTools(request2, profile).map(({ name: name2, kind }) => {
+  const chosen = toolNames(profile);
+  const unused = recipesFor(profile.tools.map((tool) => tool.name)).filter((recipe) => !chosen.includes(recipe.name));
+  const tools = planTools(request2, profile).filter(({ name: name2 }) => !unused.some((recipe) => recipe.name === name2));
+  return tools.map(({ name: name2, kind }) => {
+    const recipe = recipesFor([name2]).find((item) => item.kind === "mcp" && item.kind === kind);
+    if (recipe) return `${name2} (mcp, Checkmate attached its server; call only ${recipe.tools.join(", ")})`;
     if (kind !== "cli") return `${name2} (${kind})`;
     return `${name2} (${kind}, ${executableOnPath(name2, process.env) ? "on PATH" : "not on PATH"})`;
   });
@@ -47834,7 +48071,7 @@ function contextLines(execution, workspace2, tools) {
     ...sources.length ? [
       `Source files: ${sources.map((source) => resolve10(workspace2, source)).join(", ")}. Read them with the read tool. Do not search the file system: do not use rg, grep, or find.`
     ] : [],
-    `Tools: ${tools.join(", ")}. Use Bash for CLI tools. A tool marked "not on PATH" is missing: close the test as error.`,
+    `Tools: ${tools.join(", ")}. Use Bash for CLI tools. A tool marked "not on PATH" is missing: close the test as error. A tool with an attached server whose tools you do not have is missing too.`,
     ...recipesFor(toolNames(profile)).flatMap(
       (recipe) => recipe.delegatedInstruction ? [filled(recipe.delegatedInstruction, values)] : []
     )
@@ -47842,7 +48079,7 @@ function contextLines(execution, workspace2, tools) {
 }
 function probePrompt(execution, workspace2, actor, pluginRoot2) {
   const { run: run2 } = execution;
-  const cli = `cd '${workspace2.replaceAll("'", "'\\''")}' && node '${join23(pluginRoot2, "dist", "checkmate.js").replaceAll("'", "'\\''")}'`;
+  const cli = `cd '${workspace2.replaceAll("'", "'\\''")}' && node '${join24(pluginRoot2, "dist", "checkmate.js").replaceAll("'", "'\\''")}'`;
   const runId = run2.run_id;
   return [
     "This is a delegated Checkmate exploration probe. The selected tests are done. Probe for defects that the plan does not check. Do not record passed or failed results. Do not close tests. Do not run run gate, run begin, or run finish.",
@@ -47869,7 +48106,7 @@ function requestLines(test, text2) {
 }
 function testPrompt(execution, workspace2, test, actor, pluginRoot2, rejections) {
   const { run: run2, profile, planRequest: planning } = execution;
-  const cli = `cd '${workspace2.replaceAll("'", "'\\''")}' && node '${join23(pluginRoot2, "dist", "checkmate.js").replaceAll("'", "'\\''")}'`;
+  const cli = `cd '${workspace2.replaceAll("'", "'\\''")}' && node '${join24(pluginRoot2, "dist", "checkmate.js").replaceAll("'", "'\\''")}'`;
   const runId = run2.run_id;
   const tools = toolStatus(planning, profile);
   const marker = JSON.parse(run2.request).marker ?? `qa-${runId}`;
@@ -47951,11 +48188,13 @@ async function runChild(workspace2, options3, execution, harness, env, model, pr
   const executable = harness === "pi" ? options3.pi ?? "pi" : options3.claude ?? "claude";
   const workerActor = `${harness}:execute`;
   const role = testId ? "execute" : "probe";
-  const args = () => harness === "pi" ? resolvePiModelArgs(executable, piWorkerArgs(pluginRoot2, role, env, model), workspace2, env) : workerArgs(
+  const servers = workerServers(workspace2, execution, pluginRoot2);
+  const args = () => harness === "pi" ? resolvePiModelArgs(executable, piWorkerArgs(pluginRoot2, role, env, model, servers), workspace2, env) : workerArgs(
     pluginRoot2,
     options3.allowedTools,
     [...options3.claudeArgs ?? [], ...claudeModelArgs(model)],
-    role
+    role,
+    servers
   );
   const beforeDeadline = Math.max(1, remaining - 30);
   const requested = options3.timeoutSeconds ?? testSeconds;
@@ -47977,7 +48216,8 @@ async function runChild(workspace2, options3, execution, harness, env, model, pr
           CHECKMATE_TOOL_SUBJECT: execution.run.run_id,
           CHECKMATE_TOOL_TEST: testId,
           CHECKMATE_MARKER: JSON.parse(execution.run.request).marker ?? "",
-          ...testerEnvironment(sessionValues(workspace2, execution.run))
+          ...testerEnvironment(sessionValues(workspace2, execution.run)),
+          ...harness === "pi" ? piServerEnv(servers) : {}
         }
       })
     );
@@ -48270,7 +48510,7 @@ async function delegate(workspace2, stage, subject, options3) {
   if (reportedSubject && !subjectMatches(reportedSubject, subject))
     failure = new Error(`Worker response names ${reportedSubject}, not ${subject}`);
   const extra = attempts > 1 ? [`Planning ran ${attempts} times: an earlier draft had too few tests and was not saved as the plan.`] : [];
-  const receipt = (verified, refusal) => {
+  const receipt = (verified, refusal2) => {
     if (verified && (!failure || failure instanceof InvalidPiResponse))
       return {
         status: verified.reply.status,
@@ -48285,7 +48525,7 @@ async function delegate(workspace2, stage, subject, options3) {
       return {
         status,
         subject,
-        reasons: [failure.message, ...refusal && !verified ? [refusal] : [], ...verified ? [] : extra],
+        reasons: [failure.message, ...refusal2 && !verified ? [refusal2] : [], ...verified ? [] : extra],
         operation: null
       };
     }
@@ -48301,9 +48541,9 @@ async function delegate(workspace2, stage, subject, options3) {
   };
   try {
     return withStore(workspace2, (store) => {
-      const refusal = lastRefusal(store, stage, after, workerActor);
+      const refusal2 = lastRefusal(store, stage, after, workerActor);
       const response = withFallback(
-        receipt(verify(store, stage, subject, after, workerActor), refusal),
+        receipt(verify(store, stage, subject, after, workerActor), refusal2),
         model,
         usage2
       );
@@ -48508,20 +48748,20 @@ ${source.text}`)
 }
 
 // cli/src/main.ts
-import { existsSync as existsSync13, mkdirSync as mkdirSync11, openSync as openSync2, readFileSync as readFileSync18, rmSync as rmSync9, writeFileSync as writeFileSync7 } from "node:fs";
-import { spawn as spawn6, spawnSync as spawnSync9 } from "node:child_process";
-import { join as join24 } from "node:path";
+import { existsSync as existsSync13, mkdirSync as mkdirSync12, openSync as openSync2, readFileSync as readFileSync18, rmSync as rmSync9, writeFileSync as writeFileSync7 } from "node:fs";
+import { spawn as spawn7, spawnSync as spawnSync9 } from "node:child_process";
+import { join as join25 } from "node:path";
 import { fileURLToPath as fileURLToPath4 } from "node:url";
 
 // plugin/src/action-mcp.ts
-import { createInterface as createInterface3 } from "node:readline";
+import { createInterface as createInterface4 } from "node:readline";
 import { resolve as resolve12 } from "node:path";
 var protocols = ["2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25"];
 async function serveActions() {
   const env = { ...process.env, CHECKMATE_HARNESS: "claude", CHECKMATE_HOST_SESSION: "1" };
   const workspace2 = resolve12(process.env.CLAUDE_PROJECT_DIR ?? process.cwd());
   const tools = actionToolDefinitions(env);
-  const lines2 = createInterface3({ input: process.stdin, crlfDelay: Infinity });
+  const lines2 = createInterface4({ input: process.stdin, crlfDelay: Infinity });
   function send2(id2, body) {
     process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: id2, ...body }) + "\n");
   }
@@ -48576,7 +48816,7 @@ var delegateUsage = "checkmate delegate <setup|plan|revise|execute> <targetId|pl
 var delegateSpecUsage = "checkmate delegate spec <planId@revision> [--timeout <seconds>]";
 var delegateHarnessUsage = "With Pi, omit --allow and --claude-arg. Claude requires --allow <rule> and accepts --claude-arg <arg>. CHECKMATE_HARNESS overrides the workspace harness. The default is Claude. delegate spec uses no tools and needs no --allow.";
 function version2() {
-  const manifest = join24(pluginRoot, ".claude-plugin", "plugin.json");
+  const manifest = join25(pluginRoot, ".claude-plugin", "plugin.json");
   return versionLines(
     JSON.parse(readFileSync18(manifest, "utf8")).version,
     import.meta.url,
@@ -48680,7 +48920,7 @@ function parseDelegate(tokens) {
   return parsed;
 }
 function resultFile(workspace2, stage, subject) {
-  return join24(workspace2, ".checkmate", "tmp", `delegate-${stage}-${subject}.json`);
+  return join25(workspace2, ".checkmate", "tmp", `delegate-${stage}-${subject}.json`);
 }
 function detachDelegate(tokens) {
   const rest = tokens.filter((token) => token !== "--detach");
@@ -48695,11 +48935,11 @@ function detachDelegate(tokens) {
       tokens.includes("--json")
     );
   const file = resultFile(workspace2, stage, subject);
-  mkdirSync11(join24(workspace2, ".checkmate", "tmp"), { recursive: true });
+  mkdirSync12(join25(workspace2, ".checkmate", "tmp"), { recursive: true });
   rmSync9(file, { force: true });
   const quote = (text2) => `'${text2.replaceAll("'", "'\\''")}'`;
   const command = [process.execPath, fileURLToPath4(import.meta.url), "delegate", ...rest, "--json"].map(quote).join(" ");
-  const child = spawn6(
+  const child = spawn7(
     "/bin/sh",
     ["-c", `${command} > ${quote(file + ".tmp")}; mv ${quote(file + ".tmp")} ${quote(file)}`],
     {
@@ -48831,6 +49071,7 @@ async function runDelegate(tokens) {
 if (import.meta.main) {
   const argv = process.argv.slice(2);
   if (argv[0] === "mcp" && argv.length === 1) await serveActions();
+  else if (argv[0] === "tool-server" && argv.length >= 4) serveToolServer(argv[1], argv[2], argv[3], argv.slice(4));
   else if (argv[0] === "--version") process.stdout.write(version2() + "\n");
   else if (!argv.length || argv[0] === "--help" || argv[0] === "--json" && argv[1] === "--help")
     process.stdout.write(help2(argv.includes("--json")) + "\n");

@@ -345,7 +345,7 @@
 						]
 					},
 					"kind": {
-						"enum": ["observation", "http_exchange", "screenshot", "trace", "view_hierarchy", "recording"]
+						"enum": ["observation", "screenshot", "view_hierarchy", "recording", "http_exchange", "trace"]
 					},
 					"name": {
 						"type": "string",

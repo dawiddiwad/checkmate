@@ -1,5 +1,5 @@
 // Writes the observeFrom values and the evidence kinds of the contracts from the tool recipes.
-// The models read these enums as the allowed values, so they list every value that a recipe or the compatible list gives.
+// The enums list the recipe values and the built-in observation kind.
 // A plan or a run is then checked against the recipes of its target's tools.
 import { readFile, writeFile } from 'node:fs/promises'
 import assert from 'node:assert/strict'

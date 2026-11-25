@@ -519,7 +519,6 @@ function plannedTarget(store: Store, text: string) {
 
 type EvidenceFile = { path: string | null; name: string; kind: string; mediaType: string; bytes: Buffer }
 
-// The evidence kinds of a run: the kinds of the recipes of its target's tools, and the compatible kinds.
 function evidenceKinds(store: Store, runId: string) {
 	const run = one<RunRow>(store, 'SELECT * FROM runs WHERE run_id = ?', runId)!
 	const profile = targetRevision(store, run.target_id, run.target_revision).profile
@@ -532,7 +531,7 @@ function requireEvidenceKind(kind: string, allowed: ReturnType<typeof evidenceKi
 		requireWellFormed(
 			false,
 			`Evidence kind ${kind} is not given by a tool of target ${allowed.targetId} (${givenBy(kind)}). Allowed kinds: ${choiceText(allowed.choices)}.`,
-			'Give an allowed kind, or leave the kind out to record an observation.'
+			'Give an allowed kind. For an observation, use observation or leave the kind out for inline text.'
 		)
 	return kind
 }

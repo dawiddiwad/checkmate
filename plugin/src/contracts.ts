@@ -521,7 +521,17 @@ export function planCheck(value: unknown): Plan {
 
 export function planTargetCheck(plan: Plan, profile: Profile) {
 	const observeFrom = observeFromChoices(profile.tools.map((tool) => tool.name))
-	for (const test of plan.tests.filter((test) => test.readiness === 'ready')) {
+	for (const test of plan.tests) {
+		for (const { id, observeFrom: value } of test.assertions)
+			if (value !== undefined && !observeFrom.some((choice) => choice.value === value))
+				requireWellFormed(
+					false,
+					`Test ${test.id} assertion ${id} observes from ${value}, which no tool of target ${profile.targetId} gives (${givenBy(value)}). Allowed values: ${choiceText(observeFrom)}.`,
+					observeFrom.length
+						? `Use an allowed value, omit observeFrom, or add the tool that gives ${value} to the target.`
+						: `Omit observeFrom or add the tool that gives ${value} to the target.`
+				)
+		if (test.readiness !== 'ready') continue
 		requireCondition(
 			profile.capabilities.includes(test.capability),
 			`Test ${test.id} needs capability ${test.capability}, which the target lacks. Record a planning gap.`
@@ -531,13 +541,6 @@ export function planTargetCheck(plan: Plan, profile: Profile) {
 				operationAllowed(profile, operation),
 				`Test ${test.id} uses operation ${operation}, which the target does not permit`
 			)
-		for (const { id, observeFrom: value } of test.assertions)
-			if (value !== undefined && !observeFrom.some((choice) => choice.value === value))
-				requireWellFormed(
-					false,
-					`Test ${test.id} assertion ${id} observes from ${value}, which no tool of target ${profile.targetId} gives (${givenBy(value)}). Allowed values: ${choiceText(observeFrom)}.`,
-					`Use an allowed value, add the tool that gives ${value} to the target, or record a planning gap.`
-				)
 	}
 }
 

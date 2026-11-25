@@ -90,7 +90,7 @@ export type Actions = {
 					observe?: string
 					expected?: string
 					request?: string
-					observeFrom?: 'page' | 'reload' | 'api' | 'screen' | 'relaunch'
+					observeFrom?: 'screen' | 'relaunch' | 'api' | 'page' | 'reload'
 				}>
 				metadata?: Record<string, string | number | boolean>
 			}>
@@ -137,7 +137,7 @@ export type Actions = {
 							observe?: string
 							expected?: string
 							request?: string
-							observeFrom?: 'page' | 'reload' | 'api' | 'screen' | 'relaunch'
+							observeFrom?: 'screen' | 'relaunch' | 'api' | 'page' | 'reload'
 						} | null
 					>
 					metadata?: Record<string, string | number | boolean>
@@ -178,7 +178,7 @@ export type Actions = {
 					observe?: string
 					expected?: string
 					request?: string
-					observeFrom?: 'page' | 'reload' | 'api' | 'screen' | 'relaunch'
+					observeFrom?: 'screen' | 'relaunch' | 'api' | 'page' | 'reload'
 				}>
 				metadata?: Record<string, string | number | boolean>
 			}>
@@ -227,7 +227,7 @@ export type Actions = {
 						observe?: string
 						expected?: string
 						request?: string
-						observeFrom?: 'page' | 'reload' | 'api' | 'screen' | 'relaunch'
+						observeFrom?: 'screen' | 'relaunch' | 'api' | 'page' | 'reload'
 					}>
 				}
 			>
@@ -311,11 +311,11 @@ export type Actions = {
 		evidence?: Array<
 			| {
 					text: string
-					kind?: 'observation' | 'http_exchange' | 'screenshot' | 'trace' | 'view_hierarchy' | 'recording'
+					kind?: 'observation' | 'screenshot' | 'view_hierarchy' | 'recording' | 'http_exchange' | 'trace'
 			  }
 			| {
 					file: string
-					kind?: 'observation' | 'http_exchange' | 'screenshot' | 'trace' | 'view_hierarchy' | 'recording'
+					kind?: 'observation' | 'screenshot' | 'view_hierarchy' | 'recording' | 'http_exchange' | 'trace'
 			  }
 		>
 	}
@@ -328,11 +328,11 @@ export type Actions = {
 		evidence?: Array<
 			| {
 					text: string
-					kind?: 'observation' | 'http_exchange' | 'screenshot' | 'trace' | 'view_hierarchy' | 'recording'
+					kind?: 'observation' | 'screenshot' | 'view_hierarchy' | 'recording' | 'http_exchange' | 'trace'
 			  }
 			| {
 					file: string
-					kind?: 'observation' | 'http_exchange' | 'screenshot' | 'trace' | 'view_hierarchy' | 'recording'
+					kind?: 'observation' | 'screenshot' | 'view_hierarchy' | 'recording' | 'http_exchange' | 'trace'
 			  }
 		>
 	}
@@ -582,7 +582,7 @@ export type PlanCandidate = {
 			observe?: string
 			expected?: string
 			request?: string
-			observeFrom?: 'page' | 'reload' | 'api' | 'screen' | 'relaunch'
+			observeFrom?: 'screen' | 'relaunch' | 'api' | 'page' | 'reload'
 		}>
 		metadata?: Record<string, string | number | boolean>
 	}>
@@ -625,7 +625,7 @@ export type PlanDelta = {
 				observe?: string
 				expected?: string
 				request?: string
-				observeFrom?: 'page' | 'reload' | 'api' | 'screen' | 'relaunch'
+				observeFrom?: 'screen' | 'relaunch' | 'api' | 'page' | 'reload'
 			}>
 		}
 	>
@@ -667,7 +667,7 @@ export type PlanPatch = {
 					observe?: string
 					expected?: string
 					request?: string
-					observeFrom?: 'page' | 'reload' | 'api' | 'screen' | 'relaunch'
+					observeFrom?: 'screen' | 'relaunch' | 'api' | 'page' | 'reload'
 				} | null
 			>
 			metadata?: Record<string, string | number | boolean>
@@ -748,7 +748,7 @@ export type Plan = {
 			observe?: string
 			expected?: string
 			request?: string
-			observeFrom?: 'page' | 'reload' | 'api' | 'screen' | 'relaunch'
+			observeFrom?: 'screen' | 'relaunch' | 'api' | 'page' | 'reload'
 		}>
 		metadata?: Record<string, string | number | boolean>
 	}>
@@ -918,7 +918,7 @@ export type Result = {
 		id: string
 		testId: string
 		assertionId: string | null
-		kind: 'observation' | 'http_exchange' | 'screenshot' | 'trace' | 'view_hierarchy' | 'recording'
+		kind: 'observation' | 'screenshot' | 'view_hierarchy' | 'recording' | 'http_exchange' | 'trace'
 		name: string
 		mediaType: string
 		sha256: string

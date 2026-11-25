@@ -172,7 +172,6 @@ function evidence(args: Args, context: Context): EvidenceInput[] | undefined {
 	return specs?.map((spec) => {
 		const match = /^-(?::(.+))?$/.exec(spec)
 		if (match) return { text: context.text(), kind: match[1] }
-		// <path>:<kind> names a kind only when the kind is one that a recipe or the compatible list gives.
 		const colon = spec.lastIndexOf(':')
 		const kind = colon >= 0 ? spec.slice(colon + 1) : ''
 		return allEvidence().includes(kind) ? { file: spec.slice(0, colon), kind } : { file: spec }

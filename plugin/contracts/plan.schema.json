@@ -378,7 +378,7 @@
 					"pattern": "^(GET|POST|PUT|PATCH|DELETE) /"
 				},
 				"observeFrom": {
-					"enum": ["page", "reload", "api", "screen", "relaunch"]
+					"enum": ["screen", "relaunch", "api", "page", "reload"]
 				}
 			},
 			"required": ["id", "check", "checkKind"],

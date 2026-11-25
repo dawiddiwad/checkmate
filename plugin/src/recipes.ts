@@ -46,21 +46,6 @@ export type Recipe = {
 // "view" reads what the tool shows now; it does not show that a stored state changed. "state" reads the stored state.
 export type ObserveReading = 'view' | 'state'
 
-// The values that every target accepted up to 0.8.2, before tools had recipes. They stay accepted for all targets:
-// plans and results stored before recipes must stay valid, and a tester can use a host tool that no recipe describes.
-// Do not add to these lists. A new value comes only from a recipe.
-export const compatibleObserveFrom: Record<string, ObserveReading> = { page: 'view', reload: 'state', api: 'state' }
-export const compatibleEvidence = ['observation', 'http_exchange', 'screenshot', 'trace']
-export const compatibleExtensions: Record<string, string> = {
-	'.png': 'screenshot',
-	'.jpg': 'screenshot',
-	'.jpeg': 'screenshot',
-	'.webp': 'screenshot',
-	'.zip': 'trace',
-	'.trace': 'trace',
-}
-const compatibleSource = 'accepted for all targets'
-
 export type SessionValues = { session: string; workFolder: string }
 
 let loaded: Recipe[] | undefined
@@ -127,9 +112,7 @@ function readRecipe(folder: string, file: string): Recipe {
 			extensions === null ||
 			Array.isArray(extensions) ||
 			!Object.keys(extensions).every((extension) => /^\.[a-z0-9]{1,10}$/.test(extension)) ||
-			!Object.values(extensions).every(
-				(kind) => recipe.evidence?.includes(kind) || compatibleEvidence.includes(kind)
-			))
+			!Object.values(extensions).every((kind) => recipe.evidence?.includes(kind)))
 	)
 		refuse('evidenceExtensions must map each file extension, for example .mp4, to an evidence kind of the recipe.')
 	if (!isText(recipe.usage) || !existsSync(join(folder, recipe.usage)))
@@ -248,12 +231,7 @@ export function readRecipes(folder: string) {
 		.sort()
 		.map((file) => readRecipe(folder, file))
 	// One observeFrom value has one reading in every recipe, so a check reads the same in each target.
-	const readings = new Map(
-		Object.entries(compatibleObserveFrom).map(([value, reading]) => [
-			value,
-			{ reading, from: 'the values accepted for all targets' },
-		])
-	)
+	const readings = new Map<string, { reading: ObserveReading; from: string }>()
 	for (const recipe of found)
 		for (const [value, reading] of Object.entries(recipe.observeFrom)) {
 			const known = readings.get(value)
@@ -276,12 +254,7 @@ export function readRecipes(folder: string) {
 			entryPoints.set(entry.name, { entry: text, from: `recipe ${recipe.name}` })
 		}
 	// One file extension has one default evidence kind in every recipe.
-	const kinds = new Map(
-		Object.entries(compatibleExtensions).map(([extension, kind]) => [
-			extension,
-			{ kind, from: 'the kinds accepted for all targets' },
-		])
-	)
+	const kinds = new Map<string, { kind: string; from: string }>()
 	for (const recipe of found)
 		for (const [extension, kind] of Object.entries(recipe.evidenceExtensions ?? {})) {
 			const known = kinds.get(extension)
@@ -364,24 +337,21 @@ export function usageFiles(toolNames: string[]) {
 
 export type Choice = { value: string; from: string[] }
 
-// The values that a target accepts: the values of the recipes of its tools, and the compatible values.
-// Each value names where it comes from, so that a refusal can say it.
-function choices(toolNames: string[], compatible: string[], values: (recipe: Recipe) => string[]): Choice[] {
-	const found = new Map<string, string[]>(compatible.map((value) => [value, [compatibleSource]]))
+function choices(toolNames: string[], values: (recipe: Recipe) => string[]): Choice[] {
+	const found = new Map<string, string[]>()
 	for (const recipe of recipesFor(toolNames))
 		for (const value of values(recipe)) found.set(value, [...(found.get(value) ?? []), `recipe ${recipe.name}`])
 	return [...found].map(([value, from]) => ({ value, from }))
 }
 
 export function observeFromChoices(toolNames: string[]) {
-	return choices(toolNames, Object.keys(compatibleObserveFrom), (recipe) => Object.keys(recipe.observeFrom))
+	return choices(toolNames, (recipe) => Object.keys(recipe.observeFrom))
 }
 
 export function evidenceChoices(toolNames: string[]) {
-	return choices(toolNames, compatibleEvidence, (recipe) => recipe.evidence)
+	return [{ value: 'observation', from: ['built in'] }, ...choices(toolNames, (recipe) => recipe.evidence)]
 }
 
-// Every value that some recipe or the compatible list gives. The contracts list these values; npm run generate writes them.
 export function allObserveFrom() {
 	return observeFromChoices(recipes().map((recipe) => recipe.name)).map((choice) => choice.value)
 }
@@ -392,9 +362,6 @@ export function allEvidence() {
 
 export type ObserveValue = { value: string; reading: ObserveReading; tool: string }
 
-// The observeFrom values that the recipes of the named tools give, with their reading. Not the compatible list:
-// a planner is told only what the tools of its target give.
-// Each value once: two recipes of one capability, such as maestro and maestro-mcp, give the same values.
 export function observeFromValues(toolNames: string[]): ObserveValue[] {
 	const all = recipesFor(toolNames).flatMap((recipe) =>
 		Object.entries(recipe.observeFrom).map(([value, reading]) => ({ value, reading, tool: recipe.name }))
@@ -412,9 +379,9 @@ const readingText: Record<ObserveReading, string> = {
 // prompt uses around a value.
 export function observeFromRule(toolNames: string[], quote = '"') {
 	const q = (value: string) => `${quote}${value}${quote}`
-	const listed = observeFromValues(toolNames)
-		.map(({ value, reading }) => `${q(value)} (${reading}: ${readingText[reading]})`)
-		.join(', ')
+	const values = observeFromValues(toolNames)
+	if (!values.length) return `Omit ${q('observeFrom')}. The tools of this target give no values for it.`
+	const listed = values.map(({ value, reading }) => `${q(value)} (${reading}: ${readingText[reading]})`).join(', ')
 	return [
 		`An assertion on a state-changing action (add, apply, clear, delete, save) checks the source of truth: the stored state. What the tool shows now does not show that the state changed. Set ${q('observeFrom')} to one of the values of the tools of this target: ${listed}.`,
 		'Use a state value for a check of a state change. Use a view value only for a check that is not a state change. A state-changing test whose checks all use a view value is refused once and then saved as not ready.',
@@ -422,24 +389,22 @@ export function observeFromRule(toolNames: string[], quote = '"') {
 }
 
 export function observeReading(value: string): ObserveReading | undefined {
-	return compatibleObserveFrom[value] ?? recipes().find((recipe) => recipe.observeFrom[value])?.observeFrom[value]
+	return recipes().find((recipe) => Object.hasOwn(recipe.observeFrom, value))?.observeFrom[value]
 }
 
 // The recipes that give a value, for example "recipe maestro". A value can come from no recipe and no tool of a target.
 export function givenBy(value: string) {
 	const names = recipes()
-		.filter((recipe) => value in recipe.observeFrom || recipe.evidence.includes(value))
+		.filter((recipe) => Object.hasOwn(recipe.observeFrom, value) || recipe.evidence.includes(value))
 		.map((recipe) => `recipe ${recipe.name}`)
 	return names.length ? `${names.join(' and ')} ${names.length === 1 ? 'gives' : 'give'} it` : 'no recipe gives it'
 }
 
-// For example: page (accepted for all targets, recipe playwright-cli), api (accepted for all targets, recipe node).
 export function choiceText(found: Choice[]) {
-	return found.map((choice) => `${choice.value} (${choice.from.join(', ')})`).join(', ')
+	return found.map((choice) => `${choice.value} (${choice.from.join(', ')})`).join(', ') || 'none'
 }
 
-// The evidence kind of a file without a given kind: from the recipes of the target's tools, then the compatible list.
 export function evidenceKindOfFile(toolNames: string[], extension: string) {
 	const recipe = recipesFor(toolNames).find((recipe) => recipe.evidenceExtensions?.[extension])
-	return recipe?.evidenceExtensions?.[extension] ?? compatibleExtensions[extension]
+	return recipe?.evidenceExtensions?.[extension]
 }

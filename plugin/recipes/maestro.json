@@ -28,6 +28,7 @@
 	},
 	"evidence": ["screenshot", "view_hierarchy", "recording"],
 	"evidenceExtensions": {
+		".png": "screenshot",
 		".mp4": "recording"
 	},
 	"usage": "maestro.md"

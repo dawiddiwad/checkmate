@@ -410,12 +410,10 @@ function checkedEntry(
 		const fix = { ...given }
 		for (const problem of problems)
 			if (problem.unknown) delete fix[problem.field]
-			else
-				fix[problem.field] =
-					problem.field === 'build' ? build : (problem.choices?.join('|') ?? `<${problem.field}>`)
+			else fix[problem.field] = problem.choices?.join('|') ?? `<${problem.field}>`
 		throw new EntryRefusal(
 			[...new Set(problems.map((problem) => `${path}.${problem.field}`))].join(', '),
-			problems.map((problem) => problem.text.replace(/\.$/, '')).join('; '),
+			problems.map((problem) => problem.text).join(', '),
 			fieldsHint,
 			fix
 		)

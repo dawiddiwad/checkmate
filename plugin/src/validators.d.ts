@@ -7,7 +7,6 @@ export type Validator = ((value: unknown) => boolean) & {
 			additionalProperty?: string
 			allowedValues?: unknown[]
 			missingProperty?: string
-			pattern?: string
 			type?: string | string[]
 		}
 		propertyName?: string

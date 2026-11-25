@@ -25,7 +25,6 @@ import {
 	unverifiedCheck,
 	requireChoice,
 	requireCondition,
-	requireBuild,
 	requireIdentifier,
 	requireNotInputWord,
 	requireText,
@@ -1556,7 +1555,6 @@ export function planApproval(store: Store, plan: Plan, sha256: string) {
 }
 
 export function gate(store: Store, input: GateInput) {
-	const build = requireBuild(input.build)
 	const reference = revisionReference(requireText(input.reference, 'plan reference'), 'plan reference')
 	requireWellFormed(reference.revision !== null, `Name the plan revision: ${reference.id}@<revision>`)
 	const revision = planRevision(store, reference.id, reference.revision)
@@ -1573,6 +1571,7 @@ export function gate(store: Store, input: GateInput) {
 	const target = permanent
 		? targetRevision(store, plan.target.targetId, plan.target.revision)
 		: executionTarget(store, plan.planId, plan.target.targetId, plan.target.revision)
+	const build = requireText(input.build, 'application build (--build)')
 	const partial = requireChoice(input.partial ?? 'ready_only', partialModes, 'partial execution (--partial)')
 	const tests = index(plan.tests, 'id', 'test')
 	const ready =

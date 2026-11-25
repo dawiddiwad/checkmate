@@ -15,7 +15,6 @@ import type { Reply } from './store.ts'
 import { canonical, WorkspaceSchemaError } from './store.ts'
 import { expectationError, expectationExample, expectationHint } from './expectation.ts'
 import * as validators from './validators.js'
-import journalEntrySchema from '../contracts/journal-entry.schema.json' with { type: 'json' }
 import { operationAllowed } from './targets.ts'
 import { choiceText, givenBy, observeFromChoices, observeReading } from './recipes.ts'
 
@@ -38,55 +37,7 @@ export type Documents = {
 }
 export type PlanDraft = Omit<Plan, 'coverage' | 'tests'> & { tests: Array<Omit<Test, 'readiness' | 'gapIds'>> }
 
-// The patterns come from the schema, so the schema and the command line check the same rule.
-const identifierPattern = journalEntrySchema.definitions.id.pattern
-const buildPattern = journalEntrySchema.definitions.build.pattern
-const identifier = new RegExp(identifierPattern)
-const buildName = new RegExp(buildPattern)
-
-type NameRule = { pattern: string; characters: RegExp; allowed: string }
-const identifierRule: NameRule = {
-	pattern: identifierPattern,
-	characters: /[A-Za-z0-9_-]/,
-	allowed: '1 to 96 letters, digits, _ or -, starting with a letter or digit',
-}
-const buildRule: NameRule = {
-	pattern: buildPattern,
-	characters: /[A-Za-z0-9_.-]/,
-	allowed: '1 to 96 letters, digits, _, . or -, starting with a letter or digit',
-}
-const nameRules = [buildRule, identifierRule]
-
-function characterList(characters: string[]) {
-	const named = characters.map((character) => (character === ' ' ? 'a space' : `"${character}"`))
-	return `${typeList(named)} ${named.length > 1 ? 'are' : 'is'} not allowed`
-}
-
-// What is wrong with a value that breaks a name rule, in plain words.
-function nameFault(value: string, rule: NameRule) {
-	const bad = [...new Set([...value].filter((character) => !rule.characters.test(character)))]
-	if (bad.length) return characterList(bad)
-	if (!value) return 'it is empty'
-	if (value.length > 96) return `it has ${value.length} characters`
-	return 'it does not start with a letter or digit'
-}
-
-// A valid value that is close to the given one, or nothing when there is none.
-function nameExample(value: string, rule: NameRule) {
-	const close = [...value]
-		.map((character) => (rule.characters.test(character) ? character : '-'))
-		.join('')
-		.replace(/-{2,}/g, '-')
-		.replace(/^[^A-Za-z0-9]+/, '')
-		.replace(/-+$/, '')
-		.slice(0, 96)
-	return close !== value && new RegExp(rule.pattern).test(close) ? ` Example: ${close}.` : ''
-}
-
-function nameText(label: string, value: unknown, rule: NameRule) {
-	const text = String(value)
-	return `${label} "${text}" is not valid: ${nameFault(text, rule)}. Use ${rule.allowed}.${nameExample(text, rule)}`
-}
+const identifier = /^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$/
 
 export type RefusalKind = 'malformed' | 'prohibited'
 
@@ -131,10 +82,7 @@ export function same(a: unknown, b: unknown) {
 	return canonical(a) === canonical(b)
 }
 
-const buildHint =
-	'A build names the version under test, for example a commit ID such as 4e200ac or a version such as 1.4.2. Do not use <plan>@<revision>: the revision belongs to the plan reference, not to the build.'
-
-export type SchemaProblem = { field: string; text: string; unknown: boolean; choices?: string[]; hint?: string }
+export type SchemaProblem = { field: string; text: string; unknown: boolean; choices?: string[] }
 
 export function schemaProblems(name: string, value: unknown, prefix = name): SchemaProblem[] {
 	const check = validators[name.replace(/-./g, (match) => match[1].toUpperCase()) as keyof typeof validators]
@@ -148,9 +96,8 @@ export function schemaProblems(name: string, value: unknown, prefix = name): Sch
 					error.params.additionalProperty ??
 					''
 			),
-			text: schemaError(`${prefix}${error.instancePath}`, error, value),
+			text: schemaError(`${prefix}${error.instancePath}`, error),
 			unknown: error.keyword === 'additionalProperties',
-			...(error.keyword === 'pattern' && error.params.pattern === buildPattern ? { hint: buildHint } : {}),
 			...(error.keyword === 'enum' ? { choices: (error.params.allowedValues ?? []).map(String) } : {}),
 		}))
 }
@@ -192,26 +139,7 @@ function typeList(types: string[]) {
 	return `${types.slice(0, -1).join(', ')}, or ${types.at(-1)}`
 }
 
-function valueAt(document: unknown, instancePath: string) {
-	return instancePath
-		.split('/')
-		.slice(1)
-		.reduce<unknown>((value, key) => (value as Record<string, unknown> | undefined)?.[key], document)
-}
-
-function patternText(path: string, error: SchemaError, document: unknown) {
-	const value = error.propertyName ?? valueAt(document, error.instancePath)
-	const label = error.propertyName === undefined ? path : `${path} field name`
-	const rule = nameRules.find(
-		(item) =>
-			item.pattern === error.params.pattern || `^(?!stdin$)${item.pattern.slice(1)}` === error.params.pattern
-	)
-	if (rule && value !== 'stdin') return nameText(label, value, rule)
-	return `${label} "${String(value)}" does not match the pattern ${error.params.pattern}`
-}
-
-function schemaError(path: string, error: SchemaError, document?: unknown) {
-	if (error.keyword === 'pattern' && document !== undefined) return patternText(path, error, document)
+function schemaError(path: string, error: SchemaError) {
 	if (error.keyword === 'type') return `${path} must be ${typeList([error.params.type ?? []].flat())}`
 	if (error.keyword === 'additionalProperties')
 		return `${path} has unknown field "${error.params.additionalProperty}"`
@@ -232,13 +160,10 @@ export function slugId(text: string) {
 }
 
 export function requireIdentifier(value: unknown, name: string): string {
-	requireWellFormed(typeof value === 'string' && identifier.test(value), nameText(name, value, identifierRule))
-	return value
-}
-
-// A build names the version under test. Checkmate stores it, and every journal entry of an exploration carries it.
-export function requireBuild(value: unknown, name = 'application build (--build)'): string {
-	requireWellFormed(typeof value === 'string' && buildName.test(value), nameText(name, value, buildRule), buildHint)
+	requireWellFormed(
+		typeof value === 'string' && identifier.test(value),
+		`Invalid ${name}: ${String(value)}. Use 1 to 96 letters, digits, _ or -, starting with a letter or digit.`
+	)
 	return value
 }
 

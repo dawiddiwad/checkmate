@@ -9,7 +9,7 @@ Use the Checkmate tools in the current host session. Report recorded outcomes an
 
 1. Use `checkmate_list_targets` and the setup skill if the request needs a target. The target must exist before planning or testing.
 2. A request for a test plan without execution uses the plan skill. A request to revise uses the revise skill.
-3. Use the named plan, or the only plan in progress. Ask when the plan or build is unclear. A build is a version name of 1 to 96 letters, digits, `_`, `.` or `-`, for example `4e200ac` or `1.4.2`. Do not use `<plan>@<revision>` as a build. For an existing plan, use `checkmate_status`. For a request to run ready stored tests, use `checkmate_begin_run` with a new run ID, the plan ID as the reference, and the named build. Use the execute skill. Give `retestOf` only if the person says the build fixes a defect of the earlier run.
+3. Use the named plan, or the only plan in progress. Ask when the plan or build is unclear. For an existing plan, use `checkmate_status`. For a request to run ready stored tests, use `checkmate_begin_run` with a new run ID, the plan ID as the reference, and the named build. Use the execute skill. Give `retestOf` only if the person says the build fixes a defect of the earlier run.
 4. Keep the default level, tester count and deadlines unless the person asks to change them. For exploration, call `checkmate_start_test` with the plan ID, build, and a named level if the person selected one. For a new plan, give the sources and target. Use exploratory mode when the person specifically asks for exploration. If the tool returns a stored run, execute it with the returned run ID.
 
 ## Drive a Claude session exploration

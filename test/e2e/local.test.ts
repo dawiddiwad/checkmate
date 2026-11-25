@@ -7024,7 +7024,7 @@ renameSync('removed.tmp', 'removed.json')
 	assert.deepEqual(readdirSync(data), [unrelated])
 })
 
-test('Keep each tool folder that testers left, and leave each tool folder that was there before — one old folder stopped the keep step for all, and an exploration stored by v0.8.2 still keeps its browser folder.', async (t) => {
+test('Keep each tool folder that testers left, and leave each tool folder that was there before — one pre-existing folder does not prevent keeping the others.', async (t) => {
 	const { cpSync } = await import('node:fs')
 	const plugin = join(directory(t), 'plugin')
 	cpSync(join(project, 'node_modules/@xoxoai/checkmate/plugin'), plugin, { recursive: true })
@@ -7080,21 +7080,6 @@ test('Keep each tool folder that testers left, and leave each tool folder that w
 	assert.equal(existsSync(join(work, '.playwright-cli')), false)
 	assert.equal(existsSync(join(workspace, '.scratch-tool')), false)
 	assert.equal(readFileSync(join(work, '.scratch-tool', 'tester.log'), 'utf8'), 'A tester left this.\n')
-
-	const old = directory(t)
-	mkdirSync(join(old, '.checkmate'))
-	writeFileSync(
-		join(old, '.checkmate/checkmate.db'),
-		gunzipSync(readFileSync(join(root, 'test/e2e/fixtures/workspace-exploration-v0.8.2.db.gz')))
-	)
-	mkdirSync(join(old, '.playwright-cli'))
-	writeFileSync(join(old, '.playwright-cli', 'tester.log'), 'A tester left this.\n')
-	await ok(old, 'explore', 'stop', 'x-1', '--reason', 'Keep the work.')
-	assert.equal(existsSync(join(old, '.playwright-cli')), false)
-	assert.equal(
-		readFileSync(join(old, '.checkmate', 'work', 'x-1', '.playwright-cli', 'tester.log'), 'utf8'),
-		'A tester left this.\n'
-	)
 
 	const resumed = directory(t)
 	writeFileSync(join(resumed, 'ticket.md'), 'The promotion quote is 240 PLN.\n')

@@ -8,6 +8,7 @@
 		"MAESTRO_CLI_NO_ANALYTICS": "true",
 		"MAESTRO_DISABLE_UPDATE_CHECK": "true"
 	},
+	"delegatedInstruction": "Mobile app: maestro drives the app on the device of the instance. Give --device <device> before the command on every maestro command. Write one short flow at a time in {workFolder}, run it with maestro --device <device> test <flow> --test-output-dir={workFolder}/maestro --debug-output={workFolder}/maestro, then read the screen with maestro --device <device> hierarchy --compact. Tap or type only by a text or an id from the latest hierarchy. Never invent one. If it is missing, wait one second, read the hierarchy again, and retry once. If it is still missing, close the test as error with the hierarchy excerpt as evidence. Do not run start-device, studio, clearState, or a new install of the app.",
 	"workspaceFolders": [],
 	"observeFrom": {
 		"screen": "view",

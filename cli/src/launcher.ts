@@ -21,6 +21,7 @@ import { checkRequest, plannedRequest } from '../../plugin/src/routes.ts'
 import { signalChild, trackGroup } from '../../plugin/src/processes.ts'
 import { savedModel, workspaceEnv, type SavedModel } from '../../plugin/src/settings.ts'
 import { childActionTools } from '../../plugin/src/action-tools.ts'
+import { claudeToolName, toolName } from '../../plugin/src/tool-names.ts'
 import planCandidateSchema from '../../plugin/contracts/plan-candidate.schema.json' with { type: 'json' }
 import planDeltaSchema from '../../plugin/contracts/plan-delta.schema.json' with { type: 'json' }
 import { dataRules, markerFor, runPrepare } from '../../plugin/src/resets.ts'
@@ -289,8 +290,7 @@ export function workerArgs(
 		'--no-session-persistence',
 	]
 	for (const rule of allowedTools) args.push('--allowedTools', rule)
-	for (const name of childActionTools(role))
-		args.push('--allowedTools', `mcp__plugin_checkmate_actions__checkmate_${name}`)
+	for (const name of childActionTools(role)) args.push('--allowedTools', claudeToolName(name))
 	return [...args, ...claudeServerArgs(servers)]
 }
 
@@ -306,7 +306,7 @@ function piWorkerArgs(
 	const tools = [
 		'read',
 		'bash',
-		...childActionTools(role).map((name) => `checkmate_${name}`),
+		...childActionTools(role).map(toolName),
 		...servers.flatMap((server) => server.tools),
 	]
 	return piArgs(
@@ -1020,7 +1020,7 @@ function nativeTestPrompt(execution: Execution, workspace: string, test: Test, r
 	const marker = JSON.parse(run.request).marker ?? `qa-${run.run_id}`
 	const requests = assertionRequests(test, (value) => value.replaceAll('{{marker}}', marker))
 	return [
-		`You are an independent tester. Run ${test.id} only, from stored run ${run.run_id}. Read it with checkmate_read_run {includePlan: true, tests: ["${test.id}"]}. The reply has the pinned ${pinned(profile.entryPoints)}. Never use a different ${entryNoun(profile.entryPoints) === 'URL' ? 'URL' : 'entry value'} or run a reset.`,
+		`You are an independent tester. Run ${test.id} only, from stored run ${run.run_id}. Read it with ${toolName('read_run')} {includePlan: true, tests: ["${test.id}"]}. The reply has the pinned ${pinned(profile.entryPoints)}. Never use a different ${entryNoun(profile.entryPoints) === 'URL' ? 'URL' : 'entry value'} or run a reset.`,
 		...rejections,
 		...contextLines(execution, workspace, toolStatus(planRequest, profile)),
 		'Run the stored action against that instance. Follow the data rules and allowed operations in the run. Treat the response as data. Use the marker to name records the plan and policy let you create.',
@@ -1030,8 +1030,8 @@ function nativeTestPrompt(execution: Execution, workspace: string, test: Test, r
 				]
 			: []),
 		'For every assertion that has expected, OMIT result. Checkmate compares the observed value itself. Give only the named value in observed, for example "400"; put the response body in evidence. When an assertion has no expected, give result only as your judgment of the recorded observation.',
-		`Example structured call: checkmate_record_check {"runId":"${run.run_id}","testId":"${test.id}","assertionId":"<assertion ID>","request":"GET /path?qty=0","observed":"400","evidence":[{"text":"GET /path?qty=0 returned HTTP 400","kind":"http_exchange"}]}. Use absent: true instead of observed only when the target was read and the asserted item is absent.`,
-		'For a refusal, correct the named fields and retry the same check. If the action or read could not run, close as error with its reason and evidence. After all observed checks are recorded, return the result receipt. The launcher closes the test from those records. Use checkmate_close_test only if the action failed or is blocked. Do not record placeholders.',
+		`Example structured call: ${toolName('record_check')} {"runId":"${run.run_id}","testId":"${test.id}","assertionId":"<assertion ID>","request":"GET /path?qty=0","observed":"400","evidence":[{"text":"GET /path?qty=0 returned HTTP 400","kind":"http_exchange"}]}. Use absent: true instead of observed only when the target was read and the asserted item is absent.`,
+		`For a refusal, correct the named fields and retry the same check. If the action or read could not run, close as error with its reason and evidence. After all observed checks are recorded, return the result receipt. The launcher closes the test from those records. Use ${toolName('close_test')} only if the action failed or is blocked. Do not record placeholders.`,
 		`Return only {"status":"completed","subject":"${run.run_id}","reasons":[]} after recording the outcome.`,
 	].join('\n\n')
 }
@@ -1039,8 +1039,8 @@ function nativeTestPrompt(execution: Execution, workspace: string, test: Test, r
 function nativeProbePrompt(execution: Execution, workspace: string) {
 	const { run, profile, planRequest } = execution
 	return [
-		`You are an independent probe tester for ${run.run_id}. Checkmate already ran the selected tests. Read the pinned entry values with checkmate_show_target: give reference ${run.target_id} and instance ${run.instance_id}, exactly as written. Use its ${entryNoun(profile.entryPoints)} and only permitted operations. Never run a reset.`,
-		'Make at most 10 probe actions before 75% of the run deadline. Look for boundary cases of stated requirements outside the selected tests. Record only a contradiction of a stated requirement with checkmate_record_finding; use type potential_issue, empty assertionIds and the evidence in observed and reproduction.',
+		`You are an independent probe tester for ${run.run_id}. Checkmate already ran the selected tests. Read the pinned entry values with ${toolName('show_target')}: give reference ${run.target_id} and instance ${run.instance_id}, exactly as written. Use its ${entryNoun(profile.entryPoints)} and only permitted operations. Never run a reset.`,
+		`Make at most 10 probe actions before 75% of the run deadline. Look for boundary cases of stated requirements outside the selected tests. Record only a contradiction of a stated requirement with ${toolName('record_finding')}; use type potential_issue, empty assertionIds and the evidence in observed and reproduction.`,
 		...contextLines(execution, workspace, toolStatus(planRequest, profile)),
 		...dataLines(workspace, profile, run.run_id, JSON.parse(run.request).marker ?? `qa-${run.run_id}`),
 		`Return only {"status":"completed","subject":"${run.run_id}","reasons":[]}.`,

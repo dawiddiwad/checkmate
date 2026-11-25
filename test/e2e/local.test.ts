@@ -2617,7 +2617,7 @@ test('Give a session tester the data rules of a read-only target — the test ta
 	await ok('explore', 'next', id)
 	await ok('explore', 'started', id, 'a1', 'a2')
 	// While testers run, the wait reply names the tool that records a finished tester.
-	const { toolName } = await import('../../plugin/src/actions.ts')
+	const { toolName } = await import('../../plugin/src/tool-names.ts')
 	const [, , waiting] = await mcpCalls(workspace, env, [[toolName('next_tester_steps'), { explorationId: id }]])
 	assert.deepEqual(waiting.result.structuredContent.actions, [{ action: 'wait', line: 'wait' }])
 	assert.equal(waiting.result.structuredContent.nextAction.action, 'tester_step_done')
@@ -3549,10 +3549,19 @@ test('Discover the packaged Claude plugin and invoke its entry — broken plugin
 	)
 	assert.match(readFileSync(join(plugin, 'agents/clerk.md'), 'utf8'), /^tools: Read, Write$/m)
 	// The host records a finished tester only with the tool that the test skill names.
-	const { toolName } = await import('../../plugin/src/actions.ts')
+	const { toolName } = await import('../../plugin/src/tool-names.ts')
 	assert.ok(
 		readFileSync(join(plugin, 'skills/test/SKILL.md'), 'utf8').includes(`\`${toolName('tester_step_done')}\``)
 	)
+	// Every tool that a shipped skill names is a tool of the packaged action server.
+	const actions = JSON.parse(readFileSync(join(plugin, 'contracts/actions.schema.json'), 'utf8'))
+	const tools = new Set(
+		Object.keys(actions.properties).map((name) => toolName(name as Parameters<typeof toolName>[0]))
+	)
+	const skills = ['execute', 'setup', 'status', 'test'].map((name) => join(plugin, 'skills', name, 'SKILL.md'))
+	for (const file of [...skills, join(plugin, 'pi/skills/checkmate/SKILL.md')])
+		for (const [name] of readFileSync(file, 'utf8').matchAll(/checkmate_\w+/g))
+			assert.ok(tools.has(name), `${file}: ${name}`)
 	assert.match(
 		execFileSync(process.execPath, [entry, '--version'], { encoding: 'utf8' }),
 		new RegExp(`^${manifest.version} build [0-9a-f]{12}\n`)

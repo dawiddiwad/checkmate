@@ -7,23 +7,23 @@ Use the Checkmate tools in the current host session. Report recorded outcomes an
 
 ## Choose the work
 
-1. Use `checkmate_list_targets` and the setup skill if the request needs a target. The target must exist before planning or testing.
+1. Use `{{tool list_targets}}` and the setup skill if the request needs a target. The target must exist before planning or testing.
 2. A request for a test plan without execution uses the plan skill. A request to revise uses the revise skill.
-3. Use the named plan, or the only plan in progress. Ask when the plan or build is unclear. For an existing plan, use `checkmate_status`. For a request to run ready stored tests, use `checkmate_begin_run` with a new run ID, the plan ID as the reference, and the named build. Use the execute skill. Give `retestOf` only if the person says the build fixes a defect of the earlier run.
-4. Keep the default level, tester count and deadlines unless the person asks to change them. For exploration, call `checkmate_start_test` with the plan ID, build, and a named level if the person selected one. For a new plan, give the sources and target. Use exploratory mode when the person specifically asks for exploration. If the tool returns a stored run, execute it with the returned run ID.
+3. Use the named plan, or the only plan in progress. Ask when the plan or build is unclear. For an existing plan, use `{{tool status}}`. For a request to run ready stored tests, use `{{tool begin_run}}` with a new run ID, the plan ID as the reference, and the named build. Use the execute skill. Give `retestOf` only if the person says the build fixes a defect of the earlier run.
+4. Keep the default level, tester count and deadlines unless the person asks to change them. For exploration, call `{{tool start_test}}` with the plan ID, build, and a named level if the person selected one. For a new plan, give the sources and target. Use exploratory mode when the person specifically asks for exploration. If the tool returns a stored run, execute it with the returned run ID.
 
 ## Drive a Claude session exploration
 
-1. Call `checkmate_next_tester_steps` with the exploration ID. Dispatch all returned actions using the Agent tool. Use the listed agent type or existing agent ID and prompt. Call `checkmate_tester_steps_started` with the names you started.
+1. Call `{{tool next_tester_steps}}` with the exploration ID. Dispatch all returned actions using the Agent tool. Use the listed agent type or existing agent ID and prompt. Call `{{tool tester_steps_started}}` with the names you started.
 2. When a child finishes, call `{{tool tester_step_done}}` with its name and step. Copy the exact `agentId` from the Agent tool and the child's last line into `replyLine`. The agent type is not an ID. Give `failure` only when the Agent tool could not start, reach, or complete that agent. When the agent finished and found a defect, omit `failure`. Do not put its finding in the step result. Then ask for the next steps. Continue until the tool says the work is finished.
-3. Use `checkmate_pause_test` before asking the person for information in the middle of work. Resume with the next tester steps after the answer.
-4. Call `checkmate_test_status` with `report` true, then read the plan status. Report checks, findings, and questions from the returned record. Follow the decision rules below.
+3. Use `{{tool pause_test}}` before asking the person for information in the middle of work. Resume with the next tester steps after the answer.
+4. Call `{{tool test_status}}` with `report` true, then read the plan status. Report checks, findings, and questions from the returned record. Follow the decision rules below.
 
-For a process exploration, use `checkmate_test_status` with a bounded wait. Continue until completion, failure, or an oracle decision. Do not start a second exploration to wait for the first one.
+For a process exploration, use `{{tool test_status}}` with a bounded wait. Continue until completion, failure, or an oracle decision. Do not start a second exploration to wait for the first one.
 
 ## Decisions of the oracle
 
-Record an answer only when the person answered that question. Send their exact words and the source with `checkmate_answer_gap`. Do not infer a formula or a value. For a slash ID, record the exploration answer, then use `checkmate_follow_test` once for that exploration. For a plan gap, recording the answer starts a reviser. If status still shows `needs_revision` with a pending answer, delegate revise at once. When status says `waitsOn=oracle`, report the open questions and stop. Do not poll or answer them yourself.
+Record an answer only when the person answered that question. Send their exact words and the source with `{{tool answer_gap}}`. Do not infer a formula or a value. For a slash ID, record the exploration answer, then use `{{tool follow_test}}` once for that exploration. For a plan gap, recording the answer starts a reviser. If status still shows `needs_revision` with a pending answer, delegate revise at once. When status says `waitsOn=oracle`, report the open questions and stop. Do not poll or answer them yourself.
 
 Only when the person asks, use the review UI to approve the plan, accept or reject a claim, or keep exploration claims as stored tests. Keep observations as tests only when the person asks, using the factory command `checkmate harvest <explorationId> --observations`. To drop a requirement with the person's decision, use the factory command `checkmate scope drop <planId> <requirementId> --source <source> --rationale <reason>`, then delegate revise. Never change a claim state by editing its record.
 

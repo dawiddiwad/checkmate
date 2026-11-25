@@ -2,7 +2,8 @@ import { delegate, type Stage } from '../../cli/src/launcher.ts'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { defaultActor, requestOfEnv } from './actor.ts'
-import { actionInput, actionRecovery, dispatchAction, toolName, type ActionName } from './actions.ts'
+import { actionInput, actionRecovery, dispatchAction, type ActionName } from './actions.ts'
+import { actionOfTool, toolName } from './tool-names.ts'
 import type { Actions } from './types.ts'
 import { Refusal, refused } from './contracts.ts'
 import { explorationStatus } from './explorers.ts'
@@ -142,7 +143,7 @@ async function startWorker(
 }
 
 export async function callActionTool(tool: string, input: unknown, workspace: string, env: Env) {
-	const name = tool.replace(/^checkmate_/, '') as ActionName
+	const name = actionOfTool(tool)
 	if (!allowed(name, env) || !actionToolDefinitions(env).some((definition) => definition.name === tool))
 		return actionOutput(
 			actionRecovery(
@@ -201,8 +202,7 @@ export async function callActionTool(tool: string, input: unknown, workspace: st
 							...status,
 							nextAction: {
 								action: 'next_tester_steps',
-								instruction:
-									'Call checkmate_next_tester_steps and dispatch its actions with the Agent tool. A session exploration runs only when you dispatch its steps.',
+								instruction: `Call ${toolName('next_tester_steps')} and dispatch its actions with the Agent tool. A session exploration runs only when you dispatch its steps.`,
 							},
 						})
 					)

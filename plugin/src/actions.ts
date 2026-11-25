@@ -32,13 +32,9 @@ import { runTest } from './modes.ts'
 import { explorationReport, explorationStatus, startFollow, waitExploration } from './explorers.ts'
 import { nextActions, pauseRun, stepDone, stepsStarted } from './agents.ts'
 import { dataRules } from './resets.ts'
+import { toolName } from './tool-names.ts'
 
 export type ActionName = keyof Actions
-
-// The name a host session calls an action tool by. Claude Code adds its own mcp__plugin_checkmate_actions__ prefix.
-export function toolName(name: ActionName) {
-	return `checkmate_${name}`
-}
 
 type ActionContext = {
 	actor: string | undefined
@@ -246,7 +242,7 @@ export function actionRecovery(name: ActionName, reply: Reply) {
 				instruction:
 					recovery ??
 					(next !== name
-						? `Read the current record with checkmate_${next} before retrying. Use the record ID in the request.`
+						? `Read the current record with ${toolName(next)} before retrying. Use the record ID in the request.`
 						: 'Resolve the condition in reasons before retrying. Ask the oracle for any missing decision.'),
 			},
 		},

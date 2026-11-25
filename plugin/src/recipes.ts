@@ -394,10 +394,12 @@ export type ObserveValue = { value: string; reading: ObserveReading; tool: strin
 
 // The observeFrom values that the recipes of the named tools give, with their reading. Not the compatible list:
 // a planner is told only what the tools of its target give.
+// Each value once: two recipes of one capability, such as maestro and maestro-mcp, give the same values.
 export function observeFromValues(toolNames: string[]): ObserveValue[] {
-	return recipesFor(toolNames).flatMap((recipe) =>
+	const all = recipesFor(toolNames).flatMap((recipe) =>
 		Object.entries(recipe.observeFrom).map(([value, reading]) => ({ value, reading, tool: recipe.name }))
 	)
+	return all.filter((item, index) => all.findIndex((other) => other.value === item.value) === index)
 }
 
 const readingText: Record<ObserveReading, string> = {

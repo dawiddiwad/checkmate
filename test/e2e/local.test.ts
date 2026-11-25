@@ -6816,7 +6816,7 @@ test('A plan and a run accept only the observeFrom values and evidence kinds tha
 	assert.match(
 		refused.output,
 		new RegExp(
-			`Test T1 assertion A2 observes from ${observeFrom}, which no tool of target web gives \\(recipe maestro gives it\\)\\. Allowed values: page \\(accepted for all targets, recipe playwright-cli\\), reload \\(accepted for all targets, recipe playwright-cli\\), api \\(accepted for all targets, recipe node\\)\\.`
+			`Test T1 assertion A2 observes from ${observeFrom}, which no tool of target web gives \\(recipe maestro-mcp and recipe maestro give it\\)\\. Allowed values: page \\(accepted for all targets, recipe playwright-cli\\), reload \\(accepted for all targets, recipe playwright-cli\\), api \\(accepted for all targets, recipe node\\)\\.`
 		)
 	)
 	assert.doesNotMatch(refused.output, new RegExp(`Allowed values:[^"]*\\b${observeFrom} \\(`))
@@ -6842,7 +6842,7 @@ test('A plan and a run accept only the observeFrom values and evidence kinds tha
 	assert.match(
 		wrongKind.output,
 		new RegExp(
-			`Evidence kind ${kinds[0]} is not given by a tool of target web \\(recipe maestro gives it\\)\\. Allowed kinds: observation \\(accepted for all targets\\), http_exchange \\(accepted for all targets, recipe node\\), screenshot \\(accepted for all targets, recipe playwright-cli\\), trace \\(accepted for all targets, recipe playwright-cli\\)\\.`
+			`Evidence kind ${kinds[0]} is not given by a tool of target web \\(recipe maestro-mcp and recipe maestro give it\\)\\. Allowed kinds: observation \\(accepted for all targets\\), http_exchange \\(accepted for all targets, recipe node\\), screenshot \\(accepted for all targets, recipe playwright-cli\\), trace \\(accepted for all targets, recipe playwright-cli\\)\\.`
 		)
 	)
 
@@ -11219,7 +11219,7 @@ test('Set up a mobile app from its entries — the profile gets the entry points
 	await refused(['setup', '--entry', 'web=ftp://x', '--target', 'phone'], /Entry web must match \^https\?:\/\//)
 	await refused(
 		['setup', ...mobileEntries, '--target', 'phone'],
-		/No tool that is installed fits the entries app, device\. maestro \(mobile\) needs them and is not on PATH\./,
+		/No tool that is installed fits the entries app, device\. maestro-mcp \(mobile\) and maestro \(mobile\) need them and are not on PATH\./,
 		{ ...env, PATH: process.env.PATH ?? '' }
 	)
 	const targets = await command(workspace, env, 'target', 'list')
@@ -11240,8 +11240,8 @@ test('Set up a mobile app from its entries — the profile gets the entry points
 	])
 	assert.deepEqual(shown.body.profile.capabilities, ['mobile'])
 	assert.deepEqual(
-		shown.body.profile.tools.map((tool: { name: string }) => tool.name),
-		['maestro']
+		shown.body.profile.tools.map((tool: { name: string; kind: string }) => `${tool.name}:${tool.kind}`),
+		['maestro-mcp:mcp', 'maestro:cli']
 	)
 	assert.deepEqual(shown.body.instance.entries, { app: 'com.apple.Preferences', device: 'SIM-1' })
 	// The same entries again change nothing. The target ID comes from the first entry when none is given.
@@ -11616,7 +11616,8 @@ test('Start a test of a mobile app from its entries on a store with no target �
 	const study = host.called().find((item: { role: string }) => item.role === 'explorer')
 	assert.match(study.prompt, /- app: com\.apple\.Preferences\./)
 	assert.match(study.prompt, /- device: SIM-1\./)
-	assert.match(study.prompt, /Tools you can use: maestro\./)
+	// The profile has both Maestro recipes. An explorer in a new process gets the server of the MCP one.
+	assert.match(study.prompt, /Tools you can use: maestro-mcp\./)
 })
 
 test('Set up a target in the review UI from the address or from the entries of an app that is not a web app — the page asks for the entries that the recipes declare.', async (t) => {

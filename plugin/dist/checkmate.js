@@ -13439,9 +13439,10 @@ function allEvidence() {
   return evidenceChoices(recipes().map((recipe) => recipe.name)).map((choice2) => choice2.value);
 }
 function observeFromValues(toolNames2) {
-  return recipesFor(toolNames2).flatMap(
+  const all2 = recipesFor(toolNames2).flatMap(
     (recipe) => Object.entries(recipe.observeFrom).map(([value2, reading]) => ({ value: value2, reading, tool: recipe.name }))
   );
+  return all2.filter((item, index2) => all2.findIndex((other) => other.value === item.value) === index2);
 }
 var readingText = {
   view: "reads only what the tool shows now",

@@ -1,0 +1,7 @@
+{
+	"$schema": "http://json-schema.org/draft-07/schema#",
+	"$id": "build.schema.json",
+	"type": "string",
+	"maxLength": 200,
+	"pattern": "^(?=.*\\S)[^\\u0000-\\u001f\\u007f]+$"
+}

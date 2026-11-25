@@ -14,6 +14,7 @@ export type Validator = ((value: unknown) => boolean) & {
 	}> | null
 }
 export const actions: Validator
+export const build: Validator
 export const finding: Validator
 export const gap: Validator
 export const instance: Validator

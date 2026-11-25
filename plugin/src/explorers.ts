@@ -6,7 +6,7 @@ import type { TestLevel } from './levels.ts'
 import { explorationCost } from './costs.ts'
 import { hostSession } from './actor.ts'
 import { all, closeStore, completed, one, openStore, saveBlob, write } from './store.ts'
-import { Refusal, requireChoice, shellWord, requireCondition, requireWellFormed } from './contracts.ts'
+import { Refusal, requireBuild, requireChoice, shellWord, requireCondition, requireWellFormed } from './contracts.ts'
 import { addEvent, exploration, explorationEvents, insertExploration, workFolder } from './explorations.ts'
 import type { Refused } from './journal.ts'
 import { firstRevision } from './testRevision.ts'
@@ -418,9 +418,15 @@ export function startExploration(
 	env: Env,
 	preferSavedModel = false
 ) {
+	const build = requireBuild(given.build)
 	if (!given.session) env = workspaceEnv(store, env)
 	const change = changeOf(store.workspace, given)
-	const input = { ...given, change, scope: given.scope ?? (change ? changedFiles(store.workspace, change) : []) }
+	const input = {
+		...given,
+		build,
+		change,
+		scope: given.scope ?? (change ? changedFiles(store.workspace, change) : []),
+	}
 	const reply = write(store, { actor, command: 'explore start', subject: input.planId, input }, (operationId, at) => {
 		if (!input.session) {
 			requireChild(env, selectedHarness(env))

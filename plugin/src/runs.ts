@@ -33,14 +33,7 @@ import {
 	planRunGaps,
 	recordApproval,
 } from './plans.ts'
-import {
-	correctedEntryText,
-	findInstance,
-	instanceForBuildHint,
-	readinessHint,
-	runInstance,
-	targetRevision,
-} from './targets.ts'
+import { correctedEntryText, findInstance, readinessHint, runInstance, targetRevision } from './targets.ts'
 import { changesData, markerFor, owe, runPrepare, settleCleanups } from './resets.ts'
 import { addPlanBuild } from './journal.ts'
 import { permanentSelection } from './permanent.ts'
@@ -426,12 +419,7 @@ function begin(
 						permanent: selection.reference,
 					}
 				: input
-			const instance = runInstance(store, plannedTarget(store, requested.reference), input.instance)
-			requireCondition(
-				!instance.build || instance.build === build,
-				`Instance ${instance.targetId}/${instance.instanceId} serves build ${instance.build}, not ${build}. A run names the build its instance serves.`,
-				instanceForBuildHint(store, instance.targetId, build)
-			)
+			const instance = runInstance(store, plannedTarget(store, requested.reference), input.instance, build)
 			const checked = gate(store, { ...requested, instance: instance.instanceId })
 			if (checked.reply.status !== 'completed') {
 				const reasons = [refusalReasons.prohibited, ...checked.reply.reasons]

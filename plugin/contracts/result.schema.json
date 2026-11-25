@@ -53,8 +53,7 @@
 			"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
 		},
 		"applicationBuild": {
-			"type": "string",
-			"minLength": 1
+			"$ref": "build.schema.json"
 		},
 		"selectedTestIds": {
 			"type": "array",

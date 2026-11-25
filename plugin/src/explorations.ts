@@ -229,9 +229,9 @@ export function insertExploration(store: Store, input: OpenInput, operationId: s
 	const planId = requireIdentifier(input.planId, 'plan ID')
 	const { target: pinned } = planRequest(store, planId)
 	const target = executionTarget(store, planId, pinned.profile.targetId, pinned.revision)
-	const build = requireBuild(input.build)
+	const { build } = input
 	const mode = requireChoice(input.mode ?? 'exploratory', explorationModes, 'mode (--mode)')
-	const instance = runInstance(store, target.profile.targetId, input.instance)
+	const instance = runInstance(store, target.profile.targetId, input.instance, build)
 	const explorationId = input.explorationId ?? nextExplorationId(store)
 	const revision = latestRevision(store, planId)
 	const charter = charterOf(
@@ -263,6 +263,7 @@ export function insertExploration(store: Store, input: OpenInput, operationId: s
 }
 
 export function openExploration(store: Store, actor: string | undefined, input: OpenInput) {
+	input = { ...input, build: requireBuild(input.build) }
 	return write(store, { actor, command: 'explore open', subject: input.planId, input }, (operationId, at) => {
 		const opened = insertExploration(store, input, operationId, at)
 		return {

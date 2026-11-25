@@ -713,6 +713,17 @@ test('Accept any build name — a build with @ was refused by the journal, so th
 			0,
 			build
 		)
+		const supplied = run(
+			workspace,
+			JSON.stringify({ kind: 'note', text: 'A note.', build }),
+			'explore',
+			'log',
+			'x-1',
+			'--actor',
+			'qa:a1'
+		)
+		assert.equal(supplied.code, 1, supplied.output)
+		assert.match(supplied.output, /unknown field "build"/)
 		const logged = run(workspace, entries, 'explore', 'log', 'x-1', '--actor', 'qa:a1')
 		assert.equal(logged.code, 0, logged.output)
 		assert.match(logged.output, /saved=2 refused=0/, build)
@@ -731,6 +742,10 @@ test('Accept any build name — a build with @ was refused by the journal, so th
 	assert.match(stored, /Release 2\.1 \(beta; \$\(x\)\)\n/)
 	const other = run(workspace, '', 'run', 'begin', 'r3', 'ticket@1', '--build', 'Other; $(y)', '--instance', 'spaced')
 	assert.match(other.output, /--build 'Other; \$\(y\)'\./)
+	const mismatch = run(workspace, '', 'explore', 'open', 'ticket', '--build', 'other', '--instance', 'spaced')
+	assert.equal(mismatch.code, 1, mismatch.output)
+	assert.match(mismatch.output, /Instance shop\/spaced serves build .* not other/)
+	assert.match(run(workspace, '', 'query', 'SELECT count(*) FROM explorations').output, /\n0\n/)
 	const finished = run(
 		workspace,
 		'',
@@ -753,21 +768,16 @@ test('Accept any build name — a build with @ was refused by the journal, so th
 		run(workspace, '', 'status', 'ticket').output,
 		/--build 'Release 2\.1 \(beta; \$\(x\)\)' --instance spaced --partial ready_only/
 	)
-	// A blank build, a build with a line break and a build that is too long are refused, and the refusal says which.
-	const refusals: Array<[string, RegExp]> = [
-		['   ', /it is blank/],
-		['a\nb', /it has a line break or another control character/],
-		['x'.repeat(201), /it has 201 characters, and the limit is 200/],
-	]
-	for (const [build, reason] of refusals) {
+	for (const build of ['   ', 'a\nb', 'x'.repeat(201)]) {
 		for (const args of [
 			['explore', 'open', 'ticket', '--build', build],
+			['explore', 'start', 'ticket', '--build', build],
 			['run', 'begin', 'r9', 'ticket@1', '--build', build],
 			['run', 'gate', 'ticket@1', '--build', build],
 		]) {
 			const refused = run(workspace, '', ...args)
 			assert.equal(refused.code, 1, refused.output)
-			assert.match(refused.output, reason, args.join(' '))
+			assert.match(refused.output, /build .* must be nonblank text on one line/, args.join(' '))
 		}
 		const instance = run(
 			workspace,
@@ -779,8 +789,9 @@ test('Accept any build name — a build with @ was refused by the journal, so th
 			'bad'
 		)
 		assert.equal(instance.code, 1, instance.output)
-		assert.match(instance.output, reason)
+		assert.match(instance.output, /build .* must be nonblank text on one line/)
 	}
+	assert.match(run(workspace, '', 'query', 'SELECT count(*) FROM explorations').output, /\n0\n/)
 })
 
 test('Tell a chat turn what it saved from the record — a turn with no write reports nothing saved, and a refused command saves nothing.', async (t) => {

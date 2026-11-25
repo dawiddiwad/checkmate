@@ -413,6 +413,8 @@ export type Actions = {
 	}
 }
 
+export type Build = string
+
 export type Finding = {
 	id: string
 	type: 'defect' | 'potential_issue'
@@ -448,7 +450,6 @@ export type Instance = {
 export type JournalCriterion = {
 	kind: 'criterion'
 	id?: string
-	build?: string
 	supersedes?: string
 	rule?: string
 	text: string
@@ -461,7 +462,6 @@ export type JournalCriterion = {
 export type JournalDefect = {
 	kind: 'defect'
 	id?: string
-	build: string
 	supersedes?: string
 	rule?: string
 	title: string
@@ -482,14 +482,12 @@ export type JournalDefect = {
 export type JournalEntry = {
 	kind: 'criterion' | 'observation' | 'defect' | 'question' | 'verdict' | 'note' | 'issue' | 'topic'
 	id?: string
-	build?: string
 	supersedes?: string
 }
 
 export type JournalIssue = {
 	kind: 'issue'
 	id?: string
-	build?: string
 	supersedes?: string
 	title: string
 	severity: 'critical' | 'high' | 'medium' | 'low'
@@ -500,7 +498,6 @@ export type JournalIssue = {
 export type JournalNote = {
 	kind: 'note'
 	id?: string
-	build?: string
 	supersedes?: string
 	text: string
 	about?: string
@@ -511,7 +508,6 @@ export type JournalNote = {
 export type JournalObservation = {
 	kind: 'observation'
 	id?: string
-	build: string
 	supersedes?: string
 	about?: string
 	steps?: string | Array<string>
@@ -528,7 +524,6 @@ export type JournalObservation = {
 export type JournalQuestion = {
 	kind: 'question'
 	id?: string
-	build?: string
 	supersedes?: string
 	rule?: string
 	question: string
@@ -540,7 +535,6 @@ export type JournalQuestion = {
 export type JournalTopic = {
 	kind: 'topic'
 	id?: string
-	build?: string
 	supersedes?: string
 	question: string
 	label?: string
@@ -550,7 +544,6 @@ export type JournalTopic = {
 export type JournalVerdict = {
 	kind: 'verdict'
 	id?: string
-	build: string
 	supersedes?: string
 	defect: string
 	result: 'fixed' | 'not_fixed' | 'not_retested'

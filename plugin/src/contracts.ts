@@ -15,7 +15,7 @@ import type { Reply } from './store.ts'
 import { canonical, WorkspaceSchemaError } from './store.ts'
 import { expectationError, expectationExample, expectationHint } from './expectation.ts'
 import * as validators from './validators.js'
-import journalEntrySchema from '../contracts/journal-entry.schema.json' with { type: 'json' }
+import buildSchema from '../contracts/build.schema.json' with { type: 'json' }
 import { operationAllowed } from './targets.ts'
 import { choiceText, givenBy, observeFromChoices, observeReading } from './recipes.ts'
 
@@ -39,27 +39,15 @@ export type Documents = {
 export type PlanDraft = Omit<Plan, 'coverage' | 'tests'> & { tests: Array<Omit<Test, 'readiness' | 'gapIds'>> }
 
 const identifier = /^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$/
-// The rule for a build lives in the journal schema. The actions and instance schemas refer to it.
-const buildLimit = journalEntrySchema.definitions.build.maxLength
-
-// What is wrong with a build, in plain words. It is nothing when the build follows the rule.
-function buildFault(text: string) {
-	if (!text.trim()) return 'it is blank'
-	if ([...text].some((character) => character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127))
-		return 'it has a line break or another control character'
-	if (text.length > buildLimit) return `it has ${text.length} characters, and the limit is ${buildLimit}`
-	return undefined
-}
-
 function buildText(label: string, value: unknown) {
 	const shown = JSON.stringify(String(value).slice(0, 60))
-	return `${label} ${shown} is not valid: ${buildFault(String(value)) ?? 'it breaks the build rule'}. A build is any text on one line, with no control characters, up to ${buildLimit} characters.`
+	return `${label} ${shown} must be nonblank text on one line, with no control characters and at most ${buildSchema.maxLength} characters.`
 }
 
-// The build without the spaces around it. Every command that takes a build uses this one rule.
 export function requireBuild(value: unknown, name = 'application build (--build)'): string {
-	requireWellFormed(typeof value === 'string' && !buildFault(value.trim()), buildText(name, value))
-	return (value as string).trim()
+	const build = typeof value === 'string' ? value.trim() : value
+	requireWellFormed(typeof build === 'string' && validators.build(build), buildText(name, value))
+	return build
 }
 
 // A word of a command line that a person or an agent copies. A word with a special character is quoted.
@@ -176,8 +164,8 @@ function valueAt(document: unknown, instancePath: string) {
 
 function schemaError(path: string, error: SchemaError, document?: unknown) {
 	if (
-		['pattern', 'minLength', 'maxLength'].includes(error.keyword) &&
-		error.schemaPath.includes('/definitions/build/')
+		['pattern', 'maxLength'].includes(error.keyword) &&
+		['build', 'applicationBuild'].includes(path.split('/').at(-1)!)
 	)
 		return buildText(path, valueAt(document, error.instancePath))
 	if (error.keyword === 'type') return `${path} must be ${typeList([error.params.type ?? []].flat())}`

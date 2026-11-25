@@ -94,7 +94,7 @@
 					"$ref": "#/definitions/text"
 				},
 				"build": {
-					"$ref": "journal-entry.schema.json#/definitions/build"
+					"$ref": "build.schema.json"
 				},
 				"correct": {
 					"type": "boolean"
@@ -310,7 +310,7 @@
 					"$ref": "#/definitions/id"
 				},
 				"build": {
-					"$ref": "journal-entry.schema.json#/definitions/build"
+					"$ref": "build.schema.json"
 				},
 				"mode": {
 					"enum": ["auto", "exploratory", "regression"]
@@ -435,7 +435,7 @@
 					"$ref": "#/definitions/text"
 				},
 				"build": {
-					"$ref": "journal-entry.schema.json#/definitions/build"
+					"$ref": "build.schema.json"
 				},
 				"instance": {
 					"$ref": "#/definitions/text"

@@ -10,9 +10,6 @@
 		"id": {
 			"$ref": "journal-entry.schema.json#/definitions/id"
 		},
-		"build": {
-			"$ref": "journal-entry.schema.json#/definitions/build"
-		},
 		"supersedes": {
 			"$ref": "journal-entry.schema.json#/definitions/supersedes"
 		},
@@ -34,6 +31,6 @@
 			"$ref": "journal-entry.schema.json#/definitions/evidence"
 		}
 	},
-	"required": ["kind", "build", "defect", "result"],
+	"required": ["kind", "defect", "result"],
 	"additionalProperties": false
 }

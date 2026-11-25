@@ -11,9 +11,6 @@
 		"id": {
 			"$ref": "journal-entry.schema.json#/definitions/id"
 		},
-		"build": {
-			"$ref": "journal-entry.schema.json#/definitions/build"
-		},
 		"supersedes": {
 			"$ref": "journal-entry.schema.json#/definitions/supersedes"
 		}
@@ -60,12 +57,6 @@
 			"description": "Your ID, for example D1. Without it, Checkmate gives one.",
 			"type": "string",
 			"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
-		},
-		"build": {
-			"description": "The build that you tested. Checkmate gives the build of the exploration.",
-			"type": "string",
-			"maxLength": 200,
-			"pattern": "^(?=.*\\S)[^\\u0000-\\u001f\\u007f]+$"
 		},
 		"supersedes": {
 			"description": "The ID of an earlier entry of the same kind. This entry replaces it and keeps its ID.",

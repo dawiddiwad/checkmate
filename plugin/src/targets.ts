@@ -3,6 +3,7 @@ import type { Change, Store } from './store.ts'
 import { hostSession } from './actor.ts'
 import { all, canonical, completed, digest, execute, one, removeTemporaryDirectory, write } from './store.ts'
 import {
+	Refusal,
 	profileCheck,
 	requireChoice,
 	requireCondition,
@@ -665,18 +666,33 @@ export function findInstance(store: Store, targetId: string, instanceId: string)
 	return instanceRecord(store, targetId, row)
 }
 
-// What to do when a run names a build that its instance does not serve: an instance that serves the build, or the command that adds one.
-export function instanceForBuildHint(store: Store, targetId: string, build: string | undefined): string {
+function instanceForBuildHint(store: Store, targetId: string, build: string): string {
 	const serving = instanceList(store, targetId).filter((instance) => !instance.retired && instance.build === build)
 	if (serving.length)
 		return `Run on an instance that serves ${build}: ${serving.map((instance) => `--instance ${instance.instanceId}`).join(' or ')}.`
-	const word = shellWord(String(build))
+	const word = shellWord(build)
 	// A build with a special character stays out of the placeholders, so no placeholder holds it unquoted.
 	const entries = buildEntryFlags(targetRequest(store, targetId).entryPoints, word === build ? word : 'that build')
 	return `Add an instance for ${build}: checkmate target instance add ${targetId} <name> ${entries} --build ${word}.`
 }
 
-export function runInstance(store: Store, targetId: string, instanceId: string | undefined): InstanceRecord {
+export function runInstance(
+	store: Store,
+	targetId: string,
+	instanceId: string | undefined,
+	build: string
+): InstanceRecord {
+	const instance = selectInstance(store, targetId, instanceId)
+	if (instance.build && instance.build !== build)
+		throw new Refusal(
+			'prohibited',
+			`Instance ${instance.targetId}/${instance.instanceId} serves build ${instance.build}, not ${build}.`,
+			instanceForBuildHint(store, instance.targetId, build)
+		)
+	return instance
+}
+
+function selectInstance(store: Store, targetId: string, instanceId: string | undefined): InstanceRecord {
 	if (instanceId !== undefined) {
 		const instance = findInstance(store, targetId, instanceId)
 		requireCondition(

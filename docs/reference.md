@@ -84,6 +84,9 @@ Use the JSON Schemas as the contract:
 - [Plan](../plugin/contracts/plan.schema.json): stored revisions and computed fields.
 - [Target profile](../plugin/contracts/profile.schema.json) and [instance](../plugin/contracts/instance.schema.json).
 - [Run result](../plugin/contracts/result.schema.json), [finding](../plugin/contracts/finding.schema.json), and [gap](../plugin/contracts/gap.schema.json).
+- [Journal entries](../plugin/contracts/journal-entry.schema.json). Checkmate validates each entry before it adds the build from the exploration.
+
+An instance can declare which build it serves. A run or exploration can start on that instance only for that build.
 
 The planner saves only the candidate fields. Checkmate calculates readiness, coverage, decisions, and revision digests. Do not write those derived values into a candidate. The schemas are authoritative when an example differs.
 

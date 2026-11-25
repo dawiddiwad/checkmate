@@ -35,7 +35,7 @@ const files: Record<string, Schema> = {
 	'journal-issue.schema.json': issueSchema as Schema,
 	'journal-topic.schema.json': topicSchema as Schema,
 }
-const commonFields = ['kind', 'id', 'build', 'supersedes']
+const commonFields = ['kind', 'id', 'supersedes']
 const teamFields = ['confirms', 'refutes']
 const recordedKinds = ['criterion', 'observation', 'defect', 'question', 'verdict', 'note']
 
@@ -94,9 +94,9 @@ function kindText(kind: string, keep: (field: Field) => boolean, described: Set<
 
 function commonText(kinds: string[], described: Set<string>) {
 	const file = 'journal-entry.schema.json'
-	const fields = fieldsOf(files[file], file, '')
-		.filter((field) => field.path !== 'build')
-		.map((field) => (field.path === 'kind' ? { ...field, type: kinds.join('|') } : field))
+	const fields = fieldsOf(files[file], file, '').map((field) =>
+		field.path === 'kind' ? { ...field, type: kinds.join('|') } : field
+	)
 	return `${files[file].description} Every entry has: ${fieldText(fields, described)}`
 }
 

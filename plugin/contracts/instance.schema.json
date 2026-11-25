@@ -21,7 +21,7 @@
 			"maxLength": 500
 		},
 		"build": {
-			"$ref": "journal-entry.schema.json#/definitions/build"
+			"$ref": "build.schema.json"
 		},
 		"references": {
 			"type": "array",

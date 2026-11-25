@@ -1,6 +1,7 @@
 import type { Charter } from './explorations.ts'
 import { changesData } from './resets.ts'
 import { anyTestOperation, anyTestOperationText, readOnlyOperation, readOnlyOperationText } from './targets.ts'
+import { usageFiles } from './recipes.ts'
 import entrySchema from '../contracts/journal-entry.schema.json' with { type: 'json' }
 import criterionSchema from '../contracts/journal-criterion.schema.json' with { type: 'json' }
 import observationSchema from '../contracts/journal-observation.schema.json' with { type: 'json' }
@@ -234,6 +235,11 @@ function operationText(operations: string[]) {
 
 export type EntryPointValue = { name: string; kind: string; purpose: string; value: string }
 
+function usageLine(toolNames: string[]) {
+	const files = usageFiles(toolNames)
+	return files.length ? [`Before you use a tool, read its usage text: ${files.join(', ')}.`] : []
+}
+
 function entryPointLine(entry: EntryPointValue) {
 	if (entry.kind === 'command')
 		return `- ${entry.name}: run \`${entry.value}\` when you need it. ${entry.purpose} Do not write its output in your notes.`
@@ -317,7 +323,12 @@ export function explorerBrief(
 						.join(', ')}.`,
 				]
 			: []),
-		'A direct HTTP call is sufficient when it proves the behaviour. Use the browser when the page itself is what you test.',
+		...usageLine(charter.tools.map((tool) => tool.name)),
+		...(charter.capabilities.some((capability) => capability === 'http' || capability === 'browser')
+			? [
+					'A direct HTTP call is sufficient when it proves the behaviour. Use the browser when the page itself is what you test.',
+				]
+			: []),
 		`Your work folder is ${workFolder}/. Put each file that you or your tools make in it, for example notes, scripts, screenshots, responses, and logs.`,
 		'Apart from your work folder, the folders in the workspace whose names start with a dot belong to tools, not to the product under test.',
 		'',

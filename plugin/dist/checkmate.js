@@ -14092,6 +14092,9 @@ function profileRecipes(tools) {
 function toolFolders() {
   return recipes().flatMap((recipe) => recipe.workspaceFolders);
 }
+function usageFiles(toolNames) {
+  return recipes().filter((recipe) => toolNames.includes(recipe.name)).map((recipe) => join4(pluginRoot, "recipes", recipe.usage));
+}
 function choices(toolNames, compatible, values) {
   const found = new Map(compatible.map((value2) => [value2, [compatibleSource]]));
   for (const recipe of recipes().filter((recipe2) => toolNames.includes(recipe2.name)))
@@ -21463,6 +21466,10 @@ function operationText(operations) {
   if (operations.length === 1 && operations[0] === readOnlyOperation) return readOnlyOperationText;
   return `You can: ${operations.join(", ")}.`;
 }
+function usageLine(toolNames) {
+  const files2 = usageFiles(toolNames);
+  return files2.length ? [`Before you use a tool, read its usage text: ${files2.join(", ")}.`] : [];
+}
 function entryPointLine(entry) {
   if (entry.kind === "command")
     return `- ${entry.name}: run \`${entry.value}\` when you need it. ${entry.purpose} Do not write its output in your notes.`;
@@ -21517,7 +21524,10 @@ function explorerBrief(charter, entries, dataPrefix, workFolder2, seconds2) {
     ...charter.tools.length ? [
       `Tools you can use: ${charter.tools.map((tool) => tool.name).sort().join(", ")}.`
     ] : [],
-    "A direct HTTP call is sufficient when it proves the behaviour. Use the browser when the page itself is what you test.",
+    ...usageLine(charter.tools.map((tool) => tool.name)),
+    ...charter.capabilities.some((capability) => capability === "http" || capability === "browser") ? [
+      "A direct HTTP call is sufficient when it proves the behaviour. Use the browser when the page itself is what you test."
+    ] : [],
     `Your work folder is ${workFolder2}/. Put each file that you or your tools make in it, for example notes, scripts, screenshots, responses, and logs.`,
     "Apart from your work folder, the folders in the workspace whose names start with a dot belong to tools, not to the product under test.",
     "",

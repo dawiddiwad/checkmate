@@ -28,7 +28,7 @@ Run the full gate:
 npm run phase:verify
 ```
 
-It runs type and generated-file checks, lint, Prettier, and `npm test`. The test command builds and packs the CLI, installs it into disposable workspaces, and runs 137 end-to-end cases with real SQLite, loopback applications, controlled hosts, Pi, and Chromium. It fails when a prerequisite is missing, a case is absent, or a case skips. CI runs `npm run phase:verify`.
+It runs type and generated-file checks, lint, Prettier, and `npm test`. The test command builds and packs the CLI, installs it into disposable workspaces, and runs 140 end-to-end cases with real SQLite, loopback applications, controlled hosts, Pi, and Chromium. It fails when a prerequisite is missing, a case is absent, or a case skips. CI runs `npm run phase:verify`.
 
 The 42-scenario proposal map is [test/e2e/scenarios.json](../test/e2e/scenarios.json). Some historical Factory campaign behavior is outside this checkout. The local external Factory fixture does not verify Factory checkout, archive, budget, or campaign ownership. Tests use controlled hosts; they do not test live model judgment or require paid model calls.
 
@@ -44,7 +44,7 @@ The root package is private. The published CLI package is `cli/`. The build bund
 
 ## Tool recipes
 
-Checkmate keeps what it knows about each test tool in `plugin/recipes/`. Each tool has a JSON recipe and the Markdown usage text that the recipe names. `node` gives `http`. `playwright-cli` gives `browser`. Setup records the tools that it finds as profile tools. The host still runs the tools. Checkmate reads the recipes when it runs, and the build digest includes them.
+Checkmate keeps what it knows about each test tool in `plugin/recipes/`. Each tool has a JSON recipe and the Markdown usage text that the recipe names. `node` gives `http`. `playwright-cli` gives `browser`. `maestro` gives `mobile`: it drives an app on an Android emulator or an iOS simulator. Setup records the tools that it finds as profile tools. The brief of a tester names the usage text of each tool of the target. The host still runs the tools. Checkmate reads the recipes when it runs, and the build digest includes them.
 
 A recipe also gives the plan and run values of its tool. `observeFrom` maps each value that an assertion can observe from to `view` (what the tool shows now) or `state` (the stored state). `evidence` lists the evidence kinds that the tool makes. The optional `evidenceExtensions` maps a file extension to the default evidence kind of a file. A ready test of a plan can use only the `observeFrom` values of the recipes of the target tools. A run can record only the evidence kinds of those recipes. The values that every target accepted up to 0.8.2 stay accepted for all targets: `page`, `reload`, and `api`, and `observation`, `http_exchange`, `screenshot`, and `trace`. They are in `plugin/src/recipes.ts`. Do not add values to that list; give new values in a recipe.
 

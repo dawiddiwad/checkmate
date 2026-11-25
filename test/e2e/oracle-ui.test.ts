@@ -13,7 +13,7 @@ import { seedDemo } from '../../scripts/ui-demo.ts'
 import {
 	actor,
 	directory,
-	pathWithoutBrowserTool,
+	pathWithoutRecipeTools,
 	root,
 	store,
 	target,
@@ -179,7 +179,7 @@ console.log(JSON.stringify({type:'agent_settled',aborted:false}))
 `
 	)
 	chmodSync(host, 0o755)
-	const env = { PATH: `${bin}:${pathWithoutBrowserTool()}`, CHECKMATE_HARNESS: 'pi' }
+	const env = { PATH: `${bin}:${pathWithoutRecipeTools()}`, CHECKMATE_HARNESS: 'pi' }
 	must(workspace, ['setup', '--url', url, '--target', 'ticket', '--operations', 'read_catalog'], env)
 	must(
 		workspace,

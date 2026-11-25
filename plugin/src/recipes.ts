@@ -183,6 +183,13 @@ export function toolFolders() {
 	return recipes().flatMap((recipe) => recipe.workspaceFolders)
 }
 
+// The full paths of the usage texts of the named tools that have a recipe, in recipe order.
+export function usageFiles(toolNames: string[]) {
+	return recipes()
+		.filter((recipe) => toolNames.includes(recipe.name))
+		.map((recipe) => join(pluginRoot, 'recipes', recipe.usage))
+}
+
 export type Choice = { value: string; from: string[] }
 
 // The values that a target accepts: the values of the recipes of its tools, and the compatible values.

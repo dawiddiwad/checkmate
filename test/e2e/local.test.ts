@@ -18,12 +18,12 @@ import { delimiter, join } from 'node:path'
 import { gunzipSync } from 'node:zlib'
 import { DatabaseSync } from 'node:sqlite'
 import test from 'node:test'
-import { directory, pathWithoutBrowserTool, root } from '../support.ts'
+import { directory, pathWithoutRecipeTools, root } from '../support.ts'
 import { fakeClaude } from '../claude.ts'
 import { fixture } from '../fixture.ts'
 
-// These scenarios leave the browser tool out of PATH; the browser test adds its own stub.
-process.env.PATH = pathWithoutBrowserTool()
+// These scenarios leave the browser and mobile tools out of PATH; a test that needs one adds its own stub.
+process.env.PATH = pathWithoutRecipeTools()
 
 const project = directory()
 let binary = ''
@@ -6762,6 +6762,208 @@ test('Keep each tool folder that testers left, and leave each tool folder that w
 	assert.equal(
 		readFileSync(join(old, '.checkmate', 'work', 'x-1', '.playwright-cli', 'tester.log'), 'utf8'),
 		'A tester left this.\n'
+	)
+})
+
+test('Setup records maestro and the mobile capability only when maestro is on PATH — a mobile tool was never detected.', async (t) => {
+	const app = await fixture()
+	t.after(() => app.close())
+	const bin = directory(t)
+	const tool = join(bin, 'maestro')
+	writeFileSync(tool, '#!/bin/sh\necho 2.0.10\n')
+	chmodSync(tool, 0o755)
+	const setup = async (path: string) => {
+		const workspace = directory(t)
+		const env = { ...process.env, PATH: path, CHECKMATE_ACTOR: 'oracle', CHECKMATE_HARNESS: 'pi' }
+		const saved = await command(workspace, env, 'setup', '--url', app.baseUrl, '--target', 'shop')
+		assert.equal(saved.code, 0, saved.output)
+		const shown = await command(workspace, env, 'target', 'show', 'shop')
+		assert.equal(shown.code, 0, shown.output)
+		return { output: saved.output, profile: shown.body.profile }
+	}
+	const found = await setup(`${bin}${delimiter}${process.env.PATH}`)
+	assert.match(found.output, /capabilities=http,mobile \(maestro is on PATH\)/)
+	assert.deepEqual(found.profile.capabilities, ['http', 'mobile'])
+	const maestro = found.profile.tools.find((entry: { name: string }) => entry.name === 'maestro')
+	assert.deepEqual(maestro, {
+		name: 'maestro',
+		kind: 'cli',
+		purpose: 'Drive the mobile app on a device.',
+		version: '2.0.10',
+		reachable: true,
+	})
+	const missing = await setup(process.env.PATH!)
+	assert.match(missing.output, /capabilities=http \(no mobile or browser tool on PATH\)/)
+	assert.deepEqual(missing.profile.capabilities, ['http'])
+	assert.deepEqual(
+		missing.profile.tools.map((entry: { name: string }) => entry.name),
+		['node']
+	)
+})
+
+test('Test a mobile app with maestro: the tester gets the Maestro environment and the usage texts, and the plan takes the Maestro values — the brief spoke only of HTTP and the browser.', async (t) => {
+	const workspace = directory(t)
+	writeFileSync(join(workspace, 'ticket.md'), 'The cart keeps its items after the app starts again.\n')
+	const host = fakeClaude(t, { recorder: [{ kind: 'note', text: 'Read the cart screen.' }] }, 'pi')
+	const env = { ...process.env, ...host.env, CHECKMATE_ACTOR: 'oracle', CHECKMATE_HARNESS: 'pi' }
+	const ok = async (args: string[], value?: object) => {
+		const result = await inputCommand(workspace, env, value ? JSON.stringify(value) : '', ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	const purpose = 'Drive the mobile app on a device.'
+	await ok([
+		'target',
+		'open',
+		'phone',
+		'--entry-point',
+		'app:value:The app ID.',
+		'--entry-point',
+		'device:value:The device ID.',
+		'--capabilities',
+		'mobile',
+		'--operations',
+		'read_cart',
+		'--tool',
+		`maestro:cli:${purpose}`,
+	])
+	await ok(['target', 'save', 'phone'], {
+		contractVersion: 'toolkit-2',
+		targetId: 'phone',
+		revision: 1,
+		entryPoints: [
+			{ name: 'app', kind: 'value', purpose: 'The app ID.' },
+			{ name: 'device', kind: 'value', purpose: 'The device ID.' },
+		],
+		capabilities: ['mobile'],
+		tools: [{ name: 'maestro', kind: 'cli', purpose, reachable: true }],
+		authentication: { kind: 'none', references: [] },
+		allowedOperations: ['read_cart'],
+		startup: { owner: 'factory', command: null },
+		cleanup: 'No test data.',
+		readyForLiveExecution: true,
+		reset: { owner: 'environment', command: null, policy: { text: 'The emulator is reset by the factory.' } },
+	})
+	await ok([
+		'target',
+		'instance',
+		'add',
+		'phone',
+		'local',
+		'--entry',
+		'app=com.example.shop',
+		'--entry',
+		'device=emulator-5554',
+	])
+	// The tester that Checkmate starts gets the Maestro settings of the recipe and the path of its usage text.
+	const started = await ok([
+		'test',
+		'cart',
+		'--target',
+		'phone',
+		'--source',
+		'ticket.md',
+		'--build',
+		'b1',
+		'--level',
+		'smoke',
+		'--allow',
+		'Read',
+	])
+	assert.equal((await ok(['explore', 'wait', started.explorationId, '--timeout', '60'])).state, 'completed')
+	const study = host.called().find((item: { role: string }) => item.role === 'explorer')
+	assert.deepEqual(study.maestro, { MAESTRO_CLI_NO_ANALYTICS: 'true', MAESTRO_DISABLE_UPDATE_CHECK: 'true' })
+	assert.match(study.prompt, /- app: com\.example\.shop\. The app ID\./)
+	assert.match(study.prompt, /- device: emulator-5554\. The device ID\./)
+	assert.match(study.prompt, /Tools you can use: maestro\./)
+	const usage = /^Before you use a tool, read its usage text: (.+)\.$/m.exec(study.prompt)
+	assert.ok(usage, study.prompt)
+	assert.match(usage[1], /\/plugin\/recipes\/maestro\.md$/)
+	assert.ok(existsSync(usage[1]), `${usage[1]} must exist in the installed package`)
+	assert.doesNotMatch(study.prompt, /A direct HTTP call|Use the browser/)
+	// A plan for the mobile target can observe the screen and the app after a relaunch.
+	await ok([
+		'plan',
+		'open',
+		'relaunch',
+		'--target',
+		'phone@1',
+		'--objective',
+		'Check the cart after a relaunch.',
+		'--source',
+		'ticket.md',
+	])
+	const assertion = (id: string, observeFrom: string) => ({
+		id,
+		check: 'The cart shows 2 items.',
+		checkKind: 'deterministic',
+		observe: 'the item count on the cart screen',
+		expected: '2',
+		observeFrom,
+	})
+	const saved = await ok(['plan', 'save', 'relaunch'], {
+		requirements: [{ id: 'R1', text: 'The cart keeps its items after the app starts again.', source: 'ticket.md' }],
+		tests: [
+			{
+				id: 'T1',
+				title: 'Cart after relaunch',
+				requirementIds: ['R1'],
+				capability: 'mobile',
+				operations: ['read_cart'],
+				dependsOn: [],
+				preconditions: ['The cart has 2 items.'],
+				action: 'Read the cart, then stop the app, start it again, and read the cart again.',
+				assertions: [assertion('A1', 'screen'), assertion('A2', 'relaunch')],
+			},
+		],
+		gaps: [],
+	})
+	assert.equal(saved.revision, 1)
+	const shown = await ok(['plan', 'show', 'relaunch'])
+	assert.deepEqual(
+		shown.plan.tests[0].assertions.map((item: { observeFrom: string }) => item.observeFrom),
+		['screen', 'relaunch']
+	)
+})
+
+test('Name the usage text of each tool in the brief of a web target and keep its HTTP and browser sentence — the tester did not know where the tool rules were.', async (t) => {
+	const workspace = directory(t)
+	writeFileSync(join(workspace, 'ticket.md'), 'The catalog is listed.\n')
+	const app = await fixture()
+	t.after(() => app.close())
+	const host = fakeClaude(t, { recorder: [{ kind: 'note', text: 'Listed the catalog.' }] }, 'pi')
+	const env = { ...process.env, ...host.env, CHECKMATE_ACTOR: 'oracle', CHECKMATE_HARNESS: 'pi' }
+	const started = await command(
+		workspace,
+		env,
+		'test',
+		'catalog',
+		'--url',
+		app.baseUrl,
+		'--data',
+		'environment',
+		'--policy',
+		'The test fixture keeps no records.',
+		'--source',
+		'ticket.md',
+		'--build',
+		'b1',
+		'--level',
+		'smoke',
+		'--allow',
+		'Read'
+	)
+	assert.equal(started.code, 0, started.output)
+	const waited = await command(workspace, env, 'explore', 'wait', started.body.explorationId, '--timeout', '60')
+	assert.equal(waited.body.state, 'completed', waited.output)
+	const study = host.called().find((item: { role: string }) => item.role === 'explorer')
+	const lines = study.prompt.split('\n')
+	const tools = lines.indexOf('Tools you can use: node.')
+	assert.ok(tools >= 0, study.prompt)
+	assert.match(lines[tools + 1], /^Before you use a tool, read its usage text: \S+\/plugin\/recipes\/node\.md\.$/)
+	assert.equal(
+		lines[tools + 2],
+		'A direct HTTP call is sufficient when it proves the behaviour. Use the browser when the page itself is what you test.'
 	)
 })
 

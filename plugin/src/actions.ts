@@ -161,7 +161,8 @@ const handlers: {
 }
 
 export function actionInput<Name extends ActionName>(name: Name, input: unknown) {
-	const problems = schemaProblems('actions', { [name]: input }, 'input').map((problem) => problem.text)
+	const found = schemaProblems('actions', { [name]: input }, 'input')
+	const problems = found.map((problem) => problem.text)
 	if (problems.length) {
 		const fields = input as { planId?: string; observed?: string; absent?: boolean } | null
 		if (name === 'open_plan' && ['stdin', '-'].includes(fields?.planId ?? ''))
@@ -177,12 +178,13 @@ export function actionInput<Name extends ActionName>(name: Name, input: unknown)
 				'Give absent when the page was read and the value is missing. Give observed when it is present.'
 			)
 		const repair =
-			name === 'record_check' || name === 'close_test'
+			found.find((problem) => problem.hint)?.hint ??
+			(name === 'record_check' || name === 'close_test'
 				? 'Use evidence: [{text: "the actual response or observation", kind: "http_exchange"}]. For a fresh file in the run evidence directory, give {file, kind}. Correct any other named fields and retry.'
 				: name === 'tester_step_done'
 					? 'Give agentId from the Agent receipt and replyLine from its last line. Omit failure when the agent completed. Record product defects in the tester report.'
-					: 'Correct the named fields and retry the action.'
-		throw new Refusal('malformed', problems.join('. '), repair)
+					: 'Correct the named fields and retry the action.')
+		throw new Refusal('malformed', `${problems.map((problem) => problem.replace(/\.$/, '')).join('. ')}.`, repair)
 	}
 	return input as NonNullable<Actions[Name]>
 }

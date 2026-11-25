@@ -6,6 +6,7 @@ import {
 	profileCheck,
 	requireChoice,
 	requireCondition,
+	requireBuild,
 	requireIdentifier,
 	requireNotInputWord,
 	requireText,
@@ -114,12 +115,12 @@ function targetRequestCheck(input: Omit<TargetRequest, 'tools'> & { tools?: Requ
 		new Set(entryPoints.map((entry) => entry.name)).size === entryPoints.length,
 		'Duplicate entry point name'
 	)
-	for (const [name, list] of [
-		['capabilities', input.capabilities],
-		['operations', input.allowedOperations],
+	for (const [name, label, list] of [
+		['capabilities', 'capability name', input.capabilities],
+		['operations', 'operation name', input.allowedOperations],
 	] as const) {
 		requireCondition(Array.isArray(list) && list.length > 0, `Missing ${name}`)
-		list.forEach((item) => requireIdentifier(item, name))
+		list.forEach((item) => requireIdentifier(item, label))
 		requireCondition(new Set(list).size === list.length, `Duplicate item in ${name}`)
 	}
 	const tools = (input.tools ?? []).map((tool) => toolCheck(tool))
@@ -385,7 +386,9 @@ export function instanceCheck(entryPoints: EntryPoint[], value: unknown): Instan
 			? {}
 			: { environment: requireText(instance.environment, 'environment').trim() }),
 		references,
-		...(instance.build === undefined ? {} : { build: requireText(instance.build, 'build').trim() }),
+		...(instance.build === undefined
+			? {}
+			: { build: requireBuild(instance.build.trim(), 'build of the instance') }),
 	}
 }
 

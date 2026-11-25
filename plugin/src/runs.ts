@@ -10,6 +10,7 @@ import {
 	refusalReasons,
 	requireChoice,
 	requireCondition,
+	requireBuild,
 	requireIdentifier,
 	requireText,
 	requireWellFormed,
@@ -400,6 +401,7 @@ function begin(
 		},
 		(operationId, at, actor) => {
 			const runId = requireIdentifier(input.runId, 'run ID')
+			requireBuild(input.build)
 			requireCondition(
 				!one(store, 'SELECT 1 FROM runs WHERE run_id = ?', runId),
 				`Run ${runId} exists. Use a new run ID.`

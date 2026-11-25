@@ -1,6 +1,6 @@
 import type { Store } from './store.ts'
 import { all, completed, execute, one, write } from './store.ts'
-import { requireCondition, requireText, requireWellFormed, revisionReference } from './contracts.ts'
+import { requireBuild, requireCondition, requireText, requireWellFormed, revisionReference } from './contracts.ts'
 import { planCandidate, planRequest, planRevision, storeEdit } from './plans.ts'
 import { resultAcceptance, runResult, runState } from './runs.ts'
 import { planStatus } from './views.ts'
@@ -47,7 +47,7 @@ export function promotePlan(
 	return write(store, { actor, command: 'plan promote', subject: input.reference, input }, (operationId) => {
 		const reference = revisionReference(requireText(input.reference, 'plan reference'), 'plan reference')
 		requireWellFormed(reference.revision !== null, 'Name the plan revision to promote.')
-		const build = requireText(input.build, 'application build (--build)')
+		const build = requireBuild(input.build)
 		const rationale = requireText(input.rationale, 'rationale (--rationale)')
 		const run = runState(store, input.runId)
 		const result = runResult(store, input.runId)

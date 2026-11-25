@@ -75,7 +75,7 @@ When `target request`, `plan request`, or `run show` refuses with `Unknown ...`,
 
 ## Begin a run
 
-1. Run `checkmate run gate <planId@rev> --build <build>`. Without `--tests`, it selects the ready tests. Give `--tests <T1,T2>` when the oracle names tests. When it does not print `completed`, stop and report the `reason:` lines to the oracle.
+1. Run `checkmate run gate <planId@rev> --build <build>`. A build is a version name of 1 to 96 letters, digits, `_`, `.` or `-`, for example `4e200ac` or `1.4.2`. Do not use `<plan>@<revision>` as a build. Without `--tests`, it selects the ready tests. Give `--tests <T1,T2>` when the oracle names tests. When it does not print `completed`, stop and report the `reason:` lines to the oracle.
 2. Use the oracle's run ID. When the oracle gives none, run `checkmate run list` and use the next free `run-<n>`.
 3. Run `checkmate run begin <runId> <planId@rev> --build <build> --instance <instanceId> --actor claude:execute` once, with the same selection. You can leave out `--instance` only when the target has one active instance. Add `--retest-of <runId>` for a retest. A retest must select each ready test with an open defect of the earlier run and each ready regression test. A gate without `--tests` selects them.
 4. When it does not print `completed`, no run exists. Stop and report the `reason:` lines.

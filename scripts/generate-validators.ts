@@ -49,6 +49,7 @@ const outputs = [
 			'\t\t\tadditionalProperty?: string\n' +
 			'\t\t\tallowedValues?: unknown[]\n' +
 			'\t\t\tmissingProperty?: string\n' +
+			'\t\t\tpattern?: string\n' +
 			'\t\t\ttype?: string | string[]\n' +
 			'\t\t}\n' +
 			'\t\tpropertyName?: string\n' +

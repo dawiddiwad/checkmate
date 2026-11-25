@@ -3,7 +3,7 @@ import type { Env } from './sessions.ts'
 import type { StartInput } from './explorers.ts'
 import type { Charter } from './explorations.ts'
 import { all, completed, one } from './store.ts'
-import { Refusal, requireIdentifier, requireWellFormed, unusedId, validate } from './contracts.ts'
+import { Refusal, requireBuild, requireIdentifier, requireWellFormed, unusedId, validate } from './contracts.ts'
 import { changeOf, changedFiles, upstreamBase } from './change.ts'
 import { openPlan, planRevision, readySelection } from './plans.ts'
 import { beginRun } from './runs.ts'
@@ -155,7 +155,7 @@ export function runTest(
 ): Reply {
 	env = workspaceEnv(store, env)
 	const assumed: string[] = []
-	const build = given.build ?? defaultBuild(store.workspace)
+	const build = given.build === undefined ? defaultBuild(store.workspace) : requireBuild(given.build)
 	if (!given.build) assumed.push(`build=${build}`)
 	const input = { ...given, build }
 	// A plan name in another letter case is the same plan: the record keeps the name it was opened with.

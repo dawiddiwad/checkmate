@@ -291,7 +291,7 @@ Use permanent mode for recurring QA. The factory builds and starts the applicati
    checkmate run show run-3 --json
    ```
 
-The CLI requires `--build`. `--promotion` is optional; use it to require one exact latest snapshot. Checkmate selects only the immutable tests in the promotion. A later draft cannot change that selection. Permanent mode starts no exploration and creates no discovery gaps or potential-issue findings.
+The CLI requires `--build`. A build is a version name of 1 to 96 letters, digits, `_`, `.` or `-`, for example `4e200ac` or `1.4.2`. Checkmate refuses any other build at the first command, and names the characters that are not allowed. `<plan>@<revision>` is not a build. `--promotion` is optional; use it to require one exact latest snapshot. Checkmate selects only the immutable tests in the promotion. A later draft cannot change that selection. Permanent mode starts no exploration and creates no discovery gaps or potential-issue findings.
 
 Checkmate refuses a missing, wrong-ticket, stale, empty, rejected, or withdrawn promotion before it starts the run or host. It does not fall back to an older snapshot. A rejected promoted revision or withdrawn source-result acceptance blocks new permanent runs. If the promotion is withdrawn before delegation or resume, Checkmate refuses those actions too. Check `checkmate plan promotions SHOP-12` and fix the current plan or result before you promote again.
 

@@ -2,7 +2,7 @@ import type { Store } from './store.ts'
 import type { Plan } from './types.ts'
 import type { Change } from './change.ts'
 import { all, canonical, completed, execute, one, write } from './store.ts'
-import { requireChoice, requireIdentifier, requireText, unusedId } from './contracts.ts'
+import { requireBuild, requireChoice, requireIdentifier, unusedId } from './contracts.ts'
 import { executionTarget, planRequest, planTools } from './plans.ts'
 import { correctedEntryText, runInstance } from './targets.ts'
 import { explorationRules, planRules } from './rules.ts'
@@ -227,9 +227,9 @@ export type OpenInput = {
 
 export function insertExploration(store: Store, input: OpenInput, operationId: string, at: string) {
 	const planId = requireIdentifier(input.planId, 'plan ID')
+	const build = requireBuild(input.build)
 	const { target: pinned } = planRequest(store, planId)
 	const target = executionTarget(store, planId, pinned.profile.targetId, pinned.revision)
-	const build = requireText(input.build, 'application build (--build)')
 	const mode = requireChoice(input.mode ?? 'exploratory', explorationModes, 'mode (--mode)')
 	const instance = runInstance(store, target.profile.targetId, input.instance)
 	const explorationId = input.explorationId ?? nextExplorationId(store)

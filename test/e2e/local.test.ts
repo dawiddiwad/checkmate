@@ -106,6 +106,35 @@ async function mcpCalls(
 		.map((line) => JSON.parse(line))
 }
 
+// Save the model settings through the review UI, as a person does on the settings page.
+async function saveModelSettings(workspace: string, env: NodeJS.ProcessEnv, fields: Record<string, string>) {
+	const ui = spawn(process.execPath, [binary, 'ui', '--port', '0', '--json'], { cwd: workspace, env })
+	try {
+		const [data] = (await once(ui.stdout, 'data')) as [Buffer]
+		const url = JSON.parse(data.toString()).url as string
+		const page = await (await fetch(new URL('/settings/harness', url))).text()
+		const csrf = /name="csrf" value="([^"]+)"/.exec(page)?.[1]
+		assert(csrf, 'The settings page did not expose a CSRF token')
+		const response = await fetch(new URL('/settings/harness/models', url), {
+			method: 'POST',
+			headers: { 'content-type': 'application/x-www-form-urlencoded', origin: new URL(url).origin },
+			body: new URLSearchParams({ actor: 'oracle', csrf, requestModel: '', testerModel: '', ...fields }),
+			redirect: 'manual',
+		})
+		assert.equal(response.status, 303, await response.text())
+	} finally {
+		ui.kill('SIGTERM')
+		if (ui.exitCode === null) await once(ui, 'exit')
+	}
+}
+
+// The model and effort arguments of each worker launch that the fake host logged since the last read.
+function launchesIn(log: string) {
+	const lines = existsSync(log) ? readFileSync(log, 'utf8').trim().split('\n').filter(Boolean) : []
+	rmSync(log, { force: true })
+	return lines.map((line) => JSON.parse(line))
+}
+
 test('Install packed npm CLI and open the empty UI — installed assets or skills missing.', async (t) => {
 	const workspace = directory(t)
 	const installed = join(project, 'node_modules/@xoxoai/checkmate')
@@ -430,7 +459,13 @@ test('Delegate plan, apply an answer immediately, and record stored checks only 
 	mkdirSync(bin)
 	copyFileSync(join(root, 'test/e2e/typed-worker.mjs'), join(bin, 'claude'))
 	chmodSync(join(bin, 'claude'), 0o755)
-	const env = { ...process.env, PATH: `${bin}${delimiter}${process.env.PATH}`, CHECKMATE_ACTOR: 'oracle' }
+	const log = join(directory(t), 'launches.jsonl')
+	const env = {
+		...process.env,
+		PATH: `${bin}${delimiter}${process.env.PATH}`,
+		CHECKMATE_ACTOR: 'oracle',
+		QA_ARGS_LOG: log,
+	}
 	const [, inventory, ...responses] = await mcpCalls(workspace, env, [
 		['checkmate_setup', { url: app.baseUrl, targetId: 'shop', operations: ['read_health'] }],
 		[
@@ -486,6 +521,133 @@ test('Delegate plan, apply an answer immediately, and record stored checks only 
 	])
 	const answer = await command(workspace, env, 'query', 'SELECT value FROM decisions')
 	assert.deepEqual(answer.body.rows, [{ value: 'It returns HTTP 200.' }])
+	// Without a saved setting, no worker gets a model or an effort argument.
+	const launches = launchesIn(log)
+	assert.deepEqual(new Set(launches.map((launch) => launch.role)), new Set(['plan', 'revise', 'execute', 'probe']))
+	assert(
+		launches.every((launch) => launch.model === null && launch.effort === null),
+		JSON.stringify(launches)
+	)
+})
+
+test('Run delegated Claude workers on the saved models — plan and revise use the request model, execute uses the tester model, an explicit model wins, and an unavailable model falls back once.', async (t) => {
+	const workspace = directory(t)
+	const app = await fixture()
+	t.after(() => app.close())
+	const bin = join(workspace, 'bin')
+	mkdirSync(bin)
+	copyFileSync(join(root, 'test/e2e/typed-worker.mjs'), join(bin, 'claude'))
+	chmodSync(join(bin, 'claude'), 0o755)
+	const log = join(directory(t), 'launches.jsonl')
+	const env = {
+		...process.env,
+		PATH: `${bin}${delimiter}${process.env.PATH}`,
+		CHECKMATE_ACTOR: 'oracle',
+		QA_ARGS_LOG: log,
+	}
+	const tools = async (calls: Array<[string, object]>) =>
+		(await mcpCalls(workspace, env, calls)).slice(2).map((response) => response.result.structuredContent)
+	await saveModelSettings(workspace, env, {
+		harness: 'claude',
+		requestModel: 'request-model',
+		testerModel: 'tester-model',
+		testerEffort: 'low',
+	})
+	const [, , planned, answered, , executed] = await tools([
+		['checkmate_setup', { url: app.baseUrl, targetId: 'shop', operations: ['read_health'] }],
+		[
+			'checkmate_open_plan',
+			{
+				target: 'shop',
+				planId: 'ticket',
+				request: {
+					objective: 'Check health.',
+					requirements: [{ id: 'R1', text: 'The health endpoint answers.', source: 'ticket.md' }],
+				},
+			},
+		],
+		['checkmate_delegate_work', { stage: 'plan', subject: 'ticket' }],
+		[
+			'checkmate_answer_gap',
+			{
+				planId: 'ticket',
+				gapId: 'G1',
+				kind: 'clarify',
+				value: 'It returns HTTP 200.',
+				source: 'conversation',
+				rationale: 'The person answered.',
+			},
+		],
+		['checkmate_begin_run', { runId: 'r1', reference: 'ticket', build: 'b1' }],
+		['checkmate_delegate_work', { stage: 'execute', subject: 'r1' }],
+	])
+	assert(['completed', 'needs_decision'].includes(planned.status), JSON.stringify(planned))
+	assert.deepEqual(planned.observedModels, ['request-model'], JSON.stringify(planned))
+	assert.equal(answered.revision.status, 'completed', JSON.stringify(answered))
+	assert.equal(executed.status, 'completed', JSON.stringify(executed))
+	assert.deepEqual(executed.observedModels, ['tester-model'])
+	// The catalog advertises the low effort for the tester model. The request effort is not set, so none is sent.
+	assert.deepEqual(launchesIn(log), [
+		{ role: 'plan', model: 'request-model', effort: null },
+		{ role: 'revise', model: 'request-model', effort: null },
+		{ role: 'execute', model: 'tester-model', effort: 'low' },
+		{ role: 'probe', model: 'tester-model', effort: 'low' },
+	])
+
+	await tools([['checkmate_begin_run', { runId: 'r2', reference: 'ticket', build: 'b2' }]])
+	const explicit = await command(
+		workspace,
+		env,
+		'delegate',
+		'execute',
+		'r2',
+		'--allow',
+		'Read',
+		'--allow',
+		'Bash',
+		'--claude-arg',
+		'--model',
+		'--claude-arg',
+		'explicit-model'
+	)
+	assert.equal(explicit.body.status, 'completed', explicit.output)
+	assert.deepEqual(launchesIn(log), [
+		{ role: 'execute', model: 'explicit-model', effort: null },
+		{ role: 'probe', model: 'explicit-model', effort: null },
+	])
+
+	await saveModelSettings(workspace, env, {
+		harness: 'claude',
+		requestModel: 'request-model',
+		testerModel: 'unavailable-model',
+	})
+	const [, fallen] = await tools([
+		['checkmate_begin_run', { runId: 'r3', reference: 'ticket', build: 'b3' }],
+		['checkmate_delegate_work', { stage: 'execute', subject: 'r3' }],
+	])
+	assert.equal(fallen.status, 'completed', JSON.stringify(fallen))
+	// One refused launch decides it for the whole call: the probe starts on the harness default at once.
+	assert.deepEqual(launchesIn(log), [
+		{ role: 'execute', model: 'unavailable-model', effort: null },
+		{ role: 'execute', model: null, effort: null },
+		{ role: 'probe', model: null, effort: null },
+	])
+	assert.deepEqual(fallen.observedModels, ['default-model'])
+	assert.equal(fallen.modelFallback.model, 'unavailable-model')
+	assert.match(fallen.modelFallback.reason, /issue with the selected model/)
+	assert.match(
+		fallen.reasons.join(' '),
+		/The saved tester model unavailable-model could not be used: .*The workers ran on the harness default model: default-model\./
+	)
+	const attempt = await command(
+		workspace,
+		env,
+		'query',
+		"SELECT response FROM operations WHERE command = 'delegate execute' ORDER BY rowid DESC LIMIT 1"
+	)
+	const recorded = JSON.parse(attempt.body.rows[0].response)
+	assert.equal(recorded.data.modelFallback.model, 'unavailable-model', attempt.output)
+	assert.deepEqual(recorded.data.observedModels, ['default-model'])
 })
 
 test('Point run accept and run reject to the result command — a wrong command name leaves the record unchanged.', async (t) => {
@@ -6186,6 +6348,87 @@ test('Execute a run with a short deadline — the worker runs its test; no test 
 	const gated = await command(workspace, env, 'run', 'show', 'run-1', '--gate')
 	assert.equal(gated.code, 0, gated.output)
 	assert.equal(gated.body.gate.state, 'passed')
+})
+
+test('Run delegated Pi workers on the saved tester model — no setting sends no model, CHECKMATE_PI_MODEL wins, and an unavailable model falls back once.', async (t) => {
+	const workspace = directory(t)
+	mkdirSync(join(workspace, '.checkmate'))
+	writeFileSync(
+		join(workspace, '.checkmate/checkmate.db'),
+		gunzipSync(readFileSync(join(root, 'test/e2e/fixtures/workspace-migrated.db.gz')))
+	)
+	const app = await fixture()
+	t.after(() => app.close())
+	app.fix()
+	const bin = directory(t)
+	copyFileSync(join(root, 'test/e2e/per-test-host.mjs'), join(bin, 'pi'))
+	chmodSync(join(bin, 'pi'), 0o755)
+	const log = join(directory(t), 'launches.jsonl')
+	const env = {
+		...process.env,
+		PATH: `${bin}${delimiter}${process.env.PATH}`,
+		CHECKMATE_ACTOR: 'oracle',
+		CHECKMATE_HARNESS: 'pi',
+		FAKE_PI_LOG: join(directory(t), 'log.txt'),
+		FAKE_PI_ARGS: log,
+		FAKE_CHECKMATE_CLI: binary,
+	}
+	const ok = async (args: string[]) => {
+		const result = await inputCommand(workspace, env, '', ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	await ok(['target', 'instance', 'add', 'shop', 'local', '--entry', `web=${app.baseUrl}`])
+	await ok(['plan', 'approve', 'ticket@1', '--rationale', 'Run the rule.'])
+	const execute = async (runId: string, extra: Record<string, string> = {}) => {
+		await ok(['run', 'begin', runId, 'ticket@1', '--build', 'fixed', '--instance', 'local', '--tests', 'T1'])
+		const delegated = await inputCommand(
+			workspace,
+			{ ...env, FAKE_RUN: runId, ...extra },
+			'',
+			'delegate',
+			'execute',
+			runId
+		)
+		assert.equal(delegated.body.status, 'completed', delegated.output)
+		return delegated.body
+	}
+
+	const unset = await execute('run-1')
+	assert.deepEqual(launchesIn(log), [
+		{ model: null, thinking: null },
+		{ model: null, thinking: null },
+	])
+	assert.deepEqual(unset.observedModels, ['fake/default-model'])
+
+	await saveModelSettings(workspace, env, { harness: 'pi', testerModel: 'tester-model' })
+	const saved = await execute('run-2')
+	assert.deepEqual(launchesIn(log), [
+		{ model: 'tester-model', thinking: null },
+		{ model: 'tester-model', thinking: null },
+	])
+	assert.deepEqual(saved.observedModels, ['fake/tester-model'])
+
+	await execute('run-3', { CHECKMATE_PI_MODEL: 'explicit-model' })
+	assert.deepEqual(launchesIn(log), [
+		{ model: 'explicit-model', thinking: null },
+		{ model: 'explicit-model', thinking: null },
+	])
+
+	await saveModelSettings(workspace, env, { harness: 'pi', testerModel: 'unavailable-model' })
+	const fallen = await execute('run-4')
+	assert.deepEqual(launchesIn(log), [
+		{ model: 'unavailable-model', thinking: null },
+		{ model: null, thinking: null },
+		{ model: null, thinking: null },
+	])
+	assert.deepEqual(fallen.observedModels, ['fake/default-model'])
+	assert.equal(fallen.modelFallback.model, 'unavailable-model')
+	assert.match(fallen.modelFallback.reason, /Model "unavailable-model" not found/)
+	assert.match(
+		fallen.reasons.join(' '),
+		/The saved tester model unavailable-model could not be used: .*The workers ran on the harness default model: fake\/default-model\./
+	)
 })
 
 test('Name the owed cleanup of a run that never finished — status gives the exact command, and it removes the marked data.', async (t) => {

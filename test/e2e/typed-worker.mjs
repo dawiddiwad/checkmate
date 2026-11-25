@@ -1,10 +1,42 @@
 #!/usr/bin/env node
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
+import { appendFileSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
 const args = process.argv.slice(2)
+const flag = (name) => (args.includes(name) ? args[args.indexOf(name) + 1] : null)
+// The model catalog request of Checkmate. The tester model advertises two effort levels.
+if (args.includes('--input-format')) {
+	const models = [{ value: 'default' }, { value: 'tester-model', supportedEffortLevels: ['low', 'high'] }]
+	const response = { request_id: 'checkmate-models', subtype: 'success', response: { models } }
+	console.log(JSON.stringify({ type: 'control_response', response }))
+	process.exit(0)
+}
+if (process.env.QA_ARGS_LOG)
+	appendFileSync(
+		process.env.QA_ARGS_LOG,
+		JSON.stringify({ role: process.env.CHECKMATE_TOOL_ROLE, model: flag('--model'), effort: flag('--effort') }) +
+			'\n'
+	)
+// Claude Code refuses a model that does not exist before the first turn.
+if (flag('--model') === 'unavailable-model') {
+	const result =
+		"There's an issue with the selected model (unavailable-model). It may not exist or you may not have access to it."
+	console.log(
+		JSON.stringify({
+			type: 'result',
+			subtype: 'success',
+			is_error: true,
+			api_error_status: 404,
+			api_error_type: 'not_found_error',
+			result,
+			total_cost_usd: 0,
+			modelUsage: {},
+		})
+	)
+	process.exit(1)
+}
 const root = args[args.indexOf('--plugin-dir') + 1]
 const { callActionTool } = await import(pathToFileURL(join(root, 'dist/checkmate.js')).href)
 const stage = process.env.CHECKMATE_TOOL_ROLE
@@ -69,7 +101,9 @@ if (stage === 'plan') {
 	reply = { status: 'completed', reasons: [] }
 } else {
 	assert.equal(stage, 'execute')
-	assert.match(prompt, /independent tester/)
+	// The CLI path of delegate gives the shell prompt, and its worker closes the test itself.
+	const native = /independent tester/.test(prompt)
+	assert(native || /delegated Checkmate execute step/.test(prompt))
 	const run = await ok('read_run', { runId: subject, includePlan: true })
 	const response = await fetch(run.instance.entries.web + '/health')
 	const request = 'GET /health'
@@ -95,11 +129,13 @@ if (stage === 'plan') {
 	})
 	assert.equal(reply.result, 'passed')
 	// The launcher closes a fully recorded test even if this worker did not close it.
+	if (!native) reply = await ok('close_test', { runId: subject, testId: process.env.CHECKMATE_TOOL_TEST })
 }
 console.log(
 	JSON.stringify({
 		type: 'result',
 		subtype: 'success',
 		structured_output: { status: reply.status, subject, reasons: reply.reasons },
+		modelUsage: { [flag('--model') ?? 'default-model']: { costUSD: 0 } },
 	})
 )

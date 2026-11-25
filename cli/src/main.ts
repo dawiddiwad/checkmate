@@ -13,6 +13,7 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { actionInput } from '../../plugin/src/actions.ts'
 import { serveActions } from '../../plugin/src/action-mcp.ts'
+import { serveToolServer } from '../../plugin/src/tool-servers.ts'
 export { actionToolDefinitions, callActionTool } from '../../plugin/src/action-tools.ts'
 
 type Parsed = {
@@ -317,6 +318,7 @@ async function runDelegate(tokens: string[]) {
 if (import.meta.main) {
 	const argv = process.argv.slice(2)
 	if (argv[0] === 'mcp' && argv.length === 1) await serveActions()
+	else if (argv[0] === 'tool-server' && argv.length >= 4) serveToolServer(argv[1], argv[2], argv[3], argv.slice(4))
 	else if (argv[0] === '--version') process.stdout.write(version() + '\n')
 	else if (!argv.length || argv[0] === '--help' || (argv[0] === '--json' && argv[1] === '--help'))
 		process.stdout.write(help(argv.includes('--json')) + '\n')

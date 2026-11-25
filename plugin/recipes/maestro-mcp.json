@@ -1,0 +1,47 @@
+{
+	"name": "maestro-mcp",
+	"capability": "mobile",
+	"kind": "mcp",
+	"purpose": "Drive the mobile app on a device through the Maestro MCP server.",
+	"detect": "path",
+	"entryPoints": [
+		{
+			"name": "app",
+			"kind": "value",
+			"purpose": "The app ID of the app under test, for example com.example.shop."
+		},
+		{
+			"name": "device",
+			"kind": "value",
+			"purpose": "The ID of the simulator or emulator that runs the app."
+		}
+	],
+	"server": {
+		"command": "maestro",
+		"args": ["mcp", "--no-viewer"],
+		"cwd": "{workFolder}"
+	},
+	"tools": ["inspect_screen", "run", "take_screenshot"],
+	"refusedArguments": {
+		"run": ["files", "dir"]
+	},
+	"entryArguments": {
+		"device_id": "device"
+	},
+	"environment": {
+		"MAESTRO_CLI_NO_ANALYTICS": "true",
+		"MAESTRO_DISABLE_UPDATE_CHECK": "true"
+	},
+	"delegatedInstruction": "Mobile app: Checkmate attached the Maestro MCP server. Its tools are mcp__maestro_mcp__inspect_screen, mcp__maestro_mcp__run, and mcp__maestro_mcp__take_screenshot. Give device_id, the device entry of the instance, on every call. Give run only yaml: an inline flow with the header appId: <app>, then a line ---, then the commands. Never give files or dir. Run one short step, then read the screen with inspect_screen. In a selector, use a11y as text: and rid as id:. Tap or type only by a text or an id from the latest inspect_screen. Never invent one. For a switch, tap point: <x>,<y> inside the bounds of the element that has checked or val, then read the screen again. Do not put an assertion in the flow: read the value and record it. For a screenshot file, put - takeScreenshot: <name> in a flow: it writes <name>.png in {workFolder}. Give that file with --evidence <path>:screenshot, with the path relative to the workspace. take_screenshot shows you the screen but writes no file. If an element is missing, wait one second, read the screen again, and retry once. If it is still missing, close the test as error with the inspect_screen excerpt as evidence. Do not use clearState, clearKeychain, runScript, evalScript, openLink to another app, or a new install of the app.",
+	"workspaceFolders": [],
+	"observeFrom": {
+		"screen": "view",
+		"relaunch": "state"
+	},
+	"evidence": ["screenshot", "view_hierarchy", "recording"],
+	"evidenceExtensions": {
+		".png": "screenshot",
+		".mp4": "recording"
+	},
+	"usage": "maestro-mcp.md"
+}

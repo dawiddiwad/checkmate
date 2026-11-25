@@ -1,0 +1,184 @@
+// The MCP server of a recipe of kind mcp. A host starts `checkmate tool-server`, and it starts the server of the recipe
+// in the work folder, in a process group of its own. It forwards the MCP messages, but lists and calls only the tools
+// that the recipe names. When the host closes it, it stops the whole group, so no driver process stays behind.
+import { spawn } from 'node:child_process'
+import { mkdirSync } from 'node:fs'
+import { join } from 'node:path'
+import { createInterface } from 'node:readline'
+import { signalChild, trackGroup } from './processes.ts'
+import { filled, recipes, recipesFor, testerTools, type Recipe, type SessionValues } from './recipes.ts'
+
+export type AttachedServer = { name: string; command: string; args: string[]; tools: string[] }
+
+const stopGraceMilliseconds = 3000
+
+// The host names a tool mcp__<server>__<tool>. Both hosts accept letters, digits, and _ in the server name.
+export function serverName(recipe: Recipe) {
+	return recipe.name.replaceAll('-', '_')
+}
+
+// The servers that Checkmate attaches to one tester session, one for each recipe of kind mcp that the tester uses.
+// The server gets the values of the instance entries that its recipe pins, as <entry>=<value> arguments.
+export function attachedServers(
+	toolNames: string[],
+	values: SessionValues,
+	script: string,
+	entries: Record<string, string>
+): AttachedServer[] {
+	return recipesFor(testerTools(toolNames, true))
+		.filter((recipe) => recipe.kind === 'mcp')
+		.map((recipe) => ({
+			name: serverName(recipe),
+			command: process.execPath,
+			args: [
+				script,
+				'tool-server',
+				recipe.name,
+				values.workFolder,
+				values.session,
+				...[...new Set(Object.values(recipe.entryArguments ?? {}))].flatMap((entry) =>
+					entries[entry] ? [`${entry}=${entries[entry]}`] : []
+				),
+			],
+			tools: recipe.tools!.map((tool) => `mcp__${serverName(recipe)}__${tool}`),
+		}))
+}
+
+// Claude Code: the servers as an MCP config, and an allow rule for each tool. --strict-mcp-config is not given,
+// because it also drops the MCP server of the plugin, which delegated workers use.
+export function claudeServerArgs(servers: AttachedServer[]) {
+	if (!servers.length) return []
+	const config = Object.fromEntries(
+		servers.map((server) => [server.name, { type: 'stdio', command: server.command, args: server.args }])
+	)
+	return [
+		'--mcp-config',
+		JSON.stringify({ mcpServers: config }),
+		...servers.flatMap((server) => server.tools.flatMap((tool) => ['--allowedTools', tool])),
+	]
+}
+
+// Pi: the extension tool-servers.mjs registers the servers of this environment variable with pi.registerMcpServer.
+export function piServerEnv(servers: AttachedServer[]): Record<string, string> {
+	if (!servers.length) return {}
+	const config = Object.fromEntries(
+		servers.map((server) => [server.name, { command: server.command, args: server.args, exposure: 'direct' }])
+	)
+	return { CHECKMATE_TOOL_SERVERS: JSON.stringify(config) }
+}
+
+export function piServerExtension(pluginRoot: string) {
+	return join(pluginRoot, 'pi', 'tool-servers.mjs')
+}
+
+type Message = {
+	id?: unknown
+	method?: string
+	params?: { name?: unknown; arguments?: Record<string, unknown> }
+	result?: { tools?: unknown }
+}
+
+// Why a call cannot go to the server, or undefined. A call without a pinned argument gets the entry value.
+function refusal(recipe: Recipe, request: Message, entries: Record<string, string>) {
+	const tool = String(request.params?.name)
+	if (!recipe.tools!.includes(tool))
+		return `Tool ${tool} is not a tool of recipe ${recipe.name}. Its tools are ${recipe.tools!.join(', ')}.`
+	const input = (request.params!.arguments ??= {})
+	const given = (recipe.refusedArguments?.[tool] ?? []).filter((name) => input[name] !== undefined)
+	if (given.length) return `Tool ${tool} does not take ${given.join(' or ')} in recipe ${recipe.name}.`
+	for (const [name, entry] of Object.entries(recipe.entryArguments ?? {})) {
+		const value = entries[entry]
+		if (value === undefined) continue
+		if (input[name] === undefined) input[name] = value
+		else if (input[name] !== value) return `Give ${name} ${value}, the ${entry} entry of the instance.`
+	}
+	return undefined
+}
+
+function message(line: string): Message | undefined {
+	try {
+		const value = JSON.parse(line)
+		return typeof value === 'object' && value !== null && !Array.isArray(value) ? value : undefined
+	} catch {
+		return undefined
+	}
+}
+
+export function serveToolServer(recipeName: string, workFolder: string, session: string, pinned: string[]) {
+	const entries = Object.fromEntries(
+		pinned.map((item) => [item.slice(0, item.indexOf('=')), item.slice(item.indexOf('=') + 1)])
+	)
+	const recipe = recipes().find((item) => item.name === recipeName && item.kind === 'mcp')
+	if (!recipe?.server || !workFolder) {
+		process.stderr.write(
+			`checkmate tool-server: no recipe of kind mcp is named ${recipeName}, or no work folder.\n`
+		)
+		process.exit(2)
+	}
+	const values = { session, workFolder }
+	const cwd = filled(recipe.server.cwd, values)
+	mkdirSync(cwd, { recursive: true })
+	const environment = Object.entries(recipe.environment).map(([name, value]) => [name, filled(value, values)])
+	const server = spawn(
+		recipe.server.command,
+		recipe.server.args.map((arg) => filled(arg, values)),
+		{
+			cwd,
+			env: { ...process.env, ...Object.fromEntries(environment) },
+			detached: true,
+			stdio: ['pipe', 'pipe', 'inherit'],
+		}
+	)
+	trackGroup(server)
+	const allowed = new Set(recipe.tools)
+	const lists = new Set<unknown>()
+	const send = (line: string) => process.stdout.write(`${line}\n`)
+	createInterface({ input: process.stdin })
+		.on('line', (line) => {
+			const request = message(line)
+			if (request?.method === 'tools/list') lists.add(request.id)
+			if (request?.method === 'tools/call') {
+				const refused = refusal(recipe, request, entries)
+				if (refused)
+					return send(
+						JSON.stringify({ jsonrpc: '2.0', id: request.id, error: { code: -32602, message: refused } })
+					)
+				line = JSON.stringify(request)
+			}
+			if (server.stdin.writable) server.stdin.write(`${line}\n`)
+		})
+		.on('close', stop)
+	createInterface({ input: server.stdout }).on('line', (line) => {
+		const reply = message(line)
+		if (reply && !reply.method && lists.has(reply.id) && Array.isArray(reply.result?.tools)) {
+			lists.delete(reply.id)
+			reply.result.tools = reply.result.tools.filter((tool: { name?: string }) => allowed.has(tool.name ?? ''))
+			return send(JSON.stringify(reply))
+		}
+		send(line)
+	})
+	server.stdin.on('error', () => {})
+	server.on('error', (error) => {
+		process.stderr.write(`checkmate tool-server: cannot start ${recipe.server!.command}: ${error.message}\n`)
+		process.exit(1)
+	})
+	// The leader can end before the processes that it started, for example a device driver.
+	server.on('exit', (code) => {
+		try {
+			if (server.pid) process.kill(-server.pid, 'SIGTERM')
+		} catch {}
+		process.exit(code ?? 0)
+	})
+	let stopping = false
+	function stop() {
+		if (stopping) return
+		stopping = true
+		server.stdin.end()
+		signalChild(server, 'SIGTERM')
+		setTimeout(() => {
+			signalChild(server, 'SIGKILL')
+			process.exit(0)
+		}, stopGraceMilliseconds)
+	}
+	for (const signal of ['SIGTERM', 'SIGINT', 'SIGHUP'] as const) process.on(signal, stop)
+}

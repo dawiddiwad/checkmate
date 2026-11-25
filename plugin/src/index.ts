@@ -20,6 +20,7 @@ export {
 	addInstance,
 	retireInstance,
 	instanceList,
+	findInstance,
 } from './targets.ts'
 export {
 	openPlan,

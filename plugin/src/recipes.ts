@@ -12,10 +12,13 @@ export type RecipeEntryPoint = { name: string; kind: 'url' | 'command' | 'value'
 // In "run" and "contains", {<entry name>} stands for the value of that entry. Core knows only these two kinds.
 export type ReachCheck = { check: 'http'; entry: string } | { check: 'command'; run: string[]; contains?: string[] }
 
+// How Checkmate starts the MCP server of a recipe of kind mcp. args and cwd can contain {session} and {workFolder}.
+export type ToolServer = { command: string; args: string[]; cwd: string }
+
 export type Recipe = {
 	name: string
 	capability: string
-	kind: 'cli'
+	kind: 'cli' | 'mcp'
 	purpose: string
 	detect: 'path' | 'runtime'
 	// What the target needs. A recipe without entry points fits every target.
@@ -30,6 +33,14 @@ export type Recipe = {
 	evidence: string[]
 	evidenceExtensions?: Record<string, string>
 	usage: string
+	// Kind mcp only: the server that Checkmate starts, and the exact names of its tools that a tester can call.
+	server?: ToolServer
+	tools?: string[]
+	// Kind mcp only: the arguments that a call of a tool may not give, by tool name, for example {"run": ["dir"]}.
+	refusedArguments?: Record<string, string[]>
+	// Kind mcp only: arguments that must have the value of an instance entry, for example {"device_id": "device"}.
+	// A call without the argument gets the entry value.
+	entryArguments?: Record<string, string>
 }
 
 // "view" reads what the tool shows now; it does not show that a stored state changed. "state" reads the stored state.
@@ -71,7 +82,10 @@ function readRecipe(folder: string, file: string): Recipe {
 	if (typeof recipe !== 'object' || recipe === null || Array.isArray(recipe)) refuse('it is not a JSON object.')
 	if (!isText(recipe.name) || `${recipe.name}.json` !== file) refuse('name must be the file name without .json.')
 	if (!isText(recipe.capability)) refuse('capability must be a text.')
-	if (recipe.kind !== 'cli') refuse('kind must be cli.')
+	if (recipe.kind !== 'cli' && recipe.kind !== 'mcp') refuse('kind must be cli or mcp.')
+	if (recipe.kind === 'mcp') readServer(recipe, refuse)
+	else if (recipe.server !== undefined || recipe.tools !== undefined)
+		refuse('server and tools are only for a recipe of kind mcp.')
 	if (!isText(recipe.purpose)) refuse('purpose must be a text.')
 	if (recipe.detect !== 'path' && recipe.detect !== 'runtime') refuse('detect must be path or runtime.')
 	const environment: unknown = recipe.environment
@@ -178,6 +192,51 @@ function readReachable(recipe: Partial<Recipe>, refuse: (problem: string) => nev
 	}
 }
 
+// A recipe of kind mcp runs a command: Checkmate starts its server for each tester session that uses it.
+function readServer(recipe: Partial<Recipe>, refuse: (problem: string) => never) {
+	const server: unknown = recipe.server
+	if (
+		typeof server !== 'object' ||
+		server === null ||
+		Array.isArray(server) ||
+		Object.keys(server).some((key) => !['command', 'args', 'cwd'].includes(key)) ||
+		!isText((server as ToolServer).command) ||
+		!Array.isArray((server as ToolServer).args) ||
+		!(server as ToolServer).args.every(isText) ||
+		!isText((server as ToolServer).cwd)
+	)
+		refuse('server must be {command, args (list of arguments), cwd} for a recipe of kind mcp.')
+	if (
+		!Array.isArray(recipe.tools) ||
+		!recipe.tools.length ||
+		!recipe.tools.every((name) => typeof name === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(name))
+	)
+		refuse('tools must list the names of the server tools that a tester can call.')
+	if (recipe.closeSession !== undefined || recipe.shellInstruction !== undefined)
+		refuse('a recipe of kind mcp has no closeSession or shellInstruction: Checkmate stops its server.')
+	const refused: unknown = recipe.refusedArguments
+	if (
+		refused !== undefined &&
+		(typeof refused !== 'object' ||
+			refused === null ||
+			Array.isArray(refused) ||
+			!Object.keys(refused).every((tool) => recipe.tools?.includes(tool)) ||
+			!Object.values(refused).every((names) => Array.isArray(names) && names.length && names.every(isText)))
+	)
+		refuse('refusedArguments must map a tool of the recipe to the names of the arguments that it may not give.')
+	const entries = (recipe.entryPoints ?? []).map((entry) => entry.name)
+	const pinned: unknown = recipe.entryArguments
+	if (
+		pinned !== undefined &&
+		(typeof pinned !== 'object' ||
+			pinned === null ||
+			Array.isArray(pinned) ||
+			!Object.keys(pinned).every(isText) ||
+			!Object.values(pinned).every((entry) => entries.includes(entry)))
+	)
+		refuse('entryArguments must map an argument name to an entry point of the recipe.')
+}
+
 // A value name is a lower-case word, for example page or http_exchange.
 function isValueName(value: unknown) {
 	return typeof value === 'string' && /^[a-z][a-z0-9_]{0,39}$/.test(value)
@@ -244,11 +303,14 @@ export function filled(text: string, values: SessionValues) {
 	return text.replaceAll('{session}', values.session).replaceAll('{workFolder}', values.workFolder)
 }
 
+// The environment of a recipe of kind mcp is the environment of its server, not of the tester.
 export function testerEnvironment(values: SessionValues) {
 	return Object.fromEntries(
-		recipes().flatMap((recipe) =>
-			Object.entries(recipe.environment).map(([name, value]) => [name, filled(value, values)])
-		)
+		recipes()
+			.filter((recipe) => recipe.kind === 'cli')
+			.flatMap((recipe) =>
+				Object.entries(recipe.environment).map(([name, value]) => [name, filled(value, values)])
+			)
 	)
 }
 
@@ -259,6 +321,24 @@ export function shellInstructions(values: SessionValues) {
 // The recipes of the named tools, in recipe order. A tool without a recipe has none.
 export function recipesFor(toolNames: string[]) {
 	return recipes().filter((recipe) => toolNames.includes(recipe.name))
+}
+
+// The program that detection looks for on PATH.
+export function toolExecutable(recipe: Recipe) {
+	return recipe.server?.command ?? recipe.name
+}
+
+// The tools that one tester session uses. When two recipes of the tools give one capability, the tester gets one:
+// the recipe of kind mcp where Checkmate attaches its server, and the other recipe where it cannot. A tester
+// with only the recipe of kind mcp keeps it; its usage text says what to do when the server is missing.
+export function testerTools(toolNames: string[], attached: boolean) {
+	const given = recipesFor(toolNames)
+	const dropped = given.filter((recipe) => {
+		const others = given.filter((other) => other !== recipe && other.capability === recipe.capability)
+		if (!others.length) return false
+		return attached ? recipe.kind !== 'mcp' && others.some((other) => other.kind === 'mcp') : recipe.kind === 'mcp'
+	})
+	return toolNames.filter((name) => !dropped.some((recipe) => recipe.name === name))
 }
 
 // The entry points that the recipes declare, by name. The same name has the same meaning in every recipe.

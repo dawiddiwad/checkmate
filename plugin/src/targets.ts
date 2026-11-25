@@ -17,7 +17,7 @@ import {
 } from './contracts.ts'
 import { executableOnPath } from './sessions.ts'
 import { changesData, resetCommand } from './resets.ts'
-import { declaredEntryPoints, fitsEntries, recipes, type ReachCheck, type Recipe } from './recipes.ts'
+import { declaredEntryPoints, fitsEntries, recipes, toolExecutable, type ReachCheck, type Recipe } from './recipes.ts'
 import { spawnSync } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -960,7 +960,7 @@ function fitEntries(entries: Record<string, string>, detected: Array<{ recipe: R
 
 function detectedTools(env: SetupInput['env']) {
 	return recipes().flatMap((recipe) => {
-		const path = recipe.detect === 'runtime' ? process.execPath : executableOnPath(recipe.name, env)
+		const path = recipe.detect === 'runtime' ? process.execPath : executableOnPath(toolExecutable(recipe), env)
 		return path ? [{ recipe, path }] : []
 	})
 }
@@ -998,10 +998,14 @@ export function setupAssumptions(input: SetupInput) {
 }
 
 function pathTools(detected: Array<{ recipe: Recipe }>, entryNames: string[]) {
-	const found = detected.filter(({ recipe }) => recipe.detect === 'path').map(({ recipe }) => recipe.name)
+	const found = [
+		...new Set(
+			detected.filter(({ recipe }) => recipe.detect === 'path').map(({ recipe }) => toolExecutable(recipe))
+		),
+	]
 	if (found.length) return `${found.join(' and ')} ${found.length === 1 ? 'is' : 'are'} on PATH`
 	const missing = recipes().filter((recipe) => recipe.detect === 'path' && fitsEntries(recipe, entryNames))
-	return `no ${missing.map((recipe) => recipe.capability).join(' or ')} tool on PATH`
+	return `no ${[...new Set(missing.map((recipe) => recipe.capability))].join(' or ')} tool on PATH`
 }
 
 function sameSet(a: string[], b: string[]) {

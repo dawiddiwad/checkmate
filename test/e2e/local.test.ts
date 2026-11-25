@@ -6692,6 +6692,79 @@ test('A plan of the shape stored before tool recipes keeps its observeFrom value
 	assert.match(readFileSync(join(workspace, 'run.junit'), 'utf8'), /<testcase/)
 })
 
+test('Keep each tool folder that testers left, and leave each tool folder that was there before — one old folder stopped the keep step for all, and an exploration stored by v0.8.2 still keeps its browser folder.', async (t) => {
+	const { cpSync } = await import('node:fs')
+	const plugin = join(directory(t), 'plugin')
+	cpSync(join(project, 'node_modules/@xoxoai/checkmate/plugin'), plugin, { recursive: true })
+	const node = JSON.parse(readFileSync(join(plugin, 'recipes', 'node.json'), 'utf8'))
+	writeFileSync(
+		join(plugin, 'recipes', 'scratch-tool.json'),
+		JSON.stringify({
+			...node,
+			name: 'scratch-tool',
+			capability: 'scratch',
+			purpose: 'Write scratch files.',
+			detect: 'path',
+			workspaceFolders: ['.scratch-tool'],
+			usage: 'node.md',
+		})
+	)
+	const entry = join(plugin, 'dist/checkmate.js')
+	const app = await fixture()
+	t.after(() => app.close())
+	const workspace = directory(t)
+	writeFileSync(join(workspace, 'ticket.md'), 'The promotion quote is 240 PLN.\n')
+	const host = fakeClaude(t, { tester: '!sleep' }, 'pi')
+	const env = { ...process.env, ...host.env, CHECKMATE_ACTOR: 'oracle', CHECKMATE_HARNESS: 'pi' }
+	const ok = async (where: string, ...args: string[]) => {
+		const result = await invoke(entry, where, env, '', args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	mkdirSync(join(workspace, '.playwright-cli'))
+	writeFileSync(join(workspace, '.playwright-cli', 'mine.log'), 'The person keeps this.\n')
+	const started = await ok(
+		workspace,
+		'test',
+		'cart',
+		'--url',
+		app.baseUrl,
+		'--data',
+		'environment',
+		'--policy',
+		'The test fixture keeps no records.',
+		'--source',
+		'ticket.md',
+		'--build',
+		'b1',
+		'--level',
+		'smoke'
+	)
+	mkdirSync(join(workspace, '.scratch-tool'))
+	writeFileSync(join(workspace, '.scratch-tool', 'tester.log'), 'A tester left this.\n')
+	await ok(workspace, 'explore', 'stop', started.explorationId, '--reason', 'Keep the work.')
+	const work = join(workspace, '.checkmate', 'work', started.explorationId)
+	assert.equal(readFileSync(join(workspace, '.playwright-cli', 'mine.log'), 'utf8'), 'The person keeps this.\n')
+	assert.equal(existsSync(join(work, '.playwright-cli')), false)
+	assert.equal(existsSync(join(workspace, '.scratch-tool')), false)
+	assert.equal(readFileSync(join(work, '.scratch-tool', 'tester.log'), 'utf8'), 'A tester left this.\n')
+
+	const old = directory(t)
+	mkdirSync(join(old, '.checkmate'))
+	writeFileSync(
+		join(old, '.checkmate/checkmate.db'),
+		gunzipSync(readFileSync(join(root, 'test/e2e/fixtures/workspace-exploration-v0.8.2.db.gz')))
+	)
+	mkdirSync(join(old, '.playwright-cli'))
+	writeFileSync(join(old, '.playwright-cli', 'tester.log'), 'A tester left this.\n')
+	await ok(old, 'explore', 'stop', 'x-1', '--reason', 'Keep the work.')
+	assert.equal(existsSync(join(old, '.playwright-cli')), false)
+	assert.equal(
+		readFileSync(join(old, '.checkmate', 'work', 'x-1', '.playwright-cli', 'tester.log'), 'utf8'),
+		'A tester left this.\n'
+	)
+})
+
 test('Setup says why the application did not answer, follows redirects, accepts a 403, and goes through the proxy of the environment.', async (t) => {
 	const workspace = directory(t)
 	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle', CHECKMATE_HARNESS: 'pi' }

@@ -124,6 +124,9 @@ export type Launch = {
 	pluginHidden: boolean
 	path?: 'session'
 	inheritPiTools?: boolean
+	// The tool folders that were in the workspace when the exploration started.
+	toolFoldersBefore?: string[]
+	// Up to 0.8.2: true when .playwright-cli, the only tool folder then, was in the workspace.
 	browserFolder?: boolean
 }
 
@@ -359,15 +362,17 @@ function removeIfEmpty(folder: string) {
 	if (existsSync(folder) && !readdirSync(folder).length) rmdirSync(folder)
 }
 
-function toolFoldersExist(workspace: string) {
-	return toolFolders().some((name) => existsSync(join(workspace, name)))
+// A tool folder that was in the workspace before the exploration is not the work of a tester, so it stays.
+function foldersBefore(launch: Launch | undefined) {
+	if (launch?.toolFoldersBefore) return launch.toolFoldersBefore
+	return launch?.browserFolder === false ? [] : toolFolders()
 }
 
 export function keepToolFolders(store: Store, explorationId: string) {
-	if (startOf(explorationEvents(store, explorationId))?.browserFolder !== false) return
+	const before = foldersBefore(startOf(explorationEvents(store, explorationId)))
 	for (const name of toolFolders()) {
 		const from = join(store.workspace, name)
-		if (!existsSync(from)) continue
+		if (before.includes(name) || !existsSync(from)) continue
 		const to = join(store.workspace, workFolder(explorationId), name)
 		mkdirSync(join(to, '..'), { recursive: true })
 		rmSync(to, { recursive: true, force: true })
@@ -456,7 +461,7 @@ export function startExploration(
 				detail: {
 					...launch,
 					dataRules: rules,
-					browserFolder: toolFoldersExist(store.workspace),
+					toolFoldersBefore: toolFolders().filter((name) => existsSync(join(store.workspace, name))),
 				},
 			},
 			operationId,

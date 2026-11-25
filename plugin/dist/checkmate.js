@@ -22529,14 +22529,15 @@ function keepWorkFiles(store, actor, explorationId, explorer, phase) {
 function removeIfEmpty(folder) {
   if (existsSync8(folder) && !readdirSync3(folder).length) rmdirSync2(folder);
 }
-function toolFoldersExist(workspace2) {
-  return toolFolders().some((name2) => existsSync8(join11(workspace2, name2)));
+function foldersBefore(launch) {
+  if (launch?.toolFoldersBefore) return launch.toolFoldersBefore;
+  return launch?.browserFolder === false ? [] : toolFolders();
 }
 function keepToolFolders(store, explorationId) {
-  if (startOf(explorationEvents(store, explorationId))?.browserFolder !== false) return;
+  const before = foldersBefore(startOf(explorationEvents(store, explorationId)));
   for (const name2 of toolFolders()) {
     const from = join11(store.workspace, name2);
-    if (!existsSync8(from)) continue;
+    if (before.includes(name2) || !existsSync8(from)) continue;
     const to = join11(store.workspace, workFolder(explorationId), name2);
     mkdirSync6(join11(to, ".."), { recursive: true });
     rmSync5(to, { recursive: true, force: true });
@@ -22614,7 +22615,7 @@ function startExploration(store, actor, given, env, preferSavedModel = false) {
         detail: {
           ...launch,
           dataRules: rules,
-          browserFolder: toolFoldersExist(store.workspace)
+          toolFoldersBefore: toolFolders().filter((name2) => existsSync8(join11(store.workspace, name2)))
         }
       },
       operationId,

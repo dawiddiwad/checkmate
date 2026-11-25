@@ -18,7 +18,7 @@ import { createInterface } from 'node:readline'
 import { delimiter, dirname, join } from 'node:path'
 import { gunzipSync } from 'node:zlib'
 import { DatabaseSync } from 'node:sqlite'
-import test from 'node:test'
+import test, { type TestContext } from 'node:test'
 import { directory, pathWithoutRecipeTools, root } from '../support.ts'
 import { fakeClaude } from '../claude.ts'
 import { fixture } from '../fixture.ts'
@@ -7151,42 +7151,6 @@ test('Keep each tool folder that testers left, and leave each tool folder that w
 	assert.equal((await ok(resumed, 'explore', 'status', 'x-1')).state, 'completed')
 })
 
-test('Setup records maestro and the mobile capability only when maestro is on PATH — a mobile tool was never detected.', async (t) => {
-	const app = await fixture()
-	t.after(() => app.close())
-	const bin = directory(t)
-	const tool = join(bin, 'maestro')
-	writeFileSync(tool, '#!/bin/sh\necho 2.0.10\n')
-	chmodSync(tool, 0o755)
-	const setup = async (path: string) => {
-		const workspace = directory(t)
-		const env = { ...process.env, PATH: path, CHECKMATE_ACTOR: 'oracle', CHECKMATE_HARNESS: 'pi' }
-		const saved = await command(workspace, env, 'setup', '--url', app.baseUrl, '--target', 'shop')
-		assert.equal(saved.code, 0, saved.output)
-		const shown = await command(workspace, env, 'target', 'show', 'shop')
-		assert.equal(shown.code, 0, shown.output)
-		return { output: saved.output, profile: shown.body.profile }
-	}
-	const found = await setup(`${bin}${delimiter}${process.env.PATH}`)
-	assert.match(found.output, /capabilities=http,mobile \(maestro is on PATH\)/)
-	assert.deepEqual(found.profile.capabilities, ['http', 'mobile'])
-	const maestro = found.profile.tools.find((entry: { name: string }) => entry.name === 'maestro')
-	assert.deepEqual(maestro, {
-		name: 'maestro',
-		kind: 'cli',
-		purpose: 'Drive the mobile app on a device.',
-		version: '2.0.10',
-		reachable: true,
-	})
-	const missing = await setup(process.env.PATH!)
-	assert.match(missing.output, /capabilities=http \(no mobile or browser tool on PATH\)/)
-	assert.deepEqual(missing.profile.capabilities, ['http'])
-	assert.deepEqual(
-		missing.profile.tools.map((entry: { name: string }) => entry.name),
-		['node']
-	)
-})
-
 test('Test a mobile app with maestro: the tester gets the Maestro environment and the usage texts, and the plan takes the Maestro values — the brief spoke only of HTTP and the browser.', async (t) => {
 	const workspace = directory(t)
 	writeFileSync(join(workspace, 'ticket.md'), 'The cart keeps its items after the app starts again.\n')
@@ -11202,4 +11166,242 @@ test("Give each per-test execute worker the oracle's run rejection of its own te
 			assert(!permanent.some(hasLine), 'A permanent run gets no rejection line')
 			assert.doesNotMatch(permanent.shown, /The oracle rejected/)
 		}
+})
+
+// A maestro that answers --version and lists one device. It never touches a device.
+function fakeMaestro(t: TestContext) {
+	const bin = directory(t)
+	const tool = join(bin, 'maestro')
+	writeFileSync(
+		tool,
+		'#!/bin/sh\nif [ "$1" = list-devices ]; then echo "Local Devices"; echo "  SIM-1  iOS-26-3"; exit 0; fi\necho 2.12.1\n'
+	)
+	chmodSync(tool, 0o755)
+	return `${bin}${delimiter}${process.env.PATH ?? ''}`
+}
+
+const mobileEntries = ['--entry', 'app=com.apple.Preferences', '--entry', 'device=SIM-1']
+
+test('Set up a mobile app from its entries — the profile gets the entry points and the tools that fit, and a refusal names the entry that is missing.', async (t) => {
+	const workspace = directory(t)
+	const path = fakeMaestro(t)
+	const env = { ...process.env, PATH: path, CHECKMATE_ACTOR: 'oracle', CHECKMATE_HARNESS: 'pi' }
+	const refused = async (args: string[], pattern: RegExp, environment = env) => {
+		const result = await command(workspace, environment, ...args)
+		assert.equal(result.code, 1, result.output)
+		assert.match(result.output, pattern)
+	}
+	await refused(
+		['setup', '--entry', 'app=com.apple.Preferences', '--target', 'phone'],
+		/maestro needs the entries app and device. Missing: device\./
+	)
+	await refused(
+		['setup', '--entry', 'colour=red', '--target', 'phone'],
+		/Unknown entry colour\. Known entries: .*app.*web/
+	)
+	await refused(['setup', '--entry', 'web=ftp://x', '--target', 'phone'], /Entry web must match \^https\?:\/\//)
+	await refused(
+		['setup', ...mobileEntries, '--target', 'phone'],
+		/No tool that is installed fits the entries app, device\. maestro \(mobile\) needs them and is not on PATH\./,
+		{ ...env, PATH: process.env.PATH ?? '' }
+	)
+	const targets = await command(workspace, env, 'target', 'list')
+	assert.doesNotMatch(targets.output, /phone/)
+	const saved = await command(workspace, env, 'setup', ...mobileEntries, '--target', 'phone')
+	assert.equal(saved.code, 0, saved.output)
+	assert.match(saved.output, /entry points=app \(value\), device \(value\)/)
+	assert.match(saved.output, /capabilities=mobile \(maestro is on PATH\)/)
+	// The maestro recipe gives no reachability check, so setup says that it checked nothing.
+	assert.equal(saved.body.instanceReachable, null)
+	assert.match(saved.output, /reachability=not checked/)
+	assert.equal(saved.body.ready, true)
+	const shown = await command(workspace, env, 'target', 'show', 'phone', '--instance', 'local')
+	assert.equal(shown.code, 0, shown.output)
+	assert.deepEqual(shown.body.profile.entryPoints, [
+		{ name: 'app', kind: 'value', purpose: 'The app ID of the app under test, for example com.example.shop.' },
+		{ name: 'device', kind: 'value', purpose: 'The ID of the simulator or emulator that runs the app.' },
+	])
+	assert.deepEqual(shown.body.profile.capabilities, ['mobile'])
+	assert.deepEqual(
+		shown.body.profile.tools.map((tool: { name: string }) => tool.name),
+		['maestro']
+	)
+	assert.deepEqual(shown.body.instance.entries, { app: 'com.apple.Preferences', device: 'SIM-1' })
+	// The same entries again change nothing. The target ID comes from the first entry when none is given.
+	const again = await command(workspace, env, 'setup', ...mobileEntries, '--target', 'phone')
+	assert.equal(again.code, 0, again.output)
+	const named = await command(workspace, env, 'setup', ...mobileEntries)
+	assert.equal(named.code, 0, named.output)
+	assert.equal(named.body.targetId, 'com-apple-preferences')
+})
+
+test('Set up a web target with maestro on PATH — only the tools that fit the url are recorded.', async (t) => {
+	const app = await fixture()
+	t.after(() => app.close())
+	const workspace = directory(t)
+	const env = { ...process.env, PATH: fakeMaestro(t), CHECKMATE_ACTOR: 'oracle', CHECKMATE_HARNESS: 'pi' }
+	const saved = await command(workspace, env, 'setup', '--url', app.baseUrl, '--target', 'shop')
+	assert.equal(saved.code, 0, saved.output)
+	assert.match(saved.output, /entry point=web \(url\)/)
+	assert.match(saved.output, /capabilities=http \(no browser tool on PATH\)/)
+	const shown = await command(workspace, env, 'target', 'show', 'shop')
+	assert.deepEqual(shown.body.profile.capabilities, ['http'])
+	assert.deepEqual(shown.body.profile.entryPoints, [{ name: 'web', kind: 'url', purpose: 'The application.' }])
+	const same = await command(workspace, env, 'setup', '--entry', `web=${app.baseUrl}`, '--target', 'shop')
+	assert.equal(same.code, 0, same.output)
+	assert.equal(same.body.revision, 1)
+})
+
+test('Record the data policy of a target that has no URL — setup names the target, and the run refusal gives a command that works.', async (t) => {
+	const workspace = directory(t)
+	writeFileSync(join(workspace, 'ticket.md'), 'The keyboard setting can be changed.\n')
+	const env = { ...process.env, PATH: fakeMaestro(t), CHECKMATE_ACTOR: 'oracle', CHECKMATE_HARNESS: 'pi' }
+	const ok = async (args: string[], value?: object) => {
+		const result = await inputCommand(workspace, env, value ? JSON.stringify(value) : '', ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	const saved = await ok(['setup', ...mobileEntries, '--target', 'phone'])
+	assert.match(saved.next, /checkmate setup --target phone --reset "<command>"/)
+	await ok(['plan', 'open', 'keyboard', '--target', 'phone@1', '--objective', 'Change it.', '--source', 'ticket.md'])
+	await ok(['plan', 'save', 'keyboard'], {
+		requirements: [{ id: 'R1', text: 'The keyboard setting can be changed.', source: 'ticket.md' }],
+		tests: [
+			{
+				id: 'T1',
+				title: 'Switch the character preview',
+				requirementIds: ['R1'],
+				capability: 'mobile',
+				operations: ['change_setting'],
+				dependsOn: [],
+				preconditions: [],
+				action: 'Turn the switch off.',
+				assertions: [
+					{
+						id: 'A1',
+						check: 'The switch is off.',
+						checkKind: 'deterministic',
+						observe: 'the switch',
+						expected: 'off',
+						observeFrom: 'screen',
+					},
+				],
+			},
+		],
+		gaps: [],
+	})
+	await ok(['plan', 'approve', 'keyboard@1', '--rationale', 'Run it.'])
+	const refused = await command(workspace, env, 'run', 'begin', 'run-1', 'keyboard@1', '--build', 'b1')
+	assert.equal(refused.code, 1, refused.output)
+	assert.match(refused.output, /has no data policy/)
+	assert.match(
+		refused.body.hint,
+		/checkmate setup --target phone --reset "<command>", or --data environment\|isolation/
+	)
+	assert.doesNotMatch(refused.output, /--url/)
+	const unknown = await command(
+		workspace,
+		env,
+		'setup',
+		'--target',
+		'nothing',
+		'--data',
+		'environment',
+		'--policy',
+		'x'
+	)
+	assert.equal(unknown.code, 1, unknown.output)
+	assert.match(unknown.output, /Target nothing is not set up\. Give its entries/)
+	const policy = await ok([
+		'setup',
+		'--target',
+		'phone',
+		'--data',
+		'environment',
+		'--policy',
+		'The simulator is reset by hand.',
+	])
+	assert.equal(policy.revision, 2)
+	assert.equal(policy.instanceId, undefined)
+	const shown = await ok(['target', 'show', 'phone'])
+	assert.deepEqual(shown.profile.reset, {
+		owner: 'environment',
+		command: null,
+		policy: { text: 'The simulator is reset by hand.' },
+	})
+	assert.deepEqual(
+		shown.instances.map((instance: { instanceId: string }) => instance.instanceId),
+		['local']
+	)
+	await ok(['run', 'begin', 'run-1', 'keyboard@1', '--build', 'b1'])
+})
+
+test('Check an instance with the command of a recipe — a missing device marks the profile not ready and names why.', async (t) => {
+	const { cpSync } = await import('node:fs')
+	const plugin = join(directory(t), 'plugin')
+	cpSync(join(project, 'node_modules/@xoxoai/checkmate/plugin'), plugin, { recursive: true })
+	const recipe = join(plugin, 'recipes', 'maestro.json')
+	writeFileSync(
+		recipe,
+		JSON.stringify({
+			...JSON.parse(readFileSync(recipe, 'utf8')),
+			reachable: [{ check: 'command', run: ['maestro', 'list-devices'], contains: ['{device}'] }],
+		})
+	)
+	const entry = join(plugin, 'dist/checkmate.js')
+	const env = { ...process.env, PATH: fakeMaestro(t), CHECKMATE_ACTOR: 'oracle', CHECKMATE_HARNESS: 'pi' }
+	const listed = await invoke(entry, directory(t), env, '', ['setup', ...mobileEntries, '--target', 'phone'])
+	assert.equal(listed.code, 0, listed.output)
+	assert.equal(listed.body.instanceReachable, true)
+	const workspace = directory(t)
+	const missing = await invoke(entry, workspace, env, '', [
+		'setup',
+		'--entry',
+		'app=com.apple.Preferences',
+		'--entry',
+		'device=SIM-9',
+		'--target',
+		'phone',
+	])
+	assert.equal(missing.code, 0, missing.output)
+	assert.equal(missing.body.instanceReachable, false)
+	assert.equal(missing.body.ready, false)
+	assert.match(missing.body.next, /did not answer/)
+	assert.match(missing.body.next, /maestro list-devices did not list SIM-9/)
+	assert.match(
+		missing.body.next,
+		/checkmate setup --entry app=com\.apple\.Preferences --entry device=SIM-9 --target phone/
+	)
+})
+
+test('Refuse an instance body on standard input when --entry is given — the body was ignored without a word.', async (t) => {
+	const workspace = directory(t)
+	const env = { ...process.env, PATH: fakeMaestro(t), CHECKMATE_ACTOR: 'oracle', CHECKMATE_HARNESS: 'pi' }
+	assert.equal((await command(workspace, env, 'setup', ...mobileEntries, '--target', 'phone')).code, 0)
+	const both = await inputCommand(
+		workspace,
+		env,
+		'{"entries":{"app":"com.other","device":"SIM-2"}}',
+		'target',
+		'instance',
+		'add',
+		'phone',
+		'second',
+		'--entry',
+		'app=com.other'
+	)
+	assert.equal(both.code, 1, both.output)
+	assert.match(both.output, /Give the instance with --entry or on standard input, not both\./)
+	const body = await inputCommand(
+		workspace,
+		env,
+		'{"entries":{"app":"com.other","device":"SIM-2"}}',
+		'target',
+		'instance',
+		'add',
+		'phone',
+		'second'
+	)
+	assert.equal(body.code, 0, body.output)
+	assert.deepEqual(body.body.entries, { app: 'com.other', device: 'SIM-2' })
 })

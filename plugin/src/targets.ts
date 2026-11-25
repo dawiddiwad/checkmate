@@ -17,7 +17,7 @@ import {
 } from './contracts.ts'
 import { executableOnPath } from './sessions.ts'
 import { changesData, resetCommand } from './resets.ts'
-import { recipes, type Recipe } from './recipes.ts'
+import { declaredEntryPoints, fitsEntries, recipes, type ReachCheck, type Recipe } from './recipes.ts'
 import { spawnSync } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -287,7 +287,7 @@ export function targetRevision(store: Store, targetId: string, revision: number 
 	requireCondition(
 		row,
 		`Unknown target profile: ${targetId}${revision === null ? '' : `@${revision}`}`,
-		'Create the target with checkmate setup --url <url>, or list the targets with checkmate target list.'
+		'Create the target with checkmate setup --url <url> or checkmate setup --entry <name>=<value>, or list the targets with checkmate target list.'
 	)
 	return { profile: JSON.parse(row.body), revision: row.revision, sha256: row.sha256 }
 }
@@ -601,8 +601,36 @@ export function instanceList(store: Store, targetId: string): InstanceRecord[] {
 	).map((row) => instanceRecord(store, targetId, row))
 }
 
-export function targetWebUrl(store: Store, targetId: string) {
-	return instanceList(store, targetId).find((instance) => !instance.retired)?.entries.web ?? '<url>'
+// The flags of checkmate setup that name an application again. A web application has the short form --url.
+export function entryFlags(entries: Record<string, string>) {
+	const names = Object.keys(entries)
+	if (names.length === 1 && names[0] === 'web') return `--url ${entries.web}`
+	return names.map((name) => `--entry ${name}=${entries[name]}`).join(' ')
+}
+
+// The same flags for the first active instance of a target. A target without one gets placeholders.
+export function targetEntryFlags(store: Store, targetId: string) {
+	const entries = instanceList(store, targetId).find((instance) => !instance.retired)?.entries
+	return entryFlags(entries ?? placeholderEntries(targetRequest(store, targetId).entryPoints))
+}
+
+// The setup flags that record a data policy. A web target keeps --url; any other target is named with --target.
+export function dataFlags(store: Store, targetId: string) {
+	const web = instanceList(store, targetId).find((instance) => !instance.retired)?.entries.web
+	return web ? `--url ${web}` : `--target ${targetId}`
+}
+
+function placeholderEntries(entryPoints: EntryPoint[]) {
+	return Object.fromEntries(
+		entryPoints.map((entry) => [entry.name, entry.kind === 'url' ? '<url>' : `<${entry.name}>`])
+	)
+}
+
+// What a person gives for an entry of a build: the placeholder of the command that adds an instance.
+function buildEntryFlags(entryPoints: EntryPoint[], build: string) {
+	return entryPoints
+		.map((entry) => `--entry ${entry.name}=<${entry.kind === 'url' ? 'URL' : entry.name} of ${build}>`)
+		.join(' ')
 }
 
 export function findInstance(store: Store, targetId: string, instanceId: string): InstanceRecord {
@@ -617,7 +645,7 @@ export function findInstance(store: Store, targetId: string, instanceId: string)
 	requireCondition(
 		row,
 		`Unknown instance: ${targetId}/${instanceId}. Run target instance list ${targetId}.`,
-		`Add the build with checkmate target instance add ${targetId} ${instanceId} --entry web=<URL of that build>, then run again. A run that can change data also needs the data kind of ${targetId}: ask the person for it, and do not write a reset command, a policy, or a hook.`
+		`Add the build with checkmate target instance add ${targetId} ${instanceId} ${buildEntryFlags(targetRequest(store, targetId).entryPoints, 'that build')}, then run again. A run that can change data also needs the data kind of ${targetId}: ask the person for it, and do not write a reset command, a policy, or a hook.`
 	)
 	return instanceRecord(store, targetId, row)
 }
@@ -627,10 +655,8 @@ export function instanceForBuildHint(store: Store, targetId: string, build: stri
 	const serving = instanceList(store, targetId).filter((instance) => !instance.retired && instance.build === build)
 	if (serving.length)
 		return `Run on an instance that serves ${build}: ${serving.map((instance) => `--instance ${instance.instanceId}`).join(' or ')}.`
-	const entries = targetRequest(store, targetId)
-		.entryPoints.map((entry) => `${entry.name}=<URL of ${build}>`)
-		.join(' ')
-	return `Add an instance for ${build}: checkmate target instance add ${targetId} <name> --entry ${entries} --build ${build}.`
+	const entries = buildEntryFlags(targetRequest(store, targetId).entryPoints, String(build))
+	return `Add an instance for ${build}: checkmate target instance add ${targetId} <name> ${entries} --build ${build}.`
 }
 
 export function runInstance(store: Store, targetId: string, instanceId: string | undefined): InstanceRecord {
@@ -655,7 +681,9 @@ export function runInstance(store: Store, targetId: string, instanceId: string |
 }
 
 export type SetupInput = {
-	url: string
+	// The short form of the entry web. Other entries go in entries.
+	url?: string
+	entries?: Record<string, string>
 	targetId?: string
 	instanceId?: string
 	operations?: string[]
@@ -720,7 +748,7 @@ function browserExecutable(workspace: string) {
 
 // The next command that clears a profile saved while the application was not answering.
 export function readinessHint(store: Store, targetId: string) {
-	return `Clear it with checkmate setup --url ${targetWebUrl(store, targetId)} --target ${targetId} while the application answers, then run again.`
+	return `Clear it with checkmate setup ${targetEntryFlags(store, targetId)} --target ${targetId} while the application answers, then run again.`
 }
 
 // One GET that follows redirects. Any answer below 500 counts: a 403 from bot protection still means
@@ -742,6 +770,43 @@ function urlFailure(url: string, env: SetupInput['env']): string | null {
 	})
 	if (check.status === 0) return null
 	return check.stdout.trim() || check.stderr.trim().split('\n').pop() || 'the check did not finish'
+}
+
+const commandCheckSeconds = 20
+
+// One command of a recipe. {<entry name>} in the arguments and the texts stands for the value of that entry.
+function commandFailure(
+	recipe: Recipe,
+	check: Extract<ReachCheck, { check: 'command' }>,
+	entries: Record<string, string>,
+	env: SetupInput['env']
+): string | null {
+	const fill = (text: string) =>
+		Object.entries(entries).reduce((out, [name, value]) => out.replaceAll(`{${name}}`, value), text)
+	const run = check.run.map(fill)
+	const shown = run.join(' ')
+	const result = spawnSync(run[0], run.slice(1), {
+		env: { ...env, ...recipe.environment },
+		encoding: 'utf8',
+		timeout: commandCheckSeconds * 1000,
+	})
+	if (result.error) return `${shown} did not start: ${result.error.message}`
+	if (result.status !== 0) return `${shown} exited with code ${result.status}`
+	const missing = (check.contains ?? []).map(fill).filter((text) => !result.stdout.includes(text))
+	return missing.length ? `${shown} did not list ${missing.join(', ')}` : null
+}
+
+// Runs the reachability checks that the recipes of the fitting tools give. Returns why the instance does not
+// answer, or null when it does, or undefined when no recipe gives a check.
+function instanceFailure(fitting: Array<{ recipe: Recipe }>, entries: Record<string, string>, env: SetupInput['env']) {
+	const checked = fitting.flatMap(({ recipe }) => (recipe.reachable ?? []).map((check) => ({ recipe, check })))
+	if (!checked.length) return undefined
+	for (const { recipe, check } of checked) {
+		const failure =
+			check.check === 'http' ? urlFailure(entries[check.entry], env) : commandFailure(recipe, check, entries, env)
+		if (failure) return failure
+	}
+	return null
 }
 
 export async function urlReachable(url: string) {
@@ -808,29 +873,121 @@ export function dataOf(input: SetupInput): Profile['reset'] | undefined {
 	}
 }
 
-export function setupAssumptions(input: SetupInput) {
-	const assumed: string[] = []
-	const url = requireText(input.url, 'application URL (--url)')
-	const targetId = input.targetId ?? urlTargetId(url)
-	if (!input.targetId) assumed.push(`target=${targetId} (the host of the URL)`)
-	const instanceId = input.instanceId ?? 'local'
-	if (!input.instanceId) assumed.push('instance=local')
-	const detected = recipes().flatMap((recipe) => {
-		const path = recipe.detect === 'runtime' ? process.execPath : executableOnPath(recipe.name, input.env)
+// What the person gave. --url is the short form of the entry web, and it comes first.
+export function givenEntries(input: Pick<SetupInput, 'url' | 'entries'>) {
+	const entries = Object.fromEntries(
+		Object.entries(input.entries ?? {}).map(([name, value]) => [
+			name,
+			requireText(value, `value of entry ${name}`).trim(),
+		])
+	)
+	if (input.url === undefined) return entries
+	const url = requireText(input.url, 'application URL (--url)').trim()
+	requireCondition(
+		entries.web === undefined || entries.web === url,
+		`The entry web is given twice with other values: ${url} and ${entries.web}.`,
+		'Give the web address with --url or with --entry web=<url>, not both.'
+	)
+	return { web: url, ...entries }
+}
+
+function listText(words: string[]) {
+	return words.length < 2 ? words.join('') : `${words.slice(0, -1).join(', ')} and ${words.at(-1)}`
+}
+
+// The installed tools whose recipes fit the entries, and the entry points of the profile. A tool whose recipe
+// needs an entry that the person did not give is not recorded. Each entry that the person gave must be used.
+function fitEntries(entries: Record<string, string>, detected: Array<{ recipe: Recipe; path: string }>) {
+	const names = Object.keys(entries)
+	const declared = declaredEntryPoints()
+	const unknown = names.filter((name) => !declared.has(name))
+	requireCondition(
+		!unknown.length,
+		`Unknown entry ${unknown.join(', ')}. Known entries: ${[...declared.keys()].join(', ')}.`,
+		'The recipes of the tools give the entries. Use --url for a web application, or --entry <name>=<value>.'
+	)
+	for (const name of names) {
+		const pattern = declared.get(name)?.pattern
+		requireCondition(
+			!pattern || new RegExp(pattern).test(entries[name]),
+			`Entry ${name} must match ${pattern}, not ${entries[name]}.`,
+			`${declared.get(name)?.purpose}`
+		)
+	}
+	const fitting = detected.filter(({ recipe }) => fitsEntries(recipe, names))
+	const covered = new Set(fitting.flatMap(({ recipe }) => (recipe.entryPoints ?? []).map((entry) => entry.name)))
+	const uncovered = names.filter((name) => !covered.has(name))
+	if (uncovered.length) {
+		const needing = recipes().filter((recipe) =>
+			recipe.entryPoints?.some((entry) => uncovered.includes(entry.name))
+		)
+		const installed = needing.filter((recipe) => detected.some((tool) => tool.recipe === recipe))
+		requireCondition(
+			!installed.length,
+			installed
+				.map((recipe) => {
+					const own = (recipe.entryPoints ?? []).map((entry) => entry.name)
+					return `${recipe.name} needs the entries ${listText(own)}. Missing: ${listText(own.filter((name) => !names.includes(name)))}.`
+				})
+				.join(' '),
+			'Give every entry that the tool needs.'
+		)
+		requireCondition(
+			false,
+			`No tool that is installed fits the entries ${uncovered.join(', ')}. ${listText(needing.map((recipe) => `${recipe.name} (${recipe.capability})`))} ${needing.length === 1 ? 'needs them and is' : 'need them and are'} not on PATH.`,
+			'Install the tool, or give other entries.'
+		)
+	}
+	const entryPoints = names.map((name) => {
+		const { kind, purpose } = declared.get(name)!
+		return { name, kind, purpose }
+	})
+	return { fitting, entryPoints }
+}
+
+function detectedTools(env: SetupInput['env']) {
+	return recipes().flatMap((recipe) => {
+		const path = recipe.detect === 'runtime' ? process.execPath : executableOnPath(recipe.name, env)
 		return path ? [{ recipe, path }] : []
 	})
+}
+
+const noEntriesText =
+	'Give the application: --url <url> for a web application, or --entry <name>=<value> for another one. To record the data policy of a target that is set up, give --target <id>.'
+
+export function setupAssumptions(input: SetupInput) {
+	const assumed: string[] = []
+	const entries = givenEntries(input)
+	requireCondition(Object.keys(entries).length, 'Missing application entries.', noEntriesText)
+	const targetId =
+		input.targetId ?? (entries.web ? urlTargetId(entries.web) : slugId(Object.values(entries)[0]) || 'app')
+	if (!input.targetId)
+		assumed.push(
+			`target=${targetId} (${entries.web ? 'the host of the URL' : `the value of the entry ${Object.keys(entries)[0]}`})`
+		)
+	const instanceId = input.instanceId ?? 'local'
+	if (!input.instanceId) assumed.push('instance=local')
+	const { fitting: detected, entryPoints } = fitEntries(entries, detectedTools(input.env))
 	const capabilities = [...new Set(detected.map(({ recipe }) => recipe.capability))].sort()
-	assumed.push('entry point=web (url)', `capabilities=${capabilities.join(',')} (${pathTools(detected)})`)
+	assumed.push(
+		entryPoints.length === 1
+			? `entry point=${entryPoints[0].name} (${entryPoints[0].kind})`
+			: `entry points=${entryPoints.map((entry) => `${entry.name} (${entry.kind})`).join(', ')}`,
+		`capabilities=${capabilities.join(',')} (${pathTools(
+			detected,
+			entryPoints.map((entry) => entry.name)
+		)})`
+	)
 	const allowedOperations = input.operations?.length ? input.operations : [anyTestOperation]
 	if (!input.operations?.length) assumed.push(`operations=${anyTestOperation}: ${anyTestOperationText}`)
 	assumed.push('authentication=none')
-	return { url, targetId, instanceId, detected, capabilities, allowedOperations, assumed }
+	return { entries, entryPoints, targetId, instanceId, detected, capabilities, allowedOperations, assumed }
 }
 
-function pathTools(detected: Array<{ recipe: Recipe }>) {
+function pathTools(detected: Array<{ recipe: Recipe }>, entryNames: string[]) {
 	const found = detected.filter(({ recipe }) => recipe.detect === 'path').map(({ recipe }) => recipe.name)
 	if (found.length) return `${found.join(' and ')} ${found.length === 1 ? 'is' : 'are'} on PATH`
-	const missing = recipes().filter((recipe) => recipe.detect === 'path')
+	const missing = recipes().filter((recipe) => recipe.detect === 'path' && fitsEntries(recipe, entryNames))
 	return `no ${missing.map((recipe) => recipe.capability).join(' or ')} tool on PATH`
 }
 
@@ -842,11 +999,11 @@ function sameSet(a: string[], b: string[]) {
 function requireNoSetupConflict(
 	store: Store,
 	input: SetupInput,
-	setup: { url: string; targetId: string; instanceId: string },
+	setup: { entries: Record<string, string>; targetId: string; instanceId: string },
 	stored: TargetRequest | null
 ) {
-	const { url, targetId, instanceId } = setup
-	const flags = `--url ${url} --target <new-target-id>`
+	const { entries, targetId, instanceId } = setup
+	const flags = `${entryFlags(entries)} --target <new-target-id>`
 	if (stored && input.operations?.length && !input.correct)
 		requireCondition(
 			sameSet(input.operations, stored.allowedOperations),
@@ -866,7 +1023,7 @@ function requireNoSetupConflict(
 	)
 	if (!stored || input.correct) return
 	const wanted = instanceCheck(stored.entryPoints, {
-		entries: { web: url },
+		entries,
 		...(input.environment ? { environment: input.environment } : {}),
 		...(input.build ? { build: input.build } : {}),
 	})
@@ -878,7 +1035,7 @@ function requireNoSetupConflict(
 	)
 	if (!existing) return
 	const subject = `${targetId}/${instanceId}`
-	const next = `To replace this instance, retry setup with correct enabled (--correct). To add a separate instance, give it a new ID: checkmate setup --url ${url} --target ${targetId} --instance <new-instance-id>`
+	const next = `To replace this instance, retry setup with correct enabled (--correct). To add a separate instance, give it a new ID: checkmate setup ${entryFlags(entries)} --target ${targetId} --instance <new-instance-id>`
 	requireCondition(!retirement(store, targetId, instanceId), `Instance conflict: ${subject} is retired.`, next)
 	requireCondition(
 		existing.body === canonical(wanted),
@@ -898,8 +1055,11 @@ function instanceChange(stored: Instance, wanted: Instance) {
 
 // One transaction holds the request, the profile revision, and the instance. A refusal saves none of them.
 export function setupTarget(store: Store, actor: string | undefined, input: SetupInput) {
+	if (!Object.keys(givenEntries(input)).length) return recordData(store, actor, input)
 	const setup = setupAssumptions(input)
-	const { url, targetId, instanceId, detected, capabilities, allowedOperations, assumed } = setup
+	const { entries, entryPoints, targetId, instanceId, detected, capabilities, allowedOperations, assumed } = setup
+	const where = entries.web && Object.keys(entries).length === 1 ? entries.web : `the entries ${entryList(entries)}`
+	const flags = entryFlags(entries)
 	const tools = detected.map(({ recipe, path }) => {
 		const version = recipe.detect === 'runtime' ? process.version.slice(1) : toolVersion(path)
 		const executable = recipe.name === 'playwright-cli' ? browserExecutable(store.workspace) : undefined
@@ -912,9 +1072,11 @@ export function setupTarget(store: Store, actor: string | undefined, input: Setu
 			reachable: true,
 		}
 	})
-	const entryPoints = [{ name: 'web', kind: 'url' as const, purpose: 'The application.' }]
-	const failure = input.answered === undefined ? urlFailure(url, input.env) : input.answered ? null : 'not reachable'
+	const checked = input.answered === undefined ? instanceFailure(detected, entries, input.env) : undefined
+	const failure = input.answered === undefined ? (checked ?? null) : input.answered ? null : 'not reachable'
 	const reachable = failure === null
+	const notChecked = input.answered === undefined && checked === undefined
+	if (notChecked) assumed.push('reachability=not checked: the tools of this target give no check')
 	const reset = dataOf(input)
 	const host = hostSession(input.env)
 	const recorded = { ...input, env: undefined }
@@ -968,7 +1130,7 @@ export function setupTarget(store: Store, actor: string | undefined, input: Setu
 			'SELECT revision FROM profiles WHERE target_id = ? ORDER BY revision DESC LIMIT 1',
 			targetId
 		)
-		if (!reachable && !saved) assumed.push(`ready=false (${url} did not answer: ${failure})`)
+		if (!reachable && !saved) assumed.push(`ready=false (${where} did not answer: ${failure})`)
 		let profile: unknown = null
 		if (!saved)
 			profile = {
@@ -1004,7 +1166,7 @@ export function setupTarget(store: Store, actor: string | undefined, input: Setu
 			savedProfile = true
 		}
 		const wanted = {
-			entries: { web: url },
+			entries,
 			...(environment ? { environment } : {}),
 			...(build ? { build } : {}),
 			...(previous?.references ? { references: previous.references } : {}),
@@ -1031,22 +1193,23 @@ export function setupTarget(store: Store, actor: string | undefined, input: Setu
 				targetId,
 				revision: latest.revision,
 				instanceId: instance.reply.data.instanceId,
-				url,
+				...(entries.web ? { url: entries.web } : {}),
+				entries,
 				capabilities: latest.profile.capabilities,
 				allowedOperations: latest.profile.allowedOperations,
 				ready: latest.profile.readyForLiveExecution,
-				instanceReachable: reachable,
+				instanceReachable: notChecked ? null : reachable,
 				...(!reachable
 					? {
 							next: host
-								? `The application did not answer at ${url}: ${failure}. Confirm the URL or make the application reachable.`
-								: `The application did not answer at ${url}: ${failure}. Fix the address or the network, then run checkmate setup --url ${url} --target ${targetId} again. A rerun with the same cause changes nothing.`,
+								? `The application did not answer at ${where}: ${failure}. Confirm ${entries.web ? 'the URL' : 'the entries'} or make the application reachable.`
+								: `The application did not answer at ${where}: ${failure}. Fix the ${entries.web ? 'address or the network' : 'entries or the device'}, then run checkmate setup ${flags} --target ${targetId} again. A rerun with the same cause changes nothing.`,
 						}
 					: needsReset
 						? {
 								next: host
 									? 'The target needs a data policy. Ask how test data is reset or isolated.'
-									: `Ask the person for the data policy. Give the command that restores the seed data: checkmate setup --url ${url} --reset "<command>". Or give --data environment|isolation with --policy "<text>". Do not write them yourself.`,
+									: `Ask the person for the data policy. Give the command that restores the seed data: checkmate setup ${dataFlagsOf(entries, targetId)} --reset "<command>". Or give --data environment|isolation with --policy "<text>". Do not write them yourself.`,
 							}
 						: !latest.profile.readyForLiveExecution
 							? {
@@ -1061,6 +1224,70 @@ export function setupTarget(store: Store, actor: string | undefined, input: Setu
 			subjects,
 		}
 	})
+	if (savedProfile) removeTemporaryDirectory(store, `setup-${targetId}`)
+	return reply
+}
+
+function entryList(entries: Record<string, string>) {
+	return listText(Object.entries(entries).map(([name, value]) => `${name}=${value}`))
+}
+
+// The setup flags that record a data kind for an application that setup has just named.
+function dataFlagsOf(entries: Record<string, string>, targetId: string) {
+	return entries.web && Object.keys(entries).length === 1 ? `--url ${entries.web}` : `--target ${targetId}`
+}
+
+// A setup with no entries records the data kind of a target that is set up. Its instances stay as they are.
+function recordData(store: Store, actor: string | undefined, input: SetupInput) {
+	const targetId = input.targetId
+	requireCondition(targetId, 'Missing application entries.', noEntriesText)
+	requireCondition(
+		!input.correct && !input.operations?.length && !input.environment && !input.build && !input.instanceId,
+		'--correct, --operations, --environment, --build and --instance apply to an instance.',
+		noEntriesText
+	)
+	const reset = dataOf(input)
+	requireCondition(
+		reset,
+		'Nothing to record.',
+		'Give --reset "<command>", or --data environment|isolation with --policy "<text>".'
+	)
+	let savedProfile = false
+	const reply = write(
+		store,
+		{ actor, command: 'setup', subject: targetId, input: { ...input, env: undefined } },
+		(operationId) => {
+			requireCondition(
+				currentRequest(store, targetId),
+				`Target ${targetId} is not set up. Give its entries: --url <url> for a web application, or --entry <name>=<value>.`
+			)
+			const latest = targetRevision(store, targetId)
+			const subjects: string[] = []
+			if (canonical(latest.profile.reset) !== canonical(reset)) {
+				subjects.push(
+					...insertProfile(store, operationId, {
+						targetId,
+						profile: { ...latest.profile, revision: latest.revision + 1, reset },
+					}).subjects
+				)
+				savedProfile = true
+			}
+			const revision = targetRevision(store, targetId)
+			return {
+				reply: completed(targetId, {
+					targetId,
+					revision: revision.revision,
+					capabilities: revision.profile.capabilities,
+					allowedOperations: revision.profile.allowedOperations,
+					ready: revision.profile.readyForLiveExecution,
+					instanceReachable: null,
+					created: false,
+					assumed: [],
+				}),
+				subjects,
+			}
+		}
+	)
 	if (savedProfile) removeTemporaryDirectory(store, `setup-${targetId}`)
 	return reply
 }

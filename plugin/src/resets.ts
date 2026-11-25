@@ -27,12 +27,12 @@ export function markerFor(store: Store, id: string) {
 	return `qa-${created}-${id}`
 }
 
-export function requireDataFor(profile: Profile, operations: string[], subject: string, url: string) {
+export function requireDataFor(profile: Profile, operations: string[], subject: string, flags: string) {
 	const changing = operations.filter(changesData)
 	requireCondition(
 		!changing.length || profile.reset,
 		`${subject} can change data (${changing.join(', ')}), and target ${profile.targetId} has no data policy.`,
-		`Ask the person for the reset command that restores the seed data, or for the data policy: checkmate setup --url ${url} --reset "<command>", or --data environment|isolation --policy "<text>". Do not write a command, a policy, or a hook yourself.`
+		`Ask the person for the reset command that restores the seed data, or for the data policy: checkmate setup ${flags} --reset "<command>", or --data environment|isolation --policy "<text>". Do not write a command, a policy, or a hook yourself.`
 	)
 }
 

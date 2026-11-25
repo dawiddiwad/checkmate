@@ -4,7 +4,7 @@ import type { Gap, Plan, PlanCandidate, PlanDelta, PlanPatch, PlanRequest, Profi
 import type { Change, Reply, Store } from './store.ts'
 import { answerQuestion } from './journal.ts'
 import { patchRules, requireHeldRules } from './rules.ts'
-import { operationAllowed, readinessHint, targetWebUrl } from './targets.ts'
+import { dataFlags, operationAllowed, readinessHint } from './targets.ts'
 import { dataSummary, requireDataFor } from './resets.ts'
 import { all, canonical, completed, digest, execute, one, ulid, write } from './store.ts'
 import { softProblems, uncoveredRequirements, unverifiedAssertions } from './contracts.ts'
@@ -1583,7 +1583,7 @@ export function gate(store: Store, input: GateInput) {
 		targetRevision(store, target.profile.targetId).profile,
 		selected.flatMap((id) => tests.get(id)?.operations ?? []),
 		`Run ${subject}`,
-		targetWebUrl(store, target.profile.targetId)
+		dataFlags(store, target.profile.targetId)
 	)
 	if (input.retestOf) retestCheck(store, input.retestOf, plan, build, input.instance)
 	const earlier = input.retestOf ? retestDefects(store, input.retestOf) : []

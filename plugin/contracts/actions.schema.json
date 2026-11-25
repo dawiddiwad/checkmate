@@ -57,13 +57,23 @@
 	},
 	"properties": {
 		"setup": {
-			"description": "Set up or correct a web target. Use the returned IDs. When the person says the app keeps no data, set data to environment and preserve their policy text. For a read-only target use an explicit read_ operation, for example read_quotes. The setup result already checks reachability.",
+			"description": "Set up or correct a target. For a web application give url. For another application give entries, for example {\"app\": \"com.example.shop\", \"device\": \"<device ID>\"}: the recipes of the installed tools say which entries a target needs, and the refusal names them. To record only the data policy of a target that is set up, give targetId with reset, or with data and policy. When the person says the app keeps no data, set data to environment and preserve their policy text. For a read-only target use an explicit read_ operation, for example read_quotes. The setup result already checks reachability.",
 			"type": "object",
 			"additionalProperties": false,
-			"required": ["url"],
 			"properties": {
 				"url": {
 					"$ref": "#/definitions/url"
+				},
+				"entries": {
+					"type": "object",
+					"description": "Entries of the application by name. url is the short form of the entry web.",
+					"propertyNames": {
+						"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+					},
+					"additionalProperties": {
+						"$ref": "#/definitions/text"
+					},
+					"minProperties": 1
 				},
 				"targetId": {
 					"$ref": "#/definitions/id"
@@ -355,6 +365,17 @@
 				},
 				"url": {
 					"$ref": "#/definitions/url"
+				},
+				"entries": {
+					"type": "object",
+					"description": "Entries of the application by name, for a first setup of a target that is not a web application. url is the short form of the entry web.",
+					"propertyNames": {
+						"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+					},
+					"additionalProperties": {
+						"$ref": "#/definitions/text"
+					},
+					"minProperties": 1
 				},
 				"reset": {
 					"$ref": "#/definitions/text"

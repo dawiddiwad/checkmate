@@ -1,6 +1,7 @@
 export type Actions = {
 	setup?: {
-		url: string
+		url?: string
+		entries?: Record<string, string>
 		targetId?: string
 		instanceId?: string
 		operations?: Array<string>
@@ -267,6 +268,7 @@ export type Actions = {
 		until?: string
 		scope?: Array<string>
 		url?: string
+		entries?: Record<string, string>
 		reset?: string
 		data?: 'environment' | 'isolation'
 		policy?: string

@@ -49,7 +49,7 @@ import {
 	verifierRepairPrompt,
 } from './briefs.ts'
 import { checkedRules, ruleSources, rulesNeeded, saveRules } from './rules.ts'
-import { findInstance, targetRevision, targetWebUrl } from './targets.ts'
+import { dataFlags, findInstance, targetRevision } from './targets.ts'
 import { dataRules, markerFor, owe, requireDataFor, runPrepare, settleCleanups } from './resets.ts'
 import { isRecordedGroup, signalRecordedGroup, startOfGroup } from './processes.ts'
 import { storeFindingsRun } from './findingsRun.ts'
@@ -446,7 +446,7 @@ export function startExploration(
 			exploredProfile,
 			exploredProfile.allowedOperations,
 			`Exploration ${row.exploration_id}`,
-			targetWebUrl(store, row.target_id)
+			dataFlags(store, row.target_id)
 		)
 		const marker = markerFor(store, opened.explorationId)
 		const facts = runPrepare(store.workspace, exploredProfile.reset, marker)

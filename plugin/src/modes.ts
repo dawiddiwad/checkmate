@@ -21,6 +21,7 @@ export const storedTestsNone = 'none, testers use earlier results when available
 export type TestInput = Omit<StartInput, 'mode' | 'scope' | 'build'> & {
 	build?: string
 	url?: string
+	entries?: Record<string, string>
 	reset?: string
 	data?: string
 	policy?: string
@@ -83,12 +84,13 @@ function chosenTarget(store: Store, actor: string | undefined, input: TestInput,
 		`The store has ${targets.length} targets: ${targets.join(', ')}. Name one with --target.`
 	)
 	requireWellFormed(
-		input.url,
-		'The store has no target. Give the URL of the application with --url.',
+		input.url || input.entries,
+		'The store has no target. Give the application with --url <url>, or with --entry <name>=<value> for an application that is not a web application.',
 		`checkmate test ${input.planId} --url <url> --source <ticket file>`
 	)
 	const set = setupTarget(store, actor, {
-		url: input.url!,
+		url: input.url,
+		entries: input.entries,
 		instanceId: input.instance,
 		reset: input.reset,
 		data: input.data,

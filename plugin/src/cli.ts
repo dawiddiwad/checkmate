@@ -194,7 +194,20 @@ function entryPointSpec(spec: string): EntryPoint {
 	return { name: match[1], kind: match[2] as EntryPoint['kind'], purpose: match[3] }
 }
 
-function instanceInput(args: Args, stdin: () => unknown) {
+// The --entry flags, <name>=<value> each, as one object.
+function entryValues(entries: string[]) {
+	const values: Record<string, string> = {}
+	for (const entry of entries) {
+		const at = entry.indexOf('=')
+		requireWellFormed(at > 0, `Invalid --entry: ${entry}. Use <entryPoint>=<value>.`)
+		const name = entry.slice(0, at)
+		requireWellFormed(!(name in values), `Entry point ${name} is given twice`)
+		values[name] = entry.slice(at + 1)
+	}
+	return values
+}
+
+function instanceInput(args: Args, stdin: () => unknown, text: () => string) {
 	const entries = list(args, 'entry')
 	const environment = value(args, 'environment')
 	const references = list(args, 'reference')
@@ -206,20 +219,24 @@ function instanceInput(args: Args, stdin: () => unknown) {
 		)
 		return stdin()
 	}
-	const values: Record<string, string> = {}
-	for (const entry of entries) {
-		const at = entry.indexOf('=')
-		requireWellFormed(at > 0, `Invalid --entry: ${entry}. Use <entryPoint>=<value>.`)
-		const name = entry.slice(0, at)
-		requireWellFormed(!(name in values), `Entry point ${name} is given twice`)
-		values[name] = entry.slice(at + 1)
-	}
+	// A person at a terminal has no body to give: do not wait for one.
+	requireWellFormed(
+		process.stdin.isTTY || text().trim() === '',
+		'Give the instance with --entry or on standard input, not both.',
+		'Standard input holds a body that --entry would ignore. Remove one of them.'
+	)
 	return {
-		entries: values,
+		entries: entryValues(entries),
 		...(environment === undefined ? {} : { environment }),
 		...(references ? { references } : {}),
 		...(build === undefined ? {} : { build }),
 	}
+}
+
+// The --entry flags of setup and test, or nothing when none is given.
+function entriesOf(args: Args) {
+	const entries = list(args, 'entry')
+	return entries === undefined ? undefined : entryValues(entries)
 }
 
 function instanceLines(instance: InstanceRecord) {
@@ -587,11 +604,11 @@ const commands: Record<string, Command> = {
 		flags: { entry: 'repeat', environment: 'value', reference: 'repeat', build: 'value' },
 		write: true,
 		stdin: true,
-		run: (store, args, { actor, stdin }) =>
+		run: (store, args, { actor, stdin, text }) =>
 			addInstance(store, actor, {
 				targetId: value(args, 'targetId')!,
 				instanceId: value(args, 'instanceId')!,
-				instance: instanceInput(args, stdin),
+				instance: instanceInput(args, stdin, text),
 			}),
 		print: (reply) => ({
 			facts: { recorded: reply.data.recorded },
@@ -615,7 +632,7 @@ const commands: Record<string, Command> = {
 				{
 					targetId: value(args, 'targetId'),
 					instanceId: value(args, 'instanceId'),
-					instance: instanceInput(args, context.stdin),
+					instance: instanceInput(args, context.stdin, context.text),
 				},
 				context
 			),
@@ -1430,6 +1447,7 @@ const commands: Record<string, Command> = {
 		positionals: [],
 		flags: {
 			url: 'value',
+			entry: 'repeat',
 			target: 'value',
 			instance: 'value',
 			operations: 'list',
@@ -1444,14 +1462,14 @@ const commands: Record<string, Command> = {
 			'hook-timeout': { min: 1, max: 3600 },
 			'reset-per-test': 'value',
 		},
-		required: ['url'],
 		write: true,
 		run: (store, args, context) =>
 			performAction(
 				store,
 				'setup',
 				{
-					url: value(args, 'url')!,
+					url: value(args, 'url'),
+					entries: entriesOf(args),
 					targetId: value(args, 'target'),
 					instanceId: value(args, 'instance'),
 					operations: list(args, 'operations'),
@@ -1475,7 +1493,7 @@ const commands: Record<string, Command> = {
 				capabilities: reply.data.capabilities,
 				operations: reply.data.allowedOperations,
 				profile_ready: reply.data.ready,
-				instance_reachable: reply.data.instanceReachable,
+				instance_reachable: reply.data.instanceReachable ?? 'not checked',
 			},
 			lines: reply.data.next ? [[reply.data.next]] : [],
 		}),
@@ -1501,6 +1519,7 @@ const commands: Record<string, Command> = {
 			until: 'value',
 			scope: 'list',
 			url: 'value',
+			entry: 'repeat',
 			reset: 'value',
 			data: 'value',
 			policy: 'value',
@@ -1527,6 +1546,7 @@ const commands: Record<string, Command> = {
 					since: value(args, 'since'),
 					until: value(args, 'until'),
 					url: value(args, 'url'),
+					entries: entriesOf(args),
 					reset: value(args, 'reset'),
 					data: value(args, 'data'),
 					policy: value(args, 'policy'),

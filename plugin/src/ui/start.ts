@@ -4,6 +4,7 @@ import { levelNames } from '../levels.ts'
 import { html } from './html.ts'
 import { testerModels, testerToolHelp } from './actions.ts'
 import { heading } from './layout.ts'
+import { declaredEntryPoints } from '../recipes.ts'
 
 export type NewInstance = { id: string; address: string | null; local: boolean }
 export type NewTarget = { targetId: string; address: string | null; local: boolean; instances: NewInstance[] }
@@ -86,6 +87,8 @@ function shell(context: Context, action: string, body: Html, submit: string) {
 const assumedLabels: Record<string, string> = {
 	instance: 'Instance',
 	'entry point': 'Entry point',
+	'entry points': 'Entry points',
+	reachability: 'Reachability',
 	capabilities: 'Capabilities',
 	operations: 'Operations',
 	reset: 'Reset',
@@ -98,6 +101,32 @@ export function assumedRows(lines: string[]) {
 		const name = line.slice(0, at)
 		return [assumedLabels[name] ?? name, line.slice(at + 1)]
 	})
+}
+
+// An application that is not a web application has no address. It has the entries that the recipes of its tools declare.
+function otherEntryFields(submitted?: Record<string, string>) {
+	const others = [...declaredEntryPoints().values()].filter((entry) => entry.name !== 'web')
+	if (!others.length) return ''
+	return html`<div class="field-group">
+		<details
+			class="sp-more"
+			data-more
+			${others.some((entry) => submitted?.[`entry.${entry.name}`]) ? html`open` : ''}
+		>
+			<summary>Not a web application?</summary>
+			<p class="help">Give the entries that the tool of the application needs, and leave the address empty.</p>
+			${others.map((entry) =>
+				field(
+					`setup-entry-${entry.name}`,
+					`entry.${entry.name}`,
+					entry.name,
+					entry.purpose,
+					html`data-setup-entry`,
+					submitted?.[`entry.${entry.name}`]
+				)
+			)}
+		</details>
+	</div>`
 }
 
 export function firstRunPage(
@@ -116,13 +145,14 @@ export function firstRunPage(
 			invalidAddress?.url
 		)}
 		${invalidAddress ? html`<p class="form-error" role="alert" data-field="url" data-refusal>Give the address of the application, for example http://localhost:3000.</p>` : ''}
+		${otherEntryFields(invalidAddress)}
 		<div
 			class="setup-assumed"
 			data-assumed
 			${invalidAddress?.target || invalidAddress?.environment ? '' : html`hidden`}
 		>
 			<h2 class="lab">What Checkmate will assume</h2>
-			<p class="help">Checkmate sets up the target from this address. Change the name or the environment here.</p>
+			<p class="help">Checkmate sets up the target from these values. Change the name or the environment here.</p>
 			${field('setup-target', 'target', 'Target name', 'Letters, digits, _ or -.', html`data-setup-field ${invalidAddress?.target ? html`data-touched="1"` : ''}`, invalidAddress?.target)}
 			${field('setup-environment', 'environment', 'Environment (optional)', 'For example staging. A name that starts with prod is a production instance.', html`data-setup-field`, invalidAddress?.environment)}
 			<dl class="facts" data-assumed-list></dl>
@@ -136,7 +166,7 @@ export function firstRunPage(
 			],
 			invalidAddress?.operations ?? ''
 		)}
-		<p class="help" data-operations-help>Type the address first.</p>
+		<p class="help" data-operations-help>Type the address, or the entries, first.</p>
 		<input type="hidden" name="confirmed" value="" />`
 	return {
 		title: 'New target',

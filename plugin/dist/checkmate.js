@@ -14254,21 +14254,11 @@ var readingText = {
   state: "reads the stored state"
 };
 function observeFromRule(toolNames2, quote = '"') {
-  const values = observeFromValues(toolNames2);
   const q2 = (value2) => `${quote}${value2}${quote}`;
-  const listed = (some) => some.map(({ value: value2, reading }) => `${q2(value2)} (${reading}: ${readingText[reading]})`).join(", ");
-  const web = values.some(({ value: value2 }) => value2 in compatibleObserveFrom);
-  const others = values.filter(({ value: value2 }) => !(value2 in compatibleObserveFrom));
-  const stateChange = "An assertion on a state-changing action (add, apply, clear, delete, save) checks the source of truth:";
-  const refused2 = "A state-changing test whose checks all use a view value is refused once and then saved as not ready.";
-  if (web)
-    return [
-      `${stateChange} the API response, or the stored state after a reload. A visible page alone does not show that the state changed. Set ${q2("observeFrom")} to ${q2("api")} for a check of the API response, or to ${q2("reload")} for a check after a reload. Use ${q2("page")} only for a check that is not a state change. A state-changing test whose checks are all page is refused once and then saved as not ready.`,
-      ...others.length ? [`The tools of this target also give these observeFrom values: ${listed(others)}.`] : []
-    ].join(" ");
+  const listed = observeFromValues(toolNames2).map(({ value: value2, reading }) => `${q2(value2)} (${reading}: ${readingText[reading]})`).join(", ");
   return [
-    `${stateChange} the stored state. What the tool shows now does not show that the state changed. Set ${q2("observeFrom")} to one of the values of the tools of this target: ${listed(others)}.`,
-    `Use a state value for a check of a state change. Use a view value only for a check that is not a state change. ${refused2}`
+    `An assertion on a state-changing action (add, apply, clear, delete, save) checks the source of truth: the stored state. What the tool shows now does not show that the state changed. Set ${q2("observeFrom")} to one of the values of the tools of this target: ${listed}.`,
+    "Use a state value for a check of a state change. Use a view value only for a check that is not a state change. A state-changing test whose checks all use a view value is refused once and then saved as not ready."
   ].join(" ");
 }
 function observeReading(value2) {
@@ -32707,6 +32697,8 @@ function shell2(context, action2, body, submit) {
 var assumedLabels = {
   instance: "Instance",
   "entry point": "Entry point",
+  "entry points": "Entry points",
+  reachability: "Reachability",
   capabilities: "Capabilities",
   operations: "Operations",
   reset: "Reset",
@@ -32719,6 +32711,30 @@ function assumedRows(lines2) {
     return [assumedLabels[name2] ?? name2, line.slice(at + 1)];
   });
 }
+function otherEntryFields(submitted) {
+  const others = [...declaredEntryPoints().values()].filter((entry) => entry.name !== "web");
+  if (!others.length) return "";
+  return html2`<div class="field-group">
+		<details
+			class="sp-more"
+			data-more
+			${others.some((entry) => submitted?.[`entry.${entry.name}`]) ? html2`open` : ""}
+		>
+			<summary>Not a web application?</summary>
+			<p class="help">Give the entries that the tool of the application needs, and leave the address empty.</p>
+			${others.map(
+    (entry) => field2(
+      `setup-entry-${entry.name}`,
+      `entry.${entry.name}`,
+      entry.name,
+      entry.purpose,
+      html2`data-setup-entry`,
+      submitted?.[`entry.${entry.name}`]
+    )
+  )}
+		</details>
+	</div>`;
+}
 function firstRunPage(context, onHome, back = "/", invalidAddress) {
   const body = html2`${field2(
     "setup-url",
@@ -32730,13 +32746,14 @@ function firstRunPage(context, onHome, back = "/", invalidAddress) {
     invalidAddress?.url
   )}
 		${invalidAddress ? html2`<p class="form-error" role="alert" data-field="url" data-refusal>Give the address of the application, for example http://localhost:3000.</p>` : ""}
+		${otherEntryFields(invalidAddress)}
 		<div
 			class="setup-assumed"
 			data-assumed
 			${invalidAddress?.target || invalidAddress?.environment ? "" : html2`hidden`}
 		>
 			<h2 class="lab">What Checkmate will assume</h2>
-			<p class="help">Checkmate sets up the target from this address. Change the name or the environment here.</p>
+			<p class="help">Checkmate sets up the target from these values. Change the name or the environment here.</p>
 			${field2("setup-target", "target", "Target name", "Letters, digits, _ or -.", html2`data-setup-field ${invalidAddress?.target ? html2`data-touched="1"` : ""}`, invalidAddress?.target)}
 			${field2("setup-environment", "environment", "Environment (optional)", "For example staging. A name that starts with prod is a production instance.", html2`data-setup-field`, invalidAddress?.environment)}
 			<dl class="facts" data-assumed-list></dl>
@@ -32750,7 +32767,7 @@ function firstRunPage(context, onHome, back = "/", invalidAddress) {
     ],
     invalidAddress?.operations ?? ""
   )}
-		<p class="help" data-operations-help>Type the address first.</p>
+		<p class="help" data-operations-help>Type the address, or the entries, first.</p>
 		<input type="hidden" name="confirmed" value="" />`;
   return {
     title: "New target",
@@ -41773,6 +41790,10 @@ data: ${matched.join(",") || "*"}
     if (run2) return render(request2, runPage(store, shown2, run2[1], searchParams));
     return errorPage(request2, 404, "Page not found", `Checkmate has no page at ${pathname}. Start from Needs you.`);
   }
+  function addressOf(targetId, entries) {
+    const entry = targetRequest(store, targetId).entryPoints.find((item) => item.kind === "url");
+    return entry ? entries[entry.name] : void 0;
+  }
   function changeDefaults(target) {
     const where = (address) => ({
       address: address ? hostOf(address) : null,
@@ -41782,8 +41803,11 @@ data: ${matched.join(",") || "*"}
       const active = activeInstances(item.targetId);
       return {
         targetId: item.targetId,
-        ...where(active[0]?.entries.web),
-        instances: active.length < 2 ? [] : active.map((one3) => ({ id: one3.instanceId, ...where(one3.entries.web) }))
+        ...where(active[0] && addressOf(item.targetId, active[0].entries)),
+        instances: active.length < 2 ? [] : active.map((one3) => ({
+          id: one3.instanceId,
+          ...where(addressOf(item.targetId, one3.entries))
+        }))
       };
     });
     return { build: defaultBuild(store.workspace), target: target ?? "", targets };
@@ -42816,29 +42840,38 @@ data: ${matched.join(",") || "*"}
   }
   function setupChoice(form, url) {
     const typed = form.get("operations") ?? "";
-    const local = isLocalAddress(url);
+    const local = url === "" || isLocalAddress(url);
     const yes = typed === "yes" || typed === "" && local;
     return { yes, chosen: typed === "yes" || typed === "no" || local, local };
   }
   function setupAddress(url) {
     return /^https?:\/\/[^\s/]+/i.test(url) ? URL.parse(url) : null;
   }
+  const otherEntries = () => [...declaredEntryPoints().values()].filter((entry) => entry.name !== "web");
+  function otherEntryValues(form) {
+    return Object.fromEntries(
+      otherEntries().map((entry) => [entry.name, (form.get(`entry.${entry.name}`) ?? "").trim()]).filter(([, value2]) => value2)
+    );
+  }
   function previewSetup(request2, form) {
     const url = (form.get("url") ?? "").trim();
+    const others = otherEntryValues(form);
     const address = setupAddress(url);
     const reply = (body) => send(request2.res, 200, "application/json; charset=utf-8", JSON.stringify(body));
-    if (!address) return reply({ error: "Give a full address, for example http://localhost:3000." });
+    if (!address && !Object.keys(others).length)
+      return reply({ error: "Give a full address, for example http://localhost:3000." });
     try {
-      const choice2 = setupChoice(form, url);
+      const choice2 = setupChoice(form, address ? url : "");
       const planned = setupAssumptions({
-        url,
+        ...address ? { url } : {},
+        entries: others,
         targetId: form.get("target")?.trim() || void 0,
         environment: form.get("environment")?.trim() || void 0,
         operations: choice2.yes ? void 0 : [readOnlyOperation],
         env
       });
       reply({
-        address: address.host,
+        address: address ? address.host : Object.values(others).join(" "),
         local: choice2.local,
         targetId: planned.targetId,
         assumed: assumedRows(planned.assumed.filter((line) => !line.startsWith("target=")))
@@ -42851,34 +42884,42 @@ data: ${matched.join(",") || "*"}
     const back = "/setup";
     const { actor, cookies } = actorFrom(request2, form);
     const refuse5 = (message, field4 = "") => actionRefusal(request2, back, message, field4);
-    const url = (form.get("url") ?? "").trim();
+    const typedUrl = (form.get("url") ?? "").trim();
+    const others = otherEntryValues(form);
     if (!actor) return refuse5("Enter your name. Checkmate records it with the target.");
-    const address = setupAddress(url);
-    if (!address) {
+    const address = setupAddress(typedUrl);
+    const url = address ? typedUrl : "";
+    if (!address && (typedUrl || !Object.keys(others).length)) {
       const onHome = !targetList(store).length;
-      const submitted = values(form, ["url", "target", "environment", "operations"]);
+      const submitted = values(form, [
+        "url",
+        "target",
+        "environment",
+        "operations",
+        ...otherEntries().map((entry) => `entry.${entry.name}`)
+      ]);
       return render(request2, firstRunPage(context(request2), onHome, cameFrom(request2), submitted), cookies);
     }
     const choice2 = setupChoice(form, url);
     if (!choice2.chosen)
       return refuse5(
-        `${address.host} is not a local address. Choose whether testers may change data there.`,
+        `${address?.host} is not a local address. Choose whether testers may change data there.`,
         "operations"
       );
     if (!choice2.local && form.get("confirmed") !== "1")
-      return refuse5(`Confirm that Checkmate may test ${address.host}, an address that is not local.`, "url");
+      return refuse5(`Confirm that Checkmate may test ${address?.host}, an address that is not local.`, "url");
     const typedTarget = form.get("target")?.trim() || void 0;
     const environment = form.get("environment")?.trim() || void 0;
     try {
       if (typedTarget) requireIdentifier(typedTarget, "target name");
-      requireAnswer(await urlReachable(url), url);
+      if (address) requireAnswer(await urlReachable(url), url);
       const reply = setupTarget(store, actor, {
-        url,
+        ...address ? { url, answered: true } : {},
+        entries: others,
         targetId: typedTarget,
         environment,
         operations: choice2.yes ? void 0 : [readOnlyOperation],
-        env,
-        answered: true
+        env
       });
       if (reply.status !== "completed") return refuse5(reply.reasons.join(" "), "target");
       if (!reply.data.ready) {
@@ -42944,7 +42985,8 @@ data: ${matched.join(",") || "*"}
     if (until && !since) return refuse5("Until needs Since. Fill in Since, or leave Until empty.", "until");
     const chosen = instanceFrom(form, targetId);
     if (chosen.error) return refuse5(chosen.error, "instance");
-    const address = (activeInstances(targetId).find((item) => item.instanceId === chosen.instance) ?? activeInstances(targetId)[0])?.entries.web;
+    const instance = activeInstances(targetId).find((item) => item.instanceId === chosen.instance) ?? activeInstances(targetId)[0];
+    const address = instance && addressOf(targetId, instance.entries);
     if (address && URL.canParse(address) && !isLocalAddress(address) && form.get("confirmed") !== "1")
       return refuse5(`Confirm that Checkmate may test ${hostOf(address)}, an address that is not local.`, "target");
     const childEnv2 = launchEnv();

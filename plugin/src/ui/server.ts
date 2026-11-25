@@ -25,6 +25,7 @@ import { exportExploration, exportPlan, exportRun } from '../render.ts'
 import { decideClaim, explorationRow, handOffClaims } from '../journal.ts'
 import { claimPage, explorationPage, explorerFile, explorerFilePage, questionPage } from './exploration.ts'
 import { acceptResult, rejectResult } from '../runs.ts'
+import { declaredEntryPoints } from '../recipes.ts'
 import {
 	addInstance,
 	instanceList,
@@ -700,6 +701,12 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		return errorPage(request, 404, 'Page not found', `Checkmate has no page at ${pathname}. Start from Needs you.`)
 	}
 
+	// The address of an instance: the value of its first url entry. A target without one has no address.
+	function addressOf(targetId: string, entries: Record<string, string>) {
+		const entry = targetRequest(store, targetId).entryPoints.find((item) => item.kind === 'url')
+		return entry ? entries[entry.name] : undefined
+	}
+
 	function changeDefaults(target: string | null) {
 		const where = (address: string | undefined) => ({
 			address: address ? hostOf(address) : null,
@@ -709,9 +716,14 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 			const active = activeInstances(item.targetId)
 			return {
 				targetId: item.targetId,
-				...where(active[0]?.entries.web),
+				...where(active[0] && addressOf(item.targetId, active[0].entries)),
 				instances:
-					active.length < 2 ? [] : active.map((one) => ({ id: one.instanceId, ...where(one.entries.web) })),
+					active.length < 2
+						? []
+						: active.map((one) => ({
+								id: one.instanceId,
+								...where(addressOf(item.targetId, one.entries)),
+							})),
 			}
 		})
 		return { build: defaultBuild(store.workspace), target: target ?? '', targets }
@@ -1854,7 +1866,7 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 
 	function setupChoice(form: URLSearchParams, url: string) {
 		const typed = form.get('operations') ?? ''
-		const local = isLocalAddress(url)
+		const local = url === '' || isLocalAddress(url)
 		const yes = typed === 'yes' || (typed === '' && local)
 		return { yes, chosen: typed === 'yes' || typed === 'no' || local, local }
 	}
@@ -1863,23 +1875,37 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		return /^https?:\/\/[^\s/]+/i.test(url) ? URL.parse(url) : null
 	}
 
+	// The entries of an application that is not a web application: one form field for each entry that a recipe declares.
+	const otherEntries = () => [...declaredEntryPoints().values()].filter((entry) => entry.name !== 'web')
+
+	function otherEntryValues(form: URLSearchParams) {
+		return Object.fromEntries(
+			otherEntries()
+				.map((entry) => [entry.name, (form.get(`entry.${entry.name}`) ?? '').trim()])
+				.filter(([, value]) => value)
+		) as Record<string, string>
+	}
+
 	function previewSetup(request: Request, form: URLSearchParams) {
 		const url = (form.get('url') ?? '').trim()
+		const others = otherEntryValues(form)
 		const address = setupAddress(url)
 		const reply = (body: Record<string, unknown>) =>
 			send(request.res, 200, 'application/json; charset=utf-8', JSON.stringify(body))
-		if (!address) return reply({ error: 'Give a full address, for example http://localhost:3000.' })
+		if (!address && !Object.keys(others).length)
+			return reply({ error: 'Give a full address, for example http://localhost:3000.' })
 		try {
-			const choice = setupChoice(form, url)
+			const choice = setupChoice(form, address ? url : '')
 			const planned = setupAssumptions({
-				url,
+				...(address ? { url } : {}),
+				entries: others,
 				targetId: form.get('target')?.trim() || undefined,
 				environment: form.get('environment')?.trim() || undefined,
 				operations: choice.yes ? undefined : [readOnlyOperation],
 				env,
 			})
 			reply({
-				address: address.host,
+				address: address ? address.host : Object.values(others).join(' '),
 				local: choice.local,
 				targetId: planned.targetId,
 				assumed: assumedRows(planned.assumed.filter((line) => !line.startsWith('target='))),
@@ -1893,34 +1919,42 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		const back = '/setup'
 		const { actor, cookies } = actorFrom(request, form)
 		const refuse = (message: Html | string, field = '') => actionRefusal(request, back, message, field)
-		const url = (form.get('url') ?? '').trim()
+		const typedUrl = (form.get('url') ?? '').trim()
+		const others = otherEntryValues(form)
 		if (!actor) return refuse('Enter your name. Checkmate records it with the target.')
-		const address = setupAddress(url)
-		if (!address) {
+		const address = setupAddress(typedUrl)
+		const url = address ? typedUrl : ''
+		if (!address && (typedUrl || !Object.keys(others).length)) {
 			const onHome = !targetList(store).length
-			const submitted = values(form, ['url', 'target', 'environment', 'operations'])
+			const submitted = values(form, [
+				'url',
+				'target',
+				'environment',
+				'operations',
+				...otherEntries().map((entry) => `entry.${entry.name}`),
+			])
 			return render(request, firstRunPage(context(request), onHome, cameFrom(request), submitted), cookies)
 		}
 		const choice = setupChoice(form, url)
 		if (!choice.chosen)
 			return refuse(
-				`${address.host} is not a local address. Choose whether testers may change data there.`,
+				`${address?.host} is not a local address. Choose whether testers may change data there.`,
 				'operations'
 			)
 		if (!choice.local && form.get('confirmed') !== '1')
-			return refuse(`Confirm that Checkmate may test ${address.host}, an address that is not local.`, 'url')
+			return refuse(`Confirm that Checkmate may test ${address?.host}, an address that is not local.`, 'url')
 		const typedTarget = form.get('target')?.trim() || undefined
 		const environment = form.get('environment')?.trim() || undefined
 		try {
 			if (typedTarget) requireIdentifier(typedTarget, 'target name')
-			requireAnswer(await urlReachable(url), url)
+			if (address) requireAnswer(await urlReachable(url), url)
 			const reply = setupTarget(store, actor, {
-				url,
+				...(address ? { url, answered: true } : {}),
+				entries: others,
 				targetId: typedTarget,
 				environment,
 				operations: choice.yes ? undefined : [readOnlyOperation],
 				env,
-				answered: true,
 			})
 			if (reply.status !== 'completed') return refuse(reply.reasons.join(' '), 'target')
 			if (!reply.data.ready) {
@@ -1993,10 +2027,10 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		if (until && !since) return refuse('Until needs Since. Fill in Since, or leave Until empty.', 'until')
 		const chosen = instanceFrom(form, targetId)
 		if (chosen.error) return refuse(chosen.error, 'instance')
-		const address = (
+		const instance =
 			activeInstances(targetId).find((item) => item.instanceId === chosen.instance) ??
 			activeInstances(targetId)[0]
-		)?.entries.web
+		const address = instance && addressOf(targetId, instance.entries)
 		if (address && URL.canParse(address) && !isLocalAddress(address) && form.get('confirmed') !== '1')
 			return refuse(`Confirm that Checkmate may test ${hostOf(address)}, an address that is not local.`, 'target')
 		const childEnv = launchEnv()

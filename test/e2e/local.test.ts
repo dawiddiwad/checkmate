@@ -11499,9 +11499,9 @@ test('Name the entries of the instance and the observeFrom values of the target 
 	const webPlan = await afterPlan('shop-draft')
 	assert.match(
 		webPlan,
-		/Set "observeFrom" to "api" for a check of the API response, or to "reload" for a check after a reload\. Use "page" only for a check that is not a state change\./
+		/Set "observeFrom" to one of the values of the tools of this target: "api" \(state: reads the stored state\)\. Use a state value/
 	)
-	assert.doesNotMatch(webPlan, /"screen"/)
+	assert.doesNotMatch(webPlan, /"screen"|"page"|"reload"/)
 	// An execute worker is told the entries of the profile.
 	const execEnv = { ...env, FAKE_RUN: 'run-1' }
 	copyFileSync(join(root, 'test/e2e/per-test-host.mjs'), join(bin, 'pi'))
@@ -11602,65 +11602,54 @@ test('Start a test of a mobile app from its entries on a store with no target �
 	assert.match(study.prompt, /Tools you can use: maestro\./)
 })
 
-test('Read a target stored by 0.8.2 and record its data policy without a URL — the stored profile and instance keep their shape.', async (t) => {
+test('Set up a target in the review UI from the address or from the entries of an app that is not a web app — the page asks for the entries that the recipes declare.', async (t) => {
+	const app = await fixture()
+	t.after(() => app.close())
 	const workspace = directory(t)
-	mkdirSync(join(workspace, '.checkmate'))
-	writeFileSync(
-		join(workspace, '.checkmate/checkmate.db'),
-		gunzipSync(readFileSync(join(root, 'test/e2e/fixtures/workspace-exploration-v0.8.2.db.gz')))
-	)
-	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle', CHECKMATE_HARNESS: 'pi' }
-	const id = '127-0-0-1-49334'
-	const before = await command(workspace, env, 'target', 'show', id, '--instance', 'local')
-	assert.equal(before.code, 0, before.output)
-	assert.deepEqual(before.body.profile.entryPoints, [{ kind: 'url', name: 'web', purpose: 'The application.' }])
-	assert.deepEqual(before.body.profile.capabilities, ['browser', 'http'])
-	assert.deepEqual(before.body.instance.entries, { web: 'http://127.0.0.1:49334' })
-	const policy = await command(
-		workspace,
-		env,
-		'setup',
-		'--target',
-		id,
-		'--data',
-		'isolation',
-		'--policy',
-		'Use the test users.'
-	)
-	assert.equal(policy.code, 0, policy.output)
-	assert.equal(policy.body.revision, before.body.revision + 1)
-	const after = await command(workspace, env, 'target', 'show', id, '--instance', 'local')
-	assert.deepEqual(after.body.profile.tools, before.body.profile.tools)
-	assert.deepEqual(after.body.profile.entryPoints, before.body.profile.entryPoints)
-	assert.deepEqual(after.body.instance, before.body.instance)
-	assert.deepEqual(after.body.profile.reset, {
-		owner: 'isolation',
-		command: null,
-		policy: { text: 'Use the test users.' },
+	const env = { ...process.env, PATH: fakeMaestro(t), CHECKMATE_ACTOR: 'oracle', CHECKMATE_HARNESS: 'pi' }
+	const ui = spawn(process.execPath, [binary, 'ui', '--port', '0', '--json'], { cwd: workspace, env })
+	t.after(async () => {
+		ui.kill('SIGTERM')
+		if (ui.exitCode === null) await once(ui, 'exit')
 	})
-	// The same policy again changes nothing, and a second instance takes the stored entry point.
-	const again = await command(
-		workspace,
-		env,
-		'setup',
-		'--target',
-		id,
-		'--data',
-		'isolation',
-		'--policy',
-		'Use the test users.'
+	const [data] = (await once(ui.stdout, 'data')) as [Buffer]
+	const base = JSON.parse(data.toString()).url as string
+	const page = await (await fetch(new URL('/setup', base))).text()
+	const csrf = /name="csrf" value="([^"]+)"/.exec(page)?.[1]
+	assert(csrf, 'The setup page did not expose a CSRF token')
+	assert.match(page, /Not a web application\?/)
+	assert.match(page, /name="entry\.app"/)
+	assert.match(page, /name="entry\.device"/)
+	assert.doesNotMatch(page, /name="entry\.web"/)
+	const post = (path: string, fields: Record<string, string>) =>
+		fetch(new URL(path, base), {
+			method: 'POST',
+			headers: { 'content-type': 'application/x-www-form-urlencoded', origin: new URL(base).origin },
+			body: new URLSearchParams({ csrf, actor: 'oracle', ...fields }),
+			redirect: 'manual',
+		})
+	const entries = { 'entry.app': 'com.apple.Preferences', 'entry.device': 'SIM-1' }
+	const preview = await (await post('/setup/assumed', entries)).json()
+	assert.equal(preview.error, undefined)
+	assert.equal(preview.targetId, 'com-apple-preferences')
+	assert.equal(preview.local, true)
+	assert.deepEqual(
+		preview.assumed.map(([label]: string[]) => label),
+		['Instance', 'Entry points', 'Capabilities', 'Operations', 'Authentication']
 	)
-	assert.equal(again.body.revision, policy.body.revision)
-	const added = await command(
-		workspace,
-		env,
-		'target',
-		'instance',
-		'add',
-		id,
-		'second',
-		'--entry',
-		'web=http://127.0.0.1:1'
-	)
-	assert.equal(added.code, 0, added.output)
+	const half = await post('/setup', { 'entry.app': 'com.apple.Preferences' })
+	assert.equal(half.status, 422)
+	assert.match(await half.text(), /maestro needs the entries app and device\. Missing: device\./)
+	const mobile = await post('/setup', { ...entries, target: 'phone' })
+	assert.equal(mobile.status, 303, await mobile.text())
+	assert.equal(mobile.headers.get('location'), '/new?target=phone')
+	const web = await post('/setup', { url: app.baseUrl, target: 'shop' })
+	assert.equal(web.status, 303, await web.text())
+	assert.equal(web.headers.get('location'), '/new?target=shop')
+	const shown = await command(workspace, env, 'target', 'show', 'phone', '--instance', 'local')
+	assert.deepEqual(shown.body.instance.entries, { app: 'com.apple.Preferences', device: 'SIM-1' })
+	// The change page offers both targets, and a target with no address needs no confirmation of a remote address.
+	const change = await (await fetch(new URL('/new?target=phone', base))).text()
+	assert.match(change, /<option\s+value="phone"\s+selected\s*>/)
+	assert.doesNotMatch(change, /data-nonlocal/)
 })

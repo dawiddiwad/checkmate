@@ -3186,12 +3186,18 @@ if (setupUrl) {
 	const help = pageForm.querySelector('[data-operations-help]')
 	const target = pageForm.elements.target
 	const radios = [...pageForm.querySelectorAll('input[name="operations"]')]
+	const entryFields = [...pageForm.querySelectorAll('[data-setup-entry]')]
+	// The address is required unless the person gives the entries of an application that is not a web application.
+	const requireAddress = () => {
+		setupUrl.required = !entryFields.some((entry) => entry.value.trim())
+	}
 	let sequence = 0
 	let timer = null
 	let automatic = false
 	const preview = async () => {
 		const mine = ++sequence
 		const data = new URLSearchParams({ csrf: csrf(), url: setupUrl.value })
+		for (const entry of entryFields) data.set(entry.name, entry.value)
 		if (target.dataset.touched) data.set('target', target.value)
 		data.set('environment', pageForm.elements.environment.value)
 		data.set('operations', pageForm.querySelector('input[name="operations"]:checked')?.value ?? '')
@@ -3208,7 +3214,7 @@ if (setupUrl) {
 		if (!reply.address) {
 			assumed.hidden = true
 			pageForm.dataset.nonlocal = ''
-			help.textContent = reply.error ?? 'Type the address first.'
+			help.textContent = reply.error ?? 'Type the address, or the entries, first.'
 			return
 		}
 		assumed.hidden = false
@@ -3241,6 +3247,12 @@ if (setupUrl) {
 		timer = setTimeout(preview, 250)
 	}
 	setupUrl.addEventListener('input', later)
+	for (const entry of entryFields)
+		entry.addEventListener('input', () => {
+			requireAddress()
+			later()
+		})
+	requireAddress()
 	pageForm.elements.environment.addEventListener('input', later)
 	target.addEventListener('input', () => {
 		target.dataset.touched = '1'
@@ -3251,7 +3263,7 @@ if (setupUrl) {
 			automatic = false
 			later()
 		})
-	if (setupUrl.value.trim()) preview()
+	if (setupUrl.value.trim() || entryFields.some((entry) => entry.value.trim())) preview()
 }
 
 async function fetchModelCatalog(harness) {

@@ -6,7 +6,7 @@ import type { TestLevel } from './levels.ts'
 import { explorationCost } from './costs.ts'
 import { hostSession } from './actor.ts'
 import { all, closeStore, completed, one, openStore, saveBlob, write } from './store.ts'
-import { Refusal, requireChoice, requireCondition, requireWellFormed } from './contracts.ts'
+import { Refusal, requireChoice, shellWord, requireCondition, requireWellFormed } from './contracts.ts'
 import { addEvent, exploration, explorationEvents, insertExploration, workFolder } from './explorations.ts'
 import type { Refused } from './journal.ts'
 import { firstRevision } from './testRevision.ts'
@@ -1181,10 +1181,7 @@ function retryCommand(store: Store, id: string, launch: Launch | undefined) {
 	const harness = launch
 		? `CHECKMATE_HARNESS=${launch.context?.harness ?? 'claude'} ${launch.inheritPiTools ? 'CHECKMATE_HOST_SESSION=1 ' : ''}`
 		: ''
-	return (
-		harness +
-		command.map((word) => (/^[\w./:@-]+$/.test(word) ? word : `'${word.replaceAll("'", "'\\''")}'`)).join(' ')
-	)
+	return harness + command.map(shellWord).join(' ')
 }
 
 export function followCount(store: Store, explorationId: string, knownAnswers?: ReadonlySet<string>) {

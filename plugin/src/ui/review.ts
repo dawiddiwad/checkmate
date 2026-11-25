@@ -524,7 +524,7 @@ export function itemRow(context: Context, review: Review, item: Item, id: string
 		data-key="${item.key}"
 		data-href="${opened}"
 		data-label="${item.id}"
-		data-builds="${item.builds.join(' ')}"
+		data-builds="${JSON.stringify(item.builds)}"
 		${item.needs ? html`data-needs` : ''}
 		${pickable ? html`data-pick="${pickKey(review, item)}"` : ''}
 	>

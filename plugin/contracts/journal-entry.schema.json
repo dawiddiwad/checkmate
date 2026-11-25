@@ -64,7 +64,8 @@
 		"build": {
 			"description": "The build that you tested. Checkmate gives the build of the exploration.",
 			"type": "string",
-			"pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,95}$"
+			"maxLength": 200,
+			"pattern": "^(?=.*\\S)[^\\u0000-\\u001f\\u007f]+$"
 		},
 		"supersedes": {
 			"description": "The ID of an earlier entry of the same kind. This entry replaces it and keeps its ID.",

@@ -20,7 +20,7 @@ import {
 	shortName,
 } from './journal.ts'
 import { all, canonical, digest, one } from './store.ts'
-import { requireChoice, requireCondition, uncoveredRequirements, unverifiedAssertions } from './contracts.ts'
+import { requireChoice, requireCondition, shellWord, uncoveredRequirements, unverifiedAssertions } from './contracts.ts'
 import { openPermissions } from './permissions.ts'
 import {
 	approvalState,
@@ -938,7 +938,7 @@ function loopStatus(store: Store, planId: string, harness: Harness) {
 			if (coverage.some(({ wrong }) => wrong))
 				return { ...base, ...extra, ...loop('ready_to_test', 'qa', missing, after) }
 			if (!rules.length || missing.length) {
-				const quoted = /^[\w./:@-]+$/.test(build) ? build : `'${build.replaceAll("'", "'\\''")}'`
+				const quoted = shellWord(build)
 				const target = planRequest(store, planId).target.profile.targetId
 				const instances = instanceList(store, target).filter((instance) => !instance.retired)
 				const testedInstance = explorationRow(store, tested.explorationId).instance_id
@@ -1075,7 +1075,7 @@ function checkStatus(store: Store, planId: string, harness: Harness) {
 	}
 	const rerun = (run: (typeof runs)[number]) => {
 		const retired = !active.some((item) => item.instanceId === run.instanceId)
-		return `checkmate run begin <runId> ${subject} --build ${run.build}${instance(run.runId)} --partial ready_only${retired ? ` --retest-of ${run.runId}` : ''}`
+		return `checkmate run begin <runId> ${subject} --build ${shellWord(run.build)}${instance(run.runId)} --partial ready_only${retired ? ` --retest-of ${run.runId}` : ''}`
 	}
 	const dependencyBuilds = () => {
 		const others = [
@@ -1170,7 +1170,9 @@ function checkStatus(store: Store, planId: string, harness: Harness) {
 					'ready_to_run',
 					'qa',
 					[`${selection.tests.length} of ${plan.tests.length} tests are ready`],
-					[`checkmate run begin <runId> ${subject} --build ${build}${instance()} --partial ready_only`]
+					[
+						`checkmate run begin <runId> ${subject} --build ${shellWord(build)}${instance()} --partial ready_only`,
+					]
 				)
 			}
 			return blocking.length
@@ -1238,7 +1240,9 @@ function checkStatus(store: Store, planId: string, harness: Harness) {
 					(item) => readySelection(store, plan, item).tests.filter((testId) => needed.includes(testId)).length
 				)
 				if (build)
-					next = [`checkmate run begin <runId> ${subject} --build ${build}${instance()} --partial ready_only`]
+					next = [
+						`checkmate run begin <runId> ${subject} --build ${shellWord(build)}${instance()} --partial ready_only`,
+					]
 			}
 			if (!next.length) return nothingToRun(finished.build, readySelection(store, plan, finished.build).leftOut)
 			return loop('needs_retest', 'qa', why, [...new Set(next)])

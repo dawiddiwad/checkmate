@@ -8,7 +8,7 @@ import { dataFlags, operationAllowed, readinessHint } from './targets.ts'
 import { dataSummary, requireDataFor } from './resets.ts'
 import { observeFromValues } from './recipes.ts'
 import { all, canonical, completed, digest, execute, one, ulid, write } from './store.ts'
-import { softProblems, uncoveredRequirements, unverifiedAssertions } from './contracts.ts'
+import { requireBuild, softProblems, uncoveredRequirements, unverifiedAssertions } from './contracts.ts'
 import type { PlanDraft, Test } from './contracts.ts'
 import {
 	approvalPolicy,
@@ -1571,7 +1571,7 @@ export function gate(store: Store, input: GateInput) {
 	const target = permanent
 		? targetRevision(store, plan.target.targetId, plan.target.revision)
 		: executionTarget(store, plan.planId, plan.target.targetId, plan.target.revision)
-	const build = requireText(input.build, 'application build (--build)')
+	const build = requireBuild(input.build)
 	const partial = requireChoice(input.partial ?? 'ready_only', partialModes, 'partial execution (--partial)')
 	const tests = index(plan.tests, 'id', 'test')
 	const ready =

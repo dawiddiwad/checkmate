@@ -10,6 +10,7 @@ import {
 	refusalReasons,
 	requireChoice,
 	requireCondition,
+	requireBuild,
 	requireIdentifier,
 	requireText,
 	requireWellFormed,
@@ -400,6 +401,7 @@ function begin(
 		},
 		(operationId, at, actor) => {
 			const runId = requireIdentifier(input.runId, 'run ID')
+			const build = requireBuild(input.build)
 			requireCondition(
 				!one(store, 'SELECT 1 FROM runs WHERE run_id = ?', runId),
 				`Run ${runId} exists. Use a new run ID.`
@@ -426,9 +428,9 @@ function begin(
 				: input
 			const instance = runInstance(store, plannedTarget(store, requested.reference), input.instance)
 			requireCondition(
-				!instance.build || instance.build === input.build,
-				`Instance ${instance.targetId}/${instance.instanceId} serves build ${instance.build}, not ${input.build}. A run names the build its instance serves.`,
-				instanceForBuildHint(store, instance.targetId, input.build)
+				!instance.build || instance.build === build,
+				`Instance ${instance.targetId}/${instance.instanceId} serves build ${instance.build}, not ${build}. A run names the build its instance serves.`,
+				instanceForBuildHint(store, instance.targetId, build)
 			)
 			const checked = gate(store, { ...requested, instance: instance.instanceId })
 			if (checked.reply.status !== 'completed') {

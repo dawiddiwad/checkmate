@@ -672,6 +672,117 @@ test('Point run accept and run reject to the result command — a wrong command 
 	assert.match(host.stdout, /^agent-only hint: Use result reject/m)
 })
 
+test('Accept any build name — a build with @ was refused by the journal, so the recorders saved nothing.', async (t) => {
+	const seeded = () => {
+		const workspace = directory(t)
+		mkdirSync(join(workspace, '.checkmate'))
+		writeFileSync(
+			join(workspace, '.checkmate/checkmate.db'),
+			gunzipSync(readFileSync(join(root, 'test/e2e/fixtures/workspace-plan.db.gz')))
+		)
+		const added = spawnSync(
+			process.execPath,
+			[binary, 'target', 'instance', 'add', 'shop', 'local', '--entry', 'web=http://localhost:1'],
+			{ cwd: workspace, encoding: 'utf8' }
+		)
+		assert.equal(added.status, 0, added.stdout + added.stderr)
+		return workspace
+	}
+	const run = (workspace: string, input: string, ...args: string[]) => {
+		const result = spawnSync(process.execPath, [binary, ...args], { cwd: workspace, encoding: 'utf8', input })
+		return { code: result.status, output: result.stdout + result.stderr }
+	}
+	const entries = JSON.stringify([
+		{
+			kind: 'criterion',
+			id: 'C1',
+			rule: 'R1',
+			text: 'The catalog opens.',
+			source: 'Ticket',
+			verdict: 'ok',
+			saw: 'It opened.',
+		},
+		{ kind: 'note', id: 'N1', text: 'A note.' },
+	])
+	const odd = 'Release 2.1 (beta; $(x))'
+	// An exploration on each build records its journal entries under that exact build.
+	for (const build of ['booksy-nyc-barber-smoke@1', odd]) {
+		const workspace = seeded()
+		assert.equal(
+			run(workspace, '', 'explore', 'open', 'ticket', '--build', ` ${build} `, '--instance', 'local').code,
+			0,
+			build
+		)
+		const logged = run(workspace, entries, 'explore', 'log', 'x-1', '--actor', 'qa:a1')
+		assert.equal(logged.code, 0, logged.output)
+		assert.match(logged.output, /saved=2 refused=0/, build)
+		const rows = run(workspace, '', 'query', 'SELECT DISTINCT build FROM journal_entries').output
+		assert.ok(rows.split('\n').includes(build), rows)
+	}
+	// The same build names an instance and a run, and every command that suggests a command quotes it.
+	const workspace = seeded()
+	const body = JSON.stringify({ entries: { web: 'http://localhost:2' }, build: ` ${odd} ` })
+	assert.equal(run(workspace, body, 'target', 'instance', 'add', 'shop', 'spaced').code, 0)
+	assert.equal(run(workspace, '', 'plan', 'approve', 'ticket@1', '--rationale', 'ok').code, 0)
+	const begun = run(workspace, '', 'run', 'begin', 'r2', 'ticket@1', '--build', ` ${odd} `, '--instance', 'spaced')
+	assert.equal(begun.code, 0, begun.output)
+	assert.match(begun.output, /instance=spaced/)
+	const stored = run(workspace, '', 'query', "SELECT application_build FROM runs WHERE run_id = 'r2'").output
+	assert.match(stored, /Release 2\.1 \(beta; \$\(x\)\)\n/)
+	const other = run(workspace, '', 'run', 'begin', 'r3', 'ticket@1', '--build', 'Other; $(y)', '--instance', 'spaced')
+	assert.match(other.output, /--build 'Other; \$\(y\)'\./)
+	const finished = run(
+		workspace,
+		'',
+		'run',
+		'finish',
+		'r2',
+		'--completion',
+		'interrupted',
+		'--cause',
+		'tool_unavailable',
+		'--reason',
+		'x',
+		'--cleanup',
+		'not_applicable',
+		'--cleanup-reason',
+		'none'
+	)
+	assert.match(finished.output, /^interrupted r2/, finished.output)
+	assert.match(
+		run(workspace, '', 'status', 'ticket').output,
+		/--build 'Release 2\.1 \(beta; \$\(x\)\)' --instance spaced --partial ready_only/
+	)
+	// A blank build, a build with a line break and a build that is too long are refused, and the refusal says which.
+	const refusals: Array<[string, RegExp]> = [
+		['   ', /it is blank/],
+		['a\nb', /it has a line break or another control character/],
+		['x'.repeat(201), /it has 201 characters, and the limit is 200/],
+	]
+	for (const [build, reason] of refusals) {
+		for (const args of [
+			['explore', 'open', 'ticket', '--build', build],
+			['run', 'begin', 'r9', 'ticket@1', '--build', build],
+			['run', 'gate', 'ticket@1', '--build', build],
+		]) {
+			const refused = run(workspace, '', ...args)
+			assert.equal(refused.code, 1, refused.output)
+			assert.match(refused.output, reason, args.join(' '))
+		}
+		const instance = run(
+			workspace,
+			JSON.stringify({ entries: { web: 'http://localhost:3' }, build }),
+			'target',
+			'instance',
+			'add',
+			'shop',
+			'bad'
+		)
+		assert.equal(instance.code, 1, instance.output)
+		assert.match(instance.output, reason)
+	}
+})
+
 test('Tell a chat turn what it saved from the record — a turn with no write reports nothing saved, and a refused command saves nothing.', async (t) => {
 	const workspace = directory(t)
 	execFileSync(process.execPath, [binary, 'init'], { cwd: workspace, encoding: 'utf8' })

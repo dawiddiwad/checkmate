@@ -6,7 +6,9 @@ import {
 	profileCheck,
 	requireChoice,
 	requireCondition,
+	requireBuild,
 	requireIdentifier,
+	shellWord,
 	requireNotInputWord,
 	requireText,
 	revisionReference,
@@ -385,7 +387,7 @@ export function instanceCheck(entryPoints: EntryPoint[], value: unknown): Instan
 			? {}
 			: { environment: requireText(instance.environment, 'environment').trim() }),
 		references,
-		...(instance.build === undefined ? {} : { build: requireText(instance.build, 'build').trim() }),
+		...(instance.build === undefined ? {} : { build: requireBuild(instance.build, 'build of the instance') }),
 	}
 }
 
@@ -668,8 +670,10 @@ export function instanceForBuildHint(store: Store, targetId: string, build: stri
 	const serving = instanceList(store, targetId).filter((instance) => !instance.retired && instance.build === build)
 	if (serving.length)
 		return `Run on an instance that serves ${build}: ${serving.map((instance) => `--instance ${instance.instanceId}`).join(' or ')}.`
-	const entries = buildEntryFlags(targetRequest(store, targetId).entryPoints, String(build))
-	return `Add an instance for ${build}: checkmate target instance add ${targetId} <name> ${entries} --build ${build}.`
+	const word = shellWord(String(build))
+	// A build with a special character stays out of the placeholders, so no placeholder holds it unquoted.
+	const entries = buildEntryFlags(targetRequest(store, targetId).entryPoints, word === build ? word : 'that build')
+	return `Add an instance for ${build}: checkmate target instance add ${targetId} <name> ${entries} --build ${word}.`
 }
 
 export function runInstance(store: Store, targetId: string, instanceId: string | undefined): InstanceRecord {

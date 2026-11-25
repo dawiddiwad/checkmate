@@ -3,7 +3,7 @@ import type { ExplorationEvent } from './explorations.ts'
 import type { Launch } from './explorers.ts'
 import type { Carried } from './recorder.ts'
 import { completed, write } from './store.ts'
-import { requireCondition, requireWellFormed } from './contracts.ts'
+import { requireCondition, requireWellFormed, shellWord } from './contracts.ts'
 import { addEvent, exploration, explorationEvents, workFolder } from './explorations.ts'
 import { explorationRow, logEntries } from './journal.ts'
 import {
@@ -458,7 +458,7 @@ function finishPhase(store: Store, actor: string, explorationId: string, phase: 
 					? { reason: 'No explorer session of the follow-up was recorded.' }
 					: {
 							reason: 'No tester of the follow-up could be reached.',
-							hint: `The testers ran in a session that ended. Run checkmate test ${row.plan_id} --build ${row.build} --session again. The answers reach the new testers through the known-state file.`,
+							hint: `The testers ran in a session that ended. Run checkmate test ${row.plan_id} --build ${shellWord(row.build)} --session again. The answers reach the new testers through the known-state file.`,
 						}),
 		},
 	})

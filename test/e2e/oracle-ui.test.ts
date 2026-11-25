@@ -832,3 +832,20 @@ test(
 		)
 	}
 )
+
+test('Filter the review list by a build whose name has spaces — the row lists its builds as JSON, and the page script reads them as JSON.', async (t) => {
+	const workspace = directory(t)
+	t.after(() => endProcessesIn(workspace))
+	const opened = store(t, workspace)
+	target(opened)
+	plan(opened)
+	openTest(opened, 'checkout', 'spaced', 'Release 2.1 (beta; $(x))')
+	entries(opened, 'spaced', 'a1', [{ kind: 'question', id: 'Q1', question: 'What is the refund window?' }])
+	done(opened, 'spaced')
+	closeStore(opened)
+	const { url } = await startUi(t, workspace)
+	const page = await (await fetch(new URL('/plans/checkout?view=needs', url))).text()
+	assert.match(page, /data-builds="\[&quot;Release 2\.1 \(beta; \$\(x\)\)&quot;\]"/)
+	const script = await (await fetch(new URL('/assets/client.js', url))).text()
+	assert.match(script, /JSON\.parse\(row\.dataset\.builds/)
+})

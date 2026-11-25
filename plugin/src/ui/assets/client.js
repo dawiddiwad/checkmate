@@ -518,7 +518,7 @@ function applyBuild() {
 		row.hidden =
 			Boolean(build) &&
 			row.closest('[data-panel]').dataset.panel === view &&
-			!row.dataset.builds?.split(' ').includes(build)
+			!JSON.parse(row.dataset.builds ?? '[]').includes(build)
 	const list = panel()?.querySelector('[data-list]')
 	for (const head of list?.querySelectorAll('.sp-gh') ?? []) {
 		let count = 0

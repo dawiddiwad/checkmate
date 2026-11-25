@@ -1,4 +1,5 @@
-import type { Gap, Plan, Result } from './types.ts'
+import type { Actions, Gap, Plan, Result } from './types.ts'
+import actionSchema from '../contracts/actions.schema.json' with { type: 'json' }
 import type { Store } from './store.ts'
 import { all, canonical, completed, digest, execute, one, removeTemporaryDirectory, ulid, write } from './store.ts'
 import type { AssertionResult, ResultTest, Test } from './contracts.ts'
@@ -120,26 +121,8 @@ type Assertion = Test['assertions'][number]
 // The observed value of a check whose text or element was not on the page after the action.
 export const absentObservation = '(absent)'
 
-export type CheckInput = {
-	runId: string
-	testId: string
-	assertionId: string
-	result?: string
-	observed?: string
-	// The text or element the check names is not on the page after the action, and the page was read.
-	absent?: boolean
-	request?: string
-	reason?: string
-	evidence?: EvidenceInput[]
-}
-export type CloseInput = {
-	runId: string
-	testId: string
-	outcome?: string
-	cause?: string
-	reason?: string
-	evidence?: EvidenceInput[]
-}
+export type CheckInput = NonNullable<Actions['record_check']>
+export type CloseInput = NonNullable<Actions['close_test']>
 export type FinishInput = {
 	runId: string
 	completion: string
@@ -152,13 +135,13 @@ export type ResumeInput = { runId: string; error?: string[]; reason?: string }
 export type ResultVerdict = { runId: string; rationale: string; expectSha256?: string; expectDecision?: string }
 
 export const maxEvidenceBytes = 32 * 1024 * 1024
-export const assertionResults = ['passed', 'failed', 'inconclusive', 'not_checked'] as const
-export const closeOutcomes = ['blocked', 'not_run', 'error'] as const
+export const assertionResults = actionSchema.properties.record_check.properties.result.enum
+export const closeOutcomes = actionSchema.properties.close_test.properties.outcome.enum
 export const completions = ['completed', 'interrupted', 'operational_error'] as const
 export const cleanupStatuses = ['completed', 'failed', 'not_applicable'] as const
 export const newBlockerPolicies = ['continue_independent', 'return_to_oracle'] as const
 export const stoppedReason = 'Run stopped before the test closed. Actions may have occurred.'
-export const closeCauses = ['deadline'] as const
+export const closeCauses = actionSchema.properties.close_test.properties.cause.enum
 export const interruptCauses = ['deadline', 'host_stopped', 'tool_unavailable'] as const
 export const deadlineShare = 0.9
 const mediaTypes: Record<string, string> = {
@@ -531,7 +514,6 @@ function textEvidence(
 	name: string,
 	allowed: ReturnType<typeof evidenceKinds>
 ): EvidenceFile {
-	requireWellFormed(typeof input.text === 'string' && input.text.trim().length > 0, 'Missing evidence text')
 	const bytes = Buffer.from(input.text, 'utf8')
 	requireWellFormed(bytes.length <= maxEvidenceBytes, 'Evidence text exceeds 32 MiB')
 	let json = true
@@ -647,8 +629,8 @@ function requireOpen(store: Store, runId: string, testId: string) {
 }
 
 // A legacy assertion (no expected value) keeps the child's result and the number guard.
-function checkedResult(given: string | undefined, assertion: Assertion, observed: string | null) {
-	const result = requireChoice(given, assertionResults, 'result (--result)')
+function checkedResult(result: CheckInput['result'], assertion: Assertion, observed: string | null) {
+	requireWellFormed(result, 'This assertion needs a result.')
 	const unseen = (assertion.check.match(/\d+(\.\d+)?/g) ?? []).filter((value) => !observed?.includes(value))
 	requireCondition(
 		result !== 'passed' || !unseen.length,
@@ -747,17 +729,12 @@ export function checkAssertion(store: Store, actor: string | undefined, input: C
 			)
 		}
 		requireWellFormed(
-			!input.absent || input.observed === undefined,
-			'--absent and --observed do not go together',
-			'Use --absent when the page was read and the text or element is not on it. Use --observed with the value when it is there.'
-		)
-		requireWellFormed(
 			!input.absent || assertion.expected !== undefined,
 			`--absent applies to a structured check. ${test.id}.${assertion.id} has no expected value.`,
 			'Record the result with --result and --observed.'
 		)
 		// The page was read and the value is not on it: the observed value is absent, and the code compares it.
-		const observed = input.absent ? absentObservation : optionalText(input.observed, 'observation (--observed)')
+		const observed = input.absent ? absentObservation : (input.observed ?? null)
 		const evidenceText = (input.evidence ?? []).map((item) => ('text' in item ? item.text : item.file)).join('\n')
 		requireWellFormed(
 			observed === null || !looksTruncatedMoney(observed, assertion.expected, evidenceText),
@@ -769,7 +746,7 @@ export function checkAssertion(store: Store, actor: string | undefined, input: C
 			`The observed value "${observed}" looks like a shell path, not the value. The shell expanded it before Checkmate got it.`,
 			"Record --observed in single quotes, for example --observed '$0', so the shell passes the value unchanged."
 		)
-		const reason = optionalText(input.reason, 'reason (--reason)')
+		const reason = input.reason ?? null
 		const result =
 			assertion.expected === undefined
 				? checkedResult(input.result, assertion, observed)
@@ -837,9 +814,6 @@ export function closeTest(store: Store, actor: string | undefined, input: CloseI
 		let outcome: ResultTest['outcome']
 		let reason: string | null
 		if (input.outcome === undefined) {
-			requireWellFormed(input.reason === undefined, '--reason applies only with --outcome')
-			requireWellFormed(input.cause === undefined, '--cause applies only with --outcome not_run or blocked')
-			requireWellFormed(!input.evidence?.length, '--evidence applies only with --outcome error')
 			const missing = test.assertions.filter((assertion) => !results.has(`${test.id}.${assertion.id}`))
 			requireCondition(
 				!missing.length,
@@ -853,20 +827,12 @@ export function closeTest(store: Store, actor: string | undefined, input: CloseI
 					? `Assertions not checked: ${unchecked.map((row) => `${test.id}.${row.assertion_id}`).join(', ')}`
 					: null
 		} else {
-			outcome = requireChoice(input.outcome, closeOutcomes, 'outcome (--outcome)')
-			reason = requireText(input.reason, `reason (--reason) for outcome ${outcome}`)
-			if (input.cause !== undefined) {
-				requireWellFormed(outcome !== 'error', '--cause applies only with --outcome not_run or blocked')
-				requireChoice(input.cause, closeCauses, 'cause (--cause)')
-				refuseEarlyDeadline(store, run.row, at)
-			}
+			outcome = input.outcome
+			reason = input.reason!
+			if (input.cause) refuseEarlyDeadline(store, run.row, at)
 			requireCondition(
 				outcome === 'error' || !recorded.length,
 				`Test ${test.id} has assertion results. Record the remaining assertions, or close it as error.`
-			)
-			requireWellFormed(
-				outcome === 'error' || !input.evidence?.length,
-				'--evidence applies only with --outcome error'
 			)
 			requireCondition(
 				outcome !== 'error' || input.evidence?.length || recorded.length,

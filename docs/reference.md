@@ -89,6 +89,8 @@ Use the JSON Schemas as the contract:
 
 An instance can declare which build it serves. A run or exploration can start on that instance only for that build.
 
+Setup and testing commands validate input shapes before they change records or contact the application. The CLI, review forms, and host actions use the same contracts for those inputs. Run checks and test closings use the action contract before they record evidence or outcomes.
+
 The planner saves only the candidate fields. Checkmate calculates readiness, coverage, decisions, and revision digests. Do not write those derived values into a candidate. The schemas are authoritative when an example differs.
 
 ## Status and decisions

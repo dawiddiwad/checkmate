@@ -55,18 +55,15 @@
 	"definitions": {
 		"id": {
 			"description": "Your ID, for example D1. Without it, Checkmate gives one.",
-			"type": "string",
-			"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+			"$ref": "identifier.schema.json"
 		},
 		"supersedes": {
 			"description": "The ID of an earlier entry of the same kind. This entry replaces it and keeps its ID.",
-			"type": "string",
-			"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+			"$ref": "identifier.schema.json"
 		},
 		"rule": {
 			"description": "The ID of the plan rule, for example R2, or outside.",
-			"type": "string",
-			"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+			"$ref": "identifier.schema.json"
 		},
 		"about": {
 			"description": "A criterion ID, a question ID, a diff area, or free text.",

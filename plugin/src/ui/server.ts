@@ -80,7 +80,8 @@ import { chatModelOrder, discoverModelCatalog } from '../model-catalog.ts'
 import { launchPlan } from '../explorers.ts'
 import { maxAreaCharacters, outsideRule, planRules, ticketFile } from '../rules.ts'
 import { ruleMap } from '../rulemap.ts'
-import { requireCondition, requireIdentifier, unusedId } from '../contracts.ts'
+import { requireCondition, requireIdentifier, unusedId, validate } from '../contracts.ts'
+import { actionInput } from '../actions.ts'
 import { harvestExploration, storableDefects } from '../harvest.ts'
 import { developerText } from '../developer.ts'
 import { resolve } from 'node:path'
@@ -1236,8 +1237,6 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		if (!actor) return refuse('Enter your name. Checkmate records it with the test.')
 		if (form.has('harness') && form.get('harness') !== selectedHarness(launchEnv()))
 			return refuse('The coding harness changed. Reload the page and try again.')
-		if (!build) return refuse('Write the build name.', 'build')
-		if (!(levelNames as string[]).includes(level)) return refuse('Choose the level smoke, normal, or deep.')
 		if (until && !typedSince) return refuse('Until needs Since. Fill in Since, or leave Until empty.', 'until')
 		const chosen = instanceFrom(form, planRequest(store, planId).target.profile.targetId)
 		if (chosen.error) return refuse(chosen.error, 'instance')
@@ -1249,18 +1248,22 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 				`A stop of ${stopping.explorationId} is in progress. Wait until it ends, then start the test.`
 			)
 		try {
+			const input = validate('exploration', {
+				planId,
+				build,
+				level,
+				instance: chosen.instance,
+				since: typedSince,
+				until,
+				repo,
+			})
 			const since = typedSince ?? upstreamBase(resolve(store.workspace, repo ?? '.'))
 			const started = startExploration(
 				store,
 				actor,
 				{
-					planId,
-					build,
-					level,
-					instance: chosen.instance,
+					...input,
 					since,
-					until,
-					repo,
 					mode: autoMode(store, planId),
 					allow: ruleTokens(form.get('rules') ?? ''),
 					claudeArgs: [],
@@ -1896,14 +1899,14 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 			return reply({ error: 'Give a full address, for example http://localhost:3000.' })
 		try {
 			const choice = setupChoice(form, address ? url : '')
-			const planned = setupAssumptions({
+			const input = actionInput('setup', {
 				...(address ? { url } : {}),
-				entries: others,
+				entries: Object.keys(others).length ? others : undefined,
 				targetId: form.get('target')?.trim() || undefined,
 				environment: form.get('environment')?.trim() || undefined,
 				operations: choice.yes ? undefined : [readOnlyOperation],
-				env,
 			})
+			const planned = setupAssumptions({ ...input, env })
 			reply({
 				address: address ? address.host : Object.values(others).join(' '),
 				local: choice.local,
@@ -1946,16 +1949,15 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		const typedTarget = form.get('target')?.trim() || undefined
 		const environment = form.get('environment')?.trim() || undefined
 		try {
-			if (typedTarget) requireIdentifier(typedTarget, 'target name')
-			if (address) requireAnswer(await urlReachable(url), url)
-			const reply = setupTarget(store, actor, {
-				...(address ? { url, answered: true } : {}),
-				entries: others,
+			const input = actionInput('setup', {
+				url: address ? url : undefined,
+				entries: Object.keys(others).length ? others : undefined,
 				targetId: typedTarget,
 				environment,
 				operations: choice.yes ? undefined : [readOnlyOperation],
-				env,
 			})
+			if (address) requireAnswer(await urlReachable(url), url)
+			const reply = setupTarget(store, actor, { ...input, answered: address ? true : undefined, env })
 			if (reply.status !== 'completed') return refuse(reply.reasons.join(' '), 'target')
 			if (!reply.data.ready) {
 				const targetId = String(reply.data.targetId)
@@ -1977,7 +1979,7 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 			const text = engineText(error)
 			refuse(
 				text,
-				/target name/.test(text)
+				/\/targetId/.test(text)
 					? 'target'
 					: /production/.test(text)
 						? 'environment'
@@ -2012,18 +2014,10 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		} catch (error) {
 			return refuse(engineText(error), 'file')
 		}
-		if (!planId) return refuse('Write the name of the plan.', 'plan')
-		try {
-			requireIdentifier(planId, 'plan ID')
-		} catch (error) {
-			return refuse(engineText(error), 'plan')
-		}
 		if (hasRequest(store, planId))
 			return refuse(`A plan ${planId} exists already. Give another name, or test it from its page.`, 'plan')
 		if (!targetList(store).some((item) => item.targetId === targetId))
 			return refuse('Choose a target, or set one up.', 'target')
-		if (!build) return refuse('Write the build name.', 'build')
-		if (!(levelNames as string[]).includes(level)) return refuse('Choose the level smoke, normal, or deep.')
 		if (until && !since) return refuse('Until needs Since. Fill in Since, or leave Until empty.', 'until')
 		const chosen = instanceFrom(form, targetId)
 		if (chosen.error) return refuse(chosen.error, 'instance')
@@ -2035,7 +2029,20 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 			return refuse(`Confirm that Checkmate may test ${hostOf(address)}, an address that is not local.`, 'target')
 		const childEnv = launchEnv()
 		const harness = selectedHarness(childEnv)
+		const kept = text.trim() ? `.checkmate/sources/${planId}.md` : ''
+		let input
 		try {
+			input = actionInput('start_test', {
+				planId,
+				target: targetId,
+				sources: [kept || source],
+				build,
+				level,
+				instance: chosen.instance,
+				since,
+				until,
+				repo,
+			})
 			requireChild(childEnv, harness)
 			launchPlan(
 				targetRevision(store, targetId).profile,
@@ -2044,7 +2051,7 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 					build,
 					allow,
 					claudeArgs: [],
-					level,
+					level: input.level,
 					testerModels: testerChoicesFrom(form, 'testerModel'),
 					testerEfforts: testerChoicesFrom(form, 'testerEffort'),
 				},
@@ -2056,7 +2063,6 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 			const message = engineText(error)
 			return refuse(message, /tool rules/.test(message) ? 'rules' : '')
 		}
-		const kept = text.trim() ? `.checkmate/sources/${planId}.md` : ''
 		try {
 			if (kept) {
 				mkdirSync(resolve(store.workspace, '.checkmate', 'sources'), { recursive: true })
@@ -2066,15 +2072,7 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 				store,
 				actor,
 				{
-					planId,
-					target: targetId,
-					sources: [kept || source],
-					build,
-					level,
-					instance: chosen.instance,
-					since,
-					until,
-					repo,
+					...input,
 					allow,
 					claudeArgs: [],
 					testerModels: testerChoicesFrom(form, 'testerModel'),

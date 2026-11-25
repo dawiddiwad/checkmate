@@ -13,6 +13,7 @@ import issueSchema from '../contracts/journal-issue.schema.json' with { type: 'j
 import topicSchema from '../contracts/journal-topic.schema.json' with { type: 'json' }
 import ruleSchema from '../contracts/worker-rule.schema.json' with { type: 'json' }
 import verificationSchema from '../contracts/verification.schema.json' with { type: 'json' }
+import identifierSchema from '../contracts/identifier.schema.json' with { type: 'json' }
 
 type Schema = {
 	$ref?: string
@@ -27,6 +28,7 @@ type Schema = {
 type Field = { path: string; type: string; required: boolean; description: string }
 
 const files: Record<string, Schema> = {
+	'identifier.schema.json': identifierSchema as Schema,
 	'journal-entry.schema.json': entrySchema as Schema,
 	'journal-criterion.schema.json': criterionSchema as Schema,
 	'journal-observation.schema.json': observationSchema as Schema,
@@ -46,7 +48,7 @@ function resolved(node: Schema, file: string): [Schema, string] {
 	const [path, pointer] = node.$ref.split('#')
 	const target = path || file
 	let found = files[target] as unknown as Record<string, unknown>
-	for (const key of pointer.split('/').filter(Boolean)) found = found[key] as Record<string, unknown>
+	for (const key of (pointer ?? '').split('/').filter(Boolean)) found = found[key] as Record<string, unknown>
 	const [inner, at] = resolved(found as Schema, target)
 	const { $ref, ...own } = node
 	return [{ ...inner, ...own }, at]

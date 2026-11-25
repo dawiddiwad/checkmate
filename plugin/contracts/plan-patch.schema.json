@@ -6,7 +6,7 @@
 		"requirements": {
 			"type": "object",
 			"propertyNames": {
-				"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+				"$ref": "identifier.schema.json"
 			},
 			"additionalProperties": {
 				"anyOf": [
@@ -42,7 +42,7 @@
 		"tests": {
 			"type": "object",
 			"propertyNames": {
-				"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+				"$ref": "identifier.schema.json"
 			},
 			"additionalProperties": {
 				"anyOf": [
@@ -73,7 +73,7 @@
 							"assertions": {
 								"type": "object",
 								"propertyNames": {
-									"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+									"$ref": "identifier.schema.json"
 								},
 								"additionalProperties": {
 									"anyOf": [
@@ -129,7 +129,7 @@
 		"gaps": {
 			"type": "object",
 			"propertyNames": {
-				"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+				"$ref": "identifier.schema.json"
 			},
 			"additionalProperties": {
 				"anyOf": [

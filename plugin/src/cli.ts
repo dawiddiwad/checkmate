@@ -12,6 +12,7 @@ import {
 	requireCondition,
 	requireWellFormed,
 	revisionReference,
+	validate,
 } from './contracts.ts'
 import {
 	addInstance,
@@ -85,7 +86,7 @@ import {
 	waitExploration,
 } from './explorers.ts'
 import { doneSteps } from './agents.ts'
-import { levelNames, testLevels } from './levels.ts'
+import { levelNames, testLevels, type TestLevel } from './levels.ts'
 import { testModes } from './modes.ts'
 import { harvestExploration } from './harvest.ts'
 import { planPromotions, promotePlan } from './promotion.ts'
@@ -97,7 +98,7 @@ import { piCopyWarnings, versionLines } from './build.ts'
 import { storeExplorationFindings } from './findingsRun.ts'
 import { settleEnded } from './cleanups.ts'
 import { owedCleanups, settleCleanups } from './resets.ts'
-import { actionRecovery, performAction, type ActionName } from './actions.ts'
+import { actionInput, actionRecovery, dispatchAction, performAction, type ActionName } from './actions.ts'
 import { allEvidence, type ObserveValue } from './recipes.ts'
 
 type FlagKind = 'value' | 'list' | 'repeat' | 'switch' | readonly string[] | { min: number; max: number }
@@ -119,7 +120,8 @@ type Command = {
 	stdin?: boolean
 	readOnly?: boolean
 	check?: (args: Args) => void
-	run: (store: Store, args: Args, context: Context) => Reply
+	prepare?: (args: Args, context: Context) => (store: Store) => Reply
+	run?: (store: Store, args: Args, context: Context) => Reply
 	print?: (reply: Reply) => Printed
 }
 export type Io = { cwd: string; env: Record<string, string | undefined>; stdin: () => string }
@@ -151,6 +153,20 @@ function list(args: Args, name: string) {
 function integer(args: Args, name: string) {
 	const text = value(args, name)
 	return text === undefined ? undefined : Number(text)
+}
+
+function actionCommand(
+	action: Exclude<ActionName, 'delegate_work'>,
+	read: (args: Args, context: Context) => unknown,
+	launch?: (args: Args) => { allow: string[]; claudeArgs: string[]; session: boolean }
+) {
+	return {
+		action,
+		prepare(args: Args, context: Context) {
+			const input = actionInput(action, read(args, context))
+			return (store: Store) => dispatchAction(store, action, input, { ...context, launch: launch?.(args) })
+		},
+	}
 }
 
 function optionValue(token: string, kind: FlagKind, text: string) {
@@ -1077,7 +1093,6 @@ const commands: Record<string, Command> = {
 		}),
 	},
 	'run check': {
-		action: 'record_check',
 		positionals: ['runId', 'testId', 'assertionId'],
 		flags: {
 			result: assertionResults,
@@ -1089,47 +1104,34 @@ const commands: Record<string, Command> = {
 			evidence: 'repeat',
 		},
 		write: true,
-		run: (store, args, context) =>
-			performAction(
-				store,
-				'record_check',
-				{
-					runId: value(args, 'runId'),
-					testId: value(args, 'testId'),
-					assertionId: value(args, 'assertionId'),
-					result: value(args, 'result'),
-					request: value(args, 'request'),
-					reason: value(args, 'reason'),
-					observed: observedValue(args),
-					absent: Boolean(args['absent']),
-					evidence: evidence(args, context),
-				},
-				context
-			),
+		...actionCommand('record_check', (args, context) => ({
+			runId: value(args, 'runId'),
+			testId: value(args, 'testId'),
+			assertionId: value(args, 'assertionId'),
+			result: value(args, 'result'),
+			request: value(args, 'request'),
+			reason: value(args, 'reason'),
+			observed: observedValue(args),
+			absent: Boolean(args['absent']),
+			evidence: evidence(args, context),
+		})),
 		print: (reply) => ({
 			facts: { [`${reply.data.testId}.${reply.data.assertionId}`]: reply.data.result },
 			lines: (reply.data.evidenceIds as string[]).map((id) => [id, 'evidence']),
 		}),
 	},
 	'run close': {
-		action: 'close_test',
 		positionals: ['runId', 'testId'],
 		flags: { outcome: closeOutcomes, cause: closeCauses, reason: 'value', evidence: 'repeat' },
 		write: true,
-		run: (store, args, context) =>
-			performAction(
-				store,
-				'close_test',
-				{
-					runId: value(args, 'runId'),
-					testId: value(args, 'testId'),
-					outcome: value(args, 'outcome'),
-					cause: value(args, 'cause'),
-					reason: value(args, 'reason'),
-					evidence: evidence(args, context),
-				},
-				context
-			),
+		...actionCommand('close_test', (args, context) => ({
+			runId: value(args, 'runId'),
+			testId: value(args, 'testId'),
+			outcome: value(args, 'outcome'),
+			cause: value(args, 'cause'),
+			reason: value(args, 'reason'),
+			evidence: evidence(args, context),
+		})),
 		print: (reply) => ({
 			facts: { [String(reply.data.testId)]: reply.data.outcome },
 			lines: reply.data.reason ? [['reason', reply.data.reason]] : [],
@@ -1444,7 +1446,6 @@ const commands: Record<string, Command> = {
 		}),
 	},
 	setup: {
-		action: 'setup',
 		positionals: [],
 		flags: {
 			url: 'value',
@@ -1464,29 +1465,23 @@ const commands: Record<string, Command> = {
 			'reset-per-test': 'value',
 		},
 		write: true,
-		run: (store, args, context) =>
-			performAction(
-				store,
-				'setup',
-				{
-					url: value(args, 'url'),
-					entries: entriesOf(args),
-					targetId: value(args, 'target'),
-					instanceId: value(args, 'instance'),
-					operations: list(args, 'operations'),
-					environment: value(args, 'environment'),
-					build: value(args, 'build'),
-					correct: args.correct === true,
-					reset: value(args, 'reset'),
-					data: value(args, 'data'),
-					policy: value(args, 'policy'),
-					policyFile: value(args, 'policy-file'),
-					cleanup: value(args, 'cleanup'),
-					hookTimeout: integer(args, 'hook-timeout'),
-					resetPerTest: value(args, 'reset-per-test'),
-				},
-				context
-			),
+		...actionCommand('setup', (args) => ({
+			url: value(args, 'url'),
+			entries: entriesOf(args),
+			targetId: value(args, 'target'),
+			instanceId: value(args, 'instance'),
+			operations: list(args, 'operations'),
+			environment: value(args, 'environment'),
+			build: value(args, 'build'),
+			correct: args.correct === true,
+			reset: value(args, 'reset'),
+			data: value(args, 'data'),
+			policy: value(args, 'policy'),
+			policyFile: value(args, 'policy-file'),
+			cleanup: value(args, 'cleanup'),
+			hookTimeout: integer(args, 'hook-timeout'),
+			resetPerTest: value(args, 'reset-per-test'),
+		})),
 		print: (reply) => ({
 			facts: {
 				revision: reply.data.revision,
@@ -1500,7 +1495,6 @@ const commands: Record<string, Command> = {
 		}),
 	},
 	test: {
-		action: 'start_test',
 		positionals: ['planId'],
 		flags: {
 			build: 'value',
@@ -1531,45 +1525,40 @@ const commands: Record<string, Command> = {
 			session: 'switch',
 		},
 		write: true,
-		run: (store, args, context) =>
-			performAction(
-				store,
-				'start_test',
-				{
-					planId: value(args, 'planId'),
-					build: value(args, 'build'),
-					mode: value(args, 'mode'),
-					level: value(args, 'level'),
-					instance: value(args, 'instance'),
-					objective: value(args, 'objective'),
-					target: value(args, 'target'),
-					instructions: value(args, 'instructions'),
-					since: value(args, 'since'),
-					until: value(args, 'until'),
-					url: value(args, 'url'),
-					entries: entriesOf(args),
-					reset: value(args, 'reset'),
-					data: value(args, 'data'),
-					policy: value(args, 'policy'),
-					cleanup: value(args, 'cleanup'),
-					repo: value(args, 'repo'),
-					explorers: integer(args, 'explorers'),
-					minutes: integer(args, 'minutes'),
-					timeoutSeconds: integer(args, 'timeout'),
-					sources: list(args, 'source'),
-					scope: list(args, 'scope'),
-					policyFile: value(args, 'policy-file'),
-					hookTimeout: integer(args, 'hook-timeout'),
-				},
-				{
-					...context,
-					launch: {
-						allow: list(args, 'allow') ?? [],
-						claudeArgs: list(args, 'claude-arg') ?? [],
-						session: Boolean(args.session),
-					},
-				}
-			),
+		...actionCommand(
+			'start_test',
+			(args) => ({
+				planId: value(args, 'planId'),
+				build: value(args, 'build'),
+				mode: value(args, 'mode'),
+				level: value(args, 'level'),
+				instance: value(args, 'instance'),
+				objective: value(args, 'objective'),
+				target: value(args, 'target'),
+				instructions: value(args, 'instructions'),
+				since: value(args, 'since'),
+				until: value(args, 'until'),
+				url: value(args, 'url'),
+				entries: entriesOf(args),
+				reset: value(args, 'reset'),
+				data: value(args, 'data'),
+				policy: value(args, 'policy'),
+				cleanup: value(args, 'cleanup'),
+				repo: value(args, 'repo'),
+				explorers: integer(args, 'explorers'),
+				minutes: integer(args, 'minutes'),
+				timeoutSeconds: integer(args, 'timeout'),
+				sources: list(args, 'source'),
+				scope: list(args, 'scope'),
+				policyFile: value(args, 'policy-file'),
+				hookTimeout: integer(args, 'hook-timeout'),
+			}),
+			(args) => ({
+				allow: list(args, 'allow') ?? [],
+				claudeArgs: list(args, 'claude-arg') ?? [],
+				session: Boolean(args.session),
+			})
+		),
 		print: (reply) => {
 			const run = reply.data.run as { runId: string; tests: string[] } | null
 			return {
@@ -1598,13 +1587,15 @@ const commands: Record<string, Command> = {
 		flags: { build: 'value', instance: 'value', mode: explorationModes },
 		required: ['build'],
 		write: true,
-		run: (store, args, { actor }) =>
-			openExploration(store, actor, {
-				planId: value(args, 'planId')!,
-				build: value(args, 'build')!,
+		prepare: (args, { actor }) => {
+			const input = validate('exploration', {
+				planId: value(args, 'planId'),
+				build: value(args, 'build')?.trim(),
 				instance: value(args, 'instance'),
 				mode: value(args, 'mode'),
-			}),
+			})
+			return (store) => openExploration(store, actor, input)
+		},
 		print: (reply) => ({
 			facts: { plan: reply.data.planId, build: reply.data.build, instance: reply.data.instanceId },
 			lines: (reply.data.next as string[]).map((line) => ['next', line]),
@@ -1628,27 +1619,32 @@ const commands: Record<string, Command> = {
 		},
 		required: ['build'],
 		write: true,
-		run: (store, args, { actor, env }) =>
-			startExploration(
-				store,
-				actor,
-				{
-					planId: value(args, 'planId')!,
-					build: value(args, 'build')!,
-					instance: value(args, 'instance'),
-					mode: value(args, 'mode'),
-					level: value(args, 'level'),
-					explorers: integer(args, 'explorers'),
-					minutes: integer(args, 'minutes'),
-					since: value(args, 'since'),
-					until: value(args, 'until'),
-					repo: value(args, 'repo'),
-					allow: list(args, 'allow') ?? [],
-					claudeArgs: list(args, 'claude-arg') ?? [],
-					timeoutSeconds: integer(args, 'timeout'),
-				},
-				env
-			),
+		prepare: (args, { actor, env }) => {
+			const input = validate('exploration', {
+				planId: value(args, 'planId'),
+				build: value(args, 'build')?.trim(),
+				instance: value(args, 'instance'),
+				mode: value(args, 'mode'),
+				level: value(args, 'level'),
+				explorers: integer(args, 'explorers'),
+				minutes: integer(args, 'minutes'),
+				since: value(args, 'since'),
+				until: value(args, 'until'),
+				repo: value(args, 'repo'),
+				timeoutSeconds: integer(args, 'timeout'),
+			})
+			return (store) =>
+				startExploration(
+					store,
+					actor,
+					{
+						...input,
+						allow: list(args, 'allow') ?? [],
+						claudeArgs: list(args, 'claude-arg') ?? [],
+					},
+					env
+				)
+		},
 		print: (reply) => ({
 			facts: {
 				plan: reply.data.planId,
@@ -1671,7 +1667,7 @@ const commands: Record<string, Command> = {
 				actor,
 				{
 					explorationId: value(args, 'explorationId')!,
-					level: value(args, 'level'),
+					level: value(args, 'level') as TestLevel | undefined,
 					allow: list(args, 'allow') ?? [],
 					claudeArgs: list(args, 'claude-arg') ?? [],
 					timeoutSeconds: integer(args, 'timeout'),
@@ -2552,7 +2548,9 @@ function parse(name: string, tokens: string[]) {
 		const next = tokens[++i]
 		if (next === undefined || (next.startsWith('--') && flag !== 'claude-arg'))
 			throw wrong(`Missing value for ${token}`)
-		optionValue(token, kind, next)
+		if (command.prepare && typeof kind === 'object' && 'min' in kind)
+			requireWellFormed(/^[0-9]+$/.test(next), `Option ${token} ${next} needs a whole number.`)
+		else if (!command.prepare) optionValue(token, kind, next)
 		if (kind !== 'list' && kind !== 'repeat') {
 			if (flag in args) throw wrong(`Option ${token} is given twice`)
 			args[flag] = next
@@ -2696,17 +2694,19 @@ export function run(argv: string[], io: Io): Outcome {
 	const workspace = resolve(io.cwd, value(args, 'workspace') ?? '.')
 	let store: Store | undefined
 	try {
-		store = command.readOnly ? openReadOnlyStore(workspace) : openStore(workspace)
-		store.via = requestOfEnv(io.env)
 		const actor = command.write ? (value(args, 'actor') ?? defaultActor(workspace, io.env)) : undefined
-		if (['run begin', 'explore start', 'test'].includes(name)) settleEnded(store)
-		let reply = command.run(store, args, {
+		const context: Context = {
 			actor,
 			stdin: () => readJson(io.stdin()),
 			text: io.stdin,
 			cwd: io.cwd,
 			env: io.env,
-		})
+		}
+		const prepared = command.prepare?.(args, context)
+		store = command.readOnly ? openReadOnlyStore(workspace) : openStore(workspace)
+		store.via = requestOfEnv(io.env)
+		if (['run begin', 'explore start', 'test'].includes(name)) settleEnded(store)
+		let reply = prepared ? prepared(store) : command.run!(store, args, context)
 		if (command.action) reply = actionRecovery(command.action, reply)
 		const code = exitCodeOf(name, args, reply)
 		if (!json && typeof reply.data.content === 'string')

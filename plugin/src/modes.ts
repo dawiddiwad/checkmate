@@ -1,9 +1,11 @@
 import type { Reply, Store } from './store.ts'
 import type { Env } from './sessions.ts'
 import type { StartInput } from './explorers.ts'
+import type { Actions } from './types.ts'
+import actionSchema from '../contracts/actions.schema.json' with { type: 'json' }
 import type { Charter } from './explorations.ts'
 import { all, completed, one } from './store.ts'
-import { Refusal, requireBuild, requireIdentifier, requireWellFormed, unusedId, validate } from './contracts.ts'
+import { Refusal, requireWellFormed, unusedId, validate } from './contracts.ts'
 import { changeOf, changedFiles, upstreamBase } from './change.ts'
 import { openPlan, planRevision, readySelection } from './plans.ts'
 import { beginRun } from './runs.ts'
@@ -16,25 +18,10 @@ import { spawnSync } from 'node:child_process'
 import { resolve } from 'node:path'
 import { requireChild } from './sessions.ts'
 
-export const testModes = ['exploratory', 'regression', 'auto'] as const
+export const testModes = actionSchema.properties.start_test.properties.mode.enum
 export const storedTestsNone = 'none, testers use earlier results when available'
-export type TestInput = Omit<StartInput, 'mode' | 'scope' | 'build'> & {
-	build?: string
-	url?: string
-	entries?: Record<string, string>
-	reset?: string
-	data?: string
-	policy?: string
-	policyFile?: string
-	cleanup?: string
-	hookTimeout?: number
-	mode?: string
-	objective?: string
-	target?: string
-	sources?: string[]
-	instructions?: string
-	scope?: string[]
-}
+export type TestInput = NonNullable<Actions['start_test']> &
+	Pick<StartInput, 'allow' | 'claudeArgs' | 'testerModels' | 'testerEfforts' | 'session' | 'inheritPiTools'>
 
 export function hasRequest(store: Store, planId: string) {
 	return Boolean(one(store, 'SELECT 1 FROM plan_requests WHERE plan_id = ?', planId))
@@ -155,7 +142,7 @@ export function runTest(
 ): Reply {
 	env = workspaceEnv(store, env)
 	const assumed: string[] = []
-	const build = given.build === undefined ? defaultBuild(store.workspace) : requireBuild(given.build)
+	const build = given.build ?? defaultBuild(store.workspace)
 	if (given.build === undefined) assumed.push(`build=${build}`)
 	const input = { ...given, build }
 	// A plan name in another letter case is the same plan: the record keeps the name it was opened with.
@@ -168,7 +155,6 @@ export function runTest(
 	}
 	const newRequest = !hasRequest(store, input.planId)
 	if (newRequest) {
-		requireIdentifier(input.planId, 'plan ID')
 		const sources = input.sources ?? []
 		requireWellFormed(
 			input.objective || sources.length,

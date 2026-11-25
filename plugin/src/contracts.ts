@@ -1,5 +1,6 @@
 import type {
 	Finding,
+	Exploration,
 	Gap,
 	Instance,
 	Plan,
@@ -24,6 +25,7 @@ export type Assertion = Test['assertions'][number]
 export type ResultTest = Result['tests'][number]
 export type AssertionResult = ResultTest['assertions'][number]['result']
 export type Documents = {
+	exploration: Exploration
 	profile: Profile
 	'plan-request': PlanRequest
 	'plan-candidate': PlanCandidate
@@ -38,7 +40,6 @@ export type Documents = {
 }
 export type PlanDraft = Omit<Plan, 'coverage' | 'tests'> & { tests: Array<Omit<Test, 'readiness' | 'gapIds'>> }
 
-const identifier = /^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$/
 function buildText(label: string, value: unknown) {
 	const shown = JSON.stringify(String(value).slice(0, 60))
 	return `${label} ${shown} must be nonblank text on one line, with no control characters and at most ${buildSchema.maxLength} characters.`
@@ -189,7 +190,7 @@ export function slugId(text: string) {
 
 export function requireIdentifier(value: unknown, name: string): string {
 	requireWellFormed(
-		typeof value === 'string' && identifier.test(value),
+		typeof value === 'string' && validators.identifier(value),
 		`Invalid ${name}: ${String(value)}. Use 1 to 96 letters, digits, _ or -, starting with a letter or digit.`
 	)
 	return value
@@ -205,7 +206,7 @@ export function requireNotInputWord(value: string | undefined, name: string, hin
 }
 
 export function requireText(value: unknown, name: string): string {
-	requireWellFormed(typeof value === 'string' && value.trim().length > 0, `Missing ${name}`)
+	requireWellFormed(typeof value === 'string' && validators.text(value), `Missing ${name}`)
 	return value
 }
 
@@ -218,12 +219,8 @@ export function requireChoice<T extends string>(value: unknown, choices: readonl
 }
 
 export function revisionReference(text: string, name: string) {
-	const [id, revision, ...rest] = text.split('@')
-	requireIdentifier(id, name)
-	requireWellFormed(
-		!rest.length && (revision === undefined || /^[1-9][0-9]*$/.test(revision)),
-		`Invalid ${name}: ${text}. Use <id> or <id>@<revision>.`
-	)
+	requireWellFormed(validators.revisionReference(text), `Invalid ${name}: ${text}. Use <id> or <id>@<revision>.`)
+	const [id, revision] = text.split('@')
 	return { id, revision: revision === undefined ? null : Number(revision) }
 }
 

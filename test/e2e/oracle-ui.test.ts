@@ -156,7 +156,11 @@ async function prepared(t: TestContext, seeded: 'plan' | 'demo' = 'plan', env: N
 test('13–16 packaged oracle answers update the handoff, and the UI reflects the same record', async (t) => {
 	const workspace = directory(t)
 	t.after(() => endProcessesIn(workspace))
-	const server = createServer((_request, response) => response.end('ready'))
+	let probes = 0
+	const server = createServer((request, response) => {
+		if (request.url === '/setup-probe') probes++
+		response.end('ready')
+	})
 	await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
 	t.after(() => server.close())
 	const url = `http://127.0.0.1:${(server.address() as { port: number }).port}`
@@ -229,6 +233,20 @@ console.log(JSON.stringify({type:'agent_settled',aborted:false}))
 	assert.equal(pending.ready, false)
 	assert.equal(pending.findings[0].evidence, 'The quote is 240. Decide whether promotion replaces loyalty.')
 	const ui = await startUi(t, workspace)
+	const setup = await (await fetch(new URL('/setup', ui.url))).text()
+	const csrf = /name="csrf" value="([^"]+)"/.exec(setup)?.[1]
+	assert(csrf)
+	const submit = (target: string) =>
+		fetch(new URL('/setup', ui.url), {
+			method: 'POST',
+			body: new URLSearchParams({ csrf, actor: 'oracle', url: `${url}/setup-probe`, target, operations: 'no' }),
+			redirect: 'manual',
+		})
+	assert.equal((await submit('bad target')).status, 422)
+	assert.equal(probes, 0)
+	assert.equal((await submit('ui-added')).status, 303)
+	assert.equal(probes, 1)
+	assert.equal(must(workspace, ['target', 'show', 'ui-added'], env).targetId, 'ui-added')
 	const page = await fetch(new URL('/plans/ticket@1', ui.url))
 	assert.equal(page.status, 200)
 	assert.match(await page.text(), /Does promotion replace loyalty\?/)

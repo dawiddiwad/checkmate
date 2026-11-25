@@ -1,0 +1,48 @@
+{
+	"$schema": "http://json-schema.org/draft-07/schema#",
+	"$id": "exploration.schema.json",
+	"type": "object",
+	"properties": {
+		"planId": {
+			"$ref": "identifier.schema.json"
+		},
+		"build": {
+			"$ref": "build.schema.json"
+		},
+		"mode": {
+			"enum": ["exploratory", "regression"]
+		},
+		"level": {
+			"$ref": "test-level.schema.json"
+		},
+		"explorers": {
+			"type": "integer",
+			"minimum": 1,
+			"maximum": 10
+		},
+		"minutes": {
+			"type": "integer",
+			"minimum": 1,
+			"maximum": 240
+		},
+		"instance": {
+			"$ref": "identifier.schema.json"
+		},
+		"timeoutSeconds": {
+			"type": "integer",
+			"minimum": 60,
+			"maximum": 7200
+		},
+		"since": {
+			"$ref": "text.schema.json"
+		},
+		"until": {
+			"$ref": "text.schema.json"
+		},
+		"repo": {
+			"$ref": "text.schema.json"
+		}
+	},
+	"required": ["planId", "build"],
+	"additionalProperties": false
+}

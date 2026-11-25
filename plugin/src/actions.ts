@@ -161,6 +161,10 @@ const handlers: {
 }
 
 export function actionInput<Name extends ActionName>(name: Name, input: unknown) {
+	if (name === 'setup' || name === 'start_test') {
+		const fields = input as { build?: unknown } | null
+		if (typeof fields?.build === 'string') input = { ...fields, build: fields.build.trim() }
+	}
 	const problems = schemaProblems('actions', { [name]: input }, 'input').map((problem) => problem.text)
 	if (problems.length) {
 		const fields = input as { planId?: string; observed?: string; absent?: boolean } | null
@@ -193,7 +197,16 @@ export function performAction<Name extends Exclude<ActionName, 'delegate_work'>>
 	input: unknown,
 	context: ActionContext
 ) {
-	return handlers[name](store, actionInput(name, input), context)
+	return dispatchAction(store, name, actionInput(name, input), context)
+}
+
+export function dispatchAction<Name extends Exclude<ActionName, 'delegate_work'>>(
+	store: Store,
+	name: Name,
+	input: NonNullable<Actions[Name]>,
+	context: ActionContext
+) {
+	return handlers[name](store, input, context)
 }
 
 export function actionRecovery(name: ActionName, reply: Reply) {

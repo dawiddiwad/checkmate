@@ -1,20 +1,12 @@
 import type { Reply, Store } from './store.ts'
-import type { Profile, Verification } from './types.ts'
+import type { Exploration, Profile, Verification } from './types.ts'
 import type { ChildContext, ChildCall, Env } from './sessions.ts'
 import type { Charter, ExplorationEvent, OpenInput } from './explorations.ts'
 import type { TestLevel } from './levels.ts'
 import { explorationCost } from './costs.ts'
 import { hostSession } from './actor.ts'
 import { all, closeStore, completed, one, openStore, saveBlob, write } from './store.ts'
-import {
-	Refusal,
-	requireBuild,
-	requireChoice,
-	shellWord,
-	requireCondition,
-	requireWellFormed,
-	schemaProblems,
-} from './contracts.ts'
+import { Refusal, shellWord, requireCondition, requireWellFormed, schemaProblems } from './contracts.ts'
 import { addEvent, exploration, explorationEvents, insertExploration, workFolder } from './explorations.ts'
 import type { Refused } from './journal.ts'
 import { firstRevision } from './testRevision.ts'
@@ -43,7 +35,7 @@ import {
 } from './settings.ts'
 import type { ModelCatalog } from './model-catalog.ts'
 import { discoverModelCatalog, effortArgs, resolvedEffort } from './model-catalog.ts'
-import { defaultLevel, levelNames, testLevels } from './levels.ts'
+import { defaultLevel, testLevels } from './levels.ts'
 import { explorerActor, lastEntry, launchContext, recordSession, defaultRecorderTimeout } from './recorder.ts'
 import {
 	explorerBrief,
@@ -100,21 +92,15 @@ import {
 } from 'node:fs'
 import { join } from 'node:path'
 
-export type StartInput = OpenInput & {
-	level?: string
-	explorers?: number
-	minutes?: number
-	since?: string
-	until?: string
-	repo?: string
-	allow: string[]
-	claudeArgs: string[]
-	testerModels?: Record<string, string>
-	testerEfforts?: Record<string, string>
-	timeoutSeconds?: number
-	session?: boolean
-	inheritPiTools?: boolean
-}
+export type StartInput = OpenInput &
+	Pick<Exploration, 'level' | 'explorers' | 'minutes' | 'since' | 'until' | 'repo' | 'timeoutSeconds'> & {
+		allow: string[]
+		claudeArgs: string[]
+		testerModels?: Record<string, string>
+		testerEfforts?: Record<string, string>
+		session?: boolean
+		inheritPiTools?: boolean
+	}
 export type Launch = {
 	dataRules?: string[]
 	studySeconds: number
@@ -188,11 +174,7 @@ export function launchPlan(
 	preferSaved = false,
 	savedEffort = ''
 ): Omit<Launch, 'toolIdentities' | 'toolFoldersBefore'> {
-	const level = requireChoice(
-		input.level ?? profile.explore?.level ?? defaultLevel,
-		levelNames,
-		'test level (--level)'
-	)
+	const level = input.level ?? profile.explore?.level ?? defaultLevel
 	const row = testLevels[level]
 	const explorers = input.explorers ?? profile.explore?.explorers ?? row.explorers
 	const testSeconds = input.minutes ? input.minutes * 60 : row.testSeconds
@@ -426,12 +408,10 @@ export function startExploration(
 	env: Env,
 	preferSavedModel = false
 ) {
-	const build = requireBuild(given.build)
 	if (!given.session) env = workspaceEnv(store, env)
 	const change = changeOf(store.workspace, given)
 	const input = {
 		...given,
-		build,
 		change,
 		scope: given.scope ?? (change ? changedFiles(store.workspace, change) : []),
 	}
@@ -456,10 +436,6 @@ export function startExploration(
 			`Exploration ${row.exploration_id}`,
 			dataFlags(store, row.target_id)
 		)
-		const marker = markerFor(store, opened.explorationId)
-		const facts = runPrepare(store.workspace, exploredProfile.reset, marker)
-		owe(store, opened.explorationId, exploredProfile.reset)
-		const rules = dataRules(store.workspace, exploredProfile.reset, marker, facts)
 		const savedModel = input.session ? '' : testerModelText(store, selectedHarness(env))
 		const savedEffort = input.session ? '' : testerEffortText(store, selectedHarness(env))
 		const launch = launchPlan(
@@ -470,6 +446,10 @@ export function startExploration(
 			preferSavedModel,
 			savedEffort
 		)
+		const marker = markerFor(store, opened.explorationId)
+		const facts = runPrepare(store.workspace, exploredProfile.reset, marker)
+		owe(store, opened.explorationId, exploredProfile.reset)
+		const rules = dataRules(store.workspace, exploredProfile.reset, marker, facts)
 		if (launch.inheritPiTools && !launch.allow.length) launch.allow = ruleTokens(testerRulesText(store, 'pi'))
 		const toolUsers = [...explorerNames(launch.explorers), ...(launch.verifier ? ['verify'] : [])]
 		addEvent(

@@ -2,7 +2,8 @@ import { delegate, type Stage } from '../../cli/src/launcher.ts'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { defaultActor, requestOfEnv } from './actor.ts'
-import { actionInput, actionRecovery, performAction, type ActionName } from './actions.ts'
+import { actionInput, actionRecovery, dispatchAction, type ActionName } from './actions.ts'
+import type { Actions } from './types.ts'
 import { Refusal, refused } from './contracts.ts'
 import { explorationStatus } from './explorers.ts'
 import { settleEnded } from './cleanups.ts'
@@ -162,10 +163,11 @@ export async function callActionTool(tool: string, input: unknown, workspace: st
 			return actionOutput(
 				actionRecovery(name, refused('rejected', tool, Error(`This session is assigned to test ${test}.`)))
 			)
+		const parsed = actionInput(name, input)
 		store = readActions.includes(name) ? openReadOnlyStore(workspace) : openStore(workspace)
 		store.via = requestOfEnv(env)
 		if (name === 'delegate_work') {
-			const request = actionInput(name, input)
+			const request = parsed as NonNullable<Actions['delegate_work']>
 			const harness = selectedHarness(workspaceEnv(store, env))
 			const tools = harness === 'claude' ? ruleTokens(testerRulesText(store, harness)) : []
 			closeStore(store)
@@ -175,7 +177,7 @@ export async function callActionTool(tool: string, input: unknown, workspace: st
 			)
 		}
 		if (name === 'test_status') {
-			const { explorationId, waitSeconds } = actionInput(name, input)
+			const { explorationId, waitSeconds } = parsed as NonNullable<Actions['test_status']>
 			if (waitSeconds !== undefined) {
 				const status = explorationStatus(store, explorationId)
 				if (
@@ -196,7 +198,10 @@ export async function callActionTool(tool: string, input: unknown, workspace: st
 			}
 		}
 		if (name === 'begin_run' || name === 'start_test') settleEnded(store)
-		const reply = performAction(store, name, input, { actor: defaultActor(workspace, env), env })
+		const reply = dispatchAction(store, name, parsed as NonNullable<Actions[typeof name]>, {
+			actor: defaultActor(workspace, env),
+			env,
+		})
 		if (name === 'answer_gap' && reply.status === 'completed' && reply.data.decisionId) {
 			const harness = selectedHarness(workspaceEnv(store, env))
 			const tools = harness === 'claude' ? ruleTokens(testerRulesText(store, harness)) : []

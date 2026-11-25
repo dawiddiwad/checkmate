@@ -12,8 +12,7 @@
 				"type": "object",
 				"properties": {
 					"id": {
-						"type": "string",
-						"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+						"$ref": "identifier.schema.json"
 					},
 					"title": {
 						"type": "string",
@@ -23,21 +22,18 @@
 					"requirementIds": {
 						"type": "array",
 						"items": {
-							"type": "string",
-							"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+							"$ref": "identifier.schema.json"
 						},
 						"minItems": 1,
 						"uniqueItems": true
 					},
 					"capability": {
-						"type": "string",
-						"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+						"$ref": "identifier.schema.json"
 					},
 					"operations": {
 						"type": "array",
 						"items": {
-							"type": "string",
-							"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+							"$ref": "identifier.schema.json"
 						},
 						"minItems": 1,
 						"uniqueItems": true

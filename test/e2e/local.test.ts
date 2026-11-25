@@ -199,6 +199,7 @@ export default (pi) => pi.on('session_start', async (_event, ctx) => {
 	assert.equal(main.refused.refusal, 'malformed')
 	const cli = await command(workspace, env, 'setup', '--url', 'not-a-url')
 	assert.deepEqual(cli.body.nextAction, main.refused.nextAction)
+	assert.equal(existsSync(join(workspace, '.checkmate/checkmate.db')), false)
 	const planner = inspectTools('plan')
 	assert.deepEqual(planner.tools.sort(), [
 		'checkmate_read_plan_request',
@@ -214,6 +215,13 @@ test('Expose packaged Claude MCP tools by role and keep their workspace bound to
 	const other = directory(t)
 	const app = await fixture()
 	t.after(() => app.close())
+	const url = `${app.baseUrl}/quote`
+	const [, , badTarget] = await mcpCalls(workspace, process.env, [
+		['checkmate_setup', { url, targetId: 'bad target' }],
+	])
+	assert.equal(badTarget.result.structuredContent.refusal, 'malformed')
+	assert.equal(app.actions(), 0)
+	assert.equal(existsSync(join(workspace, '.checkmate')), false)
 	const mcpConfig = JSON.parse(readFileSync(join(project, 'node_modules/@xoxoai/checkmate/plugin/.mcp.json'), 'utf8'))
 	assert.deepEqual(mcpConfig.mcpServers.actions.args.slice(-1), ['mcp'])
 	const batches = (role?: string) =>
@@ -231,6 +239,7 @@ test('Expose packaged Claude MCP tools by role and keep their workspace bound to
 	assert.equal(invalid.result.structuredContent.refusal, 'malformed')
 	assert.equal(invalid.result.structuredContent.nextAction.action, 'setup')
 	assert.equal(saved.result.structuredContent.targetId, 'fixture')
+	assert.equal((await command(workspace, process.env, 'target', 'show', 'fixture')).body.targetId, 'fixture')
 	assert.equal(existsSync(join(workspace, '.checkmate/checkmate.db')), true)
 	assert.equal(existsSync(join(other, '.checkmate/checkmate.db')), false)
 	const [, tester, refused] = await batches('execute')
@@ -705,6 +714,17 @@ test('Accept any build name — a build with @ was refused by the journal, so th
 		{ kind: 'note', id: 'N1', text: 'A note.' },
 	])
 	const odd = 'Release 2.1 (beta; $(x))'
+	const empty = directory(t)
+	for (const args of [
+		['test', 'ticket', '--build', ' '],
+		['explore', 'start', 'ticket', '--build', ' '],
+		['run', 'check', 'run-1', 'T1', 'A1', '--result', 'missing'],
+		['run', 'close', 'run-1', 'T1', '--outcome', 'blocked'],
+	]) {
+		const reply = run(empty, '', ...args)
+		assert.equal(reply.code, 1, reply.output)
+		assert.equal(existsSync(join(empty, '.checkmate')), false)
+	}
 	// An exploration on each build records its journal entries under that exact build.
 	for (const build of ['booksy-nyc-barber-smoke@1', odd]) {
 		const workspace = seeded()
@@ -8494,7 +8514,7 @@ test('A money value whose sign the shell removed is refused — .00 against a $ 
 	const truncated = await inputCommand(
 		workspace,
 		env,
-		'',
+		'Shipping price shown on the page: $5.00.',
 		'run',
 		'check',
 		'run-1',

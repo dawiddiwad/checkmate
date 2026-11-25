@@ -7,8 +7,7 @@
 			"const": "toolkit-2"
 		},
 		"planId": {
-			"type": "string",
-			"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+			"$ref": "identifier.schema.json"
 		},
 		"revision": {
 			"type": "integer",
@@ -29,8 +28,7 @@
 			"type": "object",
 			"properties": {
 				"targetId": {
-					"type": "string",
-					"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+					"$ref": "identifier.schema.json"
 				},
 				"revision": {
 					"type": "integer",
@@ -54,8 +52,7 @@
 				"type": "object",
 				"properties": {
 					"id": {
-						"type": "string",
-						"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+						"$ref": "identifier.schema.json"
 					},
 					"text": {
 						"type": "string",
@@ -103,8 +100,7 @@
 				"type": "object",
 				"properties": {
 					"decisionId": {
-						"type": "string",
-						"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+						"$ref": "identifier.schema.json"
 					},
 					"text": {
 						"type": "string",
@@ -123,12 +119,10 @@
 				"type": "object",
 				"properties": {
 					"id": {
-						"type": "string",
-						"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+						"$ref": "identifier.schema.json"
 					},
 					"gapId": {
-						"type": "string",
-						"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+						"$ref": "identifier.schema.json"
 					},
 					"kind": {
 						"enum": ["clarify", "accept_assumption", "defer"]
@@ -184,8 +178,7 @@
 					"testIds": {
 						"type": "array",
 						"items": {
-							"type": "string",
-							"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+							"$ref": "identifier.schema.json"
 						},
 						"minItems": 1
 					},
@@ -195,8 +188,7 @@
 							"type": "object",
 							"properties": {
 								"gapId": {
-									"type": "string",
-									"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+									"$ref": "identifier.schema.json"
 								},
 								"reason": {
 									"type": "string",
@@ -218,14 +210,12 @@
 				"type": "object",
 				"properties": {
 					"requirementId": {
-						"type": "string",
-						"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+						"$ref": "identifier.schema.json"
 					},
 					"testIds": {
 						"type": "array",
 						"items": {
-							"type": "string",
-							"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+							"$ref": "identifier.schema.json"
 						},
 						"minItems": 0,
 						"uniqueItems": true
@@ -261,8 +251,7 @@
 			"type": "object",
 			"properties": {
 				"id": {
-					"type": "string",
-					"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+					"$ref": "identifier.schema.json"
 				},
 				"title": {
 					"type": "string",
@@ -272,21 +261,18 @@
 				"requirementIds": {
 					"type": "array",
 					"items": {
-						"type": "string",
-						"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+						"$ref": "identifier.schema.json"
 					},
 					"minItems": 1,
 					"uniqueItems": true
 				},
 				"capability": {
-					"type": "string",
-					"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+					"$ref": "identifier.schema.json"
 				},
 				"operations": {
 					"type": "array",
 					"items": {
-						"type": "string",
-						"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+						"$ref": "identifier.schema.json"
 					},
 					"minItems": 1,
 					"uniqueItems": true
@@ -297,8 +283,7 @@
 				"gapIds": {
 					"type": "array",
 					"items": {
-						"type": "string",
-						"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+						"$ref": "identifier.schema.json"
 					},
 					"minItems": 0,
 					"uniqueItems": true
@@ -356,8 +341,7 @@
 			"type": "object",
 			"properties": {
 				"id": {
-					"type": "string",
-					"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+					"$ref": "identifier.schema.json"
 				},
 				"check": {
 					"type": "string",

@@ -1,8 +1,9 @@
 import type { Store } from './store.ts'
-import type { Plan } from './types.ts'
+import type { Exploration, Plan } from './types.ts'
 import type { Change } from './change.ts'
 import { all, canonical, completed, execute, one, write } from './store.ts'
-import { requireBuild, requireChoice, requireIdentifier, unusedId } from './contracts.ts'
+import { unusedId } from './contracts.ts'
+import explorationSchema from '../contracts/exploration.schema.json' with { type: 'json' }
 import { executionTarget, planRequest, planTools } from './plans.ts'
 import { correctedEntryText, runInstance } from './targets.ts'
 import { explorationRules, planRules } from './rules.ts'
@@ -11,7 +12,7 @@ import { addPlanBuild, explorationRow, journal, planClaims, planQuestions } from
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-export const explorationModes = ['exploratory', 'regression'] as const
+export const explorationModes = explorationSchema.properties.mode.enum
 export type Charter = {
 	goal: string
 	dataRules?: string[]
@@ -215,22 +216,17 @@ export function nextExplorationId(store: Store) {
 	return unusedId('x-', ids)
 }
 
-export type OpenInput = {
-	planId: string
-	build: string
-	instance?: string
-	mode?: string
+export type OpenInput = Pick<Exploration, 'planId' | 'build' | 'instance' | 'mode'> & {
 	scope?: string[]
 	change?: Change | null
 	explorationId?: string
 }
 
 export function insertExploration(store: Store, input: OpenInput, operationId: string, at: string) {
-	const planId = requireIdentifier(input.planId, 'plan ID')
+	const { planId, build } = input
 	const { target: pinned } = planRequest(store, planId)
 	const target = executionTarget(store, planId, pinned.profile.targetId, pinned.revision)
-	const { build } = input
-	const mode = requireChoice(input.mode ?? 'exploratory', explorationModes, 'mode (--mode)')
+	const mode = input.mode ?? 'exploratory'
 	const instance = runInstance(store, target.profile.targetId, input.instance, build)
 	const explorationId = input.explorationId ?? nextExplorationId(store)
 	const revision = latestRevision(store, planId)
@@ -263,7 +259,6 @@ export function insertExploration(store: Store, input: OpenInput, operationId: s
 }
 
 export function openExploration(store: Store, actor: string | undefined, input: OpenInput) {
-	input = { ...input, build: requireBuild(input.build) }
 	return write(store, { actor, command: 'explore open', subject: input.planId, input }, (operationId, at) => {
 		const opened = insertExploration(store, input, operationId, at)
 		return {

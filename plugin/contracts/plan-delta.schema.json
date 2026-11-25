@@ -6,7 +6,7 @@
 		"requirements": {
 			"type": "object",
 			"propertyNames": {
-				"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+				"$ref": "identifier.schema.json"
 			},
 			"additionalProperties": {
 				"type": "object",
@@ -35,7 +35,7 @@
 		"tests": {
 			"type": "object",
 			"propertyNames": {
-				"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+				"$ref": "identifier.schema.json"
 			},
 			"additionalProperties": {
 				"type": "object",
@@ -125,7 +125,7 @@
 			"type": "object",
 			"description": "Blocking gaps the revision raises for checks that need a decision before they can be migrated.",
 			"propertyNames": {
-				"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+				"$ref": "identifier.schema.json"
 			},
 			"additionalProperties": {
 				"type": "object",
@@ -141,8 +141,7 @@
 					"testIds": {
 						"type": "array",
 						"items": {
-							"type": "string",
-							"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+							"$ref": "identifier.schema.json"
 						},
 						"minItems": 1,
 						"uniqueItems": true

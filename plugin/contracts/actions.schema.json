@@ -7,13 +7,10 @@
 	"additionalProperties": false,
 	"definitions": {
 		"text": {
-			"type": "string",
-			"minLength": 1,
-			"pattern": "\\S"
+			"$ref": "text.schema.json"
 		},
 		"id": {
-			"type": "string",
-			"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+			"$ref": "identifier.schema.json"
 		},
 		"url": {
 			"type": "string",
@@ -31,7 +28,7 @@
 						"required": ["text"],
 						"properties": {
 							"text": {
-								"type": "string"
+								"$ref": "text.schema.json"
 							},
 							"kind": {
 								"enum": ["observation", "screenshot", "view_hierarchy", "recording", "http_exchange", "trace"]
@@ -68,10 +65,10 @@
 					"type": "object",
 					"description": "Entries of the application by name. url is the short form of the entry web.",
 					"propertyNames": {
-						"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+						"$ref": "identifier.schema.json"
 					},
 					"additionalProperties": {
-						"$ref": "#/definitions/text"
+						"$ref": "instance.schema.json#/properties/entries/additionalProperties"
 					},
 					"minProperties": 1
 				},
@@ -91,7 +88,7 @@
 					"description": "Operations the person permits. Use a specific read_ operation for a read-only API, such as read_quotes. The bare word read does not identify a read-only operation."
 				},
 				"environment": {
-					"$ref": "#/definitions/text"
+					"$ref": "instance.schema.json#/properties/environment"
 				},
 				"build": {
 					"$ref": "build.schema.json"
@@ -154,7 +151,7 @@
 			"additionalProperties": false,
 			"properties": {
 				"reference": {
-					"$ref": "#/definitions/text"
+					"$ref": "revision-reference.schema.json"
 				},
 				"instance": {
 					"$ref": "#/definitions/text"
@@ -168,7 +165,7 @@
 			"additionalProperties": false,
 			"properties": {
 				"target": {
-					"$ref": "#/definitions/text"
+					"$ref": "revision-reference.schema.json"
 				},
 				"planId": {
 					"type": "string",
@@ -270,8 +267,7 @@
 			"additionalProperties": false,
 			"properties": {
 				"planId": {
-					"type": "string",
-					"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$",
+					"$ref": "identifier.schema.json",
 					"description": "The plan ID from status. Use that same plan ID for a plan gap or an exploration question. Do not give the exploration ID here."
 				},
 				"gapId": {
@@ -316,25 +312,19 @@
 					"enum": ["auto", "exploratory", "regression"]
 				},
 				"level": {
-					"enum": ["smoke", "normal", "deep"]
+					"$ref": "exploration.schema.json#/properties/level"
 				},
 				"explorers": {
-					"type": "integer",
-					"minimum": 1,
-					"maximum": 10
+					"$ref": "exploration.schema.json#/properties/explorers"
 				},
 				"minutes": {
-					"type": "integer",
-					"minimum": 1,
-					"maximum": 240
+					"$ref": "exploration.schema.json#/properties/minutes"
 				},
 				"instance": {
-					"$ref": "#/definitions/text"
+					"$ref": "exploration.schema.json#/properties/instance"
 				},
 				"timeoutSeconds": {
-					"type": "integer",
-					"minimum": 60,
-					"maximum": 7200
+					"$ref": "exploration.schema.json#/properties/timeoutSeconds"
 				},
 				"objective": {
 					"$ref": "#/definitions/text"
@@ -352,10 +342,10 @@
 					"$ref": "#/definitions/text"
 				},
 				"since": {
-					"$ref": "#/definitions/text"
+					"$ref": "exploration.schema.json#/properties/since"
 				},
 				"until": {
-					"$ref": "#/definitions/text"
+					"$ref": "exploration.schema.json#/properties/until"
 				},
 				"scope": {
 					"type": "array",
@@ -364,41 +354,31 @@
 					}
 				},
 				"url": {
-					"$ref": "#/definitions/url"
+					"$ref": "#/properties/setup/properties/url"
 				},
 				"entries": {
-					"type": "object",
-					"description": "Entries of the application by name, for a first setup of a target that is not a web application. url is the short form of the entry web.",
-					"propertyNames": {
-						"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
-					},
-					"additionalProperties": {
-						"$ref": "#/definitions/text"
-					},
-					"minProperties": 1
+					"$ref": "#/properties/setup/properties/entries"
 				},
 				"reset": {
-					"$ref": "#/definitions/text"
+					"$ref": "#/properties/setup/properties/reset"
 				},
 				"data": {
-					"enum": ["environment", "isolation"]
+					"$ref": "#/properties/setup/properties/data"
 				},
 				"policy": {
-					"$ref": "#/definitions/text"
+					"$ref": "#/properties/setup/properties/policy"
 				},
 				"policyFile": {
-					"$ref": "#/definitions/text"
+					"$ref": "#/properties/setup/properties/policyFile"
 				},
 				"cleanup": {
-					"$ref": "#/definitions/text"
+					"$ref": "#/properties/setup/properties/cleanup"
 				},
 				"hookTimeout": {
-					"type": "integer",
-					"minimum": 1,
-					"maximum": 3600
+					"$ref": "#/properties/setup/properties/hookTimeout"
 				},
 				"repo": {
-					"$ref": "#/definitions/text"
+					"$ref": "exploration.schema.json#/properties/repo"
 				}
 			},
 			"required": ["planId"]
@@ -432,7 +412,7 @@
 					"$ref": "#/definitions/id"
 				},
 				"reference": {
-					"$ref": "#/definitions/text"
+					"$ref": "revision-reference.schema.json"
 				},
 				"build": {
 					"$ref": "build.schema.json"
@@ -506,18 +486,13 @@
 					"description": "Omit when the assertion has expected. Checkmate computes passed or failed. Use not_checked with a reason if you could not observe the value. For an agent observation without expected, give your judgment."
 				},
 				"observed": {
-					"type": "string",
-					"minLength": 1,
-					"description": "Only the value named by the assertion. For HTTP status send \"400\", with the body and request details in evidence.text. If the named value is missing after a successful read, give absent: true instead."
+					"$ref": "text.schema.json"
 				},
 				"absent": {
-					"type": "boolean",
-					"description": "True only when the response or page was read successfully but the asserted item is absent. Omit observed."
+					"type": "boolean"
 				},
 				"request": {
-					"type": "string",
-					"minLength": 1,
-					"description": "The exact method, path, and query you sent for this assertion, for example \"GET /quote?qty=0\". Omit the scheme and host even when the HTTP client used a full URL."
+					"$ref": "text.schema.json"
 				},
 				"reason": {
 					"$ref": "#/definitions/text"
@@ -560,7 +535,33 @@
 					"$ref": "#/definitions/evidence"
 				}
 			},
-			"required": ["runId", "testId"]
+			"required": ["runId", "testId"],
+			"dependencies": {
+				"outcome": ["reason"],
+				"reason": ["outcome"],
+				"cause": ["outcome"]
+			},
+			"if": {
+				"required": ["outcome"],
+				"properties": {
+					"outcome": {
+						"const": "error"
+					}
+				}
+			},
+			"then": {
+				"not": {
+					"required": ["cause"]
+				}
+			},
+			"else": {
+				"properties": {
+					"evidence": {
+						"type": "array",
+						"maxItems": 0
+					}
+				}
+			}
 		},
 		"record_finding": {
 			"description": "Record a defect or potential issue with the assertion and evidence IDs, where applicable.",

@@ -414,6 +414,20 @@ export type Actions = {
 
 export type Build = string
 
+export type Exploration = {
+	planId: string
+	build: string
+	mode?: 'exploratory' | 'regression'
+	level?: 'smoke' | 'normal' | 'deep'
+	explorers?: number
+	minutes?: number
+	instance?: string
+	timeoutSeconds?: number
+	since?: string
+	until?: string
+	repo?: string
+}
+
 export type Finding = {
 	id: string
 	type: 'defect' | 'potential_issue'
@@ -438,6 +452,8 @@ export type Gap = {
 	consequence: string
 	decisionId: string | null
 }
+
+export type Identifier = string
 
 export type Instance = {
 	entries: Record<string, string>
@@ -930,6 +946,12 @@ export type Result = {
 		}>
 	}
 }
+
+export type RevisionReference = string
+
+export type TestLevel = 'smoke' | 'normal' | 'deep'
+
+export type Text = string
 
 export type Verification = {
 	id: string

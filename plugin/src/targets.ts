@@ -1,4 +1,4 @@
-import type { Instance, Profile } from './types.ts'
+import type { Actions, Instance, Profile } from './types.ts'
 import type { Change, Store } from './store.ts'
 import { hostSession } from './actor.ts'
 import { all, canonical, completed, digest, execute, one, removeTemporaryDirectory, write } from './store.ts'
@@ -7,7 +7,6 @@ import {
 	profileCheck,
 	requireChoice,
 	requireCondition,
-	requireBuild,
 	requireIdentifier,
 	shellWord,
 	requireNotInputWord,
@@ -388,7 +387,7 @@ export function instanceCheck(entryPoints: EntryPoint[], value: unknown): Instan
 			? {}
 			: { environment: requireText(instance.environment, 'environment').trim() }),
 		references,
-		...(instance.build === undefined ? {} : { build: requireBuild(instance.build, 'build of the instance') }),
+		...(instance.build === undefined ? {} : { build: instance.build.trim() }),
 	}
 }
 
@@ -713,23 +712,7 @@ function selectInstance(store: Store, targetId: string, instanceId: string | und
 	return active[0]
 }
 
-export type SetupInput = {
-	// The short form of the entry web. Other entries go in entries.
-	url?: string
-	entries?: Record<string, string>
-	targetId?: string
-	instanceId?: string
-	operations?: string[]
-	environment?: string
-	build?: string
-	correct?: boolean
-	reset?: string
-	data?: string
-	policy?: string
-	policyFile?: string
-	cleanup?: string
-	hookTimeout?: number
-	resetPerTest?: string
+type SetupInput = NonNullable<Actions['setup']> & {
 	env: Record<string, string | undefined>
 	answered?: boolean
 }
@@ -873,11 +856,6 @@ export function dataOf(input: SetupInput): Profile['reset'] | undefined {
 		...(input.hookTimeout ? { timeoutSeconds: input.hookTimeout } : {}),
 		...(input.resetPerTest === 'off' ? { perTest: false } : {}),
 	}
-	requireCondition(
-		input.resetPerTest === undefined || input.resetPerTest === 'on' || input.resetPerTest === 'off',
-		`Unknown --reset-per-test ${input.resetPerTest}.`,
-		'Use --reset-per-test on (the default) or off, for a reset that is slow.'
-	)
 	if (!input.data) {
 		requireCondition(
 			!Object.keys(hooks).length || input.reset,
@@ -888,11 +866,6 @@ export function dataOf(input: SetupInput): Profile['reset'] | undefined {
 			? { owner: 'checkmate', command: resetCommand(input.reset), policy: null, ...hooks }
 			: undefined
 	}
-	requireCondition(
-		input.data === 'environment' || input.data === 'isolation',
-		`Unknown data kind ${input.data}.`,
-		'Use --data environment or --data isolation.'
-	)
 	requireCondition(
 		Boolean(input.policy || input.policyFile),
 		`Data kind ${input.data} needs a data policy.`,
@@ -908,14 +881,9 @@ export function dataOf(input: SetupInput): Profile['reset'] | undefined {
 
 // What the person gave. --url is the short form of the entry web, and it comes first.
 export function givenEntries(input: Pick<SetupInput, 'url' | 'entries'>) {
-	const entries = Object.fromEntries(
-		Object.entries(input.entries ?? {}).map(([name, value]) => [
-			name,
-			requireText(value, `value of entry ${name}`).trim(),
-		])
-	)
+	const entries = Object.fromEntries(Object.entries(input.entries ?? {}).map(([name, value]) => [name, value.trim()]))
 	if (input.url === undefined) return entries
-	const url = requireText(input.url, 'application URL (--url)').trim()
+	const url = input.url.trim()
 	requireCondition(
 		entries.web === undefined || entries.web === url,
 		`The entry web is given twice with other values: ${url} and ${entries.web}.`,
@@ -1095,6 +1063,7 @@ export function setupTarget(store: Store, actor: string | undefined, input: Setu
 	if (!Object.keys(givenEntries(input)).length) return recordData(store, actor, input)
 	const setup = setupAssumptions(input)
 	const { entries, entryPoints, targetId, instanceId, detected, capabilities, allowedOperations, assumed } = setup
+	const reset = dataOf(input)
 	const where = entries.web && Object.keys(entries).length === 1 ? entries.web : `the entries ${entryList(entries)}`
 	const flags = entryFlags(entries)
 	const tools = detected.map(({ recipe, path }) => {
@@ -1114,7 +1083,6 @@ export function setupTarget(store: Store, actor: string | undefined, input: Setu
 	const reachable = failure === null
 	const notChecked = input.answered === undefined && checked === undefined
 	if (notChecked) assumed.push('reachability=not checked: the tools of this target give no check')
-	const reset = dataOf(input)
 	const host = hostSession(input.env)
 	const recorded = { ...input, env: undefined }
 	let savedProfile = false

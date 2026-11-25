@@ -7,15 +7,13 @@
 			"const": "toolkit-2"
 		},
 		"runId": {
-			"type": "string",
-			"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+			"$ref": "identifier.schema.json"
 		},
 		"plan": {
 			"type": "object",
 			"properties": {
 				"planId": {
-					"type": "string",
-					"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+					"$ref": "identifier.schema.json"
 				},
 				"revision": {
 					"type": "integer",
@@ -33,8 +31,7 @@
 			"type": "object",
 			"properties": {
 				"targetId": {
-					"type": "string",
-					"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+					"$ref": "identifier.schema.json"
 				},
 				"revision": {
 					"type": "integer",
@@ -49,8 +46,7 @@
 			"additionalProperties": false
 		},
 		"instanceId": {
-			"type": "string",
-			"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+			"$ref": "identifier.schema.json"
 		},
 		"applicationBuild": {
 			"$ref": "build.schema.json"
@@ -58,8 +54,7 @@
 		"selectedTestIds": {
 			"type": "array",
 			"items": {
-				"type": "string",
-				"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+				"$ref": "identifier.schema.json"
 			},
 			"minItems": 1,
 			"uniqueItems": true
@@ -67,8 +62,7 @@
 		"retestOf": {
 			"anyOf": [
 				{
-					"type": "string",
-					"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+					"$ref": "identifier.schema.json"
 				},
 				{
 					"type": "null"
@@ -110,8 +104,7 @@
 				"type": "object",
 				"properties": {
 					"testId": {
-						"type": "string",
-						"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+						"$ref": "identifier.schema.json"
 					},
 					"outcome": {
 						"enum": ["passed", "failed", "inconclusive", "blocked", "not_run", "error"]
@@ -136,8 +129,7 @@
 							"type": "object",
 							"properties": {
 								"assertionId": {
-									"type": "string",
-									"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+									"$ref": "identifier.schema.json"
 								},
 								"check": {
 									"type": "string",
@@ -174,8 +166,7 @@
 								"evidenceIds": {
 									"type": "array",
 									"items": {
-										"type": "string",
-										"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+										"$ref": "identifier.schema.json"
 									},
 									"minItems": 0,
 									"uniqueItems": true
@@ -223,8 +214,7 @@
 				},
 				"properties": {
 					"id": {
-						"type": "string",
-						"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+						"$ref": "identifier.schema.json"
 					},
 					"type": {
 						"enum": ["defect", "potential_issue"]
@@ -235,8 +225,7 @@
 					"requirementIds": {
 						"type": "array",
 						"items": {
-							"type": "string",
-							"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+							"$ref": "identifier.schema.json"
 						},
 						"minItems": 0,
 						"uniqueItems": true
@@ -265,8 +254,7 @@
 					"evidenceIds": {
 						"type": "array",
 						"items": {
-							"type": "string",
-							"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+							"$ref": "identifier.schema.json"
 						},
 						"minItems": 0,
 						"uniqueItems": true
@@ -274,8 +262,7 @@
 					"testIds": {
 						"type": "array",
 						"items": {
-							"type": "string",
-							"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+							"$ref": "identifier.schema.json"
 						},
 						"minItems": 0,
 						"uniqueItems": true
@@ -325,18 +312,15 @@
 				"type": "object",
 				"properties": {
 					"id": {
-						"type": "string",
-						"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+						"$ref": "identifier.schema.json"
 					},
 					"testId": {
-						"type": "string",
-						"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+						"$ref": "identifier.schema.json"
 					},
 					"assertionId": {
 						"anyOf": [
 							{
-								"type": "string",
-								"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+								"$ref": "identifier.schema.json"
 							},
 							{
 								"type": "null"
@@ -395,8 +379,7 @@
 						"type": "object",
 						"properties": {
 							"requirementId": {
-								"type": "string",
-								"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+								"$ref": "identifier.schema.json"
 							},
 							"status": {
 								"enum": ["tested", "deferred", "uncovered"]
@@ -404,8 +387,7 @@
 							"testIds": {
 								"type": "array",
 								"items": {
-									"type": "string",
-									"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+									"$ref": "identifier.schema.json"
 								},
 								"minItems": 0,
 								"uniqueItems": true

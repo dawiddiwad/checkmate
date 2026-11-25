@@ -120,7 +120,7 @@ import type { AdoptError } from './run.ts'
 import { runPage } from './run.ts'
 import type { InstanceForm } from './settings.ts'
 import { harnessPage, instanceFromForm, targetPage, targetsPage } from './settings.ts'
-import { recipePage, recipesPage } from './recipes.ts'
+import { invalidRecipePage, recipePage, recipesPage } from './recipes.ts'
 import type { HookOptions } from './hooks.ts'
 import { createHooks, sameSecret } from './hooks.ts'
 import { emptyRecord, nextOpen, permissionPage, requestHref } from './permissions.ts'
@@ -629,6 +629,13 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		if (pathname === '/settings') return redirect(request.res, '/settings/targets')
 		if (pathname === '/settings/targets') return render(request, targetsPage(store))
 		if (pathname === '/settings/recipes') return render(request, recipesPage(options.workspace))
+		if (pathname === '/settings/invalid-recipes') {
+			const file = searchParams.get('file') ?? ''
+			const page = invalidRecipePage(options.workspace, file)
+			if (!page)
+				return errorPage(request, 404, 'Recipe not found', `Checkmate has no invalid recipe file ${file}.`)
+			return render(request, page)
+		}
 		const recipe = routes.recipe.exec(pathname)
 		if (recipe) {
 			const page = recipePage(options.workspace, recipe[1])

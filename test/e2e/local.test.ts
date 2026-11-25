@@ -7109,6 +7109,149 @@ test('Install and use a project tool recipe from the packed CLI', async (t) => {
 	assert.ok(task.includes(recipe.shellInstruction), task)
 })
 
+test('Keep the recipe catalog usable when a custom recipe is invalid — one bad file hides the other recipes, or a target, plan, or run uses it.', async (t) => {
+	const workspace = realpathSync(directory(t))
+	const draft = directory(t)
+	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle', CHECKMATE_HARNESS: 'pi' }
+	const ok = async (args: string[], value?: object | string) => {
+		const input = value === undefined ? '' : typeof value === 'string' ? value : JSON.stringify(value)
+		const result = await inputCommand(workspace, env, input, ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	const refused = async (args: string[], value?: object) => {
+		const result = await inputCommand(workspace, env, value ? JSON.stringify(value) : '', ...args)
+		assert.equal(result.code, 1, result.output)
+		return result.output
+	}
+	const folder = join(workspace, '.checkmate', 'recipes')
+	mkdirSync(folder, { recursive: true })
+	const recipe = (name: string, fields: object = {}) =>
+		JSON.stringify({
+			name,
+			capability: 'inventory',
+			kind: 'cli',
+			purpose: 'Read stock levels.',
+			detect: 'path',
+			environment: {},
+			workspaceFolders: [],
+			observeFrom: { stock: 'state' },
+			evidence: ['stock_report'],
+			usage: `${name}.md`,
+			...fields,
+		})
+	writeFileSync(join(folder, 'good.json'), recipe('good'))
+	writeFileSync(join(folder, 'good.md'), '# Good\n\nRun good stock.\n')
+	writeFileSync(join(folder, 'broken.json'), '{ "name": "broken",')
+	writeFileSync(join(folder, 'nousage.json'), recipe('nousage'))
+	writeFileSync(join(folder, 'emptyusage.json'), recipe('emptyusage'))
+	writeFileSync(join(folder, 'emptyusage.md'), ' \n')
+	writeFileSync(join(folder, 'schema.json'), recipe('schema', { kind: 'shell' }))
+	writeFileSync(join(folder, 'schema.md'), '# Schema\n')
+
+	const listed = await ok(['recipe', 'list'])
+	assert.deepEqual(
+		listed.recipes.map((entry: { recipe: { name: string }; source: string }) => [entry.recipe.name, entry.source]),
+		[
+			['maestro-mcp', 'built-in'],
+			['maestro', 'built-in'],
+			['node', 'built-in'],
+			['playwright-cli', 'built-in'],
+			['good', 'custom'],
+		]
+	)
+	const problems: Record<string, RegExp> = {
+		broken: /broken\.json is not valid: it is not JSON/,
+		emptyusage: /emptyusage\.json is not valid: the usage file .*emptyusage\.md is empty\./,
+		nousage:
+			/nousage\.json is not valid: usage must name a regular Markdown file beside the recipe: .*nousage\.md\./,
+		schema: /schema\.json is not valid: kind must be cli or mcp\./,
+	}
+	assert.deepEqual(
+		listed.invalid.map((item: { name: string; source: string; path: string }) => [
+			item.name,
+			item.source,
+			item.path,
+		]),
+		Object.keys(problems).map((name) => [name, 'custom', join(folder, `${name}.json`)])
+	)
+	for (const item of listed.invalid) assert.match(item.error, problems[item.name])
+
+	writeFileSync(join(draft, 'broken.json'), recipe('broken', { usage: 'broken-usage.md' }))
+	writeFileSync(join(draft, 'broken-usage.md'), '# Broken\n')
+	const taken = await refused(['recipe', 'add', '--file', join(draft, 'broken.json')])
+	assert.match(taken, /name broken is in use by the invalid custom recipe .*broken\.json\. Choose a different name\./)
+	assert.equal(existsSync(join(folder, 'broken-usage.md')), false)
+
+	await ok([
+		'target',
+		'open',
+		'bad',
+		'--entry-point',
+		'app:value:The application.',
+		'--capabilities',
+		'inventory',
+		'--operations',
+		'read_catalog',
+	])
+	const badTarget = await refused(['target', 'save', 'bad'], recipeTarget('bad', ['schema'], ['inventory'], 'value'))
+	assert.match(
+		badTarget,
+		/The recipe of tool schema is not valid\. Tool recipe .*schema\.json is not valid: kind must be cli or mcp\./
+	)
+	assert.match(badTarget, /Correct .*schema\.json and the usage file that it names, then run checkmate recipe list/)
+
+	await ok([
+		'target',
+		'open',
+		'shop',
+		'--entry-point',
+		'app:value:The application.',
+		'--capabilities',
+		'inventory',
+		'--operations',
+		'read_catalog',
+	])
+	await ok(['target', 'save', 'shop'], recipeTarget('shop', ['good', 'node'], ['inventory'], 'value'))
+	await ok(['target', 'instance', 'add', 'shop', 'local', '--entry', 'app=com.example.shop'])
+	writeFileSync(join(workspace, 'ticket.md'), 'The catalog shows the kettle.\n')
+	await ok([
+		'plan',
+		'open',
+		'stock',
+		'--target',
+		'shop@1',
+		'--objective',
+		'Check the stock.',
+		'--source',
+		'ticket.md',
+	])
+	const request = await ok(['plan', 'request', 'stock'])
+	assert.deepEqual(request.observeFrom, [
+		{ value: 'api', reading: 'state', tool: 'node' },
+		{ value: 'stock', reading: 'state', tool: 'good' },
+	])
+	await ok(['plan', 'save', 'stock'], recipePlan('inventory', ['stock']))
+
+	writeFileSync(join(folder, 'good.md'), '')
+	const after = await ok(['recipe', 'list'])
+	assert.deepEqual(
+		after.invalid.map((item: { name: string }) => item.name),
+		['broken', 'emptyusage', 'good', 'nousage', 'schema']
+	)
+	for (const args of [
+		['plan', 'request', 'stock'],
+		['run', 'begin', 'stock-run', 'stock@1', '--build', 'b1', '--instance', 'local'],
+		['test', 'stock-session', '--target', 'shop', '--source', 'ticket.md', '--build', 'b1', '--session'],
+	]) {
+		const output = await refused(args)
+		assert.match(
+			output,
+			/The recipe of tool good is not valid\. Tool recipe .*good\.json is not valid: the usage file .*good\.md is empty\./
+		)
+	}
+})
+
 test('A plan and a run accept only the observeFrom values and evidence kinds that the recipes of the target tools give — the refusal names the value, the allowed values, and the recipes.', async (t) => {
 	const workspace = directory(t)
 	writeFileSync(join(workspace, 'ticket.md'), 'The catalog shows the kettle.\n')

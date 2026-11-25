@@ -1,6 +1,6 @@
 import type { Html } from './html.ts'
 import type { Page } from './layout.ts'
-import type { ReachCheck, Recipe, RecipeEntry } from '../recipes.ts'
+import type { InvalidRecipe, ReachCheck, Recipe, RecipeCatalog, RecipeEntry } from '../recipes.ts'
 import { listRecipes, toolExecutable } from '../recipes.ts'
 import { html, join } from './html.ts'
 import { banner, emptyNotice, heading } from './layout.ts'
@@ -8,13 +8,26 @@ import { settingsPage } from './settings.ts'
 import { listRow } from './lists.ts'
 
 const addCommand = 'checkmate recipe add --file <name>.json'
+const agentOnly = '\n> **Agent only:** This file contains repository or workflow instructions for coding agents.\n\n'
 
-function readCatalog(workspace: string) {
+function readCatalog(workspace: string): RecipeCatalog & { error: string | null } {
 	try {
-		return { entries: listRecipes(workspace), error: null }
+		return { ...listRecipes(workspace), error: null }
 	} catch (error) {
-		return { entries: [] as RecipeEntry[], error: (error as Error).message }
+		return { recipes: [], invalid: [], error: (error as Error).message }
 	}
+}
+
+function fileName(path: string) {
+	return path.split(/[\\/]/).at(-1)!
+}
+
+function invalidHref(item: InvalidRecipe) {
+	return `/settings/invalid-recipes?file=${encodeURIComponent(fileName(item.path))}`
+}
+
+function invalidPill() {
+	return html`<span class="sp-pill red" data-source="invalid">invalid</span>`
 }
 
 function sourcePill(source: RecipeEntry['source']) {
@@ -45,8 +58,8 @@ function detection(recipe: Recipe) {
 }
 
 export function recipesPage(workspace: string): Page {
-	const { entries, error } = readCatalog(workspace)
-	const rows = entries.map(({ source, recipe }) =>
+	const { recipes, invalid, error } = readCatalog(workspace)
+	const rows = recipes.map(({ source, recipe }) =>
 		listRow(`recipe:${recipe.name}`, `/settings/recipes/${recipe.name}`, recipe.name, sourcePill(source), [
 			recipe.purpose,
 			html`<span class="muted"
@@ -54,7 +67,13 @@ export function recipesPage(workspace: string): Page {
 			>`,
 		])
 	)
-	const custom = entries.some((entry) => entry.source === 'custom')
+	const invalidRows = invalid.map((item) =>
+		listRow(`invalid:${fileName(item.path)}`, invalidHref(item), item.name, invalidPill(), [
+			'Checkmate does not use this recipe.',
+			html`<span class="reason">${item.error}</span>`,
+		])
+	)
+	const custom = recipes.some((entry) => entry.source === 'custom') || invalid.length
 	const body = html`${heading(
 			'Recipes',
 			html`The tools that testers can use. Built-in recipes come with Checkmate. Custom recipes come from
@@ -63,9 +82,9 @@ export function recipesPage(workspace: string): Page {
 		<div data-region="recipes">
 			${error ? banner('fail', html`Checkmate cannot read the recipes. ${error}`) : ''}
 			${
-				entries.length
+				rows.length + invalidRows.length
 					? html`<ul class="q-items l-rows">
-							${rows}
+							${rows} ${invalidRows}
 						</ul>`
 					: ''
 			}
@@ -156,19 +175,45 @@ function testingFacts(recipe: Recipe) {
 	</dl>`
 }
 
+function catalogFailure(title: string, error: string) {
+	return settingsPage(
+		'/settings/recipes',
+		title,
+		['recipes'],
+		html`<div data-region="recipe">${banner('fail', html`Checkmate cannot read the recipes. ${error}`)}</div>`
+	)
+}
+
+export function invalidRecipePage(workspace: string, file: string): Page | null {
+	const { invalid, error } = readCatalog(workspace)
+	if (error) return catalogFailure(file, error)
+	const item = invalid.find((candidate) => fileName(candidate.path) === file)
+	if (!item) return null
+	const body = html`<div data-region="recipe">
+		${heading(item.name, 'Checkmate does not use this recipe. A target, plan, run, or test that names it is refused.', html`<div class="meta">${invalidPill()}</div>`)}
+		<div class="main-col">
+			<section aria-labelledby="error">
+				<h2 id="error">Error</h2>
+				<pre class="sp-code" tabindex="0" data-error>${item.error}</pre>
+			</section>
+			<dl class="facts">
+				${fact('Source', sourcePill(item.source))} ${fact('File', html`<code>${item.path}</code>`, 'path')}
+				${fact('Fix', html`Correct the file and the usage file that it names. The page shows the recipe when it is valid.`)}
+			</dl>
+			<p class="back"><a href="/settings/recipes">All recipes</a></p>
+		</div>
+	</div>`
+	return settingsPage('/settings/recipes', file, ['recipes'], body)
+}
+
 export function recipePage(workspace: string, name: string): Page | null {
-	const { entries, error } = readCatalog(workspace)
-	if (error)
-		return settingsPage(
-			'/settings/recipes',
-			name,
-			['recipes'],
-			html`<div data-region="recipe">${banner('fail', html`Checkmate cannot read the recipes. ${error}`)}</div>`
-		)
-	const entry = entries.find(({ recipe }) => recipe.name === name)
+	const { recipes, error } = readCatalog(workspace)
+	if (error) return catalogFailure(name, error)
+	const entry = recipes.find(({ recipe }) => recipe.name === name)
 	if (!entry) return null
-	const { recipe, usagePath, usageText, jsonText } = entry
-	const usageName = usagePath.split(/[\\/]/).at(-1)
+	const { recipe, usagePath, jsonText } = entry
+	const usageText = entry.source === 'built-in' ? entry.usageText.replace(agentOnly, '\n') : entry.usageText
+	const usageName = fileName(usagePath)
 	const body = html`<div data-region="recipe">
 		${heading(recipe.name, recipe.purpose, html`<div class="meta">${sourcePill(entry.source)}</div>`)}
 		<div class="main-col">

@@ -6,6 +6,7 @@ import { unusedId } from './contracts.ts'
 import explorationSchema from '../contracts/exploration.schema.json' with { type: 'json' }
 import { executionTarget, planRequest, planTools } from './plans.ts'
 import { correctedEntryText, runInstance } from './targets.ts'
+import { requireValidRecipes } from './recipes.ts'
 import { explorationRules, planRules } from './rules.ts'
 import type { Claim } from './journal.ts'
 import { addPlanBuild, explorationRow, journal, planClaims, planQuestions } from './journal.ts'
@@ -227,6 +228,10 @@ export function insertExploration(store: Store, input: OpenInput, operationId: s
 	const { target: pinned } = planRequest(store, planId)
 	const target = executionTarget(store, planId, pinned.profile.targetId, pinned.revision)
 	const mode = input.mode ?? 'exploratory'
+	requireValidRecipes(
+		store.workspace,
+		planTools(planRequest(store, planId).request, target.profile).map((tool) => tool.name)
+	)
 	const instance = runInstance(store, target.profile.targetId, input.instance, build)
 	const explorationId = input.explorationId ?? nextExplorationId(store)
 	const revision = latestRevision(store, planId)

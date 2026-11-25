@@ -2,7 +2,7 @@ import test from 'node:test'
 import type { TestContext } from 'node:test'
 import assert from 'node:assert/strict'
 import { execFileSync, spawn, spawnSync } from 'node:child_process'
-import { chmodSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { chmodSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:http'
 import { once } from 'node:events'
 import { join } from 'node:path'
@@ -872,7 +872,7 @@ test(
 	'Show built-in and custom tool recipes read-only in the review UI — a custom recipe is missing, unmarked, or its text runs as HTML.',
 	{ skip: browserSkip, timeout: 60_000 },
 	async (t) => {
-		const workspace = directory(t)
+		const workspace = realpathSync(directory(t))
 		const draft = directory(t)
 		t.after(() => endProcessesIn(workspace))
 		must(workspace, ['init'])
@@ -949,6 +949,40 @@ test(
 		assert.equal(await page.locator('#recipe + .facts [data-source]').getAttribute('data-source'), 'built-in')
 		assert.match(nodeFacts, /The Node\.js that runs Checkmate/)
 		assert.doesNotMatch(nodeFacts, /FILE/)
+		const nodeUsage = (await page.locator('[data-usage]').textContent()) ?? ''
+		assert.match(nodeUsage, /^# HTTP recipe\n\n\S/)
+		assert.doesNotMatch(nodeUsage, /Agent only/)
 		assert.equal((await fetch(new URL('/settings/recipes/missing', url))).status, 404)
+
+		await page.goto(new URL('/settings/recipes', url).href)
+		await page.locator('[data-live]:not(.down):not([hidden])').waitFor()
+		writeFileSync(join(workspace, '.checkmate', 'recipes', 'bad.json'), injected)
+		const bad = page.locator('[data-region="recipes"] [data-label="bad.json"]')
+		await bad.waitFor()
+		assert.deepEqual(await sources(), [
+			...builtIn.map((name) => [name, 'built-in']),
+			['acme', 'custom'],
+			['bad.json', 'invalid'],
+		])
+		assert.equal(await page.locator('.banner').count(), 0)
+		assert.match((await bad.textContent()) ?? '', /bad\.json is not valid: it is not JSON \(.*<img src=x/)
+		await bad.click()
+		await page.waitForURL(/\/settings\/invalid-recipes\?file=bad\.json$/)
+		const error = (await page.locator('[data-error]').textContent()) ?? ''
+		assert.ok(
+			error.startsWith(
+				`Tool recipe ${join(workspace, '.checkmate', 'recipes', 'bad.json')} is not valid: it is not JSON (`
+			),
+			error
+		)
+		assert.match(error, /<img src=x/)
+		assert.ok(
+			(await page.locator('main .facts').innerText()).includes(
+				join(workspace, '.checkmate', 'recipes', 'bad.json')
+			)
+		)
+		assert.equal(await page.locator('main img, main form, main button').count(), 0)
+		assert.equal(await page.evaluate(() => document.body.dataset.injected ?? null), null)
+		assert.equal((await fetch(new URL('/settings/invalid-recipes?file=acme.json', url))).status, 404)
 	}
 )

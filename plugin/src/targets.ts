@@ -19,7 +19,15 @@ import {
 } from './contracts.ts'
 import { executableOnPath } from './sessions.ts'
 import { changesData, resetCommand } from './resets.ts'
-import { declaredEntryPoints, fitsEntries, recipes, toolExecutable, type ReachCheck, type Recipe } from './recipes.ts'
+import {
+	declaredEntryPoints,
+	fitsEntries,
+	recipes,
+	requireValidRecipes,
+	toolExecutable,
+	type ReachCheck,
+	type Recipe,
+} from './recipes.ts'
 import { spawnSync } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -84,6 +92,10 @@ function insertRequest(
 	input: Omit<TargetRequest, 'tools'> & { tools?: RequestedTool[] }
 ): Change {
 	const request = targetRequestCheck(input)
+	requireValidRecipes(
+		store.workspace,
+		request.tools.map((tool) => tool.name)
+	)
 	const existing = currentRequest(store, request.targetId)
 	if (existing) {
 		requireCondition(
@@ -200,6 +212,10 @@ function save(store: Store, actor: string | undefined, input: { targetId: string
 function insertProfile(store: Store, operationId: string, input: { targetId: string; profile: unknown }): Change {
 	const request = targetRequest(store, input.targetId)
 	const profile = profileCheck(input.profile)
+	requireValidRecipes(
+		store.workspace,
+		profile.tools.map((tool) => tool.name)
+	)
 	requireCondition(
 		profile.targetId === request.targetId,
 		`Profile targetId ${profile.targetId} differs from ${request.targetId}`

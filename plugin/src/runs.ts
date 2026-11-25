@@ -52,7 +52,7 @@ import {
 	wrappedValue,
 } from './expectation.ts'
 import { checkRequest, requestMatches } from './routes.ts'
-import { choiceText, evidenceChoices, evidenceKindOfFile, givenBy } from './recipes.ts'
+import { choiceText, evidenceChoices, evidenceKindOfFile, givenBy, requireValidRecipes } from './recipes.ts'
 
 export type RunRow = {
 	run_id: string
@@ -412,6 +412,10 @@ function begin(
 				}
 			}
 			const { plan, sha256 } = checked.revision
+			requireValidRecipes(
+				store.workspace,
+				targetRevision(store, plan.target.targetId, plan.target.revision).profile.tools.map((tool) => tool.name)
+			)
 			const dataProfile = targetRevision(store, plan.target.targetId).profile
 			const marker = markerFor(store, runId)
 			const facts = runPrepare(store.workspace, dataProfile.reset, marker)

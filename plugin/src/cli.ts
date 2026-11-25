@@ -370,14 +370,16 @@ const commands: Record<string, Command> = {
 	},
 	'recipe list': {
 		positionals: [],
-		workspaceRun: (_args, context) => completed('recipes', { recipes: listRecipes(context.workspace) }),
-		print: (reply) => ({
-			lines: (reply.data.recipes as ReturnType<typeof listRecipes>).map(({ recipe, source, path }) => [
-				recipe.name,
-				source,
-				path,
-			]),
-		}),
+		workspaceRun: (_args, context) => completed('recipes', listRecipes(context.workspace)),
+		print: (reply) => {
+			const { recipes, invalid } = reply.data as ReturnType<typeof listRecipes>
+			return {
+				lines: [
+					...recipes.map(({ recipe, source, path }) => [recipe.name, source, path]),
+					...invalid.map(({ name, path, error }) => [name, 'invalid', path, error]),
+				],
+			}
+		},
 	},
 	init: {
 		positionals: [],

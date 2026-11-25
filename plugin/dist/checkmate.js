@@ -11921,18 +11921,14 @@ function readRecipe(path, source) {
   const usagePath = join2(dirname(path), usage2);
   if (!lstatSync(usagePath, { throwIfNoEntry: false })?.isFile())
     return refuse4(`usage must name a regular Markdown file beside the recipe: ${usagePath}.`);
+  let usageText = "";
   try {
-    return {
-      source,
-      path,
-      recipe,
-      jsonText,
-      usagePath,
-      usageText: readFileSync(usagePath, "utf8")
-    };
+    usageText = readFileSync(usagePath, "utf8");
   } catch (error) {
-    return refuse4(`usage could not read ${usagePath}: ${error.message}`);
+    refuse4(`usage could not read ${usagePath}: ${error.message}`);
   }
+  if (!isText(usageText)) refuse4(`the usage file ${usagePath} is empty. Write the usage text for testers in it.`);
+  return { source, path, recipe, jsonText, usagePath, usageText };
 }
 function readEntryPoints(value2, refuse4) {
   const entryPointProblem = "entryPoints must be a list of {name, kind (url, command, or value), purpose, pattern (optional regular expression)}.";
@@ -11990,60 +11986,68 @@ function readServer(recipe, refuse4) {
 function isValueName(value2) {
   return typeof value2 === "string" && /^[a-z][a-z0-9_]{0,39}$/.test(value2);
 }
-function readRecipes(folder, source) {
-  return readdirSync(folder).filter((file) => file.endsWith(".json")).sort().map((file) => readRecipe(join2(folder, file), source));
+function recipeFiles(folder) {
+  return readdirSync(folder).filter((file) => file.endsWith(".json")).sort().map((file) => join2(folder, file));
+}
+function readCustom(path) {
+  try {
+    return readRecipe(path, "custom");
+  } catch (error) {
+    return { source: "custom", name: basename(path, ".json"), path, error: error.message };
+  }
+}
+function conflict(entry, accepted, reserved) {
+  const { recipe } = entry;
+  const owner = reserved.get(recipe.name.toLowerCase());
+  if (owner) return `name ${recipe.name} is in use by the ${owner}. Choose a different name.`;
+  if (recipe.kind === "mcp") {
+    const server = serverName(recipe).toLowerCase();
+    const known = accepted.find(
+      (other) => other.recipe.kind === "mcp" && serverName(other.recipe).toLowerCase() === server
+    );
+    if (known)
+      return `name ${recipe.name} gives the MCP server name ${serverName(recipe)}, which is in use. Choose a different name.`;
+  }
+  for (const [value2, reading] of Object.entries(recipe.observeFrom)) {
+    const known = accepted.find((other) => (other.recipe.observeFrom[value2] ?? reading) !== reading);
+    if (known)
+      return `observeFrom ${value2} is ${reading}, but it is ${known.recipe.observeFrom[value2]} in recipe ${known.recipe.name}.`;
+  }
+  const shape = (point) => JSON.stringify([point.kind, point.purpose, point.pattern ?? null]);
+  for (const point of recipe.entryPoints ?? []) {
+    const known = accepted.find(
+      (other) => other.recipe.entryPoints?.some((item) => item.name === point.name && shape(item) !== shape(point))
+    );
+    if (known) return `entry point ${point.name} differs from the one in recipe ${known.recipe.name}.`;
+  }
+  for (const [extension, kind] of Object.entries(recipe.evidenceExtensions ?? {})) {
+    const known = accepted.find((other) => (other.recipe.evidenceExtensions?.[extension] ?? kind) !== kind);
+    if (known)
+      return `evidenceExtensions ${extension} is ${kind}, but it is ${known.recipe.evidenceExtensions[extension]} in recipe ${known.recipe.name}.`;
+  }
+  return null;
 }
 function checkRecipes(found) {
-  const names = /* @__PURE__ */ new Map();
-  const serverNames = /* @__PURE__ */ new Set();
-  for (const entry of found) {
-    const { name: name2, kind } = entry.recipe;
-    const known = names.get(name2.toLowerCase());
-    if (known)
-      throw Error(
-        `Tool recipe ${entry.path} is not valid: name ${name2} is in use by the ${known.source} recipe ${known.path}. Choose a different name.`
-      );
-    names.set(name2.toLowerCase(), entry);
-    if (kind !== "mcp") continue;
-    const server = serverName(entry.recipe);
-    if (serverNames.has(server.toLowerCase()))
-      throw Error(
-        `Tool recipe ${entry.path} is not valid: name ${name2} gives the MCP server name ${server}, which is in use. Choose a different name.`
-      );
-    serverNames.add(server.toLowerCase());
+  const reserved = /* @__PURE__ */ new Map();
+  const catalog2 = { recipes: [], invalid: [] };
+  for (const item of found) {
+    if ("error" in item) {
+      catalog2.invalid.push(item);
+      if (!reserved.has(item.name.toLowerCase()))
+        reserved.set(item.name.toLowerCase(), `invalid custom recipe ${item.path}`);
+      continue;
+    }
+    const problem = conflict(item, catalog2.recipes, reserved);
+    if (problem) {
+      const error = `Tool recipe ${item.path} is not valid: ${problem}`;
+      if (item.source === "built-in") throw Error(error);
+      catalog2.invalid.push({ source: "custom", name: item.recipe.name, path: item.path, error });
+      continue;
+    }
+    reserved.set(item.recipe.name.toLowerCase(), `${item.source} recipe ${item.path}`);
+    catalog2.recipes.push(item);
   }
-  const readings = /* @__PURE__ */ new Map();
-  for (const { recipe, path } of found)
-    for (const [value2, reading] of Object.entries(recipe.observeFrom)) {
-      const known = readings.get(value2);
-      if (known && known.reading !== reading)
-        throw Error(
-          `Tool recipe ${path} is not valid: observeFrom ${value2} is ${reading}, but it is ${known.reading} in ${known.from}.`
-        );
-      readings.set(value2, { reading, from: `recipe ${recipe.name}` });
-    }
-  const entryPoints2 = /* @__PURE__ */ new Map();
-  for (const { recipe, path } of found)
-    for (const entry of recipe.entryPoints ?? []) {
-      const text2 = JSON.stringify([entry.kind, entry.purpose, entry.pattern ?? null]);
-      const known = entryPoints2.get(entry.name);
-      if (known && known.entry !== text2)
-        throw Error(
-          `Tool recipe ${path} is not valid: entry point ${entry.name} differs from the one in ${known.from}.`
-        );
-      entryPoints2.set(entry.name, { entry: text2, from: `recipe ${recipe.name}` });
-    }
-  const kinds3 = /* @__PURE__ */ new Map();
-  for (const { recipe, path } of found)
-    for (const [extension, kind] of Object.entries(recipe.evidenceExtensions ?? {})) {
-      const known = kinds3.get(extension);
-      if (known && known.kind !== kind)
-        throw Error(
-          `Tool recipe ${path} is not valid: evidenceExtensions ${extension} is ${kind}, but it is ${known.kind} in ${known.from}.`
-        );
-      kinds3.set(extension, { kind, from: `recipe ${recipe.name}` });
-    }
-  return found;
+  return catalog2;
 }
 function customFolder(workspace2) {
   const checkmate = join2(workspace2, ".checkmate");
@@ -12054,10 +12058,13 @@ function customFolder(workspace2) {
   }
   return folder;
 }
-function listRecipes(workspace2) {
-  builtIn ??= readRecipes(join2(pluginRoot, "recipes"), "built-in");
+function catalogFiles(workspace2) {
+  builtIn ??= recipeFiles(join2(pluginRoot, "recipes")).map((path) => readRecipe(path, "built-in"));
   const folder = customFolder(workspace2);
-  return checkRecipes([...builtIn, ...existsSync2(folder) ? readRecipes(folder, "custom") : []]);
+  return [...builtIn, ...existsSync2(folder) ? recipeFiles(folder).map(readCustom) : []];
+}
+function listRecipes(workspace2) {
+  return checkRecipes(catalogFiles(workspace2));
 }
 function addRecipe(workspace2, path) {
   const entry = readRecipe(path, "custom");
@@ -12076,7 +12083,8 @@ function addRecipe(workspace2, path) {
     throw error;
   }
   try {
-    checkRecipes([...listRecipes(workspace2), entry]);
+    const refused3 = checkRecipes([...catalogFiles(workspace2), entry]).invalid.find((item) => item.path === path);
+    if (refused3) throw Error(refused3.error);
     if (existsSync2(usagePath))
       throw Error(`usage file ${usagePath} already exists. Choose a different usage file name.`);
     const json = join2(lock, basename(path));
@@ -12096,14 +12104,14 @@ function addRecipe(workspace2, path) {
   }
 }
 function recipes(workspace2) {
-  return listRecipes(workspace2).map(({ recipe }) => recipe);
+  return listRecipes(workspace2).recipes.map(({ recipe }) => recipe);
 }
 function filled(text2, values) {
   return text2.replaceAll("{session}", values.session).replaceAll("{workFolder}", values.workFolder);
 }
 function testerEnvironment(workspace2, values, toolNames2) {
   return Object.fromEntries(
-    listRecipes(workspace2).filter(
+    listRecipes(workspace2).recipes.filter(
       ({ source, recipe }) => recipe.kind === "cli" && (source === "built-in" || toolNames2.includes(recipe.name))
     ).flatMap(
       ({ recipe }) => Object.entries(recipe.environment).map(([name2, value2]) => [name2, filled(value2, values)])
@@ -12111,12 +12119,24 @@ function testerEnvironment(workspace2, values, toolNames2) {
   );
 }
 function shellInstructions(workspace2, values, toolNames2) {
-  return listRecipes(workspace2).flatMap(
+  return listRecipes(workspace2).recipes.flatMap(
     ({ recipe, source }) => recipe.shellInstruction && (source === "built-in" || toolNames2.includes(recipe.name)) ? [filled(recipe.shellInstruction, values)] : []
   );
 }
+function requireValidRecipes(workspace2, toolNames2) {
+  const { recipes: recipes2, invalid } = listRecipes(workspace2);
+  const broken = invalid.filter(
+    (item) => toolNames2.includes(item.name) && !recipes2.some(({ recipe }) => recipe.name === item.name)
+  );
+  if (!broken.length) return recipes2;
+  throw new Refusal(
+    "prohibited",
+    `The recipe of tool ${broken.map((item) => item.name).join(", ")} is not valid. ${broken.map((item) => item.error).join(" ")}`,
+    `Correct ${broken.map((item) => item.path).join(", ")} and the usage file that it names, then run checkmate recipe list to check the recipes. Or remove the tool from the target.`
+  );
+}
 function recipesFor(workspace2, toolNames2) {
-  return recipes(workspace2).filter((recipe) => toolNames2.includes(recipe.name));
+  return requireValidRecipes(workspace2, toolNames2).map(({ recipe }) => recipe).filter((recipe) => toolNames2.includes(recipe.name));
 }
 function toolExecutable(recipe) {
   return recipe.server?.command ?? recipe.name;
@@ -12139,7 +12159,7 @@ function fitsEntries(recipe, names) {
   return (recipe.entryPoints ?? []).every((entry) => names.includes(entry.name));
 }
 function toolFolders(workspace2, toolNames2) {
-  return listRecipes(workspace2).flatMap(
+  return listRecipes(workspace2).recipes.flatMap(
     ({ recipe, source }) => source === "built-in" || toolNames2.includes(recipe.name) ? recipe.workspaceFolders : []
   );
 }
@@ -12147,7 +12167,7 @@ function serverName(recipe) {
   return recipe.name.replaceAll("-", "_");
 }
 function usageFiles(workspace2, toolNames2) {
-  return listRecipes(workspace2).filter(({ recipe }) => toolNames2.includes(recipe.name)).map(({ usagePath }) => usagePath);
+  return listRecipes(workspace2).recipes.filter(({ recipe }) => toolNames2.includes(recipe.name)).map(({ usagePath }) => usagePath);
 }
 function choices(workspace2, toolNames2, values) {
   const found = /* @__PURE__ */ new Map();
@@ -13244,6 +13264,10 @@ function openTarget(store, actor, input) {
 }
 function insertRequest(store, operationId, input) {
   const request2 = targetRequestCheck(input);
+  requireValidRecipes(
+    store.workspace,
+    request2.tools.map((tool) => tool.name)
+  );
   const existing = currentRequest(store, request2.targetId);
   if (existing) {
     requireCondition(
@@ -13351,6 +13375,10 @@ function save(store, actor, input) {
 function insertProfile(store, operationId, input) {
   const request2 = targetRequest(store, input.targetId);
   const profile = profileCheck(input.profile);
+  requireValidRecipes(
+    store.workspace,
+    profile.tools.map((tool) => tool.name)
+  );
   requireCondition(
     profile.targetId === request2.targetId,
     `Profile targetId ${profile.targetId} differs from ${request2.targetId}`
@@ -18682,6 +18710,10 @@ function begin(store, actor, input, permanent) {
         };
       }
       const { plan, sha256 } = checked.revision;
+      requireValidRecipes(
+        store.workspace,
+        targetRevision(store, plan.target.targetId, plan.target.revision).profile.tools.map((tool) => tool.name)
+      );
       const dataProfile = targetRevision(store, plan.target.targetId).profile;
       const marker = markerFor(store, runId);
       const facts3 = runPrepare(store.workspace, dataProfile.reset, marker);
@@ -20331,6 +20363,10 @@ function insertExploration(store, input, operationId, at2) {
   const { target: pinned2 } = planRequest(store, planId);
   const target = executionTarget(store, planId, pinned2.profile.targetId, pinned2.revision);
   const mode = input.mode ?? "exploratory";
+  requireValidRecipes(
+    store.workspace,
+    planTools(planRequest(store, planId).request, target.profile).map((tool) => tool.name)
+  );
   const instance = runInstance(store, target.profile.targetId, input.instance, build);
   const explorationId = input.explorationId ?? nextExplorationId(store);
   const revision2 = latestRevision(store, planId);
@@ -35675,12 +35711,22 @@ function harnessPage(store, context, env, form = null, model = null, testerModel
 
 // plugin/src/ui/recipes.ts
 var addCommand = "checkmate recipe add --file <name>.json";
+var agentOnly = "\n> **Agent only:** This file contains repository or workflow instructions for coding agents.\n\n";
 function readCatalog(workspace2) {
   try {
-    return { entries: listRecipes(workspace2), error: null };
+    return { ...listRecipes(workspace2), error: null };
   } catch (error) {
-    return { entries: [], error: error.message };
+    return { recipes: [], invalid: [], error: error.message };
   }
+}
+function fileName2(path) {
+  return path.split(/[\\/]/).at(-1);
+}
+function invalidHref(item) {
+  return `/settings/invalid-recipes?file=${encodeURIComponent(fileName2(item.path))}`;
+}
+function invalidPill() {
+  return html2`<span class="sp-pill red" data-source="invalid">invalid</span>`;
 }
 function sourcePill(source) {
   return html2`<span class="sp-pill${source === "custom" ? " blue" : ""}" data-source="${source}">${source}</span>`;
@@ -35701,8 +35747,8 @@ function detection(recipe) {
   return recipe.detect === "runtime" ? html2`The Node.js that runs Checkmate` : html2`<code>${toolExecutable(recipe)}</code> on <code>PATH</code>`;
 }
 function recipesPage(workspace2) {
-  const { entries, error } = readCatalog(workspace2);
-  const rows2 = entries.map(
+  const { recipes: recipes2, invalid, error } = readCatalog(workspace2);
+  const rows2 = recipes2.map(
     ({ source, recipe }) => listRow(`recipe:${recipe.name}`, `/settings/recipes/${recipe.name}`, recipe.name, sourcePill(source), [
       recipe.purpose,
       html2`<span class="muted"
@@ -35710,7 +35756,13 @@ function recipesPage(workspace2) {
 			>`
     ])
   );
-  const custom = entries.some((entry) => entry.source === "custom");
+  const invalidRows = invalid.map(
+    (item) => listRow(`invalid:${fileName2(item.path)}`, invalidHref(item), item.name, invalidPill(), [
+      "Checkmate does not use this recipe.",
+      html2`<span class="reason">${item.error}</span>`
+    ])
+  );
+  const custom = recipes2.some((entry) => entry.source === "custom") || invalid.length;
   const body = html2`${heading(
     "Recipes",
     html2`The tools that testers can use. Built-in recipes come with Checkmate. Custom recipes come from
@@ -35718,8 +35770,8 @@ function recipesPage(workspace2) {
   )}
 		<div data-region="recipes">
 			${error ? banner("fail", html2`Checkmate cannot read the recipes. ${error}`) : ""}
-			${entries.length ? html2`<ul class="q-items l-rows">
-							${rows2}
+			${rows2.length + invalidRows.length ? html2`<ul class="q-items l-rows">
+							${rows2} ${invalidRows}
 						</ul>` : ""}
 			${custom || error ? "" : emptyNotice(
     "No custom recipe yet.",
@@ -35792,19 +35844,43 @@ function testingFacts(recipe) {
 		${recipe.delegatedInstruction ? fact("Delegated instruction", recipe.delegatedInstruction) : ""}
 	</dl>`;
 }
+function catalogFailure(title2, error) {
+  return settingsPage(
+    "/settings/recipes",
+    title2,
+    ["recipes"],
+    html2`<div data-region="recipe">${banner("fail", html2`Checkmate cannot read the recipes. ${error}`)}</div>`
+  );
+}
+function invalidRecipePage(workspace2, file) {
+  const { invalid, error } = readCatalog(workspace2);
+  if (error) return catalogFailure(file, error);
+  const item = invalid.find((candidate) => fileName2(candidate.path) === file);
+  if (!item) return null;
+  const body = html2`<div data-region="recipe">
+		${heading(item.name, "Checkmate does not use this recipe. A target, plan, run, or test that names it is refused.", html2`<div class="meta">${invalidPill()}</div>`)}
+		<div class="main-col">
+			<section aria-labelledby="error">
+				<h2 id="error">Error</h2>
+				<pre class="sp-code" tabindex="0" data-error>${item.error}</pre>
+			</section>
+			<dl class="facts">
+				${fact("Source", sourcePill(item.source))} ${fact("File", html2`<code>${item.path}</code>`, "path")}
+				${fact("Fix", html2`Correct the file and the usage file that it names. The page shows the recipe when it is valid.`)}
+			</dl>
+			<p class="back"><a href="/settings/recipes">All recipes</a></p>
+		</div>
+	</div>`;
+  return settingsPage("/settings/recipes", file, ["recipes"], body);
+}
 function recipePage(workspace2, name2) {
-  const { entries, error } = readCatalog(workspace2);
-  if (error)
-    return settingsPage(
-      "/settings/recipes",
-      name2,
-      ["recipes"],
-      html2`<div data-region="recipe">${banner("fail", html2`Checkmate cannot read the recipes. ${error}`)}</div>`
-    );
-  const entry = entries.find(({ recipe: recipe2 }) => recipe2.name === name2);
+  const { recipes: recipes2, error } = readCatalog(workspace2);
+  if (error) return catalogFailure(name2, error);
+  const entry = recipes2.find(({ recipe: recipe2 }) => recipe2.name === name2);
   if (!entry) return null;
-  const { recipe, usagePath, usageText, jsonText } = entry;
-  const usageName = usagePath.split(/[\\/]/).at(-1);
+  const { recipe, usagePath, jsonText } = entry;
+  const usageText = entry.source === "built-in" ? entry.usageText.replace(agentOnly, "\n") : entry.usageText;
+  const usageName = fileName2(usagePath);
   const body = html2`<div data-region="recipe">
 		${heading(recipe.name, recipe.purpose, html2`<div class="meta">${sourcePill(entry.source)}</div>`)}
 		<div class="main-col">
@@ -42325,7 +42401,7 @@ data: ${matched.join(",") || "*"}
     for (const client of clients) client.res.write("data: *\n\n");
   }, 1e3);
   const recipeFolder = join21(workspace2, ".checkmate", "recipes");
-  const recipeFiles = () => {
+  const recipeFiles2 = () => {
     try {
       return readdirSync4(recipeFolder).sort().map((name2) => {
         const file = statSync6(join21(recipeFolder, name2), { throwIfNoEntry: false });
@@ -42335,9 +42411,9 @@ data: ${matched.join(",") || "*"}
       return "";
     }
   };
-  let recipeState = recipeFiles();
+  let recipeState = recipeFiles2();
   const recipeWatch = setInterval(() => {
-    const current2 = recipeFiles();
+    const current2 = recipeFiles2();
     if (current2 === recipeState) return;
     recipeState = current2;
     for (const client of clients)
@@ -42527,6 +42603,13 @@ data: ${matched.join(",") || "*"}
     if (pathname === "/settings") return redirect(request2.res, "/settings/targets");
     if (pathname === "/settings/targets") return render(request2, targetsPage(store));
     if (pathname === "/settings/recipes") return render(request2, recipesPage(options3.workspace));
+    if (pathname === "/settings/invalid-recipes") {
+      const file2 = searchParams.get("file") ?? "";
+      const page = invalidRecipePage(options3.workspace, file2);
+      if (!page)
+        return errorPage(request2, 404, "Recipe not found", `Checkmate has no invalid recipe file ${file2}.`);
+      return render(request2, page);
+    }
     const recipe = routes.recipe.exec(pathname);
     if (recipe) {
       const page = recipePage(options3.workspace, recipe[1]);
@@ -44778,14 +44861,16 @@ var commands = {
   },
   "recipe list": {
     positionals: [],
-    workspaceRun: (_args, context) => completed("recipes", { recipes: listRecipes(context.workspace) }),
-    print: (reply) => ({
-      lines: reply.data.recipes.map(({ recipe, source, path }) => [
-        recipe.name,
-        source,
-        path
-      ])
-    })
+    workspaceRun: (_args, context) => completed("recipes", listRecipes(context.workspace)),
+    print: (reply) => {
+      const { recipes: recipes2, invalid } = reply.data;
+      return {
+        lines: [
+          ...recipes2.map(({ recipe, source, path }) => [recipe.name, source, path]),
+          ...invalid.map(({ name: name2, path, error }) => [name2, "invalid", path, error])
+        ]
+      };
+    }
   },
   init: {
     positionals: [],

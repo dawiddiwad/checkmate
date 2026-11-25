@@ -1508,7 +1508,7 @@ export function runDetail(store: Store, runId: string) {
 		instance: findInstance(store, run.row.target_id, run.row.instance_id),
 		build: run.row.application_build,
 		startedAt: run.row.started_at,
-		browserSession: run.row.browser_session,
+		toolSession: run.row.tool_session,
 		deadlineSeconds: run.row.deadline_seconds,
 		clock,
 		request: run.request,

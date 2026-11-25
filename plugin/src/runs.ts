@@ -70,7 +70,7 @@ export type RunRow = {
 	application_build: string
 	request: string
 	started_at: string
-	browser_session: string
+	tool_session: string
 	deadline_seconds: number
 }
 export type RunRequest = {
@@ -462,10 +462,10 @@ function begin(
 						}
 					: {}),
 			}
-			const browserSession = `cm-${randomUUID()}`
+			const toolSession = `cm-${randomUUID()}`
 			execute(
 				store,
-				'INSERT INTO runs (run_id, plan_id, plan_revision, plan_sha256, target_id, target_revision, instance_id, application_build, request, started_at, browser_session, deadline_seconds, operation_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+				'INSERT INTO runs (run_id, plan_id, plan_revision, plan_sha256, target_id, target_revision, instance_id, application_build, request, started_at, tool_session, deadline_seconds, operation_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
 				runId,
 				plan.planId,
 				plan.revision,
@@ -476,7 +476,7 @@ function begin(
 				checked.build,
 				canonical(request),
 				at,
-				browserSession,
+				toolSession,
 				timeoutSeconds,
 				operationId
 			)
@@ -496,7 +496,7 @@ function begin(
 					tests: checked.tests,
 					leftOut: checked.reply.data.leftOut,
 					startedAt: at,
-					browserSession,
+					toolSession,
 					deadlineSeconds: timeoutSeconds,
 					deadline: new Date(Date.parse(at) + timeoutSeconds * 1000).toISOString(),
 					evidenceDirectory: evidenceDirectory(runId),
@@ -1385,7 +1385,7 @@ export function resumeRun(store: Store, actor: string | undefined, input: Resume
 			reply: completed(input.runId, {
 				runId: input.runId,
 				attempt,
-				browserSession: run.row.browser_session,
+				toolSession: run.row.tool_session,
 				deadlineSeconds: run.row.deadline_seconds,
 				deadline: new Date(Date.parse(at) + run.row.deadline_seconds * 1000).toISOString(),
 				evidenceDirectory: evidenceDirectory(input.runId),

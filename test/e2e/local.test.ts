@@ -5013,6 +5013,14 @@ test('Record each test with its own worker — a silent worker is retried once, 
 		{ test_id: 'T3', outcome: 'error' },
 		{ test_id: 'T4', outcome: 'blocked' },
 	])
+	const cleanup = await ok([
+		'query',
+		"SELECT json_extract(body, '$.cleanup') AS cleanup FROM results WHERE run_id = 'run-1'",
+	])
+	assert.deepEqual(JSON.parse(cleanup.rows[0].cleanup), {
+		status: 'not_applicable',
+		reason: 'No tool session was opened.',
+	})
 })
 
 test('Refuse a run on a plan that holds a compound assertion — a stored check with two values passed against one page.', async (t) => {
@@ -7985,7 +7993,8 @@ test('The per-test browser recipe acts only by element refs from a snapshot, wai
 	t.after(() => app.close())
 	const bin = directory(t)
 	const tool = join(bin, 'playwright-cli')
-	writeFileSync(tool, '#!/bin/sh\necho 1.0.0\n')
+	const toolLog = join(directory(t), 'tool.txt')
+	writeFileSync(tool, `#!/bin/sh\necho "$@" >> '${toolLog}'\necho 1.0.0\n`)
 	chmodSync(tool, 0o755)
 	const chrome = join(workspace, 'fake-chrome')
 	writeFileSync(chrome, '#!/bin/sh\necho "Chromium 124.0.6367.60"\n')
@@ -8055,13 +8064,101 @@ test('The per-test browser recipe acts only by element refs from a snapshot, wai
 		FAKE_CHECKMATE_CLI: binary,
 		FAKE_RUN: 'run-1',
 	}
-	const delegated = await inputCommand(workspace, piEnv, '', 'delegate', 'execute', 'run-1')
+	const children = join(directory(t), 'children.txt')
+	const delegated = await inputCommand(
+		workspace,
+		{ ...piEnv, FAKE_PI_ENV: children },
+		'',
+		'delegate',
+		'execute',
+		'run-1'
+	)
 	assert.equal(delegated.body.status, 'completed', delegated.output)
 	const recipe = readFileSync(prompts, 'utf8')
 	assert.match(recipe, /Act only by an element ref from the latest snapshot/)
 	assert.match(recipe, /Never invent a selector or a label name/)
 	assert.match(recipe, /wait one second, snapshot again, and retry once/)
 	assert.match(recipe, /close the test as error with the snapshot excerpt as evidence/)
+	const shown = await command(workspace, env, 'run', 'show', 'run-1')
+	const session = shown.body.toolSession
+	assert.match(session, /^cm-[0-9a-f-]{36}$/, shown.output)
+	assert.match(
+		recipe,
+		new RegExp(
+			`Browser session: ${session}\\. Open the page: PLAYWRIGHT_MCP_OUTPUT_DIR=\\S+ playwright-cli -s=${session} open <url>`
+		)
+	)
+	const outputFolder = realpathSync(workspace) + '/.checkmate/tmp/run-1'
+	for (const line of readFileSync(children, 'utf8').trim().split('\n'))
+		assert.deepEqual(JSON.parse(line), {
+			PLAYWRIGHT_MCP_OUTPUT_DIR: outputFolder,
+			PLAYWRIGHT_CLI_SESSION: session,
+		})
+	assert.match(readFileSync(toolLog, 'utf8'), new RegExp(`^-s=${session} close$`, 'm'))
+	const cleanup = await command(
+		workspace,
+		env,
+		'query',
+		"SELECT json_extract(body, '$.cleanup') AS cleanup FROM results WHERE run_id = 'run-1'"
+	)
+	assert.deepEqual(JSON.parse(cleanup.body.rows[0].cleanup), {
+		status: 'completed',
+		reason: 'The browser session was closed.',
+	})
+})
+
+test('A run begun by v0.8.2 keeps its stored browser session as the tool session — resume, delegated execute, and close use it.', async (t) => {
+	const workspace = directory(t)
+	mkdirSync(join(workspace, '.checkmate'))
+	writeFileSync(
+		join(workspace, '.checkmate/checkmate.db'),
+		gunzipSync(readFileSync(join(root, 'test/e2e/fixtures/workspace-run-v0.8.2.db.gz')))
+	)
+	const session = 'cm-23c127b4-93c9-492b-a4b9-c7a50182406c'
+	const bin = directory(t)
+	const toolLog = join(directory(t), 'tool.txt')
+	writeFileSync(join(bin, 'playwright-cli'), `#!/bin/sh\necho "$@" >> '${toolLog}'\necho 1.0.0\n`)
+	chmodSync(join(bin, 'playwright-cli'), 0o755)
+	copyFileSync(join(root, 'test/e2e/per-test-host.mjs'), join(bin, 'pi'))
+	chmodSync(join(bin, 'pi'), 0o755)
+	const env = {
+		...process.env,
+		PATH: `${bin}${delimiter}${process.env.PATH}`,
+		CHECKMATE_ACTOR: 'oracle',
+		CHECKMATE_HARNESS: 'pi',
+	}
+	const shown = await command(workspace, env, 'run', 'show', 'run-1')
+	assert.equal(shown.code, 0, shown.output)
+	assert.equal(shown.body.toolSession, session)
+	assert.equal('browserSession' in shown.body, false)
+	const resumed = await command(workspace, env, 'run', 'resume', 'run-1')
+	assert.equal(resumed.code, 0, resumed.output)
+	assert.equal(resumed.body.toolSession, session)
+	const prompts = join(directory(t), 'prompts.txt')
+	const children = join(directory(t), 'children.txt')
+	const delegated = await command(
+		workspace,
+		{
+			...env,
+			FAKE_PI_LOG: join(directory(t), 'log.txt'),
+			FAKE_PI_PROMPTS: prompts,
+			FAKE_PI_ENV: children,
+			FAKE_CHECKMATE_CLI: binary,
+			FAKE_RUN: 'run-1',
+		},
+		'delegate',
+		'execute',
+		'run-1'
+	)
+	assert.equal(delegated.body.status, 'completed', delegated.output)
+	assert.match(readFileSync(prompts, 'utf8'), new RegExp(`playwright-cli -s=${session} snapshot`))
+	assert.equal(JSON.parse(readFileSync(children, 'utf8').split('\n')[0]).PLAYWRIGHT_CLI_SESSION, session)
+	assert.match(readFileSync(toolLog, 'utf8'), new RegExp(`^-s=${session} close$`, 'm'))
+	const columns = await command(workspace, env, 'query', "SELECT name FROM pragma_table_info('runs')")
+	assert.equal(columns.code, 0, columns.output)
+	const names = columns.body.rows.map((row: { name: string }) => row.name)
+	assert(names.includes('tool_session'), columns.output)
+	assert(!names.includes('browser_session'), columns.output)
 })
 
 test('Show the gap question beside a recorded answer in the saved list — an answer to another question is visible.', async (t) => {

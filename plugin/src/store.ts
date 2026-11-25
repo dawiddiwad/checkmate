@@ -19,7 +19,7 @@ export type Store = { db: DatabaseSync; workspace: string; path: string; via?: s
 export type Operation = { actor: string | undefined; command: string; subject: string; input: unknown }
 
 export const contractVersion = 'toolkit-2'
-const schemaVersion = '7'
+const schemaVersion = '8'
 
 const operationReference = 'REFERENCES operations(id) DEFERRABLE INITIALLY DEFERRED'
 const tables = `
@@ -117,7 +117,7 @@ CREATE TABLE runs (
 	application_build TEXT NOT NULL,
 	request TEXT NOT NULL,
 	started_at TEXT NOT NULL,
-	browser_session TEXT NOT NULL,
+	tool_session TEXT NOT NULL,
 	deadline_seconds INTEGER NOT NULL,
 	operation_id TEXT NOT NULL ${operationReference},
 	FOREIGN KEY (plan_id, plan_revision) REFERENCES plan_revisions(plan_id, revision),
@@ -416,6 +416,11 @@ function hasViaColumn(db: DatabaseSync) {
 	return Boolean(db.prepare("SELECT 1 FROM pragma_table_info('operations') WHERE name = 'via'").get())
 }
 
+// Schema 7 named the session of a run browser_session. It is the session of any test tool now.
+function hasToolSessionColumn(db: DatabaseSync) {
+	return Boolean(db.prepare("SELECT 1 FROM pragma_table_info('runs') WHERE name = 'tool_session'").get())
+}
+
 function hasTable(db: DatabaseSync, name: string) {
 	return Boolean(db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(name))
 }
@@ -494,10 +499,11 @@ function openStoreOnce(workspace: string): Store {
 		}
 		const version = String(versionOf(db))
 		if (version === '3') addExplorationTables(db)
-		if (['3', '4', '5', '6'].includes(version)) setSchemaVersion(db, schemaVersion)
-		if (['3', '4', '5', '6', schemaVersion].includes(version)) {
+		if (['3', '4', '5', '6', '7'].includes(version)) setSchemaVersion(db, schemaVersion)
+		if (['3', '4', '5', '6', '7', schemaVersion].includes(version)) {
 			addMissingTables(db)
 			if (!hasViaColumn(db)) db.exec('ALTER TABLE operations ADD COLUMN via TEXT')
+			if (!hasToolSessionColumn(db)) db.exec('ALTER TABLE runs RENAME COLUMN browser_session TO tool_session')
 		}
 		db.exec('COMMIT')
 	} catch (error) {
@@ -518,6 +524,7 @@ export function openReadOnlyStore(workspace: string): Store {
 				hasTable(db, 'meta') &&
 				versionOf(db) === schemaVersion &&
 				hasViaColumn(db) &&
+				hasToolSessionColumn(db) &&
 				addedTables.every(({ ddl }) => hasTable(db, tableNamesOf(ddl)[0]))
 			)
 				return { db, workspace, path }

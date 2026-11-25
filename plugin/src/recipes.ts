@@ -10,6 +10,8 @@ export type Recipe = {
 	detect: 'path' | 'runtime'
 	environment: Record<string, string>
 	shellInstruction?: string
+	delegatedInstruction?: string
+	closeSession?: string[]
 	workspaceFolders: string[]
 	observeFrom: Record<string, ObserveReading>
 	evidence: string[]
@@ -69,6 +71,13 @@ function readRecipe(folder: string, file: string): Recipe {
 		refuse('environment must be an object of texts.')
 	if (recipe.shellInstruction !== undefined && !isText(recipe.shellInstruction))
 		refuse('shellInstruction must be a text when it is given.')
+	if (recipe.delegatedInstruction !== undefined && !isText(recipe.delegatedInstruction))
+		refuse('delegatedInstruction must be a text when it is given.')
+	if (
+		recipe.closeSession !== undefined &&
+		(!Array.isArray(recipe.closeSession) || !recipe.closeSession.length || !recipe.closeSession.every(isText))
+	)
+		refuse('closeSession must be a list of arguments when it is given.')
 	if (!Array.isArray(recipe.workspaceFolders) || !recipe.workspaceFolders.every(isText))
 		refuse('workspaceFolders must be a list of folder names.')
 	const observeFrom: unknown = recipe.observeFrom
@@ -149,7 +158,7 @@ export function recipes() {
 	return loaded
 }
 
-function filled(text: string, values: SessionValues) {
+export function filled(text: string, values: SessionValues) {
 	return text.replaceAll('{session}', values.session).replaceAll('{workFolder}', values.workFolder)
 }
 
@@ -163,6 +172,11 @@ export function testerEnvironment(values: SessionValues) {
 
 export function shellInstructions(values: SessionValues) {
 	return recipes().flatMap((recipe) => (recipe.shellInstruction ? [filled(recipe.shellInstruction, values)] : []))
+}
+
+// The recipes of the tools that a target profile names.
+export function profileRecipes(tools: Array<{ name: string; kind: string }>) {
+	return recipes().filter((recipe) => tools.some((tool) => tool.name === recipe.name && tool.kind === recipe.kind))
 }
 
 export function toolFolders() {

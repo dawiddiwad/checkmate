@@ -7,7 +7,7 @@ Use this recipe when the plan lists the `playwright-cli` tool. For another brows
 Microsoft Playwright CLI is the default browser tool. Checkmate is tested with version `0.1.23`.
 For command details, run `playwright-cli --help` or `playwright-cli <command> --help`.
 
-Use the run's `browserSession` for every command. `run begin` and `run resume` print it. A delegated prompt names it.
+Use the run's `toolSession` as the session for every command. `run begin` and `run resume` print it. A delegated prompt names it.
 
 The shortest reliable sequence:
 

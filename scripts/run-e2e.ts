@@ -25,8 +25,8 @@ if (result.status !== 0) process.exit(result.status ?? 1)
 const output = result.stdout ?? ''
 const count = Number(/^# tests (\d+)$/m.exec(output)?.[1])
 const skipped = Number(/^# skipped (\d+)$/m.exec(output)?.[1])
-if (count !== 135 || skipped !== 0)
-	throw Error(`Expected 135 executed cases with no skips; got ${count} cases and ${skipped} skips.`)
+if (count !== 136 || skipped !== 0)
+	throw Error(`Expected 136 executed cases with no skips; got ${count} cases and ${skipped} skips.`)
 const catalog = JSON.parse(readFileSync('test/e2e/scenarios.json', 'utf8')) as Array<{ test?: string }>
 if (catalog.length !== 42) throw Error(`Expected 42 proposal scenarios; got ${catalog.length}.`)
 for (const name of new Set(catalog.flatMap((scenario) => (scenario.test ? [scenario.test] : [])))) {

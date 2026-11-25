@@ -1017,7 +1017,7 @@ const commands: Record<string, Command> = {
 				instance: reply.data.instanceId,
 				tests: reply.data.tests,
 				startedAt: reply.data.startedAt,
-				browserSession: reply.data.browserSession,
+				toolSession: reply.data.toolSession,
 				deadlineSeconds: reply.data.deadlineSeconds,
 				deadline: reply.data.deadline,
 				evidenceDirectory: reply.data.evidenceDirectory,
@@ -1046,7 +1046,7 @@ const commands: Record<string, Command> = {
 				instance: reply.data.instanceId,
 				tests: reply.data.tests,
 				startedAt: reply.data.startedAt,
-				browserSession: reply.data.browserSession,
+				toolSession: reply.data.toolSession,
 				deadlineSeconds: reply.data.deadlineSeconds,
 				deadline: reply.data.deadline,
 				evidenceDirectory: reply.data.evidenceDirectory,
@@ -1182,7 +1182,7 @@ const commands: Record<string, Command> = {
 			if (reply.status !== 'completed') return {}
 			const data = reply.data as {
 				attempt: number
-				browserSession: string
+				toolSession: string
 				deadline: string
 				evidenceDirectory: string
 				closed: string[]
@@ -1191,7 +1191,7 @@ const commands: Record<string, Command> = {
 			return {
 				facts: {
 					attempt: data.attempt,
-					browserSession: data.browserSession,
+					toolSession: data.toolSession,
 					deadline: data.deadline,
 					evidenceDirectory: data.evidenceDirectory,
 				},

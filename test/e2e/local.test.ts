@@ -4316,7 +4316,7 @@ test('Run a narrow retest with prerequisites and regressions — uncovered tests
 })
 
 test('Refuse an older workspace without changing its database.', async (t) => {
-	const workspace = directory(t)
+	const workspace = realpathSync(directory(t))
 	mkdirSync(join(workspace, '.checkmate'))
 	const path = join(workspace, '.checkmate/checkmate.db')
 	const original = gunzipSync(readFileSync(join(root, 'test/e2e/fixtures/workspace-before-tool-sessions.db.gz')))
@@ -4328,10 +4328,9 @@ test('Refuse an older workspace without changing its database.', async (t) => {
 	]) {
 		const refused = await command(workspace, env, ...args)
 		assert.equal(refused.code, 1, refused.output)
-		assert.match(
-			refused.output,
-			/was created by an older version of Checkmate\. Move the .checkmate folder aside, then run setup to start fresh\./
-		)
+		assert.deepEqual(refused.body.reasons, [
+			`Database ${path} was created by an older version of Checkmate. Move the .checkmate folder aside, then run setup to start fresh.`,
+		])
 		assert.deepEqual(readFileSync(path), original)
 	}
 })

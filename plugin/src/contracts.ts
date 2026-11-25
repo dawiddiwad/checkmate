@@ -12,7 +12,7 @@ import type {
 	Result,
 } from './types.ts'
 import type { Reply } from './store.ts'
-import { canonical } from './store.ts'
+import { canonical, WorkspaceSchemaError } from './store.ts'
 import { expectationError, expectationExample, expectationHint } from './expectation.ts'
 import * as validators from './validators.js'
 import { operationAllowed } from './targets.ts'
@@ -59,10 +59,11 @@ export const refusalReasons: Record<RefusalKind, string> = {
 export function refused(status: 'invalid_request' | 'rejected', subject: string, error: unknown): Reply {
 	const refusal = status === 'invalid_request' ? 'malformed' : error instanceof Refusal ? error.kind : 'prohibited'
 	const hint = error instanceof Refusal ? error.hint : undefined
+	const reason = error instanceof Error ? error.message : String(error)
 	return {
 		status,
 		subject,
-		reasons: [refusalReasons[refusal], error instanceof Error ? error.message : String(error)],
+		reasons: error instanceof WorkspaceSchemaError ? [reason] : [refusalReasons[refusal], reason],
 		refusal,
 		...(hint ? { hint } : {}),
 		data: {},

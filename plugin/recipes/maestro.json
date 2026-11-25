@@ -14,5 +14,8 @@
 		"relaunch": "state"
 	},
 	"evidence": ["screenshot", "view_hierarchy", "recording"],
+	"evidenceExtensions": {
+		".mp4": "recording"
+	},
 	"usage": "maestro.md"
 }

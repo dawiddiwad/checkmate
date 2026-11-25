@@ -44,7 +44,7 @@ Evidence:
 
 - `view_hierarchy`: send a short excerpt of the hierarchy with `--evidence -:view_hierarchy`. Do not write a text file.
 - `screenshot`: `takeScreenshot: <name>` writes `<name>.png` in the output folder. Find it with `find .checkmate/tmp/<runId>/maestro -name '<name>.png'`, and give that path with `--evidence <path>:screenshot`.
-- `recording`: put `- startRecording: <name>` and `- stopRecording` around the steps. Give the `.mp4` file with `--evidence <path>:recording`. Record only when the check needs motion.
+- `recording`: put `- startRecording: <name>` and `- stopRecording` around the steps. Give the `.mp4` file with `--evidence <path>`. Its kind is `recording`. Record only when the check needs motion.
 
 Output and state:
 

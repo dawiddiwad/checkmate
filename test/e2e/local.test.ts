@@ -11558,3 +11558,109 @@ test('Name the entries of the instance and the observeFrom values of the target 
 	)
 	assert.match(readFileSync(prompts, 'utf8'), /Use the url entry for every action\./)
 })
+
+test('Start a test of a mobile app from its entries on a store with no target — test sets the target up as setup does, and refuses a call with no application.', async (t) => {
+	const workspace = directory(t)
+	writeFileSync(join(workspace, 'ticket.md'), 'The keyboard preview can be switched.\n')
+	const host = fakeClaude(t, { recorder: [{ kind: 'note', text: 'Read the settings screen.' }] }, 'pi')
+	const env = {
+		...process.env,
+		...host.env,
+		PATH: `${host.env.PATH ?? ''}${delimiter}${fakeMaestro(t)}`,
+		CHECKMATE_ACTOR: 'oracle',
+		CHECKMATE_HARNESS: 'pi',
+	}
+	const none = await command(workspace, env, 'test', 'keyboard', '--source', 'ticket.md', '--build', 'b1')
+	assert.equal(none.code, 1, none.output)
+	assert.match(none.output, /Give the application with --url <url>, or with --entry <name>=<value>/)
+	const started = await command(
+		workspace,
+		env,
+		'test',
+		'keyboard',
+		...mobileEntries,
+		'--data',
+		'environment',
+		'--policy',
+		'The simulator is reset by hand.',
+		'--source',
+		'ticket.md',
+		'--build',
+		'b1',
+		'--level',
+		'smoke',
+		'--allow',
+		'Read'
+	)
+	assert.equal(started.code, 0, started.output)
+	assert.match(started.output, /entry points=app \(value\), device \(value\)/)
+	const waited = await command(workspace, env, 'explore', 'wait', started.body.explorationId, '--timeout', '60')
+	assert.equal(waited.body.state, 'completed', waited.output)
+	const study = host.called().find((item: { role: string }) => item.role === 'explorer')
+	assert.match(study.prompt, /- app: com\.apple\.Preferences\./)
+	assert.match(study.prompt, /- device: SIM-1\./)
+	assert.match(study.prompt, /Tools you can use: maestro\./)
+})
+
+test('Read a target stored by 0.8.2 and record its data policy without a URL — the stored profile and instance keep their shape.', async (t) => {
+	const workspace = directory(t)
+	mkdirSync(join(workspace, '.checkmate'))
+	writeFileSync(
+		join(workspace, '.checkmate/checkmate.db'),
+		gunzipSync(readFileSync(join(root, 'test/e2e/fixtures/workspace-exploration-v0.8.2.db.gz')))
+	)
+	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle', CHECKMATE_HARNESS: 'pi' }
+	const id = '127-0-0-1-49334'
+	const before = await command(workspace, env, 'target', 'show', id, '--instance', 'local')
+	assert.equal(before.code, 0, before.output)
+	assert.deepEqual(before.body.profile.entryPoints, [{ kind: 'url', name: 'web', purpose: 'The application.' }])
+	assert.deepEqual(before.body.profile.capabilities, ['browser', 'http'])
+	assert.deepEqual(before.body.instance.entries, { web: 'http://127.0.0.1:49334' })
+	const policy = await command(
+		workspace,
+		env,
+		'setup',
+		'--target',
+		id,
+		'--data',
+		'isolation',
+		'--policy',
+		'Use the test users.'
+	)
+	assert.equal(policy.code, 0, policy.output)
+	assert.equal(policy.body.revision, before.body.revision + 1)
+	const after = await command(workspace, env, 'target', 'show', id, '--instance', 'local')
+	assert.deepEqual(after.body.profile.tools, before.body.profile.tools)
+	assert.deepEqual(after.body.profile.entryPoints, before.body.profile.entryPoints)
+	assert.deepEqual(after.body.instance, before.body.instance)
+	assert.deepEqual(after.body.profile.reset, {
+		owner: 'isolation',
+		command: null,
+		policy: { text: 'Use the test users.' },
+	})
+	// The same policy again changes nothing, and a second instance takes the stored entry point.
+	const again = await command(
+		workspace,
+		env,
+		'setup',
+		'--target',
+		id,
+		'--data',
+		'isolation',
+		'--policy',
+		'Use the test users.'
+	)
+	assert.equal(again.body.revision, policy.body.revision)
+	const added = await command(
+		workspace,
+		env,
+		'target',
+		'instance',
+		'add',
+		id,
+		'second',
+		'--entry',
+		'web=http://127.0.0.1:1'
+	)
+	assert.equal(added.code, 0, added.output)
+})

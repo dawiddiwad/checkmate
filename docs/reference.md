@@ -7,6 +7,8 @@ Use `checkmate --help` for the complete command list from the installed version.
 | Purpose                                            | Command                                                                                                                                           |
 | -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Set up a URL and local instance                    | `checkmate setup --url <url>`                                                                                                                     |
+| Set up an app that is not a web app                | `checkmate setup --entry <name>=<value> [--entry <name>=<value>]` (for example `--entry app=<app ID> --entry device=<device ID>`)                 |
+| Record the data policy of a target                 | `checkmate setup --target <targetId> --reset "<command>"` or `--data environment\|isolation --policy "<text>"`                                    |
 | Correct the operations or endpoint of a web target | `checkmate setup --correct --target <targetId> --instance <instanceId> --url <url> [--operations <a,b>] [--environment <name>] [--build <build>]` |
 | Replace an instance                                | `checkmate target instance replace <targetId> <instanceId> --entry <name=value> [--environment <name>] [--build <build>]`                         |
 | Open a plan                                        | `checkmate plan open [planId] --target <targetId@revision> --objective <text> --source <file>`                                                    |
@@ -33,6 +35,19 @@ Delegated workers use the models that you save on the Settings page of the revie
 - Checkmate sends a saved effort only when the host catalog advertises that effort for the model.
 
 If the host refuses the saved model before the worker writes, the worker runs again on the harness default. The other workers of the same delegate call also use the harness default. The reply then has a reason and `modelFallback`, with the saved model and the refusal of the host. The recorded attempt has the same `modelFallback`. `observedModels` gives the models that ran.
+
+## Targets that are not web applications
+
+A target has the entry points that the recipes of its tools declare. The web tools (`node`, `playwright-cli`) declare `web`, a URL that must start with `http://` or `https://`. The Maestro tool declares `app` and `device`. Quick setup takes the entries by name. `--url <url>` is the short form of `--entry web=<url>`. `checkmate test` takes the same flags for a first setup.
+
+```sh
+checkmate setup --entry app=com.example.shop --entry device=<device ID> --target shop-app
+checkmate setup --target shop-app --data environment --policy "The simulator is reset by hand."
+```
+
+Setup records the installed tools whose recipes fit the entries. A tool that needs an entry that you did not give is not recorded. Setup refuses an entry that no recipe declares, a value that does not match the pattern of its entry, and entries that no installed tool fits. The refusal names the entries that are missing. Setup runs the reachability checks that the recipes give. A recipe without a check leaves the instance not checked, and setup says so. A setup with only `--target` and a data flag records the data policy of a target that is set up and leaves its instances as they are.
+
+The prompts of delegated workers name the entries from the profile, for example "the app and device entries", and the plan prompt lists the `observeFrom` values of the target tools. `checkmate plan request <planId>` prints them.
 
 ## Agent tools
 

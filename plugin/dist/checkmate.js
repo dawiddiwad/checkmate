@@ -32700,6 +32700,9 @@ function stepDone(store, actor, input) {
 }
 
 // plugin/src/actions.ts
+function toolName2(name2) {
+  return `checkmate_${name2}`;
+}
 function withRejections(store, reply) {
   if (reply.status !== "completed") return reply;
   const rejections = rejectionLines(store, reply.subject);
@@ -46749,12 +46752,20 @@ function actionToolDefinitions(env = process.env) {
     const { description, ...input } = schema;
     return [
       {
-        name: `checkmate_${name2}`,
+        name: toolName2(name2),
         description: description ?? name2,
         inputSchema: inlineSchema(input, file, read)
       }
     ];
   });
+}
+var stepDoneAction = {
+  action: "tester_step_done",
+  instruction: `When a started agent finishes, call ${toolName2("tester_step_done")} with its name, step, agentId, and replyLine. Then call ${toolName2("next_tester_steps")} again.`
+};
+function isWait(reply) {
+  const actions = reply.data.actions;
+  return actions?.length === 1 && actions[0].action === "wait";
 }
 function actionOutput(reply) {
   const { data, ...envelope } = reply;
@@ -46853,6 +46864,8 @@ async function callActionTool(tool, input, workspace2, env) {
         data: { ...reply.data, revision: actionOutput(actionRecovery("delegate_work", revision2)) }
       });
     }
+    if (name2 === "next_tester_steps" && isWait(reply))
+      return actionOutput({ ...reply, data: { ...reply.data, nextAction: stepDoneAction } });
     return actionOutput(actionRecovery(name2, reply));
   } catch (error) {
     const reply = isBusy(error) ? { status: "operational_error", subject: tool, reasons: [busyReason], data: {} } : refused("rejected", tool, error);

@@ -34,6 +34,12 @@ import { nextActions, pauseRun, stepDone, stepsStarted } from './agents.ts'
 import { dataRules } from './resets.ts'
 
 export type ActionName = keyof Actions
+
+// The name a host session calls an action tool by. Claude Code adds its own mcp__plugin_checkmate_actions__ prefix.
+export function toolName(name: ActionName) {
+	return `checkmate_${name}`
+}
+
 type ActionContext = {
 	actor: string | undefined
 	env: Env

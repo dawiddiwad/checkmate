@@ -2616,6 +2616,12 @@ test('Give a session tester the data rules of a read-only target — the test ta
 	assert.match(rulesDone.reason, /rules\[1\].*unknown field "id"/)
 	await ok('explore', 'next', id)
 	await ok('explore', 'started', id, 'a1', 'a2')
+	// While testers run, the wait reply names the tool that records a finished tester.
+	const { toolName } = await import('../../plugin/src/actions.ts')
+	const [, , waiting] = await mcpCalls(workspace, env, [[toolName('next_tester_steps'), { explorationId: id }]])
+	assert.deepEqual(waiting.result.structuredContent.actions, [{ action: 'wait', line: 'wait' }])
+	assert.equal(waiting.result.structuredContent.nextAction.action, 'tester_step_done')
+	assert.ok(waiting.result.structuredContent.nextAction.instruction.includes(toolName('tester_step_done')))
 	writeFileSync(join(workspace, '.checkmate/work', id, 'a1/questions.md'), 'None\n')
 	await ok('explore', 'done', id, 'a1', 'study', '--agent', 'tester-1')
 	await ok('explore', 'next', id)
@@ -3542,6 +3548,11 @@ test('Discover the packaged Claude plugin and invoke its entry — broken plugin
 		/^disallowedTools: mcp__plugin_checkmate_actions__\*$/m
 	)
 	assert.match(readFileSync(join(plugin, 'agents/clerk.md'), 'utf8'), /^tools: Read, Write$/m)
+	// The host records a finished tester only with the tool that the test skill names.
+	const { toolName } = await import('../../plugin/src/actions.ts')
+	assert.ok(
+		readFileSync(join(plugin, 'skills/test/SKILL.md'), 'utf8').includes(`\`${toolName('tester_step_done')}\``)
+	)
 	assert.match(
 		execFileSync(process.execPath, [entry, '--version'], { encoding: 'utf8' }),
 		new RegExp(`^${manifest.version} build [0-9a-f]{12}\n`)

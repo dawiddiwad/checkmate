@@ -2,7 +2,7 @@ import { delegate, type Stage } from '../../cli/src/launcher.ts'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { defaultActor, requestOfEnv } from './actor.ts'
-import { actionInput, actionRecovery, dispatchAction, type ActionName } from './actions.ts'
+import { actionInput, actionRecovery, dispatchAction, toolName, type ActionName } from './actions.ts'
 import type { Actions } from './types.ts'
 import { Refusal, refused } from './contracts.ts'
 import { explorationStatus } from './explorers.ts'
@@ -92,12 +92,23 @@ export function actionToolDefinitions(env: Env = process.env) {
 		const { description, ...input } = schema
 		return [
 			{
-				name: `checkmate_${name}`,
+				name: toolName(name),
 				description: description ?? name,
 				inputSchema: inlineSchema(input, file, read),
 			},
 		]
 	})
+}
+
+// A wait reply names the call that moves the exploration on, so that the host does not stop.
+const stepDoneAction = {
+	action: 'tester_step_done' satisfies ActionName,
+	instruction: `When a started agent finishes, call ${toolName('tester_step_done')} with its name, step, agentId, and replyLine. Then call ${toolName('next_tester_steps')} again.`,
+}
+
+function isWait(reply: Reply) {
+	const actions = reply.data.actions as Array<{ action: string }> | undefined
+	return actions?.length === 1 && actions[0].action === 'wait'
 }
 
 export function actionOutput(reply: Reply) {
@@ -213,6 +224,8 @@ export async function callActionTool(tool: string, input: unknown, workspace: st
 				data: { ...reply.data, revision: actionOutput(actionRecovery('delegate_work', revision)) },
 			})
 		}
+		if (name === 'next_tester_steps' && isWait(reply))
+			return actionOutput({ ...reply, data: { ...reply.data, nextAction: stepDoneAction } })
 		return actionOutput(actionRecovery(name, reply))
 	} catch (error) {
 		const reply: Reply = isBusy(error)

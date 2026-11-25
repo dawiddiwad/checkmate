@@ -15,7 +15,7 @@ import {
 import { createServer } from 'node:http'
 import { connect, type AddressInfo } from 'node:net'
 import { createInterface } from 'node:readline'
-import { delimiter, join } from 'node:path'
+import { delimiter, dirname, join } from 'node:path'
 import { gunzipSync } from 'node:zlib'
 import { DatabaseSync } from 'node:sqlite'
 import test from 'node:test'
@@ -7266,6 +7266,24 @@ test('Test a mobile app with maestro: the tester gets the Maestro environment an
 	assert.ok(usage, study.prompt)
 	assert.match(usage[1], /\/plugin\/recipes\/maestro\.md$/)
 	assert.ok(existsSync(usage[1]), `${usage[1]} must exist in the installed package`)
+	const guidance = readFileSync(usage[1], 'utf8')
+	const { delegatedInstruction } = JSON.parse(readFileSync(join(dirname(usage[1]), 'maestro.json'), 'utf8'))
+	for (const text of [guidance, delegatedInstruction]) {
+		assert.match(text, /steps that need no screen read in between in one flow/i)
+		assert.match(text, /decision or a check/i)
+		assert.match(text, /point:\x60? inside the bounds of the element with \x60?checked\x60? or \x60?value/)
+		assert.match(text, /scroll[^\n]*read the hierarchy again[^\n]*retry once[^\n]*close the test as error/i)
+		assert.match(text, /if a value still looks unchanged, read the hierarchy once more/i)
+		assert.match(text, /keep assertions out of the flow/i)
+		assert.match(text, /--evidence -:view_hierarchy/)
+		assert.match(text, /--evidence <path>:screenshot/)
+		assert.match(text, /XDG_STATE_HOME=/)
+	}
+	assert.match(guidance, /~\/\.maestro\/tests\/<timestamp>/)
+	assert.match(guidance, /<out>\/<timestamp>\/<flow>\/takeScreenshot\/<name>\.png/)
+	assert.match(guidance, /startRecording\/<name>\.mp4[^\n]*QuickTime/)
+	assert.match(guidance, /relaunch[^\n]*navigate again/)
+	assert.match(guidance, /--format[^\n]*--output[^\n]*report\.xml/)
 	assert.doesNotMatch(study.prompt, /A direct HTTP call|Use the browser/)
 	// A plan for the mobile target can observe the screen and the app after a relaunch.
 	await ok([

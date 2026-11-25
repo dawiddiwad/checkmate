@@ -54,6 +54,8 @@ The start event of an exploration stores the tool session name and data prefix o
 
 The contracts list every value of every recipe, because the models read the enums as the allowed values. After you change a recipe value, run `npm run generate`. `scripts/generate-contracts.ts` writes the `observeFrom` and evidence kind enums, and `npm run type:check` fails when they are stale.
 
+The Maestro CLI recipe tells testers to set `XDG_STATE_HOME` per command to move Maestro 2.12.1's default test logs into the work folder. `--test-output-dir` and `--debug-output` direct flow artifacts and debug output from `test`. See [Maestro's log path](https://github.com/mobile-dev-inc/Maestro/blob/cli-2.12.1/maestro-cli/src/main/java/maestro/cli/report/TestDebugReporter.kt#L218-L225) and [test output options](https://docs.maestro.dev/maestro-flows/workspace-management/test-reports-and-artifacts).
+
 ## Testing a branch before release
 
 A branch install needs no build step. Run `npm run build` and commit `plugin/dist/checkmate.js` before you push. `npm run type:check` fails when the bundle is stale.

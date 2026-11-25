@@ -27,7 +27,7 @@ import {
 	usageOf,
 } from '../../plugin/src/sessions.ts'
 import { write } from '../../plugin/src/store.ts'
-import { filled, profileRecipes, testerEnvironment, type Recipe, type SessionValues } from '../../plugin/src/recipes.ts'
+import { filled, recipesFor, testerEnvironment, type Recipe, type SessionValues } from '../../plugin/src/recipes.ts'
 import {
 	closeTest,
 	deadlineShare,
@@ -378,6 +378,11 @@ function runProfile(store: Store, run: RunRow) {
 	return JSON.parse(row.body) as Profile
 }
 
+// A recipe describes a CLI tool, so an MCP tool of the same name has no recipe.
+function toolNames(profile: Profile) {
+	return profile.tools.filter((tool) => tool.kind === 'cli').map((tool) => tool.name)
+}
+
 // A delegated worker of a run uses the tool session of the run and keeps tool output in the evidence directory.
 function sessionValues(workspace: string, run: RunRow): SessionValues {
 	return { session: run.tool_session, workFolder: join(workspace, '.checkmate', 'tmp', run.run_id) }
@@ -605,7 +610,7 @@ function prompt(
 // Each tool of the profile that keeps a session closes it, so that no tool session stays open after the run.
 async function closeToolSessions(workspace: string, execution: Execution) {
 	const values = sessionValues(workspace, execution.run)
-	const closing = profileRecipes(execution.profile.tools).filter((recipe) => recipe.closeSession)
+	const closing = recipesFor(toolNames(execution.profile)).filter((recipe) => recipe.closeSession)
 	if (!closing.length) return { cleanup: 'not_applicable', cleanupReason: 'No tool session was opened.' }
 	const failures = (await Promise.all(closing.map((recipe) => closeToolSession(workspace, recipe, values)))).filter(
 		(failure) => failure !== null
@@ -727,10 +732,9 @@ function contextLines(execution: Execution, workspace: string, tools: string[]) 
 				]
 			: []),
 		`Tools: ${tools.join(', ')}. Use Bash for CLI tools. A tool marked "not on PATH" is missing: close the test as error.`,
-		...profileRecipes(profile.tools).flatMap((recipe) =>
+		...recipesFor(toolNames(profile)).flatMap((recipe) =>
 			recipe.delegatedInstruction ? [filled(recipe.delegatedInstruction, values)] : []
 		),
-		`HTTP: node --input-type=module -e 'const r = await fetch("<url><path>", { signal: AbortSignal.timeout(10000) }); console.log(JSON.stringify({ status: r.status, body: await r.text() }))'`,
 	]
 }
 

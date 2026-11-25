@@ -48,6 +48,8 @@ Checkmate keeps what it knows about each test tool in `plugin/recipes/`. Each to
 
 A recipe also gives the plan and run values of its tool. `observeFrom` maps each value that an assertion can observe from to `view` (what the tool shows now) or `state` (the stored state). `evidence` lists the evidence kinds that the tool makes. The optional `evidenceExtensions` maps a file extension to the default evidence kind of a file. A ready test of a plan can use only the `observeFrom` values of the recipes of the target tools. A run can record only the evidence kinds of those recipes. The values that every target accepted up to 0.8.2 stay accepted for all targets: `page`, `reload`, and `api`, and `observation`, `http_exchange`, `screenshot`, and `trace`. They are in `plugin/src/recipes.ts`. Do not add values to that list; give new values in a recipe.
 
+A recipe can also give `delegatedInstruction`, the text that a delegated execute worker gets for the tool, and `closeSession`, the arguments that close the tool session after a delegated run. Each run has one tool session ID, `toolSession`, that every tool of the run uses.
+
 The contracts list every value of every recipe, because the models read the enums as the allowed values. After you change a recipe value, run `npm run generate`. `scripts/generate-contracts.ts` writes the `observeFrom` and evidence kind enums, and `npm run type:check` fails when they are stale.
 
 ## Testing a branch before release

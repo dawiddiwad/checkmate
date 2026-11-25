@@ -174,9 +174,9 @@ export function shellInstructions(values: SessionValues) {
 	return recipes().flatMap((recipe) => (recipe.shellInstruction ? [filled(recipe.shellInstruction, values)] : []))
 }
 
-// The recipes of the tools that a target profile names.
-export function profileRecipes(tools: Array<{ name: string; kind: string }>) {
-	return recipes().filter((recipe) => tools.some((tool) => tool.name === recipe.name && tool.kind === recipe.kind))
+// The recipes of the named tools, in recipe order. A tool without a recipe has none.
+export function recipesFor(toolNames: string[]) {
+	return recipes().filter((recipe) => toolNames.includes(recipe.name))
 }
 
 export function toolFolders() {
@@ -185,9 +185,7 @@ export function toolFolders() {
 
 // The full paths of the usage texts of the named tools that have a recipe, in recipe order.
 export function usageFiles(toolNames: string[]) {
-	return recipes()
-		.filter((recipe) => toolNames.includes(recipe.name))
-		.map((recipe) => join(pluginRoot, 'recipes', recipe.usage))
+	return recipesFor(toolNames).map((recipe) => join(pluginRoot, 'recipes', recipe.usage))
 }
 
 export type Choice = { value: string; from: string[] }
@@ -196,7 +194,7 @@ export type Choice = { value: string; from: string[] }
 // Each value names where it comes from, so that a refusal can say it.
 function choices(toolNames: string[], compatible: string[], values: (recipe: Recipe) => string[]): Choice[] {
 	const found = new Map<string, string[]>(compatible.map((value) => [value, [compatibleSource]]))
-	for (const recipe of recipes().filter((recipe) => toolNames.includes(recipe.name)))
+	for (const recipe of recipesFor(toolNames))
 		for (const value of values(recipe)) found.set(value, [...(found.get(value) ?? []), `recipe ${recipe.name}`])
 	return [...found].map(([value, from]) => ({ value, from }))
 }
@@ -237,6 +235,6 @@ export function choiceText(found: Choice[]) {
 
 // The evidence kind of a file without a given kind: from the recipes of the target's tools, then the compatible list.
 export function evidenceKindOfFile(toolNames: string[], extension: string) {
-	const recipe = recipes().find((recipe) => toolNames.includes(recipe.name) && recipe.evidenceExtensions?.[extension])
+	const recipe = recipesFor(toolNames).find((recipe) => recipe.evidenceExtensions?.[extension])
 	return recipe?.evidenceExtensions?.[extension] ?? compatibleExtensions[extension]
 }

@@ -14086,26 +14086,26 @@ function testerEnvironment(values) {
 function shellInstructions(values) {
   return recipes().flatMap((recipe) => recipe.shellInstruction ? [filled(recipe.shellInstruction, values)] : []);
 }
-function profileRecipes(tools) {
-  return recipes().filter((recipe) => tools.some((tool) => tool.name === recipe.name && tool.kind === recipe.kind));
+function recipesFor(toolNames2) {
+  return recipes().filter((recipe) => toolNames2.includes(recipe.name));
 }
 function toolFolders() {
   return recipes().flatMap((recipe) => recipe.workspaceFolders);
 }
-function usageFiles(toolNames) {
-  return recipes().filter((recipe) => toolNames.includes(recipe.name)).map((recipe) => join4(pluginRoot, "recipes", recipe.usage));
+function usageFiles(toolNames2) {
+  return recipesFor(toolNames2).map((recipe) => join4(pluginRoot, "recipes", recipe.usage));
 }
-function choices(toolNames, compatible, values) {
+function choices(toolNames2, compatible, values) {
   const found = new Map(compatible.map((value2) => [value2, [compatibleSource]]));
-  for (const recipe of recipes().filter((recipe2) => toolNames.includes(recipe2.name)))
+  for (const recipe of recipesFor(toolNames2))
     for (const value2 of values(recipe)) found.set(value2, [...found.get(value2) ?? [], `recipe ${recipe.name}`]);
   return [...found].map(([value2, from]) => ({ value: value2, from }));
 }
-function observeFromChoices(toolNames) {
-  return choices(toolNames, Object.keys(compatibleObserveFrom), (recipe) => Object.keys(recipe.observeFrom));
+function observeFromChoices(toolNames2) {
+  return choices(toolNames2, Object.keys(compatibleObserveFrom), (recipe) => Object.keys(recipe.observeFrom));
 }
-function evidenceChoices(toolNames) {
-  return choices(toolNames, compatibleEvidence, (recipe) => recipe.evidence);
+function evidenceChoices(toolNames2) {
+  return choices(toolNames2, compatibleEvidence, (recipe) => recipe.evidence);
 }
 function allEvidence() {
   return evidenceChoices(recipes().map((recipe) => recipe.name)).map((choice2) => choice2.value);
@@ -14120,8 +14120,8 @@ function givenBy(value2) {
 function choiceText(found) {
   return found.map((choice2) => `${choice2.value} (${choice2.from.join(", ")})`).join(", ");
 }
-function evidenceKindOfFile(toolNames, extension) {
-  const recipe = recipes().find((recipe2) => toolNames.includes(recipe2.name) && recipe2.evidenceExtensions?.[extension]);
+function evidenceKindOfFile(toolNames2, extension) {
+  const recipe = recipesFor(toolNames2).find((recipe2) => recipe2.evidenceExtensions?.[extension]);
   return recipe?.evidenceExtensions?.[extension] ?? compatibleExtensions[extension];
 }
 
@@ -21466,8 +21466,8 @@ function operationText(operations) {
   if (operations.length === 1 && operations[0] === readOnlyOperation) return readOnlyOperationText;
   return `You can: ${operations.join(", ")}.`;
 }
-function usageLine(toolNames) {
-  const files2 = usageFiles(toolNames);
+function usageLine(toolNames2) {
+  const files2 = usageFiles(toolNames2);
   return files2.length ? [`Before you use a tool, read its usage text: ${files2.join(", ")}.`] : [];
 }
 function entryPointLine(entry) {
@@ -47032,6 +47032,9 @@ function runProfile(store, run2) {
   );
   return JSON.parse(row2.body);
 }
+function toolNames(profile) {
+  return profile.tools.filter((tool) => tool.kind === "cli").map((tool) => tool.name);
+}
 function sessionValues(workspace2, run2) {
   return { session: run2.tool_session, workFolder: join23(workspace2, ".checkmate", "tmp", run2.run_id) };
 }
@@ -47210,7 +47213,7 @@ function prompt(stage, subject, workspace2, pluginRoot2, timeoutSeconds, harness
 }
 async function closeToolSessions(workspace2, execution) {
   const values = sessionValues(workspace2, execution.run);
-  const closing = profileRecipes(execution.profile.tools).filter((recipe) => recipe.closeSession);
+  const closing = recipesFor(toolNames(execution.profile)).filter((recipe) => recipe.closeSession);
   if (!closing.length) return { cleanup: "not_applicable", cleanupReason: "No tool session was opened." };
   const failures = (await Promise.all(closing.map((recipe) => closeToolSession(workspace2, recipe, values)))).filter(
     (failure) => failure !== null
@@ -47302,10 +47305,9 @@ function contextLines(execution, workspace2, tools) {
       `Source files: ${sources.map((source) => resolve10(workspace2, source)).join(", ")}. Read them with the read tool. Do not search the file system: do not use rg, grep, or find.`
     ] : [],
     `Tools: ${tools.join(", ")}. Use Bash for CLI tools. A tool marked "not on PATH" is missing: close the test as error.`,
-    ...profileRecipes(profile.tools).flatMap(
+    ...recipesFor(toolNames(profile)).flatMap(
       (recipe) => recipe.delegatedInstruction ? [filled(recipe.delegatedInstruction, values)] : []
-    ),
-    `HTTP: node --input-type=module -e 'const r = await fetch("<url><path>", { signal: AbortSignal.timeout(10000) }); console.log(JSON.stringify({ status: r.status, body: await r.text() }))'`
+    )
   ];
 }
 function probePrompt(execution, workspace2, actor, pluginRoot2) {

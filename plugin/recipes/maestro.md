@@ -30,6 +30,7 @@ XDG_STATE_HOME="$work/maestro-state" maestro --device "$device" hierarchy --comp
 ```
 
 - Start each flow with `appId: <app>` and `---`. Use the app ID of the instance.
+- Start with a flow that has `- launchApp` for the app of the instance, then read the hierarchy. A Home screen or another app on the screen means that the app is not started yet, not an error of the test.
 - Use text or an `id` from the latest hierarchy for each screen. Never invent a selector.
 - On iOS, tap a switch with `point:` inside the bounds of the element with `checked` or `value`. A tap on its row label or `id` can leave it unchanged.
 - If an action target is off screen, scroll. If it is missing, wait one second. Read the hierarchy again and retry once. If the action still fails, close the test as error with the hierarchy excerpt.

@@ -1,31 +1,18 @@
 ## Summary
 
-Three sentences at most: what this is, why, and whether it is ready.
+<diagram, diff-sketch, or tree>
 
-## Before and after
+## Evidence
 
-One table, one row per change that matters, with the columns "Before" and "After". No file names or function names.
+- **Before:** <screenshot/output/failing test run>
+  **After:** <screenshot/output/passing test run>
 
-## Diagrams
+## Merge Danger
 
-Mermaid diagrams in before-and-after pairs, about 6 to 10 boxes each. Check that they render.
+**Door:** <one-way or two-way>
 
-## What you will notice
+<optional: description>
 
-The behaviour changes for a person who uses Checkmate, one line each. Include everything that stops working.
+**Blast Radius:** <one-word description>
 
-## UI
-
-Before-and-after screenshots of every page that changed, committed under `docs/media/`. Leave this section out if no page changed.
-
-## Proof
-
-What was run, with the counts and the cost of live runs. Then what is not proven, as plainly.
-
-## Decisions for you
-
-Open questions for the owner, each with a recommendation. Leave this section out if there are none.
-
-## Not in this change
-
-Follow-ups, one line each.
+<optional: potential ramifications of merge>

@@ -19,6 +19,7 @@ When Checkmate starts the tester, it attaches the server. Its tools are `mcp__ma
 - If the instance names no device, stop. Report the missing device as a blocker. Do not select a booted device yourself.
 - Give `run` only `yaml`, an inline flow. Never give `files` or `dir`. Checkmate refuses them.
 - A flow has the header `appId: <app>`, then a line `---`, then the commands. Maestro 2.12.1 refuses a flow without the header, although the tool description says that a bare command works.
+- Start with a flow that has `- launchApp` for the app of the instance, then read the screen. A Home screen or another app on the screen means that the app is not started yet, not an error of the test.
 - Run one short step, then read the screen with `inspect_screen`. `run` tells you only if the flow passed.
 - `inspect_screen` gives short keys. In a selector, use `a11y` as `text:` and `rid` as `id:`. `txt` is `text:` too.
 - Tap or type only by a text or an `id` that the latest `inspect_screen` shows. Never invent a text or an `id`.

@@ -11691,6 +11691,10 @@ test('A delegated Claude worker drives a mobile app through the attached Maestro
 		/maestro-mcp \(mcp, Checkmate attached its server; call only inspect_screen, run, take_screenshot\)/
 	)
 	assert.match(launch.prompt, /Give device_id, the device entry of the instance, on every call\./)
+	assert.match(
+		launch.prompt,
+		/Start with a flow that has - launchApp for the app of the instance, then read the screen\. A Home screen or another app on the screen means that the app is not started yet, not an error of the test\./
+	)
 	assert.match(launch.prompt, /Never give files or dir\./)
 	assert.match(
 		launch.prompt,
@@ -11754,6 +11758,10 @@ test('A delegated Claude worker drives a mobile app through the attached Maestro
 	const cli = JSON.parse(readFileSync(workerLog, 'utf8').split('\n')[0])
 	assert.equal(cli.mcpConfig, null)
 	assert.match(cli.prompt, /Tools: maestro \(cli, /)
+	assert.match(
+		cli.prompt,
+		/Start with a flow that has - launchApp for the app of the instance, then read the screen\. A Home screen or another app on the screen means that the app is not started yet, not an error of the test\./
+	)
 	assert.doesNotMatch(cli.prompt, /maestro-mcp|Checkmate attached the Maestro MCP server/)
 })
 

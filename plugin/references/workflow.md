@@ -34,7 +34,7 @@ EOF
 ```
 
 - Send text evidence on standard input with `--evidence -`. Write a file only for binary evidence, for example a screenshot, and only in `.checkmate/tmp/<runId>/`. Checkmate deletes the file after it stores it.
-- Put browser output in `.checkmate/tmp/` too. `browser.md` shows how. `run finish` removes `.checkmate/tmp/<runId>/`, and `target save` removes `.checkmate/tmp/setup-<targetId>/`.
+- Put browser output in `.checkmate/tmp/` too. `<plugin root>/recipes/playwright-cli.md` shows how. `run finish` removes `.checkmate/tmp/<runId>/`, and `target save` removes `.checkmate/tmp/setup-<targetId>/`.
 - Do not write other files. The database is the only record. The one exception is an export that the oracle asks for: `checkmate export plan|run <subject> --format <format> --out <path>`.
 - Use the commands to read and write. Do not open `.checkmate/checkmate.db` directly.
 - The contracts are in `<plugin root>/contracts/`. Read a schema only when a command refuses a payload.

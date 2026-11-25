@@ -54,6 +54,7 @@ import { dataRules, markerFor, owe, requireDataFor, runPrepare, settleCleanups }
 import { isRecordedGroup, signalRecordedGroup, startOfGroup } from './processes.ts'
 import { storeFindingsRun } from './findingsRun.ts'
 import { changeOf, changedFiles } from './change.ts'
+import { testerEnvironment, toolFolders } from './recipes.ts'
 import {
 	checkClaudeArgs,
 	checkmateScript,
@@ -287,14 +288,12 @@ function explorerWork(store: Store, explorationId: string, explorer: string, cou
 		folder,
 		grant: [`Edit(/${folder}/**)`],
 		deny: workDenyRules(others.map((name) => workFolder(explorationId, name))),
-		extraEnv: {
-			PLAYWRIGHT_MCP_OUTPUT_DIR: join(store.workspace, folder),
-			PLAYWRIGHT_CLI_SESSION: `qa-${explorationId}-${explorer}`,
-		},
+		extraEnv: testerEnvironment({
+			session: `qa-${explorationId}-${explorer}`,
+			workFolder: join(store.workspace, folder),
+		}),
 	}
 }
-
-const strayIgnored = ['.checkmate', '.playwright-cli']
 
 function topLevelNames(workspace: string) {
 	const status = spawnSync('git', ['status', '--porcelain', '--untracked-files=normal'], {
@@ -308,7 +307,8 @@ function topLevelNames(workspace: string) {
 					.filter((line) => line.startsWith('?? '))
 					.map((line) => line.slice(3).replace(/^"|"$/g, ''))
 			: readdirSync(workspace)
-	return new Set(names.filter((name) => !strayIgnored.includes(name.replace(/\/$/, ''))))
+	const ignored = ['.checkmate', ...toolFolders()]
+	return new Set(names.filter((name) => !ignored.includes(name.replace(/\/$/, ''))))
 }
 
 async function watchStray<T>(
@@ -359,19 +359,24 @@ function removeIfEmpty(folder: string) {
 	if (existsSync(folder) && !readdirSync(folder).length) rmdirSync(folder)
 }
 
-const browserFolder = '.playwright-cli'
+function toolFoldersExist(workspace: string) {
+	return toolFolders().some((name) => existsSync(join(workspace, name)))
+}
 
-export function keepBrowserFolder(store: Store, explorationId: string) {
-	const from = join(store.workspace, browserFolder)
-	if (startOf(explorationEvents(store, explorationId))?.browserFolder !== false || !existsSync(from)) return
-	const to = join(store.workspace, workFolder(explorationId), browserFolder)
-	mkdirSync(join(to, '..'), { recursive: true })
-	rmSync(to, { recursive: true, force: true })
-	renameSync(from, to)
+export function keepToolFolders(store: Store, explorationId: string) {
+	if (startOf(explorationEvents(store, explorationId))?.browserFolder !== false) return
+	for (const name of toolFolders()) {
+		const from = join(store.workspace, name)
+		if (!existsSync(from)) continue
+		const to = join(store.workspace, workFolder(explorationId), name)
+		mkdirSync(join(to, '..'), { recursive: true })
+		rmSync(to, { recursive: true, force: true })
+		renameSync(from, to)
+	}
 }
 
 export function removeWork(store: Store, explorationId: string) {
-	keepBrowserFolder(store, explorationId)
+	keepToolFolders(store, explorationId)
 	rmSync(join(store.workspace, workFolder(explorationId)), { recursive: true, force: true })
 	rmSync(join(store.workspace, '.checkmate', 'tmp', `explore-${explorationId}.log`), { force: true })
 	removeIfEmpty(join(store.workspace, '.checkmate', 'work'))
@@ -451,7 +456,7 @@ export function startExploration(
 				detail: {
 					...launch,
 					dataRules: rules,
-					browserFolder: existsSync(join(store.workspace, browserFolder)),
+					browserFolder: toolFoldersExist(store.workspace),
 				},
 			},
 			operationId,
@@ -1037,7 +1042,7 @@ export async function driveExploration(workspace: string, explorationId: string,
 				)
 			for (const { explorer } of ended) keepWorkFiles(store, actor, explorationId, explorer, 'test')
 			if (lastStop) {
-				keepBrowserFolder(store, explorationId)
+				keepToolFolders(store, explorationId)
 				event(store, actor, explorationId, {
 					step: 'done',
 					explorer: null,
@@ -1054,7 +1059,7 @@ export async function driveExploration(workspace: string, explorationId: string,
 			mergeReports(store, actor, explorationId, launch, env)
 			if (launch.verifier) await verifyClaims(store, actor, explorationId, launch, env)
 			removeWork(store, explorationId)
-		} else keepBrowserFolder(store, explorationId)
+		} else keepToolFolders(store, explorationId)
 		const revision = ok
 			? firstRevision(store, actor, explorationRow(store, explorationId).plan_id, explorationId)
 			: null
@@ -1085,7 +1090,7 @@ export async function driveExploration(workspace: string, explorationId: string,
 			},
 		})
 	} catch (error) {
-		keepBrowserFolder(store, explorationId)
+		keepToolFolders(store, explorationId)
 		event(store, actor, explorationId, {
 			step: 'done',
 			explorer: null,
@@ -1376,7 +1381,7 @@ export async function driveFollow(workspace: string, explorationId: string, env:
 			mergeReports(store, actor, explorationId, review, env, plan.after)
 			if (review.verifier) await verifyClaims(store, actor, explorationId, review, env, plan.after)
 			removeWork(store, explorationId)
-		} else keepBrowserFolder(store, explorationId)
+		} else keepToolFolders(store, explorationId)
 		const skipped = [
 			...sessions.flatMap((item) => (item.skipped ? [item.skipped] : [])),
 			...ended.flatMap((item) =>
@@ -1400,7 +1405,7 @@ export async function driveFollow(workspace: string, explorationId: string, env:
 			},
 		})
 	} catch (error) {
-		keepBrowserFolder(store, explorationId)
+		keepToolFolders(store, explorationId)
 		event(store, actor, explorationId, {
 			step: 'followed',
 			explorer: null,
@@ -1562,7 +1567,7 @@ export function endStopped(store: Store, explorationId: string, explorer?: strin
 	const events = explorationEvents(store, explorationId)
 	const { supervisor, children } = stoppedProcesses(events, explorer)
 	const left = [...endProcesses(supervisor), ...endProcesses(children)].map((item) => item.pid)
-	if (explorer === undefined) keepBrowserFolder(store, explorationId)
+	if (explorer === undefined) keepToolFolders(store, explorationId)
 	return left
 }
 

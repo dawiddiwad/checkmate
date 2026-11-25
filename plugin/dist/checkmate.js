@@ -13612,10 +13612,10 @@ function launchChild(executable, args, prompt2, cwd, env, seconds2, onStart, har
         const value2 = piEvent(line);
         if (value2?.type === "response" && value2.id === "checkmate-child-ready") {
           const commands2 = Array.isArray(value2.data?.commands) ? value2.data.commands : [];
-          const loaded = (name2, file) => commands2.some(
+          const loaded2 = (name2, file) => commands2.some(
             (command) => command.name === name2 && command.source === "extension" && command.sourceInfo?.path === join2(pluginRoot, "pi", file)
           );
-          if (!value2.success || !loaded("checkmate-child-ready", "child.mjs") || env.CHECKMATE_PI_HOOK && !loaded("checkmate-permission-ready", "permission.mjs")) {
+          if (!value2.success || !loaded2("checkmate-child-ready", "child.mjs") || env.CHECKMATE_PI_HOOK && !loaded2("checkmate-permission-ready", "permission.mjs")) {
             rpcError = "Pi did not load the Checkmate tool policy or permission hook.";
             child.stdin.end();
           } else send2({ id: "checkmate-child-prompt", type: "prompt", message: prompt2 });
@@ -13969,10 +13969,68 @@ function dataSummary(workspace2, reset) {
   };
 }
 
+// plugin/src/recipes.ts
+import { existsSync as existsSync3, readdirSync, readFileSync as readFileSync3 } from "node:fs";
+import { join as join4 } from "node:path";
+var loaded;
+function isText(value2) {
+  return typeof value2 === "string" && value2.trim() !== "";
+}
+function readRecipe(folder, file) {
+  const refuse4 = (problem) => {
+    throw Error(`Tool recipe ${join4(folder, file)} is not valid: ${problem}`);
+  };
+  let recipe = {};
+  try {
+    recipe = JSON.parse(readFileSync3(join4(folder, file), "utf8"));
+  } catch (error) {
+    refuse4(`it is not JSON (${error.message}).`);
+  }
+  if (typeof recipe !== "object" || recipe === null || Array.isArray(recipe)) refuse4("it is not a JSON object.");
+  if (!isText(recipe.name) || `${recipe.name}.json` !== file) refuse4("name must be the file name without .json.");
+  if (!isText(recipe.capability)) refuse4("capability must be a text.");
+  if (recipe.kind !== "cli") refuse4("kind must be cli.");
+  if (!isText(recipe.purpose)) refuse4("purpose must be a text.");
+  if (recipe.detect !== "path" && recipe.detect !== "runtime") refuse4("detect must be path or runtime.");
+  const environment = recipe.environment;
+  if (typeof environment !== "object" || environment === null || Array.isArray(environment) || Object.values(environment).some((value2) => typeof value2 !== "string"))
+    refuse4("environment must be an object of texts.");
+  if (recipe.shellInstruction !== void 0 && !isText(recipe.shellInstruction))
+    refuse4("shellInstruction must be a text when it is given.");
+  if (!Array.isArray(recipe.workspaceFolders) || !recipe.workspaceFolders.every(isText))
+    refuse4("workspaceFolders must be a list of folder names.");
+  if (!isText(recipe.usage) || !existsSync3(join4(folder, recipe.usage)))
+    refuse4("usage must name a file in the folder.");
+  return recipe;
+}
+function readRecipes(folder) {
+  return readdirSync(folder).filter((file) => file.endsWith(".json")).sort().map((file) => readRecipe(folder, file));
+}
+function recipes() {
+  loaded ??= readRecipes(join4(pluginRoot, "recipes"));
+  return loaded;
+}
+function filled(text2, values) {
+  return text2.replaceAll("{session}", values.session).replaceAll("{workFolder}", values.workFolder);
+}
+function testerEnvironment(values) {
+  return Object.fromEntries(
+    recipes().flatMap(
+      (recipe) => Object.entries(recipe.environment).map(([name2, value2]) => [name2, filled(value2, values)])
+    )
+  );
+}
+function shellInstructions(values) {
+  return recipes().flatMap((recipe) => recipe.shellInstruction ? [filled(recipe.shellInstruction, values)] : []);
+}
+function toolFolders() {
+  return recipes().flatMap((recipe) => recipe.workspaceFolders);
+}
+
 // plugin/src/targets.ts
 import { spawnSync as spawnSync5 } from "node:child_process";
-import { existsSync as existsSync3, readFileSync as readFileSync3 } from "node:fs";
-import { join as join4 } from "node:path";
+import { existsSync as existsSync4, readFileSync as readFileSync4 } from "node:fs";
+import { join as join5 } from "node:path";
 var anyTestOperation = "any_test_operation";
 var readOnlyOperation = "read_only";
 var readOnlyOperationText = "You can only read. Do not create, change, or delete data in the application.";
@@ -14522,10 +14580,10 @@ function toolVersion(path) {
   const line = run2.status === 0 ? run2.stdout.trim().split("\n")[0] : "";
   return /[0-9]+(\.[0-9]+)+/.exec(line)?.[0];
 }
-var browserConfig = join4(".playwright", "cli.config.json");
+var browserConfig = join5(".playwright", "cli.config.json");
 function browserExecutable(workspace2) {
-  const path = join4(workspace2, browserConfig);
-  const config2 = existsSync3(path) ? JSON.parse(readFileSync3(path, "utf8")) : {};
+  const path = join5(workspace2, browserConfig);
+  const config2 = existsSync4(path) ? JSON.parse(readFileSync4(path, "utf8")) : {};
   const executable = config2.browser?.launchOptions?.executablePath;
   if (typeof executable !== "string" || executable === "") return void 0;
   const run2 = spawnSync5(executable, ["--version"], { timeout: 1e4 });
@@ -14619,16 +14677,22 @@ function setupAssumptions(input) {
   if (!input.targetId) assumed.push(`target=${targetId} (the host of the URL)`);
   const instanceId = input.instanceId ?? "local";
   if (!input.instanceId) assumed.push("instance=local");
-  const browser = executableOnPath("playwright-cli", input.env);
-  const capabilities = browser ? ["browser", "http"] : ["http"];
-  assumed.push(
-    "entry point=web (url)",
-    `capabilities=${capabilities.join(",")} (${browser ? "playwright-cli is on PATH" : "no browser tool on PATH"})`
-  );
+  const detected = recipes().flatMap((recipe) => {
+    const path = recipe.detect === "runtime" ? process.execPath : executableOnPath(recipe.name, input.env);
+    return path ? [{ recipe, path }] : [];
+  });
+  const capabilities = [...new Set(detected.map(({ recipe }) => recipe.capability))].sort();
+  assumed.push("entry point=web (url)", `capabilities=${capabilities.join(",")} (${pathTools(detected)})`);
   const allowedOperations = input.operations?.length ? input.operations : [anyTestOperation];
   if (!input.operations?.length) assumed.push(`operations=${anyTestOperation}: ${anyTestOperationText}`);
   assumed.push("authentication=none");
-  return { url, targetId, instanceId, browser, capabilities, allowedOperations, assumed };
+  return { url, targetId, instanceId, detected, capabilities, allowedOperations, assumed };
+}
+function pathTools(detected) {
+  const found = detected.filter(({ recipe }) => recipe.detect === "path").map(({ recipe }) => recipe.name);
+  if (found.length) return `${found.join(" and ")} ${found.length === 1 ? "is" : "are"} on PATH`;
+  const missing = recipes().filter((recipe) => recipe.detect === "path");
+  return `no ${missing.map((recipe) => recipe.capability).join(" or ")} tool on PATH`;
 }
 function sameSet(a, b) {
   return same([...a].sort(), [...b].sort());
@@ -14680,27 +14744,19 @@ function instanceChange(stored, wanted) {
 }
 function setupTarget(store, actor, input) {
   const setup = setupAssumptions(input);
-  const { url, targetId, instanceId, browser, capabilities, allowedOperations, assumed } = setup;
-  const executable = browser ? browserExecutable(store.workspace) : void 0;
-  const tools = [
-    {
-      name: "node",
-      kind: "cli",
-      purpose: "Send HTTP requests.",
-      version: process.version.slice(1),
+  const { url, targetId, instanceId, detected, capabilities, allowedOperations, assumed } = setup;
+  const tools = detected.map(({ recipe, path }) => {
+    const version3 = recipe.detect === "runtime" ? process.version.slice(1) : toolVersion(path);
+    const executable = recipe.name === "playwright-cli" ? browserExecutable(store.workspace) : void 0;
+    return {
+      name: recipe.name,
+      kind: recipe.kind,
+      purpose: recipe.purpose,
+      ...version3 ? { version: version3 } : {},
+      ...executable ? { executable } : {},
       reachable: true
-    },
-    ...browser ? [
-      {
-        name: "playwright-cli",
-        kind: "cli",
-        purpose: "Drive the browser.",
-        ...toolVersion(browser) ? { version: toolVersion(browser) } : {},
-        ...executable ? { executable } : {},
-        reachable: true
-      }
-    ] : []
-  ];
+    };
+  });
   const entryPoints = [{ name: "web", kind: "url", purpose: "The application." }];
   const failure = input.answered === void 0 ? urlFailure(url, input.env) : input.answered ? null : "not reachable";
   const reachable = failure === null;
@@ -15309,11 +15365,11 @@ function resultCoverage(plan, tests, newGaps) {
 }
 
 // plugin/src/plans.ts
-import { existsSync as existsSync5, readFileSync as readFileSync6 } from "node:fs";
-import { basename, extname, join as join6 } from "node:path";
+import { existsSync as existsSync6, readFileSync as readFileSync7 } from "node:fs";
+import { basename, extname, join as join7 } from "node:path";
 
 // plugin/src/rules.ts
-import { readFileSync as readFileSync4, realpathSync as realpathSync2, statSync as statSync2 } from "node:fs";
+import { readFileSync as readFileSync5, realpathSync as realpathSync2, statSync as statSync2 } from "node:fs";
 import { resolve, sep } from "node:path";
 var outsideRule = "outside";
 var defaultArea = "Rules";
@@ -15365,7 +15421,7 @@ function sourceText(store, name2) {
   try {
     const path = realpathSync2(resolve(store.workspace, name2.split("#")[0]));
     if (!path.startsWith(realpathSync2(store.workspace) + sep) || !statSync2(path).isFile()) return null;
-    const text2 = readFileSync4(path, "utf8");
+    const text2 = readFileSync5(path, "utf8");
     return text2.length > maxSourceCharacters ? `${text2.slice(0, maxSourceCharacters)}
 (The rest of the file is left out.)` : text2;
   } catch {
@@ -15522,8 +15578,8 @@ function rulesLine(store, planId) {
 }
 
 // plugin/src/journal.ts
-import { existsSync as existsSync4, readdirSync, readFileSync as readFileSync5, realpathSync as realpathSync3, statSync as statSync3 } from "node:fs";
-import { isAbsolute as isAbsolute2, join as join5, relative, resolve as resolve2, sep as sep2 } from "node:path";
+import { existsSync as existsSync5, readdirSync as readdirSync2, readFileSync as readFileSync6, realpathSync as realpathSync3, statSync as statSync3 } from "node:fs";
+import { isAbsolute as isAbsolute2, join as join6, relative, resolve as resolve2, sep as sep2 } from "node:path";
 var entryKinds = [
   "criterion",
   "observation",
@@ -15664,7 +15720,7 @@ function evidenceFile(store, name2) {
   const stats = statSync3(real);
   requireWellFormed(stats.isFile(), `Evidence must be a file: ${name2}`);
   requireWellFormed(stats.size <= maxEvidenceBytes, `Evidence file exceeds 32 MiB: ${name2}`);
-  return readFileSync5(real);
+  return readFileSync6(real);
 }
 function insideWorkspace(store, path) {
   return realpathSync3(path).startsWith(realpathSync3(store.workspace) + sep2);
@@ -15673,7 +15729,7 @@ var skippedFolders = ["node_modules", ".git", ".checkmate"];
 var isEvidenceText = (spec2) => /\s|:\/\//.test(spec2.trim()) || !/[/\\]|\.[A-Za-z][A-Za-z0-9]{0,4}$/.test(spec2);
 function folderItems(folder) {
   try {
-    return readdirSync(folder, { withFileTypes: true });
+    return readdirSync2(folder, { withFileTypes: true });
   } catch {
     return [];
   }
@@ -15683,10 +15739,10 @@ function filesEndingWith(folder, segments, above = []) {
     if (item.isFile()) {
       const path = [...above, item.name];
       const tail = path.slice(-segments.length);
-      return tail.length === segments.length && tail.every((name2, index2) => name2 === segments[index2]) ? [join5(folder, item.name)] : [];
+      return tail.length === segments.length && tail.every((name2, index2) => name2 === segments[index2]) ? [join6(folder, item.name)] : [];
     }
     if (!item.isDirectory() || skippedFolders.includes(item.name)) return [];
-    return filesEndingWith(join5(folder, item.name), segments, [...above, item.name]);
+    return filesEndingWith(join6(folder, item.name), segments, [...above, item.name]);
   });
 }
 function onlyFileEndingWith(cwd, spec2) {
@@ -15696,7 +15752,7 @@ function onlyFileEndingWith(cwd, spec2) {
   return matches.length === 1 ? matches[0] : void 0;
 }
 function evidenceOf(store, spec2, cwd, missing) {
-  const found = [resolve2(cwd, spec2), resolve2(store.workspace, spec2)].find((path) => existsSync4(path)) ?? (missing && !isEvidenceText(spec2) ? onlyFileEndingWith(cwd, spec2) : void 0);
+  const found = [resolve2(cwd, spec2), resolve2(store.workspace, spec2)].find((path) => existsSync5(path)) ?? (missing && !isEvidenceText(spec2) ? onlyFileEndingWith(cwd, spec2) : void 0);
   if (found && (!missing || insideWorkspace(store, found))) {
     const name2 = relative(store.workspace, found);
     return { path: name2, ...saveBlob(store, evidenceFile(store, name2)) };
@@ -16516,7 +16572,7 @@ function suggestedPlanId(workspace2, sources) {
   );
   let text2;
   try {
-    text2 = readFileSync6(join6(workspace2, source), "utf8");
+    text2 = readFileSync7(join7(workspace2, source), "utf8");
   } catch {
     text2 = "";
   }
@@ -16528,14 +16584,14 @@ function requireUnnamedSources(workspace2, sources, objective) {
   const mentions = [["The objective", objective]];
   for (const source of sources) {
     try {
-      mentions.push([source, readFileSync6(join6(workspace2, source), "utf8")]);
+      mentions.push([source, readFileSync7(join7(workspace2, source), "utf8")]);
     } catch {
     }
   }
   for (const [origin2, text2] of mentions) {
     for (const match of text2.matchAll(/[A-Za-z0-9_./-]+\.(?:md|txt|json|csv|ya?ml|feature|html)\b/g)) {
       const file = match[0].replace(/^\.\//, "");
-      if (named.has(file) || !existsSync5(join6(workspace2, file)) || file === origin2) continue;
+      if (named.has(file) || !existsSync6(join7(workspace2, file)) || file === origin2) continue;
       const all2 = [...sources, file];
       requireWellFormed(
         false,
@@ -17174,7 +17230,7 @@ function savePlan(store, actor, input) {
 function sourceCriteria(workspace2, request2) {
   return (request2.context?.sources ?? []).flatMap((source) => {
     try {
-      return readFileSync6(join6(workspace2, source), "utf8").split("\n").flatMap((line) => {
+      return readFileSync7(join7(workspace2, source), "utf8").split("\n").flatMap((line) => {
         const match = /^\s*(?:\d+[.)]|[-*])\s+(.+?)\s*$/.exec(line);
         return match ? [match[1]] : [];
       });
@@ -18189,8 +18245,8 @@ function diffPlan(store, input) {
 }
 
 // plugin/src/runs.ts
-import { mkdirSync as mkdirSync3, readFileSync as readFileSync7, realpathSync as realpathSync4, rmSync as rmSync3, statSync as statSync4 } from "node:fs";
-import { basename as basename2, extname as extname2, isAbsolute as isAbsolute3, join as join7, resolve as resolve3, sep as sep3 } from "node:path";
+import { mkdirSync as mkdirSync3, readFileSync as readFileSync8, realpathSync as realpathSync4, rmSync as rmSync3, statSync as statSync4 } from "node:fs";
+import { basename as basename2, extname as extname2, isAbsolute as isAbsolute3, join as join8, resolve as resolve3, sep as sep3 } from "node:path";
 import { randomUUID } from "node:crypto";
 
 // plugin/src/routes.ts
@@ -18523,7 +18579,7 @@ function begin(store, actor, input, permanent) {
     }
   );
   if (reply.status === "completed")
-    mkdirSync3(join7(store.workspace, evidenceDirectory(input.runId)), { recursive: true });
+    mkdirSync3(join8(store.workspace, evidenceDirectory(input.runId)), { recursive: true });
   return reply;
 }
 function plannedTarget(store, text2) {
@@ -18555,7 +18611,7 @@ function readEvidence(store, runId, { file: name2, kind }) {
   let root;
   let real;
   try {
-    root = realpathSync4(join7(store.workspace, directory2));
+    root = realpathSync4(join8(store.workspace, directory2));
   } catch {
     throw new Error(`Evidence directory ${directory2} does not exist`);
   }
@@ -18579,7 +18635,7 @@ function readEvidence(store, runId, { file: name2, kind }) {
     name: basename2(name2),
     kind: requireChoice(kind ?? kindByExtension[extension] ?? "observation", evidenceKinds, "evidence kind"),
     mediaType: mediaTypes[extension] ?? "application/octet-stream",
-    bytes: readFileSync7(real)
+    bytes: readFileSync8(real)
   };
 }
 function storeEvidence(store, runId, testId, assertionId, files2, operationId) {
@@ -19901,7 +19957,7 @@ function planExplorationCosts(store, planId) {
 
 // plugin/src/explorations.ts
 import { mkdirSync as mkdirSync4, writeFileSync as writeFileSync2 } from "node:fs";
-import { join as join8 } from "node:path";
+import { join as join9 } from "node:path";
 var explorationModes = ["exploratory", "regression"];
 function latestRevision(store, planId) {
   const row2 = one(
@@ -20032,8 +20088,8 @@ function writeKnownState(store, planId, explorationId, build) {
     return null;
   const path = `${workFolder(explorationId)}/known-state.md`;
   const { text: text2, answerIds } = knownState(store, planId, build);
-  mkdirSync4(join8(store.workspace, workFolder(explorationId)), { recursive: true });
-  writeFileSync2(join8(store.workspace, path), text2);
+  mkdirSync4(join9(store.workspace, workFolder(explorationId)), { recursive: true });
+  writeFileSync2(join9(store.workspace, path), text2);
   return { path, answerIds };
 }
 function nextExplorationId(store) {
@@ -21451,8 +21507,8 @@ function verifierBrief(items, entries, operations, dataRules2, dataPrefix, answe
 
 // plugin/src/recorder.ts
 import { randomUUID as randomUUID3 } from "node:crypto";
-import { existsSync as existsSync6, mkdirSync as mkdirSync5, readFileSync as readFileSync8, rmSync as rmSync4, writeFileSync as writeFileSync3 } from "node:fs";
-import { join as join9 } from "node:path";
+import { existsSync as existsSync7, mkdirSync as mkdirSync5, readFileSync as readFileSync9, rmSync as rmSync4, writeFileSync as writeFileSync3 } from "node:fs";
+import { join as join10 } from "node:path";
 var defaultRecorderTimeout = 600;
 var reservedExplorers = ["rules", "merge", "verify"];
 function explorerActor(explorer) {
@@ -21534,13 +21590,13 @@ function running2(pid) {
 }
 function lockHolder(path) {
   try {
-    return Number(readFileSync8(path, "utf8"));
+    return Number(readFileSync9(path, "utf8"));
   } catch {
     return void 0;
   }
 }
 function takeLock(path, until) {
-  mkdirSync5(join9(path, ".."), { recursive: true });
+  mkdirSync5(join10(path, ".."), { recursive: true });
   for (; ; ) {
     try {
       writeFileSync3(path, String(process.pid), { flag: "wx" });
@@ -21576,7 +21632,7 @@ function recordTask(store, explorationId, explorer, answer2) {
 }
 function readText(path) {
   try {
-    return readFileSync8(path, "utf8");
+    return readFileSync9(path, "utf8");
   } catch {
     return void 0;
   }
@@ -21589,8 +21645,8 @@ function recordAnswer(store, input) {
   const missing = [...carried.missing];
   const dropped = [...carried.dropped];
   const unknownRules = [...carried.unknownRules ?? []];
-  const work = join9(store.workspace, workFolder(exploration2.exploration_id, input.explorer));
-  const given = input.failed ? void 0 : replyArray(readText(join9(store.workspace, input.answer)));
+  const work = join10(store.workspace, workFolder(exploration2.exploration_id, input.explorer));
+  const given = input.failed ? void 0 : replyArray(readText(join10(store.workspace, input.answer)));
   const fresh = given && newEntries(given, earlier);
   const repeated = input.round > 1 ? carried.repeated : given && fresh ? given.length - fresh.length : 0;
   const logged = fresh?.length ? logReply(
@@ -21684,7 +21740,7 @@ function recordSession(store, actor, input, env, cwd) {
     });
   }
   const started = Date.now();
-  const lock = join9(store.workspace, ".checkmate", "tmp", `record-${plan.exploration.plan_id}-${plan.explorer}.lock`);
+  const lock = join10(store.workspace, ".checkmate", "tmp", `record-${plan.exploration.plan_id}-${plan.explorer}.lock`);
   if (!takeLock(lock, started + input.timeoutSeconds * 1e3))
     return write(store, operation, () => ({
       reply: {
@@ -21732,8 +21788,8 @@ function recordLocked(store, operation, input, plan, env, cwd, started) {
   const missing = [];
   const dropped = [];
   const unknownRules = [];
-  const work = join9(store.workspace, workFolder(exploration2.exploration_id, plan.explorer));
-  const evidenceCwd = existsSync6(work) ? work : cwd;
+  const work = join10(store.workspace, workFolder(exploration2.exploration_id, plan.explorer));
+  const evidenceCwd = existsSync7(work) ? work : cwd;
   const log = (entries) => logReply(
     store,
     actor,
@@ -22157,17 +22213,17 @@ function upstreamBase(repository) {
 import { spawn as spawn3, spawnSync as spawnSync7 } from "node:child_process";
 import { randomUUID as randomUUID4 } from "node:crypto";
 import {
-  existsSync as existsSync7,
+  existsSync as existsSync8,
   mkdirSync as mkdirSync6,
   openSync,
-  readdirSync as readdirSync2,
-  readFileSync as readFileSync9,
+  readdirSync as readdirSync3,
+  readFileSync as readFileSync10,
   renameSync,
   rmdirSync as rmdirSync2,
   rmSync as rmSync5,
   statSync as statSync5
 } from "node:fs";
-import { join as join10 } from "node:path";
+import { join as join11 } from "node:path";
 var defaultExplorerTimeout = 1800;
 var pollMilliseconds = 500;
 var activityMilliseconds = 5e3;
@@ -22300,26 +22356,26 @@ function explorerNames(count2) {
 }
 function explorerWork(store, explorationId, explorer, count2) {
   const folder = workFolder(explorationId, explorer);
-  mkdirSync6(join10(store.workspace, folder), { recursive: true });
+  mkdirSync6(join11(store.workspace, folder), { recursive: true });
   const others = explorerNames(count2).filter((name2) => name2 !== explorer);
   return {
     folder,
     grant: [`Edit(/${folder}/**)`],
     deny: workDenyRules(others.map((name2) => workFolder(explorationId, name2))),
-    extraEnv: {
-      PLAYWRIGHT_MCP_OUTPUT_DIR: join10(store.workspace, folder),
-      PLAYWRIGHT_CLI_SESSION: `qa-${explorationId}-${explorer}`
-    }
+    extraEnv: testerEnvironment({
+      session: `qa-${explorationId}-${explorer}`,
+      workFolder: join11(store.workspace, folder)
+    })
   };
 }
-var strayIgnored = [".checkmate", ".playwright-cli"];
 function topLevelNames(workspace2) {
   const status = spawnSync7("git", ["status", "--porcelain", "--untracked-files=normal"], {
     cwd: workspace2,
     encoding: "utf8"
   });
-  const names = status.status === 0 ? status.stdout.split("\n").filter((line) => line.startsWith("?? ")).map((line) => line.slice(3).replace(/^"|"$/g, "")) : readdirSync2(workspace2);
-  return new Set(names.filter((name2) => !strayIgnored.includes(name2.replace(/\/$/, ""))));
+  const names = status.status === 0 ? status.stdout.split("\n").filter((line) => line.startsWith("?? ")).map((line) => line.slice(3).replace(/^"|"$/g, "")) : readdirSync3(workspace2);
+  const ignored = [".checkmate", ...toolFolders()];
+  return new Set(names.filter((name2) => !ignored.includes(name2.replace(/\/$/, ""))));
 }
 async function watchStray(store, actor, explorationId, explorer, turn2, run2) {
   const before = topLevelNames(store.workspace);
@@ -22336,10 +22392,10 @@ async function watchStray(store, actor, explorationId, explorer, turn2, run2) {
 }
 var keptFiles = ["plan.md", "questions.md", "report.md", "follow-up-report.md"];
 function keepWorkFiles(store, actor, explorationId, explorer, phase) {
-  const folder = join10(store.workspace, workFolder(explorationId, explorer));
+  const folder = join11(store.workspace, workFolder(explorationId, explorer));
   const files2 = keptFiles.flatMap((name2) => {
-    const path = join10(folder, name2);
-    return existsSync7(path) ? [{ name: name2, bytes: readFileSync9(path) }] : [];
+    const path = join11(folder, name2);
+    return existsSync8(path) ? [{ name: name2, bytes: readFileSync10(path) }] : [];
   });
   if (!files2.length) return;
   const input = { explorer, phase, files: files2.map((file) => file.name) };
@@ -22356,28 +22412,33 @@ function keepWorkFiles(store, actor, explorationId, explorer, phase) {
   });
 }
 function removeIfEmpty(folder) {
-  if (existsSync7(folder) && !readdirSync2(folder).length) rmdirSync2(folder);
+  if (existsSync8(folder) && !readdirSync3(folder).length) rmdirSync2(folder);
 }
-var browserFolder = ".playwright-cli";
-function keepBrowserFolder(store, explorationId) {
-  const from = join10(store.workspace, browserFolder);
-  if (startOf(explorationEvents(store, explorationId))?.browserFolder !== false || !existsSync7(from)) return;
-  const to = join10(store.workspace, workFolder(explorationId), browserFolder);
-  mkdirSync6(join10(to, ".."), { recursive: true });
-  rmSync5(to, { recursive: true, force: true });
-  renameSync(from, to);
+function toolFoldersExist(workspace2) {
+  return toolFolders().some((name2) => existsSync8(join11(workspace2, name2)));
+}
+function keepToolFolders(store, explorationId) {
+  if (startOf(explorationEvents(store, explorationId))?.browserFolder !== false) return;
+  for (const name2 of toolFolders()) {
+    const from = join11(store.workspace, name2);
+    if (!existsSync8(from)) continue;
+    const to = join11(store.workspace, workFolder(explorationId), name2);
+    mkdirSync6(join11(to, ".."), { recursive: true });
+    rmSync5(to, { recursive: true, force: true });
+    renameSync(from, to);
+  }
 }
 function removeWork(store, explorationId) {
-  keepBrowserFolder(store, explorationId);
-  rmSync5(join10(store.workspace, workFolder(explorationId)), { recursive: true, force: true });
-  rmSync5(join10(store.workspace, ".checkmate", "tmp", `explore-${explorationId}.log`), { force: true });
-  removeIfEmpty(join10(store.workspace, ".checkmate", "work"));
-  removeIfEmpty(join10(store.workspace, ".checkmate", "tmp"));
+  keepToolFolders(store, explorationId);
+  rmSync5(join11(store.workspace, workFolder(explorationId)), { recursive: true, force: true });
+  rmSync5(join11(store.workspace, ".checkmate", "tmp", `explore-${explorationId}.log`), { force: true });
+  removeIfEmpty(join11(store.workspace, ".checkmate", "work"));
+  removeIfEmpty(join11(store.workspace, ".checkmate", "tmp"));
 }
 function startSupervisor(store, explorationId, actor, env, extra = []) {
-  const folder = join10(store.workspace, ".checkmate", "tmp");
+  const folder = join11(store.workspace, ".checkmate", "tmp");
   mkdirSync6(folder, { recursive: true });
-  const log = openSync(join10(folder, `explore-${explorationId}.log`), "a");
+  const log = openSync(join11(folder, `explore-${explorationId}.log`), "a");
   const child = spawn3(
     process.execPath,
     [checkmateScript(), "explore", "drive", explorationId, "--workspace", store.workspace, ...extra],
@@ -22438,7 +22499,7 @@ function startExploration(store, actor, given, env, preferSavedModel = false) {
         detail: {
           ...launch,
           dataRules: rules,
-          browserFolder: existsSync7(join10(store.workspace, browserFolder))
+          browserFolder: toolFoldersExist(store.workspace)
         }
       },
       operationId,
@@ -22519,7 +22580,7 @@ function entryValues(store, explorationId) {
 function workFiles(folder) {
   try {
     return new Map(
-      readdirSync2(folder, { withFileTypes: true }).filter((item) => item.isFile()).map((item) => [item.name, statSync5(join10(folder, item.name)).size])
+      readdirSync3(folder, { withFileTypes: true }).filter((item) => item.isFile()).map((item) => [item.name, statSync5(join11(folder, item.name)).size])
     );
   } catch {
     return /* @__PURE__ */ new Map();
@@ -22530,7 +22591,7 @@ function activityLine(turn2, changed, count2) {
   return `${turn2}: wrote ${named}. ${count2} ${count2 === 1 ? "file" : "files"} in the work folder.`;
 }
 function watchWork(store, actor, explorationId, explorer, turn2) {
-  const folder = join10(store.workspace, workFolder(explorationId, explorer));
+  const folder = join11(store.workspace, workFolder(explorationId, explorer));
   let known = workFiles(folder);
   const check = () => {
     const now = workFiles(folder);
@@ -22950,7 +23011,7 @@ async function driveExploration(workspace2, explorationId, env) {
         );
       for (const { explorer } of ended) keepWorkFiles(store, actor, explorationId, explorer, "test");
       if (lastStop) {
-        keepBrowserFolder(store, explorationId);
+        keepToolFolders(store, explorationId);
         event(store, actor, explorationId, {
           step: "done",
           explorer: null,
@@ -22967,7 +23028,7 @@ async function driveExploration(workspace2, explorationId, env) {
       mergeReports(store, actor, explorationId, launch, env);
       if (launch.verifier) await verifyClaims(store, actor, explorationId, launch, env);
       removeWork(store, explorationId);
-    } else keepBrowserFolder(store, explorationId);
+    } else keepToolFolders(store, explorationId);
     const revision2 = ok ? firstRevision(store, actor, explorationRow(store, explorationId).plan_id, explorationId) : null;
     const findings = ok && explorationStatus(store, explorationId).path !== "session" ? storeFindings(store, actor, explorationId) : null;
     event(store, actor, explorationId, {
@@ -22985,7 +23046,7 @@ async function driveExploration(workspace2, explorationId, env) {
       }
     });
   } catch (error) {
-    keepBrowserFolder(store, explorationId);
+    keepToolFolders(store, explorationId);
     event(store, actor, explorationId, {
       step: "done",
       explorer: null,
@@ -23226,7 +23287,7 @@ async function driveFollow(workspace2, explorationId, env) {
       mergeReports(store, actor, explorationId, review, env, plan.after);
       if (review.verifier) await verifyClaims(store, actor, explorationId, review, env, plan.after);
       removeWork(store, explorationId);
-    } else keepBrowserFolder(store, explorationId);
+    } else keepToolFolders(store, explorationId);
     const skipped = [
       ...sessions.flatMap((item) => item.skipped ? [item.skipped] : []),
       ...ended.flatMap(
@@ -23246,7 +23307,7 @@ async function driveFollow(workspace2, explorationId, env) {
       }
     });
   } catch (error) {
-    keepBrowserFolder(store, explorationId);
+    keepToolFolders(store, explorationId);
     event(store, actor, explorationId, {
       step: "followed",
       explorer: null,
@@ -23382,7 +23443,7 @@ function endStopped(store, explorationId, explorer) {
   const events = explorationEvents(store, explorationId);
   const { supervisor, children } = stoppedProcesses(events, explorer);
   const left = [...endProcesses(supervisor), ...endProcesses(children)].map((item) => item.pid);
-  if (explorer === void 0) keepBrowserFolder(store, explorationId);
+  if (explorer === void 0) keepToolFolders(store, explorationId);
   return left;
 }
 function endInBackground(workspace2, explorationId, explorer, env) {
@@ -23400,9 +23461,9 @@ function endInBackground(workspace2, explorationId, explorer, env) {
   }
 }
 function startEnding(store, explorationId, actor, explorer, env) {
-  const folder = join10(store.workspace, ".checkmate", "tmp");
+  const folder = join11(store.workspace, ".checkmate", "tmp");
   mkdirSync6(folder, { recursive: true });
-  const log = openSync(join10(folder, `explore-${explorationId}.log`), "a");
+  const log = openSync(join11(folder, `explore-${explorationId}.log`), "a");
   const child = spawn3(
     process.execPath,
     [
@@ -23423,7 +23484,7 @@ function stopExploration(store, actor, input) {
   const explorer = input.explorer;
   const reply = recordStop(store, actor, input);
   const left = endStopped(store, id2, explorer);
-  const kept = explorer === void 0 && existsSync7(join10(store.workspace, workFolder(id2))) ? workFolder(id2) : null;
+  const kept = explorer === void 0 && existsSync8(join11(store.workspace, workFolder(id2))) ? workFolder(id2) : null;
   return {
     ...reply,
     status: left.length ? "operational_error" : "completed",
@@ -23577,7 +23638,7 @@ function explorationStatus(store, explorationId) {
     explorers,
     phases: events.filter((item) => ["merge", "verify", "follow", "followed"].includes(item.step)).map((item) => ({ step: item.step, status: item.status, detail: item.detail })),
     doneHint: done?.detail.hint ?? null,
-    workFolder: (["failed", "stopped", "interrupted"].includes(state) || ["failed", "stopped", "interrupted"].includes(follow ?? "")) && existsSync7(join10(store.workspace, workFolder(row2.exploration_id))) ? workFolder(row2.exploration_id) : null,
+    workFolder: (["failed", "stopped", "interrupted"].includes(state) || ["failed", "stopped", "interrupted"].includes(follow ?? "")) && existsSync8(join11(store.workspace, workFolder(row2.exploration_id))) ? workFolder(row2.exploration_id) : null,
     reason: done?.detail.reason ?? (state === "stopped" ? stopReason(events) : state === "interrupted" ? "The supervisor stopped before the end." : null)
   };
 }
@@ -24161,8 +24222,8 @@ function owedLines(store) {
 }
 
 // plugin/src/views.ts
-import { existsSync as existsSync8 } from "node:fs";
-import { join as join11 } from "node:path";
+import { existsSync as existsSync9 } from "node:fs";
+import { join as join12 } from "node:path";
 function approvalLabel(state) {
   if (state.approved) return "approved";
   if (state.rejected) return "rejected";
@@ -24432,7 +24493,7 @@ function mergedQuestions(store, planId) {
 }
 function explorationData(store, status) {
   const log = `.checkmate/tmp/explore-${status.explorationId}.log`;
-  return [...status.workFolder ? [status.workFolder] : [], ...existsSync8(join11(store.workspace, log)) ? [log] : []];
+  return [...status.workFolder ? [status.workFolder] : [], ...existsSync9(join12(store.workspace, log)) ? [log] : []];
 }
 function planHasRevision(store, planId) {
   return Boolean(one(store, "SELECT 1 FROM plan_revisions WHERE plan_id = ?", planId));
@@ -26264,8 +26325,8 @@ var tones = {
   not_executed: "muted"
 };
 var none = "\u2014";
-var join12 = (values) => values.length ? values.join(", ") : none;
-var pairs = (metadata = {}) => join12(Object.entries(metadata).map(([key, value2]) => `${key}=${value2}`));
+var join13 = (values) => values.length ? values.join(", ") : none;
+var pairs = (metadata = {}) => join13(Object.entries(metadata).map(([key, value2]) => `${key}=${value2}`));
 function markdownText(value2) {
   return value2.replace(/\\/g, "\\\\").replace(/([|[\]*_`])/g, "\\$1").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\r?\n/g, " ");
 }
@@ -26409,7 +26470,7 @@ function runDocument(report) {
   const { result, sha256, acceptance, plan } = report;
   const planned = new Map(plan.tests.map((test) => [test.id, test]));
   const evidence3 = new Map(result.evidence.map((entry) => [entry.id, entry]));
-  const files2 = (ids2) => join12(ids2.map((id2) => `${evidence3.get(id2)?.name ?? id2} (${id2})`));
+  const files2 = (ids2) => join13(ids2.map((id2) => `${evidence3.get(id2)?.name ?? id2} (${id2})`));
   const counts2 = outcomeCounts(result.tests.filter((test) => result.selectedTestIds.includes(test.testId)));
   const assertions = result.tests.flatMap((test) => test.assertions);
   const blocks = [
@@ -26459,7 +26520,7 @@ function runDocument(report) {
           `${item.runId}/${item.findingId}`,
           item.title,
           item.verdict,
-          join12(item.testIds)
+          join13(item.testIds)
         ])
       }
     ] : [],
@@ -26500,8 +26561,8 @@ function runDocument(report) {
     blocks.push({
       table: ["Field", "Value"],
       rows: [
-        ["Assertions", join12(finding.assertionIds)],
-        ["Requirements", join12(finding.requirementIds)],
+        ["Assertions", join13(finding.assertionIds)],
+        ["Requirements", join13(finding.requirementIds)],
         ["Expected", finding.expected],
         ["Observed", finding.observed],
         ["Evidence", files2(finding.evidenceIds)],
@@ -26520,8 +26581,8 @@ function runDocument(report) {
         gap.severity,
         gap.question,
         gap.consequence,
-        join12(gap.requirementIds),
-        join12(gap.testIds)
+        join13(gap.requirementIds),
+        join13(gap.testIds)
       ])
     });
   blocks.push({ heading: `Plan gaps and decisions (${plan.planId}@${plan.revision})` });
@@ -26582,7 +26643,7 @@ function runDocument(report) {
           row2.requirementId,
           requirement?.text ?? none,
           row2.status,
-          join12(row2.testIds),
+          join13(row2.testIds),
           row2.reason ?? none,
           pairs(requirement?.metadata)
         ];
@@ -26628,9 +26689,9 @@ function planReport(plan, sha256) {
         test.id,
         test.title,
         test.readiness,
-        join12(test.requirementIds),
-        join12(test.dependsOn),
-        join12(test.preconditions),
+        join13(test.requirementIds),
+        join13(test.dependsOn),
+        join13(test.preconditions),
         test.action,
         pairs(test.metadata)
       ])
@@ -26910,7 +26971,7 @@ function exportExploration(store, explorationId, format3) {
 import { createReadStream, realpathSync as realpathSync5 } from "node:fs";
 import { readdir } from "node:fs/promises";
 import { homedir as homedir2 } from "node:os";
-import { basename as basename3, join as join13, resolve as resolve5 } from "node:path";
+import { basename as basename3, join as join14, resolve as resolve5 } from "node:path";
 import { createInterface as createInterface2 } from "node:readline";
 async function readUsage(path, workspace2, session) {
   const stream = createReadStream(path, { encoding: "utf8" });
@@ -26961,14 +27022,14 @@ async function recoverPiCosts(store, env) {
     workspace2,
     path.replace(/^~(?=$|[/\\])/, () => home)
   );
-  const agent = expand(env.PI_CODING_AGENT_DIR || join13(home, ".pi", "agent"));
+  const agent = expand(env.PI_CODING_AGENT_DIR || join14(home, ".pi", "agent"));
   const project = "--" + workspace2.replace(/^[/\\]/, "").replace(/[/\\:]/g, "-") + "--";
-  const folder = env.PI_CODING_AGENT_SESSION_DIR ? expand(env.PI_CODING_AGENT_SESSION_DIR) : join13(agent, "sessions", project);
+  const folder = env.PI_CODING_AGENT_SESSION_DIR ? expand(env.PI_CODING_AGENT_SESSION_DIR) : join14(agent, "sessions", project);
   const files2 = await readdir(folder, { withFileTypes: true }).catch(() => []);
   const paths = /* @__PURE__ */ new Map();
   for (const file of files2) {
     const id2 = /_([0-9a-f-]{36})\.jsonl$/i.exec(file.name)?.[1];
-    if (file.isFile() && id2) paths.set(id2, join13(folder, file.name));
+    if (file.isFile() && id2) paths.set(id2, join14(folder, file.name));
   }
   const sessions = /* @__PURE__ */ new Map();
   function load(id2) {
@@ -27018,7 +27079,7 @@ async function recoverPiCosts(store, env) {
 // plugin/src/ui/server.ts
 import { createServer } from "node:http";
 import { randomBytes as randomBytes4 } from "node:crypto";
-import { existsSync as existsSync9, readFileSync as readFileSync11, realpathSync as realpathSync7 } from "node:fs";
+import { existsSync as existsSync10, readFileSync as readFileSync12, realpathSync as realpathSync7 } from "node:fs";
 import { fileURLToPath as fileURLToPath2 } from "node:url";
 
 // plugin/src/modes.ts
@@ -27234,7 +27295,7 @@ function html2(strings, ...values) {
   for (let i = 0; i < values.length; i++) text2 += piece(values[i]) + strings[i + 1];
   return { html: text2 };
 }
-function join14(items, separator2) {
+function join15(items, separator2) {
   return html2`${items.flatMap((item, i) => i ? [separator2, item] : [item])}`;
 }
 function money(costUsd) {
@@ -29048,7 +29109,7 @@ function logRow(row2) {
     html2`${pill(row2.status === "rejected" ? "rejected_operation" : row2.status, words2(row2.status))} ${time(row2.at)}`,
     [
       html2`${row2.actor}${via} ·
-			${subjects.length ? join14(subjects.map(subjectLink), " ") : html2`<span class="muted">no subject</span>`}`,
+			${subjects.length ? join15(subjects.map(subjectLink), " ") : html2`<span class="muted">no subject</span>`}`,
       ...row2.status === "rejected" ? [html2`<span class="reason">${reasons(row2.response).join(" ")}</span>`] : [],
       html2`<span class="mono muted">${row2.id}</span>`
     ]
@@ -29709,11 +29770,11 @@ function row(run2, n, now) {
 		<span class="sp-c-tag">${pill(run2.state)}</span>
 		<span class="sp-c-id" title="${run2.explorationId}">${run2.explorationId}</span>
 		<span class="sp-c-title ell" title="${title2}">${title2}</span>
-		<span class="sp-c-meta ell" title="${metaText(run2, now)}">${join15(meta(run2, now), " \xB7 ")}</span>
+		<span class="sp-c-meta ell" title="${metaText(run2, now)}">${join16(meta(run2, now), " \xB7 ")}</span>
 		${optionsBox(items)}
 	</div>`;
 }
-function join15(items, separator2) {
+function join16(items, separator2) {
   const shown2 = items.filter((item) => item !== null);
   return html2`${shown2.map((item, index2) => index2 ? html2`${separator2}${item}` : item)}`;
 }
@@ -29743,7 +29804,7 @@ function chatRow(turn2, n, now) {
 		<span class="sp-c-tag">${pill(turn2.state, turn2.state === "answered" ? "Completed" : void 0)}</span>
 		<span class="sp-c-id" title="${turn2.id}">${turn2.id}</span>
 		<span class="sp-c-title ell" title="${title2}">${title2}</span>
-		<span class="sp-c-meta ell" title="${metaText2}">${join15(meta2, " \xB7 ")}</span>
+		<span class="sp-c-meta ell" title="${metaText2}">${join16(meta2, " \xB7 ")}</span>
 	</div>`;
 }
 function activityPage(store, context, params, defaults) {
@@ -31087,7 +31148,7 @@ function claimEvidenceList2(store, planId, claim) {
 function dataLine(reason, data) {
   return html2`${reason ?? "No reason is recorded."}
 	${data.length ? html2` Its data:
-				${join14(
+				${join15(
     data.map((path) => html2`<code>${path}</code>`),
     ", "
   )}.` : ""}`;
@@ -32292,7 +32353,7 @@ function testLink(planId, revision2, reference2) {
   return owner ? html2`<a class="mono" href="/plans/${owner}#${id2}">${reference2}</a>` : html2`<a class="mono" href="/plans/${planId}@${revision2}#${id2}">${reference2}</a>`;
 }
 function ids(values, link2) {
-  return values.length ? join14(values.map(link2), ", ") : html2`<span class="muted">none</span>`;
+  return values.length ? join15(values.map(link2), ", ") : html2`<span class="muted">none</span>`;
 }
 function facts2(rows2) {
   const shown2 = rows2.filter(([, value2]) => value2 !== false);
@@ -33381,7 +33442,7 @@ function findingRefs(detail, reference2) {
   const findings = detail.findings.filter((finding) => finding.assertionIds.includes(reference2));
   if (!findings.length) return "";
   return html2` ·
-	${join14(
+	${join15(
     findings.map(
       (finding) => html2`<a href="${runItemHref(detail.runId, `finding:${finding.id}`)}" data-go>finding ${finding.id}</a>`
     ),
@@ -33497,7 +33558,7 @@ function findingCard(store, detail, finding) {
 							</ol>` : ""}
 			<p class="muted small">
 				Assertions
-				${join14(
+				${join15(
     finding.assertionIds.map((id2) => assertionLink(detail.runId, id2)),
     ", "
   )}${finding.requirementIds.length ? ` \xB7 requirements ${finding.requirementIds.join(", ")}` : ""}
@@ -33928,7 +33989,7 @@ function none3(text2 = "none") {
   return html2`<span class="muted">${text2}</span>`;
 }
 function words4(items) {
-  return items.length ? join14(
+  return items.length ? join15(
     items.map((item) => html2`<code>${item}</code>`),
     " "
   ) : none3();
@@ -34093,7 +34154,7 @@ function entryList2(instance) {
 					<dt class="mono">${name2}</dt>
 					<dd>
 						<code
-							>${join14(
+							>${join15(
       value2.split(" ").map((word) => html2`<span class="word">${word}</span>`),
       " "
     )}</code
@@ -34439,7 +34500,7 @@ function harnessPage(store, context, env, form = null, model = null, testerModel
 
 // plugin/src/ui/requester.ts
 import { randomUUID as randomUUID5 } from "node:crypto";
-import { join as join16 } from "node:path";
+import { join as join17 } from "node:path";
 
 // plugin/src/ui/pi-request.ts
 import { spawn as spawn4 } from "node:child_process";
@@ -34777,7 +34838,7 @@ function createRequester(store, options3) {
       explorationId: requestHookName,
       who: request2.id
     };
-    const extension = join16(pluginRoot, "pi", "permission.mjs");
+    const extension = join17(pluginRoot, "pi", "permission.mjs");
     const turns = chatOf(store, request2.conversation)?.turns ?? [];
     const earlier = turns.slice(
       0,
@@ -34799,7 +34860,7 @@ function createRequester(store, options3) {
       "--extension",
       extension,
       "--extension",
-      join16(pluginRoot, "pi", "changes.mjs"),
+      join17(pluginRoot, "pi", "changes.mjs"),
       "--tools",
       "read,bash",
       "--append-system-prompt",
@@ -34931,9 +34992,9 @@ This conversation is about plan ${reference2}. Use the plan and its records as t
 
 // plugin/src/ui/lifecycle.ts
 import { createHmac, randomBytes as randomBytes3, timingSafeEqual as timingSafeEqual2 } from "node:crypto";
-import { mkdirSync as mkdirSync7, readFileSync as readFileSync10, realpathSync as realpathSync6, rmSync as rmSync6 } from "node:fs";
+import { mkdirSync as mkdirSync7, readFileSync as readFileSync11, realpathSync as realpathSync6, rmSync as rmSync6 } from "node:fs";
 import { request } from "node:http";
-import { join as join17 } from "node:path";
+import { join as join18 } from "node:path";
 import { DatabaseSync as DatabaseSync2 } from "node:sqlite";
 import { setTimeout as delay } from "node:timers/promises";
 var lifecyclePath = "/internal/ui-lifecycle";
@@ -34941,9 +35002,9 @@ function lifecycleProof(token, workspace2, pid, action2, nonce, body) {
   return createHmac("sha256", token).update(JSON.stringify([workspace2, pid, action2, nonce, body])).digest("hex");
 }
 async function withUiStartupLock(workspace2, run2) {
-  const folder = join17(workspace2, ".checkmate", "tmp");
+  const folder = join18(workspace2, ".checkmate", "tmp");
   mkdirSync7(folder, { recursive: true });
-  const lock = new DatabaseSync2(join17(folder, "ui-startup.sqlite"));
+  const lock = new DatabaseSync2(join18(folder, "ui-startup.sqlite"));
   try {
     const deadline = Date.now() + 15e3;
     for (; ; ) {
@@ -34962,7 +35023,7 @@ async function withUiStartupLock(workspace2, run2) {
 }
 function uiMarker(workspace2) {
   try {
-    const file = JSON.parse(readFileSync10(uiFilePath(workspace2), "utf8"));
+    const file = JSON.parse(readFileSync11(uiFilePath(workspace2), "utf8"));
     if (Number.isInteger(file.port) && file.port > 0 && file.port <= 65535 && Number.isSafeInteger(file.pid) && file.pid > 0)
       return file;
   } catch {
@@ -35003,7 +35064,7 @@ async function contactUi(workspace2, action2) {
   );
   let token = "";
   try {
-    token = readFileSync10(hookTokenPath(workspace2), "utf8").trim();
+    token = readFileSync11(hookTokenPath(workspace2), "utf8").trim();
   } catch {
   }
   const signed = /^[0-9a-f]{64}$/.test(token) && token === hookToken;
@@ -40756,19 +40817,19 @@ var maxForm = 256 * 1024;
 function directory(candidates, file) {
   for (const candidate of candidates) {
     const path = fileURLToPath2(new URL(candidate, import.meta.url));
-    if (existsSync9(path + file)) return path;
+    if (existsSync10(path + file)) return path;
   }
   throw new Error(`Checkmate UI files are missing: ${file} not found in ${candidates.join(", ")}`);
 }
 function assets() {
   const files2 = directory(["./assets/", "../src/ui/assets/", "../plugin/src/ui/assets/"], "style.css");
   const fonts = `${files2}fonts/`;
-  const read = (name2) => readFileSync11(files2 + name2);
+  const read = (name2) => readFileSync12(files2 + name2);
   return {
     "/assets/style.css": { type: "text/css; charset=utf-8", body: read("style.css") },
     "/assets/client.js": { type: "text/javascript; charset=utf-8", body: read("client.js") },
     "/assets/favicon.svg": { type: "image/svg+xml", body: read("favicon.svg") },
-    font: (name2) => readFileSync11(`${fonts}${name2}.woff2`)
+    font: (name2) => readFileSync12(`${fonts}${name2}.woff2`)
   };
 }
 function securityHeaders() {
@@ -42879,8 +42940,8 @@ data: ${matched.join(",") || "*"}
 }
 
 // plugin/src/agents.ts
-import { existsSync as existsSync10, mkdirSync as mkdirSync9, readFileSync as readFileSync12, rmSync as rmSync8, writeFileSync as writeFileSync5 } from "node:fs";
-import { dirname as dirname2, join as join18 } from "node:path";
+import { existsSync as existsSync11, mkdirSync as mkdirSync9, readFileSync as readFileSync13, rmSync as rmSync8, writeFileSync as writeFileSync5 } from "node:fs";
+import { dirname as dirname2, join as join19 } from "node:path";
 var testerAgent = "checkmate:tester";
 var clerkAgent = "checkmate:clerk";
 var doneSteps = ["study", "test", "record", "follow", "rules", "merge", "verify"];
@@ -42992,12 +43053,16 @@ ${followEntriesText(answer2)}`,
     }
   );
   if (due === "test") return action2("test", "task-test.md", brief.test);
+  const shell3 = shellInstructions({
+    session: `qa-${explorationId}-${explorer}`,
+    workFolder: join19(store.workspace, folder)
+  });
   return action2(
     "study",
     "task-study.md",
-    `${brief.study}
+    shell3.length ? `${brief.study}
 
-Your shell does not keep settings between commands. Start each shell command with export PLAYWRIGHT_CLI_SESSION=qa-${explorationId}-${explorer}; so that your browser is your own.`
+Your shell does not keep settings between commands. ${shell3.join(" ")}` : brief.study
   );
 }
 function rulesAction(store, explorationId, round, phase) {
@@ -43091,7 +43156,7 @@ function lineOf(explorationId, action2) {
   return `${action2.action} ${action2.name} ${action2.step} agent=${action2.to}${description} prompt="${promptOf2(action2)}"`;
 }
 function writeFile(store, path, text2) {
-  const full = join18(store.workspace, path);
+  const full = join19(store.workspace, path);
   mkdirSync9(dirname2(full), { recursive: true });
   writeFileSync5(full, text2.endsWith("\n") ? text2 : `${text2}
 `);
@@ -43110,7 +43175,7 @@ function answerNext(store, actor, explorationId, actions, word) {
 ${replyLimit}
 End your reply with this line: ${replyLineOf(action2.name, action2.step)}`
         );
-        if (action2.answer) rmSync8(join18(store.workspace, action2.answer), { force: true });
+        if (action2.answer) rmSync8(join19(store.workspace, action2.answer), { force: true });
         addEvent(
           store,
           explorationId,
@@ -43179,7 +43244,7 @@ function addOutcome(store, actor, explorationId, item, also = () => {
 function finishPhase(store, actor, explorationId, phase, launch) {
   const recorded2 = phase.events.filter((item) => item.step === "record" && item.status === "completed").length;
   if (recorded2) removeWork(store, explorationId);
-  else keepBrowserFolder(store, explorationId);
+  else keepToolFolders(store, explorationId);
   if (!phase.follow) {
     const revision2 = recorded2 ? firstRevision(store, actor, explorationRow(store, explorationId).plan_id, explorationId) : null;
     addOutcome(store, actor, explorationId, {
@@ -43327,7 +43392,7 @@ function nextActions(store, actor, explorationId) {
 }
 function readText2(store, path) {
   try {
-    return readFileSync12(join18(store.workspace, path), "utf8");
+    return readFileSync13(join19(store.workspace, path), "utf8");
   } catch {
     return void 0;
   }
@@ -43500,7 +43565,7 @@ function stepDone(store, actor, input) {
   );
   const artifact = step === "test" ? "report.md" : step === "follow" ? "follow-up-report.md" : void 0;
   requireCondition(
-    !(failed2 && tester && artifact && existsSync10(join18(store.workspace, workFolder(explorationId, name2), artifact))),
+    !(failed2 && tester && artifact && existsSync11(join19(store.workspace, workFolder(explorationId, name2), artifact))),
     `The tester saved ${artifact}. A completed test with a product defect is not an agent failure.`,
     "Record the completed step without failure. Checkmate records product defects from the tester report."
   );
@@ -43684,30 +43749,30 @@ function specHandoff(store, actor, input) {
 }
 
 // plugin/src/cli.ts
-import { mkdirSync as mkdirSync10, readFileSync as readFileSync14, writeFileSync as writeFileSync6 } from "node:fs";
-import { dirname as dirname4, join as join20, resolve as resolve9 } from "node:path";
+import { mkdirSync as mkdirSync10, readFileSync as readFileSync15, writeFileSync as writeFileSync6 } from "node:fs";
+import { dirname as dirname4, join as join21, resolve as resolve9 } from "node:path";
 import { constants as constants2 } from "node:sqlite";
 
 // plugin/src/build.ts
 import { createHash as createHash2 } from "node:crypto";
-import { existsSync as existsSync11, readdirSync as readdirSync3, readFileSync as readFileSync13, realpathSync as realpathSync8, statSync as statSync6 } from "node:fs";
+import { existsSync as existsSync12, readdirSync as readdirSync4, readFileSync as readFileSync14, realpathSync as realpathSync8, statSync as statSync6 } from "node:fs";
 import { homedir as homedir3 } from "node:os";
-import { dirname as dirname3, isAbsolute as isAbsolute4, join as join19, resolve as resolve8, sep as sep4 } from "node:path";
+import { dirname as dirname3, isAbsolute as isAbsolute4, join as join20, resolve as resolve8, sep as sep4 } from "node:path";
 import { fileURLToPath as fileURLToPath3 } from "node:url";
-var instructionFolders = ["agents", "contracts", "pi", "references", "skills"];
+var instructionFolders = ["agents", "contracts", "pi", "recipes", "references", "skills"];
 function filesUnder(folder) {
-  if (!existsSync11(folder)) return [];
-  return readdirSync3(folder).sort().flatMap((name2) => {
-    const path = join19(folder, name2);
+  if (!existsSync12(folder)) return [];
+  return readdirSync4(folder).sort().flatMap((name2) => {
+    const path = join20(folder, name2);
     return statSync6(path).isDirectory() ? filesUnder(path) : [path];
   });
 }
 function buildDigest(bundle) {
   const root = dirname3(dirname3(bundle));
-  const hash = createHash2("sha256").update(readFileSync13(bundle));
+  const hash = createHash2("sha256").update(readFileSync14(bundle));
   for (const folder of instructionFolders) {
-    for (const path of filesUnder(join19(root, folder))) {
-      hash.update(path.slice(root.length)).update(readFileSync13(path));
+    for (const path of filesUnder(join20(root, folder))) {
+      hash.update(path.slice(root.length)).update(readFileSync14(path));
     }
   }
   return hash.digest("hex").slice(0, 12);
@@ -43729,16 +43794,16 @@ function versionLines(version3, bundle, env) {
   return [...lines2, ...piCopyWarnings(bundle, env, process.cwd())];
 }
 function piDeclarations(env, cwd) {
-  const agentDirectory = env.PI_CODING_AGENT_DIR?.trim() || join19(homedir3(), ".pi", "agent");
+  const agentDirectory = env.PI_CODING_AGENT_DIR?.trim() || join20(homedir3(), ".pi", "agent");
   const files2 = [
-    ["global", join19(agentDirectory, "settings.json")],
-    ["project", join19(cwd, ".pi", "settings.json")]
+    ["global", join20(agentDirectory, "settings.json")],
+    ["project", join20(cwd, ".pi", "settings.json")]
   ];
   return files2.flatMap(([scope, file]) => {
-    if (!existsSync11(file)) return [];
+    if (!existsSync12(file)) return [];
     let packages;
     try {
-      packages = JSON.parse(readFileSync13(file, "utf8")).packages;
+      packages = JSON.parse(readFileSync14(file, "utf8")).packages;
     } catch {
       return [];
     }
@@ -43748,7 +43813,7 @@ function piDeclarations(env, cwd) {
 }
 function packageRootOf(file) {
   let folder = dirname3(file);
-  while (!existsSync11(join19(folder, "package.json")) && dirname3(folder) !== folder) folder = dirname3(folder);
+  while (!existsSync12(join20(folder, "package.json")) && dirname3(folder) !== folder) folder = dirname3(folder);
   return folder;
 }
 function piCopyWarnings(bundle, env, cwd) {
@@ -45944,7 +46009,7 @@ function observedValue(args) {
     "Give either --observed or --observed-file, not both.",
     "Use --observed-file when the value holds a dollar sign or a backtick."
   );
-  return readFileSync14(file, "utf8").replace(/\r?\n$/, "");
+  return readFileSync15(file, "utf8").replace(/\r?\n$/, "");
 }
 function printPlan(reply) {
   const facts3 = { sha256: short3(reply.data.sha256) };
@@ -46216,7 +46281,7 @@ function commandHelp(argv) {
   return { ...refused("invalid_request", "checkmate", unknownCommand(words5)), data: { usage: [] } };
 }
 function version() {
-  const manifest = JSON.parse(readFileSync14(join20(pluginRoot, ".claude-plugin", "plugin.json"), "utf8"));
+  const manifest = JSON.parse(readFileSync15(join21(pluginRoot, ".claude-plugin", "plugin.json"), "utf8"));
   return versionLines(manifest.version, import.meta.url, process.env).join("\n");
 }
 function readJson2(text2) {
@@ -46394,7 +46459,7 @@ async function main(argv) {
   const outcome = run(argv, {
     cwd: process.cwd(),
     env: process.env,
-    stdin: () => readFileSync14(0, "utf8")
+    stdin: () => readFileSync15(0, "utf8")
   });
   process.stdout.write(outcome.output + "\n");
   for (const line of piCopyWarnings(import.meta.url, process.env, process.cwd())) process.stderr.write(line + "\n");
@@ -46402,8 +46467,8 @@ async function main(argv) {
 }
 
 // plugin/src/action-tools.ts
-import { readFileSync as readFileSync15 } from "node:fs";
-import { join as join21 } from "node:path";
+import { readFileSync as readFileSync16 } from "node:fs";
+import { join as join22 } from "node:path";
 var readActions = [
   "list_targets",
   "show_target",
@@ -46444,7 +46509,7 @@ function schemaFiles() {
   return (name2) => {
     const cached = files2.get(name2);
     if (cached) return cached;
-    const parsed = JSON.parse(readFileSync15(join21(pluginRoot, "contracts", name2), "utf8"));
+    const parsed = JSON.parse(readFileSync16(join22(pluginRoot, "contracts", name2), "utf8"));
     files2.set(name2, parsed);
     return parsed;
   };
@@ -46589,8 +46654,8 @@ async function callActionTool(tool, input, workspace2, env) {
 
 // cli/src/launcher.ts
 import { spawn as spawn5 } from "node:child_process";
-import { readFileSync as readFileSync16 } from "node:fs";
-import { join as join22, resolve as resolve10 } from "node:path";
+import { readFileSync as readFileSync17 } from "node:fs";
+import { join as join23, resolve as resolve10 } from "node:path";
 var stages = ["setup", "plan", "revise", "execute"];
 var defaultTimeoutSeconds = 300;
 var minimumRules = ["Read", "Bash"];
@@ -46703,7 +46768,7 @@ function checkClaudeArgs2(claudeArgs2) {
   }
 }
 function workerArgs(pluginRoot2, allowedTools, claudeArgs2 = [], role = "") {
-  const schema = readFileSync16(join22(pluginRoot2, "contracts", "response.schema.json"), "utf8");
+  const schema = readFileSync17(join23(pluginRoot2, "contracts", "response.schema.json"), "utf8");
   const args = [
     "-p",
     ...claudeArgs2,
@@ -46731,7 +46796,7 @@ function piWorkerArgs(pluginRoot2, role, env) {
       "--no-mcp",
       "--no-skills",
       "--extension",
-      join22(pluginRoot2, "pi", "checkmate-tools.mjs"),
+      join23(pluginRoot2, "pi", "checkmate-tools.mjs"),
       "--tools",
       tools.join(",")
     ],
@@ -47023,7 +47088,7 @@ var finalCommand = {
   execute: "run finish"
 };
 function nativePlanPrompt(stage, subject, pluginRoot2, rejected) {
-  const skill = readFileSync16(join22(pluginRoot2, "skills", stage, "SKILL.md"), "utf8");
+  const skill = readFileSync17(join23(pluginRoot2, "skills", stage, "SKILL.md"), "utf8");
   const start = stage === "plan" ? "Read the plan request." : "Read the pending decisions.";
   return [
     `You are the independent Checkmate ${stage} worker for ${subject}. ${start} Follow the delegated path below. Do not ask the oracle, answer a question, run a reset, or perform tests.`,
@@ -47033,15 +47098,15 @@ function nativePlanPrompt(stage, subject, pluginRoot2, rejected) {
   ].join("\n\n");
 }
 function prompt(stage, subject, workspace2, pluginRoot2, execution, timeoutSeconds, harness, round = 1, rejected = []) {
-  const skill = join22(pluginRoot2, "skills", stage, "SKILL.md");
-  const workflow = join22(pluginRoot2, "references", "workflow.md");
-  const cliPath = join22(pluginRoot2, "dist", "checkmate.js");
+  const skill = join23(pluginRoot2, "skills", stage, "SKILL.md");
+  const workflow = join23(pluginRoot2, "references", "workflow.md");
+  const cliPath = join23(pluginRoot2, "dist", "checkmate.js");
   const cliCommand = `cd '${workspace2.replaceAll("'", "'\\''")}' && node '${cliPath.replaceAll("'", "'\\''")}'`;
   const deadline = new Date(Date.now() + timeoutSeconds * 1e3).toISOString();
   const instructions = harness === "pi" ? [
     "Follow the Checkmate stage instructions and workflow below before you start.",
     ...(stage === "setup" ? [workflow] : [skill, workflow]).map(
-      (path) => readFileSync16(path, "utf8").replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, "").replaceAll(
+      (path) => readFileSync17(path, "utf8").replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, "").replaceAll(
         'CHECKMATE_HOST_SESSION=1 node "${CLAUDE_PLUGIN_ROOT}/dist/checkmate.js"',
         () => cliCommand
       ).replaceAll("${CLAUDE_PLUGIN_ROOT}", () => pluginRoot2).replaceAll("claude:", "pi:").trim()
@@ -47167,7 +47232,7 @@ function contextLines(execution, workspace2, tools) {
 }
 function probePrompt(execution, workspace2, actor, pluginRoot2) {
   const { run: run2 } = execution;
-  const cli = `cd '${workspace2.replaceAll("'", "'\\''")}' && node '${join22(pluginRoot2, "dist", "checkmate.js").replaceAll("'", "'\\''")}'`;
+  const cli = `cd '${workspace2.replaceAll("'", "'\\''")}' && node '${join23(pluginRoot2, "dist", "checkmate.js").replaceAll("'", "'\\''")}'`;
   const runId = run2.run_id;
   return [
     "This is a delegated Checkmate exploration probe. The selected tests are done. Probe for defects that the plan does not check. Do not record passed or failed results. Do not close tests. Do not run run gate, run begin, or run finish.",
@@ -47194,7 +47259,7 @@ function requestLines(test, text2) {
 }
 function testPrompt(execution, workspace2, test, actor, pluginRoot2) {
   const { run: run2, profile, planRequest: planning } = execution;
-  const cli = `cd '${workspace2.replaceAll("'", "'\\''")}' && node '${join22(pluginRoot2, "dist", "checkmate.js").replaceAll("'", "'\\''")}'`;
+  const cli = `cd '${workspace2.replaceAll("'", "'\\''")}' && node '${join23(pluginRoot2, "dist", "checkmate.js").replaceAll("'", "'\\''")}'`;
   const runId = run2.run_id;
   const tools = toolStatus(planning, profile);
   const marker = JSON.parse(run2.request).marker ?? `qa-${runId}`;
@@ -47286,7 +47351,7 @@ async function runChild(workspace2, options3, execution, harness, env, prompt2, 
         CHECKMATE_TOOL_SUBJECT: execution.run.run_id,
         CHECKMATE_TOOL_TEST: testId,
         CHECKMATE_MARKER: JSON.parse(execution.run.request).marker ?? "",
-        PLAYWRIGHT_MCP_OUTPUT_DIR: join22(workspace2, ".checkmate", "tmp", execution.run.run_id)
+        PLAYWRIGHT_MCP_OUTPUT_DIR: join23(workspace2, ".checkmate", "tmp", execution.run.run_id)
       }
     });
     const note = result.failure ? result.failure.message : `The worker returned ${result.response.status}: ${result.response.reasons.join(" ") || "no reason"}`;
@@ -47532,7 +47597,7 @@ async function delegate(workspace2, stage, subject, options3) {
           CHECKMATE_ACTOR: workerActor,
           CHECKMATE_TOOL_ROLE: stage,
           CHECKMATE_TOOL_SUBJECT: subject,
-          ...run2 ? { PLAYWRIGHT_MCP_OUTPUT_DIR: join22(workspace2, ".checkmate", "tmp", subject) } : {}
+          ...run2 ? { PLAYWRIGHT_MCP_OUTPUT_DIR: join23(workspace2, ".checkmate", "tmp", subject) } : {}
         }
       });
       claimed = result.response;
@@ -47787,9 +47852,9 @@ ${source.text}`)
 }
 
 // cli/src/main.ts
-import { existsSync as existsSync12, mkdirSync as mkdirSync11, openSync as openSync2, readFileSync as readFileSync17, rmSync as rmSync9, writeFileSync as writeFileSync7 } from "node:fs";
+import { existsSync as existsSync13, mkdirSync as mkdirSync11, openSync as openSync2, readFileSync as readFileSync18, rmSync as rmSync9, writeFileSync as writeFileSync7 } from "node:fs";
 import { spawn as spawn6, spawnSync as spawnSync9 } from "node:child_process";
-import { join as join23 } from "node:path";
+import { join as join24 } from "node:path";
 import { fileURLToPath as fileURLToPath4 } from "node:url";
 
 // plugin/src/action-mcp.ts
@@ -47855,9 +47920,9 @@ var delegateUsage = "checkmate delegate <setup|plan|revise|execute> <targetId|pl
 var delegateSpecUsage = "checkmate delegate spec <planId@revision> [--timeout <seconds>]";
 var delegateHarnessUsage = "With Pi, omit --allow and --claude-arg. Claude requires --allow <rule> and accepts --claude-arg <arg>. CHECKMATE_HARNESS overrides the workspace harness. The default is Claude. delegate spec uses no tools and needs no --allow.";
 function version2() {
-  const manifest = join23(pluginRoot, ".claude-plugin", "plugin.json");
+  const manifest = join24(pluginRoot, ".claude-plugin", "plugin.json");
   return versionLines(
-    JSON.parse(readFileSync17(manifest, "utf8")).version,
+    JSON.parse(readFileSync18(manifest, "utf8")).version,
     import.meta.url,
     process.env
   ).join("\n");
@@ -47959,7 +48024,7 @@ function parseDelegate(tokens) {
   return parsed;
 }
 function resultFile(workspace2, stage, subject) {
-  return join23(workspace2, ".checkmate", "tmp", `delegate-${stage}-${subject}.json`);
+  return join24(workspace2, ".checkmate", "tmp", `delegate-${stage}-${subject}.json`);
 }
 function detachDelegate(tokens) {
   const rest = tokens.filter((token) => token !== "--detach");
@@ -47974,7 +48039,7 @@ function detachDelegate(tokens) {
       tokens.includes("--json")
     );
   const file = resultFile(workspace2, stage, subject);
-  mkdirSync11(join23(workspace2, ".checkmate", "tmp"), { recursive: true });
+  mkdirSync11(join24(workspace2, ".checkmate", "tmp"), { recursive: true });
   rmSync9(file, { force: true });
   const quote = (text2) => `'${text2.replaceAll("'", "'\\''")}'`;
   const command = [process.execPath, fileURLToPath4(import.meta.url), "delegate", ...rest, "--json"].map(quote).join(" ");
@@ -48002,8 +48067,8 @@ function detachDelegate(tokens) {
   );
 }
 function delegateAlive(file) {
-  if (!existsSync12(file + ".pid") || !existsSync12(file + ".started")) return false;
-  const pid = Number(readFileSync17(file + ".pid", "utf8"));
+  if (!existsSync13(file + ".pid") || !existsSync13(file + ".started")) return false;
+  const pid = Number(readFileSync18(file + ".pid", "utf8"));
   if (!Number.isInteger(pid) || pid <= 0) return false;
   try {
     process.kill(pid, 0);
@@ -48013,7 +48078,7 @@ function delegateAlive(file) {
   const ps = spawnSync9("ps", ["-p", String(pid), "-o", "lstart=,command="], { encoding: "utf8" });
   const line = ps.stdout.trim();
   if (!line.includes("delegate")) return false;
-  const started = Number(readFileSync17(file + ".started", "utf8"));
+  const started = Number(readFileSync18(file + ".started", "utf8"));
   const processStarted = Date.parse(line.slice(0, 24));
   return Number.isNaN(processStarted) || processStarted >= started - 5e3;
 }
@@ -48024,9 +48089,9 @@ function waitDelegate(tokens) {
   const file = resultFile(workspace2, stage, subject);
   const limit = (seconds(parsed.values.timeout, "timeout") ?? 90) * 1e3;
   const until = Date.now() + limit;
-  while (!existsSync12(file) && Date.now() < until && delegateAlive(file))
+  while (!existsSync13(file) && Date.now() < until && delegateAlive(file))
     Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 500);
-  if (!existsSync12(file) && !delegateAlive(file)) {
+  if (!existsSync13(file) && !delegateAlive(file)) {
     rmSync9(file + ".started", { force: true });
     rmSync9(file + ".pid", { force: true });
     print(
@@ -48041,7 +48106,7 @@ function waitDelegate(tokens) {
     );
     return;
   }
-  if (!existsSync12(file)) {
+  if (!existsSync13(file)) {
     print(
       {
         status: "running",
@@ -48056,7 +48121,7 @@ function waitDelegate(tokens) {
     );
     return;
   }
-  const text2 = readFileSync17(file, "utf8");
+  const text2 = readFileSync18(file, "utf8");
   rmSync9(file, { force: true });
   rmSync9(file + ".started", { force: true });
   rmSync9(file + ".pid", { force: true });

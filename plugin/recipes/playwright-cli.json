@@ -1,0 +1,14 @@
+{
+	"name": "playwright-cli",
+	"capability": "browser",
+	"kind": "cli",
+	"purpose": "Drive the browser.",
+	"detect": "path",
+	"environment": {
+		"PLAYWRIGHT_MCP_OUTPUT_DIR": "{workFolder}",
+		"PLAYWRIGHT_CLI_SESSION": "{session}"
+	},
+	"shellInstruction": "Start each shell command with export PLAYWRIGHT_CLI_SESSION={session}; so that your browser is your own.",
+	"workspaceFolders": [".playwright-cli"],
+	"usage": "playwright-cli.md"
+}

@@ -42,6 +42,10 @@ Use `npm test` to run only the packaged end-to-end suite after you install the s
 
 The root package is private. The published CLI package is `cli/`. The build bundles `cli/src/main.ts` into the plugin. The pack step copies the plugin, README, and license into the CLI package. Keep `LICENSE` and package metadata with the code.
 
+## Tool recipes
+
+Checkmate keeps what it knows about each test tool in `plugin/recipes/`. Each tool has a JSON recipe and the Markdown usage text that the recipe names. `node` gives `http`. `playwright-cli` gives `browser`. Setup records the tools that it finds as profile tools. The host still runs the tools. Checkmate reads the recipes when it runs, and the build digest includes them.
+
 ## Testing a branch before release
 
 A branch install needs no build step. Run `npm run build` and commit `plugin/dist/checkmate.js` before you push. `npm run type:check` fails when the bundle is stale.

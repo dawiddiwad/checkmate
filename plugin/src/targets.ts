@@ -17,6 +17,7 @@ import {
 } from './contracts.ts'
 import { executableOnPath } from './sessions.ts'
 import { changesData, resetCommand } from './resets.ts'
+import { recipes, type Recipe } from './recipes.ts'
 import { spawnSync } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -814,16 +815,23 @@ export function setupAssumptions(input: SetupInput) {
 	if (!input.targetId) assumed.push(`target=${targetId} (the host of the URL)`)
 	const instanceId = input.instanceId ?? 'local'
 	if (!input.instanceId) assumed.push('instance=local')
-	const browser = executableOnPath('playwright-cli', input.env)
-	const capabilities = browser ? ['browser', 'http'] : ['http']
-	assumed.push(
-		'entry point=web (url)',
-		`capabilities=${capabilities.join(',')} (${browser ? 'playwright-cli is on PATH' : 'no browser tool on PATH'})`
-	)
+	const detected = recipes().flatMap((recipe) => {
+		const path = recipe.detect === 'runtime' ? process.execPath : executableOnPath(recipe.name, input.env)
+		return path ? [{ recipe, path }] : []
+	})
+	const capabilities = [...new Set(detected.map(({ recipe }) => recipe.capability))].sort()
+	assumed.push('entry point=web (url)', `capabilities=${capabilities.join(',')} (${pathTools(detected)})`)
 	const allowedOperations = input.operations?.length ? input.operations : [anyTestOperation]
 	if (!input.operations?.length) assumed.push(`operations=${anyTestOperation}: ${anyTestOperationText}`)
 	assumed.push('authentication=none')
-	return { url, targetId, instanceId, browser, capabilities, allowedOperations, assumed }
+	return { url, targetId, instanceId, detected, capabilities, allowedOperations, assumed }
+}
+
+function pathTools(detected: Array<{ recipe: Recipe }>) {
+	const found = detected.filter(({ recipe }) => recipe.detect === 'path').map(({ recipe }) => recipe.name)
+	if (found.length) return `${found.join(' and ')} ${found.length === 1 ? 'is' : 'are'} on PATH`
+	const missing = recipes().filter((recipe) => recipe.detect === 'path')
+	return `no ${missing.map((recipe) => recipe.capability).join(' or ')} tool on PATH`
 }
 
 function sameSet(a: string[], b: string[]) {
@@ -891,29 +899,19 @@ function instanceChange(stored: Instance, wanted: Instance) {
 // One transaction holds the request, the profile revision, and the instance. A refusal saves none of them.
 export function setupTarget(store: Store, actor: string | undefined, input: SetupInput) {
 	const setup = setupAssumptions(input)
-	const { url, targetId, instanceId, browser, capabilities, allowedOperations, assumed } = setup
-	const executable = browser ? browserExecutable(store.workspace) : undefined
-	const tools = [
-		{
-			name: 'node',
-			kind: 'cli' as const,
-			purpose: 'Send HTTP requests.',
-			version: process.version.slice(1),
+	const { url, targetId, instanceId, detected, capabilities, allowedOperations, assumed } = setup
+	const tools = detected.map(({ recipe, path }) => {
+		const version = recipe.detect === 'runtime' ? process.version.slice(1) : toolVersion(path)
+		const executable = recipe.name === 'playwright-cli' ? browserExecutable(store.workspace) : undefined
+		return {
+			name: recipe.name,
+			kind: recipe.kind,
+			purpose: recipe.purpose,
+			...(version ? { version } : {}),
+			...(executable ? { executable } : {}),
 			reachable: true,
-		},
-		...(browser
-			? [
-					{
-						name: 'playwright-cli',
-						kind: 'cli' as const,
-						purpose: 'Drive the browser.',
-						...(toolVersion(browser) ? { version: toolVersion(browser) } : {}),
-						...(executable ? { executable } : {}),
-						reachable: true,
-					},
-				]
-			: []),
-	]
+		}
+	})
 	const entryPoints = [{ name: 'web', kind: 'url' as const, purpose: 'The application.' }]
 	const failure = input.answered === undefined ? urlFailure(url, input.env) : input.answered ? null : 'not reachable'
 	const reachable = failure === null

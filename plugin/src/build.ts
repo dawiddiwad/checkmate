@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url'
 import { executableOnPath } from './sessions.ts'
 import { hostSession } from './actor.ts'
 
-const instructionFolders = ['agents', 'contracts', 'pi', 'references', 'skills']
+const instructionFolders = ['agents', 'contracts', 'pi', 'recipes', 'references', 'skills']
 
 function filesUnder(folder: string): string[] {
 	if (!existsSync(folder)) return []

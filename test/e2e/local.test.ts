@@ -4450,7 +4450,16 @@ test('Resume a structured run after a worker deadline — outcomes lost or gate 
 	const { cpSync } = await import('node:fs')
 	const plugin = join(workspace, 'standalone')
 	const installed = join(project, 'node_modules/@xoxoai/checkmate/plugin')
-	for (const path of ['.claude-plugin', 'dist', 'contracts', 'skills', 'references', 'pi', 'src/ui/assets']) {
+	for (const path of [
+		'.claude-plugin',
+		'dist',
+		'contracts',
+		'skills',
+		'recipes',
+		'references',
+		'pi',
+		'src/ui/assets',
+	]) {
 		const destination = join(plugin, path)
 		mkdirSync(join(destination, '..'), { recursive: true })
 		cpSync(join(installed, path), destination, { recursive: true })
@@ -6382,6 +6391,23 @@ test('Setup lets playwright-cli use its own browser and checks a browser executa
 	assert.equal(named.body.revision, 1)
 	const apiOnly = await setup({ ...process.env, PATH: '', CHECKMATE_ACTOR: 'oracle', CHECKMATE_HARNESS: 'pi' })
 	assert.equal(apiOnly.code, 0, apiOnly.output)
+})
+
+test('Setup refuses a malformed tool recipe and names the file and the field — no target is saved.', async (t) => {
+	const { cpSync } = await import('node:fs')
+	const plugin = join(directory(t), 'plugin')
+	cpSync(join(project, 'node_modules/@xoxoai/checkmate/plugin'), plugin, { recursive: true })
+	const recipe = join(plugin, 'recipes', 'node.json')
+	writeFileSync(recipe, JSON.stringify({ ...JSON.parse(readFileSync(recipe, 'utf8')), detect: 'sometimes' }))
+	const workspace = directory(t)
+	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle', CHECKMATE_HARNESS: 'pi' }
+	const entry = join(plugin, 'dist/checkmate.js')
+	const setup = await invoke(entry, workspace, env, '', ['setup', '--url', 'http://127.0.0.1:9', '--target', 'shop'])
+	assert.equal(setup.code, 1, setup.output)
+	assert.match(setup.output, /Tool recipe \S*recipes\/node\.json is not valid: detect must be path or runtime\./)
+	const targets = await invoke(entry, workspace, env, '', ['target', 'list'])
+	assert.equal(targets.code, 0, targets.output)
+	assert.doesNotMatch(targets.output, /shop/)
 })
 
 test('Setup says why the application did not answer, follows redirects, accepts a 403, and goes through the proxy of the environment.', async (t) => {

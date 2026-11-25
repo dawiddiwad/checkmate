@@ -24,7 +24,7 @@ import {
 	entryValues,
 	explorerNames,
 	keepWorkFiles,
-	keepBrowserFolder,
+	keepToolFolders,
 	logMerge,
 	mergeInput,
 	pauseOf,
@@ -38,6 +38,7 @@ import {
 import { lastEntry, recordAnswer, recordTask } from './recorder.ts'
 import { firstRevision } from './testRevision.ts'
 import { replyArray } from './sessions.ts'
+import { shellInstructions } from './recipes.ts'
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 
@@ -197,10 +198,16 @@ function testerAction(store: Store, explorationId: string, explorer: string, due
 		}
 	)
 	if (due === 'test') return action('test', 'task-test.md', brief.test)
+	const shell = shellInstructions({
+		session: `qa-${explorationId}-${explorer}`,
+		workFolder: join(store.workspace, folder),
+	})
 	return action(
 		'study',
 		'task-study.md',
-		`${brief.study}\n\nYour shell does not keep settings between commands. Start each shell command with export PLAYWRIGHT_CLI_SESSION=qa-${explorationId}-${explorer}; so that your browser is your own.`
+		shell.length
+			? `${brief.study}\n\nYour shell does not keep settings between commands. ${shell.join(' ')}`
+			: brief.study
 	)
 }
 
@@ -410,7 +417,7 @@ function addOutcome(
 function finishPhase(store: Store, actor: string, explorationId: string, phase: Phase, launch: Launch) {
 	const recorded = phase.events.filter((item) => item.step === 'record' && item.status === 'completed').length
 	if (recorded) removeWork(store, explorationId)
-	else keepBrowserFolder(store, explorationId)
+	else keepToolFolders(store, explorationId)
 	if (!phase.follow) {
 		const revision = recorded
 			? firstRevision(store, actor, explorationRow(store, explorationId).plan_id, explorationId)

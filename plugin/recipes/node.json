@@ -1,0 +1,10 @@
+{
+	"name": "node",
+	"capability": "http",
+	"kind": "cli",
+	"purpose": "Send HTTP requests.",
+	"detect": "runtime",
+	"environment": {},
+	"workspaceFolders": [],
+	"usage": "node.md"
+}

@@ -35285,51 +35285,33 @@ function toolsTable(profile) {
 function profileFacts(profile) {
   const approvals = profile.approvals ?? { plan: "required", result: "required" };
   return html2`<dl class="facts">
-		<div>
-			<dt>Capabilities</dt>
-			<dd>${words4(profile.capabilities)}</dd>
-		</div>
-		<div>
-			<dt>Operations</dt>
-			<dd>${words4(profile.allowedOperations)}</dd>
-		</div>
-		<div>
-			<dt>Authentication</dt>
-			<dd>
-				<code>${profile.authentication.kind}</code> · references ${words4(profile.authentication.references)}
-			</dd>
-		</div>
-		<div>
-			<dt>Approvals</dt>
-			<dd>plan <code>${approvals.plan}</code> · result <code>${approvals.result}</code></dd>
-		</div>
-		<div>
-			<dt>Startup</dt>
-			<dd>
-				${profile.startup.owner}${profile.startup.command ? html2` · <code>${profile.startup.command.join(" && ")}</code>` : ""}
-			</dd>
-		</div>
-		<div>
-			<dt>Cleanup</dt>
-			<dd>${profile.cleanup}</dd>
-		</div>
-		${profile.reset ? html2`<div>
-						<dt>Reset</dt>
+		<dt>Capabilities</dt>
+		<dd>${words4(profile.capabilities)}</dd>
+		<dt>Operations</dt>
+		<dd>${words4(profile.allowedOperations)}</dd>
+		<dt>Authentication</dt>
+		<dd><code>${profile.authentication.kind}</code> · references ${words4(profile.authentication.references)}</dd>
+		<dt>Approvals</dt>
+		<dd>plan <code>${approvals.plan}</code> · result <code>${approvals.result}</code></dd>
+		<dt>Startup</dt>
+		<dd>
+			${profile.startup.owner}${profile.startup.command ? html2` · <code>${profile.startup.command.join(" && ")}</code>` : ""}
+		</dd>
+		<dt>Cleanup</dt>
+		<dd>${profile.cleanup}</dd>
+		${profile.reset ? html2`<dt>Reset</dt>
 						<dd>
 							${profile.reset.owner}${profile.reset.command ? html2` · <code>${profile.reset.command.join(" && ")}</code>` : ""}
-						</dd>
-					</div>` : ""}
-		<div>
-			<dt>Profile readiness</dt>
-			<dd>
-				${profile.readyForLiveExecution ? pill("ready") : html2`${pill("blocked", "not ready")}
-								<p class="help">
-									Check the active instances below. Then run
-									<code>checkmate delegate setup ${profile.targetId}</code>
-									to recheck the prerequisites and save a profile revision.
-								</p>`}
-			</dd>
-		</div>
+						</dd>` : ""}
+		<dt>Profile readiness</dt>
+		<dd>
+			${profile.readyForLiveExecution ? pill("ready") : html2`${pill("blocked", "not ready")}
+							<p class="help">
+								Check the active instances below. Then run
+								<code>checkmate delegate setup ${profile.targetId}</code>
+								to recheck the prerequisites and save a profile revision.
+							</p>`}
+		</dd>
 	</dl>`;
 }
 function historyList(store, targetId, shown2) {

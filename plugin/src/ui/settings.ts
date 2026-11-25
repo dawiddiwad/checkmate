@@ -166,59 +166,41 @@ function toolsTable(profile: Profile) {
 function profileFacts(profile: Profile) {
 	const approvals = profile.approvals ?? { plan: 'required', result: 'required' }
 	return html`<dl class="facts">
-		<div>
-			<dt>Capabilities</dt>
-			<dd>${words(profile.capabilities)}</dd>
-		</div>
-		<div>
-			<dt>Operations</dt>
-			<dd>${words(profile.allowedOperations)}</dd>
-		</div>
-		<div>
-			<dt>Authentication</dt>
-			<dd>
-				<code>${profile.authentication.kind}</code> · references ${words(profile.authentication.references)}
-			</dd>
-		</div>
-		<div>
-			<dt>Approvals</dt>
-			<dd>plan <code>${approvals.plan}</code> · result <code>${approvals.result}</code></dd>
-		</div>
-		<div>
-			<dt>Startup</dt>
-			<dd>
-				${profile.startup.owner}${profile.startup.command ? html` · <code>${profile.startup.command.join(' && ')}</code>` : ''}
-			</dd>
-		</div>
-		<div>
-			<dt>Cleanup</dt>
-			<dd>${profile.cleanup}</dd>
-		</div>
+		<dt>Capabilities</dt>
+		<dd>${words(profile.capabilities)}</dd>
+		<dt>Operations</dt>
+		<dd>${words(profile.allowedOperations)}</dd>
+		<dt>Authentication</dt>
+		<dd><code>${profile.authentication.kind}</code> · references ${words(profile.authentication.references)}</dd>
+		<dt>Approvals</dt>
+		<dd>plan <code>${approvals.plan}</code> · result <code>${approvals.result}</code></dd>
+		<dt>Startup</dt>
+		<dd>
+			${profile.startup.owner}${profile.startup.command ? html` · <code>${profile.startup.command.join(' && ')}</code>` : ''}
+		</dd>
+		<dt>Cleanup</dt>
+		<dd>${profile.cleanup}</dd>
 		${
 			profile.reset
-				? html`<div>
-						<dt>Reset</dt>
+				? html`<dt>Reset</dt>
 						<dd>
 							${profile.reset.owner}${profile.reset.command ? html` · <code>${profile.reset.command.join(' && ')}</code>` : ''}
-						</dd>
-					</div>`
+						</dd>`
 				: ''
 		}
-		<div>
-			<dt>Profile readiness</dt>
-			<dd>
-				${
-					profile.readyForLiveExecution
-						? pill('ready')
-						: html`${pill('blocked', 'not ready')}
-								<p class="help">
-									Check the active instances below. Then run
-									<code>checkmate delegate setup ${profile.targetId}</code>
-									to recheck the prerequisites and save a profile revision.
-								</p>`
-				}
-			</dd>
-		</div>
+		<dt>Profile readiness</dt>
+		<dd>
+			${
+				profile.readyForLiveExecution
+					? pill('ready')
+					: html`${pill('blocked', 'not ready')}
+							<p class="help">
+								Check the active instances below. Then run
+								<code>checkmate delegate setup ${profile.targetId}</code>
+								to recheck the prerequisites and save a profile revision.
+							</p>`
+			}
+		</dd>
 	</dl>`
 }
 

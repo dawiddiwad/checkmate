@@ -10,5 +10,10 @@
 	},
 	"shellInstruction": "Start each shell command with export PLAYWRIGHT_CLI_SESSION={session}; so that your browser is your own.",
 	"workspaceFolders": [".playwright-cli"],
+	"observeFrom": {
+		"page": "view",
+		"reload": "state"
+	},
+	"evidence": ["screenshot", "trace"],
 	"usage": "playwright-cli.md"
 }

@@ -6,5 +6,9 @@
 	"detect": "runtime",
 	"environment": {},
 	"workspaceFolders": [],
+	"observeFrom": {
+		"api": "state"
+	},
+	"evidence": ["http_exchange"],
 	"usage": "node.md"
 }

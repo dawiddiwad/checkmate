@@ -168,12 +168,24 @@
 			"items": {
 				"type": "object",
 				"properties": {
-					"revision": { "type": "integer", "minimum": 1 },
-					"actor": { "type": "string", "minLength": 1 },
-					"rationale": { "type": "string", "minLength": 1 },
+					"revision": {
+						"type": "integer",
+						"minimum": 1
+					},
+					"actor": {
+						"type": "string",
+						"minLength": 1
+					},
+					"rationale": {
+						"type": "string",
+						"minLength": 1
+					},
 					"testIds": {
 						"type": "array",
-						"items": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" },
+						"items": {
+							"type": "string",
+							"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+						},
 						"minItems": 1
 					},
 					"closedGaps": {
@@ -181,8 +193,14 @@
 						"items": {
 							"type": "object",
 							"properties": {
-								"gapId": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" },
-								"reason": { "type": "string", "minLength": 1 }
+								"gapId": {
+									"type": "string",
+									"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"
+								},
+								"reason": {
+									"type": "string",
+									"minLength": 1
+								}
 							},
 							"required": ["gapId", "reason"],
 							"additionalProperties": false

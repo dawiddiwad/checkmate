@@ -13972,6 +13972,7 @@ function dataSummary(workspace2, reset) {
 // plugin/src/recipes.ts
 import { existsSync as existsSync3, readdirSync, readFileSync as readFileSync3 } from "node:fs";
 import { join as join4 } from "node:path";
+var compatibleObserveFrom = { page: "view", reload: "state", api: "state" };
 var loaded;
 function isText(value2) {
   return typeof value2 === "string" && value2.trim() !== "";
@@ -13999,12 +14000,36 @@ function readRecipe(folder, file) {
     refuse4("shellInstruction must be a text when it is given.");
   if (!Array.isArray(recipe.workspaceFolders) || !recipe.workspaceFolders.every(isText))
     refuse4("workspaceFolders must be a list of folder names.");
+  const observeFrom = recipe.observeFrom;
+  if (typeof observeFrom !== "object" || observeFrom === null || Array.isArray(observeFrom) || !Object.keys(observeFrom).every(isValueName) || !Object.values(observeFrom).every((reading) => reading === "view" || reading === "state"))
+    refuse4("observeFrom must be an object that maps each value name to view or state.");
+  if (!Array.isArray(recipe.evidence) || !recipe.evidence.every(isValueName))
+    refuse4("evidence must be a list of evidence kind names.");
   if (!isText(recipe.usage) || !existsSync3(join4(folder, recipe.usage)))
     refuse4("usage must name a file in the folder.");
   return recipe;
 }
+function isValueName(value2) {
+  return typeof value2 === "string" && /^[a-z][a-z0-9_]{0,39}$/.test(value2);
+}
 function readRecipes(folder) {
-  return readdirSync(folder).filter((file) => file.endsWith(".json")).sort().map((file) => readRecipe(folder, file));
+  const found = readdirSync(folder).filter((file) => file.endsWith(".json")).sort().map((file) => readRecipe(folder, file));
+  const readings = new Map(
+    Object.entries(compatibleObserveFrom).map(([value2, reading]) => [
+      value2,
+      { reading, from: "the values accepted for all targets" }
+    ])
+  );
+  for (const recipe of found)
+    for (const [value2, reading] of Object.entries(recipe.observeFrom)) {
+      const known = readings.get(value2);
+      if (known && known.reading !== reading)
+        throw Error(
+          `Tool recipe ${join4(folder, `${recipe.name}.json`)} is not valid: observeFrom ${value2} is ${reading}, but it is ${known.reading} in ${known.from}.`
+        );
+      readings.set(value2, { reading, from: `recipe ${recipe.name}` });
+    }
+  return found;
 }
 function recipes() {
   loaded ??= readRecipes(join4(pluginRoot, "recipes"));

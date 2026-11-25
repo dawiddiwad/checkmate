@@ -201,14 +201,25 @@
 				"type": "object",
 				"if": {
 					"properties": {
-						"type": { "const": "defect" }
+						"type": {
+							"const": "defect"
+						}
 					}
 				},
 				"then": {
 					"properties": {
-						"evidenceIds": { "type": "array", "minItems": 1 },
-						"testIds": { "type": "array", "minItems": 1 },
-						"assertionIds": { "type": "array", "minItems": 1 }
+						"evidenceIds": {
+							"type": "array",
+							"minItems": 1
+						},
+						"testIds": {
+							"type": "array",
+							"minItems": 1
+						},
+						"assertionIds": {
+							"type": "array",
+							"minItems": 1
+						}
 					}
 				},
 				"properties": {

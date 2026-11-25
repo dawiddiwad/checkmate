@@ -100,6 +100,8 @@ checkmate delegate execute run-2 --allow Read --allow Bash
 checkmate run show run-2
 ```
 
+A retest worker for a test that the rejected run covers gets the rejected run ID and your reason. Write the reason for the whole run: a worker uses it only where it applies to its own test. A permanent run does not get it.
+
 Replace the example plan revision and run IDs with the current values. The `run-1` commands above use the same IDs as this example. For Pi, omit `--allow`. The old run remains unchanged. Accept the new result only after you inspect its evidence and retest verdicts.
 
 Activity lists tests, follow-ups, and chat messages. Open an entry to inspect its status.

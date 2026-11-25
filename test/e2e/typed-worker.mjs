@@ -68,6 +68,7 @@ process.on('uncaughtException', (error) => {
 let reply
 if (stage === 'plan') {
 	assert.match(prompt, /independent Checkmate plan worker/)
+	assert.match(prompt, /Do not search the file system: do not use rg, grep, or find\./)
 	await ok('read_plan_request', { planId: subject })
 	reply = await call('save_plan', {
 		planId: subject,
@@ -98,6 +99,7 @@ if (stage === 'plan') {
 	})
 } else if (stage === 'probe') {
 	assert.match(prompt, /at most 10 probe actions/)
+	assert.match(prompt, /checkmate_show_target: give reference \S+ and instance \S+, exactly as written\./)
 	reply = { status: 'completed', reasons: [] }
 } else {
 	assert.equal(stage, 'execute')

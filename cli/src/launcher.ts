@@ -659,6 +659,7 @@ function stagePrompt(stage: WorkerStage, subject: string, observeRule: string) {
 		return [
 			`Plan: ${subject}. Read the request with \`checkmate plan request ${subject}\`.`,
 			'If the request lists context sources, read them with the listed tools. Draft requirements only when the request has none.',
+			'Read the source files of the request with the read tool. Do not search the file system: do not use rg, grep, or find.',
 			'A test serves one requirement, or a small related group of at most three. Do not put every criterion in one test: one failure would hide the rest.',
 			'Write one test for each requirement. A test is the default. A criterion that states a behaviour has an observable expectation: write it with the simplest kind that fits, for example a status code, contains or absent text, one-of, at least or at most, or type. Mark each with "metadata": { "type": "regression" }.',
 			'Raise a gap only for a criterion that is ambiguous, contradictory, or missing a fact that its test cannot proceed without. Name that one criterion and its requirement in the question, and state the exact question. Do not pick the value yourself. A gap that covers more than one requirement must name each requirement in its question, or you give each requirement its own gap.',
@@ -709,7 +710,12 @@ function nativePlanPrompt(
 	return [
 		`You are the independent Checkmate ${stage} worker for ${subject}. ${start} Follow the delegated path below. Do not ask the oracle, answer a question, run a reset, or perform tests.`,
 		skill.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, ''),
-		...(stage === 'plan' ? [observeRule] : []),
+		...(stage === 'plan'
+			? [
+					observeRule,
+					'Read the source files of the request with the read tool. Do not search the file system: do not use rg, grep, or find.',
+				]
+			: []),
 		...(rejected.length ? [`Correct the previous refusal: ${rejected.join(' ')}`] : []),
 		`After the save, return only its status, subject, and reasons as one JSON object. The subject is ${subject}.`,
 	].join('\n\n')
@@ -928,7 +934,7 @@ function probePrompt(execution: Execution, workspace: string, actor: string, plu
 	return [
 		'This is a delegated Checkmate exploration probe. The selected tests are done. Probe for defects that the plan does not check. Do not record passed or failed results. Do not close tests. Do not run run gate, run begin, or run finish.',
 		`Checkmate commands: ${cli} <command>. Run them from the workspace.`,
-		`Run: ${runId}. Plan: ${run.plan_id}@${run.plan_revision}. Build: ${run.application_build}. Instance: ${run.instance_id}. Run \`${cli} target show ${run.target_id} --instance ${run.instance_id}\` once for the entry values. Use ${entriesWords(execution.profile.entryPoints)} for every action. Do not write entry values into evidence.`,
+		`Run: ${runId}. Plan: ${run.plan_id}@${run.plan_revision}. Build: ${run.application_build}. Instance: ${run.instance_id}. Run \`${cli} target show ${run.target_id} --instance ${run.instance_id}\` once for the entry values. Run that command exactly as written: target show takes one target and --instance <instance>. Use ${entriesWords(execution.profile.entryPoints)} for every action. Do not write entry values into evidence.`,
 		'Make at most 10 probe actions. Probe the rules of the selected tests: a value at a limit, the other entry point, extra spaces, a total in a second view. Use only the instance entries and new data.',
 		...contextLines(execution, workspace, toolStatus(execution.planRequest, execution.profile)),
 		`Record a probe finding only when a probe contradicts a value that a source or a check states: ${cli} run finding ${runId} --actor ${actor} <<'EOF' with {"id":"P-1","type":"potential_issue","severity":"medium","assertionIds":[],"requirementIds":[],"title":"<short title>","expected":"<the stated value>","observed":"<probe output>","reproduction":["<probe steps>"],"evidenceIds":[]} then EOF. Record nothing for a probe that shows correct behaviour.`,
@@ -974,7 +980,7 @@ function testPrompt(
 		...(JSON.parse(run.request).permanent
 			? ['This is a permanent run. Run only this test. Do not explore, probe, or record gaps.']
 			: []),
-		`Run: ${runId}. Plan: ${run.plan_id}@${run.plan_revision}. Build: ${run.application_build}. Instance: ${run.instance_id}. Run \`${cli} target show ${run.target_id} --instance ${run.instance_id}\` once for the entry values. Use ${entriesWords(execution.profile.entryPoints)} for every action. Do not write entry values into evidence.`,
+		`Run: ${runId}. Plan: ${run.plan_id}@${run.plan_revision}. Build: ${run.application_build}. Instance: ${run.instance_id}. Run \`${cli} target show ${run.target_id} --instance ${run.instance_id}\` once for the entry values. Run that command exactly as written: target show takes one target and --instance <instance>. Use ${entriesWords(execution.profile.entryPoints)} for every action. Do not write entry values into evidence.`,
 		`Test ${test.id}: ${test.title}`,
 		...rejections,
 		`Your unique prefix for this test is ${marker}-${test.id}. Start the name of every record you create with it, and never create two records with the same name in one run. A duplicate that you created is your data, not an app defect.`,
@@ -1031,7 +1037,7 @@ function nativeTestPrompt(execution: Execution, workspace: string, test: Test, r
 function nativeProbePrompt(execution: Execution, workspace: string) {
 	const { run, profile, planRequest } = execution
 	return [
-		`You are an independent probe tester for ${run.run_id}. Checkmate already ran the selected tests. Read the pinned entry values with checkmate_show_target for ${run.target_id}, instance ${run.instance_id}. Use its ${entryNoun(profile.entryPoints)} and only permitted operations. Never run a reset.`,
+		`You are an independent probe tester for ${run.run_id}. Checkmate already ran the selected tests. Read the pinned entry values with checkmate_show_target: give reference ${run.target_id} and instance ${run.instance_id}, exactly as written. Use its ${entryNoun(profile.entryPoints)} and only permitted operations. Never run a reset.`,
 		'Make at most 10 probe actions before 75% of the run deadline. Look for boundary cases of stated requirements outside the selected tests. Record only a contradiction of a stated requirement with checkmate_record_finding; use type potential_issue, empty assertionIds and the evidence in observed and reproduction.',
 		...contextLines(execution, workspace, toolStatus(planRequest, profile)),
 		...dataLines(workspace, profile, run.run_id, JSON.parse(run.request).marker ?? `qa-${run.run_id}`),

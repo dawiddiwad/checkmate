@@ -11698,6 +11698,10 @@ test('A delegated Claude worker drives a mobile app through the attached Maestro
 	assert.match(launch.prompt, /Never give files or dir\./)
 	assert.match(
 		launch.prompt,
+		/target show phone --instance local` once for the entry values\. Run that command exactly as written: target show takes one target and --instance <instance>\./
+	)
+	assert.match(
+		launch.prompt,
 		/For relaunch, run a flow with - stopApp and then - launchApp, navigate again, and read the screen\./
 	)
 	assert.match(

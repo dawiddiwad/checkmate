@@ -249,6 +249,10 @@ function leftOutLines(reply: Reply) {
 	return leftOut.map((item) => [item.testId, 'left_out', item.reason])
 }
 
+function rejectionRows(reply: Reply) {
+	return ((reply.data.rejections ?? []) as string[]).map((line) => ['rejection', line])
+}
+
 function explorationLines(reply: Reply): Printed {
 	const status = reply.data as Partial<ReturnType<typeof explorationStatus>> & { outcome?: string; next?: string[] }
 	if (!status.explorers) return {}
@@ -1022,7 +1026,7 @@ const commands: Record<string, Command> = {
 				deadline: reply.data.deadline,
 				evidenceDirectory: reply.data.evidenceDirectory,
 			},
-			lines: leftOutLines(reply),
+			lines: [...leftOutLines(reply), ...rejectionRows(reply)],
 		}),
 	},
 	'run permanent': {
@@ -1196,6 +1200,7 @@ const commands: Record<string, Command> = {
 					evidenceDirectory: data.evidenceDirectory,
 				},
 				lines: [
+					...rejectionRows(reply),
 					...data.closed.map((id) => [id, 'error']),
 					...data.tests.flatMap((test) => [
 						[test.testId, 'unclosed', test.warning],

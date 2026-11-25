@@ -63,6 +63,7 @@ export {
 	runList,
 	runDetail,
 	openRejections,
+	rejectionLines,
 	operationLog,
 	changesAfter,
 	evidenceBytes,

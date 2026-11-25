@@ -25,7 +25,7 @@ import {
 	resumeRun,
 	runState,
 } from './runs.ts'
-import { inbox, planStatus, runDetail, runGate } from './views.ts'
+import { inbox, planStatus, rejectionLines, runDetail, runGate } from './views.ts'
 import { selectedHarness } from './pi.ts'
 import { ruleTokens, testerRulesText, workspaceEnv } from './settings.ts'
 import { runTest } from './modes.ts'
@@ -38,6 +38,13 @@ type ActionContext = {
 	actor: string | undefined
 	env: Env
 	launch?: { allow: string[]; claudeArgs: string[]; session?: boolean }
+}
+
+// A begun or resumed run tells its agent why an earlier run that holds the tests of this run was rejected.
+function withRejections(store: Store, reply: Reply): Reply {
+	if (reply.status !== 'completed') return reply
+	const rejections = rejectionLines(store, reply.subject)
+	return rejections.length ? { ...reply, data: { ...reply.data, rejections } } : reply
 }
 
 const handlers: {
@@ -98,13 +105,16 @@ const handlers: {
 	begin_run: (store, input, { actor }) => {
 		const reference = revisionReference(input.reference, 'plan reference')
 		const revision = reference.revision ?? planRevision(store, reference.id).plan.revision
-		return beginRun(store, actor, {
-			...input,
-			reference: `${reference.id}@${revision}`,
-			retestOf: input.retestOf ?? null,
-		})
+		return withRejections(
+			store,
+			beginRun(store, actor, {
+				...input,
+				reference: `${reference.id}@${revision}`,
+				retestOf: input.retestOf ?? null,
+			})
+		)
 	},
-	resume_run: (store, input, { actor }) => resumeRun(store, actor, input),
+	resume_run: (store, input, { actor }) => withRejections(store, resumeRun(store, actor, input)),
 	read_run: (store, input) => {
 		const detail = runDetail(store, input.runId)
 		for (const id of input.tests ?? [])

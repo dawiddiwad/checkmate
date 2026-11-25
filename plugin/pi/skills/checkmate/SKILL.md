@@ -14,7 +14,7 @@ Use native `checkmate_*` tools. They take named arguments and return the recorde
 
 ## Test and report
 
-Use the named plan or the only plan in progress. Ask when more than one plan matches or when the person has not given the build. Keep the default level, tester count and deadlines unless the person asks to change them. For exploration, call `checkmate_start_test` and wait for that exploration with `checkmate_test_status`. Stop at a decision for the oracle. For stored tests use `checkmate_begin_run` with a new ID and the named build. Give `retestOf` when the build fixes an earlier defect. Resume a stopped run with `checkmate_resume_run`.
+Use the named plan or the only plan in progress. Ask when more than one plan matches or when the person has not given the build. Keep the default level, tester count and deadlines unless the person asks to change them. For exploration, call `checkmate_start_test` and wait for that exploration with `checkmate_test_status`. Stop at a decision for the oracle. For stored tests use `checkmate_begin_run` with a new ID and the named build. Give `retestOf` when the build fixes an earlier defect. Resume a stopped run with `checkmate_resume_run`. If the reply lists `rejections`, the oracle rejected an earlier run of these tests: tell the tester the reason and the test IDs, and use it only where it applies.
 
 If an exploration reports that a host integration needs sign-in, say which integration was unavailable. Let the person sign in through Pi if they need it for another test.
 

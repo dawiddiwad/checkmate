@@ -104,7 +104,7 @@ checkmate run show <runId>
 checkmate run resume <runId>
 ```
 
-Resume checks the current instance, profile, and gate. It records a new attempt and lists the open tests. It does not run test actions. If you cannot safely continue a test that may have changed the application, close it as `error` and explain why. Read [Local human-oracle QA](local-qa.md#review-a-result-and-retry) for the full procedure.
+Resume checks the current instance, profile, and gate. It records a new attempt and lists the open tests. `run begin` and `run resume` also print a `rejection` line for each open rejection that covers a test of the run, with the reason of the oracle. A permanent run has none. It does not run test actions. If you cannot safely continue a test that may have changed the application, close it as `error` and explain why. Read [Local human-oracle QA](local-qa.md#review-a-result-and-retry) for the full procedure.
 
 ## Promotion and permanent runs
 

@@ -10,7 +10,9 @@ const log = (value) => appendFileSync(process.env.FIXTURE_MCP_LOG, JSON.stringif
 const other = process.argv[2] === 'other'
 const driver = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore' })
 const group = Number(execFileSync('ps', ['-o', 'pgid=', '-p', String(process.pid)], { encoding: 'utf8' }).trim())
-const env = Object.fromEntries(Object.entries(process.env).filter(([name]) => name.startsWith('MAESTRO_')))
+const env = Object.fromEntries(
+	Object.entries(process.env).filter(([name]) => name.startsWith('MAESTRO_') || name === 'XDG_STATE_HOME')
+)
 log({ started: { args: process.argv.slice(2), cwd: process.cwd(), pid: process.pid, group, driver: driver.pid, env } })
 const names = other
 	? ['other_tool']

@@ -11709,7 +11709,11 @@ test('A delegated Claude worker drives a mobile app through the attached Maestro
 	assert.deepEqual(start.started.args, ['mcp', '--no-viewer'])
 	assert.equal(start.started.cwd, `${realpathSync(workspace)}/.checkmate/tmp/run-1`)
 	assert.equal(start.started.group, start.started.pid)
-	assert.deepEqual(start.started.env, { MAESTRO_CLI_NO_ANALYTICS: 'true', MAESTRO_DISABLE_UPDATE_CHECK: 'true' })
+	assert.deepEqual(start.started.env, {
+		MAESTRO_CLI_NO_ANALYTICS: 'true',
+		MAESTRO_DISABLE_UPDATE_CHECK: 'true',
+		XDG_STATE_HOME: `${start.started.cwd}/maestro-state`,
+	})
 	assert.deepEqual(
 		calls.map((call) => [call.call, call.arguments.device_id]),
 		[
@@ -11852,10 +11856,7 @@ test(
 		const maestro = servers.find((line) => line.started.args[0] === 'mcp')
 		assert.ok(maestro, JSON.stringify(servers))
 		assert.equal(maestro.started.cwd, `${realpathSync(workspace)}/.checkmate/tmp/run-1`)
-		assert.deepEqual(maestro.started.env, {
-			MAESTRO_CLI_NO_ANALYTICS: 'true',
-			MAESTRO_DISABLE_UPDATE_CHECK: 'true',
-		})
+		assert.equal(maestro.started.env.XDG_STATE_HOME, `${maestro.started.cwd}/maestro-state`)
 		assert.ok(started().some((line) => line.call === 'run'))
 		t.diagnostic(
 			`Servers that the Pi worker started: ${servers.map((line) => line.started.args.join(' ')).join('; ')}.`

@@ -20653,6 +20653,15 @@ function piRequestModelEnv(store, env) {
 function testerModelText(store, harness = "claude") {
   return setting(store, harness === "pi" ? "piTesterModel" : "testerModel") ?? "";
 }
+function savedModel(store, harness, setting2) {
+  const effort = setting2 === "request" ? requestEffortText(store, harness) : testerEffortText(store, harness);
+  if (setting2 === "tester") {
+    const model = testerModelText(store, harness);
+    return { setting: setting2, model, providerQualified: model.includes("/"), effort };
+  }
+  if (harness === "pi") return { setting: setting2, ...piRequestModel(store), effort };
+  return { setting: setting2, model: requestModelText(store), providerQualified: false, effort };
+}
 function effortSetting(kind, harness) {
   if (harness === "pi") return kind === "request" ? "piRequestEffort" : "piTesterEffort";
   return kind === "request" ? "requestEffort" : "testerEffort";
@@ -22384,7 +22393,7 @@ function contextForEffort(context, catalog2, choice2) {
   if (!effort) return context;
   return harness === "pi" ? { ...context, piArgs: [...args, ...effortArgs(harness, effort)] } : { ...context, claudeArgs: [...args, ...effortArgs(harness, effort)] };
 }
-function launchPlan(profile, input, env, savedModel = "", preferSaved = false, savedEffort = "") {
+function launchPlan(profile, input, env, savedModel2 = "", preferSaved = false, savedEffort = "") {
   const level = requireChoice(
     input.level ?? storedLevel(profile.explore?.level) ?? defaultLevel,
     levelNames,
@@ -22441,13 +22450,13 @@ function launchPlan(profile, input, env, savedModel = "", preferSaved = false, s
   }
   const claudeArgs2 = checkClaudeArgs(input.claudeArgs);
   const prefersSaved = Boolean(
-    savedModel && (harness === "pi" ? preferSaved || !env.CHECKMATE_PI_MODEL?.trim() : !hostModel(claudeArgs2))
+    savedModel2 && (harness === "pi" ? preferSaved || !env.CHECKMATE_PI_MODEL?.trim() : !hostModel(claudeArgs2))
   );
-  const piEnv = harness === "pi" && prefersSaved ? piSavedModelEnv(env, savedModel) : env;
+  const piEnv = harness === "pi" && prefersSaved ? piSavedModelEnv(env, savedModel2) : env;
   const selected = prefersSaved && (harness === "claude" || piEnv !== env);
   const piArgs2 = harness === "pi" ? piModelArgs(piEnv) : [];
   const host = hostModel(harness === "pi" ? piArgs2 : claudeArgs2);
-  const model = selected ? savedModel : host ?? (harness === "pi" ? null : row2.model);
+  const model = selected ? savedModel2 : host ?? (harness === "pi" ? null : row2.model);
   const hiddenPlugin = harness === "claude" ? installedPluginId(env) : null;
   requireWellFormed(
     inheritPiTools || input.allow.length || explorers === 0 && !row2.verifier,
@@ -22462,12 +22471,12 @@ function launchPlan(profile, input, env, savedModel = "", preferSaved = false, s
     verifier: row2.verifier,
     context: harness === "pi" ? { hiddenPlugin, claudeArgs: [], harness, piArgs: piArgs2 } : {
       hiddenPlugin,
-      claudeArgs: host ? claudeArgs2 : [...claudeArgs2, "--model", selected ? savedModel : row2.model],
+      claudeArgs: host ? claudeArgs2 : [...claudeArgs2, "--model", selected ? savedModel2 : row2.model],
       harness
     },
     ...testerModels2.length ? { testerModels: Object.fromEntries(testerModels2) } : {},
     ...testerEfforts.length ? { testerEfforts: Object.fromEntries(testerEfforts) } : {},
-    ...savedEffort && (selected || !host || harness === "pi" && preferSaved && !savedModel) ? { effort: savedEffort } : {},
+    ...savedEffort && (selected || !host || harness === "pi" && preferSaved && !savedModel2) ? { effort: savedEffort } : {},
     allow: input.allow,
     ...inheritPiTools ? { inheritPiTools } : {},
     studySeconds: row2.studySeconds,
@@ -22613,13 +22622,13 @@ function startExploration(store, actor, given, env, preferSavedModel = false) {
     const facts3 = runPrepare(store.workspace, exploredProfile.reset, marker);
     owe(store, opened.explorationId, exploredProfile.reset);
     const rules = dataRules(store.workspace, exploredProfile.reset, marker, facts3);
-    const savedModel = input.session ? "" : testerModelText(store, selectedHarness(env));
+    const savedModel2 = input.session ? "" : testerModelText(store, selectedHarness(env));
     const savedEffort = input.session ? "" : testerEffortText(store, selectedHarness(env));
     const launch = launchPlan(
       targetRevision(store, row2.target_id, row2.target_revision).profile,
       input,
       env,
-      savedModel,
+      savedModel2,
       preferSavedModel,
       savedEffort
     );
@@ -34555,6 +34564,10 @@ function harnessPage(store, context, env, form = null, model = null, testerModel
 		>
 			<h2 class="lab" id="model-settings">Models</h2>
 			<p class="help">Choose a model for each kind of work. Choose a default or a model from the list.</p>
+			<p class="help">
+				If the coding harness cannot use a saved model, a delegated worker uses the harness default. The reply
+				says so.
+			</p>
 			<p class="help" role="status" data-model-status>Loading models from ${pi ? "Pi" : "Claude Code"}…</p>
 			<button class="btn" type="button" data-model-refresh>Refresh models</button>
 			<div class="field-group">
@@ -34572,6 +34585,7 @@ function harnessPage(store, context, env, form = null, model = null, testerModel
 					</select>
 					<p class="help" id="tester-model-help">
 						${pi ? "The Pi default is the model configured in Pi." : "The test level selects its default model."}
+						Delegated execute workers also use this model${pi ? "" : ", or the Claude Code default"}.
 					</p>
 					<p class="help" data-model-unavailable="tester-model" hidden></p>
 					<div hidden>
@@ -34599,7 +34613,8 @@ function harnessPage(store, context, env, form = null, model = null, testerModel
 						${requestValue ? html2`<option value="${requestValue}" selected>${requestValue}</option>` : ""}
 					</select>
 					<p class="help" id="request-model-help">
-						The default is the model configured in ${pi ? "Pi" : "Claude Code"}.
+						The default is the model configured in ${pi ? "Pi" : "Claude Code"}. Delegated setup, plan, and
+						revise workers also use this model.
 					</p>
 					<p class="help" data-model-unavailable="request-model" hidden></p>
 					<div hidden>
@@ -46684,21 +46699,16 @@ function actionOutput(reply) {
 }
 async function startWorker(workspace2, env, allowedTools, stage, subject) {
   try {
-    const { status, reasons: reasons2, data, operation, usageWarning: usageWarning2, costUsd, costPartial, observedModels: observedModels2 } = await delegate(
-      workspace2,
-      stage,
-      subject,
-      {
-        env,
-        allowedTools,
-        nativeTools: true
-      }
-    );
+    const { status, reasons: reasons2, data, operation, usageWarning: usageWarning2, costUsd, costPartial, observedModels: observedModels2, modelFallback: modelFallback2 } = await delegate(workspace2, stage, subject, {
+      env,
+      allowedTools,
+      nativeTools: true
+    });
     return {
       status,
       subject,
       reasons: reasons2,
-      data: { ...data, operation, usageWarning: usageWarning2, costUsd, costPartial, observedModels: observedModels2 }
+      data: { ...data, operation, usageWarning: usageWarning2, costUsd, costPartial, observedModels: observedModels2, modelFallback: modelFallback2 }
     };
   } catch (error) {
     return refused("rejected", subject, error);
@@ -46865,6 +46875,18 @@ var InvalidPiResponse = class extends Error {
       this.reportedSubject = response.subject;
   }
 };
+var ModelRefused = class extends Error {
+};
+function claudeModelRefusal(envelope) {
+  if (!envelope || typeof envelope !== "object") return void 0;
+  const { is_error, api_error_type, result } = envelope;
+  const text2 = typeof result === "string" ? result.trim().split("\n")[0].slice(0, 200) : "";
+  if (is_error !== true) return void 0;
+  if (api_error_type === "not_found_error" || /issue with the selected model/i.test(text2))
+    return text2 || "Claude Code did not find the model.";
+  return void 0;
+}
+var piModelRefusal = /Model "[^"]*" (?:not found|is ambiguous)|Unknown provider "|HTTP 40[04]: .*\bmodel\b/i;
 function readPiResponse(result) {
   if (result.failure) throw new Error(result.failure[1]);
   const text2 = String(result.result).trim();
@@ -46917,7 +46939,7 @@ function workerArgs(pluginRoot2, allowedTools, claudeArgs2 = [], role = "") {
     args.push("--allowedTools", `mcp__plugin_checkmate_actions__checkmate_${name2}`);
   return args;
 }
-function piWorkerArgs(pluginRoot2, role, env) {
+function piWorkerArgs(pluginRoot2, role, env, model) {
   const tools = ["read", "bash", ...childActionTools(role).map((name2) => `checkmate_${name2}`)];
   return piArgs(
     [
@@ -46928,10 +46950,62 @@ function piWorkerArgs(pluginRoot2, role, env) {
       "--extension",
       join23(pluginRoot2, "pi", "checkmate-tools.mjs"),
       "--tools",
-      tools.join(",")
+      tools.join(","),
+      ...model.refused ? [] : effortArgs("pi", model.effort)
     ],
-    env
+    model.refused ? env : model.piEnv ?? env
   );
+}
+function claudeModelArgs(model) {
+  if (model.refused) return [];
+  return [...model.saved ? ["--model", model.saved] : [], ...effortArgs("claude", model.effort)];
+}
+function hasFlag(args, flag) {
+  return args.some((arg) => arg === flag || arg.startsWith(`${flag}=`));
+}
+async function workerModel(workspace2, harness, env, claudeArgs2, saved) {
+  const { setting: setting2 } = saved;
+  if (harness === "claude" ? hasFlag(claudeArgs2, "--model") : env.CHECKMATE_PI_MODEL?.trim())
+    return { setting: setting2, saved: "" };
+  const piEnv = harness === "pi" && saved.model ? piSavedModelEnv(env, saved.model, saved.providerQualified) : env;
+  const model = harness === "pi" ? piEnv === env ? "" : saved.model : saved.model;
+  const chosen = { setting: setting2, saved: model, ...piEnv === env ? {} : { piEnv } };
+  if (!saved.effort || hasFlag(claudeArgs2, "--effort")) return chosen;
+  const catalog2 = await discoverModelCatalog(harness, workspace2, piEnv).catch(() => void 0);
+  const effort = catalog2 && (harness === "pi" ? resolvedEffort(
+    harness,
+    catalog2,
+    piEnv.CHECKMATE_PI_MODEL?.trim() ?? "",
+    saved.effort,
+    piEnv.CHECKMATE_PI_PROVIDER?.trim()
+  ) : resolvedEffort(harness, catalog2, model, saved.effort));
+  return effort ? { ...chosen, effort } : chosen;
+}
+function wroteSince(store, rowid, actor) {
+  return one2(store, "SELECT 1 FROM operations WHERE rowid > ? AND actor = ?", rowid, actor) !== void 0;
+}
+async function launchOnModel(model, workspace2, actor, launch) {
+  const before = withStore(workspace2, lastOperation);
+  const first = await launch();
+  if (!(first.failure instanceof ModelRefused) || !model.saved || model.refused) return first;
+  if (withStore(workspace2, (store) => wroteSince(store, before, actor))) return first;
+  model.refused = first.failure.message;
+  const second = await launch();
+  return { ...second, usage: usageOf([first.usage, second.usage]) };
+}
+function modelFallback(model, usage2) {
+  if (!model.refused) return null;
+  const ran = usage2.observedModels?.length ? `: ${usage2.observedModels.join(", ")}` : "";
+  const reason = model.refused.replace(/\.?$/, ".");
+  return {
+    reason: `The saved ${model.setting} model ${model.saved} could not be used: ${reason} The workers ran on the harness default model${ran}.`,
+    modelFallback: { model: model.saved, reason: model.refused }
+  };
+}
+function withFallback(response, model, usage2) {
+  const fallback = modelFallback(model, usage2);
+  if (!fallback) return response;
+  return { ...response, reasons: [...response.reasons, fallback.reason], modelFallback: fallback.modelFallback };
 }
 function launchWorker(executable, args, options3) {
   if (process.platform === "win32") refuse2("The launcher supports Linux and macOS process groups");
@@ -46987,11 +47061,15 @@ function launchWorker(executable, args, options3) {
           const result = piResult(stdout, errors, code2, signal);
           usage2 = usageOf(failure ? [result, {}] : [result]);
           if (failure) return resolvePromise({ usage: usage2, failure });
+          if (result.failure && piModelRefusal.test(result.failure[1]))
+            return resolvePromise({ usage: usage2, failure: new ModelRefused(result.failure[1]) });
           return resolvePromise({ usage: usage2, response: readPiResponse(result) });
         }
         const stopped = failure !== void 0;
         if (code2 !== 0) failure ??= new Error(`Worker exited with code ${code2}${excerpt2(errors)}`);
         const envelope = parseClaudeEnvelope(stdout);
+        const refusal = code2 !== 0 && !stopped ? claudeModelRefusal(envelope) : void 0;
+        if (refusal) failure = new ModelRefused(refusal);
         const reported = claudeUsage(envelope);
         usage2 = stopped ? usageOf([reported, {}]) : reported;
         if (failure) return resolvePromise({ usage: usage2, failure });
@@ -47258,7 +47336,11 @@ function recordAttempt(store, stage, subject, harness, response, usage2, executi
           status: response.status,
           subject: response.subject,
           reasons: [],
-          data: { operation: response.operation, ...usage2 }
+          data: {
+            operation: response.operation,
+            ...usage2,
+            ...response.modelFallback ? { modelFallback: response.modelFallback } : {}
+          }
         },
         subjects: [`${kind}:${subject}`, ...execution ? [`plan:${execution.run.plan_id}`] : []]
       })
@@ -47403,43 +47485,54 @@ function nativeProbePrompt(execution, workspace2) {
     `Return only {"status":"completed","subject":"${run2.run_id}","reasons":[]}.`
   ].join("\n\n");
 }
-async function runTestChild(workspace2, options3, execution, harness, env, test, remaining) {
+async function runTestChild(workspace2, options3, execution, harness, env, model, test, remaining) {
   return runChild(
     workspace2,
     options3,
     execution,
     harness,
     env,
+    model,
     (actor, pluginRoot2) => options3.nativeTools ? nativeTestPrompt(execution, workspace2, test) : testPrompt(execution, workspace2, test, actor, pluginRoot2),
     remaining,
     test.id
   );
 }
-async function runChild(workspace2, options3, execution, harness, env, prompt2, remaining, testId) {
+async function runChild(workspace2, options3, execution, harness, env, model, prompt2, remaining, testId) {
   const pluginRoot2 = options3.pluginRoot ?? defaultPluginRoot();
   const executable = harness === "pi" ? options3.pi ?? "pi" : options3.claude ?? "claude";
   const workerActor = `${harness}:execute`;
   const role = testId ? "execute" : "probe";
-  const args = harness === "pi" ? resolvePiModelArgs(executable, piWorkerArgs(pluginRoot2, role, env), workspace2, env) : workerArgs(pluginRoot2, options3.allowedTools, options3.claudeArgs, role);
+  const args = () => harness === "pi" ? resolvePiModelArgs(executable, piWorkerArgs(pluginRoot2, role, env, model), workspace2, env) : workerArgs(
+    pluginRoot2,
+    options3.allowedTools,
+    [...options3.claudeArgs ?? [], ...claudeModelArgs(model)],
+    role
+  );
   const beforeDeadline = Math.max(1, remaining - 30);
   const requested = options3.timeoutSeconds ?? testSeconds;
   const timeoutSeconds = testId && options3.timeoutSeconds ? requested : Math.min(requested, beforeDeadline);
   try {
-    const result = await launchWorker(executable, args, {
-      cwd: workspace2,
-      prompt: prompt2(workerActor, pluginRoot2),
-      timeoutSeconds,
-      harness,
-      env: {
-        ...env,
-        CHECKMATE_ACTOR: workerActor,
-        CHECKMATE_TOOL_ROLE: role,
-        CHECKMATE_TOOL_SUBJECT: execution.run.run_id,
-        CHECKMATE_TOOL_TEST: testId,
-        CHECKMATE_MARKER: JSON.parse(execution.run.request).marker ?? "",
-        ...testerEnvironment(sessionValues(workspace2, execution.run))
-      }
-    });
+    const result = await launchOnModel(
+      model,
+      workspace2,
+      workerActor,
+      () => launchWorker(executable, args(), {
+        cwd: workspace2,
+        prompt: prompt2(workerActor, pluginRoot2),
+        timeoutSeconds,
+        harness,
+        env: {
+          ...env,
+          CHECKMATE_ACTOR: workerActor,
+          CHECKMATE_TOOL_ROLE: role,
+          CHECKMATE_TOOL_SUBJECT: execution.run.run_id,
+          CHECKMATE_TOOL_TEST: testId,
+          CHECKMATE_MARKER: JSON.parse(execution.run.request).marker ?? "",
+          ...testerEnvironment(sessionValues(workspace2, execution.run))
+        }
+      })
+    );
     const note = result.failure ? result.failure.message : `The worker returned ${result.response.status}: ${result.response.reasons.join(" ") || "no reason"}`;
     return { usage: result.usage, note, failure: result.failure };
   } catch (error) {
@@ -47487,7 +47580,7 @@ function resetBeforeTest(workspace2, subject, profile, test) {
   const marker = request2.marker ?? withStore(workspace2, (store) => markerFor(store, subject));
   runPrepare(workspace2, profile.reset, marker);
 }
-async function delegateByTest(workspace2, subject, options3, harness, env, execution) {
+async function delegateByTest(workspace2, subject, options3, harness, env, model, execution) {
   const workerActor = `${harness}:execute`;
   const usageCalls = [];
   const notes = [];
@@ -47517,7 +47610,16 @@ async function delegateByTest(workspace2, subject, options3, harness, env, execu
       resetBeforeTest(workspace2, subject, execution.profile, view.test);
       let note = "The worker returned no result.";
       for (let attempt = 1; attempt <= testAttempts; attempt++) {
-        const child = await runTestChild(workspace2, options3, execution, harness, env, view.test, view.remaining);
+        const child = await runTestChild(
+          workspace2,
+          options3,
+          execution,
+          harness,
+          env,
+          model,
+          view.test,
+          view.remaining
+        );
         usageCalls.push(child.usage);
         note = child.note;
         if (child.failure) {
@@ -47569,6 +47671,7 @@ async function delegateByTest(workspace2, subject, options3, harness, env, execu
       execution,
       harness,
       env,
+      model,
       (actor, pluginRoot2) => options3.nativeTools ? nativeProbePrompt(execution, workspace2) : probePrompt(execution, workspace2, actor, pluginRoot2),
       probeTime.remaining
     );
@@ -47577,13 +47680,11 @@ async function delegateByTest(workspace2, subject, options3, harness, env, execu
   if (stopped) {
     const usage3 = usageOf(usageCalls);
     const status = /deadline|interrupted/.test(stopped.message) ? "interrupted" : "operational_error";
-    const response2 = {
-      status,
-      subject,
-      reasons: [stopped.message, ...notes],
-      operation: null,
-      ...usage3
-    };
+    const response2 = withFallback(
+      { status, subject, reasons: [stopped.message, ...notes], operation: null, ...usage3 },
+      model,
+      usage3
+    );
     const recorded3 = withStore(
       workspace2,
       (store) => recordAttempt(store, "execute", subject, harness, response2, usage3, execution)
@@ -47610,13 +47711,11 @@ async function delegateByTest(workspace2, subject, options3, harness, env, execu
     })
   );
   const usage2 = usageOf(usageCalls);
-  const response = {
-    status: reply.status,
-    subject,
-    reasons: [...notes, ...reply.reasons],
-    operation: null,
-    ...usage2
-  };
+  const response = withFallback(
+    { status: reply.status, subject, reasons: [...notes, ...reply.reasons], operation: null, ...usage2 },
+    model,
+    usage2
+  );
   const recorded2 = withStore(
     workspace2,
     (store) => recordAttempt(store, "execute", subject, harness, response, usage2, execution)
@@ -47626,7 +47725,7 @@ async function delegateByTest(workspace2, subject, options3, harness, env, execu
 async function delegate(workspace2, stage, subject, options3) {
   workspace2 = resolve10(workspace2);
   if (!stages.includes(stage)) refuse2(`Unknown stage: ${stage}. Use one of: ${stages.join(", ")}.`, "malformed");
-  const { after, execution, harness, env } = withStore(workspace2, (store) => {
+  const { after, execution, harness, env, saved } = withStore(workspace2, (store) => {
     const env2 = workspaceEnv(store, options3.env ?? process.env);
     const harness2 = selectedHarness(env2);
     if (harness2 === "claude") {
@@ -47641,6 +47740,7 @@ async function delegate(workspace2, stage, subject, options3) {
     return {
       harness: harness2,
       env: env2,
+      saved: savedModel(store, harness2, stage === "execute" ? "tester" : "request"),
       after: lastOperation(store),
       execution: run2 ? {
         run: run2,
@@ -47650,7 +47750,8 @@ async function delegate(workspace2, stage, subject, options3) {
       } : null
     };
   });
-  if (stage === "execute") return delegateByTest(workspace2, subject, options3, harness, env, execution);
+  const model = await workerModel(workspace2, harness, env, options3.claudeArgs ?? [], saved);
+  if (stage === "execute") return delegateByTest(workspace2, subject, options3, harness, env, model, execution);
   const pluginRoot2 = options3.pluginRoot ?? defaultPluginRoot();
   const workerActor = `${harness}:${stage}`;
   let claimed;
@@ -47664,22 +47765,32 @@ async function delegate(workspace2, stage, subject, options3) {
   for (let round = 1; round <= maxRounds; round++) {
     try {
       const executable = harness === "pi" ? options3.pi ?? "pi" : options3.claude ?? "claude";
-      const args = harness === "pi" ? resolvePiModelArgs(executable, piWorkerArgs(pluginRoot2, stage, env), workspace2, env) : workerArgs(pluginRoot2, options3.allowedTools, options3.claudeArgs, stage);
+      const args = () => harness === "pi" ? resolvePiModelArgs(executable, piWorkerArgs(pluginRoot2, stage, env, model), workspace2, env) : workerArgs(
+        pluginRoot2,
+        options3.allowedTools,
+        [...options3.claudeArgs ?? [], ...claudeModelArgs(model)],
+        stage
+      );
       const instructions = options3.nativeTools && (stage === "plan" || stage === "revise") ? nativePlanPrompt(stage, subject, pluginRoot2, rejected) : prompt(stage, subject, workspace2, pluginRoot2, timeoutSeconds, harness, round, rejected);
       attempted = true;
       attempts = round;
-      const result = await launchWorker(executable, args, {
-        cwd: workspace2,
-        prompt: instructions,
-        timeoutSeconds,
-        harness,
-        env: {
-          ...env,
-          CHECKMATE_ACTOR: workerActor,
-          CHECKMATE_TOOL_ROLE: stage,
-          CHECKMATE_TOOL_SUBJECT: subject
-        }
-      });
+      const result = await launchOnModel(
+        model,
+        workspace2,
+        workerActor,
+        () => launchWorker(executable, args(), {
+          cwd: workspace2,
+          prompt: instructions,
+          timeoutSeconds,
+          harness,
+          env: {
+            ...env,
+            CHECKMATE_ACTOR: workerActor,
+            CHECKMATE_TOOL_ROLE: stage,
+            CHECKMATE_TOOL_SUBJECT: subject
+          }
+        })
+      );
       claimed = result.response;
       failure = result.failure;
       usage2 = result.usage;
@@ -47732,7 +47843,11 @@ async function delegate(workspace2, stage, subject, options3) {
   try {
     return withStore(workspace2, (store) => {
       const refusal = lastRefusal(store, stage, after, workerActor);
-      const response = receipt(verify(store, stage, subject, after, workerActor), refusal);
+      const response = withFallback(
+        receipt(verify(store, stage, subject, after, workerActor), refusal),
+        model,
+        usage2
+      );
       if (stage === "plan" && response.status === "completed")
         response.reasons.push(...notReadyReasons(store, subject));
       const recorded2 = !attempted || recordAttempt(store, stage, subject, harness, response, usage2, null);
@@ -47740,14 +47855,18 @@ async function delegate(workspace2, stage, subject, options3) {
     });
   } catch (error) {
     if (!isBusy(error)) throw error;
-    return {
-      status: "operational_error",
-      subject,
-      reasons: [...failure ? [failure.message] : [], error.message, unverifiedReason, ...extra],
-      operation: null,
-      ...usage2,
-      ...attempted ? { usageWarning } : {}
-    };
+    return withFallback(
+      {
+        status: "operational_error",
+        subject,
+        reasons: [...failure ? [failure.message] : [], error.message, unverifiedReason, ...extra],
+        operation: null,
+        ...usage2,
+        ...attempted ? { usageWarning } : {}
+      },
+      model,
+      usage2
+    );
   }
 }
 

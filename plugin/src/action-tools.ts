@@ -112,21 +112,17 @@ async function startWorker(
 	subject: string
 ): Promise<Reply> {
 	try {
-		const { status, reasons, data, operation, usageWarning, costUsd, costPartial, observedModels } = await delegate(
-			workspace,
-			stage,
-			subject,
-			{
+		const { status, reasons, data, operation, usageWarning, costUsd, costPartial, observedModels, modelFallback } =
+			await delegate(workspace, stage, subject, {
 				env,
 				allowedTools,
 				nativeTools: true,
-			}
-		)
+			})
 		return {
 			status,
 			subject,
 			reasons,
-			data: { ...data, operation, usageWarning, costUsd, costPartial, observedModels },
+			data: { ...data, operation, usageWarning, costUsd, costPartial, observedModels, modelFallback },
 		}
 	} catch (error) {
 		return refused('rejected', subject, error)

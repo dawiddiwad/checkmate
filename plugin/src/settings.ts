@@ -94,6 +94,20 @@ export function testerModelText(store: Store, harness: Harness = 'claude') {
 	return setting(store, harness === 'pi' ? 'piTesterModel' : 'testerModel') ?? ''
 }
 
+export type SavedModel = { setting: 'request' | 'tester'; model: string; providerQualified: boolean; effort: string }
+
+// The saved model and effort of one setting. A delegated worker that tests uses the tester setting; the other stages
+// use the request setting.
+export function savedModel(store: Store, harness: Harness, setting: 'request' | 'tester'): SavedModel {
+	const effort = setting === 'request' ? requestEffortText(store, harness) : testerEffortText(store, harness)
+	if (setting === 'tester') {
+		const model = testerModelText(store, harness)
+		return { setting, model, providerQualified: model.includes('/'), effort }
+	}
+	if (harness === 'pi') return { setting, ...piRequestModel(store), effort }
+	return { setting, model: requestModelText(store), providerQualified: false, effort }
+}
+
 function effortSetting(kind: 'request' | 'tester', harness: Harness) {
 	if (harness === 'pi') return kind === 'request' ? 'piRequestEffort' : 'piTesterEffort'
 	return kind === 'request' ? 'requestEffort' : 'testerEffort'

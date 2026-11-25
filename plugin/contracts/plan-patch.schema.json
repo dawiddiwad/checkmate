@@ -100,7 +100,7 @@
 													"pattern": "^(GET|POST|PUT|PATCH|DELETE) /"
 												},
 												"observeFrom": {
-													"enum": ["page", "reload", "api"]
+													"enum": ["page", "reload", "api", "screen", "relaunch"]
 												}
 											},
 											"additionalProperties": false,

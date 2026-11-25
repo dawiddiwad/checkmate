@@ -1,0 +1,18 @@
+{
+	"name": "maestro",
+	"capability": "mobile",
+	"kind": "cli",
+	"purpose": "Drive the mobile app on a device.",
+	"detect": "path",
+	"environment": {
+		"MAESTRO_CLI_NO_ANALYTICS": "true",
+		"MAESTRO_DISABLE_UPDATE_CHECK": "true"
+	},
+	"workspaceFolders": [],
+	"observeFrom": {
+		"screen": "view",
+		"relaunch": "state"
+	},
+	"evidence": ["screenshot", "view_hierarchy", "recording"],
+	"usage": "maestro.md"
+}

@@ -58,7 +58,7 @@ When the tools of a tester include two recipes of one capability, the tester get
 
 A recipe can also give `delegatedInstruction`, the text that a delegated execute worker gets for the tool, and `closeSession`, the arguments that close the tool session after a delegated run. Each run has one tool session ID, `toolSession`, that every tool of the run uses.
 
-The start event of an exploration stores the tool session name and data prefix of each tester. The session name starts with the exploration marker, which includes the workspace nonce. The data prefix adds a final hyphen. The verifier uses the same marker with the suffix `-verify-`. When an earlier start event has no stored names, Checkmate uses the names of that version for the rest of the exploration.
+The start event of an exploration stores the tool session name and data prefix of each tester. The session name starts with the exploration marker, which includes the workspace nonce. The data prefix adds a final hyphen. The verifier uses the same marker with the suffix `-verify-`.
 
 The contracts list every value of every recipe, because the models read the enums as the allowed values. After you change a recipe value, run `npm run generate`. `scripts/generate-contracts.ts` writes the `observeFrom` and evidence kind enums, and `npm run type:check` fails when they are stale.
 

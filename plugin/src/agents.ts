@@ -22,7 +22,6 @@ import type { Rule } from './rules.ts'
 import { checkedRules, ruleSources, rulesNeeded, saveRules } from './rules.ts'
 import {
 	entryValues,
-	explorationToolIdentity,
 	explorerNames,
 	keepWorkFiles,
 	keepToolFolders,
@@ -188,7 +187,7 @@ function testerAction(store: Store, explorationId: string, explorer: string, due
 	}
 	const opened = exploration(store, explorationId)
 	const launch = startOf(explorationEvents(store, explorationId))!
-	const { session, dataPrefix } = explorationToolIdentity(launch, explorationId, explorer)
+	const { session, dataPrefix } = launch.toolIdentities[explorer]
 	const brief = explorerBrief(
 		{ ...opened.charter, dataRules: launch.dataRules },
 		entryValues(store, explorationId),

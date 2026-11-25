@@ -23023,14 +23023,11 @@ function toolIdentity(marker, explorer) {
   const session = `${marker}-${explorer}`;
   return { session, dataPrefix: `${session}-` };
 }
-function explorationToolIdentity(launch, explorationId, explorer) {
-  return launch?.toolIdentities?.[explorer] ?? toolIdentity(`qa-${explorationId}`, explorer);
-}
 function explorerWork(store, explorationId, explorer, launch) {
   const folder = workFolder(explorationId, explorer);
   mkdirSync7(join12(store.workspace, folder), { recursive: true });
   const others = explorerNames(launch.explorers).filter((name2) => name2 !== explorer);
-  const { session, dataPrefix } = explorationToolIdentity(launch, explorationId, explorer);
+  const { session, dataPrefix } = launch.toolIdentities[explorer];
   const values = { session, workFolder: join12(store.workspace, folder) };
   const tools = exploration(store, explorationId).charter.tools.map((tool) => tool.name);
   return {
@@ -23580,8 +23577,8 @@ function verifyInput(store, explorationId, after = 0) {
     items,
     entries: entryValues(store, explorationId),
     operations: opened.charter.operations,
-    dataRules: launch?.dataRules ?? [],
-    dataPrefix: explorationToolIdentity(launch, explorationId, "verify").dataPrefix
+    dataRules: launch.dataRules ?? [],
+    dataPrefix: launch.toolIdentities.verify.dataPrefix
   };
 }
 async function verifyClaims(store, actor, explorationId, launch, env, after = 0) {
@@ -43792,7 +43789,7 @@ ${followEntriesText(answer2)}`,
   }
   const opened = exploration(store, explorationId);
   const launch = startOf(explorationEvents(store, explorationId));
-  const { session, dataPrefix } = explorationToolIdentity(launch, explorationId, explorer);
+  const { session, dataPrefix } = launch.toolIdentities[explorer];
   const brief = explorerBrief(
     { ...opened.charter, dataRules: launch.dataRules },
     entryValues(store, explorationId),

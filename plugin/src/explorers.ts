@@ -125,7 +125,7 @@ export type Launch = {
 	pluginHidden: boolean
 	path?: 'session'
 	inheritPiTools?: boolean
-	toolIdentities?: Record<string, { session: string; dataPrefix: string }>
+	toolIdentities: Record<string, { session: string; dataPrefix: string }>
 	toolFoldersBefore: string[]
 }
 
@@ -179,7 +179,7 @@ export function launchPlan(
 	savedModel = '',
 	preferSaved = false,
 	savedEffort = ''
-): Omit<Launch, 'toolFoldersBefore'> {
+): Omit<Launch, 'toolIdentities' | 'toolFoldersBefore'> {
 	const level = requireChoice(
 		input.level ?? storedLevel(profile.explore?.level) ?? defaultLevel,
 		levelNames,
@@ -287,15 +287,11 @@ function toolIdentity(marker: string, explorer: string) {
 	return { session, dataPrefix: `${session}-` }
 }
 
-export function explorationToolIdentity(launch: Launch | undefined, explorationId: string, explorer: string) {
-	return launch?.toolIdentities?.[explorer] ?? toolIdentity(`qa-${explorationId}`, explorer)
-}
-
 function explorerWork(store: Store, explorationId: string, explorer: string, launch: Launch) {
 	const folder = workFolder(explorationId, explorer)
 	mkdirSync(join(store.workspace, folder), { recursive: true })
 	const others = explorerNames(launch.explorers).filter((name) => name !== explorer)
-	const { session, dataPrefix } = explorationToolIdentity(launch, explorationId, explorer)
+	const { session, dataPrefix } = launch.toolIdentities[explorer]
 	const values = { session, workFolder: join(store.workspace, folder) }
 	const tools = exploration(store, explorationId).charter.tools.map((tool) => tool.name)
 	return {
@@ -927,13 +923,13 @@ export function verifyInput(store: Store, explorationId: string, after = 0) {
 	const fresh = after ? newDefects(store, opened.plan_id, after) : undefined
 	const items = verifyItems(planClaims(store, opened.plan_id), opened.build, fresh)
 	if (!items.length) return null
-	const launch = startOf(explorationEvents(store, explorationId))
+	const launch = startOf(explorationEvents(store, explorationId))!
 	return {
 		items,
 		entries: entryValues(store, explorationId),
 		operations: opened.charter.operations,
-		dataRules: launch?.dataRules ?? [],
-		dataPrefix: explorationToolIdentity(launch, explorationId, 'verify').dataPrefix,
+		dataRules: launch.dataRules ?? [],
+		dataPrefix: launch.toolIdentities.verify.dataPrefix,
 	}
 }
 

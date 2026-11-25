@@ -7080,34 +7080,6 @@ test('Keep each tool folder that testers left, and leave each tool folder that w
 	assert.equal(existsSync(join(work, '.playwright-cli')), false)
 	assert.equal(existsSync(join(workspace, '.scratch-tool')), false)
 	assert.equal(readFileSync(join(work, '.scratch-tool', 'tester.log'), 'utf8'), 'A tester left this.\n')
-
-	const resumed = directory(t)
-	writeFileSync(join(resumed, 'ticket.md'), 'The promotion quote is 240 PLN.\n')
-	mkdirSync(join(resumed, '.checkmate'))
-	writeFileSync(
-		join(resumed, '.checkmate/checkmate.db'),
-		gunzipSync(readFileSync(join(root, 'test/e2e/fixtures/workspace-exploration-v0.8.2.db.gz')))
-	)
-	const legacy = new DatabaseSync(join(resumed, '.checkmate/checkmate.db'))
-	legacy.exec('DROP TRIGGER exploration_events_delete')
-	legacy.exec('DROP TRIGGER exploration_events_update')
-	legacy.exec("DELETE FROM exploration_events WHERE step <> 'start'")
-	legacy.exec("UPDATE exploration_events SET detail = json_remove(detail, '$.inheritPiTools') WHERE step = 'start'")
-	legacy.close()
-	host.called()
-	host.reply({ recorder: [{ kind: 'note', text: 'Read the promotion quote.' }] })
-	execFileSync(process.execPath, [entry, 'explore', 'drive', 'x-1', '--workspace', resumed], {
-		cwd: resumed,
-		env,
-		timeout: 15000,
-	})
-	const calls = host.called()
-	const study = calls.find((item: { role: string }) => item.role === 'explorer')
-	const test = calls.find((item: { role: string }) => item.role === 'tester')
-	assert.equal(study.toolSession, 'qa-x-1-a1')
-	assert.equal(test.toolSession, study.toolSession)
-	assert.match(test.prompt, /Start each name or value that you make with qa-x-1-a1-\./)
-	assert.equal((await ok(resumed, 'explore', 'status', 'x-1')).state, 'completed')
 })
 
 test('Test a mobile app with maestro: the tester gets the Maestro environment and the usage texts, and the plan takes the Maestro values — the brief spoke only of HTTP and the browser.', async (t) => {

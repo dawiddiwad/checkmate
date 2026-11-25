@@ -4,6 +4,20 @@
 	"kind": "cli",
 	"purpose": "Drive the browser.",
 	"detect": "path",
+	"entryPoints": [
+		{
+			"name": "web",
+			"kind": "url",
+			"purpose": "The application.",
+			"pattern": "^https?://"
+		}
+	],
+	"reachable": [
+		{
+			"check": "http",
+			"entry": "web"
+		}
+	],
 	"environment": {
 		"PLAYWRIGHT_MCP_OUTPUT_DIR": "{workFolder}",
 		"PLAYWRIGHT_CLI_SESSION": "{session}"

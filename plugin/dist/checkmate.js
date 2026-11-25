@@ -14010,6 +14010,8 @@ function readRecipe(folder, file) {
   const environment = recipe.environment;
   if (typeof environment !== "object" || environment === null || Array.isArray(environment) || Object.values(environment).some((value2) => typeof value2 !== "string"))
     refuse4("environment must be an object of texts.");
+  if (recipe.entryPoints !== void 0) readEntryPoints(recipe.entryPoints, refuse4);
+  if (recipe.reachable !== void 0) readReachable(recipe, refuse4);
   if (recipe.shellInstruction !== void 0 && !isText(recipe.shellInstruction))
     refuse4("shellInstruction must be a text when it is given.");
   if (recipe.delegatedInstruction !== void 0 && !isText(recipe.delegatedInstruction))
@@ -14032,6 +14034,43 @@ function readRecipe(folder, file) {
     refuse4("usage must name a file in the folder.");
   return recipe;
 }
+function readEntryPoints(value2, refuse4) {
+  const entryPointProblem = "entryPoints must be a list of {name, kind (url, command, or value), purpose, pattern (optional regular expression)}.";
+  if (!Array.isArray(value2) || !value2.length) refuse4(entryPointProblem);
+  const names = /* @__PURE__ */ new Set();
+  for (const entry of value2) {
+    if (typeof entry !== "object" || entry === null || typeof entry.name !== "string" || !/^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$/.test(entry.name) || !["url", "command", "value"].includes(entry.kind) || !isText(entry.purpose) || Object.keys(entry).some((key) => !["name", "kind", "purpose", "pattern"].includes(key)))
+      refuse4(entryPointProblem);
+    if (names.has(entry.name)) refuse4(`entryPoints names ${entry.name} twice.`);
+    names.add(entry.name);
+    if (entry.pattern !== void 0) {
+      try {
+        if (!isText(entry.pattern)) throw Error("not a text");
+        new RegExp(entry.pattern);
+      } catch {
+        refuse4(`the pattern of entry point ${entry.name} is not a regular expression.`);
+      }
+    }
+  }
+}
+function readReachable(recipe, refuse4) {
+  const problem = 'reachable must be a list of {check: "http", entry} or {check: "command", run (list of arguments), contains (optional list of texts)}.';
+  const checks = recipe.reachable;
+  if (!Array.isArray(checks) || !checks.length) refuse4(problem);
+  const entries = (recipe.entryPoints ?? []).map((entry) => entry.name);
+  for (const check of checks) {
+    if (typeof check !== "object" || check === null) refuse4(problem);
+    if (check.check === "http") {
+      if (Object.keys(check).some((key) => key !== "check" && key !== "entry") || !isText(check.entry))
+        refuse4(problem);
+      if (!entries.includes(check.entry))
+        refuse4(`reachable names the entry ${check.entry}, which entryPoints does not give.`);
+    } else if (check.check === "command") {
+      if (Object.keys(check).some((key) => !["check", "run", "contains"].includes(key)) || !Array.isArray(check.run) || !check.run.length || !check.run.every(isText) || check.contains !== void 0 && (!Array.isArray(check.contains) || !check.contains.every(isText)))
+        refuse4(problem);
+    } else refuse4(problem);
+  }
+}
 function isValueName(value2) {
   return typeof value2 === "string" && /^[a-z][a-z0-9_]{0,39}$/.test(value2);
 }
@@ -14051,6 +14090,17 @@ function readRecipes(folder) {
           `Tool recipe ${join4(folder, `${recipe.name}.json`)} is not valid: observeFrom ${value2} is ${reading}, but it is ${known.reading} in ${known.from}.`
         );
       readings.set(value2, { reading, from: `recipe ${recipe.name}` });
+    }
+  const entryPoints = /* @__PURE__ */ new Map();
+  for (const recipe of found)
+    for (const entry of recipe.entryPoints ?? []) {
+      const text2 = JSON.stringify([entry.kind, entry.purpose, entry.pattern ?? null]);
+      const known = entryPoints.get(entry.name);
+      if (known && known.entry !== text2)
+        throw Error(
+          `Tool recipe ${join4(folder, `${recipe.name}.json`)} is not valid: entry point ${entry.name} differs from the one in ${known.from}.`
+        );
+      entryPoints.set(entry.name, { entry: text2, from: `recipe ${recipe.name}` });
     }
   const kinds3 = new Map(
     Object.entries(compatibleExtensions).map(([extension, kind]) => [

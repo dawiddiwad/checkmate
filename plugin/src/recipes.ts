@@ -2,12 +2,25 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { pluginRoot } from './sessions.ts'
 
+// An entry point that an instance of a target needs when its tools use this recipe. Setup names it in the profile.
+// The optional pattern is the format check of its value, a regular expression that setup tests the value with.
+export type RecipeEntryPoint = { name: string; kind: 'url' | 'command' | 'value'; purpose: string; pattern?: string }
+
+// How setup checks that an instance answers. All checks of the recipes of the target tools must pass.
+// "http" fetches the value of an entry (it counts as answering below HTTP 500). "command" runs a program
+// and passes on exit code 0, and, when "contains" is given, only when its output has each text.
+// In "run" and "contains", {<entry name>} stands for the value of that entry. Core knows only these two kinds.
+export type ReachCheck = { check: 'http'; entry: string } | { check: 'command'; run: string[]; contains?: string[] }
+
 export type Recipe = {
 	name: string
 	capability: string
 	kind: 'cli'
 	purpose: string
 	detect: 'path' | 'runtime'
+	// What the target needs. A recipe without entry points fits every target.
+	entryPoints?: RecipeEntryPoint[]
+	reachable?: ReachCheck[]
 	environment: Record<string, string>
 	shellInstruction?: string
 	delegatedInstruction?: string
@@ -69,6 +82,8 @@ function readRecipe(folder: string, file: string): Recipe {
 		Object.values(environment).some((value) => typeof value !== 'string')
 	)
 		refuse('environment must be an object of texts.')
+	if (recipe.entryPoints !== undefined) readEntryPoints(recipe.entryPoints, refuse)
+	if (recipe.reachable !== undefined) readReachable(recipe, refuse)
 	if (recipe.shellInstruction !== undefined && !isText(recipe.shellInstruction))
 		refuse('shellInstruction must be a text when it is given.')
 	if (recipe.delegatedInstruction !== undefined && !isText(recipe.delegatedInstruction))
@@ -108,6 +123,61 @@ function readRecipe(folder: string, file: string): Recipe {
 	return recipe as Recipe
 }
 
+function readEntryPoints(value: unknown, refuse: (problem: string) => never) {
+	const entryPointProblem =
+		'entryPoints must be a list of {name, kind (url, command, or value), purpose, pattern (optional regular expression)}.'
+	if (!Array.isArray(value) || !value.length) refuse(entryPointProblem)
+	const names = new Set<string>()
+	for (const entry of value as Array<Record<string, unknown>>) {
+		if (
+			typeof entry !== 'object' ||
+			entry === null ||
+			typeof entry.name !== 'string' ||
+			!/^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$/.test(entry.name) ||
+			!['url', 'command', 'value'].includes(entry.kind as string) ||
+			!isText(entry.purpose) ||
+			Object.keys(entry).some((key) => !['name', 'kind', 'purpose', 'pattern'].includes(key))
+		)
+			refuse(entryPointProblem)
+		if (names.has(entry.name as string)) refuse(`entryPoints names ${entry.name} twice.`)
+		names.add(entry.name as string)
+		if (entry.pattern !== undefined) {
+			try {
+				if (!isText(entry.pattern)) throw Error('not a text')
+				new RegExp(entry.pattern)
+			} catch {
+				refuse(`the pattern of entry point ${entry.name} is not a regular expression.`)
+			}
+		}
+	}
+}
+
+function readReachable(recipe: Partial<Recipe>, refuse: (problem: string) => never) {
+	const problem =
+		'reachable must be a list of {check: "http", entry} or {check: "command", run (list of arguments), contains (optional list of texts)}.'
+	const checks: unknown = recipe.reachable
+	if (!Array.isArray(checks) || !checks.length) refuse(problem)
+	const entries = (recipe.entryPoints ?? []).map((entry) => entry.name)
+	for (const check of checks as Array<Record<string, unknown>>) {
+		if (typeof check !== 'object' || check === null) refuse(problem)
+		if (check.check === 'http') {
+			if (Object.keys(check).some((key) => key !== 'check' && key !== 'entry') || !isText(check.entry))
+				refuse(problem)
+			if (!entries.includes(check.entry as string))
+				refuse(`reachable names the entry ${check.entry}, which entryPoints does not give.`)
+		} else if (check.check === 'command') {
+			if (
+				Object.keys(check).some((key) => !['check', 'run', 'contains'].includes(key)) ||
+				!Array.isArray(check.run) ||
+				!check.run.length ||
+				!check.run.every(isText) ||
+				(check.contains !== undefined && (!Array.isArray(check.contains) || !check.contains.every(isText)))
+			)
+				refuse(problem)
+		} else refuse(problem)
+	}
+}
+
 // A value name is a lower-case word, for example page or http_exchange.
 function isValueName(value: unknown) {
 	return typeof value === 'string' && /^[a-z][a-z0-9_]{0,39}$/.test(value)
@@ -133,6 +203,18 @@ export function readRecipes(folder: string) {
 					`Tool recipe ${join(folder, `${recipe.name}.json`)} is not valid: observeFrom ${value} is ${reading}, but it is ${known.reading} in ${known.from}.`
 				)
 			readings.set(value, { reading, from: `recipe ${recipe.name}` })
+		}
+	// One entry point name means the same in every recipe: the same kind, purpose, and pattern.
+	const entryPoints = new Map<string, { entry: string; from: string }>()
+	for (const recipe of found)
+		for (const entry of recipe.entryPoints ?? []) {
+			const text = JSON.stringify([entry.kind, entry.purpose, entry.pattern ?? null])
+			const known = entryPoints.get(entry.name)
+			if (known && known.entry !== text)
+				throw Error(
+					`Tool recipe ${join(folder, `${recipe.name}.json`)} is not valid: entry point ${entry.name} differs from the one in ${known.from}.`
+				)
+			entryPoints.set(entry.name, { entry: text, from: `recipe ${recipe.name}` })
 		}
 	// One file extension has one default evidence kind in every recipe.
 	const kinds = new Map(
@@ -177,6 +259,18 @@ export function shellInstructions(values: SessionValues) {
 // The recipes of the named tools, in recipe order. A tool without a recipe has none.
 export function recipesFor(toolNames: string[]) {
 	return recipes().filter((recipe) => toolNames.includes(recipe.name))
+}
+
+// The entry points that the recipes declare, by name. The same name has the same meaning in every recipe.
+export function declaredEntryPoints() {
+	const found = new Map<string, RecipeEntryPoint>()
+	for (const recipe of recipes()) for (const entry of recipe.entryPoints ?? []) found.set(entry.name, entry)
+	return found
+}
+
+// A recipe fits a set of entry names when each entry point of the recipe is in the set.
+export function fitsEntries(recipe: Recipe, names: string[]) {
+	return (recipe.entryPoints ?? []).every((entry) => names.includes(entry.name))
 }
 
 export function toolFolders() {

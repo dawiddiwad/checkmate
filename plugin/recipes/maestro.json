@@ -4,6 +4,18 @@
 	"kind": "cli",
 	"purpose": "Drive the mobile app on a device.",
 	"detect": "path",
+	"entryPoints": [
+		{
+			"name": "app",
+			"kind": "value",
+			"purpose": "The app ID of the app under test, for example com.example.shop."
+		},
+		{
+			"name": "device",
+			"kind": "value",
+			"purpose": "The ID of the simulator or emulator that runs the app."
+		}
+	],
 	"environment": {
 		"MAESTRO_CLI_NO_ANALYTICS": "true",
 		"MAESTRO_DISABLE_UPDATE_CHECK": "true"

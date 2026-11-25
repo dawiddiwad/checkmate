@@ -21275,9 +21275,6 @@ var testLevels = {
 };
 var levelNames = Object.keys(testLevels);
 var defaultLevel = "normal";
-function storedLevel(name2) {
-  return name2 === "standard" ? "normal" : name2;
-}
 
 // plugin/contracts/journal-entry.schema.json
 var journal_entry_schema_default = {
@@ -22931,7 +22928,7 @@ function contextForEffort(context, catalog2, choice2) {
 }
 function launchPlan(profile, input, env, savedModel2 = "", preferSaved = false, savedEffort = "") {
   const level = requireChoice(
-    input.level ?? storedLevel(profile.explore?.level) ?? defaultLevel,
+    input.level ?? profile.explore?.level ?? defaultLevel,
     levelNames,
     "test level (--level)"
   );
@@ -23227,8 +23224,7 @@ function event(store, actor, explorationId, item) {
   });
 }
 function startOf(events) {
-  const launch = events.find((item) => item.step === "start")?.detail;
-  return launch && { ...launch, level: storedLevel(launch.level) };
+  return events.find((item) => item.step === "start")?.detail;
 }
 function noteChild(store, actor, explorationId, explorer) {
   return (pid) => {

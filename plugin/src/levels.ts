@@ -6,7 +6,3 @@ export const testLevels = {
 export type TestLevel = keyof typeof testLevels
 export const levelNames = Object.keys(testLevels) as TestLevel[]
 export const defaultLevel: TestLevel = 'normal'
-
-export function storedLevel<T extends string | undefined>(name: T) {
-	return (name === 'standard' ? 'normal' : name) as T
-}

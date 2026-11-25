@@ -35,7 +35,7 @@ import {
 } from './settings.ts'
 import type { ModelCatalog } from './model-catalog.ts'
 import { discoverModelCatalog, effortArgs, resolvedEffort } from './model-catalog.ts'
-import { defaultLevel, levelNames, storedLevel, testLevels } from './levels.ts'
+import { defaultLevel, levelNames, testLevels } from './levels.ts'
 import { explorerActor, lastEntry, launchContext, recordSession, defaultRecorderTimeout } from './recorder.ts'
 import {
 	explorerBrief,
@@ -181,7 +181,7 @@ export function launchPlan(
 	savedEffort = ''
 ): Omit<Launch, 'toolIdentities' | 'toolFoldersBefore'> {
 	const level = requireChoice(
-		input.level ?? storedLevel(profile.explore?.level) ?? defaultLevel,
+		input.level ?? profile.explore?.level ?? defaultLevel,
 		levelNames,
 		'test level (--level)'
 	)
@@ -525,8 +525,7 @@ function event(store: Store, actor: string, explorationId: string, item: Omit<Ex
 }
 
 export function startOf(events: ExplorationEvent[]) {
-	const launch = events.find((item) => item.step === 'start')?.detail as Launch | undefined
-	return launch && { ...launch, level: storedLevel(launch.level) }
+	return events.find((item) => item.step === 'start')?.detail as Launch | undefined
 }
 
 function noteChild(store: Store, actor: string, explorationId: string, explorer: string | null) {

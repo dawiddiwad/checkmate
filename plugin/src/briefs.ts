@@ -1,7 +1,7 @@
 import type { Charter } from './explorations.ts'
 import { changesData } from './resets.ts'
 import { anyTestOperation, anyTestOperationText, readOnlyOperation, readOnlyOperationText } from './targets.ts'
-import { usageFiles } from './recipes.ts'
+import { testerTools, usageFiles } from './recipes.ts'
 import entrySchema from '../contracts/journal-entry.schema.json' with { type: 'json' }
 import criterionSchema from '../contracts/journal-criterion.schema.json' with { type: 'json' }
 import observationSchema from '../contracts/journal-observation.schema.json' with { type: 'json' }
@@ -258,9 +258,15 @@ export function explorerBrief(
 	entries: EntryPointValue[],
 	dataPrefix: string,
 	workFolder: string,
-	seconds: { study: number; test: number }
+	seconds: { study: number; test: number },
+	attached = true
 ) {
 	const change = charter.change
+	// A tester in a new process gets the attached server of a recipe of kind mcp. A tester of the host session does not.
+	const tools = testerTools(
+		charter.tools.map((tool) => tool.name),
+		attached
+	)
 	const decisions = charter.decisions ?? []
 	const decisionInstructions = [
 		'Use the applied oracle answers to settle open points in the sources. Keep deferred questions deferred.',
@@ -315,15 +321,8 @@ export function explorerBrief(
 		hostContextRule,
 		`${operationText(charter.operations)} Do not change the code, the configuration, or the deployment of the application.`,
 		...(charter.dataRules ?? []),
-		...(charter.tools.length
-			? [
-					`Tools you can use: ${charter.tools
-						.map((tool) => tool.name)
-						.sort()
-						.join(', ')}.`,
-				]
-			: []),
-		...usageLine(charter.tools.map((tool) => tool.name)),
+		...(tools.length ? [`Tools you can use: ${[...tools].sort().join(', ')}.`] : []),
+		...usageLine(tools),
 		...(charter.capabilities.some((capability) => capability === 'http' || capability === 'browser')
 			? [
 					'A direct HTTP call is sufficient when it proves the behaviour. Use the browser when the page itself is what you test.',

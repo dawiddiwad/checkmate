@@ -197,7 +197,8 @@ function testerAction(store: Store, explorationId: string, explorer: string, due
 		{
 			study: launch.studySeconds,
 			test: launch.testSeconds,
-		}
+		},
+		false
 	)
 	if (due === 'test') return action('test', 'task-test.md', brief.test)
 	const shell = shellInstructions({

@@ -3,6 +3,7 @@ import type { Test } from '../../plugin/src/contracts.ts'
 import {
 	Refusal,
 	closeStore,
+	findInstance,
 	isBusy,
 	rejectionLines,
 	planRevision,
@@ -33,11 +34,20 @@ import { entriesWords, entryNoun } from '../../plugin/src/targets.ts'
 import {
 	filled,
 	observeFromRule,
+	recipes,
 	recipesFor,
 	testerEnvironment,
+	testerTools,
 	type Recipe,
 	type SessionValues,
 } from '../../plugin/src/recipes.ts'
+import {
+	attachedServers,
+	claudeServerArgs,
+	piServerEnv,
+	piServerExtension,
+	type AttachedServer,
+} from '../../plugin/src/tool-servers.ts'
 import {
 	closeTest,
 	deadlineShare,
@@ -255,7 +265,13 @@ function checkClaudeArgs(claudeArgs: string[]) {
 	}
 }
 
-export function workerArgs(pluginRoot: string, allowedTools: string[], claudeArgs: string[] = [], role = '') {
+export function workerArgs(
+	pluginRoot: string,
+	allowedTools: string[],
+	claudeArgs: string[] = [],
+	role = '',
+	servers: AttachedServer[] = []
+) {
 	const schema = readFileSync(join(pluginRoot, 'contracts', 'response.schema.json'), 'utf8')
 	const args = [
 		'-p',
@@ -273,16 +289,31 @@ export function workerArgs(pluginRoot: string, allowedTools: string[], claudeArg
 	for (const rule of allowedTools) args.push('--allowedTools', rule)
 	for (const name of childActionTools(role))
 		args.push('--allowedTools', `mcp__plugin_checkmate_actions__checkmate_${name}`)
-	return args
+	return [...args, ...claudeServerArgs(servers)]
 }
 
-function piWorkerArgs(pluginRoot: string, role: string, env: NodeJS.ProcessEnv, model: WorkerModel) {
-	const tools = ['read', 'bash', ...childActionTools(role).map((name) => `checkmate_${name}`)]
+// A worker with an attached server loads the built-in MCP support of Pi and the extension that registers the server.
+// Pi then also connects the servers of the user's mcp.json, but --tools lists MCP tools, so it keeps only these.
+function piWorkerArgs(
+	pluginRoot: string,
+	role: string,
+	env: NodeJS.ProcessEnv,
+	model: WorkerModel,
+	servers: AttachedServer[] = []
+) {
+	const tools = [
+		'read',
+		'bash',
+		...childActionTools(role).map((name) => `checkmate_${name}`),
+		...servers.flatMap((server) => server.tools),
+	]
 	return piArgs(
 		[
 			'--no-extensions',
 			'--no-session',
-			'--no-mcp',
+			...(servers.length
+				? ['--extension', 'builtin:mcp', '--extension', piServerExtension(pluginRoot)]
+				: ['--no-mcp']),
 			'--no-skills',
 			'--extension',
 			join(pluginRoot, 'pi', 'checkmate-tools.mjs'),
@@ -491,9 +522,19 @@ function runProfile(store: Store, run: RunRow) {
 	return JSON.parse(row.body) as Profile
 }
 
-// A recipe describes a CLI tool, so an MCP tool of the same name has no recipe.
+// A recipe applies to a tool of the same name and kind: an MCP tool of the host named maestro has no recipe.
+// A delegated worker gets one recipe of each capability; Checkmate attaches the server of a recipe of kind mcp.
 function toolNames(profile: Profile) {
-	return profile.tools.filter((tool) => tool.kind === 'cli').map((tool) => tool.name)
+	const kindOf = (name: string) => recipes().find((recipe) => recipe.name === name)?.kind ?? 'cli'
+	const names = profile.tools.filter((tool) => tool.kind === kindOf(tool.name)).map((tool) => tool.name)
+	return testerTools(names, true)
+}
+
+function workerServers(workspace: string, execution: Execution, pluginRoot: string) {
+	const script = join(pluginRoot, 'dist', 'checkmate.js')
+	const { target_id, instance_id } = execution.run
+	const entries = withStore(workspace, (store) => findInstance(store, target_id, instance_id).entries)
+	return attachedServers(toolNames(execution.profile), sessionValues(workspace, execution.run), script, entries)
 }
 
 // A delegated worker of a run uses the tool session of the run and keeps tool output in the evidence directory.
@@ -791,6 +832,7 @@ function recordAttempt(
 						operation: response.operation,
 						...usage,
 						...(response.modelFallback ? { modelFallback: response.modelFallback } : {}),
+						...(execution ? { tools: toolNames(execution.profile) } : {}),
 					},
 				},
 				subjects: [`${kind}:${subject}`, ...(execution ? [`plan:${execution.run.plan_id}`] : [])],
@@ -846,7 +888,12 @@ function testView(store: Store, runId: string, testId: string): TestView {
 }
 
 function toolStatus(request: PlanRequest, profile: Profile) {
-	return planTools(request, profile).map(({ name, kind }) => {
+	const chosen = toolNames(profile)
+	const unused = recipesFor(profile.tools.map((tool) => tool.name)).filter((recipe) => !chosen.includes(recipe.name))
+	const tools = planTools(request, profile).filter(({ name }) => !unused.some((recipe) => recipe.name === name))
+	return tools.map(({ name, kind }) => {
+		const recipe = recipesFor([name]).find((item) => item.kind === 'mcp' && item.kind === kind)
+		if (recipe) return `${name} (mcp, Checkmate attached its server; call only ${recipe.tools!.join(', ')})`
 		if (kind !== 'cli') return `${name} (${kind})`
 		return `${name} (${kind}, ${executableOnPath(name, process.env) ? 'on PATH' : 'not on PATH'})`
 	})
@@ -862,7 +909,7 @@ function contextLines(execution: Execution, workspace: string, tools: string[]) 
 					`Source files: ${sources.map((source) => resolve(workspace, source)).join(', ')}. Read them with the read tool. Do not search the file system: do not use rg, grep, or find.`,
 				]
 			: []),
-		`Tools: ${tools.join(', ')}. Use Bash for CLI tools. A tool marked "not on PATH" is missing: close the test as error.`,
+		`Tools: ${tools.join(', ')}. Use Bash for CLI tools. A tool marked "not on PATH" is missing: close the test as error. A tool with an attached server whose tools you do not have is missing too.`,
 		...recipesFor(toolNames(profile)).flatMap((recipe) =>
 			recipe.delegatedInstruction ? [filled(recipe.delegatedInstruction, values)] : []
 		),
@@ -1029,14 +1076,16 @@ async function runChild(
 	const executable = harness === 'pi' ? (options.pi ?? 'pi') : (options.claude ?? 'claude')
 	const workerActor = `${harness}:execute`
 	const role = testId ? 'execute' : 'probe'
+	const servers = workerServers(workspace, execution, pluginRoot)
 	const args = () =>
 		harness === 'pi'
-			? resolvePiModelArgs(executable, piWorkerArgs(pluginRoot, role, env, model), workspace, env)
+			? resolvePiModelArgs(executable, piWorkerArgs(pluginRoot, role, env, model, servers), workspace, env)
 			: workerArgs(
 					pluginRoot,
 					options.allowedTools,
 					[...(options.claudeArgs ?? []), ...claudeModelArgs(model)],
-					role
+					role,
+					servers
 				)
 	const beforeDeadline = Math.max(1, remaining - 30)
 	const requested = options.timeoutSeconds ?? testSeconds
@@ -1056,6 +1105,7 @@ async function runChild(
 					CHECKMATE_TOOL_TEST: testId,
 					CHECKMATE_MARKER: (JSON.parse(execution.run.request) as { marker?: string }).marker ?? '',
 					...testerEnvironment(sessionValues(workspace, execution.run)),
+					...(harness === 'pi' ? piServerEnv(servers) : {}),
 				},
 			})
 		)

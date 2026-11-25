@@ -2,6 +2,7 @@ import { Refusal } from './contracts.ts'
 import { signalChild, trackGroup } from './processes.ts'
 import { piArgs, piEvent, piResult, resolvePiModelArgs } from './pi.ts'
 import type { Harness } from './pi.ts'
+import { claudeServerArgs, piServerEnv, piServerExtension, type AttachedServer } from './tool-servers.ts'
 import { randomBytes } from 'node:crypto'
 import type { ChildProcess } from 'node:child_process'
 import { spawn, spawnSync } from 'node:child_process'
@@ -32,6 +33,7 @@ export type ChildContext = {
 	deny?: string[]
 	work?: string
 	hook?: ChildHook
+	servers?: AttachedServer[]
 }
 export type UiFile = { port: number; pid: number; hookToken: string }
 
@@ -295,14 +297,30 @@ function piExtension(name: string) {
 	return ['--extension', path]
 }
 
+function serverTools(context: ChildContext) {
+	return (context.servers ?? []).flatMap((server) => server.tools)
+}
+
+// An attached server needs the built-in MCP support of Pi, which --no-extensions turns off, and the extension that
+// registers the server.
+function piServerArgs(context: ChildContext) {
+	if (!context.servers?.length) return []
+	return [
+		...(context.inheritPiTools ? [] : ['--extension', 'builtin:mcp']),
+		'--extension',
+		piServerExtension(pluginRoot),
+	]
+}
+
 export function childArgs(context: ChildContext, own: string[], allow: string[] = []) {
 	if (context.harness === 'pi') {
 		const names = piToolNames(allow)
 		const scoped = piWorkTools(context, names)
-		const tools = context.inheritPiTools ? scoped : [...names, ...scoped]
+		const tools = context.inheritPiTools ? scoped : [...names, ...scoped, ...serverTools(context)]
 		const args = own[0] === '--resume' ? ['--session', ...own.slice(1)] : own
 		const launch = [
 			...(context.inheritPiTools ? [] : ['--no-extensions']),
+			...piServerArgs(context),
 			...(context.piArgs ?? []),
 			'--no-context-files',
 			'--no-skills',
@@ -332,6 +350,7 @@ export function childArgs(context: ChildContext, own: string[], allow: string[] 
 		'json',
 		'--permission-prompts',
 		'none',
+		...claudeServerArgs(context.servers ?? []),
 	]
 }
 
@@ -345,8 +364,11 @@ export function childEnv(env: Env, extra: Env = {}, hook?: ChildHook, context?: 
 	const scoped = piWorkTools(context, names)
 	return {
 		...base,
+		...piServerEnv(context.servers ?? []),
 		...(context.inheritPiTools ? { CHECKMATE_TOOL_ROLE: 'explorer' } : {}),
-		...(hook ? { CHECKMATE_PI_HOOK: JSON.stringify({ ...hook, allow: [...names, ...scoped] }) } : {}),
+		...(hook
+			? { CHECKMATE_PI_HOOK: JSON.stringify({ ...hook, allow: [...names, ...scoped, ...serverTools(context)] }) }
+			: {}),
 		...(context.deny?.length || context.work
 			? { CHECKMATE_PI_POLICY: JSON.stringify({ deny: context.deny ?? [], work: context.work, scoped }) }
 			: {}),

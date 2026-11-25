@@ -55,6 +55,7 @@ import { isRecordedGroup, signalRecordedGroup, startOfGroup } from './processes.
 import { storeFindingsRun } from './findingsRun.ts'
 import { changeOf, changedFiles } from './change.ts'
 import { testerEnvironment, toolFolders } from './recipes.ts'
+import { attachedServers } from './tool-servers.ts'
 import {
 	checkClaudeArgs,
 	checkmateScript,
@@ -298,15 +299,20 @@ function explorerWork(store: Store, explorationId: string, explorer: string, lau
 	mkdirSync(join(store.workspace, folder), { recursive: true })
 	const others = explorerNames(launch.explorers).filter((name) => name !== explorer)
 	const { session, dataPrefix } = explorationToolIdentity(launch, explorationId, explorer)
+	const values = { session, workFolder: join(store.workspace, folder) }
+	const tools = exploration(store, explorationId).charter.tools.map((tool) => tool.name)
 	return {
 		folder,
 		dataPrefix,
 		grant: [`Edit(/${folder}/**)`],
 		deny: workDenyRules(others.map((name) => workFolder(explorationId, name))),
-		extraEnv: testerEnvironment({
-			session,
-			workFolder: join(store.workspace, folder),
-		}),
+		extraEnv: testerEnvironment(values),
+		servers: attachedServers(
+			tools,
+			values,
+			checkmateScript(),
+			Object.fromEntries(entryValues(store, explorationId).map((entry) => [entry.name, entry.value]))
+		),
 	}
 }
 
@@ -633,7 +639,14 @@ async function watchedTurns<T>(
 	const watch = watchWork(store, actor, explorationId, explorer, initialTurn)
 	const turn = (tester: ChildContext, own: string[], prompt: string, name: string) => {
 		const hook = childHook(store.workspace, explorationId, explorer)
-		const context = { ...tester, deny: work.deny, hook, work: work.folder, inheritPiTools: launch.inheritPiTools }
+		const context = {
+			...tester,
+			deny: work.deny,
+			hook,
+			work: work.folder,
+			inheritPiTools: launch.inheritPiTools,
+			servers: work.servers,
+		}
 		return watchStray(store, actor, explorationId, explorer, name, () =>
 			launchChild(
 				executable,

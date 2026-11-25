@@ -11979,8 +11979,8 @@ function readServer(recipe, refuse4) {
     refuse4("tools must list the names of the server tools that a tester can call.");
   if (recipe.closeSession !== void 0 || recipe.shellInstruction !== void 0)
     refuse4("a recipe of kind mcp has no closeSession or shellInstruction: Checkmate stops its server.");
-  const refused2 = recipe.refusedArguments;
-  if (refused2 !== void 0 && (typeof refused2 !== "object" || refused2 === null || Array.isArray(refused2) || !Object.keys(refused2).every((tool) => recipe.tools?.includes(tool)) || !Object.values(refused2).every((names) => Array.isArray(names) && names.length && names.every(isText))))
+  const refused3 = recipe.refusedArguments;
+  if (refused3 !== void 0 && (typeof refused3 !== "object" || refused3 === null || Array.isArray(refused3) || !Object.keys(refused3).every((tool) => recipe.tools?.includes(tool)) || !Object.values(refused3).every((names) => Array.isArray(names) && names.length && names.every(isText))))
     refuse4("refusedArguments must map a tool of the recipe to the names of the arguments that it may not give.");
   const entries = (recipe.entryPoints ?? []).map((entry) => entry.name);
   const pinned2 = recipe.entryArguments;
@@ -12022,16 +12022,16 @@ function checkRecipes(found) {
         );
       readings.set(value2, { reading, from: `recipe ${recipe.name}` });
     }
-  const entryPoints = /* @__PURE__ */ new Map();
+  const entryPoints2 = /* @__PURE__ */ new Map();
   for (const { recipe, path } of found)
     for (const entry of recipe.entryPoints ?? []) {
       const text2 = JSON.stringify([entry.kind, entry.purpose, entry.pattern ?? null]);
-      const known = entryPoints.get(entry.name);
+      const known = entryPoints2.get(entry.name);
       if (known && known.entry !== text2)
         throw Error(
           `Tool recipe ${path} is not valid: entry point ${entry.name} differs from the one in ${known.from}.`
         );
-      entryPoints.set(entry.name, { entry: text2, from: `recipe ${recipe.name}` });
+      entryPoints2.set(entry.name, { entry: text2, from: `recipe ${recipe.name}` });
     }
   const kinds3 = /* @__PURE__ */ new Map();
   for (const { recipe, path } of found)
@@ -12298,10 +12298,10 @@ function serveToolServer(recipeName, workFolder2, session, workspace2, pinned2) 
     const request2 = message(line);
     if (request2?.method === "tools/list") lists.add(request2.id);
     if (request2?.method === "tools/call") {
-      const refused2 = refusal(recipe, request2, entries);
-      if (refused2)
+      const refused3 = refusal(recipe, request2, entries);
+      if (refused3)
         return send2(
-          JSON.stringify({ jsonrpc: "2.0", id: request2.id, error: { code: -32602, message: refused2 } })
+          JSON.stringify({ jsonrpc: "2.0", id: request2.id, error: { code: -32602, message: refused3 } })
         );
       line = JSON.stringify(request2);
     }
@@ -13270,9 +13270,9 @@ function targetRequestCheck(input) {
     Array.isArray(input.entryPoints) && input.entryPoints.length > 0,
     "Missing entry points. Give one or more --entry-point <name>:<url|command|value>:<purpose>."
   );
-  const entryPoints = input.entryPoints.map(entryPointCheck);
+  const entryPoints2 = input.entryPoints.map(entryPointCheck);
   requireCondition(
-    new Set(entryPoints.map((entry) => entry.name)).size === entryPoints.length,
+    new Set(entryPoints2.map((entry) => entry.name)).size === entryPoints2.length,
     "Duplicate entry point name"
   );
   for (const [name2, list3] of [
@@ -13287,7 +13287,7 @@ function targetRequestCheck(input) {
   requireCondition(new Set(tools.map((tool) => tool.name)).size === tools.length, "Duplicate tool name");
   return {
     targetId: input.targetId,
-    entryPoints,
+    entryPoints: entryPoints2,
     capabilities: input.capabilities,
     allowedOperations: input.allowedOperations,
     tools
@@ -13490,18 +13490,18 @@ function targetHistory(store, targetId) {
     };
   });
 }
-function instanceCheck(entryPoints, value2) {
+function instanceCheck(entryPoints2, value2) {
   const instance = validate("instance", value2);
   const names = Object.keys(instance.entries);
-  const missing = entryPoints.filter((entry) => !names.includes(entry.name)).map((entry) => entry.name);
-  const unknown = names.filter((name2) => !entryPoints.some((entry) => entry.name === name2));
+  const missing = entryPoints2.filter((entry) => !names.includes(entry.name)).map((entry) => entry.name);
+  const unknown = names.filter((name2) => !entryPoints2.some((entry) => entry.name === name2));
   requireCondition(!missing.length, `Missing value for entry point: ${missing.join(", ")}`);
   requireCondition(
     !unknown.length,
-    `Unknown entry point: ${unknown.join(", ")}. The target has: ${entryPoints.map((entry) => entry.name).join(", ")}.`
+    `Unknown entry point: ${unknown.join(", ")}. The target has: ${entryPoints2.map((entry) => entry.name).join(", ")}.`
   );
   const entries = {};
-  for (const entry of entryPoints) {
+  for (const entry of entryPoints2) {
     const text2 = requireText(instance.entries[entry.name], `value for entry point ${entry.name}`).trim();
     entries[entry.name] = text2;
     if (entry.kind !== "url") continue;
@@ -13706,13 +13706,13 @@ function instanceList(store, targetId) {
     targetId
   ).map((row2) => instanceRecord(store, targetId, row2));
 }
-function entriesWords(entryPoints) {
-  if (entryPoints.length === 1 && entryPoints[0].kind === "url") return "the url entry";
-  const names = entryPoints.map((entry) => entry.name);
+function entriesWords(entryPoints2) {
+  if (entryPoints2.length === 1 && entryPoints2[0].kind === "url") return "the url entry";
+  const names = entryPoints2.map((entry) => entry.name);
   return names.length === 1 ? `the ${names[0]} entry` : `the ${listText(names)} entries`;
 }
-function entryNoun(entryPoints) {
-  return entryPoints.length === 1 && entryPoints[0].kind === "url" ? "URL" : "entries";
+function entryNoun(entryPoints2) {
+  return entryPoints2.length === 1 && entryPoints2[0].kind === "url" ? "URL" : "entries";
 }
 function entryFlags(entries) {
   const names = Object.keys(entries);
@@ -13727,13 +13727,13 @@ function dataFlags(store, targetId) {
   const web = instanceList(store, targetId).find((instance) => !instance.retired)?.entries.web;
   return web ? `--url ${web}` : `--target ${targetId}`;
 }
-function placeholderEntries(entryPoints) {
+function placeholderEntries(entryPoints2) {
   return Object.fromEntries(
-    entryPoints.map((entry) => [entry.name, entry.kind === "url" ? "<url>" : `<${entry.name}>`])
+    entryPoints2.map((entry) => [entry.name, entry.kind === "url" ? "<url>" : `<${entry.name}>`])
   );
 }
-function buildEntryFlags(entryPoints, build) {
-  return entryPoints.map((entry) => `--entry ${entry.name}=<${entry.kind === "url" ? "URL" : entry.name} of ${build}>`).join(" ");
+function buildEntryFlags(entryPoints2, build) {
+  return entryPoints2.map((entry) => `--entry ${entry.name}=<${entry.kind === "url" ? "URL" : entry.name} of ${build}>`).join(" ");
 }
 function findInstance(store, targetId, instanceId) {
   targetRequest(store, targetId);
@@ -13964,11 +13964,11 @@ function fitEntries(catalog2, entries, detected) {
       "Install the tool, or give other entries."
     );
   }
-  const entryPoints = names.map((name2) => {
+  const entryPoints2 = names.map((name2) => {
     const { kind, purpose } = declared.get(name2);
     return { name: name2, kind, purpose };
   });
-  return { fitting, entryPoints };
+  return { fitting, entryPoints: entryPoints2 };
 }
 function detectedTools(catalog2, env) {
   return catalog2.flatMap((recipe) => {
@@ -13989,20 +13989,20 @@ function setupAssumptions(workspace2, input) {
   const instanceId = input.instanceId ?? "local";
   if (!input.instanceId) assumed.push("instance=local");
   const catalog2 = recipes(workspace2);
-  const { fitting: detected, entryPoints } = fitEntries(catalog2, entries, detectedTools(catalog2, input.env));
+  const { fitting: detected, entryPoints: entryPoints2 } = fitEntries(catalog2, entries, detectedTools(catalog2, input.env));
   const capabilities = [...new Set(detected.map(({ recipe }) => recipe.capability))].sort();
   assumed.push(
-    entryPoints.length === 1 ? `entry point=${entryPoints[0].name} (${entryPoints[0].kind})` : `entry points=${entryPoints.map((entry) => `${entry.name} (${entry.kind})`).join(", ")}`,
+    entryPoints2.length === 1 ? `entry point=${entryPoints2[0].name} (${entryPoints2[0].kind})` : `entry points=${entryPoints2.map((entry) => `${entry.name} (${entry.kind})`).join(", ")}`,
     `capabilities=${capabilities.join(",")} (${pathTools(
       catalog2,
       detected,
-      entryPoints.map((entry) => entry.name)
+      entryPoints2.map((entry) => entry.name)
     )})`
   );
   const allowedOperations = input.operations?.length ? input.operations : [anyTestOperation];
   if (!input.operations?.length) assumed.push(`operations=${anyTestOperation}: ${anyTestOperationText}`);
   assumed.push("authentication=none");
-  return { entries, entryPoints, targetId, instanceId, detected, capabilities, allowedOperations, assumed };
+  return { entries, entryPoints: entryPoints2, targetId, instanceId, detected, capabilities, allowedOperations, assumed };
 }
 function pathTools(catalog2, detected, entryNames) {
   const found = [
@@ -14065,7 +14065,7 @@ function instanceChange(stored, wanted) {
 function setupTarget(store, actor, input) {
   if (!Object.keys(givenEntries(input)).length) return recordData(store, actor, input);
   const setup = setupAssumptions(store.workspace, input);
-  const { entries, entryPoints, targetId, instanceId, detected, capabilities, allowedOperations, assumed } = setup;
+  const { entries, entryPoints: entryPoints2, targetId, instanceId, detected, capabilities, allowedOperations, assumed } = setup;
   const reset = dataOf(input);
   const where = entries.web && Object.keys(entries).length === 1 ? entries.web : `the entries ${entryList(entries)}`;
   const flags = entryFlags(entries);
@@ -14110,7 +14110,7 @@ function setupTarget(store, actor, input) {
     if (!known) {
       const opened = insertRequest(store, operationId, {
         targetId,
-        entryPoints,
+        entryPoints: entryPoints2,
         capabilities,
         allowedOperations,
         tools: []
@@ -15419,7 +15419,7 @@ function logEntries(store, actor, input) {
     const list3 = entryList2(input.entries);
     requireCondition(list3.length, "The array has no entry.", "Send one entry, or an array of entries.");
     const saved = [];
-    const refused2 = [];
+    const refused3 = [];
     const recorded2 = droppedReferences && { replyIds: replyIds(list3), dropped: droppedReferences };
     const rules = {
       ids: new Set(explorationRules(store, exploration2.exploration_id).map((rule) => rule.id)),
@@ -15443,7 +15443,7 @@ function logEntries(store, actor, input) {
         );
       } catch (error) {
         if (!(error instanceof EntryRefusal)) throw error;
-        refused2.push({ index: index2, field: error.field, reason: error.message, hint: error.hint, fix: error.fix });
+        refused3.push({ index: index2, field: error.field, reason: error.message, hint: error.hint, fix: error.fix });
         continue;
       }
       insertEntry(store, exploration2.exploration_id, entry, actor2, operationId);
@@ -15452,13 +15452,13 @@ function logEntries(store, actor, input) {
     if (!saved.length)
       throw new Refusal(
         "malformed",
-        refused2.map((item) => `${item.reason}.${fixText(item)}`).join(" "),
-        [...new Set(refused2.flatMap((item) => item.hint ?? []))].join(" ")
+        refused3.map((item) => `${item.reason}.${fixText(item)}`).join(" "),
+        [...new Set(refused3.flatMap((item) => item.hint ?? []))].join(" ")
       );
     return {
       reply: completed(exploration2.exploration_id, {
         saved,
-        refused: refused2,
+        refused: refused3,
         ...rules.unknown.length ? { unknownRules: rules.unknown } : {}
       }),
       subjects: [`exploration:${exploration2.exploration_id}`, `plan:${exploration2.plan_id}`]
@@ -16177,13 +16177,13 @@ function priorSoftRefusal(store, planId) {
     "SELECT max(rowid) AS id FROM operations WHERE subjects LIKE ? AND command = 'plan save' AND status = 'completed'",
     `%"plan:${planId}"%`
   );
-  const refused2 = all(
+  const refused3 = all(
     store,
     "SELECT response FROM operations WHERE response LIKE ? AND command = 'plan save' AND status = 'rejected' AND rowid > ?",
     `%"subject":"${planId}"%`,
     last?.id ?? 0
   );
-  return refused2.some((row2) => softRefusalTexts.some((text2) => row2.response.includes(text2)));
+  return refused3.some((row2) => softRefusalTexts.some((text2) => row2.response.includes(text2)));
 }
 function softReason(test, problem) {
   if (problem.reason === "needs_control")
@@ -24937,14 +24937,14 @@ function phaseRows(events, status, verifier) {
   const last = (step) => events.findLast((event2) => event2.step === step);
   const reason = (event2) => event2?.detail.reason ?? null;
   const records2 = events.filter((event2) => event2.step === "record");
-  const refused2 = records2.filter((event2) => event2.status !== "completed");
+  const refused3 = records2.filter((event2) => event2.status !== "completed");
   const merge = last("merge");
   const verify2 = last("verify");
   return [
     {
       phase: "record",
-      state: !records2.length ? later : state === "recording" ? "running" : refused2.length < records2.length ? "completed" : "failed",
-      reason: refused2.length ? refused2.map(
+      state: !records2.length ? later : state === "recording" ? "running" : refused3.length < records2.length ? "completed" : "failed",
+      reason: refused3.length ? refused3.map(
         (event2) => `${event2.explorer}: ${[event2.detail.reasons ?? []].flat().join(" ") || event2.status}`
       ).join(" ") : null
     },
@@ -27416,7 +27416,7 @@ async function recoverPiCosts(store, env) {
 // plugin/src/ui/server.ts
 import { createServer } from "node:http";
 import { randomBytes as randomBytes4 } from "node:crypto";
-import { existsSync as existsSync11, readFileSync as readFileSync13, realpathSync as realpathSync7 } from "node:fs";
+import { existsSync as existsSync11, readdirSync as readdirSync4, readFileSync as readFileSync13, realpathSync as realpathSync7, statSync as statSync6 } from "node:fs";
 import { fileURLToPath as fileURLToPath2 } from "node:url";
 
 // plugin/src/modes.ts
@@ -33060,7 +33060,7 @@ function actionRecovery(name2, reply) {
 }
 
 // plugin/src/ui/server.ts
-import { resolve as resolve7 } from "node:path";
+import { join as join21, resolve as resolve7 } from "node:path";
 import { mkdirSync as mkdirSync11, rmSync as rmSync9, writeFileSync as writeFileSync6 } from "node:fs";
 
 // plugin/src/ui/bulk.ts
@@ -35122,6 +35122,7 @@ function runPage(store, context, runId, params = new URLSearchParams(), state = 
 // plugin/src/ui/settings.ts
 var settingsPages = [
   { path: "/settings/targets", label: "Targets" },
+  { path: "/settings/recipes", label: "Recipes" },
   { path: "/settings/harness", label: "Coding harness" }
 ];
 function settingsNav(current2) {
@@ -35138,7 +35139,8 @@ function settingsNav(current2) {
 	</nav>`;
 }
 function settingsPage(current2, title2, subjects, body, status) {
-  const target = title2 !== "Targets" && title2 !== "Coding harness";
+  const parent = settingsPages.find((page) => page.path === current2);
+  const detail = title2 !== parent.label;
   return {
     title: title2,
     section: "settings",
@@ -35146,9 +35148,9 @@ function settingsPage(current2, title2, subjects, body, status) {
     status,
     crumbs: [
       ["Settings", "/settings/targets"],
-      ...target ? [["Targets", "/settings/targets"], [title2, null]] : [[title2, null]]
+      ...detail ? [[parent.label, current2], [title2, null]] : [[title2, null]]
     ],
-    back: target ? "/settings/targets" : "/",
+    back: detail ? current2 : "/",
     body: html2`${settingsNav(current2)} ${body}`
   };
 }
@@ -35195,7 +35197,7 @@ function targetsPage(store) {
 		</div>`;
   return settingsPage("/settings/targets", "Targets", ["*"], body);
 }
-function entryPointsTable(entryPoints) {
+function entryPointsTable(entryPoints2) {
   return html2`<div class="scroll">
 		<table>
 			<thead>
@@ -35206,7 +35208,7 @@ function entryPointsTable(entryPoints) {
 				</tr>
 			</thead>
 			<tbody>
-				${entryPoints.map(
+				${entryPoints2.map(
     (entry) => html2`<tr>
 							<td class="mono">${entry.name}</td>
 							<td class="mono">${entry.kind}</td>
@@ -35388,7 +35390,7 @@ function instancesTable(context, targetId, instances, retire) {
 		</table>
 	</div>`;
 }
-function addForm(context, targetId, entryPoints, form) {
+function addForm(context, targetId, entryPoints2, form) {
   const value2 = (name2) => form?.values[name2] ?? "";
   return html2`<section
 		class="panel decision"
@@ -35417,7 +35419,7 @@ function addForm(context, targetId, entryPoints, form) {
 				/>
 				<p class="help">Letters, digits, _ or -. An instance ID is not used again.</p>
 			</div>
-			${entryPoints.map(
+			${entryPoints2.map(
     (entry) => html2`<div class="field-group">
 						<label class="lab" for="entry-${entry.name}"
 							>${entry.name} <span class="req">${entry.kind}</span></label
@@ -35509,12 +35511,12 @@ function targetPage(store, context, targetId, revision2, form = null, retire = n
     form?.error || retire ? 422 : void 0
   );
 }
-function instanceFromForm(entryPoints, form) {
+function instanceFromForm(entryPoints2, form) {
   const environment = form.get("environment")?.trim() ?? "";
   const references2 = (form.get("references") ?? "").split("\n").map((line) => line.trim()).filter(Boolean);
   return {
     entries: Object.fromEntries(
-      entryPoints.map((entry) => [entry.name, (form.get(`entry.${entry.name}`) ?? "").trim()])
+      entryPoints2.map((entry) => [entry.name, (form.get(`entry.${entry.name}`) ?? "").trim()])
     ),
     ...environment ? { environment } : {},
     references: references2
@@ -35669,6 +35671,174 @@ function harnessPage(store, context, env, form = null, model = null, testerModel
 			<div class="btns"><a class="btn" href="/chats">Open Chats</a></div>
 		</section>`;
   return settingsPage("/settings/harness", "Coding harness", ["*"], body);
+}
+
+// plugin/src/ui/recipes.ts
+var addCommand = "checkmate recipe add --file <name>.json";
+function readCatalog(workspace2) {
+  try {
+    return { entries: listRecipes(workspace2), error: null };
+  } catch (error) {
+    return { entries: [], error: error.message };
+  }
+}
+function sourcePill(source) {
+  return html2`<span class="sp-pill${source === "custom" ? " blue" : ""}" data-source="${source}">${source}</span>`;
+}
+function codes(items) {
+  return items.length ? join16(
+    items.map((item) => html2`<code>${item}</code>`),
+    " "
+  ) : html2`<span class="muted">none</span>`;
+}
+function commandText(args) {
+  return args.map((arg) => /[\s"'\\]/.test(arg) ? JSON.stringify(arg) : arg).join(" ");
+}
+function kindText2(recipe) {
+  return recipe.kind === "mcp" ? "MCP server" : "command-line tool";
+}
+function detection(recipe) {
+  return recipe.detect === "runtime" ? html2`The Node.js that runs Checkmate` : html2`<code>${toolExecutable(recipe)}</code> on <code>PATH</code>`;
+}
+function recipesPage(workspace2) {
+  const { entries, error } = readCatalog(workspace2);
+  const rows2 = entries.map(
+    ({ source, recipe }) => listRow(`recipe:${recipe.name}`, `/settings/recipes/${recipe.name}`, recipe.name, sourcePill(source), [
+      recipe.purpose,
+      html2`<span class="muted"
+				><code>${recipe.capability}</code> · ${kindText2(recipe)} · ${detection(recipe)}</span
+			>`
+    ])
+  );
+  const custom = entries.some((entry) => entry.source === "custom");
+  const body = html2`${heading(
+    "Recipes",
+    html2`The tools that testers can use. Built-in recipes come with Checkmate. Custom recipes come from
+				<code>.checkmate/recipes/</code> in this workspace.`
+  )}
+		<div data-region="recipes">
+			${error ? banner("fail", html2`Checkmate cannot read the recipes. ${error}`) : ""}
+			${entries.length ? html2`<ul class="q-items l-rows">
+							${rows2}
+						</ul>` : ""}
+			${custom || error ? "" : emptyNotice(
+    "No custom recipe yet.",
+    html2`Write a recipe JSON file and its Markdown usage file in a draft folder. Then run
+								<code>${addCommand}</code> in this workspace.`
+  )}
+		</div>`;
+  return settingsPage("/settings/recipes", "Recipes", ["recipes"], body);
+}
+function entryPoints(recipe) {
+  if (!recipe.entryPoints?.length) return html2`<p class="none">No entry point. The recipe fits every target.</p>`;
+  return html2`<ul class="plain">
+		${recipe.entryPoints.map(
+    (entry) => html2`<li>
+					<code>${entry.name}</code>
+					<span class="muted"
+						>· ${entry.kind}${entry.pattern ? html2` · format <code>${entry.pattern}</code>` : ""}</span
+					>
+					<br />${entry.purpose}
+				</li>`
+  )}
+	</ul>`;
+}
+function checkText(check) {
+  if (check.check === "http")
+    return html2`HTTP request to the <code>${check.entry}</code> entry. It answers below HTTP 500.`;
+  return html2`Command <code>${commandText(check.run)}</code> exits with code
+		0${check.contains?.length ? html2`, and its output contains ${codes(check.contains)}` : ""}.`;
+}
+function reachability(recipe) {
+  if (!recipe.reachable?.length)
+    return html2`<p class="none">No check. Setup leaves the instance of the target not checked.</p>`;
+  return html2`<ul class="plain">
+		${recipe.reachable.map((check) => html2`<li>${checkText(check)}</li>`)}
+	</ul>`;
+}
+function fact(label, value2, look = "") {
+  return html2`<dt>${label}</dt>
+		<dd class="${look}">${value2}</dd>`;
+}
+function pairs2(values) {
+  const entries = Object.entries(values);
+  return entries.length ? html2`<span class="kv">${entries.map(([key, value2]) => html2`<span class="tag">${key}=${value2}</span>`)}</span>` : html2`<span class="muted">none</span>`;
+}
+function refused2(values) {
+  return pairs2(Object.fromEntries(Object.entries(values).map(([tool, names]) => [tool, names.join(",")])));
+}
+function recipeFacts({ source, path, usagePath, recipe }) {
+  const server = recipe.server;
+  return html2`<dl class="facts">
+		${fact("Source", sourcePill(source))}
+		${source === "custom" ? fact("File", html2`<code>${path}</code>`, "path") : ""}
+		${source === "custom" ? fact("Usage file", html2`<code>${usagePath}</code>`, "path") : ""}
+		${fact("Tool for", html2`<code>${recipe.capability}</code> · ${kindText2(recipe)}`)}
+		${fact("Detection", detection(recipe))}
+		${server ? fact("Server", html2`<code>${commandText([server.command, ...server.args])}</code> in <code>${server.cwd}</code>`) : ""}
+		${recipe.tools ? fact("Server tools", codes(recipe.tools)) : ""}
+	</dl>`;
+}
+function testingFacts(recipe) {
+  const observe = Object.entries(recipe.observeFrom).map(([value2, reading]) => `${value2} (${reading})`);
+  return html2`<dl class="facts">
+		${fact("Observes from", codes(observe))} ${fact("Evidence", codes(recipe.evidence))}
+		${recipe.evidenceExtensions ? fact("Evidence files", pairs2(recipe.evidenceExtensions)) : ""}
+		${fact("Environment", pairs2(recipe.environment))} ${fact("Tool folders", codes(recipe.workspaceFolders))}
+		${recipe.closeSession ? fact("Close session", html2`<code>${commandText(recipe.closeSession)}</code>`) : ""}
+		${recipe.refusedArguments ? fact("Refused arguments", refused2(recipe.refusedArguments)) : ""}
+		${recipe.entryArguments ? fact("Entry arguments", pairs2(recipe.entryArguments)) : ""}
+		${recipe.shellInstruction ? fact("Shell instruction", recipe.shellInstruction) : ""}
+		${recipe.delegatedInstruction ? fact("Delegated instruction", recipe.delegatedInstruction) : ""}
+	</dl>`;
+}
+function recipePage(workspace2, name2) {
+  const { entries, error } = readCatalog(workspace2);
+  if (error)
+    return settingsPage(
+      "/settings/recipes",
+      name2,
+      ["recipes"],
+      html2`<div data-region="recipe">${banner("fail", html2`Checkmate cannot read the recipes. ${error}`)}</div>`
+    );
+  const entry = entries.find(({ recipe: recipe2 }) => recipe2.name === name2);
+  if (!entry) return null;
+  const { recipe, usagePath, usageText, jsonText } = entry;
+  const usageName = usagePath.split(/[\\/]/).at(-1);
+  const body = html2`<div data-region="recipe">
+		${heading(recipe.name, recipe.purpose, html2`<div class="meta">${sourcePill(entry.source)}</div>`)}
+		<div class="main-col">
+			<nav class="jump" aria-label="On this page">
+				<a href="#recipe">Recipe</a><a href="#requires">Requires</a><a href="#testing">Testing</a
+				><a href="#usage">Usage</a><a href="#json">JSON</a>
+			</nav>
+			<section aria-labelledby="recipe">
+				<h2 id="recipe">Recipe</h2>
+				${recipeFacts(entry)}
+			</section>
+			<section aria-labelledby="requires">
+				<h2 id="requires">Requires</h2>
+				<h3>Entry points <span class="n">${recipe.entryPoints?.length ?? 0}</span></h3>
+				${entryPoints(recipe)}
+				<h3>Reachability checks</h3>
+				${reachability(recipe)}
+			</section>
+			<section aria-labelledby="testing">
+				<h2 id="testing">Testing</h2>
+				${testingFacts(recipe)}
+			</section>
+			<section aria-labelledby="usage">
+				<h2 id="usage">Usage <span class="muted small mono">${usageName}</span></h2>
+				<pre class="sp-code" tabindex="0" data-usage>${usageText}</pre>
+			</section>
+			<details class="fold" data-open-key="section:json">
+				<summary><h2 id="json">Recipe JSON</h2></summary>
+				<div class="fold-b"><pre class="sp-code" tabindex="0" data-json>${jsonText}</pre></div>
+			</details>
+			<p class="back"><a href="/settings/recipes">All recipes</a></p>
+		</div>
+	</div>`;
+  return settingsPage("/settings/recipes", recipe.name, ["recipes"], body);
 }
 
 // plugin/src/ui/requester.ts
@@ -41966,6 +42136,7 @@ var routes = {
   report: new RegExp(`^/runs/(${id})/report\\.(html|md|json|junit)$`),
   evidence: /^\/evidence\/([0-9A-Z]{26})$/,
   target: new RegExp(`^/settings/targets/(${id})$`),
+  recipe: new RegExp(`^/settings/recipes/(${id})$`),
   addInstance: new RegExp(`^/settings/targets/(${id})/instances$`),
   retireInstance: new RegExp(`^/settings/targets/(${id})/instances/(${id})/retire$`),
   exploration: new RegExp(`^/explorations/(${id})$`),
@@ -42153,6 +42324,25 @@ data: ${matched.join(",") || "*"}
     hooks.release();
     for (const client of clients) client.res.write("data: *\n\n");
   }, 1e3);
+  const recipeFolder = join21(workspace2, ".checkmate", "recipes");
+  const recipeFiles = () => {
+    try {
+      return readdirSync4(recipeFolder).sort().map((name2) => {
+        const file = statSync6(join21(recipeFolder, name2), { throwIfNoEntry: false });
+        return `${name2}:${file?.size}:${file?.mtimeMs}`;
+      }).join(",");
+    } catch {
+      return "";
+    }
+  };
+  let recipeState = recipeFiles();
+  const recipeWatch = setInterval(() => {
+    const current2 = recipeFiles();
+    if (current2 === recipeState) return;
+    recipeState = current2;
+    for (const client of clients)
+      if (client.subjects.has("recipes") || client.subjects.has("*")) client.res.write("data: recipes\n\n");
+  }, 1e3);
   const heartbeat = setInterval(() => {
     for (const client of clients) client.res.write(": heartbeat\n\n");
   }, 15e3);
@@ -42336,6 +42526,13 @@ data: ${matched.join(",") || "*"}
     if (pathname === "/actor") return render(request2, actorPage(shown2, safeBack(searchParams.get("back"))));
     if (pathname === "/settings") return redirect(request2.res, "/settings/targets");
     if (pathname === "/settings/targets") return render(request2, targetsPage(store));
+    if (pathname === "/settings/recipes") return render(request2, recipesPage(options3.workspace));
+    const recipe = routes.recipe.exec(pathname);
+    if (recipe) {
+      const page = recipePage(options3.workspace, recipe[1]);
+      if (!page) return errorPage(request2, 404, "Recipe not found", `Checkmate has no recipe ${recipe[1]}.`);
+      return render(request2, page);
+    }
     const target = routes.target.exec(pathname);
     if (target) {
       const revision2 = searchParams.get("revision");
@@ -43899,13 +44096,13 @@ data: ${matched.join(",") || "*"}
   }
   function saveInstance(request2, form, targetId) {
     const { actor, cookies } = actorFrom(request2, form);
-    const entryPoints = targetRequest(store, targetId).entryPoints;
+    const entryPoints2 = targetRequest(store, targetId).entryPoints;
     const state = {
       values: values(form, [
         "instanceId",
         "environment",
         "references",
-        ...entryPoints.map((entry) => `entry.${entry.name}`)
+        ...entryPoints2.map((entry) => `entry.${entry.name}`)
       ]),
       error: null,
       field: null
@@ -43920,7 +44117,7 @@ data: ${matched.join(",") || "*"}
       ]);
     };
     const instanceId = state.values.instanceId.trim();
-    const empty = entryPoints.find((entry) => !state.values[`entry.${entry.name}`].trim());
+    const empty = entryPoints2.find((entry) => !state.values[`entry.${entry.name}`].trim());
     if (!actor)
       [state.error, state.field] = ["Enter your name. Checkmate records it with the instance.", "instance-actor"];
     else if (!instanceId) [state.error, state.field] = ["Enter an instance ID.", "instance-id"];
@@ -43928,7 +44125,7 @@ data: ${matched.join(",") || "*"}
       [state.error, state.field] = [`Fill in ${empty.name}. It cannot be empty.`, `entry-${empty.name}`];
     if (state.error) return again();
     try {
-      addInstance(store, actor, { targetId, instanceId, instance: instanceFromForm(entryPoints, form) });
+      addInstance(store, actor, { targetId, instanceId, instance: instanceFromForm(entryPoints2, form) });
     } catch (error) {
       state.error = plainMessage(error);
       return again();
@@ -44104,6 +44301,7 @@ data: ${matched.join(",") || "*"}
     clearInterval(poll);
     clearInterval(heartbeat);
     clearInterval(supervisorWatch);
+    clearInterval(recipeWatch);
     for (const client of clients) client.res.end();
     clients.clear();
     await new Promise((resolve13) => {
@@ -44293,28 +44491,28 @@ function specHandoff(store, actor, input) {
 
 // plugin/src/cli.ts
 import { mkdirSync as mkdirSync12, readFileSync as readFileSync15, writeFileSync as writeFileSync7 } from "node:fs";
-import { dirname as dirname5, join as join22, resolve as resolve9 } from "node:path";
+import { dirname as dirname5, join as join23, resolve as resolve9 } from "node:path";
 import { constants as constants2 } from "node:sqlite";
 
 // plugin/src/build.ts
 import { createHash as createHash2 } from "node:crypto";
-import { existsSync as existsSync12, readdirSync as readdirSync4, readFileSync as readFileSync14, realpathSync as realpathSync8, statSync as statSync6 } from "node:fs";
+import { existsSync as existsSync12, readdirSync as readdirSync5, readFileSync as readFileSync14, realpathSync as realpathSync8, statSync as statSync7 } from "node:fs";
 import { homedir as homedir3 } from "node:os";
-import { dirname as dirname4, isAbsolute as isAbsolute4, join as join21, resolve as resolve8, sep as sep4 } from "node:path";
+import { dirname as dirname4, isAbsolute as isAbsolute4, join as join22, resolve as resolve8, sep as sep4 } from "node:path";
 import { fileURLToPath as fileURLToPath3 } from "node:url";
 var instructionFolders = ["agents", "contracts", "pi", "recipes", "references", "skills"];
 function filesUnder(folder) {
   if (!existsSync12(folder)) return [];
-  return readdirSync4(folder).sort().flatMap((name2) => {
-    const path = join21(folder, name2);
-    return statSync6(path).isDirectory() ? filesUnder(path) : [path];
+  return readdirSync5(folder).sort().flatMap((name2) => {
+    const path = join22(folder, name2);
+    return statSync7(path).isDirectory() ? filesUnder(path) : [path];
   });
 }
 function buildDigest(bundle) {
   const root = dirname4(dirname4(bundle));
   const hash = createHash2("sha256").update(readFileSync14(bundle));
   for (const folder of instructionFolders) {
-    for (const path of filesUnder(join21(root, folder))) {
+    for (const path of filesUnder(join22(root, folder))) {
       hash.update(path.slice(root.length)).update(readFileSync14(path));
     }
   }
@@ -44337,10 +44535,10 @@ function versionLines(version3, bundle, env) {
   return [...lines2, ...piCopyWarnings(bundle, env, process.cwd())];
 }
 function piDeclarations(env, cwd) {
-  const agentDirectory = env.PI_CODING_AGENT_DIR?.trim() || join21(homedir3(), ".pi", "agent");
+  const agentDirectory = env.PI_CODING_AGENT_DIR?.trim() || join22(homedir3(), ".pi", "agent");
   const files2 = [
-    ["global", join21(agentDirectory, "settings.json")],
-    ["project", join21(cwd, ".pi", "settings.json")]
+    ["global", join22(agentDirectory, "settings.json")],
+    ["project", join22(cwd, ".pi", "settings.json")]
   ];
   return files2.flatMap(([scope, file]) => {
     if (!existsSync12(file)) return [];
@@ -44356,7 +44554,7 @@ function piDeclarations(env, cwd) {
 }
 function packageRootOf(file) {
   let folder = dirname4(file);
-  while (!existsSync12(join21(folder, "package.json")) && dirname4(folder) !== folder) folder = dirname4(folder);
+  while (!existsSync12(join22(folder, "package.json")) && dirname4(folder) !== folder) folder = dirname4(folder);
   return folder;
 }
 function piCopyWarnings(bundle, env, cwd) {
@@ -46710,7 +46908,7 @@ function commandHelp(argv) {
   return { ...refused("invalid_request", "checkmate", unknownCommand(words5)), data: { usage: [] } };
 }
 function version() {
-  const manifest = JSON.parse(readFileSync15(join22(pluginRoot, ".claude-plugin", "plugin.json"), "utf8"));
+  const manifest = JSON.parse(readFileSync15(join23(pluginRoot, ".claude-plugin", "plugin.json"), "utf8"));
   return versionLines(manifest.version, import.meta.url, process.env).join("\n");
 }
 function readJson2(text2) {
@@ -46904,7 +47102,7 @@ async function main(argv) {
 
 // plugin/src/action-tools.ts
 import { readFileSync as readFileSync16 } from "node:fs";
-import { join as join23 } from "node:path";
+import { join as join24 } from "node:path";
 var readActions = [
   "list_targets",
   "show_target",
@@ -46945,7 +47143,7 @@ function schemaFiles() {
   return (name2) => {
     const cached = files2.get(name2);
     if (cached) return cached;
-    const parsed = JSON.parse(readFileSync16(join23(pluginRoot, "contracts", name2), "utf8"));
+    const parsed = JSON.parse(readFileSync16(join24(pluginRoot, "contracts", name2), "utf8"));
     files2.set(name2, parsed);
     return parsed;
   };
@@ -47414,7 +47612,7 @@ var plan_delta_schema_default = {
 // cli/src/launcher.ts
 import { spawn as spawn6 } from "node:child_process";
 import { readFileSync as readFileSync17 } from "node:fs";
-import { join as join24, resolve as resolve10 } from "node:path";
+import { join as join25, resolve as resolve10 } from "node:path";
 var stages = ["setup", "plan", "revise", "execute"];
 var defaultTimeoutSeconds = 300;
 var minimumRules = ["Read", "Bash"];
@@ -47536,7 +47734,7 @@ function checkClaudeArgs2(claudeArgs2) {
   }
 }
 function workerArgs(pluginRoot2, allowedTools, claudeArgs2 = [], role = "", servers = []) {
-  const schema = readFileSync17(join24(pluginRoot2, "contracts", "response.schema.json"), "utf8");
+  const schema = readFileSync17(join25(pluginRoot2, "contracts", "response.schema.json"), "utf8");
   const args = [
     "-p",
     ...claudeArgs2,
@@ -47568,7 +47766,7 @@ function piWorkerArgs(pluginRoot2, role, env, model, servers = []) {
       ...servers.length ? ["--extension", "builtin:mcp", "--extension", piServerExtension(pluginRoot2)] : ["--no-mcp"],
       "--no-skills",
       "--extension",
-      join24(pluginRoot2, "pi", "checkmate-tools.mjs"),
+      join25(pluginRoot2, "pi", "checkmate-tools.mjs"),
       "--tools",
       tools.join(","),
       ...model.refused ? [] : effortArgs("pi", model.effort)
@@ -47746,7 +47944,7 @@ function toolNames(workspace2, execution) {
   );
 }
 function workerServers(workspace2, execution, pluginRoot2) {
-  const script = join24(pluginRoot2, "dist", "checkmate.js");
+  const script = join25(pluginRoot2, "dist", "checkmate.js");
   const { target_id, instance_id } = execution.run;
   const entries = withStore(workspace2, (store) => findInstance(store, target_id, instance_id).entries);
   return attachedServers(
@@ -47758,7 +47956,7 @@ function workerServers(workspace2, execution, pluginRoot2) {
   );
 }
 function sessionValues(workspace2, run2) {
-  return { session: run2.tool_session, workFolder: join24(workspace2, ".checkmate", "tmp", run2.run_id) };
+  return { session: run2.tool_session, workFolder: join25(workspace2, ".checkmate", "tmp", run2.run_id) };
 }
 function dataLines(workspace2, profile, runId, marker, facts3) {
   return dataRules(workspace2, profile.reset, marker, facts3 ?? "").map(
@@ -47891,7 +48089,7 @@ var finalCommand = {
   execute: "run finish"
 };
 function nativePlanPrompt(stage, subject, pluginRoot2, rejected, observeRule) {
-  const skill = readFileSync17(join24(pluginRoot2, "skills", stage, "SKILL.md"), "utf8");
+  const skill = readFileSync17(join25(pluginRoot2, "skills", stage, "SKILL.md"), "utf8");
   const start = stage === "plan" ? "Read the plan request." : "Read the pending decisions.";
   const example = stage === "plan" ? plan_candidate_schema_default.examples[0] : plan_delta_schema_default.examples[0];
   return [
@@ -47907,9 +48105,9 @@ function nativePlanPrompt(stage, subject, pluginRoot2, rejected, observeRule) {
   ].join("\n\n");
 }
 function prompt(stage, subject, workspace2, pluginRoot2, timeoutSeconds, harness, round = 1, rejected = [], observeRule = "") {
-  const skill = join24(pluginRoot2, "skills", stage, "SKILL.md");
-  const workflow = join24(pluginRoot2, "references", "workflow.md");
-  const cliPath = join24(pluginRoot2, "dist", "checkmate.js");
+  const skill = join25(pluginRoot2, "skills", stage, "SKILL.md");
+  const workflow = join25(pluginRoot2, "references", "workflow.md");
+  const cliPath = join25(pluginRoot2, "dist", "checkmate.js");
   const cliCommand = `cd '${workspace2.replaceAll("'", "'\\''")}' && node '${cliPath.replaceAll("'", "'\\''")}'`;
   const deadline = new Date(Date.now() + timeoutSeconds * 1e3).toISOString();
   const instructions = harness === "pi" ? [
@@ -48063,7 +48261,7 @@ function contextLines(execution, workspace2, tools) {
 }
 function probePrompt(execution, workspace2, actor, pluginRoot2) {
   const { run: run2 } = execution;
-  const cli = `cd '${workspace2.replaceAll("'", "'\\''")}' && node '${join24(pluginRoot2, "dist", "checkmate.js").replaceAll("'", "'\\''")}'`;
+  const cli = `cd '${workspace2.replaceAll("'", "'\\''")}' && node '${join25(pluginRoot2, "dist", "checkmate.js").replaceAll("'", "'\\''")}'`;
   const runId = run2.run_id;
   return [
     "This is a delegated Checkmate exploration probe. The selected tests are done. Probe for defects that the plan does not check. Do not record passed or failed results. Do not close tests. Do not run run gate, run begin, or run finish.",
@@ -48090,7 +48288,7 @@ function requestLines(test, text2) {
 }
 function testPrompt(execution, workspace2, test, actor, pluginRoot2, rejections) {
   const { run: run2, profile, planRequest: planning } = execution;
-  const cli = `cd '${workspace2.replaceAll("'", "'\\''")}' && node '${join24(pluginRoot2, "dist", "checkmate.js").replaceAll("'", "'\\''")}'`;
+  const cli = `cd '${workspace2.replaceAll("'", "'\\''")}' && node '${join25(pluginRoot2, "dist", "checkmate.js").replaceAll("'", "'\\''")}'`;
   const runId = run2.run_id;
   const tools = toolStatus(workspace2, planning, profile);
   const marker = JSON.parse(run2.request).marker ?? `qa-${runId}`;
@@ -48122,8 +48320,8 @@ function testPrompt(execution, workspace2, test, actor, pluginRoot2, rejections)
     `In your final answer, return only one JSON object: {"status":"completed","subject":"${runId}","reasons":[]}.`
   ].join("\n\n");
 }
-function pinned(entryPoints) {
-  return entryNoun(entryPoints) === "URL" ? `URL in instance.entries.${entryPoints[0].name}` : `entries in instance.entries: ${entryPoints.map((entry) => entry.name).join(", ")}`;
+function pinned(entryPoints2) {
+  return entryNoun(entryPoints2) === "URL" ? `URL in instance.entries.${entryPoints2[0].name}` : `entries in instance.entries: ${entryPoints2.map((entry) => entry.name).join(", ")}`;
 }
 function nativeTestPrompt(execution, workspace2, test, rejections) {
   const { run: run2, profile, planRequest: planRequest2 } = execution;
@@ -48486,8 +48684,8 @@ async function delegate(workspace2, stage, subject, options3) {
     }
     if (failure && !(failure instanceof InvalidPiResponse)) break;
     if (withStore(workspace2, (store) => verify(store, stage, subject, after, workerActor)) !== null) break;
-    const refused2 = withStore(workspace2, (store) => lastRefusal(store, stage, after, workerActor));
-    rejected = claimed?.reasons.length ? claimed.reasons : refused2 ? [refused2] : [];
+    const refused3 = withStore(workspace2, (store) => lastRefusal(store, stage, after, workerActor));
+    rejected = claimed?.reasons.length ? claimed.reasons : refused3 ? [refused3] : [];
     const planned = withStore(
       workspace2,
       (store) => one2(store, "SELECT 1 FROM plan_revisions WHERE plan_id = ?", subject)
@@ -48738,7 +48936,7 @@ ${source.text}`)
 // cli/src/main.ts
 import { existsSync as existsSync13, mkdirSync as mkdirSync13, openSync as openSync2, readFileSync as readFileSync18, rmSync as rmSync10, writeFileSync as writeFileSync8 } from "node:fs";
 import { spawn as spawn7, spawnSync as spawnSync9 } from "node:child_process";
-import { join as join25 } from "node:path";
+import { join as join26 } from "node:path";
 import { fileURLToPath as fileURLToPath4 } from "node:url";
 
 // plugin/src/action-mcp.ts
@@ -48804,7 +49002,7 @@ var delegateUsage = "checkmate delegate <setup|plan|revise|execute> <targetId|pl
 var delegateSpecUsage = "checkmate delegate spec <planId@revision> [--timeout <seconds>]";
 var delegateHarnessUsage = "With Pi, omit --allow and --claude-arg. Claude requires --allow <rule> and accepts --claude-arg <arg>. CHECKMATE_HARNESS overrides the workspace harness. The default is Claude. delegate spec uses no tools and needs no --allow.";
 function version2() {
-  const manifest = join25(pluginRoot, ".claude-plugin", "plugin.json");
+  const manifest = join26(pluginRoot, ".claude-plugin", "plugin.json");
   return versionLines(
     JSON.parse(readFileSync18(manifest, "utf8")).version,
     import.meta.url,
@@ -48908,7 +49106,7 @@ function parseDelegate(tokens) {
   return parsed;
 }
 function resultFile(workspace2, stage, subject) {
-  return join25(workspace2, ".checkmate", "tmp", `delegate-${stage}-${subject}.json`);
+  return join26(workspace2, ".checkmate", "tmp", `delegate-${stage}-${subject}.json`);
 }
 function detachDelegate(tokens) {
   const rest = tokens.filter((token) => token !== "--detach");
@@ -48923,7 +49121,7 @@ function detachDelegate(tokens) {
       tokens.includes("--json")
     );
   const file = resultFile(workspace2, stage, subject);
-  mkdirSync13(join25(workspace2, ".checkmate", "tmp"), { recursive: true });
+  mkdirSync13(join26(workspace2, ".checkmate", "tmp"), { recursive: true });
   rmSync10(file, { force: true });
   const quote = (text2) => `'${text2.replaceAll("'", "'\\''")}'`;
   const command = [process.execPath, fileURLToPath4(import.meta.url), "delegate", ...rest, "--json"].map(quote).join(" ");

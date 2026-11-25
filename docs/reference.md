@@ -53,7 +53,7 @@ The prompts of delegated workers name the entries from the profile, for example 
 
 ## Add a project tool recipe
 
-Checkmate loads built-in recipes and project recipes from `.checkmate/recipes/`. A recipe has a JSON file and the Markdown usage file it names. Run `checkmate recipe list --json` to read existing recipes and their usage text.
+Checkmate loads built-in recipes and project recipes from `.checkmate/recipes/`. A recipe has a JSON file and the Markdown usage file it names. Run `checkmate recipe list --json` to read existing recipes and their usage text. The review UI shows the same recipes on the Settings > Recipes page. The page is read-only.
 
 To add a recipe, write both files in a draft folder. The JSON file name must match the recipe name. Run `checkmate recipe add --file <recipe.json>` from the project. The command checks both files before it installs them. If it refuses a recipe, correct the field or file in the message and run the command again. Recipe names are unique without regard to case. Choose a different name if a built-in or project recipe already uses it.
 

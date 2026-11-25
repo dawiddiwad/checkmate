@@ -867,3 +867,88 @@ test('Filter the review list by a build whose name has spaces — the row lists 
 	const script = await (await fetch(new URL('/assets/client.js', url))).text()
 	assert.match(script, /JSON\.parse\(row\.dataset\.builds/)
 })
+
+test(
+	'Show built-in and custom tool recipes read-only in the review UI — a custom recipe is missing, unmarked, or its text runs as HTML.',
+	{ skip: browserSkip, timeout: 60_000 },
+	async (t) => {
+		const workspace = directory(t)
+		const draft = directory(t)
+		t.after(() => endProcessesIn(workspace))
+		must(workspace, ['init'])
+		const { url } = await startUi(t, workspace)
+		const { page } = await pageFor(t, url)
+		await page.goto(new URL('/settings/recipes', url).href)
+		await page.locator('[data-live]:not(.down):not([hidden])').waitFor()
+		const builtIn = ['maestro-mcp', 'maestro', 'node', 'playwright-cli']
+		const sources = () =>
+			page
+				.locator('[data-region="recipes"] [data-row]')
+				.evaluateAll((rows) =>
+					rows.map((row) => [row.getAttribute('data-label'), row.querySelector('[data-source]')?.textContent])
+				)
+		assert.deepEqual(
+			await sources(),
+			builtIn.map((name) => [name, 'built-in'])
+		)
+		const empty = page.locator('[data-region="recipes"] .sp-empty')
+		assert.match(
+			(await empty.textContent()) ?? '',
+			/No custom recipe yet\.[\s\S]*checkmate recipe add --file <name>\.json/
+		)
+		assert.equal(await page.locator('main form, main button').count(), 0)
+
+		const injected = `<img src=x onerror="document.body.dataset.injected='yes'">`
+		const recipe = {
+			name: 'acme',
+			capability: 'inventory',
+			kind: 'cli',
+			purpose: `Read stock levels ${injected}`,
+			detect: 'path',
+			entryPoints: [{ name: 'store', kind: 'value', purpose: 'The store code.', pattern: '^[A-Z]{3}$' }],
+			reachable: [{ check: 'command', run: ['acme', 'ping', '{store}'], contains: ['pong'] }],
+			environment: {},
+			workspaceFolders: [],
+			observeFrom: { stock: 'state' },
+			evidence: ['stock_report'],
+			usage: 'acme.md',
+		}
+		const usage = `# Acme\n\nRun acme stock --store <store>.\n\n<script>document.body.dataset.injected = 'script'</script>\n${injected}\n`
+		const json = JSON.stringify(recipe, null, 2) + '\n'
+		writeFileSync(join(draft, 'acme.json'), json)
+		writeFileSync(join(draft, 'acme.md'), usage)
+		const added = must(workspace, ['recipe', 'add', '--file', join(draft, 'acme.json')])
+		await page.locator('[data-region="recipes"] [data-label="acme"]').waitFor()
+		assert.deepEqual(await sources(), [...builtIn.map((name) => [name, 'built-in']), ['acme', 'custom']])
+		assert.equal(await empty.count(), 0)
+		assert.match(
+			(await page.locator('[data-label="acme"]').textContent()) ?? '',
+			/Read stock levels <img src=x onerror=/
+		)
+
+		await page.locator('[data-label="acme"]').click()
+		await page.waitForURL(/\/settings\/recipes\/acme$/)
+		const facts = await page.locator('#recipe + .facts').innerText()
+		assert.equal(await page.locator('#recipe + .facts [data-source]').getAttribute('data-source'), 'custom')
+		assert.ok(facts.includes(added.path), facts)
+		assert.ok(facts.includes(added.usagePath), facts)
+		assert.match(facts, /inventory · command-line tool/)
+		assert.match(facts, /acme on PATH/)
+		const requires = await page.locator('section[aria-labelledby="requires"]').innerText()
+		assert.match(requires, /store · value · format \^\[A-Z\]\{3\}\$/)
+		assert.match(requires, /Command acme ping \{store\} exits with code 0, and its output contains pong\./)
+		assert.equal(await page.locator('[data-usage]').textContent(), usage)
+		assert.equal(await page.locator('[data-json]').isVisible(), false)
+		assert.equal(await page.locator('[data-json]').textContent(), json)
+		assert.equal(await page.locator('main img, main script').count(), 0)
+		assert.equal(await page.locator('main form, main button').count(), 0)
+		assert.equal(await page.evaluate(() => document.body.dataset.injected ?? null), null)
+
+		await page.goto(new URL('/settings/recipes/node', url).href)
+		const nodeFacts = await page.locator('#recipe + .facts').innerText()
+		assert.equal(await page.locator('#recipe + .facts [data-source]').getAttribute('data-source'), 'built-in')
+		assert.match(nodeFacts, /The Node\.js that runs Checkmate/)
+		assert.doesNotMatch(nodeFacts, /FILE/)
+		assert.equal((await fetch(new URL('/settings/recipes/missing', url))).status, 404)
+	}
+)

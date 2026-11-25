@@ -6,7 +6,7 @@ import type { FormState } from './forms.ts'
 import type { EditState } from './edit.ts'
 import { createServer } from 'node:http'
 import { randomBytes } from 'node:crypto'
-import { existsSync, readFileSync, realpathSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { closeStore, openReadOnlyStore, openStore } from '../store.ts'
 import type { Approval } from '../plans.ts'
@@ -84,7 +84,7 @@ import { requireCondition, requireIdentifier, unusedId, validate } from '../cont
 import { actionInput } from '../actions.ts'
 import { harvestExploration, storableDefects } from '../harvest.ts'
 import { developerText } from '../developer.ts'
-import { resolve } from 'node:path'
+import { join, resolve } from 'node:path'
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import {
 	changesAfter,
@@ -120,6 +120,7 @@ import type { AdoptError } from './run.ts'
 import { runPage } from './run.ts'
 import type { InstanceForm } from './settings.ts'
 import { harnessPage, instanceFromForm, targetPage, targetsPage } from './settings.ts'
+import { recipePage, recipesPage } from './recipes.ts'
 import type { HookOptions } from './hooks.ts'
 import { createHooks, sameSecret } from './hooks.ts'
 import { emptyRecord, nextOpen, permissionPage, requestHref } from './permissions.ts'
@@ -176,6 +177,7 @@ const routes = {
 	report: new RegExp(`^/runs/(${id})/report\\.(html|md|json|junit)$`),
 	evidence: /^\/evidence\/([0-9A-Z]{26})$/,
 	target: new RegExp(`^/settings/targets/(${id})$`),
+	recipe: new RegExp(`^/settings/recipes/(${id})$`),
 	addInstance: new RegExp(`^/settings/targets/(${id})/instances$`),
 	retireInstance: new RegExp(`^/settings/targets/(${id})/instances/(${id})/retire$`),
 	exploration: new RegExp(`^/explorations/(${id})$`),
@@ -394,6 +396,28 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		hooks.release()
 		for (const client of clients) client.res.write('data: *\n\n')
 	}, 1000)
+	const recipeFolder = join(workspace, '.checkmate', 'recipes')
+	const recipeFiles = () => {
+		try {
+			return readdirSync(recipeFolder)
+				.sort()
+				.map((name) => {
+					const file = statSync(join(recipeFolder, name), { throwIfNoEntry: false })
+					return `${name}:${file?.size}:${file?.mtimeMs}`
+				})
+				.join(',')
+		} catch {
+			return ''
+		}
+	}
+	let recipeState = recipeFiles()
+	const recipeWatch = setInterval(() => {
+		const current = recipeFiles()
+		if (current === recipeState) return
+		recipeState = current
+		for (const client of clients)
+			if (client.subjects.has('recipes') || client.subjects.has('*')) client.res.write('data: recipes\n\n')
+	}, 1000)
 	const heartbeat = setInterval(() => {
 		for (const client of clients) client.res.write(': heartbeat\n\n')
 	}, 15_000)
@@ -604,6 +628,13 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		if (pathname === '/actor') return render(request, actorPage(shown, safeBack(searchParams.get('back'))))
 		if (pathname === '/settings') return redirect(request.res, '/settings/targets')
 		if (pathname === '/settings/targets') return render(request, targetsPage(store))
+		if (pathname === '/settings/recipes') return render(request, recipesPage(options.workspace))
+		const recipe = routes.recipe.exec(pathname)
+		if (recipe) {
+			const page = recipePage(options.workspace, recipe[1])
+			if (!page) return errorPage(request, 404, 'Recipe not found', `Checkmate has no recipe ${recipe[1]}.`)
+			return render(request, page)
+		}
 		const target = routes.target.exec(pathname)
 		if (target) {
 			const revision = searchParams.get('revision')
@@ -2545,6 +2576,7 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		clearInterval(poll)
 		clearInterval(heartbeat)
 		clearInterval(supervisorWatch)
+		clearInterval(recipeWatch)
 		for (const client of clients) client.res.end()
 		clients.clear()
 		await new Promise<void>((resolve) => {

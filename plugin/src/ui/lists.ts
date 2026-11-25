@@ -221,7 +221,7 @@ function listRegion(spec: ListSpec, state: ListState, total: number, rows: Html[
 	</div>`
 }
 
-function listRow(
+export function listRow(
 	key: string,
 	href: string | null,
 	top: Html | string,

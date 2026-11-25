@@ -19,6 +19,7 @@ export type RetireState = { instanceId: string; error: string } | null
 
 const settingsPages = [
 	{ path: '/settings/targets', label: 'Targets' },
+	{ path: '/settings/recipes', label: 'Recipes' },
 	{ path: '/settings/harness', label: 'Coding harness' },
 ]
 
@@ -37,8 +38,9 @@ function settingsNav(current: string) {
 	</nav>`
 }
 
-function settingsPage(current: string, title: string, subjects: string[], body: Html, status?: number): Page {
-	const target = title !== 'Targets' && title !== 'Coding harness'
+export function settingsPage(current: string, title: string, subjects: string[], body: Html, status?: number): Page {
+	const parent = settingsPages.find((page) => page.path === current)!
+	const detail = title !== parent.label
 	return {
 		title,
 		section: 'settings',
@@ -46,11 +48,11 @@ function settingsPage(current: string, title: string, subjects: string[], body: 
 		status,
 		crumbs: [
 			['Settings', '/settings/targets'],
-			...(target
-				? [['Targets', '/settings/targets'] as [string, string], [title, null] as [string, null]]
+			...(detail
+				? [[parent.label, current] as [string, string], [title, null] as [string, null]]
 				: [[title, null] as [string, null]]),
 		],
-		back: target ? '/settings/targets' : '/',
+		back: detail ? current : '/',
 		body: html`${settingsNav(current)} ${body}`,
 	}
 }

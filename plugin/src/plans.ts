@@ -6,6 +6,7 @@ import { answerQuestion } from './journal.ts'
 import { patchRules, requireHeldRules } from './rules.ts'
 import { dataFlags, operationAllowed, readinessHint } from './targets.ts'
 import { dataSummary, requireDataFor } from './resets.ts'
+import { observeFromValues } from './recipes.ts'
 import { all, canonical, completed, digest, execute, one, ulid, write } from './store.ts'
 import { softProblems, uncoveredRequirements, unverifiedAssertions } from './contracts.ts'
 import type { PlanDraft, Test } from './contracts.ts'
@@ -260,6 +261,7 @@ export function showPlanRequest(store: Store, planId: string) {
 		sourceContext: request.sourceContext ?? [],
 		context: request.context ?? { sources: [] },
 		tools: planTools(request, target.profile),
+		observeFrom: observeFromValues(planTools(request, target.profile).map((tool) => tool.name)),
 		capabilities: target.profile.capabilities,
 		allowedOperations: target.profile.allowedOperations,
 		data: dataSummary(store.workspace, target.profile.reset),

@@ -98,7 +98,7 @@ import { storeExplorationFindings } from './findingsRun.ts'
 import { settleEnded } from './cleanups.ts'
 import { owedCleanups, settleCleanups } from './resets.ts'
 import { actionRecovery, performAction, type ActionName } from './actions.ts'
-import { allEvidence } from './recipes.ts'
+import { allEvidence, type ObserveValue } from './recipes.ts'
 
 type FlagKind = 'value' | 'list' | 'repeat' | 'switch' | readonly string[] | { min: number; max: number }
 type Args = Record<string, string | string[] | boolean>
@@ -721,6 +721,7 @@ const commands: Record<string, Command> = {
 				sourceContext: Array<{ uri: string; content: string }>
 				context: { sources: string[]; instructions?: string }
 				tools: PlanTool[]
+				observeFrom: ObserveValue[]
 				capabilities: string[]
 				allowedOperations: string[]
 				data: { kind: string; policy: string | null }
@@ -735,6 +736,7 @@ const commands: Record<string, Command> = {
 					...(data.context.instructions ? [['instructions', data.context.instructions]] : []),
 					...data.sourceContext.map((context) => ['context', context.uri, context.content]),
 					...data.tools.map((tool) => ['tool', tool.name, tool.kind, tool.purpose]),
+					...data.observeFrom.map((item) => ['observeFrom', item.value, item.reading, item.tool]),
 					['capabilities', data.capabilities],
 					['operations', data.allowedOperations],
 				],

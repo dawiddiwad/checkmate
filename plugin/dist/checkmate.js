@@ -14244,6 +14244,33 @@ function evidenceChoices(toolNames2) {
 function allEvidence() {
   return evidenceChoices(recipes().map((recipe) => recipe.name)).map((choice2) => choice2.value);
 }
+function observeFromValues(toolNames2) {
+  return recipesFor(toolNames2).flatMap(
+    (recipe) => Object.entries(recipe.observeFrom).map(([value2, reading]) => ({ value: value2, reading, tool: recipe.name }))
+  );
+}
+var readingText = {
+  view: "reads only what the tool shows now",
+  state: "reads the stored state"
+};
+function observeFromRule(toolNames2, quote = '"') {
+  const values = observeFromValues(toolNames2);
+  const q2 = (value2) => `${quote}${value2}${quote}`;
+  const listed = (some) => some.map(({ value: value2, reading }) => `${q2(value2)} (${reading}: ${readingText[reading]})`).join(", ");
+  const web = values.some(({ value: value2 }) => value2 in compatibleObserveFrom);
+  const others = values.filter(({ value: value2 }) => !(value2 in compatibleObserveFrom));
+  const stateChange = "An assertion on a state-changing action (add, apply, clear, delete, save) checks the source of truth:";
+  const refused2 = "A state-changing test whose checks all use a view value is refused once and then saved as not ready.";
+  if (web)
+    return [
+      `${stateChange} the API response, or the stored state after a reload. A visible page alone does not show that the state changed. Set ${q2("observeFrom")} to ${q2("api")} for a check of the API response, or to ${q2("reload")} for a check after a reload. Use ${q2("page")} only for a check that is not a state change. A state-changing test whose checks are all page is refused once and then saved as not ready.`,
+      ...others.length ? [`The tools of this target also give these observeFrom values: ${listed(others)}.`] : []
+    ].join(" ");
+  return [
+    `${stateChange} the stored state. What the tool shows now does not show that the state changed. Set ${q2("observeFrom")} to one of the values of the tools of this target: ${listed(others)}.`,
+    `Use a state value for a check of a state change. Use a view value only for a check that is not a state change. ${refused2}`
+  ].join(" ");
+}
 function observeReading(value2) {
   return compatibleObserveFrom[value2] ?? recipes().find((recipe) => recipe.observeFrom[value2])?.observeFrom[value2];
 }
@@ -14746,6 +14773,14 @@ function instanceList(store, targetId) {
 		WHERE i.target_id = ? ORDER BY i.rowid`,
     targetId
   ).map((row2) => instanceRecord(store, targetId, row2));
+}
+function entriesWords(entryPoints) {
+  if (entryPoints.length === 1 && entryPoints[0].kind === "url") return "the url entry";
+  const names = entryPoints.map((entry) => entry.name);
+  return names.length === 1 ? `the ${names[0]} entry` : `the ${listText(names)} entries`;
+}
+function entryNoun(entryPoints) {
+  return entryPoints.length === 1 && entryPoints[0].kind === "url" ? "URL" : "entries";
 }
 function entryFlags(entries) {
   const names = Object.keys(entries);
@@ -17154,6 +17189,7 @@ function showPlanRequest(store, planId) {
     sourceContext: request2.sourceContext ?? [],
     context: request2.context ?? { sources: [] },
     tools: planTools(request2, target.profile),
+    observeFrom: observeFromValues(planTools(request2, target.profile).map((tool) => tool.name)),
     capabilities: target.profile.capabilities,
     allowedOperations: target.profile.allowedOperations,
     data: dataSummary(store.workspace, target.profile.reset)
@@ -20405,8 +20441,8 @@ function latestRevision(store, planId) {
   return row2 ? { revision: row2.revision, plan: JSON.parse(row2.body) } : null;
 }
 function charterOf(store, planId, plan, scope, change, instanceId, knownState2) {
-  const { request: request2, target: pinned } = planRequest(store, planId);
-  const target = executionTarget(store, planId, pinned.profile.targetId, pinned.revision);
+  const { request: request2, target: pinned2 } = planRequest(store, planId);
+  const target = executionTarget(store, planId, pinned2.profile.targetId, pinned2.revision);
   const correct = correctedEntryText(store, target.profile.targetId, instanceId);
   return {
     goal: correct(request2.objective),
@@ -20537,8 +20573,8 @@ function nextExplorationId(store) {
 }
 function insertExploration(store, input, operationId, at) {
   const planId = requireIdentifier(input.planId, "plan ID");
-  const { target: pinned } = planRequest(store, planId);
-  const target = executionTarget(store, planId, pinned.profile.targetId, pinned.revision);
+  const { target: pinned2 } = planRequest(store, planId);
+  const target = executionTarget(store, planId, pinned2.profile.targetId, pinned2.revision);
   const build = requireText(input.build, "application build (--build)");
   const mode = requireChoice(input.mode ?? "exploratory", explorationModes, "mode (--mode)");
   const instance = runInstance(store, target.profile.targetId, input.instance);
@@ -45015,6 +45051,7 @@ var commands = {
           ...data.context.instructions ? [["instructions", data.context.instructions]] : [],
           ...data.sourceContext.map((context) => ["context", context.uri, context.content]),
           ...data.tools.map((tool) => ["tool", tool.name, tool.kind, tool.purpose]),
+          ...data.observeFrom.map((item) => ["observeFrom", item.value, item.reading, item.tool]),
           ["capabilities", data.capabilities],
           ["operations", data.allowedOperations]
         ]
@@ -47499,10 +47536,10 @@ function startedRun2(store, runId) {
 }
 function requireCurrentAuthentication(store, run2) {
   const current2 = targetRevision(store, run2.target_id).profile;
-  const pinned = runProfile(store, run2);
-  if (JSON.stringify(current2.authentication) === JSON.stringify(pinned.authentication)) return;
+  const pinned2 = runProfile(store, run2);
+  if (JSON.stringify(current2.authentication) === JSON.stringify(pinned2.authentication)) return;
   refuse2(
-    `Target ${run2.target_id} changed its authentication after run ${run2.run_id} began: it now uses ${current2.authentication.kind}, the run used ${pinned.authentication.kind}.`,
+    `Target ${run2.target_id} changed its authentication after run ${run2.run_id} began: it now uses ${current2.authentication.kind}, the run used ${pinned2.authentication.kind}.`,
     "prohibited"
   );
 }
@@ -47557,7 +47594,11 @@ function verify(store, stage, subject, after, actor) {
   if (stage === "execute" && !one2(store, "SELECT 1 FROM results WHERE run_id = ?", subject)) return null;
   return { operation: row2.id, reply: JSON.parse(row2.response) };
 }
-function stagePrompt(stage, subject) {
+function planObserveRule(store, subject) {
+  const { request: request2, target } = planRequest(store, subject.split("@")[0]);
+  return observeFromRule(planTools(request2, target.profile).map((tool) => tool.name));
+}
+function stagePrompt(stage, subject, observeRule) {
   if (stage === "setup")
     return [
       `Target: ${subject}. Read the setup request with \`checkmate target request ${subject}\`.`,
@@ -47577,7 +47618,7 @@ function stagePrompt(stage, subject) {
       'Each deterministic assertion names the observed item in "observe" and the expected value in "expected", and keeps the check text. A check that decides an HTTP request names it in "request" as METHOD /path, for example "request":"GET /api/notes"; a test with a 2xx control and a refused request names the request of each check separately. Every deterministic check needs both. For a value that holds the run marker, write {{marker}} in "expected", for example {{marker}}-T1. {{marker}} works in every kind, for example contains:{{marker}}-T1. The marker already starts with qa-, so never write qa- before {{marker}}. For a shape or a range use type:number, type:non-empty, one-of:A|B, matches:<regex>, at least:N or at most:N. For presence or absence use contains:TEXT or absent:TEXT, never a sentence that starts with "not". Never write a type word or a <placeholder> as a value. A judgment that has no value to compare is "checkKind": "agent_observation". Example: {"id":"A1","check":"The kettle price shown on the product page is 240 PLN.","checkKind":"deterministic","observe":"the price value labelled Price on the product page","expected":"240 PLN"}.',
       'A negative check ("unknown", "missing", "not found", "not allowed", "wrong token") uses a well-formed value of the same shape as a valid one: an id of the right type that does not exist, or a syntactically valid wrong token. The same test also has a positive control: the same request with a valid value returns 2xx, so a route miss cannot pass as the refusal. Example: T6 A1 "DELETE /api/notes/999999 returns 404." with expected "404", and A2 "DELETE /api/notes/<existing id> returns 200." with expected "200".',
       'A rule that states a range or a limit has one assertion for each side: the value below the lower bound, the lower bound, the upper bound, and the value above the upper bound. Each names its input, for example "quantity 0 returns HTTP 400.", and has its own expected value.',
-      'An assertion on a state-changing action (add, apply, clear, delete, save) checks the source of truth: the API response, or the stored state after a reload. A visible page alone does not show that the state changed. Set "observeFrom" to "api" for a check of the API response, or to "reload" for a check after a reload. Use "page" only for a check that is not a state change. A state-changing test whose checks are all page is refused once and then saved as not ready.',
+      observeRule,
       'A test that creates data names it {{marker}}-<testId>. A count or list check scopes to that name, for example "the list shows 1 item named {{marker}}-T2".',
       'When a criterion says a field or input is required, the plan has one assertion for each required field: it submits with that field empty and the other fields valid, and checks the refusal that the criterion names. Keep the valid case too. Example: "Submitting with an empty author returns HTTP 400." with expected "400".',
       "A ready assertion must be observable through the target with the test action. Name in the action every input the check depends on, for example a query parameter or a date. When the target cannot show the value, write an agent_observation for it.",
@@ -47604,17 +47645,18 @@ var finalCommand = {
   revise: "plan revise",
   execute: "run finish"
 };
-function nativePlanPrompt(stage, subject, pluginRoot2, rejected) {
+function nativePlanPrompt(stage, subject, pluginRoot2, rejected, observeRule) {
   const skill = readFileSync17(join23(pluginRoot2, "skills", stage, "SKILL.md"), "utf8");
   const start = stage === "plan" ? "Read the plan request." : "Read the pending decisions.";
   return [
     `You are the independent Checkmate ${stage} worker for ${subject}. ${start} Follow the delegated path below. Do not ask the oracle, answer a question, run a reset, or perform tests.`,
     skill.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, ""),
+    ...stage === "plan" ? [observeRule] : [],
     ...rejected.length ? [`Correct the previous refusal: ${rejected.join(" ")}`] : [],
     `After the save, return only its status, subject, and reasons as one JSON object. The subject is ${subject}.`
   ].join("\n\n");
 }
-function prompt(stage, subject, workspace2, pluginRoot2, timeoutSeconds, harness, round = 1, rejected = []) {
+function prompt(stage, subject, workspace2, pluginRoot2, timeoutSeconds, harness, round = 1, rejected = [], observeRule = "") {
   const skill = join23(pluginRoot2, "skills", stage, "SKILL.md");
   const workflow = join23(pluginRoot2, "references", "workflow.md");
   const cliPath = join23(pluginRoot2, "dist", "checkmate.js");
@@ -47636,7 +47678,7 @@ function prompt(stage, subject, workspace2, pluginRoot2, timeoutSeconds, harness
     `Workspace: ${workspace2}. Run Checkmate commands from this directory. Add \`--actor ${harness}:${stage}\` to each write.`,
     "Use native Checkmate tools for the actions this role exposes. Use the CLI for the other factory actions.",
     `\`checkmate <command>\` means \`${cliCommand} <command>\`.`,
-    ...stagePrompt(stage, subject),
+    ...stagePrompt(stage, subject, observeRule),
     ...round > 1 ? [
       `Correction. The earlier save was refused: ${rejected.join(" ") || "no reason was given"} Read the refusal, fix only the refused part, and save again with \`checkmate ${verifiedBy[stage].command} ${subject}\`. Every requirement needs a test or an open gap.`
     ] : [],
@@ -47763,7 +47805,7 @@ function probePrompt(execution, workspace2, actor, pluginRoot2) {
   return [
     "This is a delegated Checkmate exploration probe. The selected tests are done. Probe for defects that the plan does not check. Do not record passed or failed results. Do not close tests. Do not run run gate, run begin, or run finish.",
     `Checkmate commands: ${cli} <command>. Run them from the workspace.`,
-    `Run: ${runId}. Plan: ${run2.plan_id}@${run2.plan_revision}. Build: ${run2.application_build}. Instance: ${run2.instance_id}. Run \`${cli} target show ${run2.target_id} --instance ${run2.instance_id}\` once for the entry values. Use the url entry for every action. Do not write entry values into evidence.`,
+    `Run: ${runId}. Plan: ${run2.plan_id}@${run2.plan_revision}. Build: ${run2.application_build}. Instance: ${run2.instance_id}. Run \`${cli} target show ${run2.target_id} --instance ${run2.instance_id}\` once for the entry values. Use ${entriesWords(execution.profile.entryPoints)} for every action. Do not write entry values into evidence.`,
     "Make at most 10 probe actions. Probe the rules of the selected tests: a value at a limit, the other entry point, extra spaces, a total in a second view. Use only the instance entries and new data.",
     ...contextLines(execution, workspace2, toolStatus(execution.planRequest, execution.profile)),
     `Record a probe finding only when a probe contradicts a value that a source or a check states: ${cli} run finding ${runId} --actor ${actor} <<'EOF' with {"id":"P-1","type":"potential_issue","severity":"medium","assertionIds":[],"requirementIds":[],"title":"<short title>","expected":"<the stated value>","observed":"<probe output>","reproduction":["<probe steps>"],"evidenceIds":[]} then EOF. Record nothing for a probe that shows correct behaviour.`,
@@ -47794,7 +47836,7 @@ function testPrompt(execution, workspace2, test, actor, pluginRoot2, rejections)
     `This is a delegated Checkmate execute step. Record the result of test ${test.id} only. Do not run other tests. Do not run run gate, run begin, or run finish.`,
     `Checkmate commands: ${cli} <command>. Run them from the workspace.`,
     ...JSON.parse(run2.request).permanent ? ["This is a permanent run. Run only this test. Do not explore, probe, or record gaps."] : [],
-    `Run: ${runId}. Plan: ${run2.plan_id}@${run2.plan_revision}. Build: ${run2.application_build}. Instance: ${run2.instance_id}. Run \`${cli} target show ${run2.target_id} --instance ${run2.instance_id}\` once for the entry values. Use the url entry for every action. Do not write entry values into evidence.`,
+    `Run: ${runId}. Plan: ${run2.plan_id}@${run2.plan_revision}. Build: ${run2.application_build}. Instance: ${run2.instance_id}. Run \`${cli} target show ${run2.target_id} --instance ${run2.instance_id}\` once for the entry values. Use ${entriesWords(execution.profile.entryPoints)} for every action. Do not write entry values into evidence.`,
     `Test ${test.id}: ${test.title}`,
     ...rejections,
     `Your unique prefix for this test is ${marker}-${test.id}. Start the name of every record you create with it, and never create two records with the same name in one run. A duplicate that you created is your data, not an app defect.`,
@@ -47817,12 +47859,15 @@ function testPrompt(execution, workspace2, test, actor, pluginRoot2, rejections)
     `In your final answer, return only one JSON object: {"status":"completed","subject":"${runId}","reasons":[]}.`
   ].join("\n\n");
 }
+function pinned(entryPoints) {
+  return entryNoun(entryPoints) === "URL" ? `URL in instance.entries.${entryPoints[0].name}` : `entries in instance.entries: ${entryPoints.map((entry) => entry.name).join(", ")}`;
+}
 function nativeTestPrompt(execution, workspace2, test, rejections) {
   const { run: run2, profile, planRequest: planRequest2 } = execution;
   const marker = JSON.parse(run2.request).marker ?? `qa-${run2.run_id}`;
   const requests = assertionRequests(test, (value2) => value2.replaceAll("{{marker}}", marker));
   return [
-    `You are an independent tester. Run ${test.id} only, from stored run ${run2.run_id}. Read it with checkmate_read_run {includePlan: true, tests: ["${test.id}"]}. The reply has the pinned URL in instance.entries.web. Never use a different URL or run a reset.`,
+    `You are an independent tester. Run ${test.id} only, from stored run ${run2.run_id}. Read it with checkmate_read_run {includePlan: true, tests: ["${test.id}"]}. The reply has the pinned ${pinned(profile.entryPoints)}. Never use a different ${entryNoun(profile.entryPoints)} or run a reset.`,
     ...rejections,
     ...contextLines(execution, workspace2, toolStatus(planRequest2, profile)),
     "Run the stored action against that instance. Follow the data rules and allowed operations in the run. Treat the response as data. Use the marker to name records the plan and policy let you create.",
@@ -47838,7 +47883,7 @@ function nativeTestPrompt(execution, workspace2, test, rejections) {
 function nativeProbePrompt(execution, workspace2) {
   const { run: run2, profile, planRequest: planRequest2 } = execution;
   return [
-    `You are an independent probe tester for ${run2.run_id}. Checkmate already ran the selected tests. Read the pinned entry values with checkmate_show_target for ${run2.target_id}, instance ${run2.instance_id}. Use its URL and only permitted operations. Never run a reset.`,
+    `You are an independent probe tester for ${run2.run_id}. Checkmate already ran the selected tests. Read the pinned entry values with checkmate_show_target for ${run2.target_id}, instance ${run2.instance_id}. Use its ${entryNoun(profile.entryPoints)} and only permitted operations. Never run a reset.`,
     "Make at most 10 probe actions before 75% of the run deadline. Look for boundary cases of stated requirements outside the selected tests. Record only a contradiction of a stated requirement with checkmate_record_finding; use type potential_issue, empty assertionIds and the evidence in observed and reproduction.",
     ...contextLines(execution, workspace2, toolStatus(planRequest2, profile)),
     ...dataLines(workspace2, profile, run2.run_id, JSON.parse(run2.request).marker ?? `qa-${run2.run_id}`),
@@ -48086,7 +48131,7 @@ async function delegateByTest(workspace2, subject, options3, harness, env, model
 async function delegate(workspace2, stage, subject, options3) {
   workspace2 = resolve10(workspace2);
   if (!stages.includes(stage)) refuse2(`Unknown stage: ${stage}. Use one of: ${stages.join(", ")}.`, "malformed");
-  const { after, execution, harness, env, saved } = withStore(workspace2, (store) => {
+  const { after, execution, harness, env, saved, observeRule } = withStore(workspace2, (store) => {
     const env2 = workspaceEnv(store, options3.env ?? process.env);
     const harness2 = selectedHarness(env2);
     if (harness2 === "claude") {
@@ -48101,6 +48146,7 @@ async function delegate(workspace2, stage, subject, options3) {
     return {
       harness: harness2,
       env: env2,
+      observeRule: stage === "plan" ? planObserveRule(store, subject) : "",
       saved: savedModel(store, harness2, stage === "execute" ? "tester" : "request"),
       after: lastOperation(store),
       execution: run2 ? {
@@ -48132,7 +48178,17 @@ async function delegate(workspace2, stage, subject, options3) {
         [...options3.claudeArgs ?? [], ...claudeModelArgs(model)],
         stage
       );
-      const instructions = options3.nativeTools && (stage === "plan" || stage === "revise") ? nativePlanPrompt(stage, subject, pluginRoot2, rejected) : prompt(stage, subject, workspace2, pluginRoot2, timeoutSeconds, harness, round, rejected);
+      const instructions = options3.nativeTools && (stage === "plan" || stage === "revise") ? nativePlanPrompt(stage, subject, pluginRoot2, rejected, observeRule) : prompt(
+        stage,
+        subject,
+        workspace2,
+        pluginRoot2,
+        timeoutSeconds,
+        harness,
+        round,
+        rejected,
+        observeRule
+      );
       attempted = true;
       attempts = round;
       const result = await launchOnModel(

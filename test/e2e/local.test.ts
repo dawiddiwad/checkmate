@@ -11405,3 +11405,156 @@ test('Refuse an instance body on standard input when --entry is given — the bo
 	assert.equal(body.code, 0, body.output)
 	assert.deepEqual(body.body.entries, { app: 'com.other', device: 'SIM-2' })
 })
+
+test('Name the entries of the instance and the observeFrom values of the target tools in the prompts of delegated workers — a mobile worker read "the url entry" and planned with page.', async (t) => {
+	const app = await fixture()
+	t.after(() => app.close())
+	const workspace = directory(t)
+	writeFileSync(join(workspace, 'ticket.md'), 'The quote is 240.\n')
+	const bin = directory(t)
+	copyFileSync(join(root, 'test/e2e/prompt-host.mjs'), join(bin, 'pi'))
+	chmodSync(join(bin, 'pi'), 0o755)
+	const prompts = join(directory(t), 'prompts.txt')
+	const env = {
+		...process.env,
+		PATH: `${bin}${delimiter}${fakeMaestro(t)}`,
+		CHECKMATE_ACTOR: 'oracle',
+		CHECKMATE_HARNESS: 'pi',
+		FAKE_PI_PROMPTS: prompts,
+		FAKE_CHECKMATE_CLI: binary,
+	}
+	const ok = async (args: string[], value?: object) => {
+		const result = await inputCommand(workspace, env, value ? JSON.stringify(value) : '', ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	await ok(['setup', ...mobileEntries, '--target', 'phone', '--operations', 'read_setting'])
+	await ok(['setup', '--url', app.baseUrl, '--target', 'shop', '--operations', 'read_catalog'])
+	const request = await ok([
+		'plan',
+		'open',
+		'phone-plan',
+		'--target',
+		'phone@1',
+		'--objective',
+		'Read.',
+		'--source',
+		'ticket.md',
+	])
+	assert.equal(request.status, 'completed')
+	const shown = await ok(['plan', 'request', 'phone-plan'])
+	assert.deepEqual(
+		shown.observeFrom.map((item: { value: string; reading: string }) => `${item.value}:${item.reading}`),
+		['screen:view', 'relaunch:state']
+	)
+	await ok(['plan', 'open', 'shop-plan', '--target', 'shop@1', '--objective', 'Read.', '--source', 'ticket.md'])
+	const webShown = await ok(['plan', 'request', 'shop-plan'])
+	assert.deepEqual(
+		webShown.observeFrom.map((item: { value: string }) => item.value),
+		['api']
+	)
+	const saved = await ok(['plan', 'save', 'phone-plan'], {
+		requirements: [{ id: 'R1', text: 'The quote is 240.', source: 'ticket.md' }],
+		tests: [
+			{
+				id: 'T1',
+				title: 'Quote',
+				requirementIds: ['R1'],
+				capability: 'mobile',
+				operations: ['read_setting'],
+				dependsOn: [],
+				preconditions: [],
+				action: 'Read the quote.',
+				assertions: [
+					{
+						id: 'A1',
+						check: 'The quote is 240.',
+						checkKind: 'deterministic',
+						observe: 'the quote',
+						expected: '240',
+						observeFrom: 'screen',
+					},
+				],
+			},
+		],
+		gaps: [],
+	})
+	assert.equal(saved.revision, 1)
+	await ok(['plan', 'approve', 'phone-plan@1', '--rationale', 'Run it.'])
+	await ok(['run', 'begin', 'run-1', 'phone-plan@1', '--build', 'b1', '--instance', 'local'])
+	const lines = (text: string) => text.split('\n\n')
+	const afterPlan = async (plan: string) => {
+		writeFileSync(prompts, '')
+		await inputCommand(workspace, env, '', 'delegate', 'plan', plan)
+		return readFileSync(prompts, 'utf8')
+	}
+	await ok(['plan', 'open', 'phone-draft', '--target', 'phone@1', '--objective', 'Read.', '--source', 'ticket.md'])
+	const mobilePlan = await afterPlan('phone-draft')
+	assert.match(
+		mobilePlan,
+		/Set "observeFrom" to one of the values of the tools of this target: "screen" \(view: reads only what the tool shows now\), "relaunch" \(state: reads the stored state\)\./
+	)
+	assert.doesNotMatch(mobilePlan, /"api"|"reload"|Use "page"/)
+	await ok(['plan', 'open', 'shop-draft', '--target', 'shop@1', '--objective', 'Read.', '--source', 'ticket.md'])
+	const webPlan = await afterPlan('shop-draft')
+	assert.match(
+		webPlan,
+		/Set "observeFrom" to "api" for a check of the API response, or to "reload" for a check after a reload\. Use "page" only for a check that is not a state change\./
+	)
+	assert.doesNotMatch(webPlan, /"screen"/)
+	// An execute worker is told the entries of the profile.
+	const execEnv = { ...env, FAKE_RUN: 'run-1' }
+	copyFileSync(join(root, 'test/e2e/per-test-host.mjs'), join(bin, 'pi'))
+	writeFileSync(prompts, '')
+	await inputCommand(
+		workspace,
+		{ ...execEnv, FAKE_PI_LOG: join(directory(t), 'log') },
+		'',
+		'delegate',
+		'execute',
+		'run-1'
+	)
+	const execute = readFileSync(prompts, 'utf8')
+	assert.match(execute, /Use the app and device entries for every action\./)
+	assert.doesNotMatch(execute, /url entry/)
+	assert.ok(lines(execute).length > 1)
+	// A web target keeps its words.
+	const webPlanBody = {
+		requirements: [{ id: 'R1', text: 'The quote is 240.', source: 'ticket.md' }],
+		tests: [
+			{
+				id: 'T1',
+				title: 'Quote',
+				requirementIds: ['R1'],
+				capability: 'http',
+				operations: ['read_catalog'],
+				dependsOn: [],
+				preconditions: [],
+				action: 'Read the quote.',
+				assertions: [
+					{
+						id: 'A1',
+						check: 'The quote is 240.',
+						checkKind: 'deterministic',
+						observe: 'the quote',
+						expected: '240',
+					},
+				],
+			},
+		],
+		gaps: [],
+	}
+	await ok(['plan', 'save', 'shop-plan'], webPlanBody)
+	await ok(['plan', 'approve', 'shop-plan@1', '--rationale', 'Run it.'])
+	await ok(['run', 'begin', 'run-2', 'shop-plan@1', '--build', 'b1', '--instance', 'local'])
+	writeFileSync(prompts, '')
+	await inputCommand(
+		workspace,
+		{ ...execEnv, FAKE_RUN: 'run-2', FAKE_PI_LOG: join(directory(t), 'log') },
+		'',
+		'delegate',
+		'execute',
+		'run-2'
+	)
+	assert.match(readFileSync(prompts, 'utf8'), /Use the url entry for every action\./)
+})

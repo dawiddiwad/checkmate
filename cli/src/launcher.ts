@@ -29,7 +29,15 @@ import {
 	usageOf,
 } from '../../plugin/src/sessions.ts'
 import { write } from '../../plugin/src/store.ts'
-import { filled, recipesFor, testerEnvironment, type Recipe, type SessionValues } from '../../plugin/src/recipes.ts'
+import { entriesWords, entryNoun } from '../../plugin/src/targets.ts'
+import {
+	filled,
+	observeFromRule,
+	recipesFor,
+	testerEnvironment,
+	type Recipe,
+	type SessionValues,
+} from '../../plugin/src/recipes.ts'
 import {
 	closeTest,
 	deadlineShare,
@@ -589,7 +597,13 @@ type Execution = {
 // The stages that one worker does with one prompt. delegateByTest runs execute.
 type WorkerStage = Exclude<Stage, 'execute'>
 
-function stagePrompt(stage: WorkerStage, subject: string) {
+// The observeFrom rule for the plan of a subject, from the tools of its target.
+function planObserveRule(store: Store, subject: string) {
+	const { request, target } = planRequest(store, subject.split('@')[0])
+	return observeFromRule(planTools(request, target.profile).map((tool) => tool.name))
+}
+
+function stagePrompt(stage: WorkerStage, subject: string, observeRule: string) {
 	if (stage === 'setup')
 		return [
 			`Target: ${subject}. Read the setup request with \`checkmate target request ${subject}\`.`,
@@ -609,7 +623,7 @@ function stagePrompt(stage: WorkerStage, subject: string) {
 			'Each deterministic assertion names the observed item in "observe" and the expected value in "expected", and keeps the check text. A check that decides an HTTP request names it in "request" as METHOD /path, for example "request":"GET /api/notes"; a test with a 2xx control and a refused request names the request of each check separately. Every deterministic check needs both. For a value that holds the run marker, write {{marker}} in "expected", for example {{marker}}-T1. {{marker}} works in every kind, for example contains:{{marker}}-T1. The marker already starts with qa-, so never write qa- before {{marker}}. For a shape or a range use type:number, type:non-empty, one-of:A|B, matches:<regex>, at least:N or at most:N. For presence or absence use contains:TEXT or absent:TEXT, never a sentence that starts with "not". Never write a type word or a <placeholder> as a value. A judgment that has no value to compare is "checkKind": "agent_observation". Example: {"id":"A1","check":"The kettle price shown on the product page is 240 PLN.","checkKind":"deterministic","observe":"the price value labelled Price on the product page","expected":"240 PLN"}.',
 			'A negative check ("unknown", "missing", "not found", "not allowed", "wrong token") uses a well-formed value of the same shape as a valid one: an id of the right type that does not exist, or a syntactically valid wrong token. The same test also has a positive control: the same request with a valid value returns 2xx, so a route miss cannot pass as the refusal. Example: T6 A1 "DELETE /api/notes/999999 returns 404." with expected "404", and A2 "DELETE /api/notes/<existing id> returns 200." with expected "200".',
 			'A rule that states a range or a limit has one assertion for each side: the value below the lower bound, the lower bound, the upper bound, and the value above the upper bound. Each names its input, for example "quantity 0 returns HTTP 400.", and has its own expected value.',
-			'An assertion on a state-changing action (add, apply, clear, delete, save) checks the source of truth: the API response, or the stored state after a reload. A visible page alone does not show that the state changed. Set "observeFrom" to "api" for a check of the API response, or to "reload" for a check after a reload. Use "page" only for a check that is not a state change. A state-changing test whose checks are all page is refused once and then saved as not ready.',
+			observeRule,
 			'A test that creates data names it {{marker}}-<testId>. A count or list check scopes to that name, for example "the list shows 1 item named {{marker}}-T2".',
 			'When a criterion says a field or input is required, the plan has one assertion for each required field: it submits with that field empty and the other fields valid, and checks the refusal that the criterion names. Keep the valid case too. Example: "Submitting with an empty author returns HTTP 400." with expected "400".',
 			'A ready assertion must be observable through the target with the test action. Name in the action every input the check depends on, for example a query parameter or a date. When the target cannot show the value, write an agent_observation for it.',
@@ -638,12 +652,19 @@ const finalCommand: Record<Stage, string> = {
 	execute: 'run finish',
 }
 
-function nativePlanPrompt(stage: 'plan' | 'revise', subject: string, pluginRoot: string, rejected: string[]) {
+function nativePlanPrompt(
+	stage: 'plan' | 'revise',
+	subject: string,
+	pluginRoot: string,
+	rejected: string[],
+	observeRule: string
+) {
 	const skill = readFileSync(join(pluginRoot, 'skills', stage, 'SKILL.md'), 'utf8')
 	const start = stage === 'plan' ? 'Read the plan request.' : 'Read the pending decisions.'
 	return [
 		`You are the independent Checkmate ${stage} worker for ${subject}. ${start} Follow the delegated path below. Do not ask the oracle, answer a question, run a reset, or perform tests.`,
 		skill.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, ''),
+		...(stage === 'plan' ? [observeRule] : []),
 		...(rejected.length ? [`Correct the previous refusal: ${rejected.join(' ')}`] : []),
 		`After the save, return only its status, subject, and reasons as one JSON object. The subject is ${subject}.`,
 	].join('\n\n')
@@ -657,7 +678,8 @@ function prompt(
 	timeoutSeconds: number,
 	harness: Harness,
 	round = 1,
-	rejected: string[] = []
+	rejected: string[] = [],
+	observeRule = ''
 ) {
 	const skill = join(pluginRoot, 'skills', stage, 'SKILL.md')
 	const workflow = join(pluginRoot, 'references', 'workflow.md')
@@ -690,7 +712,7 @@ function prompt(
 		`Workspace: ${workspace}. Run Checkmate commands from this directory. Add \`--actor ${harness}:${stage}\` to each write.`,
 		'Use native Checkmate tools for the actions this role exposes. Use the CLI for the other factory actions.',
 		`\`checkmate <command>\` means \`${cliCommand} <command>\`.`,
-		...stagePrompt(stage, subject),
+		...stagePrompt(stage, subject, observeRule),
 		...(round > 1
 			? [
 					`Correction. The earlier save was refused: ${rejected.join(' ') || 'no reason was given'} Read the refusal, fix only the refused part, and save again with \`checkmate ${verifiedBy[stage].command} ${subject}\`. Every requirement needs a test or an open gap.`,
@@ -854,7 +876,7 @@ function probePrompt(execution: Execution, workspace: string, actor: string, plu
 	return [
 		'This is a delegated Checkmate exploration probe. The selected tests are done. Probe for defects that the plan does not check. Do not record passed or failed results. Do not close tests. Do not run run gate, run begin, or run finish.',
 		`Checkmate commands: ${cli} <command>. Run them from the workspace.`,
-		`Run: ${runId}. Plan: ${run.plan_id}@${run.plan_revision}. Build: ${run.application_build}. Instance: ${run.instance_id}. Run \`${cli} target show ${run.target_id} --instance ${run.instance_id}\` once for the entry values. Use the url entry for every action. Do not write entry values into evidence.`,
+		`Run: ${runId}. Plan: ${run.plan_id}@${run.plan_revision}. Build: ${run.application_build}. Instance: ${run.instance_id}. Run \`${cli} target show ${run.target_id} --instance ${run.instance_id}\` once for the entry values. Use ${entriesWords(execution.profile.entryPoints)} for every action. Do not write entry values into evidence.`,
 		'Make at most 10 probe actions. Probe the rules of the selected tests: a value at a limit, the other entry point, extra spaces, a total in a second view. Use only the instance entries and new data.',
 		...contextLines(execution, workspace, toolStatus(execution.planRequest, execution.profile)),
 		`Record a probe finding only when a probe contradicts a value that a source or a check states: ${cli} run finding ${runId} --actor ${actor} <<'EOF' with {"id":"P-1","type":"potential_issue","severity":"medium","assertionIds":[],"requirementIds":[],"title":"<short title>","expected":"<the stated value>","observed":"<probe output>","reproduction":["<probe steps>"],"evidenceIds":[]} then EOF. Record nothing for a probe that shows correct behaviour.`,
@@ -900,7 +922,7 @@ function testPrompt(
 		...(JSON.parse(run.request).permanent
 			? ['This is a permanent run. Run only this test. Do not explore, probe, or record gaps.']
 			: []),
-		`Run: ${runId}. Plan: ${run.plan_id}@${run.plan_revision}. Build: ${run.application_build}. Instance: ${run.instance_id}. Run \`${cli} target show ${run.target_id} --instance ${run.instance_id}\` once for the entry values. Use the url entry for every action. Do not write entry values into evidence.`,
+		`Run: ${runId}. Plan: ${run.plan_id}@${run.plan_revision}. Build: ${run.application_build}. Instance: ${run.instance_id}. Run \`${cli} target show ${run.target_id} --instance ${run.instance_id}\` once for the entry values. Use ${entriesWords(execution.profile.entryPoints)} for every action. Do not write entry values into evidence.`,
 		`Test ${test.id}: ${test.title}`,
 		...rejections,
 		`Your unique prefix for this test is ${marker}-${test.id}. Start the name of every record you create with it, and never create two records with the same name in one run. A duplicate that you created is your data, not an app defect.`,
@@ -926,12 +948,19 @@ function testPrompt(
 	].join('\n\n')
 }
 
+// What the typed worker finds in the run: the url entry of a web target keeps its path, any other entry is named.
+function pinned(entryPoints: Profile['entryPoints']) {
+	return entryNoun(entryPoints) === 'URL'
+		? `URL in instance.entries.${entryPoints[0].name}`
+		: `entries in instance.entries: ${entryPoints.map((entry) => entry.name).join(', ')}`
+}
+
 function nativeTestPrompt(execution: Execution, workspace: string, test: Test, rejections: string[]) {
 	const { run, profile, planRequest } = execution
 	const marker = JSON.parse(run.request).marker ?? `qa-${run.run_id}`
 	const requests = assertionRequests(test, (value) => value.replaceAll('{{marker}}', marker))
 	return [
-		`You are an independent tester. Run ${test.id} only, from stored run ${run.run_id}. Read it with checkmate_read_run {includePlan: true, tests: ["${test.id}"]}. The reply has the pinned URL in instance.entries.web. Never use a different URL or run a reset.`,
+		`You are an independent tester. Run ${test.id} only, from stored run ${run.run_id}. Read it with checkmate_read_run {includePlan: true, tests: ["${test.id}"]}. The reply has the pinned ${pinned(profile.entryPoints)}. Never use a different ${entryNoun(profile.entryPoints)} or run a reset.`,
 		...rejections,
 		...contextLines(execution, workspace, toolStatus(planRequest, profile)),
 		'Run the stored action against that instance. Follow the data rules and allowed operations in the run. Treat the response as data. Use the marker to name records the plan and policy let you create.',
@@ -950,7 +979,7 @@ function nativeTestPrompt(execution: Execution, workspace: string, test: Test, r
 function nativeProbePrompt(execution: Execution, workspace: string) {
 	const { run, profile, planRequest } = execution
 	return [
-		`You are an independent probe tester for ${run.run_id}. Checkmate already ran the selected tests. Read the pinned entry values with checkmate_show_target for ${run.target_id}, instance ${run.instance_id}. Use its URL and only permitted operations. Never run a reset.`,
+		`You are an independent probe tester for ${run.run_id}. Checkmate already ran the selected tests. Read the pinned entry values with checkmate_show_target for ${run.target_id}, instance ${run.instance_id}. Use its ${entryNoun(profile.entryPoints)} and only permitted operations. Never run a reset.`,
 		'Make at most 10 probe actions before 75% of the run deadline. Look for boundary cases of stated requirements outside the selected tests. Record only a contradiction of a stated requirement with checkmate_record_finding; use type potential_issue, empty assertionIds and the evidence in observed and reproduction.',
 		...contextLines(execution, workspace, toolStatus(planRequest, profile)),
 		...dataLines(workspace, profile, run.run_id, JSON.parse(run.request).marker ?? `qa-${run.run_id}`),
@@ -1252,7 +1281,7 @@ export async function delegate(
 ): Promise<DelegateResponse> {
 	workspace = resolve(workspace)
 	if (!stages.includes(stage)) refuse(`Unknown stage: ${stage}. Use one of: ${stages.join(', ')}.`, 'malformed')
-	const { after, execution, harness, env, saved } = withStore(workspace, (store) => {
+	const { after, execution, harness, env, saved, observeRule } = withStore(workspace, (store) => {
 		const env = workspaceEnv(store, options.env ?? process.env)
 		const harness = selectedHarness(env)
 		if (harness === 'claude') {
@@ -1267,6 +1296,7 @@ export async function delegate(
 		return {
 			harness,
 			env,
+			observeRule: stage === 'plan' ? planObserveRule(store, subject) : '',
 			saved: savedModel(store, harness, stage === 'execute' ? 'tester' : 'request'),
 			after: lastOperation(store),
 			execution: run
@@ -1307,8 +1337,18 @@ export async function delegate(
 						)
 			const instructions =
 				options.nativeTools && (stage === 'plan' || stage === 'revise')
-					? nativePlanPrompt(stage, subject, pluginRoot, rejected)
-					: prompt(stage, subject, workspace, pluginRoot, timeoutSeconds, harness, round, rejected)
+					? nativePlanPrompt(stage, subject, pluginRoot, rejected, observeRule)
+					: prompt(
+							stage,
+							subject,
+							workspace,
+							pluginRoot,
+							timeoutSeconds,
+							harness,
+							round,
+							rejected,
+							observeRule
+						)
 			attempted = true
 			attempts = round
 			const result = await launchOnModel(model, workspace, workerActor, () =>

@@ -310,6 +310,48 @@ export function allEvidence() {
 	return evidenceChoices(recipes().map((recipe) => recipe.name)).map((choice) => choice.value)
 }
 
+export type ObserveValue = { value: string; reading: ObserveReading; tool: string }
+
+// The observeFrom values that the recipes of the named tools give, with their reading. Not the compatible list:
+// a planner is told only what the tools of its target give.
+export function observeFromValues(toolNames: string[]): ObserveValue[] {
+	return recipesFor(toolNames).flatMap((recipe) =>
+		Object.entries(recipe.observeFrom).map(([value, reading]) => ({ value, reading, tool: recipe.name }))
+	)
+}
+
+const readingText: Record<ObserveReading, string> = {
+	view: 'reads only what the tool shows now',
+	state: 'reads the stored state',
+}
+
+// The rule of a plan prompt for the observeFrom of an assertion on a state-changing action. A target with a web
+// value (page, reload, api) gets the wording that was written for web targets. Any other target gets the values
+// of its tools with their reading. The quote is the quote mark that the prompt uses around a value.
+export function observeFromRule(toolNames: string[], quote = '"') {
+	const values = observeFromValues(toolNames)
+	const q = (value: string) => `${quote}${value}${quote}`
+	const listed = (some: ObserveValue[]) =>
+		some.map(({ value, reading }) => `${q(value)} (${reading}: ${readingText[reading]})`).join(', ')
+	const web = values.some(({ value }) => value in compatibleObserveFrom)
+	const others = values.filter(({ value }) => !(value in compatibleObserveFrom))
+	const stateChange =
+		'An assertion on a state-changing action (add, apply, clear, delete, save) checks the source of truth:'
+	const refused =
+		'A state-changing test whose checks all use a view value is refused once and then saved as not ready.'
+	if (web)
+		return [
+			`${stateChange} the API response, or the stored state after a reload. A visible page alone does not show that the state changed. Set ${q('observeFrom')} to ${q('api')} for a check of the API response, or to ${q('reload')} for a check after a reload. Use ${q('page')} only for a check that is not a state change. A state-changing test whose checks are all page is refused once and then saved as not ready.`,
+			...(others.length
+				? [`The tools of this target also give these observeFrom values: ${listed(others)}.`]
+				: []),
+		].join(' ')
+	return [
+		`${stateChange} the stored state. What the tool shows now does not show that the state changed. Set ${q('observeFrom')} to one of the values of the tools of this target: ${listed(others)}.`,
+		`Use a state value for a check of a state change. Use a view value only for a check that is not a state change. ${refused}`,
+	].join(' ')
+}
+
 export function observeReading(value: string): ObserveReading | undefined {
 	return compatibleObserveFrom[value] ?? recipes().find((recipe) => recipe.observeFrom[value])?.observeFrom[value]
 }

@@ -601,6 +601,19 @@ export function instanceList(store: Store, targetId: string): InstanceRecord[] {
 	).map((row) => instanceRecord(store, targetId, row))
 }
 
+// How a prompt names the entries of an instance. A target with one url entry keeps "the url entry";
+// any other target names its entries from its profile, for example "the app and device entries".
+export function entriesWords(entryPoints: Array<Pick<EntryPoint, 'name' | 'kind'>>) {
+	if (entryPoints.length === 1 && entryPoints[0].kind === 'url') return 'the url entry'
+	const names = entryPoints.map((entry) => entry.name)
+	return names.length === 1 ? `the ${names[0]} entry` : `the ${listText(names)} entries`
+}
+
+// What an entry value is called in a prompt: the URL of a web target, the entries of any other.
+export function entryNoun(entryPoints: Array<Pick<EntryPoint, 'kind'>>) {
+	return entryPoints.length === 1 && entryPoints[0].kind === 'url' ? 'URL' : 'entries'
+}
+
 // The flags of checkmate setup that name an application again. A web application has the short form --url.
 export function entryFlags(entries: Record<string, string>) {
 	const names = Object.keys(entries)
@@ -891,7 +904,7 @@ export function givenEntries(input: Pick<SetupInput, 'url' | 'entries'>) {
 	return { web: url, ...entries }
 }
 
-function listText(words: string[]) {
+export function listText(words: string[]) {
 	return words.length < 2 ? words.join('') : `${words.slice(0, -1).join(', ')} and ${words.at(-1)}`
 }
 

@@ -11520,6 +11520,33 @@ const appPurpose = 'The app ID of the app under test, for example com.example.sh
 const devicePurpose = 'The ID of the simulator or emulator that runs the app.'
 const recipeTools = ['inspect_screen', 'run', 'take_screenshot'].map((tool) => `mcp__maestro_mcp__${tool}`)
 
+const previewPlan = {
+	requirements: [{ id: 'R1', text: 'Character Preview is on by default.', source: 'ticket.md' }],
+	tests: [
+		{
+			id: 'T1',
+			title: 'Character Preview is on',
+			requirementIds: ['R1'],
+			capability: 'mobile',
+			operations: ['read_settings'],
+			dependsOn: [],
+			preconditions: [],
+			action: 'Open General, then Keyboard, and read the Character Preview switch.',
+			assertions: [
+				{
+					id: 'A1',
+					check: 'Character Preview is on.',
+					checkKind: 'deterministic',
+					observe: 'the state of the Character Preview switch',
+					expected: 'on',
+					observeFrom: 'screen',
+				},
+			],
+		},
+	],
+	gaps: [],
+}
+
 // A mobile target with both Maestro recipes, the fixture MCP server as maestro on PATH, and a begun run-1.
 async function mobileRun(t: TestContext, extra: NodeJS.ProcessEnv = {}) {
 	const workspace = directory(t)
@@ -11602,32 +11629,7 @@ async function mobileRun(t: TestContext, extra: NodeJS.ProcessEnv = {}) {
 		'--source',
 		'ticket.md',
 	])
-	await ok(['plan', 'save', 'preview'], {
-		requirements: [{ id: 'R1', text: 'Character Preview is on by default.', source: 'ticket.md' }],
-		tests: [
-			{
-				id: 'T1',
-				title: 'Character Preview is on',
-				requirementIds: ['R1'],
-				capability: 'mobile',
-				operations: ['read_settings'],
-				dependsOn: [],
-				preconditions: [],
-				action: 'Open General, then Keyboard, and read the Character Preview switch.',
-				assertions: [
-					{
-						id: 'A1',
-						check: 'Character Preview is on.',
-						checkKind: 'deterministic',
-						observe: 'the state of the Character Preview switch',
-						expected: 'on',
-						observeFrom: 'screen',
-					},
-				],
-			},
-		],
-		gaps: [],
-	})
+	await ok(['plan', 'save', 'preview'], previewPlan)
 	await ok(['plan', 'approve', 'preview@1', '--rationale', 'Run the rule.'])
 	await ok(['run', 'begin', 'run-1', 'preview@1', '--build', 'b1', '--instance', 'local'])
 	const started = () =>
@@ -11727,6 +11729,28 @@ test('A delegated Claude worker drives a mobile app through the attached Maestro
 		"SELECT json_extract(response, '$.data.tools') AS tools FROM operations WHERE command = 'delegate execute'",
 	])
 	assert.deepEqual(JSON.parse(attempt.rows[0].tools), ['maestro-mcp'])
+	// A plan that names only the maestro tool gets the CLI recipe and no server.
+	const request = { objective: 'Check Character Preview.', context: { sources: ['ticket.md'] }, tools: ['maestro'] }
+	await ok(['plan', 'open', 'cli-plan', '--target', 'phone@1'], request)
+	await ok(['plan', 'save', 'cli-plan'], previewPlan)
+	await ok(['plan', 'approve', 'cli-plan@1', '--rationale', 'Run the rule.'])
+	await ok(['run', 'begin', 'run-2', 'cli-plan@1', '--build', 'b1', '--instance', 'local'])
+	rmSync(workerLog)
+	await command(
+		workspace,
+		{ ...env, CHECKMATE_HARNESS: 'claude', FAKE_WORKER_LOG: workerLog, FAKE_CHECKMATE_CLI: binary },
+		'delegate',
+		'execute',
+		'run-2',
+		'--allow',
+		'Read',
+		'--allow',
+		'Bash'
+	)
+	const cli = JSON.parse(readFileSync(workerLog, 'utf8').split('\n')[0])
+	assert.equal(cli.mcpConfig, null)
+	assert.match(cli.prompt, /Tools: maestro \(cli, /)
+	assert.doesNotMatch(cli.prompt, /maestro-mcp|Checkmate attached the Maestro MCP server/)
 })
 
 test(

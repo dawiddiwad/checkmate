@@ -522,19 +522,23 @@ function runProfile(store: Store, run: RunRow) {
 	return JSON.parse(row.body) as Profile
 }
 
-// A recipe applies to a tool of the same name and kind: an MCP tool of the host named maestro has no recipe.
-// A delegated worker gets one recipe of each capability; Checkmate attaches the server of a recipe of kind mcp.
-function toolNames(profile: Profile) {
+// The tools of the plan. A recipe applies to a tool of the same name and kind: an MCP tool of the host named maestro
+// has no recipe. A delegated worker gets one recipe of each capability; Checkmate attaches the server of a recipe of
+// kind mcp.
+function toolNames(execution: Pick<Execution, 'planRequest' | 'profile'>) {
 	const kindOf = (name: string) => recipes().find((recipe) => recipe.name === name)?.kind ?? 'cli'
-	const names = profile.tools.filter((tool) => tool.kind === kindOf(tool.name)).map((tool) => tool.name)
-	return testerTools(names, true)
+	const tools = planTools(execution.planRequest, execution.profile)
+	return testerTools(
+		tools.filter((tool) => tool.kind === kindOf(tool.name)).map((tool) => tool.name),
+		true
+	)
 }
 
 function workerServers(workspace: string, execution: Execution, pluginRoot: string) {
 	const script = join(pluginRoot, 'dist', 'checkmate.js')
 	const { target_id, instance_id } = execution.run
 	const entries = withStore(workspace, (store) => findInstance(store, target_id, instance_id).entries)
-	return attachedServers(toolNames(execution.profile), sessionValues(workspace, execution.run), script, entries)
+	return attachedServers(toolNames(execution), sessionValues(workspace, execution.run), script, entries)
 }
 
 // A delegated worker of a run uses the tool session of the run and keeps tool output in the evidence directory.
@@ -778,7 +782,7 @@ function prompt(
 // Each tool of the profile that keeps a session closes it, so that no tool session stays open after the run.
 async function closeToolSessions(workspace: string, execution: Execution) {
 	const values = sessionValues(workspace, execution.run)
-	const closing = recipesFor(toolNames(execution.profile)).filter((recipe) => recipe.closeSession)
+	const closing = recipesFor(toolNames(execution)).filter((recipe) => recipe.closeSession)
 	if (!closing.length) return { cleanup: 'not_applicable', cleanupReason: 'No tool session was opened.' }
 	const failures = (await Promise.all(closing.map((recipe) => closeToolSession(workspace, recipe, values)))).filter(
 		(failure) => failure !== null
@@ -832,7 +836,7 @@ function recordAttempt(
 						operation: response.operation,
 						...usage,
 						...(response.modelFallback ? { modelFallback: response.modelFallback } : {}),
-						...(execution ? { tools: toolNames(execution.profile) } : {}),
+						...(execution ? { tools: toolNames(execution) } : {}),
 					},
 				},
 				subjects: [`${kind}:${subject}`, ...(execution ? [`plan:${execution.run.plan_id}`] : [])],
@@ -888,9 +892,10 @@ function testView(store: Store, runId: string, testId: string): TestView {
 }
 
 function toolStatus(request: PlanRequest, profile: Profile) {
-	const chosen = toolNames(profile)
-	const unused = recipesFor(profile.tools.map((tool) => tool.name)).filter((recipe) => !chosen.includes(recipe.name))
-	const tools = planTools(request, profile).filter(({ name }) => !unused.some((recipe) => recipe.name === name))
+	const chosen = toolNames({ planRequest: request, profile })
+	const planned = planTools(request, profile)
+	const unused = recipesFor(planned.map((tool) => tool.name)).filter((recipe) => !chosen.includes(recipe.name))
+	const tools = planned.filter(({ name }) => !unused.some((recipe) => recipe.name === name))
 	return tools.map(({ name, kind }) => {
 		const recipe = recipesFor([name]).find((item) => item.kind === 'mcp' && item.kind === kind)
 		if (recipe) return `${name} (mcp, Checkmate attached its server; call only ${recipe.tools!.join(', ')})`
@@ -900,7 +905,7 @@ function toolStatus(request: PlanRequest, profile: Profile) {
 }
 
 function contextLines(execution: Execution, workspace: string, tools: string[]) {
-	const { run, profile, planRequest: planning } = execution
+	const { run, planRequest: planning } = execution
 	const sources = planning.context?.sources ?? []
 	const values = sessionValues(workspace, run)
 	return [
@@ -910,7 +915,7 @@ function contextLines(execution: Execution, workspace: string, tools: string[]) 
 				]
 			: []),
 		`Tools: ${tools.join(', ')}. Use Bash for CLI tools. A tool marked "not on PATH" is missing: close the test as error. A tool with an attached server whose tools you do not have is missing too.`,
-		...recipesFor(toolNames(profile)).flatMap((recipe) =>
+		...recipesFor(toolNames(execution)).flatMap((recipe) =>
 			recipe.delegatedInstruction ? [filled(recipe.delegatedInstruction, values)] : []
 		),
 	]

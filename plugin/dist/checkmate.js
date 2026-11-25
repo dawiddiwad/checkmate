@@ -47680,16 +47680,19 @@ function runProfile(store, run2) {
   );
   return JSON.parse(row2.body);
 }
-function toolNames(profile) {
+function toolNames(execution) {
   const kindOf = (name2) => recipes().find((recipe) => recipe.name === name2)?.kind ?? "cli";
-  const names = profile.tools.filter((tool) => tool.kind === kindOf(tool.name)).map((tool) => tool.name);
-  return testerTools(names, true);
+  const tools = planTools(execution.planRequest, execution.profile);
+  return testerTools(
+    tools.filter((tool) => tool.kind === kindOf(tool.name)).map((tool) => tool.name),
+    true
+  );
 }
 function workerServers(workspace2, execution, pluginRoot2) {
   const script = join24(pluginRoot2, "dist", "checkmate.js");
   const { target_id, instance_id } = execution.run;
   const entries = withStore(workspace2, (store) => findInstance(store, target_id, instance_id).entries);
-  return attachedServers(toolNames(execution.profile), sessionValues(workspace2, execution.run), script, entries);
+  return attachedServers(toolNames(execution), sessionValues(workspace2, execution.run), script, entries);
 }
 function sessionValues(workspace2, run2) {
   return { session: run2.tool_session, workFolder: join24(workspace2, ".checkmate", "tmp", run2.run_id) };
@@ -47874,7 +47877,7 @@ function prompt(stage, subject, workspace2, pluginRoot2, timeoutSeconds, harness
 }
 async function closeToolSessions(workspace2, execution) {
   const values = sessionValues(workspace2, execution.run);
-  const closing = recipesFor(toolNames(execution.profile)).filter((recipe) => recipe.closeSession);
+  const closing = recipesFor(toolNames(execution)).filter((recipe) => recipe.closeSession);
   if (!closing.length) return { cleanup: "not_applicable", cleanupReason: "No tool session was opened." };
   const failures = (await Promise.all(closing.map((recipe) => closeToolSession(workspace2, recipe, values)))).filter(
     (failure) => failure !== null
@@ -47917,7 +47920,7 @@ function recordAttempt(store, stage, subject, harness, response, usage2, executi
             operation: response.operation,
             ...usage2,
             ...response.modelFallback ? { modelFallback: response.modelFallback } : {},
-            ...execution ? { tools: toolNames(execution.profile) } : {}
+            ...execution ? { tools: toolNames(execution) } : {}
           }
         },
         subjects: [`${kind}:${subject}`, ...execution ? [`plan:${execution.run.plan_id}`] : []]
@@ -47957,9 +47960,10 @@ function testView(store, runId, testId) {
   };
 }
 function toolStatus(request2, profile) {
-  const chosen = toolNames(profile);
-  const unused = recipesFor(profile.tools.map((tool) => tool.name)).filter((recipe) => !chosen.includes(recipe.name));
-  const tools = planTools(request2, profile).filter(({ name: name2 }) => !unused.some((recipe) => recipe.name === name2));
+  const chosen = toolNames({ planRequest: request2, profile });
+  const planned = planTools(request2, profile);
+  const unused = recipesFor(planned.map((tool) => tool.name)).filter((recipe) => !chosen.includes(recipe.name));
+  const tools = planned.filter(({ name: name2 }) => !unused.some((recipe) => recipe.name === name2));
   return tools.map(({ name: name2, kind }) => {
     const recipe = recipesFor([name2]).find((item) => item.kind === "mcp" && item.kind === kind);
     if (recipe) return `${name2} (mcp, Checkmate attached its server; call only ${recipe.tools.join(", ")})`;
@@ -47968,7 +47972,7 @@ function toolStatus(request2, profile) {
   });
 }
 function contextLines(execution, workspace2, tools) {
-  const { run: run2, profile, planRequest: planning } = execution;
+  const { run: run2, planRequest: planning } = execution;
   const sources = planning.context?.sources ?? [];
   const values = sessionValues(workspace2, run2);
   return [
@@ -47976,7 +47980,7 @@ function contextLines(execution, workspace2, tools) {
       `Source files: ${sources.map((source) => resolve10(workspace2, source)).join(", ")}. Read them with the read tool. Do not search the file system: do not use rg, grep, or find.`
     ] : [],
     `Tools: ${tools.join(", ")}. Use Bash for CLI tools. A tool marked "not on PATH" is missing: close the test as error. A tool with an attached server whose tools you do not have is missing too.`,
-    ...recipesFor(toolNames(profile)).flatMap(
+    ...recipesFor(toolNames(execution)).flatMap(
       (recipe) => recipe.delegatedInstruction ? [filled(recipe.delegatedInstruction, values)] : []
     )
   ];

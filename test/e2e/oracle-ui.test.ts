@@ -393,6 +393,8 @@ test(
 		const calls = fake.called()
 		const follower = calls.find((call) => call.role === 'follower')
 		assert(follower, 'the follow-up host ran')
+		assert.match(follower.toolSession, /^qa-[a-z0-9]{6}-x-\d+-a1$/)
+		assert.equal(follower.toolSession, calls.find((call) => call.role === 'tester')?.toolSession)
 		assert.match(follower.prompt, /The promotion replaces loyalty\./)
 		assert.match(follower.prompt, /Does the promotion replace loyalty\?/)
 		const show = must(workspace, ['explore', 'show', explorationId], env)

@@ -7,7 +7,9 @@ Use this recipe when the plan lists the `playwright-cli` tool. For another brows
 Microsoft Playwright CLI is the default browser tool. Checkmate is tested with version `0.1.23`.
 For command details, run `playwright-cli --help` or `playwright-cli <command> --help`.
 
-Use the run's `toolSession` as the session for every command. `run begin` and `run resume` print it. A delegated prompt names it.
+In an exploration, use the `PLAYWRIGHT_CLI_SESSION` value that Checkmate gives you for every command. The tester brief gives the shell export when the host starts the tester.
+
+In an execute run, use the run's `toolSession` as the session for every command. `run begin` and `run resume` print it. A delegated prompt names it.
 
 The shortest reliable sequence:
 
@@ -42,7 +44,7 @@ A browser config can select an installed executable:
 - Playwright CLI writes snapshots and logs to an output directory. Without `PLAYWRIGHT_MCP_OUTPUT_DIR`, it writes `.playwright-cli/` in the workspace. Set the variable on the `open` command. The session keeps it for the next commands.
 - In execute, use `.checkmate/tmp/<runId>`. `run finish` removes that directory with its contents.
 - In setup, use `.checkmate/tmp/setup-<targetId>`. `target save` removes that directory with its contents.
-- Use a new session. Do not use `close-all`, `kill-all`, or a shared persistent browser profile.
+- Use the session assigned to your work. Do not use `close-all`, `kill-all`, or a shared persistent browser profile.
 - Close the session at the end of the stage, also after a failure.
 - When page text is the evidence, send a short excerpt of the snapshot with `--evidence -`. Do not write a text file.
 - Save only relevant observations and screenshots. Do not save pages that show credentials.

@@ -22,6 +22,7 @@ import type { Rule } from './rules.ts'
 import { checkedRules, ruleSources, rulesNeeded, saveRules } from './rules.ts'
 import {
 	entryValues,
+	explorationToolIdentity,
 	explorerNames,
 	keepWorkFiles,
 	keepToolFolders,
@@ -187,10 +188,11 @@ function testerAction(store: Store, explorationId: string, explorer: string, due
 	}
 	const opened = exploration(store, explorationId)
 	const launch = startOf(explorationEvents(store, explorationId))!
+	const { session, dataPrefix } = explorationToolIdentity(launch, explorationId, explorer)
 	const brief = explorerBrief(
 		{ ...opened.charter, dataRules: launch.dataRules },
 		entryValues(store, explorationId),
-		`qa-${explorationId}-${explorer}-`,
+		dataPrefix,
 		folder,
 		{
 			study: launch.studySeconds,
@@ -199,7 +201,7 @@ function testerAction(store: Store, explorationId: string, explorer: string, due
 	)
 	if (due === 'test') return action('test', 'task-test.md', brief.test)
 	const shell = shellInstructions({
-		session: `qa-${explorationId}-${explorer}`,
+		session,
 		workFolder: join(store.workspace, folder),
 	})
 	return action(

@@ -66,7 +66,7 @@ const work = process.env.PLAYWRIGHT_MCP_OUTPUT_DIR
 const files = { explorer: 'plan.md', tester: 'report.md', follower: 'follow-up-report.md' }
 if (work && files[role]) writeFileSync(join(work, files[role]), role + ' of ' + process.env.PLAYWRIGHT_CLI_SESSION + '\\n')
 if (process.env.FAKE_FOLLOW_STRAY && role === 'follower') writeFileSync('follow-stray.txt', 'Follow-up stray.')
-appendFileSync(process.env.FAKE_CLAUDE_CALL, JSON.stringify({ role, args, prompt, cwd: process.cwd(), env, maestro, work, session, pid: process.pid, actor: process.env.CHECKMATE_ACTOR }) + '\\n')
+appendFileSync(process.env.FAKE_CLAUDE_CALL, JSON.stringify({ role, args, prompt, cwd: process.cwd(), env, maestro, work, session, toolSession: process.env.PLAYWRIGHT_CLI_SESSION, pid: process.pid, actor: process.env.CHECKMATE_ACTOR }) + '\\n')
 const replies = JSON.parse(readFileSync(process.env.FAKE_CLAUDE_REPLIES, 'utf8'))
 const chosen = replies[role]
 const reply = chosen && typeof chosen === 'object' && !Array.isArray(chosen) ? chosen[resumed ?? ''] ?? chosen['*'] ?? (streamed ? chosen : undefined) : chosen

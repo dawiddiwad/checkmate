@@ -28,7 +28,7 @@ Run the full gate:
 npm run phase:verify
 ```
 
-It runs type and generated-file checks, lint, Prettier, and `npm test`. The test command builds and packs the CLI, installs it into disposable workspaces, and runs 140 end-to-end cases with real SQLite, loopback applications, controlled hosts, Pi, and Chromium. It fails when a prerequisite is missing, a case is absent, or a case skips. CI runs `npm run phase:verify`.
+It runs type and generated-file checks, lint, Prettier, and `npm test`. The test command builds and packs the CLI, installs it into disposable workspaces, and runs 141 end-to-end cases with real SQLite, loopback applications, controlled hosts, Pi, and Chromium. It fails when a prerequisite is missing, a case is absent, or a case skips. CI runs `npm run phase:verify`.
 
 The 42-scenario proposal map is [test/e2e/scenarios.json](../test/e2e/scenarios.json). Some historical Factory campaign behavior is outside this checkout. The local external Factory fixture does not verify Factory checkout, archive, budget, or campaign ownership. Tests use controlled hosts; they do not test live model judgment or require paid model calls.
 
@@ -49,6 +49,8 @@ Checkmate keeps what it knows about each test tool in `plugin/recipes/`. Each to
 A recipe also gives the plan and run values of its tool. `observeFrom` maps each value that an assertion can observe from to `view` (what the tool shows now) or `state` (the stored state). `evidence` lists the evidence kinds that the tool makes. The optional `evidenceExtensions` maps a file extension to the default evidence kind of a file. A ready test of a plan can use only the `observeFrom` values of the recipes of the target tools. A run can record only the evidence kinds of those recipes. The values that every target accepted up to 0.8.2 stay accepted for all targets: `page`, `reload`, and `api`, and `observation`, `http_exchange`, `screenshot`, and `trace`. They are in `plugin/src/recipes.ts`. Do not add values to that list; give new values in a recipe.
 
 A recipe can also give `delegatedInstruction`, the text that a delegated execute worker gets for the tool, and `closeSession`, the arguments that close the tool session after a delegated run. Each run has one tool session ID, `toolSession`, that every tool of the run uses.
+
+The start event of an exploration stores the tool session name and data prefix of each tester. The session name starts with the exploration marker, which includes the workspace nonce. The data prefix adds a final hyphen. The verifier uses the same marker with the suffix `-verify-`. When an earlier start event has no stored names, Checkmate uses the names of that version for the rest of the exploration.
 
 The contracts list every value of every recipe, because the models read the enums as the allowed values. After you change a recipe value, run `npm run generate`. `scripts/generate-contracts.ts` writes the `observeFrom` and evidence kind enums, and `npm run type:check` fails when they are stale.
 

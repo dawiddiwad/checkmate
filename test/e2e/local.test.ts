@@ -7,6 +7,7 @@ import {
 	existsSync,
 	mkdirSync,
 	readFileSync,
+	readdirSync,
 	realpathSync,
 	rmSync,
 	writeFileSync,
@@ -611,6 +612,7 @@ test('Keep a defect stored while a question about its rule waits — the finding
 		(test: { metadata?: { harvestedFrom?: string } }) => test.metadata?.harvestedFrom
 	)
 	assert.equal(observed.readiness, 'ready', 'An observed defect is ready to record')
+	assert.deepEqual(observed.preconditions, [`Make new test data that starts with {{marker}}-${observed.id}.`])
 	assert.deepEqual(
 		observed.gapIds,
 		['UR1', 'Q1'],
@@ -2283,6 +2285,13 @@ test('Give a session tester the data rules of a read-only target — the test ta
 	const folder = join(workspace, '.checkmate/work', id, 'a1')
 	const study = readFileSync(join(folder, 'task-study.md'), 'utf8')
 	const task = readFileSync(join(folder, 'task-test.md'), 'utf8')
+	const identities = await ok(
+		'query',
+		"SELECT json_extract(detail, '$.toolIdentities.a1.session') AS session FROM exploration_events WHERE step = 'start'"
+	)
+	const { session } = identities.rows[0]
+	assert.match(session, /^qa-[a-z0-9]{6}-x-1-a1$/)
+	assert.ok(study.includes(`export PLAYWRIGHT_CLI_SESSION=${session};`))
 	for (const text of [study, task]) assert.match(text, /Data policy: Read only\. Never create or change a record\./)
 	assert.doesNotMatch(task, /make new records|Make a new record/)
 	assert.match(task, /Do not create, change, or delete a record/)
@@ -6692,6 +6701,112 @@ test('A plan of the shape stored before tool recipes keeps its observeFrom value
 	assert.match(readFileSync(join(workspace, 'run.junit'), 'utf8'), /<testcase/)
 })
 
+test('Two explorations with the same ID use separate tool sessions and clean up only their own test data.', async (t) => {
+	const app = await fixture()
+	t.after(() => app.close())
+	const data = directory(t)
+	const suffix = 'order'
+	const unrelated = 'qa-unrelated-x-1-a1-order'
+	writeFileSync(join(data, unrelated), '')
+	const replay = join(directory(t), 'replay.mjs')
+	writeFileSync(
+		replay,
+		`import { writeFileSync } from 'node:fs'
+import { join } from 'node:path'
+export function replay(role, session, prompt) {
+	if (role === 'recorder') return [{ kind: 'note', text: 'Created a test order.' }]
+	const prefix = /Start each name or value that you make with ([a-z0-9-]+)\\./.exec(prompt)[1]
+	writeFileSync(join(process.env.QA_SHARED_DATA, prefix + '${suffix}'), '')
+	return 'Done.'
+}
+`
+	)
+	const explore = async () => {
+		const workspace = directory(t)
+		const host = fakeClaude(t, {}, 'pi')
+		const env = {
+			...process.env,
+			...host.env,
+			CHECKMATE_ACTOR: 'oracle',
+			CHECKMATE_HARNESS: 'pi',
+			FAKE_CLAUDE_REPLAY: replay,
+			QA_SHARED_DATA: data,
+		}
+		const ok = async (...args: string[]) => {
+			const result = await command(workspace, env, ...args)
+			assert.equal(result.code, 0, result.output)
+			return result.body
+		}
+		writeFileSync(join(workspace, 'ticket.md'), 'An order can be created.\n')
+		writeFileSync(
+			join(workspace, 'cleanup.mjs'),
+			`import { readdirSync, renameSync, unlinkSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
+const marker = process.env.CHECKMATE_MARKER
+const data = process.env.QA_SHARED_DATA
+const removed = readdirSync(data).filter((name) => name.startsWith(marker + '-'))
+for (const name of removed) unlinkSync(join(data, name))
+writeFileSync('removed.tmp', JSON.stringify({ marker, removed }))
+renameSync('removed.tmp', 'removed.json')
+`
+		)
+		await ok(
+			'setup',
+			'--url',
+			app.baseUrl,
+			'--target',
+			'shop',
+			'--operations',
+			'create_order',
+			'--data',
+			'isolation',
+			'--policy',
+			'Use test orders only.',
+			'--cleanup',
+			'node cleanup.mjs'
+		)
+		const { explorationId } = await ok(
+			'test',
+			'ticket',
+			'--source',
+			'ticket.md',
+			'--build',
+			'b1',
+			'--level',
+			'smoke',
+			'--allow',
+			'Read'
+		)
+		assert.equal((await ok('explore', 'wait', explorationId, '--timeout', '60')).state, 'completed')
+		const calls = host.called()
+		const study = calls.find((item: { role: string }) => item.role === 'explorer')
+		const test = calls.find((item: { role: string }) => item.role === 'tester')
+		assert.equal(study.toolSession, test.toolSession)
+		const prefix = /Start each name or value that you make with ([a-z0-9-]+)\./.exec(test.prompt)?.[1]
+		const removed = join(workspace, 'removed.json')
+		const deadline = Date.now() + 5000
+		while (!existsSync(removed) && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 25))
+		return {
+			explorationId,
+			session: study.toolSession,
+			prefix,
+			cleanup: JSON.parse(readFileSync(removed, 'utf8')),
+		}
+	}
+	const [first, second] = await Promise.all([explore(), explore()])
+	assert.equal(first.explorationId, 'x-1')
+	assert.equal(second.explorationId, first.explorationId)
+	assert.notEqual(first.session, second.session, 'Two workspaces got the same Playwright CLI session.')
+	assert.notEqual(first.prefix, second.prefix)
+	for (const run of [first, second]) {
+		assert.match(run.session, /^qa-[a-z0-9]{6}-x-1-a1$/)
+		assert.equal(run.prefix, `${run.session}-`)
+		assert.equal(run.session, `${run.cleanup.marker}-a1`)
+		assert.deepEqual(run.cleanup.removed, [run.prefix + suffix])
+	}
+	assert.deepEqual(readdirSync(data), [unrelated])
+})
+
 test('Keep each tool folder that testers left, and leave each tool folder that was there before — one old folder stopped the keep step for all, and an exploration stored by v0.8.2 still keeps its browser folder.', async (t) => {
 	const { cpSync } = await import('node:fs')
 	const plugin = join(directory(t), 'plugin')
@@ -6763,6 +6878,34 @@ test('Keep each tool folder that testers left, and leave each tool folder that w
 		readFileSync(join(old, '.checkmate', 'work', 'x-1', '.playwright-cli', 'tester.log'), 'utf8'),
 		'A tester left this.\n'
 	)
+
+	const resumed = directory(t)
+	writeFileSync(join(resumed, 'ticket.md'), 'The promotion quote is 240 PLN.\n')
+	mkdirSync(join(resumed, '.checkmate'))
+	writeFileSync(
+		join(resumed, '.checkmate/checkmate.db'),
+		gunzipSync(readFileSync(join(root, 'test/e2e/fixtures/workspace-exploration-v0.8.2.db.gz')))
+	)
+	const legacy = new DatabaseSync(join(resumed, '.checkmate/checkmate.db'))
+	legacy.exec('DROP TRIGGER exploration_events_delete')
+	legacy.exec('DROP TRIGGER exploration_events_update')
+	legacy.exec("DELETE FROM exploration_events WHERE step <> 'start'")
+	legacy.exec("UPDATE exploration_events SET detail = json_remove(detail, '$.inheritPiTools') WHERE step = 'start'")
+	legacy.close()
+	host.called()
+	host.reply({ recorder: [{ kind: 'note', text: 'Read the promotion quote.' }] })
+	execFileSync(process.execPath, [entry, 'explore', 'drive', 'x-1', '--workspace', resumed], {
+		cwd: resumed,
+		env,
+		timeout: 15000,
+	})
+	const calls = host.called()
+	const study = calls.find((item: { role: string }) => item.role === 'explorer')
+	const test = calls.find((item: { role: string }) => item.role === 'tester')
+	assert.equal(study.toolSession, 'qa-x-1-a1')
+	assert.equal(test.toolSession, study.toolSession)
+	assert.match(test.prompt, /Start each name or value that you make with qa-x-1-a1-\./)
+	assert.equal((await ok(resumed, 'explore', 'status', 'x-1')).state, 'completed')
 })
 
 test('Setup records maestro and the mobile capability only when maestro is on PATH — a mobile tool was never detected.', async (t) => {

@@ -22097,7 +22097,7 @@ function harvested(base, rules, items, explorationId, build, capabilities, opera
       capability: capabilityOf2(item.via, capabilities),
       operations,
       dependsOn: [],
-      preconditions: [`Make new test data that starts with qa-<runId>-${id2}.`],
+      preconditions: [`Make new test data that starts with ${markerPlaceholder}-${id2}.`],
       action: item.action,
       assertions: [
         ...item.checks.map((check, index2) => ({
@@ -22479,16 +22479,25 @@ function launchPlan(profile, input, env, savedModel = "", preferSaved = false, s
 function explorerNames(count2) {
   return Array.from({ length: count2 }, (_, index2) => `a${index2 + 1}`);
 }
-function explorerWork(store, explorationId, explorer, count2) {
+function toolIdentity(marker, explorer) {
+  const session = `${marker}-${explorer}`;
+  return { session, dataPrefix: `${session}-` };
+}
+function explorationToolIdentity(launch, explorationId, explorer) {
+  return launch?.toolIdentities?.[explorer] ?? toolIdentity(`qa-${explorationId}`, explorer);
+}
+function explorerWork(store, explorationId, explorer, launch) {
   const folder = workFolder(explorationId, explorer);
   mkdirSync6(join11(store.workspace, folder), { recursive: true });
-  const others = explorerNames(count2).filter((name2) => name2 !== explorer);
+  const others = explorerNames(launch.explorers).filter((name2) => name2 !== explorer);
+  const { session, dataPrefix } = explorationToolIdentity(launch, explorationId, explorer);
   return {
     folder,
+    dataPrefix,
     grant: [`Edit(/${folder}/**)`],
     deny: workDenyRules(others.map((name2) => workFolder(explorationId, name2))),
     extraEnv: testerEnvironment({
-      session: `qa-${explorationId}-${explorer}`,
+      session,
       workFolder: join11(store.workspace, folder)
     })
   };
@@ -22615,6 +22624,7 @@ function startExploration(store, actor, given, env, preferSavedModel = false) {
       savedEffort
     );
     if (launch.inheritPiTools && !launch.allow.length) launch.allow = ruleTokens(testerRulesText(store, "pi"));
+    const toolUsers = [...explorerNames(launch.explorers), ...launch.verifier ? ["verify"] : []];
     addEvent(
       store,
       opened.explorationId,
@@ -22625,6 +22635,7 @@ function startExploration(store, actor, given, env, preferSavedModel = false) {
         detail: {
           ...launch,
           dataRules: rules,
+          toolIdentities: Object.fromEntries(toolUsers.map((name2) => [name2, toolIdentity(marker, name2)])),
           toolFoldersBefore: toolFolders().filter((name2) => existsSync8(join11(store.workspace, name2)))
         }
       },
@@ -22785,18 +22796,12 @@ async function launchExplorers(store, actor, explorationId, launch, env, catalog
       catalog2,
       launch.testerEfforts?.[explorer] ?? (model ? "" : launch.effort ?? "")
     );
-    const work = explorerWork(store, explorationId, explorer, launch.explorers);
-    const { folder, grant } = work;
-    const brief = explorerBrief(
-      { ...opened.charter, dataRules: launch.dataRules },
-      entries,
-      `qa-${explorationId}-${explorer}-`,
-      folder,
-      {
-        study: launch.studySeconds,
-        test: launch.testSeconds
-      }
-    );
+    const work = explorerWork(store, explorationId, explorer, launch);
+    const { folder, grant, dataPrefix } = work;
+    const brief = explorerBrief({ ...opened.charter, dataRules: launch.dataRules }, entries, dataPrefix, folder, {
+      study: launch.studySeconds,
+      test: launch.testSeconds
+    });
     event(store, actor, explorationId, {
       step: "launch",
       explorer,
@@ -23021,12 +23026,13 @@ function verifyInput(store, explorationId, after = 0) {
   const fresh = after ? newDefects(store, opened.plan_id, after) : void 0;
   const items = verifyItems(planClaims(store, opened.plan_id), opened.build, fresh);
   if (!items.length) return null;
+  const launch = startOf(explorationEvents(store, explorationId));
   return {
     items,
     entries: entryValues(store, explorationId),
     operations: opened.charter.operations,
-    dataRules: startOf(explorationEvents(store, explorationId))?.dataRules ?? [],
-    dataPrefix: `qa-${explorationId}-verify-`
+    dataRules: launch?.dataRules ?? [],
+    dataPrefix: explorationToolIdentity(launch, explorationId, "verify").dataPrefix
   };
 }
 async function verifyClaims(store, actor, explorationId, launch, env, after = 0) {
@@ -23342,11 +23348,10 @@ async function driveFollow(workspace2, explorationId, env) {
     };
     const sessions = followSessions(events);
     const phase = `follow-${events.filter((item) => item.step === "follow").length}`;
-    const count2 = initial.explorers;
     const executable = requireChild(env, launch.context.harness);
     const ended = await Promise.all(
       sessions.filter((item) => !item.skipped).map(async ({ explorer, session }) => {
-        const work = explorerWork(store, explorationId, explorer, count2);
+        const work = explorerWork(store, explorationId, explorer, launch);
         const { folder } = work;
         const model = plan.modelOverride ? void 0 : initial.testerModels?.[explorer];
         const resumed2 = plan.context.harness === "pi" && !model && !hostModel(plan.context.piArgs ?? []) ? launchContext(store, explorationId, explorer, session) : void 0;
@@ -43168,10 +43173,11 @@ ${followEntriesText(answer2)}`,
   }
   const opened = exploration(store, explorationId);
   const launch = startOf(explorationEvents(store, explorationId));
+  const { session, dataPrefix } = explorationToolIdentity(launch, explorationId, explorer);
   const brief = explorerBrief(
     { ...opened.charter, dataRules: launch.dataRules },
     entryValues(store, explorationId),
-    `qa-${explorationId}-${explorer}-`,
+    dataPrefix,
     folder,
     {
       study: launch.studySeconds,
@@ -43180,7 +43186,7 @@ ${followEntriesText(answer2)}`,
   );
   if (due === "test") return action2("test", "task-test.md", brief.test);
   const shell3 = shellInstructions({
-    session: `qa-${explorationId}-${explorer}`,
+    session,
     workFolder: join19(store.workspace, folder)
   });
   return action2(

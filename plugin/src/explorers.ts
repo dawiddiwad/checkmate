@@ -124,6 +124,7 @@ export type Launch = {
 	pluginHidden: boolean
 	path?: 'session'
 	inheritPiTools?: boolean
+	toolIdentities?: Record<string, { session: string; dataPrefix: string }>
 	// The tool folders that were in the workspace when the exploration started.
 	toolFoldersBefore?: string[]
 	// Up to 0.8.2: true when .playwright-cli, the only tool folder then, was in the workspace.
@@ -283,16 +284,27 @@ export function explorerNames(count: number) {
 	return Array.from({ length: count }, (_, index) => `a${index + 1}`)
 }
 
-function explorerWork(store: Store, explorationId: string, explorer: string, count: number) {
+function toolIdentity(marker: string, explorer: string) {
+	const session = `${marker}-${explorer}`
+	return { session, dataPrefix: `${session}-` }
+}
+
+export function explorationToolIdentity(launch: Launch | undefined, explorationId: string, explorer: string) {
+	return launch?.toolIdentities?.[explorer] ?? toolIdentity(`qa-${explorationId}`, explorer)
+}
+
+function explorerWork(store: Store, explorationId: string, explorer: string, launch: Launch) {
 	const folder = workFolder(explorationId, explorer)
 	mkdirSync(join(store.workspace, folder), { recursive: true })
-	const others = explorerNames(count).filter((name) => name !== explorer)
+	const others = explorerNames(launch.explorers).filter((name) => name !== explorer)
+	const { session, dataPrefix } = explorationToolIdentity(launch, explorationId, explorer)
 	return {
 		folder,
+		dataPrefix,
 		grant: [`Edit(/${folder}/**)`],
 		deny: workDenyRules(others.map((name) => workFolder(explorationId, name))),
 		extraEnv: testerEnvironment({
-			session: `qa-${explorationId}-${explorer}`,
+			session,
 			workFolder: join(store.workspace, folder),
 		}),
 	}
@@ -451,6 +463,7 @@ export function startExploration(
 			savedEffort
 		)
 		if (launch.inheritPiTools && !launch.allow.length) launch.allow = ruleTokens(testerRulesText(store, 'pi'))
+		const toolUsers = [...explorerNames(launch.explorers), ...(launch.verifier ? ['verify'] : [])]
 		addEvent(
 			store,
 			opened.explorationId,
@@ -461,6 +474,7 @@ export function startExploration(
 				detail: {
 					...launch,
 					dataRules: rules,
+					toolIdentities: Object.fromEntries(toolUsers.map((name) => [name, toolIdentity(marker, name)])),
 					toolFoldersBefore: toolFolders().filter((name) => existsSync(join(store.workspace, name))),
 				},
 			},
@@ -659,18 +673,12 @@ async function launchExplorers(
 			catalog,
 			launch.testerEfforts?.[explorer] ?? (model ? '' : (launch.effort ?? ''))
 		)
-		const work = explorerWork(store, explorationId, explorer, launch.explorers)
-		const { folder, grant } = work
-		const brief = explorerBrief(
-			{ ...opened.charter, dataRules: launch.dataRules },
-			entries,
-			`qa-${explorationId}-${explorer}-`,
-			folder,
-			{
-				study: launch.studySeconds,
-				test: launch.testSeconds,
-			}
-		)
+		const work = explorerWork(store, explorationId, explorer, launch)
+		const { folder, grant, dataPrefix } = work
+		const brief = explorerBrief({ ...opened.charter, dataRules: launch.dataRules }, entries, dataPrefix, folder, {
+			study: launch.studySeconds,
+			test: launch.testSeconds,
+		})
 		event(store, actor, explorationId, {
 			step: 'launch',
 			explorer,
@@ -914,12 +922,13 @@ export function verifyInput(store: Store, explorationId: string, after = 0) {
 	const fresh = after ? newDefects(store, opened.plan_id, after) : undefined
 	const items = verifyItems(planClaims(store, opened.plan_id), opened.build, fresh)
 	if (!items.length) return null
+	const launch = startOf(explorationEvents(store, explorationId))
 	return {
 		items,
 		entries: entryValues(store, explorationId),
 		operations: opened.charter.operations,
-		dataRules: startOf(explorationEvents(store, explorationId))?.dataRules ?? [],
-		dataPrefix: `qa-${explorationId}-verify-`,
+		dataRules: launch?.dataRules ?? [],
+		dataPrefix: explorationToolIdentity(launch, explorationId, 'verify').dataPrefix,
 	}
 }
 
@@ -1303,13 +1312,12 @@ export async function driveFollow(workspace: string, explorationId: string, env:
 		}
 		const sessions = followSessions(events)
 		const phase = `follow-${events.filter((item) => item.step === 'follow').length}`
-		const count = initial.explorers
 		const executable = requireChild(env, launch.context.harness)
 		const ended = await Promise.all(
 			sessions
 				.filter((item) => !item.skipped)
 				.map(async ({ explorer, session }) => {
-					const work = explorerWork(store, explorationId, explorer, count)
+					const work = explorerWork(store, explorationId, explorer, launch)
 					const { folder } = work
 					const model = plan.modelOverride ? undefined : initial.testerModels?.[explorer]
 					const resumed =

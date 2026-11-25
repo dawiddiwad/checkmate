@@ -364,13 +364,17 @@ export function rangeWithoutInput(check: string) {
 
 // A state-changing action is shown only by a check that reads the state from its source. A test whose checks are all
 // explicitly view-only (page, or a view value of a recipe) is flagged; a test that does not say observeFrom is left alone.
-export function pageOnlyStateChange(test: { action: string; assertions: Array<{ observeFrom?: string }> }) {
+export function pageOnlyStateChange(
+	workspace: string,
+	test: { action: string; assertions: Array<{ observeFrom?: string }> }
+) {
 	const changes = /\b(add|apply|clear|delete|remove|save|update)\b/i.test(test.action)
 	return (
 		changes &&
 		test.assertions.length > 0 &&
 		test.assertions.every(
-			(assertion) => assertion.observeFrom !== undefined && observeReading(assertion.observeFrom) === 'view'
+			(assertion) =>
+				assertion.observeFrom !== undefined && observeReading(workspace, assertion.observeFrom) === 'view'
 		)
 	)
 }
@@ -411,7 +415,7 @@ export function uncoveredRequirements(plan: Pick<Plan, 'requirements' | 'tests' 
 }
 
 // The soft rules refuse a first save and save the test as not ready on the next attempt. Each names its reason.
-export function softProblems(test: Plan['tests'][number], requirements: Plan['requirements']) {
+export function softProblems(workspace: string, test: Plan['tests'][number], requirements: Plan['requirements']) {
 	const problems: Array<{
 		id: string
 		reason: 'needs_control' | 'needs_source_check' | 'needs_input' | 'needs_required' | 'needs_split'
@@ -419,7 +423,7 @@ export function softProblems(test: Plan['tests'][number], requirements: Plan['re
 	}> = []
 	const refusal = uncontrolledRefusal(test)
 	if (refusal) problems.push({ id: refusal.id, reason: 'needs_control', check: refusal.check })
-	if (pageOnlyStateChange(test))
+	if (pageOnlyStateChange(workspace, test))
 		problems.push({ id: test.assertions[0].id, reason: 'needs_source_check', check: test.action })
 	for (const assertion of test.assertions)
 		if (rangeWithoutInput(assertion.check))
@@ -436,10 +440,14 @@ export function softProblems(test: Plan['tests'][number], requirements: Plan['re
 }
 
 // A check that code cannot decide yet, named by its assertion ID and reason: legacy checks and soft problems.
-export function unverifiedAssertions(test: Plan['tests'][number], requirements: Plan['requirements']) {
+export function unverifiedAssertions(
+	workspace: string,
+	test: Plan['tests'][number],
+	requirements: Plan['requirements']
+) {
 	return [
 		...test.assertions.filter((assertion) => unverifiedCheck(assertion)).map((assertion) => assertion.id),
-		...softProblems(test, requirements).map((problem) => `${problem.id} ${problem.reason}`),
+		...softProblems(workspace, test, requirements).map((problem) => `${problem.id} ${problem.reason}`),
 	]
 }
 
@@ -545,14 +553,17 @@ export function planCheck(value: unknown): Plan {
 	return plan
 }
 
-export function planTargetCheck(plan: Plan, profile: Profile) {
-	const observeFrom = observeFromChoices(profile.tools.map((tool) => tool.name))
+export function planTargetCheck(workspace: string, plan: Plan, profile: Profile) {
+	const observeFrom = observeFromChoices(
+		workspace,
+		profile.tools.map((tool) => tool.name)
+	)
 	for (const test of plan.tests) {
 		for (const { id, observeFrom: value } of test.assertions)
 			if (value !== undefined && !observeFrom.some((choice) => choice.value === value))
 				requireWellFormed(
 					false,
-					`Test ${test.id} assertion ${id} observes from ${value}, which no tool of target ${profile.targetId} gives (${givenBy(value)}). Allowed values: ${choiceText(observeFrom)}.`,
+					`Test ${test.id} assertion ${id} observes from ${value}, which no tool of target ${profile.targetId} gives (${givenBy(workspace, value)}). Allowed values: ${choiceText(observeFrom)}.`,
 					observeFrom.length
 						? `Use an allowed value, omit observeFrom, or add the tool that gives ${value} to the target.`
 						: `Omit observeFrom or add the tool that gives ${value} to the target.`

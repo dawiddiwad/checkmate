@@ -496,14 +496,19 @@ function evidenceKinds(store: Store, runId: string) {
 	const run = one<RunRow>(store, 'SELECT * FROM runs WHERE run_id = ?', runId)!
 	const profile = targetRevision(store, run.target_id, run.target_revision).profile
 	const tools = profile.tools.map((tool) => tool.name)
-	return { targetId: profile.targetId, tools, choices: evidenceChoices(tools) }
+	return {
+		workspace: store.workspace,
+		targetId: profile.targetId,
+		tools,
+		choices: evidenceChoices(store.workspace, tools),
+	}
 }
 
 function requireEvidenceKind(kind: string, allowed: ReturnType<typeof evidenceKinds>) {
 	if (!allowed.choices.some((choice) => choice.value === kind))
 		requireWellFormed(
 			false,
-			`Evidence kind ${kind} is not given by a tool of target ${allowed.targetId} (${givenBy(kind)}). Allowed kinds: ${choiceText(allowed.choices)}.`,
+			`Evidence kind ${kind} is not given by a tool of target ${allowed.targetId} (${givenBy(allowed.workspace, kind)}). Allowed kinds: ${choiceText(allowed.choices)}.`,
 			'Give an allowed kind. For an observation, use observation or leave the kind out for inline text.'
 		)
 	return kind
@@ -564,7 +569,10 @@ function readEvidence(
 	return {
 		path,
 		name: basename(name),
-		kind: requireEvidenceKind(kind ?? evidenceKindOfFile(allowed.tools, extension) ?? 'observation', allowed),
+		kind: requireEvidenceKind(
+			kind ?? evidenceKindOfFile(store.workspace, allowed.tools, extension) ?? 'observation',
+			allowed
+		),
 		mediaType: mediaTypes[extension] ?? 'application/octet-stream',
 		bytes: readFileSync(real),
 	}

@@ -25,7 +25,7 @@ import { exportExploration, exportPlan, exportRun } from '../render.ts'
 import { decideClaim, explorationRow, handOffClaims } from '../journal.ts'
 import { claimPage, explorationPage, explorerFile, explorerFilePage, questionPage } from './exploration.ts'
 import { acceptResult, rejectResult } from '../runs.ts'
-import { declaredEntryPoints } from '../recipes.ts'
+import { declaredEntryPoints, recipes } from '../recipes.ts'
 import {
 	addInstance,
 	instanceList,
@@ -578,7 +578,8 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		const shown = context(request)
 		if (pathname === '/' && searchParams.has('item')) return redirect(request.res, oldItem(searchParams))
 		if (pathname === '/') return render(request, startOfHome(shown))
-		if (pathname === '/setup') return render(request, firstRunPage(shown, false, cameFrom(request)))
+		if (pathname === '/setup')
+			return render(request, firstRunPage(store.workspace, shown, false, cameFrom(request)))
 		if (pathname === '/new')
 			return render(request, newChangePage(shown, changeDefaults(searchParams.get('target')), false))
 		if (pathname === '/inbox' || pathname === '/plans') return redirect(request.res, '/')
@@ -731,7 +732,7 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 	}
 
 	function startOfHome(shown: Context) {
-		if (!targetList(store).length) return firstRunPage(shown, true)
+		if (!targetList(store).length) return firstRunPage(store.workspace, shown, true)
 		if (!planList(store).length) return newChangePage(shown, changeDefaults(null), true)
 		return homePage(store)
 	}
@@ -1879,7 +1880,8 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 	}
 
 	// The entries of an application that is not a web application: one form field for each entry that a recipe declares.
-	const otherEntries = () => [...declaredEntryPoints().values()].filter((entry) => entry.name !== 'web')
+	const otherEntries = () =>
+		[...declaredEntryPoints(recipes(store.workspace)).values()].filter((entry) => entry.name !== 'web')
 
 	function otherEntryValues(form: URLSearchParams) {
 		return Object.fromEntries(
@@ -1906,7 +1908,7 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 				environment: form.get('environment')?.trim() || undefined,
 				operations: choice.yes ? undefined : [readOnlyOperation],
 			})
-			const planned = setupAssumptions({ ...input, env })
+			const planned = setupAssumptions(store.workspace, { ...input, env })
 			reply({
 				address: address ? address.host : Object.values(others).join(' '),
 				local: choice.local,
@@ -1936,7 +1938,11 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 				'operations',
 				...otherEntries().map((entry) => `entry.${entry.name}`),
 			])
-			return render(request, firstRunPage(context(request), onHome, cameFrom(request), submitted), cookies)
+			return render(
+				request,
+				firstRunPage(store.workspace, context(request), onHome, cameFrom(request), submitted),
+				cookies
+			)
 		}
 		const choice = setupChoice(form, url)
 		if (!choice.chosen)

@@ -51,6 +51,56 @@ Setup records the installed tools whose recipes fit the entries. A tool that nee
 
 The prompts of delegated workers name the entries from the profile, for example "the app and device entries", and the plan prompt lists the `observeFrom` values of the target tools. `checkmate plan request <planId>` prints them.
 
+## Add a project tool recipe
+
+Checkmate loads built-in recipes and project recipes from `.checkmate/recipes/`. A recipe has a JSON file and the Markdown usage file it names. Run `checkmate recipe list --json` to read existing recipes and their usage text.
+
+To add a recipe, write both files in a draft folder. The JSON file name must match the recipe name. Run `checkmate recipe add --file <recipe.json>` from the project. The command checks both files before it installs them. If it refuses a recipe, correct the field or file in the message and run the command again. Recipe names are unique without regard to case. Choose a different name if a built-in or project recipe already uses it.
+
+Commit both installed files to share the recipe with your team. Checkmate loads them from the checkout. Review recipes as project code because setup and testers can run commands that recipes specify.
+
+### Salesforce CLI example
+
+Save this as `draft/sf.json`. Setup looks for `sf` on `PATH` and checks the org with a read-only SOQL query. [Salesforce CLI command reference](https://developer.salesforce.com/docs/platform/salesforce-cli-reference/guide/cli_reference_data_query.html)
+
+```json
+{
+	"name": "sf",
+	"capability": "salesforce",
+	"kind": "cli",
+	"purpose": "Read records from a Salesforce org.",
+	"detect": "path",
+	"entryPoints": [{ "name": "org", "kind": "value", "purpose": "Salesforce org alias." }],
+	"reachable": [
+		{
+			"check": "command",
+			"run": [
+				"sf",
+				"data",
+				"query",
+				"--query",
+				"SELECT Id FROM Organization LIMIT 1",
+				"--target-org",
+				"{org}",
+				"--json"
+			]
+		}
+	],
+	"environment": {},
+	"workspaceFolders": [],
+	"observeFrom": { "soql": "state" },
+	"evidence": ["soql_result"],
+	"usage": "sf.md"
+}
+```
+
+In `draft/sf.md`, tell the tester to run `sf data query --target-org <org entry> --query '<SOQL>' --json` and record the relevant result as `soql_result` evidence. Use an org alias that your Salesforce CLI already knows:
+
+```sh
+checkmate recipe add --file draft/sf.json
+checkmate setup --target salesforce --entry org=my-sandbox --operations read_records
+```
+
 ## Agent tools
 
 The Claude Code plugin serves Checkmate actions through its local MCP server. The Pi package registers the same actions as native tools. The host gives each tool its workspace and role. An action takes named arguments. Its result gives the recorded state or a refusal with reasons and a next action.
@@ -139,7 +189,7 @@ See [Factory workflows](factory.md) for the three complete paths and the ownersh
 
 ## Record and limits
 
-The record is `.checkmate/checkmate.db` in the workspace. Add `.checkmate/` to `.gitignore`. Export data when you need a file to share:
+The record is `.checkmate/checkmate.db` in the workspace. Ignore `.checkmate/checkmate.db*`, `.checkmate/tmp/`, and `.checkmate/ui.json` in Git. Keep `.checkmate/recipes/` trackable. Export data when you need a file to share:
 
 ```sh
 checkmate export plan <planId@revision> --format md --out plan.md

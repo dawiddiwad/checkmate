@@ -262,5 +262,11 @@
 		"name": "Recover a local UI restart with existing operation history — stuck Activity, hidden attempts, or divergent status.",
 		"status": "covered",
 		"test": "42 the packaged UI restarts and accepts a form using persisted record state"
+	},
+	{
+		"number": 43,
+		"name": "Install and use a project tool recipe from the packed CLI",
+		"status": "covered",
+		"test": "Install and use a project tool recipe from the packed CLI"
 	}
 ]

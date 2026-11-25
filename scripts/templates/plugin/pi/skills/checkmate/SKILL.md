@@ -7,6 +7,8 @@ Use native `checkmate_*` tools. They take named arguments and return the recorde
 
 ## Set up and plan
 
+When the person asks for a recipe for another tool, use an existing recipe as an example. Run `checkmate recipe list --json` to read examples. Write the JSON and its Markdown usage file in a draft folder. Run `checkmate recipe add --file <recipe.json>` from the application workspace. Correct any validation error before you call {{tool setup}}. The command installs the recipe in `.checkmate/recipes/`.
+
 1. Ask for the application address or the entries its tool needs. Confirm the environment and permitted operations for a remote target. Use `{{tool setup}}` and report its reachability result. Use `{{tool replace_instance}}` for an instance correction and use the instance ID it returns.
 2. Report assumptions and readiness. Ask for the missing reset or isolation policy when data can change. Do not write a policy or a hook yourself. Stop for setup-only requests.
 3. For planning, call `{{tool open_plan}}` with a target ID and a request object containing the objective and source files in `context.sources`. Give all sources the person named. Omit the plan ID to derive it from the first source. Use the returned plan ID.

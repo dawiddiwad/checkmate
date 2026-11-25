@@ -1,6 +1,6 @@
 # Start Checkmate
 
-Checkmate records tests and decisions for one project in `.checkmate/checkmate.db`. Keep that directory in the project workspace and add it to `.gitignore`.
+Checkmate records tests and decisions for one project in `.checkmate/checkmate.db`. Add `.checkmate/checkmate.db*`, `.checkmate/tmp/`, and `.checkmate/ui.json` to `.gitignore`. Keep `.checkmate/recipes/` trackable so you can share [project tool recipes](reference.md#add-a-project-tool-recipe).
 
 ## Requirements
 

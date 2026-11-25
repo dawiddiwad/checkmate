@@ -4,7 +4,7 @@ import { levelNames } from '../levels.ts'
 import { html } from './html.ts'
 import { testerModels, testerToolHelp } from './actions.ts'
 import { heading } from './layout.ts'
-import { declaredEntryPoints } from '../recipes.ts'
+import { declaredEntryPoints, recipes } from '../recipes.ts'
 
 export type NewInstance = { id: string; address: string | null; local: boolean }
 export type NewTarget = { targetId: string; address: string | null; local: boolean; instances: NewInstance[] }
@@ -104,8 +104,8 @@ export function assumedRows(lines: string[]) {
 }
 
 // An application that is not a web application has no address. It has the entries that the recipes of its tools declare.
-function otherEntryFields(submitted?: Record<string, string>) {
-	const others = [...declaredEntryPoints().values()].filter((entry) => entry.name !== 'web')
+function otherEntryFields(workspace: string, submitted?: Record<string, string>) {
+	const others = [...declaredEntryPoints(recipes(workspace)).values()].filter((entry) => entry.name !== 'web')
 	if (!others.length) return ''
 	return html`<div class="field-group">
 		<details
@@ -130,6 +130,7 @@ function otherEntryFields(submitted?: Record<string, string>) {
 }
 
 export function firstRunPage(
+	workspace: string,
 	context: Context,
 	onHome: boolean,
 	back = '/',
@@ -145,7 +146,7 @@ export function firstRunPage(
 			invalidAddress?.url
 		)}
 		${invalidAddress ? html`<p class="form-error" role="alert" data-field="url" data-refusal>Give the address of the application, for example http://localhost:3000.</p>` : ''}
-		${otherEntryFields(invalidAddress)}
+		${otherEntryFields(workspace, invalidAddress)}
 		<div
 			class="setup-assumed"
 			data-assumed

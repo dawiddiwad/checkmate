@@ -1,9 +1,11 @@
 ---
 name: setup
-description: Set up a Checkmate web target, correct its operations, or replace an instance.
+description: Set up a Checkmate target, correct its operations, or replace an instance.
 ---
 
 Read the workspace instructions. Use Checkmate tools from the current session.
+
+When the person asks for a recipe for another tool, use an existing recipe as an example. Run `checkmate recipe list --json` to read examples. Write the JSON and its Markdown usage file in a draft folder. Run `checkmate recipe add --file <recipe.json>` from the application workspace. Correct any validation error before you call {{tool setup}}. If you installed only the plugin, use `node "<plugin root>/dist/checkmate.js"` in place of `checkmate`. The command installs the recipe in `.checkmate/recipes/`.
 
 1. Call `{{tool list_targets}}` when the target is unclear. Use the only target if it matches the request.
 2. Ask for the application address or the entries its tool needs. For a remote target, confirm the environment and the operations the person permits. Record credential references.

@@ -21,7 +21,7 @@ The Human review UI shows what waits for you: the evidence, findings and gaps. Y
 - **QA** tests each build. Code compares each check with its expected value.
 - The **factory** builds the code and starts the app.
 - Checkmate starts the planner and the testers through Claude Code or Pi. It does not change code or start the app.
-- Everything is kept in one SQLite file: `.checkmate/checkmate.db`.
+- The QA record is kept in one SQLite file, `.checkmate/checkmate.db`. Share [project tool recipes](docs/reference.md#add-a-project-tool-recipe) in Git.
 
 ## Core Idea
 

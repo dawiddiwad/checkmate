@@ -6,26 +6,22 @@ import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { createInterface } from 'node:readline'
 import { signalChild, trackGroup } from './processes.ts'
-import { filled, recipes, recipesFor, testerTools, type Recipe, type SessionValues } from './recipes.ts'
+import { filled, recipes, recipesFor, serverName, testerTools, type Recipe, type SessionValues } from './recipes.ts'
 
 export type AttachedServer = { name: string; command: string; args: string[]; tools: string[] }
 
 const stopGraceMilliseconds = 3000
 
-// The host names a tool mcp__<server>__<tool>. Both hosts accept letters, digits, and _ in the server name.
-export function serverName(recipe: Recipe) {
-	return recipe.name.replaceAll('-', '_')
-}
-
 // The servers that Checkmate attaches to one tester session, one for each recipe of kind mcp that the tester uses.
 // The server gets the values of the instance entries that its recipe pins, as <entry>=<value> arguments.
 export function attachedServers(
+	workspace: string,
 	toolNames: string[],
 	values: SessionValues,
 	script: string,
 	entries: Record<string, string>
 ): AttachedServer[] {
-	return recipesFor(testerTools(toolNames, true))
+	return recipesFor(workspace, testerTools(workspace, toolNames, true))
 		.filter((recipe) => recipe.kind === 'mcp')
 		.map((recipe) => ({
 			name: serverName(recipe),
@@ -36,6 +32,7 @@ export function attachedServers(
 				recipe.name,
 				values.workFolder,
 				values.session,
+				workspace,
 				...[...new Set(Object.values(recipe.entryArguments ?? {}))].flatMap((entry) =>
 					entries[entry] ? [`${entry}=${entries[entry]}`] : []
 				),
@@ -104,11 +101,17 @@ function message(line: string): Message | undefined {
 	}
 }
 
-export function serveToolServer(recipeName: string, workFolder: string, session: string, pinned: string[]) {
+export function serveToolServer(
+	recipeName: string,
+	workFolder: string,
+	session: string,
+	workspace: string,
+	pinned: string[]
+) {
 	const entries = Object.fromEntries(
 		pinned.map((item) => [item.slice(0, item.indexOf('=')), item.slice(item.indexOf('=') + 1)])
 	)
-	const recipe = recipes().find((item) => item.name === recipeName && item.kind === 'mcp')
+	const recipe = recipes(workspace).find((item) => item.name === recipeName && item.kind === 'mcp')
 	if (!recipe?.server || !workFolder) {
 		process.stderr.write(
 			`checkmate tool-server: no recipe of kind mcp is named ${recipeName}, or no work folder.\n`

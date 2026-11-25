@@ -235,8 +235,8 @@ function operationText(operations: string[]) {
 
 export type EntryPointValue = { name: string; kind: string; purpose: string; value: string }
 
-function usageLine(toolNames: string[]) {
-	const files = usageFiles(toolNames)
+function usageLine(workspace: string, toolNames: string[]) {
+	const files = usageFiles(workspace, toolNames)
 	return files.length ? [`Before you use a tool, read its usage text: ${files.join(', ')}.`] : []
 }
 
@@ -254,6 +254,7 @@ function testDataText(operations: string[], dataPrefix: string) {
 }
 
 export function explorerBrief(
+	workspace: string,
 	charter: Charter,
 	entries: EntryPointValue[],
 	dataPrefix: string,
@@ -264,6 +265,7 @@ export function explorerBrief(
 	const change = charter.change
 	// A tester in a new process gets the attached server of a recipe of kind mcp. A tester of the host session does not.
 	const tools = testerTools(
+		workspace,
 		charter.tools.map((tool) => tool.name),
 		attached
 	)
@@ -322,7 +324,7 @@ export function explorerBrief(
 		`${operationText(charter.operations)} Do not change the code, the configuration, or the deployment of the application.`,
 		...(charter.dataRules ?? []),
 		...(tools.length ? [`Tools you can use: ${[...tools].sort().join(', ')}.`] : []),
-		...usageLine(tools),
+		...usageLine(workspace, tools),
 		...(charter.capabilities.some((capability) => capability === 'http' || capability === 'browser')
 			? [
 					'A direct HTTP call is sufficient when it proves the behaviour. Use the browser when the page itself is what you test.',

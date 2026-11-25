@@ -99,7 +99,7 @@ import { storeExplorationFindings } from './findingsRun.ts'
 import { settleEnded } from './cleanups.ts'
 import { owedCleanups, settleCleanups } from './resets.ts'
 import { actionInput, actionRecovery, dispatchAction, performAction, type ActionName } from './actions.ts'
-import { allEvidence, type ObserveValue } from './recipes.ts'
+import { addRecipe, allEvidence, listRecipes, type ObserveValue } from './recipes.ts'
 
 type FlagKind = 'value' | 'list' | 'repeat' | 'switch' | readonly string[] | { min: number; max: number }
 type Args = Record<string, string | string[] | boolean>
@@ -108,6 +108,7 @@ type Context = {
 	stdin: () => unknown
 	text: () => string
 	cwd: string
+	workspace: string
 	env: Record<string, string | undefined>
 }
 type Printed = { facts?: Record<string, unknown>; lines?: unknown[][] }
@@ -119,6 +120,7 @@ type Command = {
 	write?: boolean
 	stdin?: boolean
 	readOnly?: boolean
+	workspaceRun?: (args: Args, context: Context) => Reply
 	check?: (args: Args) => void
 	prepare?: (args: Args, context: Context) => (store: Store) => Reply
 	run?: (store: Store, args: Args, context: Context) => Reply
@@ -190,7 +192,7 @@ function evidence(args: Args, context: Context): EvidenceInput[] | undefined {
 		if (match) return { text: context.text(), kind: match[1] }
 		const colon = spec.lastIndexOf(':')
 		const kind = colon >= 0 ? spec.slice(colon + 1) : ''
-		return allEvidence().includes(kind) ? { file: spec.slice(0, colon), kind } : { file: spec }
+		return allEvidence(context.workspace).includes(kind) ? { file: spec.slice(0, colon), kind } : { file: spec }
 	})
 }
 
@@ -356,6 +358,27 @@ function short(sha256: unknown) {
 }
 
 const commands: Record<string, Command> = {
+	'recipe add': {
+		positionals: [],
+		flags: { file: 'value' },
+		required: ['file'],
+		workspaceRun: (args, context) => {
+			const entry = addRecipe(context.workspace, resolve(context.cwd, value(args, 'file')!))
+			return completed(entry.recipe.name, { path: entry.path, usagePath: entry.usagePath })
+		},
+		print: (reply) => ({ facts: reply.data }),
+	},
+	'recipe list': {
+		positionals: [],
+		workspaceRun: (_args, context) => completed('recipes', { recipes: listRecipes(context.workspace) }),
+		print: (reply) => ({
+			lines: (reply.data.recipes as ReturnType<typeof listRecipes>).map(({ recipe, source, path }) => [
+				recipe.name,
+				source,
+				path,
+			]),
+		}),
+	},
 	init: {
 		positionals: [],
 		run: (store) => completed('.checkmate/checkmate.db', { path: store.path }),
@@ -2700,7 +2723,12 @@ export function run(argv: string[], io: Io): Outcome {
 			stdin: () => readJson(io.stdin()),
 			text: io.stdin,
 			cwd: io.cwd,
+			workspace,
 			env: io.env,
+		}
+		if (command.workspaceRun) {
+			const reply = command.workspaceRun(args, context)
+			return { code: exitCodeOf(name, args, reply), output: format(reply, json, command.print, host) }
 		}
 		const prepared = command.prepare?.(args, context)
 		store = command.readOnly ? openReadOnlyStore(workspace) : openStore(workspace)

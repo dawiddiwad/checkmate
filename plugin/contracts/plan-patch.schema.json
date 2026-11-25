@@ -100,7 +100,8 @@
 													"pattern": "^(GET|POST|PUT|PATCH|DELETE) /"
 												},
 												"observeFrom": {
-													"enum": ["screen", "relaunch", "api", "page", "reload"]
+													"type": "string",
+													"pattern": "^[a-z][a-z0-9_]{0,39}$"
 												}
 											},
 											"additionalProperties": false,

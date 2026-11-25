@@ -40,7 +40,7 @@ For example:
 ## Where the plan observes from
 
 - `screen`: read what the device shows now, with `inspect_screen`. This does not show that a change was stored.
-- `relaunch`: run a flow with `- stopApp` and then `- launchApp`, then read the screen. This shows what the app stored. The app can open at its first screen again.
+- `relaunch`: for relaunch, run a flow with `- stopApp` and then `- launchApp`, navigate again, and read the screen. This shows what the app stored. The app can open at its first screen again.
 
 ## Evidence
 

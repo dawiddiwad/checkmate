@@ -11698,6 +11698,10 @@ test('A delegated Claude worker drives a mobile app through the attached Maestro
 	assert.match(launch.prompt, /Never give files or dir\./)
 	assert.match(
 		launch.prompt,
+		/For relaunch, run a flow with - stopApp and then - launchApp, navigate again, and read the screen\./
+	)
+	assert.match(
+		launch.prompt,
 		/takeScreenshot: <name> in a flow: it writes <name>\.png in \S+\/\.checkmate\/tmp\/run-1\./
 	)
 	assert.doesNotMatch(launch.prompt, /hierarchy --compact|Tools: [^\n]*maestro \(cli/)

@@ -6398,16 +6398,290 @@ test('Setup refuses a malformed tool recipe and names the file and the field —
 	const plugin = join(directory(t), 'plugin')
 	cpSync(join(project, 'node_modules/@xoxoai/checkmate/plugin'), plugin, { recursive: true })
 	const recipe = join(plugin, 'recipes', 'node.json')
-	writeFileSync(recipe, JSON.stringify({ ...JSON.parse(readFileSync(recipe, 'utf8')), detect: 'sometimes' }))
+	const node = readFileSync(recipe, 'utf8')
+	writeFileSync(recipe, JSON.stringify({ ...JSON.parse(node), detect: 'sometimes' }))
 	const workspace = directory(t)
 	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle', CHECKMATE_HARNESS: 'pi' }
 	const entry = join(plugin, 'dist/checkmate.js')
 	const setup = await invoke(entry, workspace, env, '', ['setup', '--url', 'http://127.0.0.1:9', '--target', 'shop'])
 	assert.equal(setup.code, 1, setup.output)
 	assert.match(setup.output, /Tool recipe \S*recipes\/node\.json is not valid: detect must be path or runtime\./)
+	writeFileSync(recipe, JSON.stringify({ ...JSON.parse(node), observeFrom: { page: 'state' } }))
+	const reading = await invoke(entry, workspace, env, '', [
+		'setup',
+		'--url',
+		'http://127.0.0.1:9',
+		'--target',
+		'shop',
+	])
+	assert.equal(reading.code, 1, reading.output)
+	assert.match(
+		reading.output,
+		/Tool recipe \S*recipes\/node\.json is not valid: observeFrom page is state, but it is view in the values accepted for all targets\./
+	)
 	const targets = await invoke(entry, workspace, env, '', ['target', 'list'])
 	assert.equal(targets.code, 0, targets.output)
 	assert.doesNotMatch(targets.output, /shop/)
+})
+
+// The values that every target accepted up to 0.8.2. They stay accepted for all targets.
+const compatibleObserveFrom = ['page', 'reload', 'api']
+const compatibleEvidence = ['observation', 'http_exchange', 'screenshot', 'trace']
+
+function recipeTarget(targetId: string, tools: string[], capabilities: string[], entryKind: 'url' | 'value') {
+	return {
+		contractVersion: 'toolkit-2',
+		targetId,
+		revision: 1,
+		entryPoints: [{ name: 'app', kind: entryKind, purpose: 'The application.' }],
+		capabilities,
+		tools: tools.map((name) => ({ name, kind: 'cli', purpose: `Use ${name}.`, reachable: true })),
+		authentication: { kind: 'none', references: [] },
+		allowedOperations: ['read_catalog'],
+		startup: { owner: 'factory', command: null },
+		cleanup: 'No test data.',
+		readyForLiveExecution: true,
+		reset: { owner: 'environment', command: null, policy: { text: 'The test fixture keeps no records.' } },
+		approvals: { plan: 'none', result: 'none' },
+	}
+}
+
+function recipePlan(capability: string, observeFrom: Array<string | undefined>) {
+	return {
+		requirements: [{ id: 'R1', text: 'The catalog shows the kettle.', source: 'ticket.md' }],
+		tests: [
+			{
+				id: 'T1',
+				title: 'Kettle in the catalog',
+				requirementIds: ['R1'],
+				capability,
+				operations: ['read_catalog'],
+				dependsOn: [],
+				preconditions: [],
+				action: 'Open the catalog.',
+				assertions: observeFrom.map((value, index) => ({
+					id: `A${index + 1}`,
+					check: `The catalog shows the kettle (${index + 1}).`,
+					checkKind: 'deterministic',
+					observe: 'the name of the first product',
+					expected: 'Kettle',
+					...(value ? { observeFrom: value } : {}),
+				})),
+			},
+		],
+		gaps: [],
+	}
+}
+
+test('A plan and a run accept only the observeFrom values and evidence kinds that the recipes of the target tools give — the refusal names the value, the allowed values, and the recipes.', async (t) => {
+	const workspace = directory(t)
+	writeFileSync(join(workspace, 'ticket.md'), 'The catalog shows the kettle.\n')
+	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle', CHECKMATE_HARNESS: 'pi' }
+	const ok = async (args: string[], value?: object | string) => {
+		const input = value === undefined ? '' : typeof value === 'string' ? value : JSON.stringify(value)
+		const result = await inputCommand(workspace, env, input, ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	const maestro = JSON.parse(
+		readFileSync(join(project, 'node_modules/@xoxoai/checkmate/plugin/recipes/maestro.json'), 'utf8')
+	)
+	const observeFrom = Object.keys(maestro.observeFrom).find((value) => !compatibleObserveFrom.includes(value))!
+	const kinds = (maestro.evidence as string[]).filter((kind) => !compatibleEvidence.includes(kind))
+	assert.ok(observeFrom && kinds.length, 'maestro.json gives an observeFrom value and an evidence kind of its own')
+	for (const [id, tools, capability, kind] of [
+		['web', ['node', 'playwright-cli'], 'browser', 'url'],
+		['phone', ['maestro'], 'mobile', 'value'],
+	] as const) {
+		await ok([
+			'target',
+			'open',
+			id,
+			'--entry-point',
+			`app:${kind}:The application.`,
+			'--capabilities',
+			capability,
+			'--operations',
+			'read_catalog',
+		])
+		await ok(['target', 'save', id], recipeTarget(id, [...tools], [capability], kind))
+		await ok([
+			'target',
+			'instance',
+			'add',
+			id,
+			'local',
+			'--entry',
+			`app=${kind === 'url' ? 'http://127.0.0.1:9' : 'com.example.shop'}`,
+		])
+		await ok([
+			'plan',
+			'open',
+			id,
+			'--target',
+			`${id}@1`,
+			'--objective',
+			'Check the catalog.',
+			'--source',
+			'ticket.md',
+		])
+	}
+
+	const refused = await inputCommand(
+		workspace,
+		env,
+		JSON.stringify(recipePlan('browser', ['page', observeFrom])),
+		'plan',
+		'save',
+		'web'
+	)
+	assert.equal(refused.code, 1, refused.output)
+	assert.match(
+		refused.output,
+		new RegExp(
+			`Test T1 assertion A2 observes from ${observeFrom}, which no tool of target web gives \\(recipe maestro gives it\\)\\. Allowed values: page \\(accepted for all targets, recipe playwright-cli\\), reload \\(accepted for all targets, recipe playwright-cli\\), api \\(accepted for all targets, recipe node\\)\\.`
+		)
+	)
+	assert.doesNotMatch(refused.output, new RegExp(`Allowed values:[^"]*\\b${observeFrom} \\(`))
+	await ok(['plan', 'save', 'web'], recipePlan('browser', ['page', 'reload']))
+	await ok(['plan', 'save', 'phone'], recipePlan('mobile', [observeFrom, 'page']))
+
+	await ok(['run', 'begin', 'web-run', 'web@1', '--build', 'b1', '--instance', 'local'])
+	const wrongKind = await inputCommand(
+		workspace,
+		env,
+		'<hierarchy/>',
+		'run',
+		'check',
+		'web-run',
+		'T1',
+		'A1',
+		'--observed',
+		'Kettle',
+		'--evidence',
+		`-:${kinds[0]}`
+	)
+	assert.equal(wrongKind.code, 1, wrongKind.output)
+	assert.match(
+		wrongKind.output,
+		new RegExp(
+			`Evidence kind ${kinds[0]} is not given by a tool of target web \\(recipe maestro gives it\\)\\. Allowed kinds: observation \\(accepted for all targets\\), http_exchange \\(accepted for all targets, recipe node\\), screenshot \\(accepted for all targets, recipe playwright-cli\\), trace \\(accepted for all targets, recipe playwright-cli\\)\\.`
+		)
+	)
+
+	await ok(['run', 'begin', 'phone-run', 'phone@1', '--build', 'b1', '--instance', 'local'])
+	const evidence = join(workspace, '.checkmate/tmp/phone-run')
+	mkdirSync(evidence, { recursive: true })
+	writeFileSync(join(evidence, 'catalog.bin'), 'recorded bytes')
+	const recorded = await ok(
+		[
+			'run',
+			'check',
+			'phone-run',
+			'T1',
+			'A1',
+			'--observed',
+			'Kettle',
+			'--evidence',
+			`-:${kinds[0]}`,
+			'--evidence',
+			`.checkmate/tmp/phone-run/catalog.bin:${kinds.at(-1)}`,
+		],
+		'{"text":"Kettle"}'
+	)
+	assert.equal(recorded.evidenceIds.length, 2)
+	const stored = await ok(['query', "SELECT kind FROM evidence WHERE run_id = 'phone-run' ORDER BY kind"])
+	assert.deepEqual(
+		stored.rows.map((row: { kind: string }) => row.kind),
+		[kinds[0], kinds.at(-1)].sort()
+	)
+	assert.equal(existsSync(join(evidence, 'catalog.bin')), false)
+})
+
+test('A plan of the shape stored before tool recipes keeps its observeFrom values and evidence kinds on a target with no recipe tool — it saves, runs, and exports as before.', async (t) => {
+	const workspace = directory(t)
+	writeFileSync(join(workspace, 'ticket.md'), 'The catalog shows the kettle.\n')
+	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle', CHECKMATE_HARNESS: 'pi' }
+	const ok = async (args: string[], value?: object | string) => {
+		const input = value === undefined ? '' : typeof value === 'string' ? value : JSON.stringify(value)
+		const result = await inputCommand(workspace, env, input, ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	await ok([
+		'target',
+		'open',
+		'shop',
+		'--entry-point',
+		'app:url:The application.',
+		'--capabilities',
+		'http',
+		'--operations',
+		'read_catalog',
+	])
+	await ok(['target', 'save', 'shop'], recipeTarget('shop', [], ['http'], 'url'))
+	await ok(['target', 'instance', 'add', 'shop', 'local', '--entry', 'app=http://127.0.0.1:9'])
+	await ok([
+		'plan',
+		'open',
+		'ticket',
+		'--target',
+		'shop@1',
+		'--objective',
+		'Check the catalog.',
+		'--source',
+		'ticket.md',
+	])
+	await ok(['plan', 'save', 'ticket'], recipePlan('http', ['page', 'reload', 'api', undefined]))
+	const shown = await ok(['plan', 'show', 'ticket@1'])
+	assert.deepEqual(
+		shown.plan.tests[0].assertions.map((assertion: { observeFrom?: string }) => assertion.observeFrom ?? null),
+		['page', 'reload', 'api', null]
+	)
+	for (const format of ['md', 'html', 'json'])
+		await ok(['export', 'plan', 'ticket@1', '--format', format, '--out', `plan.${format}`])
+	const exported = JSON.parse(readFileSync(join(workspace, 'plan.json'), 'utf8'))
+	assert.deepEqual(
+		exported.tests[0].assertions.map((assertion: { observeFrom?: string }) => assertion.observeFrom ?? null),
+		['page', 'reload', 'api', null]
+	)
+
+	await ok(['run', 'begin', 'run-1', 'ticket@1', '--build', 'b1', '--instance', 'local'])
+	const evidence = join(workspace, '.checkmate/tmp/run-1')
+	mkdirSync(evidence, { recursive: true })
+	writeFileSync(join(evidence, 'page.png'), 'png bytes')
+	writeFileSync(join(evidence, 'run.zip'), 'zip bytes')
+	const check = (assertion: string, ...evidenceArgs: string[]) =>
+		ok(['run', 'check', 'run-1', 'T1', assertion, '--observed', 'Kettle', ...evidenceArgs], 'HTTP 200: Kettle')
+	await check('A1', '--evidence', '.checkmate/tmp/run-1/page.png')
+	await check('A2', '--evidence', '.checkmate/tmp/run-1/run.zip')
+	await check('A3', '--evidence', '-:http_exchange')
+	await check('A4', '--evidence', '-')
+	const kinds = await ok([
+		'query',
+		"SELECT assertion_id, kind FROM evidence WHERE run_id = 'run-1' ORDER BY assertion_id",
+	])
+	assert.deepEqual(
+		kinds.rows.map((row: { kind: string }) => row.kind),
+		['screenshot', 'trace', 'http_exchange', 'observation']
+	)
+	await ok(['run', 'close', 'run-1', 'T1'])
+	await ok([
+		'run',
+		'finish',
+		'run-1',
+		'--completion',
+		'completed',
+		'--cleanup',
+		'completed',
+		'--cleanup-reason',
+		'No test data.',
+	])
+	for (const format of ['md', 'html', 'json', 'junit'])
+		await ok(['export', 'run', 'run-1', '--format', format, '--out', `run.${format}`])
+	const markdown = readFileSync(join(workspace, 'run.md'), 'utf8')
+	for (const kind of ['screenshot', 'trace', 'http_exchange', 'observation']) assert.match(markdown, new RegExp(kind))
+	assert.match(readFileSync(join(workspace, 'run.junit'), 'utf8'), /<testcase/)
 })
 
 test('Setup says why the application did not answer, follows redirects, accepts a 403, and goes through the proxy of the environment.', async (t) => {

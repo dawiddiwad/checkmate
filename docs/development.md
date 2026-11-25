@@ -46,6 +46,10 @@ The root package is private. The published CLI package is `cli/`. The build bund
 
 Checkmate keeps what it knows about each test tool in `plugin/recipes/`. Each tool has a JSON recipe and the Markdown usage text that the recipe names. `node` gives `http`. `playwright-cli` gives `browser`. Setup records the tools that it finds as profile tools. The host still runs the tools. Checkmate reads the recipes when it runs, and the build digest includes them.
 
+A recipe also gives the plan and run values of its tool. `observeFrom` maps each value that an assertion can observe from to `view` (what the tool shows now) or `state` (the stored state). `evidence` lists the evidence kinds that the tool makes. The optional `evidenceExtensions` maps a file extension to the default evidence kind of a file. A ready test of a plan can use only the `observeFrom` values of the recipes of the target tools. A run can record only the evidence kinds of those recipes. The values that every target accepted up to 0.8.2 stay accepted for all targets: `page`, `reload`, and `api`, and `observation`, `http_exchange`, `screenshot`, and `trace`. They are in `plugin/src/recipes.ts`. Do not add values to that list; give new values in a recipe.
+
+The contracts list every value of every recipe, because the models read the enums as the allowed values. After you change a recipe value, run `npm run generate`. `scripts/generate-contracts.ts` writes the `observeFrom` and evidence kind enums, and `npm run type:check` fails when they are stale.
+
 ## Testing a branch before release
 
 A branch install needs no build step. Run `npm run build` and commit `plugin/dist/checkmate.js` before you push. `npm run type:check` fails when the bundle is stale.

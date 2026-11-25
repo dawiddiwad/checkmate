@@ -15,5 +15,13 @@
 		"reload": "state"
 	},
 	"evidence": ["screenshot", "trace"],
+	"evidenceExtensions": {
+		".png": "screenshot",
+		".jpg": "screenshot",
+		".jpeg": "screenshot",
+		".webp": "screenshot",
+		".zip": "trace",
+		".trace": "trace"
+	},
 	"usage": "playwright-cli.md"
 }

@@ -16,6 +16,7 @@ import { canonical } from './store.ts'
 import { expectationError, expectationExample, expectationHint } from './expectation.ts'
 import * as validators from './validators.js'
 import { operationAllowed } from './targets.ts'
+import { choiceText, givenBy, observeFromChoices, observeReading } from './recipes.ts'
 
 export type Test = Plan['tests'][number]
 export type Assertion = Test['assertions'][number]
@@ -336,11 +337,15 @@ export function rangeWithoutInput(check: string) {
 }
 
 // A state-changing action is shown only by a check that reads the state from its source. A test whose checks are all
-// explicitly page-only is flagged; a test that does not say observeFrom is left alone.
+// explicitly view-only (page, or a view value of a recipe) is flagged; a test that does not say observeFrom is left alone.
 export function pageOnlyStateChange(test: { action: string; assertions: Array<{ observeFrom?: string }> }) {
 	const changes = /\b(add|apply|clear|delete|remove|save|update)\b/i.test(test.action)
 	return (
-		changes && test.assertions.length > 0 && test.assertions.every((assertion) => assertion.observeFrom === 'page')
+		changes &&
+		test.assertions.length > 0 &&
+		test.assertions.every(
+			(assertion) => assertion.observeFrom !== undefined && observeReading(assertion.observeFrom) === 'view'
+		)
 	)
 }
 
@@ -515,6 +520,7 @@ export function planCheck(value: unknown): Plan {
 }
 
 export function planTargetCheck(plan: Plan, profile: Profile) {
+	const observeFrom = observeFromChoices(profile.tools.map((tool) => tool.name))
 	for (const test of plan.tests.filter((test) => test.readiness === 'ready')) {
 		requireCondition(
 			profile.capabilities.includes(test.capability),
@@ -525,6 +531,13 @@ export function planTargetCheck(plan: Plan, profile: Profile) {
 				operationAllowed(profile, operation),
 				`Test ${test.id} uses operation ${operation}, which the target does not permit`
 			)
+		for (const { id, observeFrom: value } of test.assertions)
+			if (value !== undefined && !observeFrom.some((choice) => choice.value === value))
+				requireWellFormed(
+					false,
+					`Test ${test.id} assertion ${id} observes from ${value}, which no tool of target ${profile.targetId} gives (${givenBy(value)}). Allowed values: ${choiceText(observeFrom)}.`,
+					`Use an allowed value, add the tool that gives ${value} to the target, or record a planning gap.`
+				)
 	}
 }
 

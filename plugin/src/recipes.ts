@@ -13,6 +13,7 @@ export type Recipe = {
 	workspaceFolders: string[]
 	observeFrom: Record<string, ObserveReading>
 	evidence: string[]
+	evidenceExtensions?: Record<string, string>
 	usage: string
 }
 
@@ -24,6 +25,14 @@ export type ObserveReading = 'view' | 'state'
 // Do not add to these lists. A new value comes only from a recipe.
 export const compatibleObserveFrom: Record<string, ObserveReading> = { page: 'view', reload: 'state', api: 'state' }
 export const compatibleEvidence = ['observation', 'http_exchange', 'screenshot', 'trace']
+export const compatibleExtensions: Record<string, string> = {
+	'.png': 'screenshot',
+	'.jpg': 'screenshot',
+	'.jpeg': 'screenshot',
+	'.webp': 'screenshot',
+	'.zip': 'trace',
+	'.trace': 'trace',
+}
 const compatibleSource = 'accepted for all targets'
 
 export type SessionValues = { session: string; workFolder: string }
@@ -73,6 +82,18 @@ function readRecipe(folder: string, file: string): Recipe {
 		refuse('observeFrom must be an object that maps each value name to view or state.')
 	if (!Array.isArray(recipe.evidence) || !recipe.evidence.every(isValueName))
 		refuse('evidence must be a list of evidence kind names.')
+	const extensions: unknown = recipe.evidenceExtensions
+	if (
+		extensions !== undefined &&
+		(typeof extensions !== 'object' ||
+			extensions === null ||
+			Array.isArray(extensions) ||
+			!Object.keys(extensions).every((extension) => /^\.[a-z0-9]{1,10}$/.test(extension)) ||
+			!Object.values(extensions).every(
+				(kind) => recipe.evidence?.includes(kind) || compatibleEvidence.includes(kind)
+			))
+	)
+		refuse('evidenceExtensions must map each file extension, for example .mp4, to an evidence kind of the recipe.')
 	if (!isText(recipe.usage) || !existsSync(join(folder, recipe.usage)))
 		refuse('usage must name a file in the folder.')
 	return recipe as Recipe
@@ -103,6 +124,22 @@ export function readRecipes(folder: string) {
 					`Tool recipe ${join(folder, `${recipe.name}.json`)} is not valid: observeFrom ${value} is ${reading}, but it is ${known.reading} in ${known.from}.`
 				)
 			readings.set(value, { reading, from: `recipe ${recipe.name}` })
+		}
+	// One file extension has one default evidence kind in every recipe.
+	const kinds = new Map(
+		Object.entries(compatibleExtensions).map(([extension, kind]) => [
+			extension,
+			{ kind, from: 'the kinds accepted for all targets' },
+		])
+	)
+	for (const recipe of found)
+		for (const [extension, kind] of Object.entries(recipe.evidenceExtensions ?? {})) {
+			const known = kinds.get(extension)
+			if (known && known.kind !== kind)
+				throw Error(
+					`Tool recipe ${join(folder, `${recipe.name}.json`)} is not valid: evidenceExtensions ${extension} is ${kind}, but it is ${known.kind} in ${known.from}.`
+				)
+			kinds.set(extension, { kind, from: `recipe ${recipe.name}` })
 		}
 	return found
 }
@@ -164,7 +201,21 @@ export function observeReading(value: string): ObserveReading | undefined {
 	return compatibleObserveFrom[value] ?? recipes().find((recipe) => recipe.observeFrom[value])?.observeFrom[value]
 }
 
+// The recipes that give a value, for example "recipe maestro". A value can come from no recipe and no tool of a target.
+export function givenBy(value: string) {
+	const names = recipes()
+		.filter((recipe) => value in recipe.observeFrom || recipe.evidence.includes(value))
+		.map((recipe) => `recipe ${recipe.name}`)
+	return names.length ? `${names.join(' and ')} ${names.length === 1 ? 'gives' : 'give'} it` : 'no recipe gives it'
+}
+
 // For example: page (accepted for all targets, recipe playwright-cli), api (accepted for all targets, recipe node).
 export function choiceText(found: Choice[]) {
 	return found.map((choice) => `${choice.value} (${choice.from.join(', ')})`).join(', ')
+}
+
+// The evidence kind of a file without a given kind: from the recipes of the target's tools, then the compatible list.
+export function evidenceKindOfFile(toolNames: string[], extension: string) {
+	const recipe = recipes().find((recipe) => toolNames.includes(recipe.name) && recipe.evidenceExtensions?.[extension])
+	return recipe?.evidenceExtensions?.[extension] ?? compatibleExtensions[extension]
 }

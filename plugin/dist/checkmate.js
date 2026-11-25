@@ -13973,6 +13973,16 @@ function dataSummary(workspace2, reset) {
 import { existsSync as existsSync3, readdirSync, readFileSync as readFileSync3 } from "node:fs";
 import { join as join4 } from "node:path";
 var compatibleObserveFrom = { page: "view", reload: "state", api: "state" };
+var compatibleEvidence = ["observation", "http_exchange", "screenshot", "trace"];
+var compatibleExtensions = {
+  ".png": "screenshot",
+  ".jpg": "screenshot",
+  ".jpeg": "screenshot",
+  ".webp": "screenshot",
+  ".zip": "trace",
+  ".trace": "trace"
+};
+var compatibleSource = "accepted for all targets";
 var loaded;
 function isText(value2) {
   return typeof value2 === "string" && value2.trim() !== "";
@@ -14005,6 +14015,11 @@ function readRecipe(folder, file) {
     refuse4("observeFrom must be an object that maps each value name to view or state.");
   if (!Array.isArray(recipe.evidence) || !recipe.evidence.every(isValueName))
     refuse4("evidence must be a list of evidence kind names.");
+  const extensions = recipe.evidenceExtensions;
+  if (extensions !== void 0 && (typeof extensions !== "object" || extensions === null || Array.isArray(extensions) || !Object.keys(extensions).every((extension) => /^\.[a-z0-9]{1,10}$/.test(extension)) || !Object.values(extensions).every(
+    (kind) => recipe.evidence?.includes(kind) || compatibleEvidence.includes(kind)
+  )))
+    refuse4("evidenceExtensions must map each file extension, for example .mp4, to an evidence kind of the recipe.");
   if (!isText(recipe.usage) || !existsSync3(join4(folder, recipe.usage)))
     refuse4("usage must name a file in the folder.");
   return recipe;
@@ -14029,6 +14044,21 @@ function readRecipes(folder) {
         );
       readings.set(value2, { reading, from: `recipe ${recipe.name}` });
     }
+  const kinds3 = new Map(
+    Object.entries(compatibleExtensions).map(([extension, kind]) => [
+      extension,
+      { kind, from: "the kinds accepted for all targets" }
+    ])
+  );
+  for (const recipe of found)
+    for (const [extension, kind] of Object.entries(recipe.evidenceExtensions ?? {})) {
+      const known = kinds3.get(extension);
+      if (known && known.kind !== kind)
+        throw Error(
+          `Tool recipe ${join4(folder, `${recipe.name}.json`)} is not valid: evidenceExtensions ${extension} is ${kind}, but it is ${known.kind} in ${known.from}.`
+        );
+      kinds3.set(extension, { kind, from: `recipe ${recipe.name}` });
+    }
   return found;
 }
 function recipes() {
@@ -14050,6 +14080,35 @@ function shellInstructions(values) {
 }
 function toolFolders() {
   return recipes().flatMap((recipe) => recipe.workspaceFolders);
+}
+function choices(toolNames, compatible, values) {
+  const found = new Map(compatible.map((value2) => [value2, [compatibleSource]]));
+  for (const recipe of recipes().filter((recipe2) => toolNames.includes(recipe2.name)))
+    for (const value2 of values(recipe)) found.set(value2, [...found.get(value2) ?? [], `recipe ${recipe.name}`]);
+  return [...found].map(([value2, from]) => ({ value: value2, from }));
+}
+function observeFromChoices(toolNames) {
+  return choices(toolNames, Object.keys(compatibleObserveFrom), (recipe) => Object.keys(recipe.observeFrom));
+}
+function evidenceChoices(toolNames) {
+  return choices(toolNames, compatibleEvidence, (recipe) => recipe.evidence);
+}
+function allEvidence() {
+  return evidenceChoices(recipes().map((recipe) => recipe.name)).map((choice2) => choice2.value);
+}
+function observeReading(value2) {
+  return compatibleObserveFrom[value2] ?? recipes().find((recipe) => recipe.observeFrom[value2])?.observeFrom[value2];
+}
+function givenBy(value2) {
+  const names = recipes().filter((recipe) => value2 in recipe.observeFrom || recipe.evidence.includes(value2)).map((recipe) => `recipe ${recipe.name}`);
+  return names.length ? `${names.join(" and ")} ${names.length === 1 ? "gives" : "give"} it` : "no recipe gives it";
+}
+function choiceText(found) {
+  return found.map((choice2) => `${choice2.value} (${choice2.from.join(", ")})`).join(", ");
+}
+function evidenceKindOfFile(toolNames, extension) {
+  const recipe = recipes().find((recipe2) => toolNames.includes(recipe2.name) && recipe2.evidenceExtensions?.[extension]);
+  return recipe?.evidenceExtensions?.[extension] ?? compatibleExtensions[extension];
 }
 
 // plugin/src/targets.ts
@@ -15021,10 +15080,10 @@ function requireText(value2, name2) {
   requireWellFormed(typeof value2 === "string" && value2.trim().length > 0, `Missing ${name2}`);
   return value2;
 }
-function requireChoice(value2, choices, name2) {
+function requireChoice(value2, choices2, name2) {
   requireWellFormed(
-    choices.includes(value2),
-    `Invalid ${name2}: ${String(value2)}. Use one of: ${choices.join(", ")}.`
+    choices2.includes(value2),
+    `Invalid ${name2}: ${String(value2)}. Use one of: ${choices2.join(", ")}.`
   );
   return value2;
 }
@@ -15136,7 +15195,9 @@ function rangeWithoutInput(check) {
 }
 function pageOnlyStateChange(test) {
   const changes = /\b(add|apply|clear|delete|remove|save|update)\b/i.test(test.action);
-  return changes && test.assertions.length > 0 && test.assertions.every((assertion) => assertion.observeFrom === "page");
+  return changes && test.assertions.length > 0 && test.assertions.every(
+    (assertion) => assertion.observeFrom !== void 0 && observeReading(assertion.observeFrom) === "view"
+  );
 }
 var maxRequirementsPerTest = 3;
 function requiredFieldCount(text2) {
@@ -15285,6 +15346,7 @@ function planCheck(value2) {
   return plan;
 }
 function planTargetCheck(plan, profile) {
+  const observeFrom = observeFromChoices(profile.tools.map((tool) => tool.name));
   for (const test of plan.tests.filter((test2) => test2.readiness === "ready")) {
     requireCondition(
       profile.capabilities.includes(test.capability),
@@ -15295,6 +15357,13 @@ function planTargetCheck(plan, profile) {
         operationAllowed(profile, operation),
         `Test ${test.id} uses operation ${operation}, which the target does not permit`
       );
+    for (const { id: id2, observeFrom: value2 } of test.assertions)
+      if (value2 !== void 0 && !observeFrom.some((choice2) => choice2.value === value2))
+        requireWellFormed(
+          false,
+          `Test ${test.id} assertion ${id2} observes from ${value2}, which no tool of target ${profile.targetId} gives (${givenBy(value2)}). Allowed values: ${choiceText(observeFrom)}.`,
+          `Use an allowed value, add the tool that gives ${value2} to the target, or record a planning gap.`
+        );
   }
 }
 function dependencyCheck(plan, latest) {
@@ -18306,14 +18375,6 @@ var stoppedReason = "Run stopped before the test closed. Actions may have occurr
 var closeCauses = ["deadline"];
 var interruptCauses = ["deadline", "host_stopped", "tool_unavailable"];
 var deadlineShare = 0.9;
-var kindByExtension = {
-  ".png": "screenshot",
-  ".jpg": "screenshot",
-  ".jpeg": "screenshot",
-  ".webp": "screenshot",
-  ".zip": "trace",
-  ".trace": "trace"
-};
 var mediaTypes = {
   ".png": "image/png",
   ".jpg": "image/jpeg",
@@ -18323,6 +18384,7 @@ var mediaTypes = {
   ".json": "application/json",
   ".xml": "application/xml",
   ".csv": "text/csv",
+  ".mp4": "video/mp4",
   ".txt": "text/plain",
   ".log": "text/plain",
   ".md": "text/markdown",
@@ -18611,8 +18673,22 @@ function plannedTarget(store, text2) {
   const reference2 = revisionReference(requireText(text2, "plan reference"), "plan reference");
   return planRevision(store, reference2.id, reference2.revision).plan.target.targetId;
 }
-var evidenceKinds = ["observation", "http_exchange", "screenshot", "trace"];
-function textEvidence(input, name2) {
+function evidenceKinds(store, runId) {
+  const run2 = one(store, "SELECT * FROM runs WHERE run_id = ?", runId);
+  const profile = targetRevision(store, run2.target_id, run2.target_revision).profile;
+  const tools = profile.tools.map((tool) => tool.name);
+  return { targetId: profile.targetId, tools, choices: evidenceChoices(tools) };
+}
+function requireEvidenceKind(kind, allowed2) {
+  if (!allowed2.choices.some((choice2) => choice2.value === kind))
+    requireWellFormed(
+      false,
+      `Evidence kind ${kind} is not given by a tool of target ${allowed2.targetId} (${givenBy(kind)}). Allowed kinds: ${choiceText(allowed2.choices)}.`,
+      "Give an allowed kind, or leave the kind out to record an observation."
+    );
+  return kind;
+}
+function textEvidence(input, name2, allowed2) {
   requireWellFormed(typeof input.text === "string" && input.text.trim().length > 0, "Missing evidence text");
   const bytes = Buffer.from(input.text, "utf8");
   requireWellFormed(bytes.length <= maxEvidenceBytes2, "Evidence text exceeds 32 MiB");
@@ -18625,12 +18701,12 @@ function textEvidence(input, name2) {
   return {
     path: null,
     name: `${name2}.${json ? "json" : "txt"}`,
-    kind: requireChoice(input.kind ?? "observation", evidenceKinds, "evidence kind"),
+    kind: requireEvidenceKind(input.kind ?? "observation", allowed2),
     mediaType: json ? "application/json" : "text/plain",
     bytes
   };
 }
-function readEvidence(store, runId, { file: name2, kind }) {
+function readEvidence(store, runId, { file: name2, kind }, allowed2) {
   requireWellFormed(name2 && !isAbsolute3(name2), `Evidence path must be relative to the workspace: ${name2}`);
   const directory2 = evidenceDirectory(runId);
   let root;
@@ -18658,7 +18734,7 @@ function readEvidence(store, runId, { file: name2, kind }) {
   return {
     path,
     name: basename2(name2),
-    kind: requireChoice(kind ?? kindByExtension[extension] ?? "observation", evidenceKinds, "evidence kind"),
+    kind: requireEvidenceKind(kind ?? evidenceKindOfFile(allowed2.tools, extension) ?? "observation", allowed2),
     mediaType: mediaTypes[extension] ?? "application/octet-stream",
     bytes: readFileSync8(real)
   };
@@ -18691,7 +18767,10 @@ function storeEvidence(store, runId, testId, assertionId, files2, operationId) {
   });
 }
 function evidenceFiles(store, runId, name2, specs = []) {
-  const files2 = specs.map((spec2) => "file" in spec2 ? readEvidence(store, runId, spec2) : textEvidence(spec2, name2));
+  const allowed2 = evidenceKinds(store, runId);
+  const files2 = specs.map(
+    (spec2) => "file" in spec2 ? readEvidence(store, runId, spec2, allowed2) : textEvidence(spec2, name2, allowed2)
+  );
   const paths = files2.flatMap((file) => file.path ?? []);
   requireWellFormed(new Set(paths).size === paths.length, "An evidence file is listed twice");
   return files2;
@@ -25627,8 +25706,8 @@ function filterValue(filters, names) {
   for (const [name2, value2] of Object.entries(filters ?? {})) {
     if (value2 === void 0 || value2 === "") continue;
     requireCondition(name2 in names, `Unknown filter: ${name2}. Use: ${Object.keys(names).join(", ")}.`);
-    const choices = names[name2];
-    if (choices) requireChoice(value2, choices, `${name2} filter`);
+    const choices2 = names[name2];
+    if (choices2) requireChoice(value2, choices2, `${name2} filter`);
     values[name2] = value2;
   }
   return values;
@@ -28604,7 +28683,7 @@ function permissionPage(store, context, askerId, requestId2, view, refusal) {
   const after = next ? requestHref(next, from) : back;
   const name2 = requestName(item);
   const rules = permissionRules(store, askerId);
-  const choices = item.decision ? [] : choicesOf(item);
+  const choices2 = item.decision ? [] : choicesOf(item);
   const title2 = askHeading(item);
   return {
     title: `${name2} \xB7 Permission request`,
@@ -28650,10 +28729,10 @@ function permissionPage(store, context, askerId, requestId2, view, refusal) {
 				<h2 class="lab" id="asked-title">What it asks</h2>
 				${asked(item)}
 			</section>
-			${choices.length ? html2`<section class="sp-options" aria-labelledby="options-title" data-key="options:${name2}">
+			${choices2.length ? html2`<section class="sp-options" aria-labelledby="options-title" data-key="options:${name2}">
 							<h2 class="lab" id="options-title">Options</h2>
 							<ol class="sp-optlist asks">
-								${choices.map((choice2, index2) => html2`<li>${optionOf(context, item, from, choice2, index2 + 1)}<span class="help">${choice2.text}</span></li>`)}
+								${choices2.map((choice2, index2) => html2`<li>${optionOf(context, item, from, choice2, index2 + 1)}<span class="help">${choice2.text}</span></li>`)}
 							</ol>
 							<div class="sp-c-extra" data-extra="deny" ${refusal?.field ? "" : html2`hidden`}>
 								<form
@@ -28870,8 +28949,8 @@ function listPage(state, load) {
   if (state.page <= last) return { page, state };
   return { page: load(query(last)), state: { ...state, page: last } };
 }
-function options(choices, selected) {
-  return choices.map(
+function options(choices2, selected) {
+  return choices2.map(
     ([value2, label]) => html2`<option value="${value2}" ${value2 === selected ? html2`selected` : ""}>${label}</option>`
   );
 }
@@ -29862,8 +29941,8 @@ function activityPage(store, context, params, defaults) {
   const first = total ? (shown2.page - 1) * shown2.size + 1 : 0;
   const last = Math.min(total, shown2.page * shown2.size);
   const planIds = [...new Set(page.rows.flatMap((entry) => entry.run ? [entry.run.planId] : []))];
-  const choices = planIds.flatMap((planId) => asList(instanceChoice(store, planId)));
-  const dialogs2 = html2`${testDialog(context, null, { build: "", level: "normal", since: "", until: "", repo: "" }, defaults.build, choices)}
+  const choices2 = planIds.flatMap((planId) => asList(instanceChoice(store, planId)));
+  const dialogs2 = html2`${testDialog(context, null, { build: "", level: "normal", since: "", until: "", repo: "" }, defaults.build, choices2)}
 	${page.rows.flatMap((entry) => entry.run?.stoppable ? [stopDialog(context, entry.run)] : [])}`;
   return {
     title: "Activity",
@@ -42084,9 +42163,9 @@ data: ${matched.join(",") || "*"}
     const effort = form.get("effort") ?? void 0;
     try {
       const catalog2 = await catalogFor(harness, model === "").catch(() => void 0);
-      const choices = { harness, model, effort, catalog: catalog2 };
+      const choices2 = { harness, model, effort, catalog: catalog2 };
       const scope = planId ? { planId, planRevision: planRevision2, record: null, planChat: true } : void 0;
-      const turn2 = chatId2 ? requester.followChat(actor, chatId2, message, choices, scope) : requester.startChat(actor, message, scope ?? screenContext(store, screen, true), choices);
+      const turn2 = chatId2 ? requester.followChat(actor, chatId2, message, choices2, scope) : requester.startChat(actor, message, scope ?? screenContext(store, screen, true), choices2);
       const conversation = requestOf(store, turn2).conversation;
       redirect(request2.res, path ? planDestination(conversation) : `/chats/${conversation}`, cookies);
     } catch (error) {
@@ -42525,7 +42604,7 @@ data: ${matched.join(",") || "*"}
   function verdictState(form) {
     return { ...emptyState(), values: values(form, ["verdict", "rationale", "actor"]) };
   }
-  function decide(request2, form, choices, page, record, staleCheck) {
+  function decide(request2, form, choices2, page, record, staleCheck) {
     const state = verdictState(form);
     const { actor, cookies } = actorFrom(request2, form);
     const view = () => page(state);
@@ -42534,7 +42613,7 @@ data: ${matched.join(",") || "*"}
     state.stale = staleCheck(sha, token);
     if (state.stale) return refuse4(request2, view, cookies);
     if (form.get("back")) return refuse4(request2, () => ({ ...view(), status: 200 }), cookies);
-    if (!choices.includes(state.values.verdict)) state.error = "Choose a decision.";
+    if (!choices2.includes(state.values.verdict)) state.error = "Choose a decision.";
     else if (!actor) state.error = "Enter your name. Checkmate records it with your decision.";
     else if (!state.values.rationale.trim())
       state.error = "Write a rationale. Checkmate records it with your decision.";
@@ -44042,8 +44121,9 @@ function evidence2(args, context) {
   return specs?.map((spec2) => {
     const match = /^-(?::(.+))?$/.exec(spec2);
     if (match) return { text: context.text(), kind: match[1] };
-    const file = /^(.*):(observation|http_exchange|screenshot|trace)$/.exec(spec2);
-    return file ? { file: file[1], kind: file[2] } : { file: spec2 };
+    const colon = spec2.lastIndexOf(":");
+    const kind = colon >= 0 ? spec2.slice(colon + 1) : "";
+    return allEvidence().includes(kind) ? { file: spec2.slice(0, colon), kind } : { file: spec2 };
   });
 }
 function toolSpec(spec2) {
@@ -45927,10 +46007,10 @@ function queryStatement(store, sql) {
   );
   return statement;
 }
-function exportCommand(positional, choices, render) {
+function exportCommand(positional, choices2, render) {
   return {
     positionals: [positional],
-    flags: { format: choices, out: "value" },
+    flags: { format: choices2, out: "value" },
     required: ["format"],
     readOnly: true,
     run: (store, args) => {

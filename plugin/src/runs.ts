@@ -57,6 +57,7 @@ import {
 	wrappedValue,
 } from './expectation.ts'
 import { checkRequest, requestMatches } from './routes.ts'
+import { choiceText, evidenceChoices, evidenceKindOfFile, givenBy } from './recipes.ts'
 
 export type RunRow = {
 	run_id: string
@@ -166,14 +167,6 @@ export const stoppedReason = 'Run stopped before the test closed. Actions may ha
 export const closeCauses = ['deadline'] as const
 export const interruptCauses = ['deadline', 'host_stopped', 'tool_unavailable'] as const
 export const deadlineShare = 0.9
-const kindByExtension: Record<string, EvidenceRow['kind']> = {
-	'.png': 'screenshot',
-	'.jpg': 'screenshot',
-	'.jpeg': 'screenshot',
-	'.webp': 'screenshot',
-	'.zip': 'trace',
-	'.trace': 'trace',
-}
 const mediaTypes: Record<string, string> = {
 	'.png': 'image/png',
 	'.jpg': 'image/jpeg',
@@ -183,6 +176,7 @@ const mediaTypes: Record<string, string> = {
 	'.json': 'application/json',
 	'.xml': 'application/xml',
 	'.csv': 'text/csv',
+	'.mp4': 'video/mp4',
 	'.txt': 'text/plain',
 	'.log': 'text/plain',
 	'.md': 'text/markdown',
@@ -525,9 +519,29 @@ function plannedTarget(store: Store, text: string) {
 
 type EvidenceFile = { path: string | null; name: string; kind: string; mediaType: string; bytes: Buffer }
 
-const evidenceKinds = ['observation', 'http_exchange', 'screenshot', 'trace'] as const
+// The evidence kinds of a run: the kinds of the recipes of its target's tools, and the compatible kinds.
+function evidenceKinds(store: Store, runId: string) {
+	const run = one<RunRow>(store, 'SELECT * FROM runs WHERE run_id = ?', runId)!
+	const profile = targetRevision(store, run.target_id, run.target_revision).profile
+	const tools = profile.tools.map((tool) => tool.name)
+	return { targetId: profile.targetId, tools, choices: evidenceChoices(tools) }
+}
 
-function textEvidence(input: { text: string; kind?: string }, name: string): EvidenceFile {
+function requireEvidenceKind(kind: string, allowed: ReturnType<typeof evidenceKinds>) {
+	if (!allowed.choices.some((choice) => choice.value === kind))
+		requireWellFormed(
+			false,
+			`Evidence kind ${kind} is not given by a tool of target ${allowed.targetId} (${givenBy(kind)}). Allowed kinds: ${choiceText(allowed.choices)}.`,
+			'Give an allowed kind, or leave the kind out to record an observation.'
+		)
+	return kind
+}
+
+function textEvidence(
+	input: { text: string; kind?: string },
+	name: string,
+	allowed: ReturnType<typeof evidenceKinds>
+): EvidenceFile {
 	requireWellFormed(typeof input.text === 'string' && input.text.trim().length > 0, 'Missing evidence text')
 	const bytes = Buffer.from(input.text, 'utf8')
 	requireWellFormed(bytes.length <= maxEvidenceBytes, 'Evidence text exceeds 32 MiB')
@@ -540,7 +554,7 @@ function textEvidence(input: { text: string; kind?: string }, name: string): Evi
 	return {
 		path: null,
 		name: `${name}.${json ? 'json' : 'txt'}`,
-		kind: requireChoice(input.kind ?? 'observation', evidenceKinds, 'evidence kind'),
+		kind: requireEvidenceKind(input.kind ?? 'observation', allowed),
 		mediaType: json ? 'application/json' : 'text/plain',
 		bytes,
 	}
@@ -549,7 +563,8 @@ function textEvidence(input: { text: string; kind?: string }, name: string): Evi
 function readEvidence(
 	store: Store,
 	runId: string,
-	{ file: name, kind }: { file: string; kind?: string }
+	{ file: name, kind }: { file: string; kind?: string },
+	allowed: ReturnType<typeof evidenceKinds>
 ): EvidenceFile {
 	requireWellFormed(name && !isAbsolute(name), `Evidence path must be relative to the workspace: ${name}`)
 	const directory = evidenceDirectory(runId)
@@ -578,7 +593,7 @@ function readEvidence(
 	return {
 		path,
 		name: basename(name),
-		kind: requireChoice(kind ?? kindByExtension[extension] ?? 'observation', evidenceKinds, 'evidence kind'),
+		kind: requireEvidenceKind(kind ?? evidenceKindOfFile(allowed.tools, extension) ?? 'observation', allowed),
 		mediaType: mediaTypes[extension] ?? 'application/octet-stream',
 		bytes: readFileSync(real),
 	}
@@ -620,7 +635,10 @@ function storeEvidence(
 }
 
 function evidenceFiles(store: Store, runId: string, name: string, specs: EvidenceInput[] = []) {
-	const files = specs.map((spec) => ('file' in spec ? readEvidence(store, runId, spec) : textEvidence(spec, name)))
+	const allowed = evidenceKinds(store, runId)
+	const files = specs.map((spec) =>
+		'file' in spec ? readEvidence(store, runId, spec, allowed) : textEvidence(spec, name, allowed)
+	)
 	const paths = files.flatMap((file) => file.path ?? [])
 	requireWellFormed(new Set(paths).size === paths.length, 'An evidence file is listed twice')
 	return files

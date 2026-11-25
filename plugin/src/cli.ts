@@ -98,6 +98,7 @@ import { storeExplorationFindings } from './findingsRun.ts'
 import { settleEnded } from './cleanups.ts'
 import { owedCleanups, settleCleanups } from './resets.ts'
 import { actionRecovery, performAction, type ActionName } from './actions.ts'
+import { allEvidence } from './recipes.ts'
 
 type FlagKind = 'value' | 'list' | 'repeat' | 'switch' | readonly string[] | { min: number; max: number }
 type Args = Record<string, string | string[] | boolean>
@@ -171,8 +172,10 @@ function evidence(args: Args, context: Context): EvidenceInput[] | undefined {
 	return specs?.map((spec) => {
 		const match = /^-(?::(.+))?$/.exec(spec)
 		if (match) return { text: context.text(), kind: match[1] }
-		const file = /^(.*):(observation|http_exchange|screenshot|trace)$/.exec(spec)
-		return file ? { file: file[1], kind: file[2] } : { file: spec }
+		// <path>:<kind> names a kind only when the kind is one that a recipe or the compatible list gives.
+		const colon = spec.lastIndexOf(':')
+		const kind = colon >= 0 ? spec.slice(colon + 1) : ''
+		return allEvidence().includes(kind) ? { file: spec.slice(0, colon), kind } : { file: spec }
 	})
 }
 

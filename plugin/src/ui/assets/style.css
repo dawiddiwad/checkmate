@@ -3934,3 +3934,6 @@ main a:active {
 	position: static;
 	max-width: 400px;
 }
+.ds-type {
+	white-space: nowrap;
+}

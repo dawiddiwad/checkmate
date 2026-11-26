@@ -9664,7 +9664,7 @@ test('Refuse a range check that names no input value, and save the same range wi
 test('A retest verdict follows the assertions its defect was recorded against â€” a failing sibling assertion on the same test does not make the defect not fixed.', async (t) => {
 	const workspace = directory(t)
 	writeFileSync(join(workspace, 'ticket.md'), 'The quote is 240 and shows no 999.\n')
-	const app = await fixture()
+	const app = await fixture({ fixedQuoteFee: 999 })
 	t.after(() => app.close())
 	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle' }
 	const ok = async (args: string[], value?: unknown) => {
@@ -9759,6 +9759,7 @@ test('A retest verdict follows the assertions its defect was recorded against â€
 	app.fix()
 	const fixed = await (await fetch(`${app.baseUrl}/quote?promotion=true&loyalty=true`)).json()
 	assert.equal(fixed.totalPLN, 240)
+	assert.equal(fixed.feePLN, 999)
 	await ok(['run', 'begin', 'run-2', 'ticket@1', '--build', 'fixed', '--retest-of', 'run-1', '--tests', 'T1'])
 	await ok(['run', 'check', 'run-2', 'T1', 'A1', '--observed', '240', '--evidence', '-'], fixed)
 	// A2 fails on the fixed build. F1 is about A1 only, so its retest verdict is fixed.

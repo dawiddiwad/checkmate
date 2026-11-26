@@ -9,20 +9,21 @@ export function closeButton({ href }: { href: string }) {
 export type Drawer = { back: string; key: string; path: Html | string; slot: Html; head: Html; body: Html }
 
 export function drawer({ back, key, path, slot, head, body }: Drawer) {
-	return html`<aside
-		class="sc-drawer"
-		aria-labelledby="record-title"
-		data-drawer
-		data-back="${back}"
-		data-region="record"
-		data-key="${key}"
-	>
-		<div class="sc-drawer-head">
-			<p class="sc-crumb">${path}</p>
-			${closeButton({ href: back })}
-		</div>
-		<div class="sc-drawer-body">${slot} ${head} ${body}</div>
-	</aside>`
+	return html`<a class="sc-scrim" href="${back}" tabindex="-1" aria-hidden="true" data-scrim></a>
+		<aside
+			class="sc-drawer"
+			aria-labelledby="record-title"
+			data-drawer
+			data-back="${back}"
+			data-region="record"
+			data-key="${key}"
+		>
+			<div class="sc-drawer-head">
+				<p class="sc-crumb">${path}</p>
+				${closeButton({ href: back })}
+			</div>
+			<div class="sc-drawer-body">${slot} ${head} ${body}</div>
+		</aside>`
 }
 
 export type DrawerHead = {

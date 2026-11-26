@@ -29,7 +29,8 @@ export function tableRow({ cells, attrs }: { cells: TableCell[]; attrs?: Attrs }
 export type DataTable = { columns: TableColumn[]; rows: Html | Html[]; scroll?: boolean; attrs?: Attrs }
 
 export function dataTable({ columns, rows, scroll = false, attrs }: DataTable) {
-	const table = html`<table ${attributes(attrs)}>
+	const { class: extra, ...rest } = attrs ?? {}
+	const table = html`<table class="sc-table${extra ? ` ${extra}` : ''}" ${attributes(rest)}>
 		<thead>
 			<tr>
 				${columns.map(column)}
@@ -39,5 +40,5 @@ export function dataTable({ columns, rows, scroll = false, attrs }: DataTable) {
 			${rows}
 		</tbody>
 	</table>`
-	return scroll ? html`<div class="scroll">${table}</div>` : table
+	return scroll ? html`<div class="sc-table-wrap">${table}</div>` : table
 }

@@ -3,7 +3,7 @@ import { html } from '../html.ts'
 
 export function facts({ rows }: { rows: Array<[string, Html | string | false]> }) {
 	const shown = rows.filter(([, value]) => value !== false)
-	return html`<dl class="facts">
+	return html`<dl class="sc-facts">
 		${shown.map(
 			([label, value]) =>
 				html`<div>

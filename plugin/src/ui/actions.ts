@@ -33,13 +33,13 @@ const levelNotes: Record<string, string> = {
 
 function shell(id: string, title: string, gone: string, action: string, context: Context, body: Html) {
 	return html`<dialog
-		class="sp-confirm sp-act"
+		class="sc-confirm is-act"
 		data-act-dialog="${id}"
 		data-gone="${gone}"
 		aria-labelledby="act-${id}-title"
 	>
-		<div class="sp-dh"><h2 id="act-${id}-title" class="sp-path" data-act-title>${title}</h2></div>
-		<form method="post" action="${action}" class="sp-form sp-confirm-b" data-act-form>
+		<h2 id="act-${id}-title" data-act-title>${title}</h2>
+		<form method="post" action="${action}" class="sc-form" data-act-form>
 			<input type="hidden" name="csrf" value="${context.csrf}" />
 			<div data-act-error aria-live="polite"></div>
 			${body}
@@ -96,18 +96,18 @@ export function testerToolHelp(harness: Context['harness']) {
 }
 
 export function testerModels(context: Context) {
-	return html`<details class="sp-more" data-tester-models data-harness="${context.harness}">
+	return html`<details class="sc-fold" data-tester-models data-harness="${context.harness}">
 		<summary data-stop>Models by tester</summary>
-		<p class="help">Choose a model for a tester, or use the workspace tester model.</p>
-		<p class="help" role="status" data-tester-count-status></p>
-		<p class="help" role="status" data-tester-model-status>Open to load models.</p>
+		<p class="sc-help">Choose a model for a tester, or use the workspace tester model.</p>
+		<p class="sc-help" role="status" data-tester-count-status></p>
+		<p class="sc-help" role="status" data-tester-model-status>Open to load models.</p>
 		${formButton({ label: 'Refresh models', attrs: { type: 'button', 'data-stop': true, 'data-tester-model-refresh': true } })}
 		<label for="tester-model-filter">Filter models</label>
 		<input id="tester-model-filter" type="search" autocomplete="off" data-stop data-tester-model-filter />
 		${Array.from(
 			{ length: 10 },
 			(_, index) =>
-				html`<div class="field-group" data-tester-model-row="${index + 1}" hidden>
+				html`<div class="sc-field" data-tester-model-row="${index + 1}" hidden>
 					<label for="tester-model-a${index + 1}">Tester a${index + 1}</label>
 					<select
 						id="tester-model-a${index + 1}"
@@ -149,7 +149,7 @@ export function testDialog(
 		planId ? `/plans/${planId}/test` : '/activity',
 		context,
 		html`<input type="hidden" name="harness" value="${context.harness}" />
-			<p class="sp-sub">Start a test of the plan on this computer. The testers run in the background.</p>
+			<p class="sc-note">Start a test of the plan on this computer. The testers run in the background.</p>
 			${dialogField('act-test-build', 'Build', 'build', shown.build, 'Write the build name.')}
 			${instances.map((choice) => instanceField(choice, choice.planId === planId))}
 			${radioGroup({
@@ -171,15 +171,15 @@ export function testDialog(
 				aria-describedby="act-test-rules-help"
 				data-stop
 			/>
-			<p class="help" id="act-test-rules-help">${testerToolHelp(context.harness)}</p>
-			<details class="sp-more" data-more>
+			<p class="sc-help" id="act-test-rules-help">${testerToolHelp(context.harness)}</p>
+			<details class="sc-fold" data-more>
 				<summary data-stop>More</summary>
 				${dialogField('act-test-since', 'Since (git ref)', 'since', shown.since)}
 				${dialogField('act-test-until', 'Until (git ref)', 'until', shown.until)}
 				${dialogField('act-test-repo', 'Repository folder', 'repo', shown.repo)}
 			</details>
 			${testerModels(context)}
-			<div class="btns">
+			<div class="sc-confirm-foot">
 				${button({ label: 'Start the test', keyName: 'Enter', emphasis: 'primary', attrs: { 'data-stop': true } })}
 				${button({ label: 'Cancel', keyName: 'Esc', attrs: { type: 'button', 'data-act-cancel': true, 'data-stop': true } })}
 			</div>`
@@ -222,7 +222,7 @@ export function ruleDialog(kind: 'edit' | 'add', context: Context, planId: strin
 							<input id="act-${id}-source" name="source" maxlength="200" autocomplete="off" data-stop />`
 					: ''
 			}
-			<div class="btns">
+			<div class="sc-confirm-foot">
 				${button({ label: 'Save the rule', keyName: 'Enter', emphasis: 'primary', attrs: { 'data-stop': true } })}
 				${button({ label: 'Cancel', keyName: 'Esc', attrs: { type: 'button', 'data-act-cancel': true, 'data-stop': true } })}
 			</div>`
@@ -231,17 +231,17 @@ export function ruleDialog(kind: 'edit' | 'add', context: Context, planId: strin
 
 export function copyDialog() {
 	return html`<dialog
-		class="sp-confirm sp-act"
+		class="sc-confirm is-act"
 		data-act-dialog="copy"
 		data-gone="The text is not copied."
 		aria-labelledby="act-copy-title"
 	>
-		<div class="sp-dh"><h2 id="act-copy-title" class="sp-path" data-copy-title>Copy the text</h2></div>
-		<div class="sp-form sp-confirm-b">
-			<p class="sp-sub">Checkmate cannot use the clipboard here: copy the selected text with Ctrl+C or Cmd+C.</p>
+		<h2 id="act-copy-title" data-copy-title>Copy the text</h2>
+		<div class="sc-form">
+			<p class="sc-note">Checkmate cannot use the clipboard here: copy the selected text with Ctrl+C or Cmd+C.</p>
 			<label for="act-copy-text">Text for the developer</label>
-			<textarea id="act-copy-text" class="sp-copy-text" rows="12" readonly data-stop data-copy-text></textarea>
-			<div class="btns">
+			<textarea id="act-copy-text" class="sc-textarea" rows="12" readonly data-stop data-copy-text></textarea>
+			<div class="sc-confirm-foot">
 				${button({ label: 'Close', keyName: 'Esc', emphasis: 'primary', attrs: { type: 'button', 'data-act-cancel': true, 'data-stop': true } })}
 			</div>
 		</div>
@@ -257,10 +257,10 @@ export function followDialog(context: Context, planId: string, subject: Subject,
 		`/plans/${planId}/follow`,
 		context,
 		html`<input type="hidden" name="exploration" value="${subject.explorationId}" />
-			<p class="sp-sub">
+			<p class="sc-note">
 				${planId}, build ${subject.build}: the testers read ${answers} of the product owner and test again.
 			</p>
-			<div class="btns">
+			<div class="sc-confirm-foot">
 				${button({ label: `Test the ${answers}`, keyName: '1', emphasis: 'primary', attrs: { 'data-stop': true, 'data-key-n': '1' } })}
 				${button({ label: 'Cancel', keyName: '2', attrs: { type: 'button', 'data-act-cancel': true, 'data-stop': true, 'data-key-n': '2' } })}
 			</div>`
@@ -276,13 +276,13 @@ export function storeDialog(context: Context, planId: string, count: number, app
 		context,
 		html`<input type="hidden" name="view" value="all" />
 			<input type="hidden" name="count" value="${count}" />
-			<p class="sp-sub">
+			<p class="sc-note">
 				Checkmate stores each defect as a test of this plan and attaches it to the rule that the defect cites.
 				The rules, areas and marks of the plan stay the same. A defect with no rule gets a new rule HRn. Later
 				tests of this plan may run the stored
 				tests.${approval ? ' The stored tests wait for the approval of the plan.' : ''}
 			</p>
-			<div class="btns">
+			<div class="sc-confirm-foot">
 				${button({ label: `Store ${plural(count, 'test')}`, keyName: '1', emphasis: 'primary', attrs: { 'data-stop': true, 'data-key-n': '1' } })}
 				${button({ label: 'Cancel', keyName: '2', attrs: { type: 'button', 'data-act-cancel': true, 'data-stop': true, 'data-key-n': '2' } })}
 			</div>`
@@ -296,12 +296,12 @@ export function stopDialog(context: Context, subject: Subject) {
 		`${subject.explorationId} has ended. Nothing was stopped.`,
 		`/explorations/${subject.explorationId}/stop`,
 		context,
-		html`<p class="sp-sub">
+		html`<p class="sc-note">
 				Stop the test of ${subject.planId}, build ${subject.build}? The testers end now. The record and the work
 				folder stay.
 			</p>
 			${dialogField(`act-stop-${subject.explorationId}-reason`, 'Reason (optional)', 'reason', '')}
-			<div class="btns">
+			<div class="sc-confirm-foot">
 				${button({ label: 'Keep testing', keyName: '1', attrs: { type: 'button', 'data-act-cancel': true, 'data-stop': true, 'data-key-n': '1' } })}
 				${button({ label: 'Stop the test', keyName: '2', emphasis: 'primary', attrs: { 'data-stop': true, 'data-key-n': '2' } })}
 			</div>`
@@ -315,11 +315,11 @@ export function stopTesterDialog(context: Context, subject: Subject, explorer: s
 		`Tester ${explorer} has finished. Nothing was stopped.`,
 		`/explorations/${subject.explorationId}/explorers/${explorer}/stop`,
 		context,
-		html`<p class="sp-sub">
+		html`<p class="sc-note">
 				Stop tester ${explorer} of ${subject.planId}, build ${subject.build}? The other testers go on.
 			</p>
 			${dialogField(`act-stop-${subject.explorationId}-${explorer}-reason`, 'Reason (optional)', 'reason', '')}
-			<div class="btns">
+			<div class="sc-confirm-foot">
 				${button({ label: 'Keep testing', keyName: '1', attrs: { type: 'button', 'data-act-cancel': true, 'data-stop': true, 'data-key-n': '1' } })}
 				${button({ label: `Stop tester ${explorer}`, keyName: '2', emphasis: 'primary', attrs: { 'data-stop': true, 'data-key-n': '2' } })}
 			</div>`

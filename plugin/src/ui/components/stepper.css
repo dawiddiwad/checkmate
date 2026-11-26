@@ -1,5 +1,10 @@
-.sp-strip {
+.sc-phases {
 	display: inline-flex;
 	flex-wrap: wrap;
-	gap: 8px;
+	align-items: center;
+	gap: var(--space-3);
+	font: 500 13px/20px var(--font-mono);
+}
+.sc-phases .sc-mark {
+	font-family: var(--font-mono);
 }

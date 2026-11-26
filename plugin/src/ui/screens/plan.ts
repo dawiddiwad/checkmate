@@ -26,6 +26,7 @@ import { downloadMenu } from '../components/menu.ts'
 import { notice } from '../components/notice.ts'
 import { heading } from '../components/page-heading.ts'
 import { statusCounts, statusMark } from '../components/status-mark.ts'
+import { jumpLinks } from '../components/tabs.ts'
 import { emptyState, gapPanel, recordPanel, verdictPanel } from '../forms.ts'
 import { costText, glyph, hasMetadata, html, join, metadataList, plural, short, time, words } from '../html.ts'
 import { loopState, runStatus } from '../lists.ts'
@@ -39,12 +40,12 @@ type Gap = Plan['gaps'][number]
 function testLink(planId: string, revision: number, reference: string) {
 	const [owner, id] = reference.includes(':') ? reference.split(':') : [null, reference]
 	return owner
-		? html`<a class="mono" href="/plans/${owner}#${id}">${reference}</a>`
-		: html`<a class="mono" href="/plans/${planId}@${revision}#${id}">${reference}</a>`
+		? html`<a class="sc-mono" href="/plans/${owner}#${id}">${reference}</a>`
+		: html`<a class="sc-mono" href="/plans/${planId}@${revision}#${id}">${reference}</a>`
 }
 
 function ids(values: string[], link: (id: string) => Html) {
-	return values.length ? join(values.map(link), ', ') : html`<span class="muted">none</span>`
+	return values.length ? join(values.map(link), ', ') : html`<span class="sc-muted">none</span>`
 }
 
 function removeTest(context: Context, detail: Detail, test: Test) {
@@ -54,15 +55,15 @@ function removeTest(context: Context, detail: Detail, test: Test) {
 		: html`${field({ id: `remove-actor-${test.id}`, label: 'Your name', control: textInput({ id: `remove-actor-${test.id}`, name: 'actor', attrs: { required: true, autocomplete: 'name' } }) })}`
 	return html`<details class="test-remove" data-open-key="remove:${test.id}">
 		${formButton({ label: `Remove ${test.id}`, element: 'summary', inline: true })}
-		<form method="post" action="/plans/${subject}/edit" class="decision-form">
+		<form method="post" action="/plans/${subject}/edit" class="sc-form">
 			<input type="hidden" name="csrf" value="${context.csrf}" />
 			<input type="hidden" name="sha" value="${detail.sha256}" />
 			<input type="hidden" name="mode" value="remove" />
 			<input type="hidden" name="test" value="${test.id}" />
 			${field({ id: `remove-${test.id}`, label: 'Reason for removal', control: textArea({ id: `remove-${test.id}`, name: 'rationale', rows: 2, attrs: { required: true, 'data-rationale': true } }) })}
 			${actor}
-			<p class="help">Checkmate saves a new revision without ${test.id} and records who removed it and why.</p>
-			<div class="btns">
+			<p class="sc-help">Checkmate saves a new revision without ${test.id} and records who removed it and why.</p>
+			<div class="sc-row-btns">
 				${formButton({ label: `Remove ${test.id}`, attrs: { 'data-needs-rationale': true } })}
 			</div>
 		</form>
@@ -81,7 +82,10 @@ export function testCard(detail: Detail, test: Test, remove: Html | '' = '') {
 		<div class="test-b">
 			${facts({
 				rows: [
-					['Requirements', ids(test.requirementIds, (id) => html`<a class="mono" href="#${id}">${id}</a>`)],
+					[
+						'Requirements',
+						ids(test.requirementIds, (id) => html`<a class="sc-mono" href="#${id}">${id}</a>`),
+					],
 					[
 						'Depends on',
 						test.dependsOn.length > 0 && ids(test.dependsOn, (id) => testLink(planId, revision, id)),
@@ -89,16 +93,16 @@ export function testCard(detail: Detail, test: Test, remove: Html | '' = '') {
 					[
 						'Gaps',
 						test.gapIds.length > 0 &&
-							ids(test.gapIds, (id) => html`<a class="mono" href="#${id}">${id}</a>`),
+							ids(test.gapIds, (id) => html`<a class="sc-mono" href="#${id}">${id}</a>`),
 					],
 					[
 						'Operations',
-						test.operations.length > 0 && html`<span class="mono">${test.operations.join(', ')}</span>`,
+						test.operations.length > 0 && html`<span class="sc-mono">${test.operations.join(', ')}</span>`,
 					],
 					[
 						'Preconditions',
 						test.preconditions.length > 0 &&
-							html`<ul class="plain">
+							html`<ul class="sc-plain">
 								${test.preconditions.map((item) => html`<li>${item}</li>`)}
 							</ul>`,
 					],
@@ -116,7 +120,7 @@ export function testCard(detail: Detail, test: Test, remove: Html | '' = '') {
 									<span class="box" aria-hidden="true"></span>
 									<span class="aid">${assertion.id}</span>
 									<span class="check">${assertion.check}</span>
-									<span class="tag">${words(assertion.checkKind)}</span>
+									<span class="sc-chip">${words(assertion.checkKind)}</span>
 								</li>`
 						)}
 					</ul>`
@@ -135,17 +139,17 @@ function gapRow(detail: Detail, gap: Gap) {
 	const pending = detail.pendingDecisions.find((item) => item.gapId === gap.id)
 	const answerable = gap.status === 'open' && !pending && detail.revision === detail.latestRevision
 	const affects = [...gap.requirementIds, ...gap.testIds]
-	const head = html`<span class="id mono">${gap.id}</span>
+	const head = html`<span class="id sc-mono">${gap.id}</span>
 		${statusMark({ state: gap.severity })} ${statusMark({ state: gap.status })}
-		<span class="gap-refs muted"
+		<span class="gap-refs sc-muted"
 			>${affects.length ? `affects ${affects.join(', ')}` : 'affects the whole plan'}</span
 		>`
-	const content = html`<p class="muted">${gap.consequence}</p>
+	const content = html`<p class="sc-muted">${gap.consequence}</p>
 		${
 			decision
 				? html`<p class="gap-d">
 						${statusMark({ state: decision.kind })} ${decision.value}
-						<span class="muted">· ${decision.actor}</span>
+						<span class="sc-muted">· ${decision.actor}</span>
 					</p>`
 				: ''
 		}
@@ -154,7 +158,7 @@ function gapRow(detail: Detail, gap: Gap) {
 				? html`<p class="gap-d">
 						${statusMark({ state: 'pending', label: 'decision pending' })} ${words(pending.kind)}:
 						${pending.value}
-						<span class="muted">· ${pending.actor} · applies in the next revision</span>
+						<span class="sc-muted">· ${pending.actor} · applies in the next revision</span>
 					</p>`
 				: ''
 		}
@@ -184,7 +188,7 @@ function gapRow(detail: Detail, gap: Gap) {
 
 function gapsList(detail: Detail) {
 	const gaps = detail.plan.gaps
-	if (!gaps.length) return html`<p class="none">No gap. The plan has no open question.</p>`
+	if (!gaps.length) return html`<p class="sc-empty is-line">No gap. The plan has no open question.</p>`
 	const open = gaps.filter((gap) => gap.status === 'open')
 	const closed = gaps.filter((gap) => gap.status !== 'open')
 	return html`<ul class="gaps">
@@ -194,7 +198,7 @@ function gapsList(detail: Detail) {
 
 function runsTable(detail: Detail) {
 	if (!detail.runs.length)
-		return html`<p class="none">
+		return html`<p class="sc-empty is-line">
 			No run uses this plan yet. Approve the plan, then choose <strong>Test build…</strong> on its review page.
 		</p>`
 	return dataTable({
@@ -202,14 +206,16 @@ function runsTable(detail: Detail) {
 		rows: [...detail.runs].reverse().map((run) =>
 			tableRow({
 				cells: [
-					html`<a class="mono" href="/runs/${run.runId}">${run.runId}</a>`,
-					html`<a class="mono" href="/plans/${detail.planId}@${run.revision}">@${run.revision}</a>`,
-					{ content: run.build, attrs: { class: 'mono' } },
-					{ content: run.instanceId, attrs: { class: 'mono' } },
+					html`<a class="sc-mono" href="/runs/${run.runId}">${run.runId}</a>`,
+					html`<a class="sc-mono" href="/plans/${detail.planId}@${run.revision}">@${run.revision}</a>`,
+					{ content: run.build, attrs: { class: 'is-mono' } },
+					{ content: run.instanceId, attrs: { class: 'is-mono' } },
 					statusCounts({ counts: run.counts }),
-					run.completion ? statusMark({ state: run.completion }) : html`<span class="muted">running</span>`,
+					run.completion
+						? statusMark({ state: run.completion })
+						: html`<span class="sc-muted">running</span>`,
 					runStatus(run),
-					{ content: time(run.startedAt), attrs: { class: 'nowrap' } },
+					{ content: time(run.startedAt), attrs: { class: 'is-muted' } },
 				],
 				attrs: { 'data-key': `run:${run.runId}` },
 			})
@@ -225,11 +231,11 @@ function requirementsTable(plan: Plan) {
 			const coverage = plan.coverage.find((row) => row.requirementId === requirement.id)
 			return tableRow({
 				cells: [
-					{ content: requirement.id, attrs: { class: 'mono' } },
+					{ content: requirement.id, attrs: { class: 'is-mono' } },
 					html`${requirement.text}
-						<div class="muted small">Source <code>${requirement.source}</code></div>
-						${hasMetadata(requirement.metadata) ? html`<div class="small">${metadataList(requirement.metadata)}</div>` : ''}`,
-					html`${ids(coverage?.testIds ?? [], (id) => html`<a class="mono" href="#${id}">${id}</a>`)}`,
+						<div class="sc-muted sc-note">Source <code>${requirement.source}</code></div>
+						${hasMetadata(requirement.metadata) ? html`<div class="sc-note">${metadataList(requirement.metadata)}</div>` : ''}`,
+					html`${ids(coverage?.testIds ?? [], (id) => html`<a class="sc-mono" href="#${id}">${id}</a>`)}`,
 					coverage ? statusMark({ state: coverage.status }) : '',
 				],
 				attrs: { id: requirement.id },
@@ -240,19 +246,20 @@ function requirementsTable(plan: Plan) {
 }
 
 function decisionsList(plan: Plan) {
-	if (!plan.decisions.length && !plan.assumptions.length) return html`<p class="none">No decision applied yet.</p>`
+	if (!plan.decisions.length && !plan.assumptions.length)
+		return html`<p class="sc-empty is-line">No decision applied yet.</p>`
 	return html`<ul class="records">
 			${plan.decisions.map(
 				(decision) =>
 					html`<li>
 						<div class="record-h">
 							${statusMark({ state: decision.kind })}
-							<a class="mono" href="#${decision.gapId}">${decision.gapId}</a>
-							<span class="muted">by ${decision.actor}</span>
-							<span class="mono muted small">${decision.id}</span>
+							<a class="sc-mono" href="#${decision.gapId}">${decision.gapId}</a>
+							<span class="sc-muted">by ${decision.actor}</span>
+							<span class="sc-mono sc-muted sc-note">${decision.id}</span>
 						</div>
 						<p>${decision.value}</p>
-						<p class="muted small">
+						<p class="sc-muted sc-note">
 							Rationale:
 							${decision.rationale}${decision.source ? html` · Source <code>${decision.source}</code>` : ''}
 						</p>
@@ -261,8 +268,8 @@ function decisionsList(plan: Plan) {
 		</ul>
 		${
 			plan.assumptions.length
-				? html`<h3 class="minor">Assumptions</h3>
-						<ul class="plain">
+				? html`<h3 class="sc-sub-h">Assumptions</h3>
+						<ul class="sc-plain">
 							${plan.assumptions.map((item) => html`<li>${item.text}</li>`)}
 						</ul>`
 				: ''
@@ -276,7 +283,7 @@ function changeLine(line: string) {
 	return html`<li>
 		<code>${line.slice(0, colon)}</code>
 		<span class="was">${line.slice(colon + 2, arrow)}</span>
-		<span aria-hidden="true" class="arrow">${glyph('→')}</span><span class="sr-only">changed to</span>
+		<span aria-hidden="true" class="arrow">${glyph('→')}</span><span class="sc-sr">changed to</span>
 		<span class="now">${line.slice(arrow + 3)}</span>
 	</li>`
 }
@@ -295,10 +302,10 @@ export function planHistoryList(store: Store, detail: Detail, all: boolean) {
 					html`<li class="${item.revision === detail.revision ? 'current' : ''}">
 						<details ${index === 0 ? html`open` : ''} data-open-key="revision:${item.revision}">
 							<summary class="record-h">
-								<span class="mono rev">${detail.planId}@${item.revision}</span>
-								<span class="muted">by ${item.actor} · ${time(item.at)}</span>
-								<code class="muted small" title="${item.sha256}">${short(item.sha256)}</code>
-								<span class="muted small"
+								<span class="sc-mono rev">${detail.planId}@${item.revision}</span>
+								<span class="sc-muted">by ${item.actor} · ${time(item.at)}</span>
+								<code class="sc-muted sc-note" title="${item.sha256}">${short(item.sha256)}</code>
+								<span class="sc-muted sc-note"
 									>${item.changes.length ? plural(item.changes.length, 'change') : 'first revision'}</span
 								>
 							</summary>
@@ -308,10 +315,10 @@ export function planHistoryList(store: Store, detail: Detail, all: boolean) {
 										? html`<ul class="changes">
 												${item.changes.map(changeLine)}
 											</ul>`
-										: html`<p class="muted small">First revision.</p>`
+										: html`<p class="sc-muted sc-note">First revision.</p>`
 								}
-								<p class="small">
-									<a class="h-link" href="/plans/${detail.planId}@${item.revision}"
+								<p class="sc-note">
+									<a class="sc-h-link" href="/plans/${detail.planId}@${item.revision}"
 										>Open ${detail.planId}@${item.revision}</a
 									>
 								</p>
@@ -343,12 +350,12 @@ export function approvalPanel(
 	const subject = `${detail.planId}@${detail.revision}`
 	const latest = detail.approval.latest
 	if (detail.approval.policy === 'none')
-		return recordPanel('Approval', html`<p class="help">The target policy does not require plan approval.</p>`)
+		return recordPanel('Approval', html`<p class="sc-help">The target policy does not require plan approval.</p>`)
 	if (latest && latest.sha256 === detail.sha256 && !state)
 		return recordPanel(
 			'Approval',
 			html`<p class="subj">${statusMark({ state: latest.verdict })} ${subject}</p>
-				<p class="help">
+				<p class="sc-help">
 					By ${latest.actor} · ${time(latest.at)} · sha256 <code>${short(latest.sha256)}</code>
 				</p>
 				<blockquote>${latest.rationale}</blockquote>
@@ -378,7 +385,7 @@ export function approvalPanel(
 			},
 			staleMessage: `${detail.planId} changed. Review it before you decide.`,
 			...(extra ? { extra } : {}),
-			intro: html`<p class="help">${planSummaryLine(detail.plan)}</p>`,
+			intro: html`<p class="sc-help">${planSummaryLine(detail.plan)}</p>`,
 		},
 		state ?? emptyState()
 	)
@@ -445,24 +452,14 @@ function chips(found: PlanContext, extra: Array<[string, string, number]>) {
 	const deciding = found.waiting.filter((item) => item.kind === 'claim').length
 	const open = found.questions.filter((question) => question.answer === null)
 	const blocking = open.filter((question) => question.blocking).length
-	const items: Array<[string, Html | string]> = [
-		[
-			'claims',
-			html`Claims
-				<b>${found.claims.length}</b
-				>${deciding ? html` <span class="st warn">${deciding} to decide</span>` : ''}`,
+	return jumpLinks({
+		links: [
+			{ href: '#claims', label: 'Claims', count: found.claims.length, hot: deciding > 0 },
+			{ href: '#questions', label: 'Questions', count: open.length, hot: blocking > 0 },
+			{ href: '#explorations', label: 'Explorations', count: found.explorations.length },
+			...extra.map(([id, label, count]) => ({ href: `#${id}`, label, count })),
 		],
-		[
-			'questions',
-			html`Questions
-				<b>${open.length}</b> open${blocking ? html` <span class="st fail">${blocking} blocking</span>` : ''}`,
-		],
-		['explorations', html`Explorations <b>${found.explorations.length}</b>`],
-		...extra.map(([id, label, count]): [string, Html] => [id, html`${label} <b>${count}</b>`]),
-	]
-	return html`<nav class="chips" aria-label="Sections">
-		${items.map(([id, label]) => html`<a href="#${id}">${label}</a>`)}
-	</nav>`
+	})
 }
 
 function claimsFold(planId: string, found: PlanContext) {
@@ -472,7 +469,7 @@ function claimsFold(planId: string, found: PlanContext) {
 		'Claims',
 		found.claims.length,
 		deciding,
-		html`<p class="help">
+		html`<p class="sc-help">
 				The merged claims of completed explorations.
 				<a class="tap" href="/plans/${planId}?view=all">Open them in All items</a>.
 			</p>
@@ -490,7 +487,7 @@ function questionsFold(planId: string, found: PlanContext, gaps: Html | '' = '',
 		open.length + openGaps,
 		blocking,
 		html`${gaps}
-			<h3 class="minor">Questions of the testers <span class="n">${found.questions.length}</span></h3>
+			<h3 class="sc-sub-h">Questions of the testers <span class="sc-count-n">${found.questions.length}</span></h3>
 			${questionsList(planId, found.questions)}`,
 		'questions'
 	)
@@ -525,25 +522,21 @@ export function planPage(
 	const latest = detail.revision === detail.latestRevision
 	const found = planContext(store, planId, context.harness)
 	const cost = planCost(store, planId)
-	const meta = html`<div class="meta">
+	const meta = html`
 		${statusMark({ state: detail.approval.state })}
-		<span class="pill">target <span class="mono">${plan.target.targetId}@${plan.target.revision}</span></span>
-		<span class="pill" title="${detail.sha256}">sha256 <span class="mono">${short(detail.sha256)}</span></span>
+		<span>target <code>${plan.target.targetId}@${plan.target.revision}</code></span>
+		<span title="${detail.sha256}">sha256 <code>${short(detail.sha256)}</code></span>
 		${
 			cost.costUsd === null
 				? ''
 				: html`<span
-						class="pill"
+						class="sc-chip"
 						data-region="plan-cost"
 						title="Reported cost across this plan’s explorations, chats, and structured runs"
 						>Total cost ${costText(cost.costUsd, cost.costPartial)}</span
 					>`
 		}
-		<span class="head-actions">
-			${latest ? html`${formButton({ label: 'Edit plan', href: `/plans/${subject}/edit`, inline: true })}` : ''}
-			${downloadMenu({ label: 'Export', base: `/plans/${subject}/export`, note: 'The HTML export is print-ready. Open it and print to PDF.' })}
-		</span>
-	</div>`
+	`
 	const pending = detail.pendingDecisions.length
 		? notice({
 				kind: 'info',
@@ -560,25 +553,40 @@ export function planPage(
 		accepting ||
 		found.waiting.length > 0 ||
 		found.explorations.some((item) => item.running || ['failed', 'stopped', 'interrupted'].includes(item.state))
-	const overview = html`<p class="lead">${plan.objective}</p>
-		<p class="help">${planSummaryLine(plan)}</p>
-		<h3 class="minor" id="requirements">
+	const overview = html`<p class="sc-lead">${plan.objective}</p>
+		<p class="sc-help">${planSummaryLine(plan)}</p>
+		<h3 class="sc-sub-h" id="requirements">
 			Requirements and coverage
-			${latest ? html`<a class="h-link" href="/plans/${subject}/edit#edit-requirements">Edit</a>` : ''}
+			${latest ? html`<a class="sc-h-link" href="/plans/${subject}/edit#edit-requirements">Edit</a>` : ''}
 		</h3>
 		${requirementsTable(plan)}
-		<h3 class="minor" id="decisions">Decisions</h3>
+		<h3 class="sc-sub-h" id="decisions">Decisions</h3>
 		${decisionsList(plan)}`
-	const gaps = html`<h3 class="minor" id="gaps">Gaps of the plan <span class="n">${plan.gaps.length}</span></h3>
+	const gaps = html`<h3 class="sc-sub-h" id="gaps">
+			Gaps of the plan <span class="sc-count-n">${plan.gaps.length}</span>
+		</h3>
 		<div data-region="gaps">${gapsList(detail)}</div>`
-	const body = html`${heading({ title: subject, sub: null, extra: meta })} ${nextLine(planId, found)}
+	const actions = html`${latest ? html`${formButton({ label: 'Edit plan', href: `/plans/${subject}/edit`, inline: true })}` : ''}
+	${downloadMenu({ label: 'Export', base: `/plans/${subject}/export`, note: 'The HTML export is print-ready. Open it and print to PDF.' })}`
+	const body = html`${heading({
+			title: subject,
+			crumbs: [
+				['Plans', '/'],
+				[planId, `/plans/${planId}`],
+				[subject, null],
+			],
+			sub: null,
+			meta,
+			actions,
+		})}
+		${nextLine(planId, found)}
 		${chips(found, [
 			['tests', 'Tests', plan.tests.length],
 			['runs', 'Runs', detail.runs.length],
 		])}
 		<div data-region="banners">${newerBanner(detail)} ${pending} ${explorationBanners(found.explorations)}</div>
-		<div class="split">
-			<div class="main-col">
+		<div class="sc-split">
+			<div class="sc-stack">
 				${planFold('overview', 'Overview', null, approving || !anyOpen, overview)} ${claimsFold(planId, found)}
 				${questionsFold(
 					planId,
@@ -590,7 +598,7 @@ export function planPage(
 				${explorationsFold(found)}
 				${planFold(
 					'tests',
-					html`Tests${latest ? html` <a class="h-link" href="/plans/${subject}/edit#edit-tests">Edit</a>` : ''}`,
+					html`Tests${latest ? html` <a class="sc-h-link" href="/plans/${subject}/edit#edit-tests">Edit</a>` : ''}`,
 					plan.tests.length,
 					approving,
 					html`<div class="stack">
@@ -642,17 +650,15 @@ export function requestPage(store: Store, planId: string, harness: Context['harn
 	const found = planContext(store, planId, harness)
 	const targetRef = `${target.profile.targetId}@${target.revision}`
 	const targetLink = html`<a
-		class="mono"
+		class="sc-mono"
 		href="/settings/targets/${target.profile.targetId}?revision=${target.revision}"
 		>${targetRef}</a
 	>`
 	const instances = [...new Set(found.explorations.map((item) => item.instanceId))]
 	const sources = [...(request.context?.sources ?? []), ...(request.sourceContext ?? []).map((item) => item.uri)]
 	const completed = found.explorations.filter((item) => item.state === 'completed').at(-1)?.explorationId
-	const meta = html`<div class="meta">
-		${statusMark({ state: 'requested', label: 'no revision yet' })}
-		<span class="pill">target <span class="mono">${targetRef}</span></span>
-	</div>`
+	const meta = html` ${statusMark({ state: 'requested', label: 'no revision yet' })}
+		<span>target <code>${targetRef}</code></span>`
 	const anyOpen =
 		found.waiting.length > 0 ||
 		found.explorations.some((item) => item.running || ['failed', 'stopped', 'interrupted'].includes(item.state))
@@ -663,32 +669,32 @@ export function requestPage(store: Store, planId: string, harness: Context['harn
 			[
 				'Instance',
 				instances.length
-					? html`<span class="mono">${instances.join(', ')}</span>`
-					: html`<span class="muted">none yet</span>`,
+					? html`<span class="sc-mono">${instances.join(', ')}</span>`
+					: html`<span class="sc-muted">none yet</span>`,
 			],
 			[
 				'Sources',
 				sources.length
-					? html`<ul class="plain">
+					? html`<ul class="sc-plain">
 							${sources.map((source) => html`<li><code>${source}</code></li>`)}
 						</ul>`
-					: html`<span class="muted">none</span>`,
+					: html`<span class="sc-muted">none</span>`,
 			],
 			['Instructions', request.context?.instructions || false],
 			[
 				'Requirements',
 				(request.requirements ?? []).length > 0 &&
-					html`<ul class="plain">
-						${(request.requirements ?? []).map((item) => html`<li><span class="mono">${item.id}</span> ${item.text}</li>`)}
+					html`<ul class="sc-plain">
+						${(request.requirements ?? []).map((item) => html`<li><span class="sc-mono">${item.id}</span> ${item.text}</li>`)}
 					</ul>`,
 			],
 		],
 	})
-	const body = html`${heading({ title: planId, sub: request.objective, extra: meta })} ${nextLine(planId, found)}
+	const body = html`${heading({ title: planId, sub: request.objective, meta })} ${nextLine(planId, found)}
 		${chips(found, [['tests', 'Stored tests', 0]])}
 		<div data-region="banners">${explorationBanners(found.explorations)}</div>
-		<div class="split">
-			<div class="main-col">
+		<div class="sc-split">
+			<div class="sc-stack">
 				${planFold('request', 'Request', null, !anyOpen, overview)} ${claimsFold(planId, found)}
 				${questionsFold(planId, found)} ${explorationsFold(found)}
 				${planFold('tests', 'Stored tests', 0, !found.explorations.length, storedTestsEmpty(planId, completed, harness), 'tests')}
@@ -696,8 +702,8 @@ export function requestPage(store: Store, planId: string, harness: Context['harn
 			${side(
 				recordPanel(
 					'Next',
-					html`${found.status.why.map((line) => html`<p class="help">${line}</p>`)}
-						<ul class="plain">
+					html`${found.status.why.map((line) => html`<p class="sc-help">${line}</p>`)}
+						<ul class="sc-plain">
 							${found.status.next.map((line) => html`<li><code>${line}</code></li>`)}
 						</ul>`
 				)
@@ -742,7 +748,7 @@ export function gapPage(
 		? notice({
 				kind: 'info',
 				content: html`This gap comes from run
-					<a class="mono" href="/runs/${fromRun.runId}">${fromRun.runId}</a>. Your answer adds it to
+					<a class="sc-mono" href="/runs/${fromRun.runId}">${fromRun.runId}</a>. Your answer adds it to
 					${planId}.`,
 			})
 		: ''
@@ -765,34 +771,32 @@ export function gapPage(
 			'Answer recorded',
 			html`<p class="subj">${statusMark({ state: pending.kind })} ${gap.id}</p>
 				<blockquote>${pending.value}</blockquote>
-				<p class="help">By ${pending.actor}. The agent applies it in the next revision of ${planId}.</p>`
+				<p class="sc-help">By ${pending.actor}. The agent applies it in the next revision of ${planId}.</p>`
 		)
 	else if (decision)
 		panel = recordPanel(
 			'Decision',
 			html`<p class="subj">${statusMark({ state: decision.kind })} ${gap.id}</p>
 				<blockquote>${decision.value}</blockquote>
-				<p class="help">By ${decision.actor}. Rationale: ${decision.rationale}</p>`
+				<p class="sc-help">By ${decision.actor}. Rationale: ${decision.rationale}</p>`
 		)
 	else
 		panel = recordPanel(
 			'Answer gap',
-			html`<p class="help">Answer this gap on the latest revision.</p>
+			html`<p class="sc-help">Answer this gap on the latest revision.</p>
 				<p>
 					${formButton({ label: `Open ${planId}@${detail.latestRevision}`, href: `/plans/${planId}@${detail.latestRevision}/gaps/${gap.id}` })}
 				</p>`
 		)
-	const meta = html`<div class="meta">
-		${statusMark({ state: gap.severity })} ${statusMark({ state: gap.status })}
-		<a class="pill" href="/plans/${subject}">${subject}</a>
-	</div>`
-	const body = html`${heading({ title: html`${planId} · ${gap.id}`, sub: gap.question, extra: meta })}
+	const meta = html` ${statusMark({ state: gap.severity })} ${statusMark({ state: gap.status })}
+		<a class="sc-mono" href="/plans/${subject}">${subject}</a>`
+	const body = html`${heading({ title: html`${planId} · ${gap.id}`, sub: gap.question, meta })}
 		<div data-region="banners">${newerBanner(detail)} ${runBanner}</div>
-		<div class="split">
-			<div class="main-col">
+		<div class="sc-split">
+			<div class="sc-stack">
 				<section aria-labelledby="consequence">
 					<h2 id="consequence">Consequence</h2>
-					<p class="lead">${gap.consequence}</p>
+					<p class="sc-lead">${gap.consequence}</p>
 				</section>
 				${
 					requirements.length
@@ -802,9 +806,13 @@ export function gapPage(
 									${requirements.map(
 										(requirement) =>
 											html`<li>
-												<div class="record-h"><span class="mono">${requirement.id}</span></div>
+												<div class="record-h">
+													<span class="sc-mono">${requirement.id}</span>
+												</div>
 												<p>${requirement.text}</p>
-												<p class="muted small">Source <code>${requirement.source}</code></p>
+												<p class="sc-muted sc-note">
+													Source <code>${requirement.source}</code>
+												</p>
 											</li>`
 									)}
 								</ul>
@@ -812,11 +820,11 @@ export function gapPage(
 						: ''
 				}
 				<section aria-labelledby="gap-tests">
-					<h2 id="gap-tests">Affected tests <span class="n">${tests.length}</span></h2>
+					<h2 id="gap-tests">Affected tests <span class="sc-count-n">${tests.length}</span></h2>
 					${
 						tests.length
 							? html`<div class="stack">${tests.map((test) => testCard(detail, test))}</div>`
-							: html`<p class="none">No test names this gap.</p>`
+							: html`<p class="sc-empty is-line">No test names this gap.</p>`
 					}
 				</section>
 			</div>

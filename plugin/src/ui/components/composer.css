@@ -1,52 +1,54 @@
-.chat-composer {
-	display: grid;
-	gap: 0.5rem;
-	margin-top: auto;
-	padding: 0.75rem 1rem;
-	border-top: 1px solid var(--hair);
+.sc-chat-form {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
 }
-.chat-composer textarea {
-	width: 100%;
-	resize: vertical;
+.sc-composer {
+	display: flex;
+	flex-direction: column;
+	background: var(--surface);
+	border: var(--hairline) solid var(--edge);
 }
-.chat-thread-header + .chat-composer {
-	border-top: 0;
+.sc-composer:hover {
+	border-color: var(--ink);
 }
-.chat-controls {
-	align-items: end;
-	justify-content: start;
+.sc-composer:focus-within {
+	border-color: var(--ink);
+	outline: var(--focus-w) solid var(--focus);
+	outline-offset: var(--focus-gap);
 }
-.chat-controls label {
-	display: grid;
-	gap: 0.25rem;
+.sc-composer textarea {
+	min-height: 72px;
+	padding: 12px var(--space-4);
+	border: 0;
+	resize: none;
+	background: transparent;
+	color: var(--ink);
+	font: 400 14px/22px var(--font-sans);
+}
+.sc-composer textarea:focus-visible {
+	outline: none;
+}
+.sc-composer-bar {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: var(--space-2);
+	padding: var(--space-2) var(--space-3);
+	border-top: var(--hairline) solid var(--hair);
+}
+.sc-composer-bar label {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	font: 400 13px/20px var(--font-sans);
+	color: var(--muted);
+}
+.sc-composer-bar select,
+.sc-composer-bar input {
+	width: auto;
+}
+.sc-composer-bar .sc-grow {
+	flex: 1 1 0;
 	min-width: 0;
-	margin: 0;
-}
-.chat-controls label:nth-child(1) {
-	flex: 0 1 8rem;
-}
-.chat-controls label:nth-child(2) {
-	flex: 1 1 115px;
-}
-.chat-controls label:nth-child(3) {
-	flex: 0 1 7.5rem;
-}
-.chat-controls select {
-	width: 100%;
-	max-width: 100%;
-}
-.chat-controls button {
-	margin-left: auto;
-}
-.chat-composer [data-chat-model-status]:empty {
-	display: none;
-}
-@media (max-width: 480px) {
-	.chat-controls label:nth-child(1),
-	.chat-controls label:nth-child(3) {
-		flex-basis: 5.25rem;
-	}
-	.chat-controls label:nth-child(2) {
-		flex-basis: 5.75rem;
-	}
 }

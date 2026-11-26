@@ -64,7 +64,7 @@ p {
 	margin: 0;
 }
 code,
-.mono {
+.sc-mono {
 	font-family: var(--font-mono);
 	font-size: 12px;
 	letter-spacing: 0;
@@ -75,21 +75,21 @@ pre {
 	white-space: pre-wrap;
 	overflow-wrap: anywhere;
 }
-.muted {
+.sc-muted {
 	color: var(--muted);
 }
-.small,
+.sc-note,
 small {
 	font-size: 12px;
 	line-height: 16px;
 }
-.ell {
+.sc-ell {
 	overflow: hidden;
 	white-space: nowrap;
 	text-overflow: ellipsis;
 	min-width: 0;
 }
-.sr-only {
+.sc-sr {
 	position: absolute;
 	width: 1px;
 	height: 1px;
@@ -113,9 +113,8 @@ small {
 	top: 8px;
 }
 
-.sp-lbl,
+.sc-label,
 .sc-group-h,
-.sp-nhead,
 th {
 	font-family: var(--font-sans);
 	font-weight: 600;
@@ -172,14 +171,14 @@ dialog::backdrop {
 		display: inline-flex;
 		align-items: center;
 	}
-	main a:is(.mono, .id, .h-link, .pill, .ev-act, .rev) {
+	main a:is(.sc-mono, .id, .sc-h-link, .sc-chip, .sc-evidence-act, .rev) {
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
 		min-width: 40px;
 		min-height: 40px;
 	}
-	main :is(td, dd, .sp-path, nav.chips, .crumbs, p.back) a {
+	main :is(td, dd, .sc-crumb, nav.sc-chips, .crumbs, p.back) a {
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;

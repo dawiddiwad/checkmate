@@ -166,7 +166,7 @@ export function activityPage(
 		...pageTrail(spec, shown, total, 'Activity'),
 		body: html`${heading({ title: 'Activity', sub: 'Tests, follow-ups, and chat messages. Open an entry to see its run or chat.' })}
 			<div data-region="activity" data-list-region>
-				<p class="list-count" data-list-count role="status">
+				<p class="sc-count" data-list-count role="status">
 					${total ? `Showing ${first}–${last} of ${plural(total, 'entry', 'entries')}` : ''}
 				</p>
 				${

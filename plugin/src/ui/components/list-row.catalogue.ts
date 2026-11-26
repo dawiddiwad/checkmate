@@ -67,7 +67,7 @@ export const examples: Array<[string, Html | string]> = [
 	[
 		'listPageRow link',
 		html`<ul class="q-items l-rows">
-			${listPageRow({ key: 'run:run-1', href: '#', top: 'run-1 · checkout@2', tags: statusMark({ state: 'approved', label: 'accepted' }), lines: ['3 passed', html`<span class="muted">Model sonnet</span>`] })}
+			${listPageRow({ key: 'run:run-1', href: '#', top: 'run-1 · checkout@2', tags: statusMark({ state: 'approved', label: 'accepted' }), lines: ['3 passed', html`<span class="sc-muted">Model sonnet</span>`] })}
 		</ul>`,
 	],
 	[

@@ -200,7 +200,7 @@ export function rowOptions(context: Context, item: Permission, returnTo: string)
 		aria-label="Options"
 		title="${plural(optionCount(item), 'option')}. Open the request to see them."
 	>
-		<form method="post" action="${recordPath(item)}" class="sp-opt">
+		<form method="post" action="${recordPath(item)}" class="sc-opt-form">
 			${hidden('csrf', context.csrf)}${hidden('return', returnTo)}${hidden('decision', 'allow')}
 			${optionButton({ n: 1, label: 'Allow once' })}
 		</form>
@@ -222,7 +222,7 @@ export function optionOf(context: Context, item: Permission, from: string | null
 	const ask = choice.ask
 		? { 'data-ask-title': choice.ask.title, 'data-ask-text': choice.ask.text, 'data-ask-yes': choice.ask.yes }
 		: {}
-	return html`<form method="post" action="${recordPath(item)}" class="sp-opt">
+	return html`<form method="post" action="${recordPath(item)}" class="sc-opt-form">
 		${hidden('csrf', context.csrf)}${from ? hidden('from', from) : ''}${hidden('decision', choice.decision)}
 		${optionButton({ n, label: choice.label, attrs: ask })}
 	</form>`
@@ -254,8 +254,8 @@ export function asked(item: Permission) {
 		.map((key) => input[key])
 		.find((value) => typeof value === 'string')
 	const block = (label: string, text: string) =>
-		html`<p class="sp-lbl">${label}</p>
-			<pre class="sp-code" tabindex="0">${text}</pre>`
+		html`<p class="sc-label">${label}</p>
+			<pre class="sc-code" tabindex="0">${text}</pre>`
 	if (typeof input.command === 'string') return block('Command', input.command)
 	if (typeof path === 'string') {
 		const body =
@@ -264,8 +264,8 @@ export function asked(item: Permission) {
 				: item.tool === 'Edit' || item.tool === 'MultiEdit' || item.tool === 'NotebookEdit'
 					? block('Change', cut(edits(input)))
 					: ''
-		return html`<p class="sp-lbl">File</p>
-			<pre class="sp-code" tabindex="0">${path}</pre>
+		return html`<p class="sc-label">File</p>
+			<pre class="sc-code" tabindex="0">${path}</pre>
 			${body}`
 	}
 	return block('Input', JSON.stringify(item.input, null, 2))
@@ -274,7 +274,7 @@ export function asked(item: Permission) {
 export function rulesLines(rules: ForceRule[], scope = 'test') {
 	return rules.map(
 		(rule) =>
-			html`<p class="help" data-key="rule:${rule.requestId}">
+			html`<p class="sc-help" data-key="rule:${rule.requestId}">
 				Allowed for this ${scope}:
 				${rule.kind === 'allow-tool' ? `every ${rule.rule} call` : html`<code>${rule.rule}</code>`}, set by
 				${rule.setBy} ${ago(rule.at)}.
@@ -346,9 +346,9 @@ export function permissionHistory(store: Store, explorationId: string, params: U
 			</div>
 			${
 				last > 1
-					? html`<nav class="pager" aria-label="Pages of permission requests">
+					? html`<nav class="sc-pager" aria-label="Pages of permission requests">
 							${page > 1 ? link(page - 1, '‹ Newer', 'prev') : ''}
-							<span class="pager-at">Page ${page} of ${last}</span>
+							<span class="sc-pager-at">Page ${page} of ${last}</span>
 							${page < last ? link(page + 1, 'Older ›', 'next') : ''}
 						</nav>`
 					: ''

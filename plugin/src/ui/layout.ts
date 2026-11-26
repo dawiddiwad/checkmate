@@ -83,9 +83,9 @@ export function layout(context: Context, page: Page) {
 					${page.nav ? html`<div class="sc-body">${page.nav}${main}</div>` : main}
 				</div>
 				${statusBar({ context, page })}
-				<div class="sp-saystrip" role="status" data-say-strip hidden></div>
+				<div class="sc-saystrip" role="status" data-say-strip hidden></div>
 				${context.toast ? html`<div class="toast" role="status" data-toast title="${context.toast}">${cut(context.toast)}</div>` : ''}
-				<div class="sr-only" aria-live="polite" data-announcer></div>
+				<div class="sc-sr" aria-live="polite" data-announcer></div>
 				${keysHelp()} ${findPalette({ harness: context.harness })} ${confirmDialog()}
 				${page.viewer ? evidenceOverlay : ''}
 			</body>

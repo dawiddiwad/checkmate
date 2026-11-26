@@ -31,10 +31,10 @@ function rowClass({ settled, current, blocking }: ListRow) {
 export function listRow(row: ListRow) {
 	const role = row.inListbox ? html`role="option" aria-selected="false"` : html`role="listitem"`
 	const title = row.titleHref
-		? html`<a class="sc-c-title ell" title="${row.titleText}" tabindex="-1" href="${row.titleHref}"
+		? html`<a class="sc-c-title sc-ell" title="${row.titleText}" tabindex="-1" href="${row.titleHref}"
 				>${row.title}</a
 			>`
-		: html`<span class="sc-c-title ell" title="${row.titleText}">${row.title}</span>`
+		: html`<span class="sc-c-title sc-ell" title="${row.titleText}">${row.title}</span>`
 	return html`<div
 		class="${rowClass(row)}"
 		${role}
@@ -62,8 +62,8 @@ export function listRow(row: ListRow) {
 		${title}
 		${
 			row.metaText === undefined
-				? html`<span class="sc-c-meta ell">${row.meta}</span>`
-				: html`<span class="sc-c-meta ell" title="${row.metaText}">${row.meta}</span>`
+				? html`<span class="sc-c-meta sc-ell">${row.meta}</span>`
+				: html`<span class="sc-c-meta sc-ell" title="${row.metaText}">${row.meta}</span>`
 		}
 		${row.options ?? ''} ${row.extra ?? ''}
 	</div>`
@@ -82,14 +82,16 @@ export type ListPageRow = {
 }
 
 export function listPageRow({ key, href, top, tags, lines }: ListPageRow) {
-	const inner = html`<span class="q-top"><span class="q-id">${top}</span> <span class="q-tags">${tags}</span></span>
-		${lines.map((line, index) => html`<span class="${index ? 'q-note' : 'q-title'}">${line}</span>`)}`
+	const inner = html`<span class="sc-recipe-n">${top} ${tags}</span>
+		${lines.map((line, index) => html`<span class="${index ? 'sc-recipe-m' : 'sc-recipe-d'}">${line}</span>`)}`
 	const label = key.slice(key.indexOf(':') + 1)
 	return html`<li data-key="${key}" data-nav-row>
 		${
 			href
-				? html`<a class="q-row" href="${href}" data-row data-href="${href}" data-label="${label}">${inner}</a>`
-				: html`<div class="q-row" tabindex="-1" data-row data-label="${label}">${inner}</div>`
+				? html`<a class="sc-recipe" href="${href}" data-row data-href="${href}" data-label="${label}"
+						>${inner}</a
+					>`
+				: html`<div class="sc-recipe" tabindex="-1" data-row data-label="${label}">${inner}</div>`
 		}
 	</li>`
 }

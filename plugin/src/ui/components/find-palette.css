@@ -1,82 +1,89 @@
-.sp-find {
-	top: 48px;
-	margin: 0 auto;
-	width: min(660px, calc(100vw - 32px));
+.sc-find {
+	width: 640px;
+	max-width: calc(100vw - var(--space-6));
+	margin-top: 12vh;
+	padding: 0;
+	background: var(--surface);
+	border: var(--hairline) solid var(--edge);
+	color: var(--ink);
 }
-.sp-find input[type='search'] {
-	height: 48px;
-	padding: 0 16px;
-	border: 0;
-	border-bottom: 1px solid var(--hair);
-	font: 400 16px/24px var(--font-mono);
+.sc-find::backdrop {
+	background: var(--scrim);
 }
-.sp-find input[type='search']:focus-visible {
-	outline: none;
-}
-.sp-find ul {
-	margin: 0;
-	padding: 8px;
-	list-style: none;
-	max-height: min(420px, 60vh);
-	overflow-y: auto;
-}
-.sp-find ul:empty {
-	display: none;
-}
-.sp-find li a {
+.sc-find-input {
 	display: flex;
 	align-items: center;
-	gap: 8px;
-	height: 32px;
-	padding: 0 8px;
-	color: var(--ink);
-	text-decoration: none;
-	font: 400 12px/16px var(--font-mono);
+	gap: var(--space-3);
+	height: var(--ctl-lg);
+	padding: 0 var(--space-4);
+	border-bottom: var(--hairline) solid var(--hair);
 }
-.sp-find li a:hover {
-	background: var(--row-hover);
-}
-.sp-find li a[aria-selected='true'] {
-	background: var(--surface-2);
-	color: var(--ink);
-}
-.sp-find li a[aria-selected='true'] .sc-mark {
-	color: var(--ink);
-}
-.sp-find li .t {
+.sc-find-input input {
 	flex: 1;
 	min-width: 0;
-	overflow: hidden;
-	white-space: nowrap;
-	text-overflow: ellipsis;
-}
-.sp-find li .k {
-	flex: none;
-	color: var(--muted);
-}
-.sp-find li a[aria-selected='true'] .k {
-	color: var(--muted);
-}
-.sp-find-none {
-	padding: 12px 16px;
-	color: var(--muted);
-}
-.sp-find li a:active {
-	background: var(--surface-2);
-}
-.sp-find-note {
-	margin: 0;
-	padding: 8px 16px 12px;
-	border-top: 1px solid var(--hair);
-	font: 400 12px/16px var(--font-sans);
-	color: var(--muted);
-}
-.sp-find-none[role='alert'] {
+	height: 100%;
+	border: 0;
+	background: transparent;
 	color: var(--ink);
+	font: 400 14px/20px var(--font-mono);
+}
+.sc-find-input input:focus-visible {
+	outline: none;
+}
+.sc-find-list {
+	display: flex;
+	flex-direction: column;
+	max-height: 50vh;
+	margin: 0;
+	padding: 0;
+	overflow: auto;
+	list-style: none;
+}
+.sc-find-list:empty {
+	display: none;
+}
+.sc-find-list a {
+	display: grid;
+	grid-template-columns: 112px 80px minmax(0, 1fr);
+	align-items: center;
+	min-height: var(--ctl-lg);
+	padding: 0 var(--space-4);
+	border-bottom: var(--hairline) solid var(--hair);
+	font: 400 14px/20px var(--font-sans);
+	color: var(--ink);
+	text-decoration: none;
+}
+.sc-find-list a[data-find-ask] {
+	grid-template-columns: 112px minmax(0, 1fr);
+}
+.sc-find-list a:hover {
+	background: var(--row-hover);
+}
+.sc-find-list a[aria-selected='true'] {
+	background: var(--surface-2);
+	box-shadow: inset var(--bar) 0 0 var(--ink);
 	font-weight: 600;
 }
-@media (max-width: 760px) {
-	.sp-find li a {
-		height: 40px;
-	}
+.sc-find-list .k {
+	font: 500 13px/20px var(--font-mono);
+	color: var(--muted);
+}
+.sc-find-list .t {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.sc-find-none,
+.sc-find-note {
+	padding: var(--space-2) var(--space-4);
+	font: 400 13px/20px var(--font-sans);
+	color: var(--muted);
+}
+.sc-find-foot {
+	display: flex;
+	gap: var(--space-4);
+	padding: var(--space-2) var(--space-4);
+	border-top: var(--hairline) solid var(--hair);
+	background: var(--surface-2);
 }

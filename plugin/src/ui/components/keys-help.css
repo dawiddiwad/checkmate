@@ -1,75 +1,31 @@
-.sp-keys {
-	top: 16px;
-	margin: 0 auto;
-	width: min(944px, calc(100vw - 32px));
-	max-height: calc(100vh - var(--bar-h) - 32px);
-	overflow-y: auto;
+.sc-confirm.is-keys {
+	width: 640px;
+	max-height: calc(100vh - var(--bar-h) - var(--space-7));
+	overflow: auto;
 }
-.sp-ktable {
-	width: 100%;
-	border: 0;
-	border-collapse: collapse;
-	background: transparent;
-}
-.sp-ktable th,
-.sp-ktable td {
-	padding: 8px 16px;
-	text-align: left;
-	vertical-align: top;
-	font: 400 14px/20px var(--font-sans);
-	border-bottom: 1px solid var(--hair);
-	background: transparent;
-	text-transform: none;
-	letter-spacing: 0;
-	color: var(--ink);
-}
-.sp-ktable th {
-	width: 176px;
-	white-space: nowrap;
-	font: 500 12px/20px var(--font-mono);
-}
-.sp-ktable tr:hover {
-	background: transparent;
-}
-.sp-keyset {
-	display: inline-flex;
-	gap: 4px;
-	vertical-align: top;
-	padding-top: 2px;
-}
-.sp-ktable th.sp-kexc {
-	font: 500 12px/20px var(--font-mono);
-	letter-spacing: 0;
-	color: var(--muted);
-	background: var(--surface-2);
-}
-.sp-knote {
-	padding: 12px 16px 16px;
-	font: 400 14px/20px var(--font-sans);
-	color: var(--muted);
-}
-.sp-foot {
-	position: relative;
+.sc-confirm .sc-card-h {
 	display: flex;
 	align-items: center;
-	gap: 16px;
-	height: 32px;
-	padding: 0 16px;
-	font: 600 13px/16px var(--font-sans);
-	letter-spacing: 0;
-	color: var(--muted);
+	gap: var(--space-3);
 }
-.sp-foot::before {
-	content: '';
-	position: absolute;
-	left: 0;
-	right: 0;
-	top: 0;
-	height: 1px;
-	background: var(--hair);
+.sc-confirm .sc-card-h .sc-btn {
+	margin-left: auto;
 }
-.sp-foot span {
+.sc-keys-table td,
+.sc-keys-table th {
+	height: auto;
+	padding: 6px var(--space-3);
+	white-space: normal;
+}
+.sc-keys-table th {
+	background: transparent;
+	font-weight: 400;
+}
+.sc-keys-table .sc-keys-sub {
+	background: var(--surface-2);
+	font-weight: 600;
+}
+.sc-keyset {
 	display: inline-flex;
-	align-items: center;
-	gap: 4px;
+	gap: var(--space-1);
 }

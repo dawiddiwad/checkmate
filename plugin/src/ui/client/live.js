@@ -27,7 +27,7 @@ function typingInside(region) {
 function dirty(region) {
 	if (region.querySelector('dialog[open]')) return true
 	if (region.querySelector('form[data-confirming]')) return true
-	if (region.querySelector('.form-error')) return true
+	if (region.querySelector('.sc-error')) return true
 	if (typingInside(region)) return true
 	for (const field of region.querySelectorAll('textarea, input, select')) {
 		if (field.type === 'hidden' || field.matches('[data-pick-box]')) continue

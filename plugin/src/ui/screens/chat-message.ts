@@ -72,7 +72,7 @@ export function chatMessagePage(store: Store, context: Context, request: Request
 		],
 		back,
 		body: html`<div
-			class="sp-record"
+			class="sc-record"
 			data-region="request-record"
 			data-drawer
 			data-back="${back}"
@@ -96,20 +96,20 @@ export function chatMessagePage(store: Store, context: Context, request: Request
 				onOwnPage: true,
 			})}
 			<section aria-labelledby="asked-title" data-key="asked">
-				<h2 class="lab" id="asked-title">You asked</h2>
-				<p class="sp-reply sp-asked">${request.text}</p>
+				<h2 class="sc-label" id="asked-title">You asked</h2>
+				<p class="sc-reply sc-asked">${request.text}</p>
 				${contextLine(request.context)}
 			</section>
 			${
 				request.state === 'waiting'
-					? html`<p class="banner info" role="status" data-key="state">
+					? html`<p class="sc-notice" role="status" data-key="state">
 							This message will start when the current turn ends.
 						</p>`
 					: ''
 			}
 			${
 				open.length
-					? html`<p class="banner warn" role="status" data-key="waits">
+					? html`<p class="sc-notice is-warn" role="status" data-key="waits">
 							This turn is waiting for permission.
 							<a href="${requestHref(open[0], context.path)}">Answer it</a>
 						</p>`
@@ -118,22 +118,22 @@ export function chatMessagePage(store: Store, context: Context, request: Request
 			${
 				request.state === 'running' || request.activity.length
 					? html`<section aria-labelledby="activity-title">
-							<h2 class="lab" id="activity-title">
-								Activity <span class="n">${request.activity.length}</span>
+							<h2 class="sc-label" id="activity-title">
+								Activity <span class="sc-count-n">${request.activity.length}</span>
 							</h2>
 							${
 								request.activity.length
-									? html`<ol class="sp-activity" aria-live="polite">
-											${request.activity.map((entry, index) => html`<li data-key="line:${index}" class="ell" title="${entry.line}">${entry.line}</li>`)}
+									? html`<ol class="sc-activity" aria-live="polite">
+											${request.activity.map((entry, index) => html`<li data-key="line:${index}" class="sc-ell" title="${entry.line}">${entry.line}</li>`)}
 										</ol>`
-									: html`<p class="help">Waiting for the first tool call.</p>`
+									: html`<p class="sc-help">Waiting for the first tool call.</p>`
 							}
 						</section>`
 					: ''
 			}
 			${
 				request.state === 'running' || request.state === 'waiting'
-					? html`<p class="help" data-key="elapsed">
+					? html`<p class="sc-help" data-key="elapsed">
 							${request.state === 'running' ? html`Running for ${elapsed(request, now)}.` : ''}
 						</p>`
 					: ''
@@ -141,9 +141,9 @@ export function chatMessagePage(store: Store, context: Context, request: Request
 			${
 				request.state === 'answered'
 					? html`<section aria-labelledby="reply-title" data-key="reply">
-							<h2 class="lab" id="reply-title">Reply</h2>
-							<div class="sp-reply chat-markdown">
-								${request.reply?.trim() ? chatMarkdown(request.reply) : html`<p class="muted">The reply has no text.</p>`}
+							<h2 class="sc-label" id="reply-title">Reply</h2>
+							<div class="sc-reply sc-markdown">
+								${request.reply?.trim() ? chatMarkdown(request.reply) : html`<p class="sc-muted">The reply has no text.</p>`}
 							</div>
 						</section>`
 					: ''
@@ -151,21 +151,21 @@ export function chatMessagePage(store: Store, context: Context, request: Request
 			${
 				failure
 					? html`<section aria-labelledby="failed-title" data-key="failure">
-							<h2 class="lab" id="failed-title">What went wrong</h2>
-							<p class="banner fail" role="alert">${failure.cause}</p>
-							${failure.detail ? html`<p class="help">${failure.detail}</p>` : ''}
-							${failure.lines.length ? html`<pre class="sp-code" tabindex="0">${failure.lines.join('\n')}</pre>` : ''}
+							<h2 class="sc-label" id="failed-title">What went wrong</h2>
+							<p class="sc-notice is-error" role="alert">${failure.cause}</p>
+							${failure.detail ? html`<p class="sc-help">${failure.detail}</p>` : ''}
+							${failure.lines.length ? html`<pre class="sc-code" tabindex="0">${failure.lines.join('\n')}</pre>` : ''}
 						</section>`
 					: ''
 			}
 			${
 				request.state === 'stopped' || request.state === 'interrupted'
-					? html`<p class="banner info" role="status" data-key="state">${request.reason ?? ''}</p>`
+					? html`<p class="sc-notice" role="status" data-key="state">${request.reason ?? ''}</p>`
 					: ''
 			}
 			${
 				ended
-					? html`<p class="help" data-key="took">
+					? html`<p class="sc-help" data-key="took">
 							${request.costUsd === null ? '' : `Cost ${costText(request.costUsd, request.costPartial)}. `}Took
 							${elapsed(request, now)}.
 						</p>`
@@ -173,7 +173,7 @@ export function chatMessagePage(store: Store, context: Context, request: Request
 			}
 			${
 				ended && request.denials.length
-					? html`<p class="help" data-key="denials">
+					? html`<p class="sc-help" data-key="denials">
 							${plural(request.denials.length, 'tool call was', 'tool calls were')} denied:
 							${request.denials.join(', ')}.
 						</p>`
@@ -182,28 +182,28 @@ export function chatMessagePage(store: Store, context: Context, request: Request
 			${
 				ended
 					? html`<section aria-labelledby="changes-title" data-key="changes">
-							<h2 class="lab" id="changes-title">
-								Changed <span class="n">${request.changes.length}</span>
+							<h2 class="sc-label" id="changes-title">
+								Changed <span class="sc-count-n">${request.changes.length}</span>
 							</h2>
 							${
 								request.changes.length
-									? html`<ul class="sp-changes">
-											${request.changes.map((change) => html`<li>${change.href ? html`<a href="${change.href}">${change.text}</a>` : change.text} <span class="muted">${time(change.at)}</span></li>`)}
+									? html`<ul class="sc-changes">
+											${request.changes.map((change) => html`<li>${change.href ? html`<a href="${change.href}">${change.text}</a>` : change.text} <span class="sc-muted">${time(change.at)}</span></li>`)}
 										</ul>`
 									: tried
-										? html`<p class="help">
+										? html`<p class="sc-help">
 												The Log shows ${plural(tried, 'attempted change')} for this turn.
 											</p>`
-										: html`<p class="help">This turn changed no records.</p>`
+										: html`<p class="sc-help">This turn changed no records.</p>`
 							}
 						</section>`
 					: request.state === 'running'
-						? html`<p class="help" data-key="changes">Changes appear when this turn ends.</p>`
+						? html`<p class="sc-help" data-key="changes">Changes appear when this turn ends.</p>`
 						: ''
 			}
-			<section class="sp-options" aria-labelledby="options-title" data-key="options:${requestId}">
-				<h2 class="lab" id="options-title">Options</h2>
-				<ol class="sp-optlist asks">
+			<section class="sc-opt-section" aria-labelledby="options-title" data-key="options:${requestId}">
+				<h2 class="sc-label" id="options-title">Options</h2>
+				<ol class="sc-ask-list asks">
 					${options.map((option) => html`<li>${option}</li>`)}
 				</ol>
 			</section>

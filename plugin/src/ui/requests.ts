@@ -87,7 +87,7 @@ export function contextLine(context: RequestContext) {
 	if (!context.planId && !context.record) return ''
 	const plan = context.planRevision ? `${context.planId}@${context.planRevision}` : context.planId
 	const record = context.record
-	return html`<p class="help" data-key="context">
+	return html`<p class="sc-help" data-key="context">
 		Started from
 		${plan ? html`<a href="/plans/${plan}">plan ${plan}</a>` : ''}${plan && record ? ', ' : ''}${record ? `${record.kind === 'request' ? 'chat turn' : record.kind} ${record.id}` : ''}.
 	</p>`
@@ -122,7 +122,7 @@ export function formOption(
 	ask?: { title: string; text: string; yes: string }
 ) {
 	const confirm = ask ? { 'data-ask-title': ask.title, 'data-ask-text': ask.text, 'data-ask-yes': ask.yes } : {}
-	return html`<form method="post" action="${action}" class="sp-opt">
+	return html`<form method="post" action="${action}" class="sc-opt-form">
 		${hidden('csrf', context.csrf)}${fields.map(([name, value]) => hidden(name, value))}
 		${button({
 			label,

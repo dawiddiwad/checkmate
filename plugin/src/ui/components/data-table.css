@@ -1,88 +1,102 @@
-table {
+.sc-table-wrap {
+	max-width: 100%;
+	overflow: auto;
+	background: var(--surface);
+	border: var(--hairline) solid var(--hair);
+}
+.sc-table {
 	width: 100%;
 	border-collapse: collapse;
 	background: var(--surface);
-	border: 1px solid var(--hair);
-	font: 400 13px/20px var(--font-sans);
-}
-th,
-td {
-	padding: 6px 12px;
-	text-align: left;
-	vertical-align: top;
-	border-bottom: 1px solid var(--hair);
-	overflow-wrap: anywhere;
-}
-th {
-	font-size: 12px;
-	line-height: 16px;
-	font-weight: 500;
-	color: var(--muted);
-	background: var(--surface-2);
-	white-space: nowrap;
-}
-.exploration-cost {
-	min-inline-size: calc(7ch + 24px);
-	white-space: nowrap;
-}
-tbody tr:hover {
-	background: var(--row-hover);
-}
-.scroll {
-	max-width: 100%;
-	overflow-x: auto;
-	position: relative;
-}
-.matrix td,
-.matrix th {
-	text-align: center;
-	vertical-align: middle;
-}
-.matrix :is(th, td):first-child {
-	text-align: left;
-	text-transform: none;
-	letter-spacing: 0;
-}
-.matrix tbody th {
 	font: 400 14px/20px var(--font-sans);
 	color: var(--ink);
+}
+.sc-table th {
+	padding: 10px var(--space-4);
+	text-align: left;
+	white-space: nowrap;
+	background: var(--surface-2);
+	border-bottom: var(--hairline) solid var(--hair);
+	font: 600 13px/20px var(--font-sans);
+	color: var(--ink);
+}
+.sc-table td {
+	height: var(--row-h);
+	padding: var(--space-1) var(--space-4);
+	border-bottom: var(--hairline) solid var(--hair);
+	vertical-align: middle;
+	overflow-wrap: anywhere;
+}
+.sc-table tr:last-child td {
+	border-bottom: 0;
+}
+.sc-table tbody tr:hover {
+	background: var(--row-hover);
+}
+.sc-table tr.is-sel td {
+	background: var(--surface-2);
+}
+.sc-table tr.is-sel td:first-child {
+	box-shadow: inset var(--bar) 0 0 var(--ink);
+}
+.sc-table td.is-mono,
+.sc-table th.is-mono {
+	font: 500 13px/20px var(--font-mono);
+}
+.sc-table td.is-muted {
+	color: var(--muted);
+}
+.sc-table td.is-mono,
+.sc-table td.is-muted,
+.sc-table td.is-num {
+	white-space: nowrap;
+}
+.sc-table td.is-num,
+.sc-table th.is-num {
+	text-align: right;
+	font-family: var(--font-mono);
+}
+.sc-table td.is-title {
+	white-space: normal;
+	min-width: 240px;
+}
+.sc-table td a {
+	color: var(--ink);
+	text-decoration-color: var(--edge);
+}
+.sc-table td code {
+	white-space: nowrap;
+}
+.sc-table.is-matrix td,
+.sc-table.is-matrix th {
+	text-align: center;
+}
+.sc-table.is-matrix :is(th, td):first-child {
+	text-align: left;
+}
+.sc-table.is-matrix tbody th {
+	font: 400 14px/20px var(--font-sans);
 	background: none;
 	white-space: normal;
 }
 .cell-check {
 	display: inline-grid;
 	place-items: center;
-	width: 32px;
-	height: 32px;
+	width: var(--ctl);
+	height: var(--ctl);
 	cursor: pointer;
 }
 .cell-check:hover {
 	background: var(--row-hover);
-}
-.cell-check:active {
-	background: var(--hair);
 }
 .cell-check input {
 	width: 16px;
 	height: 16px;
 	margin: 0;
 }
-td code {
-	overflow-wrap: normal;
-	white-space: nowrap;
-}
-@media (max-width: 760px) {
-	table:not(.sp-ktable) {
-		position: relative;
-		display: block;
-		max-width: 100%;
-		overflow-x: auto;
-	}
-}
-
 @media (max-width: 760px) {
 	.cell-check {
-		width: 40px;
-		height: 40px;
+		width: var(--ctl-lg);
+		height: var(--ctl-lg);
 	}
 }

@@ -28,7 +28,7 @@ function zoomViewer(step) {
 
 function wrapViewer(on) {
 	viewer.querySelector('[data-viewer-wrap]').checked = on
-	viewerText.classList.toggle('nowrap', !on)
+	viewerText.classList.toggle('is-nowrap', !on)
 }
 
 async function viewerSource(link) {

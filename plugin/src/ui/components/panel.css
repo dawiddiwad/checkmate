@@ -1,4 +1,4 @@
-.panel,
+.sc-card,
 .box,
 .decision,
 .edit-card,
@@ -8,11 +8,11 @@
 	border: 1px solid var(--hair);
 	background: var(--surface);
 }
-.panel + .panel,
+.sc-card + .sc-card,
 .decision + .decision {
 	margin-top: 16px;
 }
-.panel h2,
+.sc-card h2,
 .decision h2,
 .box h2 {
 	margin-bottom: 8px;

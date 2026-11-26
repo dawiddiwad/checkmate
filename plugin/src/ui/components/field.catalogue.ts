@@ -15,7 +15,7 @@ export const examples: Array<[string, Html | string]> = [
 		'field with help',
 		field({
 			id: 'catalogue-build',
-			label: html`Build <span class="req">optional</span>`,
+			label: html`Build <span class="sc-req">optional</span>`,
 			control: textInput({
 				id: 'catalogue-build',
 				name: 'build',

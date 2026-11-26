@@ -1,37 +1,38 @@
-.sp-confirm {
-	top: 48px;
-	margin: 0 auto;
-	width: min(560px, calc(100vw - 32px));
-}
-.sp-confirm-b {
-	padding: 16px;
-}
-.sp-act {
-	max-height: calc(100vh - var(--bar-h) - 32px);
-	overflow-y: auto;
-}
-.sp-act [data-act-error]:empty {
-	display: none;
-}
-.sp-act .btns {
+.sc-confirm {
 	display: flex;
-	flex-wrap: wrap;
-	gap: 8px;
-	margin-top: 8px;
-}
-.sp-act label,
-.sp-act legend {
-	font: 500 12px/16px var(--font-mono);
-	color: var(--muted);
-}
-.sp-act summary:hover {
+	flex-direction: column;
+	gap: var(--space-3);
+	width: 440px;
+	max-width: calc(100vw - var(--space-6));
+	padding: var(--space-5);
+	background: var(--surface);
+	border: var(--hairline) solid var(--edge);
 	color: var(--ink);
 }
-.sp-act summary:active {
-	background: var(--row-hover);
+.sc-confirm:not([open]) {
+	display: none;
 }
-@media (max-width: 760px) {
-	.sp-act .sc-btn {
-		min-height: 40px;
-	}
+.sc-confirm::backdrop {
+	background: var(--scrim);
+}
+.sc-confirm h2 {
+	font: 600 17px/22px var(--font-sans);
+	letter-spacing: 0;
+}
+.sc-confirm p {
+	font: 400 14px/20px var(--font-sans);
+	color: var(--muted);
+}
+.sc-confirm-foot {
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: flex-end;
+	gap: var(--space-3);
+	padding-top: var(--space-2);
+}
+.sc-confirm.is-act {
+	width: 560px;
+}
+.sc-confirm .sc-fold {
+	margin: 0;
 }

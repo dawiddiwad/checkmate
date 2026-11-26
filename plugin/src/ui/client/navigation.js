@@ -145,7 +145,7 @@ export function settle() {
 		}
 		const rows = rowsAt()
 		mark(rows.find((row) => row.classList.contains('is-sel')) ?? rows[0], state.level)
-		const field = state.drawer?.querySelector('.form-error')
+		const field = state.drawer?.querySelector('.sc-error')
 			? state.drawer.querySelector('[data-field-form] textarea')
 			: null
 		const asked = location.hash && state.drawer?.querySelector(`${CSS.escape(location.hash)} textarea`)

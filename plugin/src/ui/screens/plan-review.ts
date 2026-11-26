@@ -231,7 +231,7 @@ function ruleButtons(context: Context, review: Review, rule: Rule, count: number
 				title: `Edit the text and the area of ${rule.id}`,
 			},
 		}),
-		html`<form method="post" action="/plans/${review.planId}/rules/${rule.id}/remove" class="sp-opt">
+		html`<form method="post" action="/plans/${review.planId}/rules/${rule.id}/remove" class="sc-opt-form">
 			<input type="hidden" name="csrf" value="${context.csrf}" />
 			${button({
 				label: numbered ? 'Remove…' : `Remove ${rule.id}…`,
@@ -405,7 +405,7 @@ export function reviewPage(
 			: `/?at=${encodeURIComponent(`plan:${planId}`)}`,
 		drawer: Boolean(item),
 		nav: navigator(review, current, null, { href: reviewHref(planId, current, '&chat=list'), active: chatting }),
-		body: html`${notice ? html`<p class="form-error" role="alert" data-notice>${notice}</p>` : ''}${refusedAnswer}
+		body: html`${notice ? html`<p class="sc-error" role="alert" data-notice>${notice}</p>` : ''}${refusedAnswer}
 			<div
 				class="sc-review"
 				data-review

@@ -7,9 +7,9 @@ import { statusMark } from './status-mark.ts'
 
 // The record decides what this turn saved. The reply text does not.
 function savedThisTurn(changes: RequestRecord['changes']) {
-	if (!changes.length) return html`<p class="help" data-chat-saved>Saved this turn: nothing.</p>`
-	return html`<div class="chat-saved" data-chat-saved>
-		<p class="help">Saved this turn</p>
+	if (!changes.length) return html`<p class="sc-help" data-chat-saved>Saved this turn: nothing.</p>`
+	return html`<div class="sc-turn-saved" data-chat-saved>
+		<b>Saved this turn</b>
 		<ul>
 			${changes.map(
 				(change) =>
@@ -45,35 +45,37 @@ export function chatTurn({
 	rowAttrs,
 }: ChatTurn) {
 	return html`<article
-		class="chat-turn"
+		class="sc-turn-pair"
 		data-chat-turn
 		tabindex="-1"
 		aria-label="Turn ${number}"
 		${attributes(rowAttrs)}
 	>
-		<div class="chat-message chat-user">
-			<div class="chat-meta">You · ${time(request.askedAt)}</div>
-			<p data-chat-content>${request.text}</p>
+		<div class="sc-turn is-ask">
+			<div class="sc-turn-h">You ${time(request.askedAt)}</div>
+			<div class="sc-turn-b"><p data-chat-content>${request.text}</p></div>
 		</div>
 		<div
-			class="chat-message chat-assistant"
+			class="sc-turn"
 			${['answered', 'failed', 'stopped', 'interrupted'].includes(request.state) ? html`data-chat-terminal="${request.state}"` : ''}
 		>
-			<div class="chat-meta">
-				Checkmate ·
-				${request.harness === 'pi' ? 'Pi' : 'Claude Code'}${model ? ` · ${model}` : ''}${request.effort ? ` · ${request.effort}` : ''}
-				<span class="chat-status"
+			<div class="sc-turn-h">
+				Checkmate
+				<span
+					>${request.harness === 'pi' ? 'Pi' : 'Claude Code'}${model ? ` · ${model}` : ''}${request.effort ? ` · ${request.effort}` : ''}</span
+				>
+				<span class="sc-turn-status"
 					>${request.state === 'answered' ? '' : statusMark({ state: request.state })}
 					<a href="${details}">Turn ${number}</a></span
 				>
 			</div>
-			${request.reply ? html`<div class="chat-markdown" data-chat-content>${chatMarkdown(request.reply)}</div>` : ''}
+			${request.reply ? html`<div class="sc-turn-b sc-markdown" data-chat-content>${chatMarkdown(request.reply)}</div>` : ''}
 			${['answered', 'failed', 'stopped', 'interrupted'].includes(request.state) ? savedThisTurn(request.changes) : ''}
-			${request.state === 'waiting' ? html`<p class="help" data-chat-waiting-behind>${waitingBehind}</p>` : ''}
-			${request.state === 'running' ? html`<p class="help">Working…</p>` : ''}
+			${request.state === 'waiting' ? html`<p class="sc-help" data-chat-waiting-behind>${waitingBehind}</p>` : ''}
+			${request.state === 'running' ? html`<p class="sc-help">Working…</p>` : ''}
 			${permissions.map(
 				(item) =>
-					html`<p class="banner warn" data-chat-waiting>
+					html`<p class="sc-notice is-warn" data-chat-waiting>
 						Waiting for your permission. The chat asks to run
 						<code>${item.command}</code>. <a href="${item.href}">Answer it</a>. If no one answers in about
 						10 minutes, Checkmate denies the command and the reply goes on without it.
@@ -83,7 +85,7 @@ export function chatTurn({
 				request.activity.length
 					? html`<details data-open-key="activity:${request.id}">
 							<summary>Activity (${request.activity.length})</summary>
-							<ol class="sp-activity">
+							<ol class="sc-activity">
 								${request.activity.map((entry) => html`<li>${entry.line}</li>`)}
 							</ol>
 						</details>`
@@ -91,10 +93,10 @@ export function chatTurn({
 			}
 			${
 				failure
-					? html`<p class="banner fail">${failure.cause}</p>
-							${failure.detail ? html`<p class="help">${failure.detail}</p>` : ''}${failure.lines.length ? html`<pre class="sp-code">${failure.lines.join('\n')}</pre>` : ''}`
+					? html`<p class="sc-notice is-error">${failure.cause}</p>
+							${failure.detail ? html`<p class="sc-help">${failure.detail}</p>` : ''}${failure.lines.length ? html`<pre class="sc-code">${failure.lines.join('\n')}</pre>` : ''}`
 					: request.reason
-						? html`<p class="banner info">${request.reason}</p>`
+						? html`<p class="sc-notice">${request.reason}</p>`
 						: ''
 			}
 			${

@@ -4,7 +4,6 @@
 	filter: brightness(0.85);
 }
 .sc-row:active,
-.q-row:active,
 .sc-plan:active,
 tbody tr:active {
 	background: var(--hair);
@@ -15,10 +14,10 @@ tbody tr:active {
 .sc-row > .sc-c-cb:active {
 	background: var(--edge-soft);
 }
-.chips a:hover {
+.sc-chips a:hover {
 	background: var(--row-hover);
 }
-.chips a:active,
+.sc-chips a:active,
 .sc-bar-nav a:active {
 	background: var(--hair);
 	border-color: var(--ink);

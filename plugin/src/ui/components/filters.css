@@ -1,16 +1,15 @@
-.filters,
-.q-filters {
+.sc-filters {
 	display: flex;
 	flex-wrap: wrap;
 	align-items: center;
 	gap: 8px;
 	margin-bottom: 12px;
 }
-.filters input[type='search'] {
+.sc-filters input[type='search'] {
 	flex: 1 1 240px;
 	width: auto;
 }
-.pager {
+.sc-pager {
 	display: flex;
 	flex-wrap: wrap;
 	align-items: center;

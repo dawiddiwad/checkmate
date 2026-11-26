@@ -63,7 +63,7 @@ export function permissionPage(
 		back,
 		status: refusal ? 422 : 200,
 		body: html`<div
-			class="sp-record"
+			class="sc-record"
 			data-region="permission-record"
 			data-drawer
 			data-back="${back}"
@@ -73,7 +73,7 @@ export function permissionPage(
 		>
 			${crumbBar({ crumbs: [...(item.planId ? [[item.planId, `/plans/${item.planId}`] as [string, string]] : []), [askerId, asker.href]] })}
 			<div data-stale-slot>
-				${refusal && !refusal.field ? html`<p class="form-error" role="alert">${refusal.error}</p>` : ''}
+				${refusal && !refusal.field ? html`<p class="sc-error" role="alert">${refusal.error}</p>` : ''}
 			</div>
 			${drawerHead({
 				label: name,
@@ -86,7 +86,7 @@ export function permissionPage(
 			})}
 			${
 				item.decision
-					? html`<p class="banner info" role="status" data-key="state">
+					? html`<p class="sc-notice" role="status" data-key="state">
 							${stateOf(item)}
 							${
 								moves
@@ -97,21 +97,21 @@ export function permissionPage(
 					: ''
 			}
 			<section aria-labelledby="asked-title">
-				<h2 class="lab" id="asked-title">What it asks</h2>
+				<h2 class="sc-label" id="asked-title">What it asks</h2>
 				${asked(item)}
 			</section>
 			${
 				choices.length
-					? html`<section class="sp-options" aria-labelledby="options-title" data-key="options:${name}">
-							<h2 class="lab" id="options-title">Options</h2>
-							<ol class="sp-optlist asks">
-								${choices.map((choice, index) => html`<li>${optionOf(context, item, from, choice, index + 1)}<span class="help">${choice.text}</span></li>`)}
+					? html`<section class="sc-opt-section" aria-labelledby="options-title" data-key="options:${name}">
+							<h2 class="sc-label" id="options-title">Options</h2>
+							<ol class="sc-ask-list asks">
+								${choices.map((choice, index) => html`<li>${optionOf(context, item, from, choice, index + 1)}<span class="sc-help">${choice.text}</span></li>`)}
 							</ol>
 							<div class="sc-c-extra" data-extra="deny" ${refusal?.field ? '' : html`hidden`}>
 								<form
 									method="post"
 									action="${recordPath(item)}"
-									class="sp-form"
+									class="sc-form"
 									id="deny"
 									data-field-form
 								>
@@ -125,10 +125,10 @@ export function permissionPage(
 										data-missing="Write the reason first. The tester gets it."
 									>
 ${refusal?.reason ?? ''}</textarea>
-									${refusal?.field ? html`<p class="form-error" role="alert" data-field="reason">${refusal.error}</p>` : ''}
-									<div class="btns">
+									${refusal?.field ? html`<p class="sc-error" role="alert" data-field="reason">${refusal.error}</p>` : ''}
+									<div class="sc-row-btns">
 										${button({ label: 'Deny', emphasis: 'primary' })}
-										<span class="small muted"
+										<span class="sc-note sc-muted"
 											>Enter sends. Shift+Enter starts a new line. Esc keeps the draft.</span
 										>
 									</div>
@@ -138,13 +138,13 @@ ${refusal?.reason ?? ''}</textarea>
 					: ''
 			}
 			<section aria-labelledby="details-title">
-				<h2 class="lab" id="details-title">Details</h2>
-				<dl class="facts">
+				<h2 class="sc-label" id="details-title">Details</h2>
+				<dl class="sc-facts">
 					<dt>Tool</dt>
-					<dd class="mono">${item.tool}</dd>
+					<dd class="sc-mono">${item.tool}</dd>
 					<dt>Folder</dt>
 					<dd class="path">
-						${item.cwd ? html`<code>${breakAtSlashes(item.cwd)}</code>` : html`<span class="muted">not recorded</span>`}
+						${item.cwd ? html`<code>${breakAtSlashes(item.cwd)}</code>` : html`<span class="sc-muted">not recorded</span>`}
 					</dd>
 					<dt>Asked by</dt>
 					<dd>${askerName(item)}</dd>
@@ -163,7 +163,9 @@ ${refusal?.reason ?? ''}</textarea>
 			${
 				rules.length
 					? html`<section aria-labelledby="rules-title">
-							<h2 class="lab" id="rules-title">Rules of this ${item.fromRequest ? 'chat' : 'test'}</h2>
+							<h2 class="sc-label" id="rules-title">
+								Rules of this ${item.fromRequest ? 'chat' : 'test'}
+							</h2>
 							${rulesLines(rules, item.fromRequest ? 'chat' : 'test')}
 						</section>`
 					: ''
@@ -180,6 +182,6 @@ export function emptyRecord(explorationId: string, requestId: string): Page {
 		status: 404,
 		back: '/activity',
 		body: html`${heading({ title: 'No such request', sub: `Run ${explorationId} has no permission request ${requestId}.` })}
-			<p class="actions">${formButton({ label: 'Activity', href: '/activity', emphasis: 'primary' })}</p>`,
+			<p class="sc-row-btns">${formButton({ label: 'Activity', href: '/activity', emphasis: 'primary' })}</p>`,
 	}
 }

@@ -1,7 +1,7 @@
 import { actDialog, actKey, actionsKey } from './actions.js'
 import { bulkOptions, undo } from './bulk.js'
 import { confirmDialog, confirmKey } from './confirm-dialog.js'
-import { choose, hideExtra, optionsNow } from './drawer.js'
+import { choose, hideExtra, optionsNow, trapDrawerFocus } from './drawer.js'
 import { closeViewer, trapViewer, viewer } from './evidence-viewer.js'
 import { findDialog, findKey, openFind } from './find.js'
 import { glyphHtml } from './format.js'
@@ -155,8 +155,8 @@ function keyCaps(caps) {
 
 function keysTable() {
 	const row = (entry) =>
-		`<tr><th scope="row"><span class="sp-keyset">${keyCaps(entry.caps)}</span></th><td>${entry.help}</td></tr>`
-	return `<table class="sp-ktable">${keyTable.map(row).join('')}<tr><th scope="row" colspan="2" class="sp-kexc">In a text field</th></tr>${fieldTable.map(row).join('')}</table><p class="sp-knote">Tab moves between the regions: the top bar, the navigator, the list, the record, and the status bar. Inside a region the arrows move. Each action also works with the mouse.</p>`
+		`<tr><th scope="row"><span class="sc-keyset">${keyCaps(entry.caps)}</span></th><td>${entry.help}</td></tr>`
+	return `<table class="sc-table sc-keys-table">${keyTable.map(row).join('')}<tr><th scope="row" colspan="2" class="sc-keys-sub">In a text field</th></tr>${fieldTable.map(row).join('')}</table><p class="sc-note">Tab moves between the regions: the top bar, the navigator, the list, the record, and the status bar. Inside a region the arrows move. Each action also works with the mouse.</p>`
 }
 
 export function typingIn(target) {
@@ -205,6 +205,7 @@ export function attachKeyboard() {
 			return
 		}
 		if (confirmDialog.open) return confirmKey(event)
+		if (!actDialog() && !findDialog.open && !keysDialog.open && trapDrawerFocus(event)) return
 		if (!modifierKeys.includes(event.key) && moveOn()) return event.preventDefault()
 		if (actDialog()) return actKey(event, actDialog())
 		if (findDialog.open) return findKey(event)

@@ -9,7 +9,7 @@ function applyTheme(form, theme) {
 	const button = form.querySelector('button[name="theme"]')
 	button.value = theme === 'dark' ? 'light' : 'dark'
 	button.dataset.current = theme
-	for (const frame of document.querySelectorAll('.ev-frame')) {
+	for (const frame of document.querySelectorAll('.sc-evidence-frame')) {
 		const url = new URL(frame.src)
 		url.searchParams.set('theme', theme)
 		frame.src = url.href

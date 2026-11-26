@@ -84,7 +84,7 @@
 	height: 14px;
 	flex: none;
 }
-.btns {
+.sc-row-btns {
 	display: flex;
 	flex-wrap: wrap;
 	align-items: center;

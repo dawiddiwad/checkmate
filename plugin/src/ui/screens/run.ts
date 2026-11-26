@@ -96,7 +96,7 @@ function assertionRow(store: Store, detail: Detail, test: RunTest, assertion: As
 			</summary>
 			<div class="asr-body">
 				${assertion.reason ? html`<p class="reason"><strong>Reason</strong> ${assertion.reason}</p>` : ''}
-				<p class="muted small">${words(assertion.checkKind)} · ${words(assertion.result)}</p>
+				<p class="sc-muted sc-note">${words(assertion.checkKind)} · ${words(assertion.result)}</p>
 				${runEvidence(store, assertion.evidence)}
 			</div>
 		</details>
@@ -180,13 +180,13 @@ function findingCard(store: Store, detail: Detail, finding: Detail['findings'][n
 			</div>
 			${
 				finding.reproduction.length
-					? html`<h4 class="minor">Reproduction</h4>
+					? html`<h4 class="sc-sub-h">Reproduction</h4>
 							<ol class="steps">
 								${finding.reproduction.map((step) => html`<li>${step}</li>`)}
 							</ol>`
 					: ''
 			}
-			<p class="muted small">
+			<p class="sc-muted sc-note">
 				Assertions
 				${join(
 					finding.assertionIds.map((id) => assertionLink(detail.runId, id)),
@@ -204,7 +204,7 @@ function findingCard(store: Store, detail: Detail, finding: Detail['findings'][n
 
 function assertionLink(runId: string, reference: string) {
 	const testId = reference.split('.')[0]
-	return html`<a class="mono" href="${runItemHref(runId, `test:${testId}`, `#${reference}`)}" data-go
+	return html`<a class="sc-mono" href="${runItemHref(runId, `test:${testId}`, `#${reference}`)}" data-go
 		>${reference}</a
 	>`
 }
@@ -244,15 +244,15 @@ function gapCard(
 	)
 	return html`<div class="gap" id="${gap.id}" data-key="card:${gap.id}">
 		<div class="gap-h">
-			<span class="id mono">${gap.id}</span> ${statusMark({ state: gap.severity })}
+			<span class="id sc-mono">${gap.id}</span> ${statusMark({ state: gap.severity })}
 			${statusMark({ state: gap.status })}
-			<span class="gap-refs muted"
+			<span class="gap-refs sc-muted"
 				>affects ${[...gap.requirementIds, ...gap.testIds].join(', ') || 'the plan'}</span
 			>
 		</div>
 		<p class="gap-q">${gap.question}</p>
-		<p class="muted">${gap.consequence}</p>
-		<div class="actions">
+		<p class="sc-muted">${gap.consequence}</p>
+		<div class="sc-row-btns">
 			${
 				adopted
 					? html`${statusMark({ state: 'resolved', label: 'in plan' })}
@@ -261,13 +261,13 @@ function gapCard(
 						${adoptForm(context, detail, gap.id, revision.sha256)}`
 			}
 		</div>
-		${adoptError?.gapId === gap.id ? html`<p class="form-error" role="alert">${adoptError.message}</p>` : ''}
+		${adoptError?.gapId === gap.id ? html`<p class="sc-error" role="alert">${adoptError.message}</p>` : ''}
 	</div>`
 }
 
 function coverage(store: Store, detail: Detail) {
 	const result = detail.result
-	if (!result) return html`<p class="none">Coverage is known when the run finishes.</p>`
+	if (!result) return html`<p class="sc-empty is-line">Coverage is known when the run finishes.</p>`
 	const plan = planDetail(store, detail.planId, detail.revision).plan
 	const requirements = new Map(plan.requirements.map((item) => [item.id, item]))
 	return dataTable({
@@ -275,17 +275,17 @@ function coverage(store: Store, detail: Detail) {
 		rows: result.coverage.requirements.map((row) =>
 			tableRow({
 				cells: [
-					{ content: row.requirementId, attrs: { class: 'mono' } },
+					{ content: row.requirementId, attrs: { class: 'is-mono' } },
 					html`${requirements.get(row.requirementId)?.text ?? ''}
-					${row.reason ? html`<div class="muted small">${row.reason}</div>` : ''}
+					${row.reason ? html`<div class="sc-muted sc-note">${row.reason}</div>` : ''}
 					${
 						hasMetadata(requirements.get(row.requirementId)?.metadata)
-							? html`<div class="small">
+							? html`<div class="sc-note">
 									${metadataList(requirements.get(row.requirementId)?.metadata)}
 								</div>`
 							: ''
 					}`,
-					{ content: row.testIds.join(', ') || '–', attrs: { class: 'mono' } },
+					{ content: row.testIds.join(', ') || '–', attrs: { class: 'is-mono' } },
 					statusMark({ state: row.status }),
 				],
 			})
@@ -296,17 +296,17 @@ function coverage(store: Store, detail: Detail) {
 
 function cleanup(detail: Detail) {
 	const result = detail.result
-	return html`<dl class="facts">
+	return html`<dl class="sc-facts">
 		<div>
 			<dt>Cleanup</dt>
 			<dd>
-				${result ? html`${statusMark({ state: result.cleanup.status })} ${result.cleanup.reason}` : html`<span class="muted">Not finished.</span>`}
+				${result ? html`${statusMark({ state: result.cleanup.status })} ${result.cleanup.reason}` : html`<span class="sc-muted">Not finished.</span>`}
 			</dd>
 		</div>
 		<div>
 			<dt>Attempts</dt>
 			<dd>
-				<ul class="plain">
+				<ul class="sc-plain">
 					${detail.attempts.map(
 						(attempt) =>
 							html`<li>
@@ -323,17 +323,17 @@ function cleanup(detail: Detail) {
 		</div>
 		<div>
 			<dt>Tool session</dt>
-			<dd class="mono">${detail.toolSession}</dd>
+			<dd class="sc-mono">${detail.toolSession}</dd>
 		</div>
 		<div>
 			<dt>Target</dt>
-			<dd class="mono">${detail.target}</dd>
+			<dd class="sc-mono">${detail.target}</dd>
 		</div>
 		<div>
 			<dt>Instance</dt>
 			<dd>
 				<a
-					class="mono"
+					class="sc-mono"
 					href="/settings/targets/${detail.instance.targetId}#instance-${detail.instance.instanceId}"
 					>${detail.instance.instanceId}</a
 				>${detail.instance.environment ? html` · ${detail.instance.environment}` : ''}${detail.instance.retired ? html` · ${statusMark({ state: 'retired' })}` : ''}
@@ -343,7 +343,9 @@ function cleanup(detail: Detail) {
 			detail.request.retestOf
 				? html`<div>
 						<dt>Retest of</dt>
-						<dd><a class="mono" href="/runs/${detail.request.retestOf}">${detail.request.retestOf}</a></dd>
+						<dd>
+							<a class="sc-mono" href="/runs/${detail.request.retestOf}">${detail.request.retestOf}</a>
+						</dd>
 					</div>`
 				: ''
 		}
@@ -360,8 +362,8 @@ function inconclusiveList(detail: Detail) {
 			}))
 	)
 	if (!rows.length) return ''
-	return html`<div class="field-group">
-		<p class="lab">Inconclusive · ${rows.length}</p>
+	return html`<div class="sc-field">
+		<p class="sc-label">Inconclusive · ${rows.length}</p>
 		<ul class="plist">
 			${rows.map((row) => html`<li>${assertionLink(detail.runId, row.reference)} ${row.reason}</li>`)}
 		</ul>
@@ -371,8 +373,8 @@ function inconclusiveList(detail: Detail) {
 function retestList(detail: Detail) {
 	if (!detail.retest.length) return ''
 	const labels = { fixed: 'Fixed', not_fixed: 'Not fixed', not_retested: 'Not retested' }
-	return html`<div class="field-group">
-		<p class="lab">Retest verdicts</p>
+	return html`<div class="sc-field">
+		<p class="sc-label">Retest verdicts</p>
 		<ul class="plist retest-verdicts">
 			${detail.retest.map((item) => html`<li><a href="/runs/${encodeURIComponent(item.runId)}?item=finding%3A${encodeURIComponent(item.findingId)}">${item.runId}/${item.findingId}</a> · ${item.title} · ${labels[item.verdict]} · ${item.testIds.join(', ')}</li>`)}
 		</ul>
@@ -391,12 +393,12 @@ export function decisionPanel(
 		return recordPanel(
 			'Decision',
 			html`<p class="subj">${detail.runId} is in progress.</p>
-				<p class="help">The decision opens when the run finishes. This page updates live.</p>`
+				<p class="sc-help">The decision opens when the run finishes. This page updates live.</p>`
 		)
 	if (result.acceptance === 'not_required')
 		return recordPanel(
 			'Decision',
-			html`<p class="help">The target policy does not require result acceptance.</p>
+			html`<p class="sc-help">The target policy does not require result acceptance.</p>
 				${retestList(detail)}`
 		)
 	const latest = result.latestDecision
@@ -407,7 +409,7 @@ export function decisionPanel(
 					${statusMark({ state: latest.verdict, label: latest.verdict === 'approved' ? 'accepted' : 'rejected' })}
 					${detail.runId}
 				</p>
-				<p class="help">
+				<p class="sc-help">
 					By ${latest.actor} · ${time(latest.at)} · sha256 <code>${short(latest.sha256)}</code>
 				</p>
 				<blockquote>${latest.rationale}</blockquote>
@@ -535,13 +537,13 @@ function runList(detail: Detail, selected: string) {
 			plural(detail.attempts.length, 'attempt')
 		),
 	]
-	return html`<div class="sp-ch">
-			<p class="sp-path">
+	return html`<div class="sc-head">
+			<p class="sc-crumb">
 				<a href="/plans/${detail.planId}@${detail.revision}">${detail.planId}@${detail.revision}</a> · build
 				<code>${detail.build}</code> · instance <code>${detail.instance.instanceId}</code>
 			</p>
 			<h1>${detail.runId}</h1>
-			<p class="sp-sub" data-region="state">
+			<p class="sc-note" data-region="state">
 				${runStatus({ state: detail.state, acceptance: detail.result?.acceptance ?? null })} started
 				${time(detail.startedAt)}${result ? html` · finished ${time(result.finishedAt)}` : ''}
 			</p>
@@ -561,14 +563,14 @@ function openChecks(detail: Detail) {
 	)
 	if (!rows.length) return ''
 	return html`<section aria-labelledby="open-checks">
-		<h3 class="lab" id="open-checks">Not passed <span class="n">${rows.length}</span></h3>
+		<h3 class="sc-label" id="open-checks">Not passed <span class="sc-count-n">${rows.length}</span></h3>
 		<ul class="plist">
 			${rows.map(
 				({ test, assertion }) =>
 					html`<li>
 						${resultCell({ result: assertion.result })}
 						${assertionLink(detail.runId, `${test.testId}.${assertion.assertionId}`)}
-						${assertion.check}${assertion.observed ? html` <span class="muted">Observed: ${assertion.observed}</span>` : ''}
+						${assertion.check}${assertion.observed ? html` <span class="sc-muted">Observed: ${assertion.observed}</span>` : ''}
 					</li>`
 			)}
 		</ul>
@@ -583,14 +585,14 @@ function summaryDetail(store: Store, context: Context, detail: Detail, state: Fo
 				note: 'The HTML report is self-contained and print-ready. Open it and print to PDF. JUnit XML is for CI.',
 				formats: ['html', 'md', 'json', 'junit'],
 			})
-		: html`<span class="muted small">The report is ready when the run finishes.</span>`
+		: html`<span class="sc-muted sc-note">The report is ready when the run finishes.</span>`
 	return html`${crumbs}
-		<h2 class="q-h">Overview</h2>
+		<h2 class="sc-sec-h">Overview</h2>
 		${strip(detail)}
-		<p class="muted small" data-region="run-usage">${runUsageLine(detail)}</p>
+		<p class="sc-muted sc-note" data-region="run-usage">${runUsageLine(detail)}</p>
 		${detail.warnings.map((warning) => notice({ kind: 'warn', content: warning }))} ${openChecks(detail)}
 		${decisionPanel(store, context, detail, state, returnFields({ key: 'summary' }, `/runs/${detail.runId}`))}
-		<div class="actions">${report}</div>`
+		<div class="sc-row-btns">${report}</div>`
 }
 
 export function runPage(
@@ -628,11 +630,11 @@ export function runPage(
 				? html`${crumbs} ${gapCard(store, context, detail, gap, adoptError)}`
 				: asked === 'coverage'
 					? html`${crumbs}
-							<h2 class="q-h">Coverage</h2>
+							<h2 class="sc-sec-h">Coverage</h2>
 							${coverage(store, detail)}`
 					: asked === 'cleanup'
 						? html`${crumbs}
-								<h2 class="q-h">Cleanup and attempts</h2>
+								<h2 class="sc-sec-h">Cleanup and attempts</h2>
 								${cleanup(detail)}`
 						: summaryDetail(store, context, detail, state, crumbs)
 	return {
@@ -651,7 +653,7 @@ export function runPage(
 		nav: navigator(reviewOf(store, detail.planId), 'plan'),
 		body: html`<div data-region="run-list">${runList(detail, selected)}</div>
 			<section
-				class="sp-detail q-detail"
+				class="sc-detail"
 				aria-label="${label ?? 'Overview'}"
 				data-region="run-detail"
 				data-key="detail:${selected}"

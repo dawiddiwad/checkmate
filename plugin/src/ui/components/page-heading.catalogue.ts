@@ -10,7 +10,7 @@ export const examples: Array<[string, Html | string]> = [
 		heading({
 			title: 'checkout@2',
 			sub: 'Checkout applies coupons.',
-			extra: html`<div class="meta">${statusMark({ state: 'approved' })}</div>`,
+			meta: html`${statusMark({ state: 'approved' })}`,
 		}),
 	],
 	[

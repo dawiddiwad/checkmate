@@ -35,6 +35,7 @@
 		max(var(--space-5), env(safe-area-inset-left, 0px));
 }
 .sc-bar-nav {
+	position: relative;
 	display: flex;
 	align-self: stretch;
 	font: 400 14px/20px var(--font-sans);
@@ -203,7 +204,7 @@
 .sc-bar-theme .d {
 	fill: currentColor;
 }
-.sp-saystrip {
+.sc-saystrip {
 	position: fixed;
 	z-index: 94;
 	left: 0;

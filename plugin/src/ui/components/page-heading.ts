@@ -13,14 +13,22 @@ export function crumbBar({ crumbs }: { crumbs: Crumbs | undefined }) {
 	</p>`
 }
 
-export type Heading = { title: Html | string; sub?: Html | string | null; extra?: Html | string }
+export type Heading = {
+	title: Html | string
+	sub?: Html | string | null
+	crumbs?: Crumbs
+	meta?: Html | ''
+	actions?: Html | ''
+	extra?: Html | string
+}
 
-export function heading({ title, sub = null, extra = '' }: Heading) {
+export function heading({ title, sub = null, crumbs, meta = '', actions = '', extra = '' }: Heading) {
 	return html`<header class="sc-h">
 		<div class="sc-h-text">
+			${crumbs ? crumbBar({ crumbs }) : ''}
 			<h1>${title}</h1>
-			${sub ? html`<p>${sub}</p>` : ''}
+			${meta ? html`<div class="sc-h-meta">${meta}</div>` : ''} ${sub ? html`<p>${sub}</p>` : ''}
 		</div>
-		${extra}
+		${actions ? html`<div class="sc-h-act">${actions}</div>` : ''} ${extra}
 	</header>`
 }

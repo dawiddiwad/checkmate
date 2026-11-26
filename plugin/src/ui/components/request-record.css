@@ -1,4 +1,4 @@
-.sp-optlist {
+.sc-ask-list {
 	display: flex;
 	flex-direction: column;
 	gap: 8px;
@@ -6,65 +6,61 @@
 	padding: 0;
 	list-style: none;
 }
-.sp-optlist li {
+.sc-ask-list li {
 	display: flex;
 	align-items: center;
 	gap: 12px;
 }
-.sp-record {
+.sc-record {
 	display: flex;
 	flex-direction: column;
 	gap: 16px;
 	max-width: 880px;
 	padding-bottom: 16px;
 }
-.sp-record .sp-ask-title {
-	font: 600 20px/28px var(--font-sans);
-	overflow-wrap: anywhere;
-}
-.sp-record .sc-notice {
+.sc-record .sc-notice {
 	margin: 0;
 }
-.sp-optlist.asks li {
+.sc-ask-list.asks li {
 	flex-direction: column;
 	align-items: flex-start;
 	gap: 4px;
 }
-.sp-optlist.asks .help {
+.sc-ask-list.asks .sc-help {
 	margin: 0;
 	max-width: 72ch;
 }
-.sp-record .sc-c-extra {
+.sc-record .sc-c-extra {
 	margin-top: 12px;
 }
-.sp-record .sp-form textarea {
+.sc-record .sc-form textarea {
 	width: 100%;
 }
 @media (max-width: 760px) {
-	.sp-record .sc-btn,
-	.sp-record .pager .sc-btn,
-	.fold-b .pager .sc-btn {
+	.sc-record .sc-btn,
+	.sc-record .sc-pager .sc-btn,
+	.sc-fold-b .sc-pager .sc-btn {
 		min-height: 40px;
 	}
-	.fold-b .pager .sc-btn,
-	.sp-asks a {
+	.sc-fold-b .sc-pager .sc-btn,
+	.sc-asks a {
 		display: inline-flex;
 		align-items: center;
 	}
-	.sp-asks a {
+	.sc-asks a {
 		min-height: 40px;
 	}
 }
-.sp-reply {
+.sc-reply {
 	max-width: 72ch;
 	font: 400 14px/22px var(--font-sans);
 	overflow-wrap: anywhere;
 }
-.sp-asked {
+.sc-asked {
 	margin: 0;
 	white-space: pre-wrap;
 }
-.sp-activity {
+.sc-activity {
 	margin: 0;
 	padding: 0;
 	list-style: none;
@@ -72,21 +68,21 @@
 	background: var(--surface-2);
 	font: 400 13px/20px var(--font-mono);
 }
-.sp-activity li {
+.sc-activity li {
 	padding: 4px 12px;
 }
-.sp-activity li + li {
+.sc-activity li + li {
 	border-top: 1px solid var(--hair);
 }
-.sp-changes {
+.sc-changes {
 	margin: 0;
 	padding-left: 24px;
 	font: 400 14px/22px var(--font-sans);
 }
 @media (max-width: 760px) {
-	.sp-changes a,
-	.sp-record .help a,
-	.sp-record .sc-notice a {
+	.sc-changes a,
+	.sc-record .sc-help a,
+	.sc-record .sc-notice a {
 		display: inline-flex;
 		align-items: center;
 		min-height: 40px;

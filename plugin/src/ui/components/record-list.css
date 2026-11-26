@@ -11,7 +11,7 @@
 .test-h,
 .gap-h,
 .found-h,
-.q-meta {
+.sc-h-meta {
 	display: flex;
 	flex-wrap: wrap;
 	align-items: center;
@@ -19,7 +19,7 @@
 	font: 500 12px/16px var(--font-mono);
 }
 .test-h h3,
-.q-h,
+.sc-sec-h,
 .record-h h3 {
 	font: 600 16px/24px var(--font-sans);
 }
@@ -31,9 +31,9 @@
 }
 .gaps,
 .history,
-.items,
+.sc-links,
 .found-list,
-.plain,
+.sc-plain,
 .q-items,
 .asrs,
 .checklist {

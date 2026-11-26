@@ -1,13 +1,13 @@
 .start-form {
 	max-width: 720px;
 }
-.start-form .btns {
+.start-form .sc-row-btns {
 	display: flex;
 	flex-wrap: wrap;
 	gap: 8px;
 	margin-top: 16px;
 }
-.start-form .btns .sc-btn {
+.start-form .sc-row-btns .sc-btn {
 	text-decoration: none;
 }
 .setup-assumed {

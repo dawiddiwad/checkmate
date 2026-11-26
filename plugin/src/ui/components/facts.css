@@ -1,4 +1,4 @@
-.facts,
+.sc-facts,
 .sc-facts {
 	display: grid;
 	grid-template-columns: 136px minmax(0, 1fr);
@@ -6,27 +6,27 @@
 	margin: 0;
 	font: 400 14px/20px var(--font-sans);
 }
-.facts dt,
+.sc-facts dt,
 .sc-facts dt {
 	font: 600 13px/20px var(--font-sans);
 	letter-spacing: 0;
 	color: var(--muted);
 }
-.facts dd,
+.sc-facts dd,
 .sc-facts dd {
 	margin: 0;
 	min-width: 0;
 	overflow-wrap: anywhere;
 }
-.facts dd.path {
+.sc-facts dd.path {
 	overflow-wrap: break-word;
 	word-break: normal;
 }
-.facts dd.path code {
+.sc-facts dd.path code {
 	overflow-wrap: inherit;
 	word-break: inherit;
 }
-.kv {
+.sc-chips {
 	display: inline-flex;
 	flex-wrap: wrap;
 	gap: 4px;
@@ -50,15 +50,18 @@
 	font-weight: 400;
 }
 .sc-facts dd {
+	font: 400 14px/20px var(--font-sans);
+}
+.sc-facts dd code {
 	font: 500 13px/20px var(--font-mono);
 }
 @media (max-width: 760px) {
-	.facts,
+	.sc-facts,
 	.sc-facts {
 		grid-template-columns: minmax(0, 1fr);
 		gap: 0 12px;
 	}
-	.facts dd + dt,
+	.sc-facts dd + dt,
 	.sc-facts dd + dt {
 		margin-top: 8px;
 	}

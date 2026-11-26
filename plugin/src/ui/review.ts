@@ -329,7 +329,7 @@ function optionForm(
 	fields: Array<[string, string]>,
 	name = label
 ) {
-	return html`<form method="post" action="${action(item)}" class="sp-opt">
+	return html`<form method="post" action="${action(item)}" class="sc-opt-form">
 		${hiddenFields(context, item, fields)}${optionButton({ n, label, name })}
 	</form>`
 }
@@ -351,7 +351,7 @@ export function optionsOf(context: Context, review: Review, item: Item): Html[] 
 	if (item.kind === 'defect')
 		return [
 			item.claim?.handoff
-				? html`<form method="post" action="/plans/${review.planId}/handoff" class="sp-opt">
+				? html`<form method="post" action="/plans/${review.planId}/handoff" class="sc-opt-form">
 						${hiddenFields(context, item, [
 							['claim', item.id],
 							['undo', '1'],
@@ -397,13 +397,13 @@ export function optionsOf(context: Context, review: Review, item: Item): Html[] 
 export function extraOf(context: Context, review: Review, item: Item) {
 	const form = (field: string, label: string, name: string, fields: Array<[string, string]>, url = action(item)) =>
 		html`<div class="sc-c-extra" data-extra="${field}" hidden>
-			<form method="post" action="${url}" class="sp-form" data-field-form>
+			<form method="post" action="${url}" class="sc-form" data-field-form>
 				${hiddenFields(context, item, fields)} ${item.kind === 'gap' ? html`<div data-stale-slot></div>` : ''}
 				<label for="${field}-${item.key}">${label}</label>
 				<textarea id="${field}-${item.key}" name="${name}" rows="2" required></textarea>
-				<div class="btns">
+				<div class="sc-row-btns">
 					${button({ label: 'Send', emphasis: 'primary' })}
-					<span class="small">Enter sends. Shift+Enter starts a new line. Esc keeps the draft.</span>
+					<span class="sc-note">Enter sends. Shift+Enter starts a new line. Esc keeps the draft.</span>
 				</div>
 			</form>
 		</div>`

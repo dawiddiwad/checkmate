@@ -17,7 +17,7 @@
   var keyNames = { "\u2191": "Up", "\u2193": "Down", "\u2190": "Left", "\u2192": "Right" };
   function glyphHtml(text) {
     return text.replace(/[●○↑↓←→▸▾]/g, (symbol) => {
-      const name = keyNames[symbol] ? `<span class="sr-only">${keyNames[symbol]}</span>` : "";
+      const name = keyNames[symbol] ? `<span class="sc-sr">${keyNames[symbol]}</span>` : "";
       return `<span class="glyph g-${glyphNames[symbol]}" aria-hidden="true"></span>${name}`;
     });
   }
@@ -127,7 +127,7 @@
   }
   function wrapViewer(on) {
     viewer.querySelector("[data-viewer-wrap]").checked = on;
-    viewerText.classList.toggle("nowrap", !on);
+    viewerText.classList.toggle("is-nowrap", !on);
   }
   async function viewerSource(link) {
     const inline = link.closest("figure")?.querySelector("[data-view-source]");
@@ -577,8 +577,8 @@
     return caps.map((cap) => `<kbd class="sc-key">${glyphHtml(cap)}</kbd>`).join("");
   }
   function keysTable() {
-    const row = (entry) => `<tr><th scope="row"><span class="sp-keyset">${keyCaps(entry.caps)}</span></th><td>${entry.help}</td></tr>`;
-    return `<table class="sp-ktable">${keyTable.map(row).join("")}<tr><th scope="row" colspan="2" class="sp-kexc">In a text field</th></tr>${fieldTable.map(row).join("")}</table><p class="sp-knote">Tab moves between the regions: the top bar, the navigator, the list, the record, and the status bar. Inside a region the arrows move. Each action also works with the mouse.</p>`;
+    const row = (entry) => `<tr><th scope="row"><span class="sc-keyset">${keyCaps(entry.caps)}</span></th><td>${entry.help}</td></tr>`;
+    return `<table class="sc-table sc-keys-table">${keyTable.map(row).join("")}<tr><th scope="row" colspan="2" class="sc-keys-sub">In a text field</th></tr>${fieldTable.map(row).join("")}</table><p class="sc-note">Tab moves between the regions: the top bar, the navigator, the list, the record, and the status bar. Inside a region the arrows move. Each action also works with the mouse.</p>`;
   }
   function typingIn(target) {
     return target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName);
@@ -623,6 +623,7 @@
         return;
       }
       if (confirmDialog.open) return confirmKey(event);
+      if (!actDialog() && !findDialog.open && !keysDialog.open && trapDrawerFocus(event)) return;
       if (!modifierKeys.includes(event.key) && moveOn()) return event.preventDefault();
       if (actDialog()) return actKey(event, actDialog());
       if (findDialog.open) return findKey(event);
@@ -1245,7 +1246,7 @@
   // plugin/src/ui/client/drawer.js
   function optionsNow() {
     if (state.level === "detail")
-      return [...state.drawer.querySelectorAll(".sc-drawer-top [data-option], .sp-options [data-option]")];
+      return [...state.drawer.querySelectorAll(".sc-drawer-top [data-option], .sc-opt-section [data-option]")];
     const row = state.level === "list" ? current("list") : null;
     if (row?.classList.contains("is-many")) return detailOptions(row);
     return row ? [...row.querySelectorAll("[data-option]")] : [];
@@ -1338,7 +1339,7 @@
     let message = form.querySelector("[data-send-error]");
     if (!message) {
       message = document.createElement("p");
-      message.className = "form-error";
+      message.className = "sc-error";
       message.setAttribute("role", "alert");
       message.dataset.sendError = "";
       form.append(message);
@@ -1391,6 +1392,29 @@
       tell("Sending\u2026");
       send(form, event.submitter);
     });
+  }
+  function trapDrawerFocus(event) {
+    if (event.key !== "Tab" || !state.drawer || state.level !== "detail") return false;
+    const focusable = [
+      ...state.drawer.querySelectorAll(
+        'a[href], button:not([disabled]), textarea, input:not([type="hidden"]), select, [tabindex="0"]'
+      )
+    ].filter((element) => !element.closest("[hidden]") && element.getClientRects().length);
+    if (!focusable.length) return false;
+    const first = focusable[0];
+    const last2 = focusable.at(-1);
+    const inside = state.drawer.contains(document.activeElement);
+    if (!inside || event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      (event.shiftKey ? last2 : first).focus();
+      return true;
+    }
+    if (!event.shiftKey && document.activeElement === last2) {
+      event.preventDefault();
+      first.focus();
+      return true;
+    }
+    return false;
   }
 
   // plugin/src/ui/client/navigation.js
@@ -1493,7 +1517,7 @@
       }
       const rows = rowsAt();
       mark(rows.find((row) => row.classList.contains("is-sel")) ?? rows[0], state.level);
-      const field = state.drawer?.querySelector(".form-error") ? state.drawer.querySelector("[data-field-form] textarea") : null;
+      const field = state.drawer?.querySelector(".sc-error") ? state.drawer.querySelector("[data-field-form] textarea") : null;
       const asked = location.hash && state.drawer?.querySelector(`${CSS.escape(location.hash)} textarea`);
       const typing = field || asked;
       if (typing) {
@@ -1819,7 +1843,7 @@
     let message = field.form.querySelector("[data-field-error]");
     if (!message) {
       message = document.createElement("p");
-      message.className = "form-error";
+      message.className = "sc-error";
       message.setAttribute("role", "alert");
       message.dataset.fieldError = "";
     }
@@ -1847,7 +1871,7 @@
       if (message.dataset.field === field.name) message.remove();
   }
   function placeAlert() {
-    const alert = [...document.querySelectorAll('main .form-error[role="alert"]')].find(
+    const alert = [...document.querySelectorAll('main .sc-error[role="alert"]')].find(
       (element) => element.textContent.trim() && shown(element)
     );
     if (!alert) return false;
@@ -1859,7 +1883,7 @@
     const field = alert.dataset.field && document.getElementById(alert.dataset.field);
     if (field) {
       alert.id ||= `${field.id}-error`;
-      field.closest(".field-group, li, td")?.append(alert);
+      field.closest(".sc-field, li, td")?.append(alert);
       field.setAttribute("aria-invalid", "true");
       field.setAttribute(
         "aria-describedby",
@@ -1963,7 +1987,7 @@
       if (kept && (!field.value.trim() || field.value === field.defaultValue && kept !== field.value)) {
         field.value = kept;
         const note = document.createElement("p");
-        note.className = "help draft-note";
+        note.className = "sc-help draft-note";
         note.textContent = "Draft kept.";
         field.after(note);
       }
@@ -2338,7 +2362,7 @@
   function dirty(region) {
     if (region.querySelector("dialog[open]")) return true;
     if (region.querySelector("form[data-confirming]")) return true;
-    if (region.querySelector(".form-error")) return true;
+    if (region.querySelector(".sc-error")) return true;
     if (typingInside(region)) return true;
     for (const field of region.querySelectorAll("textarea, input, select")) {
       if (field.type === "hidden" || field.matches("[data-pick-box]")) continue;
@@ -3099,7 +3123,7 @@
       const send2 = () => fetch(form.action, { method: "POST", body: new URLSearchParams(new FormData(form)) });
       const alertText = (message) => {
         const text = document.createElement("p");
-        text.className = "form-error";
+        text.className = "sc-error";
         text.setAttribute("role", "alert");
         text.textContent = message;
         return text;
@@ -3314,7 +3338,7 @@
     const button = form.querySelector('button[name="theme"]');
     button.value = theme === "dark" ? "light" : "dark";
     button.dataset.current = theme;
-    for (const frame of document.querySelectorAll(".ev-frame")) {
+    for (const frame of document.querySelectorAll(".sc-evidence-frame")) {
       const url = new URL(frame.src);
       url.searchParams.set("theme", theme);
       frame.src = url.href;

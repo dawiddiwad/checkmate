@@ -36,7 +36,7 @@ markdown.renderer.rules.image = (tokens, index, options, env, renderer) => {
 }
 
 markdown.renderer.rules.table_open = (tokens, index, options, _env, renderer) =>
-	`<div class="chat-table" role="region" aria-label="Table" tabindex="0">${renderer.renderToken(tokens, index, options)}`
+	`<div class="sc-md-table" role="region" aria-label="Table" tabindex="0">${renderer.renderToken(tokens, index, options)}`
 markdown.renderer.rules.table_close = (tokens, index, options, _env, renderer) =>
 	`${renderer.renderToken(tokens, index, options)}</div>`
 
@@ -45,7 +45,7 @@ for (const rule of ['th_open', 'td_open']) {
 		const cell = tokens[index]
 		const alignment = String(cell.attrGet('style') ?? '').split(':')[1]
 		if (alignment === 'left' || alignment === 'center' || alignment === 'right')
-			cell.attrs = [['class', `chat-align-${alignment}`]]
+			cell.attrs = [['class', `sc-align-${alignment}`]]
 		return renderer.renderToken(tokens, index, options)
 	}
 }

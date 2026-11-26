@@ -482,7 +482,7 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 			status,
 			back: '/',
 			body: html`${heading({ title, sub: message })}
-				<p class="actions">
+				<p class="sc-row-btns">
 					${formButton({ label: 'Needs you', href: '/', emphasis: 'primary' })}
 					${formButton({ label: 'Plans', href: '/plans' })} ${formButton({ label: 'Runs', href: '/runs' })}
 				</p>`,
@@ -800,10 +800,10 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 			section: null,
 			subjects: ['inbox'],
 			body: html`${heading({ title: 'Your name', sub: 'Checkmate records this name with each decision you make in this browser.' })}
-				<form method="post" action="/actor" class="panel narrow">
+				<form method="post" action="/actor" class="sc-card narrow">
 					<input type="hidden" name="csrf" value="${csrf}" />
 					<input type="hidden" name="back" value="${back}" />
-					<label class="lab" for="actor-name">Name</label>
+					<label class="sc-label" for="actor-name">Name</label>
 					<input
 						id="actor-name"
 						name="actor"
@@ -812,7 +812,7 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 						autocomplete="name"
 						value="${shown.actor ?? ''}"
 					/>
-					<div class="btns">
+					<div class="sc-row-btns">
 						${formButton({ label: 'Save name', emphasis: 'primary' })}
 						${formButton({ label: 'Cancel', href: back })}
 					</div>
@@ -1153,8 +1153,8 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 			status: 422,
 			back,
 			body: html`${heading({ title: 'Nothing was done' })}
-				<p class="form-error" role="alert" ${field ? html`data-field="${field}"` : ''}>${message}</p>
-				<p class="actions">${formButton({ label: 'Go back', href: back, emphasis: 'primary' })}</p>`,
+				<p class="sc-error" role="alert" ${field ? html`data-field="${field}"` : ''}>${message}</p>
+				<p class="sc-row-btns">${formButton({ label: 'Go back', href: back, emphasis: 'primary' })}</p>`,
 		})
 	}
 

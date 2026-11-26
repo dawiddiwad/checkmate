@@ -34,7 +34,7 @@ const tile: PlanTile = {
 }
 
 function list(content: Html) {
-	return html`<div class="sp-home" role="list" aria-label="Example">${content}</div>`
+	return html`<div class="sc-plans" role="list" aria-label="Example">${content}</div>`
 }
 
 export const examples: Array<[string, Html | string]> = [

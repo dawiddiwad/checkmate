@@ -54,7 +54,7 @@ export function fieldError(field, text) {
 	let message = field.form.querySelector('[data-field-error]')
 	if (!message) {
 		message = document.createElement('p')
-		message.className = 'form-error'
+		message.className = 'sc-error'
 		message.setAttribute('role', 'alert')
 		message.dataset.fieldError = ''
 	}
@@ -85,7 +85,7 @@ function clearRefusal(field) {
 }
 
 export function placeAlert() {
-	const alert = [...document.querySelectorAll('main .form-error[role="alert"]')].find(
+	const alert = [...document.querySelectorAll('main .sc-error[role="alert"]')].find(
 		(element) => element.textContent.trim() && shown(element)
 	)
 	if (!alert) return false
@@ -97,7 +97,7 @@ export function placeAlert() {
 	const field = alert.dataset.field && document.getElementById(alert.dataset.field)
 	if (field) {
 		alert.id ||= `${field.id}-error`
-		field.closest('.field-group, li, td')?.append(alert)
+		field.closest('.sc-field, li, td')?.append(alert)
 		field.setAttribute('aria-invalid', 'true')
 		field.setAttribute(
 			'aria-describedby',
@@ -206,7 +206,7 @@ export function attachForms() {
 		if (kept && (!field.value.trim() || (field.value === field.defaultValue && kept !== field.value))) {
 			field.value = kept
 			const note = document.createElement('p')
-			note.className = 'help draft-note'
+			note.className = 'sc-help draft-note'
 			note.textContent = 'Draft kept.'
 			field.after(note)
 		}

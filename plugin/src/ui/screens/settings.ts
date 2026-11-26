@@ -64,7 +64,7 @@ export function settingsPage(current: string, title: string, subjects: string[],
 }
 
 function none(text = 'none') {
-	return html`<span class="muted">${text}</span>`
+	return html`<span class="sc-muted">${text}</span>`
 }
 
 function words(items: string[]) {
@@ -81,10 +81,12 @@ export function targetsPage(store: Store): Page {
 	const rows = targets.map((target) =>
 		tableRow({
 			cells: [
-				html`<a class="mono" href="/settings/targets/${target.targetId}" data-nav-item>${target.targetId}</a>`,
+				html`<a class="sc-mono" href="/settings/targets/${target.targetId}" data-nav-item
+					>${target.targetId}</a
+				>`,
 				{
 					content: html`${target.revision === null ? none('no profile yet') : `@${target.revision}`}`,
-					attrs: { class: 'mono' },
+					attrs: { class: 'is-mono' },
 				},
 				words(target.capabilities),
 				words(target.entryPoints),
@@ -117,8 +119,8 @@ function entryPointsTable(entryPoints: EntryPoint[]) {
 		rows: entryPoints.map((entry) =>
 			tableRow({
 				cells: [
-					{ content: entry.name, attrs: { class: 'mono' } },
-					{ content: entry.kind, attrs: { class: 'mono' } },
+					{ content: entry.name, attrs: { class: 'is-mono' } },
+					{ content: entry.kind, attrs: { class: 'is-mono' } },
 					entry.purpose,
 				],
 			})
@@ -128,15 +130,15 @@ function entryPointsTable(entryPoints: EntryPoint[]) {
 }
 
 function toolsTable(profile: Profile) {
-	if (!profile.tools.length) return html`<p class="none">No tools.</p>`
+	if (!profile.tools.length) return html`<p class="sc-empty is-line">No tools.</p>`
 	return dataTable({
 		columns: ['Tool', 'Kind', 'Version', 'At setup', 'Purpose'],
 		rows: profile.tools.map((tool) =>
 			tableRow({
 				cells: [
-					{ content: tool.name, attrs: { class: 'mono' } },
-					{ content: tool.kind, attrs: { class: 'mono' } },
-					{ content: tool.version ?? '–', attrs: { class: 'mono' } },
+					{ content: tool.name, attrs: { class: 'is-mono' } },
+					{ content: tool.kind, attrs: { class: 'is-mono' } },
+					{ content: tool.version ?? '–', attrs: { class: 'is-mono' } },
 					tool.reachable
 						? statusMark({ state: 'passed', label: 'reachable' })
 						: statusMark({ state: 'failed', label: 'unreachable' }),
@@ -150,7 +152,7 @@ function toolsTable(profile: Profile) {
 
 function profileFacts(profile: Profile) {
 	const approvals = profile.approvals ?? { plan: 'required', result: 'required' }
-	return html`<dl class="facts">
+	return html`<dl class="sc-facts">
 		<dt>Capabilities</dt>
 		<dd>${words(profile.capabilities)}</dd>
 		<dt>Operations</dt>
@@ -179,7 +181,7 @@ function profileFacts(profile: Profile) {
 				profile.readyForLiveExecution
 					? statusMark({ state: 'ready' })
 					: html`${statusMark({ state: 'blocked', label: 'not ready' })}
-							<p class="help">
+							<p class="sc-help">
 								Check the active instances below. Then run
 								<code>checkmate delegate setup ${profile.targetId}</code>
 								to recheck the prerequisites and save a profile revision.
@@ -191,18 +193,18 @@ function profileFacts(profile: Profile) {
 
 function historyList(store: Store, targetId: string, shown: number) {
 	const revisions = targetHistory(store, targetId).reverse()
-	if (!revisions.length) return html`<p class="none">No profile yet.</p>`
+	if (!revisions.length) return html`<p class="sc-empty is-line">No profile yet.</p>`
 	return html`<ol class="history">
 		${revisions.map(
 			(item) =>
 				html`<li class="${item.revision === shown ? 'current' : ''}">
 					<div class="record-h">
-						<a class="mono rev" href="/settings/targets/${targetId}?revision=${item.revision}"
+						<a class="sc-mono rev" href="/settings/targets/${targetId}?revision=${item.revision}"
 							>${targetId}@${item.revision}</a
 						>
-						<span class="muted">by ${item.actor} · ${time(item.at)}</span>
-						<code class="muted small" title="${item.sha256}">${short(item.sha256)}</code>
-						<span class="muted small"
+						<span class="sc-muted">by ${item.actor} · ${time(item.at)}</span>
+						<code class="sc-muted sc-note" title="${item.sha256}">${short(item.sha256)}</code>
+						<span class="sc-muted sc-note"
 							>${item.changed.length ? html`changed ${item.changed.join(', ')}` : 'first revision'}</span
 						>
 					</div>
@@ -216,7 +218,7 @@ function entryList(instance: InstanceRecord) {
 		${Object.entries(instance.entries).map(
 			([name, value]) =>
 				html`<div>
-					<dt class="mono">${name}</dt>
+					<dt class="sc-mono">${name}</dt>
 					<dd>
 						<code
 							>${join(
@@ -236,7 +238,7 @@ function actorInput(context: Context, id: string) {
 }
 
 function retireControl(context: Context, targetId: string, instance: InstanceRecord, retire: RetireState) {
-	if (instance.retired) return html`<span class="muted small">retired by ${instance.retired.actor}</span>`
+	if (instance.retired) return html`<span class="sc-muted sc-note">retired by ${instance.retired.actor}</span>`
 	const failed = retire?.instanceId === instance.instanceId ? retire.error : null
 	return html`<details class="retire" ${failed ? html`open` : ''} data-open-key="retire:${instance.instanceId}">
 		${formButton({ label: 'Retire', element: 'summary', inline: true, attrs: { 'aria-label': `Retire ${instance.instanceId}` } })}
@@ -248,15 +250,15 @@ function retireControl(context: Context, targetId: string, instance: InstanceRec
 			<input type="hidden" name="csrf" value="${context.csrf}" />
 			<input type="hidden" name="confirmed" value="1" />
 			<p>Retire <code>${instance.instanceId}</code>? No new run can start on it. Its runs stay as they are.</p>
-			${failed ? html`<p class="form-error" role="alert">${failed}</p>` : ''}
+			${failed ? html`<p class="sc-error" role="alert">${failed}</p>` : ''}
 			${actorInput(context, `retire-actor-${instance.instanceId}`)}
-			<div class="btns">${formButton({ label: 'Confirm retire', emphasis: 'primary' })}</div>
+			<div class="sc-row-btns">${formButton({ label: 'Confirm retire', emphasis: 'primary' })}</div>
 		</form>
 	</details>`
 }
 
 function instancesTable(context: Context, targetId: string, instances: InstanceRecord[], retire: RetireState) {
-	if (!instances.length) return html`<p class="none">No instance yet. Add one to start runs.</p>`
+	if (!instances.length) return html`<p class="sc-empty is-line">No instance yet. Add one to start runs.</p>`
 	return dataTable({
 		columns: [
 			'Instance',
@@ -265,12 +267,12 @@ function instancesTable(context: Context, targetId: string, instances: InstanceR
 			'References',
 			'Added',
 			'Status',
-			html`<span class="sr-only">Actions</span>`,
+			html`<span class="sc-sr">Actions</span>`,
 		],
 		rows: instances.map((instance) =>
 			tableRow({
 				cells: [
-					{ content: instance.instanceId, attrs: { class: 'mono' } },
+					{ content: instance.instanceId, attrs: { class: 'is-mono' } },
 					entryList(instance),
 					instance.environment ?? none(),
 					words(instance.references),
@@ -288,29 +290,29 @@ function instancesTable(context: Context, targetId: string, instances: InstanceR
 function addForm(context: Context, targetId: string, entryPoints: EntryPoint[], form: InstanceForm | null) {
 	const value = (name: string) => form?.values[name] ?? ''
 	return html`<section
-		class="panel decision"
+		class="sc-card decision"
 		aria-labelledby="add-instance"
 		data-region="instance-form"
 		data-stale-message="${targetId} changed. Review it before you add the instance."
 	>
-		<h2 class="lab" id="add-instance">Add instance</h2>
-		<p class="help">
+		<h2 class="sc-label" id="add-instance">Add instance</h2>
+		<p class="sc-help">
 			An instance is one place where the target runs. Adding one needs no new revision and no approval.
 		</p>
 		<div data-stale-slot>
 			${
 				form?.error
-					? html`<p class="form-error" role="alert" data-field="${form.field ?? ''}">${form.error}</p>`
+					? html`<p class="sc-error" role="alert" data-field="${form.field ?? ''}">${form.error}</p>`
 					: ''
 			}
 		</div>
-		<form method="post" action="/settings/targets/${targetId}/instances" class="decision-form">
+		<form method="post" action="/settings/targets/${targetId}/instances" class="sc-form">
 			<input type="hidden" name="csrf" value="${context.csrf}" />
 			${field({ id: 'instance-id', label: 'Instance ID', control: textInput({ id: 'instance-id', name: 'instanceId', value: value('instanceId'), attrs: { required: true, pattern: '[A-Za-z0-9][A-Za-z0-9_\\-]{0,95}', placeholder: 'staging' } }), help: 'Letters, digits, _ or -. An instance ID is not used again.' })}
 			${entryPoints.map((entry) =>
 				field({
 					id: `entry-${entry.name}`,
-					label: html`${entry.name} <span class="req">${entry.kind}</span>`,
+					label: html`${entry.name} <span class="sc-req">${entry.kind}</span>`,
 					control: textInput({
 						id: `entry-${entry.name}`,
 						name: `entry.${entry.name}`,
@@ -321,10 +323,10 @@ function addForm(context: Context, targetId: string, entryPoints: EntryPoint[], 
 					helpId: `entry-${entry.name}-help`,
 				})
 			)}
-			${field({ id: 'environment', label: html`Environment <span class="req">optional</span>`, control: textInput({ id: 'environment', name: 'environment', value: value('environment'), attrs: { placeholder: 'UAT sandbox' } }) })}
-			${field({ id: 'references', label: html`References <span class="req">optional</span>`, control: textArea({ id: 'references', name: 'references', rows: 2, value: value('references'), attrs: { 'aria-describedby': 'references-help' } }), help: 'One per line, for example an authentication alias. No secrets.', helpId: 'references-help' })}
+			${field({ id: 'environment', label: html`Environment <span class="sc-req">optional</span>`, control: textInput({ id: 'environment', name: 'environment', value: value('environment'), attrs: { placeholder: 'UAT sandbox' } }) })}
+			${field({ id: 'references', label: html`References <span class="sc-req">optional</span>`, control: textArea({ id: 'references', name: 'references', rows: 2, value: value('references'), attrs: { 'aria-describedby': 'references-help' } }), help: 'One per line, for example an authentication alias. No secrets.', helpId: 'references-help' })}
 			${actorInput(context, 'instance-actor')}
-			<div class="btns">${formButton({ label: 'Add instance', emphasis: 'primary' })}</div>
+			<div class="sc-row-btns">${formButton({ label: 'Add instance', emphasis: 'primary' })}</div>
 		</form>
 	</section>`
 }
@@ -350,7 +352,7 @@ export function targetPage(
 		: html`No profile yet. Run <code>checkmate delegate setup ${targetId}</code>. ${instancesText}.`
 	const shape = shown
 		? html`<section aria-labelledby="tools">
-					<h2 id="tools">Tools <span class="n">${shown.profile.tools.length}</span></h2>
+					<h2 id="tools">Tools <span class="sc-count-n">${shown.profile.tools.length}</span></h2>
 					${toolsTable(shown.profile)}
 				</section>
 				<section aria-labelledby="profile">
@@ -361,12 +363,12 @@ export function targetPage(
 	const body = html`${heading({
 			title: targetId,
 			sub,
-			extra: html`<div class="meta">
-				${shown ? html`<span class="pill" title="${shown.sha256}">sha256 <span class="mono">${short(shown.sha256)}</span></span>` : ''}
-			</div>`,
+			meta: html`
+				${shown ? html`<span title="${shown.sha256}">sha256 <code>${short(shown.sha256)}</code></span>` : ''}
+			`,
 		})}
-		<div class="split">
-			<div class="main-col">
+		<div class="sc-split">
+			<div class="sc-stack">
 				${jumpLinks({
 					links: [
 						{ href: '#entry-points', label: 'Entry points' },
@@ -381,15 +383,17 @@ export function targetPage(
 					],
 				})}
 				<section aria-labelledby="entry-points">
-					<h2 id="entry-points">Entry points <span class="n">${request.entryPoints.length}</span></h2>
+					<h2 id="entry-points">
+						Entry points <span class="sc-count-n">${request.entryPoints.length}</span>
+					</h2>
 					${entryPointsTable(request.entryPoints)}
 				</section>
 				<section aria-labelledby="instances" data-region="instances">
-					<h2 id="instances">Instances <span class="n">${instances.length}</span></h2>
+					<h2 id="instances">Instances <span class="sc-count-n">${instances.length}</span></h2>
 					${
 						retire &&
 						!instances.some((instance) => instance.instanceId === retire.instanceId && !instance.retired)
-							? html`<p class="form-error" role="alert">${retire.error}</p>`
+							? html`<p class="sc-error" role="alert">${retire.error}</p>`
 							: ''
 					}
 					${instancesTable(context, targetId, instances, retire)}
@@ -435,7 +439,7 @@ function harnessProgram(env: Env) {
 		return html`<code>${program}</code>`
 	} catch (error) {
 		if (!(error instanceof Refusal)) throw error
-		return html`<span class="form-error" role="status">${error.message} ${error.hint ?? ''}</span>`
+		return html`<span class="sc-error" role="status">${error.message} ${error.hint ?? ''}</span>`
 	}
 }
 
@@ -455,8 +459,8 @@ export function harnessPage(
 	const levelModels = [...new Set(Object.values(testLevels).map((level) => level.model))]
 	const testerDefault = !pi && levelModels.length === 1 ? levelModels[0] : ''
 	const body = html`${heading({ title: 'Coding harness', sub: null })}
-		<div class="panel">
-			<form method="post" action="/settings/harness/select" class="decision-form">
+		<div class="sc-card">
+			<form method="post" action="/settings/harness/select" class="sc-form">
 				<input type="hidden" name="csrf" value="${context.csrf}" />
 				${field({
 					id: 'coding-harness',
@@ -467,27 +471,27 @@ export function harnessPage(
 					</select>`,
 					help: 'Applies to new tests and chats in this workspace.',
 				})}
-				<div class="btns">${formButton({ label: 'Save the program', emphasis: 'primary' })}</div>
+				<div class="sc-row-btns">${formButton({ label: 'Save the program', emphasis: 'primary' })}</div>
 			</form>
 			<p id="harness-program">Current executable · ${harnessProgram(effectiveEnv)}</p>
 		</div>
-		<section class="panel" aria-labelledby="claude-rules">
-			<h2 class="lab" id="claude-rules">Tool rules of testers</h2>
-			<p class="help" data-key="permission-bash">
+		<section class="sc-card" aria-labelledby="claude-rules">
+			<h2 class="sc-label" id="claude-rules">Tool rules of testers</h2>
+			<p class="sc-help" data-key="permission-bash">
 				${pi ? 'With Bash, testers can run commands. Without it, they cannot use Bash.' : 'With Bash, testers run commands without asking. Without it, each command asks you here. A tester waits up to 10 minutes for an answer.'}
 			</p>
-			<p class="help" data-region="permission-hook">
+			<p class="sc-help" data-region="permission-hook">
 				${
 					liveUi(context.workspace)
 						? 'Testers that start now can ask you in this UI when a tool needs a permission.'
 						: 'Testers that start now cannot ask you. The UI of this folder does not run. A tool that needs a permission is denied.'
 				}
 			</p>
-			<form method="post" action="/settings/harness/rules" class="decision-form">
+			<form method="post" action="/settings/harness/rules" class="sc-form">
 				<input type="hidden" name="csrf" value="${context.csrf}" />
 				<input type="hidden" name="harness" value="${harness}" />
-				<div class="field-group">
-					<label class="lab" for="tester-rules">Default tools for new tests</label>
+				<div class="sc-field">
+					<label class="sc-label" for="tester-rules">Default tools for new tests</label>
 					<input
 						id="tester-rules"
 						name="rules"
@@ -497,27 +501,27 @@ export function harnessPage(
 						aria-describedby="tester-rules-help"
 						${form ? html`autofocus` : ''}
 					/>
-					<p class="help" id="tester-rules-help">
+					<p class="sc-help" id="tester-rules-help">
 						${pi ? 'Enter tool names separated by spaces, for example read bash.' : 'Enter tool rules separated by spaces, for example Read Bash.'}
 					</p>
-					${form ? html`<p class="form-error" role="alert" data-field="rules">${form.error}</p>` : ''}
+					${form ? html`<p class="sc-error" role="alert" data-field="rules">${form.error}</p>` : ''}
 				</div>
-				<div class="btns">${formButton({ label: 'Save the rules', emphasis: 'primary' })}</div>
+				<div class="sc-row-btns">${formButton({ label: 'Save the rules', emphasis: 'primary' })}</div>
 			</form>
 		</section>
 		<section
-			class="panel"
+			class="sc-card"
 			aria-labelledby="model-settings"
 			data-model-catalog="${harness}"
 			data-tester-default="${testerDefault}"
 		>
-			<h2 class="lab" id="model-settings">Models</h2>
-			<p class="help">Choose a model for each kind of work. Choose a default or a model from the list.</p>
-			<p class="help">
+			<h2 class="sc-label" id="model-settings">Models</h2>
+			<p class="sc-help">Choose a model for each kind of work. Choose a default or a model from the list.</p>
+			<p class="sc-help">
 				If the coding harness cannot use a saved model, a delegated worker uses the harness default. The reply
 				says so.
 			</p>
-			<p class="help" role="status" data-model-status>Loading models from ${pi ? 'Pi' : 'Claude Code'}…</p>
+			<p class="sc-help" role="status" data-model-status>Loading models from ${pi ? 'Pi' : 'Claude Code'}…</p>
 			${formButton({ label: 'Refresh models', attrs: { type: 'button', 'data-model-refresh': true } })}
 			${field({
 				id: 'model-filter',
@@ -527,22 +531,22 @@ export function harnessPage(
 					attrs: { type: 'search', autocomplete: 'off', placeholder: 'Search available models' },
 				}),
 			})}
-			<form method="post" action="/settings/harness/models" class="decision-form">
+			<form method="post" action="/settings/harness/models" class="sc-form">
 				<input type="hidden" name="csrf" value="${context.csrf}" />
 				<input type="hidden" name="harness" value="${harness}" />
-				<div class="field-group">
-					<label class="lab" for="tester-model">Model for testers</label>
+				<div class="sc-field">
+					<label class="sc-label" for="tester-model">Model for testers</label>
 					<select id="tester-model" name="testerModel" aria-describedby="tester-model-help" data-model-select>
 						<option value="">${pi ? 'Pi default' : 'Test level default'}</option>
 						${testerValue ? html`<option value="${testerValue}" selected>${testerValue}</option>` : ''}
 					</select>
-					<p class="help" id="tester-model-help">
+					<p class="sc-help" id="tester-model-help">
 						${pi ? 'The Pi default is the model configured in Pi.' : 'The test level selects its default model.'}
 						Delegated execute workers also use this model${pi ? '' : ', or the Claude Code default'}.
 					</p>
-					<p class="help" data-model-unavailable="tester-model" hidden></p>
+					<p class="sc-help" data-model-unavailable="tester-model" hidden></p>
 					<div hidden>
-						<label class="lab" for="tester-effort">Reasoning effort for testers</label>
+						<label class="sc-label" for="tester-effort">Reasoning effort for testers</label>
 						<select
 							id="tester-effort"
 							name="testerEffort"
@@ -551,11 +555,11 @@ export function harnessPage(
 							disabled
 						></select>
 					</div>
-					${testerModel?.error ? html`<p class="form-error" role="alert" data-field="model">${testerModel.error}</p>` : ''}
+					${testerModel?.error ? html`<p class="sc-error" role="alert" data-field="model">${testerModel.error}</p>` : ''}
 				</div>
 
-				<div class="field-group">
-					<label class="lab" for="request-model">Model for chats</label>
+				<div class="sc-field">
+					<label class="sc-label" for="request-model">Model for chats</label>
 					<select
 						id="request-model"
 						name="requestModel"
@@ -565,13 +569,13 @@ export function harnessPage(
 						<option value="">${pi ? 'Pi default' : 'Claude Code default'}</option>
 						${requestValue ? html`<option value="${requestValue}" selected>${requestValue}</option>` : ''}
 					</select>
-					<p class="help" id="request-model-help">
+					<p class="sc-help" id="request-model-help">
 						The default is the model configured in ${pi ? 'Pi' : 'Claude Code'}. Delegated setup, plan, and
 						revise workers also use this model.
 					</p>
-					<p class="help" data-model-unavailable="request-model" hidden></p>
+					<p class="sc-help" data-model-unavailable="request-model" hidden></p>
 					<div hidden>
-						<label class="lab" for="request-effort">Reasoning effort for chats</label>
+						<label class="sc-label" for="request-effort">Reasoning effort for chats</label>
 						<select
 							id="request-effort"
 							name="requestEffort"
@@ -580,19 +584,19 @@ export function harnessPage(
 							disabled
 						></select>
 					</div>
-					${model?.error ? html`<p class="form-error" role="alert" data-field="model">${model.error}</p>` : ''}
+					${model?.error ? html`<p class="sc-error" role="alert" data-field="model">${model.error}</p>` : ''}
 				</div>
-				<div class="btns">${formButton({ label: 'Save models', emphasis: 'primary' })}</div>
+				<div class="sc-row-btns">${formButton({ label: 'Save models', emphasis: 'primary' })}</div>
 			</form>
 		</section>
-		<section class="panel" aria-labelledby="chat-settings">
-			<h2 class="lab" id="chat-settings">Chats</h2>
+		<section class="sc-card" aria-labelledby="chat-settings">
+			<h2 class="sc-label" id="chat-settings">Chats</h2>
 
-			<p class="help">
+			<p class="sc-help">
 				New chats use ${pi ? 'Pi' : 'Claude Code'} and your chat model by default. Change the harness, model, or
 				effort for the next message in the chat.
 			</p>
-			<div class="btns">${formButton({ label: 'Open Chats', href: '/chats' })}</div>
+			<div class="sc-row-btns">${formButton({ label: 'Open Chats', href: '/chats' })}</div>
 		</section>`
 	return settingsPage('/settings/harness', 'Coding harness', ['*'], body)
 }

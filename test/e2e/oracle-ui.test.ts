@@ -601,13 +601,13 @@ test(
 		await page.waitForURL((address) => address.searchParams.get('item') === key)
 		await page.getByText('Promotion quote is wrong').first().waitFor()
 		await page.locator('[data-drawer] [data-sub][data-label="quote.txt"]').click()
-		await page.locator('.sp-viewer').waitFor()
-		assert.match((await page.locator('.sp-viewer').textContent()) ?? '', /HTTP 200: totalPLN=220/)
+		await page.locator('.sc-viewer').waitFor()
+		assert.match((await page.locator('.sc-viewer').textContent()) ?? '', /HTTP 200: totalPLN=220/)
 		await page.keyboard.press('Escape')
 		await page.locator('[data-drawer]').waitFor()
 		// A running test with no tester shows its empty state as one line across the list.
 		await page.goto(new URL('/explorations/no-tester-yet', ui.url).href)
-		const empty = page.locator('.sc-list > .sp-empty')
+		const empty = page.locator('.sc-list > .sc-empty')
 		await empty.waitFor()
 		const list = await page.locator('.sc-list').first().boundingBox()
 		const line = await empty.boundingBox()
@@ -904,7 +904,7 @@ test(
 			await sources(),
 			builtIn.map((name) => [name, 'built-in'])
 		)
-		const empty = page.locator('[data-region="recipes"] .sp-empty')
+		const empty = page.locator('[data-region="recipes"] .sc-empty')
 		assert.match((await empty.textContent()) ?? '', /No custom recipe yet\.[\s\S]*Drop a recipe JSON file in/)
 		assert.equal(await page.locator('main form, main button').count(), 0)
 
@@ -939,8 +939,8 @@ test(
 
 		await page.locator('[data-label="acme"]').click()
 		await page.waitForURL(/\/settings\/recipes\/acme$/)
-		const facts = await page.locator('#recipe + .facts').innerText()
-		assert.equal(await page.locator('#recipe + .facts [data-source]').getAttribute('data-source'), 'custom')
+		const facts = await page.locator('#recipe + .sc-facts').innerText()
+		assert.equal(await page.locator('#recipe + .sc-facts [data-source]').getAttribute('data-source'), 'custom')
 		assert.ok(facts.includes(path), facts)
 		assert.match(facts, /inventory · command-line tool/)
 		assert.match(facts, /acme on PATH/)
@@ -961,8 +961,8 @@ test(
 		assert.equal(await page.locator('[data-json]').textContent(), JSON.stringify(withoutUsage))
 
 		await page.goto(new URL('/settings/recipes/node', url).href)
-		const nodeFacts = await page.locator('#recipe + .facts').innerText()
-		assert.equal(await page.locator('#recipe + .facts [data-source]').getAttribute('data-source'), 'built-in')
+		const nodeFacts = await page.locator('#recipe + .sc-facts').innerText()
+		assert.equal(await page.locator('#recipe + .sc-facts [data-source]').getAttribute('data-source'), 'built-in')
 		assert.match(nodeFacts, /The Node\.js that runs Checkmate/)
 		assert.doesNotMatch(nodeFacts, /FILE/)
 		const nodeUsage = (await page.locator('[data-usage]').textContent()) ?? ''
@@ -993,21 +993,21 @@ test(
 		)
 		assert.match(error, /<img src=x/)
 		assert.ok(
-			(await page.locator('main .facts').innerText()).includes(
+			(await page.locator('main .sc-facts').innerText()).includes(
 				join(workspace, '.checkmate', 'recipes', 'bad.json')
 			)
 		)
 		assert.equal(await page.locator('main img, main form, main button').count(), 0)
 		assert.equal(await page.evaluate(() => document.body.dataset.injected ?? null), null)
 		assert.equal((await fetch(new URL('/settings/invalid-recipes?file=acme.json', url))).status, 404)
-		assert.match(await page.locator('main .facts').innerText(), /Edit this JSON file to fix the listed problems/)
+		assert.match(await page.locator('main .sc-facts').innerText(), /Edit this JSON file to fix the listed problems/)
 		await page.goto(new URL('/settings/recipes', url).href)
 		await page.locator('[data-live]:not(.down):not([hidden])').waitFor()
 		writeFileSync(join(folder, 'bad.json'), JSON.stringify({ ...recipe, name: 'bad' }))
 		await page.locator('[data-label="bad"] [data-source="custom"]').waitFor()
 		rmSync(join(folder, 'bad.json'))
 		rmSync(path)
-		await page.locator('[data-region="recipes"] .sp-empty').waitFor()
+		await page.locator('[data-region="recipes"] .sc-empty').waitFor()
 	}
 )
 

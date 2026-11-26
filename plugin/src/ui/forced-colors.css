@@ -3,7 +3,7 @@
 		forced-color-adjust: none;
 		background: CanvasText;
 	}
-	:is(.sc-row, .sc-rail-row, .sc-plan, .sc-drawer-top, .sp-file, .sc-cell).is-sel {
+	:is(.sc-row, .sc-rail-row, .sc-plan, .sc-drawer-top, .sc-file, .sc-cell).is-sel {
 		forced-color-adjust: none;
 		background: Highlight;
 		color: HighlightText;

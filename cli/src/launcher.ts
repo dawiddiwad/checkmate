@@ -48,8 +48,10 @@ import {
 import {
 	attachedServers,
 	claudeServerArgs,
+	mcpTargetTools,
 	piServerEnv,
 	piServerExtension,
+	piServerTools,
 	type AttachedServer,
 } from '../../plugin/src/tool-servers.ts'
 import {
@@ -304,12 +306,7 @@ function piWorkerArgs(
 	model: WorkerModel,
 	servers: AttachedServer[] = []
 ) {
-	const tools = [
-		'read',
-		'bash',
-		...childActionTools(role).map(toolName),
-		...servers.flatMap((server) => server.tools),
-	]
+	const tools = ['read', 'bash', ...childActionTools(role).map(toolName), ...piServerTools(servers)]
 	return piArgs(
 		[
 			'--no-extensions',
@@ -920,7 +917,10 @@ function toolStatus(workspace: string, request: PlanRequest, profile: Profile) {
 	const tools = planned.filter(({ name }) => !unused.some((recipe) => recipe.name === name))
 	return tools.map(({ name, kind }) => {
 		const recipe = recipesFor(workspace, [name]).find((item) => item.kind === 'mcp' && item.kind === kind)
-		if (recipe) return `${name} (mcp, Checkmate attached its server; call only ${recipe.tools!.join(', ')})`
+		if (recipe) {
+			const allowed = mcpTargetTools(name)
+			return `${name} (mcp, Checkmate attached its server${allowed.length ? `; target tools: ${allowed.join(', ')}` : ''})`
+		}
 		if (kind !== 'cli') return `${name} (${kind})`
 		return `${name} (${kind}, ${executableOnPath(name, process.env) ? 'on PATH' : 'not on PATH'})`
 	})

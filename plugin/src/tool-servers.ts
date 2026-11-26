@@ -1,19 +1,28 @@
 // The MCP server of a recipe of kind mcp. A host starts `checkmate tool-server`, and it starts the server of the recipe
-// in the work folder, in a process group of its own. It forwards the MCP messages, but lists and calls only the tools
-// that the recipe names. When the host closes it, it stops the whole group, so no driver process stays behind.
+// in the work folder, in a process group of its own. When the host closes it, it stops the group.
+// The built-in Maestro target limits calls to its device and to inline flows.
 import { spawn } from 'node:child_process'
 import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { createInterface } from 'node:readline'
 import { signalChild, trackGroup } from './processes.ts'
-import { filled, recipes, recipesFor, serverName, testerTools, type Recipe, type SessionValues } from './recipes.ts'
+import { filled, recipes, recipesFor, serverName, testerTools, type SessionValues } from './recipes.ts'
 
 export type AttachedServer = { name: string; command: string; args: string[]; tools: string[] }
 
 const stopGraceMilliseconds = 3000
+const maestroTargetTools = ['inspect_screen', 'run', 'take_screenshot']
+
+export function mcpTargetTools(name: string) {
+	return name === 'maestro-mcp' ? maestroTargetTools : []
+}
+
+export function piServerTools(servers: AttachedServer[]) {
+	return servers.flatMap(({ name, tools }) => (tools.length ? tools : [`mcp__${name}__*`]))
+}
 
 // The servers that Checkmate attaches to one tester session, one for each recipe of kind mcp that the tester uses.
-// The server gets the values of the instance entries that its recipe pins, as <entry>=<value> arguments.
+// The built-in Maestro server receives the device of the target instance.
 export function attachedServers(
 	workspace: string,
 	toolNames: string[],
@@ -33,15 +42,13 @@ export function attachedServers(
 				values.workFolder,
 				values.session,
 				workspace,
-				...[...new Set(Object.values(recipe.entryArguments ?? {}))].flatMap((entry) =>
-					entries[entry] ? [`${entry}=${entries[entry]}`] : []
-				),
+				...(recipe.name === 'maestro-mcp' && entries.device ? [`device=${entries.device}`] : []),
 			],
-			tools: recipe.tools!.map((tool) => `mcp__${serverName(recipe)}__${tool}`),
+			tools: mcpTargetTools(recipe.name).map((tool) => `mcp__${serverName(recipe)}__${tool}`),
 		}))
 }
 
-// Claude Code: the servers as an MCP config, and an allow rule for each tool. --strict-mcp-config is not given,
+// Claude Code: the MCP config and allow rules for the built-in target tools. --strict-mcp-config is not given,
 // because it also drops the MCP server of the plugin, which delegated workers use.
 export function claudeServerArgs(servers: AttachedServer[]) {
 	if (!servers.length) return []
@@ -75,19 +82,19 @@ type Message = {
 	result?: { tools?: unknown }
 }
 
-// Why a call cannot go to the server, or undefined. A call without a pinned argument gets the entry value.
-function refusal(recipe: Recipe, request: Message, entries: Record<string, string>) {
+// Why a Maestro call cannot go to the server, or undefined. An omitted device gets the instance device.
+function maestroRefusal(request: Message, device: string | undefined) {
 	const tool = String(request.params?.name)
-	if (!recipe.tools!.includes(tool))
-		return `Tool ${tool} is not a tool of recipe ${recipe.name}. Its tools are ${recipe.tools!.join(', ')}.`
+	if (!maestroTargetTools.includes(tool))
+		return `The Maestro target does not allow ${tool}. Its tools are ${maestroTargetTools.join(', ')}.`
 	const input = (request.params!.arguments ??= {})
-	const given = (recipe.refusedArguments?.[tool] ?? []).filter((name) => input[name] !== undefined)
-	if (given.length) return `Tool ${tool} does not take ${given.join(' or ')} in recipe ${recipe.name}.`
-	for (const [name, entry] of Object.entries(recipe.entryArguments ?? {})) {
-		const value = entries[entry]
-		if (value === undefined) continue
-		if (input[name] === undefined) input[name] = value
-		else if (input[name] !== value) return `Give ${name} ${value}, the ${entry} entry of the instance.`
+	if (tool === 'run') {
+		const given = ['files', 'dir'].filter((name) => input[name] !== undefined)
+		if (given.length) return `The Maestro target does not allow ${given.join(' or ')} on run.`
+	}
+	if (device !== undefined) {
+		if (input.device_id === undefined) input.device_id = device
+		else if (input.device_id !== device) return `Give device_id ${device}, the device entry of the instance.`
 	}
 	return undefined
 }
@@ -133,15 +140,15 @@ export function serveToolServer(
 		}
 	)
 	trackGroup(server)
-	const allowed = new Set(recipe.tools)
+	const maestro = recipe.name === 'maestro-mcp'
 	const lists = new Set<unknown>()
 	const send = (line: string) => process.stdout.write(`${line}\n`)
 	createInterface({ input: process.stdin })
 		.on('line', (line) => {
 			const request = message(line)
-			if (request?.method === 'tools/list') lists.add(request.id)
-			if (request?.method === 'tools/call') {
-				const refused = refusal(recipe, request, entries)
+			if (maestro && request?.method === 'tools/list') lists.add(request.id)
+			if (maestro && request?.method === 'tools/call') {
+				const refused = maestroRefusal(request, entries.device)
 				if (refused)
 					return send(
 						JSON.stringify({ jsonrpc: '2.0', id: request.id, error: { code: -32602, message: refused } })
@@ -155,7 +162,9 @@ export function serveToolServer(
 		const reply = message(line)
 		if (reply && !reply.method && lists.has(reply.id) && Array.isArray(reply.result?.tools)) {
 			lists.delete(reply.id)
-			reply.result.tools = reply.result.tools.filter((tool: { name?: string }) => allowed.has(tool.name ?? ''))
+			reply.result.tools = reply.result.tools.filter((tool: { name?: string }) =>
+				maestroTargetTools.includes(tool.name ?? '')
+			)
 			return send(JSON.stringify(reply))
 		}
 		send(line)

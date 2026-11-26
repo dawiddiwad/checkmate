@@ -2,7 +2,7 @@ import { Refusal } from './contracts.ts'
 import { signalChild, trackGroup } from './processes.ts'
 import { piArgs, piEvent, piResult, resolvePiModelArgs } from './pi.ts'
 import type { Harness } from './pi.ts'
-import { claudeServerArgs, piServerEnv, piServerExtension, type AttachedServer } from './tool-servers.ts'
+import { claudeServerArgs, piServerEnv, piServerExtension, piServerTools, type AttachedServer } from './tool-servers.ts'
 import { claudeToolPrefix } from './tool-names.ts'
 import { randomBytes } from 'node:crypto'
 import type { ChildProcess } from 'node:child_process'
@@ -317,7 +317,7 @@ export function childArgs(context: ChildContext, own: string[], allow: string[] 
 	if (context.harness === 'pi') {
 		const names = piToolNames(allow)
 		const scoped = piWorkTools(context, names)
-		const tools = context.inheritPiTools ? scoped : [...names, ...scoped, ...serverTools(context)]
+		const tools = context.inheritPiTools ? scoped : [...names, ...scoped, ...piServerTools(context.servers ?? [])]
 		const args = own[0] === '--resume' ? ['--session', ...own.slice(1)] : own
 		const launch = [
 			...(context.inheritPiTools ? [] : ['--no-extensions']),

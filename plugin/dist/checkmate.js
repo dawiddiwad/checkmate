@@ -11867,8 +11867,7 @@ var requiredRecipeFields = [
   "environment",
   "workspaceFolders",
   "observeFrom",
-  "evidence",
-  "usage"
+  "evidence"
 ];
 var builtIn;
 function isIdentifier(value2) {
@@ -11905,16 +11904,16 @@ function readRecipe(path, source) {
   const refuse4 = (problem) => problems.push(problem);
   for (const field4 of requiredRecipeFields)
     if (!Object.hasOwn(recipe, field4)) refuse4(`give the required field ${field4}.`);
+  for (const field4 of ["tools", "refusedArguments", "entryArguments"])
+    if (Object.hasOwn(recipe, field4))
+      refuse4(`${field4} is not a recipe field. Put tool limits in the target or skill.`);
   if (recipe.name !== void 0 && (!isIdentifier(recipe.name) || `${recipe.name}.json` !== file))
     refuse4("name must match the file name without .json and use letters, numbers, dashes, or underscores.");
   if (recipe.capability !== void 0 && !isIdentifier(recipe.capability))
     refuse4("capability must use 1 to 96 letters, digits, dashes, or underscores, starting with a letter or digit.");
   if (recipe.kind !== void 0 && recipe.kind !== "cli" && recipe.kind !== "mcp") refuse4("kind must be cli or mcp.");
   if (recipe.kind === "mcp") readServer(recipe, refuse4);
-  else if (recipe.kind === "cli" && [recipe.server, recipe.tools, recipe.refusedArguments, recipe.entryArguments].some(
-    (value2) => value2 !== void 0
-  ))
-    refuse4("server, tools, refusedArguments, and entryArguments are only for a recipe of kind mcp.");
+  else if (recipe.kind === "cli" && recipe.server !== void 0) refuse4("server is only for a recipe of kind mcp.");
   if (recipe.purpose !== void 0 && !isText(recipe.purpose)) refuse4("purpose must be a text.");
   if (recipe.detect !== void 0 && recipe.detect !== "path" && recipe.detect !== "runtime")
     refuse4("detect must be path or runtime.");
@@ -12012,17 +12011,8 @@ function readServer(recipe, refuse4) {
   const server = recipe.server;
   if (typeof server !== "object" || server === null || Array.isArray(server) || Object.keys(server).some((key) => !["command", "args", "cwd"].includes(key)) || !isText(server.command) || !Array.isArray(server.args) || !server.args.every(isText) || !isText(server.cwd))
     refuse4("server must be {command, args (list of arguments), cwd} for a recipe of kind mcp.");
-  if (!Array.isArray(recipe.tools) || !recipe.tools.length || !recipe.tools.every((name2) => typeof name2 === "string" && /^[A-Za-z0-9_-]{1,64}$/.test(name2)))
-    refuse4("tools must list the names of the server tools that a tester can call.");
   if (recipe.closeSession !== void 0 || recipe.shellInstruction !== void 0)
     refuse4("a recipe of kind mcp has no closeSession or shellInstruction: Checkmate stops its server.");
-  const refused3 = recipe.refusedArguments;
-  if (refused3 !== void 0 && (typeof refused3 !== "object" || refused3 === null || Array.isArray(refused3) || !Object.keys(refused3).every((tool) => Array.isArray(recipe.tools) && recipe.tools.includes(tool)) || !Object.values(refused3).every((names) => Array.isArray(names) && names.length && names.every(isText))))
-    refuse4("refusedArguments must map a tool of the recipe to the names of the arguments that it may not give.");
-  const entries = entryNames(recipe);
-  const pinned2 = recipe.entryArguments;
-  if (pinned2 !== void 0 && (typeof pinned2 !== "object" || pinned2 === null || Array.isArray(pinned2) || !Object.keys(pinned2).every(isText) || !Object.values(pinned2).every((entry) => entries.includes(entry))))
-    refuse4("entryArguments must map an argument name to an entry point of the recipe.");
 }
 function isValueName(value2) {
   return typeof value2 === "string" && /^[a-z][a-z0-9_]{0,39}$/.test(value2);
@@ -12035,7 +12025,7 @@ function refuseInvalidRecipes(items) {
   throw new Refusal(
     "prohibited",
     items.map(recipeProblem).join(" "),
-    `Edit ${items.map((item) => item.path).join(", ")} to fix the listed problems. Run checkmate recipe list to check the files.`
+    `Edit ${items.map((item) => item.path).join(", ")} to fix the listed problems. Edits apply immediately. Retry the refused action. Run setup again only if the target needs different entries or tools. Run checkmate recipe list to check the files.`
   );
 }
 function recipeFiles(folder) {
@@ -12176,7 +12166,7 @@ function serverName(recipe) {
   return recipe.name.replaceAll("-", "_");
 }
 function recipeFilesFor(workspace2, toolNames2) {
-  return requireValidRecipes(workspace2, toolNames2).filter(({ recipe }) => toolNames2.includes(recipe.name)).map(({ path }) => path);
+  return requireValidRecipes(workspace2, toolNames2).filter(({ recipe }) => recipe.usage !== void 0 && toolNames2.includes(recipe.name)).map(({ path }) => path);
 }
 function choices(workspace2, toolNames2, values) {
   const found = /* @__PURE__ */ new Map();
@@ -12230,6 +12220,13 @@ function evidenceKindOfFile(workspace2, toolNames2, extension) {
 
 // plugin/src/tool-servers.ts
 var stopGraceMilliseconds = 3e3;
+var maestroTargetTools = ["inspect_screen", "run", "take_screenshot"];
+function mcpTargetTools(name2) {
+  return name2 === "maestro-mcp" ? maestroTargetTools : [];
+}
+function piServerTools(servers) {
+  return servers.flatMap(({ name: name2, tools }) => tools.length ? tools : [`mcp__${name2}__*`]);
+}
 function attachedServers(workspace2, toolNames2, values, script, entries) {
   return recipesFor(workspace2, testerTools(workspace2, toolNames2, true)).filter((recipe) => recipe.kind === "mcp").map((recipe) => ({
     name: serverName(recipe),
@@ -12241,11 +12238,9 @@ function attachedServers(workspace2, toolNames2, values, script, entries) {
       values.workFolder,
       values.session,
       workspace2,
-      ...[...new Set(Object.values(recipe.entryArguments ?? {}))].flatMap(
-        (entry) => entries[entry] ? [`${entry}=${entries[entry]}`] : []
-      )
+      ...recipe.name === "maestro-mcp" && entries.device ? [`device=${entries.device}`] : []
     ],
-    tools: recipe.tools.map((tool) => `mcp__${serverName(recipe)}__${tool}`)
+    tools: mcpTargetTools(recipe.name).map((tool) => `mcp__${serverName(recipe)}__${tool}`)
   }));
 }
 function claudeServerArgs(servers) {
@@ -12269,18 +12264,18 @@ function piServerEnv(servers) {
 function piServerExtension(pluginRoot2) {
   return join3(pluginRoot2, "pi", "tool-servers.mjs");
 }
-function refusal(recipe, request2, entries) {
+function maestroRefusal(request2, device) {
   const tool = String(request2.params?.name);
-  if (!recipe.tools.includes(tool))
-    return `Tool ${tool} is not a tool of recipe ${recipe.name}. Its tools are ${recipe.tools.join(", ")}.`;
+  if (!maestroTargetTools.includes(tool))
+    return `The Maestro target does not allow ${tool}. Its tools are ${maestroTargetTools.join(", ")}.`;
   const input = request2.params.arguments ??= {};
-  const given = (recipe.refusedArguments?.[tool] ?? []).filter((name2) => input[name2] !== void 0);
-  if (given.length) return `Tool ${tool} does not take ${given.join(" or ")} in recipe ${recipe.name}.`;
-  for (const [name2, entry] of Object.entries(recipe.entryArguments ?? {})) {
-    const value2 = entries[entry];
-    if (value2 === void 0) continue;
-    if (input[name2] === void 0) input[name2] = value2;
-    else if (input[name2] !== value2) return `Give ${name2} ${value2}, the ${entry} entry of the instance.`;
+  if (tool === "run") {
+    const given = ["files", "dir"].filter((name2) => input[name2] !== void 0);
+    if (given.length) return `The Maestro target does not allow ${given.join(" or ")} on run.`;
+  }
+  if (device !== void 0) {
+    if (input.device_id === void 0) input.device_id = device;
+    else if (input.device_id !== device) return `Give device_id ${device}, the device entry of the instance.`;
   }
   return void 0;
 }
@@ -12319,18 +12314,18 @@ function serveToolServer(recipeName, workFolder2, session, workspace2, pinned2) 
     }
   );
   trackGroup(server);
-  const allowed2 = new Set(recipe.tools);
+  const maestro = recipe.name === "maestro-mcp";
   const lists = /* @__PURE__ */ new Set();
   const send2 = (line) => process.stdout.write(`${line}
 `);
   createInterface({ input: process.stdin }).on("line", (line) => {
     const request2 = message(line);
-    if (request2?.method === "tools/list") lists.add(request2.id);
-    if (request2?.method === "tools/call") {
-      const refused3 = refusal(recipe, request2, entries);
-      if (refused3)
+    if (maestro && request2?.method === "tools/list") lists.add(request2.id);
+    if (maestro && request2?.method === "tools/call") {
+      const refused2 = maestroRefusal(request2, entries.device);
+      if (refused2)
         return send2(
-          JSON.stringify({ jsonrpc: "2.0", id: request2.id, error: { code: -32602, message: refused3 } })
+          JSON.stringify({ jsonrpc: "2.0", id: request2.id, error: { code: -32602, message: refused2 } })
         );
       line = JSON.stringify(request2);
     }
@@ -12341,7 +12336,9 @@ function serveToolServer(recipeName, workFolder2, session, workspace2, pinned2) 
     const reply = message(line);
     if (reply && !reply.method && lists.has(reply.id) && Array.isArray(reply.result?.tools)) {
       lists.delete(reply.id);
-      reply.result.tools = reply.result.tools.filter((tool) => allowed2.has(tool.name ?? ""));
+      reply.result.tools = reply.result.tools.filter(
+        (tool) => maestroTargetTools.includes(tool.name ?? "")
+      );
       return send2(JSON.stringify(reply));
     }
     send2(line);
@@ -12640,7 +12637,7 @@ function childArgs(context, own, allow = []) {
   if (context.harness === "pi") {
     const names = piToolNames(allow);
     const scoped = piWorkTools(context, names);
-    const tools = context.inheritPiTools ? scoped : [...names, ...scoped, ...serverTools(context)];
+    const tools = context.inheritPiTools ? scoped : [...names, ...scoped, ...piServerTools(context.servers ?? [])];
     const args = own[0] === "--resume" ? ["--session", ...own.slice(1)] : own;
     const launch = [
       ...context.inheritPiTools ? [] : ["--no-extensions"],
@@ -13970,10 +13967,10 @@ function fitEntries(workspace2, catalog2, entries, detected, invalid) {
   const unknown = names.filter((name2) => !declared.has(name2));
   requireWellFormed(
     !unknown.length,
-    `Unknown entry ${unknown.join(", ")}. Entry names come from recipes. Recipe folder: ${projectRecipeFolder(workspace2)}. Known entries: ${[...declared.keys()].join(", ")}. ${invalid.map(recipeProblem).join(" ")}`.trim(),
+    `Unknown entry ${unknown.join(", ")}. Entry names come from recipes. Recipe folder: ${projectRecipeFolder(workspace2)}. Entries of existing recipes: ${[...declared.keys()].join(", ")}. ${invalid.map(recipeProblem).join(" ")}`.trim(),
     [
-      `If the tool you need has no recipe, write one JSON file in ${projectRecipeFolder(workspace2)}. Use a built-in example from checkmate recipe list --json. Include ${requiredRecipeFields.join(", ")}. Put the tester instructions in usage as a list of Markdown lines.`,
-      "Declare each needed entry in entryPoints with name, kind and purpose. If Checkmate refuses the recipe, edit that file to fix the listed problems. Tell the person you added the recipe and what it lets testers run."
+      `If the tool you need has no recipe, write one JSON file in ${projectRecipeFolder(workspace2)}. Use a built-in example from checkmate recipe list --json. Include ${requiredRecipeFields.join(", ")}. Optional usage holds tester notes as Markdown lines.`,
+      "Give a new tool its own entry names. Declare each needed entry in entryPoints with name, kind and purpose. If Checkmate refuses the recipe, edit that file to fix the listed problems. Tell the person you added a recipe for the tool. The target sets what testers may do."
     ].join(" ")
   );
   for (const name2 of names) {
@@ -14001,7 +13998,9 @@ function fitEntries(workspace2, catalog2, entries, detected, invalid) {
     requireCondition(
       false,
       `No tool that is installed fits the entries ${uncovered.join(", ")}. ${listText(needing.map((recipe) => `${recipe.name} (${recipe.capability})`))} ${needing.length === 1 ? "needs them and is" : "need them and are"} not on PATH.`,
-      "Install the tool, or give other entries."
+      needing.map(
+        (recipe) => `Checked PATH for ${toolExecutable(recipe)}. ${recipe.kind === "cli" ? "For detect: path, the CLI executable name is the recipe name." : "For an MCP recipe, Checkmate looks up server.command."}`
+      ).join(" ") + " Install the tool, or give other entries."
     );
   }
   const entryPoints2 = names.map((name2) => {
@@ -14367,14 +14366,14 @@ var refusalReasons = {
   prohibited: "Refused: prohibited in the current state."
 };
 function refused(status, subject, error) {
-  const refusal2 = status === "invalid_request" ? "malformed" : error instanceof Refusal ? error.kind : "prohibited";
+  const refusal = status === "invalid_request" ? "malformed" : error instanceof Refusal ? error.kind : "prohibited";
   const hint = error instanceof Refusal ? error.hint : void 0;
   const reason = error instanceof Error ? error.message : String(error);
   return {
     status,
     subject,
-    reasons: error instanceof WorkspaceSchemaError ? [reason] : [refusalReasons[refusal2], reason],
-    refusal: refusal2,
+    reasons: error instanceof WorkspaceSchemaError ? [reason] : [refusalReasons[refusal], reason],
+    refusal,
     ...hint ? { hint } : {},
     data: {}
   };
@@ -14558,11 +14557,11 @@ function compoundCheck(check) {
 var maxGapRequirements = 2;
 function uncontrolledRefusal(test) {
   const httpAction = /\b(GET|POST|PUT|PATCH|DELETE)\b/.test(test.action);
-  const refusal2 = test.assertions.find(
+  const refusal = test.assertions.find(
     (assertion) => /^4\d\d$/.test(assertion.expected ?? "") || httpAction && /^absent:/.test(assertion.expected ?? "")
   );
   const control = test.assertions.some((assertion) => /^2\d\d$/.test(assertion.expected ?? ""));
-  return refusal2 && !control ? refusal2 : void 0;
+  return refusal && !control ? refusal : void 0;
 }
 function rangeWithoutInput(check) {
   const range = /\b(outside|between|at most|at least|from -?\d+(\.\d+)? to -?\d+)/i.test(check);
@@ -14602,8 +14601,8 @@ function uncoveredRequirements(plan) {
 }
 function softProblems(workspace2, test, requirements) {
   const problems = [];
-  const refusal2 = uncontrolledRefusal(test);
-  if (refusal2) problems.push({ id: refusal2.id, reason: "needs_control", check: refusal2.check });
+  const refusal = uncontrolledRefusal(test);
+  if (refusal) problems.push({ id: refusal.id, reason: "needs_control", check: refusal.check });
   if (pageOnlyStateChange(workspace2, test))
     problems.push({ id: test.assertions[0].id, reason: "needs_source_check", check: test.action });
   for (const assertion of test.assertions)
@@ -15484,7 +15483,7 @@ function logEntries(store, actor, input) {
     const list3 = entryList2(input.entries);
     requireCondition(list3.length, "The array has no entry.", "Send one entry, or an array of entries.");
     const saved = [];
-    const refused3 = [];
+    const refused2 = [];
     const recorded2 = droppedReferences && { replyIds: replyIds(list3), dropped: droppedReferences };
     const rules = {
       ids: new Set(explorationRules(store, exploration2.exploration_id).map((rule) => rule.id)),
@@ -15508,7 +15507,7 @@ function logEntries(store, actor, input) {
         );
       } catch (error) {
         if (!(error instanceof EntryRefusal)) throw error;
-        refused3.push({ index: index2, field: error.field, reason: error.message, hint: error.hint, fix: error.fix });
+        refused2.push({ index: index2, field: error.field, reason: error.message, hint: error.hint, fix: error.fix });
         continue;
       }
       insertEntry(store, exploration2.exploration_id, entry, actor2, operationId);
@@ -15517,13 +15516,13 @@ function logEntries(store, actor, input) {
     if (!saved.length)
       throw new Refusal(
         "malformed",
-        refused3.map((item) => `${item.reason}.${fixText(item)}`).join(" "),
-        [...new Set(refused3.flatMap((item) => item.hint ?? []))].join(" ")
+        refused2.map((item) => `${item.reason}.${fixText(item)}`).join(" "),
+        [...new Set(refused2.flatMap((item) => item.hint ?? []))].join(" ")
       );
     return {
       reply: completed(exploration2.exploration_id, {
         saved,
-        refused: refused3,
+        refused: refused2,
         ...rules.unknown.length ? { unknownRules: rules.unknown } : {}
       }),
       subjects: [`exploration:${exploration2.exploration_id}`, `plan:${exploration2.plan_id}`]
@@ -16242,13 +16241,13 @@ function priorSoftRefusal(store, planId) {
     "SELECT max(rowid) AS id FROM operations WHERE subjects LIKE ? AND command = 'plan save' AND status = 'completed'",
     `%"plan:${planId}"%`
   );
-  const refused3 = all(
+  const refused2 = all(
     store,
     "SELECT response FROM operations WHERE response LIKE ? AND command = 'plan save' AND status = 'rejected' AND rowid > ?",
     `%"subject":"${planId}"%`,
     last?.id ?? 0
   );
-  return refused3.some((row2) => softRefusalTexts.some((text2) => row2.response.includes(text2)));
+  return refused2.some((row2) => softRefusalTexts.some((text2) => row2.response.includes(text2)));
 }
 function softReason(test, problem) {
   if (problem.reason === "needs_control")
@@ -21659,7 +21658,7 @@ function rulesPrompt(goal, sources, answer2) {
 function rulesRepairPrompt(refusals, answer2) {
   return [
     answer2 ? "These rules of your file were refused:" : "Checkmate refused these rules of your reply:",
-    ...refusals.map((refusal2) => `- ${refusal2}`),
+    ...refusals.map((refusal) => `- ${refusal}`),
     replyText("all the rules again, corrected", answer2)
   ].join("\n");
 }
@@ -21682,7 +21681,7 @@ function followEntriesText(answer2) {
 function repairPrompt(refusals, answer2) {
   const text2 = [
     answer2 ? "These entries of your file were refused:" : "Checkmate refused these entries of your reply:",
-    ...refusals.map((refusal2) => `- ${refusal2}`),
+    ...refusals.map((refusal) => `- ${refusal}`),
     answer2 ? `Write only one JSON array of the corrected entries to ${answer2}, and nothing else. Do not send the saved entries again.` : "Reply with only one JSON array of the corrected entries, and nothing else. Do not send the saved entries again. Use no tool."
   ].join("\n");
   return answer2 ? withoutName(text2) : text2;
@@ -22024,7 +22023,7 @@ function recordAnswer(store, input) {
     ...input.failed ? [input.failed] : [],
     ...first || input.failed ? [] : ["The answer file of the tester has no JSON array of entries."],
     ...first && !saved && !repeated ? [`The tester added no entry to ${exploration2.exploration_id}.`] : [],
-    ...refusals.map((refusal2) => `Refused: ${refusal2}`)
+    ...refusals.map((refusal) => `Refused: ${refusal}`)
   ];
   return {
     repair: false,
@@ -22171,7 +22170,7 @@ function recordLocked(store, operation, input, plan, env, cwd, started) {
     ...calls.flatMap((call2) => call2.failure ? [call2.failure[1]] : []),
     ...first || calls[0].failure ? [] : ["The reply of the recorder has no JSON array of entries."],
     ...first && !saved && !repeated ? [`The recorder added no entry to ${exploration2.exploration_id}.`] : [],
-    ...refusals.map((refusal2) => `Refused: ${refusal2}`)
+    ...refusals.map((refusal) => `Refused: ${refusal}`)
   ];
   const data = {
     explorationId: exploration2.exploration_id,
@@ -25021,14 +25020,14 @@ function phaseRows(events, status, verifier) {
   const last = (step) => events.findLast((event2) => event2.step === step);
   const reason = (event2) => event2?.detail.reason ?? null;
   const records2 = events.filter((event2) => event2.step === "record");
-  const refused3 = records2.filter((event2) => event2.status !== "completed");
+  const refused2 = records2.filter((event2) => event2.status !== "completed");
   const merge = last("merge");
   const verify2 = last("verify");
   return [
     {
       phase: "record",
-      state: !records2.length ? later : state === "recording" ? "running" : refused3.length < records2.length ? "completed" : "failed",
-      reason: refused3.length ? refused3.map(
+      state: !records2.length ? later : state === "recording" ? "running" : refused2.length < records2.length ? "completed" : "failed",
+      reason: refused2.length ? refused2.map(
         (event2) => `${event2.explorer}: ${[event2.detail.reasons ?? []].flat().join(" ") || event2.status}`
       ).join(" ") : null
     },
@@ -28989,7 +28988,7 @@ function stateText(item) {
   const decision = item.decision;
   return decision.kind === "closed" ? `Closed: ${closedText[decision.cause]}.` : `Answered: ${decision.text}.`;
 }
-function permissionPage(store, context, askerId, requestId2, view, refusal2) {
+function permissionPage(store, context, askerId, requestId2, view, refusal) {
   const item = permissionOf(store, askerId, requestId2);
   if (!item) return null;
   const { from } = view;
@@ -29016,7 +29015,7 @@ function permissionPage(store, context, askerId, requestId2, view, refusal2) {
       [item.id, null]
     ],
     back,
-    status: refusal2 ? 422 : 200,
+    status: refusal ? 422 : 200,
     body: html2`<div
 			class="sp-record"
 			data-region="permission-record"
@@ -29028,7 +29027,7 @@ function permissionPage(store, context, askerId, requestId2, view, refusal2) {
 		>
 			${crumbBar([...item.planId ? [[item.planId, `/plans/${item.planId}`]] : [], [askerId, asker.href]])}
 			<div data-stale-slot>
-				${refusal2 && !refusal2.field ? html2`<p class="form-error" role="alert">${refusal2.error}</p>` : ""}
+				${refusal && !refusal.field ? html2`<p class="form-error" role="alert">${refusal.error}</p>` : ""}
 			</div>
 			<section class="sp-dhead" tabindex="-1" data-sub data-label="${name2}">
 				<div class="sp-pills">
@@ -29051,7 +29050,7 @@ function permissionPage(store, context, askerId, requestId2, view, refusal2) {
 							<ol class="sp-optlist asks">
 								${choices2.map((choice2, index2) => html2`<li>${optionOf(context, item, from, choice2, index2 + 1)}<span class="help">${choice2.text}</span></li>`)}
 							</ol>
-							<div class="sp-c-extra" data-extra="deny" ${refusal2?.field ? "" : html2`hidden`}>
+							<div class="sp-c-extra" data-extra="deny" ${refusal?.field ? "" : html2`hidden`}>
 								<form
 									method="post"
 									action="${recordPath(item)}"
@@ -29068,8 +29067,8 @@ function permissionPage(store, context, askerId, requestId2, view, refusal2) {
 										required
 										data-missing="Write the reason first. The tester gets it."
 									>
-${refusal2?.reason ?? ""}</textarea>
-									${refusal2?.field ? html2`<p class="form-error" role="alert" data-field="reason">${refusal2.error}</p>` : ""}
+${refusal?.reason ?? ""}</textarea>
+									${refusal?.field ? html2`<p class="form-error" role="alert" data-field="reason">${refusal.error}</p>` : ""}
 									<div class="btns">
 										<button class="sp-btn pri"><span>Deny</span></button>
 										<span class="small muted"
@@ -30464,10 +30463,10 @@ function approvalBody(item) {
 			>
 		</div>`;
 }
-function recordDrawer(store, context, review, item, view, refusal2) {
+function recordDrawer(store, context, review, item, view, refusal) {
   const list3 = reviewHref(review.planId, view, `&at=${encodeURIComponent(item.key)}&focus=list`);
   const base = reviewHref(review.planId, view, `&item=${encodeURIComponent(item.key)}`);
-  const state = refusal2?.key === item.key ? refusal2.state : null;
+  const state = refusal?.key === item.key ? refusal.state : null;
   const options3 = optionsOf({ ...context, path: list3 }, review, item);
   const body = item.claim ? claimBody(context, store, review, item, base, list3, state) : item.kind === "approval" ? approvalBody(item) : questionBody(context, review, item, list3, state);
   const when = item.claim ? null : item.question?.at ?? item.waiting?.since ?? null;
@@ -31402,21 +31401,21 @@ function panel(context, review, view, current2, cost) {
 		${view === "rules" ? rulesList(context, review) : listOf(context, review, view, groups, title2)}
 	</section>`;
 }
-function reviewPage(store, context, planId, params, refusal2 = null, notice = null) {
+function reviewPage(store, context, planId, params, refusal = null, notice = null) {
   const review = reviewOf(store, planId, context.harness);
   const views2 = viewsOf(review);
   const asked2 = params.get("view") ?? "needs";
   const current2 = views2.includes(asked2) ? asked2 : "needs";
   const chatting = params.has("chat") || params.get("newChat") === "1";
   const title2 = viewTitle(review, current2);
-  const key = refusal2?.key ?? params.get("item");
-  const item = key && !(refusal2?.subject && refusal2.state.stale) ? review.items.find((each) => each.key === key && each.kind !== "permission") ?? null : null;
-  const refusedAnswer = refusal2?.subject && !item ? html2`<section aria-labelledby="refused-answer">
-					<h2 id="refused-answer">Answer for ${refusal2.subject}</h2>
-					${messages(refusal2.state)}${keptText(refusal2.state)}
+  const key = refusal?.key ?? params.get("item");
+  const item = key && !(refusal?.subject && refusal.state.stale) ? review.items.find((each) => each.key === key && each.kind !== "permission") ?? null : null;
+  const refusedAnswer = refusal?.subject && !item ? html2`<section aria-labelledby="refused-answer">
+					<h2 id="refused-answer">Answer for ${refusal.subject}</h2>
+					${messages(refusal.state)}${keptText(refusal.state)}
 				</section>` : "";
   const file = params.get("file");
-  const record = item ? file !== null && /^[0-9]{1,3}$/.test(file) && item.claim ? evidenceViewer(store, review, item, current2, Number(file)) : recordDrawer(store, context, review, item, current2, refusal2) : "";
+  const record = item ? file !== null && /^[0-9]{1,3}$/.test(file) && item.claim ? evidenceViewer(store, review, item, current2, Number(file)) : recordDrawer(store, context, review, item, current2, refusal) : "";
   const cost = planCost(store, planId);
   const panels = views2.map((view) => panel(context, review, view, current2, costText(cost.costUsd, cost.costPartial)));
   return {
@@ -31427,7 +31426,7 @@ function reviewPage(store, context, planId, params, refusal2 = null, notice = nu
       "inbox",
       ...review.explorations.map((each) => `exploration:${each.explorationId}`)
     ],
-    status: refusal2 || notice ? 422 : 200,
+    status: refusal || notice ? 422 : 200,
     crumbs: [
       ["Plans", "/"],
       [planId, `/plans/${planId}`],
@@ -35798,8 +35797,8 @@ function recipesPage(workspace2) {
   const custom = recipes2.some((entry) => entry.source === "custom") || invalid.length;
   const body = html2`${heading(
     "Recipes",
-    html2`The tools that testers can use. Built-in recipes come with Checkmate. Custom recipes come from
-				<code>.checkmate/recipes/</code> in this workspace.`
+    html2`Tool descriptions for Checkmate. The target sets what testers may do. Built-in recipes come with
+				Checkmate. Custom recipes come from <code>.checkmate/recipes/</code> in this workspace.`
   )}
 		<div data-region="recipes">
 			${error ? banner("fail", html2`Checkmate cannot read the recipes. ${error}`) : ""}
@@ -35848,9 +35847,6 @@ function pairs2(values) {
   const entries = Object.entries(values);
   return entries.length ? html2`<span class="kv">${entries.map(([key, value2]) => html2`<span class="tag">${key}=${value2}</span>`)}</span>` : html2`<span class="muted">none</span>`;
 }
-function refused2(values) {
-  return pairs2(Object.fromEntries(Object.entries(values).map(([tool, names]) => [tool, names.join(",")])));
-}
 function recipeFacts({ source, path, recipe }) {
   const server = recipe.server;
   return html2`<dl class="facts">
@@ -35859,7 +35855,6 @@ function recipeFacts({ source, path, recipe }) {
 		${fact("Tool for", html2`<code>${recipe.capability}</code> · ${kindText2(recipe)}`)}
 		${fact("Detection", detection(recipe))}
 		${server ? fact("Server", html2`<code>${commandText([server.command, ...server.args])}</code> in <code>${server.cwd}</code>`) : ""}
-		${recipe.tools ? fact("Server tools", codes(recipe.tools)) : ""}
 	</dl>`;
 }
 function testingFacts(recipe) {
@@ -35869,10 +35864,8 @@ function testingFacts(recipe) {
 		${recipe.evidenceExtensions ? fact("Evidence files", pairs2(recipe.evidenceExtensions)) : ""}
 		${fact("Environment", pairs2(recipe.environment))} ${fact("Tool folders", codes(recipe.workspaceFolders))}
 		${recipe.closeSession ? fact("Close session", html2`<code>${commandText(recipe.closeSession)}</code>`) : ""}
-		${recipe.refusedArguments ? fact("Refused arguments", refused2(recipe.refusedArguments)) : ""}
-		${recipe.entryArguments ? fact("Entry arguments", pairs2(recipe.entryArguments)) : ""}
-		${recipe.shellInstruction ? fact("Shell instruction", recipe.shellInstruction) : ""}
-		${recipe.delegatedInstruction ? fact("Delegated instruction", recipe.delegatedInstruction) : ""}
+		${recipe.shellInstruction ? fact("Shell notes", recipe.shellInstruction) : ""}
+		${recipe.delegatedInstruction ? fact("Delegated notes", recipe.delegatedInstruction) : ""}
 	</dl>`;
 }
 function catalogFailure(title2, error) {
@@ -35910,14 +35903,17 @@ function recipePage(workspace2, name2) {
   const entry = recipes2.find(({ recipe: recipe2 }) => recipe2.name === name2);
   if (!entry) return null;
   const { recipe, jsonText } = entry;
-  const usage2 = recipe.usage.join("\n");
-  const usageText = entry.source === "built-in" ? usage2.replace(agentOnly, "\n") : usage2;
+  const usage2 = recipe.usage?.join("\n");
+  const usageText = entry.source === "built-in" ? usage2?.replace(agentOnly, "\n") : usage2;
   const body = html2`<div data-region="recipe">
 		${heading(recipe.name, recipe.purpose, html2`<div class="meta">${sourcePill(entry.source)}</div>`)}
 		<div class="main-col">
 			<nav class="jump" aria-label="On this page">
-				<a href="#recipe">Recipe</a><a href="#requires">Requires</a><a href="#testing">Testing</a
-				><a href="#usage">Usage</a><a href="#json">JSON</a>
+				<a href="#recipe">Recipe</a><a href="#requires">Requires</a
+				><a href="#testing">Testing</a>${usage2 !== void 0 ? html2`<a href="#usage">Usage</a>` : null}<a
+					href="#json"
+					>JSON</a
+				>
 			</nav>
 			<section aria-labelledby="recipe">
 				<h2 id="recipe">Recipe</h2>
@@ -35927,17 +35923,17 @@ function recipePage(workspace2, name2) {
 				<h2 id="requires">Requires</h2>
 				<h3>Entry points <span class="n">${recipe.entryPoints?.length ?? 0}</span></h3>
 				${entryPoints(recipe)}
-				<h3>Reachability checks</h3>
+				<h3>Setup reachability checks</h3>
 				${reachability(recipe)}
 			</section>
 			<section aria-labelledby="testing">
 				<h2 id="testing">Testing</h2>
 				${testingFacts(recipe)}
 			</section>
-			<section aria-labelledby="usage">
-				<h2 id="usage">Usage</h2>
-				<pre class="sp-code" tabindex="0" data-usage>${usageText}</pre>
-			</section>
+			${usage2 !== void 0 ? html2`<section aria-labelledby="usage">
+							<h2 id="usage">Usage</h2>
+							<pre class="sp-code" tabindex="0" data-usage>${usageText}</pre>
+						</section>` : null}
 			<details class="fold" data-open-key="section:json">
 				<summary><h2 id="json">Recipe JSON</h2></summary>
 				<div class="fold-b"><pre class="sp-code" tabindex="0" data-json>${jsonText}</pre></div>
@@ -36276,8 +36272,8 @@ function createRequester(store, options3) {
         if (!request2.model && request2.provider) modelId = `${modelArgs[1]}/${modelArgs[3]}`;
       }
     } catch (error) {
-      const refusal2 = error;
-      run2.reason = [refusal2.message, refusal2.hint].filter(Boolean).join(" ");
+      const refusal = error;
+      run2.reason = [refusal.message, refusal.hint].filter(Boolean).join(" ");
       guarded(() => setRequestState(store, run2.id, "running"));
       run2.done = Promise.resolve().then(() => finish2(run2, null));
       return;
@@ -47906,12 +47902,7 @@ function workerArgs(pluginRoot2, allowedTools, claudeArgs2 = [], role = "", serv
   return [...args, ...claudeServerArgs(servers)];
 }
 function piWorkerArgs(pluginRoot2, role, env, model, servers = []) {
-  const tools = [
-    "read",
-    "bash",
-    ...childActionTools(role).map(toolName),
-    ...servers.flatMap((server) => server.tools)
-  ];
+  const tools = ["read", "bash", ...childActionTools(role).map(toolName), ...piServerTools(servers)];
   return piArgs(
     [
       "--no-extensions",
@@ -48039,8 +48030,8 @@ function launchWorker(executable, args, options3) {
         const stopped = failure !== void 0;
         if (code2 !== 0) failure ??= new Error(`Worker exited with code ${code2}${excerpt2(errors)}`);
         const envelope = parseClaudeEnvelope(stdout);
-        const refusal2 = code2 !== 0 && !stopped ? claudeModelRefusal(envelope) : void 0;
-        if (refusal2) failure = new ModelRefused(refusal2);
+        const refusal = code2 !== 0 && !stopped ? claudeModelRefusal(envelope) : void 0;
+        if (refusal) failure = new ModelRefused(refusal);
         const reported = claudeUsage(envelope);
         usage2 = stopped ? usageOf([reported, {}]) : reported;
         if (failure) return resolvePromise({ usage: usage2, failure });
@@ -48390,7 +48381,10 @@ function toolStatus(workspace2, request2, profile) {
   const tools = planned.filter(({ name: name2 }) => !unused.some((recipe) => recipe.name === name2));
   return tools.map(({ name: name2, kind }) => {
     const recipe = recipesFor(workspace2, [name2]).find((item) => item.kind === "mcp" && item.kind === kind);
-    if (recipe) return `${name2} (mcp, Checkmate attached its server; call only ${recipe.tools.join(", ")})`;
+    if (recipe) {
+      const allowed2 = mcpTargetTools(name2);
+      return `${name2} (mcp, Checkmate attached its server${allowed2.length ? `; target tools: ${allowed2.join(", ")}` : ""})`;
+    }
     if (kind !== "cli") return `${name2} (${kind})`;
     return `${name2} (${kind}, ${executableOnPath(name2, process.env) ? "on PATH" : "not on PATH"})`;
   });
@@ -48837,8 +48831,8 @@ async function delegate(workspace2, stage, subject, options3) {
     }
     if (failure && !(failure instanceof InvalidPiResponse)) break;
     if (withStore(workspace2, (store) => verify(store, stage, subject, after, workerActor)) !== null) break;
-    const refused3 = withStore(workspace2, (store) => lastRefusal(store, stage, after, workerActor));
-    rejected = claimed?.reasons.length ? claimed.reasons : refused3 ? [refused3] : [];
+    const refused2 = withStore(workspace2, (store) => lastRefusal(store, stage, after, workerActor));
+    rejected = claimed?.reasons.length ? claimed.reasons : refused2 ? [refused2] : [];
     const planned = withStore(
       workspace2,
       (store) => one2(store, "SELECT 1 FROM plan_revisions WHERE plan_id = ?", subject)
@@ -48849,7 +48843,7 @@ async function delegate(workspace2, stage, subject, options3) {
   if (reportedSubject && !subjectMatches(reportedSubject, subject))
     failure = new Error(`Worker response names ${reportedSubject}, not ${subject}`);
   const extra = attempts > 1 ? [`Planning ran ${attempts} times: an earlier draft had too few tests and was not saved as the plan.`] : [];
-  const receipt = (verified, refusal2) => {
+  const receipt = (verified, refusal) => {
     if (verified && (!failure || failure instanceof InvalidPiResponse))
       return {
         status: verified.reply.status,
@@ -48864,7 +48858,7 @@ async function delegate(workspace2, stage, subject, options3) {
       return {
         status,
         subject,
-        reasons: [failure.message, ...refusal2 && !verified ? [refusal2] : [], ...verified ? [] : extra],
+        reasons: [failure.message, ...refusal && !verified ? [refusal] : [], ...verified ? [] : extra],
         operation: null
       };
     }
@@ -48880,9 +48874,9 @@ async function delegate(workspace2, stage, subject, options3) {
   };
   try {
     return withStore(workspace2, (store) => {
-      const refusal2 = lastRefusal(store, stage, after, workerActor);
+      const refusal = lastRefusal(store, stage, after, workerActor);
       const response = withFallback(
-        receipt(verify(store, stage, subject, after, workerActor), refusal2),
+        receipt(verify(store, stage, subject, after, workerActor), refusal),
         model,
         usage2
       );

@@ -75,8 +75,8 @@ export function recipesPage(workspace: string): Page {
 	const custom = recipes.some((entry) => entry.source === 'custom') || invalid.length
 	const body = html`${heading(
 			'Recipes',
-			html`The tools that testers can use. Built-in recipes come with Checkmate. Custom recipes come from
-				<code>.checkmate/recipes/</code> in this workspace.`
+			html`Tool descriptions for Checkmate. The target sets what testers may do. Built-in recipes come with
+				Checkmate. Custom recipes come from <code>.checkmate/recipes/</code> in this workspace.`
 		)}
 		<div data-region="recipes">
 			${error ? banner('fail', html`Checkmate cannot read the recipes. ${error}`) : ''}
@@ -142,10 +142,6 @@ function pairs(values: Record<string, string>) {
 		: html`<span class="muted">none</span>`
 }
 
-function refused(values: Record<string, string[]>) {
-	return pairs(Object.fromEntries(Object.entries(values).map(([tool, names]) => [tool, names.join(',')])))
-}
-
 function recipeFacts({ source, path, recipe }: RecipeEntry) {
 	const server = recipe.server
 	return html`<dl class="facts">
@@ -154,7 +150,6 @@ function recipeFacts({ source, path, recipe }: RecipeEntry) {
 		${fact('Tool for', html`<code>${recipe.capability}</code> · ${kindText(recipe)}`)}
 		${fact('Detection', detection(recipe))}
 		${server ? fact('Server', html`<code>${commandText([server.command, ...server.args])}</code> in <code>${server.cwd}</code>`) : ''}
-		${recipe.tools ? fact('Server tools', codes(recipe.tools)) : ''}
 	</dl>`
 }
 
@@ -165,10 +160,8 @@ function testingFacts(recipe: Recipe) {
 		${recipe.evidenceExtensions ? fact('Evidence files', pairs(recipe.evidenceExtensions)) : ''}
 		${fact('Environment', pairs(recipe.environment))} ${fact('Tool folders', codes(recipe.workspaceFolders))}
 		${recipe.closeSession ? fact('Close session', html`<code>${commandText(recipe.closeSession)}</code>`) : ''}
-		${recipe.refusedArguments ? fact('Refused arguments', refused(recipe.refusedArguments)) : ''}
-		${recipe.entryArguments ? fact('Entry arguments', pairs(recipe.entryArguments)) : ''}
-		${recipe.shellInstruction ? fact('Shell instruction', recipe.shellInstruction) : ''}
-		${recipe.delegatedInstruction ? fact('Delegated instruction', recipe.delegatedInstruction) : ''}
+		${recipe.shellInstruction ? fact('Shell notes', recipe.shellInstruction) : ''}
+		${recipe.delegatedInstruction ? fact('Delegated notes', recipe.delegatedInstruction) : ''}
 	</dl>`
 }
 
@@ -209,14 +202,17 @@ export function recipePage(workspace: string, name: string): Page | null {
 	const entry = recipes.find(({ recipe }) => recipe.name === name)
 	if (!entry) return null
 	const { recipe, jsonText } = entry
-	const usage = recipe.usage.join('\n')
-	const usageText = entry.source === 'built-in' ? usage.replace(agentOnly, '\n') : usage
+	const usage = recipe.usage?.join('\n')
+	const usageText = entry.source === 'built-in' ? usage?.replace(agentOnly, '\n') : usage
 	const body = html`<div data-region="recipe">
 		${heading(recipe.name, recipe.purpose, html`<div class="meta">${sourcePill(entry.source)}</div>`)}
 		<div class="main-col">
 			<nav class="jump" aria-label="On this page">
-				<a href="#recipe">Recipe</a><a href="#requires">Requires</a><a href="#testing">Testing</a
-				><a href="#usage">Usage</a><a href="#json">JSON</a>
+				<a href="#recipe">Recipe</a><a href="#requires">Requires</a
+				><a href="#testing">Testing</a>${usage !== undefined ? html`<a href="#usage">Usage</a>` : null}<a
+					href="#json"
+					>JSON</a
+				>
 			</nav>
 			<section aria-labelledby="recipe">
 				<h2 id="recipe">Recipe</h2>
@@ -226,17 +222,21 @@ export function recipePage(workspace: string, name: string): Page | null {
 				<h2 id="requires">Requires</h2>
 				<h3>Entry points <span class="n">${recipe.entryPoints?.length ?? 0}</span></h3>
 				${entryPoints(recipe)}
-				<h3>Reachability checks</h3>
+				<h3>Setup reachability checks</h3>
 				${reachability(recipe)}
 			</section>
 			<section aria-labelledby="testing">
 				<h2 id="testing">Testing</h2>
 				${testingFacts(recipe)}
 			</section>
-			<section aria-labelledby="usage">
-				<h2 id="usage">Usage</h2>
-				<pre class="sp-code" tabindex="0" data-usage>${usageText}</pre>
-			</section>
+			${
+				usage !== undefined
+					? html`<section aria-labelledby="usage">
+							<h2 id="usage">Usage</h2>
+							<pre class="sp-code" tabindex="0" data-usage>${usageText}</pre>
+						</section>`
+					: null
+			}
 			<details class="fold" data-open-key="section:json">
 				<summary><h2 id="json">Recipe JSON</h2></summary>
 				<div class="fold-b"><pre class="sp-code" tabindex="0" data-json>${jsonText}</pre></div>

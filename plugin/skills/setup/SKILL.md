@@ -5,9 +5,9 @@ description: Set up a Checkmate target, correct its operations, or replace an in
 
 Read the workspace instructions. Use Checkmate tools from the current session.
 
-If the tool you need has no recipe, write `<tool>.json` in the project's `.checkmate/recipes/` folder. Use a built-in JSON file from the Checkmate plugin’s `recipes/` folder as an example. Include `name`, `capability`, `kind`, `purpose`, `detect`, `environment`, `workspaceFolders`, `observeFrom`, `evidence`, `usage`. Put the tester instructions in `usage` as a list of Markdown lines. For each needed input, put its `name`, `kind`, and `purpose` in `entryPoints`.
+If the tool you need has no recipe, write `<tool>.json` in the project's `.checkmate/recipes/` folder. Use a built-in JSON file from the Checkmate plugin’s `recipes/` folder as an example. Include `name`, `capability`, `kind`, `purpose`, `detect`, `environment`, `workspaceFolders`, `observeFrom`, `evidence`. Optional `usage` holds tester notes as Markdown lines. For each needed input, put its `name`, `kind`, and `purpose` in `entryPoints`.
 
-Continue with `checkmate_setup` and the declared entries. If Checkmate refuses the recipe, edit the file to fix the listed problems. Tell the person you added the recipe and what it lets testers run.
+Continue with `checkmate_setup` and the declared entries. If Checkmate refuses the recipe, edit the file to fix the listed problems. Tell the person you added a recipe for the tool. The target sets what testers may do.
 
 1. Call `checkmate_list_targets` when the target is unclear. Use the only target if it matches the request.
 2. Ask for the application address or the entries its tool needs. For a remote target, confirm the environment and the operations the person permits. Record credential references.

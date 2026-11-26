@@ -33,15 +33,9 @@ export type Recipe = {
 	observeFrom: Record<string, ObserveReading>
 	evidence: string[]
 	evidenceExtensions?: Record<string, string>
-	usage: string[]
-	// Kind mcp only: the server that Checkmate starts, and the exact names of its tools that a tester can call.
+	usage?: string[]
+	// Kind mcp only: the server that Checkmate starts.
 	server?: ToolServer
-	tools?: string[]
-	// Kind mcp only: the arguments that a call of a tool may not give, by tool name, for example {"run": ["dir"]}.
-	refusedArguments?: Record<string, string[]>
-	// Kind mcp only: arguments that must have the value of an instance entry, for example {"device_id": "device"}.
-	// A call without the argument gets the entry value.
-	entryArguments?: Record<string, string>
 }
 
 // "view" reads what the tool shows now; it does not show that a stored state changed. "state" reads the stored state.
@@ -59,7 +53,6 @@ export const requiredRecipeFields = [
 	'workspaceFolders',
 	'observeFrom',
 	'evidence',
-	'usage',
 ] as const satisfies ReadonlyArray<keyof Recipe>
 
 export type RecipeEntry = {
@@ -108,19 +101,16 @@ function readRecipe(path: string, source: RecipeEntry['source']): RecipeEntry | 
 	const refuse = (problem: string) => problems.push(problem)
 	for (const field of requiredRecipeFields)
 		if (!Object.hasOwn(recipe, field)) refuse(`give the required field ${field}.`)
+	for (const field of ['tools', 'refusedArguments', 'entryArguments'])
+		if (Object.hasOwn(recipe, field))
+			refuse(`${field} is not a recipe field. Put tool limits in the target or skill.`)
 	if (recipe.name !== undefined && (!isIdentifier(recipe.name) || `${recipe.name}.json` !== file))
 		refuse('name must match the file name without .json and use letters, numbers, dashes, or underscores.')
 	if (recipe.capability !== undefined && !isIdentifier(recipe.capability))
 		refuse('capability must use 1 to 96 letters, digits, dashes, or underscores, starting with a letter or digit.')
 	if (recipe.kind !== undefined && recipe.kind !== 'cli' && recipe.kind !== 'mcp') refuse('kind must be cli or mcp.')
 	if (recipe.kind === 'mcp') readServer(recipe, refuse)
-	else if (
-		recipe.kind === 'cli' &&
-		[recipe.server, recipe.tools, recipe.refusedArguments, recipe.entryArguments].some(
-			(value) => value !== undefined
-		)
-	)
-		refuse('server, tools, refusedArguments, and entryArguments are only for a recipe of kind mcp.')
+	else if (recipe.kind === 'cli' && recipe.server !== undefined) refuse('server is only for a recipe of kind mcp.')
 	if (recipe.purpose !== undefined && !isText(recipe.purpose)) refuse('purpose must be a text.')
 	if (recipe.detect !== undefined && recipe.detect !== 'path' && recipe.detect !== 'runtime')
 		refuse('detect must be path or runtime.')
@@ -276,35 +266,8 @@ function readServer(recipe: Partial<Recipe>, refuse: (problem: string) => void) 
 		!isText((server as ToolServer).cwd)
 	)
 		refuse('server must be {command, args (list of arguments), cwd} for a recipe of kind mcp.')
-	if (
-		!Array.isArray(recipe.tools) ||
-		!recipe.tools.length ||
-		!recipe.tools.every((name) => typeof name === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(name))
-	)
-		refuse('tools must list the names of the server tools that a tester can call.')
 	if (recipe.closeSession !== undefined || recipe.shellInstruction !== undefined)
 		refuse('a recipe of kind mcp has no closeSession or shellInstruction: Checkmate stops its server.')
-	const refused: unknown = recipe.refusedArguments
-	if (
-		refused !== undefined &&
-		(typeof refused !== 'object' ||
-			refused === null ||
-			Array.isArray(refused) ||
-			!Object.keys(refused).every((tool) => Array.isArray(recipe.tools) && recipe.tools.includes(tool)) ||
-			!Object.values(refused).every((names) => Array.isArray(names) && names.length && names.every(isText)))
-	)
-		refuse('refusedArguments must map a tool of the recipe to the names of the arguments that it may not give.')
-	const entries = entryNames(recipe)
-	const pinned: unknown = recipe.entryArguments
-	if (
-		pinned !== undefined &&
-		(typeof pinned !== 'object' ||
-			pinned === null ||
-			Array.isArray(pinned) ||
-			!Object.keys(pinned).every(isText) ||
-			!Object.values(pinned).every((entry) => entries.includes(entry)))
-	)
-		refuse('entryArguments must map an argument name to an entry point of the recipe.')
 }
 
 // A value name is a lower-case word, for example page or http_exchange.
@@ -332,7 +295,7 @@ export function refuseInvalidRecipes(items: InvalidRecipe[]) {
 	throw new Refusal(
 		'prohibited',
 		items.map(recipeProblem).join(' '),
-		`Edit ${items.map((item) => item.path).join(', ')} to fix the listed problems. Run checkmate recipe list to check the files.`
+		`Edit ${items.map((item) => item.path).join(', ')} to fix the listed problems. Edits apply immediately. Retry the refused action. Run setup again only if the target needs different entries or tools. Run checkmate recipe list to check the files.`
 	)
 }
 
@@ -511,10 +474,10 @@ export function serverName(recipe: Recipe) {
 	return recipe.name.replaceAll('-', '_')
 }
 
-// The full paths of the usage texts of the named tools that have a recipe, in recipe order.
+// The paths of the named tools’ recipes that contain usage notes, in recipe order.
 export function recipeFilesFor(workspace: string, toolNames: string[]) {
 	return requireValidRecipes(workspace, toolNames)
-		.filter(({ recipe }) => toolNames.includes(recipe.name))
+		.filter(({ recipe }) => recipe.usage !== undefined && toolNames.includes(recipe.name))
 		.map(({ path }) => path)
 }
 

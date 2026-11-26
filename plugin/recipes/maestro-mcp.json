@@ -21,13 +21,6 @@
 		"args": ["mcp", "--no-viewer"],
 		"cwd": "{workFolder}"
 	},
-	"tools": ["inspect_screen", "run", "take_screenshot"],
-	"refusedArguments": {
-		"run": ["files", "dir"]
-	},
-	"entryArguments": {
-		"device_id": "device"
-	},
 	"environment": {
 		"MAESTRO_CLI_NO_ANALYTICS": "true",
 		"MAESTRO_DISABLE_UPDATE_CHECK": "true",

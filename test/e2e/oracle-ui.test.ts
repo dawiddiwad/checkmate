@@ -940,6 +940,12 @@ test(
 		assert.equal(await page.locator('main form, main button').count(), 0)
 		assert.equal(await page.evaluate(() => document.body.dataset.injected ?? null), null)
 
+		const { usage: _usage, ...withoutUsage } = recipe
+		writeFileSync(path, JSON.stringify(withoutUsage))
+		await page.reload()
+		assert.equal(await page.locator('[data-usage], a[href="#usage"]').count(), 0)
+		assert.equal(await page.locator('[data-json]').textContent(), JSON.stringify(withoutUsage))
+
 		await page.goto(new URL('/settings/recipes/node', url).href)
 		const nodeFacts = await page.locator('#recipe + .facts').innerText()
 		assert.equal(await page.locator('#recipe + .facts [data-source]').getAttribute('data-source'), 'built-in')

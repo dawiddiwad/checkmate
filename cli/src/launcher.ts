@@ -649,6 +649,10 @@ type Execution = {
 // The stages that one worker does with one prompt. delegateByTest runs execute.
 type WorkerStage = Exclude<Stage, 'execute'>
 
+const presencePlanInstruction =
+	'To check whether a value appears in the output, use contains:TEXT for presence or absent:TEXT for absence. Use the text itself in place of TEXT.'
+const presenceEvidenceInstruction = 'For a presence or absence check, attach the action output verbatim.'
+
 // The observeFrom rule for the plan of a subject, from the tools of its target.
 function planObserveRule(store: Store, subject: string) {
 	const { request, target } = planRequest(store, subject.split('@')[0])
@@ -671,7 +675,8 @@ function stagePrompt(stage: WorkerStage, subject: string, observeRule: string) {
 			'If the request lists context sources, read them with the listed tools. Draft requirements only when the request has none.',
 			'Read the source files of the request with the read tool. Do not search the file system: do not use rg, grep, or find.',
 			'A test serves one requirement, or a small related group of at most three. Do not put every criterion in one test: one failure would hide the rest.',
-			'Write one test for each requirement. A test is the default. A criterion that states a behaviour has an observable expectation: write it with the simplest kind that fits, for example a status code, contains or absent text, one-of, at least or at most, or type. Mark each with "metadata": { "type": "regression" }.',
+			'Write one test for each requirement. A test is the default. A criterion that states a behaviour has an observable expectation: write it with the simplest kind that fits, for example a status code, one-of, at least or at most, or type. Mark each with "metadata": { "type": "regression" }.',
+			presencePlanInstruction,
 			'Raise a gap only for a criterion that is ambiguous, contradictory, or missing a fact that its test cannot proceed without. Name that one criterion and its requirement in the question, and state the exact question. Do not pick the value yourself. A gap that covers more than one requirement must name each requirement in its question, or you give each requirement its own gap.',
 			'Use agent_observation only for a visual or wording judgment that no value states. An order, a count, a status code, a presence, or an absence has a value: observe the first item, the count, the status, or the text, and use the deterministic kind. Do not raise a gap for a judgment.',
 			'Each assertion checks one expected value. Write one assertion for each value. Do not join two values with "and" or ";" in one check.',
@@ -690,6 +695,7 @@ function stagePrompt(stage: WorkerStage, subject: string, observeRule: string) {
 	return [
 		`Plan: ${subject}. Read the pending decisions with \`checkmate plan pending ${subject}\`. With no pending decision, the revision migrates the checks to the current shape: read the plan with \`checkmate plan show ${subject} --json\`.`,
 		'Change only the tests that the decisions affect. Give each ready test at least one assertion. A test without an assertion is not ready.',
+		presencePlanInstruction,
 		'When a migration has no pending decision, change only the tests with a deterministic check without "observe" and "expected", or with a check that states more than one value. Give each migrated deterministic check "observe" and "expected", and split a check that states more than one value into one assertion for each value. Do not invent an expected value that the sources do not state.',
 		'When a split or an expected value needs a decision, keep the assertions the sources state and raise a gap only for the one missing fact: {"gaps": {"G-<testId>": {"question": "<the decision>", "consequence": "<what stays untested>", "testIds": ["<testId>"]}}}. Do not answer gaps.',
 		'When a decision has no expected value, add an assertion with "checkKind": "agent_observation" that records the behavior.',
@@ -719,6 +725,7 @@ function nativePlanPrompt(
 	return [
 		`You are the independent Checkmate ${stage} worker for ${subject}. ${start} Follow the delegated path below. Do not ask the oracle, answer a question, run a reset, or perform tests.`,
 		skill.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, ''),
+		presencePlanInstruction,
 		`Example: ${JSON.stringify(example)}`,
 		...(stage === 'plan'
 			? [
@@ -1016,6 +1023,7 @@ function testPrompt(
 		`Record each assertion: ${cli} run check ${runId} ${test.id} <assertion ID> --actor ${actor} --observed '<only the bare value: for a status code 200, for an amount $5.00>'${plannedRequest(test.action) || test.assertions.some((assertion) => assertion.request) ? " --request '<method and path you sent for this check>'" : ''} --evidence - <<'EOF'`,
 		'Put --observed and --request values in single quotes. Inside double quotes the shell expands $ and backticks: $5.00 becomes .00 and $0 becomes a shell path. Give only the bare value in --observed: HTTP 200 is refused, 200 is accepted.',
 		'then the raw tool output that shows it, copied, then EOF. Use two words for the IDs: T1 A1. Give only the value of the observed item, not the whole line.',
+		presenceEvidenceInstruction,
 		'For an assertion with an expected value, do not decide passed or failed: the code compares the observed value with the expected value. For an assertion without one, decide it with --result and --observed. A message or value the page shows is an observed value: record it with --observed, even when it says "not found". When the page was read after the action and the text or element the check names is not on it, record --absent instead of --observed, with the snapshot excerpt as evidence. The code compares that absence with the expected value. Record an error only when the action could not be performed or the page could not be read: then record not_checked for each assertion of that test with --reason, record no defect for it, and close the test as error. When you cannot observe the value for another reason, record not_checked with --reason "<why>" and no --observed.',
 		`For each failed assertion, record a defect: ${cli} run finding ${runId} --actor ${actor} <<'EOF' with {"id":"F-${test.id}-1","type":"defect","severity":"medium","assertionIds":["${test.id}.<assertion ID>"],"requirementIds":${JSON.stringify(test.requirementIds)},"title":"<short title>","expected":"<check>","observed":"<observed value>","reproduction":["<request or steps>"],"evidenceIds":["<evidence ID printed by run check>"]} then EOF.`,
 		`Then close the test: ${cli} run close ${runId} ${test.id} --actor ${actor}.`,
@@ -1047,6 +1055,7 @@ function nativeTestPrompt(execution: Execution, workspace: string, test: Test, r
 				]
 			: []),
 		'For every assertion that has expected, OMIT result. Checkmate compares the observed value itself. Give only the named value in observed, for example "400"; put the response body in evidence. When an assertion has no expected, give result only as your judgment of the recorded observation.',
+		presenceEvidenceInstruction,
 		`Example structured call: ${toolName('record_check')} {"runId":"${run.run_id}","testId":"${test.id}","assertionId":"<assertion ID>","request":"GET /path?qty=0","observed":"400","evidence":[{"text":"GET /path?qty=0 returned HTTP 400","kind":"http_exchange"}]}. Use absent: true instead of observed only when the target was read and the asserted item is absent.`,
 		`For a refusal, correct the named fields and retry the same check. If the action or read could not run, close as error with its reason and evidence. After all observed checks are recorded, return the result receipt. The launcher closes the test from those records. Use ${toolName('close_test')} only if the action failed or is blocked. Do not record placeholders.`,
 		`Return only {"status":"completed","subject":"${run.run_id}","reasons":[]} after recording the outcome.`,

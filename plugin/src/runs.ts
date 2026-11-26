@@ -48,6 +48,7 @@ import {
 	unitNotObserved,
 	looksShellExpanded,
 	looksTruncatedMoney,
+	presenceContradiction,
 	repeatsExpectation,
 	wrappedValue,
 } from './expectation.ts'
@@ -627,6 +628,19 @@ function evidenceFiles(store: Store, runId: string, name: string, specs: Evidenc
 	return files
 }
 
+function* textAttachments(files: EvidenceFile[]) {
+	const decoder = new TextDecoder('utf-8', { fatal: true })
+	for (const file of files) {
+		if (!file.mediaType.startsWith('text/') && !['application/json', 'application/xml'].includes(file.mediaType))
+			continue
+		try {
+			yield decoder.decode(file.bytes)
+		} catch {
+			continue
+		}
+	}
+}
+
 function removeFiles(files: EvidenceFile[]) {
 	for (const file of files) if (file.path) rmSync(file.path, { force: true })
 }
@@ -759,30 +773,41 @@ export function checkAssertion(store: Store, actor: string | undefined, input: C
 			"Record --observed in single quotes, for example --observed '$0', so the shell passes the value unchanged."
 		)
 		const reason = input.reason ?? null
-		const result =
+		const compared =
 			assertion.expected === undefined
 				? checkedResult(input.result, assertion, observed)
 				: structuredResult(input, test, assertion, observed, run.request.marker ?? '')
 		files = evidenceFiles(store, input.runId, `${test.id}-${assertion.id}`, input.evidence)
-		if (result !== 'not_checked')
+		if (compared !== 'not_checked')
 			requireWellFormed(
 				observed && files.length > 0,
-				`${result === 'inconclusive' ? 'An' : 'A'} ${result} result needs an observation (--observed) and one or more evidence items (--evidence)`,
+				`${compared === 'inconclusive' ? 'An' : 'A'} ${compared} result needs an observation (--observed) and one or more evidence items (--evidence)`,
 				`Add --observed "<what you saw>" and --evidence <file in ${evidenceDirectory(input.runId)}>, or --evidence - with the text on standard input.`
 			)
-		if (result === 'inconclusive')
+		if (compared === 'inconclusive')
 			requireWellFormed(
 				reason,
 				'An inconclusive result needs a reason (--reason) that says what the evidence cannot show'
 			)
-		if (result === 'not_checked')
+		if (compared === 'not_checked')
 			requireWellFormed(reason, 'A not_checked result needs a reason (--reason) that says why it was not checked')
+		const contradiction =
+			observed !== null && assertion.expected !== undefined
+				? presenceContradiction(
+						input.absent ? null : observed,
+						assertion.expected,
+						run.request.marker ?? '',
+						textAttachments(files)
+					)
+				: undefined
+		const result = contradiction ? 'inconclusive' : compared
 		// The amounts match, but the observed value has no unit the expected value names. The record says so.
 		const unit =
 			result === 'passed' && observed !== null && assertion.expected !== undefined
 				? unitNotObserved(observed, assertion.expected)
 				: undefined
-		const recorded = reason ?? (unit ? `The unit ${unit} was not observed; the amounts match.` : null)
+		const recorded =
+			contradiction ?? reason ?? (unit ? `The unit ${unit} was not observed; the amounts match.` : null)
 		// The first result goes to assertion_results, which keeps it. A correction goes to assertion_corrections.
 		const table = prior ? 'assertion_corrections' : 'assertion_results'
 		execute(
@@ -805,6 +830,7 @@ export function checkAssertion(store: Store, actor: string | undefined, input: C
 				testId: test.id,
 				assertionId: assertion.id,
 				result,
+				...(contradiction ? { reason: contradiction } : {}),
 				evidenceIds,
 			}),
 			subjects: [`run:${input.runId}`],

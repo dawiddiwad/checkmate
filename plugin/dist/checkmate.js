@@ -823,6 +823,11 @@ function expectationError(expected) {
   if (/^(matches|one-of|type|at least|at most|contains|absent):/.test(value2)) return void 0;
   if (/^not\s/i.test(value2))
     return `The expected value "${expected}" states an absence in words. Write it as absent:<text>, for example absent:${value2.replace(/^not\s+/i, "")}.`;
+  const presence = /^(.+?)(?:\s+is)?\s+(absent|present)[.!?]?$/i.exec(value2);
+  if (presence) {
+    const matcher = presence[2].toLowerCase() === "absent" ? "absent" : "contains";
+    return `The expected value "${expected}" states presence or absence in words. Write it as ${matcher}:<text>, for example ${matcher}:${presence[1]}.`;
+  }
   const placeholder2 = value2.replaceAll(markerPlaceholder, "");
   if (/[<>]/.test(placeholder2) || /[{}]/.test(placeholder2))
     return `The expected value "${expected}" holds a placeholder. Only ${markerPlaceholder} is a placeholder: write ${markerPlaceholder}-T1 for a value with the run marker, not qa-<runId>-T1.`;
@@ -888,6 +893,29 @@ function expectationMatches(observed, expected, marker) {
   const plain = expected.replaceAll(markerPlaceholder, marker);
   return amountSame(value2, plain) ?? plainSame(value2, plain);
 }
+function presenceContradiction(observed, expected, marker, attachments) {
+  const rule = /^(absent|contains):([\s\S]+)$/.exec(expected.trim().replaceAll(markerPlaceholder, marker));
+  if (!rule) return;
+  const value2 = rule[2].trim();
+  if (!value2) return;
+  const reportsAbsence = observed === null || loose(observed).replace(/[.!?]$/, "") === loose(`${value2} absent`) || expectationMatches(observed, expected, marker) === (rule[1] === "absent");
+  const occurrence = new RegExp(`(?<![\\p{L}\\p{N}_])${RegExp.escape(value2)}(?![\\p{L}\\p{N}_])`, "iu");
+  let hasText = false;
+  for (const text2 of attachments) {
+    hasText = true;
+    const match = occurrence.exec(text2);
+    if (!match) continue;
+    if (!reportsAbsence) return;
+    const end = match.index + match[0].length;
+    const nextLine2 = text2.indexOf("\n", end);
+    const start = Math.max(text2.lastIndexOf("\n", match.index - 1) + 1, match.index - 100);
+    const stop = Math.min(nextLine2 === -1 ? text2.length : nextLine2, end + 100);
+    const line = text2.slice(start, stop).trim();
+    return `Observation contradicts the evidence: "${value2}" was reported absent. Found in attached text: ${line}`;
+  }
+  if (hasText && !reportsAbsence)
+    return `Observation contradicts the evidence: "${value2}" was reported present. It was not found in the attached text.`;
+}
 function looksShellExpanded(observed) {
   return /(^|\s)\/(usr\/)?bin\/(ba|z|da)?sh(\s|$)/.test(observed.trim()) || /^(bash|sh|zsh)$/.test(observed.trim());
 }
@@ -945,42 +973,42 @@ __export(validators_exports, {
   verification: () => It,
   workerRule: () => _t
 });
-var te = (p, t) => () => {
+var re = (p, t) => () => {
   try {
     return t || p((t = { exports: {} }).exports, t), t.exports;
   } catch (Z2) {
     throw t = 0, Z2;
   }
 };
-var ze = te((ye) => {
+var Oe = re((ye) => {
   "use strict";
   Object.defineProperty(ye, "__esModule", { value: true });
-  function xe(p) {
-    let t = p.length, Z2 = 0, z = 0, x;
-    for (; z < t; ) Z2++, x = p.charCodeAt(z++), x >= 55296 && x <= 56319 && z < t && (x = p.charCodeAt(z), (x & 64512) === 56320 && z++);
+  function Ae(p) {
+    let t = p.length, Z2 = 0, $ = 0, x;
+    for (; $ < t; ) Z2++, x = p.charCodeAt($++), x >= 55296 && x <= 56319 && $ < t && (x = p.charCodeAt($), (x & 64512) === 56320 && $++);
     return Z2;
   }
-  ye.default = xe;
-  xe.code = 'require("ajv/dist/runtime/ucs2length").default';
+  ye.default = Ae;
+  Ae.code = 'require("ajv/dist/runtime/ucs2length").default';
 });
-var Ze = te((Ms, $e) => {
+var ze = re((Ms, xe) => {
   "use strict";
-  $e.exports = function p(t, Z2) {
+  xe.exports = function p(t, Z2) {
     if (t === Z2) return true;
     if (t && Z2 && typeof t == "object" && typeof Z2 == "object") {
       if (t.constructor !== Z2.constructor) return false;
-      var z, x, e;
+      var $, x, e;
       if (Array.isArray(t)) {
-        if (z = t.length, z != Z2.length) return false;
-        for (x = z; x-- !== 0; ) if (!p(t[x], Z2[x])) return false;
+        if ($ = t.length, $ != Z2.length) return false;
+        for (x = $; x-- !== 0; ) if (!p(t[x], Z2[x])) return false;
         return true;
       }
       if (t.constructor === RegExp) return t.source === Z2.source && t.flags === Z2.flags;
       if (t.valueOf !== Object.prototype.valueOf) return t.valueOf() === Z2.valueOf();
       if (t.toString !== Object.prototype.toString) return t.toString() === Z2.toString();
-      if (e = Object.keys(t), z = e.length, z !== Object.keys(Z2).length) return false;
-      for (x = z; x-- !== 0; ) if (!Object.prototype.hasOwnProperty.call(Z2, e[x])) return false;
-      for (x = z; x-- !== 0; ) {
+      if (e = Object.keys(t), $ = e.length, $ !== Object.keys(Z2).length) return false;
+      for (x = $; x-- !== 0; ) if (!Object.prototype.hasOwnProperty.call(Z2, e[x])) return false;
+      for (x = $; x-- !== 0; ) {
         var s = e[x];
         if (!p(t[s], Z2[s])) return false;
       }
@@ -989,32 +1017,32 @@ var Ze = te((Ms, $e) => {
     return t !== t && Z2 !== Z2;
   };
 });
-var Te = te((ge) => {
+var Ze = re((ge) => {
   "use strict";
   Object.defineProperty(ge, "__esModule", { value: true });
-  var Ne = Ze();
-  Ne.code = 'require("ajv/dist/runtime/equal").default';
-  ge.default = Ne;
+  var $e = ze();
+  $e.code = 'require("ajv/dist/runtime/equal").default';
+  ge.default = $e;
 });
-var qe = te((K) => {
+var qe = re((K) => {
   "use strict";
   Object.defineProperty(K, "__esModule", { value: true });
   K.formatNames = K.fastFormats = K.fullFormats = void 0;
   function C(p, t) {
     return { validate: p, compare: t };
   }
-  K.fullFormats = { date: C(Ee, ve), time: C(we(true), be), "date-time": C(Le(true), Ve), "iso-time": C(we(), Fe), "iso-date-time": C(Le(), Re), duration: /^P(?!$)((\d+Y)?(\d+M)?(\d+D)?(T(?=\d)(\d+H)?(\d+M)?(\d+S)?)?|(\d+W)?)$/, uri: As, "uri-reference": /^(?:[a-z][a-z0-9+\-.]*:)?(?:\/?\/(?:(?:[a-z0-9\-._~!$&'()*+,;=:]|%[0-9a-f]{2})*@)?(?:\[(?:(?:(?:(?:[0-9a-f]{1,4}:){6}|::(?:[0-9a-f]{1,4}:){5}|(?:[0-9a-f]{1,4})?::(?:[0-9a-f]{1,4}:){4}|(?:(?:[0-9a-f]{1,4}:){0,1}[0-9a-f]{1,4})?::(?:[0-9a-f]{1,4}:){3}|(?:(?:[0-9a-f]{1,4}:){0,2}[0-9a-f]{1,4})?::(?:[0-9a-f]{1,4}:){2}|(?:(?:[0-9a-f]{1,4}:){0,3}[0-9a-f]{1,4})?::[0-9a-f]{1,4}:|(?:(?:[0-9a-f]{1,4}:){0,4}[0-9a-f]{1,4})?::)(?:[0-9a-f]{1,4}:[0-9a-f]{1,4}|(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d\d?))|(?:(?:[0-9a-f]{1,4}:){0,5}[0-9a-f]{1,4})?::[0-9a-f]{1,4}|(?:(?:[0-9a-f]{1,4}:){0,6}[0-9a-f]{1,4})?::)|[Vv][0-9a-f]+\.[a-z0-9\-._~!$&'()*+,;=:]+)\]|(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d\d?)|(?:[a-z0-9\-._~!$&'"()*+,;=]|%[0-9a-f]{2})*)(?::\d*)?(?:\/(?:[a-z0-9\-._~!$&'"()*+,;=:@]|%[0-9a-f]{2})*)*|\/(?:(?:[a-z0-9\-._~!$&'"()*+,;=:@]|%[0-9a-f]{2})+(?:\/(?:[a-z0-9\-._~!$&'"()*+,;=:@]|%[0-9a-f]{2})*)*)?|(?:[a-z0-9\-._~!$&'"()*+,;=:@]|%[0-9a-f]{2})+(?:\/(?:[a-z0-9\-._~!$&'"()*+,;=:@]|%[0-9a-f]{2})*)*)?(?:\?(?:[a-z0-9\-._~!$&'"()*+,;=:@/?]|%[0-9a-f]{2})*)?(?:#(?:[a-z0-9\-._~!$&'"()*+,;=:@/?]|%[0-9a-f]{2})*)?$/i, "uri-template": /^(?:(?:[^\x00-\x20"'<>%\\^`{|}]|%[0-9a-f]{2})|\{[+#./;?&=,!@|]?(?:[a-z0-9_]|%[0-9a-f]{2})+(?::[1-9][0-9]{0,3}|\*)?(?:,(?:[a-z0-9_]|%[0-9a-f]{2})+(?::[1-9][0-9]{0,3}|\*)?)*\})*$/i, url: /^(?:https?|ftp):\/\/(?:\S+(?::\S*)?@)?(?:(?!(?:10|127)(?:\.\d{1,3}){3})(?!(?:169\.254|192\.168)(?:\.\d{1,3}){2})(?!172\.(?:1[6-9]|2\d|3[0-1])(?:\.\d{1,3}){2})(?:[1-9]\d?|1\d\d|2[01]\d|22[0-3])(?:\.(?:1?\d{1,2}|2[0-4]\d|25[0-5])){2}(?:\.(?:[1-9]\d?|1\d\d|2[0-4]\d|25[0-4]))|(?:(?:[a-z0-9\u{00a1}-\u{ffff}]+-)*[a-z0-9\u{00a1}-\u{ffff}]+)(?:\.(?:[a-z0-9\u{00a1}-\u{ffff}]+-)*[a-z0-9\u{00a1}-\u{ffff}]+)*(?:\.(?:[a-z\u{00a1}-\u{ffff}]{2,})))(?::\d{2,5})?(?:\/[^\s]*)?$/iu, email: /^[a-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[a-z0-9!#$%&'*+/=?^_`{|}~-]+)*@(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/i, hostname: /^(?=.{1,253}\.?$)[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[-0-9a-z]{0,61}[0-9a-z])?)*\.?$/i, ipv4: /^(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)$/, ipv6: /^((([0-9a-f]{1,4}:){7}([0-9a-f]{1,4}|:))|(([0-9a-f]{1,4}:){6}(:[0-9a-f]{1,4}|((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3})|:))|(([0-9a-f]{1,4}:){5}(((:[0-9a-f]{1,4}){1,2})|:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3})|:))|(([0-9a-f]{1,4}:){4}(((:[0-9a-f]{1,4}){1,3})|((:[0-9a-f]{1,4})?:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}))|:))|(([0-9a-f]{1,4}:){3}(((:[0-9a-f]{1,4}){1,4})|((:[0-9a-f]{1,4}){0,2}:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}))|:))|(([0-9a-f]{1,4}:){2}(((:[0-9a-f]{1,4}){1,5})|((:[0-9a-f]{1,4}){0,3}:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}))|:))|(([0-9a-f]{1,4}:){1}(((:[0-9a-f]{1,4}){1,6})|((:[0-9a-f]{1,4}){0,4}:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}))|:))|(:(((:[0-9a-f]{1,4}){1,7})|((:[0-9a-f]{1,4}){0,5}:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}))|:)))$/i, regex: Ts, uuid: /^(?:urn:uuid:)?[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i, "json-pointer": /^(?:\/(?:[^~/]|~0|~1)*)*$/, "json-pointer-uri-fragment": /^#(?:\/(?:[a-z0-9_\-.!$&'()*+,;:=@]|%[0-9a-f]{2}|~0|~1)*)*$/i, "relative-json-pointer": /^(?:0|[1-9][0-9]*)(?:#|(?:\/(?:[^~/]|~0|~1)*)*)$/, byte: Os, int32: { type: "number", validate: $s }, int64: { type: "number", validate: Zs }, float: { type: "number", validate: De }, double: { type: "number", validate: De }, password: true, binary: true };
-  K.fastFormats = { ...K.fullFormats, date: C(/^\d\d\d\d-[0-1]\d-[0-3]\d$/, ve), time: C(/^(?:[0-2]\d:[0-5]\d:[0-5]\d|23:59:60)(?:\.\d+)?(?:z|[+-]\d\d(?::?\d\d)?)$/i, be), "date-time": C(/^\d\d\d\d-[0-1]\d-[0-3]\dt(?:[0-2]\d:[0-5]\d:[0-5]\d|23:59:60)(?:\.\d+)?(?:z|[+-]\d\d(?::?\d\d)?)$/i, Ve), "iso-time": C(/^(?:[0-2]\d:[0-5]\d:[0-5]\d|23:59:60)(?:\.\d+)?(?:z|[+-]\d\d(?::?\d\d)?)?$/i, Fe), "iso-date-time": C(/^\d\d\d\d-[0-1]\d-[0-3]\d[t\s](?:[0-2]\d:[0-5]\d:[0-5]\d|23:59:60)(?:\.\d+)?(?:z|[+-]\d\d(?::?\d\d)?)?$/i, Re), uri: /^(?:[a-z][a-z0-9+\-.]*:)(?:\/?\/)?[^\s]*$/i, "uri-reference": /^(?:(?:[a-z][a-z0-9+\-.]*:)?\/?\/)?(?:[^\\\s#][^\s#]*)?(?:#[^\\\s]*)?$/i, email: /^[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$/i };
+  K.fullFormats = { date: C(Se, ve), time: C(we(true), be), "date-time": C(Ne(true), Ee), "iso-time": C(we(), De), "iso-date-time": C(Ne(), Fe), duration: /^P(?!$)((\d+Y)?(\d+M)?(\d+D)?(T(?=\d)(\d+H)?(\d+M)?(\d+S)?)?|(\d+W)?)$/, uri: As, "uri-reference": /^(?:[a-z][a-z0-9+\-.]*:)?(?:\/?\/(?:(?:[a-z0-9\-._~!$&'()*+,;=:]|%[0-9a-f]{2})*@)?(?:\[(?:(?:(?:(?:[0-9a-f]{1,4}:){6}|::(?:[0-9a-f]{1,4}:){5}|(?:[0-9a-f]{1,4})?::(?:[0-9a-f]{1,4}:){4}|(?:(?:[0-9a-f]{1,4}:){0,1}[0-9a-f]{1,4})?::(?:[0-9a-f]{1,4}:){3}|(?:(?:[0-9a-f]{1,4}:){0,2}[0-9a-f]{1,4})?::(?:[0-9a-f]{1,4}:){2}|(?:(?:[0-9a-f]{1,4}:){0,3}[0-9a-f]{1,4})?::[0-9a-f]{1,4}:|(?:(?:[0-9a-f]{1,4}:){0,4}[0-9a-f]{1,4})?::)(?:[0-9a-f]{1,4}:[0-9a-f]{1,4}|(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d\d?))|(?:(?:[0-9a-f]{1,4}:){0,5}[0-9a-f]{1,4})?::[0-9a-f]{1,4}|(?:(?:[0-9a-f]{1,4}:){0,6}[0-9a-f]{1,4})?::)|[Vv][0-9a-f]+\.[a-z0-9\-._~!$&'()*+,;=:]+)\]|(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d\d?)|(?:[a-z0-9\-._~!$&'"()*+,;=]|%[0-9a-f]{2})*)(?::\d*)?(?:\/(?:[a-z0-9\-._~!$&'"()*+,;=:@]|%[0-9a-f]{2})*)*|\/(?:(?:[a-z0-9\-._~!$&'"()*+,;=:@]|%[0-9a-f]{2})+(?:\/(?:[a-z0-9\-._~!$&'"()*+,;=:@]|%[0-9a-f]{2})*)*)?|(?:[a-z0-9\-._~!$&'"()*+,;=:@]|%[0-9a-f]{2})+(?:\/(?:[a-z0-9\-._~!$&'"()*+,;=:@]|%[0-9a-f]{2})*)*)?(?:\?(?:[a-z0-9\-._~!$&'"()*+,;=:@/?]|%[0-9a-f]{2})*)?(?:#(?:[a-z0-9\-._~!$&'"()*+,;=:@/?]|%[0-9a-f]{2})*)?$/i, "uri-template": /^(?:(?:[^\x00-\x20"'<>%\\^`{|}]|%[0-9a-f]{2})|\{[+#./;?&=,!@|]?(?:[a-z0-9_]|%[0-9a-f]{2})+(?::[1-9][0-9]{0,3}|\*)?(?:,(?:[a-z0-9_]|%[0-9a-f]{2})+(?::[1-9][0-9]{0,3}|\*)?)*\})*$/i, url: /^(?:https?|ftp):\/\/(?:\S+(?::\S*)?@)?(?:(?!(?:10|127)(?:\.\d{1,3}){3})(?!(?:169\.254|192\.168)(?:\.\d{1,3}){2})(?!172\.(?:1[6-9]|2\d|3[0-1])(?:\.\d{1,3}){2})(?:[1-9]\d?|1\d\d|2[01]\d|22[0-3])(?:\.(?:1?\d{1,2}|2[0-4]\d|25[0-5])){2}(?:\.(?:[1-9]\d?|1\d\d|2[0-4]\d|25[0-4]))|(?:(?:[a-z0-9\u{00a1}-\u{ffff}]+-)*[a-z0-9\u{00a1}-\u{ffff}]+)(?:\.(?:[a-z0-9\u{00a1}-\u{ffff}]+-)*[a-z0-9\u{00a1}-\u{ffff}]+)*(?:\.(?:[a-z\u{00a1}-\u{ffff}]{2,})))(?::\d{2,5})?(?:\/[^\s]*)?$/iu, email: /^[a-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[a-z0-9!#$%&'*+/=?^_`{|}~-]+)*@(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/i, hostname: /^(?=.{1,253}\.?$)[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[-0-9a-z]{0,61}[0-9a-z])?)*\.?$/i, ipv4: /^(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)$/, ipv6: /^((([0-9a-f]{1,4}:){7}([0-9a-f]{1,4}|:))|(([0-9a-f]{1,4}:){6}(:[0-9a-f]{1,4}|((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3})|:))|(([0-9a-f]{1,4}:){5}(((:[0-9a-f]{1,4}){1,2})|:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3})|:))|(([0-9a-f]{1,4}:){4}(((:[0-9a-f]{1,4}){1,3})|((:[0-9a-f]{1,4})?:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}))|:))|(([0-9a-f]{1,4}:){3}(((:[0-9a-f]{1,4}){1,4})|((:[0-9a-f]{1,4}){0,2}:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}))|:))|(([0-9a-f]{1,4}:){2}(((:[0-9a-f]{1,4}){1,5})|((:[0-9a-f]{1,4}){0,3}:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}))|:))|(([0-9a-f]{1,4}:){1}(((:[0-9a-f]{1,4}){1,6})|((:[0-9a-f]{1,4}){0,4}:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}))|:))|(:(((:[0-9a-f]{1,4}){1,7})|((:[0-9a-f]{1,4}){0,5}:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}))|:)))$/i, regex: Ts, uuid: /^(?:urn:uuid:)?[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i, "json-pointer": /^(?:\/(?:[^~/]|~0|~1)*)*$/, "json-pointer-uri-fragment": /^#(?:\/(?:[a-z0-9_\-.!$&'()*+,;:=@]|%[0-9a-f]{2}|~0|~1)*)*$/i, "relative-json-pointer": /^(?:0|[1-9][0-9]*)(?:#|(?:\/(?:[^~/]|~0|~1)*)*)$/, byte: Os, int32: { type: "number", validate: $s }, int64: { type: "number", validate: Zs }, float: { type: "number", validate: Le }, double: { type: "number", validate: Le }, password: true, binary: true };
+  K.fastFormats = { ...K.fullFormats, date: C(/^\d\d\d\d-[0-1]\d-[0-3]\d$/, ve), time: C(/^(?:[0-2]\d:[0-5]\d:[0-5]\d|23:59:60)(?:\.\d+)?(?:z|[+-]\d\d(?::?\d\d)?)$/i, be), "date-time": C(/^\d\d\d\d-[0-1]\d-[0-3]\dt(?:[0-2]\d:[0-5]\d:[0-5]\d|23:59:60)(?:\.\d+)?(?:z|[+-]\d\d(?::?\d\d)?)$/i, Ee), "iso-time": C(/^(?:[0-2]\d:[0-5]\d:[0-5]\d|23:59:60)(?:\.\d+)?(?:z|[+-]\d\d(?::?\d\d)?)?$/i, De), "iso-date-time": C(/^\d\d\d\d-[0-1]\d-[0-3]\d[t\s](?:[0-2]\d:[0-5]\d:[0-5]\d|23:59:60)(?:\.\d+)?(?:z|[+-]\d\d(?::?\d\d)?)?$/i, Fe), uri: /^(?:[a-z][a-z0-9+\-.]*:)(?:\/?\/)?[^\s]*$/i, "uri-reference": /^(?:(?:[a-z][a-z0-9+\-.]*:)?\/?\/)?(?:[^\\\s#][^\s#]*)?(?:#[^\\\s]*)?$/i, email: /^[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$/i };
   K.formatNames = Object.keys(K.fullFormats);
   function bs(p) {
     return p % 4 === 0 && (p % 100 !== 0 || p % 400 === 0);
   }
   var qs = /^(\d\d\d\d)-(\d\d)-(\d\d)$/, js = [0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
-  function Ee(p) {
+  function Se(p) {
     let t = qs.exec(p);
     if (!t) return false;
-    let Z2 = +t[1], z = +t[2], x = +t[3];
-    return z >= 1 && z <= 12 && x >= 1 && x <= (z === 2 && bs(Z2) ? 29 : js[z]);
+    let Z2 = +t[1], $ = +t[2], x = +t[3];
+    return $ >= 1 && $ <= 12 && x >= 1 && x <= ($ === 2 && bs(Z2) ? 29 : js[$]);
   }
   function ve(p, t) {
     if (p && t) return p > t ? 1 : p < t ? -1 : 0;
@@ -1022,9 +1050,9 @@ var qe = te((K) => {
   var Pe = /^(\d\d):(\d\d):(\d\d(?:\.\d+)?)(z|([+-])(\d\d)(?::?(\d\d))?)?$/i;
   function we(p) {
     return function(Z2) {
-      let z = Pe.exec(Z2);
-      if (!z) return false;
-      let x = +z[1], e = +z[2], s = +z[3], f = z[4], n = z[5] === "-" ? -1 : 1, d = +(z[6] || 0), l = +(z[7] || 0);
+      let $ = Pe.exec(Z2);
+      if (!$) return false;
+      let x = +$[1], e = +$[2], s = +$[3], f = $[4], n = $[5] === "-" ? -1 : 1, d = +($[6] || 0), l = +($[7] || 0);
       if (d > 23 || l > 59 || p && !f) return false;
       if (x <= 23 && e <= 59 && s < 60) return true;
       let u = e - l * n, a = x - d * n - (u < 0 ? 1 : 0);
@@ -1033,39 +1061,39 @@ var qe = te((K) => {
   }
   function be(p, t) {
     if (!(p && t)) return;
-    let Z2 = (/* @__PURE__ */ new Date("2020-01-01T" + p)).valueOf(), z = (/* @__PURE__ */ new Date("2020-01-01T" + t)).valueOf();
-    if (Z2 && z) return Z2 - z;
+    let Z2 = (/* @__PURE__ */ new Date("2020-01-01T" + p)).valueOf(), $ = (/* @__PURE__ */ new Date("2020-01-01T" + t)).valueOf();
+    if (Z2 && $) return Z2 - $;
+  }
+  function De(p, t) {
+    if (!(p && t)) return;
+    let Z2 = Pe.exec(p), $ = Pe.exec(t);
+    if (Z2 && $) return p = Z2[1] + Z2[2] + Z2[3], t = $[1] + $[2] + $[3], p > t ? 1 : p < t ? -1 : 0;
+  }
+  var ke = /t|\s/i;
+  function Ne(p) {
+    let t = we(p);
+    return function($) {
+      let x = $.split(ke);
+      return x.length === 2 && Se(x[0]) && t(x[1]);
+    };
+  }
+  function Ee(p, t) {
+    if (!(p && t)) return;
+    let Z2 = new Date(p).valueOf(), $ = new Date(t).valueOf();
+    if (Z2 && $) return Z2 - $;
   }
   function Fe(p, t) {
     if (!(p && t)) return;
-    let Z2 = Pe.exec(p), z = Pe.exec(t);
-    if (Z2 && z) return p = Z2[1] + Z2[2] + Z2[3], t = z[1] + z[2] + z[3], p > t ? 1 : p < t ? -1 : 0;
-  }
-  var ke = /t|\s/i;
-  function Le(p) {
-    let t = we(p);
-    return function(z) {
-      let x = z.split(ke);
-      return x.length === 2 && Ee(x[0]) && t(x[1]);
-    };
-  }
-  function Ve(p, t) {
-    if (!(p && t)) return;
-    let Z2 = new Date(p).valueOf(), z = new Date(t).valueOf();
-    if (Z2 && z) return Z2 - z;
-  }
-  function Re(p, t) {
-    if (!(p && t)) return;
-    let [Z2, z] = p.split(ke), [x, e] = t.split(ke), s = ve(Z2, x);
-    if (s !== void 0) return s || be(z, e);
+    let [Z2, $] = p.split(ke), [x, e] = t.split(ke), s = ve(Z2, x);
+    if (s !== void 0) return s || be($, e);
   }
   var Is = /\/|:/, _s = /^(?:[a-z][a-z0-9+\-.]*:)(?:\/?\/(?:(?:[a-z0-9\-._~!$&'()*+,;=:]|%[0-9a-f]{2})*@)?(?:\[(?:(?:(?:(?:[0-9a-f]{1,4}:){6}|::(?:[0-9a-f]{1,4}:){5}|(?:[0-9a-f]{1,4})?::(?:[0-9a-f]{1,4}:){4}|(?:(?:[0-9a-f]{1,4}:){0,1}[0-9a-f]{1,4})?::(?:[0-9a-f]{1,4}:){3}|(?:(?:[0-9a-f]{1,4}:){0,2}[0-9a-f]{1,4})?::(?:[0-9a-f]{1,4}:){2}|(?:(?:[0-9a-f]{1,4}:){0,3}[0-9a-f]{1,4})?::[0-9a-f]{1,4}:|(?:(?:[0-9a-f]{1,4}:){0,4}[0-9a-f]{1,4})?::)(?:[0-9a-f]{1,4}:[0-9a-f]{1,4}|(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d\d?))|(?:(?:[0-9a-f]{1,4}:){0,5}[0-9a-f]{1,4})?::[0-9a-f]{1,4}|(?:(?:[0-9a-f]{1,4}:){0,6}[0-9a-f]{1,4})?::)|[Vv][0-9a-f]+\.[a-z0-9\-._~!$&'()*+,;=:]+)\]|(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d\d?)|(?:[a-z0-9\-._~!$&'()*+,;=]|%[0-9a-f]{2})*)(?::\d*)?(?:\/(?:[a-z0-9\-._~!$&'()*+,;=:@]|%[0-9a-f]{2})*)*|\/(?:(?:[a-z0-9\-._~!$&'()*+,;=:@]|%[0-9a-f]{2})+(?:\/(?:[a-z0-9\-._~!$&'()*+,;=:@]|%[0-9a-f]{2})*)*)?|(?:[a-z0-9\-._~!$&'()*+,;=:@]|%[0-9a-f]{2})+(?:\/(?:[a-z0-9\-._~!$&'()*+,;=:@]|%[0-9a-f]{2})*)*)(?:\?(?:[a-z0-9\-._~!$&'()*+,;=:@/?]|%[0-9a-f]{2})*)?(?:#(?:[a-z0-9\-._~!$&'()*+,;=:@/?]|%[0-9a-f]{2})*)?$/i;
   function As(p) {
     return Is.test(p) && _s.test(p);
   }
-  var Se = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/gm;
+  var Te = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/gm;
   function Os(p) {
-    return Se.lastIndex = 0, Se.test(p);
+    return Te.lastIndex = 0, Te.test(p);
   }
   var xs = -(2 ** 31), zs = 2 ** 31 - 1;
   function $s(p) {
@@ -1074,7 +1102,7 @@ var qe = te((K) => {
   function Zs(p) {
     return Number.isInteger(p);
   }
-  function De() {
+  function Le() {
     return true;
   }
   var Ns = /[^\\]\\Z/;
@@ -1088,21 +1116,21 @@ var qe = te((K) => {
   }
 });
 var Xs = Je;
-var D = { $schema: "http://json-schema.org/draft-07/schema#", $id: "actions.schema.json", type: "object", minProperties: 1, maxProperties: 1, additionalProperties: false, definitions: { text: { $ref: "text.schema.json" }, id: { $ref: "identifier.schema.json" }, url: { type: "string", format: "uri", pattern: "^https?://" }, evidence: { type: "array", description: 'Attach inline evidence as [{"text":"GET /quote returned HTTP 400","kind":"http_exchange"}]. For a screenshot or trace, give file instead of text. A file must be in the current run evidence directory and is consumed after a successful call.', items: { anyOf: [{ type: "object", additionalProperties: false, required: ["text"], properties: { text: { $ref: "text.schema.json" }, kind: { enum: ["observation", "screenshot", "view_hierarchy", "recording", "http_exchange", "trace"] } } }, { type: "object", additionalProperties: false, required: ["file"], properties: { file: { $ref: "#/definitions/text" }, kind: { enum: ["observation", "screenshot", "view_hierarchy", "recording", "http_exchange", "trace"] } } }] } } }, properties: { setup: { description: 'Set up or correct a target. For a web application give url. For another application give entries, for example {"app": "com.example.shop", "device": "<device ID>"}: the recipes of the installed tools say which entries a target needs, and the refusal names them. To record only the data policy of a target that is set up, give targetId with reset, or with data and policy. When the person says the app keeps no data, set data to environment and preserve their policy text. For a read-only target use an explicit read_ operation, for example read_quotes. The setup result already checks reachability.', type: "object", additionalProperties: false, properties: { url: { $ref: "#/definitions/url" }, entries: { type: "object", description: "Entries of the application by name. url is the short form of the entry web.", propertyNames: { $ref: "identifier.schema.json" }, additionalProperties: { $ref: "instance.schema.json#/properties/entries/additionalProperties" }, minProperties: 1 }, targetId: { $ref: "#/definitions/id" }, instanceId: { $ref: "#/definitions/id" }, operations: { type: "array", items: { $ref: "#/definitions/id" }, minItems: 1, uniqueItems: true, description: "Operations the person permits. Use a specific read_ operation for a read-only API, such as read_quotes. The bare word read does not identify a read-only operation." }, environment: { $ref: "instance.schema.json#/properties/environment" }, build: { $ref: "build.schema.json" }, correct: { type: "boolean" }, reset: { $ref: "#/definitions/text" }, data: { enum: ["environment", "isolation"], description: "Use environment when the app keeps no data or the environment supplies clean data. Use isolation when the person describes how to keep test records separate. Give the policy text or file with either." }, policy: { $ref: "#/definitions/text" }, policyFile: { $ref: "#/definitions/text" }, cleanup: { $ref: "#/definitions/text" }, hookTimeout: { type: "integer", minimum: 1, maximum: 3600 }, resetPerTest: { enum: ["on", "off"] } } }, replace_instance: { description: "Replace an instance with corrected entries, environment, references or build. Existing runs keep their original instance. Use the returned instance ID for new work.", type: "object", additionalProperties: false, required: ["targetId", "instanceId", "instance"], properties: { targetId: { $ref: "#/definitions/id" }, instanceId: { $ref: "#/definitions/id" }, instance: { $ref: "instance.schema.json" } } }, list_targets: { description: "List configured targets and their active instances.", type: "object", additionalProperties: false, properties: {} }, show_target: { description: "Read a target profile and its instance entries. Use an instance ID from the current run or exploration.", type: "object", additionalProperties: false, properties: { reference: { $ref: "revision-reference.schema.json" }, instance: { $ref: "#/definitions/text" } }, required: ["reference"] }, open_plan: { description: "Register a plan request. Use a target ID. For a ticket file, give its path in request.context.sources. Omit planId to derive it from the first source. Omit tools to inherit the target profile; use a name string for a profile tool.", type: "object", additionalProperties: false, properties: { target: { $ref: "revision-reference.schema.json" }, planId: { type: "string", pattern: "^(?!stdin$)[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, request: { $ref: "plan-request.schema.json" } }, required: ["target", "request"] }, read_plan_request: { description: "Read the plan objective, rules, sources, target capabilities, operations and tools.", type: "object", additionalProperties: false, properties: { planId: { $ref: "#/definitions/id" } }, required: ["planId"] }, save_plan: { description: "Save the first plan candidate. When the request gives requirements, omit candidate.requirements and use their IDs in tests and gaps. Each deterministic assertion has an observed item and expected value.", type: "object", additionalProperties: false, properties: { planId: { $ref: "#/definitions/id" }, candidate: { $ref: "plan-candidate.schema.json" } }, required: ["planId", "candidate"] }, edit_plan: { description: "Apply a focused patch or replace a candidate. Read the plan first and give the rationale.", type: "object", additionalProperties: false, properties: { reference: { $ref: "#/definitions/text" }, rationale: { $ref: "#/definitions/text" }, patch: { $ref: "plan-patch.schema.json" }, candidate: { $ref: "plan-candidate.schema.json" }, expectSha256: { $ref: "#/definitions/text" } }, required: ["reference"], oneOf: [{ required: ["patch"] }, { required: ["candidate"] }] }, read_pending: { description: "Read unanswered gaps, applied tests and oracle decisions waiting to be applied.", type: "object", additionalProperties: false, properties: { planId: { $ref: "#/definitions/id" } }, required: ["planId"] }, revise_plan: { description: "Apply recorded oracle answers as a plan delta.", type: "object", additionalProperties: false, properties: { planId: { $ref: "#/definitions/id" }, delta: { $ref: "plan-delta.schema.json" }, expectSha256: { $ref: "#/definitions/text" } }, required: ["planId", "delta"] }, answer_gap: { description: "Record an explicit oracle answer to the named gap.", type: "object", additionalProperties: false, properties: { planId: { $ref: "identifier.schema.json", description: "The plan ID from status. Use that same plan ID for a plan gap or an exploration question. Do not give the exploration ID here." }, gapId: { type: "string", minLength: 1, pattern: "\\S", description: "The gap ID or exploration question ID shown by the plan status. Copy it exactly, including any slash." }, kind: { enum: ["clarify", "accept_assumption", "defer"] }, value: { type: "string", minLength: 1, pattern: "\\S", description: "The person\u2019s exact answer to this question. Ask when they have not answered. Do not supply an inference." }, source: { $ref: "#/definitions/text" }, rationale: { $ref: "#/definitions/text" }, expectSha256: { $ref: "#/definitions/text" } }, required: ["planId", "gapId", "kind", "value", "rationale"] }, start_test: { description: "Start exploration or select a stored run. Use the named build. Leave level, tester count and deadlines at their defaults unless the person chooses them. For a new plan give its sources. If the reply says path session, dispatch the next tester steps with the Agent tool. Only process explorations use a wait.", type: "object", additionalProperties: false, properties: { planId: { $ref: "#/definitions/id" }, build: { $ref: "build.schema.json" }, mode: { enum: ["auto", "exploratory", "regression"] }, level: { $ref: "exploration.schema.json#/properties/level" }, explorers: { $ref: "exploration.schema.json#/properties/explorers" }, minutes: { $ref: "exploration.schema.json#/properties/minutes" }, instance: { $ref: "exploration.schema.json#/properties/instance" }, timeoutSeconds: { $ref: "exploration.schema.json#/properties/timeoutSeconds" }, objective: { $ref: "#/definitions/text" }, target: { $ref: "#/definitions/text" }, sources: { type: "array", items: { $ref: "#/definitions/text" } }, instructions: { $ref: "#/definitions/text" }, since: { $ref: "exploration.schema.json#/properties/since" }, until: { $ref: "exploration.schema.json#/properties/until" }, scope: { type: "array", items: { $ref: "#/definitions/text" } }, url: { $ref: "#/properties/setup/properties/url" }, entries: { $ref: "#/properties/setup/properties/entries" }, reset: { $ref: "#/properties/setup/properties/reset" }, data: { $ref: "#/properties/setup/properties/data" }, policy: { $ref: "#/properties/setup/properties/policy" }, policyFile: { $ref: "#/properties/setup/properties/policyFile" }, cleanup: { $ref: "#/properties/setup/properties/cleanup" }, hookTimeout: { $ref: "#/properties/setup/properties/hookTimeout" }, repo: { $ref: "exploration.schema.json#/properties/repo" } }, required: ["planId"] }, test_status: { description: "Read an exploration state and its findings when report is true. For a Claude session exploration, dispatch the next tester steps instead of polling.", type: "object", additionalProperties: false, properties: { explorationId: { $ref: "#/definitions/id" }, report: { type: "boolean" }, waitSeconds: { type: "integer", minimum: 1, maximum: 90, description: "Long poll only a process exploration. Omit for a Claude session exploration." } }, required: ["explorationId"] }, begin_run: { description: "Begin stored tests on the named build and instance. Include retestOf only for a build that fixes an earlier defect.", type: "object", additionalProperties: false, properties: { runId: { $ref: "#/definitions/id" }, reference: { $ref: "revision-reference.schema.json" }, build: { $ref: "build.schema.json" }, instance: { $ref: "#/definitions/text" }, tests: { type: "array", items: { $ref: "#/definitions/id" } }, partial: { enum: ["ready_only", "wait_for_resolution"] }, onNewBlocker: { enum: ["continue_independent", "return_to_oracle"] }, timeoutSeconds: { type: "integer", minimum: 1, maximum: 3600 }, retestOf: { $ref: "#/definitions/id" } }, required: ["runId", "reference", "build"] }, read_run: { description: "Read the selected tests, outcomes, instance and time remaining for a stored run.", type: "object", additionalProperties: false, properties: { runId: { $ref: "#/definitions/id" }, tests: { type: "array", items: { $ref: "#/definitions/id" } }, gate: { type: "boolean" }, includePlan: { type: "boolean", description: "Include the action, preconditions, dependencies and checks of each selected test." } }, required: ["runId"] }, record_check: { description: "Record the literal observed value or absence and evidence. For structured checks, code decides the result.", type: "object", additionalProperties: false, properties: { runId: { $ref: "#/definitions/id" }, testId: { $ref: "#/definitions/id" }, assertionId: { $ref: "#/definitions/id" }, result: { enum: ["passed", "failed", "inconclusive", "not_checked"], description: "Omit when the assertion has expected. Checkmate computes passed or failed. Use not_checked with a reason if you could not observe the value. For an agent observation without expected, give your judgment." }, observed: { $ref: "text.schema.json" }, absent: { type: "boolean" }, request: { $ref: "text.schema.json" }, reason: { $ref: "#/definitions/text" }, evidence: { $ref: "#/definitions/evidence" } }, required: ["runId", "testId", "assertionId"], not: { required: ["observed", "absent"], properties: { absent: { const: true } } } }, close_test: { description: "Close a stored test once its assertions are recorded or a blocker or tool failure is documented.", type: "object", additionalProperties: false, properties: { runId: { $ref: "#/definitions/id" }, testId: { $ref: "#/definitions/id" }, outcome: { enum: ["blocked", "not_run", "error"] }, cause: { enum: ["deadline"] }, reason: { $ref: "#/definitions/text" }, evidence: { $ref: "#/definitions/evidence" } }, required: ["runId", "testId"], dependencies: { outcome: ["reason"], reason: ["outcome"], cause: ["outcome"] }, if: { required: ["outcome"], properties: { outcome: { const: "error" } } }, then: { not: { required: ["cause"] } }, else: { properties: { evidence: { type: "array", maxItems: 0 } } } }, record_finding: { description: "Record a defect or potential issue with the assertion and evidence IDs, where applicable.", type: "object", additionalProperties: false, properties: { runId: { $ref: "#/definitions/id" }, finding: { $ref: "finding.schema.json" } }, required: ["runId", "finding"] }, record_gap: { description: "Record a question from execution that blocks or limits a check.", type: "object", additionalProperties: false, properties: { runId: { $ref: "#/definitions/id" }, gap: { $ref: "gap.schema.json" } }, required: ["runId", "gap"] }, finish_run: { description: "Finish a stored run after closing selected tests and recording cleanup.", type: "object", additionalProperties: false, properties: { runId: { $ref: "#/definitions/id" }, completion: { enum: ["completed", "interrupted", "operational_error"] }, cause: { enum: ["deadline", "host_stopped", "tool_unavailable"] }, reason: { $ref: "#/definitions/text" }, cleanup: { enum: ["completed", "failed", "not_applicable"] }, cleanupReason: { $ref: "#/definitions/text" } }, required: ["runId", "completion", "cleanup", "cleanupReason"] }, status: { description: "Read a plan status, gaps, results, and the person who acts next.", type: "object", additionalProperties: false, properties: { planId: { $ref: "#/definitions/id" } }, required: ["planId"] }, inbox: { description: "Read the oracle inbox for gaps, plans, claims and results.", type: "object", additionalProperties: false, properties: {} }, next_tester_steps: { description: "Read the tasks for the Oracle to dispatch to the session tester or clerk.", type: "object", additionalProperties: false, properties: { explorationId: { $ref: "#/definitions/id" } }, required: ["explorationId"] }, tester_steps_started: { description: "Confirm which session tester or clerk tasks the host started.", type: "object", additionalProperties: false, properties: { explorationId: { $ref: "#/definitions/id" }, names: { type: "array", items: { $ref: "#/definitions/id" }, minItems: 1 } }, required: ["explorationId", "names"] }, tester_step_done: { description: "Record a completed session tester or clerk step after the host reports it finished.", type: "object", additionalProperties: false, properties: { explorationId: { $ref: "#/definitions/id" }, name: { $ref: "#/definitions/id" }, step: { enum: ["study", "test", "record", "follow", "rules", "merge", "verify"] }, activity: { $ref: "#/definitions/text" }, failure: { enum: ["agent_unavailable", "agent_interrupted", "host_error"], description: "Only when the Agent tool could not start, reach, or complete the agent. Omit after a completed reply, even if it reports an application defect or a blocked check." }, failureDetail: { type: "string", description: "Host error detail. Never give a product finding here." }, agentId: { type: "string", minLength: 1, pattern: "^[A-Za-z0-9_-]+$", description: "The assigned Agent tool receipt ID." } }, required: ["explorationId", "name", "step"], dependencies: { failureDetail: ["failure"] } }, follow_test: { type: "object", description: "Test the oracle answers that this exploration has not used yet. When the reply says path session, dispatch the next tester steps with the Agent tool.", additionalProperties: false, required: ["explorationId"], properties: { explorationId: { $ref: "#/definitions/id" }, timeoutSeconds: { type: "integer", minimum: 60, maximum: 7200 } } }, pause_test: { type: "object", description: "Pause a session exploration while the oracle supplies an answer.", additionalProperties: false, required: ["explorationId", "reason"], properties: { explorationId: { $ref: "#/definitions/id" }, reason: { $ref: "#/definitions/text" } } }, resume_run: { type: "object", description: "Reopen an interrupted run for execution after checking the gate and instance.", additionalProperties: false, required: ["runId"], properties: { runId: { $ref: "#/definitions/id" }, error: { type: "array", items: { $ref: "#/definitions/id" } }, reason: { $ref: "#/definitions/text" } } }, delegate_work: { description: "Start an independent worker for a plan request, pending decisions, or a stored run. Use the plan ID for plan and revise. Use the run ID for execute. Wait for the recorded outcome and report it. The operator does not test.", type: "object", additionalProperties: false, required: ["stage", "subject"], properties: { stage: { enum: ["setup", "plan", "revise", "execute"] }, subject: { $ref: "#/definitions/id" } } } } };
+var D = { $schema: "http://json-schema.org/draft-07/schema#", $id: "actions.schema.json", type: "object", minProperties: 1, maxProperties: 1, additionalProperties: false, definitions: { text: { $ref: "text.schema.json" }, id: { $ref: "identifier.schema.json" }, url: { type: "string", format: "uri", pattern: "^https?://" }, evidence: { type: "array", description: 'Attach inline evidence as [{"text":"GET /quote returned HTTP 400","kind":"http_exchange"}]. For a screenshot or trace, give file instead of text. A file must be in the current run evidence directory and is consumed after a successful call.', items: { anyOf: [{ type: "object", additionalProperties: false, required: ["text"], properties: { text: { $ref: "text.schema.json" }, kind: { type: "string", pattern: "^[a-z][a-z0-9_]{0,39}$" } } }, { type: "object", additionalProperties: false, required: ["file"], properties: { file: { $ref: "#/definitions/text" }, kind: { type: "string", pattern: "^[a-z][a-z0-9_]{0,39}$" } } }] } } }, properties: { setup: { description: 'Set up or correct a target. For a web application give url. For another application give entries, for example {"app": "com.example.shop", "device": "<device ID>"}: the recipes of the installed tools say which entries a target needs, and the refusal names them. To record only the data policy of a target that is set up, give targetId with reset, or with data and policy. When the person says the app keeps no data, set data to environment and preserve their policy text. For a read-only target use an explicit read_ operation, for example read_quotes. The setup result already checks reachability.', type: "object", additionalProperties: false, properties: { url: { $ref: "#/definitions/url" }, entries: { type: "object", description: "Entries of the application by name. url is the short form of the entry web.", propertyNames: { $ref: "identifier.schema.json" }, additionalProperties: { $ref: "instance.schema.json#/properties/entries/additionalProperties" }, minProperties: 1 }, targetId: { $ref: "#/definitions/id" }, instanceId: { $ref: "#/definitions/id" }, operations: { type: "array", items: { $ref: "#/definitions/id" }, minItems: 1, uniqueItems: true, description: "Operations the person permits. Use a specific read_ operation for a read-only API, such as read_quotes. The bare word read does not identify a read-only operation." }, environment: { $ref: "instance.schema.json#/properties/environment" }, build: { $ref: "build.schema.json" }, correct: { type: "boolean" }, reset: { $ref: "#/definitions/text" }, data: { enum: ["environment", "isolation"], description: "Use environment when the app keeps no data or the environment supplies clean data. Use isolation when the person describes how to keep test records separate. Give the policy text or file with either." }, policy: { $ref: "#/definitions/text" }, policyFile: { $ref: "#/definitions/text" }, cleanup: { $ref: "#/definitions/text" }, hookTimeout: { type: "integer", minimum: 1, maximum: 3600 }, resetPerTest: { enum: ["on", "off"] } } }, replace_instance: { description: "Replace an instance with corrected entries, environment, references or build. Existing runs keep their original instance. Use the returned instance ID for new work.", type: "object", additionalProperties: false, required: ["targetId", "instanceId", "instance"], properties: { targetId: { $ref: "#/definitions/id" }, instanceId: { $ref: "#/definitions/id" }, instance: { $ref: "instance.schema.json" } } }, list_targets: { description: "List configured targets and their active instances.", type: "object", additionalProperties: false, properties: {} }, show_target: { description: "Read a target profile and its instance entries. Use an instance ID from the current run or exploration.", type: "object", additionalProperties: false, properties: { reference: { $ref: "revision-reference.schema.json" }, instance: { $ref: "#/definitions/text" } }, required: ["reference"] }, open_plan: { description: "Register a plan request. Use a target ID. For a ticket file, give its path in request.context.sources. Omit planId to derive it from the first source. Omit tools to inherit the target profile; use a name string for a profile tool.", type: "object", additionalProperties: false, properties: { target: { $ref: "revision-reference.schema.json" }, planId: { type: "string", pattern: "^(?!stdin$)[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, request: { $ref: "plan-request.schema.json" } }, required: ["target", "request"] }, read_plan_request: { description: "Read the plan objective, rules, sources, target capabilities, operations and tools.", type: "object", additionalProperties: false, properties: { planId: { $ref: "#/definitions/id" } }, required: ["planId"] }, save_plan: { description: "Save the first plan candidate. When the request gives requirements, omit candidate.requirements and use their IDs in tests and gaps. Each deterministic assertion has an observed item and expected value.", type: "object", additionalProperties: false, properties: { planId: { $ref: "#/definitions/id" }, candidate: { $ref: "plan-candidate.schema.json" } }, required: ["planId", "candidate"] }, edit_plan: { description: "Apply a focused patch or replace a candidate. Read the plan first and give the rationale.", type: "object", additionalProperties: false, properties: { reference: { $ref: "#/definitions/text" }, rationale: { $ref: "#/definitions/text" }, patch: { $ref: "plan-patch.schema.json" }, candidate: { $ref: "plan-candidate.schema.json" }, expectSha256: { $ref: "#/definitions/text" } }, required: ["reference"], oneOf: [{ required: ["patch"] }, { required: ["candidate"] }] }, read_pending: { description: "Read unanswered gaps, applied tests and oracle decisions waiting to be applied.", type: "object", additionalProperties: false, properties: { planId: { $ref: "#/definitions/id" } }, required: ["planId"] }, revise_plan: { description: "Apply recorded oracle answers as a plan delta.", type: "object", additionalProperties: false, properties: { planId: { $ref: "#/definitions/id" }, delta: { $ref: "plan-delta.schema.json" }, expectSha256: { $ref: "#/definitions/text" } }, required: ["planId", "delta"] }, answer_gap: { description: "Record an explicit oracle answer to the named gap.", type: "object", additionalProperties: false, properties: { planId: { $ref: "identifier.schema.json", description: "The plan ID from status. Use that same plan ID for a plan gap or an exploration question. Do not give the exploration ID here." }, gapId: { type: "string", minLength: 1, pattern: "\\S", description: "The gap ID or exploration question ID shown by the plan status. Copy it exactly, including any slash." }, kind: { enum: ["clarify", "accept_assumption", "defer"] }, value: { type: "string", minLength: 1, pattern: "\\S", description: "The person\u2019s exact answer to this question. Ask when they have not answered. Do not supply an inference." }, source: { $ref: "#/definitions/text" }, rationale: { $ref: "#/definitions/text" }, expectSha256: { $ref: "#/definitions/text" } }, required: ["planId", "gapId", "kind", "value", "rationale"] }, start_test: { description: "Start exploration or select a stored run. Use the named build. Leave level, tester count and deadlines at their defaults unless the person chooses them. For a new plan give its sources. If the reply says path session, dispatch the next tester steps with the Agent tool. Only process explorations use a wait.", type: "object", additionalProperties: false, properties: { planId: { $ref: "#/definitions/id" }, build: { $ref: "build.schema.json" }, mode: { enum: ["auto", "exploratory", "regression"] }, level: { $ref: "exploration.schema.json#/properties/level" }, explorers: { $ref: "exploration.schema.json#/properties/explorers" }, minutes: { $ref: "exploration.schema.json#/properties/minutes" }, instance: { $ref: "exploration.schema.json#/properties/instance" }, timeoutSeconds: { $ref: "exploration.schema.json#/properties/timeoutSeconds" }, objective: { $ref: "#/definitions/text" }, target: { $ref: "#/definitions/text" }, sources: { type: "array", items: { $ref: "#/definitions/text" } }, instructions: { $ref: "#/definitions/text" }, since: { $ref: "exploration.schema.json#/properties/since" }, until: { $ref: "exploration.schema.json#/properties/until" }, scope: { type: "array", items: { $ref: "#/definitions/text" } }, url: { $ref: "#/properties/setup/properties/url" }, entries: { $ref: "#/properties/setup/properties/entries" }, reset: { $ref: "#/properties/setup/properties/reset" }, data: { $ref: "#/properties/setup/properties/data" }, policy: { $ref: "#/properties/setup/properties/policy" }, policyFile: { $ref: "#/properties/setup/properties/policyFile" }, cleanup: { $ref: "#/properties/setup/properties/cleanup" }, hookTimeout: { $ref: "#/properties/setup/properties/hookTimeout" }, repo: { $ref: "exploration.schema.json#/properties/repo" } }, required: ["planId"] }, test_status: { description: "Read an exploration state and its findings when report is true. For a Claude session exploration, dispatch the next tester steps instead of polling.", type: "object", additionalProperties: false, properties: { explorationId: { $ref: "#/definitions/id" }, report: { type: "boolean" }, waitSeconds: { type: "integer", minimum: 1, maximum: 90, description: "Long poll only a process exploration. Omit for a Claude session exploration." } }, required: ["explorationId"] }, begin_run: { description: "Begin stored tests on the named build and instance. Include retestOf only for a build that fixes an earlier defect.", type: "object", additionalProperties: false, properties: { runId: { $ref: "#/definitions/id" }, reference: { $ref: "revision-reference.schema.json" }, build: { $ref: "build.schema.json" }, instance: { $ref: "#/definitions/text" }, tests: { type: "array", items: { $ref: "#/definitions/id" } }, partial: { enum: ["ready_only", "wait_for_resolution"] }, onNewBlocker: { enum: ["continue_independent", "return_to_oracle"] }, timeoutSeconds: { type: "integer", minimum: 1, maximum: 3600 }, retestOf: { $ref: "#/definitions/id" } }, required: ["runId", "reference", "build"] }, read_run: { description: "Read the selected tests, outcomes, instance and time remaining for a stored run.", type: "object", additionalProperties: false, properties: { runId: { $ref: "#/definitions/id" }, tests: { type: "array", items: { $ref: "#/definitions/id" } }, gate: { type: "boolean" }, includePlan: { type: "boolean", description: "Include the action, preconditions, dependencies and checks of each selected test." } }, required: ["runId"] }, record_check: { description: "Record the literal observed value or absence and evidence. For structured checks, code decides the result.", type: "object", additionalProperties: false, properties: { runId: { $ref: "#/definitions/id" }, testId: { $ref: "#/definitions/id" }, assertionId: { $ref: "#/definitions/id" }, result: { enum: ["passed", "failed", "inconclusive", "not_checked"], description: "Omit when the assertion has expected. Checkmate computes passed or failed. Use not_checked with a reason if you could not observe the value. For an agent observation without expected, give your judgment." }, observed: { $ref: "text.schema.json" }, absent: { type: "boolean" }, request: { $ref: "text.schema.json" }, reason: { $ref: "#/definitions/text" }, evidence: { $ref: "#/definitions/evidence" } }, required: ["runId", "testId", "assertionId"], not: { required: ["observed", "absent"], properties: { absent: { const: true } } } }, close_test: { description: "Close a stored test once its assertions are recorded or a blocker or tool failure is documented.", type: "object", additionalProperties: false, properties: { runId: { $ref: "#/definitions/id" }, testId: { $ref: "#/definitions/id" }, outcome: { enum: ["blocked", "not_run", "error"] }, cause: { enum: ["deadline"] }, reason: { $ref: "#/definitions/text" }, evidence: { $ref: "#/definitions/evidence" } }, required: ["runId", "testId"], dependencies: { outcome: ["reason"], reason: ["outcome"], cause: ["outcome"] }, if: { required: ["outcome"], properties: { outcome: { const: "error" } } }, then: { not: { required: ["cause"] } }, else: { properties: { evidence: { type: "array", maxItems: 0 } } } }, record_finding: { description: "Record a defect or potential issue with the assertion and evidence IDs, where applicable.", type: "object", additionalProperties: false, properties: { runId: { $ref: "#/definitions/id" }, finding: { $ref: "finding.schema.json" } }, required: ["runId", "finding"] }, record_gap: { description: "Record a question from execution that blocks or limits a check.", type: "object", additionalProperties: false, properties: { runId: { $ref: "#/definitions/id" }, gap: { $ref: "gap.schema.json" } }, required: ["runId", "gap"] }, finish_run: { description: "Finish a stored run after closing selected tests and recording cleanup.", type: "object", additionalProperties: false, properties: { runId: { $ref: "#/definitions/id" }, completion: { enum: ["completed", "interrupted", "operational_error"] }, cause: { enum: ["deadline", "host_stopped", "tool_unavailable"] }, reason: { $ref: "#/definitions/text" }, cleanup: { enum: ["completed", "failed", "not_applicable"] }, cleanupReason: { $ref: "#/definitions/text" } }, required: ["runId", "completion", "cleanup", "cleanupReason"] }, status: { description: "Read a plan status, gaps, results, and the person who acts next.", type: "object", additionalProperties: false, properties: { planId: { $ref: "#/definitions/id" } }, required: ["planId"] }, inbox: { description: "Read the oracle inbox for gaps, plans, claims and results.", type: "object", additionalProperties: false, properties: {} }, next_tester_steps: { description: "Read the tasks for the Oracle to dispatch to the session tester or clerk.", type: "object", additionalProperties: false, properties: { explorationId: { $ref: "#/definitions/id" } }, required: ["explorationId"] }, tester_steps_started: { description: "Confirm which session tester or clerk tasks the host started.", type: "object", additionalProperties: false, properties: { explorationId: { $ref: "#/definitions/id" }, names: { type: "array", items: { $ref: "#/definitions/id" }, minItems: 1 } }, required: ["explorationId", "names"] }, tester_step_done: { description: "Record a completed session tester or clerk step after the host reports it finished.", type: "object", additionalProperties: false, properties: { explorationId: { $ref: "#/definitions/id" }, name: { $ref: "#/definitions/id" }, step: { enum: ["study", "test", "record", "follow", "rules", "merge", "verify"] }, activity: { $ref: "#/definitions/text" }, failure: { enum: ["agent_unavailable", "agent_interrupted", "host_error"], description: "Only when the Agent tool could not start, reach, or complete the agent. Omit after a completed reply, even if it reports an application defect or a blocked check." }, failureDetail: { type: "string", description: "Host error detail. Never give a product finding here." }, agentId: { type: "string", minLength: 1, pattern: "^[A-Za-z0-9_-]+$", description: "The assigned Agent tool receipt ID." } }, required: ["explorationId", "name", "step"], dependencies: { failureDetail: ["failure"] } }, follow_test: { type: "object", description: "Test the oracle answers that this exploration has not used yet. When the reply says path session, dispatch the next tester steps with the Agent tool.", additionalProperties: false, required: ["explorationId"], properties: { explorationId: { $ref: "#/definitions/id" }, timeoutSeconds: { type: "integer", minimum: 60, maximum: 7200 } } }, pause_test: { type: "object", description: "Pause a session exploration while the oracle supplies an answer.", additionalProperties: false, required: ["explorationId", "reason"], properties: { explorationId: { $ref: "#/definitions/id" }, reason: { $ref: "#/definitions/text" } } }, resume_run: { type: "object", description: "Reopen an interrupted run for execution after checking the gate and instance.", additionalProperties: false, required: ["runId"], properties: { runId: { $ref: "#/definitions/id" }, error: { type: "array", items: { $ref: "#/definitions/id" } }, reason: { $ref: "#/definitions/text" } } }, delegate_work: { description: "Start an independent worker for a plan request, pending decisions, or a stored run. Use the plan ID for plan and revise. Use the run ID for execute. Wait for the recorded outcome and report it. The operator does not test.", type: "object", additionalProperties: false, required: ["stage", "subject"], properties: { stage: { enum: ["setup", "plan", "revise", "execute"] }, subject: { $ref: "#/definitions/id" } } } } };
 var he = { $schema: "http://json-schema.org/draft-07/schema#", $id: "test-level.schema.json", enum: ["smoke", "normal", "deep"] };
 var Ls = { enum: ["environment", "isolation"], description: "Use environment when the app keeps no data or the environment supplies clean data. Use isolation when the person describes how to keep test records separate. Give the policy text or file with either." };
 var E = Object.prototype.hasOwnProperty;
-var q = ze().default;
-var L = Te().default;
-var Ce = qe().fullFormats.uri;
-var Ke = new RegExp("^https?://", "u");
+var q = Oe().default;
+var L = Ze().default;
+var Ve = qe().fullFormats.uri;
+var Re = new RegExp("^https?://", "u");
 var O = new RegExp("^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$", "u");
 var N = new RegExp("\\S", "u");
 var M = new RegExp("^(?=.*\\S)[^\\u0000-\\u001f\\u007f]+$", "u");
-var re = new RegExp("^[A-Za-z0-9][A-Za-z0-9_-]{0,95}(@[1-9][0-9]*)?$", "u");
+var ie = new RegExp("^[A-Za-z0-9][A-Za-z0-9_-]{0,95}(@[1-9][0-9]*)?$", "u");
 var Ss = new RegExp("^(?!stdin$)[A-Za-z0-9][A-Za-z0-9_-]{0,95}$", "u");
 var Ds = new RegExp("^[A-Za-z0-9_-]+$", "u");
-function Q(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, rootData: x = p } = {}) {
+function Y(p, { instancePath: t = "", parentData: Z2, parentDataProperty: $, rootData: x = p } = {}) {
   let e = null, s = 0;
   if (p && typeof p == "object" && !Array.isArray(p)) {
     if (p.entries === void 0) {
@@ -1239,12 +1267,12 @@ function Q(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, roo
     let n = { instancePath: t, schemaPath: "#/type", keyword: "type", params: { type: "object" }, message: "must be object" };
     e === null ? e = [n] : e.push(n), s++;
   }
-  return Q.errors = e, s === 0;
+  return Y.errors = e, s === 0;
 }
 var Es = { $schema: "http://json-schema.org/draft-07/schema#", $id: "plan-request.schema.json", type: "object", properties: { objective: { type: "string", minLength: 1 }, requirements: { type: "array", items: { type: "object", properties: { id: { $ref: "identifier.schema.json" }, text: { type: "string", minLength: 1 }, source: { type: "string", minLength: 1 }, area: { type: "string", minLength: 1, maxLength: 40 }, metadata: { $ref: "plan.schema.json#/definitions/metadata" } }, required: ["id", "text", "source"], additionalProperties: false }, minItems: 1, uniqueItems: true }, sourceContext: { type: "array", items: { type: "object", properties: { uri: { type: "string", minLength: 1 }, content: { type: "string", minLength: 1 } }, required: ["uri", "content"], additionalProperties: false }, minItems: 0, uniqueItems: true }, context: { type: "object", properties: { sources: { type: "array", items: { type: "string", minLength: 1 }, minItems: 0, uniqueItems: true }, instructions: { type: "string", minLength: 1 } }, required: ["sources"], additionalProperties: false }, tools: { type: "array", items: { anyOf: [{ type: "string", minLength: 1 }, { type: "object", properties: { name: { type: "string", minLength: 1 }, kind: { enum: ["cli", "mcp", "skill"] }, purpose: { type: "string", minLength: 1 } }, required: ["name", "kind", "purpose"], additionalProperties: false }] }, minItems: 0, uniqueItems: true } }, required: ["objective"], additionalProperties: false };
 var G = { type: "object", propertyNames: { pattern: "^[A-Za-z][A-Za-z0-9_.-]{0,63}$" }, additionalProperties: { type: ["string", "number", "boolean"], maxLength: 500 }, maxProperties: 20 };
 var U = new RegExp("^[A-Za-z][A-Za-z0-9_.-]{0,63}$", "u");
-function Y(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, rootData: x = p } = {}) {
+function X(p, { instancePath: t = "", parentData: Z2, parentDataProperty: $, rootData: x = p } = {}) {
   let e = null, s = 0;
   if (p && typeof p == "object" && !Array.isArray(p)) {
     if (p.objective === void 0) {
@@ -1633,10 +1661,10 @@ function Y(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, roo
     let d = { instancePath: t, schemaPath: "#/type", keyword: "type", params: { type: "object" }, message: "must be object" };
     e === null ? e = [d] : e.push(d), s++;
   }
-  return Y.errors = e, s === 0;
+  return X.errors = e, s === 0;
 }
 var Fs = { $schema: "http://json-schema.org/draft-07/schema#", $id: "plan-candidate.schema.json", type: "object", properties: { requirements: { $ref: "plan.schema.json#/properties/requirements" }, tests: { type: "array", items: { type: "object", properties: { id: { $ref: "identifier.schema.json" }, title: { type: "string", minLength: 1, maxLength: 200 }, requirementIds: { type: "array", items: { $ref: "identifier.schema.json" }, minItems: 1, uniqueItems: true }, capability: { $ref: "identifier.schema.json" }, operations: { type: "array", items: { $ref: "identifier.schema.json" }, minItems: 1, uniqueItems: true }, dependsOn: { type: "array", items: { type: "string", pattern: "^([A-Za-z0-9][A-Za-z0-9_-]{0,95}:)?[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 0, uniqueItems: true }, preconditions: { type: "array", items: { type: "string", minLength: 1 }, minItems: 0, uniqueItems: true }, action: { type: "string", minLength: 1 }, assertions: { type: "array", items: { $ref: "plan.schema.json#/definitions/assertion" }, minItems: 0, uniqueItems: true }, metadata: { $ref: "plan.schema.json#/definitions/metadata" } }, required: ["id", "title", "requirementIds", "capability", "operations", "dependsOn", "preconditions", "action", "assertions"], additionalProperties: false }, minItems: 0, uniqueItems: true }, gaps: { type: "array", items: { $ref: "gap.schema.json" }, minItems: 0, uniqueItems: true } }, required: ["tests", "gaps"], additionalProperties: false, examples: [{ tests: [{ id: "T1", title: "Read the order total", requirementIds: ["R1"], capability: "browser", operations: ["read_orders"], dependsOn: [], preconditions: [], action: "Open the order confirmation.", assertions: [{ id: "A1", check: "The order total is 240 PLN.", checkKind: "deterministic", observe: "Order total", expected: "240 PLN" }], metadata: { type: "regression" } }], gaps: [] }] };
-function ie(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, rootData: x = p } = {}) {
+function ae(p, { instancePath: t = "", parentData: Z2, parentDataProperty: $, rootData: x = p } = {}) {
   let e = null, s = 0;
   if (Array.isArray(p)) {
     if (p.length < 1) {
@@ -1771,11 +1799,12 @@ function ie(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, ro
     let n = { instancePath: t, schemaPath: "#/type", keyword: "type", params: { type: "array" }, message: "must be array" };
     e === null ? e = [n] : e.push(n), s++;
   }
-  return ie.errors = e, s === 0;
+  return ae.errors = e, s === 0;
 }
-var ce = { type: "object", properties: { id: { $ref: "identifier.schema.json" }, check: { type: "string", minLength: 1 }, checkKind: { enum: ["deterministic", "agent_observation"] }, observe: { type: "string", minLength: 1 }, expected: { type: "string", minLength: 1 }, request: { type: "string", pattern: "^(GET|POST|PUT|PATCH|DELETE) /" }, observeFrom: { enum: ["screen", "relaunch", "api", "page", "reload"] } }, required: ["id", "check", "checkKind"], additionalProperties: false };
+var Ye = { type: "object", properties: { id: { $ref: "identifier.schema.json" }, check: { type: "string", minLength: 1 }, checkKind: { enum: ["deterministic", "agent_observation"] }, observe: { type: "string", minLength: 1 }, expected: { type: "string", minLength: 1 }, request: { type: "string", pattern: "^(GET|POST|PUT|PATCH|DELETE) /" }, observeFrom: { type: "string", pattern: "^[a-z][a-z0-9_]{0,39}$" } }, required: ["id", "check", "checkKind"], additionalProperties: false };
 var fe = new RegExp("^(GET|POST|PUT|PATCH|DELETE) /", "u");
-function ae(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, rootData: x = p } = {}) {
+var Q = new RegExp("^[a-z][a-z0-9_]{0,39}$", "u");
+function ne(p, { instancePath: t = "", parentData: Z2, parentDataProperty: $, rootData: x = p } = {}) {
   let e = null, s = 0;
   if (p && typeof p == "object" && !Array.isArray(p)) {
     if (p.id === void 0) {
@@ -1821,7 +1850,7 @@ function ae(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, ro
     if (p.checkKind !== void 0) {
       let f = p.checkKind;
       if (!(f === "deterministic" || f === "agent_observation")) {
-        let n = { instancePath: t + "/checkKind", schemaPath: "#/properties/checkKind/enum", keyword: "enum", params: { allowedValues: ce.properties.checkKind.enum }, message: "must be equal to one of the allowed values" };
+        let n = { instancePath: t + "/checkKind", schemaPath: "#/properties/checkKind/enum", keyword: "enum", params: { allowedValues: Ye.properties.checkKind.enum }, message: "must be equal to one of the allowed values" };
         e === null ? e = [n] : e.push(n), s++;
       }
     }
@@ -1863,8 +1892,13 @@ function ae(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, ro
     }
     if (p.observeFrom !== void 0) {
       let f = p.observeFrom;
-      if (!(f === "screen" || f === "relaunch" || f === "api" || f === "page" || f === "reload")) {
-        let n = { instancePath: t + "/observeFrom", schemaPath: "#/properties/observeFrom/enum", keyword: "enum", params: { allowedValues: ce.properties.observeFrom.enum }, message: "must be equal to one of the allowed values" };
+      if (typeof f == "string") {
+        if (!Q.test(f)) {
+          let n = { instancePath: t + "/observeFrom", schemaPath: "#/properties/observeFrom/pattern", keyword: "pattern", params: { pattern: "^[a-z][a-z0-9_]{0,39}$" }, message: 'must match pattern "^[a-z][a-z0-9_]{0,39}$"' };
+          e === null ? e = [n] : e.push(n), s++;
+        }
+      } else {
+        let n = { instancePath: t + "/observeFrom", schemaPath: "#/properties/observeFrom/type", keyword: "type", params: { type: "string" }, message: "must be string" };
         e === null ? e = [n] : e.push(n), s++;
       }
     }
@@ -1872,11 +1906,11 @@ function ae(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, ro
     let f = { instancePath: t, schemaPath: "#/type", keyword: "type", params: { type: "object" }, message: "must be object" };
     e === null ? e = [f] : e.push(f), s++;
   }
-  return ae.errors = e, s === 0;
+  return ne.errors = e, s === 0;
 }
-var Ge = { $schema: "http://json-schema.org/draft-07/schema#", $id: "gap.schema.json", type: "object", properties: { id: { $ref: "identifier.schema.json" }, severity: { enum: ["blocking", "non_blocking"] }, status: { enum: ["open", "resolved", "deferred", "not_needed"] }, requirementIds: { type: "array", items: { $ref: "identifier.schema.json" }, minItems: 0, uniqueItems: true }, testIds: { type: "array", items: { type: "string", pattern: "^([A-Za-z0-9][A-Za-z0-9_-]{0,95}:)?[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 0, uniqueItems: true }, question: { type: "string", minLength: 1 }, consequence: { type: "string", minLength: 1 }, decisionId: { anyOf: [{ $ref: "identifier.schema.json" }, { type: "null" }] } }, required: ["id", "severity", "status", "requirementIds", "testIds", "question", "consequence", "decisionId"], additionalProperties: false };
-var se = new RegExp("^([A-Za-z0-9][A-Za-z0-9_-]{0,95}:)?[A-Za-z0-9][A-Za-z0-9_-]{0,95}$", "u");
-function V(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, rootData: x = p } = {}) {
+var Ce = { $schema: "http://json-schema.org/draft-07/schema#", $id: "gap.schema.json", type: "object", properties: { id: { $ref: "identifier.schema.json" }, severity: { enum: ["blocking", "non_blocking"] }, status: { enum: ["open", "resolved", "deferred", "not_needed"] }, requirementIds: { type: "array", items: { $ref: "identifier.schema.json" }, minItems: 0, uniqueItems: true }, testIds: { type: "array", items: { type: "string", pattern: "^([A-Za-z0-9][A-Za-z0-9_-]{0,95}:)?[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 0, uniqueItems: true }, question: { type: "string", minLength: 1 }, consequence: { type: "string", minLength: 1 }, decisionId: { anyOf: [{ $ref: "identifier.schema.json" }, { type: "null" }] } }, required: ["id", "severity", "status", "requirementIds", "testIds", "question", "consequence", "decisionId"], additionalProperties: false };
+var te = new RegExp("^([A-Za-z0-9][A-Za-z0-9_-]{0,95}:)?[A-Za-z0-9][A-Za-z0-9_-]{0,95}$", "u");
+function F(p, { instancePath: t = "", parentData: Z2, parentDataProperty: $, rootData: x = p } = {}) {
   let e = null, s = 0;
   if (p && typeof p == "object" && !Array.isArray(p)) {
     if (p.id === void 0) {
@@ -1930,14 +1964,14 @@ function V(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, roo
     if (p.severity !== void 0) {
       let n = p.severity;
       if (!(n === "blocking" || n === "non_blocking")) {
-        let d = { instancePath: t + "/severity", schemaPath: "#/properties/severity/enum", keyword: "enum", params: { allowedValues: Ge.properties.severity.enum }, message: "must be equal to one of the allowed values" };
+        let d = { instancePath: t + "/severity", schemaPath: "#/properties/severity/enum", keyword: "enum", params: { allowedValues: Ce.properties.severity.enum }, message: "must be equal to one of the allowed values" };
         e === null ? e = [d] : e.push(d), s++;
       }
     }
     if (p.status !== void 0) {
       let n = p.status;
       if (!(n === "open" || n === "resolved" || n === "deferred" || n === "not_needed")) {
-        let d = { instancePath: t + "/status", schemaPath: "#/properties/status/enum", keyword: "enum", params: { allowedValues: Ge.properties.status.enum }, message: "must be equal to one of the allowed values" };
+        let d = { instancePath: t + "/status", schemaPath: "#/properties/status/enum", keyword: "enum", params: { allowedValues: Ce.properties.status.enum }, message: "must be equal to one of the allowed values" };
         e === null ? e = [d] : e.push(d), s++;
       }
     }
@@ -1985,7 +2019,7 @@ function V(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, roo
         for (let a = 0; a < d; a++) {
           let i = n[a];
           if (typeof i == "string") {
-            if (!se.test(i)) {
+            if (!te.test(i)) {
               let r = { instancePath: t + "/testIds/" + a, schemaPath: "#/properties/testIds/items/pattern", keyword: "pattern", params: { pattern: "^([A-Za-z0-9][A-Za-z0-9_-]{0,95}:)?[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^([A-Za-z0-9][A-Za-z0-9_-]{0,95}:)?[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
               e === null ? e = [r] : e.push(r), s++;
             }
@@ -2070,9 +2104,9 @@ function V(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, roo
     let n = { instancePath: t, schemaPath: "#/type", keyword: "type", params: { type: "object" }, message: "must be object" };
     e === null ? e = [n] : e.push(n), s++;
   }
-  return V.errors = e, s === 0;
+  return F.errors = e, s === 0;
 }
-function H(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, rootData: x = p } = {}) {
+function H(p, { instancePath: t = "", parentData: Z2, parentDataProperty: $, rootData: x = p } = {}) {
   let e = null, s = 0;
   if (p && typeof p == "object" && !Array.isArray(p)) {
     if (p.tests === void 0) {
@@ -2087,7 +2121,7 @@ function H(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, roo
       let d = { instancePath: t, schemaPath: "#/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: n }, message: "must NOT have additional properties" };
       e === null ? e = [d] : e.push(d), s++;
     }
-    if (p.requirements !== void 0 && (ie(p.requirements, { instancePath: t + "/requirements", parentData: p, parentDataProperty: "requirements", rootData: x }) || (e = e === null ? ie.errors : e.concat(ie.errors), s = e.length)), p.tests !== void 0) {
+    if (p.requirements !== void 0 && (ae(p.requirements, { instancePath: t + "/requirements", parentData: p, parentDataProperty: "requirements", rootData: x }) || (e = e === null ? ae.errors : e.concat(ae.errors), s = e.length)), p.tests !== void 0) {
       let n = p.tests;
       if (Array.isArray(n)) {
         if (n.length < 0) {
@@ -2255,7 +2289,7 @@ function H(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, roo
                 for (let c = 0; c < h; c++) {
                   let g = r[c];
                   if (typeof g == "string") {
-                    if (!se.test(g)) {
+                    if (!te.test(g)) {
                       let y = { instancePath: t + "/tests/" + a + "/dependsOn/" + c, schemaPath: "#/properties/tests/items/properties/dependsOn/items/pattern", keyword: "pattern", params: { pattern: "^([A-Za-z0-9][A-Za-z0-9_-]{0,95}:)?[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^([A-Za-z0-9][A-Za-z0-9_-]{0,95}:)?[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
                       e === null ? e = [y] : e.push(y), s++;
                     }
@@ -2346,7 +2380,7 @@ function H(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, roo
                   e === null ? e = [c] : e.push(c), s++;
                 }
                 let h = r.length;
-                for (let c = 0; c < h; c++) ae(r[c], { instancePath: t + "/tests/" + a + "/assertions/" + c, parentData: r, parentDataProperty: c, rootData: x }) || (e = e === null ? ae.errors : e.concat(ae.errors), s = e.length);
+                for (let c = 0; c < h; c++) ne(r[c], { instancePath: t + "/tests/" + a + "/assertions/" + c, parentData: r, parentDataProperty: c, rootData: x }) || (e = e === null ? ne.errors : e.concat(ne.errors), s = e.length);
                 let o = r.length, m;
                 if (o > 1) {
                   e: for (; o--; ) for (m = o; m--; ) if (L(r[o], r[m])) {
@@ -2421,7 +2455,7 @@ function H(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, roo
           e === null ? e = [a] : e.push(a), s++;
         }
         let d = n.length;
-        for (let a = 0; a < d; a++) V(n[a], { instancePath: t + "/gaps/" + a, parentData: n, parentDataProperty: a, rootData: x }) || (e = e === null ? V.errors : e.concat(V.errors), s = e.length);
+        for (let a = 0; a < d; a++) F(n[a], { instancePath: t + "/gaps/" + a, parentData: n, parentDataProperty: a, rootData: x }) || (e = e === null ? F.errors : e.concat(F.errors), s = e.length);
         let l = n.length, u;
         if (l > 1) {
           e: for (; l--; ) for (u = l; u--; ) if (L(n[l], n[u])) {
@@ -2441,43 +2475,9 @@ function H(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, roo
   }
   return H.errors = e, s === 0;
 }
-var je = { $schema: "http://json-schema.org/draft-07/schema#", $id: "plan-patch.schema.json", type: "object", properties: { requirements: { type: "object", propertyNames: { $ref: "identifier.schema.json" }, additionalProperties: { anyOf: [{ type: "object", properties: { text: { type: "string", minLength: 1 }, source: { type: "string", minLength: 1 }, area: { type: "string", minLength: 1, maxLength: 40 }, metadata: { $ref: "plan.schema.json#/definitions/metadata" } }, additionalProperties: false, minProperties: 1 }, { type: "null" }] } }, tests: { type: "object", propertyNames: { $ref: "identifier.schema.json" }, additionalProperties: { anyOf: [{ type: "object", properties: { title: { $ref: "plan-candidate.schema.json#/properties/tests/items/properties/title" }, requirementIds: { $ref: "plan-candidate.schema.json#/properties/tests/items/properties/requirementIds" }, capability: { $ref: "plan-candidate.schema.json#/properties/tests/items/properties/capability" }, operations: { $ref: "plan-candidate.schema.json#/properties/tests/items/properties/operations" }, dependsOn: { $ref: "plan-candidate.schema.json#/properties/tests/items/properties/dependsOn" }, preconditions: { $ref: "plan-candidate.schema.json#/properties/tests/items/properties/preconditions" }, action: { $ref: "plan-candidate.schema.json#/properties/tests/items/properties/action" }, assertions: { type: "object", propertyNames: { $ref: "identifier.schema.json" }, additionalProperties: { anyOf: [{ type: "object", properties: { check: { type: "string", minLength: 1 }, checkKind: { enum: ["deterministic", "agent_observation"] }, observe: { type: "string", minLength: 1 }, expected: { type: "string", minLength: 1 }, request: { type: "string", pattern: "^(GET|POST|PUT|PATCH|DELETE) /" }, observeFrom: { enum: ["screen", "relaunch", "api", "page", "reload"] } }, additionalProperties: false, minProperties: 1 }, { type: "null" }] }, minProperties: 1 }, metadata: { $ref: "plan.schema.json#/definitions/metadata" } }, additionalProperties: false, minProperties: 1 }, { type: "null" }] } }, gaps: { type: "object", propertyNames: { $ref: "identifier.schema.json" }, additionalProperties: { anyOf: [{ type: "object", properties: { severity: { $ref: "gap.schema.json#/properties/severity" }, requirementIds: { $ref: "gap.schema.json#/properties/requirementIds" }, testIds: { $ref: "gap.schema.json#/properties/testIds" }, question: { $ref: "gap.schema.json#/properties/question" }, consequence: { $ref: "gap.schema.json#/properties/consequence" } }, additionalProperties: false, minProperties: 1 }, { type: "null" }] } } }, additionalProperties: false, minProperties: 1 };
+var Ke = { $schema: "http://json-schema.org/draft-07/schema#", $id: "plan-patch.schema.json", type: "object", properties: { requirements: { type: "object", propertyNames: { $ref: "identifier.schema.json" }, additionalProperties: { anyOf: [{ type: "object", properties: { text: { type: "string", minLength: 1 }, source: { type: "string", minLength: 1 }, area: { type: "string", minLength: 1, maxLength: 40 }, metadata: { $ref: "plan.schema.json#/definitions/metadata" } }, additionalProperties: false, minProperties: 1 }, { type: "null" }] } }, tests: { type: "object", propertyNames: { $ref: "identifier.schema.json" }, additionalProperties: { anyOf: [{ type: "object", properties: { title: { $ref: "plan-candidate.schema.json#/properties/tests/items/properties/title" }, requirementIds: { $ref: "plan-candidate.schema.json#/properties/tests/items/properties/requirementIds" }, capability: { $ref: "plan-candidate.schema.json#/properties/tests/items/properties/capability" }, operations: { $ref: "plan-candidate.schema.json#/properties/tests/items/properties/operations" }, dependsOn: { $ref: "plan-candidate.schema.json#/properties/tests/items/properties/dependsOn" }, preconditions: { $ref: "plan-candidate.schema.json#/properties/tests/items/properties/preconditions" }, action: { $ref: "plan-candidate.schema.json#/properties/tests/items/properties/action" }, assertions: { type: "object", propertyNames: { $ref: "identifier.schema.json" }, additionalProperties: { anyOf: [{ type: "object", properties: { check: { type: "string", minLength: 1 }, checkKind: { enum: ["deterministic", "agent_observation"] }, observe: { type: "string", minLength: 1 }, expected: { type: "string", minLength: 1 }, request: { type: "string", pattern: "^(GET|POST|PUT|PATCH|DELETE) /" }, observeFrom: { type: "string", pattern: "^[a-z][a-z0-9_]{0,39}$" } }, additionalProperties: false, minProperties: 1 }, { type: "null" }] }, minProperties: 1 }, metadata: { $ref: "plan.schema.json#/definitions/metadata" } }, additionalProperties: false, minProperties: 1 }, { type: "null" }] } }, gaps: { type: "object", propertyNames: { $ref: "identifier.schema.json" }, additionalProperties: { anyOf: [{ type: "object", properties: { severity: { $ref: "gap.schema.json#/properties/severity" }, requirementIds: { $ref: "gap.schema.json#/properties/requirementIds" }, testIds: { $ref: "gap.schema.json#/properties/testIds" }, question: { $ref: "gap.schema.json#/properties/question" }, consequence: { $ref: "gap.schema.json#/properties/consequence" } }, additionalProperties: false, minProperties: 1 }, { type: "null" }] } } }, additionalProperties: false, minProperties: 1 };
 var Vs = { enum: ["blocking", "non_blocking"] };
-function ne(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, rootData: x = p } = {}) {
-  let e = null, s = 0;
-  if (Array.isArray(p)) {
-    if (p.length < 1) {
-      let l = { instancePath: t, schemaPath: "#/minItems", keyword: "minItems", params: { limit: 1 }, message: "must NOT have fewer than 1 items" };
-      e === null ? e = [l] : e.push(l), s++;
-    }
-    let f = p.length;
-    for (let l = 0; l < f; l++) {
-      let u = p[l];
-      if (typeof u == "string") {
-        if (!O.test(u)) {
-          let a = { instancePath: t + "/" + l, schemaPath: "identifier.schema.json/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
-          e === null ? e = [a] : e.push(a), s++;
-        }
-      } else {
-        let a = { instancePath: t + "/" + l, schemaPath: "identifier.schema.json/type", keyword: "type", params: { type: "string" }, message: "must be string" };
-        e === null ? e = [a] : e.push(a), s++;
-      }
-    }
-    let n = p.length, d;
-    if (n > 1) {
-      e: for (; n--; ) for (d = n; d--; ) if (L(p[n], p[d])) {
-        let l = { instancePath: t, schemaPath: "#/uniqueItems", keyword: "uniqueItems", params: { i: n, j: d }, message: "must NOT have duplicate items (items ## " + d + " and " + n + " are identical)" };
-        e === null ? e = [l] : e.push(l), s++;
-        break e;
-      }
-    }
-  } else {
-    let f = { instancePath: t, schemaPath: "#/type", keyword: "type", params: { type: "array" }, message: "must be array" };
-    e === null ? e = [f] : e.push(f), s++;
-  }
-  return ne.errors = e, s === 0;
-}
-function pe(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, rootData: x = p } = {}) {
+function pe(p, { instancePath: t = "", parentData: Z2, parentDataProperty: $, rootData: x = p } = {}) {
   let e = null, s = 0;
   if (Array.isArray(p)) {
     if (p.length < 1) {
@@ -2511,7 +2511,41 @@ function pe(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, ro
   }
   return pe.errors = e, s === 0;
 }
-function oe(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, rootData: x = p } = {}) {
+function oe(p, { instancePath: t = "", parentData: Z2, parentDataProperty: $, rootData: x = p } = {}) {
+  let e = null, s = 0;
+  if (Array.isArray(p)) {
+    if (p.length < 1) {
+      let l = { instancePath: t, schemaPath: "#/minItems", keyword: "minItems", params: { limit: 1 }, message: "must NOT have fewer than 1 items" };
+      e === null ? e = [l] : e.push(l), s++;
+    }
+    let f = p.length;
+    for (let l = 0; l < f; l++) {
+      let u = p[l];
+      if (typeof u == "string") {
+        if (!O.test(u)) {
+          let a = { instancePath: t + "/" + l, schemaPath: "identifier.schema.json/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
+          e === null ? e = [a] : e.push(a), s++;
+        }
+      } else {
+        let a = { instancePath: t + "/" + l, schemaPath: "identifier.schema.json/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+        e === null ? e = [a] : e.push(a), s++;
+      }
+    }
+    let n = p.length, d;
+    if (n > 1) {
+      e: for (; n--; ) for (d = n; d--; ) if (L(p[n], p[d])) {
+        let l = { instancePath: t, schemaPath: "#/uniqueItems", keyword: "uniqueItems", params: { i: n, j: d }, message: "must NOT have duplicate items (items ## " + d + " and " + n + " are identical)" };
+        e === null ? e = [l] : e.push(l), s++;
+        break e;
+      }
+    }
+  } else {
+    let f = { instancePath: t, schemaPath: "#/type", keyword: "type", params: { type: "array" }, message: "must be array" };
+    e === null ? e = [f] : e.push(f), s++;
+  }
+  return oe.errors = e, s === 0;
+}
+function me(p, { instancePath: t = "", parentData: Z2, parentDataProperty: $, rootData: x = p } = {}) {
   let e = null, s = 0;
   if (Array.isArray(p)) {
     if (p.length < 0) {
@@ -2543,9 +2577,9 @@ function oe(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, ro
     let f = { instancePath: t, schemaPath: "#/type", keyword: "type", params: { type: "array" }, message: "must be array" };
     e === null ? e = [f] : e.push(f), s++;
   }
-  return oe.errors = e, s === 0;
+  return me.errors = e, s === 0;
 }
-function X(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, rootData: x = p } = {}) {
+function J(p, { instancePath: t = "", parentData: Z2, parentDataProperty: $, rootData: x = p } = {}) {
   let e = null, s = 0;
   if (p && typeof p == "object" && !Array.isArray(p)) {
     if (Object.keys(p).length < 1) {
@@ -2714,7 +2748,7 @@ function X(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, roo
               let P2 = { instancePath: t + "/tests/" + c.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "#/properties/tests/additionalProperties/anyOf/0/minProperties", keyword: "minProperties", params: { limit: 1 }, message: "must NOT have fewer than 1 properties" };
               e === null ? e = [P2] : e.push(P2), s++;
             }
-            for (let P2 in g) if (!E.call(je.properties.tests.additionalProperties.anyOf[0].properties, P2)) {
+            for (let P2 in g) if (!E.call(Ke.properties.tests.additionalProperties.anyOf[0].properties, P2)) {
               let b = { instancePath: t + "/tests/" + c.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "#/properties/tests/additionalProperties/anyOf/0/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: P2 }, message: "must NOT have additional properties" };
               e === null ? e = [b] : e.push(b), s++;
             }
@@ -2734,7 +2768,7 @@ function X(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, roo
                 e === null ? e = [b] : e.push(b), s++;
               }
             }
-            if (g.requirementIds !== void 0 && (ne(g.requirementIds, { instancePath: t + "/tests/" + c.replace(/~/g, "~0").replace(/\//g, "~1") + "/requirementIds", parentData: g, parentDataProperty: "requirementIds", rootData: x }) || (e = e === null ? ne.errors : e.concat(ne.errors), s = e.length)), g.capability !== void 0) {
+            if (g.requirementIds !== void 0 && (pe(g.requirementIds, { instancePath: t + "/tests/" + c.replace(/~/g, "~0").replace(/\//g, "~1") + "/requirementIds", parentData: g, parentDataProperty: "requirementIds", rootData: x }) || (e = e === null ? pe.errors : e.concat(pe.errors), s = e.length)), g.capability !== void 0) {
               let P2 = g.capability;
               if (typeof P2 == "string") {
                 if (!O.test(P2)) {
@@ -2746,7 +2780,7 @@ function X(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, roo
                 e === null ? e = [b] : e.push(b), s++;
               }
             }
-            if (g.operations !== void 0 && (pe(g.operations, { instancePath: t + "/tests/" + c.replace(/~/g, "~0").replace(/\//g, "~1") + "/operations", parentData: g, parentDataProperty: "operations", rootData: x }) || (e = e === null ? pe.errors : e.concat(pe.errors), s = e.length)), g.dependsOn !== void 0) {
+            if (g.operations !== void 0 && (oe(g.operations, { instancePath: t + "/tests/" + c.replace(/~/g, "~0").replace(/\//g, "~1") + "/operations", parentData: g, parentDataProperty: "operations", rootData: x }) || (e = e === null ? oe.errors : e.concat(oe.errors), s = e.length)), g.dependsOn !== void 0) {
               let P2 = g.dependsOn;
               if (Array.isArray(P2)) {
                 if (P2.length < 0) {
@@ -2757,7 +2791,7 @@ function X(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, roo
                 for (let A = 0; A < b; A++) {
                   let _ = P2[A];
                   if (typeof _ == "string") {
-                    if (!se.test(_)) {
+                    if (!te.test(_)) {
                       let j = { instancePath: t + "/tests/" + c.replace(/~/g, "~0").replace(/\//g, "~1") + "/dependsOn/" + A, schemaPath: "plan-candidate.schema.json#/properties/tests/items/properties/dependsOn/items/pattern", keyword: "pattern", params: { pattern: "^([A-Za-z0-9][A-Za-z0-9_-]{0,95}:)?[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^([A-Za-z0-9][A-Za-z0-9_-]{0,95}:)?[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
                       e === null ? e = [j] : e.push(j), s++;
                     }
@@ -2872,69 +2906,74 @@ function X(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, roo
                       e === null ? e = [j] : e.push(j), s++;
                     }
                     for (let j in w) if (!(j === "check" || j === "checkKind" || j === "observe" || j === "expected" || j === "request" || j === "observeFrom")) {
-                      let $ = { instancePath: t + "/tests/" + c.replace(/~/g, "~0").replace(/\//g, "~1") + "/assertions/" + b.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "#/properties/tests/additionalProperties/anyOf/0/properties/assertions/additionalProperties/anyOf/0/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: j }, message: "must NOT have additional properties" };
-                      e === null ? e = [$] : e.push($), s++;
+                      let z = { instancePath: t + "/tests/" + c.replace(/~/g, "~0").replace(/\//g, "~1") + "/assertions/" + b.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "#/properties/tests/additionalProperties/anyOf/0/properties/assertions/additionalProperties/anyOf/0/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: j }, message: "must NOT have additional properties" };
+                      e === null ? e = [z] : e.push(z), s++;
                     }
                     if (w.check !== void 0) {
                       let j = w.check;
                       if (typeof j == "string") {
                         if (q(j) < 1) {
-                          let $ = { instancePath: t + "/tests/" + c.replace(/~/g, "~0").replace(/\//g, "~1") + "/assertions/" + b.replace(/~/g, "~0").replace(/\//g, "~1") + "/check", schemaPath: "#/properties/tests/additionalProperties/anyOf/0/properties/assertions/additionalProperties/anyOf/0/properties/check/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
-                          e === null ? e = [$] : e.push($), s++;
+                          let z = { instancePath: t + "/tests/" + c.replace(/~/g, "~0").replace(/\//g, "~1") + "/assertions/" + b.replace(/~/g, "~0").replace(/\//g, "~1") + "/check", schemaPath: "#/properties/tests/additionalProperties/anyOf/0/properties/assertions/additionalProperties/anyOf/0/properties/check/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
+                          e === null ? e = [z] : e.push(z), s++;
                         }
                       } else {
-                        let $ = { instancePath: t + "/tests/" + c.replace(/~/g, "~0").replace(/\//g, "~1") + "/assertions/" + b.replace(/~/g, "~0").replace(/\//g, "~1") + "/check", schemaPath: "#/properties/tests/additionalProperties/anyOf/0/properties/assertions/additionalProperties/anyOf/0/properties/check/type", keyword: "type", params: { type: "string" }, message: "must be string" };
-                        e === null ? e = [$] : e.push($), s++;
+                        let z = { instancePath: t + "/tests/" + c.replace(/~/g, "~0").replace(/\//g, "~1") + "/assertions/" + b.replace(/~/g, "~0").replace(/\//g, "~1") + "/check", schemaPath: "#/properties/tests/additionalProperties/anyOf/0/properties/assertions/additionalProperties/anyOf/0/properties/check/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+                        e === null ? e = [z] : e.push(z), s++;
                       }
                     }
                     if (w.checkKind !== void 0) {
                       let j = w.checkKind;
                       if (!(j === "deterministic" || j === "agent_observation")) {
-                        let $ = { instancePath: t + "/tests/" + c.replace(/~/g, "~0").replace(/\//g, "~1") + "/assertions/" + b.replace(/~/g, "~0").replace(/\//g, "~1") + "/checkKind", schemaPath: "#/properties/tests/additionalProperties/anyOf/0/properties/assertions/additionalProperties/anyOf/0/properties/checkKind/enum", keyword: "enum", params: { allowedValues: je.properties.tests.additionalProperties.anyOf[0].properties.assertions.additionalProperties.anyOf[0].properties.checkKind.enum }, message: "must be equal to one of the allowed values" };
-                        e === null ? e = [$] : e.push($), s++;
+                        let z = { instancePath: t + "/tests/" + c.replace(/~/g, "~0").replace(/\//g, "~1") + "/assertions/" + b.replace(/~/g, "~0").replace(/\//g, "~1") + "/checkKind", schemaPath: "#/properties/tests/additionalProperties/anyOf/0/properties/assertions/additionalProperties/anyOf/0/properties/checkKind/enum", keyword: "enum", params: { allowedValues: Ke.properties.tests.additionalProperties.anyOf[0].properties.assertions.additionalProperties.anyOf[0].properties.checkKind.enum }, message: "must be equal to one of the allowed values" };
+                        e === null ? e = [z] : e.push(z), s++;
                       }
                     }
                     if (w.observe !== void 0) {
                       let j = w.observe;
                       if (typeof j == "string") {
                         if (q(j) < 1) {
-                          let $ = { instancePath: t + "/tests/" + c.replace(/~/g, "~0").replace(/\//g, "~1") + "/assertions/" + b.replace(/~/g, "~0").replace(/\//g, "~1") + "/observe", schemaPath: "#/properties/tests/additionalProperties/anyOf/0/properties/assertions/additionalProperties/anyOf/0/properties/observe/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
-                          e === null ? e = [$] : e.push($), s++;
+                          let z = { instancePath: t + "/tests/" + c.replace(/~/g, "~0").replace(/\//g, "~1") + "/assertions/" + b.replace(/~/g, "~0").replace(/\//g, "~1") + "/observe", schemaPath: "#/properties/tests/additionalProperties/anyOf/0/properties/assertions/additionalProperties/anyOf/0/properties/observe/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
+                          e === null ? e = [z] : e.push(z), s++;
                         }
                       } else {
-                        let $ = { instancePath: t + "/tests/" + c.replace(/~/g, "~0").replace(/\//g, "~1") + "/assertions/" + b.replace(/~/g, "~0").replace(/\//g, "~1") + "/observe", schemaPath: "#/properties/tests/additionalProperties/anyOf/0/properties/assertions/additionalProperties/anyOf/0/properties/observe/type", keyword: "type", params: { type: "string" }, message: "must be string" };
-                        e === null ? e = [$] : e.push($), s++;
+                        let z = { instancePath: t + "/tests/" + c.replace(/~/g, "~0").replace(/\//g, "~1") + "/assertions/" + b.replace(/~/g, "~0").replace(/\//g, "~1") + "/observe", schemaPath: "#/properties/tests/additionalProperties/anyOf/0/properties/assertions/additionalProperties/anyOf/0/properties/observe/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+                        e === null ? e = [z] : e.push(z), s++;
                       }
                     }
                     if (w.expected !== void 0) {
                       let j = w.expected;
                       if (typeof j == "string") {
                         if (q(j) < 1) {
-                          let $ = { instancePath: t + "/tests/" + c.replace(/~/g, "~0").replace(/\//g, "~1") + "/assertions/" + b.replace(/~/g, "~0").replace(/\//g, "~1") + "/expected", schemaPath: "#/properties/tests/additionalProperties/anyOf/0/properties/assertions/additionalProperties/anyOf/0/properties/expected/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
-                          e === null ? e = [$] : e.push($), s++;
+                          let z = { instancePath: t + "/tests/" + c.replace(/~/g, "~0").replace(/\//g, "~1") + "/assertions/" + b.replace(/~/g, "~0").replace(/\//g, "~1") + "/expected", schemaPath: "#/properties/tests/additionalProperties/anyOf/0/properties/assertions/additionalProperties/anyOf/0/properties/expected/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
+                          e === null ? e = [z] : e.push(z), s++;
                         }
                       } else {
-                        let $ = { instancePath: t + "/tests/" + c.replace(/~/g, "~0").replace(/\//g, "~1") + "/assertions/" + b.replace(/~/g, "~0").replace(/\//g, "~1") + "/expected", schemaPath: "#/properties/tests/additionalProperties/anyOf/0/properties/assertions/additionalProperties/anyOf/0/properties/expected/type", keyword: "type", params: { type: "string" }, message: "must be string" };
-                        e === null ? e = [$] : e.push($), s++;
+                        let z = { instancePath: t + "/tests/" + c.replace(/~/g, "~0").replace(/\//g, "~1") + "/assertions/" + b.replace(/~/g, "~0").replace(/\//g, "~1") + "/expected", schemaPath: "#/properties/tests/additionalProperties/anyOf/0/properties/assertions/additionalProperties/anyOf/0/properties/expected/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+                        e === null ? e = [z] : e.push(z), s++;
                       }
                     }
                     if (w.request !== void 0) {
                       let j = w.request;
                       if (typeof j == "string") {
                         if (!fe.test(j)) {
-                          let $ = { instancePath: t + "/tests/" + c.replace(/~/g, "~0").replace(/\//g, "~1") + "/assertions/" + b.replace(/~/g, "~0").replace(/\//g, "~1") + "/request", schemaPath: "#/properties/tests/additionalProperties/anyOf/0/properties/assertions/additionalProperties/anyOf/0/properties/request/pattern", keyword: "pattern", params: { pattern: "^(GET|POST|PUT|PATCH|DELETE) /" }, message: 'must match pattern "^(GET|POST|PUT|PATCH|DELETE) /"' };
-                          e === null ? e = [$] : e.push($), s++;
+                          let z = { instancePath: t + "/tests/" + c.replace(/~/g, "~0").replace(/\//g, "~1") + "/assertions/" + b.replace(/~/g, "~0").replace(/\//g, "~1") + "/request", schemaPath: "#/properties/tests/additionalProperties/anyOf/0/properties/assertions/additionalProperties/anyOf/0/properties/request/pattern", keyword: "pattern", params: { pattern: "^(GET|POST|PUT|PATCH|DELETE) /" }, message: 'must match pattern "^(GET|POST|PUT|PATCH|DELETE) /"' };
+                          e === null ? e = [z] : e.push(z), s++;
                         }
                       } else {
-                        let $ = { instancePath: t + "/tests/" + c.replace(/~/g, "~0").replace(/\//g, "~1") + "/assertions/" + b.replace(/~/g, "~0").replace(/\//g, "~1") + "/request", schemaPath: "#/properties/tests/additionalProperties/anyOf/0/properties/assertions/additionalProperties/anyOf/0/properties/request/type", keyword: "type", params: { type: "string" }, message: "must be string" };
-                        e === null ? e = [$] : e.push($), s++;
+                        let z = { instancePath: t + "/tests/" + c.replace(/~/g, "~0").replace(/\//g, "~1") + "/assertions/" + b.replace(/~/g, "~0").replace(/\//g, "~1") + "/request", schemaPath: "#/properties/tests/additionalProperties/anyOf/0/properties/assertions/additionalProperties/anyOf/0/properties/request/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+                        e === null ? e = [z] : e.push(z), s++;
                       }
                     }
                     if (w.observeFrom !== void 0) {
                       let j = w.observeFrom;
-                      if (!(j === "screen" || j === "relaunch" || j === "api" || j === "page" || j === "reload")) {
-                        let $ = { instancePath: t + "/tests/" + c.replace(/~/g, "~0").replace(/\//g, "~1") + "/assertions/" + b.replace(/~/g, "~0").replace(/\//g, "~1") + "/observeFrom", schemaPath: "#/properties/tests/additionalProperties/anyOf/0/properties/assertions/additionalProperties/anyOf/0/properties/observeFrom/enum", keyword: "enum", params: { allowedValues: je.properties.tests.additionalProperties.anyOf[0].properties.assertions.additionalProperties.anyOf[0].properties.observeFrom.enum }, message: "must be equal to one of the allowed values" };
-                        e === null ? e = [$] : e.push($), s++;
+                      if (typeof j == "string") {
+                        if (!Q.test(j)) {
+                          let z = { instancePath: t + "/tests/" + c.replace(/~/g, "~0").replace(/\//g, "~1") + "/assertions/" + b.replace(/~/g, "~0").replace(/\//g, "~1") + "/observeFrom", schemaPath: "#/properties/tests/additionalProperties/anyOf/0/properties/assertions/additionalProperties/anyOf/0/properties/observeFrom/pattern", keyword: "pattern", params: { pattern: "^[a-z][a-z0-9_]{0,39}$" }, message: 'must match pattern "^[a-z][a-z0-9_]{0,39}$"' };
+                          e === null ? e = [z] : e.push(z), s++;
+                        }
+                      } else {
+                        let z = { instancePath: t + "/tests/" + c.replace(/~/g, "~0").replace(/\//g, "~1") + "/assertions/" + b.replace(/~/g, "~0").replace(/\//g, "~1") + "/observeFrom", schemaPath: "#/properties/tests/additionalProperties/anyOf/0/properties/assertions/additionalProperties/anyOf/0/properties/observeFrom/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+                        e === null ? e = [z] : e.push(z), s++;
                       }
                     }
                   } else {
@@ -3060,7 +3099,7 @@ function X(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, roo
                 e === null ? e = [b] : e.push(b), s++;
               }
             }
-            if (g.requirementIds !== void 0 && (oe(g.requirementIds, { instancePath: t + "/gaps/" + c.replace(/~/g, "~0").replace(/\//g, "~1") + "/requirementIds", parentData: g, parentDataProperty: "requirementIds", rootData: x }) || (e = e === null ? oe.errors : e.concat(oe.errors), s = e.length)), g.testIds !== void 0) {
+            if (g.requirementIds !== void 0 && (me(g.requirementIds, { instancePath: t + "/gaps/" + c.replace(/~/g, "~0").replace(/\//g, "~1") + "/requirementIds", parentData: g, parentDataProperty: "requirementIds", rootData: x }) || (e = e === null ? me.errors : e.concat(me.errors), s = e.length)), g.testIds !== void 0) {
               let P2 = g.testIds;
               if (Array.isArray(P2)) {
                 if (P2.length < 0) {
@@ -3071,7 +3110,7 @@ function X(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, roo
                 for (let A = 0; A < b; A++) {
                   let _ = P2[A];
                   if (typeof _ == "string") {
-                    if (!se.test(_)) {
+                    if (!te.test(_)) {
                       let j = { instancePath: t + "/gaps/" + c.replace(/~/g, "~0").replace(/\//g, "~1") + "/testIds/" + A, schemaPath: "gap.schema.json#/properties/testIds/items/pattern", keyword: "pattern", params: { pattern: "^([A-Za-z0-9][A-Za-z0-9_-]{0,95}:)?[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^([A-Za-z0-9][A-Za-z0-9_-]{0,95}:)?[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
                       e === null ? e = [j] : e.push(j), s++;
                     }
@@ -3154,10 +3193,10 @@ function X(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, roo
     let m = { instancePath: t, schemaPath: "#/type", keyword: "type", params: { type: "object" }, message: "must be object" };
     e === null ? e = [m] : e.push(m), s++;
   }
-  return X.errors = e, s === 0;
+  return J.errors = e, s === 0;
 }
-var Ie = { $schema: "http://json-schema.org/draft-07/schema#", $id: "plan-delta.schema.json", type: "object", properties: { requirements: { type: "object", propertyNames: { $ref: "identifier.schema.json" }, additionalProperties: { type: "object", properties: { remove: { type: "boolean" }, text: { type: "string", minLength: 1 }, source: { type: "string", minLength: 1 }, area: { type: "string", minLength: 1, maxLength: 40 } }, additionalProperties: false, minProperties: 1 } }, tests: { type: "object", propertyNames: { $ref: "identifier.schema.json" }, additionalProperties: { type: "object", properties: { remove: { type: "boolean" }, title: { type: "string", minLength: 1 }, requirementIds: { type: "array", items: { type: "string", minLength: 1 } }, capability: { type: "string", minLength: 1 }, operations: { type: "array", items: { type: "string", minLength: 1 } }, dependsOn: { type: "array", items: { type: "string", minLength: 1 } }, preconditions: { type: "array", items: { type: "string", minLength: 1 } }, action: { type: "string", minLength: 1 }, assertions: { type: "array", items: { type: "object", properties: { check: { type: "string", minLength: 1 }, checkKind: { type: "string", enum: ["deterministic", "agent_observation"] }, observe: { type: "string", minLength: 1 }, expected: { type: "string", minLength: 1 }, request: { type: "string", pattern: "^(GET|POST|PUT|PATCH|DELETE) /" }, observeFrom: { enum: ["screen", "relaunch", "api", "page", "reload"] } }, required: ["check", "checkKind"], additionalProperties: false } } }, additionalProperties: false, minProperties: 1 } }, gaps: { type: "object", description: "Blocking gaps the revision raises for checks that need a decision before they can be migrated.", propertyNames: { $ref: "identifier.schema.json" }, additionalProperties: { type: "object", properties: { question: { type: "string", minLength: 1 }, consequence: { type: "string", minLength: 1 }, testIds: { type: "array", items: { $ref: "identifier.schema.json" }, minItems: 1, uniqueItems: true } }, required: ["question", "consequence", "testIds"], additionalProperties: false } } }, required: ["tests"], additionalProperties: false, examples: [{ tests: { T1: { title: "Read the order total", requirementIds: ["R1"], capability: "browser", operations: ["read_orders"], dependsOn: [], preconditions: [], action: "Open the order confirmation.", assertions: [{ check: "The order total is 240 PLN.", checkKind: "deterministic", observe: "Order total", expected: "240 PLN" }] } } }] };
-function J(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, rootData: x = p } = {}) {
+var Ge = { $schema: "http://json-schema.org/draft-07/schema#", $id: "plan-delta.schema.json", type: "object", properties: { requirements: { type: "object", propertyNames: { $ref: "identifier.schema.json" }, additionalProperties: { type: "object", properties: { remove: { type: "boolean" }, text: { type: "string", minLength: 1 }, source: { type: "string", minLength: 1 }, area: { type: "string", minLength: 1, maxLength: 40 } }, additionalProperties: false, minProperties: 1 } }, tests: { type: "object", propertyNames: { $ref: "identifier.schema.json" }, additionalProperties: { type: "object", properties: { remove: { type: "boolean" }, title: { type: "string", minLength: 1 }, requirementIds: { type: "array", items: { type: "string", minLength: 1 } }, capability: { type: "string", minLength: 1 }, operations: { type: "array", items: { type: "string", minLength: 1 } }, dependsOn: { type: "array", items: { type: "string", minLength: 1 } }, preconditions: { type: "array", items: { type: "string", minLength: 1 } }, action: { type: "string", minLength: 1 }, assertions: { type: "array", items: { type: "object", properties: { check: { type: "string", minLength: 1 }, checkKind: { type: "string", enum: ["deterministic", "agent_observation"] }, observe: { type: "string", minLength: 1 }, expected: { type: "string", minLength: 1 }, request: { type: "string", pattern: "^(GET|POST|PUT|PATCH|DELETE) /" }, observeFrom: { type: "string", pattern: "^[a-z][a-z0-9_]{0,39}$" } }, required: ["check", "checkKind"], additionalProperties: false } } }, additionalProperties: false, minProperties: 1 } }, gaps: { type: "object", description: "Blocking gaps the revision raises for checks that need a decision before they can be migrated.", propertyNames: { $ref: "identifier.schema.json" }, additionalProperties: { type: "object", properties: { question: { type: "string", minLength: 1 }, consequence: { type: "string", minLength: 1 }, testIds: { type: "array", items: { $ref: "identifier.schema.json" }, minItems: 1, uniqueItems: true } }, required: ["question", "consequence", "testIds"], additionalProperties: false } } }, required: ["tests"], additionalProperties: false, examples: [{ tests: { T1: { title: "Read the order total", requirementIds: ["R1"], capability: "browser", operations: ["read_orders"], dependsOn: [], preconditions: [], action: "Open the order confirmation.", assertions: [{ check: "The order total is 240 PLN.", checkKind: "deterministic", observe: "Order total", expected: "240 PLN" }] } } }] };
+function ee(p, { instancePath: t = "", parentData: Z2, parentDataProperty: $, rootData: x = p } = {}) {
   let e = null, s = 0;
   if (p && typeof p == "object" && !Array.isArray(p)) {
     if (p.tests === void 0) {
@@ -3280,7 +3319,7 @@ function J(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, roo
               let i = { instancePath: t + "/tests/" + u.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "#/properties/tests/additionalProperties/minProperties", keyword: "minProperties", params: { limit: 1 }, message: "must NOT have fewer than 1 properties" };
               e === null ? e = [i] : e.push(i), s++;
             }
-            for (let i in a) if (!E.call(Ie.properties.tests.additionalProperties.properties, i)) {
+            for (let i in a) if (!E.call(Ge.properties.tests.additionalProperties.properties, i)) {
               let r = { instancePath: t + "/tests/" + u.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "#/properties/tests/additionalProperties/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: i }, message: "must NOT have additional properties" };
               e === null ? e = [r] : e.push(r), s++;
             }
@@ -3446,7 +3485,7 @@ function J(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, roo
                         e === null ? e = [c] : e.push(c), s++;
                       }
                       if (!(m === "deterministic" || m === "agent_observation")) {
-                        let c = { instancePath: t + "/tests/" + u.replace(/~/g, "~0").replace(/\//g, "~1") + "/assertions/" + h + "/checkKind", schemaPath: "#/properties/tests/additionalProperties/properties/assertions/items/properties/checkKind/enum", keyword: "enum", params: { allowedValues: Ie.properties.tests.additionalProperties.properties.assertions.items.properties.checkKind.enum }, message: "must be equal to one of the allowed values" };
+                        let c = { instancePath: t + "/tests/" + u.replace(/~/g, "~0").replace(/\//g, "~1") + "/assertions/" + h + "/checkKind", schemaPath: "#/properties/tests/additionalProperties/properties/assertions/items/properties/checkKind/enum", keyword: "enum", params: { allowedValues: Ge.properties.tests.additionalProperties.properties.assertions.items.properties.checkKind.enum }, message: "must be equal to one of the allowed values" };
                         e === null ? e = [c] : e.push(c), s++;
                       }
                     }
@@ -3488,8 +3527,13 @@ function J(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, roo
                     }
                     if (o.observeFrom !== void 0) {
                       let m = o.observeFrom;
-                      if (!(m === "screen" || m === "relaunch" || m === "api" || m === "page" || m === "reload")) {
-                        let c = { instancePath: t + "/tests/" + u.replace(/~/g, "~0").replace(/\//g, "~1") + "/assertions/" + h + "/observeFrom", schemaPath: "#/properties/tests/additionalProperties/properties/assertions/items/properties/observeFrom/enum", keyword: "enum", params: { allowedValues: Ie.properties.tests.additionalProperties.properties.assertions.items.properties.observeFrom.enum }, message: "must be equal to one of the allowed values" };
+                      if (typeof m == "string") {
+                        if (!Q.test(m)) {
+                          let c = { instancePath: t + "/tests/" + u.replace(/~/g, "~0").replace(/\//g, "~1") + "/assertions/" + h + "/observeFrom", schemaPath: "#/properties/tests/additionalProperties/properties/assertions/items/properties/observeFrom/pattern", keyword: "pattern", params: { pattern: "^[a-z][a-z0-9_]{0,39}$" }, message: 'must match pattern "^[a-z][a-z0-9_]{0,39}$"' };
+                          e === null ? e = [c] : e.push(c), s++;
+                        }
+                      } else {
+                        let c = { instancePath: t + "/tests/" + u.replace(/~/g, "~0").replace(/\//g, "~1") + "/assertions/" + h + "/observeFrom", schemaPath: "#/properties/tests/additionalProperties/properties/assertions/items/properties/observeFrom/type", keyword: "type", params: { type: "string" }, message: "must be string" };
                         e === null ? e = [c] : e.push(c), s++;
                       }
                     }
@@ -3623,9 +3667,9 @@ function J(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, roo
     let l = { instancePath: t, schemaPath: "#/type", keyword: "type", params: { type: "object" }, message: "must be object" };
     e === null ? e = [l] : e.push(l), s++;
   }
-  return J.errors = e, s === 0;
+  return ee.errors = e, s === 0;
 }
-function me(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, rootData: x = p } = {}) {
+function le(p, { instancePath: t = "", parentData: Z2, parentDataProperty: $, rootData: x = p } = {}) {
   let e = null, s = 0;
   if (p && typeof p == "object" && !Array.isArray(p)) {
     if (Object.keys(p).length < 1) {
@@ -3669,10 +3713,9 @@ function me(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, ro
     let n = { instancePath: t, schemaPath: "#/type", keyword: "type", params: { type: "object" }, message: "must be object" };
     e === null ? e = [n] : e.push(n), s++;
   }
-  return me.errors = e, s === 0;
+  return le.errors = e, s === 0;
 }
-var Ue = { type: "array", description: 'Attach inline evidence as [{"text":"GET /quote returned HTTP 400","kind":"http_exchange"}]. For a screenshot or trace, give file instead of text. A file must be in the current run evidence directory and is consumed after a successful call.', items: { anyOf: [{ type: "object", additionalProperties: false, required: ["text"], properties: { text: { $ref: "text.schema.json" }, kind: { enum: ["observation", "screenshot", "view_hierarchy", "recording", "http_exchange", "trace"] } } }, { type: "object", additionalProperties: false, required: ["file"], properties: { file: { $ref: "#/definitions/text" }, kind: { enum: ["observation", "screenshot", "view_hierarchy", "recording", "http_exchange", "trace"] } } }] } };
-function B(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, rootData: x = p } = {}) {
+function B(p, { instancePath: t = "", parentData: Z2, parentDataProperty: $, rootData: x = p } = {}) {
   let e = null, s = 0;
   if (Array.isArray(p)) {
     let n = p.length;
@@ -3701,8 +3744,13 @@ function B(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, roo
         }
         if (l.kind !== void 0) {
           let r = l.kind;
-          if (!(r === "observation" || r === "screenshot" || r === "view_hierarchy" || r === "recording" || r === "http_exchange" || r === "trace")) {
-            let h = { instancePath: t + "/" + d + "/kind", schemaPath: "#/items/anyOf/0/properties/kind/enum", keyword: "enum", params: { allowedValues: Ue.items.anyOf[0].properties.kind.enum }, message: "must be equal to one of the allowed values" };
+          if (typeof r == "string") {
+            if (!Q.test(r)) {
+              let h = { instancePath: t + "/" + d + "/kind", schemaPath: "#/items/anyOf/0/properties/kind/pattern", keyword: "pattern", params: { pattern: "^[a-z][a-z0-9_]{0,39}$" }, message: 'must match pattern "^[a-z][a-z0-9_]{0,39}$"' };
+              e === null ? e = [h] : e.push(h), s++;
+            }
+          } else {
+            let h = { instancePath: t + "/" + d + "/kind", schemaPath: "#/items/anyOf/0/properties/kind/type", keyword: "type", params: { type: "string" }, message: "must be string" };
             e === null ? e = [h] : e.push(h), s++;
           }
         }
@@ -3736,8 +3784,13 @@ function B(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, roo
           }
           if (l.kind !== void 0) {
             let o = l.kind;
-            if (!(o === "observation" || o === "screenshot" || o === "view_hierarchy" || o === "recording" || o === "http_exchange" || o === "trace")) {
-              let m = { instancePath: t + "/" + d + "/kind", schemaPath: "#/items/anyOf/1/properties/kind/enum", keyword: "enum", params: { allowedValues: Ue.items.anyOf[1].properties.kind.enum }, message: "must be equal to one of the allowed values" };
+            if (typeof o == "string") {
+              if (!Q.test(o)) {
+                let m = { instancePath: t + "/" + d + "/kind", schemaPath: "#/items/anyOf/1/properties/kind/pattern", keyword: "pattern", params: { pattern: "^[a-z][a-z0-9_]{0,39}$" }, message: 'must match pattern "^[a-z][a-z0-9_]{0,39}$"' };
+                e === null ? e = [m] : e.push(m), s++;
+              }
+            } else {
+              let m = { instancePath: t + "/" + d + "/kind", schemaPath: "#/items/anyOf/1/properties/kind/type", keyword: "type", params: { type: "string" }, message: "must be string" };
               e === null ? e = [m] : e.push(m), s++;
             }
           }
@@ -3760,9 +3813,9 @@ function B(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, roo
   }
   return B.errors = e, s === 0;
 }
-var _e = { $schema: "http://json-schema.org/draft-07/schema#", $id: "finding.schema.json", type: "object", properties: { id: { $ref: "identifier.schema.json" }, type: { enum: ["defect", "potential_issue"] }, severity: { enum: ["low", "medium", "high", "critical"] }, assertionIds: { type: "array", items: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}\\.[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 0, uniqueItems: true }, requirementIds: { type: "array", items: { $ref: "identifier.schema.json" }, minItems: 0, uniqueItems: true }, title: { type: "string", minLength: 1 }, expected: { type: "string", minLength: 1 }, observed: { type: "string", minLength: 1 }, reproduction: { type: "array", items: { type: "string", minLength: 1 }, minItems: 1, uniqueItems: true }, evidenceIds: { type: "array", items: { $ref: "identifier.schema.json" }, minItems: 0, uniqueItems: true }, metadata: { $ref: "plan.schema.json#/definitions/metadata" } }, required: ["id", "type", "severity", "assertionIds", "requirementIds", "title", "expected", "observed", "reproduction", "evidenceIds"], additionalProperties: false };
+var je = { $schema: "http://json-schema.org/draft-07/schema#", $id: "finding.schema.json", type: "object", properties: { id: { $ref: "identifier.schema.json" }, type: { enum: ["defect", "potential_issue"] }, severity: { enum: ["low", "medium", "high", "critical"] }, assertionIds: { type: "array", items: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}\\.[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 0, uniqueItems: true }, requirementIds: { type: "array", items: { $ref: "identifier.schema.json" }, minItems: 0, uniqueItems: true }, title: { type: "string", minLength: 1 }, expected: { type: "string", minLength: 1 }, observed: { type: "string", minLength: 1 }, reproduction: { type: "array", items: { type: "string", minLength: 1 }, minItems: 1, uniqueItems: true }, evidenceIds: { type: "array", items: { $ref: "identifier.schema.json" }, minItems: 0, uniqueItems: true }, metadata: { $ref: "plan.schema.json#/definitions/metadata" } }, required: ["id", "type", "severity", "assertionIds", "requirementIds", "title", "expected", "observed", "reproduction", "evidenceIds"], additionalProperties: false };
 var Xe = new RegExp("^[A-Za-z0-9][A-Za-z0-9_-]{0,95}\\.[A-Za-z0-9][A-Za-z0-9_-]{0,95}$", "u");
-function ee(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, rootData: x = p } = {}) {
+function se(p, { instancePath: t = "", parentData: Z2, parentDataProperty: $, rootData: x = p } = {}) {
   let e = null, s = 0;
   if (p && typeof p == "object" && !Array.isArray(p)) {
     if (p.id === void 0) {
@@ -3805,7 +3858,7 @@ function ee(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, ro
       let n = { instancePath: t, schemaPath: "#/required", keyword: "required", params: { missingProperty: "evidenceIds" }, message: "must have required property 'evidenceIds'" };
       e === null ? e = [n] : e.push(n), s++;
     }
-    for (let n in p) if (!E.call(_e.properties, n)) {
+    for (let n in p) if (!E.call(je.properties, n)) {
       let d = { instancePath: t, schemaPath: "#/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: n }, message: "must NOT have additional properties" };
       e === null ? e = [d] : e.push(d), s++;
     }
@@ -3824,14 +3877,14 @@ function ee(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, ro
     if (p.type !== void 0) {
       let n = p.type;
       if (!(n === "defect" || n === "potential_issue")) {
-        let d = { instancePath: t + "/type", schemaPath: "#/properties/type/enum", keyword: "enum", params: { allowedValues: _e.properties.type.enum }, message: "must be equal to one of the allowed values" };
+        let d = { instancePath: t + "/type", schemaPath: "#/properties/type/enum", keyword: "enum", params: { allowedValues: je.properties.type.enum }, message: "must be equal to one of the allowed values" };
         e === null ? e = [d] : e.push(d), s++;
       }
     }
     if (p.severity !== void 0) {
       let n = p.severity;
       if (!(n === "low" || n === "medium" || n === "high" || n === "critical")) {
-        let d = { instancePath: t + "/severity", schemaPath: "#/properties/severity/enum", keyword: "enum", params: { allowedValues: _e.properties.severity.enum }, message: "must be equal to one of the allowed values" };
+        let d = { instancePath: t + "/severity", schemaPath: "#/properties/severity/enum", keyword: "enum", params: { allowedValues: je.properties.severity.enum }, message: "must be equal to one of the allowed values" };
         e === null ? e = [d] : e.push(d), s++;
       }
     }
@@ -4058,9 +4111,9 @@ function ee(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, ro
     let n = { instancePath: t, schemaPath: "#/type", keyword: "type", params: { type: "object" }, message: "must be object" };
     e === null ? e = [n] : e.push(n), s++;
   }
-  return ee.errors = e, s === 0;
+  return se.errors = e, s === 0;
 }
-function Je(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, rootData: x = p } = {}) {
+function Je(p, { instancePath: t = "", parentData: Z2, parentDataProperty: $, rootData: x = p } = {}) {
   let e = null, s = 0;
   if (p && typeof p == "object" && !Array.isArray(p)) {
     if (Object.keys(p).length > 1) {
@@ -4085,11 +4138,11 @@ function Je(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, ro
         if (a.url !== void 0) {
           let i = a.url;
           if (typeof i == "string") {
-            if (!Ke.test(i)) {
+            if (!Re.test(i)) {
               let r = { instancePath: t + "/setup/url", schemaPath: "#/definitions/url/pattern", keyword: "pattern", params: { pattern: "^https?://" }, message: 'must match pattern "^https?://"' };
               e === null ? e = [r] : e.push(r), s++;
             }
-            if (!Ce(i)) {
+            if (!Ve(i)) {
               let r = { instancePath: t + "/setup/url", schemaPath: "#/definitions/url/format", keyword: "format", params: { format: "uri" }, message: 'must match format "uri"' };
               e === null ? e = [r] : e.push(r), s++;
             }
@@ -4363,7 +4416,7 @@ function Je(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, ro
             e === null ? e = [r] : e.push(r), s++;
           }
         }
-        a.instance !== void 0 && (Q(a.instance, { instancePath: t + "/replace_instance/instance", parentData: a, parentDataProperty: "instance", rootData: x }) || (e = e === null ? Q.errors : e.concat(Q.errors), s = e.length));
+        a.instance !== void 0 && (Y(a.instance, { instancePath: t + "/replace_instance/instance", parentData: a, parentDataProperty: "instance", rootData: x }) || (e = e === null ? Y.errors : e.concat(Y.errors), s = e.length));
       } else {
         let i = { instancePath: t + "/replace_instance", schemaPath: "#/properties/replace_instance/type", keyword: "type", params: { type: "object" }, message: "must be object" };
         e === null ? e = [i] : e.push(i), s++;
@@ -4394,7 +4447,7 @@ function Je(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, ro
         if (a.reference !== void 0) {
           let i = a.reference;
           if (typeof i == "string") {
-            if (!re.test(i)) {
+            if (!ie.test(i)) {
               let r = { instancePath: t + "/show_target/reference", schemaPath: "revision-reference.schema.json/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}(@[1-9][0-9]*)?$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}(@[1-9][0-9]*)?$"' };
               e === null ? e = [r] : e.push(r), s++;
             }
@@ -4438,7 +4491,7 @@ function Je(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, ro
         if (a.target !== void 0) {
           let i = a.target;
           if (typeof i == "string") {
-            if (!re.test(i)) {
+            if (!ie.test(i)) {
               let r = { instancePath: t + "/open_plan/target", schemaPath: "revision-reference.schema.json/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}(@[1-9][0-9]*)?$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}(@[1-9][0-9]*)?$"' };
               e === null ? e = [r] : e.push(r), s++;
             }
@@ -4459,7 +4512,7 @@ function Je(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, ro
             e === null ? e = [r] : e.push(r), s++;
           }
         }
-        a.request !== void 0 && (Y(a.request, { instancePath: t + "/open_plan/request", parentData: a, parentDataProperty: "request", rootData: x }) || (e = e === null ? Y.errors : e.concat(Y.errors), s = e.length));
+        a.request !== void 0 && (X(a.request, { instancePath: t + "/open_plan/request", parentData: a, parentDataProperty: "request", rootData: x }) || (e = e === null ? X.errors : e.concat(X.errors), s = e.length));
       } else {
         let i = { instancePath: t + "/open_plan", schemaPath: "#/properties/open_plan/type", keyword: "type", params: { type: "object" }, message: "must be object" };
         e === null ? e = [i] : e.push(i), s++;
@@ -4578,7 +4631,7 @@ function Je(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, ro
             e === null ? e = [g] : e.push(g), s++;
           }
         }
-        if (a.patch !== void 0 && (X(a.patch, { instancePath: t + "/edit_plan/patch", parentData: a, parentDataProperty: "patch", rootData: x }) || (e = e === null ? X.errors : e.concat(X.errors), s = e.length)), a.candidate !== void 0 && (H(a.candidate, { instancePath: t + "/edit_plan/candidate", parentData: a, parentDataProperty: "candidate", rootData: x }) || (e = e === null ? H.errors : e.concat(H.errors), s = e.length)), a.expectSha256 !== void 0) {
+        if (a.patch !== void 0 && (J(a.patch, { instancePath: t + "/edit_plan/patch", parentData: a, parentDataProperty: "patch", rootData: x }) || (e = e === null ? J.errors : e.concat(J.errors), s = e.length)), a.candidate !== void 0 && (H(a.candidate, { instancePath: t + "/edit_plan/candidate", parentData: a, parentDataProperty: "candidate", rootData: x }) || (e = e === null ? H.errors : e.concat(H.errors), s = e.length)), a.expectSha256 !== void 0) {
           let c = a.expectSha256;
           if (typeof c == "string") {
             if (!N.test(c)) {
@@ -4650,7 +4703,7 @@ function Je(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, ro
             e === null ? e = [r] : e.push(r), s++;
           }
         }
-        if (a.delta !== void 0 && (J(a.delta, { instancePath: t + "/revise_plan/delta", parentData: a, parentDataProperty: "delta", rootData: x }) || (e = e === null ? J.errors : e.concat(J.errors), s = e.length)), a.expectSha256 !== void 0) {
+        if (a.delta !== void 0 && (ee(a.delta, { instancePath: t + "/revise_plan/delta", parentData: a, parentDataProperty: "delta", rootData: x }) || (e = e === null ? ee.errors : e.concat(ee.errors), s = e.length)), a.expectSha256 !== void 0) {
           let i = a.expectSha256;
           if (typeof i == "string") {
             if (!N.test(i)) {
@@ -5007,11 +5060,11 @@ function Je(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, ro
         if (a.url !== void 0) {
           let i = a.url;
           if (typeof i == "string") {
-            if (!Ke.test(i)) {
+            if (!Re.test(i)) {
               let r = { instancePath: t + "/start_test/url", schemaPath: "#/properties/setup/properties/url/pattern", keyword: "pattern", params: { pattern: "^https?://" }, message: 'must match pattern "^https?://"' };
               e === null ? e = [r] : e.push(r), s++;
             }
-            if (!Ce(i)) {
+            if (!Ve(i)) {
               let r = { instancePath: t + "/start_test/url", schemaPath: "#/properties/setup/properties/url/format", keyword: "format", params: { format: "uri" }, message: 'must match format "uri"' };
               e === null ? e = [r] : e.push(r), s++;
             }
@@ -5020,7 +5073,7 @@ function Je(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, ro
             e === null ? e = [r] : e.push(r), s++;
           }
         }
-        if (a.entries !== void 0 && (me(a.entries, { instancePath: t + "/start_test/entries", parentData: a, parentDataProperty: "entries", rootData: x }) || (e = e === null ? me.errors : e.concat(me.errors), s = e.length)), a.reset !== void 0) {
+        if (a.entries !== void 0 && (le(a.entries, { instancePath: t + "/start_test/entries", parentData: a, parentDataProperty: "entries", rootData: x }) || (e = e === null ? le.errors : e.concat(le.errors), s = e.length)), a.reset !== void 0) {
           let i = a.reset;
           if (typeof i == "string") {
             if (!N.test(i)) {
@@ -5192,7 +5245,7 @@ function Je(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, ro
         if (a.reference !== void 0) {
           let i = a.reference;
           if (typeof i == "string") {
-            if (!re.test(i)) {
+            if (!ie.test(i)) {
               let r = { instancePath: t + "/begin_run/reference", schemaPath: "revision-reference.schema.json/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}(@[1-9][0-9]*)?$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}(@[1-9][0-9]*)?$"' };
               e === null ? e = [r] : e.push(r), s++;
             }
@@ -5635,7 +5688,7 @@ function Je(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, ro
             e === null ? e = [r] : e.push(r), s++;
           }
         }
-        a.finding !== void 0 && (ee(a.finding, { instancePath: t + "/record_finding/finding", parentData: a, parentDataProperty: "finding", rootData: x }) || (e = e === null ? ee.errors : e.concat(ee.errors), s = e.length));
+        a.finding !== void 0 && (se(a.finding, { instancePath: t + "/record_finding/finding", parentData: a, parentDataProperty: "finding", rootData: x }) || (e = e === null ? se.errors : e.concat(se.errors), s = e.length));
       } else {
         let i = { instancePath: t + "/record_finding", schemaPath: "#/properties/record_finding/type", keyword: "type", params: { type: "object" }, message: "must be object" };
         e === null ? e = [i] : e.push(i), s++;
@@ -5668,7 +5721,7 @@ function Je(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, ro
             e === null ? e = [r] : e.push(r), s++;
           }
         }
-        a.gap !== void 0 && (V(a.gap, { instancePath: t + "/record_gap/gap", parentData: a, parentDataProperty: "gap", rootData: x }) || (e = e === null ? V.errors : e.concat(V.errors), s = e.length));
+        a.gap !== void 0 && (F(a.gap, { instancePath: t + "/record_gap/gap", parentData: a, parentDataProperty: "gap", rootData: x }) || (e = e === null ? F.errors : e.concat(F.errors), s = e.length));
       } else {
         let i = { instancePath: t + "/record_gap", schemaPath: "#/properties/record_gap/type", keyword: "type", params: { type: "object" }, message: "must be object" };
         e === null ? e = [i] : e.push(i), s++;
@@ -6177,7 +6230,7 @@ function Je(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, ro
   return Je.errors = e, s === 0;
 }
 var Js = es;
-function es(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, rootData: x = p } = {}) {
+function es(p, { instancePath: t = "", parentData: Z2, parentDataProperty: $, rootData: x = p } = {}) {
   let e = null, s = 0;
   if (typeof p == "string") {
     if (q(p) > 200) {
@@ -6195,8 +6248,8 @@ function es(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, ro
   return es.errors = e, s === 0;
 }
 var et = ss;
-var We = { $schema: "http://json-schema.org/draft-07/schema#", $id: "exploration.schema.json", type: "object", properties: { planId: { $ref: "identifier.schema.json" }, build: { $ref: "build.schema.json" }, mode: { enum: ["exploratory", "regression"] }, level: { $ref: "test-level.schema.json" }, explorers: { type: "integer", minimum: 1, maximum: 10 }, minutes: { type: "integer", minimum: 1, maximum: 240 }, instance: { $ref: "identifier.schema.json" }, timeoutSeconds: { type: "integer", minimum: 60, maximum: 7200 }, since: { $ref: "text.schema.json" }, until: { $ref: "text.schema.json" }, repo: { $ref: "text.schema.json" } }, required: ["planId", "build"], additionalProperties: false };
-function ss(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, rootData: x = p } = {}) {
+var Ue = { $schema: "http://json-schema.org/draft-07/schema#", $id: "exploration.schema.json", type: "object", properties: { planId: { $ref: "identifier.schema.json" }, build: { $ref: "build.schema.json" }, mode: { enum: ["exploratory", "regression"] }, level: { $ref: "test-level.schema.json" }, explorers: { type: "integer", minimum: 1, maximum: 10 }, minutes: { type: "integer", minimum: 1, maximum: 240 }, instance: { $ref: "identifier.schema.json" }, timeoutSeconds: { type: "integer", minimum: 60, maximum: 7200 }, since: { $ref: "text.schema.json" }, until: { $ref: "text.schema.json" }, repo: { $ref: "text.schema.json" } }, required: ["planId", "build"], additionalProperties: false };
+function ss(p, { instancePath: t = "", parentData: Z2, parentDataProperty: $, rootData: x = p } = {}) {
   let e = null, s = 0;
   if (p && typeof p == "object" && !Array.isArray(p)) {
     if (p.planId === void 0) {
@@ -6207,7 +6260,7 @@ function ss(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, ro
       let f = { instancePath: t, schemaPath: "#/required", keyword: "required", params: { missingProperty: "build" }, message: "must have required property 'build'" };
       e === null ? e = [f] : e.push(f), s++;
     }
-    for (let f in p) if (!E.call(We.properties, f)) {
+    for (let f in p) if (!E.call(Ue.properties, f)) {
       let n = { instancePath: t, schemaPath: "#/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: f }, message: "must NOT have additional properties" };
       e === null ? e = [n] : e.push(n), s++;
     }
@@ -6242,7 +6295,7 @@ function ss(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, ro
     if (p.mode !== void 0) {
       let f = p.mode;
       if (!(f === "exploratory" || f === "regression")) {
-        let n = { instancePath: t + "/mode", schemaPath: "#/properties/mode/enum", keyword: "enum", params: { allowedValues: We.properties.mode.enum }, message: "must be equal to one of the allowed values" };
+        let n = { instancePath: t + "/mode", schemaPath: "#/properties/mode/enum", keyword: "enum", params: { allowedValues: Ue.properties.mode.enum }, message: "must be equal to one of the allowed values" };
         e === null ? e = [n] : e.push(n), s++;
       }
     }
@@ -6358,10 +6411,10 @@ function ss(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, ro
   }
   return ss.errors = e, s === 0;
 }
-var st = ee;
-var tt = V;
+var st = se;
+var tt = F;
 var rt = ts;
-function ts(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, rootData: x = p } = {}) {
+function ts(p, { instancePath: t = "", parentData: Z2, parentDataProperty: $, rootData: x = p } = {}) {
   let e = null, s = 0;
   if (typeof p == "string") {
     if (!O.test(p)) {
@@ -6374,10 +6427,10 @@ function ts(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, ro
   }
   return ts.errors = e, s === 0;
 }
-var it = Q;
+var it = Y;
 var at = rs;
-var He = { $schema: "http://json-schema.org/draft-07/schema#", $id: "journal-criterion.schema.json", description: "A rule or an acceptance criterion that the change must meet.", type: "object", properties: { kind: { const: "criterion" }, id: { $ref: "journal-entry.schema.json#/definitions/id" }, supersedes: { $ref: "journal-entry.schema.json#/definitions/supersedes" }, rule: { $ref: "journal-entry.schema.json#/definitions/rule" }, text: { description: "The rule.", type: "string", minLength: 1 }, source: { description: "Where the rule comes from, for example ticket.md#AC2 or a question ID.", type: "string", minLength: 1 }, verdict: { description: "ok when the observed behaviour meets the rule. wrong when the observed behaviour contradicts the rule. Omit it when the rule remains unverified.", enum: ["ok", "wrong"] }, saw: { description: "The specific product behaviour that the test session observed for this rule. Required for ok and wrong in a recorder reply.", type: "string", minLength: 1 }, area: { $ref: "journal-entry.schema.json#/definitions/area" } }, required: ["kind", "text"], additionalProperties: false };
-function rs(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, rootData: x = p } = {}) {
+var We = { $schema: "http://json-schema.org/draft-07/schema#", $id: "journal-criterion.schema.json", description: "A rule or an acceptance criterion that the change must meet.", type: "object", properties: { kind: { const: "criterion" }, id: { $ref: "journal-entry.schema.json#/definitions/id" }, supersedes: { $ref: "journal-entry.schema.json#/definitions/supersedes" }, rule: { $ref: "journal-entry.schema.json#/definitions/rule" }, text: { description: "The rule.", type: "string", minLength: 1 }, source: { description: "Where the rule comes from, for example ticket.md#AC2 or a question ID.", type: "string", minLength: 1 }, verdict: { description: "ok when the observed behaviour meets the rule. wrong when the observed behaviour contradicts the rule. Omit it when the rule remains unverified.", enum: ["ok", "wrong"] }, saw: { description: "The specific product behaviour that the test session observed for this rule. Required for ok and wrong in a recorder reply.", type: "string", minLength: 1 }, area: { $ref: "journal-entry.schema.json#/definitions/area" } }, required: ["kind", "text"], additionalProperties: false };
+function rs(p, { instancePath: t = "", parentData: Z2, parentDataProperty: $, rootData: x = p } = {}) {
   let e = null, s = 0;
   if (p && typeof p == "object" && !Array.isArray(p)) {
     if (p.kind === void 0) {
@@ -6388,7 +6441,7 @@ function rs(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, ro
       let f = { instancePath: t, schemaPath: "#/required", keyword: "required", params: { missingProperty: "text" }, message: "must have required property 'text'" };
       e === null ? e = [f] : e.push(f), s++;
     }
-    for (let f in p) if (!E.call(He.properties, f)) {
+    for (let f in p) if (!E.call(We.properties, f)) {
       let n = { instancePath: t, schemaPath: "#/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: f }, message: "must NOT have additional properties" };
       e === null ? e = [n] : e.push(n), s++;
     }
@@ -6459,7 +6512,7 @@ function rs(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, ro
     if (p.verdict !== void 0) {
       let f = p.verdict;
       if (!(f === "ok" || f === "wrong")) {
-        let n = { instancePath: t + "/verdict", schemaPath: "#/properties/verdict/enum", keyword: "enum", params: { allowedValues: He.properties.verdict.enum }, message: "must be equal to one of the allowed values" };
+        let n = { instancePath: t + "/verdict", schemaPath: "#/properties/verdict/enum", keyword: "enum", params: { allowedValues: We.properties.verdict.enum }, message: "must be equal to one of the allowed values" };
         e === null ? e = [n] : e.push(n), s++;
       }
     }
@@ -6494,9 +6547,9 @@ function rs(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, ro
   return rs.errors = e, s === 0;
 }
 var nt = as;
-var Be = { $schema: "http://json-schema.org/draft-07/schema#", $id: "journal-defect.schema.json", description: "A thing that is wrong on this build. With saw, value, or via, it is also the observation that shows it: do not log that observation again.", type: "object", properties: { kind: { const: "defect" }, id: { $ref: "journal-entry.schema.json#/definitions/id" }, supersedes: { $ref: "journal-entry.schema.json#/definitions/supersedes" }, rule: { $ref: "journal-entry.schema.json#/definitions/rule" }, title: { description: "What is wrong.", type: "string", minLength: 1 }, expected: { description: "The correct result and its source.", type: "string", minLength: 1 }, actual: { description: "What you saw.", type: "string", minLength: 1 }, severity: { description: "The severity.", enum: ["critical", "high", "medium", "low"] }, about: { $ref: "journal-entry.schema.json#/definitions/about" }, steps: { $ref: "journal-entry.schema.json#/definitions/steps" }, saw: { $ref: "journal-entry.schema.json#/definitions/saw" }, value: { $ref: "journal-entry.schema.json#/definitions/value" }, via: { $ref: "journal-entry.schema.json#/definitions/via" }, evidence: { description: "The file that shows the defect (a screenshot, a response, a log), or the text that you saw.", $ref: "journal-entry.schema.json#/definitions/evidence" }, links: { description: "The IDs of the observations, criteria, or questions that show it.", type: "array", items: { type: "string", minLength: 1 } }, suspected: { description: "true when you are not sure.", type: "boolean" }, question: { description: "The question that settles a suspected defect.", type: "string", minLength: 1 } }, required: ["kind", "title", "expected", "actual", "severity"], additionalProperties: false };
+var He = { $schema: "http://json-schema.org/draft-07/schema#", $id: "journal-defect.schema.json", description: "A thing that is wrong on this build. With saw, value, or via, it is also the observation that shows it: do not log that observation again.", type: "object", properties: { kind: { const: "defect" }, id: { $ref: "journal-entry.schema.json#/definitions/id" }, supersedes: { $ref: "journal-entry.schema.json#/definitions/supersedes" }, rule: { $ref: "journal-entry.schema.json#/definitions/rule" }, title: { description: "What is wrong.", type: "string", minLength: 1 }, expected: { description: "The correct result and its source.", type: "string", minLength: 1 }, actual: { description: "What you saw.", type: "string", minLength: 1 }, severity: { description: "The severity.", enum: ["critical", "high", "medium", "low"] }, about: { $ref: "journal-entry.schema.json#/definitions/about" }, steps: { $ref: "journal-entry.schema.json#/definitions/steps" }, saw: { $ref: "journal-entry.schema.json#/definitions/saw" }, value: { $ref: "journal-entry.schema.json#/definitions/value" }, via: { $ref: "journal-entry.schema.json#/definitions/via" }, evidence: { description: "The file that shows the defect (a screenshot, a response, a log), or the text that you saw.", $ref: "journal-entry.schema.json#/definitions/evidence" }, links: { description: "The IDs of the observations, criteria, or questions that show it.", type: "array", items: { type: "string", minLength: 1 } }, suspected: { description: "true when you are not sure.", type: "boolean" }, question: { description: "The question that settles a suspected defect.", type: "string", minLength: 1 } }, required: ["kind", "title", "expected", "actual", "severity"], additionalProperties: false };
 var is = { description: "The entry point that you used.", enum: ["ui", "api", "code", "other"] };
-function as(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, rootData: x = p } = {}) {
+function as(p, { instancePath: t = "", parentData: Z2, parentDataProperty: $, rootData: x = p } = {}) {
   let e = null, s = 0;
   if (p && typeof p == "object" && !Array.isArray(p)) {
     if (p.kind === void 0) {
@@ -6519,7 +6572,7 @@ function as(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, ro
       let d = { instancePath: t, schemaPath: "#/required", keyword: "required", params: { missingProperty: "severity" }, message: "must have required property 'severity'" };
       e === null ? e = [d] : e.push(d), s++;
     }
-    for (let d in p) if (!E.call(Be.properties, d)) {
+    for (let d in p) if (!E.call(He.properties, d)) {
       let l = { instancePath: t, schemaPath: "#/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: d }, message: "must NOT have additional properties" };
       e === null ? e = [l] : e.push(l), s++;
     }
@@ -6602,7 +6655,7 @@ function as(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, ro
     if (p.severity !== void 0) {
       let d = p.severity;
       if (!(d === "critical" || d === "high" || d === "medium" || d === "low")) {
-        let l = { instancePath: t + "/severity", schemaPath: "#/properties/severity/enum", keyword: "enum", params: { allowedValues: Be.properties.severity.enum }, message: "must be equal to one of the allowed values" };
+        let l = { instancePath: t + "/severity", schemaPath: "#/properties/severity/enum", keyword: "enum", params: { allowedValues: He.properties.severity.enum }, message: "must be equal to one of the allowed values" };
         e === null ? e = [l] : e.push(l), s++;
       }
     }
@@ -6784,7 +6837,7 @@ function as(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, ro
 }
 var pt = ns;
 var Rs = { $schema: "http://json-schema.org/draft-07/schema#", $id: "journal-entry.schema.json", description: "Checkmate saves each valid entry, and refuses each invalid entry alone. Nothing is deleted.", type: "object", properties: { kind: { description: "The kind.", enum: ["criterion", "observation", "defect", "question", "verdict", "note", "issue", "topic"] }, id: { $ref: "journal-entry.schema.json#/definitions/id" }, supersedes: { $ref: "journal-entry.schema.json#/definitions/supersedes" } }, required: ["kind"], examples: [[{ kind: "criterion", id: "C1", rule: "R2", text: "5 or more items get 10% off.", source: "ticket.md#AC2", verdict: "wrong" }, { kind: "observation", id: "O1", about: "C1", steps: "Add 4 pens in the cart", saw: "Total 40.00", value: "40.00", verdict: "ok", via: "ui" }, { kind: "defect", id: "D1", rule: "R2", title: "No discount at 5 items", expected: "45.00 (AC2)", actual: "Total 50.00", severity: "high", links: ["C1"], steps: "Add 5 pens in the cart", value: "50.00", via: "ui", evidence: "cart-5.png" }]], definitions: { id: { description: "Your ID, for example D1. Without it, Checkmate gives one.", $ref: "identifier.schema.json" }, supersedes: { description: "The ID of an earlier entry of the same kind. This entry replaces it and keeps its ID.", $ref: "identifier.schema.json" }, rule: { description: "The ID of the plan rule, for example R2, or outside.", $ref: "identifier.schema.json" }, about: { description: "A criterion ID, a question ID, a diff area, or free text.", type: "string", minLength: 1 }, area: { description: "A changed area, for example src/cart.js.", type: "string", minLength: 1 }, steps: { description: "What you did.", anyOf: [{ type: "string", minLength: 1 }, { type: "array", items: { type: "string", minLength: 1 }, minItems: 1 }] }, saw: { description: "What you saw.", type: "string", minLength: 1 }, value: { description: "The exact value to compare on a later build, for example 45.00 or HTTP 409.", type: "string", minLength: 1 }, via: { description: "The entry point that you used.", enum: ["ui", "api", "code", "other"] }, evidence: { description: "A workspace file or the text that you saw, or an array of them.", anyOf: [{ type: "string", minLength: 1 }, { type: "array", items: { type: "string", minLength: 1 }, minItems: 1 }] } } };
-function ns(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, rootData: x = p } = {}) {
+function ns(p, { instancePath: t = "", parentData: Z2, parentDataProperty: $, rootData: x = p } = {}) {
   let e = null, s = 0;
   if (p && typeof p == "object" && !Array.isArray(p)) {
     if (p.kind === void 0) {
@@ -6830,7 +6883,7 @@ function ns(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, ro
 }
 var ot = ps;
 var Cs = { $schema: "http://json-schema.org/draft-07/schema#", $id: "journal-issue.schema.json", description: "One defect that one or more defect entries report. A defect that is in no issue is its own issue. On a later build, the status of the issue is the result of most verdicts on that build. With a tie, it is fixed and disputed. With one verdict, it is that result and single. An observation of the verifier with confirms or refutes on that build sets the status.", type: "object", properties: { kind: { const: "issue" }, id: { $ref: "journal-entry.schema.json#/definitions/id" }, supersedes: { $ref: "journal-entry.schema.json#/definitions/supersedes" }, title: { description: "What is wrong, in one line.", type: "string", minLength: 1 }, severity: { description: "The severity.", enum: ["critical", "high", "medium", "low"] }, reports: { description: "The full IDs of the defect entries that describe this defect, for example a1/D1.", type: "array", items: { type: "string", minLength: 1 }, minItems: 1 }, note: { description: "Why these reports are one defect.", type: "string", minLength: 1 } }, required: ["kind", "title", "severity", "reports"], additionalProperties: false, examples: [{ kind: "issue", title: "No discount at 5 items", severity: "high", reports: ["a1/D1", "a3/D2"], note: "The same total of 50.00 for 5 items." }] };
-function ps(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, rootData: x = p } = {}) {
+function ps(p, { instancePath: t = "", parentData: Z2, parentDataProperty: $, rootData: x = p } = {}) {
   let e = null, s = 0;
   if (p && typeof p == "object" && !Array.isArray(p)) {
     if (p.kind === void 0) {
@@ -6944,7 +6997,7 @@ function ps(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, ro
   return ps.errors = e, s === 0;
 }
 var mt = os;
-function os(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, rootData: x = p } = {}) {
+function os(p, { instancePath: t = "", parentData: Z2, parentDataProperty: $, rootData: x = p } = {}) {
   let e = null, s = 0;
   if (p && typeof p == "object" && !Array.isArray(p)) {
     if (p.kind === void 0) {
@@ -7075,9 +7128,9 @@ function os(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, ro
   return os.errors = e, s === 0;
 }
 var lt = ms;
-var Me = { $schema: "http://json-schema.org/draft-07/schema#", $id: "journal-observation.schema.json", description: "What you did and what you saw.", type: "object", properties: { kind: { const: "observation" }, id: { $ref: "journal-entry.schema.json#/definitions/id" }, supersedes: { $ref: "journal-entry.schema.json#/definitions/supersedes" }, about: { $ref: "journal-entry.schema.json#/definitions/about" }, steps: { $ref: "journal-entry.schema.json#/definitions/steps" }, saw: { $ref: "journal-entry.schema.json#/definitions/saw" }, value: { $ref: "journal-entry.schema.json#/definitions/value" }, repeats: { description: "The ID of an earlier observation that you did again.", type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_/-]{0,191}$" }, verdict: { description: "ok when the result is correct. wrong when it is not.", enum: ["ok", "wrong"] }, via: { $ref: "journal-entry.schema.json#/definitions/via" }, evidence: { $ref: "journal-entry.schema.json#/definitions/evidence" }, confirms: { description: "The ID of an issue or a defect that you did again and saw, for example a1/D3. On the build where it was found, it confirms the issue. On a later build, it sets the status of the issue on that build to not_fixed.", type: "string", minLength: 1 }, refutes: { description: "The ID of an issue or a defect that you did again and did not see. On the build where it was found, it refutes the issue. On a later build, it sets the status of the issue on that build to fixed.", type: "string", minLength: 1 } }, required: ["kind", "saw"], additionalProperties: false, examples: [{ kind: "observation", confirms: "a1/D3", steps: "Add 5 pens in the cart", saw: "Total 50.00, no discount", via: "ui", evidence: "evidence/cart-5.png" }] };
+var Be = { $schema: "http://json-schema.org/draft-07/schema#", $id: "journal-observation.schema.json", description: "What you did and what you saw.", type: "object", properties: { kind: { const: "observation" }, id: { $ref: "journal-entry.schema.json#/definitions/id" }, supersedes: { $ref: "journal-entry.schema.json#/definitions/supersedes" }, about: { $ref: "journal-entry.schema.json#/definitions/about" }, steps: { $ref: "journal-entry.schema.json#/definitions/steps" }, saw: { $ref: "journal-entry.schema.json#/definitions/saw" }, value: { $ref: "journal-entry.schema.json#/definitions/value" }, repeats: { description: "The ID of an earlier observation that you did again.", type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_/-]{0,191}$" }, verdict: { description: "ok when the result is correct. wrong when it is not.", enum: ["ok", "wrong"] }, via: { $ref: "journal-entry.schema.json#/definitions/via" }, evidence: { $ref: "journal-entry.schema.json#/definitions/evidence" }, confirms: { description: "The ID of an issue or a defect that you did again and saw, for example a1/D3. On the build where it was found, it confirms the issue. On a later build, it sets the status of the issue on that build to not_fixed.", type: "string", minLength: 1 }, refutes: { description: "The ID of an issue or a defect that you did again and did not see. On the build where it was found, it refutes the issue. On a later build, it sets the status of the issue on that build to fixed.", type: "string", minLength: 1 } }, required: ["kind", "saw"], additionalProperties: false, examples: [{ kind: "observation", confirms: "a1/D3", steps: "Add 5 pens in the cart", saw: "Total 50.00, no discount", via: "ui", evidence: "evidence/cart-5.png" }] };
 var Ks = new RegExp("^[A-Za-z0-9][A-Za-z0-9_/-]{0,191}$", "u");
-function ms(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, rootData: x = p } = {}) {
+function ms(p, { instancePath: t = "", parentData: Z2, parentDataProperty: $, rootData: x = p } = {}) {
   let e = null, s = 0;
   if (p && typeof p == "object" && !Array.isArray(p)) {
     if (p.kind === void 0) {
@@ -7088,7 +7141,7 @@ function ms(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, ro
       let d = { instancePath: t, schemaPath: "#/required", keyword: "required", params: { missingProperty: "saw" }, message: "must have required property 'saw'" };
       e === null ? e = [d] : e.push(d), s++;
     }
-    for (let d in p) if (!E.call(Me.properties, d)) {
+    for (let d in p) if (!E.call(Be.properties, d)) {
       let l = { instancePath: t, schemaPath: "#/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: d }, message: "must NOT have additional properties" };
       e === null ? e = [l] : e.push(l), s++;
     }
@@ -7216,7 +7269,7 @@ function ms(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, ro
     if (p.verdict !== void 0) {
       let d = p.verdict;
       if (!(d === "ok" || d === "wrong")) {
-        let l = { instancePath: t + "/verdict", schemaPath: "#/properties/verdict/enum", keyword: "enum", params: { allowedValues: Me.properties.verdict.enum }, message: "must be equal to one of the allowed values" };
+        let l = { instancePath: t + "/verdict", schemaPath: "#/properties/verdict/enum", keyword: "enum", params: { allowedValues: Be.properties.verdict.enum }, message: "must be equal to one of the allowed values" };
         e === null ? e = [l] : e.push(l), s++;
       }
     }
@@ -7303,7 +7356,7 @@ function ms(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, ro
   return ms.errors = e, s === 0;
 }
 var ut = ls;
-function ls(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, rootData: x = p } = {}) {
+function ls(p, { instancePath: t = "", parentData: Z2, parentDataProperty: $, rootData: x = p } = {}) {
   let e = null, s = 0;
   if (p && typeof p == "object" && !Array.isArray(p)) {
     if (p.kind === void 0) {
@@ -7406,7 +7459,7 @@ function ls(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, ro
 }
 var dt = us;
 var Gs = new RegExp("^\\S+( \\S+){0,2}$", "u");
-function us(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, rootData: x = p } = {}) {
+function us(p, { instancePath: t = "", parentData: Z2, parentDataProperty: $, rootData: x = p } = {}) {
   let e = null, s = 0;
   if (p && typeof p == "object" && !Array.isArray(p)) {
     if (p.kind === void 0) {
@@ -7514,7 +7567,7 @@ function us(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, ro
 }
 var ct = ds;
 var Us = { $schema: "http://json-schema.org/draft-07/schema#", $id: "journal-verdict.schema.json", description: "The result of a retest of an earlier defect on this build, or the reason it could not be retested.", type: "object", properties: { kind: { const: "verdict" }, id: { $ref: "journal-entry.schema.json#/definitions/id" }, supersedes: { $ref: "journal-entry.schema.json#/definitions/supersedes" }, defect: { description: "The ID of the earlier defect or issue.", type: "string", minLength: 1 }, result: { description: "Use fixed or not_fixed for an observed result. Use not_retested when the retest did not give an observed result.", enum: ["fixed", "not_fixed", "not_retested"] }, saw: { description: "What you saw, or the reason for not_retested.", type: "string", minLength: 1 }, evidence: { $ref: "journal-entry.schema.json#/definitions/evidence" } }, required: ["kind", "defect", "result"], additionalProperties: false };
-function ds(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, rootData: x = p } = {}) {
+function ds(p, { instancePath: t = "", parentData: Z2, parentDataProperty: $, rootData: x = p } = {}) {
   let e = null, s = 0;
   if (p && typeof p == "object" && !Array.isArray(p)) {
     if (p.kind === void 0) {
@@ -7644,14 +7697,14 @@ function ds(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, ro
   return ds.errors = e, s === 0;
 }
 var ht = H;
-var ft = J;
-var yt = X;
-var gt = Y;
+var ft = ee;
+var yt = J;
+var gt = X;
 var Pt = cs;
-var Ae = { $schema: "http://json-schema.org/draft-07/schema#", $id: "plan.schema.json", type: "object", properties: { contractVersion: { const: "toolkit-2" }, planId: { $ref: "identifier.schema.json" }, revision: { type: "integer", minimum: 1 }, previousRevision: { anyOf: [{ type: "integer", minimum: 1 }, { type: "null" }] }, target: { type: "object", properties: { targetId: { $ref: "identifier.schema.json" }, revision: { type: "integer", minimum: 1 }, sha256: { type: "string", pattern: "^[a-f0-9]{64}$" } }, required: ["targetId", "revision", "sha256"], additionalProperties: false }, objective: { type: "string", minLength: 1 }, requirements: { type: "array", items: { type: "object", properties: { id: { $ref: "identifier.schema.json" }, text: { type: "string", minLength: 1 }, source: { type: "string", minLength: 1 }, area: { type: "string", minLength: 1, pattern: "\\S", maxLength: 40 }, metadata: { $ref: "#/definitions/metadata" } }, required: ["id", "text", "source"], additionalProperties: false }, minItems: 1, uniqueItems: true }, tests: { type: "array", items: { $ref: "#/definitions/test" }, minItems: 0, uniqueItems: true }, gaps: { type: "array", items: { $ref: "gap.schema.json" }, minItems: 0, uniqueItems: true }, assumptions: { type: "array", items: { type: "object", properties: { decisionId: { $ref: "identifier.schema.json" }, text: { type: "string", minLength: 1 } }, required: ["decisionId", "text"], additionalProperties: false }, minItems: 0, uniqueItems: true }, decisions: { type: "array", items: { type: "object", properties: { id: { $ref: "identifier.schema.json" }, gapId: { $ref: "identifier.schema.json" }, kind: { enum: ["clarify", "accept_assumption", "defer"] }, actor: { type: "string", minLength: 1 }, rationale: { type: "string", minLength: 1 }, value: { type: "string", minLength: 1 }, source: { anyOf: [{ type: "string", minLength: 1 }, { type: "null" }] } }, required: ["id", "gapId", "kind", "actor", "rationale", "value", "source"], additionalProperties: false }, minItems: 0, uniqueItems: true }, removals: { description: "Each removal of tests: who removed which tests, why, in which revision, and the gaps that it closed. Earlier revisions keep the removed tests.", type: "array", items: { type: "object", properties: { revision: { type: "integer", minimum: 1 }, actor: { type: "string", minLength: 1 }, rationale: { type: "string", minLength: 1 }, testIds: { type: "array", items: { $ref: "identifier.schema.json" }, minItems: 1 }, closedGaps: { type: "array", items: { type: "object", properties: { gapId: { $ref: "identifier.schema.json" }, reason: { type: "string", minLength: 1 } }, required: ["gapId", "reason"], additionalProperties: false } } }, required: ["revision", "actor", "rationale", "testIds", "closedGaps"], additionalProperties: false } }, coverage: { type: "array", items: { type: "object", properties: { requirementId: { $ref: "identifier.schema.json" }, testIds: { type: "array", items: { $ref: "identifier.schema.json" }, minItems: 0, uniqueItems: true }, status: { enum: ["planned", "blocked", "deferred"] } }, required: ["requirementId", "testIds", "status"], additionalProperties: false }, minItems: 1, uniqueItems: true } }, required: ["contractVersion", "planId", "revision", "previousRevision", "target", "objective", "requirements", "tests", "gaps", "assumptions", "decisions", "coverage"], additionalProperties: false, definitions: { test: { type: "object", properties: { id: { $ref: "identifier.schema.json" }, title: { type: "string", minLength: 1, maxLength: 200 }, requirementIds: { type: "array", items: { $ref: "identifier.schema.json" }, minItems: 1, uniqueItems: true }, capability: { $ref: "identifier.schema.json" }, operations: { type: "array", items: { $ref: "identifier.schema.json" }, minItems: 1, uniqueItems: true }, readiness: { enum: ["ready", "blocked", "deferred"] }, gapIds: { type: "array", items: { $ref: "identifier.schema.json" }, minItems: 0, uniqueItems: true }, dependsOn: { type: "array", items: { type: "string", pattern: "^([A-Za-z0-9][A-Za-z0-9_-]{0,95}:)?[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 0, uniqueItems: true }, preconditions: { type: "array", items: { type: "string", minLength: 1 }, minItems: 0, uniqueItems: true }, action: { type: "string", minLength: 1 }, assertions: { type: "array", items: { $ref: "#/definitions/assertion" }, minItems: 0, uniqueItems: true }, metadata: { $ref: "#/definitions/metadata" } }, required: ["id", "title", "requirementIds", "capability", "operations", "readiness", "gapIds", "dependsOn", "preconditions", "action", "assertions"], additionalProperties: false }, assertion: { type: "object", properties: { id: { $ref: "identifier.schema.json" }, check: { type: "string", minLength: 1 }, checkKind: { enum: ["deterministic", "agent_observation"] }, observe: { type: "string", minLength: 1 }, expected: { type: "string", minLength: 1 }, request: { type: "string", pattern: "^(GET|POST|PUT|PATCH|DELETE) /" }, observeFrom: { enum: ["screen", "relaunch", "api", "page", "reload"] } }, required: ["id", "check", "checkKind"], additionalProperties: false }, metadata: { type: "object", propertyNames: { pattern: "^[A-Za-z][A-Za-z0-9_.-]{0,63}$" }, additionalProperties: { type: ["string", "number", "boolean"], maxLength: 500 }, maxProperties: 20 } } };
-var le = new RegExp("^[a-f0-9]{64}$", "u");
-var Qe = { type: "object", properties: { id: { $ref: "identifier.schema.json" }, title: { type: "string", minLength: 1, maxLength: 200 }, requirementIds: { type: "array", items: { $ref: "identifier.schema.json" }, minItems: 1, uniqueItems: true }, capability: { $ref: "identifier.schema.json" }, operations: { type: "array", items: { $ref: "identifier.schema.json" }, minItems: 1, uniqueItems: true }, readiness: { enum: ["ready", "blocked", "deferred"] }, gapIds: { type: "array", items: { $ref: "identifier.schema.json" }, minItems: 0, uniqueItems: true }, dependsOn: { type: "array", items: { type: "string", pattern: "^([A-Za-z0-9][A-Za-z0-9_-]{0,95}:)?[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 0, uniqueItems: true }, preconditions: { type: "array", items: { type: "string", minLength: 1 }, minItems: 0, uniqueItems: true }, action: { type: "string", minLength: 1 }, assertions: { type: "array", items: { $ref: "#/definitions/assertion" }, minItems: 0, uniqueItems: true }, metadata: { $ref: "#/definitions/metadata" } }, required: ["id", "title", "requirementIds", "capability", "operations", "readiness", "gapIds", "dependsOn", "preconditions", "action", "assertions"], additionalProperties: false };
-function ue(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, rootData: x = p } = {}) {
+var Ie = { $schema: "http://json-schema.org/draft-07/schema#", $id: "plan.schema.json", type: "object", properties: { contractVersion: { const: "toolkit-2" }, planId: { $ref: "identifier.schema.json" }, revision: { type: "integer", minimum: 1 }, previousRevision: { anyOf: [{ type: "integer", minimum: 1 }, { type: "null" }] }, target: { type: "object", properties: { targetId: { $ref: "identifier.schema.json" }, revision: { type: "integer", minimum: 1 }, sha256: { type: "string", pattern: "^[a-f0-9]{64}$" } }, required: ["targetId", "revision", "sha256"], additionalProperties: false }, objective: { type: "string", minLength: 1 }, requirements: { type: "array", items: { type: "object", properties: { id: { $ref: "identifier.schema.json" }, text: { type: "string", minLength: 1 }, source: { type: "string", minLength: 1 }, area: { type: "string", minLength: 1, pattern: "\\S", maxLength: 40 }, metadata: { $ref: "#/definitions/metadata" } }, required: ["id", "text", "source"], additionalProperties: false }, minItems: 1, uniqueItems: true }, tests: { type: "array", items: { $ref: "#/definitions/test" }, minItems: 0, uniqueItems: true }, gaps: { type: "array", items: { $ref: "gap.schema.json" }, minItems: 0, uniqueItems: true }, assumptions: { type: "array", items: { type: "object", properties: { decisionId: { $ref: "identifier.schema.json" }, text: { type: "string", minLength: 1 } }, required: ["decisionId", "text"], additionalProperties: false }, minItems: 0, uniqueItems: true }, decisions: { type: "array", items: { type: "object", properties: { id: { $ref: "identifier.schema.json" }, gapId: { $ref: "identifier.schema.json" }, kind: { enum: ["clarify", "accept_assumption", "defer"] }, actor: { type: "string", minLength: 1 }, rationale: { type: "string", minLength: 1 }, value: { type: "string", minLength: 1 }, source: { anyOf: [{ type: "string", minLength: 1 }, { type: "null" }] } }, required: ["id", "gapId", "kind", "actor", "rationale", "value", "source"], additionalProperties: false }, minItems: 0, uniqueItems: true }, removals: { description: "Each removal of tests: who removed which tests, why, in which revision, and the gaps that it closed. Earlier revisions keep the removed tests.", type: "array", items: { type: "object", properties: { revision: { type: "integer", minimum: 1 }, actor: { type: "string", minLength: 1 }, rationale: { type: "string", minLength: 1 }, testIds: { type: "array", items: { $ref: "identifier.schema.json" }, minItems: 1 }, closedGaps: { type: "array", items: { type: "object", properties: { gapId: { $ref: "identifier.schema.json" }, reason: { type: "string", minLength: 1 } }, required: ["gapId", "reason"], additionalProperties: false } } }, required: ["revision", "actor", "rationale", "testIds", "closedGaps"], additionalProperties: false } }, coverage: { type: "array", items: { type: "object", properties: { requirementId: { $ref: "identifier.schema.json" }, testIds: { type: "array", items: { $ref: "identifier.schema.json" }, minItems: 0, uniqueItems: true }, status: { enum: ["planned", "blocked", "deferred"] } }, required: ["requirementId", "testIds", "status"], additionalProperties: false }, minItems: 1, uniqueItems: true } }, required: ["contractVersion", "planId", "revision", "previousRevision", "target", "objective", "requirements", "tests", "gaps", "assumptions", "decisions", "coverage"], additionalProperties: false, definitions: { test: { type: "object", properties: { id: { $ref: "identifier.schema.json" }, title: { type: "string", minLength: 1, maxLength: 200 }, requirementIds: { type: "array", items: { $ref: "identifier.schema.json" }, minItems: 1, uniqueItems: true }, capability: { $ref: "identifier.schema.json" }, operations: { type: "array", items: { $ref: "identifier.schema.json" }, minItems: 1, uniqueItems: true }, readiness: { enum: ["ready", "blocked", "deferred"] }, gapIds: { type: "array", items: { $ref: "identifier.schema.json" }, minItems: 0, uniqueItems: true }, dependsOn: { type: "array", items: { type: "string", pattern: "^([A-Za-z0-9][A-Za-z0-9_-]{0,95}:)?[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 0, uniqueItems: true }, preconditions: { type: "array", items: { type: "string", minLength: 1 }, minItems: 0, uniqueItems: true }, action: { type: "string", minLength: 1 }, assertions: { type: "array", items: { $ref: "#/definitions/assertion" }, minItems: 0, uniqueItems: true }, metadata: { $ref: "#/definitions/metadata" } }, required: ["id", "title", "requirementIds", "capability", "operations", "readiness", "gapIds", "dependsOn", "preconditions", "action", "assertions"], additionalProperties: false }, assertion: { type: "object", properties: { id: { $ref: "identifier.schema.json" }, check: { type: "string", minLength: 1 }, checkKind: { enum: ["deterministic", "agent_observation"] }, observe: { type: "string", minLength: 1 }, expected: { type: "string", minLength: 1 }, request: { type: "string", pattern: "^(GET|POST|PUT|PATCH|DELETE) /" }, observeFrom: { type: "string", pattern: "^[a-z][a-z0-9_]{0,39}$" } }, required: ["id", "check", "checkKind"], additionalProperties: false }, metadata: { type: "object", propertyNames: { pattern: "^[A-Za-z][A-Za-z0-9_.-]{0,63}$" }, additionalProperties: { type: ["string", "number", "boolean"], maxLength: 500 }, maxProperties: 20 } } };
+var ue = new RegExp("^[a-f0-9]{64}$", "u");
+var Me = { type: "object", properties: { id: { $ref: "identifier.schema.json" }, title: { type: "string", minLength: 1, maxLength: 200 }, requirementIds: { type: "array", items: { $ref: "identifier.schema.json" }, minItems: 1, uniqueItems: true }, capability: { $ref: "identifier.schema.json" }, operations: { type: "array", items: { $ref: "identifier.schema.json" }, minItems: 1, uniqueItems: true }, readiness: { enum: ["ready", "blocked", "deferred"] }, gapIds: { type: "array", items: { $ref: "identifier.schema.json" }, minItems: 0, uniqueItems: true }, dependsOn: { type: "array", items: { type: "string", pattern: "^([A-Za-z0-9][A-Za-z0-9_-]{0,95}:)?[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 0, uniqueItems: true }, preconditions: { type: "array", items: { type: "string", minLength: 1 }, minItems: 0, uniqueItems: true }, action: { type: "string", minLength: 1 }, assertions: { type: "array", items: { $ref: "#/definitions/assertion" }, minItems: 0, uniqueItems: true }, metadata: { $ref: "#/definitions/metadata" } }, required: ["id", "title", "requirementIds", "capability", "operations", "readiness", "gapIds", "dependsOn", "preconditions", "action", "assertions"], additionalProperties: false };
+function de(p, { instancePath: t = "", parentData: Z2, parentDataProperty: $, rootData: x = p } = {}) {
   let e = null, s = 0;
   if (p && typeof p == "object" && !Array.isArray(p)) {
     if (p.id === void 0) {
@@ -7697,7 +7750,7 @@ function ue(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, ro
     if (p.checkKind !== void 0) {
       let f = p.checkKind;
       if (!(f === "deterministic" || f === "agent_observation")) {
-        let n = { instancePath: t + "/checkKind", schemaPath: "#/properties/checkKind/enum", keyword: "enum", params: { allowedValues: ce.properties.checkKind.enum }, message: "must be equal to one of the allowed values" };
+        let n = { instancePath: t + "/checkKind", schemaPath: "#/properties/checkKind/enum", keyword: "enum", params: { allowedValues: Ye.properties.checkKind.enum }, message: "must be equal to one of the allowed values" };
         e === null ? e = [n] : e.push(n), s++;
       }
     }
@@ -7739,8 +7792,13 @@ function ue(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, ro
     }
     if (p.observeFrom !== void 0) {
       let f = p.observeFrom;
-      if (!(f === "screen" || f === "relaunch" || f === "api" || f === "page" || f === "reload")) {
-        let n = { instancePath: t + "/observeFrom", schemaPath: "#/properties/observeFrom/enum", keyword: "enum", params: { allowedValues: ce.properties.observeFrom.enum }, message: "must be equal to one of the allowed values" };
+      if (typeof f == "string") {
+        if (!Q.test(f)) {
+          let n = { instancePath: t + "/observeFrom", schemaPath: "#/properties/observeFrom/pattern", keyword: "pattern", params: { pattern: "^[a-z][a-z0-9_]{0,39}$" }, message: 'must match pattern "^[a-z][a-z0-9_]{0,39}$"' };
+          e === null ? e = [n] : e.push(n), s++;
+        }
+      } else {
+        let n = { instancePath: t + "/observeFrom", schemaPath: "#/properties/observeFrom/type", keyword: "type", params: { type: "string" }, message: "must be string" };
         e === null ? e = [n] : e.push(n), s++;
       }
     }
@@ -7748,9 +7806,9 @@ function ue(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, ro
     let f = { instancePath: t, schemaPath: "#/type", keyword: "type", params: { type: "object" }, message: "must be object" };
     e === null ? e = [f] : e.push(f), s++;
   }
-  return ue.errors = e, s === 0;
+  return de.errors = e, s === 0;
 }
-function de(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, rootData: x = p } = {}) {
+function ce(p, { instancePath: t = "", parentData: Z2, parentDataProperty: $, rootData: x = p } = {}) {
   let e = null, s = 0;
   if (p && typeof p == "object" && !Array.isArray(p)) {
     if (p.id === void 0) {
@@ -7797,7 +7855,7 @@ function de(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, ro
       let n = { instancePath: t, schemaPath: "#/required", keyword: "required", params: { missingProperty: "assertions" }, message: "must have required property 'assertions'" };
       e === null ? e = [n] : e.push(n), s++;
     }
-    for (let n in p) if (!E.call(Qe.properties, n)) {
+    for (let n in p) if (!E.call(Me.properties, n)) {
       let d = { instancePath: t, schemaPath: "#/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: n }, message: "must NOT have additional properties" };
       e === null ? e = [d] : e.push(d), s++;
     }
@@ -7910,7 +7968,7 @@ function de(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, ro
     if (p.readiness !== void 0) {
       let n = p.readiness;
       if (!(n === "ready" || n === "blocked" || n === "deferred")) {
-        let d = { instancePath: t + "/readiness", schemaPath: "#/properties/readiness/enum", keyword: "enum", params: { allowedValues: Qe.properties.readiness.enum }, message: "must be equal to one of the allowed values" };
+        let d = { instancePath: t + "/readiness", schemaPath: "#/properties/readiness/enum", keyword: "enum", params: { allowedValues: Me.properties.readiness.enum }, message: "must be equal to one of the allowed values" };
         e === null ? e = [d] : e.push(d), s++;
       }
     }
@@ -7958,7 +8016,7 @@ function de(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, ro
         for (let a = 0; a < d; a++) {
           let i = n[a];
           if (typeof i == "string") {
-            if (!se.test(i)) {
+            if (!te.test(i)) {
               let r = { instancePath: t + "/dependsOn/" + a, schemaPath: "#/properties/dependsOn/items/pattern", keyword: "pattern", params: { pattern: "^([A-Za-z0-9][A-Za-z0-9_-]{0,95}:)?[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^([A-Za-z0-9][A-Za-z0-9_-]{0,95}:)?[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
               e === null ? e = [r] : e.push(r), s++;
             }
@@ -8049,7 +8107,7 @@ function de(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, ro
           e === null ? e = [a] : e.push(a), s++;
         }
         let d = n.length;
-        for (let a = 0; a < d; a++) ue(n[a], { instancePath: t + "/assertions/" + a, parentData: n, parentDataProperty: a, rootData: x }) || (e = e === null ? ue.errors : e.concat(ue.errors), s = e.length);
+        for (let a = 0; a < d; a++) de(n[a], { instancePath: t + "/assertions/" + a, parentData: n, parentDataProperty: a, rootData: x }) || (e = e === null ? de.errors : e.concat(de.errors), s = e.length);
         let l = n.length, u;
         if (l > 1) {
           e: for (; l--; ) for (u = l; u--; ) if (L(n[l], n[u])) {
@@ -8102,9 +8160,9 @@ function de(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, ro
     let n = { instancePath: t, schemaPath: "#/type", keyword: "type", params: { type: "object" }, message: "must be object" };
     e === null ? e = [n] : e.push(n), s++;
   }
-  return de.errors = e, s === 0;
+  return ce.errors = e, s === 0;
 }
-function cs(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, rootData: x = p } = {}) {
+function cs(p, { instancePath: t = "", parentData: Z2, parentDataProperty: $, rootData: x = p } = {}) {
   let e = null, s = 0;
   if (p && typeof p == "object" && !Array.isArray(p)) {
     if (p.contractVersion === void 0) {
@@ -8155,7 +8213,7 @@ function cs(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, ro
       let l = { instancePath: t, schemaPath: "#/required", keyword: "required", params: { missingProperty: "coverage" }, message: "must have required property 'coverage'" };
       e === null ? e = [l] : e.push(l), s++;
     }
-    for (let l in p) if (!E.call(Ae.properties, l)) {
+    for (let l in p) if (!E.call(Ie.properties, l)) {
       let u = { instancePath: t, schemaPath: "#/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: l }, message: "must NOT have additional properties" };
       e === null ? e = [u] : e.push(u), s++;
     }
@@ -8257,7 +8315,7 @@ function cs(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, ro
         if (l.sha256 !== void 0) {
           let u = l.sha256;
           if (typeof u == "string") {
-            if (!le.test(u)) {
+            if (!ue.test(u)) {
               let a = { instancePath: t + "/target/sha256", schemaPath: "#/properties/target/properties/sha256/pattern", keyword: "pattern", params: { pattern: "^[a-f0-9]{64}$" }, message: 'must match pattern "^[a-f0-9]{64}$"' };
               e === null ? e = [a] : e.push(a), s++;
             }
@@ -8427,7 +8485,7 @@ function cs(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, ro
           e === null ? e = [r] : e.push(r), s++;
         }
         let u = l.length;
-        for (let r = 0; r < u; r++) de(l[r], { instancePath: t + "/tests/" + r, parentData: l, parentDataProperty: r, rootData: x }) || (e = e === null ? de.errors : e.concat(de.errors), s = e.length);
+        for (let r = 0; r < u; r++) ce(l[r], { instancePath: t + "/tests/" + r, parentData: l, parentDataProperty: r, rootData: x }) || (e = e === null ? ce.errors : e.concat(ce.errors), s = e.length);
         let a = l.length, i;
         if (a > 1) {
           e: for (; a--; ) for (i = a; i--; ) if (L(l[a], l[i])) {
@@ -8449,7 +8507,7 @@ function cs(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, ro
           e === null ? e = [r] : e.push(r), s++;
         }
         let u = l.length;
-        for (let r = 0; r < u; r++) V(l[r], { instancePath: t + "/gaps/" + r, parentData: l, parentDataProperty: r, rootData: x }) || (e = e === null ? V.errors : e.concat(V.errors), s = e.length);
+        for (let r = 0; r < u; r++) F(l[r], { instancePath: t + "/gaps/" + r, parentData: l, parentDataProperty: r, rootData: x }) || (e = e === null ? F.errors : e.concat(F.errors), s = e.length);
         let a = l.length, i;
         if (a > 1) {
           e: for (; a--; ) for (i = a; i--; ) if (L(l[a], l[i])) {
@@ -8598,7 +8656,7 @@ function cs(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, ro
             if (h.kind !== void 0) {
               let o = h.kind;
               if (!(o === "clarify" || o === "accept_assumption" || o === "defer")) {
-                let m = { instancePath: t + "/decisions/" + r + "/kind", schemaPath: "#/properties/decisions/items/properties/kind/enum", keyword: "enum", params: { allowedValues: Ae.properties.decisions.items.properties.kind.enum }, message: "must be equal to one of the allowed values" };
+                let m = { instancePath: t + "/decisions/" + r + "/kind", schemaPath: "#/properties/decisions/items/properties/kind/enum", keyword: "enum", params: { allowedValues: Ie.properties.decisions.items.properties.kind.enum }, message: "must be equal to one of the allowed values" };
                 e === null ? e = [m] : e.push(m), s++;
               }
             }
@@ -8912,7 +8970,7 @@ function cs(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, ro
             if (h.status !== void 0) {
               let o = h.status;
               if (!(o === "planned" || o === "blocked" || o === "deferred")) {
-                let m = { instancePath: t + "/coverage/" + r + "/status", schemaPath: "#/properties/coverage/items/properties/status/enum", keyword: "enum", params: { allowedValues: Ae.properties.coverage.items.properties.status.enum }, message: "must be equal to one of the allowed values" };
+                let m = { instancePath: t + "/coverage/" + r + "/status", schemaPath: "#/properties/coverage/items/properties/status/enum", keyword: "enum", params: { allowedValues: Ie.properties.coverage.items.properties.status.enum }, message: "must be equal to one of the allowed values" };
                 e === null ? e = [m] : e.push(m), s++;
               }
             }
@@ -8942,7 +9000,7 @@ function cs(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, ro
 }
 var wt = hs;
 var W = { $schema: "http://json-schema.org/draft-07/schema#", $id: "profile.schema.json", type: "object", properties: { contractVersion: { const: "toolkit-2" }, targetId: { $ref: "identifier.schema.json" }, revision: { type: "integer", minimum: 1 }, entryPoints: { type: "array", items: { type: "object", properties: { name: { $ref: "identifier.schema.json" }, kind: { enum: ["url", "command", "value"] }, purpose: { type: "string", minLength: 1 } }, required: ["name", "kind", "purpose"], additionalProperties: false }, minItems: 1, uniqueItems: true }, capabilities: { type: "array", items: { $ref: "identifier.schema.json" }, minItems: 1, uniqueItems: true }, tools: { type: "array", items: { type: "object", properties: { name: { type: "string", minLength: 1 }, kind: { enum: ["cli", "mcp", "skill"] }, purpose: { type: "string", minLength: 1 }, version: { type: "string", minLength: 1 }, executable: { type: "string", minLength: 1 }, reachable: { type: "boolean" } }, required: ["name", "kind", "purpose", "reachable"], additionalProperties: false }, minItems: 0, uniqueItems: true }, authentication: { type: "object", properties: { kind: { enum: ["none", "environment", "browser_session"] }, references: { type: "array", items: { type: "string", minLength: 1 }, minItems: 0, uniqueItems: true } }, required: ["kind", "references"], additionalProperties: false }, allowedOperations: { type: "array", items: { $ref: "identifier.schema.json" }, minItems: 1, uniqueItems: true }, startup: { type: "object", properties: { owner: { enum: ["factory", "checkmate"] }, command: { anyOf: [{ type: "array", items: { type: "string", minLength: 1 }, minItems: 1, uniqueItems: true }, { type: "null" }] } }, required: ["owner", "command"], additionalProperties: false }, cleanup: { type: "string", minLength: 1 }, reset: { type: "object", properties: { owner: { enum: ["checkmate", "environment", "isolation"] }, command: { anyOf: [{ type: "array", items: { type: "string", minLength: 1 }, minItems: 1 }, { type: "null" }] }, cleanup: { anyOf: [{ type: "array", items: { type: "string", minLength: 1 }, minItems: 1 }, { type: "null" }] }, policy: { anyOf: [{ type: "object", properties: { text: { type: "string", minLength: 1 } }, required: ["text"], additionalProperties: false }, { type: "object", properties: { path: { type: "string", minLength: 1 } }, required: ["path"], additionalProperties: false }, { type: "null" }] }, timeoutSeconds: { type: "integer", minimum: 1, maximum: 3600 }, perTest: { type: "boolean" } }, required: ["owner", "command"], additionalProperties: false }, readyForLiveExecution: { type: "boolean" }, explore: { type: "object", properties: { level: { $ref: "test-level.schema.json" }, explorers: { type: "integer", minimum: 1, maximum: 10 } }, additionalProperties: false }, approvals: { type: "object", properties: { plan: { enum: ["required", "none"] }, result: { enum: ["required", "none"] } }, required: ["plan", "result"], additionalProperties: false } }, required: ["contractVersion", "targetId", "revision", "entryPoints", "capabilities", "tools", "authentication", "allowedOperations", "startup", "cleanup", "readyForLiveExecution"], additionalProperties: false };
-function hs(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, rootData: x = p } = {}) {
+function hs(p, { instancePath: t = "", parentData: Z2, parentDataProperty: $, rootData: x = p } = {}) {
   let e = null, s = 0;
   if (p && typeof p == "object" && !Array.isArray(p)) {
     if (p.contractVersion === void 0) {
@@ -9715,7 +9773,7 @@ function hs(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, ro
 }
 var kt = fs;
 var Ws = { $schema: "http://json-schema.org/draft-07/schema#", $id: "response.schema.json", type: "object", properties: { status: { enum: ["completed", "needs_decision", "interrupted", "operational_error", "rejected"] }, subject: { type: "string", minLength: 1 }, reasons: { type: "array", items: { type: "string", minLength: 1 }, minItems: 0, uniqueItems: true } }, required: ["status", "subject", "reasons"], additionalProperties: false };
-function fs(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, rootData: x = p } = {}) {
+function fs(p, { instancePath: t = "", parentData: Z2, parentDataProperty: $, rootData: x = p } = {}) {
   let e = null, s = 0;
   if (p && typeof p == "object" && !Array.isArray(p)) {
     if (p.status === void 0) {
@@ -9801,9 +9859,9 @@ function fs(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, ro
   return fs.errors = e, s === 0;
 }
 var vt = ys;
-var F = { $schema: "http://json-schema.org/draft-07/schema#", $id: "result.schema.json", type: "object", properties: { contractVersion: { const: "toolkit-2" }, runId: { $ref: "identifier.schema.json" }, plan: { type: "object", properties: { planId: { $ref: "identifier.schema.json" }, revision: { type: "integer", minimum: 1 }, sha256: { type: "string", pattern: "^[a-f0-9]{64}$" } }, required: ["planId", "revision", "sha256"], additionalProperties: false }, target: { type: "object", properties: { targetId: { $ref: "identifier.schema.json" }, revision: { type: "integer", minimum: 1 }, sha256: { type: "string", pattern: "^[a-f0-9]{64}$" } }, required: ["targetId", "revision", "sha256"], additionalProperties: false }, instanceId: { $ref: "identifier.schema.json" }, applicationBuild: { $ref: "build.schema.json" }, selectedTestIds: { type: "array", items: { $ref: "identifier.schema.json" }, minItems: 1, uniqueItems: true }, retestOf: { anyOf: [{ $ref: "identifier.schema.json" }, { type: "null" }] }, startedAt: { type: "string", format: "date-time" }, finishedAt: { type: "string", format: "date-time" }, attempts: { type: "integer", minimum: 1 }, completion: { enum: ["completed", "interrupted", "operational_error"] }, completionCause: { enum: ["deadline", "host_stopped", "tool_unavailable", null] }, completionReason: { anyOf: [{ type: "string", minLength: 1 }, { type: "null" }] }, tests: { type: "array", items: { type: "object", properties: { testId: { $ref: "identifier.schema.json" }, outcome: { enum: ["passed", "failed", "inconclusive", "blocked", "not_run", "error"] }, cause: { enum: ["deadline"] }, reason: { anyOf: [{ type: "string", minLength: 1 }, { type: "null" }] }, assertions: { type: "array", items: { type: "object", properties: { assertionId: { $ref: "identifier.schema.json" }, check: { type: "string", minLength: 1 }, checkKind: { enum: ["deterministic", "agent_observation"] }, result: { enum: ["passed", "failed", "inconclusive", "not_checked"] }, observed: { anyOf: [{ type: "string", minLength: 1 }, { type: "null" }] }, reason: { anyOf: [{ type: "string", minLength: 1 }, { type: "null" }] }, evidenceIds: { type: "array", items: { $ref: "identifier.schema.json" }, minItems: 0, uniqueItems: true } }, required: ["assertionId", "check", "checkKind", "result", "observed", "reason", "evidenceIds"], additionalProperties: false }, minItems: 0, uniqueItems: true } }, required: ["testId", "outcome", "reason", "assertions"], additionalProperties: false }, minItems: 1, uniqueItems: true }, findings: { type: "array", items: { type: "object", if: { properties: { type: { const: "defect" } } }, then: { properties: { evidenceIds: { type: "array", minItems: 1 }, testIds: { type: "array", minItems: 1 }, assertionIds: { type: "array", minItems: 1 } } }, properties: { id: { $ref: "identifier.schema.json" }, type: { enum: ["defect", "potential_issue"] }, severity: { enum: ["low", "medium", "high", "critical"] }, requirementIds: { type: "array", items: { $ref: "identifier.schema.json" }, minItems: 0, uniqueItems: true }, title: { type: "string", minLength: 1 }, expected: { type: "string", minLength: 1 }, observed: { type: "string", minLength: 1 }, reproduction: { type: "array", items: { type: "string", minLength: 1 }, minItems: 1, uniqueItems: true }, evidenceIds: { type: "array", items: { $ref: "identifier.schema.json" }, minItems: 0, uniqueItems: true }, testIds: { type: "array", items: { $ref: "identifier.schema.json" }, minItems: 0, uniqueItems: true }, assertionIds: { type: "array", items: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}\\.[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 0, uniqueItems: true }, metadata: { $ref: "plan.schema.json#/definitions/metadata" } }, required: ["id", "type", "severity", "requirementIds", "title", "expected", "observed", "reproduction", "evidenceIds", "testIds", "assertionIds"], additionalProperties: false }, minItems: 0, uniqueItems: true }, newGaps: { type: "array", items: { $ref: "gap.schema.json" }, minItems: 0, uniqueItems: true }, evidence: { type: "array", items: { type: "object", properties: { id: { $ref: "identifier.schema.json" }, testId: { $ref: "identifier.schema.json" }, assertionId: { anyOf: [{ $ref: "identifier.schema.json" }, { type: "null" }] }, kind: { enum: ["observation", "screenshot", "view_hierarchy", "recording", "http_exchange", "trace"] }, name: { type: "string", minLength: 1 }, mediaType: { type: "string", minLength: 1 }, sha256: { type: "string", pattern: "^[a-f0-9]{64}$" }, size: { type: "integer", minimum: 0 } }, required: ["id", "testId", "assertionId", "kind", "name", "mediaType", "sha256", "size"], additionalProperties: false }, minItems: 0, uniqueItems: true }, cleanup: { type: "object", properties: { status: { enum: ["completed", "failed", "not_applicable"] }, reason: { type: "string", minLength: 1 } }, required: ["status", "reason"], additionalProperties: false }, coverage: { type: "object", properties: { status: { enum: ["complete", "partial", "not_executed"] }, requirements: { type: "array", items: { type: "object", properties: { requirementId: { $ref: "identifier.schema.json" }, status: { enum: ["tested", "deferred", "uncovered"] }, testIds: { type: "array", items: { $ref: "identifier.schema.json" }, minItems: 0, uniqueItems: true }, reason: { anyOf: [{ type: "string", minLength: 1 }, { type: "null" }] } }, required: ["requirementId", "status", "testIds", "reason"], additionalProperties: false }, minItems: 1, uniqueItems: true } }, required: ["status", "requirements"], additionalProperties: false } }, required: ["contractVersion", "runId", "plan", "target", "instanceId", "applicationBuild", "selectedTestIds", "retestOf", "startedAt", "finishedAt", "attempts", "completion", "tests", "findings", "newGaps", "evidence", "cleanup", "coverage"], additionalProperties: false };
-var Ye = qe().fullFormats["date-time"];
-function ys(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, rootData: x = p } = {}) {
+var V = { $schema: "http://json-schema.org/draft-07/schema#", $id: "result.schema.json", type: "object", properties: { contractVersion: { const: "toolkit-2" }, runId: { $ref: "identifier.schema.json" }, plan: { type: "object", properties: { planId: { $ref: "identifier.schema.json" }, revision: { type: "integer", minimum: 1 }, sha256: { type: "string", pattern: "^[a-f0-9]{64}$" } }, required: ["planId", "revision", "sha256"], additionalProperties: false }, target: { type: "object", properties: { targetId: { $ref: "identifier.schema.json" }, revision: { type: "integer", minimum: 1 }, sha256: { type: "string", pattern: "^[a-f0-9]{64}$" } }, required: ["targetId", "revision", "sha256"], additionalProperties: false }, instanceId: { $ref: "identifier.schema.json" }, applicationBuild: { $ref: "build.schema.json" }, selectedTestIds: { type: "array", items: { $ref: "identifier.schema.json" }, minItems: 1, uniqueItems: true }, retestOf: { anyOf: [{ $ref: "identifier.schema.json" }, { type: "null" }] }, startedAt: { type: "string", format: "date-time" }, finishedAt: { type: "string", format: "date-time" }, attempts: { type: "integer", minimum: 1 }, completion: { enum: ["completed", "interrupted", "operational_error"] }, completionCause: { enum: ["deadline", "host_stopped", "tool_unavailable", null] }, completionReason: { anyOf: [{ type: "string", minLength: 1 }, { type: "null" }] }, tests: { type: "array", items: { type: "object", properties: { testId: { $ref: "identifier.schema.json" }, outcome: { enum: ["passed", "failed", "inconclusive", "blocked", "not_run", "error"] }, cause: { enum: ["deadline"] }, reason: { anyOf: [{ type: "string", minLength: 1 }, { type: "null" }] }, assertions: { type: "array", items: { type: "object", properties: { assertionId: { $ref: "identifier.schema.json" }, check: { type: "string", minLength: 1 }, checkKind: { enum: ["deterministic", "agent_observation"] }, result: { enum: ["passed", "failed", "inconclusive", "not_checked"] }, observed: { anyOf: [{ type: "string", minLength: 1 }, { type: "null" }] }, reason: { anyOf: [{ type: "string", minLength: 1 }, { type: "null" }] }, evidenceIds: { type: "array", items: { $ref: "identifier.schema.json" }, minItems: 0, uniqueItems: true } }, required: ["assertionId", "check", "checkKind", "result", "observed", "reason", "evidenceIds"], additionalProperties: false }, minItems: 0, uniqueItems: true } }, required: ["testId", "outcome", "reason", "assertions"], additionalProperties: false }, minItems: 1, uniqueItems: true }, findings: { type: "array", items: { type: "object", if: { properties: { type: { const: "defect" } } }, then: { properties: { evidenceIds: { type: "array", minItems: 1 }, testIds: { type: "array", minItems: 1 }, assertionIds: { type: "array", minItems: 1 } } }, properties: { id: { $ref: "identifier.schema.json" }, type: { enum: ["defect", "potential_issue"] }, severity: { enum: ["low", "medium", "high", "critical"] }, requirementIds: { type: "array", items: { $ref: "identifier.schema.json" }, minItems: 0, uniqueItems: true }, title: { type: "string", minLength: 1 }, expected: { type: "string", minLength: 1 }, observed: { type: "string", minLength: 1 }, reproduction: { type: "array", items: { type: "string", minLength: 1 }, minItems: 1, uniqueItems: true }, evidenceIds: { type: "array", items: { $ref: "identifier.schema.json" }, minItems: 0, uniqueItems: true }, testIds: { type: "array", items: { $ref: "identifier.schema.json" }, minItems: 0, uniqueItems: true }, assertionIds: { type: "array", items: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}\\.[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, minItems: 0, uniqueItems: true }, metadata: { $ref: "plan.schema.json#/definitions/metadata" } }, required: ["id", "type", "severity", "requirementIds", "title", "expected", "observed", "reproduction", "evidenceIds", "testIds", "assertionIds"], additionalProperties: false }, minItems: 0, uniqueItems: true }, newGaps: { type: "array", items: { $ref: "gap.schema.json" }, minItems: 0, uniqueItems: true }, evidence: { type: "array", items: { type: "object", properties: { id: { $ref: "identifier.schema.json" }, testId: { $ref: "identifier.schema.json" }, assertionId: { anyOf: [{ $ref: "identifier.schema.json" }, { type: "null" }] }, kind: { type: "string", pattern: "^[a-z][a-z0-9_]{0,39}$" }, name: { type: "string", minLength: 1 }, mediaType: { type: "string", minLength: 1 }, sha256: { type: "string", pattern: "^[a-f0-9]{64}$" }, size: { type: "integer", minimum: 0 } }, required: ["id", "testId", "assertionId", "kind", "name", "mediaType", "sha256", "size"], additionalProperties: false }, minItems: 0, uniqueItems: true }, cleanup: { type: "object", properties: { status: { enum: ["completed", "failed", "not_applicable"] }, reason: { type: "string", minLength: 1 } }, required: ["status", "reason"], additionalProperties: false }, coverage: { type: "object", properties: { status: { enum: ["complete", "partial", "not_executed"] }, requirements: { type: "array", items: { type: "object", properties: { requirementId: { $ref: "identifier.schema.json" }, status: { enum: ["tested", "deferred", "uncovered"] }, testIds: { type: "array", items: { $ref: "identifier.schema.json" }, minItems: 0, uniqueItems: true }, reason: { anyOf: [{ type: "string", minLength: 1 }, { type: "null" }] } }, required: ["requirementId", "status", "testIds", "reason"], additionalProperties: false }, minItems: 1, uniqueItems: true } }, required: ["status", "requirements"], additionalProperties: false } }, required: ["contractVersion", "runId", "plan", "target", "instanceId", "applicationBuild", "selectedTestIds", "retestOf", "startedAt", "finishedAt", "attempts", "completion", "tests", "findings", "newGaps", "evidence", "cleanup", "coverage"], additionalProperties: false };
+var Qe = qe().fullFormats["date-time"];
+function ys(p, { instancePath: t = "", parentData: Z2, parentDataProperty: $, rootData: x = p } = {}) {
   let e = null, s = 0;
   if (p && typeof p == "object" && !Array.isArray(p)) {
     if (p.contractVersion === void 0) {
@@ -9878,7 +9936,7 @@ function ys(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, ro
       let o = { instancePath: t, schemaPath: "#/required", keyword: "required", params: { missingProperty: "coverage" }, message: "must have required property 'coverage'" };
       e === null ? e = [o] : e.push(o), s++;
     }
-    for (let o in p) if (!E.call(F.properties, o)) {
+    for (let o in p) if (!E.call(V.properties, o)) {
       let m = { instancePath: t, schemaPath: "#/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: o }, message: "must NOT have additional properties" };
       e === null ? e = [m] : e.push(m), s++;
     }
@@ -9943,7 +10001,7 @@ function ys(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, ro
         if (o.sha256 !== void 0) {
           let m = o.sha256;
           if (typeof m == "string") {
-            if (!le.test(m)) {
+            if (!ue.test(m)) {
               let c = { instancePath: t + "/plan/sha256", schemaPath: "#/properties/plan/properties/sha256/pattern", keyword: "pattern", params: { pattern: "^[a-f0-9]{64}$" }, message: 'must match pattern "^[a-f0-9]{64}$"' };
               e === null ? e = [c] : e.push(c), s++;
             }
@@ -10002,7 +10060,7 @@ function ys(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, ro
         if (o.sha256 !== void 0) {
           let m = o.sha256;
           if (typeof m == "string") {
-            if (!le.test(m)) {
+            if (!ue.test(m)) {
               let c = { instancePath: t + "/target/sha256", schemaPath: "#/properties/target/properties/sha256/pattern", keyword: "pattern", params: { pattern: "^[a-f0-9]{64}$" }, message: 'must match pattern "^[a-f0-9]{64}$"' };
               e === null ? e = [c] : e.push(c), s++;
             }
@@ -10107,7 +10165,7 @@ function ys(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, ro
     if (p.startedAt !== void 0) {
       let o = p.startedAt;
       if (typeof o == "string") {
-        if (!Ye.validate(o)) {
+        if (!Qe.validate(o)) {
           let m = { instancePath: t + "/startedAt", schemaPath: "#/properties/startedAt/format", keyword: "format", params: { format: "date-time" }, message: 'must match format "date-time"' };
           e === null ? e = [m] : e.push(m), s++;
         }
@@ -10119,7 +10177,7 @@ function ys(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, ro
     if (p.finishedAt !== void 0) {
       let o = p.finishedAt;
       if (typeof o == "string") {
-        if (!Ye.validate(o)) {
+        if (!Qe.validate(o)) {
           let m = { instancePath: t + "/finishedAt", schemaPath: "#/properties/finishedAt/format", keyword: "format", params: { format: "date-time" }, message: 'must match format "date-time"' };
           e === null ? e = [m] : e.push(m), s++;
         }
@@ -10142,14 +10200,14 @@ function ys(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, ro
     if (p.completion !== void 0) {
       let o = p.completion;
       if (!(o === "completed" || o === "interrupted" || o === "operational_error")) {
-        let m = { instancePath: t + "/completion", schemaPath: "#/properties/completion/enum", keyword: "enum", params: { allowedValues: F.properties.completion.enum }, message: "must be equal to one of the allowed values" };
+        let m = { instancePath: t + "/completion", schemaPath: "#/properties/completion/enum", keyword: "enum", params: { allowedValues: V.properties.completion.enum }, message: "must be equal to one of the allowed values" };
         e === null ? e = [m] : e.push(m), s++;
       }
     }
     if (p.completionCause !== void 0) {
       let o = p.completionCause;
       if (!(o === "deadline" || o === "host_stopped" || o === "tool_unavailable" || o === null)) {
-        let m = { instancePath: t + "/completionCause", schemaPath: "#/properties/completionCause/enum", keyword: "enum", params: { allowedValues: F.properties.completionCause.enum }, message: "must be equal to one of the allowed values" };
+        let m = { instancePath: t + "/completionCause", schemaPath: "#/properties/completionCause/enum", keyword: "enum", params: { allowedValues: V.properties.completionCause.enum }, message: "must be equal to one of the allowed values" };
         e === null ? e = [m] : e.push(m), s++;
       }
     }
@@ -10226,12 +10284,12 @@ function ys(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, ro
             if (v.outcome !== void 0) {
               let I = v.outcome;
               if (!(I === "passed" || I === "failed" || I === "inconclusive" || I === "blocked" || I === "not_run" || I === "error")) {
-                let P2 = { instancePath: t + "/tests/" + y + "/outcome", schemaPath: "#/properties/tests/items/properties/outcome/enum", keyword: "enum", params: { allowedValues: F.properties.tests.items.properties.outcome.enum }, message: "must be equal to one of the allowed values" };
+                let P2 = { instancePath: t + "/tests/" + y + "/outcome", schemaPath: "#/properties/tests/items/properties/outcome/enum", keyword: "enum", params: { allowedValues: V.properties.tests.items.properties.outcome.enum }, message: "must be equal to one of the allowed values" };
                 e === null ? e = [P2] : e.push(P2), s++;
               }
             }
             if (v.cause !== void 0 && v.cause !== "deadline") {
-              let I = { instancePath: t + "/tests/" + y + "/cause", schemaPath: "#/properties/tests/items/properties/cause/enum", keyword: "enum", params: { allowedValues: F.properties.tests.items.properties.cause.enum }, message: "must be equal to one of the allowed values" };
+              let I = { instancePath: t + "/tests/" + y + "/cause", schemaPath: "#/properties/tests/items/properties/cause/enum", keyword: "enum", params: { allowedValues: V.properties.tests.items.properties.cause.enum }, message: "must be equal to one of the allowed values" };
               e === null ? e = [I] : e.push(I), s++;
             }
             if (v.reason !== void 0) {
@@ -10331,19 +10389,19 @@ function ys(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, ro
                     if (A.checkKind !== void 0) {
                       let _ = A.checkKind;
                       if (!(_ === "deterministic" || _ === "agent_observation")) {
-                        let j = { instancePath: t + "/tests/" + y + "/assertions/" + k + "/checkKind", schemaPath: "#/properties/tests/items/properties/assertions/items/properties/checkKind/enum", keyword: "enum", params: { allowedValues: F.properties.tests.items.properties.assertions.items.properties.checkKind.enum }, message: "must be equal to one of the allowed values" };
+                        let j = { instancePath: t + "/tests/" + y + "/assertions/" + k + "/checkKind", schemaPath: "#/properties/tests/items/properties/assertions/items/properties/checkKind/enum", keyword: "enum", params: { allowedValues: V.properties.tests.items.properties.assertions.items.properties.checkKind.enum }, message: "must be equal to one of the allowed values" };
                         e === null ? e = [j] : e.push(j), s++;
                       }
                     }
                     if (A.result !== void 0) {
                       let _ = A.result;
                       if (!(_ === "passed" || _ === "failed" || _ === "inconclusive" || _ === "not_checked")) {
-                        let j = { instancePath: t + "/tests/" + y + "/assertions/" + k + "/result", schemaPath: "#/properties/tests/items/properties/assertions/items/properties/result/enum", keyword: "enum", params: { allowedValues: F.properties.tests.items.properties.assertions.items.properties.result.enum }, message: "must be equal to one of the allowed values" };
+                        let j = { instancePath: t + "/tests/" + y + "/assertions/" + k + "/result", schemaPath: "#/properties/tests/items/properties/assertions/items/properties/result/enum", keyword: "enum", params: { allowedValues: V.properties.tests.items.properties.assertions.items.properties.result.enum }, message: "must be equal to one of the allowed values" };
                         e === null ? e = [j] : e.push(j), s++;
                       }
                     }
                     if (A.observed !== void 0) {
-                      let _ = A.observed, j = s, $ = false, T = s;
+                      let _ = A.observed, j = s, z = false, T = s;
                       if (typeof _ == "string") {
                         if (q(_) < 1) {
                           let S2 = { instancePath: t + "/tests/" + y + "/assertions/" + k + "/observed", schemaPath: "#/properties/tests/items/properties/assertions/items/properties/observed/anyOf/0/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
@@ -10354,23 +10412,23 @@ function ys(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, ro
                         e === null ? e = [S2] : e.push(S2), s++;
                       }
                       var l = T === s;
-                      if ($ = $ || l, !$) {
+                      if (z = z || l, !z) {
                         let S2 = s;
                         if (_ !== null) {
                           let R = { instancePath: t + "/tests/" + y + "/assertions/" + k + "/observed", schemaPath: "#/properties/tests/items/properties/assertions/items/properties/observed/anyOf/1/type", keyword: "type", params: { type: "null" }, message: "must be null" };
                           e === null ? e = [R] : e.push(R), s++;
                         }
                         var l = S2 === s;
-                        $ = $ || l;
+                        z = z || l;
                       }
-                      if ($) s = j, e !== null && (j ? e.length = j : e = null);
+                      if (z) s = j, e !== null && (j ? e.length = j : e = null);
                       else {
                         let S2 = { instancePath: t + "/tests/" + y + "/assertions/" + k + "/observed", schemaPath: "#/properties/tests/items/properties/assertions/items/properties/observed/anyOf", keyword: "anyOf", params: {}, message: "must match a schema in anyOf" };
                         e === null ? e = [S2] : e.push(S2), s++;
                       }
                     }
                     if (A.reason !== void 0) {
-                      let _ = A.reason, j = s, $ = false, T = s;
+                      let _ = A.reason, j = s, z = false, T = s;
                       if (typeof _ == "string") {
                         if (q(_) < 1) {
                           let S2 = { instancePath: t + "/tests/" + y + "/assertions/" + k + "/reason", schemaPath: "#/properties/tests/items/properties/assertions/items/properties/reason/anyOf/0/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
@@ -10381,16 +10439,16 @@ function ys(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, ro
                         e === null ? e = [S2] : e.push(S2), s++;
                       }
                       var u = T === s;
-                      if ($ = $ || u, !$) {
+                      if (z = z || u, !z) {
                         let S2 = s;
                         if (_ !== null) {
                           let R = { instancePath: t + "/tests/" + y + "/assertions/" + k + "/reason", schemaPath: "#/properties/tests/items/properties/assertions/items/properties/reason/anyOf/1/type", keyword: "type", params: { type: "null" }, message: "must be null" };
                           e === null ? e = [R] : e.push(R), s++;
                         }
                         var u = S2 === s;
-                        $ = $ || u;
+                        z = z || u;
                       }
-                      if ($) s = j, e !== null && (j ? e.length = j : e = null);
+                      if (z) s = j, e !== null && (j ? e.length = j : e = null);
                       else {
                         let S2 = { instancePath: t + "/tests/" + y + "/assertions/" + k + "/reason", schemaPath: "#/properties/tests/items/properties/assertions/items/properties/reason/anyOf", keyword: "anyOf", params: {}, message: "must match a schema in anyOf" };
                         e === null ? e = [S2] : e.push(S2), s++;
@@ -10405,9 +10463,9 @@ function ys(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, ro
                         }
                         let j = _.length;
                         for (let S2 = 0; S2 < j; S2++) {
-                          let Oe = _[S2];
-                          if (typeof Oe == "string") {
-                            if (!O.test(Oe)) {
+                          let _e = _[S2];
+                          if (typeof _e == "string") {
+                            if (!O.test(_e)) {
                               let R = { instancePath: t + "/tests/" + y + "/assertions/" + k + "/evidenceIds/" + S2, schemaPath: "identifier.schema.json/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
                               e === null ? e = [R] : e.push(R), s++;
                             }
@@ -10416,10 +10474,10 @@ function ys(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, ro
                             e === null ? e = [R] : e.push(R), s++;
                           }
                         }
-                        let $ = _.length, T;
-                        if ($ > 1) {
-                          e: for (; $--; ) for (T = $; T--; ) if (L(_[$], _[T])) {
-                            let S2 = { instancePath: t + "/tests/" + y + "/assertions/" + k + "/evidenceIds", schemaPath: "#/properties/tests/items/properties/assertions/items/properties/evidenceIds/uniqueItems", keyword: "uniqueItems", params: { i: $, j: T }, message: "must NOT have duplicate items (items ## " + T + " and " + $ + " are identical)" };
+                        let z = _.length, T;
+                        if (z > 1) {
+                          e: for (; z--; ) for (T = z; T--; ) if (L(_[z], _[T])) {
+                            let S2 = { instancePath: t + "/tests/" + y + "/assertions/" + k + "/evidenceIds", schemaPath: "#/properties/tests/items/properties/assertions/items/properties/evidenceIds/uniqueItems", keyword: "uniqueItems", params: { i: z, j: T }, message: "must NOT have duplicate items (items ## " + T + " and " + z + " are identical)" };
                             e === null ? e = [S2] : e.push(S2), s++;
                             break e;
                           }
@@ -10572,7 +10630,7 @@ function ys(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, ro
               let w = { instancePath: t + "/findings/" + y, schemaPath: "#/properties/findings/items/required", keyword: "required", params: { missingProperty: "assertionIds" }, message: "must have required property 'assertionIds'" };
               e === null ? e = [w] : e.push(w), s++;
             }
-            for (let w in v) if (!E.call(F.properties.findings.items.properties, w)) {
+            for (let w in v) if (!E.call(V.properties.findings.items.properties, w)) {
               let k = { instancePath: t + "/findings/" + y, schemaPath: "#/properties/findings/items/additionalProperties", keyword: "additionalProperties", params: { additionalProperty: w }, message: "must NOT have additional properties" };
               e === null ? e = [k] : e.push(k), s++;
             }
@@ -10591,14 +10649,14 @@ function ys(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, ro
             if (v.type !== void 0) {
               let w = v.type;
               if (!(w === "defect" || w === "potential_issue")) {
-                let k = { instancePath: t + "/findings/" + y + "/type", schemaPath: "#/properties/findings/items/properties/type/enum", keyword: "enum", params: { allowedValues: F.properties.findings.items.properties.type.enum }, message: "must be equal to one of the allowed values" };
+                let k = { instancePath: t + "/findings/" + y + "/type", schemaPath: "#/properties/findings/items/properties/type/enum", keyword: "enum", params: { allowedValues: V.properties.findings.items.properties.type.enum }, message: "must be equal to one of the allowed values" };
                 e === null ? e = [k] : e.push(k), s++;
               }
             }
             if (v.severity !== void 0) {
               let w = v.severity;
               if (!(w === "low" || w === "medium" || w === "high" || w === "critical")) {
-                let k = { instancePath: t + "/findings/" + y + "/severity", schemaPath: "#/properties/findings/items/properties/severity/enum", keyword: "enum", params: { allowedValues: F.properties.findings.items.properties.severity.enum }, message: "must be equal to one of the allowed values" };
+                let k = { instancePath: t + "/findings/" + y + "/severity", schemaPath: "#/properties/findings/items/properties/severity/enum", keyword: "enum", params: { allowedValues: V.properties.findings.items.properties.severity.enum }, message: "must be equal to one of the allowed values" };
                 e === null ? e = [k] : e.push(k), s++;
               }
             }
@@ -10611,9 +10669,9 @@ function ys(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, ro
                 }
                 let k = w.length;
                 for (let j = 0; j < k; j++) {
-                  let $ = w[j];
-                  if (typeof $ == "string") {
-                    if (!O.test($)) {
+                  let z = w[j];
+                  if (typeof z == "string") {
+                    if (!O.test(z)) {
                       let T = { instancePath: t + "/findings/" + y + "/requirementIds/" + j, schemaPath: "identifier.schema.json/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
                       e === null ? e = [T] : e.push(T), s++;
                     }
@@ -10680,9 +10738,9 @@ function ys(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, ro
                 }
                 let k = w.length;
                 for (let j = 0; j < k; j++) {
-                  let $ = w[j];
-                  if (typeof $ == "string") {
-                    if (q($) < 1) {
+                  let z = w[j];
+                  if (typeof z == "string") {
+                    if (q(z) < 1) {
                       let T = { instancePath: t + "/findings/" + y + "/reproduction/" + j, schemaPath: "#/properties/findings/items/properties/reproduction/items/minLength", keyword: "minLength", params: { limit: 1 }, message: "must NOT have fewer than 1 characters" };
                       e === null ? e = [T] : e.push(T), s++;
                     }
@@ -10695,15 +10753,15 @@ function ys(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, ro
                 if (A > 1) {
                   let j = {};
                   for (; A--; ) {
-                    let $ = w[A];
-                    if (typeof $ == "string") {
-                      if (typeof j[$] == "number") {
-                        _ = j[$];
+                    let z = w[A];
+                    if (typeof z == "string") {
+                      if (typeof j[z] == "number") {
+                        _ = j[z];
                         let T = { instancePath: t + "/findings/" + y + "/reproduction", schemaPath: "#/properties/findings/items/properties/reproduction/uniqueItems", keyword: "uniqueItems", params: { i: A, j: _ }, message: "must NOT have duplicate items (items ## " + _ + " and " + A + " are identical)" };
                         e === null ? e = [T] : e.push(T), s++;
                         break;
                       }
-                      j[$] = A;
+                      j[z] = A;
                     }
                   }
                 }
@@ -10721,9 +10779,9 @@ function ys(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, ro
                 }
                 let k = w.length;
                 for (let j = 0; j < k; j++) {
-                  let $ = w[j];
-                  if (typeof $ == "string") {
-                    if (!O.test($)) {
+                  let z = w[j];
+                  if (typeof z == "string") {
+                    if (!O.test(z)) {
                       let T = { instancePath: t + "/findings/" + y + "/evidenceIds/" + j, schemaPath: "identifier.schema.json/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
                       e === null ? e = [T] : e.push(T), s++;
                     }
@@ -10754,9 +10812,9 @@ function ys(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, ro
                 }
                 let k = w.length;
                 for (let j = 0; j < k; j++) {
-                  let $ = w[j];
-                  if (typeof $ == "string") {
-                    if (!O.test($)) {
+                  let z = w[j];
+                  if (typeof z == "string") {
+                    if (!O.test(z)) {
                       let T = { instancePath: t + "/findings/" + y + "/testIds/" + j, schemaPath: "identifier.schema.json/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
                       e === null ? e = [T] : e.push(T), s++;
                     }
@@ -10787,9 +10845,9 @@ function ys(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, ro
                 }
                 let k = w.length;
                 for (let j = 0; j < k; j++) {
-                  let $ = w[j];
-                  if (typeof $ == "string") {
-                    if (!Xe.test($)) {
+                  let z = w[j];
+                  if (typeof z == "string") {
+                    if (!Xe.test(z)) {
                       let T = { instancePath: t + "/findings/" + y + "/assertionIds/" + j, schemaPath: "#/properties/findings/items/properties/assertionIds/items/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}\\.[A-Za-z0-9][A-Za-z0-9_-]{0,95}$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}\\.[A-Za-z0-9][A-Za-z0-9_-]{0,95}$"' };
                       e === null ? e = [T] : e.push(T), s++;
                     }
@@ -10802,15 +10860,15 @@ function ys(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, ro
                 if (A > 1) {
                   let j = {};
                   for (; A--; ) {
-                    let $ = w[A];
-                    if (typeof $ == "string") {
-                      if (typeof j[$] == "number") {
-                        _ = j[$];
+                    let z = w[A];
+                    if (typeof z == "string") {
+                      if (typeof j[z] == "number") {
+                        _ = j[z];
                         let T = { instancePath: t + "/findings/" + y + "/assertionIds", schemaPath: "#/properties/findings/items/properties/assertionIds/uniqueItems", keyword: "uniqueItems", params: { i: A, j: _ }, message: "must NOT have duplicate items (items ## " + _ + " and " + A + " are identical)" };
                         e === null ? e = [T] : e.push(T), s++;
                         break;
                       }
-                      j[$] = A;
+                      j[z] = A;
                     }
                   }
                 }
@@ -10880,7 +10938,7 @@ function ys(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, ro
           e === null ? e = [y] : e.push(y), s++;
         }
         let m = o.length;
-        for (let y = 0; y < m; y++) V(o[y], { instancePath: t + "/newGaps/" + y, parentData: o, parentDataProperty: y, rootData: x }) || (e = e === null ? V.errors : e.concat(V.errors), s = e.length);
+        for (let y = 0; y < m; y++) F(o[y], { instancePath: t + "/newGaps/" + y, parentData: o, parentDataProperty: y, rootData: x }) || (e = e === null ? F.errors : e.concat(F.errors), s = e.length);
         let c = o.length, g;
         if (c > 1) {
           e: for (; c--; ) for (g = c; g--; ) if (L(o[c], o[g])) {
@@ -10994,8 +11052,13 @@ function ys(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, ro
             }
             if (v.kind !== void 0) {
               let I = v.kind;
-              if (!(I === "observation" || I === "screenshot" || I === "view_hierarchy" || I === "recording" || I === "http_exchange" || I === "trace")) {
-                let P2 = { instancePath: t + "/evidence/" + y + "/kind", schemaPath: "#/properties/evidence/items/properties/kind/enum", keyword: "enum", params: { allowedValues: F.properties.evidence.items.properties.kind.enum }, message: "must be equal to one of the allowed values" };
+              if (typeof I == "string") {
+                if (!Q.test(I)) {
+                  let P2 = { instancePath: t + "/evidence/" + y + "/kind", schemaPath: "#/properties/evidence/items/properties/kind/pattern", keyword: "pattern", params: { pattern: "^[a-z][a-z0-9_]{0,39}$" }, message: 'must match pattern "^[a-z][a-z0-9_]{0,39}$"' };
+                  e === null ? e = [P2] : e.push(P2), s++;
+                }
+              } else {
+                let P2 = { instancePath: t + "/evidence/" + y + "/kind", schemaPath: "#/properties/evidence/items/properties/kind/type", keyword: "type", params: { type: "string" }, message: "must be string" };
                 e === null ? e = [P2] : e.push(P2), s++;
               }
             }
@@ -11026,7 +11089,7 @@ function ys(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, ro
             if (v.sha256 !== void 0) {
               let I = v.sha256;
               if (typeof I == "string") {
-                if (!le.test(I)) {
+                if (!ue.test(I)) {
                   let P2 = { instancePath: t + "/evidence/" + y + "/sha256", schemaPath: "#/properties/evidence/items/properties/sha256/pattern", keyword: "pattern", params: { pattern: "^[a-f0-9]{64}$" }, message: 'must match pattern "^[a-f0-9]{64}$"' };
                   e === null ? e = [P2] : e.push(P2), s++;
                 }
@@ -11082,7 +11145,7 @@ function ys(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, ro
         if (o.status !== void 0) {
           let m = o.status;
           if (!(m === "completed" || m === "failed" || m === "not_applicable")) {
-            let c = { instancePath: t + "/cleanup/status", schemaPath: "#/properties/cleanup/properties/status/enum", keyword: "enum", params: { allowedValues: F.properties.cleanup.properties.status.enum }, message: "must be equal to one of the allowed values" };
+            let c = { instancePath: t + "/cleanup/status", schemaPath: "#/properties/cleanup/properties/status/enum", keyword: "enum", params: { allowedValues: V.properties.cleanup.properties.status.enum }, message: "must be equal to one of the allowed values" };
             e === null ? e = [c] : e.push(c), s++;
           }
         }
@@ -11121,7 +11184,7 @@ function ys(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, ro
         if (o.status !== void 0) {
           let m = o.status;
           if (!(m === "complete" || m === "partial" || m === "not_executed")) {
-            let c = { instancePath: t + "/coverage/status", schemaPath: "#/properties/coverage/properties/status/enum", keyword: "enum", params: { allowedValues: F.properties.coverage.properties.status.enum }, message: "must be equal to one of the allowed values" };
+            let c = { instancePath: t + "/coverage/status", schemaPath: "#/properties/coverage/properties/status/enum", keyword: "enum", params: { allowedValues: V.properties.coverage.properties.status.enum }, message: "must be equal to one of the allowed values" };
             e === null ? e = [c] : e.push(c), s++;
           }
         }
@@ -11171,7 +11234,7 @@ function ys(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, ro
                 if (I.status !== void 0) {
                   let P2 = I.status;
                   if (!(P2 === "tested" || P2 === "deferred" || P2 === "uncovered")) {
-                    let b = { instancePath: t + "/coverage/requirements/" + v + "/status", schemaPath: "#/properties/coverage/properties/requirements/items/properties/status/enum", keyword: "enum", params: { allowedValues: F.properties.coverage.properties.requirements.items.properties.status.enum }, message: "must be equal to one of the allowed values" };
+                    let b = { instancePath: t + "/coverage/requirements/" + v + "/status", schemaPath: "#/properties/coverage/properties/requirements/items/properties/status/enum", keyword: "enum", params: { allowedValues: V.properties.coverage.properties.requirements.items.properties.status.enum }, message: "must be equal to one of the allowed values" };
                     e === null ? e = [b] : e.push(b), s++;
                   }
                 }
@@ -11265,10 +11328,10 @@ function ys(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, ro
   return ys.errors = e, s === 0;
 }
 var bt = gs;
-function gs(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, rootData: x = p } = {}) {
+function gs(p, { instancePath: t = "", parentData: Z2, parentDataProperty: $, rootData: x = p } = {}) {
   let e = null, s = 0;
   if (typeof p == "string") {
-    if (!re.test(p)) {
+    if (!ie.test(p)) {
       let f = { instancePath: t, schemaPath: "#/pattern", keyword: "pattern", params: { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}(@[1-9][0-9]*)?$" }, message: 'must match pattern "^[A-Za-z0-9][A-Za-z0-9_-]{0,95}(@[1-9][0-9]*)?$"' };
       e === null ? e = [f] : e.push(f), s++;
     }
@@ -11279,7 +11342,7 @@ function gs(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, ro
   return gs.errors = e, s === 0;
 }
 var qt = Ps;
-function Ps(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, rootData: x = p } = {}) {
+function Ps(p, { instancePath: t = "", parentData: Z2, parentDataProperty: $, rootData: x = p } = {}) {
   let e = null, s = 0;
   if (!(p === "smoke" || p === "normal" || p === "deep")) {
     let f = { instancePath: t, schemaPath: "#/enum", keyword: "enum", params: { allowedValues: he.enum }, message: "must be equal to one of the allowed values" };
@@ -11288,7 +11351,7 @@ function Ps(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, ro
   return Ps.errors = e, s === 0;
 }
 var jt = ws;
-function ws(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, rootData: x = p } = {}) {
+function ws(p, { instancePath: t = "", parentData: Z2, parentDataProperty: $, rootData: x = p } = {}) {
   let e = null, s = 0;
   if (typeof p == "string") {
     if (!N.test(p)) {
@@ -11302,7 +11365,7 @@ function ws(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, ro
   return ws.errors = e, s === 0;
 }
 var It = ks;
-function ks(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, rootData: x = p } = {}) {
+function ks(p, { instancePath: t = "", parentData: Z2, parentDataProperty: $, rootData: x = p } = {}) {
   let e = null, s = 0;
   if (p && typeof p == "object" && !Array.isArray(p)) {
     if (p.id === void 0) {
@@ -11356,7 +11419,7 @@ function ks(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, ro
   return ks.errors = e, s === 0;
 }
 var _t = vs;
-function vs(p, { instancePath: t = "", parentData: Z2, parentDataProperty: z, rootData: x = p } = {}) {
+function vs(p, { instancePath: t = "", parentData: Z2, parentDataProperty: $, rootData: x = p } = {}) {
   let e = null, s = 0;
   if (p && typeof p == "object" && !Array.isArray(p)) {
     if (p.text === void 0) {
@@ -11821,34 +11884,84 @@ import { join as join3 } from "node:path";
 import { createInterface } from "node:readline";
 
 // plugin/src/recipes.ts
-import { existsSync as existsSync2, readdirSync, readFileSync } from "node:fs";
-import { join as join2 } from "node:path";
-var loaded;
+import { existsSync as existsSync2, lstatSync, readdirSync, readFileSync } from "node:fs";
+import { basename, join as join2 } from "node:path";
+var requiredRecipeFields = [
+  "name",
+  "capability",
+  "kind",
+  "purpose",
+  "detect",
+  "environment",
+  "workspaceFolders",
+  "observeFrom",
+  "evidence"
+];
+var builtIn;
+function isIdentifier(value2) {
+  return typeof value2 === "string" && /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,95}$/.test(value2);
+}
 function isText(value2) {
   return typeof value2 === "string" && value2.trim() !== "";
 }
-function readRecipe(folder, file) {
-  const refuse4 = (problem) => {
-    throw Error(`Tool recipe ${join2(folder, file)} is not valid: ${problem}`);
+function invalidRecipe(path, problems, recipe) {
+  return {
+    source: "custom",
+    name: basename(path, ".json"),
+    path,
+    problems,
+    ...recipe ? { entryNames: entryNames(recipe) } : {},
+    ...isIdentifier(recipe?.name) ? { declaredName: recipe.name } : {}
   };
-  let recipe = {};
+}
+function readRecipe(path, source) {
+  const file = basename(path);
+  let recipe;
+  let jsonText;
   try {
-    recipe = JSON.parse(readFileSync(join2(folder, file), "utf8"));
+    if (!lstatSync(path, { throwIfNoEntry: false })?.isFile())
+      return invalidRecipe(path, ["Use a regular JSON file."]);
+    jsonText = readFileSync(path, "utf8");
+    recipe = JSON.parse(jsonText);
   } catch (error) {
-    refuse4(`it is not JSON (${error.message}).`);
+    return invalidRecipe(path, [`Cannot read JSON: ${error.message}`]);
   }
-  if (typeof recipe !== "object" || recipe === null || Array.isArray(recipe)) refuse4("it is not a JSON object.");
-  if (!isText(recipe.name) || `${recipe.name}.json` !== file) refuse4("name must be the file name without .json.");
-  if (!isText(recipe.capability)) refuse4("capability must be a text.");
-  if (recipe.kind !== "cli" && recipe.kind !== "mcp") refuse4("kind must be cli or mcp.");
+  if (typeof recipe !== "object" || recipe === null || Array.isArray(recipe))
+    return invalidRecipe(path, ["Use a JSON object."]);
+  const problems = [];
+  const refuse4 = (problem) => problems.push(problem);
+  for (const field4 of requiredRecipeFields)
+    if (!Object.hasOwn(recipe, field4)) refuse4(`give the required field ${field4}.`);
+  for (const field4 of ["tools", "refusedArguments", "entryArguments"])
+    if (Object.hasOwn(recipe, field4))
+      refuse4(`${field4} is not a recipe field. Put tool limits in the target or skill.`);
+  if (recipe.name !== void 0 && (!isIdentifier(recipe.name) || `${recipe.name}.json` !== file))
+    refuse4("name must match the file name without .json and use letters, numbers, dashes, or underscores.");
+  if (recipe.capability !== void 0 && !isIdentifier(recipe.capability))
+    refuse4("capability must use 1 to 96 letters, digits, dashes, or underscores, starting with a letter or digit.");
+  if (recipe.kind !== void 0 && recipe.kind !== "cli" && recipe.kind !== "mcp") refuse4("kind must be cli or mcp.");
   if (recipe.kind === "mcp") readServer(recipe, refuse4);
-  else if (recipe.server !== void 0 || recipe.tools !== void 0)
-    refuse4("server and tools are only for a recipe of kind mcp.");
-  if (!isText(recipe.purpose)) refuse4("purpose must be a text.");
-  if (recipe.detect !== "path" && recipe.detect !== "runtime") refuse4("detect must be path or runtime.");
+  else if (recipe.kind === "cli" && recipe.server !== void 0) refuse4("server is only for a recipe of kind mcp.");
+  if (recipe.purpose !== void 0 && !isText(recipe.purpose)) refuse4("purpose must be a text.");
+  if (recipe.detect !== void 0 && recipe.detect !== "path" && recipe.detect !== "runtime")
+    refuse4("detect must be path or runtime.");
   const environment = recipe.environment;
-  if (typeof environment !== "object" || environment === null || Array.isArray(environment) || Object.values(environment).some((value2) => typeof value2 !== "string"))
-    refuse4("environment must be an object of texts.");
+  if (environment !== void 0) {
+    if (typeof environment !== "object" || environment === null || Array.isArray(environment))
+      refuse4("environment must be an object of texts.");
+    else
+      for (const [name2, value2] of Object.entries(environment)) {
+        if (typeof value2 !== "string") {
+          refuse4(`environment.${name2} must be text.`);
+          continue;
+        }
+        for (const [placeholder2, key] of value2.matchAll(/\{([A-Za-z0-9][A-Za-z0-9_-]*)\}/g))
+          if (key !== "session" && key !== "workFolder")
+            refuse4(
+              `environment.${name2} cannot use ${placeholder2}. Use {session} or {workFolder}, or pass the entry as a tool argument.`
+            );
+      }
+  }
   if (recipe.entryPoints !== void 0) readEntryPoints(recipe.entryPoints, refuse4);
   if (recipe.reachable !== void 0) readReachable(recipe, refuse4);
   if (recipe.shellInstruction !== void 0 && !isText(recipe.shellInstruction))
@@ -11857,27 +11970,38 @@ function readRecipe(folder, file) {
     refuse4("delegatedInstruction must be a text when it is given.");
   if (recipe.closeSession !== void 0 && (!Array.isArray(recipe.closeSession) || !recipe.closeSession.length || !recipe.closeSession.every(isText)))
     refuse4("closeSession must be a list of arguments when it is given.");
-  if (!Array.isArray(recipe.workspaceFolders) || !recipe.workspaceFolders.every(isText))
-    refuse4("workspaceFolders must be a list of folder names.");
+  if (recipe.workspaceFolders !== void 0 && (!Array.isArray(recipe.workspaceFolders) || !recipe.workspaceFolders.every(
+    (name2) => isText(name2) && /^[a-zA-Z0-9._-]+$/.test(name2) && ![".", "..", ".checkmate", ".git"].includes(name2.toLowerCase())
+  )))
+    refuse4("workspaceFolders must list top-level tool folder names. Use a name other than .checkmate or .git.");
   const observeFrom = recipe.observeFrom;
-  if (typeof observeFrom !== "object" || observeFrom === null || Array.isArray(observeFrom) || !Object.keys(observeFrom).every(isValueName) || !Object.values(observeFrom).every((reading) => reading === "view" || reading === "state"))
+  if (observeFrom !== void 0 && (typeof observeFrom !== "object" || observeFrom === null || Array.isArray(observeFrom) || !Object.keys(observeFrom).every(isValueName) || !Object.values(observeFrom).every((reading) => reading === "view" || reading === "state")))
     refuse4("observeFrom must be an object that maps each value name to view or state.");
-  if (!Array.isArray(recipe.evidence) || !recipe.evidence.every(isValueName))
+  if (recipe.evidence !== void 0 && (!Array.isArray(recipe.evidence) || !recipe.evidence.every(isValueName)))
     refuse4("evidence must be a list of evidence kind names.");
   const extensions = recipe.evidenceExtensions;
-  if (extensions !== void 0 && (typeof extensions !== "object" || extensions === null || Array.isArray(extensions) || !Object.keys(extensions).every((extension) => /^\.[a-z0-9]{1,10}$/.test(extension)) || !Object.values(extensions).every((kind) => recipe.evidence?.includes(kind))))
+  if (extensions !== void 0 && (typeof extensions !== "object" || extensions === null || Array.isArray(extensions) || !Object.keys(extensions).every((extension) => /^\.[a-z0-9]{1,10}$/.test(extension)) || !Object.values(extensions).every(
+    (kind) => Array.isArray(recipe.evidence) && recipe.evidence.includes(kind)
+  )))
     refuse4("evidenceExtensions must map each file extension, for example .mp4, to an evidence kind of the recipe.");
-  if (!isText(recipe.usage) || !existsSync2(join2(folder, recipe.usage)))
-    refuse4("usage must name a file in the folder.");
-  return recipe;
+  const usage2 = recipe.usage;
+  if (usage2 !== void 0 && (!Array.isArray(usage2) || !usage2.every((line) => typeof line === "string") || !usage2.some(isText)))
+    refuse4("usage must be a non-empty list of Markdown lines.");
+  if (problems.length) return invalidRecipe(path, [...new Set(problems)], recipe);
+  return { source, path, recipe, jsonText };
+}
+function entryNames(recipe) {
+  return Array.isArray(recipe.entryPoints) ? recipe.entryPoints.flatMap((point) => isIdentifier(point?.name) ? [point.name] : []) : [];
 }
 function readEntryPoints(value2, refuse4) {
   const entryPointProblem = "entryPoints must be a list of {name, kind (url, command, or value), purpose, pattern (optional regular expression)}.";
-  if (!Array.isArray(value2) || !value2.length) refuse4(entryPointProblem);
+  if (!Array.isArray(value2) || !value2.length) return refuse4(entryPointProblem);
   const names = /* @__PURE__ */ new Set();
   for (const entry of value2) {
-    if (typeof entry !== "object" || entry === null || typeof entry.name !== "string" || !/^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$/.test(entry.name) || !["url", "command", "value"].includes(entry.kind) || !isText(entry.purpose) || Object.keys(entry).some((key) => !["name", "kind", "purpose", "pattern"].includes(key)))
+    if (typeof entry !== "object" || entry === null || !isIdentifier(entry.name) || !["url", "command", "value"].includes(entry.kind) || !isText(entry.purpose) || Object.keys(entry).some((key) => !["name", "kind", "purpose", "pattern"].includes(key))) {
       refuse4(entryPointProblem);
+      continue;
+    }
     if (names.has(entry.name)) refuse4(`entryPoints names ${entry.name} twice.`);
     names.add(entry.name);
     if (entry.pattern !== void 0) {
@@ -11893,10 +12017,13 @@ function readEntryPoints(value2, refuse4) {
 function readReachable(recipe, refuse4) {
   const problem = 'reachable must be a list of {check: "http", entry} or {check: "command", run (list of arguments), contains (optional list of texts)}.';
   const checks = recipe.reachable;
-  if (!Array.isArray(checks) || !checks.length) refuse4(problem);
-  const entries = (recipe.entryPoints ?? []).map((entry) => entry.name);
+  if (!Array.isArray(checks) || !checks.length) return refuse4(problem);
+  const entries = entryNames(recipe);
   for (const check of checks) {
-    if (typeof check !== "object" || check === null) refuse4(problem);
+    if (typeof check !== "object" || check === null) {
+      refuse4(problem);
+      continue;
+    }
     if (check.check === "http") {
       if (Object.keys(check).some((key) => key !== "check" && key !== "entry") || !isText(check.entry))
         refuse4(problem);
@@ -11912,81 +12039,137 @@ function readServer(recipe, refuse4) {
   const server = recipe.server;
   if (typeof server !== "object" || server === null || Array.isArray(server) || Object.keys(server).some((key) => !["command", "args", "cwd"].includes(key)) || !isText(server.command) || !Array.isArray(server.args) || !server.args.every(isText) || !isText(server.cwd))
     refuse4("server must be {command, args (list of arguments), cwd} for a recipe of kind mcp.");
-  if (!Array.isArray(recipe.tools) || !recipe.tools.length || !recipe.tools.every((name2) => typeof name2 === "string" && /^[A-Za-z0-9_-]{1,64}$/.test(name2)))
-    refuse4("tools must list the names of the server tools that a tester can call.");
   if (recipe.closeSession !== void 0 || recipe.shellInstruction !== void 0)
     refuse4("a recipe of kind mcp has no closeSession or shellInstruction: Checkmate stops its server.");
-  const refused2 = recipe.refusedArguments;
-  if (refused2 !== void 0 && (typeof refused2 !== "object" || refused2 === null || Array.isArray(refused2) || !Object.keys(refused2).every((tool) => recipe.tools?.includes(tool)) || !Object.values(refused2).every((names) => Array.isArray(names) && names.length && names.every(isText))))
-    refuse4("refusedArguments must map a tool of the recipe to the names of the arguments that it may not give.");
-  const entries = (recipe.entryPoints ?? []).map((entry) => entry.name);
-  const pinned2 = recipe.entryArguments;
-  if (pinned2 !== void 0 && (typeof pinned2 !== "object" || pinned2 === null || Array.isArray(pinned2) || !Object.keys(pinned2).every(isText) || !Object.values(pinned2).every((entry) => entries.includes(entry))))
-    refuse4("entryArguments must map an argument name to an entry point of the recipe.");
 }
 function isValueName(value2) {
   return typeof value2 === "string" && /^[a-z][a-z0-9_]{0,39}$/.test(value2);
 }
-function readRecipes(folder) {
-  const found = readdirSync(folder).filter((file) => file.endsWith(".json")).sort().map((file) => readRecipe(folder, file));
-  const readings = /* @__PURE__ */ new Map();
-  for (const recipe of found)
-    for (const [value2, reading] of Object.entries(recipe.observeFrom)) {
-      const known = readings.get(value2);
-      if (known && known.reading !== reading)
-        throw Error(
-          `Tool recipe ${join2(folder, `${recipe.name}.json`)} is not valid: observeFrom ${value2} is ${reading}, but it is ${known.reading} in ${known.from}.`
-        );
-      readings.set(value2, { reading, from: `recipe ${recipe.name}` });
-    }
-  const entryPoints = /* @__PURE__ */ new Map();
-  for (const recipe of found)
-    for (const entry of recipe.entryPoints ?? []) {
-      const text2 = JSON.stringify([entry.kind, entry.purpose, entry.pattern ?? null]);
-      const known = entryPoints.get(entry.name);
-      if (known && known.entry !== text2)
-        throw Error(
-          `Tool recipe ${join2(folder, `${recipe.name}.json`)} is not valid: entry point ${entry.name} differs from the one in ${known.from}.`
-        );
-      entryPoints.set(entry.name, { entry: text2, from: `recipe ${recipe.name}` });
-    }
-  const kinds3 = /* @__PURE__ */ new Map();
-  for (const recipe of found)
-    for (const [extension, kind] of Object.entries(recipe.evidenceExtensions ?? {})) {
-      const known = kinds3.get(extension);
-      if (known && known.kind !== kind)
-        throw Error(
-          `Tool recipe ${join2(folder, `${recipe.name}.json`)} is not valid: evidenceExtensions ${extension} is ${kind}, but it is ${known.kind} in ${known.from}.`
-        );
-      kinds3.set(extension, { kind, from: `recipe ${recipe.name}` });
-    }
-  return found;
+function recipeProblem(item) {
+  return `Tool recipe ${item.path} is not valid: ${item.problems.join(" ")}`;
 }
-function recipes() {
-  loaded ??= readRecipes(join2(pluginRoot, "recipes"));
-  return loaded;
+function refuseInvalidRecipes(items) {
+  if (!items.length) return;
+  throw new Refusal(
+    "prohibited",
+    items.map(recipeProblem).join(" "),
+    `Edit ${items.map((item) => item.path).join(", ")} to fix the listed problems. Edits apply immediately. Retry the refused action. Run setup again only if the target needs different entries or tools. Run checkmate recipe list to check the files.`
+  );
+}
+function recipeFiles(folder) {
+  return readdirSync(folder).filter((file) => file.endsWith(".json")).sort().map((file) => join2(folder, file));
+}
+function conflicts(recipe, accepted) {
+  const problems = [];
+  if (recipe.kind === "mcp") {
+    const server = serverName(recipe).toLowerCase();
+    if (accepted.some(({ recipe: recipe2 }) => recipe2.kind === "mcp" && serverName(recipe2).toLowerCase() === server))
+      problems.push(`MCP server name ${serverName(recipe)} is in use. Choose a different recipe name.`);
+  }
+  for (const [value2, reading] of Object.entries(recipe.observeFrom)) {
+    const known = accepted.find((other) => (other.recipe.observeFrom[value2] ?? reading) !== reading);
+    if (known)
+      problems.push(
+        `observeFrom ${value2} is ${reading}, but it is ${known.recipe.observeFrom[value2]} in recipe ${known.recipe.name}.`
+      );
+  }
+  const shape = (point) => JSON.stringify([point.kind, point.purpose, point.pattern ?? null]);
+  for (const point of recipe.entryPoints ?? []) {
+    const known = accepted.find(
+      (other) => other.recipe.entryPoints?.some((item) => item.name === point.name && shape(item) !== shape(point))
+    );
+    if (known) problems.push(`entry point ${point.name} differs from the one in recipe ${known.recipe.name}.`);
+  }
+  for (const [extension, kind] of Object.entries(recipe.evidenceExtensions ?? {})) {
+    const known = accepted.find((other) => (other.recipe.evidenceExtensions?.[extension] ?? kind) !== kind);
+    if (known)
+      problems.push(
+        `evidenceExtensions ${extension} is ${kind}, but it is ${known.recipe.evidenceExtensions[extension]} in recipe ${known.recipe.name}.`
+      );
+  }
+  return problems;
+}
+function checkRecipes(found) {
+  const reserved = /* @__PURE__ */ new Map();
+  const catalog2 = { recipes: [], invalid: [] };
+  for (const item of found) {
+    const invalid = "problems" in item;
+    const name2 = invalid ? item.name : item.recipe.name;
+    const declaredName = (invalid ? item.declaredName ?? name2 : name2).toLowerCase();
+    const owner = reserved.get(declaredName);
+    const problems = invalid ? [...item.problems] : conflicts(item.recipe, catalog2.recipes);
+    if (owner)
+      problems.push(`Name ${declaredName} is in use by ${owner}. Rename the file and update its name field.`);
+    if (problems.length) {
+      const issue = invalid ? { ...item, problems } : invalidRecipe(item.path, problems, item.recipe);
+      if (item.source === "built-in") throw Error(recipeProblem(issue));
+      catalog2.invalid.push(issue);
+    } else if (!invalid) catalog2.recipes.push(item);
+    if (!reserved.has(name2.toLowerCase()))
+      reserved.set(name2.toLowerCase(), `the ${item.source} recipe ${item.path}`);
+  }
+  return catalog2;
+}
+function projectRecipeFolder(workspace2) {
+  return join2(workspace2, ".checkmate", "recipes");
+}
+function customFolder(workspace2) {
+  const checkmate = join2(workspace2, ".checkmate");
+  const folder = projectRecipeFolder(workspace2);
+  for (const path of [checkmate, folder]) {
+    const entry = lstatSync(path, { throwIfNoEntry: false });
+    if (entry && !entry.isDirectory()) throw Error(`Tool recipes require a directory at ${path}.`);
+  }
+  return folder;
+}
+function catalogFiles(workspace2) {
+  builtIn ??= recipeFiles(join2(pluginRoot, "recipes")).map((path) => {
+    const item = readRecipe(path, "built-in");
+    if ("problems" in item) throw Error(recipeProblem(item));
+    return item;
+  });
+  const folder = customFolder(workspace2);
+  return [...builtIn, ...existsSync2(folder) ? recipeFiles(folder).map((path) => readRecipe(path, "custom")) : []];
+}
+function listRecipes(workspace2) {
+  return checkRecipes(catalogFiles(workspace2));
+}
+function recipes(workspace2) {
+  return listRecipes(workspace2).recipes.map(({ recipe }) => recipe);
 }
 function filled(text2, values) {
   return text2.replaceAll("{session}", values.session).replaceAll("{workFolder}", values.workFolder);
 }
-function testerEnvironment(values) {
+function testerEnvironment(workspace2, values, toolNames2) {
   return Object.fromEntries(
-    recipes().filter((recipe) => recipe.kind === "cli").flatMap(
-      (recipe) => Object.entries(recipe.environment).map(([name2, value2]) => [name2, filled(value2, values)])
+    listRecipes(workspace2).recipes.filter(
+      ({ source, recipe }) => recipe.kind === "cli" && (source === "built-in" || toolNames2.includes(recipe.name))
+    ).flatMap(
+      ({ recipe }) => Object.entries(recipe.environment).map(([name2, value2]) => [name2, filled(value2, values)])
     )
   );
 }
-function shellInstructions(values) {
-  return recipes().flatMap((recipe) => recipe.shellInstruction ? [filled(recipe.shellInstruction, values)] : []);
+function shellInstructions(workspace2, values, toolNames2) {
+  return listRecipes(workspace2).recipes.flatMap(
+    ({ recipe, source }) => recipe.shellInstruction && (source === "built-in" || toolNames2.includes(recipe.name)) ? [filled(recipe.shellInstruction, values)] : []
+  );
 }
-function recipesFor(toolNames2) {
-  return recipes().filter((recipe) => toolNames2.includes(recipe.name));
+function requireValidRecipes(workspace2, toolNames2) {
+  const { recipes: recipes2, invalid } = listRecipes(workspace2);
+  const broken = invalid.filter(
+    (item) => toolNames2.includes(item.name) && !recipes2.some(({ recipe }) => recipe.name === item.name)
+  );
+  refuseInvalidRecipes(broken);
+  return recipes2;
+}
+function recipesFor(workspace2, toolNames2) {
+  return requireValidRecipes(workspace2, toolNames2).map(({ recipe }) => recipe).filter((recipe) => toolNames2.includes(recipe.name));
 }
 function toolExecutable(recipe) {
   return recipe.server?.command ?? recipe.name;
 }
-function testerTools(toolNames2, attached) {
-  const given = recipesFor(toolNames2);
+function testerTools(workspace2, toolNames2, attached) {
+  const given = recipesFor(workspace2, toolNames2);
   const dropped = given.filter((recipe) => {
     const others = given.filter((other) => other !== recipe && other.capability === recipe.capability);
     if (!others.length) return false;
@@ -11994,37 +12177,42 @@ function testerTools(toolNames2, attached) {
   });
   return toolNames2.filter((name2) => !dropped.some((recipe) => recipe.name === name2));
 }
-function declaredEntryPoints() {
+function declaredEntryPoints(catalog2) {
   const found = /* @__PURE__ */ new Map();
-  for (const recipe of recipes()) for (const entry of recipe.entryPoints ?? []) found.set(entry.name, entry);
+  for (const recipe of catalog2) for (const entry of recipe.entryPoints ?? []) found.set(entry.name, entry);
   return found;
 }
 function fitsEntries(recipe, names) {
   return (recipe.entryPoints ?? []).every((entry) => names.includes(entry.name));
 }
-function toolFolders() {
-  return recipes().flatMap((recipe) => recipe.workspaceFolders);
+function toolFolders(workspace2, toolNames2) {
+  return listRecipes(workspace2).recipes.flatMap(
+    ({ recipe, source }) => source === "built-in" || toolNames2.includes(recipe.name) ? recipe.workspaceFolders : []
+  );
 }
-function usageFiles(toolNames2) {
-  return recipesFor(toolNames2).map((recipe) => join2(pluginRoot, "recipes", recipe.usage));
+function serverName(recipe) {
+  return recipe.name.replaceAll("-", "_");
 }
-function choices(toolNames2, values) {
+function recipeFilesFor(workspace2, toolNames2) {
+  return requireValidRecipes(workspace2, toolNames2).filter(({ recipe }) => recipe.usage !== void 0 && toolNames2.includes(recipe.name)).map(({ path }) => path);
+}
+function choices(workspace2, toolNames2, values) {
   const found = /* @__PURE__ */ new Map();
-  for (const recipe of recipesFor(toolNames2))
+  for (const recipe of recipesFor(workspace2, toolNames2))
     for (const value2 of values(recipe)) found.set(value2, [...found.get(value2) ?? [], `recipe ${recipe.name}`]);
   return [...found].map(([value2, from]) => ({ value: value2, from }));
 }
-function observeFromChoices(toolNames2) {
-  return choices(toolNames2, (recipe) => Object.keys(recipe.observeFrom));
+function observeFromChoices(workspace2, toolNames2) {
+  return choices(workspace2, toolNames2, (recipe) => Object.keys(recipe.observeFrom));
 }
-function evidenceChoices(toolNames2) {
-  return [{ value: "observation", from: ["built in"] }, ...choices(toolNames2, (recipe) => recipe.evidence)];
+function evidenceChoices(workspace2, toolNames2) {
+  return [{ value: "observation", from: ["built in"] }, ...choices(workspace2, toolNames2, (recipe) => recipe.evidence)];
 }
-function allEvidence() {
-  return evidenceChoices(recipes().map((recipe) => recipe.name)).map((choice2) => choice2.value);
+function allEvidence(workspace2) {
+  return ["observation", ...recipes(workspace2).flatMap((recipe) => recipe.evidence)];
 }
-function observeFromValues(toolNames2) {
-  const all2 = recipesFor(toolNames2).flatMap(
+function observeFromValues(workspace2, toolNames2) {
+  const all2 = recipesFor(workspace2, toolNames2).flatMap(
     (recipe) => Object.entries(recipe.observeFrom).map(([value2, reading]) => ({ value: value2, reading, tool: recipe.name }))
   );
   return all2.filter((item, index2) => all2.findIndex((other) => other.value === item.value) === index2);
@@ -12033,9 +12221,9 @@ var readingText = {
   view: "reads only what the tool shows now",
   state: "reads the stored state"
 };
-function observeFromRule(toolNames2, quote = '"') {
+function observeFromRule(workspace2, toolNames2, quote = '"') {
   const q2 = (value2) => `${quote}${value2}${quote}`;
-  const values = observeFromValues(toolNames2);
+  const values = observeFromValues(workspace2, toolNames2);
   if (!values.length) return `Omit ${q2("observeFrom")}. The tools of this target give no values for it.`;
   const listed = values.map(({ value: value2, reading }) => `${q2(value2)} (${reading}: ${readingText[reading]})`).join(", ");
   return [
@@ -12043,28 +12231,32 @@ function observeFromRule(toolNames2, quote = '"') {
     "Use a state value for a check of a state change. Use a view value only for a check that is not a state change. A state-changing test whose checks all use a view value is refused once and then saved as not ready."
   ].join(" ");
 }
-function observeReading(value2) {
-  return recipes().find((recipe) => Object.hasOwn(recipe.observeFrom, value2))?.observeFrom[value2];
+function observeReading(workspace2, value2) {
+  return recipes(workspace2).find((recipe) => Object.hasOwn(recipe.observeFrom, value2))?.observeFrom[value2];
 }
-function givenBy(value2) {
-  const names = recipes().filter((recipe) => Object.hasOwn(recipe.observeFrom, value2) || recipe.evidence.includes(value2)).map((recipe) => `recipe ${recipe.name}`);
+function givenBy(workspace2, value2) {
+  const names = recipes(workspace2).filter((recipe) => Object.hasOwn(recipe.observeFrom, value2) || recipe.evidence.includes(value2)).map((recipe) => `recipe ${recipe.name}`);
   return names.length ? `${names.join(" and ")} ${names.length === 1 ? "gives" : "give"} it` : "no recipe gives it";
 }
 function choiceText(found) {
   return found.map((choice2) => `${choice2.value} (${choice2.from.join(", ")})`).join(", ") || "none";
 }
-function evidenceKindOfFile(toolNames2, extension) {
-  const recipe = recipesFor(toolNames2).find((recipe2) => recipe2.evidenceExtensions?.[extension]);
+function evidenceKindOfFile(workspace2, toolNames2, extension) {
+  const recipe = recipesFor(workspace2, toolNames2).find((recipe2) => recipe2.evidenceExtensions?.[extension]);
   return recipe?.evidenceExtensions?.[extension];
 }
 
 // plugin/src/tool-servers.ts
 var stopGraceMilliseconds = 3e3;
-function serverName(recipe) {
-  return recipe.name.replaceAll("-", "_");
+var maestroTargetTools = ["inspect_screen", "run", "take_screenshot"];
+function mcpTargetTools(name2) {
+  return name2 === "maestro-mcp" ? maestroTargetTools : [];
 }
-function attachedServers(toolNames2, values, script, entries) {
-  return recipesFor(testerTools(toolNames2, true)).filter((recipe) => recipe.kind === "mcp").map((recipe) => ({
+function piServerTools(servers) {
+  return servers.flatMap(({ name: name2, tools }) => tools.length ? tools : [`mcp__${name2}__*`]);
+}
+function attachedServers(workspace2, toolNames2, values, script, entries) {
+  return recipesFor(workspace2, testerTools(workspace2, toolNames2, true)).filter((recipe) => recipe.kind === "mcp").map((recipe) => ({
     name: serverName(recipe),
     command: process.execPath,
     args: [
@@ -12073,11 +12265,10 @@ function attachedServers(toolNames2, values, script, entries) {
       recipe.name,
       values.workFolder,
       values.session,
-      ...[...new Set(Object.values(recipe.entryArguments ?? {}))].flatMap(
-        (entry) => entries[entry] ? [`${entry}=${entries[entry]}`] : []
-      )
+      workspace2,
+      ...recipe.name === "maestro-mcp" && entries.device ? [`device=${entries.device}`] : []
     ],
-    tools: recipe.tools.map((tool) => `mcp__${serverName(recipe)}__${tool}`)
+    tools: mcpTargetTools(recipe.name).map((tool) => `mcp__${serverName(recipe)}__${tool}`)
   }));
 }
 function claudeServerArgs(servers) {
@@ -12101,18 +12292,18 @@ function piServerEnv(servers) {
 function piServerExtension(pluginRoot2) {
   return join3(pluginRoot2, "pi", "tool-servers.mjs");
 }
-function refusal(recipe, request2, entries) {
+function maestroRefusal(request2, device) {
   const tool = String(request2.params?.name);
-  if (!recipe.tools.includes(tool))
-    return `Tool ${tool} is not a tool of recipe ${recipe.name}. Its tools are ${recipe.tools.join(", ")}.`;
+  if (!maestroTargetTools.includes(tool))
+    return `The Maestro target does not allow ${tool}. Its tools are ${maestroTargetTools.join(", ")}.`;
   const input = request2.params.arguments ??= {};
-  const given = (recipe.refusedArguments?.[tool] ?? []).filter((name2) => input[name2] !== void 0);
-  if (given.length) return `Tool ${tool} does not take ${given.join(" or ")} in recipe ${recipe.name}.`;
-  for (const [name2, entry] of Object.entries(recipe.entryArguments ?? {})) {
-    const value2 = entries[entry];
-    if (value2 === void 0) continue;
-    if (input[name2] === void 0) input[name2] = value2;
-    else if (input[name2] !== value2) return `Give ${name2} ${value2}, the ${entry} entry of the instance.`;
+  if (tool === "run") {
+    const given = ["files", "dir"].filter((name2) => input[name2] !== void 0);
+    if (given.length) return `The Maestro target does not allow ${given.join(" or ")} on run.`;
+  }
+  if (device !== void 0) {
+    if (input.device_id === void 0) input.device_id = device;
+    else if (input.device_id !== device) return `Give device_id ${device}, the device entry of the instance.`;
   }
   return void 0;
 }
@@ -12124,11 +12315,11 @@ function message(line) {
     return void 0;
   }
 }
-function serveToolServer(recipeName, workFolder2, session, pinned2) {
+function serveToolServer(recipeName, workFolder2, session, workspace2, pinned2) {
   const entries = Object.fromEntries(
     pinned2.map((item) => [item.slice(0, item.indexOf("=")), item.slice(item.indexOf("=") + 1)])
   );
-  const recipe = recipes().find((item) => item.name === recipeName && item.kind === "mcp");
+  const recipe = recipes(workspace2).find((item) => item.name === recipeName && item.kind === "mcp");
   if (!recipe?.server || !workFolder2) {
     process.stderr.write(
       `checkmate tool-server: no recipe of kind mcp is named ${recipeName}, or no work folder.
@@ -12151,15 +12342,15 @@ function serveToolServer(recipeName, workFolder2, session, pinned2) {
     }
   );
   trackGroup(server);
-  const allowed2 = new Set(recipe.tools);
+  const maestro = recipe.name === "maestro-mcp";
   const lists = /* @__PURE__ */ new Set();
   const send2 = (line) => process.stdout.write(`${line}
 `);
   createInterface({ input: process.stdin }).on("line", (line) => {
     const request2 = message(line);
-    if (request2?.method === "tools/list") lists.add(request2.id);
-    if (request2?.method === "tools/call") {
-      const refused2 = refusal(recipe, request2, entries);
+    if (maestro && request2?.method === "tools/list") lists.add(request2.id);
+    if (maestro && request2?.method === "tools/call") {
+      const refused2 = maestroRefusal(request2, entries.device);
       if (refused2)
         return send2(
           JSON.stringify({ jsonrpc: "2.0", id: request2.id, error: { code: -32602, message: refused2 } })
@@ -12173,7 +12364,9 @@ function serveToolServer(recipeName, workFolder2, session, pinned2) {
     const reply = message(line);
     if (reply && !reply.method && lists.has(reply.id) && Array.isArray(reply.result?.tools)) {
       lists.delete(reply.id);
-      reply.result.tools = reply.result.tools.filter((tool) => allowed2.has(tool.name ?? ""));
+      reply.result.tools = reply.result.tools.filter(
+        (tool) => maestroTargetTools.includes(tool.name ?? "")
+      );
       return send2(JSON.stringify(reply));
     }
     send2(line);
@@ -12206,6 +12399,22 @@ function serveToolServer(recipeName, workFolder2, session, pinned2) {
   for (const signal of ["SIGTERM", "SIGINT", "SIGHUP"]) process.on(signal, stop);
 }
 
+// plugin/src/tool-names.ts
+var toolPrefix = "checkmate_";
+var claudeToolPrefix = "mcp__plugin_checkmate_actions__";
+function toolName(name2) {
+  return `${toolPrefix}${name2}`;
+}
+function claudeToolName(name2) {
+  return `${claudeToolPrefix}${toolName(name2)}`;
+}
+function isActionTool(tool) {
+  return tool.startsWith(toolPrefix);
+}
+function actionOfTool(tool) {
+  return isActionTool(tool) ? tool.slice(toolPrefix.length) : tool;
+}
+
 // plugin/src/sessions.ts
 import { randomBytes as randomBytes2 } from "node:crypto";
 import { spawn as spawn2, spawnSync as spawnSync3 } from "node:child_process";
@@ -12225,7 +12434,7 @@ import { homedir } from "node:os";
 import { delimiter, dirname, join as join4 } from "node:path";
 import { fileURLToPath } from "node:url";
 var hookTokenName = "CHECKMATE_HOOK_TOKEN";
-var checkmateActionTools = "mcp__plugin_checkmate_actions__*";
+var checkmateActionTools = `${claudeToolPrefix}*`;
 var permissionTimeoutSeconds = 600;
 var activityTimeoutSeconds = 5;
 var storeDenyRules = [
@@ -12247,19 +12456,19 @@ function workDenyRules(otherFolders) {
   ];
 }
 function costOf(calls) {
-  const costs = calls.flatMap((call) => call.costUsd === void 0 ? [] : [call.costUsd]);
+  const costs = calls.flatMap((call2) => call2.costUsd === void 0 ? [] : [call2.costUsd]);
   if (!costs.length) return {};
   const costUsd = costs.reduce((total, cost) => total + cost, 0);
   if (!Number.isFinite(costUsd)) return {};
   return {
     costUsd,
-    ...costs.length < calls.length || calls.some((call) => call.costPartial) ? { costPartial: true } : {}
+    ...costs.length < calls.length || calls.some((call2) => call2.costPartial) ? { costPartial: true } : {}
   };
 }
 function usageOf(calls) {
   const recent = /* @__PURE__ */ new Set();
-  for (const call of calls)
-    for (const model of call.observedModels ?? []) {
+  for (const call2 of calls)
+    for (const model of call2.observedModels ?? []) {
       recent.delete(model);
       recent.add(model);
     }
@@ -12456,7 +12665,7 @@ function childArgs(context, own, allow = []) {
   if (context.harness === "pi") {
     const names = piToolNames(allow);
     const scoped = piWorkTools(context, names);
-    const tools = context.inheritPiTools ? scoped : [...names, ...scoped, ...serverTools(context)];
+    const tools = context.inheritPiTools ? scoped : [...names, ...scoped, ...piServerTools(context.servers ?? [])];
     const args = own[0] === "--resume" ? ["--session", ...own.slice(1)] : own;
     const launch = [
       ...context.inheritPiTools ? [] : ["--no-extensions"],
@@ -12539,9 +12748,9 @@ function requireClaude(env) {
 }
 var authenticationHint = "The host session does not pass its login token to the commands that it runs. Log in on this machine so that Claude Code stores the login (run claude and log in), or run checkmate test from a shell outside a Claude Code session, or let the host give the credential in a supported way, for example an apiKeyHelper in the host settings.";
 var piAuthenticationHint = "Log in with Pi on this machine, or configure authentication through the Pi host.";
-function authenticationFailed(call) {
-  return Boolean(call.failure) && /authentication|not authenticated|no api key|invalid api key|api key expired|unauthorized|\bHTTP 401\b/i.test(
-    [call.failure?.[1] ?? "", ...call.stderr ?? [], typeof call.result === "string" ? call.result : ""].join(
+function authenticationFailed(call2) {
+  return Boolean(call2.failure) && /authentication|not authenticated|no api key|invalid api key|api key expired|unauthorized|\bHTTP 401\b/i.test(
+    [call2.failure?.[1] ?? "", ...call2.stderr ?? [], typeof call2.result === "string" ? call2.result : ""].join(
       " "
     )
   );
@@ -12706,10 +12915,10 @@ function launchChild(executable, args, prompt2, cwd, env, seconds2, onStart, har
         const value2 = piEvent(line);
         if (value2?.type === "response" && value2.id === "checkmate-child-ready") {
           const commands2 = Array.isArray(value2.data?.commands) ? value2.data.commands : [];
-          const loaded2 = (name2, file) => commands2.some(
+          const loaded = (name2, file) => commands2.some(
             (command) => command.name === name2 && command.source === "extension" && command.sourceInfo?.path === join4(pluginRoot, "pi", file)
           );
-          if (!value2.success || !loaded2("checkmate-child-ready", "child.mjs") || env.CHECKMATE_PI_HOOK && !loaded2("checkmate-permission-ready", "permission.mjs")) {
+          if (!value2.success || !loaded("checkmate-child-ready", "child.mjs") || env.CHECKMATE_PI_HOOK && !loaded("checkmate-permission-ready", "permission.mjs")) {
             rpcError = "Pi did not load the Checkmate tool policy or permission hook.";
             child.stdin.end();
           } else send2({ id: "checkmate-child-prompt", type: "prompt", message: prompt2 });
@@ -12892,7 +13101,7 @@ function streamClaude(claude, args, prompt2, cwd, env, onLine, delays = defaultS
   child.on("error", (error) => {
     spawnError = `claude failed: ${"code" in error ? String(error.code) : "unknown"}.`;
   });
-  const finished = new Promise((resolvePromise) => {
+  const finished2 = new Promise((resolvePromise) => {
     child.on("close", (status, signal) => {
       liveChildren.delete(child);
       for (const timer of timers) clearTimeout(timer);
@@ -12902,7 +13111,7 @@ function streamClaude(claude, args, prompt2, cwd, env, onLine, delays = defaultS
   });
   return {
     pid: child.pid,
-    finished,
+    finished: finished2,
     stop() {
       if (timers.length) return;
       killGroup(child, "SIGINT");
@@ -13089,6 +13298,10 @@ function openTarget(store, actor, input) {
 }
 function insertRequest(store, operationId, input) {
   const request2 = targetRequestCheck(input);
+  requireValidRecipes(
+    store.workspace,
+    request2.tools.map((tool) => tool.name)
+  );
   const existing = currentRequest(store, request2.targetId);
   if (existing) {
     requireCondition(
@@ -13115,9 +13328,9 @@ function targetRequestCheck(input) {
     Array.isArray(input.entryPoints) && input.entryPoints.length > 0,
     "Missing entry points. Give one or more --entry-point <name>:<url|command|value>:<purpose>."
   );
-  const entryPoints = input.entryPoints.map(entryPointCheck);
+  const entryPoints2 = input.entryPoints.map(entryPointCheck);
   requireCondition(
-    new Set(entryPoints.map((entry) => entry.name)).size === entryPoints.length,
+    new Set(entryPoints2.map((entry) => entry.name)).size === entryPoints2.length,
     "Duplicate entry point name"
   );
   for (const [name2, list3] of [
@@ -13132,7 +13345,7 @@ function targetRequestCheck(input) {
   requireCondition(new Set(tools.map((tool) => tool.name)).size === tools.length, "Duplicate tool name");
   return {
     targetId: input.targetId,
-    entryPoints,
+    entryPoints: entryPoints2,
     capabilities: input.capabilities,
     allowedOperations: input.allowedOperations,
     tools
@@ -13146,7 +13359,7 @@ function entryPointCheck(entry) {
     purpose: requireText(entry.purpose, `purpose of entry point ${name2}`).trim()
   };
 }
-function toolName(value2) {
+function toolName2(value2) {
   const name2 = typeof value2 === "string" ? value2.trim() : value2;
   requireCondition(
     typeof name2 === "string" && /^[A-Za-z0-9][A-Za-z0-9_-]{0,95}(:[A-Za-z0-9][A-Za-z0-9_-]{0,95})?$/.test(name2),
@@ -13156,7 +13369,7 @@ function toolName(value2) {
 }
 function toolCheck(tool) {
   return {
-    name: toolName(tool.name),
+    name: toolName2(tool.name),
     kind: requireChoice(tool.kind, toolKinds, `kind of tool ${tool.name}`),
     purpose: requireText(tool.purpose, `purpose of tool ${tool.name}`)
   };
@@ -13196,6 +13409,10 @@ function save(store, actor, input) {
 function insertProfile(store, operationId, input) {
   const request2 = targetRequest(store, input.targetId);
   const profile = profileCheck(input.profile);
+  requireValidRecipes(
+    store.workspace,
+    profile.tools.map((tool) => tool.name)
+  );
   requireCondition(
     profile.targetId === request2.targetId,
     `Profile targetId ${profile.targetId} differs from ${request2.targetId}`
@@ -13335,18 +13552,18 @@ function targetHistory(store, targetId) {
     };
   });
 }
-function instanceCheck(entryPoints, value2) {
+function instanceCheck(entryPoints2, value2) {
   const instance = validate("instance", value2);
   const names = Object.keys(instance.entries);
-  const missing = entryPoints.filter((entry) => !names.includes(entry.name)).map((entry) => entry.name);
-  const unknown = names.filter((name2) => !entryPoints.some((entry) => entry.name === name2));
+  const missing = entryPoints2.filter((entry) => !names.includes(entry.name)).map((entry) => entry.name);
+  const unknown = names.filter((name2) => !entryPoints2.some((entry) => entry.name === name2));
   requireCondition(!missing.length, `Missing value for entry point: ${missing.join(", ")}`);
   requireCondition(
     !unknown.length,
-    `Unknown entry point: ${unknown.join(", ")}. The target has: ${entryPoints.map((entry) => entry.name).join(", ")}.`
+    `Unknown entry point: ${unknown.join(", ")}. The target has: ${entryPoints2.map((entry) => entry.name).join(", ")}.`
   );
   const entries = {};
-  for (const entry of entryPoints) {
+  for (const entry of entryPoints2) {
     const text2 = requireText(instance.entries[entry.name], `value for entry point ${entry.name}`).trim();
     entries[entry.name] = text2;
     if (entry.kind !== "url") continue;
@@ -13551,13 +13768,13 @@ function instanceList(store, targetId) {
     targetId
   ).map((row2) => instanceRecord(store, targetId, row2));
 }
-function entriesWords(entryPoints) {
-  if (entryPoints.length === 1 && entryPoints[0].kind === "url") return "the url entry";
-  const names = entryPoints.map((entry) => entry.name);
+function entriesWords(entryPoints2) {
+  if (entryPoints2.length === 1 && entryPoints2[0].kind === "url") return "the url entry";
+  const names = entryPoints2.map((entry) => entry.name);
   return names.length === 1 ? `the ${names[0]} entry` : `the ${listText(names)} entries`;
 }
-function entryNoun(entryPoints) {
-  return entryPoints.length === 1 && entryPoints[0].kind === "url" ? "URL" : "entries";
+function entryNoun(entryPoints2) {
+  return entryPoints2.length === 1 && entryPoints2[0].kind === "url" ? "URL" : "entries";
 }
 function entryFlags(entries) {
   const names = Object.keys(entries);
@@ -13572,13 +13789,13 @@ function dataFlags(store, targetId) {
   const web = instanceList(store, targetId).find((instance) => !instance.retired)?.entries.web;
   return web ? `--url ${web}` : `--target ${targetId}`;
 }
-function placeholderEntries(entryPoints) {
+function placeholderEntries(entryPoints2) {
   return Object.fromEntries(
-    entryPoints.map((entry) => [entry.name, entry.kind === "url" ? "<url>" : `<${entry.name}>`])
+    entryPoints2.map((entry) => [entry.name, entry.kind === "url" ? "<url>" : `<${entry.name}>`])
   );
 }
-function buildEntryFlags(entryPoints, build) {
-  return entryPoints.map((entry) => `--entry ${entry.name}=<${entry.kind === "url" ? "URL" : entry.name} of ${build}>`).join(" ");
+function buildEntryFlags(entryPoints2, build) {
+  return entryPoints2.map((entry) => `--entry ${entry.name}=<${entry.kind === "url" ? "URL" : entry.name} of ${build}>`).join(" ");
 }
 function findInstance(store, targetId, instanceId) {
   targetRequest(store, targetId);
@@ -13687,11 +13904,12 @@ function urlFailure(url, env) {
   return check.stdout.trim() || check.stderr.trim().split("\n").pop() || "the check did not finish";
 }
 var commandCheckSeconds = 20;
-function commandFailure(recipe, check, entries, env) {
+function commandFailure(workspace2, recipe, check, entries, env) {
   const fill = (text2) => Object.entries(entries).reduce((out, [name2, value2]) => out.replaceAll(`{${name2}}`, value2), text2);
   const run2 = check.run.map(fill);
   const shown2 = run2.join(" ");
   const result = spawnSync5(run2[0], run2.slice(1), {
+    cwd: workspace2,
     env: { ...env, ...recipe.environment },
     encoding: "utf8",
     timeout: commandCheckSeconds * 1e3
@@ -13701,11 +13919,11 @@ function commandFailure(recipe, check, entries, env) {
   const missing = (check.contains ?? []).map(fill).filter((text2) => !result.stdout.includes(text2));
   return missing.length ? `${shown2} did not list ${missing.join(", ")}` : null;
 }
-function instanceFailure(fitting, entries, env) {
+function instanceFailure(workspace2, fitting, entries, env) {
   const checked = fitting.flatMap(({ recipe }) => (recipe.reachable ?? []).map((check) => ({ recipe, check })));
   if (!checked.length) return void 0;
   for (const { recipe, check } of checked) {
-    const failure = check.check === "http" ? urlFailure(entries[check.entry], env) : commandFailure(recipe, check, entries, env);
+    const failure = check.check === "http" ? urlFailure(entries[check.entry], env) : commandFailure(workspace2, recipe, check, entries, env);
     if (failure) return failure;
   }
   return null;
@@ -13771,14 +13989,17 @@ function givenEntries(input) {
 function listText(words5) {
   return words5.length < 2 ? words5.join("") : `${words5.slice(0, -1).join(", ")} and ${words5.at(-1)}`;
 }
-function fitEntries(entries, detected) {
+function fitEntries(workspace2, catalog2, entries, detected, invalid) {
   const names = Object.keys(entries);
-  const declared = declaredEntryPoints();
+  const declared = declaredEntryPoints(catalog2);
   const unknown = names.filter((name2) => !declared.has(name2));
-  requireCondition(
+  requireWellFormed(
     !unknown.length,
-    `Unknown entry ${unknown.join(", ")}. Known entries: ${[...declared.keys()].join(", ")}.`,
-    "The recipes of the tools give the entries. Use --url for a web application, or --entry <name>=<value>."
+    `Unknown entry ${unknown.join(", ")}. Entry names come from recipes. Recipe folder: ${projectRecipeFolder(workspace2)}. Entries of existing recipes: ${[...declared.keys()].join(", ")}. ${invalid.map(recipeProblem).join(" ")}`.trim(),
+    [
+      `If the tool you need has no recipe, write one JSON file in ${projectRecipeFolder(workspace2)}. Use a built-in example from checkmate recipe list --json. Include ${requiredRecipeFields.join(", ")}. Optional usage holds tester notes as Markdown lines.`,
+      "Give a new tool its own entry names. Declare each needed entry in entryPoints with name, kind and purpose. If Checkmate refuses the recipe, edit that file to fix the listed problems. Tell the person you added a recipe for the tool. The target sets what testers may do."
+    ].join(" ")
   );
   for (const name2 of names) {
     const pattern = declared.get(name2)?.pattern;
@@ -13792,9 +14013,7 @@ function fitEntries(entries, detected) {
   const covered = new Set(fitting.flatMap(({ recipe }) => (recipe.entryPoints ?? []).map((entry) => entry.name)));
   const uncovered = names.filter((name2) => !covered.has(name2));
   if (uncovered.length) {
-    const needing = recipes().filter(
-      (recipe) => recipe.entryPoints?.some((entry) => uncovered.includes(entry.name))
-    );
+    const needing = catalog2.filter((recipe) => recipe.entryPoints?.some((entry) => uncovered.includes(entry.name)));
     const installed = needing.filter((recipe) => detected.some((tool) => tool.recipe === recipe));
     requireCondition(
       !installed.length,
@@ -13807,23 +14026,25 @@ function fitEntries(entries, detected) {
     requireCondition(
       false,
       `No tool that is installed fits the entries ${uncovered.join(", ")}. ${listText(needing.map((recipe) => `${recipe.name} (${recipe.capability})`))} ${needing.length === 1 ? "needs them and is" : "need them and are"} not on PATH.`,
-      "Install the tool, or give other entries."
+      needing.map(
+        (recipe) => `Checked PATH for ${toolExecutable(recipe)}. ${recipe.kind === "cli" ? "For detect: path, the CLI executable name is the recipe name." : "For an MCP recipe, Checkmate looks up server.command."}`
+      ).join(" ") + " Install the tool, or give other entries."
     );
   }
-  const entryPoints = names.map((name2) => {
+  const entryPoints2 = names.map((name2) => {
     const { kind, purpose } = declared.get(name2);
     return { name: name2, kind, purpose };
   });
-  return { fitting, entryPoints };
+  return { fitting, entryPoints: entryPoints2 };
 }
-function detectedTools(env) {
-  return recipes().flatMap((recipe) => {
+function detectedTools(catalog2, env) {
+  return catalog2.flatMap((recipe) => {
     const path = recipe.detect === "runtime" ? process.execPath : executableOnPath(toolExecutable(recipe), env);
     return path ? [{ recipe, path }] : [];
   });
 }
 var noEntriesText = "Give the application: --url <url> for a web application, or --entry <name>=<value> for another one. To record the data policy of a target that is set up, give --target <id>.";
-function setupAssumptions(input) {
+function setupAssumptions(workspace2, input) {
   const assumed = [];
   const entries = givenEntries(input);
   requireCondition(Object.keys(entries).length, "Missing application entries.", noEntriesText);
@@ -13834,28 +14055,45 @@ function setupAssumptions(input) {
     );
   const instanceId = input.instanceId ?? "local";
   if (!input.instanceId) assumed.push("instance=local");
-  const { fitting: detected, entryPoints } = fitEntries(entries, detectedTools(input.env));
+  const { recipes: valid, invalid } = listRecipes(workspace2);
+  const names = Object.keys(entries);
+  refuseInvalidRecipes(
+    invalid.filter(
+      (item) => !valid.some(
+        ({ recipe }) => recipe.name.toLowerCase() === (item.declaredName ?? item.name).toLowerCase()
+      ) && (item.name === targetId || item.entryNames?.length && item.entryNames.every((name2) => names.includes(name2)))
+    )
+  );
+  const catalog2 = valid.map(({ recipe }) => recipe);
+  const { fitting: detected, entryPoints: entryPoints2 } = fitEntries(
+    workspace2,
+    catalog2,
+    entries,
+    detectedTools(catalog2, input.env),
+    invalid
+  );
   const capabilities = [...new Set(detected.map(({ recipe }) => recipe.capability))].sort();
   assumed.push(
-    entryPoints.length === 1 ? `entry point=${entryPoints[0].name} (${entryPoints[0].kind})` : `entry points=${entryPoints.map((entry) => `${entry.name} (${entry.kind})`).join(", ")}`,
+    entryPoints2.length === 1 ? `entry point=${entryPoints2[0].name} (${entryPoints2[0].kind})` : `entry points=${entryPoints2.map((entry) => `${entry.name} (${entry.kind})`).join(", ")}`,
     `capabilities=${capabilities.join(",")} (${pathTools(
+      catalog2,
       detected,
-      entryPoints.map((entry) => entry.name)
+      entryPoints2.map((entry) => entry.name)
     )})`
   );
   const allowedOperations = input.operations?.length ? input.operations : [anyTestOperation];
   if (!input.operations?.length) assumed.push(`operations=${anyTestOperation}: ${anyTestOperationText}`);
   assumed.push("authentication=none");
-  return { entries, entryPoints, targetId, instanceId, detected, capabilities, allowedOperations, assumed };
+  return { entries, entryPoints: entryPoints2, targetId, instanceId, detected, capabilities, allowedOperations, assumed };
 }
-function pathTools(detected, entryNames) {
+function pathTools(catalog2, detected, entryNames2) {
   const found = [
     ...new Set(
       detected.filter(({ recipe }) => recipe.detect === "path").map(({ recipe }) => toolExecutable(recipe))
     )
   ];
   if (found.length) return `${found.join(" and ")} ${found.length === 1 ? "is" : "are"} on PATH`;
-  const missing = recipes().filter((recipe) => recipe.detect === "path" && fitsEntries(recipe, entryNames));
+  const missing = catalog2.filter((recipe) => recipe.detect === "path" && fitsEntries(recipe, entryNames2));
   return `no ${[...new Set(missing.map((recipe) => recipe.capability))].join(" or ")} tool on PATH`;
 }
 function sameSet(a, b) {
@@ -13908,8 +14146,18 @@ function instanceChange(stored, wanted) {
 }
 function setupTarget(store, actor, input) {
   if (!Object.keys(givenEntries(input)).length) return recordData(store, actor, input);
-  const setup = setupAssumptions(input);
-  const { entries, entryPoints, targetId, instanceId, detected, capabilities, allowedOperations, assumed } = setup;
+  const setup = setupAssumptions(store.workspace, input);
+  const { entries, entryPoints: entryPoints2, targetId, instanceId, detected, capabilities, allowedOperations, assumed } = setup;
+  const saved = one(
+    store,
+    "SELECT body FROM profiles WHERE target_id = ? ORDER BY revision DESC LIMIT 1",
+    targetId
+  );
+  if (saved)
+    requireValidRecipes(
+      store.workspace,
+      JSON.parse(saved.body).tools.map(({ name: name2 }) => name2)
+    );
   const reset = dataOf(input);
   const where = entries.web && Object.keys(entries).length === 1 ? entries.web : `the entries ${entryList(entries)}`;
   const flags = entryFlags(entries);
@@ -13925,7 +14173,7 @@ function setupTarget(store, actor, input) {
       reachable: true
     };
   });
-  const checked = input.answered === void 0 ? instanceFailure(detected, entries, input.env) : void 0;
+  const checked = input.answered === void 0 ? instanceFailure(store.workspace, detected, entries, input.env) : void 0;
   const failure = input.answered === void 0 ? checked ?? null : input.answered ? null : "not reachable";
   const reachable = failure === null;
   const notChecked = input.answered === void 0 && checked === void 0;
@@ -13954,7 +14202,7 @@ function setupTarget(store, actor, input) {
     if (!known) {
       const opened = insertRequest(store, operationId, {
         targetId,
-        entryPoints,
+        entryPoints: entryPoints2,
         capabilities,
         allowedOperations,
         tools: []
@@ -13975,14 +14223,14 @@ function setupTarget(store, actor, input) {
         operationId
       );
     }
-    const saved = one(
+    const saved2 = one(
       store,
       "SELECT revision FROM profiles WHERE target_id = ? ORDER BY revision DESC LIMIT 1",
       targetId
     );
-    if (!reachable && !saved) assumed.push(`ready=false (${where} did not answer: ${failure})`);
+    if (!reachable && !saved2) assumed.push(`ready=false (${where} did not answer: ${failure})`);
     let profile = null;
-    if (!saved)
+    if (!saved2)
       profile = {
         contractVersion: "toolkit-2",
         targetId,
@@ -14146,14 +14394,14 @@ var refusalReasons = {
   prohibited: "Refused: prohibited in the current state."
 };
 function refused(status, subject, error) {
-  const refusal2 = status === "invalid_request" ? "malformed" : error instanceof Refusal ? error.kind : "prohibited";
+  const refusal = status === "invalid_request" ? "malformed" : error instanceof Refusal ? error.kind : "prohibited";
   const hint = error instanceof Refusal ? error.hint : void 0;
   const reason = error instanceof Error ? error.message : String(error);
   return {
     status,
     subject,
-    reasons: error instanceof WorkspaceSchemaError ? [reason] : [refusalReasons[refusal2], reason],
-    refusal: refusal2,
+    reasons: error instanceof WorkspaceSchemaError ? [reason] : [refusalReasons[refusal], reason],
+    refusal,
     ...hint ? { hint } : {},
     data: {}
   };
@@ -14337,11 +14585,11 @@ function compoundCheck(check) {
 var maxGapRequirements = 2;
 function uncontrolledRefusal(test) {
   const httpAction = /\b(GET|POST|PUT|PATCH|DELETE)\b/.test(test.action);
-  const refusal2 = test.assertions.find(
+  const refusal = test.assertions.find(
     (assertion) => /^4\d\d$/.test(assertion.expected ?? "") || httpAction && /^absent:/.test(assertion.expected ?? "")
   );
   const control = test.assertions.some((assertion) => /^2\d\d$/.test(assertion.expected ?? ""));
-  return refusal2 && !control ? refusal2 : void 0;
+  return refusal && !control ? refusal : void 0;
 }
 function rangeWithoutInput(check) {
   const range = /\b(outside|between|at most|at least|from -?\d+(\.\d+)? to -?\d+)/i.test(check);
@@ -14351,10 +14599,10 @@ function rangeWithoutInput(check) {
   const input = /\b(quantity|amount|value|price|size|length|page|limit|input|number)\b/i.test(check);
   return range && input && !named;
 }
-function pageOnlyStateChange(test) {
+function pageOnlyStateChange(workspace2, test) {
   const changes = /\b(add|apply|clear|delete|remove|save|update)\b/i.test(test.action);
   return changes && test.assertions.length > 0 && test.assertions.every(
-    (assertion) => assertion.observeFrom !== void 0 && observeReading(assertion.observeFrom) === "view"
+    (assertion) => assertion.observeFrom !== void 0 && observeReading(workspace2, assertion.observeFrom) === "view"
   );
 }
 var maxRequirementsPerTest = 3;
@@ -14379,11 +14627,11 @@ function uncoveredRequirements(plan) {
     (requirement) => !plan.tests.some((test) => test.requirementIds.includes(requirement.id)) && !plan.gaps.some((gap) => gap.requirementIds.includes(requirement.id))
   ).map((requirement) => requirement.id);
 }
-function softProblems(test, requirements) {
+function softProblems(workspace2, test, requirements) {
   const problems = [];
-  const refusal2 = uncontrolledRefusal(test);
-  if (refusal2) problems.push({ id: refusal2.id, reason: "needs_control", check: refusal2.check });
-  if (pageOnlyStateChange(test))
+  const refusal = uncontrolledRefusal(test);
+  if (refusal) problems.push({ id: refusal.id, reason: "needs_control", check: refusal.check });
+  if (pageOnlyStateChange(workspace2, test))
     problems.push({ id: test.assertions[0].id, reason: "needs_source_check", check: test.action });
   for (const assertion of test.assertions)
     if (rangeWithoutInput(assertion.check))
@@ -14398,10 +14646,10 @@ function softProblems(test, requirements) {
     problems.push({ id: test.assertions[0]?.id ?? "", reason: "needs_required", check: "a required field" });
   return problems;
 }
-function unverifiedAssertions(test, requirements) {
+function unverifiedAssertions(workspace2, test, requirements) {
   return [
     ...test.assertions.filter((assertion) => unverifiedCheck(assertion)).map((assertion) => assertion.id),
-    ...softProblems(test, requirements).map((problem) => `${problem.id} ${problem.reason}`)
+    ...softProblems(workspace2, test, requirements).map((problem) => `${problem.id} ${problem.reason}`)
   ];
 }
 function planCheck(value2) {
@@ -14503,14 +14751,17 @@ function planCheck(value2) {
   requireWellFormed(same(plan.coverage, planCoverage(plan)), "Plan coverage is inconsistent");
   return plan;
 }
-function planTargetCheck(plan, profile) {
-  const observeFrom = observeFromChoices(profile.tools.map((tool) => tool.name));
+function planTargetCheck(workspace2, plan, profile) {
+  const observeFrom = observeFromChoices(
+    workspace2,
+    profile.tools.map((tool) => tool.name)
+  );
   for (const test of plan.tests) {
     for (const { id: id2, observeFrom: value2 } of test.assertions)
       if (value2 !== void 0 && !observeFrom.some((choice2) => choice2.value === value2))
         requireWellFormed(
           false,
-          `Test ${test.id} assertion ${id2} observes from ${value2}, which no tool of target ${profile.targetId} gives (${givenBy(value2)}). Allowed values: ${choiceText(observeFrom)}.`,
+          `Test ${test.id} assertion ${id2} observes from ${value2}, which no tool of target ${profile.targetId} gives (${givenBy(workspace2, value2)}). Allowed values: ${choiceText(observeFrom)}.`,
           observeFrom.length ? `Use an allowed value, omit observeFrom, or add the tool that gives ${value2} to the target.` : `Omit observeFrom or add the tool that gives ${value2} to the target.`
         );
     if (test.readiness !== "ready") continue;
@@ -14619,7 +14870,7 @@ function resultCoverage(plan, tests, newGaps) {
 
 // plugin/src/plans.ts
 import { existsSync as existsSync6, readFileSync as readFileSync7 } from "node:fs";
-import { basename, extname, join as join8 } from "node:path";
+import { basename as basename2, extname, join as join8 } from "node:path";
 
 // plugin/src/rules.ts
 import { readFileSync as readFileSync5, realpathSync as realpathSync2, statSync as statSync2 } from "node:fs";
@@ -15822,7 +16073,7 @@ function suggestedPlanId(workspace2, sources) {
   } catch {
     text2 = "";
   }
-  const key = text2.match(/\b[A-Za-z][A-Za-z0-9]*-\d+\b/)?.[0] ?? basename(source, extname(source));
+  const key = text2.match(/\b[A-Za-z][A-Za-z0-9]*-\d+\b/)?.[0] ?? basename2(source, extname(source));
   return key.toLowerCase().replace(/[^a-z0-9_-]+/g, "-");
 }
 function requireUnnamedSources(workspace2, sources, objective) {
@@ -15923,7 +16174,7 @@ function notReadyReasons(store, planId) {
   const plan = JSON.parse(row2.body);
   const lines2 = [
     ...plan.tests.flatMap(
-      (test) => unverifiedAssertions(test, plan.requirements).map((id2) => `Not ready: ${test.id}.${id2}`)
+      (test) => unverifiedAssertions(store.workspace, test, plan.requirements).map((id2) => `Not ready: ${test.id}.${id2}`)
     ),
     ...uncoveredRequirements(plan).map((id2) => `Not ready: ${id2} has no test`)
   ];
@@ -15973,7 +16224,10 @@ function showPlanRequest(store, planId) {
     sourceContext: request2.sourceContext ?? [],
     context: request2.context ?? { sources: [] },
     tools: planTools(request2, target.profile),
-    observeFrom: observeFromValues(planTools(request2, target.profile).map((tool) => tool.name)),
+    observeFrom: observeFromValues(
+      store.workspace,
+      planTools(request2, target.profile).map((tool) => tool.name)
+    ),
     capabilities: target.profile.capabilities,
     allowedOperations: target.profile.allowedOperations,
     data: dataSummary(store.workspace, target.profile.reset)
@@ -16072,7 +16326,7 @@ function requireChangedChecks(store, plan, previous) {
     return !old || old.action !== test.action || canonical(old.assertions) !== canonical(test.assertions) || canonical(old.requirementIds) !== canonical(test.requirementIds);
   });
   const problems = changed.flatMap(
-    (test) => softProblems(test, plan.requirements).map((problem) => ({ test, problem }))
+    (test) => softProblems(store.workspace, test, plan.requirements).map((problem) => ({ test, problem }))
   );
   const uncovered = uncoveredRequirements(plan);
   const covered = plan.requirements.length - uncovered.length;
@@ -16104,7 +16358,7 @@ function requireChangedChecks(store, plan, previous) {
 }
 function checkedRevision(store, draft) {
   const plan = planCheck(derivePlan(draft));
-  planTargetCheck(plan, targetRevision(store, plan.target.targetId, plan.target.revision).profile);
+  planTargetCheck(store.workspace, plan, targetRevision(store, plan.target.targetId, plan.target.revision).profile);
   const others = latestPlans(store);
   requireChangedChecks(store, plan, others.get(plan.planId));
   others.delete(plan.planId);
@@ -17525,7 +17779,8 @@ var actions_schema_default = {
                 $ref: "text.schema.json"
               },
               kind: {
-                enum: ["observation", "screenshot", "view_hierarchy", "recording", "http_exchange", "trace"]
+                type: "string",
+                pattern: "^[a-z][a-z0-9_]{0,39}$"
               }
             }
           },
@@ -17538,7 +17793,8 @@ var actions_schema_default = {
                 $ref: "#/definitions/text"
               },
               kind: {
-                enum: ["observation", "screenshot", "view_hierarchy", "recording", "http_exchange", "trace"]
+                type: "string",
+                pattern: "^[a-z][a-z0-9_]{0,39}$"
               }
             }
           }
@@ -18263,7 +18519,7 @@ var actions_schema_default = {
 
 // plugin/src/runs.ts
 import { mkdirSync as mkdirSync4, readFileSync as readFileSync8, realpathSync as realpathSync4, rmSync as rmSync3, statSync as statSync4 } from "node:fs";
-import { basename as basename2, extname as extname2, isAbsolute as isAbsolute3, join as join9, resolve as resolve3, sep as sep3 } from "node:path";
+import { basename as basename3, extname as extname2, isAbsolute as isAbsolute3, join as join9, resolve as resolve3, sep as sep3 } from "node:path";
 import { randomUUID } from "node:crypto";
 
 // plugin/src/routes.ts
@@ -18518,6 +18774,10 @@ function begin(store, actor, input, permanent) {
         };
       }
       const { plan, sha256 } = checked.revision;
+      requireValidRecipes(
+        store.workspace,
+        targetRevision(store, plan.target.targetId, plan.target.revision).profile.tools.map((tool) => tool.name)
+      );
       const dataProfile = targetRevision(store, plan.target.targetId).profile;
       const marker = markerFor(store, runId);
       const facts3 = runPrepare(store.workspace, dataProfile.reset, marker);
@@ -18596,13 +18856,18 @@ function evidenceKinds(store, runId) {
   const run2 = one(store, "SELECT * FROM runs WHERE run_id = ?", runId);
   const profile = targetRevision(store, run2.target_id, run2.target_revision).profile;
   const tools = profile.tools.map((tool) => tool.name);
-  return { targetId: profile.targetId, tools, choices: evidenceChoices(tools) };
+  return {
+    workspace: store.workspace,
+    targetId: profile.targetId,
+    tools,
+    choices: evidenceChoices(store.workspace, tools)
+  };
 }
 function requireEvidenceKind(kind, allowed2) {
   if (!allowed2.choices.some((choice2) => choice2.value === kind))
     requireWellFormed(
       false,
-      `Evidence kind ${kind} is not given by a tool of target ${allowed2.targetId} (${givenBy(kind)}). Allowed kinds: ${choiceText(allowed2.choices)}.`,
+      `Evidence kind ${kind} is not given by a tool of target ${allowed2.targetId} (${givenBy(allowed2.workspace, kind)}). Allowed kinds: ${choiceText(allowed2.choices)}.`,
       "Give an allowed kind. For an observation, use observation or leave the kind out for inline text."
     );
   return kind;
@@ -18651,8 +18916,11 @@ function readEvidence(store, runId, { file: name2, kind }, allowed2) {
   const extension = extname2(name2).toLowerCase();
   return {
     path,
-    name: basename2(name2),
-    kind: requireEvidenceKind(kind ?? evidenceKindOfFile(allowed2.tools, extension) ?? "observation", allowed2),
+    name: basename3(name2),
+    kind: requireEvidenceKind(
+      kind ?? evidenceKindOfFile(store.workspace, allowed2.tools, extension) ?? "observation",
+      allowed2
+    ),
     mediaType: mediaTypes[extension] ?? "application/octet-stream",
     bytes: readFileSync8(real)
   };
@@ -18692,6 +18960,18 @@ function evidenceFiles(store, runId, name2, specs = []) {
   const paths = files2.flatMap((file) => file.path ?? []);
   requireWellFormed(new Set(paths).size === paths.length, "An evidence file is listed twice");
   return files2;
+}
+function* textAttachments(files2) {
+  const decoder = new TextDecoder("utf-8", { fatal: true });
+  for (const file of files2) {
+    if (!file.mediaType.startsWith("text/") && !["application/json", "application/xml"].includes(file.mediaType))
+      continue;
+    try {
+      yield decoder.decode(file.bytes);
+    } catch {
+      continue;
+    }
+  }
 }
 function removeFiles(files2) {
   for (const file of files2) if (file.path) rmSync3(file.path, { force: true });
@@ -18799,23 +19079,30 @@ function checkAssertion(store, actor, input) {
       "Record --observed in single quotes, for example --observed '$0', so the shell passes the value unchanged."
     );
     const reason = input.reason ?? null;
-    const result = assertion.expected === void 0 ? checkedResult(input.result, assertion, observed) : structuredResult(input, test, assertion, observed, run2.request.marker ?? "");
+    const compared = assertion.expected === void 0 ? checkedResult(input.result, assertion, observed) : structuredResult(input, test, assertion, observed, run2.request.marker ?? "");
     files2 = evidenceFiles(store, input.runId, `${test.id}-${assertion.id}`, input.evidence);
-    if (result !== "not_checked")
+    if (compared !== "not_checked")
       requireWellFormed(
         observed && files2.length > 0,
-        `${result === "inconclusive" ? "An" : "A"} ${result} result needs an observation (--observed) and one or more evidence items (--evidence)`,
+        `${compared === "inconclusive" ? "An" : "A"} ${compared} result needs an observation (--observed) and one or more evidence items (--evidence)`,
         `Add --observed "<what you saw>" and --evidence <file in ${evidenceDirectory(input.runId)}>, or --evidence - with the text on standard input.`
       );
-    if (result === "inconclusive")
+    if (compared === "inconclusive")
       requireWellFormed(
         reason,
         "An inconclusive result needs a reason (--reason) that says what the evidence cannot show"
       );
-    if (result === "not_checked")
+    if (compared === "not_checked")
       requireWellFormed(reason, "A not_checked result needs a reason (--reason) that says why it was not checked");
+    const contradiction = observed !== null && assertion.expected !== void 0 ? presenceContradiction(
+      input.absent ? null : observed,
+      assertion.expected,
+      run2.request.marker ?? "",
+      textAttachments(files2)
+    ) : void 0;
+    const result = contradiction ? "inconclusive" : compared;
     const unit = result === "passed" && observed !== null && assertion.expected !== void 0 ? unitNotObserved(observed, assertion.expected) : void 0;
-    const recorded2 = reason ?? (unit ? `The unit ${unit} was not observed; the amounts match.` : null);
+    const recorded2 = contradiction ?? reason ?? (unit ? `The unit ${unit} was not observed; the amounts match.` : null);
     const table2 = prior ? "assertion_corrections" : "assertion_results";
     execute(
       store,
@@ -18837,6 +19124,7 @@ function checkAssertion(store, actor, input) {
         testId: test.id,
         assertionId: assertion.id,
         result,
+        ...contradiction ? { reason: contradiction } : {},
         evidenceIds
       }),
       subjects: [`run:${input.runId}`]
@@ -19601,8 +19889,8 @@ function recordOf(ask, events) {
   const recorded2 = session ? JSON.parse(session.detail) : null;
   const selection = JSON.parse(states[0].detail);
   const harness = selection.harness ?? recorded2?.harness;
-  const finished = endStates.includes(last.status) ? last : null;
-  const detail = finished ? JSON.parse(finished.detail) : {};
+  const finished2 = endStates.includes(last.status) ? last : null;
+  const detail = finished2 ? JSON.parse(finished2.detail) : {};
   const listOf2 = (value2) => Array.isArray(value2) ? value2 : [];
   return {
     id: ask.request_id,
@@ -19625,7 +19913,7 @@ function recordOf(ask, events) {
     costPartial: detail.costPartial === true,
     ...detail.costScope !== "turn" && harness !== "pi" ? { costCumulative: true } : {},
     startedAt: states.find((event2) => event2.status === "running")?.at ?? null,
-    endedAt: finished?.at ?? null,
+    endedAt: finished2?.at ?? null,
     reason: typeof detail.reason === "string" ? detail.reason : null,
     hint: typeof detail.hint === "string" ? detail.hint : null,
     denials: listOf2(detail.denials),
@@ -20159,6 +20447,10 @@ function insertExploration(store, input, operationId, at2) {
   const { target: pinned2 } = planRequest(store, planId);
   const target = executionTarget(store, planId, pinned2.profile.targetId, pinned2.revision);
   const mode = input.mode ?? "exploratory";
+  requireValidRecipes(
+    store.workspace,
+    planTools(planRequest(store, planId).request, target.profile).map((tool) => tool.name)
+  );
   const instance = runInstance(store, target.profile.targetId, input.instance, build);
   const explorationId = input.explorationId ?? nextExplorationId(store);
   const revision2 = latestRevision(store, planId);
@@ -21414,7 +21706,7 @@ function rulesPrompt(goal, sources, answer2) {
 function rulesRepairPrompt(refusals, answer2) {
   return [
     answer2 ? "These rules of your file were refused:" : "Checkmate refused these rules of your reply:",
-    ...refusals.map((refusal2) => `- ${refusal2}`),
+    ...refusals.map((refusal) => `- ${refusal}`),
     replyText("all the rules again, corrected", answer2)
   ].join("\n");
 }
@@ -21437,7 +21729,7 @@ function followEntriesText(answer2) {
 function repairPrompt(refusals, answer2) {
   const text2 = [
     answer2 ? "These entries of your file were refused:" : "Checkmate refused these entries of your reply:",
-    ...refusals.map((refusal2) => `- ${refusal2}`),
+    ...refusals.map((refusal) => `- ${refusal}`),
     answer2 ? `Write only one JSON array of the corrected entries to ${answer2}, and nothing else. Do not send the saved entries again.` : "Reply with only one JSON array of the corrected entries, and nothing else. Do not send the saved entries again. Use no tool."
   ].join("\n");
   return answer2 ? withoutName(text2) : text2;
@@ -21447,9 +21739,9 @@ function operationText(operations) {
   if (operations.length === 1 && operations[0] === readOnlyOperation) return readOnlyOperationText;
   return `You can: ${operations.join(", ")}.`;
 }
-function usageLine(toolNames2) {
-  const files2 = usageFiles(toolNames2);
-  return files2.length ? [`Before you use a tool, read its usage text: ${files2.join(", ")}.`] : [];
+function usageLine(workspace2, toolNames2) {
+  const files2 = recipeFilesFor(workspace2, toolNames2);
+  return files2.length ? [`Before you use a tool, read its usage field in: ${files2.join(", ")}.`] : [];
 }
 function entryPointLine(entry) {
   if (entry.kind === "command")
@@ -21461,9 +21753,10 @@ function testDataText(operations, dataPrefix) {
     return "Use only the existing records of the application. Do not create, change, or delete a record.";
   return `Use the existing records of the application. Make a new record only when a case needs it and the data rules allow it. Start each name or value that you make with ${dataPrefix}.`;
 }
-function explorerBrief(charter, entries, dataPrefix, workFolder2, seconds2, attached = true) {
+function explorerBrief(workspace2, charter, entries, dataPrefix, workFolder2, seconds2, attached = true) {
   const change = charter.change;
   const tools = testerTools(
+    workspace2,
     charter.tools.map((tool) => tool.name),
     attached
   );
@@ -21507,7 +21800,7 @@ function explorerBrief(charter, entries, dataPrefix, workFolder2, seconds2, atta
     `${operationText(charter.operations)} Do not change the code, the configuration, or the deployment of the application.`,
     ...charter.dataRules ?? [],
     ...tools.length ? [`Tools you can use: ${[...tools].sort().join(", ")}.`] : [],
-    ...usageLine(tools),
+    ...usageLine(workspace2, tools),
     ...charter.capabilities.some((capability) => capability === "http" || capability === "browser") ? [
       "A direct HTTP call is sufficient when it proves the behaviour. Use the browser when the page itself is what you test."
     ] : [],
@@ -21684,7 +21977,7 @@ function logReply(store, actor, explorationId, planId, entries, missing, dropped
   }
 }
 function duration(calls) {
-  const values = calls.flatMap((call) => call.durationMs === void 0 ? [] : [call.durationMs]);
+  const values = calls.flatMap((call2) => call2.durationMs === void 0 ? [] : [call2.durationMs]);
   return values.length ? { durationMs: values.reduce((total, value2) => total + value2, 0) } : {};
 }
 function running2(pid) {
@@ -21778,7 +22071,7 @@ function recordAnswer(store, input) {
     ...input.failed ? [input.failed] : [],
     ...first || input.failed ? [] : ["The answer file of the tester has no JSON array of entries."],
     ...first && !saved && !repeated ? [`The tester added no entry to ${exploration2.exploration_id}.`] : [],
-    ...refusals.map((refusal2) => `Refused: ${refusal2}`)
+    ...refusals.map((refusal) => `Refused: ${refusal}`)
   ];
   return {
     repair: false,
@@ -21919,13 +22212,13 @@ function recordLocked(store, operation, input, plan, env, cwd, started) {
   }
   const added = addedEntries(store, exploration2.exploration_id, actor, after);
   const saved = Object.values(added).reduce((total, count2) => total + count2, 0);
-  const timedOut = calls.find((call) => call.failure?.[0] === "interrupted");
+  const timedOut = calls.find((call2) => call2.failure?.[0] === "interrupted");
   const status = timedOut ? "interrupted" : calls[0].failure || !saved && !repeated ? "operational_error" : "completed";
   const reasons2 = [
-    ...calls.flatMap((call) => call.failure ? [call.failure[1]] : []),
+    ...calls.flatMap((call2) => call2.failure ? [call2.failure[1]] : []),
     ...first || calls[0].failure ? [] : ["The reply of the recorder has no JSON array of entries."],
     ...first && !saved && !repeated ? [`The recorder added no entry to ${exploration2.exploration_id}.`] : [],
-    ...refusals.map((refusal2) => `Refused: ${refusal2}`)
+    ...refusals.map((refusal) => `Refused: ${refusal}`)
   ];
   const data = {
     explorationId: exploration2.exploration_id,
@@ -22240,13 +22533,13 @@ function storeFindingsRun(store, actor, explorationId) {
     }
     closeTest(store, actor, { runId, testId: test.id });
   }
-  const finished = finishRun(store, actor, {
+  const finished2 = finishRun(store, actor, {
     runId,
     completion: "completed",
     cleanup: "not_applicable",
     cleanupReason: "The findings run keeps no work folder."
   });
-  return { runId, reason: finished.reasons.join(" ") };
+  return { runId, reason: finished2.reasons.join(" ") };
 }
 function storeExplorationFindings(store, actor, explorationId) {
   const stored = storeFindingsRun(store, actor, explorationId);
@@ -22473,8 +22766,9 @@ function explorerWork(store, explorationId, explorer, launch) {
     dataPrefix,
     grant: [`Edit(/${folder}/**)`],
     deny: workDenyRules(others.map((name2) => workFolder(explorationId, name2))),
-    extraEnv: testerEnvironment(values),
+    extraEnv: testerEnvironment(store.workspace, values, testerTools(store.workspace, tools, true)),
     servers: attachedServers(
+      store.workspace,
       tools,
       values,
       checkmateScript(),
@@ -22482,19 +22776,23 @@ function explorerWork(store, explorationId, explorer, launch) {
     )
   };
 }
-function topLevelNames(workspace2) {
+function explorationToolFolders(store, explorationId) {
+  const tools = exploration(store, explorationId).charter.tools.map((tool) => tool.name);
+  return toolFolders(store.workspace, tools);
+}
+function topLevelNames(workspace2, ignored) {
   const status = spawnSync7("git", ["status", "--porcelain", "--untracked-files=normal"], {
     cwd: workspace2,
     encoding: "utf8"
   });
   const names = status.status === 0 ? status.stdout.split("\n").filter((line) => line.startsWith("?? ")).map((line) => line.slice(3).replace(/^"|"$/g, "")) : readdirSync3(workspace2);
-  const ignored = [".checkmate", ...toolFolders()];
   return new Set(names.filter((name2) => !ignored.includes(name2.replace(/\/$/, ""))));
 }
 async function watchStray(store, actor, explorationId, explorer, turn2, run2) {
-  const before = topLevelNames(store.workspace);
+  const ignored = [".checkmate", ...explorationToolFolders(store, explorationId)];
+  const before = topLevelNames(store.workspace, ignored);
   const result = await run2();
-  const stray = [...topLevelNames(store.workspace)].filter((name2) => !before.has(name2)).sort();
+  const stray = [...topLevelNames(store.workspace, ignored)].filter((name2) => !before.has(name2)).sort();
   if (stray.length)
     event(store, actor, explorationId, {
       step: "stray",
@@ -22531,7 +22829,7 @@ function removeIfEmpty(folder) {
 function keepToolFolders(store, explorationId) {
   const launch = startOf(explorationEvents(store, explorationId));
   if (!launch) return;
-  for (const name2 of toolFolders()) {
+  for (const name2 of explorationToolFolders(store, explorationId)) {
     const from = join12(store.workspace, name2);
     if (launch.toolFoldersBefore.includes(name2) || !existsSync8(from)) continue;
     const to = join12(store.workspace, workFolder(explorationId), name2);
@@ -22572,6 +22870,11 @@ function startExploration(store, actor, given, env, preferSavedModel = false) {
     scope: given.scope ?? (change ? changedFiles(store.workspace, change) : [])
   };
   const reply = write(store, { actor, command: "explore start", subject: input.planId, input }, (operationId, at2) => {
+    if (input.explorationId)
+      requireValidRecipes(
+        store.workspace,
+        exploration(store, input.explorationId).charter.tools.map(({ name: name2 }) => name2)
+      );
     if (!input.session) {
       requireChild(env, selectedHarness(env));
       for (const { exploration_id: id2 } of all(
@@ -22617,7 +22920,9 @@ function startExploration(store, actor, given, env, preferSavedModel = false) {
           ...launch,
           dataRules: rules,
           toolIdentities: Object.fromEntries(toolUsers.map((name2) => [name2, toolIdentity(marker, name2)])),
-          toolFoldersBefore: toolFolders().filter((name2) => existsSync8(join12(store.workspace, name2)))
+          toolFoldersBefore: explorationToolFolders(store, opened.explorationId).filter(
+            (name2) => existsSync8(join12(store.workspace, name2))
+          )
         }
       },
       operationId,
@@ -22679,9 +22984,9 @@ function noteChild(store, actor, explorationId, explorer) {
       signalRecordedGroup(pid, born, "SIGTERM");
   };
 }
-function failureHint(launch, call, testerModel) {
-  if (authenticationFailed(call)) return launch.context.harness === "pi" ? piAuthenticationHint : authenticationHint;
-  if (!/model/i.test([call.failure?.[1] ?? "", ...call.stderr ?? []].join(" "))) return void 0;
+function failureHint(launch, call2, testerModel) {
+  if (authenticationFailed(call2)) return launch.context.harness === "pi" ? piAuthenticationHint : authenticationHint;
+  if (!/model/i.test([call2.failure?.[1] ?? "", ...call2.stderr ?? []].join(" "))) return void 0;
   if (testerModel) return `The host refused tester model ${testerModel}. Select another model for the tester.`;
   if (launch.modelFrom === "workspace") return "Change Model for testers in Settings.";
   if (launch.context.harness === "pi")
@@ -22785,10 +23090,17 @@ async function launchExplorers(store, actor, explorationId, launch, env, catalog
     );
     const work = explorerWork(store, explorationId, explorer, launch);
     const { folder, grant, dataPrefix } = work;
-    const brief = explorerBrief({ ...opened.charter, dataRules: launch.dataRules }, entries, dataPrefix, folder, {
-      study: launch.studySeconds,
-      test: launch.testSeconds
-    });
+    const brief = explorerBrief(
+      store.workspace,
+      { ...opened.charter, dataRules: launch.dataRules },
+      entries,
+      dataPrefix,
+      folder,
+      {
+        study: launch.studySeconds,
+        test: launch.testSeconds
+      }
+    );
     event(store, actor, explorationId, {
       step: "launch",
       explorer,
@@ -22835,20 +23147,20 @@ async function launchExplorers(store, actor, explorationId, launch, env, catalog
   });
   const ended = await Promise.all(runs);
   for (const { explorer, session, calls } of ended) {
-    const call = calls.find((item) => item.failure) ?? calls.at(-1);
+    const call2 = calls.find((item) => item.failure) ?? calls.at(-1);
     const warnings = [...new Set(calls.flatMap((item) => item.warnings ?? []))];
-    const hint = failureHint(launch, call, launch.testerModels?.[explorer]);
-    if (launch.context.harness === "pi" && call.failure)
-      console.error(`${explorationId}/${explorer} ${calls.length === 1 ? "study" : "test"}: ${call.failure[1]}`);
+    const hint = failureHint(launch, call2, launch.testerModels?.[explorer]);
+    if (launch.context.harness === "pi" && call2.failure)
+      console.error(`${explorationId}/${explorer} ${calls.length === 1 ? "study" : "test"}: ${call2.failure[1]}`);
     const durations = calls.flatMap((item) => item.durationMs === void 0 ? [] : [item.durationMs]);
     event(store, actor, explorationId, {
       step: "end",
       explorer,
-      status: call.failure?.[0] ?? "completed",
+      status: call2.failure?.[0] ?? "completed",
       detail: {
         session,
-        ...call.failure ? { turn: calls.length === 1 ? "study" : "test", reason: call.failure[1] } : {},
-        ...call.stderr ? { stderr: call.stderr } : {},
+        ...call2.failure ? { turn: calls.length === 1 ? "study" : "test", reason: call2.failure[1] } : {},
+        ...call2.stderr ? { stderr: call2.stderr } : {},
         ...warnings.length ? { warnings } : {},
         ...hint ? { hint } : {},
         ...usageOf(calls),
@@ -22905,7 +23217,7 @@ function mergeReports(store, actor, explorationId, launch, env, after = 0) {
   if (!input) return;
   const session = randomUUID4();
   const executable = requireChild(env, launch.context.harness);
-  const call = (args, prompt2) => {
+  const call2 = (args, prompt2) => {
     const hook = childHook(store.workspace, explorationId, "merge");
     const context = { ...launch.context, hook };
     return callChild(
@@ -22920,19 +23232,19 @@ function mergeReports(store, actor, explorationId, launch, env, after = 0) {
   };
   const log = (reply) => logMerge(store, explorationId, reply);
   const calls = [
-    call(
+    call2(
       ["--session-id", session],
       mergerPrompt(input.build, input.defects, input.groups, input.questions, input.earlier)
     )
   ];
   let refusals = calls[0].failure ? [] : log(replyArray(calls[0].result));
   if (refusals.length) {
-    calls.push(call(["--resume", session], repairPrompt(refusals)));
+    calls.push(call2(["--resume", session], repairPrompt(refusals)));
     refusals = log(replyArray(calls.at(-1).result));
   }
   const unplaced = calls.some((item) => item.failure) ? [] : unplacedReports(store, explorationId, after);
   if (unplaced.length) {
-    calls.push(call(["--resume", session], mergeAgainPrompt(unplaced)));
+    calls.push(call2(["--resume", session], mergeAgainPrompt(unplaced)));
     refusals = [...refusals, ...log(replyArray(calls.at(-1).result))];
   }
   const failure = calls.find((item) => item.failure)?.failure;
@@ -22957,7 +23269,7 @@ function deriveRules(store, actor, explorationId, launch, env) {
   const sources = ruleSources(store, opened.plan_id);
   const names = sources.filter((source) => source.text !== null).map((source) => source.name);
   const session = randomUUID4();
-  const call = (args, prompt2) => {
+  const call2 = (args, prompt2) => {
     const hook = childHook(store.workspace, explorationId, "rules");
     const context = { ...launch.context, hook };
     return callChild(
@@ -22970,11 +23282,11 @@ function deriveRules(store, actor, explorationId, launch, env) {
       context.harness
     );
   };
-  const calls = [call(["--session-id", session], rulesPrompt(opened.charter.goal, sources))];
+  const calls = [call2(["--session-id", session], rulesPrompt(opened.charter.goal, sources))];
   const first = checkedRules(replyArray(calls[0].result), names);
   let checked = first;
   if (!calls[0].failure && first.refusals.length) {
-    calls.push(call(["--resume", session], rulesRepairPrompt(first.refusals)));
+    calls.push(call2(["--resume", session], rulesRepairPrompt(first.refusals)));
     const again = checkedRules(replyArray(calls[1].result), names);
     if (again.rules.length) checked = again;
   }
@@ -23065,8 +23377,8 @@ async function verifyClaims(store, actor, explorationId, launch, env, after = 0)
   }
   const { observations, refusals } = checked;
   if (observations.length) logEntries(store, verifierActor, { explorationId, entries: observations });
-  const failure = calls.find((call) => call.failure)?.failure;
-  const stderr = calls.find((call) => call.stderr)?.stderr;
+  const failure = calls.find((call2) => call2.failure)?.failure;
+  const stderr = calls.find((call2) => call2.stderr)?.stderr;
   event(store, actor, explorationId, {
     step: "verify",
     explorer: null,
@@ -23183,7 +23495,10 @@ async function driveExploration(workspace2, explorationId, env) {
       step: "done",
       explorer: null,
       status: "failed",
-      detail: { reason: error instanceof Error ? error.message : String(error) }
+      detail: {
+        reason: error instanceof Error ? error.message : String(error),
+        ...error instanceof Refusal && error.hint ? { hint: error.hint } : {}
+      }
     });
   } finally {
     settleCleanups(store, [explorationId]);
@@ -23360,7 +23675,7 @@ async function driveFollow(workspace2, explorationId, env) {
           catalog2,
           plan.modelOverride ? "" : initial.testerEfforts?.[explorer] ?? (model ? "" : initial.effort ?? "")
         );
-        const call = await watchedTurns(
+        const call2 = await watchedTurns(
           store,
           actor,
           explorationId,
@@ -23377,25 +23692,25 @@ async function driveFollow(workspace2, explorationId, env) {
             "follow-up"
           )
         );
-        return { explorer, session, call, tester, model };
+        return { explorer, session, call: call2, tester, model };
       })
     );
-    for (const { explorer, session, call, tester, model } of ended) {
-      const hint = failureHint(launch, call, model);
-      if (launch.context.harness === "pi" && call.failure)
-        console.error(`${explorationId}/${explorer} follow-up: ${call.failure[1]}`);
+    for (const { explorer, session, call: call2, tester, model } of ended) {
+      const hint = failureHint(launch, call2, model);
+      if (launch.context.harness === "pi" && call2.failure)
+        console.error(`${explorationId}/${explorer} follow-up: ${call2.failure[1]}`);
       event(store, actor, explorationId, {
         step: "follow-turn",
         explorer,
-        status: call.failure?.[0] ?? "completed",
+        status: call2.failure?.[0] ?? "completed",
         detail: {
           session,
           context: tester,
-          ...call.failure ? { reason: call.failure[1] } : {},
-          ...call.stderr ? { stderr: call.stderr } : {},
-          ...call.warnings ? { warnings: call.warnings } : {},
+          ...call2.failure ? { reason: call2.failure[1] } : {},
+          ...call2.stderr ? { stderr: call2.stderr } : {},
+          ...call2.warnings ? { warnings: call2.warnings } : {},
           ...hint ? { hint } : {},
-          ...usageOf([call])
+          ...usageOf([call2])
         }
       });
     }
@@ -23443,7 +23758,10 @@ async function driveFollow(workspace2, explorationId, env) {
       step: "followed",
       explorer: null,
       status: "failed",
-      detail: { reason: error instanceof Error ? error.message : String(error) }
+      detail: {
+        reason: error instanceof Error ? error.message : String(error),
+        ...error instanceof Refusal && error.hint ? { hint: error.hint } : {}
+      }
     });
   } finally {
     closeStore(store);
@@ -24524,9 +24842,11 @@ function planList(store) {
   }));
   return [...drafted, ...requested].sort((a, b) => a.planId.localeCompare(b.planId));
 }
-function legacyChecks(plan) {
+function legacyChecks(workspace2, plan) {
   return [
-    ...plan.tests.flatMap((test) => unverifiedAssertions(test, plan.requirements).map((id2) => `${test.id}.${id2}`)),
+    ...plan.tests.flatMap(
+      (test) => unverifiedAssertions(workspace2, test, plan.requirements).map((id2) => `${test.id}.${id2}`)
+    ),
     ...uncoveredRequirements(plan).map((id2) => `${id2} needs_test`)
   ];
 }
@@ -24556,7 +24876,7 @@ function planDetail(store, planId, revision2 = null) {
       one(store, "SELECT body FROM plan_requests WHERE plan_id = ?", planId).body
     ).context?.sources ?? [],
     pendingDecisions: pending,
-    legacyChecks: legacyChecks(selected.plan),
+    legacyChecks: legacyChecks(store.workspace, selected.plan),
     plan: selected.plan,
     runs: runList(store, { planId }).map((run2) => ({
       runId: run2.runId,
@@ -24885,7 +25205,7 @@ function planStatus(store, planId, harness = workspaceHarness(store)) {
     follow: followActions.map((item) => ({ ...item, available: item.recommended && !running3 })),
     actions
   };
-  const legacy = planHasRevision(store, planId) ? legacyChecks(planRevision(store, planId).plan) : [];
+  const legacy = planHasRevision(store, planId) ? legacyChecks(store.workspace, planRevision(store, planId).plan) : [];
   return {
     ...status,
     rules: rulesLine(store, planId),
@@ -25006,7 +25326,7 @@ function loopStatus(store, planId, harness) {
   const fixes = claims.filter((claim) => factoryStates.includes(claim.state));
   const kept = fixes.filter((claim) => !claim.handoff).length;
   const last = explorations.at(-1);
-  const finished = explorations.filter((item) => item.state === "completed").at(-1);
+  const finished2 = explorations.filter((item) => item.state === "completed").at(-1);
   const after = [
     ...fixes.length ? [
       `${amount(fixes.length, "confirmed or observed claim")} ready for the factory: checkmate claim list ${planId}`
@@ -25018,7 +25338,7 @@ function loopStatus(store, planId, harness) {
       `${amount(questions.length, "open question")} can be answered at any time and do not block: ${answerQuestion2}`
     ] : [],
     `Retest on the next build: checkmate test ${planId} --build <new build> --allow Read --allow Bash`,
-    ...finished && fixes.length ? [storedRunNext(store, finished.explorationId)] : []
+    ...finished2 && fixes.length ? [storedRunNext(store, finished2.explorationId)] : []
   ];
   if (fixes.length)
     return { ...base, ...extra, ...loop("defects_open", "factory", [amount(fixes.length, "open claim")], after) };
@@ -25141,7 +25461,7 @@ function checkStatus(store, planId, harness) {
   const runs = runList(store, { planId });
   const openRuns = runs.filter((run2) => run2.state === "started").map((run2) => ({ runId: run2.runId, build: run2.build, instanceId: run2.instanceId }));
   const record = planRecord(store, plan);
-  const finished = runs.find((run2) => run2.runId === record.results.at(-1)?.runId);
+  const finished2 = runs.find((run2) => run2.runId === record.results.at(-1)?.runId);
   const latestRun = runs.at(-1) ?? null;
   const retest = latestRetest(store, planId, record);
   const { ready, latest, supplied, rejected } = record;
@@ -25244,7 +25564,7 @@ function checkStatus(store, planId, harness) {
         [`checkmate plan approve ${subject} --rationale "<why>"`]
       );
     const blocking = gaps.filter((gap) => gap.severity === "blocking");
-    if (!finished) {
+    if (!finished2) {
       const selection = readySelection(store, plan, null);
       if (selection.tests.length) {
         const build = bestBuild((item) => readySelection(store, plan, item).tests.length) ?? "<build>";
@@ -25280,7 +25600,7 @@ function checkStatus(store, planId, harness) {
       );
     }
     if (gaps.length) return loop("needs_answers", "oracle", [amount(gaps.length, "open gap")], answer2);
-    if (!ready.length) return nothingToRun(finished.build, readySelection(store, plan, finished.build).leftOut);
+    if (!ready.length) return nothingToRun(finished2.build, readySelection(store, plan, finished2.build).leftOut);
     const causes = /* @__PURE__ */ new Set();
     const reasons2 = new Map(
       ready.map((testId) => {
@@ -25299,7 +25619,7 @@ function checkStatus(store, planId, harness) {
       })
     );
     const incomplete = runs.filter(
-      (run2) => (supplied.includes(run2.runId) || run2.runId === finished.runId) && run2.completion !== "completed"
+      (run2) => (supplied.includes(run2.runId) || run2.runId === finished2.runId) && run2.completion !== "completed"
     );
     for (const run2 of incomplete) causes.add(run2.runId);
     const why = [
@@ -25311,7 +25631,7 @@ function checkStatus(store, planId, harness) {
       const needed = incomplete.length ? ready : ready.filter((testId) => reasons2.get(testId).length);
       const selectable = (build) => readySelection(store, plan, build).tests.some((testId) => needed.includes(testId));
       const caused = runs.filter((run2) => causes.has(run2.runId));
-      let next = (caused.length ? caused : [finished]).filter((run2) => selectable(run2.build)).map(rerun);
+      let next = (caused.length ? caused : [finished2]).filter((run2) => selectable(run2.build)).map(rerun);
       if (!next.length) {
         const build = bestBuild(
           (item) => readySelection(store, plan, item).tests.filter((testId) => needed.includes(testId)).length
@@ -25321,7 +25641,7 @@ function checkStatus(store, planId, harness) {
             `checkmate run begin <runId> ${subject} --build ${shellWord(build)}${instance()} --partial ready_only`
           ];
       }
-      if (!next.length) return nothingToRun(finished.build, readySelection(store, plan, finished.build).leftOut);
+      if (!next.length) return nothingToRun(finished2.build, readySelection(store, plan, finished2.build).leftOut);
       return loop("needs_retest", "qa", why, [...new Set(next)]);
     }
     const supplying = runs.filter((run2) => supplied.includes(run2.runId));
@@ -25510,8 +25830,8 @@ function runDetail(store, runId) {
     sha256: row2.sha256,
     size: row2.size
   }));
-  const finished = runResult(store, runId);
-  const { attempt: _attempt, ...clock2 } = runClock(store, run2.row, finished?.result.finishedAt);
+  const finished2 = runResult(store, runId);
+  const { attempt: _attempt, ...clock2 } = runClock(store, run2.row, finished2?.result.finishedAt);
   const receipts = all(
     store,
     `SELECT json_extract(arguments, '$.attempt') AS attempt, at, status FROM operations
@@ -25579,22 +25899,22 @@ function runDetail(store, runId) {
     deadlineSeconds: run2.row.deadline_seconds,
     clock: clock2,
     request: run2.request,
-    state: finished ? "finalized" : "started",
+    state: finished2 ? "finalized" : "started",
     attempts,
     tests,
-    warnings: finished ? [] : runOverlapWarnings(store, runId),
+    warnings: finished2 ? [] : runOverlapWarnings(store, runId),
     findings: verdictFindings(store, runId),
     retest: retestVerdicts(run2, outcomes, runAssertions(store, runId)),
     newGaps: runGaps(store, runId),
-    result: finished ? {
-      sha256: finished.sha256,
-      completion: finished.result.completion,
-      completionCause: finished.result.completionCause ?? null,
-      completionReason: finished.result.completionReason ?? null,
-      coverage: finished.result.coverage,
-      cleanup: finished.result.cleanup,
-      finishedAt: finished.result.finishedAt,
-      acceptance: approvalLabel(resultAcceptance(store, run2.row, finished.sha256)),
+    result: finished2 ? {
+      sha256: finished2.sha256,
+      completion: finished2.result.completion,
+      completionCause: finished2.result.completionCause ?? null,
+      completionReason: finished2.result.completionReason ?? null,
+      coverage: finished2.result.coverage,
+      cleanup: finished2.result.cleanup,
+      finishedAt: finished2.result.finishedAt,
+      acceptance: approvalLabel(resultAcceptance(store, run2.row, finished2.sha256)),
       latestDecision: latestApproval(store, "result", runId) ?? null
     } : null
   };
@@ -26010,7 +26330,9 @@ function runGate(store, runId) {
   const coverage2 = detail.result?.coverage.status ?? null;
   const partial = coverage2 !== "complete";
   const unverified = [
-    ...plan.tests.filter((test) => detail.request.selectedTestIds.includes(test.id)).flatMap((test) => unverifiedAssertions(test, plan.requirements).map((id2) => `${test.id}.${id2}`)),
+    ...plan.tests.filter((test) => detail.request.selectedTestIds.includes(test.id)).flatMap(
+      (test) => unverifiedAssertions(store.workspace, test, plan.requirements).map((id2) => `${test.id}.${id2}`)
+    ),
     ...uncoveredRequirements(plan).map((id2) => `${id2} needs_test`)
   ];
   const verdict = failed2.length ? { code: 1, state: "defects" } : couldNotTest ? { code: 2, state: "could_not_test" } : openGaps.length ? { code: 3, state: "blocked_on_oracle" } : partial ? { code: 2, state: "partial_coverage" } : unverified.length ? { code: 2, state: "unverified_checks" } : { code: 0, state: "passed" };
@@ -27031,13 +27353,13 @@ function exportPlan(store, reference2, format3) {
 }
 function runReport(store, runId) {
   const run2 = runState(store, runId);
-  const finished = runResult(store, runId);
-  requireCondition(finished, `Run ${runId} has no result. Finish it before you export it.`);
-  const state = resultAcceptance(store, run2.row, finished.sha256);
+  const finished2 = runResult(store, runId);
+  requireCondition(finished2, `Run ${runId} has no result. Finish it before you export it.`);
+  const state = resultAcceptance(store, run2.row, finished2.sha256);
   const approval = planApproval(store, run2.plan, run2.row.plan_sha256);
   const { planId, revision: revision2, objective, requirements, tests, gaps, decisions, assumptions } = run2.plan;
   const inline2 = {};
-  for (const entry of finished.result.evidence) {
+  for (const entry of finished2.result.evidence) {
     const image2 = inlineImages.includes(entry.mediaType) && entry.size <= maxInlineImage;
     const text2 = inlineTexts.includes(entry.mediaType) && entry.size <= maxInlineText;
     if (!image2 && !text2) continue;
@@ -27049,8 +27371,8 @@ function runReport(store, runId) {
       store.workspace,
       targetRevision(store, run2.row.target_id, run2.row.target_revision).profile.reset
     ),
-    result: finished.result,
-    sha256: finished.sha256,
+    result: finished2.result,
+    sha256: finished2.sha256,
     acceptance: { state: approvalLabel(state), latest: state.latest },
     planApproval: { state: approvalLabel(approval), latest: approval.latest },
     plan: { planId, revision: revision2, objective, requirements, tests, gaps, decisions, assumptions },
@@ -27117,7 +27439,7 @@ function exportExploration(store, explorationId, format3) {
 import { createReadStream, realpathSync as realpathSync5 } from "node:fs";
 import { readdir } from "node:fs/promises";
 import { homedir as homedir2 } from "node:os";
-import { basename as basename3, join as join15, resolve as resolve5 } from "node:path";
+import { basename as basename4, join as join15, resolve as resolve5 } from "node:path";
 import { createInterface as createInterface3 } from "node:readline";
 async function readUsage(path, workspace2, session) {
   const stream = createReadStream(path, { encoding: "utf8" });
@@ -27128,7 +27450,7 @@ async function readUsage(path, workspace2, session) {
       const entry = JSON.parse(line);
       if (!usage2) {
         if (entry.type !== "session" || entry.id !== session || realpathSync5(entry.cwd) !== workspace2) return;
-        usage2 = { parent: entry.parentSession ? basename3(entry.parentSession) : null, messages: /* @__PURE__ */ new Map() };
+        usage2 = { parent: entry.parentSession ? basename4(entry.parentSession) : null, messages: /* @__PURE__ */ new Map() };
       } else if (entry.type === "message") {
         const cost = piMessageCost(entry.message);
         if (cost === void 0) continue;
@@ -27189,7 +27511,7 @@ async function recoverPiCosts(store, env) {
     const session = await load(phase.session);
     if (!session) continue;
     const parent = phase.parent ? await load(phase.parent) : void 0;
-    if (phase.parent && (!parent || session.parent !== basename3(paths.get(phase.parent)))) continue;
+    if (phase.parent && (!parent || session.parent !== basename4(paths.get(phase.parent)))) continue;
     if (!phase.parent && session.parent) continue;
     let total = 0;
     let reported = false;
@@ -27225,7 +27547,7 @@ async function recoverPiCosts(store, env) {
 // plugin/src/ui/server.ts
 import { createServer } from "node:http";
 import { randomBytes as randomBytes4 } from "node:crypto";
-import { existsSync as existsSync11, readFileSync as readFileSync13, realpathSync as realpathSync7 } from "node:fs";
+import { existsSync as existsSync11, readdirSync as readdirSync4, readFileSync as readFileSync13, realpathSync as realpathSync7, statSync as statSync6 } from "node:fs";
 import { fileURLToPath as fileURLToPath2 } from "node:url";
 
 // plugin/src/modes.ts
@@ -28263,8 +28585,8 @@ function commandLine(command, cwd) {
   }
   if (!rest) return command;
   const named = variableStart.exec(rest);
-  const call = named && checkmateValue.test(variables.get(named[1]) ?? "") ? named : checkmateStart.exec(rest);
-  if (call) rest = `checkmate${rest.slice(call[0].length)}`;
+  const call2 = named && checkmateValue.test(variables.get(named[1]) ?? "") ? named : checkmateStart.exec(rest);
+  if (call2) rest = `checkmate${rest.slice(call2[0].length)}`;
   if (typeof cwd !== "string" || !cwd) return rest;
   return rest.replaceAll(`${cwd}/`, "./").split(" ").map((word) => word === cwd ? "." : word).join(" ");
 }
@@ -28714,7 +29036,7 @@ function stateText(item) {
   const decision = item.decision;
   return decision.kind === "closed" ? `Closed: ${closedText[decision.cause]}.` : `Answered: ${decision.text}.`;
 }
-function permissionPage(store, context, askerId, requestId2, view, refusal2) {
+function permissionPage(store, context, askerId, requestId2, view, refusal) {
   const item = permissionOf(store, askerId, requestId2);
   if (!item) return null;
   const { from } = view;
@@ -28741,7 +29063,7 @@ function permissionPage(store, context, askerId, requestId2, view, refusal2) {
       [item.id, null]
     ],
     back,
-    status: refusal2 ? 422 : 200,
+    status: refusal ? 422 : 200,
     body: html2`<div
 			class="sp-record"
 			data-region="permission-record"
@@ -28753,7 +29075,7 @@ function permissionPage(store, context, askerId, requestId2, view, refusal2) {
 		>
 			${crumbBar([...item.planId ? [[item.planId, `/plans/${item.planId}`]] : [], [askerId, asker.href]])}
 			<div data-stale-slot>
-				${refusal2 && !refusal2.field ? html2`<p class="form-error" role="alert">${refusal2.error}</p>` : ""}
+				${refusal && !refusal.field ? html2`<p class="form-error" role="alert">${refusal.error}</p>` : ""}
 			</div>
 			<section class="sp-dhead" tabindex="-1" data-sub data-label="${name2}">
 				<div class="sp-pills">
@@ -28776,7 +29098,7 @@ function permissionPage(store, context, askerId, requestId2, view, refusal2) {
 							<ol class="sp-optlist asks">
 								${choices2.map((choice2, index2) => html2`<li>${optionOf(context, item, from, choice2, index2 + 1)}<span class="help">${choice2.text}</span></li>`)}
 							</ol>
-							<div class="sp-c-extra" data-extra="deny" ${refusal2?.field ? "" : html2`hidden`}>
+							<div class="sp-c-extra" data-extra="deny" ${refusal?.field ? "" : html2`hidden`}>
 								<form
 									method="post"
 									action="${recordPath(item)}"
@@ -28793,8 +29115,8 @@ function permissionPage(store, context, askerId, requestId2, view, refusal2) {
 										required
 										data-missing="Write the reason first. The tester gets it."
 									>
-${refusal2?.reason ?? ""}</textarea>
-									${refusal2?.field ? html2`<p class="form-error" role="alert" data-field="reason">${refusal2.error}</p>` : ""}
+${refusal?.reason ?? ""}</textarea>
+									${refusal?.field ? html2`<p class="form-error" role="alert" data-field="reason">${refusal.error}</p>` : ""}
 									<div class="btns">
 										<button class="sp-btn pri"><span>Deny</span></button>
 										<span class="small muted"
@@ -30189,10 +30511,10 @@ function approvalBody(item) {
 			>
 		</div>`;
 }
-function recordDrawer(store, context, review, item, view, refusal2) {
+function recordDrawer(store, context, review, item, view, refusal) {
   const list3 = reviewHref(review.planId, view, `&at=${encodeURIComponent(item.key)}&focus=list`);
   const base = reviewHref(review.planId, view, `&item=${encodeURIComponent(item.key)}`);
-  const state = refusal2?.key === item.key ? refusal2.state : null;
+  const state = refusal?.key === item.key ? refusal.state : null;
   const options3 = optionsOf({ ...context, path: list3 }, review, item);
   const body = item.claim ? claimBody(context, store, review, item, base, list3, state) : item.kind === "approval" ? approvalBody(item) : questionBody(context, review, item, list3, state);
   const when = item.claim ? null : item.question?.at ?? item.waiting?.since ?? null;
@@ -31127,21 +31449,21 @@ function panel(context, review, view, current2, cost) {
 		${view === "rules" ? rulesList(context, review) : listOf(context, review, view, groups, title2)}
 	</section>`;
 }
-function reviewPage(store, context, planId, params, refusal2 = null, notice = null) {
+function reviewPage(store, context, planId, params, refusal = null, notice = null) {
   const review = reviewOf(store, planId, context.harness);
   const views2 = viewsOf(review);
   const asked2 = params.get("view") ?? "needs";
   const current2 = views2.includes(asked2) ? asked2 : "needs";
   const chatting = params.has("chat") || params.get("newChat") === "1";
   const title2 = viewTitle(review, current2);
-  const key = refusal2?.key ?? params.get("item");
-  const item = key && !(refusal2?.subject && refusal2.state.stale) ? review.items.find((each) => each.key === key && each.kind !== "permission") ?? null : null;
-  const refusedAnswer = refusal2?.subject && !item ? html2`<section aria-labelledby="refused-answer">
-					<h2 id="refused-answer">Answer for ${refusal2.subject}</h2>
-					${messages(refusal2.state)}${keptText(refusal2.state)}
+  const key = refusal?.key ?? params.get("item");
+  const item = key && !(refusal?.subject && refusal.state.stale) ? review.items.find((each) => each.key === key && each.kind !== "permission") ?? null : null;
+  const refusedAnswer = refusal?.subject && !item ? html2`<section aria-labelledby="refused-answer">
+					<h2 id="refused-answer">Answer for ${refusal.subject}</h2>
+					${messages(refusal.state)}${keptText(refusal.state)}
 				</section>` : "";
   const file = params.get("file");
-  const record = item ? file !== null && /^[0-9]{1,3}$/.test(file) && item.claim ? evidenceViewer(store, review, item, current2, Number(file)) : recordDrawer(store, context, review, item, current2, refusal2) : "";
+  const record = item ? file !== null && /^[0-9]{1,3}$/.test(file) && item.claim ? evidenceViewer(store, review, item, current2, Number(file)) : recordDrawer(store, context, review, item, current2, refusal) : "";
   const cost = planCost(store, planId);
   const panels = views2.map((view) => panel(context, review, view, current2, costText(cost.costUsd, cost.costPartial)));
   return {
@@ -31152,7 +31474,7 @@ function reviewPage(store, context, planId, params, refusal2 = null, notice = nu
       "inbox",
       ...review.explorations.map((each) => `exploration:${each.explorationId}`)
     ],
-    status: refusal2 || notice ? 422 : 200,
+    status: refusal || notice ? 422 : 200,
     crumbs: [
       ["Plans", "/"],
       [planId, `/plans/${planId}`],
@@ -32170,6 +32492,7 @@ ${followEntriesText(answer2)}`,
   const launch = startOf(explorationEvents(store, explorationId));
   const { session, dataPrefix } = launch.toolIdentities[explorer];
   const brief = explorerBrief(
+    store.workspace,
     { ...opened.charter, dataRules: launch.dataRules },
     entryValues(store, explorationId),
     dataPrefix,
@@ -32181,10 +32504,12 @@ ${followEntriesText(answer2)}`,
     false
   );
   if (due === "test") return action2("test", "task-test.md", brief.test);
-  const shell3 = shellInstructions({
-    session,
-    workFolder: join18(store.workspace, folder)
-  });
+  const tools = testerTools(
+    store.workspace,
+    opened.charter.tools.map((tool) => tool.name),
+    false
+  );
+  const shell3 = shellInstructions(store.workspace, { session, workFolder: join18(store.workspace, folder) }, tools);
   return action2(
     "study",
     "task-study.md",
@@ -32420,6 +32745,10 @@ function pauseRun(store, actor, explorationId, reason) {
 function stepsStarted(store, actor, explorationId, names) {
   const events = explorationEvents(store, explorationId);
   sessionLaunch(events, explorationId);
+  requireValidRecipes(
+    store.workspace,
+    exploration(store, explorationId).charter.tools.map(({ name: name2 }) => name2)
+  );
   clearPause(store, actor, explorationId, events);
   const phase = phaseOf3(events);
   const given = (name2) => {
@@ -32700,9 +33029,6 @@ function stepDone(store, actor, input) {
 }
 
 // plugin/src/actions.ts
-function toolName2(name2) {
-  return `checkmate_${name2}`;
-}
 function withRejections(store, reply) {
   if (reply.status !== "completed") return reply;
   const rejections = rejectionLines(store, reply.subject);
@@ -32862,14 +33188,14 @@ function actionRecovery(name2, reply) {
       ...reply.data,
       nextAction: {
         action: next,
-        instruction: recovery ?? (next !== name2 ? `Read the current record with checkmate_${next} before retrying. Use the record ID in the request.` : "Resolve the condition in reasons before retrying. Ask the oracle for any missing decision.")
+        instruction: recovery ?? (next !== name2 ? `Read the current record with ${toolName(next)} before retrying. Use the record ID in the request.` : "Resolve the condition in reasons before retrying. Ask the oracle for any missing decision.")
       }
     }
   };
 }
 
 // plugin/src/ui/server.ts
-import { resolve as resolve7 } from "node:path";
+import { join as join21, resolve as resolve7 } from "node:path";
 import { mkdirSync as mkdirSync10, rmSync as rmSync8, writeFileSync as writeFileSync5 } from "node:fs";
 
 // plugin/src/ui/bulk.ts
@@ -33163,8 +33489,8 @@ function assumedRows(lines2) {
     return [assumedLabels[name2] ?? name2, line.slice(at2 + 1)];
   });
 }
-function otherEntryFields(submitted) {
-  const others = [...declaredEntryPoints().values()].filter((entry) => entry.name !== "web");
+function otherEntryFields(workspace2, submitted) {
+  const others = [...declaredEntryPoints(recipes(workspace2)).values()].filter((entry) => entry.name !== "web");
   if (!others.length) return "";
   return html2`<div class="field-group">
 		<details
@@ -33187,7 +33513,7 @@ function otherEntryFields(submitted) {
 		</details>
 	</div>`;
 }
-function firstRunPage(context, onHome, back = "/", invalidAddress) {
+function firstRunPage(workspace2, context, onHome, back = "/", invalidAddress) {
   const body = html2`${field2(
     "setup-url",
     "url",
@@ -33198,7 +33524,7 @@ function firstRunPage(context, onHome, back = "/", invalidAddress) {
     invalidAddress?.url
   )}
 		${invalidAddress ? html2`<p class="form-error" role="alert" data-field="url" data-refusal>Give the address of the application, for example http://localhost:3000.</p>` : ""}
-		${otherEntryFields(invalidAddress)}
+		${otherEntryFields(workspace2, invalidAddress)}
 		<div
 			class="setup-assumed"
 			data-assumed
@@ -34931,6 +35257,7 @@ function runPage(store, context, runId, params = new URLSearchParams(), state = 
 // plugin/src/ui/settings.ts
 var settingsPages = [
   { path: "/settings/targets", label: "Targets" },
+  { path: "/settings/recipes", label: "Recipes" },
   { path: "/settings/harness", label: "Coding harness" }
 ];
 function settingsNav(current2) {
@@ -34947,7 +35274,8 @@ function settingsNav(current2) {
 	</nav>`;
 }
 function settingsPage(current2, title2, subjects, body, status) {
-  const target = title2 !== "Targets" && title2 !== "Coding harness";
+  const parent = settingsPages.find((page) => page.path === current2);
+  const detail = title2 !== parent.label;
   return {
     title: title2,
     section: "settings",
@@ -34955,9 +35283,9 @@ function settingsPage(current2, title2, subjects, body, status) {
     status,
     crumbs: [
       ["Settings", "/settings/targets"],
-      ...target ? [["Targets", "/settings/targets"], [title2, null]] : [[title2, null]]
+      ...detail ? [[parent.label, current2], [title2, null]] : [[title2, null]]
     ],
-    back: target ? "/settings/targets" : "/",
+    back: detail ? current2 : "/",
     body: html2`${settingsNav(current2)} ${body}`
   };
 }
@@ -35004,7 +35332,7 @@ function targetsPage(store) {
 		</div>`;
   return settingsPage("/settings/targets", "Targets", ["*"], body);
 }
-function entryPointsTable(entryPoints) {
+function entryPointsTable(entryPoints2) {
   return html2`<div class="scroll">
 		<table>
 			<thead>
@@ -35015,7 +35343,7 @@ function entryPointsTable(entryPoints) {
 				</tr>
 			</thead>
 			<tbody>
-				${entryPoints.map(
+				${entryPoints2.map(
     (entry) => html2`<tr>
 							<td class="mono">${entry.name}</td>
 							<td class="mono">${entry.kind}</td>
@@ -35056,51 +35384,33 @@ function toolsTable(profile) {
 function profileFacts(profile) {
   const approvals = profile.approvals ?? { plan: "required", result: "required" };
   return html2`<dl class="facts">
-		<div>
-			<dt>Capabilities</dt>
-			<dd>${words4(profile.capabilities)}</dd>
-		</div>
-		<div>
-			<dt>Operations</dt>
-			<dd>${words4(profile.allowedOperations)}</dd>
-		</div>
-		<div>
-			<dt>Authentication</dt>
-			<dd>
-				<code>${profile.authentication.kind}</code> · references ${words4(profile.authentication.references)}
-			</dd>
-		</div>
-		<div>
-			<dt>Approvals</dt>
-			<dd>plan <code>${approvals.plan}</code> · result <code>${approvals.result}</code></dd>
-		</div>
-		<div>
-			<dt>Startup</dt>
-			<dd>
-				${profile.startup.owner}${profile.startup.command ? html2` · <code>${profile.startup.command.join(" && ")}</code>` : ""}
-			</dd>
-		</div>
-		<div>
-			<dt>Cleanup</dt>
-			<dd>${profile.cleanup}</dd>
-		</div>
-		${profile.reset ? html2`<div>
-						<dt>Reset</dt>
+		<dt>Capabilities</dt>
+		<dd>${words4(profile.capabilities)}</dd>
+		<dt>Operations</dt>
+		<dd>${words4(profile.allowedOperations)}</dd>
+		<dt>Authentication</dt>
+		<dd><code>${profile.authentication.kind}</code> · references ${words4(profile.authentication.references)}</dd>
+		<dt>Approvals</dt>
+		<dd>plan <code>${approvals.plan}</code> · result <code>${approvals.result}</code></dd>
+		<dt>Startup</dt>
+		<dd>
+			${profile.startup.owner}${profile.startup.command ? html2` · <code>${profile.startup.command.join(" && ")}</code>` : ""}
+		</dd>
+		<dt>Cleanup</dt>
+		<dd>${profile.cleanup}</dd>
+		${profile.reset ? html2`<dt>Reset</dt>
 						<dd>
 							${profile.reset.owner}${profile.reset.command ? html2` · <code>${profile.reset.command.join(" && ")}</code>` : ""}
-						</dd>
-					</div>` : ""}
-		<div>
-			<dt>Profile readiness</dt>
-			<dd>
-				${profile.readyForLiveExecution ? pill("ready") : html2`${pill("blocked", "not ready")}
-								<p class="help">
-									Check the active instances below. Then run
-									<code>checkmate delegate setup ${profile.targetId}</code>
-									to recheck the prerequisites and save a profile revision.
-								</p>`}
-			</dd>
-		</div>
+						</dd>` : ""}
+		<dt>Profile readiness</dt>
+		<dd>
+			${profile.readyForLiveExecution ? pill("ready") : html2`${pill("blocked", "not ready")}
+							<p class="help">
+								Check the active instances below. Then run
+								<code>checkmate delegate setup ${profile.targetId}</code>
+								to recheck the prerequisites and save a profile revision.
+							</p>`}
+		</dd>
 	</dl>`;
 }
 function historyList(store, targetId, shown2) {
@@ -35197,7 +35507,7 @@ function instancesTable(context, targetId, instances, retire) {
 		</table>
 	</div>`;
 }
-function addForm(context, targetId, entryPoints, form) {
+function addForm(context, targetId, entryPoints2, form) {
   const value2 = (name2) => form?.values[name2] ?? "";
   return html2`<section
 		class="panel decision"
@@ -35226,7 +35536,7 @@ function addForm(context, targetId, entryPoints, form) {
 				/>
 				<p class="help">Letters, digits, _ or -. An instance ID is not used again.</p>
 			</div>
-			${entryPoints.map(
+			${entryPoints2.map(
     (entry) => html2`<div class="field-group">
 						<label class="lab" for="entry-${entry.name}"
 							>${entry.name} <span class="req">${entry.kind}</span></label
@@ -35318,12 +35628,12 @@ function targetPage(store, context, targetId, revision2, form = null, retire = n
     form?.error || retire ? 422 : void 0
   );
 }
-function instanceFromForm(entryPoints, form) {
+function instanceFromForm(entryPoints2, form) {
   const environment = form.get("environment")?.trim() ?? "";
   const references2 = (form.get("references") ?? "").split("\n").map((line) => line.trim()).filter(Boolean);
   return {
     entries: Object.fromEntries(
-      entryPoints.map((entry) => [entry.name, (form.get(`entry.${entry.name}`) ?? "").trim()])
+      entryPoints2.map((entry) => [entry.name, (form.get(`entry.${entry.name}`) ?? "").trim()])
     ),
     ...environment ? { environment } : {},
     references: references2
@@ -35480,6 +35790,208 @@ function harnessPage(store, context, env, form = null, model = null, testerModel
   return settingsPage("/settings/harness", "Coding harness", ["*"], body);
 }
 
+// plugin/src/ui/recipes.ts
+var agentOnly = "\n> **Agent only:** This file contains repository or workflow instructions for coding agents.\n\n";
+function readCatalog(workspace2) {
+  try {
+    return { ...listRecipes(workspace2), error: null };
+  } catch (error) {
+    return { recipes: [], invalid: [], error: error.message };
+  }
+}
+function fileName2(path) {
+  return path.split(/[\\/]/).at(-1);
+}
+function invalidHref(item) {
+  return `/settings/invalid-recipes?file=${encodeURIComponent(fileName2(item.path))}`;
+}
+function invalidPill() {
+  return html2`<span class="sp-pill red" data-source="invalid">invalid</span>`;
+}
+function sourcePill(source) {
+  return html2`<span class="sp-pill${source === "custom" ? " blue" : ""}" data-source="${source}">${source}</span>`;
+}
+function codes(items) {
+  return items.length ? join16(
+    items.map((item) => html2`<code>${item}</code>`),
+    " "
+  ) : html2`<span class="muted">none</span>`;
+}
+function commandText(args) {
+  return args.map((arg) => /[\s"'\\]/.test(arg) ? JSON.stringify(arg) : arg).join(" ");
+}
+function kindText2(recipe) {
+  return recipe.kind === "mcp" ? "MCP server" : "command-line tool";
+}
+function detection(recipe) {
+  return recipe.detect === "runtime" ? html2`The Node.js that runs Checkmate` : html2`<code>${toolExecutable(recipe)}</code> on <code>PATH</code>`;
+}
+function recipesPage(workspace2) {
+  const { recipes: recipes2, invalid, error } = readCatalog(workspace2);
+  const rows2 = recipes2.map(
+    ({ source, recipe }) => listRow(`recipe:${recipe.name}`, `/settings/recipes/${recipe.name}`, recipe.name, sourcePill(source), [
+      recipe.purpose,
+      html2`<span class="muted"
+				><code>${recipe.capability}</code> · ${kindText2(recipe)} · ${detection(recipe)}</span
+			>`
+    ])
+  );
+  const invalidRows = invalid.map(
+    (item) => listRow(`invalid:${fileName2(item.path)}`, invalidHref(item), item.name, invalidPill(), [
+      "Checkmate does not use this recipe.",
+      html2`<span class="reason">${recipeProblem(item)}</span>`
+    ])
+  );
+  const custom = recipes2.some((entry) => entry.source === "custom") || invalid.length;
+  const body = html2`${heading(
+    "Recipes",
+    html2`Tool descriptions for Checkmate. The target sets what testers may do. Built-in recipes come with
+				Checkmate. Custom recipes come from <code>.checkmate/recipes/</code> in this workspace.`
+  )}
+		<div data-region="recipes">
+			${error ? banner("fail", html2`Checkmate cannot read the recipes. ${error}`) : ""}
+			${rows2.length + invalidRows.length ? html2`<ul class="q-items l-rows">
+							${rows2} ${invalidRows}
+						</ul>` : ""}
+			${custom || error ? "" : emptyNotice(
+    "No custom recipe yet.",
+    html2`Drop a recipe JSON file in <code>${projectRecipeFolder(workspace2)}</code>.`
+  )}
+		</div>`;
+  return settingsPage("/settings/recipes", "Recipes", ["recipes"], body);
+}
+function entryPoints(recipe) {
+  if (!recipe.entryPoints?.length) return html2`<p class="none">No entry point. The recipe fits every target.</p>`;
+  return html2`<ul class="plain">
+		${recipe.entryPoints.map(
+    (entry) => html2`<li>
+					<code>${entry.name}</code>
+					<span class="muted"
+						>· ${entry.kind}${entry.pattern ? html2` · format <code>${entry.pattern}</code>` : ""}</span
+					>
+					<br />${entry.purpose}
+				</li>`
+  )}
+	</ul>`;
+}
+function checkText(check) {
+  if (check.check === "http")
+    return html2`HTTP request to the <code>${check.entry}</code> entry. It answers below HTTP 500.`;
+  return html2`Command <code>${commandText(check.run)}</code> exits with code
+		0${check.contains?.length ? html2`, and its output contains ${codes(check.contains)}` : ""}.`;
+}
+function reachability(recipe) {
+  if (!recipe.reachable?.length)
+    return html2`<p class="none">No check. Setup leaves the instance of the target not checked.</p>`;
+  return html2`<ul class="plain">
+		${recipe.reachable.map((check) => html2`<li>${checkText(check)}</li>`)}
+	</ul>`;
+}
+function fact(label, value2, look = "") {
+  return html2`<dt>${label}</dt>
+		<dd class="${look}">${value2}</dd>`;
+}
+function pairs2(values) {
+  const entries = Object.entries(values);
+  return entries.length ? html2`<span class="kv">${entries.map(([key, value2]) => html2`<span class="tag">${key}=${value2}</span>`)}</span>` : html2`<span class="muted">none</span>`;
+}
+function recipeFacts({ source, path, recipe }) {
+  const server = recipe.server;
+  return html2`<dl class="facts">
+		${fact("Source", sourcePill(source))}
+		${source === "custom" ? fact("File", html2`<code>${path}</code>`, "path") : ""}
+		${fact("Tool for", html2`<code>${recipe.capability}</code> · ${kindText2(recipe)}`)}
+		${fact("Detection", detection(recipe))}
+		${server ? fact("Server", html2`<code>${commandText([server.command, ...server.args])}</code> in <code>${server.cwd}</code>`) : ""}
+	</dl>`;
+}
+function testingFacts(recipe) {
+  const observe = Object.entries(recipe.observeFrom).map(([value2, reading]) => `${value2} (${reading})`);
+  return html2`<dl class="facts">
+		${fact("Observes from", codes(observe))} ${fact("Evidence", codes(recipe.evidence))}
+		${recipe.evidenceExtensions ? fact("Evidence files", pairs2(recipe.evidenceExtensions)) : ""}
+		${fact("Environment", pairs2(recipe.environment))} ${fact("Tool folders", codes(recipe.workspaceFolders))}
+		${recipe.closeSession ? fact("Close session", html2`<code>${commandText(recipe.closeSession)}</code>`) : ""}
+		${recipe.shellInstruction ? fact("Shell notes", recipe.shellInstruction) : ""}
+		${recipe.delegatedInstruction ? fact("Delegated notes", recipe.delegatedInstruction) : ""}
+	</dl>`;
+}
+function catalogFailure(title2, error) {
+  return settingsPage(
+    "/settings/recipes",
+    title2,
+    ["recipes"],
+    html2`<div data-region="recipe">${banner("fail", html2`Checkmate cannot read the recipes. ${error}`)}</div>`
+  );
+}
+function invalidRecipePage(workspace2, file) {
+  const { invalid, error } = readCatalog(workspace2);
+  if (error) return catalogFailure(file, error);
+  const item = invalid.find((candidate) => fileName2(candidate.path) === file);
+  if (!item) return null;
+  const body = html2`<div data-region="recipe">
+		${heading(item.name, "Checkmate does not use this recipe. A target, plan, run, or test that names it is refused.", html2`<div class="meta">${invalidPill()}</div>`)}
+		<div class="main-col">
+			<section aria-labelledby="error">
+				<h2 id="error">Error</h2>
+				<pre class="sp-code" tabindex="0" data-error>${recipeProblem(item)}</pre>
+			</section>
+			<dl class="facts">
+				${fact("Source", sourcePill(item.source))} ${fact("File", html2`<code>${item.path}</code>`, "path")}
+				${fact("Fix", html2`Edit this JSON file to fix the listed problems. The recipe appears in the list when it is valid.`)}
+			</dl>
+			<p class="back"><a href="/settings/recipes">All recipes</a></p>
+		</div>
+	</div>`;
+  return settingsPage("/settings/recipes", file, ["recipes"], body);
+}
+function recipePage(workspace2, name2) {
+  const { recipes: recipes2, error } = readCatalog(workspace2);
+  if (error) return catalogFailure(name2, error);
+  const entry = recipes2.find(({ recipe: recipe2 }) => recipe2.name === name2);
+  if (!entry) return null;
+  const { recipe, jsonText } = entry;
+  const usage2 = recipe.usage?.join("\n");
+  const usageText = entry.source === "built-in" ? usage2?.replace(agentOnly, "\n") : usage2;
+  const body = html2`<div data-region="recipe">
+		${heading(recipe.name, recipe.purpose, html2`<div class="meta">${sourcePill(entry.source)}</div>`)}
+		<div class="main-col">
+			<nav class="jump" aria-label="On this page">
+				<a href="#recipe">Recipe</a><a href="#requires">Requires</a
+				><a href="#testing">Testing</a>${usage2 !== void 0 ? html2`<a href="#usage">Usage</a>` : null}<a
+					href="#json"
+					>JSON</a
+				>
+			</nav>
+			<section aria-labelledby="recipe">
+				<h2 id="recipe">Recipe</h2>
+				${recipeFacts(entry)}
+			</section>
+			<section aria-labelledby="requires">
+				<h2 id="requires">Requires</h2>
+				<h3>Entry points <span class="n">${recipe.entryPoints?.length ?? 0}</span></h3>
+				${entryPoints(recipe)}
+				<h3>Setup reachability checks</h3>
+				${reachability(recipe)}
+			</section>
+			<section aria-labelledby="testing">
+				<h2 id="testing">Testing</h2>
+				${testingFacts(recipe)}
+			</section>
+			${usage2 !== void 0 ? html2`<section aria-labelledby="usage">
+							<h2 id="usage">Usage</h2>
+							<pre class="sp-code" tabindex="0" data-usage>${usageText}</pre>
+						</section>` : null}
+			<details class="fold" data-open-key="section:json">
+				<summary><h2 id="json">Recipe JSON</h2></summary>
+				<div class="fold-b"><pre class="sp-code" tabindex="0" data-json>${jsonText}</pre></div>
+			</details>
+			<p class="back"><a href="/settings/recipes">All recipes</a></p>
+		</div>
+	</div>`;
+  return settingsPage("/settings/recipes", recipe.name, ["recipes"], body);
+}
+
 // plugin/src/ui/requester.ts
 import { randomUUID as randomUUID5 } from "node:crypto";
 import { join as join19 } from "node:path";
@@ -35565,7 +36077,7 @@ function streamPi(program, args, prompt2, cwd, env, extension, sessionId, onLine
       } else onLine(line);
     }
   });
-  const finished = new Promise((resolve13) => {
+  const finished2 = new Promise((resolve13) => {
     child.on("close", (status, signal) => {
       clearTimeout(timeout);
       for (const timer of timers) clearTimeout(timer);
@@ -35581,7 +36093,7 @@ function streamPi(program, args, prompt2, cwd, env, extension, sessionId, onLine
   send2({ id: "checkmate-ready", type: "get_commands" });
   return {
     pid: child.pid,
-    finished,
+    finished: finished2,
     stop() {
       if (stopped) return;
       stopped = true;
@@ -35729,8 +36241,8 @@ function createRequester(store, options3) {
   }
   function errorOutcome(result, stderr, harness) {
     const text2 = typeof result.result === "string" ? result.result : "";
-    const call = { failure: ["operational_error", text2], result: text2, stderr };
-    const authentication = authenticationFailed(call);
+    const call2 = { failure: ["operational_error", text2], result: text2, stderr };
+    const authentication = authenticationFailed(call2);
     if (harness === "pi") return failed(text2, authentication ? piAuthenticationHint : null);
     const first = text2.trim().split("\n")[0].slice(0, 200);
     return failed(
@@ -35808,8 +36320,8 @@ function createRequester(store, options3) {
         if (!request2.model && request2.provider) modelId = `${modelArgs[1]}/${modelArgs[3]}`;
       }
     } catch (error) {
-      const refusal2 = error;
-      run2.reason = [refusal2.message, refusal2.hint].filter(Boolean).join(" ");
+      const refusal = error;
+      run2.reason = [refusal.message, refusal.hint].filter(Boolean).join(" ");
       guarded(() => setRequestState(store, run2.id, "running"));
       run2.done = Promise.resolve().then(() => finish2(run2, null));
       return;
@@ -41775,6 +42287,7 @@ var routes = {
   report: new RegExp(`^/runs/(${id})/report\\.(html|md|json|junit)$`),
   evidence: /^\/evidence\/([0-9A-Z]{26})$/,
   target: new RegExp(`^/settings/targets/(${id})$`),
+  recipe: new RegExp(`^/settings/recipes/(${id})$`),
   addInstance: new RegExp(`^/settings/targets/(${id})/instances$`),
   retireInstance: new RegExp(`^/settings/targets/(${id})/instances/(${id})/retire$`),
   exploration: new RegExp(`^/explorations/(${id})$`),
@@ -41962,6 +42475,25 @@ data: ${matched.join(",") || "*"}
     hooks.release();
     for (const client of clients) client.res.write("data: *\n\n");
   }, 1e3);
+  const recipeFolder = join21(workspace2, ".checkmate", "recipes");
+  const recipeFiles2 = () => {
+    try {
+      return readdirSync4(recipeFolder).sort().map((name2) => {
+        const file = statSync6(join21(recipeFolder, name2), { throwIfNoEntry: false });
+        return `${name2}:${file?.size}:${file?.mtimeMs}`;
+      }).join(",");
+    } catch {
+      return "";
+    }
+  };
+  let recipeState = recipeFiles2();
+  const recipeWatch = setInterval(() => {
+    const current2 = recipeFiles2();
+    if (current2 === recipeState) return;
+    recipeState = current2;
+    for (const client of clients)
+      if (client.subjects.has("recipes") || client.subjects.has("*")) client.res.write("data: recipes\n\n");
+  }, 1e3);
   const heartbeat = setInterval(() => {
     for (const client of clients) client.res.write(": heartbeat\n\n");
   }, 15e3);
@@ -42119,7 +42651,8 @@ data: ${matched.join(",") || "*"}
     const shown2 = context(request2);
     if (pathname === "/" && searchParams.has("item")) return redirect(request2.res, oldItem(searchParams));
     if (pathname === "/") return render(request2, startOfHome(shown2));
-    if (pathname === "/setup") return render(request2, firstRunPage(shown2, false, cameFrom(request2)));
+    if (pathname === "/setup")
+      return render(request2, firstRunPage(store.workspace, shown2, false, cameFrom(request2)));
     if (pathname === "/new")
       return render(request2, newChangePage(shown2, changeDefaults(searchParams.get("target")), false));
     if (pathname === "/inbox" || pathname === "/plans") return redirect(request2.res, "/");
@@ -42144,6 +42677,20 @@ data: ${matched.join(",") || "*"}
     if (pathname === "/actor") return render(request2, actorPage(shown2, safeBack(searchParams.get("back"))));
     if (pathname === "/settings") return redirect(request2.res, "/settings/targets");
     if (pathname === "/settings/targets") return render(request2, targetsPage(store));
+    if (pathname === "/settings/recipes") return render(request2, recipesPage(options3.workspace));
+    if (pathname === "/settings/invalid-recipes") {
+      const file2 = searchParams.get("file") ?? "";
+      const page = invalidRecipePage(options3.workspace, file2);
+      if (!page)
+        return errorPage(request2, 404, "Recipe not found", `Checkmate has no invalid recipe file ${file2}.`);
+      return render(request2, page);
+    }
+    const recipe = routes.recipe.exec(pathname);
+    if (recipe) {
+      const page = recipePage(options3.workspace, recipe[1]);
+      if (!page) return errorPage(request2, 404, "Recipe not found", `Checkmate has no recipe ${recipe[1]}.`);
+      return render(request2, page);
+    }
     const target = routes.target.exec(pathname);
     if (target) {
       const revision2 = searchParams.get("revision");
@@ -42265,7 +42812,7 @@ data: ${matched.join(",") || "*"}
     return { build: defaultBuild(store.workspace), target: target ?? "", targets };
   }
   function startOfHome(shown2) {
-    if (!targetList(store).length) return firstRunPage(shown2, true);
+    if (!targetList(store).length) return firstRunPage(store.workspace, shown2, true);
     if (!planList(store).length) return newChangePage(shown2, changeDefaults(null), true);
     return homePage(store);
   }
@@ -43301,7 +43848,7 @@ data: ${matched.join(",") || "*"}
   function setupAddress(url) {
     return /^https?:\/\/[^\s/]+/i.test(url) ? URL.parse(url) : null;
   }
-  const otherEntries = () => [...declaredEntryPoints().values()].filter((entry) => entry.name !== "web");
+  const otherEntries = () => [...declaredEntryPoints(recipes(store.workspace)).values()].filter((entry) => entry.name !== "web");
   function otherEntryValues(form) {
     return Object.fromEntries(
       otherEntries().map((entry) => [entry.name, (form.get(`entry.${entry.name}`) ?? "").trim()]).filter(([, value2]) => value2)
@@ -43323,7 +43870,7 @@ data: ${matched.join(",") || "*"}
         environment: form.get("environment")?.trim() || void 0,
         operations: choice2.yes ? void 0 : [readOnlyOperation]
       });
-      const planned = setupAssumptions({ ...input, env });
+      const planned = setupAssumptions(store.workspace, { ...input, env });
       reply({
         address: address ? address.host : Object.values(others).join(" "),
         local: choice2.local,
@@ -43352,7 +43899,11 @@ data: ${matched.join(",") || "*"}
         "operations",
         ...otherEntries().map((entry) => `entry.${entry.name}`)
       ]);
-      return render(request2, firstRunPage(context(request2), onHome, cameFrom(request2), submitted), cookies);
+      return render(
+        request2,
+        firstRunPage(store.workspace, context(request2), onHome, cameFrom(request2), submitted),
+        cookies
+      );
     }
     const choice2 = setupChoice(form, url);
     if (!choice2.chosen)
@@ -43703,13 +44254,13 @@ data: ${matched.join(",") || "*"}
   }
   function saveInstance(request2, form, targetId) {
     const { actor, cookies } = actorFrom(request2, form);
-    const entryPoints = targetRequest(store, targetId).entryPoints;
+    const entryPoints2 = targetRequest(store, targetId).entryPoints;
     const state = {
       values: values(form, [
         "instanceId",
         "environment",
         "references",
-        ...entryPoints.map((entry) => `entry.${entry.name}`)
+        ...entryPoints2.map((entry) => `entry.${entry.name}`)
       ]),
       error: null,
       field: null
@@ -43724,7 +44275,7 @@ data: ${matched.join(",") || "*"}
       ]);
     };
     const instanceId = state.values.instanceId.trim();
-    const empty = entryPoints.find((entry) => !state.values[`entry.${entry.name}`].trim());
+    const empty = entryPoints2.find((entry) => !state.values[`entry.${entry.name}`].trim());
     if (!actor)
       [state.error, state.field] = ["Enter your name. Checkmate records it with the instance.", "instance-actor"];
     else if (!instanceId) [state.error, state.field] = ["Enter an instance ID.", "instance-id"];
@@ -43732,7 +44283,7 @@ data: ${matched.join(",") || "*"}
       [state.error, state.field] = [`Fill in ${empty.name}. It cannot be empty.`, `entry-${empty.name}`];
     if (state.error) return again();
     try {
-      addInstance(store, actor, { targetId, instanceId, instance: instanceFromForm(entryPoints, form) });
+      addInstance(store, actor, { targetId, instanceId, instance: instanceFromForm(entryPoints2, form) });
     } catch (error) {
       state.error = plainMessage(error);
       return again();
@@ -43908,6 +44459,7 @@ data: ${matched.join(",") || "*"}
     clearInterval(poll);
     clearInterval(heartbeat);
     clearInterval(supervisorWatch);
+    clearInterval(recipeWatch);
     for (const client of clients) client.res.end();
     clients.clear();
     await new Promise((resolve13) => {
@@ -44097,28 +44649,28 @@ function specHandoff(store, actor, input) {
 
 // plugin/src/cli.ts
 import { mkdirSync as mkdirSync11, readFileSync as readFileSync15, writeFileSync as writeFileSync6 } from "node:fs";
-import { dirname as dirname4, join as join22, resolve as resolve9 } from "node:path";
+import { dirname as dirname4, join as join23, resolve as resolve9 } from "node:path";
 import { constants as constants2 } from "node:sqlite";
 
 // plugin/src/build.ts
 import { createHash as createHash2 } from "node:crypto";
-import { existsSync as existsSync12, readdirSync as readdirSync4, readFileSync as readFileSync14, realpathSync as realpathSync8, statSync as statSync6 } from "node:fs";
+import { existsSync as existsSync12, readdirSync as readdirSync5, readFileSync as readFileSync14, realpathSync as realpathSync8, statSync as statSync7 } from "node:fs";
 import { homedir as homedir3 } from "node:os";
-import { dirname as dirname3, isAbsolute as isAbsolute4, join as join21, resolve as resolve8, sep as sep4 } from "node:path";
+import { dirname as dirname3, isAbsolute as isAbsolute4, join as join22, resolve as resolve8, sep as sep4 } from "node:path";
 import { fileURLToPath as fileURLToPath3 } from "node:url";
 var instructionFolders = ["agents", "contracts", "pi", "recipes", "references", "skills"];
 function filesUnder(folder) {
   if (!existsSync12(folder)) return [];
-  return readdirSync4(folder).sort().flatMap((name2) => {
-    const path = join21(folder, name2);
-    return statSync6(path).isDirectory() ? filesUnder(path) : [path];
+  return readdirSync5(folder).sort().flatMap((name2) => {
+    const path = join22(folder, name2);
+    return statSync7(path).isDirectory() ? filesUnder(path) : [path];
   });
 }
 function buildDigest(bundle) {
   const root = dirname3(dirname3(bundle));
   const hash = createHash2("sha256").update(readFileSync14(bundle));
   for (const folder of instructionFolders) {
-    for (const path of filesUnder(join21(root, folder))) {
+    for (const path of filesUnder(join22(root, folder))) {
       hash.update(path.slice(root.length)).update(readFileSync14(path));
     }
   }
@@ -44138,13 +44690,13 @@ function versionLines(version3, bundle, env) {
       );
     }
   }
-  return [...lines2, ...piCopyWarnings(bundle, env, process.cwd())];
+  return env.CHECKMATE_HARNESS?.trim() === "pi" ? [...lines2, ...piCopyWarnings(bundle, env, process.cwd())] : lines2;
 }
 function piDeclarations(env, cwd) {
-  const agentDirectory = env.PI_CODING_AGENT_DIR?.trim() || join21(homedir3(), ".pi", "agent");
+  const agentDirectory = env.PI_CODING_AGENT_DIR?.trim() || join22(homedir3(), ".pi", "agent");
   const files2 = [
-    ["global", join21(agentDirectory, "settings.json")],
-    ["project", join21(cwd, ".pi", "settings.json")]
+    ["global", join22(agentDirectory, "settings.json")],
+    ["project", join22(cwd, ".pi", "settings.json")]
   ];
   return files2.flatMap(([scope, file]) => {
     if (!existsSync12(file)) return [];
@@ -44160,7 +44712,7 @@ function piDeclarations(env, cwd) {
 }
 function packageRootOf(file) {
   let folder = dirname3(file);
-  while (!existsSync12(join21(folder, "package.json")) && dirname3(folder) !== folder) folder = dirname3(folder);
+  while (!existsSync12(join22(folder, "package.json")) && dirname3(folder) !== folder) folder = dirname3(folder);
   return folder;
 }
 function piCopyWarnings(bundle, env, cwd) {
@@ -44224,7 +44776,7 @@ function evidence2(args, context) {
     if (match) return { text: context.text(), kind: match[1] };
     const colon = spec2.lastIndexOf(":");
     const kind = colon >= 0 ? spec2.slice(colon + 1) : "";
-    return allEvidence().includes(kind) ? { file: spec2.slice(0, colon), kind } : { file: spec2 };
+    return allEvidence(context.workspace).includes(kind) ? { file: spec2.slice(0, colon), kind } : { file: spec2 };
   });
 }
 function toolSpec(spec2) {
@@ -44372,6 +44924,19 @@ function short3(sha256) {
   return typeof sha256 === "string" ? sha256.slice(0, 8) : sha256;
 }
 var commands = {
+  "recipe list": {
+    positionals: [],
+    workspaceRun: (_args, context) => completed("recipes", listRecipes(context.workspace)),
+    print: (reply) => {
+      const { recipes: recipes2, invalid } = reply.data;
+      return {
+        lines: [
+          ...recipes2.map(({ recipe, source, path }) => [recipe.name, source, path]),
+          ...invalid.map((item) => [item.name, "invalid", recipeProblem(item)])
+        ]
+      };
+    }
+  },
   init: {
     positionals: [],
     run: (store) => completed(".checkmate/checkmate.db", { path: store.path })
@@ -45078,7 +45643,10 @@ var commands = {
     })),
     print: (reply) => ({
       facts: { [`${reply.data.testId}.${reply.data.assertionId}`]: reply.data.result },
-      lines: reply.data.evidenceIds.map((id2) => [id2, "evidence"])
+      lines: [
+        ...reply.data.reason ? [["reason", reply.data.reason]] : [],
+        ...reply.data.evidenceIds.map((id2) => [id2, "evidence"])
+      ]
     })
   },
   "run close": {
@@ -46493,7 +47061,7 @@ function commandHelp(argv) {
   return { ...refused("invalid_request", "checkmate", unknownCommand(words5)), data: { usage: [] } };
 }
 function version() {
-  const manifest = JSON.parse(readFileSync15(join22(pluginRoot, ".claude-plugin", "plugin.json"), "utf8"));
+  const manifest = JSON.parse(readFileSync15(join23(pluginRoot, ".claude-plugin", "plugin.json"), "utf8"));
   return versionLines(manifest.version, import.meta.url, process.env).join("\n");
 }
 function readJson2(text2) {
@@ -46540,17 +47108,25 @@ function run(argv, io) {
   }
   const command = commands[name2];
   const subject = command.positionals.length && name2 !== "query" ? String(args[positionalName(command.positionals[0])] ?? name2) : name2;
-  const workspace2 = resolve9(io.cwd, value(args, "workspace") ?? ".");
+  const workspace2 = resolve9(
+    io.cwd,
+    value(args, "workspace") ?? (command.workspaceRun ? io.env.CLAUDE_PROJECT_DIR : void 0) ?? "."
+  );
   let store;
   try {
     const actor = command.write ? value(args, "actor") ?? defaultActor(workspace2, io.env) : void 0;
     const context = {
+      cwd: io.cwd,
       actor,
       stdin: () => readJson2(io.stdin()),
       text: io.stdin,
-      cwd: io.cwd,
+      workspace: workspace2,
       env: io.env
     };
+    if (command.workspaceRun) {
+      const reply2 = command.workspaceRun(args, context);
+      return { code: exitCodeOf(name2, args, reply2), output: format2(reply2, json, command.print, host) };
+    }
     const prepared = command.prepare?.(args, context);
     store = command.readOnly ? openReadOnlyStore(workspace2) : openStore(workspace2);
     store.via = requestOfEnv(io.env);
@@ -46676,13 +47252,12 @@ async function main(argv) {
     stdin: () => readFileSync15(0, "utf8")
   });
   process.stdout.write(outcome.output + "\n");
-  for (const line of piCopyWarnings(import.meta.url, process.env, process.cwd())) process.stderr.write(line + "\n");
   process.exitCode = outcome.code;
 }
 
 // plugin/src/action-tools.ts
 import { readFileSync as readFileSync16 } from "node:fs";
-import { join as join23 } from "node:path";
+import { join as join24 } from "node:path";
 var readActions = [
   "list_targets",
   "show_target",
@@ -46723,7 +47298,7 @@ function schemaFiles() {
   return (name2) => {
     const cached = files2.get(name2);
     if (cached) return cached;
-    const parsed = JSON.parse(readFileSync16(join23(pluginRoot, "contracts", name2), "utf8"));
+    const parsed = JSON.parse(readFileSync16(join24(pluginRoot, "contracts", name2), "utf8"));
     files2.set(name2, parsed);
     return parsed;
   };
@@ -46752,20 +47327,69 @@ function actionToolDefinitions(env = process.env) {
     const { description, ...input } = schema;
     return [
       {
-        name: toolName2(name2),
+        name: toolName(name2),
         description: description ?? name2,
         inputSchema: inlineSchema(input, file, read)
       }
     ];
   });
 }
-var stepDoneAction = {
-  action: "tester_step_done",
-  instruction: `When a started agent finishes, call ${toolName2("tester_step_done")} with its name, step, agentId, and replyLine. Then call ${toolName2("next_tester_steps")} again.`
+function call(name2, ...fields) {
+  return `${toolName(name2)} with ${fields.join(", ")}`;
+}
+var untilFinished = `The exploration is finished only when ${toolName("next_tester_steps")} returns finished.`;
+var nextSteps = {
+  action: "next_tester_steps",
+  instruction: `Call ${call("next_tester_steps", "explorationId")} and dispatch its actions with the Agent tool. A session exploration runs only when you dispatch its steps. ${untilFinished}`
 };
-function isWait(reply) {
-  const actions = reply.data.actions;
-  return actions?.length === 1 && actions[0].action === "wait";
+var stepDone2 = {
+  action: "tester_step_done",
+  instruction: `When a started agent finishes, call ${call("tester_step_done", "explorationId", "name", "step", "agentId")}. Then call ${call("next_tester_steps", "explorationId")} again. ${untilFinished}`
+};
+var stepsStarted2 = {
+  action: "tester_steps_started",
+  instruction: `Dispatch these actions with the Agent tool. Then call ${call("tester_steps_started", "explorationId", "names")} with the names that you started.`
+};
+var finished = {
+  action: "test_status",
+  instruction: `The exploration is finished. Call ${call("test_status", "explorationId", "report")} with report true.`
+};
+var processWait = {
+  action: "test_status",
+  instruction: `Call ${call("test_status", "explorationId", "waitSeconds")} until the exploration ends or needs a decision.`
+};
+function hostReply(store, name2, reply) {
+  const id2 = reply.data.explorationId;
+  if (typeof id2 !== "string") return;
+  const status = () => explorationStatus(store, id2);
+  const done = reply.status === "completed";
+  const answered = (next2) => ({
+    ...next2,
+    instruction: `Get the answer from the person. Then call ${toolName(next2.action)}. ${untilFinished}`
+  });
+  let next;
+  let data = reply.data;
+  if (name2 === "next_tester_steps" && done) {
+    const [first] = reply.data.actions;
+    next = first.action === "finished" ? finished : first.action === "wait" ? stepDone2 : stepsStarted2;
+  } else if (name2 === "tester_steps_started" && done) next = stepDone2;
+  else if (name2 === "tester_step_done" && done) {
+    const { event: event2, state, ...rest2 } = reply.data;
+    data = { ...rest2, stepEvent: event2, stepState: state, explorationState: status().state };
+    next = {
+      action: "next_tester_steps",
+      instruction: `This records one step of ${String(reply.data.name)}. The exploration is not finished. Call ${call("next_tester_steps", "explorationId")} now. ${untilFinished}`
+    };
+  } else if ((name2 === "start_test" || name2 === "follow_test") && done)
+    next = status().path === "session" ? nextSteps : processWait;
+  else if (name2 === "pause_test" && done) next = answered(status().path === "session" ? nextSteps : processWait);
+  else if (name2 === "test_status" && reply.data.outcome === "timeout") next = processWait;
+  else if (name2 === "test_status" && reply.status === "needs_decision" && status().paused)
+    next = answered(status().path === "session" ? nextSteps : processWait);
+  if (!next) return;
+  const { next: _commands, ...rest } = data;
+  const { hint: _hint, ...envelope } = reply;
+  return { ...envelope, data: { ...rest, nextAction: next } };
 }
 function actionOutput(reply) {
   const { data, ...envelope } = reply;
@@ -46789,7 +47413,7 @@ async function startWorker(workspace2, env, allowedTools, stage, subject) {
   }
 }
 async function callActionTool(tool, input, workspace2, env) {
-  const name2 = tool.replace(/^checkmate_/, "");
+  const name2 = actionOfTool(tool);
   if (!allowed(name2, env) || !actionToolDefinitions(env).some((definition) => definition.name === tool))
     return actionOutput(
       actionRecovery(
@@ -46840,10 +47464,7 @@ async function callActionTool(tool, input, workspace2, env) {
           return actionOutput(
             completed(explorationId, {
               ...status,
-              nextAction: {
-                action: "next_tester_steps",
-                instruction: "Call checkmate_next_tester_steps and dispatch its actions with the Agent tool. A session exploration runs only when you dispatch its steps."
-              }
+              nextAction: nextSteps
             })
           );
       }
@@ -46864,9 +47485,8 @@ async function callActionTool(tool, input, workspace2, env) {
         data: { ...reply.data, revision: actionOutput(actionRecovery("delegate_work", revision2)) }
       });
     }
-    if (name2 === "next_tester_steps" && isWait(reply))
-      return actionOutput({ ...reply, data: { ...reply.data, nextAction: stepDoneAction } });
-    return actionOutput(actionRecovery(name2, reply));
+    const hosted = hostReply(store, name2, reply);
+    return actionOutput(hosted ?? actionRecovery(name2, reply));
   } catch (error) {
     const reply = isBusy(error) ? { status: "operational_error", subject: tool, reasons: [busyReason], data: {} } : refused("rejected", tool, error);
     return actionOutput(actionRecovery(name2, reply));
@@ -47118,7 +47738,8 @@ var plan_delta_schema_default = {
                   pattern: "^(GET|POST|PUT|PATCH|DELETE) /"
                 },
                 observeFrom: {
-                  enum: ["screen", "relaunch", "api", "page", "reload"]
+                  type: "string",
+                  pattern: "^[a-z][a-z0-9_]{0,39}$"
                 }
               },
               required: ["check", "checkKind"],
@@ -47191,7 +47812,7 @@ var plan_delta_schema_default = {
 // cli/src/launcher.ts
 import { spawn as spawn6 } from "node:child_process";
 import { readFileSync as readFileSync17 } from "node:fs";
-import { join as join24, resolve as resolve10 } from "node:path";
+import { join as join25, resolve as resolve10 } from "node:path";
 var stages = ["setup", "plan", "revise", "execute"];
 var defaultTimeoutSeconds = 300;
 var minimumRules = ["Read", "Bash"];
@@ -47313,7 +47934,7 @@ function checkClaudeArgs2(claudeArgs2) {
   }
 }
 function workerArgs(pluginRoot2, allowedTools, claudeArgs2 = [], role = "", servers = []) {
-  const schema = readFileSync17(join24(pluginRoot2, "contracts", "response.schema.json"), "utf8");
+  const schema = readFileSync17(join25(pluginRoot2, "contracts", "response.schema.json"), "utf8");
   const args = [
     "-p",
     ...claudeArgs2,
@@ -47328,17 +47949,11 @@ function workerArgs(pluginRoot2, allowedTools, claudeArgs2 = [], role = "", serv
     "--no-session-persistence"
   ];
   for (const rule of allowedTools) args.push("--allowedTools", rule);
-  for (const name2 of childActionTools(role))
-    args.push("--allowedTools", `mcp__plugin_checkmate_actions__checkmate_${name2}`);
+  for (const name2 of childActionTools(role)) args.push("--allowedTools", claudeToolName(name2));
   return [...args, ...claudeServerArgs(servers)];
 }
 function piWorkerArgs(pluginRoot2, role, env, model, servers = []) {
-  const tools = [
-    "read",
-    "bash",
-    ...childActionTools(role).map((name2) => `checkmate_${name2}`),
-    ...servers.flatMap((server) => server.tools)
-  ];
+  const tools = ["read", "bash", ...childActionTools(role).map(toolName), ...piServerTools(servers)];
   return piArgs(
     [
       "--no-extensions",
@@ -47346,7 +47961,7 @@ function piWorkerArgs(pluginRoot2, role, env, model, servers = []) {
       ...servers.length ? ["--extension", "builtin:mcp", "--extension", piServerExtension(pluginRoot2)] : ["--no-mcp"],
       "--no-skills",
       "--extension",
-      join24(pluginRoot2, "pi", "checkmate-tools.mjs"),
+      join25(pluginRoot2, "pi", "checkmate-tools.mjs"),
       "--tools",
       tools.join(","),
       ...model.refused ? [] : effortArgs("pi", model.effort)
@@ -47466,8 +48081,8 @@ function launchWorker(executable, args, options3) {
         const stopped = failure !== void 0;
         if (code2 !== 0) failure ??= new Error(`Worker exited with code ${code2}${excerpt2(errors)}`);
         const envelope = parseClaudeEnvelope(stdout);
-        const refusal2 = code2 !== 0 && !stopped ? claudeModelRefusal(envelope) : void 0;
-        if (refusal2) failure = new ModelRefused(refusal2);
+        const refusal = code2 !== 0 && !stopped ? claudeModelRefusal(envelope) : void 0;
+        if (refusal) failure = new ModelRefused(refusal);
         const reported = claudeUsage(envelope);
         usage2 = stopped ? usageOf([reported, {}]) : reported;
         if (failure) return resolvePromise({ usage: usage2, failure });
@@ -47514,22 +48129,29 @@ function runProfile(store, run2) {
   );
   return JSON.parse(row2.body);
 }
-function toolNames(execution) {
-  const kindOf = (name2) => recipes().find((recipe) => recipe.name === name2)?.kind ?? "cli";
+function toolNames(workspace2, execution) {
+  const kindOf = (name2) => recipes(workspace2).find((recipe) => recipe.name === name2)?.kind ?? "cli";
   const tools = planTools(execution.planRequest, execution.profile);
   return testerTools(
+    workspace2,
     tools.filter((tool) => tool.kind === kindOf(tool.name)).map((tool) => tool.name),
     true
   );
 }
 function workerServers(workspace2, execution, pluginRoot2) {
-  const script = join24(pluginRoot2, "dist", "checkmate.js");
+  const script = join25(pluginRoot2, "dist", "checkmate.js");
   const { target_id, instance_id } = execution.run;
   const entries = withStore(workspace2, (store) => findInstance(store, target_id, instance_id).entries);
-  return attachedServers(toolNames(execution), sessionValues(workspace2, execution.run), script, entries);
+  return attachedServers(
+    workspace2,
+    toolNames(workspace2, execution),
+    sessionValues(workspace2, execution.run),
+    script,
+    entries
+  );
 }
 function sessionValues(workspace2, run2) {
-  return { session: run2.tool_session, workFolder: join24(workspace2, ".checkmate", "tmp", run2.run_id) };
+  return { session: run2.tool_session, workFolder: join25(workspace2, ".checkmate", "tmp", run2.run_id) };
 }
 function dataLines(workspace2, profile, runId, marker, facts3) {
   return dataRules(workspace2, profile.reset, marker, facts3 ?? "").map(
@@ -47608,9 +48230,14 @@ function verify(store, stage, subject, after, actor) {
   if (stage === "execute" && !one2(store, "SELECT 1 FROM results WHERE run_id = ?", subject)) return null;
   return { operation: row2.id, reply: JSON.parse(row2.response) };
 }
+var presencePlanInstruction = "To check whether a value appears in the output, use contains:TEXT for presence or absent:TEXT for absence. Use the text itself in place of TEXT.";
+var presenceEvidenceInstruction = "For a presence or absence check, attach the action output verbatim.";
 function planObserveRule(store, subject) {
   const { request: request2, target } = planRequest(store, subject.split("@")[0]);
-  return observeFromRule(planTools(request2, target.profile).map((tool) => tool.name));
+  return observeFromRule(
+    store.workspace,
+    planTools(request2, target.profile).map((tool) => tool.name)
+  );
 }
 function stagePrompt(stage, subject, observeRule) {
   if (stage === "setup")
@@ -47625,7 +48252,8 @@ function stagePrompt(stage, subject, observeRule) {
       "If the request lists context sources, read them with the listed tools. Draft requirements only when the request has none.",
       "Read the source files of the request with the read tool. Do not search the file system: do not use rg, grep, or find.",
       "A test serves one requirement, or a small related group of at most three. Do not put every criterion in one test: one failure would hide the rest.",
-      'Write one test for each requirement. A test is the default. A criterion that states a behaviour has an observable expectation: write it with the simplest kind that fits, for example a status code, contains or absent text, one-of, at least or at most, or type. Mark each with "metadata": { "type": "regression" }.',
+      'Write one test for each requirement. A test is the default. A criterion that states a behaviour has an observable expectation: write it with the simplest kind that fits, for example a status code, one-of, at least or at most, or type. Mark each with "metadata": { "type": "regression" }.',
+      presencePlanInstruction,
       "Raise a gap only for a criterion that is ambiguous, contradictory, or missing a fact that its test cannot proceed without. Name that one criterion and its requirement in the question, and state the exact question. Do not pick the value yourself. A gap that covers more than one requirement must name each requirement in its question, or you give each requirement its own gap.",
       "Use agent_observation only for a visual or wording judgment that no value states. An order, a count, a status code, a presence, or an absence has a value: observe the first item, the count, the status, or the text, and use the deterministic kind. Do not raise a gap for a judgment.",
       'Each assertion checks one expected value. Write one assertion for each value. Do not join two values with "and" or ";" in one check.',
@@ -47644,6 +48272,7 @@ function stagePrompt(stage, subject, observeRule) {
   return [
     `Plan: ${subject}. Read the pending decisions with \`checkmate plan pending ${subject}\`. With no pending decision, the revision migrates the checks to the current shape: read the plan with \`checkmate plan show ${subject} --json\`.`,
     "Change only the tests that the decisions affect. Give each ready test at least one assertion. A test without an assertion is not ready.",
+    presencePlanInstruction,
     'When a migration has no pending decision, change only the tests with a deterministic check without "observe" and "expected", or with a check that states more than one value. Give each migrated deterministic check "observe" and "expected", and split a check that states more than one value into one assertion for each value. Do not invent an expected value that the sources do not state.',
     'When a split or an expected value needs a decision, keep the assertions the sources state and raise a gap only for the one missing fact: {"gaps": {"G-<testId>": {"question": "<the decision>", "consequence": "<what stays untested>", "testIds": ["<testId>"]}}}. Do not answer gaps.',
     'When a decision has no expected value, add an assertion with "checkKind": "agent_observation" that records the behavior.',
@@ -47659,12 +48288,13 @@ var finalCommand = {
   execute: "run finish"
 };
 function nativePlanPrompt(stage, subject, pluginRoot2, rejected, observeRule) {
-  const skill = readFileSync17(join24(pluginRoot2, "skills", stage, "SKILL.md"), "utf8");
+  const skill = readFileSync17(join25(pluginRoot2, "skills", stage, "SKILL.md"), "utf8");
   const start = stage === "plan" ? "Read the plan request." : "Read the pending decisions.";
   const example = stage === "plan" ? plan_candidate_schema_default.examples[0] : plan_delta_schema_default.examples[0];
   return [
     `You are the independent Checkmate ${stage} worker for ${subject}. ${start} Follow the delegated path below. Do not ask the oracle, answer a question, run a reset, or perform tests.`,
     skill.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, ""),
+    presencePlanInstruction,
     `Example: ${JSON.stringify(example)}`,
     ...stage === "plan" ? [
       observeRule,
@@ -47675,9 +48305,9 @@ function nativePlanPrompt(stage, subject, pluginRoot2, rejected, observeRule) {
   ].join("\n\n");
 }
 function prompt(stage, subject, workspace2, pluginRoot2, timeoutSeconds, harness, round = 1, rejected = [], observeRule = "") {
-  const skill = join24(pluginRoot2, "skills", stage, "SKILL.md");
-  const workflow = join24(pluginRoot2, "references", "workflow.md");
-  const cliPath = join24(pluginRoot2, "dist", "checkmate.js");
+  const skill = join25(pluginRoot2, "skills", stage, "SKILL.md");
+  const workflow = join25(pluginRoot2, "references", "workflow.md");
+  const cliPath = join25(pluginRoot2, "dist", "checkmate.js");
   const cliCommand = `cd '${workspace2.replaceAll("'", "'\\''")}' && node '${cliPath.replaceAll("'", "'\\''")}'`;
   const deadline = new Date(Date.now() + timeoutSeconds * 1e3).toISOString();
   const instructions = harness === "pi" ? [
@@ -47715,7 +48345,7 @@ function prompt(stage, subject, workspace2, pluginRoot2, timeoutSeconds, harness
 }
 async function closeToolSessions(workspace2, execution) {
   const values = sessionValues(workspace2, execution.run);
-  const closing = recipesFor(toolNames(execution)).filter((recipe) => recipe.closeSession);
+  const closing = recipesFor(workspace2, toolNames(workspace2, execution)).filter((recipe) => recipe.closeSession);
   if (!closing.length) return { cleanup: "not_applicable", cleanupReason: "No tool session was opened." };
   const failures = (await Promise.all(closing.map((recipe) => closeToolSession(workspace2, recipe, values)))).filter(
     (failure) => failure !== null
@@ -47758,7 +48388,7 @@ function recordAttempt(store, stage, subject, harness, response, usage2, executi
             operation: response.operation,
             ...usage2,
             ...response.modelFallback ? { modelFallback: response.modelFallback } : {},
-            ...execution ? { tools: toolNames(execution) } : {}
+            ...execution ? { tools: toolNames(store.workspace, execution) } : {}
           }
         },
         subjects: [`${kind}:${subject}`, ...execution ? [`plan:${execution.run.plan_id}`] : []]
@@ -47797,14 +48427,20 @@ function testView(store, runId, testId) {
     reserveSeconds: Math.min(60, Math.round(state.row.deadline_seconds * (1 - deadlineShare)))
   };
 }
-function toolStatus(request2, profile) {
-  const chosen = toolNames({ planRequest: request2, profile });
+function toolStatus(workspace2, request2, profile) {
+  const chosen = toolNames(workspace2, { planRequest: request2, profile });
   const planned = planTools(request2, profile);
-  const unused = recipesFor(planned.map((tool) => tool.name)).filter((recipe) => !chosen.includes(recipe.name));
+  const unused = recipesFor(
+    workspace2,
+    planned.map((tool) => tool.name)
+  ).filter((recipe) => !chosen.includes(recipe.name));
   const tools = planned.filter(({ name: name2 }) => !unused.some((recipe) => recipe.name === name2));
   return tools.map(({ name: name2, kind }) => {
-    const recipe = recipesFor([name2]).find((item) => item.kind === "mcp" && item.kind === kind);
-    if (recipe) return `${name2} (mcp, Checkmate attached its server; call only ${recipe.tools.join(", ")})`;
+    const recipe = recipesFor(workspace2, [name2]).find((item) => item.kind === "mcp" && item.kind === kind);
+    if (recipe) {
+      const allowed2 = mcpTargetTools(name2);
+      return `${name2} (mcp, Checkmate attached its server${allowed2.length ? `; target tools: ${allowed2.join(", ")}` : ""})`;
+    }
     if (kind !== "cli") return `${name2} (${kind})`;
     return `${name2} (${kind}, ${executableOnPath(name2, process.env) ? "on PATH" : "not on PATH"})`;
   });
@@ -47813,26 +48449,29 @@ function contextLines(execution, workspace2, tools) {
   const { run: run2, planRequest: planning } = execution;
   const sources = planning.context?.sources ?? [];
   const values = sessionValues(workspace2, run2);
+  const names = toolNames(workspace2, execution);
+  const usage2 = recipeFilesFor(workspace2, names);
   return [
     ...sources.length ? [
       `Source files: ${sources.map((source) => resolve10(workspace2, source)).join(", ")}. Read them with the read tool. Do not search the file system: do not use rg, grep, or find.`
     ] : [],
     `Tools: ${tools.join(", ")}. Use Bash for CLI tools. A tool marked "not on PATH" is missing: close the test as error. A tool with an attached server whose tools you do not have is missing too.`,
-    ...recipesFor(toolNames(execution)).flatMap(
+    ...usage2.length ? [`Read the usage field of the recipe you use: ${usage2.join(", ")}.`] : [],
+    ...recipesFor(workspace2, names).flatMap(
       (recipe) => recipe.delegatedInstruction ? [filled(recipe.delegatedInstruction, values)] : []
     )
   ];
 }
 function probePrompt(execution, workspace2, actor, pluginRoot2) {
   const { run: run2 } = execution;
-  const cli = `cd '${workspace2.replaceAll("'", "'\\''")}' && node '${join24(pluginRoot2, "dist", "checkmate.js").replaceAll("'", "'\\''")}'`;
+  const cli = `cd '${workspace2.replaceAll("'", "'\\''")}' && node '${join25(pluginRoot2, "dist", "checkmate.js").replaceAll("'", "'\\''")}'`;
   const runId = run2.run_id;
   return [
     "This is a delegated Checkmate exploration probe. The selected tests are done. Probe for defects that the plan does not check. Do not record passed or failed results. Do not close tests. Do not run run gate, run begin, or run finish.",
     `Checkmate commands: ${cli} <command>. Run them from the workspace.`,
     `Run: ${runId}. Plan: ${run2.plan_id}@${run2.plan_revision}. Build: ${run2.application_build}. Instance: ${run2.instance_id}. Run \`${cli} target show ${run2.target_id} --instance ${run2.instance_id}\` once for the entry values. Run that command exactly as written: target show takes one target and --instance <instance>. Use ${entriesWords(execution.profile.entryPoints)} for every action. Do not write entry values into evidence.`,
     "Make at most 10 probe actions. Probe the rules of the selected tests: a value at a limit, the other entry point, extra spaces, a total in a second view. Use only the instance entries and new data.",
-    ...contextLines(execution, workspace2, toolStatus(execution.planRequest, execution.profile)),
+    ...contextLines(execution, workspace2, toolStatus(workspace2, execution.planRequest, execution.profile)),
     `Record a probe finding only when a probe contradicts a value that a source or a check states: ${cli} run finding ${runId} --actor ${actor} <<'EOF' with {"id":"P-1","type":"potential_issue","severity":"medium","assertionIds":[],"requirementIds":[],"title":"<short title>","expected":"<the stated value>","observed":"<probe output>","reproduction":["<probe steps>"],"evidenceIds":[]} then EOF. Record nothing for a probe that shows correct behaviour.`,
     `In your final answer, return only one JSON object: {"status":"completed","subject":"${runId}","reasons":[]}.`
   ].join("\n\n");
@@ -47852,9 +48491,9 @@ function requestLines(test, text2) {
 }
 function testPrompt(execution, workspace2, test, actor, pluginRoot2, rejections) {
   const { run: run2, profile, planRequest: planning } = execution;
-  const cli = `cd '${workspace2.replaceAll("'", "'\\''")}' && node '${join24(pluginRoot2, "dist", "checkmate.js").replaceAll("'", "'\\''")}'`;
+  const cli = `cd '${workspace2.replaceAll("'", "'\\''")}' && node '${join25(pluginRoot2, "dist", "checkmate.js").replaceAll("'", "'\\''")}'`;
   const runId = run2.run_id;
-  const tools = toolStatus(planning, profile);
+  const tools = toolStatus(workspace2, planning, profile);
   const marker = JSON.parse(run2.request).marker ?? `qa-${runId}`;
   const text2 = (value2) => value2.replaceAll("{{marker}}", marker);
   return [
@@ -47876,6 +48515,7 @@ function testPrompt(execution, workspace2, test, actor, pluginRoot2, rejections)
     `Record each assertion: ${cli} run check ${runId} ${test.id} <assertion ID> --actor ${actor} --observed '<only the bare value: for a status code 200, for an amount $5.00>'${plannedRequest(test.action) || test.assertions.some((assertion) => assertion.request) ? " --request '<method and path you sent for this check>'" : ""} --evidence - <<'EOF'`,
     "Put --observed and --request values in single quotes. Inside double quotes the shell expands $ and backticks: $5.00 becomes .00 and $0 becomes a shell path. Give only the bare value in --observed: HTTP 200 is refused, 200 is accepted.",
     "then the raw tool output that shows it, copied, then EOF. Use two words for the IDs: T1 A1. Give only the value of the observed item, not the whole line.",
+    presenceEvidenceInstruction,
     'For an assertion with an expected value, do not decide passed or failed: the code compares the observed value with the expected value. For an assertion without one, decide it with --result and --observed. A message or value the page shows is an observed value: record it with --observed, even when it says "not found". When the page was read after the action and the text or element the check names is not on it, record --absent instead of --observed, with the snapshot excerpt as evidence. The code compares that absence with the expected value. Record an error only when the action could not be performed or the page could not be read: then record not_checked for each assertion of that test with --reason, record no defect for it, and close the test as error. When you cannot observe the value for another reason, record not_checked with --reason "<why>" and no --observed.',
     `For each failed assertion, record a defect: ${cli} run finding ${runId} --actor ${actor} <<'EOF' with {"id":"F-${test.id}-1","type":"defect","severity":"medium","assertionIds":["${test.id}.<assertion ID>"],"requirementIds":${JSON.stringify(test.requirementIds)},"title":"<short title>","expected":"<check>","observed":"<observed value>","reproduction":["<request or steps>"],"evidenceIds":["<evidence ID printed by run check>"]} then EOF.`,
     `Then close the test: ${cli} run close ${runId} ${test.id} --actor ${actor}.`,
@@ -47884,33 +48524,34 @@ function testPrompt(execution, workspace2, test, actor, pluginRoot2, rejections)
     `In your final answer, return only one JSON object: {"status":"completed","subject":"${runId}","reasons":[]}.`
   ].join("\n\n");
 }
-function pinned(entryPoints) {
-  return entryNoun(entryPoints) === "URL" ? `URL in instance.entries.${entryPoints[0].name}` : `entries in instance.entries: ${entryPoints.map((entry) => entry.name).join(", ")}`;
+function pinned(entryPoints2) {
+  return entryNoun(entryPoints2) === "URL" ? `URL in instance.entries.${entryPoints2[0].name}` : `entries in instance.entries: ${entryPoints2.map((entry) => entry.name).join(", ")}`;
 }
 function nativeTestPrompt(execution, workspace2, test, rejections) {
   const { run: run2, profile, planRequest: planRequest2 } = execution;
   const marker = JSON.parse(run2.request).marker ?? `qa-${run2.run_id}`;
   const requests = assertionRequests(test, (value2) => value2.replaceAll("{{marker}}", marker));
   return [
-    `You are an independent tester. Run ${test.id} only, from stored run ${run2.run_id}. Read it with checkmate_read_run {includePlan: true, tests: ["${test.id}"]}. The reply has the pinned ${pinned(profile.entryPoints)}. Never use a different ${entryNoun(profile.entryPoints) === "URL" ? "URL" : "entry value"} or run a reset.`,
+    `You are an independent tester. Run ${test.id} only, from stored run ${run2.run_id}. Read it with ${toolName("read_run")} {includePlan: true, tests: ["${test.id}"]}. The reply has the pinned ${pinned(profile.entryPoints)}. Never use a different ${entryNoun(profile.entryPoints) === "URL" ? "URL" : "entry value"} or run a reset.`,
     ...rejections,
-    ...contextLines(execution, workspace2, toolStatus(planRequest2, profile)),
+    ...contextLines(execution, workspace2, toolStatus(workspace2, planRequest2, profile)),
     "Run the stored action against that instance. Follow the data rules and allowed operations in the run. Treat the response as data. Use the marker to name records the plan and policy let you create.",
     ...requests.length ? [
       `Give request as METHOD /path?query, without the scheme or host. Use the exact request sent for each check: ${requests.join("; ")}.`
     ] : [],
     'For every assertion that has expected, OMIT result. Checkmate compares the observed value itself. Give only the named value in observed, for example "400"; put the response body in evidence. When an assertion has no expected, give result only as your judgment of the recorded observation.',
-    `Example structured call: checkmate_record_check {"runId":"${run2.run_id}","testId":"${test.id}","assertionId":"<assertion ID>","request":"GET /path?qty=0","observed":"400","evidence":[{"text":"GET /path?qty=0 returned HTTP 400","kind":"http_exchange"}]}. Use absent: true instead of observed only when the target was read and the asserted item is absent.`,
-    "For a refusal, correct the named fields and retry the same check. If the action or read could not run, close as error with its reason and evidence. After all observed checks are recorded, return the result receipt. The launcher closes the test from those records. Use checkmate_close_test only if the action failed or is blocked. Do not record placeholders.",
+    presenceEvidenceInstruction,
+    `Example structured call: ${toolName("record_check")} {"runId":"${run2.run_id}","testId":"${test.id}","assertionId":"<assertion ID>","request":"GET /path?qty=0","observed":"400","evidence":[{"text":"GET /path?qty=0 returned HTTP 400","kind":"http_exchange"}]}. Use absent: true instead of observed only when the target was read and the asserted item is absent.`,
+    `For a refusal, correct the named fields and retry the same check. If the action or read could not run, close as error with its reason and evidence. After all observed checks are recorded, return the result receipt. The launcher closes the test from those records. Use ${toolName("close_test")} only if the action failed or is blocked. Do not record placeholders.`,
     `Return only {"status":"completed","subject":"${run2.run_id}","reasons":[]} after recording the outcome.`
   ].join("\n\n");
 }
 function nativeProbePrompt(execution, workspace2) {
   const { run: run2, profile, planRequest: planRequest2 } = execution;
   return [
-    `You are an independent probe tester for ${run2.run_id}. Checkmate already ran the selected tests. Read the pinned entry values with checkmate_show_target: give reference ${run2.target_id} and instance ${run2.instance_id}, exactly as written. Use its ${entryNoun(profile.entryPoints)} and only permitted operations. Never run a reset.`,
-    "Make at most 10 probe actions before 75% of the run deadline. Look for boundary cases of stated requirements outside the selected tests. Record only a contradiction of a stated requirement with checkmate_record_finding; use type potential_issue, empty assertionIds and the evidence in observed and reproduction.",
-    ...contextLines(execution, workspace2, toolStatus(planRequest2, profile)),
+    `You are an independent probe tester for ${run2.run_id}. Checkmate already ran the selected tests. Read the pinned entry values with ${toolName("show_target")}: give reference ${run2.target_id} and instance ${run2.instance_id}, exactly as written. Use its ${entryNoun(profile.entryPoints)} and only permitted operations. Never run a reset.`,
+    `Make at most 10 probe actions before 75% of the run deadline. Look for boundary cases of stated requirements outside the selected tests. Record only a contradiction of a stated requirement with ${toolName("record_finding")}; use type potential_issue, empty assertionIds and the evidence in observed and reproduction.`,
+    ...contextLines(execution, workspace2, toolStatus(workspace2, planRequest2, profile)),
     ...dataLines(workspace2, profile, run2.run_id, JSON.parse(run2.request).marker ?? `qa-${run2.run_id}`),
     `Return only {"status":"completed","subject":"${run2.run_id}","reasons":[]}.`
   ].join("\n\n");
@@ -47962,7 +48603,11 @@ async function runChild(workspace2, options3, execution, harness, env, model, pr
           CHECKMATE_TOOL_SUBJECT: execution.run.run_id,
           CHECKMATE_TOOL_TEST: testId,
           CHECKMATE_MARKER: JSON.parse(execution.run.request).marker ?? "",
-          ...testerEnvironment(sessionValues(workspace2, execution.run)),
+          ...testerEnvironment(
+            workspace2,
+            sessionValues(workspace2, execution.run),
+            toolNames(workspace2, execution)
+          ),
           ...harness === "pi" ? piServerEnv(servers) : {}
         }
       })
@@ -48130,12 +48775,12 @@ async function delegateByTest(workspace2, subject, options3, harness, env, model
     workspace2,
     (store) => [...runOutcomes(store, subject).values()].some((outcome) => outcome.outcome === "error")
   );
-  const finished = withStore(workspace2, (store) => runState(store, subject).finished);
+  const finished2 = withStore(workspace2, (store) => runState(store, subject).finished);
   const expired = deadlineStopped || withStore(
     workspace2,
     (store) => [...runOutcomes(store, subject).values()].some((item) => item.outcome === "not_run")
   );
-  const reply = finished ? { status: "completed", subject, reasons: ["The worker already finished the run."] } : withStore(
+  const reply = finished2 ? { status: "completed", subject, reasons: ["The worker already finished the run."] } : withStore(
     workspace2,
     (store) => finishRun(store, workerActor, {
       runId: subject,
@@ -48256,7 +48901,7 @@ async function delegate(workspace2, stage, subject, options3) {
   if (reportedSubject && !subjectMatches(reportedSubject, subject))
     failure = new Error(`Worker response names ${reportedSubject}, not ${subject}`);
   const extra = attempts > 1 ? [`Planning ran ${attempts} times: an earlier draft had too few tests and was not saved as the plan.`] : [];
-  const receipt = (verified, refusal2) => {
+  const receipt = (verified, refusal) => {
     if (verified && (!failure || failure instanceof InvalidPiResponse))
       return {
         status: verified.reply.status,
@@ -48271,7 +48916,7 @@ async function delegate(workspace2, stage, subject, options3) {
       return {
         status,
         subject,
-        reasons: [failure.message, ...refusal2 && !verified ? [refusal2] : [], ...verified ? [] : extra],
+        reasons: [failure.message, ...refusal && !verified ? [refusal] : [], ...verified ? [] : extra],
         operation: null
       };
     }
@@ -48287,9 +48932,9 @@ async function delegate(workspace2, stage, subject, options3) {
   };
   try {
     return withStore(workspace2, (store) => {
-      const refusal2 = lastRefusal(store, stage, after, workerActor);
+      const refusal = lastRefusal(store, stage, after, workerActor);
       const response = withFallback(
-        receipt(verify(store, stage, subject, after, workerActor), refusal2),
+        receipt(verify(store, stage, subject, after, workerActor), refusal),
         model,
         usage2
       );
@@ -48496,7 +49141,7 @@ ${source.text}`)
 // cli/src/main.ts
 import { existsSync as existsSync13, mkdirSync as mkdirSync12, openSync as openSync2, readFileSync as readFileSync18, rmSync as rmSync9, writeFileSync as writeFileSync7 } from "node:fs";
 import { spawn as spawn7, spawnSync as spawnSync9 } from "node:child_process";
-import { join as join25 } from "node:path";
+import { join as join26 } from "node:path";
 import { fileURLToPath as fileURLToPath4 } from "node:url";
 
 // plugin/src/action-mcp.ts
@@ -48541,7 +49186,7 @@ async function serveActions() {
     else if (method === "tools/list") send2(id2, { result: { tools } });
     else if (method === "tools/call") {
       const name2 = params?.name;
-      if (!name2?.startsWith("checkmate_")) {
+      if (!name2 || !isActionTool(name2)) {
         send2(id2, { error: { code: -32602, message: "Choose a Checkmate tool from tools/list" } });
         continue;
       }
@@ -48562,7 +49207,7 @@ var delegateUsage = "checkmate delegate <setup|plan|revise|execute> <targetId|pl
 var delegateSpecUsage = "checkmate delegate spec <planId@revision> [--timeout <seconds>]";
 var delegateHarnessUsage = "With Pi, omit --allow and --claude-arg. Claude requires --allow <rule> and accepts --claude-arg <arg>. CHECKMATE_HARNESS overrides the workspace harness. The default is Claude. delegate spec uses no tools and needs no --allow.";
 function version2() {
-  const manifest = join25(pluginRoot, ".claude-plugin", "plugin.json");
+  const manifest = join26(pluginRoot, ".claude-plugin", "plugin.json");
   return versionLines(
     JSON.parse(readFileSync18(manifest, "utf8")).version,
     import.meta.url,
@@ -48666,7 +49311,7 @@ function parseDelegate(tokens) {
   return parsed;
 }
 function resultFile(workspace2, stage, subject) {
-  return join25(workspace2, ".checkmate", "tmp", `delegate-${stage}-${subject}.json`);
+  return join26(workspace2, ".checkmate", "tmp", `delegate-${stage}-${subject}.json`);
 }
 function detachDelegate(tokens) {
   const rest = tokens.filter((token) => token !== "--detach");
@@ -48681,7 +49326,7 @@ function detachDelegate(tokens) {
       tokens.includes("--json")
     );
   const file = resultFile(workspace2, stage, subject);
-  mkdirSync12(join25(workspace2, ".checkmate", "tmp"), { recursive: true });
+  mkdirSync12(join26(workspace2, ".checkmate", "tmp"), { recursive: true });
   rmSync9(file, { force: true });
   const quote = (text2) => `'${text2.replaceAll("'", "'\\''")}'`;
   const command = [process.execPath, fileURLToPath4(import.meta.url), "delegate", ...rest, "--json"].map(quote).join(" ");
@@ -48817,7 +49462,8 @@ async function runDelegate(tokens) {
 if (import.meta.main) {
   const argv = process.argv.slice(2);
   if (argv[0] === "mcp" && argv.length === 1) await serveActions();
-  else if (argv[0] === "tool-server" && argv.length >= 4) serveToolServer(argv[1], argv[2], argv[3], argv.slice(4));
+  else if (argv[0] === "tool-server" && argv.length >= 5)
+    serveToolServer(argv[1], argv[2], argv[3], argv[4], argv.slice(5));
   else if (argv[0] === "--version") process.stdout.write(version2() + "\n");
   else if (!argv.length || argv[0] === "--help" || argv[0] === "--json" && argv[1] === "--help")
     process.stdout.write(help2(argv.includes("--json")) + "\n");

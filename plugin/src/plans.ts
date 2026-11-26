@@ -205,7 +205,7 @@ export function notReadyReasons(store: Store, planId: string) {
 	const plan = JSON.parse(row.body) as Plan
 	const lines = [
 		...plan.tests.flatMap((test) =>
-			unverifiedAssertions(test, plan.requirements).map((id) => `Not ready: ${test.id}.${id}`)
+			unverifiedAssertions(store.workspace, test, plan.requirements).map((id) => `Not ready: ${test.id}.${id}`)
 		),
 		...uncoveredRequirements(plan).map((id) => `Not ready: ${id} has no test`),
 	]
@@ -261,7 +261,10 @@ export function showPlanRequest(store: Store, planId: string) {
 		sourceContext: request.sourceContext ?? [],
 		context: request.context ?? { sources: [] },
 		tools: planTools(request, target.profile),
-		observeFrom: observeFromValues(planTools(request, target.profile).map((tool) => tool.name)),
+		observeFrom: observeFromValues(
+			store.workspace,
+			planTools(request, target.profile).map((tool) => tool.name)
+		),
 		capabilities: target.profile.capabilities,
 		allowedOperations: target.profile.allowedOperations,
 		data: dataSummary(store.workspace, target.profile.reset),
@@ -379,7 +382,7 @@ function requireChangedChecks(store: Store, plan: Plan, previous: Plan | undefin
 		)
 	})
 	const problems = changed.flatMap((test) =>
-		softProblems(test, plan.requirements).map((problem) => ({ test, problem }))
+		softProblems(store.workspace, test, plan.requirements).map((problem) => ({ test, problem }))
 	)
 	const uncovered = uncoveredRequirements(plan)
 	const covered = plan.requirements.length - uncovered.length
@@ -415,7 +418,7 @@ function requireChangedChecks(store: Store, plan: Plan, previous: Plan | undefin
 
 function checkedRevision(store: Store, draft: PlanDraft) {
 	const plan = planCheck(derivePlan(draft))
-	planTargetCheck(plan, targetRevision(store, plan.target.targetId, plan.target.revision).profile)
+	planTargetCheck(store.workspace, plan, targetRevision(store, plan.target.targetId, plan.target.revision).profile)
 	const others = latestPlans(store)
 	requireChangedChecks(store, plan, others.get(plan.planId))
 	others.delete(plan.planId)

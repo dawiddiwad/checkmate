@@ -51,6 +51,64 @@ Setup records the installed tools whose recipes fit the entries. A tool that nee
 
 The prompts of delegated workers name the entries from the profile, for example "the app and device entries", and the plan prompt lists the `observeFrom` values of the target tools. `checkmate plan request <planId>` prints them.
 
+## Add a project tool recipe
+
+Put one JSON file in the project’s `.checkmate/recipes/` folder. Match the file name to the recipe name. Use the optional `usage` field for tester notes. If present, give a non-empty list of Markdown lines. The built-in recipes include usage notes. Edit the file to update the recipe. Delete the file to remove it.
+
+Run `checkmate recipe list --json` for built-in examples and for the `invalid` list with each file path and its validation problems. `checkmate recipe list` shows the same problems as text. Checkmate checks the files as it reads the catalog and refuses to use invalid recipes. Its refusal gives the file and what to edit. Built-in names are reserved. If custom names clash, Checkmate marks the later file invalid. Settings > Recipes shows the same catalog and reflects changes to the folder.
+
+Saved targets and plans keep their records. Future recipe lookups use the current file by name. If you change entry points or capabilities, set up a target that fits the recipe. Review the plans that use changed observation or evidence values.
+
+In `environment`, use literal values or the tester placeholders `{session}` and `{workFolder}`. To pass an instance entry such as `inventory` to a tool, use a command argument. A reachability command can use `{inventory}` in its argument list if the recipe declares that entry.
+
+Review and share recipes in Git as project code. With `detect: path`, Checkmate looks for the CLI recipe name or the MCP recipe’s `server.command` on PATH. A recipe can tell Checkmate to run a reachability command or start an MCP server. Setup reachability commands check that the instance responds. The target and its skills set what testers may do. The host controls tester tool permissions and file writes.
+
+### Salesforce CLI example
+
+Save this as `.checkmate/recipes/sf.json`. Setup looks for `sf` on `PATH` and checks the org with a read-only SOQL query. [Salesforce CLI command reference](https://developer.salesforce.com/docs/platform/salesforce-cli-reference/guide/cli_reference_data_query.html)
+
+```json
+{
+	"name": "sf",
+	"capability": "salesforce",
+	"kind": "cli",
+	"purpose": "Read records from a Salesforce org.",
+	"detect": "path",
+	"entryPoints": [{ "name": "org", "kind": "value", "purpose": "Salesforce org alias." }],
+	"reachable": [
+		{
+			"check": "command",
+			"run": [
+				"sf",
+				"data",
+				"query",
+				"--query",
+				"SELECT Id FROM Organization LIMIT 1",
+				"--target-org",
+				"{org}",
+				"--json"
+			]
+		}
+	],
+	"environment": {},
+	"workspaceFolders": [],
+	"observeFrom": { "soql": "state" },
+	"evidence": ["soql_result"],
+	"usage": [
+		"# Salesforce CLI",
+		"",
+		"Run sf data query --target-org <org entry> --query '<SOQL>' --json.",
+		"Record the relevant result as soql_result evidence."
+	]
+}
+```
+
+Use an org alias that your Salesforce CLI already knows:
+
+```sh
+checkmate setup --target salesforce --entry org=my-sandbox --operations read_records
+```
+
 ## Agent tools
 
 The Claude Code plugin serves Checkmate actions through its local MCP server. The Pi package registers the same actions as native tools. The host gives each tool its workspace and role. An action takes named arguments. Its result gives the recorded state or a refusal with reasons and a next action.
@@ -72,11 +130,15 @@ Use the returned target, plan, and instance IDs for subsequent actions. To corre
 
 For a structured check, give only the observed item, for example `"400"` for HTTP status. Give `absent: true` after a successful read when the item is missing. Put the response and request details in `evidence: [{text, kind}]`. To attach a file, use `[{file, kind}]` with a fresh file from the run evidence directory. A successful call consumes the file. An incomplete test closed as an operational error keeps its observations without requiring a defect finding. A completed tester step can report a product defect. Give a step failure only for an agent or host failure.
 
+For a presence or absence check, attach the action output verbatim. Checkmate compares the observation with the text attachments from that check. It searches for the named text without regard to case and at word boundaries. A contradiction makes the check inconclusive. The run shows the reason and retains the observation and evidence. An inconclusive check does not create a defect finding. A check with only non-text attachments keeps the result of its comparison with the expected value.
+
 The CLI still serves scripts, factory stages, review UI chat, exports, permanent runs, approvals, permissions, and recovery operations. Checkmate's CLI and host tools validate supported actions with the same [action schemas](../plugin/contracts/actions.schema.json). Factory grants and target credentials stay with the host.
 
 ## Plans and contracts
 
 A plan revision contains requirements, tests, and gaps. A test names its rules, capability, operations, preconditions, action, and assertions. An assertion has a known expected value. An unknown expected value belongs in an open gap.
+
+Use `contains:TEXT` when the action output must include a value, or `absent:TEXT` when it must exclude one. For example, use `absent:NUT-2` to check that the output excludes that SKU. Plan save refuses prose expectations such as `NUT-2 absent` and `NUT-2 present`.
 
 Use the JSON Schemas as the contract:
 
@@ -139,7 +201,7 @@ See [Factory workflows](factory.md) for the three complete paths and the ownersh
 
 ## Record and limits
 
-The record is `.checkmate/checkmate.db` in the workspace. Add `.checkmate/` to `.gitignore`. Export data when you need a file to share:
+The record is `.checkmate/checkmate.db` in the workspace. Ignore `.checkmate/checkmate.db*`, `.checkmate/tmp/`, and `.checkmate/ui.json` in Git. Keep `.checkmate/recipes/` trackable. Export data when you need a file to share:
 
 ```sh
 checkmate export plan <planId@revision> --format md --out plan.md

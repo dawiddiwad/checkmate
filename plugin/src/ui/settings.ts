@@ -19,6 +19,7 @@ export type RetireState = { instanceId: string; error: string } | null
 
 const settingsPages = [
 	{ path: '/settings/targets', label: 'Targets' },
+	{ path: '/settings/recipes', label: 'Recipes' },
 	{ path: '/settings/harness', label: 'Coding harness' },
 ]
 
@@ -37,8 +38,9 @@ function settingsNav(current: string) {
 	</nav>`
 }
 
-function settingsPage(current: string, title: string, subjects: string[], body: Html, status?: number): Page {
-	const target = title !== 'Targets' && title !== 'Coding harness'
+export function settingsPage(current: string, title: string, subjects: string[], body: Html, status?: number): Page {
+	const parent = settingsPages.find((page) => page.path === current)!
+	const detail = title !== parent.label
 	return {
 		title,
 		section: 'settings',
@@ -46,11 +48,11 @@ function settingsPage(current: string, title: string, subjects: string[], body: 
 		status,
 		crumbs: [
 			['Settings', '/settings/targets'],
-			...(target
-				? [['Targets', '/settings/targets'] as [string, string], [title, null] as [string, null]]
+			...(detail
+				? [[parent.label, current] as [string, string], [title, null] as [string, null]]
 				: [[title, null] as [string, null]]),
 		],
-		back: target ? '/settings/targets' : '/',
+		back: detail ? current : '/',
 		body: html`${settingsNav(current)} ${body}`,
 	}
 }
@@ -164,59 +166,41 @@ function toolsTable(profile: Profile) {
 function profileFacts(profile: Profile) {
 	const approvals = profile.approvals ?? { plan: 'required', result: 'required' }
 	return html`<dl class="facts">
-		<div>
-			<dt>Capabilities</dt>
-			<dd>${words(profile.capabilities)}</dd>
-		</div>
-		<div>
-			<dt>Operations</dt>
-			<dd>${words(profile.allowedOperations)}</dd>
-		</div>
-		<div>
-			<dt>Authentication</dt>
-			<dd>
-				<code>${profile.authentication.kind}</code> · references ${words(profile.authentication.references)}
-			</dd>
-		</div>
-		<div>
-			<dt>Approvals</dt>
-			<dd>plan <code>${approvals.plan}</code> · result <code>${approvals.result}</code></dd>
-		</div>
-		<div>
-			<dt>Startup</dt>
-			<dd>
-				${profile.startup.owner}${profile.startup.command ? html` · <code>${profile.startup.command.join(' && ')}</code>` : ''}
-			</dd>
-		</div>
-		<div>
-			<dt>Cleanup</dt>
-			<dd>${profile.cleanup}</dd>
-		</div>
+		<dt>Capabilities</dt>
+		<dd>${words(profile.capabilities)}</dd>
+		<dt>Operations</dt>
+		<dd>${words(profile.allowedOperations)}</dd>
+		<dt>Authentication</dt>
+		<dd><code>${profile.authentication.kind}</code> · references ${words(profile.authentication.references)}</dd>
+		<dt>Approvals</dt>
+		<dd>plan <code>${approvals.plan}</code> · result <code>${approvals.result}</code></dd>
+		<dt>Startup</dt>
+		<dd>
+			${profile.startup.owner}${profile.startup.command ? html` · <code>${profile.startup.command.join(' && ')}</code>` : ''}
+		</dd>
+		<dt>Cleanup</dt>
+		<dd>${profile.cleanup}</dd>
 		${
 			profile.reset
-				? html`<div>
-						<dt>Reset</dt>
+				? html`<dt>Reset</dt>
 						<dd>
 							${profile.reset.owner}${profile.reset.command ? html` · <code>${profile.reset.command.join(' && ')}</code>` : ''}
-						</dd>
-					</div>`
+						</dd>`
 				: ''
 		}
-		<div>
-			<dt>Profile readiness</dt>
-			<dd>
-				${
-					profile.readyForLiveExecution
-						? pill('ready')
-						: html`${pill('blocked', 'not ready')}
-								<p class="help">
-									Check the active instances below. Then run
-									<code>checkmate delegate setup ${profile.targetId}</code>
-									to recheck the prerequisites and save a profile revision.
-								</p>`
-				}
-			</dd>
-		</div>
+		<dt>Profile readiness</dt>
+		<dd>
+			${
+				profile.readyForLiveExecution
+					? pill('ready')
+					: html`${pill('blocked', 'not ready')}
+							<p class="help">
+								Check the active instances below. Then run
+								<code>checkmate delegate setup ${profile.targetId}</code>
+								to recheck the prerequisites and save a profile revision.
+							</p>`
+			}
+		</dd>
 	</dl>`
 }
 

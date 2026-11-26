@@ -2,7 +2,7 @@ import test from 'node:test'
 import type { TestContext } from 'node:test'
 import assert from 'node:assert/strict'
 import { execFileSync, spawn, spawnSync } from 'node:child_process'
-import { chmodSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { chmodSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:http'
 import { once } from 'node:events'
 import { join } from 'node:path'
@@ -867,3 +867,132 @@ test('Filter the review list by a build whose name has spaces — the row lists 
 	const script = await (await fetch(new URL('/assets/client.js', url))).text()
 	assert.match(script, /JSON\.parse\(row\.dataset\.builds/)
 })
+
+test(
+	'Show built-in and custom tool recipes read-only in the review UI — a custom recipe is missing, unmarked, or its text runs as HTML.',
+	{ skip: browserSkip, timeout: 60_000 },
+	async (t) => {
+		const workspace = realpathSync(directory(t))
+		t.after(() => endProcessesIn(workspace))
+		must(workspace, ['init'])
+		const { url } = await startUi(t, workspace)
+		const { page } = await pageFor(t, url)
+		await page.goto(new URL('/settings/recipes', url).href)
+		await page.locator('[data-live]:not(.down):not([hidden])').waitFor()
+		const builtIn = ['maestro-mcp', 'maestro', 'node', 'playwright-cli']
+		const sources = () =>
+			page
+				.locator('[data-region="recipes"] [data-row]')
+				.evaluateAll((rows) =>
+					rows.map((row) => [row.getAttribute('data-label'), row.querySelector('[data-source]')?.textContent])
+				)
+		assert.deepEqual(
+			await sources(),
+			builtIn.map((name) => [name, 'built-in'])
+		)
+		const empty = page.locator('[data-region="recipes"] .sp-empty')
+		assert.match((await empty.textContent()) ?? '', /No custom recipe yet\.[\s\S]*Drop a recipe JSON file in/)
+		assert.equal(await page.locator('main form, main button').count(), 0)
+
+		const injected = `<img src=x onerror="document.body.dataset.injected='yes'">`
+		const usage = `# Acme\n\nRun acme stock --store <store>.\n\n<script>document.body.dataset.injected = 'script'</script>\n${injected}\n`
+		const recipe = {
+			name: 'acme',
+			capability: 'inventory',
+			kind: 'cli',
+			purpose: `Read stock levels ${injected}`,
+			detect: 'path',
+			entryPoints: [{ name: 'store', kind: 'value', purpose: 'The store code.', pattern: '^[A-Z]{3}$' }],
+			reachable: [{ check: 'command', run: ['acme', 'ping', '{store}'], contains: ['pong'] }],
+			environment: {},
+			workspaceFolders: [],
+			observeFrom: { stock: 'state' },
+			evidence: ['stock_report'],
+			usage: usage.split('\n'),
+		}
+		const json = JSON.stringify(recipe, null, 2) + '\n'
+		const folder = join(workspace, '.checkmate', 'recipes')
+		const path = join(folder, 'acme.json')
+		mkdirSync(folder, { recursive: true })
+		writeFileSync(path, json)
+		await page.locator('[data-region="recipes"] [data-label="acme"]').waitFor()
+		assert.deepEqual(await sources(), [...builtIn.map((name) => [name, 'built-in']), ['acme', 'custom']])
+		assert.equal(await empty.count(), 0)
+		assert.match(
+			(await page.locator('[data-label="acme"]').textContent()) ?? '',
+			/Read stock levels <img src=x onerror=/
+		)
+
+		await page.locator('[data-label="acme"]').click()
+		await page.waitForURL(/\/settings\/recipes\/acme$/)
+		const facts = await page.locator('#recipe + .facts').innerText()
+		assert.equal(await page.locator('#recipe + .facts [data-source]').getAttribute('data-source'), 'custom')
+		assert.ok(facts.includes(path), facts)
+		assert.match(facts, /inventory · command-line tool/)
+		assert.match(facts, /acme on PATH/)
+		const requires = await page.locator('section[aria-labelledby="requires"]').innerText()
+		assert.match(requires, /store · value · format \^\[A-Z\]\{3\}\$/)
+		assert.match(requires, /Command acme ping \{store\} exits with code 0, and its output contains pong\./)
+		assert.equal(await page.locator('[data-usage]').textContent(), usage)
+		assert.equal(await page.locator('[data-json]').isVisible(), false)
+		assert.equal(await page.locator('[data-json]').textContent(), json)
+		assert.equal(await page.locator('main img, main script').count(), 0)
+		assert.equal(await page.locator('main form, main button').count(), 0)
+		assert.equal(await page.evaluate(() => document.body.dataset.injected ?? null), null)
+
+		const { usage: _usage, ...withoutUsage } = recipe
+		writeFileSync(path, JSON.stringify(withoutUsage))
+		await page.reload()
+		assert.equal(await page.locator('[data-usage], a[href="#usage"]').count(), 0)
+		assert.equal(await page.locator('[data-json]').textContent(), JSON.stringify(withoutUsage))
+
+		await page.goto(new URL('/settings/recipes/node', url).href)
+		const nodeFacts = await page.locator('#recipe + .facts').innerText()
+		assert.equal(await page.locator('#recipe + .facts [data-source]').getAttribute('data-source'), 'built-in')
+		assert.match(nodeFacts, /The Node\.js that runs Checkmate/)
+		assert.doesNotMatch(nodeFacts, /FILE/)
+		const nodeUsage = (await page.locator('[data-usage]').textContent()) ?? ''
+		assert.match(nodeUsage, /^# HTTP recipe\n\n\S/)
+		assert.doesNotMatch(nodeUsage, /Agent only/)
+		assert.equal((await fetch(new URL('/settings/recipes/missing', url))).status, 404)
+
+		await page.goto(new URL('/settings/recipes', url).href)
+		await page.locator('[data-live]:not(.down):not([hidden])').waitFor()
+		writeFileSync(join(workspace, '.checkmate', 'recipes', 'bad.json'), injected)
+		const bad = page.locator('[data-region="recipes"] [data-label="bad.json"]')
+		await bad.waitFor()
+		assert.deepEqual(await sources(), [
+			...builtIn.map((name) => [name, 'built-in']),
+			['acme', 'custom'],
+			['bad.json', 'invalid'],
+		])
+		assert.equal(await page.locator('.banner').count(), 0)
+		assert.match((await bad.textContent()) ?? '', /bad\.json is not valid: Cannot read JSON: .*<img src=x/)
+		await bad.click()
+		await page.waitForURL(/\/settings\/invalid-recipes\?file=bad\.json$/)
+		const error = (await page.locator('[data-error]').textContent()) ?? ''
+		assert.ok(
+			error.startsWith(
+				`Tool recipe ${join(workspace, '.checkmate', 'recipes', 'bad.json')} is not valid: Cannot read JSON: `
+			),
+			error
+		)
+		assert.match(error, /<img src=x/)
+		assert.ok(
+			(await page.locator('main .facts').innerText()).includes(
+				join(workspace, '.checkmate', 'recipes', 'bad.json')
+			)
+		)
+		assert.equal(await page.locator('main img, main form, main button').count(), 0)
+		assert.equal(await page.evaluate(() => document.body.dataset.injected ?? null), null)
+		assert.equal((await fetch(new URL('/settings/invalid-recipes?file=acme.json', url))).status, 404)
+		assert.match(await page.locator('main .facts').innerText(), /Edit this JSON file to fix the listed problems/)
+		await page.goto(new URL('/settings/recipes', url).href)
+		await page.locator('[data-live]:not(.down):not([hidden])').waitFor()
+		writeFileSync(join(folder, 'bad.json'), JSON.stringify({ ...recipe, name: 'bad' }))
+		await page.locator('[data-label="bad"] [data-source="custom"]').waitFor()
+		rmSync(join(folder, 'bad.json'))
+		rmSync(path)
+		await page.locator('[data-region="recipes"] .sp-empty').waitFor()
+	}
+)

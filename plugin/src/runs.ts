@@ -48,11 +48,12 @@ import {
 	unitNotObserved,
 	looksShellExpanded,
 	looksTruncatedMoney,
+	presenceContradiction,
 	repeatsExpectation,
 	wrappedValue,
 } from './expectation.ts'
 import { checkRequest, requestMatches } from './routes.ts'
-import { choiceText, evidenceChoices, evidenceKindOfFile, givenBy } from './recipes.ts'
+import { choiceText, evidenceChoices, evidenceKindOfFile, givenBy, requireValidRecipes } from './recipes.ts'
 
 export type RunRow = {
 	run_id: string
@@ -412,6 +413,10 @@ function begin(
 				}
 			}
 			const { plan, sha256 } = checked.revision
+			requireValidRecipes(
+				store.workspace,
+				targetRevision(store, plan.target.targetId, plan.target.revision).profile.tools.map((tool) => tool.name)
+			)
 			const dataProfile = targetRevision(store, plan.target.targetId).profile
 			const marker = markerFor(store, runId)
 			const facts = runPrepare(store.workspace, dataProfile.reset, marker)
@@ -496,14 +501,19 @@ function evidenceKinds(store: Store, runId: string) {
 	const run = one<RunRow>(store, 'SELECT * FROM runs WHERE run_id = ?', runId)!
 	const profile = targetRevision(store, run.target_id, run.target_revision).profile
 	const tools = profile.tools.map((tool) => tool.name)
-	return { targetId: profile.targetId, tools, choices: evidenceChoices(tools) }
+	return {
+		workspace: store.workspace,
+		targetId: profile.targetId,
+		tools,
+		choices: evidenceChoices(store.workspace, tools),
+	}
 }
 
 function requireEvidenceKind(kind: string, allowed: ReturnType<typeof evidenceKinds>) {
 	if (!allowed.choices.some((choice) => choice.value === kind))
 		requireWellFormed(
 			false,
-			`Evidence kind ${kind} is not given by a tool of target ${allowed.targetId} (${givenBy(kind)}). Allowed kinds: ${choiceText(allowed.choices)}.`,
+			`Evidence kind ${kind} is not given by a tool of target ${allowed.targetId} (${givenBy(allowed.workspace, kind)}). Allowed kinds: ${choiceText(allowed.choices)}.`,
 			'Give an allowed kind. For an observation, use observation or leave the kind out for inline text.'
 		)
 	return kind
@@ -564,7 +574,10 @@ function readEvidence(
 	return {
 		path,
 		name: basename(name),
-		kind: requireEvidenceKind(kind ?? evidenceKindOfFile(allowed.tools, extension) ?? 'observation', allowed),
+		kind: requireEvidenceKind(
+			kind ?? evidenceKindOfFile(store.workspace, allowed.tools, extension) ?? 'observation',
+			allowed
+		),
 		mediaType: mediaTypes[extension] ?? 'application/octet-stream',
 		bytes: readFileSync(real),
 	}
@@ -613,6 +626,19 @@ function evidenceFiles(store: Store, runId: string, name: string, specs: Evidenc
 	const paths = files.flatMap((file) => file.path ?? [])
 	requireWellFormed(new Set(paths).size === paths.length, 'An evidence file is listed twice')
 	return files
+}
+
+function* textAttachments(files: EvidenceFile[]) {
+	const decoder = new TextDecoder('utf-8', { fatal: true })
+	for (const file of files) {
+		if (!file.mediaType.startsWith('text/') && !['application/json', 'application/xml'].includes(file.mediaType))
+			continue
+		try {
+			yield decoder.decode(file.bytes)
+		} catch {
+			continue
+		}
+	}
 }
 
 function removeFiles(files: EvidenceFile[]) {
@@ -747,30 +773,41 @@ export function checkAssertion(store: Store, actor: string | undefined, input: C
 			"Record --observed in single quotes, for example --observed '$0', so the shell passes the value unchanged."
 		)
 		const reason = input.reason ?? null
-		const result =
+		const compared =
 			assertion.expected === undefined
 				? checkedResult(input.result, assertion, observed)
 				: structuredResult(input, test, assertion, observed, run.request.marker ?? '')
 		files = evidenceFiles(store, input.runId, `${test.id}-${assertion.id}`, input.evidence)
-		if (result !== 'not_checked')
+		if (compared !== 'not_checked')
 			requireWellFormed(
 				observed && files.length > 0,
-				`${result === 'inconclusive' ? 'An' : 'A'} ${result} result needs an observation (--observed) and one or more evidence items (--evidence)`,
+				`${compared === 'inconclusive' ? 'An' : 'A'} ${compared} result needs an observation (--observed) and one or more evidence items (--evidence)`,
 				`Add --observed "<what you saw>" and --evidence <file in ${evidenceDirectory(input.runId)}>, or --evidence - with the text on standard input.`
 			)
-		if (result === 'inconclusive')
+		if (compared === 'inconclusive')
 			requireWellFormed(
 				reason,
 				'An inconclusive result needs a reason (--reason) that says what the evidence cannot show'
 			)
-		if (result === 'not_checked')
+		if (compared === 'not_checked')
 			requireWellFormed(reason, 'A not_checked result needs a reason (--reason) that says why it was not checked')
+		const contradiction =
+			observed !== null && assertion.expected !== undefined
+				? presenceContradiction(
+						input.absent ? null : observed,
+						assertion.expected,
+						run.request.marker ?? '',
+						textAttachments(files)
+					)
+				: undefined
+		const result = contradiction ? 'inconclusive' : compared
 		// The amounts match, but the observed value has no unit the expected value names. The record says so.
 		const unit =
 			result === 'passed' && observed !== null && assertion.expected !== undefined
 				? unitNotObserved(observed, assertion.expected)
 				: undefined
-		const recorded = reason ?? (unit ? `The unit ${unit} was not observed; the amounts match.` : null)
+		const recorded =
+			contradiction ?? reason ?? (unit ? `The unit ${unit} was not observed; the amounts match.` : null)
 		// The first result goes to assertion_results, which keeps it. A correction goes to assertion_corrections.
 		const table = prior ? 'assertion_corrections' : 'assertion_results'
 		execute(
@@ -793,6 +830,7 @@ export function checkAssertion(store: Store, actor: string | undefined, input: C
 				testId: test.id,
 				assertionId: assertion.id,
 				result,
+				...(contradiction ? { reason: contradiction } : {}),
 				evidenceIds,
 			}),
 			subjects: [`run:${input.runId}`],

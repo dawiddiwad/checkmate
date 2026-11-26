@@ -31,7 +31,8 @@
 								"$ref": "text.schema.json"
 							},
 							"kind": {
-								"enum": ["observation", "screenshot", "view_hierarchy", "recording", "http_exchange", "trace"]
+								"type": "string",
+								"pattern": "^[a-z][a-z0-9_]{0,39}$"
 							}
 						}
 					},
@@ -44,7 +45,8 @@
 								"$ref": "#/definitions/text"
 							},
 							"kind": {
-								"enum": ["observation", "screenshot", "view_hierarchy", "recording", "http_exchange", "trace"]
+								"type": "string",
+								"pattern": "^[a-z][a-z0-9_]{0,39}$"
 							}
 						}
 					}

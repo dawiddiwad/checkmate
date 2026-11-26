@@ -54,7 +54,7 @@ import { dataRules, markerFor, owe, requireDataFor, runPrepare, settleCleanups }
 import { isRecordedGroup, signalRecordedGroup, startOfGroup } from './processes.ts'
 import { storeFindingsRun } from './findingsRun.ts'
 import { changeOf, changedFiles } from './change.ts'
-import { testerEnvironment, toolFolders } from './recipes.ts'
+import { requireValidRecipes, testerEnvironment, testerTools, toolFolders } from './recipes.ts'
 import { attachedServers } from './tool-servers.ts'
 import {
 	checkClaudeArgs,
@@ -289,8 +289,9 @@ function explorerWork(store: Store, explorationId: string, explorer: string, lau
 		dataPrefix,
 		grant: [`Edit(/${folder}/**)`],
 		deny: workDenyRules(others.map((name) => workFolder(explorationId, name))),
-		extraEnv: testerEnvironment(values),
+		extraEnv: testerEnvironment(store.workspace, values, testerTools(store.workspace, tools, true)),
 		servers: attachedServers(
+			store.workspace,
 			tools,
 			values,
 			checkmateScript(),
@@ -299,7 +300,12 @@ function explorerWork(store: Store, explorationId: string, explorer: string, lau
 	}
 }
 
-function topLevelNames(workspace: string) {
+function explorationToolFolders(store: Store, explorationId: string) {
+	const tools = exploration(store, explorationId).charter.tools.map((tool) => tool.name)
+	return toolFolders(store.workspace, tools)
+}
+
+function topLevelNames(workspace: string, ignored: string[]) {
 	const status = spawnSync('git', ['status', '--porcelain', '--untracked-files=normal'], {
 		cwd: workspace,
 		encoding: 'utf8',
@@ -311,7 +317,6 @@ function topLevelNames(workspace: string) {
 					.filter((line) => line.startsWith('?? '))
 					.map((line) => line.slice(3).replace(/^"|"$/g, ''))
 			: readdirSync(workspace)
-	const ignored = ['.checkmate', ...toolFolders()]
 	return new Set(names.filter((name) => !ignored.includes(name.replace(/\/$/, ''))))
 }
 
@@ -323,9 +328,10 @@ async function watchStray<T>(
 	turn: string,
 	run: () => Promise<T>
 ) {
-	const before = topLevelNames(store.workspace)
+	const ignored = ['.checkmate', ...explorationToolFolders(store, explorationId)]
+	const before = topLevelNames(store.workspace, ignored)
 	const result = await run()
-	const stray = [...topLevelNames(store.workspace)].filter((name) => !before.has(name)).sort()
+	const stray = [...topLevelNames(store.workspace, ignored)].filter((name) => !before.has(name)).sort()
 	if (stray.length)
 		event(store, actor, explorationId, {
 			step: 'stray',
@@ -366,7 +372,7 @@ function removeIfEmpty(folder: string) {
 export function keepToolFolders(store: Store, explorationId: string) {
 	const launch = startOf(explorationEvents(store, explorationId))
 	if (!launch) return
-	for (const name of toolFolders()) {
+	for (const name of explorationToolFolders(store, explorationId)) {
 		const from = join(store.workspace, name)
 		if (launch.toolFoldersBefore.includes(name) || !existsSync(from)) continue
 		const to = join(store.workspace, workFolder(explorationId), name)
@@ -416,6 +422,11 @@ export function startExploration(
 		scope: given.scope ?? (change ? changedFiles(store.workspace, change) : []),
 	}
 	const reply = write(store, { actor, command: 'explore start', subject: input.planId, input }, (operationId, at) => {
+		if (input.explorationId)
+			requireValidRecipes(
+				store.workspace,
+				exploration(store, input.explorationId).charter.tools.map(({ name }) => name)
+			)
 		if (!input.session) {
 			requireChild(env, selectedHarness(env))
 			for (const { exploration_id: id } of all<{ exploration_id: string }>(
@@ -463,7 +474,9 @@ export function startExploration(
 					...launch,
 					dataRules: rules,
 					toolIdentities: Object.fromEntries(toolUsers.map((name) => [name, toolIdentity(marker, name)])),
-					toolFoldersBefore: toolFolders().filter((name) => existsSync(join(store.workspace, name))),
+					toolFoldersBefore: explorationToolFolders(store, opened.explorationId).filter((name) =>
+						existsSync(join(store.workspace, name))
+					),
 				},
 			},
 			operationId,
@@ -669,10 +682,17 @@ async function launchExplorers(
 		)
 		const work = explorerWork(store, explorationId, explorer, launch)
 		const { folder, grant, dataPrefix } = work
-		const brief = explorerBrief({ ...opened.charter, dataRules: launch.dataRules }, entries, dataPrefix, folder, {
-			study: launch.studySeconds,
-			test: launch.testSeconds,
-		})
+		const brief = explorerBrief(
+			store.workspace,
+			{ ...opened.charter, dataRules: launch.dataRules },
+			entries,
+			dataPrefix,
+			folder,
+			{
+				study: launch.studySeconds,
+				test: launch.testSeconds,
+			}
+		)
 		event(store, actor, explorationId, {
 			step: 'launch',
 			explorer,
@@ -1112,7 +1132,10 @@ export async function driveExploration(workspace: string, explorationId: string,
 			step: 'done',
 			explorer: null,
 			status: 'failed',
-			detail: { reason: error instanceof Error ? error.message : String(error) },
+			detail: {
+				reason: error instanceof Error ? error.message : String(error),
+				...(error instanceof Refusal && error.hint ? { hint: error.hint } : {}),
+			},
 		})
 	} finally {
 		settleCleanups(store, [explorationId])
@@ -1423,7 +1446,10 @@ export async function driveFollow(workspace: string, explorationId: string, env:
 			step: 'followed',
 			explorer: null,
 			status: 'failed',
-			detail: { reason: error instanceof Error ? error.message : String(error) },
+			detail: {
+				reason: error instanceof Error ? error.message : String(error),
+				...(error instanceof Refusal && error.hint ? { hint: error.hint } : {}),
+			},
 		})
 	} finally {
 		closeStore(store)

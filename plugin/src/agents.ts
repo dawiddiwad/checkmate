@@ -38,7 +38,7 @@ import {
 import { lastEntry, recordAnswer, recordTask } from './recorder.ts'
 import { firstRevision } from './testRevision.ts'
 import { replyArray } from './sessions.ts'
-import { shellInstructions } from './recipes.ts'
+import { requireValidRecipes, shellInstructions, testerTools } from './recipes.ts'
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 
@@ -188,6 +188,7 @@ function testerAction(store: Store, explorationId: string, explorer: string, due
 	const launch = startOf(explorationEvents(store, explorationId))!
 	const { session, dataPrefix } = launch.toolIdentities[explorer]
 	const brief = explorerBrief(
+		store.workspace,
 		{ ...opened.charter, dataRules: launch.dataRules },
 		entryValues(store, explorationId),
 		dataPrefix,
@@ -199,10 +200,12 @@ function testerAction(store: Store, explorationId: string, explorer: string, due
 		false
 	)
 	if (due === 'test') return action('test', 'task-test.md', brief.test)
-	const shell = shellInstructions({
-		session,
-		workFolder: join(store.workspace, folder),
-	})
+	const tools = testerTools(
+		store.workspace,
+		opened.charter.tools.map((tool) => tool.name),
+		false
+	)
+	const shell = shellInstructions(store.workspace, { session, workFolder: join(store.workspace, folder) }, tools)
 	return action(
 		'study',
 		'task-study.md',
@@ -477,6 +480,10 @@ export function pauseRun(store: Store, actor: string | undefined, explorationId:
 export function stepsStarted(store: Store, actor: string | undefined, explorationId: string, names: string[]): Reply {
 	const events = explorationEvents(store, explorationId)
 	sessionLaunch(events, explorationId)
+	requireValidRecipes(
+		store.workspace,
+		exploration(store, explorationId).charter.tools.map(({ name }) => name)
+	)
 	clearPause(store, actor, explorationId, events)
 	const phase = phaseOf(events)
 	const given = (name: string) => {

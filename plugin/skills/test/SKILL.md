@@ -15,7 +15,7 @@ Use the Checkmate tools in the current host session. Report recorded outcomes an
 ## Drive a Claude session exploration
 
 1. Call `checkmate_next_tester_steps` with the exploration ID. Dispatch all returned actions using the Agent tool. Use the listed agent type or existing agent ID and prompt. Call `checkmate_tester_steps_started` with the names you started.
-2. When a child finishes, call `checkmate_tester_step_done` with its name and step. Copy the exact `agentId` from the Agent tool and the child's last line into `replyLine`. The agent type is not an ID. Give `failure` only when the Agent tool could not start, reach, or complete that agent. When the agent finished and found a defect, omit `failure`. Do not put its finding in the step result. Then ask for the next steps. Continue until the tool says the work is finished.
+2. When a child finishes, call `checkmate_tester_step_done` with its name and step. Copy the exact `agentId` from the Agent tool. The agent type is not an ID. Give `failure` only when the Agent tool could not start, reach, or complete that agent. When the agent finished and found a defect, omit `failure`. Do not put its finding in the step result. Then call `checkmate_next_tester_steps` again. A recorded step does not end the exploration. Do not report the exploration as complete until `checkmate_next_tester_steps` returns `finished`.
 3. Use `checkmate_pause_test` before asking the person for information in the middle of work. Resume with the next tester steps after the answer.
 4. Call `checkmate_test_status` with `report` true, then read the plan status. Report checks, findings, and questions from the returned record. Follow the decision rules below.
 

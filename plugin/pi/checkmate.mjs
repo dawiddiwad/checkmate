@@ -58,7 +58,7 @@ function versionWarnings(cwd) {
 	return new Promise((resolveWarnings) => {
 		const child = spawn('node', [cli, '--version'], {
 			cwd,
-			env: { ...process.env, CHECKMATE_HOST_SESSION: '1' },
+			env: { ...process.env, CHECKMATE_HARNESS: 'pi', CHECKMATE_HOST_SESSION: '1' },
 			stdio: ['ignore', 'pipe', 'ignore'],
 		})
 		let output = ''

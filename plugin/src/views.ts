@@ -278,9 +278,11 @@ export function planList(store: Store): PlanListRow[] {
 }
 
 // Deterministic checks without observe and expected. Code cannot verify them; a revise migrates them.
-export function legacyChecks(plan: Plan) {
+export function legacyChecks(workspace: string, plan: Plan) {
 	return [
-		...plan.tests.flatMap((test) => unverifiedAssertions(test, plan.requirements).map((id) => `${test.id}.${id}`)),
+		...plan.tests.flatMap((test) =>
+			unverifiedAssertions(workspace, test, plan.requirements).map((id) => `${test.id}.${id}`)
+		),
 		...uncoveredRequirements(plan).map((id) => `${id} needs_test`),
 	]
 }
@@ -317,7 +319,7 @@ export function planDetail(store: Store, planId: string, revision: number | null
 				) as { context?: { sources?: string[] } }
 			).context?.sources ?? [],
 		pendingDecisions: pending,
-		legacyChecks: legacyChecks(selected.plan),
+		legacyChecks: legacyChecks(store.workspace, selected.plan),
 		plan: selected.plan,
 		runs: runList(store, { planId }).map((run) => ({
 			runId: run.runId,
@@ -768,7 +770,7 @@ export function planStatus(store: Store, planId: string, harness = workspaceHarn
 		follow: followActions.map((item) => ({ ...item, available: item.recommended && !running })),
 		actions,
 	}
-	const legacy = planHasRevision(store, planId) ? legacyChecks(planRevision(store, planId).plan) : []
+	const legacy = planHasRevision(store, planId) ? legacyChecks(store.workspace, planRevision(store, planId).plan) : []
 	return {
 		...status,
 		rules: rulesLine(store, planId),
@@ -2135,7 +2137,9 @@ export function runGate(store: Store, runId: string) {
 	const unverified = [
 		...plan.tests
 			.filter((test) => detail.request.selectedTestIds.includes(test.id))
-			.flatMap((test) => unverifiedAssertions(test, plan.requirements).map((id) => `${test.id}.${id}`)),
+			.flatMap((test) =>
+				unverifiedAssertions(store.workspace, test, plan.requirements).map((id) => `${test.id}.${id}`)
+			),
 		...uncoveredRequirements(plan).map((id) => `${id} needs_test`),
 	]
 	const verdict = failed.length

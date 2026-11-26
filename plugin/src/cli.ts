@@ -94,20 +94,21 @@ import { specFinding, specHandoff, specReview, specStatus } from './spec.ts'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { constants } from 'node:sqlite'
-import { piCopyWarnings, versionLines } from './build.ts'
+import { versionLines } from './build.ts'
 import { storeExplorationFindings } from './findingsRun.ts'
 import { settleEnded } from './cleanups.ts'
 import { owedCleanups, settleCleanups } from './resets.ts'
 import { actionInput, actionRecovery, dispatchAction, performAction, type ActionName } from './actions.ts'
-import { allEvidence, type ObserveValue } from './recipes.ts'
+import { allEvidence, listRecipes, recipeProblem, type ObserveValue } from './recipes.ts'
 
 type FlagKind = 'value' | 'list' | 'repeat' | 'switch' | readonly string[] | { min: number; max: number }
 type Args = Record<string, string | string[] | boolean>
 type Context = {
+	cwd: string
 	actor: string | undefined
 	stdin: () => unknown
 	text: () => string
-	cwd: string
+	workspace: string
 	env: Record<string, string | undefined>
 }
 type Printed = { facts?: Record<string, unknown>; lines?: unknown[][] }
@@ -119,6 +120,7 @@ type Command = {
 	write?: boolean
 	stdin?: boolean
 	readOnly?: boolean
+	workspaceRun?: (args: Args, context: Context) => Reply
 	check?: (args: Args) => void
 	prepare?: (args: Args, context: Context) => (store: Store) => Reply
 	run?: (store: Store, args: Args, context: Context) => Reply
@@ -190,7 +192,7 @@ function evidence(args: Args, context: Context): EvidenceInput[] | undefined {
 		if (match) return { text: context.text(), kind: match[1] }
 		const colon = spec.lastIndexOf(':')
 		const kind = colon >= 0 ? spec.slice(colon + 1) : ''
-		return allEvidence().includes(kind) ? { file: spec.slice(0, colon), kind } : { file: spec }
+		return allEvidence(context.workspace).includes(kind) ? { file: spec.slice(0, colon), kind } : { file: spec }
 	})
 }
 
@@ -356,6 +358,19 @@ function short(sha256: unknown) {
 }
 
 const commands: Record<string, Command> = {
+	'recipe list': {
+		positionals: [],
+		workspaceRun: (_args, context) => completed('recipes', listRecipes(context.workspace)),
+		print: (reply) => {
+			const { recipes, invalid } = reply.data as ReturnType<typeof listRecipes>
+			return {
+				lines: [
+					...recipes.map(({ recipe, source, path }) => [recipe.name, source, path]),
+					...invalid.map((item) => [item.name, 'invalid', recipeProblem(item)]),
+				],
+			}
+		},
+	},
 	init: {
 		positionals: [],
 		run: (store) => completed('.checkmate/checkmate.db', { path: store.path }),
@@ -1117,7 +1132,10 @@ const commands: Record<string, Command> = {
 		})),
 		print: (reply) => ({
 			facts: { [`${reply.data.testId}.${reply.data.assertionId}`]: reply.data.result },
-			lines: (reply.data.evidenceIds as string[]).map((id) => [id, 'evidence']),
+			lines: [
+				...(reply.data.reason ? [['reason', reply.data.reason]] : []),
+				...(reply.data.evidenceIds as string[]).map((id) => [id, 'evidence']),
+			],
 		}),
 	},
 	'run close': {
@@ -2691,16 +2709,24 @@ export function run(argv: string[], io: Io): Outcome {
 		command.positionals.length && name !== 'query'
 			? String(args[positionalName(command.positionals[0])] ?? name)
 			: name
-	const workspace = resolve(io.cwd, value(args, 'workspace') ?? '.')
+	const workspace = resolve(
+		io.cwd,
+		value(args, 'workspace') ?? (command.workspaceRun ? io.env.CLAUDE_PROJECT_DIR : undefined) ?? '.'
+	)
 	let store: Store | undefined
 	try {
 		const actor = command.write ? (value(args, 'actor') ?? defaultActor(workspace, io.env)) : undefined
 		const context: Context = {
+			cwd: io.cwd,
 			actor,
 			stdin: () => readJson(io.stdin()),
 			text: io.stdin,
-			cwd: io.cwd,
+			workspace,
 			env: io.env,
+		}
+		if (command.workspaceRun) {
+			const reply = command.workspaceRun(args, context)
+			return { code: exitCodeOf(name, args, reply), output: format(reply, json, command.print, host) }
 		}
 		const prepared = command.prepare?.(args, context)
 		store = command.readOnly ? openReadOnlyStore(workspace) : openStore(workspace)
@@ -2836,6 +2862,5 @@ export async function main(argv: string[]) {
 		stdin: () => readFileSync(0, 'utf8'),
 	})
 	process.stdout.write(outcome.output + '\n')
-	for (const line of piCopyWarnings(import.meta.url, process.env, process.cwd())) process.stderr.write(line + '\n')
 	process.exitCode = outcome.code
 }

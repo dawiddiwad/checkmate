@@ -11,6 +11,7 @@ import {
 	shellWord,
 	requireNotInputWord,
 	requireText,
+	requireWellFormed,
 	revisionReference,
 	same,
 	slugId,
@@ -19,7 +20,20 @@ import {
 } from './contracts.ts'
 import { executableOnPath } from './sessions.ts'
 import { changesData, resetCommand } from './resets.ts'
-import { declaredEntryPoints, fitsEntries, recipes, toolExecutable, type ReachCheck, type Recipe } from './recipes.ts'
+import {
+	declaredEntryPoints,
+	fitsEntries,
+	listRecipes,
+	projectRecipeFolder,
+	recipeProblem,
+	refuseInvalidRecipes,
+	requireValidRecipes,
+	requiredRecipeFields,
+	toolExecutable,
+	type InvalidRecipe,
+	type ReachCheck,
+	type Recipe,
+} from './recipes.ts'
 import { spawnSync } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -84,6 +98,10 @@ function insertRequest(
 	input: Omit<TargetRequest, 'tools'> & { tools?: RequestedTool[] }
 ): Change {
 	const request = targetRequestCheck(input)
+	requireValidRecipes(
+		store.workspace,
+		request.tools.map((tool) => tool.name)
+	)
 	const existing = currentRequest(store, request.targetId)
 	if (existing) {
 		requireCondition(
@@ -200,6 +218,10 @@ function save(store: Store, actor: string | undefined, input: { targetId: string
 function insertProfile(store: Store, operationId: string, input: { targetId: string; profile: unknown }): Change {
 	const request = targetRequest(store, input.targetId)
 	const profile = profileCheck(input.profile)
+	requireValidRecipes(
+		store.workspace,
+		profile.tools.map((tool) => tool.name)
+	)
 	requireCondition(
 		profile.targetId === request.targetId,
 		`Profile targetId ${profile.targetId} differs from ${request.targetId}`
@@ -792,6 +814,7 @@ const commandCheckSeconds = 20
 
 // One command of a recipe. {<entry name>} in the arguments and the texts stands for the value of that entry.
 function commandFailure(
+	workspace: string,
 	recipe: Recipe,
 	check: Extract<ReachCheck, { check: 'command' }>,
 	entries: Record<string, string>,
@@ -802,6 +825,7 @@ function commandFailure(
 	const run = check.run.map(fill)
 	const shown = run.join(' ')
 	const result = spawnSync(run[0], run.slice(1), {
+		cwd: workspace,
 		env: { ...env, ...recipe.environment },
 		encoding: 'utf8',
 		timeout: commandCheckSeconds * 1000,
@@ -814,12 +838,19 @@ function commandFailure(
 
 // Runs the reachability checks that the recipes of the fitting tools give. Returns why the instance does not
 // answer, or null when it does, or undefined when no recipe gives a check.
-function instanceFailure(fitting: Array<{ recipe: Recipe }>, entries: Record<string, string>, env: SetupInput['env']) {
+function instanceFailure(
+	workspace: string,
+	fitting: Array<{ recipe: Recipe }>,
+	entries: Record<string, string>,
+	env: SetupInput['env']
+) {
 	const checked = fitting.flatMap(({ recipe }) => (recipe.reachable ?? []).map((check) => ({ recipe, check })))
 	if (!checked.length) return undefined
 	for (const { recipe, check } of checked) {
 		const failure =
-			check.check === 'http' ? urlFailure(entries[check.entry], env) : commandFailure(recipe, check, entries, env)
+			check.check === 'http'
+				? urlFailure(entries[check.entry], env)
+				: commandFailure(workspace, recipe, check, entries, env)
 		if (failure) return failure
 	}
 	return null
@@ -898,14 +929,23 @@ export function listText(words: string[]) {
 
 // The installed tools whose recipes fit the entries, and the entry points of the profile. A tool whose recipe
 // needs an entry that the person did not give is not recorded. Each entry that the person gave must be used.
-function fitEntries(entries: Record<string, string>, detected: Array<{ recipe: Recipe; path: string }>) {
+function fitEntries(
+	workspace: string,
+	catalog: Recipe[],
+	entries: Record<string, string>,
+	detected: Array<{ recipe: Recipe; path: string }>,
+	invalid: InvalidRecipe[]
+) {
 	const names = Object.keys(entries)
-	const declared = declaredEntryPoints()
+	const declared = declaredEntryPoints(catalog)
 	const unknown = names.filter((name) => !declared.has(name))
-	requireCondition(
+	requireWellFormed(
 		!unknown.length,
-		`Unknown entry ${unknown.join(', ')}. Known entries: ${[...declared.keys()].join(', ')}.`,
-		'The recipes of the tools give the entries. Use --url for a web application, or --entry <name>=<value>.'
+		`Unknown entry ${unknown.join(', ')}. Entry names come from recipes. Recipe folder: ${projectRecipeFolder(workspace)}. Entries of existing recipes: ${[...declared.keys()].join(', ')}. ${invalid.map(recipeProblem).join(' ')}`.trim(),
+		[
+			`If the tool you need has no recipe, write one JSON file in ${projectRecipeFolder(workspace)}. Use a built-in example from checkmate recipe list --json. Include ${requiredRecipeFields.join(', ')}. Optional usage holds tester notes as Markdown lines.`,
+			'Give a new tool its own entry names. Declare each needed entry in entryPoints with name, kind and purpose. If Checkmate refuses the recipe, edit that file to fix the listed problems. Tell the person you added a recipe for the tool. The target sets what testers may do.',
+		].join(' ')
 	)
 	for (const name of names) {
 		const pattern = declared.get(name)?.pattern
@@ -919,9 +959,7 @@ function fitEntries(entries: Record<string, string>, detected: Array<{ recipe: R
 	const covered = new Set(fitting.flatMap(({ recipe }) => (recipe.entryPoints ?? []).map((entry) => entry.name)))
 	const uncovered = names.filter((name) => !covered.has(name))
 	if (uncovered.length) {
-		const needing = recipes().filter((recipe) =>
-			recipe.entryPoints?.some((entry) => uncovered.includes(entry.name))
-		)
+		const needing = catalog.filter((recipe) => recipe.entryPoints?.some((entry) => uncovered.includes(entry.name)))
 		const installed = needing.filter((recipe) => detected.some((tool) => tool.recipe === recipe))
 		requireCondition(
 			!installed.length,
@@ -936,7 +974,12 @@ function fitEntries(entries: Record<string, string>, detected: Array<{ recipe: R
 		requireCondition(
 			false,
 			`No tool that is installed fits the entries ${uncovered.join(', ')}. ${listText(needing.map((recipe) => `${recipe.name} (${recipe.capability})`))} ${needing.length === 1 ? 'needs them and is' : 'need them and are'} not on PATH.`,
-			'Install the tool, or give other entries.'
+			needing
+				.map(
+					(recipe) =>
+						`Checked PATH for ${toolExecutable(recipe)}. ${recipe.kind === 'cli' ? 'For detect: path, the CLI executable name is the recipe name.' : 'For an MCP recipe, Checkmate looks up server.command.'}`
+				)
+				.join(' ') + ' Install the tool, or give other entries.'
 		)
 	}
 	const entryPoints = names.map((name) => {
@@ -946,8 +989,8 @@ function fitEntries(entries: Record<string, string>, detected: Array<{ recipe: R
 	return { fitting, entryPoints }
 }
 
-function detectedTools(env: SetupInput['env']) {
-	return recipes().flatMap((recipe) => {
+function detectedTools(catalog: Recipe[], env: SetupInput['env']) {
+	return catalog.flatMap((recipe) => {
 		const path = recipe.detect === 'runtime' ? process.execPath : executableOnPath(toolExecutable(recipe), env)
 		return path ? [{ recipe, path }] : []
 	})
@@ -956,7 +999,7 @@ function detectedTools(env: SetupInput['env']) {
 const noEntriesText =
 	'Give the application: --url <url> for a web application, or --entry <name>=<value> for another one. To record the data policy of a target that is set up, give --target <id>.'
 
-export function setupAssumptions(input: SetupInput) {
+export function setupAssumptions(workspace: string, input: SetupInput) {
 	const assumed: string[] = []
 	const entries = givenEntries(input)
 	requireCondition(Object.keys(entries).length, 'Missing application entries.', noEntriesText)
@@ -968,13 +1011,33 @@ export function setupAssumptions(input: SetupInput) {
 		)
 	const instanceId = input.instanceId ?? 'local'
 	if (!input.instanceId) assumed.push('instance=local')
-	const { fitting: detected, entryPoints } = fitEntries(entries, detectedTools(input.env))
+	const { recipes: valid, invalid } = listRecipes(workspace)
+	const names = Object.keys(entries)
+	refuseInvalidRecipes(
+		invalid.filter(
+			(item) =>
+				!valid.some(
+					({ recipe }) => recipe.name.toLowerCase() === (item.declaredName ?? item.name).toLowerCase()
+				) &&
+				(item.name === targetId ||
+					(item.entryNames?.length && item.entryNames.every((name) => names.includes(name))))
+		)
+	)
+	const catalog = valid.map(({ recipe }) => recipe)
+	const { fitting: detected, entryPoints } = fitEntries(
+		workspace,
+		catalog,
+		entries,
+		detectedTools(catalog, input.env),
+		invalid
+	)
 	const capabilities = [...new Set(detected.map(({ recipe }) => recipe.capability))].sort()
 	assumed.push(
 		entryPoints.length === 1
 			? `entry point=${entryPoints[0].name} (${entryPoints[0].kind})`
 			: `entry points=${entryPoints.map((entry) => `${entry.name} (${entry.kind})`).join(', ')}`,
 		`capabilities=${capabilities.join(',')} (${pathTools(
+			catalog,
 			detected,
 			entryPoints.map((entry) => entry.name)
 		)})`
@@ -985,14 +1048,14 @@ export function setupAssumptions(input: SetupInput) {
 	return { entries, entryPoints, targetId, instanceId, detected, capabilities, allowedOperations, assumed }
 }
 
-function pathTools(detected: Array<{ recipe: Recipe }>, entryNames: string[]) {
+function pathTools(catalog: Recipe[], detected: Array<{ recipe: Recipe }>, entryNames: string[]) {
 	const found = [
 		...new Set(
 			detected.filter(({ recipe }) => recipe.detect === 'path').map(({ recipe }) => toolExecutable(recipe))
 		),
 	]
 	if (found.length) return `${found.join(' and ')} ${found.length === 1 ? 'is' : 'are'} on PATH`
-	const missing = recipes().filter((recipe) => recipe.detect === 'path' && fitsEntries(recipe, entryNames))
+	const missing = catalog.filter((recipe) => recipe.detect === 'path' && fitsEntries(recipe, entryNames))
 	return `no ${[...new Set(missing.map((recipe) => recipe.capability))].join(' or ')} tool on PATH`
 }
 
@@ -1061,8 +1124,18 @@ function instanceChange(stored: Instance, wanted: Instance) {
 // One transaction holds the request, the profile revision, and the instance. A refusal saves none of them.
 export function setupTarget(store: Store, actor: string | undefined, input: SetupInput) {
 	if (!Object.keys(givenEntries(input)).length) return recordData(store, actor, input)
-	const setup = setupAssumptions(input)
+	const setup = setupAssumptions(store.workspace, input)
 	const { entries, entryPoints, targetId, instanceId, detected, capabilities, allowedOperations, assumed } = setup
+	const saved = one<{ body: string }>(
+		store,
+		'SELECT body FROM profiles WHERE target_id = ? ORDER BY revision DESC LIMIT 1',
+		targetId
+	)
+	if (saved)
+		requireValidRecipes(
+			store.workspace,
+			(JSON.parse(saved.body) as Profile).tools.map(({ name }) => name)
+		)
 	const reset = dataOf(input)
 	const where = entries.web && Object.keys(entries).length === 1 ? entries.web : `the entries ${entryList(entries)}`
 	const flags = entryFlags(entries)
@@ -1078,7 +1151,8 @@ export function setupTarget(store: Store, actor: string | undefined, input: Setu
 			reachable: true,
 		}
 	})
-	const checked = input.answered === undefined ? instanceFailure(detected, entries, input.env) : undefined
+	const checked =
+		input.answered === undefined ? instanceFailure(store.workspace, detected, entries, input.env) : undefined
 	const failure = input.answered === undefined ? (checked ?? null) : input.answered ? null : 'not reachable'
 	const reachable = failure === null
 	const notChecked = input.answered === undefined && checked === undefined

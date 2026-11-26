@@ -2617,11 +2617,25 @@ test('Give a session tester the data rules of a read-only target — the test ta
 	await ok('explore', 'next', id)
 	await ok('explore', 'started', id, 'a1', 'a2')
 	// While testers run, the wait reply names the tool that records a finished tester.
-	const { toolName } = await import('../../plugin/src/actions.ts')
-	const [, , waiting] = await mcpCalls(workspace, env, [[toolName('next_tester_steps'), { explorationId: id }]])
+	const { toolName } = await import('../../plugin/src/tool-names.ts')
+	const [, listed, waiting] = await mcpCalls(workspace, env, [[toolName('next_tester_steps'), { explorationId: id }]])
+	// Each next action names a listed tool, and each "<tool> with <fields>" in its text names fields of that tool.
+	const inputs = new Map<string, string[]>(
+		listed.result.tools.map((tool: { name: string; inputSchema: { properties: object } }) => [
+			tool.name,
+			Object.keys(tool.inputSchema.properties),
+		])
+	)
+	const checkNext = (next: { action: string; instruction: string }) => {
+		assert.ok(inputs.has(toolName(next.action as Parameters<typeof toolName>[0])), next.action)
+		for (const [, tool, fields] of next.instruction.matchAll(/(checkmate_\w+) with (\w+(?:, \w+)*)/g))
+			for (const field of fields.split(', '))
+				assert.ok(inputs.get(tool)?.includes(field), `${tool} has no ${field}`)
+	}
 	assert.deepEqual(waiting.result.structuredContent.actions, [{ action: 'wait', line: 'wait' }])
 	assert.equal(waiting.result.structuredContent.nextAction.action, 'tester_step_done')
 	assert.ok(waiting.result.structuredContent.nextAction.instruction.includes(toolName('tester_step_done')))
+	checkNext(waiting.result.structuredContent.nextAction)
 	writeFileSync(join(workspace, '.checkmate/work', id, 'a1/questions.md'), 'None\n')
 	await ok('explore', 'done', id, 'a1', 'study', '--agent', 'tester-1')
 	await ok('explore', 'next', id)
@@ -2653,8 +2667,15 @@ test('Give a session tester the data rules of a read-only target — the test ta
 	])
 	assert.equal(malformed.result.structuredContent.refusal, 'malformed')
 	assert.match(refused.result.structuredContent.nextAction.instruction, /product defects/)
-	assert.equal(recorded.result.structuredContent.status, 'completed')
-	assert.notEqual(recorded.result.structuredContent.state, 'operational_error')
+	// The test step of a1 is not the last step: the reply says that the step ended and names the next tool.
+	const step = recorded.result.structuredContent
+	assert.equal(step.status, 'completed')
+	assert.deepEqual([step.stepEvent, step.stepState, step.explorationState], ['end', 'completed', 'testing'])
+	assert.equal(step.state, undefined)
+	assert.equal(step.next, undefined)
+	assert.equal(step.nextAction.action, 'next_tester_steps')
+	assert.match(step.nextAction.instruction, /The exploration is not finished/)
+	checkNext(step.nextAction)
 	await ok('explore', 'done', id, 'a2', 'study', '--failed', 'Agent unavailable')
 	await ok('explore', 'next', id)
 	writeFileSync(
@@ -3549,10 +3570,19 @@ test('Discover the packaged Claude plugin and invoke its entry — broken plugin
 	)
 	assert.match(readFileSync(join(plugin, 'agents/clerk.md'), 'utf8'), /^tools: Read, Write$/m)
 	// The host records a finished tester only with the tool that the test skill names.
-	const { toolName } = await import('../../plugin/src/actions.ts')
+	const { toolName } = await import('../../plugin/src/tool-names.ts')
 	assert.ok(
 		readFileSync(join(plugin, 'skills/test/SKILL.md'), 'utf8').includes(`\`${toolName('tester_step_done')}\``)
 	)
+	// Every tool that a shipped skill names is a tool of the packaged action server.
+	const actions = JSON.parse(readFileSync(join(plugin, 'contracts/actions.schema.json'), 'utf8'))
+	const tools = new Set(
+		Object.keys(actions.properties).map((name) => toolName(name as Parameters<typeof toolName>[0]))
+	)
+	const skills = ['execute', 'setup', 'status', 'test'].map((name) => join(plugin, 'skills', name, 'SKILL.md'))
+	for (const file of [...skills, join(plugin, 'pi/skills/checkmate/SKILL.md')])
+		for (const [name] of readFileSync(file, 'utf8').matchAll(/checkmate_\w+/g))
+			assert.ok(tools.has(name), `${file}: ${name}`)
 	assert.match(
 		execFileSync(process.execPath, [entry, '--version'], { encoding: 'utf8' }),
 		new RegExp(`^${manifest.version} build [0-9a-f]{12}\n`)
@@ -5474,7 +5504,20 @@ test('Report a second Checkmate package that Pi declares — a stale copy loads 
 		JSON.stringify({ packages: ['git:github.com/dawiddiwad/checkmate@wip/refactor-team-blue'] })
 	)
 	const env = { ...process.env, PI_CODING_AGENT_DIR: agent }
-	const version = spawnSync(process.execPath, [binary, '--version'], { cwd: workspace, env, encoding: 'utf8' })
+	const run = (harness: string | undefined, ...args: string[]) => {
+		const result = spawnSync(process.execPath, [binary, ...args], {
+			cwd: workspace,
+			env: { ...env, CHECKMATE_HARNESS: harness },
+			encoding: 'utf8',
+		})
+		assert.equal(result.status, 0, result.stderr)
+		return result
+	}
+	for (const harness of [undefined, 'claude', 'pi'])
+		assert.doesNotMatch(run(harness, 'recipe', 'list').stderr, /warning: Pi declares/)
+	for (const harness of [undefined, 'claude'])
+		assert.doesNotMatch(run(harness, '--version').stdout, /warning: Pi declares/)
+	const version = run('pi', '--version')
 	assert.equal(version.status, 0, version.stderr)
 	assert.match(
 		version.stdout + version.stderr,
@@ -6877,11 +6920,11 @@ test('Setup refuses a malformed tool recipe and names the file and the field —
 	])
 	assert.equal(reading.code, 1, reading.output)
 	assert.match(reading.output, /observeFrom page is view, but it is state in recipe node\./)
-	// A recipe of kind mcp runs a command, so it must name its server and the tools that a tester can call.
+	// An MCP recipe starts a server. Its file cannot set the target’s tool limits.
 	writeFileSync(recipe, node)
 	const mcpRecipe = join(plugin, 'recipes', 'maestro-mcp.json')
-	const { tools: _tools, ...withoutTools } = JSON.parse(readFileSync(mcpRecipe, 'utf8'))
-	writeFileSync(mcpRecipe, JSON.stringify(withoutTools))
+	const mcp = JSON.parse(readFileSync(mcpRecipe, 'utf8'))
+	writeFileSync(mcpRecipe, JSON.stringify({ ...mcp, tools: ['run'], refusedArguments: {}, entryArguments: {} }))
 	const unnamed = await invoke(entry, workspace, env, '', [
 		'setup',
 		'--url',
@@ -6892,7 +6935,7 @@ test('Setup refuses a malformed tool recipe and names the file and the field —
 	assert.equal(unnamed.code, 1, unnamed.output)
 	assert.match(
 		unnamed.output,
-		/Tool recipe \S*recipes\/maestro-mcp\.json is not valid: tools must list the names of the server tools that a tester can call\./
+		/Tool recipe \S*recipes\/maestro-mcp\.json is not valid: tools is not a recipe field.*refusedArguments is not a recipe field.*entryArguments is not a recipe field.*Put tool limits in the target or skill\./
 	)
 	const targets = await invoke(entry, workspace, env, '', ['target', 'list'])
 	assert.equal(targets.code, 0, targets.output)
@@ -6943,6 +6986,251 @@ function recipePlan(capability: string, observeFrom: Array<string | undefined>) 
 		gaps: [],
 	}
 }
+
+test('Drop and use a project tool recipe from the packed CLI', async (t) => {
+	const workspace = realpathSync(directory(t))
+	const bin = directory(t)
+	const env = {
+		...process.env,
+		PATH: `${bin}${delimiter}${process.env.PATH}`,
+		CHECKMATE_ACTOR: 'oracle',
+	}
+	const ok = async (args: string[], input = '') => {
+		const result = await inputCommand(workspace, env, input, ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	for (const skill of ['skills/setup/SKILL.md', 'pi/skills/checkmate/SKILL.md']) {
+		const text = readFileSync(join(project, 'node_modules/@xoxoai/checkmate/plugin', skill), 'utf8')
+		assert.match(
+			text,
+			/write `<tool>\.json` in the project's `\.checkmate\/recipes\/` folder.*Include `name`, .* in `entryPoints`/
+		)
+		assert.match(text, /Include [^.]+\. Optional `usage` holds tester notes as Markdown lines\./)
+		assert.doesNotMatch(text, /Include [^.]+`usage`/)
+		assert.match(text, /Tell the person you added a recipe for the tool\. The target sets what testers may do\./)
+	}
+	const recipe = {
+		name: 'sf',
+		capability: 'salesforce',
+		kind: 'cli',
+		purpose: 'Read a Salesforce org.',
+		detect: 'path',
+		entryPoints: [{ name: 'org', kind: 'value', purpose: 'Salesforce org alias.' }],
+		reachable: [
+			{
+				check: 'command',
+				run: ['sf', 'data', 'query', '--target-org', '{org}', '--query', 'SELECT Id FROM Organization LIMIT 1'],
+			},
+		],
+		environment: { SF_TEST_FOLDER: '{workFolder}', SF_TEST_SESSION: '{session}' },
+		workspaceFolders: [],
+		shellInstruction: 'Use the Salesforce org alias from the target.',
+		observeFrom: { soql: 'state' },
+		evidence: ['soql_result'],
+	}
+	const folder = join(workspace, '.checkmate', 'recipes')
+	const path = join(folder, 'sf.json')
+	const json = JSON.stringify(recipe, null, 2) + '\n'
+	mkdirSync(folder, { recursive: true })
+	writeFileSync(path, json)
+	const { recipes } = await ok(['recipe', 'list'])
+	const builtIn = recipes.filter((entry: { source: string }) => entry.source === 'built-in')
+	assert.deepEqual(
+		builtIn.map(({ recipe }: { recipe: { name: string } }) => recipe.name),
+		['maestro-mcp', 'maestro', 'node', 'playwright-cli']
+	)
+	for (const { recipe: builtInRecipe } of builtIn) {
+		assert.ok(Array.isArray(builtInRecipe.usage), builtInRecipe.name)
+		assert.ok(
+			builtInRecipe.usage.some((line: string) => line.trim()),
+			builtInRecipe.name
+		)
+	}
+	assert.deepEqual(recipes.at(-1), { source: 'custom', path, recipe, jsonText: json })
+	assert.equal(existsSync(join(workspace, '.checkmate', 'checkmate.db')), false)
+	writeFileSync(
+		join(bin, 'sf'),
+		'#!/bin/sh\nif [ "$1" = "--version" ]; then echo 1.0; exit 0; fi\n[ "$*" = "data query --target-org sandbox --query SELECT Id FROM Organization LIMIT 1" ]\n',
+		{ mode: 0o755 }
+	)
+	const setup = await ok([
+		'setup',
+		'--target',
+		'salesforce',
+		'--entry',
+		'org=sandbox',
+		'--operations',
+		'read_catalog',
+	])
+	assert.deepEqual(setup.capabilities, ['salesforce'])
+	assert.equal(setup.instanceReachable, true)
+	writeFileSync(join(workspace, 'ticket.md'), 'The catalog shows the kettle.\n')
+	await ok([
+		'plan',
+		'open',
+		'catalog',
+		'--target',
+		'salesforce@1',
+		'--objective',
+		'Check the catalog.',
+		'--source',
+		'ticket.md',
+	])
+	const request = await ok(['plan', 'request', 'catalog'])
+	assert.deepEqual(request.observeFrom, [{ value: 'soql', reading: 'state', tool: 'sf' }])
+	await ok(['plan', 'save', 'catalog'], JSON.stringify(recipePlan('salesforce', ['soql'])))
+	const instruction = 'Read the org alias before running a query.'
+	writeFileSync(path, JSON.stringify({ ...recipe, shellInstruction: instruction }))
+	await ok(['run', 'begin', 'org-run', 'catalog@1', '--build', 'b1', '--instance', 'local'])
+	await ok(['run', 'check', 'org-run', 'T1', 'A1', '--observed', 'Kettle', '--evidence', '-:soql_result'], 'Kettle')
+	const evidence = await ok(['query', "SELECT kind FROM evidence WHERE run_id = 'org-run'"])
+	assert.deepEqual(evidence.rows, [{ kind: 'soql_result' }])
+
+	const session = await ok([
+		'test',
+		'sf-session',
+		'--target',
+		'salesforce',
+		'--source',
+		'ticket.md',
+		'--build',
+		'b1',
+		'--session',
+	])
+	const id = session.explorationId as string
+	await ok(['explore', 'next', id])
+	await ok(['explore', 'started', id, 'rules'])
+	writeFileSync(
+		join(workspace, '.checkmate/work', id, 'rules/answer.json'),
+		JSON.stringify([{ text: 'The catalog shows the kettle.', source: 'ticket.md#1', area: 'Catalog' }])
+	)
+	await ok(['explore', 'done', id, 'rules', 'rules', '--agent', 'clerk-1'])
+	await ok(['explore', 'next', id])
+	const task = readFileSync(join(workspace, '.checkmate/work', id, 'a1/task-study.md'), 'utf8')
+	assert.doesNotMatch(task, /read .*usage field/)
+	assert.ok(task.includes(instruction), task)
+	rmSync(path)
+	const after = await ok(['recipe', 'list'])
+	assert.equal(
+		after.recipes.some((entry: { source: string }) => entry.source === 'custom'),
+		false
+	)
+})
+
+test('Keep the recipe catalog usable when a custom recipe is invalid — one bad file hides the other recipes, or a target, plan, or run uses it.', async (t) => {
+	const workspace = realpathSync(directory(t))
+	const bin = directory(t)
+	const env = {
+		...process.env,
+		PATH: `${bin}${delimiter}${process.env.PATH}`,
+		CHECKMATE_ACTOR: 'oracle',
+		CHECKMATE_HARNESS: 'claude',
+	}
+	const invoke = (args: string[], input?: object) =>
+		inputCommand(workspace, env, input ? JSON.stringify(input) : '', ...args)
+	const ok = async (args: string[], input?: object) => {
+		const result = await invoke(args, input)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	const folder = join(workspace, '.checkmate', 'recipes')
+	mkdirSync(folder, { recursive: true })
+	const recipe = {
+		name: 'good',
+		capability: 'inventory',
+		kind: 'cli',
+		purpose: 'Read stock.',
+		detect: 'path',
+		entryPoints: [{ name: 'stock', kind: 'value', purpose: 'Inventory file.' }],
+		environment: {},
+		workspaceFolders: [],
+		observeFrom: { stock: 'state' },
+		evidence: ['stock_report'],
+		usage: ['Read stock from the inventory file.'],
+	}
+	const put = (name: string, fields: object = {}) =>
+		writeFileSync(join(folder, `${name}.json`), JSON.stringify({ ...recipe, name, ...fields }))
+	const path = join(folder, 'good.json')
+	put('good')
+	writeFileSync(join(bin, 'good'), '#!/bin/sh\nexit 0\n', { mode: 0o755 })
+	await ok(['setup', '--entry', 'stock=inventory.json', '--target', 'shop', '--operations', 'read_catalog'])
+	writeFileSync(join(workspace, 'ticket.md'), 'The catalog shows the kettle.\n')
+	const openPlan = (id: string) =>
+		ok(['plan', 'open', id, '--target', 'shop@1', '--objective', 'Check stock.', '--source', 'ticket.md'])
+	await openPlan('stock')
+	await openPlan('draft')
+	const candidate = recipePlan('inventory', ['stock'])
+	await ok(['plan', 'save', 'stock'], candidate)
+	const session = await ok([
+		'test',
+		'stock-session',
+		'--target',
+		'shop',
+		'--source',
+		'ticket.md',
+		'--build',
+		'b1',
+		'--session',
+	])
+	await ok(['explore', 'next', session.explorationId])
+	const opened = await ok(['explore', 'open', 'stock', '--build', 'b1'])
+
+	put('good', { kind: 'shell', environment: { STOCK: '{stock}' }, usage: [] })
+	writeFileSync(join(folder, 'broken.json'), '{ "name": "broken",')
+	put('node', { usage: [] })
+	put('wrong-usage', { entryPoints: undefined, usage: 'Read stock.' })
+	put('first')
+	put('later', { name: 'first' })
+	put('conflicts', { observeFrom: { api: 'view' }, entryPoints: [{ name: 'web', kind: 'value', purpose: 'Wrong.' }] })
+	const listed = await ok(['recipe', 'list'])
+	assert.ok(listed.recipes.some(({ recipe }: { recipe: { name: string } }) => recipe.name === 'node'))
+	assert.ok(listed.recipes.some(({ recipe }: { recipe: { name: string } }) => recipe.name === 'first'))
+	const problems = (name: string) =>
+		listed.invalid.find((item: { name: string }) => item.name === name).problems as string[]
+	assert.match(problems('broken').join(' '), /Cannot read JSON/)
+	assert.deepEqual(problems('wrong-usage'), ['usage must be a non-empty list of Markdown lines.'])
+	assert.match(problems('node').join(' '), /Name node is in use by the built-in recipe/)
+	assert.match(problems('later').join(' '), /Name first is in use by the custom recipe/)
+	assert.match(problems('conflicts').join(' '), /observeFrom api is view.*entry point web differs/)
+	assert.deepEqual(problems('good'), [
+		'kind must be cli or mcp.',
+		'environment.STOCK cannot use {stock}. Use {session} or {workFolder}, or pass the entry as a tool argument.',
+		'usage must be a non-empty list of Markdown lines.',
+	])
+	const compact = spawnSync(process.execPath, [binary, 'recipe', 'list'], { cwd: workspace, env, encoding: 'utf8' })
+	assert.equal(compact.status, 0, compact.stderr)
+	const reason = `Tool recipe ${path} is not valid: ${problems('good').join(' ')}`
+	assert.ok(compact.stdout.includes(reason), compact.stdout)
+	for (const [args, input] of [
+		[['setup', '--entry', 'stock=inventory.json', '--target', 'shop']],
+		[['plan', 'save', 'draft'], candidate],
+		[['run', 'begin', 'stock-run', 'stock@1', '--build', 'b1']],
+		[['explore', 'open', 'stock', '--build', 'b1']],
+		[['explore', 'finish', opened.subject]],
+		[['test', 'stock-other', '--target', 'shop', '--source', 'ticket.md', '--build', 'b1', '--session']],
+		[['explore', 'started', session.explorationId, 'rules']],
+	] as Array<[string[], object?]>) {
+		const result = await invoke(args, input)
+		assert.equal(result.code, 1, result.output)
+		assert.ok(result.body.reasons.includes(reason), result.output)
+		assert.equal(
+			result.body.hint,
+			`Edit ${path} to fix the listed problems. Edits apply immediately. Retry the refused action. Run setup again only if the target needs different entries or tools. Run checkmate recipe list to check the files.`
+		)
+	}
+
+	put('good')
+	await ok(['plan', 'save', 'draft'], candidate)
+	await ok(['run', 'begin', 'stock-run', 'stock@1', '--build', 'b1'])
+	rmSync(path)
+	const after = await ok(['recipe', 'list'])
+	for (const entries of [
+		after.recipes.map((entry: { path: string }) => entry.path),
+		after.invalid.map((entry: { path: string }) => entry.path),
+	])
+		assert.ok(!entries.includes(path))
+})
 
 test('A plan and a run accept only the observeFrom values and evidence kinds that the recipes of the target tools give — the refusal names the value, the allowed values, and the recipes.', async (t) => {
 	const workspace = directory(t)
@@ -7239,7 +7527,6 @@ test('Keep each tool folder that testers left, and leave each tool folder that w
 			purpose: 'Write scratch files.',
 			detect: 'path',
 			workspaceFolders: ['.scratch-tool'],
-			usage: 'node.md',
 		})
 	)
 	const entry = join(plugin, 'dist/checkmate.js')
@@ -7358,9 +7645,9 @@ test('Test a mobile app with maestro: the tester gets the Maestro environment an
 	assert.match(study.prompt, /- app: com\.example\.shop\. The app ID\./)
 	assert.match(study.prompt, /- device: emulator-5554\. The device ID\./)
 	assert.match(study.prompt, /Tools you can use: maestro\./)
-	const usage = /^Before you use a tool, read its usage text: (.+)\.$/m.exec(study.prompt)
+	const usage = /^Before you use a tool, read its usage field in: (.+)\.$/m.exec(study.prompt)
 	assert.ok(usage, study.prompt)
-	assert.match(usage[1], /\/plugin\/recipes\/maestro\.md$/)
+	assert.match(usage[1], /\/plugin\/recipes\/maestro\.json$/)
 	assert.ok(existsSync(usage[1]), `${usage[1]} must exist in the installed package`)
 	const guidance = readFileSync(usage[1], 'utf8')
 	const { delegatedInstruction } = JSON.parse(readFileSync(join(dirname(usage[1]), 'maestro.json'), 'utf8'))
@@ -7460,7 +7747,10 @@ test('Name the usage text of each tool in the brief of a web target and keep its
 	const lines = study.prompt.split('\n')
 	const tools = lines.indexOf('Tools you can use: node.')
 	assert.ok(tools >= 0, study.prompt)
-	assert.match(lines[tools + 1], /^Before you use a tool, read its usage text: \S+\/plugin\/recipes\/node\.md\.$/)
+	assert.match(
+		lines[tools + 1],
+		/^Before you use a tool, read its usage field in: \S+\/plugin\/recipes\/node\.json\.$/
+	)
 	assert.equal(
 		lines[tools + 2],
 		'A direct HTTP call is sufficient when it proves the behaviour. Use the browser when the page itself is what you test.'
@@ -7847,6 +8137,125 @@ test('Compare absence by its kind — absent:TEXT passes when the observed value
 		'-'
 	)
 	assert.equal(absent.body.result, 'passed')
+})
+
+test('Report presence and absence observations contradicted by evidence as inconclusive', async (t) => {
+	const workspace = directory(t)
+	const app = await fixture()
+	t.after(() => app.close())
+	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle' }
+	writeFileSync(join(workspace, 'ticket.md'), 'Active inventory includes BOLT-1 and WASHER-3 and excludes NUT-2.\n')
+	const call = async (args: string[], input = '') => {
+		const result = await inputCommand(workspace, env, input, ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	await call(['setup', '--url', app.baseUrl, '--target', 'shop'])
+	await call([
+		'plan',
+		'open',
+		'inventory',
+		'--target',
+		'shop@1',
+		'--objective',
+		'Check active inventory.',
+		'--source',
+		'ticket.md',
+	])
+	const plan = (expected: string) => ({
+		requirements: [{ id: 'R1', text: 'List active inventory only.', source: 'ticket.md' }],
+		tests: [
+			{
+				id: 'T1',
+				title: 'List active inventory',
+				capability: 'http',
+				operations: ['read_catalog'],
+				dependsOn: [],
+				preconditions: [],
+				requirementIds: ['R1'],
+				action: 'Run acme list --active.',
+				assertions: [
+					{
+						id: 'A1',
+						check: 'The output includes BOLT-1.',
+						observe: 'the output',
+						expected: 'contains:BOLT-1',
+					},
+					{ id: 'A2', check: 'The output includes WASHER-3.', observe: 'the output', expected: 'WASHER-3' },
+					{ id: 'A3', check: 'The output excludes NUT-2.', observe: 'the output', expected },
+				].map((assertion) => ({ ...assertion, checkKind: 'deterministic' })),
+			},
+		],
+		gaps: [],
+	})
+	for (const [prose, matcher] of [
+		['NUT-2 absent', 'absent:NUT-2'],
+		['NUT-2 present', 'contains:NUT-2'],
+	]) {
+		const refused = await inputCommand(workspace, env, JSON.stringify(plan(prose)), 'plan', 'save', 'inventory')
+		assert.equal(refused.code, 1, refused.output)
+		assert.ok(refused.body.reasons.join(' ').includes(matcher), refused.output)
+	}
+	await call(['plan', 'save', 'inventory'], JSON.stringify(plan('absent:NUT-2')))
+	await call(['plan', 'approve', 'inventory@1', '--rationale', 'Run the checks.'])
+	const note = 'acme list --active output includes NUT-2 though inventory marks it archived (active=false).'
+	const leaked = '[{"sku":"BOLT-1","active":true},{"sku":"NUT-2","active":false},{"sku":"WASHER-3","active":true}]'
+	const clean = '[{"sku":"bolt-1","active":true},{"sku":"NUT-20","active":true},{"sku":"WASHER-3","active":true}]'
+	const absentReason = 'Observation contradicts the evidence: "NUT-2" was reported absent. Found in attached text: '
+	const presentReason =
+		'Observation contradicts the evidence: "BOLT-1" was reported present. It was not found in the attached text.'
+	for (const replay of [
+		{ id: 'b1-65042eb', observed: 'NUT-2 absent', evidence: note, reason: absentReason + note },
+		{ id: 'b2-65042eb', evidence: leaked, reason: absentReason + leaked },
+		{ id: 'b1-d98da1a', observed: 'NUT-2 absent', evidence: leaked, reason: absentReason + leaked },
+		{ id: 'json-file', evidence: leaked, reason: absentReason + leaked, file: 'active.json' },
+		{ id: 'clean', evidence: clean },
+		{ id: 'missing-bolt', evidence: clean, boltEvidence: '{"sku":"BOLT-10"}' },
+		{ id: 'screenshot', evidence: 'NUT-2', file: 'active.png' },
+	]) {
+		await call(['run', 'begin', replay.id, 'inventory@1', '--build', 'b1', '--partial', 'ready_only'])
+		const check = (id: string, evidence: string, args: string[]) =>
+			call(['run', 'check', replay.id, 'T1', id, '--request', 'acme list --active', ...args], evidence)
+		const bolt = await check('A1', replay.boltEvidence ?? clean, ['--observed', 'BOLT-1', '--evidence', '-'])
+		assert.equal(bolt.result, replay.boltEvidence ? 'inconclusive' : 'passed')
+		assert.equal(bolt.reason, replay.boltEvidence ? presentReason : undefined)
+		await check('A2', clean, ['--observed', 'WASHER-3', '--evidence', '-'])
+		const path = replay.file ? `.checkmate/tmp/${replay.id}/${replay.file}` : '-'
+		if (replay.file) {
+			mkdirSync(join(workspace, '.checkmate', 'tmp', replay.id), { recursive: true })
+			writeFileSync(join(workspace, path), replay.evidence)
+		}
+		const archived = await check('A3', replay.file ? '' : replay.evidence, [
+			...(replay.observed ? ['--observed', replay.observed] : ['--absent']),
+			'--evidence',
+			path,
+		])
+		assert.equal(archived.result, replay.reason ? 'inconclusive' : 'passed')
+		assert.equal(archived.reason, replay.reason)
+		const outcome = replay.reason || replay.boltEvidence ? 'inconclusive' : 'passed'
+		const closed = await call(['run', 'close', replay.id, 'T1'])
+		assert.equal(closed.outcome, outcome)
+		await call([
+			'run',
+			'finish',
+			replay.id,
+			'--completion',
+			'completed',
+			'--cleanup',
+			'not_applicable',
+			'--cleanup-reason',
+			'Read-only test.',
+		])
+		const run = await call(['run', 'show', replay.id])
+		assert.equal(run.tests[0].outcome, outcome)
+		assert.deepEqual(run.findings, [])
+		assert.equal(run.result.coverage.status, outcome === 'passed' ? 'complete' : 'partial')
+		const [savedBolt, , savedArchived] = run.tests[0].assertions
+		assert.equal(savedBolt.reason, replay.boltEvidence ? presentReason : null)
+		assert.equal(savedArchived.reason, replay.reason ?? null)
+		assert.equal(savedArchived.observed, replay.observed ?? '(absent)')
+		assert.equal(savedArchived.evidence[0].id, archived.evidenceIds[0])
+	}
 })
 
 test('Compare the run marker inside absence and presence — code substitutes {{marker}} in absent: and contains:, so a value with the run marker is not absent.', async (t) => {
@@ -9255,7 +9664,7 @@ test('Refuse a range check that names no input value, and save the same range wi
 test('A retest verdict follows the assertions its defect was recorded against — a failing sibling assertion on the same test does not make the defect not fixed.', async (t) => {
 	const workspace = directory(t)
 	writeFileSync(join(workspace, 'ticket.md'), 'The quote is 240 and shows no 999.\n')
-	const app = await fixture()
+	const app = await fixture({ fixedQuoteFee: 999 })
 	t.after(() => app.close())
 	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle' }
 	const ok = async (args: string[], value?: unknown) => {
@@ -9350,6 +9759,7 @@ test('A retest verdict follows the assertions its defect was recorded against �
 	app.fix()
 	const fixed = await (await fetch(`${app.baseUrl}/quote?promotion=true&loyalty=true`)).json()
 	assert.equal(fixed.totalPLN, 240)
+	assert.equal(fixed.feePLN, 999)
 	await ok(['run', 'begin', 'run-2', 'ticket@1', '--build', 'fixed', '--retest-of', 'run-1', '--tests', 'T1'])
 	await ok(['run', 'check', 'run-2', 'T1', 'A1', '--observed', '240', '--evidence', '-'], fixed)
 	// A2 fails on the fixed build. F1 is about A1 only, so its retest verdict is fixed.
@@ -11268,20 +11678,39 @@ test('Set up a mobile app from its entries — the profile gets the entry points
 		const result = await command(workspace, environment, ...args)
 		assert.equal(result.code, 1, result.output)
 		assert.match(result.output, pattern)
+		return result.body
 	}
 	await refused(
 		['setup', '--entry', 'app=com.apple.Preferences', '--target', 'phone'],
 		/maestro needs the entries app and device. Missing: device\./
 	)
-	await refused(
-		['setup', '--entry', 'colour=red', '--target', 'phone'],
-		/Unknown entry colour\. Known entries: .*app.*web/
+	const unknown = await command(workspace, env, 'setup', '--entry', 'colour=red', '--target', 'phone')
+	assert.equal(unknown.code, 1, unknown.output)
+	assert.ok(
+		unknown.body.reasons
+			.join(' ')
+			.includes(
+				`Unknown entry colour. Entry names come from recipes. Recipe folder: ${join(realpathSync(workspace), '.checkmate', 'recipes')}.`
+			),
+		unknown.output
 	)
+	assert.equal(unknown.body.refusal, 'malformed')
+	assert.match(unknown.body.reasons.join(' '), /Entries of existing recipes: .*app.*web/)
+	assert.match(unknown.body.hint, /write one JSON file.*checkmate recipe list --json/)
+	assert.match(unknown.body.hint, /edit that file to fix the listed problems/)
+	assert.match(unknown.body.hint, /Optional usage holds tester notes as Markdown lines/)
+	assert.match(unknown.body.hint, /Give a new tool its own entry names/)
+	assert.match(unknown.body.hint, /The target sets what testers may do/)
 	await refused(['setup', '--entry', 'web=ftp://x', '--target', 'phone'], /Entry web must match \^https\?:\/\//)
-	await refused(
+	const missing = await refused(
 		['setup', ...mobileEntries, '--target', 'phone'],
 		/No tool that is installed fits the entries app, device\. maestro-mcp \(mobile\) and maestro \(mobile\) need them and are not on PATH\./,
 		{ ...env, PATH: process.env.PATH ?? '' }
+	)
+	assert.match(missing.hint, /Checked PATH for maestro\. For an MCP recipe, Checkmate looks up server\.command\./)
+	assert.match(
+		missing.hint,
+		/Checked PATH for maestro\. For detect: path, the CLI executable name is the recipe name\./
 	)
 	const targets = await command(workspace, env, 'target', 'list')
 	assert.doesNotMatch(targets.output, /phone/)
@@ -11735,7 +12164,7 @@ test('Set up a target in the review UI from the address or from the entries of a
 
 const appPurpose = 'The app ID of the app under test, for example com.example.shop.'
 const devicePurpose = 'The ID of the simulator or emulator that runs the app.'
-const recipeTools = ['inspect_screen', 'run', 'take_screenshot'].map((tool) => `mcp__maestro_mcp__${tool}`)
+const maestroTargetTools = ['inspect_screen', 'run', 'take_screenshot'].map((tool) => `mcp__maestro_mcp__${tool}`)
 
 const previewPlan = {
 	requirements: [{ id: 'R1', text: 'Character Preview is on by default.', source: 'ticket.md' }],
@@ -11765,7 +12194,7 @@ const previewPlan = {
 }
 
 // A mobile target with both Maestro recipes, the fixture MCP server as maestro on PATH, and a begun run-1.
-async function mobileRun(t: TestContext, extra: NodeJS.ProcessEnv = {}) {
+async function mobileRun(t: TestContext, extra: NodeJS.ProcessEnv = {}, withCustomServer = false) {
 	const workspace = directory(t)
 	writeFileSync(join(workspace, 'ticket.md'), 'Character Preview is on by default.\n')
 	const bin = directory(t)
@@ -11793,6 +12222,27 @@ async function mobileRun(t: TestContext, extra: NodeJS.ProcessEnv = {}) {
 			reachable: true,
 		},
 	]
+	if (withCustomServer) {
+		const folder = join(workspace, '.checkmate', 'recipes')
+		mkdirSync(folder, { recursive: true })
+		const custom = { name: 'stock-mcp', kind: 'mcp', purpose: 'Read stock.', reachable: true }
+		tools.push(custom)
+		writeFileSync(
+			join(folder, `${custom.name}.json`),
+			JSON.stringify({
+				name: custom.name,
+				kind: custom.kind,
+				purpose: custom.purpose,
+				capability: 'inventory',
+				detect: 'path',
+				server: { command: 'maestro', args: ['other'], cwd: '{workFolder}' },
+				environment: {},
+				workspaceFolders: [],
+				observeFrom: { stock: 'state' },
+				evidence: ['stock_report'],
+			})
+		)
+	}
 	await ok([
 		'target',
 		'open',
@@ -11872,7 +12322,7 @@ async function ended(pids: number[]) {
 	return pids.filter(alive)
 }
 
-test('A delegated Claude worker drives a mobile app through the attached Maestro MCP server — it gets the server in its work folder, calls only the recipe tools, and leaves no driver process.', async (t) => {
+test('A delegated Claude worker drives a mobile app through the attached Maestro MCP server — it gets the server in its work folder, calls only the Maestro target tools, and leaves no driver process.', async (t) => {
 	const { workspace, bin, env, ok, started } = await mobileRun(t)
 	copyFileSync(join(root, 'test/e2e/mcp-worker.mjs'), join(bin, 'claude'))
 	chmodSync(join(bin, 'claude'), 0o755)
@@ -11893,19 +12343,19 @@ test('A delegated Claude worker drives a mobile app through the attached Maestro
 		.trim()
 		.split('\n')
 		.map((line) => JSON.parse(line))
-	// The worker gets the server of the recipe and an allow rule for each recipe tool, and no other tool of it.
+	// The worker gets the server of the recipe and an allow rule for each Maestro target tool.
 	assert.equal(launch.strict, false)
 	const servers = JSON.parse(launch.mcpConfig).mcpServers
 	assert.deepEqual(Object.keys(servers), ['maestro_mcp'])
 	assert.deepEqual(servers.maestro_mcp.args.slice(1, 3), ['tool-server', 'maestro-mcp'])
 	assert.deepEqual(
 		launch.allowed.filter((rule: string) => rule.startsWith('mcp__maestro_mcp__')),
-		recipeTools
+		maestroTargetTools
 	)
 	// The worker gets one Maestro recipe: the MCP one, with the device rule and the screenshot file rule.
 	assert.match(
 		launch.prompt,
-		/maestro-mcp \(mcp, Checkmate attached its server; call only inspect_screen, run, take_screenshot\)/
+		/maestro-mcp \(mcp, Checkmate attached its server; target tools: inspect_screen, run, take_screenshot\)/
 	)
 	assert.match(launch.prompt, /Give device_id, the device entry of the instance, on every call\./)
 	assert.match(
@@ -11926,12 +12376,12 @@ test('A delegated Claude worker drives a mobile app through the attached Maestro
 		/takeScreenshot: <name> in a flow: it writes <name>\.png in \S+\/\.checkmate\/tmp\/run-1\./
 	)
 	assert.doesNotMatch(launch.prompt, /hierarchy --compact|Tools: [^\n]*maestro \(cli/)
-	// The server lists only the recipe tools and refuses a cloud tool.
+	// The Maestro target policy lists only its tools and refuses a cloud tool.
 	assert.deepEqual(seen.listed, ['take_screenshot', 'run', 'inspect_screen'])
-	assert.match(seen.cloud, /^Tool run_on_cloud is not a tool of recipe maestro-mcp\./)
+	assert.match(seen.cloud, /^The Maestro target does not allow run_on_cloud\./)
 	assert.match(seen.run, /"tool":"run"/)
 	// The server takes inline flows only, and only the device of the instance; a call without a device gets it.
-	assert.equal(seen.folder, 'Tool run does not take dir in recipe maestro-mcp.')
+	assert.equal(seen.folder, 'The Maestro target does not allow dir on run.')
 	assert.equal(seen.other, 'Give device_id emulator-5554, the device entry of the instance.')
 	// The server ran in the work folder of the run, in its own process group, with the recipe environment.
 	const [start, ...calls] = started()
@@ -11991,7 +12441,7 @@ test('A delegated Claude worker drives a mobile app through the attached Maestro
 })
 
 test(
-	'A delegated Pi worker gets the Maestro MCP server through its extension — only the recipe tools reach the model, the tools of a server of the user do not, and the driver stops.',
+	'A delegated Pi worker gets the Maestro MCP server through its extension — the Maestro policy and a custom target server reach the model, the unrelated user server does not, and the drivers stop.',
 	{ timeout: 90000 },
 	async (t) => {
 		const home = directory(t)
@@ -12064,15 +12514,19 @@ test(
 				},
 			})
 		)
-		const { workspace, bin, env, ok, started } = await mobileRun(t, {
-			HOME: home,
-			PI_CODING_AGENT_DIR: agent,
-			PI_OFFLINE: '1',
-			PI_TELEMETRY: '0',
-			CHECKMATE_HARNESS: 'pi',
-			CHECKMATE_PI_PROVIDER: 'localfixture',
-			CHECKMATE_PI_MODEL: 'fixture',
-		})
+		const { workspace, bin, env, ok, started } = await mobileRun(
+			t,
+			{
+				HOME: home,
+				PI_CODING_AGENT_DIR: agent,
+				PI_OFFLINE: '1',
+				PI_TELEMETRY: '0',
+				CHECKMATE_HARNESS: 'pi',
+				CHECKMATE_PI_PROVIDER: 'localfixture',
+				CHECKMATE_PI_MODEL: 'fixture',
+			},
+			true
+		)
 		// A server of the user, configured for every Pi session.
 		writeFileSync(
 			join(agent, 'mcp.json'),
@@ -12083,8 +12537,12 @@ test(
 		const delegated = await command(workspace, env, 'delegate', 'execute', 'run-1')
 		assert.equal(delegated.body.status, 'completed', delegated.output)
 		assert.ok(offered.length, 'The Pi worker of T1 did not reach the provider')
-		for (const tool of recipeTools) assert.ok(offered[0].includes(tool), `${tool} is missing in ${offered[0]}`)
-		assert.deepEqual(offered[0].filter((tool) => tool.startsWith('mcp__')).sort(), recipeTools)
+		for (const tool of maestroTargetTools)
+			assert.ok(offered[0].includes(tool), `${tool} is missing in ${offered[0]}`)
+		assert.deepEqual(offered[0].filter((tool) => tool.startsWith('mcp__')).sort(), [
+			...maestroTargetTools,
+			'mcp__stock_mcp__other_tool',
+		])
 		const servers = started().filter((line) => line.started)
 		const maestro = servers.find((line) => line.started.args[0] === 'mcp')
 		assert.ok(maestro, JSON.stringify(servers))
@@ -12124,12 +12582,12 @@ test('A tester gets one of two Maestro recipes — the MCP server in a new proce
 		assert.match(study.prompt, /^Tools you can use: maestro-mcp\.$/m)
 		assert.match(
 			study.prompt,
-			/^Before you use a tool, read its usage text: \S+\/plugin\/recipes\/maestro-mcp\.md\.$/m
+			/^Before you use a tool, read its usage field in: \S+\/plugin\/recipes\/maestro-mcp\.json\.$/m
 		)
 		if (harness === 'claude') {
 			const config = JSON.parse(study.args[study.args.indexOf('--mcp-config') + 1])
 			assert.deepEqual(Object.keys(config.mcpServers), ['maestro_mcp'])
-			for (const tool of recipeTools) assert.ok(study.args.includes(tool), study.args.join(' '))
+			for (const tool of maestroTargetTools) assert.ok(study.args.includes(tool), study.args.join(' '))
 		} else {
 			assert.ok(study.args.includes('builtin:mcp'), study.args.join(' '))
 			assert.ok(study.args.some((arg: string) => arg.endsWith('/plugin/pi/tool-servers.mjs')))
@@ -12159,6 +12617,6 @@ test('A tester gets one of two Maestro recipes — the MCP server in a new proce
 		await ok(['explore', 'next', id])
 		const task = readFileSync(join(workspace, '.checkmate/work', id, 'a1/task-study.md'), 'utf8')
 		assert.match(task, /^Tools you can use: maestro\.$/m)
-		assert.match(task, /^Before you use a tool, read its usage text: \S+\/plugin\/recipes\/maestro\.md\.$/m)
+		assert.match(task, /^Before you use a tool, read its usage field in: \S+\/plugin\/recipes\/maestro\.json\.$/m)
 	}
 })

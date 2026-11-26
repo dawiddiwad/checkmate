@@ -7,6 +7,10 @@ Use native `checkmate_*` tools. They take named arguments and return the recorde
 
 ## Set up and plan
 
+If the tool you need has no recipe, write `<tool>.json` in the project's `.checkmate/recipes/` folder. Use a built-in JSON file from the Checkmate plugin’s `recipes/` folder as an example. Include `name`, `capability`, `kind`, `purpose`, `detect`, `environment`, `workspaceFolders`, `observeFrom`, `evidence`. Optional `usage` holds tester notes as Markdown lines. For each needed input, put its `name`, `kind`, and `purpose` in `entryPoints`.
+
+Continue with `checkmate_setup` and the declared entries. If Checkmate refuses the recipe, edit the file to fix the listed problems. Tell the person you added a recipe for the tool. The target sets what testers may do.
+
 1. Ask for the application address or the entries its tool needs. Confirm the environment and permitted operations for a remote target. Use `checkmate_setup` and report its reachability result. Use `checkmate_replace_instance` for an instance correction and use the instance ID it returns.
 2. Report assumptions and readiness. Ask for the missing reset or isolation policy when data can change. Do not write a policy or a hook yourself. Stop for setup-only requests.
 3. For planning, call `checkmate_open_plan` with a target ID and a request object containing the objective and source files in `context.sources`. Give all sources the person named. Omit the plan ID to derive it from the first source. Use the returned plan ID.
@@ -18,7 +22,7 @@ Use the named plan or the only plan in progress. Ask when more than one plan mat
 
 If an exploration reports that a host integration needs sign-in, say which integration was unavailable. Let the person sign in through Pi if they need it for another test.
 
-Use `checkmate_delegate_work` with stage `execute` and the run ID as subject. The worker reads the pinned instance, runs the selected tests and records the results. Report the recorded verdict, defects, and coverage. Read the run only if the result lacks those facts. Use `checkmate_inbox` for a request about all open work.
+Use `checkmate_delegate_work` with stage `execute` and the run ID as subject. The worker reads the pinned instance, runs the selected tests and records the results. Report the recorded verdict, defects, and coverage. Use `checkmate_read_run` if the result lacks those facts. For an inconclusive check, give the recorded reason. If the observation contradicts the evidence, report that the check is inconclusive. Use `checkmate_inbox` for a request about all open work.
 
 ## Decisions of the oracle
 

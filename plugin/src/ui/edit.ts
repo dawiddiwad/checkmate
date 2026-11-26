@@ -1,11 +1,12 @@
 import type { Store } from '../store.ts'
-import { navigator, reviewOf } from './review.ts'
-import type { Html } from './html.ts'
-import type { Context, Page } from './layout.ts'
 import { frozenRevision, jsonPatch, planCandidate } from '../plans.ts'
 import { planDetail } from '../views.ts'
+import type { Html } from './html.ts'
+import type { Context, Page } from './layout.ts'
+import { banner } from './components/banner.ts'
+import { heading } from './components/page-heading.ts'
 import { actorLimit, html, short } from './html.ts'
-import { banner, heading } from './layout.ts'
+import { navigator, reviewOf } from './review.ts'
 
 type Candidate = ReturnType<typeof planCandidate>
 type Requirement = Candidate['requirements'][number]
@@ -304,13 +305,13 @@ export function editPage(
 			section: 'home',
 			subjects: [`plan:${planId}`],
 			body: html`${heading(title, detail.plan.objective)}
-			${banner(
-				'info',
-				html`Only the latest revision can change.
+			${banner({
+				kind: 'info',
+				content: html`Only the latest revision can change.
 					<a href="/plans/${planId}@${detail.latestRevision}/edit"
 						>Edit ${planId}@${detail.latestRevision}</a
-					>`
-			)}`,
+					>`,
+			})}`,
 		}
 	const frozen = frozenRevision(store, planId, revision)
 	const needsApproval = detail.approval.policy !== 'none'
@@ -323,18 +324,18 @@ export function editPage(
 				? `${subject} was promoted.`
 				: `${subject} is approved.`
 	const notice = frozen
-		? banner(
-				'warn',
-				html`<strong
+		? banner({
+				kind: 'warn',
+				content: html`<strong
 						>${why} Saving creates revision ${next}${needsApproval ? ', which needs approval' : ''}.</strong
 					>
-					${subject} stays as it is.`
-			)
-		: banner(
-				'info',
-				html`<strong>Edits change this revision in place.</strong> ${subject} is not approved and no run uses
-					it.`
-			)
+					${subject} stays as it is.`,
+			})
+		: banner({
+				kind: 'info',
+				content: html`<strong>Edits change this revision in place.</strong> ${subject} is not approved and no
+					run uses it.`,
+			})
 	const shown = state ?? {
 		mode: 'form' as const,
 		candidate: planCandidate(detail.plan),
@@ -347,7 +348,7 @@ export function editPage(
 		removed: [],
 		rationale: '',
 	}
-	const messages = html`${shown.stale ? banner('warn', shown.stale) : ''}
+	const messages = html`${shown.stale ? banner({ kind: 'warn', content: shown.stale }) : ''}
 	${shown.error ? html`<p class="form-error" role="alert" data-field="${shown.field ?? ''}">${shown.error}</p>` : ''}`
 	const buttons = (mode: string) =>
 		html`<div class="btns">

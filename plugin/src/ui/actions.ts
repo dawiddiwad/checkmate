@@ -1,10 +1,12 @@
-import type { Html } from './html.ts'
-import type { Context } from './layout.ts'
 import type { Store } from '../store.ts'
 import { one } from '../store.ts'
 import { levelNames } from '../levels.ts'
 import { planRequest } from '../plans.ts'
 import { instanceList } from '../targets.ts'
+import type { Attrs, Html } from './html.ts'
+import type { Context } from './layout.ts'
+import { button, optionButton } from './components/button.ts'
+import { radioGroup } from './components/radio-group.ts'
 import { html, plural } from './html.ts'
 
 export type TestValues = {
@@ -72,28 +74,16 @@ export function instanceChoice(store: Store, planId: string): InstanceChoice | n
 }
 
 function instanceField(choice: InstanceChoice, shown: boolean) {
-	return html`<fieldset
-		class="sp-seg"
-		role="radiogroup"
-		aria-label="Instance"
-		data-instances="${choice.planId}"
-		${shown ? '' : html`hidden disabled`}
-	>
-		<legend>Instance</legend>
-		${choice.instances.map(
-			(instance, index) =>
-				html`<label class="sp-seg-o" title="${instance}"
-					><input
-						type="radio"
-						name="instance"
-						value="${instance}"
-						data-stop
-						data-key-n="${index + 1}"
-						${instance === choice.chosen ? html`checked` : ''}
-					/><kbd>${index + 1}</kbd><span>${instance}</span></label
-				>`
-		)}
-	</fieldset>`
+	return radioGroup({
+		label: 'Instance',
+		name: 'instance',
+		choices: choice.instances.map((instance) => ({
+			value: instance,
+			title: instance,
+			checked: instance === choice.chosen,
+		})),
+		attrs: { 'data-instances': choice.planId, hidden: !shown, disabled: !shown },
+	})
 }
 
 export function testerToolHelp(harness: Context['harness']) {
@@ -159,22 +149,15 @@ export function testDialog(
 			<p class="sp-sub">Start a test of the plan on this computer. The testers run in the background.</p>
 			${field('act-test-build', 'Build', 'build', shown.build, 'Write the build name.')}
 			${instances.map((choice) => instanceField(choice, choice.planId === planId))}
-			<fieldset class="sp-seg" role="radiogroup" aria-label="Level">
-				<legend>Level</legend>
-				${levelNames.map(
-					(level, index) =>
-						html`<label class="sp-seg-o" title="${levelNotes[level]}"
-							><input
-								type="radio"
-								name="level"
-								value="${level}"
-								data-stop
-								data-key-n="${index + 1}"
-								${level === shown.level ? html`checked` : ''}
-							/><kbd>${index + 1}</kbd><span>${level}</span></label
-						>`
-				)}
-			</fieldset>
+			${radioGroup({
+				label: 'Level',
+				name: 'level',
+				choices: levelNames.map((level) => ({
+					value: level,
+					title: levelNotes[level],
+					checked: level === shown.level,
+				})),
+			})}
 			<label for="act-test-rules">Testers may use without asking</label>
 			<input
 				id="act-test-rules"
@@ -194,10 +177,8 @@ export function testDialog(
 			</details>
 			${testerModels(context)}
 			<div class="btns">
-				<button class="sp-btn pri" data-stop><kbd>Enter</kbd><span>Start the test</span></button>
-				<button class="sp-btn" type="button" data-act-cancel data-stop>
-					<kbd>Esc</kbd><span>Cancel</span>
-				</button>
+				${button({ label: 'Start the test', keyName: 'Enter', emphasis: 'primary', attrs: { 'data-stop': true } })}
+				${button({ label: 'Cancel', keyName: 'Esc', attrs: { type: 'button', 'data-act-cancel': true, 'data-stop': true } })}
 			</div>`
 	)
 }
@@ -220,22 +201,16 @@ export function ruleDialog(kind: 'edit' | 'add', context: Context, planId: strin
 				data-missing="Write the text of the rule."
 				data-stop
 			/>
-			<fieldset class="sp-seg" role="radiogroup" aria-label="Area">
-				<legend>Area</legend>
-				${areas.map(
-					(area, index) =>
-						html`<label class="sp-seg-o" title="${area}"
-							><input
-								type="radio"
-								name="area"
-								value="${area}"
-								data-stop
-								data-key-n="${index + 1}"
-								${index === 0 ? html`checked` : ''}
-							/><kbd>${index + 1}</kbd><span class="ell">${area}</span></label
-						>`
-				)}
-			</fieldset>
+			${radioGroup({
+				label: 'Area',
+				name: 'area',
+				choices: areas.map((area, index) => ({
+					value: area,
+					title: area,
+					checked: index === 0,
+					truncate: true,
+				})),
+			})}
 			<label for="act-${id}-new">Or a new area</label>
 			<input id="act-${id}-new" name="newArea" autocomplete="off" data-stop />
 			${
@@ -245,10 +220,8 @@ export function ruleDialog(kind: 'edit' | 'add', context: Context, planId: strin
 					: ''
 			}
 			<div class="btns">
-				<button class="sp-btn pri" data-stop><kbd>Enter</kbd><span>Save the rule</span></button>
-				<button class="sp-btn" type="button" data-act-cancel data-stop>
-					<kbd>Esc</kbd><span>Cancel</span>
-				</button>
+				${button({ label: 'Save the rule', keyName: 'Enter', emphasis: 'primary', attrs: { 'data-stop': true } })}
+				${button({ label: 'Cancel', keyName: 'Esc', attrs: { type: 'button', 'data-act-cancel': true, 'data-stop': true } })}
 			</div>`
 	)
 }
@@ -266,9 +239,7 @@ export function copyDialog() {
 			<label for="act-copy-text">Text for the developer</label>
 			<textarea id="act-copy-text" class="sp-copy-text" rows="12" readonly data-stop data-copy-text></textarea>
 			<div class="btns">
-				<button class="sp-btn pri" type="button" data-act-cancel data-stop>
-					<kbd>Esc</kbd><span>Close</span>
-				</button>
+				${button({ label: 'Close', keyName: 'Esc', emphasis: 'primary', attrs: { type: 'button', 'data-act-cancel': true, 'data-stop': true } })}
 			</div>
 		</div>
 	</dialog>`
@@ -287,12 +258,8 @@ export function followDialog(context: Context, planId: string, subject: Subject,
 				${planId}, build ${subject.build}: the testers read ${answers} of the product owner and test again.
 			</p>
 			<div class="btns">
-				<button class="sp-btn pri" data-stop data-key-n="1">
-					<kbd>1</kbd><span>Test the ${answers}</span>
-				</button>
-				<button class="sp-btn" type="button" data-act-cancel data-stop data-key-n="2">
-					<kbd>2</kbd><span>Cancel</span>
-				</button>
+				${button({ label: `Test the ${answers}`, keyName: '1', emphasis: 'primary', attrs: { 'data-stop': true, 'data-key-n': '1' } })}
+				${button({ label: 'Cancel', keyName: '2', attrs: { type: 'button', 'data-act-cancel': true, 'data-stop': true, 'data-key-n': '2' } })}
 			</div>`
 	)
 }
@@ -313,12 +280,8 @@ export function storeDialog(context: Context, planId: string, count: number, app
 				tests.${approval ? ' The stored tests wait for the approval of the plan.' : ''}
 			</p>
 			<div class="btns">
-				<button class="sp-btn pri" data-stop data-key-n="1">
-					<kbd>1</kbd><span>Store ${plural(count, 'test')}</span>
-				</button>
-				<button class="sp-btn" type="button" data-act-cancel data-stop data-key-n="2">
-					<kbd>2</kbd><span>Cancel</span>
-				</button>
+				${button({ label: `Store ${plural(count, 'test')}`, keyName: '1', emphasis: 'primary', attrs: { 'data-stop': true, 'data-key-n': '1' } })}
+				${button({ label: 'Cancel', keyName: '2', attrs: { type: 'button', 'data-act-cancel': true, 'data-stop': true, 'data-key-n': '2' } })}
 			</div>`
 	)
 }
@@ -336,10 +299,8 @@ export function stopDialog(context: Context, subject: Subject) {
 			</p>
 			${field(`act-stop-${subject.explorationId}-reason`, 'Reason (optional)', 'reason', '')}
 			<div class="btns">
-				<button class="sp-btn" type="button" data-act-cancel data-stop data-key-n="1">
-					<kbd>1</kbd><span>Keep testing</span>
-				</button>
-				<button class="sp-btn pri" data-stop data-key-n="2"><kbd>2</kbd><span>Stop the test</span></button>
+				${button({ label: 'Keep testing', keyName: '1', attrs: { type: 'button', 'data-act-cancel': true, 'data-stop': true, 'data-key-n': '1' } })}
+				${button({ label: 'Stop the test', keyName: '2', emphasis: 'primary', attrs: { 'data-stop': true, 'data-key-n': '2' } })}
 			</div>`
 	)
 }
@@ -356,35 +317,30 @@ export function stopTesterDialog(context: Context, subject: Subject, explorer: s
 			</p>
 			${field(`act-stop-${subject.explorationId}-${explorer}-reason`, 'Reason (optional)', 'reason', '')}
 			<div class="btns">
-				<button class="sp-btn" type="button" data-act-cancel data-stop data-key-n="1">
-					<kbd>1</kbd><span>Keep testing</span>
-				</button>
-				<button class="sp-btn pri" data-stop data-key-n="2">
-					<kbd>2</kbd><span>Stop tester ${explorer}</span>
-				</button>
+				${button({ label: 'Keep testing', keyName: '1', attrs: { type: 'button', 'data-act-cancel': true, 'data-stop': true, 'data-key-n': '1' } })}
+				${button({ label: `Stop tester ${explorer}`, keyName: '2', emphasis: 'primary', attrs: { 'data-stop': true, 'data-key-n': '2' } })}
 			</div>`
 	)
 }
 
-export function actionButton(act: string, label: string, extra: Html | '' = '') {
-	return html`<button type="button" class="sp-btn" data-act="${act}" ${extra}><span>${label}</span></button>`
+export function actionButton(act: string, label: string, extra: Attrs = {}) {
+	return button({ label, attrs: { type: 'button', 'data-act': act, ...extra } })
 }
 
 export function testButton(planId: string, label = 'Test build…', values: Partial<TestValues> = {}) {
-	return actionButton(
-		'test',
-		label,
-		html`data-action="/plans/${planId}/test" data-title="Test a build of ${planId}" data-plan="${planId}"
-		data-fill="${JSON.stringify(values)}"`
-	)
+	return actionButton('test', label, {
+		'data-action': `/plans/${planId}/test`,
+		'data-title': `Test a build of ${planId}`,
+		'data-plan': planId,
+		'data-fill': JSON.stringify(values),
+	})
 }
 
 export function storeButton(planId: string, count: number, view: string) {
-	return actionButton(
-		'store',
-		`Store ${plural(count, 'defect')} as tests…`,
-		html`data-action="/plans/${planId}/harvest" data-fill="${JSON.stringify({ view })}"`
-	)
+	return actionButton('store', `Store ${plural(count, 'defect')} as tests…`, {
+		'data-action': `/plans/${planId}/harvest`,
+		'data-fill': JSON.stringify({ view }),
+	})
 }
 
 export function stopButton(explorationId: string, label = 'Stop the test…') {
@@ -392,9 +348,12 @@ export function stopButton(explorationId: string, label = 'Stop the test…') {
 }
 
 export function stopOption(explorationId: string, n = 1) {
-	return html`<button type="button" class="sp-btn" data-option data-act="stop-${explorationId}" title="Stop the test">
-		<kbd aria-hidden="true">${n}</kbd><span>Stop…</span>
-	</button>`
+	return button({
+		label: 'Stop…',
+		keyName: n,
+		keySpoken: false,
+		attrs: { type: 'button', 'data-option': true, 'data-act': `stop-${explorationId}`, title: 'Stop the test' },
+	})
 }
 
 export function testAgainOption(run: Again, n = 1) {
@@ -406,31 +365,25 @@ export function testAgainOption(run: Again, n = 1) {
 		repo: run.repo,
 		instance: run.instanceId,
 	})
-	return html`<button
-		type="button"
-		class="sp-btn"
-		data-option
-		data-act="test"
-		data-action="/plans/${run.planId}/test"
-		data-title="Test a build of ${run.planId}"
-		data-plan="${run.planId}"
-		data-fill="${values}"
-		aria-label="${n}: Test again"
-		title="Test again"
-	>
-		<kbd aria-hidden="true">${n}</kbd><span>Test again</span>
-	</button>`
+	return optionButton({
+		n,
+		label: 'Test again',
+		attrs: {
+			type: 'button',
+			'data-act': 'test',
+			'data-action': `/plans/${run.planId}/test`,
+			'data-title': `Test a build of ${run.planId}`,
+			'data-plan': run.planId,
+			'data-fill': values,
+		},
+	})
 }
 
 export function testerStopOption(explorationId: string, explorer: string, n: number) {
-	return html`<button
-		type="button"
-		class="sp-btn"
-		data-option
-		data-act="stop-${explorationId}-${explorer}"
-		aria-label="${n}: Stop tester ${explorer}"
-		title="Stop tester ${explorer}"
-	>
-		<kbd aria-hidden="true">${n}</kbd><span>Stop</span>
-	</button>`
+	return optionButton({
+		n,
+		label: 'Stop',
+		name: `Stop tester ${explorer}`,
+		attrs: { type: 'button', 'data-act': `stop-${explorationId}-${explorer}` },
+	})
 }

@@ -1,17 +1,19 @@
 import type { Store } from '../store.ts'
-import type { Html } from './html.ts'
-import type { Context, Page } from './layout.ts'
 import type { RequestContext, RequestRecord } from '../requests.ts'
 import { one } from '../store.ts'
 import { isEnded, operationCountOf } from '../requests.ts'
 import { explorationPermissions } from '../permissions.ts'
-import { ago, costText, duration, html, pill, plural, time } from './html.ts'
-import { crumbBar } from './layout.ts'
-import { failureOf } from './activity.ts'
-import { requestHref } from './permissions.ts'
 import { piErrorText } from '../pi.ts'
 import { authenticationFailed, piAuthenticationHint } from '../sessions.ts'
+import type { Context, Page } from './layout.ts'
+import { failureOf } from './activity.ts'
+import { button } from './components/button.ts'
+import { drawerHead } from './components/drawer.ts'
+import { crumbBar } from './components/page-heading.ts'
+import { statusMark } from './components/status-mark.ts'
+import { ago, costText, duration, html, plural, time } from './html.ts'
 import { chatMarkdown } from './markdown.ts'
+import { requestHref } from './permissions.ts'
 
 const kinds: Record<string, string> = { c: 'defect', q: 'question', g: 'gap' }
 const planPath = /^\/plans\/([A-Za-z0-9][A-Za-z0-9_-]{0,95})(?:@[1-9][0-9]{0,8})?(?:\/|$)/
@@ -101,16 +103,18 @@ function hidden(name: string, value: string) {
 }
 
 function followOption(n: number) {
-	return html`<button
-		type="button"
-		class="sp-btn"
-		data-option
-		data-ask-follow
-		aria-label="${n}: Ask a follow-up"
-		title="Ask a follow-up. The conversation goes on."
-	>
-		<kbd aria-hidden="true">${n}</kbd><span>Ask a follow-up</span>
-	</button>`
+	return button({
+		label: 'Ask a follow-up',
+		keyName: n,
+		keySpoken: false,
+		attrs: {
+			type: 'button',
+			'data-option': true,
+			'data-ask-follow': true,
+			'aria-label': `${n}: Ask a follow-up`,
+			title: 'Ask a follow-up. The conversation goes on.',
+		},
+	})
 }
 
 function formOption(
@@ -118,21 +122,24 @@ function formOption(
 	action: string,
 	n: number,
 	label: string,
-	hints: Html | string,
+	hints: string,
 	fields: Array<[string, string]>,
 	ask?: { title: string; text: string; yes: string }
 ) {
-	const confirm = ask ? html`data-ask-title="${ask.title}" data-ask-text="${ask.text}" data-ask-yes="${ask.yes}"` : ''
+	const confirm = ask ? { 'data-ask-title': ask.title, 'data-ask-text': ask.text, 'data-ask-yes': ask.yes } : {}
 	return html`<form method="post" action="${action}" class="sp-opt">
 		${hidden('csrf', context.csrf)}${fields.map(([name, value]) => hidden(name, value))}
-		<button class="sp-btn" data-option ${confirm} aria-label="${n}: ${label}" title="${hints}">
-			<kbd aria-hidden="true">${n}</kbd><span>${label}</span>
-		</button>
+		${button({
+			label,
+			keyName: n,
+			keySpoken: false,
+			attrs: { 'data-option': true, ...confirm, 'aria-label': `${n}: ${label}`, title: hints },
+		})}
 	</form>`
 }
 
 function stateLabel(request: RequestRecord) {
-	return request.state === 'answered' ? '' : pill(request.state)
+	return request.state === 'answered' ? '' : statusMark({ state: request.state })
 }
 
 function elapsed(request: RequestRecord, now: number) {
@@ -230,16 +237,16 @@ export function chatMessagePage(store: Store, context: Context, request: Request
 				['Chats', '/chats'],
 				['Chat', back],
 			])}
-			<section class="sp-dhead" tabindex="-1" data-sub data-label="Message details">
-				<div class="sp-pills">
-					${stateLabel(request)}
+			${drawerHead({
+				label: 'Message details',
+				tags: html`${stateLabel(request)}
 					<span class="sp-c-id">${request.harness === 'pi' ? 'Pi' : 'Claude Code'}</span>
 					${model ? html`<span class="sp-c-id">${model}</span>` : ''}
 					<span class="sp-c-id">${request.asker}</span>
-					<span class="sp-c-id">${ago(request.askedAt)}</span>
-				</div>
-				<h1 id="record-title" class="sp-ask-title">Message details</h1>
-			</section>
+					<span class="sp-c-id">${ago(request.askedAt)}</span>`,
+				title: 'Message details',
+				onOwnPage: true,
+			})}
 			<section aria-labelledby="asked-title" data-key="asked">
 				<h2 class="lab" id="asked-title">You asked</h2>
 				<p class="sp-reply sp-asked">${request.text}</p>

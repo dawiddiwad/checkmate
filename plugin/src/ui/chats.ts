@@ -1,16 +1,18 @@
 import type { Store } from '../store.ts'
 import type { Chat, RequestRecord, RequestSelection } from '../requests.ts'
 import type { Env } from '../sessions.ts'
-import type { Html } from './html.ts'
-import type { Context, Page } from './layout.ts'
 import { chatOf, isUnread, listedChats, waitingBehind } from '../requests.ts'
 import { explorationPermissions } from '../permissions.ts'
-import { ago, costText, glyph, html, pill, time } from './html.ts'
-import { emptyNotice, heading } from './layout.ts'
+import type { Html } from './html.ts'
+import type { Context, Page } from './layout.ts'
+import { emptyNotice } from './components/empty-state.ts'
+import { heading } from './components/page-heading.ts'
+import { statusMark } from './components/status-mark.ts'
+import { ago, costText, glyph, html, time } from './html.ts'
+import { chatMarkdown } from './markdown.ts'
 import { requestHref } from './permissions.ts'
 import { chatPreferences } from './requester.ts'
 import { failureText, requestModelLabel } from './requests.ts'
-import { chatMarkdown } from './markdown.ts'
 
 function composer(context: Context, action: string, selection: RequestSelection, screen = '', back = '') {
 	const model = selection.provider && selection.model ? `${selection.provider}/${selection.model}` : selection.model
@@ -130,7 +132,7 @@ function turn(store: Store, request: RequestRecord, context: Context, number: nu
 				Checkmate ·
 				${request.harness === 'pi' ? 'Pi' : 'Claude Code'}${model ? ` · ${model}` : ''}${request.effort ? ` · ${request.effort}` : ''}
 				<span class="chat-status"
-					>${request.state === 'answered' ? '' : pill(request.state)}
+					>${request.state === 'answered' ? '' : statusMark({ state: request.state })}
 					<a href="${details}">Turn ${number}</a></span
 				>
 			</div>
@@ -197,7 +199,7 @@ function chatList(chats: Chat[], href: (chat: Chat) => string, empty: Html, sele
 							${chat.id === selected ? html`aria-current="page"` : ''}
 							><strong>${first}</strong
 							><span>
-								${unread ? html`<span class="chat-unread">${unread} unread</span> · ` : ''}${last.state === 'answered' ? '' : html`${pill(last.state)} · `}${ago(last.askedAt)}
+								${unread ? html`<span class="chat-unread">${unread} unread</span> · ` : ''}${last.state === 'answered' ? '' : html`${statusMark({ state: last.state })} · `}${ago(last.askedAt)}
 								· ${chat.turns.length} ${chat.turns.length === 1 ? 'message' : 'messages'} ·
 								<span title="Chat cost">${costText(chat.costUsd, chat.costPartial)}</span></span
 							></a

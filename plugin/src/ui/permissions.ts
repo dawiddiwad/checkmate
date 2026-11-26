@@ -1,12 +1,17 @@
 import type { Store } from '../store.ts'
-import type { Html } from './html.ts'
-import type { Context, Page } from './layout.ts'
 import type { ForceRule, Permission } from '../permissions.ts'
 import { closedText, explorationPermissions, openPermissions, permissionOf, permissionRules } from '../permissions.ts'
-import { ago, duration, glyph, html, pill, plural, time } from './html.ts'
-import { crumbBar, heading } from './layout.ts'
-import { inputLine } from './hooks.ts'
 import { requestOf } from '../requests.ts'
+import type { Html } from './html.ts'
+import type { Context, Page } from './layout.ts'
+import { button, optionButton } from './components/button.ts'
+import { drawerHead } from './components/drawer.ts'
+import { fold } from './components/fold.ts'
+import { listRow } from './components/list-row.ts'
+import { crumbBar, heading } from './components/page-heading.ts'
+import { statusMark, wordMark } from './components/status-mark.ts'
+import { inputLine } from './hooks.ts'
+import { ago, duration, glyph, html, plural, time } from './html.ts'
 
 export type PermissionRefusal = { error: string; reason: string; field: 'reason' | null }
 
@@ -199,43 +204,29 @@ export function rowOptions(context: Context, item: Permission, returnTo: string)
 	>
 		<form method="post" action="${recordPath(item)}" class="sp-opt">
 			${hidden('csrf', context.csrf)}${hidden('return', returnTo)}${hidden('decision', 'allow')}
-			<button class="sp-btn" data-option aria-label="1: Allow once" title="Allow once">
-				<kbd aria-hidden="true">1</kbd><span>Allow once</span>
-			</button>
+			${optionButton({ n: 1, label: 'Allow once' })}
 		</form>
 		<span class="sp-c-more" aria-hidden="true">${glyph('→')} more</span>
 	</div>`
 }
 
 export function askBadge() {
-	return html`<span class="sp-pill you">Asks</span>`
+	return wordMark({ state: 'asks', label: 'Asks' })
 }
 
 export function askingPill() {
-	return html`<span class="sp-pill you"><span class="dot" aria-hidden="true"></span>Asks</span>`
+	return wordMark({ state: 'asks', label: 'Asks', live: true })
 }
 
 function optionOf(context: Context, item: Permission, from: string | null, choice: Choice, n: number) {
-	const key = html`<kbd aria-hidden="true">${n}</kbd><span>${choice.label}</span>`
 	if (choice.reveal)
-		return html`<button
-			type="button"
-			class="sp-btn"
-			data-option
-			data-reveal="${choice.reveal}"
-			aria-label="${n}: ${choice.label}"
-			title="${choice.label}"
-		>
-			${key}
-		</button>`
+		return optionButton({ n, label: choice.label, attrs: { type: 'button', 'data-reveal': choice.reveal } })
 	const ask = choice.ask
-		? html`data-ask-title="${choice.ask.title}" data-ask-text="${choice.ask.text}" data-ask-yes="${choice.ask.yes}"`
-		: ''
+		? { 'data-ask-title': choice.ask.title, 'data-ask-text': choice.ask.text, 'data-ask-yes': choice.ask.yes }
+		: {}
 	return html`<form method="post" action="${recordPath(item)}" class="sp-opt">
 		${hidden('csrf', context.csrf)}${from ? hidden('from', from) : ''}${hidden('decision', choice.decision)}
-		<button class="sp-btn" data-option ${ask} aria-label="${n}: ${choice.label}" title="${choice.label}">
-			${key}
-		</button>
+		${optionButton({ n, label: choice.label, attrs: ask })}
 	</form>`
 }
 
@@ -356,14 +347,15 @@ export function permissionPage(
 			<div data-stale-slot>
 				${refusal && !refusal.field ? html`<p class="form-error" role="alert">${refusal.error}</p>` : ''}
 			</div>
-			<section class="sp-dhead" tabindex="-1" data-sub data-label="${name}">
-				<div class="sp-pills">
-					${item.decision ? pill(item.decision.kind === 'closed' ? 'stopped' : 'completed', item.decision.kind === 'closed' ? 'Closed' : 'Answered') : askBadge()}
+			${drawerHead({
+				label: name,
+				tags: html`${item.decision ? statusMark({ state: item.decision.kind === 'closed' ? 'stopped' : 'completed', label: item.decision.kind === 'closed' ? 'Closed' : 'Answered' }) : askBadge()}
 					<span class="sp-c-id">${name}</span>
-					<span class="sp-c-id">${item.decision ? ago(item.at) : waitsFor(item)}</span>
-				</div>
-				<h1 id="record-title" class="sp-ask-title" title="${title}">${title}</h1>
-			</section>
+					<span class="sp-c-id">${item.decision ? ago(item.at) : waitsFor(item)}</span>`,
+				title,
+				titleText: title,
+				onOwnPage: true,
+			})}
 			${
 				item.decision
 					? html`<p class="banner info" role="status" data-key="state">
@@ -407,7 +399,7 @@ export function permissionPage(
 ${refusal?.reason ?? ''}</textarea>
 									${refusal?.field ? html`<p class="form-error" role="alert" data-field="reason">${refusal.error}</p>` : ''}
 									<div class="btns">
-										<button class="sp-btn pri"><span>Deny</span></button>
+										${button({ label: 'Deny', emphasis: 'primary' })}
 										<span class="small muted"
 											>Enter sends. Shift+Enter starts a new line. Esc keeps the draft.</span
 										>
@@ -471,36 +463,29 @@ export function permissionHistory(store: Store, explorationId: string, params: U
 	}
 	const decided = (item: Permission) =>
 		item.decision ? html`${item.decision.text} · ${time(item.decision.at)}` : html`open · ${time(item.at)}`
-	const rows = shown.map(
-		(item, index) =>
-			html`<div
-				class="sp-row"
-				role="option"
-				aria-selected="false"
-				tabindex="-1"
-				id="request-${index}"
-				data-row
-				data-key="request:${requestName(item)}"
-				data-href="${requestHref(item, from, true)}"
-				data-label="${requestName(item)}"
-			>
-				<span class="sp-c-cb"></span>
-				<span class="sp-c-tag">${item.decision ? decisionPill(item) : askingPill()}</span>
-				<span class="sp-c-id" title="${requestName(item)}">${requestName(item)}</span>
-				<span class="sp-c-title ell" title="${askTitle(item)}">${askTitle(item)}</span>
-				<span class="sp-c-meta ell" title="${item.decision?.text ?? 'open'}">${decided(item)}</span>
-			</div>`
+	const rows = shown.map((item, index) =>
+		listRow({
+			id: `request-${index}`,
+			key: `request:${requestName(item)}`,
+			href: requestHref(item, from, true),
+			label: requestName(item),
+			inListbox: true,
+			tag: item.decision ? decisionPill(item) : askingPill(),
+			shownId: requestName(item),
+			idTitle: requestName(item),
+			title: askTitle(item),
+			titleText: askTitle(item),
+			meta: decided(item),
+			metaText: item.decision?.text ?? 'open',
+		})
 	)
-	return html`<details
-		class="fold"
-		data-open-key="section:permission-history"
-		${params.has('requests') || all.some((item) => !item.decision) ? html`open` : ''}
-	>
-		<summary>
-			<h2>Permission requests <span class="n">${all.length}</span></h2>
-		</summary>
-		<div class="fold-b" data-list-region>
-			<div class="sp-list" role="listbox" aria-label="Permission requests of ${explorationId}" data-list>
+	return fold({
+		key: 'section:permission-history',
+		title: 'Permission requests',
+		count: all.length,
+		open: params.has('requests') || all.some((item) => !item.decision),
+		listRegion: true,
+		body: html`<div class="sp-list" role="listbox" aria-label="Permission requests of ${explorationId}" data-list>
 				${rows}
 			</div>
 			${
@@ -511,25 +496,24 @@ export function permissionHistory(store: Store, explorationId: string, params: U
 							${page < last ? link(page + 1, 'Older ›', 'next') : ''}
 						</nav>`
 					: ''
-			}
-		</div>
-	</details>`
+			}`,
+	})
 }
 
 function decisionPill(item: Permission) {
 	const kind = item.decision!.kind
 	const look: Record<string, [string, string]> = {
-		allow: ['Allowed', 'pass'],
-		'allow-kind': ['Allowed', 'pass'],
-		'allow-tool': ['Allowed', 'pass'],
-		always: ['Allowed', 'pass'],
-		rule: ['By rule', 'pass'],
-		deny: ['Denied', 'fail'],
-		stop: ['Stopped', 'fail'],
-		closed: ['Closed', ''],
+		allow: ['Allowed', 'allowed'],
+		'allow-kind': ['Allowed', 'allowed'],
+		'allow-tool': ['Allowed', 'allowed'],
+		always: ['Allowed', 'allowed'],
+		rule: ['By rule', 'allowed'],
+		deny: ['Denied', 'denied'],
+		stop: ['Stopped', 'denied'],
+		closed: ['Closed', 'closed'],
 	}
-	const [label, tone] = look[kind]
-	return html`<span class="sp-pill ${tone}">${label}</span>`
+	const [label, state] = look[kind]
+	return wordMark({ state, label })
 }
 
 export function emptyRecord(explorationId: string, requestId: string): Page {

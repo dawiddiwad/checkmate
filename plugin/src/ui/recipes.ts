@@ -1,11 +1,15 @@
-import type { Html } from './html.ts'
-import type { Page } from './layout.ts'
 import type { InvalidRecipe, ReachCheck, Recipe, RecipeCatalog, RecipeEntry } from '../recipes.ts'
 import { listRecipes, projectRecipeFolder, recipeProblem, toolExecutable } from '../recipes.ts'
+import type { Html } from './html.ts'
+import type { Page } from './layout.ts'
+import { banner } from './components/banner.ts'
+import { emptyNotice } from './components/empty-state.ts'
+import { fold } from './components/fold.ts'
+import { listPageRow } from './components/list-row.ts'
+import { heading } from './components/page-heading.ts'
+import { wordMark } from './components/status-mark.ts'
 import { html, join } from './html.ts'
-import { banner, emptyNotice, heading } from './layout.ts'
 import { settingsPage } from './settings.ts'
-import { listRow } from './lists.ts'
 
 const agentOnly = '\n> **Agent only:** This file contains repository or workflow instructions for coding agents.\n\n'
 
@@ -26,15 +30,13 @@ function invalidHref(item: InvalidRecipe) {
 }
 
 function invalidPill() {
-	return html`<span class="sp-pill fail" data-source="invalid">Invalid</span>`
+	return wordMark({ state: 'invalid', label: 'Invalid', attrs: { 'data-source': 'invalid' } })
 }
 
 const sourceLabel = { 'built-in': 'Built-in', custom: 'Custom' }
 
 function sourcePill(source: RecipeEntry['source']) {
-	return html`<span class="sp-pill${source === 'custom' ? ' run' : ''}" data-source="${source}"
-		>${sourceLabel[source]}</span
-	>`
+	return wordMark({ state: source, label: sourceLabel[source], attrs: { 'data-source': source } })
 }
 
 function codes(items: string[]) {
@@ -63,18 +65,27 @@ function detection(recipe: Recipe) {
 export function recipesPage(workspace: string): Page {
 	const { recipes, invalid, error } = readCatalog(workspace)
 	const rows = recipes.map(({ source, recipe }) =>
-		listRow(`recipe:${recipe.name}`, `/settings/recipes/${recipe.name}`, recipe.name, sourcePill(source), [
-			recipe.purpose,
-			html`<span class="muted"
-				><code>${recipe.capability}</code> · ${kindText(recipe)} · ${detection(recipe)}</span
-			>`,
-		])
+		listPageRow({
+			key: `recipe:${recipe.name}`,
+			href: `/settings/recipes/${recipe.name}`,
+			top: recipe.name,
+			tags: sourcePill(source),
+			lines: [
+				recipe.purpose,
+				html`<span class="muted"
+					><code>${recipe.capability}</code> · ${kindText(recipe)} · ${detection(recipe)}</span
+				>`,
+			],
+		})
 	)
 	const invalidRows = invalid.map((item) =>
-		listRow(`invalid:${fileName(item.path)}`, invalidHref(item), item.name, invalidPill(), [
-			'Checkmate does not use this recipe.',
-			html`<span class="reason">${recipeProblem(item)}</span>`,
-		])
+		listPageRow({
+			key: `invalid:${fileName(item.path)}`,
+			href: invalidHref(item),
+			top: item.name,
+			tags: invalidPill(),
+			lines: ['Checkmate does not use this recipe.', html`<span class="reason">${recipeProblem(item)}</span>`],
+		})
 	)
 	const custom = recipes.some((entry) => entry.source === 'custom') || invalid.length
 	const body = html`${heading(
@@ -83,7 +94,7 @@ export function recipesPage(workspace: string): Page {
 				Checkmate. Custom recipes come from <code>.checkmate/recipes/</code> in this workspace.`
 		)}
 		<div data-region="recipes">
-			${error ? banner('fail', html`Checkmate cannot read the recipes. ${error}`) : ''}
+			${error ? banner({ kind: 'fail', content: html`Checkmate cannot read the recipes. ${error}` }) : ''}
 			${
 				rows.length + invalidRows.length
 					? html`<ul class="q-items l-rows">
@@ -174,7 +185,9 @@ function catalogFailure(title: string, error: string) {
 		'/settings/recipes',
 		title,
 		['recipes'],
-		html`<div data-region="recipe">${banner('fail', html`Checkmate cannot read the recipes. ${error}`)}</div>`
+		html`<div data-region="recipe">
+			${banner({ kind: 'fail', content: html`Checkmate cannot read the recipes. ${error}` })}
+		</div>`
 	)
 }
 
@@ -241,10 +254,12 @@ export function recipePage(workspace: string, name: string): Page | null {
 						</section>`
 					: null
 			}
-			<details class="fold" data-open-key="section:json">
-				<summary><h2 id="json">Recipe JSON</h2></summary>
-				<div class="fold-b"><pre class="sp-code" tabindex="0" data-json>${jsonText}</pre></div>
-			</details>
+			${fold({
+				key: 'section:json',
+				title: 'Recipe JSON',
+				headingId: 'json',
+				body: html`<pre class="sp-code" tabindex="0" data-json>${jsonText}</pre>`,
+			})}
 			<p class="back"><a href="/settings/recipes">All recipes</a></p>
 		</div>
 	</div>`

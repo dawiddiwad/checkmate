@@ -1,10 +1,11 @@
+import { levelNames } from '../levels.ts'
+import { declaredEntryPoints, recipes } from '../recipes.ts'
 import type { Html } from './html.ts'
 import type { Context, Page } from './layout.ts'
-import { levelNames } from '../levels.ts'
-import { html } from './html.ts'
 import { testerModels, testerToolHelp } from './actions.ts'
-import { heading } from './layout.ts'
-import { declaredEntryPoints, recipes } from '../recipes.ts'
+import { button } from './components/button.ts'
+import { heading } from './components/page-heading.ts'
+import { html } from './html.ts'
 
 export type NewInstance = { id: string; address: string | null; local: boolean }
 export type NewTarget = { targetId: string; address: string | null; local: boolean; instances: NewInstance[] }
@@ -78,8 +79,8 @@ function shell(context: Context, action: string, body: Html, submit: string) {
 		<div data-act-error aria-live="polite"></div>
 		${body}
 		<div class="btns">
-			<button class="sp-btn pri"><kbd>Enter</kbd><span>${submit}</span></button>
-			<a class="sp-btn" href="/" data-page-cancel><kbd>Esc</kbd><span>Cancel</span></a>
+			${button({ label: `${submit}`, keyName: 'Enter', emphasis: 'primary' })}
+			${button({ label: 'Cancel', href: '/', keyName: 'Esc', attrs: { 'data-page-cancel': true } })}
 		</div>
 	</form>`
 }

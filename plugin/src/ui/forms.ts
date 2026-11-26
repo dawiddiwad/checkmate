@@ -1,7 +1,7 @@
 import type { Html } from './html.ts'
 import type { Context } from './layout.ts'
+import { banner } from './components/banner.ts'
 import { actorLimit, html, short } from './html.ts'
-import { banner } from './layout.ts'
 
 export type FormState = {
 	values: Record<string, string>
@@ -52,7 +52,7 @@ export function actorField(context: Context, state: FormState) {
 }
 
 export function messages(state: FormState) {
-	return html`${state.stale ? banner('warn', state.stale) : ''}
+	return html`${state.stale ? banner({ kind: 'warn', content: state.stale }) : ''}
 	${state.error ? html`<p class="form-error" role="alert">${state.error}</p>` : ''}`
 }
 

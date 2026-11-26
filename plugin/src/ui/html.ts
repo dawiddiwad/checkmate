@@ -25,6 +25,17 @@ export function html(strings: TemplateStringsArray, ...values: unknown[]): Html 
 	return { html: text }
 }
 
+export type Attrs = Record<string, string | number | boolean | null | undefined> & { html?: never }
+
+export function attributes(values: Attrs = {}): Html {
+	return {
+		html: Object.entries(values)
+			.filter(([, value]) => value !== false && value !== null && value !== undefined)
+			.map(([name, value]) => (value === true ? name : `${name}="${escape(String(value))}"`))
+			.join(' '),
+	}
+}
+
 export function join(items: Html[], separator: Html | string) {
 	return html`${items.flatMap((item, i) => (i ? [separator, item] : [item]))}`
 }
@@ -37,110 +48,8 @@ export function costText(costUsd: number | null, partial: boolean) {
 	return costUsd === null ? 'Unknown' : `${money(costUsd)}${partial ? ' (partial)' : ''}`
 }
 
-export type Tone = 'pass' | 'fail' | 'block' | 'warn' | 'unsure' | 'acc' | 'muted'
-
-const statusLook: Record<string, [string, Tone]> = {
-	passed: ['✓', 'pass'],
-	failed: ['✗', 'fail'],
-	inconclusive: ['?', 'unsure'],
-	not_checked: ['!', 'warn'],
-	blocked: ['–', 'block'],
-	not_run: ['–', 'block'],
-	error: ['!', 'warn'],
-	ready: ['✓', 'pass'],
-	deferred: ['–', 'block'],
-	planned: ['✓', 'pass'],
-	tested: ['✓', 'pass'],
-	uncovered: ['–', 'block'],
-	complete: ['✓', 'pass'],
-	partial: ['◐', 'warn'],
-	not_executed: ['–', 'block'],
-	completed: ['✓', 'pass'],
-	interrupted: ['!', 'warn'],
-	operational_error: ['!', 'fail'],
-	not_applicable: ['–', 'block'],
-	approved: ['✓', 'pass'],
-	rejected: ['✗', 'fail'],
-	pending: ['○', 'acc'],
-	not_required: ['–', 'block'],
-	started: ['●', 'acc'],
-	given: ['○', 'acc'],
-	not_needed: ['–', 'block'],
-	ended: ['✓', 'pass'],
-	active: ['●', 'pass'],
-	retired: ['–', 'block'],
-	finalized: ['✓', 'pass'],
-	open: ['○', 'warn'],
-	resolved: ['✓', 'pass'],
-	blocking: ['●', 'fail'],
-	non_blocking: ['○', 'warn'],
-	clarify: ['✓', 'acc'],
-	accept_assumption: ['≈', 'acc'],
-	defer: ['–', 'block'],
-	defect: ['✗', 'fail'],
-	potential_issue: ['?', 'warn'],
-	low: ['·', 'block'],
-	medium: ['!', 'warn'],
-	high: ['!', 'fail'],
-	critical: ['!!', 'fail'],
-	rejected_operation: ['✗', 'fail'],
-	needs_decision: ['?', 'warn'],
-	invalid_request: ['✗', 'fail'],
-	needs_plan: ['○', 'acc'],
-	ready_to_test: ['○', 'acc'],
-	exploring: ['●', 'acc'],
-	needs_triage: ['?', 'warn'],
-	run_in_progress: ['●', 'acc'],
-	needs_revision: ['○', 'acc'],
-	plan_rejected: ['✗', 'fail'],
-	needs_answers: ['?', 'warn'],
-	needs_approval: ['○', 'acc'],
-	ready_to_run: ['○', 'acc'],
-	nothing_to_run: ['–', 'block'],
-	defects_open: ['✗', 'fail'],
-	needs_retest: ['!', 'warn'],
-	awaits_acceptance: ['○', 'acc'],
-	accepted: ['✓', 'pass'],
-	running: ['●', 'acc'],
-	starting: ['●', 'acc'],
-	testing: ['●', 'acc'],
-	recording: ['●', 'acc'],
-	verifying: ['●', 'acc'],
-	following: ['●', 'acc'],
-	stopped: ['!', 'fail'],
-	skipped: ['–', 'block'],
-	not_in_level: ['–', 'block'],
-	confirmed: ['✗', 'fail'],
-	observed: ['✗', 'fail'],
-	suspected: ['?', 'warn'],
-	unresolved: ['?', 'warn'],
-	answered: ['✓', 'pass'],
-	requested: ['○', 'acc'],
-	paused: ['‖', 'warn'],
-	waiting: ['○', 'acc'],
-}
-
-const labels: Record<string, string> = {
-	given: 'given to the session',
-}
-
 export function words(status: string) {
 	return status.replace(/_/g, ' ')
-}
-
-const toneColor: Record<Tone, string> = {
-	pass: 'pass',
-	fail: 'fail',
-	warn: 'you',
-	unsure: 'you',
-	acc: 'run',
-	block: '',
-	muted: '',
-}
-
-export function pillClass(status: string) {
-	const [, tone] = statusLook[status] ?? ['·', 'muted']
-	return `sp-pill ${toneColor[tone]}`.trim()
 }
 
 const glyphNames: Record<string, string> = {
@@ -162,22 +71,6 @@ const glyphNames: Record<string, string> = {
 export function glyph(symbol: string) {
 	const name = glyphNames[symbol]
 	return name ? html`<span class="glyph g-${name}" aria-hidden="true"></span>` : html`${symbol}`
-}
-
-export function pill(status: string, label: string = labels[status] ?? words(status)) {
-	const [icon] = statusLook[status] ?? ['·', 'muted']
-	const look = pillClass(status)
-	const mark = glyph(icon)
-	return html`<span class="${look}" data-status="${status}"><span aria-hidden="true">${mark}</span> ${label}</span>`
-}
-
-export function icon(status: string | null) {
-	const [symbol, tone] = status ? (statusLook[status] ?? ['·', 'muted']) : ['·', 'muted']
-	const mark =
-		{ pass: 'k-pass', fail: 'k-fail', warn: 'k-q', unsure: 'k-q', acc: 'k-run' }[tone as string] ?? 'k-none'
-	return html`<span class="sp-mk ${mark}" role="img" aria-label="${status ? words(status) : 'no result yet'}"
-		>${glyph(symbol)}</span
-	>`
 }
 
 export function short(sha256: string) {

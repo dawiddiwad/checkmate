@@ -1,40 +1,18 @@
 import type { Store } from '../store.ts'
-import type { Html } from './html.ts'
-import type { Page } from './layout.ts'
 import type { ListPage, ListQuery } from '../views.ts'
 import { operationLog, pagedOperations, pagedRuns, planList, runList } from '../views.ts'
-import { costText, glyph, html, join, pill, pillClass, plural, time, words } from './html.ts'
-import { emptyNotice, heading } from './layout.ts'
+import type { Html } from './html.ts'
+import type { Page } from './layout.ts'
+import { emptyNotice } from './components/empty-state.ts'
+import { listPageRow } from './components/list-row.ts'
+import { heading } from './components/page-heading.ts'
+import { statusCounts, statusMark } from './components/status-mark.ts'
+import { costText, html, join, plural, time, words } from './html.ts'
 
 export function loopState(loop: { state: string; waitsOn: string }) {
 	const role = loop.waitsOn === 'qa' ? 'QA' : loop.waitsOn
 	return html`<span class="loop"
-		>${pill(loop.state)}${loop.waitsOn === 'none' ? '' : html` <span class="muted small">waits on ${role}</span>`}</span
-	>`
-}
-
-const countOrder = ['passed', 'failed', 'inconclusive', 'error', 'blocked', 'not_run'] as const
-const countLook: Record<string, [string, string]> = {
-	passed: ['✓', 'pass'],
-	failed: ['✗', 'fail'],
-	inconclusive: ['?', 'unsure'],
-	error: ['!', 'warn'],
-	blocked: ['–', 'block'],
-	not_run: ['–', 'block'],
-}
-
-export function counts(values: Record<string, number>) {
-	const shown = countOrder.filter((key) => values[key])
-	if (!shown.length) return html`<span class="muted">no outcomes yet</span>`
-	return html`<span class="counts"
-		>${shown.map(
-			(key) =>
-				html`<span class="${pillClass(key)}" title="${values[key]} ${words(key)}"
-					><span aria-hidden="true">${glyph(countLook[key][0])}</span> ${values[key]}<span class="sr-only">
-						${words(key)}</span
-					></span
-				>`
-		)}</span
+		>${statusMark({ state: loop.state })}${loop.waitsOn === 'none' ? '' : html` <span class="muted small">waits on ${role}</span>`}</span
 	>`
 }
 
@@ -221,25 +199,6 @@ function listRegion(spec: ListSpec, state: ListState, total: number, rows: Html[
 	</div>`
 }
 
-export function listRow(
-	key: string,
-	href: string | null,
-	top: Html | string,
-	tags: Html | string,
-	lines: Array<Html | string>
-) {
-	const inner = html`<span class="q-top"><span class="q-id">${top}</span> <span class="q-tags">${tags}</span></span>
-		${lines.map((line, index) => html`<span class="${index ? 'q-note' : 'q-title'}">${line}</span>`)}`
-	const label = key.slice(key.indexOf(':') + 1)
-	return html`<li data-key="${key}" data-nav-row>
-		${
-			href
-				? html`<a class="q-row" href="${href}" data-row data-href="${href}" data-label="${label}">${inner}</a>`
-				: html`<div class="q-row" tabindex="-1" data-row data-label="${label}">${inner}</div>`
-		}
-	</li>`
-}
-
 const runStatuses = [
 	['', 'All runs'],
 	['started', 'In progress'],
@@ -250,10 +209,10 @@ const runStatuses = [
 ]
 
 export function runStatus(row: { state: string; acceptance: string | null }) {
-	if (row.state === 'started') return pill('started', 'in progress')
-	if (row.acceptance === 'approved') return pill('approved', 'accepted')
-	if (row.acceptance === 'pending') return pill('pending', 'awaiting acceptance')
-	return pill(row.acceptance ?? 'finalized')
+	if (row.state === 'started') return statusMark({ state: 'started', label: 'in progress' })
+	if (row.acceptance === 'approved') return statusMark({ state: 'approved', label: 'accepted' })
+	if (row.acceptance === 'pending') return statusMark({ state: 'pending', label: 'awaiting acceptance' })
+	return statusMark({ state: row.acceptance ?? 'finalized' })
 }
 
 function distinct(values: string[]) {
@@ -312,20 +271,20 @@ export function runUsageLine({
 }
 
 function runRow(row: RunRow) {
-	return listRow(
-		`run:${row.runId}`,
-		`/runs/${row.runId}`,
-		`${row.runId} · ${row.planId}@${row.revision}`,
-		html`${runStatus(row)} ${time(row.startedAt)}`,
-		[
-			html`${counts(row.counts)}
+	return listPageRow({
+		key: `run:${row.runId}`,
+		href: `/runs/${row.runId}`,
+		top: `${row.runId} · ${row.planId}@${row.revision}`,
+		tags: html`${runStatus(row)} ${time(row.startedAt)}`,
+		lines: [
+			html`${statusCounts({ counts: row.counts })}
 				<span class="muted"
 					>· build <code>${row.build}</code> · ${row.instanceId} ·
 					${row.coverage ? `coverage ${words(row.coverage)}` : 'running'}</span
 				>`,
 			html`<span class="muted">${runUsageLine(row)}</span>`,
-		]
-	)
+		],
+	})
 }
 
 export function runsPage(store: Store, params: URLSearchParams): Page {
@@ -413,20 +372,21 @@ type LogRow = ReturnType<typeof pagedOperations>['rows'][number]
 function logRow(row: LogRow) {
 	const subjects = row.subjects.filter((subject) => subject !== `chat:${row.viaChat}`)
 	const via = row.viaChat ? html` <a href="/chats/${row.viaChat}">via chat</a>` : ''
-	return listRow(
-		`op:${row.rowid}`,
-		null,
-		row.command,
-		html`${pill(row.status === 'rejected' ? 'rejected_operation' : row.status, words(row.status))} ${time(row.at)}`,
-		[
+	return listPageRow({
+		key: `op:${row.rowid}`,
+		href: null,
+		top: row.command,
+		tags: html`${statusMark({ state: row.status === 'rejected' ? 'rejected_operation' : row.status, label: words(row.status) })}
+		${time(row.at)}`,
+		lines: [
 			html`${row.actor}${via} ·
 			${subjects.length ? join(subjects.map(subjectLink), ' ') : html`<span class="muted">no subject</span>`}`,
 			...(row.status === 'rejected'
 				? [html`<span class="reason">${reasons(row.response).join(' ')}</span>`]
 				: []),
 			html`<span class="mono muted">${row.id}</span>`,
-		]
-	)
+		],
+	})
 }
 
 export function logPage(store: Store, params: URLSearchParams): Page {

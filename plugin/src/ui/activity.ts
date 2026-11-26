@@ -1,8 +1,5 @@
 import type { Store } from '../store.ts'
 import type { ExplorationEvent } from '../explorations.ts'
-import type { Html } from './html.ts'
-import type { Context, Page } from './layout.ts'
-import type { ListSpec } from './lists.ts'
 import { all } from '../store.ts'
 import { explorationEvents } from '../explorations.ts'
 import { explorationPermissions } from '../permissions.ts'
@@ -10,12 +7,18 @@ import { explorationState, explorationStatus, startOf } from '../explorers.ts'
 import { authenticationFailed, authenticationHint, piAuthenticationHint } from '../sessions.ts'
 import { piErrorText } from '../pi.ts'
 import { mergedClaims, mergedQuestions } from '../views.ts'
-import { asList, duration, glyph, html, money, pill, plural, time } from './html.ts'
-import { emptyNotice, heading } from './layout.ts'
-import { listHref, listState, pageTrail, pager } from './lists.ts'
-import { instanceChoice, stopDialog, stopOption, testDialog, testAgainOption } from './actions.ts'
 import type { RequestRecord } from '../requests.ts'
 import { allRequests, isEnded } from '../requests.ts'
+import type { Html } from './html.ts'
+import type { Context, Page } from './layout.ts'
+import type { ListSpec } from './lists.ts'
+import { instanceChoice, stopDialog, stopOption, testAgainOption, testDialog } from './actions.ts'
+import { emptyNotice } from './components/empty-state.ts'
+import { groupHeader, listRow, optionsBox } from './components/list-row.ts'
+import { heading } from './components/page-heading.ts'
+import { statusMark } from './components/status-mark.ts'
+import { asList, duration, html, money, plural, time } from './html.ts'
+import { listHref, listState, pageTrail, pager } from './lists.ts'
 
 const liveStates = ['starting', 'testing', 'recording', 'verifying', 'following']
 
@@ -325,34 +328,24 @@ function options(run: Run) {
 	return list
 }
 
-export function optionsBox(items: Html[]) {
-	if (!items.length) return ''
-	return html`<div class="sp-c-opts" aria-label="Options" data-fit>
-		${items}<span class="sp-c-more" aria-hidden="true">${glyph('→')} ${plural(items.length, 'option')}</span>
-	</div>`
-}
-
 function row(run: Run, n: number, now: number) {
 	const items = options(run)
 	const title = `${run.planId} · ${run.follow ? 'Follow-up' : 'Test'} ${run.build}${run.level && !run.follow ? ` · ${run.level}` : ''}${sentence(run) ? ` · ${sentence(run)}` : ''}`
 	const label = run.follow ? `${run.explorationId} follow-up` : run.explorationId
-	return html`<div
-		class="sp-row"
-		role="listitem"
-		tabindex="-1"
-		id="run-${n}"
-		data-row
-		data-key="${run.key}"
-		data-href="/explorations/${run.explorationId}"
-		data-label="${label}"
-	>
-		<span class="sp-c-cb"></span>
-		<span class="sp-c-tag">${pill(run.state)}</span>
-		<span class="sp-c-id" title="${run.explorationId}">${run.explorationId}</span>
-		<span class="sp-c-title ell" title="${title}">${title}</span>
-		<span class="sp-c-meta ell" title="${metaText(run, now)}">${join(meta(run, now), ' · ')}</span>
-		${optionsBox(items)}
-	</div>`
+	return listRow({
+		id: `run-${n}`,
+		key: run.key,
+		href: `/explorations/${run.explorationId}`,
+		label,
+		tag: statusMark({ state: run.state }),
+		shownId: run.explorationId,
+		idTitle: run.explorationId,
+		title,
+		titleText: title,
+		meta: join(meta(run, now), ' · '),
+		metaText: metaText(run, now),
+		options: optionsBox(items),
+	})
 }
 
 function join(items: Array<Html | string | null>, separator: string): Html {
@@ -376,22 +369,19 @@ function chatRow(turn: RequestRecord, n: number, now: number) {
 		.filter(Boolean)
 		.join(' · ')
 	const title = `Chat message · ${turn.text.trim().split('\n')[0]}`
-	return html`<div
-		class="sp-row"
-		role="listitem"
-		tabindex="-1"
-		id="chat-row-${n}"
-		data-row
-		data-key="request:${turn.id}"
-		data-href="/chats/${turn.conversation}"
-		data-label="${turn.id}"
-	>
-		<span class="sp-c-cb"></span>
-		<span class="sp-c-tag">${pill(turn.state, turn.state === 'answered' ? 'Completed' : undefined)}</span>
-		<span class="sp-c-id" title="${turn.id}">${turn.id}</span>
-		<span class="sp-c-title ell" title="${title}">${title}</span>
-		<span class="sp-c-meta ell" title="${metaText}">${join(meta, ' · ')}</span>
-	</div>`
+	return listRow({
+		id: `chat-row-${n}`,
+		key: `request:${turn.id}`,
+		href: `/chats/${turn.conversation}`,
+		label: turn.id,
+		tag: statusMark({ state: turn.state, label: turn.state === 'answered' ? 'Completed' : undefined }),
+		shownId: turn.id,
+		idTitle: turn.id,
+		title,
+		titleText: title,
+		meta: join(meta, ' · '),
+		metaText,
+	})
 }
 
 type Entry = { at: string; running: boolean; render: (n: number, now: number) => Html; run: Run | null }
@@ -427,8 +417,7 @@ export function activityPage(
 	let n = 0
 	const group = (label: string, items: Entry[]) =>
 		items.length
-			? html`<div class="sp-gh" role="presentation">${label} <span>${items.length}</span></div>
-					${items.map((entry) => entry.render(n++, now))}`
+			? html`${groupHeader({ label, count: items.length })} ${items.map((entry) => entry.render(n++, now))}`
 			: ''
 	const total = entries.length
 	const first = total ? (shown.page - 1) * shown.size + 1 : 0

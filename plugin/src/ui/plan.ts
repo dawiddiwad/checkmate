@@ -1,9 +1,5 @@
 import type { Store } from '../store.ts'
-import { navigator, reviewOf } from './review.ts'
 import type { Plan } from '../types.ts'
-import type { Html } from './html.ts'
-import type { Context, Page } from './layout.ts'
-import type { FormState } from './forms.ts'
 import type { QueueItem } from '../views.ts'
 import {
 	mergedClaims,
@@ -17,11 +13,21 @@ import {
 import { decisionToken, planRequest, planRunGaps } from '../plans.ts'
 import { gapsAffecting } from '../contracts.ts'
 import { planCost } from '../costs.ts'
-import { costText, glyph, hasMetadata, html, join, metadataList, pill, plural, short, time, words } from './html.ts'
-import { banner, downloads, emptyNotice, heading } from './layout.ts'
-import { emptyState, gapPanel, recordPanel, verdictPanel } from './forms.ts'
-import { counts, loopState, runStatus } from './lists.ts'
+import type { FormState } from './forms.ts'
+import type { Html } from './html.ts'
+import type { Context, Page } from './layout.ts'
+import { banner } from './components/banner.ts'
+import { emptyNotice } from './components/empty-state.ts'
+import { facts } from './components/facts.ts'
+import { fold } from './components/fold.ts'
+import { downloadMenu } from './components/menu.ts'
+import { heading } from './components/page-heading.ts'
+import { statusCounts, statusMark } from './components/status-mark.ts'
 import { claimsTable, explorationBanners, explorationsTable, questionsList } from './exploration.ts'
+import { emptyState, gapPanel, recordPanel, verdictPanel } from './forms.ts'
+import { costText, glyph, hasMetadata, html, join, metadataList, plural, short, time, words } from './html.ts'
+import { loopState, runStatus } from './lists.ts'
+import { navigator, reviewOf } from './review.ts'
 
 type Detail = ReturnType<typeof planDetail>
 type Test = Plan['tests'][number]
@@ -36,19 +42,6 @@ function testLink(planId: string, revision: number, reference: string) {
 
 function ids(values: string[], link: (id: string) => Html) {
 	return values.length ? join(values.map(link), ', ') : html`<span class="muted">none</span>`
-}
-
-function facts(rows: Array<[string, Html | string | false]>) {
-	const shown = rows.filter(([, value]) => value !== false)
-	return html`<dl class="facts">
-		${shown.map(
-			([label, value]) =>
-				html`<div>
-					<dt>${label}</dt>
-					<dd>${value}</dd>
-				</div>`
-		)}
-	</dl>`
 }
 
 function removeTest(context: Context, detail: Detail, test: Test) {
@@ -81,36 +74,39 @@ export function testCard(detail: Detail, test: Test, remove: Html | '' = '') {
 	const { planId, revision } = detail
 	return html`<article class="test" id="${test.id}" data-key="test:${test.id}">
 		<header class="test-h">
-			${pill(test.readiness)}
+			${statusMark({ state: test.readiness })}
 			<a class="id" href="#${test.id}">${test.id}</a>
 			<h3>${test.title}</h3>
 			<span class="count">${test.capability} · ${plural(test.assertions.length, 'assertion')}</span>
 		</header>
 		<div class="test-b">
-			${facts([
-				['Requirements', ids(test.requirementIds, (id) => html`<a class="mono" href="#${id}">${id}</a>`)],
-				[
-					'Depends on',
-					test.dependsOn.length > 0 && ids(test.dependsOn, (id) => testLink(planId, revision, id)),
+			${facts({
+				rows: [
+					['Requirements', ids(test.requirementIds, (id) => html`<a class="mono" href="#${id}">${id}</a>`)],
+					[
+						'Depends on',
+						test.dependsOn.length > 0 && ids(test.dependsOn, (id) => testLink(planId, revision, id)),
+					],
+					[
+						'Gaps',
+						test.gapIds.length > 0 &&
+							ids(test.gapIds, (id) => html`<a class="mono" href="#${id}">${id}</a>`),
+					],
+					[
+						'Operations',
+						test.operations.length > 0 && html`<span class="mono">${test.operations.join(', ')}</span>`,
+					],
+					[
+						'Preconditions',
+						test.preconditions.length > 0 &&
+							html`<ul class="plain">
+								${test.preconditions.map((item) => html`<li>${item}</li>`)}
+							</ul>`,
+					],
+					['Action', test.action],
+					['Metadata', hasMetadata(test.metadata) && metadataList(test.metadata)],
 				],
-				[
-					'Gaps',
-					test.gapIds.length > 0 && ids(test.gapIds, (id) => html`<a class="mono" href="#${id}">${id}</a>`),
-				],
-				[
-					'Operations',
-					test.operations.length > 0 && html`<span class="mono">${test.operations.join(', ')}</span>`,
-				],
-				[
-					'Preconditions',
-					test.preconditions.length > 0 &&
-						html`<ul class="plain">
-							${test.preconditions.map((item) => html`<li>${item}</li>`)}
-						</ul>`,
-				],
-				['Action', test.action],
-				['Metadata', hasMetadata(test.metadata) && metadataList(test.metadata)],
-			])}
+			})}
 		</div>
 		${
 			test.assertions.length
@@ -141,7 +137,7 @@ function gapRow(detail: Detail, gap: Gap) {
 	const answerable = gap.status === 'open' && !pending && detail.revision === detail.latestRevision
 	const affects = [...gap.requirementIds, ...gap.testIds]
 	const head = html`<span class="id mono">${gap.id}</span>
-		${pill(gap.severity)} ${pill(gap.status)}
+		${statusMark({ state: gap.severity })} ${statusMark({ state: gap.status })}
 		<span class="gap-refs muted"
 			>${affects.length ? `affects ${affects.join(', ')}` : 'affects the whole plan'}</span
 		>`
@@ -149,14 +145,16 @@ function gapRow(detail: Detail, gap: Gap) {
 		${
 			decision
 				? html`<p class="gap-d">
-						${pill(decision.kind)} ${decision.value} <span class="muted">· ${decision.actor}</span>
+						${statusMark({ state: decision.kind })} ${decision.value}
+						<span class="muted">· ${decision.actor}</span>
 					</p>`
 				: ''
 		}
 		${
 			pending
 				? html`<p class="gap-d">
-						${pill('pending', 'decision pending')} ${words(pending.kind)}: ${pending.value}
+						${statusMark({ state: 'pending', label: 'decision pending' })} ${words(pending.kind)}:
+						${pending.value}
 						<span class="muted">· ${pending.actor} · applies in the next revision</span>
 					</p>`
 				: ''
@@ -226,8 +224,10 @@ function runsTable(detail: Detail) {
 							</td>
 							<td class="mono">${run.build}</td>
 							<td class="mono">${run.instanceId}</td>
-							<td>${counts(run.counts)}</td>
-							<td>${run.completion ? pill(run.completion) : html`<span class="muted">running</span>`}</td>
+							<td>${statusCounts({ counts: run.counts })}</td>
+							<td>
+								${run.completion ? statusMark({ state: run.completion }) : html`<span class="muted">running</span>`}
+							</td>
 							<td>${runStatus(run)}</td>
 							<td class="nowrap">${time(run.startedAt)}</td>
 						</tr>`
@@ -259,7 +259,7 @@ function requirementsTable(plan: Plan) {
 							${hasMetadata(requirement.metadata) ? html`<div class="small">${metadataList(requirement.metadata)}</div>` : ''}
 						</td>
 						<td>${ids(coverage?.testIds ?? [], (id) => html`<a class="mono" href="#${id}">${id}</a>`)}</td>
-						<td>${coverage ? pill(coverage.status) : ''}</td>
+						<td>${coverage ? statusMark({ state: coverage.status }) : ''}</td>
 					</tr>`
 				})}
 			</tbody>
@@ -274,7 +274,8 @@ function decisionsList(plan: Plan) {
 				(decision) =>
 					html`<li>
 						<div class="record-h">
-							${pill(decision.kind)} <a class="mono" href="#${decision.gapId}">${decision.gapId}</a>
+							${statusMark({ state: decision.kind })}
+							<a class="mono" href="#${decision.gapId}">${decision.gapId}</a>
 							<span class="muted">by ${decision.actor}</span>
 							<span class="mono muted small">${decision.id}</span>
 						</div>
@@ -374,12 +375,12 @@ export function approvalPanel(
 	if (latest && latest.sha256 === detail.sha256 && !state)
 		return recordPanel(
 			'Approval',
-			html`<p class="subj">${pill(latest.verdict)} ${subject}</p>
+			html`<p class="subj">${statusMark({ state: latest.verdict })} ${subject}</p>
 				<p class="help">
 					By ${latest.actor} · ${time(latest.at)} · sha256 <code>${short(latest.sha256)}</code>
 				</p>
 				<blockquote>${latest.rationale}</blockquote>
-				${latest.sha256 !== detail.sha256 ? banner('warn', 'This decision was for another digest.') : ''}`,
+				${latest.sha256 !== detail.sha256 ? banner({ kind: 'warn', content: 'This decision was for another digest.' }) : ''}`,
 			`${subject} was ${latest.verdict} by ${latest.actor}. Review it before you decide.`
 		)
 	return verdictPanel(
@@ -419,31 +420,21 @@ function planSummaryLine(plan: Plan) {
 
 function newerBanner(detail: Detail) {
 	if (detail.revision === detail.latestRevision) return ''
-	return banner(
-		'info',
-		html`Revision ${detail.latestRevision} is available.
+	return banner({
+		kind: 'info',
+		content: html`Revision ${detail.latestRevision} is available.
 			<a href="/plans/${detail.planId}@${detail.latestRevision}"
 				>Review ${detail.planId}@${detail.latestRevision}</a
-			>`
-	)
+			>`,
+	})
 }
 
 function side(content: Html) {
 	return html`<aside class="side" aria-label="Decision">${content}</aside>`
 }
 
-function fold(id: string, title: Html | string, count: number | null, open: boolean, body: Html, region = '') {
-	return html`<details
-		class="fold"
-		data-open-key="section:${id}"
-		${region ? html`data-region="${region}"` : ''}
-		${open ? html`open` : ''}
-	>
-		<summary>
-			<h2 id="${id}">${title}${count === null ? '' : html` <span class="n">${count}</span>`}</h2>
-		</summary>
-		<div class="fold-b">${body}</div>
-	</details>`
+function planFold(id: string, title: Html | string, count: number | null, open: boolean, body: Html, region = '') {
+	return fold({ key: `section:${id}`, title, headingId: id, count, open, region, body })
 }
 
 type PlanContext = {
@@ -506,7 +497,7 @@ function chips(found: PlanContext, extra: Array<[string, string, number]>) {
 
 function claimsFold(planId: string, found: PlanContext) {
 	const deciding = found.waiting.some((item) => item.kind === 'claim')
-	return fold(
+	return planFold(
 		'claims',
 		'Claims',
 		found.claims.length,
@@ -523,7 +514,7 @@ function claimsFold(planId: string, found: PlanContext) {
 function questionsFold(planId: string, found: PlanContext, gaps: Html | '' = '', openGaps = 0, blockingGaps = 0) {
 	const open = found.questions.filter((question) => question.answer === null)
 	const blocking = open.some((question) => question.blocking) || blockingGaps > 0
-	return fold(
+	return planFold(
 		'questions',
 		'Questions',
 		open.length + openGaps,
@@ -539,7 +530,7 @@ function explorationsFold(found: PlanContext) {
 	const attention = found.explorations.some(
 		(item) => item.running || ['failed', 'stopped', 'interrupted'].includes(item.state)
 	)
-	return fold(
+	return planFold(
 		'explorations',
 		'Explorations',
 		found.explorations.length,
@@ -565,7 +556,7 @@ export function planPage(
 	const found = planContext(store, planId, context.harness)
 	const cost = planCost(store, planId)
 	const meta = html`<div class="meta">
-		${pill(detail.approval.state)}
+		${statusMark({ state: detail.approval.state })}
 		<span class="pill">target <span class="mono">${plan.target.targetId}@${plan.target.revision}</span></span>
 		<span class="pill" title="${detail.sha256}">sha256 <span class="mono">${short(detail.sha256)}</span></span>
 		${
@@ -580,16 +571,16 @@ export function planPage(
 		}
 		<span class="head-actions">
 			${latest ? html`<a class="btn small" href="/plans/${subject}/edit">Edit plan</a>` : ''}
-			${downloads('Export', `/plans/${subject}/export`, 'The HTML export is print-ready. Open it and print to PDF.')}
+			${downloadMenu('Export', `/plans/${subject}/export`, 'The HTML export is print-ready. Open it and print to PDF.')}
 		</span>
 	</div>`
 	const pending = detail.pendingDecisions.length
-		? banner(
-				'info',
-				html`${plural(detail.pendingDecisions.length, 'decision')}
+		? banner({
+				kind: 'info',
+				content: html`${plural(detail.pendingDecisions.length, 'decision')}
 				${detail.pendingDecisions.length === 1 ? 'waits' : 'wait'} for the next revision:
-				${detail.pendingDecisions.map((item) => `${item.gapId} ${words(item.kind)}`).join(', ')}.`
-			)
+				${detail.pendingDecisions.map((item) => `${item.gapId} ${words(item.kind)}`).join(', ')}.`,
+			})
 		: ''
 	const openGaps = plan.gaps.filter((gap) => gap.status === 'open')
 	const approving = detail.approval.state === 'pending' || detail.approval.state === 'rejected'
@@ -618,7 +609,7 @@ export function planPage(
 		<div data-region="banners">${newerBanner(detail)} ${pending} ${explorationBanners(found.explorations)}</div>
 		<div class="split">
 			<div class="main-col">
-				${fold('overview', 'Overview', null, approving || !anyOpen, overview)} ${claimsFold(planId, found)}
+				${planFold('overview', 'Overview', null, approving || !anyOpen, overview)} ${claimsFold(planId, found)}
 				${questionsFold(
 					planId,
 					found,
@@ -627,7 +618,7 @@ export function planPage(
 					openGaps.filter((gap) => gap.severity === 'blocking').length
 				)}
 				${explorationsFold(found)}
-				${fold(
+				${planFold(
 					'tests',
 					html`Tests${latest ? html` <a class="h-link" href="/plans/${subject}/edit#edit-tests">Edit</a>` : ''}`,
 					plan.tests.length,
@@ -637,8 +628,8 @@ export function planPage(
 					</div>`,
 					'tests'
 				)}
-				${fold('runs', 'Runs', detail.runs.length, accepting, runsTable(detail), 'plan-runs')}
-				${fold('history', 'History', null, allHistory, planHistoryList(store, detail, allHistory), 'history')}
+				${planFold('runs', 'Runs', detail.runs.length, accepting, runsTable(detail), 'plan-runs')}
+				${planFold('history', 'History', null, allHistory, planHistoryList(store, detail, allHistory), 'history')}
 			</div>
 			${side(approvalPanel(store, context, detail, state))}
 		</div>`
@@ -689,46 +680,48 @@ export function requestPage(store: Store, planId: string, harness: Context['harn
 	const sources = [...(request.context?.sources ?? []), ...(request.sourceContext ?? []).map((item) => item.uri)]
 	const completed = found.explorations.filter((item) => item.state === 'completed').at(-1)?.explorationId
 	const meta = html`<div class="meta">
-		${pill('requested', 'no revision yet')}
+		${statusMark({ state: 'requested', label: 'no revision yet' })}
 		<span class="pill">target <span class="mono">${targetRef}</span></span>
 	</div>`
 	const anyOpen =
 		found.waiting.length > 0 ||
 		found.explorations.some((item) => item.running || ['failed', 'stopped', 'interrupted'].includes(item.state))
-	const overview = facts([
-		['Objective', request.objective],
-		['Target', targetLink],
-		[
-			'Instance',
-			instances.length
-				? html`<span class="mono">${instances.join(', ')}</span>`
-				: html`<span class="muted">none yet</span>`,
+	const overview = facts({
+		rows: [
+			['Objective', request.objective],
+			['Target', targetLink],
+			[
+				'Instance',
+				instances.length
+					? html`<span class="mono">${instances.join(', ')}</span>`
+					: html`<span class="muted">none yet</span>`,
+			],
+			[
+				'Sources',
+				sources.length
+					? html`<ul class="plain">
+							${sources.map((source) => html`<li><code>${source}</code></li>`)}
+						</ul>`
+					: html`<span class="muted">none</span>`,
+			],
+			['Instructions', request.context?.instructions || false],
+			[
+				'Requirements',
+				(request.requirements ?? []).length > 0 &&
+					html`<ul class="plain">
+						${(request.requirements ?? []).map((item) => html`<li><span class="mono">${item.id}</span> ${item.text}</li>`)}
+					</ul>`,
+			],
 		],
-		[
-			'Sources',
-			sources.length
-				? html`<ul class="plain">
-						${sources.map((source) => html`<li><code>${source}</code></li>`)}
-					</ul>`
-				: html`<span class="muted">none</span>`,
-		],
-		['Instructions', request.context?.instructions || false],
-		[
-			'Requirements',
-			(request.requirements ?? []).length > 0 &&
-				html`<ul class="plain">
-					${(request.requirements ?? []).map((item) => html`<li><span class="mono">${item.id}</span> ${item.text}</li>`)}
-				</ul>`,
-		],
-	])
+	})
 	const body = html`${heading(planId, request.objective, meta)} ${nextLine(planId, found)}
 		${chips(found, [['tests', 'Stored tests', 0]])}
 		<div data-region="banners">${explorationBanners(found.explorations)}</div>
 		<div class="split">
 			<div class="main-col">
-				${fold('request', 'Request', null, !anyOpen, overview)} ${claimsFold(planId, found)}
+				${planFold('request', 'Request', null, !anyOpen, overview)} ${claimsFold(planId, found)}
 				${questionsFold(planId, found)} ${explorationsFold(found)}
-				${fold('tests', 'Stored tests', 0, !found.explorations.length, storedTestsEmpty(planId, completed, harness), 'tests')}
+				${planFold('tests', 'Stored tests', 0, !found.explorations.length, storedTestsEmpty(planId, completed, harness), 'tests')}
 			</div>
 			${side(
 				recordPanel(
@@ -776,11 +769,12 @@ export function gapPage(
 	const tests = plan.tests.filter((test) => gapsAffecting([gap], test).length > 0)
 	const requirements = plan.requirements.filter((requirement) => gap.requirementIds.includes(requirement.id))
 	const runBanner = fromRun
-		? banner(
-				'info',
-				html`This gap comes from run <a class="mono" href="/runs/${fromRun.runId}">${fromRun.runId}</a>. Your
-					answer adds it to ${planId}.`
-			)
+		? banner({
+				kind: 'info',
+				content: html`This gap comes from run
+					<a class="mono" href="/runs/${fromRun.runId}">${fromRun.runId}</a>. Your answer adds it to
+					${planId}.`,
+			})
 		: ''
 	let panel: Html
 	if (state || (latest && gap.status === 'open' && !pending))
@@ -799,14 +793,14 @@ export function gapPage(
 	else if (pending)
 		panel = recordPanel(
 			'Answer recorded',
-			html`<p class="subj">${pill(pending.kind)} ${gap.id}</p>
+			html`<p class="subj">${statusMark({ state: pending.kind })} ${gap.id}</p>
 				<blockquote>${pending.value}</blockquote>
 				<p class="help">By ${pending.actor}. The agent applies it in the next revision of ${planId}.</p>`
 		)
 	else if (decision)
 		panel = recordPanel(
 			'Decision',
-			html`<p class="subj">${pill(decision.kind)} ${gap.id}</p>
+			html`<p class="subj">${statusMark({ state: decision.kind })} ${gap.id}</p>
 				<blockquote>${decision.value}</blockquote>
 				<p class="help">By ${decision.actor}. Rationale: ${decision.rationale}</p>`
 		)
@@ -821,7 +815,8 @@ export function gapPage(
 				</p>`
 		)
 	const meta = html`<div class="meta">
-		${pill(gap.severity)} ${pill(gap.status)} <a class="pill" href="/plans/${subject}">${subject}</a>
+		${statusMark({ state: gap.severity })} ${statusMark({ state: gap.status })}
+		<a class="pill" href="/plans/${subject}">${subject}</a>
 	</div>`
 	const body = html`${heading(html`${planId} · ${gap.id}`, gap.question, meta)}
 		<div data-region="banners">${newerBanner(detail)} ${runBanner}</div>

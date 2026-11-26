@@ -1,7 +1,5 @@
 import type { Store } from '../store.ts'
 import type { Profile } from '../types.ts'
-import type { Html } from './html.ts'
-import type { Context, Page } from './layout.ts'
 import type { EntryPoint, InstanceRecord } from '../targets.ts'
 import { Refusal } from '../contracts.ts'
 import { requestEffortText, requestModelText, testerEffortText, testerModelText, workspaceUiEnv } from '../settings.ts'
@@ -10,8 +8,13 @@ import { liveUi, requireChild } from '../sessions.ts'
 import { selectedHarness } from '../pi.ts'
 import type { Env } from '../sessions.ts'
 import { instanceList, targetHistory, targetList, targetRequest, targetRevision } from '../targets.ts'
-import { html, join, pill, plural, short, time } from './html.ts'
-import { banner, emptyNotice, heading } from './layout.ts'
+import type { Html } from './html.ts'
+import type { Context, Page } from './layout.ts'
+import { banner } from './components/banner.ts'
+import { emptyNotice } from './components/empty-state.ts'
+import { heading } from './components/page-heading.ts'
+import { statusMark } from './components/status-mark.ts'
+import { html, join, plural, short, time } from './html.ts'
 
 export type InstanceForm = { values: Record<string, string>; error: string | null; field?: string | null }
 export type RulesForm = { value: string; error: string }
@@ -154,7 +157,9 @@ function toolsTable(profile: Profile) {
 							<td class="mono">${tool.name}</td>
 							<td class="mono">${tool.kind}</td>
 							<td class="mono">${tool.version ?? '–'}</td>
-							<td>${tool.reachable ? pill('passed', 'reachable') : pill('failed', 'unreachable')}</td>
+							<td>
+								${tool.reachable ? statusMark({ state: 'passed', label: 'reachable' }) : statusMark({ state: 'failed', label: 'unreachable' })}
+							</td>
 							<td>${tool.purpose}</td>
 						</tr>`
 				)}
@@ -192,8 +197,8 @@ function profileFacts(profile: Profile) {
 		<dd>
 			${
 				profile.readyForLiveExecution
-					? pill('ready')
-					: html`${pill('blocked', 'not ready')}
+					? statusMark({ state: 'ready' })
+					: html`${statusMark({ state: 'blocked', label: 'not ready' })}
 							<p class="help">
 								Check the active instances below. Then run
 								<code>checkmate delegate setup ${profile.targetId}</code>
@@ -297,7 +302,9 @@ function instancesTable(context: Context, targetId: string, instances: InstanceR
 							<td>${instance.environment ?? none()}</td>
 							<td>${words(instance.references)}</td>
 							<td>${instance.addedBy} · ${time(instance.addedAt)}</td>
-							<td>${instance.retired ? pill('retired') : pill('active')}</td>
+							<td>
+								${instance.retired ? statusMark({ state: 'retired' }) : statusMark({ state: 'active' })}
+							</td>
 							<td>${retireControl(context, targetId, instance, retire)}</td>
 						</tr>`
 				)}
@@ -399,7 +406,7 @@ export function targetPage(
 					<h2 id="profile">Profile</h2>
 					${profileFacts(shown.profile)}
 				</section>`
-		: banner('info', html`The setup request is recorded. The profile is not saved yet.`)
+		: banner({ kind: 'info', content: html`The setup request is recorded. The profile is not saved yet.` })
 	const body = html`${heading(
 			targetId,
 			sub,

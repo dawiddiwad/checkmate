@@ -1,7 +1,11 @@
 import type { Harness } from '../pi.ts'
 import type { Html } from './html.ts'
-import { glyph, html } from './html.ts'
+import { confirmDialog } from './components/confirm-dialog.ts'
+import { findPalette } from './components/find-palette.ts'
+import { keysHelp } from './components/keys-help.ts'
+import { statusBar } from './components/status-bar.ts'
 import { viewer } from './evidence.ts'
+import { html } from './html.ts'
 
 export type Theme = 'system' | 'light' | 'dark'
 export type Section = 'home' | 'activity' | 'runs' | 'log' | 'settings' | 'chats' | null
@@ -41,183 +45,6 @@ export type Page = {
 	viewer?: boolean
 	drawer?: boolean
 }
-
-const themeIcon = html`<svg viewBox="0 0 16 16" aria-hidden="true">
-	<circle cx="8" cy="8" r="6.5" fill="none" stroke="currentColor" stroke-width="1.5" />
-	<path d="M8 1.5a6.5 6.5 0 0 1 0 13z" fill="currentColor" />
-</svg>`
-
-export function mark() {
-	return html`<span class="mark" aria-hidden="true"><i></i><i></i><i class="on"></i><i></i></span>`
-}
-
-function themeForm(context: Context) {
-	const next = context.theme === 'dark' ? 'light' : 'dark'
-	return html`<form method="post" action="/theme" class="theme-form" data-theme-form>
-		<input type="hidden" name="csrf" value="${context.csrf}" />
-		<input type="hidden" name="back" value="${context.path}" />
-		<button
-			class="sp-btn icon-btn"
-			name="theme"
-			value="${next}"
-			data-current="${context.theme}"
-			title="Switch light and dark"
-			aria-label="Switch light and dark"
-		>
-			${themeIcon}
-		</button>
-	</form>`
-}
-
-function statusWho(context: Context) {
-	const back = encodeURIComponent(context.path)
-	const actor = context.actor
-		? html`<a class="actor" href="/actor?back=${back}" title="${context.actor}. Change your name"
-				>${context.actor}</a
-			>`
-		: html`<a class="actor att" href="/actor?back=${back}">Set your name</a>`
-	return html`<div class="who">
-		<span class="live" data-live hidden>Connecting</span>
-		${actor} ${themeForm(context)}
-	</div>`
-}
-
-function statusLink(page: Page, section: Section, href: string, label: string) {
-	const current = page.section === section ? html` aria-current="page"` : ''
-	return html`<a class="sb-btn" href="${href}" ${current}>${label}</a>`
-}
-
-function statusBar(context: Context, page: Page) {
-	const path = page.crumbs?.length ? page.crumbs : [[page.title, null] as [string, null]]
-	const waiting = context.queueCount
-	return html`<footer class="statusbar" aria-label="Status bar">
-		<a class="brand" href="/" aria-label="Checkmate, home">${mark()}<span>Checkmate</span></a>
-		<nav class="sb-where" aria-label="Where you are">
-			<ol>
-				${path.map(([label, href]) =>
-					href ? html`<li><a href="${href}">${label}</a></li>` : html`<li aria-current="page">${label}</li>`
-				)}
-			</ol>
-		</nav>
-		<nav class="sb-nav" aria-label="Main">
-			<a class="sb-btn" href="/" ${page.section === 'home' ? html`aria-current="page"` : ''}>Plans</a>
-			<span class="sb-btn-set" data-wide
-				><a
-					class="sb-btn"
-					href="/activity"
-					data-region="activity-link"
-					${page.section === 'activity' ? html`aria-current="page"` : ''}
-					>${html`<span>Activity${context.running ? html`<span class="sb-long"> · ${context.running} running</span>` : ''}</span>`}</a
-				>
-				${statusLink(page, 'chats', '/chats', 'Chats')} ${statusLink(page, 'runs', '/runs', 'Runs')}
-				${statusLink(page, 'log', '/log', 'Log')} ${statusLink(page, 'settings', '/settings', 'Settings')}</span
-			>
-			<details class="sb-more menu" data-menu>
-				<summary class="sb-btn">More</summary>
-				<div class="menu-list">
-					<button type="button" data-find-open>Find</button
-					><a href="/activity" data-region="activity-menu"
-						>Activity${context.running ? ` · ${context.running} running` : ''}</a
-					><a href="/chats">Chats</a><a href="/runs">Runs</a><a href="/log">Log</a
-					><a href="/settings">Settings</a>
-				</div>
-			</details>
-		</nav>
-		<span class="sb-fill"></span>
-		<span class="sb-say" aria-live="polite" data-say></span>
-		<span class="sb-keys" data-hints></span>
-		<button class="sb-btn" type="button" data-find-open hidden>Find</button>
-		<span class="sb-div" aria-hidden="true"></span>
-		<a
-			class="sb-btn"
-			href="${context.requests.runningChat ? `/chats/${context.requests.runningChat}` : '/chats'}"
-			title="The chat that is active now"
-			data-region="request-link"
-			${context.requests.running ? '' : html`hidden`}
-			>${context.requests.running ? html`<span>Chat<span class="sb-long sb-running"> · working</span></span>` : ''}</a
-		>
-		<a
-			class="sb-btn att"
-			href="/permissions"
-			title="Permission requests of testers that wait for you"
-			data-region="permissions-link"
-			${context.permissions ? '' : html`hidden`}
-			>${context.permissions} ${context.permissions === 1 ? 'permission' : 'permissions'}</a
-		>
-		<a
-			class="sb-btn att"
-			href="${
-				context.requests.unread === 1 && context.requests.firstUnreadChat
-					? `/chats/${context.requests.firstUnreadChat}`
-					: '/chats'
-			}"
-			title="Unread updates in your chats"
-			aria-label="${context.requests.unread} unread chat updates"
-			data-region="replies-link"
-			${context.requests.unread ? '' : html`hidden`}
-			>${context.requests.unread ? html`<span>${context.requests.unread}<span class="sb-long"> unread</span></span>` : ''}</a
-		>
-		<a
-			class="sb-btn att"
-			href="/"
-			title="Items that wait for you in all plans"
-			data-region="nav-count"
-			${waiting ? '' : html`hidden`}
-			><span
-				>${waiting}<span class="sb-long"> ${waiting === 1 ? 'needs' : 'need'} you</span
-				><span class="sb-all"> · all plans</span></span
-			></a
-		>
-		${statusWho(context)}
-	</footer>`
-}
-
-const dialogs = (harness: Harness) =>
-	html`<dialog class="sp-keys" data-keys aria-labelledby="keys-title">
-			<div class="sp-dh">
-				<h2 id="keys-title" class="sp-path">Keys</h2>
-				<button class="sp-btn" type="button" data-keys-close><kbd>Esc</kbd><span>Close</span></button>
-			</div>
-			<div data-keys-table></div>
-		</dialog>
-		<dialog class="sp-find" data-find data-harness="${harness}" aria-label="Find or ask">
-			<input
-				type="search"
-				data-find-input
-				aria-label="Find a plan, a defect, or a question. Or ask Checkmate."
-				autocomplete="off"
-			/>
-			<ul role="listbox" aria-label="Results" data-find-results></ul>
-			<p class="sp-find-none" data-find-none hidden>Nothing matches.</p>
-			<p class="sp-find-none" data-find-more hidden></p>
-			<p class="sp-find-none" data-find-asking role="status" hidden></p>
-			<p class="sp-find-none" data-find-error role="alert" hidden></p>
-			<div class="sp-foot">
-				<span><kbd>${glyph('↑')}</kbd><kbd>${glyph('↓')}</kbd>Choose</span
-				><span><kbd>Enter</kbd><span data-find-enter>Go</span></span
-				><span><kbd>Esc</kbd>Close</span>
-			</div>
-			<p class="sp-find-note" data-find-note>
-				Ask Checkmate starts ${harness === 'pi' ? 'Pi' : 'Claude Code'} on this computer. It can read this
-				workspace and change records.
-			</p>
-		</dialog>
-		<dialog class="sp-confirm" data-confirm aria-labelledby="confirm-title">
-			<div class="sp-dh"><h2 id="confirm-title" class="sp-path" data-confirm-title></h2></div>
-			<form method="dialog" class="sp-form sp-confirm-b" data-confirm-form>
-				<p class="sp-sub" data-confirm-text></p>
-				<div data-confirm-field hidden>
-					<label for="confirm-input" data-confirm-label></label>
-					<input id="confirm-input" autocomplete="off" />
-				</div>
-				<div class="btns">
-					<button class="sp-btn pri" value="yes" data-confirm-yes>
-						<kbd>Enter</kbd><span>Confirm</span>
-					</button>
-					<button class="sp-btn" value="no" data-confirm-no><kbd>Esc</kbd><span>Cancel</span></button>
-				</div>
-			</form>
-		</dialog>`
 
 export function parentOf(page: Page) {
 	if (page.back !== undefined) return page.back
@@ -261,64 +88,12 @@ export function layout(context: Context, page: Page) {
 				<div class="app${page.drawer ? ' with-drawer' : ''}">
 					${page.nav ? html`<div class="with-nav">${page.nav}${main}</div>` : main}
 				</div>
-				${statusBar(context, page)}
+				${statusBar({ context, page })}
 				<div class="sp-saystrip" role="status" data-say-strip hidden></div>
 				${context.toast ? html`<div class="toast" role="status" data-toast title="${context.toast}">${cut(context.toast)}</div>` : ''}
 				<div class="sr-only" aria-live="polite" data-announcer></div>
-				${dialogs(context.harness)} ${page.viewer ? viewer : ''}
+				${keysHelp()} ${findPalette({ harness: context.harness })} ${confirmDialog()}
+				${page.viewer ? viewer : ''}
 			</body>
 		</html>`
-}
-
-export function crumbBar(crumbs: Page['crumbs']) {
-	if (!crumbs?.length) return html``
-	return html`<p class="sp-path">
-		${crumbs.map(([label, href], index) => [
-			index ? html` › ` : '',
-			href ? html`<a href="${href}">${label}</a>` : html`<span aria-current="page">${label}</span>`,
-		])}
-	</p>`
-}
-
-export function heading(title: Html | string, sub: Html | string | null = null, extra: Html | string = '') {
-	return html`<div class="sp-h">
-		<div>
-			<h1>${title}</h1>
-			${sub ? html`<p class="sp-sub">${sub}</p>` : ''}
-		</div>
-		${extra}
-	</div>`
-}
-
-export function emptyNotice(what: string, next: Html | string, extra: Html | '' = '') {
-	return html`<div class="sp-empty">
-		<p><b>${what}</b></p>
-		<p>${next}</p>
-		${extra}
-	</div>`
-}
-
-export function banner(tone: 'warn' | 'info' | 'fail', content: Html | string) {
-	return html`<div class="banner ${tone}" role="${tone === 'info' ? 'status' : 'alert'}">${content}</div>`
-}
-
-const downloadNames: Record<string, [string, string]> = {
-	html: ['HTML', 'print-ready'],
-	md: ['Markdown', '.md'],
-	json: ['JSON', 'data'],
-	junit: ['JUnit XML', 'for CI'],
-}
-
-export function downloads(label: string, base: string, note: string, formats = ['html', 'md', 'json']) {
-	const item = (format: string) =>
-		html`<a href="${base}.${format}" download data-download="${format}"
-			>${downloadNames[format][0]} <span class="muted">${downloadNames[format][1]}</span></a
-		>`
-	return html`<details class="menu" data-menu>
-		<summary class="sp-btn" title="${note}">${label}</summary>
-		<div class="menu-list">
-			${formats.map(item)}
-			<p class="menu-note">${note}</p>
-		</div>
-	</details>`
 }

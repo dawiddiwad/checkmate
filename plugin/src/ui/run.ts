@@ -1,16 +1,21 @@
 import type { Store } from '../store.ts'
-import { navigator, reviewOf } from './review.ts'
-import type { Html } from './html.ts'
-import type { Context, Page } from './layout.ts'
-import type { FormState } from './forms.ts'
 import { evidenceBytes, planDetail, runDetail } from '../views.ts'
 import { decisionToken, planRevision, planRunGaps } from '../plans.ts'
-import { hasMetadata, html, icon, join, metadataList, pill, plural, short, time, words } from './html.ts'
-import { banner, crumbBar, downloads } from './layout.ts'
 import type { EvidenceFile } from './evidence.ts'
-import { emptyState, recordPanel, returnFields, verdictPanel } from './forms.ts'
+import type { FormState } from './forms.ts'
+import type { Html } from './html.ts'
+import type { Context, Page } from './layout.ts'
+import { banner } from './components/banner.ts'
+import { resultCell } from './components/board.ts'
+import { groupHeader, listRow } from './components/list-row.ts'
+import { downloadMenu } from './components/menu.ts'
+import { crumbBar } from './components/page-heading.ts'
+import { statusCounts, statusMark } from './components/status-mark.ts'
 import { evidenceList, shownAsText } from './evidence.ts'
-import { counts, runStatus, runUsageLine } from './lists.ts'
+import { emptyState, recordPanel, returnFields, verdictPanel } from './forms.ts'
+import { hasMetadata, html, join, metadataList, plural, short, time, words } from './html.ts'
+import { runStatus, runUsageLine } from './lists.ts'
+import { navigator, reviewOf } from './review.ts'
 
 type Detail = ReturnType<typeof runDetail>
 type Evidence = Detail['tests'][number]['evidence'][number]
@@ -58,7 +63,7 @@ function assertionRow(store: Store, detail: Detail, test: RunTest, assertion: As
 	if (!assertion.result)
 		return html`<li class="asr waiting" id="${reference}" data-key="${reference}">
 			<div class="asr-row">
-				${icon(null)}<span class="aid">${assertion.assertionId}</span>
+				${resultCell({ result: null })}<span class="aid">${assertion.assertionId}</span>
 				<div class="asr-text">
 					${assertion.check}
 					<div class="obs">No result yet.</div>
@@ -74,7 +79,7 @@ function assertionRow(store: Store, detail: Detail, test: RunTest, assertion: As
 	>
 		<details ${open ? html`open` : ''} data-open-key="${reference}">
 			<summary class="asr-row">
-				${icon(assertion.result)}<span class="aid">${assertion.assertionId}</span>
+				${resultCell({ result: assertion.result })}<span class="aid">${assertion.assertionId}</span>
 				<div class="asr-text">
 					${assertion.check}
 					${
@@ -96,9 +101,11 @@ function assertionRow(store: Store, detail: Detail, test: RunTest, assertion: As
 }
 
 function testState(test: RunTest, detail: Detail) {
-	if (test.outcome) return pill(test.outcome)
-	if (detail.state === 'finalized') return pill('not_run')
-	return test.assertions.some((assertion) => assertion.result) ? pill('running') : pill('waiting')
+	if (test.outcome) return statusMark({ state: test.outcome })
+	if (detail.state === 'finalized') return statusMark({ state: 'not_run' })
+	return test.assertions.some((assertion) => assertion.result)
+		? statusMark({ state: 'running' })
+		: statusMark({ state: 'waiting' })
 }
 
 function testCard(store: Store, detail: Detail, test: RunTest) {
@@ -137,7 +144,7 @@ function strip(detail: Detail) {
 	return html`<div class="strip" data-region="summary">
 		<div><small>Completion</small><strong>${result ? words(result.completion) : 'running'}</strong></div>
 		<div><small>Coverage</small><strong>${result ? words(result.coverage.status) : '–'}</strong></div>
-		<div><small>Tests</small><strong>${counts(outcomeCounts(detail))}</strong></div>
+		<div><small>Tests</small><strong>${statusCounts({ counts: outcomeCounts(detail) })}</strong></div>
 		<div><small>Cleanup</small><strong>${result ? words(result.cleanup.status) : '–'}</strong></div>
 	</div>`
 }
@@ -153,9 +160,9 @@ function findingCard(store: Store, detail: Detail, finding: Detail['findings'][n
 	])
 	return html`<article class="finding" id="${finding.id}" data-key="card:${finding.id}">
 		<header class="test-h">
-			${pill(finding.type)} <span class="id">${finding.id}</span>
+			${statusMark({ state: finding.type })} <span class="id">${finding.id}</span>
 			<h3>${finding.title}</h3>
-			<span class="count">${pill(finding.severity)}</span>
+			<span class="count">${statusMark({ state: finding.severity })}</span>
 		</header>
 		<div class="test-b">
 			<div class="compare">
@@ -234,7 +241,8 @@ function gapCard(
 	)
 	return html`<div class="gap" id="${gap.id}" data-key="card:${gap.id}">
 		<div class="gap-h">
-			<span class="id mono">${gap.id}</span> ${pill(gap.severity)} ${pill(gap.status)}
+			<span class="id mono">${gap.id}</span> ${statusMark({ state: gap.severity })}
+			${statusMark({ state: gap.status })}
 			<span class="gap-refs muted"
 				>affects ${[...gap.requirementIds, ...gap.testIds].join(', ') || 'the plan'}</span
 			>
@@ -244,7 +252,8 @@ function gapCard(
 		<div class="actions">
 			${
 				adopted
-					? html`${pill('resolved', 'in plan')} <a href="/plans/${latest}#${gap.id}">${latest}</a>`
+					? html`${statusMark({ state: 'resolved', label: 'in plan' })}
+							<a href="/plans/${latest}#${gap.id}">${latest}</a>`
 					: html`<a class="btn small" href="/plans/${latest}/gaps/${gap.id}#answer">Answer</a>
 							${adoptForm(context, detail, gap.id, revision.sha256)}`
 			}
@@ -285,7 +294,7 @@ function coverage(store: Store, detail: Detail) {
 								}
 							</td>
 							<td class="mono">${row.testIds.join(', ') || '–'}</td>
-							<td>${pill(row.status)}</td>
+							<td>${statusMark({ state: row.status })}</td>
 						</tr>`
 				)}
 			</tbody>
@@ -299,7 +308,7 @@ function cleanup(detail: Detail) {
 		<div>
 			<dt>Cleanup</dt>
 			<dd>
-				${result ? html`${pill(result.cleanup.status)} ${result.cleanup.reason}` : html`<span class="muted">Not finished.</span>`}
+				${result ? html`${statusMark({ state: result.cleanup.status })} ${result.cleanup.reason}` : html`<span class="muted">Not finished.</span>`}
 			</dd>
 		</div>
 		<div>
@@ -335,7 +344,7 @@ function cleanup(detail: Detail) {
 					class="mono"
 					href="/settings/targets/${detail.instance.targetId}#instance-${detail.instance.instanceId}"
 					>${detail.instance.instanceId}</a
-				>${detail.instance.environment ? html` · ${detail.instance.environment}` : ''}${detail.instance.retired ? html` · ${pill('retired')}` : ''}
+				>${detail.instance.environment ? html` · ${detail.instance.environment}` : ''}${detail.instance.retired ? html` · ${statusMark({ state: 'retired' })}` : ''}
 			</dd>
 		</div>
 		${
@@ -403,7 +412,8 @@ export function decisionPanel(
 		return recordPanel(
 			'Decision',
 			html`<p class="subj">
-					${pill(latest.verdict, latest.verdict === 'approved' ? 'accepted' : 'rejected')} ${detail.runId}
+					${statusMark({ state: latest.verdict, label: latest.verdict === 'approved' ? 'accepted' : 'rejected' })}
+					${detail.runId}
 				</p>
 				<p class="help">
 					By ${latest.actor} · ${time(latest.at)} · sha256 <code>${short(latest.sha256)}</code>
@@ -450,29 +460,25 @@ function runRow(
 	title: Html | string,
 	meta: Html | string = ''
 ) {
-	return html`<div
-		class="sp-row${key === selected ? ' cur' : ''}"
-		role="option"
-		aria-selected="false"
-		tabindex="-1"
-		id="run-row-${key.replace(/[^A-Za-z0-9-]/g, '-')}"
-		data-row
-		data-key="${key}"
-		data-href="${runItemHref(runId, key)}"
-		data-label="${typeof label === 'string' ? label : key}"
-	>
-		<span class="sp-c-cb"></span>
-		<span class="sp-c-tag">${tag}</span>
-		<span class="sp-c-id">${label}</span>
-		<span class="sp-c-title ell" title="${typeof title === 'string' ? title : ''}">${title}</span>
-		<span class="sp-c-meta ell" title="${typeof meta === 'string' ? meta : ''}">${meta}</span>
-	</div>`
+	return listRow({
+		id: `run-row-${key.replace(/[^A-Za-z0-9-]/g, '-')}`,
+		key,
+		href: runItemHref(runId, key),
+		label: typeof label === 'string' ? label : key,
+		inListbox: true,
+		current: key === selected,
+		tag,
+		shownId: label,
+		title,
+		titleText: typeof title === 'string' ? title : '',
+		meta,
+		metaText: typeof meta === 'string' ? meta : '',
+	})
 }
 
 function runGroup(title: string, rows: Html[]) {
 	if (!rows.length) return ''
-	return html`<div class="sp-gh" role="presentation">${title} <span>${rows.length}</span></div>
-		${rows}`
+	return html`${groupHeader({ label: title, count: rows.length })} ${rows}`
 }
 
 function passedCount(test: RunTest) {
@@ -499,13 +505,21 @@ function runList(detail: Detail, selected: string) {
 			`finding:${finding.id}`,
 			selected,
 			finding.id,
-			pill(finding.severity),
+			statusMark({ state: finding.severity }),
 			finding.title,
 			words(finding.type)
 		)
 	)
 	const gaps = detail.newGaps.map((gap) =>
-		runRow(detail.runId, `gap:${gap.id}`, selected, gap.id, pill(gap.severity), gap.question, words(gap.status))
+		runRow(
+			detail.runId,
+			`gap:${gap.id}`,
+			selected,
+			gap.id,
+			statusMark({ state: gap.severity }),
+			gap.question,
+			words(gap.status)
+		)
 	)
 	const record = [
 		runRow(
@@ -513,7 +527,9 @@ function runList(detail: Detail, selected: string) {
 			'coverage',
 			selected,
 			'Coverage',
-			result ? pill(result.coverage.status) : pill('pending', 'not known yet'),
+			result
+				? statusMark({ state: result.coverage.status })
+				: statusMark({ state: 'pending', label: 'not known yet' }),
 			result ? `${plural(result.coverage.requirements.length, 'requirement')}` : 'Known when the run finishes.'
 		),
 		runRow(
@@ -521,7 +537,9 @@ function runList(detail: Detail, selected: string) {
 			'cleanup',
 			selected,
 			'Cleanup',
-			result ? pill(result.cleanup.status) : pill('pending', 'not finished'),
+			result
+				? statusMark({ state: result.cleanup.status })
+				: statusMark({ state: 'pending', label: 'not finished' }),
 			plural(detail.attempts.length, 'attempt')
 		),
 	]
@@ -537,7 +555,7 @@ function runList(detail: Detail, selected: string) {
 			</p>
 		</div>
 		<div class="sp-list" role="listbox" aria-label="Run ${detail.runId}" data-list>
-			${runGroup('Run', [runRow(detail.runId, 'summary', selected, 'Overview', '', html`${counts(outcomeCounts(detail))}`)])}
+			${runGroup('Run', [runRow(detail.runId, 'summary', selected, 'Overview', '', html`${statusCounts({ counts: outcomeCounts(detail) })}`)])}
 			${runGroup('Tests', tests)} ${runGroup('Findings', found)} ${runGroup('New gaps', gaps)}
 			${runGroup('Record', record)}
 		</div>`
@@ -556,7 +574,7 @@ function openChecks(detail: Detail) {
 			${rows.map(
 				({ test, assertion }) =>
 					html`<li>
-						${icon(assertion.result)}
+						${resultCell({ result: assertion.result })}
 						${assertionLink(detail.runId, `${test.testId}.${assertion.assertionId}`)}
 						${assertion.check}${assertion.observed ? html` <span class="muted">Observed: ${assertion.observed}</span>` : ''}
 					</li>`
@@ -567,7 +585,7 @@ function openChecks(detail: Detail) {
 
 function summaryDetail(store: Store, context: Context, detail: Detail, state: FormState | null, crumbs: Html) {
 	const report = detail.result
-		? downloads(
+		? downloadMenu(
 				'Download report',
 				`/runs/${detail.runId}/report`,
 				'The HTML report is self-contained and print-ready. Open it and print to PDF. JUnit XML is for CI.',
@@ -578,7 +596,7 @@ function summaryDetail(store: Store, context: Context, detail: Detail, state: Fo
 		<h2 class="q-h">Overview</h2>
 		${strip(detail)}
 		<p class="muted small" data-region="run-usage">${runUsageLine(detail)}</p>
-		${detail.warnings.map((warning) => banner('warn', warning))} ${openChecks(detail)}
+		${detail.warnings.map((warning) => banner({ kind: 'warn', content: warning }))} ${openChecks(detail)}
 		${decisionPanel(store, context, detail, state, returnFields({ key: 'summary' }, `/runs/${detail.runId}`))}
 		<div class="actions">${report}</div>`
 }
@@ -647,12 +665,13 @@ export function runPage(
 			>
 				${
 					!detail.result && interruption
-						? banner(
-								'info',
-								html`<b>Delegated worker interrupted ${time(interruption)}.</b> Recorded results stay.
-									Run <code>checkmate run resume ${runId}</code> to continue. To end the run, use
-									<code>checkmate run finish ${runId}</code> with a completion and cleanup result.`
-							)
+						? banner({
+								kind: 'info',
+								content: html`<b>Delegated worker interrupted ${time(interruption)}.</b> Recorded
+									results stay. Run <code>checkmate run resume ${runId}</code> to continue. To end the
+									run, use <code>checkmate run finish ${runId}</code> with a completion and cleanup
+									result.`,
+							})
 						: ''
 				}
 				${pane}

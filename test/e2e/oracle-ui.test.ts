@@ -884,7 +884,10 @@ test(
 			page
 				.locator('[data-region="recipes"] [data-row]')
 				.evaluateAll((rows) =>
-					rows.map((row) => [row.getAttribute('data-label'), row.querySelector('[data-source]')?.getAttribute('data-source')])
+					rows.map((row) => [
+						row.getAttribute('data-label'),
+						row.querySelector('[data-source]')?.getAttribute('data-source'),
+					])
 				)
 		assert.deepEqual(
 			await sources(),

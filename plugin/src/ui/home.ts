@@ -56,7 +56,8 @@ function miniMap(review: Review) {
 function nextStep(review: Review) {
 	const verdict = verdictLine(review)
 	const href = (view: string) => reviewHref(review.planId, view, '&focus=list')
-	if (verdict.blocking) return [`Answer ${plural(verdict.blocking, 'blocking question')}`, href('needs'), true] as const
+	if (verdict.blocking)
+		return [`Answer ${plural(verdict.blocking, 'blocking question')}`, href('needs'), true] as const
 	if (verdict.findings) return [`Look at ${plural(verdict.findings, 'finding')}`, href('needs'), false] as const
 	if (verdict.open) return [`Answer ${plural(verdict.open, 'question')}`, href('needs'), false] as const
 	if (review.items.some((item) => item.needs)) return ['Decide what waits', href('needs'), false] as const
@@ -75,16 +76,14 @@ const roleWords: Record<string, string> = {
 function tile(review: Review, plan: PlanListRow, runDefects: number, index: number) {
 	const { loop, costUsd, costPartial } = plan
 	const verdict = verdictLine(review)
-	const handed = review.items.filter((item) => item.kind === 'defect' && item.claim?.handoff).length
 	const latest = review.map.builds.at(-1)
 	const [label, href, blocks] = nextStep(review)
 	const last = review.explorations.at(-1)
 	const ended = !review.running && last && ['stopped', 'interrupted'].includes(last.state) ? last : null
 	const nums: Array<[number, string, boolean]> = [
+		[verdict.blocking, 'block testing', verdict.blocking > 0],
+		[verdict.findings, 'to look at', false],
 		[verdict.defects + runDefects, 'defects', false],
-		[verdict.findings, 'to look at', verdict.findings > 0],
-		[verdict.open, 'questions', verdict.blocking > 0],
-		[handed, 'handed over', false],
 	]
 	return html`<div
 		class="sp-ct"
@@ -126,14 +125,19 @@ function tile(review: Review, plan: PlanListRow, runDefects: number, index: numb
 			</div>
 			<h2 class="sp-ct-title ell" title="${review.objective}">${review.objective}</h2>
 			<p class="sp-ct-verdict"><b>${verdict.head}</b> ${verdict.tail}</p>
-			<p class="sp-ct-cost" title="Reported cost across this plan’s explorations, chats, and structured runs">
-				Total cost ${costText(costUsd, costPartial)}
-			</p>
+			${
+				costUsd === null
+					? ''
+					: html`<p class="sp-ct-cost" title="Reported cost across this plan’s explorations, chats, and structured runs">
+							Total cost ${costText(costUsd, costPartial)}
+						</p>`
+			}
 		</div>
 		${miniMap(review)}
 		<div class="sp-nums">
 			${nums.map(
-				([value, name, hot]) => html`<div><b class="${hot ? 'att' : value ? '' : 'zero'}">${value}</b><span>${name}</span></div>`
+				([value, name, hot]) =>
+					html`<div><b class="${hot ? 'att' : value ? '' : 'zero'}">${value}</b><span>${name}</span></div>`
 			)}
 		</div>
 		<div class="sp-ct-opts">
@@ -163,6 +167,14 @@ function newChangeRow(index: number) {
 	</div>`
 }
 
+const legend = html`<ul class="sp-legend" aria-label="Board key">
+	<li><span class="sp-mk k-pass" aria-hidden="true"></span>passed</li>
+	<li><span class="sp-mk k-fail" aria-hidden="true">${glyph('✗')}</span>failed</li>
+	<li><span class="sp-mk k-run" aria-hidden="true"></span>running</li>
+	<li><span class="sp-mk k-q" aria-hidden="true">?</span>needs you</li>
+	<li><span class="sp-mk k-none" aria-hidden="true"></span>not run</li>
+</ul>`
+
 export function homePage(store: Store): Page {
 	const runDefects = new Map<string, number>()
 	for (const { planId } of findingList(store, { open: true }))
@@ -180,6 +192,12 @@ export function homePage(store: Store): Page {
 	const plans = listed.map((each) => each.plan)
 	const reviews = listed.map((each) => each.review)
 	const blocking = reviews.reduce((sum, review) => sum + verdictLine(review).blocking, 0)
+	const testing = reviews.filter((review) => review.running).length
+	const subtitle = html`${plural(plans.length, 'plan')} · ${testing} testing now${
+		blocking > 0
+			? html` · <span class="att">${plural(blocking, 'question')} ${blocking === 1 ? 'blocks' : 'block'} testing</span>`
+			: ''
+	}`
 	const body = html`<div class="sp-home" role="list" aria-label="Plans" data-list>
 		${listed.map(({ plan, review }, index) => tile(review, plan, runDefects.get(plan.planId) ?? 0, index))}${newChangeRow(
 			reviews.length
@@ -198,9 +216,8 @@ export function homePage(store: Store): Page {
 		body: html`<div data-region="home">
 			${heading(
 				'Plans',
-				plans.length
-					? `${plural(plans.length, 'plan')}. ${plural(blocking, 'question')} ${blocking === 1 ? 'blocks' : 'block'} testing. Each tile shows the rules of the plan against its last builds.`
-					: null
+				plans.length ? subtitle : null,
+				legend
 			)}
 			${body}
 		</div>`,

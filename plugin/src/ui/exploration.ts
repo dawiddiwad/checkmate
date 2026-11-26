@@ -891,9 +891,13 @@ export function explorationPage(
 										>`
 								)
 					}
-					<span class="sp-pill" title="Reported cost across this exploration and its follow-ups"
-						>Total cost ${costText(live.costUsd, live.costPartial)}</span
-					>
+					${
+						live.costUsd === null
+							? ''
+							: html`<span class="sp-pill" title="Reported cost across this exploration and its follow-ups"
+									>Total cost ${costText(live.costUsd, live.costPartial)}</span
+								>`
+					}
 				</div>
 			</div>
 			<div data-region="exploration-banner">

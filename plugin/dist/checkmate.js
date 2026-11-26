@@ -20756,10 +20756,10 @@ function piRpcCatalog(program, workspace2, env, timeout) {
 }
 function piModels(stdout) {
   const lines2 = stripVTControlCharacters2(stdout).trim().split("\n");
-  const header2 = lines2.findIndex((line) => /^provider\s+model\s+context\b/.test(line.trim()));
-  if (header2 === -1) return lines2.some((line) => /^No models available\./.test(line.trim())) ? [] : void 0;
-  const columns2 = lines2[header2].trim().split(/\s+/).length;
-  return lines2.slice(header2 + 1).flatMap((line) => {
+  const header = lines2.findIndex((line) => /^provider\s+model\s+context\b/.test(line.trim()));
+  if (header === -1) return lines2.some((line) => /^No models available\./.test(line.trim())) ? [] : void 0;
+  const columns2 = lines2[header].trim().split(/\s+/).length;
+  return lines2.slice(header + 1).flatMap((line) => {
     const fields = line.trim().split(/\s{2,}/);
     if (fields.length !== columns2) return [];
     const [provider, model] = fields;
@@ -27859,11 +27859,11 @@ function words2(status) {
   return status.replace(/_/g, " ");
 }
 var toneColor = {
-  pass: "green",
-  fail: "red",
-  warn: "amber",
-  unsure: "amber",
-  acc: "blue",
+  pass: "pass",
+  fail: "fail",
+  warn: "you",
+  unsure: "you",
+  acc: "run",
   block: "",
   muted: ""
 };
@@ -28100,21 +28100,15 @@ function themeForm(context) {
 		</button>
 	</form>`;
 }
-function header(context) {
+function statusWho(context) {
   const back = encodeURIComponent(context.path);
   const actor = context.actor ? html2`<a class="actor" href="/actor?back=${back}" title="${context.actor}. Change your name"
 				>${context.actor}</a
 			>` : html2`<a class="actor att" href="/actor?back=${back}">Set your name</a>`;
-  return html2`<header class="top">
-		<div class="top-in">
-			<a class="brand" href="/" aria-label="Checkmate, home">${mark()}<span>Checkmate</span></a>
-			<span class="top-fill"></span>
-			<div class="who">
-				<span class="live" data-live hidden>Connecting</span>
-				${actor} ${themeForm(context)}
-			</div>
-		</div>
-	</header>`;
+  return html2`<div class="who">
+		<span class="live" data-live hidden>Connecting</span>
+		${actor} ${themeForm(context)}
+	</div>`;
 }
 function statusLink(page, section, href, label) {
   const current2 = page.section === section ? html2` aria-current="page"` : "";
@@ -28124,6 +28118,7 @@ function statusBar(context, page) {
   const path = page.crumbs?.length ? page.crumbs : [[page.title, null]];
   const waiting = context.queueCount;
   return html2`<footer class="statusbar" aria-label="Status bar">
+		<a class="brand" href="/" aria-label="Checkmate, home">${mark()}<span>Checkmate</span></a>
 		<nav class="sb-where" aria-label="Where you are">
 			<ol>
 				${path.map(
@@ -28194,6 +28189,7 @@ function statusBar(context, page) {
 		</span>
 		<span class="sb-say" aria-live="polite" data-say></span>
 		<span class="sb-keys" data-hints></span>
+		${statusWho(context)}
 	</footer>`;
 }
 var dialogs = (harness) => html2`<dialog class="sp-keys" data-keys aria-labelledby="keys-title">
@@ -28278,7 +28274,6 @@ function layout(context, page) {
 				${page.address ? html2`data-address="${page.address}"` : ""}
 			>
 				<a class="skip" href="#main">Skip to content</a>
-				${header(context)}
 				<div class="app${page.drawer ? " with-drawer" : ""}">
 					${page.nav ? html2`<div class="with-nav">${page.nav}${main2}</div>` : main2}
 				</div>
@@ -28961,10 +28956,10 @@ function rowOptions(context, item, returnTo) {
 	</div>`;
 }
 function askBadge() {
-  return html2`<span class="sp-pill amber">ASKS</span>`;
+  return html2`<span class="sp-pill you">Asks</span>`;
 }
 function askingPill() {
-  return html2`<span class="sp-pill amber"><span class="dot" aria-hidden="true"></span>Asks</span>`;
+  return html2`<span class="sp-pill you"><span class="dot" aria-hidden="true"></span>Asks</span>`;
 }
 function optionOf(context, item, from, choice2, n) {
   const key = html2`<kbd aria-hidden="true">${n}</kbd><span>${choice2.label}</span>`;
@@ -29212,13 +29207,13 @@ function permissionHistory(store, explorationId, params, from) {
 function decisionPill(item) {
   const kind = item.decision.kind;
   const look = {
-    allow: ["Allowed", "green"],
-    "allow-kind": ["Allowed", "green"],
-    "allow-tool": ["Allowed", "green"],
-    always: ["Allowed", "green"],
-    rule: ["By rule", "green"],
-    deny: ["Denied", "red"],
-    stop: ["Stopped", "red"],
+    allow: ["Allowed", "pass"],
+    "allow-kind": ["Allowed", "pass"],
+    "allow-tool": ["Allowed", "pass"],
+    always: ["Allowed", "pass"],
+    rule: ["By rule", "pass"],
+    deny: ["Denied", "fail"],
+    stop: ["Stopped", "fail"],
     closed: ["Closed", ""]
   };
   const [label, tone2] = look[kind];
@@ -30538,7 +30533,7 @@ function recordDrawer(store, context, review, item, view, refusal) {
 				<div class="sp-pills">
 					${itemTag(item)}
 					${item.detail && item.kind !== "rejected" ? html2`<span class="sp-pill">${buildStateWords[latestClaimBuild(item.detail)?.state ?? ""] ?? ""}</span>` : ""}
-					${item.claim?.handoff ? html2`<span class="sp-pill green">Handed over</span>` : ""}
+					${item.claim?.handoff ? html2`<span class="sp-pill pass">Handed over</span>` : ""}
 					<span class="sp-c-id">${item.id}</span>
 					${when ? html2`<span class="sp-c-id">${time(when)}</span>` : ""}
 				</div>
@@ -30845,21 +30840,21 @@ function ruleGroups(review, view, items) {
   });
 }
 var tags = {
-  finding: ["? Finding", "amber"],
+  finding: ["Finding", "you"],
   question: ["Question", ""],
-  answered: ["Answered", "green"],
+  answered: ["Answered", "pass"],
   deferred: ["Deferred", ""],
   gap: ["Gap", ""],
-  approval: ["Approve", "blue"],
+  approval: ["Approve", "you"],
   rejected: ["Rejected", ""],
-  critical: ["!! Critical", "crit"],
-  high: ["! High", "red"],
-  medium: ["Medium", "amber"],
+  critical: ["Critical", "crit"],
+  high: ["High", "fail"],
+  medium: ["Medium", ""],
   low: ["Low", ""]
 };
 function itemTag(item) {
   if (item.permission) return askBadge();
-  if (item.blocking) return html2`<span class="sp-pill red"><span class="dot" aria-hidden="true"></span>Blocks</span>`;
+  if (item.blocking) return html2`<span class="sp-pill you"><span class="dot" aria-hidden="true"></span>Blocks</span>`;
   const [label, color] = tags[item.kind === "defect" ? item.severity ?? "low" : item.kind] ?? tags.low;
   return html2`<span class="sp-pill ${color}">${label}</span>`;
 }
@@ -31238,9 +31233,9 @@ function viewTitle(review, view) {
   return view;
 }
 var cellWords = {
-  failed: ["failed", "red"],
-  question: ["uncertain", "amber"],
-  passed: ["passed", "green"],
+  failed: ["failed", "fail"],
+  question: ["uncertain", "you"],
+  passed: ["passed", "pass"],
   not_checked: ["not tested", ""]
 };
 function buildHeadline(review, defects, critical) {
@@ -31809,18 +31804,18 @@ function rawCount(live, explorer) {
 }
 function testerState(live, item) {
   if (live.running && live.paused && (item.state === "running" || item.state === "given"))
-    return html2`<span class="sp-pill amber">Paused</span>`;
+    return html2`<span class="sp-pill you">Paused</span>`;
   if (!item.state) return html2`<span class="sp-pill">Not started</span>`;
   const look = {
-    given: "blue",
-    running: "blue",
-    ended: "green",
-    completed: "green",
-    failed: "red",
-    operational_error: "red",
-    interrupted: "amber",
-    stopping: "amber",
-    stopped: "amber"
+    given: "run",
+    running: "run",
+    ended: "pass",
+    completed: "pass",
+    failed: "fail",
+    operational_error: "fail",
+    interrupted: "",
+    stopping: "",
+    stopped: ""
   };
   const label = {
     given: "Given to the session",
@@ -32131,7 +32126,7 @@ function timeLine(live, run2) {
 function phaseStrip(run2) {
   return html2`<span class="sp-strip" role="list" aria-label="Phase of the test">
 		${phases.map(
-    (phase) => phase === run2.phase ? html2`<span class="sp-pill blue" role="listitem" aria-current="step" data-phase="${phase}"
+    (phase) => phase === run2.phase ? html2`<span class="sp-pill run" role="listitem" aria-current="step" data-phase="${phase}"
 						><span class="dot" aria-hidden="true"></span>${phase}</span
 					>` : html2`<span class="sp-pill" role="listitem" data-phase="${phase}">${phase}</span>`
   )}
@@ -33275,12 +33270,13 @@ function miniMap(review) {
 function nextStep(review) {
   const verdict = verdictLine(review);
   const href = (view) => reviewHref(review.planId, view, "&focus=list");
-  if (verdict.blocking) return [`Answer ${plural(verdict.blocking, "blocking question")}`, href("needs")];
-  if (verdict.findings) return [`Look at ${plural(verdict.findings, "finding")}`, href("needs")];
-  if (verdict.open) return [`Answer ${plural(verdict.open, "question")}`, href("needs")];
-  if (review.items.some((item) => item.needs)) return ["Decide what waits", href("needs")];
-  if (review.running) return ["Watch the testers", `/explorations/${review.running.explorationId}`];
-  return ["Open the plan", href("all")];
+  if (verdict.blocking)
+    return [`Answer ${plural(verdict.blocking, "blocking question")}`, href("needs"), true];
+  if (verdict.findings) return [`Look at ${plural(verdict.findings, "finding")}`, href("needs"), false];
+  if (verdict.open) return [`Answer ${plural(verdict.open, "question")}`, href("needs"), false];
+  if (review.items.some((item) => item.needs)) return ["Decide what waits", href("needs"), false];
+  if (review.running) return ["Watch the testers", `/explorations/${review.running.explorationId}`, false];
+  return ["Open the plan", href("all"), false];
 }
 var roleWords = {
   planner: "the planner",
@@ -33294,7 +33290,7 @@ function tile(review, plan, runDefects, index2) {
   const verdict = verdictLine(review);
   const handed = review.items.filter((item) => item.kind === "defect" && item.claim?.handoff).length;
   const latest = review.map.builds.at(-1);
-  const [label, href] = nextStep(review);
+  const [label, href, blocks] = nextStep(review);
   const last = review.explorations.at(-1);
   const ended = !review.running && last && ["stopped", "interrupted"].includes(last.state) ? last : null;
   const nums = [
@@ -33316,7 +33312,7 @@ function tile(review, plan, runDefects, index2) {
 		<div class="sp-ct-main">
 			<div class="sp-ct-head">
 				<span class="sp-c-id">${review.planId}</span>
-				${review.running ? html2`<span class="sp-pill blue"><span class="dot" aria-hidden="true"></span>Testing</span>` : ended ? pill(ended.state) : loop2 ? pill(loop2.state) : ""}
+				${review.running ? html2`<span class="sp-pill run"><span class="dot" aria-hidden="true"></span>Testing</span>` : ended ? pill(ended.state) : loop2 ? pill(loop2.state) : ""}
 				<span
 					class="sp-ct-when ell"
 					title="${latest ? `${latest.build}, first tested ${latest.firstTestedAt}` : review.target}"
@@ -33336,11 +33332,11 @@ function tile(review, plan, runDefects, index2) {
 		${miniMap(review)}
 		<div class="sp-nums">
 			${nums.map(
-    ([value2, name2, hot]) => html2`<div><b class="${hot ? "att" : ""}">${value2}</b><span>${name2}</span></div>`
+    ([value2, name2, hot]) => html2`<div><b class="${hot ? "att" : value2 ? "" : "zero"}">${value2}</b><span>${name2}</span></div>`
   )}
 		</div>
 		<div class="sp-ct-opts">
-			<a class="sp-btn" href="${href}" data-option><kbd>1</kbd><span>${label}</span></a>
+			<a class="sp-btn${blocks ? " you" : ""}" href="${href}" data-option><kbd>1</kbd><span>${label}</span></a>
 		</div>
 	</div>`;
 }
@@ -35806,10 +35802,13 @@ function invalidHref(item) {
   return `/settings/invalid-recipes?file=${encodeURIComponent(fileName2(item.path))}`;
 }
 function invalidPill() {
-  return html2`<span class="sp-pill red" data-source="invalid">invalid</span>`;
+  return html2`<span class="sp-pill fail" data-source="invalid">Invalid</span>`;
 }
+var sourceLabel = { "built-in": "Built-in", custom: "Custom" };
 function sourcePill(source) {
-  return html2`<span class="sp-pill${source === "custom" ? " blue" : ""}" data-source="${source}">${source}</span>`;
+  return html2`<span class="sp-pill${source === "custom" ? " run" : ""}" data-source="${source}"
+		>${sourceLabel[source]}</span
+	>`;
 }
 function codes(items) {
   return items.length ? join16(
@@ -42343,9 +42342,9 @@ function redirect(res, location, cookies = []) {
   res.writeHead(303, { ...securityHeaders(), Location: location, "Set-Cookie": cookies });
   res.end();
 }
-function parseCookies(header2) {
+function parseCookies(header) {
   const cookies = {};
-  for (const part of (header2 ?? "").split(";")) {
+  for (const part of (header ?? "").split(";")) {
     const index2 = part.indexOf("=");
     if (index2 < 0) continue;
     try {
@@ -42606,8 +42605,8 @@ data: ${matched.join(",") || "*"}
     const subjects = new Set(
       (request2.url.searchParams.get("subjects") ?? "").split(",").map((subject) => subject.trim()).filter(Boolean)
     );
-    const header2 = request2.req.headers["last-event-id"];
-    const after = Number(header2 ?? request2.url.searchParams.get("after") ?? Number.NaN);
+    const header = request2.req.headers["last-event-id"];
+    const after = Number(header ?? request2.url.searchParams.get("after") ?? Number.NaN);
     request2.res.writeHead(200, {
       ...securityHeaders(),
       "Content-Type": "text/event-stream; charset=utf-8",

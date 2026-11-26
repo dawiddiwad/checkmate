@@ -7,7 +7,13 @@ Use native `checkmate_*` tools. They take named arguments and return the recorde
 
 ## Set up and plan
 
-When the person asks for a recipe for another tool, use an existing recipe as an example. Run `checkmate recipe list --json` to read examples. Write the JSON and its Markdown usage file in a draft folder. Run `checkmate recipe add --file <recipe.json>` from the application workspace. Correct any validation error before you call checkmate_setup. The command installs the recipe in `.checkmate/recipes/`.
+If the tool needed for the test has no recipe, add one as part of setup. Use the entry names from its recipe.
+
+1. Read an example with `checkmate recipe list --json`. Write `<tool>.json` and the Markdown file named in `usage` side by side in a draft folder. Include `name`, `capability`, `kind`, `purpose`, `detect`, `environment`, `workspaceFolders`, `observeFrom`, `evidence`, and `usage`. For an executable, use its name with `kind: "cli"` and `detect: "path"`. For MCP, include `server` and `tools`. Declare needed entries in `entryPoints`. Omit it if none are needed.
+2. Run `checkmate recipe add --workspace <absolute project path> --file <recipe.json>`. Use the project folder where this host session started, or the workspace named in the setup refusal. The tool and draft can be elsewhere.
+3. Verify the reported workspace and fix any validation error. Call `checkmate_setup` with the declared entries. Tell the person you added the recipe and which commands it can run.
+
+If `checkmate` is unavailable, use `node "<plugin root>/dist/checkmate.js"` in its place.
 
 1. Ask for the application address or the entries its tool needs. Confirm the environment and permitted operations for a remote target. Use `checkmate_setup` and report its reachability result. Use `checkmate_replace_instance` for an instance correction and use the instance ID it returns.
 2. Report assumptions and readiness. Ask for the missing reset or isolation policy when data can change. Do not write a policy or a hook yourself. Stop for setup-only requests.

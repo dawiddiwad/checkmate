@@ -11,6 +11,7 @@ import {
 	shellWord,
 	requireNotInputWord,
 	requireText,
+	requireWellFormed,
 	revisionReference,
 	same,
 	slugId,
@@ -924,6 +925,7 @@ export function listText(words: string[]) {
 // The installed tools whose recipes fit the entries, and the entry points of the profile. A tool whose recipe
 // needs an entry that the person did not give is not recorded. Each entry that the person gave must be used.
 function fitEntries(
+	workspace: string,
 	catalog: Recipe[],
 	entries: Record<string, string>,
 	detected: Array<{ recipe: Recipe; path: string }>
@@ -931,10 +933,15 @@ function fitEntries(
 	const names = Object.keys(entries)
 	const declared = declaredEntryPoints(catalog)
 	const unknown = names.filter((name) => !declared.has(name))
-	requireCondition(
+	requireWellFormed(
 		!unknown.length,
-		`Unknown entry ${unknown.join(', ')}. Known entries: ${[...declared.keys()].join(', ')}.`,
-		'Use --url for a web application, or --entry <name>=<value> for an entry declared by a recipe. To install a recipe for another tool, run checkmate recipe add --file <recipe.json>.'
+		`Unknown entry ${unknown.join(', ')}. Entry names come from recipes. Workspace searched: ${workspace}. Known entries: ${[...declared.keys()].join(', ')}.`,
+		[
+			'If the tool needed for this test has no recipe, add one as part of setup.',
+			'Copy an example from checkmate recipe list --json. Include name, capability, kind, purpose, detect, environment, workspaceFolders, observeFrom, evidence and usage. For a CLI, use its executable name with kind cli and detect path. For MCP, include server and tools. Use entryPoints for needed entries only.',
+			`Write the JSON and its usage Markdown file side by side. Run checkmate recipe add --workspace ${shellWord(workspace)} --file <recipe.json>. Verify the workspace in the reply and retry setup with the declared entries.`,
+			'Tell the person you added the recipe and which commands it can run.',
+		].join(' ')
 	)
 	for (const name of names) {
 		const pattern = declared.get(name)?.pattern
@@ -996,7 +1003,12 @@ export function setupAssumptions(workspace: string, input: SetupInput) {
 	const instanceId = input.instanceId ?? 'local'
 	if (!input.instanceId) assumed.push('instance=local')
 	const catalog = recipes(workspace)
-	const { fitting: detected, entryPoints } = fitEntries(catalog, entries, detectedTools(catalog, input.env))
+	const { fitting: detected, entryPoints } = fitEntries(
+		workspace,
+		catalog,
+		entries,
+		detectedTools(catalog, input.env)
+	)
 	const capabilities = [...new Set(detected.map(({ recipe }) => recipe.capability))].sort()
 	assumed.push(
 		entryPoints.length === 1

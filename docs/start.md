@@ -97,7 +97,7 @@ Pi loads a project package only after it approves the folder. Start Pi with `--a
 
 Pi explorers started from the extension or review UI use the host tools and MCP servers available to the project. They start a fresh session and use integrations to gather context. The review UI reports a server that needs sign-in, and the tester continues with the available tools. Sign in through Pi before using that server in a test.
 
-Checkmate prints a `warning:` line when Pi declares another Checkmate package. Remove the copy you do not use:
+The Checkmate extension warns at Pi startup when Pi declares another Checkmate package. To check again, run `CHECKMATE_HARNESS=pi checkmate --version`. Remove the copy you do not use:
 
 ```sh
 pi remove <source>        # global copy

@@ -5483,7 +5483,20 @@ test('Report a second Checkmate package that Pi declares — a stale copy loads 
 		JSON.stringify({ packages: ['git:github.com/dawiddiwad/checkmate@wip/refactor-team-blue'] })
 	)
 	const env = { ...process.env, PI_CODING_AGENT_DIR: agent }
-	const version = spawnSync(process.execPath, [binary, '--version'], { cwd: workspace, env, encoding: 'utf8' })
+	const run = (harness: string | undefined, ...args: string[]) => {
+		const result = spawnSync(process.execPath, [binary, ...args], {
+			cwd: workspace,
+			env: { ...env, CHECKMATE_HARNESS: harness },
+			encoding: 'utf8',
+		})
+		assert.equal(result.status, 0, result.stderr)
+		return result
+	}
+	for (const harness of [undefined, 'claude', 'pi'])
+		assert.doesNotMatch(run(harness, 'recipe', 'list').stderr, /warning: Pi declares/)
+	for (const harness of [undefined, 'claude'])
+		assert.doesNotMatch(run(harness, '--version').stdout, /warning: Pi declares/)
+	const version = run('pi', '--version')
 	assert.equal(version.status, 0, version.stderr)
 	assert.match(
 		version.stdout + version.stderr,
@@ -7004,15 +7017,20 @@ test('Install and use a project tool recipe from the packed CLI', async (t) => {
 	assert.equal(noUsage.code, 1, noUsage.output)
 	assert.match(noUsage.output, /usage must name a regular Markdown file beside the recipe/)
 	writeFileSync(join(draft, 'sf.md'), usage)
-	const added = await command(draft, env, 'recipe', 'add', '--workspace', workspace, '--file', 'sf.json')
+	const hostEnv = { ...env, CLAUDE_PROJECT_DIR: workspace }
+	const added = await command(draft, hostEnv, 'recipe', 'add', '--file', 'sf.json')
 	assert.equal(added.code, 0, added.output)
+	assert.equal(added.body.workspace, workspace)
 	assert.equal(added.body.path, join(installed, 'sf.json'))
+	assert.equal(existsSync(join(draft, '.checkmate', 'recipes', 'sf.json')), false)
 	assert.equal(added.body.usagePath, join(installed, 'sf.md'))
 	assert.equal(existsSync(join(workspace, '.checkmate', 'checkmate.db')), false)
 	assert.equal(readFileSync(added.body.path, 'utf8'), json)
 	assert.equal(readFileSync(added.body.usagePath, 'utf8'), usage)
 
-	const { recipes } = await ok(['recipe', 'list'])
+	const hostList = await command(draft, hostEnv, 'recipe', 'list')
+	assert.equal(hostList.code, 0, hostList.output)
+	const { recipes } = hostList.body
 	assert.deepEqual(
 		recipes.map((entry: { recipe: { name: string }; source: string }) => [entry.recipe.name, entry.source]),
 		[
@@ -7044,9 +7062,18 @@ test('Install and use a project tool recipe from the packed CLI', async (t) => {
 	assert.equal(clash.code, 1, clash.output)
 	assert.match(clash.output, /name node is in use by the built-in recipe/)
 	assert.deepEqual(readdirSync(installed).sort(), ['sf.json', 'sf.md'])
-	const duplicate = await command(workspace, env, 'recipe', 'add', '--file', recipePath)
+	const duplicate = await command(draft, hostEnv, 'recipe', 'add', '--file', recipePath)
 	assert.equal(duplicate.code, 1, duplicate.output)
 	assert.match(duplicate.output, /name sf is in use by the custom recipe/)
+	const explicit = realpathSync(directory(t))
+	const compact = spawnSync(
+		process.execPath,
+		[binary, 'recipe', 'add', '--workspace', explicit, '--file', 'sf.json'],
+		{ cwd: draft, env: hostEnv, encoding: 'utf8' }
+	)
+	assert.equal(compact.status, 0, compact.stdout + compact.stderr)
+	assert.ok(compact.stdout.includes(`completed sf workspace=${explicit} path=`), compact.stdout)
+	assert.equal(existsSync(join(explicit, '.checkmate', 'recipes', 'sf.json')), true)
 
 	writeFileSync(
 		join(draft, 'sf'),
@@ -11581,10 +11608,22 @@ test('Set up a mobile app from its entries — the profile gets the entry points
 		['setup', '--entry', 'app=com.apple.Preferences', '--target', 'phone'],
 		/maestro needs the entries app and device. Missing: device\./
 	)
-	await refused(
-		['setup', '--entry', 'colour=red', '--target', 'phone'],
-		/Unknown entry colour\. Known entries: .*app.*web/
+	const unknown = await command(workspace, env, 'setup', '--entry', 'colour=red', '--target', 'phone')
+	assert.equal(unknown.code, 1, unknown.output)
+	assert.ok(
+		unknown.body.reasons
+			.join(' ')
+			.includes(
+				`Unknown entry colour. Entry names come from recipes. Workspace searched: ${realpathSync(workspace)}.`
+			),
+		unknown.output
 	)
+	assert.equal(unknown.body.refusal, 'malformed')
+	assert.match(unknown.body.reasons.join(' '), /Known entries: .*app.*web/)
+	assert.match(unknown.body.hint, /If the tool needed for this test has no recipe, add one as part of setup/)
+	assert.match(unknown.body.hint, /recipe list --json.*JSON and its usage Markdown file side by side/)
+	assert.ok(unknown.body.hint.includes(`recipe add --workspace ${realpathSync(workspace)} --file <recipe.json>`))
+	assert.match(unknown.body.hint, /Tell the person you added the recipe/)
 	await refused(['setup', '--entry', 'web=ftp://x', '--target', 'phone'], /Entry web must match \^https\?:\/\//)
 	await refused(
 		['setup', ...mobileEntries, '--target', 'phone'],

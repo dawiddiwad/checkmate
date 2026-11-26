@@ -13955,14 +13955,19 @@ function givenEntries(input) {
 function listText(words5) {
   return words5.length < 2 ? words5.join("") : `${words5.slice(0, -1).join(", ")} and ${words5.at(-1)}`;
 }
-function fitEntries(catalog2, entries, detected) {
+function fitEntries(workspace2, catalog2, entries, detected) {
   const names = Object.keys(entries);
   const declared = declaredEntryPoints(catalog2);
   const unknown = names.filter((name2) => !declared.has(name2));
-  requireCondition(
+  requireWellFormed(
     !unknown.length,
-    `Unknown entry ${unknown.join(", ")}. Known entries: ${[...declared.keys()].join(", ")}.`,
-    "Use --url for a web application, or --entry <name>=<value> for an entry declared by a recipe. To install a recipe for another tool, run checkmate recipe add --file <recipe.json>."
+    `Unknown entry ${unknown.join(", ")}. Entry names come from recipes. Workspace searched: ${workspace2}. Known entries: ${[...declared.keys()].join(", ")}.`,
+    [
+      "If the tool needed for this test has no recipe, add one as part of setup.",
+      "Copy an example from checkmate recipe list --json. Include name, capability, kind, purpose, detect, environment, workspaceFolders, observeFrom, evidence and usage. For a CLI, use its executable name with kind cli and detect path. For MCP, include server and tools. Use entryPoints for needed entries only.",
+      `Write the JSON and its usage Markdown file side by side. Run checkmate recipe add --workspace ${shellWord(workspace2)} --file <recipe.json>. Verify the workspace in the reply and retry setup with the declared entries.`,
+      "Tell the person you added the recipe and which commands it can run."
+    ].join(" ")
   );
   for (const name2 of names) {
     const pattern = declared.get(name2)?.pattern;
@@ -14017,7 +14022,12 @@ function setupAssumptions(workspace2, input) {
   const instanceId = input.instanceId ?? "local";
   if (!input.instanceId) assumed.push("instance=local");
   const catalog2 = recipes(workspace2);
-  const { fitting: detected, entryPoints: entryPoints2 } = fitEntries(catalog2, entries, detectedTools(catalog2, input.env));
+  const { fitting: detected, entryPoints: entryPoints2 } = fitEntries(
+    workspace2,
+    catalog2,
+    entries,
+    detectedTools(catalog2, input.env)
+  );
   const capabilities = [...new Set(detected.map(({ recipe }) => recipe.capability))].sort();
   assumed.push(
     entryPoints2.length === 1 ? `entry point=${entryPoints2[0].name} (${entryPoints2[0].kind})` : `entry points=${entryPoints2.map((entry) => `${entry.name} (${entry.kind})`).join(", ")}`,
@@ -44597,7 +44607,7 @@ function versionLines(version3, bundle, env) {
       );
     }
   }
-  return [...lines2, ...piCopyWarnings(bundle, env, process.cwd())];
+  return env.CHECKMATE_HARNESS?.trim() === "pi" ? [...lines2, ...piCopyWarnings(bundle, env, process.cwd())] : lines2;
 }
 function piDeclarations(env, cwd) {
   const agentDirectory = env.PI_CODING_AGENT_DIR?.trim() || join22(homedir3(), ".pi", "agent");
@@ -44837,7 +44847,11 @@ var commands = {
     required: ["file"],
     workspaceRun: (args, context) => {
       const entry = addRecipe(context.workspace, resolve9(context.cwd, value(args, "file")));
-      return completed(entry.recipe.name, { path: entry.path, usagePath: entry.usagePath });
+      return completed(entry.recipe.name, {
+        workspace: context.workspace,
+        path: entry.path,
+        usagePath: entry.usagePath
+      });
     },
     print: (reply) => ({ facts: reply.data })
   },
@@ -47022,7 +47036,10 @@ function run(argv, io) {
   }
   const command = commands[name2];
   const subject = command.positionals.length && name2 !== "query" ? String(args[positionalName(command.positionals[0])] ?? name2) : name2;
-  const workspace2 = resolve9(io.cwd, value(args, "workspace") ?? ".");
+  const workspace2 = resolve9(
+    io.cwd,
+    value(args, "workspace") ?? (command.workspaceRun ? io.env.CLAUDE_PROJECT_DIR : void 0) ?? "."
+  );
   let store;
   try {
     const actor = command.write ? value(args, "actor") ?? defaultActor(workspace2, io.env) : void 0;
@@ -47163,7 +47180,6 @@ async function main(argv) {
     stdin: () => readFileSync15(0, "utf8")
   });
   process.stdout.write(outcome.output + "\n");
-  for (const line of piCopyWarnings(import.meta.url, process.env, process.cwd())) process.stderr.write(line + "\n");
   process.exitCode = outcome.code;
 }
 

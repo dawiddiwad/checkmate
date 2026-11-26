@@ -5,7 +5,13 @@ description: Set up a Checkmate target, correct its operations, or replace an in
 
 Read the workspace instructions. Use Checkmate tools from the current session.
 
-When the person asks for a recipe for another tool, use an existing recipe as an example. Run `checkmate recipe list --json` to read examples. Write the JSON and its Markdown usage file in a draft folder. Run `checkmate recipe add --file <recipe.json>` from the application workspace. Correct any validation error before you call {{tool setup}}. If you installed only the plugin, use `node "<plugin root>/dist/checkmate.js"` in place of `checkmate`. The command installs the recipe in `.checkmate/recipes/`.
+If the tool needed for the test has no recipe, add one as part of setup. Use the entry names from its recipe.
+
+1. Read an example with `checkmate recipe list --json`. Write `<tool>.json` and the Markdown file named in `usage` side by side in a draft folder. Include `name`, `capability`, `kind`, `purpose`, `detect`, `environment`, `workspaceFolders`, `observeFrom`, `evidence`, and `usage`. For an executable, use its name with `kind: "cli"` and `detect: "path"`. For MCP, include `server` and `tools`. Declare needed entries in `entryPoints`. Omit it if none are needed.
+2. Run `checkmate recipe add --workspace <absolute project path> --file <recipe.json>`. Use the project folder where this host session started, or the workspace named in the setup refusal. The tool and draft can be elsewhere.
+3. Verify the reported workspace and fix any validation error. Call `{{tool setup}}` with the declared entries. Tell the person you added the recipe and which commands it can run.
+
+If `checkmate` is unavailable, use `node "<plugin root>/dist/checkmate.js"` in its place.
 
 1. Call `{{tool list_targets}}` when the target is unclear. Use the only target if it matches the request.
 2. Ask for the application address or the entries its tool needs. For a remote target, confirm the environment and the operations the person permits. Record credential references.

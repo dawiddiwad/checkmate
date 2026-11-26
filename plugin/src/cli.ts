@@ -94,7 +94,7 @@ import { specFinding, specHandoff, specReview, specStatus } from './spec.ts'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { constants } from 'node:sqlite'
-import { piCopyWarnings, versionLines } from './build.ts'
+import { versionLines } from './build.ts'
 import { storeExplorationFindings } from './findingsRun.ts'
 import { settleEnded } from './cleanups.ts'
 import { owedCleanups, settleCleanups } from './resets.ts'
@@ -364,7 +364,11 @@ const commands: Record<string, Command> = {
 		required: ['file'],
 		workspaceRun: (args, context) => {
 			const entry = addRecipe(context.workspace, resolve(context.cwd, value(args, 'file')!))
-			return completed(entry.recipe.name, { path: entry.path, usagePath: entry.usagePath })
+			return completed(entry.recipe.name, {
+				workspace: context.workspace,
+				path: entry.path,
+				usagePath: entry.usagePath,
+			})
 		},
 		print: (reply) => ({ facts: reply.data }),
 	},
@@ -2716,7 +2720,10 @@ export function run(argv: string[], io: Io): Outcome {
 		command.positionals.length && name !== 'query'
 			? String(args[positionalName(command.positionals[0])] ?? name)
 			: name
-	const workspace = resolve(io.cwd, value(args, 'workspace') ?? '.')
+	const workspace = resolve(
+		io.cwd,
+		value(args, 'workspace') ?? (command.workspaceRun ? io.env.CLAUDE_PROJECT_DIR : undefined) ?? '.'
+	)
 	let store: Store | undefined
 	try {
 		const actor = command.write ? (value(args, 'actor') ?? defaultActor(workspace, io.env)) : undefined
@@ -2866,6 +2873,5 @@ export async function main(argv: string[]) {
 		stdin: () => readFileSync(0, 'utf8'),
 	})
 	process.stdout.write(outcome.output + '\n')
-	for (const line of piCopyWarnings(import.meta.url, process.env, process.cwd())) process.stderr.write(line + '\n')
 	process.exitCode = outcome.code
 }

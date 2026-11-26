@@ -24,6 +24,7 @@ export type Verdict = {
 	staleMessage: string
 	intro?: Html | ''
 	extra?: Html
+	foot?: Html
 }
 
 export function emptyState(): FormState {
@@ -118,15 +119,15 @@ export function verdictPanel(context: Context, verdict: Verdict, state: FormStat
 		data-region="decision"
 		data-stale-message="${verdict.staleMessage}"
 	>
-		<h2 class="sc-card-h" id="decide-title">Decision</h2>
-		<p class="subj">${verdict.question}</p>
-		<p class="sc-help">
+		<h2 class="sc-card-h" id="decide-title">${verdict.question}</h2>
+		<p class="sc-note">
 			${verdict.digestLabel} sha256 <code title="${verdict.sha256}">${short(verdict.sha256)}</code>. Your decision
 			is recorded in the log.
 		</p>
 		<div data-stale-slot>${messages(state)}</div>
 		${verdict.intro ?? ''}
 		${state.confirm ? confirmStep(context, verdict, state) : chooseStep(context, verdict, state)}
+		${verdict.foot ?? ''}
 	</section>`
 }
 

@@ -16,6 +16,8 @@ import { planCost } from '../../costs.ts'
 import type { FormState } from '../forms.ts'
 import type { Html } from '../html.ts'
 import type { Context, Page } from '../layout.ts'
+import { blockingBanner } from '../components/banner.ts'
+import { boardCell } from '../components/board.ts'
 import { formButton } from '../components/button.ts'
 import { dataTable, tableRow } from '../components/data-table.ts'
 import { emptyNotice } from '../components/empty-state.ts'
@@ -30,7 +32,8 @@ import { jumpLinks } from '../components/tabs.ts'
 import { emptyState, gapPanel, recordPanel, verdictPanel } from '../forms.ts'
 import { costText, glyph, hasMetadata, html, join, metadataList, plural, short, time, words } from '../html.ts'
 import { loopState, runStatus } from '../lists.ts'
-import { navigator, reviewOf } from '../review.ts'
+import type { Review } from '../review.ts'
+import { navigator, openedHref, outside, reviewOf, ruleBoard } from '../review.ts'
 import { claimsTable, explorationBanners, explorationsTable, questionsList } from './exploration.ts'
 
 type Detail = ReturnType<typeof planDetail>
@@ -248,43 +251,72 @@ function requirementsTable(plan: Plan) {
 function decisionsList(plan: Plan) {
 	if (!plan.decisions.length && !plan.assumptions.length)
 		return html`<p class="sc-empty is-line">No decision applied yet.</p>`
-	return html`<ul class="records">
-			${plan.decisions.map(
-				(decision) =>
-					html`<li>
-						<div class="record-h">
-							${statusMark({ state: decision.kind })}
-							<a class="sc-mono" href="#${decision.gapId}">${decision.gapId}</a>
-							<span class="sc-muted">by ${decision.actor}</span>
-							<span class="sc-mono sc-muted sc-note">${decision.id}</span>
-						</div>
-						<p>${decision.value}</p>
-						<p class="sc-muted sc-note">
-							Rationale:
-							${decision.rationale}${decision.source ? html` · Source <code>${decision.source}</code>` : ''}
-						</p>
-					</li>`
-			)}
-		</ul>
-		${
-			plan.assumptions.length
-				? html`<h3 class="sc-sub-h">Assumptions</h3>
-						<ul class="sc-plain">
-							${plan.assumptions.map((item) => html`<li>${item.text}</li>`)}
-						</ul>`
-				: ''
-		}`
+	return html`${
+		plan.decisions.length
+			? dataTable({
+					columns: ['Gap', 'Kind', 'Decision', 'By'],
+					rows: plan.decisions.map((decision) =>
+						tableRow({
+							attrs: { title: decision.id },
+							cells: [
+								html`<a class="sc-mono" href="#${decision.gapId}">${decision.gapId}</a>`,
+								statusMark({ state: decision.kind }),
+								{
+									content: html`${decision.value}
+										<div class="sc-muted sc-note">
+											Rationale:
+											${decision.rationale}${decision.source ? html` · Source <code>${decision.source}</code>` : ''}
+										</div>`,
+									attrs: { class: 'is-title' },
+								},
+								{ content: decision.actor, attrs: { class: 'is-muted' } },
+							],
+						})
+					),
+					scroll: true,
+				})
+			: ''
+	}
+	${
+		plan.assumptions.length
+			? html`<h3 class="sc-sub-h">Assumptions</h3>
+					<ul class="sc-plain">
+						${plan.assumptions.map((item) => html`<li>${item.text}</li>`)}
+					</ul>`
+			: ''
+	}`
+}
+
+function plainValue(value: string) {
+	if (!value.startsWith('"')) return value
+	try {
+		return String(JSON.parse(value))
+	} catch {
+		return value
+	}
 }
 
 function changeLine(line: string) {
-	const arrow = line.indexOf(' → ')
-	const colon = line.indexOf(': ')
-	if (arrow < 0 || colon < 0 || colon > arrow) return html`<li><code>${line}</code></li>`
-	return html`<li>
-		<code>${line.slice(0, colon)}</code>
-		<span class="was">${line.slice(colon + 2, arrow)}</span>
-		<span aria-hidden="true" class="arrow">${glyph('→')}</span><span class="sc-sr">changed to</span>
-		<span class="now">${line.slice(arrow + 3)}</span>
+	const added = /^(\S+) (added|removed): (.*)$/.exec(line)
+	if (added)
+		return html`<li class="${added[2] === 'added' ? 'is-add' : 'is-del'}">
+			<span class="sc-diff-op" aria-label="${added[2]}">${added[2] === 'added' ? '+' : '−'}</span>
+			<span class="sc-diff-id">${added[1]}</span>
+			<span>${plainValue(added[3])}</span>
+		</li>`
+	const changed = /^(\S+) (\S+): (.*) → (.*)$/.exec(line)
+	if (!changed)
+		return html`<li>
+			<span class="sc-diff-op" aria-hidden="true">·</span><span class="sc-diff-id"></span><span>${line}</span>
+		</li>`
+	return html`<li class="is-mod">
+		<span class="sc-diff-op" aria-label="changed">~</span>
+		<span class="sc-diff-id">${changed[1]}</span>
+		<span
+			>${changed[2]}: <span class="was">${plainValue(changed[3])}</span
+			><span aria-hidden="true" class="arrow">${glyph('→')}</span
+			><span class="sc-sr">changed to</span>${plainValue(changed[4])}</span
+		>
 	</li>`
 }
 
@@ -299,30 +331,33 @@ export function planHistoryList(store: Store, detail: Detail, all: boolean) {
 		<ol class="history${hidden ? ' clipped' : ''}">
 			${shown.map(
 				(item, index) =>
-					html`<li class="${item.revision === detail.revision ? 'current' : ''}">
+					html`<li class="sc-ver${item.revision === detail.revision ? ' is-cur' : ''}">
 						<details ${index === 0 ? html`open` : ''} data-open-key="revision:${item.revision}">
-							<summary class="record-h">
-								<span class="sc-mono rev">${detail.planId}@${item.revision}</span>
-								<span class="sc-muted">by ${item.actor} · ${time(item.at)}</span>
-								<code class="sc-muted sc-note" title="${item.sha256}">${short(item.sha256)}</code>
-								<span class="sc-muted sc-note"
-									>${item.changes.length ? plural(item.changes.length, 'change') : 'first revision'}</span
+							<summary class="sc-ver-h">
+								<span class="sc-ver-id">${detail.planId}@${item.revision}</span>
+								${item.revision === detail.revision ? statusMark({ state: detail.approval.state }) : ''}
+								<span class="sc-ver-m"
+									>by ${item.actor} · ${time(item.at)} ·
+									<code title="${item.sha256}">${short(item.sha256)}</code> ·
+									${item.changes.length ? plural(item.changes.length, 'change') : 'first revision'}</span
 								>
 							</summary>
-							<div class="history-b">
-								${
-									item.changes.length
-										? html`<ul class="changes">
-												${item.changes.map(changeLine)}
-											</ul>`
-										: html`<p class="sc-muted sc-note">First revision.</p>`
-								}
-								<p class="sc-note">
-									<a class="sc-h-link" href="/plans/${detail.planId}@${item.revision}"
-										>Open ${detail.planId}@${item.revision}</a
-									>
-								</p>
-							</div>
+							${
+								item.changes.length
+									? html`<ul class="sc-diff">
+											${item.changes.map(changeLine)}
+										</ul>`
+									: ''
+							}
+							${
+								item.revision === detail.revision
+									? ''
+									: html`<p class="sc-ver-open">
+											<a href="/plans/${detail.planId}@${item.revision}"
+												>Open ${detail.planId}@${item.revision}</a
+											>
+										</p>`
+							}
 						</details>
 					</li>`
 			)}
@@ -412,10 +447,6 @@ function side(content: Html) {
 	return html`<aside class="side" aria-label="Decision">${content}</aside>`
 }
 
-function planFold(id: string, title: Html | string, count: number | null, open: boolean, body: Html, region = '') {
-	return fold({ key: `section:${id}`, title, headingId: id, count, open, region, body })
-}
-
 type PlanContext = {
 	waiting: QueueItem[]
 	claims: ReturnType<typeof mergedClaims>
@@ -434,76 +465,123 @@ function planContext(store: Store, planId: string, harness: Context['harness']):
 	}
 }
 
-function nextLine(planId: string, found: PlanContext) {
-	const mine = found.waiting.filter((item) => item.group !== 'questions').length
+function blockingTitle(items: Review['items']) {
+	const one = items.length === 1
+	if (items.every((item) => item.kind === 'gap')) return `open ${one ? 'gap blocks' : 'gaps block'} testing`
+	if (items.every((item) => item.kind === 'question')) return `${one ? 'question blocks' : 'questions block'} testing`
+	return `${one ? 'item blocks' : 'items block'} testing`
+}
+
+function nextLine(planId: string, gaps: Gap[], review: Review, found: PlanContext) {
+	const waiting = review.items.filter((item) => item.needs)
+	const blocking = waiting.filter((item) => item.blocking)
+	const first = blocking[0]
+	if (first) {
+		const holds = gaps.find((gap) => gap.id === first.id)?.testIds ?? []
+		const more = waiting.length - 1
+		return html`<div data-region="next">
+			${blockingBanner({
+				count: blocking.length,
+				title: blockingTitle(blocking),
+				text: `${first.id} “${first.title}”${holds.length ? ` holds ${holds.join(', ')}` : ''}.${more ? ` ${plural(more, 'more item')} ${more === 1 ? 'waits' : 'wait'} in Needs you.` : ''}`,
+				action: `Answer ${first.id}`,
+				href: openedHref(review, first, 'needs'),
+			})}
+		</div>`
+	}
 	const why = found.status.why[0]
-	const action =
-		mine > 0
-			? html`${formButton({ label: `Decide ${plural(mine, 'item')} in Needs you`, href: `/plans/${planId}?view=needs&focus=list`, emphasis: 'primary', inline: true })}`
-			: found.status.next[0]
-				? html`<code>${found.status.next[0]}</code>`
-				: ''
+	const action = waiting.length
+		? formButton({
+				label: `Decide ${plural(waiting.length, 'item')} in Needs you`,
+				href: `/plans/${planId}?view=needs&focus=list`,
+				emphasis: 'primary',
+				inline: true,
+			})
+		: found.status.next[0]
+			? html`<code>${found.status.next[0]}</code>`
+			: ''
 	return html`<div class="next-line" data-region="next">
 		${loopState(found.status)} ${why ? html`<span>${why}</span>` : ''} ${action}
 	</div>`
 }
 
-function chips(found: PlanContext, extra: Array<[string, string, number]>) {
-	const deciding = found.waiting.filter((item) => item.kind === 'claim').length
-	const open = found.questions.filter((question) => question.answer === null)
-	const blocking = open.filter((question) => question.blocking).length
-	return jumpLinks({
-		links: [
-			{ href: '#claims', label: 'Claims', count: found.claims.length, hot: deciding > 0 },
-			{ href: '#questions', label: 'Questions', count: open.length, hot: blocking > 0 },
-			{ href: '#explorations', label: 'Explorations', count: found.explorations.length },
-			...extra.map(([id, label, count]) => ({ href: `#${id}`, label, count })),
-		],
+function section(
+	id: string,
+	title: Html | string,
+	count: number | null,
+	body: Html,
+	region = '',
+	link: Html | '' = ''
+) {
+	return html`<section
+		class="sc-sec"
+		id="${id}"
+		aria-labelledby="${id}-h"
+		${region ? html`data-region="${region}"` : ''}
+	>
+		<h2 class="sc-sec-h" id="${id}-h">${title}${count === null ? '' : html`<b>${count}</b>`}${link}</h2>
+		${body}
+	</section>`
+}
+
+function rulesTable(review: Review) {
+	const board = ruleBoard(review)
+	if (!board.builds.length && board.rows.length <= 1)
+		return html`<p class="sc-empty is-line">No rule is tested yet. Rules come from the first exploration.</p>`
+	return dataTable({
+		columns: ['Rule', 'Name', { label: 'Tests', attrs: { class: 'is-num' } }, ...board.builds],
+		rows: board.rows.map((row) =>
+			tableRow({
+				attrs: { class: row.id === outside ? 'is-dim' : undefined },
+				cells: [
+					{ content: row.id === outside ? 'Out' : row.id, attrs: { class: 'is-mono' } },
+					row.text,
+					{ content: row.storedTests || '—', attrs: { class: 'is-num' } },
+					...row.cells.map((cell) => boardCell(cell)),
+				],
+			})
+		),
+		scroll: true,
 	})
 }
 
-function claimsFold(planId: string, found: PlanContext) {
-	const deciding = found.waiting.some((item) => item.kind === 'claim')
-	return planFold(
-		'claims',
-		'Claims',
-		found.claims.length,
-		deciding,
-		html`<p class="sc-help">
-				The merged claims of completed explorations.
-				<a class="tap" href="/plans/${planId}?view=all">Open them in All items</a>.
-			</p>
-			${claimsTable(planId, found.claims)}`,
-		'claims'
-	)
+function testsTable(detail: Detail) {
+	const { plan } = detail
+	if (!plan.tests.length) return html`<p class="sc-empty is-line">The plan has no test yet.</p>`
+	return dataTable({
+		columns: ['Test', 'Name', 'Requirements', 'Readiness', 'Checks'],
+		rows: plan.tests.map((test) =>
+			tableRow({
+				attrs: { class: test.readiness === 'blocked' ? 'is-block' : undefined },
+				cells: [
+					{ content: html`<a href="#${test.id}">${test.id}</a>`, attrs: { class: 'is-mono' } },
+					{ content: test.title, attrs: { class: 'is-title' } },
+					{ content: test.requirementIds.join(', ') || '—', attrs: { class: 'is-mono is-muted' } },
+					test.gapIds.length && test.readiness === 'blocked'
+						? statusMark({ state: 'blocking', label: `waits on ${test.gapIds.join(', ')}` })
+						: statusMark({ state: test.readiness }),
+					{ content: plural(test.assertions.length, 'check'), attrs: { class: 'is-muted' } },
+				],
+			})
+		),
+		scroll: true,
+	})
 }
 
-function questionsFold(planId: string, found: PlanContext, gaps: Html | '' = '', openGaps = 0, blockingGaps = 0) {
+function questionsSection(planId: string, detail: Detail, found: PlanContext) {
 	const open = found.questions.filter((question) => question.answer === null)
-	const blocking = open.some((question) => question.blocking) || blockingGaps > 0
-	return planFold(
+	const openGaps = detail.plan.gaps.filter((gap) => gap.status === 'open')
+	return section(
 		'questions',
 		'Questions',
-		open.length + openGaps,
-		blocking,
-		html`${gaps}
+		open.length + openGaps.length,
+		html`<h3 class="sc-sub-h" id="gaps">
+				Gaps of the plan <span class="sc-count-n">${detail.plan.gaps.length}</span>
+			</h3>
+			<div data-region="gaps">${gapsList(detail)}</div>
 			<h3 class="sc-sub-h">Questions of the testers <span class="sc-count-n">${found.questions.length}</span></h3>
 			${questionsList(planId, found.questions)}`,
 		'questions'
-	)
-}
-
-function explorationsFold(found: PlanContext) {
-	const attention = found.explorations.some(
-		(item) => item.running || ['failed', 'stopped', 'interrupted'].includes(item.state)
-	)
-	return planFold(
-		'explorations',
-		'Explorations',
-		found.explorations.length,
-		attention,
-		explorationsTable(found.explorations),
-		'explorations'
 	)
 }
 
@@ -521,21 +599,12 @@ export function planPage(
 	const subject = `${planId}@${revision}`
 	const latest = detail.revision === detail.latestRevision
 	const found = planContext(store, planId, context.harness)
+	const review = reviewOf(store, planId)
 	const cost = planCost(store, planId)
 	const meta = html`
 		${statusMark({ state: detail.approval.state })}
 		<span>target <code>${plan.target.targetId}@${plan.target.revision}</code></span>
 		<span title="${detail.sha256}">sha256 <code>${short(detail.sha256)}</code></span>
-		${
-			cost.costUsd === null
-				? ''
-				: html`<span
-						class="sc-chip"
-						data-region="plan-cost"
-						title="Reported cost across this plan’s explorations, chats, and structured runs"
-						>Total cost ${costText(cost.costUsd, cost.costPartial)}</span
-					>`
-		}
 	`
 	const pending = detail.pendingDecisions.length
 		? notice({
@@ -545,29 +614,37 @@ export function planPage(
 				${detail.pendingDecisions.map((item) => `${item.gapId} ${words(item.kind)}`).join(', ')}.`,
 			})
 		: ''
-	const openGaps = plan.gaps.filter((gap) => gap.status === 'open')
 	const approving = detail.approval.state === 'pending' || detail.approval.state === 'rejected'
-	const accepting = detail.runs.some((run) => run.acceptance === 'pending')
-	const anyOpen =
-		approving ||
-		accepting ||
-		found.waiting.length > 0 ||
-		found.explorations.some((item) => item.running || ['failed', 'stopped', 'interrupted'].includes(item.state))
-	const overview = html`<p class="sc-lead">${plan.objective}</p>
-		<p class="sc-help">${planSummaryLine(plan)}</p>
-		<h3 class="sc-sub-h" id="requirements">
-			Requirements and coverage
-			${latest ? html`<a class="sc-h-link" href="/plans/${subject}/edit#edit-requirements">Edit</a>` : ''}
-		</h3>
-		${requirementsTable(plan)}
-		<h3 class="sc-sub-h" id="decisions">Decisions</h3>
-		${decisionsList(plan)}`
-	const gaps = html`<h3 class="sc-sub-h" id="gaps">
-			Gaps of the plan <span class="sc-count-n">${plan.gaps.length}</span>
-		</h3>
-		<div data-region="gaps">${gapsList(detail)}</div>`
-	const actions = html`${latest ? html`${formButton({ label: 'Edit plan', href: `/plans/${subject}/edit`, inline: true })}` : ''}
-	${downloadMenu({ label: 'Export', base: `/plans/${subject}/export`, note: 'The HTML export is print-ready. Open it and print to PDF.' })}`
+	const versions = planHistory(store, planId).length
+	const actions = html`${downloadMenu({ label: 'Export', base: `/plans/${subject}/export`, note: 'The HTML export is print-ready. Open it and print to PDF.' })}
+	${latest ? formButton({ label: 'Edit plan', href: `/plans/${subject}/edit`, inline: true }) : ''}`
+	const editLink = (hash: string) =>
+		latest ? html`<a class="sc-h-link" href="/plans/${subject}/edit#${hash}">Edit</a>` : ''
+	const rules = ruleBoard(review).rows.filter((row) => row.id !== outside).length
+	const tabs = jumpLinks({
+		links: [
+			{ href: '#rules', label: 'Rules', count: rules },
+			{ href: '#tests', label: 'Tests', count: plan.tests.length },
+			{
+				href: '#claims',
+				label: 'Claims',
+				count: found.claims.length,
+				hot: found.waiting.some((item) => item.kind === 'claim'),
+			},
+			{
+				href: '#questions',
+				label: 'Questions',
+				count:
+					found.questions.filter((question) => question.answer === null).length +
+					plan.gaps.filter((gap) => gap.status === 'open').length,
+				hot: review.items.some((item) => item.needs && item.blocking),
+			},
+			{ href: '#explorations', label: 'Explorations', count: found.explorations.length },
+			{ href: '#runs', label: 'Runs', count: detail.runs.length },
+			{ href: '#history', label: 'Versions', count: versions },
+		],
+	})
+	const approval = approvalPanel(store, context, detail, state)
 	const body = html`${heading({
 			title: subject,
 			crumbs: [
@@ -579,37 +656,63 @@ export function planPage(
 			meta,
 			actions,
 		})}
-		${nextLine(planId, found)}
-		${chips(found, [
-			['tests', 'Tests', plan.tests.length],
-			['runs', 'Runs', detail.runs.length],
-		])}
+		${nextLine(planId, plan.gaps, review, found)} ${tabs}
 		<div data-region="banners">${newerBanner(detail)} ${pending} ${explorationBanners(found.explorations)}</div>
-		<div class="sc-split">
-			<div class="sc-stack">
-				${planFold('overview', 'Overview', null, approving || !anyOpen, overview)} ${claimsFold(planId, found)}
-				${questionsFold(
-					planId,
-					found,
-					gaps,
-					openGaps.length,
-					openGaps.filter((gap) => gap.severity === 'blocking').length
-				)}
-				${explorationsFold(found)}
-				${planFold(
+		<div class="sc-split is-wide-side">
+			<div class="sc-stack is-loose">
+				<p class="sc-lead">${plan.objective}</p>
+				${section('rules', 'Rules and builds', rules, rulesTable(review))}
+				${section(
 					'tests',
-					html`Tests${latest ? html` <a class="sc-h-link" href="/plans/${subject}/edit#edit-tests">Edit</a>` : ''}`,
+					'Permanent tests',
 					plan.tests.length,
-					approving,
-					html`<div class="stack">
-						${plan.tests.map((test) => testCard(detail, test, latest ? removeTest(context, detail, test) : ''))}
-					</div>`,
-					'tests'
+					html`${testsTable(detail)}
+					${fold({
+						key: 'section:test-steps',
+						title: 'Steps and checks of each test',
+						headingId: 'test-steps',
+						count: null,
+						open: approving,
+						body: html`<div class="sc-stack">
+							${plan.tests.map((test) => testCard(detail, test, latest ? removeTest(context, detail, test) : ''))}
+						</div>`,
+					})}`,
+					'tests',
+					editLink('edit-tests')
 				)}
-				${planFold('runs', 'Runs', detail.runs.length, accepting, runsTable(detail), 'plan-runs')}
-				${planFold('history', 'History', null, allHistory, planHistoryList(store, detail, allHistory), 'history')}
+				${section(
+					'requirements',
+					'Requirements and coverage',
+					plan.requirements.length,
+					html`<p class="sc-help">${planSummaryLine(plan)}</p>
+						${requirementsTable(plan)}`,
+					'',
+					editLink('edit-requirements')
+				)}
+				${section(
+					'claims',
+					'Claims',
+					found.claims.length,
+					html`<p class="sc-help">
+							The merged claims of completed explorations.
+							<a href="/plans/${planId}?view=all">Open them in All items</a>.
+						</p>
+						${claimsTable(planId, found.claims)}`,
+					'claims'
+				)}
+				${questionsSection(planId, detail, found)}
+				${section('decisions', 'Decisions', plan.decisions.length, decisionsList(plan))}
+				${section('explorations', 'Explorations', found.explorations.length, explorationsTable(found.explorations), 'explorations')}
+				${section('runs', 'Runs', detail.runs.length, runsTable(detail), 'plan-runs')}
 			</div>
-			${side(approvalPanel(store, context, detail, state))}
+			<aside class="sc-stack" aria-label="Versions and approval">
+				${approving ? approval : ''}
+				${section('history', 'Versions', versions, planHistoryList(store, detail, allHistory), 'history')}
+				${approving ? '' : approval}
+				<p class="sc-note" data-region="plan-cost">
+					Total cost ${cost.costUsd === null ? '—' : costText(cost.costUsd, cost.costPartial)}
+				</p>
+			</aside>
 		</div>`
 	return {
 		title: subject,
@@ -627,7 +730,7 @@ export function planPage(
 			[subject, null],
 		],
 		back: `/plans/${planId}?nav=plan`,
-		nav: navigator(reviewOf(store, planId), 'plan', null, {
+		nav: navigator(review, 'plan', null, {
 			href: `/plans/${subject}?chat=list${allHistory ? '&history=all' : ''}`,
 			active: chatting,
 		}),
@@ -659,9 +762,6 @@ export function requestPage(store: Store, planId: string, harness: Context['harn
 	const completed = found.explorations.filter((item) => item.state === 'completed').at(-1)?.explorationId
 	const meta = html` ${statusMark({ state: 'requested', label: 'no revision yet' })}
 		<span>target <code>${targetRef}</code></span>`
-	const anyOpen =
-		found.waiting.length > 0 ||
-		found.explorations.some((item) => item.running || ['failed', 'stopped', 'interrupted'].includes(item.state))
 	const overview = facts({
 		rows: [
 			['Objective', request.objective],
@@ -690,14 +790,36 @@ export function requestPage(store: Store, planId: string, harness: Context['harn
 			],
 		],
 	})
-	const body = html`${heading({ title: planId, sub: request.objective, meta })} ${nextLine(planId, found)}
-		${chips(found, [['tests', 'Stored tests', 0]])}
+	const review = reviewOf(store, planId)
+	const body = html`${heading({ title: planId, sub: request.objective, meta })} ${nextLine(planId, [], review, found)}
+		${jumpLinks({
+			links: [
+				{ href: '#request', label: 'Request' },
+				{ href: '#claims', label: 'Claims', count: found.claims.length },
+				{
+					href: '#questions',
+					label: 'Questions',
+					count: found.questions.filter((question) => question.answer === null).length,
+				},
+				{ href: '#explorations', label: 'Explorations', count: found.explorations.length },
+				{ href: '#tests', label: 'Stored tests', count: 0 },
+			],
+		})}
 		<div data-region="banners">${explorationBanners(found.explorations)}</div>
 		<div class="sc-split">
-			<div class="sc-stack">
-				${planFold('request', 'Request', null, !anyOpen, overview)} ${claimsFold(planId, found)}
-				${questionsFold(planId, found)} ${explorationsFold(found)}
-				${planFold('tests', 'Stored tests', 0, !found.explorations.length, storedTestsEmpty(planId, completed, harness), 'tests')}
+			<div class="sc-stack is-loose">
+				${section('request', 'Request', null, overview)}
+				${section(
+					'claims',
+					'Claims',
+					found.claims.length,
+					html`<p class="sc-help">The merged claims of completed explorations.</p>
+						${claimsTable(planId, found.claims)}`,
+					'claims'
+				)}
+				${section('questions', 'Questions', found.questions.length, questionsList(planId, found.questions), 'questions')}
+				${section('explorations', 'Explorations', found.explorations.length, explorationsTable(found.explorations), 'explorations')}
+				${section('tests', 'Stored tests', 0, storedTestsEmpty(planId, completed, harness), 'tests')}
 			</div>
 			${side(
 				recordPanel(
@@ -720,7 +842,7 @@ export function requestPage(store: Store, planId: string, harness: Context['harn
 			['Request', null],
 		],
 		back: `/plans/${planId}?nav=plan`,
-		nav: navigator(reviewOf(store, planId), 'plan'),
+		nav: navigator(review, 'plan'),
 	}
 }
 

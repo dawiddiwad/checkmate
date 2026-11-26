@@ -1,12 +1,15 @@
+import type { Html } from '../html.ts'
 import { html } from '../html.ts'
 
-export function blockingBanner({ count, href }: { count: number; href: string }) {
+export type BlockingBanner = { count: number; title: string; text: Html | string; action: string; href: string }
+
+export function blockingBanner({ count, title, text, action, href }: BlockingBanner) {
 	return html`<div class="sc-banner">
 		<b class="sc-banner-n">${count}</b>
 		<div class="sc-banner-t">
-			<b>${count === 1 ? 'question blocks' : 'questions block'} testing</b>
-			<span>Testers wait on these answers. Everything else can wait.</span>
+			<b>${title}</b>
+			<span>${text}</span>
 		</div>
-		<a class="sc-btn is-you is-lg" href="${href}">Answer the first</a>
+		<a class="sc-btn is-you is-lg" href="${href}">${action}</a>
 	</div>`
 }

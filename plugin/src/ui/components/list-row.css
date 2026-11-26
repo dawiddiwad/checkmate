@@ -259,7 +259,8 @@
 .sc-recipe:focus {
 	outline: none;
 }
-.sc-recipe.is-sel {
+.sc-recipe.is-sel,
+.sc-recipe.is-open {
 	background: var(--surface-2);
 	box-shadow: inset var(--bar) 0 0 var(--ink);
 }

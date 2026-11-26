@@ -77,24 +77,40 @@ function words(items: string[]) {
 		: none()
 }
 
-export function targetsPage(store: Store): Page {
+export function targetsPage(store: Store, form: Html | '' = '', status?: number): Page {
 	const targets = targetList(store)
 	const body = html`${heading({
 			title: 'Targets',
 			sub: 'Each target with its latest revision and its active instances.',
 			actions: button({ label: 'New target', href: '/setup' }),
 		})}
-		<div class="sc-targets" data-region="targets" data-list>
-			${
-				targets.length
-					? targets.map(targetCard)
-					: emptyNotice({
-							what: 'No target yet.',
-							next: html`Record one with <code>checkmate target open</code>.`,
-						})
-			}
+		<div class="${form ? 'sc-split is-wide-side' : ''}">
+			<div class="sc-targets${form ? ' is-one' : ''}" data-region="targets" data-list>
+				${
+					targets.length
+						? targets.map((target) =>
+								targetCard({
+									...target,
+									instances: instanceList(store, target.targetId)
+										.filter((instance) => !instance.retired)
+										.map((instance) => ({
+											instanceId: instance.instanceId,
+											environment: instance.environment,
+											address: Object.values(instance.entries)[0] ?? null,
+										})),
+								})
+							)
+						: emptyNotice({
+								what: 'No target yet.',
+								next: html`Record one with <code>checkmate target open</code>.`,
+							})
+				}
+			</div>
+			${form}
 		</div>`
-	return settingsPage('/settings/targets', 'Targets', ['*'], body)
+	return form
+		? settingsPage('/settings/targets', 'New target', ['*', 'inbox', 'settings'], body, status)
+		: settingsPage('/settings/targets', 'Targets', ['*'], body)
 }
 
 function entryPointsTable(entryPoints: EntryPoint[]) {
@@ -443,70 +459,73 @@ export function harnessPage(
 	const levelModels = [...new Set(Object.values(testLevels).map((level) => level.model))]
 	const testerDefault = !pi && levelModels.length === 1 ? levelModels[0] : ''
 	const body = html`${heading({ title: 'Coding harness', sub: null })}
-		<div class="sc-card">
-			<form method="post" action="/settings/harness/select" class="sc-form">
-				<input type="hidden" name="csrf" value="${context.csrf}" />
-				${field({
-					id: 'coding-harness',
-					label: 'Program for this workspace',
-					control: html`<select id="coding-harness" name="harness">
-						<option value="claude" ${harness === 'claude' ? html`selected` : ''}>Claude Code</option>
-						<option value="pi" ${harness === 'pi' ? html`selected` : ''}>Pi</option>
-					</select>`,
-					help: 'Applies to new tests and chats in this workspace.',
-				})}
-				<div class="sc-row-btns">${formButton({ label: 'Save the program', emphasis: 'primary' })}</div>
-			</form>
-			<p id="harness-program">Current executable · ${harnessProgram(effectiveEnv)}</p>
+		<div class="sc-pair is-top">
+			<section class="sc-card" aria-labelledby="harness-program-h">
+				<h2 class="sc-card-h" id="harness-program-h">Program for this workspace</h2>
+				<form method="post" action="/settings/harness/select" class="sc-form">
+					<input type="hidden" name="csrf" value="${context.csrf}" />
+					${field({
+						id: 'coding-harness',
+						label: 'Program',
+						control: html`<select id="coding-harness" name="harness">
+							<option value="claude" ${harness === 'claude' ? html`selected` : ''}>Claude Code</option>
+							<option value="pi" ${harness === 'pi' ? html`selected` : ''}>Pi</option>
+						</select>`,
+						help: 'Applies to new tests and chats in this workspace.',
+					})}
+					<div class="sc-row-btns">${formButton({ label: 'Save the program' })}</div>
+				</form>
+				<p class="sc-note" id="harness-program">Current executable · ${harnessProgram(effectiveEnv)}</p>
+			</section>
+			<section class="sc-card" aria-labelledby="claude-rules">
+				<h2 class="sc-card-h" id="claude-rules">Tool rules of testers</h2>
+				<p class="sc-help" data-key="permission-bash">
+					${pi ? 'With Bash, testers can run commands. Without it, they cannot use Bash.' : 'With Bash, testers run commands without asking. Without it, each command asks you here. A tester waits up to 10 minutes for an answer.'}
+				</p>
+				<p class="sc-help" data-region="permission-hook">
+					${
+						liveUi(context.workspace)
+							? 'Testers that start now can ask you in this UI when a tool needs a permission.'
+							: 'Testers that start now cannot ask you. The UI of this folder does not run. A tool that needs a permission is denied.'
+					}
+				</p>
+				<form method="post" action="/settings/harness/rules" class="sc-form">
+					<input type="hidden" name="csrf" value="${context.csrf}" />
+					<input type="hidden" name="harness" value="${harness}" />
+					<div class="sc-field">
+						<label class="sc-label" for="tester-rules">Default tools for new tests</label>
+						<input
+							id="tester-rules"
+							name="rules"
+							maxlength="400"
+							autocomplete="off"
+							value="${form?.value ?? context.testerRules}"
+							aria-describedby="tester-rules-help"
+							${form ? html`autofocus` : ''}
+						/>
+						<p class="sc-help" id="tester-rules-help">
+							${pi ? 'Enter tool names separated by spaces, for example read bash.' : 'Enter tool rules separated by spaces, for example Read Bash.'}
+						</p>
+						${form ? html`<p class="sc-error" role="alert" data-field="rules">${form.error}</p>` : ''}
+					</div>
+					<div class="sc-row-btns">${formButton({ label: 'Save the rules' })}</div>
+				</form>
+			</section>
 		</div>
-		<section class="sc-card" aria-labelledby="claude-rules">
-			<h2 class="sc-card-h" id="claude-rules">Tool rules of testers</h2>
-			<p class="sc-help" data-key="permission-bash">
-				${pi ? 'With Bash, testers can run commands. Without it, they cannot use Bash.' : 'With Bash, testers run commands without asking. Without it, each command asks you here. A tester waits up to 10 minutes for an answer.'}
-			</p>
-			<p class="sc-help" data-region="permission-hook">
-				${
-					liveUi(context.workspace)
-						? 'Testers that start now can ask you in this UI when a tool needs a permission.'
-						: 'Testers that start now cannot ask you. The UI of this folder does not run. A tool that needs a permission is denied.'
-				}
-			</p>
-			<form method="post" action="/settings/harness/rules" class="sc-form">
-				<input type="hidden" name="csrf" value="${context.csrf}" />
-				<input type="hidden" name="harness" value="${harness}" />
-				<div class="sc-field">
-					<label class="sc-label" for="tester-rules">Default tools for new tests</label>
-					<input
-						id="tester-rules"
-						name="rules"
-						maxlength="400"
-						autocomplete="off"
-						value="${form?.value ?? context.testerRules}"
-						aria-describedby="tester-rules-help"
-						${form ? html`autofocus` : ''}
-					/>
-					<p class="sc-help" id="tester-rules-help">
-						${pi ? 'Enter tool names separated by spaces, for example read bash.' : 'Enter tool rules separated by spaces, for example Read Bash.'}
-					</p>
-					${form ? html`<p class="sc-error" role="alert" data-field="rules">${form.error}</p>` : ''}
-				</div>
-				<div class="sc-row-btns">${formButton({ label: 'Save the rules', emphasis: 'primary' })}</div>
-			</form>
-		</section>
 		<section
 			class="sc-card"
 			aria-labelledby="model-settings"
 			data-model-catalog="${harness}"
 			data-tester-default="${testerDefault}"
 		>
-			<h2 class="sc-card-h" id="model-settings">Models</h2>
-			<p class="sc-help">Choose a model for each kind of work. Choose a default or a model from the list.</p>
+			<h2 class="sc-card-h" id="model-settings">
+				Models ${formButton({ label: 'Refresh models', attrs: { type: 'button', 'data-model-refresh': true } })}
+			</h2>
 			<p class="sc-help">
-				If the coding harness cannot use a saved model, a delegated worker uses the harness default. The reply
-				says so.
+				Choose a model for each kind of work. Choose a default or a model from the list. If the coding harness
+				cannot use a saved model, a delegated worker uses the harness default. The reply says so.
 			</p>
 			<p class="sc-help" role="status" data-model-status>Loading models from ${pi ? 'Pi' : 'Claude Code'}…</p>
-			${formButton({ label: 'Refresh models', attrs: { type: 'button', 'data-model-refresh': true } })}
 			${field({
 				id: 'model-filter',
 				label: 'Filter models',
@@ -518,18 +537,26 @@ export function harnessPage(
 			<form method="post" action="/settings/harness/models" class="sc-form">
 				<input type="hidden" name="csrf" value="${context.csrf}" />
 				<input type="hidden" name="harness" value="${harness}" />
-				<div class="sc-field">
-					<label class="sc-label" for="tester-model">Model for testers</label>
-					<select id="tester-model" name="testerModel" aria-describedby="tester-model-help" data-model-select>
-						<option value="">${pi ? 'Pi default' : 'Test level default'}</option>
-						${testerValue ? html`<option value="${testerValue}" selected>${testerValue}</option>` : ''}
-					</select>
-					<p class="sc-help" id="tester-model-help">
-						${pi ? 'The Pi default is the model configured in Pi.' : 'The test level selects its default model.'}
-						Delegated execute workers also use this model${pi ? '' : ', or the Claude Code default'}.
-					</p>
-					<p class="sc-help" data-model-unavailable="tester-model" hidden></p>
-					<div hidden>
+				<div class="sc-pair">
+					<div class="sc-field">
+						<label class="sc-label" for="tester-model">Model for testers</label>
+						<select
+							id="tester-model"
+							name="testerModel"
+							aria-describedby="tester-model-help"
+							data-model-select
+						>
+							<option value="">${pi ? 'Pi default' : 'Test level default'}</option>
+							${testerValue ? html`<option value="${testerValue}" selected>${testerValue}</option>` : ''}
+						</select>
+						<p class="sc-help" id="tester-model-help">
+							${pi ? 'The Pi default is the model configured in Pi.' : 'The test level selects its default model.'}
+							Delegated execute workers also use this model${pi ? '' : ', or the Claude Code default'}.
+						</p>
+						<p class="sc-help" data-model-unavailable="tester-model" hidden></p>
+						${testerModel?.error ? html`<p class="sc-error" role="alert" data-field="model">${testerModel.error}</p>` : ''}
+					</div>
+					<div class="sc-field" hidden>
 						<label class="sc-label" for="tester-effort">Reasoning effort for testers</label>
 						<select
 							id="tester-effort"
@@ -539,26 +566,28 @@ export function harnessPage(
 							disabled
 						></select>
 					</div>
-					${testerModel?.error ? html`<p class="sc-error" role="alert" data-field="model">${testerModel.error}</p>` : ''}
 				</div>
 
-				<div class="sc-field">
-					<label class="sc-label" for="request-model">Model for chats</label>
-					<select
-						id="request-model"
-						name="requestModel"
-						aria-describedby="request-model-help"
-						data-model-select
-					>
-						<option value="">${pi ? 'Pi default' : 'Claude Code default'}</option>
-						${requestValue ? html`<option value="${requestValue}" selected>${requestValue}</option>` : ''}
-					</select>
-					<p class="sc-help" id="request-model-help">
-						The default is the model configured in ${pi ? 'Pi' : 'Claude Code'}. Delegated setup, plan, and
-						revise workers also use this model.
-					</p>
-					<p class="sc-help" data-model-unavailable="request-model" hidden></p>
-					<div hidden>
+				<div class="sc-pair">
+					<div class="sc-field">
+						<label class="sc-label" for="request-model">Model for chats</label>
+						<select
+							id="request-model"
+							name="requestModel"
+							aria-describedby="request-model-help"
+							data-model-select
+						>
+							<option value="">${pi ? 'Pi default' : 'Claude Code default'}</option>
+							${requestValue ? html`<option value="${requestValue}" selected>${requestValue}</option>` : ''}
+						</select>
+						<p class="sc-help" id="request-model-help">
+							The default is the model configured in ${pi ? 'Pi' : 'Claude Code'}. Delegated setup, plan,
+							and revise workers also use this model.
+						</p>
+						<p class="sc-help" data-model-unavailable="request-model" hidden></p>
+						${model?.error ? html`<p class="sc-error" role="alert" data-field="model">${model.error}</p>` : ''}
+					</div>
+					<div class="sc-field" hidden>
 						<label class="sc-label" for="request-effort">Reasoning effort for chats</label>
 						<select
 							id="request-effort"
@@ -568,7 +597,6 @@ export function harnessPage(
 							disabled
 						></select>
 					</div>
-					${model?.error ? html`<p class="sc-error" role="alert" data-field="model">${model.error}</p>` : ''}
 				</div>
 				<div class="sc-row-btns">${formButton({ label: 'Save models', emphasis: 'primary' })}</div>
 			</form>

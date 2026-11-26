@@ -19,7 +19,7 @@ A chess scoresheet records every move in plain ink. Only one move is yours to pl
 
 ## Tokens
 
-`plugin/src/ui/tokens.css` is the only place for colour, space, size, and font values. Two light values are darker than in the Scoresheet files so that every text and control border meets the contrast rules on `--surface-2`: `--signal` is `#be400c` and `--edge` is `#85888d`. `npm run lint:check` fails on a raw colour in another stylesheet. Light values are in `:root`. Dark values are in `:root[data-theme='dark']` and in the `prefers-color-scheme` block, with the same names.
+`plugin/src/ui/tokens.css` is the only place for colour, space, size, and font values. Two light values are darker than in the Scoresheet files so that every text and control border meets the contrast rules: `--signal` is `#be400c` (the files give `#c2410c`, 4.46:1 on `--surface-2`) and `--edge` is `#85888d` (the files give `#8c8f94`, 2.97:1 on `--surface` and 2.79:1 on `--surface-2`). `npm run lint:check` fails on a raw colour in another stylesheet. Light values are in `:root`. Dark values are in `:root[data-theme='dark']` and in the `prefers-color-scheme` block, with the same names.
 
 | Group      | Tokens                                                                                                  |
 | ---------- | ------------------------------------------------------------------------------------------------------- |
@@ -89,7 +89,8 @@ Each component is one function in `plugin/src/ui/components/<name>.ts`, with its
 | Evidence       | `evidenceFiles`, `evidencePreview`             | `sc-files`, `sc-file`                         |
 | Chat turn      | `chatTurn`                                     | `sc-turn`, `sc-turn-saved`                    |
 | Composer       | `composer`                                     | `sc-composer`                                 |
-| Target card    | `targetCard`                                   | `sc-card`, `sc-target-name`                   |
+| Target card    | `targetCard`                                   | `sc-card`, `sc-target-name`, `sc-instances`   |
+| Tester card    | `testerCard`, `timeline`                       | `sc-tcard`, `sc-timeline`, `sc-event`         |
 
 ## Keys
 

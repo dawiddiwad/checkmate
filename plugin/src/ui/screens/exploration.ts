@@ -28,14 +28,15 @@ import { formButton } from '../components/button.ts'
 import { dataTable, tableRow } from '../components/data-table.ts'
 import { emptyLine } from '../components/empty-state.ts'
 import { evidenceList, viewLink } from '../components/evidence-viewer.ts'
-import { groupHeader, listRow, optionsBox } from '../components/list-row.ts'
+import { optionsBox } from '../components/list-row.ts'
+import { testerCard, timeline } from '../components/tester-card.ts'
 import { downloadMenu } from '../components/menu.ts'
 import { notice } from '../components/notice.ts'
 import { crumbBar, heading } from '../components/page-heading.ts'
 import { statusMark, statusWord, wordMark } from '../components/status-mark.ts'
 import { shownAsText } from '../evidence.ts'
 import { actorField, emptyState, gapPanel, hidden, keptText, messages, rationaleField, recordPanel } from '../forms.ts'
-import { ago, asList, costText, duration, html, join, plural, time } from '../html.ts'
+import { ago, asList, costText, duration, html, join, plural, time, words } from '../html.ts'
 import {
 	askingPill,
 	asksFor,
@@ -398,35 +399,6 @@ function testerLine(item: LiveExplorer) {
 	return `In its ${item.turn ?? 'test'} turn. No activity line yet.`
 }
 
-function spRow(
-	key: string,
-	href: string,
-	label: string,
-	tag: Html,
-	title: Html | string,
-	meta: Html | string,
-	n: string,
-	metaText = '',
-	opts: Html | '' = '',
-	ask = ''
-) {
-	return listRow({
-		id: n,
-		key,
-		href,
-		label,
-		inListbox: true,
-		attrs: { 'data-ask': ask || null },
-		tag,
-		shownId: label,
-		title,
-		titleText: typeof title === 'string' ? title : '',
-		meta,
-		metaText: typeof meta === 'string' ? meta : metaText,
-		options: opts,
-	})
-}
-
 function stepAsks(open: Permission[]) {
 	return open
 		.filter((item) => !item.tester)
@@ -449,73 +421,96 @@ function stoppableTester(live: Live, item: LiveExplorer) {
 	return live.running && live.state !== 'following' && live.path !== 'session' && item.state === 'running'
 }
 
+function testerStats(live: Live, item: LiveExplorer) {
+	const raw = rawCount(live, item.explorer)
+	return [
+		inState(item) || '—',
+		`cost ${costText(item.costUsd, item.costPartial)}${raw ? ` · ${raw} not merged` : ''}`,
+	]
+}
+
 function explorationList(context: Context, live: Live, others: Listed[], asking: Map<string, Permission>) {
+	const here = `/explorations/${live.explorationId}`
 	const explorers = live.explorers.map((item, index) => {
-		const raw = rawCount(live, item.explorer)
 		const asked = asking.get(item.explorer)
-		const here = `/explorations/${live.explorationId}`
 		const from = `${here}?at=${encodeURIComponent(`explorer:${item.explorer}`)}`
-		return spRow(
-			`explorer:${item.explorer}`,
-			asked ? requestHref(asked, from) : explorationHref(live.explorationId, `explorer:${item.explorer}`),
-			item.explorer,
-			asked ? askingPill() : testerState(live, item),
-			asked ? `Asks to ${asksFor(asked)}` : testerLine(item),
-			asked
-				? waitsFor(asked)
-				: html`${item.turn ?? ''}${item.turn && item.elapsedMs !== null ? ' · ' : ''}${inState(item)}${raw ? ` · ${raw} not merged` : ''}`,
-			`tester-${index}`,
-			[
-				item.turn,
-				item.pausedAt
-					? `paused for ${duration(Date.now() - Date.parse(item.pausedAt))}`
-					: item.elapsedMs !== null
-						? duration(item.elapsedMs)
-						: null,
-				raw ? `${raw} not merged` : null,
-			]
-				.filter(Boolean)
-				.join(' · '),
-			asked
+		return testerCard({
+			id: `tester-${index}`,
+			key: `explorer:${item.explorer}`,
+			href: asked ? requestHref(asked, from) : explorationHref(live.explorationId, `explorer:${item.explorer}`),
+			label: item.explorer,
+			mark: asked ? askingPill() : testerState(live, item),
+			phase: item.turn ?? '',
+			line: asked ? html`Asks to ${asksFor(asked)} · ${waitsFor(asked)}` : testerLine(item),
+			stats: testerStats(live, item),
+			options: asked
 				? rowOptions(context, asked, from)
 				: stoppableTester(live, item)
 					? optionsBox([testerStopOption(live.explorationId, item.explorer, 1)])
 					: '',
-			asked ? `${asked.askerId}/${asked.id}` : ''
-		)
+			done: ['ended', 'completed'].includes(item.state ?? ''),
+			attrs: { 'data-ask': asked ? `${asked.askerId}/${asked.id}` : null },
+		})
 	})
-	const phases = live.phases.map((row, index) =>
-		spRow(
-			`phase:${row.phase}`,
-			explorationHref(live.explorationId, `phase:${row.phase}`),
-			row.phase,
-			statusMark({ state: row.state }),
-			row.reason ?? phaseNote(row.state),
-			'',
-			`phase-${index}`
-		)
-	)
-	const sessions = others.map((item, index) =>
-		spRow(
-			`exploration:${item.explorationId}`,
-			`/explorations/${item.explorationId}`,
-			item.explorationId,
-			statusMark({ state: item.running && item.paused ? 'paused' : item.state }),
-			`Build ${item.build} on ${item.instanceId}${item.reason ? `: ${item.reason}` : ''}`,
-			html`${time(item.startedAt)}`,
-			`session-${index}`
-		)
-	)
-	return html`<div class="sc-list" role="listbox" aria-label="Testers and phases of ${live.explorationId}" data-list>
-		${groupHeader({ label: live.running ? 'Testers now' : 'Testers', count: explorers.length })}
-		${explorers.length ? explorers : emptyLine({ text: 'No tester has started yet.' })}
-		${groupHeader({ label: 'After the testers', count: phases.length })} ${phases}
+	const phases = timeline({
+		label: 'After the testers',
+		events: live.phases.map((row, index) => ({
+			id: `phase-${index}`,
+			key: `phase:${row.phase}`,
+			href: explorationHref(live.explorationId, `phase:${row.phase}`),
+			label: row.phase,
+			mark: statusMark({ state: row.state, label: '' }),
+			text: row.reason ?? phaseNote(row.state),
+			meta: words(row.state),
+		})),
+	})
+	const sessions = dataTable({
+		columns: ['Session', 'State', 'Build and instance', 'Started'],
+		rows: others.map((item) =>
+			tableRow({
+				attrs: {
+					'data-row': true,
+					'data-key': `exploration:${item.explorationId}`,
+					'data-href': `/explorations/${item.explorationId}`,
+					'data-label': item.explorationId,
+				},
+				cells: [
+					{
+						content: html`<a href="/explorations/${item.explorationId}">${item.explorationId}</a>`,
+						attrs: { class: 'is-mono' },
+					},
+					statusMark({ state: item.running && item.paused ? 'paused' : item.state }),
+					{
+						content: html`Build <code>${item.build}</code> on
+							<code>${item.instanceId}</code>${item.reason ? `: ${item.reason}` : ''}`,
+						attrs: { class: 'is-title' },
+					},
+					{ content: time(item.startedAt), attrs: { class: 'is-muted' } },
+				],
+			})
+		),
+		scroll: true,
+	})
+	return html`<section class="sc-sec" aria-labelledby="testers-h">
+			<h2 class="sc-sec-h" id="testers-h">
+				${live.running ? 'Testers now' : 'Testers'}<b>${explorers.length}</b>
+			</h2>
+			<div class="sc-list" role="listbox" aria-label="Testers of ${live.explorationId}" data-list>
+				${explorers.length ? explorers : emptyLine({ text: 'No tester has started yet.' })}
+			</div>
+		</section>
+		<section class="sc-sec" aria-labelledby="after-h">
+			<h2 class="sc-sec-h" id="after-h">After the testers<b>${live.phases.length}</b></h2>
+			${phases}
+		</section>
 		${
-			sessions.length
-				? html`${groupHeader({ label: `Other sessions of ${live.planId}`, count: sessions.length })} ${sessions}`
+			others.length
+				? html`<section class="sc-sec" aria-labelledby="others-h">
+						<h2 class="sc-sec-h" id="others-h">Other sessions of ${live.planId}<b>${others.length}</b></h2>
+						${sessions}
+					</section>`
 				: ''
-		}
-	</div>`
+		}`
 }
 
 const phaseNotes: Record<string, string> = {
@@ -747,18 +742,29 @@ function timeLine(live: Live, run: Run) {
 	return html`${started}, ended ${ago(run.endedAt)}, took ${took}`
 }
 
-function phaseStrip(run: Run) {
-	return html`<span class="sc-phases" role="list" aria-label="Phase of the test">
-		${phases.map((phase) =>
-			phase === run.phase
-				? wordMark({
-						state: 'running',
-						label: phase,
-						attrs: { role: 'listitem', 'aria-current': 'step', 'data-phase': phase },
-					})
-				: wordMark({ state: 'phase', label: phase, attrs: { role: 'listitem', 'data-phase': phase } })
-		)}
-	</span>`
+function phaseStrip(live: Live, run: Run) {
+	const state = live.stopping
+		? statusMark({ state: 'stopping', label: 'Stopping…' })
+		: statusMark({ state: live.running && live.paused ? 'paused' : live.state })
+	const steps =
+		live.running && run.phase
+			? phases.map((phase) =>
+					phase === run.phase
+						? html`<li aria-current="step" data-phase="${phase}">
+								${statusMark({ state: 'running', label: phase })}
+							</li>`
+						: html`<li data-phase="${phase}">${statusWord({ state: 'not_started', label: phase })}</li>`
+				)
+			: live.phases.map(
+					(row) =>
+						html`<li data-phase="${row.phase}">${statusWord({ state: row.state, label: row.phase })}</li>`
+				)
+	return html`<div data-region="exploration-state">
+		<ol class="sc-phases" aria-label="Phases of ${live.explorationId}">
+			<li>${state}</li>
+			${steps}
+		</ol>
+	</div>`
 }
 
 function runChoices(live: Live, others: Listed[]) {
@@ -810,15 +816,19 @@ function runActions(
 		repo: run.repo,
 		instance: live.instanceId,
 	}
-	return html`<div data-region="exploration-actions">
-		<div class="sc-tools" data-actions>
-			${stoppable ? stopButton(live.explorationId) : ''}
-			${again ? testButton(live.planId, 'Test build… again', values) : ''}
-		</div>
-		${stoppable ? stopDialog(context, subject) : ''}
-		${testers.map((item) => stopTesterDialog(context, subject, item.explorer))}
-		${again ? testDialog(context, live.planId, values, workspaceBuild, asList(choice)) : ''}
-	</div>`
+	return {
+		buttons: html`<div class="sc-h-act" data-region="exploration-actions">
+			<div class="sc-tools" data-actions>
+				${stoppable ? stopButton(live.explorationId) : ''}
+				${again ? testButton(live.planId, 'Test build… again', values) : ''}
+			</div>
+		</div>`,
+		dialogs: html`<div data-region="exploration-dialogs">
+			${stoppable ? stopDialog(context, subject) : ''}
+			${testers.map((item) => stopTesterDialog(context, subject, item.explorer))}
+			${again ? testDialog(context, live.planId, values, workspaceBuild, asList(choice)) : ''}
+		</div>`,
+	}
 }
 
 export function explorationPage(
@@ -840,6 +850,14 @@ export function explorationPage(
 	const permissions = explorationPermissions(store, explorationId)
 	const open = permissions.filter((item) => !item.decision)
 	const asking = new Map(open.flatMap((item) => (item.tester ? [[item.tester, item] as const] : [])))
+	const actions = runActions(
+		context,
+		live,
+		run,
+		review.explorations.filter((item) => item.explorationId !== explorationId),
+		defaultBuild(store.workspace),
+		instanceChoice(store, live.planId)
+	)
 	const detail = explorer
 		? explorerDetail(store, live, explorer, html``)
 		: phase
@@ -858,8 +876,8 @@ export function explorationPage(
 		],
 		back: label ? `/explorations/${explorationId}` : `/plans/${live.planId}?nav=testers`,
 		nav: navigator(review, 'testers', explorationId),
-		body: html`<div class="sc-head">
-				<div data-region="exploration-head">
+		body: html`<header class="sc-h">
+				<div class="sc-h-text" data-region="exploration-head">
 					${crumbBar({
 						crumbs: [
 							[live.planId, `/plans/${live.planId}`],
@@ -867,48 +885,24 @@ export function explorationPage(
 						],
 					})}
 					<h1>${title}</h1>
-					<p class="sc-note">
+					<p>
 						Session ${explorationId} on build ${live.build} · ${live.instanceId} ·
-						${live.level ?? 'no level'} · ${timeLine(live, run)}. ${live.goal}
+						${live.level ?? 'no level'} ·
+						${timeLine(live, run)}${live.costUsd === null ? '' : ` · total cost ${costText(live.costUsd, live.costPartial)}`}.
+						${live.goal}
 					</p>
 				</div>
-				<div class="sc-marks" data-region="exploration-state">
-					${live.stopping ? statusMark({ state: 'stopping', label: 'Stopping…' }) : statusMark({ state: live.running && live.paused ? 'paused' : live.state })}
-					${
-						live.running && run.phase
-							? html`${phaseStrip(run)}
-								${wordMark({
-									state: 'elapsed',
-									label: html`elapsed
-									${live.running ? html`<span data-since="${run.startedAt}">${duration(Date.now() - Date.parse(run.startedAt))}</span>` : ''}`,
-									title: 'Time since the start',
-								})}`
-							: live.phases.map((row) => statusWord({ state: row.state, label: row.phase }))
-					}
-					${
-						live.costUsd === null
-							? ''
-							: wordMark({
-									state: 'cost',
-									label: `Total cost ${costText(live.costUsd, live.costPartial)}`,
-									title: 'Reported cost across this exploration and its follow-ups',
-								})
-					}
-				</div>
-			</div>
+				${actions.buttons}
+			</header>
+			${phaseStrip(live, run)}
 			<div data-region="exploration-banner">
 				${stateLine(store, live, run)}${strayLines(live)}${stepAsks(open)}${rulesLines(permissionRules(store, explorationId))}
 				${live.warnings.map((warning) => notice({ kind: 'warn', content: warning }))}
 			</div>
-			${runActions(
-				context,
-				live,
-				run,
-				review.explorations.filter((item) => item.explorationId !== explorationId),
-				defaultBuild(store.workspace),
-				instanceChoice(store, live.planId)
-			)}
-			<div data-region="exploration-list">${explorationList(context, live, others, asking)}</div>
+			${actions.dialogs}
+			<div class="sc-stack is-loose" data-region="exploration-list">
+				${explorationList(context, live, others, asking)}
+			</div>
 			<div data-region="permission-history">
 				${permissionHistory(store, explorationId, params, historyFrom(explorationId, params))}
 			</div>

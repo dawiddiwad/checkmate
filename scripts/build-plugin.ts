@@ -73,6 +73,7 @@ const stylesheets = [
 	'components/chat-turn.css',
 	'components/composer.css',
 	'components/target-card.css',
+	'components/tester-card.css',
 	'screens/catalogue.css',
 ]
 const ui = new URL('../plugin/src/ui/', import.meta.url)

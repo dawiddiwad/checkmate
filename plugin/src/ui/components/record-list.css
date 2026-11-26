@@ -1,6 +1,5 @@
 .test,
 .gap,
-.history > li,
 .found,
 .asr {
 	padding: 12px 16px;
@@ -52,5 +51,112 @@
 	color: var(--muted);
 }
 .gap.closed > details > summary {
+	color: var(--muted);
+}
+.asr-row {
+	display: flex;
+	align-items: flex-start;
+	gap: var(--space-3);
+	cursor: pointer;
+}
+.asr-row .aid {
+	font: 500 13px/24px var(--font-mono);
+	color: var(--muted);
+}
+.asr-text {
+	flex: 1;
+	min-width: 0;
+	font: 400 14px/24px var(--font-sans);
+}
+.asr-text .obs {
+	font-size: 13px;
+	line-height: 20px;
+	color: var(--muted);
+}
+.asr-body {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	margin-top: var(--space-2);
+	padding-left: calc(var(--cell-sm) + var(--space-3));
+}
+.sc-ver {
+	display: flex;
+	flex-direction: column;
+	background: var(--surface);
+	border: var(--hairline) solid var(--hair);
+}
+.sc-ver-h {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: var(--space-2) var(--space-4);
+	padding: 12px var(--space-4);
+	background: var(--surface-2);
+	cursor: pointer;
+}
+.sc-ver > details[open] > .sc-ver-h {
+	border-bottom: var(--hairline) solid var(--hair);
+}
+.sc-ver.is-cur .sc-ver-h {
+	box-shadow: inset var(--bar) 0 0 var(--ink);
+}
+.sc-ver-id {
+	font: 600 14px/20px var(--font-mono);
+}
+.sc-ver-m {
+	font: 400 13px/20px var(--font-sans);
+	color: var(--muted);
+}
+.sc-ver-m code {
+	font-size: 12px;
+}
+.sc-ver-open {
+	padding: var(--space-2) var(--space-4);
+	font: 400 13px/20px var(--font-sans);
+}
+.sc-diff {
+	display: flex;
+	flex-direction: column;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+.sc-diff li {
+	display: grid;
+	grid-template-columns: 20px minmax(40px, auto) minmax(0, 1fr);
+	gap: 0 var(--space-3);
+	align-items: baseline;
+	padding: var(--space-2) var(--space-4);
+	border-bottom: var(--hairline) solid var(--hair);
+	font: 400 14px/20px var(--font-sans);
+	overflow-wrap: anywhere;
+}
+.sc-diff-op {
+	display: grid;
+	place-items: center;
+	align-self: center;
+	width: 20px;
+	height: 20px;
+	border: var(--hairline) solid var(--ink);
+	font: 600 13px/16px var(--font-mono);
+	color: var(--ink);
+}
+.sc-diff .is-add .sc-diff-op {
+	background: var(--ink);
+	color: var(--on-ink);
+}
+.sc-diff-id {
+	font: 500 13px/20px var(--font-mono);
+	color: var(--muted);
+}
+.sc-diff .was {
+	color: var(--muted);
+	text-decoration: line-through;
+	text-decoration-color: var(--edge);
+}
+.sc-diff .arrow {
+	padding: 0 6px;
+	font: 500 13px/20px var(--font-mono);
 	color: var(--muted);
 }

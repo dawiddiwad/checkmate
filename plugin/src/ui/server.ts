@@ -118,7 +118,7 @@ import { chatMessagePage } from './screens/chat-message.ts'
 import { chatPage, chatsPage, planChat } from './screens/chats.ts'
 import { claimPage, explorationPage, explorerFile, explorerFilePage, questionPage } from './screens/exploration.ts'
 import { logPage } from './screens/log.ts'
-import { assumedRows, firstRunPage, newChangePage } from './screens/new-change.ts'
+import { assumedRows, firstRunPage, newChangePage, setupForm } from './screens/new-change.ts'
 import { emptyRecord, permissionPage } from './screens/permission.ts'
 import {
 	candidateFromForm,
@@ -614,7 +614,7 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 		if (pathname === '/' && searchParams.has('item')) return redirect(request.res, oldItem(searchParams))
 		if (pathname === '/') return render(request, startOfHome(shown))
 		if (pathname === '/setup')
-			return render(request, firstRunPage(store.workspace, shown, false, cameFrom(request)))
+			return render(request, targetsPage(store, setupForm(shown, store.workspace, undefined, true)))
 		if (pathname === '/new')
 			return render(request, newChangePage(shown, changeDefaults(searchParams.get('target')), false))
 		if (pathname === '/inbox' || pathname === '/plans') return redirect(request.res, '/')
@@ -1991,7 +1991,9 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 			])
 			return render(
 				request,
-				firstRunPage(store.workspace, context(request), onHome, cameFrom(request), submitted),
+				onHome
+					? firstRunPage(store.workspace, context(request), onHome, cameFrom(request), submitted)
+					: targetsPage(store, setupForm(context(request), store.workspace, submitted, true), 422),
 				cookies
 			)
 		}

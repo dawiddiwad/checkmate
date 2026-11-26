@@ -16,3 +16,30 @@
 .sc-targets > .sc-card + .sc-card {
 	margin-top: 0;
 }
+.sc-instances {
+	display: flex;
+	flex-direction: column;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+	border-top: var(--hairline) solid var(--hair);
+}
+.sc-instance {
+	display: grid;
+	grid-template-columns: 88px 96px minmax(0, 1fr) auto;
+	gap: var(--space-3);
+	align-items: center;
+	min-height: 40px;
+	padding: 0 var(--space-3);
+	border-bottom: var(--hairline) solid var(--hair);
+	font: 400 13px/20px var(--font-sans);
+}
+.sc-instance:last-child {
+	border-bottom: 0;
+}
+.sc-instance code {
+	color: var(--muted);
+}
+.sc-targets.is-one {
+	grid-template-columns: minmax(0, 1fr);
+}

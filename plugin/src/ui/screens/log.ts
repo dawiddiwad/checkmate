@@ -21,11 +21,11 @@ function logRow(row: LogRow) {
 		attrs: { 'data-row': true, 'data-key': `op:${row.rowid}`, 'data-label': String(row.rowid) },
 		cells: [
 			{ content: time(row.at), attrs: { class: 'is-muted' } },
-			html`${row.actor}${via}`,
 			{ content: row.command, attrs: { class: 'is-mono' } },
 			html`${statusMark({ state: row.status === 'rejected' ? 'rejected_operation' : row.status, label: words(row.status) })}${
 				row.status === 'rejected' ? html`<p class="sc-note">${reasons(row.response).join(' ')}</p>` : ''
 			}`,
+			html`${row.actor}${via}`,
 			subjects.length ? join(subjects.map(subjectLink), ' ') : html`<span class="sc-muted">no subject</span>`,
 			{ content: row.id, attrs: { class: 'is-mono is-muted' } },
 		],
@@ -47,7 +47,7 @@ export function logPage(store: Store, params: URLSearchParams): Page {
 			state,
 			page.total,
 			dataTable({
-				columns: ['Time', 'Actor', 'Command', 'Status', 'Subjects', 'Operation'],
+				columns: ['Time', 'Command', 'Status', 'Actor', 'Subjects', 'Operation'],
 				rows: page.rows.map(logRow),
 				scroll: true,
 			})

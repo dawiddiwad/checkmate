@@ -47,3 +47,6 @@ fieldset.edit-card > legend + * {
 .record-h {
 	border-color: var(--edge);
 }
+.sc-card-h > .sc-btn {
+	margin-left: auto;
+}

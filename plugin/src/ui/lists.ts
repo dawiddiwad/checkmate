@@ -5,7 +5,7 @@ import type { Html } from './html.ts'
 import { formButton } from './components/button.ts'
 import { emptyNotice } from './components/empty-state.ts'
 import { statusMark } from './components/status-mark.ts'
-import { costText, html, plural, words } from './html.ts'
+import { html, plural, words } from './html.ts'
 
 export function loopState(loop: { state: string; waitsOn: string }) {
 	const role = loop.waitsOn === 'qa' ? 'QA' : loop.waitsOn
@@ -209,7 +209,7 @@ const runStatuses = [
 export function runStatus(row: { state: string; acceptance: string | null }) {
 	if (row.state === 'started') return statusMark({ state: 'started', label: 'in progress' })
 	if (row.acceptance === 'approved') return statusMark({ state: 'approved', label: 'accepted' })
-	if (row.acceptance === 'pending') return statusMark({ state: 'pending', label: 'awaiting acceptance' })
+	if (row.acceptance === 'pending') return statusMark({ state: 'awaits_acceptance', label: 'awaiting acceptance' })
 	return statusMark({ state: row.acceptance ?? 'finalized' })
 }
 
@@ -257,16 +257,6 @@ export function runsSpec(store: Store): ListSpec {
 }
 
 export type RunRow = ReturnType<typeof pagedRuns>['rows'][number]
-
-export function runUsageLine({
-	observedModels,
-	costUsd,
-	costPartial,
-}: Pick<RunRow, 'observedModels' | 'costUsd' | 'costPartial'>) {
-	const label = observedModels.length > 1 ? 'Models' : 'Model'
-	return html`${label} <code>${observedModels.join(', ') || '—'}</code> · Cost
-		<span ${costUsd === null ? '' : html`title="Reported USD ${costUsd}"`}>${costText(costUsd, costPartial)}</span>`
-}
 
 export function subjectLink(subject: string) {
 	const [kind, id] = subject.split(/:(.*)/)

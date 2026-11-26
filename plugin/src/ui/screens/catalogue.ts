@@ -32,6 +32,7 @@ import { examples as statusBar } from '../components/status-bar.catalogue.ts'
 import { examples as statusMark } from '../components/status-mark.catalogue.ts'
 import { examples as tabs } from '../components/tabs.catalogue.ts'
 import { examples as targetCard } from '../components/target-card.catalogue.ts'
+import { examples as testerCard } from '../components/tester-card.catalogue.ts'
 
 const entries: Array<[string, Array<[string, Html | string]>]> = [
 	['banner', banner],
@@ -64,6 +65,7 @@ const entries: Array<[string, Array<[string, Html | string]>]> = [
 	['status-mark', statusMark],
 	['tabs', tabs],
 	['target-card', targetCard],
+	['tester-card', testerCard],
 ]
 
 function entry([name, examples]: [string, Array<[string, Html | string]>]) {

@@ -12,23 +12,44 @@
 	gap: 12px;
 }
 .sc-record {
-	display: flex;
-	flex-direction: column;
-	gap: 16px;
+	gap: var(--space-4);
 	max-width: 880px;
-	padding-bottom: 16px;
 }
 .sc-record .sc-notice {
 	margin: 0;
 }
-.sc-ask-list.asks li {
+.sc-ask-list.asks {
+	gap: 0;
+	border: var(--hairline) solid var(--edge);
+	background: var(--surface);
+}
+.sc-ask-list.asks > li {
 	flex-direction: column;
 	align-items: flex-start;
-	gap: 4px;
+	gap: 2px;
+	padding: var(--space-2) var(--space-3);
+	border-bottom: var(--hairline) solid var(--hair);
+}
+.sc-ask-list.asks > li:last-child {
+	border-bottom: 0;
+}
+.sc-ask-list.asks > li:has(.sc-btn.is-sel) {
+	background: var(--surface-2);
+	box-shadow: inset var(--bar) 0 0 var(--ink);
+}
+.sc-ask-list.asks .sc-btn {
+	height: auto;
+	min-height: 0;
+	padding: 0;
+	border: 0;
+	background: transparent;
+	font-weight: 600;
 }
 .sc-ask-list.asks .sc-help {
 	margin: 0;
+	padding-left: 28px;
 	max-width: 72ch;
+	font-size: 13px;
 }
 .sc-record .sc-c-extra {
 	margin-top: 12px;

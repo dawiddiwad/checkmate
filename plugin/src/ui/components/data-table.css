@@ -25,7 +25,7 @@
 	padding: var(--space-1) var(--space-4);
 	border-bottom: var(--hairline) solid var(--hair);
 	vertical-align: middle;
-	overflow-wrap: anywhere;
+	overflow-wrap: break-word;
 }
 .sc-table tr:last-child td {
 	border-bottom: 0;
@@ -64,7 +64,9 @@
 	color: var(--ink);
 	text-decoration-color: var(--edge);
 }
-.sc-table td code {
+.sc-table td code,
+.sc-table td .sc-mono,
+.sc-table td .sc-mark {
 	white-space: nowrap;
 }
 .sc-table.is-matrix td,
@@ -99,4 +101,20 @@
 		width: var(--ctl-lg);
 		height: var(--ctl-lg);
 	}
+}
+.sc-table tr.is-block td:first-child {
+	box-shadow: inset var(--bar) 0 0 var(--signal);
+}
+.sc-table tr.is-dim td {
+	color: var(--muted);
+}
+.sc-table tr.is-open td {
+	background: var(--surface-2);
+}
+.sc-table td > .sc-cell {
+	--cell: 16px;
+	font-size: 11px;
+}
+.sc-table tr.is-sel .sc-c-opts {
+	display: inline-flex;
 }

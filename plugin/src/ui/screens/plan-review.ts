@@ -121,7 +121,13 @@ function listOf(context: Context, review: Review, view: string, groups: Group[],
 function blockingOf(review: Review, groups: Group[], view: string) {
 	const blocking = groups.find((group) => group.label === blockingLabel)?.items ?? []
 	if (!blocking.length) return ''
-	return blockingBanner({ count: blocking.length, href: openedHref(review, blocking[0], view) })
+	return blockingBanner({
+		count: blocking.length,
+		title: `${blocking.length === 1 ? 'question blocks' : 'questions block'} testing`,
+		text: 'Testers wait on these answers. Everything else can wait.',
+		action: 'Answer the first',
+		href: openedHref(review, blocking[0], view),
+	})
 }
 
 function emptyText(view: string) {

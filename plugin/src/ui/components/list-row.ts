@@ -79,16 +79,22 @@ export type ListPageRow = {
 	top: Html | string
 	tags: Html | string
 	lines: Array<Html | string>
+	open?: boolean
 }
 
-export function listPageRow({ key, href, top, tags, lines }: ListPageRow) {
+export function listPageRow({ key, href, top, tags, lines, open = false }: ListPageRow) {
 	const inner = html`<span class="sc-recipe-n">${top} ${tags}</span>
 		${lines.map((line, index) => html`<span class="${index ? 'sc-recipe-m' : 'sc-recipe-d'}">${line}</span>`)}`
 	const label = key.slice(key.indexOf(':') + 1)
 	return html`<li data-key="${key}" data-nav-row>
 		${
 			href
-				? html`<a class="sc-recipe" href="${href}" data-row data-href="${href}" data-label="${label}"
+				? html`<a
+						class="sc-recipe${open ? ' is-open' : ''}"
+						href="${href}"
+						data-row
+						data-href="${href}"
+						data-label="${label}"
 						>${inner}</a
 					>`
 				: html`<div class="sc-recipe" tabindex="-1" data-row data-label="${label}">${inner}</div>`

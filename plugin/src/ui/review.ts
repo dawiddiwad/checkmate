@@ -504,6 +504,20 @@ function marks(review: Review, cells: CellStatus[]) {
 	})
 }
 
+export function ruleBoard(review: Review) {
+	const builds = shown(review)
+	const from = review.map.builds.length - builds.length
+	return {
+		builds: builds.map((item) => buildLabel(review, item.build)),
+		rows: review.map.rows.map((row) => ({
+			id: row.rule.id,
+			text: row.rule.id === outside ? 'Outside the rules' : row.rule.text,
+			storedTests: row.storedTests,
+			cells: row.cells.slice(from).map((cell, index) => cellOf(review, cell.status, builds[index].build)),
+		})),
+	}
+}
+
 function navRow(
 	review: Review,
 	current: string,

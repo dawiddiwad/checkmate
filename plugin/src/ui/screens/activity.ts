@@ -8,7 +8,9 @@ import type { ListSpec } from '../lists.ts'
 import { instanceChoice, stopDialog, stopOption, testAgainOption, testDialog } from '../actions.ts'
 import { allRuns } from '../activity.ts'
 import { emptyNotice } from '../components/empty-state.ts'
-import { groupHeader, listRow, optionsBox } from '../components/list-row.ts'
+import { dataTable, tableRow } from '../components/data-table.ts'
+import { listRow, optionsBox } from '../components/list-row.ts'
+import { metrics } from '../components/metric.ts'
 import { heading } from '../components/page-heading.ts'
 import { statusMark } from '../components/status-mark.ts'
 import { asList, duration, html, money, plural, time } from '../html.ts'
@@ -60,10 +62,54 @@ function options(run: Run) {
 	return list
 }
 
-function row(run: Run, n: number, now: number) {
+function tableEntry(entry: TableEntry) {
+	return tableRow({
+		attrs: {
+			id: entry.id,
+			'data-row': true,
+			'data-key': entry.key,
+			'data-href': entry.href,
+			'data-label': entry.label,
+		},
+		cells: [
+			entry.mark,
+			{ content: html`<a href="${entry.href}">${entry.shownId}</a>`, attrs: { class: 'is-mono' } },
+			{ content: entry.title, attrs: { class: 'is-title', title: entry.title } },
+			{ content: html`${entry.meta} ${entry.options}`, attrs: { class: 'is-muted', title: entry.metaText } },
+		],
+	})
+}
+
+type TableEntry = {
+	id: string
+	key: string
+	href: string
+	label: string
+	mark: Html
+	shownId: string
+	title: string
+	meta: Html
+	metaText: string
+	options: Html | ''
+}
+
+function row(run: Run, n: number, now: number, shape: Shape) {
 	const items = options(run)
 	const title = `${run.planId} · ${run.follow ? 'Follow-up' : 'Test'} ${run.build}${run.level && !run.follow ? ` · ${run.level}` : ''}${sentence(run) ? ` · ${sentence(run)}` : ''}`
 	const label = run.follow ? `${run.explorationId} follow-up` : run.explorationId
+	if (shape === 'table')
+		return tableEntry({
+			id: `run-${n}`,
+			key: run.key,
+			href: `/explorations/${run.explorationId}`,
+			label,
+			mark: statusMark({ state: run.state }),
+			shownId: run.explorationId,
+			title,
+			meta: join(meta(run, now), ' · '),
+			metaText: metaText(run, now),
+			options: optionsBox(items),
+		})
 	return listRow({
 		id: `run-${n}`,
 		key: run.key,
@@ -85,7 +131,7 @@ function join(items: Array<Html | string | null>, separator: string): Html {
 	return html`${shown.map((item, index) => (index ? html`${separator}${item}` : item))}`
 }
 
-function chatRow(turn: RequestRecord, n: number, now: number) {
+function chatRow(turn: RequestRecord, n: number, now: number, shape: Shape) {
 	const start = Date.parse(turn.startedAt ?? turn.askedAt)
 	const end = turn.endedAt ? Date.parse(turn.endedAt) : now
 	const spent = isEnded(turn) ? duration(Math.max(0, end - start)) : null
@@ -101,12 +147,26 @@ function chatRow(turn: RequestRecord, n: number, now: number) {
 		.filter(Boolean)
 		.join(' · ')
 	const title = `Chat message · ${turn.text.trim().split('\n')[0]}`
+	const mark = statusMark({ state: turn.state, label: turn.state === 'answered' ? 'Completed' : undefined })
+	if (shape === 'table')
+		return tableEntry({
+			id: `chat-row-${n}`,
+			key: `request:${turn.id}`,
+			href: `/chats/${turn.conversation}`,
+			label: turn.id,
+			mark,
+			shownId: turn.id,
+			title,
+			meta: join(meta, ' · '),
+			metaText,
+			options: '',
+		})
 	return listRow({
 		id: `chat-row-${n}`,
 		key: `request:${turn.id}`,
 		href: `/chats/${turn.conversation}`,
 		label: turn.id,
-		tag: statusMark({ state: turn.state, label: turn.state === 'answered' ? 'Completed' : undefined }),
+		tag: mark,
 		shownId: turn.id,
 		idTitle: turn.id,
 		title,
@@ -116,7 +176,9 @@ function chatRow(turn: RequestRecord, n: number, now: number) {
 	})
 }
 
-type Entry = { at: string; running: boolean; render: (n: number, now: number) => Html; run: Run | null }
+type Shape = 'row' | 'table'
+
+type Entry = { at: string; running: boolean; render: (n: number, now: number, shape: Shape) => Html; run: Run | null }
 
 export function activityPage(
 	store: Store,
@@ -130,13 +192,13 @@ export function activityPage(
 		...runs.map((run): Entry => ({
 			at: run.startedAt,
 			running: run.running,
-			render: (n, now) => row(run, n, now),
+			render: (n, now, shape) => row(run, n, now, shape),
 			run,
 		})),
 		...allRequests(store).map((turn): Entry => ({
 			at: turn.askedAt,
 			running: turn.state === 'running' || turn.state === 'waiting',
-			render: (n, now) => chatRow(turn, n, now),
+			render: (n, now, shape) => chatRow(turn, n, now, shape),
 			run: null,
 		})),
 	].sort((a, b) => Number(b.running) - Number(a.running) || b.at.localeCompare(a.at))
@@ -144,13 +206,10 @@ export function activityPage(
 	const shown = { ...state, page: Math.min(state.page, lastPage) }
 	const page = { rows: entries.slice((shown.page - 1) * shown.size, shown.page * shown.size) }
 	const now = Date.now()
+	const waiting = context.queueCount
 	const running = page.rows.filter((entry) => entry.running)
 	const earlier = page.rows.filter((entry) => !entry.running)
 	let n = 0
-	const group = (label: string, items: Entry[]) =>
-		items.length
-			? html`${groupHeader({ label, count: items.length })} ${items.map((entry) => entry.render(n++, now))}`
-			: ''
 	const total = entries.length
 	const first = total ? (shown.page - 1) * shown.size + 1 : 0
 	const last = Math.min(total, shown.page * shown.size)
@@ -164,19 +223,46 @@ export function activityPage(
 		subjects: ['*'],
 		address: listHref(spec, shown),
 		...pageTrail(spec, shown, total, 'Activity'),
-		body: html`${heading({ title: 'Activity', sub: 'Tests, follow-ups, and chat messages. Open an entry to see its run or chat.' })}
-			<div data-region="activity" data-list-region>
-				<p class="sc-count" data-list-count role="status">
-					${total ? `Showing ${first}–${last} of ${plural(total, 'entry', 'entries')}` : ''}
-				</p>
+		body: html`${heading({
+				title: 'Activity',
+				sub: 'Tests, follow-ups, and chat messages. Open an entry to see its run or chat.',
+				actions: metrics({
+					items: [
+						{ value: running.length, name: 'running', waitsOnYou: false },
+						{ value: waiting, name: 'wait on you', waitsOnYou: waiting > 0 },
+					],
+				}),
+			})}
+			<div class="sc-stack is-loose" data-region="activity" data-list-region>
 				${
-					total
-						? html`<div class="sc-list activity" role="list" aria-label="Runs and chat messages" data-list>
-									${group('Running now', running)}${group('Earlier', earlier)}
+					running.length
+						? html`<section class="sc-sec" aria-labelledby="running-h">
+								<h2 class="sc-sec-h" id="running-h">Running now<b>${running.length}</b></h2>
+								<div class="sc-list activity" role="list" aria-label="Running now" data-list>
+									${running.map((entry) => entry.render(n++, now, 'row'))}
 								</div>
-								${pager(spec, shown, total)}`
-						: emptyNotice({ what: spec.none[0], next: spec.none[1] })
+							</section>`
+						: ''
 				}
+				<section class="sc-sec" aria-labelledby="earlier-h">
+					<h2 class="sc-sec-h" id="earlier-h">Earlier<b>${earlier.length}</b></h2>
+					<p class="sc-note" data-list-count role="status">
+						${total ? `Showing ${first}–${last} of ${plural(total, 'entry', 'entries')}.` : ''}
+					</p>
+					${
+						earlier.length
+							? dataTable({
+									columns: ['State', 'Session', 'What', 'Who and how long'],
+									rows: earlier.map((entry) => entry.render(n++, now, 'table')),
+									scroll: true,
+									attrs: { 'aria-label': 'Earlier runs and chat messages' },
+								})
+							: total
+								? ''
+								: emptyNotice({ what: spec.none[0], next: spec.none[1] })
+					}
+					${total ? pager(spec, shown, total) : ''}
+				</section>
 			</div>
 			<div data-region="activity-dialogs">${dialogs}</div>`,
 	}

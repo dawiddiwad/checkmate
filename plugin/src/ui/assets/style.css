@@ -1077,14 +1077,13 @@ details.menu > summary::-webkit-details-marker {
 	width: 3px;
 	background: var(--ink);
 }
-.sp-nrow[aria-current='page'],
-.sp-nrow.on {
+.sp-nrow[aria-current='page'] {
 	background: var(--surface-2);
 	font-weight: 600;
 }
 .sp-nrow.hl {
+	background: var(--surface-2);
 	color: var(--ink);
-	box-shadow: inset 0 0 0 1px var(--edge);
 }
 .sp-nrow.hl .sp-nid {
 	color: var(--muted);

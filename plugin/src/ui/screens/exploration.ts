@@ -25,12 +25,15 @@ import {
 } from '../actions.ts'
 import { failureOf, phases, runsOf } from '../activity.ts'
 import { banner } from '../components/banner.ts'
+import { formButton } from '../components/button.ts'
+import { dataTable, tableRow } from '../components/data-table.ts'
 import { emptyLine } from '../components/empty-state.ts'
+import { evidenceList, viewLink } from '../components/evidence-viewer.ts'
 import { groupHeader, listRow, optionsBox } from '../components/list-row.ts'
 import { downloadMenu } from '../components/menu.ts'
 import { crumbBar, heading } from '../components/page-heading.ts'
 import { statusMark, statusWord, wordMark } from '../components/status-mark.ts'
-import { evidenceList, shownAsText, viewLink } from '../evidence.ts'
+import { shownAsText } from '../evidence.ts'
 import { actorField, emptyState, gapPanel, hidden, keptText, messages, rationaleField, recordPanel } from '../forms.ts'
 import { ago, asList, costText, duration, html, join, plural, time } from '../html.ts'
 import {
@@ -50,35 +53,28 @@ type Listed = ReturnType<typeof planExplorations>[number]
 
 function claimRow(planId: string, claim: Claim) {
 	const key = encodeURIComponent(`c:${claim.id}`)
-	return html`<tr id="${claim.id}" data-key="claim:${claim.id}">
-		<td>
-			<a class="mono" href="/plans/${planId}?view=all&amp;item=${key}">${claim.id}</a>
-		</td>
-		<td>${statusMark({ state: claim.state })}</td>
-		<td>${statusMark({ state: claim.severity })}</td>
-		<td>${claim.actors.join(', ')}</td>
-		<td class="wrap-cell">${claim.title}${claim.reason ? html`<p class="help">${claim.reason}</p>` : ''}</td>
-	</tr>`
+	return tableRow({
+		cells: [
+			html`<a class="mono" href="/plans/${planId}?view=all&amp;item=${key}">${claim.id}</a>`,
+			statusMark({ state: claim.state }),
+			statusMark({ state: claim.severity }),
+			claim.actors.join(', '),
+			{
+				content: html`${claim.title}${claim.reason ? html`<p class="help">${claim.reason}</p>` : ''}`,
+				attrs: { class: 'wrap-cell' },
+			},
+		],
+		attrs: { id: claim.id, 'data-key': `claim:${claim.id}` },
+	})
 }
 
 export function claimsTable(planId: string, claims: Claim[]) {
 	if (!claims.length) return html`<p class="none">No claim. Claims show here when an explorer reports a defect.</p>`
-	return html`<div class="scroll">
-		<table>
-			<thead>
-				<tr>
-					<th scope="col">Claim</th>
-					<th scope="col">State</th>
-					<th scope="col">Severity</th>
-					<th scope="col">Reporters</th>
-					<th scope="col">Title</th>
-				</tr>
-			</thead>
-			<tbody>
-				${claims.map((claim) => claimRow(planId, claim))}
-			</tbody>
-		</table>
-	</div>`
+	return dataTable({
+		columns: ['Claim', 'State', 'Severity', 'Reporters', 'Title'],
+		rows: claims.map((claim) => claimRow(planId, claim)),
+		scroll: true,
+	})
 }
 
 function claimLinks(planId: string, claims: Claim[]) {
@@ -184,57 +180,39 @@ export function explorationBanners(explorations: Listed[]) {
 export function explorationsTable(explorations: Listed[]) {
 	if (!explorations.length)
 		return html`<p class="none">No exploration yet. Start one with <code>checkmate test</code>.</p>`
-	return html`<div class="scroll">
-		<table>
-			<thead>
-				<tr>
-					<th scope="col">Exploration</th>
-					<th scope="col">State</th>
-					<th scope="col">Build</th>
-					<th scope="col">Instance</th>
-					<th scope="col">Level</th>
-					<th scope="col">Started</th>
-					<th scope="col">Cost</th>
-				</tr>
-			</thead>
-			<tbody>
-				${[...explorations].reverse().map(
-					(item) =>
-						html`<tr data-key="exploration:${item.explorationId}">
-							<td>
-								<a class="mono" href="/explorations/${item.explorationId}">${item.explorationId}</a>
-							</td>
-							<td>
-								${statusMark({ state: item.state })}
-								${item.reason !== null ? html`<p class="help">${dataLine(item.reason, item.data)}</p>` : ''}
-								${
-									item.follow === 'failed' ||
-									item.follow === 'stopped' ||
-									item.follow === 'interrupted'
-										? html`<p class="help">
-												Follow-up ${item.follow}: ${dataLine(item.followReason, item.data)}
-											</p>`
-										: ''
-								}
-							</td>
-							<td class="mono">${item.build}</td>
-							<td class="mono">${item.instanceId}</td>
-							<td>
-								${item.level ?? html`<span class="muted">none</span>`}${
-									item.explorers === null
-										? ''
-										: html` <span class="muted">· ${plural(item.explorers, 'explorer')}</span>`
-								}
-							</td>
-							<td class="nowrap">${time(item.startedAt)}</td>
-							<td class="exploration-cost" title="Reported exploration cost">
-								${costText(item.costUsd, item.costPartial)}
-							</td>
-						</tr>`
-				)}
-			</tbody>
-		</table>
-	</div>`
+	return dataTable({
+		columns: ['Exploration', 'State', 'Build', 'Instance', 'Level', 'Started', 'Cost'],
+		rows: [...explorations].reverse().map((item) =>
+			tableRow({
+				cells: [
+					html`<a class="mono" href="/explorations/${item.explorationId}">${item.explorationId}</a>`,
+					html`${statusMark({ state: item.state })}
+					${item.reason !== null ? html`<p class="help">${dataLine(item.reason, item.data)}</p>` : ''}
+					${
+						item.follow === 'failed' || item.follow === 'stopped' || item.follow === 'interrupted'
+							? html`<p class="help">
+									Follow-up ${item.follow}: ${dataLine(item.followReason, item.data)}
+								</p>`
+							: ''
+					}`,
+					{ content: item.build, attrs: { class: 'mono' } },
+					{ content: item.instanceId, attrs: { class: 'mono' } },
+					html`${item.level ?? html`<span class="muted">none</span>`}${
+						item.explorers === null
+							? ''
+							: html` <span class="muted">· ${plural(item.explorers, 'explorer')}</span>`
+					}`,
+					{ content: time(item.startedAt), attrs: { class: 'nowrap' } },
+					{
+						content: costText(item.costUsd, item.costPartial),
+						attrs: { class: 'exploration-cost', title: 'Reported exploration cost' },
+					},
+				],
+				attrs: { 'data-key': `exploration:${item.explorationId}` },
+			})
+		),
+		scroll: true,
+	})
 }
 
 type LiveExplorer = Live['explorers'][number]
@@ -666,7 +644,7 @@ function summaryDetail(store: Store, live: Live, crumbs: Html, options: Html | '
 				: ''
 		}
 		<div class="actions">
-			${downloadMenu('Download report', `/explorations/${live.explorationId}/export`, 'The record of this exploration.', ['md', 'json'])}
+			${downloadMenu({ label: 'Download report', base: `/explorations/${live.explorationId}/export`, note: 'The record of this exploration.', formats: ['md', 'json'] })}
 		</div>`
 }
 
@@ -875,10 +853,12 @@ export function explorationPage(
 		nav: navigator(review, 'testers', explorationId),
 		body: html`<div class="sp-ch">
 				<div data-region="exploration-head">
-					${crumbBar([
-						[live.planId, `/plans/${live.planId}`],
-						[review.target, null],
-					])}
+					${crumbBar({
+						crumbs: [
+							[live.planId, `/plans/${live.planId}`],
+							[review.target, null],
+						],
+					})}
 					<h1>${title}</h1>
 					<p class="sp-sub">
 						Session ${explorationId} on build ${live.build} · ${live.instanceId} ·
@@ -962,7 +942,7 @@ export function explorerFilePage(
 			[`${explorer} · ${name}`, null],
 		],
 		subjects: [`exploration:${explorationId}`],
-		body: html`${heading(html`${explorationId} · ${explorer} · ${name}`, `Saved in the record after the ${phase} turn.`)}
+		body: html`${heading({ title: html`${explorationId} · ${explorer} · ${name}`, sub: `Saved in the record after the ${phase} turn.` })}
 			<p>
 				<a href="/explorations/${explorationId}">Exploration ${explorationId}</a> · ${plural(file.size, 'byte')}
 			</p>
@@ -1005,7 +985,7 @@ export function questionPage(
 			[question.id, null],
 		],
 		subjects: [`exploration:${explorationId}`, 'inbox'],
-		body: html`${heading(html`${report.planId} · ${question.id}`, question.question)}
+		body: html`${heading({ title: html`${report.planId} · ${question.id}`, sub: question.question })}
 			<p>
 				<a href="/plans/${report.planId}">Plan ${report.planId}</a> ·
 				<a href="/explorations/${explorationId}">Exploration ${explorationId}</a>${
@@ -1043,8 +1023,8 @@ export function claimPage(
 					${hidden(context, '')} ${actorField(context, shown)}
 					${rationaleField(shown, 'Why do you decide this?')}
 					<div class="btns">
-						<button class="btn primary" name="verdict" value="approved">Accept as a defect</button>
-						<button class="btn" name="verdict" value="rejected">Reject</button>
+						${formButton({ label: 'Accept as a defect', emphasis: 'primary', attrs: { name: 'verdict', value: 'approved' } })}
+						${formButton({ label: 'Reject', attrs: { name: 'verdict', value: 'rejected' } })}
 					</div>
 				</form>
 			</section>`
@@ -1059,7 +1039,7 @@ export function claimPage(
 			[claim.id, null],
 		],
 		subjects: [`exploration:${explorationId}`, 'inbox'],
-		body: html`${heading(html`${report.planId} · ${claim.id}`, claim.title, html`<div class="meta">${statusMark({ state: claim.state })} ${statusMark({ state: claim.severity })}</div>`)}
+		body: html`${heading({ title: html`${report.planId} · ${claim.id}`, sub: claim.title, extra: html`<div class="meta">${statusMark({ state: claim.state })} ${statusMark({ state: claim.severity })}</div>` })}
 			<div class="split">
 				<section class="panel" aria-labelledby="claim-title">
 					<h2 class="lab" id="claim-title">Claim</h2>

@@ -319,10 +319,12 @@ function panel(context: Context, review: Review, view: string, current: string, 
 		${view === current ? '' : html`hidden`}
 	>
 		<div class="sp-ch">
-			${crumbBar([
-				[review.planId, `/plans/${review.planId}`],
-				[review.target, null],
-			])}
+			${crumbBar({
+				crumbs: [
+					[review.planId, `/plans/${review.planId}`],
+					[review.target, null],
+				],
+			})}
 			${
 				view === current
 					? html`<h1 id="title-${slug(view)}" data-view-title>${title}</h1>`

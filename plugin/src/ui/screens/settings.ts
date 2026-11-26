@@ -17,9 +17,13 @@ import { instanceList, targetHistory, targetList, targetRequest, targetRevision 
 import type { Html } from '../html.ts'
 import type { Context, Page } from '../layout.ts'
 import { banner } from '../components/banner.ts'
+import { formButton } from '../components/button.ts'
+import { dataTable, tableRow } from '../components/data-table.ts'
 import { emptyNotice } from '../components/empty-state.ts'
+import { field, textArea, textInput } from '../components/field.ts'
 import { heading } from '../components/page-heading.ts'
 import { statusMark } from '../components/status-mark.ts'
+import { jumpLinks, pageTabs } from '../components/tabs.ts'
 import { html, join, plural, short, time } from '../html.ts'
 
 export type InstanceForm = { values: Record<string, string>; error: string | null; field?: string | null }
@@ -33,18 +37,11 @@ const settingsPages = [
 ]
 
 function settingsNav(current: string) {
-	return html`<nav class="settings-nav" aria-label="Settings pages">
-		<ul class="nav">
-			${settingsPages.map(
-				(page) =>
-					html`<li>
-						<a href="${page.path}" ${page.path === current ? html`aria-current="page"` : ''}
-							>${page.label}</a
-						>
-					</li>`
-			)}
-		</ul>
-	</nav>`
+	return pageTabs({
+		label: 'Settings pages',
+		tabs: settingsPages.map((page) => ({ href: page.path, label: page.label })),
+		current,
+	})
 }
 
 export function settingsPage(current: string, title: string, subjects: string[], body: Html, status?: number): Page {
@@ -81,97 +78,74 @@ function words(items: string[]) {
 
 export function targetsPage(store: Store): Page {
 	const targets = targetList(store)
-	const rows = targets.map(
-		(target) =>
-			html`<tr data-key="target:${target.targetId}" data-nav-row>
-				<td>
-					<a class="mono" href="/settings/targets/${target.targetId}" data-nav-item>${target.targetId}</a>
-				</td>
-				<td class="mono">${target.revision === null ? none('no profile yet') : `@${target.revision}`}</td>
-				<td>${words(target.capabilities)}</td>
-				<td>${words(target.entryPoints)}</td>
-				<td>${target.activeInstances}</td>
-			</tr>`
+	const rows = targets.map((target) =>
+		tableRow({
+			cells: [
+				html`<a class="mono" href="/settings/targets/${target.targetId}" data-nav-item>${target.targetId}</a>`,
+				{
+					content: html`${target.revision === null ? none('no profile yet') : `@${target.revision}`}`,
+					attrs: { class: 'mono' },
+				},
+				words(target.capabilities),
+				words(target.entryPoints),
+				target.activeInstances,
+			],
+			attrs: { 'data-key': `target:${target.targetId}`, 'data-nav-row': true },
+		})
 	)
-	const body = html`${heading('Targets', 'Each target with its latest revision and its active instances.')}
+	const body = html`${heading({ title: 'Targets', sub: 'Each target with its latest revision and its active instances.' })}
 		<div data-region="targets" data-list>
 			${
 				targets.length
-					? html`<div class="scroll">
-							<table>
-								<thead>
-									<tr>
-										<th scope="col">Target</th>
-										<th scope="col">Revision</th>
-										<th scope="col">Capabilities</th>
-										<th scope="col">Entry points</th>
-										<th scope="col">Active instances</th>
-									</tr>
-								</thead>
-								<tbody>
-									${rows}
-								</tbody>
-							</table>
-						</div>`
-					: emptyNotice('No target yet.', html`Record one with <code>checkmate target open</code>.`)
+					? dataTable({
+							columns: ['Target', 'Revision', 'Capabilities', 'Entry points', 'Active instances'],
+							rows: rows,
+							scroll: true,
+						})
+					: emptyNotice({
+							what: 'No target yet.',
+							next: html`Record one with <code>checkmate target open</code>.`,
+						})
 			}
 		</div>`
 	return settingsPage('/settings/targets', 'Targets', ['*'], body)
 }
 
 function entryPointsTable(entryPoints: EntryPoint[]) {
-	return html`<div class="scroll">
-		<table>
-			<thead>
-				<tr>
-					<th scope="col">Entry point</th>
-					<th scope="col">Kind</th>
-					<th scope="col">Purpose</th>
-				</tr>
-			</thead>
-			<tbody>
-				${entryPoints.map(
-					(entry) =>
-						html`<tr>
-							<td class="mono">${entry.name}</td>
-							<td class="mono">${entry.kind}</td>
-							<td>${entry.purpose}</td>
-						</tr>`
-				)}
-			</tbody>
-		</table>
-	</div>`
+	return dataTable({
+		columns: ['Entry point', 'Kind', 'Purpose'],
+		rows: entryPoints.map((entry) =>
+			tableRow({
+				cells: [
+					{ content: entry.name, attrs: { class: 'mono' } },
+					{ content: entry.kind, attrs: { class: 'mono' } },
+					entry.purpose,
+				],
+			})
+		),
+		scroll: true,
+	})
 }
 
 function toolsTable(profile: Profile) {
 	if (!profile.tools.length) return html`<p class="none">No tools.</p>`
-	return html`<div class="scroll">
-		<table>
-			<thead>
-				<tr>
-					<th scope="col">Tool</th>
-					<th scope="col">Kind</th>
-					<th scope="col">Version</th>
-					<th scope="col">At setup</th>
-					<th scope="col">Purpose</th>
-				</tr>
-			</thead>
-			<tbody>
-				${profile.tools.map(
-					(tool) =>
-						html`<tr>
-							<td class="mono">${tool.name}</td>
-							<td class="mono">${tool.kind}</td>
-							<td class="mono">${tool.version ?? '–'}</td>
-							<td>
-								${tool.reachable ? statusMark({ state: 'passed', label: 'reachable' }) : statusMark({ state: 'failed', label: 'unreachable' })}
-							</td>
-							<td>${tool.purpose}</td>
-						</tr>`
-				)}
-			</tbody>
-		</table>
-	</div>`
+	return dataTable({
+		columns: ['Tool', 'Kind', 'Version', 'At setup', 'Purpose'],
+		rows: profile.tools.map((tool) =>
+			tableRow({
+				cells: [
+					{ content: tool.name, attrs: { class: 'mono' } },
+					{ content: tool.kind, attrs: { class: 'mono' } },
+					{ content: tool.version ?? '–', attrs: { class: 'mono' } },
+					tool.reachable
+						? statusMark({ state: 'passed', label: 'reachable' })
+						: statusMark({ state: 'failed', label: 'unreachable' }),
+					tool.purpose,
+				],
+			})
+		),
+		scroll: true,
+	})
 }
 
 function profileFacts(profile: Profile) {
@@ -258,17 +232,14 @@ function entryList(instance: InstanceRecord) {
 
 function actorInput(context: Context, id: string) {
 	if (context.actor) return ''
-	return html`<div class="field-group">
-		<label class="lab" for="${id}">Your name</label>
-		<input id="${id}" name="actor" required autocomplete="name" />
-	</div>`
+	return html`${field({ id: id, label: 'Your name', control: textInput({ id: id, name: 'actor', attrs: { required: true, autocomplete: 'name' } }) })}`
 }
 
 function retireControl(context: Context, targetId: string, instance: InstanceRecord, retire: RetireState) {
 	if (instance.retired) return html`<span class="muted small">retired by ${instance.retired.actor}</span>`
 	const failed = retire?.instanceId === instance.instanceId ? retire.error : null
 	return html`<details class="retire" ${failed ? html`open` : ''} data-open-key="retire:${instance.instanceId}">
-		<summary class="btn small" aria-label="Retire ${instance.instanceId}">Retire</summary>
+		${formButton({ label: 'Retire', element: 'summary', inline: true, attrs: { 'aria-label': `Retire ${instance.instanceId}` } })}
 		<form
 			method="post"
 			action="/settings/targets/${targetId}/instances/${instance.instanceId}/retire"
@@ -279,44 +250,39 @@ function retireControl(context: Context, targetId: string, instance: InstanceRec
 			<p>Retire <code>${instance.instanceId}</code>? No new run can start on it. Its runs stay as they are.</p>
 			${failed ? html`<p class="form-error" role="alert">${failed}</p>` : ''}
 			${actorInput(context, `retire-actor-${instance.instanceId}`)}
-			<div class="btns"><button class="btn primary">Confirm retire</button></div>
+			<div class="btns">${formButton({ label: 'Confirm retire', emphasis: 'primary' })}</div>
 		</form>
 	</details>`
 }
 
 function instancesTable(context: Context, targetId: string, instances: InstanceRecord[], retire: RetireState) {
 	if (!instances.length) return html`<p class="none">No instance yet. Add one to start runs.</p>`
-	return html`<div class="scroll">
-		<table>
-			<thead>
-				<tr>
-					<th scope="col">Instance</th>
-					<th scope="col">Entries</th>
-					<th scope="col">Environment</th>
-					<th scope="col">References</th>
-					<th scope="col">Added</th>
-					<th scope="col">Status</th>
-					<th scope="col"><span class="sr-only">Actions</span></th>
-				</tr>
-			</thead>
-			<tbody>
-				${instances.map(
-					(instance) =>
-						html`<tr id="instance-${instance.instanceId}" data-key="instance:${instance.instanceId}">
-							<td class="mono">${instance.instanceId}</td>
-							<td>${entryList(instance)}</td>
-							<td>${instance.environment ?? none()}</td>
-							<td>${words(instance.references)}</td>
-							<td>${instance.addedBy} · ${time(instance.addedAt)}</td>
-							<td>
-								${instance.retired ? statusMark({ state: 'retired' }) : statusMark({ state: 'active' })}
-							</td>
-							<td>${retireControl(context, targetId, instance, retire)}</td>
-						</tr>`
-				)}
-			</tbody>
-		</table>
-	</div>`
+	return dataTable({
+		columns: [
+			'Instance',
+			'Entries',
+			'Environment',
+			'References',
+			'Added',
+			'Status',
+			html`<span class="sr-only">Actions</span>`,
+		],
+		rows: instances.map((instance) =>
+			tableRow({
+				cells: [
+					{ content: instance.instanceId, attrs: { class: 'mono' } },
+					entryList(instance),
+					instance.environment ?? none(),
+					words(instance.references),
+					html`${instance.addedBy} · ${time(instance.addedAt)}`,
+					instance.retired ? statusMark({ state: 'retired' }) : statusMark({ state: 'active' }),
+					retireControl(context, targetId, instance, retire),
+				],
+				attrs: { id: `instance-${instance.instanceId}`, 'data-key': `instance:${instance.instanceId}` },
+			})
+		),
+		scroll: true,
+	})
 }
 
 function addForm(context: Context, targetId: string, entryPoints: EntryPoint[], form: InstanceForm | null) {
@@ -340,46 +306,25 @@ function addForm(context: Context, targetId: string, entryPoints: EntryPoint[], 
 		</div>
 		<form method="post" action="/settings/targets/${targetId}/instances" class="decision-form">
 			<input type="hidden" name="csrf" value="${context.csrf}" />
-			<div class="field-group">
-				<label class="lab" for="instance-id">Instance ID</label>
-				<input
-					id="instance-id"
-					name="instanceId"
-					required
-					pattern="[A-Za-z0-9][A-Za-z0-9_\\-]{0,95}"
-					value="${value('instanceId')}"
-					placeholder="staging"
-				/>
-				<p class="help">Letters, digits, _ or -. An instance ID is not used again.</p>
-			</div>
-			${entryPoints.map(
-				(entry) =>
-					html`<div class="field-group">
-						<label class="lab" for="entry-${entry.name}"
-							>${entry.name} <span class="req">${entry.kind}</span></label
-						>
-						<input
-							id="entry-${entry.name}"
-							name="entry.${entry.name}"
-							required
-							value="${value(`entry.${entry.name}`)}"
-							aria-describedby="entry-${entry.name}-help"
-						/>
-						<p class="help" id="entry-${entry.name}-help">${entry.purpose}</p>
-					</div>`
+			${field({ id: 'instance-id', label: 'Instance ID', control: textInput({ id: 'instance-id', name: 'instanceId', value: value('instanceId'), attrs: { required: true, pattern: '[A-Za-z0-9][A-Za-z0-9_\\-]{0,95}', placeholder: 'staging' } }), help: 'Letters, digits, _ or -. An instance ID is not used again.' })}
+			${entryPoints.map((entry) =>
+				field({
+					id: `entry-${entry.name}`,
+					label: html`${entry.name} <span class="req">${entry.kind}</span>`,
+					control: textInput({
+						id: `entry-${entry.name}`,
+						name: `entry.${entry.name}`,
+						value: value(`entry.${entry.name}`),
+						attrs: { required: true, 'aria-describedby': `entry-${entry.name}-help` },
+					}),
+					help: entry.purpose,
+					helpId: `entry-${entry.name}-help`,
+				})
 			)}
-			<div class="field-group">
-				<label class="lab" for="environment">Environment <span class="req">optional</span></label>
-				<input id="environment" name="environment" value="${value('environment')}" placeholder="UAT sandbox" />
-			</div>
-			<div class="field-group">
-				<label class="lab" for="references">References <span class="req">optional</span></label>
-				<textarea id="references" name="references" rows="2" aria-describedby="references-help">
-${value('references')}</textarea>
-				<p class="help" id="references-help">One per line, for example an authentication alias. No secrets.</p>
-			</div>
+			${field({ id: 'environment', label: html`Environment <span class="req">optional</span>`, control: textInput({ id: 'environment', name: 'environment', value: value('environment'), attrs: { placeholder: 'UAT sandbox' } }) })}
+			${field({ id: 'references', label: html`References <span class="req">optional</span>`, control: textArea({ id: 'references', name: 'references', rows: 2, value: value('references'), attrs: { 'aria-describedby': 'references-help' } }), help: 'One per line, for example an authentication alias. No secrets.', helpId: 'references-help' })}
 			${actorInput(context, 'instance-actor')}
-			<div class="btns"><button class="btn primary">Add instance</button></div>
+			<div class="btns">${formButton({ label: 'Add instance', emphasis: 'primary' })}</div>
 		</form>
 	</section>`
 }
@@ -413,22 +358,28 @@ export function targetPage(
 					${profileFacts(shown.profile)}
 				</section>`
 		: banner({ kind: 'info', content: html`The setup request is recorded. The profile is not saved yet.` })
-	const body = html`${heading(
-			targetId,
+	const body = html`${heading({
+			title: targetId,
 			sub,
-			html`<div class="meta">
+			extra: html`<div class="meta">
 				${shown ? html`<span class="pill" title="${shown.sha256}">sha256 <span class="mono">${short(shown.sha256)}</span></span>` : ''}
-			</div>`
-		)}
+			</div>`,
+		})}
 		<div class="split">
 			<div class="main-col">
-				<nav class="jump" aria-label="On this page">
-					<a href="#entry-points">Entry points</a
-					><a href="#instances">Instances</a
-					>${shown ? html`<a href="#tools">Tools</a><a href="#profile">Profile</a>` : ''}<a href="#history"
-						>History</a
-					>
-				</nav>
+				${jumpLinks({
+					links: [
+						{ href: '#entry-points', label: 'Entry points' },
+						{ href: '#instances', label: 'Instances' },
+						...(shown
+							? [
+									{ href: '#tools', label: 'Tools' },
+									{ href: '#profile', label: 'Profile' },
+								]
+							: []),
+						{ href: '#history', label: 'History' },
+					],
+				})}
 				<section aria-labelledby="entry-points">
 					<h2 id="entry-points">Entry points <span class="n">${request.entryPoints.length}</span></h2>
 					${entryPointsTable(request.entryPoints)}
@@ -503,19 +454,20 @@ export function harnessPage(
 	const requestValue = model?.value ?? requestModelText(store, harness)
 	const levelModels = [...new Set(Object.values(testLevels).map((level) => level.model))]
 	const testerDefault = !pi && levelModels.length === 1 ? levelModels[0] : ''
-	const body = html`${heading('Coding harness', null)}
+	const body = html`${heading({ title: 'Coding harness', sub: null })}
 		<div class="panel">
 			<form method="post" action="/settings/harness/select" class="decision-form">
 				<input type="hidden" name="csrf" value="${context.csrf}" />
-				<div class="field-group">
-					<label class="lab" for="coding-harness">Program for this workspace</label>
-					<select id="coding-harness" name="harness">
+				${field({
+					id: 'coding-harness',
+					label: 'Program for this workspace',
+					control: html`<select id="coding-harness" name="harness">
 						<option value="claude" ${harness === 'claude' ? html`selected` : ''}>Claude Code</option>
 						<option value="pi" ${harness === 'pi' ? html`selected` : ''}>Pi</option>
-					</select>
-					<p class="help">Applies to new tests and chats in this workspace.</p>
-				</div>
-				<div class="btns"><button class="btn primary">Save the program</button></div>
+					</select>`,
+					help: 'Applies to new tests and chats in this workspace.',
+				})}
+				<div class="btns">${formButton({ label: 'Save the program', emphasis: 'primary' })}</div>
 			</form>
 			<p id="harness-program">Current executable · ${harnessProgram(effectiveEnv)}</p>
 		</div>
@@ -550,7 +502,7 @@ export function harnessPage(
 					</p>
 					${form ? html`<p class="form-error" role="alert" data-field="rules">${form.error}</p>` : ''}
 				</div>
-				<div class="btns"><button class="btn primary">Save the rules</button></div>
+				<div class="btns">${formButton({ label: 'Save the rules', emphasis: 'primary' })}</div>
 			</form>
 		</section>
 		<section
@@ -566,11 +518,15 @@ export function harnessPage(
 				says so.
 			</p>
 			<p class="help" role="status" data-model-status>Loading models from ${pi ? 'Pi' : 'Claude Code'}…</p>
-			<button class="btn" type="button" data-model-refresh>Refresh models</button>
-			<div class="field-group">
-				<label class="lab" for="model-filter">Filter models</label>
-				<input id="model-filter" type="search" autocomplete="off" placeholder="Search available models" />
-			</div>
+			${formButton({ label: 'Refresh models', attrs: { type: 'button', 'data-model-refresh': true } })}
+			${field({
+				id: 'model-filter',
+				label: 'Filter models',
+				control: textInput({
+					id: 'model-filter',
+					attrs: { type: 'search', autocomplete: 'off', placeholder: 'Search available models' },
+				}),
+			})}
 			<form method="post" action="/settings/harness/models" class="decision-form">
 				<input type="hidden" name="csrf" value="${context.csrf}" />
 				<input type="hidden" name="harness" value="${harness}" />
@@ -626,7 +582,7 @@ export function harnessPage(
 					</div>
 					${model?.error ? html`<p class="form-error" role="alert" data-field="model">${model.error}</p>` : ''}
 				</div>
-				<div class="btns"><button class="btn primary">Save models</button></div>
+				<div class="btns">${formButton({ label: 'Save models', emphasis: 'primary' })}</div>
 			</form>
 		</section>
 		<section class="panel" aria-labelledby="chat-settings">
@@ -636,7 +592,7 @@ export function harnessPage(
 				New chats use ${pi ? 'Pi' : 'Claude Code'} and your chat model by default. Change the harness, model, or
 				effort for the next message in the chat.
 			</p>
-			<div class="btns"><a class="btn" href="/chats">Open Chats</a></div>
+			<div class="btns">${formButton({ label: 'Open Chats', href: '/chats' })}</div>
 		</section>`
 	return settingsPage('/settings/harness', 'Coding harness', ['*'], body)
 }

@@ -1,9 +1,8 @@
-import { hidden } from '../permissions.ts'
 import type { Store } from '../../store.ts'
 import { permissionOf, permissionRules } from '../../permissions.ts'
 import type { Context, Page } from '../layout.ts'
 import type { PermissionRefusal } from '../permissions.ts'
-import { button } from '../components/button.ts'
+import { button, formButton } from '../components/button.ts'
 import { drawerHead } from '../components/drawer.ts'
 import { crumbBar, heading } from '../components/page-heading.ts'
 import { statusMark } from '../components/status-mark.ts'
@@ -16,6 +15,7 @@ import {
 	askerPath,
 	breakAtSlashes,
 	choicesOf,
+	hidden,
 	nextOpen,
 	optionOf,
 	recordPath,
@@ -71,7 +71,7 @@ export function permissionPage(
 			data-decided-message="${item.decision ? stateText(item) : ''}"
 			${moves ? html`data-moves-on data-next="${after}"` : ''}
 		>
-			${crumbBar([...(item.planId ? [[item.planId, `/plans/${item.planId}`] as [string, string]] : []), [askerId, asker.href]])}
+			${crumbBar({ crumbs: [...(item.planId ? [[item.planId, `/plans/${item.planId}`] as [string, string]] : []), [askerId, asker.href]] })}
 			<div data-stale-slot>
 				${refusal && !refusal.field ? html`<p class="form-error" role="alert">${refusal.error}</p>` : ''}
 			</div>
@@ -179,7 +179,7 @@ export function emptyRecord(explorationId: string, requestId: string): Page {
 		subjects: ['inbox'],
 		status: 404,
 		back: '/activity',
-		body: html`${heading('No such request', `Run ${explorationId} has no permission request ${requestId}.`)}
-			<p class="actions"><a class="btn primary" href="/activity">Activity</a></p>`,
+		body: html`${heading({ title: 'No such request', sub: `Run ${explorationId} has no permission request ${requestId}.` })}
+			<p class="actions">${formButton({ label: 'Activity', href: '/activity', emphasis: 'primary' })}</p>`,
 	}
 }

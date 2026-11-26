@@ -37,3 +37,21 @@ export function optionButton({ n, label, name = label, href, attrs }: OptionButt
 		attrs: { 'data-option': true, ...attrs, 'aria-label': `${n}: ${name}`, title: name },
 	})
 }
+
+export type FormButton = {
+	label: Html | string
+	href?: string
+	element?: 'summary' | 'span'
+	emphasis?: 'primary'
+	inline?: boolean
+	quiet?: boolean
+	attrs?: Attrs
+}
+
+export function formButton({ label, href, element, emphasis, inline = false, quiet = false, attrs }: FormButton) {
+	const look = `btn${inline ? ' small' : ''}${emphasis ? ' primary' : ''}${quiet ? ' ghost' : ''}`
+	if (href !== undefined) return html`<a class="${look}" href="${href}" ${attributes(attrs)}>${label}</a>`
+	if (element === 'summary') return html`<summary class="${look}" ${attributes(attrs)}>${label}</summary>`
+	if (element === 'span') return html`<span class="${look}" ${attributes(attrs)}>${label}</span>`
+	return html`<button class="${look}" ${attributes(attrs)}>${label}</button>`
+}

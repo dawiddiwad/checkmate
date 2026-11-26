@@ -1,10 +1,10 @@
 import type { Harness } from '../pi.ts'
 import type { Html } from './html.ts'
 import { confirmDialog } from './components/confirm-dialog.ts'
+import { evidenceOverlay } from './components/evidence-viewer.ts'
 import { findPalette } from './components/find-palette.ts'
 import { keysHelp } from './components/keys-help.ts'
 import { statusBar } from './components/status-bar.ts'
-import { viewer } from './evidence.ts'
 import { html } from './html.ts'
 
 export type Theme = 'system' | 'light' | 'dark'
@@ -93,7 +93,7 @@ export function layout(context: Context, page: Page) {
 				${context.toast ? html`<div class="toast" role="status" data-toast title="${context.toast}">${cut(context.toast)}</div>` : ''}
 				<div class="sr-only" aria-live="polite" data-announcer></div>
 				${keysHelp()} ${findPalette({ harness: context.harness })} ${confirmDialog()}
-				${page.viewer ? viewer : ''}
+				${page.viewer ? evidenceOverlay : ''}
 			</body>
 		</html>`
 }

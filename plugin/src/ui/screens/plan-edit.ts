@@ -4,6 +4,9 @@ import { planDetail } from '../../views.ts'
 import type { Html } from '../html.ts'
 import type { Context, Page } from '../layout.ts'
 import { banner } from '../components/banner.ts'
+import { formButton } from '../components/button.ts'
+import { dataTable } from '../components/data-table.ts'
+import { field, textArea, textInput } from '../components/field.ts'
 import { heading } from '../components/page-heading.ts'
 import { actorLimit, html, short } from '../html.ts'
 import { navigator, reviewOf } from '../review.ts'
@@ -150,46 +153,38 @@ function removalField(state: EditState) {
 	</div>`
 }
 
-function field(label: string, name: string, value: string, help = '') {
-	return html`<div class="field-group">
-		<label class="lab" for="${name}">${label}</label>
-		<input id="${name}" name="${name}" value="${value}" />
-		${help ? html`<p class="help">${help}</p>` : ''}
-	</div>`
+function inputField(label: string, name: string, value: string, help = '') {
+	return field({ id: name, label, control: textInput({ id: name, name, value }), help: help || undefined })
 }
 
-function area(label: string, name: string, value: string, rows: number, help = '') {
-	return html`<div class="field-group">
-		<label class="lab" for="${name}">${label}</label>
-		<textarea id="${name}" name="${name}" rows="${rows}">${value}</textarea>
-		${help ? html`<p class="help">${help}</p>` : ''}
-	</div>`
+function areaField(label: string, name: string, value: string, rows: number, help = '') {
+	return field({ id: name, label, control: textArea({ id: name, name, rows, value }), help: help || undefined })
 }
 
 function requirementFields(requirement: Requirement, i: number) {
 	return html`<fieldset class="edit-card" id="edit-${requirement.id}">
 		<legend class="mono">${requirement.id}</legend>
-		${area('Text', `r${i}.text`, requirement.text, 2)}
-		${field('Source', `r${i}.source`, requirement.source, 'Where the requirement comes from.')}
+		${areaField('Text', `r${i}.text`, requirement.text, 2)}
+		${inputField('Source', `r${i}.source`, requirement.source, 'Where the requirement comes from.')}
 	</fieldset>`
 }
 
 function testFields(test: Test, i: number) {
 	return html`<fieldset class="edit-card" id="edit-${test.id}">
 		<legend><span class="mono">${test.id}</span> ${test.title}</legend>
-		${field('Title', `t${i}.title`, test.title)}
+		${inputField('Title', `t${i}.title`, test.title)}
 		<div class="edit-row">
-			${field('Capability', `t${i}.capability`, test.capability)}
-			${field('Operations', `t${i}.operations`, test.operations.join(', '), 'Separate with commas.')}
+			${inputField('Capability', `t${i}.capability`, test.capability)}
+			${inputField('Operations', `t${i}.operations`, test.operations.join(', '), 'Separate with commas.')}
 		</div>
-		${field(
+		${inputField(
 			'Depends on',
 			`t${i}.dependsOn`,
 			test.dependsOn.join(', '),
 			'Test IDs, separated with commas. Use plan:T1 for a test in another plan.'
 		)}
-		${area('Preconditions', `t${i}.preconditions`, test.preconditions.join('\n'), 2, 'One per line.')}
-		${area('Action', `t${i}.action`, test.action, 2)}
+		${areaField('Preconditions', `t${i}.preconditions`, test.preconditions.join('\n'), 2, 'One per line.')}
+		${areaField('Action', `t${i}.action`, test.action, 2)}
 		<div class="field-group">
 			<p class="lab">Assertions</p>
 			${
@@ -225,40 +220,33 @@ ${assertion.check}</textarea>
 }
 
 function coverageMatrix(candidate: Candidate) {
-	return html`<div class="scroll">
-		<table class="matrix">
-			<thead>
-				<tr>
-					<th scope="col">Requirement</th>
-					${candidate.tests.map((test) => html`<th scope="col" class="mono">${test.id}</th>`)}
-				</tr>
-			</thead>
-			<tbody>
-				${candidate.requirements.map(
-					(requirement) =>
-						html`<tr>
-							<th scope="row">
-								<span class="mono">${requirement.id}</span>
-								<span class="muted small matrix-text">${requirement.text}</span>
-							</th>
-							${candidate.tests.map(
-								(test) =>
-									html`<td>
-										<label class="cell-check"
-											><input
-												type="checkbox"
-												name="cover"
-												value="${test.id} ${requirement.id}"
-												aria-label="${test.id} covers ${requirement.id}"
-												${test.requirementIds.includes(requirement.id) ? html`checked` : ''}
-										/></label>
-									</td>`
-							)}
-						</tr>`
-				)}
-			</tbody>
-		</table>
-	</div>`
+	return dataTable({
+		columns: ['Requirement', ...candidate.tests.map((test) => ({ label: test.id, attrs: { class: 'mono' } }))],
+		scroll: true,
+		attrs: { class: 'matrix' },
+		rows: candidate.requirements.map(
+			(requirement) =>
+				html`<tr>
+					<th scope="row">
+						<span class="mono">${requirement.id}</span>
+						<span class="muted small matrix-text">${requirement.text}</span>
+					</th>
+					${candidate.tests.map(
+						(test) =>
+							html`<td>
+								<label class="cell-check"
+									><input
+										type="checkbox"
+										name="cover"
+										value="${test.id} ${requirement.id}"
+										aria-label="${test.id} covers ${requirement.id}"
+										${test.requirementIds.includes(requirement.id) ? html`checked` : ''}
+								/></label>
+							</td>`
+					)}
+				</tr>`
+		),
+	})
 }
 
 function hidden(context: Context, sha256: string, mode: string, orig: string) {
@@ -274,18 +262,7 @@ function actorLine(context: Context, state: EditState, path: string, mode: strin
 			Saving as <strong>${context.actor}</strong>.
 			<a class="tap" href="/actor?back=${encodeURIComponent(path)}">Change name</a>
 		</p>`
-	return html`<div class="field-group">
-		<label class="lab" for="actor-${mode}">Your name</label>
-		<input
-			id="actor-${mode}"
-			name="actor"
-			required
-			maxlength="${actorLimit}"
-			autocomplete="name"
-			value="${state.actor}"
-		/>
-		<p class="help">Checkmate records it with the edit.</p>
-	</div>`
+	return html`${field({ id: `actor-${mode}`, label: 'Your name', control: textInput({ id: `actor-${mode}`, name: 'actor', value: state.actor, attrs: { required: true, maxlength: actorLimit, autocomplete: 'name' } }), help: 'Checkmate records it with the edit.' })}`
 }
 
 export function editPage(
@@ -304,7 +281,7 @@ export function editPage(
 			title,
 			section: 'home',
 			subjects: [`plan:${planId}`],
-			body: html`${heading(title, detail.plan.objective)}
+			body: html`${heading({ title, sub: detail.plan.objective })}
 			${banner({
 				kind: 'info',
 				content: html`Only the latest revision can change.
@@ -352,20 +329,20 @@ export function editPage(
 	${shown.error ? html`<p class="form-error" role="alert" data-field="${shown.field ?? ''}">${shown.error}</p>` : ''}`
 	const buttons = (mode: string) =>
 		html`<div class="btns">
-				<button class="btn primary">${save}</button>
-				<a class="btn" href="/plans/${subject}">Cancel</a>
+				${formButton({ label: save, emphasis: 'primary' })}
+				${formButton({ label: 'Cancel', href: `/plans/${subject}` })}
 			</div>
 			${actorLine(context, shown, path, mode)}`
-	const body = html`${heading(
+	const body = html`${heading({
 			title,
-			detail.plan.objective,
-			html`<div class="meta">
+			sub: detail.plan.objective,
+			extra: html`<div class="meta">
 				<a class="pill" href="/plans/${subject}">${subject}</a>
 				<span class="pill" title="${detail.sha256}"
 					>sha256 <span class="mono">${short(detail.sha256)}</span></span
 				>
-			</div>`
-		)}
+			</div>`,
+		})}
 		${shown.unsaved === null ? '' : unsavedPanel(shown.unsaved)}
 		<div data-region="edit" data-stale-message="${planId} changed. Review it before you save.">
 			<div data-stale-slot>${notice} ${messages}</div>

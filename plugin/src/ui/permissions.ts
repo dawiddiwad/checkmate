@@ -4,7 +4,7 @@ import { closedText, explorationPermissions, openPermissions } from '../permissi
 import { requestOf } from '../requests.ts'
 import type { Html } from './html.ts'
 import type { Context } from './layout.ts'
-import { optionButton } from './components/button.ts'
+import { formButton, optionButton } from './components/button.ts'
 import { fold } from './components/fold.ts'
 import { listRow } from './components/list-row.ts'
 import { wordMark } from './components/status-mark.ts'
@@ -310,9 +310,12 @@ export function permissionHistory(store: Store, explorationId: string, params: U
 		else next.set('requests', String(target))
 		next.set('at', `request:${requestName(all[(target - 1) * historySize])}`)
 		const query = next.toString()
-		return html`<a class="btn small" href="/explorations/${explorationId}${query ? `?${query}` : ''}" rel="${rel}"
-			>${label}</a
-		>`
+		return formButton({
+			label,
+			href: `/explorations/${explorationId}${query ? `?${query}` : ''}`,
+			inline: true,
+			attrs: { rel },
+		})
 	}
 	const decided = (item: Permission) =>
 		item.decision ? html`${item.decision.text} · ${time(item.decision.at)}` : html`open · ${time(item.at)}`

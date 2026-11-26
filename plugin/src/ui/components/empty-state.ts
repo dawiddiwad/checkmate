@@ -1,7 +1,9 @@
 import type { Html } from '../html.ts'
 import { html } from '../html.ts'
 
-export function emptyNotice(what: string, next: Html | string, extra: Html | '' = '') {
+export type EmptyNotice = { what: string; next: Html | string; extra?: Html | '' }
+
+export function emptyNotice({ what, next, extra = '' }: EmptyNotice) {
 	return html`<div class="sp-empty">
 		<p><b>${what}</b></p>
 		<p>${next}</p>

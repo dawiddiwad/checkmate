@@ -101,6 +101,7 @@ import type { AdoptError } from './screens/run.ts'
 import type { InstanceForm } from './screens/settings.ts'
 import { claudeMissing, runningCount } from './activity.ts'
 import { answerDefaults, bulkProblem, claimDefaults } from './bulk.ts'
+import { formButton } from './components/button.ts'
 import { heading } from './components/page-heading.ts'
 import { htmlType, imageTypes } from './evidence.ts'
 import { emptyState } from './forms.ts'
@@ -481,10 +482,10 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 			subjects: ['inbox'],
 			status,
 			back: '/',
-			body: html`${heading(title, message)}
+			body: html`${heading({ title, sub: message })}
 				<p class="actions">
-					<a class="btn primary" href="/">Needs you</a> <a class="btn" href="/plans">Plans</a>
-					<a class="btn" href="/runs">Runs</a>
+					${formButton({ label: 'Needs you', href: '/', emphasis: 'primary' })}
+					${formButton({ label: 'Plans', href: '/plans' })} ${formButton({ label: 'Runs', href: '/runs' })}
 				</p>`,
 		})
 	}
@@ -803,7 +804,7 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 			title: 'Your name',
 			section: null,
 			subjects: ['inbox'],
-			body: html`${heading('Your name', 'Checkmate records this name with each decision you make in this browser.')}
+			body: html`${heading({ title: 'Your name', sub: 'Checkmate records this name with each decision you make in this browser.' })}
 				<form method="post" action="/actor" class="panel narrow">
 					<input type="hidden" name="csrf" value="${csrf}" />
 					<input type="hidden" name="back" value="${back}" />
@@ -817,7 +818,8 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 						value="${shown.actor ?? ''}"
 					/>
 					<div class="btns">
-						<button class="btn primary">Save name</button> <a class="btn" href="${back}">Cancel</a>
+						${formButton({ label: 'Save name', emphasis: 'primary' })}
+						${formButton({ label: 'Cancel', href: back })}
 					</div>
 				</form>`,
 		}
@@ -1155,9 +1157,9 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 			subjects: ['inbox'],
 			status: 422,
 			back,
-			body: html`${heading('Nothing was done')}
+			body: html`${heading({ title: 'Nothing was done' })}
 				<p class="form-error" role="alert" ${field ? html`data-field="${field}"` : ''}>${message}</p>
-				<p class="actions"><a class="btn primary" href="${back}">Go back</a></p>`,
+				<p class="actions">${formButton({ label: 'Go back', href: back, emphasis: 'primary' })}</p>`,
 		})
 	}
 

@@ -79,10 +79,12 @@ export function chatMessagePage(store: Store, context: Context, request: Request
 			data-chat-back="${chat}"
 			data-key="request:${requestId}"
 		>
-			${crumbBar([
-				['Chats', '/chats'],
-				['Chat', back],
-			])}
+			${crumbBar({
+				crumbs: [
+					['Chats', '/chats'],
+					['Chat', back],
+				],
+			})}
 			${drawerHead({
 				label: 'Message details',
 				tags: html`${stateLabel(request)}

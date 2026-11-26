@@ -148,6 +148,8 @@ export function homePage(store: Store): Page {
 		],
 		crumbs: [['Plans', null]],
 		back: null,
-		body: html`<div data-region="home">${heading('Plans', plans.length ? subtitle : null, boardKey)} ${body}</div>`,
+		body: html`<div data-region="home">
+			${heading({ title: 'Plans', sub: plans.length ? subtitle : null, extra: boardKey })} ${body}
+		</div>`,
 	}
 }

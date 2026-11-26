@@ -8,6 +8,7 @@ import { fold } from '../components/fold.ts'
 import { listPageRow } from '../components/list-row.ts'
 import { heading } from '../components/page-heading.ts'
 import { wordMark } from '../components/status-mark.ts'
+import { jumpLinks } from '../components/tabs.ts'
 import { html, join } from '../html.ts'
 import { settingsPage } from './settings.ts'
 
@@ -88,11 +89,11 @@ export function recipesPage(workspace: string): Page {
 		})
 	)
 	const custom = recipes.some((entry) => entry.source === 'custom') || invalid.length
-	const body = html`${heading(
-			'Recipes',
-			html`Tool descriptions for Checkmate. The target sets what testers may do. Built-in recipes come with
-				Checkmate. Custom recipes come from <code>.checkmate/recipes/</code> in this workspace.`
-		)}
+	const body = html`${heading({
+			title: 'Recipes',
+			sub: html`Tool descriptions for Checkmate. The target sets what testers may do. Built-in recipes come with
+				Checkmate. Custom recipes come from <code>.checkmate/recipes/</code> in this workspace.`,
+		})}
 		<div data-region="recipes">
 			${error ? banner({ kind: 'fail', content: html`Checkmate cannot read the recipes. ${error}` }) : ''}
 			${
@@ -105,10 +106,10 @@ export function recipesPage(workspace: string): Page {
 			${
 				custom || error
 					? ''
-					: emptyNotice(
-							'No custom recipe yet.',
-							html`Drop a recipe JSON file in <code>${projectRecipeFolder(workspace)}</code>.`
-						)
+					: emptyNotice({
+							what: 'No custom recipe yet.',
+							next: html`Drop a recipe JSON file in <code>${projectRecipeFolder(workspace)}</code>.`,
+						})
 			}
 		</div>`
 	return settingsPage('/settings/recipes', 'Recipes', ['recipes'], body)
@@ -197,7 +198,7 @@ export function invalidRecipePage(workspace: string, file: string): Page | null 
 	const item = invalid.find((candidate) => fileName(candidate.path) === file)
 	if (!item) return null
 	const body = html`<div data-region="recipe">
-		${heading(item.name, 'Checkmate does not use this recipe. A target, plan, run, or test that names it is refused.', html`<div class="meta">${invalidPill()}</div>`)}
+		${heading({ title: item.name, sub: 'Checkmate does not use this recipe. A target, plan, run, or test that names it is refused.', extra: html`<div class="meta">${invalidPill()}</div>` })}
 		<div class="main-col">
 			<section aria-labelledby="error">
 				<h2 id="error">Error</h2>
@@ -222,15 +223,17 @@ export function recipePage(workspace: string, name: string): Page | null {
 	const usage = recipe.usage?.join('\n')
 	const usageText = entry.source === 'built-in' ? usage?.replace(agentOnly, '\n') : usage
 	const body = html`<div data-region="recipe">
-		${heading(recipe.name, recipe.purpose, html`<div class="meta">${sourcePill(entry.source)}</div>`)}
+		${heading({ title: recipe.name, sub: recipe.purpose, extra: html`<div class="meta">${sourcePill(entry.source)}</div>` })}
 		<div class="main-col">
-			<nav class="jump" aria-label="On this page">
-				<a href="#recipe">Recipe</a><a href="#requires">Requires</a
-				><a href="#testing">Testing</a>${usage !== undefined ? html`<a href="#usage">Usage</a>` : null}<a
-					href="#json"
-					>JSON</a
-				>
-			</nav>
+			${jumpLinks({
+				links: [
+					{ href: '#recipe', label: 'Recipe' },
+					{ href: '#requires', label: 'Requires' },
+					{ href: '#testing', label: 'Testing' },
+					...(usage !== undefined ? [{ href: '#usage', label: 'Usage' }] : []),
+					{ href: '#json', label: 'JSON' },
+				],
+			})}
 			<section aria-labelledby="recipe">
 				<h2 id="recipe">Recipe</h2>
 				${recipeFacts(entry)}

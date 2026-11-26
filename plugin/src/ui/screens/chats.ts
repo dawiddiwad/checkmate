@@ -3,78 +3,30 @@ import type { Chat, RequestRecord, RequestSelection } from '../../requests.ts'
 import type { Env } from '../../sessions.ts'
 import { chatOf, isUnread, listedChats, waitingBehind } from '../../requests.ts'
 import { explorationPermissions } from '../../permissions.ts'
-import type { Html } from '../html.ts'
+import type { Attrs, Html } from '../html.ts'
 import type { Context, Page } from '../layout.ts'
+import { formButton } from '../components/button.ts'
+import { chatTurn } from '../components/chat-turn.ts'
+import { composer } from '../components/composer.ts'
 import { emptyNotice } from '../components/empty-state.ts'
 import { heading } from '../components/page-heading.ts'
 import { statusMark } from '../components/status-mark.ts'
-import { ago, costText, glyph, html, time } from '../html.ts'
-import { chatMarkdown } from '../markdown.ts'
+import { ago, attributes, costText, glyph, html } from '../html.ts'
 import { requestHref } from '../permissions.ts'
 import { chatPreferences } from '../requester.ts'
 import { failureText, requestModelLabel } from '../requests.ts'
-
-function composer(context: Context, action: string, selection: RequestSelection, screen = '', back = '') {
-	const model = selection.provider && selection.model ? `${selection.provider}/${selection.model}` : selection.model
-	return html`<form method="post" action="${action}" class="chat-composer" data-chat-composer>
-		<input type="hidden" name="csrf" value="${context.csrf}" />
-		${screen ? html`<input type="hidden" name="screen" value="${screen}" />` : ''}
-		${back ? html`<input type="hidden" name="return" value="${back}" />` : ''}
-		<label for="chat-text">Message</label>
-		<textarea id="chat-text" name="text" required maxlength="4000" rows="4" placeholder="Ask Checkmate…"></textarea>
-		<div class="chat-controls">
-			<label
-				>Harness
-				<select name="harness" data-chat-harness>
-					<option value="claude" ${selection.harness === 'claude' ? 'selected' : ''}>Claude Code</option>
-					<option value="pi" ${selection.harness === 'pi' ? 'selected' : ''}>Pi</option>
-				</select></label
-			>
-			<label
-				>Search models
-				<input type="search" data-chat-model-search autocomplete="off" placeholder="Provider or name"
-			/></label>
-			<label
-				>Model
-				<select name="model" data-chat-model>
-					${model ? html`<option value="${model}" selected>${model}</option>` : ''}
-					<option value="">Host default</option>
-				</select></label
-			>
-			<label hidden
-				>Effort
-				<select name="effort" data-chat-effort data-selected="${selection.effort ?? ''}">
-					<option value="">Host default</option>
-				</select></label
-			>
-			<button class="btn primary" type="submit">Send</button>
-		</div>
-		<p class="help" data-chat-model-status aria-live="polite"></p>
-		<p class="form-error" data-chat-error role="alert" hidden></p>
-	</form>`
-}
-
-// The record decides what this turn saved. The reply text does not.
-function savedThisTurn(changes: RequestRecord['changes']) {
-	if (!changes.length) return html`<p class="help" data-chat-saved>Saved this turn: nothing.</p>`
-	return html`<div class="chat-saved" data-chat-saved>
-		<p class="help">Saved this turn</p>
-		<ul>
-			${changes.map(
-				(change) =>
-					html`<li>${change.href ? html`<a href="${change.href}">${change.text}</a>` : change.text}</li>`
-			)}
-		</ul>
-	</div>`
-}
 
 function title(text: string) {
 	const line = text.split('\n')[0]
 	return line.length > 80 ? `${line.slice(0, 79).trimEnd()}…` : line
 }
 
+function chatRowAttrs(key: string, href: string, label: string): Attrs {
+	return { 'data-row': true, 'data-key': key, 'data-href': href, 'data-label': label }
+}
+
 function chatRow(key: string, href: string, label: string) {
-	return html`data-row data-key="${key}" data-href="${href}" data-label="${label}"`
+	return attributes(chatRowAttrs(key, href, label))
 }
 
 function origin(request: RequestRecord) {
@@ -109,77 +61,21 @@ function commandOf(input: unknown, tool: string) {
 }
 
 function turn(store: Store, request: RequestRecord, context: Context, number: number, back: string) {
-	const permissions = explorationPermissions(store, request.id).filter((item) => !item.decision)
-	const failure = request.state === 'failed' ? failureText(request) : null
-	const model = requestModelLabel(request)
 	const details = `/chats/${request.conversation}/messages/${request.id}`
-	return html`<article
-		class="chat-turn"
-		data-chat-turn
-		tabindex="-1"
-		aria-label="Turn ${number}"
-		${chatRow(`request:${request.id}`, details, `Turn ${number}`)}
-	>
-		<div class="chat-message chat-user">
-			<div class="chat-meta">You · ${time(request.askedAt)}</div>
-			<p data-chat-content>${request.text}</p>
-		</div>
-		<div
-			class="chat-message chat-assistant"
-			${['answered', 'failed', 'stopped', 'interrupted'].includes(request.state) ? html`data-chat-terminal="${request.state}"` : ''}
-		>
-			<div class="chat-meta">
-				Checkmate ·
-				${request.harness === 'pi' ? 'Pi' : 'Claude Code'}${model ? ` · ${model}` : ''}${request.effort ? ` · ${request.effort}` : ''}
-				<span class="chat-status"
-					>${request.state === 'answered' ? '' : statusMark({ state: request.state })}
-					<a href="${details}">Turn ${number}</a></span
-				>
-			</div>
-			${request.reply ? html`<div class="chat-markdown" data-chat-content>${chatMarkdown(request.reply)}</div>` : ''}
-			${['answered', 'failed', 'stopped', 'interrupted'].includes(request.state) ? savedThisTurn(request.changes) : ''}
-			${request.state === 'waiting' ? html`<p class="help" data-chat-waiting-behind>${waitingBehind(store, request)}</p>` : ''}
-			${request.state === 'running' ? html`<p class="help">Working…</p>` : ''}
-			${permissions.map(
-				(item) =>
-					html`<p class="banner warn" data-chat-waiting>
-						Waiting for your permission. The chat asks to run
-						<code>${commandOf(item.input, item.tool)}</code>.
-						<a href="${requestHref(item, back)}">Answer it</a>. If no one answers in about 10 minutes,
-						Checkmate denies the command and the reply goes on without it.
-					</p>`
-			)}
-			${
-				request.activity.length
-					? html`<details data-open-key="activity:${request.id}">
-							<summary>Activity (${request.activity.length})</summary>
-							<ol class="sp-activity">
-								${request.activity.map((entry) => html`<li>${entry.line}</li>`)}
-							</ol>
-						</details>`
-					: ''
-			}
-			${
-				failure
-					? html`<p class="banner fail">${failure.cause}</p>
-							${failure.detail ? html`<p class="help">${failure.detail}</p>` : ''}${failure.lines.length ? html`<pre class="sp-code">${failure.lines.join('\n')}</pre>` : ''}`
-					: request.reason
-						? html`<p class="banner info">${request.reason}</p>`
-						: ''
-			}
-			${
-				request.changes.length
-					? html`<details data-open-key="changes:${request.id}">
-							<summary>Changes (${request.changes.length})</summary>
-							<ul>
-								${request.changes.map((change) => html`<li>${change.href ? html`<a href="${change.href}">${change.text}</a>` : change.text}</li>`)}
-							</ul>
-						</details>`
-					: ''
-			}
-			${request.state === 'running' || request.state === 'waiting' ? html`<form method="post" action="/requests/${request.id}/stop"><input type="hidden" name="csrf" value="${context.csrf}" /><input type="hidden" name="return" value="${back}" /><button class="btn" type="submit">Stop</button></form>` : ''}
-		</div>
-	</article>`
+	return chatTurn({
+		request,
+		number,
+		details,
+		back,
+		csrf: context.csrf,
+		model: requestModelLabel(request),
+		failure: request.state === 'failed' ? failureText(request) : null,
+		waitingBehind: request.state === 'waiting' ? waitingBehind(store, request) : '',
+		permissions: explorationPermissions(store, request.id)
+			.filter((item) => !item.decision)
+			.map((item) => ({ command: commandOf(item.input, item.tool), href: requestHref(item, back) })),
+		rowAttrs: chatRowAttrs(`request:${request.id}`, details, `Turn ${number}`),
+	})
 }
 
 function chatList(chats: Chat[], href: (chat: Chat) => string, empty: Html, selected?: string) {
@@ -221,11 +117,11 @@ function workspace(view: 'thread' | 'new' | 'list', newHref: string, list: Html,
 		<aside class="chat-sidebar" aria-label="Conversations" data-chat-lane="list">
 			<div class="chat-sidebar-header">
 				<h2>Conversations</h2>
-				<a class="btn" href="${newHref}" ${chatRow('chat:new', newHref, 'New chat')}>New chat</a>
+				${formButton({ label: 'New chat', href: newHref, attrs: chatRowAttrs('chat:new', newHref, 'New chat') })}
 			</div>
 			${list}
 		</aside>
-		${conversation || html`<div class="chat-workspace-empty">${emptyNotice('Choose a conversation.', 'Start a new chat to ask Checkmate.')}</div>`}
+		${conversation || html`<div class="chat-workspace-empty">${emptyNotice({ what: 'Choose a conversation.', next: 'Start a new chat to ask Checkmate.' })}</div>`}
 	</div>`
 }
 
@@ -237,7 +133,7 @@ export function chatsPage(store: Store, context: Context, params: URLSearchParam
 		section: 'chats',
 		subjects: ['requests'],
 		back: fresh ? '/chats' : '/',
-		body: html`${heading('Chats')}
+		body: html`${heading({ title: 'Chats' })}
 		${workspace(
 			fresh ? 'new' : 'list',
 			'/chats?new=1',
@@ -289,7 +185,7 @@ function thread(
 			${options.origin ? origin(chat.turns[0]) : ''}
 		</header>
 		${history(store, context, chat, options.back)}
-		${composer(context, options.action, chatSelection(store, env, chat), '', options.back)}
+		${composer({ csrf: context.csrf, action: options.action, selection: chatSelection(store, env, chat), back: options.back })}
 	</section>`
 }
 
@@ -306,7 +202,7 @@ function newThread(
 			<a class="chat-mobile-back" href="${list}">${glyph('←')} All chats</a>
 			<h2>New chat</h2>
 		</header>
-		${composer(context, action, selection, screen, back)}
+		${composer({ csrf: context.csrf, action, selection, screen, back })}
 	</section>`
 }
 
@@ -336,10 +232,7 @@ export function planChat(
 			aria-label="Plan chats"
 			data-plan-chat="${path.slice('/plans/'.length).split('@')[0]}"
 		>
-			${heading(
-				'Plan chats',
-				html`<a href="${address()}">${glyph('←')} Plan</a> · ${decodeURIComponent(path.slice('/plans/'.length))}`
-			)}
+			${heading({ title: 'Plan chats', sub: html`<a href="${address()}">${glyph('←')} Plan</a> · ${decodeURIComponent(path.slice('/plans/'.length))}` })}
 			${workspace(
 				chat ? 'thread' : fresh ? 'new' : 'list',
 				newChat,
@@ -371,7 +264,7 @@ export function chatPage(store: Store, context: Context, id: string, env: Env): 
 			['Chats', '/chats'],
 			['Chat', null],
 		],
-		body: html`${heading('Chats')}
+		body: html`${heading({ title: 'Chats' })}
 		${workspace(
 			'thread',
 			'/chats?new=1',

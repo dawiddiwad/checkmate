@@ -17,17 +17,20 @@ import type { FormState } from '../forms.ts'
 import type { Html } from '../html.ts'
 import type { Context, Page } from '../layout.ts'
 import { banner } from '../components/banner.ts'
+import { formButton } from '../components/button.ts'
+import { dataTable, tableRow } from '../components/data-table.ts'
 import { emptyNotice } from '../components/empty-state.ts'
 import { facts } from '../components/facts.ts'
+import { field, textArea, textInput } from '../components/field.ts'
 import { fold } from '../components/fold.ts'
 import { downloadMenu } from '../components/menu.ts'
 import { heading } from '../components/page-heading.ts'
 import { statusCounts, statusMark } from '../components/status-mark.ts'
-import { claimsTable, explorationBanners, explorationsTable, questionsList } from './exploration.ts'
 import { emptyState, gapPanel, recordPanel, verdictPanel } from '../forms.ts'
 import { costText, glyph, hasMetadata, html, join, metadataList, plural, short, time, words } from '../html.ts'
 import { loopState, runStatus } from '../lists.ts'
 import { navigator, reviewOf } from '../review.ts'
+import { claimsTable, explorationBanners, explorationsTable, questionsList } from './exploration.ts'
 
 type Detail = ReturnType<typeof planDetail>
 type Test = Plan['tests'][number]
@@ -48,24 +51,20 @@ function removeTest(context: Context, detail: Detail, test: Test) {
 	const subject = `${detail.planId}@${detail.revision}`
 	const actor = context.actor
 		? ''
-		: html`<div class="field-group">
-				<label class="lab" for="remove-actor-${test.id}">Your name</label>
-				<input id="remove-actor-${test.id}" name="actor" required autocomplete="name" />
-			</div>`
+		: html`${field({ id: `remove-actor-${test.id}`, label: 'Your name', control: textInput({ id: `remove-actor-${test.id}`, name: 'actor', attrs: { required: true, autocomplete: 'name' } }) })}`
 	return html`<details class="test-remove" data-open-key="remove:${test.id}">
-		<summary class="btn small">Remove ${test.id}</summary>
+		${formButton({ label: `Remove ${test.id}`, element: 'summary', inline: true })}
 		<form method="post" action="/plans/${subject}/edit" class="decision-form">
 			<input type="hidden" name="csrf" value="${context.csrf}" />
 			<input type="hidden" name="sha" value="${detail.sha256}" />
 			<input type="hidden" name="mode" value="remove" />
 			<input type="hidden" name="test" value="${test.id}" />
-			<div class="field-group">
-				<label class="lab" for="remove-${test.id}">Reason for removal</label>
-				<textarea id="remove-${test.id}" name="rationale" rows="2" required data-rationale></textarea>
-			</div>
+			${field({ id: `remove-${test.id}`, label: 'Reason for removal', control: textArea({ id: `remove-${test.id}`, name: 'rationale', rows: 2, attrs: { required: true, 'data-rationale': true } }) })}
 			${actor}
 			<p class="help">Checkmate saves a new revision without ${test.id} and records who removed it and why.</p>
-			<div class="btns"><button class="btn" data-needs-rationale>Remove ${test.id}</button></div>
+			<div class="btns">
+				${formButton({ label: `Remove ${test.id}`, attrs: { 'data-needs-rationale': true } })}
+			</div>
 		</form>
 	</details>`
 }
@@ -162,9 +161,7 @@ function gapRow(detail: Detail, gap: Gap) {
 		${
 			answerable
 				? html`<p>
-						<a class="btn small" href="/plans/${detail.planId}@${detail.revision}/gaps/${gap.id}"
-							>Answer ${gap.id}</a
-						>
+						${formButton({ label: `Answer ${gap.id}`, href: `/plans/${detail.planId}@${detail.revision}/gaps/${gap.id}`, inline: true })}
 					</p>`
 				: ''
 		}`
@@ -200,71 +197,46 @@ function runsTable(detail: Detail) {
 		return html`<p class="none">
 			No run uses this plan yet. Approve the plan, then choose <strong>Test build…</strong> on its review page.
 		</p>`
-	return html`<div class="scroll">
-		<table>
-			<thead>
-				<tr>
-					<th scope="col">Run</th>
-					<th scope="col">Revision</th>
-					<th scope="col">Build</th>
-					<th scope="col">Instance</th>
-					<th scope="col">Tests</th>
-					<th scope="col">Completion</th>
-					<th scope="col">Acceptance</th>
-					<th scope="col">Started</th>
-				</tr>
-			</thead>
-			<tbody>
-				${[...detail.runs].reverse().map(
-					(run) =>
-						html`<tr data-key="run:${run.runId}">
-							<td><a class="mono" href="/runs/${run.runId}">${run.runId}</a></td>
-							<td>
-								<a class="mono" href="/plans/${detail.planId}@${run.revision}">@${run.revision}</a>
-							</td>
-							<td class="mono">${run.build}</td>
-							<td class="mono">${run.instanceId}</td>
-							<td>${statusCounts({ counts: run.counts })}</td>
-							<td>
-								${run.completion ? statusMark({ state: run.completion }) : html`<span class="muted">running</span>`}
-							</td>
-							<td>${runStatus(run)}</td>
-							<td class="nowrap">${time(run.startedAt)}</td>
-						</tr>`
-				)}
-			</tbody>
-		</table>
-	</div>`
+	return dataTable({
+		columns: ['Run', 'Revision', 'Build', 'Instance', 'Tests', 'Completion', 'Acceptance', 'Started'],
+		rows: [...detail.runs].reverse().map((run) =>
+			tableRow({
+				cells: [
+					html`<a class="mono" href="/runs/${run.runId}">${run.runId}</a>`,
+					html`<a class="mono" href="/plans/${detail.planId}@${run.revision}">@${run.revision}</a>`,
+					{ content: run.build, attrs: { class: 'mono' } },
+					{ content: run.instanceId, attrs: { class: 'mono' } },
+					statusCounts({ counts: run.counts }),
+					run.completion ? statusMark({ state: run.completion }) : html`<span class="muted">running</span>`,
+					runStatus(run),
+					{ content: time(run.startedAt), attrs: { class: 'nowrap' } },
+				],
+				attrs: { 'data-key': `run:${run.runId}` },
+			})
+		),
+		scroll: true,
+	})
 }
 
 function requirementsTable(plan: Plan) {
-	return html`<div class="scroll">
-		<table>
-			<thead>
-				<tr>
-					<th scope="col">ID</th>
-					<th scope="col">Requirement</th>
-					<th scope="col">Tests</th>
-					<th scope="col">Coverage</th>
-				</tr>
-			</thead>
-			<tbody>
-				${plan.requirements.map((requirement) => {
-					const coverage = plan.coverage.find((row) => row.requirementId === requirement.id)
-					return html`<tr id="${requirement.id}">
-						<td class="mono">${requirement.id}</td>
-						<td>
-							${requirement.text}
-							<div class="muted small">Source <code>${requirement.source}</code></div>
-							${hasMetadata(requirement.metadata) ? html`<div class="small">${metadataList(requirement.metadata)}</div>` : ''}
-						</td>
-						<td>${ids(coverage?.testIds ?? [], (id) => html`<a class="mono" href="#${id}">${id}</a>`)}</td>
-						<td>${coverage ? statusMark({ state: coverage.status }) : ''}</td>
-					</tr>`
-				})}
-			</tbody>
-		</table>
-	</div>`
+	return dataTable({
+		columns: ['ID', 'Requirement', 'Tests', 'Coverage'],
+		rows: plan.requirements.map((requirement) => {
+			const coverage = plan.coverage.find((row) => row.requirementId === requirement.id)
+			return tableRow({
+				cells: [
+					{ content: requirement.id, attrs: { class: 'mono' } },
+					html`${requirement.text}
+						<div class="muted small">Source <code>${requirement.source}</code></div>
+						${hasMetadata(requirement.metadata) ? html`<div class="small">${metadataList(requirement.metadata)}</div>` : ''}`,
+					html`${ids(coverage?.testIds ?? [], (id) => html`<a class="mono" href="#${id}">${id}</a>`)}`,
+					coverage ? statusMark({ state: coverage.status }) : '',
+				],
+				attrs: { id: requirement.id },
+			})
+		}),
+		scroll: true,
+	})
 }
 
 function decisionsList(plan: Plan) {
@@ -354,7 +326,7 @@ export function planHistoryList(store: Store, detail: Detail, all: boolean) {
 						class="history-more"
 						href="/plans/${subject}?history=all#history"
 						data-history-more="/plans/${subject}/history"
-						><span class="btn small">Show full history · ${plural(hidden, 'earlier revision')}</span></a
+						>${formButton({ label: `Show full history · ${plural(hidden, 'earlier revision')}`, element: 'span', inline: true })}</a
 					>`
 				: ''
 		}
@@ -460,9 +432,7 @@ function nextLine(planId: string, found: PlanContext) {
 	const why = found.status.why[0]
 	const action =
 		mine > 0
-			? html`<a class="btn small primary" href="/plans/${planId}?view=needs&amp;focus=list"
-					>Decide ${plural(mine, 'item')} in Needs you</a
-				>`
+			? html`${formButton({ label: `Decide ${plural(mine, 'item')} in Needs you`, href: `/plans/${planId}?view=needs&focus=list`, emphasis: 'primary', inline: true })}`
 			: found.status.next[0]
 				? html`<code>${found.status.next[0]}</code>`
 				: ''
@@ -570,8 +540,8 @@ export function planPage(
 					>`
 		}
 		<span class="head-actions">
-			${latest ? html`<a class="btn small" href="/plans/${subject}/edit">Edit plan</a>` : ''}
-			${downloadMenu('Export', `/plans/${subject}/export`, 'The HTML export is print-ready. Open it and print to PDF.')}
+			${latest ? html`${formButton({ label: 'Edit plan', href: `/plans/${subject}/edit`, inline: true })}` : ''}
+			${downloadMenu({ label: 'Export', base: `/plans/${subject}/export`, note: 'The HTML export is print-ready. Open it and print to PDF.' })}
 		</span>
 	</div>`
 	const pending = detail.pendingDecisions.length
@@ -601,7 +571,7 @@ export function planPage(
 		${decisionsList(plan)}`
 	const gaps = html`<h3 class="minor" id="gaps">Gaps of the plan <span class="n">${plan.gaps.length}</span></h3>
 		<div data-region="gaps">${gapsList(detail)}</div>`
-	const body = html`${heading(subject, null, meta)} ${nextLine(planId, found)}
+	const body = html`${heading({ title: subject, sub: null, extra: meta })} ${nextLine(planId, found)}
 		${chips(found, [
 			['tests', 'Tests', plan.tests.length],
 			['runs', 'Runs', detail.runs.length],
@@ -658,12 +628,12 @@ export function planPage(
 
 function storedTestsEmpty(planId: string, completed: string | undefined, harness: Context['harness']) {
 	return html`<div data-key="no-tests">
-		${emptyNotice(
-			'No stored tests yet.',
-			html`A stored test comes from the claims of a completed exploration. To store them, run
+		${emptyNotice({
+			what: 'No stored tests yet.',
+			next: html`A stored test comes from the claims of a completed exploration. To store them, run
 				<code>checkmate harvest ${completed ?? '<explorationId>'}</code>. To write a plan with tests, run
-				<code>${harness === 'pi' ? `checkmate delegate plan ${planId}` : `/checkmate:plan ${planId}`}</code>.`
-		)}
+				<code>${harness === 'pi' ? `checkmate delegate plan ${planId}` : `/checkmate:plan ${planId}`}</code>.`,
+		})}
 	</div>`
 }
 
@@ -714,7 +684,7 @@ export function requestPage(store: Store, planId: string, harness: Context['harn
 			],
 		],
 	})
-	const body = html`${heading(planId, request.objective, meta)} ${nextLine(planId, found)}
+	const body = html`${heading({ title: planId, sub: request.objective, extra: meta })} ${nextLine(planId, found)}
 		${chips(found, [['tests', 'Stored tests', 0]])}
 		<div data-region="banners">${explorationBanners(found.explorations)}</div>
 		<div class="split">
@@ -809,16 +779,14 @@ export function gapPage(
 			'Answer gap',
 			html`<p class="help">Answer this gap on the latest revision.</p>
 				<p>
-					<a class="btn" href="/plans/${planId}@${detail.latestRevision}/gaps/${gap.id}"
-						>Open ${planId}@${detail.latestRevision}</a
-					>
+					${formButton({ label: `Open ${planId}@${detail.latestRevision}`, href: `/plans/${planId}@${detail.latestRevision}/gaps/${gap.id}` })}
 				</p>`
 		)
 	const meta = html`<div class="meta">
 		${statusMark({ state: gap.severity })} ${statusMark({ state: gap.status })}
 		<a class="pill" href="/plans/${subject}">${subject}</a>
 	</div>`
-	const body = html`${heading(html`${planId} · ${gap.id}`, gap.question, meta)}
+	const body = html`${heading({ title: html`${planId} · ${gap.id}`, sub: gap.question, extra: meta })}
 		<div data-region="banners">${newerBanner(detail)} ${runBanner}</div>
 		<div class="split">
 			<div class="main-col">

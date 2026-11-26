@@ -595,7 +595,7 @@ var decisionColumns = [
 function updateTrigger(table2) {
   if (table2 === "decisions")
     return `CREATE TRIGGER decisions_update BEFORE UPDATE ON decisions
-	WHEN OLD.applied_revision IS NOT NULL OR NEW.applied_revision IS NULL OR ${decisionColumns.map((column) => `NEW.${column} IS NOT OLD.${column}`).join(" OR ")}
+	WHEN OLD.applied_revision IS NOT NULL OR NEW.applied_revision IS NULL OR ${decisionColumns.map((column2) => `NEW.${column2} IS NOT OLD.${column2}`).join(" OR ")}
 	BEGIN SELECT RAISE(ABORT, 'Decisions are immutable. Only applied_revision can change, once, from NULL'); END;`;
   if (table2 === "plan_revisions")
     return `CREATE TRIGGER plan_revisions_update BEFORE UPDATE ON plan_revisions
@@ -11930,11 +11930,11 @@ function readRecipe(path, source) {
     return invalidRecipe(path, ["Use a JSON object."]);
   const problems = [];
   const refuse4 = (problem) => problems.push(problem);
-  for (const field4 of requiredRecipeFields)
-    if (!Object.hasOwn(recipe, field4)) refuse4(`give the required field ${field4}.`);
-  for (const field4 of ["tools", "refusedArguments", "entryArguments"])
-    if (Object.hasOwn(recipe, field4))
-      refuse4(`${field4} is not a recipe field. Put tool limits in the target or skill.`);
+  for (const field2 of requiredRecipeFields)
+    if (!Object.hasOwn(recipe, field2)) refuse4(`give the required field ${field2}.`);
+  for (const field2 of ["tools", "refusedArguments", "entryArguments"])
+    if (Object.hasOwn(recipe, field2))
+      refuse4(`${field2} is not a recipe field. Put tool limits in the target or skill.`);
   if (recipe.name !== void 0 && (!isIdentifier(recipe.name) || `${recipe.name}.json` !== file))
     refuse4("name must match the file name without .json and use letters, numbers, dashes, or underscores.");
   if (recipe.capability !== void 0 && !isIdentifier(recipe.capability))
@@ -14888,7 +14888,7 @@ function storedRules(store, planId) {
   return row2 ? { rules: JSON.parse(row2.body), origin: row2.origin } : null;
 }
 function plainRules(items) {
-  return items.map(({ id: id2, text: text2, source, area: area2 }) => ({ id: id2, text: text2, source, ...area2 ? { area: area2 } : {} }));
+  return items.map(({ id: id2, text: text2, source, area }) => ({ id: id2, text: text2, source, ...area ? { area } : {} }));
 }
 function withHeldRules(derived, held) {
   const known = new Set(derived.map((rule) => rule.id));
@@ -14983,9 +14983,9 @@ function checkedRules(reply, sources) {
       refusals.push(`${path}/source ${JSON.stringify(source)} must name one of ${sources.join(", ")}.`);
       continue;
     }
-    const area2 = item.area.trim();
-    const key2 = area2.toLowerCase();
-    if (!areas.has(key2)) areas.set(key2, area2);
+    const area = item.area.trim();
+    const key2 = area.toLowerCase();
+    if (!areas.has(key2)) areas.set(key2, area);
     rules.push({ id: `R${rules.length + 1}`, text: item.text.trim(), source, area: areas.get(key2) });
   }
   if (!rules.length && !refusals.length) refusals.push("The reply has no rule.");
@@ -15155,7 +15155,7 @@ function buildOrder(store, planId) {
     planId
   ).map((row2) => ({ build: row2.build, firstTestedAt: row2.first_tested_at }));
 }
-function journal(store, planId, viewer2, keep = () => true) {
+function journal(store, planId, viewer, keep = () => true) {
   const listed = all(
     store,
     `SELECT e.rowid AS seq, e.body, e.actor, e.exploration_id, o.at FROM journal_entries e
@@ -15177,7 +15177,7 @@ function journal(store, planId, viewer2, keep = () => true) {
   const rows2 = listed.filter(keep);
   const latest = /* @__PURE__ */ new Map();
   for (const row2 of rows2) latest.set(row2.ref, row2);
-  const seen = (row2) => !isTester(viewer2) || row2.actor === viewer2 || !isTester(row2.actor) || sharedKinds.includes(row2.kind);
+  const seen = (row2) => !isTester(viewer) || row2.actor === viewer || !isTester(row2.actor) || sharedKinds.includes(row2.kind);
   const shown2 = [...latest.values()].filter(seen);
   const full = (row2, word) => latest.has(word) ? word : latest.has(refOf(row2.actor, word)) ? refOf(row2.actor, word) : word;
   const team = shown2.map((row2) => ({ ...withRefs(row2, (word) => full(row2, word)), id: row2.ref }));
@@ -15196,7 +15196,7 @@ function journal(store, planId, viewer2, keep = () => true) {
   const builds = [...new Set(rows2.filter(seen).flatMap((row2) => row2.build ? [row2.build] : []))].sort(
     (a, b) => position(a) - position(b)
   );
-  return { planId, viewer: viewer2, rows: rows2.filter(seen), entries, team, builds };
+  return { planId, viewer, rows: rows2.filter(seen), entries, team, builds };
 }
 function lookup(state, actor) {
   const keys = /* @__PURE__ */ new Map();
@@ -15276,9 +15276,9 @@ var Unreadable = class {
 var EntryRefusal = class extends Refusal {
   field;
   fix;
-  constructor(field4, message2, hint, fix) {
+  constructor(field2, message2, hint, fix) {
     super("malformed", message2, hint);
-    this.field = field4;
+    this.field = field2;
     this.fix = fix;
   }
 };
@@ -15426,15 +15426,15 @@ function checkedEntry(store, raw, path, build, state, actor, cwd, rules, missing
     }
   } else entry.id = unusedId(prefixes[entry.kind], used);
   const everyone = () => lookup(journal(store, state.planId), actor);
-  const refer = (id2, kinds3, field4, fix) => {
+  const refer = (id2, kinds3, field2, fix) => {
     const own = known.get(id2);
     const target = own && kinds3.includes(own.kind) ? own : kinds3.includes("defect") ? everyone().get(id2) : own;
     if (target && kinds3.includes(target.kind)) return storedRef(target, actor);
     throw new EntryRefusal(
-      `${path}.${field4}`,
-      `${path}.${field4} names no ${kinds3.join(" or ")}: ${id2}.`,
+      `${path}.${field2}`,
+      `${path}.${field2} names no ${kinds3.join(" or ")}: ${id2}.`,
       `Use the ID of an earlier ${kinds3.join(" or ")}.`,
-      { ...given, [field4]: fix }
+      { ...given, [field2]: fix }
     );
   };
   const idsOf = (kinds3) => state.entries.filter((item) => kinds3.includes(item.kind)).map((item) => item.id).slice(-6).join("|") || `<${kinds3.join(" or ")} ID>`;
@@ -15457,11 +15457,11 @@ function checkedEntry(store, raw, path, build, state, actor, cwd, rules, missing
     entry.refutes = refer(entry.refutes, defectOrIssue, "refutes", idsOf(defectOrIssue));
   if (entry.repeats !== void 0)
     entry.repeats = refer(entry.repeats, ["observation"], "repeats", idsOf(["observation"]));
-  const listed = (field4, kinds3) => {
-    const ids2 = entry[field4];
+  const listed = (field2, kinds3) => {
+    const ids2 = entry[field2];
     if (!ids2) return;
     const fix = ids2.filter((item) => kinds3.includes(known.get(item)?.kind));
-    entry[field4] = ids2.map((item) => refer(item, kinds3, field4, field4 === "links" ? fix : idsOf(kinds3)));
+    entry[field2] = ids2.map((item) => refer(item, kinds3, field2, field2 === "links" ? fix : idsOf(kinds3)));
   };
   listed("links", ["observation", "criterion", "question"]);
   listed("reports", ["defect"]);
@@ -15586,8 +15586,8 @@ function freshIds(store, planId, actor, entries) {
     };
   });
 }
-function recordText(store, planId, viewer2, build) {
-  const state = journal(store, planId, viewer2);
+function recordText(store, planId, viewer, build) {
+  const state = journal(store, planId, viewer);
   const earlier = planClaims(store, planId).filter((claim) => claim.open && claim.build !== build);
   const lines2 = [
     ...earlier.map((claim) => `open defect ${claim.id} (${claim.build}, ${claim.severity}): ${claim.title}`),
@@ -16692,7 +16692,7 @@ function patchList(items, changes, name2, apply) {
   return result;
 }
 function newFields(name2, change, required, defaults = {}) {
-  const missing = required.filter((field4) => !(field4 in change));
+  const missing = required.filter((field2) => !(field2 in change));
   requireWellFormed(!missing.length, `New ${name2} needs ${missing.join(", ")}`);
   return { ...defaults, ...change };
 }
@@ -17188,7 +17188,7 @@ function replaceTest(test, change, used) {
 }
 function newTest(draft, id2, change, used) {
   const missing = ["title", "requirementIds", "capability", "operations", "action", "assertions"].filter(
-    (field4) => change[field4] === void 0
+    (field2) => change[field2] === void 0
   );
   requireWellFormed(
     missing.length === 0,
@@ -20408,7 +20408,7 @@ function knownState(store, planId, build) {
       ]) : ["None.", ""],
       "## Areas tested before",
       "",
-      ...areas.length ? areas.map((area2) => `- ${area2}`) : ["None recorded."],
+      ...areas.length ? areas.map((area) => `- ${area}`) : ["None recorded."],
       "",
       "## Rules not tested yet",
       "",
@@ -21609,41 +21609,41 @@ function resolved(node, file) {
 }
 function fieldsOf(node, file, prefix) {
   return Object.entries(node.properties ?? {}).flatMap(([name2, child]) => {
-    const [field4, at2] = resolved(child, file);
-    const [items, itemsAt] = field4.items ? resolved(field4.items, at2) : [void 0, at2];
+    const [field2, at2] = resolved(child, file);
+    const [items, itemsAt] = field2.items ? resolved(field2.items, at2) : [void 0, at2];
     const path = `${prefix}${name2}`;
-    const type = field4.enum ? field4.enum.join("|") : items ? `${items.properties ? "object" : items.type ?? "entry"}[]` : field4.type ?? "value";
+    const type = field2.enum ? field2.enum.join("|") : items ? `${items.properties ? "object" : items.type ?? "entry"}[]` : field2.type ?? "value";
     const row2 = {
       path,
       type,
       required: Boolean(node.required?.includes(name2)),
-      description: field4.description ?? ""
+      description: field2.description ?? ""
     };
-    const nested = items?.properties ? fieldsOf(items, itemsAt, `${path}[].`) : field4.properties ? fieldsOf(field4, at2, `${path}.`) : [];
+    const nested = items?.properties ? fieldsOf(items, itemsAt, `${path}[].`) : field2.properties ? fieldsOf(field2, at2, `${path}.`) : [];
     return [row2, ...nested];
   });
 }
 function fieldText(fields, described) {
-  return fields.map((field4) => {
-    const name2 = `${field4.path}${field4.type.includes("|") ? ` (${field4.type})` : ""}${field4.required ? " (required)" : ""}`;
-    if (described.has(field4.description)) return `${name2}.`;
-    described.add(field4.description);
-    return `${name2}: ${field4.description}`;
+  return fields.map((field2) => {
+    const name2 = `${field2.path}${field2.type.includes("|") ? ` (${field2.type})` : ""}${field2.required ? " (required)" : ""}`;
+    if (described.has(field2.description)) return `${name2}.`;
+    described.add(field2.description);
+    return `${name2}: ${field2.description}`;
   }).join(" ");
 }
 function kindText(kind, keep, described) {
   const file = `journal-${kind}.schema.json`;
-  const fields = fieldsOf(files[file], file, "").filter((field4) => !commonFields.includes(field4.path) && keep(field4));
+  const fields = fieldsOf(files[file], file, "").filter((field2) => !commonFields.includes(field2.path) && keep(field2));
   return `Kind ${kind}: ${files[file].description} ${fieldText(fields, described)}`;
 }
 function commonText(kinds3, described) {
   const file = "journal-entry.schema.json";
   const fields = fieldsOf(files[file], file, "").map(
-    (field4) => field4.path === "kind" ? { ...field4, type: kinds3.join("|") } : field4
+    (field2) => field2.path === "kind" ? { ...field2, type: kinds3.join("|") } : field2
   );
   return `${files[file].description} Every entry has: ${fieldText(fields, described)}`;
 }
-function entryText(kinds3 = recordedKinds, keep = (field4) => !teamFields.includes(field4.path)) {
+function entryText(kinds3 = recordedKinds, keep = (field2) => !teamFields.includes(field2.path)) {
   const described = /* @__PURE__ */ new Set();
   return [commonText(kinds3, described), ...kinds3.map((kind) => kindText(kind, keep, described))].join("\n");
 }
@@ -24149,7 +24149,7 @@ function explorationReport(store, explorationId) {
       evidence: evidence3 ?? []
     })),
     criteria: own.filter((entry) => entry.kind === "criterion").map(({ id: id2, text: text2, source }) => ({ id: id2, text: text2, source: source ?? null })),
-    notes: own.filter((entry) => entry.kind === "note").map(({ id: id2, text: text2, area: area2 }) => ({ id: id2, text: text2, area: area2 ?? null })),
+    notes: own.filter((entry) => entry.kind === "note").map(({ id: id2, text: text2, area }) => ({ id: id2, text: text2, area: area ?? null })),
     observations: own.filter((entry) => entry.kind === "observation").length,
     files: explorationEvents(store, explorationId).filter((item) => item.step === "files").flatMap(
       (item) => item.detail.files.map((file) => ({
@@ -24412,10 +24412,10 @@ function findPermission(store, askerId, requestId2) {
 }
 function nextRequestId(store, askerId) {
   const table2 = isRequestId(store, askerId) ? "request_events" : "exploration_events";
-  const column = table2 === "request_events" ? "request_id" : "exploration_id";
+  const column2 = table2 === "request_events" ? "request_id" : "exploration_id";
   const count2 = one(
     store,
-    `SELECT count(*) AS count FROM ${table2} WHERE ${column} = ? AND step = '${requestStep}'`,
+    `SELECT count(*) AS count FROM ${table2} WHERE ${column2} = ? AND step = '${requestStep}'`,
     askerId
   ).count;
   return `P${count2 + 1}`;
@@ -26077,7 +26077,7 @@ function filterValue(filters, names) {
 function pageOf(rows2, query, columns2, text2) {
   const matched = query.q ? rows2.filter(
     (row2) => text2(row2).some(
-      (field4) => String(field4 ?? "").toLowerCase().includes(query.q)
+      (field2) => String(field2 ?? "").toLowerCase().includes(query.q)
     )
   ) : rows2;
   const key2 = columns2[query.sort];
@@ -26369,18 +26369,18 @@ function planRecord2(store, planId) {
 }
 var worstFirst = ["failed", "question", "passed", "not_checked"];
 function sumCells(build, cells) {
-  const total = (count2) => cells.reduce((sum, cell4) => sum + count2(cell4), 0);
+  const total = (count2) => cells.reduce((sum, cell5) => sum + count2(cell5), 0);
   return {
     build,
-    status: worstFirst.find((status) => cells.some((cell4) => cell4.status === status)),
+    status: worstFirst.find((status) => cells.some((cell5) => cell5.status === status)),
     severities: Object.fromEntries(
-      severities.map((severity) => [severity, total((cell4) => cell4.severities[severity])])
+      severities.map((severity) => [severity, total((cell5) => cell5.severities[severity])])
     ),
-    criteria: { right: total((cell4) => cell4.criteria.right), wrong: total((cell4) => cell4.criteria.wrong) },
-    claims: total((cell4) => cell4.claims.length),
-    questions: total((cell4) => cell4.questions.length),
+    criteria: { right: total((cell5) => cell5.criteria.right), wrong: total((cell5) => cell5.criteria.wrong) },
+    claims: total((cell5) => cell5.claims.length),
+    questions: total((cell5) => cell5.questions.length),
     changes: Object.fromEntries(
-      buildStates.map((state) => [state, total((cell4) => cell4.changes[state].length)])
+      buildStates.map((state) => [state, total((cell5) => cell5.changes[state].length)])
     )
   };
 }
@@ -26392,13 +26392,13 @@ function ruleAreas(rules, builds, cellOf2) {
     if (!areas.has(key2)) areas.set(key2, { label, rules: [] });
     areas.get(key2).rules.push(rule);
   }
-  return [...areas.values()].map((area2) => ({
-    label: area2.label,
-    ruleIds: area2.rules.map((rule) => rule.id),
+  return [...areas.values()].map((area) => ({
+    label: area.label,
+    ruleIds: area.rules.map((rule) => rule.id),
     cells: builds.map(
       (build) => sumCells(
         build,
-        area2.rules.map((rule) => cellOf2(rule.id, build))
+        area.rules.map((rule) => cellOf2(rule.id, build))
       )
     )
   }));
@@ -26468,7 +26468,7 @@ function ruleMap(store, planId) {
       return {
         rule,
         storedTests: storedTests.get(rule.id) ?? 0,
-        cells: cells.map((cell4, index2) => ({ ...cell4, before: index2 ? cells[index2 - 1].status : null }))
+        cells: cells.map((cell5, index2) => ({ ...cell5, before: index2 ? cells[index2 - 1].status : null }))
       };
     }),
     unlinked: {
@@ -28885,8 +28885,40 @@ function bulkProblem(what, values, actor) {
   return null;
 }
 
+// plugin/src/ui/components/key.ts
+function key({ name: name2, spoken = true }) {
+  return spoken ? html2`<kbd>${name2}</kbd>` : html2`<kbd aria-hidden="true">${name2}</kbd>`;
+}
+
+// plugin/src/ui/components/button.ts
+var emphasisClass = {
+  primary: " pri",
+  unblocks: " you"
+};
+function button({ label, href, keyName, keySpoken = true, emphasis, attrs }) {
+  const look = `sp-btn${emphasis ? emphasisClass[emphasis] : ""}`;
+  const inner = html2`${keyName === void 0 ? "" : key({ name: keyName, spoken: keySpoken })}<span>${label}</span>`;
+  return href === void 0 ? html2`<button class="${look}" ${attributes(attrs)}>${inner}</button>` : html2`<a class="${look}" href="${href}" ${attributes(attrs)}>${inner}</a>`;
+}
+function optionButton({ n, label, name: name2 = label, href, attrs }) {
+  return button({
+    label,
+    href,
+    keyName: n,
+    keySpoken: false,
+    attrs: { "data-option": true, ...attrs, "aria-label": `${n}: ${name2}`, title: name2 }
+  });
+}
+function formButton({ label, href, element, emphasis, inline: inline2 = false, quiet = false, attrs }) {
+  const look = `btn${inline2 ? " small" : ""}${emphasis ? " primary" : ""}${quiet ? " ghost" : ""}`;
+  if (href !== void 0) return html2`<a class="${look}" href="${href}" ${attributes(attrs)}>${label}</a>`;
+  if (element === "summary") return html2`<summary class="${look}" ${attributes(attrs)}>${label}</summary>`;
+  if (element === "span") return html2`<span class="${look}" ${attributes(attrs)}>${label}</span>`;
+  return html2`<button class="${look}" ${attributes(attrs)}>${label}</button>`;
+}
+
 // plugin/src/ui/components/page-heading.ts
-function crumbBar(crumbs) {
+function crumbBar({ crumbs }) {
   if (!crumbs?.length) return html2``;
   return html2`<p class="sp-path">
 		${crumbs.map(([label, href], index2) => [
@@ -28895,7 +28927,7 @@ function crumbBar(crumbs) {
   ])}
 	</p>`;
 }
-function heading(title2, sub = null, extra = "") {
+function heading({ title: title2, sub = null, extra = "" }) {
   return html2`<div class="sp-h">
 		<div>
 			<h1>${title2}</h1>
@@ -28918,117 +28950,6 @@ function size(bytes) {
 function shownAsText(mediaType, bytes) {
   return textTypes.includes(mediaType) && bytes <= inlineLimit;
 }
-function htmlPreview(file) {
-  if (!file.href || file.mediaType !== htmlType) return null;
-  return html2`<iframe
-		class="ev-frame"
-		src="${file.href}?preview=1"
-		title="Preview of ${file.name}"
-		loading="lazy"
-		referrerpolicy="no-referrer"
-		sandbox
-	></iframe>`;
-}
-function download(file) {
-  if (!file.href) return "";
-  return html2`<a class="ev-act" href="${file.href}" download="${file.name}" aria-label="Download ${file.name}"
-		>Download</a
-	>`;
-}
-function caption(file, open = "") {
-  return html2`<figcaption>
-		<span class="ev-name">${file.name}</span>
-		${file.size ? html2`<span class="muted">${size(file.size)}</span>` : ""} ${open} ${download(file)}
-	</figcaption>`;
-}
-function viewLink(opener, content, label = `View ${opener.name}`, extra = "") {
-  return html2`<a
-		class="${extra}"
-		href="${opener.page}"
-		data-view="${opener.kind}"
-		data-name="${opener.name}"
-		data-src="${opener.src}"
-		aria-label="${label}"
-		>${content}</a
-	>`;
-}
-function evidenceItem(file) {
-  if (file.size === 0)
-    return html2`<figure class="ev ev-none">
-			<p class="ev-note">Empty file</p>
-			${caption(file)}
-		</figure>`;
-  if (file.href && imageTypes.includes(file.mediaType))
-    return html2`<figure class="ev ev-image">
-			<a
-				href="${file.href}"
-				data-view="image"
-				data-name="${file.name}"
-				data-src="${file.href}"
-				aria-label="View ${file.name}"
-			>
-				<img src="${file.href}" alt="Evidence ${file.name}" loading="lazy" data-ev-image />
-				<span class="ev-note" hidden>This image cannot be shown.</span>
-			</a>
-			${caption(file)}
-		</figure>`;
-  const frame = htmlPreview(file);
-  if (frame) return html2`<figure class="ev">${frame}${caption(file)}</figure>`;
-  if (file.text && (!file.href || shownAsText(file.mediaType, file.size)))
-    return html2`<figure class="ev ev-text">
-			<pre tabindex="0" data-view-source>${file.text()}</pre>
-			${caption(
-      file,
-      file.href ? viewLink(
-        { name: file.name, kind: "text", page: file.href, src: file.href },
-        "View",
-        void 0,
-        "ev-act"
-      ) : ""
-    )}
-		</figure>`;
-  return html2`<figure class="ev ev-none">
-		<p class="ev-note">No preview for this file type.</p>
-		${caption(file)}
-	</figure>`;
-}
-function evidenceList(files2, none4 = "") {
-  if (!files2.length) return none4 ? html2`<p class="none">${none4}</p>` : "";
-  return html2`<div class="evidence">${files2.map(evidenceItem)}</div>`;
-}
-var viewer = html2`<div
-	class="viewer"
-	data-viewer
-	hidden
-	role="dialog"
-	aria-modal="true"
-	aria-label="Evidence viewer"
->
-	<div class="viewer-bar">
-		<span class="viewer-name" data-viewer-name></span>
-		<span class="viewer-tools" data-viewer-tools="image">
-			<button class="btn small" type="button" data-zoom="out" aria-label="Zoom out" title="Zoom out (-)">
-				-
-			</button>
-			<span class="viewer-scale" data-viewer-scale>Fit</span>
-			<button class="btn small" type="button" data-zoom="in" aria-label="Zoom in" title="Zoom in (+)">+</button>
-			<button class="btn small" type="button" data-zoom="fit" title="Fit to the window (0)">Fit</button>
-		</span>
-		<label class="viewer-tools viewer-wrap" data-viewer-tools="text"
-			><input type="checkbox" data-viewer-wrap checked /> Wrap lines <kbd>w</kbd></label
-		>
-		<a class="btn small" data-viewer-download href="#" download>Download</a>
-		<button class="btn small" type="button" data-viewer-close>Close <kbd>Esc</kbd></button>
-	</div>
-	<div class="viewer-body" data-viewer-body>
-		<img data-viewer-image alt="" hidden />
-		<pre class="viewer-text" data-viewer-text tabindex="0" hidden></pre>
-		<div class="viewer-note" data-viewer-note hidden>
-			<p data-viewer-message></p>
-			<a class="btn small" data-viewer-note-download href="#" download>Download</a>
-		</div>
-	</div>
-</div>`;
 
 // plugin/src/ui/components/banner.ts
 function banner({ kind, content }) {
@@ -29045,6 +28966,21 @@ function blockingBanner({ count: count2, href }) {
 	</div>`;
 }
 
+// plugin/src/ui/components/field.ts
+function field({ id: id2, label, control, help: help3, helpId, attrs }) {
+  const note = help3 === void 0 ? "" : helpId === void 0 ? html2`<p class="help">${help3}</p>` : html2`<p class="help" id="${helpId}">${help3}</p>`;
+  return html2`<div class="field-group" ${attributes(attrs)}>
+		<label class="lab" for="${id2}">${label}</label>
+		${control} ${note}
+	</div>`;
+}
+function textInput({ id: id2, name: name2, value: value2, attrs }) {
+  return html2`<input id="${id2}" ${attributes({ name: name2, value: value2, ...attrs })} />`;
+}
+function textArea({ id: id2, name: name2, rows: rows2, value: value2 = "", attrs }) {
+  return html2`<textarea id="${id2}" name="${name2}" rows="${rows2}" ${attributes(attrs)}>${value2}</textarea>`;
+}
+
 // plugin/src/ui/forms.ts
 function emptyState() {
   return { values: {}, error: null, stale: null, confirm: false };
@@ -29056,19 +28992,7 @@ function hidden(context, sha256, token = "") {
 }
 function actorField(context, state) {
   if (context.actor) return "";
-  return html2`<div class="field-group">
-		<label class="lab" for="actor">Your name</label>
-		<input
-			id="actor"
-			name="actor"
-			required
-			maxlength="${actorLimit}"
-			autocomplete="name"
-			value="${state.values.actor ?? ""}"
-			data-missing="Enter your name. Checkmate records it with your decision."
-		/>
-		<p class="help">Checkmate asks once, keeps it in a cookie, and records it with each decision.</p>
-	</div>`;
+  return html2`${field({ id: "actor", label: "Your name", control: textInput({ id: "actor", name: "actor", value: state.values.actor ?? "", attrs: { required: true, maxlength: actorLimit, autocomplete: "name", "data-missing": "Enter your name. Checkmate records it with your decision." } }), help: "Checkmate asks once, keeps it in a cookie, and records it with each decision." })}`;
 }
 function messages(state) {
   return html2`${state.stale ? banner({ kind: "warn", content: state.stale }) : ""}
@@ -29083,19 +29007,7 @@ function keptText(state) {
 	</div>`;
 }
 function rationaleField(state, placeholder2, missing = "Write a rationale. Checkmate records it with your decision.") {
-  return html2`<div class="field-group">
-		<label class="lab" for="rationale">Rationale</label>
-		<textarea
-			id="rationale"
-			name="rationale"
-			rows="4"
-			required
-			data-rationale
-			placeholder="${placeholder2}"
-			data-missing="${missing}"
-		>
-${state.values.rationale ?? ""}</textarea>
-	</div>`;
+  return html2`${field({ id: "rationale", label: "Rationale", control: textArea({ id: "rationale", name: "rationale", rows: 4, value: state.values.rationale ?? "", attrs: { required: true, "data-rationale": true, placeholder: placeholder2, "data-missing": missing } }) })}`;
 }
 function confirmStep(context, verdict, state) {
   const choice2 = state.values.verdict === verdict.reject.value ? verdict.reject : verdict.approve;
@@ -29110,22 +29022,23 @@ function confirmStep(context, verdict, state) {
 			<blockquote>${state.values.rationale ?? ""}</blockquote>
 		</div>
 		<div class="btns">
-			<button class="btn primary" name="confirmed" value="1">${choice2.confirm}</button>
-			<button class="btn" name="back" value="1" formnovalidate>Back</button>
+			${formButton({ label: choice2.confirm, emphasis: "primary", attrs: { name: "confirmed", value: "1" } })}
+			${formButton({ label: "Back", attrs: { name: "back", value: "1", formnovalidate: true } })}
 		</div>
 	</form>`;
 }
 function chooseStep(context, verdict, state) {
-  const button2 = (choice2, primary) => html2`<button
-			class="btn${primary ? " primary" : ""}"
-			name="verdict"
-			value="${choice2.value}"
-			data-needs-rationale
-			data-confirm-label="${choice2.confirm}"
-			data-summary="${choice2.summary}"
-		>
-			${choice2.label}
-		</button>`;
+  const button2 = (choice2, primary) => formButton({
+    label: choice2.label,
+    emphasis: primary ? "primary" : void 0,
+    attrs: {
+      name: "verdict",
+      value: choice2.value,
+      "data-needs-rationale": true,
+      "data-confirm-label": choice2.confirm,
+      "data-summary": choice2.summary
+    }
+  });
   return html2`<form method="post" action="${verdict.action}" class="decision-form" data-verdict-form>
 		${hidden(context, verdict.sha256, verdict.token)} ${verdict.extra ?? ""} ${actorField(context, state)}
 		${rationaleField(state, "Why do you decide this?")}
@@ -29135,8 +29048,8 @@ function chooseStep(context, verdict, state) {
 		</div>
 		<div class="btns" data-choose>${button2(verdict.approve, true)} ${button2(verdict.reject, false)}</div>
 		<div class="btns" data-confirm-buttons hidden>
-			<button class="btn primary" name="confirmed" value="1" data-confirm-submit>Confirm</button>
-			<button class="btn" type="button" data-confirm-back>Back</button>
+			${formButton({ label: "Confirm", emphasis: "primary", attrs: { name: "confirmed", value: "1", "data-confirm-submit": true } })}
+			${formButton({ label: "Back", attrs: { type: "button", "data-confirm-back": true } })}
 		</div>
 	</form>`;
 }
@@ -29208,11 +29121,7 @@ function gapPanel(context, form, state) {
 				</div>
 			</fieldset>
 			${kinds.map((kind) => html2`<p class="help kind-help" data-kind="${kind.value}">${kind.help}</p>`)}
-			<div class="field-group">
-				<label class="lab" for="value">Answer</label>
-				<textarea id="value" name="value" rows="3" required data-missing="Write the answer.">
-${state.values.value ?? ""}</textarea>
-			</div>
+			${field({ id: "value", label: "Answer", control: textArea({ id: "value", name: "value", rows: 3, value: state.values.value ?? "", attrs: { required: true, "data-missing": "Write the answer." } }) })}
 			<div class="field-group source-field">
 				<label class="lab" for="source">Source <span class="req">required for Clarify</span></label>
 				<input
@@ -29228,8 +29137,8 @@ ${state.values.value ?? ""}</textarea>
 			${rationaleField(state, "Why is this the right answer?", "Write a rationale. Checkmate records it with your answer.")}
 			${actorField(context, state)}
 			<div class="btns">
-				<button class="btn primary" data-needs-rationale>Record answer</button>
-				<a class="btn" href="${form.cancel}">Cancel</a>
+				${formButton({ label: "Record answer", emphasis: "primary", attrs: { "data-needs-rationale": true } })}
+				${formButton({ label: "Cancel", href: form.cancel })}
 			</div>
 		</form>
 	</section>`;
@@ -29505,31 +29414,6 @@ function createHooks(store, token, options3 = {}) {
   };
 }
 
-// plugin/src/ui/components/key.ts
-function key({ name: name2, spoken = true }) {
-  return spoken ? html2`<kbd>${name2}</kbd>` : html2`<kbd aria-hidden="true">${name2}</kbd>`;
-}
-
-// plugin/src/ui/components/button.ts
-var emphasisClass = {
-  primary: " pri",
-  unblocks: " you"
-};
-function button({ label, href, keyName, keySpoken = true, emphasis, attrs }) {
-  const look = `sp-btn${emphasis ? emphasisClass[emphasis] : ""}`;
-  const inner = html2`${keyName === void 0 ? "" : key({ name: keyName, spoken: keySpoken })}<span>${label}</span>`;
-  return href === void 0 ? html2`<button class="${look}" ${attributes(attrs)}>${inner}</button>` : html2`<a class="${look}" href="${href}" ${attributes(attrs)}>${inner}</a>`;
-}
-function optionButton({ n, label, name: name2 = label, href, attrs }) {
-  return button({
-    label,
-    href,
-    keyName: n,
-    keySpoken: false,
-    attrs: { "data-option": true, ...attrs, "aria-label": `${n}: ${name2}`, title: name2 }
-  });
-}
-
 // plugin/src/ui/components/confirm-dialog.ts
 function confirmDialog() {
   return html2`<dialog class="sp-confirm" data-confirm aria-labelledby="confirm-title">
@@ -29546,6 +29430,158 @@ function confirmDialog() {
 			</div>
 		</form>
 	</dialog>`;
+}
+
+// plugin/src/ui/components/empty-state.ts
+function emptyNotice({ what, next, extra = "" }) {
+  return html2`<div class="sp-empty">
+		<p><b>${what}</b></p>
+		<p>${next}</p>
+		${extra}
+	</div>`;
+}
+function emptyLine({ text: text2 }) {
+  return html2`<p class="sp-empty">${text2}</p>`;
+}
+
+// plugin/src/ui/components/evidence-viewer.ts
+function htmlPreview(file) {
+  if (!file.href || file.mediaType !== htmlType) return null;
+  return html2`<iframe
+		class="ev-frame"
+		src="${file.href}?preview=1"
+		title="Preview of ${file.name}"
+		loading="lazy"
+		referrerpolicy="no-referrer"
+		sandbox
+	></iframe>`;
+}
+function download(file) {
+  if (!file.href) return "";
+  return html2`<a class="ev-act" href="${file.href}" download="${file.name}" aria-label="Download ${file.name}"
+		>Download</a
+	>`;
+}
+function caption(file, open = "") {
+  return html2`<figcaption>
+		<span class="ev-name">${file.name}</span>
+		${file.size ? html2`<span class="muted">${size(file.size)}</span>` : ""} ${open} ${download(file)}
+	</figcaption>`;
+}
+function viewLink(opener, content, label = `View ${opener.name}`, extra = "") {
+  return html2`<a
+		class="${extra}"
+		href="${opener.page}"
+		data-view="${opener.kind}"
+		data-name="${opener.name}"
+		data-src="${opener.src}"
+		aria-label="${label}"
+		>${content}</a
+	>`;
+}
+function evidenceItem(file) {
+  if (file.size === 0)
+    return html2`<figure class="ev ev-none">
+			<p class="ev-note">Empty file</p>
+			${caption(file)}
+		</figure>`;
+  if (file.href && imageTypes.includes(file.mediaType))
+    return html2`<figure class="ev ev-image">
+			<a
+				href="${file.href}"
+				data-view="image"
+				data-name="${file.name}"
+				data-src="${file.href}"
+				aria-label="View ${file.name}"
+			>
+				<img src="${file.href}" alt="Evidence ${file.name}" loading="lazy" data-ev-image />
+				<span class="ev-note" hidden>This image cannot be shown.</span>
+			</a>
+			${caption(file)}
+		</figure>`;
+  const frame = htmlPreview(file);
+  if (frame) return html2`<figure class="ev">${frame}${caption(file)}</figure>`;
+  if (file.text && (!file.href || shownAsText(file.mediaType, file.size)))
+    return html2`<figure class="ev ev-text">
+			<pre tabindex="0" data-view-source>${file.text()}</pre>
+			${caption(
+      file,
+      file.href ? viewLink(
+        { name: file.name, kind: "text", page: file.href, src: file.href },
+        "View",
+        void 0,
+        "ev-act"
+      ) : ""
+    )}
+		</figure>`;
+  return html2`<figure class="ev ev-none">
+		<p class="ev-note">No preview for this file type.</p>
+		${caption(file)}
+	</figure>`;
+}
+function evidenceList(files2, none4 = "") {
+  if (!files2.length) return none4 ? html2`<p class="none">${none4}</p>` : "";
+  return html2`<div class="evidence">${files2.map(evidenceItem)}</div>`;
+}
+var evidenceOverlay = html2`<div
+	class="viewer"
+	data-viewer
+	hidden
+	role="dialog"
+	aria-modal="true"
+	aria-label="Evidence viewer"
+>
+	<div class="viewer-bar">
+		<span class="viewer-name" data-viewer-name></span>
+		<span class="viewer-tools" data-viewer-tools="image">
+			${formButton({ label: "-", inline: true, attrs: { type: "button", "data-zoom": "out", "aria-label": "Zoom out", title: "Zoom out (-)" } })}
+			<span class="viewer-scale" data-viewer-scale>Fit</span>
+			${formButton({ label: "+", inline: true, attrs: { type: "button", "data-zoom": "in", "aria-label": "Zoom in", title: "Zoom in (+)" } })}
+			${formButton({ label: "Fit", inline: true, attrs: { type: "button", "data-zoom": "fit", title: "Fit to the window (0)" } })}
+		</span>
+		<label class="viewer-tools viewer-wrap" data-viewer-tools="text"
+			><input type="checkbox" data-viewer-wrap checked /> Wrap lines <kbd>w</kbd></label
+		>
+		${formButton({ label: "Download", href: "#", inline: true, attrs: { "data-viewer-download": true, download: true } })}
+		${formButton({ label: html2`Close <kbd>Esc</kbd>`, inline: true, attrs: { type: "button", "data-viewer-close": true } })}
+	</div>
+	<div class="viewer-body" data-viewer-body>
+		<img data-viewer-image alt="" hidden />
+		<pre class="viewer-text" data-viewer-text tabindex="0" hidden></pre>
+		<div class="viewer-note" data-viewer-note hidden>
+			<p data-viewer-message></p>
+			${formButton({ label: "Download", href: "#", inline: true, attrs: { "data-viewer-note-download": true, download: true } })}
+		</div>
+	</div>
+</div>`;
+function evidenceFiles2({ files: files2, base, current: current2, inViewer: viewer = false }) {
+  if (!files2.length) return emptyLine({ text: "The tester gave no evidence." });
+  return html2`<div class="sp-files" role="listbox" aria-label="Evidence">
+		${files2.map(
+    (file, index2) => html2`<a
+					class="sp-file${current2 === index2 ? " hl" : ""}"
+					role="option"
+					aria-selected="${current2 === index2 ? "true" : "false"}"
+					tabindex="-1"
+					href="${`${base}&file=${index2}`}"
+					${viewer ? html2`data-vfile="${index2}"` : html2`data-sub data-href="${`${base}&file=${index2}`}"`}
+					data-label="${file.name}"
+					><span class="sp-file-k">${index2 + 1}</span
+					><span class="ell" title="${file.name}">${file.name}</span
+					><span class="sp-file-k">${viewer ? file.size ? size(file.size) : "" : "View"}</span></a
+				>`
+  )}
+	</div>`;
+}
+function evidencePreview({ file }) {
+  if (file.size === 0 && file.href) return emptyLine({ text: "Empty file." });
+  if (file.href && imageTypes.includes(file.mediaType))
+    return html2`<img src="${file.href}" alt="Evidence ${file.name}" data-ev-image /><span class="sp-empty" hidden
+				>This image cannot be shown.</span
+			>`;
+  if (file.text && (!file.href || shownAsText(file.mediaType, file.size)))
+    return html2`<pre tabindex="0">${file.text()}</pre>`;
+  return htmlPreview(file) ?? emptyLine({ text: "No preview for this file type." });
 }
 
 // plugin/src/ui/components/find-palette.ts
@@ -29756,7 +29792,7 @@ function layout(context, page) {
 				${context.toast ? html2`<div class="toast" role="status" data-toast title="${context.toast}">${cut(context.toast)}</div>` : ""}
 				<div class="sr-only" aria-live="polite" data-announcer></div>
 				${keysHelp()} ${findPalette({ harness: context.harness })} ${confirmDialog()}
-				${page.viewer ? viewer : ""}
+				${page.viewer ? evidenceOverlay : ""}
 			</body>
 		</html>`;
 }
@@ -30331,9 +30367,12 @@ function permissionHistory(store, explorationId, params, from) {
     else next.set("requests", String(target));
     next.set("at", `request:${requestName(all2[(target - 1) * historySize])}`);
     const query = next.toString();
-    return html2`<a class="btn small" href="/explorations/${explorationId}${query ? `?${query}` : ""}" rel="${rel}"
-			>${label}</a
-		>`;
+    return formButton({
+      label,
+      href: `/explorations/${explorationId}${query ? `?${query}` : ""}`,
+      inline: true,
+      attrs: { rel }
+    });
   };
   const decided = (item) => item.decision ? html2`${item.decision.text} · ${time(item.decision.at)}` : html2`open · ${time(item.at)}`;
   const rows2 = shown2.map(
@@ -31044,7 +31083,7 @@ function board({ builds, columns: columns2 }) {
 	>
 		<span></span>${builds.map((build) => html2`<span class="sp-mm-b" title="${build.build}">${build.label}</span>`)}
 		${columns2.map(
-    (column) => html2`<span class="sp-mm-l" title="${column.title}">${column.label}</span>${column.cells.map(
+    (column2) => html2`<span class="sp-mm-l" title="${column2.title}">${column2.label}</span>${column2.cells.map(
       (state) => boardCell({ state })
     )}`
   )}
@@ -31121,10 +31160,10 @@ var severityOrder2 = ["critical", "high", "medium", "low"];
 var shownBuilds = 3;
 var outside = "outside";
 function areasOf(map) {
-  return map.areas.map((area2) => ({
-    label: area2.label,
-    rules: area2.ruleIds,
-    cells: area2.cells.map((cell4) => cell4.status)
+  return map.areas.map((area) => ({
+    label: area.label,
+    rules: area.ruleIds,
+    cells: area.cells.map((cell5) => cell5.status)
   }));
 }
 var stateWords = {
@@ -31311,8 +31350,8 @@ function itemsOf(review, view) {
     return items.filter((item) => id2 === outside ? item.rule === outside || item.rule === null : item.rule === id2);
   }
   if (view.startsWith("area:")) {
-    const area2 = review.areas.find((each) => each.label === view.slice(5));
-    return items.filter((item) => item.rule !== null && area2?.rules.includes(item.rule));
+    const area = review.areas.find((each) => each.label === view.slice(5));
+    return items.filter((item) => item.rule !== null && area?.rules.includes(item.rule));
   }
   if (view.startsWith("build:")) return items.filter((item) => item.builds.includes(view.slice(6)));
   return [];
@@ -31352,8 +31391,8 @@ function optionForm(context, item, n, label, fields, name2 = label) {
 		${hiddenFields(context, item, fields)}${optionButton({ n, label, name: name2 })}
 	</form>`;
 }
-function reveal(n, label, field4, item, name2 = label) {
-  return optionButton({ n, label, name: name2, href: `${item.href}#${field4}`, attrs: { "data-reveal": field4 } });
+function reveal(n, label, field2, item, name2 = label) {
+  return optionButton({ n, label, name: name2, href: `${item.href}#${field2}`, attrs: { "data-reveal": field2 } });
 }
 function rightAsBuilt(question) {
   return question.actual ? `Right as built: ${question.actual}` : "Right as built.";
@@ -31408,11 +31447,11 @@ function optionsOf(context, review, item) {
   return [];
 }
 function extraOf(context, review, item) {
-  const form = (field4, label, name2, fields, url = action(item)) => html2`<div class="sp-c-extra" data-extra="${field4}" hidden>
+  const form = (field2, label, name2, fields, url = action(item)) => html2`<div class="sp-c-extra" data-extra="${field2}" hidden>
 			<form method="post" action="${url}" class="sp-form" data-field-form>
 				${hiddenFields(context, item, fields)} ${item.kind === "gap" ? html2`<div data-stale-slot></div>` : ""}
-				<label for="${field4}-${item.key}">${label}</label>
-				<textarea id="${field4}-${item.key}" name="${name2}" rows="2" required></textarea>
+				<label for="${field2}-${item.key}">${label}</label>
+				<textarea id="${field2}-${item.key}" name="${name2}" rows="2" required></textarea>
 				<div class="btns">
 					${button({ label: "Send", emphasis: "primary" })}
 					<span class="small">Enter sends. Shift+Enter starts a new line. Esc keeps the draft.</span>
@@ -31560,23 +31599,23 @@ function navigator(review, current2, exploration2 = null, chat = { href: reviewH
   ) : "";
   const builds = shown(review);
   const outsideRow = review.map.rows.find((row2) => row2.rule.id === outside);
-  const ruleRows = review.areas.flatMap((area2) => {
-    const open = current2 === `area:${area2.label}` || current2.startsWith("rule:") && area2.rules.includes(current2.slice(5));
+  const ruleRows = review.areas.flatMap((area) => {
+    const open = current2 === `area:${area.label}` || current2.startsWith("rule:") && area.rules.includes(current2.slice(5));
     return [
       navRow(
         review,
         active,
-        `area:${area2.label}`,
-        href(`area:${area2.label}`),
+        `area:${area.label}`,
+        href(`area:${area.label}`),
         glyph(open ? "\u25BE" : "\u25B8"),
-        area2.label,
-        marks(review, area2.cells),
+        area.label,
+        marks(review, area.cells),
         {
           expanded: open,
           look: "area"
         }
       ),
-      ...area2.rules.map((id2) => {
+      ...area.rules.map((id2) => {
         const row2 = review.map.rows.find((each) => each.rule.id === id2);
         return navRow(
           review,
@@ -31587,11 +31626,11 @@ function navigator(review, current2, exploration2 = null, chat = { href: reviewH
           row2.rule.text,
           marks(
             review,
-            row2.cells.map((cell4) => cell4.status)
+            row2.cells.map((cell5) => cell5.status)
           ),
           {
             level: 2,
-            area: area2.label,
+            area: area.label,
             look: "rule",
             hidden: !open
           }
@@ -31628,7 +31667,7 @@ function navigator(review, current2, exploration2 = null, chat = { href: reviewH
       "Outside the rules",
       marks(
         review,
-        outsideRow.cells.map((cell4) => cell4.status)
+        outsideRow.cells.map((cell5) => cell5.status)
       ),
       {
         look: "rule"
@@ -31693,7 +31732,7 @@ function viewsOf(review) {
   return [
     "needs",
     "all",
-    ...review.areas.map((area2) => `area:${area2.label}`),
+    ...review.areas.map((area) => `area:${area.label}`),
     ...review.map.rows.map((row2) => `rule:${row2.rule.id}`),
     ...review.map.builds.map((item) => `build:${item.build}`),
     "rules"
@@ -31740,17 +31779,19 @@ function shell(id2, title2, gone, action2, context, body) {
 		</form>
 	</dialog>`;
 }
-function field(id2, label, name2, value2, missing = "") {
-  return html2`<label for="${id2}">${label}</label>
-		<input
-			id="${id2}"
-			name="${name2}"
-			value="${value2}"
-			maxlength="200"
-			autocomplete="off"
-			${missing ? html2`required data-missing="${missing}"` : ""}
-			data-stop
-		/>`;
+function dialogField(id2, label, name2, value2, missing = "") {
+  return html2`<label for="${id2}">${label}</label> ${textInput({
+    id: id2,
+    name: name2,
+    value: value2,
+    attrs: {
+      maxlength: 200,
+      autocomplete: "off",
+      required: Boolean(missing),
+      "data-missing": missing || null,
+      "data-stop": true
+    }
+  })}`;
 }
 function instanceChoice(store, planId) {
   const targetId = planRequest(store, planId).target.profile.targetId;
@@ -31784,7 +31825,7 @@ function testerModels(context) {
 		<p class="help">Choose a model for a tester, or use the workspace tester model.</p>
 		<p class="help" role="status" data-tester-count-status></p>
 		<p class="help" role="status" data-tester-model-status>Open to load models.</p>
-		<button class="btn" type="button" data-stop data-tester-model-refresh>Refresh models</button>
+		${formButton({ label: "Refresh models", attrs: { type: "button", "data-stop": true, "data-tester-model-refresh": true } })}
 		<label for="tester-model-filter">Filter models</label>
 		<input id="tester-model-filter" type="search" autocomplete="off" data-stop data-tester-model-filter />
 		${Array.from(
@@ -31825,7 +31866,7 @@ function testDialog(context, planId, values, fallbackBuild = "", instances = [])
     context,
     html2`<input type="hidden" name="harness" value="${context.harness}" />
 			<p class="sp-sub">Start a test of the plan on this computer. The testers run in the background.</p>
-			${field("act-test-build", "Build", "build", shown2.build, "Write the build name.")}
+			${dialogField("act-test-build", "Build", "build", shown2.build, "Write the build name.")}
 			${instances.map((choice2) => instanceField(choice2, choice2.planId === planId))}
 			${radioGroup({
       label: "Level",
@@ -31849,9 +31890,9 @@ function testDialog(context, planId, values, fallbackBuild = "", instances = [])
 			<p class="help" id="act-test-rules-help">${testerToolHelp(context.harness)}</p>
 			<details class="sp-more" data-more>
 				<summary data-stop>More</summary>
-				${field("act-test-since", "Since (git ref)", "since", shown2.since)}
-				${field("act-test-until", "Until (git ref)", "until", shown2.until)}
-				${field("act-test-repo", "Repository folder", "repo", shown2.repo)}
+				${dialogField("act-test-since", "Since (git ref)", "since", shown2.since)}
+				${dialogField("act-test-until", "Until (git ref)", "until", shown2.until)}
+				${dialogField("act-test-repo", "Repository folder", "repo", shown2.repo)}
 			</details>
 			${testerModels(context)}
 			<div class="btns">
@@ -31881,9 +31922,9 @@ function ruleDialog(kind, context, planId, areas) {
 			${radioGroup({
       label: "Area",
       name: "area",
-      choices: areas.map((area2, index2) => ({
-        value: area2,
-        title: area2,
+      choices: areas.map((area, index2) => ({
+        value: area,
+        title: area,
         checked: index2 === 0,
         truncate: true
       }))
@@ -31966,7 +32007,7 @@ function stopDialog(context, subject) {
 				Stop the test of ${subject.planId}, build ${subject.build}? The testers end now. The record and the work
 				folder stay.
 			</p>
-			${field(`act-stop-${subject.explorationId}-reason`, "Reason (optional)", "reason", "")}
+			${dialogField(`act-stop-${subject.explorationId}-reason`, "Reason (optional)", "reason", "")}
 			<div class="btns">
 				${button({ label: "Keep testing", keyName: "1", attrs: { type: "button", "data-act-cancel": true, "data-stop": true, "data-key-n": "1" } })}
 				${button({ label: "Stop the test", keyName: "2", emphasis: "primary", attrs: { "data-stop": true, "data-key-n": "2" } })}
@@ -31983,7 +32024,7 @@ function stopTesterDialog(context, subject, explorer) {
     html2`<p class="sp-sub">
 				Stop tester ${explorer} of ${subject.planId}, build ${subject.build}? The other testers go on.
 			</p>
-			${field(`act-stop-${subject.explorationId}-${explorer}-reason`, "Reason (optional)", "reason", "")}
+			${dialogField(`act-stop-${subject.explorationId}-${explorer}-reason`, "Reason (optional)", "reason", "")}
 			<div class="btns">
 				${button({ label: "Keep testing", keyName: "1", attrs: { type: "button", "data-act-cancel": true, "data-stop": true, "data-key-n": "1" } })}
 				${button({ label: `Stop tester ${explorer}`, keyName: "2", emphasis: "primary", attrs: { "data-stop": true, "data-key-n": "2" } })}
@@ -32049,18 +32090,6 @@ function testerStopOption(explorationId, explorer, n) {
   });
 }
 
-// plugin/src/ui/components/empty-state.ts
-function emptyNotice(what, next, extra = "") {
-  return html2`<div class="sp-empty">
-		<p><b>${what}</b></p>
-		<p>${next}</p>
-		${extra}
-	</div>`;
-}
-function emptyLine({ text: text2 }) {
-  return html2`<p class="sp-empty">${text2}</p>`;
-}
-
 // plugin/src/ui/lists.ts
 function loopState(loop2) {
   const role = loop2.waitsOn === "qa" ? "QA" : loop2.waitsOn;
@@ -32085,7 +32114,7 @@ function listState(params, spec2) {
     q: params.get("q")?.trim() ?? "",
     size: pageSizes2.includes(size2) ? size2 : 25,
     page: page > 1 ? page : 1,
-    sort: spec2.columns.some((column) => column.sort === sort) ? sort : spec2.sort,
+    sort: spec2.columns.some((column2) => column2.sort === sort) ? sort : spec2.sort,
     direction: direction === "asc" || direction === "desc" ? direction : spec2.direction,
     filters
   };
@@ -32146,7 +32175,7 @@ function filterBar(spec2, state) {
 		<label class="sr-only" for="sort">Sort by</label>
 		<select id="sort" name="sort" data-default="${spec2.sort}">
 			${options(
-    spec2.columns.filter((column) => column.sort).map((column) => [column.sort, `Sort: ${column.label}`]),
+    spec2.columns.filter((column2) => column2.sort).map((column2) => [column2.sort, `Sort: ${column2.label}`]),
     state.sort
   )}
 		</select>
@@ -32167,8 +32196,8 @@ function filterBar(spec2, state) {
     String(state.size)
   )}
 		</select>
-		<button class="btn" data-list-submit>Filter</button>
-		<a class="btn ghost" href="${spec2.path}" data-list-clear>Clear</a>
+		${formButton({ label: "Filter", attrs: { "data-list-submit": true } })}
+		${formButton({ label: "Clear", href: spec2.path, quiet: true, attrs: { "data-list-clear": true } })}
 	</form>`;
 }
 function pageTrail(spec2, state, total, title2) {
@@ -32182,9 +32211,12 @@ function pageTrail(spec2, state, total, title2) {
 function pager(spec2, state, total) {
   const last = Math.max(1, Math.ceil(total / state.size));
   if (last === 1) return "";
-  const link2 = (page, label, rel) => page === state.page || page < 1 || page > last ? html2`<span class="btn small" aria-disabled="true">${label}</span>` : html2`<a class="btn small" href="${listHref(spec2, state, { page })}" rel="${rel}" data-list-link
-					>${label}</a
-				>`;
+  const link2 = (page, label, rel) => page === state.page || page < 1 || page > last ? formButton({ label, element: "span", inline: true, attrs: { "aria-disabled": "true" } }) : formButton({
+    label,
+    href: listHref(spec2, state, { page }),
+    inline: true,
+    attrs: { rel, "data-list-link": true }
+  });
   return html2`<nav class="pager" aria-label="Pages">
 		${link2(1, "\xAB First", "first")} ${link2(state.page - 1, "\u2039 Previous", "prev")}
 		<span class="pager-at">Page ${state.page} of ${last}</span>
@@ -32200,10 +32232,10 @@ function listRegion(spec2, state, total, rows2) {
 		${total ? html2`<ul class="q-items l-rows">
 							${rows2}
 						</ul>
-						${pager(spec2, state, total)}` : state.q || Object.keys(state.filters).length ? emptyNotice(
-    `No ${spec2.noun} matches these filters.`,
-    html2`<a href="${spec2.path}" data-list-clear>Clear the filters</a>`
-  ) : emptyNotice(spec2.none[0], spec2.none[1])}
+						${pager(spec2, state, total)}` : state.q || Object.keys(state.filters).length ? emptyNotice({
+    what: `No ${spec2.noun} matches these filters.`,
+    next: html2`<a href="${spec2.path}" data-list-clear>Clear the filters</a>`
+  }) : emptyNotice({ what: spec2.none[0], next: spec2.none[1] })}
 	</div>`;
 }
 var runStatuses2 = [
@@ -32457,7 +32489,7 @@ function activityPage(store, context, params, defaults) {
     subjects: ["*"],
     address: listHref(spec, shown2),
     ...pageTrail(spec, shown2, total, "Activity"),
-    body: html2`${heading("Activity", "Tests, follow-ups, and chat messages. Open an entry to see its run or chat.")}
+    body: html2`${heading({ title: "Activity", sub: "Tests, follow-ups, and chat messages. Open an entry to see its run or chat." })}
 			<div data-region="activity" data-list-region>
 				<p class="list-count" data-list-count role="status">
 					${total ? `Showing ${first}\u2013${last} of ${plural(total, "entry", "entries")}` : ""}
@@ -32465,7 +32497,7 @@ function activityPage(store, context, params, defaults) {
 				${total ? html2`<div class="sp-list activity" role="list" aria-label="Runs and chat messages" data-list>
 									${group("Running now", running3)}${group("Earlier", earlier)}
 								</div>
-								${pager(spec, shown2, total)}` : emptyNotice(spec.none[0], spec.none[1])}
+								${pager(spec, shown2, total)}` : emptyNotice({ what: spec.none[0], next: spec.none[1] })}
 			</div>
 			<div data-region="activity-dialogs">${dialogs}</div>`
   };
@@ -37592,10 +37624,10 @@ markdown2.renderer.rules.table_open = (tokens, index2, options3, _env, renderer)
 markdown2.renderer.rules.table_close = (tokens, index2, options3, _env, renderer) => `${renderer.renderToken(tokens, index2, options3)}</div>`;
 for (const rule of ["th_open", "td_open"]) {
   markdown2.renderer.rules[rule] = (tokens, index2, options3, _env, renderer) => {
-    const cell4 = tokens[index2];
-    const alignment = String(cell4.attrGet("style") ?? "").split(":")[1];
+    const cell5 = tokens[index2];
+    const alignment = String(cell5.attrGet("style") ?? "").split(":")[1];
     if (alignment === "left" || alignment === "center" || alignment === "right")
-      cell4.attrs = [["class", `chat-align-${alignment}`]];
+      cell5.attrs = [["class", `chat-align-${alignment}`]];
     return renderer.renderToken(tokens, index2, options3);
   };
 }
@@ -37661,10 +37693,12 @@ function chatMessagePage(store, context, request2) {
 			data-chat-back="${chat}"
 			data-key="request:${requestId2}"
 		>
-			${crumbBar([
-      ["Chats", "/chats"],
-      ["Chat", back]
-    ])}
+			${crumbBar({
+      crumbs: [
+        ["Chats", "/chats"],
+        ["Chat", back]
+      ]
+    })}
 			${drawerHead({
       label: "Message details",
       tags: html2`${stateLabel(request2)}
@@ -37739,11 +37773,88 @@ function chatMessagePage(store, context, request2) {
   };
 }
 
-// plugin/src/ui/screens/chats.ts
-function composer(context, action2, selection, screen = "", back = "") {
+// plugin/src/ui/components/chat-turn.ts
+function savedThisTurn(changes) {
+  if (!changes.length) return html2`<p class="help" data-chat-saved>Saved this turn: nothing.</p>`;
+  return html2`<div class="chat-saved" data-chat-saved>
+		<p class="help">Saved this turn</p>
+		<ul>
+			${changes.map(
+    (change) => html2`<li>${change.href ? html2`<a href="${change.href}">${change.text}</a>` : change.text}</li>`
+  )}
+		</ul>
+	</div>`;
+}
+function chatTurn({
+  request: request2,
+  number,
+  details,
+  back,
+  csrf,
+  model,
+  failure,
+  waitingBehind: waitingBehind2,
+  permissions,
+  rowAttrs
+}) {
+  return html2`<article
+		class="chat-turn"
+		data-chat-turn
+		tabindex="-1"
+		aria-label="Turn ${number}"
+		${attributes(rowAttrs)}
+	>
+		<div class="chat-message chat-user">
+			<div class="chat-meta">You · ${time(request2.askedAt)}</div>
+			<p data-chat-content>${request2.text}</p>
+		</div>
+		<div
+			class="chat-message chat-assistant"
+			${["answered", "failed", "stopped", "interrupted"].includes(request2.state) ? html2`data-chat-terminal="${request2.state}"` : ""}
+		>
+			<div class="chat-meta">
+				Checkmate ·
+				${request2.harness === "pi" ? "Pi" : "Claude Code"}${model ? ` \xB7 ${model}` : ""}${request2.effort ? ` \xB7 ${request2.effort}` : ""}
+				<span class="chat-status"
+					>${request2.state === "answered" ? "" : statusMark({ state: request2.state })}
+					<a href="${details}">Turn ${number}</a></span
+				>
+			</div>
+			${request2.reply ? html2`<div class="chat-markdown" data-chat-content>${chatMarkdown(request2.reply)}</div>` : ""}
+			${["answered", "failed", "stopped", "interrupted"].includes(request2.state) ? savedThisTurn(request2.changes) : ""}
+			${request2.state === "waiting" ? html2`<p class="help" data-chat-waiting-behind>${waitingBehind2}</p>` : ""}
+			${request2.state === "running" ? html2`<p class="help">Working…</p>` : ""}
+			${permissions.map(
+    (item) => html2`<p class="banner warn" data-chat-waiting>
+						Waiting for your permission. The chat asks to run
+						<code>${item.command}</code>. <a href="${item.href}">Answer it</a>. If no one answers in about
+						10 minutes, Checkmate denies the command and the reply goes on without it.
+					</p>`
+  )}
+			${request2.activity.length ? html2`<details data-open-key="activity:${request2.id}">
+							<summary>Activity (${request2.activity.length})</summary>
+							<ol class="sp-activity">
+								${request2.activity.map((entry) => html2`<li>${entry.line}</li>`)}
+							</ol>
+						</details>` : ""}
+			${failure ? html2`<p class="banner fail">${failure.cause}</p>
+							${failure.detail ? html2`<p class="help">${failure.detail}</p>` : ""}${failure.lines.length ? html2`<pre class="sp-code">${failure.lines.join("\n")}</pre>` : ""}` : request2.reason ? html2`<p class="banner info">${request2.reason}</p>` : ""}
+			${request2.changes.length ? html2`<details data-open-key="changes:${request2.id}">
+							<summary>Changes (${request2.changes.length})</summary>
+							<ul>
+								${request2.changes.map((change) => html2`<li>${change.href ? html2`<a href="${change.href}">${change.text}</a>` : change.text}</li>`)}
+							</ul>
+						</details>` : ""}
+			${request2.state === "running" || request2.state === "waiting" ? html2`<form method="post" action="/requests/${request2.id}/stop"><input type="hidden" name="csrf" value="${csrf}" /><input type="hidden" name="return" value="${back}" />${formButton({ label: "Stop", attrs: { type: "submit" } })}</form>` : ""}
+		</div>
+	</article>`;
+}
+
+// plugin/src/ui/components/composer.ts
+function composer({ csrf, action: action2, selection, screen = "", back = "" }) {
   const model = selection.provider && selection.model ? `${selection.provider}/${selection.model}` : selection.model;
   return html2`<form method="post" action="${action2}" class="chat-composer" data-chat-composer>
-		<input type="hidden" name="csrf" value="${context.csrf}" />
+		<input type="hidden" name="csrf" value="${csrf}" />
 		${screen ? html2`<input type="hidden" name="screen" value="${screen}" />` : ""}
 		${back ? html2`<input type="hidden" name="return" value="${back}" />` : ""}
 		<label for="chat-text">Message</label>
@@ -37773,29 +37884,23 @@ function composer(context, action2, selection, screen = "", back = "") {
 					<option value="">Host default</option>
 				</select></label
 			>
-			<button class="btn primary" type="submit">Send</button>
+			${formButton({ label: "Send", emphasis: "primary", attrs: { type: "submit" } })}
 		</div>
 		<p class="help" data-chat-model-status aria-live="polite"></p>
 		<p class="form-error" data-chat-error role="alert" hidden></p>
 	</form>`;
 }
-function savedThisTurn(changes) {
-  if (!changes.length) return html2`<p class="help" data-chat-saved>Saved this turn: nothing.</p>`;
-  return html2`<div class="chat-saved" data-chat-saved>
-		<p class="help">Saved this turn</p>
-		<ul>
-			${changes.map(
-    (change) => html2`<li>${change.href ? html2`<a href="${change.href}">${change.text}</a>` : change.text}</li>`
-  )}
-		</ul>
-	</div>`;
-}
+
+// plugin/src/ui/screens/chats.ts
 function title(text2) {
   const line = text2.split("\n")[0];
   return line.length > 80 ? `${line.slice(0, 79).trimEnd()}\u2026` : line;
 }
+function chatRowAttrs(key2, href, label) {
+  return { "data-row": true, "data-key": key2, "data-href": href, "data-label": label };
+}
 function chatRow2(key2, href, label) {
-  return html2`data-row data-key="${key2}" data-href="${href}" data-label="${label}"`;
+  return attributes(chatRowAttrs(key2, href, label));
 }
 function origin(request2) {
   const context = request2.context;
@@ -37820,62 +37925,19 @@ function commandOf2(input, tool) {
   return typeof command === "string" ? command : tool;
 }
 function turn(store, request2, context, number, back) {
-  const permissions = explorationPermissions(store, request2.id).filter((item) => !item.decision);
-  const failure = request2.state === "failed" ? failureText(request2) : null;
-  const model = requestModelLabel(request2);
   const details = `/chats/${request2.conversation}/messages/${request2.id}`;
-  return html2`<article
-		class="chat-turn"
-		data-chat-turn
-		tabindex="-1"
-		aria-label="Turn ${number}"
-		${chatRow2(`request:${request2.id}`, details, `Turn ${number}`)}
-	>
-		<div class="chat-message chat-user">
-			<div class="chat-meta">You · ${time(request2.askedAt)}</div>
-			<p data-chat-content>${request2.text}</p>
-		</div>
-		<div
-			class="chat-message chat-assistant"
-			${["answered", "failed", "stopped", "interrupted"].includes(request2.state) ? html2`data-chat-terminal="${request2.state}"` : ""}
-		>
-			<div class="chat-meta">
-				Checkmate ·
-				${request2.harness === "pi" ? "Pi" : "Claude Code"}${model ? ` \xB7 ${model}` : ""}${request2.effort ? ` \xB7 ${request2.effort}` : ""}
-				<span class="chat-status"
-					>${request2.state === "answered" ? "" : statusMark({ state: request2.state })}
-					<a href="${details}">Turn ${number}</a></span
-				>
-			</div>
-			${request2.reply ? html2`<div class="chat-markdown" data-chat-content>${chatMarkdown(request2.reply)}</div>` : ""}
-			${["answered", "failed", "stopped", "interrupted"].includes(request2.state) ? savedThisTurn(request2.changes) : ""}
-			${request2.state === "waiting" ? html2`<p class="help" data-chat-waiting-behind>${waitingBehind(store, request2)}</p>` : ""}
-			${request2.state === "running" ? html2`<p class="help">Working…</p>` : ""}
-			${permissions.map(
-    (item) => html2`<p class="banner warn" data-chat-waiting>
-						Waiting for your permission. The chat asks to run
-						<code>${commandOf2(item.input, item.tool)}</code>.
-						<a href="${requestHref(item, back)}">Answer it</a>. If no one answers in about 10 minutes,
-						Checkmate denies the command and the reply goes on without it.
-					</p>`
-  )}
-			${request2.activity.length ? html2`<details data-open-key="activity:${request2.id}">
-							<summary>Activity (${request2.activity.length})</summary>
-							<ol class="sp-activity">
-								${request2.activity.map((entry) => html2`<li>${entry.line}</li>`)}
-							</ol>
-						</details>` : ""}
-			${failure ? html2`<p class="banner fail">${failure.cause}</p>
-							${failure.detail ? html2`<p class="help">${failure.detail}</p>` : ""}${failure.lines.length ? html2`<pre class="sp-code">${failure.lines.join("\n")}</pre>` : ""}` : request2.reason ? html2`<p class="banner info">${request2.reason}</p>` : ""}
-			${request2.changes.length ? html2`<details data-open-key="changes:${request2.id}">
-							<summary>Changes (${request2.changes.length})</summary>
-							<ul>
-								${request2.changes.map((change) => html2`<li>${change.href ? html2`<a href="${change.href}">${change.text}</a>` : change.text}</li>`)}
-							</ul>
-						</details>` : ""}
-			${request2.state === "running" || request2.state === "waiting" ? html2`<form method="post" action="/requests/${request2.id}/stop"><input type="hidden" name="csrf" value="${context.csrf}" /><input type="hidden" name="return" value="${back}" /><button class="btn" type="submit">Stop</button></form>` : ""}
-		</div>
-	</article>`;
+  return chatTurn({
+    request: request2,
+    number,
+    details,
+    back,
+    csrf: context.csrf,
+    model: requestModelLabel(request2),
+    failure: request2.state === "failed" ? failureText(request2) : null,
+    waitingBehind: request2.state === "waiting" ? waitingBehind(store, request2) : "",
+    permissions: explorationPermissions(store, request2.id).filter((item) => !item.decision).map((item) => ({ command: commandOf2(item.input, item.tool), href: requestHref(item, back) })),
+    rowAttrs: chatRowAttrs(`request:${request2.id}`, details, `Turn ${number}`)
+  });
 }
 function chatList(chats, href, empty, selected) {
   return html2`<div class="${chats.length ? "chat-list" : ""}" data-region="chat-list">
@@ -37908,11 +37970,11 @@ function workspace(view, newHref, list3, conversation) {
 		<aside class="chat-sidebar" aria-label="Conversations" data-chat-lane="list">
 			<div class="chat-sidebar-header">
 				<h2>Conversations</h2>
-				<a class="btn" href="${newHref}" ${chatRow2("chat:new", newHref, "New chat")}>New chat</a>
+				${formButton({ label: "New chat", href: newHref, attrs: chatRowAttrs("chat:new", newHref, "New chat") })}
 			</div>
 			${list3}
 		</aside>
-		${conversation || html2`<div class="chat-workspace-empty">${emptyNotice("Choose a conversation.", "Start a new chat to ask Checkmate.")}</div>`}
+		${conversation || html2`<div class="chat-workspace-empty">${emptyNotice({ what: "Choose a conversation.", next: "Start a new chat to ask Checkmate." })}</div>`}
 	</div>`;
 }
 function chatsPage(store, context, params, env) {
@@ -37923,7 +37985,7 @@ function chatsPage(store, context, params, env) {
     section: "chats",
     subjects: ["requests"],
     back: fresh ? "/chats" : "/",
-    body: html2`${heading("Chats")}
+    body: html2`${heading({ title: "Chats" })}
 		${workspace(
       fresh ? "new" : "list",
       "/chats?new=1",
@@ -37964,7 +38026,7 @@ function thread(store, context, env, chat, options3) {
 			${options3.origin ? origin(chat.turns[0]) : ""}
 		</header>
 		${history(store, context, chat, options3.back)}
-		${composer(context, options3.action, chatSelection(store, env, chat), "", options3.back)}
+		${composer({ csrf: context.csrf, action: options3.action, selection: chatSelection(store, env, chat), back: options3.back })}
 	</section>`;
 }
 function newThread(context, action2, selection, list3, screen = "", back = "") {
@@ -37973,7 +38035,7 @@ function newThread(context, action2, selection, list3, screen = "", back = "") {
 			<a class="chat-mobile-back" href="${list3}">${glyph("\u2190")} All chats</a>
 			<h2>New chat</h2>
 		</header>
-		${composer(context, action2, selection, screen, back)}
+		${composer({ csrf: context.csrf, action: action2, selection, screen, back })}
 	</section>`;
 }
 function planChat(store, context, env, options3) {
@@ -37997,10 +38059,7 @@ function planChat(store, context, env, options3) {
 			aria-label="Plan chats"
 			data-plan-chat="${path.slice("/plans/".length).split("@")[0]}"
 		>
-			${heading(
-      "Plan chats",
-      html2`<a href="${address()}">${glyph("\u2190")} Plan</a> · ${decodeURIComponent(path.slice("/plans/".length))}`
-    )}
+			${heading({ title: "Plan chats", sub: html2`<a href="${address()}">${glyph("\u2190")} Plan</a> · ${decodeURIComponent(path.slice("/plans/".length))}` })}
 			${workspace(
       chat ? "thread" : fresh ? "new" : "list",
       newChat,
@@ -38027,7 +38086,7 @@ function chatPage(store, context, id2, env) {
       ["Chats", "/chats"],
       ["Chat", null]
     ],
-    body: html2`${heading("Chats")}
+    body: html2`${heading({ title: "Chats" })}
 		${workspace(
       "thread",
       "/chats?new=1",
@@ -38042,6 +38101,35 @@ function chatPage(store, context, id2, env) {
   };
 }
 
+// plugin/src/ui/components/data-table.ts
+function isWrapped(value2, key2) {
+  return typeof value2 === "object" && value2 !== null && key2 in value2;
+}
+function column(value2) {
+  return isWrapped(value2, "label") ? html2`<th scope="col" ${attributes(value2.attrs)}>${value2.label}</th>` : html2`<th scope="col">${value2}</th>`;
+}
+function cell2(value2) {
+  return isWrapped(value2, "content") ? html2`<td ${attributes(value2.attrs)}>${value2.content}</td>` : html2`<td>${value2}</td>`;
+}
+function tableRow({ cells, attrs }) {
+  return html2`<tr ${attributes(attrs)}>
+		${cells.map(cell2)}
+	</tr>`;
+}
+function dataTable({ columns: columns2, rows: rows2, scroll = false, attrs }) {
+  const table2 = html2`<table ${attributes(attrs)}>
+		<thead>
+			<tr>
+				${columns2.map(column)}
+			</tr>
+		</thead>
+		<tbody>
+			${rows2}
+		</tbody>
+	</table>`;
+  return scroll ? html2`<div class="scroll">${table2}</div>` : table2;
+}
+
 // plugin/src/ui/components/menu.ts
 var downloadNames = {
   html: ["HTML", "print-ready"],
@@ -38049,7 +38137,7 @@ var downloadNames = {
   json: ["JSON", "data"],
   junit: ["JUnit XML", "for CI"]
 };
-function downloadMenu(label, base, note, formats2 = ["html", "md", "json"]) {
+function downloadMenu({ label, base, note, formats: formats2 = ["html", "md", "json"] }) {
   const item = (format3) => html2`<a href="${base}.${format3}" download data-download="${format3}"
 			>${downloadNames[format3][0]} <span class="muted">${downloadNames[format3][1]}</span></a
 		>`;
@@ -38065,34 +38153,27 @@ function downloadMenu(label, base, note, formats2 = ["html", "md", "json"]) {
 // plugin/src/ui/screens/exploration.ts
 function claimRow(planId, claim) {
   const key2 = encodeURIComponent(`c:${claim.id}`);
-  return html2`<tr id="${claim.id}" data-key="claim:${claim.id}">
-		<td>
-			<a class="mono" href="/plans/${planId}?view=all&amp;item=${key2}">${claim.id}</a>
-		</td>
-		<td>${statusMark({ state: claim.state })}</td>
-		<td>${statusMark({ state: claim.severity })}</td>
-		<td>${claim.actors.join(", ")}</td>
-		<td class="wrap-cell">${claim.title}${claim.reason ? html2`<p class="help">${claim.reason}</p>` : ""}</td>
-	</tr>`;
+  return tableRow({
+    cells: [
+      html2`<a class="mono" href="/plans/${planId}?view=all&amp;item=${key2}">${claim.id}</a>`,
+      statusMark({ state: claim.state }),
+      statusMark({ state: claim.severity }),
+      claim.actors.join(", "),
+      {
+        content: html2`${claim.title}${claim.reason ? html2`<p class="help">${claim.reason}</p>` : ""}`,
+        attrs: { class: "wrap-cell" }
+      }
+    ],
+    attrs: { id: claim.id, "data-key": `claim:${claim.id}` }
+  });
 }
 function claimsTable(planId, claims) {
   if (!claims.length) return html2`<p class="none">No claim. Claims show here when an explorer reports a defect.</p>`;
-  return html2`<div class="scroll">
-		<table>
-			<thead>
-				<tr>
-					<th scope="col">Claim</th>
-					<th scope="col">State</th>
-					<th scope="col">Severity</th>
-					<th scope="col">Reporters</th>
-					<th scope="col">Title</th>
-				</tr>
-			</thead>
-			<tbody>
-				${claims.map((claim) => claimRow(planId, claim))}
-			</tbody>
-		</table>
-	</div>`;
+  return dataTable({
+    columns: ["Claim", "State", "Severity", "Reporters", "Title"],
+    rows: claims.map((claim) => claimRow(planId, claim)),
+    scroll: true
+  });
 }
 function claimLinks(planId, claims) {
   if (!claims.length) return html2`<p class="none">No claim. Claims show here when an explorer reports a defect.</p>`;
@@ -38180,46 +38261,31 @@ function explorationBanners(explorations) {
 function explorationsTable(explorations) {
   if (!explorations.length)
     return html2`<p class="none">No exploration yet. Start one with <code>checkmate test</code>.</p>`;
-  return html2`<div class="scroll">
-		<table>
-			<thead>
-				<tr>
-					<th scope="col">Exploration</th>
-					<th scope="col">State</th>
-					<th scope="col">Build</th>
-					<th scope="col">Instance</th>
-					<th scope="col">Level</th>
-					<th scope="col">Started</th>
-					<th scope="col">Cost</th>
-				</tr>
-			</thead>
-			<tbody>
-				${[...explorations].reverse().map(
-    (item) => html2`<tr data-key="exploration:${item.explorationId}">
-							<td>
-								<a class="mono" href="/explorations/${item.explorationId}">${item.explorationId}</a>
-							</td>
-							<td>
-								${statusMark({ state: item.state })}
-								${item.reason !== null ? html2`<p class="help">${dataLine(item.reason, item.data)}</p>` : ""}
-								${item.follow === "failed" || item.follow === "stopped" || item.follow === "interrupted" ? html2`<p class="help">
-												Follow-up ${item.follow}: ${dataLine(item.followReason, item.data)}
-											</p>` : ""}
-							</td>
-							<td class="mono">${item.build}</td>
-							<td class="mono">${item.instanceId}</td>
-							<td>
-								${item.level ?? html2`<span class="muted">none</span>`}${item.explorers === null ? "" : html2` <span class="muted">· ${plural(item.explorers, "explorer")}</span>`}
-							</td>
-							<td class="nowrap">${time(item.startedAt)}</td>
-							<td class="exploration-cost" title="Reported exploration cost">
-								${costText(item.costUsd, item.costPartial)}
-							</td>
-						</tr>`
-  )}
-			</tbody>
-		</table>
-	</div>`;
+  return dataTable({
+    columns: ["Exploration", "State", "Build", "Instance", "Level", "Started", "Cost"],
+    rows: [...explorations].reverse().map(
+      (item) => tableRow({
+        cells: [
+          html2`<a class="mono" href="/explorations/${item.explorationId}">${item.explorationId}</a>`,
+          html2`${statusMark({ state: item.state })}
+					${item.reason !== null ? html2`<p class="help">${dataLine(item.reason, item.data)}</p>` : ""}
+					${item.follow === "failed" || item.follow === "stopped" || item.follow === "interrupted" ? html2`<p class="help">
+									Follow-up ${item.follow}: ${dataLine(item.followReason, item.data)}
+								</p>` : ""}`,
+          { content: item.build, attrs: { class: "mono" } },
+          { content: item.instanceId, attrs: { class: "mono" } },
+          html2`${item.level ?? html2`<span class="muted">none</span>`}${item.explorers === null ? "" : html2` <span class="muted">· ${plural(item.explorers, "explorer")}</span>`}`,
+          { content: time(item.startedAt), attrs: { class: "nowrap" } },
+          {
+            content: costText(item.costUsd, item.costPartial),
+            attrs: { class: "exploration-cost", title: "Reported exploration cost" }
+          }
+        ],
+        attrs: { "data-key": `exploration:${item.explorationId}` }
+      })
+    ),
+    scroll: true
+  });
 }
 var none2 = html2`<span class="muted">–</span>`;
 function explorerState(item) {
@@ -38568,7 +38634,7 @@ function summaryDetail(store, live, crumbs, options3) {
 						</ul>
 					</section>` : ""}
 		<div class="actions">
-			${downloadMenu("Download report", `/explorations/${live.explorationId}/export`, "The record of this exploration.", ["md", "json"])}
+			${downloadMenu({ label: "Download report", base: `/explorations/${live.explorationId}/export`, note: "The record of this exploration.", formats: ["md", "json"] })}
 		</div>`;
 }
 function explorerDetail(store, live, item, crumbs) {
@@ -38737,10 +38803,12 @@ function explorationPage(store, context, explorationId, params = new URLSearchPa
     nav: navigator(review, "testers", explorationId),
     body: html2`<div class="sp-ch">
 				<div data-region="exploration-head">
-					${crumbBar([
-      [live.planId, `/plans/${live.planId}`],
-      [review.target, null]
-    ])}
+					${crumbBar({
+      crumbs: [
+        [live.planId, `/plans/${live.planId}`],
+        [review.target, null]
+      ]
+    })}
 					<h1>${title2}</h1>
 					<p class="sp-sub">
 						Session ${explorationId} on build ${live.build} · ${live.instanceId} ·
@@ -38808,7 +38876,7 @@ function explorerFilePage(store, explorationId, explorer, phase, name2) {
       [`${explorer} \xB7 ${name2}`, null]
     ],
     subjects: [`exploration:${explorationId}`],
-    body: html2`${heading(html2`${explorationId} · ${explorer} · ${name2}`, `Saved in the record after the ${phase} turn.`)}
+    body: html2`${heading({ title: html2`${explorationId} · ${explorer} · ${name2}`, sub: `Saved in the record after the ${phase} turn.` })}
 			<p>
 				<a href="/explorations/${explorationId}">Exploration ${explorationId}</a> · ${plural(file.size, "byte")}
 			</p>
@@ -38841,7 +38909,7 @@ function questionPage(store, context, explorationId, questionId, state = null) {
       [question.id, null]
     ],
     subjects: [`exploration:${explorationId}`, "inbox"],
-    body: html2`${heading(html2`${report.planId} · ${question.id}`, question.question)}
+    body: html2`${heading({ title: html2`${report.planId} · ${question.id}`, sub: question.question })}
 			<p>
 				<a href="/plans/${report.planId}">Plan ${report.planId}</a> ·
 				<a href="/explorations/${explorationId}">Exploration ${explorationId}</a>${question.members.length > 1 ? html2` · asked as ${question.members.join(", ")}` : ""}
@@ -38868,8 +38936,8 @@ function claimPage(store, context, explorationId, claimId, state = null) {
 					${hidden(context, "")} ${actorField(context, shown2)}
 					${rationaleField(shown2, "Why do you decide this?")}
 					<div class="btns">
-						<button class="btn primary" name="verdict" value="approved">Accept as a defect</button>
-						<button class="btn" name="verdict" value="rejected">Reject</button>
+						${formButton({ label: "Accept as a defect", emphasis: "primary", attrs: { name: "verdict", value: "approved" } })}
+						${formButton({ label: "Reject", attrs: { name: "verdict", value: "rejected" } })}
 					</div>
 				</form>
 			</section>`;
@@ -38884,7 +38952,7 @@ function claimPage(store, context, explorationId, claimId, state = null) {
       [claim.id, null]
     ],
     subjects: [`exploration:${explorationId}`, "inbox"],
-    body: html2`${heading(html2`${report.planId} · ${claim.id}`, claim.title, html2`<div class="meta">${statusMark({ state: claim.state })} ${statusMark({ state: claim.severity })}</div>`)}
+    body: html2`${heading({ title: html2`${report.planId} · ${claim.id}`, sub: claim.title, extra: html2`<div class="meta">${statusMark({ state: claim.state })} ${statusMark({ state: claim.severity })}</div>` })}
 			<div class="split">
 				<section class="panel" aria-labelledby="claim-title">
 					<h2 class="lab" id="claim-title">Claim</h2>
@@ -38940,7 +39008,7 @@ function logPage(store, params) {
     subjects: ["*"],
     address: listHref(spec2, state),
     ...pageTrail(spec2, state, page.total, "Log"),
-    body: html2`${heading("Log", "Every write to the workspace.")} ${filterBar(spec2, state)}
+    body: html2`${heading({ title: "Log", sub: "Every write to the workspace." })} ${filterBar(spec2, state)}
 		${listRegion(spec2, state, page.total, page.rows.map(logRow))}`
   };
 }
@@ -38951,20 +39019,19 @@ var levelNotes2 = {
   normal: "2 testers and a verifier",
   deep: "3 testers and a verifier"
 };
-function field2(id2, name2, label, help3, extra = "", value2 = "") {
-  return html2`<div class="field-group">
-		<label class="lab" for="${id2}">${label}</label>
-		<input
-			id="${id2}"
-			name="${name2}"
-			value="${value2}"
-			maxlength="400"
-			autocomplete="off"
-			aria-describedby="${id2}-help"
-			${extra}
-		/>
-		<p class="help" id="${id2}-help">${help3}</p>
-	</div>`;
+function entryField(id2, name2, label, help3, extra = {}, value2 = "") {
+  return field({
+    id: id2,
+    label,
+    control: textInput({
+      id: id2,
+      name: name2,
+      value: value2,
+      attrs: { maxlength: 400, autocomplete: "off", "aria-describedby": `${id2}-help`, ...extra }
+    }),
+    help: help3,
+    helpId: `${id2}-help`
+  });
 }
 function choice(name2, label, options3, checked) {
   return html2`<fieldset class="sp-seg" role="radiogroup" data-choice="${name2}">
@@ -39042,12 +39109,12 @@ function otherEntryFields(workspace2, submitted) {
 			<summary>Not a web application?</summary>
 			<p class="help">Give the entries that the tool of the application needs, and leave the address empty.</p>
 			${others.map(
-    (entry) => field2(
+    (entry) => entryField(
       `setup-entry-${entry.name}`,
       `entry.${entry.name}`,
       entry.name,
       entry.purpose,
-      html2`data-setup-entry`,
+      { "data-setup-entry": true },
       submitted?.[`entry.${entry.name}`]
     )
   )}
@@ -39055,13 +39122,18 @@ function otherEntryFields(workspace2, submitted) {
 	</div>`;
 }
 function firstRunPage(workspace2, context, onHome, back = "/", invalidAddress) {
-  const body = html2`${field2(
+  const body = html2`${entryField(
     "setup-url",
     "url",
     "Address of the application",
     "The web address that the testers open, for example http://localhost:3000.",
-    html2`required autofocus inputmode="url" data-setup-url data-missing="Give the address of the application,
-			for example http://localhost:3000."`,
+    {
+      required: true,
+      autofocus: true,
+      inputmode: "url",
+      "data-setup-url": true,
+      "data-missing": "Give the address of the application,\n			for example http://localhost:3000."
+    },
     invalidAddress?.url
   )}
 		${invalidAddress ? html2`<p class="form-error" role="alert" data-field="url" data-refusal>Give the address of the application, for example http://localhost:3000.</p>` : ""}
@@ -39073,8 +39145,8 @@ function firstRunPage(workspace2, context, onHome, back = "/", invalidAddress) {
 		>
 			<h2 class="lab">What Checkmate will assume</h2>
 			<p class="help">Checkmate sets up the target from these values. Change the name or the environment here.</p>
-			${field2("setup-target", "target", "Target name", "Letters, digits, _ or -.", html2`data-setup-field ${invalidAddress?.target ? html2`data-touched="1"` : ""}`, invalidAddress?.target)}
-			${field2("setup-environment", "environment", "Environment (optional)", "For example staging. A name that starts with prod is a production instance.", html2`data-setup-field`, invalidAddress?.environment)}
+			${entryField("setup-target", "target", "Target name", "Letters, digits, _ or -.", { "data-setup-field": true, "data-touched": invalidAddress?.target ? "1" : null }, invalidAddress?.target)}
+			${entryField("setup-environment", "environment", "Environment (optional)", "For example staging. A name that starts with prod is a production instance.", { "data-setup-field": true }, invalidAddress?.environment)}
 			<dl class="facts" data-assumed-list></dl>
 		</div>
 		${choice(
@@ -39099,7 +39171,7 @@ function firstRunPage(workspace2, context, onHome, back = "/", invalidAddress) {
     ],
     back: onHome ? null : back,
     body: html2`<div>
-			${heading(onHome ? "Set up the application" : "New target", onHome ? "Checkmate has no target yet. Give the address of the application to test." : "Give the address of the application to test.")}
+			${heading({ title: onHome ? "Set up the application" : "New target", sub: onHome ? "Checkmate has no target yet. Give the address of the application to test." : "Give the address of the application to test." })}
 			${shell2(context, "/setup", body, "Set up the target")}
 		</div>`
   };
@@ -39135,29 +39207,28 @@ function newChangePage(context, defaults, onHome) {
 					</p>`;
   const instances = defaults.targets.filter((target) => target.instances.length).map((target) => instanceChoice2(target, target.targetId === chosen.targetId));
   const body = html2`${targets} ${instances}
-		${field2(
+		${entryField(
     "change-file",
     "file",
     "Ticket file",
     "The path of a file inside the workspace, for example docs/ticket.md. Or paste the ticket below.",
-    html2`data-ticket-file autofocus`,
+    { "data-ticket-file": true, autofocus: true },
     ""
   )}
-		<div class="field-group">
-			<label class="lab" for="change-text">Ticket text</label>
-			<textarea
-				id="change-text"
-				name="text"
-				rows="6"
-				aria-describedby="change-text-help"
-				data-ticket-text
-			></textarea>
-			<p class="help" id="change-text-help">
-				Paste the ticket when you have no file. Checkmate keeps it in <code>.checkmate/sources/</code>.
-			</p>
-		</div>
-		${field2("change-plan", "plan", "Name of the plan", "Letters, digits, _ or -. Checkmate gives a name from the ticket.", html2`data-plan-name`)}
-		${field2("change-build", "build", "Build", "The name of the build under test. Checkmate gives the short git commit, or the date and time.", html2`required data-missing="Write the build name."`, defaults.build)}
+		${field({
+    id: "change-text",
+    label: "Ticket text",
+    control: textArea({
+      id: "change-text",
+      name: "text",
+      rows: 6,
+      attrs: { "aria-describedby": "change-text-help", "data-ticket-text": true }
+    }),
+    help: html2`Paste the ticket when you have no file. Checkmate keeps it in <code>.checkmate/sources/</code>.`,
+    helpId: "change-text-help"
+  })}
+		${entryField("change-plan", "plan", "Name of the plan", "Letters, digits, _ or -. Checkmate gives a name from the ticket.", { "data-plan-name": true })}
+		${entryField("change-build", "build", "Build", "The name of the build under test. Checkmate gives the short git commit, or the date and time.", { required: true, "data-missing": "Write the build name." }, defaults.build)}
 		${choice(
     "level",
     "Level",
@@ -39165,13 +39236,13 @@ function newChangePage(context, defaults, onHome) {
     "normal"
   )}
 		<input type="hidden" name="harness" value="${context.harness}" />
-		${field2("change-rules", "rules", "Testers may use without asking", testerToolHelp(context.harness), "", context.testerRules)}
+		${entryField("change-rules", "rules", "Testers may use without asking", testerToolHelp(context.harness), {}, context.testerRules)}
 		${testerModels(context)}
 		<details class="sp-more" data-more>
 			<summary>More</summary>
-			${field2("change-since", "since", "Since (git ref)", "Without it, Checkmate uses the default branch of origin.")}
-			${field2("change-until", "until", "Until (git ref)", "Needs Since.")}
-			${field2("change-repo", "repo", "Repository folder", "A folder inside the workspace. Without it, the workspace.")}
+			${entryField("change-since", "since", "Since (git ref)", "Without it, Checkmate uses the default branch of origin.")}
+			${entryField("change-until", "until", "Until (git ref)", "Needs Since.")}
+			${entryField("change-repo", "repo", "Repository folder", "A folder inside the workspace. Without it, the workspace.")}
 		</details>
 		<input type="hidden" name="confirmed" value="" />`;
   return {
@@ -39184,7 +39255,7 @@ function newChangePage(context, defaults, onHome) {
     ],
     back: onHome ? null : "/",
     body: html2`<div>
-			${heading("New change", "Give the ticket of a change. Checkmate makes a plan from it and starts the first test.")}
+			${heading({ title: "New change", sub: "Give the ticket of a change. Checkmate makes a plan from it and starts the first test." })}
 			${shell2(context, "/new", body, "Start the test")}
 		</div>`
   };
@@ -39228,7 +39299,7 @@ function permissionPage(store, context, askerId, requestId2, view, refusal) {
 			data-decided-message="${item.decision ? stateText(item) : ""}"
 			${moves ? html2`data-moves-on data-next="${after}"` : ""}
 		>
-			${crumbBar([...item.planId ? [[item.planId, `/plans/${item.planId}`]] : [], [askerId, asker.href]])}
+			${crumbBar({ crumbs: [...item.planId ? [[item.planId, `/plans/${item.planId}`]] : [], [askerId, asker.href]] })}
 			<div data-stale-slot>
 				${refusal && !refusal.field ? html2`<p class="form-error" role="alert">${refusal.error}</p>` : ""}
 			</div>
@@ -39315,8 +39386,8 @@ function emptyRecord(explorationId, requestId2) {
     subjects: ["inbox"],
     status: 404,
     back: "/activity",
-    body: html2`${heading("No such request", `Run ${explorationId} has no permission request ${requestId2}.`)}
-			<p class="actions"><a class="btn primary" href="/activity">Activity</a></p>`
+    body: html2`${heading({ title: "No such request", sub: `Run ${explorationId} has no permission request ${requestId2}.` })}
+			<p class="actions">${formButton({ label: "Activity", href: "/activity", emphasis: "primary" })}</p>`
   };
 }
 
@@ -39421,43 +39492,35 @@ function removalField(state) {
 		<textarea id="removal" name="rationale" rows="2" aria-describedby="removal-help">${state.rationale}</textarea>
 	</div>`;
 }
-function field3(label, name2, value2, help3 = "") {
-  return html2`<div class="field-group">
-		<label class="lab" for="${name2}">${label}</label>
-		<input id="${name2}" name="${name2}" value="${value2}" />
-		${help3 ? html2`<p class="help">${help3}</p>` : ""}
-	</div>`;
+function inputField(label, name2, value2, help3 = "") {
+  return field({ id: name2, label, control: textInput({ id: name2, name: name2, value: value2 }), help: help3 || void 0 });
 }
-function area(label, name2, value2, rows2, help3 = "") {
-  return html2`<div class="field-group">
-		<label class="lab" for="${name2}">${label}</label>
-		<textarea id="${name2}" name="${name2}" rows="${rows2}">${value2}</textarea>
-		${help3 ? html2`<p class="help">${help3}</p>` : ""}
-	</div>`;
+function areaField(label, name2, value2, rows2, help3 = "") {
+  return field({ id: name2, label, control: textArea({ id: name2, name: name2, rows: rows2, value: value2 }), help: help3 || void 0 });
 }
 function requirementFields(requirement, i) {
   return html2`<fieldset class="edit-card" id="edit-${requirement.id}">
 		<legend class="mono">${requirement.id}</legend>
-		${area("Text", `r${i}.text`, requirement.text, 2)}
-		${field3("Source", `r${i}.source`, requirement.source, "Where the requirement comes from.")}
+		${areaField("Text", `r${i}.text`, requirement.text, 2)}
+		${inputField("Source", `r${i}.source`, requirement.source, "Where the requirement comes from.")}
 	</fieldset>`;
 }
 function testFields(test, i) {
   return html2`<fieldset class="edit-card" id="edit-${test.id}">
 		<legend><span class="mono">${test.id}</span> ${test.title}</legend>
-		${field3("Title", `t${i}.title`, test.title)}
+		${inputField("Title", `t${i}.title`, test.title)}
 		<div class="edit-row">
-			${field3("Capability", `t${i}.capability`, test.capability)}
-			${field3("Operations", `t${i}.operations`, test.operations.join(", "), "Separate with commas.")}
+			${inputField("Capability", `t${i}.capability`, test.capability)}
+			${inputField("Operations", `t${i}.operations`, test.operations.join(", "), "Separate with commas.")}
 		</div>
-		${field3(
+		${inputField(
     "Depends on",
     `t${i}.dependsOn`,
     test.dependsOn.join(", "),
     "Test IDs, separated with commas. Use plan:T1 for a test in another plan."
   )}
-		${area("Preconditions", `t${i}.preconditions`, test.preconditions.join("\n"), 2, "One per line.")}
-		${area("Action", `t${i}.action`, test.action, 2)}
+		${areaField("Preconditions", `t${i}.preconditions`, test.preconditions.join("\n"), 2, "One per line.")}
+		${areaField("Action", `t${i}.action`, test.action, 2)}
 		<div class="field-group">
 			<p class="lab">Assertions</p>
 			${test.assertions.length ? html2`<ul class="edit-asrs">
@@ -39486,38 +39549,31 @@ ${assertion.check}</textarea>
 	</fieldset>`;
 }
 function coverageMatrix(candidate) {
-  return html2`<div class="scroll">
-		<table class="matrix">
-			<thead>
-				<tr>
-					<th scope="col">Requirement</th>
-					${candidate.tests.map((test) => html2`<th scope="col" class="mono">${test.id}</th>`)}
-				</tr>
-			</thead>
-			<tbody>
-				${candidate.requirements.map(
-    (requirement) => html2`<tr>
-							<th scope="row">
-								<span class="mono">${requirement.id}</span>
-								<span class="muted small matrix-text">${requirement.text}</span>
-							</th>
-							${candidate.tests.map(
-      (test) => html2`<td>
-										<label class="cell-check"
-											><input
-												type="checkbox"
-												name="cover"
-												value="${test.id} ${requirement.id}"
-												aria-label="${test.id} covers ${requirement.id}"
-												${test.requirementIds.includes(requirement.id) ? html2`checked` : ""}
-										/></label>
-									</td>`
-    )}
-						</tr>`
-  )}
-			</tbody>
-		</table>
-	</div>`;
+  return dataTable({
+    columns: ["Requirement", ...candidate.tests.map((test) => ({ label: test.id, attrs: { class: "mono" } }))],
+    scroll: true,
+    attrs: { class: "matrix" },
+    rows: candidate.requirements.map(
+      (requirement) => html2`<tr>
+					<th scope="row">
+						<span class="mono">${requirement.id}</span>
+						<span class="muted small matrix-text">${requirement.text}</span>
+					</th>
+					${candidate.tests.map(
+        (test) => html2`<td>
+								<label class="cell-check"
+									><input
+										type="checkbox"
+										name="cover"
+										value="${test.id} ${requirement.id}"
+										aria-label="${test.id} covers ${requirement.id}"
+										${test.requirementIds.includes(requirement.id) ? html2`checked` : ""}
+								/></label>
+							</td>`
+      )}
+				</tr>`
+    )
+  });
 }
 function hidden4(context, sha256, mode, orig) {
   return html2`<input type="hidden" name="csrf" value="${context.csrf}" />
@@ -39531,18 +39587,7 @@ function actorLine(context, state, path, mode) {
 			Saving as <strong>${context.actor}</strong>.
 			<a class="tap" href="/actor?back=${encodeURIComponent(path)}">Change name</a>
 		</p>`;
-  return html2`<div class="field-group">
-		<label class="lab" for="actor-${mode}">Your name</label>
-		<input
-			id="actor-${mode}"
-			name="actor"
-			required
-			maxlength="${actorLimit}"
-			autocomplete="name"
-			value="${state.actor}"
-		/>
-		<p class="help">Checkmate records it with the edit.</p>
-	</div>`;
+  return html2`${field({ id: `actor-${mode}`, label: "Your name", control: textInput({ id: `actor-${mode}`, name: "actor", value: state.actor, attrs: { required: true, maxlength: actorLimit, autocomplete: "name" } }), help: "Checkmate records it with the edit." })}`;
 }
 function editPage(store, context, planId, revision2, state = null) {
   const detail = planDetail(store, planId, revision2);
@@ -39554,7 +39599,7 @@ function editPage(store, context, planId, revision2, state = null) {
       title: title2,
       section: "home",
       subjects: [`plan:${planId}`],
-      body: html2`${heading(title2, detail.plan.objective)}
+      body: html2`${heading({ title: title2, sub: detail.plan.objective })}
 			${banner({
         kind: "info",
         content: html2`Only the latest revision can change.
@@ -39594,20 +39639,20 @@ function editPage(store, context, planId, revision2, state = null) {
   const messages2 = html2`${shown2.stale ? banner({ kind: "warn", content: shown2.stale }) : ""}
 	${shown2.error ? html2`<p class="form-error" role="alert" data-field="${shown2.field ?? ""}">${shown2.error}</p>` : ""}`;
   const buttons = (mode) => html2`<div class="btns">
-				<button class="btn primary">${save2}</button>
-				<a class="btn" href="/plans/${subject}">Cancel</a>
+				${formButton({ label: save2, emphasis: "primary" })}
+				${formButton({ label: "Cancel", href: `/plans/${subject}` })}
 			</div>
 			${actorLine(context, shown2, path, mode)}`;
-  const body = html2`${heading(
-    title2,
-    detail.plan.objective,
-    html2`<div class="meta">
+  const body = html2`${heading({
+    title: title2,
+    sub: detail.plan.objective,
+    extra: html2`<div class="meta">
 				<a class="pill" href="/plans/${subject}">${subject}</a>
 				<span class="pill" title="${detail.sha256}"
 					>sha256 <span class="mono">${short2(detail.sha256)}</span></span
 				>
 			</div>`
-  )}
+  })}
 		${shown2.unsaved === null ? "" : unsavedPanel(shown2.unsaved)}
 		<div data-region="edit" data-stale-message="${planId} changed. Review it before you save.">
 			<div data-stale-slot>${notice} ${messages2}</div>
@@ -39727,25 +39772,6 @@ function ruleText2(review, rule) {
 function filesOf(store, review, item) {
   return item.claim ? claimEvidenceFiles(store, review.planId, item.claim) : [];
 }
-function fileRows(files2, base, current2, viewer2 = false) {
-  if (!files2.length) return emptyLine({ text: "The tester gave no evidence." });
-  return html2`<div class="sp-files" role="listbox" aria-label="Evidence">
-		${files2.map(
-    (file, index2) => html2`<a
-					class="sp-file${current2 === index2 ? " hl" : ""}"
-					role="option"
-					aria-selected="${current2 === index2 ? "true" : "false"}"
-					tabindex="-1"
-					href="${`${base}&file=${index2}`}"
-					${viewer2 ? html2`data-vfile="${index2}"` : html2`data-sub data-href="${`${base}&file=${index2}`}"`}
-					data-label="${file.name}"
-					><span class="sp-file-k">${index2 + 1}</span
-					><span class="ell" title="${file.name}">${file.name}</span
-					><span class="sp-file-k">${viewer2 ? file.size ? size(file.size) : "" : "View"}</span></a
-				>`
-  )}
-	</div>`;
-}
 function hiddenFields2(context, item, back, fields) {
   return html2`<input type="hidden" name="csrf" value="${context.csrf}" />
 		<input type="hidden" name="return" value="${back}" data-return />
@@ -39797,7 +39823,7 @@ function claimBody(context, store, review, item, base, back, state) {
 							${(Array.isArray(claim.steps) ? claim.steps : [claim.steps]).map((step) => html2`<li>${step}</li>`)}
 						</ol>
 					</div>` : ""}
-		<div><span class="sp-lbl">Evidence</span>${fileRows(files2, base, null)}</div>
+		<div><span class="sp-lbl">Evidence</span>${evidenceFiles2({ files: files2, base, current: null })}</div>
 		${recordFacts({
     rows: [
       ["Across builds", acrossBuilds(review, item)],
@@ -39917,16 +39943,6 @@ function recordDrawer(store, context, review, item, view, refusal) {
     body
   });
 }
-function preview(file) {
-  if (file.size === 0 && file.href) return emptyLine({ text: "Empty file." });
-  if (file.href && imageTypes.includes(file.mediaType))
-    return html2`<img src="${file.href}" alt="Evidence ${file.name}" data-ev-image /><span class="sp-empty" hidden
-				>This image cannot be shown.</span
-			>`;
-  if (file.text && (!file.href || shownAsText(file.mediaType, file.size)))
-    return html2`<pre tabindex="0">${file.text()}</pre>`;
-  return htmlPreview(file) ?? emptyLine({ text: "No preview for this file type." });
-}
 function evidenceViewer(store, review, item, view, index2) {
   const files2 = filesOf(store, review, item);
   const base = reviewHref(review.planId, view, `&item=${encodeURIComponent(item.key)}`);
@@ -39939,11 +39955,11 @@ function evidenceViewer(store, review, item, view, index2) {
 			${closeButton({ href: base })}
 		</div>
 		<div class="sp-vb">
-			${fileRows(files2, base, shown2, true)}
+			${evidenceFiles2({ files: files2, base, current: shown2, inViewer: true })}
 			<div>
 				${files2.map(
     (file, n) => html2`<figure class="sp-fig" data-vfig="${n}" ${n === shown2 ? "" : html2`hidden`}>
-							${preview(file)}
+							${evidencePreview({ file })}
 							<figcaption>
 								<span class="ell" title="${file.name}"
 									>${file.name}${file.size ? ` \xB7 ${size(file.size)}` : ""}</span
@@ -40005,9 +40021,9 @@ function groupsOf(items) {
   ].filter((group) => group.items.length);
 }
 function ruleGroups(review, view, items) {
-  const area2 = review.areas.find((each) => each.label === view.slice(5));
-  if (!area2) return [];
-  return area2.rules.flatMap((id2) => {
+  const area = review.areas.find((each) => each.label === view.slice(5));
+  if (!area) return [];
+  return area.rules.flatMap((id2) => {
     const own = items.filter((item) => item.rule === id2);
     const text2 = review.map.rows.find((row2) => row2.rule.id === id2)?.rule.text ?? "";
     return own.length ? [{ label: `${id2} \xB7 ${text2}`, items: groupsOf(own).flatMap((group) => group.items) }] : [];
@@ -40065,17 +40081,17 @@ function viewHead(review, view) {
     return {
       sub: row2?.rule.text ?? "",
       pills: html2`${row2?.cells.map(
-        (cell4) => wordMark({
-          state: cellWords[cell4.status],
-          label: `${buildLabel(review, cell4.build)}: ${cellWords[cell4.status]}`,
-          title: cell4.build
+        (cell5) => wordMark({
+          state: cellWords[cell5.status],
+          label: `${buildLabel(review, cell5.build)}: ${cellWords[cell5.status]}`,
+          title: cell5.build
         })
       )}${row2?.storedTests ? wordMark({ state: "stored", label: plural(row2.storedTests, "stored test"), title: storedNote(review, row2.rule.id) }) : ""}`
     };
   }
   if (view.startsWith("area:")) {
-    const area2 = review.areas.find((each) => each.label === view.slice(5));
-    return { sub: `${plural(area2?.rules.length ?? 0, "rule")}. The items are grouped by rule.`, pills: html2`` };
+    const area = review.areas.find((each) => each.label === view.slice(5));
+    return { sub: `${plural(area?.rules.length ?? 0, "rule")}. The items are grouped by rule.`, pills: html2`` };
   }
   if (view.startsWith("build:")) {
     const build = review.map.builds.find((item) => item.build === view.slice(6));
@@ -40102,8 +40118,8 @@ function ruleButtons(context, review, rule, count2, numbered) {
       })
     ];
   const cited = review.items.filter((item) => item.rule === rule.id).length;
-  const area2 = review.areas.find((each) => each.rules.includes(rule.id))?.label ?? "";
-  const fill = JSON.stringify({ text: rule.text, area: area2, newArea: "" });
+  const area = review.areas.find((each) => each.rules.includes(rule.id))?.label ?? "";
+  const fill = JSON.stringify({ text: rule.text, area, newArea: "" });
   const ends = cited ? `${plural(cited, "item")} ${cited === 1 ? "cites it. It moves" : "cite it. They move"} to Outside the rules.` : "No item cites it.";
   return [
     button({
@@ -40193,10 +40209,12 @@ function panel(context, review, view, current2, cost) {
 		${view === current2 ? "" : html2`hidden`}
 	>
 		<div class="sp-ch">
-			${crumbBar([
-    [review.planId, `/plans/${review.planId}`],
-    [review.target, null]
-  ])}
+			${crumbBar({
+    crumbs: [
+      [review.planId, `/plans/${review.planId}`],
+      [review.target, null]
+    ]
+  })}
 			${view === current2 ? html2`<h1 id="title-${slug(view)}" data-view-title>${title2}</h1>` : html2`<h2 id="title-${slug(view)}" data-view-title>${title2}</h2>`}
 			${head.sub ? html2`<p class="sp-sub">${head.sub}</p>` : ""}
 			<div class="sp-pills">${head.pills}</div>
@@ -40269,12 +40287,12 @@ function reviewPage(store, context, planId, params, refusal = null, notice = nul
       "edit",
       context,
       planId,
-      review.areas.map((area2) => area2.label)
+      review.areas.map((area) => area.label)
     )}${ruleDialog(
       "add",
       context,
       planId,
-      review.areas.map((area2) => area2.label)
+      review.areas.map((area) => area.label)
     )}` : ""}
 				${review.storable ? storeDialog(context, planId, review.storable, review.approvalRequired) : ""}
 				${review.items.some((item2) => item2.kind === "defect") ? copyDialog() : ""}
@@ -40293,24 +40311,20 @@ function ids(values, link2) {
 }
 function removeTest(context, detail, test) {
   const subject = `${detail.planId}@${detail.revision}`;
-  const actor = context.actor ? "" : html2`<div class="field-group">
-				<label class="lab" for="remove-actor-${test.id}">Your name</label>
-				<input id="remove-actor-${test.id}" name="actor" required autocomplete="name" />
-			</div>`;
+  const actor = context.actor ? "" : html2`${field({ id: `remove-actor-${test.id}`, label: "Your name", control: textInput({ id: `remove-actor-${test.id}`, name: "actor", attrs: { required: true, autocomplete: "name" } }) })}`;
   return html2`<details class="test-remove" data-open-key="remove:${test.id}">
-		<summary class="btn small">Remove ${test.id}</summary>
+		${formButton({ label: `Remove ${test.id}`, element: "summary", inline: true })}
 		<form method="post" action="/plans/${subject}/edit" class="decision-form">
 			<input type="hidden" name="csrf" value="${context.csrf}" />
 			<input type="hidden" name="sha" value="${detail.sha256}" />
 			<input type="hidden" name="mode" value="remove" />
 			<input type="hidden" name="test" value="${test.id}" />
-			<div class="field-group">
-				<label class="lab" for="remove-${test.id}">Reason for removal</label>
-				<textarea id="remove-${test.id}" name="rationale" rows="2" required data-rationale></textarea>
-			</div>
+			${field({ id: `remove-${test.id}`, label: "Reason for removal", control: textArea({ id: `remove-${test.id}`, name: "rationale", rows: 2, attrs: { required: true, "data-rationale": true } }) })}
 			${actor}
 			<p class="help">Checkmate saves a new revision without ${test.id} and records who removed it and why.</p>
-			<div class="btns"><button class="btn" data-needs-rationale>Remove ${test.id}</button></div>
+			<div class="btns">
+				${formButton({ label: `Remove ${test.id}`, attrs: { "data-needs-rationale": true } })}
+			</div>
 		</form>
 	</details>`;
 }
@@ -40387,9 +40401,7 @@ function gapRow(detail, gap) {
 						<span class="muted">· ${pending.actor} · applies in the next revision</span>
 					</p>` : ""}
 		${answerable ? html2`<p>
-						<a class="btn small" href="/plans/${detail.planId}@${detail.revision}/gaps/${gap.id}"
-							>Answer ${gap.id}</a
-						>
+						${formButton({ label: `Answer ${gap.id}`, href: `/plans/${detail.planId}@${detail.revision}/gaps/${gap.id}`, inline: true })}
 					</p>` : ""}`;
   if (gap.status === "open")
     return html2`<li class="gap" id="${gap.id}" data-key="gap:${gap.id}">
@@ -40421,69 +40433,45 @@ function runsTable(detail) {
     return html2`<p class="none">
 			No run uses this plan yet. Approve the plan, then choose <strong>Test build…</strong> on its review page.
 		</p>`;
-  return html2`<div class="scroll">
-		<table>
-			<thead>
-				<tr>
-					<th scope="col">Run</th>
-					<th scope="col">Revision</th>
-					<th scope="col">Build</th>
-					<th scope="col">Instance</th>
-					<th scope="col">Tests</th>
-					<th scope="col">Completion</th>
-					<th scope="col">Acceptance</th>
-					<th scope="col">Started</th>
-				</tr>
-			</thead>
-			<tbody>
-				${[...detail.runs].reverse().map(
-    (run2) => html2`<tr data-key="run:${run2.runId}">
-							<td><a class="mono" href="/runs/${run2.runId}">${run2.runId}</a></td>
-							<td>
-								<a class="mono" href="/plans/${detail.planId}@${run2.revision}">@${run2.revision}</a>
-							</td>
-							<td class="mono">${run2.build}</td>
-							<td class="mono">${run2.instanceId}</td>
-							<td>${statusCounts({ counts: run2.counts })}</td>
-							<td>
-								${run2.completion ? statusMark({ state: run2.completion }) : html2`<span class="muted">running</span>`}
-							</td>
-							<td>${runStatus2(run2)}</td>
-							<td class="nowrap">${time(run2.startedAt)}</td>
-						</tr>`
-  )}
-			</tbody>
-		</table>
-	</div>`;
+  return dataTable({
+    columns: ["Run", "Revision", "Build", "Instance", "Tests", "Completion", "Acceptance", "Started"],
+    rows: [...detail.runs].reverse().map(
+      (run2) => tableRow({
+        cells: [
+          html2`<a class="mono" href="/runs/${run2.runId}">${run2.runId}</a>`,
+          html2`<a class="mono" href="/plans/${detail.planId}@${run2.revision}">@${run2.revision}</a>`,
+          { content: run2.build, attrs: { class: "mono" } },
+          { content: run2.instanceId, attrs: { class: "mono" } },
+          statusCounts({ counts: run2.counts }),
+          run2.completion ? statusMark({ state: run2.completion }) : html2`<span class="muted">running</span>`,
+          runStatus2(run2),
+          { content: time(run2.startedAt), attrs: { class: "nowrap" } }
+        ],
+        attrs: { "data-key": `run:${run2.runId}` }
+      })
+    ),
+    scroll: true
+  });
 }
 function requirementsTable(plan) {
-  return html2`<div class="scroll">
-		<table>
-			<thead>
-				<tr>
-					<th scope="col">ID</th>
-					<th scope="col">Requirement</th>
-					<th scope="col">Tests</th>
-					<th scope="col">Coverage</th>
-				</tr>
-			</thead>
-			<tbody>
-				${plan.requirements.map((requirement) => {
-    const coverage2 = plan.coverage.find((row2) => row2.requirementId === requirement.id);
-    return html2`<tr id="${requirement.id}">
-						<td class="mono">${requirement.id}</td>
-						<td>
-							${requirement.text}
-							<div class="muted small">Source <code>${requirement.source}</code></div>
-							${hasMetadata(requirement.metadata) ? html2`<div class="small">${metadataList(requirement.metadata)}</div>` : ""}
-						</td>
-						<td>${ids(coverage2?.testIds ?? [], (id2) => html2`<a class="mono" href="#${id2}">${id2}</a>`)}</td>
-						<td>${coverage2 ? statusMark({ state: coverage2.status }) : ""}</td>
-					</tr>`;
-  })}
-			</tbody>
-		</table>
-	</div>`;
+  return dataTable({
+    columns: ["ID", "Requirement", "Tests", "Coverage"],
+    rows: plan.requirements.map((requirement) => {
+      const coverage2 = plan.coverage.find((row2) => row2.requirementId === requirement.id);
+      return tableRow({
+        cells: [
+          { content: requirement.id, attrs: { class: "mono" } },
+          html2`${requirement.text}
+						<div class="muted small">Source <code>${requirement.source}</code></div>
+						${hasMetadata(requirement.metadata) ? html2`<div class="small">${metadataList(requirement.metadata)}</div>` : ""}`,
+          html2`${ids(coverage2?.testIds ?? [], (id2) => html2`<a class="mono" href="#${id2}">${id2}</a>`)}`,
+          coverage2 ? statusMark({ state: coverage2.status }) : ""
+        ],
+        attrs: { id: requirement.id }
+      });
+    }),
+    scroll: true
+  });
 }
 function decisionsList(plan) {
   if (!plan.decisions.length && !plan.assumptions.length) return html2`<p class="none">No decision applied yet.</p>`;
@@ -40557,7 +40545,7 @@ function planHistoryList(store, detail, all2) {
 						class="history-more"
 						href="/plans/${subject}?history=all#history"
 						data-history-more="/plans/${subject}/history"
-						><span class="btn small">Show full history · ${plural(hidden5, "earlier revision")}</span></a
+						>${formButton({ label: `Show full history \xB7 ${plural(hidden5, "earlier revision")}`, element: "span", inline: true })}</a
 					>` : ""}
 	</div>`;
 }
@@ -40638,9 +40626,7 @@ function planContext(store, planId, harness) {
 function nextLine(planId, found) {
   const mine = found.waiting.filter((item) => item.group !== "questions").length;
   const why = found.status.why[0];
-  const action2 = mine > 0 ? html2`<a class="btn small primary" href="/plans/${planId}?view=needs&amp;focus=list"
-					>Decide ${plural(mine, "item")} in Needs you</a
-				>` : found.status.next[0] ? html2`<code>${found.status.next[0]}</code>` : "";
+  const action2 = mine > 0 ? html2`${formButton({ label: `Decide ${plural(mine, "item")} in Needs you`, href: `/plans/${planId}?view=needs&focus=list`, emphasis: "primary", inline: true })}` : found.status.next[0] ? html2`<code>${found.status.next[0]}</code>` : "";
   return html2`<div class="next-line" data-region="next">
 		${loopState(found.status)} ${why ? html2`<span>${why}</span>` : ""} ${action2}
 	</div>`;
@@ -40728,8 +40714,8 @@ function planPage(store, context, planId, revision2, state = null, allHistory = 
 						>Total cost ${costText(cost.costUsd, cost.costPartial)}</span
 					>`}
 		<span class="head-actions">
-			${latest ? html2`<a class="btn small" href="/plans/${subject}/edit">Edit plan</a>` : ""}
-			${downloadMenu("Export", `/plans/${subject}/export`, "The HTML export is print-ready. Open it and print to PDF.")}
+			${latest ? html2`${formButton({ label: "Edit plan", href: `/plans/${subject}/edit`, inline: true })}` : ""}
+			${downloadMenu({ label: "Export", base: `/plans/${subject}/export`, note: "The HTML export is print-ready. Open it and print to PDF." })}
 		</span>
 	</div>`;
   const pending = detail.pendingDecisions.length ? banner({
@@ -40753,7 +40739,7 @@ function planPage(store, context, planId, revision2, state = null, allHistory = 
 		${decisionsList(plan)}`;
   const gaps = html2`<h3 class="minor" id="gaps">Gaps of the plan <span class="n">${plan.gaps.length}</span></h3>
 		<div data-region="gaps">${gapsList(detail)}</div>`;
-  const body = html2`${heading(subject, null, meta2)} ${nextLine(planId, found)}
+  const body = html2`${heading({ title: subject, sub: null, extra: meta2 })} ${nextLine(planId, found)}
 		${chips(found, [
     ["tests", "Tests", plan.tests.length],
     ["runs", "Runs", detail.runs.length]
@@ -40809,12 +40795,12 @@ function planPage(store, context, planId, revision2, state = null, allHistory = 
 }
 function storedTestsEmpty(planId, completed2, harness) {
   return html2`<div data-key="no-tests">
-		${emptyNotice(
-    "No stored tests yet.",
-    html2`A stored test comes from the claims of a completed exploration. To store them, run
+		${emptyNotice({
+    what: "No stored tests yet.",
+    next: html2`A stored test comes from the claims of a completed exploration. To store them, run
 				<code>checkmate harvest ${completed2 ?? "<explorationId>"}</code>. To write a plan with tests, run
 				<code>${harness === "pi" ? `checkmate delegate plan ${planId}` : `/checkmate:plan ${planId}`}</code>.`
-  )}
+  })}
 	</div>`;
 }
 function requestPage(store, planId, harness) {
@@ -40857,7 +40843,7 @@ function requestPage(store, planId, harness) {
       ]
     ]
   });
-  const body = html2`${heading(planId, request2.objective, meta2)} ${nextLine(planId, found)}
+  const body = html2`${heading({ title: planId, sub: request2.objective, extra: meta2 })} ${nextLine(planId, found)}
 		${chips(found, [["tests", "Stored tests", 0]])}
 		<div data-region="banners">${explorationBanners(found.explorations)}</div>
 		<div class="split">
@@ -40941,16 +40927,14 @@ function gapPage(store, context, planId, revision2, gapId, state = null) {
       "Answer gap",
       html2`<p class="help">Answer this gap on the latest revision.</p>
 				<p>
-					<a class="btn" href="/plans/${planId}@${detail.latestRevision}/gaps/${gap.id}"
-						>Open ${planId}@${detail.latestRevision}</a
-					>
+					${formButton({ label: `Open ${planId}@${detail.latestRevision}`, href: `/plans/${planId}@${detail.latestRevision}/gaps/${gap.id}` })}
 				</p>`
     );
   const meta2 = html2`<div class="meta">
 		${statusMark({ state: gap.severity })} ${statusMark({ state: gap.status })}
 		<a class="pill" href="/plans/${subject}">${subject}</a>
 	</div>`;
-  const body = html2`${heading(html2`${planId} · ${gap.id}`, gap.question, meta2)}
+  const body = html2`${heading({ title: html2`${planId} · ${gap.id}`, sub: gap.question, extra: meta2 })}
 		<div data-region="banners">${newerBanner(detail)} ${runBanner}</div>
 		<div class="split">
 			<div class="main-col">
@@ -41074,18 +41058,18 @@ function columns(review) {
   const own = rules.length <= maxColumns ? rules.map((row2) => ({
     label: row2.rule.id,
     title: row2.rule.text,
-    cells: row2.cells.map((cell4) => cell4.status)
-  })) : review.areas.map((area2) => ({ label: area2.label.slice(0, 2), title: area2.label, cells: area2.cells }));
-  return [...own, { label: "Out", title: "Outside the rules", cells: out.cells.map((cell4) => cell4.status) }];
+    cells: row2.cells.map((cell5) => cell5.status)
+  })) : review.areas.map((area) => ({ label: area.label.slice(0, 2), title: area.label, cells: area.cells }));
+  return [...own, { label: "Out", title: "Outside the rules", cells: out.cells.map((cell5) => cell5.status) }];
 }
 function planBoard(review) {
   const builds = review.map.builds.slice(-2);
   const from = review.map.builds.length - builds.length;
   return board({
     builds: builds.map((build) => ({ build: build.build, label: buildLabel(review, build.build) })),
-    columns: columns(review).map((column) => ({
-      ...column,
-      cells: column.cells.slice(from, from + builds.length)
+    columns: columns(review).map((column2) => ({
+      ...column2,
+      cells: column2.cells.slice(from, from + builds.length)
     }))
   });
 }
@@ -41179,8 +41163,28 @@ function homePage(store) {
     ],
     crumbs: [["Plans", null]],
     back: null,
-    body: html2`<div data-region="home">${heading("Plans", plans.length ? subtitle : null, boardKey)} ${body}</div>`
+    body: html2`<div data-region="home">
+			${heading({ title: "Plans", sub: plans.length ? subtitle : null, extra: boardKey })} ${body}
+		</div>`
   };
+}
+
+// plugin/src/ui/components/tabs.ts
+function pageTabs({ label, tabs, current: current2 }) {
+  return html2`<nav class="settings-nav" aria-label="${label}">
+		<ul class="nav">
+			${tabs.map(
+    (tab) => html2`<li>
+						<a href="${tab.href}" ${tab.href === current2 ? html2`aria-current="page"` : ""}>${tab.label}</a>
+					</li>`
+  )}
+		</ul>
+	</nav>`;
+}
+function jumpLinks({ links }) {
+  return html2`<nav class="jump" aria-label="On this page">
+		${links.map((link2) => html2`<a href="${link2.href}">${link2.label}</a>`)}
+	</nav>`;
 }
 
 // plugin/src/ui/screens/settings.ts
@@ -41190,17 +41194,11 @@ var settingsPages = [
   { path: "/settings/harness", label: "Coding harness" }
 ];
 function settingsNav(current2) {
-  return html2`<nav class="settings-nav" aria-label="Settings pages">
-		<ul class="nav">
-			${settingsPages.map(
-    (page) => html2`<li>
-						<a href="${page.path}" ${page.path === current2 ? html2`aria-current="page"` : ""}
-							>${page.label}</a
-						>
-					</li>`
-  )}
-		</ul>
-	</nav>`;
+  return pageTabs({
+    label: "Settings pages",
+    tabs: settingsPages.map((page) => ({ href: page.path, label: page.label })),
+    current: current2
+  });
 }
 function settingsPage(current2, title2, subjects, body, status) {
   const parent = settingsPages.find((page) => page.path === current2);
@@ -41230,87 +41228,65 @@ function words4(items) {
 function targetsPage(store) {
   const targets = targetList(store);
   const rows2 = targets.map(
-    (target) => html2`<tr data-key="target:${target.targetId}" data-nav-row>
-				<td>
-					<a class="mono" href="/settings/targets/${target.targetId}" data-nav-item>${target.targetId}</a>
-				</td>
-				<td class="mono">${target.revision === null ? none3("no profile yet") : `@${target.revision}`}</td>
-				<td>${words4(target.capabilities)}</td>
-				<td>${words4(target.entryPoints)}</td>
-				<td>${target.activeInstances}</td>
-			</tr>`
+    (target) => tableRow({
+      cells: [
+        html2`<a class="mono" href="/settings/targets/${target.targetId}" data-nav-item>${target.targetId}</a>`,
+        {
+          content: html2`${target.revision === null ? none3("no profile yet") : `@${target.revision}`}`,
+          attrs: { class: "mono" }
+        },
+        words4(target.capabilities),
+        words4(target.entryPoints),
+        target.activeInstances
+      ],
+      attrs: { "data-key": `target:${target.targetId}`, "data-nav-row": true }
+    })
   );
-  const body = html2`${heading("Targets", "Each target with its latest revision and its active instances.")}
+  const body = html2`${heading({ title: "Targets", sub: "Each target with its latest revision and its active instances." })}
 		<div data-region="targets" data-list>
-			${targets.length ? html2`<div class="scroll">
-							<table>
-								<thead>
-									<tr>
-										<th scope="col">Target</th>
-										<th scope="col">Revision</th>
-										<th scope="col">Capabilities</th>
-										<th scope="col">Entry points</th>
-										<th scope="col">Active instances</th>
-									</tr>
-								</thead>
-								<tbody>
-									${rows2}
-								</tbody>
-							</table>
-						</div>` : emptyNotice("No target yet.", html2`Record one with <code>checkmate target open</code>.`)}
+			${targets.length ? dataTable({
+    columns: ["Target", "Revision", "Capabilities", "Entry points", "Active instances"],
+    rows: rows2,
+    scroll: true
+  }) : emptyNotice({
+    what: "No target yet.",
+    next: html2`Record one with <code>checkmate target open</code>.`
+  })}
 		</div>`;
   return settingsPage("/settings/targets", "Targets", ["*"], body);
 }
 function entryPointsTable(entryPoints2) {
-  return html2`<div class="scroll">
-		<table>
-			<thead>
-				<tr>
-					<th scope="col">Entry point</th>
-					<th scope="col">Kind</th>
-					<th scope="col">Purpose</th>
-				</tr>
-			</thead>
-			<tbody>
-				${entryPoints2.map(
-    (entry) => html2`<tr>
-							<td class="mono">${entry.name}</td>
-							<td class="mono">${entry.kind}</td>
-							<td>${entry.purpose}</td>
-						</tr>`
-  )}
-			</tbody>
-		</table>
-	</div>`;
+  return dataTable({
+    columns: ["Entry point", "Kind", "Purpose"],
+    rows: entryPoints2.map(
+      (entry) => tableRow({
+        cells: [
+          { content: entry.name, attrs: { class: "mono" } },
+          { content: entry.kind, attrs: { class: "mono" } },
+          entry.purpose
+        ]
+      })
+    ),
+    scroll: true
+  });
 }
 function toolsTable(profile) {
   if (!profile.tools.length) return html2`<p class="none">No tools.</p>`;
-  return html2`<div class="scroll">
-		<table>
-			<thead>
-				<tr>
-					<th scope="col">Tool</th>
-					<th scope="col">Kind</th>
-					<th scope="col">Version</th>
-					<th scope="col">At setup</th>
-					<th scope="col">Purpose</th>
-				</tr>
-			</thead>
-			<tbody>
-				${profile.tools.map(
-    (tool) => html2`<tr>
-							<td class="mono">${tool.name}</td>
-							<td class="mono">${tool.kind}</td>
-							<td class="mono">${tool.version ?? "\u2013"}</td>
-							<td>
-								${tool.reachable ? statusMark({ state: "passed", label: "reachable" }) : statusMark({ state: "failed", label: "unreachable" })}
-							</td>
-							<td>${tool.purpose}</td>
-						</tr>`
-  )}
-			</tbody>
-		</table>
-	</div>`;
+  return dataTable({
+    columns: ["Tool", "Kind", "Version", "At setup", "Purpose"],
+    rows: profile.tools.map(
+      (tool) => tableRow({
+        cells: [
+          { content: tool.name, attrs: { class: "mono" } },
+          { content: tool.kind, attrs: { class: "mono" } },
+          { content: tool.version ?? "\u2013", attrs: { class: "mono" } },
+          tool.reachable ? statusMark({ state: "passed", label: "reachable" }) : statusMark({ state: "failed", label: "unreachable" }),
+          tool.purpose
+        ]
+      })
+    ),
+    scroll: true
+  });
 }
 function profileFacts(profile) {
   const approvals = profile.approvals ?? { plan: "required", result: "required" };
@@ -41383,16 +41359,13 @@ function entryList3(instance) {
 }
 function actorInput(context, id2) {
   if (context.actor) return "";
-  return html2`<div class="field-group">
-		<label class="lab" for="${id2}">Your name</label>
-		<input id="${id2}" name="actor" required autocomplete="name" />
-	</div>`;
+  return html2`${field({ id: id2, label: "Your name", control: textInput({ id: id2, name: "actor", attrs: { required: true, autocomplete: "name" } }) })}`;
 }
 function retireControl(context, targetId, instance, retire) {
   if (instance.retired) return html2`<span class="muted small">retired by ${instance.retired.actor}</span>`;
   const failed2 = retire?.instanceId === instance.instanceId ? retire.error : null;
   return html2`<details class="retire" ${failed2 ? html2`open` : ""} data-open-key="retire:${instance.instanceId}">
-		<summary class="btn small" aria-label="Retire ${instance.instanceId}">Retire</summary>
+		${formButton({ label: "Retire", element: "summary", inline: true, attrs: { "aria-label": `Retire ${instance.instanceId}` } })}
 		<form
 			method="post"
 			action="/settings/targets/${targetId}/instances/${instance.instanceId}/retire"
@@ -41403,42 +41376,38 @@ function retireControl(context, targetId, instance, retire) {
 			<p>Retire <code>${instance.instanceId}</code>? No new run can start on it. Its runs stay as they are.</p>
 			${failed2 ? html2`<p class="form-error" role="alert">${failed2}</p>` : ""}
 			${actorInput(context, `retire-actor-${instance.instanceId}`)}
-			<div class="btns"><button class="btn primary">Confirm retire</button></div>
+			<div class="btns">${formButton({ label: "Confirm retire", emphasis: "primary" })}</div>
 		</form>
 	</details>`;
 }
 function instancesTable(context, targetId, instances, retire) {
   if (!instances.length) return html2`<p class="none">No instance yet. Add one to start runs.</p>`;
-  return html2`<div class="scroll">
-		<table>
-			<thead>
-				<tr>
-					<th scope="col">Instance</th>
-					<th scope="col">Entries</th>
-					<th scope="col">Environment</th>
-					<th scope="col">References</th>
-					<th scope="col">Added</th>
-					<th scope="col">Status</th>
-					<th scope="col"><span class="sr-only">Actions</span></th>
-				</tr>
-			</thead>
-			<tbody>
-				${instances.map(
-    (instance) => html2`<tr id="instance-${instance.instanceId}" data-key="instance:${instance.instanceId}">
-							<td class="mono">${instance.instanceId}</td>
-							<td>${entryList3(instance)}</td>
-							<td>${instance.environment ?? none3()}</td>
-							<td>${words4(instance.references)}</td>
-							<td>${instance.addedBy} · ${time(instance.addedAt)}</td>
-							<td>
-								${instance.retired ? statusMark({ state: "retired" }) : statusMark({ state: "active" })}
-							</td>
-							<td>${retireControl(context, targetId, instance, retire)}</td>
-						</tr>`
-  )}
-			</tbody>
-		</table>
-	</div>`;
+  return dataTable({
+    columns: [
+      "Instance",
+      "Entries",
+      "Environment",
+      "References",
+      "Added",
+      "Status",
+      html2`<span class="sr-only">Actions</span>`
+    ],
+    rows: instances.map(
+      (instance) => tableRow({
+        cells: [
+          { content: instance.instanceId, attrs: { class: "mono" } },
+          entryList3(instance),
+          instance.environment ?? none3(),
+          words4(instance.references),
+          html2`${instance.addedBy} · ${time(instance.addedAt)}`,
+          instance.retired ? statusMark({ state: "retired" }) : statusMark({ state: "active" }),
+          retireControl(context, targetId, instance, retire)
+        ],
+        attrs: { id: `instance-${instance.instanceId}`, "data-key": `instance:${instance.instanceId}` }
+      })
+    ),
+    scroll: true
+  });
 }
 function addForm(context, targetId, entryPoints2, form) {
   const value2 = (name2) => form?.values[name2] ?? "";
@@ -41457,45 +41426,25 @@ function addForm(context, targetId, entryPoints2, form) {
 		</div>
 		<form method="post" action="/settings/targets/${targetId}/instances" class="decision-form">
 			<input type="hidden" name="csrf" value="${context.csrf}" />
-			<div class="field-group">
-				<label class="lab" for="instance-id">Instance ID</label>
-				<input
-					id="instance-id"
-					name="instanceId"
-					required
-					pattern="[A-Za-z0-9][A-Za-z0-9_\\-]{0,95}"
-					value="${value2("instanceId")}"
-					placeholder="staging"
-				/>
-				<p class="help">Letters, digits, _ or -. An instance ID is not used again.</p>
-			</div>
+			${field({ id: "instance-id", label: "Instance ID", control: textInput({ id: "instance-id", name: "instanceId", value: value2("instanceId"), attrs: { required: true, pattern: "[A-Za-z0-9][A-Za-z0-9_\\-]{0,95}", placeholder: "staging" } }), help: "Letters, digits, _ or -. An instance ID is not used again." })}
 			${entryPoints2.map(
-    (entry) => html2`<div class="field-group">
-						<label class="lab" for="entry-${entry.name}"
-							>${entry.name} <span class="req">${entry.kind}</span></label
-						>
-						<input
-							id="entry-${entry.name}"
-							name="entry.${entry.name}"
-							required
-							value="${value2(`entry.${entry.name}`)}"
-							aria-describedby="entry-${entry.name}-help"
-						/>
-						<p class="help" id="entry-${entry.name}-help">${entry.purpose}</p>
-					</div>`
+    (entry) => field({
+      id: `entry-${entry.name}`,
+      label: html2`${entry.name} <span class="req">${entry.kind}</span>`,
+      control: textInput({
+        id: `entry-${entry.name}`,
+        name: `entry.${entry.name}`,
+        value: value2(`entry.${entry.name}`),
+        attrs: { required: true, "aria-describedby": `entry-${entry.name}-help` }
+      }),
+      help: entry.purpose,
+      helpId: `entry-${entry.name}-help`
+    })
   )}
-			<div class="field-group">
-				<label class="lab" for="environment">Environment <span class="req">optional</span></label>
-				<input id="environment" name="environment" value="${value2("environment")}" placeholder="UAT sandbox" />
-			</div>
-			<div class="field-group">
-				<label class="lab" for="references">References <span class="req">optional</span></label>
-				<textarea id="references" name="references" rows="2" aria-describedby="references-help">
-${value2("references")}</textarea>
-				<p class="help" id="references-help">One per line, for example an authentication alias. No secrets.</p>
-			</div>
+			${field({ id: "environment", label: html2`Environment <span class="req">optional</span>`, control: textInput({ id: "environment", name: "environment", value: value2("environment"), attrs: { placeholder: "UAT sandbox" } }) })}
+			${field({ id: "references", label: html2`References <span class="req">optional</span>`, control: textArea({ id: "references", name: "references", rows: 2, value: value2("references"), attrs: { "aria-describedby": "references-help" } }), help: "One per line, for example an authentication alias. No secrets.", helpId: "references-help" })}
 			${actorInput(context, "instance-actor")}
-			<div class="btns"><button class="btn primary">Add instance</button></div>
+			<div class="btns">${formButton({ label: "Add instance", emphasis: "primary" })}</div>
 		</form>
 	</section>`;
 }
@@ -41517,22 +41466,26 @@ function targetPage(store, context, targetId, revision2, form = null, retire = n
 					<h2 id="profile">Profile</h2>
 					${profileFacts(shown2.profile)}
 				</section>` : banner({ kind: "info", content: html2`The setup request is recorded. The profile is not saved yet.` });
-  const body = html2`${heading(
-    targetId,
+  const body = html2`${heading({
+    title: targetId,
     sub,
-    html2`<div class="meta">
+    extra: html2`<div class="meta">
 				${shown2 ? html2`<span class="pill" title="${shown2.sha256}">sha256 <span class="mono">${short2(shown2.sha256)}</span></span>` : ""}
 			</div>`
-  )}
+  })}
 		<div class="split">
 			<div class="main-col">
-				<nav class="jump" aria-label="On this page">
-					<a href="#entry-points">Entry points</a
-					><a href="#instances">Instances</a
-					>${shown2 ? html2`<a href="#tools">Tools</a><a href="#profile">Profile</a>` : ""}<a href="#history"
-						>History</a
-					>
-				</nav>
+				${jumpLinks({
+    links: [
+      { href: "#entry-points", label: "Entry points" },
+      { href: "#instances", label: "Instances" },
+      ...shown2 ? [
+        { href: "#tools", label: "Tools" },
+        { href: "#profile", label: "Profile" }
+      ] : [],
+      { href: "#history", label: "History" }
+    ]
+  })}
 				<section aria-labelledby="entry-points">
 					<h2 id="entry-points">Entry points <span class="n">${request2.entryPoints.length}</span></h2>
 					${entryPointsTable(request2.entryPoints)}
@@ -41589,19 +41542,20 @@ function harnessPage(store, context, env, form = null, model = null, testerModel
   const requestValue = model?.value ?? requestModelText(store, harness);
   const levelModels = [...new Set(Object.values(testLevels).map((level) => level.model))];
   const testerDefault = !pi && levelModels.length === 1 ? levelModels[0] : "";
-  const body = html2`${heading("Coding harness", null)}
+  const body = html2`${heading({ title: "Coding harness", sub: null })}
 		<div class="panel">
 			<form method="post" action="/settings/harness/select" class="decision-form">
 				<input type="hidden" name="csrf" value="${context.csrf}" />
-				<div class="field-group">
-					<label class="lab" for="coding-harness">Program for this workspace</label>
-					<select id="coding-harness" name="harness">
+				${field({
+    id: "coding-harness",
+    label: "Program for this workspace",
+    control: html2`<select id="coding-harness" name="harness">
 						<option value="claude" ${harness === "claude" ? html2`selected` : ""}>Claude Code</option>
 						<option value="pi" ${harness === "pi" ? html2`selected` : ""}>Pi</option>
-					</select>
-					<p class="help">Applies to new tests and chats in this workspace.</p>
-				</div>
-				<div class="btns"><button class="btn primary">Save the program</button></div>
+					</select>`,
+    help: "Applies to new tests and chats in this workspace."
+  })}
+				<div class="btns">${formButton({ label: "Save the program", emphasis: "primary" })}</div>
 			</form>
 			<p id="harness-program">Current executable · ${harnessProgram(effectiveEnv)}</p>
 		</div>
@@ -41632,7 +41586,7 @@ function harnessPage(store, context, env, form = null, model = null, testerModel
 					</p>
 					${form ? html2`<p class="form-error" role="alert" data-field="rules">${form.error}</p>` : ""}
 				</div>
-				<div class="btns"><button class="btn primary">Save the rules</button></div>
+				<div class="btns">${formButton({ label: "Save the rules", emphasis: "primary" })}</div>
 			</form>
 		</section>
 		<section
@@ -41648,11 +41602,15 @@ function harnessPage(store, context, env, form = null, model = null, testerModel
 				says so.
 			</p>
 			<p class="help" role="status" data-model-status>Loading models from ${pi ? "Pi" : "Claude Code"}…</p>
-			<button class="btn" type="button" data-model-refresh>Refresh models</button>
-			<div class="field-group">
-				<label class="lab" for="model-filter">Filter models</label>
-				<input id="model-filter" type="search" autocomplete="off" placeholder="Search available models" />
-			</div>
+			${formButton({ label: "Refresh models", attrs: { type: "button", "data-model-refresh": true } })}
+			${field({
+    id: "model-filter",
+    label: "Filter models",
+    control: textInput({
+      id: "model-filter",
+      attrs: { type: "search", autocomplete: "off", placeholder: "Search available models" }
+    })
+  })}
 			<form method="post" action="/settings/harness/models" class="decision-form">
 				<input type="hidden" name="csrf" value="${context.csrf}" />
 				<input type="hidden" name="harness" value="${harness}" />
@@ -41708,7 +41666,7 @@ function harnessPage(store, context, env, form = null, model = null, testerModel
 					</div>
 					${model?.error ? html2`<p class="form-error" role="alert" data-field="model">${model.error}</p>` : ""}
 				</div>
-				<div class="btns"><button class="btn primary">Save models</button></div>
+				<div class="btns">${formButton({ label: "Save models", emphasis: "primary" })}</div>
 			</form>
 		</section>
 		<section class="panel" aria-labelledby="chat-settings">
@@ -41718,7 +41676,7 @@ function harnessPage(store, context, env, form = null, model = null, testerModel
 				New chats use ${pi ? "Pi" : "Claude Code"} and your chat model by default. Change the harness, model, or
 				effort for the next message in the chat.
 			</p>
-			<div class="btns"><a class="btn" href="/chats">Open Chats</a></div>
+			<div class="btns">${formButton({ label: "Open Chats", href: "/chats" })}</div>
 		</section>`;
   return settingsPage("/settings/harness", "Coding harness", ["*"], body);
 }
@@ -41786,20 +41744,20 @@ function recipesPage(workspace2) {
     })
   );
   const custom = recipes2.some((entry) => entry.source === "custom") || invalid.length;
-  const body = html2`${heading(
-    "Recipes",
-    html2`Tool descriptions for Checkmate. The target sets what testers may do. Built-in recipes come with
+  const body = html2`${heading({
+    title: "Recipes",
+    sub: html2`Tool descriptions for Checkmate. The target sets what testers may do. Built-in recipes come with
 				Checkmate. Custom recipes come from <code>.checkmate/recipes/</code> in this workspace.`
-  )}
+  })}
 		<div data-region="recipes">
 			${error ? banner({ kind: "fail", content: html2`Checkmate cannot read the recipes. ${error}` }) : ""}
 			${rows2.length + invalidRows.length ? html2`<ul class="q-items l-rows">
 							${rows2} ${invalidRows}
 						</ul>` : ""}
-			${custom || error ? "" : emptyNotice(
-    "No custom recipe yet.",
-    html2`Drop a recipe JSON file in <code>${projectRecipeFolder(workspace2)}</code>.`
-  )}
+			${custom || error ? "" : emptyNotice({
+    what: "No custom recipe yet.",
+    next: html2`Drop a recipe JSON file in <code>${projectRecipeFolder(workspace2)}</code>.`
+  })}
 		</div>`;
   return settingsPage("/settings/recipes", "Recipes", ["recipes"], body);
 }
@@ -41875,7 +41833,7 @@ function invalidRecipePage(workspace2, file) {
   const item = invalid.find((candidate) => fileName2(candidate.path) === file);
   if (!item) return null;
   const body = html2`<div data-region="recipe">
-		${heading(item.name, "Checkmate does not use this recipe. A target, plan, run, or test that names it is refused.", html2`<div class="meta">${invalidPill()}</div>`)}
+		${heading({ title: item.name, sub: "Checkmate does not use this recipe. A target, plan, run, or test that names it is refused.", extra: html2`<div class="meta">${invalidPill()}</div>` })}
 		<div class="main-col">
 			<section aria-labelledby="error">
 				<h2 id="error">Error</h2>
@@ -41899,15 +41857,17 @@ function recipePage(workspace2, name2) {
   const usage2 = recipe.usage?.join("\n");
   const usageText = entry.source === "built-in" ? usage2?.replace(agentOnly, "\n") : usage2;
   const body = html2`<div data-region="recipe">
-		${heading(recipe.name, recipe.purpose, html2`<div class="meta">${sourcePill(entry.source)}</div>`)}
+		${heading({ title: recipe.name, sub: recipe.purpose, extra: html2`<div class="meta">${sourcePill(entry.source)}</div>` })}
 		<div class="main-col">
-			<nav class="jump" aria-label="On this page">
-				<a href="#recipe">Recipe</a><a href="#requires">Requires</a
-				><a href="#testing">Testing</a>${usage2 !== void 0 ? html2`<a href="#usage">Usage</a>` : null}<a
-					href="#json"
-					>JSON</a
-				>
-			</nav>
+			${jumpLinks({
+    links: [
+      { href: "#recipe", label: "Recipe" },
+      { href: "#requires", label: "Requires" },
+      { href: "#testing", label: "Testing" },
+      ...usage2 !== void 0 ? [{ href: "#usage", label: "Usage" }] : [],
+      { href: "#json", label: "JSON" }
+    ]
+  })}
 			<section aria-labelledby="recipe">
 				<h2 id="recipe">Recipe</h2>
 				${recipeFacts(entry)}
@@ -42108,7 +42068,7 @@ function adoptForm(context, detail, gapId, sha256) {
 						placeholder="Your name"
 						aria-label="Your name"
 					/>`}
-		<button class="btn small">Bring into plan</button>
+		${formButton({ label: "Bring into plan", inline: true })}
 	</form>`;
 }
 function gapCard(store, context, detail, gap, adoptError) {
@@ -42129,8 +42089,8 @@ function gapCard(store, context, detail, gap, adoptError) {
 		<p class="muted">${gap.consequence}</p>
 		<div class="actions">
 			${adopted ? html2`${statusMark({ state: "resolved", label: "in plan" })}
-							<a href="/plans/${latest}#${gap.id}">${latest}</a>` : html2`<a class="btn small" href="/plans/${latest}/gaps/${gap.id}#answer">Answer</a>
-							${adoptForm(context, detail, gap.id, revision2.sha256)}`}
+							<a href="/plans/${latest}#${gap.id}">${latest}</a>` : html2`${formButton({ label: "Answer", href: `/plans/${latest}/gaps/${gap.id}#answer`, inline: true })}
+						${adoptForm(context, detail, gap.id, revision2.sha256)}`}
 		</div>
 		${adoptError?.gapId === gap.id ? html2`<p class="form-error" role="alert">${adoptError.message}</p>` : ""}
 	</div>`;
@@ -42140,34 +42100,24 @@ function coverage(store, detail) {
   if (!result) return html2`<p class="none">Coverage is known when the run finishes.</p>`;
   const plan = planDetail(store, detail.planId, detail.revision).plan;
   const requirements = new Map(plan.requirements.map((item) => [item.id, item]));
-  return html2`<div class="scroll">
-		<table>
-			<thead>
-				<tr>
-					<th scope="col">ID</th>
-					<th scope="col">Requirement</th>
-					<th scope="col">Tests</th>
-					<th scope="col">Coverage</th>
-				</tr>
-			</thead>
-			<tbody>
-				${result.coverage.requirements.map(
-    (row2) => html2`<tr>
-							<td class="mono">${row2.requirementId}</td>
-							<td>
-								${requirements.get(row2.requirementId)?.text ?? ""}
-								${row2.reason ? html2`<div class="muted small">${row2.reason}</div>` : ""}
-								${hasMetadata(requirements.get(row2.requirementId)?.metadata) ? html2`<div class="small">
-												${metadataList(requirements.get(row2.requirementId)?.metadata)}
-											</div>` : ""}
-							</td>
-							<td class="mono">${row2.testIds.join(", ") || "\u2013"}</td>
-							<td>${statusMark({ state: row2.status })}</td>
-						</tr>`
-  )}
-			</tbody>
-		</table>
-	</div>`;
+  return dataTable({
+    columns: ["ID", "Requirement", "Tests", "Coverage"],
+    rows: result.coverage.requirements.map(
+      (row2) => tableRow({
+        cells: [
+          { content: row2.requirementId, attrs: { class: "mono" } },
+          html2`${requirements.get(row2.requirementId)?.text ?? ""}
+					${row2.reason ? html2`<div class="muted small">${row2.reason}</div>` : ""}
+					${hasMetadata(requirements.get(row2.requirementId)?.metadata) ? html2`<div class="small">
+									${metadataList(requirements.get(row2.requirementId)?.metadata)}
+								</div>` : ""}`,
+          { content: row2.testIds.join(", ") || "\u2013", attrs: { class: "mono" } },
+          statusMark({ state: row2.status })
+        ]
+      })
+    ),
+    scroll: true
+  });
 }
 function cleanup(detail) {
   const result = detail.result;
@@ -42410,12 +42360,12 @@ function openChecks(detail) {
 	</section>`;
 }
 function summaryDetail2(store, context, detail, state, crumbs) {
-  const report = detail.result ? downloadMenu(
-    "Download report",
-    `/runs/${detail.runId}/report`,
-    "The HTML report is self-contained and print-ready. Open it and print to PDF. JUnit XML is for CI.",
-    ["html", "md", "json", "junit"]
-  ) : html2`<span class="muted small">The report is ready when the run finishes.</span>`;
+  const report = detail.result ? downloadMenu({
+    label: "Download report",
+    base: `/runs/${detail.runId}/report`,
+    note: "The HTML report is self-contained and print-ready. Open it and print to PDF. JUnit XML is for CI.",
+    formats: ["html", "md", "json", "junit"]
+  }) : html2`<span class="muted small">The report is ready when the run finishes.</span>`;
   return html2`${crumbs}
 		<h2 class="q-h">Overview</h2>
 		${strip(detail)}
@@ -42435,12 +42385,14 @@ function runPage(store, context, runId, params = new URLSearchParams(), state = 
   const selected = test || finding || gap || record ? asked2 : "summary";
   const label = test?.testId ?? finding?.id ?? gap?.id ?? (asked2 === "coverage" ? "Coverage" : record ? "Cleanup" : null);
   const list3 = `/runs/${runId}`;
-  const crumbs = crumbBar([
-    ["Runs", "/runs"],
-    [`${detail.planId}@${detail.revision}`, `/plans/${detail.planId}@${detail.revision}`],
-    [runId, label ? list3 : null],
-    ...label ? [[label, null]] : []
-  ]);
+  const crumbs = crumbBar({
+    crumbs: [
+      ["Runs", "/runs"],
+      [`${detail.planId}@${detail.revision}`, `/plans/${detail.planId}@${detail.revision}`],
+      [runId, label ? list3 : null],
+      ...label ? [[label, null]] : []
+    ]
+  });
   const pane = test ? html2`${crumbs} ${testCard2(store, detail, test)}` : finding ? html2`${crumbs} ${findingCard(store, detail, finding)}` : gap ? html2`${crumbs} ${gapCard(store, context, detail, gap, adoptError)}` : asked2 === "coverage" ? html2`${crumbs}
 							<h2 class="q-h">Coverage</h2>
 							${coverage(store, detail)}` : asked2 === "cleanup" ? html2`${crumbs}
@@ -42506,7 +42458,7 @@ function runsPage(store, params) {
     subjects: ["*"],
     address: listHref(spec2, state),
     ...pageTrail(spec2, state, page.total, "Runs"),
-    body: html2`${heading("Runs", "Every run of every plan.")} ${filterBar(spec2, state)}
+    body: html2`${heading({ title: "Runs", sub: "Every run of every plan." })} ${filterBar(spec2, state)}
 		${listRegion(spec2, state, page.total, page.rows.map(runRow2))}`
   };
 }
@@ -42798,10 +42750,10 @@ data: ${matched.join(",") || "*"}
       subjects: ["inbox"],
       status,
       back: "/",
-      body: html2`${heading(title2, message2)}
+      body: html2`${heading({ title: title2, sub: message2 })}
 				<p class="actions">
-					<a class="btn primary" href="/">Needs you</a> <a class="btn" href="/plans">Plans</a>
-					<a class="btn" href="/runs">Runs</a>
+					${formButton({ label: "Needs you", href: "/", emphasis: "primary" })}
+					${formButton({ label: "Plans", href: "/plans" })} ${formButton({ label: "Runs", href: "/runs" })}
 				</p>`
     });
   }
@@ -43093,7 +43045,7 @@ data: ${matched.join(",") || "*"}
       title: "Your name",
       section: null,
       subjects: ["inbox"],
-      body: html2`${heading("Your name", "Checkmate records this name with each decision you make in this browser.")}
+      body: html2`${heading({ title: "Your name", sub: "Checkmate records this name with each decision you make in this browser." })}
 				<form method="post" action="/actor" class="panel narrow">
 					<input type="hidden" name="csrf" value="${csrf}" />
 					<input type="hidden" name="back" value="${back}" />
@@ -43107,7 +43059,8 @@ data: ${matched.join(",") || "*"}
 						value="${shown2.actor ?? ""}"
 					/>
 					<div class="btns">
-						<button class="btn primary">Save name</button> <a class="btn" href="${back}">Cancel</a>
+						${formButton({ label: "Save name", emphasis: "primary" })}
+						${formButton({ label: "Cancel", href: back })}
 					</div>
 				</form>`
     };
@@ -43409,16 +43362,16 @@ data: ${matched.join(",") || "*"}
       cookie("checkmate_toast", undo ? `${named} not handed over` : `Handed ${named} over to ${to}`, 60)
     ]);
   }
-  function actionRefusal(request2, back, message2, field4 = "") {
+  function actionRefusal(request2, back, message2, field2 = "") {
     render(request2, {
       title: "Nothing was done",
       section: "home",
       subjects: ["inbox"],
       status: 422,
       back,
-      body: html2`${heading("Nothing was done")}
-				<p class="form-error" role="alert" ${field4 ? html2`data-field="${field4}"` : ""}>${message2}</p>
-				<p class="actions"><a class="btn primary" href="${back}">Go back</a></p>`
+      body: html2`${heading({ title: "Nothing was done" })}
+				<p class="form-error" role="alert" ${field2 ? html2`data-field="${field2}"` : ""}>${message2}</p>
+				<p class="actions">${formButton({ label: "Go back", href: back, emphasis: "primary" })}</p>`
     });
   }
   function engineText(error) {
@@ -43443,7 +43396,7 @@ data: ${matched.join(",") || "*"}
   function ruleChange(request2, form, planId, change) {
     const back = reviewHref(planId, "rules");
     const { origin: origin2 } = planRules(store, planId);
-    const refuse5 = (message2, field4 = "") => actionRefusal(request2, back, message2, field4);
+    const refuse5 = (message2, field2 = "") => actionRefusal(request2, back, message2, field2);
     if (origin2 !== "derived" && origin2 !== "corrected" && origin2 !== "harvested")
       return refuse5(`The rules of ${planId} do not come from the sources. Edit them in the plan editor.`);
     try {
@@ -43459,13 +43412,13 @@ data: ${matched.join(",") || "*"}
   function changeRule(request2, form, planId, ruleId) {
     const back = reviewHref(planId, "rules");
     const { actor, cookies } = actorFrom(request2, form);
-    const refuse5 = (message2, field4 = "") => actionRefusal(request2, back, message2, field4);
+    const refuse5 = (message2, field2 = "") => actionRefusal(request2, back, message2, field2);
     const text2 = form.get("text")?.trim() ?? "";
-    const area2 = form.get("newArea")?.trim() || form.get("area")?.trim() || "";
+    const area = form.get("newArea")?.trim() || form.get("area")?.trim() || "";
     if (!actor) return refuse5("Enter your name. Checkmate records it with the rule.");
     if (!text2) return refuse5("Write the text of the rule.", "text");
-    if (!area2) return refuse5("Name the area of the rule.", "area");
-    if (area2.length > maxAreaCharacters)
+    if (!area) return refuse5("Name the area of the rule.", "area");
+    if (area.length > maxAreaCharacters)
       return refuse5(`The area has more than ${maxAreaCharacters} characters.`, "newArea");
     const { rules } = planRules(store, planId);
     if (ruleId && !rules.some((rule) => rule.id === ruleId))
@@ -43478,7 +43431,7 @@ data: ${matched.join(",") || "*"}
     ruleChange(request2, form, planId, () => {
       patchPlan(store, actor, {
         reference: planId,
-        patch: { requirements: { [id2]: ruleId ? { text: text2, area: area2 } : { text: text2, area: area2, source } } }
+        patch: { requirements: { [id2]: ruleId ? { text: text2, area } : { text: text2, area, source } } }
       });
       redirect(request2.res, ruleHref(planId, id2), [
         ...cookies,
@@ -43519,8 +43472,8 @@ data: ${matched.join(",") || "*"}
   function testerChoicesFrom(form, name2) {
     const selected = {};
     const prefix = `${name2}.`;
-    for (const [field4, value2] of form) {
-      if (field4.startsWith(prefix) && value2.trim()) selected[field4.slice(prefix.length)] = value2.trim();
+    for (const [field2, value2] of form) {
+      if (field2.startsWith(prefix) && value2.trim()) selected[field2.slice(prefix.length)] = value2.trim();
     }
     return selected;
   }
@@ -43531,7 +43484,7 @@ data: ${matched.join(",") || "*"}
     const build = form.get("build")?.trim() ?? "";
     const level = form.get("level")?.trim() || "normal";
     const [typedSince, until, repo] = ["since", "until", "repo"].map((name2) => form.get(name2)?.trim() || void 0);
-    const refuse5 = (message2, field4 = "") => actionRefusal(request2, back, message2, field4);
+    const refuse5 = (message2, field2 = "") => actionRefusal(request2, back, message2, field2);
     if (!actor) return refuse5("Enter your name. Checkmate records it with the test.");
     if (form.has("harness") && form.get("harness") !== selectedHarness(launchEnv()))
       return refuse5("The coding harness changed. Reload the page and try again.");
@@ -44150,7 +44103,7 @@ data: ${matched.join(",") || "*"}
   async function setUp(request2, form) {
     const back = "/setup";
     const { actor, cookies } = actorFrom(request2, form);
-    const refuse5 = (message2, field4 = "") => actionRefusal(request2, back, message2, field4);
+    const refuse5 = (message2, field2 = "") => actionRefusal(request2, back, message2, field2);
     const typedUrl = (form.get("url") ?? "").trim();
     const others = otherEntryValues(form);
     if (!actor) return refuse5("Enter your name. Checkmate records it with the target.");
@@ -44219,7 +44172,7 @@ data: ${matched.join(",") || "*"}
   function startChange(request2, form) {
     const back = "/new";
     const { actor, cookies } = actorFrom(request2, form);
-    const refuse5 = (message2, field4 = "") => actionRefusal(request2, back, message2, field4);
+    const refuse5 = (message2, field2 = "") => actionRefusal(request2, back, message2, field2);
     const text2 = form.get("text") ?? "";
     const typedFile = form.get("file")?.trim() ?? "";
     const planId = form.get("plan")?.trim() ?? "";
@@ -45396,7 +45349,7 @@ var commands = {
       facts: { count: reply.data.targets.length },
       lines: reply.data.targets.map((target) => [
         target.revision === null ? target.targetId : `${target.targetId}@${target.revision}`,
-        `capabilities=${cell2(target.capabilities)}`,
+        `capabilities=${cell3(target.capabilities)}`,
         `instances=${target.activeInstances}`
       ])
     })
@@ -45642,9 +45595,9 @@ var commands = {
       lines: reply.data.plans.map(
         (plan) => plan.status === "requested" ? [plan.planId, "status=requested", `state=${plan.loop.state}`, `waitsOn=${plan.loop.waitsOn}`] : [
           `${plan.planId}@${plan.revision}`,
-          `gaps=${cell2(plan.openBlockingGaps)}`,
+          `gaps=${cell3(plan.openBlockingGaps)}`,
           `approval=${plan.approval}`,
-          `blocked=${cell2(plan.blocked.map((block2) => `${block2.testId}<-${block2.dependency}: ${block2.cause}`))}`,
+          `blocked=${cell3(plan.blocked.map((block2) => `${block2.testId}<-${block2.dependency}: ${block2.cause}`))}`,
           `state=${plan.loop.state}`,
           `waitsOn=${plan.loop.waitsOn}`
         ]
@@ -46132,7 +46085,7 @@ var commands = {
         finding.type,
         finding.severity,
         finding.testIds,
-        Object.entries(finding.metadata).map(([key2, field4]) => `${key2}=${field4}`).join("; ") || null,
+        Object.entries(finding.metadata).map(([key2, field2]) => `${key2}=${field2}`).join("; ") || null,
         finding.title
       ])
     })
@@ -46890,12 +46843,12 @@ var commands = {
     readOnly: true,
     run: (store, args) => {
       const statement = queryStatement(store, value(args, "sql"));
-      const columns2 = statement.columns().map((column) => column.name);
+      const columns2 = statement.columns().map((column2) => column2.name);
       const rows2 = readOnly2(() => statement.all()).map(
         (row2) => Object.fromEntries(
-          columns2.map((column) => {
-            const field4 = row2[column];
-            return [column, field4 instanceof Uint8Array ? `<blob ${field4.length} bytes>` : field4];
+          columns2.map((column2) => {
+            const field2 = row2[column2];
+            return [column2, field2 instanceof Uint8Array ? `<blob ${field2.length} bytes>` : field2];
           })
         )
       );
@@ -47010,14 +46963,14 @@ function showPlan(store, args) {
       `Unknown test in ${subject}: ${test}`,
       `Use one of: ${detail.plan.tests.map((item) => item.id).join(", ")}.`
     );
-  for (const field4 of fields ?? [])
-    requireWellFormed(testFields2.includes(field4), `Unknown field: ${field4}. Use: ${testFields2.join(", ")}`);
+  for (const field2 of fields ?? [])
+    requireWellFormed(testFields2.includes(field2), `Unknown field: ${field2}. Use: ${testFields2.join(", ")}`);
   const picked = detail.plan.tests.filter((test) => !tests || tests.includes(test.id)).map(
     (test) => Object.fromEntries([
       ["id", test.id],
-      ...(fields ?? ["readiness", "capability", "title"]).map((field4) => [
-        field4,
-        test[field4]
+      ...(fields ?? ["readiness", "capability", "title"]).map((field2) => [
+        field2,
+        test[field2]
       ])
     ])
   );
@@ -47063,7 +47016,7 @@ function printPlan(reply) {
     return {
       facts: facts2,
       lines: tests.flatMap((test) => [
-        [test.id, ...fields.filter((field4) => field4 !== "assertions").map((field4) => test[field4])],
+        [test.id, ...fields.filter((field2) => field2 !== "assertions").map((field2) => test[field2])],
         ...fields.includes("assertions") ? test.assertions.map((assertion) => [
           `${test.id}.${assertion.id}`,
           assertion.checkKind,
@@ -47153,25 +47106,25 @@ function writeOutput(store, out, content) {
   }
   return out;
 }
-function cell2(field4) {
-  if (field4 === null || field4 === void 0) return "-";
-  if (Array.isArray(field4)) return field4.length ? field4.map(cell2).join(",") : "-";
-  if (typeof field4 === "object" && "preformatted" in field4) return String(field4.preformatted);
-  if (typeof field4 === "object") return JSON.stringify(field4);
-  return String(field4).replace(/\\/g, "\\\\").replace(/\t/g, "\\t").replace(/\r/g, "\\r").replace(/\n/g, "\\n");
+function cell3(field2) {
+  if (field2 === null || field2 === void 0) return "-";
+  if (Array.isArray(field2)) return field2.length ? field2.map(cell3).join(",") : "-";
+  if (typeof field2 === "object" && "preformatted" in field2) return String(field2.preformatted);
+  if (typeof field2 === "object") return JSON.stringify(field2);
+  return String(field2).replace(/\\/g, "\\\\").replace(/\t/g, "\\t").replace(/\r/g, "\\r").replace(/\n/g, "\\n");
 }
 function compact(reply, printed, host) {
-  const facts2 = Object.entries(printed.facts ?? {}).filter(([, field4]) => field4 !== void 0).map(([key2, field4]) => `${key2}=${cell2(field4)}`);
+  const facts2 = Object.entries(printed.facts ?? {}).filter(([, field2]) => field2 !== void 0).map(([key2, field2]) => `${key2}=${cell3(field2)}`);
   const warnings = reply.data.warnings ?? [];
   return [
     [reply.status, reply.subject, ...reply.refusal ? [`refusal=${reply.refusal}`] : [], ...facts2].join(" "),
     ...(printed.lines ?? []).map(
-      (line) => (host && line[0] === "next" ? ["agent-only next", ...line.slice(1)] : line).map(cell2).join("	")
+      (line) => (host && line[0] === "next" ? ["agent-only next", ...line.slice(1)] : line).map(cell3).join("	")
     ),
-    ...warnings.map((warning) => `warning	${cell2(warning)}`),
-    ...(reply.data.assumed ?? []).map((value2) => `assumed: ${cell2(value2)}`),
-    ...reply.reasons.map((reason) => `reason: ${cell2(reason)}`),
-    ...reply.hint ? [`${host ? "agent-only hint" : "hint"}: ${cell2(reply.hint)}`] : []
+    ...warnings.map((warning) => `warning	${cell3(warning)}`),
+    ...(reply.data.assumed ?? []).map((value2) => `assumed: ${cell3(value2)}`),
+    ...reply.reasons.map((reason) => `reason: ${cell3(reason)}`),
+    ...reply.hint ? [`${host ? "agent-only hint" : "hint"}: ${cell3(reply.hint)}`] : []
   ].join("\n");
 }
 function format2(reply, json, print2, host = false) {
@@ -49519,12 +49472,12 @@ function seconds(text2, name2) {
     throw new Error(`Invalid --${name2}: ${text2}. Use a whole number from 1 to 3600.`);
   return Number(text2);
 }
-function cell3(field4) {
-  return field4.replace(/\\/g, "\\\\").replace(/\t/g, "\\t").replace(/\r/g, "\\r").replace(/\n/g, "\\n");
+function cell4(field2) {
+  return field2.replace(/\\/g, "\\\\").replace(/\t/g, "\\t").replace(/\r/g, "\\r").replace(/\n/g, "\\n");
 }
 function usageFields({ observedModels: observedModels2, costUsd, costPartial }) {
   return [
-    ...observedModels2?.length ? [`model=${cell3(observedModels2.join(","))}`] : [],
+    ...observedModels2?.length ? [`model=${cell4(observedModels2.join(","))}`] : [],
     ...costUsd === void 0 ? [] : [`costUsd=${costUsd}`],
     ...costPartial ? ["costPartial=true"] : []
   ];
@@ -49547,11 +49500,11 @@ function print(response, json) {
       ...response.operation ? [`operation=${response.operation}`] : [],
       ...usageFields(response)
     ].join(" "),
-    ...response.reasons.map((reason) => `reason: ${cell3(reason)}`),
-    ...response.hint ? [`${hostSession(process.env) ? "agent-only hint" : "hint"}: ${cell3(response.hint)}`] : []
+    ...response.reasons.map((reason) => `reason: ${cell4(reason)}`),
+    ...response.hint ? [`${hostSession(process.env) ? "agent-only hint" : "hint"}: ${cell4(response.hint)}`] : []
   ].join("\n");
   const warning = !json && response.usageWarning ? `
-warning: ${cell3(response.usageWarning)}` : "";
+warning: ${cell4(response.usageWarning)}` : "";
   process.stdout.write(`${output}${warning}
 `);
   process.exitCode = response.status === "completed" || response.status === "needs_decision" ? 0 : 1;

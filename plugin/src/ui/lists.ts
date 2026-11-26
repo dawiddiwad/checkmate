@@ -2,6 +2,7 @@ import type { Store } from '../store.ts'
 import type { ListPage, ListQuery } from '../views.ts'
 import { operationLog, pagedRuns, planList, runList } from '../views.ts'
 import type { Html } from './html.ts'
+import { formButton } from './components/button.ts'
 import { emptyNotice } from './components/empty-state.ts'
 import { statusMark } from './components/status-mark.ts'
 import { costText, html, plural, words } from './html.ts'
@@ -144,8 +145,8 @@ export function filterBar(spec: ListSpec, state: ListState) {
 				String(state.size)
 			)}
 		</select>
-		<button class="btn" data-list-submit>Filter</button>
-		<a class="btn ghost" href="${spec.path}" data-list-clear>Clear</a>
+		${formButton({ label: 'Filter', attrs: { 'data-list-submit': true } })}
+		${formButton({ label: 'Clear', href: spec.path, quiet: true, attrs: { 'data-list-clear': true } })}
 	</form>`
 }
 
@@ -163,10 +164,13 @@ export function pager(spec: ListSpec, state: ListState, total: number) {
 	if (last === 1) return ''
 	const link = (page: number, label: string, rel: string) =>
 		page === state.page || page < 1 || page > last
-			? html`<span class="btn small" aria-disabled="true">${label}</span>`
-			: html`<a class="btn small" href="${listHref(spec, state, { page })}" rel="${rel}" data-list-link
-					>${label}</a
-				>`
+			? formButton({ label, element: 'span', inline: true, attrs: { 'aria-disabled': 'true' } })
+			: formButton({
+					label,
+					href: listHref(spec, state, { page }),
+					inline: true,
+					attrs: { rel, 'data-list-link': true },
+				})
 	return html`<nav class="pager" aria-label="Pages">
 		${link(1, '« First', 'first')} ${link(state.page - 1, '‹ Previous', 'prev')}
 		<span class="pager-at">Page ${state.page} of ${last}</span>
@@ -187,11 +191,11 @@ export function listRegion(spec: ListSpec, state: ListState, total: number, rows
 						</ul>
 						${pager(spec, state, total)}`
 				: state.q || Object.keys(state.filters).length
-					? emptyNotice(
-							`No ${spec.noun} matches these filters.`,
-							html`<a href="${spec.path}" data-list-clear>Clear the filters</a>`
-						)
-					: emptyNotice(spec.none[0], spec.none[1])
+					? emptyNotice({
+							what: `No ${spec.noun} matches these filters.`,
+							next: html`<a href="${spec.path}" data-list-clear>Clear the filters</a>`,
+						})
+					: emptyNotice({ what: spec.none[0], next: spec.none[1] })
 		}
 	</div>`
 }

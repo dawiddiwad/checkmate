@@ -164,7 +164,7 @@ export function activityPage(
 		subjects: ['*'],
 		address: listHref(spec, shown),
 		...pageTrail(spec, shown, total, 'Activity'),
-		body: html`${heading('Activity', 'Tests, follow-ups, and chat messages. Open an entry to see its run or chat.')}
+		body: html`${heading({ title: 'Activity', sub: 'Tests, follow-ups, and chat messages. Open an entry to see its run or chat.' })}
 			<div data-region="activity" data-list-region>
 				<p class="list-count" data-list-count role="status">
 					${total ? `Showing ${first}–${last} of ${plural(total, 'entry', 'entries')}` : ''}
@@ -175,7 +175,7 @@ export function activityPage(
 									${group('Running now', running)}${group('Earlier', earlier)}
 								</div>
 								${pager(spec, shown, total)}`
-						: emptyNotice(spec.none[0], spec.none[1])
+						: emptyNotice({ what: spec.none[0], next: spec.none[1] })
 				}
 			</div>
 			<div data-region="activity-dialogs">${dialogs}</div>`,

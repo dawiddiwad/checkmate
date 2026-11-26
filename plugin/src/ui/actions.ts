@@ -5,7 +5,8 @@ import { planRequest } from '../plans.ts'
 import { instanceList } from '../targets.ts'
 import type { Attrs, Html } from './html.ts'
 import type { Context } from './layout.ts'
-import { button, optionButton } from './components/button.ts'
+import { button, formButton, optionButton } from './components/button.ts'
+import { textInput } from './components/field.ts'
 import { radioGroup } from './components/radio-group.ts'
 import { html, plural } from './html.ts'
 
@@ -46,17 +47,19 @@ function shell(id: string, title: string, gone: string, action: string, context:
 	</dialog>`
 }
 
-function field(id: string, label: string, name: string, value: string, missing = '') {
-	return html`<label for="${id}">${label}</label>
-		<input
-			id="${id}"
-			name="${name}"
-			value="${value}"
-			maxlength="200"
-			autocomplete="off"
-			${missing ? html`required data-missing="${missing}"` : ''}
-			data-stop
-		/>`
+function dialogField(id: string, label: string, name: string, value: string, missing = '') {
+	return html`<label for="${id}">${label}</label> ${textInput({
+			id,
+			name,
+			value,
+			attrs: {
+				maxlength: 200,
+				autocomplete: 'off',
+				required: Boolean(missing),
+				'data-missing': missing || null,
+				'data-stop': true,
+			},
+		})}`
 }
 
 export function instanceChoice(store: Store, planId: string): InstanceChoice | null {
@@ -98,7 +101,7 @@ export function testerModels(context: Context) {
 		<p class="help">Choose a model for a tester, or use the workspace tester model.</p>
 		<p class="help" role="status" data-tester-count-status></p>
 		<p class="help" role="status" data-tester-model-status>Open to load models.</p>
-		<button class="btn" type="button" data-stop data-tester-model-refresh>Refresh models</button>
+		${formButton({ label: 'Refresh models', attrs: { type: 'button', 'data-stop': true, 'data-tester-model-refresh': true } })}
 		<label for="tester-model-filter">Filter models</label>
 		<input id="tester-model-filter" type="search" autocomplete="off" data-stop data-tester-model-filter />
 		${Array.from(
@@ -147,7 +150,7 @@ export function testDialog(
 		context,
 		html`<input type="hidden" name="harness" value="${context.harness}" />
 			<p class="sp-sub">Start a test of the plan on this computer. The testers run in the background.</p>
-			${field('act-test-build', 'Build', 'build', shown.build, 'Write the build name.')}
+			${dialogField('act-test-build', 'Build', 'build', shown.build, 'Write the build name.')}
 			${instances.map((choice) => instanceField(choice, choice.planId === planId))}
 			${radioGroup({
 				label: 'Level',
@@ -171,9 +174,9 @@ export function testDialog(
 			<p class="help" id="act-test-rules-help">${testerToolHelp(context.harness)}</p>
 			<details class="sp-more" data-more>
 				<summary data-stop>More</summary>
-				${field('act-test-since', 'Since (git ref)', 'since', shown.since)}
-				${field('act-test-until', 'Until (git ref)', 'until', shown.until)}
-				${field('act-test-repo', 'Repository folder', 'repo', shown.repo)}
+				${dialogField('act-test-since', 'Since (git ref)', 'since', shown.since)}
+				${dialogField('act-test-until', 'Until (git ref)', 'until', shown.until)}
+				${dialogField('act-test-repo', 'Repository folder', 'repo', shown.repo)}
 			</details>
 			${testerModels(context)}
 			<div class="btns">
@@ -297,7 +300,7 @@ export function stopDialog(context: Context, subject: Subject) {
 				Stop the test of ${subject.planId}, build ${subject.build}? The testers end now. The record and the work
 				folder stay.
 			</p>
-			${field(`act-stop-${subject.explorationId}-reason`, 'Reason (optional)', 'reason', '')}
+			${dialogField(`act-stop-${subject.explorationId}-reason`, 'Reason (optional)', 'reason', '')}
 			<div class="btns">
 				${button({ label: 'Keep testing', keyName: '1', attrs: { type: 'button', 'data-act-cancel': true, 'data-stop': true, 'data-key-n': '1' } })}
 				${button({ label: 'Stop the test', keyName: '2', emphasis: 'primary', attrs: { 'data-stop': true, 'data-key-n': '2' } })}
@@ -315,7 +318,7 @@ export function stopTesterDialog(context: Context, subject: Subject, explorer: s
 		html`<p class="sp-sub">
 				Stop tester ${explorer} of ${subject.planId}, build ${subject.build}? The other testers go on.
 			</p>
-			${field(`act-stop-${subject.explorationId}-${explorer}-reason`, 'Reason (optional)', 'reason', '')}
+			${dialogField(`act-stop-${subject.explorationId}-${explorer}-reason`, 'Reason (optional)', 'reason', '')}
 			<div class="btns">
 				${button({ label: 'Keep testing', keyName: '1', attrs: { type: 'button', 'data-act-cancel': true, 'data-stop': true, 'data-key-n': '1' } })}
 				${button({ label: `Stop tester ${explorer}`, keyName: '2', emphasis: 'primary', attrs: { 'data-stop': true, 'data-key-n': '2' } })}

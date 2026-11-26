@@ -43,7 +43,7 @@ export function logPage(store: Store, params: URLSearchParams): Page {
 		subjects: ['*'],
 		address: listHref(spec, state),
 		...pageTrail(spec, state, page.total, 'Log'),
-		body: html`${heading('Log', 'Every write to the workspace.')} ${filterBar(spec, state)}
+		body: html`${heading({ title: 'Log', sub: 'Every write to the workspace.' })} ${filterBar(spec, state)}
 		${listRegion(spec, state, page.total, page.rows.map(logRow))}`,
 	}
 }

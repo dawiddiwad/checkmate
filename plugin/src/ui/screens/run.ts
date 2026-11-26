@@ -7,11 +7,14 @@ import type { Html } from '../html.ts'
 import type { Context, Page } from '../layout.ts'
 import { banner } from '../components/banner.ts'
 import { resultCell } from '../components/board.ts'
+import { formButton } from '../components/button.ts'
+import { dataTable, tableRow } from '../components/data-table.ts'
+import { evidenceList } from '../components/evidence-viewer.ts'
 import { groupHeader, listRow } from '../components/list-row.ts'
 import { downloadMenu } from '../components/menu.ts'
 import { crumbBar } from '../components/page-heading.ts'
 import { statusCounts, statusMark } from '../components/status-mark.ts'
-import { evidenceList, shownAsText } from '../evidence.ts'
+import { shownAsText } from '../evidence.ts'
 import { emptyState, recordPanel, returnFields, verdictPanel } from '../forms.ts'
 import { hasMetadata, html, join, metadataList, plural, short, time, words } from '../html.ts'
 import { runStatus, runUsageLine } from '../lists.ts'
@@ -223,7 +226,7 @@ function adoptForm(context: Context, detail: Detail, gapId: string, sha256: stri
 						aria-label="Your name"
 					/>`
 		}
-		<button class="btn small">Bring into plan</button>
+		${formButton({ label: 'Bring into plan', inline: true })}
 	</form>`
 }
 
@@ -254,8 +257,8 @@ function gapCard(
 				adopted
 					? html`${statusMark({ state: 'resolved', label: 'in plan' })}
 							<a href="/plans/${latest}#${gap.id}">${latest}</a>`
-					: html`<a class="btn small" href="/plans/${latest}/gaps/${gap.id}#answer">Answer</a>
-							${adoptForm(context, detail, gap.id, revision.sha256)}`
+					: html`${formButton({ label: 'Answer', href: `/plans/${latest}/gaps/${gap.id}#answer`, inline: true })}
+						${adoptForm(context, detail, gap.id, revision.sha256)}`
 			}
 		</div>
 		${adoptError?.gapId === gap.id ? html`<p class="form-error" role="alert">${adoptError.message}</p>` : ''}
@@ -267,39 +270,28 @@ function coverage(store: Store, detail: Detail) {
 	if (!result) return html`<p class="none">Coverage is known when the run finishes.</p>`
 	const plan = planDetail(store, detail.planId, detail.revision).plan
 	const requirements = new Map(plan.requirements.map((item) => [item.id, item]))
-	return html`<div class="scroll">
-		<table>
-			<thead>
-				<tr>
-					<th scope="col">ID</th>
-					<th scope="col">Requirement</th>
-					<th scope="col">Tests</th>
-					<th scope="col">Coverage</th>
-				</tr>
-			</thead>
-			<tbody>
-				${result.coverage.requirements.map(
-					(row) =>
-						html`<tr>
-							<td class="mono">${row.requirementId}</td>
-							<td>
-								${requirements.get(row.requirementId)?.text ?? ''}
-								${row.reason ? html`<div class="muted small">${row.reason}</div>` : ''}
-								${
-									hasMetadata(requirements.get(row.requirementId)?.metadata)
-										? html`<div class="small">
-												${metadataList(requirements.get(row.requirementId)?.metadata)}
-											</div>`
-										: ''
-								}
-							</td>
-							<td class="mono">${row.testIds.join(', ') || '–'}</td>
-							<td>${statusMark({ state: row.status })}</td>
-						</tr>`
-				)}
-			</tbody>
-		</table>
-	</div>`
+	return dataTable({
+		columns: ['ID', 'Requirement', 'Tests', 'Coverage'],
+		rows: result.coverage.requirements.map((row) =>
+			tableRow({
+				cells: [
+					{ content: row.requirementId, attrs: { class: 'mono' } },
+					html`${requirements.get(row.requirementId)?.text ?? ''}
+					${row.reason ? html`<div class="muted small">${row.reason}</div>` : ''}
+					${
+						hasMetadata(requirements.get(row.requirementId)?.metadata)
+							? html`<div class="small">
+									${metadataList(requirements.get(row.requirementId)?.metadata)}
+								</div>`
+							: ''
+					}`,
+					{ content: row.testIds.join(', ') || '–', attrs: { class: 'mono' } },
+					statusMark({ state: row.status }),
+				],
+			})
+		),
+		scroll: true,
+	})
 }
 
 function cleanup(detail: Detail) {
@@ -585,12 +577,12 @@ function openChecks(detail: Detail) {
 
 function summaryDetail(store: Store, context: Context, detail: Detail, state: FormState | null, crumbs: Html) {
 	const report = detail.result
-		? downloadMenu(
-				'Download report',
-				`/runs/${detail.runId}/report`,
-				'The HTML report is self-contained and print-ready. Open it and print to PDF. JUnit XML is for CI.',
-				['html', 'md', 'json', 'junit']
-			)
+		? downloadMenu({
+				label: 'Download report',
+				base: `/runs/${detail.runId}/report`,
+				note: 'The HTML report is self-contained and print-ready. Open it and print to PDF. JUnit XML is for CI.',
+				formats: ['html', 'md', 'json', 'junit'],
+			})
 		: html`<span class="muted small">The report is ready when the run finishes.</span>`
 	return html`${crumbs}
 		<h2 class="q-h">Overview</h2>
@@ -620,12 +612,14 @@ export function runPage(
 	const label =
 		test?.testId ?? finding?.id ?? gap?.id ?? (asked === 'coverage' ? 'Coverage' : record ? 'Cleanup' : null)
 	const list = `/runs/${runId}`
-	const crumbs = crumbBar([
-		['Runs', '/runs'],
-		[`${detail.planId}@${detail.revision}`, `/plans/${detail.planId}@${detail.revision}`],
-		[runId, label ? list : null],
-		...(label ? [[label, null] as [string, null]] : []),
-	])
+	const crumbs = crumbBar({
+		crumbs: [
+			['Runs', '/runs'],
+			[`${detail.planId}@${detail.revision}`, `/plans/${detail.planId}@${detail.revision}`],
+			[runId, label ? list : null],
+			...(label ? [[label, null] as [string, null]] : []),
+		],
+	})
 	const pane = test
 		? html`${crumbs} ${testCard(store, detail, test)}`
 		: finding

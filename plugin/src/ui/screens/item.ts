@@ -8,14 +8,14 @@ import type { Item, Review } from '../review.ts'
 import { banner } from '../components/banner.ts'
 import { button } from '../components/button.ts'
 import { closeButton, drawer, drawerHead } from '../components/drawer.ts'
-import { emptyLine } from '../components/empty-state.ts'
+import { evidenceFiles, evidencePreview } from '../components/evidence-viewer.ts'
 import { recordFacts } from '../components/facts.ts'
 import { wordMark } from '../components/status-mark.ts'
-import { htmlPreview, imageTypes, shownAsText, size } from '../evidence.ts'
-import { claimEvidenceFiles } from './exploration.ts'
+import { size } from '../evidence.ts'
 import { keptText } from '../forms.ts'
 import { html, plural, time, words } from '../html.ts'
 import { buildLabel, itemTag, latestClaimBuild, optionsOf, outside, reviewHref } from '../review.ts'
+import { claimEvidenceFiles } from './exploration.ts'
 
 export type Refusal = { key: string; state: FormState; subject?: string }
 
@@ -36,27 +36,6 @@ function ruleText(review: Review, rule: string | null) {
 
 export function filesOf(store: Store, review: Review, item: Item): EvidenceFile[] {
 	return item.claim ? claimEvidenceFiles(store, review.planId, item.claim) : []
-}
-
-function fileRows(files: EvidenceFile[], base: string, current: number | null, viewer = false) {
-	if (!files.length) return emptyLine({ text: 'The tester gave no evidence.' })
-	return html`<div class="sp-files" role="listbox" aria-label="Evidence">
-		${files.map(
-			(file, index) =>
-				html`<a
-					class="sp-file${current === index ? ' hl' : ''}"
-					role="option"
-					aria-selected="${current === index ? 'true' : 'false'}"
-					tabindex="-1"
-					href="${`${base}&file=${index}`}"
-					${viewer ? html`data-vfile="${index}"` : html`data-sub data-href="${`${base}&file=${index}`}"`}
-					data-label="${file.name}"
-					><span class="sp-file-k">${index + 1}</span
-					><span class="ell" title="${file.name}">${file.name}</span
-					><span class="sp-file-k">${viewer ? (file.size ? size(file.size) : '') : 'View'}</span></a
-				>`
-		)}
-	</div>`
 }
 
 function hiddenFields(context: Context, item: Item, back: string, fields: Array<[string, string]>) {
@@ -147,7 +126,7 @@ function claimBody(
 					</div>`
 				: ''
 		}
-		<div><span class="sp-lbl">Evidence</span>${fileRows(files, base, null)}</div>
+		<div><span class="sp-lbl">Evidence</span>${evidenceFiles({ files, base, current: null })}</div>
 		${recordFacts({
 			rows: [
 				['Across builds', acrossBuilds(review, item)],
@@ -298,17 +277,6 @@ export function recordDrawer(
 	})
 }
 
-function preview(file: EvidenceFile) {
-	if (file.size === 0 && file.href) return emptyLine({ text: 'Empty file.' })
-	if (file.href && imageTypes.includes(file.mediaType))
-		return html`<img src="${file.href}" alt="Evidence ${file.name}" data-ev-image /><span class="sp-empty" hidden
-				>This image cannot be shown.</span
-			>`
-	if (file.text && (!file.href || shownAsText(file.mediaType, file.size)))
-		return html`<pre tabindex="0">${file.text()}</pre>`
-	return htmlPreview(file) ?? emptyLine({ text: 'No preview for this file type.' })
-}
-
 export function evidenceViewer(store: Store, review: Review, item: Item, view: string, index: number) {
 	const files = filesOf(store, review, item)
 	const base = reviewHref(review.planId, view, `&item=${encodeURIComponent(item.key)}`)
@@ -321,12 +289,12 @@ export function evidenceViewer(store: Store, review: Review, item: Item, view: s
 			${closeButton({ href: base })}
 		</div>
 		<div class="sp-vb">
-			${fileRows(files, base, shown, true)}
+			${evidenceFiles({ files, base, current: shown, inViewer: true })}
 			<div>
 				${files.map(
 					(file, n) =>
 						html`<figure class="sp-fig" data-vfig="${n}" ${n === shown ? '' : html`hidden`}>
-							${preview(file)}
+							${evidencePreview({ file })}
 							<figcaption>
 								<span class="ell" title="${file.name}"
 									>${file.name}${file.size ? ` · ${size(file.size)}` : ''}</span

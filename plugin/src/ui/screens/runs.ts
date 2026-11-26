@@ -44,7 +44,7 @@ export function runsPage(store: Store, params: URLSearchParams): Page {
 		subjects: ['*'],
 		address: listHref(spec, state),
 		...pageTrail(spec, state, page.total, 'Runs'),
-		body: html`${heading('Runs', 'Every run of every plan.')} ${filterBar(spec, state)}
+		body: html`${heading({ title: 'Runs', sub: 'Every run of every plan.' })} ${filterBar(spec, state)}
 		${listRegion(spec, state, page.total, page.rows.map(runRow))}`,
 	}
 }

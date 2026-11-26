@@ -2618,10 +2618,24 @@ test('Give a session tester the data rules of a read-only target — the test ta
 	await ok('explore', 'started', id, 'a1', 'a2')
 	// While testers run, the wait reply names the tool that records a finished tester.
 	const { toolName } = await import('../../plugin/src/tool-names.ts')
-	const [, , waiting] = await mcpCalls(workspace, env, [[toolName('next_tester_steps'), { explorationId: id }]])
+	const [, listed, waiting] = await mcpCalls(workspace, env, [[toolName('next_tester_steps'), { explorationId: id }]])
+	// Each next action names a listed tool, and each "<tool> with <fields>" in its text names fields of that tool.
+	const inputs = new Map<string, string[]>(
+		listed.result.tools.map((tool: { name: string; inputSchema: { properties: object } }) => [
+			tool.name,
+			Object.keys(tool.inputSchema.properties),
+		])
+	)
+	const checkNext = (next: { action: string; instruction: string }) => {
+		assert.ok(inputs.has(toolName(next.action as Parameters<typeof toolName>[0])), next.action)
+		for (const [, tool, fields] of next.instruction.matchAll(/(checkmate_\w+) with (\w+(?:, \w+)*)/g))
+			for (const field of fields.split(', '))
+				assert.ok(inputs.get(tool)?.includes(field), `${tool} has no ${field}`)
+	}
 	assert.deepEqual(waiting.result.structuredContent.actions, [{ action: 'wait', line: 'wait' }])
 	assert.equal(waiting.result.structuredContent.nextAction.action, 'tester_step_done')
 	assert.ok(waiting.result.structuredContent.nextAction.instruction.includes(toolName('tester_step_done')))
+	checkNext(waiting.result.structuredContent.nextAction)
 	writeFileSync(join(workspace, '.checkmate/work', id, 'a1/questions.md'), 'None\n')
 	await ok('explore', 'done', id, 'a1', 'study', '--agent', 'tester-1')
 	await ok('explore', 'next', id)
@@ -2653,8 +2667,15 @@ test('Give a session tester the data rules of a read-only target — the test ta
 	])
 	assert.equal(malformed.result.structuredContent.refusal, 'malformed')
 	assert.match(refused.result.structuredContent.nextAction.instruction, /product defects/)
-	assert.equal(recorded.result.structuredContent.status, 'completed')
-	assert.notEqual(recorded.result.structuredContent.state, 'operational_error')
+	// The test step of a1 is not the last step: the reply says that the step ended and names the next tool.
+	const step = recorded.result.structuredContent
+	assert.equal(step.status, 'completed')
+	assert.deepEqual([step.stepEvent, step.stepState, step.explorationState], ['end', 'completed', 'testing'])
+	assert.equal(step.state, undefined)
+	assert.equal(step.next, undefined)
+	assert.equal(step.nextAction.action, 'next_tester_steps')
+	assert.match(step.nextAction.instruction, /The exploration is not finished/)
+	checkNext(step.nextAction)
 	await ok('explore', 'done', id, 'a2', 'study', '--failed', 'Agent unavailable')
 	await ok('explore', 'next', id)
 	writeFileSync(

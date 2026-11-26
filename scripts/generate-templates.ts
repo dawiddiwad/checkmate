@@ -2,6 +2,7 @@
 // for example scripts/templates/plugin/skills/test/SKILL.md makes plugin/skills/test/SKILL.md.
 // A template names an action tool as {{tool <action>}}. The build writes the tool name that the host calls.
 // The action must be in the list below, so TypeScript fails when the action is renamed or removed.
+// A template names an input field of a tool as {{field <action>.<field>}}. The build fails when the action schema has no such field.
 import { readdir, readFile, writeFile } from 'node:fs/promises'
 import assert from 'node:assert/strict'
 import type { Actions } from '../plugin/src/types.ts'
@@ -28,13 +29,21 @@ const tools: Array<keyof Actions> = [
 	'tester_steps_started',
 ]
 
+const actions = JSON.parse(await readFile(new URL('../plugin/contracts/actions.schema.json', import.meta.url), 'utf8'))
+	.properties as Record<string, { properties?: Record<string, unknown> }>
+
 const templates = new URL('templates/', import.meta.url)
 for (const path of (await readdir(templates, { recursive: true })).filter((path) => path.endsWith('.md')).sort()) {
 	const template = await readFile(new URL(path, templates), 'utf8')
-	const text = template.replace(/\{\{tool (\w+)\}\}/g, (_, name: string) => {
-		assert(tools.includes(name as keyof Actions), `${path} names unknown tool ${name}`)
-		return toolName(name as keyof Actions)
-	})
+	const text = template
+		.replace(/\{\{tool (\w+)\}\}/g, (_, name: string) => {
+			assert(tools.includes(name as keyof Actions), `${path} names unknown tool ${name}`)
+			return toolName(name as keyof Actions)
+		})
+		.replace(/\{\{field (\w+)\.(\w+)\}\}/g, (_, name: string, field: string) => {
+			assert(actions[name]?.properties?.[field], `${path} names field ${field}, which ${name} does not have`)
+			return field
+		})
 	assert.doesNotMatch(text, /\{\{/, `${path} has a placeholder that is not filled`)
 	const output = new URL(`../${path}`, import.meta.url)
 	if (process.argv.includes('--check'))

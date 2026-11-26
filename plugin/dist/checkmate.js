@@ -12422,19 +12422,19 @@ function workDenyRules(otherFolders) {
   ];
 }
 function costOf(calls) {
-  const costs = calls.flatMap((call) => call.costUsd === void 0 ? [] : [call.costUsd]);
+  const costs = calls.flatMap((call2) => call2.costUsd === void 0 ? [] : [call2.costUsd]);
   if (!costs.length) return {};
   const costUsd = costs.reduce((total, cost) => total + cost, 0);
   if (!Number.isFinite(costUsd)) return {};
   return {
     costUsd,
-    ...costs.length < calls.length || calls.some((call) => call.costPartial) ? { costPartial: true } : {}
+    ...costs.length < calls.length || calls.some((call2) => call2.costPartial) ? { costPartial: true } : {}
   };
 }
 function usageOf(calls) {
   const recent = /* @__PURE__ */ new Set();
-  for (const call of calls)
-    for (const model of call.observedModels ?? []) {
+  for (const call2 of calls)
+    for (const model of call2.observedModels ?? []) {
       recent.delete(model);
       recent.add(model);
     }
@@ -12714,9 +12714,9 @@ function requireClaude(env) {
 }
 var authenticationHint = "The host session does not pass its login token to the commands that it runs. Log in on this machine so that Claude Code stores the login (run claude and log in), or run checkmate test from a shell outside a Claude Code session, or let the host give the credential in a supported way, for example an apiKeyHelper in the host settings.";
 var piAuthenticationHint = "Log in with Pi on this machine, or configure authentication through the Pi host.";
-function authenticationFailed(call) {
-  return Boolean(call.failure) && /authentication|not authenticated|no api key|invalid api key|api key expired|unauthorized|\bHTTP 401\b/i.test(
-    [call.failure?.[1] ?? "", ...call.stderr ?? [], typeof call.result === "string" ? call.result : ""].join(
+function authenticationFailed(call2) {
+  return Boolean(call2.failure) && /authentication|not authenticated|no api key|invalid api key|api key expired|unauthorized|\bHTTP 401\b/i.test(
+    [call2.failure?.[1] ?? "", ...call2.stderr ?? [], typeof call2.result === "string" ? call2.result : ""].join(
       " "
     )
   );
@@ -13067,7 +13067,7 @@ function streamClaude(claude, args, prompt2, cwd, env, onLine, delays = defaultS
   child.on("error", (error) => {
     spawnError = `claude failed: ${"code" in error ? String(error.code) : "unknown"}.`;
   });
-  const finished = new Promise((resolvePromise) => {
+  const finished2 = new Promise((resolvePromise) => {
     child.on("close", (status, signal) => {
       liveChildren.delete(child);
       for (const timer of timers) clearTimeout(timer);
@@ -13077,7 +13077,7 @@ function streamClaude(claude, args, prompt2, cwd, env, onLine, delays = defaultS
   });
   return {
     pid: child.pid,
-    finished,
+    finished: finished2,
     stop() {
       if (timers.length) return;
       killGroup(child, "SIGINT");
@@ -19815,8 +19815,8 @@ function recordOf(ask, events) {
   const recorded2 = session ? JSON.parse(session.detail) : null;
   const selection = JSON.parse(states[0].detail);
   const harness = selection.harness ?? recorded2?.harness;
-  const finished = endStates.includes(last.status) ? last : null;
-  const detail = finished ? JSON.parse(finished.detail) : {};
+  const finished2 = endStates.includes(last.status) ? last : null;
+  const detail = finished2 ? JSON.parse(finished2.detail) : {};
   const listOf2 = (value2) => Array.isArray(value2) ? value2 : [];
   return {
     id: ask.request_id,
@@ -19839,7 +19839,7 @@ function recordOf(ask, events) {
     costPartial: detail.costPartial === true,
     ...detail.costScope !== "turn" && harness !== "pi" ? { costCumulative: true } : {},
     startedAt: states.find((event2) => event2.status === "running")?.at ?? null,
-    endedAt: finished?.at ?? null,
+    endedAt: finished2?.at ?? null,
     reason: typeof detail.reason === "string" ? detail.reason : null,
     hint: typeof detail.hint === "string" ? detail.hint : null,
     denials: listOf2(detail.denials),
@@ -21903,7 +21903,7 @@ function logReply(store, actor, explorationId, planId, entries, missing, dropped
   }
 }
 function duration(calls) {
-  const values = calls.flatMap((call) => call.durationMs === void 0 ? [] : [call.durationMs]);
+  const values = calls.flatMap((call2) => call2.durationMs === void 0 ? [] : [call2.durationMs]);
   return values.length ? { durationMs: values.reduce((total, value2) => total + value2, 0) } : {};
 }
 function running2(pid) {
@@ -22138,10 +22138,10 @@ function recordLocked(store, operation, input, plan, env, cwd, started) {
   }
   const added = addedEntries(store, exploration2.exploration_id, actor, after);
   const saved = Object.values(added).reduce((total, count2) => total + count2, 0);
-  const timedOut = calls.find((call) => call.failure?.[0] === "interrupted");
+  const timedOut = calls.find((call2) => call2.failure?.[0] === "interrupted");
   const status = timedOut ? "interrupted" : calls[0].failure || !saved && !repeated ? "operational_error" : "completed";
   const reasons2 = [
-    ...calls.flatMap((call) => call.failure ? [call.failure[1]] : []),
+    ...calls.flatMap((call2) => call2.failure ? [call2.failure[1]] : []),
     ...first || calls[0].failure ? [] : ["The reply of the recorder has no JSON array of entries."],
     ...first && !saved && !repeated ? [`The recorder added no entry to ${exploration2.exploration_id}.`] : [],
     ...refusals.map((refusal2) => `Refused: ${refusal2}`)
@@ -22459,13 +22459,13 @@ function storeFindingsRun(store, actor, explorationId) {
     }
     closeTest(store, actor, { runId, testId: test.id });
   }
-  const finished = finishRun(store, actor, {
+  const finished2 = finishRun(store, actor, {
     runId,
     completion: "completed",
     cleanup: "not_applicable",
     cleanupReason: "The findings run keeps no work folder."
   });
-  return { runId, reason: finished.reasons.join(" ") };
+  return { runId, reason: finished2.reasons.join(" ") };
 }
 function storeExplorationFindings(store, actor, explorationId) {
   const stored = storeFindingsRun(store, actor, explorationId);
@@ -22905,9 +22905,9 @@ function noteChild(store, actor, explorationId, explorer) {
       signalRecordedGroup(pid, born, "SIGTERM");
   };
 }
-function failureHint(launch, call, testerModel) {
-  if (authenticationFailed(call)) return launch.context.harness === "pi" ? piAuthenticationHint : authenticationHint;
-  if (!/model/i.test([call.failure?.[1] ?? "", ...call.stderr ?? []].join(" "))) return void 0;
+function failureHint(launch, call2, testerModel) {
+  if (authenticationFailed(call2)) return launch.context.harness === "pi" ? piAuthenticationHint : authenticationHint;
+  if (!/model/i.test([call2.failure?.[1] ?? "", ...call2.stderr ?? []].join(" "))) return void 0;
   if (testerModel) return `The host refused tester model ${testerModel}. Select another model for the tester.`;
   if (launch.modelFrom === "workspace") return "Change Model for testers in Settings.";
   if (launch.context.harness === "pi")
@@ -23068,20 +23068,20 @@ async function launchExplorers(store, actor, explorationId, launch, env, catalog
   });
   const ended = await Promise.all(runs);
   for (const { explorer, session, calls } of ended) {
-    const call = calls.find((item) => item.failure) ?? calls.at(-1);
+    const call2 = calls.find((item) => item.failure) ?? calls.at(-1);
     const warnings = [...new Set(calls.flatMap((item) => item.warnings ?? []))];
-    const hint = failureHint(launch, call, launch.testerModels?.[explorer]);
-    if (launch.context.harness === "pi" && call.failure)
-      console.error(`${explorationId}/${explorer} ${calls.length === 1 ? "study" : "test"}: ${call.failure[1]}`);
+    const hint = failureHint(launch, call2, launch.testerModels?.[explorer]);
+    if (launch.context.harness === "pi" && call2.failure)
+      console.error(`${explorationId}/${explorer} ${calls.length === 1 ? "study" : "test"}: ${call2.failure[1]}`);
     const durations = calls.flatMap((item) => item.durationMs === void 0 ? [] : [item.durationMs]);
     event(store, actor, explorationId, {
       step: "end",
       explorer,
-      status: call.failure?.[0] ?? "completed",
+      status: call2.failure?.[0] ?? "completed",
       detail: {
         session,
-        ...call.failure ? { turn: calls.length === 1 ? "study" : "test", reason: call.failure[1] } : {},
-        ...call.stderr ? { stderr: call.stderr } : {},
+        ...call2.failure ? { turn: calls.length === 1 ? "study" : "test", reason: call2.failure[1] } : {},
+        ...call2.stderr ? { stderr: call2.stderr } : {},
         ...warnings.length ? { warnings } : {},
         ...hint ? { hint } : {},
         ...usageOf(calls),
@@ -23138,7 +23138,7 @@ function mergeReports(store, actor, explorationId, launch, env, after = 0) {
   if (!input) return;
   const session = randomUUID4();
   const executable = requireChild(env, launch.context.harness);
-  const call = (args, prompt2) => {
+  const call2 = (args, prompt2) => {
     const hook = childHook(store.workspace, explorationId, "merge");
     const context = { ...launch.context, hook };
     return callChild(
@@ -23153,19 +23153,19 @@ function mergeReports(store, actor, explorationId, launch, env, after = 0) {
   };
   const log = (reply) => logMerge(store, explorationId, reply);
   const calls = [
-    call(
+    call2(
       ["--session-id", session],
       mergerPrompt(input.build, input.defects, input.groups, input.questions, input.earlier)
     )
   ];
   let refusals = calls[0].failure ? [] : log(replyArray(calls[0].result));
   if (refusals.length) {
-    calls.push(call(["--resume", session], repairPrompt(refusals)));
+    calls.push(call2(["--resume", session], repairPrompt(refusals)));
     refusals = log(replyArray(calls.at(-1).result));
   }
   const unplaced = calls.some((item) => item.failure) ? [] : unplacedReports(store, explorationId, after);
   if (unplaced.length) {
-    calls.push(call(["--resume", session], mergeAgainPrompt(unplaced)));
+    calls.push(call2(["--resume", session], mergeAgainPrompt(unplaced)));
     refusals = [...refusals, ...log(replyArray(calls.at(-1).result))];
   }
   const failure = calls.find((item) => item.failure)?.failure;
@@ -23190,7 +23190,7 @@ function deriveRules(store, actor, explorationId, launch, env) {
   const sources = ruleSources(store, opened.plan_id);
   const names = sources.filter((source) => source.text !== null).map((source) => source.name);
   const session = randomUUID4();
-  const call = (args, prompt2) => {
+  const call2 = (args, prompt2) => {
     const hook = childHook(store.workspace, explorationId, "rules");
     const context = { ...launch.context, hook };
     return callChild(
@@ -23203,11 +23203,11 @@ function deriveRules(store, actor, explorationId, launch, env) {
       context.harness
     );
   };
-  const calls = [call(["--session-id", session], rulesPrompt(opened.charter.goal, sources))];
+  const calls = [call2(["--session-id", session], rulesPrompt(opened.charter.goal, sources))];
   const first = checkedRules(replyArray(calls[0].result), names);
   let checked = first;
   if (!calls[0].failure && first.refusals.length) {
-    calls.push(call(["--resume", session], rulesRepairPrompt(first.refusals)));
+    calls.push(call2(["--resume", session], rulesRepairPrompt(first.refusals)));
     const again = checkedRules(replyArray(calls[1].result), names);
     if (again.rules.length) checked = again;
   }
@@ -23298,8 +23298,8 @@ async function verifyClaims(store, actor, explorationId, launch, env, after = 0)
   }
   const { observations, refusals } = checked;
   if (observations.length) logEntries(store, verifierActor, { explorationId, entries: observations });
-  const failure = calls.find((call) => call.failure)?.failure;
-  const stderr = calls.find((call) => call.stderr)?.stderr;
+  const failure = calls.find((call2) => call2.failure)?.failure;
+  const stderr = calls.find((call2) => call2.stderr)?.stderr;
   event(store, actor, explorationId, {
     step: "verify",
     explorer: null,
@@ -23593,7 +23593,7 @@ async function driveFollow(workspace2, explorationId, env) {
           catalog2,
           plan.modelOverride ? "" : initial.testerEfforts?.[explorer] ?? (model ? "" : initial.effort ?? "")
         );
-        const call = await watchedTurns(
+        const call2 = await watchedTurns(
           store,
           actor,
           explorationId,
@@ -23610,25 +23610,25 @@ async function driveFollow(workspace2, explorationId, env) {
             "follow-up"
           )
         );
-        return { explorer, session, call, tester, model };
+        return { explorer, session, call: call2, tester, model };
       })
     );
-    for (const { explorer, session, call, tester, model } of ended) {
-      const hint = failureHint(launch, call, model);
-      if (launch.context.harness === "pi" && call.failure)
-        console.error(`${explorationId}/${explorer} follow-up: ${call.failure[1]}`);
+    for (const { explorer, session, call: call2, tester, model } of ended) {
+      const hint = failureHint(launch, call2, model);
+      if (launch.context.harness === "pi" && call2.failure)
+        console.error(`${explorationId}/${explorer} follow-up: ${call2.failure[1]}`);
       event(store, actor, explorationId, {
         step: "follow-turn",
         explorer,
-        status: call.failure?.[0] ?? "completed",
+        status: call2.failure?.[0] ?? "completed",
         detail: {
           session,
           context: tester,
-          ...call.failure ? { reason: call.failure[1] } : {},
-          ...call.stderr ? { stderr: call.stderr } : {},
-          ...call.warnings ? { warnings: call.warnings } : {},
+          ...call2.failure ? { reason: call2.failure[1] } : {},
+          ...call2.stderr ? { stderr: call2.stderr } : {},
+          ...call2.warnings ? { warnings: call2.warnings } : {},
           ...hint ? { hint } : {},
-          ...usageOf([call])
+          ...usageOf([call2])
         }
       });
     }
@@ -25241,7 +25241,7 @@ function loopStatus(store, planId, harness) {
   const fixes = claims.filter((claim) => factoryStates.includes(claim.state));
   const kept = fixes.filter((claim) => !claim.handoff).length;
   const last = explorations.at(-1);
-  const finished = explorations.filter((item) => item.state === "completed").at(-1);
+  const finished2 = explorations.filter((item) => item.state === "completed").at(-1);
   const after = [
     ...fixes.length ? [
       `${amount(fixes.length, "confirmed or observed claim")} ready for the factory: checkmate claim list ${planId}`
@@ -25253,7 +25253,7 @@ function loopStatus(store, planId, harness) {
       `${amount(questions.length, "open question")} can be answered at any time and do not block: ${answerQuestion2}`
     ] : [],
     `Retest on the next build: checkmate test ${planId} --build <new build> --allow Read --allow Bash`,
-    ...finished && fixes.length ? [storedRunNext(store, finished.explorationId)] : []
+    ...finished2 && fixes.length ? [storedRunNext(store, finished2.explorationId)] : []
   ];
   if (fixes.length)
     return { ...base, ...extra, ...loop("defects_open", "factory", [amount(fixes.length, "open claim")], after) };
@@ -25376,7 +25376,7 @@ function checkStatus(store, planId, harness) {
   const runs = runList(store, { planId });
   const openRuns = runs.filter((run2) => run2.state === "started").map((run2) => ({ runId: run2.runId, build: run2.build, instanceId: run2.instanceId }));
   const record = planRecord(store, plan);
-  const finished = runs.find((run2) => run2.runId === record.results.at(-1)?.runId);
+  const finished2 = runs.find((run2) => run2.runId === record.results.at(-1)?.runId);
   const latestRun = runs.at(-1) ?? null;
   const retest = latestRetest(store, planId, record);
   const { ready, latest, supplied, rejected } = record;
@@ -25479,7 +25479,7 @@ function checkStatus(store, planId, harness) {
         [`checkmate plan approve ${subject} --rationale "<why>"`]
       );
     const blocking = gaps.filter((gap) => gap.severity === "blocking");
-    if (!finished) {
+    if (!finished2) {
       const selection = readySelection(store, plan, null);
       if (selection.tests.length) {
         const build = bestBuild((item) => readySelection(store, plan, item).tests.length) ?? "<build>";
@@ -25515,7 +25515,7 @@ function checkStatus(store, planId, harness) {
       );
     }
     if (gaps.length) return loop("needs_answers", "oracle", [amount(gaps.length, "open gap")], answer2);
-    if (!ready.length) return nothingToRun(finished.build, readySelection(store, plan, finished.build).leftOut);
+    if (!ready.length) return nothingToRun(finished2.build, readySelection(store, plan, finished2.build).leftOut);
     const causes = /* @__PURE__ */ new Set();
     const reasons2 = new Map(
       ready.map((testId) => {
@@ -25534,7 +25534,7 @@ function checkStatus(store, planId, harness) {
       })
     );
     const incomplete = runs.filter(
-      (run2) => (supplied.includes(run2.runId) || run2.runId === finished.runId) && run2.completion !== "completed"
+      (run2) => (supplied.includes(run2.runId) || run2.runId === finished2.runId) && run2.completion !== "completed"
     );
     for (const run2 of incomplete) causes.add(run2.runId);
     const why = [
@@ -25546,7 +25546,7 @@ function checkStatus(store, planId, harness) {
       const needed = incomplete.length ? ready : ready.filter((testId) => reasons2.get(testId).length);
       const selectable = (build) => readySelection(store, plan, build).tests.some((testId) => needed.includes(testId));
       const caused = runs.filter((run2) => causes.has(run2.runId));
-      let next = (caused.length ? caused : [finished]).filter((run2) => selectable(run2.build)).map(rerun);
+      let next = (caused.length ? caused : [finished2]).filter((run2) => selectable(run2.build)).map(rerun);
       if (!next.length) {
         const build = bestBuild(
           (item) => readySelection(store, plan, item).tests.filter((testId) => needed.includes(testId)).length
@@ -25556,7 +25556,7 @@ function checkStatus(store, planId, harness) {
             `checkmate run begin <runId> ${subject} --build ${shellWord(build)}${instance()} --partial ready_only`
           ];
       }
-      if (!next.length) return nothingToRun(finished.build, readySelection(store, plan, finished.build).leftOut);
+      if (!next.length) return nothingToRun(finished2.build, readySelection(store, plan, finished2.build).leftOut);
       return loop("needs_retest", "qa", why, [...new Set(next)]);
     }
     const supplying = runs.filter((run2) => supplied.includes(run2.runId));
@@ -25745,8 +25745,8 @@ function runDetail(store, runId) {
     sha256: row2.sha256,
     size: row2.size
   }));
-  const finished = runResult(store, runId);
-  const { attempt: _attempt, ...clock2 } = runClock(store, run2.row, finished?.result.finishedAt);
+  const finished2 = runResult(store, runId);
+  const { attempt: _attempt, ...clock2 } = runClock(store, run2.row, finished2?.result.finishedAt);
   const receipts = all(
     store,
     `SELECT json_extract(arguments, '$.attempt') AS attempt, at, status FROM operations
@@ -25814,22 +25814,22 @@ function runDetail(store, runId) {
     deadlineSeconds: run2.row.deadline_seconds,
     clock: clock2,
     request: run2.request,
-    state: finished ? "finalized" : "started",
+    state: finished2 ? "finalized" : "started",
     attempts,
     tests,
-    warnings: finished ? [] : runOverlapWarnings(store, runId),
+    warnings: finished2 ? [] : runOverlapWarnings(store, runId),
     findings: verdictFindings(store, runId),
     retest: retestVerdicts(run2, outcomes, runAssertions(store, runId)),
     newGaps: runGaps(store, runId),
-    result: finished ? {
-      sha256: finished.sha256,
-      completion: finished.result.completion,
-      completionCause: finished.result.completionCause ?? null,
-      completionReason: finished.result.completionReason ?? null,
-      coverage: finished.result.coverage,
-      cleanup: finished.result.cleanup,
-      finishedAt: finished.result.finishedAt,
-      acceptance: approvalLabel(resultAcceptance(store, run2.row, finished.sha256)),
+    result: finished2 ? {
+      sha256: finished2.sha256,
+      completion: finished2.result.completion,
+      completionCause: finished2.result.completionCause ?? null,
+      completionReason: finished2.result.completionReason ?? null,
+      coverage: finished2.result.coverage,
+      cleanup: finished2.result.cleanup,
+      finishedAt: finished2.result.finishedAt,
+      acceptance: approvalLabel(resultAcceptance(store, run2.row, finished2.sha256)),
       latestDecision: latestApproval(store, "result", runId) ?? null
     } : null
   };
@@ -27268,13 +27268,13 @@ function exportPlan(store, reference2, format3) {
 }
 function runReport(store, runId) {
   const run2 = runState(store, runId);
-  const finished = runResult(store, runId);
-  requireCondition(finished, `Run ${runId} has no result. Finish it before you export it.`);
-  const state = resultAcceptance(store, run2.row, finished.sha256);
+  const finished2 = runResult(store, runId);
+  requireCondition(finished2, `Run ${runId} has no result. Finish it before you export it.`);
+  const state = resultAcceptance(store, run2.row, finished2.sha256);
   const approval = planApproval(store, run2.plan, run2.row.plan_sha256);
   const { planId, revision: revision2, objective, requirements, tests, gaps, decisions, assumptions } = run2.plan;
   const inline2 = {};
-  for (const entry of finished.result.evidence) {
+  for (const entry of finished2.result.evidence) {
     const image2 = inlineImages.includes(entry.mediaType) && entry.size <= maxInlineImage;
     const text2 = inlineTexts.includes(entry.mediaType) && entry.size <= maxInlineText;
     if (!image2 && !text2) continue;
@@ -27286,8 +27286,8 @@ function runReport(store, runId) {
       store.workspace,
       targetRevision(store, run2.row.target_id, run2.row.target_revision).profile.reset
     ),
-    result: finished.result,
-    sha256: finished.sha256,
+    result: finished2.result,
+    sha256: finished2.sha256,
     acceptance: { state: approvalLabel(state), latest: state.latest },
     planApproval: { state: approvalLabel(approval), latest: approval.latest },
     plan: { planId, revision: revision2, objective, requirements, tests, gaps, decisions, assumptions },
@@ -28500,8 +28500,8 @@ function commandLine(command, cwd) {
   }
   if (!rest) return command;
   const named = variableStart.exec(rest);
-  const call = named && checkmateValue.test(variables.get(named[1]) ?? "") ? named : checkmateStart.exec(rest);
-  if (call) rest = `checkmate${rest.slice(call[0].length)}`;
+  const call2 = named && checkmateValue.test(variables.get(named[1]) ?? "") ? named : checkmateStart.exec(rest);
+  if (call2) rest = `checkmate${rest.slice(call2[0].length)}`;
   if (typeof cwd !== "string" || !cwd) return rest;
   return rest.replaceAll(`${cwd}/`, "./").split(" ").map((word) => word === cwd ? "." : word).join(" ");
 }
@@ -35994,7 +35994,7 @@ function streamPi(program, args, prompt2, cwd, env, extension, sessionId, onLine
       } else onLine(line);
     }
   });
-  const finished = new Promise((resolve13) => {
+  const finished2 = new Promise((resolve13) => {
     child.on("close", (status, signal) => {
       clearTimeout(timeout);
       for (const timer of timers) clearTimeout(timer);
@@ -36010,7 +36010,7 @@ function streamPi(program, args, prompt2, cwd, env, extension, sessionId, onLine
   send2({ id: "checkmate-ready", type: "get_commands" });
   return {
     pid: child.pid,
-    finished,
+    finished: finished2,
     stop() {
       if (stopped) return;
       stopped = true;
@@ -36158,8 +36158,8 @@ function createRequester(store, options3) {
   }
   function errorOutcome(result, stderr, harness) {
     const text2 = typeof result.result === "string" ? result.result : "";
-    const call = { failure: ["operational_error", text2], result: text2, stderr };
-    const authentication = authenticationFailed(call);
+    const call2 = { failure: ["operational_error", text2], result: text2, stderr };
+    const authentication = authenticationFailed(call2);
     if (harness === "pi") return failed(text2, authentication ? piAuthenticationHint : null);
     const first = text2.trim().split("\n")[0].slice(0, 200);
     return failed(
@@ -47262,13 +47262,62 @@ function actionToolDefinitions(env = process.env) {
     ];
   });
 }
-var stepDoneAction = {
-  action: "tester_step_done",
-  instruction: `When a started agent finishes, call ${toolName("tester_step_done")} with its name, step, agentId, and replyLine. Then call ${toolName("next_tester_steps")} again.`
+function call(name2, ...fields) {
+  return `${toolName(name2)} with ${fields.join(", ")}`;
+}
+var untilFinished = `The exploration is finished only when ${toolName("next_tester_steps")} returns finished.`;
+var nextSteps = {
+  action: "next_tester_steps",
+  instruction: `Call ${call("next_tester_steps", "explorationId")} and dispatch its actions with the Agent tool. A session exploration runs only when you dispatch its steps. ${untilFinished}`
 };
-function isWait(reply) {
-  const actions = reply.data.actions;
-  return actions?.length === 1 && actions[0].action === "wait";
+var stepDone2 = {
+  action: "tester_step_done",
+  instruction: `When a started agent finishes, call ${call("tester_step_done", "explorationId", "name", "step", "agentId")}. Then call ${call("next_tester_steps", "explorationId")} again. ${untilFinished}`
+};
+var stepsStarted2 = {
+  action: "tester_steps_started",
+  instruction: `Dispatch these actions with the Agent tool. Then call ${call("tester_steps_started", "explorationId", "names")} with the names that you started.`
+};
+var finished = {
+  action: "test_status",
+  instruction: `The exploration is finished. Call ${call("test_status", "explorationId", "report")} with report true.`
+};
+var processWait = {
+  action: "test_status",
+  instruction: `Call ${call("test_status", "explorationId", "waitSeconds")} until the exploration ends or needs a decision.`
+};
+function hostReply(store, name2, reply) {
+  const id2 = reply.data.explorationId;
+  if (typeof id2 !== "string") return;
+  const status = () => explorationStatus(store, id2);
+  const done = reply.status === "completed";
+  const answered = (next2) => ({
+    ...next2,
+    instruction: `Get the answer from the person. Then call ${toolName(next2.action)}. ${untilFinished}`
+  });
+  let next;
+  let data = reply.data;
+  if (name2 === "next_tester_steps" && done) {
+    const [first] = reply.data.actions;
+    next = first.action === "finished" ? finished : first.action === "wait" ? stepDone2 : stepsStarted2;
+  } else if (name2 === "tester_steps_started" && done) next = stepDone2;
+  else if (name2 === "tester_step_done" && done) {
+    const { event: event2, state, ...rest2 } = reply.data;
+    data = { ...rest2, stepEvent: event2, stepState: state, explorationState: status().state };
+    next = {
+      action: "next_tester_steps",
+      instruction: `This records one step of ${String(reply.data.name)}. The exploration is not finished. Call ${call("next_tester_steps", "explorationId")} now. ${untilFinished}`
+    };
+  } else if ((name2 === "start_test" || name2 === "follow_test") && done)
+    next = status().path === "session" ? nextSteps : processWait;
+  else if (name2 === "pause_test" && done) next = answered(status().path === "session" ? nextSteps : processWait);
+  else if (name2 === "test_status" && reply.data.outcome === "timeout") next = processWait;
+  else if (name2 === "test_status" && reply.status === "needs_decision" && status().paused)
+    next = answered(status().path === "session" ? nextSteps : processWait);
+  if (!next) return;
+  const { next: _commands, ...rest } = data;
+  const { hint: _hint, ...envelope } = reply;
+  return { ...envelope, data: { ...rest, nextAction: next } };
 }
 function actionOutput(reply) {
   const { data, ...envelope } = reply;
@@ -47343,10 +47392,7 @@ async function callActionTool(tool, input, workspace2, env) {
           return actionOutput(
             completed(explorationId, {
               ...status,
-              nextAction: {
-                action: "next_tester_steps",
-                instruction: `Call ${toolName("next_tester_steps")} and dispatch its actions with the Agent tool. A session exploration runs only when you dispatch its steps.`
-              }
+              nextAction: nextSteps
             })
           );
       }
@@ -47367,9 +47413,8 @@ async function callActionTool(tool, input, workspace2, env) {
         data: { ...reply.data, revision: actionOutput(actionRecovery("delegate_work", revision2)) }
       });
     }
-    if (name2 === "next_tester_steps" && isWait(reply))
-      return actionOutput({ ...reply, data: { ...reply.data, nextAction: stepDoneAction } });
-    return actionOutput(actionRecovery(name2, reply));
+    const hosted = hostReply(store, name2, reply);
+    return actionOutput(hosted ?? actionRecovery(name2, reply));
   } catch (error) {
     const reply = isBusy(error) ? { status: "operational_error", subject: tool, reasons: [busyReason], data: {} } : refused("rejected", tool, error);
     return actionOutput(actionRecovery(name2, reply));
@@ -48653,12 +48698,12 @@ async function delegateByTest(workspace2, subject, options3, harness, env, model
     workspace2,
     (store) => [...runOutcomes(store, subject).values()].some((outcome) => outcome.outcome === "error")
   );
-  const finished = withStore(workspace2, (store) => runState(store, subject).finished);
+  const finished2 = withStore(workspace2, (store) => runState(store, subject).finished);
   const expired = deadlineStopped || withStore(
     workspace2,
     (store) => [...runOutcomes(store, subject).values()].some((item) => item.outcome === "not_run")
   );
-  const reply = finished ? { status: "completed", subject, reasons: ["The worker already finished the run."] } : withStore(
+  const reply = finished2 ? { status: "completed", subject, reasons: ["The worker already finished the run."] } : withStore(
     workspace2,
     (store) => finishRun(store, workerActor, {
       runId: subject,

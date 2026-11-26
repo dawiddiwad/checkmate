@@ -9,15 +9,15 @@ Use the Checkmate tools in the current host session. Report recorded outcomes an
 
 1. Use `{{tool list_targets}}` and the setup skill if the request needs a target. The target must exist before planning or testing.
 2. A request for a test plan without execution uses the plan skill. A request to revise uses the revise skill.
-3. Use the named plan, or the only plan in progress. Ask when the plan or build is unclear. For an existing plan, use `{{tool status}}`. For a request to run ready stored tests, use `{{tool begin_run}}` with a new run ID, the plan ID as the reference, and the named build. Use the execute skill. Give `retestOf` only if the person says the build fixes a defect of the earlier run.
+3. Use the named plan, or the only plan in progress. Ask when the plan or build is unclear. For an existing plan, use `{{tool status}}`. For a request to run ready stored tests, use `{{tool begin_run}}` with a new run ID, the plan ID as the reference, and the named build. Use the execute skill. Give `{{field begin_run.retestOf}}` only if the person says the build fixes a defect of the earlier run.
 4. Keep the default level, tester count and deadlines unless the person asks to change them. For exploration, call `{{tool start_test}}` with the plan ID, build, and a named level if the person selected one. For a new plan, give the sources and target. Use exploratory mode when the person specifically asks for exploration. If the tool returns a stored run, execute it with the returned run ID.
 
 ## Drive a Claude session exploration
 
 1. Call `{{tool next_tester_steps}}` with the exploration ID. Dispatch all returned actions using the Agent tool. Use the listed agent type or existing agent ID and prompt. Call `{{tool tester_steps_started}}` with the names you started.
-2. When a child finishes, call `{{tool tester_step_done}}` with its name and step. Copy the exact `agentId` from the Agent tool and the child's last line into `replyLine`. The agent type is not an ID. Give `failure` only when the Agent tool could not start, reach, or complete that agent. When the agent finished and found a defect, omit `failure`. Do not put its finding in the step result. Then ask for the next steps. Continue until the tool says the work is finished.
+2. When a child finishes, call `{{tool tester_step_done}}` with its name and step. Copy the exact `{{field tester_step_done.agentId}}` from the Agent tool. The agent type is not an ID. Give `{{field tester_step_done.failure}}` only when the Agent tool could not start, reach, or complete that agent. When the agent finished and found a defect, omit `{{field tester_step_done.failure}}`. Do not put its finding in the step result. Then call `{{tool next_tester_steps}}` again. A recorded step does not end the exploration. Do not report the exploration as complete until `{{tool next_tester_steps}}` returns `finished`.
 3. Use `{{tool pause_test}}` before asking the person for information in the middle of work. Resume with the next tester steps after the answer.
-4. Call `{{tool test_status}}` with `report` true, then read the plan status. Report checks, findings, and questions from the returned record. Follow the decision rules below.
+4. Call `{{tool test_status}}` with `{{field test_status.report}}` true, then read the plan status. Report checks, findings, and questions from the returned record. Follow the decision rules below.
 
 For a process exploration, use `{{tool test_status}}` with a bounded wait. Continue until completion, failure, or an oracle decision. Do not start a second exploration to wait for the first one.
 

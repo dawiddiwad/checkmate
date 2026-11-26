@@ -7,6 +7,7 @@ import { readdir, readFile, writeFile } from 'node:fs/promises'
 import assert from 'node:assert/strict'
 import type { Actions } from '../plugin/src/types.ts'
 import { toolName } from '../plugin/src/tool-names.ts'
+import { requiredRecipeFields } from '../plugin/src/recipes.ts'
 
 const tools: Array<keyof Actions> = [
 	'answer_gap',
@@ -36,6 +37,7 @@ const templates = new URL('templates/', import.meta.url)
 for (const path of (await readdir(templates, { recursive: true })).filter((path) => path.endsWith('.md')).sort()) {
 	const template = await readFile(new URL(path, templates), 'utf8')
 	const text = template
+		.replaceAll('{{recipe-fields}}', requiredRecipeFields.map((field) => '`' + field + '`').join(', '))
 		.replace(/\{\{tool (\w+)\}\}/g, (_, name: string) => {
 			assert(tools.includes(name as keyof Actions), `${path} names unknown tool ${name}`)
 			return toolName(name as keyof Actions)

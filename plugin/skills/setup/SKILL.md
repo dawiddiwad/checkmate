@@ -7,9 +7,9 @@ Read the workspace instructions. Use Checkmate tools from the current session.
 
 If the tool needed for the test has no recipe, add one as part of setup. Use the entry names from its recipe.
 
-1. Read an example with `checkmate recipe list --json`. Write `<tool>.json` and the Markdown file named in `usage` side by side in a draft folder. Include `name`, `capability`, `kind`, `purpose`, `detect`, `environment`, `workspaceFolders`, `observeFrom`, `evidence`, and `usage`. For an executable, use its name with `kind: "cli"` and `detect: "path"`. For MCP, include `server` and `tools`. Declare needed entries in `entryPoints`. Omit it if none are needed.
-2. Run `checkmate recipe add --workspace <absolute project path> --file <recipe.json>`. Use the project folder where this host session started, or the workspace named in the setup refusal. The tool and draft can be elsewhere.
-3. Verify the reported workspace and fix any validation error. Call `checkmate_setup` with the declared entries. Tell the person you added the recipe and which commands it can run.
+1. Read an example with `checkmate recipe list --json`. Write `<tool>.json` and the Markdown file named in `usage` side by side in a draft folder. Include `name`, `capability`, `kind`, `purpose`, `detect`, `environment`, `workspaceFolders`, `observeFrom`, `evidence`, `usage`, and include `entryPoints` for a target that needs inputs such as an inventory file or org alias. Give each entry a `name`, `kind`, and `purpose`. For a CLI, use its executable name with `kind: "cli"` and `detect: "path"`. For MCP, include `server` and `tools`.
+2. Run `checkmate recipe add --workspace <absolute project path> --file <recipe.json>`. Use the project folder where this host session started, or the workspace named in the setup refusal. The tool and draft can be elsewhere. Add `--replace` to correct an installed custom recipe with the same name.
+3. Verify the reported workspace and fix any validation error. Call `checkmate_setup` with the declared entries. Pass the receipt line that starts with “Report to the person:” to the person.
 
 If `checkmate` is unavailable, use `node "<plugin root>/dist/checkmate.js"` in its place.
 

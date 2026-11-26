@@ -99,7 +99,7 @@ import { storeExplorationFindings } from './findingsRun.ts'
 import { settleEnded } from './cleanups.ts'
 import { owedCleanups, settleCleanups } from './resets.ts'
 import { actionInput, actionRecovery, dispatchAction, performAction, type ActionName } from './actions.ts'
-import { addRecipe, allEvidence, listRecipes, type ObserveValue } from './recipes.ts'
+import { addRecipe, allEvidence, listRecipes, recipeInstallReport, type ObserveValue } from './recipes.ts'
 
 type FlagKind = 'value' | 'list' | 'repeat' | 'switch' | readonly string[] | { min: number; max: number }
 type Args = Record<string, string | string[] | boolean>
@@ -360,17 +360,19 @@ function short(sha256: unknown) {
 const commands: Record<string, Command> = {
 	'recipe add': {
 		positionals: [],
-		flags: { file: 'value' },
+		flags: { file: 'value', replace: 'switch' },
 		required: ['file'],
 		workspaceRun: (args, context) => {
-			const entry = addRecipe(context.workspace, resolve(context.cwd, value(args, 'file')!))
+			const replace = args.replace === true
+			const entry = addRecipe(context.workspace, resolve(context.cwd, value(args, 'file')!), replace)
 			return completed(entry.recipe.name, {
 				workspace: context.workspace,
 				path: entry.path,
 				usagePath: entry.usagePath,
+				report: recipeInstallReport(entry, replace),
 			})
 		},
-		print: (reply) => ({ facts: reply.data }),
+		print: ({ data: { report, ...facts } }) => ({ facts, lines: [[`Report to the person: ${report}`]] }),
 	},
 	'recipe list': {
 		positionals: [],

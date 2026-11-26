@@ -1,7 +1,18 @@
-import { existsSync, linkSync, lstatSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import {
+	existsSync,
+	linkSync,
+	lstatSync,
+	mkdirSync,
+	readdirSync,
+	readFileSync,
+	renameSync,
+	rmSync,
+	statSync,
+	writeFileSync,
+} from 'node:fs'
 import { basename, dirname, join } from 'node:path'
 import { pluginRoot } from './sessions.ts'
-import { Refusal } from './contracts.ts'
+import { Refusal, shellWord } from './contracts.ts'
 
 // An entry point that an instance of a target needs when its tools use this recipe. Setup names it in the profile.
 // The optional pattern is the format check of its value, a regular expression that setup tests the value with.
@@ -49,6 +60,19 @@ export type ObserveReading = 'view' | 'state'
 
 export type SessionValues = { session: string; workFolder: string }
 
+export const requiredRecipeFields = [
+	'name',
+	'capability',
+	'kind',
+	'purpose',
+	'detect',
+	'environment',
+	'workspaceFolders',
+	'observeFrom',
+	'evidence',
+	'usage',
+] as const satisfies ReadonlyArray<keyof Recipe>
+
 export type RecipeEntry = {
 	source: 'built-in' | 'custom'
 	path: string
@@ -83,6 +107,8 @@ function readRecipe(path: string, source: RecipeEntry['source']): RecipeEntry {
 		refuse(`it is not JSON (${(error as Error).message}).`)
 	}
 	if (typeof recipe !== 'object' || recipe === null || Array.isArray(recipe)) refuse('it is not a JSON object.')
+	for (const field of requiredRecipeFields)
+		if (!Object.hasOwn(recipe, field)) refuse(`give the required field ${field}.`)
 	if (!isIdentifier(recipe.name) || `${recipe.name}.json` !== file)
 		refuse('name must match the file name without .json and use letters, numbers, dashes, or underscores.')
 	if (!isIdentifier(recipe.capability))
@@ -97,14 +123,23 @@ function readRecipe(path: string, source: RecipeEntry['source']): RecipeEntry {
 		refuse('server, tools, refusedArguments, and entryArguments are only for a recipe of kind mcp.')
 	if (!isText(recipe.purpose)) refuse('purpose must be a text.')
 	if (recipe.detect !== 'path' && recipe.detect !== 'runtime') refuse('detect must be path or runtime.')
-	const environment: unknown = recipe.environment
+	const environment = recipe.environment
 	if (
 		typeof environment !== 'object' ||
 		environment === null ||
 		Array.isArray(environment) ||
 		Object.values(environment).some((value) => typeof value !== 'string')
 	)
-		refuse('environment must be an object of texts.')
+		return refuse('environment must be an object of texts.')
+	for (const [name, value] of Object.entries(environment)) {
+		const unsupported = [...value.matchAll(/\{([A-Za-z0-9][A-Za-z0-9_-]*)\}/g)].find(
+			([, key]) => key !== 'session' && key !== 'workFolder'
+		)
+		if (unsupported)
+			refuse(
+				`environment.${name} cannot use ${unsupported[0]}. Use {session} or {workFolder}, or pass the entry as a tool argument.`
+			)
+	}
 	if (recipe.entryPoints !== undefined) readEntryPoints(recipe.entryPoints, refuse)
 	if (recipe.reachable !== undefined) readReachable(recipe, refuse)
 	if (recipe.shellInstruction !== undefined && !isText(recipe.shellInstruction))
@@ -369,7 +404,21 @@ export function listRecipes(workspace: string): RecipeCatalog {
 	return checkRecipes(catalogFiles(workspace))
 }
 
-export function addRecipe(workspace: string, path: string) {
+function usesMarkdown(item: RecipeEntry | InvalidRecipe, path: string) {
+	if ('usagePath' in item) return item.usagePath === path
+	if (dirname(item.path) !== dirname(path) || !lstatSync(item.path, { throwIfNoEntry: false })?.isFile()) return false
+	try {
+		return JSON.parse(readFileSync(item.path, 'utf8'))?.usage === basename(path)
+	} catch {
+		return false
+	}
+}
+
+export function addRecipe(workspace: string, path: string, replace: boolean) {
+	if (!statSync(workspace, { throwIfNoEntry: false })?.isDirectory())
+		throw Error(
+			`Recipe workspace is not an existing directory: ${workspace}. Give the project folder used by setup.`
+		)
 	const entry = readRecipe(path, 'custom')
 	const folder = customFolder(workspace)
 	const destination = join(folder, basename(path))
@@ -386,25 +435,66 @@ export function addRecipe(workspace: string, path: string) {
 		throw error
 	}
 	try {
-		const refused = checkRecipes([...catalogFiles(workspace), entry]).invalid.find((item) => item.path === path)
+		const files = catalogFiles(workspace)
+		const existing = files.find((item) => basename(item.path).toLowerCase() === basename(path).toLowerCase())
+		const custom = existing?.source === 'custom' ? existing : undefined
+		if (custom && (!replace || custom.path !== destination)) {
+			const owner = 'error' in custom ? 'invalid custom' : 'custom'
+			throw Error(
+				`Tool recipe ${path} is not valid: name ${entry.recipe.name} is in use by the ${owner} recipe ${custom.path}. To replace it, keep its exact name and run checkmate recipe add --replace --workspace ${shellWord(workspace)} --file ${shellWord(path)}.`
+			)
+		}
+		if (replace && !existing)
+			throw Error(`No custom recipe named ${entry.recipe.name} in ${workspace}. Omit --replace to add it.`)
+		const others = files.filter((item) => item !== custom)
+		const refused = checkRecipes([...others, entry]).invalid.find((item) => item.path === path)
 		if (refused) throw Error(refused.error)
-		if (existsSync(usagePath))
+		const usageExists = existsSync(usagePath)
+		const replaceUsage = usageExists && custom && usesMarkdown(custom, usagePath)
+		if (usageExists && (!replaceUsage || others.some((item) => usesMarkdown(item, usagePath))))
 			throw Error(`usage file ${usagePath} already exists. Choose a different usage file name.`)
 		const json = join(lock, basename(path))
 		const usage = join(lock, basename(usagePath))
+		const previousUsage = join(lock, '.previous-usage')
 		writeFileSync(json, entry.jsonText)
 		writeFileSync(usage, entry.usageText)
-		linkSync(usage, usagePath)
+		if (replaceUsage) {
+			linkSync(usagePath, previousUsage)
+			renameSync(usage, usagePath)
+		} else linkSync(usage, usagePath)
 		try {
-			linkSync(json, destination)
+			if (custom) renameSync(json, destination)
+			else linkSync(json, destination)
 		} catch (error) {
-			rmSync(usagePath)
+			if (replaceUsage) renameSync(previousUsage, usagePath)
+			else rmSync(usagePath)
 			throw error
 		}
 		return { ...entry, path: destination, usagePath }
 	} finally {
 		rmSync(lock, { recursive: true, force: true })
 	}
+}
+
+export function recipeInstallReport(entry: RecipeEntry, replace: boolean) {
+	const { recipe } = entry
+	const commands = [
+		...(recipe.detect === 'path' ? [`${shellWord(toolExecutable(recipe))} --version`] : []),
+		...(recipe.reachable ?? []).map((check) =>
+			check.check === 'http' ? `HTTP GET {${check.entry}}` : check.run.map(shellWord).join(' ')
+		),
+		...(recipe.server ? [[recipe.server.command, ...recipe.server.args].map(shellWord).join(' ')] : []),
+		...(recipe.closeSession ? [[recipe.name, ...recipe.closeSession].map(shellWord).join(' ')] : []),
+	]
+	const guidance = [recipe.shellInstruction, recipe.delegatedInstruction].filter(Boolean)
+	return [
+		`${replace ? 'Replaced' : 'Added'} recipe ${recipe.name}.`,
+		`Installed files: ${entry.path}, ${entry.usagePath}.`,
+		`Declared commands and checks: ${commands.length ? commands.join(', ') : 'none'}.`,
+		...(recipe.tools ? [`MCP tools: ${recipe.tools.join(', ')}.`] : []),
+		...(guidance.length ? [`Tester instructions: ${guidance.join(' ')}`] : []),
+		`Tester usage: ${entry.usagePath}.`,
+	].join(' ')
 }
 
 export function recipes(workspace: string) {

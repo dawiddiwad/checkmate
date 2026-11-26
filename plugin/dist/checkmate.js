@@ -11856,8 +11856,31 @@ import { join as join3 } from "node:path";
 import { createInterface } from "node:readline";
 
 // plugin/src/recipes.ts
-import { existsSync as existsSync2, linkSync, lstatSync, mkdirSync as mkdirSync2, readdirSync, readFileSync, rmSync as rmSync2, writeFileSync } from "node:fs";
+import {
+  existsSync as existsSync2,
+  linkSync,
+  lstatSync,
+  mkdirSync as mkdirSync2,
+  readdirSync,
+  readFileSync,
+  renameSync,
+  rmSync as rmSync2,
+  statSync,
+  writeFileSync
+} from "node:fs";
 import { basename, dirname, join as join2 } from "node:path";
+var requiredRecipeFields = [
+  "name",
+  "capability",
+  "kind",
+  "purpose",
+  "detect",
+  "environment",
+  "workspaceFolders",
+  "observeFrom",
+  "evidence",
+  "usage"
+];
 var builtIn;
 function isIdentifier(value2) {
   return typeof value2 === "string" && /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,95}$/.test(value2);
@@ -11880,6 +11903,8 @@ function readRecipe(path, source) {
     refuse4(`it is not JSON (${error.message}).`);
   }
   if (typeof recipe !== "object" || recipe === null || Array.isArray(recipe)) refuse4("it is not a JSON object.");
+  for (const field4 of requiredRecipeFields)
+    if (!Object.hasOwn(recipe, field4)) refuse4(`give the required field ${field4}.`);
   if (!isIdentifier(recipe.name) || `${recipe.name}.json` !== file)
     refuse4("name must match the file name without .json and use letters, numbers, dashes, or underscores.");
   if (!isIdentifier(recipe.capability))
@@ -11894,7 +11919,16 @@ function readRecipe(path, source) {
   if (recipe.detect !== "path" && recipe.detect !== "runtime") refuse4("detect must be path or runtime.");
   const environment = recipe.environment;
   if (typeof environment !== "object" || environment === null || Array.isArray(environment) || Object.values(environment).some((value2) => typeof value2 !== "string"))
-    refuse4("environment must be an object of texts.");
+    return refuse4("environment must be an object of texts.");
+  for (const [name2, value2] of Object.entries(environment)) {
+    const unsupported = [...value2.matchAll(/\{([A-Za-z0-9][A-Za-z0-9_-]*)\}/g)].find(
+      ([, key]) => key !== "session" && key !== "workFolder"
+    );
+    if (unsupported)
+      refuse4(
+        `environment.${name2} cannot use ${unsupported[0]}. Use {session} or {workFolder}, or pass the entry as a tool argument.`
+      );
+  }
   if (recipe.entryPoints !== void 0) readEntryPoints(recipe.entryPoints, refuse4);
   if (recipe.reachable !== void 0) readReachable(recipe, refuse4);
   if (recipe.shellInstruction !== void 0 && !isText(recipe.shellInstruction))
@@ -12066,7 +12100,20 @@ function catalogFiles(workspace2) {
 function listRecipes(workspace2) {
   return checkRecipes(catalogFiles(workspace2));
 }
-function addRecipe(workspace2, path) {
+function usesMarkdown(item, path) {
+  if ("usagePath" in item) return item.usagePath === path;
+  if (dirname(item.path) !== dirname(path) || !lstatSync(item.path, { throwIfNoEntry: false })?.isFile()) return false;
+  try {
+    return JSON.parse(readFileSync(item.path, "utf8"))?.usage === basename(path);
+  } catch {
+    return false;
+  }
+}
+function addRecipe(workspace2, path, replace2) {
+  if (!statSync(workspace2, { throwIfNoEntry: false })?.isDirectory())
+    throw Error(
+      `Recipe workspace is not an existing directory: ${workspace2}. Give the project folder used by setup.`
+    );
   const entry = readRecipe(path, "custom");
   const folder = customFolder(workspace2);
   const destination = join2(folder, basename(path));
@@ -12083,25 +12130,65 @@ function addRecipe(workspace2, path) {
     throw error;
   }
   try {
-    const refused3 = checkRecipes([...catalogFiles(workspace2), entry]).invalid.find((item) => item.path === path);
+    const files2 = catalogFiles(workspace2);
+    const existing = files2.find((item) => basename(item.path).toLowerCase() === basename(path).toLowerCase());
+    const custom = existing?.source === "custom" ? existing : void 0;
+    if (custom && (!replace2 || custom.path !== destination)) {
+      const owner = "error" in custom ? "invalid custom" : "custom";
+      throw Error(
+        `Tool recipe ${path} is not valid: name ${entry.recipe.name} is in use by the ${owner} recipe ${custom.path}. To replace it, keep its exact name and run checkmate recipe add --replace --workspace ${shellWord(workspace2)} --file ${shellWord(path)}.`
+      );
+    }
+    if (replace2 && !existing)
+      throw Error(`No custom recipe named ${entry.recipe.name} in ${workspace2}. Omit --replace to add it.`);
+    const others = files2.filter((item) => item !== custom);
+    const refused3 = checkRecipes([...others, entry]).invalid.find((item) => item.path === path);
     if (refused3) throw Error(refused3.error);
-    if (existsSync2(usagePath))
+    const usageExists = existsSync2(usagePath);
+    const replaceUsage = usageExists && custom && usesMarkdown(custom, usagePath);
+    if (usageExists && (!replaceUsage || others.some((item) => usesMarkdown(item, usagePath))))
       throw Error(`usage file ${usagePath} already exists. Choose a different usage file name.`);
     const json = join2(lock, basename(path));
     const usage2 = join2(lock, basename(usagePath));
+    const previousUsage = join2(lock, ".previous-usage");
     writeFileSync(json, entry.jsonText);
     writeFileSync(usage2, entry.usageText);
-    linkSync(usage2, usagePath);
+    if (replaceUsage) {
+      linkSync(usagePath, previousUsage);
+      renameSync(usage2, usagePath);
+    } else linkSync(usage2, usagePath);
     try {
-      linkSync(json, destination);
+      if (custom) renameSync(json, destination);
+      else linkSync(json, destination);
     } catch (error) {
-      rmSync2(usagePath);
+      if (replaceUsage) renameSync(previousUsage, usagePath);
+      else rmSync2(usagePath);
       throw error;
     }
     return { ...entry, path: destination, usagePath };
   } finally {
     rmSync2(lock, { recursive: true, force: true });
   }
+}
+function recipeInstallReport(entry, replace2) {
+  const { recipe } = entry;
+  const commands2 = [
+    ...recipe.detect === "path" ? [`${shellWord(toolExecutable(recipe))} --version`] : [],
+    ...(recipe.reachable ?? []).map(
+      (check) => check.check === "http" ? `HTTP GET {${check.entry}}` : check.run.map(shellWord).join(" ")
+    ),
+    ...recipe.server ? [[recipe.server.command, ...recipe.server.args].map(shellWord).join(" ")] : [],
+    ...recipe.closeSession ? [[recipe.name, ...recipe.closeSession].map(shellWord).join(" ")] : []
+  ];
+  const guidance = [recipe.shellInstruction, recipe.delegatedInstruction].filter(Boolean);
+  return [
+    `${replace2 ? "Replaced" : "Added"} recipe ${recipe.name}.`,
+    `Installed files: ${entry.path}, ${entry.usagePath}.`,
+    `Declared commands and checks: ${commands2.length ? commands2.join(", ") : "none"}.`,
+    ...recipe.tools ? [`MCP tools: ${recipe.tools.join(", ")}.`] : [],
+    ...guidance.length ? [`Tester instructions: ${guidance.join(" ")}`] : [],
+    `Tester usage: ${entry.usagePath}.`
+  ].join(" ");
 }
 function recipes(workspace2) {
   return listRecipes(workspace2).recipes.map(({ recipe }) => recipe);
@@ -12392,7 +12479,7 @@ import {
   readFileSync as readFileSync2,
   realpathSync,
   rmSync as rmSync3,
-  statSync,
+  statSync as statSync2,
   writeFileSync as writeFileSync2
 } from "node:fs";
 import { createRequire } from "node:module";
@@ -12689,7 +12776,7 @@ function executableOnPath(name2, env) {
     const path = join4(directory2, name2);
     try {
       accessSync(path, constants.X_OK);
-      if (statSync(path).isFile()) return path;
+      if (statSync2(path).isFile()) return path;
     } catch {
     }
   }
@@ -13964,9 +14051,9 @@ function fitEntries(workspace2, catalog2, entries, detected) {
     `Unknown entry ${unknown.join(", ")}. Entry names come from recipes. Workspace searched: ${workspace2}. Known entries: ${[...declared.keys()].join(", ")}.`,
     [
       "If the tool needed for this test has no recipe, add one as part of setup.",
-      "Copy an example from checkmate recipe list --json. Include name, capability, kind, purpose, detect, environment, workspaceFolders, observeFrom, evidence and usage. For a CLI, use its executable name with kind cli and detect path. For MCP, include server and tools. Use entryPoints for needed entries only.",
+      `Copy an example from checkmate recipe list --json. Include ${requiredRecipeFields.join(", ")}, and include entryPoints for a target that needs inputs such as a file or alias. Each entry needs name, kind and purpose. For a CLI, use its executable name with kind cli and detect path. For MCP, include server and tools.`,
       `Write the JSON and its usage Markdown file side by side. Run checkmate recipe add --workspace ${shellWord(workspace2)} --file <recipe.json>. Verify the workspace in the reply and retry setup with the declared entries.`,
-      "Tell the person you added the recipe and which commands it can run."
+      "Use --replace to correct an installed custom recipe with the same name. Pass the receipt line that starts with \u201CReport to the person:\u201D to the person."
     ].join(" ")
   );
   for (const name2 of names) {
@@ -14819,7 +14906,7 @@ import { existsSync as existsSync6, readFileSync as readFileSync7 } from "node:f
 import { basename as basename2, extname, join as join8 } from "node:path";
 
 // plugin/src/rules.ts
-import { readFileSync as readFileSync5, realpathSync as realpathSync2, statSync as statSync2 } from "node:fs";
+import { readFileSync as readFileSync5, realpathSync as realpathSync2, statSync as statSync3 } from "node:fs";
 import { resolve, sep } from "node:path";
 var outsideRule = "outside";
 var defaultArea = "Rules";
@@ -14868,7 +14955,7 @@ function explorationRules(store, explorationId) {
 function sourceText(store, name2) {
   try {
     const path = realpathSync2(resolve(store.workspace, name2.split("#")[0]));
-    if (!path.startsWith(realpathSync2(store.workspace) + sep) || !statSync2(path).isFile()) return null;
+    if (!path.startsWith(realpathSync2(store.workspace) + sep) || !statSync3(path).isFile()) return null;
     const text2 = readFileSync5(path, "utf8");
     return text2.length > maxSourceCharacters ? `${text2.slice(0, maxSourceCharacters)}
 (The rest of the file is left out.)` : text2;
@@ -14901,7 +14988,7 @@ function ticketFile(store, typed) {
     `The ticket ${name2} is outside the workspace.`,
     `Give a file inside ${workspace2}, or paste the text of the ticket.`
   );
-  requireCondition(statSync2(path).isFile(), `The ticket ${name2} is not a file.`, "Give the path of a file.");
+  requireCondition(statSync3(path).isFile(), `The ticket ${name2} is not a file.`, "Give the path of a file.");
   return path.slice(workspace2.length + 1);
 }
 function ruleSources(store, planId) {
@@ -15021,7 +15108,7 @@ function rulesLine(store, planId) {
 }
 
 // plugin/src/journal.ts
-import { existsSync as existsSync5, readdirSync as readdirSync2, readFileSync as readFileSync6, realpathSync as realpathSync3, statSync as statSync3 } from "node:fs";
+import { existsSync as existsSync5, readdirSync as readdirSync2, readFileSync as readFileSync6, realpathSync as realpathSync3, statSync as statSync4 } from "node:fs";
 import { isAbsolute as isAbsolute2, join as join7, relative, resolve as resolve2, sep as sep2 } from "node:path";
 var entryKinds = [
   "criterion",
@@ -15160,7 +15247,7 @@ function evidenceFile(store, name2) {
     real.startsWith(realpathSync3(store.workspace) + sep2),
     `Evidence file must be inside the workspace: ${name2}`
   );
-  const stats = statSync3(real);
+  const stats = statSync4(real);
   requireWellFormed(stats.isFile(), `Evidence must be a file: ${name2}`);
   requireWellFormed(stats.size <= maxEvidenceBytes, `Evidence file exceeds 32 MiB: ${name2}`);
   return readFileSync6(real);
@@ -18464,7 +18551,7 @@ var actions_schema_default = {
 };
 
 // plugin/src/runs.ts
-import { mkdirSync as mkdirSync5, readFileSync as readFileSync8, realpathSync as realpathSync4, rmSync as rmSync4, statSync as statSync4 } from "node:fs";
+import { mkdirSync as mkdirSync5, readFileSync as readFileSync8, realpathSync as realpathSync4, rmSync as rmSync4, statSync as statSync5 } from "node:fs";
 import { basename as basename3, extname as extname2, isAbsolute as isAbsolute3, join as join9, resolve as resolve3, sep as sep3 } from "node:path";
 import { randomUUID } from "node:crypto";
 
@@ -18856,7 +18943,7 @@ function readEvidence(store, runId, { file: name2, kind }, allowed2) {
     );
   }
   requireWellFormed(real.startsWith(root + sep3), `Evidence file must be inside ${directory2}: ${name2}`);
-  const stats = statSync4(real);
+  const stats = statSync5(real);
   requireWellFormed(stats.isFile(), `Evidence must be a file: ${name2}`);
   requireWellFormed(stats.size <= maxEvidenceBytes2, `Evidence file exceeds 32 MiB: ${name2}`);
   const extension = extname2(name2).toLowerCase();
@@ -22544,10 +22631,10 @@ import {
   openSync,
   readdirSync as readdirSync3,
   readFileSync as readFileSync10,
-  renameSync,
+  renameSync as renameSync2,
   rmdirSync as rmdirSync2,
   rmSync as rmSync6,
-  statSync as statSync5
+  statSync as statSync6
 } from "node:fs";
 import { join as join12 } from "node:path";
 var defaultExplorerTimeout = 1800;
@@ -22761,7 +22848,7 @@ function keepToolFolders(store, explorationId) {
     const to = join12(store.workspace, workFolder(explorationId), name2);
     mkdirSync8(join12(to, ".."), { recursive: true });
     rmSync6(to, { recursive: true, force: true });
-    renameSync(from, to);
+    renameSync2(from, to);
   }
 }
 function removeWork(store, explorationId) {
@@ -22923,7 +23010,7 @@ function entryValues(store, explorationId) {
 function workFiles(folder) {
   try {
     return new Map(
-      readdirSync3(folder, { withFileTypes: true }).filter((item) => item.isFile()).map((item) => [item.name, statSync5(join12(folder, item.name)).size])
+      readdirSync3(folder, { withFileTypes: true }).filter((item) => item.isFile()).map((item) => [item.name, statSync6(join12(folder, item.name)).size])
     );
   } catch {
     return /* @__PURE__ */ new Map();
@@ -27462,7 +27549,7 @@ async function recoverPiCosts(store, env) {
 // plugin/src/ui/server.ts
 import { createServer } from "node:http";
 import { randomBytes as randomBytes4 } from "node:crypto";
-import { existsSync as existsSync11, readdirSync as readdirSync4, readFileSync as readFileSync13, realpathSync as realpathSync7, statSync as statSync6 } from "node:fs";
+import { existsSync as existsSync11, readdirSync as readdirSync4, readFileSync as readFileSync13, realpathSync as realpathSync7, statSync as statSync7 } from "node:fs";
 import { fileURLToPath as fileURLToPath2 } from "node:url";
 
 // plugin/src/modes.ts
@@ -42396,7 +42483,7 @@ data: ${matched.join(",") || "*"}
   const recipeFiles2 = () => {
     try {
       return readdirSync4(recipeFolder).sort().map((name2) => {
-        const file = statSync6(join21(recipeFolder, name2), { throwIfNoEntry: false });
+        const file = statSync7(join21(recipeFolder, name2), { throwIfNoEntry: false });
         return `${name2}:${file?.size}:${file?.mtimeMs}`;
       }).join(",");
     } catch {
@@ -44571,7 +44658,7 @@ import { constants as constants2 } from "node:sqlite";
 
 // plugin/src/build.ts
 import { createHash as createHash2 } from "node:crypto";
-import { existsSync as existsSync12, readdirSync as readdirSync5, readFileSync as readFileSync14, realpathSync as realpathSync8, statSync as statSync7 } from "node:fs";
+import { existsSync as existsSync12, readdirSync as readdirSync5, readFileSync as readFileSync14, realpathSync as realpathSync8, statSync as statSync8 } from "node:fs";
 import { homedir as homedir3 } from "node:os";
 import { dirname as dirname4, isAbsolute as isAbsolute4, join as join22, resolve as resolve8, sep as sep4 } from "node:path";
 import { fileURLToPath as fileURLToPath3 } from "node:url";
@@ -44580,7 +44667,7 @@ function filesUnder(folder) {
   if (!existsSync12(folder)) return [];
   return readdirSync5(folder).sort().flatMap((name2) => {
     const path = join22(folder, name2);
-    return statSync7(path).isDirectory() ? filesUnder(path) : [path];
+    return statSync8(path).isDirectory() ? filesUnder(path) : [path];
   });
 }
 function buildDigest(bundle) {
@@ -44843,17 +44930,19 @@ function short3(sha256) {
 var commands = {
   "recipe add": {
     positionals: [],
-    flags: { file: "value" },
+    flags: { file: "value", replace: "switch" },
     required: ["file"],
     workspaceRun: (args, context) => {
-      const entry = addRecipe(context.workspace, resolve9(context.cwd, value(args, "file")));
+      const replace2 = args.replace === true;
+      const entry = addRecipe(context.workspace, resolve9(context.cwd, value(args, "file")), replace2);
       return completed(entry.recipe.name, {
         workspace: context.workspace,
         path: entry.path,
-        usagePath: entry.usagePath
+        usagePath: entry.usagePath,
+        report: recipeInstallReport(entry, replace2)
       });
     },
-    print: (reply) => ({ facts: reply.data })
+    print: ({ data: { report, ...facts3 } }) => ({ facts: facts3, lines: [[`Report to the person: ${report}`]] })
   },
   "recipe list": {
     positionals: [],

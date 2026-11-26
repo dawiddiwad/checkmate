@@ -7000,6 +7000,11 @@ test('Install and use a project tool recipe from the packed CLI', async (t) => {
 		assert.equal(result.code, 0, result.output)
 		return result.body
 	}
+	for (const skill of ['skills/setup/SKILL.md', 'pi/skills/checkmate/SKILL.md']) {
+		const text = readFileSync(join(project, 'node_modules/@xoxoai/checkmate/plugin', skill), 'utf8')
+		assert.match(text, /Include `name`, .*include `entryPoints` for a target that needs inputs/)
+		assert.match(text, /Pass the receipt line that starts with “Report to the person:”/)
+	}
 	const recipe = {
 		name: 'sf',
 		capability: 'salesforce',
@@ -7013,7 +7018,7 @@ test('Install and use a project tool recipe from the packed CLI', async (t) => {
 				run: ['sf', 'data', 'query', '--target-org', '{org}', '--query', 'SELECT Id FROM Organization LIMIT 1'],
 			},
 		],
-		environment: {},
+		environment: { SF_TEST_FOLDER: '{workFolder}', SF_TEST_SESSION: '{session}' },
 		workspaceFolders: [],
 		shellInstruction: 'Use the Salesforce org alias from the target.',
 		observeFrom: { soql: 'state' },
@@ -7038,13 +7043,26 @@ test('Install and use a project tool recipe from the packed CLI', async (t) => {
 	assert.equal(noUsage.code, 1, noUsage.output)
 	assert.match(noUsage.output, /usage must name a regular Markdown file beside the recipe/)
 	writeFileSync(join(draft, 'sf.md'), usage)
+	writeFileSync(recipePath, JSON.stringify({ ...recipe, environment: { SF_TARGET_ORG: '{org}' } }))
+	const placeholder = await command(workspace, env, 'recipe', 'add', '--file', recipePath)
+	assert.equal(placeholder.code, 1, placeholder.output)
+	assert.match(placeholder.output, /environment\.SF_TARGET_ORG cannot use \{org\}.*pass the entry as a tool argument/)
+	assert.equal(existsSync(join(installed, 'sf.json')), false)
+	writeFileSync(recipePath, json)
 	const hostEnv = { ...env, CLAUDE_PROJECT_DIR: workspace }
+	const missing = join(workspace, 'encoded-draft-path')
+	const wrongFolder = await command(draft, hostEnv, 'recipe', 'add', '--workspace', missing, '--file', 'sf.json')
+	assert.equal(wrongFolder.code, 1, wrongFolder.output)
+	assert.ok(wrongFolder.output.includes(`Recipe workspace is not an existing directory: ${missing}`))
+	assert.equal(existsSync(missing), false)
 	const added = await command(draft, hostEnv, 'recipe', 'add', '--file', 'sf.json')
 	assert.equal(added.code, 0, added.output)
 	assert.equal(added.body.workspace, workspace)
 	assert.equal(added.body.path, join(installed, 'sf.json'))
 	assert.equal(existsSync(join(draft, '.checkmate', 'recipes', 'sf.json')), false)
 	assert.equal(added.body.usagePath, join(installed, 'sf.md'))
+	assert.match(added.body.report, /Added recipe sf\..*Declared commands and checks: sf --version, sf data query/)
+	assert.ok(added.body.report.includes(`Installed files: ${added.body.path}, ${added.body.usagePath}.`))
 	assert.equal(existsSync(join(workspace, '.checkmate', 'checkmate.db')), false)
 	assert.equal(readFileSync(added.body.path, 'utf8'), json)
 	assert.equal(readFileSync(added.body.usagePath, 'utf8'), usage)
@@ -7079,13 +7097,15 @@ test('Install and use a project tool recipe from the packed CLI', async (t) => {
 
 	copyFileSync(join(root, 'plugin/recipes/node.json'), join(draft, 'node.json'))
 	copyFileSync(join(root, 'plugin/recipes/node.md'), join(draft, 'node.md'))
-	const clash = await command(workspace, env, 'recipe', 'add', '--file', join(draft, 'node.json'))
-	assert.equal(clash.code, 1, clash.output)
-	assert.match(clash.output, /name node is in use by the built-in recipe/)
+	for (const flags of [[], ['--replace']]) {
+		const clash = await command(workspace, env, 'recipe', 'add', ...flags, '--file', join(draft, 'node.json'))
+		assert.equal(clash.code, 1, clash.output)
+		assert.match(clash.output, /name node is in use by the built-in recipe/)
+	}
 	assert.deepEqual(readdirSync(installed).sort(), ['sf.json', 'sf.md'])
 	const duplicate = await command(draft, hostEnv, 'recipe', 'add', '--file', recipePath)
 	assert.equal(duplicate.code, 1, duplicate.output)
-	assert.match(duplicate.output, /name sf is in use by the custom recipe/)
+	assert.match(duplicate.output, /name sf is in use by the custom recipe.*recipe add --replace/)
 	const explicit = realpathSync(directory(t))
 	const compact = spawnSync(
 		process.execPath,
@@ -7095,6 +7115,10 @@ test('Install and use a project tool recipe from the packed CLI', async (t) => {
 	assert.equal(compact.status, 0, compact.stdout + compact.stderr)
 	assert.ok(compact.stdout.includes(`completed sf workspace=${explicit} path=`), compact.stdout)
 	assert.equal(existsSync(join(explicit, '.checkmate', 'recipes', 'sf.json')), true)
+	assert.match(
+		compact.stdout,
+		/^Report to the person: Added recipe sf\. Installed files: .*sf\.json, .*sf\.md\. Declared commands and checks: sf --version, sf data query/m
+	)
 
 	writeFileSync(
 		join(draft, 'sf'),
@@ -7127,6 +7151,19 @@ test('Install and use a project tool recipe from the packed CLI', async (t) => {
 	const request = await ok(['plan', 'request', 'catalog'])
 	assert.deepEqual(request.observeFrom, [{ value: 'soql', reading: 'state', tool: 'sf' }])
 	await ok(['plan', 'save', 'catalog'], JSON.stringify(recipePlan('salesforce', ['soql'])))
+	const replace = ['recipe', 'add', '--replace', '--file', recipePath]
+	writeFileSync(recipePath, JSON.stringify({ ...recipe, entryPoints: [] }))
+	writeFileSync(join(draft, 'sf.md'), '# Updated usage\n')
+	const invalidUpdate = await command(workspace, env, ...replace)
+	assert.equal(invalidUpdate.code, 1, invalidUpdate.output)
+	assert.match(invalidUpdate.output, /entryPoints must be a list/)
+	assert.equal(readFileSync(added.body.path, 'utf8'), json)
+	assert.equal(readFileSync(added.body.usagePath, 'utf8'), usage)
+	const instruction = 'Read the org alias before running a query.'
+	writeFileSync(recipePath, JSON.stringify({ ...recipe, shellInstruction: instruction }))
+	const updated = await ok(replace)
+	assert.match(updated.report, /^Replaced recipe sf\./)
+	assert.equal(readFileSync(updated.usagePath, 'utf8'), '# Updated usage\n')
 	await ok(['run', 'begin', 'org-run', 'catalog@1', '--build', 'b1', '--instance', 'local'])
 	await ok(['run', 'check', 'org-run', 'T1', 'A1', '--observed', 'Kettle', '--evidence', '-:soql_result'], 'Kettle')
 	const evidence = await ok(['query', "SELECT kind FROM evidence WHERE run_id = 'org-run'"])
@@ -7154,7 +7191,7 @@ test('Install and use a project tool recipe from the packed CLI', async (t) => {
 	await ok(['explore', 'next', id])
 	const task = readFileSync(join(workspace, '.checkmate/work', id, 'a1/task-study.md'), 'utf8')
 	assert.ok(task.includes(`Before you use a tool, read its usage text: ${added.body.usagePath}.`), task)
-	assert.ok(task.includes(recipe.shellInstruction), task)
+	assert.ok(task.includes(instruction), task)
 })
 
 test('Keep the recipe catalog usable when a custom recipe is invalid — one bad file hides the other recipes, or a target, plan, or run uses it.', async (t) => {
@@ -7228,7 +7265,10 @@ test('Keep the recipe catalog usable when a custom recipe is invalid — one bad
 	writeFileSync(join(draft, 'broken.json'), recipe('broken', { usage: 'broken-usage.md' }))
 	writeFileSync(join(draft, 'broken-usage.md'), '# Broken\n')
 	const taken = await refused(['recipe', 'add', '--file', join(draft, 'broken.json')])
-	assert.match(taken, /name broken is in use by the invalid custom recipe .*broken\.json\. Choose a different name\./)
+	assert.match(
+		taken,
+		/name broken is in use by the invalid custom recipe .*broken\.json\. To replace it, keep its exact name and run checkmate recipe add --replace/
+	)
 	assert.equal(existsSync(join(folder, 'broken-usage.md')), false)
 
 	await ok([
@@ -7298,6 +7338,17 @@ test('Keep the recipe catalog usable when a custom recipe is invalid — one bad
 			/The recipe of tool good is not valid\. Tool recipe .*good\.json is not valid: the usage file .*good\.md is empty\./
 		)
 	}
+	const repaired = await ok(['recipe', 'add', '--replace', '--file', join(draft, 'broken.json')])
+	assert.match(repaired.report, /^Replaced recipe broken\./)
+	assert.ok(
+		(await ok(['recipe', 'list'])).recipes.some(
+			({ recipe }: { recipe: { name: string } }) => recipe.name === 'broken'
+		)
+	)
+	writeFileSync(join(draft, 'emptyusage.json'), recipe('emptyusage'))
+	writeFileSync(join(draft, 'emptyusage.md'), '# Fixed usage\n')
+	const fixedUsage = await ok(['recipe', 'add', '--replace', '--file', join(draft, 'emptyusage.json')])
+	assert.equal(readFileSync(fixedUsage.usagePath, 'utf8'), '# Fixed usage\n')
 })
 
 test('A plan and a run accept only the observeFrom values and evidence kinds that the recipes of the target tools give — the refusal names the value, the allowed values, and the recipes.', async (t) => {
@@ -11644,7 +11695,7 @@ test('Set up a mobile app from its entries — the profile gets the entry points
 	assert.match(unknown.body.hint, /If the tool needed for this test has no recipe, add one as part of setup/)
 	assert.match(unknown.body.hint, /recipe list --json.*JSON and its usage Markdown file side by side/)
 	assert.ok(unknown.body.hint.includes(`recipe add --workspace ${realpathSync(workspace)} --file <recipe.json>`))
-	assert.match(unknown.body.hint, /Tell the person you added the recipe/)
+	assert.match(unknown.body.hint, /include entryPoints.*Report to the person:/)
 	await refused(['setup', '--entry', 'web=ftp://x', '--target', 'phone'], /Entry web must match \^https\?:\/\//)
 	await refused(
 		['setup', ...mobileEntries, '--target', 'phone'],

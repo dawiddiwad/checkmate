@@ -1,12 +1,12 @@
-import type { Store } from '../store.ts'
-import { frozenRevision, jsonPatch, planCandidate } from '../plans.ts'
-import { planDetail } from '../views.ts'
-import type { Html } from './html.ts'
-import type { Context, Page } from './layout.ts'
-import { banner } from './components/banner.ts'
-import { heading } from './components/page-heading.ts'
-import { actorLimit, html, short } from './html.ts'
-import { navigator, reviewOf } from './review.ts'
+import type { Store } from '../../store.ts'
+import { frozenRevision, jsonPatch, planCandidate } from '../../plans.ts'
+import { planDetail } from '../../views.ts'
+import type { Html } from '../html.ts'
+import type { Context, Page } from '../layout.ts'
+import { banner } from '../components/banner.ts'
+import { heading } from '../components/page-heading.ts'
+import { actorLimit, html, short } from '../html.ts'
+import { navigator, reviewOf } from '../review.ts'
 
 type Candidate = ReturnType<typeof planCandidate>
 type Requirement = Candidate['requirements'][number]

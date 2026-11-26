@@ -1,13 +1,10 @@
 import type { Store } from '../store.ts'
 import type { ListPage, ListQuery } from '../views.ts'
-import { operationLog, pagedOperations, pagedRuns, planList, runList } from '../views.ts'
+import { operationLog, pagedRuns, planList, runList } from '../views.ts'
 import type { Html } from './html.ts'
-import type { Page } from './layout.ts'
 import { emptyNotice } from './components/empty-state.ts'
-import { listPageRow } from './components/list-row.ts'
-import { heading } from './components/page-heading.ts'
-import { statusCounts, statusMark } from './components/status-mark.ts'
-import { costText, html, join, plural, time, words } from './html.ts'
+import { statusMark } from './components/status-mark.ts'
+import { costText, html, plural, words } from './html.ts'
 
 export function loopState(loop: { state: string; waitsOn: string }) {
 	const role = loop.waitsOn === 'qa' ? 'QA' : loop.waitsOn
@@ -104,7 +101,7 @@ function filterChoices(filter: Filter, selected: string) {
 	return [...filter.choices, [selected, selected]]
 }
 
-function filterBar(spec: ListSpec, state: ListState) {
+export function filterBar(spec: ListSpec, state: ListState) {
 	return html`<form class="filters" method="get" action="${spec.path}" role="search" data-list-form>
 		<label class="sr-only" for="q">Search ${spec.noun}s</label>
 		<input
@@ -177,7 +174,7 @@ export function pager(spec: ListSpec, state: ListState, total: number) {
 	</nav>`
 }
 
-function listRegion(spec: ListSpec, state: ListState, total: number, rows: Html[]) {
+export function listRegion(spec: ListSpec, state: ListState, total: number, rows: Html[]) {
 	const first = total ? (state.page - 1) * state.size + 1 : 0
 	const last = Math.min(total, state.page * state.size)
 	const count = total ? `Showing ${first}–${last} of ${plural(total, spec.noun)}` : ''
@@ -258,7 +255,7 @@ export function runsSpec(store: Store): ListSpec {
 	}
 }
 
-type RunRow = ReturnType<typeof pagedRuns>['rows'][number]
+export type RunRow = ReturnType<typeof pagedRuns>['rows'][number]
 
 export function runUsageLine({
 	observedModels,
@@ -270,37 +267,6 @@ export function runUsageLine({
 		<span ${costUsd === null ? '' : html`title="Reported USD ${costUsd}"`}>${costText(costUsd, costPartial)}</span>`
 }
 
-function runRow(row: RunRow) {
-	return listPageRow({
-		key: `run:${row.runId}`,
-		href: `/runs/${row.runId}`,
-		top: `${row.runId} · ${row.planId}@${row.revision}`,
-		tags: html`${runStatus(row)} ${time(row.startedAt)}`,
-		lines: [
-			html`${statusCounts({ counts: row.counts })}
-				<span class="muted"
-					>· build <code>${row.build}</code> · ${row.instanceId} ·
-					${row.coverage ? `coverage ${words(row.coverage)}` : 'running'}</span
-				>`,
-			html`<span class="muted">${runUsageLine(row)}</span>`,
-		],
-	})
-}
-
-export function runsPage(store: Store, params: URLSearchParams): Page {
-	const spec = runsSpec(store)
-	const { page, state } = listPage(listState(params, spec), (query) => pagedRuns(store, query))
-	return {
-		title: 'Runs',
-		section: 'runs',
-		subjects: ['*'],
-		address: listHref(spec, state),
-		...pageTrail(spec, state, page.total, 'Runs'),
-		body: html`${heading('Runs', 'Every run of every plan.')} ${filterBar(spec, state)}
-		${listRegion(spec, state, page.total, page.rows.map(runRow))}`,
-	}
-}
-
 export function subjectLink(subject: string) {
 	const [kind, id] = subject.split(/:(.*)/)
 	if (kind === 'plan') return html`<a class="mono" href="/plans/${id}">${subject}</a>`
@@ -310,11 +276,6 @@ export function subjectLink(subject: string) {
 	if (kind === 'chats') return html`<a class="mono" href="/chats">Chats</a>`
 	if (kind === 'inbox') return html`<a class="mono" href="/">${subject}</a>`
 	return html`<span class="mono">${subject}</span>`
-}
-
-function reasons(response: unknown) {
-	const list = (response as { reasons?: unknown })?.reasons
-	return Array.isArray(list) ? list.map(String) : []
 }
 
 export function logSpec(store: Store): ListSpec {
@@ -364,41 +325,5 @@ export function logSpec(store: Store): ListSpec {
 				strict: false,
 			},
 		],
-	}
-}
-
-type LogRow = ReturnType<typeof pagedOperations>['rows'][number]
-
-function logRow(row: LogRow) {
-	const subjects = row.subjects.filter((subject) => subject !== `chat:${row.viaChat}`)
-	const via = row.viaChat ? html` <a href="/chats/${row.viaChat}">via chat</a>` : ''
-	return listPageRow({
-		key: `op:${row.rowid}`,
-		href: null,
-		top: row.command,
-		tags: html`${statusMark({ state: row.status === 'rejected' ? 'rejected_operation' : row.status, label: words(row.status) })}
-		${time(row.at)}`,
-		lines: [
-			html`${row.actor}${via} ·
-			${subjects.length ? join(subjects.map(subjectLink), ' ') : html`<span class="muted">no subject</span>`}`,
-			...(row.status === 'rejected'
-				? [html`<span class="reason">${reasons(row.response).join(' ')}</span>`]
-				: []),
-			html`<span class="mono muted">${row.id}</span>`,
-		],
-	})
-}
-
-export function logPage(store: Store, params: URLSearchParams): Page {
-	const spec = logSpec(store)
-	const { page, state } = listPage(listState(params, spec), (query) => pagedOperations(store, query))
-	return {
-		title: 'Log',
-		section: 'log',
-		subjects: ['*'],
-		address: listHref(spec, state),
-		...pageTrail(spec, state, page.total, 'Log'),
-		body: html`${heading('Log', 'Every write to the workspace.')} ${filterBar(spec, state)}
-		${listRegion(spec, state, page.total, page.rows.map(logRow))}`,
 	}
 }

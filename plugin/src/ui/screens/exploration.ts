@@ -1,17 +1,17 @@
-import type { Store } from '../store.ts'
-import type { Claim } from '../journal.ts'
-import { explorationReport } from '../explorers.ts'
-import type { Permission } from '../permissions.ts'
-import { explorationEvents } from '../explorations.ts'
-import { explorationPermissions, permissionRules } from '../permissions.ts'
-import { defaultBuild } from '../modes.ts'
-import { claimEvidence, entryEvidence, explorationLive, planExplorations } from '../views.ts'
-import type { InstanceChoice } from './actions.ts'
-import type { Run } from './activity.ts'
-import type { EvidenceFile } from './evidence.ts'
-import type { FormState } from './forms.ts'
-import type { Html } from './html.ts'
-import type { Context, Page } from './layout.ts'
+import type { Store } from '../../store.ts'
+import type { Claim } from '../../journal.ts'
+import { explorationReport } from '../../explorers.ts'
+import type { Permission } from '../../permissions.ts'
+import { explorationEvents } from '../../explorations.ts'
+import { explorationPermissions, permissionRules } from '../../permissions.ts'
+import { defaultBuild } from '../../modes.ts'
+import { claimEvidence, entryEvidence, explorationLive, planExplorations } from '../../views.ts'
+import type { InstanceChoice } from '../actions.ts'
+import type { Run } from '../activity.ts'
+import type { EvidenceFile } from '../evidence.ts'
+import type { FormState } from '../forms.ts'
+import type { Html } from '../html.ts'
+import type { Context, Page } from '../layout.ts'
 import {
 	instanceChoice,
 	stopButton,
@@ -22,19 +22,27 @@ import {
 	testButton,
 	testDialog,
 	testerStopOption,
-} from './actions.ts'
-import { failureOf, phases, runsOf } from './activity.ts'
-import { banner } from './components/banner.ts'
-import { emptyLine } from './components/empty-state.ts'
-import { groupHeader, listRow, optionsBox } from './components/list-row.ts'
-import { downloadMenu } from './components/menu.ts'
-import { crumbBar, heading } from './components/page-heading.ts'
-import { statusMark, statusWord, wordMark } from './components/status-mark.ts'
-import { evidenceList, shownAsText, viewLink } from './evidence.ts'
-import { actorField, emptyState, gapPanel, hidden, keptText, messages, rationaleField, recordPanel } from './forms.ts'
-import { ago, asList, costText, duration, html, join, plural, time } from './html.ts'
-import { askingPill, asksFor, permissionHistory, requestHref, rowOptions, rulesLines, waitsFor } from './permissions.ts'
-import { navigator, reviewOf } from './review.ts'
+} from '../actions.ts'
+import { failureOf, phases, runsOf } from '../activity.ts'
+import { banner } from '../components/banner.ts'
+import { emptyLine } from '../components/empty-state.ts'
+import { groupHeader, listRow, optionsBox } from '../components/list-row.ts'
+import { downloadMenu } from '../components/menu.ts'
+import { crumbBar, heading } from '../components/page-heading.ts'
+import { statusMark, statusWord, wordMark } from '../components/status-mark.ts'
+import { evidenceList, shownAsText, viewLink } from '../evidence.ts'
+import { actorField, emptyState, gapPanel, hidden, keptText, messages, rationaleField, recordPanel } from '../forms.ts'
+import { ago, asList, costText, duration, html, join, plural, time } from '../html.ts'
+import {
+	askingPill,
+	asksFor,
+	permissionHistory,
+	requestHref,
+	rowOptions,
+	rulesLines,
+	waitsFor,
+} from '../permissions.ts'
+import { navigator, reviewOf } from '../review.ts'
 
 type Live = ReturnType<typeof explorationLive>
 type Question = Live['questions'][number]

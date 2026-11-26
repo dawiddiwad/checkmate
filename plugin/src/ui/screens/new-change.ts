@@ -1,11 +1,11 @@
-import { levelNames } from '../levels.ts'
-import { declaredEntryPoints, recipes } from '../recipes.ts'
-import type { Html } from './html.ts'
-import type { Context, Page } from './layout.ts'
-import { testerModels, testerToolHelp } from './actions.ts'
-import { button } from './components/button.ts'
-import { heading } from './components/page-heading.ts'
-import { html } from './html.ts'
+import { levelNames } from '../../levels.ts'
+import { declaredEntryPoints, recipes } from '../../recipes.ts'
+import type { Html } from '../html.ts'
+import type { Context, Page } from '../layout.ts'
+import { testerModels, testerToolHelp } from '../actions.ts'
+import { button } from '../components/button.ts'
+import { heading } from '../components/page-heading.ts'
+import { html } from '../html.ts'
 
 export type NewInstance = { id: string; address: string | null; local: boolean }
 export type NewTarget = { targetId: string; address: string | null; local: boolean; instances: NewInstance[] }

@@ -1,6 +1,6 @@
-import type { Store } from '../store.ts'
-import type { Plan } from '../types.ts'
-import type { QueueItem } from '../views.ts'
+import type { Store } from '../../store.ts'
+import type { Plan } from '../../types.ts'
+import type { QueueItem } from '../../views.ts'
 import {
 	mergedClaims,
 	mergedQuestions,
@@ -9,25 +9,25 @@ import {
 	planExplorations,
 	planHistory,
 	planStatus,
-} from '../views.ts'
-import { decisionToken, planRequest, planRunGaps } from '../plans.ts'
-import { gapsAffecting } from '../contracts.ts'
-import { planCost } from '../costs.ts'
-import type { FormState } from './forms.ts'
-import type { Html } from './html.ts'
-import type { Context, Page } from './layout.ts'
-import { banner } from './components/banner.ts'
-import { emptyNotice } from './components/empty-state.ts'
-import { facts } from './components/facts.ts'
-import { fold } from './components/fold.ts'
-import { downloadMenu } from './components/menu.ts'
-import { heading } from './components/page-heading.ts'
-import { statusCounts, statusMark } from './components/status-mark.ts'
+} from '../../views.ts'
+import { decisionToken, planRequest, planRunGaps } from '../../plans.ts'
+import { gapsAffecting } from '../../contracts.ts'
+import { planCost } from '../../costs.ts'
+import type { FormState } from '../forms.ts'
+import type { Html } from '../html.ts'
+import type { Context, Page } from '../layout.ts'
+import { banner } from '../components/banner.ts'
+import { emptyNotice } from '../components/empty-state.ts'
+import { facts } from '../components/facts.ts'
+import { fold } from '../components/fold.ts'
+import { downloadMenu } from '../components/menu.ts'
+import { heading } from '../components/page-heading.ts'
+import { statusCounts, statusMark } from '../components/status-mark.ts'
 import { claimsTable, explorationBanners, explorationsTable, questionsList } from './exploration.ts'
-import { emptyState, gapPanel, recordPanel, verdictPanel } from './forms.ts'
-import { costText, glyph, hasMetadata, html, join, metadataList, plural, short, time, words } from './html.ts'
-import { loopState, runStatus } from './lists.ts'
-import { navigator, reviewOf } from './review.ts'
+import { emptyState, gapPanel, recordPanel, verdictPanel } from '../forms.ts'
+import { costText, glyph, hasMetadata, html, join, metadataList, plural, short, time, words } from '../html.ts'
+import { loopState, runStatus } from '../lists.ts'
+import { navigator, reviewOf } from '../review.ts'
 
 type Detail = ReturnType<typeof planDetail>
 type Test = Plan['tests'][number]

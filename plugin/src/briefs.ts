@@ -1,8 +1,7 @@
 import type { Charter } from './explorations.ts'
 import { changesData } from './resets.ts'
 import { anyTestOperation, anyTestOperationText, readOnlyOperation, readOnlyOperationText } from './targets.ts'
-import { evidenceChoices, testerTools } from './recipes.ts'
-import { sessionToolGuidance, toolGuidance } from './tester-guidance.ts'
+import { testerTools, recipeFilesFor } from './recipes.ts'
 import entrySchema from '../contracts/journal-entry.schema.json' with { type: 'json' }
 import criterionSchema from '../contracts/journal-criterion.schema.json' with { type: 'json' }
 import observationSchema from '../contracts/journal-observation.schema.json' with { type: 'json' }
@@ -236,6 +235,11 @@ function operationText(operations: string[]) {
 
 export type EntryPointValue = { name: string; kind: string; purpose: string; value: string }
 
+function usageLine(workspace: string, toolNames: string[]) {
+	const files = recipeFilesFor(workspace, toolNames)
+	return files.length ? [`Before you use a tool, read its usage field in: ${files.join(', ')}.`] : []
+}
+
 function entryPointLine(entry: EntryPointValue) {
 	if (entry.kind === 'command')
 		return `- ${entry.name}: run \`${entry.value}\` when you need it. ${entry.purpose} Do not write its output in your notes.`
@@ -256,14 +260,14 @@ export function explorerBrief(
 	dataPrefix: string,
 	workFolder: string,
 	seconds: { study: number; test: number },
-	session?: string
+	attached = true
 ) {
 	const change = charter.change
 	// A tester in a new process gets the attached server of a recipe of kind mcp. A tester of the host session does not.
 	const tools = testerTools(
 		workspace,
 		charter.tools.map((tool) => tool.name),
-		session === undefined
+		attached
 	)
 	const decisions = charter.decisions ?? []
 	const decisionInstructions = [
@@ -320,11 +324,7 @@ export function explorerBrief(
 		`${operationText(charter.operations)} Do not change the code, the configuration, or the deployment of the application.`,
 		...(charter.dataRules ?? []),
 		...(tools.length ? [`Tools you can use: ${[...tools].sort().join(', ')}.`] : []),
-		`Evidence kinds: ${evidenceChoices(workspace, tools)
-			.map(({ value }) => value)
-			.join(', ')}.`,
-		...toolGuidance(tools),
-		...(session === undefined ? [] : sessionToolGuidance(tools, session)),
+		...usageLine(workspace, tools),
 		...(charter.capabilities.some((capability) => capability === 'http' || capability === 'browser')
 			? [
 					'A direct HTTP call is sufficient when it proves the behaviour. Use the browser when the page itself is what you test.',

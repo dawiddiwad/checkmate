@@ -941,10 +941,10 @@ function fitEntries(
 	const unknown = names.filter((name) => !declared.has(name))
 	requireWellFormed(
 		!unknown.length,
-		`Unknown entry ${unknown.join(', ')}. Entry names come from recipes. Recipe folder: ${projectRecipeFolder(workspace)}. Entries of existing recipes: ${[...declared.keys()].join(', ')}. ${invalid.map(recipeProblem).join(' ')}`.trim(),
+		`Unknown entry ${unknown.join(', ')}. Entry names come from recipes. Recipe folder: ${projectRecipeFolder(workspace)}. Known entries: ${[...declared.keys()].join(', ')}. ${invalid.map(recipeProblem).join(' ')}`.trim(),
 		[
-			`If the tool you need has no recipe, write one JSON file in ${projectRecipeFolder(workspace)}. Use a built-in example from checkmate recipe list --json. Include ${requiredRecipeFields.join(', ')}.`,
-			'Give a new tool its own entry names. Declare each needed entry in entryPoints with name, kind and purpose. If Checkmate refuses the recipe, edit that file to fix the listed problems. Tell the person you added the recipe and what it lets testers run.',
+			`If the tool you need has no recipe, write one JSON file in ${projectRecipeFolder(workspace)}. Use a built-in example from checkmate recipe list --json. Include ${requiredRecipeFields.join(', ')}. Put the tester instructions in usage as a list of Markdown lines.`,
+			'Declare each needed entry in entryPoints with name, kind and purpose. If Checkmate refuses the recipe, edit that file to fix the listed problems. Tell the person you added the recipe and what it lets testers run.',
 		].join(' ')
 	)
 	for (const name of names) {
@@ -974,12 +974,7 @@ function fitEntries(
 		requireCondition(
 			false,
 			`No tool that is installed fits the entries ${uncovered.join(', ')}. ${listText(needing.map((recipe) => `${recipe.name} (${recipe.capability})`))} ${needing.length === 1 ? 'needs them and is' : 'need them and are'} not on PATH.`,
-			needing
-				.map(
-					(recipe) =>
-						`Checked PATH for ${toolExecutable(recipe)}. ${recipe.kind === 'cli' ? 'For detect: path, the CLI executable name is the recipe name.' : 'For an MCP recipe, Checkmate looks up server.command.'}`
-				)
-				.join(' ') + ' Install the tool, or give other entries.'
+			'Install the tool, or give other entries.'
 		)
 	}
 	const entryPoints = names.map((name) => {

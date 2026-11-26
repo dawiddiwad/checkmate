@@ -895,6 +895,7 @@ test(
 		assert.equal(await page.locator('main form, main button').count(), 0)
 
 		const injected = `<img src=x onerror="document.body.dataset.injected='yes'">`
+		const usage = `# Acme\n\nRun acme stock --store <store>.\n\n<script>document.body.dataset.injected = 'script'</script>\n${injected}\n`
 		const recipe = {
 			name: 'acme',
 			capability: 'inventory',
@@ -907,6 +908,7 @@ test(
 			workspaceFolders: [],
 			observeFrom: { stock: 'state' },
 			evidence: ['stock_report'],
+			usage: usage.split('\n'),
 		}
 		const json = JSON.stringify(recipe, null, 2) + '\n'
 		const folder = join(workspace, '.checkmate', 'recipes')
@@ -931,7 +933,7 @@ test(
 		const requires = await page.locator('section[aria-labelledby="requires"]').innerText()
 		assert.match(requires, /store · value · format \^\[A-Z\]\{3\}\$/)
 		assert.match(requires, /Command acme ping \{store\} exits with code 0, and its output contains pong\./)
-		assert.equal(await page.locator('[data-usage], a[href="#usage"]').count(), 0)
+		assert.equal(await page.locator('[data-usage]').textContent(), usage)
 		assert.equal(await page.locator('[data-json]').isVisible(), false)
 		assert.equal(await page.locator('[data-json]').textContent(), json)
 		assert.equal(await page.locator('main img, main script').count(), 0)
@@ -943,11 +945,14 @@ test(
 		assert.equal(await page.locator('#recipe + .facts [data-source]').getAttribute('data-source'), 'built-in')
 		assert.match(nodeFacts, /The Node\.js that runs Checkmate/)
 		assert.doesNotMatch(nodeFacts, /FILE/)
+		const nodeUsage = (await page.locator('[data-usage]').textContent()) ?? ''
+		assert.match(nodeUsage, /^# HTTP recipe\n\n\S/)
+		assert.doesNotMatch(nodeUsage, /Agent only/)
 		assert.equal((await fetch(new URL('/settings/recipes/missing', url))).status, 404)
 
 		await page.goto(new URL('/settings/recipes', url).href)
 		await page.locator('[data-live]:not(.down):not([hidden])').waitFor()
-		writeFileSync(join(folder, 'bad.json'), JSON.stringify({ ...recipe, name: 'bad', usage: [injected] }))
+		writeFileSync(join(workspace, '.checkmate', 'recipes', 'bad.json'), injected)
 		const bad = page.locator('[data-region="recipes"] [data-label="bad.json"]')
 		await bad.waitFor()
 		assert.deepEqual(await sources(), [
@@ -956,17 +961,17 @@ test(
 			['bad.json', 'invalid'],
 		])
 		assert.equal(await page.locator('.banner').count(), 0)
-		assert.match((await bad.textContent()) ?? '', /bad\.json is not valid: Unknown field usage/)
+		assert.match((await bad.textContent()) ?? '', /bad\.json is not valid: Cannot read JSON: .*<img src=x/)
 		await bad.click()
 		await page.waitForURL(/\/settings\/invalid-recipes\?file=bad\.json$/)
 		const error = (await page.locator('[data-error]').textContent()) ?? ''
 		assert.ok(
 			error.startsWith(
-				`Tool recipe ${join(workspace, '.checkmate', 'recipes', 'bad.json')} is not valid: Unknown field usage. `
+				`Tool recipe ${join(workspace, '.checkmate', 'recipes', 'bad.json')} is not valid: Cannot read JSON: `
 			),
 			error
 		)
-		assert.match(error, /Recipes are manifests\. Put tool instructions in a skill\./)
+		assert.match(error, /<img src=x/)
 		assert.ok(
 			(await page.locator('main .facts').innerText()).includes(
 				join(workspace, '.checkmate', 'recipes', 'bad.json')

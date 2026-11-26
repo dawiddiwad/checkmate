@@ -7,6 +7,8 @@ import { banner, emptyNotice, heading } from './layout.ts'
 import { settingsPage } from './settings.ts'
 import { listRow } from './lists.ts'
 
+const agentOnly = '\n> **Agent only:** This file contains repository or workflow instructions for coding agents.\n\n'
+
 function readCatalog(workspace: string): RecipeCatalog & { error: string | null } {
 	try {
 		return { ...listRecipes(workspace), error: null }
@@ -165,6 +167,8 @@ function testingFacts(recipe: Recipe) {
 		${recipe.closeSession ? fact('Close session', html`<code>${commandText(recipe.closeSession)}</code>`) : ''}
 		${recipe.refusedArguments ? fact('Refused arguments', refused(recipe.refusedArguments)) : ''}
 		${recipe.entryArguments ? fact('Entry arguments', pairs(recipe.entryArguments)) : ''}
+		${recipe.shellInstruction ? fact('Shell instruction', recipe.shellInstruction) : ''}
+		${recipe.delegatedInstruction ? fact('Delegated instruction', recipe.delegatedInstruction) : ''}
 	</dl>`
 }
 
@@ -205,12 +209,14 @@ export function recipePage(workspace: string, name: string): Page | null {
 	const entry = recipes.find(({ recipe }) => recipe.name === name)
 	if (!entry) return null
 	const { recipe, jsonText } = entry
+	const usage = recipe.usage.join('\n')
+	const usageText = entry.source === 'built-in' ? usage.replace(agentOnly, '\n') : usage
 	const body = html`<div data-region="recipe">
 		${heading(recipe.name, recipe.purpose, html`<div class="meta">${sourcePill(entry.source)}</div>`)}
 		<div class="main-col">
 			<nav class="jump" aria-label="On this page">
 				<a href="#recipe">Recipe</a><a href="#requires">Requires</a><a href="#testing">Testing</a
-				><a href="#json">JSON</a>
+				><a href="#usage">Usage</a><a href="#json">JSON</a>
 			</nav>
 			<section aria-labelledby="recipe">
 				<h2 id="recipe">Recipe</h2>
@@ -226,6 +232,10 @@ export function recipePage(workspace: string, name: string): Page | null {
 			<section aria-labelledby="testing">
 				<h2 id="testing">Testing</h2>
 				${testingFacts(recipe)}
+			</section>
+			<section aria-labelledby="usage">
+				<h2 id="usage">Usage</h2>
+				<pre class="sp-code" tabindex="0" data-usage>${usageText}</pre>
 			</section>
 			<details class="fold" data-open-key="section:json">
 				<summary><h2 id="json">Recipe JSON</h2></summary>

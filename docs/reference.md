@@ -53,7 +53,7 @@ The prompts of delegated workers name the entries from the profile, for example 
 
 ## Add a project tool recipe
 
-Put one JSON file in the project’s `.checkmate/recipes/` folder. Match the file name to the recipe name. A recipe is a manifest. Put instructions for project tools in your host’s skills. Edit the file to update the recipe. Delete the file to remove it.
+Put one JSON file in the project’s `.checkmate/recipes/` folder. Match the file name to the recipe name. Put the tester instructions in `usage` as a list of Markdown lines. Edit the file to update the recipe. Delete the file to remove it.
 
 Run `checkmate recipe list --json` for built-in examples and for the `invalid` list with each file path and its validation problems. `checkmate recipe list` shows the same problems as text. Checkmate checks the files as it reads the catalog and refuses to use invalid recipes. Its refusal gives the file and what to edit. Built-in names are reserved. If custom names clash, Checkmate marks the later file invalid. Settings > Recipes shows the same catalog and reflects changes to the folder.
 
@@ -61,7 +61,7 @@ Saved targets and plans keep their records. Future recipe lookups use the curren
 
 In `environment`, use literal values or the tester placeholders `{session}` and `{workFolder}`. To pass an instance entry such as `inventory` to a tool, use a command argument. A reachability command can use `{inventory}` in its argument list if the recipe declares that entry.
 
-Review and share recipes in Git as project code. The CLI name is the executable that `detect: path` looks for. For MCP, the executable comes from `server.command`. A recipe can tell Checkmate to run a reachability command or start an MCP server. The host controls file writes and tester tool permissions.
+Review and share recipes in Git as project code. A recipe can tell Checkmate to run a reachability command or start an MCP server. The host controls file writes and tester tool permissions.
 
 ### Salesforce CLI example
 
@@ -93,7 +93,13 @@ Save this as `.checkmate/recipes/sf.json`. Setup looks for `sf` on `PATH` and ch
 	"environment": {},
 	"workspaceFolders": [],
 	"observeFrom": { "soql": "state" },
-	"evidence": ["soql_result"]
+	"evidence": ["soql_result"],
+	"usage": [
+		"# Salesforce CLI",
+		"",
+		"Run sf data query --target-org <org entry> --query '<SOQL>' --json.",
+		"Record the relevant result as soql_result evidence."
+	]
 }
 ```
 

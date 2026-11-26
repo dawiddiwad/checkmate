@@ -6,7 +6,6 @@ description: Keep authentication and permissions with the Claude Code host, and 
 > **Agent only:** This file contains repository or workflow instructions for coding agents.
 
 Read `cli/src/launcher.ts`, `plugin/src/sessions.ts`, `plugin/src/levels.ts`, and the workflow skills before you change host integration.
-Use ASD-STE100 style for instructions and documentation.
 
 Use the installed Claude Code CLI. Keep credentials, context, tools, and native permissions with the host.
 Put each default model in `plugin/src/levels.ts` as a Claude Code alias, for example `haiku`. Pass it as `--model <alias>`. Do not write a full model ID in another file.

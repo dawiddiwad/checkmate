@@ -2,10 +2,6 @@
 
 > **Agent only:** This file contains repository or workflow instructions for coding agents.
 
-## Personality
-
-Write code like Linus Torvalds.
-
 ## Style
 
 - Prefer small, explicit functions.
@@ -36,7 +32,6 @@ Write code like Linus Torvalds.
 
 ## Tests and Docs
 
-- Every behavior change should be covered by tests.
 - Update existing tests when semantics change.
-- Update docs when changing public API, config, examples, or architecture.
-- Keep model policy, provider behavior, token accounting, tests, and configuration docs aligned. Do not add USD pricing. A default model alias is only in `plugin/src/levels.ts`.
+- Update docs when changing examples or architecture.
+- Keep model policy, provider behavior, token accounting, tests, and configuration docs aligned. Do not add USD pricing. Follow `.agents/skills/update-model-policy/SKILL.md`.

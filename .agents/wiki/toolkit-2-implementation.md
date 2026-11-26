@@ -2,9 +2,7 @@
 
 > **Agent only:** This file contains repository or workflow instructions for coding agents.
 
-This file is the shared contract for the implementation of `.agents/wiki/sqlite-store-design.md`.
-Read the design first. This file fixes the details that the design leaves open.
-When this file and the design differ, this file wins.
+Status: implemented. This is the historical record of the first `toolkit-2` implementation of `.agents/wiki/sqlite-store-design.md`. It fixed the details that the design left open. Later versions changed some of them, for example the schema version. The code and `architecture.md` win where they differ.
 
 ## Layout
 

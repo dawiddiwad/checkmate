@@ -1,0 +1,94 @@
+.sp-optlist {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+.sp-optlist li {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+}
+.sp-record {
+	display: flex;
+	flex-direction: column;
+	gap: 16px;
+	max-width: 880px;
+	padding-bottom: 16px;
+}
+.sp-record .sp-ask-title {
+	font: 600 20px/28px var(--font-body);
+	overflow-wrap: anywhere;
+}
+.sp-record .banner {
+	margin: 0;
+}
+.sp-optlist.asks li {
+	flex-direction: column;
+	align-items: flex-start;
+	gap: 4px;
+}
+.sp-optlist.asks .help {
+	margin: 0;
+	max-width: 72ch;
+}
+.sp-record .sp-c-extra {
+	margin-top: 12px;
+}
+.sp-record .sp-form textarea {
+	width: 100%;
+}
+@media (max-width: 760px) {
+	.sp-record .sp-btn,
+	.sp-record .pager .btn,
+	.fold-b .pager .btn {
+		min-height: 40px;
+	}
+	.fold-b .pager .btn,
+	.sp-asks a {
+		display: inline-flex;
+		align-items: center;
+	}
+	.sp-asks a {
+		min-height: 40px;
+	}
+}
+.sp-reply {
+	max-width: 72ch;
+	font: 400 14px/22px var(--font-body);
+	overflow-wrap: anywhere;
+}
+.sp-asked {
+	margin: 0;
+	white-space: pre-wrap;
+}
+.sp-activity {
+	margin: 0;
+	padding: 0;
+	list-style: none;
+	border: 1px solid var(--hair);
+	background: var(--surface-2);
+	font: 400 13px/20px var(--font-mono);
+}
+.sp-activity li {
+	padding: 4px 12px;
+}
+.sp-activity li + li {
+	border-top: 1px solid var(--hair);
+}
+.sp-changes {
+	margin: 0;
+	padding-left: 24px;
+	font: 400 14px/22px var(--font-body);
+}
+@media (max-width: 760px) {
+	.sp-changes a,
+	.sp-record .help a,
+	.sp-record .banner a {
+		display: inline-flex;
+		align-items: center;
+		min-height: 40px;
+	}
+}

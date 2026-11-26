@@ -1,0 +1,117 @@
+.sp-ct.hl .sp-ct-opts .sp-btn:first-child:not(.you) {
+	background: var(--ink);
+	border-color: var(--ink);
+	color: var(--on-ink);
+}
+.sp-ct.hl .sp-ct-opts .sp-btn:first-child kbd {
+	border-color: currentColor;
+}
+
+.sp-home {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) max-content max-content max-content;
+	column-gap: 24px;
+	row-gap: 1px;
+	border: 1px solid var(--hair);
+	background: var(--hair);
+}
+.sp-ct {
+	grid-column: 1 / -1;
+	display: grid;
+	grid-template-columns: subgrid;
+	align-items: center;
+	min-width: 0;
+	padding: 12px 16px;
+	background: var(--surface);
+	color: var(--ink);
+	text-decoration: none;
+	cursor: pointer;
+}
+.sp-ct.sp-ct-new {
+	grid-template-columns: minmax(0, 1fr) max-content;
+}
+.sp-ct:hover {
+	background: var(--row-hover);
+}
+.sp-ct:focus-visible {
+	outline: none;
+}
+.sp-ct.hl {
+	background: var(--surface-2);
+	color: var(--ink);
+	box-shadow: inset 3px 0 0 var(--ink);
+}
+.sp-ct-main {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	min-width: 0;
+}
+.sp-ct-head {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	height: 20px;
+	min-width: 0;
+}
+.sp-ct-when {
+	font: 400 13px/20px var(--font-body);
+	color: var(--muted);
+}
+.sp-ct-title {
+	font: 600 17px/24px var(--font-body);
+}
+.sp-ct-verdict {
+	font: 400 14px/20px var(--font-body);
+	color: var(--muted);
+}
+.sp-ct-cost {
+	font: 500 12px/16px var(--font-mono);
+	color: var(--muted);
+}
+.sp-ct-verdict b {
+	font-weight: 500;
+	color: var(--ink);
+}
+.sp-ct-opts {
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: flex-end;
+	gap: 8px;
+	align-items: center;
+	margin: 0;
+}
+.hl .sp-ct-cost,
+.hl .sp-ct-when,
+.hl .sp-nums span,
+.hl .sp-mm-l,
+.hl .sp-mm-b,
+.hl .sp-tl-s {
+	color: var(--muted);
+}
+@media (max-width: 1100px) {
+	.sp-home {
+		grid-template-columns: minmax(0, 1fr) max-content;
+		row-gap: 1px;
+	}
+	.sp-ct {
+		row-gap: 12px;
+	}
+	.sp-ct-main {
+		grid-column: 1 / -1;
+	}
+}
+@media (max-width: 600px) {
+	.sp-home {
+		grid-template-columns: minmax(0, 1fr);
+	}
+	.sp-ct-opts .sp-btn {
+		width: 100%;
+		justify-content: flex-start;
+	}
+}
+
+.sp-ct-opts .sp-btn {
+	height: var(--sp-ctl-lg);
+	padding: 0 16px;
+}

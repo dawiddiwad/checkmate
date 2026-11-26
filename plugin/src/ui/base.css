@@ -1,0 +1,226 @@
+@font-face {
+	font-family: 'IBM Plex Sans';
+	src: url('/assets/fonts/ibm-plex-sans-400.woff2') format('woff2');
+	font-weight: 400;
+	font-display: swap;
+}
+@font-face {
+	font-family: 'IBM Plex Sans';
+	src: url('/assets/fonts/ibm-plex-sans-600.woff2') format('woff2');
+	font-weight: 500 700;
+	font-display: swap;
+}
+@font-face {
+	font-family: 'IBM Plex Mono';
+	src: url('/assets/fonts/ibm-plex-mono-400.woff2') format('woff2');
+	font-weight: 400;
+	font-display: swap;
+}
+@font-face {
+	font-family: 'IBM Plex Mono';
+	src: url('/assets/fonts/ibm-plex-mono-500.woff2') format('woff2');
+	font-weight: 500;
+	font-display: swap;
+}
+@font-face {
+	font-family: 'IBM Plex Mono';
+	src: url('/assets/fonts/ibm-plex-mono-600.woff2') format('woff2');
+	font-weight: 600 700;
+	font-display: swap;
+}
+
+*,
+*::before,
+*::after {
+	box-sizing: border-box;
+	border-radius: 0;
+}
+html {
+	-webkit-text-size-adjust: 100%;
+	scroll-padding-top: 8px;
+	scroll-padding-bottom: calc(var(--sp-bar) + var(--dock-h, 0px) + 8px);
+}
+body {
+	margin: 0;
+	min-height: 100vh;
+	background: var(--ground);
+	color: var(--ink);
+	font: 400 14px/20px var(--font-body);
+	-webkit-font-smoothing: antialiased;
+	overflow-x: hidden;
+	overflow-wrap: anywhere;
+}
+a {
+	color: inherit;
+	text-underline-offset: 3px;
+	text-decoration-color: var(--edge);
+}
+a:hover {
+	text-decoration-color: currentColor;
+}
+button,
+input,
+select,
+textarea {
+	font: inherit;
+	color: inherit;
+}
+:focus-visible {
+	outline: 2px solid var(--focus);
+	outline-offset: 1px;
+}
+h1,
+h2,
+h3 {
+	margin: 0;
+	font-family: var(--font-body);
+	font-weight: 600;
+	letter-spacing: 0;
+}
+h1,
+h2[data-view-title] {
+	font-size: 40px;
+	line-height: 44px;
+	letter-spacing: -0.025em;
+}
+h2 {
+	font-size: 18px;
+	line-height: 24px;
+}
+h3 {
+	font-size: 14px;
+	line-height: 20px;
+}
+p {
+	margin: 0;
+}
+code,
+.mono {
+	font-family: var(--font-mono);
+	font-size: 12px;
+	letter-spacing: 0;
+}
+pre {
+	margin: 0;
+	font: 400 13px/20px var(--font-mono);
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+}
+.muted {
+	color: var(--muted);
+}
+.small,
+small {
+	font-size: 12px;
+	line-height: 16px;
+}
+.ell {
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+	min-width: 0;
+}
+.att {
+	color: var(--signal);
+}
+.hl .att {
+	color: inherit;
+}
+.sr-only {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	overflow: hidden;
+	clip: rect(0 0 0 0);
+	white-space: nowrap;
+}
+[hidden] {
+	display: none !important;
+}
+.skip {
+	position: absolute;
+	left: 16px;
+	top: -48px;
+	z-index: 100;
+	padding: 4px 8px;
+	background: var(--surface);
+	border: 1px solid var(--edge);
+}
+.skip:focus {
+	top: 8px;
+}
+
+.sp-lbl,
+.sp-gh,
+.sp-nhead,
+th {
+	font-family: var(--font-body);
+	font-weight: 600;
+	letter-spacing: 0;
+	text-transform: none;
+}
+[data-stale-slot]:empty {
+	display: none;
+}
+.kept blockquote {
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+}
+
+dialog {
+	padding: 0;
+	border: 1px solid var(--edge);
+	background: var(--surface);
+	color: var(--ink);
+}
+dialog::backdrop {
+	background: var(--scrim);
+}
+
+.changed {
+	animation: changed 2s ease-out;
+}
+@keyframes changed {
+	from {
+		box-shadow: inset 2px 0 0 var(--signal);
+	}
+}
+@media (max-width: 760px) {
+	.tap {
+		display: inline-flex;
+		align-items: center;
+		min-height: 40px;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	*,
+	*::before,
+	*::after {
+		animation: none !important;
+		transition: none !important;
+		scroll-behavior: auto !important;
+	}
+}
+
+@media (max-width: 760px) {
+	.skip {
+		min-height: 40px;
+		display: inline-flex;
+		align-items: center;
+	}
+	main a:is(.mono, .id, .h-link, .pill, .ev-act, .rev) {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		min-width: 40px;
+		min-height: 40px;
+	}
+	main :is(td, dd, .sp-path, nav.chips, .crumbs, p.back) a {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		min-width: 40px;
+		min-height: 40px;
+	}
+}

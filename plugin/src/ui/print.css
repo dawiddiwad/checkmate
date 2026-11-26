@@ -1,0 +1,54 @@
+@media print {
+	:root {
+		color-scheme: light;
+	}
+	.statusbar,
+	.sp-nav,
+	.toast,
+	.sp-bulk,
+	.sp-saystrip,
+	.skip,
+	.sp-dopts,
+	[data-close],
+	.sp-file-k:last-child,
+	.sp-form,
+	.sp-opt,
+	.sp-c-opts,
+	.sp-c-cb {
+		display: none !important;
+	}
+	body,
+	.app,
+	main,
+	.sp-drawer,
+	.sp-drawer * {
+		background: #ffffff !important;
+		color: #000000 !important;
+		box-shadow: none !important;
+	}
+	.with-drawer.app {
+		padding: 0;
+	}
+	.with-drawer :is(.sp-nav, [data-panel]) {
+		display: none !important;
+	}
+	.with-drawer .with-nav {
+		display: block;
+	}
+	.sp-drawer {
+		position: static;
+		width: auto;
+		max-width: none;
+		overflow: visible;
+		border: 0;
+	}
+	.sp-drawer * {
+		overflow: visible !important;
+		max-height: none !important;
+		white-space: normal !important;
+		text-overflow: clip !important;
+	}
+	.sp-file {
+		border: 0;
+	}
+}

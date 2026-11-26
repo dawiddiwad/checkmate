@@ -1,0 +1,20 @@
+.filters,
+.q-filters {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 8px;
+	margin-bottom: 12px;
+}
+.filters input[type='search'] {
+	flex: 1 1 240px;
+	width: auto;
+}
+.pager {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 8px;
+	margin-top: 12px;
+	font: 500 12px/16px var(--font-mono);
+}

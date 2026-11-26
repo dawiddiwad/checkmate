@@ -29,7 +29,7 @@
 - Make the smallest correct change first.
 - Remove dead paths when they are no longer needed.
 - Do not add compatibility code without a real reason.
-- In the review UI, use the design tokens from `plugin/src/ui/assets/style.css` and the rules in `docs/design-system.md`. Do not write raw colours in component rules.
+- In the review UI, use the design tokens from `plugin/src/ui/tokens.css` and the rules in `docs/design-system.md`. Do not write raw colours in component rules.
 
 ## Tests and Docs
 

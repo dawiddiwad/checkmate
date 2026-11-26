@@ -1,0 +1,41 @@
+.brand {
+	display: inline-flex;
+	align-items: center;
+	gap: 10px;
+	height: 28px;
+	color: var(--ink);
+	font: 600 13px/1 var(--font-mono);
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	text-decoration: none;
+	flex: none;
+}
+.mark {
+	display: inline-flex;
+	gap: 3px;
+}
+.mark i {
+	width: 10px;
+	height: 10px;
+	border: 1.5px solid currentColor;
+	border-radius: 0;
+}
+.mark i.on {
+	background: currentColor;
+}
+.brand {
+	flex: none;
+}
+.brand:hover {
+	color: var(--ink);
+}
+.brand:active {
+	color: var(--ink);
+}
+@media (max-width: 760px) {
+	.brand {
+		display: inline-flex;
+		align-items: center;
+		min-height: 40px;
+	}
+}

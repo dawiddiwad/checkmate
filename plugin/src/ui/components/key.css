@@ -1,0 +1,23 @@
+kbd {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 1px;
+	min-width: 16px;
+	height: 16px;
+	padding: 0 4px;
+	border: 1px solid var(--edge);
+	border-bottom-width: 2px;
+	background: transparent;
+	color: inherit;
+	font: 600 11px/13px var(--font-mono);
+	letter-spacing: 0;
+	text-transform: none;
+	white-space: nowrap;
+}
+kbd .glyph {
+	width: 10px;
+	height: 10px;
+	-webkit-mask-size: 10px 10px;
+	mask-size: 10px 10px;
+}

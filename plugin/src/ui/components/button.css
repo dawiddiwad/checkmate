@@ -1,0 +1,128 @@
+.sp-btn,
+.btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 8px;
+	height: var(--sp-ctl);
+	max-width: 100%;
+	padding: 0 8px;
+	flex: none;
+	border: 1px solid var(--edge);
+	background: transparent;
+	color: var(--ink);
+	cursor: pointer;
+	font: 500 14px/20px var(--font-body);
+	letter-spacing: 0;
+	text-decoration: none;
+	white-space: nowrap;
+}
+.sp-btn > span,
+.btn > span {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	min-width: 0;
+}
+.sp-btn:hover,
+.btn:hover {
+	background: var(--row-hover);
+}
+.sp-btn:active,
+.btn:active {
+	background: var(--surface-2);
+	border-color: var(--ink);
+}
+.sp-btn:disabled,
+.btn:disabled,
+.btn[aria-disabled='true'] {
+	color: var(--muted);
+	border-color: var(--edge);
+	border-style: dashed;
+	background: transparent;
+	cursor: default;
+}
+.sp-btn.pri,
+.btn.primary {
+	background: var(--ink);
+	border-color: var(--ink);
+	color: var(--on-ink);
+}
+.sp-btn.pri:hover,
+.btn.primary:hover {
+	background: color-mix(in srgb, var(--ink) 86%, var(--ground));
+}
+.sp-btn.you,
+.btn.you {
+	border-color: var(--signal);
+	color: var(--signal);
+}
+.sp-btn.pri.you,
+.btn.primary.you,
+.sp-ct.hl .sp-ct-opts .sp-btn.you:first-child {
+	background: var(--signal);
+	border-color: var(--signal);
+	color: var(--on-signal);
+}
+.btn.link {
+	border-color: transparent;
+}
+.btn.small {
+	height: 24px;
+}
+.icon-btn {
+	width: var(--sp-ctl);
+	padding: 0;
+}
+.icon-btn svg {
+	width: 16px;
+	height: 16px;
+}
+:is(.sp-row, .sp-ct, .sp-dhead).hl .sp-btn {
+	color: var(--ink);
+	border-color: var(--ink);
+}
+:is(.sp-row, .sp-ct, .sp-dhead).hl .sp-btn:hover {
+	background: color-mix(in srgb, var(--ink) 14%, transparent);
+}
+:is(.sp-row, .sp-ct, .sp-dhead).hl .sp-btn:active {
+	background: color-mix(in srgb, var(--ink) 28%, transparent);
+}
+:is(.sp-row, .sp-ct, .sp-dhead).hl .sp-btn:disabled {
+	color: var(--muted);
+	border-color: var(--muted);
+}
+.btns,
+.actions {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 8px;
+}
+@media (max-width: 760px) {
+	.btn,
+	.sp-btn,
+	.sb-btn,
+	.icon-btn {
+		min-height: 40px;
+	}
+	.icon-btn {
+		min-width: 40px;
+	}
+}
+
+@media (max-width: 760px) {
+	.btn,
+	.sp-btn {
+		min-width: 40px;
+		flex-shrink: 0;
+	}
+}
+.sp-copy-text {
+	font: 400 12px/18px var(--font-mono);
+	resize: vertical;
+}
+.sp-btn.big {
+	height: var(--sp-ctl-lg);
+	padding: 0 16px;
+	font-size: 15px;
+}

@@ -1,0 +1,83 @@
+.sp-pills {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 8px;
+}
+
+.sp-pill,
+.st {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	height: 20px;
+	padding: 0;
+	flex: none;
+	border: 0;
+	background: transparent;
+	color: var(--muted);
+	font: 500 13px/20px var(--font-body);
+	letter-spacing: 0;
+	text-transform: none;
+	white-space: nowrap;
+}
+.sp-pill.run {
+	color: var(--ink);
+}
+.sp-pill.pass {
+	color: var(--pass);
+}
+.sp-pill.fail {
+	color: var(--fail);
+}
+.sp-pill.you {
+	color: var(--signal);
+	font-weight: 600;
+}
+.sp-pill.crit {
+	padding: 0 6px;
+	background: var(--fail);
+	color: var(--on-signal);
+}
+.sp-pill > span[aria-hidden='true'],
+.sp-pill > .dot {
+	display: none;
+}
+.sp-pill:is(.run, .pass, .fail, .you, [data-status]):not(.crit)::before,
+.sp-c-tag .sp-pill:not(.crit)::before {
+	content: '';
+	flex: none;
+	width: 10px;
+	height: 10px;
+	border: 1.5px solid var(--mark-edge, var(--edge));
+	background: var(--mark-fill, transparent);
+}
+.sp-pill.run {
+	--mark-edge: var(--ink);
+	--mark-fill: repeating-linear-gradient(135deg, var(--ink) 0 1.5px, transparent 1.5px 4px);
+}
+.sp-pill.pass {
+	--mark-edge: var(--pass);
+	--mark-fill: var(--pass);
+}
+.sp-pill.you {
+	--mark-edge: var(--signal);
+	--mark-fill: var(--signal);
+}
+.sp-pill.you.triage,
+.sp-pill.you[data-status='needs_triage'] {
+	--mark-fill: transparent;
+}
+.sp-pill.fail {
+	--mark-edge: transparent;
+	--mark-fill:
+		linear-gradient(45deg, transparent 42%, var(--fail) 42% 58%, transparent 58%),
+		linear-gradient(-45deg, transparent 42%, var(--fail) 42% 58%, transparent 58%);
+}
+.dot {
+	display: inline-block;
+	width: 6px;
+	height: 6px;
+	border-radius: 50%;
+	background: currentColor;
+}

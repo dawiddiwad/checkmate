@@ -1,6 +1,6 @@
 # The Scoresheet design system
 
-The Scoresheet is the design system of the Checkmate review UI. The values come from the `:root` blocks at the top of `plugin/src/ui/assets/style.css`.
+The Scoresheet is the design system of the Checkmate review UI. The values come from the `:root` blocks in `plugin/src/ui/tokens.css`.
 
 ## Idea
 

@@ -1,0 +1,45 @@
+.banner {
+	margin: 0 0 16px;
+	padding: 8px 12px;
+	border-left: 2px solid var(--edge);
+	background: var(--surface-2);
+	font: 400 14px/20px var(--font-body);
+}
+.banner.warn {
+	border-left-color: var(--signal);
+	background: var(--signal-soft);
+}
+.banner.fail {
+	border-left-color: var(--fail);
+	background: var(--fail-soft);
+}
+.banner.info {
+	border-left-color: var(--ink);
+}
+.sp-banner {
+	display: flex;
+	align-items: center;
+	gap: 24px;
+	margin: 0 0 24px;
+	padding: 16px 20px;
+	background: var(--signal-soft);
+	box-shadow: inset 3px 0 0 var(--signal);
+}
+.sp-banner-n {
+	font: 500 32px/1 var(--font-mono);
+	color: var(--signal);
+}
+.sp-banner-t {
+	display: flex;
+	flex: 1;
+	flex-direction: column;
+	gap: 2px;
+	min-width: 0;
+}
+.sp-banner-t b {
+	font: 600 16px/24px var(--font-body);
+}
+.sp-banner-t span {
+	font: 400 14px/20px var(--font-body);
+	color: var(--muted);
+}

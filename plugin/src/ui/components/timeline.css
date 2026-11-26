@@ -1,0 +1,19 @@
+.sp-tl {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+.sp-tl-row {
+	display: grid;
+	grid-template-columns: 24px minmax(0, 1fr) 72px;
+	column-gap: 8px;
+	align-items: center;
+	height: 20px;
+	font: 400 12px/16px var(--font-mono);
+}
+.sp-tl-s {
+	text-align: right;
+	color: var(--muted);
+	font-variant-numeric: tabular-nums;
+	white-space: nowrap;
+}

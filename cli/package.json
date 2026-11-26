@@ -1,6 +1,6 @@
 {
 	"name": "@xoxoai/checkmate",
-	"version": "0.8.3",
+	"version": "0.8.4",
 	"description": "The QA system of record for an agent software factory",
 	"keywords": [
 		"ai",

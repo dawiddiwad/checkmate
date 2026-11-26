@@ -101,6 +101,16 @@ The UI serves one stylesheet, `/assets/style.css`. `npm run build` writes it to 
 
 The markup of a component is in `plugin/src/ui/components/<name>.ts`, next to its stylesheet. It is one function with typed props, for example `statusMark({ state, label })`. A prop gives the meaning, for example the status, not a colour. Give other attributes as an object in `attrs`. Each page is in `plugin/src/ui/screens/`. A screen composes components. Do not write the markup of a component in a screen.
 
+The component catalogue shows each component in each state. Run `node scripts/ui-catalogue.ts` and open the URL that it prints. The script starts the UI with the `catalogue` start option of `startUi`. `checkmate ui` does not set this option, so the installed UI does not serve `/catalogue`. Each component has its examples in `plugin/src/ui/components/<name>.catalogue.ts`. An example calls the render function of the component with fixed props. `plugin/src/ui/screens/catalogue.ts` lists the catalogue files. When you add a component, add its catalogue file and list it in the screen. The catalogue test fails when a component has no entry.
+
+In CI the catalogue test also compares a screenshot of each entry, in light and dark, with `test/e2e/catalogue/<theme>/<name>.png`. CI sets `CHECKMATE_CATALOGUE_SCREENSHOTS=compare` and uses the Chromium build of the locked `playwright-core`. The comparison is exact: a changed pixel fails. Other machines render fonts differently, so a local run does not compare screenshots. To change the look of a component on purpose:
+
+1. Push the change. The CI `verify` job fails and uploads the new screenshots as the `catalogue-screenshots` artifact.
+2. Download the artifact, for example with `gh run download <run-id> -n catalogue-screenshots`.
+3. Copy the PNG files into `test/e2e/catalogue/`, look at each one, and commit them.
+
+Do not make baselines on your own computer.
+
 ## Documentation media
 
 Run `npm run build`. Set `CHECKMATE_BROWSER_EXECUTABLE` and run `node scripts/capture-docs-ui.ts` to capture the current review UI with disposable sample records. Set `CHECKMATE_BROWSER_EXECUTABLE` and run `node scripts/render-onboarding.ts` to rebuild the onboarding GIF. It needs a full FFmpeg on `PATH`, or the path to one in `FFMPEG`, for example the `ffmpeg-static` binary installed outside the repository. It renders `docs/media/onboarding.html`: the factory storyboard. The GIF ends after the factory part and has no record counters. Update the storyboard when the factory flow changes. Set `CHECKMATE_BROWSER_EXECUTABLE` and run `node scripts/render-review-ui.ts` to rebuild the review UI GIF, `docs/media/ui/review.gif`. It records the real review UI in Chromium on the `seedShowcase` records of `scripts/ui-demo.ts`. It needs FFmpeg on `PATH` or in `FFMPEG`. Its chat scene asks a live Claude Code model, so Claude Code must be on `PATH`; the turn costs a few cents. The recorder fails when a decision, the evidence viewer, or the saved chat change does not show.

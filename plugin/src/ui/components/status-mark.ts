@@ -174,3 +174,6 @@ export function wordMark({ state, label, live = false, title, attrs }: WordMark)
 		>${live ? html`<span class="dot" aria-hidden="true"></span>` : ''}${label}</span
 	>`
 }
+
+export const statusStates = Object.keys(statusLook)
+export const wordStates = Object.keys(wordTones)

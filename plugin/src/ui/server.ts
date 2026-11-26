@@ -131,6 +131,7 @@ import {
 import { reviewPage } from './screens/plan-review.ts'
 import { gapPage, planHistoryList, planPage, requestPage } from './screens/plan.ts'
 import { homePage } from './screens/plans.ts'
+import { cataloguePage } from './screens/catalogue.ts'
 import { invalidRecipePage, recipePage, recipesPage } from './screens/recipes.ts'
 import { runPage } from './screens/run.ts'
 import { runsPage } from './screens/runs.ts'
@@ -150,6 +151,7 @@ export type UiOptions = HookOptions & {
 	defaultActor?: string
 	env?: Env
 	stopDelays?: StopDelays
+	catalogue?: boolean
 }
 
 export type Ui = { url: string; close(): Promise<void> }
@@ -625,6 +627,7 @@ export async function startUi(options: UiOptions): Promise<Ui> {
 			return render(request, newChangePage(shown, changeDefaults(searchParams.get('target')), false))
 		if (pathname === '/inbox' || pathname === '/plans') return redirect(request.res, '/')
 		if (pathname === '/claims') return redirect(request.res, oldItem(searchParams, 'all'))
+		if (options.catalogue && pathname === '/catalogue') return render(request, cataloguePage())
 		if (pathname === '/runs') return render(request, runsPage(store, searchParams))
 		if (pathname === '/log') return render(request, logPage(store, searchParams))
 		if (pathname === '/activity')

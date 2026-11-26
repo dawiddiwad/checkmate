@@ -28,7 +28,16 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm install -g @earendil-works/pi-coding-agent@1.5.2
+      - run: npx playwright-core install --with-deps chromium-headless-shell
       - run: npm run phase:verify
+        env:
+          CHECKMATE_CATALOGUE_SCREENSHOTS: compare
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: catalogue-screenshots
+          path: /tmp/checkmate-catalogue-actual
+          if-no-files-found: ignore
   release-source:
     if: >-
       (github.event_name == 'push' ||

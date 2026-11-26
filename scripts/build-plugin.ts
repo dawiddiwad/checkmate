@@ -74,6 +74,7 @@ const stylesheets = [
 	'components/chat-workspace.css',
 	'components/chat-turn.css',
 	'components/composer.css',
+	'screens/catalogue.css',
 ]
 const ui = new URL('../plugin/src/ui/', import.meta.url)
 const found = (await readdir(ui, { recursive: true })).filter((name) => name.endsWith('.css')).sort()

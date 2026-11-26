@@ -2,13 +2,24 @@ import test from 'node:test'
 import type { TestContext } from 'node:test'
 import assert from 'node:assert/strict'
 import { execFileSync, spawn, spawnSync } from 'node:child_process'
-import { chmodSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import {
+	chmodSync,
+	existsSync,
+	mkdirSync,
+	readdirSync,
+	readFileSync,
+	realpathSync,
+	rmSync,
+	writeFileSync,
+} from 'node:fs'
 import { createServer } from 'node:http'
 import { once } from 'node:events'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
+import { tmpdir } from 'node:os'
 import { pathToFileURL } from 'node:url'
 import { chromium, type Browser, type BrowserContext } from 'playwright-core'
 import { closeStore, openStore } from '../../plugin/src/store.ts'
+import { startUi as startSourceUi } from '../../plugin/src/ui/server.ts'
 import { seedDemo } from '../../scripts/ui-demo.ts'
 import {
 	actor,
@@ -997,5 +1008,80 @@ test(
 		rmSync(join(folder, 'bad.json'))
 		rmSync(path)
 		await page.locator('[data-region="recipes"] .sp-empty').waitFor()
+	}
+)
+
+const screenshots = process.env.CHECKMATE_CATALOGUE_SCREENSHOTS
+const baselines = join(root, 'test/e2e/catalogue')
+const actuals = join(tmpdir(), 'checkmate-catalogue-actual')
+
+function checkScreenshot(theme: string, name: string, actual: Buffer) {
+	const expected = join(baselines, theme, `${name}.png`)
+	if (screenshots === 'update') {
+		mkdirSync(dirname(expected), { recursive: true })
+		writeFileSync(expected, actual)
+		return null
+	}
+	if (existsSync(expected) && readFileSync(expected).equals(actual)) return null
+	mkdirSync(join(actuals, theme), { recursive: true })
+	writeFileSync(join(actuals, theme, `${name}.png`), actual)
+	return `${theme}/${name}`
+}
+
+test(
+	'The dev-only component catalogue shows every component in light and dark without console errors, and checkmate ui does not serve it.',
+	{ skip: browserSkip, timeout: 120_000 },
+	async (t) => {
+		const components = readdirSync(join(root, 'plugin/src/ui/components'))
+			.filter((name) => name.endsWith('.ts') && !name.endsWith('.catalogue.ts'))
+			.map((name) => name.slice(0, -'.ts'.length))
+		assert.ok(components.length > 0)
+		const plain = await startSourceUi({ workspace: directory(t) })
+		t.after(() => plain.close())
+		assert.equal((await fetch(new URL('/catalogue', plain.url))).status, 404)
+		const ui = await startSourceUi({ workspace: directory(t), catalogue: true })
+		t.after(() => ui.close())
+		const pinned = screenshots ? await chromium.launch() : browser!
+		if (screenshots) t.after(() => pinned.close())
+		const changed: string[] = []
+		for (const theme of ['light', 'dark']) {
+			const context = await pinned.newContext({ viewport: { width: 1280, height: 900 }, reducedMotion: 'reduce' })
+			t.after(() => context.close())
+			await context.addCookies([{ name: 'checkmate_theme', value: theme, url: ui.url }])
+			await context.route('**/settings/harness/models?*', (route) =>
+				route.fulfill({ json: { models: [], primary: null, defaultModel: null } })
+			)
+			const page = await context.newPage()
+			const errors: string[] = []
+			page.on('console', (message) => {
+				if (message.type() === 'error') errors.push(message.text())
+			})
+			page.on('pageerror', (error) => errors.push(String(error)))
+			await page.goto(new URL('/catalogue', ui.url).href)
+			await page.locator('[data-live]:not([hidden])').first().waitFor()
+			assert.equal(await page.locator('html').getAttribute('data-theme'), theme)
+			if (screenshots) {
+				await page.evaluate(() => document.fonts.ready)
+				const height = await page.evaluate(() => document.documentElement.scrollHeight)
+				await page.setViewportSize({ width: 1280, height: height + 200 })
+				await page.mouse.move(0, 0)
+			}
+			for (const name of components) {
+				const entry = page.locator(`[data-catalogue-entry="${name}"]`)
+				assert.equal(await entry.count(), 1, `${name} has no catalogue entry in ${theme}`)
+				assert.ok(await entry.locator('[data-catalogue-example]').count(), `${name} has no example in ${theme}`)
+				if (screenshots) {
+					const actual = await entry.screenshot({ animations: 'disabled', caret: 'hide' })
+					const difference = checkScreenshot(theme, name, actual)
+					if (difference) changed.push(difference)
+				}
+			}
+			assert.deepEqual(errors, [], `console errors in ${theme}`)
+		}
+		assert.deepEqual(
+			changed,
+			[],
+			`Catalogue screenshots differ from test/e2e/catalogue/. The new ones are in ${actuals}.`
+		)
 	}
 )

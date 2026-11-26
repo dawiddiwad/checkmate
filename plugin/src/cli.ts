@@ -1132,7 +1132,10 @@ const commands: Record<string, Command> = {
 		})),
 		print: (reply) => ({
 			facts: { [`${reply.data.testId}.${reply.data.assertionId}`]: reply.data.result },
-			lines: (reply.data.evidenceIds as string[]).map((id) => [id, 'evidence']),
+			lines: [
+				...(reply.data.reason ? [['reason', reply.data.reason]] : []),
+				...(reply.data.evidenceIds as string[]).map((id) => [id, 'evidence']),
+			],
 		}),
 	},
 	'run close': {

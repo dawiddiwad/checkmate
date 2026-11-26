@@ -22,7 +22,7 @@ Use the named plan or the only plan in progress. Ask when more than one plan mat
 
 If an exploration reports that a host integration needs sign-in, say which integration was unavailable. Let the person sign in through Pi if they need it for another test.
 
-Use `{{tool delegate_work}}` with stage `execute` and the run ID as subject. The worker reads the pinned instance, runs the selected tests and records the results. Report the recorded verdict, defects, and coverage. Read the run only if the result lacks those facts. Use `{{tool inbox}}` for a request about all open work.
+Use `{{tool delegate_work}}` with stage `execute` and the run ID as subject. The worker reads the pinned instance, runs the selected tests and records the results. Report the recorded verdict, defects, and coverage. Use `{{tool read_run}}` if the result lacks those facts. For an inconclusive check, give the recorded reason. If the observation contradicts the evidence, report that the check is inconclusive. Use `{{tool inbox}}` for a request about all open work.
 
 ## Decisions of the oracle
 

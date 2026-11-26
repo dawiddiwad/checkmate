@@ -8139,6 +8139,125 @@ test('Compare absence by its kind — absent:TEXT passes when the observed value
 	assert.equal(absent.body.result, 'passed')
 })
 
+test('Report presence and absence observations contradicted by evidence as inconclusive', async (t) => {
+	const workspace = directory(t)
+	const app = await fixture()
+	t.after(() => app.close())
+	const env = { ...process.env, CHECKMATE_ACTOR: 'oracle' }
+	writeFileSync(join(workspace, 'ticket.md'), 'Active inventory includes BOLT-1 and WASHER-3 and excludes NUT-2.\n')
+	const call = async (args: string[], input = '') => {
+		const result = await inputCommand(workspace, env, input, ...args)
+		assert.equal(result.code, 0, result.output)
+		return result.body
+	}
+	await call(['setup', '--url', app.baseUrl, '--target', 'shop'])
+	await call([
+		'plan',
+		'open',
+		'inventory',
+		'--target',
+		'shop@1',
+		'--objective',
+		'Check active inventory.',
+		'--source',
+		'ticket.md',
+	])
+	const plan = (expected: string) => ({
+		requirements: [{ id: 'R1', text: 'List active inventory only.', source: 'ticket.md' }],
+		tests: [
+			{
+				id: 'T1',
+				title: 'List active inventory',
+				capability: 'http',
+				operations: ['read_catalog'],
+				dependsOn: [],
+				preconditions: [],
+				requirementIds: ['R1'],
+				action: 'Run acme list --active.',
+				assertions: [
+					{
+						id: 'A1',
+						check: 'The output includes BOLT-1.',
+						observe: 'the output',
+						expected: 'contains:BOLT-1',
+					},
+					{ id: 'A2', check: 'The output includes WASHER-3.', observe: 'the output', expected: 'WASHER-3' },
+					{ id: 'A3', check: 'The output excludes NUT-2.', observe: 'the output', expected },
+				].map((assertion) => ({ ...assertion, checkKind: 'deterministic' })),
+			},
+		],
+		gaps: [],
+	})
+	for (const [prose, matcher] of [
+		['NUT-2 absent', 'absent:NUT-2'],
+		['NUT-2 present', 'contains:NUT-2'],
+	]) {
+		const refused = await inputCommand(workspace, env, JSON.stringify(plan(prose)), 'plan', 'save', 'inventory')
+		assert.equal(refused.code, 1, refused.output)
+		assert.ok(refused.body.reasons.join(' ').includes(matcher), refused.output)
+	}
+	await call(['plan', 'save', 'inventory'], JSON.stringify(plan('absent:NUT-2')))
+	await call(['plan', 'approve', 'inventory@1', '--rationale', 'Run the checks.'])
+	const note = 'acme list --active output includes NUT-2 though inventory marks it archived (active=false).'
+	const leaked = '[{"sku":"BOLT-1","active":true},{"sku":"NUT-2","active":false},{"sku":"WASHER-3","active":true}]'
+	const clean = '[{"sku":"bolt-1","active":true},{"sku":"NUT-20","active":true},{"sku":"WASHER-3","active":true}]'
+	const absentReason = 'Observation contradicts the evidence: "NUT-2" was reported absent. Found in attached text: '
+	const presentReason =
+		'Observation contradicts the evidence: "BOLT-1" was reported present. It was not found in the attached text.'
+	for (const replay of [
+		{ id: 'b1-65042eb', observed: 'NUT-2 absent', evidence: note, reason: absentReason + note },
+		{ id: 'b2-65042eb', evidence: leaked, reason: absentReason + leaked },
+		{ id: 'b1-d98da1a', observed: 'NUT-2 absent', evidence: leaked, reason: absentReason + leaked },
+		{ id: 'json-file', evidence: leaked, reason: absentReason + leaked, file: 'active.json' },
+		{ id: 'clean', evidence: clean },
+		{ id: 'missing-bolt', evidence: clean, boltEvidence: '{"sku":"BOLT-10"}' },
+		{ id: 'screenshot', evidence: 'NUT-2', file: 'active.png' },
+	]) {
+		await call(['run', 'begin', replay.id, 'inventory@1', '--build', 'b1', '--partial', 'ready_only'])
+		const check = (id: string, evidence: string, args: string[]) =>
+			call(['run', 'check', replay.id, 'T1', id, '--request', 'acme list --active', ...args], evidence)
+		const bolt = await check('A1', replay.boltEvidence ?? clean, ['--observed', 'BOLT-1', '--evidence', '-'])
+		assert.equal(bolt.result, replay.boltEvidence ? 'inconclusive' : 'passed')
+		assert.equal(bolt.reason, replay.boltEvidence ? presentReason : undefined)
+		await check('A2', clean, ['--observed', 'WASHER-3', '--evidence', '-'])
+		const path = replay.file ? `.checkmate/tmp/${replay.id}/${replay.file}` : '-'
+		if (replay.file) {
+			mkdirSync(join(workspace, '.checkmate', 'tmp', replay.id), { recursive: true })
+			writeFileSync(join(workspace, path), replay.evidence)
+		}
+		const archived = await check('A3', replay.file ? '' : replay.evidence, [
+			...(replay.observed ? ['--observed', replay.observed] : ['--absent']),
+			'--evidence',
+			path,
+		])
+		assert.equal(archived.result, replay.reason ? 'inconclusive' : 'passed')
+		assert.equal(archived.reason, replay.reason)
+		const outcome = replay.reason || replay.boltEvidence ? 'inconclusive' : 'passed'
+		const closed = await call(['run', 'close', replay.id, 'T1'])
+		assert.equal(closed.outcome, outcome)
+		await call([
+			'run',
+			'finish',
+			replay.id,
+			'--completion',
+			'completed',
+			'--cleanup',
+			'not_applicable',
+			'--cleanup-reason',
+			'Read-only test.',
+		])
+		const run = await call(['run', 'show', replay.id])
+		assert.equal(run.tests[0].outcome, outcome)
+		assert.deepEqual(run.findings, [])
+		assert.equal(run.result.coverage.status, outcome === 'passed' ? 'complete' : 'partial')
+		const [savedBolt, , savedArchived] = run.tests[0].assertions
+		assert.equal(savedBolt.reason, replay.boltEvidence ? presentReason : null)
+		assert.equal(savedArchived.reason, replay.reason ?? null)
+		assert.equal(savedArchived.observed, replay.observed ?? '(absent)')
+		assert.equal(savedArchived.evidence[0].id, archived.evidenceIds[0])
+	}
+})
+
 test('Compare the run marker inside absence and presence — code substitutes {{marker}} in absent: and contains:, so a value with the run marker is not absent.', async (t) => {
 	const workspace = directory(t)
 	writeFileSync(join(workspace, 'ticket.md'), 'No book with the run marker is added.\n')

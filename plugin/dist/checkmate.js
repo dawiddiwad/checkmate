@@ -823,6 +823,11 @@ function expectationError(expected) {
   if (/^(matches|one-of|type|at least|at most|contains|absent):/.test(value2)) return void 0;
   if (/^not\s/i.test(value2))
     return `The expected value "${expected}" states an absence in words. Write it as absent:<text>, for example absent:${value2.replace(/^not\s+/i, "")}.`;
+  const presence = /^(.+?)(?:\s+is)?\s+(absent|present)[.!?]?$/i.exec(value2);
+  if (presence) {
+    const matcher = presence[2].toLowerCase() === "absent" ? "absent" : "contains";
+    return `The expected value "${expected}" states presence or absence in words. Write it as ${matcher}:<text>, for example ${matcher}:${presence[1]}.`;
+  }
   const placeholder2 = value2.replaceAll(markerPlaceholder, "");
   if (/[<>]/.test(placeholder2) || /[{}]/.test(placeholder2))
     return `The expected value "${expected}" holds a placeholder. Only ${markerPlaceholder} is a placeholder: write ${markerPlaceholder}-T1 for a value with the run marker, not qa-<runId>-T1.`;
@@ -887,6 +892,29 @@ function expectationMatches(observed, expected, marker) {
   if (rule.startsWith("absent:")) return !loose(value2).includes(loose(rule.slice("absent:".length)));
   const plain = expected.replaceAll(markerPlaceholder, marker);
   return amountSame(value2, plain) ?? plainSame(value2, plain);
+}
+function presenceContradiction(observed, expected, marker, attachments) {
+  const rule = /^(absent|contains):([\s\S]+)$/.exec(expected.trim().replaceAll(markerPlaceholder, marker));
+  if (!rule) return;
+  const value2 = rule[2].trim();
+  if (!value2) return;
+  const reportsAbsence = observed === null || loose(observed).replace(/[.!?]$/, "") === loose(`${value2} absent`) || expectationMatches(observed, expected, marker) === (rule[1] === "absent");
+  const occurrence = new RegExp(`(?<![\\p{L}\\p{N}_])${RegExp.escape(value2)}(?![\\p{L}\\p{N}_])`, "iu");
+  let hasText = false;
+  for (const text2 of attachments) {
+    hasText = true;
+    const match = occurrence.exec(text2);
+    if (!match) continue;
+    if (!reportsAbsence) return;
+    const end = match.index + match[0].length;
+    const nextLine2 = text2.indexOf("\n", end);
+    const start = Math.max(text2.lastIndexOf("\n", match.index - 1) + 1, match.index - 100);
+    const stop = Math.min(nextLine2 === -1 ? text2.length : nextLine2, end + 100);
+    const line = text2.slice(start, stop).trim();
+    return `Observation contradicts the evidence: "${value2}" was reported absent. Found in attached text: ${line}`;
+  }
+  if (hasText && !reportsAbsence)
+    return `Observation contradicts the evidence: "${value2}" was reported present. It was not found in the attached text.`;
 }
 function looksShellExpanded(observed) {
   return /(^|\s)\/(usr\/)?bin\/(ba|z|da)?sh(\s|$)/.test(observed.trim()) || /^(bash|sh|zsh)$/.test(observed.trim());
@@ -18933,6 +18961,18 @@ function evidenceFiles(store, runId, name2, specs = []) {
   requireWellFormed(new Set(paths).size === paths.length, "An evidence file is listed twice");
   return files2;
 }
+function* textAttachments(files2) {
+  const decoder = new TextDecoder("utf-8", { fatal: true });
+  for (const file of files2) {
+    if (!file.mediaType.startsWith("text/") && !["application/json", "application/xml"].includes(file.mediaType))
+      continue;
+    try {
+      yield decoder.decode(file.bytes);
+    } catch {
+      continue;
+    }
+  }
+}
 function removeFiles(files2) {
   for (const file of files2) if (file.path) rmSync3(file.path, { force: true });
 }
@@ -19039,23 +19079,30 @@ function checkAssertion(store, actor, input) {
       "Record --observed in single quotes, for example --observed '$0', so the shell passes the value unchanged."
     );
     const reason = input.reason ?? null;
-    const result = assertion.expected === void 0 ? checkedResult(input.result, assertion, observed) : structuredResult(input, test, assertion, observed, run2.request.marker ?? "");
+    const compared = assertion.expected === void 0 ? checkedResult(input.result, assertion, observed) : structuredResult(input, test, assertion, observed, run2.request.marker ?? "");
     files2 = evidenceFiles(store, input.runId, `${test.id}-${assertion.id}`, input.evidence);
-    if (result !== "not_checked")
+    if (compared !== "not_checked")
       requireWellFormed(
         observed && files2.length > 0,
-        `${result === "inconclusive" ? "An" : "A"} ${result} result needs an observation (--observed) and one or more evidence items (--evidence)`,
+        `${compared === "inconclusive" ? "An" : "A"} ${compared} result needs an observation (--observed) and one or more evidence items (--evidence)`,
         `Add --observed "<what you saw>" and --evidence <file in ${evidenceDirectory(input.runId)}>, or --evidence - with the text on standard input.`
       );
-    if (result === "inconclusive")
+    if (compared === "inconclusive")
       requireWellFormed(
         reason,
         "An inconclusive result needs a reason (--reason) that says what the evidence cannot show"
       );
-    if (result === "not_checked")
+    if (compared === "not_checked")
       requireWellFormed(reason, "A not_checked result needs a reason (--reason) that says why it was not checked");
+    const contradiction = observed !== null && assertion.expected !== void 0 ? presenceContradiction(
+      input.absent ? null : observed,
+      assertion.expected,
+      run2.request.marker ?? "",
+      textAttachments(files2)
+    ) : void 0;
+    const result = contradiction ? "inconclusive" : compared;
     const unit = result === "passed" && observed !== null && assertion.expected !== void 0 ? unitNotObserved(observed, assertion.expected) : void 0;
-    const recorded2 = reason ?? (unit ? `The unit ${unit} was not observed; the amounts match.` : null);
+    const recorded2 = contradiction ?? reason ?? (unit ? `The unit ${unit} was not observed; the amounts match.` : null);
     const table2 = prior ? "assertion_corrections" : "assertion_results";
     execute(
       store,
@@ -19077,6 +19124,7 @@ function checkAssertion(store, actor, input) {
         testId: test.id,
         assertionId: assertion.id,
         result,
+        ...contradiction ? { reason: contradiction } : {},
         evidenceIds
       }),
       subjects: [`run:${input.runId}`]
@@ -45595,7 +45643,10 @@ var commands = {
     })),
     print: (reply) => ({
       facts: { [`${reply.data.testId}.${reply.data.assertionId}`]: reply.data.result },
-      lines: reply.data.evidenceIds.map((id2) => [id2, "evidence"])
+      lines: [
+        ...reply.data.reason ? [["reason", reply.data.reason]] : [],
+        ...reply.data.evidenceIds.map((id2) => [id2, "evidence"])
+      ]
     })
   },
   "run close": {
@@ -48179,6 +48230,8 @@ function verify(store, stage, subject, after, actor) {
   if (stage === "execute" && !one2(store, "SELECT 1 FROM results WHERE run_id = ?", subject)) return null;
   return { operation: row2.id, reply: JSON.parse(row2.response) };
 }
+var presencePlanInstruction = "To check whether a value appears in the output, use contains:TEXT for presence or absent:TEXT for absence. Use the text itself in place of TEXT.";
+var presenceEvidenceInstruction = "For a presence or absence check, attach the action output verbatim.";
 function planObserveRule(store, subject) {
   const { request: request2, target } = planRequest(store, subject.split("@")[0]);
   return observeFromRule(
@@ -48199,7 +48252,8 @@ function stagePrompt(stage, subject, observeRule) {
       "If the request lists context sources, read them with the listed tools. Draft requirements only when the request has none.",
       "Read the source files of the request with the read tool. Do not search the file system: do not use rg, grep, or find.",
       "A test serves one requirement, or a small related group of at most three. Do not put every criterion in one test: one failure would hide the rest.",
-      'Write one test for each requirement. A test is the default. A criterion that states a behaviour has an observable expectation: write it with the simplest kind that fits, for example a status code, contains or absent text, one-of, at least or at most, or type. Mark each with "metadata": { "type": "regression" }.',
+      'Write one test for each requirement. A test is the default. A criterion that states a behaviour has an observable expectation: write it with the simplest kind that fits, for example a status code, one-of, at least or at most, or type. Mark each with "metadata": { "type": "regression" }.',
+      presencePlanInstruction,
       "Raise a gap only for a criterion that is ambiguous, contradictory, or missing a fact that its test cannot proceed without. Name that one criterion and its requirement in the question, and state the exact question. Do not pick the value yourself. A gap that covers more than one requirement must name each requirement in its question, or you give each requirement its own gap.",
       "Use agent_observation only for a visual or wording judgment that no value states. An order, a count, a status code, a presence, or an absence has a value: observe the first item, the count, the status, or the text, and use the deterministic kind. Do not raise a gap for a judgment.",
       'Each assertion checks one expected value. Write one assertion for each value. Do not join two values with "and" or ";" in one check.',
@@ -48218,6 +48272,7 @@ function stagePrompt(stage, subject, observeRule) {
   return [
     `Plan: ${subject}. Read the pending decisions with \`checkmate plan pending ${subject}\`. With no pending decision, the revision migrates the checks to the current shape: read the plan with \`checkmate plan show ${subject} --json\`.`,
     "Change only the tests that the decisions affect. Give each ready test at least one assertion. A test without an assertion is not ready.",
+    presencePlanInstruction,
     'When a migration has no pending decision, change only the tests with a deterministic check without "observe" and "expected", or with a check that states more than one value. Give each migrated deterministic check "observe" and "expected", and split a check that states more than one value into one assertion for each value. Do not invent an expected value that the sources do not state.',
     'When a split or an expected value needs a decision, keep the assertions the sources state and raise a gap only for the one missing fact: {"gaps": {"G-<testId>": {"question": "<the decision>", "consequence": "<what stays untested>", "testIds": ["<testId>"]}}}. Do not answer gaps.',
     'When a decision has no expected value, add an assertion with "checkKind": "agent_observation" that records the behavior.',
@@ -48239,6 +48294,7 @@ function nativePlanPrompt(stage, subject, pluginRoot2, rejected, observeRule) {
   return [
     `You are the independent Checkmate ${stage} worker for ${subject}. ${start} Follow the delegated path below. Do not ask the oracle, answer a question, run a reset, or perform tests.`,
     skill.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, ""),
+    presencePlanInstruction,
     `Example: ${JSON.stringify(example)}`,
     ...stage === "plan" ? [
       observeRule,
@@ -48459,6 +48515,7 @@ function testPrompt(execution, workspace2, test, actor, pluginRoot2, rejections)
     `Record each assertion: ${cli} run check ${runId} ${test.id} <assertion ID> --actor ${actor} --observed '<only the bare value: for a status code 200, for an amount $5.00>'${plannedRequest(test.action) || test.assertions.some((assertion) => assertion.request) ? " --request '<method and path you sent for this check>'" : ""} --evidence - <<'EOF'`,
     "Put --observed and --request values in single quotes. Inside double quotes the shell expands $ and backticks: $5.00 becomes .00 and $0 becomes a shell path. Give only the bare value in --observed: HTTP 200 is refused, 200 is accepted.",
     "then the raw tool output that shows it, copied, then EOF. Use two words for the IDs: T1 A1. Give only the value of the observed item, not the whole line.",
+    presenceEvidenceInstruction,
     'For an assertion with an expected value, do not decide passed or failed: the code compares the observed value with the expected value. For an assertion without one, decide it with --result and --observed. A message or value the page shows is an observed value: record it with --observed, even when it says "not found". When the page was read after the action and the text or element the check names is not on it, record --absent instead of --observed, with the snapshot excerpt as evidence. The code compares that absence with the expected value. Record an error only when the action could not be performed or the page could not be read: then record not_checked for each assertion of that test with --reason, record no defect for it, and close the test as error. When you cannot observe the value for another reason, record not_checked with --reason "<why>" and no --observed.',
     `For each failed assertion, record a defect: ${cli} run finding ${runId} --actor ${actor} <<'EOF' with {"id":"F-${test.id}-1","type":"defect","severity":"medium","assertionIds":["${test.id}.<assertion ID>"],"requirementIds":${JSON.stringify(test.requirementIds)},"title":"<short title>","expected":"<check>","observed":"<observed value>","reproduction":["<request or steps>"],"evidenceIds":["<evidence ID printed by run check>"]} then EOF.`,
     `Then close the test: ${cli} run close ${runId} ${test.id} --actor ${actor}.`,
@@ -48483,6 +48540,7 @@ function nativeTestPrompt(execution, workspace2, test, rejections) {
       `Give request as METHOD /path?query, without the scheme or host. Use the exact request sent for each check: ${requests.join("; ")}.`
     ] : [],
     'For every assertion that has expected, OMIT result. Checkmate compares the observed value itself. Give only the named value in observed, for example "400"; put the response body in evidence. When an assertion has no expected, give result only as your judgment of the recorded observation.',
+    presenceEvidenceInstruction,
     `Example structured call: ${toolName("record_check")} {"runId":"${run2.run_id}","testId":"${test.id}","assertionId":"<assertion ID>","request":"GET /path?qty=0","observed":"400","evidence":[{"text":"GET /path?qty=0 returned HTTP 400","kind":"http_exchange"}]}. Use absent: true instead of observed only when the target was read and the asserted item is absent.`,
     `For a refusal, correct the named fields and retry the same check. If the action or read could not run, close as error with its reason and evidence. After all observed checks are recorded, return the result receipt. The launcher closes the test from those records. Use ${toolName("close_test")} only if the action failed or is blocked. Do not record placeholders.`,
     `Return only {"status":"completed","subject":"${run2.run_id}","reasons":[]} after recording the outcome.`

@@ -130,11 +130,15 @@ Use the returned target, plan, and instance IDs for subsequent actions. To corre
 
 For a structured check, give only the observed item, for example `"400"` for HTTP status. Give `absent: true` after a successful read when the item is missing. Put the response and request details in `evidence: [{text, kind}]`. To attach a file, use `[{file, kind}]` with a fresh file from the run evidence directory. A successful call consumes the file. An incomplete test closed as an operational error keeps its observations without requiring a defect finding. A completed tester step can report a product defect. Give a step failure only for an agent or host failure.
 
+For a presence or absence check, attach the action output verbatim. Checkmate compares the observation with the text attachments from that check. It searches for the named text without regard to case and at word boundaries. A contradiction makes the check inconclusive. The run shows the reason and retains the observation and evidence. An inconclusive check does not create a defect finding. A check with only non-text attachments keeps the result of its comparison with the expected value.
+
 The CLI still serves scripts, factory stages, review UI chat, exports, permanent runs, approvals, permissions, and recovery operations. Checkmate's CLI and host tools validate supported actions with the same [action schemas](../plugin/contracts/actions.schema.json). Factory grants and target credentials stay with the host.
 
 ## Plans and contracts
 
 A plan revision contains requirements, tests, and gaps. A test names its rules, capability, operations, preconditions, action, and assertions. An assertion has a known expected value. An unknown expected value belongs in an open gap.
+
+Use `contains:TEXT` when the action output must include a value, or `absent:TEXT` when it must exclude one. For example, use `absent:NUT-2` to check that the output excludes that SKU. Plan save refuses prose expectations such as `NUT-2 absent` and `NUT-2 present`.
 
 Use the JSON Schemas as the contract:
 

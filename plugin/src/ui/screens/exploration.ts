@@ -1054,14 +1054,20 @@ export function claimPage(
 						<a href="/plans/${report.planId}">Plan ${report.planId}</a> ·
 						<a href="/explorations/${explorationId}">Exploration ${explorationId}</a> · build ${claim.build}
 					</p>
-					<p class="sc-label">Expected</p>
-					<p>${claim.expected}</p>
-					<p class="sc-label">Actual</p>
-					<p>${claim.actual}</p>
+					<div class="sc-compare">
+						<div>
+							<span class="sc-kicker">Expected</span>
+							<p>${claim.expected}</p>
+						</div>
+						<div>
+							<span class="sc-kicker">Actual</span>
+							<p>${claim.actual}</p>
+						</div>
+					</div>
 					${
 						steps.length
-							? html`<p class="sc-label">Steps</p>
-									<ol>
+							? html`<span class="sc-kicker">Steps</span>
+									<ol class="sc-steps">
 										${steps.map((step) => html`<li>${step}</li>`)}
 									</ol>`
 							: ''

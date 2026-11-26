@@ -39002,12 +39002,18 @@ function claimPage(store, context2, explorationId, claimId, state = null) {
 						<a href="/plans/${report.planId}">Plan ${report.planId}</a> ·
 						<a href="/explorations/${explorationId}">Exploration ${explorationId}</a> · build ${claim.build}
 					</p>
-					<p class="sc-label">Expected</p>
-					<p>${claim.expected}</p>
-					<p class="sc-label">Actual</p>
-					<p>${claim.actual}</p>
-					${steps2.length ? html2`<p class="sc-label">Steps</p>
-									<ol>
+					<div class="sc-compare">
+						<div>
+							<span class="sc-kicker">Expected</span>
+							<p>${claim.expected}</p>
+						</div>
+						<div>
+							<span class="sc-kicker">Actual</span>
+							<p>${claim.actual}</p>
+						</div>
+					</div>
+					${steps2.length ? html2`<span class="sc-kicker">Steps</span>
+									<ol class="sc-steps">
 										${steps2.map((step) => html2`<li>${step}</li>`)}
 									</ol>` : ""}
 					<p class="sc-label">Evidence</p>
@@ -42939,20 +42945,22 @@ function findingCard(store, detail, finding) {
 			<span class="count">${statusMark({ state: finding.severity })}</span>
 		</header>
 		<div class="test-b">
-			<div class="compare">
+			<div class="sc-compare">
 				<div>
-					<small>Expected</small>
+					<span class="sc-kicker">Expected</span>
 					<p>${finding.expected}</p>
 				</div>
 				<div>
-					<small>Observed</small>
+					<span class="sc-kicker">Observed</span>
 					<p>${finding.observed}</p>
 				</div>
 			</div>
-			${finding.reproduction.length ? html2`<h4 class="sc-sub-h">Reproduction</h4>
-							<ol class="steps">
+			${finding.reproduction.length ? html2`<div>
+							<span class="sc-kicker">Reproduction</span>
+							<ol class="sc-steps">
 								${finding.reproduction.map((step) => html2`<li>${step}</li>`)}
-							</ol>` : ""}
+							</ol>
+						</div>` : ""}
 			<p class="sc-muted sc-note">
 				Assertions
 				${join17(

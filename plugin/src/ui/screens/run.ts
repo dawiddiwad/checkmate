@@ -172,22 +172,24 @@ function findingCard(store: Store, detail: Detail, finding: Detail['findings'][n
 			<span class="count">${statusMark({ state: finding.severity })}</span>
 		</header>
 		<div class="test-b">
-			<div class="compare">
+			<div class="sc-compare">
 				<div>
-					<small>Expected</small>
+					<span class="sc-kicker">Expected</span>
 					<p>${finding.expected}</p>
 				</div>
 				<div>
-					<small>Observed</small>
+					<span class="sc-kicker">Observed</span>
 					<p>${finding.observed}</p>
 				</div>
 			</div>
 			${
 				finding.reproduction.length
-					? html`<h4 class="sc-sub-h">Reproduction</h4>
-							<ol class="steps">
+					? html`<div>
+							<span class="sc-kicker">Reproduction</span>
+							<ol class="sc-steps">
 								${finding.reproduction.map((step) => html`<li>${step}</li>`)}
-							</ol>`
+							</ol>
+						</div>`
 					: ''
 			}
 			<p class="sc-muted sc-note">

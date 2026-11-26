@@ -448,13 +448,18 @@ test(
 	async (t) => {
 		const workspace = directory(t)
 		t.after(() => endProcessesIn(workspace))
+		const reproduction = ['Add LAMP-01 to the cart.', 'Apply SPRING40.', 'Apply WELCOME10.']
 		const opened = store(t, workspace)
 		target(opened)
 		plan(opened)
 		openTest(opened, 'checkout', 'review', 'b1')
 		launched(opened, 'review', 'tester')
 		ended(opened, 'review', 'tester', [
-			{ ...stacks, evidence: [evidenceFile(opened, 'review', 'quote.txt', 'HTTP 200: 220 PLN')] },
+			{
+				...stacks,
+				steps: reproduction,
+				evidence: [evidenceFile(opened, 'review', 'quote.txt', 'HTTP 200: 220 PLN')],
+			},
 		])
 		done(opened, 'review')
 		openTest(opened, 'checkout', 'review-2', 'b1')
@@ -464,6 +469,7 @@ test(
 				...stacks,
 				id: 'D2',
 				title: 'Confirmation is missing',
+				steps: reproduction,
 				evidence: [evidenceFile(opened, 'review-2', 'confirmation.txt', 'Order not confirmed')],
 			},
 		])
@@ -478,6 +484,7 @@ test(
 		await claim.click()
 		await page.waitForURL((address) => address.searchParams.has('item'))
 		const key = new URL(page.url()).searchParams.get('item')!
+		assert.deepEqual(await page.locator('[data-drawer] ol li').allTextContents(), reproduction)
 		await page.locator('[data-drawer] .sc-drawer-top [data-option]', { hasText: 'No' }).click()
 		const reason = page.locator('[data-drawer] #reject-text')
 		await reason.waitFor()

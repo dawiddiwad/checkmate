@@ -128,7 +128,10 @@ function tile(review: Review, plan: PlanListRow, runDefects: number, index: numb
 			${
 				costUsd === null
 					? ''
-					: html`<p class="sp-ct-cost" title="Reported cost across this plan’s explorations, chats, and structured runs">
+					: html`<p
+							class="sp-ct-cost"
+							title="Reported cost across this plan’s explorations, chats, and structured runs"
+						>
 							Total cost ${costText(costUsd, costPartial)}
 						</p>`
 			}
@@ -193,9 +196,13 @@ export function homePage(store: Store): Page {
 	const reviews = listed.map((each) => each.review)
 	const blocking = reviews.reduce((sum, review) => sum + verdictLine(review).blocking, 0)
 	const testing = reviews.filter((review) => review.running).length
-	const subtitle = html`${plural(plans.length, 'plan')} · ${testing} testing now${
+	const subtitle = html`${plural(plans.length, 'plan')} · ${testing} testing
+	now${
 		blocking > 0
-			? html` · <span class="att">${plural(blocking, 'question')} ${blocking === 1 ? 'blocks' : 'block'} testing</span>`
+			? html` ·
+					<span class="att"
+						>${plural(blocking, 'question')} ${blocking === 1 ? 'blocks' : 'block'} testing</span
+					>`
 			: ''
 	}`
 	const body = html`<div class="sp-home" role="list" aria-label="Plans" data-list>
@@ -213,13 +220,6 @@ export function homePage(store: Store): Page {
 		],
 		crumbs: [['Plans', null]],
 		back: null,
-		body: html`<div data-region="home">
-			${heading(
-				'Plans',
-				plans.length ? subtitle : null,
-				legend
-			)}
-			${body}
-		</div>`,
+		body: html`<div data-region="home">${heading('Plans', plans.length ? subtitle : null, legend)} ${body}</div>`,
 	}
 }

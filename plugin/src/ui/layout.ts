@@ -99,49 +99,8 @@ function statusBar(context: Context, page: Page) {
 				)}
 			</ol>
 		</nav>
-		<span class="sb-links">
-			<a
-				class="sb-btn"
-				href="${context.requests.runningChat ? `/chats/${context.requests.runningChat}` : '/chats'}"
-				title="The chat that is active now"
-				data-region="request-link"
-				${context.requests.running ? '' : html`hidden`}
-				>${context.requests.running ? html`<span>Chat<span class="sb-long sb-running"> · working</span></span>` : ''}</a
-			>
-			<a
-				class="sb-btn att"
-				href="/permissions"
-				title="Permission requests of testers that wait for you"
-				data-region="permissions-link"
-				${context.permissions ? '' : html`hidden`}
-				>${context.permissions} ${context.permissions === 1 ? 'permission' : 'permissions'}</a
-			>
-			<a
-				class="sb-btn att"
-				href="${
-					context.requests.unread === 1 && context.requests.firstUnreadChat
-						? `/chats/${context.requests.firstUnreadChat}`
-						: '/chats'
-				}"
-				title="Unread updates in your chats"
-				aria-label="${context.requests.unread} unread chat updates"
-				data-region="replies-link"
-				${context.requests.unread ? '' : html`hidden`}
-				>${context.requests.unread ? html`<span>${context.requests.unread}<span class="sb-long"> unread</span></span>` : ''}</a
-			>
-			<a
-				class="sb-btn att"
-				href="/"
-				title="Items that wait for you in all plans"
-				data-region="nav-count"
-				${waiting ? '' : html`hidden`}
-				><span
-					>${waiting}<span class="sb-long"> ${waiting === 1 ? 'needs' : 'need'} you</span
-					><span class="sb-all"> · all plans</span></span
-				></a
-			>
-			<button class="sb-btn" type="button" data-find-open hidden>Find</button>
-			<button class="sb-btn" type="button" data-keys-open hidden>Keys</button>
+		<nav class="sb-nav" aria-label="Main">
+			<a class="sb-btn" href="/" ${page.section === 'home' ? html`aria-current="page"` : ''}>Plans</a>
 			<span class="sb-btn-set" data-wide
 				><a
 					class="sb-btn"
@@ -163,9 +122,53 @@ function statusBar(context: Context, page: Page) {
 					><a href="/settings">Settings</a>
 				</div>
 			</details>
-		</span>
+		</nav>
+		<span class="sb-fill"></span>
 		<span class="sb-say" aria-live="polite" data-say></span>
 		<span class="sb-keys" data-hints></span>
+		<button class="sb-btn" type="button" data-find-open hidden>Find</button>
+		<button class="sb-btn" type="button" data-keys-open hidden>Keys</button>
+		<span class="sb-div" aria-hidden="true"></span>
+		<a
+			class="sb-btn"
+			href="${context.requests.runningChat ? `/chats/${context.requests.runningChat}` : '/chats'}"
+			title="The chat that is active now"
+			data-region="request-link"
+			${context.requests.running ? '' : html`hidden`}
+			>${context.requests.running ? html`<span>Chat<span class="sb-long sb-running"> · working</span></span>` : ''}</a
+		>
+		<a
+			class="sb-btn att"
+			href="/permissions"
+			title="Permission requests of testers that wait for you"
+			data-region="permissions-link"
+			${context.permissions ? '' : html`hidden`}
+			>${context.permissions} ${context.permissions === 1 ? 'permission' : 'permissions'}</a
+		>
+		<a
+			class="sb-btn att"
+			href="${
+				context.requests.unread === 1 && context.requests.firstUnreadChat
+					? `/chats/${context.requests.firstUnreadChat}`
+					: '/chats'
+			}"
+			title="Unread updates in your chats"
+			aria-label="${context.requests.unread} unread chat updates"
+			data-region="replies-link"
+			${context.requests.unread ? '' : html`hidden`}
+			>${context.requests.unread ? html`<span>${context.requests.unread}<span class="sb-long"> unread</span></span>` : ''}</a
+		>
+		<a
+			class="sb-btn att"
+			href="/"
+			title="Items that wait for you in all plans"
+			data-region="nav-count"
+			${waiting ? '' : html`hidden`}
+			><span
+				>${waiting}<span class="sb-long"> ${waiting === 1 ? 'needs' : 'need'} you</span
+				><span class="sb-all"> · all plans</span></span
+			></a
+		>
 		${statusWho(context)}
 	</footer>`
 }

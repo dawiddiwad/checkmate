@@ -590,26 +590,28 @@ th {
 	flex: none;
 	width: 10px;
 	height: 10px;
-	border: 1.5px solid var(--edge);
+	border: 1.5px solid var(--mark-edge, var(--edge));
+	background: var(--mark-fill, transparent);
 }
-.sp-pill.run::before {
-	border: 1px solid var(--ink);
-	background: repeating-linear-gradient(135deg, var(--ink) 0 1.5px, transparent 1.5px 4px);
+.sp-pill.run {
+	--mark-edge: var(--ink);
+	--mark-fill: repeating-linear-gradient(135deg, var(--ink) 0 1.5px, transparent 1.5px 4px);
 }
-.sp-pill.pass::before {
-	border-color: var(--pass);
-	background: var(--pass);
+.sp-pill.pass {
+	--mark-edge: var(--pass);
+	--mark-fill: var(--pass);
 }
-.sp-pill.you::before {
-	border-color: var(--signal);
-	background: var(--signal);
+.sp-pill.you {
+	--mark-edge: var(--signal);
+	--mark-fill: var(--signal);
 }
-.sp-pill.you.triage::before {
-	background: transparent;
+.sp-pill.you.triage,
+.sp-pill.you[data-status='needs_triage'] {
+	--mark-fill: transparent;
 }
-.sp-pill.fail::before {
-	border: 0;
-	background:
+.sp-pill.fail {
+	--mark-edge: transparent;
+	--mark-fill:
 		linear-gradient(45deg, transparent 42%, var(--fail) 42% 58%, transparent 58%),
 		linear-gradient(-45deg, transparent 42%, var(--fail) 42% 58%, transparent 58%);
 }
@@ -983,7 +985,7 @@ details.menu > summary::-webkit-details-marker {
 	flex-direction: column;
 	margin-top: -8px;
 	padding-top: 8px;
-	background: var(--surface);
+	background: var(--ground);
 }
 .sp-nhead kbd {
 	display: none;
@@ -1816,7 +1818,7 @@ a.sp-c-title {
 .sb-where a:hover {
 	text-decoration: underline;
 }
-.sb-links {
+.sb-nav {
 	display: flex;
 	align-self: stretch;
 	gap: 0;
@@ -1843,7 +1845,7 @@ a.sp-c-title {
 	display: flex;
 	gap: 0;
 }
-.sb-links .sb-more {
+.sb-nav .sb-more {
 	display: none;
 	position: relative;
 }
@@ -1851,10 +1853,10 @@ a.sp-c-title {
 	:root {
 		--path-w: 240px;
 	}
-	.sb-links [data-wide] {
+	.sb-nav [data-wide] {
 		display: none;
 	}
-	.sb-links .sb-more {
+	.sb-nav .sb-more {
 		display: block;
 	}
 }
@@ -2769,7 +2771,7 @@ details.fold[open] > summary::before {
 	}
 }
 @media (max-width: 600px) {
-	.sb-links > [data-find-open] {
+	.statusbar > [data-find-open] {
 		display: none;
 	}
 	.sp-home {
@@ -3054,10 +3056,10 @@ details.fold[open] > summary::before {
 	.who .actor {
 		display: none;
 	}
-	.sb-links {
+	.statusbar {
 		gap: 4px;
 	}
-	.sb-links .sb-btn {
+	.statusbar .sb-btn {
 		padding: 0 6px;
 	}
 	.sb-all {
@@ -3832,11 +3834,6 @@ main a:active {
 	overflow: hidden;
 	clip: rect(0 0 0 0);
 	white-space: nowrap;
-}
-.sb-nav {
-	display: flex;
-	align-self: stretch;
-	align-items: stretch;
 }
 .sb-fill {
 	flex: 1;

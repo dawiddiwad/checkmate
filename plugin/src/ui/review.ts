@@ -362,7 +362,7 @@ function ruleGroups(review: Review, view: string, items: Item[]): Group[] {
 }
 
 const tags: Record<string, [string, string]> = {
-	finding: ['Finding', 'you'],
+	finding: ['Finding', 'you triage'],
 	question: ['Question', ''],
 	answered: ['Answered', 'pass'],
 	deferred: ['Deferred', ''],
@@ -1090,7 +1090,10 @@ function panel(context: Context, review: Review, view: string, current: string, 
 			${
 				cost === null
 					? ''
-					: html`<p class="sp-sub" title="Reported cost across this plan’s explorations, chats, and structured runs">
+					: html`<p
+							class="sp-sub"
+							title="Reported cost across this plan’s explorations, chats, and structured runs"
+						>
 							Total cost ${cost}
 						</p>`
 			}
@@ -1135,7 +1138,9 @@ export function reviewPage(
 			: recordDrawer(store, context, review, item, current, refusal)
 		: ''
 	const cost = planCost(store, planId)
-	const panels = views.map((view) => panel(context, review, view, current, cost.costUsd === null ? null : costText(cost.costUsd, cost.costPartial)))
+	const panels = views.map((view) =>
+		panel(context, review, view, current, cost.costUsd === null ? null : costText(cost.costUsd, cost.costPartial))
+	)
 	return {
 		title: `${item ? `${item.id} · ` : ''}${title} · ${planId}`,
 		section: 'home',

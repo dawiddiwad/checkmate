@@ -30796,12 +30796,12 @@ function groupsOf(items) {
   const bySeverity = (a, b) => severityOrder2.indexOf(a.severity ?? "") - severityOrder2.indexOf(b.severity ?? "");
   return [
     of(
-      blockingLabel,
-      items.filter((item) => open(item) && item.blocking)
-    ),
-    of(
       "Permission requests",
       items.filter((item) => item.kind === "permission")
+    ),
+    of(
+      blockingLabel,
+      items.filter((item) => open(item) && item.blocking)
     ),
     of("Is this a defect?", items.filter((item) => item.kind === "finding").sort(bySeverity)),
     of(

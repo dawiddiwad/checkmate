@@ -89,16 +89,17 @@ Light values are in `:root`. Dark values are in `:root[data-theme='dark']` and i
 
 Class: `.sp-pill` with a tone class. Use it to show the status of a run, a result, or an item that waits.
 
-| Tone class | Colour     | Use                                                   |
-| ---------- | ---------- | ----------------------------------------------------- |
-| `.run`     | Ink        | Testing, running                                      |
-| `.pass`    | Green      | Passed, accepted                                      |
-| `.fail`    | Red        | Failed                                                |
-| `.you`     | Vermilion  | Blocks, asks, needs triage, needs approval, questions |
-| `.crit`    | Filled red | Critical defect                                       |
-| No tone    | Muted      | Durations, cost, stopped                              |
+| Tone class    | Mark                      | Use                                     |
+| ------------- | ------------------------- | --------------------------------------- |
+| `.run`        | Hatched ink square        | Testing, running                        |
+| `.pass`       | Filled green square       | Passed, accepted, allowed               |
+| `.fail`       | Red cross                 | Failed, denied, high severity           |
+| `.you`        | Filled vermilion square   | Blocks, asks, needs approval            |
+| `.you.triage` | Outlined vermilion square | Findings and needs triage: decide first |
+| `.crit`       | Filled red label          | Critical defect                         |
+| No tone       | Outlined grey square      | Questions, stopped, deferred            |
 
-A pill shows a glyph from `glyph()` in `plugin/src/ui/html.ts` and a word in sentence case.
+The mark comes from CSS (`::before`). Its colours come from `--mark-edge` and `--mark-fill`, which each tone class sets. The word is in sentence case. A pill for a duration or a cost has no mark.
 
 ### Board cell
 
@@ -136,14 +137,17 @@ Class: `.sp-nums`. Use it for a group of counts.
 
 The status bar (`footer.statusbar`) is the only bar. It is at the bottom of the page. There is no top bar. It shows these items:
 
-- the brand
-- where you are
-- links
-- key hints
-- the "need you" counter
-- the live state
-- the name
-- the theme switch
+1. The brand.
+2. The links: Plans, Activity, Chats, Runs, Log, Settings. The current page has a 2 px `--ink` line on top.
+3. The key hints, and the Find and Keys buttons.
+4. The items that wait for you, for example the "need you" counter. They are vermilion.
+5. The live state, the name, and the theme switch.
+
+The path to the current page is in the status bar for screen readers only. The page shows it above its title.
+
+### Blocking banner
+
+Class: `.sp-banner`. The Needs you view shows it when questions block testing. It shows the count, one sentence, and one vermilion button that opens the first blocking question. Blocking questions come first in the list, after permission requests.
 
 ### Keys
 
